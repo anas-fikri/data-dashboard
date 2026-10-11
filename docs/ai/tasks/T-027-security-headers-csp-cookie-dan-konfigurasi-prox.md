@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-001
 created: "2026-10-11T14:56:59Z"
-updated: "2026-10-11T14:57:02Z"
+updated: "2026-10-11T15:44:38Z"
 created_by: claude-code
 ---
 
@@ -27,6 +27,8 @@ next.config + middleware: CSP nonce (script-src 'self' 'nonce-…' 'strict-dynam
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T15:44:38Z Dari review T-001: /health dan /api/health di produksi menyembunyikan field detail (publicView) — tambahkan jalur admin (requireAdmin) untuk melihat detail; cache 5 s sudah ada.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

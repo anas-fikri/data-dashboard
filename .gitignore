@@ -21,7 +21,6 @@ next-env.d.ts
 
 # Data / fixtures besar (perf 1 GB disintesis, tidak di-commit)
 tests/fixtures/perf/
-*.parquet
 *.duckdb
 .cache/
 

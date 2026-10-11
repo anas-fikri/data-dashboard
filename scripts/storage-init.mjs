@@ -31,7 +31,7 @@ const need = (k) => {
 
 const endpoint = need("S3_ENDPOINT");
 const Bucket = need("S3_BUCKET");
-const appOrigin = process.env.APP_URL ?? "http://localhost:3000";
+const appOrigin = need("APP_URL"); // origin presigned PUT/GET dari browser; salah → CORS menolak
 
 const s3 = new S3Client({
   endpoint,
@@ -49,7 +49,13 @@ async function waitReady(retries = 20) {
       await s3.send(new HeadBucketCommand({ Bucket }));
       return true;
     } catch (e) {
-      if (e?.name === "NotFound" || e?.$metadata?.httpStatusCode === 404) return false;
+      const status = e?.$metadata?.httpStatusCode;
+      if (e?.name === "NotFound" || status === 404) return false;
+      if (status === 403) {
+        throw new Error(
+          "kredensial S3 ditolak (403): S3_ACCESS_KEY/S3_SECRET_KEY di .env tidak cocok dengan volume storage yang ada; hapus volume (npm run compose:down -- -v) atau samakan kredensial",
+        );
+      }
       await new Promise((r) => setTimeout(r, 1500));
     }
   }

@@ -11,7 +11,7 @@ depends_on:
   - T-001
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:57:00Z"
+updated: "2026-10-11T15:44:38Z"
 created_by: claude-code
 ---
 
@@ -36,6 +36,7 @@ Auth.js Credentials: email + password (argon2id). Registrasi hanya domain di ALL
 ## Notes
 - 2026-10-11T14:49:24Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Token verifikasi: 32 byte acak, simpan SHA-256, kedaluwarsa 24 jam, sekali pakai; resend dibatasi 3/email/jam; purge user belum verifikasi > 24 jam. Rate limit: per IP (X-Real-IP yang di-set proxy, bukan X-Forwarded-For append) DAN per akun (5 gagal/15 menit backoff); juga register/resend/verify. requireUser()/requireAdmin() satu helper Node-side dipanggil di SETIAP Server Action, Route Handler, layout; isAdmin dibaca dari baris DB hasil cek, bukan klaim JWT; middleware matcher mencakup /api/:path*.
+- 2026-10-11T15:44:38Z Syarat dari review T-001: user dengan passwordHash null (admin seed) wajib ditolak login dengan pembandingan dummy hash agar timing konstan; AUTH_SECRET sudah array (env().AUTH_SECRET) → pakai langsung di Auth.js secret.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

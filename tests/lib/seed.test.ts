@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@prisma/client";
-import { seedAdmin } from "../../prisma/seed";
+import { parseDomains, seedAdmin } from "../../prisma/seed";
 
 interface UpsertArgs {
   where: { email: string };
@@ -16,7 +16,7 @@ function fakePrisma() {
 describe("seedAdmin", () => {
   it("menormalkan email dan membuat admin aktif terverifikasi", async () => {
     const { prisma, upsert } = fakePrisma();
-    const admin = await seedAdmin(prisma, "  Admin@PCPExpress.com ");
+    const admin = await seedAdmin(prisma, "  Admin@PCPExpress.com ", ["pcpexpress.com"]);
     expect(admin.email).toBe("admin@pcpexpress.com");
     const call = upsert.mock.calls[0]?.[0];
     if (!call) throw new Error("upsert tidak dipanggil");
@@ -25,8 +25,20 @@ describe("seedAdmin", () => {
     expect(call.update).toEqual({ isAdmin: true, isActive: true });
   });
 
-  it("gagal jelas bila SEED_ADMIN_EMAIL kosong", async () => {
-    const { prisma } = fakePrisma();
-    await expect(seedAdmin(prisma, undefined)).rejects.toThrow(/SEED_ADMIN_EMAIL/);
+  it("gagal jelas bila SEED_ADMIN_EMAIL kosong, bukan email, atau di luar whitelist", async () => {
+    const { prisma, upsert } = fakePrisma();
+    await expect(seedAdmin(prisma, undefined, [])).rejects.toThrow(/SEED_ADMIN_EMAIL/);
+    await expect(seedAdmin(prisma, "bukan-email", [])).rejects.toThrow();
+    await expect(seedAdmin(prisma, "admin@evil.example", ["pcpexpress.com"])).rejects.toThrow(
+      /ALLOWED_EMAIL_DOMAINS/,
+    );
+    expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseDomains", () => {
+  it("memisahkan koma, memangkas spasi, dan menurunkan kapital", () => {
+    expect(parseDomains(" A.com, b.ID ,")).toEqual(["a.com", "b.id"]);
+    expect(parseDomains(undefined)).toEqual([]);
   });
 });

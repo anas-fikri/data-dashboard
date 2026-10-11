@@ -1,16 +1,16 @@
-import { runHealthChecks } from "@/lib/health";
-import { infraChecks } from "@/lib/health/checks";
+import { cachedHealthReport, publicView } from "@/lib/health";
+import { exposeHealthDetail, infraChecks } from "@/lib/health/checks";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Kesehatan sistem · Data Dashboard" };
+export const metadata = { title: "Kesehatan sistem" };
 
 /**
  * Halaman status layanan untuk developer/operator.
- * Pembatasan detail untuk pengguna eksternal dilakukan di T-027.
+ * Di produksi detail disembunyikan; jalur admin ditambahkan di T-027.
  */
 export default async function HealthPage() {
-  const report = await runHealthChecks(infraChecks());
+  const report = publicView(await cachedHealthReport(infraChecks()), exposeHealthDetail());
   const allOk = report.status === "ok";
 
   return (
@@ -31,19 +31,18 @@ export default async function HealthPage() {
 
       <ul className="mt-6 divide-y divide-foreground/10 rounded-md border border-foreground/15">
         {report.items.map((item) => (
-          <li key={item.name} className="flex items-start justify-between gap-4 px-4 py-3">
+          <li
+            key={item.name}
+            data-check={item.name}
+            data-status={item.status}
+            className="flex items-start justify-between gap-4 px-4 py-3"
+          >
             <div>
               <p className="font-medium">{item.name}</p>
               <p className="text-sm text-foreground/70">{item.detail}</p>
             </div>
             <div className="text-right text-sm">
-              <p
-                className="font-semibold uppercase"
-                data-status={item.status}
-                aria-label={item.status === "ok" ? "OK" : "Gagal"}
-              >
-                {item.status === "ok" ? "OK" : "Gagal"}
-              </p>
+              <p className="font-semibold uppercase">{item.status === "ok" ? "OK" : "Gagal"}</p>
               <p className="text-foreground/60">{item.latencyMs} ms</p>
             </div>
           </li>

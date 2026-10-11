@@ -1,3 +1,5 @@
+import { logger } from "@/lib/logger";
+
 export type HealthStatus = "ok" | "fail";
 
 export interface HealthItem {
@@ -17,6 +19,8 @@ export interface HealthReport {
 export type HealthCheck = { name: string; run: () => Promise<string> };
 
 const DEFAULT_TIMEOUT_MS = 3000;
+/** Laporan di-cache singkat agar polling/monitoring tidak menjadi amplifikasi ke layanan backend. */
+const CACHE_TTL_MS = 5000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, name: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -34,11 +38,17 @@ function withTimeout<T>(p: Promise<T>, ms: number, name: string): Promise<T> {
   });
 }
 
-/** Pesan error yang aman ditampilkan: tanpa URL koneksi, tanpa kredensial. */
+/**
+ * Pesan error yang aman ditampilkan: tanpa URL koneksi, host:port, kredensial,
+ * atau nama pengguna yang biasa disisipkan driver (Prisma/ioredis).
+ */
 export function safeMessage(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
   return msg
-    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"]+/gi, "[url]")
+    .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"`]+/gi, "[url]")
+    .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[host]")
+    .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)+):\d{2,5}\b/gi, "[host]")
+    .replace(/`[^`]*`/g, "[redacted]")
     .split("\n")[0]!
     .slice(0, 160);
 }
@@ -60,10 +70,12 @@ export async function runHealthChecks(
           latencyMs: round(performance.now() - started),
         };
       } catch (e) {
+        const detail = safeMessage(e);
+        logger.warn({ check: c.name, detail }, "health check gagal");
         return {
           name: c.name,
           status: "fail",
-          detail: safeMessage(e),
+          detail,
           latencyMs: round(performance.now() - started),
         };
       }
@@ -73,6 +85,40 @@ export async function runHealthChecks(
     status: items.every((i) => i.status === "ok") ? "ok" : "fail",
     checkedAt: new Date().toISOString(),
     items,
+  };
+}
+
+let cachedReport: { at: number; report: HealthReport } | undefined;
+let inflight: Promise<HealthReport> | undefined;
+
+/** Laporan dengan cache 5 detik dan de-duplikasi permintaan bersamaan. */
+export async function cachedHealthReport(
+  checks: HealthCheck[],
+  now = Date.now(),
+): Promise<HealthReport> {
+  if (cachedReport && now - cachedReport.at < CACHE_TTL_MS) return cachedReport.report;
+  if (!inflight) {
+    inflight = runHealthChecks(checks)
+      .then((report) => {
+        cachedReport = { at: Date.now(), report };
+        return report;
+      })
+      .finally(() => {
+        inflight = undefined;
+      });
+  }
+  return inflight;
+}
+
+/** Di produksi, detail tidak ditampilkan ke publik (T-027 menambahkan jalur admin). */
+export function publicView(report: HealthReport, exposeDetail: boolean): HealthReport {
+  if (exposeDetail) return report;
+  return {
+    ...report,
+    items: report.items.map((i) => ({
+      ...i,
+      detail: i.status === "ok" ? "OK" : "bermasalah, lihat log server",
+    })),
   };
 }
 

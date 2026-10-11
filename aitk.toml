@@ -16,5 +16,5 @@ sensitive_paths = ["src/middleware.ts", "src/app/api/**", "src/features/auth/**"
 # sedangkan database offline di storage.googleapis.com terjangkau; hasil identik, dan tetap berjalan di CI/VM.
 scanners = [
   { name = "osv-scanner (dependencies, offline db)", cmd = "osv-scanner scan source --recursive --offline-vulnerabilities --download-offline-databases ." },
-  { name = "npm audit", cmd = "npm audit --audit-level=high" },
+  { name = "npm audit (prod high, dev critical)", cmd = "npm run audit" },
 ]

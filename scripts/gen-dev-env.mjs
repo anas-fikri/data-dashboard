@@ -12,7 +12,7 @@ if (existsSync(".env") && !force) {
 
 const rand = (n = 24) => randomBytes(n).toString("base64url");
 const secrets = {
-  AUTH_SECRET: rand(32),
+  AUTH_SECRET: rand(48),
   POSTGRES_PASSWORD: rand(),
   REDIS_PASSWORD: rand(),
   S3_ACCESS_KEY: `app${rand(6).replace(/[-_]/g, "")}`,
@@ -23,13 +23,20 @@ let out = readFileSync(".env.example", "utf8");
 for (const [key, value] of Object.entries(secrets)) {
   out = out.replace(new RegExp(`^${key}=.*$`, "m"), `${key}=${value}`);
 }
+
+// Susun URL koneksi dari nilai yang benar-benar ada di file (user/db/port), bukan hardcode.
+const get = (key) => out.match(new RegExp(`^${key}=(.*)$`, "m"))?.[1]?.trim() ?? "";
+const pgUser = get("POSTGRES_USER") || "app";
+const pgDb = get("POSTGRES_DB") || "data_dashboard";
+const pgPort = get("DATABASE_URL").match(/:(\d+)\//)?.[1] ?? "5433";
+const redisPort = get("REDIS_URL").match(/:(\d+)\//)?.[1] ?? "6380";
 out = out.replace(
   /^DATABASE_URL=.*$/m,
-  `DATABASE_URL=postgresql://app:${secrets.POSTGRES_PASSWORD}@127.0.0.1:5433/data_dashboard`,
+  `DATABASE_URL=postgresql://${pgUser}:${secrets.POSTGRES_PASSWORD}@127.0.0.1:${pgPort}/${pgDb}`,
 );
 out = out.replace(
   /^REDIS_URL=.*$/m,
-  `REDIS_URL=redis://:${secrets.REDIS_PASSWORD}@127.0.0.1:6380/0`,
+  `REDIS_URL=redis://:${secrets.REDIS_PASSWORD}@127.0.0.1:${redisPort}/0`,
 );
 
 writeFileSync(".env", out, { mode: 0o600 });
