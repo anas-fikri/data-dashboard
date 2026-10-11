@@ -1,0 +1,94 @@
+# Infrastruktur lokal untuk pengembangan. Aplikasi Next.js dan worker berjalan di host.
+# Kredensial dibaca dari .env (buat dengan: npm run secrets:dev).
+# Setelah `up`, jalankan `node scripts/storage-init.mjs` (otomatis lewat npm run compose:up).
+# Paritas jaringan dengan produksi: "data" (PostgreSQL, Redis, RustFS) dan "frontend" (Mailpit).
+name: data-dashboard-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-data_dashboard}
+      POSTGRES_USER: ${POSTGRES_USER:?set di .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set di .env}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [data]
+
+  redis:
+    image: redis:7-alpine
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:?set di .env}",
+        "--protected-mode",
+        "yes",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+        "--appendonly",
+        "yes",
+      ]
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    networks: [data]
+
+  # Object storage S3 (ADR-0002). API di 9000, console di 9001 (dev saja).
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY:?set di .env}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY:?set di .env}
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "127.0.0.1:9100:9000"
+      - "127.0.0.1:9101:9001"
+    volumes:
+      - s3data:/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O /dev/null http://127.0.0.1:9000/ || curl -sf -o /dev/null http://127.0.0.1:9000/ || exit 0",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks: [data, frontend]
+
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      - "127.0.0.1:1026:1025" # SMTP
+      - "127.0.0.1:8026:8025" # UI + API (dipakai test T-002)
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    networks: [frontend]
+
+networks:
+  data: {}
+  frontend: {}
+
+volumes:
+  pgdata: {}
+  redisdata: {}
+  s3data: {}

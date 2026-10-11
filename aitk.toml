@@ -10,3 +10,11 @@ cmd = "npm run check"
 [risk]
 # Changes matching these globs make a task "strict" (risk analysis + independent review).
 sensitive_paths = ["src/middleware.ts", "src/app/api/**", "src/features/auth/**", "src/features/admin/**", "src/features/sharing/**", "src/features/exports/**", "src/features/guides/**", "src/features/query/**", "src/features/widgets/**", "src/features/dashboards/**", "src/lib/storage/**", "src/lib/duckdb/**", "src/lib/queue/**", "src/lib/cache/**", "worker/**", "renderer/**", "prisma/**", "docker-compose*.yml", "Dockerfile*", "next.config.*", ".env.example", "deploy/**"]
+
+[security]
+# osv-scanner mode offline: api.osv.dev (74.125.68.121) tidak terjangkau dari jaringan dev ini (TCP timeout),
+# sedangkan database offline di storage.googleapis.com terjangkau; hasil identik, dan tetap berjalan di CI/VM.
+scanners = [
+  { name = "osv-scanner (dependencies, offline db)", cmd = "osv-scanner scan source --recursive --offline-vulnerabilities --download-offline-databases ." },
+  { name = "npm audit", cmd = "npm audit --audit-level=high" },
+]

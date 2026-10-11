@@ -5,3 +5,4 @@
 Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 
 - ADR-0001 [accepted] File 1 GB diproses streaming ke Parquet dan diquery DuckDB, bukan dimuat ke PostgreSQL atau browser — ../../docs/adr/0001-file-1-gb-diproses-streaming-ke-parquet-dan-diquery-duckdb-b.md
+- ADR-0002 [accepted] Object storage memakai RustFS (API S3 kompatibel MinIO), bukan MinIO — ../../docs/adr/0002-object-storage-memakai-rustfs-api-s3-kompatibel-minio-bukan.md

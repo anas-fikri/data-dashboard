@@ -2,6 +2,8 @@
 
 Dokumen acuan produk dan implementasi. (A) apa yang dilakukan user, (B) apa yang terjadi di aplikasi, (C) kenapa tidak seberat Excel, (D) daftar keputusan yang mengikat. Setiap bagian menyebut task di `docs/ai/tasks/`. Jika implementasi harus menyimpang, perbarui dokumen ini dulu dan catat ADR.
 
+Catatan 2026-10-11 (T-001): image MinIO sudah tidak tersedia; object storage memakai **RustFS** (API kompatibel MinIO/S3, ADR-0002). Setiap sebutan "MinIO" di bawah dibaca sebagai object storage S3 (RustFS). Klien S3 wajib requestChecksumCalculation=WHEN_REQUIRED.
+
 Revisi 3 (2026-10-11) setelah review adversarial: revisi skema per sheet (`schemaRevision`) agar re-cast tidak merusak cache/file yang sedang dibaca; versi self-contained untuk mode tambah baris; dua enum status (versi vs profil); urutan inferensi tipe diperbaiki; worker 1 job per proses; keputusan auth (Credentials + JWT + `sessionVersion`); MinIO di subdomain sendiri; otorisasi query berbasis widget; header sebagai metadata (tanpa parse ulang); batas sumber daya; pemecahan task menjadi 24.
 
 ---

@@ -1,24 +1,45 @@
 # OS
 .DS_Store
 Thumbs.db
+
 # Node / Next
 node_modules/
 .next/
 out/
+build/
 coverage/
 *.tsbuildinfo
-# Env & secrets
+next-env.d.ts
+.pnp
+.pnp.*
+
+# Env & secrets (hanya .env.example yang di-commit)
 .env
 .env.*
 !.env.example
+*.pem
+
 # Data / fixtures besar (perf 1 GB disintesis, tidak di-commit)
 tests/fixtures/perf/
 *.parquet
 *.duckdb
+.cache/
+
+# Test artefak
+playwright-report/
+test-results/
+
 # Logs
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
 # IDE
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Worktree aitk / Claude
+.claude/worktrees/

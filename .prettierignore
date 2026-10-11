@@ -1,0 +1,19 @@
+node_modules
+.next
+out
+coverage
+playwright-report
+test-results
+package-lock.json
+prisma/migrations
+# Dikelola aitk / adapter AI tools, bukan kode
+docs
+ai-state.json
+AGENTS.md
+CLAUDE.md
+.claude
+.gemini
+.kiro
+.roo
+.mcp.json
+opencode.json

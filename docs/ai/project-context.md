@@ -10,7 +10,7 @@ Data Dashboard: aplikasi web pengganti dashboard Excel untuk PCP Express. User (
 - File 1 GB TIDAK pernah di-parse di browser atau dimuat utuh ke RAM server. Alur: chunked resumable upload → object storage (MinIO) → worker streaming parse (xlsx/csv) → Parquet per sheet → query via DuckDB.
 - Query dashboard berbasis spesifikasi deklaratif (dimensi, ukuran, filter, agregasi), bukan SQL mentah dari user.
 - Metadata (user, profil dataset, skema kolom, layout dashboard) di PostgreSQL via Prisma. Data tabular di Parquet, bukan di PostgreSQL.
-- Deploy on-prem VM PCP Express via Docker Compose (app, worker ×2, renderer PDF, PostgreSQL, MinIO di subdomain sendiri, Redis, reverse proxy). Zero-capex. Single-tenant: organisasi = semua user aktif instance.
+- Deploy on-prem VM PCP Express via Docker Compose (app, worker ×2, renderer PDF, PostgreSQL, object storage S3 (RustFS) di subdomain sendiri, Redis, reverse proxy). Zero-capex. Single-tenant: organisasi = semua user aktif instance.
 
 ## Stack
 Next.js (App Router, TypeScript) · Tailwind · Prisma + PostgreSQL · MinIO (S3 API) · DuckDB (node binding) · BullMQ + Redis (job antrean ingest) · ECharts (chart) · @tabler/icons-react.
