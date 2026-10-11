@@ -1,7 +1,7 @@
 "use client";
 
 import { IconDeviceFloppy, IconLogout } from "@tabler/icons-react";
-import { useActionState, useRef, useTransition } from "react";
+import { useActionState, useEffect, useRef, useTransition } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { useFocusOnError } from "@/components/auth/use-focus-on-error";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,11 @@ export function SecuritySettings() {
   const alertRef = useFocusOnError(state, { current: currentRef, password: passwordRef });
   const [signingOut, startSignOut] = useTransition();
   const error = state.status === "error" ? state : null;
+  // Sukses: fokus ke pesan agar pengguna keyboard tidak kehilangan posisi.
+  const successRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (state.status === "success") successRef.current?.focus();
+  }, [state]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -34,7 +39,7 @@ export function SecuritySettings() {
         <CardContent>
           <form action={action} className="flex max-w-md flex-col gap-4" noValidate>
             {state.status === "success" ? (
-              <FormAlert tone="success">
+              <FormAlert tone="success" ref={successRef}>
                 Password diganti. Perangkat lain sudah dikeluarkan.
               </FormAlert>
             ) : null}
@@ -82,6 +87,7 @@ export function SecuritySettings() {
           <CardTitle>Keluar dari semua perangkat</CardTitle>
           <CardDescription>
             Gunakan bila Anda lupa keluar di komputer lain atau curiga akun dipakai orang lain.
+            Termasuk perangkat ini; Anda perlu masuk lagi.
           </CardDescription>
         </CardHeader>
         <CardContent>

@@ -57,7 +57,7 @@ export function invalidEmail(raw: unknown): Result<never> {
   });
 }
 
-function domainNotAllowed(): Result<never> {
+export function domainNotAllowed(): Result<never> {
   const list = env()
     .ALLOWED_EMAIL_DOMAINS.map((d) => `@${d}`)
     .join(" atau ");

@@ -116,7 +116,12 @@ export async function changePasswordAction(
   );
   if (!result.ok) {
     const state = toError(result, formData);
+    // Kesalahan password saat ini ditampilkan di field "Password saat ini" (bukan password baru).
     if (state.status === "error" && result.code === "INVALID_CREDENTIALS") state.field = "current";
+    if (state.status === "error" && result.code === "PASSWORD_REQUIRED") {
+      state.field = "current";
+      state.message = "Masukkan password saat ini.";
+    }
     return state;
   }
   await createSession(result.data);

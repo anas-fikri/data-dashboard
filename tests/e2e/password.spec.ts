@@ -103,6 +103,12 @@ test.describe("password", () => {
     expect((await b.request.get("/api/auth/me")).status()).toBe(200);
 
     await a.goto("/akun/keamanan");
+    // Password saat ini kosong → error di field "Password saat ini", fokus ke sana
+    await a.locator("input[name=password]").fill(NEW_PASSWORD);
+    await a.getByRole("button", { name: "Simpan password" }).click();
+    await expect(a.getByText("Masukkan password saat ini.")).toBeVisible();
+    await expect(a.getByLabel("Password saat ini")).toBeFocused();
+    await expect(a.getByLabel("Password saat ini")).toHaveAttribute("aria-invalid", "true");
     await a.getByLabel("Password saat ini").fill("dummy-salah-sekali-123");
     await a.locator("input[name=password]").fill(NEW_PASSWORD);
     await a.getByRole("button", { name: "Simpan password" }).click();
@@ -113,6 +119,7 @@ test.describe("password", () => {
     await a.locator("input[name=password]").fill(NEW_PASSWORD);
     await a.getByRole("button", { name: "Simpan password" }).click();
     await expect(a.getByTestId("form-alert")).toContainText("Password diganti");
+    await expect(a.getByTestId("form-alert")).toBeFocused();
 
     expect((await a.request.get("/api/auth/me")).status()).toBe(200);
     expect((await b.request.get("/api/auth/me")).status()).toBe(401);
@@ -131,6 +138,14 @@ test.describe("password", () => {
     expect((await a.request.get("/api/auth/me")).status()).toBe(401);
     await ctxA.close();
     await ctxB.close();
+  });
+
+  test("lupa password menolak domain yang tidak diizinkan di field email", async ({ page }) => {
+    await page.goto("/lupa-password");
+    await page.getByLabel("Email perusahaan").fill("seseorang@gmail.com");
+    await page.getByRole("button", { name: "Kirim tautan atur ulang" }).click();
+    await expect(page.getByText("Gunakan email @pcpexpress.com.")).toBeVisible();
+    await expect(page.getByLabel("Email perusahaan")).toBeFocused();
   });
 
   test("permintaan reset ke-4 untuk email yang sama dalam 1 jam → RATE_LIMITED tanpa email ke-4", async ({

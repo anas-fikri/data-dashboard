@@ -1,11 +1,20 @@
 import "server-only";
 import { prisma } from "@/lib/db";
+import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { sendPasswordChangedEmail, sendPasswordResetEmail } from "./email";
-import { normalizeEmail } from "./email-domain";
+import { isAllowedDomain, normalizeEmail } from "./email-domain";
 import { hashPassword, isPasswordAcceptable, verifyPassword } from "./password";
 import { emailBucket, reset, RULES } from "./rate-limit";
-import { counted, fail, invalidEmail, sendInBackground, store, type Result } from "./service";
+import {
+  counted,
+  domainNotAllowed,
+  fail,
+  invalidEmail,
+  sendInBackground,
+  store,
+  type Result,
+} from "./service";
 import { generateToken, hashToken, isTokenShape, RESET_PASSWORD_TTL_MS } from "./tokens";
 
 /*
@@ -20,6 +29,9 @@ import { generateToken, hashToken, isTokenShape, RESET_PASSWORD_TTL_MS } from ".
 export async function requestPasswordReset(emailRaw: unknown, ip: string): Promise<Result> {
   const email = normalizeEmail(emailRaw);
   if (!email) return invalidEmail(emailRaw);
+  // Kebijakan domain sudah publik (tampil di /register): menolaknya tidak membocorkan akun,
+  // dan mencegah pengguna menunggu email yang tidak akan pernah datang.
+  if (!isAllowedDomain(email, env().ALLOWED_EMAIL_DOMAINS)) return domainNotAllowed();
   // IP lebih dulu: permintaan yang sudah diblok per IP tidak boleh mengisi bucket email korban
   // (satu IP tidak bisa mengunci reset banyak akun — review T-026 #1).
   const byIp = await counted("resetIp", ip);

@@ -1,8 +1,8 @@
 "use client";
 
-import { IconMailForward } from "@tabler/icons-react";
+import { IconMailForward, IconMailOpened } from "@tabler/icons-react";
 import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { AuthCard } from "@/components/auth/auth-card";
 import { FormAlert } from "@/components/auth/form-alert";
 import { AUTH_INPUT } from "@/components/auth/login-form";
@@ -22,14 +22,38 @@ const footer = (
   </>
 );
 
+interface ForgotPasswordFormProps {
+  allowedDomains: string[];
+}
+
 /** Minta tautan atur ulang password. Respons selalu netral (tidak membocorkan email terdaftar). */
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ allowedDomains }: ForgotPasswordFormProps) {
+  // `round` me-mount ulang form ("Pakai email lain") tanpa setState di effect.
+  const [round, setRound] = useState(0);
+  return (
+    <ForgotRound
+      key={round}
+      allowedDomains={allowedDomains}
+      restarted={round > 0}
+      onRestart={() => setRound((r) => r + 1)}
+    />
+  );
+}
+
+function ForgotRound({
+  allowedDomains,
+  restarted,
+  onRestart,
+}: ForgotPasswordFormProps & { restarted: boolean; onRestart: () => void }) {
   const [state, action, pending] = useActionState<FormState, FormData>(requestResetAction, {
     status: "idle",
   });
   const emailRef = useRef<HTMLInputElement>(null);
   const alertRef = useFocusOnError(state, { email: emailRef });
   const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (restarted) emailRef.current?.focus();
+  }, [restarted]);
   useEffect(() => {
     if (state.status !== "success") return;
     headingRef.current?.focus();
@@ -48,15 +72,38 @@ export function ForgotPasswordForm() {
         description={`Jika ${state.email} terdaftar dan aktif, tautan atur ulang password sudah dikirim dan berlaku 30 menit.`}
         footer={footer}
       >
-        <FormAlert tone="success">
-          Buka email dari Data Dashboard dan klik <strong>Atur ulang password</strong>. Tidak ada di
-          inbox? Periksa folder spam, atau minta lagi beberapa menit kemudian.
-        </FormAlert>
+        <div className="flex flex-col gap-3">
+          <FormAlert tone="success">
+            Buka email dari Data Dashboard dan klik <strong>Atur ulang password</strong>. Tidak ada
+            di inbox? Periksa folder spam.
+          </FormAlert>
+          <form action={action}>
+            <input type="hidden" name="email" value={state.email} />
+            <Button
+              type="submit"
+              variant="outline"
+              size="lg"
+              className="w-full"
+              pending={pending}
+              leadingIcon={<IconMailForward aria-hidden />}
+            >
+              Kirim lagi
+            </Button>
+          </form>
+          <Button variant="ghost" size="lg" className="w-full" onClick={onRestart}>
+            <IconMailOpened aria-hidden />
+            Pakai email lain
+          </Button>
+        </div>
       </AuthCard>
     );
   }
 
   const error = state.status === "error" ? state : null;
+  const domainHint =
+    allowedDomains.length === 1
+      ? `Hanya email @${allowedDomains[0]}.`
+      : `Hanya email domain: ${allowedDomains.map((d) => `@${d}`).join(", ")}.`;
   return (
     <AuthCard
       title="Lupa password"
@@ -72,6 +119,7 @@ export function ForgotPasswordForm() {
         <Field
           id="email"
           label="Email perusahaan"
+          hint={domainHint}
           required
           error={error?.field === "email" ? error.message : undefined}
         >
