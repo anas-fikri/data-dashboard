@@ -1,14 +1,18 @@
 ---
 id: T-025
 title: 'Fondasi UI via frontend-expert: arah desain, token preset, app shell, tema'
-status: todo
+status: in_progress
 profile: standard
 goal: G-2
 depends_on:
   - T-001
 created: "2026-10-11T14:49:24Z"
-updated: "2026-10-11T14:49:24Z"
+updated: "2026-10-11T15:56:28Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: e1ff563fd1ec741570e77bee00b65ce59d049f41
 ---
 
 ## Objective
@@ -22,6 +26,13 @@ Jalankan rantai plugin frontend-expert untuk blank canvas: design-direction (taw
 - [ ] Given /frontend-expert:audit atas shell dan halaman 404, when dijalankan, then tidak ada temuan Critical/High dan blok Conventions check lengkap tersimpan di docs/ai/design-system.md
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: LOW–MEDIUM (fondasi visual dipakai semua task UI; tidak menyentuh data/auth)
+Impact surface: src/styles/tokens.css, src/app/globals.css, src/components/ui/*, src/components/shell/*, src/app/layout.tsx, src/app/(app)/*, not-found, dependency radix-ui/next-themes/@tabler/icons-react.
+Security (STRIDE): tidak ada endpoint/aksi tulis baru; getSessionUser() stub mengembalikan null (tidak ada klaim identitas palsu); nav Admin hanya tampil bila isAdmin tetapi otorisasi nyata di server (T-002/T-019); localStorage hanya preferensi UI; tidak ada HTML mentah.
+Compatibility: Tailwind 4 (@theme inline, @custom-variant dark); React 19.3 aturan react-hooks baru (tanpa setState-dalam-effect → useSyncExternalStore); Next 16 Image untuk logo PNG.
+Failure modes/edge cases: localStorage tidak tersedia (fallback default); hidrasi tema (suppressHydrationWarning di <html>); drawer terbuka saat layar melebar (ditutup via matchMedia); tanpa sesi (tombol Masuk); 404.
+Rollback: revert commit T-025; tidak ada migrasi.
+Validation: npm run check; e2e tests/e2e/shell.spec.ts (320/768/1024/1440, drawer+backdrop, CTA full-width, collapse persist, tema, 404); grep hex mentah; audit design-reviewer plugin.
+Open risks/assumptions: pemilihan arah desain dilakukan AI atas delegasi user (dicatat di design-system.md §1); logo wordmark dipotong untuk mode ciut.
 
 ## Notes
