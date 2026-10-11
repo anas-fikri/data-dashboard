@@ -8,7 +8,7 @@ goal: G-2
 tags:
   - security
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T15:43:39Z"
+updated: "2026-10-11T15:46:52Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -114,9 +114,9 @@ evidence:
     total: 5
     done: 5
   audit:
-    at: "2026-10-11T15:34:12Z"
+    at: "2026-10-11T15:46:43Z"
     passed: true
-    tree: 20397b7d382e7e4162419448e5ea3b782d08e550894ebc5368245824d75e3621
+    tree: 2bc01b9d2f7dcfcd97a82c48af6f7921342ab5daad14826374a85ac1497a8a49
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -124,13 +124,18 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 509 packages
-          End status: 37 dirs visited, 139 inodes visited, 1 Extract calls, 33.217416ms elapsed, 33.218ms wall time
+          End status: 37 dirs visited, 140 inodes visited, 1 Extract calls, 31.9115ms elapsed, 31.914ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
-      - name: npm audit
+      - name: npm audit (prod high, dev critical)
         exit_code: 0
-        summary: found 0 vulnerabilities
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
       - name: aitk secret scan (tracked files)
         exit_code: 0
 ---

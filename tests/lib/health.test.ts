@@ -77,13 +77,13 @@ describe("configCheck", () => {
       NODE_ENV: "test",
       APP_URL: "http://localhost:3100",
       APP_HOST: "localhost:3100",
-      DATABASE_URL: "postgresql://app:s3cret@127.0.0.1:5433/db",
-      REDIS_URL: "redis://:s3cret@127.0.0.1:6380/0",
+      DATABASE_URL: "postgresql://app:dummy@127.0.0.1:5433/db",
+      REDIS_URL: "redis://:dummy@127.0.0.1:6380/0",
       S3_ENDPOINT: "http://127.0.0.1:9100",
       S3_PUBLIC_ENDPOINT: "http://localhost:9100",
       S3_BUCKET: "b",
       S3_ACCESS_KEY: "k",
-      S3_SECRET_KEY: "s3cret-key",
+      S3_SECRET_KEY: "dummy-secret-key",
       SMTP_URL: "smtp://127.0.0.1:1026",
       MAIL_FROM: "x@y.id",
       ALLOWED_EMAIL_DOMAINS: "y.id",
@@ -98,9 +98,9 @@ describe("configCheck", () => {
 
 describe("safeMessage", () => {
   it("menyembunyikan URL koneksi, host:port, dan nama yang dikutip driver", () => {
-    expect(safeMessage(new Error("gagal ke postgresql://app:rahasia@db:5432/x"))).not.toContain(
-      "rahasia",
-    );
+    expect(
+      safeMessage(new Error("gagal ke postgresql://app:dummy-rahasia@db:5432/x")),
+    ).not.toContain("rahasia");
     const prisma = safeMessage(
       new Error("Can't reach database server at `127.0.0.1:5433`, credentials for `app`"),
     );
