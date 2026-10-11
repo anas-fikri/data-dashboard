@@ -46,6 +46,24 @@ export async function sendAlreadyRegisteredEmail(to: string): Promise<boolean> {
   return send(to, "Akun Data Dashboard Anda sudah ada", text, html);
 }
 
+/** Pemberitahuan setelah kredensial berubah (ASVS V2.2.3): pemilik tahu bila bukan dia pelakunya. */
+export async function sendPasswordChangedEmail(
+  to: string,
+  how: "reset" | "change",
+): Promise<boolean> {
+  const when = new Date().toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+  const action =
+    how === "reset" ? "diatur ulang lewat tautan email" : "diganti dari halaman Keamanan";
+  const recover = `${env().APP_URL}/lupa-password`;
+  const text = `Halo,\n\nPassword akun Data Dashboard Anda ${action} pada ${when} WIB. Semua perangkat lain sudah dikeluarkan.\n\nBukan Anda? Segera atur ulang password: ${recover} lalu hubungi admin.`;
+  const html = `<p>Halo,</p><p>Password akun Data Dashboard Anda ${escapeHtml(action)} pada ${escapeHtml(when)} WIB. Semua perangkat lain sudah dikeluarkan.</p><p>Bukan Anda? <a href="${escapeHtml(recover)}">Segera atur ulang password</a> lalu hubungi admin.</p>`;
+  return send(to, "Password Data Dashboard Anda berubah", text, html);
+}
+
 /** Tautan reset dari APP_URL (bukan Host header); berlaku 30 menit, sekali pakai. */
 export function resetLink(token: string): string {
   return `${env().APP_URL}/reset-password?token=${encodeURIComponent(token)}`;

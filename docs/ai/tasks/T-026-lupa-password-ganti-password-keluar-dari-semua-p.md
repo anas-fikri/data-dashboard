@@ -1,7 +1,7 @@
 ---
 id: T-026
 title: Lupa password, ganti password, keluar dari semua perangkat
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -10,12 +10,44 @@ tags:
 depends_on:
   - T-002
 created: "2026-10-11T14:56:58Z"
-updated: "2026-10-11T23:20:06Z"
+updated: "2026-10-11T23:29:00Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 5d46f4bc8d3a3fb28b91f46206013bd3b87891fb
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:29:00Z"
+      findings: 4
+evidence:
+  audit:
+    at: "2026-10-11T23:26:47Z"
+    passed: true
+    tree: e37ded967e2b1efa4a92da4da8d02d24c14935795e9ae6cd0aca4180f4ac342a
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 604 packages
+          End status: 70 dirs visited, 256 inodes visited, 1 Extract calls, 42.15025ms elapsed, 42.151ms wall time
+          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective

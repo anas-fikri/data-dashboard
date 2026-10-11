@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { sendPasswordResetEmail } from "./email";
+import { sendPasswordChangedEmail, sendPasswordResetEmail } from "./email";
 import { normalizeEmail } from "./email-domain";
 import { hashPassword, isPasswordAcceptable, verifyPassword } from "./password";
 import { emailBucket, reset, RULES } from "./rate-limit";
@@ -20,14 +20,14 @@ import { generateToken, hashToken, isTokenShape, RESET_PASSWORD_TTL_MS } from ".
 export async function requestPasswordReset(emailRaw: unknown, ip: string): Promise<Result> {
   const email = normalizeEmail(emailRaw);
   if (!email) return invalidEmail(emailRaw);
-  const byEmail = await counted("resetEmail", emailBucket(email));
+  // IP lebih dulu: permintaan yang sudah diblok per IP tidak boleh mengisi bucket email korban
+  // (satu IP tidak bisa mengunci reset banyak akun — review T-026 #1).
   const byIp = await counted("resetIp", ip);
-  if (byEmail === "down" || byIp === "down") return fail("SERVICE_UNAVAILABLE");
-  if (!byEmail.allowed || !byIp.allowed) {
-    return fail("RATE_LIMITED", {
-      retryAfterSec: Math.max(byEmail.retryAfterSec, byIp.retryAfterSec),
-    });
-  }
+  if (byIp === "down") return fail("SERVICE_UNAVAILABLE");
+  if (!byIp.allowed) return fail("RATE_LIMITED", { retryAfterSec: byIp.retryAfterSec });
+  const byEmail = await counted("resetEmail", emailBucket(email));
+  if (byEmail === "down") return fail("SERVICE_UNAVAILABLE");
+  if (!byEmail.allowed) return fail("RATE_LIMITED", { retryAfterSec: byEmail.retryAfterSec });
   sendInBackground(async () => {
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !user.isActive || !user.emailVerifiedAt) return;
@@ -107,7 +107,12 @@ export async function resetPassword(
     }),
   ]);
   logger.info({ userId: record.user.id }, "password direset");
-  return { ok: true, data: { email: record.user.email } };
+  const s = await store();
+  // Kunci login akun dilepas: korban yang sempat dikunci penyerang bisa langsung masuk.
+  if (s) await reset(s, RULES.loginAccount, emailBucket(record.user.email)).catch(() => undefined);
+  const email = record.user.email;
+  sendInBackground(() => sendPasswordChangedEmail(email, "reset"));
+  return { ok: true, data: { email } };
 }
 
 /**
@@ -129,13 +134,21 @@ export async function changePassword(
     return fail("INVALID_CREDENTIALS", { message: "Password saat ini salah." });
   }
   const passwordHash = await hashPassword(newRaw);
-  const updated = await prisma.user.update({
-    where: { id: userId },
-    data: { passwordHash, sessionVersion: { increment: 1 } },
-    select: { id: true, sessionVersion: true },
-  });
+  // Batalkan tautan reset yang masih berlaku (mis. diminta penyerang) — review T-026 #2.
+  const [, updated] = await prisma.$transaction([
+    prisma.verificationToken.updateMany({
+      where: { userId, purpose: "RESET_PASSWORD", usedAt: null },
+      data: { usedAt: new Date() },
+    }),
+    prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash, sessionVersion: { increment: 1 } },
+      select: { id: true, sessionVersion: true },
+    }),
+  ]);
   const s = await store();
   if (s) await reset(s, RULES.changePassword, userId).catch(() => undefined);
   logger.info({ userId }, "password diganti");
+  sendInBackground(() => sendPasswordChangedEmail(user.email, "change"));
   return { ok: true, data: updated };
 }

@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import {
   apiLogin,
@@ -79,9 +80,7 @@ test.describe("password", () => {
     await expect.poll(async () => (await mailsFor(request, email, "Atur ulang")).length).toBe(2);
     const fresh = await resetLinkFor(request, email);
     expect(fresh).not.toBe(link);
-    expect((await request.post("/api/auth/dev-expire-reset", { data: { email } })).status()).toBe(
-      200,
-    );
+    execFileSync("node", ["scripts/dev-expire-reset.mjs", email]);
     await page.goto(fresh);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tautan tidak berlaku");
   });
@@ -117,6 +116,12 @@ test.describe("password", () => {
 
     expect((await a.request.get("/api/auth/me")).status()).toBe(200);
     expect((await b.request.get("/api/auth/me")).status()).toBe(401);
+    // Pemberitahuan perubahan password terkirim (ASVS V2.2.3)
+    await expect
+      .poll(
+        async () => (await mailsFor(request, email, "Password Data Dashboard Anda berubah")).length,
+      )
+      .toBe(1);
     await b.goto("/datasets");
     await expect(b).toHaveURL(/\/login\?next=/);
 
