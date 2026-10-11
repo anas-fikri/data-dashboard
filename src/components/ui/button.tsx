@@ -66,6 +66,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
   ref,
 ) {
   const Comp = asChild ? Slot.Root : "button";
+  if (
+    process.env.NODE_ENV !== "production" &&
+    asChild &&
+    (pending || leadingIcon || trailingIcon)
+  ) {
+    console.warn(
+      "Button asChild mengabaikan pending/leadingIcon/trailingIcon; letakkan ikon di dalam anak.",
+    );
+  }
   const isIconOnly = size?.startsWith("icon");
   return (
     <Comp

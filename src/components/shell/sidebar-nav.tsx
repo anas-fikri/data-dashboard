@@ -31,11 +31,16 @@ export function SidebarNav({ isAdmin, collapsed = false, onNavigate }: SidebarNa
                 className={cn(
                   "flex h-10 items-center gap-3 rounded-md px-3 text-sm font-medium text-sidebar-foreground/80",
                   "hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                  active && "bg-sidebar-accent text-sidebar-primary",
+                  active && "bg-sidebar-accent font-semibold text-sidebar-accent-foreground",
                   collapsed && "justify-center px-0",
                 )}
               >
-                <Icon size={20} stroke={1.5} aria-hidden className="shrink-0" />
+                <Icon
+                  size={20}
+                  stroke={1.5}
+                  aria-hidden
+                  className={cn("shrink-0", active && "text-sidebar-primary")}
+                />
                 <span className={cn("truncate", collapsed && "sr-only")}>{item.label}</span>
               </Link>
             </li>

@@ -28,7 +28,7 @@ Preset disalin ke `src/styles/tokens.css` dengan penyesuaian: `--radius` diberi 
 
 ## 3. Tipografi
 
-Satu keluarga: Inter (fallback system-ui). Skala: h1 24/600 (`text-2xl font-semibold tracking-tight`), judul kartu 16/600, body 14/400, caption 12. Angka memakai `tnum` (font-feature-settings) agar kolom angka sejajar. Satu `<h1>` per halaman lewat `PageHeader`.
+Satu keluarga: **system-ui stack** (SF Pro / Segoe UI / Roboto) — keputusan sadar: build on-prem tidak boleh bergantung unduhan Google Fonts, dan font sistem mendukung `tnum`. Skala: h1 24/600 (`text-2xl font-semibold tracking-tight`), judul kartu 16/600, body 14/400, caption 12. Angka memakai `tnum` (font-feature-settings) agar kolom angka sejajar. Satu `<h1>` per halaman lewat `PageHeader`.
 
 ## 4. App shell
 
@@ -38,21 +38,21 @@ Satu keluarga: Inter (fallback system-ui). Skala: h1 24/600 (`text-2xl font-semi
 - Landmark: `<a href="#konten">` skip link, `<aside>`, `<header>`, `<main id="konten">`.
 - 404 (`not-found.tsx`) juga dipakai untuk objek yang tidak boleh diakses (D2).
 
-Logo: wordmark PCP Express 200×30 (`public/brand/pcp-logo.png`, dari project ictnotesv2). Mode ciut/ponsel memakai potongan kiri wordmark (huruf P + swoosh) 28px.
+Logo: wordmark PCP Express 200×30 (`public/brand/pcp-logo.png`, dari project ictnotesv2) dengan varian tema gelap `pcp-logo-dark.png` ("PCP" diputihkan, "EXPRESS" tetap merah). Tanda persegi `mark.png`/`mark-dark.png` (glyph "P" dipotong presisi) dipakai di rail ciut, topbar ponsel (bersama teks "Data Dashboard" di ≥360px), dan favicon.
 
 ## 5. Komponen dasar (`src/components/ui`)
 
-`Button` (variants primary/secondary/outline/ghost/destructive/link; size sm/md/lg/icon*; `pending` menukar ikon awal dengan spinner tanpa menggeser label; `asChild`), `Input`, `Field` (label + hint/error dengan aria), `Select` kustom (Radix; caret tidak menempel tepi), `DropdownMenu`, `Avatar` (inisial), `Card*`, `EmptyState` (ikon + judul + penjelasan + aksi), `PageHeader` (h1 + deskripsi + aksi; aksi full-width <640).
+`Button` (variants primary/secondary/outline/ghost/destructive/link; size sm/md/lg/icon*; `pending` menukar ikon awal dengan spinner tanpa menggeser label; `asChild`), `Input`, `Field` (label + hint/error dengan aria), `Select` kustom (Radix; caret tidak menempel tepi), `DropdownMenu`, `Avatar` (inisial), `Card*`, `EmptyState` (ikon 28px + judul dengan elemen `as` h1/h2/p + penjelasan + aksi; `bare` di dalam Card agar tidak ada bingkai ganda), `PageHeader` (h1 + deskripsi + aksi; aksi full-width <640).
 
 Geometri kontrol: tinggi dari token, slot ikon tetap 20px (`[&_svg]:size-5 shrink-0`), gap 8px, radius `--radius`. Varian yang wajib dicek saat menambah kontrol baru: teks saja, ikon depan, ikon belakang, ikon saja, pending, disabled, fokus.
 
 ## 6. Responsif dan densitas
 
-Mobile-first; dicek 320/768/1024/1440 (e2e `tests/e2e/shell.spec.ts`). CTA utama `w-full sm:w-auto` di bawah 640. Input ≥16px di ponsel. Tabel lebar → scroll horizontal di dalam kontainer tabel, bukan halaman. Halaman dashboard (viewer) memakai `gap-6` antar widget dan KPI 32px; halaman kerja (skema, builder) memakai `gap-4`.
+Mobile-first; dicek 320/768/1024/1440 (e2e `tests/e2e/shell.spec.ts`). CTA utama `w-full sm:w-auto` di bawah 640. Input dan Select memakai `text-base md:text-sm` (16px di ponsel agar iOS tidak zoom, 14px di desktop). Tabel lebar → scroll horizontal di dalam kontainer tabel, bukan halaman. Halaman dashboard (viewer) memakai `gap-6` antar widget dan KPI 32px; halaman kerja (skema, builder) memakai `gap-4`.
 
 ## 7. Aksesibilitas
 
-Target WCAG 2.2 AA. Fokus terlihat global (`:focus-visible` outline ring 2px). Ikon dekoratif `aria-hidden`; tombol ikon punya `aria-label`. Status tidak hanya warna (teks OK/Gagal + ikon). Kontras pasangan token zinc-blue: foreground/background 16:1, muted-foreground/background 4.6:1, primary-foreground/primary 4.5:1 (putih di biru 217 91% 60%) — di batas AA untuk teks 14px; tombol primer memakai 14px/600 (bold) sehingga memenuhi. `prefers-reduced-motion` mematikan transisi.
+Target WCAG 2.2 AA. Fokus terlihat global (`:focus-visible` outline ring 2px). Ikon dekoratif `aria-hidden`; tombol ikon punya `aria-label`. Status tidak hanya warna (teks OK/Gagal + ikon). Kontras terukur setelah koreksi audit T-025: light `--primary` 221 83% 53% (#2563eb) → putih di atasnya 5,2:1; dark `--primary` 217 91% 60% dengan `--primary-foreground` gelap 4,9:1; nav aktif memakai `text-sidebar-accent-foreground` (ikon saja berwarna primer); `--destructive` light 0 72% 51% (4,8:1 sebagai teks) / dark 0 84% 68%; `--input` 240 4% 58% (light) dan 240 5% 42% (dark) agar batas kontrol ≥ 3:1 (1.4.11); overlay drawer memakai token `--overlay`. Skip link memindahkan fokus ke `<main tabIndex={-1}>`. `prefers-reduced-motion` mematikan transisi.
 
 ## 8. Waiver dan Conventions check (T-025)
 
@@ -60,10 +60,11 @@ Target WCAG 2.2 AA. Fokus terlihat global (`:focus-visible` outline ring 2px). I
 ## Conventions check
 - Tokens: tokens/zinc-blue.css (score 24/24) → src/styles/tokens.css
 - Icons: existing lib: @tabler/icons-react (size 20, stroke 1.5) — waiver atas default Reicon (kebijakan project)
+- Audit: design-reviewer plugin 2026-10-11 → 0 Critical, 3 High, 7 Medium, 9 Low; semuanya diperbaiki (lihat task T-025 notes)
 - States: loading / empty / error covered? yes (EmptyState, Button pending, Field error; data states per task)
 - Responsive: 320/768/1024/1440 checked | full-width CTA <768 (e2e shell.spec.ts)
 - Hierarchy: pass (satu h1 via PageHeader, satu CTA utama per halaman)
-- Typography: one h1 + ladder (Inter; 24/16/14/12)
+- Typography: one h1 + ladder (system-ui; 24/16/14/12; 404 memakai h1 via EmptyState as="h1")
 - A11y: labels + focus noted? yes (skip link, aria-label ikon, focus-visible, Radix Dialog/Menu)
 - WebGL: n/a
 - Shell: logo + utilities + theme-in-topbar | avatar→menu | drawer+backdrop <768 | collapse ≥768

@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: { default: "Data Dashboard", template: "%s · Data Dashboard" },
   description: "Pengganti dashboard Excel PCP Express",
-  icons: { icon: "/brand/pcp-logo.png" },
+  icons: { icon: "/brand/mark.png" },
 };
 
 export const viewport: Viewport = {

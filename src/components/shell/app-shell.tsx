@@ -122,7 +122,7 @@ export function AppShell({ user, children }: AppShellProps) {
             </Dialog.Trigger>
             <Dialog.Portal>
               <Dialog.Overlay
-                className="fixed inset-0 z-40 bg-foreground/40 md:hidden"
+                className="fixed inset-0 z-40 bg-overlay/50 md:hidden"
                 data-testid="drawer-backdrop"
               />
               <Dialog.Content
@@ -147,7 +147,7 @@ export function AppShell({ user, children }: AppShellProps) {
           </Dialog.Root>
 
           <div className="md:hidden">
-            <Brand compact />
+            <Brand mobile />
           </div>
 
           <div className="ml-auto flex items-center gap-1">
@@ -161,7 +161,11 @@ export function AppShell({ user, children }: AppShellProps) {
           </div>
         </header>
 
-        <main id="konten" className="mx-auto w-full max-w-(--content-max) flex-1 px-4 py-6 sm:px-6">
+        <main
+          id="konten"
+          tabIndex={-1}
+          className="mx-auto w-full max-w-(--content-max) flex-1 px-4 py-6 outline-none sm:px-6"
+        >
           {children}
         </main>
       </div>

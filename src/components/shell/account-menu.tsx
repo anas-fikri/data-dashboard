@@ -22,7 +22,7 @@ interface AccountMenuProps {
 export function AccountMenu({ user }: AccountMenuProps) {
   if (!user) {
     return (
-      <Button asChild variant="outline" size="sm">
+      <Button asChild variant="outline">
         <Link href="/login">
           <IconLogin aria-hidden />
           Masuk

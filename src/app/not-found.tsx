@@ -13,6 +13,7 @@ export default function NotFound() {
   return (
     <main className="mx-auto flex min-h-dvh max-w-lg items-center px-4">
       <EmptyState
+        as="h1"
         icon={<IconFileUnknown />}
         title="Halaman tidak ditemukan"
         description="Tautan mungkin salah, sudah dihapus, atau Anda tidak memiliki akses ke halaman ini."

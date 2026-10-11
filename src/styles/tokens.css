@@ -11,7 +11,7 @@
   --card-foreground: 240 6% 10%;
   --popover: 0 0% 100%;
   --popover-foreground: 240 6% 10%;
-  --primary: 217 91% 60%;
+  --primary: 221 83% 53%; /* #2563eb: putih di atasnya 5.2:1 */
   --primary-foreground: 0 0% 100%;
   --secondary: 240 5% 96%;
   --secondary-foreground: 240 6% 10%;
@@ -19,15 +19,16 @@
   --muted-foreground: 240 4% 46%;
   --accent: 240 5% 96%;
   --accent-foreground: 240 6% 10%;
-  --destructive: 0 84% 60%;
+  --destructive: 0 72% 51%; /* #dc2626: 4.8:1 sebagai teks di putih */
   --destructive-foreground: 0 0% 100%;
   --success: 152 69% 31%;
   --success-foreground: 0 0% 100%;
   --warning: 38 92% 50%;
   --warning-foreground: 24 10% 10%;
   --border: 240 6% 90%;
-  --input: 240 6% 90%;
-  --ring: 217 91% 60%;
+  --input: 240 4% 58%; /* batas kontrol ≥ 3:1 (WCAG 1.4.11); --border tetap halus untuk kartu */
+  --ring: 221 83% 53%;
+  --overlay: 240 6% 10%;
 
   --chart-1: 217 91% 60%;
   --chart-2: 199 89% 48%;
@@ -37,12 +38,12 @@
 
   --sidebar-background: 240 6% 98%;
   --sidebar-foreground: 240 6% 10%;
-  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary: 221 83% 53%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 240 5% 96%;
   --sidebar-accent-foreground: 240 6% 10%;
   --sidebar-border: 240 6% 90%;
-  --sidebar-ring: 217 91% 60%;
+  --sidebar-ring: 221 83% 53%;
 
   /* Geometri kontrol */
   --radius: 0.5rem;
@@ -67,22 +68,23 @@
   --popover: 240 6% 10%;
   --popover-foreground: 0 0% 98%;
   --primary: 217 91% 60%;
-  --primary-foreground: 0 0% 100%;
+  --primary-foreground: 240 6% 10%; /* teks gelap di biru terang 4.9:1 */
   --secondary: 240 4% 16%;
   --secondary-foreground: 0 0% 98%;
   --muted: 240 4% 16%;
   --muted-foreground: 240 5% 65%;
   --accent: 240 4% 16%;
   --accent-foreground: 0 0% 98%;
-  --destructive: 0 62% 50%;
-  --destructive-foreground: 0 0% 100%;
+  --destructive: 0 84% 68%; /* cukup terang sebagai teks di latar gelap */
+  --destructive-foreground: 240 6% 10%;
   --success: 152 60% 45%;
   --success-foreground: 240 6% 10%;
   --warning: 38 92% 55%;
   --warning-foreground: 24 10% 10%;
   --border: 240 4% 22%;
-  --input: 240 4% 22%;
+  --input: 240 5% 42%;
   --ring: 217 91% 60%;
+  --overlay: 240 6% 2%;
 
   --sidebar-background: 240 6% 8%;
   --sidebar-foreground: 0 0% 98%;

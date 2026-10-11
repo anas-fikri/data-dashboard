@@ -10,7 +10,13 @@ interface FieldProps {
   error?: string;
   required?: boolean;
   className?: string;
-  children: React.ReactElement<{ id?: string; "aria-describedby"?: string; invalid?: boolean }>;
+  children: React.ReactElement<{
+    id?: string;
+    "aria-describedby"?: string;
+    invalid?: boolean;
+    required?: boolean;
+    "aria-required"?: boolean;
+  }>;
 }
 
 /** Label + kontrol + hint/error dengan pengaitan aria yang benar. */
@@ -29,7 +35,13 @@ export function Field({ id, label, hint, error, required, className, children }:
           </span>
         ) : null}
       </label>
-      {React.cloneElement(children, { id, "aria-describedby": describedBy, invalid: !!error })}
+      {React.cloneElement(children, {
+        id,
+        "aria-describedby": describedBy,
+        invalid: !!error,
+        required,
+        "aria-required": required || undefined,
+      })}
       {error ? (
         <p id={errorId} role="alert" className="text-sm text-destructive">
           {error}

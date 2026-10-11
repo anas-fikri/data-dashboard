@@ -29,6 +29,7 @@
   --color-border: hsl(var(--border));
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
+  --color-overlay: hsl(var(--overlay));
   --color-chart-1: hsl(var(--chart-1));
   --color-chart-2: hsl(var(--chart-2));
   --color-chart-3: hsl(var(--chart-3));
@@ -47,7 +48,8 @@
   --radius-md: var(--radius);
   --radius-lg: var(--radius-lg);
 
-  --font-sans: "Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* System stack (bukan Inter): on-prem tanpa internet saat build; angka tabular via font-feature-settings. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -72,14 +74,6 @@
   :focus-visible {
     outline: 2px solid var(--color-ring);
     outline-offset: 2px;
-  }
-  /* Input ≥ 16px di ponsel agar iOS tidak zoom. */
-  @media (max-width: 767px) {
-    input,
-    select,
-    textarea {
-      font-size: 1rem;
-    }
   }
   @media (prefers-reduced-motion: reduce) {
     *,

@@ -1,18 +1,24 @@
 ---
 id: T-025
 title: 'Fondasi UI via frontend-expert: arah desain, token preset, app shell, tema'
-status: in_progress
+status: in_review
 profile: standard
 goal: G-2
 depends_on:
   - T-001
 created: "2026-10-11T14:49:24Z"
-updated: "2026-10-11T15:56:28Z"
+updated: "2026-10-11T16:19:44Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: e1ff563fd1ec741570e77bee00b65ce59d049f41
+review:
+  passes:
+    - "n": 1
+      by: claude-code
+      at: "2026-10-11T16:19:44Z"
+      findings: 19
 ---
 
 ## Objective

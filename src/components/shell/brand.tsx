@@ -3,40 +3,78 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 interface BrandProps {
-  /** Tanda kecil saja (potongan kiri wordmark), untuk rail ciut dan topbar ponsel. */
+  /** Tanda persegi saja (glyph "P" dari logo resmi), untuk rail ciut. */
   compact?: boolean;
+  /** Tanda + nama produk ringkas, untuk topbar ponsel. */
+  mobile?: boolean;
   className?: string;
 }
 
-/** Logo PCP Express (wordmark 200×30) + nama produk. Tautan ke beranda. */
-export function Brand({ compact = false, className }: BrandProps) {
-  if (compact) {
+/**
+ * Logo PCP Express (wordmark 200×30) + nama produk. Varian gelap memutihkan "PCP"
+ * agar terbaca di tema gelap; tanda persegi dipotong presisi dari glyph pertama logo.
+ */
+export function Brand({ compact = false, mobile = false, className }: BrandProps) {
+  const mark = (
+    <>
+      <Image
+        src="/brand/mark.png"
+        alt=""
+        width={28}
+        height={28}
+        priority
+        className="size-7 shrink-0 dark:hidden"
+      />
+      <Image
+        src="/brand/mark-dark.png"
+        alt=""
+        width={28}
+        height={28}
+        priority
+        className="hidden size-7 shrink-0 dark:block"
+      />
+    </>
+  );
+
+  if (compact || mobile) {
     return (
       <Link
         href="/"
-        className={cn("flex items-center", className)}
+        className={cn("flex h-9 items-center gap-2 rounded-md", className)}
         aria-label="Data Dashboard, ke beranda"
       >
-        <span className="relative block size-7 overflow-hidden rounded-sm">
-          <Image
-            src="/brand/pcp-logo.png"
-            alt=""
-            width={187}
-            height={28}
-            priority
-            className="absolute left-0 top-0 h-7 w-auto max-w-none"
-          />
-        </span>
+        {mark}
+        {mobile ? (
+          <span className="hidden text-sm font-semibold tracking-tight min-[360px]:inline">
+            Data Dashboard
+          </span>
+        ) : null}
       </Link>
     );
   }
+
   return (
     <Link
       href="/"
       className={cn("flex flex-col gap-0.5 rounded-md", className)}
       aria-label="Data Dashboard, ke beranda"
     >
-      <Image src="/brand/pcp-logo.png" alt="PCP Express" width={120} height={18} priority />
+      <Image
+        src="/brand/pcp-logo.png"
+        alt="PCP Express"
+        width={120}
+        height={18}
+        priority
+        className="dark:hidden"
+      />
+      <Image
+        src="/brand/pcp-logo-dark.png"
+        alt="PCP Express"
+        width={120}
+        height={18}
+        priority
+        className="hidden dark:block"
+      />
       <span className="text-sm font-semibold leading-none tracking-tight">Data Dashboard</span>
     </Link>
   );
