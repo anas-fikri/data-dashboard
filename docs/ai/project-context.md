@@ -21,5 +21,6 @@ Halaman /panduan berisi artikel teks (markdown) dan video per role: pemilik data
 ## Batasan
 - Maks file 1 GB per upload; format .xlsx dan .csv (xls lama tidak didukung di v1).
 - Registrasi hanya email dengan domain yang di-whitelist (konfigurasi env), verifikasi email wajib.
+- Tiap sheet = raw.parquet (VARCHAR, dipertahankan) + typed.parquet (bertipe); koreksi/pemetaan menulis ulang typed dari raw, tanpa file asli. Acuan alur: docs/flow-kerja.md.
 - Target ingest 1 GB: selesai < 15 menit, puncak RAM worker < 2 GB.
 - Target query widget pada dataset 10 juta baris: p95 < 3 detik.
