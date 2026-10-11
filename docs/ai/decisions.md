@@ -4,4 +4,4 @@
 
 Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 
-- ADR-0001 [proposed] File 1 GB diproses streaming ke Parquet dan diquery DuckDB, bukan dimuat ke PostgreSQL atau browser — ../../docs/adr/0001-file-1-gb-diproses-streaming-ke-parquet-dan-diquery-duckdb-b.md
+- ADR-0001 [accepted] File 1 GB diproses streaming ke Parquet dan diquery DuckDB, bukan dimuat ke PostgreSQL atau browser — ../../docs/adr/0001-file-1-gb-diproses-streaming-ke-parquet-dan-diquery-duckdb-b.md

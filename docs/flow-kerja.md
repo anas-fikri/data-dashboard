@@ -70,9 +70,23 @@ flowchart LR
 ```
 
 Peran:
+- **Admin**: kelola konten panduan (artikel + video) per role, lihat semua pengguna.
 - **Pemilik dataset**: upload, skema, buat/hapus dashboard, atur akses.
 - **Editor**: ubah widget dan layout dashboard yang dibagikan.
 - **Viewer**: lihat, filter, ekspor.
+
+### A5. Panduan penggunaan per role (T-016, T-017)
+```mermaid
+flowchart LR
+  AD[Admin: /admin/panduan] --> AR[Tulis artikel markdown, pilih role target]
+  AR --> VD[Upload video mp4 ≤ 500 MB ke MinIO]
+  VD --> PB[Terbitkan + atur urutan]
+  PB --> PG[/panduan: user lihat tab sesuai rolenya/]
+  NU[User baru login] --> MS[Kartu 'Mulai di sini'] --> PG
+  PG --> RD[Baca teks + putar video streaming]
+  HL[Tombol bantuan di upload/skema/builder] --> SP[Panel samping artikel terkait]
+```
+Role `all` tampil untuk semua user. Artikel role lain tidak bisa diakses lewat slug langsung.
 
 ---
 

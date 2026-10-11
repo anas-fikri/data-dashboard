@@ -15,6 +15,9 @@ Data Dashboard: aplikasi web pengganti dashboard Excel untuk PCP Express. User (
 ## Stack
 Next.js (App Router, TypeScript) · Tailwind · Prisma + PostgreSQL · MinIO (S3 API) · DuckDB (node binding) · BullMQ + Redis (job antrean ingest) · ECharts (chart) · @tabler/icons-react.
 
+## Panduan penggunaan (wajib)
+Halaman /panduan berisi artikel teks (markdown) dan video per role: pemilik dataset, editor, viewer, admin. Konten dikelola admin dari UI tanpa deploy ulang; video disimpan di MinIO dan diputar HTML5 (bukan embed eksternal, karena on-prem). Tombol bantuan kontekstual di halaman upload, skema, dan builder.
+
 ## Batasan
 - Maks file 1 GB per upload; format .xlsx dan .csv (xls lama tidak didukung di v1).
 - Registrasi hanya email dengan domain yang di-whitelist (konfigurasi env), verifikasi email wajib.
