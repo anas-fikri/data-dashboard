@@ -1,7 +1,7 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 export const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8026";
-export const PASSWORD = "kalimat-panjang-yang-kuat-123";
+export const PASSWORD = "dummy-kalimat-panjang-uji-123";
 
 export function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@pcpexpress.com`;

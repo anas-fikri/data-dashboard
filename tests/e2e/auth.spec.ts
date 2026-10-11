@@ -50,6 +50,7 @@ test.describe("auth", () => {
     await page.getByRole("button", { name: "Pakai email lain" }).click();
     await expect(page.getByLabel("Email perusahaan")).toBeFocused();
     await expect(page.getByLabel("Email perusahaan")).toHaveValue("");
+    await expect(page).toHaveTitle("Daftar · Data Dashboard");
   });
 
   test("password pendek ditolak", async ({ page }) => {
@@ -113,7 +114,7 @@ test.describe("auth", () => {
     request,
   }) => {
     const email = uniqueEmail("victim");
-    const attackerPassword = "password-milik-penyerang-999";
+    const attackerPassword = "dummy-penyerang-uji-999";
     await register(page, email, attackerPassword); // penyerang mendaftar lebih dulu
     await register(page, email, PASSWORD); // korban mendaftar dengan password sendiri
     const [victimLink, attackerLink] = await verifyLinksFor(request, email, 2);

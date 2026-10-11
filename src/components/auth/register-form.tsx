@@ -59,10 +59,13 @@ function RegisterRound({
     if (restarted) emailRef.current?.focus();
   }, [restarted]);
   useEffect(() => {
-    if (state.status === "success") {
-      headingRef.current?.focus();
-      document.title = "Periksa inbox Anda · Data Dashboard"; // judul tab mengikuti h1
-    }
+    if (state.status !== "success") return;
+    headingRef.current?.focus();
+    const previous = document.title;
+    document.title = "Periksa inbox Anda · Data Dashboard"; // judul tab mengikuti h1
+    return () => {
+      document.title = previous; // dipulihkan saat "Pakai email lain" (remount)
+    };
   }, [state.status]);
 
   const footer = (
