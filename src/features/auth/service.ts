@@ -17,6 +17,7 @@ import { generateToken, hashToken, isTokenShape, VERIFY_EMAIL_TTL_MS } from "./t
 export type AuthCode =
   | "DOMAIN_NOT_ALLOWED"
   | "INVALID_EMAIL"
+  | "PASSWORD_REQUIRED"
   | "WEAK_PASSWORD"
   | "RATE_LIMITED"
   | "INVALID_CREDENTIALS"
@@ -31,6 +32,7 @@ export type Result<T = undefined> =
 const MESSAGES: Record<AuthCode, string> = {
   DOMAIN_NOT_ALLOWED: "Email harus memakai domain perusahaan yang diizinkan.",
   INVALID_EMAIL: "Format email tidak valid.",
+  PASSWORD_REQUIRED: "Masukkan password Anda.",
   WEAK_PASSWORD: "Password harus 12 sampai 128 karakter.",
   RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi beberapa saat.",
   INVALID_CREDENTIALS: "Email atau password salah.",
@@ -285,8 +287,12 @@ export type LoginSuccess = { id: string; sessionVersion: number };
  * Verifikasi argon2 selalu dijalankan (timing konstan).
  */
 export async function login(input: LoginInput): Promise<Result<LoginSuccess>> {
+  // Isian kosong tidak menyentuh akun mana pun: beri pesan per field, tidak dihitung rate limit.
+  if (typeof input.email !== "string" || input.email.trim() === "")
+    return invalidEmail(input.email);
+  if (typeof input.password !== "string" || input.password === "") return fail("PASSWORD_REQUIRED");
   const email = normalizeEmail(input.email) ?? "invalid";
-  const password = typeof input.password === "string" ? input.password : "";
+  const password = input.password;
   const s = await store();
   if (!s) return fail("SERVICE_UNAVAILABLE");
 

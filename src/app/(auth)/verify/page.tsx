@@ -5,9 +5,14 @@ import { VerifyForm } from "@/components/auth/verify-form";
 import { Button } from "@/components/ui/button";
 import { previewVerification } from "@/features/auth/service";
 
-export const metadata = { title: "Aktifkan akun" };
-
 type Search = Promise<{ token?: string }>;
+
+/** Judul tab mengikuti h1 (WCAG 2.4.2). */
+export async function generateMetadata({ searchParams }: { searchParams: Search }) {
+  const { token } = await searchParams;
+  const preview = await previewVerification(token);
+  return { title: preview.ok ? "Aktifkan akun" : "Tautan tidak berlaku" };
+}
 
 /**
  * Tautan dari email membuka halaman konfirmasi (GET tidak memakai token). Aktivasi terjadi

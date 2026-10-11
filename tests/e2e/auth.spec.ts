@@ -31,6 +31,27 @@ test.describe("auth", () => {
     await expect(page.getByLabel("Email perusahaan")).toHaveAttribute("aria-invalid", "true");
   });
 
+  test("login dengan isian kosong memberi pesan per field", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByRole("button", { name: "Masuk" }).click();
+    await expect(page.getByText("Masukkan email perusahaan Anda.")).toBeVisible();
+    await expect(page.getByLabel("Email perusahaan")).toBeFocused();
+    await page.getByLabel("Email perusahaan").fill("siapa@pcpexpress.com");
+    await page.getByRole("button", { name: "Masuk" }).click();
+    await expect(page.getByText("Masukkan password Anda.")).toBeVisible();
+    await expect(page.locator("input[name=password]")).toBeFocused();
+  });
+
+  test("sukses daftar → 'Pakai email lain' mengembalikan form dengan fokus di email", async ({
+    page,
+  }) => {
+    await register(page, uniqueEmail("restart"));
+    await expect(page).toHaveTitle("Periksa inbox Anda · Data Dashboard");
+    await page.getByRole("button", { name: "Pakai email lain" }).click();
+    await expect(page.getByLabel("Email perusahaan")).toBeFocused();
+    await expect(page.getByLabel("Email perusahaan")).toHaveValue("");
+  });
+
   test("password pendek ditolak", async ({ page }) => {
     await page.goto("/register");
     await page.getByLabel("Email perusahaan").fill(uniqueEmail("short"));

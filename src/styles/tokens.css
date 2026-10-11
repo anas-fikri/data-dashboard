@@ -12,6 +12,7 @@
   --popover: 0 0% 100%;
   --popover-foreground: 240 6% 10%;
   --primary: 221 83% 53%; /* #2563eb: putih di atasnya 5.2:1 */
+  --primary-hover: 221 83% 46%; /* lebih gelap, bukan transparan: kontras tetap ≥ 4.5:1 */
   --primary-foreground: 0 0% 100%;
   --secondary: 240 5% 96%;
   --secondary-foreground: 240 6% 10%;
@@ -68,6 +69,7 @@
   --popover: 240 6% 10%;
   --popover-foreground: 0 0% 98%;
   --primary: 217 91% 60%;
+  --primary-hover: 217 91% 68%; /* lebih terang di tema gelap (teks gelap di atasnya) */
   --primary-foreground: 240 6% 10%; /* teks gelap di biru terang 4.9:1 */
   --secondary: 240 4% 16%;
   --secondary-foreground: 0 0% 98%;

@@ -29,6 +29,7 @@ export function RegisterForm({ allowedDomains, resend = false }: RegisterFormPro
       key={round}
       allowedDomains={allowedDomains}
       resend={resend}
+      restarted={round > 0}
       onRestart={() => setRound((r) => r + 1)}
     />
   );
@@ -37,8 +38,9 @@ export function RegisterForm({ allowedDomains, resend = false }: RegisterFormPro
 function RegisterRound({
   allowedDomains,
   resend,
+  restarted,
   onRestart,
-}: RegisterFormProps & { onRestart: () => void }) {
+}: RegisterFormProps & { restarted: boolean; onRestart: () => void }) {
   const [state, action, pending] = useActionState<FormState, FormData>(
     resend ? resendVerificationAction : registerAction,
     { status: "idle" },
@@ -52,8 +54,15 @@ function RegisterRound({
     password: passwordRef,
   });
   const headingRef = useRef<HTMLHeadingElement>(null);
+  // Setelah "Pakai email lain" (remount), fokus kembali ke field email.
   useEffect(() => {
-    if (state.status === "success") headingRef.current?.focus();
+    if (restarted) emailRef.current?.focus();
+  }, [restarted]);
+  useEffect(() => {
+    if (state.status === "success") {
+      headingRef.current?.focus();
+      document.title = "Periksa inbox Anda · Data Dashboard"; // judul tab mengikuti h1
+    }
   }, [state.status]);
 
   const footer = (
@@ -81,13 +90,17 @@ function RegisterRound({
       <AuthCard
         title="Periksa inbox Anda"
         headingRef={headingRef}
-        description={`Jika ${state.email || "email Anda"} memakai domain yang diizinkan, tautan aktivasi sudah dikirim dan berlaku 24 jam.`}
+        description={
+          resend
+            ? `Jika ${state.email || "email Anda"} terdaftar dan belum aktif, tautan aktivasi baru dikirim dan berlaku 24 jam.`
+            : `Tautan aktivasi dikirim ke ${state.email || "email Anda"} dan berlaku 24 jam.`
+        }
         footer={footer}
       >
         <div className="flex flex-col gap-3">
           <FormAlert tone="success">
             Buka email dari Data Dashboard, klik <strong>Aktifkan akun</strong>, lalu masukkan
-            password yang baru Anda buat. Tidak ada di inbox? Periksa folder spam.
+            password yang Anda buat saat mendaftar. Tidak ada di inbox? Periksa folder spam.
           </FormAlert>
           <Button asChild variant="outline" size="lg" className="w-full">
             <Link href="/register?resend=1">

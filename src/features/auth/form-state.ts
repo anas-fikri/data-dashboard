@@ -24,6 +24,7 @@ export function fieldOf(code: AuthCode): AuthField | null {
     case "DOMAIN_NOT_ALLOWED":
       return "email";
     case "WEAK_PASSWORD":
+    case "PASSWORD_REQUIRED":
       return "password";
     default:
       return null;
