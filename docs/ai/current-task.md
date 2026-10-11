@@ -4,7 +4,6 @@
 
 - T-002 [todo] Registrasi terbatas domain, verifikasi email, login JWT dengan sessionVersion — docs/ai/tasks/T-002-registrasi-terbatas-domain-verifikasi-email-logi.md
 - T-027 [todo] Security headers, CSP, cookie, dan konfigurasi proxy app — docs/ai/tasks/T-027-security-headers-csp-cookie-dan-konfigurasi-prox.md
-- T-001 [in_review] Scaffold Next.js + Prisma + compose dev + check command — docs/ai/tasks/T-001-scaffold-next-js-prisma-compose-dev-check-comman.md ← active in this worktree
 - T-019 [todo] Halaman admin pengguna: daftar, admin, nonaktifkan, alihkan kepemilikan — docs/ai/tasks/T-019-halaman-admin-pengguna-daftar-admin-nonaktifkan.md
 - T-020 [todo] Model panduan per peran dan editor admin (artikel markdown) — docs/ai/tasks/T-020-model-panduan-per-peran-dan-editor-admin-artikel.md
 - T-021 [todo] Video panduan: upload, validasi, poster dari browser, streaming — docs/ai/tasks/T-021-video-panduan-upload-validasi-poster-dari-browse.md
