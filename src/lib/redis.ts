@@ -23,16 +23,26 @@ export function redis(): Redis {
 /** Menunggu event `ready` atau `error`, apa pun yang datang lebih dulu, tanpa membocorkan listener. */
 function waitUntilReady(r: Redis): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    const onReady = () => {
+    const cleanup = () => {
+      r.off("ready", onReady);
       r.off("error", onError);
+      r.off("end", onEnd);
+    };
+    const onReady = () => {
+      cleanup();
       resolve();
     };
     const onError = (e: Error) => {
-      r.off("ready", onReady);
+      cleanup();
       reject(e);
+    };
+    const onEnd = () => {
+      cleanup();
+      reject(new Error("koneksi redis berakhir sebelum siap"));
     };
     r.once("ready", onReady);
     r.once("error", onError);
+    r.once("end", onEnd);
   });
 }
 

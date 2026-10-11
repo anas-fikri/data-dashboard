@@ -8,7 +8,7 @@ goal: G-2
 tags:
   - security
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T15:51:51Z"
+updated: "2026-10-11T15:53:03Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -120,9 +120,9 @@ evidence:
     total: 5
     done: 5
   audit:
-    at: "2026-10-11T15:46:43Z"
+    at: "2026-10-11T15:52:55Z"
     passed: true
-    tree: 2bc01b9d2f7dcfcd97a82c48af6f7921342ab5daad14826374a85ac1497a8a49
+    tree: 86f716ba67fd692af1b55e65dca879bb6dfb7cdecc59c99f1f0f649f75393057
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -130,7 +130,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 509 packages
-          End status: 37 dirs visited, 140 inodes visited, 1 Extract calls, 31.9115ms elapsed, 31.914ms wall time
+          End status: 37 dirs visited, 141 inodes visited, 1 Extract calls, 26.880292ms elapsed, 26.88ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found

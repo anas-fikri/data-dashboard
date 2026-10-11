@@ -5,7 +5,7 @@ Acuan arsitektur dan alur: `docs/flow-kerja.md`. Task dan konvensi: `aitk brief`
 
 ## Menjalankan lokal
 
-Prasyarat: Node ≥ 22 (`.nvmrc` = 22), Docker Desktop.
+Prasyarat: Node ≥ 22.9 (`.nvmrc` = 22), Docker Desktop.
 
 ```bash
 npm ci
