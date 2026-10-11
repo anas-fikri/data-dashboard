@@ -9,6 +9,7 @@ import {
   registerAndVerify,
   uniqueEmail,
   verifyLinkFor,
+  verifyLinksFor,
 } from "./helpers";
 
 /*
@@ -21,17 +22,22 @@ test.describe("auth", () => {
   test("domain di luar whitelist ditolak", async ({ page }) => {
     await page.goto("/register");
     await page.getByLabel("Email perusahaan").fill(`x-${Date.now()}@evilpcpexpress.com`);
-    await page.getByLabel("Password").fill(PASSWORD);
+    await page.locator("input[name=password]").fill(PASSWORD);
     await page.getByRole("button", { name: "Daftar" }).click();
-    await expect(page.getByTestId("form-alert")).toContainText("domain perusahaan");
+    await expect(page.getByText("Gunakan email @pcpexpress.com.")).toBeVisible();
+    // Isian tidak hilang dan fokus pindah ke field yang salah
+    await expect(page.getByLabel("Email perusahaan")).toHaveValue(/@evilpcpexpress\.com$/);
+    await expect(page.getByLabel("Email perusahaan")).toBeFocused();
+    await expect(page.getByLabel("Email perusahaan")).toHaveAttribute("aria-invalid", "true");
   });
 
   test("password pendek ditolak", async ({ page }) => {
     await page.goto("/register");
     await page.getByLabel("Email perusahaan").fill(uniqueEmail("short"));
-    await page.getByLabel("Password").fill("pendek");
+    await page.locator("input[name=password]").fill("pendek");
     await page.getByRole("button", { name: "Daftar" }).click();
-    await expect(page.getByTestId("form-alert")).toContainText("12 sampai 128");
+    await expect(page.getByRole("alert").filter({ hasText: "12 sampai 128" })).toBeVisible();
+    await expect(page.locator("input[name=password]")).toBeFocused();
   });
 
   test("daftar → belum aktif ditolak → konfirmasi aktivasi → login → next → 404 → keluar", async ({
@@ -49,9 +55,11 @@ test.describe("auth", () => {
     const link = await verifyLinkFor(request, email);
     await page.goto(link);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Aktifkan akun");
-    await page.goto(link); // kunjungan kedua tetap valid karena belum dipakai
+    // Password salah di halaman aktivasi → ditolak, token tetap belum terpakai
+    await page.getByLabel("Password yang Anda buat saat mendaftar").fill("bukan-password-saya-1");
     await page.getByRole("button", { name: "Aktifkan akun" }).click();
-    await expect(page).toHaveURL(/\/login\?verified=1/);
+    await expect(page.getByTestId("form-alert")).toContainText("tidak cocok");
+    await activate(page, link);
     await expect(page.getByTestId("form-alert")).toContainText("Akun aktif");
 
     // Sekali pakai
@@ -74,12 +82,12 @@ test.describe("auth", () => {
     await page.goto("/datasets");
     await page.getByTestId("account-menu-trigger").click();
     await page.getByTestId("logout").click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login\?reason=signed-out/);
     await page.context().addCookies([stolen!]);
     expect((await page.request.get("/api/auth/me")).status()).toBe(401);
   });
 
-  test("pre-account takeover: password penyerang tidak berlaku setelah korban mengaktifkan", async ({
+  test("pre-account takeover: tautan pendaftaran penyerang tidak bisa diaktifkan korban", async ({
     page,
     request,
   }) => {
@@ -87,8 +95,14 @@ test.describe("auth", () => {
     const attackerPassword = "password-milik-penyerang-999";
     await register(page, email, attackerPassword); // penyerang mendaftar lebih dulu
     await register(page, email, PASSWORD); // korban mendaftar dengan password sendiri
-    // Korban membuka email terbarunya (miliknya) dan mengaktifkan
-    await activate(page, await verifyLinkFor(request, email));
+    const [victimLink, attackerLink] = await verifyLinksFor(request, email, 2);
+    // Korban keliru membuka email dari pendaftaran penyerang: password korban tidak cocok
+    await page.goto(attackerLink!);
+    await page.getByLabel("Password yang Anda buat saat mendaftar").fill(PASSWORD);
+    await page.getByRole("button", { name: "Aktifkan akun" }).click();
+    await expect(page.getByTestId("form-alert")).toContainText("tidak cocok");
+    // Tautan miliknya sendiri berhasil; password penyerang tidak berlaku
+    await activate(page, victimLink!);
     await login(page, email, attackerPassword);
     await expect(page.locator("[data-testid=form-alert][data-tone=error]")).toContainText("salah");
     await login(page, email, PASSWORD);
@@ -103,7 +117,7 @@ test.describe("auth", () => {
     await expect(page).toHaveURL(/\/$/);
     await page.getByTestId("account-menu-trigger").click();
     await page.getByTestId("logout").click();
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(/\/login\?reason=signed-out/);
     await page.goto("/login?next=//evil.example");
     await login(page, email);
     await expect(page).toHaveURL(/\/$/);

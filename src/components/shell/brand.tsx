@@ -7,6 +7,8 @@ interface BrandProps {
   compact?: boolean;
   /** Tanda + nama produk ringkas, untuk topbar ponsel. */
   mobile?: boolean;
+  /** Wordmark + nama produk sebaris, untuk header halaman auth. */
+  inline?: boolean;
   className?: string;
 }
 
@@ -14,7 +16,7 @@ interface BrandProps {
  * Logo PCP Express (wordmark 200×30) + nama produk. Varian gelap memutihkan "PCP"
  * agar terbaca di tema gelap; tanda persegi dipotong presisi dari glyph pertama logo.
  */
-export function Brand({ compact = false, mobile = false, className }: BrandProps) {
+export function Brand({ compact = false, mobile = false, inline = false, className }: BrandProps) {
   const mark = (
     <>
       <Image
@@ -56,7 +58,11 @@ export function Brand({ compact = false, mobile = false, className }: BrandProps
   return (
     <Link
       href="/"
-      className={cn("flex flex-col gap-0.5 rounded-md", className)}
+      className={cn(
+        "flex rounded-md",
+        inline ? "flex-row items-center gap-3" : "flex-col gap-0.5",
+        className,
+      )}
       aria-label="Data Dashboard, ke beranda"
     >
       <Image

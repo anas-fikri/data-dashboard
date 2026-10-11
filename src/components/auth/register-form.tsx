@@ -1,12 +1,18 @@
 "use client";
 
-import { IconMailForward, IconUserPlus } from "@tabler/icons-react";
-import { useActionState } from "react";
+import { IconMailForward, IconMailOpened, IconUserPlus } from "@tabler/icons-react";
+import Link from "next/link";
+import { useActionState, useEffect, useRef, useState } from "react";
+import { AuthCard } from "@/components/auth/auth-card";
 import { FormAlert } from "@/components/auth/form-alert";
+import { AUTH_INPUT } from "@/components/auth/login-form";
+import { useFocusOnError } from "@/components/auth/use-focus-on-error";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { registerAction, resendVerificationAction, type FormState } from "@/features/auth/actions";
+import { PasswordInput } from "@/components/ui/password-input";
+import { registerAction, resendVerificationAction } from "@/features/auth/actions";
+import type { FormState } from "@/features/auth/form-state";
 
 interface RegisterFormProps {
   allowedDomains: string[];
@@ -14,21 +20,87 @@ interface RegisterFormProps {
   resend?: boolean;
 }
 
+/** Halaman daftar / kirim ulang lengkap dengan kartunya: judul berubah saat sukses. */
 export function RegisterForm({ allowedDomains, resend = false }: RegisterFormProps) {
+  // `round` me-mount ulang form untuk "Pakai email lain" tanpa setState di effect.
+  const [round, setRound] = useState(0);
+  return (
+    <RegisterRound
+      key={round}
+      allowedDomains={allowedDomains}
+      resend={resend}
+      onRestart={() => setRound((r) => r + 1)}
+    />
+  );
+}
+
+function RegisterRound({
+  allowedDomains,
+  resend,
+  onRestart,
+}: RegisterFormProps & { onRestart: () => void }) {
   const [state, action, pending] = useActionState<FormState, FormData>(
     resend ? resendVerificationAction : registerAction,
     { status: "idle" },
   );
+  const emailRef = useRef<HTMLInputElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const alertRef = useFocusOnError(state, {
+    email: emailRef,
+    name: nameRef,
+    password: passwordRef,
+  });
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (state.status === "success") headingRef.current?.focus();
+  }, [state.status]);
+
+  const footer = (
+    <>
+      Sudah punya akun?{" "}
+      <Link href="/login" className="font-medium text-foreground underline underline-offset-4">
+        Masuk
+      </Link>
+      {!resend ? (
+        <>
+          {" · "}
+          <Link
+            href="/register?resend=1"
+            className="font-medium text-foreground underline underline-offset-4"
+          >
+            Kirim ulang verifikasi
+          </Link>
+        </>
+      ) : null}
+    </>
+  );
 
   if (state.status === "success") {
     return (
-      <FormAlert tone="success">
-        <p className="font-medium">Periksa inbox {state.email || "Anda"}.</p>
-        <p className="mt-1">
-          Jika email terdaftar dengan domain yang diizinkan, tautan aktivasi sudah dikirim dan
-          berlaku 24 jam. Belum menerima? Periksa folder spam atau kirim ulang dari halaman ini.
-        </p>
-      </FormAlert>
+      <AuthCard
+        title="Periksa inbox Anda"
+        headingRef={headingRef}
+        description={`Jika ${state.email || "email Anda"} memakai domain yang diizinkan, tautan aktivasi sudah dikirim dan berlaku 24 jam.`}
+        footer={footer}
+      >
+        <div className="flex flex-col gap-3">
+          <FormAlert tone="success">
+            Buka email dari Data Dashboard, klik <strong>Aktifkan akun</strong>, lalu masukkan
+            password yang baru Anda buat. Tidak ada di inbox? Periksa folder spam.
+          </FormAlert>
+          <Button asChild variant="outline" size="lg" className="w-full">
+            <Link href="/register?resend=1">
+              <IconMailForward aria-hidden />
+              Kirim ulang email
+            </Link>
+          </Button>
+          <Button variant="ghost" size="lg" className="w-full" onClick={onRestart}>
+            <IconMailOpened aria-hidden />
+            Pakai email lain
+          </Button>
+        </div>
+      </AuthCard>
     );
   }
 
@@ -39,42 +111,78 @@ export function RegisterForm({ allowedDomains, resend = false }: RegisterFormPro
       : `Hanya email domain: ${allowedDomains.map((d) => `@${d}`).join(", ")}.`;
 
   return (
-    <form action={action} className="flex flex-col gap-4" noValidate>
-      {error ? <FormAlert tone="error">{error.message}</FormAlert> : null}
-      <Field id="email" label="Email perusahaan" hint={domainHint} required>
-        <Input name="email" type="email" autoComplete="email" inputMode="email" required />
-      </Field>
-      {!resend ? (
-        <>
-          <Field id="name" label="Nama">
-            <Input name="name" type="text" autoComplete="name" maxLength={80} />
-          </Field>
-          <Field
-            id="password"
-            label="Password"
-            hint="12 sampai 128 karakter. Kalimat panjang lebih kuat daripada simbol acak."
-            required
-          >
-            <Input
-              name="password"
-              type="password"
-              autoComplete="new-password"
-              minLength={12}
-              maxLength={128}
+    <AuthCard
+      title={resend ? "Kirim ulang verifikasi" : "Daftar"}
+      description={
+        resend
+          ? "Masukkan email yang Anda daftarkan. Tautan aktivasi baru akan dikirim."
+          : "Akun hanya untuk karyawan dengan email perusahaan."
+      }
+      footer={footer}
+    >
+      <form action={action} className="flex flex-col gap-4" noValidate>
+        {error && !error.field ? (
+          <FormAlert tone="error" ref={alertRef}>
+            {error.message}
+          </FormAlert>
+        ) : null}
+        <Field
+          id="email"
+          label="Email perusahaan"
+          hint={domainHint}
+          required
+          error={error?.field === "email" ? error.message : undefined}
+        >
+          <Input
+            ref={emailRef}
+            name="email"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            defaultValue={error?.values.email ?? ""}
+            className={AUTH_INPUT}
+          />
+        </Field>
+        {!resend ? (
+          <>
+            <Field id="name" label="Nama">
+              <Input
+                ref={nameRef}
+                name="name"
+                type="text"
+                autoComplete="name"
+                maxLength={80}
+                defaultValue={error?.values.name ?? ""}
+                className={AUTH_INPUT}
+              />
+            </Field>
+            <Field
+              id="password"
+              label="Password"
+              hint="12 sampai 128 karakter. Kalimat panjang lebih kuat daripada simbol acak."
               required
-            />
-          </Field>
-        </>
-      ) : null}
-      <Button
-        type="submit"
-        pending={pending}
-        leadingIcon={resend ? <IconMailForward aria-hidden /> : <IconUserPlus aria-hidden />}
-        className="w-full"
-        size="lg"
-      >
-        {resend ? "Kirim ulang email verifikasi" : "Daftar"}
-      </Button>
-    </form>
+              error={error?.field === "password" ? error.message : undefined}
+            >
+              <PasswordInput
+                ref={passwordRef}
+                name="password"
+                autoComplete="new-password"
+                maxLength={128}
+                className={AUTH_INPUT}
+              />
+            </Field>
+          </>
+        ) : null}
+        <Button
+          type="submit"
+          pending={pending}
+          leadingIcon={resend ? <IconMailForward aria-hidden /> : <IconUserPlus aria-hidden />}
+          className="w-full"
+          size="lg"
+        >
+          {resend ? "Kirim ulang email verifikasi" : "Daftar"}
+        </Button>
+      </form>
+    </AuthCard>
   );
 }

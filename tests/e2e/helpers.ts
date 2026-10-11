@@ -7,36 +7,53 @@ export function uniqueEmail(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@pcpexpress.com`;
 }
 
-/** Tautan aktivasi terbaru untuk email ini dari Mailpit (email dikirim di latar, jadi polling). */
-export async function verifyLinkFor(request: APIRequestContext, email: string): Promise<string> {
+/** Semua tautan aktivasi untuk email ini, terbaru dulu (email dikirim di latar, jadi polling). */
+export async function verifyLinksFor(
+  request: APIRequestContext,
+  email: string,
+  atLeast = 1,
+): Promise<string[]> {
   for (let i = 0; i < 40; i++) {
     const res = await request.get(`${MAILPIT}/api/v1/search?query=to:${encodeURIComponent(email)}`);
-    const body = (await res.json()) as { messages?: { ID: string; Subject: string }[] };
-    const msg = body.messages?.find((m) => m.Subject.includes("Aktifkan"));
-    if (msg) {
-      const detail = (await (await request.get(`${MAILPIT}/api/v1/message/${msg.ID}`)).json()) as {
-        Text: string;
-      };
-      const link = detail.Text.match(/https?:\/\/\S+\/verify\?token=[A-Za-z0-9_-]+/)?.[0];
-      if (link) return link;
+    const body = (await res.json()) as {
+      messages?: { ID: string; Subject: string; Created: string }[];
+    };
+    const msgs = (body.messages ?? [])
+      .filter((m) => m.Subject.includes("Aktifkan"))
+      .sort((a, b) => b.Created.localeCompare(a.Created));
+    if (msgs.length >= atLeast) {
+      const links: string[] = [];
+      for (const m of msgs) {
+        const detail = (await (await request.get(`${MAILPIT}/api/v1/message/${m.ID}`)).json()) as {
+          Text: string;
+        };
+        const link = detail.Text.match(/https?:\/\/\S+\/verify\?token=[A-Za-z0-9_-]+/)?.[0];
+        if (link) links.push(link);
+      }
+      if (links.length >= atLeast) return links;
     }
     await new Promise((r) => setTimeout(r, 250));
   }
   throw new Error(`email verifikasi untuk ${email} tidak ditemukan di Mailpit`);
 }
 
+export async function verifyLinkFor(request: APIRequestContext, email: string): Promise<string> {
+  return (await verifyLinksFor(request, email))[0]!;
+}
+
 export async function register(page: Page, email: string, password = PASSWORD) {
   await page.goto("/register");
   await page.getByLabel("Email perusahaan").fill(email);
   await page.getByLabel("Nama").fill("Uji E2E");
-  await page.getByLabel("Password").fill(password);
+  await page.locator("input[name=password]").fill(password);
   await page.getByRole("button", { name: "Daftar" }).click();
-  await expect(page.getByTestId("form-alert")).toContainText("Periksa inbox");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Periksa inbox Anda");
 }
 
-/** Buka tautan dari email lalu tekan "Aktifkan akun" (aktivasi lewat POST). */
-export async function activate(page: Page, link: string) {
+/** Buka tautan dari email, isi password pendaftaran, tekan "Aktifkan akun" (POST). */
+export async function activate(page: Page, link: string, password = PASSWORD) {
   await page.goto(link);
+  await page.getByLabel("Password yang Anda buat saat mendaftar").fill(password);
   await page.getByRole("button", { name: "Aktifkan akun" }).click();
   await expect(page).toHaveURL(/\/login\?verified=1/);
 }
@@ -48,7 +65,7 @@ export async function registerAndVerify(page: Page, request: APIRequestContext, 
 
 export async function login(page: Page, email: string, password = PASSWORD) {
   await page.getByLabel("Email perusahaan").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.locator("input[name=password]").fill(password);
   await page.getByRole("button", { name: "Masuk" }).click();
 }
 

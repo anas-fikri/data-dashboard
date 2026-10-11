@@ -17,9 +17,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const notice =
     params.verified === "1"
       ? { tone: "success" as const, text: "Akun aktif. Silakan masuk." }
-      : params.reason === "expired"
-        ? { tone: "error" as const, text: "Sesi berakhir. Silakan masuk kembali." }
-        : null;
+      : params.reason === "signed-out"
+        ? { tone: "success" as const, text: "Anda sudah keluar dari semua perangkat." }
+        : params.reason === "expired"
+          ? { tone: "error" as const, text: "Sesi berakhir. Silakan masuk kembali." }
+          : null;
 
   return (
     <AuthCard

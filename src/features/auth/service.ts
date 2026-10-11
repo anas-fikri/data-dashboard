@@ -6,7 +6,7 @@ import { redisReady } from "@/lib/redis";
 import { sendAlreadyRegisteredEmail, sendVerificationEmail } from "./email";
 import { isAllowedDomain, normalizeEmail } from "./email-domain";
 import { hashPassword, isPasswordAcceptable, verifyPassword } from "./password";
-import { emailBucket, hit, peek, reset, RULES, type RateLimitResult } from "./rate-limit";
+import { emailBucket, hit, release, reset, RULES, type RateLimitResult } from "./rate-limit";
 import { generateToken, hashToken, isTokenShape, VERIFY_EMAIL_TTL_MS } from "./tokens";
 
 /*
@@ -40,8 +40,26 @@ const MESSAGES: Record<AuthCode, string> = {
   SERVICE_UNAVAILABLE: "Layanan sedang tidak tersedia. Coba lagi sebentar.",
 };
 
-function fail<T = undefined>(code: AuthCode, extra?: { retryAfterSec?: number }): Result<T> {
-  return { ok: false, code, message: MESSAGES[code], ...extra };
+function fail<T = undefined>(
+  code: AuthCode,
+  extra?: { retryAfterSec?: number; message?: string },
+): Result<T> {
+  return { ok: false, code, message: extra?.message ?? MESSAGES[code], ...extra };
+}
+
+/** Pesan email yang bisa ditindak: bedakan kosong vs format salah (review desain T-002 #5). */
+function invalidEmail(raw: unknown): Result<never> {
+  const empty = typeof raw !== "string" || raw.trim() === "";
+  return fail("INVALID_EMAIL", {
+    message: empty ? "Masukkan email perusahaan Anda." : "Format email tidak valid.",
+  });
+}
+
+function domainNotAllowed(): Result<never> {
+  const list = env()
+    .ALLOWED_EMAIL_DOMAINS.map((d) => `@${d}`)
+    .join(" atau ");
+  return fail("DOMAIN_NOT_ALLOWED", { message: `Gunakan email ${list}.` });
 }
 
 type Store = Awaited<ReturnType<typeof redisReady>>;
@@ -93,8 +111,8 @@ export interface RegisterInput {
  */
 export async function register(input: RegisterInput): Promise<Result<{ email: string }>> {
   const email = normalizeEmail(input.email);
-  if (!email) return fail("INVALID_EMAIL");
-  if (!isAllowedDomain(email, env().ALLOWED_EMAIL_DOMAINS)) return fail("DOMAIN_NOT_ALLOWED");
+  if (!email) return invalidEmail(input.email);
+  if (!isAllowedDomain(email, env().ALLOWED_EMAIL_DOMAINS)) return domainNotAllowed();
   if (typeof input.password !== "string" || !isPasswordAcceptable(input.password)) {
     return fail("WEAK_PASSWORD");
   }
@@ -110,7 +128,7 @@ export async function register(input: RegisterInput): Promise<Result<{ email: st
   }
 
   const passwordHash = await hashPassword(input.password); // selalu (timing konstan)
-  await purgeStale();
+  await purgeStaleThrottled();
   const existing = await prisma.user.findUnique({ where: { email } });
 
   if (existing?.emailVerifiedAt) {
@@ -118,19 +136,21 @@ export async function register(input: RegisterInput): Promise<Result<{ email: st
     return { ok: true, data: { email } };
   }
 
+  // Nama dan password milik pendaftar disimpan di token, bukan di user (review T-002 D).
   const userId =
-    existing?.id ?? (await prisma.user.create({ data: { email, name, passwordHash: null } })).id;
-  if (existing && name && !existing.name) {
-    await prisma.user.update({ where: { id: existing.id }, data: { name } });
-  }
-  const token = await createVerifyToken(userId, passwordHash);
+    existing?.id ?? (await prisma.user.create({ data: { email, passwordHash: null } })).id;
+  const token = await createVerifyToken(userId, passwordHash, name);
   sendInBackground(() => sendVerificationEmail(email, token));
   logger.info({ userId }, "registrasi diterima, menunggu verifikasi");
   return { ok: true, data: { email } };
 }
 
 /** Token baru TIDAK membatalkan token lain: tiap token membawa password pendaftarnya sendiri. */
-async function createVerifyToken(userId: string, pendingPasswordHash: string | null) {
+async function createVerifyToken(
+  userId: string,
+  pendingPasswordHash: string | null,
+  pendingName: string | null,
+) {
   const token = generateToken();
   await prisma.verificationToken.create({
     data: {
@@ -138,6 +158,7 @@ async function createVerifyToken(userId: string, pendingPasswordHash: string | n
       purpose: "VERIFY_EMAIL",
       tokenHash: hashToken(token),
       pendingPasswordHash,
+      pendingName,
       expiresAt: new Date(Date.now() + VERIFY_EMAIL_TTL_MS),
     },
   });
@@ -147,7 +168,7 @@ async function createVerifyToken(userId: string, pendingPasswordHash: string | n
 /** Kirim ulang: memakai password dari token terbaru yang masih berlaku. Respons selalu netral. */
 export async function resendVerification(emailRaw: unknown, ip: string): Promise<Result> {
   const email = normalizeEmail(emailRaw);
-  if (!email) return fail("INVALID_EMAIL");
+  if (!email) return invalidEmail(emailRaw);
   const rl = await counted("resendEmail", emailBucket(email));
   if (rl === "down") return fail("SERVICE_UNAVAILABLE");
   if (!rl.allowed) return fail("RATE_LIMITED", { retryAfterSec: rl.retryAfterSec });
@@ -168,7 +189,7 @@ export async function resendVerification(emailRaw: unknown, ip: string): Promise
       orderBy: { createdAt: "desc" },
     });
     if (!latest?.pendingPasswordHash) return; // tidak ada pendaftaran yang masih berlaku
-    const token = await createVerifyToken(user.id, latest.pendingPasswordHash);
+    const token = await createVerifyToken(user.id, latest.pendingPasswordHash, latest.pendingName);
     await sendVerificationEmail(email, token);
   });
   return { ok: true, data: undefined };
@@ -199,17 +220,20 @@ export async function previewVerification(tokenRaw: unknown): Promise<Result<Ver
 
 /**
  * Verifikasi email (POST dari halaman konfirmasi): token sekali pakai, kedaluwarsa 24 jam.
- * Menerapkan password milik token ini, membatalkan token verifikasi lain, dan menaikkan
- * sessionVersion (memutus sesi apa pun yang mungkin ada).
+ * Wajib password yang dibuat saat mendaftar (dicocokkan ke hash milik token ini): orang yang
+ * mengklik tautan dari pendaftaran orang lain tidak bisa mengaktifkannya (review T-002 A).
+ * Menerapkan password + nama milik token, membatalkan token lain, dan menaikkan sessionVersion.
  */
 export async function verifyEmail(
   tokenRaw: unknown,
+  passwordRaw: unknown,
   ip: string,
 ): Promise<Result<{ email: string }>> {
   const rl = await counted("verifyIp", ip);
   if (rl !== "down" && !rl.allowed)
     return fail("RATE_LIMITED", { retryAfterSec: rl.retryAfterSec });
   if (!isTokenShape(tokenRaw)) return fail("TOKEN_INVALID");
+  const password = typeof passwordRaw === "string" ? passwordRaw : "";
   const now = new Date();
   const record = await prisma.verificationToken.findUnique({
     where: { tokenHash: hashToken(tokenRaw) },
@@ -217,6 +241,9 @@ export async function verifyEmail(
   });
   if (!record || record.purpose !== "VERIFY_EMAIL" || record.usedAt || record.expiresAt < now) {
     return fail("TOKEN_INVALID");
+  }
+  if (!(await verifyPassword(record.pendingPasswordHash, password))) {
+    return fail("INVALID_CREDENTIALS");
   }
   const marked = await prisma.verificationToken.updateMany({
     where: { id: record.id, usedAt: null },
@@ -233,6 +260,7 @@ export async function verifyEmail(
       data: {
         emailVerifiedAt: record.user.emailVerifiedAt ?? now,
         ...(record.pendingPasswordHash ? { passwordHash: record.pendingPasswordHash } : {}),
+        ...(record.pendingName ? { name: record.pendingName } : {}),
         sessionVersion: { increment: 1 },
       },
     }),
@@ -266,57 +294,58 @@ export async function login(input: LoginInput): Promise<Result<LoginSuccess>> {
   const trustedDevice = !!user && input.knownDeviceUserId === user.id;
   const acctKey = emailBucket(email);
 
+  // Reservasi slot secara atomik SEBELUM argon2 (request paralel tidak bisa menyelinap di
+  // antara cek dan catat — review T-002 B); slot dikembalikan bila login sukses.
   try {
-    const byIp = await peek(s, RULES.loginIp, input.ip);
-    if (!byIp.allowed) return fail("RATE_LIMITED", { retryAfterSec: byIp.retryAfterSec });
+    const byIp = await hit(s, RULES.loginIp, input.ip);
+    if (!byIp.allowed) {
+      await release(s, RULES.loginIp, input.ip);
+      return fail("RATE_LIMITED", { retryAfterSec: byIp.retryAfterSec });
+    }
     if (!trustedDevice) {
-      const byAcct = await peek(s, RULES.loginAccount, acctKey);
-      if (!byAcct.allowed) return fail("RATE_LIMITED", { retryAfterSec: byAcct.retryAfterSec });
+      const byAcct = await hit(s, RULES.loginAccount, acctKey);
+      if (!byAcct.allowed) {
+        await release(s, RULES.loginIp, input.ip);
+        await release(s, RULES.loginAccount, acctKey);
+        return fail("RATE_LIMITED", { retryAfterSec: byAcct.retryAfterSec });
+      }
     }
   } catch {
     return fail("SERVICE_UNAVAILABLE");
   }
 
-  const passwordOk = await verifyPassword(user?.passwordHash ?? null, password);
-  let pendingOk = false;
-  if (user && !user.emailVerifiedAt && !passwordOk) {
-    // Belum terverifikasi: password ada di token pendaftaran, bukan di user.
-    const tokens = await prisma.verificationToken.findMany({
-      where: {
-        userId: user.id,
-        purpose: "VERIFY_EMAIL",
-        usedAt: null,
-        expiresAt: { gt: new Date() },
-      },
-      select: { pendingPasswordHash: true },
-      take: 5,
-    });
-    for (const t of tokens) {
-      if (t.pendingPasswordHash && (await verifyPassword(t.pendingPasswordHash, password))) {
-        pendingOk = true;
-        break;
-      }
-    }
-  }
+  // Selalu tepat dua verifikasi argon2 (password akun + token pending terbaru, atau dummy):
+  // waktu respons tidak membedakan akun tak ada / belum aktif / aktif (review T-002 C).
+  const latestPending =
+    user && !user.emailVerifiedAt
+      ? await prisma.verificationToken.findFirst({
+          where: {
+            userId: user.id,
+            purpose: "VERIFY_EMAIL",
+            usedAt: null,
+            expiresAt: { gt: new Date() },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { pendingPasswordHash: true },
+        })
+      : null;
+  const [passwordOk, pendingOk] = await Promise.all([
+    verifyPassword(user?.passwordHash ?? null, password),
+    verifyPassword(latestPending?.pendingPasswordHash ?? null, password),
+  ]);
 
-  if (!user || (!passwordOk && !pendingOk)) {
-    try {
-      await hit(s, RULES.loginIp, input.ip);
-      await hit(s, RULES.loginAccount, acctKey);
-    } catch {
-      /* gagal mencatat tidak boleh membuka akses */
-    }
-    return fail("INVALID_CREDENTIALS");
+  if (!user || (!passwordOk && !pendingOk)) return fail("INVALID_CREDENTIALS");
+  // Password benar: kembalikan slot yang direservasi (hanya kegagalan yang dihitung).
+  try {
+    await release(s, RULES.loginIp, input.ip);
+    if (!trustedDevice) await reset(s, RULES.loginAccount, acctKey);
+  } catch {
+    /* counter akan kedaluwarsa sendiri */
   }
   if (!user.emailVerifiedAt) return fail("EMAIL_NOT_VERIFIED");
   if (!user.isActive) return fail("ACCOUNT_DISABLED");
 
   await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
-  try {
-    await reset(s, RULES.loginAccount, acctKey);
-  } catch {
-    /* counter akan kedaluwarsa sendiri */
-  }
   return { ok: true, data: { id: user.id, sessionVersion: user.sessionVersion } };
 }
 
@@ -325,14 +354,32 @@ export async function revokeSessions(userId: string): Promise<void> {
   await prisma.user.update({ where: { id: userId }, data: { sessionVersion: { increment: 1 } } });
 }
 
+/** Purge paling sering sekali per jam (kunci Redis), dipicu registrasi; job terjadwal di T-023. */
+async function purgeStaleThrottled() {
+  const s = await store();
+  if (!s) return;
+  try {
+    const got = await s.set("maint:purge-stale", "1", "EX", 3600, "NX");
+    if (got === "OK") await purgeStale();
+  } catch (e) {
+    logger.warn({ err: e instanceof Error ? e.message : String(e) }, "purge akun basi gagal");
+  }
+}
+
 /**
- * Pemeliharaan (dipanggil saat registrasi; job terjadwal di T-023): hapus akun non-admin yang
- * tidak pernah verifikasi > 24 jam dan token kedaluwarsa.
+ * Pemeliharaan: hapus akun non-admin yang belum verifikasi, dibuat > 24 jam lalu, dan TIDAK
+ * punya token verifikasi yang masih berlaku (tautan di inbox tetap hidup — review T-002 E);
+ * lalu hapus token kedaluwarsa.
  */
 export async function purgeStale(now = new Date()): Promise<{ users: number; tokens: number }> {
   const cutoff = new Date(now.getTime() - VERIFY_EMAIL_TTL_MS);
   const users = await prisma.user.deleteMany({
-    where: { emailVerifiedAt: null, createdAt: { lt: cutoff }, isAdmin: false },
+    where: {
+      emailVerifiedAt: null,
+      createdAt: { lt: cutoff },
+      isAdmin: false,
+      tokens: { none: { purpose: "VERIFY_EMAIL", usedAt: null, expiresAt: { gt: now } } },
+    },
   });
   const tokens = await prisma.verificationToken.deleteMany({
     where: { expiresAt: { lt: cutoff } },

@@ -80,6 +80,17 @@ export async function peek(
   };
 }
 
+const DECR_IF_POSITIVE = `
+local n = tonumber(redis.call('GET', KEYS[1]) or '0')
+if n > 0 then return redis.call('DECR', KEYS[1]) end
+return 0
+`;
+
+/** Mengembalikan satu slot yang sudah direservasi oleh hit() (atomik, tidak pernah negatif). */
+export async function release(store: RateLimitStore, rule: RateLimitRule, subject: string) {
+  await store.eval(DECR_IF_POSITIVE, 1, keyOf(rule, subject));
+}
+
 /** Dipakai setelah login sukses agar kegagalan lama tidak menghukum pengguna sah. */
 export async function reset(store: RateLimitStore, rule: RateLimitRule, subject: string) {
   await store.del(keyOf(rule, subject));

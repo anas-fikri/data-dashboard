@@ -40,7 +40,9 @@ export function EmptyState({
         {icon}
       </span>
       <div className="max-w-sm">
-        <Title className={cn("font-semibold", Title === "h1" ? "text-xl" : "text-base")}>
+        <Title
+          className={cn("font-semibold", Title === "h1" ? "text-2xl tracking-tight" : "text-base")}
+        >
           {title}
         </Title>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}

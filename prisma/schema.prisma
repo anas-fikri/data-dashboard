@@ -27,6 +27,7 @@ model User {
   tokens VerificationToken[]
 
   @@index([isActive, isAdmin])
+  @@index([emailVerifiedAt, createdAt])
 }
 
 enum TokenPurpose {
@@ -44,6 +45,8 @@ model VerificationToken {
   /// Hash password milik pendaftar yang meminta token ini; diterapkan saat token dipakai
   /// (mencegah pre-account takeover: pendaftar lain tidak bisa "menitipkan" password-nya).
   pendingPasswordHash String?
+  /// Nama tampilan dari pendaftar token ini; diterapkan saat aktivasi.
+  pendingName         String?
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime     @default(now())
