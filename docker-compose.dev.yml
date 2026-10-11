@@ -64,11 +64,7 @@ services:
     volumes:
       - s3data:/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -q -O /dev/null http://127.0.0.1:9000/ || curl -sf -o /dev/null http://127.0.0.1:9000/ || exit 0",
-        ]
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/health"]
       interval: 5s
       timeout: 3s
       retries: 10
