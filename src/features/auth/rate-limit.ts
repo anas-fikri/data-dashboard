@@ -19,6 +19,11 @@ export const RULES = {
   registerIp: { name: "register:ip", limit: 20, windowSec: 60 * 60 },
   resendEmail: { name: "resend:email", limit: 3, windowSec: 60 * 60 },
   verifyIp: { name: "verify:ip", limit: 30, windowSec: 10 * 60 },
+  resetEmail: { name: "reset:email", limit: 3, windowSec: 60 * 60 },
+  resetIp: { name: "reset:ip", limit: 20, windowSec: 60 * 60 },
+  /** Percobaan memakai token reset / ganti password yang gagal. */
+  resetUseIp: { name: "reset-use:ip", limit: 30, windowSec: 10 * 60 },
+  changePassword: { name: "change-pw:user", limit: 5, windowSec: 15 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

@@ -37,6 +37,47 @@ export async function verifyLinksFor(
   throw new Error(`email verifikasi untuk ${email} tidak ditemukan di Mailpit`);
 }
 
+interface MailSummary {
+  ID: string;
+  Subject: string;
+  Created: string;
+}
+
+/** Semua email untuk alamat ini yang subjeknya mengandung `subject`, terbaru dulu. */
+export async function mailsFor(
+  request: APIRequestContext,
+  email: string,
+  subject: string,
+): Promise<MailSummary[]> {
+  const res = await request.get(`${MAILPIT}/api/v1/search?query=to:${encodeURIComponent(email)}`);
+  const body = (await res.json()) as { messages?: MailSummary[] };
+  return (body.messages ?? [])
+    .filter((m) => m.Subject.includes(subject))
+    .sort((a, b) => b.Created.localeCompare(a.Created));
+}
+
+/** Tautan atur ulang password terbaru untuk email ini. */
+export async function resetLinkFor(request: APIRequestContext, email: string): Promise<string> {
+  for (let i = 0; i < 40; i++) {
+    const [latest] = await mailsFor(request, email, "Atur ulang password");
+    if (latest) {
+      const detail = (await (
+        await request.get(`${MAILPIT}/api/v1/message/${latest.ID}`)
+      ).json()) as { Text: string };
+      const link = detail.Text.match(/https?:\/\/\S+\/reset-password\?token=[A-Za-z0-9_-]+/)?.[0];
+      if (link) return link;
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error(`email reset untuk ${email} tidak ditemukan di Mailpit`);
+}
+
+export async function requestReset(page: Page, email: string) {
+  await page.goto("/lupa-password");
+  await page.getByLabel("Email perusahaan").fill(email);
+  await page.getByRole("button", { name: "Kirim tautan atur ulang" }).click();
+}
+
 export async function verifyLinkFor(request: APIRequestContext, email: string): Promise<string> {
   return (await verifyLinksFor(request, email))[0]!;
 }

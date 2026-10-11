@@ -42,7 +42,7 @@ const MESSAGES: Record<AuthCode, string> = {
   SERVICE_UNAVAILABLE: "Layanan sedang tidak tersedia. Coba lagi sebentar.",
 };
 
-function fail<T = undefined>(
+export function fail<T = undefined>(
   code: AuthCode,
   extra?: { retryAfterSec?: number; message?: string },
 ): Result<T> {
@@ -50,7 +50,7 @@ function fail<T = undefined>(
 }
 
 /** Pesan email yang bisa ditindak: bedakan kosong vs format salah (review desain T-002 #5). */
-function invalidEmail(raw: unknown): Result<never> {
+export function invalidEmail(raw: unknown): Result<never> {
   const empty = typeof raw !== "string" || raw.trim() === "";
   return fail("INVALID_EMAIL", {
     message: empty ? "Masukkan email perusahaan Anda." : "Format email tidak valid.",
@@ -66,7 +66,7 @@ function domainNotAllowed(): Result<never> {
 
 type Store = Awaited<ReturnType<typeof redisReady>>;
 
-async function store(): Promise<Store | null> {
+export async function store(): Promise<Store | null> {
   try {
     return await redisReady();
   } catch (e) {
@@ -78,7 +78,7 @@ async function store(): Promise<Store | null> {
   }
 }
 
-async function counted(
+export async function counted(
   ruleKey: keyof typeof RULES,
   subject: string,
 ): Promise<RateLimitResult | "down"> {
@@ -92,7 +92,7 @@ async function counted(
 }
 
 /** Pengiriman email di luar jalur respons: waktu respons tidak membocorkan status akun. */
-function sendInBackground(task: () => Promise<unknown>) {
+export function sendInBackground(task: () => Promise<unknown>) {
   void task().catch((e: unknown) =>
     logger.error({ err: e instanceof Error ? e.message : String(e) }, "tugas email latar gagal"),
   );

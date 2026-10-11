@@ -1,7 +1,7 @@
 ---
 id: T-026
 title: Lupa password, ganti password, keluar dari semua perangkat
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -10,8 +10,12 @@ tags:
 depends_on:
   - T-002
 created: "2026-10-11T14:56:58Z"
-updated: "2026-10-11T14:57:02Z"
+updated: "2026-10-11T23:20:06Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 5d46f4bc8d3a3fb28b91f46206013bd3b87891fb
 ---
 
 ## Objective
@@ -24,7 +28,14 @@ Alur lupa password: token 32 byte acak, disimpan sebagai SHA-256, kedaluwarsa 30
 - [ ] Given 4 permintaan reset untuk email yang sama dalam 1 jam, when ke-4, then code RATE_LIMITED tanpa email terkirim
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: HIGH (pemulihan akun = jalur pengambilalihan akun klasik)
+Impact surface: src/features/auth/{service,actions,email,rate-limit}.ts, VerificationToken (purpose RESET_PASSWORD, sudah ada di skema), halaman /lupa-password, /reset-password, /akun/keamanan, menu akun, proxy daftar publik.
+Security (STRIDE): Spoofing — token reset 32B acak, hanya SHA-256 disimpan, 30 menit, sekali pakai (updateMany usedAt:null), tautan dari APP_URL; GET tautan hanya menampilkan form (pemindai email tidak memakai token). Tampering — reset menaikkan sessionVersion dan membatalkan semua token reset lain; ganti password wajib password lama. Information disclosure — respons minta-reset identik untuk email ada/tidak/belum aktif, email dikirim di latar (timing). DoS — rate limit 3/email/jam (tanpa +tag) dan 20/IP/jam; hit sebelum kerja apa pun. Elevation — akun nonaktif tidak menerima tautan reset; akun belum terverifikasi diarahkan ke alur verifikasi (tidak menerima reset).
+Compatibility: memakai service/rate-limit/session T-002; form memakai FormState/useFocusOnError/PasswordInput.
+Failure modes/edge cases: token kedaluwarsa/dipakai/ bentuk salah → TOKEN_INVALID; password baru sama dengan lama → diterima (tidak membocorkan); akun seed (passwordHash null) boleh memakai reset untuk menetapkan password pertama (jalur resmi admin seed); SMTP mati → respons tetap netral, error di log.
+Rollback: revert commit; tidak ada migrasi.
+Validation: unit untuk pesan/kebijakan; e2e: minta reset email terdaftar & tidak (respons identik, Mailpit hanya terima untuk terdaftar), reset via tautan → login dengan password baru, tautan kedua kali → tidak berlaku, rate limit ke-4 → RATE_LIMITED tanpa email ke-4, ganti password di konteks A → konteks B 401/redirect, keluar dari semua perangkat.
+Open risks/assumptions: kedaluwarsa 30 menit diuji dengan memajukan expiresAt lewat endpoint dev (E2E_ENDPOINTS) bukan menunggu.
 
 ## Notes
 

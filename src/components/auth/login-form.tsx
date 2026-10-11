@@ -76,6 +76,11 @@ export function LoginForm({ next, notice }: LoginFormProps) {
           className={AUTH_INPUT}
         />
       </Field>
+      <div className="-mt-2 text-right text-sm">
+        <Link href="/lupa-password" className="font-medium underline underline-offset-4">
+          Lupa password?
+        </Link>
+      </div>
       <Button
         type="submit"
         pending={pending}

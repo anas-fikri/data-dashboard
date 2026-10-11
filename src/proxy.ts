@@ -14,9 +14,13 @@ const PUBLIC_PREFIXES = [
   "/login",
   "/register",
   "/verify",
+  "/lupa-password",
+  "/reset-password",
   "/health",
   "/api/health",
   "/api/auth/login",
+  // Dev/e2e saja; rute sendiri menolak di produksi dan tanpa E2E_ENDPOINTS=1.
+  "/api/auth/dev-expire-reset",
 ];
 
 function isPublic(pathname: string): boolean {

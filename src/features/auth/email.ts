@@ -45,3 +45,15 @@ export async function sendAlreadyRegisteredEmail(to: string): Promise<boolean> {
   const html = `<p>Halo,</p><p>Seseorang mencoba mendaftar dengan email ini, tetapi akun Anda sudah ada. <a href="${escapeHtml(login)}">Masuk di sini</a>. Jika bukan Anda, abaikan email ini.</p>`;
   return send(to, "Akun Data Dashboard Anda sudah ada", text, html);
 }
+
+/** Tautan reset dari APP_URL (bukan Host header); berlaku 30 menit, sekali pakai. */
+export function resetLink(token: string): string {
+  return `${env().APP_URL}/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+export async function sendPasswordResetEmail(to: string, token: string): Promise<boolean> {
+  const link = resetLink(token);
+  const text = `Halo,\n\nAda permintaan atur ulang password akun Data Dashboard Anda. Buka tautan berikut dalam 30 menit:\n${link}\n\nJika bukan Anda, abaikan email ini; password Anda tidak berubah.`;
+  const html = `<p>Halo,</p><p>Ada permintaan atur ulang password akun Data Dashboard Anda. Buka tautan berikut dalam 30 menit:</p><p><a href="${escapeHtml(link)}">Atur ulang password</a></p><p>Jika bukan Anda, abaikan email ini; password Anda tidak berubah.</p>`;
+  return send(to, "Atur ulang password Data Dashboard", text, html);
+}

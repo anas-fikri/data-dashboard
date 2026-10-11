@@ -1,6 +1,6 @@
 import type { AuthCode } from "./service";
 
-export type AuthField = "email" | "password" | "name";
+export type AuthField = "email" | "password" | "name" | "current";
 
 /** Bentuk state untuk useActionState di form auth (keputusan D2: code, bukan HTTP status). */
 export type FormState =
