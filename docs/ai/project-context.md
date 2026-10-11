@@ -10,7 +10,7 @@ Data Dashboard: aplikasi web pengganti dashboard Excel untuk PCP Express. User (
 - File 1 GB TIDAK pernah di-parse di browser atau dimuat utuh ke RAM server. Alur: chunked resumable upload → object storage (MinIO) → worker streaming parse (xlsx/csv) → Parquet per sheet → query via DuckDB.
 - Query dashboard berbasis spesifikasi deklaratif (dimensi, ukuran, filter, agregasi), bukan SQL mentah dari user.
 - Metadata (user, profil dataset, skema kolom, layout dashboard) di PostgreSQL via Prisma. Data tabular di Parquet, bukan di PostgreSQL.
-- Deploy on-prem VM PCP Express via Docker Compose (app, worker, PostgreSQL, MinIO, Redis). Zero-capex.
+- Deploy on-prem VM PCP Express via Docker Compose (app, worker ×2, renderer PDF, PostgreSQL, MinIO di subdomain sendiri, Redis, reverse proxy). Zero-capex. Single-tenant: organisasi = semua user aktif instance.
 
 ## Stack
 Next.js (App Router, TypeScript) · Tailwind · Prisma + PostgreSQL · MinIO (S3 API) · DuckDB (node binding) · BullMQ + Redis (job antrean ingest) · ECharts (chart) · @tabler/icons-react.
@@ -21,6 +21,6 @@ Halaman /panduan berisi artikel teks (markdown) dan video per role: pemilik data
 ## Batasan
 - Maks file 1 GB per upload; format .xlsx dan .csv (xls lama tidak didukung di v1).
 - Registrasi hanya email dengan domain yang di-whitelist (konfigurasi env), verifikasi email wajib.
-- Tiap sheet = raw.parquet (VARCHAR, dipertahankan) + typed.parquet (bertipe); koreksi/pemetaan menulis ulang typed dari raw, tanpa file asli. Acuan alur: docs/flow-kerja.md.
+- Tiap sheet = raw.parquet (posisional c1..cN VARCHAR, semua baris, dipertahankan) + typed-<schemaRevision>.parquet; header = metadata; koreksi/pemetaan menulis typed revisi baru dari raw, tanpa file asli dan tanpa parse ulang. Acuan alur dan keputusan mengikat D1–D12: docs/flow-kerja.md.
 - Target ingest 1 GB: selesai < 15 menit, puncak RAM worker < 2 GB.
 - Target query widget pada dataset 10 juta baris: p95 < 3 detik.
