@@ -1,7 +1,7 @@
 ---
 id: T-003
 title: CRUD profil dataset dan model versi
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,8 +11,12 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:57:00Z"
+updated: "2026-10-11T23:48:26Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 66ba1d540b833c62b2ba8641dd7196ab53ff8fbb
 ---
 
 ## Objective
@@ -26,7 +30,14 @@ Model Dataset {name, description, ownerId, activeVersionId?} dan DatasetVersion 
 - [ ] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: MEDIUM-HIGH (model data inti + hapus kaskade: salah filter = kebocoran/kehilangan data antar user)
+Impact surface: prisma (Dataset, DatasetVersion, Dashboard minimal untuk kaskade; enum status/mode), src/features/datasets/* (service, label, actions), src/lib/storage/objects.ts (hapus per prefix), src/lib/queue/versions.ts (pembatalan job, stub sampai BullMQ di T-006), halaman /datasets, /datasets/baru, /datasets/[id].
+Security (STRIDE): Elevation/IDOR — setiap baca/ubah/hapus memakai where {id, ownerId: user.id}; tidak ada → NOT_FOUND/404 (D2), tidak membedakan 'tidak ada' dan 'bukan milik'. Tampering — hapus dua langkah dengan konfirmasi nama yang dicek server; input nama 1–80, deskripsi ≤ 500, di-trim. DoS — batas 50 dataset per user (LIMIT_REACHED). Information disclosure — label/badge hanya untuk pemilik; pesan error versi ditampilkan apa adanya ke pemilik (berasal dari worker, bukan input user lain).
+Compatibility: Dashboard minimal (id, datasetId, name, layout) dibuat sekarang agar kaskade hapus teruji; T-010 menambah kolom. Status versi sesuai B5 (enum English, label UI Indonesia). activeVersionId relasi SetNull.
+Failure modes/edge cases: nama duplikat per pemilik (case-insensitive, pakai nameKey) → NAME_TAKEN; hapus saat storage error → transaksi DB tetap jalan? Urutan: batalkan job → hapus DB (kaskade) → hapus objek storage best-effort dengan log (objek yatim dibersihkan job T-013/T-023); prefix storage selalu diakhiri '/'; id cuid validasi bentuk sebelum query.
+Rollback: revert commit + migrasi drop tabel (belum ada data produksi).
+Validation: unit deriveLabel (semua status), validasi input, deleteDataset memanggil hook storage + queue (deps diinjeksi); e2e: buat → daftar label kosong; nama duplikat ditolak; user lain → 404 halaman + NOT_FOUND action (replay); versi READY aktif + FAILED terbaru (skrip seed dev) → 'Siap' + badge gagal + pesan; hapus dua langkah → hilang dari daftar, versi/dashboard terhapus; batas 50; audit desain frontend-expert.
+Open risks/assumptions: berbagi (T-016) belum ada → daftar hanya milik sendiri.
 
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
