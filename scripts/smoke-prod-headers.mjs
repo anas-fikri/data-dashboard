@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Smoke test header keamanan pada server PRODUKSI (next start). Bukti AC T-027 "di produksi".
 // Pakai: node scripts/smoke-prod-headers.mjs http://localhost:3200
+/* global document -- dipakai di dalam page.evaluate (konteks browser) */
 import { chromium } from "@playwright/test";
 
 const base = process.argv[2] ?? "http://localhost:3200";
