@@ -296,8 +296,10 @@ export async function login(input: LoginInput): Promise<Result<LoginSuccess>> {
 
   // Reservasi slot secara atomik SEBELUM argon2 (request paralel tidak bisa menyelinap di
   // antara cek dan catat — review T-002 B); slot dikembalikan bila login sukses.
+  let ipReserved = false;
   try {
     const byIp = await hit(s, RULES.loginIp, input.ip);
+    ipReserved = true;
     if (!byIp.allowed) {
       await release(s, RULES.loginIp, input.ip);
       return fail("RATE_LIMITED", { retryAfterSec: byIp.retryAfterSec });
@@ -311,6 +313,8 @@ export async function login(input: LoginInput): Promise<Result<LoginSuccess>> {
       }
     }
   } catch {
+    // Redis putus di tengah: kembalikan slot IP yang sempat direservasi (best effort).
+    if (ipReserved) await release(s, RULES.loginIp, input.ip).catch(() => undefined);
     return fail("SERVICE_UNAVAILABLE");
   }
 
