@@ -67,14 +67,18 @@ export async function proxy(request: NextRequest) {
   const claims = token ? await verifySession(token, secrets()) : null;
   if (!claims) {
     if (pathname.startsWith("/api/")) {
-      return NextResponse.json({ ok: false, code: "UNAUTHENTICATED" }, { status: 401 });
+      return withCsp(
+        NextResponse.json({ ok: false, code: "UNAUTHENTICATED" }, { status: 401 }),
+        csp,
+      );
     }
-    return NextResponse.redirect(new URL(loginUrl(pathname + search), request.url));
+    return withCsp(NextResponse.redirect(new URL(loginUrl(pathname + search), request.url)), csp);
   }
   return next();
 }
 
 export const config = {
-  // Semua rute kecuali aset statis dan file di /public.
-  matcher: ["/((?!_next/static|_next/image|brand/|favicon.ico|robots.txt).*)"],
+  // Semua rute kecuali aset statis. Pengecualian path persis (bukan awalan string) agar rute baru
+  // seperti /brandx atau /robots.txtfoo tidak lolos tanpa CSP dan gerbang sesi (review T-027 #2).
+  matcher: ["/((?!_next/static/|_next/image/|brand/|favicon\\.ico$|robots\\.txt$).*)"],
 };

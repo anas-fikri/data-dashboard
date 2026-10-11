@@ -1,0 +1,13 @@
+# Jangan pernah menyalin secret atau artefak lokal ke image (review T-027).
+.env
+.env.*
+!.env.example
+node_modules
+.next
+coverage
+playwright-report
+test-results
+tests/fixtures/perf
+.git
+.claude
+*.log

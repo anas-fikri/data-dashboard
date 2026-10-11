@@ -9,14 +9,9 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Badge overlay dev Next menutupi sudut kiri bawah (tombol ciut sidebar) dan mencegat klik e2e.
   devIndicators: false,
-  experimental: {
-    serverActions: {
-      // Di balik reverse proxy, Server Action hanya diterima dari origin aplikasi (T-027).
-      // Dievaluasi saat build: image produksi (T-023) wajib dibangun dengan APP_HOST produksi.
-      // Tanpa itu Next tetap menolak Origin yang tidak cocok dengan x-forwarded-host/Host.
-      allowedOrigins: process.env.APP_HOST ? [process.env.APP_HOST] : [],
-    },
-  },
+  // Server Action: Next menolak Origin yang tidak cocok dengan Host/X-Forwarded-Host. Tidak memakai
+  // experimental.serverActions.allowedOrigins karena nilainya dibekukan saat build dari .env mana
+  // pun (review T-027 #1); reverse proxy (T-023) wajib meneruskan Host atau X-Forwarded-Host asli.
   // Header keamanan statis untuk semua respons; CSP ber-nonce dipasang per permintaan di proxy.
   async headers() {
     return [{ source: "/:path*", headers: staticSecurityHeaders() }];

@@ -1,7 +1,7 @@
 ---
 id: T-027
 title: Security headers, CSP, cookie, dan konfigurasi proxy app
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -10,13 +10,60 @@ tags:
 depends_on:
   - T-001
 created: "2026-10-11T14:56:59Z"
-updated: "2026-10-11T23:42:54Z"
+updated: "2026-10-11T23:44:44Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: c0a7685de81287d00c275b190a2d470ad665e00a
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:44:44Z"
+      findings: 2
 evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 5581
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1791762193825,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791762193847,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  6 passed (6)
+            Tests  46 passed (46)
+         Start at  06:43:13
+         Duration  521ms (tests 53%, import 27%, transform 19%, worker 2%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-11T23:43:15Z"
+    tree: 2925087e6348aa0c55a3e792dad2eb120824739afd7a70e5a8d7b23b332aba09
   audit:
     at: "2026-10-11T23:42:46Z"
     passed: true
