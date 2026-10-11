@@ -40,6 +40,14 @@ test.describe("password", () => {
     expect(unknownBody).toBe(knownBody);
 
     await resetLinkFor(request, known); // terdaftar menerima
+
+    // "Kirim lagi" memberi konfirmasi yang terlihat dan menerima fokus
+    await requestReset(page, known);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Periksa inbox Anda");
+    await page.getByRole("button", { name: "Kirim lagi" }).click();
+    const note = page.getByText(/Permintaan tautan baru diterima pukul/);
+    await expect(note).toBeVisible();
+    await expect(page.locator("[data-testid=form-alert]").filter({ has: note })).toBeFocused();
     await page.waitForTimeout(1500);
     expect(await mailsFor(request, unknown, "Atur ulang password")).toHaveLength(0);
   });

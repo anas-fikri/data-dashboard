@@ -15,7 +15,12 @@ export type FormState =
       /** Isian yang dikembalikan agar tidak hilang setelah error (password sengaja tidak). */
       values: { email: string; name: string };
     }
-  | { status: "success"; email: string };
+  | {
+      status: "success";
+      email: string;
+      /** Konfirmasi tambahan, mis. "Tautan baru dikirim pukul 14.05." setelah kirim ulang. */
+      note?: string;
+    };
 
 /** Pemetaan kode → field agar error tampil di bawah kontrol yang bersangkutan. */
 export function fieldOf(code: AuthCode): AuthField | null {

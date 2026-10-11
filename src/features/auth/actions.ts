@@ -81,7 +81,17 @@ export async function requestResetAction(_prev: FormState, formData: FormData): 
   const emailRaw = formData.get("email");
   const result = await recovery.requestPasswordReset(emailRaw, await ip());
   if (!result.ok) return toError(result, formData);
-  return { status: "success", email: str(emailRaw) };
+  const resent = formData.get("resend") === "1";
+  const time = new Date().toLocaleTimeString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  return {
+    status: "success",
+    email: str(emailRaw),
+    note: resent ? `Permintaan tautan baru diterima pukul ${time} WIB.` : undefined,
+  };
 }
 
 /** Atur ulang password lewat token (POST). Sukses → login dengan password baru. */

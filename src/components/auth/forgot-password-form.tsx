@@ -54,6 +54,11 @@ function ForgotRound({
   useEffect(() => {
     if (restarted) emailRef.current?.focus();
   }, [restarted]);
+  // Setelah "Kirim lagi": fokus ke konfirmasi agar terlihat bahwa klik berhasil.
+  const noteRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (state.status === "success" && state.note) noteRef.current?.focus();
+  }, [state]);
   useEffect(() => {
     if (state.status !== "success") return;
     headingRef.current?.focus();
@@ -77,8 +82,14 @@ function ForgotRound({
             Buka email dari Data Dashboard dan klik <strong>Atur ulang password</strong>. Tidak ada
             di inbox? Periksa folder spam.
           </FormAlert>
+          {state.note ? (
+            <FormAlert tone="success" ref={noteRef}>
+              {state.note}
+            </FormAlert>
+          ) : null}
           <form action={action}>
             <input type="hidden" name="email" value={state.email} />
+            <input type="hidden" name="resend" value="1" />
             <Button
               type="submit"
               variant="outline"
