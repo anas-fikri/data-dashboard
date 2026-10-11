@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-006
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:45:08Z"
+updated: "2026-10-11T14:56:59Z"
 created_by: claude-code
 ---
 
@@ -25,3 +25,5 @@ Alur B3 tahap typed untuk versi pertama. Inferensi penuh via DuckDB TRY_CAST ata
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:56:59Z Lock recast: SET NX PX 30 menit + compare-and-delete (Lua) agar worker mati tidak mengunci selamanya. Hapus typed lama via job, bukan lifecycle.

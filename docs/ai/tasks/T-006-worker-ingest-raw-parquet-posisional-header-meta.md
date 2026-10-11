@@ -2,13 +2,16 @@
 id: T-006
 title: 'Worker ingest: raw.parquet posisional, header metadata, idempoten'
 status: todo
-profile: standard
+profile: strict
+profile_pinned: true
 goal: G-3
+tags:
+  - security
 depends_on:
   - T-004
   - T-005
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:45:08Z"
+updated: "2026-10-11T14:57:01Z"
 created_by: claude-code
 ---
 
@@ -22,8 +25,29 @@ Alur B3 tahap raw. Proses worker/ terpisah, BullMQ concurrency 1, DuckDB memory_
 - [ ] Given dataset dihapus saat ingest berjalan, when batch berikutnya diproses, then worker berhenti dan objek versi dihapus
 - [ ] Given file xlsx rusak di tengah, when ingest gagal, then versi FAILED dengan pesan sheet/baris dan tidak ada objek Parquet versi tersisa
 - [ ] Given fixture xlsx 1 GB (perf), when ingest penuh, then selesai < 15 menit dengan puncak RSS < 2 GB; bukti di docs/ai/perf/T-006.md
+- [ ] Given fixture zip-bomb kecil (rasio > 20×) atau xlsx dengan <!DOCTYPE, when ingest, then FAILED cepat dengan pesan jelas tanpa RSS melampaui batas
+- [ ] Given sheet > 1.048.576 baris, kolom > 16.384, sheet > 50, atau sel > 32.767 karakter, when ingest, then baris/kolom/sheet berlebih ditolak dengan pesan dan sel panjang dipotong + dihitung; job > 60 menit → FAILED
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:56:59Z Batas: byte terdekompresi ≤ 20× ukuran file; temp_directory + max_temp_directory_size; lock Redis memakai PX TTL + compare-and-delete.
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
+- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
+- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
+- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
+- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
+- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
+- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
+- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
+- [ ] V9 Communication: TLS for all external traffic; certificates validated
+- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
+- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
+- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
+- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
+- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date

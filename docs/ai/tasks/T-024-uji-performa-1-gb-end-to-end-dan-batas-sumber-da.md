@@ -9,7 +9,7 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:45:09Z"
+updated: "2026-10-11T14:57:00Z"
 created_by: claude-code
 ---
 
@@ -25,3 +25,5 @@ npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 j
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:57:00Z AC kuota mencakup upload berjalan (versi UPLOADING).

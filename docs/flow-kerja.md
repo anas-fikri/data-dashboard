@@ -35,6 +35,7 @@ flowchart LR
 Domain dari env `ALLOWED_EMAIL_DOMAINS` (boleh lebih dari satu). Login dibatasi 10 percobaan gagal per IP per 10 menit; IP dibaca dari `X-Forwarded-For` hanya jika `TRUST_PROXY=true`.
 
 ### A2. Dari file Excel ke dashboard (alur utama) — T-003..T-012
+Semua layar di bawah dibangun lewat plugin frontend-expert di atas fondasi UI T-025 (arah desain, token preset, app shell, ikon Tabler sebagai waiver Reicon); lihat `docs/ai/conventions.md` baris UI dan `docs/ai/design-system.md` setelah T-025 selesai.
 ```mermaid
 flowchart TD
   H["Beranda"] --> P["Buat profil dataset: nama, deskripsi (T-003)"]
@@ -143,10 +144,11 @@ flowchart LR
   - `parquet/<datasetId>/<versionId>/<sheetId>/raw.parquet` — kolom posisional `c1..cN` VARCHAR + `_row`; **semua baris termasuk di atas header**; dipertahankan selama versi ada.
   - `parquet/<datasetId>/<versionId>/<sheetId>/typed-<schemaRevision>.parquet` — bertipe; dibaca widget. Revisi baru = file baru; file lama dihapus 1 jam setelah pointer berpindah.
   - `guides/<articleId>/<videoId>.<mp4|webm>` dan `guides/<articleId>/<videoId>-poster.png`.
-  - `exports/<userId>/<jobId>.<csv|xlsx|pdf>` — kedaluwarsa 1 jam (lifecycle).
+  - `exports/<userId>/<jobId>.<csv|xlsx|pdf>` — dihapus job pembersihan setelah 1 jam (lifecycle MinIO hanya granularitas hari); unduh lewat `GET /api/exports/<id>/download` yang mengecek pemilik lalu 302 ke presigned 5 menit `attachment`.
 - **Worker**: proses Node terpisah, **concurrency BullMQ = 1 per proses**, 2 replika @ 3 GB. DuckDB di worker: `memory_limit='1GB'`, `threads=2`, `temp_directory` di disk.
 - **DuckDB di app**: membaca `typed-<rev>.parquet`; salinan di disk lokal dengan batas `MAX_LOCAL_PARQUET_BYTES` (LRU evict); fallback S3 httpfs. `memory_limit` app = 2 GB.
-- **Renderer**: proses terpisah berisi Chromium untuk PDF; tidak berbagi memori dengan worker ingest.
+- **Renderer**: proses terpisah berisi Chromium untuk PDF; hanya di network frontend (tidak bisa mencapai MinIO/Redis/PostgreSQL); dipanggil app dengan header `RENDERER_SECRET`; membuka `APP_INTERNAL_URL/render/<token>` sendiri; route allowlist hanya origin app; non-root + seccomp.
+- **Jaringan compose**: hanya reverse proxy mempublikasikan port; Redis `requirepass`; app/worker memakai service account MinIO berpolicy prefix; proxy `storage.<domain>` hanya meneruskan PUT/GET/HEAD/OPTIONS bertanda tangan ke prefix `raw|guides|exports`, memblokir `/minio/*`, dan menambahkan `nosniff` + `CSP: sandbox`.
 
 ### B2. Upload — T-004
 ```mermaid
@@ -166,7 +168,7 @@ sequenceDiagram
   else baru
     A->>P: buat DatasetVersion status UPLOADING
     A->>M: createMultipartUpload
-    A-->>B: uploadId + presigned URL untuk tepat ceil(ukuran / 16 MiB) part
+    A-->>B: uploadId + presigned URL per part dengan Content-Length sebagai signed header; ContentType ditetapkan server
   end
   loop setiap part yang belum selesai
     B->>M: PUT part (presigned)
@@ -189,7 +191,7 @@ sequenceDiagram
 ```
 Catatan kebenaran:
 - **CSV tidak punya magic bytes.** Validasi = teks tanpa byte NUL di 64 KB pertama, encoding UTF-8 atau Windows-1252 (BOM UTF-16 → ditolak dengan pesan "simpan ulang sebagai UTF-8"), parser membaca ≥ 1 baris. xlsx = ZIP yang memuat `xl/workbook.xml`; struktur penuh diverifikasi worker saat membuka.
-- Presigned `UploadPart` tidak mengikat ukuran part, maka `ListParts` sebelum complete adalah penegak batas yang sebenarnya; HeadObject adalah pemeriksaan kedua.
+- `Content-Length` disertakan sebagai signed header pada presigned `UploadPart` sehingga MinIO menolak part berukuran lain; `ListParts` sebelum complete dan HeadObject adalah lapisan kedua dan ketiga. `ContentType` objek selalu ditetapkan server, tidak pernah dari klien. Tidak pernah ada presigned GET untuk `raw/` atau `parquet/`.
 - ETag multipart bukan checksum isi; SHA-256 isi dihitung worker saat streaming (T-006) dan disimpan di versi.
 - Fingerprint = `nama + ukuran + lastModified`, selalu di-scope `(userId, datasetId)`.
 - Upload yang tidak selesai 24 jam → versi FAILED oleh job terjadwal; objek multipart dibersihkan lifecycle bucket.
@@ -255,7 +257,7 @@ sequenceDiagram
   end
   A-->>B: rows → ECharts / tabel
 ```
-- **Viewer/editor tidak pernah mengirim spec bebas.** Non-pemilik hanya boleh `{widgetId, filters}`; spec diambil dari konfigurasi widget tersimpan. Spec bebas `{datasetId, spec}` hanya untuk pemilik dataset dan editor dashboard saat panel konfigurasi terbuka. Ini menutup celah viewer membaca sheet/kolom yang tidak ditampilkan.
+- **Viewer tidak pernah mengirim spec bebas**: hanya `{widgetId, filters}`, spec dari widget tersimpan, filter dibatasi `allowedFilterColumns` dashboard. **Pemilik** boleh `{datasetId, spec}`. **Editor** boleh `{dashboardId, spec}`: authz = share EDITOR dashboard itu, dataset diturunkan server; editor dengan sengaja boleh membaca semua kolom tidak tersembunyi dataset, dan dialog share menampilkan peringatan itu. `sheetId` selalu di-resolve `where {id, datasetId}` sehingga spec tidak bisa menunjuk sheet dataset lain. Kolom sort/filter divalidasi terhadap kolom widget/dashboard, bukan seluruh skema.
 - Key cache memuat `versionId` **dan** `schemaRevision`; perubahan versi atau re-cast otomatis miss tanpa penghapusan massal. Spec dikanonikkan (urut key, dedupe filter) sebelum di-hash.
 - Slicer: `SELECT DISTINCT kolom ORDER BY 1 LIMIT 1000` + pencarian server-side; > 1000 nilai unik → peringatan.
 - Tabel baris mentah: paginasi server 100 baris, `ORDER BY` + `LIMIT/OFFSET` di DuckDB.
@@ -328,10 +330,12 @@ Memungkinkan, dan slicer akan jauh lebih ringan dari Excel karena pekerjaan bera
 | D3 | Parquet dua lapis per sheet; raw posisional semua baris; typed per `schemaRevision`; header = metadata | Re-cast tanpa file asli, tanpa parse ulang, tanpa korupsi baca |
 | D4 | Versi self-contained; refresh di-cast dengan skema aktif, tanpa inferensi; satu versi non-terminal per dataset | Append + retensi aman; koreksi user terbawa; tidak ada balapan upload |
 | D5 | MinIO di subdomain sendiri; S3 client menandatangani dengan endpoint publik | SigV4 menyertakan host + path |
-| D6 | Query non-pemilik hanya `{widgetId, filters}` | Viewer tidak boleh membaca kolom di luar widget |
+| D6 | Viewer hanya `{widgetId, filters}`; editor `{dashboardId, spec}`; pemilik `{datasetId, spec}`; sheet selalu di-resolve dalam dataset dashboard | Viewer tidak boleh membaca kolom di luar widget; tidak ada baca lintas dataset |
 | D7 | Worker 1 job/proses × 2 replika @ 3 GB; DuckDB `memory_limit` eksplisit di setiap proses | Hindari OOM-kill |
 | D8 | Tanggal dataset naive, tidak digeser zona; preset dihitung Asia/Jakarta sebagai naive | Tanggal Excel tidak bertimezone |
 | D9 | AC performa = bukti manual via `npm run perf` + laporan `docs/ai/perf/<task>.md`; `npm run check` memakai fixture kecil (≤ 50k baris) | Check CI harus cepat dan deterministik |
 | D10 | Fixture: xlsx 1 GB = 3 sheet × 1 juta baris × ~30 kolom (teks-berat); CSV 1 GB ≈ 8 juta baris untuk target query 10 juta baris | Excel maks 1.048.576 baris/sheet |
 | D11 | Format Rupiah `Rp 1.234.568` dengan spasi biasa (formatter mengganti U+00A0) | Test deterministik |
 | D12 | Poster/durasi video diambil di browser; tidak ada ffmpeg di stack | Jaga image kecil |
+| D14 | Keamanan dasar: CSP nonce + header (T-027), requireUser()/requireAdmin() Node-side di setiap Server Action/Route Handler dengan `isAdmin` dari DB, lupa/ganti password dengan token hash sekali pakai (T-026), AuditLog untuk share/admin/ekspor/hapus, batas parser (baris/kolom/sheet/sel/rasio dekompresi/timeout), CSV formula-injection dinetralkan, markdown allowlist, task security berprofil strict dengan checklist ASVS | Hasil review ASVS/STRIDE 2026-10-11 |
+| D13 | UI hanya lewat rantai plugin frontend-expert; fondasi (arah, token preset, shell) ditetapkan sekali di T-025; setiap task UI lolos `/frontend-expert:audit` tanpa Critical/High dan mencatat Conventions check dengan waiver Icons = @tabler/icons-react | Konsistensi visual, anti "AI aesthetic", kebijakan ikon user |

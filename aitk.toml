@@ -9,4 +9,4 @@ cmd = "npm run check"
 
 [risk]
 # Changes matching these globs make a task "strict" (risk analysis + independent review).
-sensitive_paths = ["src/features/auth/**", "src/features/sharing/**", "src/lib/storage/**", "src/features/query/**", "prisma/**"]
+sensitive_paths = ["src/middleware.ts", "src/app/api/**", "src/features/auth/**", "src/features/admin/**", "src/features/sharing/**", "src/features/exports/**", "src/features/guides/**", "src/features/query/**", "src/features/widgets/**", "src/features/dashboards/**", "src/lib/storage/**", "src/lib/duckdb/**", "src/lib/queue/**", "src/lib/cache/**", "worker/**", "renderer/**", "prisma/**", "docker-compose*.yml", "Dockerfile*", "next.config.*", ".env.example", "deploy/**"]

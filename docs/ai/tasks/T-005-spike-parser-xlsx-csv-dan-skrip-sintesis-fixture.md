@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-001
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:45:08Z"
+updated: "2026-10-11T14:56:59Z"
 created_by: claude-code
 ---
 
@@ -23,3 +23,5 @@ Skrip scripts/make-fixture.ts parametris: xlsx (sheet × baris × kolom, rasio t
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:56:59Z Benchmark juga mengukur: penolakan <!DOCTYPE (entity expansion), rasio dekompresi, dan fixture zip-bomb kecil; parser yang tidak bisa dibatasi tidak dipilih (ADR-0002).

@@ -18,6 +18,9 @@ Next.js (App Router, TypeScript) · Tailwind · Prisma + PostgreSQL · MinIO (S3
 ## Panduan penggunaan (wajib)
 Halaman /panduan berisi artikel teks (markdown) dan video per role: pemilik dataset, editor, viewer, admin. Konten dikelola admin dari UI tanpa deploy ulang; video disimpan di MinIO dan diputar HTML5 (bukan embed eksternal, karena on-prem). Tombol bantuan kontekstual di halaman upload, skema, dan builder.
 
+## UI
+Semua UI lewat plugin frontend-expert (rantai di conventions.md). Fondasi desain ditetapkan di T-025 dan didokumentasikan di docs/ai/design-system.md. Ikon hanya @tabler/icons-react.
+
 ## Batasan
 - Maks file 1 GB per upload; format .xlsx dan .csv (xls lama tidak didukung di v1).
 - Registrasi hanya email dengan domain yang di-whitelist (konfigurasi env), verifikasi email wajib.
