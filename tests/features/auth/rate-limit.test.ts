@@ -1,21 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { clientIp, hit, reset, RULES, type RateLimitStore } from "@/features/auth/rate-limit";
+import {
+  clientIp,
+  emailBucket,
+  hit,
+  peek,
+  reset,
+  RULES,
+  type RateLimitStore,
+} from "@/features/auth/rate-limit";
 
-/** Redis palsu: counter + TTL dalam memori. */
+/** Redis palsu: meniru skrip Lua INCR + EXPIRE NX + TTL secara atomik. */
 function fakeStore() {
   const counts = new Map<string, number>();
   const ttls = new Map<string, number>();
-  const store: RateLimitStore = {
-    incr: async (key: string) => {
+  const store = {
+    eval: async (_script: string, _n: number, key: string, windowSec: string) => {
       const n = (counts.get(key) ?? 0) + 1;
       counts.set(key, n);
-      return n;
+      if (!ttls.has(key)) ttls.set(key, Number(windowSec));
+      return [n, ttls.get(key)];
     },
-    expire: async (key: string, sec: number) => {
-      ttls.set(key, sec);
-      return 1;
-    },
-    ttl: async (key: string) => ttls.get(key) ?? -1,
+    get: async (key: string) => (counts.has(key) ? String(counts.get(key)) : null),
+    ttl: async (key: string) => ttls.get(key) ?? -2,
     del: async (key: string) => {
       counts.delete(key);
       ttls.delete(key);
@@ -25,26 +31,32 @@ function fakeStore() {
   return { store, counts, ttls };
 }
 
-describe("rate limit jendela tetap", () => {
-  it("login per IP: 10 boleh, ke-11 ditolak dengan retryAfter", async () => {
+describe("rate limit", () => {
+  it("hit: TTL selalu dipasang (atomik); ke-11 ditolak dengan retryAfter", async () => {
     const { store, ttls } = fakeStore();
     let last;
     for (let i = 0; i < 10; i++) last = await hit(store, RULES.loginIp, "1.2.3.4");
     expect(last?.allowed).toBe(true);
-    expect(last?.remaining).toBe(0);
     const eleventh = await hit(store, RULES.loginIp, "1.2.3.4");
     expect(eleventh.allowed).toBe(false);
     expect(eleventh.retryAfterSec).toBe(600);
     expect(ttls.get("rl:login:ip:1.2.3.4")).toBe(600);
   });
 
-  it("subjek berbeda tidak saling memengaruhi; reset menghapus counter", async () => {
-    const { store } = fakeStore();
+  it("peek tidak menambah counter; menolak setelah limit tercapai", async () => {
+    const { store, counts } = fakeStore();
+    expect((await peek(store, RULES.loginAccount, "a@x.id")).allowed).toBe(true);
+    expect(counts.size).toBe(0);
     for (let i = 0; i < 5; i++) await hit(store, RULES.loginAccount, "a@x.id");
-    expect((await hit(store, RULES.loginAccount, "a@x.id")).allowed).toBe(false);
-    expect((await hit(store, RULES.loginAccount, "b@x.id")).allowed).toBe(true);
+    expect((await peek(store, RULES.loginAccount, "a@x.id")).allowed).toBe(false);
+    expect((await peek(store, RULES.loginAccount, "b@x.id")).allowed).toBe(true);
     await reset(store, RULES.loginAccount, "a@x.id");
-    expect((await hit(store, RULES.loginAccount, "a@x.id")).allowed).toBe(true);
+    expect((await peek(store, RULES.loginAccount, "a@x.id")).allowed).toBe(true);
+  });
+
+  it("emailBucket membuang +tag agar plus-addressing tidak membuka bucket baru", () => {
+    expect(emailBucket("anas+uji1@pcpexpress.com")).toBe("anas@pcpexpress.com");
+    expect(emailBucket("anas@pcpexpress.com")).toBe("anas@pcpexpress.com");
   });
 });
 

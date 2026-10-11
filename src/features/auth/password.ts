@@ -1,3 +1,4 @@
+import "server-only";
 import { hash, verify } from "@node-rs/argon2";
 
 /** Parameter argon2id sesuai T-002 AC: m=64 MiB, t=3, p=1. algorithm 2 = Argon2id (const enum tidak bisa diakses di bawah isolatedModules). */

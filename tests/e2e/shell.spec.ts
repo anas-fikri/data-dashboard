@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
 
 const WIDTHS = [320, 768, 1024, 1440] as const;
 
@@ -9,7 +10,18 @@ async function noHorizontalScroll(page: Page) {
   expect(overflow, "tidak boleh ada scroll horizontal").toBeLessThanOrEqual(0);
 }
 
-test.describe("app shell", () => {
+const SHELL_USER = uniqueEmail("shell");
+
+test.describe("app shell (masuk)", () => {
+  test.beforeAll(async ({ browser, request }) => {
+    const page = await browser.newPage();
+    await registerAndVerify(page, request, SHELL_USER);
+    await page.close();
+  });
+  test.beforeEach(async ({ page }) => {
+    await apiLogin(page, SHELL_USER);
+  });
+
   for (const width of WIDTHS) {
     test(`lebar ${width}: tanpa scroll horizontal, satu h1, kromo lengkap`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
@@ -17,7 +29,7 @@ test.describe("app shell", () => {
       await noHorizontalScroll(page);
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
       await expect(page.getByTestId("theme-toggle")).toBeVisible();
-      await expect(page.getByRole("link", { name: "Masuk" })).toBeVisible();
+      await expect(page.getByTestId("account-menu-trigger")).toBeVisible();
       await expect(page.getByRole("link", { name: "Panduan penggunaan" })).toBeVisible();
       if (width < 768) {
         await expect(page.getByTestId("drawer-open")).toBeVisible();
@@ -38,8 +50,7 @@ test.describe("app shell", () => {
     await expect(page.getByTestId("drawer-backdrop")).toBeVisible();
     await noHorizontalScroll(page);
     await page.getByTestId("drawer").getByRole("link", { name: "Panduan" }).click();
-    // Tamu diarahkan ke login dengan next=/panduan; yang penting drawer menutup saat navigasi.
-    await expect(page).toHaveURL(/panduan/);
+    await expect(page).toHaveURL(/\/panduan$/);
     await expect(page.getByTestId("drawer")).toBeHidden();
   });
 
@@ -76,7 +87,9 @@ test.describe("app shell", () => {
     await page.getByTestId("theme-toggle").click();
     await expect(html).not.toHaveClass(/dark/);
   });
+});
 
+test.describe("app shell (tamu)", () => {
   test("tamu yang membuka rute tak dikenal diarahkan ke login (rute tidak dibocorkan)", async ({
     page,
   }) => {

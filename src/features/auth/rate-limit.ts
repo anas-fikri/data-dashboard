@@ -1,3 +1,4 @@
+import "server-only";
 import type Redis from "ioredis";
 
 export interface RateLimitRule {
@@ -10,7 +11,9 @@ export interface RateLimitRule {
 }
 
 export const RULES = {
+  /** Kegagalan login per IP. */
   loginIp: { name: "login:ip", limit: 10, windowSec: 10 * 60 },
+  /** Kegagalan login per akun (dilewati untuk perangkat yang pernah sukses). */
   loginAccount: { name: "login:acct", limit: 5, windowSec: 15 * 60 },
   registerEmail: { name: "register:email", limit: 3, windowSec: 60 * 60 },
   registerIp: { name: "register:ip", limit: 20, windowSec: 60 * 60 },
@@ -26,38 +29,77 @@ export interface RateLimitResult {
 }
 
 /** Klien minimal yang dibutuhkan (memudahkan Redis palsu di unit test). */
-export type RateLimitStore = Pick<Redis, "incr" | "expire" | "ttl" | "del">;
+export type RateLimitStore = Pick<Redis, "eval" | "get" | "ttl" | "del">;
 
 /**
- * Jendela tetap: INCR + EXPIRE pada percobaan pertama. Fail-closed: bila Redis error,
- * pemanggil memperlakukannya sebagai ditolak (keamanan > ketersediaan untuk login).
+ * INCR + EXPIRE NX atomik dalam satu skrip Lua: key tidak pernah tertinggal tanpa TTL
+ * meski proses mati di tengah (temuan review T-002 #7).
  */
+const INCR_WITH_TTL = `
+local n = redis.call('INCR', KEYS[1])
+redis.call('EXPIRE', KEYS[1], ARGV[1], 'NX')
+return {n, redis.call('TTL', KEYS[1])}
+`;
+
+function keyOf(rule: RateLimitRule, subject: string): string {
+  return `rl:${rule.name}:${subject}`;
+}
+
+/** Menambah counter (untuk percobaan yang dihitung) dan mengembalikan status setelahnya. */
 export async function hit(
   store: RateLimitStore,
   rule: RateLimitRule,
   subject: string,
 ): Promise<RateLimitResult> {
-  const key = `rl:${rule.name}:${subject}`;
-  const count = await store.incr(key);
-  if (count === 1) await store.expire(key, rule.windowSec);
-  const ttl = await store.ttl(key);
-  const retryAfterSec = ttl > 0 ? ttl : rule.windowSec;
+  const [count, ttl] = (await store.eval(
+    INCR_WITH_TTL,
+    1,
+    keyOf(rule, subject),
+    String(rule.windowSec),
+  )) as [number, number];
   return {
     allowed: count <= rule.limit,
     remaining: Math.max(0, rule.limit - count),
-    retryAfterSec,
+    retryAfterSec: ttl > 0 ? ttl : rule.windowSec,
+  };
+}
+
+/** Membaca status tanpa menambah counter (dipakai sebelum login: hanya kegagalan yang dihitung). */
+export async function peek(
+  store: RateLimitStore,
+  rule: RateLimitRule,
+  subject: string,
+): Promise<RateLimitResult> {
+  const key = keyOf(rule, subject);
+  const count = Number((await store.get(key)) ?? 0);
+  const ttl = count > 0 ? await store.ttl(key) : -2;
+  return {
+    allowed: count < rule.limit,
+    remaining: Math.max(0, rule.limit - count),
+    retryAfterSec: ttl > 0 ? ttl : rule.windowSec,
   };
 }
 
 /** Dipakai setelah login sukses agar kegagalan lama tidak menghukum pengguna sah. */
 export async function reset(store: RateLimitStore, rule: RateLimitRule, subject: string) {
-  await store.del(`rl:${rule.name}:${subject}`);
+  await store.del(keyOf(rule, subject));
+}
+
+/**
+ * Kunci rate limit per email: buang "+tag" pada local part agar plus-addressing tidak
+ * membuka bucket baru untuk mailbox yang sama.
+ */
+export function emailBucket(email: string): string {
+  const [local = "", domain = ""] = email.split("@");
+  return `${local.split("+")[0]}@${domain}`;
 }
 
 /**
  * IP klien: hanya percaya header dari reverse proxy bila TRUST_PROXY=true (X-Real-IP yang
- * di-set proxy, bukan X-Forwarded-For yang bisa dipalsukan klien). Tanpa proxy: Next tidak
- * mengekspos alamat socket → "local" (semua klien dev satu bucket).
+ * di-set proxy, bukan X-Forwarded-For yang bisa dipalsukan klien). Proxy WAJIB menimpa
+ * header ini (nginx: proxy_set_header X-Real-IP $remote_addr) — diuji di T-023.
+ * Tanpa proxy: Next tidak mengekspos alamat socket → "local" (hanya dev; produksi menolak
+ * start bila TRUST_PROXY bukan true, lihat env.ts).
  */
 export function clientIp(headers: Headers, trustProxy: boolean): string {
   if (!trustProxy) return "local";

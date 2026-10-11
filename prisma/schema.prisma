@@ -41,6 +41,9 @@ model VerificationToken {
   user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   purpose   TokenPurpose
   tokenHash String       @unique
+  /// Hash password milik pendaftar yang meminta token ini; diterapkan saat token dipakai
+  /// (mencegah pre-account takeover: pendaftar lain tidak bisa "menitipkan" password-nya).
+  pendingPasswordHash String?
   expiresAt DateTime
   usedAt    DateTime?
   createdAt DateTime     @default(now())

@@ -1,7 +1,7 @@
 ---
 id: T-002
 title: Registrasi terbatas domain, verifikasi email, login JWT dengan sessionVersion
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,12 +11,18 @@ depends_on:
   - T-001
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T16:26:54Z"
+updated: "2026-10-11T22:54:13Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 9558d66d0a4120de3b2e3e0b558d678f30f07434
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T22:54:13Z"
+      findings: 14
 ---
 
 ## Objective

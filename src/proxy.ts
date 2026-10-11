@@ -9,10 +9,17 @@ import { loginUrl } from "@/features/auth/redirect";
  * Juga meneruskan path saat ini lewat header agar requireUser() bisa menyusun ?next=.
  */
 
-const PUBLIC_PREFIXES = ["/login", "/register", "/verify", "/health", "/api/health", "/api/auth"];
+// Deny-by-default: hanya rute ini yang boleh tanpa sesi (rute /api/auth eksplisit, bukan prefix).
+const PUBLIC_PREFIXES = [
+  "/login",
+  "/register",
+  "/verify",
+  "/health",
+  "/api/health",
+  "/api/auth/login",
+];
 
 function isPublic(pathname: string): boolean {
-  if (pathname === "/") return true;
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 

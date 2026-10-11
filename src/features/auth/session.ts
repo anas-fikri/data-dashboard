@@ -4,7 +4,14 @@ import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { SESSION_MAX_AGE_SEC, signSession, verifySession } from "./jwt";
+import {
+  DEVICE_MAX_AGE_SEC,
+  SESSION_MAX_AGE_SEC,
+  signDevice,
+  signSession,
+  verifyDevice,
+  verifySession,
+} from "./jwt";
 import { loginUrl } from "./redirect";
 
 export interface SessionUser {
@@ -14,30 +21,47 @@ export interface SessionUser {
   isAdmin: boolean;
 }
 
-/** Nama cookie: prefix __Secure- hanya valid di HTTPS, jadi di dev memakai nama polos. */
+function isHttps(): boolean {
+  return env().APP_URL.startsWith("https://");
+}
+
+/** Nama cookie: prefix __Secure- hanya valid di HTTPS (produksi wajib https, lihat env.ts). */
 export function sessionCookieName(): string {
-  return env().APP_URL.startsWith("https://") ? "__Secure-dd.session" : "dd.session";
+  return isHttps() ? "__Secure-dd.session" : "dd.session";
 }
 
-function cookieOptions() {
-  const secure = env().APP_URL.startsWith("https://");
-  return {
-    httpOnly: true,
-    sameSite: "lax" as const,
-    secure,
-    path: "/",
-    maxAge: SESSION_MAX_AGE_SEC,
-  };
+function deviceCookieName(): string {
+  return isHttps() ? "__Secure-dd.device" : "dd.device";
 }
 
-/** Membuat JWT untuk user dan menulis cookie sesi. Dipanggil setelah kredensial terverifikasi. */
+function cookieOptions(maxAge: number) {
+  return { httpOnly: true, sameSite: "lax" as const, secure: isHttps(), path: "/", maxAge };
+}
+
+/** Membuat JWT untuk user, menulis cookie sesi, dan menandai perangkat ini sebagai dikenal. */
 export async function createSession(user: { id: string; sessionVersion: number }) {
-  const token = await signSession({ sub: user.id, sv: user.sessionVersion }, env().AUTH_SECRET);
-  (await cookies()).set(sessionCookieName(), token, cookieOptions());
+  const jar = await cookies();
+  const secrets = env().AUTH_SECRET;
+  jar.set(
+    sessionCookieName(),
+    await signSession({ sub: user.id, sv: user.sessionVersion }, secrets),
+    cookieOptions(SESSION_MAX_AGE_SEC),
+  );
+  jar.set(
+    deviceCookieName(),
+    await signDevice(user.id, secrets),
+    cookieOptions(DEVICE_MAX_AGE_SEC),
+  );
 }
 
 export async function destroySession() {
-  (await cookies()).set(sessionCookieName(), "", { ...cookieOptions(), maxAge: 0 });
+  (await cookies()).set(sessionCookieName(), "", cookieOptions(0));
+}
+
+/** userId dari cookie perangkat-dikenal (untuk melewati kunci per akun), atau null. */
+export async function knownDeviceUserId(): Promise<string | null> {
+  const token = (await cookies()).get(deviceCookieName())?.value;
+  return token ? verifyDevice(token, env().AUTH_SECRET) : null;
 }
 
 /**
@@ -75,7 +99,8 @@ export class AuthError extends Error {
 }
 
 /**
- * Untuk halaman: redirect ke /login?next=<path saat ini> bila tidak ada sesi.
+ * Untuk halaman: redirect ke /login?next=<path saat ini> bila tidak ada sesi. Cookie basi
+ * ditimpa saat login berikutnya (render server tidak boleh menulis cookie).
  * Untuk Server Action / Route Handler: lempar AuthError agar pemanggil membalas kode/HTTP.
  */
 export async function requireUser(mode: "page" | "action" = "page"): Promise<SessionUser> {

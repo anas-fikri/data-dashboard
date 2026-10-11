@@ -70,6 +70,24 @@ describe("parseEnv", () => {
   });
 });
 
+describe("parseEnv produksi", () => {
+  const prod = {
+    ...valid,
+    NODE_ENV: "production",
+    APP_URL: "https://dashboard.pcpexpress.com",
+    TRUST_PROXY: "true",
+  } as NodeJS.ProcessEnv;
+
+  it("menerima konfigurasi produksi yang lengkap", () => {
+    expect(() => parseEnv(prod)).not.toThrow();
+  });
+
+  it("menolak TRUST_PROXY=false dan APP_URL http di produksi", () => {
+    expect(() => parseEnv({ ...prod, TRUST_PROXY: "false" })).toThrow(/TRUST_PROXY/);
+    expect(() => parseEnv({ ...prod, APP_URL: "http://dashboard.local" })).toThrow(/https/);
+  });
+});
+
 describe("findPlaceholderVars", () => {
   it("kosong bila tidak ada placeholder", () => {
     expect(findPlaceholderVars(valid)).toEqual([]);

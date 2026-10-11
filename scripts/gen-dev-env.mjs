@@ -39,5 +39,6 @@ out = out.replace(
   `REDIS_URL=redis://:${secrets.REDIS_PASSWORD}@127.0.0.1:${redisPort}/0`,
 );
 
+out = out.replace(/^E2E_ENDPOINTS=.*$/m, "E2E_ENDPOINTS=1"); // dev lokal: e2e butuh endpoint uji
 writeFileSync(".env", out, { mode: 0o600 });
 console.log(".env dibuat dengan secret acak (mode 600). Jalankan: npm run compose:up");

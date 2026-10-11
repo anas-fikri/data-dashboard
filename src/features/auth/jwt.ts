@@ -1,5 +1,10 @@
 import { errors, jwtVerify, SignJWT } from "jose";
 
+/*
+ * Tidak mengimpor "server-only": dipakai juga oleh src/proxy.ts (runtime edge, tetap server).
+ * Tidak pernah diimpor dari komponen klien.
+ */
+
 export interface SessionClaims {
   /** User id. */
   sub: string;
@@ -8,50 +13,90 @@ export interface SessionClaims {
 }
 
 export const SESSION_MAX_AGE_SEC = 12 * 60 * 60; // 12 jam (T-027)
+export const DEVICE_MAX_AGE_SEC = 90 * 24 * 60 * 60; // perangkat-dikenal: 90 hari
 const ALG = "HS256";
 const ISSUER = "data-dashboard";
+const SESSION_AUD = "session";
+const DEVICE_AUD = "device";
 
 function keyOf(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-/** Menandatangani dengan secret pertama (yang aktif); `kid` = indeks untuk rotasi. */
-export async function signSession(claims: SessionClaims, secrets: string[], now = Date.now()) {
+async function sign(
+  payload: Record<string, unknown>,
+  sub: string,
+  aud: string,
+  maxAgeSec: number,
+  secrets: string[],
+  now: number,
+) {
   const active = secrets[0];
   if (!active) throw new Error("AUTH_SECRET kosong");
   const iat = Math.floor(now / 1000);
-  return new SignJWT({ sv: claims.sv })
-    .setProtectedHeader({ alg: ALG, kid: "0" })
-    .setSubject(claims.sub)
+  return new SignJWT(payload)
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(sub)
     .setIssuer(ISSUER)
+    .setAudience(aud)
     .setIssuedAt(iat)
-    .setExpirationTime(iat + SESSION_MAX_AGE_SEC)
+    .setExpirationTime(iat + maxAgeSec)
     .sign(keyOf(active));
 }
 
-/**
- * Memverifikasi terhadap setiap secret (rotasi: secret lama tetap diterima sampai kedaluwarsa).
- * Mengembalikan null untuk token tidak valid/kedaluwarsa — tidak pernah melempar.
- */
-export async function verifySession(
+async function verify(
   token: string,
+  aud: string,
+  maxAgeSec: number,
   secrets: string[],
-  now = Date.now(),
-): Promise<SessionClaims | null> {
+  now: number,
+): Promise<Record<string, unknown> | null> {
   for (const secret of secrets) {
     try {
       const { payload } = await jwtVerify(token, keyOf(secret), {
         algorithms: [ALG],
         issuer: ISSUER,
+        audience: aud,
+        requiredClaims: ["sub", "iat", "exp"],
+        maxTokenAge: maxAgeSec,
         currentDate: new Date(now),
       });
-      if (typeof payload.sub !== "string" || typeof payload.sv !== "number") return null;
-      return { sub: payload.sub, sv: payload.sv };
+      return payload as Record<string, unknown>;
     } catch (e) {
-      // Tanda tangan salah → coba secret berikutnya; kedaluwarsa/claim salah → langsung null.
+      // Tanda tangan salah → coba secret berikutnya (rotasi); kedaluwarsa/claim salah → null.
       if (e instanceof errors.JWSSignatureVerificationFailed) continue;
       return null;
     }
   }
   return null;
+}
+
+/** Menandatangani dengan secret pertama (aktif); secret lain hanya untuk verifikasi (rotasi). */
+export function signSession(claims: SessionClaims, secrets: string[], now = Date.now()) {
+  return sign({ sv: claims.sv }, claims.sub, SESSION_AUD, SESSION_MAX_AGE_SEC, secrets, now);
+}
+
+/** null untuk token tidak valid/kedaluwarsa — tidak pernah melempar. */
+export async function verifySession(
+  token: string,
+  secrets: string[],
+  now = Date.now(),
+): Promise<SessionClaims | null> {
+  const p = await verify(token, SESSION_AUD, SESSION_MAX_AGE_SEC, secrets, now);
+  if (!p || typeof p.sub !== "string" || typeof p.sv !== "number") return null;
+  return { sub: p.sub, sv: p.sv };
+}
+
+/** Token perangkat-dikenal: bukti bahwa perangkat ini pernah login sukses untuk user ini. */
+export function signDevice(userId: string, secrets: string[], now = Date.now()) {
+  return sign({}, userId, DEVICE_AUD, DEVICE_MAX_AGE_SEC, secrets, now);
+}
+
+export async function verifyDevice(
+  token: string,
+  secrets: string[],
+  now = Date.now(),
+): Promise<string | null> {
+  const p = await verify(token, DEVICE_AUD, DEVICE_MAX_AGE_SEC, secrets, now);
+  return p && typeof p.sub === "string" ? p.sub : null;
 }

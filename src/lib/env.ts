@@ -113,6 +113,15 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
         `Menolak start produksi: nilai placeholder masih dipakai di ${placeholders.join(", ")}`,
       );
     }
+    // Tanpa proxy tepercaya semua klien berbagi satu bucket rate limit (siapa pun bisa
+    // mengunci login seluruh perusahaan) — review T-002 #5.
+    if (!parsed.data.TRUST_PROXY) {
+      throw new Error("Menolak start produksi: TRUST_PROXY wajib true (di balik reverse proxy)");
+    }
+    // Cookie sesi wajib Secure + prefix __Secure- — review T-002 #13.
+    if (!parsed.data.APP_URL.startsWith("https://")) {
+      throw new Error("Menolak start produksi: APP_URL wajib https://");
+    }
   }
   return parsed.data;
 }

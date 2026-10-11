@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { mailer } from "@/lib/mail";
@@ -15,7 +16,12 @@ async function send(to: string, subject: string, text: string, html: string): Pr
     await mailer().sendMail({ from: env().MAIL_FROM, to, subject, text, html });
     return true;
   } catch (e) {
-    logger.error({ err: e instanceof Error ? e.message : String(e), to }, "gagal mengirim email");
+    // Tanpa alamat email di log (PII): cukup hash pendek untuk korelasi.
+    const toRef = createHash("sha256").update(to).digest("hex").slice(0, 12);
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e), toRef },
+      "gagal mengirim email",
+    );
     return false;
   }
 }

@@ -1,3 +1,4 @@
+import "server-only";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
 /** Token 32 byte acak (base64url, 43 karakter); hanya hash-nya yang disimpan di DB. */
