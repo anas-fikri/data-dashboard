@@ -113,6 +113,18 @@ model DatasetVersion {
   @@index([status])
 }
 
+/// Prefix storage yang gagal dihapus; diproses ulang oleh job pembersihan (T-013/T-023) agar
+/// file pengguna tidak tertinggal setelah dataset dihapus (review T-003 #2).
+model StorageCleanup {
+  id        String   @id @default(cuid())
+  prefix    String
+  reason    String
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 /// Dashboard minimal (T-003: agar hapus kaskade teruji). Kolom builder ditambah di T-010.
 model Dashboard {
   id        String   @id @default(cuid())

@@ -44,6 +44,23 @@ try {
     });
     await prisma.dashboard.create({ data: { datasetId, name: "Ringkasan penjualan" } });
     console.log(JSON.stringify({ ok: true }));
+  } else if (cmd === "fill") {
+    // datasetId di sini = email pemilik; argumen ke-3 = jumlah dataset total yang diinginkan
+    const owner = await prisma.user.findUniqueOrThrow({ where: { email: datasetId } });
+    const target = Number(process.argv[4] ?? "49");
+    const have = await prisma.dataset.count({ where: { ownerId: owner.id } });
+    const rows = Array.from({ length: Math.max(0, target - have) }, (_, i) => ({
+      ownerId: owner.id,
+      name: `Isi ${have + i + 1}`,
+      nameKey: `isi ${have + i + 1}`,
+    }));
+    await prisma.dataset.createMany({ data: rows });
+    console.log(JSON.stringify({ total: have + rows.length }));
+  } else if (cmd === "total") {
+    const owner = await prisma.user.findUniqueOrThrow({ where: { email: datasetId } });
+    console.log(
+      JSON.stringify({ total: await prisma.dataset.count({ where: { ownerId: owner.id } }) }),
+    );
   } else if (cmd === "count") {
     const [versions, dashboards, exists] = await Promise.all([
       prisma.datasetVersion.count({ where: { datasetId } }),

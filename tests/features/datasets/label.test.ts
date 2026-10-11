@@ -63,6 +63,16 @@ describe("validateDatasetInput", () => {
     });
   });
 
+  it("menolak karakter kontrol dan format (bidi override, zero-width)", () => {
+    expect(validateDatasetInput("Gaji‮txt.exe", null)).toMatchObject({
+      ok: false,
+      field: "name",
+    });
+    expect(validateDatasetInput("Data​ku", null)).toMatchObject({ ok: false, field: "name" });
+    expect(validateDatasetInput("Data\u0007", null)).toMatchObject({ ok: false, field: "name" });
+    expect(validateDatasetInput("Penjualan Q3 – Ringkas", null)).toMatchObject({ ok: true });
+  });
+
   it("isIdShape hanya menerima bentuk cuid", () => {
     expect(isIdShape("cmv3z0sxg0000ocicnzrwpr0g")).toBe(true);
     expect(isIdShape("../etc")).toBe(false);

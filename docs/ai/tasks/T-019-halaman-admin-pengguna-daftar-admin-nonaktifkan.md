@@ -12,7 +12,7 @@ depends_on:
   - T-003
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:02Z"
+updated: "2026-10-11T23:56:00Z"
 created_by: claude-code
 ---
 
@@ -32,8 +32,8 @@ created_by: claude-code
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
+- 2026-10-11T23:56:00Z Dari review T-003: Dataset.owner onDelete Cascade → menghapus user menghapus baris dataset tetapi tidak objek storage. Penghapusan/penonaktifan user oleh admin wajib memanggil deleteDatasetObjects per dataset (atau mencatat ke StorageCleanup).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

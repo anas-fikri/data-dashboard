@@ -16,6 +16,10 @@ export function nameKeyOf(name: string): string {
 export function validateDatasetInput(nameRaw: unknown, descriptionRaw: unknown): ValidationResult {
   const name = typeof nameRaw === "string" ? nameRaw.trim().replace(/\s+/g, " ") : "";
   if (!name) return { ok: false, field: "name", message: "Beri nama dataset." };
+  // Karakter kontrol/format (mis. U+202E pembalik arah teks) bisa menipu tampilan nama saat dibagikan.
+  if (/[\p{Cc}\p{Cf}]/u.test(name)) {
+    return { ok: false, field: "name", message: "Nama mengandung karakter yang tidak diizinkan." };
+  }
   if (name.length > NAME_MAX) {
     return { ok: false, field: "name", message: `Nama maksimal ${NAME_MAX} karakter.` };
   }

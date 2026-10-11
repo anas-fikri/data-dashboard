@@ -109,19 +109,25 @@ export async function createDataset(
 ): Promise<DatasetResult<{ id: string }>> {
   const v = validateDatasetInput(nameRaw, descriptionRaw);
   if (!v.ok) return { ok: false, code: "INVALID", field: v.field, message: v.message };
-  const count = await prisma.dataset.count({ where: { ownerId } });
-  if (count >= DATASETS_PER_USER) {
-    return {
-      ok: false,
-      code: "LIMIT_REACHED",
-      message: `Batas ${DATASETS_PER_USER} dataset per pengguna tercapai. Hapus dataset yang tidak dipakai.`,
-    };
-  }
   try {
-    const row = await prisma.dataset.create({
-      data: { ownerId, name: v.name, nameKey: v.nameKey, description: v.description },
-      select: { id: true },
+    // Hitung + buat di bawah advisory lock per pemilik: request paralel tidak bisa menembus batas
+    // (review T-003 #1). Lock dilepas otomatis di akhir transaksi.
+    const row = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`datasets:${ownerId}`}))`;
+      const count = await tx.dataset.count({ where: { ownerId } });
+      if (count >= DATASETS_PER_USER) return null;
+      return tx.dataset.create({
+        data: { ownerId, name: v.name, nameKey: v.nameKey, description: v.description },
+        select: { id: true },
+      });
     });
+    if (!row) {
+      return {
+        ok: false,
+        code: "LIMIT_REACHED",
+        message: `Batas ${DATASETS_PER_USER} dataset per pengguna tercapai. Hapus dataset yang tidak dipakai.`,
+      };
+    }
     logger.info({ datasetId: row.id }, "dataset dibuat");
     return { ok: true, data: row };
   } catch (e) {

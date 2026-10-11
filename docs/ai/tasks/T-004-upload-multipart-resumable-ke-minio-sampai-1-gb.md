@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-11T23:56:00Z"
 created_by: claude-code
 ---
 
@@ -34,6 +34,7 @@ Alur B2. Presigned multipart 16 MiB langsung browser→MinIO; S3 client menandat
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Tidak pernah menerbitkan presigned GET untuk prefix raw/ atau parquet/. Cap dataset/user 50, versi UPLOADING/user 2.
+- 2026-10-11T23:56:00Z Dari review T-003: complete/finalize upload wajib memeriksa dataset masih ada (where {id, ownerId}) dan menghapus objek bila sudah dihapus (hapus dataset tidak mengunci upload yang sedang berjalan).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

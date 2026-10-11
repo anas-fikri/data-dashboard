@@ -1,5 +1,6 @@
 import "server-only";
 import { DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { bucket, s3Internal } from "@/lib/storage/s3";
 
@@ -21,7 +22,16 @@ export async function deletePrefix(prefix: string): Promise<number> {
     );
     const keys = (page.Contents ?? []).flatMap((o) => (o.Key ? [{ Key: o.Key }] : []));
     if (keys.length) {
-      await s3.send(new DeleteObjectsCommand({ Bucket: bucket(), Delete: { Objects: keys } }));
+      const res = await s3.send(
+        new DeleteObjectsCommand({ Bucket: bucket(), Delete: { Objects: keys } }),
+      );
+      // DeleteObjects tidak melempar untuk kegagalan per kunci; laporan ada di res.Errors.
+      const failed = res.Errors ?? [];
+      if (failed.length) {
+        throw new Error(
+          `${failed.length} objek gagal dihapus di ${prefix} (contoh: ${failed[0]?.Key} ${failed[0]?.Code})`,
+        );
+      }
       deleted += keys.length;
     }
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
@@ -29,10 +39,24 @@ export async function deletePrefix(prefix: string): Promise<number> {
   return deleted;
 }
 
-/** Hapus seluruh objek dataset (file mentah + Parquet). Dipanggil saat profil dihapus. */
+/**
+ * Hapus seluruh objek dataset (file mentah + Parquet). Prefix yang gagal (sebagian atau seluruhnya)
+ * dicatat ke StorageCleanup untuk diproses ulang job pembersihan, lalu error dilempar ke pemanggil.
+ */
 export async function deleteDatasetObjects(datasetId: string): Promise<number> {
   let total = 0;
-  for (const prefix of datasetPrefixes(datasetId)) total += await deletePrefix(prefix);
+  const failures: { prefix: string; reason: string }[] = [];
+  for (const prefix of datasetPrefixes(datasetId)) {
+    try {
+      total += await deletePrefix(prefix);
+    } catch (e) {
+      failures.push({ prefix, reason: e instanceof Error ? e.message : String(e) });
+    }
+  }
+  if (failures.length) {
+    await prisma.storageCleanup.createMany({ data: failures });
+    throw new Error(`penghapusan storage dataset ${datasetId} belum tuntas; dicatat untuk diulang`);
+  }
   logger.info({ datasetId, objects: total }, "objek storage dataset dihapus");
   return total;
 }

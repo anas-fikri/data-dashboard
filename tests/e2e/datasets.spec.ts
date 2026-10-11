@@ -152,6 +152,46 @@ test.describe("dataset", () => {
     expect((await page.goto(`/datasets/${id}`))?.status()).toBe(404);
   });
 
+  test("batas 50 dataset tidak bisa ditembus dengan 5 permintaan paralel", async ({
+    page,
+    browser,
+    request,
+  }) => {
+    const email = uniqueEmail("ds-limit");
+    await createUser(browser, request, email);
+    execFileSync("node", ["scripts/dev-dataset-fixture.mjs", "fill", email, "48"]);
+    await apiLogin(page, email);
+
+    // Tangkap Server Action buat dataset (dataset ke-49 lewat UI), lalu replay paralel 5×
+    let captured: { url: string; headers: Record<string, string>; body: string } | null = null;
+    page.on("request", (r) => {
+      if (r.method() === "POST" && r.headers()["next-action"] && !captured) {
+        captured = { url: r.url(), headers: r.headers(), body: r.postData() ?? "" };
+      }
+    });
+    await createDataset(page, "Ke Empat Sembilan");
+    await expect.poll(() => captured !== null).toBe(true);
+    const req = captured!;
+    await Promise.all(
+      [1, 2, 3, 4, 5].map((n) =>
+        page.request.fetch(req.url, {
+          method: "POST",
+          headers: req.headers,
+          data: req.body.replaceAll("Ke Empat Sembilan", `Paralel ${n}`),
+        }),
+      ),
+    );
+    const total = JSON.parse(
+      execFileSync("node", ["scripts/dev-dataset-fixture.mjs", "total", email]).toString(),
+    ) as { total: number };
+    expect(total.total).toBe(50);
+
+    await page.goto("/datasets/baru");
+    await page.getByLabel("Nama dataset").fill("Satu Lagi");
+    await page.getByRole("button", { name: "Buat dataset" }).click();
+    await expect(page.getByTestId("form-alert")).toContainText("Batas 50 dataset");
+  });
+
   test("ponsel: daftar tanpa scroll horizontal", async ({ page }) => {
     await page.setViewportSize({ width: 320, height: 800 });
     await apiLogin(page, OWNER);

@@ -1,7 +1,7 @@
 ---
 id: T-003
 title: CRUD profil dataset dan model versi
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,12 +11,44 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T23:48:26Z"
+updated: "2026-10-11T23:56:00Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 66ba1d540b833c62b2ba8641dd7196ab53ff8fbb
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:56:00Z"
+      findings: 2
+evidence:
+  audit:
+    at: "2026-10-11T23:54:34Z"
+    passed: true
+    tree: bd466ef1506e0eaaf817e63dd3a953445ef5f20cb5744b62c6b6342929c91928
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 604 packages
+          End status: 76 dirs visited, 288 inodes visited, 1 Extract calls, 38.70275ms elapsed, 38.704ms wall time
+          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
