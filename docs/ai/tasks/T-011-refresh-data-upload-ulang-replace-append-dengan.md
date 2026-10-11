@@ -7,7 +7,7 @@ goal: G-5
 depends_on:
   - T-009
 created: "2026-10-11T10:22:46Z"
-updated: "2026-10-11T10:22:46Z"
+updated: "2026-10-11T14:13:44Z"
 created_by: claude-code
 ---
 
@@ -23,3 +23,5 @@ Profil dataset menerima upload lanjutan: mode ganti seluruh data atau tambah bar
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:13:44Z Pemetaan kolom menulis ulang typed.parquet dari raw.parquet versi baru; tidak parse ulang file. Status baru 'menunggu pemetaan' (docs/flow-kerja.md A4, B5).

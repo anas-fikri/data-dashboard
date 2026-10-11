@@ -9,7 +9,7 @@ tags:
 depends_on:
   - T-006
 created: "2026-10-11T10:22:46Z"
-updated: "2026-10-11T10:22:46Z"
+updated: "2026-10-11T14:13:44Z"
 created_by: claude-code
 ---
 
@@ -26,3 +26,5 @@ Endpoint menerima spec (zod): sheet, dimensions[], measures[{column, agg}], filt
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:13:44Z Key cache memuat versionId (tidak perlu invalidasi massal). Salin typed.parquet versi aktif ke disk lokal app, fallback S3 (docs/flow-kerja.md B1, B4).

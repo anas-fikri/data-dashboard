@@ -18,7 +18,7 @@ User mengunggah Excel/CSV sampai 1 GB (±8 juta baris) dengan struktur beragam, 
 
 ## Decision Outcome
 
-Chosen option: "3. Streaming → Parquet → DuckDB", because: memori worker terikat ukuran batch bukan ukuran file; Parquet kolumnar + DuckDB memberi agregasi cepat untuk puluhan juta baris tanpa server DB tambahan; skema per dataset dinamis tanpa migrasi; cocok deploy on-prem satu VM (zero-capex). PostgreSQL tetap dipakai hanya untuk metadata (user, profil dataset, skema, layout dashboard, akses).
+Chosen option: "3. Streaming → Parquet → DuckDB", because: memori worker terikat ukuran batch bukan ukuran file; Parquet kolumnar + DuckDB memberi agregasi cepat untuk puluhan juta baris tanpa server DB tambahan; skema per dataset dinamis tanpa migrasi; cocok deploy on-prem satu VM (zero-capex). Setiap sheet disimpan dua lapis: `raw.parquet` (semua kolom VARCHAR, dipertahankan) dan `typed.parquet` (bertipe, dibaca widget); koreksi tipe dan pemetaan kolom menulis ulang lapis bertipe dari lapis mentah tanpa membaca ulang file asli. PostgreSQL tetap dipakai hanya untuk metadata (user, profil dataset, skema, layout dashboard, akses).
 
 Opsi 1 ditolak: RAM browser. Opsi 2 ditolak: tabel dinamis per dataset menyulitkan migrasi dan agregasi 8 juta baris row-store lambat tanpa indeks khusus. Opsi 4 ditunda: menambah komponen operasional; DuckDB cukup sampai ratusan juta baris, dan Parquet sebagai format penyimpanan memungkinkan migrasi ke ClickHouse nanti tanpa re-ingest.
 

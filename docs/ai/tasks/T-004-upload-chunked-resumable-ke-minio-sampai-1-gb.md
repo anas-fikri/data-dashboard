@@ -9,7 +9,7 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T10:22:45Z"
-updated: "2026-10-11T10:22:45Z"
+updated: "2026-10-11T14:13:44Z"
 created_by: claude-code
 ---
 
@@ -26,3 +26,5 @@ Upload langsung dari browser ke MinIO via presigned multipart (chunk 16 MB), bis
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-11T14:13:44Z CSV tidak punya magic bytes: validasi = teks tanpa NUL + encoding + parse ≥1 baris. Batas 1 GB ditegakkan via jumlah presigned part (maks 64×16 MB) dan HeadObject setelah selesai. MinIO perlu CORS ExposeHeaders ETag. Lihat docs/flow-kerja.md B2.
