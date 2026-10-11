@@ -80,5 +80,5 @@ export async function proxy(request: NextRequest) {
 export const config = {
   // Semua rute kecuali aset statis. Pengecualian path persis (bukan awalan string) agar rute baru
   // seperti /brandx atau /robots.txtfoo tidak lolos tanpa CSP dan gerbang sesi (review T-027 #2).
-  matcher: ["/((?!_next/static/|_next/image/|brand/|favicon\\.ico$|robots\\.txt$).*)"],
+  matcher: ["/((?!_next/static/|_next/image(?:/|$)|brand/|favicon\\.ico$|robots\\.txt$).*)"],
 };

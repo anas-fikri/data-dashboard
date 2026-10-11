@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-001
 created: "2026-10-11T14:56:59Z"
-updated: "2026-10-11T23:44:44Z"
+updated: "2026-10-11T23:46:46Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,6 +22,10 @@ review:
       by: claude-security-reviewer-subagen
       at: "2026-10-11T23:44:44Z"
       findings: 2
+    - "n": 2
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:46:46Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
@@ -95,10 +99,10 @@ evidence:
 next.config + middleware: CSP nonce (script-src 'self' 'nonce-…' 'strict-dynamic'; style-src 'self' 'unsafe-inline' untuk ECharts/react-grid-layout; img-src/media-src/connect-src 'self' data: https://storage.<domain>; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'), X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy minimal. Cookie __Secure- HttpOnly SameSite=Lax; AUTH_URL https; AUTH_TRUST_HOST=true; serverActions.allowedOrigins=[APP_HOST]; JWT maxAge ≤ 12 jam rolling; AUTH_SECRET array untuk rotasi. /health eksternal hanya 200/503, detail hanya admin. Pino redaksi: tidak log body, token, nilai filter.
 
 ## Acceptance criteria
-- [ ] Given halaman mana pun di produksi, when respons diperiksa, then header CSP dengan nonce, nosniff, Referrer-Policy, frame-ancestors 'none' ada dan tidak ada inline script tanpa nonce yang diblokir di console
-- [ ] Given cookie sesi, when diperiksa, then berprefix __Secure-, HttpOnly, SameSite=Lax, dan JWT kedaluwarsa ≤ 12 jam
-- [ ] Given Server Action dipanggil dengan Origin berbeda dari APP_HOST, when dikirim, then ditolak
-- [ ] Given /health diakses tanpa login, when respons, then hanya status 200/503 tanpa nama layanan internal; given admin, then detail per layanan
+- [x] Given halaman mana pun di produksi, when respons diperiksa, then header CSP dengan nonce, nosniff, Referrer-Policy, frame-ancestors 'none' ada dan tidak ada inline script tanpa nonce yang diblokir di console
+- [x] Given cookie sesi, when diperiksa, then berprefix __Secure-, HttpOnly, SameSite=Lax, dan JWT kedaluwarsa ≤ 12 jam
+- [x] Given Server Action dipanggil dengan Origin berbeda dari APP_HOST, when dikirim, then ditolak
+- [x] Given /health diakses tanpa login, when respons, then hanya status 200/503 tanpa nama layanan internal; given admin, then detail per layanan
 
 ## Risk
 Risk level: MEDIUM-HIGH (header salah bisa membuka XSS/clickjacking, atau sebaliknya mematikan aplikasi bila CSP terlalu ketat)
@@ -111,22 +115,22 @@ Validation: unit buildCsp + cookie spec (https → __Secure-, HttpOnly, SameSite
 Open risks/assumptions: uji cookie __Secure- dilakukan di level unit (dev memakai http).
 
 ## Notes
-
 - 2026-10-11T15:44:38Z Dari review T-001: /health dan /api/health di produksi menyembunyikan field detail (publicView) — tambahkan jalur admin (requireAdmin) untuk melihat detail; cache 5 s sudah ada.
+- 2026-10-11T23:46:16Z Bukti: AC1 e2e security-headers.spec (CSP nonce + strict-dynamic, nosniff, Referrer-Policy, frame-ancestors di /login /register /lupa-password /health; nonce beda per permintaan; 0 pelanggaran CSP termasuk toggle tema dan shell) + scripts/smoke-prod-headers.mjs pada next start produksi: semua lolos. AC2 unit sessionCookieSpec (https → __Secure-, HttpOnly, Lax, Secure, maxAge 12 jam). AC3 e2e replay Server Action dengan Origin asing → 'Invalid Server Actions request'. AC4 e2e health.spec: tanpa sesi {status, checkedAt} saja, admin melihat 5 layanan. Review keamanan: 2 Low → diperbaiki.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — diverifikasi: proxy = satu titik pemasangan CSP/HSTS + gerbang sesi; header statis via next.config
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak mengubah autentikasi (cookie spec terpusat, diuji unit)
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — diverifikasi: cookie __Secure- HttpOnly SameSite=Lax Secure di https, JWT ≤ 12 jam (unit sessionCookieSpec)
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — diverifikasi: /health dan /api/health detail hanya isAdmin dari DB; matcher proxy path persis (tanpa celah awalan)
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — diverifikasi: CSP nonce 128-bit per permintaan + strict-dynamic; header x-nonce/CSP permintaan selalu ditimpa proxy
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data kriptografis tersimpan baru
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — diverifikasi: publik /health hanya status; tidak ada nama layanan/latensi untuk non-admin
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — diverifikasi: Referrer-Policy strict-origin-when-cross-origin (filter di URL tidak bocor ke storage/eksternal)
+- [x] V9 Communication: TLS for all external traffic; certificates validated — diverifikasi: HSTS max-age 1 tahun + includeSubDomains saat runtime bila APP_URL https; upgrade-insecure-requests di produksi
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — diverifikasi: tanpa dependency baru; aitk audit hijau
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — N/A: tidak ada alur bisnis baru
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada upload
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action Origin asing ditolak (e2e replay); X-Frame-Options DENY + frame-ancestors 'none'
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: smoke build produksi lolos (CSP tanpa unsafe-eval, HSTS, nosniff, 0 pelanggaran CSP); relaksasi dev hanya NODE_ENV=development; .dockerignore tanpa .env

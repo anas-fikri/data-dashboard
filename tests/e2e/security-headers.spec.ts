@@ -29,6 +29,19 @@ test.describe("security headers", () => {
     });
   }
 
+  test("tamu: logo di halaman auth termuat (optimizer gambar tidak terkunci sesi)", async ({
+    page,
+  }) => {
+    for (const path of ["/login", "/register", "/lupa-password"]) {
+      await page.goto(path);
+      const logo = page.locator('header img[alt="PCP Express"]').first();
+      await expect(logo).toBeVisible();
+      await expect
+        .poll(() => logo.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth))
+        .toBeGreaterThan(0);
+    }
+  });
+
   test("nonce berbeda di tiap permintaan", async ({ request }) => {
     const a = (await request.get("/login")).headers()["content-security-policy"];
     const b = (await request.get("/login")).headers()["content-security-policy"];
