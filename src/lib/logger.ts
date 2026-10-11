@@ -11,12 +11,20 @@ function redactPaths(): string[] {
   return paths;
 }
 
+const LEVELS = ["fatal", "error", "warn", "info", "debug", "trace", "silent"];
+
+/** Level dari env bila valid; selain itu default aman (zod di env.ts memberi pesan yang jelas). */
+function resolveLevel(raw: string | undefined): string {
+  if (raw && LEVELS.includes(raw)) return raw;
+  return process.env.NODE_ENV === "production" ? "info" : "debug";
+}
+
 /**
  * Logger terstruktur. Field sensitif diredaksi sejak awal agar body permintaan,
  * token, dan nilai filter tidak pernah masuk log (T-027).
  */
 export const logger = pino({
-  level: process.env.LOG_LEVEL ?? (process.env.NODE_ENV === "production" ? "info" : "debug"),
+  level: resolveLevel(process.env.LOG_LEVEL),
   redact: { paths: redactPaths(), censor: "[redacted]" },
   base: { service: "data-dashboard" },
 });

@@ -108,6 +108,11 @@ describe("safeMessage", () => {
     expect(prisma).not.toContain("app`");
     expect(safeMessage(new Error("connect ECONNREFUSED 127.0.0.1:6380"))).not.toContain("6380");
     expect(safeMessage(new Error("connect ECONNREFUSED localhost:6380"))).not.toContain("6380");
+    expect(safeMessage(new Error("connect ECONNREFUSED ::1:6380"))).not.toContain("6380");
+    expect(safeMessage(new Error("getaddrinfo ENOTFOUND redis.internal"))).toBe(
+      "getaddrinfo ENOTFOUND [host]",
+    );
+    expect(safeMessage(new Error("535 auth failed user=anas@x.id"))).not.toContain("anas");
   });
 
   it("hanya baris pertama dan dipotong", () => {

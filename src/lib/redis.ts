@@ -20,16 +20,35 @@ export function redis(): Redis {
   return globalForRedis.redis;
 }
 
+/** Menunggu event `ready` atau `error`, apa pun yang datang lebih dulu, tanpa membocorkan listener. */
+function waitUntilReady(r: Redis): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onReady = () => {
+      r.off("error", onError);
+      resolve();
+    };
+    const onError = (e: Error) => {
+      r.off("ready", onReady);
+      reject(e);
+    };
+    r.once("ready", onReady);
+    r.once("error", onError);
+  });
+}
+
 /** Memastikan koneksi siap; aman dipanggil bersamaan dari beberapa permintaan. */
 export async function redisReady(): Promise<Redis> {
   const r = redis();
-  if (r.status === "ready") return r;
-  if (r.status === "wait" || r.status === "end") await r.connect();
-  else if (r.status === "connecting" || r.status === "reconnecting") {
-    await new Promise<void>((resolve, reject) => {
-      r.once("ready", resolve);
-      r.once("error", reject);
-    });
+  switch (r.status) {
+    case "ready":
+      return r;
+    case "wait":
+    case "end":
+      await r.connect();
+      return r;
+    default:
+      // connecting | connect (TCP up, belum siap) | reconnecting | close (jeda antar reconnect)
+      await waitUntilReady(r);
+      return r;
   }
-  return r;
 }

@@ -47,6 +47,9 @@ export function safeMessage(e: unknown): string {
   return msg
     .replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"`]+/gi, "[url]")
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, "[host]")
+    .replace(/\[?(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\]?:\d{2,5}\b/gi, "[host]")
+    .replace(/\b(ENOTFOUND|EAI_AGAIN)\s+\S+/g, "$1 [host]")
+    .replace(/\buser=\S+/gi, "user=[redacted]")
     .replace(/\b(?:localhost|[a-z0-9-]+(?:\.[a-z0-9-]+)+):\d{2,5}\b/gi, "[host]")
     .replace(/`[^`]*`/g, "[redacted]")
     .split("\n")[0]!
