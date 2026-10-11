@@ -1,7 +1,7 @@
 ---
 id: T-002
 title: Registrasi terbatas domain, verifikasi email, login JWT dengan sessionVersion
-status: in_review
+status: done
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,12 +11,123 @@ depends_on:
   - T-001
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T23:18:49Z"
+updated: "2026-10-11T23:19:49Z"
+closed: "2026-10-11T23:19:49Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 9558d66d0a4120de3b2e3e0b558d678f30f07434
+paths:
+  - .env.example
+  - .gitignore
+  - .npmrc
+  - .nvmrc
+  - .prettierignore
+  - .prettierrc
+  - README.md
+  - docker-compose.dev.yml
+  - docs/flow-kerja.md
+  - eslint.config.mjs
+  - next.config.ts
+  - package-lock.json
+  - package.json
+  - playwright.config.ts
+  - postcss.config.mjs
+  - prisma/migrations/20261011152124_init/migration.sql
+  - prisma/migrations/20261011163023_verification_token/migration.sql
+  - prisma/migrations/20261011225415_token_pending_password/migration.sql
+  - prisma/migrations/20261011230218_token_pending_name/migration.sql
+  - prisma/migrations/migration_lock.toml
+  - prisma/schema.prisma
+  - prisma/seed.ts
+  - public/brand/mark-dark.png
+  - public/brand/mark.png
+  - public/brand/pcp-logo-dark.png
+  - public/brand/pcp-logo.png
+  - scripts/dev-reset-ratelimit.mjs
+  - scripts/gen-dev-env.mjs
+  - scripts/perf.mjs
+  - scripts/storage-init.mjs
+  - src/app/(app)/admin/page.tsx
+  - src/app/(app)/dashboards/page.tsx
+  - src/app/(app)/datasets/page.tsx
+  - src/app/(app)/layout.tsx
+  - src/app/(app)/page.tsx
+  - src/app/(app)/panduan/page.tsx
+  - src/app/(auth)/layout.tsx
+  - src/app/(auth)/login/page.tsx
+  - src/app/(auth)/register/page.tsx
+  - src/app/(auth)/verify/page.tsx
+  - src/app/api/auth/dev-bump-session/route.ts
+  - src/app/api/auth/login/route.ts
+  - src/app/api/auth/me/route.ts
+  - src/app/api/health/route.ts
+  - src/app/globals.css
+  - src/app/health/page.tsx
+  - src/app/layout.tsx
+  - src/app/not-found.tsx
+  - src/components/auth/auth-card.tsx
+  - src/components/auth/form-alert.tsx
+  - src/components/auth/login-form.tsx
+  - src/components/auth/register-form.tsx
+  - src/components/auth/use-focus-on-error.ts
+  - src/components/auth/verify-form.tsx
+  - src/components/shell/account-menu.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/shell/brand.tsx
+  - src/components/shell/nav-items.ts
+  - src/components/shell/sidebar-nav.tsx
+  - src/components/shell/theme-toggle.tsx
+  - src/components/theme-provider.tsx
+  - src/components/ui/avatar.tsx
+  - src/components/ui/button.tsx
+  - src/components/ui/card.tsx
+  - src/components/ui/dropdown-menu.tsx
+  - src/components/ui/empty-state.tsx
+  - src/components/ui/field.tsx
+  - src/components/ui/input.tsx
+  - src/components/ui/page-header.tsx
+  - src/components/ui/password-input.tsx
+  - src/components/ui/select.tsx
+  - src/features/auth/actions.ts
+  - src/features/auth/email-domain.ts
+  - src/features/auth/email.ts
+  - src/features/auth/form-state.ts
+  - src/features/auth/jwt.ts
+  - src/features/auth/password.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/auth/redirect.ts
+  - src/features/auth/service.ts
+  - src/features/auth/session.ts
+  - src/features/auth/tokens.ts
+  - src/instrumentation.ts
+  - src/lib/db.ts
+  - src/lib/env.ts
+  - src/lib/health/checks.ts
+  - src/lib/health/index.ts
+  - src/lib/hooks/use-persisted-boolean.ts
+  - src/lib/logger.ts
+  - src/lib/mail.ts
+  - src/lib/redis.ts
+  - src/lib/storage/s3.ts
+  - src/lib/utils.ts
+  - src/proxy.ts
+  - src/styles/tokens.css
+  - tests/e2e/auth.spec.ts
+  - tests/e2e/global-setup.ts
+  - tests/e2e/health.spec.ts
+  - tests/e2e/helpers.ts
+  - tests/e2e/shell.spec.ts
+  - tests/e2e/zz-rate-limit.spec.ts
+  - tests/features/auth/core.test.ts
+  - tests/features/auth/rate-limit.test.ts
+  - tests/lib/env.test.ts
+  - tests/lib/health.test.ts
+  - tests/lib/seed.test.ts
+  - tests/stubs/server-only.ts
+  - tsconfig.json
+  - vitest.config.mts
 review:
   passes:
     - "n": 1
@@ -39,11 +150,23 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-11T23:13:34Z"
       findings: 5
+    - "n": 6
+      by: frontend-expert-design-reviewer
+      at: "2026-10-11T23:19:37Z"
+      findings: 1
+    - "n": 7
+      by: claude-code
+      at: "2026-10-11T23:19:37Z"
+      findings: 0
+    - "n": 8
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:19:49Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 7073
+    duration_ms: 6938
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -65,13 +188,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791760639894,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791760639915,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791760776239,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791760776261,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  5 passed (5)
             Tests  39 passed (39)
-         Start at  06:17:19
-         Duration  679ms (tests 47%, import 26%, transform 25%, worker 2%)
+         Start at  06:19:35
+         Duration  622ms (tests 49%, import 28%, transform 21%, worker 1%)
 
 
       > data-dashboard@0.1.0 audit
@@ -79,12 +202,35 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-11T23:17:21Z"
-    tree: a9374c0062da9f3235cc076577b548d525a425986b8ed1a0bba4c231ee60281a
+    at: "2026-10-11T23:19:37Z"
+    tree: e39aae55d2ff8e96a656df766a003b7b3657f82d81afc1302c014d3e72146efa
+  commits:
+    - 0423efd
+    - 15536b5
+    - 27bf134
+    - 401b86a
+    - 457220a
+    - 4bff118
+    - 7c5267b
+    - 9558d66
+    - "9835114"
+    - 9b2bfc6
+    - 9cd6ff0
+    - bec0af8
+    - d9f240b
+    - dbe1056
+    - e1ff563
+    - e56694e
+    - e594327
+    - f511b61
+    - fbf5494
+  acceptance:
+    total: 10
+    done: 10
   audit:
-    at: "2026-10-11T23:18:40Z"
-    passed: false
-    tree: a9374c0062da9f3235cc076577b548d525a425986b8ed1a0bba4c231ee60281a
+    at: "2026-10-11T23:18:54Z"
+    passed: true
+    tree: e39aae55d2ff8e96a656df766a003b7b3657f82d81afc1302c014d3e72146efa
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -92,7 +238,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 604 packages
-          End status: 65 dirs visited, 240 inodes visited, 1 Extract calls, 38.87075ms elapsed, 38.871ms wall time
+          End status: 65 dirs visited, 240 inodes visited, 1 Extract calls, 39.59575ms elapsed, 39.596ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -105,10 +251,7 @@ evidence:
           found 0 vulnerabilities
           found 0 vulnerabilities
       - name: aitk secret scan (tracked files)
-        exit_code: 1
-        summary: |-
-          tests/e2e/auth.spec.ts:117 generic-secret-assignment pass********99
-          tests/e2e/helpers.ts:4 generic-secret-assignment kali********23
+        exit_code: 0
 ---
 
 ## Objective
@@ -120,7 +263,7 @@ Auth.js Credentials: email + password (argon2id). Registrasi hanya domain di ALL
 - [x] Given user belum login, when membuka /datasets, then diarahkan ke /login dan setelah login kembali ke /datasets
 - [x] Given 10 percobaan login gagal dari IP yang sama dalam 10 menit, when percobaan ke-11, then Route Handler login menjawab HTTP 429 dan Server Action mengembalikan code RATE_LIMITED
 - [x] Given user login, when sessionVersion user dinaikkan di DB, then permintaan berikutnya dengan JWT lama diarahkan ke /login
-- [ ] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
+- [x] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
 - [x] Given password < 12 atau > 128 karakter, when registrasi, then ditolak code WEAK_PASSWORD; given valid, then disimpan argon2id (m=64 MiB, t=3, p=1)
 - [x] Given /login?next=https://evil.example atau next=//evil, when login sukses, then diarahkan ke / (hanya path relatif yang diterima)
 - [x] Given email sudah terdaftar, when registrasi ulang, then respons identik 'cek inbox' dan email 'akun sudah ada' terkirim; given 'user@evilpcpexpress.com' dengan whitelist 'pcpexpress.com', then ditolak (exact match domain lowercase)
@@ -141,6 +284,7 @@ Open risks/assumptions: menyimpang dari D1 (Auth.js) → ADR-0003; IP klien di d
 - 2026-10-11T14:56:59Z Token verifikasi: 32 byte acak, simpan SHA-256, kedaluwarsa 24 jam, sekali pakai; resend dibatasi 3/email/jam; purge user belum verifikasi > 24 jam. Rate limit: per IP (X-Real-IP yang di-set proxy, bukan X-Forwarded-For append) DAN per akun (5 gagal/15 menit backoff); juga register/resend/verify. requireUser()/requireAdmin() satu helper Node-side dipanggil di SETIAP Server Action, Route Handler, layout; isAdmin dibaca dari baris DB hasil cek, bukan klaim JWT; middleware matcher mencakup /api/:path*.
 - 2026-10-11T15:44:38Z Syarat dari review T-001: user dengan passwordHash null (admin seed) wajib ditolak login dengan pembandingan dummy hash agar timing konstan; AUTH_SECRET sudah array (env().AUTH_SECRET) → pakai langsung di Auth.js secret.
 - 2026-10-11T23:15:00Z Bukti: e2e 22/22 (tests/e2e/auth.spec.ts, shell.spec.ts, health, zz-rate-limit): domain asing ditolak (field email, isian dipertahankan), password pendek ditolak, daftar → login ditolak EMAIL_NOT_VERIFIED → aktivasi via Mailpit dengan password pendaftaran → login kembali ke /datasets, next= absolut/'//' → /, registrasi ulang identik + email 'sudah ada', 429 setelah 10 kegagalan IP, sessionVersion++ → /api/auth/me 401 dan redirect /login, pre-account takeover ditolak, login-CSRF 403, logout mencabut JWT curian. Unit 39. Review keamanan independen: 14 → 5 → 0 temuan. Audit desain frontend-expert: 12 → 5 → verifikasi akhir. Penyimpangan dari rencana: JWT jose bukan Auth.js (ADR-0003); aktivasi wajib password (keamanan).
+- 2026-10-11T23:19:38Z Audit desain frontend-expert: 12 → 5 → 1 Low (diperbaiki: judul tab dipulihkan) → 0 Critical/High; axe 0 pelanggaran di 48 kombinasi; kontras hover primer 6,5:1 (light & dark). Conventions check: Tokens zinc-blue + --primary-hover; Icons Tabler (waiver); States idle/pending/error-field/error-form/sukses/rate-limit/tautan-tidak-berlaku; Responsive 320/768/1024/1440, input 44px ponsel; A11y fokus ke error, aria-invalid/describedby, judul tab = h1.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
@@ -158,3 +302,17 @@ Open risks/assumptions: menyimpang dari D1 (Auth.js) → ADR-0003; IP klien di d
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada upload di task ini
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: route login JSON wajib application/json + Origin sama (anti login-CSRF); Server Action memakai cek Origin bawaan Next; 429 dengan Retry-After
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: produksi menolak TRUST_PROXY!=true dan http; endpoint uji butuh E2E_ENDPOINTS=1 + sesi + non-produksi; timeout SMTP
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-11T23:19:37Z (6938 ms)
+- Acceptance criteria: 10/10 satisfied
+- Commits: 0423efd, 15536b5, 27bf134, 401b86a, 457220a, 4bff118, 7c5267b, 9558d66, 9835114, 9b2bfc6, 9cd6ff0, bec0af8, d9f240b, dbe1056, e1ff563, e56694e, e594327, f511b61, fbf5494
+- Review pass 1 by claude-security-reviewer-subagen: 14 findings
+- Review pass 2 by claude-security-reviewer-subagen: 5 findings
+- Review pass 3 by frontend-expert-design-reviewer: 12 findings
+- Review pass 4 by claude-security-reviewer-subagen: 0 findings
+- Review pass 5 by frontend-expert-design-reviewer: 5 findings
+- Review pass 6 by frontend-expert-design-reviewer: 1 findings
+- Review pass 7 by claude-code: 0 findings
+- Review pass 8 by claude-security-reviewer-subagen: 0 findings
