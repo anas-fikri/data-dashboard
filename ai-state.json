@@ -1,0 +1,37 @@
+{
+  "goals": [
+    {
+      "id": "G-1",
+      "status": "planned",
+      "title": "Pengganti dashboard Excel: user domain perusahaan upload Excel ≤1 GB dan merakit dashboard sendiri tanpa coding"
+    },
+    {
+      "id": "G-2",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Fondasi \u0026 akses: app berjalan, registrasi terbatas domain, profil dataset"
+    },
+    {
+      "id": "G-3",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Pipeline data: upload 1 GB, ingest streaming ke Parquet, skema terkoreksi, query cepat"
+    },
+    {
+      "id": "G-4",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Dashboard builder: widget, chart, filter, sharing, export"
+    },
+    {
+      "id": "G-5",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Operasional: deploy on-prem, refresh data, performa 1 GB terbukti"
+    }
+  ],
+  "project": {
+    "name": "data-dashboard"
+  },
+  "schema_version": 2
+}

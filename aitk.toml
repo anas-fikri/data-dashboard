@@ -1,0 +1,12 @@
+# aitk project configuration — https://github.com/innaka-tech/ai-toolkit/blob/main/docs/spec/cli.md
+
+[project]
+name = "data-dashboard"
+default_branch = "main"
+
+[check]
+cmd = "npm run check"
+
+[risk]
+# Changes matching these globs make a task "strict" (risk analysis + independent review).
+sensitive_paths = ["src/features/auth/**", "src/features/sharing/**", "src/lib/storage/**", "src/features/query/**", "prisma/**"]

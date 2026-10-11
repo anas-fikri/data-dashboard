@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "aitk": {
+      "args": [
+        "mcp"
+      ],
+      "command": "aitk"
+    }
+  },
+  "context": {
+    "fileName": [
+      "AGENTS.md",
+      "GEMINI.md"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "command": "aitk brief",
+            "type": "command"
+          }
+        ],
+        "matcher": "startup"
+      }
+    ]
+  }
+}
