@@ -24,5 +24,27 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  tokens VerificationToken[]
+
   @@index([isActive, isAdmin])
+}
+
+enum TokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
+/// Token sekali pakai (verifikasi email, reset password). Hanya hash SHA-256 yang disimpan.
+model VerificationToken {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   TokenPurpose
+  tokenHash String       @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime     @default(now())
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
 }

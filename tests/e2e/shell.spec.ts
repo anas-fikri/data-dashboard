@@ -38,7 +38,8 @@ test.describe("app shell", () => {
     await expect(page.getByTestId("drawer-backdrop")).toBeVisible();
     await noHorizontalScroll(page);
     await page.getByTestId("drawer").getByRole("link", { name: "Panduan" }).click();
-    await expect(page).toHaveURL(/\/panduan/);
+    // Tamu diarahkan ke login dengan next=/panduan; yang penting drawer menutup saat navigasi.
+    await expect(page).toHaveURL(/panduan/);
     await expect(page.getByTestId("drawer")).toBeHidden();
   });
 
@@ -76,10 +77,10 @@ test.describe("app shell", () => {
     await expect(html).not.toHaveClass(/dark/);
   });
 
-  test("404 menampilkan halaman tidak ditemukan dengan aksi kembali", async ({ page }) => {
-    const res = await page.goto("/halaman-yang-tidak-ada");
-    expect(res?.status()).toBe(404);
-    await expect(page.getByText("Halaman tidak ditemukan")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Kembali ke beranda" })).toBeVisible();
+  test("tamu yang membuka rute tak dikenal diarahkan ke login (rute tidak dibocorkan)", async ({
+    page,
+  }) => {
+    await page.goto("/halaman-yang-tidak-ada");
+    await expect(page).toHaveURL(/\/login\?next=%2Fhalaman-yang-tidak-ada/);
   });
 });

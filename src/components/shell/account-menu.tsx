@@ -2,6 +2,7 @@
 
 import { IconLogin, IconLogout, IconSettings, IconUserCircle } from "@tabler/icons-react";
 import Link from "next/link";
+import { useTransition } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +13,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { logoutAction } from "@/features/auth/actions";
 import type { SessionUser } from "@/features/auth/session";
 
 interface AccountMenuProps {
@@ -30,6 +32,11 @@ export function AccountMenu({ user }: AccountMenuProps) {
       </Button>
     );
   }
+  return <SignedInMenu user={user} />;
+}
+
+function SignedInMenu({ user }: { user: SessionUser }) {
+  const [pending, startTransition] = useTransition();
   const display = user.name ?? user.email;
   return (
     <DropdownMenu>
@@ -65,11 +72,14 @@ export function AccountMenu({ user }: AccountMenuProps) {
           </Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <Link href="/logout">
-            <IconLogout aria-hidden />
-            Keluar
-          </Link>
+        {/* Server action dipanggil dari onSelect: form di dalam menu ter-unmount sebelum submit. */}
+        <DropdownMenuItem
+          data-testid="logout"
+          disabled={pending}
+          onSelect={() => startTransition(() => logoutAction())}
+        >
+          <IconLogout aria-hidden />
+          Keluar
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -1,7 +1,7 @@
 ---
 id: T-002
 title: Registrasi terbatas domain, verifikasi email, login JWT dengan sessionVersion
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,8 +11,12 @@ depends_on:
   - T-001
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T15:44:38Z"
+updated: "2026-10-11T16:26:54Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 9558d66d0a4120de3b2e3e0b558d678f30f07434
 ---
 
 ## Objective
@@ -31,7 +35,14 @@ Auth.js Credentials: email + password (argon2id). Registrasi hanya domain di ALL
 - [ ] Given Route Handler /api/* dan Server Action apa pun, when dipanggil dengan JWT yang sessionVersion-nya basi, then ditolak oleh requireUser() Node-side (bukan hanya middleware halaman)
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: HIGH (autentikasi: pintu masuk seluruh aplikasi)
+Impact surface: prisma (VerificationToken, migrasi), src/features/auth/* (password, token, session JWT, rate limit, actions), src/proxy.ts (middleware), src/app/(auth)/{login,register,verify}, src/app/api/auth/*, AccountMenu logout, (app) layout/pages protected, email via SMTP.
+Security (STRIDE): Spoofing — JWT HS256 dengan AUTH_SECRET ≥32B (array rotasi), cookie HttpOnly/SameSite=Lax/Secure(prod), klaim sv dicocokkan ke DB tiap permintaan (D1). Tampering — token verifikasi 32B acak, hanya hash disimpan, sekali pakai, kedaluwarsa 24 jam. Repudiation — lastLoginAt; AuditLog penuh di T-016. Information disclosure — respons registrasi/login netral (anti-enumerasi), pesan error tanpa internals, password tidak pernah di-log (pino redaksi). DoS — rate limit per IP dan per akun di Redis (login 10/10m IP, 5/15m akun; register 3/email/h, 20/IP/h; resend 3/email/h); argon2 m=64MiB dibatasi oleh rate limit. Elevation — isAdmin dibaca dari DB, bukan JWT; requireUser/requireAdmin dipanggil di setiap action/handler/page; open redirect dicegah (hanya path relatif).
+Compatibility: Next 16 proxy.ts (pengganti middleware.ts) di edge hanya cek bentuk JWT; verifikasi DB di Node. getSessionUser() stub T-025 diganti implementasi nyata tanpa mengubah antarmuka shell.
+Failure modes/edge cases: Redis mati → login ditolak (fail-closed) dengan pesan; SMTP mati → registrasi tetap membuat user + token, pesan 'coba kirim ulang'; passwordHash null (seed) → verifikasi dummy hash (timing konstan) → ditolak; email kapital/spasi → dinormalkan; domain subdomain/evilpcpexpress.com → exact match; token dipakai dua kali/kedaluwarsa → TOKEN_INVALID; next= absolut/'//' → '/'; sessionVersion basi → cookie dihapus + redirect.
+Rollback: revert commit + prisma migrate (drop VerificationToken); tidak ada data produksi.
+Validation: unit (password, token hash, JWT sign/verify/rotasi, safeNext, domain check, rate limit dengan Redis palsu, requireUser dengan prisma palsu); e2e Playwright: register → ambil tautan dari Mailpit API (8026) → verify → login → /datasets; login salah 11× → 429; sessionVersion++ via prisma → redirect; audit design-reviewer untuk halaman auth.
+Open risks/assumptions: menyimpang dari D1 (Auth.js) → ADR-0003; IP klien di dev tidak tersedia (Next tidak mengekspos socket) → 'local' bila TRUST_PROXY=false.
 
 ## Notes
 - 2026-10-11T14:49:24Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
