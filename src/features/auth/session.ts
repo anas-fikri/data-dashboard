@@ -12,6 +12,7 @@ import {
   verifyDevice,
   verifySession,
 } from "./jwt";
+import { sessionCookieSpec } from "@/lib/security-headers";
 import { loginUrl } from "./redirect";
 
 export interface SessionUser {
@@ -27,15 +28,16 @@ function isHttps(): boolean {
 
 /** Nama cookie: prefix __Secure- hanya valid di HTTPS (produksi wajib https, lihat env.ts). */
 export function sessionCookieName(): string {
-  return isHttps() ? "__Secure-dd.session" : "dd.session";
+  return sessionCookieSpec(env().APP_URL, SESSION_MAX_AGE_SEC).name;
 }
 
 function deviceCookieName(): string {
   return isHttps() ? "__Secure-dd.device" : "dd.device";
 }
 
+/** Atribut cookie dari satu sumber yang diuji unit (src/lib/security-headers.ts). */
 function cookieOptions(maxAge: number) {
-  return { httpOnly: true, sameSite: "lax" as const, secure: isHttps(), path: "/", maxAge };
+  return sessionCookieSpec(env().APP_URL, maxAge).options;
 }
 
 /** Membuat JWT untuk user, menulis cookie sesi, dan menandai perangkat ini sebagai dikenal. */

@@ -1,7 +1,7 @@
 ---
 id: T-027
 title: Security headers, CSP, cookie, dan konfigurasi proxy app
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -10,8 +10,12 @@ tags:
 depends_on:
   - T-001
 created: "2026-10-11T14:56:59Z"
-updated: "2026-10-11T15:44:38Z"
+updated: "2026-10-11T23:35:37Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: c0a7685de81287d00c275b190a2d470ad665e00a
 ---
 
 ## Objective
@@ -24,7 +28,14 @@ next.config + middleware: CSP nonce (script-src 'self' 'nonce-…' 'strict-dynam
 - [ ] Given /health diakses tanpa login, when respons, then hanya status 200/503 tanpa nama layanan internal; given admin, then detail per layanan
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: MEDIUM-HIGH (header salah bisa membuka XSS/clickjacking, atau sebaliknya mematikan aplikasi bila CSP terlalu ketat)
+Impact surface: src/proxy.ts (nonce + CSP per permintaan), next.config.ts (header statis, serverActions.allowedOrigins), src/app/layout.tsx (nonce ke next-themes), health (detail hanya admin), cookie sesi (sudah di T-002), scripts dev admin.
+Security (STRIDE): Tampering/XSS — CSP nonce + 'strict-dynamic', object-src 'none', base-uri 'self', form-action 'self'; Information disclosure — Referrer-Policy strict-origin-when-cross-origin (filter di URL tidak bocor ke storage), /health tanpa sesi hanya status; Elevation/clickjacking — frame-ancestors 'none' + X-Frame-Options DENY; CSRF — serverActions.allowedOrigins=[APP_HOST] (Next menolak Origin lain).
+Compatibility: Next 16 mengambil nonce dari header Content-Security-Policy permintaan dan memasangnya di script framework; semua halaman sudah dinamis (auth). Dev butuh 'unsafe-eval' (React dev) — hanya bila NODE_ENV=development. style-src 'unsafe-inline' (ECharts/react-grid-layout memakai style inline; risiko rendah). connect-src/img-src/media-src menyertakan origin S3_PUBLIC_ENDPOINT (presigned PUT/GET, video panduan).
+Failure modes/edge cases: next-themes inline script tanpa nonce akan diblokir → diberi nonce dari header; aset _next/static di luar matcher proxy tidak butuh CSP; HSTS hanya bila APP_URL https.
+Rollback: revert commit.
+Validation: unit buildCsp + cookie spec (https → __Secure-, HttpOnly, SameSite=Lax, Secure, maxAge ≤ 12 jam); e2e: header CSP ber-nonce + nosniff + Referrer-Policy + frame-ancestors di setiap halaman, 0 pelanggaran CSP di console (shell, auth, theme toggle); Server Action dengan Origin asing ditolak; /health & /api/health tanpa sesi hanya status, admin melihat detail; smoke build produksi (next build + start) memeriksa header.
+Open risks/assumptions: uji cookie __Secure- dilakukan di level unit (dev memakai http).
 
 ## Notes
 

@@ -113,16 +113,20 @@ export async function cachedHealthReport(
   return inflight;
 }
 
-/** Di produksi, detail tidak ditampilkan ke publik (T-027 menambahkan jalur admin). */
-export function publicView(report: HealthReport, exposeDetail: boolean): HealthReport {
-  if (exposeDetail) return report;
-  return {
-    ...report,
-    items: report.items.map((i) => ({
-      ...i,
-      detail: i.status === "ok" ? "OK" : "bermasalah, lihat log server",
-    })),
-  };
+/** Tampilan publik: hanya status keseluruhan, tanpa nama layanan internal (T-027). */
+export interface PublicHealth {
+  status: HealthStatus;
+  checkedAt: string;
+}
+
+/** Admin melihat laporan lengkap; selain itu hanya status (tanpa nama/latensi layanan). */
+export function publicView(report: HealthReport, isAdmin: boolean): HealthReport | PublicHealth {
+  if (isAdmin) return report;
+  return { status: report.status, checkedAt: report.checkedAt };
+}
+
+export function isDetailed(view: HealthReport | PublicHealth): view is HealthReport {
+  return "items" in view;
 }
 
 function round(n: number): number {

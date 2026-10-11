@@ -58,8 +58,3 @@ export function infraChecks(): HealthCheck[] {
     },
   ];
 }
-
-/** Detail hanya untuk non-produksi; T-027 menambahkan jalur admin di produksi. */
-export function exposeHealthDetail(): boolean {
-  return process.env.NODE_ENV !== "production";
-}

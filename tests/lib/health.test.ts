@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { cachedHealthReport, publicView, runHealthChecks, safeMessage } from "@/lib/health";
+import {
+  cachedHealthReport,
+  isDetailed,
+  publicView,
+  runHealthChecks,
+  safeMessage,
+} from "@/lib/health";
 import { configCheck } from "@/lib/health/checks";
 
 describe("runHealthChecks", () => {
@@ -54,7 +60,7 @@ describe("cachedHealthReport", () => {
 });
 
 describe("publicView", () => {
-  it("menyembunyikan detail bila tidak boleh diekspos", () => {
+  it("non-admin hanya melihat status keseluruhan; admin melihat laporan lengkap", () => {
     const report = {
       status: "fail" as const,
       checkedAt: "2026-10-11T00:00:00Z",
@@ -63,11 +69,12 @@ describe("publicView", () => {
         { name: "B", status: "fail" as const, detail: "ECONNREFUSED [host]", latencyMs: 1 },
       ],
     };
-    expect(publicView(report, false).items.map((i) => i.detail)).toEqual([
-      "OK",
-      "bermasalah, lihat log server",
-    ]);
-    expect(publicView(report, true)).toBe(report);
+    const pub = publicView(report, false);
+    expect(pub).toEqual({ status: "fail", checkedAt: "2026-10-11T00:00:00Z" });
+    expect(isDetailed(pub)).toBe(false);
+    const admin = publicView(report, true);
+    expect(admin).toBe(report);
+    expect(isDetailed(admin)).toBe(true);
   });
 });
 

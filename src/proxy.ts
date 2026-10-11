@@ -1,12 +1,16 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySession } from "@/features/auth/jwt";
 import { loginUrl } from "@/features/auth/redirect";
+import { buildCsp, generateNonce, sessionCookieSpec } from "@/lib/security-headers";
 
 /*
- * Proxy (middleware Next 16): gerbang awal untuk rute terlindungi.
- * Hanya memeriksa keberadaan + tanda tangan + kedaluwarsa JWT (murah, tanpa DB).
- * Keputusan akhir (isActive, sessionVersion, isAdmin) ada di requireUser() Node-side (D1).
- * Juga meneruskan path saat ini lewat header agar requireUser() bisa menyusun ?next=.
+ * Proxy (middleware Next 16):
+ * 1. CSP ber-nonce per permintaan (T-027). Nonce diteruskan ke render lewat header permintaan
+ *    `Content-Security-Policy` (Next memasangnya di script framework) dan `x-nonce`.
+ * 2. Gerbang awal rute terlindungi: hanya memeriksa keberadaan + tanda tangan + kedaluwarsa JWT
+ *    (murah, tanpa DB). Keputusan akhir (isActive, sessionVersion, isAdmin) ada di requireUser()
+ *    Node-side (D1).
+ * 3. Meneruskan path saat ini lewat header agar requireUser() bisa menyusun ?next=.
  */
 
 // Deny-by-default: hanya rute ini yang boleh tanpa sesi (rute /api/auth eksplisit, bukan prefix).
@@ -25,10 +29,6 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-function cookieName(): string {
-  return (process.env.APP_URL ?? "").startsWith("https://") ? "__Secure-dd.session" : "dd.session";
-}
-
 function secrets(): string[] {
   return (process.env.AUTH_SECRET ?? "")
     .split(",")
@@ -36,16 +36,34 @@ function secrets(): string[] {
     .filter(Boolean);
 }
 
+function withCsp(response: NextResponse, csp: string): NextResponse {
+  response.headers.set("Content-Security-Policy", csp);
+  // HSTS dibaca saat runtime (bukan saat build seperti next.config headers()) agar mengikuti
+  // APP_URL produksi; browser menyimpannya per host dari respons dokumen mana pun.
+  if ((process.env.APP_URL ?? "").startsWith("https://")) {
+    response.headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  return response;
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  const nonce = generateNonce();
+  const csp = buildCsp({
+    nonce,
+    storageUrl: process.env.S3_PUBLIC_ENDPOINT,
+    dev: process.env.NODE_ENV === "development",
+  });
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-current-path", pathname + search);
+  requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("Content-Security-Policy", csp);
+  const next = () => withCsp(NextResponse.next({ request: { headers: requestHeaders } }), csp);
 
-  if (isPublic(pathname)) {
-    return NextResponse.next({ request: { headers: requestHeaders } });
-  }
+  if (isPublic(pathname)) return next();
 
-  const token = request.cookies.get(cookieName())?.value;
+  const cookie = sessionCookieSpec(process.env.APP_URL ?? "", 0).name;
+  const token = request.cookies.get(cookie)?.value;
   const claims = token ? await verifySession(token, secrets()) : null;
   if (!claims) {
     if (pathname.startsWith("/api/")) {
@@ -53,7 +71,7 @@ export async function proxy(request: NextRequest) {
     }
     return NextResponse.redirect(new URL(loginUrl(pathname + search), request.url));
   }
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  return next();
 }
 
 export const config = {
