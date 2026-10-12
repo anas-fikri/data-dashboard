@@ -281,7 +281,9 @@ export async function addWidget(
     const item: LayoutItem = at?.success
       ? { i: widget.id, ...at.data }
       : { i: widget.id, x: 0, y: bottomOf(current), ...DEFAULT_WIDGET_SIZE };
-    const layout = compactLayout([...current, item]);
+    // Dipulihkan ke posisi semula: didahulukan agar widget yang sempat naik mengisi tempatnya
+    // (setelah hapus + pemadatan) yang bergeser turun, bukan widget yang dipulihkan.
+    const layout = compactLayout(at?.success ? [item, ...current] : [...current, item]);
     const layoutRevision = d.layoutRevision + 1;
     await writeLayout(tx, dashboardId, layout, layoutRevision);
     return { widget, layout, layoutRevision };

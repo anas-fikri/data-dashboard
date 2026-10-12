@@ -11,7 +11,7 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-12T14:28:33Z"
 created_by: claude-code
 ---
 
@@ -33,6 +33,7 @@ Panel konfigurasi: sheet, dimensi, ukuran + agregasi (sum/avg/count/min/max/coun
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Kolom sort tabel divalidasi terhadap kolom widget, bukan seluruh skema.
+- 2026-10-12T14:28:33Z Dari review T-010 (L6): urungkan hapus widget saat ini memulihkan judul dan posisi saja karena widget masih kosong. Begitu widget punya type/spec, urungkan hapus wajib memulihkan type dan spec juga (dikirim di body restore, validasi sama dengan buat).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

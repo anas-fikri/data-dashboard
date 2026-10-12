@@ -190,7 +190,10 @@ export function useDashboardEditor(o: {
     return () => window.removeEventListener("beforeunload", warn);
   }, [save]);
 
-  // Tab ditutup / pindah halaman sebelum jeda simpan habis: kirim sekali dengan keepalive.
+  // Perubahan yang belum terkirim saat meninggalkan editor: tab ditutup → kirim sekarang dengan
+  // keepalive (tidak bisa menunggu); pindah halaman di dalam aplikasi → kirim setelah antrean selesai
+  // agar memakai revisi terbaru. Kembali dari back/forward cache: revisi di memori bisa sudah usang
+  // (keepalive tadi menaikkannya) → muat ulang daripada menampilkan STALE palsu.
   useEffect(() => {
     const send = () => {
       clearTimeout(timer.current);
@@ -198,10 +201,17 @@ export function useDashboardEditor(o: {
       dirty.current = false;
       void api.saveLayout(id, revision.current, latest.current, { keepalive: true });
     };
+    const restored = (e: PageTransitionEvent) => {
+      if (e.persisted) window.location.reload();
+    };
     window.addEventListener("pagehide", send);
+    window.addEventListener("pageshow", restored);
+    const pending = queue;
     return () => {
       window.removeEventListener("pagehide", send);
-      send();
+      window.removeEventListener("pageshow", restored);
+      clearTimeout(timer.current);
+      void pending.current.then(send);
     };
   }, [id]);
 

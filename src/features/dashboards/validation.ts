@@ -64,9 +64,9 @@ export const layoutBodySchema = z
 export const normalizeName = (raw: string) => raw.normalize("NFC").trim().replace(/\s+/g, " ");
 
 // Kontrol/format (mis. U+202E pembalik arah teks) bisa menipu tampilan; ZWJ/ZWNJ tetap boleh (emoji,
-// aksara tertentu). Pengisi Hangul tampak kosong, jadi tidak dihitung sebagai karakter terlihat.
+// aksara tertentu). Pengisi Hangul dan braille kosong tampak kosong, jadi tidak dihitung terlihat.
 const FORBIDDEN = /(?![\u200C\u200D])[\p{Cc}\p{Cf}]/u;
-const FILLERS = /[\u115F\u1160\u3164\uFFA0]/gu;
+const FILLERS = /[\u115F\u1160\u2800\u3164\uFFA0]/gu;
 const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
 
 /** Nama tampil (dashboard/widget): wajib, ≤ max, tanpa karakter kontrol/format, ada yang terlihat. */

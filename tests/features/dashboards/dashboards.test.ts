@@ -282,6 +282,19 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     });
   });
 
+  it("urungkan hapus: widget kembali ke posisi semula, yang sempat naik turun lagi", async () => {
+    // Setelah A (0,0) dihapus, B naik ke (0,0); memulihkan A di (0,0) menurunkan B, bukan A.
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash([{ i: WB, x: 0, y: 0, w: 6, h: 4 }], 5, [WB]),
+    );
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "" });
+    const r = await svc.addWidget(OWNER, DB, { baseRevision: 5, at: { x: 0, y: 0, w: 12, h: 4 } });
+    expect(r.ok && Object.fromEntries(r.data.layout.map((it) => [it.i, it.y]))).toEqual({
+      [WA]: 0,
+      [WB]: 4,
+    });
+  });
+
   it("hapus widget: item dibuang dan sisanya dipadatkan; revisi lama → STALE; widget lain → NOT_FOUND", async () => {
     const two = [
       { i: WA, x: 0, y: 0, w: 12, h: 4 },

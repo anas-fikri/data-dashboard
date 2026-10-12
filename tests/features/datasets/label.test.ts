@@ -52,6 +52,9 @@ describe("validateDatasetInput", () => {
       description: null,
     });
     expect(nameKeyOf("PENJUALAN  cabang")).toBe("penjualan cabang");
+    // Bentuk Unicode berbeda / penyambung tak terlihat → kunci sama (tidak bisa membuat kembaran).
+    expect(nameKeyOf("Cafe\u0301")).toBe(nameKeyOf("Caf\u00e9"));
+    expect(nameKeyOf("a\u200Db")).toBe("ab");
   });
 
   it("menolak nama kosong, nama > 80, deskripsi > 500", () => {

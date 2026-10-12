@@ -8,9 +8,17 @@ export type ValidationResult =
   | { ok: true; name: string; nameKey: string; description: string | null }
   | { ok: false; field: DatasetField; message: string };
 
-/** Nama ternormalisasi untuk keunikan per pemilik: trim, spasi ganda dirapatkan, lowercase. */
+/**
+ * Nama ternormalisasi untuk keunikan per pemilik: NFC, tanpa ZWJ/ZWNJ (tak terlihat — "ab" dan
+ * "a\u200Db" tampak sama), trim, spasi ganda dirapatkan, lowercase.
+ */
 export function nameKeyOf(name: string): string {
-  return name.trim().replace(/\s+/g, " ").toLowerCase();
+  return name
+    .normalize("NFC")
+    .replace(/[\u200C\u200D]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
 }
 
 export function validateDatasetInput(nameRaw: unknown, descriptionRaw: unknown): ValidationResult {

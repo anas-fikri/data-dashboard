@@ -75,9 +75,12 @@ test.describe("dashboard", () => {
     await expect(page.getByTestId("widget")).toHaveCount(1);
     await add.click();
     await expect(page.getByTestId("widget")).toHaveCount(2);
-    const [firstId, secondId] = await page
+    const [firstId, secondId] = (await page
       .getByTestId("widget")
-      .evaluateAll((els) => els.map((el) => el.getAttribute("data-widget-id")!));
+      .evaluateAll((els) => els.map((el) => el.getAttribute("data-widget-id")!))) as [
+      string,
+      string,
+    ];
 
     // Tiap gestur menunggu simpan otomatisnya sendiri (PUT tata letak) sebelum gestur berikutnya.
     const layoutSaved = () =>
@@ -183,6 +186,8 @@ test.describe("dashboard", () => {
     await page.goto(`${dashboardUrl}?mode=edit`);
     const widgets = page.getByTestId("widget");
     await expect(widgets).toHaveCount(2);
+    const before = await geometry(page);
+    const deletedId = (await widgets.first().getAttribute("data-widget-id"))!;
     await settingsOf(page).click();
     await page.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
     await expect(widgets).toHaveCount(1);
@@ -191,6 +196,11 @@ test.describe("dashboard", () => {
     await undo.click();
     await expect(widgets).toHaveCount(2);
     await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    // Dipulihkan (id baru) di posisi semula; widget lain kembali ke tempatnya juga.
+    const after = await geometry(page);
+    const restoredId = Object.keys(after).find((k) => !(k in before))!;
+    expect(after[restoredId]).toBe(before[deletedId]);
+    expect(Object.values(after).sort()).toEqual(Object.values(before).sort());
   });
 
   test("tab lain mengubah dashboard → STALE: tidak menimpa, edit dibekukan, muat ulang", async ({
