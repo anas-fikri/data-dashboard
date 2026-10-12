@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-007
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-12T01:31:31Z"
 created_by: claude-code
 ---
 
@@ -31,8 +31,8 @@ Alur B4. Route Handler POST /api/query menerima {datasetId, spec} (mode bebas: h
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:56:59Z DuckDB app: SET autoinstall_known_extensions=false, autoload_known_extensions=false, allowed_directories=[dir cache lokal], temp_directory + max_temp_directory_size, lock_configuration=true setelah setup; ekstensi httpfs/excel dibundel di image (on-prem tanpa internet). Key cache SHA-256. Slot konkurensi per user (4) selain global. Mode bebas: pemilik via {datasetId, spec}; editor via {dashboardId, spec} (authz share EDITOR, dataset diturunkan server) — lihat T-016.
+- 2026-10-12T01:31:31Z ADR-0004 (dari T-004): Redis noeviction. Cache hasil wajib TTL 24 jam, nilai terbatas, dan SET yang gagal OOM diperlakukan sebagai cache miss (jangan gagalkan query).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

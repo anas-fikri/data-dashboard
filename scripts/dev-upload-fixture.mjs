@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+// Dev/e2e saja (akses DB, storage internal, dan Redis langsung; menolak NODE_ENV=production):
+//   version <versionId>                 → status, ukuran, etag, sourceKey, uploadId, job ingest ada?
+//   latest <datasetId>                  → versi terbaru dataset (bentuk sama dengan "version")
+//   set-status <datasetId> <STATUS>     → buat versi dengan status tertentu (mis. INGESTING)
+//   put-part <versionId> <n> <bytes>    → unggah part langsung ke storage (lewati presigned URL)
+//   object <versionId>                  → {"exists":bool,"contentType":...} objek sumber
+//   multipart <versionId> [uploadId]    → {"alive":bool,"parts":n} upload multipart masih ada?
+//   usage <email> <bytes>               → buat dataset + versi READY berukuran <bytes> (kuota)
+import { readFileSync, existsSync } from "node:fs";
+import { PrismaClient } from "@prisma/client";
+import {
+  S3Client,
+  UploadPartCommand,
+  HeadObjectCommand,
+  ListPartsCommand,
+} from "@aws-sdk/client-s3";
+import { Queue } from "bullmq";
+import Redis from "ioredis";
+
+if (existsSync(".env")) {
+  for (const line of readFileSync(".env", "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)=(.*)$/);
+    if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^"(.*)"$/, "$1");
+  }
+}
+if (process.env.NODE_ENV === "production") {
+  console.error("menolak: NODE_ENV=production");
+  process.exit(1);
+}
+
+const [cmd, a, b, c] = process.argv.slice(2);
+const prisma = new PrismaClient();
+const s3 = new S3Client({
+  endpoint: process.env.S3_ENDPOINT,
+  region: process.env.S3_REGION ?? "us-east-1",
+  forcePathStyle: true,
+  requestChecksumCalculation: "WHEN_REQUIRED",
+  responseChecksumValidation: "WHEN_REQUIRED",
+  credentials: {
+    accessKeyId: process.env.S3_ACCESS_KEY,
+    secretAccessKey: process.env.S3_SECRET_KEY,
+  },
+});
+const Bucket = process.env.S3_BUCKET;
+
+async function describe(v) {
+  if (!v) return { exists: false };
+  const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: 1 });
+  const q = new Queue("ingest", { connection });
+  const job = await q.getJob(v.id);
+  await q.close();
+  connection.disconnect();
+  return {
+    exists: true,
+    id: v.id,
+    status: v.status,
+    sizeBytes: v.sizeBytes === null ? null : Number(v.sizeBytes),
+    etag: v.etag,
+    sourceKey: v.sourceKey,
+    uploadId: v.uploadId,
+    errorMessage: v.errorMessage,
+    job: Boolean(job),
+  };
+}
+
+try {
+  if (cmd === "version") {
+    console.log(
+      JSON.stringify(await describe(await prisma.datasetVersion.findUnique({ where: { id: a } }))),
+    );
+  } else if (cmd === "latest") {
+    const v = await prisma.datasetVersion.findFirst({
+      where: { datasetId: a },
+      orderBy: { createdAt: "desc" },
+    });
+    console.log(JSON.stringify(await describe(v)));
+  } else if (cmd === "set-status") {
+    const v = await prisma.datasetVersion.create({
+      data: { datasetId: a, status: b, originalName: "sedang-diproses.xlsx", sizeBytes: 1024n },
+    });
+    console.log(JSON.stringify({ id: v.id }));
+  } else if (cmd === "put-part") {
+    const v = await prisma.datasetVersion.findUniqueOrThrow({ where: { id: a } });
+    const body = Buffer.alloc(Number(c), 0x41);
+    const res = await s3.send(
+      new UploadPartCommand({
+        Bucket,
+        Key: v.sourceKey,
+        UploadId: v.uploadId,
+        PartNumber: Number(b),
+        Body: body,
+      }),
+    );
+    console.log(JSON.stringify({ etag: res.ETag }));
+  } else if (cmd === "object") {
+    const v = await prisma.datasetVersion.findUniqueOrThrow({ where: { id: a } });
+    try {
+      const h = await s3.send(new HeadObjectCommand({ Bucket, Key: v.sourceKey }));
+      console.log(
+        JSON.stringify({ exists: true, contentType: h.ContentType, size: Number(h.ContentLength) }),
+      );
+    } catch {
+      console.log(JSON.stringify({ exists: false }));
+    }
+  } else if (cmd === "multipart") {
+    const v = await prisma.datasetVersion.findUniqueOrThrow({ where: { id: a } });
+    const uploadId = v.uploadId ?? b;
+    try {
+      const res = await s3.send(
+        new ListPartsCommand({ Bucket, Key: v.sourceKey, UploadId: uploadId }),
+      );
+      console.log(JSON.stringify({ alive: true, parts: (res.Parts ?? []).length }));
+    } catch {
+      console.log(JSON.stringify({ alive: false }));
+    }
+  } else if (cmd === "multipart-raw") {
+    // a = key, b = uploadId (dipakai setelah versi terhapus bersama dataset)
+    try {
+      const res = await s3.send(new ListPartsCommand({ Bucket, Key: a, UploadId: b }));
+      console.log(JSON.stringify({ alive: true, parts: (res.Parts ?? []).length }));
+    } catch {
+      console.log(JSON.stringify({ alive: false }));
+    }
+  } else if (cmd === "usage") {
+    const owner = await prisma.user.findUniqueOrThrow({ where: { email: a } });
+    const ds = await prisma.dataset.create({
+      data: { ownerId: owner.id, name: `Kuota ${Date.now()}`, nameKey: `kuota ${Date.now()}` },
+    });
+    await prisma.datasetVersion.create({
+      data: { datasetId: ds.id, status: "READY", originalName: "besar.xlsx", sizeBytes: BigInt(b) },
+    });
+    console.log(JSON.stringify({ datasetId: ds.id }));
+  } else {
+    console.error(`perintah tidak dikenal: ${cmd}`);
+    process.exitCode = 1;
+  }
+} finally {
+  await prisma.$disconnect();
+}

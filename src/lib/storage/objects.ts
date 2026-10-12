@@ -2,6 +2,7 @@ import "server-only";
 import { DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { abortMultipartUnder } from "@/lib/storage/multipart";
 import { bucket, s3Internal } from "@/lib/storage/s3";
 
 /** Prefix objek milik satu dataset (flow-kerja B1). Selalu diakhiri '/' (cuid berawalan sama aman). */
@@ -48,6 +49,8 @@ export async function deleteDatasetObjects(datasetId: string): Promise<number> {
   const failures: { prefix: string; reason: string }[] = [];
   for (const prefix of datasetPrefixes(datasetId)) {
     try {
+      // Upload yang sedang berjalan: abort dulu agar part tidak menunggu lifecycle 1 hari.
+      if (prefix.startsWith("raw/")) await abortMultipartUnder(prefix);
       total += await deletePrefix(prefix);
     } catch (e) {
       failures.push({ prefix, reason: e instanceof Error ? e.message : String(e) });

@@ -31,9 +31,9 @@ describe("deriveLabel", () => {
     });
   });
 
-  it("UPLOADING/UPLOADED → mengunggah; AWAITING_MAPPING → menunggu pemetaan", () => {
+  it("UPLOADING → mengunggah; UPLOADED → menunggu diproses; AWAITING_MAPPING → menunggu pemetaan", () => {
     expect(deriveLabel(null, v("a", "UPLOADING")).badge?.text).toBe("Mengunggah");
-    expect(deriveLabel(null, v("a", "UPLOADED")).badge?.text).toBe("Mengunggah");
+    expect(deriveLabel(null, v("a", "UPLOADED")).badge?.text).toBe("Menunggu diproses");
     expect(deriveLabel("x", v("a", "AWAITING_MAPPING")).badge?.kind).toBe("awaiting_mapping");
   });
 

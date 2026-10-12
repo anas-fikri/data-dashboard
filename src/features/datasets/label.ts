@@ -23,7 +23,7 @@ export interface DatasetLabel {
 
 const BADGE: Record<Exclude<VersionStatus, "READY">, { kind: BadgeKind; text: string }> = {
   UPLOADING: { kind: "uploading", text: "Mengunggah" },
-  UPLOADED: { kind: "uploading", text: "Mengunggah" },
+  UPLOADED: { kind: "processing", text: "Menunggu diproses" },
   INGESTING: { kind: "processing", text: "Memproses" },
   AWAITING_MAPPING: { kind: "awaiting_mapping", text: "Menunggu pemetaan" },
   FAILED: { kind: "failed", text: "Gagal" },

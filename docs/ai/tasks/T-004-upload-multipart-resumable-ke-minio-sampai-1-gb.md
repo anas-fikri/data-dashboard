@@ -1,7 +1,7 @@
 ---
 id: T-004
 title: Upload multipart resumable ke MinIO sampai 1 GB
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -10,8 +10,12 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T23:56:00Z"
+updated: "2026-10-12T01:11:53Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: b330d22fa74f6e7377ffca485c5f0b1c0fad330e
 ---
 
 ## Objective
@@ -29,7 +33,14 @@ Alur B2. Presigned multipart 16 MiB langsung browser→MinIO; S3 client menandat
 - [ ] Given user sudah punya 2 versi UPLOADING, when initUpload lagi, then code LIMIT_REACHED; kuota storage menghitung ukuran terdeklarasi versi UPLOADING
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: HIGH (jalur masuk file tak tepercaya sampai 1 GB, presigned URL ke storage, kuota/DoS).
+Impact surface: prisma DatasetVersion (+uploadedById, fingerprint, uploadId, partSize, partCount, completingAt; migrasi version_upload), src/features/uploads/* (service, http, client, parts, sniff), Route Handler /api/uploads, /api/uploads/[id]/parts|complete, DELETE /api/uploads/[id], src/lib/storage/multipart.ts, src/lib/storage/objects.ts (abort multipart saat hapus dataset), src/lib/queue/* (BullMQ ingest + cancel), src/worker/index.ts (job terjadwal), halaman /datasets/[id] (panel unggah), docker-compose Redis noeviction (ADR-0004), env USER_STORAGE_QUOTA_BYTES.
+Security (STRIDE): Spoofing/CSRF — Route Handler mewajibkan Origin = APP_URL + cookie SameSite=Lax + requireUser Node-side. Elevation/IDOR — semua kueri versi di-scope {uploadedById, dataset.ownerId}; id orang lain → 404. Tampering — Content-Length signed header di presigned UploadPart (storage menolak ukuran lain, dibuktikan check-presign), ListParts memverifikasi nomor + ukuran persis setiap part, HeadObject = ukuran terdeklarasi, signature 64 KB (xlsx ZIP, csv teks tanpa NUL/UTF-16), ContentType ditetapkan server; tidak ada presigned GET untuk raw/. DoS — batas 1 GB, 2 unggahan berjalan/user, kuota storage per user (termasuk ukuran terdeklarasi UPLOADING), rate limit init 60/jam dan sign 600/jam per user, body JSON ≤ 8 KB, batch sign ≤ 16. Repudiation — log terstruktur versionId/datasetId per langkah. Information disclosure — pesan error tanpa detail storage; nama file dibersihkan dari karakter kontrol/bidi.
+Compatibility: label UPLOADED kini "Menunggu diproses"; Server Action konvensi D2 tetap, Route Handler memakai HTTP status + {code}. Endpoint unggah = Route Handler karena Server Action dieksekusi berurutan per halaman dan tidak memberi progres.
+Failure modes/edge cases: dua complete bersamaan → klaim completingAt (BUSY); batal saat complete → ditolak; dataset dihapus saat unggah → multipart di-abort + objek hasil complete dibuang; Redis mati saat enqueue → versi tetap UPLOADED (T-006 menyapu); multipart hilang → FAILED/UPLOAD_FAILED; unggahan > 24 jam → FAILED (lazy saat init + job maintenance per jam); part hilang saat complete → INCOMPLETE + daftar part, klien mengunggah ulang.
+Rollback: revert commit + migrasi (kolom nullable baru, aman di-drop); Redis policy kembali lewat compose.
+Validation: unit (parts, sniff, validasi init, Origin, cabang completeUpload); e2e 9 skenario (200 MB + ETag -13 + job, FILE_TOO_LARGE, part 20 MiB, exe→xlsx, resume + user lain 404, DATASET_BUSY, signed Content-Length + ContentType, LIMIT_REACHED + QUOTA_EXCEEDED, hapus dataset abort multipart + batal); scripts/check-presign.mjs; audit desain frontend-expert.
+Open risks/assumptions: kuota diimplementasikan di sini (T-024 tinggal uji performa); validasi struktur xlsx penuh di worker (T-006); proxy produksi harus meneruskan Content-Length (T-023).
 
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.

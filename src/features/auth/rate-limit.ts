@@ -24,6 +24,10 @@ export const RULES = {
   /** Percobaan memakai token reset / ganti password yang gagal. */
   resetUseIp: { name: "reset-use:ip", limit: 30, windowSec: 10 * 60 },
   changePassword: { name: "change-pw:user", limit: 5, windowSec: 15 * 60 },
+  /** Mulai/lanjutkan unggahan per user (termasuk resume setelah muat ulang). */
+  uploadInit: { name: "upload-init:user", limit: 60, windowSec: 60 * 60 },
+  /** Permintaan presigned URL per user (1 GB = 64 part; batch ≤ 16). */
+  uploadSign: { name: "upload-sign:user", limit: 600, windowSec: 60 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

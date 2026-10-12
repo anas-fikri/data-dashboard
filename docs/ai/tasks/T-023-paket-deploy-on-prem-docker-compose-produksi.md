@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T23:58:30Z"
+updated: "2026-10-12T01:31:31Z"
 created_by: claude-code
 ---
 
@@ -36,6 +36,7 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - 2026-10-11T23:41:06Z Dari T-027: next.config headers() dan experimental.serverActions.allowedOrigins dievaluasi saat BUILD — image produksi wajib dibangun dengan APP_HOST produksi. HSTS dan CSP dipasang proxy saat runtime. Verifikasi pasca-deploy: node scripts/smoke-prod-headers.mjs https://<domain>.
 - 2026-10-11T23:44:44Z Dari review T-027: reverse proxy wajib meneruskan Host atau X-Forwarded-Host asli (Next mencocokkan Origin Server Action dengannya; allowedOrigins tidak dipakai). .dockerignore sudah mengecualikan .env. HSTS memakai includeSubDomains: semua subdomain (termasuk storage.<domain>, D5) wajib https.
 - 2026-10-11T23:58:30Z Dari review T-003: job pembersihan StorageCleanup wajib memvalidasi bentuk prefix (raw|parquet)/<cuid>/ sebelum menghapus.
+- 2026-10-12T01:31:31Z Dari T-004: compose produksi Redis --maxmemory-policy noeviction (ADR-0004); worker dijalankan sebagai proses terpisah (npm run worker = tsx --conditions=react-server; T-006/T-023 boleh bundel ke JS); proxy storage wajib meneruskan header Content-Length apa adanya (signed header UploadPart); jalankan node scripts/check-presign.mjs setelah deploy.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

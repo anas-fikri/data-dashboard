@@ -5,12 +5,14 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
 import { StatusBadge } from "@/components/datasets/status-badge";
+import { UploadPanel } from "@/components/datasets/upload-panel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { getDataset } from "@/features/datasets/service";
+import { getPendingUpload } from "@/features/uploads/service";
+import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
 type Search = Promise<{ created?: string }>;
@@ -45,6 +47,9 @@ export default async function DatasetDetailPage({
 
   const badge = dataset.label.badge;
   const active = dataset.active;
+  // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
+  const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
+  const pending = processing ? null : await getPendingUpload(user.id, dataset.id);
 
   return (
     <div className="flex flex-col gap-6">
@@ -107,16 +112,14 @@ export default async function DatasetDetailPage({
                 ) : null}
               </span>
             </p>
-          ) : (
-            <EmptyState
-              bare
-              as="p"
-              icon={<IconFileSpreadsheet />}
-              title="Belum ada data"
-              description="Isi dataset ini dengan file .xlsx atau .csv sampai 1 GB."
-              className="py-8"
-            />
-          )}
+          ) : null}
+          <UploadPanel
+            datasetId={dataset.id}
+            maxBytes={env().MAX_UPLOAD_BYTES}
+            hasData={Boolean(active)}
+            pending={pending}
+            processing={processing ? { fileName: dataset.latestFileName } : null}
+          />
         </CardContent>
       </Card>
 

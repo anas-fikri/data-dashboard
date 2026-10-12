@@ -255,7 +255,7 @@ sequenceDiagram
     A->>D: jalankan, timeout 30 s, slot paralel MAX_QUERY_CONCURRENCY
     D->>S: baca hanya kolom yang dirujuk dari typed-<rev>.parquet
     D-->>A: hasil ≤ 10k baris
-    A->>R: SET hasil TTL 24 jam (Redis maxmemory + allkeys-lru)
+    A->>R: SET hasil TTL 24 jam (Redis noeviction: OOM saat SET = lewati cache)
   end
   A-->>B: rows → ECharts / tabel
 ```
@@ -314,7 +314,7 @@ Refresh       : UPLOADING → UPLOADED → INGESTING → READY (cocok → aktif)
 | Inferensi tipe salah / locale desimal | Angka salah 1000× atau jadi teks | Inferensi penuh, deteksi locale per kolom, koreksi user tanpa parse ulang (T-007, T-008) |
 | Re-cast saat query berjalan | Baca file korup | typed per revisi, pointer atomik, file lama ditahan 1 jam (T-007, T-008) |
 | Upload nakal melebihi 1 GB | Storage penuh | ListParts sebelum complete, HeadObject, lifecycle abort 1 hari, kuota per user (T-004, T-024) |
-| Redis / disk lokal tumbuh tanpa batas | Layanan mati | `maxmemory allkeys-lru`, LRU parquet lokal, lifecycle ekspor 1 jam (T-009, T-023) |
+| Redis / disk lokal tumbuh tanpa batas | Layanan mati | Redis `maxmemory` + `noeviction` (syarat BullMQ: job/lock tidak boleh terbuang); semua key cache ber-TTL dan SET yang gagal OOM diperlakukan sebagai cache miss; LRU parquet lokal, lifecycle ekspor 1 jam (T-004, T-009, T-023) |
 | Spek VM kurang | Semua lambat | Min 4 vCPU, 16 GB RAM, SSD; app 4 GB, worker 2×3 GB, renderer 2 GB (T-023) |
 | Total data > ratusan juta baris | DuckDB single-node berat | Di luar v1; Parquet portabel ke ClickHouse (ADR-0001) |
 

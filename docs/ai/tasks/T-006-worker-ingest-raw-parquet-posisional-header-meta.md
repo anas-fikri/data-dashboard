@@ -11,7 +11,7 @@ depends_on:
   - T-004
   - T-005
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-12T01:31:31Z"
 created_by: claude-code
 ---
 
@@ -32,8 +32,8 @@ Alur B3 tahap raw. Proses worker/ terpisah, BullMQ concurrency 1, DuckDB memory_
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:56:59Z Batas: byte terdekompresi ≤ 20× ukuran file; temp_directory + max_temp_directory_size; lock Redis memakai PX TTL + compare-and-delete.
+- 2026-10-12T01:31:31Z Dari T-004: antrean 'ingest' jobId=versionId, data {versionId} (src/lib/queue/connection.ts). Worker entry src/worker/index.ts sudah ada (antrean maintenance); tambah processor ingest di sana. Saat start, sapu versi UPLOADED tanpa job (enqueue bisa gagal saat Redis mati, versi tetap UPLOADED). Objek sumber: raw/<datasetId>/<versionId>/source.<xlsx|csv>, Content-Type application/octet-stream.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

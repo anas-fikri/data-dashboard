@@ -26,6 +26,7 @@ model User {
 
   tokens   VerificationToken[]
   datasets Dataset[]
+  uploads  DatasetVersion[]    @relation("VersionUploader")
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -109,8 +110,22 @@ model DatasetVersion {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
+  // Upload multipart (T-004, flow-kerja B2)
+  uploadedById String?
+  uploadedBy   User?     @relation("VersionUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  /// SHA-256 dari fingerprint klien (nama + ukuran + lastModified); resume hanya dalam (uploadedById, datasetId).
+  fingerprint  String?
+  /// UploadId multipart di object storage; null setelah complete/abort.
+  uploadId     String?
+  partSize     Int?
+  partCount    Int?
+  /// Klaim complete (cegah dua complete bersamaan); kedaluwarsa setelah 5 menit.
+  completingAt DateTime?
+
   @@index([datasetId, createdAt])
   @@index([status])
+  @@index([datasetId, status])
+  @@index([uploadedById, status])
 }
 
 /// Prefix storage yang gagal dihapus; diproses ulang oleh job pembersihan (T-013/T-023) agar
