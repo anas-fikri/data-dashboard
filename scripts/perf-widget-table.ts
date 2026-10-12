@@ -5,7 +5,6 @@
  *   npx tsx --conditions=react-server scripts/perf-widget-table.ts tests/fixtures/perf/1jt-baris.csv
  * Keluaran: satu baris JSON — waktu ingest, p50/p95/maks semua permintaan, maks per skenario.
  */
-import { execFileSync } from "node:child_process";
 import { linkSync, mkdirSync, mkdtempSync, renameSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
