@@ -16,9 +16,13 @@ export async function enqueueIngest(versionId: string, datasetId?: string): Prom
  * Masukkan recast sheet ke antrean (T-008: simpan koreksi skema). Recast berurutan per sheet lewat
  * lock di worker; job yang mendapat "busy" diulang dengan backoff.
  */
-export async function enqueueRecast(sheetId: string, input: RecastInput): Promise<string> {
+export async function enqueueRecast(
+  sheetId: string,
+  input: RecastInput,
+  userId?: string,
+): Promise<string> {
   const job = await withQueueTimeout(
-    recastQueue().add("recast", { sheetId, input }),
+    recastQueue().add("recast", { sheetId, input, userId }),
     "enqueue recast",
   );
   logger.info({ sheetId, jobId: job.id }, "job recast masuk antrean");

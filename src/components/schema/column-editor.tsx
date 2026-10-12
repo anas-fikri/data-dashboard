@@ -113,8 +113,8 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
         <span>Nama kolom</span>
         <span>Tipe</span>
         <span>Format</span>
-        <span>Isi</span>
-        <span>Tampilan</span>
+        <span>Ringkasan isi</span>
+        <span>Sembunyikan</span>
       </div>
       {filtered.length === 0 ? (
         <p className="border-t px-5 py-8 text-center text-sm text-muted-foreground">
@@ -150,7 +150,7 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
           <Button
             variant="outline"
             size="sm"
-            className="w-full sm:w-auto"
+            className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
             onClick={() => setLimit((l) => l + PAGE)}
           >
             Tampilkan {fmtInt(Math.min(PAGE, filtered.length - limit))} kolom berikutnya

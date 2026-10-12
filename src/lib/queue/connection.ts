@@ -28,6 +28,8 @@ export const INGEST_JOB_OPTIONS = {
 export interface RecastJobData {
   sheetId: string;
   input: RecastInput;
+  /** Peminta (batas job berjalan per user, review T-008 M2); kosong untuk job lama. */
+  userId?: string;
 }
 
 /**
@@ -37,8 +39,9 @@ export interface RecastJobData {
 export const RECAST_JOB_OPTIONS = {
   attempts: 6,
   backoff: { type: "exponential" as const, delay: 10_000 },
-  removeOnComplete: { count: 1000 },
-  removeOnFail: { count: 5000 },
+  // Hasil dibaca UI hanya selama polling; setelah itu skema di DB yang jadi sumber kebenaran.
+  removeOnComplete: { age: 60 * 60, count: 200 },
+  removeOnFail: { age: 24 * 60 * 60, count: 500 },
 };
 
 type Holder = { queue: Queue; connection: Redis };

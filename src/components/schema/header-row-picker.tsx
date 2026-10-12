@@ -44,7 +44,7 @@ export function HeaderRowPicker({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <p className="flex items-start gap-2 text-sm">
           <IconHeading
             size={20}
@@ -62,7 +62,7 @@ export function HeaderRowPicker({
           size="sm"
           aria-expanded={open}
           aria-controls={panelId}
-          className="w-full sm:w-auto"
+          className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
           trailingIcon={
             <IconChevronDown
               aria-hidden
@@ -110,6 +110,7 @@ export function HeaderRowPicker({
             </label>
             <Input
               id={`${panelId}-num`}
+              className="h-11 md:h-(--control-h)"
               type="number"
               inputMode="numeric"
               min={1}
@@ -124,15 +125,15 @@ export function HeaderRowPicker({
               }}
             />
             {error ? (
-              <p id={`${panelId}-err`} className="text-xs text-destructive">
+              <p id={`${panelId}-err`} className="text-sm text-destructive">
                 {error}
               </p>
             ) : null}
           </div>
-          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+          <div className="flex flex-col-reverse gap-2 md:flex-row">
             <Button
               variant="outline"
-              className="w-full sm:w-auto"
+              className="h-11 md:h-(--control-h) w-full md:w-auto"
               disabled={busy}
               onClick={() => setOpen(false)}
             >
@@ -140,15 +141,18 @@ export function HeaderRowPicker({
             </Button>
             <Button
               type="submit"
-              className="w-full sm:w-auto"
+              className="h-11 md:h-(--control-h) w-full md:w-auto"
               disabled={busy || n === headerRow}
               pending={local.phase === "submitting"}
             >
-              {valid && n !== headerRow
-                ? `Pakai baris ${fmtInt(n)} sebagai judul`
-                : "Pilih baris lain"}
+              {valid ? `Pakai baris ${fmtInt(n)} sebagai judul` : "Pakai baris ini sebagai judul"}
             </Button>
           </div>
+          {n === headerRow ? (
+            <p className="text-sm text-muted-foreground">
+              Baris {fmtInt(headerRow)} sudah dipakai sebagai judul. Pilih baris lain.
+            </p>
+          ) : null}
         </form>
       ) : null}
     </div>

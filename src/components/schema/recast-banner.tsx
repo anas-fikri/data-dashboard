@@ -23,7 +23,7 @@ export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
         role="status"
         data-testid="recast-status"
         data-state={jobState}
-        className="flex flex-wrap items-start gap-3 rounded-md border border-primary/40 bg-background px-3 py-2 text-sm shadow-[inset_3px_0_0_0_var(--color-primary)]"
+        className="flex flex-wrap items-start gap-3 rounded-md border border-primary/40 bg-background px-3 py-2 text-sm"
       >
         <IconLoader2
           size={20}

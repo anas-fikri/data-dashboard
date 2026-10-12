@@ -14,15 +14,17 @@ export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDiv
   return <div className={cn("flex flex-col gap-1 p-5 pb-3", className)} {...props} />;
 }
 
+/** Judul kartu: h2 di halaman biasa, h3 bila kartu berada di dalam section ber-h2. */
 export function CardTitle({
   className,
   children,
+  as: Heading = "h2",
   ...props
-}: React.HTMLAttributes<HTMLHeadingElement>) {
+}: React.HTMLAttributes<HTMLHeadingElement> & { as?: "h2" | "h3" }) {
   return (
-    <h2 className={cn("text-base font-semibold leading-tight", className)} {...props}>
+    <Heading className={cn("text-base font-semibold leading-tight", className)} {...props}>
       {children}
-    </h2>
+    </Heading>
   );
 }
 

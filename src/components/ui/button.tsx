@@ -11,9 +11,9 @@ import { cn } from "@/lib/utils";
  */
 const buttonVariants = cva(
   [
-    "inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md",
+    "relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-md",
     "text-sm font-medium transition-colors",
-    "disabled:pointer-events-none disabled:opacity-50",
+    "disabled:pointer-events-none disabled:opacity-50 aria-busy:disabled:opacity-100",
     "[&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:stroke-[1.5]",
   ],
   {
@@ -89,9 +89,21 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
         children
       ) : (
         <>
-          {pending ? <IconLoader2 className="animate-spin" aria-hidden /> : leadingIcon}
-          {isIconOnly && pending ? null : children}
-          {!pending && trailingIcon}
+          {pending && (leadingIcon || isIconOnly) ? (
+            <IconLoader2 className="motion-safe:animate-spin" aria-hidden />
+          ) : (
+            leadingIcon
+          )}
+          {isIconOnly && pending ? null : pending && !leadingIcon ? (
+            // Label tetap mengisi ruang (lebar tidak berubah); spinner ditumpuk di tengahnya.
+            <>
+              <span className="invisible">{children}</span>
+              <IconLoader2 className="absolute motion-safe:animate-spin" aria-hidden />
+            </>
+          ) : (
+            children
+          )}
+          {pending && !leadingIcon ? null : !pending && trailingIcon}
         </>
       )}
     </Comp>

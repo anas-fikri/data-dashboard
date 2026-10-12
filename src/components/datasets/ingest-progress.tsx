@@ -39,6 +39,8 @@ export function IngestProgress({
     initial: { ok: true, status: initial },
     done: (d) => !d.status || !ACTIVE.has(d.status.status),
     onDone: () => router.refresh(),
+    // Dataset dihapus / sesi habis: render ulang (404 atau halaman login).
+    onStop: () => router.refresh(),
   });
   const s = data?.status ?? initial;
   const p = s.progress;
@@ -69,7 +71,7 @@ export function IngestProgress({
         </span>
       </p>
 
-      <ol className="grid gap-1.5 sm:grid-cols-4" aria-label="Tahap pemrosesan">
+      <ol className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Tahap pemrosesan">
         {STEPS.map((x, i) => {
           const state = step < 0 ? "todo" : i < step ? "done" : i === step ? "now" : "todo";
           return (
@@ -128,7 +130,7 @@ export function IngestProgress({
             <div
               className={cn(
                 "h-full rounded-full bg-primary transition-[width] duration-500",
-                pct === null && "w-1/3 motion-safe:animate-pulse",
+                pct === null && "w-full bg-primary/30 motion-safe:animate-pulse",
               )}
               style={pct === null ? undefined : { width: `${pct}%` }}
             />
@@ -141,7 +143,7 @@ export function IngestProgress({
           {s.sheets.map((sh) => (
             <li key={sh.index} className="flex items-center gap-1.5">
               <IconCircleCheck size={16} stroke={2} aria-hidden className="shrink-0 text-success" />
-              <span className="min-w-0 truncate">{sh.name}</span>
+              <span className="min-w-0 break-words">{sh.name}</span>
               <span className="shrink-0 tabular-nums">· {fmt(sh.rawRows)} baris</span>
             </li>
           ))}

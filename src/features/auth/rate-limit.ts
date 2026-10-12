@@ -30,6 +30,8 @@ export const RULES = {
   uploadSign: { name: "upload-sign:user", limit: 600, windowSec: 60 * 60 },
   /** Koreksi skema yang masuk antrean recast per user (tiap recast membaca ulang raw.parquet). */
   recast: { name: "recast:user", limit: 20, windowSec: 10 * 60 },
+  /** Ganti nama/sembunyikan kolom (tanpa worker; hanya tulis skema). */
+  schemaEdit: { name: "schema-edit:user", limit: 60, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

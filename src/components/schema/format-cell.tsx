@@ -38,8 +38,9 @@ export function FormatCell({
   onChange: (next: ColumnDraft) => void;
   label: (text: string, htmlFor: string) => React.ReactNode;
 }) {
+  const none = !needsDateFormat(draft.type) && !needsLocale(draft.type);
   return (
-    <div>
+    <div className={none ? "hidden @4xl:block" : undefined}>
       {needsDateFormat(draft.type) ? (
         <>
           {label("Format tanggal", `${id}-fmt`)}
@@ -50,7 +51,7 @@ export function FormatCell({
               onChange({ ...draft, dateFormat: v === AUTO ? undefined : (v as DateFormat) })
             }
           >
-            <SelectTrigger id={`${id}-fmt`}>
+            <SelectTrigger id={`${id}-fmt`} className="h-11 md:h-(--control-h)">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -75,7 +76,7 @@ export function FormatCell({
               onChange({ ...draft, numberLocale: v === AUTO ? undefined : (v as NumberLocale) })
             }
           >
-            <SelectTrigger id={`${id}-loc`}>
+            <SelectTrigger id={`${id}-loc`} className="h-11 md:h-(--control-h)">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

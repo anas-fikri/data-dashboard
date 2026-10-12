@@ -6,6 +6,7 @@ import { ColumnEditor } from "@/components/schema/column-editor";
 import { HeaderRowPicker } from "@/components/schema/header-row-picker";
 import { fmtInt } from "@/components/schema/labels";
 import { RecastBanner } from "@/components/schema/recast-banner";
+import { RefreshButton } from "@/components/schema/refresh-button";
 import { SampleSection, SampleSkeleton } from "@/components/schema/sample-section";
 import { SheetTabs } from "@/components/schema/sheet-tabs";
 import { RecastProvider } from "@/components/schema/use-recast";
@@ -39,11 +40,12 @@ export default async function SchemaPage({
 }) {
   const [{ id }, search] = await Promise.all([params, searchParams]);
   const user = await requireUser();
-  const view = isIdShape(id) ? await prismaSchemaRepo.schemaView(user.id, id) : null;
+  const wanted = /^\d{1,4}$/.test(search.sheet ?? "") ? Number(search.sheet) : null;
+  const view = isIdShape(id) ? await prismaSchemaRepo.schemaView(user.id, id, wanted) : null;
   if (!view) notFound();
 
   const back = (
-    <Button asChild variant="outline">
+    <Button asChild variant="outline" className="h-11 md:h-(--control-h)">
       <Link href={`/datasets/${view.datasetId}`}>
         <IconArrowLeft aria-hidden />
         Kembali ke dataset
@@ -75,7 +77,8 @@ export default async function SchemaPage({
     />
   );
 
-  if (!view.version || view.sheets.length === 0) {
+  const sheet = view.sheet;
+  if (!view.version || !sheet) {
     return (
       <div className="flex flex-col gap-6">
         {header}
@@ -89,28 +92,24 @@ export default async function SchemaPage({
     );
   }
 
-  const wanted = Number(search.sheet);
-  const sheet = view.sheets.find((s) => s.index === wanted) ?? view.sheets[0]!;
   const facts = [
     ["Baris data", fmtInt(dataRows(sheet))],
     ["Kolom", fmtInt(sheet.colCount)],
     ["Baris judul", fmtInt(sheet.headerRow)],
-    ["Revisi skema", fmtInt(sheet.schemaRevision)],
+    ["Kolom disembunyikan", fmtInt(sheet.schema?.filter((c) => c.hidden).length ?? 0)],
   ] as const;
 
   return (
     <div className="flex flex-col gap-6">
       {header}
-      {view.sheets.length > 1 ? (
-        <SheetTabs datasetId={view.datasetId} sheets={view.sheets} current={sheet.index} />
+      {view.tabs.length > 1 ? (
+        <SheetTabs datasetId={view.datasetId} sheets={view.tabs} current={sheet.index} />
       ) : null}
 
       <section aria-labelledby="sheet-title" className="flex flex-col gap-4">
         <div className="flex flex-col gap-3">
           <h2 id="sheet-title" className="text-lg font-semibold">
-            {view.sheets.length > 1
-              ? `Sheet "${sheet.name}"`
-              : (view.version.fileName ?? sheet.name)}
+            {view.tabs.length > 1 ? `Sheet "${sheet.name}"` : (view.version.fileName ?? sheet.name)}
           </h2>
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {facts.map(([k, v]) => (
@@ -136,7 +135,7 @@ export default async function SchemaPage({
             <RecastBanner schema={sheet.schema} />
             <Card>
               <CardHeader>
-                <CardTitle>Baris judul kolom</CardTitle>
+                <CardTitle as="h3">Baris judul kolom</CardTitle>
               </CardHeader>
               <CardContent>
                 <HeaderRowPicker headerRow={sheet.headerRow} preview={sheet.preview} />
@@ -144,7 +143,7 @@ export default async function SchemaPage({
             </Card>
             <Card>
               <CardHeader>
-                <CardTitle>Kolom</CardTitle>
+                <CardTitle as="h3">Kolom</CardTitle>
                 <CardDescription>
                   Nama baru dipakai di builder dashboard; nama asli dari file tetap tersimpan. Kolom
                   yang disembunyikan tidak muncul di builder.
@@ -155,15 +154,17 @@ export default async function SchemaPage({
           </RecastProvider>
         ) : (
           <EmptyState
+            as="h3"
             icon={<IconFileSpreadsheet />}
             title="Sheet ini belum siap"
-            description="Tipe kolom sheet ini belum selesai dideteksi. Muat ulang halaman sebentar lagi."
+            description="Tipe kolom sheet ini belum selesai dideteksi. Coba muat ulang sebentar lagi."
+            action={<RefreshButton />}
           />
         )}
 
         <Card>
           <CardHeader>
-            <CardTitle>Contoh data</CardTitle>
+            <CardTitle as="h3">Contoh data</CardTitle>
             <CardDescription>
               50 baris pertama setelah baris judul, sesuai tipe kolom sekarang.
             </CardDescription>

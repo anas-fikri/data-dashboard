@@ -4,9 +4,13 @@
  * (repo, mesin query, antrean, rate limit) agar bisa diuji tanpa layanan; perakitan produksi di
  * runtime.ts.
  *
- * Koreksi tidak langsung mengubah skema: input divalidasi lalu masuk antrean recast (worker menulis
- * typed-<rev+1> dari raw.parquet, tanpa membaca file asli). baseRevision wajib: edit dari tampilan
- * lama ditolak (STALE) alih-alih menimpa edit yang lebih baru.
+ * Koreksi:
+ *  - hanya nama tampil/sembunyikan → diterapkan langsung ke Sheet.schema (typed.parquet posisional,
+ *    nama tidak tersimpan di sana), revisi naik tanpa worker (review T-008 M2);
+ *  - tipe/format/baris judul → antrean recast (worker menulis typed-<rev+1> dari raw.parquet, tanpa
+ *    membaca file asli). Satu job per sheet dan ≤ RECAST_INFLIGHT_PER_USER per user agar satu user
+ *    tidak memonopoli worker (concurrency 1).
+ * baseRevision wajib: edit dari tampilan lama ditolak (STALE) alih-alih menimpa edit yang lebih baru.
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
@@ -54,13 +58,23 @@ export interface SchemaView {
   datasetName: string;
   /** Versi aktif (data yang dipakai dashboard); null bila belum ada data siap. */
   version: { id: string; fileName: string | null } | null;
-  sheets: SheetView[];
+  /** Semua sheet versi aktif untuk tab (ringan: tanpa skema/pratinjau, review T-008 M1). */
+  tabs: { id: string; index: number; name: string }[];
+  /** Sheet yang dipilih (indeks diminta, atau sheet pertama), lengkap. */
+  sheet: SheetView | null;
 }
+
+/** Job recast yang belum selesai (antre/diproses) per user dan per sheet. */
+export const RECAST_INFLIGHT_PER_USER = 2;
 
 export interface SchemaRepo {
   /** Versi terbaru dataset milik user yang sudah lewat tahap unggah, atau null (404/belum ada). */
   latestVersion(userId: string, datasetId: string): Promise<IngestStatus | null | "none">;
-  schemaView(userId: string, datasetId: string): Promise<SchemaView | null>;
+  schemaView(
+    userId: string,
+    datasetId: string,
+    sheetIndex: number | null,
+  ): Promise<SchemaView | null>;
   /** Sheet milik user di versi aktif dataset-nya; null = tidak ada/bukan pemilik/bukan versi aktif. */
   ownedActiveSheet(
     userId: string,
@@ -72,6 +86,17 @@ export interface SchemaRepo {
     schema: ColumnSchema[] | null;
     versionStatus: VersionStatus;
   } | null>;
+  /** Cek kepemilikan ringan (polling status tiap 1,5 s tidak membaca skema, review T-008 L3). */
+  ownsActiveSheet(userId: string, sheetId: string): Promise<boolean>;
+  /**
+   * Terapkan perubahan metadata (nama/sembunyikan) bila revisi masih baseRevision dan versi READY.
+   * Revisi baru, atau null bila basi.
+   */
+  applyMetadata(
+    sheetId: string,
+    baseRevision: number,
+    schema: ColumnSchema[],
+  ): Promise<number | null>;
 }
 
 export interface RecastJobView {
@@ -80,15 +105,28 @@ export interface RecastJobView {
   result: RecastOutcome | { outcome: "done"; revision: number } | null;
 }
 
+export type EditKind = "recast" | "metadata";
+
 export interface SchemaDeps {
   repo: SchemaRepo;
-  rateLimit(userId: string): Promise<{ allowed: boolean; retryAfterSec: number }>;
-  enqueue(sheetId: string, input: RecastInput): Promise<string>;
+  rateLimit(userId: string, kind: EditKind): Promise<{ allowed: boolean; retryAfterSec: number }>;
+  /** Kembalikan slot rate limit bila enqueue gagal (review T-008 L5). */
+  releaseRateLimit(userId: string, kind: EditKind): Promise<void>;
+  /** Job recast belum selesai milik user, dan apakah sheet ini sudah punya satu. */
+  inFlight(userId: string, sheetId: string): Promise<{ user: number; sheet: boolean }>;
+  enqueue(sheetId: string, userId: string, input: RecastInput): Promise<string>;
   job(jobId: string): Promise<RecastJobView | null>;
 }
 
 export type SchemaCode =
-  "INVALID" | "NOT_FOUND" | "NOT_READY" | "NO_CHANGE" | "STALE" | "RATE_LIMITED";
+  | "INVALID"
+  | "NOT_FOUND"
+  | "NOT_READY"
+  | "NO_CHANGE"
+  | "STALE"
+  | "BUSY"
+  | "QUEUE_FULL"
+  | "RATE_LIMITED";
 
 type Fail = { ok: false; code: SchemaCode; message: string; retryAfterSec?: number };
 const fail = (code: SchemaCode, message: string): Fail => ({ ok: false, code, message });
@@ -211,12 +249,45 @@ function duplicateName(
   return null;
 }
 
+const METADATA_FIELDS = new Set(["pos", "name", "hidden"]);
+const isMetadataOnly = (columns: NonNullable<RecastInput["columns"]>) =>
+  columns.every((c) => Object.keys(c).every((k) => METADATA_FIELDS.has(k)));
+
+function applyMetadataChanges(
+  schema: ColumnSchema[],
+  changes: NonNullable<RecastInput["columns"]>,
+): ColumnSchema[] {
+  const byPos = new Map(changes.map((c) => [c.pos, c]));
+  return schema.map((c) => {
+    const ch = byPos.get(c.pos);
+    if (!ch) return c;
+    return {
+      ...c,
+      ...(ch.name !== undefined ? { name: ch.name } : {}),
+      ...(ch.hidden !== undefined ? { hidden: ch.hidden } : {}),
+    };
+  });
+}
+
+function rateLimited(retryAfterSec: number): Fail {
+  return {
+    ...fail(
+      "RATE_LIMITED",
+      `Terlalu banyak koreksi skema. Coba lagi dalam ${Math.max(1, Math.ceil(retryAfterSec / 60))} menit.`,
+    ),
+    retryAfterSec,
+  };
+}
+
+export type RecastRequestResult =
+  { ok: true; jobId: string } | { ok: true; applied: true; revision: number } | Fail;
+
 export async function requestRecast(
   userId: string,
   sheetId: unknown,
   body: unknown,
   deps: SchemaDeps,
-): Promise<{ ok: true; jobId: string } | Fail> {
+): Promise<RecastRequestResult> {
   if (typeof sheetId !== "string" || !ID.test(sheetId)) {
     return fail("NOT_FOUND", "Sheet tidak ditemukan.");
   }
@@ -237,12 +308,12 @@ export async function requestRecast(
   if (input.baseRevision === undefined) {
     return fail("INVALID", "Perubahan tidak valid: revisi skema yang diedit wajib dikirim.");
   }
-  if (input.baseRevision !== sheet.schemaRevision) {
-    return fail(
+  const stale = () =>
+    fail(
       "STALE",
       "Skema sheet ini sudah diubah sejak halaman dibuka. Muat ulang halaman lalu ulangi perubahan.",
     );
-  }
+  if (input.baseRevision !== sheet.schemaRevision) return stale();
   const headerRow =
     input.headerRow !== undefined && input.headerRow !== sheet.headerRow
       ? input.headerRow
@@ -254,21 +325,44 @@ export async function requestRecast(
   }
   const dup = duplicateName(sheet.schema, columns);
   if (dup) return fail("INVALID", `Nama kolom "${dup}" dipakai lebih dari sekali.`);
-  const rl = await deps.rateLimit(userId);
-  if (!rl.allowed) {
-    return {
-      ...fail(
-        "RATE_LIMITED",
-        `Terlalu banyak koreksi skema. Coba lagi dalam ${Math.max(1, Math.ceil(rl.retryAfterSec / 60))} menit.`,
-      ),
-      retryAfterSec: rl.retryAfterSec,
-    };
+
+  const busy = await deps.inFlight(userId, sheetId);
+  if (busy.sheet) {
+    return fail(
+      "BUSY",
+      "Koreksi sebelumnya untuk sheet ini masih diproses. Tunggu selesai, lalu muat ulang halaman.",
+    );
   }
-  const jobId = await deps.enqueue(sheetId, {
-    baseRevision: input.baseRevision,
-    ...(headerRow !== undefined ? { headerRow } : { columns }),
-  });
-  return { ok: true, jobId };
+
+  if (headerRow === undefined && isMetadataOnly(columns)) {
+    const rl = await deps.rateLimit(userId, "metadata");
+    if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+    const revision = await deps.repo.applyMetadata(
+      sheetId,
+      input.baseRevision,
+      applyMetadataChanges(sheet.schema, columns),
+    );
+    return revision === null ? stale() : { ok: true, applied: true, revision };
+  }
+
+  if (busy.user >= RECAST_INFLIGHT_PER_USER) {
+    return fail(
+      "QUEUE_FULL",
+      `Masih ada ${busy.user} koreksi Anda yang sedang diproses. Tunggu salah satunya selesai, lalu coba lagi.`,
+    );
+  }
+  const rl = await deps.rateLimit(userId, "recast");
+  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+  try {
+    const jobId = await deps.enqueue(sheetId, userId, {
+      baseRevision: input.baseRevision,
+      ...(headerRow !== undefined ? { headerRow } : { columns }),
+    });
+    return { ok: true, jobId };
+  } catch (e) {
+    await deps.releaseRateLimit(userId, "recast").catch(() => {});
+    throw e;
+  }
 }
 
 export type RecastStatus =
@@ -277,7 +371,11 @@ export type RecastStatus =
   | { state: "stale" | "gone" | "unknown" }
   | { state: "invalid" | "failed"; message: string };
 
-/** Status job recast milik sheet user (polling UI). Job lain/milik sheet lain → NOT_FOUND. */
+/**
+ * Status job recast milik sheet user (polling UI). Job yang tidak ada dan job milik sheet lain dijawab
+ * sama ("unknown" → UI memuat ulang dari DB), jadi id job tidak bisa dipakai menebak aktivitas user
+ * lain (review T-008 L1).
+ */
 export async function recastStatus(
   userId: string,
   sheetId: unknown,
@@ -290,16 +388,20 @@ export async function recastStatus(
   if (typeof jobId !== "string" || !JOB_ID.test(jobId)) {
     return fail("NOT_FOUND", "Koreksi tidak ditemukan.");
   }
-  const sheet = await deps.repo.ownedActiveSheet(userId, sheetId);
-  if (!sheet) return fail("NOT_FOUND", "Sheet tidak ditemukan.");
+  if (!(await deps.repo.ownsActiveSheet(userId, sheetId))) {
+    return fail("NOT_FOUND", "Sheet tidak ditemukan.");
+  }
   const job = await deps.job(jobId);
-  if (job && job.sheetId !== sheetId) return fail("NOT_FOUND", "Koreksi tidak ditemukan.");
-  // Job sudah dibersihkan dari antrean (riwayat terbatas): UI memuat ulang skema dari DB.
-  if (!job) return { ok: true, status: { state: "unknown" } };
+  // Job sudah dibersihkan dari antrean (riwayat terbatas), milik sheet lain, atau di luar daftar
+  // BullMQ: UI memuat ulang skema dari DB (sumber kebenaran).
+  if (!job || job.sheetId !== sheetId || job.state === "unknown") {
+    return { ok: true, status: { state: "unknown" } };
+  }
   if (job.state === "waiting" || job.state === "delayed") {
     return { ok: true, status: { state: "queued" } };
   }
   if (job.state === "active") return { ok: true, status: { state: "running" } };
+  if (job.state === "completed" && !job.result) return { ok: true, status: { state: "unknown" } };
   if (job.state === "failed" || !job.result) {
     return {
       ok: true,

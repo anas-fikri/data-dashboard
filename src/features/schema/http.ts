@@ -18,11 +18,16 @@ const STATUS: Record<SchemaCode, number> = {
   NOT_FOUND: 404,
   NOT_READY: 409,
   STALE: 409,
+  BUSY: 409,
   NO_CHANGE: 422,
+  QUEUE_FULL: 429,
   RATE_LIMITED: 429,
 };
-/** 2.048 kolom × perubahan ± 100 byte masih jauh di bawah ini. */
-const RECAST_BODY_MAX = 256 * 1024;
+/**
+ * Ganti nama 2.048 kolom × 120 karakter ≈ 290 KB (ASCII), lebih untuk huruf non-Latin (review T-008
+ * L6); tetap di bawah buffer proxy 1 MB (next.config.ts).
+ */
+const RECAST_BODY_MAX = 900 * 1024;
 const noStore = { "Cache-Control": "no-store" };
 
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
@@ -73,7 +78,16 @@ export async function recastRoute(req: NextRequest, sheetId: string): Promise<Ne
       json({ ok: false, code: "INVALID", message: "Permintaan tidak valid." }, 400);
     if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return invalid();
     const text = await readTextLimited(req, RECAST_BODY_MAX);
-    if (text === null) return invalid();
+    if (text === null) {
+      return json(
+        {
+          ok: false,
+          code: "TOO_LARGE",
+          message: "Terlalu banyak perubahan sekaligus. Simpan sebagian dulu, lalu lanjutkan.",
+        },
+        413,
+      );
+    }
     let body: unknown;
     try {
       body = JSON.parse(text);
@@ -81,7 +95,8 @@ export async function recastRoute(req: NextRequest, sheetId: string): Promise<Ne
       return invalid();
     }
     const r = await requestRecast(userId, sheetId, body, schemaDeps);
-    if (r.ok) return json(r, 202);
+    // Nama/sembunyikan langsung diterapkan (200); perubahan tipe/format/baris judul antre (202).
+    if (r.ok) return json(r, "applied" in r ? 200 : 202);
     return json(
       r,
       STATUS[r.code],

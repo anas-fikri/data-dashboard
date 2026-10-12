@@ -50,7 +50,7 @@ export function SampleTable({
         // scrollable-region-focusable).
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
-        className="max-h-[28rem] overflow-auto rounded-md border"
+        className="relative max-h-[28rem] overflow-auto rounded-md border"
         data-testid="sample-table"
       >
         <table className="w-max min-w-full border-separate border-spacing-0 text-sm">
@@ -109,9 +109,12 @@ export function SampleTable({
                       title={text ?? undefined}
                     >
                       {text ?? (
-                        <span className="text-muted-foreground" aria-label="kosong">
-                          —
-                        </span>
+                        <>
+                          <span className="text-muted-foreground" aria-hidden>
+                            —
+                          </span>
+                          <span className="sr-only">kosong</span>
+                        </>
                       )}
                     </td>
                   );

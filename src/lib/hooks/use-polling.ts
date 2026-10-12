@@ -17,6 +17,11 @@ export function usePolling<T>(opts: {
   done: (data: T) => boolean;
   /** Dipanggil sekali per URL saat `done` pertama kali benar. */
   onDone?: (data: T) => void;
+  /**
+   * Respons 401/403/404/410: polling berhenti (bukan diulang selamanya) dan pemanggil memutuskan
+   * langkah berikutnya, mis. render ulang halaman (review T-008 L2).
+   */
+  onStop?: (status: number) => void;
 }) {
   const { url, intervalMs } = opts;
   const [result, setResult] = useState<{ url: string | null; data: T | null }>({
@@ -50,6 +55,11 @@ export function usePolling<T>(opts: {
       }
       try {
         const res = await fetch(url!, { cache: "no-store", signal: ctl.signal });
+        if ([401, 403, 404, 410].includes(res.status)) {
+          finished.current = url;
+          latest.current.onStop?.(res.status);
+          return;
+        }
         if (!res.ok) throw new Error(String(res.status));
         const next = (await res.json()) as T;
         failures = 0;

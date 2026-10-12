@@ -193,25 +193,43 @@ describe("AC 2: sampel 50 baris typed", () => {
 });
 
 describe("AC 1: status ingest", () => {
-  it("pesan gagal menyebut sheet dan perkiraan baris; tidak menggandakan lokasi dari parser", () => {
-    const p = {
-      stage: "baca" as const,
-      sheet: 1,
-      sheetName: "Penjualan",
-      rows: 12_344,
-      fraction: 0.4,
-      rowsEstimate: null,
-    };
-    expect(failureMessage("File memiliki 3.000 kolom.", p)).toBe(
-      'Sheet "Penjualan", sekitar baris data ke-12.345: File memiliki 3.000 kolom.',
+  const p = {
+    stage: "baca" as const,
+    sheet: 1,
+    sheetName: "Penjualan",
+    rows: 50_000,
+    fraction: 0.4,
+    rowsEstimate: null,
+  };
+  const at = { row: 73_412, csv: false, deadline: false };
+
+  it("pesan gagal menyebut sheet dan nomor baris fisik terakhir yang dibaca (review L4)", () => {
+    expect(failureMessage("File memiliki 3.000 kolom.", p, at)).toBe(
+      'Sheet "Penjualan", sekitar baris 73.412: File memiliki 3.000 kolom.',
     );
-    expect(failureMessage("Memori habis.", { ...p, stage: "tipe" })).toBe(
+    expect(failureMessage("Memori habis.", { ...p, stage: "tipe" }, at)).toBe(
       'Sheet "Penjualan": Memori habis.',
     );
+  });
+
+  it("tanpa lokasi untuk CSV, batas waktu, sebelum sheet dibaca, dan pesan parser yang sudah berlokasi", () => {
     const own = 'XML rusak di sheet "Penjualan" baris 121.';
-    expect(failureMessage(own, p)).toBe(own);
-    expect(failureMessage("Bukan file Excel.", { ...p, sheetName: null })).toBe(
+    expect(failureMessage(own, p, at)).toBe(own);
+    expect(failureMessage("Bukan file Excel.", { ...p, sheetName: null }, at)).toBe(
       "Bukan file Excel.",
+    );
+    expect(
+      failureMessage(
+        "File CSV rusak di sekitar baris 9.",
+        { ...p, sheetName: "CSV" },
+        {
+          ...at,
+          csv: true,
+        },
+      ),
+    ).toBe("File CSV rusak di sekitar baris 9.");
+    expect(failureMessage("Melebihi 60 menit.", p, { ...at, deadline: true })).toBe(
+      "Melebihi 60 menit.",
     );
   });
 
@@ -225,36 +243,47 @@ describe("AC 1: status ingest", () => {
 function schemaDeps(
   over: Partial<SchemaDeps> = {},
   sheet: Partial<Awaited<ReturnType<SchemaRepo["ownedActiveSheet"]>>> = {},
+  repoOver: Partial<SchemaRepo> = {},
 ) {
-  const enqueue = vi.fn(async () => "17");
+  const enqueue = vi.fn(async (_sheetId: string, _userId: string, _input: unknown) => "17");
+  const releaseRateLimit = vi.fn(async () => {});
+  const applyMetadata = vi.fn(async (_id: string, base: number) => base + 1);
+  const owns = (userId: string, sheetId: string) => userId === USER && sheetId === SHEET;
+  const ownedActiveSheet = vi.fn(async (userId: string, sheetId: string) =>
+    owns(userId, sheetId)
+      ? {
+          colCount: 3,
+          schemaRevision: 2,
+          headerRow: 1,
+          schema: SCHEMA,
+          versionStatus: "READY" as const,
+          ...sheet,
+        }
+      : null,
+  );
   const repo: SchemaRepo = {
     latestVersion: async () => "none",
     schemaView: async () => null,
-    ownedActiveSheet: async (userId, sheetId) =>
-      userId === USER && sheetId === SHEET
-        ? {
-            colCount: 3,
-            schemaRevision: 2,
-            headerRow: 1,
-            schema: SCHEMA,
-            versionStatus: "READY",
-            ...sheet,
-          }
-        : null,
+    ownedActiveSheet,
+    ownsActiveSheet: async (userId, sheetId) => owns(userId, sheetId),
+    applyMetadata,
+    ...repoOver,
   };
   const deps: SchemaDeps = {
     repo,
     rateLimit: async () => ({ allowed: true, retryAfterSec: 0 }),
+    releaseRateLimit,
+    inFlight: async () => ({ user: 0, sheet: false }),
     enqueue,
     job: async () => null,
     ...over,
   };
-  return { deps, enqueue };
+  return { deps, enqueue, releaseRateLimit, applyMetadata, ownedActiveSheet };
 }
 
 describe("AC 3–5: permintaan koreksi skema", () => {
-  it("hanya kolom yang berubah yang dikirim ke antrean, beserta baseRevision", async () => {
-    const { deps, enqueue } = schemaDeps();
+  it("ganti tipe/format → antrean dengan baseRevision, peminta, dan hanya kolom yang berubah", async () => {
+    const { deps, enqueue, applyMetadata } = schemaDeps();
     const r = await requestRecast(
       USER,
       SHEET,
@@ -269,13 +298,53 @@ describe("AC 3–5: permintaan koreksi skema", () => {
       deps,
     );
     expect(r).toEqual({ ok: true, jobId: "17" });
-    expect(enqueue).toHaveBeenCalledWith(SHEET, {
+    expect(enqueue).toHaveBeenCalledWith(SHEET, USER, {
       baseRevision: 2,
       columns: [
         { pos: 1, name: "Kota Tujuan" },
         { pos: 2, dateFormat: "dd-mm-yyyy" },
       ],
     });
+    expect(applyMetadata).not.toHaveBeenCalled();
+  });
+
+  it("AC 5: ganti nama/sembunyikan diterapkan langsung tanpa worker; nama asli tetap (review M2)", async () => {
+    const { deps, enqueue, applyMetadata } = schemaDeps();
+    const r = await requestRecast(
+      USER,
+      SHEET,
+      {
+        baseRevision: 2,
+        columns: [
+          { pos: 1, name: "Kota Tujuan" },
+          { pos: 3, hidden: true },
+        ],
+      },
+      deps,
+    );
+    expect(r).toEqual({ ok: true, applied: true, revision: 3 });
+    expect(enqueue).not.toHaveBeenCalled();
+    const [, base, schema] = applyMetadata.mock.calls[0]! as unknown as [
+      string,
+      number,
+      ColumnSchema[],
+    ];
+    expect(base).toBe(2);
+    expect(schema.find((c) => c.pos === 1)).toMatchObject({
+      name: "Kota Tujuan",
+      original: "Kota",
+    });
+    expect(schema.find((c) => c.pos === 3)).toMatchObject({ hidden: true, type: "decimal" });
+    // Revisi sudah berubah di DB (mis. tab lain) → basi, tidak menimpa.
+    const raced = schemaDeps({}, {}, { applyMetadata: async () => null }).deps;
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 1, name: "B" }] },
+        raced,
+      ),
+    ).toMatchObject({ code: "STALE" });
   });
 
   it("baris header baru dikirim tanpa edit kolom (nama dan tipe dibentuk ulang dari baris itu)", async () => {
@@ -286,12 +355,12 @@ describe("AC 3–5: permintaan koreksi skema", () => {
       { baseRevision: 2, headerRow: 3, columns: [{ pos: 1, name: "X" }] },
       deps,
     );
-    expect(r).toMatchObject({ ok: true });
-    expect(enqueue).toHaveBeenCalledWith(SHEET, { baseRevision: 2, headerRow: 3 });
+    expect(r).toMatchObject({ ok: true, jobId: "17" });
+    expect(enqueue).toHaveBeenCalledWith(SHEET, USER, { baseRevision: 2, headerRow: 3 });
   });
 
   it("ditolak sebelum masuk antrean: bukan pemilik, belum siap, tidak valid, basi, tanpa perubahan, nama ganda", async () => {
-    const { deps, enqueue } = schemaDeps();
+    const { deps, enqueue, applyMetadata } = schemaDeps();
     const body = { baseRevision: 2, columns: [{ pos: 1, name: "Baru" }] };
     expect(await requestRecast("orang-lain", SHEET, body, deps)).toMatchObject({
       code: "NOT_FOUND",
@@ -325,7 +394,9 @@ describe("AC 3–5: permintaan koreksi skema", () => {
       ),
     ).toMatchObject({ code: "NO_CHANGE" });
     expect(await requestRecast(USER, SHEET, { baseRevision: 2, headerRow: 1 }, deps)).toMatchObject(
-      { code: "NO_CHANGE" },
+      {
+        code: "NO_CHANGE",
+      },
     );
     expect(
       await requestRecast(
@@ -336,21 +407,77 @@ describe("AC 3–5: permintaan koreksi skema", () => {
       ),
     ).toMatchObject({ code: "INVALID", message: expect.stringContaining("kota") });
     expect(enqueue).not.toHaveBeenCalled();
+    expect(applyMetadata).not.toHaveBeenCalled();
   });
 
-  it("rate limit per user → RATE_LIMITED dengan Retry-After, tanpa masuk antrean", async () => {
-    const { deps, enqueue } = schemaDeps({
-      rateLimit: async () => ({ allowed: false, retryAfterSec: 125 }),
+  it("satu job per sheet dan ≤ 2 job berjalan per user (review M2)", async () => {
+    const type = { baseRevision: 2, columns: [{ pos: 2, type: "text" }] };
+    const sheetBusy = schemaDeps({ inFlight: async () => ({ user: 1, sheet: true }) });
+    expect(await requestRecast(USER, SHEET, type, sheetBusy.deps)).toMatchObject({ code: "BUSY" });
+    // Ganti nama pun ditahan selama sheet sedang di-recast (hasil recast akan basi bila tidak).
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 1, name: "B" }] },
+        sheetBusy.deps,
+      ),
+    ).toMatchObject({ code: "BUSY" });
+    const userFull = schemaDeps({ inFlight: async () => ({ user: 2, sheet: false }) });
+    expect(await requestRecast(USER, SHEET, type, userFull.deps)).toMatchObject({
+      code: "QUEUE_FULL",
     });
+    expect(sheetBusy.enqueue).not.toHaveBeenCalled();
+    expect(userFull.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("rate limit per jenis perubahan; slot dikembalikan bila antrean gagal (review L5)", async () => {
+    const limited = schemaDeps({ rateLimit: async () => ({ allowed: false, retryAfterSec: 125 }) });
     const r = await requestRecast(
       USER,
       SHEET,
-      { baseRevision: 2, columns: [{ pos: 1, name: "B" }] },
-      deps,
+      { baseRevision: 2, columns: [{ pos: 2, type: "text" }] },
+      limited.deps,
     );
     expect(r).toMatchObject({ ok: false, code: "RATE_LIMITED", retryAfterSec: 125 });
     expect(r.ok ? "" : r.message).toMatch(/3 menit/);
-    expect(enqueue).not.toHaveBeenCalled();
+    expect(limited.enqueue).not.toHaveBeenCalled();
+
+    const kinds: string[] = [];
+    const seen = schemaDeps({
+      rateLimit: async (_u, kind) => {
+        kinds.push(kind);
+        return { allowed: true, retryAfterSec: 0 };
+      },
+    });
+    await requestRecast(
+      USER,
+      SHEET,
+      { baseRevision: 2, columns: [{ pos: 1, name: "B" }] },
+      seen.deps,
+    );
+    await requestRecast(
+      USER,
+      SHEET,
+      { baseRevision: 2, columns: [{ pos: 2, type: "text" }] },
+      seen.deps,
+    );
+    expect(kinds).toEqual(["metadata", "recast"]);
+
+    const down = schemaDeps({
+      enqueue: async () => {
+        throw new Error("antrean tidak merespons");
+      },
+    });
+    await expect(
+      requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 2, type: "text" }] },
+        down.deps,
+      ),
+    ).rejects.toThrow(/antrean/);
+    expect(down.releaseRateLimit).toHaveBeenCalledWith(USER, "recast");
   });
 
   it("changedColumns membuang kolom yang tidak berubah dan posisi yang tidak dikenal tetap diteruskan", () => {
@@ -370,41 +497,43 @@ describe("status koreksi skema (polling)", () => {
     result: null,
     ...v,
   });
-  const status = (j: RecastJobView | null, jobId = "17") =>
-    recastStatus(USER, SHEET, jobId, schemaDeps({ job: async () => j }).deps);
+  const status = (j: RecastJobView | null, jobId = "17") => {
+    const d = schemaDeps({ job: async () => j });
+    return recastStatus(USER, SHEET, jobId, d.deps).then((r) => ({ r, read: d.ownedActiveSheet }));
+  };
+  const st = async (j: RecastJobView | null, jobId?: string) => (await status(j, jobId)).r;
 
   it("antre/jalan/selesai/basi/tidak valid/gagal dipetakan untuk UI", async () => {
-    expect(await status(job({ state: "waiting" }))).toEqual({
-      ok: true,
-      status: { state: "queued" },
-    });
-    expect(await status(job({ state: "delayed" }))).toEqual({
-      ok: true,
-      status: { state: "queued" },
-    });
-    expect(await status(job({ state: "active" }))).toEqual({
-      ok: true,
-      status: { state: "running" },
-    });
-    expect(await status(job({ result: { outcome: "done", revision: 3 } }))).toEqual({
+    expect(await st(job({ state: "waiting" }))).toEqual({ ok: true, status: { state: "queued" } });
+    expect(await st(job({ state: "delayed" }))).toEqual({ ok: true, status: { state: "queued" } });
+    expect(await st(job({ state: "active" }))).toEqual({ ok: true, status: { state: "running" } });
+    expect(await st(job({ result: { outcome: "done", revision: 3 } }))).toEqual({
       ok: true,
       status: { state: "done", revision: 3 },
     });
-    expect(await status(job({ result: { outcome: "stale" } }))).toMatchObject({
+    expect(await st(job({ result: { outcome: "stale" } }))).toMatchObject({
       status: { state: "stale" },
     });
     expect(
-      await status(job({ result: { outcome: "invalid", message: "Nama kolom ganda" } })),
+      await st(job({ result: { outcome: "invalid", message: "Nama kolom ganda" } })),
     ).toMatchObject({ status: { state: "invalid", message: "Nama kolom ganda" } });
-    expect(await status(job({ state: "failed" }))).toMatchObject({ status: { state: "failed" } });
-    expect(await status(null)).toEqual({ ok: true, status: { state: "unknown" } });
+    expect(await st(job({ state: "failed" }))).toMatchObject({ status: { state: "failed" } });
   });
 
-  it("job milik sheet lain, id job rusak, atau sheet bukan milik user → NOT_FOUND", async () => {
-    expect(await status(job({ sheetId: "cmv4kljx40009oczvdmpurrxq" }))).toMatchObject({
-      code: "NOT_FOUND",
-    });
-    expect(await status(job({}), "abc")).toMatchObject({ code: "NOT_FOUND" });
+  it("job tidak ada, milik sheet lain, di luar daftar BullMQ, atau selesai tanpa hasil → 'unknown' yang sama (review L1, L7)", async () => {
+    const unknown = { ok: true, status: { state: "unknown" } };
+    expect(await st(null)).toEqual(unknown);
+    expect(await st(job({ sheetId: "cmv4kljx40009oczvdmpurrxq", state: "active" }))).toEqual(
+      unknown,
+    );
+    expect(await st(job({ state: "unknown" }))).toEqual(unknown);
+    expect(await st(job({ state: "completed", result: null }))).toEqual(unknown);
+  });
+
+  it("polling hanya memeriksa kepemilikan (tanpa membaca skema); bukan pemilik atau id rusak → NOT_FOUND (review L3)", async () => {
+    const { read } = await status(job({ state: "active" }));
+    expect(read).not.toHaveBeenCalled();
+    expect(await st(job({}), "abc")).toMatchObject({ code: "NOT_FOUND" });
     const other = await recastStatus("orang-lain", SHEET, "17", schemaDeps().deps);
     expect(other).toMatchObject({ code: "NOT_FOUND" });
   });

@@ -151,16 +151,20 @@ export function permanentMessage(e: unknown): string | null {
 }
 
 /**
- * Pesan gagal + lokasi (T-008 AC 1): bila kegagalan terjadi saat sebuah sheet sedang diproses, user
- * diberi tahu sheet mana dan kira-kira baris ke berapa (baris tersimpan, bukan nomor baris fisik).
+ * Pesan gagal + lokasi (T-008 AC 1): bila kegagalan terjadi saat sebuah sheet xlsx sedang diproses,
+ * user diberi tahu sheet mana dan nomor baris fisik terakhir yang dibaca. Tanpa lokasi untuk CSV
+ * (pesannya sudah menyebut baris dari DuckDB), batas waktu (bukan salah satu sheet), dan pesan parser
+ * yang sudah menyebut sheet-nya sendiri (review T-008 L4).
  */
-export function failureMessage(message: string, p: IngestProgress): string {
-  // Pesan parser xlsx sudah menyebut sheet dan nomor baris fisiknya sendiri.
-  if (!p.sheetName || p.stage === "unduh" || message.includes(`"${p.sheetName}"`)) return message;
+export function failureMessage(
+  message: string,
+  p: IngestProgress,
+  at: { row: number; csv: boolean; deadline: boolean },
+): string {
+  if (at.csv || at.deadline || !p.sheetName || p.stage === "unduh") return message;
+  if (message.includes(`"${p.sheetName}"`)) return message;
   const where =
-    p.stage === "baca" && p.rows > 0
-      ? `, sekitar baris data ke-${(p.rows + 1).toLocaleString("id-ID")}`
-      : "";
+    p.stage === "baca" && at.row > 0 ? `, sekitar baris ${at.row.toLocaleString("id-ID")}` : "";
   return `Sheet "${p.sheetName}"${where}: ${message}`;
 }
 
@@ -206,6 +210,8 @@ export async function runIngest(
   const work = mkdtempSync(join(opts.tmpRoot, "ingest-"));
   let duck: Duck | null = null;
 
+  // Nomor baris fisik terakhir yang diterima writer (lokasi pesan gagal; mutasi murah per baris).
+  const at = { row: 0 };
   // Progres: snapshot terkini ditulis tiap ≤ 5 detik (juga selama COPY/unggah/parse sharedStrings).
   let current: IngestProgress = {
     stage: "unduh",
@@ -255,6 +261,7 @@ export async function runIngest(
             setProgress,
             ensureAlive,
             opts,
+            at,
           )
         : [
             await csvToParquet(
@@ -316,7 +323,11 @@ export async function runIngest(
     }
     await cleanupPrefix(repo, storage, prefix, "ingest gagal");
     await repo.deleteSheets(versionId).catch(() => {});
-    const located = failureMessage(message, current);
+    const located = failureMessage(message, current, {
+      row: at.row,
+      csv: v.sourceKey.endsWith(".csv"),
+      deadline: e instanceof DeadlineError,
+    });
     await repo.fail(versionId, located);
     return { outcome: "failed", message: located };
   } finally {
@@ -335,6 +346,7 @@ async function xlsxSheets(
   setProgress: (p: Partial<IngestProgress>) => void,
   ensureAlive: () => Promise<void>,
   opts: IngestOptions,
+  at: { row: number },
 ): Promise<{ rec: SheetRecord; path: string }[]> {
   type Item =
     | { k: "start"; sheet: number; name: string }
@@ -363,6 +375,7 @@ async function xlsxSheets(
           { batchLimit: opts.batchRows, watch: ensureAlive },
         );
       } else if (it.k === "row") {
+        at.row = it.row;
         await writer!.add(it.row, it.vals);
       } else {
         const w: RawSheetWriter = writer!;

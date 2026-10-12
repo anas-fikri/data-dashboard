@@ -137,7 +137,12 @@ export default async function DatasetDetailPage({
           ) : null}
           {active ? (
             <div>
-              <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
+              <Button
+                asChild
+                variant="outline"
+                size="sm"
+                className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
+              >
                 <Link href={`/datasets/${dataset.id}/skema`} data-testid="dataset-schema-link">
                   <IconTableOptions aria-hidden />
                   Tinjau &amp; koreksi skema

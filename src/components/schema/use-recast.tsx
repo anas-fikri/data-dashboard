@@ -70,6 +70,11 @@ export function RecastProvider({
     intervalMs: 1_500,
     initial: null,
     done: (d) => !d.ok || !["queued", "running"].includes(d.status.state),
+    // Sesi habis / sheet tidak lagi aktif / dataset dihapus: tampilkan keadaan terbaru dari server.
+    onStop: () => {
+      writeSessionJson(jobKey(sheetId), null);
+      router.refresh();
+    },
     onDone: (d) => {
       writeSessionJson(jobKey(sheetId), null);
       const s = d.ok ? d.status : ({ state: "unknown" } as const);
@@ -97,12 +102,23 @@ export function RecastProvider({
           body: JSON.stringify({ baseRevision: revision, ...input }),
         });
         const body = (await res.json().catch(() => null)) as
-          { ok: true; jobId: string } | { ok: false; code?: string; message?: string } | null;
+          | { ok: true; jobId: string }
+          | { ok: true; applied: true; revision: number }
+          | { ok: false; code?: string; message?: string }
+          | null;
+        if (body?.ok && "applied" in body) {
+          // Nama/sembunyikan diterapkan langsung (tanpa antrean).
+          writeSessionJson(doneKey(sheetId), { revision: body.revision, change });
+          setLocal({ phase: "idle" });
+          router.refresh();
+          return true;
+        }
         if (body?.ok) {
           writeSessionJson(jobKey(sheetId), { jobId: body.jobId, baseRevision: revision, change });
           setLocal({ phase: "idle" });
           return true;
         }
+        if (res.status === 401) router.refresh(); // sesi habis → halaman mengarahkan ke login
         const stale = body?.code === "STALE";
         setLocal({
           phase: "error",
@@ -119,7 +135,7 @@ export function RecastProvider({
       }
       return false;
     },
-    [sheetId, revision],
+    [sheetId, revision, router],
   );
 
   const polled = poll.data?.ok ? poll.data.status.state : null;

@@ -102,9 +102,14 @@ async function createDataset(page: Page, name: string): Promise<string> {
 }
 
 /** Simpan koreksi lalu tunggu worker selesai (halaman dirender ulang dengan pemberitahuan). */
-async function saveAndWait(page: Page, click: () => Promise<void>) {
+/**
+ * Simpan koreksi lalu tunggu hasilnya (halaman dirender ulang dengan pemberitahuan). `queued`: lewat
+ * antrean worker (tipe/format/baris judul) — status antre harus tampil lebih dulu; ganti nama dan
+ * sembunyikan diterapkan langsung tanpa antrean.
+ */
+async function saveAndWait(page: Page, click: () => Promise<void>, queued = true) {
   await click();
-  await expect(page.getByTestId("recast-status")).toBeVisible();
+  if (queued) await expect(page.getByTestId("recast-status")).toBeVisible();
   await expect(page.getByTestId("recast-done")).toBeVisible({ timeout: 90_000 });
 }
 
@@ -159,6 +164,14 @@ test.describe("skema", () => {
     await expect(cols.first()).toContainText("Unik");
     const sample = page.getByTestId("sample-table");
     await expect(sample.locator("tbody tr")).toHaveCount(50);
+    // Tabel lebar bergulir di wilayahnya sendiri: halaman tidak pernah bergulir ke samping.
+    for (const width of [320, 1024]) {
+      await page.setViewportSize({ width, height: 900 });
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      );
+      expect(overflow, `scroll horizontal di ${width}px`).toBeLessThanOrEqual(0);
+    }
   });
 
   test("AC 3: pilih baris 3 sebagai judul → nama dari baris 3, baris 1–3 tidak ada di data", async ({
@@ -206,7 +219,13 @@ test.describe("skema", () => {
   }) => {
     await page.goto(`/datasets/${datasetId}/skema`);
     await page.getByLabel("Nama kolom untuk kolom 3").fill("Kota Tujuan");
-    await saveAndWait(page, () => page.getByRole("button", { name: "Simpan perubahan" }).click());
+    await saveAndWait(
+      page,
+      () => page.getByRole("button", { name: "Simpan perubahan" }).click(),
+      false,
+    );
+    // Langsung diterapkan: tidak lewat worker, revisi naik (3 → 4 setelah AC 3 dan AC 4).
+    expect(sheetOf(String(fx("latest", datasetId).id)).schemaRevision).toBe(4);
     await expect(page.locator('[data-pos="3"]')).toContainText('asli: "Kota"');
     const query = (column: string) =>
       page.request.post("/api/query", {
@@ -220,6 +239,25 @@ test.describe("skema", () => {
     expect(ok.status(), await ok.text()).toBe(200);
     expect((await ok.json()).rows).toHaveLength(3);
     expect((await query("Kota")).status()).toBe(400);
+  });
+
+  test("workbook banyak sheet: tab per sheet, pindah sheet lewat tautan (?sheet=)", async ({
+    page,
+  }) => {
+    const id = await createDataset(page, `Tiga sheet ${Date.now()}`);
+    await page.getByTestId("upload-input").setInputFiles("tests/fixtures/tiga-sheet.xlsx");
+    await expect(page.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 90_000 });
+    await page.goto(`/datasets/${id}/skema`);
+    const tabs = page.getByRole("navigation", { name: "Sheet" }).getByRole("link");
+    await expect(tabs).toHaveCount(3);
+    await expect(tabs.first()).toHaveAttribute("aria-current", "page");
+    await tabs.nth(1).click();
+    await expect(page).toHaveURL(/\?sheet=1$/);
+    await expect(tabs.nth(1)).toHaveAttribute("aria-current", "page");
+    await expect(page.getByRole("heading", { level: 2, name: /^Sheet "/ })).toContainText(
+      await tabs.nth(1).innerText(),
+    );
+    await expect(page.getByTestId("sample-table")).toBeVisible();
   });
 
   test("AC 1: ingest gagal di dalam sheet → pesan menyebut sheet dan baris, tanpa muat ulang", async ({

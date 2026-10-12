@@ -21,7 +21,7 @@ import { TYPE_LABEL, fmtInt, fmtPct, typeOptions, type ColumnDraft } from "./lab
  *  - ≥ 36rem: dua kolom; lebih sempit: bertumpuk dengan label terlihat.
  */
 export const ROW_GRID =
-  "@4xl:grid @4xl:grid-cols-[minmax(11rem,1.4fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.8fr)_max-content] @4xl:items-start @4xl:gap-3";
+  "@4xl:grid @4xl:grid-cols-[minmax(11rem,1.4fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.8fr)_9rem] @4xl:items-start @4xl:gap-3";
 
 export function ColumnRow({
   column,
@@ -63,6 +63,7 @@ export function ColumnRow({
         {label("Nama kolom", `${id}-name`)}
         <Input
           id={`${id}-name`}
+          className="h-11 md:h-(--control-h)"
           value={draft.name}
           maxLength={120}
           disabled={disabled}
@@ -80,7 +81,7 @@ export function ColumnRow({
           {changed ? <span className="font-medium text-primary"> · diubah</span> : null}
         </p>
         {error ? (
-          <p id={`${id}-err`} className="mt-1 text-xs text-destructive">
+          <p id={`${id}-err`} className="mt-1 text-sm text-destructive">
             {error}
           </p>
         ) : null}
@@ -93,7 +94,7 @@ export function ColumnRow({
           disabled={disabled}
           onValueChange={(v) => onChange({ ...draft, type: v as ColumnDraft["type"] })}
         >
-          <SelectTrigger id={`${id}-type`}>
+          <SelectTrigger id={`${id}-type`} className="h-11 md:h-(--control-h)">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -125,7 +126,7 @@ export function ColumnRow({
           <dd className="tabular-nums text-foreground">{fmtInt(column.distinctCount)}</dd>
         </div>
         {column.castFailCount > 0 ? (
-          <div className="flex items-center gap-1" data-testid="cast-fail">
+          <div className="flex items-center gap-1 text-sm" data-testid="cast-fail">
             <IconAlertTriangle
               size={14}
               stroke={2}

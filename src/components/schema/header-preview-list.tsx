@@ -27,7 +27,7 @@ export function HeaderPreviewList({
     <fieldset className="min-w-0">
       <legend className="mb-2 text-sm font-medium">Pilih baris yang berisi judul kolom</legend>
       <div
-        className="max-h-80 overflow-auto rounded-md border"
+        className="relative max-h-80 overflow-auto rounded-md border"
         role="group"
         aria-label="Pratinjau baris awal file"
       >
@@ -39,8 +39,7 @@ export function HeaderPreviewList({
               data-testid="header-row-option"
               data-row={r.row}
               className={cn(
-                "flex min-h-11 cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent",
-                isSelected && "shadow-[inset_3px_0_0_0_var(--color-primary)]",
+                "group flex min-h-11 cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent/50",
               )}
             >
               <input
@@ -52,7 +51,12 @@ export function HeaderPreviewList({
                 className="size-4 shrink-0 accent-[var(--color-primary)]"
                 onChange={() => onSelect(r.row)}
               />
-              <span className="w-14 shrink-0 tabular-nums text-muted-foreground">
+              <span
+                className={cn(
+                  "w-14 shrink-0 tabular-nums group-hover:text-foreground",
+                  isSelected ? "font-medium text-foreground" : "text-muted-foreground",
+                )}
+              >
                 Baris {fmtInt(r.row)}
               </span>
               <span className="flex min-w-0 flex-1 gap-1.5 overflow-hidden">
