@@ -132,8 +132,19 @@ function entryStream(zip: ZipFile, e: Entry): Promise<Readable> {
   );
 }
 
+/*
+ * Anggaran memori per struktur yang ditahan saxes (SpreadsheetML nyata jauh di bawahnya):
+ * kedalaman elemen < 20, atribut per tag < 30, nilai atribut terpanjang ± 260 karakter (Target,
+ * formatCode). Atribut elemen dikosongkan setelah handler dipanggil sehingga tumpukan elemen
+ * terbuka hanya menahan nama tag.
+ */
 const MAX_DEPTH = 64;
 const MAX_ATTRS = 256;
+const MAX_ATTR_VALUE = 8_192;
+const EMPTY_ATTRS = Object.freeze({});
+/** Total karakter teks sel dalam satu baris (16.384 kolom × 32.767 = ± 1 GB tanpa batas ini). */
+const MAX_ROW_CHARS = 4_000_000;
+const MAX_SHEET_NAME = 255;
 
 /** SAX atas satu entri; DOCTYPE/ENTITY ditolak (tanpa ekspansi entitas). Handler boleh melempar. */
 async function sax(
@@ -157,17 +168,25 @@ async function sax(
     text: string;
     name: string;
     tags: unknown[];
-    attribList: unknown[];
+    attribList: { value: string }[];
   };
   let failure: Error | null = null;
+  const tooLongAttr = () =>
+    new XlsxLimitError(`nilai atribut di ${e.fileName} terlalu panjang (file bukan buatan Excel)`);
   p.on("doctype", () => {
     throw new XlsxLimitError("file xlsx berisi DOCTYPE (ditolak)");
   });
   p.on("error", (err) => {
     failure ??= err;
   });
-  if (handlers.open)
-    p.on("opentag", (t) => handlers.open!(ln(t.name), t.attributes as Record<string, string>));
+  // Selalu terdaftar: nilai atribut diperiksa, lalu atribut dikosongkan setelah handler agar elemen
+  // terbuka di tumpukan saxes tidak menahan nilainya (saxes tidak membacanya lagi dengan xmlns: false).
+  p.on("opentag", (t) => {
+    const attrs = t.attributes as Record<string, string>;
+    for (const k in attrs) if (attrs[k]!.length > MAX_ATTR_VALUE) throw tooLongAttr();
+    handlers.open?.(ln(t.name), attrs);
+    (t as { attributes: unknown }).attributes = EMPTY_ATTRS;
+  });
   if (handlers.close) p.on("closetag", (t) => handlers.close!(ln(t.name)));
   if (handlers.text) {
     p.on("text", handlers.text);
@@ -194,6 +213,8 @@ async function sax(
           `tag dengan atribut berlebihan di ${e.fileName} (file bukan buatan Excel)`,
         );
       }
+      // Atribut tag yang belum tertutup (melintasi potongan).
+      for (const a of internal.attribList) if (a.value.length > MAX_ATTR_VALUE) throw tooLongAttr();
       if (guard.deadline && Date.now() > guard.deadline) {
         throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
       }
@@ -274,8 +295,11 @@ class SstStore {
       r += n;
     }
     const s = buf.toString("utf8");
-    if (this.cache.size > 50_000) this.cache.clear();
-    this.cache.set(i, s);
+    // Hanya string pendek (kosakata berulang) yang di-cache: ≤ 50k × 512 karakter ≈ 50 MB.
+    if (s.length <= 512) {
+      if (this.cache.size >= 50_000) this.cache.clear();
+      this.cache.set(i, s);
+    }
     return s;
   }
   close() {
@@ -375,6 +399,9 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
             {
               open: (n, a) => {
                 if (n === "Relationship" && a.Id && a.Target) {
+                  if (out.length >= limits.maxEntries) {
+                    throw new XlsxLimitError(`relasi berlebihan di ${relPath} (file rusak)`);
+                  }
                   out.push({ id: a.Id, type: a.Type ?? "", target: resolvePart(dir, a.Target) });
                 }
               },
@@ -396,17 +423,23 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           need(wbPath, "workbook"),
           {
             open: (n, a) => {
-              if (n === "sheet") sheets.push({ name: a.name ?? "", rid: relId(a) });
-              else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
+              if (n === "sheet") {
+                // Diperiksa saat elemen dibaca, bukan setelah workbook selesai.
+                if (sheets.length >= limits.maxSheets) {
+                  throw new XlsxLimitError(
+                    `file berisi lebih dari ${limits.maxSheets} sheet; maksimal ${limits.maxSheets}`,
+                  );
+                }
+                const name = a.name ?? "";
+                if (name.length > MAX_SHEET_NAME) {
+                  throw new XlsxLimitError("nama sheet terlalu panjang (file bukan buatan Excel)");
+                }
+                sheets.push({ name, rid: relId(a) });
+              } else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
             },
           },
           guard,
         );
-        if (sheets.length > limits.maxSheets) {
-          throw new XlsxLimitError(
-            `file berisi ${sheets.length} sheet; maksimal ${limits.maxSheets}`,
-          );
-        }
         const wbRels = await relsOf(wbPath);
         const byId = new Map(wbRels.map((r) => [r.id, r.target]));
         const epoch = date1904 ? EPOCH_1904 : EPOCH_1900;
@@ -488,6 +521,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           let prevRow = 0;
           let vals: RawValue[] = [];
           let any = false;
+          let rowChars = 0;
           let col = -1;
           let type = "";
           let style = 0;
@@ -514,6 +548,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                     );
                   }
                   vals = [];
+                  rowChars = 0;
                   any = false;
                   col = -1;
                 } else if (n === "c") {
@@ -563,6 +598,11 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                       v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
                   }
                   if (v !== null) {
+                    if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {
+                      throw new XlsxLimitError(
+                        `${where()}: isi satu baris melebihi ${MAX_ROW_CHARS.toLocaleString("id-ID")} karakter`,
+                      );
+                    }
                     vals[col] = v;
                     any = true;
                   }

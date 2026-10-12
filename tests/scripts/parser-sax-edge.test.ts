@@ -211,6 +211,22 @@ describe("parser SAX: struktur XML buatan yang menghabiskan memori ditolak", () 
     await expect(rows(p, loose)).rejects.toThrow(/atribut berlebihan/);
   });
 
+  it("nilai atribut panjang pada elemen bersarang ditolak (tidak ditahan di tumpukan)", async () => {
+    const v = "v".repeat(20_000);
+    const open = Array.from({ length: 10 }, (_, i) => `<n${i} a="${v}">`).join("");
+    const close = Array.from({ length: 10 }, (_, i) => `</n${9 - i}>`).join("");
+    const p = await book({ sheet: `<row r="1"><c r="A1"><v>1</v></c></row>${open}${close}` });
+    await expect(rows(p, loose)).rejects.toThrow(/nilai atribut .* terlalu panjang/);
+  });
+
+  it("baris dengan total isi > 4 juta karakter ditolak", async () => {
+    const cell = (i: number) =>
+      `<c r="${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(65 + Math.floor(i / 26))}1" t="inlineStr"><is><t>${"w".repeat(30_000)}</t></is></c>`;
+    const cells = Array.from({ length: 140 }, (_, i) => cell(i)).join("");
+    const p = await book({ sheet: `<row r="1">${cells}</row>` });
+    await expect(rows(p, loose)).rejects.toThrow(/isi satu baris melebihi/);
+  });
+
   it("fixture nyata tetap lolos batas kedalaman/atribut", async () => {
     const out: number[] = [];
     await createSaxParser().parse(
@@ -248,6 +264,53 @@ describe("parser SAX: input rusak/berbahaya ditolak dengan pesan", () => {
   ])("%s", async (_name, sheet, msg) => {
     const p = await book({ sheet, sst: ["<t>satu</t>"] });
     await expect(rows(p)).rejects.toThrow(msg);
+  });
+
+  it("workbook dengan 2.500 sheet ditolak saat sheet ke-51 dibaca; nama sheet raksasa ditolak", async () => {
+    const zip = new yazl.ZipFile();
+    const sheetsXml = Array.from(
+      { length: 2_500 },
+      (_, i) => `<sheet name="S${i}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`,
+    ).join("");
+    zip.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      ),
+      "_rels/.rels",
+    );
+    zip.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><workbook xmlns="${NS}" xmlns:r="${REL}"><sheets>${sheetsXml}</sheets></workbook>`,
+      ),
+      "xl/workbook.xml",
+    );
+    zip.end();
+    const chunks: Buffer[] = [];
+    for await (const c of zip.outputStream) chunks.push(c as Buffer);
+    const path = join(tmp, "banyak-sheet.xlsx");
+    writeFileSync(path, Buffer.concat(chunks));
+    await expect(rows(path)).rejects.toThrow(/lebih dari 50 sheet/);
+
+    const longName = "N".repeat(1_000);
+    const zip2 = new yazl.ZipFile();
+    zip2.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      ),
+      "_rels/.rels",
+    );
+    zip2.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><workbook xmlns="${NS}" xmlns:r="${REL}"><sheets><sheet name="${longName}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+      ),
+      "xl/workbook.xml",
+    );
+    zip2.end();
+    const c2: Buffer[] = [];
+    for await (const c of zip2.outputStream) c2.push(c as Buffer);
+    const path2 = join(tmp, "nama-panjang.xlsx");
+    writeFileSync(path2, Buffer.concat(c2));
+    await expect(rows(path2)).rejects.toThrow(/nama sheet terlalu panjang/);
   });
 
   it("jumlah sheet melebihi batas ditolak", async () => {
