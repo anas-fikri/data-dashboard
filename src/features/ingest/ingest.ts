@@ -16,6 +16,7 @@ import { csvToParquet } from "./csv";
 import { CsvFormatError } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
+import { previewOf, type SheetPreview } from "./preview";
 import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import { writeTyped } from "./typed";
 
@@ -41,6 +42,8 @@ export interface SheetRecord {
   headerRow: number;
   columns: ColumnMeta[];
   truncatedCells: number;
+  /** Baris mentah awal untuk memilih ulang header (T-008). */
+  preview: SheetPreview;
 }
 
 /** Versi/dataset sudah dihapus (repo boleh melemparnya saat baris yang ditulis hilang). */
@@ -363,6 +366,7 @@ async function xlsxSheets(
             headerRow,
             columns: columnNames(w.sample.find((r) => r.row === headerRow)?.vals ?? [], cols),
             truncatedCells: 0,
+            preview: previewOf(w.sample, cols),
           },
         });
         writer = null;

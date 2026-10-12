@@ -60,6 +60,7 @@ export const prismaIngestRepo: IngestRepo = {
           headerRow: s.headerRow,
           columns: s.columns as unknown as Prisma.InputJsonValue,
           truncatedCells: s.truncatedCells,
+          preview: s.preview as unknown as Prisma.InputJsonValue,
         },
         select: { id: true },
       });

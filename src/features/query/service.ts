@@ -88,7 +88,9 @@ export const TIMEOUT_CACHE_MS = 5 * 60 * 1000;
 /** Lewat ini permintaan dijawab "data sedang disiapkan"; unduhan tetap berlanjut. */
 export const PREPARE_WAIT_MS = 10_000;
 
-const fail = (code: QueryCode, message: string): QueryResult => ({ ok: false, code, message });
+export type QueryFailure = { ok: false; code: QueryCode; message: string };
+
+const fail = (code: QueryCode, message: string): QueryFailure => ({ ok: false, code, message });
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -96,7 +98,7 @@ const pad = (n: number) => String(n).padStart(2, "0");
  * Nilai DuckDB → JSON. BIGINT/HUGEINT selalu number agar satu kolom bertipe sama (presisi penuh sampai
  * ± 9 × 10^15; jumlah di atas itu dibulatkan — cukup untuk dashboard). Tanggal naive → teks ISO tanpa zona.
  */
-function toJson(v: unknown, type: OutColumn["type"]): unknown {
+export function toJson(v: unknown, type: OutColumn["type"]): unknown {
   if (typeof v === "bigint") return Number(v);
   if (v instanceof Date) {
     const d = `${v.getUTCFullYear()}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}`;
@@ -121,6 +123,60 @@ export function rowBytes(row: unknown[]): number {
     else n += 8;
   }
   return n;
+}
+
+const timeoutMessage = (ms: number) =>
+  `Query melebihi ${Math.round(ms / 1000)} detik. Persempit filter (mis. rentang tanggal) atau kurangi dimensi, lalu coba lagi.`;
+
+/**
+ * Siapkan file parquet lokal (pembatas unduhan, tunggu ≤ prepareWaitMs) lalu jalankan satu query di
+ * slot user; error sumber daya dipetakan ke kode yang sama untuk semua pemakai (query bebas, sampel
+ * skema T-008). Error lain dilempar (500 di lapisan HTTP).
+ */
+export async function execOnParquet(
+  userId: string,
+  key: string,
+  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
+  build: (path: string) => { sql: string; params: Record<string, string | number | boolean> },
+): Promise<{ ok: true; out: EngineResult } | QueryFailure> {
+  try {
+    const lease = await deps.parquet.acquire(key, {
+      owner: userId,
+      waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
+    });
+    try {
+      const { sql, params } = build(lease.path);
+      const out = await deps.engine.withSlot(userId, () =>
+        deps.engine.exec(sql, params, deps.timeoutMs),
+      );
+      return { ok: true, out };
+    } finally {
+      lease.release();
+    }
+  } catch (e) {
+    if (e instanceof QueryTimeoutError)
+      return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+    if (e instanceof QueryBusyError) {
+      return fail("QUERY_BUSY", "Sedang banyak query berjalan. Coba lagi sebentar lagi.");
+    }
+    if (e instanceof DownloadPendingError) {
+      return fail(
+        "QUERY_BUSY",
+        "Data sedang disiapkan untuk query pertama setelah diperbarui. Coba lagi dalam beberapa detik.",
+      );
+    }
+    if (e instanceof CacheFullError) {
+      return fail("QUERY_BUSY", "Data sedang disiapkan untuk query lain. Coba lagi sebentar lagi.");
+    }
+    if (e instanceof ForgottenError) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
+    if (/Out of Memory Error/i.test(e instanceof Error ? e.message : String(e))) {
+      return fail(
+        "QUERY_TOO_HEAVY",
+        "Query terlalu berat untuk diproses. Kurangi dimensi atau ukuran 'jumlah unik', atau tambahkan filter.",
+      );
+    }
+    throw e;
+  }
 }
 
 export async function runQuery(
@@ -154,64 +210,32 @@ export async function runQuery(
     schemaRevision: sheet.schemaRevision,
     spec,
   });
-  const timeoutMessage = `Query melebihi ${Math.round(deps.timeoutMs / 1000)} detik. Persempit filter (mis. rentang tanggal) atau kurangi dimensi, lalu coba lagi.`;
   const hit = deps.cache?.get(key);
-  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
   if (hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
 
-  try {
-    const lease = await deps.parquet.acquire(sheet.typedKey, {
-      owner: userId,
-      waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
-    });
-    let out: EngineResult;
-    try {
-      const { sql, params } = buildSql(resolved.plan, lease.path);
-      out = await deps.engine.withSlot(userId, () => deps.engine.exec(sql, params, deps.timeoutMs));
-    } finally {
-      lease.release();
-    }
-    const types = resolved.plan.columns.map((c) => c.type);
-    let bytes = 0;
-    const rows: unknown[][] = [];
-    for (const row of out.rows) {
-      const r = row.map((v, i) => toJson(v, types[i]!));
-      bytes += rowBytes(r);
-      if (bytes > RESULT_MAX_BYTES) {
-        return fail(
-          "RESULT_TOO_LARGE",
-          "Hasil terlalu besar untuk ditampilkan. Kurangi limit atau dimensi, atau tambahkan filter.",
-        );
-      }
-      rows.push(r);
-    }
-    const data: QueryData = { columns: resolved.plan.columns, rows };
-    deps.cache?.set(key, data, bytes);
-    return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
-  } catch (e) {
-    if (e instanceof QueryTimeoutError) {
-      deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
-      return fail("QUERY_TIMEOUT", timeoutMessage);
-    }
-    if (e instanceof QueryBusyError) {
-      return fail("QUERY_BUSY", "Sedang banyak query berjalan. Coba lagi sebentar lagi.");
-    }
-    if (e instanceof DownloadPendingError) {
-      return fail(
-        "QUERY_BUSY",
-        "Data sedang disiapkan untuk query pertama setelah diperbarui. Coba lagi dalam beberapa detik.",
-      );
-    }
-    if (e instanceof CacheFullError) {
-      return fail("QUERY_BUSY", "Data sedang disiapkan untuk query lain. Coba lagi sebentar lagi.");
-    }
-    if (e instanceof ForgottenError) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
-    if (/Out of Memory Error/i.test(e instanceof Error ? e.message : String(e))) {
-      return fail(
-        "QUERY_TOO_HEAVY",
-        "Query terlalu berat untuk diproses. Kurangi dimensi atau ukuran 'jumlah unik', atau tambahkan filter.",
-      );
-    }
-    throw e;
+  const r = await execOnParquet(userId, sheet.typedKey, deps, (path) =>
+    buildSql(resolved.plan, path),
+  );
+  if (!r.ok) {
+    if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+    return r;
   }
+  const types = resolved.plan.columns.map((c) => c.type);
+  let bytes = 0;
+  const rows: unknown[][] = [];
+  for (const row of r.out.rows) {
+    const v = row.map((x, i) => toJson(x, types[i]!));
+    bytes += rowBytes(v);
+    if (bytes > RESULT_MAX_BYTES) {
+      return fail(
+        "RESULT_TOO_LARGE",
+        "Hasil terlalu besar untuk ditampilkan. Kurangi limit atau dimensi, atau tambahkan filter.",
+      );
+    }
+    rows.push(v);
+  }
+  const data: QueryData = { columns: resolved.plan.columns, rows };
+  deps.cache?.set(key, data, bytes);
+  return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }

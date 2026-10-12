@@ -52,6 +52,12 @@ describe("ingest raw: xlsx", () => {
     expect(sheets[0]!.columns.at(-1)).toEqual({ pos: 12, name: "kolom_12", original: "" });
     expect(sheets[0]!.columns.find((c) => c.name === "Keterangan_2")!.original).toBe("Keterangan");
     expect(repo.progressLog.at(-1)!.stage).toBe("simpan");
+    // Pratinjau baris mentah (T-008): baris fisik apa adanya, termasuk judul di atas header.
+    const preview = sheets[0]!.preview;
+    expect(preview.colCount).toBe(12);
+    expect(preview.rows.slice(0, 3).map((r) => r.row)).toEqual([1, 3, 4]);
+    expect(preview.rows.every((r) => r.cells.length === 12)).toBe(true);
+    expect(preview.rows.find((r) => r.row === 4)!.cells).toContain("Keterangan");
   });
 
   it("sel tanggal xlsx disimpan ISO naive; angka sebagai teks apa adanya", async () => {
@@ -87,6 +93,7 @@ describe("ingest raw: csv", () => {
     const s = id.repo.byIndex()[0]!;
     expect(s.headerRow).toBe(3);
     expect(s.columns[0]!.name).toBe("No Resi");
+    expect(s.preview.rows.find((r) => r.row === 3)!.cells[0]).toBe("No Resi");
     const idRows = await readParquet(join(id.storage.dir, s.rawKey!));
     expect(idRows.slice(0, 2).map((r) => r[0])).toEqual([1, 3]); // baris kosong 2 tetap terhitung
     expect(idRows.at(-1)![0]).toBe(

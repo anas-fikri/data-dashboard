@@ -156,6 +156,9 @@ model Sheet {
   columns        Json
   /// Sel yang dipotong karena > 32.767 karakter.
   truncatedCells Int            @default(0)
+  /// Pratinjau baris mentah awal untuk memilih baris header (T-008): SheetPreview
+  /// (src/features/ingest/preview.ts), ≤ 30 baris × 50 kolom, sel ≤ 100 karakter. null = data lama.
+  preview        Json?
   /// typed-<schemaRevision>.parquet aktif (T-007); diganti setelah recast selesai lengkap.
   typedKey       String?
   /// 0 = belum ada typed; 1 = hasil inferensi; naik setiap recast (T-008).

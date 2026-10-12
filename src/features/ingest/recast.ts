@@ -9,7 +9,6 @@
  *    dihapus 1 jam kemudian (job) agar query yang sedang membaca revisi lama tetap selesai.
  */
 import { mkdtempSync, rmSync } from "node:fs";
-import { z } from "zod";
 import { join } from "node:path";
 import { lit, openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
@@ -17,25 +16,16 @@ import type { RawValue } from "@/lib/xlsx/types";
 import { columnNames, type ColumnMeta } from "./header";
 import type { ColumnSchema, SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, type IngestStorage } from "./ingest";
+import { parseRecastInput, type RecastInput, type RecastOutcome } from "./recast-input";
 import { writeTyped, type ColumnOverride } from "./typed";
+
+export { parseRecastInput, type RecastInput, type RecastOutcome };
 
 export const RECAST_LOCK_MS = 3 * 60 * 1000;
 export const RECAST_RENEW_MS = 60 * 1000;
 export const RECAST_DEADLINE_MS = 20 * 60 * 1000;
 export const OLD_TYPED_TTL_MS = 60 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
-
-export interface RecastInput {
-  /**
-   * schemaRevision yang dilihat user saat mengedit (T-008). Berbeda dari sekarang → "stale" tanpa
-   * mengubah apa pun, sehingga edit lama yang terlambat tidak menimpa edit yang lebih baru.
-   */
-  baseRevision?: number;
-  /** Baris header baru (1-based); berbeda dari sekarang → nama dari baris itu + inferensi ulang. */
-  headerRow?: number;
-  /** Perubahan per kolom (nama tampil, tipe, locale, format tanggal, sembunyikan). */
-  columns?: ColumnOverride[];
-}
 
 export interface RecastSheet {
   versionId: string;
@@ -82,55 +72,6 @@ export interface RecastDeps {
   renewMs?: number;
   /** Dipanggil berkala selama query panjang (mis. cek sheet masih ada); melempar → berhenti. */
   watch?: () => Promise<void>;
-}
-
-export type RecastOutcome =
-  | { outcome: "done"; revision: number; schema: ColumnSchema[] }
-  | { outcome: "busy" }
-  | { outcome: "gone" }
-  | { outcome: "stale" }
-  | { outcome: "invalid"; message: string }
-  | { outcome: "failed"; message: string };
-
-/** Batas baris Excel; headerRow di luar ini pasti tidak ada di raw. */
-const MAX_ROW = 1_048_576;
-
-/**
- * Input recast berasal dari user (T-008) dan ikut menentukan SQL: hanya enum dan angka bulat dalam
- * rentang yang diterima (nama tampil tidak pernah masuk SQL). Divalidasi di sini sebagai pertahanan
- * berlapis selain validasi di API.
- */
-export function parseRecastInput(input: unknown, colCount: number) {
-  const column = z
-    .object({
-      pos: z.number().int().min(1).max(colCount),
-      name: z.string().trim().min(1).max(120).optional(),
-      type: z
-        .enum(["integer", "decimal", "date", "timestamp", "duration", "boolean", "text"])
-        .optional(),
-      numberLocale: z.enum(["id", "us"]).optional(),
-      dateFormat: z
-        .enum([
-          "yyyy-mm-dd",
-          "dd/mm/yyyy",
-          "dd-mm-yyyy",
-          "dd.mm.yyyy",
-          "yyyy/mm/dd",
-          "mm/dd/yyyy",
-          "serial",
-        ])
-        .optional(),
-      hidden: z.boolean().optional(),
-    })
-    .strict();
-  return z
-    .object({
-      baseRevision: z.number().int().min(0).optional(),
-      headerRow: z.number().int().min(1).max(MAX_ROW).optional(),
-      columns: z.array(column).max(colCount).optional(),
-    })
-    .strict()
-    .safeParse(input);
 }
 
 /** Pilihan yang sudah berlaku di skema sekarang, sebagai dasar override recast berikutnya. */

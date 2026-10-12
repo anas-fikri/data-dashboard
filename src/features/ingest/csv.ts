@@ -19,6 +19,7 @@ import { ident, lit, watched as watchQuery, type Duck } from "@/lib/duckdb";
 import { CsvFormatError, rejectUtf16, scanCsv, sniffDelimiter } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type SampleRow } from "./header";
 import type { SheetRecord } from "./ingest";
+import { previewOf } from "./preview";
 import {
   CHUNK_CHARS_MAX,
   MAX_RAW_COLS,
@@ -229,6 +230,7 @@ export async function csvToParquet(
       headerRow,
       columns: columnNames(sample.find((s) => s.row === headerRow)?.vals ?? [], n),
       truncatedCells: truncated,
+      preview: previewOf(sample, n),
     },
   };
 }
