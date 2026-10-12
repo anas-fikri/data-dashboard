@@ -75,12 +75,38 @@ export const prismaIngestRepo: IngestRepo = {
     if (r.count === 0) throw new DatasetGoneError();
   },
 
-  async finishRaw(versionId, d) {
-    const r = await prisma.datasetVersion.updateMany({
-      where: { id: versionId, status: "INGESTING" },
-      data: { ingestStage: "raw", sha256: d.sha256 },
+  async setTyped(sheetId, d) {
+    const r = await prisma.sheet.updateMany({
+      where: { id: sheetId },
+      data: {
+        typedKey: d.typedKey,
+        schema: d.schema as unknown as Prisma.InputJsonValue,
+        schemaRevision: d.schemaRevision,
+      },
     });
-    return r.count > 0;
+    if (r.count === 0) throw new DatasetGoneError();
+  },
+
+  async finish(versionId, d) {
+    return prisma.$transaction(async (tx) => {
+      const r = await tx.datasetVersion.updateMany({
+        where: { id: versionId, status: "INGESTING" },
+        data: {
+          status: "READY",
+          ingestStage: "typed",
+          sha256: d.sha256,
+          ingestFinishedAt: new Date(),
+          errorMessage: null,
+        },
+      });
+      if (r.count === 0) return false;
+      const v = await tx.datasetVersion.findUniqueOrThrow({
+        where: { id: versionId },
+        select: { datasetId: true },
+      });
+      await tx.dataset.update({ where: { id: v.datasetId }, data: { activeVersionId: versionId } });
+      return true;
+    });
   },
 
   async recordCleanup(prefix, reason) {

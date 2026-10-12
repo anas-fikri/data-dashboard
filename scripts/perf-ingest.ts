@@ -70,7 +70,8 @@ async function main() {
       return `s${s.index}`;
     },
     setSheetKey: async () => {},
-    finishRaw: async () => true,
+    setTyped: async () => {},
+    finish: async () => true,
     recordCleanup: async () => {},
     fail: async (_v, m) => {
       console.error("FAILED:", m);

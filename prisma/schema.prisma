@@ -124,7 +124,7 @@ model DatasetVersion {
 
   // Ingest (T-006, flow-kerja B3)
   ingestStartedAt DateTime?
-  /// Tahap ingest terakhir yang selesai: "raw" (raw.parquet semua sheet tertulis). T-007 menambah "typed".
+  /// Tahap ingest terakhir yang selesai: "typed" (raw + typed semua sheet tertulis, versi READY).
   ingestStage     String?
   /// Progres untuk UI: { sheet, sheetCount, sheetName, rows, fraction, at } (ditulis tiap ≤ 5 detik).
   progress        Json?
@@ -156,6 +156,12 @@ model Sheet {
   columns        Json
   /// Sel yang dipotong karena > 32.767 karakter.
   truncatedCells Int            @default(0)
+  /// typed-<schemaRevision>.parquet aktif (T-007); diganti setelah recast selesai lengkap.
+  typedKey       String?
+  /// 0 = belum ada typed; 1 = hasil inferensi; naik setiap recast (T-008).
+  schemaRevision Int            @default(0)
+  /// ColumnSchema[] (src/features/ingest/infer.ts): nama tampil/asli, tipe, locale, format, statistik.
+  schema         Json?
   createdAt      DateTime       @default(now())
 
   @@unique([versionId, index])

@@ -15,13 +15,15 @@ import type { RawValue } from "@/lib/xlsx/types";
 import { csvToParquet } from "./csv";
 import { CsvFormatError } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
+import type { ColumnSchema } from "./infer";
 import { RawSheetWriter, TooWideError } from "./raw-writer";
+import { writeTyped } from "./typed";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
 const PROGRESS_EVERY_MS = 5_000;
 
 export interface IngestProgress {
-  stage: "unduh" | "baca" | "simpan";
+  stage: "unduh" | "baca" | "simpan" | "tipe";
   sheet: number;
   sheetName: string | null;
   rows: number;
@@ -62,8 +64,16 @@ export interface IngestRepo {
   createSheet(versionId: string, s: SheetRecord): Promise<string>;
   /** Melempar DatasetGoneError bila baris sheet sudah hilang (dataset dihapus). */
   setSheetKey(sheetId: string, rawKey: string): Promise<void>;
-  /** Tahap raw selesai; false bila versi sudah hilang. */
-  finishRaw(versionId: string, data: { sha256: string }): Promise<boolean>;
+  /** Typed-1 + skema hasil inferensi; melempar DatasetGoneError bila baris sheet sudah hilang. */
+  setTyped(
+    sheetId: string,
+    data: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number },
+  ): Promise<void>;
+  /**
+   * Semua sheet raw + typed tertulis → versi READY dan menjadi versi aktif dataset (mode REPLACE;
+   * T-013 menambah cast dengan skema aktif untuk versi refresh). false bila versi sudah hilang.
+   */
+  finish(versionId: string, data: { sha256: string }): Promise<boolean>;
   fail(versionId: string, message: string): Promise<void>;
   /** Prefix storage yang gagal dibersihkan → diproses ulang job pembersihan (StorageCleanup). */
   recordCleanup(prefix: string, reason: string): Promise<void>;
@@ -98,6 +108,8 @@ export type IngestOutcome =
   | { outcome: "failed"; message: string };
 
 class DeadlineError extends Error {}
+
+const PARQUET = "application/vnd.apache.parquet";
 
 export const versionParquetPrefix = (datasetId: string, versionId: string) =>
   `parquet/${datasetId}/${versionId}/`;
@@ -234,22 +246,35 @@ export async function runIngest(
           ];
     await ensureAlive();
 
-    // Unggah raw.parquet + metadata per sheet.
+    // Per sheet: tipe kolom (typed-1) lalu unggah raw + typed + metadata.
     for (const s of sheets) {
-      setProgress({
-        stage: "simpan",
-        sheet: s.rec.index,
-        sheetName: s.rec.name,
-        rows: s.rec.rawRows,
-        fraction: 1,
-      });
+      const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
       const sheetId = await repo.createSheet(versionId, s.rec);
+
+      // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang): inferensi → typed-1.parquet.
+      setProgress({ stage: "tipe", ...at });
+      const typedPath = join(work, `typed-${s.rec.index}.parquet`);
+      const typed = await writeTyped(duck, {
+        rawPath: s.path,
+        outPath: typedPath,
+        source: ext,
+        headerRow: s.rec.headerRow,
+        colCount: s.rec.colCount,
+        columns: s.rec.columns,
+        watch: ensureAlive,
+      });
+      setProgress({ stage: "simpan", ...at });
       const key = `${prefix}${sheetId}/raw.parquet`;
-      await storage.upload(key, s.path, "application/vnd.apache.parquet");
+      await storage.upload(key, s.path, PARQUET);
       await repo.setSheetKey(sheetId, key);
       await ensureAlive();
+      const typedKey = `${prefix}${sheetId}/typed-1.parquet`;
+      await storage.upload(typedKey, typedPath, PARQUET);
+      await repo.setTyped(sheetId, { typedKey, schema: typed.schema, schemaRevision: 1 });
+      rmSync(typedPath, { force: true });
+      await ensureAlive();
     }
-    if (!(await repo.finishRaw(versionId, { sha256: dl.sha256 }))) throw new DatasetGoneError();
+    if (!(await repo.finish(versionId, { sha256: dl.sha256 }))) throw new DatasetGoneError();
     await repo.progress(versionId, current).catch(() => {});
     return { outcome: "done", sheets: sheets.length };
   } catch (e) {

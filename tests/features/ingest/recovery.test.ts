@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * Penyapu ingest macet (review T-006 H2): hanya tahap raw yang belum selesai. Versi yang raw-nya
- * sukses (ingestStage "raw", job selesai) menunggu tahap berikutnya dan tidak boleh di-FAILED-kan.
+ * Penyapu ingest macet (review T-006 H2). Sejak T-007 raw + typed satu job: INGESTING tanpa job
+ * hidup = macet apa pun tahapnya (versi selesai sudah READY dan tidak tersaring status INGESTING).
  * Prisma, storage, dan antrean dimock.
  */
 const findMany = vi.fn();
@@ -31,11 +31,12 @@ beforeEach(() => {
 });
 
 describe("recoverStuckIngests", () => {
-  it("hanya mencari INGESTING yang tahap raw-nya belum selesai dan sudah lewat batas waktu", async () => {
+  it("mencari semua INGESTING yang sudah lewat batas waktu", async () => {
     findMany.mockResolvedValue([]);
     await recoverStuckIngests(queueWith({}));
     const where = findMany.mock.calls[0]![0].where;
-    expect(where).toMatchObject({ status: "INGESTING", ingestStage: null });
+    expect(where).toMatchObject({ status: "INGESTING" });
+    expect(where).not.toHaveProperty("ingestStage");
     const cutoff = where.OR[0].ingestStartedAt.lt as Date;
     // deadline 60 menit + 30 menit
     expect(Date.now() - cutoff.getTime()).toBeGreaterThanOrEqual(90 * 60 * 1000 - 1000);

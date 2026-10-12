@@ -28,7 +28,8 @@ describe("ingest raw: xlsx", () => {
     const { storage, repo, opts } = setup(fx);
     const r = await runIngest(VID, repo, storage, opts);
     expect(r).toEqual({ outcome: "done", sheets: 3 });
-    expect(repo.stage).toBe("raw");
+    expect(repo.stage).toBe("typed");
+    expect(repo.status).toBe("READY");
     expect(repo.sha256).toBe(createHash("sha256").update(readFileSync(fx)).digest("hex"));
 
     const m = manifest(fx);
@@ -195,9 +196,13 @@ describe("ingest raw: ketahanan", () => {
       sheets: 3,
     });
     const keys = t.storage.keys().filter((k) => k.startsWith("parquet/"));
-    expect(keys).toHaveLength(3);
+    expect(keys).toHaveLength(6); // raw + typed-1 per sheet
     const bytes = t.repo.byIndex().map((s) => readFileSync(join(t.storage.dir, s.rawKey!)));
     for (let i = 0; i < 3; i++) expect(bytes[i]!.equals(cleanBytes[i]!)).toBe(true);
+    const typed = (x: typeof t) =>
+      x.repo.byIndex().map((s) => readFileSync(join(x.storage.dir, s.typedKey!)));
+    const want = typed(clean);
+    typed(t).forEach((b, i) => expect(b.equals(want[i]!)).toBe(true));
     expect(t.repo.sheets.size).toBe(3);
   }, 60_000);
 

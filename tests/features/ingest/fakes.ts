@@ -24,6 +24,7 @@ import {
   type IngestStorage,
   type SheetRecord,
 } from "@/features/ingest/ingest";
+import type { ColumnSchema } from "@/features/ingest/infer";
 
 export const DS = "cmv4klj5r0007oczvgiofocpg";
 export const VID = "cmv4kljx40009oczvdmpurrxf";
@@ -77,6 +78,13 @@ export class FakeStorage implements IngestStorage {
   }
 }
 
+export type FakeSheet = SheetRecord & {
+  rawKey: string | null;
+  typedKey?: string;
+  schema?: ColumnSchema[];
+  schemaRevision?: number;
+};
+
 export class FakeRepo implements IngestRepo {
   status = "UPLOADED";
   stage: string | null = null;
@@ -84,7 +92,7 @@ export class FakeRepo implements IngestRepo {
   error: string | null = null;
   alive = () => true;
   progressLog: IngestProgress[] = [];
-  sheets = new Map<string, SheetRecord & { rawKey: string | null }>();
+  sheets = new Map<string, FakeSheet>();
   cleanups: string[] = [];
   private n = 0;
   constructor(readonly sourceKey: string) {}
@@ -121,9 +129,20 @@ export class FakeRepo implements IngestRepo {
   async recordCleanup(prefix: string) {
     this.cleanups.push(prefix);
   }
-  async finishRaw(_v: string, d: { sha256: string }) {
+  async setTyped(
+    id: string,
+    d: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number },
+  ) {
+    if (!this.alive()) {
+      this.sheets.clear();
+      throw new DatasetGoneError();
+    }
+    Object.assign(this.sheets.get(id)!, d);
+  }
+  async finish(_v: string, d: { sha256: string }) {
     if (!this.alive()) return false;
-    this.stage = "raw";
+    this.status = "READY";
+    this.stage = "typed";
     this.sha256 = d.sha256;
     return true;
   }
@@ -131,7 +150,7 @@ export class FakeRepo implements IngestRepo {
     this.status = "FAILED";
     this.error = message;
   }
-  byIndex(): (SheetRecord & { rawKey: string | null })[] {
+  byIndex(): FakeSheet[] {
     return [...this.sheets.values()].sort((a, b) => a.index - b.index);
   }
 }
@@ -178,8 +197,14 @@ export async function readParquet(path: string): Promise<unknown[][]> {
   }
 }
 
-/** xlsx minimal dari XML sheetData per sheet. */
-export async function buildXlsx(sheets: { name: string; xml: string }[]): Promise<Buffer> {
+/**
+ * xlsx minimal dari XML sheetData per sheet. dateStyle: tambah styles.xml dengan cellXfs[1] =
+ * numFmtId 14 (tanggal bawaan Excel), sehingga sel `s="1"` berisi nomor seri terbaca sebagai tanggal.
+ */
+export async function buildXlsx(
+  sheets: { name: string; xml: string }[],
+  opts: { dateStyle?: boolean } = {},
+): Promise<Buffer> {
   const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
   const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
   const PKG = "http://schemas.openxmlformats.org/package/2006/relationships";
@@ -195,8 +220,14 @@ export async function buildXlsx(sheets: { name: string; xml: string }[]): Promis
   );
   add(
     "xl/_rels/workbook.xml.rels",
-    `<?xml version="1.0"?><Relationships xmlns="${PKG}">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}</Relationships>`,
+    `<?xml version="1.0"?><Relationships xmlns="${PKG}">${sheets.map((_, i) => `<Relationship Id="rId${i + 1}" Type="${REL}/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join("")}${opts.dateStyle ? `<Relationship Id="rIdS" Type="${REL}/styles" Target="styles.xml"/>` : ""}</Relationships>`,
   );
+  if (opts.dateStyle) {
+    add(
+      "xl/styles.xml",
+      `<?xml version="1.0"?><styleSheet xmlns="${NS}"><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/></cellXfs></styleSheet>`,
+    );
+  }
   sheets.forEach((s, i) =>
     add(
       `xl/worksheets/sheet${i + 1}.xml`,
