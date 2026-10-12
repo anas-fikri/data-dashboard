@@ -11,7 +11,7 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T01:08:55Z"
+updated: "2026-10-12T01:11:09Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -35,11 +35,15 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-12T01:08:55Z"
       findings: 2
+    - "n": 5
+      by: frontend-expert-design-reviewer
+      at: "2026-10-12T01:10:52Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 9309
+    duration_ms: 6857
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -61,13 +65,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791767280181,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791767280203,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791767467827,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791767467848,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  9 passed (9)
             Tests  63 passed (63)
-         Start at  08:07:59
-         Duration  683ms (tests 36%, transform 34%, import 28%, worker 2%)
+         Start at  08:11:07
+         Duration  567ms (tests 38%, transform 30%, import 30%, worker 2%)
 
 
       > data-dashboard@0.1.0 audit
@@ -75,8 +79,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-12T01:08:04Z"
-    tree: 70331b7d2b7f7e6661b6d9dd9282c06ab1e07e4511bf089c1af19d880b42c25d
+    at: "2026-10-12T01:11:09Z"
+    tree: c6f1b73b2b9593e4a91b6efa8d3d78dca9438f2b933e8e7e7ad4500256c46e0e
   audit:
     at: "2026-10-12T01:07:45Z"
     passed: true
@@ -112,7 +116,7 @@ Model Dataset {name, description, ownerId, activeVersionId?} dan DatasetVersion 
 - [x] Given profil milik user lain yang tidak dibagikan, when user membuka URL-nya langsung atau memanggil Server Action-nya, then halaman 404 / code NOT_FOUND dan tidak ada perubahan
 - [x] Given profil dengan versi READY aktif dan versi terbaru FAILED, when membuka daftar, then label siap dengan badge gagal beserta pesan
 - [x] Given profil dataset, when user menghapus dengan konfirmasi dua langkah, then profil, versi, dan dashboard terkait hilang dan hook penghapusan storage serta pembatalan job terpanggil (diverifikasi test)
-- [ ] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
+- [x] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
 
 ## Risk
 Risk level: MEDIUM-HIGH (model data inti + hapus kaskade: salah filter = kebocoran/kehilangan data antar user)
@@ -127,6 +131,7 @@ Open risks/assumptions: berbagi (T-016) belum ada → daftar hanya milik sendiri
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Hapus prefix storage selalu dengan '/' penutup (parquet/<datasetId>/) agar cuid berawalan sama tidak ikut terhapus. Batas 50 dataset per user (code LIMIT_REACHED).
+- 2026-10-12T01:10:59Z Conventions check (audit frontend-expert pass 5, commit 29f1080: 0 Critical/High/Medium/Low). Tokens: preset project T-025 (zinc-blue, success/destructive/warning/primary tints, tanpa warna hardcode). Icons: waiver @tabler/icons-react (IconPlus, IconCircleCheck, IconCircleDashed, IconAlertTriangle, IconLoader2, IconUpload, IconRoute, IconFileSpreadsheet, IconTrash, IconChevronRight, IconLayoutDashboard), outline, size 20/stroke 1.5 default. States: loading (pending tombol form + dialog), empty (EmptyState daftar/beranda/kartu Data), error (FormAlert field + alert unggahan gagal dengan nama file + langkah), success (FocusNotice dibuat/dihapus menerima fokus). Responsive: 320/768/1024/1440 tanpa overflow, daftar @container (tabel @3xl, kartu di bawahnya), CTA w-full di ponsel. A11y: axe 0 pelanggaran di 34 pemeriksaan terang/gelap, ul>li>a dengan label sr-only, satu h1, fokus dialog ke input konfirmasi. Sisa kosmetik (bukan temuan): ruang bawah 20px di kartu Beranda, rapikan saat menyentuh Beranda lagi.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
