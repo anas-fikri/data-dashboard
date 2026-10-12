@@ -1,4 +1,4 @@
-import { IconDatabase, IconFileSpreadsheet, IconLayoutDashboard } from "@tabler/icons-react";
+import { IconDatabase, IconLayoutDashboard, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
 import { DatasetList } from "@/components/datasets/dataset-list";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ export default async function HomePage() {
         actions={
           <Button asChild>
             <Link href="/datasets/baru">
-              <IconFileSpreadsheet aria-hidden />
+              <IconPlus aria-hidden />
               Buat dataset
             </Link>
           </Button>
@@ -50,7 +50,7 @@ export default async function HomePage() {
                 className="py-8"
               />
             ) : (
-              <DatasetList datasets={recent} />
+              <DatasetList datasets={recent} compact bare />
             )}
           </CardContent>
         </Card>

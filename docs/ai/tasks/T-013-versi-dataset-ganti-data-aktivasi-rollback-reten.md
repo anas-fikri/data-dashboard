@@ -11,7 +11,7 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-11T23:58:30Z"
 created_by: claude-code
 ---
 
@@ -31,6 +31,7 @@ Mode REPLACE. Ingest versi refresh men-cast raw dengan skema aktif per nama asli
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Aktivasi/rollback hanya pemilik; job pembersihan menghapus prefix dengan '/' penutup; retensi raw 7 hari dan typed lama via job (MinIO lifecycle granularitas hari).
+- 2026-10-11T23:58:30Z Dari review T-003: job pembersihan StorageCleanup wajib memvalidasi bentuk prefix (raw|parquet)/<cuid>/ sebelum menghapus, menaikkan attempts, dan menghapus baris setelah sukses.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

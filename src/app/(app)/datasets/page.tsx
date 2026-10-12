@@ -1,9 +1,9 @@
 import { IconDatabase, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
-import { FormAlert } from "@/components/auth/form-alert";
 import { DatasetList } from "@/components/datasets/dataset-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { listDatasets } from "@/features/datasets/service";
@@ -16,7 +16,7 @@ export default async function DatasetsPage({ searchParams }: { searchParams: Sea
   const user = await requireUser();
   const [datasets, params] = await Promise.all([listDatasets(user.id), searchParams]);
   const createButton = (
-    <Button asChild>
+    <Button asChild className="w-full sm:w-auto">
       <Link href="/datasets/baru">
         <IconPlus aria-hidden />
         Buat dataset
@@ -31,7 +31,7 @@ export default async function DatasetsPage({ searchParams }: { searchParams: Sea
         description="Profil data Anda. Setiap dataset bisa diisi file Excel/CSV dan dipakai banyak dashboard."
         actions={datasets.length > 0 ? createButton : undefined}
       />
-      {params.deleted === "1" ? <FormAlert tone="success">Dataset dihapus.</FormAlert> : null}
+      {params.deleted === "1" ? <FocusNotice>Dataset dihapus.</FocusNotice> : null}
       {datasets.length === 0 ? (
         <EmptyState
           icon={<IconDatabase />}

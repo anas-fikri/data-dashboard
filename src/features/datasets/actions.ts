@@ -42,7 +42,7 @@ export async function createDatasetAction(
   const r = await service.createDataset(user.id, formData.get("name"), formData.get("description"));
   if (!r.ok) return toError(r, formData);
   revalidatePath("/datasets");
-  redirect(`/datasets/${r.data.id}`);
+  redirect(`/datasets/${r.data.id}?created=1`);
 }
 
 export async function updateDatasetAction(

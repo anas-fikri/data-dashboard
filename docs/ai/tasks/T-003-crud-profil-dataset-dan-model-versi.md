@@ -11,7 +11,7 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T23:56:00Z"
+updated: "2026-10-11T23:58:30Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -23,6 +23,14 @@ review:
       by: claude-security-reviewer-subagen
       at: "2026-10-11T23:56:00Z"
       findings: 2
+    - "n": 2
+      by: claude-security-reviewer-subagen
+      at: "2026-10-11T23:58:30Z"
+      findings: 0
+    - "n": 3
+      by: frontend-expert-design-reviewer
+      at: "2026-10-11T23:58:30Z"
+      findings: 11
 evidence:
   audit:
     at: "2026-10-11T23:54:34Z"

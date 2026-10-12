@@ -23,8 +23,8 @@ async function createDataset(page: Page, name: string, description = ""): Promis
   await page.getByLabel("Nama dataset").fill(name);
   if (description) await page.getByLabel("Deskripsi").fill(description);
   await page.getByRole("button", { name: "Buat dataset" }).click();
-  await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}$/);
-  return page.url().split("/").pop()!;
+  await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
+  return new URL(page.url()).pathname.split("/").pop()!;
 }
 
 test.describe("dataset", () => {
@@ -42,6 +42,10 @@ test.describe("dataset", () => {
 
     const id = await createDataset(page, "Penjualan Cabang 2026", "Rekap bulanan semua cabang");
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Penjualan Cabang 2026");
+    // Notice sukses menerima fokus; kartu Data menjelaskan keadaan kosong
+    await expect(page.getByTestId("form-alert")).toContainText("Dataset dibuat.");
+    await expect(page.getByTestId("form-alert")).toBeFocused();
+    await expect(page.getByText("Belum ada data")).toBeVisible();
     await page.goto("/datasets");
     const row = page.getByTestId("dataset-row").filter({ hasText: "Penjualan Cabang 2026" });
     await expect(row).toHaveAttribute("href", `/datasets/${id}`);
@@ -67,7 +71,9 @@ test.describe("dataset", () => {
     await page.getByLabel("Nama dataset").fill("Stok Gudang Jakarta");
     await page.getByLabel("Deskripsi").fill("Posisi stok harian");
     await page.getByRole("button", { name: "Simpan perubahan" }).click();
-    await expect(page.getByTestId("form-alert")).toContainText("Perubahan disimpan.");
+    await expect(
+      page.getByTestId("form-alert").filter({ hasText: "Perubahan disimpan." }),
+    ).toBeVisible();
     await page.goto(`/datasets/${id}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("Stok Gudang Jakarta");
     await expect(page.getByText("Posisi stok harian").first()).toBeVisible();
@@ -125,6 +131,11 @@ test.describe("dataset", () => {
     await expect(page.getByTestId("dataset-status-message")).toHaveText(
       "Sheet 'Oktober' baris 1.204: file rusak, tidak bisa dibaca.",
     );
+    // Alert gagal menyebut file yang gagal + langkah lanjut; data aktif tetap terlihat
+    const alert = page.getByTestId("form-alert");
+    await expect(alert).toContainText('Unggahan "penjualan-oktober.xlsx" gagal diproses.');
+    await expect(alert).toContainText("Dashboard tetap memakai data aktif sebelumnya.");
+    await expect(page.getByTestId("dataset-active")).toContainText("penjualan-september.xlsx");
   });
 
   test("hapus dua langkah: konfirmasi nama → profil, versi, dashboard hilang", async ({ page }) => {

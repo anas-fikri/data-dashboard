@@ -19,7 +19,7 @@ import {
  */
 
 export type DatasetCode =
-  "NOT_FOUND" | "NAME_TAKEN" | "LIMIT_REACHED" | "INVALID" | "CONFIRM_MISMATCH";
+  "NOT_FOUND" | "NAME_TAKEN" | "LIMIT_REACHED" | "INVALID" | "CONFIRM_MISMATCH" | "BUSY";
 
 export type DatasetResult<T> =
   { ok: true; data: T } | { ok: false; code: DatasetCode; message: string; field?: DatasetField };
@@ -31,6 +31,10 @@ export interface DatasetSummary {
   updatedAt: Date;
   label: DatasetLabel;
   dashboardCount: number;
+  /** Versi aktif (data yang dipakai dashboard), bila ada. */
+  active: { originalName: string | null; finishedAt: Date | null } | null;
+  /** Nama file versi terbaru (untuk menjelaskan unggahan yang gagal). */
+  latestFileName: string | null;
 }
 
 const notFound = <T>(): DatasetResult<T> => ({
@@ -45,11 +49,12 @@ const summarySelect = {
   description: true,
   updatedAt: true,
   activeVersionId: true,
+  activeVersion: { select: { originalName: true, ingestFinishedAt: true } },
   _count: { select: { dashboards: true } },
   versions: {
     orderBy: { createdAt: "desc" as const },
     take: 1,
-    select: { id: true, status: true, errorMessage: true },
+    select: { id: true, status: true, errorMessage: true, originalName: true },
   },
 } satisfies Prisma.DatasetSelect;
 
@@ -63,6 +68,13 @@ function toSummary(row: SummaryRow): DatasetSummary {
     description: row.description,
     updatedAt: row.updatedAt,
     dashboardCount: row._count.dashboards,
+    active: row.activeVersion
+      ? {
+          originalName: row.activeVersion.originalName,
+          finishedAt: row.activeVersion.ingestFinishedAt,
+        }
+      : null,
+    latestFileName: latest?.originalName ?? null,
     label: deriveLabel(
       row.activeVersionId,
       latest
@@ -132,6 +144,10 @@ export async function createDataset(
     return { ok: true, data: row };
   } catch (e) {
     if (isUniqueViolation(e)) return nameTaken();
+    // Antrean lock per pemilik melewati batas waktu transaksi (banyak permintaan sekaligus).
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") {
+      return { ok: false, code: "BUSY", message: "Sedang memproses permintaan lain. Coba lagi." };
+    }
     throw e;
   }
 }

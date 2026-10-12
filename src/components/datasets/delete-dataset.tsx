@@ -38,9 +38,9 @@ export function DeleteDataset({ id, name, dashboardCount }: DeleteDatasetProps) 
     >
       <Dialog.Trigger asChild>
         <Button
-          variant="destructive"
+          variant="outline"
           leadingIcon={<IconTrash aria-hidden />}
-          className="w-full sm:w-auto"
+          className="w-full border-destructive/40 text-destructive hover:bg-destructive/10 hover:text-destructive sm:w-auto"
         >
           Hapus dataset
         </Button>

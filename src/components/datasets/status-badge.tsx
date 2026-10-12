@@ -9,28 +9,25 @@ import {
 import type { DatasetLabel } from "@/features/datasets/label";
 import { cn } from "@/lib/utils";
 
+/*
+ * Teks badge selalu text-foreground (kontras ≥ 4.5:1 di kedua tema); warna status dibawa ikon dan
+ * latar tipis (review desain T-003 #3). Status tidak hanya lewat warna: ikon + teks.
+ */
 const pill =
-  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium [&_svg]:size-3.5 [&_svg]:shrink-0";
+  "inline-flex h-6 items-center gap-1 rounded-full px-2 text-xs font-medium text-foreground [&_svg]:size-3.5 [&_svg]:shrink-0";
 
-/** Label profil (kosong/siap) + badge versi terbaru. Status tidak hanya warna: ikon + teks. */
-export function StatusBadge({
-  label,
-  showMessage = false,
-}: {
-  label: DatasetLabel;
-  showMessage?: boolean;
-}) {
+export function StatusBadge({ label }: { label: DatasetLabel }) {
   const badge = label.badge;
   return (
     <span className="inline-flex flex-wrap items-center gap-1.5" data-testid="dataset-status">
       {label.state === "siap" ? (
-        <span className={cn(pill, "bg-success/12 text-success")}>
-          <IconCircleCheck aria-hidden stroke={2} />
+        <span className={cn(pill, "bg-success/12")}>
+          <IconCircleCheck aria-hidden stroke={2} className="text-success" />
           Siap
         </span>
       ) : (
-        <span className={cn(pill, "bg-muted text-muted-foreground")}>
-          <IconCircleDashed aria-hidden stroke={2} />
+        <span className={cn(pill, "bg-muted")}>
+          <IconCircleDashed aria-hidden stroke={2} className="text-muted-foreground" />
           Kosong
         </span>
       )}
@@ -39,24 +36,22 @@ export function StatusBadge({
           data-badge={badge.kind}
           className={cn(
             pill,
-            badge.kind === "failed" && "bg-destructive/12 text-destructive",
-            badge.kind === "processing" && "bg-primary/12 text-primary",
-            badge.kind === "uploading" && "bg-primary/12 text-primary",
-            badge.kind === "awaiting_mapping" && "bg-warning/20 text-foreground",
+            badge.kind === "failed" && "bg-destructive/12",
+            (badge.kind === "processing" || badge.kind === "uploading") && "bg-primary/12",
+            badge.kind === "awaiting_mapping" && "bg-warning/20",
           )}
         >
-          {badge.kind === "failed" ? <IconAlertTriangle aria-hidden stroke={2} /> : null}
-          {badge.kind === "processing" ? (
-            <IconLoader2 aria-hidden stroke={2} className="motion-safe:animate-spin" />
+          {badge.kind === "failed" ? (
+            <IconAlertTriangle aria-hidden stroke={2} className="text-destructive" />
           ) : null}
-          {badge.kind === "uploading" ? <IconUpload aria-hidden stroke={2} /> : null}
+          {badge.kind === "processing" ? (
+            <IconLoader2 aria-hidden stroke={2} className="text-primary motion-safe:animate-spin" />
+          ) : null}
+          {badge.kind === "uploading" ? (
+            <IconUpload aria-hidden stroke={2} className="text-primary" />
+          ) : null}
           {badge.kind === "awaiting_mapping" ? <IconRoute aria-hidden stroke={2} /> : null}
           {badge.text}
-        </span>
-      ) : null}
-      {showMessage && badge?.message ? (
-        <span className="w-full text-sm text-destructive" data-testid="dataset-status-message">
-          {badge.message}
         </span>
       ) : null}
     </span>
