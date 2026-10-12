@@ -354,7 +354,7 @@ describe("sandbox mesin DuckDB", () => {
 });
 
 describe("regresi review T-009", () => {
-  it("F1: cache hasil di memori berbatas byte (LRU) — entri > 1 MB tidak disimpan", () => {
+  it("F1: cache hasil di memori berbatas byte (LRU) — entri > 4 MB tidak disimpan", () => {
     const c = new ResultCache<string>(3_000);
     c.set("a", "A", 1_000);
     c.set("b", "B", 1_000);
@@ -364,7 +364,7 @@ describe("regresi review T-009", () => {
     expect(c.get("a")).toBe("A");
     expect(c.totalBytes).toBeLessThanOrEqual(3_000);
     const big = new ResultCache<string>(64 * 1024 * 1024);
-    big.set("x", "X", 2 * 1024 * 1024);
+    big.set("x", "X", 5 * 1024 * 1024);
     expect(big.get("x")).toBeNull();
   });
 
@@ -657,20 +657,22 @@ describe("regresi review T-009 putaran 2", () => {
     expect(rowBytes(["abc", null, true])).toBe(64 + (24 + 6) + 8 + 8);
   });
 
-  it("N1: hasil 3.000 baris × 13 angka (≈ 1,1 MB heap) tidak lagi masuk cache entri ≤ 1 MB", async () => {
-    const rows = Array.from({ length: 3_000 }, (_, i) =>
+  it("N1: cache menghitung byte dengan perkiraan heap; hasil 10 ribu baris (≈ 3,8 MB) tetap di-cache", async () => {
+    const rows = Array.from({ length: 10_000 }, (_, i) =>
       Array.from({ length: 13 }, (_, j) => i + j + 0.5),
     );
     const exec = vi.fn(async () => ({ columns: [], rows }));
-    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
+    const cache = memoryStore();
+    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec }, cache });
     const measures = Array.from({ length: 10 }, () => ({ column: "Koli", agg: "sum" }));
     const b = body({
       dimensions: [{ column: "Kota" }, { column: "Tanggal" }, { column: "Lunas" }],
       measures,
     });
     expect(await runQuery(USER, b, d)).toMatchObject({ ok: true, cached: false });
-    expect(await runQuery(USER, b, d)).toMatchObject({ ok: true, cached: false });
-    expect(exec).toHaveBeenCalledTimes(2);
+    expect(cache.totalBytes).toBe(10_000 * (64 + 13 * 24));
+    expect(await runQuery(USER, b, d)).toMatchObject({ ok: true, cached: true });
+    expect(exec).toHaveBeenCalledTimes(1);
   });
 
   it("N2: unduhan dibatasi global dan per user; yang lewat waitMs berlanjut di background", async () => {

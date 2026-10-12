@@ -7,8 +7,12 @@
 import { createHash } from "node:crypto";
 
 export const RESULT_TTL_MS = 24 * 60 * 60 * 1000;
-/** Entri lebih besar dari ini tidak di-cache (hasil tetap dikirim). */
-export const ENTRY_MAX_BYTES = 1024 * 1024;
+/**
+ * Entri lebih besar dari ini tidak di-cache (hasil tetap dikirim). Byte = perkiraan heap (rowBytes):
+ * hasil 10 ribu baris umumnya 2–4 MB, jadi 4 MiB agar tabel besar tetap terlayani cache, sementara
+ * anggaran default 64 MiB masih memuat ≥ 16 entri sebesar ini.
+ */
+export const ENTRY_MAX_BYTES = 4 * 1024 * 1024;
 
 /** JSON dengan urutan key tersortir di setiap tingkat (urutan key dari klien tidak memengaruhi). */
 export function canonical(v: unknown): string {

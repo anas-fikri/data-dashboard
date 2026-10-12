@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-007
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T10:49:15Z"
+updated: "2026-10-12T11:15:34Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,6 +22,40 @@ review:
       by: claude-security-reviewer-subagen
       at: "2026-10-12T10:49:15Z"
       findings: 12
+    - "n": 2
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T11:07:16Z"
+      findings: 3
+    - "n": 3
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T11:15:34Z"
+      findings: 0
+evidence:
+  audit:
+    at: "2026-10-12T11:12:10Z"
+    passed: true
+    tree: d66c9b21db026f04b92727296fa26b31c0b51d59a56e692586b99556ee5aeabd
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 715 packages
+          End status: 100 dirs visited, 421 inodes visited, 1 Extract calls, 54.836667ms elapsed, 54.837ms wall time
+          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
@@ -75,9 +109,14 @@ Security (STRIDE):
     - Risiko diterima: label yang 500 karakter pertamanya sama digabung menjadi satu grup. Label grafik sepanjang itu tidak realistis.
   - Cache hasil di memori proses, bukan Redis bersama yang noeviction (ADR-0004).
     - LRU ≤ QUERY_RESULT_CACHE_BYTES (default 64 MiB, maksimal 512 MiB), dengan byte = perkiraan heap yang sama.
-    - Entri ≤ 1 MB, TTL 24 jam.
+    - Entri ≤ 4 MiB (hasil 10 ribu baris umumnya 2–4 MB; anggaran 64 MiB tetap memuat ≥ 16 entri sebesar itu), TTL 24 jam.
   - DuckDB kehabisan memori → QUERY_TOO_HEAVY dengan saran.
   - Tanpa rate limit per menit: slot per user, pembatas unduhan, cache negatif, dan batas hasil sudah membatasi; ditinjau ulang di T-024.
+    - Risiko diterima sampai T-024: user dengan total data > MAX_LOCAL_PARQUET_BYTES (mungkin dalam kuota 20 GB) bisa terus mendorong file user lain keluar dari cache lokal. Dibatasi 1 unduhan per user dan 2 global, antrean FIFO.
+  - Body permintaan (review putaran 3): dibaca streaming dengan batas byte (readTextLimited: /api/query 65 KB, unggah 8 KB, login 8 KB). Buffer proxy Next dibatasi 1 MB (proxyClientMaxBodySize).
+    - Yang dibatasi memori per permintaan (≈ 1 MB), bukan durasi: proxy menunggu seluruh body tiba sebelum handler jalan (3 MB dikirim pelan selama 3 s → 400 setelah 3,08 s). Durasi dibatasi requestTimeout Node (300 s) dan client_max_body_size reverse proxy (T-023).
+    - Body > 1 MB dipotong diam-diam (bukan 413): serverActions.bodySizeLimit dan batas Route Handler harus tetap ≤ 1 MB (dicatat di next.config.ts).
+  - Batas hasil 5 MB kini memakai perkiraan heap, lebih ketat dari sebelumnya: 10 ribu baris × 3 teks 40 karakter + 10 ukuran ≈ 6,2 MB → RESULT_TOO_LARGE (pesan menyarankan mengurangi limit/dimensi). Spec perf (≈ 2,2 MB) tidak terpengaruh.
 - **CSRF:** Origin wajib = APP_URL (403).
 - **Repudiation:** log error query dengan userId tanpa isi data.
 
@@ -106,17 +145,17 @@ Open risks/assumptions:
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — Batas kepercayaan: browser → /api/query (sesi + Origin) → service (cek pemilik) → DuckDB terkunci (enable_external_access=false, allowed_directories, lock_configuration) → cache parquet lokal; unduhan S3 hanya di server. Dirinci di Risk (STRIDE).
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak ada kredensial baru; rute memakai requireUser("action") yang sudah ada (sesi dicek server-side, 401 tanpa sesi).
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak mengubah sesi; memakai sesi yang ada (sessionVersion dicek).
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — Dataset di-resolve where {id, ownerId}, sheet where {id, versionId}; bukan pemilik atau sheet dataset lain → 404 tanpa membocorkan keberadaan (AC 2, AC 7; uji unit + e2e). Cek pemilik terjadi sebelum cache hasil dibaca.
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — Spec zod strict dengan enum tertutup dan batas jumlah; nama kolom di-resolve lewat skema ke identifier c<pos>; semua nilai user diikat sebagai parameter; SQL selalu satu SELECT yang hanya membaca read_parquet($path) (uji F11); tanggal filter harus tanggal kalender sungguhan.
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak menyimpan rahasia; SHA-256 hanya untuk kunci cache dan nama file (bukan kontrol keamanan).
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — Error tak terduga → 500 dengan pesan umum; kode error terpetakan (400/404/409/422/429/504). Log hanya userId + pesan error, tanpa isi data.
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — Respons Cache-Control: no-store. Cache hasil di memori proses (TTL 24 jam, kunci per dataset/versi/revisi). Salinan parquet lokal dibuang saat dataset dihapus (termasuk unduhan berjalan) dan setelah menganggur 3 hari.
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A di tingkat aplikasi: tidak ada endpoint eksternal baru; trafik S3 internal, TLS di reverse proxy deployment (T-023).
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — Tidak ada panggilan jaringan selain HEAD/GET objek S3 dari bucket yang dikonfigurasi; autoinstall/autoload ekstensi DuckDB dimatikan; @duckdb/node-api 1.5.6 resmi, npm audit 0.
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — Slot query global + per user; pembatas unduhan (2 global, 1 per user); timeout 30 s + cache negatif; hasil ≤ 5 MB (perkiraan heap); spec ≤ 64 KB; schemaRevision di kunci cache; forget saat unduhan berjalan (review N1–N3).
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — Tidak ada unggahan baru. Path file lokal = hash kunci dari DB (bukan input user); DuckDB hanya boleh membaca direktori cache/temp; kunci S3 dari DB, tidak ada SSRF.
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — Input divalidasi skema zod; body JSON dibaca streaming ≤ 65 KB (readTextLimited) dan buffer proxy 1 MB; Origin wajib = APP_URL (403); tanpa header CORS; pembatasan lewat slot (rate limit per menit ditinjau di T-024).
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — Env QUERY_* divalidasi dengan batas min/max (cache hasil ≤ 512 MiB); konfigurasi DuckDB dikunci; tanpa mode debug; DuckDB di serverExternalPackages; npm audit 0.
