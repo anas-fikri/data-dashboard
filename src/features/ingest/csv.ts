@@ -2,7 +2,8 @@
  * CSV → raw.parquet lewat DuckDB read_csv (ADR-0005):
  *   1. delimiter dari 64 KB pertama; UTF-16 ditolak;
  *   2. pindai seluruh file (byte): kolom maksimum, record, baris kosong, akhir baris, validitas UTF-8;
- *   3. encoding dari pindaian seluruh file (bukan hanya 64 KB): UTF-8 valid → apa adanya (BOM dibuang),
+ *   3. encoding dari pindaian seluruh file (bukan hanya 64 KB): UTF-8 valid → apa adanya (BOM dibuang);
+ *      ber-BOM atau mayoritas karakter non-ASCII valid → UTF-8 dengan byte rusak menjadi U+FFFD;
  *      selain itu Windows-1252 → transcode ke UTF-8;
  *   4. DuckDB membaca semua sebagai VARCHAR dengan kolom eksplisit, satu thread pembaca, ke tabel r0
  *      (parallel = false: pemindai paralel tidak mendukung baris baru di dalam kutip + null_padding);
@@ -18,7 +19,7 @@ import { ident, lit, type Duck } from "@/lib/duckdb";
 import { CsvFormatError, rejectUtf16, scanCsv, sniffDelimiter } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type SampleRow } from "./header";
 import type { SheetRecord } from "./ingest";
-import { MAX_RAW_COLS, SAMPLE_ROWS, copyParquet } from "./raw-writer";
+import { MAX_RAW_COLS, SAMPLE_ROWS, WIDE_COLS, copyParquet } from "./raw-writer";
 
 export const CSV_MAX_CELL = 32_767;
 const MAX_LINE = 8 * 1024 * 1024;
@@ -87,14 +88,18 @@ export async function csvToParquet(
 
   let path = src;
   if (!scan.utf8 || scan.bom) {
+    // UTF-8 dengan byte rusak juga lewat sini: decoder non-fatal menggantinya dengan U+FFFD.
     path = join(work, "source-utf8.csv");
-    await toUtf8(src, path, scan.utf8 ? "utf-8" : "windows-1252", scan.bom);
+    await toUtf8(src, path, scan.encoding, scan.bom);
   }
 
   const n = scan.maxFields;
   const cols = Array.from({ length: n }, (_, i) => `c${i + 1}`);
   const columns = `{${cols.map((c) => `${lit(c)}: 'VARCHAR'`).join(", ")}}`;
   const r0Cols = cols.map((c) => `r0.${ident(c)}`);
+  // Tabel lebar di DB ber-blok kecil (lihat WIDE_COLS); alias r0 tetap dipakai di query.
+  const wide = n > WIDE_COLS ? await duck.wideCatalog() : null;
+  const r0Ref = wide ? `${ident(wide)}.main.r0` : "r0";
   const anyValue =
     n === 1 ? `${r0Cols[0]} IS NOT NULL` : `coalesce(${r0Cols.join(", ")}) IS NOT NULL`;
   const buffer = Math.max(opts.bufferSize ?? BUFFER, 1024 * 1024);
@@ -125,7 +130,7 @@ export async function csvToParquet(
   // (1.100 kolom sudah > 256 MB walau hanya 2 baris).
   await watched(() =>
     duck.conn.run(
-      `CREATE TABLE r0 AS
+      `CREATE TABLE ${r0Ref} AS
        SELECT * FROM read_csv($path, header = false, auto_detect = false, delim = $delim, quote = '"',
                               escape = '"', null_padding = true, parallel = false,
                               max_line_size = ${maxLine}, buffer_size = ${buffer}${scan.crOnly ? ", new_line = '\\r'" : ""},
@@ -139,7 +144,7 @@ export async function csvToParquet(
   // rowid). Lebih dari satu kolom: baris kosong dilewati → tambah jumlah baris kosong sebelumnya.
   // ASOF JOIN hanya atas kolom rowid (sempit), lalu POSITIONAL JOIN streaming ke tabel lebar.
   let physical = "(r0.rowid + 1)::INTEGER";
-  let from = "r0";
+  let from = `${r0Ref} AS r0`;
   if (n > 1 && scan.blanksBefore.length) {
     await duck.conn.run("CREATE TABLE blank_cum (b INTEGER, c INTEGER)");
     const a = await duck.conn.createAppender("blank_cum");
@@ -157,15 +162,15 @@ export async function csvToParquet(
       duck.conn.run(
         `CREATE TABLE pos AS
          SELECT (r.rid + 1 + coalesce(blank_cum.c, 0))::INTEGER AS _row
-         FROM (SELECT rowid AS rid FROM r0) r ASOF LEFT JOIN blank_cum ON r.rid + 1 > blank_cum.b
+         FROM (SELECT rowid AS rid FROM ${r0Ref}) r ASOF LEFT JOIN blank_cum ON r.rid + 1 > blank_cum.b
          ORDER BY r.rid`,
       ),
     );
     physical = "pos._row";
-    from = "r0 POSITIONAL JOIN pos";
+    from = `${r0Ref} AS r0 POSITIONAL JOIN pos`;
   }
   await duck.conn.run(
-    `CREATE VIEW s0 AS SELECT ${physical} AS _row, ${r0Cols.map((c, i) => `${c} AS ${ident(cols[i]!)}`).join(", ")}
+    `CREATE TEMP VIEW s0 AS SELECT ${physical} AS _row, ${r0Cols.map((c, i) => `${c} AS ${ident(cols[i]!)}`).join(", ")}
      FROM ${from} WHERE ${anyValue}`,
   );
 
@@ -210,7 +215,7 @@ export async function csvToParquet(
   await duck.conn.run("DROP VIEW s0");
   await duck.conn.run("DROP TABLE IF EXISTS pos");
   await duck.conn.run("DROP TABLE IF EXISTS blank_cum");
-  await duck.conn.run("DROP TABLE r0");
+  await duck.conn.run(`DROP TABLE ${r0Ref}`);
   const headerRow = guessHeaderRow(sample);
   return {
     path: out,

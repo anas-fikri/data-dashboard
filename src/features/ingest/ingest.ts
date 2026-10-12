@@ -111,6 +111,15 @@ export function permanentMessage(e: unknown): string | null {
     return "Pemrosesan file melebihi 60 menit. Pecah file menjadi beberapa bagian lalu unggah lagi.";
   }
   const msg = e instanceof Error ? e.message : String(e);
+  // Diperiksa sebelum pola CSV: kegagalan commit appender berawalan "Invalid Input Error".
+  // Memori DuckDB habis: deterministik untuk file yang sama (concurrency 1, memory_limit tetap), jadi
+  // mengulang hanya membuang waktu. Disk temp penuh tetap sementara (masalah lingkungan, bukan file).
+  if (
+    /Out of Memory Error|could not allocate block|failed to pin block/i.test(msg) &&
+    !/temp(orary)? directory|No space left/i.test(msg)
+  ) {
+    return "File terlalu berat untuk diproses: memori pemrosesan tidak cukup (biasanya karena kolom sangat banyak atau sel sangat panjang). Hapus kolom yang tidak dipakai atau pecah file, lalu unggah lagi.";
+  }
   // Isi file yang tidak valid menurut DuckDB (CSV rusak, kutip tidak tertutup, baris terlalu panjang).
   if (
     /Invalid Input Error|Conversion Error|CSV Error|Could not convert|maximum line size/i.test(msg)
@@ -199,6 +208,8 @@ export async function runIngest(
       path: join(work, "work.duckdb"),
       tmpDir: work,
       memoryLimit: opts.duckMemory,
+      // Tabel raw > WIDE_COLS kolom pindah ke DB ber-blok kecil (review T-006 M3).
+      widePath: join(work, "wide.duckdb"),
     });
     const sheets =
       ext === "xlsx"

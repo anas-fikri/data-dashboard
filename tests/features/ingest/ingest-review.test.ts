@@ -143,3 +143,41 @@ describe("pembersihan", () => {
     expect(s.repo.cleanups).toEqual([`parquet/${DS}/${VID}/`]);
   });
 });
+
+describe("encoding dengan byte rusak (review putaran 2, N1)", () => {
+  const utf8 = (s: string) => Buffer.from(s, "utf8");
+  const STRAY = Buffer.from([0x96]); // en dash Windows-1252, tidak valid sebagai UTF-8
+
+  it('"CSV UTF-8" Excel (ber-BOM) + satu byte rusak → tetap UTF-8, hanya byte itu menjadi U+FFFD', async () => {
+    const body = Buffer.concat([
+      Buffer.from([0xef, 0xbb, 0xbf]),
+      utf8("nama;kota\nJosé;München\nBudi;"),
+      STRAY,
+      utf8("Bandung\n"),
+    ]);
+    const { r, rows } = await ingest(t.file("bom-rusak.csv", body));
+    expect(r).toEqual({ outcome: "done", sheets: 1 });
+    expect(rows[1]!.slice(1)).toEqual(["José", "München"]);
+    expect(rows[2]![2]).toBe("�Bandung");
+  });
+
+  it("tanpa BOM, mayoritas aksen UTF-8 valid + satu byte rusak → UTF-8", async () => {
+    const body = Buffer.concat([
+      utf8("nama;kota\nJosé;Zürich\nRenée;Málaga\n"),
+      STRAY,
+      utf8(";x\n"),
+    ]);
+    const { rows } = await ingest(t.file("utf8-rusak.csv", body));
+    expect(rows[2]!.slice(1)).toEqual(["Renée", "Málaga"]);
+  });
+
+  it("Windows-1252 asli (semua aksen tidak valid sebagai UTF-8) → tetap Windows-1252", async () => {
+    const body = Buffer.concat([
+      Buffer.from("nama;kota\nJosé;München ", "latin1"),
+      STRAY,
+      Buffer.from(" Pusat\n", "latin1"),
+    ]);
+    const { rows } = await ingest(t.file("cp1252.csv", body));
+    expect(rows[1]!.slice(1)).toEqual(["José", "München – Pusat"]);
+  });
+});

@@ -13,12 +13,24 @@ export interface DuckOptions {
   memoryLimit?: string;
   threads?: number;
   maxTempSize?: string;
+  /**
+   * File database kedua untuk tabel lebar, di-ATTACH ber-blok 16 KiB saat pertama dipakai
+   * (wideCatalog). Tabel lebar menahan satu segmen per kolom di memori: 2.048 kolom × blok default
+   * 256 KiB tidak muat di 1 GB, × 16 KiB muat. Tabel sempit tetap di DB utama (blok default, lebih
+   * cepat untuk jutaan baris).
+   */
+  widePath?: string;
 }
+
+/** Ukuran blok DB tabel lebar. */
+export const WIDE_BLOCK_SIZE = 16 * 1024;
 
 export interface Duck {
   conn: DuckDBConnection;
   /** Hentikan query yang sedang berjalan (dataset dihapus, deadline). */
   interrupt(): void;
+  /** Nama katalog DB tabel lebar (di-ATTACH sekali); null bila widePath tidak diisi. */
+  wideCatalog(): Promise<string | null>;
   close(): void;
 }
 
@@ -38,10 +50,19 @@ export async function openDuck(o: DuckOptions): Promise<Duck> {
   });
   const conn = await db.connect();
   let closed = false;
+  let wide: Promise<string> | null = null;
   return {
     conn,
     interrupt: () => {
       if (!closed) conn.interrupt();
+    },
+    wideCatalog: () => {
+      if (!o.widePath) return Promise.resolve(null);
+      // Ukuran blok hanya bisa dipilih saat ATTACH file baru.
+      wide ??= conn
+        .run(`ATTACH ${lit(o.widePath)} AS wide (BLOCK_SIZE ${WIDE_BLOCK_SIZE})`)
+        .then(() => "wide");
+      return wide;
     },
     close: () => {
       if (closed) return;

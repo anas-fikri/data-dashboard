@@ -132,11 +132,68 @@ export interface CsvScan {
    * (CSV > 1 kolom), jadi nomor fisik record ke-n = n + jumlah nilai < n (sama dengan tampilan Excel).
    */
   blanksBefore: number[];
-  /** Seluruh file UTF-8 valid (BOM diabaikan); false → Windows-1252. */
+  /** Seluruh file UTF-8 valid (BOM diabaikan). */
   utf8: boolean;
+  /** Urutan byte UTF-8 tidak valid (diganti U+FFFD bila encoding tetap UTF-8). */
+  invalidUtf8: number;
+  /** Keputusan dari seluruh file (lihat EncodingJudge). */
+  encoding: "utf-8" | "windows-1252";
   bom: boolean;
   /** Akhir baris hanya CR (Mac lama) — DuckDB perlu new_line eksplisit. */
   crOnly: boolean;
+}
+
+/**
+ * Penentu encoding dari seluruh file (review T-006 M5/N1). UTF-8 valid → UTF-8. Ada byte tidak
+ * valid → UTF-8 (byte rusak menjadi U+FFFD) bila karakter non-ASCII valid ≥ urutan rusak, selain itu
+ * Windows-1252 (file Excel "CSV" lama: hampir semua aksen tidak valid sebagai UTF-8). BOM UTF-8
+ * diputuskan pemanggil (selalu UTF-8: Windows-1252 tidak pernah ber-BOM).
+ */
+class EncodingJudge {
+  private readonly fatal = new TextDecoder("utf-8", { fatal: true });
+  private lenient: TextDecoder | null = null;
+  valid = true;
+  /** Karakter non-ASCII valid. */
+  good = 0;
+  /** Urutan tidak valid (U+FFFD dari decoder lenient). */
+  bad = 0;
+
+  push(b: Uint8Array) {
+    if (this.valid) {
+      try {
+        const s = this.fatal.decode(b, { stream: true });
+        // Panjang sama = tidak ada karakter multi-byte di chunk ini (lewati penghitungan).
+        if (s.length !== b.length) this.count(s);
+        return;
+      } catch {
+        this.valid = false;
+        this.lenient = new TextDecoder("utf-8");
+      }
+    }
+    this.count(this.lenient!.decode(b, { stream: true }));
+  }
+
+  end() {
+    if (!this.valid) {
+      this.count(this.lenient!.decode());
+      return;
+    }
+    try {
+      this.fatal.decode();
+    } catch {
+      this.valid = false; // urutan multi-byte terpotong di akhir file
+      this.bad++;
+    }
+  }
+
+  private count(s: string) {
+    for (let i = 0; i < s.length; i++) {
+      const c = s.charCodeAt(i);
+      if (c < 0x80) continue;
+      if (c === 0xfffd) this.bad++;
+      else this.good++;
+    }
+  }
 }
 
 // Status pemindai: awal field, field tanpa kutip, di dalam kutip, kutip terlihat di dalam kutip.
@@ -147,7 +204,7 @@ const QUOTE_SEEN = 3;
 
 /**
  * Pindai seluruh file byte demi byte. Delimiter, kutip, CR/LF selalu ASCII sehingga aman untuk
- * UTF-8 maupun Windows-1252; validitas UTF-8 diperiksa sambil jalan (TextDecoder fatal, streaming).
+ * UTF-8 maupun Windows-1252; encoding diputuskan sambil jalan dari seluruh file (EncodingJudge).
  */
 export async function scanCsv(path: string, delimiter: string, maxCols: number): Promise<CsvScan> {
   const d = delimiter.charCodeAt(0);
@@ -160,8 +217,7 @@ export async function scanCsv(path: string, delimiter: string, maxCols: number):
   let crOnly = 0;
   let lf = 0;
   const blanksBefore: number[] = [];
-  const dec = new TextDecoder("utf-8", { fatal: true });
-  let utf8 = true;
+  const judge = new EncodingJudge();
   let first = true;
   let bom = false;
 
@@ -194,13 +250,7 @@ export async function scanCsv(path: string, delimiter: string, maxCols: number):
       bom = hasUtf8Bom(b);
       if (bom) b = b.subarray(3);
     }
-    if (utf8) {
-      try {
-        dec.decode(b, { stream: true });
-      } catch {
-        utf8 = false;
-      }
-    }
+    judge.push(b);
     for (let i = 0; i < b.length; i++) {
       const c = b[i]!;
       if (afterCr) {
@@ -238,19 +288,15 @@ export async function scanCsv(path: string, delimiter: string, maxCols: number):
       }
     }
   }
-  if (utf8) {
-    try {
-      dec.decode();
-    } catch {
-      utf8 = false;
-    }
-  }
+  judge.end();
   if (any) endRecord();
   return {
     maxFields: Math.max(maxFields, 1),
     records,
     blanksBefore,
-    utf8,
+    utf8: judge.valid,
+    invalidUtf8: judge.bad,
+    encoding: bom || judge.valid || judge.good >= judge.bad ? "utf-8" : "windows-1252",
     bom,
     crOnly: crOnly > 0 && lf === 0,
   };
