@@ -187,6 +187,20 @@ describe("completeUpload", () => {
     });
   });
 
+  it("multipart hilang dan HEAD error (bukan 404) → STORAGE_ERROR, tidak ditandai FAILED", async () => {
+    const storage = storageMock({
+      listParts: vi.fn(async () => null),
+      head: vi.fn(async () => {
+        throw new Error("timeout");
+      }),
+    });
+    const r = await completeUpload("u1", VID, { storage, enqueue: vi.fn() });
+    expect(r).toMatchObject({ ok: false, code: "STORAGE_ERROR" });
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { completingAt: null } }),
+    );
+  });
+
   it("storage error setelah complete → STORAGE_ERROR, klaim dilepas, objek tidak dihapus", async () => {
     const storage = storageMock({
       head: vi.fn(async () => {

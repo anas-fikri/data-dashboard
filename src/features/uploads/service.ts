@@ -575,7 +575,14 @@ export async function completeUpload(
   if (!parts) {
     // Multipart sudah tidak ada: bisa karena complete sebelumnya sukses tetapi responsnya hilang
     // atau validasi sesudahnya gagal. Objek utuh → lanjutkan validasi; tidak ada → kedaluwarsa.
-    const existing = await storage.head(key).catch(() => null);
+    let existing: Awaited<ReturnType<MultipartStorage["head"]>>;
+    try {
+      existing = await storage.head(key); // null hanya untuk 404; error lain = belum tahu
+    } catch (err) {
+      logger.error({ versionId: id, err: String(err) }, "HeadObject pemulihan gagal");
+      await release();
+      return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
+    }
     if (existing) return finalize(existing.etag ?? "");
     await markFailed(id, "Unggahan kedaluwarsa. Unggah ulang file.");
     return fail(
