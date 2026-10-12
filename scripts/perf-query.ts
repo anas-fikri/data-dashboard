@@ -16,8 +16,8 @@ import {
   type IngestStorage,
   type SheetRecord,
 } from "../src/features/ingest/ingest";
-import type { ResultStore } from "../src/features/query/cache";
-import { runQuery, type QueryDeps } from "../src/features/query/service";
+import { ResultCache } from "../src/features/query/cache";
+import { runQuery, type CachedQuery, type QueryDeps } from "../src/features/query/service";
 import { QueryEngine } from "../src/lib/duckdb/engine";
 import { ParquetCache } from "../src/lib/duckdb/parquet-cache";
 
@@ -121,15 +121,15 @@ async function main() {
     perUser: 4,
     queueWaitMs: 10_000,
   });
-  const parquet = new ParquetCache(join(root, "qcache"), 10 * 1024 ** 3, async (key, dest) => {
-    linkSync(join(store, key), dest);
+  const parquet = new ParquetCache({
+    dir: join(root, "qcache"),
+    maxBytes: 10 * 1024 ** 3,
+    download: async (key, dest) => {
+      linkSync(join(store, key), dest);
+    },
   });
-  const mem = new Map<string, string>();
-  const memStore: ResultStore = {
-    get: async (k) => mem.get(k) ?? null,
-    set: async (k, v) => mem.set(k, v),
-  };
-  const deps = (cache: ResultStore | null): QueryDeps => ({
+  const memStore = new ResultCache<CachedQuery>(128 * 1024 * 1024);
+  const deps = (cache: ResultCache<CachedQuery> | null): QueryDeps => ({
     repo: {
       ownedDataset: async () => ({ activeVersionId: VER }),
       sheet: async () => ({ typedKey, schemaRevision: 1, schema }),
@@ -140,7 +140,7 @@ async function main() {
     timeoutMs: 30_000,
   });
   const spec = { sheetId: SHEET, dimensions, measures, limit: 10_000 };
-  const run = async (cache: ResultStore | null) => {
+  const run = async (cache: ResultCache<CachedQuery> | null) => {
     const times: number[] = [];
     let rows = 0;
     for (let i = 0; i < 20; i++) {

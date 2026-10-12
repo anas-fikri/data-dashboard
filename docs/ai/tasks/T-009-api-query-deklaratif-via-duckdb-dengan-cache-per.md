@@ -48,21 +48,27 @@ Security (STRIDE):
   - Dataset hanya milik user (lainnya 404, tanpa membedakan "ada tapi bukan milikmu").
   - Sheet di-resolve where {id, versionId aktif} sehingga sheet dataset lain → 404.
   - Kunci cache hasil memuat datasetId + versionId + schemaRevision. Pemilik sudah dicek sebelum cache dibaca.
-- **Elevation (escape dari DuckDB):** instance aplikasi enable_external_access=false + allowed_directories (hanya cache parquet dan temp) + lock_configuration. read_csv('/etc/passwd'), INSTALL, ATTACH, dan SET setelah dikunci ditolak (diuji).
-- **DoS:**
-  - Timeout 30 s → interrupt.
-  - Slot global MAX_QUERY_CONCURRENCY (antre ≤ 10 s, lalu QUERY_BUSY) dan ≤ 4 per user.
-  - memory_limit dan max_temp_directory_size DuckDB.
-  - Cache parquet lokal LRU ≤ MAX_LOCAL_PARQUET_BYTES (file yang sedang dipakai tidak dibuang).
-  - Cache hasil ≤ 2 MB per entri, TTL 24 jam (ADR-0004 noeviction; gagal SET = miss).
-  - Tanpa rate limit per menit: batas 4 query bersamaan per user + cache hasil sudah membatasi beban; ditinjau ulang di T-024.
+- **Elevation (escape dari DuckDB):** instance aplikasi enable_external_access=false + allowed_directories (hanya cache parquet dan temp) + lock_configuration.
+  - File di luar direktori itu (mis. /etc/passwd) dan SET setelah dikunci ditolak (diuji).
+  - Di dalam direktori yang diizinkan, DuckDB masih bisa COPY/ATTACH/read_text. Yang menjaga adalah hanya SQL dari buildSql yang pernah dijalankan: satu SELECT yang hanya membaca read_parquet($path) (diuji, review F11). engine.exec tidak dipanggil dengan teks dari user.
+- **DoS (review T-009 F1–F4):**
+  - Timeout 30 s → interrupt. Spec yang timeout di-cache negatif 5 menit, sehingga tidak bisa diulang gratis.
+  - Slot global MAX_QUERY_CONCURRENCY (antre ≤ 10 s, lalu QUERY_BUSY) dan per user = setengahnya. Slot dipegang selama menyiapkan file parquet dan query, jadi unduhan ikut dibatasi.
+  - Cache parquet lokal: LRU ≤ MAX_LOCAL_PARQUET_BYTES.
+    - Ruang dipesan lewat HEAD sebelum unduh; penuh oleh file yang sedang dipakai → QUERY_BUSY.
+    - Unduhan dibatasi 10 menit (abort).
+    - File menganggur 7 hari dibuang; file milik dataset yang dihapus dibuang (forget).
+  - Hasil ke klien ≤ 5 MB (perkiraan saat konversi, sebelum serialisasi) → RESULT_TOO_LARGE. Teks dimensi dipotong 500 karakter di SQL.
+  - Cache hasil di memori proses (LRU ≤ QUERY_RESULT_CACHE_BYTES, entri ≤ 1 MB, TTL 24 jam), bukan Redis bersama yang noeviction (ADR-0004).
+  - DuckDB kehabisan memori → QUERY_TOO_HEAVY dengan saran.
+  - Tanpa rate limit per menit: slot per user, cache negatif, dan batas hasil sudah membatasi; ditinjau ulang di T-024.
 - **CSRF:** Origin wajib = APP_URL (403).
 - **Repudiation:** log error query dengan userId tanpa isi data.
 
 Compatibility: endpoint baru. Mode editor via dashboard ({dashboardId, spec}) ditambahkan T-011/T-016.
 
 Failure modes:
-- **Redis mati/penuh:** query tetap jalan tanpa cache.
+- **Cache hasil hilang saat proses restart:** hanya cache miss (cache per proses, bukan dibagi antar-replika).
 - **S3 gagal saat mengisi cache lokal:** QUERY_FAILED 500 (file tmp dibuang); permintaan berikutnya mencoba lagi.
 - **Disk cache penuh oleh file yang sedang dipakai:** total boleh melewati batas sementara, lalu dibuang saat release. File tunggal > batas dipakai lalu dihapus.
 - **Proses aplikasi mati:** file cache tetap valid (nama = hash kunci, file typed tidak berubah) dan sisa unduhan tmp-* dibuang saat start.

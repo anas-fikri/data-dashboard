@@ -12,6 +12,8 @@ export interface BuiltSql {
 }
 
 const OP_SQL = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
+/** Panjang maksimum teks dimensi di hasil. */
+export const DIM_TEXT_MAX = 500;
 
 export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
@@ -31,7 +33,14 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const select: string[] = [];
   for (const d of plan.dimensions) {
     const c = ident(d.col);
-    select.push(`${d.grain ? `date_trunc('${d.grain}', ${c})` : c} AS ${ident(d.key)}`);
+    // Teks dimensi dipotong: label grafik tidak butuh 32 ribu karakter, dan hasil 10k baris × sel
+    // panjang membengkakkan memori aplikasi (review T-009 F4).
+    const e = d.grain
+      ? `date_trunc('${d.grain}', ${c})`
+      : d.type === "text"
+        ? `left(${c}, ${DIM_TEXT_MAX})`
+        : c;
+    select.push(`${e} AS ${ident(d.key)}`);
   }
   for (const m of plan.measures) {
     const c = m.col ? ident(m.col) : "*";
@@ -51,9 +60,13 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
         return `${c} IS NULL`;
       case "not_null":
         return `${c} IS NOT NULL`;
+      // "Bukan X" menyertakan sel kosong: eq X + neq X = semua baris (review T-009 F7).
       case "in":
+        return `${c} IN (${f.values.map((v) => bind(v, f.type)).join(", ")})`;
       case "not_in":
-        return `${c} ${f.op === "in" ? "IN" : "NOT IN"} (${f.values.map((v) => bind(v, f.type)).join(", ")})`;
+        return `(${c} IS NULL OR ${c} NOT IN (${f.values.map((v) => bind(v, f.type)).join(", ")}))`;
+      case "neq":
+        return `(${c} IS NULL OR ${c} <> ${bind(f.values[0]!, f.type)})`;
       case "between":
         return `${c} BETWEEN ${bind(f.values[0]!, f.type)} AND ${bind(f.values[1]!, f.type)}`;
       case "contains":
@@ -65,10 +78,15 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
 
   const group = plan.dimensions.length && plan.measures.length ? "GROUP BY ALL" : "";
   const distinct = plan.dimensions.length && !plan.measures.length ? "DISTINCT " : "";
-  // Urutan default deterministik: dimensi naik (hasil tanpa dimensi hanya satu baris).
-  const order = plan.sort.length
-    ? plan.sort.map((s) => `${ident(s.key)} ${s.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`)
-    : plan.dimensions.map((d) => `${ident(d.key)} ASC NULLS LAST`);
+  // Urutan deterministik: urutan pilihan user lalu dimensi naik sebagai pemecah seri, sehingga baris
+  // di batas LIMIT selalu sama (review T-009 F8). Hasil tanpa dimensi hanya satu baris.
+  const sorted = new Set(plan.sort.map((x) => x.key));
+  const order = [
+    ...plan.sort.map((x) => `${ident(x.key)} ${x.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`),
+    ...plan.dimensions
+      .filter((d) => !sorted.has(d.key))
+      .map((d) => `${ident(d.key)} ASC NULLS LAST`),
+  ];
 
   const sql = [
     `SELECT ${distinct}${select.join(", ")}`,

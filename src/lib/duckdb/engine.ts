@@ -63,14 +63,19 @@ export class QueryEngine {
       autoinstall_known_extensions: "false",
       autoload_known_extensions: "false",
     });
-    const conn = await db.connect();
     try {
-      const dirs = [o.dataDir, o.tmpDir].map((d) => lit(d.endsWith("/") ? d : `${d}/`));
-      await conn.run(`SET allowed_directories = [${dirs.join(", ")}]`);
-      await conn.run("SET enable_external_access = false");
-      await conn.run("SET lock_configuration = true");
-    } finally {
-      conn.closeSync();
+      const conn = await db.connect();
+      try {
+        const dirs = [o.dataDir, o.tmpDir].map((d) => lit(d.endsWith("/") ? d : `${d}/`));
+        await conn.run(`SET allowed_directories = [${dirs.join(", ")}]`);
+        await conn.run("SET enable_external_access = false");
+        await conn.run("SET lock_configuration = true");
+      } finally {
+        conn.closeSync();
+      }
+    } catch (e) {
+      db.closeSync(); // instance setengah jadi tidak boleh tertinggal (review T-009 F10)
+      throw e;
     }
     return new QueryEngine(db, o);
   }
@@ -115,21 +120,33 @@ export class QueryEngine {
     else this.perUser.set(userId, n);
   }
 
-  /** Jalankan satu query (parameter binding) dengan batas waktu; lewat → interrupt + QueryTimeoutError. */
-  async run(
-    userId: string,
+  /**
+   * Pegang satu slot (global + per user) selama `fn` berjalan, termasuk menyiapkan file parquet lokal:
+   * unduhan ikut dibatasi slot (review T-009 F3). Slot selalu dilepas, apa pun yang dilempar `fn`.
+   */
+  async withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const release = await this.slot(userId);
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /** Satu query (parameter binding) dengan batas waktu; lewat → interrupt + QueryTimeoutError. */
+  async exec(
     sql: string,
     params: Record<string, string | number | boolean>,
     timeoutMs: number,
   ): Promise<EngineResult> {
-    const release = await this.slot(userId);
-    const conn = await this.db.connect();
     let timedOut = false;
+    let conn: Awaited<ReturnType<DuckDBInstance["connect"]>> | null = null;
     const timer = setTimeout(() => {
       timedOut = true;
-      conn.interrupt();
+      conn?.interrupt();
     }, timeoutMs);
     try {
+      conn = await this.db.connect();
       const r = await conn.runAndReadAll(sql, params);
       if (timedOut) throw new QueryTimeoutError();
       return { columns: r.columnNames(), rows: r.getRowsJS() as unknown[][] };
@@ -138,9 +155,22 @@ export class QueryEngine {
       throw e;
     } finally {
       clearTimeout(timer);
-      conn.closeSync();
-      release();
+      try {
+        conn?.closeSync();
+      } catch {
+        /* koneksi sudah rusak; slot tetap dilepas pemanggil */
+      }
     }
+  }
+
+  /** exec di dalam slot user (dipakai uji dan pemanggil yang tidak perlu menyiapkan file dulu). */
+  run(
+    userId: string,
+    sql: string,
+    params: Record<string, string | number | boolean>,
+    timeoutMs: number,
+  ): Promise<EngineResult> {
+    return this.withSlot(userId, () => this.exec(sql, params, timeoutMs));
   }
 
   close() {

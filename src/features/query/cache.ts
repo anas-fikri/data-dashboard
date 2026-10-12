@@ -1,17 +1,14 @@
 /*
- * Cache hasil query di Redis (T-009). Kunci = SHA-256 dari (dataset, versi, sheet, schemaRevision,
- * spec kanonik): versi atau revisi skema baru otomatis cache miss. TTL 24 jam dan nilai dibatasi
- * (ADR-0004: Redis noeviction); kegagalan Redis/OOM diperlakukan sebagai miss, tidak menggagalkan query.
+ * Cache hasil query (T-009) di memori proses aplikasi, dibatasi byte (LRU) dan TTL 24 jam. Bukan di
+ * Redis: Redis bersama (noeviction, ADR-0004) juga memegang antrean dan rate limit, dan satu user bisa
+ * memenuhinya dengan hasil 2 MB × kunci berbeda (review T-009 F1). Kunci = SHA-256 dari (dataset,
+ * versi, sheet, schemaRevision, spec kanonik): versi atau revisi skema baru otomatis miss.
  */
 import { createHash } from "node:crypto";
 
-export const RESULT_TTL_SEC = 24 * 60 * 60;
-export const RESULT_MAX_BYTES = 2 * 1024 * 1024;
-
-export interface ResultStore {
-  get(key: string): Promise<string | null>;
-  set(key: string, value: string, ex: "EX", ttlSec: number): Promise<unknown>;
-}
+export const RESULT_TTL_MS = 24 * 60 * 60 * 1000;
+/** Entri lebih besar dari ini tidak di-cache (hasil tetap dikirim). */
+export const ENTRY_MAX_BYTES = 1024 * 1024;
 
 /** JSON dengan urutan key tersortir di setiap tingkat (urutan key dari klien tidak memengaruhi). */
 export function canonical(v: unknown): string {
@@ -34,7 +31,7 @@ export function resultKey(parts: {
   schemaRevision: number;
   spec: unknown;
 }): string {
-  const h = createHash("sha256")
+  return createHash("sha256")
     .update(
       canonical([
         parts.datasetId,
@@ -45,26 +42,54 @@ export function resultKey(parts: {
       ]),
     )
     .digest("hex");
-  return `q:${h}`;
 }
 
-export async function cacheGet<T>(store: ResultStore | null, key: string): Promise<T | null> {
-  if (!store) return null;
-  try {
-    const raw = await store.get(key);
-    return raw ? (JSON.parse(raw) as T) : null;
-  } catch {
-    return null;
+interface Slot<T> {
+  value: T;
+  bytes: number;
+  expires: number;
+}
+
+/** LRU berbatas byte dengan TTL per entri (urutan Map = urutan pemakaian terakhir). */
+export class ResultCache<T = unknown> {
+  private readonly map = new Map<string, Slot<T>>();
+  private bytes = 0;
+
+  constructor(
+    readonly maxBytes: number,
+    private readonly now: () => number = Date.now,
+  ) {}
+
+  get totalBytes() {
+    return this.bytes;
   }
-}
 
-export async function cacheSet(store: ResultStore | null, key: string, value: unknown) {
-  if (!store) return;
-  const raw = JSON.stringify(value);
-  if (raw.length > RESULT_MAX_BYTES) return;
-  try {
-    await store.set(key, raw, "EX", RESULT_TTL_SEC);
-  } catch {
-    /* Redis penuh/mati: hasil tetap dikirim, hanya tidak di-cache */
+  get(key: string): T | null {
+    const s = this.map.get(key);
+    if (!s) return null;
+    if (s.expires <= this.now()) {
+      this.delete(key, s);
+      return null;
+    }
+    this.map.delete(key);
+    this.map.set(key, s);
+    return s.value;
+  }
+
+  set(key: string, value: T, bytes: number, ttlMs = RESULT_TTL_MS) {
+    if (bytes > ENTRY_MAX_BYTES || bytes > this.maxBytes) return;
+    const old = this.map.get(key);
+    if (old) this.delete(key, old);
+    this.map.set(key, { value, bytes, expires: this.now() + ttlMs });
+    this.bytes += bytes;
+    for (const [k, s] of this.map) {
+      if (this.bytes <= this.maxBytes) break;
+      this.delete(k, s);
+    }
+  }
+
+  private delete(key: string, s: Slot<T>) {
+    this.map.delete(key);
+    this.bytes -= s.bytes;
   }
 }

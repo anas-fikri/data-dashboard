@@ -112,6 +112,12 @@ export const envSchema = z.object({
     .string()
     .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)
     .default("1GB"),
+  /** Cache hasil query di memori proses aplikasi (LRU berbatas byte, TTL 24 jam). */
+  QUERY_RESULT_CACHE_BYTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(128 * 1024 * 1024),
   /** Batas waktu satu query; lewat → interrupt + QUERY_TIMEOUT. */
   QUERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
 });

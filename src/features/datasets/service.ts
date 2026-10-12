@@ -177,11 +177,18 @@ export async function updateDataset(
 export interface DeleteDeps {
   cancelJobs: (versionIds: string[]) => Promise<void>;
   deleteObjects: (datasetId: string) => Promise<number>;
+  /** Buang salinan lokal typed.parquet di cache mesin query (T-009, review F12). */
+  forgetParquet?: (keys: string[]) => Promise<void>;
 }
 
 const defaultDeps: DeleteDeps = {
   cancelJobs: cancelVersionJobs,
   deleteObjects: deleteDatasetObjects,
+  // Import dinamis: modul native DuckDB hanya dimuat bila mesin query memang dipakai proses ini.
+  forgetParquet: async (keys) => {
+    const { forgetLocalParquet } = await import("@/features/query/runtime");
+    await forgetLocalParquet(keys);
+  },
 };
 
 /**
@@ -217,8 +224,15 @@ export async function deleteDataset(
     };
   }
   await deps.cancelJobs(row.versions.map((v) => v.id));
+  const typed = await prisma.sheet.findMany({
+    where: { version: { datasetId: id }, typedKey: { not: null } },
+    select: { typedKey: true },
+  });
   const r = await prisma.dataset.deleteMany({ where: { id, ownerId } });
   if (r.count !== 1) return notFound();
+  await deps
+    .forgetParquet?.(typed.flatMap((s) => (s.typedKey ? [s.typedKey] : [])))
+    .catch(() => {});
   try {
     await deps.deleteObjects(id);
   } catch (e) {

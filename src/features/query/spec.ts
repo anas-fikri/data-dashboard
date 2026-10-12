@@ -129,6 +129,22 @@ const AGG_LABEL: Record<Agg, string> = {
   max: "Maksimum",
 };
 
+/** Tanggal/waktu ISO yang benar-benar ada (2024-02-30 atau 25:99 ditolak sebelum DuckDB, review F5). */
+function isCalendarDate(v: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(v);
+  if (!m) return false;
+  const [y, mo, d, h = "0", mi = "0", s = "0"] = m.slice(1).map((x) => x ?? undefined) as string[];
+  const t = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  return (
+    t.getUTCFullYear() === Number(y) &&
+    t.getUTCMonth() === Number(mo) - 1 &&
+    t.getUTCDate() === Number(d) &&
+    Number(h) < 24 &&
+    Number(mi) < 60 &&
+    Number(s) < 60
+  );
+}
+
 /** Nilai filter sesuai tipe kolom; tanggal berupa teks ISO (YYYY-MM-DD[THH:MM[:SS]]). */
 function checkValue(type: ColumnType, v: string | number | boolean): boolean {
   switch (type) {
@@ -140,7 +156,7 @@ function checkValue(type: ColumnType, v: string | number | boolean): boolean {
       return typeof v === "boolean";
     case "date":
     case "timestamp":
-      return typeof v === "string" && /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$/.test(v);
+      return typeof v === "string" && isCalendarDate(v);
     case "text":
       return typeof v === "string";
   }

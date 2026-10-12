@@ -6,17 +6,17 @@ import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
 import { env } from "@/lib/env";
-import { redisReady } from "@/lib/redis";
-import { downloadToFile } from "@/lib/storage/files";
-import type { ResultStore } from "./cache";
-import type { QueryDeps, QueryRepo } from "./service";
+import { downloadToFile, objectSize } from "@/lib/storage/files";
+import { ResultCache } from "./cache";
+import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
 
 /*
- * Perakitan produksi query (T-009): satu cache parquet + satu mesin DuckDB per proses aplikasi.
+ * Perakitan produksi query (T-009): satu cache parquet, satu mesin DuckDB, dan satu cache hasil per
+ * proses aplikasi.
  */
 
-/** Query bersamaan per user (selain batas global MAX_QUERY_CONCURRENCY). */
-const PER_USER = 4;
+/** Jeda sebelum mencoba lagi inisialisasi yang gagal (DuckDB tidak dibuat ulang per permintaan). */
+const INIT_RETRY_MS = 10_000;
 
 export const prismaQueryRepo: QueryRepo = {
   ownedDataset: (userId, datasetId) =>
@@ -33,42 +33,79 @@ export const prismaQueryRepo: QueryRepo = {
   },
 };
 
-/** Cache hasil di Redis; Redis tidak tersedia → tanpa cache (query tetap jalan). */
-const redisStore: ResultStore = {
-  get: async (key) => (await redisReady()).get(key),
-  set: async (key, value, ex, ttl) => (await redisReady()).set(key, value, ex, ttl),
+interface Runtime {
+  deps: QueryDeps;
+  parquet: ParquetCache;
+}
+
+const globalForQuery = globalThis as unknown as {
+  queryRuntime?: Promise<Runtime>;
+  queryInitFailedAt?: number;
 };
 
-const globalForQuery = globalThis as unknown as { queryDeps?: Promise<QueryDeps> };
-
-export function queryDeps(): Promise<QueryDeps> {
-  globalForQuery.queryDeps ??= (async () => {
-    const e = env();
-    const base = e.QUERY_CACHE_DIR ?? join(tmpdir(), "dd-query");
-    const dataDir = join(base, "parquet");
-    const parquet = new ParquetCache(dataDir, e.MAX_LOCAL_PARQUET_BYTES, async (key, dest) => {
-      await downloadToFile(key, dest);
-    });
-    const engine = await QueryEngine.create({
-      dataDir,
-      tmpDir: join(base, "tmp"),
-      memoryLimit: e.QUERY_MEMORY_LIMIT,
-      threads: 2,
-      maxTempSize: "4GB",
-      maxConcurrency: e.MAX_QUERY_CONCURRENCY,
-      perUser: PER_USER,
-      queueWaitMs: 10_000,
-    });
-    return {
+async function build(): Promise<Runtime> {
+  const e = env();
+  const base = e.QUERY_CACHE_DIR ?? join(tmpdir(), "dd-query");
+  const dataDir = join(base, "parquet");
+  const parquet = new ParquetCache({
+    dir: dataDir,
+    maxBytes: e.MAX_LOCAL_PARQUET_BYTES,
+    sizeOf: (key, signal) => objectSize(key, signal),
+    download: async (key, dest, signal) => {
+      await downloadToFile(key, dest, signal);
+    },
+  });
+  const engine = await QueryEngine.create({
+    dataDir,
+    tmpDir: join(base, "tmp"),
+    memoryLimit: e.QUERY_MEMORY_LIMIT,
+    threads: 2,
+    maxTempSize: "4GB",
+    maxConcurrency: e.MAX_QUERY_CONCURRENCY,
+    // Satu user tidak boleh memegang semua slot (review T-009 F2).
+    perUser: Math.max(1, Math.floor(e.MAX_QUERY_CONCURRENCY / 2)),
+    queueWaitMs: 10_000,
+  });
+  return {
+    parquet,
+    deps: {
       repo: prismaQueryRepo,
       parquet,
       engine,
-      cache: redisStore,
+      cache: new ResultCache<CachedQuery>(e.QUERY_RESULT_CACHE_BYTES),
       timeoutMs: e.QUERY_TIMEOUT_MS,
-    };
-  })().catch((err: unknown) => {
-    globalForQuery.queryDeps = undefined; // coba lagi pada permintaan berikutnya
+    },
+  };
+}
+
+function runtime(): Promise<Runtime> {
+  const failedAt = globalForQuery.queryInitFailedAt;
+  if (!globalForQuery.queryRuntime && failedAt && Date.now() - failedAt < INIT_RETRY_MS) {
+    return Promise.reject(new Error("mesin query belum siap"));
+  }
+  globalForQuery.queryRuntime ??= build().catch((err: unknown) => {
+    globalForQuery.queryRuntime = undefined;
+    globalForQuery.queryInitFailedAt = Date.now();
     throw err;
   });
-  return globalForQuery.queryDeps;
+  return globalForQuery.queryRuntime;
+}
+
+export async function queryDeps(): Promise<QueryDeps> {
+  return (await runtime()).deps;
+}
+
+/**
+ * Buang salinan lokal typed.parquet data yang dihapus (review T-009 F12). Hanya bila mesin query
+ * proses ini sudah berjalan (belum berjalan = belum ada salinan).
+ */
+export async function forgetLocalParquet(keys: string[]): Promise<void> {
+  const rt = globalForQuery.queryRuntime;
+  if (!rt || keys.length === 0) return;
+  try {
+    const { parquet } = await rt;
+    for (const k of keys) parquet.forget(k);
+  } catch {
+    /* runtime gagal start: tidak ada salinan */
+  }
 }

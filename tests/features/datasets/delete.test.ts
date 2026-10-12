@@ -6,7 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const findFirst = vi.fn();
 const deleteMany = vi.fn();
-vi.mock("@/lib/db", () => ({ prisma: { dataset: { findFirst, deleteMany } } }));
+const sheetFindMany = vi.fn(async () => [{ typedKey: "parquet/d/v/s/typed-1.parquet" }]);
+vi.mock("@/lib/db", () => ({
+  prisma: { dataset: { findFirst, deleteMany }, sheet: { findMany: sheetFindMany } },
+}));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/lib/storage/objects", () => ({ deleteDatasetObjects: vi.fn() }));
 vi.mock("@/lib/queue/versions", () => ({ cancelVersionJobs: vi.fn() }));
@@ -44,6 +47,16 @@ describe("deleteDataset", () => {
       expect.objectContaining({ where: { id: ID, ownerId: "owner1" } }),
     );
     expect(deleteMany).toHaveBeenCalledWith({ where: { id: ID, ownerId: "owner1" } });
+  });
+
+  it("salinan lokal typed.parquet di cache mesin query dibuang setelah DB terhapus (T-009 F12)", async () => {
+    const forgetParquet = vi.fn(async (_keys: string[]) => {
+      order.push("forget");
+    });
+    const r = await deleteDataset("owner1", ID, "penjualan cabang", { ...deps, forgetParquet });
+    expect(r).toMatchObject({ ok: true });
+    expect(forgetParquet).toHaveBeenCalledWith(["parquet/d/v/s/typed-1.parquet"]);
+    expect(order.indexOf("db")).toBeLessThan(order.indexOf("forget"));
   });
 
   it("konfirmasi salah → CONFIRM_MISMATCH, tidak ada yang dihapus", async () => {

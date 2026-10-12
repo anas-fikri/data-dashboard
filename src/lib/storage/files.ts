@@ -9,6 +9,7 @@ import {
   CompleteMultipartUploadCommand,
   CreateMultipartUploadCommand,
   GetObjectCommand,
+  HeadObjectCommand,
   PutObjectCommand,
   UploadPartCommand,
 } from "@aws-sdk/client-s3";
@@ -21,11 +22,23 @@ import { bucket, s3Internal } from "@/lib/storage/s3";
 
 const PART = 16 * 1024 * 1024;
 
+/** Ukuran objek (HEAD), untuk memesan ruang cache sebelum mengunduh. */
+export async function objectSize(key: string, signal?: AbortSignal): Promise<number> {
+  const res = await s3Internal().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }), {
+    abortSignal: signal,
+  });
+  return Number(res.ContentLength ?? 0);
+}
+
+/** `signal`: batalkan unduhan (mis. batas waktu) — stream dihentikan dan error dilempar. */
 export async function downloadToFile(
   key: string,
   dest: string,
+  signal?: AbortSignal,
 ): Promise<{ sha256: string; bytes: number }> {
-  const res = await s3Internal().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+  const res = await s3Internal().send(new GetObjectCommand({ Bucket: bucket(), Key: key }), {
+    abortSignal: signal,
+  });
   if (!res.Body) throw new Error(`objek ${key} kosong`);
   const hash = createHash("sha256");
   let bytes = 0;
@@ -39,6 +52,7 @@ export async function downloadToFile(
       },
     }),
     createWriteStream(dest),
+    ...(signal ? [{ signal }] : []),
   );
   return { sha256: hash.digest("hex"), bytes };
 }
