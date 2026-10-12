@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T01:31:31Z"
+updated: "2026-10-12T04:36:35Z"
 created_by: claude-code
 ---
 
@@ -37,6 +37,8 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - 2026-10-11T23:44:44Z Dari review T-027: reverse proxy wajib meneruskan Host atau X-Forwarded-Host asli (Next mencocokkan Origin Server Action dengannya; allowedOrigins tidak dipakai). .dockerignore sudah mengecualikan .env. HSTS memakai includeSubDomains: semua subdomain (termasuk storage.<domain>, D5) wajib https.
 - 2026-10-11T23:58:30Z Dari review T-003: job pembersihan StorageCleanup wajib memvalidasi bentuk prefix (raw|parquet)/<cuid>/ sebelum menghapus.
 - 2026-10-12T01:31:31Z Dari T-004: compose produksi Redis --maxmemory-policy noeviction (ADR-0004); worker dijalankan sebagai proses terpisah (npm run worker = tsx --conditions=react-server; T-006/T-023 boleh bundel ke JS); proxy storage wajib meneruskan header Content-Length apa adanya (signed header UploadPart); jalankan node scripts/check-presign.mjs setelah deploy.
+- 2026-10-12T04:27:59Z Dari T-005 (ADR-0005): volume temp worker ≥ ± 5× ukuran upload maksimum (file sumber diunduh + spill sharedStrings ≤ min(8 GiB, 4× ukuran file)); untuk MAX_UPLOAD_BYTES 1 GB sediakan ≥ 5 GB per replika worker.
+- 2026-10-12T04:36:35Z Koreksi catatan disk temp worker (menggantikan '≥ 5× ukuran upload'): file spill sharedStrings dibatasi mutlak 8 GiB, jadi volume temp per replika worker ≥ ukuran upload maksimum + 8 GiB (± 9 GB untuk 1 GB).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

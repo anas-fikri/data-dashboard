@@ -262,8 +262,24 @@ describe("parser SAX: anggaran memori dan disk (audit review putaran 5)", () => 
       sst: Array.from({ length: 200 }, (_, i) => `<t>${"t".repeat(1000)}${i}</t>`),
     });
     await expect(
-      rows(p, { ...DEFAULT_LIMITS, spillBytes: 0, maxSpillFactor: 0.01 }),
+      rows(p, { ...DEFAULT_LIMITS, spillBytes: 0, maxSpillBytes: 50_000 }),
     ).rejects.toThrow(/isi teks file terlalu besar/);
+  });
+
+  it("ekspor ERP bertemplate (teks terkompresi sangat baik) tetap diproses dengan spill", async () => {
+    const n = 20_000;
+    const desc = (i: number) =>
+      `Pembayaran invoice INV/2024/01/${String(i).padStart(7, "0")} untuk PT Pelanggan Sejahtera ${i % 97} cabang Palembang, dikirim dengan layanan Reguler, status: diterima`;
+    const p = await book({
+      sheet: Array.from(
+        { length: n },
+        (_, i) => `<row r="${i + 1}"><c r="A${i + 1}" t="s"><v>${i}</v></c></row>`,
+      ).join(""),
+      sst: Array.from({ length: n }, (_, i) => `<t>${desc(i)}</t>`),
+    });
+    const { out } = await rows(p, { ...DEFAULT_LIMITS, spillBytes: 0 });
+    expect(out).toHaveLength(n);
+    expect(out[n - 1]!.vals[0]).toBe(desc(n - 1));
   });
 
   it("numFmt dan cellXfs berlebihan ditolak", async () => {

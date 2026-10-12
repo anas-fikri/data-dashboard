@@ -29,9 +29,12 @@ export interface SaxLimits {
   maxSheets: number;
   /** Jumlah entri sharedStrings (indeks ± 4 byte/string; fixture 1 GB teks-berat: 40 juta). */
   maxSharedStrings: number;
-  /** File spill sharedStrings ≤ min(maxSpillBytes, maxSpillFactor × ukuran file) di disk temp. */
+  /**
+   * Batas mutlak file spill sharedStrings di disk temp. Teks hasil dekode tidak pernah lebih besar dari
+   * XML-nya, jadi spill juga sudah terikat ukuran tak terkompresi entri sharedStrings; faktor relatif
+   * ukuran file sengaja tidak dipakai karena menolak ekspor ERP bertemplate yang terkompresi baik.
+   */
   maxSpillBytes: number;
-  maxSpillFactor: number;
   /** Excel: ≤ 64.000 format sel dan beberapa ratus format angka kustom. */
   maxCellXfs: number;
   maxNumFmts: number;
@@ -52,7 +55,6 @@ export const DEFAULT_LIMITS: SaxLimits = {
   maxSheets: 50,
   maxSharedStrings: 64 * 1024 * 1024,
   maxSpillBytes: 8 * 1024 ** 3,
-  maxSpillFactor: 4,
   maxCellXfs: 65_536,
   maxNumFmts: 1_000,
 };
@@ -421,7 +423,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
         opts.tmpDir,
         limits.spillBytes,
         limits.maxSharedStrings,
-        Math.min(limits.maxSpillBytes, limits.maxSpillFactor * Math.max(fileSize, 1)),
+        limits.maxSpillBytes,
       );
       const summary: ParseSummary = { truncatedCells: 0 };
       const truncatedSst = new Set<number>();

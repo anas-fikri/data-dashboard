@@ -44,7 +44,7 @@ Parameter awal yang mengikat T-006:
 - **OOXML:** nama tag dibandingkan tanpa prefix namespace (ekspor .NET OpenXML SDK); workbook, sharedStrings, dan styles ditemukan lewat file relasi, bukan nama tetap; escape `_xHHHH_` didekode; baris tanpa nilai tidak dipancarkan.
 - **Nomor baris dan kolom:** dari atribut `r`, dengan fallback urutan.
 - **Konversi tanggal:** sel bergaya tanggal (numFmt bawaan 14–22, 27–36, 45–47, 50–58, atau format kustom berisi d/m/y/h/s setelah literal, escape, dan padding dibuang) diubah ke tanggal naive (D8), dengan epoch 1904 bila `workbookPr date1904`. Sel `t="d"` (ISO) dibaca sebagai tanggal naive. Format durasi `[h]:mm` masih menjadi tanggal; T-007 memperlakukannya sebagai durasi.
-- **Akses berkas:** worker mengunduh objek sumber ke disk sementara karena akses acak zip butuh file lokal. Disk sementara worker harus ≥ ukuran file + spill; file spill dibatasi min(8 GiB, 4× ukuran file), jadi sediakan ± 5× ukuran file maksimum (± 5 GB untuk 1 GB).
+- **Akses berkas:** worker mengunduh objek sumber ke disk sementara karena akses acak zip butuh file lokal. Disk sementara worker harus ≥ ukuran file + spill; file spill dibatasi 8 GiB (mutlak; teks hasil dekode tidak pernah melebihi XML sharedStrings yang sudah dibatasi), jadi sediakan ± ukuran upload maksimum + 8 GiB per replika worker (± 9 GB untuk 1 GB). Faktor relatif ukuran file tidak dipakai karena menolak ekspor ERP bertemplate yang sah.
 
 ### Consequences
 
