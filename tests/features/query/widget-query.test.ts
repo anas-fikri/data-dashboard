@@ -11,7 +11,7 @@ import {
   type QueryDeps,
   type QueryRepo,
 } from "@/features/query/service";
-import { formatCell, formatNumber } from "@/features/widgets/format";
+import { formatCell, formatCompact, formatNumber } from "@/features/widgets/format";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -151,6 +151,11 @@ describe("AC 1: grafik batang = SUMIF dari data", () => {
     if (!r.ok) return;
     expect(r.columns.map((c) => c.label)).toEqual(["Cabang", "Total Omzet"]);
     expect(r.rows.map((row) => row[0])).toEqual(["Cabang 0", "Cabang 1", "Cabang 2", "Cabang 3"]);
+    // Grafik membawa jumlah kategori + total seluruh kategori (irisan "Lainnya", "N dari M").
+    let all = 0;
+    for (let i = 0; i < ROWS; i++) all += omzetOf(i);
+    expect(r).toMatchObject({ categories: 4 });
+    expect(r.ok && r.grandTotal).toBeCloseTo(all, 6);
     for (const [cabang, total] of r.rows as [string, number][]) {
       expect(total).toBeCloseTo(expected.get(cabang)!, 6);
     }
@@ -278,6 +283,11 @@ describe("AC 2: format angka", () => {
     expect(formatNumber(-0.2, { style: "rupiah", decimals: 0 })).toBe("Rp 0");
     expect(formatNumber(0.256, { style: "percent", decimals: 1 })).toBe("25,6%");
     expect(formatNumber(1234567.5, { style: "number", decimals: 1 })).toBe("1.234.567,5");
+    // Otomatis: bulat tanpa desimal, desimal maks. 2 (rasio 0,07 tidak jadi "0").
+    expect(formatNumber(0.0712, { style: "auto", decimals: 0 })).toBe("0,07");
+    expect(formatNumber(15007, { style: "auto", decimals: 0 })).toBe("15.007");
+    // "Rp " dengan spasi biasa; "3,97 jt" dengan spasi tak-putus bawaan Intl (angka + satuan tidak terpisah baris).
+    expect(formatCompact(3969625, { style: "rupiah", decimals: 0 })).toBe("Rp 3,97\u00a0jt");
     expect(formatCell("2026-10-12", "date", fmt, "month")).toBe("Okt 2026");
     expect(formatCell(null, "text", fmt)).toBe("(kosong)");
     expect(formatCell(XSS, "text", fmt)).toBe(XSS);

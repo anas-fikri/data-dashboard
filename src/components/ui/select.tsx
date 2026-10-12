@@ -46,7 +46,8 @@ export const SelectContent = React.forwardRef<
         ref={ref}
         position={position}
         className={cn(
-          "z-50 max-h-72 min-w-(--radix-select-trigger-width) overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
+          // Tidak lebih lebar/tinggi dari ruang layar yang tersedia (review desain T-011 H6).
+          "z-50 max-h-[min(18rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) max-w-(--radix-select-content-available-width) overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
           className,
         )}
         {...props}
@@ -65,7 +66,8 @@ export const SelectItem = React.forwardRef<
     <SelectPrimitive.Item
       ref={ref}
       className={cn(
-        "relative flex h-9 w-full cursor-default select-none items-center rounded-sm pl-8 pr-2 text-sm outline-none",
+        // Teks panjang membungkus; target sentuh 44 px di ponsel.
+        "relative flex min-h-11 w-full cursor-default select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm break-words whitespace-normal outline-none md:min-h-9",
         "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,

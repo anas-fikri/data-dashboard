@@ -102,6 +102,11 @@ export interface PlanFilter {
   values: (string | number | boolean)[];
 }
 export interface Plan {
+  /**
+   * Tambahkan jumlah kategori + total ukuran seluruh kategori (sebelum LIMIT) — grafik widget memakai
+   * ini untuk irisan "Lainnya" dan keterangan "N teratas dari M" (T-011).
+   */
+  totals?: boolean;
   dimensions: PlanDimension[];
   measures: PlanMeasure[];
   filters: PlanFilter[];

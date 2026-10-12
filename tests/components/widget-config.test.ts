@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { chartOption, type ChartTheme } from "@/components/widgets/chart-option";
 import {
+  OTHERS_LABEL,
+  barsThatFit,
+  chartOption,
+  middleTruncate,
+  type ChartTheme,
+} from "@/components/widgets/chart-option";
+import {
+  aggOptions,
   columnsForAgg,
   defaultConfig,
+  missingColumns,
+  sortLabel,
   type Source,
 } from "@/components/dashboards/widget-config-model";
 import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
@@ -57,7 +66,7 @@ describe("pilihan awal panel konfigurasi", () => {
     const bar = defaultConfig("bar", sources, empty)!;
     const pie = defaultConfig("pie", sources, bar)!;
     expect(pie).toMatchObject({
-      spec: { dimension: { column: 1 }, measure: { agg: "sum", column: 3 }, topN: 8 },
+      spec: { dimension: { column: 1 }, measure: { agg: "sum", column: 3 }, topN: 5 },
     });
     const kurir = defaultConfig("bar", sources, bar, S2)!;
     expect(kurir).toMatchObject({
@@ -96,7 +105,7 @@ describe("opsi grafik aman dari HTML (AC 7)", () => {
 
   it("tooltip richText (bukan HTML) dan formatter mengembalikan teks apa adanya", () => {
     for (const type of ["bar", "line", "pie"] as const) {
-      const o = chartOption({ ...input, type }, theme) as {
+      const o = chartOption({ ...input, type }, theme, { width: 600, height: 300 }) as {
         tooltip: { renderMode: string; formatter: (p: unknown) => string };
         animation: boolean;
       };
@@ -112,7 +121,7 @@ describe("opsi grafik aman dari HTML (AC 7)", () => {
   });
 
   it("sintaks gaya richText ECharts ({a|b}) di nama kategori tidak ditafsirkan", () => {
-    const o = chartOption({ ...input, type: "bar" }, theme) as {
+    const o = chartOption({ ...input, type: "bar" }, theme, { width: 600, height: 300 }) as {
       tooltip: { formatter: (p: unknown) => string };
     };
     const text = o.tooltip.formatter([{ name: "{a|x}y", value: 1 }]);
@@ -121,11 +130,97 @@ describe("opsi grafik aman dari HTML (AC 7)", () => {
   });
 
   it("nilai kosong → '(kosong)'; batang horizontal dengan kategori dari atas", () => {
-    const o = chartOption({ ...input, type: "bar" }, theme) as {
+    const o = chartOption({ ...input, type: "bar" }, theme, { width: 600, height: 300 }) as {
       yAxis: { type: string; inverse: boolean; data: string[] };
       tooltip: { formatter: (p: unknown) => string };
     };
     expect(o.yAxis).toMatchObject({ type: "category", inverse: true, data: [XSS, "Bandung"] });
     expect(o.tooltip.formatter([{ name: "Bandung", value: null }])).toContain("(kosong)");
+  });
+});
+
+describe("review desain T-011", () => {
+  const theme: ChartTheme = {
+    colors: ["c1", "c2", "c3", "c4", "c5", "c6"],
+    text: "#000",
+    muted: "#555",
+    border: "#ddd",
+    card: "#fff",
+    font: "Inter",
+  };
+  const pieInput = {
+    type: "pie" as const,
+    labels: ["A", "B", "C", "D", "E"],
+    values: [5, 4, 3, 2, 1],
+    measureLabel: "Total",
+    dimensionLabel: "Kantor",
+    format: { style: "auto", decimals: 0 } as const,
+    reducedMotion: true,
+  };
+
+  it("H1: pai — 'Lainnya' memakai warna terakhir; hanya Total/Jumlah baris; maks. 5 irisan", () => {
+    const o = chartOption({ ...pieInput, others: 85 }, theme, { width: 600, height: 300 }) as {
+      series: { data: { name: string; value: number; itemStyle?: { color: string } }[] }[];
+    };
+    const last = o.series[0]!.data.at(-1)!;
+    expect(last).toMatchObject({ name: OTHERS_LABEL, value: 85, itemStyle: { color: "c6" } });
+    expect(aggOptions("pie", sources[0]!.columns)).toEqual(["sum", "count"]);
+    const fromAvg = defaultConfig("pie", sources, {
+      type: "bar",
+      spec: {
+        ...(defaultConfig("bar", sources, empty)!.spec as object),
+        measure: { agg: "avg", column: 3 },
+      },
+    } as WidgetConfig);
+    expect(fromAvg).toMatchObject({ spec: { measure: { agg: "sum", column: 3 }, topN: 5 } });
+    expect(
+      parseWidgetConfig("pie", {
+        ...(fromAvg!.spec as object),
+        measure: { agg: "avg", column: 3 },
+      }),
+    ).toMatchObject({ ok: false });
+    expect(parseWidgetConfig("pie", { ...(fromAvg!.spec as object), topN: 6 })).toMatchObject({
+      ok: false,
+    });
+  });
+
+  it("H2/H3: label dipendekkan di tengah; pai sempit tanpa label luar; batang sesuai tinggi", () => {
+    expect(middleTruncate("Kantor PCP Express Gambir Unit 11", 20)).toBe("Kantor P…bir Unit 11");
+    expect(middleTruncate("Kantor PCP Express Gambir Unit 11", 20)).toHaveLength(20);
+    expect(middleTruncate("Bandung", 20)).toBe("Bandung");
+    const narrow = chartOption(pieInput, theme, { width: 240, height: 240 }) as {
+      series: { label: { show: boolean } }[];
+    };
+    expect(narrow.series[0]!.label.show).toBe(false);
+    const wide = chartOption(pieInput, theme, { width: 640, height: 320 }) as {
+      series: { label: { show: boolean } }[];
+    };
+    expect(wide.series[0]!.label.show).toBe(true);
+    expect(barsThatFit(272)).toBe(13);
+    const bar = chartOption(
+      { ...pieInput, type: "bar", format: { style: "rupiah", decimals: 0 } },
+      theme,
+      {
+        width: 200,
+        height: 300,
+      },
+    ) as {
+      xAxis: { name: string; splitNumber: number };
+      yAxis: { axisLabel: { interval: number } };
+    };
+    expect(bar.xAxis).toMatchObject({ name: "Rp", splitNumber: 2 });
+    expect(bar.yAxis.axisLabel.interval).toBe(0);
+  });
+
+  it("M2: kolom yang tidak lagi tersedia terdeteksi; L5: label urutan sesuai jenis kolom", () => {
+    const bar = defaultConfig("bar", sources, empty)!;
+    expect(missingColumns(bar, sources)).toEqual([]);
+    const gone = {
+      ...bar,
+      spec: { ...bar.spec, measure: { agg: "sum", column: 9 } },
+    } as WidgetConfig;
+    expect(missingColumns(gone, sources)).toEqual([9]);
+    expect(sortLabel("label_asc", "date")).toBe("Terlama dulu");
+    expect(sortLabel("label_desc", "text")).toBe("Z–A");
   });
 });

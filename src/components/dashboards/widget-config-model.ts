@@ -3,6 +3,7 @@ import type { ColumnType } from "@/features/ingest/infer";
 import type { Agg } from "@/features/query/spec";
 import {
   DEFAULT_FORMAT,
+  PIE_AGGS,
   SORT_DEFAULT,
   TABLE_COLUMNS_MAX,
   TOP_N_DEFAULT,
@@ -46,12 +47,26 @@ export const GRAIN_LABEL = {
   year: "Per tahun",
 } as const;
 
-export const SORT_LABEL: Record<ChartSpec["sort"], string> = {
-  value_desc: "Nilai terbesar dulu",
-  value_asc: "Nilai terkecil dulu",
-  label_asc: "Kategori A–Z / terlama dulu",
-  label_desc: "Kategori Z–A / terbaru dulu",
-};
+/** Label urutan sesuai jenis kolom pengelompokan (tanggal: terlama/terbaru, teks: A–Z/Z–A). */
+export function sortLabel(sort: ChartSpec["sort"], dimType: ColumnType | undefined): string {
+  const temporal = !!dimType && isTemporal(dimType);
+  switch (sort) {
+    case "value_desc":
+      return "Nilai terbesar dulu";
+    case "value_asc":
+      return "Nilai terkecil dulu";
+    case "label_asc":
+      return temporal ? "Terlama dulu" : "A–Z";
+    case "label_desc":
+      return temporal ? "Terbaru dulu" : "Z–A";
+  }
+}
+export const CHART_SORT_ORDER: ChartSpec["sort"][] = [
+  "value_desc",
+  "value_asc",
+  "label_asc",
+  "label_desc",
+];
 
 const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
 const TEMPORAL: ColumnType[] = ["date", "timestamp"];
@@ -69,9 +84,22 @@ export function columnsForAgg(agg: Agg, columns: SourceColumn[]): SourceColumn[]
 
 type Measure = { agg: Agg; column?: number };
 
-function defaultMeasure(columns: SourceColumn[], prev?: Measure): Measure {
+/** Agregasi yang ditawarkan: cocok dengan kolom sheet; pai hanya Total/Jumlah baris. */
+export function aggOptions(type: WidgetType, columns: SourceColumn[]): Agg[] {
+  const allowed: readonly Agg[] = type === "pie" ? PIE_AGGS : AGG_ORDER;
+  return AGG_ORDER.filter(
+    (a) => allowed.includes(a) && (a === "count" || columnsForAgg(a, columns).length > 0),
+  );
+}
+
+function defaultMeasure(
+  columns: SourceColumn[],
+  prev?: Measure,
+  allowed: readonly Agg[] = AGG_ORDER,
+): Measure {
   if (
     prev &&
+    allowed.includes(prev.agg) &&
     (prev.agg === "count" || columnsForAgg(prev.agg, columns).some((c) => c.pos === prev.column))
   ) {
     return prev.agg === "count" ? { agg: "count" } : prev;
@@ -127,7 +155,7 @@ export function defaultConfig(
       : cols.slice(0, Math.min(6, TABLE_COLUMNS_MAX)).map((c) => c.pos);
     return { type, spec: { sheetId: sheet.id, columns, format } };
   }
-  const measure = defaultMeasure(cols, prevMeasure);
+  const measure = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER);
   if (type === "kpi") return { type, spec: { sheetId: sheet.id, measure, format } };
 
   const prevChart =
@@ -146,4 +174,21 @@ export function defaultConfig(
       format,
     },
   };
+}
+
+/**
+ * Posisi kolom yang dirujuk konfigurasi tetapi tidak (lagi) ada di sheet yang tampil — disembunyikan
+ * atau dihapus. Panel menampilkan peringatan dan membuangnya saat user mengubah sesuatu (review M2).
+ */
+export function missingColumns(config: WidgetConfig, sources: Source[]): number[] {
+  if (config.type === "empty") return [];
+  const sheet = sources.find((s) => s.id === config.spec.sheetId);
+  const has = new Set((sheet?.columns ?? []).map((c) => c.pos));
+  const used =
+    config.type === "table"
+      ? config.spec.columns
+      : config.type === "kpi"
+        ? [config.spec.measure.column]
+        : [config.spec.dimension.column, config.spec.measure.column];
+  return used.filter((p): p is number => p !== undefined && !has.has(p));
 }

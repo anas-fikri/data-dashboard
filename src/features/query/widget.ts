@@ -144,7 +144,17 @@ export function widgetPlan(
   if (unavailable) return { ok: false, code: "COLUMN_UNAVAILABLE", message: unavailable };
   const resolved = resolveSpec(spec, schema);
   if (!resolved.ok) return { ok: false, code: "INVALID", message: resolved.message };
-  return table
-    ? { ok: true, kind: "table", spec, plan: resolved.plan, sort: table.sort, page: body.page }
-    : { ok: true, kind: "agg", spec, plan: resolved.plan };
+  if (table) {
+    return {
+      ok: true,
+      kind: "table",
+      spec,
+      plan: resolved.plan,
+      sort: table.sort,
+      page: body.page,
+    };
+  }
+  // Grafik: sertakan jumlah kategori + total (irisan "Lainnya", "N teratas dari M").
+  const totals = config.type !== "kpi";
+  return { ok: true, kind: "agg", spec, plan: { ...resolved.plan, totals } };
 }

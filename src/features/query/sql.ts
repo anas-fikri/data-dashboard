@@ -94,15 +94,28 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
       .map((d) => `${ident(d.key)} ASC NULLS LAST`),
   ];
 
-  const sql = [
+  const base = [
     `SELECT ${distinct}${select.join(", ")}`,
     `FROM read_parquet($path)`,
     where.length ? `WHERE ${where.join(" AND ")}` : "",
     group,
+  ].filter(Boolean);
+  const tail = [
     order.length ? `ORDER BY ${order.join(", ")}` : "",
     `LIMIT ${Math.trunc(plan.limit)}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  return { sql, params };
+  ].filter(Boolean);
+  if (plan.totals && plan.dimensions.length && plan.measures.length) {
+    // Dua kolom tambahan di akhir: jumlah grup dan total ukuran pertama seluruh grup (sebelum LIMIT).
+    const m0 = ident(plan.measures[0]!.key);
+    const sql = [
+      `WITH g AS (`,
+      ...base.map((l) => `  ${l}`),
+      `)`,
+      `SELECT *, count(*) OVER () AS ${ident("__n")}, sum(${m0}) OVER () AS ${ident("__t")}`,
+      `FROM g`,
+      ...tail,
+    ].join("\n");
+    return { sql, params };
+  }
+  return { sql: [...base, ...tail].join("\n"), params };
 }

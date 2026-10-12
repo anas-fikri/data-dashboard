@@ -1,50 +1,32 @@
 "use client";
 
-import {
-  IconChartBar,
-  IconChartLine,
-  IconChartPie,
-  IconNumber123,
-  IconTable,
-} from "@tabler/icons-react";
 import Link from "next/link";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Input } from "@/components/ui/input";
-import {
-  TABLE_COLUMNS_MAX,
-  TOP_N_MAX,
-  parseWidgetConfig,
-  type WidgetConfig,
-  type WidgetType,
-} from "@/features/widgets/spec";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
+import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/features/widgets/spec";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
+import { MeasureFields, TableColumns, TopNField, TypeTiles } from "./config-sections";
 import {
-  AGG_LABEL,
-  AGG_ORDER,
+  CHART_SORT_ORDER,
   GRAIN_LABEL,
-  SORT_LABEL,
-  TYPE_OPTIONS,
-  columnsForAgg,
   defaultConfig,
+  isNumeric,
   isTemporal,
+  missingColumns,
+  sortLabel,
   type Source,
 } from "./widget-config-model";
 
 /*
  * Bagian "Data" di panel pengaturan widget (T-011): jenis tampilan, sheet, kolom, agregasi, urutan,
- * jumlah kategori, dan format angka. Setiap perubahan yang valid tersimpan otomatis (jeda singkat) dan
- * widget langsung memuat ulang datanya; pilihan awal diisi otomatis agar hasil langsung terlihat.
+ * jumlah kategori, dan format angka. Perubahan yang valid tersimpan otomatis setelah jeda singkat dan
+ * widget langsung memuat ulang datanya. Pilihan per jenis diingat selama panel terbuka — berpindah
+ * jenis lalu kembali (mis. dengan panah keyboard) tidak menghapus pengaturan (review desain T-011 M3).
+ * Kolom yang tidak lagi tersedia diberi tahu dan dibuang saat user mengubah sesuatu (M2).
  */
-const ICONS = {
-  kpi: IconNumber123,
-  bar: IconChartBar,
-  line: IconChartLine,
-  pie: IconChartPie,
-  table: IconTable,
-};
 const SAVE_DELAY_MS = 350;
 type Status = "idle" | "saving" | "saved" | "error";
+const EMPTY: WidgetConfig = { type: "empty", spec: {} };
 
 export function WidgetConfigForm({
   widget,
@@ -57,12 +39,10 @@ export function WidgetConfigForm({
   datasetId: string;
   onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
 }) {
-  const id = useId();
   const parsed = parseWidgetConfig(widget.type, widget.spec);
-  const [draft, setDraft] = useState<WidgetConfig>(
-    parsed.ok ? parsed.config : { type: "empty", spec: {} },
-  );
+  const [draft, setDraft] = useState<WidgetConfig>(parsed.ok ? parsed.config : EMPTY);
   const [status, setStatus] = useState<Status>("idle");
+  const memory = useRef<Partial<Record<WidgetType, WidgetConfig>>>({});
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const save = useRef(onSave);
@@ -82,13 +62,36 @@ export function WidgetConfigForm({
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
 
-  const commit = (next: WidgetConfig | null, delay = SAVE_DELAY_MS) => {
+  const commit = (next: WidgetConfig | null) => {
     if (!next) return;
+    // Kolom tabel yang tidak lagi tersedia dibuang begitu user mengubah sesuatu.
+    if (next.type === "table") {
+      const gone = new Set(missingColumns(next, sources));
+      const columns = next.spec.columns.filter((p) => !gone.has(p));
+      if (columns.length && columns.length !== next.spec.columns.length) {
+        next = {
+          ...next,
+          spec: {
+            ...next.spec,
+            columns,
+            formatColumns: next.spec.formatColumns?.filter((p) => columns.includes(p)),
+          },
+        };
+      }
+    }
     setDraft(next);
-    if (next.type === "empty" || !parseWidgetConfig(next.type, next.spec).ok) return;
+    if (next.type === "empty" || missingColumns(next, sources).length) return;
+    if (!parseWidgetConfig(next.type, next.spec).ok) return;
     pending.current = next;
     clearTimeout(timer.current);
-    timer.current = setTimeout(flush, delay);
+    timer.current = setTimeout(flush, SAVE_DELAY_MS);
+  };
+
+  const switchType = (type: Exclude<WidgetType, "empty">) => {
+    memory.current[draft.type] = draft;
+    const kept = memory.current[type];
+    const usable = kept && kept.type !== "empty" && sources.some((s) => s.id === kept.spec.sheetId);
+    commit(usable ? kept : defaultConfig(type, sources, draft));
   };
 
   if (!sources.some((s) => s.columns.length)) {
@@ -106,35 +109,12 @@ export function WidgetConfigForm({
   const sheet =
     draft.type === "empty" ? undefined : sources.find((s) => s.id === draft.spec.sheetId);
   const cols = sheet?.columns ?? [];
-  const byPos = (pos: number) => cols.find((c) => c.pos === pos);
+  const typeOf = (pos: number | undefined) => cols.find((c) => c.pos === pos)?.type;
+  const missing = missingColumns(draft, sources);
 
   return (
-    <div className="flex flex-col gap-4" data-testid="widget-config">
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-medium">Jenis tampilan</legend>
-        <div className="grid grid-cols-3 gap-2">
-          {TYPE_OPTIONS.map(({ type, label }) => {
-            const Icon = ICONS[type];
-            return (
-              <label
-                key={type}
-                className="flex min-h-11 cursor-pointer flex-col items-center justify-center gap-1 rounded-md border px-1 py-2 text-xs has-checked:border-primary has-checked:bg-primary/10 has-checked:text-foreground has-focus-visible:ring-2 has-focus-visible:ring-ring"
-              >
-                <input
-                  type="radio"
-                  name={`${id}-type`}
-                  value={type}
-                  className="sr-only"
-                  checked={draft.type === type}
-                  onChange={() => commit(defaultConfig(type, sources, draft), 0)}
-                />
-                <Icon size={20} stroke={1.5} aria-hidden />
-                {label}
-              </label>
-            );
-          })}
-        </div>
-      </fieldset>
+    <div className="flex min-w-0 flex-col gap-4" data-testid="widget-config">
+      <TypeTiles value={draft.type} onChange={switchType} />
 
       {draft.type === "empty" ? (
         <p className="text-sm text-muted-foreground">
@@ -142,6 +122,17 @@ export function WidgetConfigForm({
         </p>
       ) : (
         <>
+          {missing.length ? (
+            <p
+              role="status"
+              className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
+              data-testid="config-missing"
+            >
+              Sebagian kolom yang dipakai widget ini tidak tersedia lagi (disembunyikan atau dihapus
+              di skema). Pilih kolom lain di bawah.
+            </p>
+          ) : null}
+
           {sources.length > 1 ? (
             <Choice
               label="Sheet"
@@ -157,55 +148,26 @@ export function WidgetConfigForm({
                     draft,
                     sheetId,
                   ),
-                  0,
                 )
               }
             />
           ) : null}
 
           {draft.type === "table" ? (
-            <fieldset className="flex flex-col gap-2">
-              <legend className="mb-1 text-sm font-medium">
-                Kolom ditampilkan{" "}
-                <span className="font-normal text-muted-foreground">
-                  ({draft.spec.columns.length} dari maks. {TABLE_COLUMNS_MAX})
-                </span>
-              </legend>
-              <div className="flex max-h-56 flex-col overflow-y-auto rounded-md border p-1">
-                {cols.map((c) => {
-                  const on = draft.spec.columns.includes(c.pos);
-                  const last = on && draft.spec.columns.length === 1;
-                  const full = !on && draft.spec.columns.length >= TABLE_COLUMNS_MAX;
-                  return (
-                    <label
-                      key={c.pos}
-                      className="flex min-h-10 items-center gap-2 rounded-sm px-2 text-sm hover:bg-accent has-disabled:opacity-60"
-                    >
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-(--color-primary)"
-                        checked={on}
-                        disabled={last || full}
-                        onChange={() =>
-                          commit({
-                            ...draft,
-                            spec: {
-                              ...draft.spec,
-                              columns: on
-                                ? draft.spec.columns.filter((p) => p !== c.pos)
-                                : cols
-                                    .map((x) => x.pos)
-                                    .filter((p) => p === c.pos || draft.spec.columns.includes(p)),
-                            },
-                          })
-                        }
-                      />
-                      <span className="min-w-0 truncate">{c.name}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </fieldset>
+            <TableColumns
+              columns={cols}
+              selected={draft.spec.columns}
+              onChange={(columns) =>
+                commit({
+                  ...draft,
+                  spec: {
+                    ...draft.spec,
+                    columns,
+                    formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
+                  },
+                })
+              }
+            />
           ) : (
             <>
               {draft.type !== "kpi" ? (
@@ -215,18 +177,19 @@ export function WidgetConfigForm({
                     testId="config-dimension"
                     value={draft.spec.dimension.column}
                     columns={cols}
-                    onChange={(column) => {
-                      const temporal = isTemporal(byPos(column)?.type ?? "text");
+                    onChange={(column) =>
                       commit({
                         ...draft,
                         spec: {
                           ...draft.spec,
-                          dimension: temporal ? { column, timeGrain: "month" } : { column },
+                          dimension: isTemporal(typeOf(column) ?? "text")
+                            ? { column, timeGrain: "month" }
+                            : { column },
                         },
-                      });
-                    }}
+                      })
+                    }
                   />
-                  {isTemporal(byPos(draft.spec.dimension.column)?.type ?? "text") ? (
+                  {isTemporal(typeOf(draft.spec.dimension.column) ?? "text") ? (
                     <Choice
                       label="Rentang waktu"
                       value={draft.spec.dimension.timeGrain ?? "none"}
@@ -254,86 +217,32 @@ export function WidgetConfigForm({
                 </>
               ) : null}
 
-              <div className="grid grid-cols-1 gap-2">
-                <Choice
-                  label="Nilai"
-                  testId="config-agg"
-                  value={draft.spec.measure.agg}
-                  options={AGG_ORDER.filter(
-                    (a) => a === "count" || columnsForAgg(a, cols).length,
-                  ).map((a) => ({
-                    value: a,
-                    label: AGG_LABEL[a],
-                  }))}
-                  onChange={(agg) => {
-                    const allowed = columnsForAgg(agg, cols);
-                    const keep = allowed.some((c) => c.pos === draft.spec.measure.column);
-                    const measure =
-                      agg === "count"
-                        ? { agg }
-                        : { agg, column: keep ? draft.spec.measure.column! : allowed[0]!.pos };
-                    commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig);
-                  }}
-                />
-                {draft.spec.measure.agg !== "count" ? (
-                  <ColumnChoice
-                    label="dari kolom"
-                    testId="config-measure"
-                    value={draft.spec.measure.column ?? 0}
-                    columns={columnsForAgg(draft.spec.measure.agg, cols)}
-                    onChange={(column) =>
-                      commit({
-                        ...draft,
-                        spec: { ...draft.spec, measure: { ...draft.spec.measure, column } },
-                      } as WidgetConfig)
-                    }
-                  />
-                ) : null}
-              </div>
+              <MeasureFields
+                type={draft.type}
+                columns={cols}
+                measure={draft.spec.measure}
+                onChange={(measure) =>
+                  commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
+                }
+              />
 
               {draft.type !== "kpi" ? (
-                <div className="grid grid-cols-[1fr_6rem] items-end gap-2">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">
                   <Choice
                     label="Urutan"
                     value={draft.spec.sort}
-                    options={Object.entries(SORT_LABEL).map(([value, label]) => ({
-                      value: value as keyof typeof SORT_LABEL,
-                      label,
+                    options={CHART_SORT_ORDER.map((value) => ({
+                      value,
+                      label: sortLabel(value, typeOf(draft.spec.dimension.column)),
                     }))}
                     onChange={(sort) => commit({ ...draft, spec: { ...draft.spec, sort } })}
                   />
-                  <div className="flex flex-col gap-1.5">
-                    <label htmlFor={`${id}-top`} className="text-sm font-medium">
-                      Maks.
-                    </label>
-                    <Input
-                      id={`${id}-top`}
-                      type="number"
-                      inputMode="numeric"
-                      min={1}
-                      max={TOP_N_MAX[draft.type]}
-                      value={draft.spec.topN}
-                      aria-describedby={`${id}-top-hint`}
-                      className="h-(--control-h-lg) md:h-(--control-h)"
-                      onChange={(e) => {
-                        const n = Math.trunc(Number(e.target.value));
-                        if (Number.isFinite(n))
-                          commit(
-                            {
-                              ...draft,
-                              spec: {
-                                ...draft.spec,
-                                topN: Math.min(Math.max(n, 1), TOP_N_MAX[draft.type as "bar"]),
-                              },
-                            },
-                            600,
-                          );
-                      }}
-                    />
-                  </div>
-                  <p id={`${id}-top-hint`} className="col-span-2 text-xs text-muted-foreground">
-                    Jumlah kategori maksimal yang ditampilkan (1–{TOP_N_MAX[draft.type]}).
-                  </p>
+                  <TopNField
+                    key={`${draft.type}:${draft.spec.topN}`}
+                    type={draft.type}
+                    value={draft.spec.topN}
+                    onCommit={(topN) => commit({ ...draft, spec: { ...draft.spec, topN } })}
+                  />
                 </div>
               ) : null}
             </>
@@ -341,10 +250,28 @@ export function WidgetConfigForm({
 
           <FormatFields
             value={draft.spec.format}
-            onChange={(format) =>
-              commit({ ...draft, spec: { ...draft.spec, format } } as WidgetConfig)
-            }
+            onChange={(format) => {
+              // Tabel: format pilihan awalnya untuk semua kolom angka; user bisa mengecualikan.
+              if (draft.type === "table" && format.style !== "auto" && !draft.spec.formatColumns) {
+                const numeric = draft.spec.columns.filter((p) => isNumeric(typeOf(p) ?? "text"));
+                return commit({
+                  ...draft,
+                  spec: { ...draft.spec, format, formatColumns: numeric },
+                });
+              }
+              commit({ ...draft, spec: { ...draft.spec, format } } as WidgetConfig);
+            }}
           />
+          {draft.type === "table" && draft.spec.format.style !== "auto" ? (
+            <FormatColumnsField
+              columns={cols.filter((c) => draft.spec.columns.includes(c.pos) && isNumeric(c.type))}
+              selected={draft.spec.formatColumns ?? draft.spec.columns}
+              onChange={(formatColumns) =>
+                commit({ ...draft, spec: { ...draft.spec, formatColumns } })
+              }
+            />
+          ) : null}
+
           <p
             className="text-xs text-muted-foreground"
             aria-live="polite"
@@ -357,10 +284,52 @@ export function WidgetConfigForm({
                 ? "Tersimpan. Widget memuat data terbaru."
                 : status === "error"
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
-                  : "Perubahan tersimpan otomatis."}
+                  : missing.length
+                    ? "Belum tersimpan — pilih kolom pengganti."
+                    : "Perubahan tersimpan otomatis."}
           </p>
         </>
       )}
     </div>
+  );
+}
+
+/** Kolom angka tabel yang memakai format pilihan (selebihnya otomatis). */
+function FormatColumnsField({
+  columns,
+  selected,
+  onChange,
+}: {
+  columns: { pos: number; name: string }[];
+  selected: number[];
+  onChange: (next: number[]) => void;
+}) {
+  if (!columns.length) return null;
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-1">
+      <legend className="mb-1 text-sm font-medium">Pakai format ini untuk</legend>
+      {columns.map((c) => (
+        <label
+          key={c.pos}
+          className="flex min-h-11 min-w-0 items-center gap-2 rounded-sm px-2 text-sm hover:bg-accent md:min-h-9"
+        >
+          <input
+            type="checkbox"
+            className="size-4 shrink-0 accent-(--color-primary)"
+            checked={selected.includes(c.pos)}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? [...selected.filter((p) => p !== c.pos), c.pos]
+                  : selected.filter((p) => p !== c.pos),
+              )
+            }
+          />
+          <span className="min-w-0 truncate" title={c.name}>
+            {c.name}
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }

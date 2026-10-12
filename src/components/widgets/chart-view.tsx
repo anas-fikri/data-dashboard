@@ -3,13 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { formatNumber } from "@/features/widgets/format";
 import { chartOption, chartSummary, type ChartInput, type ChartTheme } from "./chart-option";
+import { useBoxSize } from "./use-box-size";
 
 /*
  * Grafik ECharts (T-011): modul dimuat malas (hanya halaman yang punya grafik), renderer SVG (tajam,
- * teks tetap teks), ukuran mengikuti kartu (ResizeObserver), warna dari token tema dan dibaca ulang saat
- * tema berganti. Tabel data tersembunyi untuk pembaca layar memuat nilai yang sama dengan grafik.
+ * teks tetap teks). Instans dibuat sekali lalu diperbarui di tempat — ganti tema/ukuran/data tidak
+ * memutar ulang animasi masuk; opsi dibangun ulang dari ukuran kotak (label & sumbu menyesuaikan).
+ * Warna dari token tema, dibaca ulang saat tema berganti. Tabel data tersembunyi untuk pembaca layar.
  */
 type ECharts = typeof import("echarts/core");
+type Instance = { setOption(o: unknown, notMerge: boolean): void; resize(): void; dispose(): void };
 let loader: Promise<ECharts> | null = null;
 function loadECharts(): Promise<ECharts> {
   loader ??= Promise.all([
@@ -55,31 +58,35 @@ function useThemeVersion(): number {
   return v;
 }
 
-export function ChartView(props: Omit<ChartInput, "reducedMotion">) {
+export function ChartView(
+  props: Omit<ChartInput, "reducedMotion"> & {
+    categories?: number;
+    /** Batang yang muat di tinggi kartu; tabel data (pembaca layar) tetap memuat semua baris. */
+    limit?: number;
+  },
+) {
   const box = useRef<HTMLDivElement>(null);
-  const themeVersion = useThemeVersion();
+  const chart = useRef<Instance | null>(null);
+  const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
-  const input = JSON.stringify(props);
+  const size = useBoxSize(box);
+  const themeVersion = useThemeVersion();
+  const { categories, limit, ...input } = props;
+  const inputKey = JSON.stringify(
+    limit && limit < input.labels.length
+      ? { ...input, labels: input.labels.slice(0, limit), values: input.values.slice(0, limit) }
+      : input,
+  );
 
   useEffect(() => {
     const el = box.current;
     if (!el) return;
     let disposed = false;
-    let chart: {
-      setOption(o: unknown, notMerge: boolean): void;
-      resize(): void;
-      dispose(): void;
-    } | null = null;
-    let ro: ResizeObserver | null = null;
     loadECharts().then(
       (echarts) => {
         if (disposed) return;
-        chart = echarts.init(el, null, { renderer: "svg" });
-        const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-        const parsed = JSON.parse(input) as Omit<ChartInput, "reducedMotion">;
-        chart.setOption(chartOption({ ...parsed, reducedMotion }, readTheme()), true);
-        ro = new ResizeObserver(() => chart?.resize());
-        ro.observe(el);
+        chart.current = echarts.init(el, null, { renderer: "svg" });
+        setReady(true);
       },
       () => {
         if (!disposed) setFailed(true);
@@ -87,10 +94,19 @@ export function ChartView(props: Omit<ChartInput, "reducedMotion">) {
     );
     return () => {
       disposed = true;
-      ro?.disconnect();
-      chart?.dispose();
+      chart.current?.dispose();
+      chart.current = null;
     };
-  }, [input, themeVersion]);
+  }, []);
+
+  useEffect(() => {
+    const c = chart.current;
+    if (!ready || !c || !size || size.width < 1 || size.height < 1) return;
+    c.resize();
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const parsed = JSON.parse(inputKey) as Omit<ChartInput, "reducedMotion">;
+    c.setOption(chartOption({ ...parsed, reducedMotion }, readTheme(), size), true);
+  }, [ready, inputKey, themeVersion, size]);
 
   if (failed) {
     return (
@@ -104,24 +120,30 @@ export function ChartView(props: Omit<ChartInput, "reducedMotion">) {
       {/* Grafik untuk mata; ringkasan + tabel data untuk pembaca layar. */}
       <div ref={box} className="absolute inset-0" aria-hidden />
       <table className="sr-only" data-testid="chart-data">
-        <caption>{chartSummary(props)}</caption>
+        <caption>{chartSummary(input, categories)}</caption>
         <thead>
           <tr>
-            <th scope="col">{props.dimensionLabel}</th>
-            <th scope="col">{props.measureLabel}</th>
+            <th scope="col">{input.dimensionLabel}</th>
+            <th scope="col">{input.measureLabel}</th>
           </tr>
         </thead>
         <tbody>
-          {props.labels.map((label, i) => (
+          {input.labels.map((label, i) => (
             <tr key={i}>
               <th scope="row">{label}</th>
-              <td data-value={props.values[i] ?? ""}>
-                {props.values[i] === null
+              <td data-value={input.values[i] ?? ""}>
+                {input.values[i] === null
                   ? "(kosong)"
-                  : formatNumber(props.values[i]!, props.format)}
+                  : formatNumber(input.values[i]!, input.format)}
               </td>
             </tr>
           ))}
+          {input.others ? (
+            <tr>
+              <th scope="row">Lainnya</th>
+              <td data-value={input.others}>{formatNumber(input.others, input.format)}</td>
+            </tr>
+          ) : null}
         </tbody>
       </table>
     </div>

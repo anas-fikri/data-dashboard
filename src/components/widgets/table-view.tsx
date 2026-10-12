@@ -8,15 +8,16 @@ import {
   IconSortDescending,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import { formatCell, formatNumber } from "@/features/widgets/format";
+import { AUTO_FORMAT, formatCell, formatNumber } from "@/features/widgets/format";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import type { WidgetData } from "./widget-query";
 
 /*
  * Widget tabel (T-011): 100 baris per halaman dari server, urut satu kolom (klik judul kolom:
- * naik → turun → urutan asli), header menempel saat digulir. Angka rata kanan tabular. Teks sel
- * dirender React (ter-escape); sel panjang dipotong dengan judul berisi teks lengkap.
+ * naik → turun → urutan asli), header menempel saat digulir. Angka rata kanan tabular; format pilihan
+ * (Rp/persen/desimal) hanya untuk kolom yang dipilih, kolom lain otomatis (bulat tanpa desimal, desimal
+ * maks. 2) — rasio 0,07 tidak tampil "0" (review desain T-011 H8). Teks sel dirender React (ter-escape).
  */
 export type TableSort = { column: number; dir: "asc" | "desc" } | null;
 
@@ -27,6 +28,7 @@ export function TableView({
   data,
   positions,
   format,
+  formatColumns,
   sort,
   busy,
   label,
@@ -37,6 +39,8 @@ export function TableView({
   /** Posisi kolom skema untuk tiap kolom hasil (urutan sama dengan spec.columns). */
   positions: number[];
   format: NumberFormat;
+  /** Kolom yang memakai `format`; tanpa daftar (spec lama) = semua kolom angka. */
+  formatColumns?: number[];
   sort: TableSort;
   busy: boolean;
   label: string;
@@ -49,18 +53,31 @@ export function TableView({
   const pages = Math.max(1, Math.ceil(total / size));
   const from = data.rows.length ? page * size + 1 : 0;
   const to = page * size + data.rows.length;
+  const formatOf = (pos: number) =>
+    format.style === "auto" || (formatColumns && !formatColumns.includes(pos))
+      ? AUTO_FORMAT
+      : format;
 
-  const next = (pos: number): TableSort =>
+  const cycle = (pos: number): TableSort =>
     sort?.column !== pos
       ? { column: pos, dir: "asc" }
       : sort.dir === "asc"
         ? { column: pos, dir: "desc" }
         : null;
+  // aria-disabled (bukan disabled): tombol tetap memegang fokus saat memuat atau di halaman ujung, jadi
+  // fokus keyboard tidak jatuh ke <body> (review desain T-011 M1); tekan saat tidak berlaku diabaikan.
+  const go = (to: number) => {
+    if (!busy && to >= 0 && to < pages) onPage(to);
+  };
+  const pagerButton = "size-(--control-h-lg) md:size-(--control-h-sm) aria-disabled:opacity-50";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
-        className={cn("relative min-h-0 flex-1 overflow-auto", busy && "opacity-60")}
+        className={cn(
+          "relative min-h-0 flex-1 overflow-auto focus-visible:outline-offset-[-2px]",
+          busy && "opacity-60",
+        )}
         role="region"
         aria-label={label}
         aria-busy={busy || undefined}
@@ -75,6 +92,7 @@ export function TableView({
               {data.columns.map((c, i) => {
                 const pos = positions[i]!;
                 const dir = sort?.column === pos ? sort.dir : null;
+                const numeric = NUMERIC.has(c.type);
                 const Icon =
                   dir === "asc"
                     ? IconSortAscending
@@ -85,16 +103,23 @@ export function TableView({
                   <th
                     key={c.key}
                     scope="col"
-                    aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
+                    aria-sort={
+                      dir === "asc" ? "ascending" : dir === "desc" ? "descending" : undefined
+                    }
                     className={cn(
                       "whitespace-nowrap border-b px-2 py-1 font-medium",
-                      NUMERIC.has(c.type) ? "text-right" : "text-left",
+                      numeric ? "text-right" : "text-left",
                     )}
                   >
                     <button
                       type="button"
-                      className="inline-flex min-h-8 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      onClick={() => onSort(next(pos))}
+                      title={c.label}
+                      className={cn(
+                        "inline-flex min-h-11 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8",
+                        // Kolom angka: ikon di kiri agar label sejajar dengan digit di kanan.
+                        numeric && "flex-row-reverse",
+                      )}
+                      onClick={() => onSort(cycle(pos))}
                     >
                       <span className="truncate">{c.label}</span>
                       <Icon
@@ -114,7 +139,7 @@ export function TableView({
               <tr key={page * size + r} className="border-b last:border-b-0">
                 {row.map((v, i) => {
                   const type = data.columns[i]!.type;
-                  const text = formatCell(v, type, format);
+                  const text = formatCell(v, type, formatOf(positions[i]!));
                   return (
                     <td
                       key={i}
@@ -139,7 +164,7 @@ export function TableView({
           </p>
         ) : null}
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-1 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-0.5 text-xs text-muted-foreground">
         <span aria-live="polite" data-testid="table-range">
           {total ? `Baris ${count(from)}–${count(to)} dari ${count(total)}` : "Tidak ada baris"}
         </span>
@@ -147,9 +172,10 @@ export function TableView({
           <Button
             size="icon-sm"
             variant="ghost"
+            className={pagerButton}
             aria-label="Halaman sebelumnya"
-            disabled={page === 0 || busy}
-            onClick={() => onPage(page - 1)}
+            aria-disabled={page === 0 || busy || undefined}
+            onClick={() => go(page - 1)}
           >
             <IconChevronLeft aria-hidden />
           </Button>
@@ -159,9 +185,10 @@ export function TableView({
           <Button
             size="icon-sm"
             variant="ghost"
+            className={pagerButton}
             aria-label="Halaman berikutnya"
-            disabled={page >= pages - 1 || busy}
-            onClick={() => onPage(page + 1)}
+            aria-disabled={page >= pages - 1 || busy || undefined}
+            onClick={() => go(page + 1)}
           >
             <IconChevronRight aria-hidden />
           </Button>

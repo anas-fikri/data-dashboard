@@ -26,7 +26,7 @@ import { useIsPhone } from "./use-media-query";
  * Isi panel pengaturan widget (hanya mode edit; bingkainya di widget-panel-frame). Posisi dan ukuran
  * juga bisa diubah lewat tombol di sini — alternatif menyeret untuk keyboard dan layar sentuh
  * (WCAG 2.5.7). Posisi/ukuran dibacakan; tombol di tepi grid tetap fokus (aria-disabled) dan
- * mengumumkan alasannya. Isi widget (tabel, KPI, grafik) menyusul di T-011.
+ * mengumumkan alasannya. Isi widget (tabel, KPI, grafik — T-011) diatur lewat bagian Data (children).
  */
 const EDGE: Record<StepKey, string> = {
   left: "Sudah paling kiri.",
@@ -115,21 +115,24 @@ export function WidgetPanel({
 
       {children ? <div className="border-t pt-4">{children}</div> : null}
 
-      <fieldset className="flex flex-col gap-2 border-t pt-4">
-        <legend className="mb-1 pt-4 text-sm font-medium">Posisi</legend>
-        <div className="flex flex-wrap gap-2">
-          {step("left", `Geser ${label} ke kiri`, <IconArrowLeft aria-hidden />)}
-          {step("right", `Geser ${label} ke kanan`, <IconArrowRight aria-hidden />)}
-          {step("up", `Geser ${label} ke atas`, <IconArrowUp aria-hidden />)}
-          {step("down", `Geser ${label} ke bawah`, <IconArrowDown aria-hidden />)}
-        </div>
-        <p className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
-          {edge ??
-            `${phone ? "Di layar lebar: kolom" : "Kolom"} ${item.x + 1}–${Math.min(item.x + item.w, GRID_COLS)}, baris ${item.y + 1}`}
-        </p>
-      </fieldset>
+      {/* Garis pemisah di pembungkus (seperti bagian Data): jarak atas/bawah garis seimbang. */}
+      <div className="border-t pt-4">
+        <fieldset className="flex min-w-0 flex-col gap-2">
+          <legend className="mb-1 text-sm font-medium">Posisi</legend>
+          <div className="flex flex-wrap gap-2">
+            {step("left", `Geser ${label} ke kiri`, <IconArrowLeft aria-hidden />)}
+            {step("right", `Geser ${label} ke kanan`, <IconArrowRight aria-hidden />)}
+            {step("up", `Geser ${label} ke atas`, <IconArrowUp aria-hidden />)}
+            {step("down", `Geser ${label} ke bawah`, <IconArrowDown aria-hidden />)}
+          </div>
+          <p className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
+            {edge ??
+              `${phone ? "Di layar lebar: kolom" : "Kolom"} ${item.x + 1}–${Math.min(item.x + item.w, GRID_COLS)}, baris ${item.y + 1}`}
+          </p>
+        </fieldset>
+      </div>
 
-      <fieldset className="flex flex-col gap-2">
+      <fieldset className="flex min-w-0 flex-col gap-2">
         <legend className="mb-1 text-sm font-medium">Ukuran</legend>
         <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 text-sm">
           {step("narrower", `Persempit ${label}`, <IconMinus aria-hidden />)}

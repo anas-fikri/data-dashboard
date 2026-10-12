@@ -18,6 +18,7 @@ function nf(options: Intl.NumberFormatOptions): Intl.NumberFormat {
 }
 
 export function formatNumber(value: number, format: NumberFormat): string {
+  if (format.style === "auto") return nf({ maximumFractionDigits: 2 }).format(value);
   const digits = { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals };
   if (format.style === "percent") return nf({ style: "percent", ...digits }).format(value);
   if (format.style === "rupiah") {
@@ -28,13 +29,26 @@ export function formatNumber(value: number, format: NumberFormat): string {
   return nf(digits).format(value);
 }
 
-/** Angka ringkas untuk sumbu grafik: 1,2 rb / 3,4 jt / 5,6 M. */
+/**
+ * Angka ringkas untuk sumbu grafik: 1,2 rb / 3,4 jt / 5,6 M. Tanpa "Rp" — satuan ditulis sekali di
+ * nama sumbu, bukan di tiap angka (review desain T-011 H3).
+ */
 export function formatAxis(value: number, format: NumberFormat): string {
   if (format.style === "percent")
     return nf({ style: "percent", maximumFractionDigits: 1 }).format(value);
-  const text = nf({ notation: "compact", maximumFractionDigits: 1 }).format(value);
+  return nf({ notation: "compact", maximumFractionDigits: 1 }).format(value);
+}
+
+/** Nilai ringkas untuk kartu sempit ("Rp 3,97 jt", "43,6%"); nilai lengkap tetap di title/sr-only. */
+export function formatCompact(value: number, format: NumberFormat): string {
+  if (format.style === "percent")
+    return nf({ style: "percent", maximumFractionDigits: 1 }).format(value);
+  const text = nf({ notation: "compact", maximumFractionDigits: 2 }).format(value);
   return format.style === "rupiah" ? `Rp ${text}` : text;
 }
+
+/** Format yang dipakai sel tabel: format pilihan untuk kolom terpilih, selebihnya otomatis. */
+export const AUTO_FORMAT: NumberFormat = { style: "auto", decimals: 0 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 

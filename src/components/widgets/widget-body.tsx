@@ -3,12 +3,11 @@
 import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { formatCell } from "@/features/widgets/format";
-import type { ChartType, WidgetConfig } from "@/features/widgets/spec";
-import { ChartView } from "./chart-view";
+import type { WidgetConfig } from "@/features/widgets/spec";
+import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { TableView, type TableSort } from "./table-view";
-import { useWidgetQuery, type WidgetData } from "./widget-query";
+import { useWidgetQuery } from "./widget-query";
 
 /*
  * Isi widget yang sudah diatur (T-011): memuat data lewat /api/query { widgetId } dan menampilkan
@@ -76,24 +75,35 @@ function Loaded({
 
   if (state.status === "error" && !(data && config.type === "table")) {
     return (
+      // justify-center-safe + overflow-hidden: pesan panjang di kartu kecil tidak menimpa judul (H4).
       <div
-        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center"
+        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-hidden p-3 text-center"
         data-testid="widget-error"
         data-code={state.code}
       >
-        <IconAlertTriangle size={24} stroke={1.5} aria-hidden className="shrink-0 text-warning" />
-        <p className="max-w-prose text-sm">{state.message}</p>
+        <IconAlertTriangle
+          size={24}
+          stroke={1.5}
+          aria-hidden
+          className="shrink-0 text-warning @max-[10rem]:hidden"
+        />
+        <p className="line-clamp-5 max-w-prose text-sm" title={state.message}>
+          {state.message}
+        </p>
         {TRANSIENT.has(state.code) ? (
           <Button
             size="sm"
             variant="outline"
+            className="h-(--control-h-lg) shrink-0 md:h-(--control-h-sm)"
             leadingIcon={<IconRefresh aria-hidden />}
             onClick={retry}
           >
             Coba lagi
           </Button>
         ) : editing ? (
-          <p className="text-xs text-muted-foreground">Ubah lewat tombol pengaturan widget.</p>
+          <p className="text-xs text-muted-foreground @max-[10rem]:hidden">
+            Ubah lewat tombol pengaturan widget.
+          </p>
         ) : null}
       </div>
     );
@@ -110,7 +120,7 @@ function Loaded({
 
   switch (config.type) {
     case "kpi":
-      return <KpiView data={data} format={config.spec.format} />;
+      return <KpiView data={data} format={config.spec.format} title={title} />;
     case "table":
       return (
         <>
@@ -123,9 +133,10 @@ function Loaded({
             data={data}
             positions={config.spec.columns}
             format={config.spec.format}
+            formatColumns={config.spec.formatColumns}
             sort={sort}
             busy={state.status === "loading"}
-            label={`Tabel ${title || "widget"}`}
+            label={/^tabel\b/i.test(title) ? title : `Tabel ${title || "widget"}`}
             onSort={(s) => {
               setSort(s);
               setPage(0);
@@ -135,38 +146,6 @@ function Loaded({
         </>
       );
     default:
-      return <Chart type={config.type} data={data} config={config} />;
+      return <ChartWidget type={config.type} data={data} spec={config.spec} />;
   }
-}
-
-function Chart({
-  type,
-  data,
-  config,
-}: {
-  type: ChartType;
-  data: WidgetData;
-  config: Extract<Configured, { type: ChartType }>;
-}) {
-  if (data.rows.length === 0) {
-    return (
-      <p className="flex min-h-0 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
-        Tidak ada data untuk ditampilkan.
-      </p>
-    );
-  }
-  const [dim, measure] = data.columns;
-  const grain = config.spec.dimension.timeGrain;
-  // Format Rp/persen milik nilai ukuran, bukan label kategori.
-  const labelFormat = { style: "number", decimals: dim!.type === "integer" ? 0 : 2 } as const;
-  return (
-    <ChartView
-      type={type}
-      labels={data.rows.map((r) => formatCell(r[0], dim!.type, labelFormat, grain))}
-      values={data.rows.map((r) => (typeof r[1] === "number" ? r[1] : null))}
-      measureLabel={measure!.label}
-      dimensionLabel={dim!.label}
-      format={config.spec.format}
-    />
-  );
 }

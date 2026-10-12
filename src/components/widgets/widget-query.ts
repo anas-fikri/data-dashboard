@@ -17,6 +17,9 @@ export interface QueryColumn {
 export interface WidgetData {
   columns: QueryColumn[];
   rows: unknown[][];
+  /** Grafik: jumlah kategori seluruhnya dan total ukuran seluruh kategori (sebelum batas N). */
+  categories?: number;
+  grandTotal?: number | null;
   /** Hanya tabel. */
   total?: number;
   page?: number;

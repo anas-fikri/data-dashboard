@@ -29,6 +29,14 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
 const ROW_HEIGHT = 56;
 const MARGIN: [number, number] = [16, 16];
 const plain = (l: Layout): LayoutItem[] => l.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
+/** Tinggi kartu di tumpukan ponsel per jenis widget (px). */
+const PHONE_HEIGHT: Record<string, number> = {
+  table: 440,
+  bar: 320,
+  line: 280,
+  pie: 320,
+  kpi: 150,
+};
 const settingsOf = (id: string) => `[data-widget-id="${id}"] [${SETTINGS_ATTR}]`;
 const STALE_RELOAD = "data-stale-reload";
 
@@ -230,13 +238,9 @@ export function DashboardCanvas(props: {
                 {ordered.map((it) => {
                   const w = byId.get(it.i);
                   return w
-                    ? // Tinggi tetap setara grid: tabel/grafik menggulir di dalam kartu, bukan
-                      // memanjangkan halaman.
-                      card(w, it, {
-                        style: {
-                          height: Math.max(160, it.h * ROW_HEIGHT + (it.h - 1) * MARGIN[1]),
-                        },
-                      })
+                    ? // Tinggi tetap per jenis (bukan dari grid layar lebar): tabel/grafik menggulir di
+                      // dalam kartu tanpa memanjangkan halaman, KPI tidak memboroskan layar (review L6).
+                      card(w, it, { style: { height: PHONE_HEIGHT[w.type] ?? 160 } })
                     : null;
                 })}
               </div>

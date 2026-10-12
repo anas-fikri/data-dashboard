@@ -46,6 +46,10 @@ export type QueryCode =
 export interface QueryData {
   columns: OutColumn[];
   rows: unknown[][];
+  /** Grafik widget: jumlah kategori seluruhnya (sebelum batas N). */
+  categories?: number;
+  /** Grafik widget: total ukuran seluruh kategori (sebelum batas N); null bila semua kosong. */
+  grandTotal?: number | null;
 }
 
 /** Halaman widget tabel: total baris (dengan filter) + nomor halaman. */
@@ -304,18 +308,26 @@ async function runAggPlan(
 ): Promise<QueryResult> {
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
-  if (hit)
-    return { ok: true, columns: hit.columns, rows: hit.rows, cached: true, ms: Date.now() - t0 };
+  if (hit) return { ok: true, ...(hit as QueryData), cached: true, ms: Date.now() - t0 };
 
   const r = await execOnParquet(userId, typedKey, deps, (path) => buildSql(plan, path));
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
     return r;
   }
-  const out = toRows(r.out.rows, plan);
+  // Rencana dengan totals: dua kolom terakhir = jumlah grup + total, sama di setiap baris.
+  const width = plan.columns.length;
+  const raw = plan.totals ? r.out.rows.map((row) => row.slice(0, width)) : r.out.rows;
+  const out = toRows(raw, plan);
   if (!out) return tooLarge();
   const data: QueryData = { columns: plan.columns, rows: out.rows };
-  deps.cache?.set(key, data, out.bytes);
+  if (plan.totals) {
+    const first = r.out.rows[0];
+    data.categories = first ? Number(toJson(first[width], "count")) : 0;
+    const t = first ? toJson(first[width + 1], "decimal") : null;
+    data.grandTotal = typeof t === "number" ? t : t === null ? null : Number(t);
+  }
+  deps.cache?.set(key, data, out.bytes + (plan.totals ? 64 : 0));
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
 

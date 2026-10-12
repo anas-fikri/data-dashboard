@@ -27,9 +27,14 @@ export type ChartSort = (typeof CHART_SORTS)[number];
 
 export const TABLE_PAGE_SIZE = 100;
 export const TABLE_COLUMNS_MAX = 20;
-/** Batas kategori per tipe grafik (pai lebih dari 12 irisan tidak terbaca). */
-export const TOP_N_MAX: Record<ChartType, number> = { bar: 50, line: 1000, pie: 12 };
-export const TOP_N_DEFAULT: Record<ChartType, number> = { bar: 12, line: 365, pie: 8 };
+/**
+ * Batas kategori per tipe grafik. Pai: 5 irisan teratas + "Lainnya" (sisanya dijumlahkan) — lebih dari
+ * itu warna berulang dan persen tidak terbaca (review desain T-011 H1).
+ */
+export const TOP_N_MAX: Record<ChartType, number> = { bar: 50, line: 1000, pie: 5 };
+export const TOP_N_DEFAULT: Record<ChartType, number> = { bar: 12, line: 365, pie: 5 };
+/** Pai hanya untuk ukuran yang bisa dijumlahkan (bagian dari keseluruhan). */
+export const PIE_AGGS = ["sum", "count"] as const satisfies Agg[];
 export const SORT_DEFAULT: Record<ChartType, ChartSort> = {
   bar: "value_desc",
   line: "label_asc",
@@ -40,14 +45,18 @@ const sheetId = z.string().regex(/^[a-z0-9]{20,32}$/);
 /** Posisi kolom di skema sheet (1-based, sama dengan c<pos>). */
 const column = z.number().int().min(1).max(16_384);
 
+/**
+ * Format angka. "auto" (bawaan): bilangan bulat tanpa desimal, desimal maks. 2 angka di belakang
+ * koma — kolom rasio 0,07 tidak tampil "0" (review desain T-011 H8).
+ */
 export const formatSchema = z
   .object({
-    style: z.enum(["number", "percent", "rupiah"]),
+    style: z.enum(["auto", "number", "percent", "rupiah"]),
     decimals: z.number().int().min(0).max(4),
   })
   .strict();
 export type NumberFormat = z.infer<typeof formatSchema>;
-export const DEFAULT_FORMAT: NumberFormat = { style: "number", decimals: 0 };
+export const DEFAULT_FORMAT: NumberFormat = { style: "auto", decimals: 0 };
 
 const measure = z
   .object({ agg: z.enum(AGGS), column: column.optional() })
@@ -77,8 +86,17 @@ export const tableSpecSchema = z
       .max(TABLE_COLUMNS_MAX)
       .refine((c) => new Set(c).size === c.length, { message: "Kolom tidak boleh ganda" }),
     format: formatSchema,
+    /**
+     * Kolom angka yang memakai `format` (selain itu "auto") — rupiah/persen hanya untuk kolom yang
+     * dipilih, bukan semua kolom angka.
+     */
+    formatColumns: z.array(column).max(TABLE_COLUMNS_MAX).optional(),
   })
-  .strict();
+  .strict()
+  .refine((t) => (t.formatColumns ?? []).every((p) => t.columns.includes(p)), {
+    message: "Kolom format harus kolom yang ditampilkan",
+    path: ["formatColumns"],
+  });
 
 export type KpiSpec = z.infer<typeof kpiSpecSchema>;
 export type ChartSpec = z.infer<typeof chartSpecSchema>;
@@ -122,6 +140,13 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
       if (!p.success) return bad(p.error);
       if (p.data.topN > TOP_N_MAX[type]) {
         return { ok: false, message: `Maksimal ${TOP_N_MAX[type]} kategori untuk grafik ini.` };
+      }
+      if (type === "pie" && !(PIE_AGGS as readonly string[]).includes(p.data.measure.agg)) {
+        return {
+          ok: false,
+          message:
+            "Grafik pai hanya untuk Total atau Jumlah baris. Untuk rata-rata, terkecil, terbesar, atau jumlah unik pakai grafik batang.",
+        };
       }
       return { ok: true, config: { type, spec: p.data } };
     }
