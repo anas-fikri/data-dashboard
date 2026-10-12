@@ -114,6 +114,11 @@ export interface SchemaDeps {
   releaseRateLimit(userId: string, kind: EditKind): Promise<void>;
   /** Job recast belum selesai milik user, dan apakah sheet ini sudah punya satu. */
   inFlight(userId: string, sheetId: string): Promise<{ user: number; sheet: boolean }>;
+  /**
+   * Jalankan `fn` eksklusif per user (cek batas + enqueue atomik terhadap permintaan paralel user yang
+   * sama). null = lock tidak didapat dalam waktu singkat.
+   */
+  serialize<T>(userId: string, fn: () => Promise<T>): Promise<T | null>;
   enqueue(sheetId: string, userId: string, input: RecastInput): Promise<string>;
   job(jobId: string): Promise<RecastJobView | null>;
 }
@@ -345,24 +350,39 @@ export async function requestRecast(
     return revision === null ? stale() : { ok: true, applied: true, revision };
   }
 
-  if (busy.user >= RECAST_INFLIGHT_PER_USER) {
-    return fail(
-      "QUEUE_FULL",
-      `Masih ada ${busy.user} koreksi Anda yang sedang diproses. Tunggu salah satunya selesai, lalu coba lagi.`,
-    );
-  }
-  const rl = await deps.rateLimit(userId, "recast");
-  if (!rl.allowed) return rateLimited(rl.retryAfterSec);
-  try {
-    const jobId = await deps.enqueue(sheetId, userId, {
-      baseRevision: input.baseRevision,
-      ...(headerRow !== undefined ? { headerRow } : { columns }),
-    });
-    return { ok: true, jobId };
-  } catch (e) {
-    await deps.releaseRateLimit(userId, "recast").catch(() => {});
-    throw e;
-  }
+  // Cek batas dan enqueue di bawah lock per user: permintaan paralel tidak bisa sama-sama melihat
+  // "0 job berjalan" lalu semuanya masuk antrean.
+  const serialized = await deps.serialize(userId, async (): Promise<RecastRequestResult> => {
+    const now = await deps.inFlight(userId, sheetId);
+    if (now.sheet) {
+      return fail(
+        "BUSY",
+        "Koreksi sebelumnya untuk sheet ini masih diproses. Tunggu selesai, lalu muat ulang halaman.",
+      );
+    }
+    if (now.user >= RECAST_INFLIGHT_PER_USER) {
+      return fail(
+        "QUEUE_FULL",
+        `Masih ada ${now.user} koreksi Anda yang sedang diproses. Tunggu salah satunya selesai, lalu coba lagi.`,
+      );
+    }
+    const rl = await deps.rateLimit(userId, "recast");
+    if (!rl.allowed) return rateLimited(rl.retryAfterSec);
+    try {
+      const jobId = await deps.enqueue(sheetId, userId, {
+        baseRevision: input.baseRevision!,
+        ...(headerRow !== undefined ? { headerRow } : { columns }),
+      });
+      return { ok: true, jobId };
+    } catch (e) {
+      await deps.releaseRateLimit(userId, "recast").catch(() => {});
+      throw e;
+    }
+  });
+  return (
+    serialized ??
+    fail("QUEUE_FULL", "Permintaan koreksi Anda yang lain sedang dikirim. Coba lagi sebentar.")
+  );
 }
 
 export type RecastStatus =

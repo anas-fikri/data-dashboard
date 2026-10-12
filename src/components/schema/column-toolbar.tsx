@@ -39,7 +39,7 @@ export function ColumnToolbar({
           id="column-search"
           type="search"
           placeholder="Cari nama kolom"
-          className="pl-9 h-11 md:h-(--control-h)"
+          className="pl-9 h-(--control-h-lg) md:h-(--control-h)"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
         />

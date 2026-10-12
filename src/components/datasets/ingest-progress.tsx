@@ -141,10 +141,17 @@ export function IngestProgress({
       {s.sheets.length > 0 ? (
         <ul className="flex flex-col gap-1 text-muted-foreground" aria-label="Sheet tersimpan">
           {s.sheets.map((sh) => (
-            <li key={sh.index} className="flex items-center gap-1.5">
-              <IconCircleCheck size={16} stroke={2} aria-hidden className="shrink-0 text-success" />
-              <span className="min-w-0 break-words">{sh.name}</span>
-              <span className="shrink-0 tabular-nums">· {fmt(sh.rawRows)} baris</span>
+            <li key={sh.index} className="flex items-start gap-1.5">
+              <IconCircleCheck
+                size={16}
+                stroke={2}
+                aria-hidden
+                className="mt-0.5 shrink-0 text-success"
+              />
+              <span className="min-w-0 break-words">
+                {sh.name}{" "}
+                <span className="whitespace-nowrap tabular-nums">· {fmt(sh.rawRows)} baris</span>
+              </span>
             </li>
           ))}
         </ul>

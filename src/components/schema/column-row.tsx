@@ -63,7 +63,7 @@ export function ColumnRow({
         {label("Nama kolom", `${id}-name`)}
         <Input
           id={`${id}-name`}
-          className="h-11 md:h-(--control-h)"
+          className="h-(--control-h-lg) md:h-(--control-h)"
           value={draft.name}
           maxLength={120}
           disabled={disabled}
@@ -94,7 +94,7 @@ export function ColumnRow({
           disabled={disabled}
           onValueChange={(v) => onChange({ ...draft, type: v as ColumnDraft["type"] })}
         >
-          <SelectTrigger id={`${id}-type`} className="h-11 md:h-(--control-h)">
+          <SelectTrigger id={`${id}-type`} className="h-(--control-h-lg) md:h-(--control-h)">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

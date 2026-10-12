@@ -45,7 +45,7 @@ export default async function SchemaPage({
   if (!view) notFound();
 
   const back = (
-    <Button asChild variant="outline" className="h-11 md:h-(--control-h)">
+    <Button asChild variant="outline" className="h-(--control-h-lg) md:h-(--control-h)">
       <Link href={`/datasets/${view.datasetId}`}>
         <IconArrowLeft aria-hidden />
         Kembali ke dataset

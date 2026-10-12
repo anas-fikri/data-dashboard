@@ -180,9 +180,17 @@ test.describe("skema", () => {
     await page.goto(`/datasets/${datasetId}/skema`);
     await page.getByRole("button", { name: "Ganti baris judul" }).click();
     await page.locator('[data-testid="header-row-option"][data-row="3"]').click();
-    await saveAndWait(page, () =>
-      page.getByRole("button", { name: "Pakai baris 3 sebagai judul" }).click(),
-    );
+    // Kiriman ditahan 1,5 s: selama pending tombol tetap bernama (pembaca layar) dan ditandai sibuk.
+    await page.route("**/api/sheets/*/recast", async (route) => {
+      await new Promise((r) => setTimeout(r, 1_500));
+      await route.continue();
+    });
+    await saveAndWait(page, async () => {
+      const submit = page.getByRole("button", { name: "Pakai baris 3 sebagai judul" });
+      await submit.click();
+      await expect(submit).toHaveAttribute("aria-busy", "true");
+    });
+    await page.unroute("**/api/sheets/*/recast");
     await expect(page.getByTestId("recast-done")).toContainText("Baris judul sekarang baris 3");
     await expect(page.getByLabel("Nama kolom untuk kolom 1")).toHaveValue("No Resi");
     await expect(page.getByLabel("Nama kolom untuk kolom 2")).toHaveValue("Tanggal Kirim");

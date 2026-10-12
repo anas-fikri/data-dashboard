@@ -51,7 +51,7 @@ export function FormatCell({
               onChange({ ...draft, dateFormat: v === AUTO ? undefined : (v as DateFormat) })
             }
           >
-            <SelectTrigger id={`${id}-fmt`} className="h-11 md:h-(--control-h)">
+            <SelectTrigger id={`${id}-fmt`} className="h-(--control-h-lg) md:h-(--control-h)">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -76,7 +76,7 @@ export function FormatCell({
               onChange({ ...draft, numberLocale: v === AUTO ? undefined : (v as NumberLocale) })
             }
           >
-            <SelectTrigger id={`${id}-loc`} className="h-11 md:h-(--control-h)">
+            <SelectTrigger id={`${id}-loc`} className="h-(--control-h-lg) md:h-(--control-h)">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

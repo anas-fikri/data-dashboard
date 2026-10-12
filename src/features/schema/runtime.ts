@@ -4,8 +4,9 @@ import { hit, release, RULES } from "@/features/auth/rate-limit";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import { parsePreview } from "@/features/ingest/preview";
-import type { RecastOutcome } from "@/features/ingest/recast-input";
+import type { RecastInput, RecastOutcome } from "@/features/ingest/recast-input";
 import { prisma } from "@/lib/db";
+import { acquireLock, redisLockStore, releaseLock } from "@/lib/lock";
 import { recastQueue, withQueueTimeout } from "@/lib/queue/connection";
 import { enqueueRecast } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
@@ -164,20 +165,65 @@ async function recastJob(jobId: string): Promise<RecastJobView | null> {
   };
 }
 
-/** Job recast belum selesai (antrean kecil: dibatasi per user dan per sheet). */
+/*
+ * Indeks job recast yang belum selesai (review T-008 M2): set id job per user dan id job per sheet di
+ * Redis, divalidasi malas dengan state BullMQ (getJobState tidak memuat payload job). Entri yang sudah
+ * selesai/hilang dibuang saat dibaca; TTL 2 jam sebagai pengaman (recast ≤ 20 menit + tunda busy
+ * ≤ 30 menit).
+ */
+const INDEX_TTL_MS = 2 * 60 * 60 * 1000;
+const userKey = (userId: string) => `recast:inflight:u:${userId}`;
+const sheetKey = (sheetId: string) => `recast:inflight:s:${sheetId}`;
+const LIVE = new Set(["waiting", "prioritized", "waiting-children", "active", "delayed"]);
+
+async function alive(jobId: string): Promise<boolean> {
+  const state = await withQueueTimeout(recastQueue().getJobState(jobId), "cek antrean recast");
+  return LIVE.has(state);
+}
+
 async function inFlight(userId: string, sheetId: string) {
-  const jobs = await withQueueTimeout(
-    recastQueue().getJobs(["waiting", "prioritized", "active", "delayed"], 0, 999),
-    "cek antrean recast",
-  );
+  const r = await redisReady();
+  const [ids, sheetJob] = await Promise.all([
+    r.smembers(userKey(userId)),
+    r.get(sheetKey(sheetId)),
+  ]);
   let user = 0;
-  let sheet = false;
-  for (const j of jobs) {
-    if (!j) continue;
-    if (j.data.userId === userId) user += 1;
-    if (j.data.sheetId === sheetId) sheet = true;
+  for (const id of ids) {
+    if (await alive(id)) user += 1;
+    else await r.srem(userKey(userId), id);
   }
+  const sheet = sheetJob ? await alive(sheetJob) : false;
+  if (sheetJob && !sheet) await releaseLock(redisLockStore(r), sheetKey(sheetId), sheetJob);
   return { user, sheet };
+}
+
+async function enqueue(sheetId: string, userId: string, input: RecastInput): Promise<string> {
+  const jobId = await enqueueRecast(sheetId, input, userId);
+  const r = await redisReady();
+  await r
+    .multi()
+    .sadd(userKey(userId), jobId)
+    .pexpire(userKey(userId), INDEX_TTL_MS)
+    .set(sheetKey(sheetId), jobId, "PX", INDEX_TTL_MS)
+    .exec();
+  return jobId;
+}
+
+/** Lock singkat per user di sekitar cek batas + enqueue (menunggu ≤ 3 s). */
+async function serialize<T>(userId: string, fn: () => Promise<T>): Promise<T | null> {
+  const store = redisLockStore(await redisReady());
+  const key = `recast:enqueue-lock:${userId}`;
+  const until = Date.now() + 3_000;
+  let token: string | null = null;
+  while (!(token = await acquireLock(store, key, 15_000))) {
+    if (Date.now() > until) return null;
+    await new Promise((res) => setTimeout(res, 50));
+  }
+  try {
+    return await fn();
+  } finally {
+    await releaseLock(store, key, token).catch(() => false);
+  }
 }
 
 const ruleOf = (kind: EditKind) => (kind === "recast" ? RULES.recast : RULES.schemaEdit);
@@ -187,6 +233,7 @@ export const schemaDeps: SchemaDeps = {
   rateLimit: async (userId, kind) => hit(await redisReady(), ruleOf(kind), userId),
   releaseRateLimit: async (userId, kind) => release(await redisReady(), ruleOf(kind), userId),
   inFlight,
-  enqueue: (sheetId, userId, input) => enqueueRecast(sheetId, input, userId),
+  serialize,
+  enqueue,
   job: recastJob,
 };

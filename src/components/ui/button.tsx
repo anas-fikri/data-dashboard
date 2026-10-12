@@ -97,13 +97,15 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function 
           {isIconOnly && pending ? null : pending && !leadingIcon ? (
             // Label tetap mengisi ruang (lebar tidak berubah); spinner ditumpuk di tengahnya.
             <>
-              <span className="invisible">{children}</span>
+              <span className="opacity-0">{children}</span>
               <IconLoader2 className="absolute motion-safe:animate-spin" aria-hidden />
             </>
           ) : (
             children
           )}
-          {pending && !leadingIcon ? null : !pending && trailingIcon}
+          {trailingIcon ? (
+            <span className={cn("inline-flex", pending && "opacity-0")}>{trailingIcon}</span>
+          ) : null}
         </>
       )}
     </Comp>

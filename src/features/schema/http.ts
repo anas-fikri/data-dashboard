@@ -10,7 +10,7 @@ import { ingestStatus, recastStatus, requestRecast, type SchemaCode } from "./se
 
 /*
  * HTTP T-008: GET progres ingest dan status koreksi (polling, tanpa efek samping), POST koreksi skema
- * (Origin wajib = APP_URL, body JSON ≤ 256 KB). Antrean/DB tidak tersedia → 503 tanpa detail internal.
+ * (Origin wajib = APP_URL, body JSON ≤ 900 KB). Antrean/DB tidak tersedia → 503 tanpa detail internal.
  */
 
 const STATUS: Record<SchemaCode, number> = {

@@ -12,7 +12,7 @@ export function RefreshButton({ label = "Muat ulang" }: { label?: string }) {
   return (
     <Button
       variant="outline"
-      className="h-11 w-full md:h-(--control-h) md:w-auto"
+      className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
       pending={pending}
       leadingIcon={<IconRefresh aria-hidden />}
       onClick={() => start(() => router.refresh())}

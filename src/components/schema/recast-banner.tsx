@@ -85,15 +85,17 @@ export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
     const changed = done.change.kind === "columns" ? new Set(done.change.positions) : null;
     const failed = schema.filter((c) => c.castFailCount > 0 && (!changed || changed.has(c.pos)));
     return (
-      <div className="flex items-start gap-2" data-testid="recast-done">
-        <div className="min-w-0 flex-1">
+      <div className="relative" data-testid="recast-done">
+        <div className="[&_[data-testid=form-alert]]:pr-14">
           <FocusNotice tone="success">
             <span className="block font-medium">
               {done.change.kind === "header"
                 ? `Baris judul sekarang baris ${fmtInt(done.change.row)}; nama dan tipe kolom dideteksi ulang.`
-                : "Perubahan skema diterapkan."}
+                : done.change.kind === "metadata"
+                  ? "Nama dan tampilan kolom diperbarui. Data tidak diproses ulang."
+                  : "Perubahan skema diterapkan."}
             </span>
-            {failed.length > 0 ? (
+            {done.change.kind === "metadata" ? null : failed.length > 0 ? (
               <span className="mt-1 block">
                 Nilai yang tidak sesuai tipe dikosongkan:{" "}
                 {failed
@@ -111,8 +113,9 @@ export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
           </FocusNotice>
         </div>
         <Button
-          size="icon-sm"
+          size="icon"
           variant="ghost"
+          className="absolute right-1 top-1 size-(--control-h-lg) md:size-(--control-h-sm)"
           aria-label="Tutup pemberitahuan"
           onClick={dismissDone}
         >

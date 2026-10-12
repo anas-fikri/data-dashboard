@@ -29,7 +29,7 @@ export function SaveBar({
         <Button
           variant="outline"
           disabled={busy}
-          className="h-11 md:h-(--control-h) w-full md:w-auto"
+          className="h-(--control-h-lg) md:h-(--control-h) w-full md:w-auto"
           onClick={onReset}
         >
           Buang perubahan
@@ -38,7 +38,7 @@ export function SaveBar({
           type="submit"
           disabled={busy}
           pending={pending}
-          className="h-11 md:h-(--control-h) w-full md:w-auto"
+          className="h-(--control-h-lg) md:h-(--control-h) w-full md:w-auto"
           leadingIcon={<IconDeviceFloppy aria-hidden />}
         >
           Simpan perubahan

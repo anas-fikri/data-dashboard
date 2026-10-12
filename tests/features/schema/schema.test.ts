@@ -274,6 +274,7 @@ function schemaDeps(
     rateLimit: async () => ({ allowed: true, retryAfterSec: 0 }),
     releaseRateLimit,
     inFlight: async () => ({ user: 0, sheet: false }),
+    serialize: (_userId, fn) => fn(),
     enqueue,
     job: async () => null,
     ...over,
@@ -429,6 +430,79 @@ describe("AC 3–5: permintaan koreksi skema", () => {
     });
     expect(sheetBusy.enqueue).not.toHaveBeenCalled();
     expect(userFull.enqueue).not.toHaveBeenCalled();
+  });
+
+  it("permintaan paralel tidak bisa melewati batas 2 job per user (review M2 putaran 2)", async () => {
+    // Antrean palsu dengan jeda round-trip; 20 koreksi tipe ke 20 sheet dikirim serentak.
+    const queued: string[] = [];
+    const tick = () => new Promise((r) => setTimeout(r, 5));
+    const sheets = Array.from(
+      { length: 20 },
+      (_, i) => `cmv4kljx40009oczvdmpurr${String(i).padStart(3, "0")}`,
+    );
+    const base = (serialize: SchemaDeps["serialize"]) =>
+      schemaDeps(
+        {
+          inFlight: async (_u, sheetId) => {
+            await tick();
+            return { user: queued.length, sheet: queued.includes(sheetId) };
+          },
+          enqueue: async (sheetId) => {
+            await tick();
+            queued.push(sheetId);
+            return String(queued.length);
+          },
+          serialize,
+        },
+        {},
+        {
+          ownedActiveSheet: async () => ({
+            colCount: 3,
+            schemaRevision: 2,
+            headerRow: 1,
+            schema: SCHEMA,
+            versionStatus: "READY",
+          }),
+        },
+      ).deps;
+    const body = { baseRevision: 2, columns: [{ pos: 2, type: "text" }] };
+
+    // Tanpa lock: semua melihat "0 job" dan masuk antrean (race yang dilaporkan reviewer).
+    const racy = await Promise.all(
+      sheets.map((id) =>
+        requestRecast(
+          USER,
+          id,
+          body,
+          base((_u, fn) => fn()),
+        ),
+      ),
+    );
+    expect(racy.filter((r) => r.ok)).toHaveLength(20);
+
+    // Dengan lock per user (mutex): tepat 2 masuk, sisanya QUEUE_FULL.
+    queued.length = 0;
+    let chain: Promise<unknown> = Promise.resolve();
+    const mutex: SchemaDeps["serialize"] = (_u, fn) => {
+      const run = chain.then(fn);
+      chain = run.catch(() => {});
+      return run;
+    };
+    const safe = await Promise.all(sheets.map((id) => requestRecast(USER, id, body, base(mutex))));
+    expect(safe.filter((r) => r.ok)).toHaveLength(2);
+    expect(safe.filter((r) => !r.ok && r.code === "QUEUE_FULL")).toHaveLength(18);
+    expect(queued).toHaveLength(2);
+
+    // Lock tidak didapat dalam batas waktu → QUEUE_FULL tanpa masuk antrean.
+    queued.length = 0;
+    const timeout = await requestRecast(
+      USER,
+      SHEET,
+      body,
+      base(async () => null),
+    );
+    expect(timeout).toMatchObject({ ok: false, code: "QUEUE_FULL" });
+    expect(queued).toHaveLength(0);
   });
 
   it("rate limit per jenis perubahan; slot dikembalikan bila antrean gagal (review L5)", async () => {

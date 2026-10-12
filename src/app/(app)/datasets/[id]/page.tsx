@@ -141,7 +141,7 @@ export default async function DatasetDetailPage({
                 asChild
                 variant="outline"
                 size="sm"
-                className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
+                className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
               >
                 <Link href={`/datasets/${dataset.id}/skema`} data-testid="dataset-schema-link">
                   <IconTableOptions aria-hidden />

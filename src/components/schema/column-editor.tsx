@@ -150,7 +150,7 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
           <Button
             variant="outline"
             size="sm"
-            className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
+            className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
             onClick={() => setLimit((l) => l + PAGE)}
           >
             Tampilkan {fmtInt(Math.min(PAGE, filtered.length - limit))} kolom berikutnya

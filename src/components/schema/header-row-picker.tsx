@@ -62,7 +62,7 @@ export function HeaderRowPicker({
           size="sm"
           aria-expanded={open}
           aria-controls={panelId}
-          className="h-11 w-full md:h-(--control-h-sm) md:w-auto"
+          className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
           trailingIcon={
             <IconChevronDown
               aria-hidden
@@ -110,7 +110,7 @@ export function HeaderRowPicker({
             </label>
             <Input
               id={`${panelId}-num`}
-              className="h-11 md:h-(--control-h)"
+              className="h-(--control-h-lg) md:h-(--control-h)"
               type="number"
               inputMode="numeric"
               min={1}
@@ -133,7 +133,7 @@ export function HeaderRowPicker({
           <div className="flex flex-col-reverse gap-2 md:flex-row">
             <Button
               variant="outline"
-              className="h-11 md:h-(--control-h) w-full md:w-auto"
+              className="h-(--control-h-lg) md:h-(--control-h) w-full md:w-auto"
               disabled={busy}
               onClick={() => setOpen(false)}
             >
@@ -141,7 +141,7 @@ export function HeaderRowPicker({
             </Button>
             <Button
               type="submit"
-              className="h-11 md:h-(--control-h) w-full md:w-auto"
+              className="h-(--control-h-lg) md:h-(--control-h) w-full md:w-auto"
               disabled={busy || n === headerRow}
               pending={local.phase === "submitting"}
             >

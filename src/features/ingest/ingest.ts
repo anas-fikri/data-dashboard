@@ -364,6 +364,7 @@ async function xlsxSheets(
         name = it.name;
         const sheet = it.sheet;
         setProgress({ sheet, sheetName: name, rows: 0, fraction: 0 });
+        at.row = 0;
         writer = await RawSheetWriter.create(
           duck,
           `s${sheet}`,

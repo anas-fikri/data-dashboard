@@ -17,7 +17,10 @@ export interface RecastJob {
   jobId: string;
   baseRevision: number;
   /** Kolom yang diubah (untuk melaporkan gagal konversi) atau baris header baru. */
-  change: { kind: "columns"; positions: number[] } | { kind: "header"; row: number };
+  change:
+    | { kind: "columns"; positions: number[] }
+    | { kind: "metadata"; positions: number[] }
+    | { kind: "header"; row: number };
 }
 export interface DoneNotice {
   revision: number;
@@ -108,7 +111,11 @@ export function RecastProvider({
           | null;
         if (body?.ok && "applied" in body) {
           // Nama/sembunyikan diterapkan langsung (tanpa antrean).
-          writeSessionJson(doneKey(sheetId), { revision: body.revision, change });
+          const meta: RecastJob["change"] = {
+            kind: "metadata",
+            positions: change.kind === "header" ? [] : change.positions,
+          };
+          writeSessionJson(doneKey(sheetId), { revision: body.revision, change: meta });
           setLocal({ phase: "idle" });
           router.refresh();
           return true;
