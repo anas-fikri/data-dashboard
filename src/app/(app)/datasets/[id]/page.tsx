@@ -74,7 +74,10 @@ export default async function DatasetDetailPage({
     <div className="flex flex-col gap-6">
       <PageHeader
         eyebrow={
-          <Link href="/datasets" className="underline-offset-4 hover:underline">
+          <Link
+            href="/datasets"
+            className="inline-flex min-h-6 items-center underline-offset-4 hover:underline"
+          >
             Dataset
           </Link>
         }

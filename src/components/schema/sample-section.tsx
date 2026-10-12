@@ -44,7 +44,8 @@ export async function SampleSection({
 
 export function SampleSkeleton() {
   return (
-    <div className="flex flex-col gap-2" aria-busy="true" aria-label="Memuat contoh data">
+    <div className="flex flex-col gap-2" role="status" aria-busy="true">
+      <span className="sr-only">Memuat contoh data…</span>
       <div className="h-9 animate-pulse rounded-md bg-muted motion-reduce:animate-none" />
       {Array.from({ length: 6 }, (_, i) => (
         <div

@@ -92,7 +92,7 @@ export function FormatCell({
         </>
       ) : (
         <p
-          className="hidden h-(--control-h) items-center text-sm text-muted-foreground md:flex"
+          className="hidden h-(--control-h) items-center text-sm text-muted-foreground @4xl:flex"
           aria-hidden
         >
           —

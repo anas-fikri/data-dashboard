@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useTransition } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { initials } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,7 +46,7 @@ function SignedInMenu({ user }: { user: SessionUser }) {
           variant="ghost"
           size="icon"
           className="rounded-full"
-          aria-label="Menu akun"
+          aria-label={`Menu akun ${initials(display)}`}
           data-testid="account-menu-trigger"
         >
           <Avatar name={display} />

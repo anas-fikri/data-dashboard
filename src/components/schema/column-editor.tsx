@@ -89,7 +89,7 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
   }
 
   return (
-    <form onSubmit={onSave} aria-label="Ubah kolom" noValidate>
+    <form onSubmit={onSave} aria-label="Ubah kolom" noValidate className="@container">
       <ColumnToolbar
         query={query}
         onQuery={(v) => {
@@ -131,7 +131,7 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
           </Button>
         </p>
       ) : (
-        <ul className="border-t md:border-t-0" aria-label="Daftar kolom">
+        <ul className="border-t @4xl:border-t-0" aria-label="Daftar kolom">
           {filtered.slice(0, limit).map((c) => (
             <ColumnRow
               key={c.pos}

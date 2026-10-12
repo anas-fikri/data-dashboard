@@ -54,13 +54,16 @@ export default async function SchemaPage({
     <PageHeader
       eyebrow={
         <span className="flex min-w-0 flex-wrap gap-x-1">
-          <Link href="/datasets" className="underline-offset-4 hover:underline">
+          <Link
+            href="/datasets"
+            className="inline-flex min-h-6 items-center underline-offset-4 hover:underline"
+          >
             Dataset
           </Link>
           <span aria-hidden>/</span>
           <Link
             href={`/datasets/${view.datasetId}`}
-            className="min-w-0 truncate underline-offset-4 hover:underline"
+            className="inline-flex min-h-6 min-w-0 items-center truncate underline-offset-4 hover:underline"
           >
             {view.datasetName}
           </Link>

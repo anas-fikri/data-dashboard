@@ -40,7 +40,7 @@ export function HeaderPreviewList({
               data-row={r.row}
               className={cn(
                 "flex min-h-11 cursor-pointer items-center gap-3 border-b px-3 py-2 text-sm last:border-b-0 hover:bg-accent",
-                isSelected && "bg-primary/5",
+                isSelected && "shadow-[inset_3px_0_0_0_var(--color-primary)]",
               )}
             >
               <input

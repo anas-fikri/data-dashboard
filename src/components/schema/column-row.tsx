@@ -15,11 +15,13 @@ import { FormatCell } from "./format-cell";
 import { TYPE_LABEL, fmtInt, fmtPct, typeOptions, type ColumnDraft } from "./labels";
 
 /*
- * Satu kolom di editor skema. Satu DOM untuk semua lebar layar: di ≥ md baris grid dengan judul
- * kolom bersama (label disembunyikan secara visual), di ponsel kartu bertumpuk dengan label terlihat.
+ * Satu kolom di editor skema. Satu DOM untuk semua lebar; tata letak mengikuti lebar kartu (container
+ * query), bukan viewport, karena sidebar mengubah ruang yang tersedia:
+ *  - ≥ 56rem: baris tabel 5 kolom dengan judul kolom bersama (label disembunyikan secara visual);
+ *  - ≥ 36rem: dua kolom; lebih sempit: bertumpuk dengan label terlihat.
  */
 export const ROW_GRID =
-  "md:grid md:grid-cols-[minmax(12rem,1.4fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(9rem,0.9fr)_6.5rem] md:items-start md:gap-3";
+  "@4xl:grid @4xl:grid-cols-[minmax(11rem,1.4fr)_minmax(9rem,1fr)_minmax(10rem,1fr)_minmax(8rem,0.8fr)_max-content] @4xl:items-start @4xl:gap-3";
 
 export function ColumnRow({
   column,
@@ -40,7 +42,7 @@ export function ColumnRow({
   const label = (text: string, htmlFor: string) => (
     <label
       htmlFor={htmlFor}
-      className="mb-1 block text-xs font-medium text-muted-foreground md:sr-only"
+      className="mb-1 block text-xs font-medium text-muted-foreground @4xl:sr-only"
     >
       {text}
       <span className="sr-only"> untuk kolom {column.pos}</span>
@@ -52,8 +54,9 @@ export function ColumnRow({
       data-pos={column.pos}
       className={cn(
         "flex flex-col gap-3 border-b px-5 py-3 last:border-b-0",
+        "@xl:grid @xl:grid-cols-2 @xl:items-start",
         ROW_GRID,
-        changed && "bg-primary/5 shadow-[inset_3px_0_0_0_var(--color-primary)]",
+        changed && "shadow-[inset_3px_0_0_0_var(--color-primary)]",
       )}
     >
       <div className="min-w-0">
@@ -74,7 +77,7 @@ export function ColumnRow({
         >
           Kolom {column.pos}
           {column.original && column.original !== draft.name ? ` · asli: "${column.original}"` : ""}
-          {changed ? <span className="sr-only"> (diubah)</span> : null}
+          {changed ? <span className="font-medium text-primary"> · diubah</span> : null}
         </p>
         {error ? (
           <p id={`${id}-err`} className="mt-1 text-xs text-destructive">
@@ -112,7 +115,7 @@ export function ColumnRow({
         label={label}
       />
 
-      <dl className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground md:flex-col md:pt-1.5">
+      <dl className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground @4xl:flex-col @4xl:pt-1.5">
         <div className="flex gap-1">
           <dt>Kosong</dt>
           <dd className="tabular-nums text-foreground">{fmtPct(column.nullPct)}</dd>
@@ -137,8 +140,8 @@ export function ColumnRow({
         ) : null}
       </dl>
 
-      <div className="flex items-center md:h-(--control-h)">
-        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm md:min-h-0">
+      <div className="flex items-center @4xl:h-(--control-h)">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm @4xl:min-h-0">
           <input
             type="checkbox"
             className="size-4 accent-[var(--color-primary)]"

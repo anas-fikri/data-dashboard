@@ -58,7 +58,7 @@ export function SampleTable({
             <tr>
               <th
                 scope="col"
-                className="sticky left-0 top-0 z-20 border-b border-r bg-muted px-3 py-2 text-left text-xs font-medium text-muted-foreground"
+                className="sticky left-0 top-0 z-20 border-b border-r bg-card px-3 py-2 text-left text-xs font-medium text-muted-foreground"
               >
                 Baris
               </th>
@@ -67,7 +67,7 @@ export function SampleTable({
                   key={c.pos}
                   scope="col"
                   className={cn(
-                    "sticky top-0 z-10 max-w-[16rem] border-b bg-muted px-3 py-2 align-bottom font-medium",
+                    "sticky top-0 z-10 max-w-[16rem] border-b bg-card px-3 py-2 align-bottom font-medium",
                     numeric(c.type) ? "text-right" : "text-left",
                   )}
                 >
