@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hit, type RateLimitRule } from "@/features/auth/rate-limit";
 import { AuthError, requireUser, type SessionUser } from "@/features/auth/session";
 import { env } from "@/lib/env";
+import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import type { UploadCode, UploadResult } from "./service";
@@ -48,11 +49,9 @@ export function isSameOrigin(req: NextRequest, appUrl: string): boolean {
 
 async function readJson(req: NextRequest): Promise<{ ok: true; body: unknown } | { ok: false }> {
   if (req.method === "DELETE") return { ok: true, body: {} };
-  const declared = Number(req.headers.get("content-length") ?? "0");
-  if (declared > BODY_MAX) return { ok: false };
   if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return { ok: false };
-  const text = await req.text();
-  if (text.length > BODY_MAX) return { ok: false };
+  const text = await readTextLimited(req, BODY_MAX);
+  if (text === null) return { ok: false };
   try {
     return { ok: true, body: text ? JSON.parse(text) : {} };
   } catch {

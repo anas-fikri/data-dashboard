@@ -16,6 +16,12 @@ const nextConfig: NextConfig = {
     "@duckdb/node-bindings",
   ],
   poweredByHeader: false,
+  experimental: {
+    // proxy.ts mencakup /api/*: Next menyalin body permintaan ke memori sampai batas ini (default
+    // 10 MB) sebelum Route Handler membacanya. Body JSON aplikasi ≤ 65 KB dan Server Action ≤ 1 MB
+    // (bawaan); unggahan file langsung ke S3 lewat presigned URL, tidak lewat aplikasi.
+    proxyClientMaxBodySize: "1mb",
+  },
   // Badge overlay dev Next menutupi sudut kiri bawah (tombol ciut sidebar) dan mencegat klik e2e.
   devIndicators: false,
   // Server Action: Next menolak Origin yang tidak cocok dengan Host/X-Forwarded-Host. Tidak memakai

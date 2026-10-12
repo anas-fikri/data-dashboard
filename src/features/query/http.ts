@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { isSameOrigin } from "@/features/uploads/http";
 import { env } from "@/lib/env";
+import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { queryDeps } from "./runtime";
 import { runQuery, type QueryCode } from "./service";
@@ -33,10 +34,9 @@ export async function runtimeQuery(req: NextRequest, userId: string): Promise<Ne
   }
   const invalid = () =>
     json({ ok: false, code: "INVALID", message: "Permintaan tidak valid (JSON ≤ 64 KB)." }, 400);
-  if (Number(req.headers.get("content-length") ?? "0") > BODY_MAX) return invalid();
   if (!(req.headers.get("content-type") ?? "").startsWith("application/json")) return invalid();
-  const text = await req.text();
-  if (text.length > BODY_MAX) return invalid();
+  const text = await readTextLimited(req, BODY_MAX);
+  if (text === null) return invalid();
   let body: unknown;
   try {
     body = JSON.parse(text);

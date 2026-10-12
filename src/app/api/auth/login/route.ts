@@ -3,8 +3,12 @@ import { clientIp } from "@/features/auth/rate-limit";
 import * as service from "@/features/auth/service";
 import { createSession, knownDeviceUserId } from "@/features/auth/session";
 import { env } from "@/lib/env";
+import { readTextLimited } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
+
+/** Email + kata sandi; jauh di atas kebutuhan, jauh di bawah buffer proxy. */
+const LOGIN_BODY_MAX = 8 * 1024;
 
 const STATUS: Record<service.AuthCode, number> = {
   RATE_LIMITED: 429,
@@ -37,7 +41,10 @@ export async function POST(request: Request) {
   }
   let body: unknown;
   try {
-    body = await request.json();
+    // Endpoint anonim: body dibaca dengan batas, bukan request.json() yang membaca semuanya dulu.
+    const text = await readTextLimited(request, LOGIN_BODY_MAX);
+    if (text === null) throw new Error("body terlalu besar");
+    body = JSON.parse(text);
   } catch {
     return NextResponse.json({ ok: false, code: "INVALID_EMAIL" }, { status: 400 });
   }
