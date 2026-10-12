@@ -1,14 +1,18 @@
 ---
 id: T-005
 title: Spike parser xlsx/csv dan skrip sintesis fixture
-status: todo
+status: in_progress
 profile: standard
 goal: G-3
 depends_on:
   - T-001
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:56:59Z"
+updated: "2026-10-12T02:01:03Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 626d6d6b2d82187060279d1ad836d78516665d1e
 ---
 
 ## Objective
