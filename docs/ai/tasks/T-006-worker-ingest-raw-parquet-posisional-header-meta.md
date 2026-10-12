@@ -33,7 +33,48 @@ Alur B3 tahap raw. Proses worker/ terpisah, BullMQ concurrency 1, DuckDB memory_
 - [ ] Given sheet > 1.048.576 baris, kolom > 16.384, sheet > 50, atau sel > 32.767 karakter, when ingest, then baris/kolom/sheet berlebih ditolak dengan pesan dan sel panjang dipotong + dihitung; job > 60 menit → FAILED
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: HIGH. Worker memproses file tak tepercaya sampai 1 GB dengan akses storage dan DB; salah penanganan berarti DoS worker, objek yatim, atau versi tersangkut.
+
+Impact surface:
+- **Data:** prisma Sheet + DatasetVersion.ingestStartedAt/ingestStage/progress (migrasi ingest_sheet).
+- **Pipeline:** src/features/ingest/* (ingest, csv, csv-sniff, header, raw-writer, repo), src/lib/duckdb, src/lib/storage/files.ts, src/lib/xlsx (parser dipindah dari scripts/bench + drain/onSheet/onProgress).
+- **Worker:** antrean ingest, sapuan UPLOADED, penanganan gagal di percobaan terakhir.
+- **Env dan skrip:** env WORKER_TMP_DIR, scripts/perf-ingest.ts, dev-upload-fixture "ingest".
+
+Security (STRIDE):
+- **DoS:**
+  - File xlsx dibatasi seperti parser ADR-0005 (memori < ~500 MB; zip, XML, sel, baris, kolom, sheet).
+  - CSV dibatasi: kolom ≤ 16.384, baris kosong ≤ 1 juta, max_line_size 8 MB, sel > 32.767 dipotong.
+  - DuckDB dibatasi memory_limit 1 GB, temp ≤ 8 GB, threads 2.
+  - Deadline 60 menit per percobaan, dengan watchdog interrupt untuk query panjang.
+  - Concurrency 1 per proses; antrean ≤ satu potongan stream (drain).
+- **Tampering:** isi file tidak pernah dieksekusi. Nama kolom hanya disimpan sebagai metadata dan dikutip saat dipakai SQL. Path DuckDB dibuat program, sedangkan nilai user lewat parameter binding.
+- **Information disclosure:** pesan FAILED hanya menyebut sheet, baris, dan jenis masalah, tanpa path internal. Objek Parquet hanya di prefix versi, tanpa presigned GET.
+- **Repudiation:** log terstruktur jobId/versionId/attempt.
+- **Elevation:** worker tidak menerima input user selain versionId dari antrean, dan versi dibaca dari DB.
+
+Compatibility: status versi tetap INGESTING dengan ingestStage "raw" sampai T-007 menulis typed dan READY. Label UI "Memproses" tetap benar.
+
+Failure modes:
+- **Worker mati atau diulang:** percobaan berikutnya menghapus prefix Parquet versi dan Sheet dulu, sehingga hasilnya identik (Parquet deterministik, diuji).
+- **Dataset dihapus di tengah:** dicek tiap batch, saat watchdog, dan setelah unggah; worker berhenti lalu prefix dihapus.
+- **Gagal permanen:** versi FAILED, prefix dan Sheet dihapus.
+- **Gagal sementara:** BullMQ mengulang (3×). Bila percobaan terakhir gagal, versi FAILED dengan pesan umum.
+- **Enqueue sempat gagal:** worker menyapu versi UPLOADED tanpa job saat start.
+
+Rollback: revert commit dan drop migrasi ingest_sheet (kolom baru nullable, tabel Sheet baru); worker lama tidak memproses antrean ingest.
+
+Validation:
+- **Unit:**
+  - header, nama kolom, sniff, pemindai, raw text;
+  - ingest end-to-end in-process (25 test): 3 sheet header baris 4, Windows-1252, BOM, RFC 4180, UTF-16 ditolak, crash lalu ulang identik, upload putus lalu ulang identik, dataset dihapus saat batch dan saat unggah, xlsx rusak di tengah, zip-bomb, DOCTYPE, batas baris, deadline, sel panjang xlsx/csv.
+- **e2e worker sungguhan:** xlsx 3 sheet, CSV Windows-1252, DOCTYPE dengan pesan di halaman.
+- **Perf:** docs/ai/perf/T-006.md (xlsx 1 GB 324 s / 884 MB; csv 1 GB 50 s / 1.066 MB).
+
+Open risks/assumptions:
+- Transfer jaringan 1 GB tidak diukur di sini (T-024).
+- Batas rasio zip 100x (ADR-0005) lebih longgar dari catatan awal "20×"; fixture zip-bomb (117x) tetap ditolak cepat.
+- UI progres per sheet dibangun di T-008 (data progress sudah tersimpan tiap ≤ 5 detik).
 
 ## Notes
 - 2026-10-11T14:56:59Z Batas: byte terdekompresi ≤ 20× ukuran file; temp_directory + max_temp_directory_size; lock Redis memakai PX TTL + compare-and-delete.

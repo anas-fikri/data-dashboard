@@ -70,6 +70,8 @@ const init = (page: Page, datasetId: string, name: string, size: number, lastMod
 
 test.describe("unggah", () => {
   test.beforeAll(async ({ browser, request }) => {
+    // Suite penuh mendaftarkan > 20 user dari satu IP (batas registrasi per jam).
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs"]);
     await createUser(browser, request, OWNER);
     await createUser(browser, request, OTHER);
   });

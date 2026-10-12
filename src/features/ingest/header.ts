@@ -31,23 +31,35 @@ function isTextLike(v: RawValue): v is string {
 }
 
 /**
- * Tebak baris header: baris pertama (dari sampel) yang terisi ≥ 50% lebar tabel dan ≥ 60% sel
- * terisinya berupa teks unik (bukan angka/tanggal). Baris judul (satu sel) dan baris data
- * (banyak angka/tanggal) terlewati. Tanpa kandidat → baris terisi pertama.
+ * Tebak baris header di antara baris sampel yang terisi ≥ 50% lebar tabel (baris judul satu sel
+ * terlewati): skor = proporsi sel teks (bukan angka/tanggal), ditambah sedikit untuk keunikan. Header
+ * hampir seluruhnya label, baris data bercampur angka/tanggal; header dengan nama duplikat
+ * ("Keterangan" ×5) tetap menang karena keunikan hanya penentu sekunder. Skor sama → baris paling
+ * awal (header selalu mendahului data). Skor teks < 60% → baris terisi pertama.
  */
 export function guessHeaderRow(sample: SampleRow[]): number {
   if (sample.length === 0) return 1;
   const filled = (r: SampleRow) => r.vals.reduce((n: number, v) => n + (isEmpty(v) ? 0 : 1), 0);
   const width = Math.max(...sample.map(filled));
   const minFilled = Math.max(1, Math.ceil(width * 0.5));
+  let best: { row: number; score: number } | null = null;
   for (const r of sample) {
     const n = filled(r);
     if (n < minFilled) continue;
+    let text = 0;
     const distinct = new Set<string>();
-    for (const v of r.vals) if (isTextLike(v)) distinct.add(v.trim().toLowerCase());
-    if (distinct.size / n >= 0.6) return r.row;
+    for (const v of r.vals) {
+      if (isTextLike(v)) {
+        text++;
+        distinct.add(v.trim().toLowerCase());
+      }
+    }
+    const textRatio = text / n;
+    if (textRatio < 0.6) continue;
+    const score = textRatio + 0.05 * (distinct.size / n);
+    if (!best || score > best.score + 1e-9) best = { row: r.row, score };
   }
-  return (sample.find((r) => filled(r) >= minFilled) ?? sample[0]!).row;
+  return best?.row ?? (sample.find((r) => filled(r) >= minFilled) ?? sample[0]!).row;
 }
 
 /** Bentuk teks asli sebuah nilai header. */

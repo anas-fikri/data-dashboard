@@ -252,6 +252,70 @@ describe("ingest raw: csv", () => {
   });
 });
 
+describe("ingest raw: sel panjang dipotong + dihitung per sheet", () => {
+  it("xlsx: sel > 32.767 karakter dipotong, dihitung di sheet yang benar", async () => {
+    const NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+    const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+    const PKG = "http://schemas.openxmlformats.org/package/2006/relationships";
+    const long = "p".repeat(40_000);
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`,
+      ),
+      "_rels/.rels",
+    );
+    zip.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><workbook xmlns="${NS}" xmlns:r="${REL}"><sheets><sheet name="A" sheetId="1" r:id="rId1"/><sheet name="B" sheetId="2" r:id="rId2"/></sheets></workbook>`,
+      ),
+      "xl/workbook.xml",
+    );
+    zip.addBuffer(
+      Buffer.from(
+        `<?xml version="1.0"?><Relationships xmlns="${PKG}"><Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${REL}/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`,
+      ),
+      "xl/_rels/workbook.xml.rels",
+    );
+    zip.addBuffer(
+      Buffer.from(
+        `<worksheet xmlns="${NS}"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Catatan</t></is></c></row></sheetData></worksheet>`,
+      ),
+      "xl/worksheets/sheet1.xml",
+    );
+    zip.addBuffer(
+      Buffer.from(
+        `<worksheet xmlns="${NS}"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Catatan</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>${long}</t></is></c></row></sheetData></worksheet>`,
+      ),
+      "xl/worksheets/sheet2.xml",
+    );
+    zip.end();
+    const chunks: Buffer[] = [];
+    for await (const c of zip.outputStream) chunks.push(c as Buffer);
+    const path = join(root, "panjang.xlsx");
+    writeFileSync(path, Buffer.concat(chunks));
+
+    const { storage, repo, opts } = setup(path);
+    expect(await runIngest(VID, repo, storage, opts)).toEqual({ outcome: "done", sheets: 2 });
+    const [a, b] = repo.byIndex();
+    expect(a!.truncatedCells).toBe(0);
+    expect(b!.truncatedCells).toBe(1);
+    const rows = await readParquet(join(storage.dir, b!.rawKey!));
+    expect((rows[1]![1] as string).length).toBe(32_767);
+  });
+
+  it("csv: sel > 32.767 karakter dipotong dan dihitung", async () => {
+    const path = join(root, "panjang.csv");
+    writeFileSync(path, `nama;catatan\nA;${"q".repeat(40_000)}\nB;pendek\n`);
+    const { storage, repo, opts } = setup(path);
+    expect(await runIngest(VID, repo, storage, opts)).toEqual({ outcome: "done", sheets: 1 });
+    const s = repo.byIndex()[0]!;
+    expect(s.truncatedCells).toBe(1);
+    const rows = await readParquet(join(storage.dir, s.rawKey!));
+    expect((rows[1]![2] as string).length).toBe(32_767);
+  });
+});
+
 describe("ingest raw: ketahanan", () => {
   it("worker mati di tengah lalu diulang → objek identik dengan ingest tanpa gangguan, tanpa sisa parsial", async () => {
     const fx = "tests/fixtures/tiga-sheet.xlsx";

@@ -167,6 +167,11 @@ export async function scanCsv(path: string, delimiter: string, maxCols: number):
   if (any) {
     records++;
     if (fields > maxFields) maxFields = fields;
+    if (fields > maxCols) {
+      throw new CsvFormatError(
+        `File CSV punya lebih dari ${maxCols.toLocaleString("id-ID")} kolom di baris ${records}.`,
+      );
+    }
   }
   return { maxFields: Math.max(maxFields, 1), records, blanksBefore };
 }
