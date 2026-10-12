@@ -96,6 +96,24 @@ export const envSchema = z.object({
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   /** Direktori kerja worker ingest (unduhan sumber + spill + DuckDB); butuh ± ukuran upload + 8 GiB. */
   WORKER_TMP_DIR: z.string().optional(),
+
+  // --- Query (T-009) ---
+  /** Direktori cache typed.parquet lokal + temp DuckDB aplikasi (per replika). */
+  QUERY_CACHE_DIR: z.string().optional(),
+  /** Batas total cache typed.parquet lokal (LRU). */
+  MAX_LOCAL_PARQUET_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(10 * 1024 * 1024 * 1024),
+  /** Query DuckDB bersamaan per proses aplikasi. */
+  MAX_QUERY_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  QUERY_MEMORY_LIMIT: z
+    .string()
+    .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)
+    .default("1GB"),
+  /** Batas waktu satu query; lewat → interrupt + QUERY_TIMEOUT. */
+  QUERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
 });
 
 export type Env = z.infer<typeof envSchema>;

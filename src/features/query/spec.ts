@@ -1,0 +1,246 @@
+/*
+ * Spec query deklaratif (T-009, alur B4): validasi bentuk (zod, enum tertutup, batas jumlah) lalu
+ * resolusi terhadap skema sheet aktif. Kolom dirujuk dengan nama tampil; hasilnya rencana dengan kolom
+ * fisik c<pos> sehingga nama dari user tidak pernah masuk SQL. Murni (tanpa I/O).
+ */
+import { z } from "zod";
+import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+
+export const SPEC_MAX_BYTES = 64 * 1024;
+export const LIMIT_MAX = 10_000;
+
+const AGGS = ["count", "count_distinct", "sum", "avg", "min", "max"] as const;
+const GRAINS = ["day", "week", "month", "quarter", "year"] as const;
+const OPS = [
+  "eq",
+  "neq",
+  "in",
+  "not_in",
+  "gt",
+  "gte",
+  "lt",
+  "lte",
+  "between",
+  "contains",
+  "is_null",
+  "not_null",
+] as const;
+export type Agg = (typeof AGGS)[number];
+export type Grain = (typeof GRAINS)[number];
+export type FilterOp = (typeof OPS)[number];
+
+const colName = z.string().min(1).max(200);
+const scalar = z.union([z.string().max(1_000), z.number().finite(), z.boolean()]);
+
+export const specSchema = z
+  .object({
+    sheetId: z.string().regex(/^[a-z0-9]{20,32}$/),
+    dimensions: z
+      .array(z.object({ column: colName, timeGrain: z.enum(GRAINS).optional() }).strict())
+      .max(3)
+      .default([]),
+    measures: z
+      .array(z.object({ column: colName.optional(), agg: z.enum(AGGS) }).strict())
+      .max(10)
+      .default([]),
+    filters: z
+      .array(
+        z
+          .object({
+            column: colName,
+            op: z.enum(OPS),
+            value: scalar.optional(),
+            values: z.array(scalar).max(500).optional(),
+          })
+          .strict(),
+      )
+      .max(20)
+      .default([]),
+    /** Urutan hasil: kunci keluaran "d0".."d2" (dimensi) atau "m0".."m9" (ukuran). */
+    sort: z
+      .array(z.object({ by: z.string().regex(/^[dm]\d$/), dir: z.enum(["asc", "desc"]) }).strict())
+      .max(4)
+      .default([]),
+    limit: z.number().int().min(1).max(LIMIT_MAX).default(1_000),
+  })
+  .strict();
+
+export type QuerySpec = z.infer<typeof specSchema>;
+
+export const bodySchema = z
+  .object({ datasetId: z.string().regex(/^[a-z0-9]{20,32}$/), spec: specSchema })
+  .strict();
+
+/** Kolom keluaran (kunci stabil d<i>/m<i>, label untuk tampilan). */
+export interface OutColumn {
+  key: string;
+  label: string;
+  type: ColumnType | "count";
+}
+
+export interface PlanDimension {
+  key: string;
+  col: string;
+  type: ColumnType;
+  grain?: Grain;
+}
+export interface PlanMeasure {
+  key: string;
+  agg: Agg;
+  /** Kolom fisik; tidak ada untuk count(*). */
+  col?: string;
+}
+export interface PlanFilter {
+  col: string;
+  type: ColumnType;
+  op: FilterOp;
+  values: (string | number | boolean)[];
+}
+export interface Plan {
+  dimensions: PlanDimension[];
+  measures: PlanMeasure[];
+  filters: PlanFilter[];
+  sort: { key: string; dir: "asc" | "desc" }[];
+  limit: number;
+  columns: OutColumn[];
+}
+
+export type Resolved = { ok: true; plan: Plan } | { ok: false; message: string };
+
+const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
+const ORDERED: ColumnType[] = [...NUMERIC, "date", "timestamp"];
+const TEMPORAL: ColumnType[] = ["date", "timestamp"];
+
+const AGG_TYPES: Record<Agg, ColumnType[] | "any"> = {
+  count: "any",
+  count_distinct: "any",
+  sum: NUMERIC,
+  avg: NUMERIC,
+  min: ORDERED,
+  max: ORDERED,
+};
+
+const AGG_LABEL: Record<Agg, string> = {
+  count: "Jumlah",
+  count_distinct: "Jumlah unik",
+  sum: "Total",
+  avg: "Rata-rata",
+  min: "Minimum",
+  max: "Maksimum",
+};
+
+/** Nilai filter sesuai tipe kolom; tanggal berupa teks ISO (YYYY-MM-DD[THH:MM[:SS]]). */
+function checkValue(type: ColumnType, v: string | number | boolean): boolean {
+  switch (type) {
+    case "integer":
+    case "decimal":
+    case "duration":
+      return typeof v === "number";
+    case "boolean":
+      return typeof v === "boolean";
+    case "date":
+    case "timestamp":
+      return typeof v === "string" && /^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?)?$/.test(v);
+    case "text":
+      return typeof v === "string";
+  }
+}
+
+/** Cocokkan spec dengan skema sheet aktif; pesan error dalam bahasa user (HTTP 400). */
+export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
+  const byName = new Map(schema.filter((c) => !c.hidden).map((c) => [c.name, c]));
+  const col = (name: string) => byName.get(name);
+  const fail = (message: string): Resolved => ({ ok: false, message });
+
+  if (spec.dimensions.length === 0 && spec.measures.length === 0) {
+    return fail("Pilih minimal satu dimensi atau ukuran.");
+  }
+
+  const columns: OutColumn[] = [];
+  const dimensions: PlanDimension[] = [];
+  for (const [i, d] of spec.dimensions.entries()) {
+    const c = col(d.column);
+    if (!c) return fail(`Kolom "${d.column}" tidak ada atau disembunyikan.`);
+    if (d.timeGrain && !TEMPORAL.includes(c.type)) {
+      return fail(`Pengelompokan waktu hanya untuk kolom tanggal ("${d.column}").`);
+    }
+    dimensions.push({ key: `d${i}`, col: `c${c.pos}`, type: c.type, grain: d.timeGrain });
+    columns.push({ key: `d${i}`, label: c.name, type: c.type });
+  }
+
+  const measures: PlanMeasure[] = [];
+  for (const [i, m] of spec.measures.entries()) {
+    if (!m.column) {
+      if (m.agg !== "count") return fail(`Agregasi "${m.agg}" membutuhkan kolom.`);
+      measures.push({ key: `m${i}`, agg: "count" });
+      columns.push({ key: `m${i}`, label: "Jumlah baris", type: "count" });
+      continue;
+    }
+    const c = col(m.column);
+    if (!c) return fail(`Kolom "${m.column}" tidak ada atau disembunyikan.`);
+    const allowed = AGG_TYPES[m.agg];
+    if (allowed !== "any" && !allowed.includes(c.type)) {
+      return fail(`Agregasi "${AGG_LABEL[m.agg]}" tidak bisa dipakai untuk kolom "${c.name}".`);
+    }
+    measures.push({ key: `m${i}`, agg: m.agg, col: `c${c.pos}` });
+    const type: OutColumn["type"] =
+      m.agg === "count" || m.agg === "count_distinct"
+        ? "count"
+        : m.agg === "avg" && c.type === "integer"
+          ? "decimal"
+          : c.type;
+    columns.push({ key: `m${i}`, label: `${AGG_LABEL[m.agg]} ${c.name}`, type });
+  }
+
+  const filters: PlanFilter[] = [];
+  for (const f of spec.filters) {
+    const c = col(f.column);
+    if (!c) return fail(`Kolom filter "${f.column}" tidak ada atau disembunyikan.`);
+    const values =
+      f.op === "in" || f.op === "not_in" || f.op === "between"
+        ? (f.values ?? [])
+        : f.op === "is_null" || f.op === "not_null"
+          ? []
+          : f.value === undefined
+            ? []
+            : [f.value];
+    const need =
+      f.op === "is_null" || f.op === "not_null"
+        ? 0
+        : f.op === "between"
+          ? 2
+          : f.op === "in" || f.op === "not_in"
+            ? -1
+            : 1;
+    if (need === -1 ? values.length === 0 : values.length !== need) {
+      return fail(`Nilai filter untuk "${c.name}" tidak lengkap.`);
+    }
+    if (["gt", "gte", "lt", "lte", "between"].includes(f.op) && !ORDERED.includes(c.type)) {
+      return fail(`Perbandingan hanya untuk kolom angka atau tanggal ("${c.name}").`);
+    }
+    if (f.op === "contains" && c.type !== "text") {
+      return fail(`Filter "mengandung" hanya untuk kolom teks ("${c.name}").`);
+    }
+    if (!values.every((v) => checkValue(c.type, v))) {
+      return fail(`Nilai filter tidak sesuai tipe kolom "${c.name}".`);
+    }
+    filters.push({ col: `c${c.pos}`, type: c.type, op: f.op, values });
+  }
+
+  const keys = new Set(columns.map((c) => c.key));
+  for (const s of spec.sort) {
+    if (!keys.has(s.by)) return fail(`Urutan merujuk kolom keluaran "${s.by}" yang tidak ada.`);
+  }
+
+  return {
+    ok: true,
+    plan: {
+      dimensions,
+      measures,
+      filters,
+      sort: spec.sort.map((s) => ({ key: s.by, dir: s.dir })),
+      limit: spec.limit,
+      columns,
+    },
+  };
+}
