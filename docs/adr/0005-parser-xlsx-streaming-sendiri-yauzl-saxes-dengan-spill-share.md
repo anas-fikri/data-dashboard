@@ -46,6 +46,11 @@ Parameter awal yang mengikat T-006:
     - Tabel > 256 kolom (`WIDE_COLS`) disimpan di DB DuckDB kedua ber-blok 16 KiB, sebab tabel lebar menahan satu segmen per kolom dan blok default 256 KiB tidak muat. Tabel yang lebih sempit tetap di DB utama ber-blok default, yang lebih cepat untuk jutaan baris.
     - Untuk sheet > 128 kolom, batas halaman kamus string Parquet per kolom = 128 MB / jumlah kolom (sheet yang lebih sempit memakai default DuckDB). Penulis Parquet menyiapkan buffer kamus sebesar batas itu untuk setiap kolom.
   - Memori DuckDB yang tetap habis diperlakukan sebagai kegagalan permanen dengan pesan, kecuali karena disk temp penuh.
+- **Batas ukuran baris (T-007):** DuckDB memproses data per potongan 2.048 baris, dan pipeline COPY/konversi menahan beberapa potongan sekaligus.
+  - Potongan > 180 juta karakter ditolak lebih awal dengan pesan (`RowTooLargeError`), dihitung dari min(baris, 2.048) × rata-rata karakter per baris.
+  - CSV dicek dari ukuran file / jumlah record sebelum DuckDB bekerja; xlsx dicek di writer raw per batch.
+  - Diukur di `memory_limit` 1 GB: 2.048 kolom × 40 karakter per sel (± 172 juta) lolos raw + typed; × 48 karakter (± 205 juta) OOM.
+  - Row group Parquet juga dibatasi ± 32 juta karakter, dan COPY raw tidak memakai ORDER BY (urutan sudah dijaga 1 thread + preserve_insertion_order).
 - **Shared strings:** di memori sampai 128 MB, lalu file sementara per parse (dihapus setelah selesai). Indeks = basis per 1.024 string + offset relatif `Uint32` (± 4 byte/string), cache 50k entri.
 - **OOXML:** nama tag dibandingkan tanpa prefix namespace (ekspor .NET OpenXML SDK); workbook, sharedStrings, dan styles ditemukan lewat file relasi, bukan nama tetap; escape `_xHHHH_` didekode; baris tanpa nilai tidak dipancarkan.
 - **Nomor baris dan kolom:** dari atribut `r`, dengan fallback urutan.
