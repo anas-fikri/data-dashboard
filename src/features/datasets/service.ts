@@ -205,7 +205,7 @@ export async function deleteDataset(
     where: { id, ownerId },
     select: {
       id: true,
-      nameKey: true,
+      name: true,
       versions: {
         where: { status: { notIn: ["READY", "FAILED"] } },
         select: { id: true },
@@ -213,7 +213,9 @@ export async function deleteDataset(
     },
   });
   if (!row) return notFound();
-  if (typeof confirmRaw !== "string" || nameKeyOf(confirmRaw) !== row.nameKey) {
+  // Dibandingkan dengan nama (bukan nameKey tersimpan): kunci lama dibuat sebelum nameKeyOf memakai
+  // NFC, jadi dataset bernama bentuk terurai tetap bisa dikonfirmasi (review T-010 R3-1).
+  if (typeof confirmRaw !== "string" || nameKeyOf(confirmRaw) !== nameKeyOf(row.name)) {
     return {
       ok: false,
       code: "CONFIRM_MISMATCH",

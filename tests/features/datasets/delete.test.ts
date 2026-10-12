@@ -31,7 +31,7 @@ const deps = {
 beforeEach(() => {
   order.length = 0;
   vi.clearAllMocks();
-  findFirst.mockResolvedValue({ id: ID, nameKey: "penjualan cabang", versions: [{ id: "v1" }] });
+  findFirst.mockResolvedValue({ id: ID, name: "Penjualan Cabang", versions: [{ id: "v1" }] });
   deleteMany.mockImplementation(async () => {
     order.push("db");
     return { count: 1 };
@@ -57,6 +57,12 @@ describe("deleteDataset", () => {
     expect(r).toMatchObject({ ok: true });
     expect(forgetParquet).toHaveBeenCalledWith(["parquet/d/v/s/typed-1.parquet"]);
     expect(order.indexOf("db")).toBeLessThan(order.indexOf("forget"));
+  });
+
+  it("nama lama berbentuk terurai (sebelum NFC) tetap bisa dikonfirmasi dengan ketikan biasa", async () => {
+    findFirst.mockResolvedValue({ id: ID, name: "Cafe\u0301 Bandung", versions: [] });
+    const r = await deleteDataset("owner1", ID, "caf\u00e9 bandung", deps);
+    expect(r).toEqual({ ok: true, data: { id: ID } });
   });
 
   it("konfirmasi salah → CONFIRM_MISMATCH, tidak ada yang dihapus", async () => {

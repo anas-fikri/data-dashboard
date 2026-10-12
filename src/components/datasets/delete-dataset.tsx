@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { deleteDatasetAction, type DatasetFormState } from "@/features/datasets/actions";
+import { nameKeyOf } from "@/features/datasets/validation";
 
 interface DeleteDatasetProps {
   id: string;
@@ -26,7 +27,8 @@ export function DeleteDataset({ id, name, dashboardCount }: DeleteDatasetProps) 
     status: "idle",
   });
   const error = state.status === "error" ? state : null;
-  const matches = typed.trim().replace(/\s+/g, " ").toLowerCase() === name.toLowerCase();
+  // Aturan yang sama dengan server (NFC, spasi, huruf besar/kecil).
+  const matches = nameKeyOf(typed) === nameKeyOf(name);
 
   return (
     <Dialog.Root
