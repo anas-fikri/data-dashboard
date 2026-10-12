@@ -6,6 +6,10 @@
  * tetap berapa pun lebar sheet. Urutan kandidat: bilangan bulat → desimal → tanggal/waktu → boolean
  * literal → teks; terpilih bila ≥ 98% nilai non-kosong lolos. Nilai yang gagal menjadi NULL dan
  * dihitung (castFailCount).
+ *
+ * Prinsip: hitungan profil (okCount) dan ekspresi konversi (typedExpr) memakai predikat yang sama,
+ * sehingga castFailCount selalu sama dengan jumlah NULL baru di typed.parquet. Nilai yang tidak bisa
+ * disimpan persis (pembulatan, tahun 0026) dihitung gagal, tidak diubah diam-diam.
  */
 import { ident, lit } from "@/lib/duckdb";
 
@@ -22,6 +26,7 @@ export type DateFormat =
   | "mm/dd/yyyy"
   | "serial";
 export type SourceKind = "xlsx" | "csv";
+type TextDateFormat = Exclude<DateFormat, "serial">;
 
 /** Skema satu kolom (disimpan di Sheet.schema; c<pos> adalah nama kolom di typed.parquet). */
 export interface ColumnSchema {
@@ -33,23 +38,35 @@ export interface ColumnSchema {
   type: ColumnType;
   numberLocale?: NumberLocale;
   dateFormat?: DateFormat;
+  /** Desimal disimpan DOUBLE (ada nilai > 6 digit pecahan atau notasi eksponen); selain itu DECIMAL(38,6). */
+  float?: boolean;
   hidden: boolean;
   /** Proporsi sel kosong di baris data (0–1). */
   nullPct: number;
-  /** Perkiraan jumlah nilai unik (HyperLogLog). */
+  /** Jumlah nilai unik teks asli (pasti bila ≤ EXACT_DISTINCT_MAX, selain itu perkiraan HyperLogLog). */
   distinctCount: number;
   /** Nilai non-kosong yang gagal dikonversi ke tipe kolom (menjadi NULL). */
   castFailCount: number;
 }
 
 export const INFER_THRESHOLD = 0.98;
-const MAX_BIGINT = "9223372036854775807";
+/** Porsi nilai berbentuk kode (nol di depan, ≥ 16 digit) yang membuat kolom tetap teks. */
+const CODE_SHARE_MAX = 0.02;
+/** Nomor seri Excel terbesar (9999-12-31). */
+const SERIAL_MAX = 2_958_466;
 
 /**
- * Format strptime per format tanggal (dicoba berurutan per nilai). Urutan objek = urutan preferensi
- * saat seri: hari-di-depan sebelum bulan-di-depan (03/01/2026 → 3 Januari).
+ * Format strptime per format tanggal (dicoba berurutan per nilai). Tahun 2 digit (%y) dicoba lebih
+ * dulu: %Y DuckDB menerima 1–4 digit sehingga "03/01/26" akan terbaca tahun 0026. Urutan objek =
+ * urutan preferensi saat seri: hari-di-depan sebelum bulan-di-depan (03/01/2026 → 3 Januari).
  */
-export const DATE_FORMATS: Record<Exclude<DateFormat, "serial">, string[]> = {
+const withTime = (d: string, y: string[]) =>
+  y.flatMap((yy) => [
+    `${d.replace("Y", yy)}`,
+    `${d.replace("Y", yy)} %H:%M:%S`,
+    `${d.replace("Y", yy)} %H:%M`,
+  ]);
+export const DATE_FORMATS: Record<TextDateFormat, string[]> = {
   "yyyy-mm-dd": [
     "%Y-%m-%d",
     "%Y-%m-%dT%H:%M:%S",
@@ -57,50 +74,82 @@ export const DATE_FORMATS: Record<Exclude<DateFormat, "serial">, string[]> = {
     "%Y-%m-%dT%H:%M",
     "%Y-%m-%d %H:%M",
   ],
-  "dd/mm/yyyy": ["%d/%m/%Y", "%d/%m/%Y %H:%M:%S", "%d/%m/%Y %H:%M", "%d/%m/%y"],
-  "dd-mm-yyyy": ["%d-%m-%Y", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y %H:%M", "%d-%m-%y"],
-  "dd.mm.yyyy": ["%d.%m.%Y", "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M"],
-  "yyyy/mm/dd": ["%Y/%m/%d", "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M"],
-  "mm/dd/yyyy": ["%m/%d/%Y", "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M", "%m/%d/%y"],
+  "dd/mm/yyyy": withTime("%d/%m/%Y", ["y", "Y"]),
+  "dd-mm-yyyy": withTime("%d-%m-%Y", ["y", "Y"]),
+  "dd.mm.yyyy": withTime("%d.%m.%Y", ["y", "Y"]),
+  "yyyy/mm/dd": withTime("%Y/%m/%d", ["Y"]),
+  "mm/dd/yyyy": withTime("%m/%d/%Y", ["y", "Y"]),
 };
-const TEXT_DATE_FORMATS = Object.keys(DATE_FORMATS) as Exclude<DateFormat, "serial">[];
+const TEXT_DATE_FORMATS = Object.keys(DATE_FORMATS) as TextDateFormat[];
 
 /* Pola (RE2, dicocokkan penuh pada nilai yang sudah di-trim). */
 const RE = {
   /** Angka gaya US: ribuan koma, desimal titik, eksponen (angka asli xlsx selalu bentuk ini). */
   numUs: String.raw`[+-]?((\d{1,3}(,\d{3})+|\d+)(\.\d+)?|\.\d+)([eE][+-]?\d+)?`,
-  /** Angka gaya ID: ribuan titik, desimal koma. */
-  numId: String.raw`[+-]?(\d{1,3}(\.\d{3})+|\d+)(,\d+)?`,
+  /** Angka gaya ID: ribuan titik (grup pertama tidak diawali 0), desimal koma. */
+  numId: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3})+|\d+)(,\d+)?`,
+  /** Bilangan bulat persis (pecahan hanya nol) per locale. */
+  intUs: String.raw`[+-]?(\d{1,3}(,\d{3})+|\d+)(\.0+)?`,
+  intId: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3})+|\d+)(,0+)?`,
   /** Bukti kuat ID: ≥ 2 grup titik, grup titik + koma, atau koma desimal bukan 3 digit. */
-  idStrong: String.raw`[+-]?(\d{1,3}(\.\d{3}){2,}(,\d+)?|\d{1,3}(\.\d{3})+,\d+|\d+,(\d{1,2}|\d{4,}))`,
-  /** Bukti kuat US: ≥ 2 grup koma, grup koma + titik, atau titik desimal bukan 3 digit. */
-  usStrong: String.raw`[+-]?(\d{1,3}(,\d{3}){2,}(\.\d+)?|\d{1,3}(,\d{3})+\.\d+|\d*\.(\d{1,2}|\d{4,})([eE][+-]?\d+)?)`,
+  idStrong: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3}){2,}(,\d+)?|[1-9]\d{0,2}(\.\d{3})+,\d+|\d+,(\d{1,2}|\d{4,}))`,
+  /**
+   * Grup titik berakhir 0 ("15.000"). Di xlsx ini bukti kuat ID: angka asli (String(number)) tidak
+   * pernah berakhir 0 di pecahan, jadi bentuk ini pasti teks ribuan. Di CSV tidak (alat ekspor sering
+   * menulis "1.250" sebagai desimal 3 digit).
+   */
+  idText0: String.raw`[+-]?[1-9]\d{0,2}(\.\d{3})*\.\d\d0`,
+  /** Bukti kuat US: ≥ 2 grup koma, grup koma + titik, titik desimal bukan 3 digit, 0.xxx, eksponen. */
+  usStrong: String.raw`[+-]?(\d{1,3}(,\d{3}){2,}(\.\d+)?|\d{1,3}(,\d{3})+\.\d+|\d*\.(\d{1,2}|\d{4,})([eE][+-]?\d+)?|0\.\d+|\d+(\.\d+)?[eE][+-]?\d+)`,
   /** Ambigu: 1.234 (ID ribuan / US desimal 3 digit). */
-  idWeak: String.raw`[+-]?\d{1,3}\.\d{3}`,
+  idWeak: String.raw`[+-]?[1-9]\d{0,2}\.\d{3}`,
+  /** Tidak muat persis di DECIMAL(38,6): > 6 digit pecahan atau eksponen. */
+  wideUs: String.raw`.*(\.\d{7,}|[eE]).*`,
+  wideId: String.raw`.*,\d{7,}`,
   /** Kode yang tidak boleh menjadi angka: nol di depan (no. HP, kode) atau ≥ 16 digit (NIK, rekening). */
   code: String.raw`[+-]?0\d+|\d{16,}`,
-  /** Kandidat tanggal (prafilter murah sebelum strptime). */
-  datey: String.raw`\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}([ T]\d{1,2}:\d{2}(:\d{2})?)?`,
+  /** Kandidat tanggal (prafilter murah sebelum strptime; dipakai juga di konversi). */
+  datey: String.raw`\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}([ T]\d{1,2}:\d{1,2}(:\d{1,2})?)?`,
 };
 const BOOL_TRUE = ["true", "ya", "yes"];
 const BOOL_FALSE = ["false", "tidak", "no"];
 
 const listLit = (xs: string[]) => `[${xs.map(lit).join(", ")}]`;
+const match = (v: string, re: string) => `regexp_full_match(${v}, ${lit(re)})`;
 const norm = (v: string, loc: NumberLocale) =>
   loc === "id" ? `replace(replace(${v}, '.', ''), ',', '.')` : `replace(${v}, ',', '')`;
-/** Nilai DECIMAL(38,6) dari teks ter-trim `v`, atau NULL bila bukan angka pada locale itu. */
-const numExpr = (v: string, loc: NumberLocale) =>
-  `CASE WHEN regexp_full_match(${v}, ${lit(loc === "id" ? RE.numId : RE.numUs)}) THEN TRY_CAST(${norm(v, loc)} AS DECIMAL(38,6)) END`;
-const isInt = (x: string) => `(${x} = trunc(${x}) AND abs(${x}) <= ${MAX_BIGINT})`;
+/** Bilangan bulat persis dari teks ter-trim, atau NULL. */
+const intExpr = (v: string, loc: NumberLocale) =>
+  `CASE WHEN ${match(v, loc === "id" ? RE.intId : RE.intUs)} THEN TRY_CAST(${norm(v, loc)} AS BIGINT) END`;
+/** Desimal dari teks ter-trim (DECIMAL(38,6) atau DOUBLE), atau NULL bila bukan angka locale itu. */
+const numExpr = (v: string, loc: NumberLocale, float = false) =>
+  `CASE WHEN ${match(v, loc === "id" ? RE.numId : RE.numUs)} THEN TRY_CAST(${norm(v, loc)} AS ${float ? "DOUBLE" : "DECIMAL(38,6)"}) END`;
+/** Nilai yang tidak muat persis di DECIMAL(38,6) (dihitung gagal bila kolom disimpan DECIMAL). */
+const wideExpr = (v: string, loc: NumberLocale) => match(v, loc === "id" ? RE.wideId : RE.wideUs);
+/** DECIMAL hanya untuk nilai yang muat persis; DOUBLE untuk semua angka. */
+const decExpr = (v: string, loc: NumberLocale, float: boolean) =>
+  float ? numExpr(v, loc, true) : `CASE WHEN NOT ${wideExpr(v, loc)} THEN ${numExpr(v, loc)} END`;
+
 /**
  * Format teks selalu ditambah ISO: sel tanggal asli xlsx tersimpan di raw sebagai yyyy-mm-dd, dan
  * kolom Excel sering mencampur sel tanggal asli dengan teks "dd/mm/yyyy". ISO tidak ambigu (tahun 4
  * digit di depan), jadi penggabungan ini tidak mengubah tafsiran hari/bulan format teksnya.
  */
-const formatsFor = (f: Exclude<DateFormat, "serial">) =>
+const formatsFor = (f: TextDateFormat) =>
   f === "yyyy-mm-dd" ? DATE_FORMATS[f] : [...DATE_FORMATS[f], ...DATE_FORMATS["yyyy-mm-dd"]];
-const strptime = (v: string, f: Exclude<DateFormat, "serial">) =>
-  `try_strptime(${v}, ${listLit(formatsFor(f))})`;
+/** TIMESTAMP dari teks ter-trim, atau NULL: prafilter bentuk tanggal, lalu tahun < 1000 ditolak. */
+const dateExpr = (v: string, f: TextDateFormat) => {
+  const ts = `try_strptime(${v}, ${listLit(formatsFor(f))})`;
+  return `CASE WHEN ${match(v, RE.datey)} AND year(${ts}) >= 1000 THEN ${ts} END`;
+};
+/** Durasi Excel ([h]:mm): parser mengubahnya menjadi tanggal 1899-12-30 s.d. sebelum 1900-03-01. */
+const isDuration = (ts: string) =>
+  `(${ts} >= TIMESTAMP '1899-12-30' AND ${ts} < TIMESTAMP '1900-03-01')`;
+/** Nomor seri Excel (angka US kanonik) dalam rentang tanggal Excel. */
+const serialExpr = (v: string) => {
+  const x = numExpr(v, "us", true);
+  return `CASE WHEN ${x} >= 0 AND ${x} < ${SERIAL_MAX} THEN ${x} END`;
+};
 
 /** Profil satu kolom (hasil query profileSql). */
 export interface Profile {
@@ -108,38 +157,51 @@ export interface Profile {
   /** Nilai non-kosong. */
   n: number;
   distinct: number;
+  /** Total karakter nilai non-kosong (untuk ukuran row group). */
+  chars: number;
   code: number;
   idStrong: number;
   usStrong: number;
   idWeak: number;
+  idText0: number;
   intUs: number;
-  decUs: number;
   intId: number;
+  /** Angka (DOUBLE) per locale. */
+  numUs: number;
+  numId: number;
+  /** Angka yang tidak muat persis di DECIMAL(38,6) per locale. */
+  wideUs: number;
+  wideId: number;
+  /** Angka yang muat di DECIMAL(38,6) per locale. */
+  decUs: number;
   decId: number;
+  serial: number;
   /** Lolos per format tanggal teks. */
-  date: Record<Exclude<DateFormat, "serial">, number>;
+  date: Record<TextDateFormat, number>;
   /** Bernilai jam ≠ 00:00:00 per format tanggal teks. */
-  time: Record<Exclude<DateFormat, "serial">, number>;
-  /** Nilai yyyy-mm-dd sebelum 1900-03-01: hasil parser untuk format durasi Excel ([h]:mm). */
+  time: Record<TextDateFormat, number>;
+  /** Nilai durasi Excel (lihat isDuration). */
   duration: number;
   bool: number;
 }
 
-const dateAlias = (f: string, p: string) => `${p}_${f.replace(/[^a-z]/g, "")}`;
+/** Alias kolom per format (indeks: "dd/mm", "dd-mm", "dd.mm" berbeda hanya di pemisah). */
+const dateAlias = (f: TextDateFormat, p: string) => `${p}_f${TEXT_DATE_FORMATS.indexOf(f)}`;
 
 /**
  * SQL profil kolom atas raw.parquet (baris data = _row > headerRow). Satu baris hasil per kolom yang
- * punya nilai non-kosong; kolom tanpa nilai tidak muncul.
+ * punya nilai non-kosong; kolom tanpa nilai tidak muncul. Pemanggil membatasi jumlah kolom per query.
  */
 export function profileSql(rawPath: string, cols: string[], headerRow: number): string {
-  const dateCols = TEXT_DATE_FORMATS.map(
-    (f) => `CASE WHEN datey THEN ${strptime("v", f)} END AS ${dateAlias(f, "p")}`,
-  ).join(",\n      ");
+  const dateCols = TEXT_DATE_FORMATS.map((f) => `${dateExpr("v", f)} AS ${dateAlias(f, "p")}`).join(
+    ",\n      ",
+  );
   const dateAggs = TEXT_DATE_FORMATS.map(
     (f) =>
       `count(${dateAlias(f, "p")}) AS ${dateAlias(f, "d")},
     count(*) FILTER (WHERE CAST(${dateAlias(f, "p")} AS TIME) <> TIME '00:00:00') AS ${dateAlias(f, "t")}`,
   ).join(",\n    ");
+  const iso = dateAlias("yyyy-mm-dd", "p");
   return `
 WITH src AS (
   SELECT ${cols.map(ident).join(", ")} FROM read_parquet(${lit(rawPath)}) WHERE _row > ${Math.trunc(headerRow)}
@@ -147,10 +209,14 @@ WITH src AS (
 long AS (UNPIVOT src ON ${cols.map(ident).join(", ")} INTO NAME col VALUE raw),
 f AS (
   SELECT col, v,
-      regexp_full_match(v, ${lit(RE.code)}) AS code,
-      ${numExpr("v", "us")} AS nus,
-      ${numExpr("v", "id")} AS nid,
-      regexp_full_match(v, ${lit(RE.datey)}) AS datey,
+      ${match("v", RE.code)} AS code,
+      ${numExpr("v", "us", true)} AS nus,
+      ${numExpr("v", "id", true)} AS nid,
+      ${wideExpr("v", "us")} AS wus,
+      ${wideExpr("v", "id")} AS wid,
+      ${intExpr("v", "us")} AS ius,
+      ${intExpr("v", "id")} AS iid,
+      ${serialExpr("v")} AS ser,
       ${dateCols},
       lower(v) AS lv
   FROM (SELECT col, trim(raw) AS v FROM long) WHERE v <> ''
@@ -158,16 +224,23 @@ f AS (
 SELECT col,
     count(*) AS n,
     approx_count_distinct(v) AS distinct_n,
+    sum(length(v)) AS chars,
     count(*) FILTER (WHERE code) AS code,
-    count(*) FILTER (WHERE regexp_full_match(v, ${lit(RE.idStrong)})) AS id_strong,
-    count(*) FILTER (WHERE regexp_full_match(v, ${lit(RE.usStrong)})) AS us_strong,
-    count(*) FILTER (WHERE regexp_full_match(v, ${lit(RE.idWeak)})) AS id_weak,
-    count(nus) AS dec_us,
-    count(*) FILTER (WHERE ${isInt("nus")}) AS int_us,
-    count(nid) AS dec_id,
-    count(*) FILTER (WHERE ${isInt("nid")}) AS int_id,
+    count(*) FILTER (WHERE ${match("v", RE.idStrong)}) AS id_strong,
+    count(*) FILTER (WHERE ${match("v", RE.usStrong)}) AS us_strong,
+    count(*) FILTER (WHERE ${match("v", RE.idWeak)}) AS id_weak,
+    count(*) FILTER (WHERE ${match("v", RE.idText0)}) AS id_text0,
+    count(ius) AS int_us,
+    count(iid) AS int_id,
+    count(nus) AS num_us,
+    count(nid) AS num_id,
+    count(*) FILTER (WHERE nus IS NOT NULL AND wus) AS wide_us,
+    count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
+    count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
+    count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
+    count(ser) AS ser,
     ${dateAggs},
-    count(*) FILTER (WHERE ${dateAlias("yyyy-mm-dd", "p")} < TIMESTAMP '1900-03-01') AS dur,
+    count(*) FILTER (WHERE ${isDuration(iso)}) AS dur,
     count(*) FILTER (WHERE lv IN (${[...BOOL_TRUE, ...BOOL_FALSE].map(lit).join(", ")})) AS bool
 FROM f
 GROUP BY col`;
@@ -199,14 +272,21 @@ export function toProfile(r: Record<string, unknown>): Profile {
     col: String(r.col),
     n: num("n"),
     distinct: num("distinct_n"),
+    chars: num("chars"),
     code: num("code"),
     idStrong: num("id_strong"),
     usStrong: num("us_strong"),
     idWeak: num("id_weak"),
+    idText0: num("id_text0"),
     intUs: num("int_us"),
-    decUs: num("dec_us"),
     intId: num("int_id"),
+    numUs: num("num_us"),
+    numId: num("num_id"),
+    wideUs: num("wide_us"),
+    wideId: num("wide_id"),
+    decUs: num("dec_us"),
     decId: num("dec_id"),
+    serial: num("ser"),
     date: per("d"),
     time: per("t"),
     duration: num("dur"),
@@ -215,40 +295,43 @@ export function toProfile(r: Record<string, unknown>): Profile {
 }
 
 /**
- * Locale angka per kolom. Bukti kuat menang mayoritas. Bila seri (biasanya keduanya 0): CSV → ID bila
- * ada pola 1.234 (ribuan ID, sesuai ekspor Excel berlocale Indonesia), xlsx → US karena angka asli
- * xlsx selalu berbentuk kanonik (String(1.234) = "1.234" adalah desimal, bukan ribuan).
+ * Locale angka per kolom. Bukti kuat menang mayoritas (xlsx: "15.000" ikut bukti ID, lihat idText0).
+ * Bila seri (biasanya keduanya 0): CSV → ID bila ada pola 1.234 (ribuan ID, sesuai ekspor Excel
+ * berlocale Indonesia), xlsx → US karena angka asli xlsx selalu berbentuk kanonik (String(1.234) =
+ * "1.234" adalah desimal, bukan ribuan).
  */
 export function pickLocale(p: Profile, source: SourceKind): NumberLocale {
-  if (p.idStrong !== p.usStrong) return p.idStrong > p.usStrong ? "id" : "us";
+  const id = p.idStrong + (source === "xlsx" ? p.idText0 : 0);
+  if (id !== p.usStrong) return id > p.usStrong ? "id" : "us";
   if (source === "csv" && p.idWeak > 0) return "id";
   return "us";
 }
 
+/** Disimpan DOUBLE bila ada angka yang tidak muat persis di DECIMAL(38,6). */
+export const needsFloat = (p: Profile, locale: NumberLocale) =>
+  (locale === "id" ? p.wideId : p.wideUs) > 0;
+
 const passes = (ok: number, n: number) => n > 0 && ok / n >= INFER_THRESHOLD;
 
-/** Jumlah nilai yang lolos konversi untuk pilihan tipe/locale/format tertentu. */
-export function okCount(
-  p: Profile,
-  type: ColumnType,
-  locale: NumberLocale = "us",
-  format?: DateFormat,
-): number {
-  switch (type) {
+/** Jumlah nilai yang lolos konversi untuk pilihan tipe/locale/format tertentu (= non-NULL di typed). */
+export function okCount(p: Profile, s: Inferred): number {
+  const id = s.numberLocale === "id";
+  switch (s.type) {
     case "text":
       return p.n;
     case "integer":
-      return locale === "id" ? p.intId : p.intUs;
+      return id ? p.intId : p.intUs;
     case "decimal":
-      return locale === "id" ? p.decId : p.decUs;
+      if (s.float) return id ? p.numId : p.numUs;
+      return id ? p.decId : p.decUs;
     case "boolean":
       return p.bool;
     case "duration":
-      return format === undefined || format === "yyyy-mm-dd" ? p.duration : 0;
+      return p.duration;
     case "date":
     case "timestamp":
-      if (format === "serial") return p.decUs;
-      return format ? p.date[format] : 0;
+      if (s.dateFormat === "serial") return p.serial;
+      return p.date[s.dateFormat ?? "yyyy-mm-dd"];
   }
 }
 
@@ -256,25 +339,34 @@ export interface Inferred {
   type: ColumnType;
   numberLocale?: NumberLocale;
   dateFormat?: DateFormat;
+  float?: boolean;
 }
 
 /** Keputusan tipe dari profil (urutan kandidat dan ambang 98%, lihat atas). */
 export function decide(p: Profile | undefined, source: SourceKind): Inferred {
   if (!p || p.n === 0) return { type: "text" };
   const locale = pickLocale(p, source);
-  // Kode bernol-depan / ≥ 16 digit tetap teks: menjadikannya angka menghilangkan informasi.
-  if (p.code === 0) {
-    if (passes(okCount(p, "integer", locale), p.n))
-      return { type: "integer", numberLocale: locale };
-    if (passes(okCount(p, "decimal", locale), p.n))
-      return { type: "decimal", numberLocale: locale };
+  // Kolom berisi kode (nol di depan / ≥ 16 digit) lebih dari 2% tetap teks: menjadikannya angka
+  // menghilangkan informasi. Di bawah itu, kode yang tetap berupa angka sah dikonversi.
+  if (p.code / p.n <= CODE_SHARE_MAX) {
+    const nums = locale === "id" ? p.numId : p.numUs;
+    if (passes(nums, p.n)) {
+      // Bulat hanya bila semua angka bulat: 1 nilai 2,5 di antara bilangan bulat → desimal.
+      if ((locale === "id" ? p.intId : p.intUs) === nums) {
+        return { type: "integer", numberLocale: locale };
+      }
+      const float = needsFloat(p, locale);
+      return float
+        ? { type: "decimal", numberLocale: locale, float }
+        : { type: "decimal", numberLocale: locale };
+    }
   }
-  let best: Exclude<DateFormat, "serial"> | null = null;
+  let best: TextDateFormat | null = null;
   for (const f of TEXT_DATE_FORMATS) if (best === null || p.date[f] > p.date[best]) best = f;
   if (best && passes(p.date[best], p.n)) {
-    // Format durasi Excel ([h]:mm) diubah parser menjadi tanggal sekitar 1899-12-30.
-    if (best === "yyyy-mm-dd" && passes(p.duration, p.n)) {
-      return { type: "duration", dateFormat: best };
+    // Format durasi Excel ([h]:mm) hanya mungkin dari sel xlsx; CSV "1900-01-01" tetap tanggal.
+    if (source === "xlsx" && best === "yyyy-mm-dd" && passes(p.duration, p.n)) {
+      return { type: "duration" };
     }
     return { type: p.time[best] > 0 ? "timestamp" : "date", dateFormat: best };
   }
@@ -283,8 +375,8 @@ export function decide(p: Profile | undefined, source: SourceKind): Inferred {
 }
 
 /**
- * Ekspresi SQL kolom bertipe dari kolom raw `col` (VARCHAR). Teks dipertahankan apa adanya; tipe
- * lain dari nilai ter-trim. Gagal konversi → NULL.
+ * Ekspresi SQL kolom bertipe dari kolom raw `col` (VARCHAR). Teks dipertahankan apa adanya (sel berisi
+ * spasi saja → NULL, sama dengan profil); tipe lain dari nilai ter-trim. Gagal konversi → NULL.
  */
 export function typedExpr(col: string, s: Inferred): string {
   const raw = ident(col);
@@ -292,30 +384,28 @@ export function typedExpr(col: string, s: Inferred): string {
   const loc = s.numberLocale ?? "us";
   switch (s.type) {
     case "text":
-      return raw;
-    case "integer": {
-      const x = numExpr(v, loc);
-      return `CASE WHEN ${isInt(x)} THEN CAST(${x} AS BIGINT) END`;
-    }
+      return `CASE WHEN ${v} <> '' THEN ${raw} END`;
+    case "integer":
+      return intExpr(v, loc);
     case "decimal":
-      return numExpr(v, loc);
+      return decExpr(v, loc, s.float ?? false);
     case "boolean":
       return `CASE WHEN lower(${v}) IN (${BOOL_TRUE.map(lit).join(", ")}) THEN true WHEN lower(${v}) IN (${BOOL_FALSE.map(lit).join(", ")}) THEN false END`;
     case "duration": {
-      // Detik sejak epoch Excel (1899-12-30) = panjang durasi; sama dengan hitungan profil (< 1900-03-01).
-      const ts = strptime(v, "yyyy-mm-dd");
-      return `CASE WHEN ${ts} < TIMESTAMP '1900-03-01' THEN date_diff('second', TIMESTAMP '1899-12-30', ${ts}) END`;
+      // Detik sejak epoch Excel (1899-12-30) = panjang durasi.
+      const ts = dateExpr(v, "yyyy-mm-dd");
+      return `CASE WHEN ${isDuration(ts)} THEN date_diff('second', TIMESTAMP '1899-12-30', ${ts}) END`;
     }
     case "date":
     case "timestamp": {
       const f = s.dateFormat ?? "yyyy-mm-dd";
       if (f === "serial") {
-        const x = numExpr(v, "us");
+        const x = serialExpr(v);
         return s.type === "date"
           ? `CAST(DATE '1899-12-30' + CAST(floor(${x}) AS INTEGER) AS DATE)`
           : `TIMESTAMP '1899-12-30' + to_microseconds(CAST(round(${x} * 86400000000) AS BIGINT))`;
       }
-      const ts = strptime(v, f);
+      const ts = dateExpr(v, f);
       return s.type === "date" ? `CAST(${ts} AS DATE)` : ts;
     }
   }

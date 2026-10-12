@@ -56,7 +56,9 @@ export async function runExpireStaleUploads(): Promise<number> {
  */
 async function sweepUploaded(queue: Queue<IngestJobData>): Promise<number> {
   const versions = await prisma.datasetVersion.findMany({
-    where: { status: "UPLOADED" },
+    // INGESTING tahap "raw" tanpa job hidup: versi era T-006 (sebelum tahap typed) atau worker mati
+    // tepat setelah raw → diantrekan ulang (ingest idempoten) alih-alih digagalkan penyapu.
+    where: { OR: [{ status: "UPLOADED" }, { status: "INGESTING", ingestStage: "raw" }] },
     select: { id: true, datasetId: true },
     take: 1000,
   });

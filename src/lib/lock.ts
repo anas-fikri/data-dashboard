@@ -11,14 +11,19 @@ export interface LockStore {
   setNx(key: string, value: string, ttlMs: number): Promise<"OK" | null>;
   /** Hapus key hanya bila nilainya masih `value`; 1 = terhapus. */
   delIfEquals(key: string, value: string): Promise<number>;
+  /** Perpanjang TTL hanya bila nilainya masih `value`; 1 = diperpanjang. */
+  pexpireIfEquals(key: string, value: string, ttlMs: number): Promise<number>;
 }
 
 const RELEASE = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("DEL", KEYS[1]) else return 0 end`;
+const EXTEND = `if redis.call("GET", KEYS[1]) == ARGV[1] then return redis.call("PEXPIRE", KEYS[1], ARGV[2]) else return 0 end`;
 
 export function redisLockStore(r: Redis): LockStore {
   return {
     setNx: async (key, value, ttlMs) => (await r.set(key, value, "PX", ttlMs, "NX")) as "OK" | null,
     delIfEquals: async (key, value) => Number(await r.eval(RELEASE, 1, key, value)),
+    pexpireIfEquals: async (key, value, ttlMs) =>
+      Number(await r.eval(EXTEND, 1, key, value, String(Math.trunc(ttlMs)))),
   };
 }
 
@@ -34,4 +39,14 @@ export async function acquireLock(
 
 export async function releaseLock(store: LockStore, key: string, token: string): Promise<boolean> {
   return (await store.delIfEquals(key, token)) === 1;
+}
+
+/** Perpanjang lock milik `token`; false = lock sudah hilang (kedaluwarsa lalu diambil proses lain). */
+export async function extendLock(
+  store: LockStore,
+  key: string,
+  token: string,
+  ttlMs: number,
+): Promise<boolean> {
+  return (await store.pexpireIfEquals(key, token, ttlMs)) === 1;
 }

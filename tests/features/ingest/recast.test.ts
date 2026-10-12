@@ -16,17 +16,21 @@ const t = testRoot("ingest-recast");
 afterAll(t.cleanup);
 beforeEach(t.resetTmp);
 
-/** Redis palsu: SET NX + compare-and-delete. */
-function fakeLock(): LockStore & { held: Map<string, string> } {
+/** Redis palsu: SET NX + compare-and-delete/pexpire. `lose()` meniru lock kedaluwarsa lalu diambil lain. */
+function fakeLock(): LockStore & { held: Map<string, string>; lose(): void } {
   const held = new Map<string, string>();
   return {
     held,
+    lose: () => {
+      for (const k of held.keys()) held.set(k, "milik-proses-lain");
+    },
     setNx: async (key, value) => {
       if (held.has(key)) return null;
       held.set(key, value);
       return "OK";
     },
     delIfEquals: async (key, value) => (held.get(key) === value && held.delete(key) ? 1 : 0),
+    pexpireIfEquals: async (key, value) => (held.get(key) === value ? 1 : 0),
   };
 }
 
@@ -37,6 +41,7 @@ function recastRepo(repo: FakeRepo): RecastRepo {
       if (!s?.rawKey) return null;
       return {
         versionId: VID,
+        versionStatus: "READY",
         rawKey: s.rawKey,
         typedKey: s.typedKey ?? null,
         schemaRevision: s.schemaRevision ?? 0,
@@ -96,7 +101,7 @@ describe("recast", () => {
     ]);
     expect(outcomes.map((o) => o.outcome).sort()).toEqual(["busy", "done"]);
     expect(r.sheet()).toMatchObject({ schemaRevision: 2 });
-    expect(r.sheet().typedKey).toMatch(/typed-2\.parquet$/);
+    expect(r.sheet().typedKey).toMatch(/typed-2-[0-9a-f]{12}\.parquet$/);
     expect(has(r.storage, r.sheet().typedKey!)).toBe(true);
     expect(has(r.storage, typed1)).toBe(true);
     expect(r.deletes).toEqual([[typed1, OLD_TYPED_TTL_MS]]);
@@ -137,7 +142,7 @@ describe("recast", () => {
     };
     expect(await recastSheet(r.sheetId, {}, deps)).toEqual({ outcome: "stale" });
     expect(r.sheet().typedKey).toBe(before);
-    expect(r.storage.parquetKeys().some((k) => k.endsWith("typed-2.parquet"))).toBe(false);
+    expect(r.storage.parquetKeys().some((k) => k.includes("typed-2"))).toBe(false);
   });
 
   it("error di tengah → lock dilepas (recast berikutnya tidak 'busy')", async () => {
@@ -181,5 +186,70 @@ describe("recast", () => {
     expect(r.sheet().typedKey).toBe(before);
     expect(r.sheet().schemaRevision).toBe(1);
     expect(r.lock.held.size).toBe(0);
+  });
+
+  it("baseRevision usang → stale tanpa kerja (edit lama tidak menimpa edit baru)", async () => {
+    const r = await setup(DATA);
+    expect(await recastSheet(r.sheetId, { baseRevision: 1 }, r.deps)).toMatchObject({
+      outcome: "done",
+      revision: 2,
+    });
+    expect(await recastSheet(r.sheetId, { baseRevision: 1, columns: [] }, r.deps)).toEqual({
+      outcome: "stale",
+    });
+    expect(r.sheet().schemaRevision).toBe(2);
+  });
+
+  it("nama tampil ganda → invalid (referensi per nama di T-009 tetap unik)", async () => {
+    const r = await setup(DATA);
+    expect(
+      await recastSheet(r.sheetId, { columns: [{ pos: 2, name: "KODE" }] }, r.deps),
+    ).toMatchObject({ outcome: "invalid" });
+    expect(r.sheet().schemaRevision).toBe(1);
+  });
+
+  it("versi masih diproses → busy (typed-1 belum final)", async () => {
+    const r = await setup(DATA);
+    const deps: RecastDeps = {
+      ...r.deps,
+      repo: {
+        ...r.deps.repo,
+        loadSheet: async (id) => ({
+          ...(await r.deps.repo.loadSheet(id))!,
+          versionStatus: "INGESTING",
+        }),
+      },
+    };
+    expect(await recastSheet(r.sheetId, {}, deps)).toEqual({ outcome: "busy" });
+    expect(r.lock.held.size).toBe(0);
+  });
+
+  it("lock hilang di tengah → tidak mengganti pointer, file miliknya dihapus", async () => {
+    const r = await setup(DATA);
+    const before = r.sheet().typedKey;
+    r.lock.setNx = (async (key: string, value: string) => {
+      r.lock.held.set(key, value);
+      setTimeout(() => r.lock.lose(), 0);
+      return "OK";
+    }) as typeof r.lock.setNx;
+    const out = await recastSheet(r.sheetId, {}, { ...r.deps, renewMs: 1 });
+    expect(out).toEqual({ outcome: "busy" });
+    expect(r.sheet().typedKey).toBe(before);
+    expect(r.storage.parquetKeys().filter((k) => k.includes("typed-"))).toEqual([before]);
+  });
+
+  it("serial Excel di luar rentang → gagal dihitung, bukan error yang membatalkan recast (M7)", async () => {
+    const r = await setup(`tgl;n\n45000;1\n3000000000;2\n45001;3\n`);
+    const out = await recastSheet(
+      r.sheetId,
+      { columns: [{ pos: 1, type: "date", dateFormat: "serial" }] },
+      r.deps,
+    );
+    expect(out).toMatchObject({ outcome: "done" });
+    expect(r.sheet().schema![0]).toMatchObject({ type: "date", castFailCount: 1 });
+    const rows = await readParquet(join(r.storage.dir, r.sheet().typedKey!));
+    expect(
+      rows.map((x) => (x[1] === null ? null : (x[1] as Date).toISOString().slice(0, 10))),
+    ).toEqual(["2023-03-15", null, "2023-03-16"]);
   });
 });

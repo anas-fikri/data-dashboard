@@ -177,17 +177,13 @@ describe("kasus pelengkap", () => {
   });
 
   it("durasi Excel ([h]:mm, diubah parser menjadi tanggal 1899-12-3x) → detik", async () => {
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>lama</t></is></c></row>`;
+    for (let r = 2; r <= 6; r++) xml += `<row r="${r}"><c r="A${r}" s="2"><v>1.5</v></c></row>`;
     const { col } = await ingest(
-      t.file(
-        "durasi.csv",
-        csv(
-          ["lama"],
-          range(5, () => ["1899-12-31T12:00:00"]),
-        ),
-      ),
+      t.file("durasi.xlsx", await buildXlsx([{ name: "S", xml }], { dateStyle: true })),
     );
     expect(col("lama")).toMatchObject({ type: "duration", castFailCount: 0 });
-    expect(col("lama").values[0]).toBe(129_600n);
+    expect(col("lama").values[0]).toBe(129_600n); // 36 jam
   });
 
   it("statistik: nullPct dan distinctCount; header ikut nama tampil + asli", async () => {
@@ -206,35 +202,147 @@ describe("kasus pelengkap", () => {
   });
 });
 
+describe("regresi review T-007 (data salah diam-diam)", () => {
+  it("H1: tahun 2 digit '03/01/26' → 2026-01-03 (bukan tahun 0026)", async () => {
+    const { col } = await ingest(
+      t.file(
+        "yy.csv",
+        csv(
+          ["tgl"],
+          range(20, () => ["03/01/26"]),
+        ),
+      ),
+    );
+    expect(col("tgl")).toMatchObject({ type: "date", dateFormat: "dd/mm/yyyy", castFailCount: 0 });
+    expect((col("tgl").values[0] as Date).toISOString().slice(0, 10)).toBe("2026-01-03");
+  });
+
+  it("H2: 'dd-mm-yy' → tanggal, bukan durasi; tahun < 1000 tidak pernah diterima", async () => {
+    const { col } = await ingest(
+      t.file(
+        "dmyy.csv",
+        csv(
+          ["tgl"],
+          range(20, () => ["03-01-26"]),
+        ),
+      ),
+    );
+    expect(col("tgl")).toMatchObject({ type: "date", dateFormat: "dd-mm-yyyy" });
+    expect((col("tgl").values[0] as Date).toISOString().slice(0, 10)).toBe("2026-01-03");
+  });
+
+  it("format bertitik dan bersambung (alias profil unik): dd.mm.yyyy dan dd-mm-yyyy", async () => {
+    const { col } = await ingest(
+      t.file(
+        "pemisah.csv",
+        csv(
+          ["titik", "strip"],
+          range(20, () => ["13.01.2026", "14-01-2026"]),
+        ),
+      ),
+    );
+    expect(col("titik")).toMatchObject({
+      type: "date",
+      dateFormat: "dd.mm.yyyy",
+      castFailCount: 0,
+    });
+    expect(col("strip")).toMatchObject({
+      type: "date",
+      dateFormat: "dd-mm-yyyy",
+      castFailCount: 0,
+    });
+    expect((col("titik").values[0] as Date).toISOString().slice(0, 10)).toBe("2026-01-13");
+    expect((col("strip").values[0] as Date).toISOString().slice(0, 10)).toBe("2026-01-14");
+  });
+
+  it("H3: teks rupiah '15.000' di xlsx → ribuan ID (angka asli tidak pernah berakhir 0)", async () => {
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>harga</t></is></c></row>`;
+    const vals = ["15.000", "120.000", "7.500", "1.250.000"];
+    for (let r = 2; r <= 21; r++) {
+      xml += `<row r="${r}"><c r="A${r}" t="inlineStr"><is><t>${vals[r % 4]}</t></is></c></row>`;
+    }
+    const { col } = await ingest(t.file("rupiah.xlsx", await buildXlsx([{ name: "S", xml }])));
+    expect(col("harga")).toMatchObject({ type: "integer", numberLocale: "id", castFailCount: 0 });
+    expect(col("harga").values.slice(0, 4)).toEqual([7500n, 1250000n, 15000n, 120000n]);
+  });
+
+  it("M1: '0.500' bukan ribuan ID", async () => {
+    const { col } = await ingest(
+      t.file(
+        "nol.csv",
+        csv(
+          ["kg"],
+          range(20, (i) => [["0.500", "1.250", "2.750", "0.125"][i % 4]!]),
+        ),
+      ),
+    );
+    expect(col("kg")).toMatchObject({ type: "decimal", numberLocale: "us", castFailCount: 0 });
+    expect(col("kg").values.slice(0, 4)).toEqual([0.5, 1.25, 2.75, 0.125]);
+  });
+
+  it("M3: pecahan > 6 digit dan eksponen disimpan persis (DOUBLE), bukan dibulatkan/menjadi 0", async () => {
+    const { col } = await ingest(
+      t.file(
+        "presisi.csv",
+        csv(
+          ["kadar", "kecil"],
+          range(10, () => ["0.0000617", "1e-7"]),
+        ),
+      ),
+    );
+    expect(col("kadar")).toMatchObject({ type: "decimal", float: true, castFailCount: 0 });
+    expect(col("kadar").values[0]).toBe(0.0000617);
+    expect(col("kecil")).toMatchObject({ type: "decimal", float: true });
+    expect(col("kecil").values[0]).toBe(1e-7);
+  });
+
+  it("L2/L3: jam tanpa nol didepan konsisten dengan hitungan; sel spasi saja → NULL", async () => {
+    const { col } = await ingest(
+      t.file(
+        "konsisten.csv",
+        csv(
+          ["waktu", "catatan"],
+          range(10, (i) => [`2026-01-0${(i % 9) + 1} 1:2`, i === 0 ? "   " : `x${i}`]),
+        ),
+      ),
+    );
+    expect(col("waktu")).toMatchObject({ type: "timestamp", castFailCount: 0 });
+    expect((col("waktu").values[0] as Date).toISOString()).toBe("2026-01-01T01:02:00.000Z");
+    expect(col("catatan").values[0]).toBeNull();
+    expect(col("catatan").nullPct).toBe(0.1);
+  });
+});
+
 describe("decide (unit)", () => {
+  const zero = {
+    "yyyy-mm-dd": 0,
+    "dd/mm/yyyy": 0,
+    "dd-mm-yyyy": 0,
+    "dd.mm.yyyy": 0,
+    "yyyy/mm/dd": 0,
+    "mm/dd/yyyy": 0,
+  };
   const base: Profile = {
     col: "c1",
     n: 0,
     distinct: 0,
+    chars: 0,
     code: 0,
     idStrong: 0,
     usStrong: 0,
     idWeak: 0,
+    idText0: 0,
     intUs: 0,
-    decUs: 0,
     intId: 0,
+    numUs: 0,
+    numId: 0,
+    wideUs: 0,
+    wideId: 0,
+    decUs: 0,
     decId: 0,
-    date: {
-      "yyyy-mm-dd": 0,
-      "dd/mm/yyyy": 0,
-      "dd-mm-yyyy": 0,
-      "dd.mm.yyyy": 0,
-      "yyyy/mm/dd": 0,
-      "mm/dd/yyyy": 0,
-    },
-    time: {
-      "yyyy-mm-dd": 0,
-      "dd/mm/yyyy": 0,
-      "dd-mm-yyyy": 0,
-      "dd.mm.yyyy": 0,
-      "yyyy/mm/dd": 0,
-      "mm/dd/yyyy": 0,
-    },
+    serial: 0,
+    date: zero,
+    time: zero,
     duration: 0,
     bool: 0,
   };
@@ -245,17 +353,35 @@ describe("decide (unit)", () => {
   });
 
   it("CSV '1.234' (ambigu) → ID; xlsx → US", () => {
-    const p = { ...base, n: 10, idWeak: 10, intId: 10, decId: 10, decUs: 10 };
+    const p = { ...base, n: 10, idWeak: 10, intId: 10, numId: 10, decId: 10, numUs: 10, decUs: 10 };
     expect(decide(p, "csv")).toEqual({ type: "integer", numberLocale: "id" });
     expect(decide(p, "xlsx")).toEqual({ type: "decimal", numberLocale: "us" });
   });
 
   it("seri tanggal dd/mm vs mm/dd → hari di depan", () => {
-    const p = {
-      ...base,
-      n: 10,
-      date: { ...base.date, "dd/mm/yyyy": 10, "mm/dd/yyyy": 10 },
-    };
+    const p = { ...base, n: 10, date: { ...zero, "dd/mm/yyyy": 10, "mm/dd/yyyy": 10 } };
     expect(decide(p, "csv")).toEqual({ type: "date", dateFormat: "dd/mm/yyyy" });
+  });
+
+  it("satu nilai pecahan di antara bilangan bulat → desimal, bukan bulat dengan NULL (M2)", () => {
+    const p = { ...base, n: 100, intUs: 99, numUs: 100, decUs: 100 };
+    expect(decide(p, "csv")).toEqual({ type: "decimal", numberLocale: "us" });
+  });
+
+  it("pecahan > 6 digit / eksponen → disimpan DOUBLE (M3)", () => {
+    const p = { ...base, n: 10, numUs: 10, decUs: 0, wideUs: 10, usStrong: 10 };
+    expect(decide(p, "csv")).toEqual({ type: "decimal", numberLocale: "us", float: true });
+  });
+
+  it("kode ≤ 2% tidak menjadikan kolom angka teks; > 2% → teks (L1)", () => {
+    const p = { ...base, n: 1000, code: 1, intUs: 1000, numUs: 1000, decUs: 1000 };
+    expect(decide(p, "csv").type).toBe("integer");
+    expect(decide({ ...p, code: 30 }, "csv").type).toBe("text");
+  });
+
+  it("durasi hanya dari xlsx (CSV '1900-01-01' tetap tanggal) (H2)", () => {
+    const p = { ...base, n: 10, duration: 10, date: { ...zero, "yyyy-mm-dd": 10 } };
+    expect(decide(p, "xlsx")).toEqual({ type: "duration" });
+    expect(decide(p, "csv")).toEqual({ type: "date", dateFormat: "yyyy-mm-dd" });
   });
 });

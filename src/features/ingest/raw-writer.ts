@@ -13,6 +13,7 @@ import type { Duck } from "@/lib/duckdb";
 import { ident, lit, watched } from "@/lib/duckdb";
 import type { RawValue } from "@/lib/xlsx/types";
 import type { SampleRow } from "./header";
+import { rawText } from "./raw-text";
 
 export const BATCH_ROWS = 50_000;
 export const BATCH_CHARS = 32 * 1024 * 1024; // ± 64 MB UTF-16
@@ -46,6 +47,29 @@ export function dictionaryPageLimit(cols: number): number | null {
   return Math.max(16 * 1024, perCol);
 }
 
+/**
+ * Batas teks dalam satu potongan pemrosesan DuckDB (vektor 2.048 baris). Pipeline COPY/konversi
+ * menahan beberapa potongan sekaligus sehingga potongan besar tidak muat di memory_limit 1 GB
+ * (review T-007 M6). Diukur: 2.048 kolom × 40 karakter (± 172 juta per potongan) lolos raw + typed;
+ * × 48 karakter (± 205 juta) OOM. Data bisnis biasa hanya beberapa KB per baris.
+ */
+export const CHUNK_CHARS_MAX = 180_000_000;
+const VECTOR_ROWS = 2_048;
+
+/** Teks dalam satu potongan 2.048 baris dari rata-rata per baris (deterministik). */
+export function chunkChars(rows: number, totalChars: number): number {
+  return rows > 0 ? (Math.min(rows, VECTOR_ROWS) * totalChars) / rows : 0;
+}
+
+export class RowTooLargeError extends Error {
+  constructor(readonly avgRowChars: number) {
+    super(
+      `Baris di file ini terlalu besar untuk diproses (rata-rata ± ${Math.round(avgRowChars / 1000).toLocaleString("id-ID")} ribu karakter per baris). Hapus kolom yang tidak dipakai atau pindahkan teks panjang ke file lain, lalu unggah lagi.`,
+    );
+    this.name = "RowTooLargeError";
+  }
+}
+
 export class TooWideError extends Error {
   constructor(readonly cols: number) {
     super(
@@ -60,20 +84,20 @@ export function rowGroupSize(cols: number): number {
   return Math.max(2_048, Math.min(122_880, Math.floor(CELLS_PER_ROW_GROUP / Math.max(1, cols))));
 }
 
-const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+/** Batas karakter per row group: penulis (dan pembaca) Parquet menahan satu row group di memori. */
+const CHARS_PER_ROW_GROUP = 32 * 1024 * 1024;
 
-/** Nilai sel → teks raw. Tanggal naive ISO (D8): tanpa jam bila 00:00:00. */
-export function rawText(v: RawValue): string | null {
-  if (v === null || v === undefined) return null;
-  if (typeof v === "string") return v === "" ? null : v;
-  if (typeof v === "boolean") return v ? "TRUE" : "FALSE";
-  if (typeof v === "number") return Number.isFinite(v) ? String(v) : null;
-  const d = `${pad(v.getUTCFullYear(), 4)}-${pad(v.getUTCMonth() + 1)}-${pad(v.getUTCDate())}`;
-  const h = v.getUTCHours();
-  const m = v.getUTCMinutes();
-  const s = v.getUTCSeconds();
-  return h || m || s ? `${d}T${pad(h)}:${pad(m)}:${pad(s)}` : d;
+/**
+ * Row group menurut lebar dan rata-rata karakter per baris (deterministik untuk data yang sama).
+ * Sel panjang di sheet lebar membuat row group berbasis jumlah sel saja OOM (review T-007 M6).
+ */
+export function rowGroupFor(cols: number, avgRowChars: number): number {
+  const byChars =
+    avgRowChars > 0 ? Math.floor(CHARS_PER_ROW_GROUP / avgRowChars) : Number.POSITIVE_INFINITY;
+  return Math.max(64, Math.min(rowGroupSize(cols), byChars));
 }
+
+export { rawText };
 
 const colDefs = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, i) => `${ident(`c${from + i}`)} VARCHAR`).join(", ");
@@ -100,6 +124,8 @@ export class RawSheetWriter {
   private capacity = 0;
   private batchRows = 0;
   private batchChars = 0;
+  /** Total karakter yang ditulis (untuk ukuran row group). */
+  private totalChars = 0;
   rows = 0;
   readonly sample: SampleRow[] = [];
 
@@ -187,12 +213,14 @@ export class RawSheetWriter {
     }
     this.batchRows++;
     this.batchChars += chars;
+    this.totalChars += chars;
     if (this.batchRows >= (this.opts.batchLimit ?? BATCH_ROWS) || this.batchChars >= BATCH_CHARS) {
       await this.flush();
     }
   }
 
   async flush() {
+    this.checkRowSize();
     this.appender!.flushSync();
     this.batchRows = 0;
     this.batchChars = 0;
@@ -200,7 +228,15 @@ export class RawSheetWriter {
   }
 
   /** Tutup appender lalu tulis Parquet (kolom c1..c<lebar terpakai>); tabel dihapus setelahnya. */
+  /** Tolak lebih awal bila potongan data akan melampaui memori pemrosesan. */
+  private checkRowSize() {
+    if (chunkChars(this.rows, this.totalChars) > CHUNK_CHARS_MAX) {
+      throw new RowTooLargeError(this.totalChars / this.rows);
+    }
+  }
+
   async finish(path: string): Promise<void> {
+    this.checkRowSize();
     this.appender!.flushSync();
     this.appender!.closeSync();
     this.appender = null;
@@ -209,9 +245,10 @@ export class RawSheetWriter {
     await this.watched(() =>
       copyParquet(
         this.duck,
-        `SELECT _row, ${colList(cols)} FROM ${this.ref()} ORDER BY _row`,
+        `SELECT _row, ${colList(cols)} FROM ${this.ref()}`,
         path,
         cols,
+        rowGroupFor(cols + 1, this.rows ? this.totalChars / this.rows : 0),
       ),
     );
     await this.duck.conn.run(`DROP TABLE ${this.ref()}`);
@@ -228,7 +265,13 @@ export class RawSheetWriter {
 }
 
 /** COPY hasil query ke Parquet secara deterministik (1 thread, row group sesuai lebar, zstd). */
-export async function copyParquet(duck: Duck, select: string, path: string, cols: number) {
+export async function copyParquet(
+  duck: Duck,
+  select: string,
+  path: string,
+  cols: number,
+  rowGroup = rowGroupSize(cols),
+) {
   // RESET mengembalikan ke default sistem (semua core), bukan batas D7 — simpan dan pulihkan.
   const prev = (
     await duck.conn.runAndReadAll("SELECT current_setting('threads') AS t")
@@ -237,7 +280,7 @@ export async function copyParquet(duck: Duck, select: string, path: string, cols
   const dict = dictionaryPageLimit(cols);
   try {
     await duck.conn.run(
-      `COPY (${select}) TO ${lit(path)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE ${rowGroupSize(cols)}${dict === null ? "" : `, STRING_DICTIONARY_PAGE_SIZE_LIMIT ${dict}`})`,
+      `COPY (${select}) TO ${lit(path)} (FORMAT parquet, COMPRESSION zstd, ROW_GROUP_SIZE ${Math.trunc(rowGroup)}${dict === null ? "" : `, STRING_DICTIONARY_PAGE_SIZE_LIMIT ${dict}`})`,
     );
   } finally {
     await duck.conn.run(`SET threads = ${Number(prev)}`);

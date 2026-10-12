@@ -92,6 +92,14 @@ export const prismaIngestRepo: IngestRepo = {
 
   async finish(versionId, d) {
     return prisma.$transaction(async (tx) => {
+      // Kunci baris Dataset lebih dulu, urutan yang sama dengan hapus dataset (Dataset → versi lewat
+      // cascade); urutan terbalik bisa deadlock bila keduanya berjalan bersamaan.
+      const owner = await tx.datasetVersion.findUnique({
+        where: { id: versionId },
+        select: { datasetId: true },
+      });
+      if (!owner) return false;
+      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${owner.datasetId} FOR UPDATE`;
       const r = await tx.datasetVersion.updateMany({
         where: { id: versionId, status: "INGESTING" },
         data: {
@@ -103,11 +111,10 @@ export const prismaIngestRepo: IngestRepo = {
         },
       });
       if (r.count === 0) return false;
-      const v = await tx.datasetVersion.findUniqueOrThrow({
-        where: { id: versionId },
-        select: { datasetId: true },
+      await tx.dataset.update({
+        where: { id: owner.datasetId },
+        data: { activeVersionId: versionId },
       });
-      await tx.dataset.update({ where: { id: v.datasetId }, data: { activeVersionId: versionId } });
       return true;
     });
   },
@@ -143,12 +150,13 @@ export const prismaRecastRepo: RecastRepo = {
         colCount: true,
         columns: true,
         schema: true,
-        version: { select: { sourceKey: true } },
+        version: { select: { sourceKey: true, status: true } },
       },
     });
     if (!s?.rawKey) return null;
     return {
       versionId: s.versionId,
+      versionStatus: s.version.status,
       rawKey: s.rawKey,
       typedKey: s.typedKey,
       schemaRevision: s.schemaRevision,

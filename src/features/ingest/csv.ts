@@ -10,7 +10,7 @@
  *   5. _row = nomor fisik (termasuk baris kosong, seperti Excel): rowid r0, ditambah offset baris
  *      kosong kumulatif (ASOF JOIN sempit + POSITIONAL JOIN) bila ada.
  */
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, statSync } from "node:fs";
 import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { Transform } from "node:stream";
@@ -19,7 +19,16 @@ import { ident, lit, watched as watchQuery, type Duck } from "@/lib/duckdb";
 import { CsvFormatError, rejectUtf16, scanCsv, sniffDelimiter } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type SampleRow } from "./header";
 import type { SheetRecord } from "./ingest";
-import { MAX_RAW_COLS, SAMPLE_ROWS, WIDE_COLS, copyParquet } from "./raw-writer";
+import {
+  CHUNK_CHARS_MAX,
+  MAX_RAW_COLS,
+  RowTooLargeError,
+  SAMPLE_ROWS,
+  WIDE_COLS,
+  chunkChars,
+  copyParquet,
+  rowGroupFor,
+} from "./raw-writer";
 
 export const CSV_MAX_CELL = 32_767;
 const MAX_LINE = 8 * 1024 * 1024;
@@ -84,6 +93,11 @@ export async function csvToParquet(
   const delimiter = sniffDelimiter(head);
   const scan = await scanCsv(src, delimiter, MAX_RAW_COLS);
   if (scan.records === 0) throw new CsvFormatError("File CSV tidak berisi data.");
+  // Byte ≥ karakter: perkiraan atas dari ukuran file, sebelum pekerjaan berat dimulai.
+  const bytes = statSync(src).size;
+  if (chunkChars(scan.records, bytes) > CHUNK_CHARS_MAX) {
+    throw new RowTooLargeError(bytes / scan.records);
+  }
   onEstimate(scan.records);
 
   let path = src;
@@ -190,9 +204,14 @@ export async function csvToParquet(
   await watched(() =>
     copyParquet(
       duck,
-      `SELECT _row, ${cols.map((c) => `left(${ident(c)}, ${CSV_MAX_CELL}) AS ${ident(c)}`).join(", ")} FROM s0 ORDER BY _row`,
+      // Proyeksi left() menyalin semua string (satu potongan data lagi di memori); hanya bila ada sel
+      // yang memang perlu dipotong. Tabel lebar ber-sel panjang OOM karenanya (review T-007 M6).
+      truncated > 0
+        ? `SELECT _row, ${cols.map((c) => `left(${ident(c)}, ${CSV_MAX_CELL}) AS ${ident(c)}`).join(", ")} FROM s0`
+        : "SELECT * FROM s0",
       out,
       n,
+      rowGroupFor(n + 1, statSync(path).size / Math.max(1, scan.records)),
     ),
   );
   await duck.conn.run("DROP VIEW s0");

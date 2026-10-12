@@ -44,9 +44,13 @@ export async function deletePrefix(prefix: string): Promise<number> {
   return deleted;
 }
 
-/** Hapus satu objek Parquet (typed revisi lama, T-007). Tidak ada → tetap sukses (S3 idempoten). */
+/** typed-<rev>[-<token>].parquet di prefix sheet sebuah versi (raw.parquet tidak pernah cocok). */
+const TYPED_KEY =
+  /^parquet\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\/typed-\d+(-[0-9a-f]{12})?\.parquet$/;
+
+/** Hapus satu typed.parquet revisi lama (T-007). Tidak ada → tetap sukses (S3 idempoten). */
 export async function deleteObject(key: string): Promise<void> {
-  if (!key.startsWith("parquet/") || key.includes("..")) throw new Error("kunci objek tidak valid");
+  if (!TYPED_KEY.test(key)) throw new Error("kunci objek tidak valid");
   await s3Internal().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 

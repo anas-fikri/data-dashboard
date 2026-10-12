@@ -2,7 +2,15 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { permanentMessage, runIngest } from "@/features/ingest/ingest";
-import { MAX_RAW_COLS, RawSheetWriter, dictionaryPageLimit } from "@/features/ingest/raw-writer";
+import {
+  CHUNK_CHARS_MAX,
+  MAX_RAW_COLS,
+  RawSheetWriter,
+  RowTooLargeError,
+  chunkChars,
+  dictionaryPageLimit,
+  rowGroupFor,
+} from "@/features/ingest/raw-writer";
 import { openDuck } from "@/lib/duckdb";
 import type { RawValue } from "@/lib/xlsx/types";
 import { buildXlsx, colLetter, readParquet, testRoot, VID } from "./fakes";
@@ -145,4 +153,24 @@ describe("watchdog saat tabel melebar (review putaran 3, N2)", () => {
       duck.close();
     }
   }, 60_000);
+});
+
+describe("batas ukuran baris (review T-007 M6)", () => {
+  it("potongan 2.048 baris dihitung dari rata-rata; > batas → ditolak dengan pesan permanen", () => {
+    // 2.048 kolom × 40 karakter (± 84 ribu per baris, lolos diuji di 1 GB) diterima;
+    // 2.048 kolom × 48 karakter (± 98 ribu, OOM di tahap typed) ditolak lebih awal.
+    expect(chunkChars(4_000, 4_000 * 2_048 * 41)).toBeLessThan(CHUNK_CHARS_MAX);
+    expect(chunkChars(4_000, 4_000 * 2_048 * 49)).toBeGreaterThan(CHUNK_CHARS_MAX);
+    // Sheet kecil: hanya baris yang ada yang ikut satu potongan.
+    expect(chunkChars(100, 100 * 1_000_000)).toBe(100_000_000);
+    const e = new RowTooLargeError(98_000);
+    expect(permanentMessage(e)).toMatch(/rata-rata ± 98 ribu karakter per baris/);
+  });
+
+  it("row group dibatasi juga oleh karakter per baris", () => {
+    expect(rowGroupFor(31, 0)).toBe(122_880);
+    expect(rowGroupFor(31, 600)).toBe(55_924);
+    expect(rowGroupFor(2_049, 131_072)).toBe(256);
+    expect(rowGroupFor(10, 10_000_000)).toBe(64);
+  });
 });

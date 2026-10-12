@@ -200,7 +200,8 @@ export async function readParquet(path: string): Promise<unknown[][]> {
 
 /**
  * xlsx minimal dari XML sheetData per sheet. dateStyle: tambah styles.xml dengan cellXfs[1] =
- * numFmtId 14 (tanggal bawaan Excel), sehingga sel `s="1"` berisi nomor seri terbaca sebagai tanggal.
+ * numFmtId 14 (tanggal bawaan Excel) dan cellXfs[2] = format kustom "[h]:mm" (durasi), sehingga sel
+ * `s="1"`/`s="2"` berisi nomor seri terbaca sebagai tanggal.
  */
 export async function buildXlsx(
   sheets: { name: string; xml: string }[],
@@ -226,7 +227,7 @@ export async function buildXlsx(
   if (opts.dateStyle) {
     add(
       "xl/styles.xml",
-      `<?xml version="1.0"?><styleSheet xmlns="${NS}"><cellXfs count="2"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/></cellXfs></styleSheet>`,
+      `<?xml version="1.0"?><styleSheet xmlns="${NS}"><numFmts count="1"><numFmt numFmtId="164" formatCode="[h]:mm"/></numFmts><cellXfs count="3"><xf numFmtId="0"/><xf numFmtId="14" applyNumberFormat="1"/><xf numFmtId="164" applyNumberFormat="1"/></cellXfs></styleSheet>`,
     );
   }
   sheets.forEach((s, i) =>

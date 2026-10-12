@@ -3,6 +3,7 @@
  * baris header dan dibentuk nama kolom. Fungsi murni (dipakai worker dan diuji unit).
  */
 import type { RawValue } from "@/lib/xlsx/types";
+import { rawText } from "./raw-text";
 
 export interface SampleRow {
   row: number;
@@ -62,11 +63,15 @@ export function guessHeaderRow(sample: SampleRow[]): number {
   return best?.row ?? (sample.find((r) => filled(r) >= minFilled) ?? sample[0]!).row;
 }
 
-/** Bentuk teks asli sebuah nilai header. */
+/** Panjang maksimum nama asli yang disimpan. */
+const ORIGINAL_MAX = 256;
+
+/**
+ * Bentuk teks asli sebuah nilai header: sama dengan teks di raw.parquet (rawText), sehingga nama dari
+ * parser (ingest) dan dari raw (recast saat baris header diganti) identik (review T-007 L9).
+ */
 export function headerText(v: RawValue): string {
-  if (v === null || v === undefined) return "";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
-  return String(v);
+  return (rawText(v) ?? "").slice(0, ORIGINAL_MAX);
 }
 
 /**

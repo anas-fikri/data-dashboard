@@ -95,7 +95,8 @@ export async function recoverStuckIngests(queue: Queue<IngestJobData>): Promise<
 export function removeStaleWorkDirs(tmpRoot: string): number {
   let n = 0;
   for (const name of readdirSync(tmpRoot)) {
-    if (!name.startsWith("ingest-")) continue;
+    // ingest-* (runIngest) dan recast-* (recastSheet): keduanya bisa berisi raw/typed/temp DuckDB GB.
+    if (!name.startsWith("ingest-") && !name.startsWith("recast-")) continue;
     rmSync(join(tmpRoot, name), { recursive: true, force: true });
     n++;
   }

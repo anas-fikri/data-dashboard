@@ -16,7 +16,7 @@ import { csvToParquet } from "./csv";
 import { CsvFormatError } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
-import { RawSheetWriter, TooWideError } from "./raw-writer";
+import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import { writeTyped } from "./typed";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
@@ -107,7 +107,7 @@ export type IngestOutcome =
   | { outcome: "skipped" }
   | { outcome: "failed"; message: string };
 
-class DeadlineError extends Error {}
+export class DeadlineError extends Error {}
 
 const PARQUET = "application/vnd.apache.parquet";
 
@@ -116,7 +116,12 @@ export const versionParquetPrefix = (datasetId: string, versionId: string) =>
 
 /** Pesan user untuk kegagalan permanen; null = sementara (diulang BullMQ). */
 export function permanentMessage(e: unknown): string | null {
-  if (e instanceof XlsxLimitError || e instanceof CsvFormatError || e instanceof TooWideError) {
+  if (
+    e instanceof XlsxLimitError ||
+    e instanceof CsvFormatError ||
+    e instanceof TooWideError ||
+    e instanceof RowTooLargeError
+  ) {
     return e.message;
   }
   if (e instanceof DeadlineError) {
