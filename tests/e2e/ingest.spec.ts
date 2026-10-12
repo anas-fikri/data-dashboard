@@ -4,7 +4,10 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
 
-/* T-006: unggah dari UI → worker sungguhan (proses terpisah) → raw.parquet per sheet di storage. */
+/*
+ * T-006/T-007: unggah dari UI → worker sungguhan (proses terpisah) → raw.parquet + typed-1.parquet per
+ * sheet di storage, versi READY dan aktif.
+ */
 test.describe.configure({ mode: "serial" });
 
 const OWNER = uniqueEmail("ing-owner");
@@ -38,7 +41,7 @@ async function uploadAndWait(
     .poll(
       () => {
         info = fx("ingest", versionId);
-        return info.ingestStage === "raw" || info.status === "FAILED" ? "selesai" : "proses";
+        return info.status === "READY" || info.status === "FAILED" ? "selesai" : "proses";
       },
       { timeout: 90_000, intervals: [500] },
     )
@@ -72,7 +75,7 @@ test.describe("ingest", () => {
     worker?.kill("SIGTERM");
   });
 
-  test("xlsx 3 sheet → raw.parquet per sheet di storage, headerRow 4, SHA-256 tersimpan", async ({
+  test("xlsx 3 sheet → raw + typed per sheet, headerRow 4, SHA-256, versi READY aktif", async ({
     page,
   }) => {
     test.setTimeout(120_000);
@@ -80,13 +83,21 @@ test.describe("ingest", () => {
     await createDataset(page, "Ingest Tiga Sheet");
     const file = "tests/fixtures/tiga-sheet.xlsx";
     const { info } = await uploadAndWait(page, file);
-    expect(info).toMatchObject({ status: "INGESTING", ingestStage: "raw", errorMessage: null });
+    expect(info).toMatchObject({
+      status: "READY",
+      ingestStage: "typed",
+      active: true,
+      errorMessage: null,
+    });
     expect(info.sha256).toBe(createHash("sha256").update(readFileSync(file)).digest("hex"));
     const sheets = info.sheets as {
       name: string;
       headerRow: number;
       rawRows: number;
       rawKey: string;
+      typedKey: string;
+      schemaRevision: number;
+      types: string[];
     }[];
     expect(sheets.map((s) => s.name)).toEqual(["Pengiriman 1", "Pengiriman 2", "Pengiriman 3"]);
     const want = (
@@ -96,17 +107,24 @@ test.describe("ingest", () => {
     ).sheets.map((s) => s.nonEmptyRows);
     expect(sheets.map((s) => s.headerRow)).toEqual([4, 4, 4]);
     expect(sheets.map((s) => s.rawRows)).toEqual(want);
-    expect([...(info.objects as string[])].sort()).toEqual(sheets.map((s) => s.rawKey).sort());
+    expect(sheets.map((s) => s.schemaRevision)).toEqual([1, 1, 1]);
+    expect(sheets.every((s) => s.types.length > 0)).toBe(true);
+    expect([...(info.objects as string[])].sort()).toEqual(
+      sheets.flatMap((s) => [s.rawKey, s.typedKey]).sort(),
+    );
+    // Halaman profil tidak lagi "Memproses": versi aktif siap dipakai.
+    await page.reload();
+    await expect(page.getByTestId("dataset-status")).toContainText("Siap");
   });
 
-  test("CSV Windows-1252 titik koma → satu sheet raw", async ({ page }) => {
+  test("CSV Windows-1252 titik koma → satu sheet raw + typed", async ({ page }) => {
     test.setTimeout(120_000);
     await apiLogin(page, OWNER);
     await createDataset(page, "Ingest CSV Lama");
     const { info } = await uploadAndWait(page, "tests/fixtures/kecil-win1252.csv");
-    expect(info).toMatchObject({ ingestStage: "raw" });
+    expect(info).toMatchObject({ status: "READY", ingestStage: "typed" });
     expect((info.sheets as { colCount: number }[])[0]!.colCount).toBe(10);
-    expect((info.objects as string[]).length).toBe(1);
+    expect((info.objects as string[]).length).toBe(2);
   });
 
   test("xlsx berisi DOCTYPE → FAILED dengan pesan di halaman, tanpa objek parquet", async ({

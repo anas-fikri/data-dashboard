@@ -2,7 +2,8 @@
  * Proses worker terpisah dari app (flow-kerja B1). Antrean:
  *   - "ingest": file unggahan → raw.parquet per sheet (T-006). Concurrency 1 per proses (D7); lock job
  *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih.
- *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED).
+ *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock).
+ *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet) dan hapus typed lama.
  * Jalankan: npm run worker (tsx dengan kondisi react-server agar modul "server-only" bisa dimuat).
  */
 import { mkdirSync } from "node:fs";
@@ -10,22 +11,32 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
-import { runIngest } from "@/features/ingest/ingest";
+import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
+import { recastSheet } from "@/features/ingest/recast";
 import {
   finalizeFailed,
   recoverStuckIngests,
   removeStaleWorkDirs,
 } from "@/features/ingest/recovery";
-import { prismaIngestRepo, s3IngestStorage } from "@/features/ingest/repo";
+import { prismaIngestRepo, prismaRecastRepo, s3IngestStorage } from "@/features/ingest/repo";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { INGEST_JOB_OPTIONS, INGEST_QUEUE, type IngestJobData } from "@/lib/queue/connection";
+import { redisLockStore } from "@/lib/lock";
+import {
+  INGEST_JOB_OPTIONS,
+  INGEST_QUEUE,
+  RECAST_QUEUE,
+  type IngestJobData,
+  type RecastJobData,
+} from "@/lib/queue/connection";
+import { deleteObject } from "@/lib/storage/objects";
 
 const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
 const RECOVER_INGESTS = "recover-stuck-ingests";
+const DELETE_OBJECT = "delete-object";
 const INGEST_LOCK_MS = 5 * 60 * 1000;
 
 /** Tandai semua unggahan > 24 jam sebagai FAILED (per batch 100 sampai habis). */
@@ -95,6 +106,10 @@ async function main() {
       if (job.name === EXPIRE_UPLOADS) return { expired: await runExpireStaleUploads() };
       if (job.name === RECOVER_INGESTS)
         return { recovered: await recoverStuckIngests(ingestQueue) };
+      if (job.name === DELETE_OBJECT) {
+        await deleteObject(String((job.data as { key: string }).key));
+        return null;
+      }
       logger.warn({ jobName: job.name }, "job maintenance tidak dikenal");
       return null;
     },
@@ -145,17 +160,66 @@ async function main() {
     })();
   });
 
+  // --- recast ---
+  const lockRedis = connection();
+  const recastWorker = new Worker<RecastJobData>(
+    RECAST_QUEUE,
+    async (job: Job<RecastJobData>) => {
+      const { sheetId, input } = job.data;
+      const r = await recastSheet(sheetId, input, {
+        repo: prismaRecastRepo,
+        storage: s3IngestStorage,
+        lock: redisLockStore(lockRedis),
+        scheduleDelete: async (key, delay) => {
+          await maintenance.add(
+            DELETE_OBJECT,
+            { key },
+            {
+              delay,
+              removeOnComplete: 100,
+              removeOnFail: 1000,
+              attempts: 5,
+              backoff: { type: "exponential", delay: 60_000 },
+            },
+          );
+        },
+        tmpRoot,
+        watch: async () => {
+          if ((await prisma.sheet.count({ where: { id: sheetId } })) === 0) {
+            throw new DatasetGoneError();
+          }
+        },
+      });
+      logger.info({ jobId: job.id, sheetId, ...r, schema: undefined }, "recast selesai");
+      // Recast lain sedang memegang lock sheet ini → ulang nanti (perubahan user tidak dibuang).
+      if (r.outcome === "busy") throw new Error("recast lain sedang berjalan untuk sheet ini");
+      return r.outcome === "done" ? { outcome: r.outcome, revision: r.revision } : r;
+    },
+    { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS },
+  );
+  recastWorker.on("failed", (job, err) =>
+    logger.error({ jobId: job?.id, sheetId: job?.data.sheetId, err: err.message }, "recast gagal"),
+  );
+
   const swept = await sweepUploaded(ingestQueue);
   const recovered = await recoverStuckIngests(ingestQueue);
   logger.info(
-    { queues: [INGEST_QUEUE, MAINTENANCE], tmpRoot, swept, recovered, staleDirs: stale },
+    {
+      queues: [INGEST_QUEUE, RECAST_QUEUE, MAINTENANCE],
+      tmpRoot,
+      swept,
+      recovered,
+      staleDirs: stale,
+    },
     "worker berjalan",
   );
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "worker berhenti");
     await ingestWorker.close();
+    await recastWorker.close();
     await maintenanceWorker.close();
+    lockRedis.disconnect();
     await ingestQueue.close();
     await maintenance.close();
     await prisma.$disconnect();

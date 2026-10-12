@@ -39,7 +39,8 @@ export class FakeStorage implements IngestStorage {
   failUploadOnce: number | null = null;
   private uploads = 0;
   async download(key: string, dest: string) {
-    copyFileSync(this.sources[key]!, dest);
+    // Sumber unggahan, atau objek yang sudah diunggah (recast mengunduh raw.parquet).
+    copyFileSync(this.sources[key] ?? join(this.dir, key), dest);
     const buf = readFileSync(dest);
     return { sha256: createHash("sha256").update(buf).digest("hex"), bytes: buf.length };
   }

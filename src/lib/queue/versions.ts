@@ -1,6 +1,7 @@
 import "server-only";
 import { logger } from "@/lib/logger";
-import { ingestQueue, withQueueTimeout } from "./connection";
+import type { RecastInput } from "@/features/ingest/recast";
+import { ingestQueue, recastQueue, withQueueTimeout } from "./connection";
 
 /** Masukkan versi ke antrean ingest. jobId = versionId sehingga enqueue ulang tidak menggandakan job. */
 export async function enqueueIngest(versionId: string, datasetId?: string): Promise<void> {
@@ -9,6 +10,19 @@ export async function enqueueIngest(versionId: string, datasetId?: string): Prom
     "enqueue ingest",
   );
   logger.info({ versionId }, "job ingest masuk antrean");
+}
+
+/**
+ * Masukkan recast sheet ke antrean (T-008: simpan koreksi skema). Recast berurutan per sheet lewat
+ * lock di worker; job yang mendapat "busy" diulang dengan backoff.
+ */
+export async function enqueueRecast(sheetId: string, input: RecastInput): Promise<string> {
+  const job = await withQueueTimeout(
+    recastQueue().add("recast", { sheetId, input }),
+    "enqueue recast",
+  );
+  logger.info({ sheetId, jobId: job.id }, "job recast masuk antrean");
+  return String(job.id);
 }
 
 /**

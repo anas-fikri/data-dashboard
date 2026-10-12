@@ -10,11 +10,15 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3100",
     trace: "retain-on-failure",
   },
-  // Spec rate limit mengisi bucket login IP 'local' (dev tanpa proxy): jalankan setelah semua spec
-  // lain selesai, apa pun jumlah worker-nya (urutan nama file tidak menjamin ini saat paralel).
+  // Urutan antar-project dijamin lewat dependencies (urutan nama file tidak menjamin saat paralel):
+  //  - ingest: menyalakan worker sungguhan yang mengambil semua job di antrean; bila berjalan bersama
+  //    spec lain, job milik spec unggah ikut diproses (status bukan lagi UPLOADED) dan beban DuckDB
+  //    memperlambat server;
+  //  - rate-limit: mengisi bucket login IP 'local' (dev tanpa proxy), jadi paling akhir.
   projects: [
-    { name: "e2e", testIgnore: /zz-rate-limit\.spec\.ts$/ },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["e2e"] },
+    { name: "e2e", testIgnore: [/zz-rate-limit\.spec\.ts$/, /ingest\.spec\.ts$/] },
+    { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["ingest"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

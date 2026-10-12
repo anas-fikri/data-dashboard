@@ -128,7 +128,10 @@ try {
     // a = versionId: status ingest + metadata sheet + jumlah objek parquet versi
     const v = await prisma.datasetVersion.findUnique({
       where: { id: a },
-      include: { sheets: { orderBy: { index: "asc" } } },
+      include: {
+        sheets: { orderBy: { index: "asc" } },
+        dataset: { select: { activeVersionId: true } },
+      },
     });
     if (!v) {
       console.log(JSON.stringify({ exists: false }));
@@ -141,6 +144,7 @@ try {
           exists: true,
           status: v.status,
           ingestStage: v.ingestStage,
+          active: v.dataset.activeVersionId === v.id,
           errorMessage: v.errorMessage,
           sha256: v.sha256,
           progress: v.progress,
@@ -150,6 +154,9 @@ try {
             rawRows: s.rawRows,
             colCount: s.colCount,
             rawKey: s.rawKey,
+            typedKey: s.typedKey,
+            schemaRevision: s.schemaRevision,
+            types: Array.isArray(s.schema) ? s.schema.map((c) => `${c.name}:${c.type}`) : [],
           })),
           objects: (listed.Contents ?? []).map((o) => o.Key),
         }),

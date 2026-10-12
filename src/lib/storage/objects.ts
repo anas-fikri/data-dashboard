@@ -1,5 +1,9 @@
 import "server-only";
-import { DeleteObjectsCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import {
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  ListObjectsV2Command,
+} from "@aws-sdk/client-s3";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { abortMultipartUnder } from "@/lib/storage/multipart";
@@ -38,6 +42,12 @@ export async function deletePrefix(prefix: string): Promise<number> {
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (token);
   return deleted;
+}
+
+/** Hapus satu objek Parquet (typed revisi lama, T-007). Tidak ada → tetap sukses (S3 idempoten). */
+export async function deleteObject(key: string): Promise<void> {
+  if (!key.startsWith("parquet/") || key.includes("..")) throw new Error("kunci objek tidak valid");
+  await s3Internal().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
 /**

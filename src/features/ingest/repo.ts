@@ -3,7 +3,10 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deletePrefix } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
+import type { ColumnMeta } from "./header";
+import type { ColumnSchema } from "./infer";
 import { DatasetGoneError, type IngestRepo, type IngestStorage } from "./ingest";
+import type { RecastRepo } from "./recast";
 
 /** Implementasi Prisma untuk ingest (worker). Semua update dijaga status agar idempoten. */
 export const prismaIngestRepo: IngestRepo = {
@@ -125,4 +128,49 @@ export const s3IngestStorage: IngestStorage = {
   download: downloadToFile,
   upload: uploadFile,
   deletePrefix,
+};
+
+export const prismaRecastRepo: RecastRepo = {
+  async loadSheet(sheetId) {
+    const s = await prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: {
+        versionId: true,
+        rawKey: true,
+        typedKey: true,
+        schemaRevision: true,
+        headerRow: true,
+        colCount: true,
+        columns: true,
+        schema: true,
+        version: { select: { sourceKey: true } },
+      },
+    });
+    if (!s?.rawKey) return null;
+    return {
+      versionId: s.versionId,
+      rawKey: s.rawKey,
+      typedKey: s.typedKey,
+      schemaRevision: s.schemaRevision,
+      headerRow: s.headerRow,
+      colCount: s.colCount,
+      columns: s.columns as unknown as ColumnMeta[],
+      schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
+      source: s.version.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
+    };
+  },
+
+  async swapTyped(sheetId, expectedRevision, next) {
+    const r = await prisma.sheet.updateMany({
+      where: { id: sheetId, schemaRevision: expectedRevision },
+      data: {
+        typedKey: next.typedKey,
+        schema: next.schema as unknown as Prisma.InputJsonValue,
+        schemaRevision: next.schemaRevision,
+        headerRow: next.headerRow,
+        columns: next.columns as unknown as Prisma.InputJsonValue,
+      },
+    });
+    return r.count > 0;
+  },
 };

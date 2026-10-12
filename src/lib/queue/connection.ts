@@ -3,8 +3,11 @@ import { Queue } from "bullmq";
 import Redis from "ioredis";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import type { RecastInput } from "@/features/ingest/recast";
 
 export const INGEST_QUEUE = "ingest";
+/** Recast typed.parquet per sheet (T-007; dipicu koreksi skema T-008). */
+export const RECAST_QUEUE = "recast";
 /** Batas waktu satu operasi antrean dari app (enqueue/batal) agar permintaan user tidak menggantung. */
 export const QUEUE_OP_TIMEOUT_MS = 5_000;
 
@@ -22,19 +25,34 @@ export const INGEST_JOB_OPTIONS = {
   removeOnFail: { count: 5000 },
 };
 
-const globalForQueue = globalThis as unknown as {
-  ingestQueueHolder?: { queue: Queue<IngestJobData>; connection: Redis };
-};
+export interface RecastJobData {
+  sheetId: string;
+  input: RecastInput;
+}
 
 /**
- * Antrean ingest (produsen). Koneksi Redis terpisah dari cache/rate limit. Reconnect tanpa batas
+ * Opsi job recast. "busy" (recast lain sedang memegang lock sheet) dilempar sebagai error agar
+ * diulang, sehingga perubahan user tidak hilang.
+ */
+export const RECAST_JOB_OPTIONS = {
+  attempts: 6,
+  backoff: { type: "exponential" as const, delay: 10_000 },
+  removeOnComplete: { count: 1000 },
+  removeOnFail: { count: 5000 },
+};
+
+type Holder = { queue: Queue; connection: Redis };
+const globalForQueue = globalThis as unknown as { queueHolders?: Map<string, Holder> };
+
+/**
+ * Antrean produsen (app). Koneksi Redis terpisah dari cache/rate limit. Reconnect tanpa batas
  * (jeda ≤ 5 s) sehingga antrean pulih sendiri setelah Redis mati berapa lama pun (review T-004 #1);
  * bila koneksi tetap berakhir ("end"), antrean dibangun ulang pada pemakaian berikutnya.
- * jobId = versionId → enqueue idempoten; worker (T-006) memproses 1 job per proses.
  */
-export function ingestQueue(): Queue<IngestJobData> {
-  const cached = globalForQueue.ingestQueueHolder;
-  if (cached && cached.connection.status !== "end") return cached.queue;
+function producerQueue<T>(name: string, defaultJobOptions: object): Queue<T> {
+  const holders = (globalForQueue.queueHolders ??= new Map());
+  const cached = holders.get(name);
+  if (cached && cached.connection.status !== "end") return cached.queue as unknown as Queue<T>;
   if (cached) void cached.queue.close().catch(() => {});
 
   const connection = new Redis(env().REDIS_URL, {
@@ -44,12 +62,18 @@ export function ingestQueue(): Queue<IngestJobData> {
     retryStrategy: (times) => Math.min(200 * times, 5000),
   });
   connection.on("error", (e: Error) => logger.warn({ err: e.message }, "redis antrean error"));
-  const queue = new Queue<IngestJobData>(INGEST_QUEUE, {
-    connection,
-    defaultJobOptions: INGEST_JOB_OPTIONS,
-  });
-  globalForQueue.ingestQueueHolder = { queue, connection };
-  return queue;
+  const queue = new Queue(name, { connection, defaultJobOptions });
+  holders.set(name, { queue, connection });
+  return queue as unknown as Queue<T>;
+}
+
+/** Antrean ingest: jobId = versionId → enqueue idempoten; worker memproses 1 job per proses. */
+export function ingestQueue(): Queue<IngestJobData> {
+  return producerQueue<IngestJobData>(INGEST_QUEUE, INGEST_JOB_OPTIONS);
+}
+
+export function recastQueue(): Queue<RecastJobData> {
+  return producerQueue<RecastJobData>(RECAST_QUEUE, RECAST_JOB_OPTIONS);
 }
 
 /** Jalankan operasi antrean dengan batas waktu; melempar bila lewat. */
