@@ -80,5 +80,10 @@
     "typescript-eslint": "^8.71.1",
     "vitest": "^5.0.3",
     "yazl": "^3.3.1"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "^11.1.1"
+    }
   }
 }
