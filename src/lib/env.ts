@@ -94,6 +94,8 @@ export const envSchema = z.object({
     .default(20 * 1024 * 1024 * 1024),
 
   SEED_ADMIN_EMAIL: z.string().email().optional(),
+  /** Direktori kerja worker ingest (unduhan sumber + spill + DuckDB); butuh ± ukuran upload + 8 GiB. */
+  WORKER_TMP_DIR: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

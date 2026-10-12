@@ -7,6 +7,7 @@
 //   object <versionId>                  → {"exists":bool,"contentType":...} objek sumber
 //   multipart <versionId> [uploadId]    → {"alive":bool,"parts":n} upload multipart masih ada?
 //   usage <email> <bytes>               → buat dataset + versi READY berukuran <bytes> (kuota)
+//   ingest <versionId>                  → status ingest, metadata sheet, objek parquet versi
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -14,6 +15,7 @@ import {
   UploadPartCommand,
   HeadObjectCommand,
   ListPartsCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { Queue } from "bullmq";
 import Redis from "ioredis";
@@ -121,6 +123,37 @@ try {
       console.log(JSON.stringify({ alive: true, parts: (res.Parts ?? []).length }));
     } catch {
       console.log(JSON.stringify({ alive: false }));
+    }
+  } else if (cmd === "ingest") {
+    // a = versionId: status ingest + metadata sheet + jumlah objek parquet versi
+    const v = await prisma.datasetVersion.findUnique({
+      where: { id: a },
+      include: { sheets: { orderBy: { index: "asc" } } },
+    });
+    if (!v) {
+      console.log(JSON.stringify({ exists: false }));
+    } else {
+      const listed = await s3.send(
+        new ListObjectsV2Command({ Bucket, Prefix: `parquet/${v.datasetId}/${v.id}/` }),
+      );
+      console.log(
+        JSON.stringify({
+          exists: true,
+          status: v.status,
+          ingestStage: v.ingestStage,
+          errorMessage: v.errorMessage,
+          sha256: v.sha256,
+          progress: v.progress,
+          sheets: v.sheets.map((s) => ({
+            name: s.name,
+            headerRow: s.headerRow,
+            rawRows: s.rawRows,
+            colCount: s.colCount,
+            rawKey: s.rawKey,
+          })),
+          objects: (listed.Contents ?? []).map((o) => o.Key),
+        }),
+      );
     }
   } else if (cmd === "usage") {
     const owner = await prisma.user.findUniqueOrThrow({ where: { email: a } });
