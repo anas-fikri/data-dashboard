@@ -5,6 +5,7 @@ import {
   IconLoader2,
   IconPlayerPause,
   IconPlayerPlay,
+  IconRoute,
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
@@ -26,8 +27,7 @@ export interface PendingUploadInfo {
   versionId: string;
   originalName: string;
   sizeBytes: number;
-  partCount: number;
-  uploadedCount: number;
+  uploadedBytes: number;
 }
 
 interface UploadPanelProps {
@@ -38,11 +38,12 @@ interface UploadPanelProps {
   /** Unggahan milik user yang belum selesai (dari server), untuk ajakan melanjutkan. */
   pending: PendingUploadInfo | null;
   /** Versi terbaru menunggu/sedang diproses → unggah baru ditahan (D4: satu versi non-terminal). */
-  processing: { fileName: string | null } | null;
+  processing: { fileName: string | null; awaitingMapping: boolean } | null;
 }
 
 type State =
   | { kind: "idle" }
+  | { kind: "cancelled" }
   | { kind: "running"; file: File; progress: UploadProgress }
   | { kind: "paused"; file: File; progress: UploadProgress }
   | { kind: "error"; file: File | null; message: string; retryable: boolean; versionId?: string }
@@ -189,8 +190,8 @@ export function UploadPanel({
     try {
       if (versionId) await cancelUploadRequest(versionId);
       setPendingInfo(null);
-      setState({ kind: "idle" });
-      setAnnounce("Unggahan dibatalkan.");
+      // Notice yang menerima fokus (tombol yang ditekan hilang setelah batal).
+      setState({ kind: "cancelled" });
       router.refresh();
     } catch (e) {
       setState({
@@ -207,8 +208,15 @@ export function UploadPanel({
   const busyVersionId =
     progress?.versionId ?? (state.kind === "error" ? state.versionId : undefined);
   const pct = progress ? percentOf(progress) : 0;
-  const idleLike = state.kind === "idle" || state.kind === "error" || state.kind === "done";
+  const idleLike =
+    state.kind === "idle" ||
+    state.kind === "cancelled" ||
+    state.kind === "error" ||
+    state.kind === "done";
   const showDropzone = idleLike && !processing;
+  const showPending = Boolean(pendingInfo) && idleLike;
+  // Kontrol unggahan: tinggi 44px di ponsel (target sentuh), ringkas di ≥640.
+  const control = "h-11 w-full sm:h-(--control-h-sm) sm:w-auto";
 
   return (
     <div className="flex flex-col gap-4">
@@ -217,28 +225,44 @@ export function UploadPanel({
       </p>
 
       {state.kind === "done" ? <FocusNotice>{`"${state.name}" terunggah.`}</FocusNotice> : null}
+      {state.kind === "cancelled" ? <FocusNotice>Unggahan dibatalkan.</FocusNotice> : null}
 
       {processing && idleLike ? (
         <p
           className="flex items-start gap-3 rounded-md border bg-muted/40 p-3 text-sm"
           data-testid="dataset-processing"
         >
-          <IconLoader2
-            size={20}
-            stroke={1.5}
-            aria-hidden
-            className="mt-0.5 shrink-0 text-primary motion-safe:animate-spin"
-          />
-          <span>
-            <span className="block font-medium">
-              {processing.fileName
-                ? `"${processing.fileName}" sedang diproses`
-                : "File sedang diproses"}
+          {processing.awaitingMapping ? (
+            <IconRoute size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
+          ) : (
+            <IconLoader2
+              size={20}
+              stroke={1.5}
+              aria-hidden
+              className="mt-0.5 shrink-0 text-primary motion-safe:animate-spin"
+            />
+          )}
+          {processing.awaitingMapping ? (
+            <span>
+              <span className="block font-medium">Perlu pemetaan kolom</span>
+              <span className="block text-muted-foreground">
+                {processing.fileName ? `Kolom di "${processing.fileName}"` : "Kolom file baru"}{" "}
+                berbeda dari data aktif. Petakan kolomnya agar dashboard tetap jalan; file baru bisa
+                diunggah setelah itu.
+              </span>
             </span>
-            <span className="block text-muted-foreground">
-              Anda boleh menutup halaman ini. File baru bisa diunggah setelah proses selesai.
+          ) : (
+            <span>
+              <span className="block font-medium">
+                {processing.fileName
+                  ? `"${processing.fileName}" sedang diproses`
+                  : "File sedang diproses"}
+              </span>
+              <span className="block text-muted-foreground">
+                Anda boleh menutup halaman ini. File baru bisa diunggah setelah proses selesai.
+              </span>
             </span>
-          </span>
+          )}
         </p>
       ) : null}
 
@@ -258,29 +282,43 @@ export function UploadPanel({
         </FormAlert>
       ) : null}
 
-      {pendingInfo && state.kind !== "running" && state.kind !== "paused" ? (
+      {showPending && pendingInfo ? (
         <div
-          className="flex flex-col gap-3 rounded-md border bg-muted/40 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          className="flex flex-col gap-3 rounded-md border bg-muted/40 p-3 text-sm"
           data-testid="upload-pending"
         >
           <p className="min-w-0">
             <span className="block font-medium">Unggahan belum selesai</span>
-            <span className="block truncate text-muted-foreground">
-              {pendingInfo.originalName} ·{" "}
-              {Math.floor((pendingInfo.uploadedCount / pendingInfo.partCount) * 100)}% terunggah.
-              Pilih file yang sama untuk melanjutkan.
+            <span className="flex min-w-0 gap-1 text-muted-foreground">
+              <span className="truncate">{pendingInfo.originalName}</span>
+              <span className="shrink-0 tabular-nums">
+                · {Math.floor((pendingInfo.uploadedBytes / pendingInfo.sizeBytes) * 100)}% terunggah
+              </span>
+            </span>
+            <span className="mt-1 block text-muted-foreground">
+              Pilih file yang sama untuk melanjutkan dari bagian terakhir.
             </span>
           </p>
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full sm:w-auto"
-            pending={cancelling}
-            leadingIcon={<IconX aria-hidden />}
-            onClick={() => void cancel(pendingInfo.versionId)}
-          >
-            Batalkan unggahan
-          </Button>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              size="sm"
+              className={control}
+              leadingIcon={<IconPlayerPlay aria-hidden />}
+              onClick={() => inputRef.current?.click()}
+            >
+              Lanjutkan unggahan
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className={control}
+              pending={cancelling}
+              leadingIcon={<IconX aria-hidden />}
+              onClick={() => void cancel(pendingInfo.versionId)}
+            >
+              Batalkan unggahan
+            </Button>
+          </div>
         </div>
       ) : null}
 
@@ -333,7 +371,7 @@ export function UploadPanel({
               <Button
                 size="sm"
                 variant="outline"
-                className="w-full sm:w-auto"
+                className={control}
                 disabled={progress.phase !== "uploading"}
                 leadingIcon={<IconPlayerPause aria-hidden />}
                 onClick={pause}
@@ -343,7 +381,7 @@ export function UploadPanel({
             ) : (
               <Button
                 size="sm"
-                className="w-full sm:w-auto"
+                className={control}
                 leadingIcon={<IconPlayerPlay aria-hidden />}
                 onClick={() => void start(state.file)}
               >
@@ -353,7 +391,7 @@ export function UploadPanel({
             <Button
               size="sm"
               variant="ghost"
-              className="w-full sm:w-auto"
+              className={control}
               pending={cancelling}
               disabled={progress.phase === "finishing"}
               leadingIcon={<IconX aria-hidden />}
@@ -391,10 +429,14 @@ export function UploadPanel({
           </span>
           <div className="max-w-sm text-sm">
             <p className="font-medium">
-              {hasData ? "Ganti data dengan file baru" : "Belum ada data"}
+              {showPending
+                ? "Pilih file yang sama untuk melanjutkan"
+                : hasData
+                  ? "Ganti data dengan file baru"
+                  : "Belum ada data"}
             </p>
             <p id={hintId} className="mt-1 text-muted-foreground">
-              Seret file .xlsx atau .csv ke sini, maksimal {formatBytes(maxBytes)}. Unggahan bisa
+              Pilih atau seret file .xlsx/.csv (maks. {formatBytes(maxBytes)}). Unggahan bisa
               dilanjutkan bila koneksi terputus.
             </p>
           </div>

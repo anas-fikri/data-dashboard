@@ -609,8 +609,8 @@ export interface PendingUpload {
   versionId: string;
   originalName: string;
   sizeBytes: number;
-  partCount: number;
-  uploadedCount: number;
+  /** Jumlah byte part yang sudah ada di storage (sama dengan hitungan progres klien). */
+  uploadedBytes: number;
 }
 
 /** Unggahan milik user yang belum selesai di dataset ini (untuk ajakan melanjutkan). */
@@ -641,26 +641,25 @@ export async function getPendingUpload(
   });
   if (!v?.sourceKey || !v.uploadId || v.sizeBytes === null || !v.partSize || !v.partCount)
     return null;
-  let uploadedCount = 0;
+  const size = Number(v.sizeBytes);
+  let uploadedBytes = 0;
   try {
-    uploadedCount =
-      (
-        await uploadedPartNumbers(storage, {
-          sourceKey: v.sourceKey,
-          uploadId: v.uploadId,
-          sizeBytes: v.sizeBytes,
-          partSize: v.partSize,
-          partCount: v.partCount,
-        })
-      )?.length ?? 0;
+    const numbers = await uploadedPartNumbers(storage, {
+      sourceKey: v.sourceKey,
+      uploadId: v.uploadId,
+      sizeBytes: v.sizeBytes,
+      partSize: v.partSize,
+      partCount: v.partCount,
+    });
+    for (const n of numbers ?? [])
+      uploadedBytes += expectedPartSize(n, size, v.partSize, v.partCount);
   } catch (err) {
     logger.warn({ versionId: v.id, err: String(err) }, "ListParts untuk ringkasan gagal");
   }
   return {
     versionId: v.id,
     originalName: v.originalName ?? "file",
-    sizeBytes: Number(v.sizeBytes),
-    partCount: v.partCount,
-    uploadedCount,
+    sizeBytes: size,
+    uploadedBytes,
   };
 }

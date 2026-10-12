@@ -4,7 +4,7 @@ import {
   IconCircleDashed,
   IconLoader2,
   IconRoute,
-  IconUpload,
+  IconPlayerPause,
 } from "@tabler/icons-react";
 import type { DatasetLabel } from "@/features/datasets/label";
 import { cn } from "@/lib/utils";
@@ -37,7 +37,8 @@ export function StatusBadge({ label }: { label: DatasetLabel }) {
           className={cn(
             pill,
             badge.kind === "failed" && "bg-destructive/12",
-            (badge.kind === "processing" || badge.kind === "uploading") && "bg-primary/12",
+            badge.kind === "processing" && "bg-primary/12",
+            badge.kind === "uploading" && "bg-muted",
             badge.kind === "awaiting_mapping" && "bg-warning/20",
           )}
         >
@@ -48,7 +49,7 @@ export function StatusBadge({ label }: { label: DatasetLabel }) {
             <IconLoader2 aria-hidden stroke={2} className="text-primary motion-safe:animate-spin" />
           ) : null}
           {badge.kind === "uploading" ? (
-            <IconUpload aria-hidden stroke={2} className="text-primary" />
+            <IconPlayerPause aria-hidden stroke={2} className="text-muted-foreground" />
           ) : null}
           {badge.kind === "awaiting_mapping" ? <IconRoute aria-hidden stroke={2} /> : null}
           {badge.text}

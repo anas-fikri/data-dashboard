@@ -1,7 +1,7 @@
 ---
 id: T-004
 title: Upload multipart resumable ke MinIO sampai 1 GB
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -10,12 +10,18 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T01:11:53Z"
+updated: "2026-10-12T01:40:49Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: b330d22fa74f6e7377ffca485c5f0b1c0fad330e
+review:
+  passes:
+    - "n": 1
+      by: frontend-expert-design-reviewer
+      at: "2026-10-12T01:40:49Z"
+      findings: 8
 ---
 
 ## Objective

@@ -205,7 +205,11 @@ test.describe("unggah", () => {
 
     await page.reload(); // membatalkan XHR part yang tertahan
     await page.unrouteAll({ behavior: "ignoreErrors" });
-    await expect(page.getByTestId("upload-pending")).toContainText("putus.csv");
+    const pendingCard = page.getByTestId("upload-pending");
+    await expect(pendingCard).toContainText("putus.csv");
+    await expect(pendingCard).toContainText("40% terunggah"); // byte: 16 dari 40 MiB
+    await expect(pendingCard).toContainText("Pilih file yang sama untuk melanjutkan");
+    await expect(page.getByTestId("dataset-status")).toContainText("Belum selesai");
 
     const puts: string[] = [];
     page.on("request", (r) => {
@@ -319,6 +323,8 @@ test.describe("unggah", () => {
     await page.reload();
     await page.getByRole("button", { name: "Batalkan unggahan" }).click();
     await expect(page.getByTestId("upload-pending")).toHaveCount(0);
+    const cancelled = page.getByTestId("form-alert").filter({ hasText: "Unggahan dibatalkan." });
+    await expect(cancelled).toBeFocused();
     expect(fx("latest", id2)).toEqual({ exists: false });
     expect(String(r2.body.versionId)).not.toBe("");
 

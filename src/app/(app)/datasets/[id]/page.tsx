@@ -118,7 +118,14 @@ export default async function DatasetDetailPage({
             maxBytes={env().MAX_UPLOAD_BYTES}
             hasData={Boolean(active)}
             pending={pending}
-            processing={processing ? { fileName: dataset.latestFileName } : null}
+            processing={
+              processing
+                ? {
+                    fileName: dataset.latestFileName,
+                    awaitingMapping: badge?.kind === "awaiting_mapping",
+                  }
+                : null
+            }
           />
         </CardContent>
       </Card>
