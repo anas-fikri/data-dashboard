@@ -45,6 +45,9 @@ async function main() {
   const root = mkdtempSync(join(tmpdir(), "dd-perf-ingest-"));
   const store = join(root, "store");
   const sheets: SheetRecord[] = [];
+  const typedStart = new Map<string, number>();
+  const types: Record<string, number>[] = [];
+  let typedSeconds = 0;
   let minFree = freeGB();
   const disk = setInterval(() => {
     const f = freeGB();
@@ -67,10 +70,17 @@ async function main() {
     deleteSheets: async () => {},
     createSheet: async (_v, s) => {
       sheets.push(s);
+      typedStart.set(`s${s.index}`, performance.now());
       return `s${s.index}`;
     },
     setSheetKey: async () => {},
-    setTyped: async () => {},
+    // Unggah di sini hanya rename (instan): createSheet → setTyped ≈ waktu tahap typed sheet itu.
+    setTyped: async (id, d) => {
+      typedSeconds += (performance.now() - typedStart.get(id)!) / 1000;
+      const counts: Record<string, number> = {};
+      for (const c of d.schema) counts[c.type] = (counts[c.type] ?? 0) + 1;
+      types.push(counts);
+    },
     finish: async () => true,
     recordCleanup: async () => {},
     fail: async (_v, m) => {
@@ -99,11 +109,13 @@ async function main() {
   const r = await runIngest("v", repo, storage, { tmpRoot: tmp });
   const cpu = process.cpuUsage(c0);
   clearInterval(disk);
-  const parquetMB =
+  const sizeMB = (name: string) =>
     sheets.reduce(
-      (n, s) => n + statSync(join(store, `parquet/perf/v/s${s.index}/raw.parquet`)).size,
+      (n, s) => n + statSync(join(store, `parquet/perf/v/s${s.index}/${name}`)).size,
       0,
     ) / 1048576;
+  const parquetMB = sizeMB("raw.parquet");
+  const typedMB = r.outcome === "done" ? sizeMB("typed-1.parquet") : 0;
   console.log(
     JSON.stringify({
       file: file!.split("/").pop(),
@@ -120,6 +132,9 @@ async function main() {
         truncated: s.truncatedCells,
       })),
       parquetMB: Math.round(parquetMB),
+      typedMB: Math.round(typedMB),
+      typedSeconds: Math.round(typedSeconds * 10) / 10,
+      types,
       minFreeDiskGB: Math.round(minFree * 10) / 10,
     }),
   );

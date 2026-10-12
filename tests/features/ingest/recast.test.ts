@@ -163,4 +163,23 @@ describe("recast", () => {
     r.repo.sheets.clear();
     expect(await recastSheet(r.sheetId, {}, r.deps)).toEqual({ outcome: "gone" });
   });
+
+  it("input user di luar enum/rentang ditolak sebelum menyentuh SQL atau storage", async () => {
+    const r = await setup(DATA);
+    const before = r.sheet().typedKey;
+    for (const bad of [
+      { columns: [{ pos: 2, type: "text'); DROP TABLE x; --" }] },
+      { columns: [{ pos: 2, dateFormat: "%d/%m/%Y" }] },
+      { columns: [{ pos: 3, type: "text" }] }, // hanya 2 kolom
+      { columns: [{ pos: 1, sql: "1" }] }, // kunci tak dikenal
+      { headerRow: 1.5 },
+      { headerRow: 0 },
+      "bukan objek",
+    ]) {
+      expect(await recastSheet(r.sheetId, bad, r.deps)).toMatchObject({ outcome: "invalid" });
+    }
+    expect(r.sheet().typedKey).toBe(before);
+    expect(r.sheet().schemaRevision).toBe(1);
+    expect(r.lock.held.size).toBe(0);
+  });
 });
