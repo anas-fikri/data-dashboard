@@ -150,7 +150,7 @@ describe("parser SAX (yauzl + saxes)", () => {
         { sheetNames: [], tmpDir: tmp },
         () => {},
       ),
-    ).rejects.toThrow(/central directory|zip/i);
+    ).rejects.toThrow(/bukan Buku Kerja Excel yang valid, atau rusak\/terpotong/);
   });
 
   it("sedang.xlsx dengan spill paksa (171 ribu string, indeks lintas blok) = tanpa spill", async () => {

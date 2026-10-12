@@ -15,7 +15,7 @@ import type { RawValue } from "@/lib/xlsx/types";
 import { csvToParquet } from "./csv";
 import { CsvFormatError } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
-import { RawSheetWriter } from "./raw-writer";
+import { RawSheetWriter, TooWideError } from "./raw-writer";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
 const PROGRESS_EVERY_MS = 5_000;
@@ -41,6 +41,14 @@ export interface SheetRecord {
   truncatedCells: number;
 }
 
+/** Versi/dataset sudah dihapus (repo boleh melemparnya saat baris yang ditulis hilang). */
+export class DatasetGoneError extends Error {
+  constructor(message = "dataset dihapus") {
+    super(message);
+    this.name = "DatasetGoneError";
+  }
+}
+
 /** Akses database yang dibutuhkan ingest (implementasi Prisma di worker; palsu di unit test). */
 export interface IngestRepo {
   load(versionId: string): Promise<{ datasetId: string; sourceKey: string } | null>;
@@ -50,11 +58,15 @@ export interface IngestRepo {
   exists(versionId: string): Promise<boolean>;
   progress(versionId: string, p: IngestProgress): Promise<void>;
   deleteSheets(versionId: string): Promise<void>;
+  /** Melempar DatasetGoneError bila versi sudah hilang. */
   createSheet(versionId: string, s: SheetRecord): Promise<string>;
+  /** Melempar DatasetGoneError bila baris sheet sudah hilang (dataset dihapus). */
   setSheetKey(sheetId: string, rawKey: string): Promise<void>;
   /** Tahap raw selesai; false bila versi sudah hilang. */
   finishRaw(versionId: string, data: { sha256: string }): Promise<boolean>;
   fail(versionId: string, message: string): Promise<void>;
+  /** Prefix storage yang gagal dibersihkan → diproses ulang job pembersihan (StorageCleanup). */
+  recordCleanup(prefix: string, reason: string): Promise<void>;
 }
 
 export interface IngestStorage {
@@ -65,12 +77,16 @@ export interface IngestStorage {
 
 export interface IngestOptions {
   tmpRoot: string;
+  /** datasetId dari data job: membersihkan prefix walau versi sudah terhapus sebelum dimuat. */
+  datasetIdHint?: string;
   /** Batas waktu absolut (epoch ms); default 60 menit dari mulai. */
   deadline?: number;
   limits?: SaxLimits;
   duckMemory?: string;
   /** Ukuran batch baris (default 50k); uji memakai nilai kecil. */
   batchRows?: number;
+  /** Uji: buffer baca CSV DuckDB lebih kecil. */
+  csvBufferSize?: number;
   /** Uji: dipanggil setelah setiap batch (mis. mensimulasikan worker mati di tengah). */
   afterBatch?: (sheet: number, rows: number) => void | Promise<void>;
 }
@@ -81,7 +97,6 @@ export type IngestOutcome =
   | { outcome: "skipped" }
   | { outcome: "failed"; message: string };
 
-class DatasetGoneError extends Error {}
 class DeadlineError extends Error {}
 
 export const versionParquetPrefix = (datasetId: string, versionId: string) =>
@@ -89,7 +104,9 @@ export const versionParquetPrefix = (datasetId: string, versionId: string) =>
 
 /** Pesan user untuk kegagalan permanen; null = sementara (diulang BullMQ). */
 export function permanentMessage(e: unknown): string | null {
-  if (e instanceof XlsxLimitError || e instanceof CsvFormatError) return e.message;
+  if (e instanceof XlsxLimitError || e instanceof CsvFormatError || e instanceof TooWideError) {
+    return e.message;
+  }
   if (e instanceof DeadlineError) {
     return "Pemrosesan file melebihi 60 menit. Pecah file menjadi beberapa bagian lalu unggah lagi.";
   }
@@ -104,6 +121,22 @@ export function permanentMessage(e: unknown): string | null {
   return null;
 }
 
+/** Hapus prefix versi; bila gagal, catat untuk job pembersihan (tidak pernah melempar). */
+export async function cleanupPrefix(
+  repo: Pick<IngestRepo, "recordCleanup">,
+  storage: Pick<IngestStorage, "deletePrefix">,
+  prefix: string,
+  reason: string,
+) {
+  try {
+    await storage.deletePrefix(prefix);
+  } catch (e) {
+    await repo
+      .recordCleanup(prefix, `${reason}: ${e instanceof Error ? e.message : String(e)}`)
+      .catch(() => {});
+  }
+}
+
 export async function runIngest(
   versionId: string,
   repo: IngestRepo,
@@ -111,36 +144,56 @@ export async function runIngest(
   opts: IngestOptions,
 ): Promise<IngestOutcome> {
   const v = await repo.load(versionId);
-  if (!v) return { outcome: "gone" };
+  if (!v) {
+    // Versi sudah terhapus (mis. dataset dihapus saat percobaan sebelumnya mengunggah).
+    if (opts.datasetIdHint) {
+      await cleanupPrefix(
+        repo,
+        storage,
+        versionParquetPrefix(opts.datasetIdHint, versionId),
+        "versi hilang",
+      );
+    }
+    return { outcome: "gone" };
+  }
   if (!(await repo.begin(versionId))) return { outcome: "skipped" };
 
   const prefix = versionParquetPrefix(v.datasetId, versionId);
   const deadline = opts.deadline ?? Date.now() + INGEST_DEADLINE_MS;
   const work = mkdtempSync(join(opts.tmpRoot, "ingest-"));
   let duck: Duck | null = null;
-  let lastProgress = 0;
-  const progress = async (p: IngestProgress, force = false) => {
-    const now = Date.now();
-    if (!force && now - lastProgress < PROGRESS_EVERY_MS) return;
-    lastProgress = now;
-    await repo.progress(versionId, p);
+
+  // Progres: snapshot terkini ditulis tiap ≤ 5 detik (juga selama COPY/unggah/parse sharedStrings).
+  let current: IngestProgress = {
+    stage: "unduh",
+    sheet: 0,
+    sheetName: null,
+    rows: 0,
+    fraction: null,
+    rowsEstimate: null,
   };
+  const setProgress = (p: Partial<IngestProgress>) => {
+    current = { ...current, ...p };
+  };
+  const heartbeat = setInterval(() => {
+    void repo.progress(versionId, current).catch(() => {});
+  }, PROGRESS_EVERY_MS);
   const ensureAlive = async () => {
     if (Date.now() > deadline) throw new DeadlineError("deadline");
-    if (!(await repo.exists(versionId))) throw new DatasetGoneError("dataset dihapus");
+    if (!(await repo.exists(versionId))) throw new DatasetGoneError();
   };
 
   try {
     // Idempoten: sisa percobaan sebelumnya (worker mati/diulang) dibuang lebih dulu.
     await storage.deletePrefix(prefix);
     await repo.deleteSheets(versionId);
+    await repo.progress(versionId, current);
 
-    const base = { sheet: 0, sheetName: null, rows: 0, fraction: null, rowsEstimate: null };
-    await progress({ ...base, stage: "unduh" }, true);
     const ext = v.sourceKey.endsWith(".csv") ? "csv" : "xlsx";
     const src = join(work, `source.${ext}`);
     const dl = await storage.download(v.sourceKey, src);
     await ensureAlive();
+    setProgress({ stage: "baca" });
 
     duck = await openDuck({
       path: join(work, "work.duckdb"),
@@ -154,54 +207,61 @@ export async function runIngest(
             src,
             work,
             { ...(opts.limits ?? DEFAULT_LIMITS), deadline },
-            progress,
+            setProgress,
             ensureAlive,
             opts,
           )
         : [
-            await csvToParquet(duck, src, work, ensureAlive, (n) => {
-              void progress(
-                { ...base, stage: "baca", sheetName: "CSV", rowsEstimate: n },
-                true,
-              ).catch(() => {});
-            }),
+            await csvToParquet(
+              duck,
+              src,
+              work,
+              ensureAlive,
+              (n) => setProgress({ sheetName: "CSV", rowsEstimate: n }),
+              { bufferSize: opts.csvBufferSize },
+            ),
           ];
     await ensureAlive();
 
     // Unggah raw.parquet + metadata per sheet.
     for (const s of sheets) {
-      await progress(
-        {
-          stage: "simpan",
-          sheet: s.rec.index,
-          sheetName: s.rec.name,
-          rows: s.rec.rawRows,
-          fraction: 1,
-          rowsEstimate: null,
-        },
-        true,
-      );
+      setProgress({
+        stage: "simpan",
+        sheet: s.rec.index,
+        sheetName: s.rec.name,
+        rows: s.rec.rawRows,
+        fraction: 1,
+      });
       const sheetId = await repo.createSheet(versionId, s.rec);
       const key = `${prefix}${sheetId}/raw.parquet`;
       await storage.upload(key, s.path, "application/vnd.apache.parquet");
       await repo.setSheetKey(sheetId, key);
       await ensureAlive();
     }
-    if (!(await repo.finishRaw(versionId, { sha256: dl.sha256 })))
-      throw new DatasetGoneError("hilang");
+    if (!(await repo.finishRaw(versionId, { sha256: dl.sha256 }))) throw new DatasetGoneError();
+    await repo.progress(versionId, current).catch(() => {});
     return { outcome: "done", sheets: sheets.length };
   } catch (e) {
     if (e instanceof DatasetGoneError) {
-      await storage.deletePrefix(prefix).catch(() => {});
+      await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
       return { outcome: "gone" };
     }
     const message = permanentMessage(e);
-    if (message === null) throw e; // sementara: BullMQ mengulang dari awal (mulai bersih)
-    await storage.deletePrefix(prefix).catch(() => {});
+    if (message === null) {
+      // Sementara. Bila penyebabnya dataset dihapus di tengah (baris hilang), bersihkan sekarang:
+      // percobaan berikutnya tidak lagi tahu datasetId-nya.
+      if (!(await repo.exists(versionId).catch(() => true))) {
+        await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
+        return { outcome: "gone" };
+      }
+      throw e; // BullMQ mengulang dari awal (mulai bersih)
+    }
+    await cleanupPrefix(repo, storage, prefix, "ingest gagal");
     await repo.deleteSheets(versionId).catch(() => {});
     await repo.fail(versionId, message);
     return { outcome: "failed", message };
   } finally {
+    clearInterval(heartbeat);
     duck?.close();
     rmSync(work, { recursive: true, force: true });
   }
@@ -213,7 +273,7 @@ async function xlsxSheets(
   src: string,
   work: string,
   limits: SaxLimits,
-  progress: (p: IngestProgress, force?: boolean) => Promise<void>,
+  setProgress: (p: Partial<IngestProgress>) => void,
   ensureAlive: () => Promise<void>,
   opts: IngestOptions,
 ): Promise<{ rec: SheetRecord; path: string }[]> {
@@ -225,7 +285,6 @@ async function xlsxSheets(
   const out: { rec: SheetRecord; path: string }[] = [];
   let writer: RawSheetWriter | null = null;
   let name = "";
-  let fraction = 0;
 
   const drain = async () => {
     while (queue.length) {
@@ -233,19 +292,13 @@ async function xlsxSheets(
       if (it.k === "start") {
         name = it.name;
         const sheet = it.sheet;
+        setProgress({ sheet, sheetName: name, rows: 0, fraction: 0 });
         writer = await RawSheetWriter.create(
           duck,
           `s${sheet}`,
           async (rows) => {
+            setProgress({ rows });
             await ensureAlive();
-            await progress({
-              stage: "baca",
-              sheet,
-              sheetName: name,
-              rows,
-              fraction,
-              rowsEstimate: null,
-            });
             await opts.afterBatch?.(sheet, rows);
           },
           opts.batchRows,
@@ -255,6 +308,7 @@ async function xlsxSheets(
       } else {
         const w: RawSheetWriter = writer!;
         const path = join(work, `sheet-${it.sheet}.parquet`);
+        setProgress({ rows: w.rows, fraction: 1 });
         await w.finish(path);
         const headerRow = guessHeaderRow(w.sample);
         const cols = Math.max(w.colCount, 1);
@@ -284,9 +338,7 @@ async function xlsxSheets(
         tmpDir: work,
         onSheetStart: (sheet, n) => queue.push({ k: "start", sheet, name: n }),
         onSheetEnd: (sheet) => queue.push({ k: "end", sheet }),
-        onProgress: (p) => {
-          fraction = p.fraction;
-        },
+        onProgress: (p) => setProgress({ fraction: p.fraction }),
         drain,
       },
       (_sheet, row, vals) => queue.push({ k: "row", row, vals }),

@@ -16,6 +16,7 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import yazl from "yazl";
 import {
+  DatasetGoneError,
   runIngest,
   type IngestProgress,
   type IngestRepo,
@@ -108,13 +109,23 @@ class FakeRepo implements IngestRepo {
   async deleteSheets() {
     this.sheets.clear();
   }
+  // Seperti Prisma: dataset dihapus → baris versi/sheet ikut hilang (kaskade).
   async createSheet(_v: string, s: SheetRecord) {
+    if (!this.alive()) throw new DatasetGoneError();
     const id = `sheet${++this.n}`;
     this.sheets.set(id, { ...s, rawKey: null });
     return id;
   }
   async setSheetKey(id: string, key: string) {
+    if (!this.alive()) {
+      this.sheets.clear();
+      throw new DatasetGoneError();
+    }
     this.sheets.get(id)!.rawKey = key;
+  }
+  cleanups: string[] = [];
+  async recordCleanup(prefix: string) {
+    this.cleanups.push(prefix);
   }
   async finishRaw(_v: string, d: { sha256: string }) {
     if (!this.alive()) return false;

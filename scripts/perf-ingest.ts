@@ -71,6 +71,7 @@ async function main() {
     },
     setSheetKey: async () => {},
     finishRaw: async () => true,
+    recordCleanup: async () => {},
     fail: async (_v, m) => {
       console.error("FAILED:", m);
     },

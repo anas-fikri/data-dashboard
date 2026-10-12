@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { deletePrefix } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
-import type { IngestRepo, IngestStorage } from "./ingest";
+import { DatasetGoneError, type IngestRepo, type IngestStorage } from "./ingest";
 
 /** Implementasi Prisma untuk ingest (worker). Semua update dijaga status agar idempoten. */
 export const prismaIngestRepo: IngestRepo = {
@@ -45,25 +45,34 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async createSheet(versionId, s) {
-    const row = await prisma.sheet.create({
-      data: {
-        versionId,
-        index: s.index,
-        name: s.name,
-        rawKey: "",
-        rawRows: s.rawRows,
-        colCount: s.colCount,
-        headerRow: s.headerRow,
-        columns: s.columns as unknown as Prisma.InputJsonValue,
-        truncatedCells: s.truncatedCells,
-      },
-      select: { id: true },
-    });
-    return row.id;
+    try {
+      const row = await prisma.sheet.create({
+        data: {
+          versionId,
+          index: s.index,
+          name: s.name,
+          rawKey: "",
+          rawRows: s.rawRows,
+          colCount: s.colCount,
+          headerRow: s.headerRow,
+          columns: s.columns as unknown as Prisma.InputJsonValue,
+          truncatedCells: s.truncatedCells,
+        },
+        select: { id: true },
+      });
+      return row.id;
+    } catch (e) {
+      // Versi sudah terhapus (dataset dihapus) → foreign key gagal.
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        throw new DatasetGoneError();
+      }
+      throw e;
+    }
   },
 
   async setSheetKey(sheetId, rawKey) {
-    await prisma.sheet.update({ where: { id: sheetId }, data: { rawKey } });
+    const r = await prisma.sheet.updateMany({ where: { id: sheetId }, data: { rawKey } });
+    if (r.count === 0) throw new DatasetGoneError();
   },
 
   async finishRaw(versionId, d) {
@@ -72,6 +81,10 @@ export const prismaIngestRepo: IngestRepo = {
       data: { ingestStage: "raw", sha256: d.sha256 },
     });
     return r.count > 0;
+  },
+
+  async recordCleanup(prefix, reason) {
+    await prisma.storageCleanup.create({ data: { prefix, reason: reason.slice(0, 500) } });
   },
 
   async fail(versionId, message) {

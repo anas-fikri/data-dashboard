@@ -140,7 +140,7 @@ describe("sniff CSV", () => {
     const p = join(tmp, "a.csv");
     writeFileSync(p, 'Judul\n\nNo;Nama;"Catatan\nmulti"\n1;A;x\n\n2;B;y;z');
     const s = await scanCsv(p, ";", 16_384);
-    expect(s).toEqual({ maxFields: 4, records: 4, blanksBefore: [1, 3] });
+    expect(s).toMatchObject({ maxFields: 4, records: 4, blanksBefore: [1, 3], utf8: true, crOnly: false });
     await expect(scanCsv(p, ";", 3)).rejects.toThrow(/lebih dari 3 kolom/);
   });
 });
