@@ -209,6 +209,8 @@ async function main() {
       file: manifest.file,
       fileMB: Math.round(manifest.bytes / 1024 / 1024),
       seconds: Math.round(seconds * 10) / 10,
+      // Waktu CPU proses (user + system): tidak terpengaruh beban proses lain di mesin.
+      cpuSeconds: Math.round((process.cpuUsage().user + process.cpuUsage().system) / 1e5) / 10,
       peakRssMB: Math.round(peakRss / 1024 / 1024),
       // Puncak sebenarnya dari kernel (sampel 100 ms bisa melewatkan lonjakan singkat). Satuan KB.
       maxRssMB: Math.round(process.resourceUsage().maxRSS / 1024),

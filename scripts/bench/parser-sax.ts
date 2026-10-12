@@ -135,13 +135,12 @@ function entryStream(zip: ZipFile, e: Entry): Promise<Readable> {
 /*
  * Anggaran memori per struktur yang ditahan saxes (SpreadsheetML nyata jauh di bawahnya):
  * kedalaman elemen < 20, atribut per tag < 30, nilai atribut terpanjang ± 260 karakter (Target,
- * formatCode). Atribut elemen dikosongkan setelah handler dipanggil sehingga tumpukan elemen
- * terbuka hanya menahan nama tag.
+ * formatCode). Total panjang nilai atribut per tag dibatasi sehingga tumpukan elemen terbuka
+ * menahan paling banyak 64 × 16.384 karakter (± 2 MB), tanpa biaya mengosongkan atribut per tag.
  */
 const MAX_DEPTH = 64;
 const MAX_ATTRS = 256;
-const MAX_ATTR_VALUE = 8_192;
-const EMPTY_ATTRS = Object.freeze({});
+const MAX_TAG_ATTR_CHARS = 16_384;
 /** Total karakter teks sel dalam satu baris (16.384 kolom × 32.767 = ± 1 GB tanpa batas ini). */
 const MAX_ROW_CHARS = 4_000_000;
 const MAX_SHEET_NAME = 255;
@@ -173,19 +172,25 @@ async function sax(
   let failure: Error | null = null;
   const tooLongAttr = () =>
     new XlsxLimitError(`nilai atribut di ${e.fileName} terlalu panjang (file bukan buatan Excel)`);
+  const attrChars = (list: { value: string }[]) => {
+    let n = 0;
+    for (let i = 0; i < list.length; i++) n += list[i]!.value.length;
+    return n;
+  };
   p.on("doctype", () => {
     throw new XlsxLimitError("file xlsx berisi DOCTYPE (ditolak)");
   });
   p.on("error", (err) => {
     failure ??= err;
   });
-  // Selalu terdaftar: nilai atribut diperiksa, lalu atribut dikosongkan setelah handler agar elemen
-  // terbuka di tumpukan saxes tidak menahan nilainya (saxes tidak membacanya lagi dengan xmlns: false).
+  // Selalu terdaftar: elemen terbuka di tumpukan saxes menahan atributnya sampai ditutup, jadi
+  // total panjang nilai atribut setiap tag dibatasi di sini.
   p.on("opentag", (t) => {
     const attrs = t.attributes as Record<string, string>;
-    for (const k in attrs) if (attrs[k]!.length > MAX_ATTR_VALUE) throw tooLongAttr();
+    let n = 0;
+    for (const k in attrs) n += attrs[k]!.length;
+    if (n > MAX_TAG_ATTR_CHARS) throw tooLongAttr();
     handlers.open?.(ln(t.name), attrs);
-    (t as { attributes: unknown }).attributes = EMPTY_ATTRS;
   });
   if (handlers.close) p.on("closetag", (t) => handlers.close!(ln(t.name)));
   if (handlers.text) {
@@ -214,7 +219,9 @@ async function sax(
         );
       }
       // Atribut tag yang belum tertutup (melintasi potongan).
-      for (const a of internal.attribList) if (a.value.length > MAX_ATTR_VALUE) throw tooLongAttr();
+      if (attrChars(internal.attribList) > MAX_TAG_ATTR_CHARS) {
+        throw tooLongAttr();
+      }
       if (guard.deadline && Date.now() > guard.deadline) {
         throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
       }
@@ -581,7 +588,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                         );
                       }
                       v = sst.get(idx);
-                      if (truncatedSst.has(idx)) summary.truncatedCells++;
+                      if (truncatedSst.size && truncatedSst.has(idx)) summary.truncatedCells++;
                     }
                   } else if (type === "inlineStr" || type === "str" || type === "e") {
                     if (text !== "") {
