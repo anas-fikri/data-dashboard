@@ -7,7 +7,7 @@
  * literal → teks; terpilih bila ≥ 98% nilai non-kosong lolos. Nilai yang gagal menjadi NULL dan
  * dihitung (castFailCount).
  *
- * Prinsip: hitungan profil (okCount) dan ekspresi konversi (typedExpr) memakai predikat yang sama,
+ * Prinsip: hitungan profil (okCount) dan ekspresi konversi (typedParts) memakai predikat yang sama,
  * sehingga castFailCount selalu sama dengan jumlah NULL baru di typed.parquet. Nilai yang tidak bisa
  * disimpan persis (pembulatan, tahun 0026) dihitung gagal, tidak diubah diam-diam.
  */
@@ -56,31 +56,28 @@ const CODE_SHARE_MAX = 0.02;
 const SERIAL_MAX = 2_958_466;
 
 /**
- * Format strptime per format tanggal (dicoba berurutan per nilai). Tahun 2 digit (%y) dicoba lebih
- * dulu: %Y DuckDB menerima 1–4 digit sehingga "03/01/26" akan terbaca tahun 0026. Urutan objek =
- * urutan preferensi saat seri: hari-di-depan sebelum bulan-di-depan (03/01/2026 → 3 Januari).
+ * Keluarga format tanggal teks: urutan hari/bulan/tahun dan pemisah. Urutan objek = urutan preferensi
+ * saat seri: hari-di-depan sebelum bulan-di-depan (03/01/2026 → 3 Januari).
  */
-const withTime = (d: string, y: string[]) =>
-  y.flatMap((yy) => [
-    `${d.replace("Y", yy)}`,
-    `${d.replace("Y", yy)} %H:%M:%S`,
-    `${d.replace("Y", yy)} %H:%M`,
-  ]);
-export const DATE_FORMATS: Record<TextDateFormat, string[]> = {
-  "yyyy-mm-dd": [
-    "%Y-%m-%d",
-    "%Y-%m-%dT%H:%M:%S",
-    "%Y-%m-%d %H:%M:%S",
-    "%Y-%m-%dT%H:%M",
-    "%Y-%m-%d %H:%M",
-  ],
-  "dd/mm/yyyy": withTime("%d/%m/%Y", ["y", "Y"]),
-  "dd-mm-yyyy": withTime("%d-%m-%Y", ["y", "Y"]),
-  "dd.mm.yyyy": withTime("%d.%m.%Y", ["y", "Y"]),
-  "yyyy/mm/dd": withTime("%Y/%m/%d", ["Y"]),
-  "mm/dd/yyyy": withTime("%m/%d/%Y", ["y", "Y"]),
+export const DATE_FORMATS: Record<
+  TextDateFormat,
+  { order: "iso" | "dmy" | "ymd" | "mdy"; sep: string }
+> = {
+  "yyyy-mm-dd": { order: "iso", sep: "-" },
+  "dd/mm/yyyy": { order: "dmy", sep: "/" },
+  "dd-mm-yyyy": { order: "dmy", sep: "-" },
+  "dd.mm.yyyy": { order: "dmy", sep: "." },
+  "yyyy/mm/dd": { order: "ymd", sep: "/" },
+  "mm/dd/yyyy": { order: "mdy", sep: "/" },
 };
 const TEXT_DATE_FORMATS = Object.keys(DATE_FORMATS) as TextDateFormat[];
+const ISO_FORMATS = [
+  "%Y-%m-%d",
+  "%Y-%m-%dT%H:%M:%S",
+  "%Y-%m-%d %H:%M:%S",
+  "%Y-%m-%dT%H:%M",
+  "%Y-%m-%d %H:%M",
+];
 
 /* Pola (RE2, dicocokkan penuh pada nilai yang sudah di-trim). */
 const RE = {
@@ -104,10 +101,12 @@ const RE = {
   /** Ambigu: 1.234 (ID ribuan / US desimal 3 digit). */
   idWeak: String.raw`[+-]?[1-9]\d{0,2}\.\d{3}`,
   /** Tidak muat persis di DECIMAL(38,6): > 6 digit pecahan atau eksponen. */
-  wideUs: String.raw`.*(\.\d{7,}|[eE]).*`,
-  wideId: String.raw`.*,\d{7,}`,
+  wideUs: String.raw`\.\d{7}|[eE]`,
+  wideId: String.raw`,\d{7}`,
   /** Kode yang tidak boleh menjadi angka: nol di depan (no. HP, kode) atau ≥ 16 digit (NIK, rekening). */
   code: String.raw`[+-]?0\d+|\d{16,}`,
+  /** Bentuk angka (prafilter murah: superset semua pola angka di atas; teks biasa tidak lolos). */
+  numy: String.raw`[+-]?[0-9.,]*[0-9][0-9.,]*([eE][+-]?[0-9]+)?`,
   /** Kandidat tanggal (prafilter murah sebelum strptime; dipakai juga di konversi). */
   datey: String.raw`\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}([ T]\d{1,2}:\d{1,2}(:\d{1,2})?)?`,
 };
@@ -124,32 +123,76 @@ const intExpr = (v: string, loc: NumberLocale) =>
 /** Desimal dari teks ter-trim (DECIMAL(38,6) atau DOUBLE), atau NULL bila bukan angka locale itu. */
 const numExpr = (v: string, loc: NumberLocale, float = false) =>
   `CASE WHEN ${match(v, loc === "id" ? RE.numId : RE.numUs)} THEN TRY_CAST(${norm(v, loc)} AS ${float ? "DOUBLE" : "DECIMAL(38,6)"}) END`;
-/** Nilai yang tidak muat persis di DECIMAL(38,6) (dihitung gagal bila kolom disimpan DECIMAL). */
-const wideExpr = (v: string, loc: NumberLocale) => match(v, loc === "id" ? RE.wideId : RE.wideUs);
+/**
+ * Nilai yang tidak muat persis di DECIMAL(38,6) (dihitung gagal bila kolom disimpan DECIMAL).
+ * Pencocokan sebagian (mengandung pola), lebih murah daripada pola penuh berawalan .*.
+ */
+const wideExpr = (v: string, loc: NumberLocale) =>
+  `regexp_matches(${v}, ${lit(loc === "id" ? RE.wideId : RE.wideUs)})`;
 /** DECIMAL hanya untuk nilai yang muat persis; DOUBLE untuk semua angka. */
 const decExpr = (v: string, loc: NumberLocale, float: boolean) =>
   float ? numExpr(v, loc, true) : `CASE WHEN NOT ${wideExpr(v, loc)} THEN ${numExpr(v, loc)} END`;
 
 /**
- * Format teks selalu ditambah ISO: sel tanggal asli xlsx tersimpan di raw sebagai yyyy-mm-dd, dan
- * kolom Excel sering mencampur sel tanggal asli dengan teks "dd/mm/yyyy". ISO tidak ambigu (tahun 4
- * digit di depan), jadi penggabungan ini tidak mengubah tafsiran hari/bulan format teksnya.
+ * Bentuk nilai tanggal (dihitung sekali per nilai): ISO, tahun di depan, pemisah pertama, panjang
+ * tahun di akhir (2/4), dan jam (0 = tanpa, 1 = jam:menit, 2 = jam:menit:detik). Dipakai untuk memilih
+ * tepat satu format strptime konstan: mencoba daftar format per nilai (6 keluarga × ± 11 format)
+ * membuat tahap typed ± 4× lebih lambat (review T-007 N2).
  */
-const formatsFor = (f: TextDateFormat) =>
-  f === "yyyy-mm-dd" ? DATE_FORMATS[f] : [...DATE_FORMATS[f], ...DATE_FORMATS["yyyy-mm-dd"]];
-/** TIMESTAMP dari teks ter-trim, atau NULL: prafilter bentuk tanggal, lalu tahun < 1000 ditolak. */
-const dateExpr = (v: string, f: TextDateFormat) => {
-  const ts = `try_strptime(${v}, ${listLit(formatsFor(f))})`;
-  return `CASE WHEN ${match(v, RE.datey)} AND year(${ts}) >= 1000 THEN ${ts} END`;
-};
+interface DateShape {
+  iso: string;
+  first4: string;
+  sep: string;
+  ysz: string;
+  tm: string;
+}
+const shapeOf = (v: string): DateShape => ({
+  iso: match(v, String.raw`\d{4}-\d{1,2}-\d{1,2}([ T]\d{1,2}:\d{1,2}(:\d{1,2})?)?`),
+  first4: match(v, String.raw`\d{4}[-/.].*`),
+  sep: `regexp_extract(${v}, ${lit(String.raw`^\d{1,4}([-/.])`)}, 1)`,
+  ysz: `length(regexp_extract(${v}, ${lit(String.raw`^\d{1,4}[-/.]\d{1,2}[-/.](\d{1,4})`)}, 1))`,
+  tm: `CASE WHEN ${match(v, String.raw`.* \d{1,2}:\d{1,2}:\d{1,2}`)} THEN 2 WHEN ${match(v, String.raw`.* \d{1,2}:\d{1,2}`)} THEN 1 ELSE 0 END`,
+});
+const TIME = ["", " %H:%M", " %H:%M:%S"];
+const isoParse = (v: string) => `try_strptime(${v}, ${listLit(ISO_FORMATS)})`;
+
+/**
+ * TIMESTAMP mentah satu keluarga format dari nilai `v` berbentuk `s`; `iso` = hasil parse ISO nilai
+ * itu. Format teks selalu menerima ISO: sel tanggal asli xlsx tersimpan di raw sebagai yyyy-mm-dd dan
+ * kolom Excel sering mencampurnya dengan teks "dd/mm/yyyy"; ISO tidak ambigu, jadi tafsiran hari/bulan
+ * format teks tidak berubah. Tahun 2 digit → %y (%Y DuckDB menerima 1–4 digit: "26" → tahun 0026).
+ */
+function familyParse(v: string, f: TextDateFormat, s: DateShape, iso: string): string {
+  const { order, sep } = DATE_FORMATS[f];
+  if (order === "iso") return `CASE WHEN ${s.iso} THEN ${iso} END`;
+  const whens: string[] = [];
+  for (const y of order === "ymd" ? [4] : [2, 4]) {
+    const Y = y === 2 ? "%y" : "%Y";
+    const d =
+      order === "dmy"
+        ? `%d${sep}%m${sep}${Y}`
+        : order === "mdy"
+          ? `%m${sep}%d${sep}${Y}`
+          : `%Y${sep}%m${sep}%d`;
+    TIME.forEach((t, tm) => {
+      const code = order === "ymd" ? tm : y * 10 + tm;
+      whens.push(`WHEN ${code} THEN try_strptime(${v}, ${lit(d + t)})`);
+    });
+  }
+  const code = order === "ymd" ? s.tm : `(${s.ysz} * 10 + ${s.tm})`;
+  const shapeOk = `${order === "ymd" ? "" : "NOT "}${s.first4} AND ${s.sep} = ${lit(sep)}`;
+  return `CASE WHEN ${s.iso} THEN ${iso} WHEN ${shapeOk} THEN CASE ${code} ${whens.join(" ")} END END`;
+}
+
+/** TIMESTAMP mentah dari teks ter-trim untuk konversi (prafilter bentuk tanggal; penjaga = dateOk). */
+const dateParse = (v: string, f: TextDateFormat) =>
+  `CASE WHEN ${match(v, RE.datey)} THEN ${familyParse(v, f, shapeOf(v), isoParse(v))} END`;
+const dateOk = (ts: string) => `year(${ts}) >= 1000`;
 /** Durasi Excel ([h]:mm): parser mengubahnya menjadi tanggal 1899-12-30 s.d. sebelum 1900-03-01. */
 const isDuration = (ts: string) =>
   `(${ts} >= TIMESTAMP '1899-12-30' AND ${ts} < TIMESTAMP '1900-03-01')`;
-/** Nomor seri Excel (angka US kanonik) dalam rentang tanggal Excel. */
-const serialExpr = (v: string) => {
-  const x = numExpr(v, "us", true);
-  return `CASE WHEN ${x} >= 0 AND ${x} < ${SERIAL_MAX} THEN ${x} END`;
-};
+/** Nomor seri Excel (angka DOUBLE US) dalam rentang tanggal Excel. */
+const serialOk = (x: string) => `(${x} >= 0 AND ${x} < ${SERIAL_MAX})`;
 
 /** Profil satu kolom (hasil query profileSql). */
 export interface Profile {
@@ -193,57 +236,110 @@ const dateAlias = (f: TextDateFormat, p: string) => `${p}_f${TEXT_DATE_FORMATS.i
  * punya nilai non-kosong; kolom tanpa nilai tidak muncul. Pemanggil membatasi jumlah kolom per query.
  */
 export function profileSql(rawPath: string, cols: string[], headerRow: number): string {
-  const dateCols = TEXT_DATE_FORMATS.map((f) => `${dateExpr("v", f)} AS ${dateAlias(f, "p")}`).join(
-    ",\n      ",
-  );
-  const dateAggs = TEXT_DATE_FORMATS.map(
-    (f) =>
-      `count(${dateAlias(f, "p")}) AS ${dateAlias(f, "d")},
-    count(*) FILTER (WHERE CAST(${dateAlias(f, "p")} AS TIME) <> TIME '00:00:00') AS ${dateAlias(f, "t")}`,
-  ).join(",\n    ");
+  // Tiga agregasi bersaring WHERE (selection vector): ekspresi angka hanya untuk nilai berbentuk angka,
+  // parse tanggal hanya untuk bentuk tanggal. CASE/AND dalam proyeksi tidak cukup: pengoptimal
+  // menulis ulang CASE … ELSE false menjadi AND yang mengevaluasi kedua sisi untuk semua baris.
+  const shape: DateShape = { iso: "s_iso", first4: "s_f4", sep: "s_sep", ysz: "s_ysz", tm: "s_tm" };
+  const shapeCols = (Object.entries(shapeOf("v")) as [keyof DateShape, string][])
+    .map(([k, e]) => `${e} AS ${shape[k]}`)
+    .join(",\n      ");
+  const dateCols = TEXT_DATE_FORMATS.map(
+    (f) => `${familyParse("v", f, shape, "p_iso")} AS ${dateAlias(f, "p")}`,
+  ).join(",\n      ");
+  const dateAggs = TEXT_DATE_FORMATS.map((f) => {
+    const a = dateAlias(f, "p");
+    return `count(*) FILTER (WHERE ${dateOk(a)}) AS ${dateAlias(f, "d")},
+    count(*) FILTER (WHERE ${dateOk(a)} AND CAST(${a} AS TIME) <> TIME '00:00:00') AS ${dateAlias(f, "t")}`;
+  }).join(",\n    ");
   const iso = dateAlias("yyyy-mm-dd", "p");
+  const numOut = [
+    "code",
+    "id_strong",
+    "us_strong",
+    "id_weak",
+    "id_text0",
+    "int_us",
+    "int_id",
+    "num_us",
+    "num_id",
+    "wide_us",
+    "wide_id",
+    "dec_us",
+    "dec_id",
+    "ser",
+  ];
+  const dateOut = [
+    ...TEXT_DATE_FORMATS.flatMap((f) => [dateAlias(f, "d"), dateAlias(f, "t")]),
+    "dur",
+  ];
   return `
 WITH src AS (
   SELECT ${cols.map(ident).join(", ")} FROM read_parquet(${lit(rawPath)}) WHERE _row > ${Math.trunc(headerRow)}
 ),
 long AS (UNPIVOT src ON ${cols.map(ident).join(", ")} INTO NAME col VALUE raw),
-f AS (
+f AS (SELECT col, v FROM (SELECT col, trim(raw) AS v FROM long) WHERE v <> ''),
+base AS (
+  SELECT col,
+      count(*) AS n,
+      approx_count_distinct(v) AS distinct_n,
+      sum(length(v)) AS chars,
+      count(*) FILTER (WHERE lower(v) IN (${[...BOOL_TRUE, ...BOOL_FALSE].map(lit).join(", ")})) AS bool
+  FROM f GROUP BY col
+),
+nf AS (
   SELECT col, v,
       ${match("v", RE.code)} AS code,
+      ${match("v", RE.idStrong)} AS ids,
+      ${match("v", RE.usStrong)} AS uss,
+      ${match("v", RE.idWeak)} AS idw,
+      ${match("v", RE.idText0)} AS idt,
       ${numExpr("v", "us", true)} AS nus,
       ${numExpr("v", "id", true)} AS nid,
       ${wideExpr("v", "us")} AS wus,
       ${wideExpr("v", "id")} AS wid,
       ${intExpr("v", "us")} AS ius,
-      ${intExpr("v", "id")} AS iid,
-      ${serialExpr("v")} AS ser,
-      ${dateCols},
-      lower(v) AS lv
-  FROM (SELECT col, trim(raw) AS v FROM long) WHERE v <> ''
-)
-SELECT col,
-    count(*) AS n,
-    approx_count_distinct(v) AS distinct_n,
-    sum(length(v)) AS chars,
-    count(*) FILTER (WHERE code) AS code,
-    count(*) FILTER (WHERE ${match("v", RE.idStrong)}) AS id_strong,
-    count(*) FILTER (WHERE ${match("v", RE.usStrong)}) AS us_strong,
-    count(*) FILTER (WHERE ${match("v", RE.idWeak)}) AS id_weak,
-    count(*) FILTER (WHERE ${match("v", RE.idText0)}) AS id_text0,
-    count(ius) AS int_us,
-    count(iid) AS int_id,
-    count(nus) AS num_us,
-    count(nid) AS num_id,
-    count(*) FILTER (WHERE nus IS NOT NULL AND wus) AS wide_us,
-    count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
-    count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
-    count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
-    count(ser) AS ser,
+      ${intExpr("v", "id")} AS iid
+  FROM f WHERE ${match("v", RE.numy)}
+),
+num AS (
+  SELECT col,
+      count(*) FILTER (WHERE code) AS code,
+      count(*) FILTER (WHERE ids) AS id_strong,
+      count(*) FILTER (WHERE uss) AS us_strong,
+      count(*) FILTER (WHERE idw) AS id_weak,
+      count(*) FILTER (WHERE idt) AS id_text0,
+      count(ius) AS int_us,
+      count(iid) AS int_id,
+      count(nus) AS num_us,
+      count(nid) AS num_id,
+      count(*) FILTER (WHERE nus IS NOT NULL AND wus) AS wide_us,
+      count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
+      count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
+      count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
+      count(*) FILTER (WHERE ${serialOk("nus")}) AS ser
+  FROM nf GROUP BY col
+),
+df AS (
+  SELECT col, v,
+      ${shapeCols}
+  FROM f WHERE ${match("v", RE.datey)}
+),
+dh AS (SELECT *, CASE WHEN s_iso THEN ${isoParse("v")} END AS p_iso FROM df),
+di AS (
+  SELECT col,
+      ${dateCols}
+  FROM dh
+),
+dt AS (
+  SELECT col,
     ${dateAggs},
-    count(*) FILTER (WHERE ${isDuration(iso)}) AS dur,
-    count(*) FILTER (WHERE lv IN (${[...BOOL_TRUE, ...BOOL_FALSE].map(lit).join(", ")})) AS bool
-FROM f
-GROUP BY col`;
+    count(*) FILTER (WHERE ${dateOk(iso)} AND ${isDuration(iso)}) AS dur
+  FROM di GROUP BY col
+)
+SELECT base.*,
+    ${numOut.map((c) => `coalesce(num.${c}, 0) AS ${c}`).join(", ")},
+    ${dateOut.map((c) => `coalesce(dt.${c}, 0) AS ${c}`).join(", ")}
+FROM base LEFT JOIN num USING (col) LEFT JOIN dt USING (col)`;
 }
 
 /**
@@ -375,38 +471,55 @@ export function decide(p: Profile | undefined, source: SourceKind): Inferred {
 }
 
 /**
- * Ekspresi SQL kolom bertipe dari kolom raw `col` (VARCHAR). Teks dipertahankan apa adanya (sel berisi
- * spasi saja → NULL, sama dengan profil); tipe lain dari nilai ter-trim. Gagal konversi → NULL.
+ * Ekspresi SQL kolom bertipe dari kolom raw `col` (VARCHAR), dua tahap agar parse dilakukan sekali:
+ * `inner` dihitung di subquery (alias), `outer(alias)` menerapkan penjaga pada hasilnya. Teks
+ * dipertahankan apa adanya (sel berisi spasi saja → NULL, sama dengan profil); tipe lain dari nilai
+ * ter-trim. Gagal konversi → NULL (predikat sama dengan okCount).
  */
-export function typedExpr(col: string, s: Inferred): string {
+export function typedParts(
+  col: string,
+  s: Inferred,
+): { inner: string; outer: (a: string) => string } {
   const raw = ident(col);
   const v = `trim(${raw})`;
   const loc = s.numberLocale ?? "us";
+  const same = (a: string) => a;
   switch (s.type) {
     case "text":
-      return `CASE WHEN ${v} <> '' THEN ${raw} END`;
+      return { inner: raw, outer: (a) => `CASE WHEN trim(${a}) <> '' THEN ${a} END` };
     case "integer":
-      return intExpr(v, loc);
+      return { inner: intExpr(v, loc), outer: same };
     case "decimal":
-      return decExpr(v, loc, s.float ?? false);
+      return { inner: decExpr(v, loc, s.float ?? false), outer: same };
     case "boolean":
-      return `CASE WHEN lower(${v}) IN (${BOOL_TRUE.map(lit).join(", ")}) THEN true WHEN lower(${v}) IN (${BOOL_FALSE.map(lit).join(", ")}) THEN false END`;
-    case "duration": {
+      return {
+        inner: `CASE WHEN lower(${v}) IN (${BOOL_TRUE.map(lit).join(", ")}) THEN true WHEN lower(${v}) IN (${BOOL_FALSE.map(lit).join(", ")}) THEN false END`,
+        outer: same,
+      };
+    case "duration":
       // Detik sejak epoch Excel (1899-12-30) = panjang durasi.
-      const ts = dateExpr(v, "yyyy-mm-dd");
-      return `CASE WHEN ${isDuration(ts)} THEN date_diff('second', TIMESTAMP '1899-12-30', ${ts}) END`;
-    }
+      return {
+        inner: dateParse(v, "yyyy-mm-dd"),
+        outer: (a) =>
+          `CASE WHEN ${dateOk(a)} AND ${isDuration(a)} THEN date_diff('second', TIMESTAMP '1899-12-30', ${a}) END`,
+      };
     case "date":
     case "timestamp": {
       const f = s.dateFormat ?? "yyyy-mm-dd";
       if (f === "serial") {
-        const x = serialExpr(v);
-        return s.type === "date"
-          ? `CAST(DATE '1899-12-30' + CAST(floor(${x}) AS INTEGER) AS DATE)`
-          : `TIMESTAMP '1899-12-30' + to_microseconds(CAST(round(${x} * 86400000000) AS BIGINT))`;
+        return {
+          inner: numExpr(v, "us", true),
+          outer: (a) =>
+            s.type === "date"
+              ? `CASE WHEN ${serialOk(a)} THEN CAST(DATE '1899-12-30' + CAST(floor(${a}) AS INTEGER) AS DATE) END`
+              : `CASE WHEN ${serialOk(a)} THEN TIMESTAMP '1899-12-30' + to_microseconds(CAST(round(${a} * 86400000000) AS BIGINT)) END`,
+        };
       }
-      const ts = dateExpr(v, f);
-      return s.type === "date" ? `CAST(${ts} AS DATE)` : ts;
+      return {
+        inner: dateParse(v, f),
+        outer: (a) =>
+          `CASE WHEN ${dateOk(a)} THEN ${s.type === "date" ? `CAST(${a} AS DATE)` : a} END`,
+      };
     }
   }
 }

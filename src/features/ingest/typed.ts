@@ -14,7 +14,7 @@ import {
   pickLocale,
   profileSql,
   toProfile,
-  typedExpr,
+  typedParts,
   type ColumnSchema,
   type DateFormat,
   type Inferred,
@@ -151,11 +151,14 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
   // Tanpa ORDER BY: raw sudah urut _row dan urutan sisip dipertahankan (1 thread) → deterministik
   // tanpa sort atas data lebar. Row group dibatasi juga oleh rata-rata karakter per baris.
   const chars = [...profiles.values()].reduce((sum, p) => sum + p.chars, 0);
+  // Dua tahap: parse sekali di subquery (a<pos>), penjaga diterapkan pada hasilnya di luar.
+  const parts = schema.map((s, i) => typedParts(cols[i]!, s));
   await watched(duck, input.watch, () =>
     copyParquet(
       duck,
-      `SELECT _row, ${schema.map((s, i) => `${typedExpr(cols[i]!, s)} AS c${s.pos}`).join(", ")}
-       FROM read_parquet(${lit(input.rawPath)}) WHERE ${where}`,
+      `SELECT _row, ${parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`).join(", ")}
+       FROM (SELECT _row, ${parts.map((p, i) => `${p.inner} AS a${i + 1}`).join(", ")}
+             FROM read_parquet(${lit(input.rawPath)}) WHERE ${where})`,
       input.outPath,
       cols.length + 1,
       rowGroupFor(cols.length + 1, dataRows > 0 ? chars / dataRows : 0),

@@ -9,7 +9,7 @@
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Queue, Worker, type Job } from "bullmq";
+import { DelayedError, Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
 import { recastSheet } from "@/features/ingest/recast";
@@ -37,6 +37,9 @@ const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
 const RECOVER_INGESTS = "recover-stuck-ingests";
 const DELETE_OBJECT = "delete-object";
+/** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
+const RECAST_BUSY_DELAY_MS = 30 * 1000;
+const RECAST_BUSY_MAX_MS = 30 * 60 * 1000;
 const INGEST_LOCK_MS = 5 * 60 * 1000;
 
 /** Tandai semua unggahan > 24 jam sebagai FAILED (per batch 100 sampai habis). */
@@ -166,7 +169,7 @@ async function main() {
   const lockRedis = connection();
   const recastWorker = new Worker<RecastJobData>(
     RECAST_QUEUE,
-    async (job: Job<RecastJobData>) => {
+    async (job: Job<RecastJobData>, token?: string) => {
       const { sheetId, input } = job.data;
       const r = await recastSheet(sheetId, input, {
         repo: prismaRecastRepo,
@@ -193,8 +196,14 @@ async function main() {
         },
       });
       logger.info({ jobId: job.id, sheetId, ...r, schema: undefined }, "recast selesai");
-      // Recast lain sedang memegang lock sheet ini → ulang nanti (perubahan user tidak dibuang).
-      if (r.outcome === "busy") throw new Error("recast lain sedang berjalan untuk sheet ini");
+      // Recast lain sedang memegang lock sheet ini (bisa sampai deadline 20 menit) → tunda tanpa
+      // memakai jatah percobaan, sampai batas tunggu > deadline; perubahan user tidak dibuang.
+      if (r.outcome === "busy") {
+        const waited = Date.now() - job.timestamp;
+        if (waited > RECAST_BUSY_MAX_MS) throw new Error("recast lain berjalan terlalu lama");
+        await job.moveToDelayed(Date.now() + RECAST_BUSY_DELAY_MS, token);
+        throw new DelayedError();
+      }
       return r.outcome === "done" ? { outcome: r.outcome, revision: r.revision } : r;
     },
     { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS },

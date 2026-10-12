@@ -252,4 +252,24 @@ describe("recast", () => {
       rows.map((x) => (x[1] === null ? null : (x[1] as Date).toISOString().slice(0, 10))),
     ).toEqual(["2023-03-15", null, "2023-03-16"]);
   });
+
+  it("swap commit lalu koneksi putus → file yang kini aktif tidak dihapus (N1)", async () => {
+    const r = await setup(DATA);
+    const real = r.deps.repo.swapTyped;
+    const deps: RecastDeps = {
+      ...r.deps,
+      repo: {
+        ...r.deps.repo,
+        swapTyped: async (id, expected, next) => {
+          await real(id, expected, next);
+          throw new Error("Server has closed the connection");
+        },
+      },
+    };
+    await expect(recastSheet(r.sheetId, {}, deps)).rejects.toThrow(/closed the connection/);
+    const active = r.sheet().typedKey!;
+    expect(active).toMatch(/typed-2-[0-9a-f]{12}\.parquet$/);
+    expect(has(r.storage, active)).toBe(true);
+    expect(r.lock.held.size).toBe(0);
+  });
 });

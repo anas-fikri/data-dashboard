@@ -259,13 +259,23 @@ export async function recastSheet(
     await deps.storage.upload(typedKey, outPath, PARQUET);
     uploaded = typedKey;
     await watch(); // lock masih milik kita tepat sebelum mengganti pointer
-    const swapped = await deps.repo.swapTyped(sheetId, s.schemaRevision, {
-      typedKey,
-      schema: typed.schema,
-      schemaRevision: revision,
-      headerRow,
-      columns,
-    });
+    let swapped: boolean;
+    try {
+      swapped = await deps.repo.swapTyped(sheetId, s.schemaRevision, {
+        typedKey,
+        schema: typed.schema,
+        schemaRevision: revision,
+        headerRow,
+        columns,
+      });
+    } catch (e) {
+      // UPDATE bisa sudah commit sebelum koneksi putus: jangan hapus file yang mungkin sudah aktif.
+      // Bila tidak bisa dipastikan, biarkan (paling buruk objek yatim di prefix versi, ikut terhapus
+      // bersama versi/dataset).
+      const now = await deps.repo.loadSheet(sheetId).catch(() => undefined);
+      if (now === undefined || now?.typedKey === typedKey) uploaded = null;
+      throw e;
+    }
     if (!swapped) {
       return (await deps.repo.loadSheet(sheetId)) ? { outcome: "stale" } : { outcome: "gone" };
     }
