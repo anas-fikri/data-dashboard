@@ -3,7 +3,9 @@
 import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
 import { forwardRef } from "react";
 import { Button } from "@/components/ui/button";
+import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetView } from "@/features/dashboards/service";
+import { parseWidgetConfig } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 
 /*
@@ -32,6 +34,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
 ) {
   const title = widget.title || "Widget tanpa judul";
   const handle = editing && draggable;
+  const parsed = parseWidgetConfig(widget.type, widget.spec);
+  const config = parsed.ok && parsed.config.type !== "empty" ? parsed.config : null;
   return (
     <div
       ref={ref}
@@ -87,19 +91,23 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           </Button>
         ) : null}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
-        <IconChartBar
-          size={28}
-          stroke={1.5}
-          aria-hidden
-          className="shrink-0 text-muted-foreground"
-        />
-        <p className="text-sm text-muted-foreground @max-[9rem]:hidden">
-          {editing
-            ? "Widget kosong. Atur judul, posisi, dan ukurannya lewat tombol pengaturan."
-            : "Widget ini belum berisi data."}
-        </p>
-      </div>
+      {config ? (
+        <WidgetBody widgetId={widget.id} config={config} title={widget.title} editing={editing} />
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
+          <IconChartBar
+            size={28}
+            stroke={1.5}
+            aria-hidden
+            className="shrink-0 text-muted-foreground"
+          />
+          <p className="text-sm text-muted-foreground @max-[9rem]:hidden">
+            {editing
+              ? "Widget kosong. Pilih jenis tampilan dan datanya lewat tombol pengaturan."
+              : "Widget ini belum berisi data."}
+          </p>
+        </div>
+      )}
       {children}
     </div>
   );

@@ -46,6 +46,7 @@ export function WidgetPanel({
   onRename,
   onStep,
   onDelete,
+  children,
 }: {
   widget: WidgetView;
   item: LayoutItem;
@@ -54,6 +55,8 @@ export function WidgetPanel({
   onRename: (title: string) => Promise<boolean>;
   onStep: (key: StepKey) => void;
   onDelete: () => void;
+  /** Bagian isi/data widget (form konfigurasi T-011). */
+  children?: React.ReactNode;
 }) {
   const id = useId();
   const [title, setTitle] = useState(widget.title);
@@ -110,8 +113,10 @@ export function WidgetPanel({
         </p>
       </form>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="mb-1 text-sm font-medium">Posisi</legend>
+      {children ? <div className="border-t pt-4">{children}</div> : null}
+
+      <fieldset className="flex flex-col gap-2 border-t pt-4">
+        <legend className="mb-1 pt-4 text-sm font-medium">Posisi</legend>
         <div className="flex flex-wrap gap-2">
           {step("left", `Geser ${label} ke kiri`, <IconArrowLeft aria-hidden />)}
           {step("right", `Geser ${label} ke kanan`, <IconArrowRight aria-hidden />)}

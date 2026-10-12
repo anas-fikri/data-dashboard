@@ -31,9 +31,9 @@ export interface EngineOptions {
   maxTempSize: string;
   /** Query bersamaan di seluruh proses. */
   maxConcurrency: number;
-  /** Query bersamaan per user (sisanya langsung QueryBusyError). */
+  /** Query bersamaan per user; sisanya antre di belakang query user itu sendiri. */
   perUser: number;
-  /** Lama menunggu slot global sebelum QueryBusyError. */
+  /** Lama menunggu slot (per user, lalu global) sebelum QueryBusyError. */
   queueWaitMs: number;
 }
 
@@ -46,6 +46,7 @@ export class QueryEngine {
   private active = 0;
   private readonly waiters: (() => void)[] = [];
   private readonly perUser = new Map<string, number>();
+  private readonly userWaiters = new Map<string, (() => void)[]>();
 
   private constructor(
     private readonly db: DuckDBInstance,
@@ -80,10 +81,36 @@ export class QueryEngine {
     return new QueryEngine(db, o);
   }
 
-  private async slot(userId: string): Promise<() => void> {
+  /**
+   * Jatah per user. Penuh → antre ≤ queueWaitMs di belakang query user itu sendiri (dashboard dengan
+   * banyak widget, atau dua tab, dilayani berurutan alih-alih ditolak) tanpa pernah memegang lebih
+   * dari perUser slot (review T-009 F2 tetap berlaku). Slot yang dilepas diserahkan langsung.
+   */
+  private async userSlot(userId: string): Promise<void> {
     const mine = this.perUser.get(userId) ?? 0;
-    if (mine >= this.o.perUser) throw new QueryBusyError();
-    this.perUser.set(userId, mine + 1);
+    if (mine < this.o.perUser) {
+      this.perUser.set(userId, mine + 1);
+      return;
+    }
+    const list = this.userWaiters.get(userId) ?? [];
+    this.userWaiters.set(userId, list);
+    await new Promise<void>((resolve, reject) => {
+      const wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        const i = list.indexOf(wake);
+        if (i >= 0) list.splice(i, 1);
+        if (!list.length && this.userWaiters.get(userId) === list) this.userWaiters.delete(userId);
+        reject(new QueryBusyError());
+      }, this.o.queueWaitMs);
+      list.push(wake);
+    });
+  }
+
+  private async slot(userId: string): Promise<() => void> {
+    await this.userSlot(userId);
     try {
       if (this.active < this.o.maxConcurrency) {
         this.active++;
@@ -119,6 +146,11 @@ export class QueryEngine {
   }
 
   private decUser(userId: string) {
+    const list = this.userWaiters.get(userId);
+    const next = list?.shift();
+    if (list && !list.length) this.userWaiters.delete(userId);
+    // Diserahkan ke penunggu user yang sama: jumlah slot user tidak berubah.
+    if (next) return next();
     const n = (this.perUser.get(userId) ?? 1) - 1;
     if (n <= 0) this.perUser.delete(userId);
     else this.perUser.set(userId, n);

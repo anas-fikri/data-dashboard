@@ -1,0 +1,172 @@
+"use client";
+
+import {
+  IconArrowsSort,
+  IconChevronLeft,
+  IconChevronRight,
+  IconSortAscending,
+  IconSortDescending,
+} from "@tabler/icons-react";
+import { Button } from "@/components/ui/button";
+import { formatCell, formatNumber } from "@/features/widgets/format";
+import type { NumberFormat } from "@/features/widgets/spec";
+import { cn } from "@/lib/utils";
+import type { WidgetData } from "./widget-query";
+
+/*
+ * Widget tabel (T-011): 100 baris per halaman dari server, urut satu kolom (klik judul kolom:
+ * naik → turun → urutan asli), header menempel saat digulir. Angka rata kanan tabular. Teks sel
+ * dirender React (ter-escape); sel panjang dipotong dengan judul berisi teks lengkap.
+ */
+export type TableSort = { column: number; dir: "asc" | "desc" } | null;
+
+const NUMERIC = new Set(["integer", "decimal", "duration", "count"]);
+const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
+
+export function TableView({
+  data,
+  positions,
+  format,
+  sort,
+  busy,
+  label,
+  onSort,
+  onPage,
+}: {
+  data: WidgetData;
+  /** Posisi kolom skema untuk tiap kolom hasil (urutan sama dengan spec.columns). */
+  positions: number[];
+  format: NumberFormat;
+  sort: TableSort;
+  busy: boolean;
+  label: string;
+  onSort: (sort: TableSort) => void;
+  onPage: (page: number) => void;
+}) {
+  const page = data.page ?? 0;
+  const size = data.pageSize ?? 100;
+  const total = data.total ?? data.rows.length;
+  const pages = Math.max(1, Math.ceil(total / size));
+  const from = data.rows.length ? page * size + 1 : 0;
+  const to = page * size + data.rows.length;
+
+  const next = (pos: number): TableSort =>
+    sort?.column !== pos
+      ? { column: pos, dir: "asc" }
+      : sort.dir === "asc"
+        ? { column: pos, dir: "desc" }
+        : null;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div
+        className={cn("relative min-h-0 flex-1 overflow-auto", busy && "opacity-60")}
+        role="region"
+        aria-label={label}
+        aria-busy={busy || undefined}
+        // Wilayah gulir harus bisa difokus agar bisa digulir dengan keyboard (WCAG 2.1.1, axe
+        // scrollable-region-focusable).
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+      >
+        <table className="w-full border-collapse text-sm" data-testid="widget-table">
+          <thead className="sticky top-0 z-10 bg-card">
+            <tr>
+              {data.columns.map((c, i) => {
+                const pos = positions[i]!;
+                const dir = sort?.column === pos ? sort.dir : null;
+                const Icon =
+                  dir === "asc"
+                    ? IconSortAscending
+                    : dir === "desc"
+                      ? IconSortDescending
+                      : IconArrowsSort;
+                return (
+                  <th
+                    key={c.key}
+                    scope="col"
+                    aria-sort={dir === "asc" ? "ascending" : dir === "desc" ? "descending" : "none"}
+                    className={cn(
+                      "whitespace-nowrap border-b px-2 py-1 font-medium",
+                      NUMERIC.has(c.type) ? "text-right" : "text-left",
+                    )}
+                  >
+                    <button
+                      type="button"
+                      className="inline-flex min-h-8 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      onClick={() => onSort(next(pos))}
+                    >
+                      <span className="truncate">{c.label}</span>
+                      <Icon
+                        size={16}
+                        stroke={1.5}
+                        aria-hidden
+                        className="shrink-0 text-muted-foreground"
+                      />
+                    </button>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {data.rows.map((row, r) => (
+              <tr key={page * size + r} className="border-b last:border-b-0">
+                {row.map((v, i) => {
+                  const type = data.columns[i]!.type;
+                  const text = formatCell(v, type, format);
+                  return (
+                    <td
+                      key={i}
+                      className={cn(
+                        "max-w-[24rem] truncate px-3 py-1.5",
+                        NUMERIC.has(type) && "text-right tabular-nums",
+                        (v === null || v === "") && "text-muted-foreground",
+                      )}
+                      title={text.length > 40 ? text : undefined}
+                    >
+                      {text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {data.rows.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+            Tidak ada baris untuk ditampilkan.
+          </p>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-1 text-xs text-muted-foreground">
+        <span aria-live="polite" data-testid="table-range">
+          {total ? `Baris ${count(from)}–${count(to)} dari ${count(total)}` : "Tidak ada baris"}
+        </span>
+        <div className="flex items-center gap-1">
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Halaman sebelumnya"
+            disabled={page === 0 || busy}
+            onClick={() => onPage(page - 1)}
+          >
+            <IconChevronLeft aria-hidden />
+          </Button>
+          <span className="tabular-nums">
+            {count(page + 1)}/{count(pages)}
+          </span>
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            aria-label="Halaman berikutnya"
+            disabled={page >= pages - 1 || busy}
+            onClick={() => onPage(page + 1)}
+          >
+            <IconChevronRight aria-hidden />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}

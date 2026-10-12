@@ -54,7 +54,7 @@ export const api = {
   addWidget: (
     id: string,
     baseRevision: number,
-    restore?: { title: string; at: Omit<LayoutItem, "i"> },
+    restore?: { title: string; at: Omit<LayoutItem, "i">; type: string; spec: unknown },
   ) =>
     call<{ widget: WidgetView; layout: LayoutItem[]; layoutRevision: number }>(
       `${base(id)}/widgets`,
@@ -68,4 +68,9 @@ export const api = {
     ),
   renameWidget: (id: string, widgetId: string, title: string) =>
     call<{ title: string }>(`${base(id)}/widgets/${widgetId}`, "PATCH", { title }),
+  configureWidget: (id: string, widgetId: string, type: string, spec: unknown) =>
+    call<{ type: string; spec: unknown }>(`${base(id)}/widgets/${widgetId}`, "PATCH", {
+      type,
+      spec,
+    }),
 };

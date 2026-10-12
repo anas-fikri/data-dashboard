@@ -17,7 +17,7 @@ export type SaveState = "saved" | "pending" | "saving" | "error" | "stale";
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }
   | { kind: "add"; widgetId: string }
-  | { kind: "delete"; title: string; item: LayoutItem };
+  | { kind: "delete"; title: string; item: LayoutItem; type: string; spec: unknown };
 type Failure = Extract<ApiResult<unknown>, { ok: false }>;
 
 const SAVE_DELAY_MS = 500;
@@ -108,7 +108,7 @@ export function useDashboardEditor(o: {
   );
 
   const addWidget = useCallback(
-    (restore?: { title: string; at: Omit<LayoutItem, "i"> }) => {
+    (restore?: { title: string; at: Omit<LayoutItem, "i">; type: string; spec: unknown }) => {
       clearTimeout(timer.current); // simpan tertunda ikut antrean, sebelum tambah
       return run(async () => {
         if (!(await saveNow())) return null;
@@ -137,7 +137,8 @@ export function useDashboardEditor(o: {
       return run(async () => {
         if (!(await saveNow())) return false;
         const item = latest.current.find((it) => it.i === widgetId);
-        const title = widgetsNow.current.find((w) => w.id === widgetId)?.title ?? "";
+        const gone = widgetsNow.current.find((w) => w.id === widgetId);
+        const title = gone?.title ?? "";
         const r = await api.deleteWidget(id, widgetId, revision.current);
         if (!r.ok) {
           failed(r);
@@ -146,7 +147,11 @@ export function useDashboardEditor(o: {
         revision.current = r.data.layoutRevision;
         setWidgets(widgetsNow.current.filter((w) => w.id !== widgetId));
         setLayout(dirty.current ? latest.current.filter((it) => it.i !== widgetId) : r.data.layout);
-        setUndo(recordUndo && item ? { kind: "delete", title, item } : null);
+        setUndo(
+          recordUndo && item
+            ? { kind: "delete", title, item, type: gone?.type ?? "empty", spec: gone?.spec ?? {} }
+            : null,
+        );
         setNotice(null);
         return true;
       });
@@ -170,6 +175,26 @@ export function useDashboardEditor(o: {
     [id, run, failed, setWidgets],
   );
 
+  /** Atur jenis + isi widget (T-011); hasil server (spec ternormalisasi) jadi sumber kebenaran. */
+  const configureWidget = useCallback(
+    (widgetId: string, type: string, spec: unknown) =>
+      run(async () => {
+        const r = await api.configureWidget(id, widgetId, type, spec);
+        if (!r.ok) {
+          failed(r);
+          return false;
+        }
+        setWidgets(
+          widgetsNow.current.map((w) =>
+            w.id === widgetId ? { ...w, type: r.data.type, spec: r.data.spec } : w,
+          ),
+        );
+        setNotice(null);
+        return true;
+      }),
+    [id, run, failed, setWidgets],
+  );
+
   const undoLast = useCallback(async () => {
     const u = undo;
     if (!u || stale.current) return;
@@ -178,7 +203,7 @@ export function useDashboardEditor(o: {
     else if (u.kind === "add") await removeWidget(u.widgetId, false);
     else {
       const { i: _i, ...at } = u.item;
-      await addWidget({ title: u.title, at });
+      await addWidget({ title: u.title, at, type: u.type, spec: u.spec });
     }
   }, [undo, commitLayout, removeWidget, addWidget]);
 
@@ -226,6 +251,7 @@ export function useDashboardEditor(o: {
     addWidget,
     removeWidget,
     renameWidget,
+    configureWidget,
     undo: undoLast,
     flush,
     dismissNotice: () => setNotice(null),

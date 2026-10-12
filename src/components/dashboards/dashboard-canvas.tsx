@@ -8,7 +8,7 @@ import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layo
 import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import type { WidgetView } from "@/features/dashboards/service";
+import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
 import { GRID_COLS, type LayoutItem } from "@/features/dashboards/validation";
 import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
@@ -16,6 +16,7 @@ import { MIN_H, MIN_W, applyStep, readingOrder, stepAvailability } from "./layou
 import { useDashboardEditor } from "./use-dashboard-editor";
 import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
+import { WidgetConfigForm } from "./widget-config";
 import { WidgetPanel } from "./widget-panel";
 import { WidgetPanelFrame } from "./widget-panel-frame";
 
@@ -37,6 +38,9 @@ export function DashboardCanvas(props: {
   layout: LayoutItem[];
   revision: number;
   editing: boolean;
+  datasetId: string;
+  /** Sheet + kolom untuk panel konfigurasi (hanya mode edit). */
+  sources: SourceSheet[];
 }) {
   const { dashboardId, editing } = props;
   const ed = useDashboardEditor(props);
@@ -226,7 +230,13 @@ export function DashboardCanvas(props: {
                 {ordered.map((it) => {
                   const w = byId.get(it.i);
                   return w
-                    ? card(w, it, { style: { minHeight: Math.max(160, it.h * ROW_HEIGHT) } })
+                    ? // Tinggi tetap setara grid: tabel/grafik menggulir di dalam kartu, bukan
+                      // memanjangkan halaman.
+                      card(w, it, {
+                        style: {
+                          height: Math.max(160, it.h * ROW_HEIGHT + (it.h - 1) * MARGIN[1]),
+                        },
+                      })
                     : null;
                 })}
               </div>
@@ -274,7 +284,14 @@ export function DashboardCanvas(props: {
                   ed.commitLayout(applyStep(ed.layout, panelItem.i, k));
                 }}
                 onDelete={() => void remove(panelItem.i)}
-              />
+              >
+                <WidgetConfigForm
+                  widget={panelWidget}
+                  sources={props.sources}
+                  datasetId={props.datasetId}
+                  onSave={(type, spec) => ed.configureWidget(panelItem.i, type, spec)}
+                />
+              </WidgetPanel>
             </WidgetPanelFrame>
           ) : null}
         </div>

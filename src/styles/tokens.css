@@ -31,11 +31,13 @@
   --ring: 221 83% 53%;
   --overlay: 240 6% 10%;
 
-  --chart-1: 217 91% 60%;
-  --chart-2: 199 89% 48%;
-  --chart-3: 213 94% 68%;
-  --chart-4: 205 84% 54%;
-  --chart-5: 210 90% 56%;
+  /* Palet kategori grafik (T-011): rona berbeda jelas, tiap warna ≥ 3:1 terhadap --card (1.4.11). */
+  --chart-1: 221 83% 53%;
+  --chart-2: 173 80% 30%;
+  --chart-3: 32 95% 42%;
+  --chart-4: 346 77% 50%;
+  --chart-5: 262 52% 55%;
+  --chart-6: 215 16% 47%;
 
   --sidebar-background: 240 6% 98%;
   --sidebar-foreground: 240 6% 10%;
@@ -75,6 +77,12 @@
   --secondary-foreground: 0 0% 98%;
   --muted: 240 4% 16%;
   --muted-foreground: 240 5% 65%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 172 66% 45%;
+  --chart-3: 38 92% 55%;
+  --chart-4: 346 84% 65%;
+  --chart-5: 262 83% 72%;
+  --chart-6: 215 20% 65%;
   --accent: 240 4% 16%;
   --accent-foreground: 0 0% 98%;
   --destructive: 0 84% 68%; /* cukup terang sebagai teks di latar gelap */

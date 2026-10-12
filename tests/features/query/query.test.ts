@@ -422,6 +422,36 @@ describe("regresi review T-009", () => {
     }
   });
 
+  it("T-011: melebihi jatah per user → antre di belakang query sendiri, bukan langsung ditolak", async () => {
+    const e = await QueryEngine.create({
+      dataDir: join(root, "queue-data"),
+      tmpDir: join(root, "queue-tmp"),
+      memoryLimit: "128MB",
+      threads: 1,
+      maxTempSize: "128MB",
+      maxConcurrency: 4,
+      perUser: 1,
+      queueWaitMs: 2_000,
+    });
+    try {
+      let open = 0;
+      let peak = 0;
+      const job = () =>
+        e.withSlot("a", async () => {
+          peak = Math.max(peak, ++open);
+          await new Promise((r) => setTimeout(r, 50));
+          open--;
+          return 1;
+        });
+      // Lima query widget sekaligus dari satu user: semua selesai, tidak pernah > 1 bersamaan.
+      expect(await Promise.all([job(), job(), job(), job(), job()])).toEqual([1, 1, 1, 1, 1]);
+      expect(peak).toBe(1);
+      expect(await e.withSlot("a", async () => 2)).toBe(2);
+    } finally {
+      e.close();
+    }
+  });
+
   it("N2: unduhan tidak memegang slot query — user lain tetap bisa query selama data diunduh", async () => {
     const e = await QueryEngine.create({
       dataDir: join(root, "dl-data"),

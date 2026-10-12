@@ -6,7 +6,7 @@ import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
-import { getDashboard } from "@/features/dashboards/service";
+import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
 
 type Params = Promise<{ id: string }>;
 type Search = Promise<{ mode?: string }>;
@@ -31,6 +31,8 @@ export default async function DashboardPage({
   const d = await getDashboard(user.id, id);
   if (!d) notFound();
   const editing = search.mode === "edit";
+  // Sumber data panel konfigurasi hanya dibutuhkan saat mengedit.
+  const sources = editing ? await getDashboardSources(user.id, d.dataset.id) : [];
 
   return (
     <div className="flex flex-col gap-6">
@@ -74,6 +76,8 @@ export default async function DashboardPage({
         layout={d.layout}
         revision={d.layoutRevision}
         editing={editing}
+        datasetId={d.dataset.id}
+        sources={sources}
       />
       {editing ? <DashboardSettings id={d.id} name={d.name} /> : null}
     </div>

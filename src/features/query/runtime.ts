@@ -114,5 +114,7 @@ function runtime(): Promise<Runtime> {
 }
 
 export async function queryDeps(): Promise<QueryDeps> {
-  return (await runtime()).deps;
+  // Repo diambil dari modul saat ini, bukan dari runtime global yang dibuat sekali per proses:
+  // setelah hot reload (dev) runtime lama tidak membawa method repo yang baru ditambahkan.
+  return { ...(await runtime()).deps, repo: prismaQueryRepo };
 }
