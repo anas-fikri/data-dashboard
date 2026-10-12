@@ -20,11 +20,18 @@ export default defineConfig({
   projects: [
     {
       name: "e2e",
-      testIgnore: [/zz-rate-limit\.spec\.ts$/, /ingest\.spec\.ts$/, /schema\.spec\.ts$/],
+      testIgnore: [
+        /zz-rate-limit\.spec\.ts$/,
+        /ingest\.spec\.ts$/,
+        /schema\.spec\.ts$/,
+        /widgets\.spec\.ts$/,
+      ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
     { name: "schema", testMatch: /schema\.spec\.ts$/, dependencies: ["ingest"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["schema"] },
+    // widgets: menyalakan worker sendiri untuk ingest fixture (setelah worker schema berhenti).
+    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["widgets"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
