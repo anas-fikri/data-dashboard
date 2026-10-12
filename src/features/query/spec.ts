@@ -30,7 +30,12 @@ export type Grain = (typeof GRAINS)[number];
 export type FilterOp = (typeof FILTER_OPS)[number];
 
 const colName = z.string().min(1).max(200);
-export const filterScalar = z.union([z.string().max(1_000), z.number().finite(), z.boolean()]);
+// Angka bulat di-bind sebagai BIGINT oleh DuckDB: di luar ±2^53 ditolak 400, bukan 500 (review T-011 L2).
+export const filterScalar = z.union([
+  z.string().max(1_000),
+  z.number().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER),
+  z.boolean(),
+]);
 
 export const specSchema = z
   .object({

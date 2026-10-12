@@ -306,7 +306,15 @@ export async function addWidget(
   ownerId: string,
   dashboardId: unknown,
   body: unknown,
-): Promise<DashboardResult<{ widget: WidgetView; layout: LayoutItem[]; layoutRevision: number }>> {
+): Promise<
+  DashboardResult<{
+    widget: WidgetView;
+    layout: LayoutItem[];
+    layoutRevision: number;
+    /** Isi widget yang dipulihkan tidak lagi valid → dipulihkan kosong. */
+    configDropped?: true;
+  }>
+> {
   if (!isIdShape(dashboardId)) return notFound();
   const input = (body && typeof body === "object" ? body : {}) as {
     baseRevision?: unknown;
@@ -326,7 +334,10 @@ export async function addWidget(
     title = t.value;
   }
   // Urungkan hapus memulihkan tipe + spec juga (catatan review T-010 L6), divalidasi seperti simpan.
+  // Spec yang sudah tidak cocok dengan data (mis. kolomnya disembunyikan sejak dihapus) tidak
+  // menggagalkan pemulihan: widget kembali kosong di posisinya dan klien diberi tahu.
   let config: WidgetConfig = { type: "empty", spec: {} };
+  let configDropped = false;
   if (input.type !== undefined) {
     const owner = await prisma.dashboard.findFirst({
       where: { id: dashboardId, dataset: { ownerId } },
@@ -334,8 +345,8 @@ export async function addWidget(
     });
     if (!owner) return notFound();
     const checked = await checkConfig(owner.datasetId, input.type, input.spec);
-    if (!checked.ok) return fail("INVALID", checked.message);
-    config = checked.config;
+    if (checked.ok) config = checked.config;
+    else configDropped = true;
   }
   const r = await locked(async (tx) => {
     const d = await lockedDashboard(tx, ownerId, dashboardId);
@@ -363,7 +374,12 @@ export async function addWidget(
     const layout = compactLayout(at?.success ? [item, ...current] : [...current, item]);
     const layoutRevision = d.layoutRevision + 1;
     await writeLayout(tx, dashboardId, layout, layoutRevision);
-    return { widget, layout, layoutRevision };
+    return {
+      widget,
+      layout,
+      layoutRevision,
+      ...(configDropped ? { configDropped: true as const } : {}),
+    };
   });
   if (r === "BUSY") return busy();
   if (r === null) return notFound();

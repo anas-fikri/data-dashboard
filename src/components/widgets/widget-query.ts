@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 import type { ValueType } from "@/features/widgets/format";
 
 /*
- * Query widget dari browser (T-011). Mesin query membatasi query bersamaan per user dan langsung
- * menolak sisanya (QUERY_BUSY), jadi di sini paling banyak 2 query widget berjalan sekaligus per
- * halaman dan QUERY_BUSY dicoba ulang dengan jeda bertahap. Permintaan dibatalkan saat widget
- * berganti spec/halaman atau dilepas.
+ * Query widget dari browser (T-011). Mesin query mengantrekan query per user (antrean terbatas);
+ * QUERY_BUSY berarti antrean penuh atau terlalu lama, jadi di sini paling banyak 2 query widget
+ * berjalan sekaligus per halaman dan QUERY_BUSY dicoba ulang dua kali dengan jeda. Permintaan
+ * dibatalkan saat widget berganti spec/halaman atau dilepas.
  */
 export interface QueryColumn {
   key: string;
@@ -28,7 +28,7 @@ export type WidgetQueryState =
   | { status: "error"; code: string; message: string; data?: WidgetData };
 
 const MAX_ACTIVE = 2;
-const RETRIES = 4;
+const RETRIES = 2;
 let active = 0;
 const waiting: (() => void)[] = [];
 

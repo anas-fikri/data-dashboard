@@ -26,7 +26,7 @@ import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
 import { buildSql, type BuiltSql } from "./sql";
-import { buildTableSql } from "./table";
+import { buildTableCount, buildTablePage } from "./table";
 import { widgetBodySchema, widgetPlan } from "./widget";
 
 export type QueryCode =
@@ -97,6 +97,9 @@ export interface QueryDeps {
   parquet: { acquire(key: string, opts?: AcquireOptions): Promise<ParquetLease> };
   engine: {
     withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T>;
+    /** Jatah user terpisah dari slot global (mesin sungguhan); lihat runOnParquet. */
+    withUser?<T>(userId: string, fn: (waitLeftMs: number) => Promise<T>): Promise<T>;
+    withGlobal?<T>(fn: () => Promise<T>, waitMs?: number): Promise<T>;
     exec(
       sql: string,
       params: Record<string, string | number | boolean>,
@@ -167,35 +170,49 @@ export async function execOnParquet(
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
   build: (path: string) => BuiltSql,
 ): Promise<{ ok: true; out: EngineResult } | QueryFailure> {
-  const r = await execAllOnParquet(userId, key, deps, (path) => [build(path)]);
-  return r.ok ? { ok: true, out: r.outs[0]! } : r;
+  const r = await runOnParquet(userId, key, deps, (path, exec) => exec(build(path)));
+  return r.ok ? { ok: true, out: r.value } : r;
 }
 
-/** Beberapa statement berurutan dalam satu sewa parquet dan satu slot (mis. total + halaman tabel). */
-export async function execAllOnParquet(
+/**
+ * Pekerjaan DuckDB pada satu file parquet: jatah user dulu (permintaan yang antre tidak menyewa file —
+ * review T-011 M2), lalu sewa file (unduhan tidak memegang slot global — T-009 N2), lalu slot global
+ * selama `work` berjalan. `exec` boleh dipanggil beberapa kali berurutan; semuanya berbagi satu batas
+ * waktu `timeoutMs` (bukan masing-masing).
+ */
+export async function runOnParquet<T>(
   userId: string,
   key: string,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
-  build: (path: string) => BuiltSql[],
-): Promise<{ ok: true; outs: EngineResult[] } | QueryFailure> {
+  work: (path: string, exec: (s: BuiltSql) => Promise<EngineResult>) => Promise<T>,
+): Promise<{ ok: true; value: T } | QueryFailure> {
+  const engine = deps.engine;
+  // Mesin palsu di test hanya punya withSlot: jatah user + global sekaligus.
+  const userGate = <R>(fn: (waitLeftMs: number) => Promise<R>) =>
+    engine.withUser ? engine.withUser(userId, fn) : fn(Infinity);
+  const globalGate = <R>(fn: () => Promise<R>, waitLeftMs: number) =>
+    engine.withGlobal ? engine.withGlobal(fn, waitLeftMs) : engine.withSlot(userId, fn);
   try {
-    const lease = await deps.parquet.acquire(key, {
-      owner: userId,
-      waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
-    });
-    try {
-      const statements = build(lease.path);
-      const outs = await deps.engine.withSlot(userId, async () => {
-        const results: EngineResult[] = [];
-        for (const s of statements) {
-          results.push(await deps.engine.exec(s.sql, s.params, deps.timeoutMs));
-        }
-        return results;
+    const value = await userGate(async (waitLeftMs) => {
+      const lease = await deps.parquet.acquire(key, {
+        owner: userId,
+        waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
       });
-      return { ok: true, outs };
-    } finally {
-      lease.release();
-    }
+      try {
+        return await globalGate(() => {
+          const deadline = Date.now() + deps.timeoutMs;
+          const exec = (s: BuiltSql) => {
+            const left = deadline - Date.now();
+            if (left <= 0) throw new QueryTimeoutError();
+            return engine.exec(s.sql, s.params, left);
+          };
+          return work(lease.path, exec);
+        }, waitLeftMs);
+      } finally {
+        lease.release();
+      }
+    });
+    return { ok: true, value };
   } catch (e) {
     if (e instanceof QueryTimeoutError)
       return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
@@ -360,23 +377,34 @@ export async function runWidgetQuery(
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
   if (hit && "total" in hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
+  // Total (dengan filter) tidak bergantung pada urutan/halaman: disimpan terpisah agar pindah halaman
+  // hanya menjalankan query halaman.
+  const countKey = resultKey({ ...keyParts, spec: { tableCount: planned.spec.filters } });
+  const countHit = deps.cache?.get(countKey);
+  const knownTotal =
+    countHit && !("timeout" in countHit) ? Number(countHit.rows[0]?.[0] ?? 0) : undefined;
 
-  const r = await execAllOnParquet(userId, sheet.typedKey, deps, (path) => {
-    const built = buildTableSql(plan, sort, page, path);
-    return [built.count, built.page];
+  const r = await runOnParquet(userId, sheet.typedKey, deps, async (path, exec) => {
+    const total = knownTotal ?? Number((await exec(buildTableCount(plan, path))).rows[0]?.[0] ?? 0);
+    // Halaman di luar data dijepit ke halaman terakhir — tidak ada OFFSET mahal tanpa hasil (M1).
+    const at = Math.min(page, Math.max(0, Math.ceil(total / TABLE_PAGE_SIZE) - 1));
+    const rows = total ? (await exec(buildTablePage(plan, sort, at, path))).rows : [];
+    return { total, page: at, rows };
   });
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
     return r;
   }
-  const out = toRows(r.outs[1]!.rows, plan);
+  const out = toRows(r.value.rows, plan);
   if (!out) return tooLarge();
-  const total = Number(r.outs[0]!.rows[0]?.[0] ?? 0);
+  if (knownTotal === undefined) {
+    deps.cache?.set(countKey, { columns: [], rows: [[r.value.total]] }, 128);
+  }
   const data: TablePage = {
     columns: plan.columns,
     rows: out.rows,
-    total,
-    page,
+    total: r.value.total,
+    page: r.value.page,
     pageSize: TABLE_PAGE_SIZE,
   };
   deps.cache?.set(key, data, out.bytes + 64);

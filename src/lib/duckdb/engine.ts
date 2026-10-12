@@ -42,6 +42,9 @@ export interface EngineResult {
   rows: unknown[][];
 }
 
+/** Permintaan yang boleh antre per user di atas jatahnya (lebih → QueryBusyError langsung). */
+export const USER_QUEUE_MAX = 8;
+
 export class QueryEngine {
   private active = 0;
   private readonly waiters: (() => void)[] = [];
@@ -82,17 +85,19 @@ export class QueryEngine {
   }
 
   /**
-   * Jatah per user. Penuh → antre ≤ queueWaitMs di belakang query user itu sendiri (dashboard dengan
-   * banyak widget, atau dua tab, dilayani berurutan alih-alih ditolak) tanpa pernah memegang lebih
-   * dari perUser slot (review T-009 F2 tetap berlaku). Slot yang dilepas diserahkan langsung.
+   * Jatah per user. Penuh → antre di belakang query user itu sendiri (dashboard dengan banyak widget,
+   * atau dua tab, dilayani berurutan alih-alih ditolak) tanpa pernah memegang lebih dari perUser slot
+   * (review T-009 F2). Antrean dibatasi USER_QUEUE_MAX; lebih dari itu langsung QueryBusyError
+   * (review T-011 M2). Slot yang dilepas diserahkan langsung ke penunggu berikutnya.
    */
-  private async userSlot(userId: string): Promise<void> {
+  private async userSlot(userId: string, waitMs: number): Promise<void> {
     const mine = this.perUser.get(userId) ?? 0;
     if (mine < this.o.perUser) {
       this.perUser.set(userId, mine + 1);
       return;
     }
     const list = this.userWaiters.get(userId) ?? [];
+    if (list.length >= USER_QUEUE_MAX) throw new QueryBusyError();
     this.userWaiters.set(userId, list);
     await new Promise<void>((resolve, reject) => {
       const wake = () => {
@@ -104,45 +109,36 @@ export class QueryEngine {
         if (i >= 0) list.splice(i, 1);
         if (!list.length && this.userWaiters.get(userId) === list) this.userWaiters.delete(userId);
         reject(new QueryBusyError());
-      }, this.o.queueWaitMs);
+      }, waitMs);
       list.push(wake);
     });
   }
 
-  private async slot(userId: string): Promise<() => void> {
-    await this.userSlot(userId);
-    try {
-      if (this.active < this.o.maxConcurrency) {
-        this.active++;
-      } else {
-        // Slot yang dilepas diserahkan langsung ke penunggu (active tidak turun), sehingga query yang
-        // baru datang tidak bisa menyalip dan membuat active > maxConcurrency.
-        await new Promise<void>((resolve, reject) => {
-          const wake = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          const timer = setTimeout(() => {
-            const i = this.waiters.indexOf(wake);
-            if (i >= 0) this.waiters.splice(i, 1);
-            reject(new QueryBusyError());
-          }, this.o.queueWaitMs);
-          this.waiters.push(wake);
-        });
-      }
-    } catch (e) {
-      this.decUser(userId);
-      throw e;
+  /** Slot global (eksekusi DuckDB); slot yang dilepas diserahkan langsung ke penunggu. */
+  private async globalSlot(waitMs: number): Promise<void> {
+    if (this.active < this.o.maxConcurrency) {
+      this.active++;
+      return;
     }
-    let done = false;
-    return () => {
-      if (done) return;
-      done = true;
-      this.decUser(userId);
-      const next = this.waiters.shift();
-      if (next) next();
-      else this.active--;
-    };
+    // active tidak turun saat diserahkan, sehingga query baru tidak bisa menyalip (active ≤ max).
+    await new Promise<void>((resolve, reject) => {
+      const wake = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        const i = this.waiters.indexOf(wake);
+        if (i >= 0) this.waiters.splice(i, 1);
+        reject(new QueryBusyError());
+      }, waitMs);
+      this.waiters.push(wake);
+    });
+  }
+
+  private releaseGlobal() {
+    const next = this.waiters.shift();
+    if (next) next();
+    else this.active--;
   }
 
   private decUser(userId: string) {
@@ -157,17 +153,33 @@ export class QueryEngine {
   }
 
   /**
-   * Pegang satu slot (global + per user) selama `fn` berjalan. Hanya untuk eksekusi DuckDB; unduhan
-   * file parquet punya pembatas sendiri di ParquetCache (review T-009 N2). Slot selalu dilepas, apa
-   * pun yang dilempar `fn`.
+   * Pegang jatah user selama `fn` (termasuk menyiapkan file parquet, yang tidak memegang slot global —
+   * review T-009 N2). `fn` menerima sisa waktu antre untuk slot global, sehingga total antre satu
+   * permintaan ≤ queueWaitMs. Permintaan yang masih antre tidak menyewa file apa pun (review T-011 M2).
    */
-  async withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
-    const release = await this.slot(userId);
+  async withUser<T>(userId: string, fn: (waitLeftMs: number) => Promise<T>): Promise<T> {
+    const t0 = Date.now();
+    await this.userSlot(userId, this.o.queueWaitMs);
+    try {
+      return await fn(Math.max(0, this.o.queueWaitMs - (Date.now() - t0)));
+    } finally {
+      this.decUser(userId);
+    }
+  }
+
+  /** Slot global selama `fn` (eksekusi DuckDB saja). Dipakai di dalam withUser. */
+  async withGlobal<T>(fn: () => Promise<T>, waitMs = this.o.queueWaitMs): Promise<T> {
+    await this.globalSlot(waitMs);
     try {
       return await fn();
     } finally {
-      release();
+      this.releaseGlobal();
     }
+  }
+
+  /** Jatah user + slot global selama `fn`. Slot selalu dilepas, apa pun yang dilempar `fn`. */
+  async withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    return this.withUser(userId, (left) => this.withGlobal(fn, left));
   }
 
   /** Satu query (parameter binding) dengan batas waktu; lewat → interrupt + QueryTimeoutError. */

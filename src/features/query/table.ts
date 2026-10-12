@@ -1,43 +1,60 @@
 /*
  * SQL halaman widget tabel (T-011): baris mentah (bukan agregat), 100 baris per halaman, urut menurut
  * satu kolom tabel lalu _row (nomor baris asli) sebagai pemecah seri sehingga halaman deterministik dan
- * tanpa urutan: urutan file. Total baris dari count(*) dengan filter yang sama. Identifier hanya c<pos>
- * dan _row buatan program; nilai filter lewat parameter. Murni (tanpa I/O).
+ * tanpa urutan: urutan file. Identifier hanya c<pos> dan _row buatan program; nilai filter lewat
+ * parameter. Murni (tanpa I/O).
+ *
+ * Materialisasi terlambat (review T-011 M1): pengurutan + OFFSET hanya membawa kolom urut dan _row;
+ * isi 100 baris diambil sesudahnya lewat _row. Tanpa ini DuckDB mengurutkan seluruh muatan baris
+ * (hingga 20 kolom × 500 karakter) dan halaman jauh pada tabel lebar memakan belasan detik.
  */
 import { ident } from "@/lib/duckdb";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import type { Plan } from "./spec";
 import { DIM_TEXT_MAX, filterClauses, type BuiltSql } from "./sql";
 
-export function buildTableSql(
+function where(plan: Plan, params: BuiltSql["params"]): string {
+  const clauses = filterClauses(plan.filters, params);
+  return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+}
+
+/** Jumlah baris dengan filter yang sama dengan halaman. */
+export function buildTableCount(plan: Plan, parquetPath: string): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const sql = [`SELECT count(*) AS n`, `FROM read_parquet($path)`, where(plan, params)]
+    .filter(Boolean)
+    .join("\n");
+  return { sql, params };
+}
+
+export function buildTablePage(
   plan: Plan,
   sort: { index: number; dir: "asc" | "desc" } | null,
   page: number,
   parquetPath: string,
-): { page: BuiltSql; count: BuiltSql } {
+): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
-  const where = filterClauses(plan.filters, params);
-  const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const row = ident("_row");
+  const by = sort ? plan.dimensions[sort.index] : undefined;
+  const order = [
+    ...(by ? [`${ident(by.col)} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`] : []),
+    `${row} ASC`,
+  ].join(", ");
   const select = plan.dimensions.map((d) => {
     const c = ident(d.col);
     return `${d.type === "text" ? `left(${c}, ${DIM_TEXT_MAX})` : c} AS ${ident(d.key)}`;
   });
-  const by = sort ? plan.dimensions[sort.index] : undefined;
-  const order = [
-    ...(by ? [`${ident(by.col)} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`] : []),
-    `${ident("_row")} ASC`,
-  ];
-  const pageSql = [
+  const sql = [
+    `WITH ids AS (`,
+    `  SELECT ${row} FROM read_parquet($path)`,
+    `  ${where(plan, params)}`,
+    `  ORDER BY ${order}`,
+    `  LIMIT ${TABLE_PAGE_SIZE} OFFSET ${Math.trunc(page) * TABLE_PAGE_SIZE}`,
+    `)`,
     `SELECT ${select.join(", ")}`,
     `FROM read_parquet($path)`,
-    whereSql,
-    `ORDER BY ${order.join(", ")}`,
-    `LIMIT ${TABLE_PAGE_SIZE} OFFSET ${Math.trunc(page) * TABLE_PAGE_SIZE}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const countSql = [`SELECT count(*) AS n`, `FROM read_parquet($path)`, whereSql]
-    .filter(Boolean)
-    .join("\n");
-  return { page: { sql: pageSql, params }, count: { sql: countSql, params } };
+    `WHERE ${row} IN (SELECT ${row} FROM ids)`,
+    `ORDER BY ${order}`,
+  ].join("\n");
+  return { sql, params };
 }

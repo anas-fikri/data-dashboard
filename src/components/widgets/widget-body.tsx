@@ -26,6 +26,7 @@ const TRANSIENT = new Set([
   "UNAVAILABLE",
   "QUERY_FAILED",
   "NOT_READY",
+  "RATE_LIMITED",
 ]);
 
 export function WidgetBody({

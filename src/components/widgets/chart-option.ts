@@ -29,6 +29,8 @@ export interface ChartInput {
 }
 
 const LABEL_WIDTH = 120;
+/** Teks tooltip richText: "{a|b}" ditafsirkan sebagai gaya ECharts → disisipi spasi lebar-nol. */
+const plain = (s: string) => s.replace(/\{/g, "{\u200b");
 
 /** Ringkasan untuk pembaca layar (rincian lengkap ada di tabel data tersembunyi). */
 export function chartSummary(
@@ -59,7 +61,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme) {
         ...tooltip,
         trigger: "item" as const,
         formatter: (p: { name: string; value: unknown; percent: number }) =>
-          `${p.name}\n${value(p.value)} (${formatNumber(p.percent / 100, { style: "percent", decimals: 1 })})`,
+          `${plain(p.name)}\n${value(p.value)} (${formatNumber(p.percent / 100, { style: "percent", decimals: 1 })})`,
       },
       series: [
         {
@@ -115,7 +117,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme) {
       axisPointer: { type: horizontal ? ("shadow" as const) : ("line" as const) },
       formatter: (params: { name: string; value: unknown }[]) => {
         const p = params[0];
-        return p ? `${p.name}\n${i.measureLabel}: ${value(p.value)}` : "";
+        return p ? `${plain(p.name)}\n${plain(i.measureLabel)}: ${value(p.value)}` : "";
       },
     },
     xAxis: horizontal ? valueAxis : categoryAxis,

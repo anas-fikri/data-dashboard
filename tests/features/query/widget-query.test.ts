@@ -193,8 +193,15 @@ describe("AC 3: tabel — 100 baris per halaman, urut kolom tabel", () => {
         all.slice(page * 100, page * 100 + 100).map((x) => x.v),
       );
     }
-    const beyond = await runWidgetQuery(USER, { widgetId: WID("table"), page: 10 }, d);
-    expect(beyond).toMatchObject({ ok: true, rows: [], total: ROWS });
+    // Halaman di luar data dijepit ke halaman terakhir (tanpa OFFSET mahal yang kosong, review M1).
+    const beyond = await runWidgetQuery(USER, { widgetId: WID("table"), page: 50_000 }, d);
+    expect(beyond).toMatchObject({ ok: true, total: ROWS, page: 9 });
+    expect(beyond.ok && beyond.rows).toHaveLength(100);
+    // Total disimpan terpisah: halaman lain tidak menghitung ulang count(*).
+    const exec = vi.spyOn(engine, "exec");
+    await runWidgetQuery(USER, { widgetId: WID("table"), page: 3 }, d);
+    expect(exec).toHaveBeenCalledTimes(1);
+    exec.mockRestore();
   });
 
   it("urutan hanya untuk kolom yang ada di tabel itu; halaman di luar batas → INVALID", async () => {
@@ -226,6 +233,26 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     expect(await runWidgetQuery(USER, { widgetId: WID("kpi") }, deps())).toMatchObject({
       ok: true,
     });
+  });
+
+  it("filter dari klien: kolom tersembunyi tidak disebut namanya; angka di luar ±2^53 → INVALID", async () => {
+    const exec = vi.fn();
+    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
+    const r = await runWidgetQuery(
+      USER,
+      { widgetId: WID("kpi"), filters: [{ column: 5, op: "gt", value: 1 }] },
+      d,
+    );
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(r.ok === false && r.message).not.toContain("Rahasia");
+    expect(
+      await runWidgetQuery(
+        USER,
+        { widgetId: WID("kpi"), filters: [{ column: 2, op: "gt", value: 1e308 }] },
+        d,
+      ),
+    ).toMatchObject({ ok: false, code: "INVALID" });
+    expect(exec).not.toHaveBeenCalled();
   });
 
   it("sheet tidak ada di versi aktif → SHEET_UNAVAILABLE; widget kosong → INVALID; bukan pemilik → NOT_FOUND", async () => {

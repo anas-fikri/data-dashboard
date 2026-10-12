@@ -56,11 +56,12 @@ export const api = {
     baseRevision: number,
     restore?: { title: string; at: Omit<LayoutItem, "i">; type: string; spec: unknown },
   ) =>
-    call<{ widget: WidgetView; layout: LayoutItem[]; layoutRevision: number }>(
-      `${base(id)}/widgets`,
-      "POST",
-      { baseRevision, ...restore },
-    ),
+    call<{
+      widget: WidgetView;
+      layout: LayoutItem[];
+      layoutRevision: number;
+      configDropped?: true;
+    }>(`${base(id)}/widgets`, "POST", { baseRevision, ...restore }),
   deleteWidget: (id: string, widgetId: string, baseRevision: number) =>
     call<{ layout: LayoutItem[]; layoutRevision: number }>(
       `${base(id)}/widgets/${widgetId}?baseRevision=${baseRevision}`,

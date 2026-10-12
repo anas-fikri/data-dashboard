@@ -67,10 +67,13 @@ export function widgetPlan(
 ): WidgetPlan {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   let unavailable: string | null = null;
-  const name = (p: number): string => {
+  /** Kolom spec widget boleh disebut namanya (pemilik yang mengatur); kolom filter dari klien tidak. */
+  const name = (p: number, fromSpec = true): string => {
     const c = byPos.get(p);
-    if (!c) {
-      unavailable ??= "Kolom yang dipakai widget ini sudah tidak ada di data. Atur ulang widget.";
+    if (!c || (c.hidden && !fromSpec)) {
+      unavailable ??= fromSpec
+        ? "Kolom yang dipakai widget ini sudah tidak ada di data. Atur ulang widget."
+        : "Kolom filter tidak tersedia untuk widget ini.";
       return "";
     }
     if (c.hidden) {
@@ -82,7 +85,7 @@ export function widgetPlan(
 
   const base = { sheetId: config.spec.sheetId };
   const filters: QuerySpec["filters"] = body.filters.map((f) => ({
-    column: name(f.column),
+    column: name(f.column, false),
     op: f.op,
     ...(f.value !== undefined ? { value: f.value } : {}),
     ...(f.values !== undefined ? { values: f.values } : {}),

@@ -124,7 +124,11 @@ export function useDashboardEditor(o: {
         const added = server.find((it) => it.i === widget.id);
         setLayout(dirty.current && added ? [...latest.current, added] : server);
         setUndo(restore ? null : { kind: "add", widgetId: widget.id });
-        setNotice(null);
+        setNotice(
+          r.data.configDropped
+            ? "Widget dipulihkan tanpa isi karena datanya sudah berubah (mis. kolomnya disembunyikan). Atur ulang lewat tombol pengaturan."
+            : null,
+        );
         return widget.id;
       });
     },

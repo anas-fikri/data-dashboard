@@ -425,9 +425,15 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     );
     prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    // Spec yang tidak lagi valid → widget tetap dipulihkan, kosong, dengan tanda untuk klien.
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 3, []));
+    tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "Omzet", spec: {} });
     expect(
       await svc.addWidget(OWNER, DB, { baseRevision: 3, type: "bar", spec: { ...bar, topN: 0 } }),
-    ).toMatchObject({ code: "INVALID" });
+    ).toMatchObject({ ok: true, data: { configDropped: true, widget: { type: "empty" } } });
+    expect(tx.widget.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { dashboardId: DB, title: "", type: "empty", spec: {} } }),
+    );
   });
 
   it("sumber data panel: sheet siap di versi aktif milik user, tanpa kolom tersembunyi", async () => {

@@ -1,6 +1,8 @@
 import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
+import { hit, RULES } from "@/features/auth/rate-limit";
 import { isSameOrigin } from "@/features/uploads/http";
+import { redisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
@@ -34,6 +36,17 @@ const json = (body: unknown, status = 200) => NextResponse.json(body, { status, 
 export async function runtimeQuery(req: NextRequest, userId: string): Promise<NextResponse> {
   if (!isSameOrigin(req, env().APP_URL)) {
     return json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
+  }
+  const rl = await hit(await redisReady(), RULES.query, userId);
+  if (!rl.allowed) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "RATE_LIMITED",
+        message: `Terlalu banyak permintaan data. Coba lagi dalam ${rl.retryAfterSec} detik.`,
+      },
+      { status: 429, headers: { ...noStore, "Retry-After": String(rl.retryAfterSec) } },
+    );
   }
   const invalid = () =>
     json({ ok: false, code: "INVALID", message: "Permintaan tidak valid (JSON ≤ 64 KB)." }, 400);

@@ -34,6 +34,11 @@ export const RULES = {
   schemaEdit: { name: "schema-edit:user", limit: 60, windowSec: 10 * 60 },
   /** Perubahan kanvas dashboard (simpan otomatis tiap geser/ubah ukuran, tambah/hapus widget). */
   dashboardEdit: { name: "dashboard-edit:user", limit: 600, windowSec: 10 * 60 },
+  /**
+   * Query data (widget + query bebas) per user (review T-011 L1). Longgar: dashboard 50 widget dimuat
+   * ulang beberapa kali per menit masih jauh di bawah batas; pemakaian otomatis tak terbatas tidak.
+   */
+  query: { name: "query:user", limit: 600, windowSec: 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

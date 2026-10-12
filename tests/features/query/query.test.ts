@@ -22,7 +22,12 @@ import {
 } from "@/features/query/service";
 import { resolveSpec, specSchema } from "@/features/query/spec";
 import { buildSql } from "@/features/query/sql";
-import { QueryBusyError, QueryEngine, QueryTimeoutError } from "@/lib/duckdb/engine";
+import {
+  QueryBusyError,
+  QueryEngine,
+  QueryTimeoutError,
+  USER_QUEUE_MAX,
+} from "@/lib/duckdb/engine";
 import {
   CacheFullError,
   DownloadPendingError,
@@ -447,6 +452,34 @@ describe("regresi review T-009", () => {
       expect(await Promise.all([job(), job(), job(), job(), job()])).toEqual([1, 1, 1, 1, 1]);
       expect(peak).toBe(1);
       expect(await e.withSlot("a", async () => 2)).toBe(2);
+    } finally {
+      e.close();
+    }
+  });
+
+  it("review T-011 M2: antrean per user dibatasi — lewat batas langsung QUERY_BUSY, user lain tetap jalan", async () => {
+    const e = await QueryEngine.create({
+      dataDir: join(root, "cap-data"),
+      tmpDir: join(root, "cap-tmp"),
+      memoryLimit: "128MB",
+      threads: 1,
+      maxTempSize: "128MB",
+      maxConcurrency: 4,
+      perUser: 1,
+      queueWaitMs: 5_000,
+    });
+    try {
+      let open!: () => void;
+      const gate = new Promise<void>((r) => (open = r));
+      const running = e.withSlot("a", () => gate);
+      const queued = Array.from({ length: USER_QUEUE_MAX }, () => e.withSlot("a", async () => 1));
+      const t = Date.now();
+      await expect(e.withSlot("a", async () => 1)).rejects.toBeInstanceOf(QueryBusyError);
+      expect(Date.now() - t).toBeLessThan(100);
+      expect(await e.withSlot("b", async () => 2)).toBe(2);
+      open();
+      await running;
+      expect(await Promise.all(queued)).toEqual(Array(USER_QUEUE_MAX).fill(1));
     } finally {
       e.close();
     }

@@ -111,6 +111,15 @@ describe("opsi grafik aman dari HTML (AC 7)", () => {
     }
   });
 
+  it("sintaks gaya richText ECharts ({a|b}) di nama kategori tidak ditafsirkan", () => {
+    const o = chartOption({ ...input, type: "bar" }, theme) as {
+      tooltip: { formatter: (p: unknown) => string };
+    };
+    const text = o.tooltip.formatter([{ name: "{a|x}y", value: 1 }]);
+    expect(text).not.toMatch(/\{[a-zA-Z0-9_]+\|/);
+    expect(text.replace(/\u200b/g, "")).toContain("{a|x}y");
+  });
+
   it("nilai kosong → '(kosong)'; batang horizontal dengan kategori dari atas", () => {
     const o = chartOption({ ...input, type: "bar" }, theme) as {
       yAxis: { type: string; inverse: boolean; data: string[] };

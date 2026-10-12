@@ -86,10 +86,14 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
       type?: unknown;
       spec?: unknown;
     };
-    if (b.type !== undefined) {
-      return reply(await configureWidget(userId, dashboardId, widgetId, b.type, b.spec));
+    if (b.type === undefined)
+      return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
+    // Keduanya dikirim: judul lalu isi (tidak ada bagian yang diam-diam diabaikan).
+    if (b.title !== undefined) {
+      const renamed = await renameWidget(userId, dashboardId, widgetId, b.title);
+      if (!renamed.ok) return reply(renamed);
     }
-    return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
+    return reply(await configureWidget(userId, dashboardId, widgetId, b.type, b.spec));
   });
 
 export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
