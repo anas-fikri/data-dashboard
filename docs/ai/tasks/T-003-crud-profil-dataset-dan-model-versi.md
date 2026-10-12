@@ -1,7 +1,7 @@
 ---
 id: T-003
 title: CRUD profil dataset dan model versi
-status: in_review
+status: done
 profile: strict
 profile_pinned: true
 goal: G-2
@@ -11,12 +11,160 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T01:11:09Z"
+updated: "2026-10-12T01:11:33Z"
+closed: "2026-10-12T01:11:33Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 66ba1d540b833c62b2ba8641dd7196ab53ff8fbb
+paths:
+  - .dockerignore
+  - .env.example
+  - .gitignore
+  - .npmrc
+  - .nvmrc
+  - .prettierignore
+  - .prettierrc
+  - README.md
+  - docker-compose.dev.yml
+  - docs/flow-kerja.md
+  - eslint.config.mjs
+  - next.config.ts
+  - package-lock.json
+  - package.json
+  - playwright.config.ts
+  - postcss.config.mjs
+  - prisma/migrations/20261011152124_init/migration.sql
+  - prisma/migrations/20261011163023_verification_token/migration.sql
+  - prisma/migrations/20261011225415_token_pending_password/migration.sql
+  - prisma/migrations/20261011230218_token_pending_name/migration.sql
+  - prisma/migrations/20261011234923_datasets/migration.sql
+  - prisma/migrations/20261011235601_storage_cleanup/migration.sql
+  - prisma/migrations/migration_lock.toml
+  - prisma/schema.prisma
+  - prisma/seed.ts
+  - public/brand/mark-dark.png
+  - public/brand/mark.png
+  - public/brand/pcp-logo-dark.png
+  - public/brand/pcp-logo.png
+  - scripts/dev-dataset-fixture.mjs
+  - scripts/dev-expire-reset.mjs
+  - scripts/dev-make-admin.mjs
+  - scripts/dev-reset-ratelimit.mjs
+  - scripts/gen-dev-env.mjs
+  - scripts/perf.mjs
+  - scripts/smoke-prod-headers.mjs
+  - scripts/storage-init.mjs
+  - src/app/(app)/admin/page.tsx
+  - src/app/(app)/akun/keamanan/page.tsx
+  - src/app/(app)/akun/page.tsx
+  - src/app/(app)/dashboards/page.tsx
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/baru/page.tsx
+  - src/app/(app)/datasets/page.tsx
+  - src/app/(app)/layout.tsx
+  - src/app/(app)/page.tsx
+  - src/app/(app)/panduan/page.tsx
+  - src/app/(auth)/layout.tsx
+  - src/app/(auth)/login/page.tsx
+  - src/app/(auth)/lupa-password/page.tsx
+  - src/app/(auth)/register/page.tsx
+  - src/app/(auth)/reset-password/page.tsx
+  - src/app/(auth)/verify/page.tsx
+  - src/app/api/auth/dev-bump-session/route.ts
+  - src/app/api/auth/login/route.ts
+  - src/app/api/auth/me/route.ts
+  - src/app/api/health/route.ts
+  - src/app/globals.css
+  - src/app/health/page.tsx
+  - src/app/layout.tsx
+  - src/app/not-found.tsx
+  - src/components/auth/auth-card.tsx
+  - src/components/auth/forgot-password-form.tsx
+  - src/components/auth/form-alert.tsx
+  - src/components/auth/login-form.tsx
+  - src/components/auth/register-form.tsx
+  - src/components/auth/reset-password-form.tsx
+  - src/components/auth/security-settings.tsx
+  - src/components/auth/use-focus-on-error.ts
+  - src/components/auth/verify-form.tsx
+  - src/components/datasets/dataset-form.tsx
+  - src/components/datasets/dataset-list.tsx
+  - src/components/datasets/delete-dataset.tsx
+  - src/components/datasets/status-badge.tsx
+  - src/components/shell/account-menu.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/shell/brand.tsx
+  - src/components/shell/nav-items.ts
+  - src/components/shell/sidebar-nav.tsx
+  - src/components/shell/theme-toggle.tsx
+  - src/components/theme-provider.tsx
+  - src/components/ui/avatar.tsx
+  - src/components/ui/button.tsx
+  - src/components/ui/card.tsx
+  - src/components/ui/dropdown-menu.tsx
+  - src/components/ui/empty-state.tsx
+  - src/components/ui/field.tsx
+  - src/components/ui/focus-notice.tsx
+  - src/components/ui/input.tsx
+  - src/components/ui/page-header.tsx
+  - src/components/ui/password-input.tsx
+  - src/components/ui/select.tsx
+  - src/components/ui/textarea.tsx
+  - src/features/auth/actions.ts
+  - src/features/auth/email-domain.ts
+  - src/features/auth/email.ts
+  - src/features/auth/form-state.ts
+  - src/features/auth/jwt.ts
+  - src/features/auth/password-recovery.ts
+  - src/features/auth/password.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/auth/redirect.ts
+  - src/features/auth/service.ts
+  - src/features/auth/session.ts
+  - src/features/auth/tokens.ts
+  - src/features/datasets/actions.ts
+  - src/features/datasets/label.ts
+  - src/features/datasets/service.ts
+  - src/features/datasets/validation.ts
+  - src/instrumentation.ts
+  - src/lib/db.ts
+  - src/lib/env.ts
+  - src/lib/health/checks.ts
+  - src/lib/health/index.ts
+  - src/lib/hooks/use-persisted-boolean.ts
+  - src/lib/logger.ts
+  - src/lib/mail.ts
+  - src/lib/queue/versions.ts
+  - src/lib/redis.ts
+  - src/lib/security-headers.ts
+  - src/lib/storage/objects.ts
+  - src/lib/storage/s3.ts
+  - src/lib/utils.ts
+  - src/proxy.ts
+  - src/styles/tokens.css
+  - tests/e2e/auth.spec.ts
+  - tests/e2e/datasets.spec.ts
+  - tests/e2e/global-setup.ts
+  - tests/e2e/health.spec.ts
+  - tests/e2e/helpers.ts
+  - tests/e2e/password.spec.ts
+  - tests/e2e/security-headers.spec.ts
+  - tests/e2e/shell.spec.ts
+  - tests/e2e/zz-rate-limit.spec.ts
+  - tests/features/auth/core.test.ts
+  - tests/features/auth/rate-limit.test.ts
+  - tests/features/datasets/create.test.ts
+  - tests/features/datasets/delete.test.ts
+  - tests/features/datasets/label.test.ts
+  - tests/lib/env.test.ts
+  - tests/lib/health.test.ts
+  - tests/lib/security-headers.test.ts
+  - tests/lib/seed.test.ts
+  - tests/stubs/server-only.ts
+  - tsconfig.json
+  - vitest.config.mts
 review:
   passes:
     - "n": 1
@@ -81,10 +229,50 @@ evidence:
       found 0 vulnerabilities
     at: "2026-10-12T01:11:09Z"
     tree: c6f1b73b2b9593e4a91b6efa8d3d78dca9438f2b933e8e7e7ad4500256c46e0e
+  commits:
+    - 0423efd
+    - 15536b5
+    - 22b384e
+    - 2653b85
+    - 27bf134
+    - 29f1080
+    - 2b68a94
+    - 2c5ffeb
+    - 401b86a
+    - 457220a
+    - 471d15b
+    - 4bff118
+    - 4d5aa50
+    - 5d46f4b
+    - 60ea826
+    - 64a8e95
+    - 66ba1d5
+    - 6c7cef8
+    - 7c5267b
+    - 9558d66
+    - "9835114"
+    - 9b2bfc6
+    - 9cd6ff0
+    - 9cee0e6
+    - ab9e083
+    - bec0af8
+    - c0a7685
+    - c51c2b5
+    - d9f240b
+    - dbe1056
+    - e1ff563
+    - e56694e
+    - e594327
+    - f511b61
+    - fbf5494
+    - fe5861e
+  acceptance:
+    total: 5
+    done: 5
   audit:
-    at: "2026-10-12T01:07:45Z"
+    at: "2026-10-12T01:11:24Z"
     passed: true
-    tree: 70331b7d2b7f7e6661b6d9dd9282c06ab1e07e4511bf089c1af19d880b42c25d
+    tree: c6f1b73b2b9593e4a91b6efa8d3d78dca9438f2b933e8e7e7ad4500256c46e0e
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -92,7 +280,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 604 packages
-          End status: 77 dirs visited, 292 inodes visited, 1 Extract calls, 44.603625ms elapsed, 44.604ms wall time
+          End status: 77 dirs visited, 292 inodes visited, 1 Extract calls, 41.165292ms elapsed, 41.166ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -149,3 +337,14 @@ Open risks/assumptions: berbagi (T-016) belum ada → daftar hanya milik sendiri
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: belum ada upload (T-004); prefix storage selalu berakhiran '/' agar cuid berawalan sama tidak ikut terhapus
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action memvalidasi input di server; Origin asing ditolak Next (e2e T-027); tidak ada API publik baru
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: tanpa konfigurasi debug baru; skrip fixture dev menolak NODE_ENV=production
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-12T01:11:09Z (6857 ms)
+- Acceptance criteria: 5/5 satisfied
+- Commits: 0423efd, 15536b5, 22b384e, 2653b85, 27bf134, 29f1080, 2b68a94, 2c5ffeb, 401b86a, 457220a, 471d15b, 4bff118, 4d5aa50, 5d46f4b, 60ea826, 64a8e95, 66ba1d5, 6c7cef8, 7c5267b, 9558d66, 9835114, 9b2bfc6, 9cd6ff0, 9cee0e6, ab9e083, bec0af8, c0a7685, c51c2b5, d9f240b, dbe1056, e1ff563, e56694e, e594327, f511b61, fbf5494, fe5861e
+- Review pass 1 by claude-security-reviewer-subagen: 2 findings
+- Review pass 2 by claude-security-reviewer-subagen: 0 findings
+- Review pass 3 by frontend-expert-design-reviewer: 11 findings
+- Review pass 4 by frontend-expert-design-reviewer: 2 findings
+- Review pass 5 by frontend-expert-design-reviewer: 0 findings
