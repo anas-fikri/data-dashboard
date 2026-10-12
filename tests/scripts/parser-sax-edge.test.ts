@@ -196,6 +196,32 @@ describe("parser SAX: batas panjang teks", () => {
   });
 });
 
+describe("parser SAX: struktur XML buatan yang menghabiskan memori ditolak", () => {
+  const loose = { ...DEFAULT_LIMITS, maxRatio: 1e9, maxExpansion: 1e9 };
+
+  it("nesting sangat dalam ditolak sebelum tumpukan tag membesar", async () => {
+    const deep = "<xy>".repeat(10_000) + "</xy>".repeat(10_000);
+    const p = await book({ sheet: `<row r="1"><c r="A1"><v>1</v></c></row>${deep}` });
+    await expect(rows(p, loose)).rejects.toThrow(/terlalu dalam/);
+  });
+
+  it("tag dengan ribuan atribut ditolak", async () => {
+    const attrs = Array.from({ length: 5_000 }, (_, i) => `a${i}="1"`).join(" ");
+    const p = await book({ sheet: `<row r="1"><c r="A1" ${attrs}><v>1</v></c></row>` });
+    await expect(rows(p, loose)).rejects.toThrow(/atribut berlebihan/);
+  });
+
+  it("fixture nyata tetap lolos batas kedalaman/atribut", async () => {
+    const out: number[] = [];
+    await createSaxParser().parse(
+      "tests/fixtures/kecil.xlsx",
+      { sheetNames: [], tmpDir: tmp },
+      (_s, r) => out.push(r),
+    );
+    expect(out.length).toBeGreaterThan(0);
+  });
+});
+
 describe("parser SAX: input rusak/berbahaya ditolak dengan pesan", () => {
   it.each([
     [

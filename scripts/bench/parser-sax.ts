@@ -132,6 +132,9 @@ function entryStream(zip: ZipFile, e: Entry): Promise<Readable> {
   );
 }
 
+const MAX_DEPTH = 64;
+const MAX_ATTRS = 256;
+
 /** SAX atas satu entri; DOCTYPE/ENTITY ditolak (tanpa ekspansi entitas). Handler boleh melempar. */
 async function sax(
   zip: ZipFile,
@@ -146,7 +149,16 @@ async function sax(
   const p = new SaxesParser({ xmlns: false });
   // saxes menampung satu node teks/nilai atribut (`text`) atau nama tag (`name`) utuh sebelum
   // memanggil handler; dibatasi per potongan stream agar satu node raksasa tidak menghabiskan memori.
-  const internal = p as unknown as { text: string; name: string };
+  // saxes juga menyimpan semua atribut satu tag (`attribList`) dan satu objek per elemen terbuka
+  // (`tags`); keduanya diperiksa per potongan (murah, tanpa callback per atribut). Satu potongan
+  // ≤ 64 KB sehingga pertumbuhan di antara dua pemeriksaan terikat.
+  // SpreadsheetML nyata: kedalaman < 20, atribut per tag < 30.
+  const internal = p as unknown as {
+    text: string;
+    name: string;
+    tags: unknown[];
+    attribList: unknown[];
+  };
   let failure: Error | null = null;
   p.on("doctype", () => {
     throw new XlsxLimitError("file xlsx berisi DOCTYPE (ditolak)");
@@ -170,6 +182,16 @@ async function sax(
       if (internal.text.length > guard.maxBuffer || internal.name.length > guard.maxBuffer) {
         throw new XlsxLimitError(
           `isi teks di ${e.fileName} melebihi batas panjang (file bukan buatan Excel)`,
+        );
+      }
+      if (internal.tags.length > MAX_DEPTH) {
+        throw new XlsxLimitError(
+          `struktur XML di ${e.fileName} terlalu dalam (file bukan buatan Excel)`,
+        );
+      }
+      if (internal.attribList.length > MAX_ATTRS) {
+        throw new XlsxLimitError(
+          `tag dengan atribut berlebihan di ${e.fileName} (file bukan buatan Excel)`,
         );
       }
       if (guard.deadline && Date.now() > guard.deadline) {
