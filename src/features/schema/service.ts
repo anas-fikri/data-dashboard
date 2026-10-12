@@ -137,7 +137,8 @@ type Fail = { ok: false; code: SchemaCode; message: string; retryAfterSec?: numb
 const fail = (code: SchemaCode, message: string): Fail => ({ ok: false, code, message });
 
 const ID = /^[a-z0-9]{20,32}$/;
-const JOB_ID = /^\d{1,20}$/;
+/** Id otomatis BullMQ (angka) atau id buatan app (rc_<hex>). */
+const JOB_ID = /^(\d{1,20}|rc_[a-f0-9]{24})$/;
 
 // --- status ingest (AC 1) ---
 

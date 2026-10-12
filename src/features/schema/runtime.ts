@@ -1,4 +1,5 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { hit, release, RULES } from "@/features/auth/rate-limit";
 import type { ColumnSchema } from "@/features/ingest/infer";
@@ -187,18 +188,27 @@ async function inFlight(userId: string, sheetId: string) {
     r.smembers(userKey(userId)),
     r.get(sheetKey(sheetId)),
   ]);
+  // Paralel: waktu di bawah lock tetap pendek walau antrean lambat.
+  const [states, sheet] = await Promise.all([
+    Promise.all(ids.map(alive)),
+    sheetJob ? alive(sheetJob) : Promise.resolve(false),
+  ]);
   let user = 0;
-  for (const id of ids) {
-    if (await alive(id)) user += 1;
-    else await r.srem(userKey(userId), id);
+  for (const [i, live] of states.entries()) {
+    if (live) user += 1;
+    else await r.srem(userKey(userId), ids[i]!);
   }
-  const sheet = sheetJob ? await alive(sheetJob) : false;
   if (sheetJob && !sheet) await releaseLock(redisLockStore(r), sheetKey(sheetId), sheetJob);
   return { user, sheet };
 }
 
+/**
+ * Id job dibuat lebih dulu dan dicatat di indeks SEBELUM masuk antrean (review T-008 R1): add yang
+ * selesai setelah batas waktu tetap terhitung; add yang tidak pernah sampai terbaca "unknown" dan
+ * dibuang dari indeks pada pengecekan berikutnya.
+ */
 async function enqueue(sheetId: string, userId: string, input: RecastInput): Promise<string> {
-  const jobId = await enqueueRecast(sheetId, input, userId);
+  const jobId = `rc_${randomBytes(12).toString("hex")}`;
   const r = await redisReady();
   await r
     .multi()
@@ -206,7 +216,7 @@ async function enqueue(sheetId: string, userId: string, input: RecastInput): Pro
     .pexpire(userKey(userId), INDEX_TTL_MS)
     .set(sheetKey(sheetId), jobId, "PX", INDEX_TTL_MS)
     .exec();
-  return jobId;
+  return enqueueRecast(sheetId, input, userId, jobId);
 }
 
 /** Lock singkat per user di sekitar cek batas + enqueue (menunggu ≤ 3 s). */
@@ -215,7 +225,8 @@ async function serialize<T>(userId: string, fn: () => Promise<T>): Promise<T | n
   const key = `recast:enqueue-lock:${userId}`;
   const until = Date.now() + 3_000;
   let token: string | null = null;
-  while (!(token = await acquireLock(store, key, 15_000))) {
+  // TTL > cek (paralel, ≤ 5 s) + enqueue (≤ 5 s) + jeda Redis; lock tak pernah lepas di tengah jalan.
+  while (!(token = await acquireLock(store, key, 30_000))) {
     if (Date.now() > until) return null;
     await new Promise((res) => setTimeout(res, 50));
   }

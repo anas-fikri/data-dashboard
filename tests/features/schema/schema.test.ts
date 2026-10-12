@@ -608,6 +608,11 @@ describe("status koreksi skema (polling)", () => {
     const { read } = await status(job({ state: "active" }));
     expect(read).not.toHaveBeenCalled();
     expect(await st(job({}), "abc")).toMatchObject({ code: "NOT_FOUND" });
+    expect(await st(job({}), "rc_; FLUSHALL")).toMatchObject({ code: "NOT_FOUND" });
+    expect(await st(job({ state: "active" }), `rc_${"a1".repeat(12)}`)).toEqual({
+      ok: true,
+      status: { state: "running" },
+    });
     const other = await recastStatus("orang-lain", SHEET, "17", schemaDeps().deps);
     expect(other).toMatchObject({ code: "NOT_FOUND" });
   });

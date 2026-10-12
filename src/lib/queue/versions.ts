@@ -20,9 +20,11 @@ export async function enqueueRecast(
   sheetId: string,
   input: RecastInput,
   userId?: string,
+  /** Id job yang sudah dicatat pemanggil (indeks job berjalan T-008); kosong = id otomatis. */
+  jobId?: string,
 ): Promise<string> {
   const job = await withQueueTimeout(
-    recastQueue().add("recast", { sheetId, input, userId }),
+    recastQueue().add("recast", { sheetId, input, userId }, jobId ? { jobId } : undefined),
     "enqueue recast",
   );
   logger.info({ sheetId, jobId: job.id }, "job recast masuk antrean");
