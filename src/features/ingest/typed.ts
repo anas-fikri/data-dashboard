@@ -12,7 +12,7 @@ import {
   needsFloat,
   okCount,
   pickLocale,
-  profileSql,
+  profileSqls,
   toProfile,
   typedParts,
   type ColumnSchema,
@@ -105,10 +105,19 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
     );
   if (dataRows > 0) {
     for (const part of batches(cols)) {
-      const r = await watched(duck, input.watch, () =>
-        duck.conn.runAndReadAll(profileSql(input.rawPath, part, input.headerRow)),
-      );
-      for (const row of r.getRowObjects()) {
+      // Tiga query streaming (dasar, angka, tanggal) digabung per kolom; kolom tanpa nilai angka/
+      // tanggal tidak muncul di query itu (hitungannya 0).
+      const rows = new Map<string, Record<string, unknown>>();
+      for (const sql of profileSqls(input.rawPath, part, input.headerRow)) {
+        const r = await watched(duck, input.watch, () => duck.conn.runAndReadAll(sql));
+        for (const row of r.getRowObjects()) {
+          const col = String(row.col);
+          rows.set(col, { ...rows.get(col), ...row });
+        }
+      }
+      for (const row of rows.values()) {
+        // Kolom hanya dari query angka/tanggal tidak mungkin (base menghitung semua nilai).
+        if (row.n === undefined) continue;
         const p = toProfile(row);
         profiles.set(p.col, p);
       }

@@ -232,61 +232,57 @@ export interface Profile {
 const dateAlias = (f: TextDateFormat, p: string) => `${p}_f${TEXT_DATE_FORMATS.indexOf(f)}`;
 
 /**
- * SQL profil kolom atas raw.parquet (baris data = _row > headerRow). Satu baris hasil per kolom yang
- * punya nilai non-kosong; kolom tanpa nilai tidak muncul. Pemanggil membatasi jumlah kolom per query.
+ * SQL profil kolom atas raw.parquet (baris data = _row > headerRow): tiga query terpisah yang
+ * masing-masing streaming (dasar, angka, tanggal). Satu baris hasil per kolom yang punya nilai;
+ * gabungkan per `col` lalu toProfile. Pemanggil membatasi jumlah kolom per query.
+ *
+ * Disaring WHERE (selection vector): ekspresi angka hanya untuk nilai berbentuk angka, parse tanggal
+ * hanya untuk bentuk tanggal. CASE/AND dalam proyeksi tidak cukup: pengoptimal menulis ulang
+ * CASE … ELSE false menjadi AND yang mengevaluasi kedua sisi untuk semua baris (review T-007 N2).
+ * Tidak memakai satu query dengan CTE bersama: CTE yang dipakai 3× dimaterialisasi dan meluap ke file
+ * database tanpa batas max_temp_directory_size (± 23 MB per juta nilai, review T-007 R1).
  */
-export function profileSql(rawPath: string, cols: string[], headerRow: number): string {
-  // Tiga agregasi bersaring WHERE (selection vector): ekspresi angka hanya untuk nilai berbentuk angka,
-  // parse tanggal hanya untuk bentuk tanggal. CASE/AND dalam proyeksi tidak cukup: pengoptimal
-  // menulis ulang CASE … ELSE false menjadi AND yang mengevaluasi kedua sisi untuk semua baris.
+export function profileSqls(rawPath: string, cols: string[], headerRow: number): string[] {
+  const f = `(SELECT col, v FROM (SELECT col, trim(raw) AS v FROM (
+    UNPIVOT (SELECT ${cols.map(ident).join(", ")} FROM read_parquet(${lit(rawPath)}) WHERE _row > ${Math.trunc(headerRow)})
+    ON ${cols.map(ident).join(", ")} INTO NAME col VALUE raw)) WHERE v <> '')`;
   const shape: DateShape = { iso: "s_iso", first4: "s_f4", sep: "s_sep", ysz: "s_ysz", tm: "s_tm" };
   const shapeCols = (Object.entries(shapeOf("v")) as [keyof DateShape, string][])
     .map(([k, e]) => `${e} AS ${shape[k]}`)
-    .join(",\n      ");
+    .join(",\n        ");
   const dateCols = TEXT_DATE_FORMATS.map(
-    (f) => `${familyParse("v", f, shape, "p_iso")} AS ${dateAlias(f, "p")}`,
+    (fmt) => `${familyParse("v", fmt, shape, "p_iso")} AS ${dateAlias(fmt, "p")}`,
   ).join(",\n      ");
-  const dateAggs = TEXT_DATE_FORMATS.map((f) => {
-    const a = dateAlias(f, "p");
-    return `count(*) FILTER (WHERE ${dateOk(a)}) AS ${dateAlias(f, "d")},
-    count(*) FILTER (WHERE ${dateOk(a)} AND CAST(${a} AS TIME) <> TIME '00:00:00') AS ${dateAlias(f, "t")}`;
+  const dateAggs = TEXT_DATE_FORMATS.map((fmt) => {
+    const a = dateAlias(fmt, "p");
+    return `count(*) FILTER (WHERE ${dateOk(a)}) AS ${dateAlias(fmt, "d")},
+    count(*) FILTER (WHERE ${dateOk(a)} AND CAST(${a} AS TIME) <> TIME '00:00:00') AS ${dateAlias(fmt, "t")}`;
   }).join(",\n    ");
   const iso = dateAlias("yyyy-mm-dd", "p");
-  const numOut = [
-    "code",
-    "id_strong",
-    "us_strong",
-    "id_weak",
-    "id_text0",
-    "int_us",
-    "int_id",
-    "num_us",
-    "num_id",
-    "wide_us",
-    "wide_id",
-    "dec_us",
-    "dec_id",
-    "ser",
-  ];
-  const dateOut = [
-    ...TEXT_DATE_FORMATS.flatMap((f) => [dateAlias(f, "d"), dateAlias(f, "t")]),
-    "dur",
-  ];
-  return `
-WITH src AS (
-  SELECT ${cols.map(ident).join(", ")} FROM read_parquet(${lit(rawPath)}) WHERE _row > ${Math.trunc(headerRow)}
-),
-long AS (UNPIVOT src ON ${cols.map(ident).join(", ")} INTO NAME col VALUE raw),
-f AS (SELECT col, v FROM (SELECT col, trim(raw) AS v FROM long) WHERE v <> ''),
-base AS (
-  SELECT col,
-      count(*) AS n,
-      approx_count_distinct(v) AS distinct_n,
-      sum(length(v)) AS chars,
-      count(*) FILTER (WHERE lower(v) IN (${[...BOOL_TRUE, ...BOOL_FALSE].map(lit).join(", ")})) AS bool
-  FROM f GROUP BY col
-),
-nf AS (
+  const base = `
+SELECT col,
+    count(*) AS n,
+    approx_count_distinct(v) AS distinct_n,
+    sum(length(v)) AS chars,
+    count(*) FILTER (WHERE lower(v) IN (${[...BOOL_TRUE, ...BOOL_FALSE].map(lit).join(", ")})) AS bool
+FROM ${f} GROUP BY col`;
+  const num = `
+SELECT col,
+    count(*) FILTER (WHERE code) AS code,
+    count(*) FILTER (WHERE ids) AS id_strong,
+    count(*) FILTER (WHERE uss) AS us_strong,
+    count(*) FILTER (WHERE idw) AS id_weak,
+    count(*) FILTER (WHERE idt) AS id_text0,
+    count(ius) AS int_us,
+    count(iid) AS int_id,
+    count(nus) AS num_us,
+    count(nid) AS num_id,
+    count(*) FILTER (WHERE nus IS NOT NULL AND wus) AS wide_us,
+    count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
+    count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
+    count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
+    count(*) FILTER (WHERE ${serialOk("nus")}) AS ser
+FROM (
   SELECT col, v,
       ${match("v", RE.code)} AS code,
       ${match("v", RE.idStrong)} AS ids,
@@ -299,47 +295,24 @@ nf AS (
       ${wideExpr("v", "id")} AS wid,
       ${intExpr("v", "us")} AS ius,
       ${intExpr("v", "id")} AS iid
-  FROM f WHERE ${match("v", RE.numy)}
-),
-num AS (
-  SELECT col,
-      count(*) FILTER (WHERE code) AS code,
-      count(*) FILTER (WHERE ids) AS id_strong,
-      count(*) FILTER (WHERE uss) AS us_strong,
-      count(*) FILTER (WHERE idw) AS id_weak,
-      count(*) FILTER (WHERE idt) AS id_text0,
-      count(ius) AS int_us,
-      count(iid) AS int_id,
-      count(nus) AS num_us,
-      count(nid) AS num_id,
-      count(*) FILTER (WHERE nus IS NOT NULL AND wus) AS wide_us,
-      count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
-      count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
-      count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
-      count(*) FILTER (WHERE ${serialOk("nus")}) AS ser
-  FROM nf GROUP BY col
-),
-df AS (
-  SELECT col, v,
-      ${shapeCols}
-  FROM f WHERE ${match("v", RE.datey)}
-),
-dh AS (SELECT *, CASE WHEN s_iso THEN ${isoParse("v")} END AS p_iso FROM df),
-di AS (
-  SELECT col,
-      ${dateCols}
-  FROM dh
-),
-dt AS (
-  SELECT col,
+  FROM ${f} WHERE ${match("v", RE.numy)}
+) GROUP BY col`;
+  const date = `
+SELECT col,
     ${dateAggs},
     count(*) FILTER (WHERE ${dateOk(iso)} AND ${isDuration(iso)}) AS dur
-  FROM di GROUP BY col
-)
-SELECT base.*,
-    ${numOut.map((c) => `coalesce(num.${c}, 0) AS ${c}`).join(", ")},
-    ${dateOut.map((c) => `coalesce(dt.${c}, 0) AS ${c}`).join(", ")}
-FROM base LEFT JOIN num USING (col) LEFT JOIN dt USING (col)`;
+FROM (
+  SELECT col,
+      ${dateCols}
+  FROM (
+    SELECT *, CASE WHEN s_iso THEN ${isoParse("v")} END AS p_iso FROM (
+      SELECT col, v,
+        ${shapeCols}
+      FROM ${f} WHERE ${match("v", RE.datey)}
+    )
+  )
+) GROUP BY col`;
+  return [base, num, date];
 }
 
 /**
