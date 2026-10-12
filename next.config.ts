@@ -5,7 +5,16 @@ const nextConfig: NextConfig = {
   // Image Docker produksi memakai output standalone (T-023).
   output: "standalone",
   // Paket Node murni yang tidak boleh di-bundle oleh webpack/turbopack.
-  serverExternalPackages: ["pino", "@prisma/client", "ioredis", "nodemailer", "@node-rs/argon2"],
+  serverExternalPackages: [
+    "pino",
+    "@prisma/client",
+    "ioredis",
+    "nodemailer",
+    "@node-rs/argon2",
+    // Binding native DuckDB (mesin query T-009) dipilih per platform saat runtime.
+    "@duckdb/node-api",
+    "@duckdb/node-bindings",
+  ],
   poweredByHeader: false,
   // Badge overlay dev Next menutupi sudut kiri bawah (tombol ciut sidebar) dan mencegat klik e2e.
   devIndicators: false,

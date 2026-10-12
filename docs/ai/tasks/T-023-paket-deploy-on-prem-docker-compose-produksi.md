@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T04:36:35Z"
+updated: "2026-10-12T10:24:01Z"
 created_by: claude-code
 ---
 
@@ -39,6 +39,7 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - 2026-10-12T01:31:31Z Dari T-004: compose produksi Redis --maxmemory-policy noeviction (ADR-0004); worker dijalankan sebagai proses terpisah (npm run worker = tsx --conditions=react-server; T-006/T-023 boleh bundel ke JS); proxy storage wajib meneruskan header Content-Length apa adanya (signed header UploadPart); jalankan node scripts/check-presign.mjs setelah deploy.
 - 2026-10-12T04:27:59Z Dari T-005 (ADR-0005): volume temp worker ≥ ± 5× ukuran upload maksimum (file sumber diunduh + spill sharedStrings ≤ min(8 GiB, 4× ukuran file)); untuk MAX_UPLOAD_BYTES 1 GB sediakan ≥ 5 GB per replika worker.
 - 2026-10-12T04:36:35Z Koreksi catatan disk temp worker (menggantikan '≥ 5× ukuran upload'): file spill sharedStrings dibatasi mutlak 8 GiB, jadi volume temp per replika worker ≥ ukuran upload maksimum + 8 GiB (± 9 GB untuk 1 GB).
+- 2026-10-12T10:24:01Z Dari T-009: Route /api/query memuat @duckdb/node-api (native, serverExternalPackages). Output standalone harus membawa @duckdb/node-bindings-linux-<arch> (dipilih per platform saat runtime; nft bisa melewatkannya) — pastikan ter-copy di image (mis. outputFileTracingIncludes atau salin node_modules/@duckdb). QUERY_CACHE_DIR per replika di volume lokal.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

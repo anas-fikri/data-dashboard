@@ -149,6 +149,7 @@ try {
           sha256: v.sha256,
           progress: v.progress,
           sheets: v.sheets.map((s) => ({
+            id: s.id,
             name: s.name,
             headerRow: s.headerRow,
             rawRows: s.rawRows,

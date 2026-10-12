@@ -127,6 +127,61 @@ test.describe("ingest", () => {
     expect((info.objects as string[]).length).toBe(2);
   });
 
+  test("API query (T-009): pemilik dapat hasil + cache; bukan pemilik 404; Origin asing 403", async ({
+    page,
+    browser,
+    request,
+    baseURL,
+  }) => {
+    test.setTimeout(120_000);
+    await apiLogin(page, OWNER);
+    const datasetId = await createDataset(page, "Query CSV");
+    const { info } = await uploadAndWait(page, "tests/fixtures/kecil-win1252.csv");
+    expect(info).toMatchObject({ status: "READY" });
+    const sheet = (info.sheets as { id: string; types: string[] }[])[0]!;
+    const first = sheet.types[0]!.split(":")[0]!;
+    const spec = {
+      sheetId: sheet.id,
+      dimensions: [{ column: first }],
+      measures: [{ agg: "count" }],
+      limit: 5,
+    };
+    const headers = { Origin: baseURL! };
+
+    const a = await page.request.post("/api/query", { data: { datasetId, spec }, headers });
+    expect(a.status(), await a.text()).toBe(200);
+    const ja = (await a.json()) as { ok: boolean; cached: boolean; rows: unknown[][] };
+    expect(ja).toMatchObject({ ok: true, cached: false });
+    expect(ja.rows.length).toBeGreaterThan(0);
+    const b = await page.request.post("/api/query", {
+      data: {
+        spec: { limit: 5, measures: spec.measures, dimensions: spec.dimensions, sheetId: sheet.id },
+        datasetId,
+      },
+      headers,
+    });
+    expect(((await b.json()) as { cached: boolean }).cached).toBe(true);
+
+    const bad = await page.request.post("/api/query", {
+      data: { datasetId, spec: { ...spec, measures: [{ agg: "median" }] } },
+      headers,
+    });
+    expect(bad.status()).toBe(400);
+    const cross = await page.request.post("/api/query", {
+      data: { datasetId, spec },
+      headers: { Origin: "https://evil.example" },
+    });
+    expect(cross.status()).toBe(403);
+
+    const other = await browser.newPage();
+    const stranger = uniqueEmail("ing-stranger");
+    await registerAndVerify(other, request, stranger);
+    await apiLogin(other, stranger);
+    const r = await other.request.post("/api/query", { data: { datasetId, spec }, headers });
+    expect(r.status()).toBe(404);
+    await other.close();
+  });
+
   test("xlsx berisi DOCTYPE → FAILED dengan pesan di halaman, tanpa objek parquet", async ({
     page,
   }) => {
