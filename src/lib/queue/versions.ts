@@ -1,10 +1,13 @@
 import "server-only";
 import { logger } from "@/lib/logger";
-import { ingestQueue } from "./connection";
+import { ingestQueue, withQueueTimeout } from "./connection";
 
 /** Masukkan versi ke antrean ingest. jobId = versionId sehingga enqueue ulang tidak menggandakan job. */
 export async function enqueueIngest(versionId: string): Promise<void> {
-  await ingestQueue().add("ingest", { versionId }, { jobId: versionId });
+  await withQueueTimeout(
+    ingestQueue().add("ingest", { versionId }, { jobId: versionId }),
+    "enqueue ingest",
+  );
   logger.info({ versionId }, "job ingest masuk antrean");
 }
 
@@ -19,12 +22,12 @@ export async function cancelVersionJobs(versionIds: string[]): Promise<void> {
   await Promise.all(
     versionIds.map(async (id) => {
       try {
-        const job = await q.getJob(id);
-        if (job) await job.remove();
+        const job = await withQueueTimeout(q.getJob(id), "cari job");
+        if (job) await withQueueTimeout(job.remove(), "hapus job");
       } catch (e) {
         logger.warn(
           { versionId: id, err: e instanceof Error ? e.message : String(e) },
-          "job ingest tidak bisa dibatalkan (mungkin sedang berjalan)",
+          "job ingest tidak bisa dibatalkan (mungkin sedang berjalan atau Redis mati)",
         );
       }
     }),

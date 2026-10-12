@@ -163,6 +163,54 @@ describe("completeUpload", () => {
     expect(storage.listParts).not.toHaveBeenCalled();
   });
 
+  it("multipart sudah hilang tetapi objek utuh (respons complete hilang) → lanjut validasi → UPLOADED", async () => {
+    const enqueue = vi.fn(async () => {});
+    const storage = storageMock({
+      listParts: vi.fn(async () => null),
+      head: vi.fn(async () => ({ size: 20 * MiB, contentType: undefined, etag: '"abc-2"' })),
+    });
+    const r = await completeUpload("u1", VID, { storage, enqueue });
+    expect(r).toEqual({ ok: true, status: "UPLOADED" });
+    expect(storage.complete).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ etag: '"abc-2"' }) }),
+    );
+  });
+
+  it("multipart hilang dan objek tidak ada → FAILED kedaluwarsa", async () => {
+    const storage = storageMock({
+      listParts: vi.fn(async () => null),
+      head: vi.fn(async () => null),
+    });
+    expect(await completeUpload("u1", VID, { storage, enqueue: vi.fn() })).toMatchObject({
+      code: "UPLOAD_FAILED",
+    });
+  });
+
+  it("storage error setelah complete → STORAGE_ERROR, klaim dilepas, objek tidak dihapus", async () => {
+    const storage = storageMock({
+      head: vi.fn(async () => {
+        throw new Error("timeout");
+      }),
+    });
+    const r = await completeUpload("u1", VID, { storage, enqueue: vi.fn() });
+    expect(r).toMatchObject({ ok: false, code: "STORAGE_ERROR" });
+    expect(storage.remove).not.toHaveBeenCalled();
+    expect(updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { completingAt: null } }),
+    );
+  });
+
+  it("versi sudah UPLOADED → idempoten, antre ulang ingest (enqueue dulu gagal)", async () => {
+    findFirstVersion.mockResolvedValueOnce({ ...uploading, status: "UPLOADED" });
+    const enqueue = vi.fn(async () => {});
+    expect(await completeUpload("u1", VID, { storage: storageMock(), enqueue })).toEqual({
+      ok: true,
+      status: "UPLOADED",
+    });
+    expect(enqueue).toHaveBeenCalledWith(VID);
+  });
+
   it("versi milik orang lain / tidak ada → NOT_FOUND", async () => {
     findFirstVersion.mockResolvedValueOnce(null);
     expect(await completeUpload("u2", VID, { storage: storageMock() })).toMatchObject({

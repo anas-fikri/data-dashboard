@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T01:40:49Z"
+updated: "2026-10-12T01:43:37Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,6 +22,10 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-12T01:40:49Z"
       findings: 8
+    - "n": 2
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T01:43:37Z"
+      findings: 2
 ---
 
 ## Objective
@@ -55,17 +59,17 @@ Open risks/assumptions: kuota diimplementasikan di sini (T-024 tinggal uji perfo
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — diverifikasi: batas kepercayaan browser → Route Handler (sesi, Origin) → service → storage internal; browser hanya menulis ke storage lewat presigned UploadPart untuk key buatan server raw/<datasetId>/<versionId>/source.<ext>
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak mengubah autentikasi; semua endpoint unggah memakai requireUser Node-side (proxy juga mewajibkan sesi untuk /api/uploads)
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak mengubah sesi; cookie SameSite=Lax ikut menahan CSRF
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — diverifikasi: setiap kueri versi di-scope {uploadedById, dataset.ownerId}; init cek kepemilikan dataset; e2e user lain → 404 untuk init/sign/complete/batal
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — diverifikasi: input JSON divalidasi (id cuid, nama dibersihkan dari Cc/Cf + basename ≤ 255, ukuran integer aman, ekstensi .xlsx/.csv); nama file tidak pernah masuk key storage; lock advisory via tagged template terparameter
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data kriptografis tersimpan baru (fingerprint = SHA-256 nama+ukuran+lastModified, bukan rahasia)
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — diverifikasi: pesan error ke klien generik dan bisa ditindak; log pino berisi versionId/datasetId tanpa kredensial; error storage → STORAGE_ERROR 503
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — diverifikasi: objek ditolak dihapus; batal/kedaluwarsa abort multipart + hapus objek; hapus dataset abort multipart; tidak ada presigned GET raw/
+- [x] V9 Communication: TLS for all external traffic; certificates validated — diverifikasi: presigned URL ditandatangani dengan S3_PUBLIC_ENDPOINT (https di produksi, D5); TLS proxy storage di T-023
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — diverifikasi: dependency baru bullmq 5 (0 kerentanan, npm audit + osv-scanner); tanpa panggilan jaringan selain storage/Redis
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — diverifikasi: 2 unggahan berjalan/user, kuota termasuk ukuran terdeklarasi UPLOADING, satu versi non-terminal per dataset, semua di bawah pg_advisory_xact_lock per user; klaim completingAt cegah complete ganda; batal ditolak saat complete; e2e LIMIT_REACHED + QUOTA_EXCEEDED + DATASET_BUSY
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — diverifikasi: batas 1 GB (init, ListParts ukuran persis per part, HeadObject); Content-Length signed header (403 untuk ukuran lain, check-presign + e2e); signature 64 KB (xlsx ZIP, csv teks tanpa NUL/UTF-16); ContentType application/octet-stream dari server; key tanpa input user (tanpa path traversal)
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Route Handler JSON dengan Origin = APP_URL (403 untuk Origin asing, e2e), content-type JSON wajib, body ≤ 8 KB, batch sign ≤ 16, rate limit init 60/jam + sign 600/jam per user
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: Redis noeviction (ADR-0004) agar job antrean tidak terbuang; koneksi antrean reconnect tanpa batas + timeout 5 s; CORS bucket hanya origin app; skrip fixture dev menolak produksi

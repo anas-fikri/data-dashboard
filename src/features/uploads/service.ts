@@ -145,6 +145,8 @@ export async function expireStaleUploads(
           logger.warn({ versionId: v.id, err: String(e) }, "abort multipart kedaluwarsa gagal"),
         );
     }
+    // Complete bisa sudah sukses tanpa versi sempat berubah: buang objek agar tidak yatim.
+    if (v.sourceKey) await storage.remove(v.sourceKey).catch(() => {});
     const r = await prisma.datasetVersion.updateMany({
       where: { id: v.id, status: "UPLOADING" },
       data: {
@@ -471,7 +473,16 @@ export async function completeUpload(
   if (v.status === "FAILED") {
     return fail("UPLOAD_FAILED", v.errorMessage ?? "Unggahan gagal. Unggah ulang file.");
   }
-  if (v.status !== "UPLOADING") return { ok: true, status: "UPLOADED" }; // sudah selesai (idempoten)
+  if (v.status !== "UPLOADING") {
+    // Sudah selesai (idempoten). UPLOADED = belum diambil worker: antre ulang bila enqueue dulu
+    // gagal (Redis mati). jobId = versionId sehingga tidak menggandakan job.
+    if (v.status === "UPLOADED") {
+      await enqueue(v.id).catch((err: unknown) =>
+        logger.error({ versionId: v.id, err: String(err) }, "enqueue ulang ingest gagal"),
+      );
+    }
+    return { ok: true, status: "UPLOADED" };
+  }
   if (!v.sourceKey || !v.uploadId || !v.partSize || !v.partCount || v.sizeBytes === null)
     return notFound();
   const { id, sourceKey: key, uploadId, partSize, partCount } = v;
@@ -497,8 +508,75 @@ export async function completeUpload(
       data: { completingAt: null },
     });
 
-  const parts = await storage.listParts(key, uploadId);
+  const rejectObject = async (code: UploadCode, message: string) => {
+    await storage
+      .remove(key)
+      .catch((e: unknown) =>
+        logger.error({ versionId: id, err: String(e) }, "hapus objek yang ditolak gagal"),
+      );
+    await markFailed(id, message);
+    return fail(code, message);
+  };
+
+  /** Validasi objek hasil complete lalu UPLOADED + antre ingest. Error storage → klaim dilepas. */
+  const finalize = async (etagHint: string): Promise<UploadResult<{ status: "UPLOADED" }>> => {
+    let etag = etagHint;
+    try {
+      const head = await storage.head(key);
+      if (!head || head.size !== size) {
+        return rejectObject(
+          "UPLOAD_CORRUPT",
+          "Ukuran file di server tidak sesuai. Unggah ulang file.",
+        );
+      }
+      if (head.size > env().MAX_UPLOAD_BYTES) {
+        return rejectObject(
+          "FILE_TOO_LARGE",
+          `Ukuran file melebihi batas ${formatGiB(env().MAX_UPLOAD_BYTES)}.`,
+        );
+      }
+      etag ||= head.etag ?? "";
+      const sniffed = sniff(ext, await storage.readHead(key, SNIFF_BYTES));
+      if (!sniffed.ok) return rejectObject("INVALID_FORMAT", sniffed.message);
+    } catch (err) {
+      // Objek sudah utuh di storage; ulangi complete nanti (jalur "multipart sudah selesai").
+      logger.error({ versionId: id, err: String(err) }, "validasi objek setelah complete gagal");
+      await release();
+      return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
+    }
+
+    // Dataset bisa terhapus selama unggahan: versi ikut hilang → objek dibuang (review T-003).
+    const done = await prisma.datasetVersion.updateMany({
+      where: { id, status: "UPLOADING" },
+      data: { status: "UPLOADED", etag, uploadId: null, completingAt: null },
+    });
+    if (done.count === 0) {
+      await storage.remove(key).catch(() => {});
+      return notFound();
+    }
+    try {
+      await enqueue(id);
+    } catch (err) {
+      // Versi tetap UPLOADED; complete berikutnya mengantre ulang, worker (T-006) menyapu saat start.
+      logger.error({ versionId: id, err: String(err) }, "enqueue ingest gagal");
+    }
+    logger.info({ versionId: id, size, etag }, "unggahan selesai");
+    return { ok: true, status: "UPLOADED" };
+  };
+
+  let parts: Awaited<ReturnType<MultipartStorage["listParts"]>>;
+  try {
+    parts = await storage.listParts(key, uploadId);
+  } catch (err) {
+    logger.error({ versionId: id, err: String(err) }, "ListParts gagal");
+    await release();
+    return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
+  }
   if (!parts) {
+    // Multipart sudah tidak ada: bisa karena complete sebelumnya sukses tetapi responsnya hilang
+    // atau validasi sesudahnya gagal. Objek utuh → lanjutkan validasi; tidak ada → kedaluwarsa.
+    const existing = await storage.head(key).catch(() => null);
+    if (existing) return finalize(existing.etag ?? "");
     await markFailed(id, "Unggahan kedaluwarsa. Unggah ulang file.");
     return fail(
       "UPLOAD_FAILED",
@@ -528,47 +606,7 @@ export async function completeUpload(
     await release();
     return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
   }
-
-  const rejectObject = async (code: UploadCode, message: string) => {
-    await storage
-      .remove(key)
-      .catch((e: unknown) =>
-        logger.error({ versionId: id, err: String(e) }, "hapus objek yang ditolak gagal"),
-      );
-    await markFailed(id, message);
-    return fail(code, message);
-  };
-
-  const head = await storage.head(key);
-  if (!head || head.size !== size) {
-    return rejectObject("UPLOAD_CORRUPT", "Ukuran file di server tidak sesuai. Unggah ulang file.");
-  }
-  if (head.size > env().MAX_UPLOAD_BYTES) {
-    return rejectObject(
-      "FILE_TOO_LARGE",
-      `Ukuran file melebihi batas ${formatGiB(env().MAX_UPLOAD_BYTES)}.`,
-    );
-  }
-  const sniffed = sniff(ext, await storage.readHead(key, SNIFF_BYTES));
-  if (!sniffed.ok) return rejectObject("INVALID_FORMAT", sniffed.message);
-
-  // Dataset bisa terhapus selama unggahan: versi ikut hilang → objek dibuang (review T-003).
-  const done = await prisma.datasetVersion.updateMany({
-    where: { id, status: "UPLOADING" },
-    data: { status: "UPLOADED", etag, uploadId: null, completingAt: null },
-  });
-  if (done.count === 0) {
-    await storage.remove(key).catch(() => {});
-    return notFound();
-  }
-  try {
-    await enqueue(id);
-  } catch (err) {
-    // Versi tetap UPLOADED; worker (T-006) menyapu versi UPLOADED tanpa job saat start.
-    logger.error({ versionId: id, err: String(err) }, "enqueue ingest gagal");
-  }
-  logger.info({ versionId: id, size, etag }, "unggahan selesai");
-  return { ok: true, status: "UPLOADED" };
+  return finalize(etag);
 }
 
 /** Batalkan unggahan milik sendiri: abort multipart dan hapus versinya (belum pernah berisi data). */
@@ -600,6 +638,10 @@ export async function cancelUpload(
           "abort multipart gagal (lifecycle membersihkan)",
         ),
       );
+  }
+  if (v.sourceKey) {
+    // Objek hasil complete yang belum sempat divalidasi (lihat jalur pemulihan di completeUpload).
+    await storage.remove(v.sourceKey).catch(() => {});
   }
   logger.info({ versionId: v.id }, "unggahan dibatalkan");
   return { ok: true, cancelled: true };

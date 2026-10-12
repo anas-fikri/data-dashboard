@@ -39,7 +39,9 @@ export interface MultipartStorage {
   listParts(key: string, uploadId: string): Promise<ListedPart[] | null>;
   complete(key: string, uploadId: string, parts: ListedPart[]): Promise<string>;
   abort(key: string, uploadId: string): Promise<void>;
-  head(key: string): Promise<{ size: number; contentType: string | undefined } | null>;
+  head(
+    key: string,
+  ): Promise<{ size: number; contentType: string | undefined; etag?: string } | null>;
   readHead(key: string, bytes: number): Promise<Uint8Array>;
   remove(key: string): Promise<void>;
 }
@@ -136,7 +138,11 @@ export const s3Multipart: MultipartStorage = {
   async head(key) {
     try {
       const res = await s3Internal().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
-      return { size: Number(res.ContentLength ?? 0), contentType: res.ContentType };
+      return {
+        size: Number(res.ContentLength ?? 0),
+        contentType: res.ContentType,
+        etag: res.ETag,
+      };
     } catch (e) {
       if (isNotFound(e)) return null;
       throw e;
