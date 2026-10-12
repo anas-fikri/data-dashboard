@@ -4,13 +4,23 @@
  * runtime.ts. Skema dibaca dari DB setiap permintaan (query berindeks, selalu sesuai revisi aktif),
  * bukan cache in-memory yang harus di-invalidate antarproses.
  *
- * Batas sumber daya (review T-009): slot user dipegang selama menyiapkan file + query (F3); hasil
- * > RESULT_MAX_BYTES ditolak sebelum diserialisasi (F4); timeout di-cache negatif sebentar agar spec
- * mahal yang sama tidak bisa diulang gratis (F2).
+ * Batas sumber daya (review T-009):
+ *  - menyiapkan file parquet memakai pembatas unduhan sendiri (global + per user) dan ditunggu paling
+ *    lama PREPARE_WAIT_MS; slot query hanya dipegang selama DuckDB berjalan, sehingga unduhan besar
+ *    tidak menahan query user lain (N2, menggantikan F3);
+ *  - hasil > RESULT_MAX_BYTES ditolak sebelum diserialisasi (F4), diukur dengan perkiraan memori yang
+ *    juga dipakai anggaran cache hasil (N1);
+ *  - timeout di-cache negatif sebentar agar spec mahal yang sama tidak bisa diulang gratis (F2).
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { QueryBusyError, QueryTimeoutError, type EngineResult } from "@/lib/duckdb/engine";
-import { CacheFullError, type ParquetLease } from "@/lib/duckdb/parquet-cache";
+import {
+  CacheFullError,
+  DownloadPendingError,
+  ForgottenError,
+  type AcquireOptions,
+  type ParquetLease,
+} from "@/lib/duckdb/parquet-cache";
 import { resultKey, type ResultCache } from "./cache";
 import { bodySchema, resolveSpec, type OutColumn } from "./spec";
 import { buildSql } from "./sql";
@@ -56,7 +66,7 @@ export interface QueryRepo {
 
 export interface QueryDeps {
   repo: QueryRepo;
-  parquet: { acquire(key: string): Promise<ParquetLease> };
+  parquet: { acquire(key: string, opts?: AcquireOptions): Promise<ParquetLease> };
   engine: {
     withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T>;
     exec(
@@ -67,12 +77,16 @@ export interface QueryDeps {
   };
   cache: ResultCache<CachedQuery> | null;
   timeoutMs: number;
+  /** Lama menunggu file parquet disiapkan (default PREPARE_WAIT_MS). */
+  prepareWaitMs?: number;
 }
 
-/** Hasil yang dikirim ke klien dibatasi (perkiraan byte di memori; lihat sizeOf). */
+/** Hasil yang dikirim ke klien dibatasi (perkiraan byte di memori; lihat resultBytes). */
 export const RESULT_MAX_BYTES = 5 * 1024 * 1024;
 /** Lama cache negatif untuk spec yang timeout. */
 export const TIMEOUT_CACHE_MS = 5 * 60 * 1000;
+/** Lewat ini permintaan dijawab "data sedang disiapkan"; unduhan tetap berlanjut. */
+export const PREPARE_WAIT_MS = 10_000;
 
 const fail = (code: QueryCode, message: string): QueryResult => ({ ok: false, code, message });
 
@@ -92,9 +106,21 @@ function toJson(v: unknown, type: OutColumn["type"]): unknown {
   return v;
 }
 
-/** Perkiraan byte nilai di memori/JSON (string UTF-16 + overhead), tanpa serialisasi. */
-function sizeOf(v: unknown): number {
-  return typeof v === "string" ? 8 + v.length * 2 : 8;
+/**
+ * Perkiraan byte satu baris hasil di heap V8, tanpa serialisasi (review T-009 N1): larik baris ≈ 64 B,
+ * angka ≈ 24 B (HeapNumber + slot), string ≈ 24 B + 2 B per karakter (batas atas UTF-16), lainnya 8 B
+ * (slot). Nilai setelah toJson hanya string/angka/boolean/null. Diukur pada hasil DuckDB sungguhan
+ * (getRowsJS + map, heap setelah GC), per baris: 13 angka 164–175 B (perkiraan 376); 3 teks
+ * 40 karakter + 10 desimal 453 B (616); 1 teks 500 karakter 595 B (1.088) — tidak pernah di bawah.
+ */
+export function rowBytes(row: unknown[]): number {
+  let n = 64;
+  for (const v of row) {
+    if (typeof v === "string") n += 24 + v.length * 2;
+    else if (typeof v === "number") n += 24;
+    else n += 8;
+  }
+  return n;
 }
 
 export async function runQuery(
@@ -133,23 +159,24 @@ export async function runQuery(
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage);
   if (hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
 
-  const typedKey = sheet.typedKey;
   try {
-    const out = await deps.engine.withSlot(userId, async () => {
-      const lease = await deps.parquet.acquire(typedKey);
-      try {
-        const { sql, params } = buildSql(resolved.plan, lease.path);
-        return await deps.engine.exec(sql, params, deps.timeoutMs);
-      } finally {
-        lease.release();
-      }
+    const lease = await deps.parquet.acquire(sheet.typedKey, {
+      owner: userId,
+      waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
     });
+    let out: EngineResult;
+    try {
+      const { sql, params } = buildSql(resolved.plan, lease.path);
+      out = await deps.engine.withSlot(userId, () => deps.engine.exec(sql, params, deps.timeoutMs));
+    } finally {
+      lease.release();
+    }
     const types = resolved.plan.columns.map((c) => c.type);
     let bytes = 0;
     const rows: unknown[][] = [];
     for (const row of out.rows) {
       const r = row.map((v, i) => toJson(v, types[i]!));
-      for (const v of r) bytes += sizeOf(v);
+      bytes += rowBytes(r);
       if (bytes > RESULT_MAX_BYTES) {
         return fail(
           "RESULT_TOO_LARGE",
@@ -169,9 +196,16 @@ export async function runQuery(
     if (e instanceof QueryBusyError) {
       return fail("QUERY_BUSY", "Sedang banyak query berjalan. Coba lagi sebentar lagi.");
     }
+    if (e instanceof DownloadPendingError) {
+      return fail(
+        "QUERY_BUSY",
+        "Data sedang disiapkan untuk query pertama setelah diperbarui. Coba lagi dalam beberapa detik.",
+      );
+    }
     if (e instanceof CacheFullError) {
       return fail("QUERY_BUSY", "Data sedang disiapkan untuk query lain. Coba lagi sebentar lagi.");
     }
+    if (e instanceof ForgottenError) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
     if (/Out of Memory Error/i.test(e instanceof Error ? e.message : String(e))) {
       return fail(
         "QUERY_TOO_HEAVY",

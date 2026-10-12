@@ -1,7 +1,7 @@
 ---
 id: T-009
 title: API query deklaratif via DuckDB dengan cache per revisi
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -10,12 +10,18 @@ tags:
 depends_on:
   - T-007
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T10:16:07Z"
+updated: "2026-10-12T10:49:15Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: f8b76608638dda7fb3bbc8173d76a466874a2bac
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T10:49:15Z"
+      findings: 12
 ---
 
 ## Objective
@@ -51,17 +57,27 @@ Security (STRIDE):
 - **Elevation (escape dari DuckDB):** instance aplikasi enable_external_access=false + allowed_directories (hanya cache parquet dan temp) + lock_configuration.
   - File di luar direktori itu (mis. /etc/passwd) dan SET setelah dikunci ditolak (diuji).
   - Di dalam direktori yang diizinkan, DuckDB masih bisa COPY/ATTACH/read_text. Yang menjaga adalah hanya SQL dari buildSql yang pernah dijalankan: satu SELECT yang hanya membaca read_parquet($path) (diuji, review F11). engine.exec tidak dipanggil dengan teks dari user.
-- **DoS (review T-009 F1–F4):**
+- **DoS (review T-009 F1–F4, N1–N3):**
   - Timeout 30 s → interrupt. Spec yang timeout di-cache negatif 5 menit, sehingga tidak bisa diulang gratis.
-  - Slot global MAX_QUERY_CONCURRENCY (antre ≤ 10 s, lalu QUERY_BUSY) dan per user = setengahnya. Slot dipegang selama menyiapkan file parquet dan query, jadi unduhan ikut dibatasi.
+    - Risiko diterima: timeout karena server sedang ramai juga ikut di-cache 5 menit (spec itu menjawab QUERY_TIMEOUT sampai cache habis). Ditinjau ulang di uji beban T-024.
+  - Slot query global MAX_QUERY_CONCURRENCY (antre ≤ 10 s, lalu QUERY_BUSY) dan per user = setengahnya. Slot hanya dipegang selama DuckDB berjalan; slot yang dilepas diserahkan langsung ke antrean.
+  - Unduhan parquet punya pembatas sendiri (N2): ≤ 2 berjalan bersamaan, ≤ 1 dimulai per user (lebih → QUERY_BUSY), yang lain antre.
+    - Permintaan menunggu file ≤ 10 s, lalu QUERY_BUSY "data sedang disiapkan"; unduhan berlanjut di background dan permintaan berikutnya memakai hasilnya.
+    - Unduhan besar tidak lagi menahan query user lain.
   - Cache parquet lokal: LRU ≤ MAX_LOCAL_PARQUET_BYTES.
     - Ruang dipesan lewat HEAD sebelum unduh; penuh oleh file yang sedang dipakai → QUERY_BUSY.
-    - Unduhan dibatasi 10 menit (abort).
-    - File menganggur 7 hari dibuang; file milik dataset yang dihapus dibuang (forget).
-  - Hasil ke klien ≤ 5 MB (perkiraan saat konversi, sebelum serialisasi) → RESULT_TOO_LARGE. Teks dimensi dipotong 500 karakter di SQL.
-  - Cache hasil di memori proses (LRU ≤ QUERY_RESULT_CACHE_BYTES, entri ≤ 1 MB, TTL 24 jam), bukan Redis bersama yang noeviction (ADR-0004).
+    - Unduhan dibatasi 10 menit sejak mulai berjalan (abort).
+    - File menganggur 3 hari dibuang. File > batas yang selesai diunduh tanpa penunggu langsung dibuang.
+    - Dataset dihapus → salinan lokal dan unduhannya yang masih berjalan dibuang (forget, N3). Lewat registri tanpa DuckDB, jadi menghapus dataset tidak memuat modul native.
+    - Hanya proses yang menghapus yang terjangkau; replika lain membuang salinannya lewat batas menganggur 3 hari.
+  - Hasil ke klien ≤ 5 MB → RESULT_TOO_LARGE, diukur dengan perkiraan heap per baris (rowBytes, N1): 64 B per baris, angka 24 B, string 24 B + 2 B per karakter. Perkiraan diukur tidak pernah di bawah heap sebenarnya.
+  - Teks dimensi dipotong 500 karakter di SQL.
+    - Risiko diterima: label yang 500 karakter pertamanya sama digabung menjadi satu grup. Label grafik sepanjang itu tidak realistis.
+  - Cache hasil di memori proses, bukan Redis bersama yang noeviction (ADR-0004).
+    - LRU ≤ QUERY_RESULT_CACHE_BYTES (default 64 MiB, maksimal 512 MiB), dengan byte = perkiraan heap yang sama.
+    - Entri ≤ 1 MB, TTL 24 jam.
   - DuckDB kehabisan memori → QUERY_TOO_HEAVY dengan saran.
-  - Tanpa rate limit per menit: slot per user, cache negatif, dan batas hasil sudah membatasi; ditinjau ulang di T-024.
+  - Tanpa rate limit per menit: slot per user, pembatas unduhan, cache negatif, dan batas hasil sudah membatasi; ditinjau ulang di T-024.
 - **CSRF:** Origin wajib = APP_URL (403).
 - **Repudiation:** log error query dengan userId tanpa isi data.
 

@@ -57,6 +57,13 @@ describe("parseEnv", () => {
     );
   });
 
+  it("cache hasil query default 64 MiB dan dibatasi 512 MiB (review T-009 N1)", () => {
+    expect(parseEnv(valid).QUERY_RESULT_CACHE_BYTES).toBe(64 * 1024 * 1024);
+    expect(() => parseEnv({ ...valid, QUERY_RESULT_CACHE_BYTES: String(2 ** 30) })).toThrow(
+      /QUERY_RESULT_CACHE_BYTES/,
+    );
+  });
+
   it("menolak LOG_LEVEL yang tidak dikenal", () => {
     expect(() => parseEnv({ ...valid, LOG_LEVEL: "verbose" })).toThrow(/LOG_LEVEL/);
   });

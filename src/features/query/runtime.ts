@@ -8,6 +8,7 @@ import { ParquetCache } from "@/lib/duckdb/parquet-cache";
 import { env } from "@/lib/env";
 import { downloadToFile, objectSize } from "@/lib/storage/files";
 import { ResultCache } from "./cache";
+import { registerLocalParquet } from "./local-parquet";
 import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
 
 /*
@@ -35,7 +36,6 @@ export const prismaQueryRepo: QueryRepo = {
 
 interface Runtime {
   deps: QueryDeps;
-  parquet: ParquetCache;
 }
 
 const globalForQuery = globalThis as unknown as {
@@ -54,7 +54,11 @@ async function build(): Promise<Runtime> {
     download: async (key, dest, signal) => {
       await downloadToFile(key, dest, signal);
     },
+    // Unduhan dibatasi terpisah dari slot query (review T-009 N2).
+    maxDownloads: 2,
+    perOwnerDownloads: 1,
   });
+  registerLocalParquet(parquet);
   const engine = await QueryEngine.create({
     dataDir,
     tmpDir: join(base, "tmp"),
@@ -67,7 +71,6 @@ async function build(): Promise<Runtime> {
     queueWaitMs: 10_000,
   });
   return {
-    parquet,
     deps: {
       repo: prismaQueryRepo,
       parquet,
@@ -93,19 +96,4 @@ function runtime(): Promise<Runtime> {
 
 export async function queryDeps(): Promise<QueryDeps> {
   return (await runtime()).deps;
-}
-
-/**
- * Buang salinan lokal typed.parquet data yang dihapus (review T-009 F12). Hanya bila mesin query
- * proses ini sudah berjalan (belum berjalan = belum ada salinan).
- */
-export async function forgetLocalParquet(keys: string[]): Promise<void> {
-  const rt = globalForQuery.queryRuntime;
-  if (!rt || keys.length === 0) return;
-  try {
-    const { parquet } = await rt;
-    for (const k of keys) parquet.forget(k);
-  } catch {
-    /* runtime gagal start: tidak ada salinan */
-  }
 }

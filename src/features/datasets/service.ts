@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { cancelVersionJobs } from "@/lib/queue/versions";
@@ -184,11 +185,8 @@ export interface DeleteDeps {
 const defaultDeps: DeleteDeps = {
   cancelJobs: cancelVersionJobs,
   deleteObjects: deleteDatasetObjects,
-  // Import dinamis: modul native DuckDB hanya dimuat bila mesin query memang dipakai proses ini.
-  forgetParquet: async (keys) => {
-    const { forgetLocalParquet } = await import("@/features/query/runtime");
-    await forgetLocalParquet(keys);
-  },
+  // Registri tanpa DuckDB: menghapus dataset tidak memuat modul native mesin query (review T-009 N3).
+  forgetParquet: async (keys) => forgetLocalParquet(keys),
 };
 
 /**

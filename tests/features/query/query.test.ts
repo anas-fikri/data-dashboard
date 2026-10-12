@@ -1,11 +1,20 @@
-import { copyFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { canonical, ResultCache } from "@/features/query/cache";
+import { forgetLocalParquet, registerLocalParquet } from "@/features/query/local-parquet";
 import {
+  rowBytes,
   runQuery,
   type CachedQuery,
   type QueryDeps,
@@ -14,7 +23,12 @@ import {
 import { resolveSpec, specSchema } from "@/features/query/spec";
 import { buildSql } from "@/features/query/sql";
 import { QueryBusyError, QueryEngine, QueryTimeoutError } from "@/lib/duckdb/engine";
-import { CacheFullError, ParquetCache } from "@/lib/duckdb/parquet-cache";
+import {
+  CacheFullError,
+  DownloadPendingError,
+  ForgottenError,
+  ParquetCache,
+} from "@/lib/duckdb/parquet-cache";
 
 /*
  * Query deklaratif (T-009) in-process: mesin DuckDB + cache parquet sungguhan, DB dan Redis palsu.
@@ -407,35 +421,54 @@ describe("regresi review T-009", () => {
     }
   });
 
-  it("F3: unduhan parquet memakai slot user (QUERY_BUSY tanpa unduhan kedua)", async () => {
+  it("N2: unduhan tidak memegang slot query — user lain tetap bisa query selama data diunduh", async () => {
     const e = await QueryEngine.create({
       dataDir: join(root, "dl-data"),
       tmpDir: join(root, "dl-tmp"),
       memoryLimit: "128MB",
       threads: 1,
       maxTempSize: "128MB",
-      maxConcurrency: 4,
+      maxConcurrency: 1,
       perUser: 1,
       queueWaitMs: 200,
     });
-    let downloads = 0;
-    const slow = new ParquetCache({
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const fetched: string[] = [];
+    const parquet = new ParquetCache({
       dir: join(root, "dl-data"),
       maxBytes: 1 << 30,
-      download: async (_k, dest) => {
-        downloads++;
-        await new Promise((r) => setTimeout(r, 300));
+      download: async (key, dest) => {
+        fetched.push(key);
+        if (key === "lambat") await gate;
         copyFileSync(source, dest);
       },
     });
+    const VER_B = "cmv4kljx40009oczvdmpurrxg";
+    const repo: QueryRepo = {
+      ownedDataset: async (userId) => ({ activeVersionId: userId === USER ? VER : VER_B }),
+      sheet: async (versionId) => ({
+        typedKey: versionId === VER ? "lambat" : "cepat",
+        schemaRevision: 1,
+        schema: SCHEMA,
+      }),
+    };
     try {
-      const d = deps({ engine: e, parquet: slow });
-      const first = runQuery(USER, body({ measures: [{ agg: "count" }] }), d);
-      await new Promise((r) => setTimeout(r, 50));
-      const second = await runQuery(USER, body({ dimensions: [{ column: "Kota" }] }), d);
-      expect(second).toMatchObject({ ok: false, code: "QUERY_BUSY" });
-      expect(await first).toMatchObject({ ok: true, rows: [[1000]] });
-      expect(downloads).toBe(1);
+      const d = deps({ engine: e, parquet, repo, cache: null, prepareWaitMs: 100 });
+      const q = body({ measures: [{ agg: "count" }] });
+      // Pemilik data yang masih diunduh menunggu ≤ prepareWaitMs lalu diberi tahu data disiapkan…
+      expect(await runQuery(USER, q, d)).toMatchObject({
+        ok: false,
+        code: "QUERY_BUSY",
+        message: expect.stringMatching(/disiapkan/),
+      });
+      // …sementara satu-satunya slot query tidak dipegang unduhan: user lain tetap jalan.
+      expect(await runQuery("user-lain", q, d)).toMatchObject({ ok: true, rows: [[1000]] });
+      // Unduhan berlanjut di background; permintaan berikutnya memakai hasilnya tanpa unduh ulang.
+      open();
+      await vi.waitFor(() => expect(parquet.activeDownloads).toBe(0));
+      expect(await runQuery(USER, q, d)).toMatchObject({ ok: true, rows: [[1000]] });
+      expect(fetched.filter((k) => k === "lambat")).toHaveLength(1);
     } finally {
       e.close();
     }
@@ -615,5 +648,183 @@ describe("regresi review T-009", () => {
     const z = await c.acquire("z"); // memicu pembersihan file menganggur (b)
     z.release();
     expect(c.totalBytes).toBe(1);
+  });
+});
+
+describe("regresi review T-009 putaran 2", () => {
+  it("N1: perkiraan byte hasil memakai ukuran heap (baris + angka 24 B + string)", () => {
+    expect(rowBytes([1.5, 2, 3])).toBe(64 + 3 * 24);
+    expect(rowBytes(["abc", null, true])).toBe(64 + (24 + 6) + 8 + 8);
+  });
+
+  it("N1: hasil 3.000 baris × 13 angka (≈ 1,1 MB heap) tidak lagi masuk cache entri ≤ 1 MB", async () => {
+    const rows = Array.from({ length: 3_000 }, (_, i) =>
+      Array.from({ length: 13 }, (_, j) => i + j + 0.5),
+    );
+    const exec = vi.fn(async () => ({ columns: [], rows }));
+    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
+    const measures = Array.from({ length: 10 }, () => ({ column: "Koli", agg: "sum" }));
+    const b = body({
+      dimensions: [{ column: "Kota" }, { column: "Tanggal" }, { column: "Lunas" }],
+      measures,
+    });
+    expect(await runQuery(USER, b, d)).toMatchObject({ ok: true, cached: false });
+    expect(await runQuery(USER, b, d)).toMatchObject({ ok: true, cached: false });
+    expect(exec).toHaveBeenCalledTimes(2);
+  });
+
+  it("N2: unduhan dibatasi global dan per user; yang lewat waitMs berlanjut di background", async () => {
+    const gates = new Map<string, () => void>();
+    const started: string[] = [];
+    let running = 0;
+    let peak = 0;
+    const cache = new ParquetCache({
+      dir: join(root, "limit"),
+      maxBytes: 1 << 20,
+      maxDownloads: 2,
+      perOwnerDownloads: 1,
+      download: async (key, dest) => {
+        started.push(key);
+        peak = Math.max(peak, ++running);
+        await new Promise<void>((r) => gates.set(key, r));
+        running--;
+        writeFileSync(dest, key);
+      },
+    });
+    const a = cache.acquire("a", { owner: "u1" });
+    // Satu user tidak bisa memulai unduhan kedua selama unduhannya masih berjalan.
+    await expect(cache.acquire("b", { owner: "u1" })).rejects.toBeInstanceOf(DownloadPendingError);
+    const b = cache.acquire("b", { owner: "u2" });
+    // Dua unduhan sudah berjalan: yang ketiga antre, penunggunya menyerah setelah waitMs.
+    await expect(cache.acquire("c", { owner: "u3", waitMs: 50 })).rejects.toBeInstanceOf(
+      DownloadPendingError,
+    );
+    expect(started).toEqual(["a", "b"]);
+    // Bergabung ke unduhan yang sudah berjalan tidak dihitung ke batas user (u2 sedang mengunduh b).
+    const a2 = cache.acquire("a", { owner: "u2" });
+    gates.get("a")!();
+    const leases = await Promise.all([a, a2]);
+    await vi.waitFor(() => expect(started).toEqual(["a", "b", "c"])); // c jalan setelah a selesai
+    gates.get("b")!();
+    gates.get("c")!();
+    leases.push(await b);
+    await vi.waitFor(() => expect(cache.activeDownloads).toBe(0));
+    leases.push(await cache.acquire("c")); // hasil unduhan background, tanpa unduh ulang
+    expect(started).toEqual(["a", "b", "c"]);
+    expect(peak).toBe(2);
+    for (const l of leases) l.release();
+    expect(cache.totalBytes).toBe(3);
+  });
+
+  it("N2: file > maxBytes yang selesai diunduh tanpa penunggu langsung dibuang", async () => {
+    const dir = join(root, "besar");
+    let open!: () => void;
+    const cache = new ParquetCache({
+      dir,
+      maxBytes: 10,
+      download: async (_k, dest) => {
+        await new Promise<void>((r) => (open = r));
+        writeFileSync(dest, Buffer.alloc(100));
+      },
+    });
+    await expect(cache.acquire("besar", { waitMs: 20 })).rejects.toBeInstanceOf(
+      DownloadPendingError,
+    );
+    open();
+    await vi.waitFor(() => expect(readdirSync(dir)).toEqual([]));
+  });
+
+  it("slot query yang dilepas diserahkan ke antrean; tidak pernah melebihi batas global", async () => {
+    const e = await QueryEngine.create({
+      dataDir: join(root, "handoff-data"),
+      tmpDir: join(root, "handoff-tmp"),
+      memoryLimit: "128MB",
+      threads: 1,
+      maxTempSize: "128MB",
+      maxConcurrency: 1,
+      perUser: 3,
+      queueWaitMs: 2_000,
+    });
+    try {
+      let running = 0;
+      let peak = 0;
+      const job = (ms: number) =>
+        e.withSlot("u", async () => {
+          peak = Math.max(peak, ++running);
+          await new Promise((r) => setTimeout(r, ms));
+          running--;
+        });
+      await Promise.all([job(30), job(10), job(10)]);
+      expect(peak).toBe(1);
+      // Slot kembali bebas: query berikutnya tidak menunggu antrean.
+      const t0 = Date.now();
+      expect(await e.withSlot("u", async () => 7)).toBe(7);
+      expect(Date.now() - t0).toBeLessThan(100);
+    } finally {
+      e.close();
+    }
+  });
+
+  it("N3: forget membatalkan unduhan yang berjalan atau baru selesai; tidak ada file tersisa", async () => {
+    const dir = join(root, "forget-pending");
+    const cache = new ParquetCache({
+      dir,
+      maxBytes: 1 << 20,
+      download: (_k, dest, signal) =>
+        new Promise<void>((_, reject) => {
+          writeFileSync(dest, "setengah");
+          signal.addEventListener("abort", () => reject(new Error("aborted")));
+        }),
+    });
+    const p = cache.acquire("hapus");
+    await vi.waitFor(() => expect(cache.activeDownloads).toBe(1));
+    cache.forget("hapus");
+    await expect(p).rejects.toBeInstanceOf(ForgottenError);
+    expect(readdirSync(dir)).toEqual([]);
+
+    // Unduhan yang mengabaikan abort dan selesai setelah forget tetap tidak disimpan.
+    const dir2 = join(root, "forget-late");
+    let open!: () => void;
+    const late = new ParquetCache({
+      dir: dir2,
+      maxBytes: 1 << 20,
+      download: async (_k, dest) => {
+        await new Promise<void>((r) => (open = r));
+        writeFileSync(dest, "x");
+      },
+    });
+    const q = late.acquire("hapus");
+    await vi.waitFor(() => expect(late.activeDownloads).toBe(1));
+    late.forget("hapus");
+    open();
+    await expect(q).rejects.toBeInstanceOf(ForgottenError);
+    expect(readdirSync(dir2)).toEqual([]);
+    expect(late.totalBytes).toBe(0);
+  });
+
+  it("N3: data dihapus saat sedang disiapkan → NOT_FOUND", async () => {
+    const d = deps({
+      parquet: {
+        acquire: async () => {
+          throw new ForgottenError();
+        },
+      },
+    });
+    expect(await runQuery(USER, body({ measures: [{ agg: "count" }] }), d)).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("N3: penghapusan dataset memakai registri tanpa DuckDB yang meneruskan forget", () => {
+    const forgot: string[] = [];
+    registerLocalParquet({ forget: (k) => forgot.push(k) });
+    forgetLocalParquet(["a", "b"]);
+    expect(forgot).toEqual(["a", "b"]);
+    for (const f of ["src/features/query/local-parquet.ts", "src/features/datasets/service.ts"]) {
+      expect(readFileSync(join(process.cwd(), f), "utf8")).not.toMatch(
+        /@duckdb|query\/runtime|duckdb\/engine/,
+      );
+    }
   });
 });

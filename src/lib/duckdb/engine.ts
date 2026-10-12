@@ -85,7 +85,11 @@ export class QueryEngine {
     if (mine >= this.o.perUser) throw new QueryBusyError();
     this.perUser.set(userId, mine + 1);
     try {
-      if (this.active >= this.o.maxConcurrency) {
+      if (this.active < this.o.maxConcurrency) {
+        this.active++;
+      } else {
+        // Slot yang dilepas diserahkan langsung ke penunggu (active tidak turun), sehingga query yang
+        // baru datang tidak bisa menyalip dan membuat active > maxConcurrency.
         await new Promise<void>((resolve, reject) => {
           const wake = () => {
             clearTimeout(timer);
@@ -99,7 +103,6 @@ export class QueryEngine {
           this.waiters.push(wake);
         });
       }
-      this.active++;
     } catch (e) {
       this.decUser(userId);
       throw e;
@@ -108,9 +111,10 @@ export class QueryEngine {
     return () => {
       if (done) return;
       done = true;
-      this.active--;
       this.decUser(userId);
-      this.waiters.shift()?.();
+      const next = this.waiters.shift();
+      if (next) next();
+      else this.active--;
     };
   }
 
@@ -121,8 +125,9 @@ export class QueryEngine {
   }
 
   /**
-   * Pegang satu slot (global + per user) selama `fn` berjalan, termasuk menyiapkan file parquet lokal:
-   * unduhan ikut dibatasi slot (review T-009 F3). Slot selalu dilepas, apa pun yang dilempar `fn`.
+   * Pegang satu slot (global + per user) selama `fn` berjalan. Hanya untuk eksekusi DuckDB; unduhan
+   * file parquet punya pembatas sendiri di ParquetCache (review T-009 N2). Slot selalu dilepas, apa
+   * pun yang dilempar `fn`.
    */
   async withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T> {
     const release = await this.slot(userId);
