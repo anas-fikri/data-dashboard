@@ -9,10 +9,11 @@ const MiB = 1024 * 1024;
 const findFirstDataset = vi.fn();
 const findFirstVersion = vi.fn();
 const updateMany = vi.fn();
+const findManyVersion = vi.fn(async (): Promise<unknown[]> => []);
 vi.mock("@/lib/db", () => ({
   prisma: {
     dataset: { findFirst: findFirstDataset },
-    datasetVersion: { findFirst: findFirstVersion, updateMany, findMany: vi.fn(async () => []) },
+    datasetVersion: { findFirst: findFirstVersion, updateMany, findMany: findManyVersion },
     $transaction: vi.fn(),
   },
 }));
@@ -23,7 +24,7 @@ vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: 
 vi.mock("@/lib/queue/versions", () => ({ enqueueIngest: vi.fn() }));
 vi.mock("@/lib/storage/multipart", () => ({ s3Multipart: {} }));
 
-const { initUpload, completeUpload, validateInit, cleanFileName } =
+const { initUpload, completeUpload, validateInit, cleanFileName, expireStaleUploads } =
   await import("@/features/uploads/service");
 const { isSameOrigin } = await import("@/features/uploads/http");
 
@@ -167,5 +168,32 @@ describe("completeUpload", () => {
     expect(await completeUpload("u2", VID, { storage: storageMock() })).toMatchObject({
       code: "NOT_FOUND",
     });
+  });
+});
+
+describe("expireStaleUploads", () => {
+  it("UPLOADING > 24 jam → abort multipart + FAILED; filter umur dan status dipaksa", async () => {
+    findManyVersion.mockResolvedValueOnce([
+      { id: VID, sourceKey: uploading.sourceKey, uploadId: "up-1" },
+    ]);
+    const storage = storageMock();
+    const now = Date.UTC(2026, 9, 12);
+    expect(await expireStaleUploads({ uploadedById: "u1" }, storage, now)).toBe(1);
+    expect(findManyVersion).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          uploadedById: "u1",
+          status: "UPLOADING",
+          createdAt: { lt: new Date(now - 24 * 60 * 60 * 1000) },
+        }),
+      }),
+    );
+    expect(storage.abort).toHaveBeenCalledWith(uploading.sourceKey, "up-1");
+    expect(updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: VID, status: "UPLOADING" },
+        data: expect.objectContaining({ status: "FAILED" }),
+      }),
+    );
   });
 });

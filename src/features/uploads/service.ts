@@ -199,7 +199,8 @@ export async function initUpload(
   });
   if (!dataset) return notFound();
 
-  await expireStaleUploads({ datasetId: dataset.id }, storage);
+  // Unggahan basi di dataset ini dan milik user di dataset lain tidak boleh menahan sibuk/batas.
+  await expireStaleUploads({ OR: [{ datasetId: dataset.id }, { uploadedById: userId }] }, storage);
   const fingerprint = fingerprintOf(v.name, v.size, v.lastModified);
 
   type Decision =
