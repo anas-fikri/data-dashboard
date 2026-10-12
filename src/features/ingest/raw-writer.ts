@@ -10,7 +10,7 @@
  */
 import type { DuckDBAppender } from "@duckdb/node-api";
 import type { Duck } from "@/lib/duckdb";
-import { ident, lit } from "@/lib/duckdb";
+import { ident, lit, watched } from "@/lib/duckdb";
 import type { RawValue } from "@/lib/xlsx/types";
 import type { SampleRow } from "./header";
 
@@ -79,6 +79,17 @@ const colDefs = (from: number, to: number) =>
   Array.from({ length: to - from + 1 }, (_, i) => `${ident(`c${from + i}`)} VARCHAR`).join(", ");
 const colList = (n: number) => Array.from({ length: n }, (_, i) => ident(`c${i + 1}`)).join(", ");
 
+export interface WriterOptions {
+  batchLimit?: number;
+  /**
+   * Dipanggil berkala selama pernyataan panjang (buat-ulang tabel saat melebar, COPY ke Parquet);
+   * melempar → pernyataan diinterupsi (dataset dihapus, deadline). Review T-006 N2.
+   */
+  watch?: () => Promise<void>;
+  /** Interval watch (default 5 s; uji memakai interval pendek). */
+  watchEveryMs?: number;
+}
+
 export class RawSheetWriter {
   private appender: DuckDBAppender | null = null;
   /** Katalog tabel: null = DB utama, selain itu DB tabel lebar. */
@@ -96,16 +107,16 @@ export class RawSheetWriter {
     private readonly duck: Duck,
     private readonly table: string,
     private readonly onBatch: (rows: number) => Promise<void>,
-    private readonly batchLimit: number,
+    private readonly opts: WriterOptions,
   ) {}
 
   static async create(
     duck: Duck,
     table: string,
     onBatch: (rows: number) => Promise<void>,
-    batchLimit = BATCH_ROWS,
+    opts: WriterOptions = {},
   ) {
-    const w = new RawSheetWriter(duck, table, onBatch, batchLimit);
+    const w = new RawSheetWriter(duck, table, onBatch, opts);
     await duck.conn.run(`DROP TABLE IF EXISTS ${ident(table)}`);
     w.capacity = 32;
     await duck.conn.run(`CREATE TABLE ${ident(table)} (_row INTEGER, ${colDefs(1, w.capacity)})`);
@@ -115,6 +126,11 @@ export class RawSheetWriter {
 
   get colCount() {
     return this.width;
+  }
+
+  private watched<T>(fn: () => Promise<T>): Promise<T> {
+    const { watch, watchEveryMs } = this.opts;
+    return watch ? watched(this.duck, watch, fn, watchEveryMs) : fn();
   }
 
   private ref(name = this.table, catalog = this.catalog) {
@@ -135,8 +151,10 @@ export class RawSheetWriter {
     const tmp = this.ref(`${this.table}_grow`, dest);
     await this.duck.conn.run(`DROP TABLE IF EXISTS ${tmp}`);
     await this.duck.conn.run(`CREATE TABLE ${tmp} (_row INTEGER, ${colDefs(1, next)})`);
-    await this.duck.conn.run(
-      `INSERT INTO ${tmp} (_row, ${colList(this.capacity)}) SELECT _row, ${colList(this.capacity)} FROM ${t}`,
+    await this.watched(() =>
+      this.duck.conn.run(
+        `INSERT INTO ${tmp} (_row, ${colList(this.capacity)}) SELECT _row, ${colList(this.capacity)} FROM ${t}`,
+      ),
     );
     await this.duck.conn.run(`DROP TABLE ${t}`);
     await this.duck.conn.run(`ALTER TABLE ${tmp} RENAME TO ${ident(this.table)}`);
@@ -169,7 +187,9 @@ export class RawSheetWriter {
     }
     this.batchRows++;
     this.batchChars += chars;
-    if (this.batchRows >= this.batchLimit || this.batchChars >= BATCH_CHARS) await this.flush();
+    if (this.batchRows >= (this.opts.batchLimit ?? BATCH_ROWS) || this.batchChars >= BATCH_CHARS) {
+      await this.flush();
+    }
   }
 
   async flush() {
@@ -186,11 +206,13 @@ export class RawSheetWriter {
     this.appender = null;
     const cols = Math.max(this.width, 1);
     this.width = cols;
-    await copyParquet(
-      this.duck,
-      `SELECT _row, ${colList(cols)} FROM ${this.ref()} ORDER BY _row`,
-      path,
-      cols,
+    await this.watched(() =>
+      copyParquet(
+        this.duck,
+        `SELECT _row, ${colList(cols)} FROM ${this.ref()} ORDER BY _row`,
+        path,
+        cols,
+      ),
     );
     await this.duck.conn.run(`DROP TABLE ${this.ref()}`);
   }

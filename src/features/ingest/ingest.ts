@@ -312,7 +312,7 @@ async function xlsxSheets(
             await ensureAlive();
             await opts.afterBatch?.(sheet, rows);
           },
-          opts.batchRows,
+          { batchLimit: opts.batchRows, watch: ensureAlive },
         );
       } else if (it.k === "row") {
         await writer!.add(it.row, it.vals);

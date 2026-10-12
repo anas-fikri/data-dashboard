@@ -73,6 +73,34 @@ export async function openDuck(o: DuckOptions): Promise<Duck> {
   };
 }
 
+/**
+ * Jalankan query panjang dengan watchdog: `watch` dipanggil tiap `everyMs`; bila melempar (dataset
+ * dihapus, deadline lewat), query diinterupsi dan error dari `watch` yang dilempar.
+ */
+export async function watched<T>(
+  duck: Duck,
+  watch: () => Promise<void>,
+  fn: () => Promise<T>,
+  everyMs = 5_000,
+): Promise<T> {
+  let watchErr: unknown = null;
+  const timer = setInterval(() => {
+    watch().catch((e: unknown) => {
+      watchErr ??= e;
+      duck.interrupt();
+    });
+  }, everyMs);
+  try {
+    const r = await fn();
+    if (watchErr) throw watchErr;
+    return r;
+  } catch (e) {
+    throw watchErr ?? e;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 /** Kutip identifier SQL DuckDB (nama kolom/tabel berasal dari program, tetap dikutip). */
 export const ident = (s: string) => `"${s.replace(/"/g, '""')}"`;
 

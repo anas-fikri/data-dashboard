@@ -1,7 +1,10 @@
+import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { permanentMessage, runIngest } from "@/features/ingest/ingest";
-import { MAX_RAW_COLS, dictionaryPageLimit } from "@/features/ingest/raw-writer";
+import { MAX_RAW_COLS, RawSheetWriter, dictionaryPageLimit } from "@/features/ingest/raw-writer";
+import { openDuck } from "@/lib/duckdb";
+import type { RawValue } from "@/lib/xlsx/types";
 import { buildXlsx, colLetter, readParquet, testRoot, VID } from "./fakes";
 
 /*
@@ -109,4 +112,37 @@ describe("klasifikasi kegagalan", () => {
     expect(dictionaryPageLimit(1_000)).toBe(134_217);
     expect(dictionaryPageLimit(MAX_RAW_COLS)).toBe(65_536);
   });
+});
+
+describe("watchdog saat tabel melebar (review putaran 3, N2)", () => {
+  it("buat-ulang tabel yang panjang diinterupsi bila watch melempar (dataset dihapus/deadline)", async () => {
+    const dir = join(t.root, "tmp", "watch");
+    mkdirSync(dir, { recursive: true });
+    const duck = await openDuck({
+      path: join(dir, "w.duckdb"),
+      tmpDir: dir,
+      memoryLimit: "1GB",
+      widePath: join(dir, "wide.duckdb"),
+    });
+    const stop = new Error("dataset dihapus");
+    let calls = 0;
+    const w = await RawSheetWriter.create(duck, "s0", async () => {}, {
+      watch: async () => {
+        if (++calls >= 2) throw stop;
+      },
+      watchEveryMs: 20,
+    });
+    try {
+      for (let r = 1; r <= 30_000; r++) await w.add(r, [r, "Y"]);
+      const wide: RawValue[] = Array.from({ length: MAX_RAW_COLS }, () => null);
+      wide[MAX_RAW_COLS - 1] = 1;
+      const t0 = Date.now();
+      // Tanpa watchdog, INSERT 30 ribu baris ke tabel 2.048 kolom berjalan puluhan detik.
+      await expect(w.add(30_001, wide)).rejects.toBe(stop);
+      expect(Date.now() - t0).toBeLessThan(5_000);
+    } finally {
+      w.close();
+      duck.close();
+    }
+  }, 60_000);
 });

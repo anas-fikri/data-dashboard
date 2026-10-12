@@ -15,7 +15,7 @@ import { open } from "node:fs/promises";
 import { join } from "node:path";
 import { Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { ident, lit, type Duck } from "@/lib/duckdb";
+import { ident, lit, watched as watchQuery, type Duck } from "@/lib/duckdb";
 import { CsvFormatError, rejectUtf16, scanCsv, sniffDelimiter } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type SampleRow } from "./header";
 import type { SheetRecord } from "./ingest";
@@ -106,24 +106,7 @@ export async function csvToParquet(
   const maxLine = Math.min(MAX_LINE, buffer);
 
   // Watchdog: query panjang diinterupsi bila dataset dihapus / deadline lewat.
-  const watched = async <T>(fn: () => Promise<T>): Promise<T> => {
-    let watchErr: unknown = null;
-    const timer = setInterval(() => {
-      watch().catch((e: unknown) => {
-        watchErr ??= e;
-        duck.interrupt();
-      });
-    }, 5_000);
-    try {
-      const r = await fn();
-      if (watchErr) throw watchErr;
-      return r;
-    } catch (e) {
-      throw watchErr ?? e;
-    } finally {
-      clearInterval(timer);
-    }
-  };
+  const watched = <T>(fn: () => Promise<T>) => watchQuery(duck, watch, fn);
 
   // Muat apa adanya: satu pembaca + urutan sisip dipertahankan → rowid = urutan record. Tanpa
   // window row_number(): operator window menyimpan semua kolom per blok dan OOM pada tabel lebar
