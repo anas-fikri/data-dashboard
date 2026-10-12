@@ -1,0 +1,147 @@
+/*
+ * Spec widget (T-011): disimpan di Widget.spec, divalidasi zod per tipe (enum tertutup, batas jumlah).
+ * Kolom dirujuk lewat posisi fisik (pos di skema sheet, = c<pos> di typed.parquet), bukan nama tampil:
+ * mengganti nama kolom di editor skema tidak merusak widget, sedangkan kolom yang disembunyikan tetap
+ * ditolak saat query (pesan "kolom tidak tersedia" di widget itu saja). Murni (tanpa I/O) — dipakai
+ * server dan form konfigurasi di klien.
+ */
+import { z } from "zod";
+import type { Agg, Grain } from "@/features/query/spec";
+
+export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie"] as const;
+export type WidgetType = (typeof WIDGET_TYPES)[number];
+export const CHART_TYPES = ["bar", "line", "pie"] as const;
+export type ChartType = (typeof CHART_TYPES)[number];
+
+export const AGGS = [
+  "sum",
+  "avg",
+  "count",
+  "count_distinct",
+  "min",
+  "max",
+] as const satisfies Agg[];
+export const GRAINS = ["day", "week", "month", "quarter", "year"] as const satisfies Grain[];
+export const CHART_SORTS = ["value_desc", "value_asc", "label_asc", "label_desc"] as const;
+export type ChartSort = (typeof CHART_SORTS)[number];
+
+export const TABLE_PAGE_SIZE = 100;
+export const TABLE_COLUMNS_MAX = 20;
+/** Batas kategori per tipe grafik (pai lebih dari 12 irisan tidak terbaca). */
+export const TOP_N_MAX: Record<ChartType, number> = { bar: 50, line: 1000, pie: 12 };
+export const TOP_N_DEFAULT: Record<ChartType, number> = { bar: 12, line: 365, pie: 8 };
+export const SORT_DEFAULT: Record<ChartType, ChartSort> = {
+  bar: "value_desc",
+  line: "label_asc",
+  pie: "value_desc",
+};
+
+const sheetId = z.string().regex(/^[a-z0-9]{20,32}$/);
+/** Posisi kolom di skema sheet (1-based, sama dengan c<pos>). */
+const column = z.number().int().min(1).max(16_384);
+
+export const formatSchema = z
+  .object({
+    style: z.enum(["number", "percent", "rupiah"]),
+    decimals: z.number().int().min(0).max(4),
+  })
+  .strict();
+export type NumberFormat = z.infer<typeof formatSchema>;
+export const DEFAULT_FORMAT: NumberFormat = { style: "number", decimals: 0 };
+
+const measure = z
+  .object({ agg: z.enum(AGGS), column: column.optional() })
+  .strict()
+  .refine((m) => m.agg === "count" || m.column !== undefined, {
+    message: "Agregasi ini membutuhkan kolom",
+  });
+const dimension = z.object({ column, timeGrain: z.enum(GRAINS).optional() }).strict();
+
+export const kpiSpecSchema = z.object({ sheetId, measure, format: formatSchema }).strict();
+export const chartSpecSchema = z
+  .object({
+    sheetId,
+    dimension,
+    measure,
+    sort: z.enum(CHART_SORTS),
+    topN: z.number().int().min(1).max(1000),
+    format: formatSchema,
+  })
+  .strict();
+export const tableSpecSchema = z
+  .object({
+    sheetId,
+    columns: z
+      .array(column)
+      .min(1)
+      .max(TABLE_COLUMNS_MAX)
+      .refine((c) => new Set(c).size === c.length, { message: "Kolom tidak boleh ganda" }),
+    format: formatSchema,
+  })
+  .strict();
+
+export type KpiSpec = z.infer<typeof kpiSpecSchema>;
+export type ChartSpec = z.infer<typeof chartSpecSchema>;
+export type TableSpec = z.infer<typeof tableSpecSchema>;
+
+export type WidgetConfig =
+  | { type: "empty"; spec: Record<string, never> }
+  | { type: "kpi"; spec: KpiSpec }
+  | { type: ChartType; spec: ChartSpec }
+  | { type: "table"; spec: TableSpec };
+
+export type ParsedConfig = { ok: true; config: WidgetConfig } | { ok: false; message: string };
+
+const issueText = (e: z.ZodError) => {
+  const i = e.issues[0];
+  return `${i?.path.length ? `${i.path.join(".")}: ` : ""}${i?.message ?? "format salah"}`;
+};
+
+/** Validasi tipe + spec dari klien/DB. Spec widget kosong selalu {}. */
+export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
+  const t = z.enum(WIDGET_TYPES).safeParse(type);
+  if (!t.success) return { ok: false, message: "Tipe widget tidak dikenal." };
+  const bad = (e: z.ZodError): ParsedConfig => ({
+    ok: false,
+    message: `Pengaturan widget tidak valid (${issueText(e)}).`,
+  });
+  switch (t.data) {
+    case "empty":
+      return { ok: true, config: { type: "empty", spec: {} } };
+    case "kpi": {
+      const p = kpiSpecSchema.safeParse(spec);
+      return p.success ? { ok: true, config: { type: "kpi", spec: p.data } } : bad(p.error);
+    }
+    case "table": {
+      const p = tableSpecSchema.safeParse(spec);
+      return p.success ? { ok: true, config: { type: "table", spec: p.data } } : bad(p.error);
+    }
+    default: {
+      const type = t.data;
+      const p = chartSpecSchema.safeParse(spec);
+      if (!p.success) return bad(p.error);
+      if (p.data.topN > TOP_N_MAX[type]) {
+        return { ok: false, message: `Maksimal ${TOP_N_MAX[type]} kategori untuk grafik ini.` };
+      }
+      return { ok: true, config: { type, spec: p.data } };
+    }
+  }
+}
+
+/** Sheet yang dirujuk spec (widget kosong tidak punya). */
+export const sheetOf = (c: WidgetConfig): string | null =>
+  c.type === "empty" ? null : c.spec.sheetId;
+
+/** Semua posisi kolom yang dirujuk (untuk validasi terhadap skema). */
+export function columnsOf(c: WidgetConfig): number[] {
+  switch (c.type) {
+    case "empty":
+      return [];
+    case "kpi":
+      return c.spec.measure.column ? [c.spec.measure.column] : [];
+    case "table":
+      return c.spec.columns;
+    default:
+      return [c.spec.dimension.column, ...(c.spec.measure.column ? [c.spec.measure.column] : [])];
+  }
+}

@@ -131,6 +131,7 @@ async function main() {
   const memStore = new ResultCache<CachedQuery>(128 * 1024 * 1024);
   const deps = (cache: ResultCache<CachedQuery> | null): QueryDeps => ({
     repo: {
+      widget: async () => null,
       ownedDataset: async () => ({ activeVersionId: VER }),
       sheet: async () => ({ typedKey, schemaRevision: 1, schema }),
     },

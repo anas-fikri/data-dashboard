@@ -5,6 +5,7 @@ import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { redisReady } from "@/lib/redis";
 import {
   addWidget,
+  configureWidget,
   deleteWidget,
   renameWidget,
   saveLayout,
@@ -77,17 +78,19 @@ export const deleteWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
     false,
   );
 
-export const renameWidgetRoute = (req: NextRequest, dashboardId: string, widgetId: string) =>
-  mutation(req, "ganti judul widget gagal", async (userId, body) =>
-    reply(
-      await renameWidget(
-        userId,
-        dashboardId,
-        widgetId,
-        body && typeof body === "object" ? (body as { title?: unknown }).title : undefined,
-      ),
-    ),
-  );
+/** PATCH widget: { title } ganti judul, atau { type, spec } atur isi widget (T-011). */
+export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetId: string) =>
+  mutation(req, "ubah widget gagal", async (userId, body) => {
+    const b = (body && typeof body === "object" ? body : {}) as {
+      title?: unknown;
+      type?: unknown;
+      spec?: unknown;
+    };
+    if (b.type !== undefined) {
+      return reply(await configureWidget(userId, dashboardId, widgetId, b.type, b.spec));
+    }
+    return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
+  });
 
 export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan tata letak gagal", async (userId, body) =>

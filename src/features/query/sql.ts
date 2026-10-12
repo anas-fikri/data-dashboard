@@ -15,8 +15,11 @@ const OP_SQL = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as
 /** Panjang maksimum teks dimensi di hasil. */
 export const DIM_TEXT_MAX = 500;
 
-export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
-  const params: BuiltSql["params"] = { path: parquetPath };
+/**
+ * Klausa WHERE dari filter rencana; nilai masuk `params` sebagai $p1, $p2, … (dipakai query agregat
+ * dan halaman tabel T-011 agar aturan filter persis sama).
+ */
+export function filterClauses(filters: PlanFilter[], params: BuiltSql["params"]): string[] {
   let n = 0;
   const bind = (v: string | number | boolean, type: PlanFilter["type"]) => {
     const name = `p${++n}`;
@@ -29,7 +32,32 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     }
     return `$${name}`;
   };
+  return filters.map((f) => {
+    const c = ident(f.col);
+    switch (f.op) {
+      case "is_null":
+        return `${c} IS NULL`;
+      case "not_null":
+        return `${c} IS NOT NULL`;
+      // "Bukan X" menyertakan sel kosong: eq X + neq X = semua baris (review T-009 F7).
+      case "in":
+        return `${c} IN (${f.values.map((v) => bind(v, f.type)).join(", ")})`;
+      case "not_in":
+        return `(${c} IS NULL OR ${c} NOT IN (${f.values.map((v) => bind(v, f.type)).join(", ")}))`;
+      case "neq":
+        return `(${c} IS NULL OR ${c} <> ${bind(f.values[0]!, f.type)})`;
+      case "between":
+        return `${c} BETWEEN ${bind(f.values[0]!, f.type)} AND ${bind(f.values[1]!, f.type)}`;
+      case "contains":
+        return `contains(lower(${c}), lower(${bind(f.values[0]!, f.type)}))`;
+      default:
+        return `${c} ${OP_SQL[f.op]} ${bind(f.values[0]!, f.type)}`;
+    }
+  });
+}
 
+export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
   const select: string[] = [];
   for (const d of plan.dimensions) {
     const c = ident(d.col);
@@ -53,29 +81,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     select.push(`${e} AS ${ident(m.key)}`);
   }
 
-  const where = plan.filters.map((f) => {
-    const c = ident(f.col);
-    switch (f.op) {
-      case "is_null":
-        return `${c} IS NULL`;
-      case "not_null":
-        return `${c} IS NOT NULL`;
-      // "Bukan X" menyertakan sel kosong: eq X + neq X = semua baris (review T-009 F7).
-      case "in":
-        return `${c} IN (${f.values.map((v) => bind(v, f.type)).join(", ")})`;
-      case "not_in":
-        return `(${c} IS NULL OR ${c} NOT IN (${f.values.map((v) => bind(v, f.type)).join(", ")}))`;
-      case "neq":
-        return `(${c} IS NULL OR ${c} <> ${bind(f.values[0]!, f.type)})`;
-      case "between":
-        return `${c} BETWEEN ${bind(f.values[0]!, f.type)} AND ${bind(f.values[1]!, f.type)}`;
-      case "contains":
-        return `contains(lower(${c}), lower(${bind(f.values[0]!, f.type)}))`;
-      default:
-        return `${c} ${OP_SQL[f.op]} ${bind(f.values[0]!, f.type)}`;
-    }
-  });
-
+  const where = filterClauses(plan.filters, params);
   const group = plan.dimensions.length && plan.measures.length ? "GROUP BY ALL" : "";
   const distinct = plan.dimensions.length && !plan.measures.length ? "DISTINCT " : "";
   // Urutan deterministik: urutan pilihan user lalu dimensi naik sebagai pemecah seri, sehingga baris

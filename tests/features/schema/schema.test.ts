@@ -100,6 +100,7 @@ afterAll(() => {
 
 function queryDeps(): QueryDeps {
   const repo: QueryRepo = {
+    widget: async () => null,
     ownedDataset: async (userId, datasetId) =>
       userId === USER && datasetId === DS ? { activeVersionId: VER } : null,
     sheet: async (versionId, sheetId) => {

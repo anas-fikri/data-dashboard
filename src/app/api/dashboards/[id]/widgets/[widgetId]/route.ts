@@ -1,14 +1,14 @@
 import type { NextRequest } from "next/server";
-import { deleteWidgetRoute, renameWidgetRoute } from "@/features/dashboards/http";
+import { deleteWidgetRoute, updateWidgetRoute } from "@/features/dashboards/http";
 
 export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string; widgetId: string }> };
 
-/** Ganti judul widget (T-010). */
+/** Ganti judul (T-010) atau atur tipe + isi widget (T-011). */
 export async function PATCH(req: NextRequest, ctx: Ctx) {
   const { id, widgetId } = await ctx.params;
-  return renameWidgetRoute(req, id, widgetId);
+  return updateWidgetRoute(req, id, widgetId);
 }
 
 /** Hapus widget dari dashboard (T-010). */

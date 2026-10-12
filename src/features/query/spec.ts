@@ -11,7 +11,7 @@ export const LIMIT_MAX = 10_000;
 
 const AGGS = ["count", "count_distinct", "sum", "avg", "min", "max"] as const;
 const GRAINS = ["day", "week", "month", "quarter", "year"] as const;
-const OPS = [
+export const FILTER_OPS = [
   "eq",
   "neq",
   "in",
@@ -27,10 +27,10 @@ const OPS = [
 ] as const;
 export type Agg = (typeof AGGS)[number];
 export type Grain = (typeof GRAINS)[number];
-export type FilterOp = (typeof OPS)[number];
+export type FilterOp = (typeof FILTER_OPS)[number];
 
 const colName = z.string().min(1).max(200);
-const scalar = z.union([z.string().max(1_000), z.number().finite(), z.boolean()]);
+export const filterScalar = z.union([z.string().max(1_000), z.number().finite(), z.boolean()]);
 
 export const specSchema = z
   .object({
@@ -48,9 +48,9 @@ export const specSchema = z
         z
           .object({
             column: colName,
-            op: z.enum(OPS),
-            value: scalar.optional(),
-            values: z.array(scalar).max(500).optional(),
+            op: z.enum(FILTER_OPS),
+            value: filterScalar.optional(),
+            values: z.array(filterScalar).max(500).optional(),
           })
           .strict(),
       )

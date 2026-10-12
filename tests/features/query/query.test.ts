@@ -106,6 +106,7 @@ const memoryStore = () => new ResultCache<CachedQuery>(64 * 1024 * 1024);
 function deps(over: Partial<QueryDeps> = {}, revision = 1): QueryDeps & { downloads: string[] } {
   const downloads: string[] = [];
   const repo: QueryRepo = {
+    widget: async () => null,
     ownedDataset: async (userId, datasetId) =>
       userId === USER && datasetId === DS ? { activeVersionId: VER } : null,
     sheet: async (versionId, sheetId) =>
@@ -446,6 +447,7 @@ describe("regresi review T-009", () => {
     });
     const VER_B = "cmv4kljx40009oczvdmpurrxg";
     const repo: QueryRepo = {
+      widget: async () => null,
       ownedDataset: async (userId) => ({ activeVersionId: userId === USER ? VER : VER_B }),
       sheet: async (versionId) => ({
         typedKey: versionId === VER ? "lambat" : "cepat",
@@ -522,6 +524,7 @@ describe("regresi review T-009", () => {
     c.closeSync();
     db.closeSync();
     const repo: QueryRepo = {
+      widget: async () => null,
       ownedDataset: async () => ({ activeVersionId: VER }),
       sheet: async () => ({
         typedKey: "parquet/panjang",

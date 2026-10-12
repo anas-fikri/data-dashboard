@@ -2,6 +2,9 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
+import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import { widgetPlan } from "@/features/query/widget";
+import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 import { prisma } from "@/lib/db";
 import {
   DASHBOARD_NAME_MAX,
@@ -35,7 +38,18 @@ export interface WidgetView {
   id: string;
   type: string;
   title: string;
+  /** Spec tersimpan (T-011); klien memvalidasi ulang dengan parseWidgetConfig sebelum dipakai. */
+  spec: unknown;
 }
+
+/** Sumber data panel konfigurasi widget: sheet siap di versi aktif + kolom yang tampil. */
+export interface SourceSheet {
+  id: string;
+  name: string;
+  columns: { pos: number; name: string; type: ColumnType }[];
+}
+
+const WIDGET_SELECT = { id: true, type: true, title: true, spec: true } as const;
 
 export interface DashboardView {
   id: string;
@@ -182,7 +196,7 @@ export const getDashboard = cache(async function getDashboard(
       layoutRevision: true,
       updatedAt: true,
       dataset: { select: { id: true, name: true } },
-      widgets: { orderBy: { createdAt: "asc" }, select: { id: true, type: true, title: true } },
+      widgets: { orderBy: { createdAt: "asc" }, select: WIDGET_SELECT },
     },
   });
   if (!d) return null;
@@ -194,6 +208,50 @@ export const getDashboard = cache(async function getDashboard(
     ),
   };
 });
+
+/** Sheet siap query di versi aktif dataset milik user, dengan kolom yang tidak disembunyikan. */
+export async function getDashboardSources(
+  ownerId: string,
+  datasetId: string,
+): Promise<SourceSheet[]> {
+  const sheets = await prisma.sheet.findMany({
+    where: {
+      typedKey: { not: null },
+      version: { activeFor: { id: datasetId, ownerId } },
+    },
+    orderBy: { index: "asc" },
+    select: { id: true, name: true, schema: true },
+  });
+  return sheets.map((s) => ({
+    id: s.id,
+    name: s.name,
+    columns: ((s.schema as unknown as ColumnSchema[] | null) ?? [])
+      .filter((c) => !c.hidden)
+      .map((c) => ({ pos: c.pos, name: c.name, type: c.type })),
+  }));
+}
+
+/**
+ * Validasi tipe + spec widget terhadap data aktif dataset: bentuk (zod), sheet ada di versi aktif,
+ * kolom ada dan tampil, agregasi cocok dengan tipe kolom (aturan yang sama dengan saat query).
+ */
+async function checkConfig(
+  datasetId: string,
+  type: unknown,
+  spec: unknown,
+): Promise<{ ok: true; config: WidgetConfig } | { ok: false; message: string }> {
+  const parsed = parseWidgetConfig(type, spec);
+  if (!parsed.ok || parsed.config.type === "empty") return parsed;
+  const config = parsed.config;
+  const sheet = await prisma.sheet.findFirst({
+    where: { id: config.spec.sheetId, version: { activeFor: { id: datasetId } } },
+    select: { schema: true },
+  });
+  const schema = sheet?.schema as unknown as ColumnSchema[] | null | undefined;
+  if (!schema) return { ok: false, message: "Sheet tidak ditemukan di data aktif dataset ini." };
+  const planned = widgetPlan(config, schema, { widgetId: "", filters: [], page: 0 });
+  return planned.ok ? { ok: true, config } : { ok: false, message: planned.message };
+}
 
 type Tx = Prisma.TransactionClient;
 
@@ -254,6 +312,8 @@ export async function addWidget(
     baseRevision?: unknown;
     title?: unknown;
     at?: unknown;
+    type?: unknown;
+    spec?: unknown;
   };
   const base = baseOf(input.baseRevision);
   if (base === null) return fail("INVALID", "Revisi tata letak wajib dikirim.");
@@ -265,6 +325,18 @@ export async function addWidget(
     if (!t.ok) return fail("INVALID", t.message, "name");
     title = t.value;
   }
+  // Urungkan hapus memulihkan tipe + spec juga (catatan review T-010 L6), divalidasi seperti simpan.
+  let config: WidgetConfig = { type: "empty", spec: {} };
+  if (input.type !== undefined) {
+    const owner = await prisma.dashboard.findFirst({
+      where: { id: dashboardId, dataset: { ownerId } },
+      select: { datasetId: true },
+    });
+    if (!owner) return notFound();
+    const checked = await checkConfig(owner.datasetId, input.type, input.spec);
+    if (!checked.ok) return fail("INVALID", checked.message);
+    config = checked.config;
+  }
   const r = await locked(async (tx) => {
     const d = await lockedDashboard(tx, ownerId, dashboardId);
     if (!d) return null;
@@ -275,8 +347,13 @@ export async function addWidget(
       d.widgets.map((w) => w.id),
     );
     const widget = await tx.widget.create({
-      data: { dashboardId, title },
-      select: { id: true, type: true, title: true },
+      data: {
+        dashboardId,
+        title,
+        type: config.type,
+        spec: config.spec as unknown as Prisma.InputJsonValue,
+      },
+      select: WIDGET_SELECT,
     });
     const item: LayoutItem = at?.success
       ? { i: widget.id, ...at.data }
@@ -359,6 +436,37 @@ export async function renameWidget(
     data: { updatedAt: new Date() },
   });
   return { ok: true, data: { title } };
+}
+
+/** Atur tipe dan isi widget (T-011). Divalidasi terhadap data aktif; tidak menyentuh tata letak. */
+export async function configureWidget(
+  ownerId: string,
+  dashboardId: unknown,
+  widgetId: unknown,
+  type: unknown,
+  spec: unknown,
+): Promise<DashboardResult<{ type: string; spec: unknown }>> {
+  if (!isIdShape(dashboardId)) return notFound();
+  if (!isIdShape(widgetId)) return widgetNotFound();
+  const where = { id: widgetId, dashboardId, dashboard: { dataset: { ownerId } } };
+  const w = await prisma.widget.findFirst({
+    where,
+    select: { dashboard: { select: { datasetId: true } } },
+  });
+  if (!w) return widgetNotFound();
+  const checked = await checkConfig(w.dashboard.datasetId, type, spec);
+  if (!checked.ok) return fail("INVALID", checked.message);
+  const { config } = checked;
+  const r = await prisma.widget.updateMany({
+    where,
+    data: { type: config.type, spec: config.spec as unknown as Prisma.InputJsonValue },
+  });
+  if (r.count !== 1) return widgetNotFound();
+  await prisma.dashboard.updateMany({
+    where: { id: dashboardId },
+    data: { updatedAt: new Date() },
+  });
+  return { ok: true, data: { type: config.type, spec: config.spec } };
 }
 
 /**

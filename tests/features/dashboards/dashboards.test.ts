@@ -24,7 +24,8 @@ const tx = {
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dashboard: { findFirst: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
-  widget: { updateMany: vi.fn() },
+  widget: { updateMany: vi.fn(), findFirst: vi.fn() },
+  sheet: { findFirst: vi.fn(), findMany: vi.fn() },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -337,5 +338,114 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
       code: "NOT_FOUND",
       message: "Widget tidak ditemukan.",
     });
+  });
+});
+
+describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
+  const SHEET = "cmv4kljx40009oczvdmpurrsh";
+  const schema = [
+    { pos: 1, name: "Cabang", original: "Cabang", type: "text", hidden: false },
+    { pos: 2, name: "Omzet", original: "Omzet", type: "decimal", hidden: false },
+    { pos: 3, name: "Gaji", original: "Gaji", type: "decimal", hidden: true },
+  ];
+  const fmt = { style: "rupiah", decimals: 0 };
+  const bar = {
+    sheetId: SHEET,
+    dimension: { column: 1 },
+    measure: { agg: "sum", column: 2 },
+    sort: "value_desc",
+    topN: 12,
+    format: fmt,
+  };
+
+  it("spec valid terhadap data aktif → disimpan; sheet dicari di versi aktif dataset widget", async () => {
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    prisma.widget.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
+      ok: true,
+      data: { type: "bar", spec: bar },
+    });
+    expect(prisma.sheet.findFirst).toHaveBeenCalledWith({
+      where: { id: SHEET, version: { activeFor: { id: DS } } },
+      select: { schema: true },
+    });
+    expect(prisma.widget.updateMany).toHaveBeenCalledWith({
+      where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
+      data: { type: "bar", spec: bar },
+    });
+  });
+
+  it("kolom tersembunyi, agregasi tidak cocok, sheet lain, atau bentuk salah → INVALID tanpa menulis", async () => {
+    const cases: [unknown, unknown][] = [
+      ["bar", { ...bar, measure: { agg: "sum", column: 3 } }],
+      ["bar", { ...bar, measure: { agg: "sum", column: 1 } }],
+      ["kpi", { sheetId: SHEET, measure: { agg: "avg" }, format: fmt }],
+      ["radar", bar],
+    ];
+    prisma.sheet.findFirst.mockResolvedValue({ schema });
+    for (const [type, spec] of cases) {
+      prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+      expect(await svc.configureWidget(OWNER, DB, WA, type, spec)).toMatchObject({
+        ok: false,
+        code: "INVALID",
+      });
+    }
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockReset();
+    prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
+      code: "INVALID",
+      message: "Sheet tidak ditemukan di data aktif dataset ini.",
+    });
+    expect(prisma.widget.updateMany).not.toHaveBeenCalled();
+    prisma.widget.findFirst.mockResolvedValueOnce(null);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
+  it("urungkan hapus memulihkan tipe dan spec (divalidasi seperti simpan)", async () => {
+    prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "bar", title: "Omzet", spec: bar });
+    const r = await svc.addWidget(OWNER, DB, {
+      baseRevision: 2,
+      title: "Omzet",
+      at: { x: 0, y: 0, w: 6, h: 4 },
+      type: "bar",
+      spec: bar,
+    });
+    expect(r).toMatchObject({ ok: true, data: { widget: { type: "bar", spec: bar } } });
+    expect(tx.widget.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { dashboardId: DB, title: "Omzet", type: "bar", spec: bar },
+      }),
+    );
+    prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    expect(
+      await svc.addWidget(OWNER, DB, { baseRevision: 3, type: "bar", spec: { ...bar, topN: 0 } }),
+    ).toMatchObject({ code: "INVALID" });
+  });
+
+  it("sumber data panel: sheet siap di versi aktif milik user, tanpa kolom tersembunyi", async () => {
+    prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Penjualan", schema }]);
+    expect(await svc.getDashboardSources(OWNER, DS)).toEqual([
+      {
+        id: SHEET,
+        name: "Penjualan",
+        columns: [
+          { pos: 1, name: "Cabang", type: "text" },
+          { pos: 2, name: "Omzet", type: "decimal" },
+        ],
+      },
+    ]);
+    expect(prisma.sheet.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { typedKey: { not: null }, version: { activeFor: { id: DS, ownerId: OWNER } } },
+      }),
+    );
   });
 });

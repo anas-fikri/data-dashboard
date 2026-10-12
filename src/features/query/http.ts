@@ -5,12 +5,13 @@ import { env } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { queryDeps } from "./runtime";
-import { runQuery, type QueryCode } from "./service";
+import { runQuery, runWidgetQuery, type QueryCode } from "./service";
 import { SPEC_MAX_BYTES } from "./spec";
 
 /*
- * HTTP /api/query (T-009): Origin wajib sama dengan APP_URL (CSRF), body JSON ≤ 64 KB + amplop,
- * status per kode. Error tak terduga → 500 tanpa detail internal.
+ * HTTP /api/query (T-009, T-011): Origin wajib sama dengan APP_URL (CSRF), body JSON ≤ 64 KB +
+ * amplop, status per kode. Dua bentuk body: { widgetId, filters?, page?, sort? } (widget dashboard) dan
+ * { datasetId, spec } (query bebas pemilik). Error tak terduga → 500 tanpa detail internal.
  */
 
 const STATUS: Record<QueryCode, number> = {
@@ -22,6 +23,8 @@ const STATUS: Record<QueryCode, number> = {
   RESULT_TOO_LARGE: 422,
   QUERY_TIMEOUT: 504,
   QUERY_FAILED: 500,
+  COLUMN_UNAVAILABLE: 409,
+  SHEET_UNAVAILABLE: 409,
 };
 const BODY_MAX = SPEC_MAX_BYTES + 1024;
 const noStore = { "Cache-Control": "no-store" };
@@ -44,7 +47,12 @@ export async function runtimeQuery(req: NextRequest, userId: string): Promise<Ne
     return invalid();
   }
   try {
-    const result = await runQuery(userId, body, await queryDeps());
+    // { widgetId, … } = widget dashboard (spec dari DB, T-011); { datasetId, spec } = query bebas.
+    const deps = await queryDeps();
+    const result =
+      body && typeof body === "object" && "widgetId" in body
+        ? await runWidgetQuery(userId, body, deps)
+        : await runQuery(userId, body, deps);
     return result.ok ? json(result) : json(result, STATUS[result.code]);
   } catch (e) {
     logger.error({ userId, err: e instanceof Error ? e.message : String(e) }, "query gagal");

@@ -21,9 +21,13 @@ import {
   type AcquireOptions,
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
+import { parseWidgetConfig } from "@/features/widgets/spec";
+import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
-import { bodySchema, resolveSpec, type OutColumn } from "./spec";
-import { buildSql } from "./sql";
+import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
+import { buildSql, type BuiltSql } from "./sql";
+import { buildTableSql } from "./table";
+import { widgetBodySchema, widgetPlan } from "./widget";
 
 export type QueryCode =
   | "INVALID"
@@ -33,19 +37,33 @@ export type QueryCode =
   | "QUERY_BUSY"
   | "QUERY_TOO_HEAVY"
   | "RESULT_TOO_LARGE"
-  | "QUERY_FAILED";
+  | "QUERY_FAILED"
+  /** Widget merujuk kolom yang disembunyikan/hilang (T-011): pesan di widget itu saja. */
+  | "COLUMN_UNAVAILABLE"
+  /** Sheet widget tidak ada di versi data aktif (mis. setelah ganti data, T-013). */
+  | "SHEET_UNAVAILABLE";
 
 export interface QueryData {
   columns: OutColumn[];
   rows: unknown[][];
 }
 
+/** Halaman widget tabel: total baris (dengan filter) + nomor halaman. */
+export interface TablePage extends QueryData {
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
 /** Nilai cache: hasil, atau penanda timeout (cache negatif). */
-export type CachedQuery = QueryData | { timeout: true };
+export type CachedQuery = QueryData | TablePage | { timeout: true };
 
 export type QueryResult =
   | ({ ok: true; cached: boolean; ms: number } & QueryData)
   | { ok: false; code: QueryCode; message: string };
+
+export type WidgetQueryResult =
+  QueryResult | ({ ok: true; cached: boolean; ms: number } & TablePage);
 
 export interface QueryRepo {
   /** Dataset milik user (null bila tidak ada atau bukan pemilik → 404, tidak membocorkan keberadaan). */
@@ -61,6 +79,16 @@ export interface QueryRepo {
     typedKey: string | null;
     schemaRevision: number;
     schema: ColumnSchema[] | null;
+  } | null>;
+  /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
+  widget(
+    userId: string,
+    widgetId: string,
+  ): Promise<{
+    type: string;
+    spec: unknown;
+    datasetId: string;
+    activeVersionId: string | null;
   } | null>;
 }
 
@@ -137,19 +165,34 @@ export async function execOnParquet(
   userId: string,
   key: string,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
-  build: (path: string) => { sql: string; params: Record<string, string | number | boolean> },
+  build: (path: string) => BuiltSql,
 ): Promise<{ ok: true; out: EngineResult } | QueryFailure> {
+  const r = await execAllOnParquet(userId, key, deps, (path) => [build(path)]);
+  return r.ok ? { ok: true, out: r.outs[0]! } : r;
+}
+
+/** Beberapa statement berurutan dalam satu sewa parquet dan satu slot (mis. total + halaman tabel). */
+export async function execAllOnParquet(
+  userId: string,
+  key: string,
+  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
+  build: (path: string) => BuiltSql[],
+): Promise<{ ok: true; outs: EngineResult[] } | QueryFailure> {
   try {
     const lease = await deps.parquet.acquire(key, {
       owner: userId,
       waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
     });
     try {
-      const { sql, params } = build(lease.path);
-      const out = await deps.engine.withSlot(userId, () =>
-        deps.engine.exec(sql, params, deps.timeoutMs),
-      );
-      return { ok: true, out };
+      const statements = build(lease.path);
+      const outs = await deps.engine.withSlot(userId, async () => {
+        const results: EngineResult[] = [];
+        for (const s of statements) {
+          results.push(await deps.engine.exec(s.sql, s.params, deps.timeoutMs));
+        }
+        return results;
+      });
+      return { ok: true, outs };
     } finally {
       lease.release();
     }
@@ -210,32 +253,132 @@ export async function runQuery(
     schemaRevision: sheet.schemaRevision,
     spec,
   });
+  return runAggPlan(userId, key, sheet.typedKey, resolved.plan, deps, t0);
+}
+
+const tooLarge = () =>
+  fail(
+    "RESULT_TOO_LARGE",
+    "Hasil terlalu besar untuk ditampilkan. Kurangi limit atau dimensi, atau tambahkan filter.",
+  );
+
+/** Baris DuckDB → JSON dengan batas byte hasil (null bila terlalu besar). */
+function toRows(raw: unknown[][], plan: Plan): { rows: unknown[][]; bytes: number } | null {
+  const types = plan.columns.map((c) => c.type);
+  let bytes = 0;
+  const rows: unknown[][] = [];
+  for (const row of raw) {
+    const v = row.map((x, i) => toJson(x, types[i]!));
+    bytes += rowBytes(v);
+    if (bytes > RESULT_MAX_BYTES) return null;
+    rows.push(v);
+  }
+  return { rows, bytes };
+}
+
+/** Rencana agregat (query bebas dan widget KPI/grafik): cache hasil → DuckDB → cache. */
+async function runAggPlan(
+  userId: string,
+  key: string,
+  typedKey: string,
+  plan: Plan,
+  deps: QueryDeps,
+  t0: number,
+): Promise<QueryResult> {
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
-  if (hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
+  if (hit)
+    return { ok: true, columns: hit.columns, rows: hit.rows, cached: true, ms: Date.now() - t0 };
 
-  const r = await execOnParquet(userId, sheet.typedKey, deps, (path) =>
-    buildSql(resolved.plan, path),
-  );
+  const r = await execOnParquet(userId, typedKey, deps, (path) => buildSql(plan, path));
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
     return r;
   }
-  const types = resolved.plan.columns.map((c) => c.type);
-  let bytes = 0;
-  const rows: unknown[][] = [];
-  for (const row of r.out.rows) {
-    const v = row.map((x, i) => toJson(x, types[i]!));
-    bytes += rowBytes(v);
-    if (bytes > RESULT_MAX_BYTES) {
-      return fail(
-        "RESULT_TOO_LARGE",
-        "Hasil terlalu besar untuk ditampilkan. Kurangi limit atau dimensi, atau tambahkan filter.",
-      );
-    }
-    rows.push(v);
+  const out = toRows(r.out.rows, plan);
+  if (!out) return tooLarge();
+  const data: QueryData = { columns: plan.columns, rows: out.rows };
+  deps.cache?.set(key, data, out.bytes);
+  return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
+}
+
+/**
+ * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
+ * rencana agregat; tabel mengembalikan satu halaman 100 baris + total baris dengan filter yang sama.
+ */
+export async function runWidgetQuery(
+  userId: string,
+  body: unknown,
+  deps: QueryDeps,
+): Promise<WidgetQueryResult> {
+  const t0 = Date.now();
+  const parsed = widgetBodySchema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return fail(
+      "INVALID",
+      `Permintaan widget tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
+    );
   }
-  const data: QueryData = { columns: resolved.plan.columns, rows };
-  deps.cache?.set(key, data, bytes);
+  const w = await deps.repo.widget(userId, parsed.data.widgetId);
+  if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
+  const cfg = parseWidgetConfig(w.type, w.spec);
+  if (!cfg.ok) return fail("INVALID", cfg.message);
+  if (cfg.config.type === "empty") return fail("INVALID", "Widget ini belum diatur.");
+  const config = cfg.config;
+  if (!w.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
+  const sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
+  if (!sheet) {
+    return fail(
+      "SHEET_UNAVAILABLE",
+      "Sheet yang dipakai widget ini tidak ada di data aktif. Atur ulang widget.",
+    );
+  }
+  if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
+  const planned = widgetPlan(config, sheet.schema, parsed.data);
+  if (!planned.ok) return fail(planned.code, planned.message);
+
+  const keyParts = {
+    datasetId: w.datasetId,
+    versionId: w.activeVersionId,
+    sheetId: config.spec.sheetId,
+    schemaRevision: sheet.schemaRevision,
+  };
+  if (planned.kind === "agg") {
+    return runAggPlan(
+      userId,
+      resultKey({ ...keyParts, spec: planned.spec }),
+      sheet.typedKey,
+      planned.plan,
+      deps,
+      t0,
+    );
+  }
+
+  const { plan, sort, page } = planned;
+  const key = resultKey({ ...keyParts, spec: { table: planned.spec, sort, page } });
+  const hit = deps.cache?.get(key);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+  if (hit && "total" in hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
+
+  const r = await execAllOnParquet(userId, sheet.typedKey, deps, (path) => {
+    const built = buildTableSql(plan, sort, page, path);
+    return [built.count, built.page];
+  });
+  if (!r.ok) {
+    if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+    return r;
+  }
+  const out = toRows(r.outs[1]!.rows, plan);
+  if (!out) return tooLarge();
+  const total = Number(r.outs[0]!.rows[0]?.[0] ?? 0);
+  const data: TablePage = {
+    columns: plan.columns,
+    rows: out.rows,
+    total,
+    page,
+    pageSize: TABLE_PAGE_SIZE,
+  };
+  deps.cache?.set(key, data, out.bytes + 64);
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }

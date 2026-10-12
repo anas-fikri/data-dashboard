@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Tipe widget tabel, KPI, bar, line, pie dengan panel konfigurasi
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -11,8 +11,12 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T14:28:33Z"
+updated: "2026-10-12T15:17:02Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 5a7d2eb0f7922bb6c2dfa8951ec497d0b7545d0d
 ---
 
 ## Objective
