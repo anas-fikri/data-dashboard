@@ -23,7 +23,8 @@ export function moveItem(layout: LayoutItem[], id: string, dx: number, dy: numbe
     const above = layout.filter(
       (o) => o.i !== id && o.y < item.y && o.x < x + item.w && x < o.x + o.w,
     );
-    if (above.length) y = Math.min(...above.map((o) => o.y));
+    // Item terdekat di atas (bukan yang paling atas): satu langkah = melewati satu item.
+    if (above.length) y = Math.max(...above.map((o) => o.y));
   }
   if (dy > 0) {
     const below = layout.filter(

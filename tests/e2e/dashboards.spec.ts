@@ -182,6 +182,37 @@ test.describe("dashboard", () => {
       .toBeLessThanOrEqual(0);
   });
 
+  test("< 1280 px: widget yang diatur tetap terlihat di atas lembar (tambah lalu geser)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    const before = await page.getByTestId("widget").count();
+    await page
+      .getByTestId("canvas-toolbar")
+      .getByRole("button", { name: "Tambah widget", exact: true })
+      .click();
+    const sheet = page.getByRole("dialog", { name: "Pengaturan widget" });
+    await expect(sheet).toBeVisible();
+    await expect(page.getByTestId("widget")).toHaveCount(before + 1);
+    const chosen = page.locator('[data-testid="widget"]:has([aria-pressed="true"])');
+    /** Widget di dalam layar, di bawah topbar, dan tidak tertutup lembar. */
+    const inView = async () => {
+      const w = (await chosen.boundingBox())!;
+      const s = (await sheet.boundingBox())!;
+      const overlap =
+        w.x < s.x + s.width && s.x < w.x + w.width && w.y < s.y + s.height && s.y < w.y + w.height;
+      return w.y >= 56 && w.y + w.height <= 900 && !overlap;
+    };
+    await expect.poll(inView).toBe(true);
+    await sheet.getByRole("button", { name: /ke atas$/ }).click();
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    await expect.poll(inView).toBe(true);
+    // Rapikan: widget tambahan dihapus agar tes berikutnya tetap mulai dari 2 widget.
+    await sheet.getByRole("button", { name: "Hapus widget" }).click();
+    await expect(page.getByTestId("widget")).toHaveCount(before);
+  });
+
   test("judul yang sedang diketik tetap tersimpan saat panel ditutup dengan Escape", async ({
     page,
   }) => {

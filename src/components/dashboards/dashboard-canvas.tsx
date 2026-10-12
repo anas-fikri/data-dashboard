@@ -60,16 +60,38 @@ export function DashboardCanvas(props: {
   const panelItem = canEdit && selected ? ed.layout.find((it) => it.i === selected) : undefined;
   const panelWidget = panelItem ? byId.get(panelItem.i) : undefined;
 
+  /**
+   * Gulir agar widget yang diatur terlihat. Ponsel (tumpukan biasa): langsung lewat DOM. Grid: posisi
+   * DOM masih beranimasi (transform 200 ms) saat effect berjalan, jadi tujuan dihitung dari satuan
+   * grid. Lembar (< 1280 px) menutup bagian bawah layar → widget ditaruh tepat di bawah topbar; panel
+   * menempel → gulir hanya bila widget di luar layar.
+   */
+  function revealWidget(id: string) {
+    const card = root.current?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`);
+    const item = ed.layout.find((it) => it.i === id);
+    const grid = containerRef.current;
+    if (!card || !item) return;
+    if (phone || !grid) return card.scrollIntoView({ block: "start" });
+    const gap = parseFloat(getComputedStyle(card).scrollMarginTop) || 0; // topbar + 1rem
+    const top =
+      grid.getBoundingClientRect().top + window.scrollY + item.y * (ROW_HEIGHT + MARGIN[1]);
+    const height = item.h * ROW_HEIGHT + (item.h - 1) * MARGIN[1];
+    const viewTop = window.scrollY + gap;
+    const viewBottom = window.scrollY + window.innerHeight - MARGIN[1];
+    if (!wide || top < viewTop || height > viewBottom - viewTop) {
+      window.scrollTo({ top: top - gap });
+    } else if (top + height > viewBottom) {
+      window.scrollTo({ top: top + height - window.innerHeight + MARGIN[1] });
+    }
+  }
+
   // Tanpa deps: berjalan setelah tiap commit; permintaan fokus/gulir selalu menyertai perubahan state.
   useEffect(() => {
     const id = reveal.current;
     reveal.current = null;
-    // Lembar (< 1280 px) menutup separuh bawah layar: widget ditaruh di atas, tepat di bawah topbar.
-    if (id) {
-      root.current
-        ?.querySelector(`[data-widget-id="${id}"]`)
-        ?.scrollIntoView({ block: wide ? "nearest" : "start" });
-    }
+    // Dua frame: widget baru dan tinggi kontainer grid baru ada setelah react-grid-layout menyinkronkan
+    // anaknya (effect-nya sendiri); tujuan gulir tetap dari satuan grid, bukan posisi DOM yang beranimasi.
+    if (id) requestAnimationFrame(() => requestAnimationFrame(() => revealWidget(id)));
     const wanted = focusTo.current;
     if (!wanted) return;
     focusTo.current = null;

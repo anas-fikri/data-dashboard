@@ -29,6 +29,14 @@ describe("geser lewat tombol", () => {
     expect(moveItem([A], "a", -1, 0)).toEqual([A]); // sudah di tepi kiri
   });
 
+  it("naik/turun satu langkah melewati tepat satu item di tumpukan panjang", () => {
+    const stack = ["a", "b", "c", "d"].map((i, n) => ({ i, x: 0, y: n * 4, w: 12, h: 4 }));
+    const order = (l: LayoutItem[]) => readingOrder(l).map((it) => it.i);
+    expect(order(moveItem(stack, "d", 0, -1))).toEqual(["a", "b", "d", "c"]);
+    expect(order(moveItem(stack, "a", 0, 1))).toEqual(["b", "a", "c", "d"]);
+    expect(order(moveItem(stack, "c", 0, -1))).toEqual(["a", "c", "b", "d"]);
+  });
+
   it("turun melewati item di bawahnya dan naik kembali; tidak pernah tumpang tindih", () => {
     const down = moveItem([A, B, C], "a", 0, 1);
     expect(byId(down, "a").y).toBeGreaterThan(byId(down, "c").y);
