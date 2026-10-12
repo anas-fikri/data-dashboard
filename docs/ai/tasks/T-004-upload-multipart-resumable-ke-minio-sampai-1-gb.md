@@ -1,7 +1,7 @@
 ---
 id: T-004
 title: Upload multipart resumable ke MinIO sampai 1 GB
-status: in_review
+status: done
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -10,12 +10,179 @@ tags:
 depends_on:
   - T-003
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T02:00:21Z"
+updated: "2026-10-12T02:00:50Z"
+closed: "2026-10-12T02:00:50Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: b330d22fa74f6e7377ffca485c5f0b1c0fad330e
+paths:
+  - .dockerignore
+  - .env.example
+  - .gitignore
+  - .npmrc
+  - .nvmrc
+  - .prettierignore
+  - .prettierrc
+  - README.md
+  - docker-compose.dev.yml
+  - docs/flow-kerja.md
+  - eslint.config.mjs
+  - next.config.ts
+  - package-lock.json
+  - package.json
+  - playwright.config.ts
+  - postcss.config.mjs
+  - prisma/migrations/20261011152124_init/migration.sql
+  - prisma/migrations/20261011163023_verification_token/migration.sql
+  - prisma/migrations/20261011225415_token_pending_password/migration.sql
+  - prisma/migrations/20261011230218_token_pending_name/migration.sql
+  - prisma/migrations/20261011234923_datasets/migration.sql
+  - prisma/migrations/20261011235601_storage_cleanup/migration.sql
+  - prisma/migrations/20261012011450_version_upload/migration.sql
+  - prisma/migrations/migration_lock.toml
+  - prisma/schema.prisma
+  - prisma/seed.ts
+  - public/brand/mark-dark.png
+  - public/brand/mark.png
+  - public/brand/pcp-logo-dark.png
+  - public/brand/pcp-logo.png
+  - scripts/check-presign.mjs
+  - scripts/dev-dataset-fixture.mjs
+  - scripts/dev-expire-reset.mjs
+  - scripts/dev-make-admin.mjs
+  - scripts/dev-reset-ratelimit.mjs
+  - scripts/dev-upload-fixture.mjs
+  - scripts/gen-dev-env.mjs
+  - scripts/perf.mjs
+  - scripts/smoke-prod-headers.mjs
+  - scripts/storage-init.mjs
+  - src/app/(app)/admin/page.tsx
+  - src/app/(app)/akun/keamanan/page.tsx
+  - src/app/(app)/akun/page.tsx
+  - src/app/(app)/dashboards/page.tsx
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/baru/page.tsx
+  - src/app/(app)/datasets/page.tsx
+  - src/app/(app)/layout.tsx
+  - src/app/(app)/page.tsx
+  - src/app/(app)/panduan/page.tsx
+  - src/app/(auth)/layout.tsx
+  - src/app/(auth)/login/page.tsx
+  - src/app/(auth)/lupa-password/page.tsx
+  - src/app/(auth)/register/page.tsx
+  - src/app/(auth)/reset-password/page.tsx
+  - src/app/(auth)/verify/page.tsx
+  - src/app/api/auth/dev-bump-session/route.ts
+  - src/app/api/auth/login/route.ts
+  - src/app/api/auth/me/route.ts
+  - src/app/api/health/route.ts
+  - src/app/api/uploads/[id]/complete/route.ts
+  - src/app/api/uploads/[id]/parts/route.ts
+  - src/app/api/uploads/[id]/route.ts
+  - src/app/api/uploads/route.ts
+  - src/app/globals.css
+  - src/app/health/page.tsx
+  - src/app/layout.tsx
+  - src/app/not-found.tsx
+  - src/components/auth/auth-card.tsx
+  - src/components/auth/forgot-password-form.tsx
+  - src/components/auth/form-alert.tsx
+  - src/components/auth/login-form.tsx
+  - src/components/auth/register-form.tsx
+  - src/components/auth/reset-password-form.tsx
+  - src/components/auth/security-settings.tsx
+  - src/components/auth/use-focus-on-error.ts
+  - src/components/auth/verify-form.tsx
+  - src/components/datasets/dataset-form.tsx
+  - src/components/datasets/dataset-list.tsx
+  - src/components/datasets/delete-dataset.tsx
+  - src/components/datasets/status-badge.tsx
+  - src/components/datasets/upload-panel.tsx
+  - src/components/shell/account-menu.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/shell/brand.tsx
+  - src/components/shell/nav-items.ts
+  - src/components/shell/sidebar-nav.tsx
+  - src/components/shell/theme-toggle.tsx
+  - src/components/theme-provider.tsx
+  - src/components/ui/avatar.tsx
+  - src/components/ui/button.tsx
+  - src/components/ui/card.tsx
+  - src/components/ui/dropdown-menu.tsx
+  - src/components/ui/empty-state.tsx
+  - src/components/ui/field.tsx
+  - src/components/ui/focus-notice.tsx
+  - src/components/ui/input.tsx
+  - src/components/ui/page-header.tsx
+  - src/components/ui/password-input.tsx
+  - src/components/ui/select.tsx
+  - src/components/ui/textarea.tsx
+  - src/features/auth/actions.ts
+  - src/features/auth/email-domain.ts
+  - src/features/auth/email.ts
+  - src/features/auth/form-state.ts
+  - src/features/auth/jwt.ts
+  - src/features/auth/password-recovery.ts
+  - src/features/auth/password.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/auth/redirect.ts
+  - src/features/auth/service.ts
+  - src/features/auth/session.ts
+  - src/features/auth/tokens.ts
+  - src/features/datasets/actions.ts
+  - src/features/datasets/label.ts
+  - src/features/datasets/service.ts
+  - src/features/datasets/validation.ts
+  - src/features/uploads/client.ts
+  - src/features/uploads/http.ts
+  - src/features/uploads/parts.ts
+  - src/features/uploads/service.ts
+  - src/features/uploads/sniff.ts
+  - src/instrumentation.ts
+  - src/lib/db.ts
+  - src/lib/env.ts
+  - src/lib/health/checks.ts
+  - src/lib/health/index.ts
+  - src/lib/hooks/use-persisted-boolean.ts
+  - src/lib/logger.ts
+  - src/lib/mail.ts
+  - src/lib/queue/connection.ts
+  - src/lib/queue/versions.ts
+  - src/lib/redis.ts
+  - src/lib/security-headers.ts
+  - src/lib/storage/multipart.ts
+  - src/lib/storage/objects.ts
+  - src/lib/storage/s3.ts
+  - src/lib/utils.ts
+  - src/proxy.ts
+  - src/styles/tokens.css
+  - src/worker/index.ts
+  - tests/e2e/auth.spec.ts
+  - tests/e2e/datasets.spec.ts
+  - tests/e2e/global-setup.ts
+  - tests/e2e/health.spec.ts
+  - tests/e2e/helpers.ts
+  - tests/e2e/password.spec.ts
+  - tests/e2e/security-headers.spec.ts
+  - tests/e2e/shell.spec.ts
+  - tests/e2e/uploads.spec.ts
+  - tests/e2e/zz-rate-limit.spec.ts
+  - tests/features/auth/core.test.ts
+  - tests/features/auth/rate-limit.test.ts
+  - tests/features/datasets/create.test.ts
+  - tests/features/datasets/delete.test.ts
+  - tests/features/datasets/label.test.ts
+  - tests/features/uploads/pure.test.ts
+  - tests/features/uploads/service.test.ts
+  - tests/lib/env.test.ts
+  - tests/lib/health.test.ts
+  - tests/lib/security-headers.test.ts
+  - tests/lib/seed.test.ts
+  - tests/stubs/server-only.ts
+  - tsconfig.json
+  - vitest.config.mts
 review:
   passes:
     - "n": 1
@@ -42,6 +209,121 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-12T02:00:16Z"
       findings: 0
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 8637
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1791770441309,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791770441330,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  11 passed (11)
+            Tests  84 passed (84)
+         Start at  09:00:40
+         Duration  928ms (import 35%, tests 32%, transform 31%, worker 2%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-12T02:00:43Z"
+    tree: dc3175c09ee994883053a0fff527dd1af41a23d1e11e2e09492f6b99f8b65796
+  commits:
+    - 0423efd
+    - 15536b5
+    - 22b384e
+    - 2653b85
+    - 27bf134
+    - 29f1080
+    - 2b68a94
+    - 2c5ffeb
+    - 401b86a
+    - 457220a
+    - 471d15b
+    - 4bff118
+    - 4d5aa50
+    - 5d46f4b
+    - 60ea826
+    - 64a8e95
+    - 66ba1d5
+    - 6c7cef8
+    - 7c5267b
+    - 7d27e01
+    - 7dddfc4
+    - 9558d66
+    - "9835114"
+    - 9b2bfc6
+    - 9cd6ff0
+    - 9cee0e6
+    - ab9e083
+    - b189cbc
+    - b330d22
+    - bec0af8
+    - c0a7685
+    - c51c2b5
+    - d6d03db
+    - d9f240b
+    - dbe1056
+    - e1ff563
+    - e28eb08
+    - e3d5ef8
+    - e3da62b
+    - e56694e
+    - e594327
+    - f511b61
+    - fbf5494
+    - fe5861e
+  acceptance:
+    total: 9
+    done: 9
+  audit:
+    at: "2026-10-12T02:00:24Z"
+    passed: true
+    tree: dc3175c09ee994883053a0fff527dd1af41a23d1e11e2e09492f6b99f8b65796
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 617 packages
+          End status: 85 dirs visited, 321 inodes visited, 1 Extract calls, 42.653791ms elapsed, 42.654ms wall time
+          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
@@ -90,3 +372,15 @@ Open risks/assumptions: kuota diimplementasikan di sini (T-024 tinggal uji perfo
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — diverifikasi: batas 1 GB (init, ListParts ukuran persis per part, HeadObject); Content-Length signed header (403 untuk ukuran lain, check-presign + e2e); signature 64 KB (xlsx ZIP, csv teks tanpa NUL/UTF-16); ContentType application/octet-stream dari server; key tanpa input user (tanpa path traversal)
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Route Handler JSON dengan Origin = APP_URL (403 untuk Origin asing, e2e), content-type JSON wajib, body ≤ 8 KB, batch sign ≤ 16, rate limit init 60/jam + sign 600/jam per user
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: Redis noeviction (ADR-0004) agar job antrean tidak terbuang; koneksi antrean reconnect tanpa batas + timeout 5 s; CORS bucket hanya origin app; skrip fixture dev menolak produksi
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-12T02:00:43Z (8637 ms)
+- Acceptance criteria: 9/9 satisfied
+- Commits: 0423efd, 15536b5, 22b384e, 2653b85, 27bf134, 29f1080, 2b68a94, 2c5ffeb, 401b86a, 457220a, 471d15b, 4bff118, 4d5aa50, 5d46f4b, 60ea826, 64a8e95, 66ba1d5, 6c7cef8, 7c5267b, 7d27e01, 7dddfc4, 9558d66, 9835114, 9b2bfc6, 9cd6ff0, 9cee0e6, ab9e083, b189cbc, b330d22, bec0af8, c0a7685, c51c2b5, d6d03db, d9f240b, dbe1056, e1ff563, e28eb08, e3d5ef8, e3da62b, e56694e, e594327, f511b61, fbf5494, fe5861e
+- Review pass 1 by frontend-expert-design-reviewer: 8 findings
+- Review pass 2 by claude-security-reviewer-subagen: 2 findings
+- Review pass 3 by claude-security-reviewer-subagen: 0 findings
+- Review pass 4 by claude-security-reviewer-subagen: 0 findings
+- Review pass 5 by frontend-expert-design-reviewer: 2 findings
+- Review pass 6 by frontend-expert-design-reviewer: 0 findings
