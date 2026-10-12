@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-006
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:56:59Z"
+updated: "2026-10-12T02:59:45Z"
 created_by: claude-code
 ---
 
@@ -25,5 +25,5 @@ Alur B3 tahap typed untuk versi pertama. Inferensi penuh via DuckDB TRY_CAST ata
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:56:59Z Lock recast: SET NX PX 30 menit + compare-and-delete (Lua) agar worker mati tidak mengunci selamanya. Hapus typed lama via job, bukan lifecycle.
+- 2026-10-12T02:59:45Z Dari review T-005: format angka durasi seperti [h]:mm dideteksi parser sebagai tanggal (serial 1.5 → 1899-12-31T12:00); inferensi tipe harus mengenali kolom berformat durasi dan menyimpannya sebagai durasi/angka, bukan tanggal.

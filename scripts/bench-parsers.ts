@@ -17,6 +17,7 @@ import { createSaxParser } from "./bench/parser-sax";
 import type { Parser, RawValue } from "./bench/types";
 import {
   columnKinds,
+  fnv1a,
   dataCell,
   ddmmyyyy,
   headerNames,
@@ -119,19 +120,32 @@ interface SheetStats {
   cells: number;
   mismatches: number;
   examples: string[];
+  /** XOR fnv1a("<baris>:<kolom>:<teks>") atas nilai string — dibandingkan dengan manifest. */
+  textChecksum: number;
 }
 const stats: SheetStats[] = [];
 const statOf = (s: number) =>
-  (stats[s] ??= { emittedRows: 0, nonEmptyRows: 0, cells: 0, mismatches: 0, examples: [] });
+  (stats[s] ??= {
+    emittedRows: 0,
+    nonEmptyRows: 0,
+    cells: 0,
+    mismatches: 0,
+    examples: [],
+    textChecksum: 0,
+  });
 
 function onRow(sheet: number, rowNumber: number, values: RawValue[], csv = false) {
   const st = statOf(sheet);
   st.emittedRows++;
   let any = false;
-  for (const v of values) {
+  for (let c = 0; c < values.length; c++) {
+    const v = values[c];
     if (v !== null && v !== undefined && v !== "") {
       st.cells++;
       any = true;
+      if (typeof v === "string") {
+        st.textChecksum = (st.textChecksum ^ fnv1a(`${rowNumber}:${c + 1}:${v}`)) >>> 0;
+      }
     }
   }
   if (any) st.nonEmptyRows++;
@@ -196,6 +210,8 @@ async function main() {
       fileMB: Math.round(manifest.bytes / 1024 / 1024),
       seconds: Math.round(seconds * 10) / 10,
       peakRssMB: Math.round(peakRss / 1024 / 1024),
+      // Puncak sebenarnya dari kernel (sampel 100 ms bisa melewatkan lonjakan singkat). Satuan KB.
+      maxRssMB: Math.round(process.resourceUsage().maxRSS / 1024),
       physicalRowNumbers: physical,
       error,
       sheets: manifest.sheets.map((m, i) => ({
@@ -204,6 +220,9 @@ async function main() {
         got: stats[i] ?? null,
         rowsOk: stats[i]?.nonEmptyRows === m.nonEmptyRows,
         cellsOk: stats[i]?.cells === expectedCells(m),
+        // Isi teks per sel (bukan hanya jumlah). DuckDB read_xlsx mengembalikan semua sel sebagai
+        // VARCHAR sehingga checksum teks tidak sebanding (null); kebenarannya dibuktikan --verify.
+        textChecksumOk: parserName === "duckdb" ? null : stats[i]?.textChecksum === m.textChecksum,
       })),
     }),
   );

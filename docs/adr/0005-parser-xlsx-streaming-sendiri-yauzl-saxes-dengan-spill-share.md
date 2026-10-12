@@ -22,7 +22,7 @@ Worker ingest (T-006) harus membaca xlsx sampai 1 GB, dengan 40 juta shared stri
    - Tidak memberi nomor baris fisik dan memproses zip-bomb tanpa batas.
    - Ekstensi harus diunduh atau dibundel untuk on-prem tanpa internet.
 3. **Parser sendiri: yauzl (akses acak via central directory, `validateEntrySizes`) + saxes (SAX, DOCTYPE ditolak)**, dengan sharedStrings di-spill ke file sementara bila > 128 MB
-   - 351 s, RSS 639 MB, 3 juta baris dan 88 juta sel benar.
+   - 192 s, RSS 323 MB; 3 juta baris, 88 juta sel, dan checksum isi teks benar (versi final setelah review; run awal 351 s / 639 MB).
    - Batas rasio dan total ukuran diperiksa dari central directory sebelum dekompresi.
    - Tanpa spill, heap habis, jadi spill adalah bagian wajib dari opsi ini.
 
@@ -33,19 +33,23 @@ Chosen option: "3. Parser sendiri (yauzl + saxes) dengan spill sharedStrings", b
 CSV tidak lewat parser Node. Worker memakai DuckDB `read_csv` langsung ke Parquet. Hasilnya untuk 974 MB, 8,1 juta baris: 22 s dan RSS 292 MB pada `memory_limit` 1 GB, termasuk memindahkan baris ke JS. Kolom diberikan eksplisit (`all_varchar`, `null_padding`) dari sniff 64 KB.
 
 Parameter awal yang mengikat T-006:
-- **Batas zip:** ≤ 10.000 entri dan total tak terkompresi ≤ 24 GiB.
-  - Rasio per entri (> 1 MB) ≤ 200x; worksheet nyata 6–8x.
-  - `validateEntrySizes` memastikan ukuran di central directory jujur.
-  - DOCTYPE ditolak sebelum sel pertama.
-- **Shared strings:** di memori sampai 128 MB, lalu file sementara + indeks offset `Float64Array` dan cache 50k entri.
+- **Batas zip** (semua diperiksa dari central directory sebelum dekompresi):
+  - ≤ 10.000 entri.
+  - Total tak terkompresi ≤ min(24 GiB, 100 × ukuran file).
+  - Rasio per entri (> 1 MB) ≤ 100x; worksheet nyata 6–8x, fixture zip-bomb ± 117x ditolak.
+  - Entri yang tumpang tindih ditolak. `validateEntrySizes` hanya menjamin ukuran **tak terkompresi** jujur; ukuran terkompresi bisa dipalsukan sehingga batas total relatif ukuran file dan cek tumpang tindih wajib ada.
+  - DOCTYPE ditolak sebelum sel pertama; CDATA dibaca sebagai teks.
+- **Batas isi:** ≤ 50 sheet, ≤ 1.048.576 baris, ≤ 16.384 kolom, nomor baris wajib naik. Sel/string > 32.767 karakter dipotong dan dihitung. Indeks shared string yang kosong = sel kosong; di luar rentang = file rusak (ditolak).
+- **Shared strings:** di memori sampai 128 MB, lalu file sementara per parse (dihapus setelah selesai). Indeks = basis per 1.024 string + offset relatif `Uint32` (± 4 byte/string), cache 50k entri.
+- **OOXML:** nama tag dibandingkan tanpa prefix namespace (ekspor .NET OpenXML SDK); workbook, sharedStrings, dan styles ditemukan lewat file relasi, bukan nama tetap; escape `_xHHHH_` didekode; baris tanpa nilai tidak dipancarkan.
 - **Nomor baris dan kolom:** dari atribut `r`, dengan fallback urutan.
-- **Konversi tanggal:** sel bergaya tanggal (numFmt bawaan 14–22/27/30/36/45–47/50/57, atau format kustom berisi d/m/y/h/s) diubah ke tanggal naive (D8).
+- **Konversi tanggal:** sel bergaya tanggal (numFmt bawaan 14–22, 27–36, 45–47, 50–58, atau format kustom berisi d/m/y/h/s setelah literal, escape, dan padding dibuang) diubah ke tanggal naive (D8), dengan epoch 1904 bila `workbookPr date1904`. Sel `t="d"` (ISO) dibaca sebagai tanggal naive. Format durasi `[h]:mm` masih menjadi tanggal; T-007 memperlakukannya sebagai durasi.
 - **Akses berkas:** worker mengunduh objek sumber ke disk sementara karena akses acak zip butuh file lokal. Disk sementara worker harus ≥ ukuran file + spill (± 2× ukuran file).
 
 ### Consequences
 
-* Good, because RSS terkendali (< 1 GB) pada kasus terberat dan batas keamanan eksplisit teruji (`tests/scripts/fixtures.test.ts`).
+* Good, because RSS terkendali (< 1 GB) pada kasus terberat dan batas keamanan eksplisit teruji (`tests/scripts/fixtures.test.ts`, `tests/scripts/parser-sax-edge.test.ts`).
 * Good, because tidak ada dependency produksi bermasalah. ExcelJS hanya devDependency untuk benchmark dan boleh dihapus setelah T-006.
 * Bad, because parser milik sendiri harus dirawat. Cakupan OOXML yang tidak didukung (rich text phonetic, formula tanpa nilai cache, sheet chart) diperlakukan sebagai nilai teks/kosong dan dicatat di T-006.
-* Bad, because parse xlsx 1 GB ± 6 menit di M4. Bila T-024 menunjukkan alur penuh mendekati 20 menit di VM minimum, optimasi berikutnya adalah pemindai `<c>`/`<v>` khusus dan cache sharedStrings yang lebih besar.
+* Bad, because parse xlsx 1 GB ± 3 menit di M4 (VM produksi lebih lambat). Bila T-024 menunjukkan alur penuh mendekati 20 menit di VM minimum, optimasi berikutnya adalah pemindai `<c>`/`<v>` khusus dan cache sharedStrings yang lebih besar.
 * Bad, because spill membutuhkan disk sementara worker. T-023 menyediakan volume temp dan batasnya.

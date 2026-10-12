@@ -19,9 +19,14 @@ export interface ParseOptions {
   ranges?: string[];
 }
 
+export interface ParseSummary {
+  /** Sel yang dipotong karena melebihi batas panjang (Excel: 32.767 karakter). */
+  truncatedCells: number;
+}
+
 export interface Parser {
   name: string;
   /** Apakah rowNumber = nomor baris fisik (dibutuhkan raw.parquet `_row`). */
   physicalRowNumbers: boolean;
-  parse(path: string, opts: ParseOptions, onRow: OnRow): Promise<void>;
+  parse(path: string, opts: ParseOptions, onRow: OnRow): Promise<ParseSummary | void>;
 }

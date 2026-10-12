@@ -1,14 +1,16 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import yazl from "yazl";
 import { createSaxParser, DEFAULT_LIMITS } from "../../scripts/bench/parser-sax";
 import type { RawValue } from "../../scripts/bench/types";
 import { COMMITTED } from "../../scripts/fixtures/build-committed";
 import {
   columnKinds,
   dataCell,
+  fnv1a,
   headerNames,
   preambleRows,
   type FixtureOptions,
@@ -34,7 +36,9 @@ describe("fixture kecil", () => {
   it("deterministik: regenerasi kecil.xlsx identik byte demi byte dengan yang di-commit", () => {
     const spec = COMMITTED.find((f) => f.out.endsWith("kecil.xlsx"))!;
     const out = join(tmp, "kecil.xlsx");
-    const r = spawnSync("npx", ["tsx", "scripts/make-fixture.ts", ...spec.args, "--out", out]);
+    const r = spawnSync("npx", ["tsx", "scripts/make-fixture.ts", ...spec.args, "--out", out], {
+      timeout: 55_000,
+    });
     expect(r.status).toBe(0);
     expect(readFileSync(out).equals(readFileSync(spec.out))).toBe(true);
   }, 60_000);
@@ -106,16 +110,19 @@ describe("parser SAX (yauzl + saxes)", () => {
     expect(cells).toBe(0);
   });
 
-  it("zip-bomb ditolak dari central directory (tanpa dekompresi) bila rasio melebihi batas", async () => {
+  it("zip-bomb (± 117x) ditolak dari central directory dengan batas default, tanpa dekompresi", async () => {
+    let cells = 0;
     await expect(
-      createSaxParser({ ...DEFAULT_LIMITS, maxRatio: 50 }).parse(
+      createSaxParser().parse(
         "tests/fixtures/hostile/zipbomb.xlsx",
         { sheetNames: ["Sheet1"], tmpDir: tmp },
-        () => {},
+        () => cells++,
       ),
     ).rejects.toThrow(/rasio dekompresi/);
+    expect(cells).toBe(0);
+    // Rasio per entri dilonggarkan: batas total (100× ukuran file) tetap menolak.
     await expect(
-      createSaxParser({ ...DEFAULT_LIMITS, maxUncompressedBytes: 64 * 1024 * 1024 }).parse(
+      createSaxParser({ ...DEFAULT_LIMITS, maxRatio: 1000 }).parse(
         "tests/fixtures/hostile/zipbomb.xlsx",
         { sheetNames: ["Sheet1"], tmpDir: tmp },
         () => {},
@@ -123,13 +130,46 @@ describe("parser SAX (yauzl + saxes)", () => {
     ).rejects.toThrow(/melebihi batas/);
   });
 
-  it("file bukan xlsx (zip tanpa workbook) ditolak dengan pesan jelas", async () => {
+  it("zip tanpa workbook ditolak dengan pesan 'bukan Buku Kerja Excel'", async () => {
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(Buffer.from("halo"), "readme.txt");
+    zip.end();
+    const chunks: Buffer[] = [];
+    for await (const c of zip.outputStream) chunks.push(c as Buffer);
+    const path = join(tmp, "bukan.xlsx");
+    writeFileSync(path, Buffer.concat(chunks));
+    await expect(
+      createSaxParser().parse(path, { sheetNames: [], tmpDir: tmp }, () => {}),
+    ).rejects.toThrow(/bukan Buku Kerja Excel/);
+  });
+
+  it("file bukan zip (csv berganti nama) ditolak", async () => {
     await expect(
       createSaxParser().parse(
         "tests/fixtures/kecil-us.csv",
         { sheetNames: [], tmpDir: tmp },
         () => {},
       ),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/central directory|zip/i);
   });
+
+  it("sedang.xlsx dengan spill paksa (171 ribu string, indeks lintas blok) = tanpa spill", async () => {
+    const path = "tests/fixtures/sedang.xlsx";
+    const collect = async (spillBytes: number) => {
+      let h = 0;
+      let n = 0;
+      await createSaxParser({ ...DEFAULT_LIMITS, spillBytes }).parse(
+        path,
+        { sheetNames: [], tmpDir: tmp },
+        (_s, r, vals) => {
+          n++;
+          h = (h ^ fnv1a(`${r}:${JSON.stringify(vals)}`)) >>> 0;
+        },
+      );
+      return { n, h };
+    };
+    const spilled = await collect(0);
+    expect(spilled).toEqual(await collect(DEFAULT_LIMITS.spillBytes));
+    expect(spilled.n).toBe(manifestOf(path).sheets[0]!.nonEmptyRows);
+  }, 30_000);
 });

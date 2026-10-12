@@ -59,7 +59,7 @@ async function main() {
   );
   await write(doc, join(dir, "doctype.xlsx"));
 
-  // 2) Zip-bomb: 256 MB worksheet yang sangat repetitif.
+  // 2) Zip-bomb: worksheet 128 MB yang sangat repetitif (± 117x).
   const bomb = new yazl.ZipFile();
   base(bomb);
   const text = "A".repeat(1000);
