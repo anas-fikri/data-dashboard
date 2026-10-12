@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-001
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T04:39:33Z"
+updated: "2026-10-12T04:40:18Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -86,7 +86,7 @@ evidence:
     at: "2026-10-12T04:39:33Z"
     tree: d735b62627f57c3013f3ff20bd68656d1c342a53d4675a0bac95f05e2ac669c6
   audit:
-    at: "2026-10-12T04:39:08Z"
+    at: "2026-10-12T04:40:03Z"
     passed: true
     tree: d735b62627f57c3013f3ff20bd68656d1c342a53d4675a0bac95f05e2ac669c6
     results:
@@ -96,7 +96,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 715 packages
-          End status: 91 dirs visited, 361 inodes visited, 1 Extract calls, 66.273041ms elapsed, 66.274ms wall time
+          End status: 91 dirs visited, 361 inodes visited, 1 Extract calls, 63.65625ms elapsed, 63.657ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -149,3 +149,20 @@ Open risks/assumptions:
 ## Notes
 - 2026-10-11T14:56:59Z Benchmark juga mengukur: penolakan <!DOCTYPE (entity expansion), rasio dekompresi, dan fixture zip-bomb kecil; parser yang tidak bisa dibatasi tidak dipilih (ADR-0002).
 - 2026-10-12T02:47:36Z Hasil: docs/ai/perf/T-005.md. Keputusan parser di ADR-0005 (ADR-0002 sudah dipakai RustFS): parser sendiri yauzl + saxes dengan spill sharedStrings (xlsx 946 MB: 351 s, RSS 639 MB, 88 juta sel benar); DuckDB read_xlsx OOM di memory_limit 1 GB dan 2.266 MB di 4 GB; ExcelJS macet pada urutan Excel dan heap habis pada urutan sst-awal. CSV 974 MB via DuckDB read_csv: 22 s, 292 MB. Fixture kecil di tests/fixtures (README + manifest), npm run fixtures; DOCTYPE dan zip-bomb ditolak (tests/scripts/fixtures.test.ts).
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — diverifikasi: batas kepercayaan = file unggahan tak tepercaya → parser (worker); parser tanpa akses jaringan/DB, hanya file lokal + direktori temp per parse
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: spike tanpa autentikasi; tidak mengubah alur login
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak menyentuh sesi
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — N/A: skrip benchmark/fixture tidak dipanggil aplikasi; otorisasi ingest di T-006
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — diverifikasi: DOCTYPE/entitas ditolak (tanpa XXE), indeks sharedStrings/nomor baris/kolom divalidasi, path part dari relasi dinormalisasi di dalam zip (tidak menyentuh filesystem), nilai teks didekode tanpa eval
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data kriptografis
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — diverifikasi: XlsxLimitError berisi pesan yang bisa ditindak (sheet/baris) tanpa stack/path internal
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — diverifikasi: file spill di direktori temp per parse, dihapus di finally (test: tidak ada sisa)
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada komunikasi jaringan (ekstensi DuckDB hanya untuk benchmark, tidak dipakai parser terpilih)
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — diverifikasi: dependency baru audit bersih (osv-scanner + npm audit); uuid devDependency exceljs dipaksa 11.1.1 (GHSA-w5hq-g745-h8pq)
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — N/A: tidak ada alur bisnis
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — diverifikasi: batas berlapis melawan zip-bomb dan XML buatan (rasio/ekspansi/tumpang tindih/metadata zip, buffer node, kedalaman, atribut, panjang sel/baris, jumlah sst/format/sheet, spill 8 GiB, deadline); audit memori akhir: tidak ada struktur > ~500 MB; probe reviewer + 38 unit test
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: fixture perf gitignored dan tidak disentuh npm run check; skrip dev fixture menolak NODE_ENV=production
