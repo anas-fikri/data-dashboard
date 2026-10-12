@@ -11,7 +11,7 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T07:59:19Z"
+updated: "2026-10-12T23:39:26Z"
 created_by: claude-code
 ---
 
@@ -33,6 +33,7 @@ Mode REPLACE. Ingest versi refresh men-cast raw dengan skema aktif per nama asli
 - 2026-10-11T14:56:59Z Aktivasi/rollback hanya pemilik; job pembersihan menghapus prefix dengan '/' penutup; retensi raw 7 hari dan typed lama via job (MinIO lifecycle granularitas hari).
 - 2026-10-11T23:58:30Z Dari review T-003: job pembersihan StorageCleanup wajib memvalidasi bentuk prefix (raw|parquet)/<cuid>/ sebelum menghapus, menaikkan attempts, dan menghapus baris setelah sukses.
 - 2026-10-12T07:59:19Z Dari T-007: saat ini setiap versi yang selesai ingest diinferensi tipenya lalu langsung READY + aktif (finish di src/features/ingest/repo.ts). Jalur refresh T-013 harus menggantinya dengan cast memakai skema aktif per nama asli (tanpa inferensi), dan memperbarui kriteria macet bila menambah tahap.
+- 2026-10-12T23:39:26Z Dari verifikasi T-011: setiap unggahan baru langsung aktif dengan id sheet baru. T-011 memetakan spec widget saat DIBACA (src/features/widgets/remap.ts: sheet lewat nama/satu-satunya sheet, kolom lewat nama; dipakai runWidgetQuery dan getDashboard). Saat aktivasi versi (dan sebelum retensi menghapus sheet lama), petakan lalu SIMPAN spec widget ke versi aktif agar tidak bergantung pada baris Sheet versi lama; widget yang kolomnya tidak ketemu ditandai untuk T-014.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

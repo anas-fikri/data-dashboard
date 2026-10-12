@@ -48,8 +48,17 @@ export const GRAIN_LABEL = {
 } as const;
 
 /** Label urutan sesuai jenis kolom pengelompokan (tanggal: terlama/terbaru, teks: A–Z/Z–A). */
-export function sortLabel(sort: ChartSpec["sort"], dimType: ColumnType | undefined): string {
+export function sortLabel(
+  sort: ChartSpec["sort"],
+  dimType: ColumnType | undefined,
+  chart?: WidgetType,
+): string {
   const temporal = !!dimType && isTemporal(dimType);
+  // Garis selalu digambar urut waktu; urutan menentukan N titik mana yang diambil.
+  if (chart === "line" && temporal) {
+    if (sort === "label_desc") return "Periode terbaru";
+    if (sort === "label_asc") return "Periode terlama";
+  }
   switch (sort) {
     case "value_desc":
       return "Nilai terbesar dulu";

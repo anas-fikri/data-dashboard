@@ -21,11 +21,12 @@ import {
   type AcquireOptions,
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
+import { matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
-import { buildSql, type BuiltSql } from "./sql";
+import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
 import { widgetBodySchema, widgetPlan } from "./widget";
 
@@ -84,6 +85,15 @@ export interface QueryRepo {
     schemaRevision: number;
     schema: ColumnSchema[] | null;
   } | null>;
+  /**
+   * Sheet lama (versi mana pun dari dataset yang sama) + sheet versi aktif, untuk memetakan widget
+   * setelah data diganti. Opsional (repo uji boleh tidak punya).
+   */
+  sheetHistory?(
+    datasetId: string,
+    activeVersionId: string,
+    sheetId: string,
+  ): Promise<{ old: SheetInfo; active: SheetInfo[] } | null>;
   /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
   widget(
     userId: string,
@@ -188,7 +198,7 @@ export async function runOnParquet<T>(
   userId: string,
   key: string,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
-  work: (path: string, exec: (s: BuiltSql) => Promise<EngineResult>) => Promise<T>,
+  work: (path: string, exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>) => Promise<T>,
 ): Promise<{ ok: true; value: T } | QueryFailure> {
   const engine = deps.engine;
   // Mesin palsu di test hanya punya withSlot: jatah user + global sekaligus.
@@ -205,10 +215,10 @@ export async function runOnParquet<T>(
       try {
         return await globalGate(() => {
           const deadline = Date.now() + deps.timeoutMs;
-          const exec = (s: BuiltSql) => {
+          const exec = (s: BuiltSql, maxMs = Infinity) => {
             const left = deadline - Date.now();
             if (left <= 0) throw new QueryTimeoutError();
-            return engine.exec(s.sql, s.params, left);
+            return engine.exec(s.sql, s.params, Math.min(left, maxMs));
           };
           return work(lease.path, exec);
         }, waitLeftMs);
@@ -310,26 +320,33 @@ async function runAggPlan(
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
   if (hit) return { ok: true, ...(hit as QueryData), cached: true, ms: Date.now() - t0 };
 
-  const r = await execOnParquet(userId, typedKey, deps, (path) => buildSql(plan, path));
+  const r = await runOnParquet(userId, typedKey, deps, async (path, exec) => {
+    const main = await exec(buildSql(plan, path));
+    if (!plan.totals) return { main, totals: null };
+    // Total opsional: dibatasi TOTALS_MAX_MS; gagal/lewat waktu → grafik tetap tampil tanpa "M"/Lainnya.
+    const sql = buildTotalsSql(plan, path);
+    const totals = sql ? await exec(sql, TOTALS_MAX_MS).catch(() => null) : null;
+    return { main, totals };
+  });
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
     return r;
   }
-  // Rencana dengan totals: dua kolom terakhir = jumlah grup + total, sama di setiap baris.
-  const width = plan.columns.length;
-  const raw = plan.totals ? r.out.rows.map((row) => row.slice(0, width)) : r.out.rows;
-  const out = toRows(raw, plan);
+  const out = toRows(r.value.main.rows, plan);
   if (!out) return tooLarge();
   const data: QueryData = { columns: plan.columns, rows: out.rows };
-  if (plan.totals) {
-    const first = r.out.rows[0];
-    data.categories = first ? Number(toJson(first[width], "count")) : 0;
-    const t = first ? toJson(first[width + 1], "decimal") : null;
-    data.grandTotal = typeof t === "number" ? t : t === null ? null : Number(t);
+  const t = r.value.totals?.rows[0];
+  if (t) {
+    data.categories = Number(toJson(t[0], "count"));
+    const g = toJson(t[1], "decimal");
+    data.grandTotal = g === null || g === undefined ? null : Number(g);
   }
   deps.cache?.set(key, data, out.bytes + (plan.totals ? 64 : 0));
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
+
+/** Batas waktu query total grafik (opsional) — query kategori sangat banyak tidak menahan slot lama. */
+export const TOTALS_MAX_MS = 5_000;
 
 /**
  * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
@@ -354,9 +371,18 @@ export async function runWidgetQuery(
   const cfg = parseWidgetConfig(w.type, w.spec);
   if (!cfg.ok) return fail("INVALID", cfg.message);
   if (cfg.config.type === "empty") return fail("INVALID", "Widget ini belum diatur.");
-  const config = cfg.config;
+  let config = cfg.config;
   if (!w.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
-  const sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
+  let sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
+  if (!sheet && deps.repo.sheetHistory) {
+    // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
+    const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
+    const target = h ? matchSheet(h.old, h.active) : null;
+    if (h && target) {
+      config = remapConfig(config, h.old, target);
+      sheet = await deps.repo.sheet(w.activeVersionId, target.id);
+    }
+  }
   if (!sheet) {
     return fail(
       "SHEET_UNAVAILABLE",
@@ -376,7 +402,11 @@ export async function runWidgetQuery(
   if (planned.kind === "agg") {
     return runAggPlan(
       userId,
-      resultKey({ ...keyParts, spec: planned.spec }),
+      // Kunci berbeda dari query bebas dengan spec sama: hasil grafik membawa total (review T-011).
+      resultKey({
+        ...keyParts,
+        spec: planned.plan.totals ? { chart: planned.spec } : planned.spec,
+      }),
       sheet.typedKey,
       planned.plan,
       deps,

@@ -1,7 +1,7 @@
 ---
 id: T-011
 title: Tipe widget tabel, KPI, bar, line, pie dengan panel konfigurasi
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -11,12 +11,22 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T15:17:02Z"
+updated: "2026-10-12T22:52:45Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 5a7d2eb0f7922bb6c2dfa8951ec497d0b7545d0d
+review:
+  passes:
+    - "n": 1
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T22:52:45Z"
+      findings: 2
+    - "n": 2
+      by: frontend-expert-design-reviewer
+      at: "2026-10-12T22:52:45Z"
+      findings: 13
 ---
 
 ## Objective

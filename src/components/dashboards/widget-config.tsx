@@ -129,7 +129,18 @@ export function WidgetConfigForm({
               data-testid="config-missing"
             >
               Sebagian kolom yang dipakai widget ini tidak tersedia lagi (disembunyikan atau dihapus
-              di skema). Pilih kolom lain di bawah.
+              di skema).{" "}
+              {draft.type === "table" ? (
+                <button
+                  type="button"
+                  className="font-medium underline underline-offset-4"
+                  onClick={() => commit({ ...draft })}
+                >
+                  Hapus kolom itu dari tabel
+                </button>
+              ) : (
+                "Pilih kolom lain di bawah."
+              )}
             </p>
           ) : null}
 
@@ -233,12 +244,12 @@ export function WidgetConfigForm({
                     value={draft.spec.sort}
                     options={CHART_SORT_ORDER.map((value) => ({
                       value,
-                      label: sortLabel(value, typeOf(draft.spec.dimension.column)),
+                      label: sortLabel(value, typeOf(draft.spec.dimension.column), draft.type),
                     }))}
                     onChange={(sort) => commit({ ...draft, spec: { ...draft.spec, sort } })}
                   />
                   <TopNField
-                    key={`${draft.type}:${draft.spec.topN}`}
+                    key={draft.type}
                     type={draft.type}
                     value={draft.spec.topN}
                     onCommit={(topN) => commit({ ...draft, spec: { ...draft.spec, topN } })}

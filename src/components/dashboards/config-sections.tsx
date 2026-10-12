@@ -189,6 +189,13 @@ export function TopNField({
   const max = TOP_N_MAX[type];
   const [text, setText] = useState(String(value));
   const [error, setError] = useState<string | null>(null);
+  // Nilai berubah dari luar (mis. jenis dipulihkan): ikuti, tanpa memasang ulang input (fokus tetap).
+  const [seen, setSeen] = useState(value);
+  if (seen !== value) {
+    setSeen(value);
+    setText(String(value));
+    setError(null);
+  }
   const noun = type === "line" ? "titik" : "kategori";
   const check = () => {
     const n = Number(text.trim());
@@ -224,6 +231,7 @@ export function TopNField({
       <p
         id={`${id}-hint`}
         className={error ? "text-xs text-destructive" : "text-xs text-muted-foreground"}
+        aria-live="polite"
       >
         {error ?? (
           <>

@@ -17,8 +17,17 @@ function nf(options: Intl.NumberFormatOptions): Intl.NumberFormat {
   return f;
 }
 
+/** "-0" (nilai negatif kecil yang dibulatkan ke nol) ditampilkan "0". */
+const noNegZero = (text: string) => (/^-[0.,\s]*$/.test(text) ? text.slice(1) : text);
+
 export function formatNumber(value: number, format: NumberFormat): string {
-  if (format.style === "auto") return nf({ maximumFractionDigits: 2 }).format(value);
+  if (format.style === "auto") {
+    // Maks. 2 desimal; nilai bukan nol yang lebih kecil dari 0,01 tetap terbaca (0,0004, bukan 0).
+    const tiny = value !== 0 && Math.abs(value) < 0.01;
+    return noNegZero(
+      nf(tiny ? { maximumSignificantDigits: 2 } : { maximumFractionDigits: 2 }).format(value),
+    );
+  }
   const digits = { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals };
   if (format.style === "percent") return nf({ style: "percent", ...digits }).format(value);
   if (format.style === "rupiah") {
@@ -26,7 +35,25 @@ export function formatNumber(value: number, format: NumberFormat): string {
     // Nilai yang dibulatkan ke 0 tidak diberi tanda minus ("-Rp 0").
     return `${value < 0 && text.replace(/[0.,]/g, "") !== "" ? "-" : ""}Rp ${text}`;
   }
-  return nf(digits).format(value);
+  return noNegZero(nf(digits).format(value));
+}
+
+/** Label kategori angka (tahun, kode, nomor): tanpa pemisah ribuan — 2024, bukan 2.024. */
+export function formatLabelNumber(value: number): string {
+  return nf({ useGrouping: false, maximumFractionDigits: 2 }).format(value);
+}
+
+/** Durasi dari detik: "1:05:09", "26 hari 3:00" (Excel menyimpan durasi sebagai jam:menit:detik). */
+export function formatDuration(seconds: number): string {
+  const sign = seconds < 0 ? "-" : "";
+  let s = Math.round(Math.abs(seconds));
+  const days = Math.floor(s / 86_400);
+  s -= days * 86_400;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return days ? `${sign}${days} hari ${h}:${pad(m)}` : `${sign}${h}:${pad(m)}:${pad(sec)}`;
 }
 
 /**
@@ -43,8 +70,11 @@ export function formatAxis(value: number, format: NumberFormat): string {
 export function formatCompact(value: number, format: NumberFormat): string {
   if (format.style === "percent")
     return nf({ style: "percent", maximumFractionDigits: 1 }).format(value);
-  const text = nf({ notation: "compact", maximumFractionDigits: 2 }).format(value);
-  return format.style === "rupiah" ? `Rp ${text}` : text;
+  if (format.style !== "rupiah")
+    return nf({ notation: "compact", maximumFractionDigits: 2 }).format(value);
+  // Tanda minus di depan "Rp", sama dengan formatNumber ("-Rp 3,97 jt").
+  const text = nf({ notation: "compact", maximumFractionDigits: 2 }).format(Math.abs(value));
+  return `${value < 0 ? "-" : ""}Rp ${text}`;
 }
 
 /** Format yang dipakai sel tabel: format pilihan untuk kolom terpilih, selebihnya otomatis. */
@@ -86,8 +116,14 @@ export function formatCell(
   switch (type) {
     case "integer":
     case "decimal":
-    case "duration":
       return typeof value === "number" ? formatNumber(value, format) : String(value);
+    case "duration":
+      // Durasi tetap jam:menit:detik kecuali user memilih format angka tertentu.
+      return typeof value === "number"
+        ? format.style === "auto"
+          ? formatDuration(value)
+          : formatNumber(value, format)
+        : String(value);
     case "count":
       return typeof value === "number"
         ? formatNumber(value, { style: "number", decimals: 0 })

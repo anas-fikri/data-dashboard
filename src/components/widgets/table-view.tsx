@@ -8,7 +8,12 @@ import {
   IconSortDescending,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import { AUTO_FORMAT, formatCell, formatNumber } from "@/features/widgets/format";
+import {
+  AUTO_FORMAT,
+  formatCell,
+  formatLabelNumber,
+  formatNumber,
+} from "@/features/widgets/format";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import type { WidgetData } from "./widget-query";
@@ -21,6 +26,12 @@ import type { WidgetData } from "./widget-query";
  */
 export type TableSort = { column: number; dir: "asc" | "desc" } | null;
 
+/**
+ * Kolom bilangan bulat yang berupa kode/nomor/tahun (dari namanya) tampil tanpa pemisah ribuan pada
+ * format otomatis — "2024" dan "40115", bukan "2.024"/"40.115" (review integritas T-011).
+ */
+const ID_LIKE =
+  /\b(tahun|year|th|kode|code|id|no|nomor|nik|npwp|nip|telp|telepon|hp|wa|resi|awb|kodepos|zip)\b/i;
 const NUMERIC = new Set(["integer", "decimal", "duration", "count"]);
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
 
@@ -73,96 +84,107 @@ export function TableView({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className={cn(
-          "relative min-h-0 flex-1 overflow-auto focus-visible:outline-offset-[-2px]",
-          busy && "opacity-60",
-        )}
-        role="region"
-        aria-label={label}
-        aria-busy={busy || undefined}
-        // Wilayah gulir harus bisa difokus agar bisa digulir dengan keyboard (WCAG 2.1.1, axe
-        // scrollable-region-focusable).
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={0}
-      >
-        <table className="w-full border-collapse text-sm" data-testid="widget-table">
-          <thead className="sticky top-0 z-10 bg-card">
-            <tr>
-              {data.columns.map((c, i) => {
-                const pos = positions[i]!;
-                const dir = sort?.column === pos ? sort.dir : null;
-                const numeric = NUMERIC.has(c.type);
-                const Icon =
-                  dir === "asc"
-                    ? IconSortAscending
-                    : dir === "desc"
-                      ? IconSortDescending
-                      : IconArrowsSort;
-                return (
-                  <th
-                    key={c.key}
-                    scope="col"
-                    aria-sort={
-                      dir === "asc" ? "ascending" : dir === "desc" ? "descending" : undefined
-                    }
-                    className={cn(
-                      "whitespace-nowrap border-b px-2 py-1 font-medium",
-                      numeric ? "text-right" : "text-left",
-                    )}
-                  >
-                    <button
-                      type="button"
-                      title={c.label}
-                      className={cn(
-                        "inline-flex min-h-11 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8",
-                        // Kolom angka: ikon di kiri agar label sejajar dengan digit di kanan.
-                        numeric && "flex-row-reverse",
-                      )}
-                      onClick={() => onSort(cycle(pos))}
-                    >
-                      <span className="truncate">{c.label}</span>
-                      <Icon
-                        size={16}
-                        stroke={1.5}
-                        aria-hidden
-                        className="shrink-0 text-muted-foreground"
-                      />
-                    </button>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {data.rows.map((row, r) => (
-              <tr key={page * size + r} className="border-b last:border-b-0">
-                {row.map((v, i) => {
-                  const type = data.columns[i]!.type;
-                  const text = formatCell(v, type, formatOf(positions[i]!));
+      {/* Pembungkus tidak ikut menggulir: cincin fokus digambar di atasnya, di atas header lengket. */}
+      <div className="relative flex min-h-0 flex-1 flex-col after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-sm after:ring-inset has-[[data-scroll]:focus-visible]:after:ring-2 has-[[data-scroll]:focus-visible]:after:ring-ring">
+        <div
+          data-scroll=""
+          className={cn(
+            "relative min-h-0 flex-1 overflow-auto focus-visible:outline-none",
+            busy && "opacity-60",
+          )}
+          role="region"
+          aria-label={label}
+          aria-busy={busy || undefined}
+          // Wilayah gulir harus bisa difokus agar bisa digulir dengan keyboard (WCAG 2.1.1, axe
+          // scrollable-region-focusable).
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+          tabIndex={0}
+        >
+          <table className="w-full border-collapse text-sm" data-testid="widget-table">
+            <thead className="sticky top-0 z-10 bg-card">
+              <tr>
+                {data.columns.map((c, i) => {
+                  const pos = positions[i]!;
+                  const dir = sort?.column === pos ? sort.dir : null;
+                  const numeric = NUMERIC.has(c.type);
+                  const Icon =
+                    dir === "asc"
+                      ? IconSortAscending
+                      : dir === "desc"
+                        ? IconSortDescending
+                        : IconArrowsSort;
                   return (
-                    <td
-                      key={i}
+                    <th
+                      key={c.key}
+                      scope="col"
+                      aria-sort={
+                        dir === "asc" ? "ascending" : dir === "desc" ? "descending" : undefined
+                      }
                       className={cn(
-                        "max-w-[24rem] truncate px-3 py-1.5",
-                        NUMERIC.has(type) && "text-right tabular-nums",
-                        (v === null || v === "") && "text-muted-foreground",
+                        "whitespace-nowrap border-b px-2 py-1 font-medium",
+                        numeric ? "text-right" : "text-left",
                       )}
-                      title={text.length > 40 ? text : undefined}
                     >
-                      {text}
-                    </td>
+                      <button
+                        type="button"
+                        title={c.label}
+                        className={cn(
+                          "inline-flex min-h-11 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8",
+                          // Kolom angka: ikon di kiri agar label sejajar dengan digit di kanan.
+                          numeric && "flex-row-reverse",
+                        )}
+                        onClick={() => onSort(cycle(pos))}
+                      >
+                        <span className="truncate">{c.label}</span>
+                        <Icon
+                          size={16}
+                          stroke={1.5}
+                          aria-hidden
+                          className="shrink-0 text-muted-foreground"
+                        />
+                      </button>
+                    </th>
                   );
                 })}
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {data.rows.length === 0 ? (
-          <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-            Tidak ada baris untuk ditampilkan.
-          </p>
-        ) : null}
+            </thead>
+            <tbody>
+              {data.rows.map((row, r) => (
+                <tr key={page * size + r} className="border-b last:border-b-0">
+                  {row.map((v, i) => {
+                    const type = data.columns[i]!.type;
+                    const f = formatOf(positions[i]!);
+                    const text =
+                      type === "integer" &&
+                      typeof v === "number" &&
+                      f.style === "auto" &&
+                      ID_LIKE.test(data.columns[i]!.label)
+                        ? formatLabelNumber(v)
+                        : formatCell(v, type, f);
+                    return (
+                      <td
+                        key={i}
+                        className={cn(
+                          "max-w-[24rem] truncate px-3 py-1.5",
+                          NUMERIC.has(type) && "text-right tabular-nums",
+                          (v === null || v === "") && "text-muted-foreground",
+                        )}
+                        title={text.length > 40 ? text : undefined}
+                      >
+                        {text}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {data.rows.length === 0 ? (
+            <p className="px-3 py-6 text-center text-sm text-muted-foreground">
+              Tidak ada baris untuk ditampilkan.
+            </p>
+          ) : null}
+        </div>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-0.5 text-xs text-muted-foreground">
         <span aria-live="polite" data-testid="table-range">

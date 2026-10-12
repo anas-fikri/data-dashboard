@@ -239,6 +239,50 @@ test.describe("widget", () => {
     expect(dialogs).toEqual([]);
   });
 
+  test("data diganti (unggahan baru, versi baru aktif) → widget yang ada tetap jalan dengan angka baru", async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    // Isi baru, kolom sama: 100 baris, Omzet 1.000 per baris → total Rp 100.000.
+    const lines = [`Cabang;Tanggal;Omzet;${XSS}`];
+    for (let i = 0; i < 100; i++) lines.push(`Bandung;01-10-2026;1000;catatan ${i}`);
+    const path = join(dir, "omzet-oktober.csv");
+    writeFileSync(path, lines.join("\n"));
+    const before = String(
+      (
+        JSON.parse(
+          execFileSync("node", ["scripts/dev-upload-fixture.mjs", "latest", datasetId]).toString(),
+        ) as { id: string }
+      ).id,
+    );
+    await page.goto(`/datasets/${datasetId}`);
+    await page.getByTestId("upload-input").setInputFiles(path);
+    await expect
+      .poll(
+        () => {
+          const v = JSON.parse(
+            execFileSync("node", [
+              "scripts/dev-upload-fixture.mjs",
+              "latest",
+              datasetId,
+            ]).toString(),
+          ) as { id: string; status: string };
+          return v.id !== before && v.status === "READY";
+        },
+        { timeout: 120_000, intervals: [1_000] },
+      )
+      .toBe(true);
+
+    await page.goto(dashboardUrl);
+    await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("100");
+    await expect(widgetTitled(page, "Total omzet").getByTestId("kpi-value")).toHaveText(
+      "Rp 100.000",
+    );
+    const data = widgetTitled(page, "Omzet per cabang").getByTestId("chart-data");
+    await expect(data.locator("tbody tr")).toHaveCount(1);
+    await expect(data.locator("tbody td").first()).toHaveAttribute("data-value", "100000");
+  });
+
   test("AC 4: kolom disembunyikan → widget pemakainya memberi pesan, widget lain tetap jalan", async ({
     page,
   }) => {
@@ -253,6 +297,6 @@ test.describe("widget", () => {
       await expect(error).toHaveAttribute("data-code", "COLUMN_UNAVAILABLE");
       await expect(error).toContainText('"Omzet" disembunyikan');
     }
-    await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("250");
+    await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("100");
   });
 });

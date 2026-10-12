@@ -11,7 +11,7 @@
 import { ident } from "@/lib/duckdb";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import type { Plan } from "./spec";
-import { DIM_TEXT_MAX, filterClauses, type BuiltSql } from "./sql";
+import { DIM_TEXT_MAX, TEXT_COLLATE, filterClauses, type BuiltSql } from "./sql";
 
 function where(plan: Plan, params: BuiltSql["params"]): string {
   const clauses = filterClauses(plan.filters, params);
@@ -37,7 +37,11 @@ export function buildTablePage(
   const row = ident("_row");
   const by = sort ? plan.dimensions[sort.index] : undefined;
   const order = [
-    ...(by ? [`${ident(by.col)} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`] : []),
+    ...(by
+      ? [
+          `${ident(by.col)}${by.type === "text" ? ` ${TEXT_COLLATE}` : ""} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`,
+        ]
+      : []),
     `${row} ASC`,
   ].join(", ");
   const select = plan.dimensions.map((d) => {

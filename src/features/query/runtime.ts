@@ -32,6 +32,24 @@ export const prismaQueryRepo: QueryRepo = {
     });
     return s && { ...s, schema: (s.schema as unknown as ColumnSchema[] | null) ?? null };
   },
+  async sheetHistory(datasetId, activeVersionId, sheetId) {
+    const select = { id: true, name: true, index: true, schema: true } as const;
+    const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
+      ...s,
+      schema: (s.schema as ColumnSchema[] | null) ?? [],
+    });
+    const old = await prisma.sheet.findFirst({
+      where: { id: sheetId, version: { datasetId } },
+      select,
+    });
+    if (!old) return null;
+    const active = await prisma.sheet.findMany({
+      where: { versionId: activeVersionId, typedKey: { not: null } },
+      orderBy: { index: "asc" },
+      select,
+    });
+    return { old: info(old), active: active.map(info) };
+  },
   async widget(userId, widgetId) {
     // Pemilik dataset saja untuk saat ini; non-pemilik lewat berbagi (T-016).
     const w = await prisma.widget.findFirst({

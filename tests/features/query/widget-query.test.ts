@@ -11,7 +11,14 @@ import {
   type QueryDeps,
   type QueryRepo,
 } from "@/features/query/service";
-import { formatCell, formatCompact, formatNumber } from "@/features/widgets/format";
+import {
+  formatCell,
+  formatCompact,
+  formatDuration,
+  formatLabelNumber,
+  formatNumber,
+} from "@/features/widgets/format";
+import { matchSheet, remapConfig } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -314,5 +321,92 @@ describe("validasi spec widget", () => {
       ok: true,
       config: { type: "empty", spec: {} },
     });
+  });
+});
+
+describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () => {
+  it("durasi j:mm:dd; 'Otomatis' tidak menampilkan 0/-0 untuk nilai kecil; label angka tanpa ribuan", () => {
+    expect(formatDuration(3909)).toBe("1:05:09");
+    expect(formatDuration(26 * 86_400 + 3 * 3600)).toBe("26 hari 3:00");
+    expect(formatCell(3909, "duration", { style: "auto", decimals: 0 })).toBe("1:05:09");
+    expect(formatNumber(0.0004, { style: "auto", decimals: 0 })).toBe("0,0004");
+    expect(formatNumber(-0.001, { style: "number", decimals: 2 })).toBe("0,00");
+    expect(formatLabelNumber(2024)).toBe("2024");
+    expect(formatCompact(-3969625, { style: "rupiah", decimals: 0 })).toBe("-Rp 3,97\u00a0jt");
+  });
+
+  it("data diganti: sheet lewat nama, kolom lewat nama; yang tidak ketemu → posisi 0", () => {
+    const old = { id: "old", name: "Penjualan", index: 0, schema: SCHEMA };
+    const next = {
+      id: "new",
+      name: "penjualan ",
+      index: 1,
+      schema: [col(1, "Tanggal", "date"), col(2, "Cabang", "text"), col(3, "omzet", "decimal")],
+    };
+    expect(matchSheet(old, [next, { ...next, id: "x", name: "Lain" }])).toBe(next);
+    expect(matchSheet(old, [{ ...next, name: "Bulan Oktober" }])?.name).toBe("Bulan Oktober");
+    expect(
+      matchSheet(old, [
+        { ...next, name: "A" },
+        { ...next, id: "b", name: "B" },
+      ]),
+    ).toBeNull();
+    const bar = parseWidgetConfig("bar", WIDGETS.bar!.spec);
+    if (!bar.ok || bar.config.type === "empty") throw new Error("spec");
+    const moved = remapConfig(bar.config, old, next);
+    expect(moved.spec).toMatchObject({
+      sheetId: "new",
+      dimension: { column: 2 },
+      measure: { agg: "sum", column: 3 },
+    });
+    const table = parseWidgetConfig("table", WIDGETS.table!.spec);
+    if (!table.ok || table.config.type !== "table") throw new Error("spec");
+    expect(remapConfig(table.config, old, next).spec).toMatchObject({ columns: [2, 3, 0] });
+  });
+
+  it("widget versi lama tetap jalan setelah data diganti (dipetakan saat query)", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const d = deps();
+    const base = d.repo;
+    d.repo = {
+      ...base,
+      widget: async () => ({
+        type: "kpi",
+        spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
+        datasetId: DS,
+        activeVersionId: VER,
+      }),
+      sheetHistory: async () => ({
+        old: { id: OLD, name: "Sheet1", index: 0, schema: SCHEMA },
+        active: [{ id: SHEET, name: "Sheet1", index: 0, schema: SCHEMA }],
+      }),
+    };
+    let all = 0;
+    for (let i = 0; i < ROWS; i++) all += omzetOf(i);
+    const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(r.ok && (r.rows[0]![0] as number)).toBeCloseTo(all, 6);
+  });
+
+  it("total grafik dengan ukuran tanggal tidak gagal (tanpa sum atas tanggal); kunci cache terpisah", async () => {
+    const d = deps();
+    d.repo = {
+      ...d.repo,
+      widget: async () => ({
+        type: "bar",
+        spec: {
+          sheetId: SHEET,
+          dimension: { column: 1 },
+          measure: { agg: "max", column: 3 },
+          sort: "value_desc",
+          topN: 2,
+          format: fmt,
+        },
+        datasetId: DS,
+        activeVersionId: VER,
+      }),
+    };
+    const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(r).toMatchObject({ ok: true, categories: 4, grandTotal: null });
+    expect(r.ok && r.rows).toHaveLength(2);
   });
 });

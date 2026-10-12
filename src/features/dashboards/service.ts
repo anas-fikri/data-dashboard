@@ -4,6 +4,7 @@ import { cache } from "react";
 import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
 import { widgetPlan } from "@/features/query/widget";
+import { matchSheet, remapConfig } from "@/features/widgets/remap";
 import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 import { prisma } from "@/lib/db";
 import {
@@ -195,19 +196,68 @@ export const getDashboard = cache(async function getDashboard(
       layout: true,
       layoutRevision: true,
       updatedAt: true,
-      dataset: { select: { id: true, name: true } },
+      dataset: { select: { id: true, name: true, activeVersionId: true } },
       widgets: { orderBy: { createdAt: "asc" }, select: WIDGET_SELECT },
     },
   });
   if (!d) return null;
+  const { activeVersionId, ...dataset } = d.dataset;
   return {
     ...d,
+    dataset,
+    widgets: await remapToActive(d.dataset.id, activeVersionId, d.widgets),
     layout: reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
     ),
   };
 });
+
+/**
+ * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk
+ * ditampilkan dan diedit (lihat features/widgets/remap.ts). Tidak menulis ke DB.
+ */
+async function remapToActive(
+  datasetId: string,
+  activeVersionId: string | null,
+  widgets: WidgetView[],
+): Promise<WidgetView[]> {
+  if (!activeVersionId) return widgets;
+  const parsed = widgets.map((w) => ({ w, c: parseWidgetConfig(w.type, w.spec) }));
+  const sheetIds = [
+    ...new Set(
+      parsed.flatMap(({ c }) => (c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [])),
+    ),
+  ];
+  if (!sheetIds.length) return widgets;
+  const select = { id: true, name: true, index: true, schema: true, versionId: true } as const;
+  const sheets = await prisma.sheet.findMany({
+    where: { id: { in: sheetIds }, version: { datasetId } },
+    select,
+  });
+  const stale = sheets.filter((s) => s.versionId !== activeVersionId);
+  if (!stale.length) return widgets;
+  const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
+    id: s.id,
+    name: s.name,
+    index: s.index,
+    schema: (s.schema as unknown as ColumnSchema[] | null) ?? [],
+  });
+  const active = (
+    await prisma.sheet.findMany({
+      where: { versionId: activeVersionId, typedKey: { not: null } },
+      orderBy: { index: "asc" },
+      select,
+    })
+  ).map(info);
+  const byId = new Map(stale.map((s) => [s.id, info(s)]));
+  return parsed.map(({ w, c }) => {
+    if (!c.ok || c.config.type === "empty") return w;
+    const old = byId.get(c.config.spec.sheetId);
+    const target = old ? matchSheet(old, active) : null;
+    return old && target ? { ...w, spec: remapConfig(c.config, old, target).spec } : w;
+  });
+}
 
 /** Sheet siap query di versi aktif dataset milik user, dengan kolom yang tidak disembunyikan. */
 export async function getDashboardSources(

@@ -33,11 +33,14 @@ export function WidgetBody({
   config,
   title,
   editing,
+  showData = false,
 }: {
   widgetId: string;
   config: Configured;
   title: string;
   editing: boolean;
+  /** Grafik: tampilkan nilai sebagai tabel (tombol di kepala kartu). */
+  showData?: boolean;
 }) {
   // Spec berubah → mount baru (halaman/urutan tabel kembali ke awal, query ulang).
   const version = `${config.type}:${JSON.stringify(config.spec)}`;
@@ -49,6 +52,7 @@ export function WidgetBody({
       title={title}
       editing={editing}
       version={version}
+      showData={showData}
     />
   );
 }
@@ -59,12 +63,14 @@ function Loaded({
   title,
   editing,
   version,
+  showData,
 }: {
   widgetId: string;
   config: Configured;
   title: string;
   editing: boolean;
   version: string;
+  showData: boolean;
 }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
@@ -77,7 +83,8 @@ function Loaded({
     return (
       // justify-center-safe + overflow-hidden: pesan panjang di kartu kecil tidak menimpa judul (H4).
       <div
-        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-hidden p-3 text-center"
+        // Bisa digulir (bukan dipotong) di kartu kecil; pesan lengkap tetap terbaca dengan sentuh.
+        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-y-auto p-3 text-center"
         data-testid="widget-error"
         data-code={state.code}
       >
@@ -87,7 +94,7 @@ function Loaded({
           aria-hidden
           className="shrink-0 text-warning @max-[10rem]:hidden"
         />
-        <p className="line-clamp-5 max-w-prose text-sm" title={state.message}>
+        <p className="max-w-prose shrink-0 text-sm" title={state.message}>
           {state.message}
         </p>
         {TRANSIENT.has(state.code) ? (
@@ -120,7 +127,14 @@ function Loaded({
 
   switch (config.type) {
     case "kpi":
-      return <KpiView data={data} format={config.spec.format} title={title} />;
+      return (
+        <KpiView
+          data={data}
+          format={config.spec.format}
+          title={title}
+          agg={config.spec.measure.agg}
+        />
+      );
     case "table":
       return (
         <>
@@ -146,6 +160,14 @@ function Loaded({
         </>
       );
     default:
-      return <ChartWidget type={config.type} data={data} spec={config.spec} />;
+      return (
+        <ChartWidget
+          type={config.type}
+          data={data}
+          spec={config.spec}
+          showData={showData}
+          title={title}
+        />
+      );
   }
 }

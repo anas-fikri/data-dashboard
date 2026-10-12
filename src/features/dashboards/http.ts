@@ -3,6 +3,7 @@ import type { NextRequest, NextResponse } from "next/server";
 import { hit, RULES } from "@/features/auth/rate-limit";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { redisReady } from "@/lib/redis";
+import { WIDGET_TITLE_MAX, cleanName } from "./validation";
 import {
   addWidget,
   configureWidget,
@@ -88,12 +89,16 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
     };
     if (b.type === undefined)
       return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
-    // Keduanya dikirim: judul lalu isi (tidak ada bagian yang diam-diam diabaikan).
-    if (b.title !== undefined) {
-      const renamed = await renameWidget(userId, dashboardId, widgetId, b.title);
-      if (!renamed.ok) return reply(renamed);
+    // Keduanya dikirim: judul diperiksa dulu, isi disimpan, lalu judul — tidak ada bagian yang
+    // tersimpan bila yang lain ditolak validasi (review keamanan T-011).
+    if (b.title !== undefined && b.title !== "") {
+      const t = cleanName(b.title, WIDGET_TITLE_MAX, "widget");
+      if (!t.ok)
+        return json({ ok: false, code: "INVALID", message: t.message, field: "name" }, 400);
     }
-    return reply(await configureWidget(userId, dashboardId, widgetId, b.type, b.spec));
+    const configured = await configureWidget(userId, dashboardId, widgetId, b.type, b.spec);
+    if (!configured.ok || b.title === undefined) return reply(configured);
+    return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
   });
 
 export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>

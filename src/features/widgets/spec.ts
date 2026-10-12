@@ -37,7 +37,8 @@ export const TOP_N_DEFAULT: Record<ChartType, number> = { bar: 12, line: 365, pi
 export const PIE_AGGS = ["sum", "count"] as const satisfies Agg[];
 export const SORT_DEFAULT: Record<ChartType, ChartSort> = {
   bar: "value_desc",
-  line: "label_asc",
+  // Garis: N periode TERBARU (ditampilkan urut waktu naik) — bukan N tertua.
+  line: "label_desc",
   pie: "value_desc",
 };
 

@@ -3,7 +3,9 @@ import {
   OTHERS_LABEL,
   barsThatFit,
   chartOption,
+  isoToUtcMs,
   middleTruncate,
+  percentShares,
   type ChartTheme,
 } from "@/components/widgets/chart-option";
 import {
@@ -52,7 +54,8 @@ describe("pilihan awal panel konfigurasi", () => {
       },
     });
     expect(defaultConfig("line", sources, empty)).toMatchObject({
-      spec: { dimension: { column: 2, timeGrain: "month" }, sort: "label_asc" },
+      // Garis: bawaan N periode terbaru (ditampilkan urut waktu naik).
+      spec: { dimension: { column: 2, timeGrain: "month" }, sort: "label_desc" },
     });
     expect(defaultConfig("table", sources, empty)).toMatchObject({
       spec: { columns: [1, 2, 3, 4] },
@@ -195,7 +198,8 @@ describe("review desain T-011", () => {
     const wide = chartOption(pieInput, theme, { width: 640, height: 320 }) as {
       series: { label: { show: boolean } }[];
     };
-    expect(wide.series[0]!.label.show).toBe(true);
+    // Pai tidak pernah memakai label luar (terpotong "…" di kartu sempit) — legenda HTML.
+    expect(wide.series[0]!.label.show).toBe(false);
     expect(barsThatFit(272)).toBe(13);
     const bar = chartOption(
       { ...pieInput, type: "bar", format: { style: "rupiah", decimals: 0 } },
@@ -222,5 +226,72 @@ describe("review desain T-011", () => {
     expect(missingColumns(gone, sources)).toEqual([9]);
     expect(sortLabel("label_asc", "date")).toBe("Terlama dulu");
     expect(sortLabel("label_desc", "text")).toBe("Z–A");
+  });
+});
+
+describe("verifikasi T-011 putaran 2", () => {
+  const theme: ChartTheme = {
+    colors: ["c1", "c2", "c3", "c4", "c5", "c6"],
+    text: "#000",
+    muted: "#555",
+    border: "#ddd",
+    card: "#fff",
+    font: "Inter",
+  };
+
+  it("persen pai berjumlah tepat 100 (sisa terbesar)", () => {
+    expect(percentShares([3, 3, 3, 3, 3, 85])).toEqual([3, 3, 3, 3, 3, 85]);
+    const p = percentShares([1, 1, 1]);
+    expect(p.reduce((a, b) => a + b, 0)).toBe(100);
+    expect(percentShares([0, 0])).toEqual([0, 0]);
+  });
+
+  it("garis bertanggal: sumbu waktu UTC, titik urut naik, tanggal kosong tidak diplot", () => {
+    expect(isoToUtcMs("2026-10-01")).toBe(Date.UTC(2026, 9, 1));
+    const o = chartOption(
+      {
+        type: "line",
+        labels: ["Nov 2026", "Okt 2026", "(kosong)"],
+        values: [5, 3, 1],
+        measureLabel: "Total",
+        dimensionLabel: "Tanggal",
+        format: { style: "auto", decimals: 0 },
+        time: { iso: ["2026-11-01", "2026-10-01", null], grain: "month" },
+        reducedMotion: true,
+      },
+      theme,
+      { width: 600, height: 300 },
+    ) as {
+      useUTC: boolean;
+      xAxis: { type: string; axisLabel: { formatter: (ms: number) => string } };
+      series: { data: [number, number][] }[];
+    };
+    expect(o.useUTC).toBe(true);
+    expect(o.xAxis.type).toBe("time");
+    expect(o.series[0]!.data).toEqual([
+      [Date.UTC(2026, 9, 1), 3],
+      [Date.UTC(2026, 10, 1), 5],
+    ]);
+    expect(o.xAxis.axisLabel.formatter(Date.UTC(2026, 9, 1))).toBe("Okt 2026");
+  });
+
+  it("label tanggal/angka tidak dipendekkan; label teks dipendekkan di tengah", () => {
+    const opt = (textLabels: boolean) =>
+      chartOption(
+        {
+          type: "bar",
+          labels: ["Kantor PCP Express Gambir Unit 11"],
+          values: [1],
+          measureLabel: "Total",
+          dimensionLabel: "Kantor",
+          format: { style: "auto", decimals: 0 },
+          textLabels,
+          reducedMotion: true,
+        },
+        theme,
+        { width: 200, height: 300 },
+      ) as { yAxis: { axisLabel: { formatter: (v: string) => string } } };
+    expect(opt(false).yAxis.axisLabel.formatter("12 Okt 2026")).toBe("12 Okt 2026");
+    expect(opt(true).yAxis.axisLabel.formatter("Kantor PCP Express Gambir Unit 11")).toContain("…");
   });
 });

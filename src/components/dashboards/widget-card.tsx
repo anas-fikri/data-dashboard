@@ -1,7 +1,12 @@
 "use client";
 
-import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
-import { forwardRef } from "react";
+import {
+  IconAdjustmentsHorizontal,
+  IconChartBar,
+  IconGripVertical,
+  IconTable,
+} from "@tabler/icons-react";
+import { forwardRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetView } from "@/features/dashboards/service";
@@ -36,6 +41,9 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   const handle = editing && draggable;
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const config = parsed.ok && parsed.config.type !== "empty" ? parsed.config : null;
+  const chart = config?.type === "bar" || config?.type === "line" || config?.type === "pie";
+  // Nilai grafik sebagai tabel: tombol di kepala kartu (tidak ikut terpotong di kartu pendek/sempit).
+  const [showData, setShowData] = useState(false);
   return (
     <div
       ref={ref}
@@ -76,6 +84,24 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         >
           {title}
         </h2>
+        {chart ? (
+          <Button
+            size="icon-sm"
+            variant="ghost"
+            className={cn(
+              "size-(--control-h-lg) shrink-0 md:size-(--control-h-sm)",
+              // Mode edit di kartu sempit: ruang kepala untuk pegangan + pengaturan.
+              editing && "@max-[9rem]:hidden",
+            )}
+            aria-label={`Tampilkan data ${title} sebagai tabel`}
+            title="Tampilkan sebagai tabel"
+            aria-pressed={showData}
+            data-testid="widget-data-toggle"
+            onClick={() => setShowData((s) => !s)}
+          >
+            <IconTable aria-hidden />
+          </Button>
+        ) : null}
         {editing ? (
           <Button
             size="icon-sm"
@@ -92,7 +118,13 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         ) : null}
       </div>
       {config ? (
-        <WidgetBody widgetId={widget.id} config={config} title={widget.title} editing={editing} />
+        <WidgetBody
+          widgetId={widget.id}
+          config={config}
+          title={widget.title}
+          editing={editing}
+          showData={showData}
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
           <IconChartBar

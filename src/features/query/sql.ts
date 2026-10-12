@@ -56,20 +56,28 @@ export function filterClauses(filters: PlanFilter[], params: BuiltSql["params"])
   });
 }
 
+/**
+ * Urutan teks seperti Excel: tidak peka huruf besar/kecil dan aksen ("Ácehe" sebelum "apel" sebelum
+ * "Bandung"), bukan urutan byte (review integritas T-011). Nilai mentah tetap jadi pemecah seri.
+ */
+export const TEXT_COLLATE = `COLLATE "nocase.noaccent"`;
+
+/** Ekspresi dimensi: teks dipotong, tanggal dikelompokkan per grain. */
+function dimensionExpr(d: Plan["dimensions"][number]): string {
+  const c = ident(d.col);
+  // Teks dimensi dipotong: label grafik tidak butuh 32 ribu karakter, dan hasil 10k baris × sel
+  // panjang membengkakkan memori aplikasi (review T-009 F4).
+  return d.grain
+    ? `date_trunc('${d.grain}', ${c})`
+    : d.type === "text"
+      ? `left(${c}, ${DIM_TEXT_MAX})`
+      : c;
+}
+
 export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
   const select: string[] = [];
-  for (const d of plan.dimensions) {
-    const c = ident(d.col);
-    // Teks dimensi dipotong: label grafik tidak butuh 32 ribu karakter, dan hasil 10k baris × sel
-    // panjang membengkakkan memori aplikasi (review T-009 F4).
-    const e = d.grain
-      ? `date_trunc('${d.grain}', ${c})`
-      : d.type === "text"
-        ? `left(${c}, ${DIM_TEXT_MAX})`
-        : c;
-    select.push(`${e} AS ${ident(d.key)}`);
-  }
+  for (const d of plan.dimensions) select.push(`${dimensionExpr(d)} AS ${ident(d.key)}`);
   for (const m of plan.measures) {
     const c = m.col ? ident(m.col) : "*";
     const e =
@@ -87,35 +95,58 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   // Urutan deterministik: urutan pilihan user lalu dimensi naik sebagai pemecah seri, sehingga baris
   // di batas LIMIT selalu sama (review T-009 F8). Hasil tanpa dimensi hanya satu baris.
   const sorted = new Set(plan.sort.map((x) => x.key));
+  const textKeys = new Set(plan.dimensions.filter((d) => d.type === "text").map((d) => d.key));
   const order = [
-    ...plan.sort.map((x) => `${ident(x.key)} ${x.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`),
+    ...plan.sort.map(
+      (x) =>
+        `${ident(x.key)}${textKeys.has(x.key) ? ` ${TEXT_COLLATE}` : ""} ${x.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`,
+    ),
     ...plan.dimensions
       .filter((d) => !sorted.has(d.key))
       .map((d) => `${ident(d.key)} ASC NULLS LAST`),
+    // Pemecah seri byte-exact untuk kunci teks (urutan deterministik walau collation menyamakan).
+    ...plan.sort.filter((x) => textKeys.has(x.key)).map((x) => `${ident(x.key)} ASC`),
   ];
 
-  const base = [
+  const sql = [
     `SELECT ${distinct}${select.join(", ")}`,
     `FROM read_parquet($path)`,
     where.length ? `WHERE ${where.join(" AND ")}` : "",
     group,
-  ].filter(Boolean);
-  const tail = [
     order.length ? `ORDER BY ${order.join(", ")}` : "",
     `LIMIT ${Math.trunc(plan.limit)}`,
-  ].filter(Boolean);
-  if (plan.totals && plan.dimensions.length && plan.measures.length) {
-    // Dua kolom tambahan di akhir: jumlah grup dan total ukuran pertama seluruh grup (sebelum LIMIT).
-    const m0 = ident(plan.measures[0]!.key);
-    const sql = [
-      `WITH g AS (`,
-      ...base.map((l) => `  ${l}`),
-      `)`,
-      `SELECT *, count(*) OVER () AS ${ident("__n")}, sum(${m0}) OVER () AS ${ident("__t")}`,
-      `FROM g`,
-      ...tail,
-    ].join("\n");
-    return { sql, params };
-  }
-  return { sql: [...base, ...tail].join("\n"), params };
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { sql, params };
+}
+
+/**
+ * Total untuk grafik widget, dihitung terpisah dari query N teratas (review T-011): jumlah kategori
+ * (termasuk grup kosong) dan total ukuran seluruh kategori — hanya untuk ukuran yang bisa dijumlahkan
+ * (Total, Jumlah baris); selain itu NULL (sum() atas tanggal tidak valid). Tanpa GROUP BY / window,
+ * jadi tidak menahan seluruh grup di memori.
+ */
+export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null {
+  const d = plan.dimensions[0];
+  const m = plan.measures[0];
+  if (!d || !m) return null;
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const where = filterClauses(plan.filters, params);
+  const e = dimensionExpr(d);
+  const grand =
+    m.agg === "sum"
+      ? `sum(${ident(m.col!)})`
+      : m.agg === "count"
+        ? `count(${m.col ? ident(m.col) : "*"})`
+        : "NULL";
+  const sql = [
+    `SELECT count(DISTINCT ${e}) + coalesce(max(CASE WHEN ${e} IS NULL THEN 1 ELSE 0 END), 0) AS n,`,
+    `  ${grand} AS t`,
+    `FROM read_parquet($path)`,
+    where.length ? `WHERE ${where.join(" AND ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { sql, params };
 }
