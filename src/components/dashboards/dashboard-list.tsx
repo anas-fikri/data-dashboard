@@ -36,7 +36,9 @@ export function DashboardList({ dashboards }: { dashboards: DashboardSummary[] }
               data-testid="dashboard-row"
               className={`grid min-h-11 grid-cols-[minmax(0,1fr)_1.25rem] items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent/60 ${cols}`}
             >
-              <span className="min-w-0 truncate font-medium">{d.name}</span>
+              <span className="line-clamp-2 min-w-0 break-words font-medium" title={d.name}>
+                {d.name}
+              </span>
               <IconChevronRight
                 size={20}
                 stroke={1.5}

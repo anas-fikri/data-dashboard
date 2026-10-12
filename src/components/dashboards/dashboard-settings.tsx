@@ -94,7 +94,9 @@ export function DashboardSettings({ id, name }: { id: string; name: string }) {
             <Dialog.Portal>
               <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay/50" />
               <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-card p-6 shadow-lg">
-                <Dialog.Title className="text-lg font-semibold">Hapus “{name}”?</Dialog.Title>
+                <Dialog.Title className="break-words text-lg font-semibold [overflow-wrap:anywhere]">
+                  Hapus “{name}”?
+                </Dialog.Title>
                 <Dialog.Description className="mt-2 text-sm text-muted-foreground">
                   Dashboard dan semua widgetnya dihapus permanen. Data di dataset tetap ada.
                 </Dialog.Description>

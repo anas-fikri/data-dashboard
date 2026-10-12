@@ -4,17 +4,21 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import { api, type ApiResult } from "./dashboard-api";
+import { sameLayout } from "./layout-ops";
 
 /*
- * Status editor kanvas (T-010). Semua mutasi melewati satu antrean berurutan sehingga revisi tata
- * letak yang dikirim selalu revisi terbaru (tambah/hapus widget juga menaikkan revisi di server).
- * Geser/ubah ukuran disimpan otomatis (debounce); "urungkan" membatalkan satu langkah terakhir.
+ * Status editor kanvas (T-010). Semua mutasi melewati satu antrean berurutan dan membawa revisi tata
+ * letak terakhir yang diketahui; tata letak yang belum terkirim disimpan dulu sebelum tambah/hapus.
+ * Server menolak revisi lama dengan STALE → editor berhenti mengirim sampai halaman dimuat ulang
+ * (tidak pernah menimpa perubahan tab lain). Geser/ubah ukuran disimpan otomatis (debounce); halaman
+ * yang ditutup sebelum jeda habis tetap mengirim lewat keepalive. "Urungkan" membatalkan satu langkah.
  */
 export type SaveState = "saved" | "pending" | "saving" | "error" | "stale";
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }
   | { kind: "add"; widgetId: string }
   | { kind: "delete"; title: string; item: LayoutItem };
+type Failure = Extract<ApiResult<unknown>, { ok: false }>;
 
 const SAVE_DELAY_MS = 500;
 
@@ -24,13 +28,18 @@ export function useDashboardEditor(o: {
   layout: LayoutItem[];
   revision: number;
 }) {
-  const [widgets, setWidgets] = useState(o.widgets);
+  const [widgets, setWidgetsState] = useState(o.widgets);
   const [layout, setLayoutState] = useState(o.layout);
   const [undo, setUndo] = useState<Undo | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
   const [notice, setNotice] = useState<string | null>(null);
   const revision = useRef(o.revision);
   const latest = useRef(o.layout);
+  const widgetsNow = useRef(o.widgets);
+  /** Ada tata letak yang belum diterima server. */
+  const dirty = useRef(false);
+  /** Server menjawab STALE: jangan kirim apa pun lagi sampai dimuat ulang. */
+  const stale = useRef(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const id = o.dashboardId;
@@ -45,34 +54,52 @@ export function useDashboardEditor(o: {
     latest.current = next;
     setLayoutState(next);
   }, []);
+  const setWidgets = useCallback((next: WidgetView[]) => {
+    widgetsNow.current = next;
+    setWidgetsState(next);
+  }, []);
 
-  const failed = useCallback((r: Extract<ApiResult<unknown>, { ok: false }>) => {
-    if (r.code === "STALE") setSave("stale");
+  const failed = useCallback((r: Failure, layoutSave = false) => {
+    if (r.code === "STALE") {
+      stale.current = true;
+      clearTimeout(timer.current);
+      setSave("stale");
+    } else if (layoutSave) setSave("error");
     setNotice(r.message);
   }, []);
 
+  /** Kirim tata letak yang belum tersimpan. Hanya dari dalam antrean. */
+  const saveNow = useCallback(async () => {
+    if (stale.current) return false;
+    if (!dirty.current) return true;
+    dirty.current = false;
+    setSave("saving");
+    const r = await api.saveLayout(id, revision.current, latest.current);
+    if (!r.ok) {
+      dirty.current = true;
+      failed(r, true);
+      return false;
+    }
+    revision.current = r.data.layoutRevision;
+    // Digeser lagi selama permintaan berjalan → tetap "pending", simpan berikutnya menyusul.
+    if (!dirty.current) setSave("saved");
+    setNotice(null);
+    return true;
+  }, [id, failed]);
+
   const flush = useCallback(() => {
     clearTimeout(timer.current);
-    return run(async () => {
-      setSave("saving");
-      const r = await api.saveLayout(id, revision.current, latest.current);
-      if (r.ok) {
-        revision.current = r.data.layoutRevision;
-        setSave("saved");
-        setNotice(null);
-      } else {
-        setSave(r.code === "STALE" ? "stale" : "error");
-        failed(r);
-      }
-      return r.ok;
-    });
-  }, [id, run, failed]);
+    return run(saveNow);
+  }, [run, saveNow]);
 
   /** Tata letak baru dari geser/ubah ukuran (atau tombol posisi): simpan otomatis setelah jeda. */
   const commitLayout = useCallback(
     (next: LayoutItem[], recordUndo = true) => {
+      // Klik pegangan tanpa bergeser / langkah di tepi grid: tidak ada yang disimpan atau diurungkan.
+      if (stale.current || sameLayout(next, latest.current)) return;
       if (recordUndo) setUndo({ kind: "layout", layout: latest.current });
       setLayout(next);
+      dirty.current = true;
       setSave("pending");
       clearTimeout(timer.current);
       timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS);
@@ -81,41 +108,50 @@ export function useDashboardEditor(o: {
   );
 
   const addWidget = useCallback(
-    (restore?: { title: string; at: Omit<LayoutItem, "i"> }) =>
-      run(async () => {
-        const r = await api.addWidget(id, restore);
+    (restore?: { title: string; at: Omit<LayoutItem, "i"> }) => {
+      clearTimeout(timer.current); // simpan tertunda ikut antrean, sebelum tambah
+      return run(async () => {
+        if (!(await saveNow())) return null;
+        const r = await api.addWidget(id, revision.current, restore);
         if (!r.ok) {
           failed(r);
           return null;
         }
-        revision.current = r.data.layoutRevision;
-        setWidgets((ws) => [...ws, r.data.widget]);
-        setLayout([...latest.current, r.data.item]);
-        setUndo(restore ? null : { kind: "add", widgetId: r.data.widget.id });
+        const { widget, layout: server, layoutRevision } = r.data;
+        revision.current = layoutRevision;
+        setWidgets([...widgetsNow.current, widget]);
+        // Digeser selama permintaan berjalan: posisi lokal dipertahankan, simpan otomatis menyusul.
+        const added = server.find((it) => it.i === widget.id);
+        setLayout(dirty.current && added ? [...latest.current, added] : server);
+        setUndo(restore ? null : { kind: "add", widgetId: widget.id });
         setNotice(null);
-        return r.data.widget.id;
-      }),
-    [id, run, failed, setLayout],
+        return widget.id;
+      });
+    },
+    [id, run, saveNow, failed, setLayout, setWidgets],
   );
 
   const removeWidget = useCallback(
-    (widgetId: string, recordUndo = true) =>
-      run(async () => {
+    (widgetId: string, recordUndo = true) => {
+      clearTimeout(timer.current);
+      return run(async () => {
+        if (!(await saveNow())) return false;
         const item = latest.current.find((it) => it.i === widgetId);
-        const title = widgets.find((w) => w.id === widgetId)?.title ?? "";
-        const r = await api.deleteWidget(id, widgetId);
+        const title = widgetsNow.current.find((w) => w.id === widgetId)?.title ?? "";
+        const r = await api.deleteWidget(id, widgetId, revision.current);
         if (!r.ok) {
           failed(r);
           return false;
         }
         revision.current = r.data.layoutRevision;
-        setWidgets((ws) => ws.filter((w) => w.id !== widgetId));
-        setLayout(latest.current.filter((it) => it.i !== widgetId));
+        setWidgets(widgetsNow.current.filter((w) => w.id !== widgetId));
+        setLayout(dirty.current ? latest.current.filter((it) => it.i !== widgetId) : r.data.layout);
         setUndo(recordUndo && item ? { kind: "delete", title, item } : null);
         setNotice(null);
         return true;
-      }),
-    [id, run, failed, setLayout, widgets],
+      });
+    },
+    [id, run, saveNow, failed, setLayout, setWidgets],
   );
 
   const renameWidget = useCallback(
@@ -126,15 +162,17 @@ export function useDashboardEditor(o: {
           failed(r);
           return false;
         }
-        setWidgets((ws) => ws.map((w) => (w.id === widgetId ? { ...w, title: r.data.title } : w)));
+        setWidgets(
+          widgetsNow.current.map((w) => (w.id === widgetId ? { ...w, title: r.data.title } : w)),
+        );
         return true;
       }),
-    [id, run, failed],
+    [id, run, failed, setWidgets],
   );
 
   const undoLast = useCallback(async () => {
     const u = undo;
-    if (!u) return;
+    if (!u || stale.current) return;
     setUndo(null);
     if (u.kind === "layout") commitLayout(u.layout, false);
     else if (u.kind === "add") await removeWidget(u.widgetId, false);
@@ -146,19 +184,33 @@ export function useDashboardEditor(o: {
 
   // Perubahan yang belum tersimpan: peringatkan sebelum meninggalkan halaman.
   useEffect(() => {
-    if (save !== "pending" && save !== "saving") return;
+    if (save !== "pending" && save !== "saving" && save !== "error") return;
     const warn = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [save]);
-  useEffect(() => () => clearTimeout(timer.current), []);
+
+  // Tab ditutup / pindah halaman sebelum jeda simpan habis: kirim sekali dengan keepalive.
+  useEffect(() => {
+    const send = () => {
+      clearTimeout(timer.current);
+      if (!dirty.current || stale.current) return;
+      dirty.current = false;
+      void api.saveLayout(id, revision.current, latest.current, { keepalive: true });
+    };
+    window.addEventListener("pagehide", send);
+    return () => {
+      window.removeEventListener("pagehide", send);
+      send();
+    };
+  }, [id]);
 
   return {
     widgets,
     layout,
     save,
     notice,
-    canUndo: undo !== null,
+    canUndo: undo !== null && save !== "stale",
     undoKind: undo?.kind ?? null,
     commitLayout,
     addWidget,

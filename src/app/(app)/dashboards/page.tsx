@@ -35,7 +35,7 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Dashboard"
-        description="Rakit tampilan data dari dataset Anda: atur widget di grid, simpan otomatis."
+        description="Susun ringkasan data dari dataset Anda. Perubahan tersimpan otomatis."
         actions={dashboards.length > 0 ? createButton : undefined}
       />
       {params.deleted === "1" ? <FocusNotice>Dashboard dihapus.</FocusNotice> : null}

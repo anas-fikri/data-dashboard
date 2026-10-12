@@ -1,8 +1,10 @@
 /*
  * Validasi dashboard dan tata letak (T-010). Murni (tanpa DB) agar dipakai service dan diuji unit.
  * Grid 12 kolom: x + w ≤ 12; tinggi dan posisi vertikal dibatasi agar layout tidak bisa dibuat
- * raksasa lewat API.
+ * raksasa lewat API. Layout yang disimpan selalu dipadatkan vertikal dengan algoritma react-grid-layout
+ * (review T-010 M2): mode lihat dan mode edit menampilkan susunan yang sama, tanpa lubang/tumpang tindih.
  */
+import { verticalCompactor } from "react-grid-layout/core";
 import { z } from "zod";
 
 export const GRID_COLS = 12;
@@ -37,12 +39,14 @@ const outside = { message: "widget melewati lebar grid" };
 
 /** Posisi tanpa id (memulihkan widget di tempat semula). */
 export const positionSchema = z.object(coords).strict().refine(fitsGrid, outside);
-/** Satu item layout tersimpan/dikirim: id widget + posisi, tanpa kunci lain. */
+/** Satu item layout yang dikirim klien: id widget + posisi, tanpa kunci lain. */
 const layoutItem = (id: z.ZodString) =>
   z
     .object({ i: id, ...coords })
     .strict()
     .refine(fitsGrid, outside);
+/** Item tersimpan: kunci tambahan (versi mendatang) diabaikan, bukan membuang posisinya. */
+const storedItem = z.object({ i: z.string(), ...coords }).refine(fitsGrid, outside);
 
 export const layoutBodySchema = z
   .object({
@@ -56,17 +60,28 @@ export const layoutBodySchema = z
   })
   .strict();
 
-/** Nama tampil (dashboard/widget): trim, spasi dirapatkan, tanpa karakter kontrol/format. */
+/** Rapikan nama untuk dibandingkan/disimpan: NFC (é tersusun = é terurai), trim, spasi dirapatkan. */
+export const normalizeName = (raw: string) => raw.normalize("NFC").trim().replace(/\s+/g, " ");
+
+// Kontrol/format (mis. U+202E pembalik arah teks) bisa menipu tampilan; ZWJ/ZWNJ tetap boleh (emoji,
+// aksara tertentu). Pengisi Hangul tampak kosong, jadi tidak dihitung sebagai karakter terlihat.
+const FORBIDDEN = /(?![\u200C\u200D])[\p{Cc}\p{Cf}]/u;
+const FILLERS = /[\u115F\u1160\u3164\uFFA0]/gu;
+const VISIBLE = /[\p{L}\p{N}\p{P}\p{S}]/u;
+
+/** Nama tampil (dashboard/widget): wajib, ≤ max, tanpa karakter kontrol/format, ada yang terlihat. */
 export function cleanName(
   raw: unknown,
   max: number,
   label: string,
 ): { ok: true; value: string } | { ok: false; message: string } {
-  const value = typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
+  const value = typeof raw === "string" ? normalizeName(raw) : "";
   if (!value) return { ok: false, message: `Beri nama ${label}.` };
-  // Karakter kontrol/format (mis. U+202E pembalik arah teks) bisa menipu tampilan saat dibagikan.
-  if (/[\p{Cc}\p{Cf}]/u.test(value)) {
+  if (FORBIDDEN.test(value)) {
     return { ok: false, message: "Nama mengandung karakter yang tidak diizinkan." };
+  }
+  if (!VISIBLE.test(value.replace(FILLERS, ""))) {
+    return { ok: false, message: `Beri nama ${label} yang bisa dibaca.` };
   }
   if (value.length > max) return { ok: false, message: `Nama maksimal ${max} karakter.` };
   return { ok: true, value };
@@ -78,20 +93,37 @@ export function bottomOf(layout: LayoutItem[]): number {
 }
 
 /**
+ * Padatkan vertikal (algoritma react-grid-layout): tanpa lubang dan tanpa tumpang tindih; urutan item
+ * dipertahankan. Tinggi total ≤ jumlah tinggi widget (≤ 50 × 40 = LAYOUT_Y_MAX), jadi y tetap valid.
+ */
+export function compactLayout(items: LayoutItem[]): LayoutItem[] {
+  const compacted = verticalCompactor.compact(
+    items.map((it) => ({ ...it })),
+    GRID_COLS,
+  );
+  const byId = new Map(compacted.map((it) => [it.i, it]));
+  return items.map((it) => {
+    const c = byId.get(it.i)!;
+    return { i: it.i, x: c.x, y: c.y, w: c.w, h: c.h };
+  });
+}
+
+/**
  * Layout tersimpan → layout yang cocok dengan widget yang ada: item tanpa widget dibuang, widget tanpa
- * item ditaruh di bawah. Melindungi tampilan dari data lama/rusak tanpa gagal total.
+ * item ditaruh di bawah, lalu dipadatkan. Melindungi tampilan dari data lama/rusak tanpa gagal total.
  */
 export function reconcileLayout(stored: unknown, widgetIds: string[]): LayoutItem[] {
   const ids = new Set(widgetIds);
   // Per item: satu item rusak tidak membuang posisi widget lain.
-  const one = layoutItem(z.string());
+  const one = storedItem;
   const items: LayoutItem[] = [];
   const seen = new Set<string>();
   for (const raw of Array.isArray(stored) ? stored : []) {
     const p = one.safeParse(raw);
     if (p.success && ids.has(p.data.i) && !seen.has(p.data.i)) {
-      items.push(p.data);
-      seen.add(p.data.i);
+      const { i, x, y, w, h } = p.data;
+      items.push({ i, x, y, w, h });
+      seen.add(i);
     }
   }
   for (const id of widgetIds) {
@@ -99,5 +131,5 @@ export function reconcileLayout(stored: unknown, widgetIds: string[]): LayoutIte
     items.push({ i: id, x: 0, y: bottomOf(items), ...DEFAULT_WIDGET_SIZE });
     seen.add(id);
   }
-  return items;
+  return compactLayout(items);
 }

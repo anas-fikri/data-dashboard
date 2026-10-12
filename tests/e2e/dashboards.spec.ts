@@ -3,7 +3,9 @@ import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
 
 /*
  * T-010: kanvas dashboard — geser/ubah ukuran tersimpan otomatis dan identik setelah muat ulang, mode
- * lihat statis tanpa panel, satu kolom di layar < 768 px, batas 10 dashboard per dataset.
+ * lihat statis tanpa panel, satu kolom di layar < 768 px, batas 10 dashboard per dataset. Juga: panel
+ * pengaturan sebagai lembar di < 1280 px (fokus masuk/kembali), fokus setelah hapus, dan tab lain yang
+ * mengubah dashboard → STALE tanpa menimpa.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -17,9 +19,20 @@ async function createDashboard(page: Page, name: string) {
   await page.getByRole("button", { name: "Buat dashboard" }).click();
 }
 
-/** Posisi/ukuran tiap widget dalam satuan grid (x,y,w,h) — yang disimpan, bukan piksel. */
+/** Posisi/ukuran tiap widget (id → "x,y,w,h" dalam satuan grid) — yang disimpan, bukan piksel. */
 const geometry = (page: Page) =>
-  page.getByTestId("widget").evaluateAll((els) => els.map((el) => el.getAttribute("data-pos")));
+  page
+    .getByTestId("widget")
+    .evaluateAll((els) =>
+      Object.fromEntries(
+        els.map((el) => [el.getAttribute("data-widget-id"), el.getAttribute("data-pos")]),
+      ),
+    );
+const settingsOf = (page: Page, nth = 0) =>
+  page
+    .getByTestId("widget")
+    .nth(nth)
+    .getByRole("button", { name: /^Pengaturan/ });
 
 async function drag(page: Page, from: Locator, dx: number, dy: number) {
   await from.scrollIntoViewIfNeeded();
@@ -62,20 +75,23 @@ test.describe("dashboard", () => {
     await expect(page.getByTestId("widget")).toHaveCount(1);
     await add.click();
     await expect(page.getByTestId("widget")).toHaveCount(2);
+    const [firstId, secondId] = await page
+      .getByTestId("widget")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("data-widget-id")!));
 
     // Tiap gestur menunggu simpan otomatisnya sendiri (PUT tata letak) sebelum gestur berikutnya.
     const layoutSaved = () =>
       page.waitForResponse(
         (r) => r.url().endsWith("/layout") && r.request().method() === "PUT" && r.ok(),
       );
-    const first = page.getByTestId("widget").first();
+    // Seret lewat kepala kartu (pegangan), ubah ukuran lewat pojok kanan bawah.
     let put = layoutSaved();
-    await drag(page, first.locator(".widget-drag-handle"), 520, 0);
+    await drag(page, page.locator(`[data-widget-id="${firstId}"] .widget-drag-handle`), 520, 0);
     await put;
     put = layoutSaved();
     await drag(
       page,
-      page.locator(".react-grid-item").nth(1).locator("> .react-resizable-handle"),
+      page.locator(`[data-widget-id="${secondId}"] > .react-resizable-handle`),
       260,
       120,
     );
@@ -84,8 +100,8 @@ test.describe("dashboard", () => {
     await expect(saved).toHaveAttribute("data-state", "saved");
     const before = await geometry(page);
     // Widget pertama digeser ke kanan, widget kedua diperlebar dan dipertinggi (bukan ukuran awal 4×4).
-    expect(before[0]).not.toMatch(/^0,/);
-    expect(before.some((p) => p !== null && !p.endsWith(",4,4"))).toBe(true);
+    expect(before[firstId]).not.toMatch(/^0,/);
+    expect(before[secondId]).not.toMatch(/,4,4$/);
 
     await page.reload();
     await expect(page.getByTestId("widget")).toHaveCount(2);
@@ -98,16 +114,14 @@ test.describe("dashboard", () => {
     await page.goto(`${dashboardUrl}?mode=edit`);
     await expect(page.getByTestId("widget")).toHaveCount(2);
     const before = await geometry(page);
-    await page
-      .getByTestId("widget")
-      .first()
-      .getByRole("button", { name: /^Pengaturan/ })
-      .click();
+    await settingsOf(page).click();
     const panel = page.getByTestId("widget-panel");
-    await panel.getByRole("button", { name: /^Perlebar/ }).click();
+    // ≥ 1280 px: panel menempel dan fokus pindah ke judulnya.
+    await expect(panel.getByRole("heading", { name: "Pengaturan widget" })).toBeFocused();
+    await panel.getByRole("button", { name: /^Pertinggi/ }).click();
     await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
     expect(await geometry(page)).not.toEqual(before);
-    await page.getByRole("button", { name: "Urungkan pindah/ubah ukuran" }).click();
+    await page.getByRole("button", { name: "Urungkan perubahan tata letak" }).click();
     await expect.poll(() => geometry(page)).toEqual(before);
     await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
   });
@@ -139,6 +153,80 @@ test.describe("dashboard", () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("< 1280 px: pengaturan sebagai lembar — fokus masuk, Escape menutup, fokus kembali", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    const settings = settingsOf(page);
+    await settings.click();
+    const sheet = page.getByRole("dialog", { name: "Pengaturan widget" });
+    await expect(sheet).toBeInViewport();
+    await expect(sheet.locator(":focus")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    await expect(settings).toBeFocused();
+    // 768 px: toolbar membungkus, tidak ada scroll horizontal halaman (setelah grid mengukur ulang).
+    await page.setViewportSize({ width: 768, height: 900 });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        ),
+      )
+      .toBeLessThanOrEqual(0);
+  });
+
+  test("hapus dari panel → fokus ke Urungkan; urungkan mengembalikan widget", async ({ page }) => {
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    const widgets = page.getByTestId("widget");
+    await expect(widgets).toHaveCount(2);
+    await settingsOf(page).click();
+    await page.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
+    await expect(widgets).toHaveCount(1);
+    const undo = page.getByRole("button", { name: "Urungkan hapus widget" });
+    await expect(undo).toBeFocused();
+    await undo.click();
+    await expect(widgets).toHaveCount(2);
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+  });
+
+  test("tab lain mengubah dashboard → STALE: tidak menimpa, edit dibekukan, muat ulang", async ({
+    page,
+  }) => {
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    await expect(page.getByTestId("widget")).toHaveCount(2);
+    const other = await page.context().newPage();
+    await other.goto(`${dashboardUrl}?mode=edit`);
+    await other
+      .getByTestId("canvas-toolbar")
+      .getByRole("button", { name: "Tambah widget", exact: true })
+      .click();
+    await expect(other.getByTestId("widget")).toHaveCount(3);
+    await expect(other.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+
+    // Tab ini masih memegang revisi lama: perubahannya ditolak, bukan menimpa widget baru.
+    await settingsOf(page).click();
+    await page
+      .getByTestId("widget-panel")
+      .getByRole("button", { name: /^Pertinggi/ })
+      .click();
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "stale");
+    await expect(page.getByTestId("form-alert")).toContainText("belum tersimpan");
+    await expect(
+      page
+        .getByTestId("canvas-toolbar")
+        .getByRole("button", { name: "Tambah widget", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByTestId("widget-panel")).toHaveCount(0);
+    await expect(page.locator(".widget-drag-handle")).toHaveCount(0);
+
+    await page.getByTestId("form-alert").getByRole("button", { name: "Muat ulang" }).click();
+    await expect(page.getByTestId("widget")).toHaveCount(3);
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    await other.close();
   });
 
   test("AC 4: dashboard ke-11 untuk dataset yang sama ditolak (LIMIT_REACHED)", async ({

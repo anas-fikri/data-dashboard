@@ -53,6 +53,58 @@ export function resizeItem(layout: LayoutItem[], id: string, dw: number, dh: num
   return compact(layout.map((it) => (it.i === id ? { ...it, x, w, h } : { ...it })));
 }
 
+export type StepKey =
+  "left" | "right" | "up" | "down" | "narrower" | "wider" | "shorter" | "taller";
+export const STEP_KEYS: StepKey[] = [
+  "left",
+  "right",
+  "up",
+  "down",
+  "narrower",
+  "wider",
+  "shorter",
+  "taller",
+];
+
+/** Satu langkah tombol panel (geser satu sel / ubah ukuran satu satuan). */
+export function applyStep(layout: LayoutItem[], id: string, key: StepKey): LayoutItem[] {
+  switch (key) {
+    case "left":
+      return moveItem(layout, id, -1, 0);
+    case "right":
+      return moveItem(layout, id, 1, 0);
+    case "up":
+      return moveItem(layout, id, 0, -1);
+    case "down":
+      return moveItem(layout, id, 0, 1);
+    case "narrower":
+      return resizeItem(layout, id, -1, 0);
+    case "wider":
+      return resizeItem(layout, id, 1, 0);
+    case "shorter":
+      return resizeItem(layout, id, 0, -1);
+    case "taller":
+      return resizeItem(layout, id, 0, 1);
+  }
+}
+
+/** Langkah panel mana yang masih mengubah tata letak (tepi grid / pemadatan → tidak). */
+export function stepAvailability(layout: LayoutItem[], id: string): Record<StepKey, boolean> {
+  const out = {} as Record<StepKey, boolean>;
+  for (const k of STEP_KEYS) out[k] = !sameLayout(applyStep(layout, id, k), layout);
+  return out;
+}
+
+/** Posisi/ukuran semua widget sama (urutan item diabaikan). */
+export function sameLayout(a: LayoutItem[], b: LayoutItem[]): boolean {
+  if (a.length !== b.length) return false;
+  const byId = new Map(b.map((it) => [it.i, it]));
+  return a.every((it) => {
+    const o = byId.get(it.i);
+    return !!o && o.x === it.x && o.y === it.y && o.w === it.w && o.h === it.h;
+  });
+}
+
 /** Urutan baca (atas → bawah, kiri → kanan): satu kolom di layar sempit dan urutan fokus. */
 export function readingOrder(layout: LayoutItem[]): LayoutItem[] {
   return [...layout].sort((a, b) => a.y - b.y || a.x - b.x);

@@ -30,6 +30,12 @@ const BODY_MAX = 64 * 1024;
 
 const reply = <T>(r: DashboardResult<T>) => (r.ok ? json(r) : json(r, STATUS[r.code]));
 
+/** DELETE tanpa body: revisi yang dilihat klien dikirim lewat ?baseRevision=N. */
+function revisionParam(req: NextRequest): number | null {
+  const raw = req.nextUrl.searchParams.get("baseRevision");
+  return raw !== null && /^\d{1,9}$/.test(raw) ? Number(raw) : null;
+}
+
 function mutation(
   req: NextRequest,
   label: string,
@@ -67,7 +73,7 @@ export const deleteWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
   mutation(
     req,
     "hapus widget gagal",
-    async (userId) => reply(await deleteWidget(userId, dashboardId, widgetId)),
+    async (userId) => reply(await deleteWidget(userId, dashboardId, widgetId, revisionParam(req))),
     false,
   );
 

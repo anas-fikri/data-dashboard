@@ -103,6 +103,8 @@
   height: 1.5rem;
   background-image: none;
   color: var(--color-muted-foreground);
+  /* Pustaka menyembunyikannya sampai hover; tablet sentuh tidak pernah hover. */
+  opacity: 1;
 }
 .react-grid-layout .react-grid-item > .react-resizable-handle::after {
   right: 0.375rem;

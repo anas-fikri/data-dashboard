@@ -5,13 +5,15 @@ import {
   WIDGETS_PER_DASHBOARD,
   bottomOf,
   cleanName,
+  compactLayout,
   layoutBodySchema,
   reconcileLayout,
 } from "@/features/dashboards/validation";
 
 /*
  * T-010: validasi tata letak (murni) dan service dashboard dengan Prisma palsu: batas 10 dashboard per
- * dataset, nama unik, simpan otomatis dengan CAS revisi, tambah/hapus widget.
+ * dataset, nama unik, dan semua perubahan kanvas (simpan otomatis, tambah/hapus widget) di bawah lock
+ * per dashboard dengan revisi wajib — tab yang tertinggal mendapat STALE, layout selalu dipadatkan.
  */
 const tx = {
   $executeRaw: vi.fn(async () => 1),
@@ -50,6 +52,12 @@ describe("validasi tata letak", () => {
     expect(cleanName(" ", 80, "dashboard")).toMatchObject({ ok: false });
     expect(cleanName("abc‮def", 80, "dashboard")).toMatchObject({ ok: false });
     expect(cleanName("x".repeat(81), 80, "dashboard")).toMatchObject({ ok: false });
+    // NFC: "é" terurai dan tersusun menjadi nama yang sama (kunci unik tidak bisa diakali).
+    expect(cleanName("Cafe\u0301", 80, "dashboard")).toEqual({ ok: true, value: "Caf\u00e9" });
+    // ZWJ boleh (emoji keluarga), pengisi Hangul/zero-width saja = tidak terbaca → ditolak.
+    expect(cleanName("Tim 👨\u200D👩\u200D👧", 80, "dashboard")).toMatchObject({ ok: true });
+    expect(cleanName("\u3164\u3164", 80, "dashboard")).toMatchObject({ ok: false });
+    expect(cleanName("\u200B", 80, "dashboard")).toMatchObject({ ok: false });
   });
 
   it("grid 12 kolom: x + w ≤ 12, bilangan bulat, id unik, ≤ 50 widget", () => {
@@ -87,20 +95,37 @@ describe("validasi tata letak", () => {
       { i: WB, x: 0, y: 3, w: 4, h: 4 },
     ]);
     expect(reconcileLayout("rusak", [WA])).toEqual([{ i: WA, x: 0, y: 0, w: 4, h: 4 }]);
-    // Satu item rusak tidak menghapus posisi widget lain.
+    // Satu item rusak tidak menghapus posisi widget lain; kunci tambahan (versi mendatang) diabaikan.
     expect(
       reconcileLayout(
         [
-          { i: WA, x: 2, y: 1, w: 6, h: 3 },
+          { i: WA, x: 2, y: 0, w: 6, h: 3, static: true },
           { i: WB, x: 50, y: 0, w: 6, h: 3 },
         ],
         [WA, WB],
       ),
     ).toEqual([
-      { i: WA, x: 2, y: 1, w: 6, h: 3 },
-      { i: WB, x: 0, y: 4, w: 4, h: 4 },
+      { i: WA, x: 2, y: 0, w: 6, h: 3 },
+      { i: WB, x: 0, y: 3, w: 4, h: 4 },
     ]);
     expect(bottomOf([])).toBe(0);
+  });
+
+  it("pemadatan: lubang vertikal hilang, tumpang tindih diurai, urutan item tetap", () => {
+    expect(
+      compactLayout([
+        { i: WB, x: 0, y: 9, w: 6, h: 2 },
+        { i: WA, x: 0, y: 0, w: 12, h: 3 },
+      ]),
+    ).toEqual([
+      { i: WB, x: 0, y: 3, w: 6, h: 2 },
+      { i: WA, x: 0, y: 0, w: 12, h: 3 },
+    ]);
+    const overlapped = compactLayout([
+      { i: WA, x: 0, y: 0, w: 6, h: 4 },
+      { i: WB, x: 3, y: 1, w: 6, h: 4 },
+    ]);
+    expect(overlapped[1]).toMatchObject({ i: WB, y: 4 });
   });
 });
 
@@ -145,45 +170,50 @@ describe("AC 4: batas dashboard per dataset", () => {
   });
 });
 
-describe("AC 1: simpan otomatis tata letak (CAS revisi)", () => {
+const dash = (layout: unknown[], layoutRevision: number, ids: string[]) => ({
+  layout,
+  layoutRevision,
+  widgets: ids.map((id) => ({ id })),
+});
+
+describe("AC 1: simpan otomatis tata letak (lock + revisi)", () => {
   const items = [
     { i: WA, x: 0, y: 0, w: 6, h: 4 },
     { i: WB, x: 6, y: 0, w: 6, h: 5 },
   ];
   beforeEach(() => {
-    prisma.dashboard.findFirst.mockResolvedValue({
-      layoutRevision: 3,
-      widgets: [{ id: WA }, { id: WB }],
-    });
+    tx.dashboard.findFirst.mockResolvedValue(dash(items, 3, [WA, WB]));
   });
 
-  it("revisi cocok → disimpan dan revisi naik", async () => {
-    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
-    expect(await svc.saveLayout(OWNER, DB, { baseRevision: 3, items })).toEqual({
+  it("revisi cocok → disimpan (dipadatkan) di bawah lock dashboard dan revisi naik", async () => {
+    const gappy = [items[0], { ...items[1], y: 12 }];
+    expect(await svc.saveLayout(OWNER, DB, { baseRevision: 3, items: gappy })).toEqual({
       ok: true,
       data: { layoutRevision: 4 },
     });
-    expect(prisma.dashboard.updateMany).toHaveBeenCalledWith({
-      where: { id: DB, layoutRevision: 3 },
-      data: { layout: items, layoutRevision: { increment: 1 } },
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.dashboard.update).toHaveBeenCalledWith({
+      where: { id: DB },
+      data: { layout: items, layoutRevision: 4 },
     });
   });
 
-  it("tab lama (revisi beda), himpunan widget beda, atau kalah balapan → STALE tanpa menimpa", async () => {
+  it("tab lama (revisi beda) atau himpunan widget beda → STALE tanpa menimpa; lock habis → BUSY", async () => {
     expect(await svc.saveLayout(OWNER, DB, { baseRevision: 2, items })).toMatchObject({
       code: "STALE",
     });
     expect(await svc.saveLayout(OWNER, DB, { baseRevision: 3, items: [items[0]] })).toMatchObject({
       code: "STALE",
     });
-    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(tx.dashboard.update).not.toHaveBeenCalled();
+    prisma.$transaction.mockRejectedValueOnce(known("P2028"));
     expect(await svc.saveLayout(OWNER, DB, { baseRevision: 3, items })).toMatchObject({
-      code: "STALE",
+      code: "BUSY",
     });
   });
 
   it("bukan pemilik → NOT_FOUND; bentuk salah → INVALID", async () => {
-    prisma.dashboard.findFirst.mockResolvedValueOnce(null);
+    tx.dashboard.findFirst.mockResolvedValueOnce(null);
     expect(await svc.saveLayout(OWNER, DB, { baseRevision: 3, items })).toMatchObject({
       code: "NOT_FOUND",
     });
@@ -193,75 +223,106 @@ describe("AC 1: simpan otomatis tata letak (CAS revisi)", () => {
   });
 });
 
-describe("tambah dan hapus widget", () => {
-  it("widget baru ditaruh di baris kosong terbawah, revisi naik", async () => {
-    tx.dashboard.findFirst.mockResolvedValueOnce({
-      layout: [{ i: WA, x: 0, y: 0, w: 12, h: 5 }],
-      layoutRevision: 7,
-      widgets: [{ id: WA }],
-    });
+describe("tambah dan hapus widget (revisi wajib)", () => {
+  it("widget baru ditaruh di baris terbawah; hasil = layout padat lengkap + revisi baru", async () => {
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash([{ i: WA, x: 0, y: 0, w: 12, h: 5 }], 7, [WA]),
+    );
     tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "" });
-    const r = await svc.addWidget(OWNER, DB, {});
-    expect(r).toEqual({
+    const layout = [
+      { i: WA, x: 0, y: 0, w: 12, h: 5 },
+      { i: WB, x: 0, y: 5, w: 4, h: 4 },
+    ];
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 7 })).toEqual({
       ok: true,
-      data: {
-        widget: { id: WB, type: "empty", title: "" },
-        item: { i: WB, x: 0, y: 5, w: 4, h: 4 },
-        layoutRevision: 8,
-      },
+      data: { widget: { id: WB, type: "empty", title: "" }, layout, layoutRevision: 8 },
     });
     expect(tx.dashboard.update).toHaveBeenCalledWith({
       where: { id: DB },
-      data: {
-        layout: [
-          { i: WA, x: 0, y: 0, w: 12, h: 5 },
-          { i: WB, x: 0, y: 5, w: 4, h: 4 },
-        ],
-        layoutRevision: 8,
-      },
+      data: { layout, layoutRevision: 8 },
+    });
+  });
+
+  it("tanpa revisi → INVALID; revisi lama → STALE tanpa membuat; dashboard terhapus bersamaan → NOT_FOUND", async () => {
+    expect(await svc.addWidget(OWNER, DB, {})).toMatchObject({ code: "INVALID" });
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: -1 })).toMatchObject({
+      code: "INVALID",
+    });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 5, []));
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 4 })).toMatchObject({ code: "STALE" });
+    expect(tx.widget.create).not.toHaveBeenCalled();
+    prisma.$transaction.mockRejectedValueOnce(known("P2003"));
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 5 })).toMatchObject({
+      code: "NOT_FOUND",
     });
   });
 
   it("pulihkan di posisi semula (urungkan hapus); posisi rusak → INVALID; 50 widget → LIMIT_REACHED", async () => {
-    tx.dashboard.findFirst.mockResolvedValueOnce({ layout: [], layoutRevision: 1, widgets: [] });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 1, []));
     tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "Omzet" });
-    const r = await svc.addWidget(OWNER, DB, { title: "Omzet", at: { x: 6, y: 2, w: 6, h: 3 } });
-    expect(r).toMatchObject({ ok: true, data: { item: { i: WA, x: 6, y: 2, w: 6, h: 3 } } });
-    expect(await svc.addWidget(OWNER, DB, { at: { x: 10, y: 0, w: 6, h: 3 } })).toMatchObject({
-      code: "INVALID",
+    const r = await svc.addWidget(OWNER, DB, {
+      baseRevision: 1,
+      title: "Omzet",
+      at: { x: 6, y: 2, w: 6, h: 3 },
     });
-    tx.dashboard.findFirst.mockResolvedValueOnce({
-      layout: [],
-      layoutRevision: 1,
-      widgets: Array.from({ length: WIDGETS_PER_DASHBOARD }, (_, n) => ({ id: `w${n}` })),
+    // Posisi kolom dipertahankan; baris dipadatkan ke atas (tidak ada widget lain).
+    expect(r).toMatchObject({ ok: true, data: { layout: [{ i: WA, x: 6, y: 0, w: 6, h: 3 }] } });
+    expect(
+      await svc.addWidget(OWNER, DB, { baseRevision: 1, at: { x: 10, y: 0, w: 6, h: 3 } }),
+    ).toMatchObject({ code: "INVALID" });
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash(
+        [],
+        1,
+        Array.from({ length: WIDGETS_PER_DASHBOARD }, (_, n) => `w${n}`),
+      ),
+    );
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 1 })).toMatchObject({
+      code: "LIMIT_REACHED",
     });
-    expect(await svc.addWidget(OWNER, DB, {})).toMatchObject({ code: "LIMIT_REACHED" });
   });
 
-  it("hapus widget membuang itemnya dari layout; widget dashboard lain → NOT_FOUND", async () => {
-    tx.dashboard.findFirst.mockResolvedValueOnce({
-      layout: [
-        { i: WA, x: 0, y: 0, w: 6, h: 4 },
-        { i: WB, x: 6, y: 0, w: 6, h: 4 },
-      ],
-      layoutRevision: 4,
-      widgets: [{ id: WA }, { id: WB }],
-    });
-    expect(await svc.deleteWidget(OWNER, DB, WA)).toEqual({
+  it("hapus widget: item dibuang dan sisanya dipadatkan; revisi lama → STALE; widget lain → NOT_FOUND", async () => {
+    const two = [
+      { i: WA, x: 0, y: 0, w: 12, h: 4 },
+      { i: WB, x: 0, y: 4, w: 6, h: 4 },
+    ];
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash(two, 4, [WA, WB]));
+    expect(await svc.deleteWidget(OWNER, DB, WA, 4)).toEqual({
       ok: true,
-      data: { layoutRevision: 5 },
+      data: { layout: [{ i: WB, x: 0, y: 0, w: 6, h: 4 }], layoutRevision: 5 },
     });
-    expect(tx.dashboard.update).toHaveBeenCalledWith({
-      where: { id: DB },
-      data: { layout: [{ i: WB, x: 6, y: 0, w: 6, h: 4 }], layoutRevision: 5 },
+    expect(tx.widget.delete).toHaveBeenCalledWith({ where: { id: WA } });
+
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash(two, 6, [WA, WB]));
+    expect(await svc.deleteWidget(OWNER, DB, WA, 4)).toMatchObject({ code: "STALE" });
+    expect(tx.widget.delete).toHaveBeenCalledTimes(1);
+
+    expect(await svc.deleteWidget(OWNER, DB, WA, null)).toMatchObject({ code: "INVALID" });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 1, [WB]));
+    expect(await svc.deleteWidget(OWNER, DB, WA, 1)).toMatchObject({
+      code: "NOT_FOUND",
+      message: "Widget tidak ditemukan.",
     });
-    tx.dashboard.findFirst.mockResolvedValueOnce({
-      layout: [],
-      layoutRevision: 1,
-      widgets: [{ id: WB }],
-    });
-    expect(await svc.deleteWidget(OWNER, DB, WA)).toMatchObject({ code: "NOT_FOUND" });
     prisma.$transaction.mockRejectedValueOnce(known("P2028"));
-    expect(await svc.deleteWidget(OWNER, DB, WA)).toMatchObject({ code: "BUSY" });
+    expect(await svc.deleteWidget(OWNER, DB, WA, 1)).toMatchObject({ code: "BUSY" });
+  });
+
+  it("ganti judul: milik user saja, ikut menyegarkan waktu 'diperbarui' dashboard", async () => {
+    prisma.widget.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.renameWidget(OWNER, DB, WA, "  Omzet   cabang ")).toEqual({
+      ok: true,
+      data: { title: "Omzet cabang" },
+    });
+    expect(prisma.widget.updateMany).toHaveBeenCalledWith({
+      where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
+      data: { title: "Omzet cabang" },
+    });
+    expect(prisma.dashboard.updateMany).toHaveBeenCalledTimes(1);
+    prisma.widget.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await svc.renameWidget(OWNER, DB, WA, "X")).toMatchObject({
+      code: "NOT_FOUND",
+      message: "Widget tidak ditemukan.",
+    });
   });
 });

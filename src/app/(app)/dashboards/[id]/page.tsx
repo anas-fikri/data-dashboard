@@ -46,9 +46,9 @@ export default async function DashboardPage({
             <span aria-hidden>/</span>
             <Link
               href={`/datasets/${d.dataset.id}`}
-              className="inline-flex min-h-6 min-w-0 items-center truncate underline-offset-4 hover:underline"
+              className="inline-flex min-h-6 min-w-0 items-center underline-offset-4 hover:underline"
             >
-              {d.dataset.name}
+              <span className="truncate">{d.dataset.name}</span>
             </Link>
           </span>
         }
@@ -65,8 +65,10 @@ export default async function DashboardPage({
           )
         }
       />
+      {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
+          membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. */}
       <DashboardCanvas
-        key={`${d.id}:${d.layoutRevision}:${editing ? "edit" : "view"}`}
+        key={`${d.id}:${editing ? "edit" : "view"}`}
         dashboardId={d.id}
         widgets={d.widgets}
         layout={d.layout}

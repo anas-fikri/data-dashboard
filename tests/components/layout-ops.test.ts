@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { moveItem, readingOrder, resizeItem } from "@/components/dashboards/layout-ops";
+import {
+  moveItem,
+  readingOrder,
+  resizeItem,
+  sameLayout,
+  stepAvailability,
+} from "@/components/dashboards/layout-ops";
 import type { LayoutItem } from "@/features/dashboards/validation";
 
 /* T-010: geser/ubah ukuran lewat tombol (alternatif menyeret, WCAG 2.5.7) — tanpa tumpang tindih. */
@@ -52,4 +58,37 @@ describe("ubah ukuran lewat tombol", () => {
 
 it("urutan baca: atas ke bawah lalu kiri ke kanan (satu kolom di layar sempit)", () => {
   expect(readingOrder([C, B, A]).map((it) => it.i)).toEqual(["a", "b", "c"]);
+});
+
+describe("tepi grid di panel (aria-disabled + pengumuman)", () => {
+  it("langkah yang tidak mengubah apa pun ditandai tidak tersedia", () => {
+    // A di pojok kiri atas, B di kanan atas, C selebar grid di bawah.
+    expect(stepAvailability([A, B, C], "a")).toEqual({
+      left: false,
+      right: true,
+      up: false,
+      down: true,
+      narrower: true,
+      wider: true,
+      shorter: true,
+      taller: true,
+    });
+    // C paling bawah dan selebar grid: tidak bisa turun (pemadatan mengembalikannya) atau melebar.
+    expect(stepAvailability([A, B, C], "c")).toMatchObject({
+      left: false,
+      right: false,
+      down: false,
+      wider: false,
+    });
+    expect(stepAvailability([{ ...A, w: 2, h: 2 }], "a")).toMatchObject({
+      narrower: false,
+      shorter: false,
+    });
+  });
+
+  it("sameLayout membandingkan posisi per id, bukan urutan atau referensi", () => {
+    expect(sameLayout([A, B], [{ ...B }, { ...A }])).toBe(true);
+    expect(sameLayout([A, B], [A, { ...B, y: 1 }])).toBe(false);
+    expect(sameLayout([A], [A, B])).toBe(false);
+  });
 });
