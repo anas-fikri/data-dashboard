@@ -1,7 +1,7 @@
 ---
 id: T-009
 title: API query deklaratif via DuckDB dengan cache per revisi
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -10,8 +10,12 @@ tags:
 depends_on:
   - T-007
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T01:31:31Z"
+updated: "2026-10-12T10:16:07Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: f8b76608638dda7fb3bbc8173d76a466874a2bac
 ---
 
 ## Objective
@@ -28,7 +32,51 @@ Alur B4. Route Handler POST /api/query menerima {datasetId, spec} (mode bebas: h
 - [ ] Given agg/timeGrain/arah sort di luar enum tertutup, atau dimensi > 3, ukuran > 10, filter > 20, atau JSON spec > 64 KB, then HTTP 400
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: HIGH. Endpoint pertama yang menjalankan SQL atas data user di proses aplikasi. Kebocoran lintas dataset, injeksi, atau query liar yang menghabiskan CPU/memori/disk aplikasi berdampak ke semua user.
+
+Impact surface:
+- **API:** POST /api/query (src/app/api/query, src/features/query: spec, sql, cache, service, http, runtime).
+- **Mesin:** src/lib/duckdb/engine.ts (DuckDB aplikasi) dan parquet-cache.ts (cache lokal typed.parquet).
+- **Konfigurasi:** env QUERY_CACHE_DIR, MAX_LOCAL_PARQUET_BYTES, MAX_QUERY_CONCURRENCY, QUERY_MEMORY_LIMIT, QUERY_TIMEOUT_MS; next.config serverExternalPackages (binding native DuckDB).
+
+Security (STRIDE):
+- **Spoofing:** sesi sisi Node (requireUser, sessionVersion dicek).
+- **Tampering/injeksi:**
+  - Body ≤ 64 KB; spec zod .strict() dengan enum tertutup (agg, timeGrain, op, arah sort) dan batas (≤ 3 dimensi, ≤ 10 ukuran, ≤ 20 filter, ≤ 500 nilai IN, limit ≤ 10k).
+  - Kolom dirujuk lewat nama tampil, dipetakan ke c<pos> dari skema (identifier buatan program, dikutip). Nilai filter dan path parquet lewat parameter binding. Nama dari user tidak pernah masuk teks SQL (diuji dengan kolom 'Total; "Omzet"' dan nilai "x' OR 1=1 --").
+- **Information disclosure / IDOR:**
+  - Dataset hanya milik user (lainnya 404, tanpa membedakan "ada tapi bukan milikmu").
+  - Sheet di-resolve where {id, versionId aktif} sehingga sheet dataset lain → 404.
+  - Kunci cache hasil memuat datasetId + versionId + schemaRevision. Pemilik sudah dicek sebelum cache dibaca.
+- **Elevation (escape dari DuckDB):** instance aplikasi enable_external_access=false + allowed_directories (hanya cache parquet dan temp) + lock_configuration. read_csv('/etc/passwd'), INSTALL, ATTACH, dan SET setelah dikunci ditolak (diuji).
+- **DoS:**
+  - Timeout 30 s → interrupt.
+  - Slot global MAX_QUERY_CONCURRENCY (antre ≤ 10 s, lalu QUERY_BUSY) dan ≤ 4 per user.
+  - memory_limit dan max_temp_directory_size DuckDB.
+  - Cache parquet lokal LRU ≤ MAX_LOCAL_PARQUET_BYTES (file yang sedang dipakai tidak dibuang).
+  - Cache hasil ≤ 2 MB per entri, TTL 24 jam (ADR-0004 noeviction; gagal SET = miss).
+  - Tanpa rate limit per menit: batas 4 query bersamaan per user + cache hasil sudah membatasi beban; ditinjau ulang di T-024.
+- **CSRF:** Origin wajib = APP_URL (403).
+- **Repudiation:** log error query dengan userId tanpa isi data.
+
+Compatibility: endpoint baru. Mode editor via dashboard ({dashboardId, spec}) ditambahkan T-011/T-016.
+
+Failure modes:
+- **Redis mati/penuh:** query tetap jalan tanpa cache.
+- **S3 gagal saat mengisi cache lokal:** QUERY_FAILED 500 (file tmp dibuang); permintaan berikutnya mencoba lagi.
+- **Disk cache penuh oleh file yang sedang dipakai:** total boleh melewati batas sementara, lalu dibuang saat release. File tunggal > batas dipakai lalu dihapus.
+- **Proses aplikasi mati:** file cache tetap valid (nama = hash kunci, file typed tidak berubah) dan sisa unduhan tmp-* dibuang saat start.
+
+Rollback: revert commit T-009 (endpoint baru, tanpa migrasi); hapus QUERY_CACHE_DIR.
+
+Validation:
+- **Unit** (tests/features/query/query.test.ts, mesin + cache parquet sungguhan): AC 1, 2, 3, 4, 5, 7, 8, filter bertipe, grain bulan, injeksi nilai filter, sandbox.
+- **e2e** (ingest.spec, worker sungguhan): pemilik dapat hasil + cache, 400, 403 Origin asing, 404 bukan pemilik.
+- **Perf:** docs/ai/perf/T-009.md (CSV 10 juta baris).
+
+Open risks/assumptions:
+- Skema dibaca dari DB tiap permintaan, bukan cache skema in-memory; query berindeks dan selalu sesuai revisi, tanpa invalidasi antarproses.
+- Fallback S3 langsung (httpfs) belum ada karena ekstensi tidak dibundel. File typed selalu disalin ke disk lokal; T-023 menentukan volume cache per replika.
 
 ## Notes
 - 2026-10-11T14:56:59Z DuckDB app: SET autoinstall_known_extensions=false, autoload_known_extensions=false, allowed_directories=[dir cache lokal], temp_directory + max_temp_directory_size, lock_configuration=true setelah setup; ekstensi httpfs/excel dibundel di image (on-prem tanpa internet). Key cache SHA-256. Slot konkurensi per user (4) selain global. Mode bebas: pemilik via {datasetId, spec}; editor via {dashboardId, spec} (authz share EDITOR, dataset diturunkan server) — lihat T-016.

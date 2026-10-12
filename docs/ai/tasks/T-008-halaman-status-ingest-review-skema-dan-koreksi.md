@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-007
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T14:49:25Z"
+updated: "2026-10-12T10:16:06Z"
 created_by: claude-code
 ---
 
@@ -26,5 +26,5 @@ Halaman profil dataset: progres per sheet (polling ≤ 5 s) dan pesan gagal. Tab
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
+- 2026-10-12T10:16:06Z Dikerjakan setelah T-009: sampel 50 baris dan pratinjau skema memakai cache lokal typed.parquet + DuckDB aplikasi (src/lib/query) yang dibangun T-009. Recast dipicu lewat enqueueRecast(sheetId, {baseRevision, headerRow?, columns?}) dari src/lib/queue/versions.ts; outcome busy/stale/invalid/failed ditampilkan ke user.
