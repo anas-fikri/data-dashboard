@@ -160,7 +160,7 @@ describe("parser SAX: kasus tepi OOXML", () => {
     const { out, summary } = await rows(p);
     expect((out[0]!.vals[0] as string).length).toBe(32_767);
     expect((out[0]!.vals[1] as string).length).toBe(32_767);
-    expect(summary).toEqual({ truncatedCells: 2 });
+    expect(summary).toEqual({ truncatedCells: 2, truncatedBySheet: [2] });
   });
 });
 
@@ -182,7 +182,7 @@ describe("parser SAX: batas panjang teks", () => {
     expect(b).toBe(a);
     expect(c).toBe("z".repeat(32_766)); // high surrogate yang tersisa dibuang
     expect(d).toBe("x".repeat(32_760) + "ABC");
-    expect(summary).toEqual({ truncatedCells: 3 });
+    expect(summary).toEqual({ truncatedCells: 3, truncatedBySheet: [3] });
   });
 
   it("satu node teks raksasa ditolak tanpa ditampung utuh (melawan file buatan)", async () => {

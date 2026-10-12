@@ -29,6 +29,27 @@ export const COMMITTED: { out: string; args: string[]; purpose: string }[] = [
       "2 sheet; judul + baris kosong di atas header (baris 4); header duplikat + kosong; tanggal campuran; angka teks ID",
   },
   {
+    out: "tests/fixtures/tiga-sheet.xlsx",
+    args: [
+      "--kind",
+      "xlsx",
+      "--sheets",
+      "3",
+      "--rows",
+      "300",
+      "--cols",
+      "12",
+      "--header-row",
+      "4",
+      "--dup-headers",
+      "--mixed-dates",
+      "--seed",
+      "7",
+    ],
+    purpose:
+      "3 sheet; header di baris 4 (judul + baris kosong di atasnya); header duplikat + kosong — AC T-006",
+  },
+  {
     out: "tests/fixtures/sedang.xlsx",
     args: [
       "--kind",

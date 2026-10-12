@@ -122,10 +122,43 @@ model DatasetVersion {
   /// Klaim complete (cegah dua complete bersamaan); kedaluwarsa setelah 5 menit.
   completingAt DateTime?
 
+  // Ingest (T-006, flow-kerja B3)
+  ingestStartedAt DateTime?
+  /// Tahap ingest terakhir yang selesai: "raw" (raw.parquet semua sheet tertulis). T-007 menambah "typed".
+  ingestStage     String?
+  /// Progres untuk UI: { sheet, sheetCount, sheetName, rows, fraction, at } (ditulis tiap ≤ 5 detik).
+  progress        Json?
+  sheets          Sheet[]
+
   @@index([datasetId, createdAt])
   @@index([status])
   @@index([datasetId, status])
   @@index([uploadedById, status])
+}
+
+/// Satu sheet hasil ingest (B3). raw.parquet posisional: c1..cN VARCHAR + _row (nomor baris fisik).
+/// Header adalah metadata (headerRow + peta nama), bukan bagian data: memilih ulang header tidak
+/// mem-parse ulang file asli (T-008).
+model Sheet {
+  id             String         @id @default(cuid())
+  versionId      String
+  version        DatasetVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  /// Urutan sheet di workbook (0-based); CSV selalu 0.
+  index          Int
+  name           String
+  rawKey         String
+  /// Jumlah baris yang tersimpan di raw.parquet (baris kosong tidak disimpan).
+  rawRows        Int
+  colCount       Int
+  /// Nomor baris fisik header (1-based) hasil tebakan; bisa dikoreksi user (T-008).
+  headerRow      Int
+  /// [{ pos, name, original }] — nama unik deterministik + nama asli apa adanya.
+  columns        Json
+  /// Sel yang dipotong karena > 32.767 karakter.
+  truncatedCells Int            @default(0)
+  createdAt      DateTime       @default(now())
+
+  @@unique([versionId, index])
 }
 
 /// Prefix storage yang gagal dihapus; diproses ulang oleh job pembersihan (T-013/T-023) agar

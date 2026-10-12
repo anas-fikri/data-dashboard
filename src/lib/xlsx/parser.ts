@@ -180,7 +180,13 @@ async function sax(
     close?: (local: string) => void;
     text?: (t: string) => void;
   },
-  guard: { maxBuffer: number; deadline?: number; onChunk?: (chars: number) => void },
+  guard: {
+    maxBuffer: number;
+    deadline?: number;
+    onChunk?: (chars: number) => void;
+    /** Ditunggu setelah setiap potongan: konsumen async memproses baris potongan itu (backpressure). */
+    afterChunk?: () => Promise<void>;
+  },
 ): Promise<void> {
   const p = new SaxesParser({ xmlns: false });
   // saxes menampung satu node teks/nilai atribut (`text`) atau nama tag (`name`) utuh sebelum
@@ -253,6 +259,7 @@ async function sax(
       if (guard.deadline && Date.now() > guard.deadline) {
         throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
       }
+      if (guard.afterChunk) await guard.afterChunk();
     }
     p.close();
   } finally {
@@ -427,7 +434,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
         limits.maxSharedStrings,
         limits.maxSpillBytes,
       );
-      const summary: ParseSummary = { truncatedCells: 0 };
+      const summary: ParseSummary = { truncatedCells: 0, truncatedBySheet: [] };
       const truncatedSst = new Set<number>();
       // Teks mentah ditampung sampai 7× batas (escape _xHHHH_ = 7 karakter → 1), lalu didekode dan
       // dipotong aman (tidak membelah pasangan surrogate). Node > maxBuffer ditolak di sax().
@@ -609,103 +616,138 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           let rowsSeen = 0;
           const where = () => `sheet "${sheetLabel}" baris ${rowNum}`;
           const sheetEntry = need(target, `sheet ${sheetLabel}`);
-          await sax(
-            zip,
-            sheetEntry,
-            {
-              open: (n, a) => {
-                if (n === "row") {
-                  rowNum = a.r ? Number(a.r) : prevRow + 1;
-                  if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
-                    throw new XlsxLimitError(
-                      `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
-                    );
-                  }
-                  if (rowNum > limits.maxRows) {
-                    throw new XlsxLimitError(
-                      `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
-                    );
-                  }
-                  vals = [];
-                  rowChars = 0;
-                  any = false;
-                  col = -1;
-                } else if (n === "c") {
-                  col = a.r ? colIndex(a.r) : col + 1;
-                  if (col < 0 || col >= limits.maxCols) {
-                    throw new XlsxLimitError(
-                      `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
-                    );
-                  }
-                  type = a.t ?? "n";
-                  style = Number(a.s ?? 0);
-                  text = "";
-                } else if (n === "v") inV = true;
-                else if (n === "t" && type === "inlineStr") inIsT = true;
-              },
-              text: (t) => {
-                if (inV || inIsT) text = cap(text, t);
-              },
-              close: (n) => {
-                if (n === "v") inV = false;
-                else if (n === "t") inIsT = false;
-                else if (n === "c") {
-                  let v: RawValue = null;
-                  if (type === "s") {
-                    if (text !== "") {
-                      const idx = Number(text);
-                      if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
-                        throw new XlsxLimitError(
-                          `${where()}: referensi teks tidak valid (file rusak)`,
-                        );
-                      }
-                      v = sst.get(idx);
-                      if (truncatedSst.size && truncatedSst.has(idx)) summary.truncatedCells++;
-                    }
-                  } else if (type === "inlineStr" || type === "str" || type === "e") {
-                    if (text !== "") {
-                      const f = finish(text);
-                      v = own(f.v);
-                      if (f.cut) summary.truncatedCells++;
-                    }
-                  } else if (type === "b") v = text === "" ? null : text === "1";
-                  else if (type === "d") {
-                    const d = text === "" ? null : parseIsoNaive(text);
-                    v = typeof d === "string" ? own(d) : d;
-                  } else if (text !== "") {
-                    const num = Number(text);
-                    if (Number.isNaN(num)) v = own(text);
-                    else
-                      v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
-                  }
-                  if (v !== null) {
-                    if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {
+          opts.onSheetStart?.(si, sheetLabel);
+          let consumerErr: unknown = null;
+          try {
+            await sax(
+              zip,
+              sheetEntry,
+              {
+                open: (n, a) => {
+                  if (n === "row") {
+                    rowNum = a.r ? Number(a.r) : prevRow + 1;
+                    if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
                       throw new XlsxLimitError(
-                        `${where()}: isi satu baris melebihi ${MAX_ROW_CHARS.toLocaleString("id-ID")} karakter`,
+                        `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
                       );
                     }
-                    vals[col] = v;
-                    any = true;
+                    if (rowNum > limits.maxRows) {
+                      throw new XlsxLimitError(
+                        `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
+                      );
+                    }
+                    vals = [];
+                    rowChars = 0;
+                    any = false;
+                    col = -1;
+                  } else if (n === "c") {
+                    col = a.r ? colIndex(a.r) : col + 1;
+                    if (col < 0 || col >= limits.maxCols) {
+                      throw new XlsxLimitError(
+                        `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
+                      );
+                    }
+                    type = a.t ?? "n";
+                    style = Number(a.s ?? 0);
+                    text = "";
+                  } else if (n === "v") inV = true;
+                  else if (n === "t" && type === "inlineStr") inIsT = true;
+                },
+                text: (t) => {
+                  if (inV || inIsT) text = cap(text, t);
+                },
+                close: (n) => {
+                  if (n === "v") inV = false;
+                  else if (n === "t") inIsT = false;
+                  else if (n === "c") {
+                    let v: RawValue = null;
+                    if (type === "s") {
+                      if (text !== "") {
+                        const idx = Number(text);
+                        if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
+                          throw new XlsxLimitError(
+                            `${where()}: referensi teks tidak valid (file rusak)`,
+                          );
+                        }
+                        v = sst.get(idx);
+                        if (truncatedSst.size && truncatedSst.has(idx)) {
+                          summary.truncatedCells++;
+                          summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
+                        }
+                      }
+                    } else if (type === "inlineStr" || type === "str" || type === "e") {
+                      if (text !== "") {
+                        const f = finish(text);
+                        v = own(f.v);
+                        if (f.cut) {
+                          summary.truncatedCells++;
+                          summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
+                        }
+                      }
+                    } else if (type === "b") v = text === "" ? null : text === "1";
+                    else if (type === "d") {
+                      const d = text === "" ? null : parseIsoNaive(text);
+                      v = typeof d === "string" ? own(d) : d;
+                    } else if (text !== "") {
+                      const num = Number(text);
+                      if (Number.isNaN(num)) v = own(text);
+                      else
+                        v = dateXf.has(style)
+                          ? new Date(epoch + Math.round(num * 86_400_000))
+                          : num;
+                    }
+                    if (v !== null) {
+                      if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {
+                        throw new XlsxLimitError(
+                          `${where()}: isi satu baris melebihi ${MAX_ROW_CHARS.toLocaleString("id-ID")} karakter`,
+                        );
+                      }
+                      vals[col] = v;
+                      any = true;
+                    }
+                  } else if (n === "row") {
+                    prevRow = rowNum;
+                    if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
+                    if (
+                      limits.deadline &&
+                      ++rowsSeen % 1000 === 0 &&
+                      Date.now() > limits.deadline
+                    ) {
+                      throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
+                    }
                   }
-                } else if (n === "row") {
-                  prevRow = rowNum;
-                  if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
-                  if (limits.deadline && ++rowsSeen % 1000 === 0 && Date.now() > limits.deadline) {
-                    throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
-                  }
-                }
+                },
               },
-            },
-            {
-              ...guard,
-              onChunk: (chars) =>
-                opts.onProgress?.({
-                  sheet: si,
-                  sheetName: sheetLabel,
-                  fraction: Math.min(1, chars / Math.max(1, sheetEntry.uncompressedSize)),
-                }),
-            },
-          );
+              {
+                ...guard,
+                onChunk: (chars) =>
+                  opts.onProgress?.({
+                    sheet: si,
+                    sheetName: sheetLabel,
+                    fraction: Math.min(1, chars / Math.max(1, sheetEntry.uncompressedSize)),
+                  }),
+                afterChunk: opts.drain
+                  ? async () => {
+                      try {
+                        await opts.drain!();
+                      } catch (e) {
+                        consumerErr = e; // error konsumen (DB/storage/dataset dihapus) diteruskan apa adanya
+                        throw e;
+                      }
+                    }
+                  : undefined,
+              },
+            );
+          } catch (err) {
+            if (err instanceof XlsxLimitError || err === consumerErr) throw err;
+            // XML/zip rusak di tengah sheet → pesan dengan posisi (sheet/baris) untuk user.
+            const msg = err instanceof Error ? err.message : String(err);
+            throw new XlsxLimitError(
+              `${where()}: file rusak, tidak bisa dibaca lebih lanjut (${msg.slice(0, 120)})`,
+            );
+          }
+          opts.onSheetEnd?.(si);
+          await opts.drain?.();
         }
         return summary;
       } finally {

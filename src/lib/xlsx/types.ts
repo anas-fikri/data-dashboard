@@ -19,11 +19,21 @@ export interface ParseOptions {
   ranges?: string[];
   /** Progres per sheet: fraksi XML worksheet yang sudah dibaca (dipanggil per potongan stream). */
   onProgress?: (p: { sheet: number; sheetName: string; fraction: number }) => void;
+  /** Batas sheet (sinkron, dipanggil berurutan sebelum/ sesudah baris sheet itu). */
+  onSheetStart?: (sheet: number, name: string) => void;
+  onSheetEnd?: (sheet: number) => void;
+  /**
+   * Ditunggu parser setelah setiap potongan stream dan setelah setiap sheet: konsumen async
+   * (mis. penulis Parquet) memproses baris yang terkumpul. Antrean ≤ satu potongan (± 16 KB XML).
+   */
+  drain?: () => Promise<void>;
 }
 
 export interface ParseSummary {
   /** Sel yang dipotong karena melebihi batas panjang (Excel: 32.767 karakter). */
   truncatedCells: number;
+  /** Sel terpotong per indeks sheet. */
+  truncatedBySheet: number[];
 }
 
 export interface Parser {

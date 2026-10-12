@@ -1,0 +1,56 @@
+{
+  "file": "tiga-sheet.xlsx",
+  "bytes": 96989,
+  "params": {
+    "kind": "xlsx",
+    "seed": 7,
+    "sheets": 3,
+    "rows": 300,
+    "cols": 12,
+    "textRatio": 0.5,
+    "uniqueRatio": 0.5,
+    "headerRow": 4,
+    "dupHeaders": true,
+    "mixedDates": true,
+    "numberLocale": "id",
+    "encoding": "utf8",
+    "delimiter": ",",
+    "zipLevel": 6,
+    "sstFirst": false
+  },
+  "sheets": [
+    {
+      "name": "Pengiriman 1",
+      "headerRow": 4,
+      "lastRow": 304,
+      "nonEmptyRows": 303,
+      "cols": 12,
+      "textCells": 2778,
+      "textChecksum": 2838905723,
+      "numberCells": 592,
+      "dateCells": 180
+    },
+    {
+      "name": "Pengiriman 2",
+      "headerRow": 4,
+      "lastRow": 304,
+      "nonEmptyRows": 303,
+      "cols": 12,
+      "textCells": 2785,
+      "textChecksum": 3551630604,
+      "numberCells": 591,
+      "dateCells": 177
+    },
+    {
+      "name": "Pengiriman 3",
+      "headerRow": 4,
+      "lastRow": 304,
+      "nonEmptyRows": 303,
+      "cols": 12,
+      "textCells": 2771,
+      "textChecksum": 3579910112,
+      "numberCells": 589,
+      "dateCells": 184
+    }
+  ]
+}
