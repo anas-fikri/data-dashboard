@@ -84,8 +84,11 @@ export async function watched<T>(
   everyMs = 5_000,
 ): Promise<T> {
   let watchErr: unknown = null;
+  // watch() yang masih berjalan saat fn selesai tidak boleh menginterupsi pernyataan berikutnya.
+  let done = false;
   const timer = setInterval(() => {
     watch().catch((e: unknown) => {
+      if (done) return;
       watchErr ??= e;
       duck.interrupt();
     });
@@ -97,6 +100,7 @@ export async function watched<T>(
   } catch (e) {
     throw watchErr ?? e;
   } finally {
+    done = true;
     clearInterval(timer);
   }
 }
