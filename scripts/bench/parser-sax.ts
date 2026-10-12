@@ -141,8 +141,12 @@ async function sax(
     close?: (local: string) => void;
     text?: (t: string) => void;
   },
+  guard: { maxBuffer: number; deadline?: number },
 ): Promise<void> {
   const p = new SaxesParser({ xmlns: false });
+  // saxes menampung satu node teks/nilai atribut (`text`) atau nama tag (`name`) utuh sebelum
+  // memanggil handler; dibatasi per potongan stream agar satu node raksasa tidak menghabiskan memori.
+  const internal = p as unknown as { text: string; name: string };
   let failure: Error | null = null;
   p.on("doctype", () => {
     throw new XlsxLimitError("file xlsx berisi DOCTYPE (ditolak)");
@@ -163,6 +167,14 @@ async function sax(
     for await (const chunk of s) {
       p.write(chunk as string);
       if (failure) throw failure;
+      if (internal.text.length > guard.maxBuffer || internal.name.length > guard.maxBuffer) {
+        throw new XlsxLimitError(
+          `isi teks di ${e.fileName} melebihi batas panjang (file bukan buatan Excel)`,
+        );
+      }
+      if (guard.deadline && Date.now() > guard.deadline) {
+        throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
+      }
     }
     p.close();
   } finally {
@@ -303,10 +315,23 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
       const zip = await openZip(path);
       const sst = new SstStore(opts.tmpDir, limits.spillBytes);
       const summary: ParseSummary = { truncatedCells: 0 };
+      const truncatedSst = new Set<number>();
+      // Teks mentah ditampung sampai 7× batas (escape _xHHHH_ = 7 karakter → 1), lalu didekode dan
+      // dipotong aman (tidak membelah pasangan surrogate). Node > maxBuffer ditolak di sax().
+      const rawMax = limits.maxCellChars * 7;
+      const guard = { maxBuffer: rawMax + 65_536, deadline: limits.deadline };
       const cap = (cur: string, add: string): string => {
-        if (cur.length >= limits.maxCellChars) return cur;
+        if (cur.length >= rawMax) return cur;
         const next = cur + add;
-        return next.length > limits.maxCellChars ? next.slice(0, limits.maxCellChars) : next;
+        return next.length > rawMax ? next.slice(0, rawMax) : next;
+      };
+      const finish = (raw: string): { v: string; cut: boolean } => {
+        const d = decodeOoxml(raw);
+        if (d.length <= limits.maxCellChars && raw.length < rawMax) return { v: d, cut: false };
+        let v = d.slice(0, limits.maxCellChars);
+        const last = v.charCodeAt(v.length - 1);
+        if (last >= 0xd800 && last <= 0xdbff) v = v.slice(0, -1);
+        return { v, cut: true };
       };
       try {
         const entries = await listEntries(zip, limits, statSync(path).size);
@@ -322,13 +347,18 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           const out: { id: string; type: string; target: string }[] = [];
           const e = entries.get(relPath);
           if (!e) return out;
-          await sax(zip, e, {
-            open: (n, a) => {
-              if (n === "Relationship" && a.Id && a.Target) {
-                out.push({ id: a.Id, type: a.Type ?? "", target: resolvePart(dir, a.Target) });
-              }
+          await sax(
+            zip,
+            e,
+            {
+              open: (n, a) => {
+                if (n === "Relationship" && a.Id && a.Target) {
+                  out.push({ id: a.Id, type: a.Type ?? "", target: resolvePart(dir, a.Target) });
+                }
+              },
             },
-          });
+            guard,
+          );
           return out;
         };
 
@@ -339,12 +369,17 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           "xl/workbook.xml";
         const sheets: { name: string; rid: string }[] = [];
         let date1904 = false;
-        await sax(zip, need(wbPath, "workbook"), {
-          open: (n, a) => {
-            if (n === "sheet") sheets.push({ name: a.name ?? "", rid: relId(a) });
-            else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
+        await sax(
+          zip,
+          need(wbPath, "workbook"),
+          {
+            open: (n, a) => {
+              if (n === "sheet") sheets.push({ name: a.name ?? "", rid: relId(a) });
+              else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
+            },
           },
-        });
+          guard,
+        );
         if (sheets.length > limits.maxSheets) {
           throw new XlsxLimitError(
             `file berisi ${sheets.length} sheet; maksimal ${limits.maxSheets}`,
@@ -362,21 +397,26 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           const customDate = new Set<number>();
           let inXfs = false;
           let xf = 0;
-          await sax(zip, styles, {
-            open: (n, a) => {
-              if (n === "numFmt" && isDateFormat(a.formatCode ?? ""))
-                customDate.add(Number(a.numFmtId));
-              else if (n === "cellXfs") inXfs = true;
-              else if (n === "xf" && inXfs) {
-                const id = Number(a.numFmtId ?? 0);
-                if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
-                xf++;
-              }
+          await sax(
+            zip,
+            styles,
+            {
+              open: (n, a) => {
+                if (n === "numFmt" && isDateFormat(a.formatCode ?? ""))
+                  customDate.add(Number(a.numFmtId));
+                else if (n === "cellXfs") inXfs = true;
+                else if (n === "xf" && inXfs) {
+                  const id = Number(a.numFmtId ?? 0);
+                  if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
+                  xf++;
+                }
+              },
+              close: (n) => {
+                if (n === "cellXfs") inXfs = false;
+              },
             },
-            close: (n) => {
-              if (n === "cellXfs") inXfs = false;
-            },
-          });
+            guard,
+          );
         }
 
         // sharedStrings (akses acak: boleh berada setelah worksheet)
@@ -387,31 +427,33 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           let inT = false;
           let inRph = false;
           let cur = "";
-          let cut = false;
-          await sax(zip, sstEntry, {
-            open: (n) => {
-              if (n === "si") {
-                inSi = true;
-                cur = "";
-                cut = false;
-              } else if (n === "rPh") inRph = true;
-              else if (n === "t" && inSi && !inRph) inT = true;
+          await sax(
+            zip,
+            sstEntry,
+            {
+              open: (n) => {
+                if (n === "si") {
+                  inSi = true;
+                  cur = "";
+                } else if (n === "rPh") inRph = true;
+                else if (n === "t" && inSi && !inRph) inT = true;
+              },
+              close: (n) => {
+                if (n === "t") inT = false;
+                else if (n === "rPh") inRph = false;
+                else if (n === "si") {
+                  inSi = false;
+                  const { v, cut } = finish(cur);
+                  if (cut) truncatedSst.add(sst.size);
+                  sst.push(v);
+                }
+              },
+              text: (t) => {
+                if (inT) cur = cap(cur, t);
+              },
             },
-            close: (n) => {
-              if (n === "t") inT = false;
-              else if (n === "rPh") inRph = false;
-              else if (n === "si") {
-                inSi = false;
-                sst.push(decodeOoxml(cur));
-                if (cut) summary.truncatedCells++;
-              }
-            },
-            text: (t) => {
-              if (!inT) return;
-              if (cur.length + t.length > limits.maxCellChars) cut = true;
-              cur = cap(cur, t);
-            },
-          });
+            guard,
+          );
         }
 
         const wanted = opts.sheetNames.length ? opts.sheetNames : sheets.map((s) => s.name);
@@ -430,83 +472,89 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           let inV = false;
           let inIsT = false;
           let text = "";
-          let cut = false;
           let rowsSeen = 0;
           const where = () => `sheet "${sheetLabel}" baris ${rowNum}`;
-          await sax(zip, need(target, `sheet ${sheetLabel}`), {
-            open: (n, a) => {
-              if (n === "row") {
-                rowNum = a.r ? Number(a.r) : prevRow + 1;
-                if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
-                  throw new XlsxLimitError(
-                    `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
-                  );
-                }
-                if (rowNum > limits.maxRows) {
-                  throw new XlsxLimitError(
-                    `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
-                  );
-                }
-                vals = [];
-                any = false;
-                col = -1;
-              } else if (n === "c") {
-                col = a.r ? colIndex(a.r) : col + 1;
-                if (col < 0 || col >= limits.maxCols) {
-                  throw new XlsxLimitError(
-                    `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
-                  );
-                }
-                type = a.t ?? "n";
-                style = Number(a.s ?? 0);
-                text = "";
-                cut = false;
-              } else if (n === "v") inV = true;
-              else if (n === "t" && type === "inlineStr") inIsT = true;
-            },
-            text: (t) => {
-              if (!inV && !inIsT) return;
-              if (text.length + t.length > limits.maxCellChars) cut = true;
-              text = cap(text, t);
-            },
-            close: (n) => {
-              if (n === "v") inV = false;
-              else if (n === "t") inIsT = false;
-              else if (n === "c") {
-                let v: RawValue = null;
-                if (type === "s") {
-                  if (text !== "") {
-                    const idx = Number(text);
-                    if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
-                      throw new XlsxLimitError(
-                        `${where()}: referensi teks tidak valid (file rusak)`,
-                      );
-                    }
-                    v = sst.get(idx);
+          await sax(
+            zip,
+            need(target, `sheet ${sheetLabel}`),
+            {
+              open: (n, a) => {
+                if (n === "row") {
+                  rowNum = a.r ? Number(a.r) : prevRow + 1;
+                  if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
+                    throw new XlsxLimitError(
+                      `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
+                    );
                   }
-                } else if (type === "inlineStr" || type === "str" || type === "e") {
-                  v = text === "" ? null : decodeOoxml(text);
-                  if (cut) summary.truncatedCells++;
-                } else if (type === "b") v = text === "" ? null : text === "1";
-                else if (type === "d") v = text === "" ? null : parseIsoNaive(text);
-                else if (text !== "") {
-                  const num = Number(text);
-                  if (Number.isNaN(num)) v = text;
-                  else v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
+                  if (rowNum > limits.maxRows) {
+                    throw new XlsxLimitError(
+                      `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
+                    );
+                  }
+                  vals = [];
+                  any = false;
+                  col = -1;
+                } else if (n === "c") {
+                  col = a.r ? colIndex(a.r) : col + 1;
+                  if (col < 0 || col >= limits.maxCols) {
+                    throw new XlsxLimitError(
+                      `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
+                    );
+                  }
+                  type = a.t ?? "n";
+                  style = Number(a.s ?? 0);
+                  text = "";
+                } else if (n === "v") inV = true;
+                else if (n === "t" && type === "inlineStr") inIsT = true;
+              },
+              text: (t) => {
+                if (inV || inIsT) text = cap(text, t);
+              },
+              close: (n) => {
+                if (n === "v") inV = false;
+                else if (n === "t") inIsT = false;
+                else if (n === "c") {
+                  let v: RawValue = null;
+                  if (type === "s") {
+                    if (text !== "") {
+                      const idx = Number(text);
+                      if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
+                        throw new XlsxLimitError(
+                          `${where()}: referensi teks tidak valid (file rusak)`,
+                        );
+                      }
+                      v = sst.get(idx);
+                      if (truncatedSst.has(idx)) summary.truncatedCells++;
+                    }
+                  } else if (type === "inlineStr" || type === "str" || type === "e") {
+                    if (text !== "") {
+                      const f = finish(text);
+                      v = f.v;
+                      if (f.cut) summary.truncatedCells++;
+                    }
+                  } else if (type === "b") v = text === "" ? null : text === "1";
+                  else if (type === "d") v = text === "" ? null : parseIsoNaive(text);
+                  else if (text !== "") {
+                    const num = Number(text);
+                    if (Number.isNaN(num)) v = text;
+                    else
+                      v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
+                  }
+                  if (v !== null) {
+                    vals[col] = v;
+                    any = true;
+                  }
+                } else if (n === "row") {
+                  prevRow = rowNum;
+                  if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
+                  if (limits.deadline && ++rowsSeen % 1000 === 0 && Date.now() > limits.deadline) {
+                    throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
+                  }
                 }
-                if (v !== null) {
-                  vals[col] = v;
-                  any = true;
-                }
-              } else if (n === "row") {
-                prevRow = rowNum;
-                if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
-                if (limits.deadline && ++rowsSeen % 1000 === 0 && Date.now() > limits.deadline) {
-                  throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
-                }
-              }
+              },
             },
-          });
+            guard,
+          );
         }
         return summary;
       } finally {

@@ -164,6 +164,38 @@ describe("parser SAX: kasus tepi OOXML", () => {
   });
 });
 
+describe("parser SAX: batas panjang teks", () => {
+  it("shared string terpotong yang dipakai 2 sel dihitung 2; surrogate tidak terbelah; escape tidak memicu potong", async () => {
+    const emoji = "\u{1F600}"; // 2 unit UTF-16
+    const nearEscape = "x".repeat(32_760) + "_x0041__x0042__x0043_"; // didekode = 32.763 karakter
+    const p = await book({
+      sheet: `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>0</v></c><c r="C1" t="s"><v>1</v></c><c r="D1" t="s"><v>2</v></c></row>`,
+      sst: [
+        `<t>${"y".repeat(40_000)}</t>`,
+        `<t>${"z".repeat(32_766)}${emoji}</t>`,
+        `<t>${nearEscape}</t>`,
+      ],
+    });
+    const { out, summary } = await rows(p);
+    const [a, b, c, d] = out[0]!.vals as string[];
+    expect(a!.length).toBe(32_767);
+    expect(b).toBe(a);
+    expect(c).toBe("z".repeat(32_766)); // high surrogate yang tersisa dibuang
+    expect(d).toBe("x".repeat(32_760) + "ABC");
+    expect(summary).toEqual({ truncatedCells: 3 });
+  });
+
+  it("satu node teks raksasa ditolak tanpa ditampung utuh (melawan file buatan)", async () => {
+    const huge = "q".repeat(2_000_000);
+    const p = await book({
+      sheet: `<row r="1"><c r="A1" t="inlineStr"><is><t>${huge}</t></is></c></row>`,
+    });
+    // Batas rasio/ekspansi dilonggarkan agar yang diuji batas buffer node (file nyata bisa lolos rasio).
+    const loose = { ...DEFAULT_LIMITS, maxRatio: 1e9, maxExpansion: 1e9 };
+    await expect(rows(p, loose)).rejects.toThrow(/melebihi batas panjang/);
+  });
+});
+
 describe("parser SAX: input rusak/berbahaya ditolak dengan pesan", () => {
   it.each([
     [
