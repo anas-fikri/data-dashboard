@@ -1,0 +1,34 @@
+{
+  "file": "utf16.csv",
+  "bytes": 10976,
+  "params": {
+    "kind": "csv",
+    "seed": 42,
+    "sheets": 1,
+    "rows": 50,
+    "cols": 6,
+    "textRatio": 0.5,
+    "uniqueRatio": 0.5,
+    "headerRow": 1,
+    "dupHeaders": false,
+    "mixedDates": false,
+    "numberLocale": "id",
+    "encoding": "utf16le",
+    "delimiter": ",",
+    "zipLevel": 6,
+    "sstFirst": false
+  },
+  "sheets": [
+    {
+      "name": "csv",
+      "headerRow": 1,
+      "lastRow": 51,
+      "nonEmptyRows": 51,
+      "cols": 6,
+      "textCells": 301,
+      "textChecksum": 670334308,
+      "numberCells": 0,
+      "dateCells": 0
+    }
+  ]
+}

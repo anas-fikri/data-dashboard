@@ -17,3 +17,6 @@ CLAUDE.md
 .roo
 .mcp.json
 opencode.json
+
+# Fixture hasil generator (npm run fixtures); README tetap diformat
+tests/fixtures/**/*.json

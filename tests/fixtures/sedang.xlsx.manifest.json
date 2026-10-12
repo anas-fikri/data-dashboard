@@ -1,0 +1,34 @@
+{
+  "file": "sedang.xlsx",
+  "bytes": 3980124,
+  "params": {
+    "kind": "xlsx",
+    "seed": 42,
+    "sheets": 1,
+    "rows": 20000,
+    "cols": 20,
+    "textRatio": 0.6,
+    "uniqueRatio": 0.7,
+    "headerRow": 3,
+    "dupHeaders": false,
+    "mixedDates": true,
+    "numberLocale": "id",
+    "encoding": "utf8",
+    "delimiter": ",",
+    "zipLevel": 6,
+    "sstFirst": false
+  },
+  "sheets": [
+    {
+      "name": "Pengiriman 1",
+      "headerRow": 3,
+      "lastRow": 20003,
+      "nonEmptyRows": 20002,
+      "cols": 20,
+      "textCells": 341438,
+      "textChecksum": 910886312,
+      "numberCells": 39239,
+      "dateCells": 11711
+    }
+  ]
+}

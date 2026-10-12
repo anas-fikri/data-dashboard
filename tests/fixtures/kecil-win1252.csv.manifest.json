@@ -1,0 +1,34 @@
+{
+  "file": "kecil-win1252.csv",
+  "bytes": 77831,
+  "params": {
+    "kind": "csv",
+    "seed": 42,
+    "sheets": 1,
+    "rows": 500,
+    "cols": 10,
+    "textRatio": 0.5,
+    "uniqueRatio": 0.5,
+    "headerRow": 1,
+    "dupHeaders": false,
+    "mixedDates": false,
+    "numberLocale": "id",
+    "encoding": "win1252",
+    "delimiter": ";",
+    "zipLevel": 6,
+    "sstFirst": false
+  },
+  "sheets": [
+    {
+      "name": "csv",
+      "headerRow": 1,
+      "lastRow": 501,
+      "nonEmptyRows": 501,
+      "cols": 10,
+      "textCells": 4923,
+      "textChecksum": 867668230,
+      "numberCells": 0,
+      "dateCells": 0
+    }
+  ]
+}

@@ -25,7 +25,8 @@
     "storage:init": "node scripts/storage-init.mjs",
     "compose:down": "docker compose -f docker-compose.dev.yml down",
     "secrets:dev": "node scripts/gen-dev-env.mjs",
-    "worker": "tsx --conditions=react-server --env-file-if-exists=.env src/worker/index.ts"
+    "worker": "tsx --conditions=react-server --env-file-if-exists=.env src/worker/index.ts",
+    "fixtures": "tsx scripts/fixtures/build-committed.ts"
   },
   "prisma": {
     "seed": "tsx --env-file-if-exists=.env prisma/seed.ts"
@@ -33,6 +34,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1149.0",
     "@aws-sdk/s3-request-presigner": "^3.1149.0",
+    "@duckdb/node-api": "^1.5.6-r.1",
     "@node-rs/argon2": "^2.2.2",
     "@prisma/client": "6.12.0",
     "@tabler/icons-react": "^3.49.0",
@@ -48,8 +50,10 @@
     "radix-ui": "^1.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "saxes": "^6.0.0",
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.7.0",
+    "yauzl": "^3.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -59,11 +63,14 @@
     "@types/nodemailer": "^7.0.12",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/yauzl": "^3.4.0",
+    "@types/yazl": "^3.3.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "exceljs": "^4.4.0",
     "globals": "^16.5.0",
     "prettier": "^3.9.10",
     "prisma": "6.12.0",
@@ -71,6 +78,7 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.71.1",
-    "vitest": "^5.0.3"
+    "vitest": "^5.0.3",
+    "yazl": "^3.3.1"
   }
 }

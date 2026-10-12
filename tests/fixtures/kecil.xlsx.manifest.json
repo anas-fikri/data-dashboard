@@ -1,0 +1,45 @@
+{
+  "file": "kecil.xlsx",
+  "bytes": 412585,
+  "params": {
+    "kind": "xlsx",
+    "seed": 42,
+    "sheets": 2,
+    "rows": 2000,
+    "cols": 12,
+    "textRatio": 0.5,
+    "uniqueRatio": 0.5,
+    "headerRow": 4,
+    "dupHeaders": true,
+    "mixedDates": true,
+    "numberLocale": "id",
+    "encoding": "utf8",
+    "delimiter": ",",
+    "zipLevel": 6,
+    "sstFirst": false
+  },
+  "sheets": [
+    {
+      "name": "Pengiriman 1",
+      "headerRow": 4,
+      "lastRow": 2004,
+      "nonEmptyRows": 2003,
+      "cols": 12,
+      "textCells": 18452,
+      "textChecksum": 1372674094,
+      "numberCells": 3920,
+      "dateCells": 1207
+    },
+    {
+      "name": "Pengiriman 2",
+      "headerRow": 4,
+      "lastRow": 2004,
+      "nonEmptyRows": 2003,
+      "cols": 12,
+      "textCells": 18478,
+      "textChecksum": 2786065161,
+      "numberCells": 3921,
+      "dateCells": 1182
+    }
+  ]
+}
