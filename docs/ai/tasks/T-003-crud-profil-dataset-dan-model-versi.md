@@ -11,7 +11,7 @@ depends_on:
   - T-002
   - T-025
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-11T23:58:30Z"
+updated: "2026-10-12T01:08:04Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -32,10 +32,51 @@ review:
       at: "2026-10-11T23:58:30Z"
       findings: 11
 evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 9309
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1791767280181,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791767280203,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  9 passed (9)
+            Tests  63 passed (63)
+         Start at  08:07:59
+         Duration  683ms (tests 36%, transform 34%, import 28%, worker 2%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-12T01:08:04Z"
+    tree: 70331b7d2b7f7e6661b6d9dd9282c06ab1e07e4511bf089c1af19d880b42c25d
   audit:
-    at: "2026-10-11T23:54:34Z"
+    at: "2026-10-12T01:07:45Z"
     passed: true
-    tree: bd466ef1506e0eaaf817e63dd3a953445ef5f20cb5744b62c6b6342929c91928
+    tree: 70331b7d2b7f7e6661b6d9dd9282c06ab1e07e4511bf089c1af19d880b42c25d
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -43,7 +84,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 604 packages
-          End status: 76 dirs visited, 288 inodes visited, 1 Extract calls, 38.70275ms elapsed, 38.704ms wall time
+          End status: 77 dirs visited, 292 inodes visited, 1 Extract calls, 44.603625ms elapsed, 44.604ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -63,10 +104,10 @@ evidence:
 Model Dataset {name, description, ownerId, activeVersionId?} dan DatasetVersion {status: UPLOADING|UPLOADED|INGESTING|AWAITING_MAPPING|READY|FAILED, mode: REPLACE|APPEND, sourceKey, etag, sha256?, errorMessage?, ingestFinishedAt?}. Label profil diturunkan (kosong/siap + badge versi terbaru), bukan kolom (B5). Daftar hanya milik user atau yang dibagikan. Hapus = konfirmasi dua langkah; memanggil hook storage.deleteDatasetObjects (diimplementasikan penuh di T-004) dan queue.cancelVersionJobs.
 
 ## Acceptance criteria
-- [ ] Given user login, when membuat profil dataset dengan nama unik per pemilik, then profil muncul di daftar dengan label kosong
-- [ ] Given profil milik user lain yang tidak dibagikan, when user membuka URL-nya langsung atau memanggil Server Action-nya, then halaman 404 / code NOT_FOUND dan tidak ada perubahan
-- [ ] Given profil dengan versi READY aktif dan versi terbaru FAILED, when membuka daftar, then label siap dengan badge gagal beserta pesan
-- [ ] Given profil dataset, when user menghapus dengan konfirmasi dua langkah, then profil, versi, dan dashboard terkait hilang dan hook penghapusan storage serta pembatalan job terpanggil (diverifikasi test)
+- [x] Given user login, when membuat profil dataset dengan nama unik per pemilik, then profil muncul di daftar dengan label kosong
+- [x] Given profil milik user lain yang tidak dibagikan, when user membuka URL-nya langsung atau memanggil Server Action-nya, then halaman 404 / code NOT_FOUND dan tidak ada perubahan
+- [x] Given profil dengan versi READY aktif dan versi terbaru FAILED, when membuka daftar, then label siap dengan badge gagal beserta pesan
+- [x] Given profil dataset, when user menghapus dengan konfirmasi dua langkah, then profil, versi, dan dashboard terkait hilang dan hook penghapusan storage serta pembatalan job terpanggil (diverifikasi test)
 - [ ] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
 
 ## Risk
@@ -85,17 +126,17 @@ Open risks/assumptions: berbagi (T-016) belum ada → daftar hanya milik sendiri
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — diverifikasi: batas kepercayaan = Server Action/halaman → service (ownerId dari sesi, bukan input); storage dan antrean dipanggil hanya dari service
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak mengubah autentikasi; semua rute dataset di balik requireUser
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak mengubah sesi; memakai requireUser dengan cek sessionVersion
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — diverifikasi: setiap baca/ubah/hapus where {id, ownerId}; user lain → 404 halaman dan NOT_FOUND action (e2e replay IDOR)
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — diverifikasi: nama 1–80, deskripsi ≤ 500, tolak karakter kontrol/format; bentuk id divalidasi sebelum query; query Prisma terparameter (advisory lock via tagged template); output di-escape React
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data kriptografis tersimpan baru
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — diverifikasi: P2028 → BUSY, unique → NAME_TAKEN, tanpa stack ke klien; log hanya datasetId; error storage dicatat tanpa kredensial
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — diverifikasi: hapus dataset menghapus versi, dashboard, dan objek storage; prefix gagal dicatat ke StorageCleanup untuk dibersihkan ulang
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada lalu lintas eksternal baru (storage internal, TLS produksi diatur T-023)
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — diverifikasi: tanpa dependency baru; npm audit dan aitk audit hijau
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — diverifikasi: batas 50 dataset di bawah pg_advisory_xact_lock per pemilik (e2e 5 replay paralel → tetap 50); hapus wajib konfirmasi nama dicek server; urutan batal job → hapus DB → hapus storage (unit)
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: belum ada upload (T-004); prefix storage selalu berakhiran '/' agar cuid berawalan sama tidak ikut terhapus
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action memvalidasi input di server; Origin asing ditolak Next (e2e T-027); tidak ada API publik baru
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: tanpa konfigurasi debug baru; skrip fixture dev menolak NODE_ENV=production
