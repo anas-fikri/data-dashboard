@@ -1,7 +1,7 @@
 ---
 id: T-006
 title: 'Worker ingest: raw.parquet posisional, header metadata, idempoten'
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -11,8 +11,12 @@ depends_on:
   - T-004
   - T-005
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T03:21:39Z"
+updated: "2026-10-12T04:41:01Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 561f910b5d41b43569cc74d52a0f81a359ac32e4
 ---
 
 ## Objective
