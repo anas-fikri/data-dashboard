@@ -150,6 +150,20 @@ export function permanentMessage(e: unknown): string | null {
   return null;
 }
 
+/**
+ * Pesan gagal + lokasi (T-008 AC 1): bila kegagalan terjadi saat sebuah sheet sedang diproses, user
+ * diberi tahu sheet mana dan kira-kira baris ke berapa (baris tersimpan, bukan nomor baris fisik).
+ */
+export function failureMessage(message: string, p: IngestProgress): string {
+  // Pesan parser xlsx sudah menyebut sheet dan nomor baris fisiknya sendiri.
+  if (!p.sheetName || p.stage === "unduh" || message.includes(`"${p.sheetName}"`)) return message;
+  const where =
+    p.stage === "baca" && p.rows > 0
+      ? `, sekitar baris data ke-${(p.rows + 1).toLocaleString("id-ID")}`
+      : "";
+  return `Sheet "${p.sheetName}"${where}: ${message}`;
+}
+
 /** Hapus prefix versi; bila gagal, catat untuk job pembersihan (tidak pernah melempar). */
 export async function cleanupPrefix(
   repo: Pick<IngestRepo, "recordCleanup">,
@@ -302,8 +316,9 @@ export async function runIngest(
     }
     await cleanupPrefix(repo, storage, prefix, "ingest gagal");
     await repo.deleteSheets(versionId).catch(() => {});
-    await repo.fail(versionId, message);
-    return { outcome: "failed", message };
+    const located = failureMessage(message, current);
+    await repo.fail(versionId, located);
+    return { outcome: "failed", message: located };
   } finally {
     clearInterval(heartbeat);
     duck?.close();

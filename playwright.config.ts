@@ -14,11 +14,17 @@ export default defineConfig({
   //  - ingest: menyalakan worker sungguhan yang mengambil semua job di antrean; bila berjalan bersama
   //    spec lain, job milik spec unggah ikut diproses (status bukan lagi UPLOADED) dan beban DuckDB
   //    memperlambat server;
+  //  - schema: menyalakan worker sendiri setelah unggahan pertama (status "menunggu" diamati), jadi
+  //    setelah ingest selesai dan worker-nya berhenti;
   //  - rate-limit: mengisi bucket login IP 'local' (dev tanpa proxy), jadi paling akhir.
   projects: [
-    { name: "e2e", testIgnore: [/zz-rate-limit\.spec\.ts$/, /ingest\.spec\.ts$/] },
+    {
+      name: "e2e",
+      testIgnore: [/zz-rate-limit\.spec\.ts$/, /ingest\.spec\.ts$/, /schema\.spec\.ts$/],
+    },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["ingest"] },
+    { name: "schema", testMatch: /schema\.spec\.ts$/, dependencies: ["ingest"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["schema"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

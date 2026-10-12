@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { failureMessage } from "@/features/ingest/ingest";
 import { PREVIEW_CHARS, PREVIEW_COLS, previewOf } from "@/features/ingest/preview";
 import type { QueryDeps, QueryRepo } from "@/features/query/service";
 import {
@@ -192,6 +193,28 @@ describe("AC 2: sampel 50 baris typed", () => {
 });
 
 describe("AC 1: status ingest", () => {
+  it("pesan gagal menyebut sheet dan perkiraan baris; tidak menggandakan lokasi dari parser", () => {
+    const p = {
+      stage: "baca" as const,
+      sheet: 1,
+      sheetName: "Penjualan",
+      rows: 12_344,
+      fraction: 0.4,
+      rowsEstimate: null,
+    };
+    expect(failureMessage("File memiliki 3.000 kolom.", p)).toBe(
+      'Sheet "Penjualan", sekitar baris data ke-12.345: File memiliki 3.000 kolom.',
+    );
+    expect(failureMessage("Memori habis.", { ...p, stage: "tipe" })).toBe(
+      'Sheet "Penjualan": Memori habis.',
+    );
+    const own = 'XML rusak di sheet "Penjualan" baris 121.';
+    expect(failureMessage(own, p)).toBe(own);
+    expect(failureMessage("Bukan file Excel.", { ...p, sheetName: null })).toBe(
+      "Bukan file Excel.",
+    );
+  });
+
   it("id rusak → null tanpa menyentuh DB", async () => {
     const latestVersion = vi.fn();
     expect(await ingestStatus(USER, "x'; DROP", { latestVersion })).toBeNull();

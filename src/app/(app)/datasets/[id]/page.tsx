@@ -1,4 +1,4 @@
-import { IconFileSpreadsheet } from "@tabler/icons-react";
+import { IconFileSpreadsheet, IconTableOptions } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -6,11 +6,14 @@ import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { getDataset } from "@/features/datasets/service";
+import { prismaSchemaRepo } from "@/features/schema/runtime";
+import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
 import { env } from "@/lib/env";
 
@@ -50,6 +53,22 @@ export default async function DatasetDetailPage({
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
   const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
   const pending = processing ? null : await getPendingUpload(user.id, dataset.id);
+  // Status awal progres dirender server (tidak ada layar kosong sebelum polling pertama, T-008).
+  let ingest: IngestStatus | null = null;
+  if (badge?.kind === "processing") {
+    const st = await prismaSchemaRepo.latestVersion(user.id, dataset.id);
+    ingest =
+      st && st !== "none"
+        ? st
+        : {
+            versionId: "",
+            status: "INGESTING",
+            fileName: dataset.latestFileName,
+            progress: null,
+            sheets: [],
+            errorMessage: null,
+          };
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -113,18 +132,27 @@ export default async function DatasetDetailPage({
               </span>
             </p>
           ) : null}
+          {active ? (
+            <div>
+              <Button asChild variant="outline" size="sm" className="w-full sm:w-auto">
+                <Link href={`/datasets/${dataset.id}/skema`} data-testid="dataset-schema-link">
+                  <IconTableOptions aria-hidden />
+                  Tinjau &amp; koreksi skema
+                </Link>
+              </Button>
+            </div>
+          ) : null}
           <UploadPanel
             datasetId={dataset.id}
             maxBytes={env().MAX_UPLOAD_BYTES}
             hasData={Boolean(active)}
             pending={pending}
             processing={
-              processing
-                ? {
-                    fileName: dataset.latestFileName,
-                    awaitingMapping: badge?.kind === "awaiting_mapping",
-                  }
-                : null
+              ingest
+                ? { kind: "ingest", status: ingest }
+                : badge?.kind === "awaiting_mapping"
+                  ? { kind: "mapping", fileName: dataset.latestFileName }
+                  : null
             }
           />
         </CardContent>

@@ -2,7 +2,6 @@
 
 import {
   IconFileSpreadsheet,
-  IconLoader2,
   IconPlayerPause,
   IconPlayerPlay,
   IconRoute,
@@ -12,8 +11,10 @@ import {
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
+import { IngestProgress } from "@/components/datasets/ingest-progress";
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
+import type { IngestStatus } from "@/features/schema/service";
 import {
   UploadError,
   cancelUploadRequest,
@@ -38,7 +39,9 @@ interface UploadPanelProps {
   /** Unggahan milik user yang belum selesai (dari server), untuk ajakan melanjutkan. */
   pending: PendingUploadInfo | null;
   /** Versi terbaru menunggu/sedang diproses → unggah baru ditahan (D4: satu versi non-terminal). */
-  processing: { fileName: string | null; awaitingMapping: boolean } | null;
+  /** Versi terbaru sedang diproses (progres hidup) atau menunggu pemetaan kolom; unggah baru ditahan. */
+  processing:
+    { kind: "ingest"; status: IngestStatus } | { kind: "mapping"; fileName: string | null } | null;
 }
 
 type State =
@@ -227,42 +230,23 @@ export function UploadPanel({
       {state.kind === "done" ? <FocusNotice>{`"${state.name}" terunggah.`}</FocusNotice> : null}
       {state.kind === "cancelled" ? <FocusNotice>Unggahan dibatalkan.</FocusNotice> : null}
 
-      {processing && idleLike ? (
+      {processing?.kind === "ingest" && idleLike ? (
+        <IngestProgress datasetId={datasetId} initial={processing.status} />
+      ) : null}
+      {processing?.kind === "mapping" && idleLike ? (
         <p
           className="flex items-start gap-3 rounded-md border bg-muted/40 p-3 text-sm"
           data-testid="dataset-processing"
         >
-          {processing.awaitingMapping ? (
-            <IconRoute size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
-          ) : (
-            <IconLoader2
-              size={20}
-              stroke={1.5}
-              aria-hidden
-              className="mt-0.5 shrink-0 text-primary motion-safe:animate-spin"
-            />
-          )}
-          {processing.awaitingMapping ? (
-            <span>
-              <span className="block font-medium">Perlu pemetaan kolom</span>
-              <span className="block text-muted-foreground">
-                {processing.fileName ? `Kolom di "${processing.fileName}"` : "Kolom file baru"}{" "}
-                berbeda dari data aktif. Petakan kolomnya agar dashboard tetap jalan; file baru bisa
-                diunggah setelah itu.
-              </span>
+          <IconRoute size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
+          <span>
+            <span className="block font-medium">Perlu pemetaan kolom</span>
+            <span className="block text-muted-foreground">
+              {processing.fileName ? `Kolom di "${processing.fileName}"` : "Kolom file baru"}{" "}
+              berbeda dari data aktif. Petakan kolomnya agar dashboard tetap jalan; file baru bisa
+              diunggah setelah itu.
             </span>
-          ) : (
-            <span>
-              <span className="block font-medium">
-                {processing.fileName
-                  ? `"${processing.fileName}" sedang diproses`
-                  : "File sedang diproses"}
-              </span>
-              <span className="block text-muted-foreground">
-                Anda boleh menutup halaman ini. File baru bisa diunggah setelah proses selesai.
-              </span>
-            </span>
-          )}
+          </span>
         </p>
       ) : null}
 
