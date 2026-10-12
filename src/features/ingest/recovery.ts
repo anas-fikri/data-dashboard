@@ -62,11 +62,15 @@ export async function finalizeFailed(
 /**
  * Versi INGESTING yang dimulai > deadline + 30 menit lalu dan tidak punya job aktif (worker mati
  * berulang, job dibuang sebagai stalled, finalisasi sebelumnya gagal) → FAILED + bersih.
+ * Hanya tahap raw yang belum selesai (ingestStage null): versi dengan ingestStage "raw" sudah sukses
+ * dan menunggu tahap berikutnya (inferensi tipe, T-007), bukan macet. Tahap berikutnya menambah
+ * kriteria macetnya sendiri di sini.
  */
 export async function recoverStuckIngests(queue: Queue<IngestJobData>): Promise<number> {
   const stuck = await prisma.datasetVersion.findMany({
     where: {
       status: "INGESTING",
+      ingestStage: null,
       OR: [
         { ingestStartedAt: { lt: new Date(Date.now() - STUCK_AFTER_MS) } },
         { ingestStartedAt: null, updatedAt: { lt: new Date(Date.now() - STUCK_AFTER_MS) } },
