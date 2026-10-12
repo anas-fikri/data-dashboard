@@ -7,7 +7,7 @@ goal: G-3
 depends_on:
   - T-001
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T04:38:42Z"
+updated: "2026-10-12T04:39:33Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -47,7 +47,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 13859
+    duration_ms: 12771
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -69,39 +69,24 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791779869528,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791779869555,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791779969925,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791779969949,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  13 passed (13)
             Tests  122 passed (122)
-         Start at  11:37:48
-         Duration  3.47s (tests 64%, transform 18%, import 17%, worker 1%)
+         Start at  11:39:29
+         Duration  3.26s (tests 66%, transform 18%, import 14%, worker 1%)
 
 
       > data-dashboard@0.1.0 audit
       > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
 
       found 0 vulnerabilities
-      # npm audit report
-
-      uuid  <11.1.1
-      Severity: moderate
-      uuid: Missing buffer bounds check in v3/v5/v6 when buf is provided - https://github.com/advisories/GHSA-w5hq-g745-h8pq
-      fix available via `npm audit fix --force`
-      Will install exceljs@3.4.0, which is a breaking change
-      node_modules/uuid
-        exceljs  >=3.5.0
-        Depends on vulnerable versions of uuid
-        node_modules/exceljs
-
-      2 moderate severity vulnerabilities
-
-      To address all issues (including breaking changes), run:
-        npm audit fix --force
-    at: "2026-10-12T04:37:54Z"
-    tree: 84de07d18e0615be89bcda4635742d294dac09ac35842e517f90149c06ac4286
+      found 0 vulnerabilities
+    at: "2026-10-12T04:39:33Z"
+    tree: d735b62627f57c3013f3ff20bd68656d1c342a53d4675a0bac95f05e2ac669c6
   audit:
-    at: "2026-10-12T04:38:29Z"
+    at: "2026-10-12T04:39:08Z"
     passed: true
     tree: d735b62627f57c3013f3ff20bd68656d1c342a53d4675a0bac95f05e2ac669c6
     results:
@@ -111,7 +96,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 715 packages
-          End status: 91 dirs visited, 361 inodes visited, 1 Extract calls, 57.37ms elapsed, 57.37ms wall time
+          End status: 91 dirs visited, 361 inodes visited, 1 Extract calls, 66.273041ms elapsed, 66.274ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -136,7 +121,30 @@ Skrip scripts/make-fixture.ts parametris: xlsx (sheet × baris × kolom, rasio t
 - [x] Given npm run check, when dijalankan, then tidak menyentuh fixture perf dan selesai tanpa error
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Risk level: MEDIUM-HIGH. Spike ini menetapkan parser yang akan membaca file tak tepercaya sampai 1 GB di worker (T-006).
+Impact surface:
+- **Kode baru:** scripts/make-fixture.ts, scripts/fixtures/*, scripts/bench/* (parser-sax.ts menjadi dasar parser produksi T-006), scripts/bench-parsers.ts, scripts/bench-hostile.ts.
+- **Fixture dan dokumen:** tests/fixtures/* (± 6 MB, deterministik), docs/ai/perf/T-005.md, ADR-0005.
+- **Dependency:** @duckdb/node-api, yauzl, saxes (prod); exceljs + yazl (dev, `uuid` dipaksa 11.1.1 lewat overrides).
+- **Proses:** npm run fixtures; teardown e2e membersihkan data uji.
+Security (STRIDE):
+- **DoS (memori/disk/CPU) dari xlsx buatan**, dibatasi berlapis (ADR-0005):
+  - Zip: ≤ 10k entri, rasio ≤ 100x, total ≤ min(24 GiB, 100× file), entri tumpang tindih dan metadata entri berlebihan ditolak.
+  - XML: DOCTYPE ditolak; buffer node saxes ≤ ± 294k karakter; kedalaman ≤ 64; ≤ 256 atribut dan ≤ 16k karakter atribut per tag.
+  - Isi: ≤ 50 sheet, ≤ 1.048.576 baris, ≤ 16.384 kolom, sel ≤ 32.767 karakter (dipotong), baris ≤ 4 juta karakter.
+  - Shared strings dan gaya: sharedStrings ≤ 64 juta, numFmt ≤ 1.000, cellXfs ≤ 65.536; spill ≤ 8 GiB; deadline per potongan; string disalin mandiri.
+  - Hasil audit akhir: tidak ada struktur parser > ~500 MB.
+- **Tampering (file rusak atau referensi palsu):** indeks sharedStrings, nomor baris dan kolom divalidasi lalu ditolak dengan pesan.
+- **Information disclosure:** tidak ada; parser tidak membuka jaringan dan tidak mengekspansi entitas eksternal.
+Rollback: kode spike berada di scripts/ dan tidak dipanggil aplikasi; revert commit, tanpa migrasi.
+Validation:
+- Unit test (38): kecocokan per sel dengan model fixture, determinisme generator, kasus tepi OOXML, setiap batas memori/disk, penolakan DOCTYPE/zip-bomb/struktur buatan.
+- Benchmark 1 GB dengan checksum teks per sel.
+- Probe reviewer probe3–probe10 ditolak atau diproses dengan RSS datar; 7 putaran review keamanan, pass terakhir 0 temuan.
+Open risks/assumptions:
+- Parse 1 GB ± 3 menit di M4; VM produksi diukur T-024.
+- Worker butuh disk temp ± ukuran upload + 8 GiB (catatan di T-023).
+- Format durasi [h]:mm diserahkan ke T-007.
 
 ## Notes
 - 2026-10-11T14:56:59Z Benchmark juga mengukur: penolakan <!DOCTYPE (entity expansion), rasio dekompresi, dan fixture zip-bomb kecil; parser yang tidak bisa dibatasi tidak dipilih (ADR-0002).
