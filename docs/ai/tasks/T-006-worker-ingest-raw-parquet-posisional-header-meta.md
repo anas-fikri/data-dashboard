@@ -1,7 +1,7 @@
 ---
 id: T-006
 title: 'Worker ingest: raw.parquet posisional, header metadata, idempoten'
-status: in_review
+status: done
 profile: strict
 profile_pinned: true
 goal: G-3
@@ -11,12 +11,233 @@ depends_on:
   - T-004
   - T-005
 created: "2026-10-11T14:45:08Z"
-updated: "2026-10-12T07:19:28Z"
+updated: "2026-10-12T07:21:51Z"
+closed: "2026-10-12T07:21:51Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 561f910b5d41b43569cc74d52a0f81a359ac32e4
+paths:
+  - .dockerignore
+  - .env.example
+  - .gitignore
+  - .npmrc
+  - .nvmrc
+  - .prettierignore
+  - .prettierrc
+  - README.md
+  - docker-compose.dev.yml
+  - docs/flow-kerja.md
+  - eslint.config.mjs
+  - next.config.ts
+  - package-lock.json
+  - package.json
+  - playwright.config.ts
+  - postcss.config.mjs
+  - prisma/migrations/20261011152124_init/migration.sql
+  - prisma/migrations/20261011163023_verification_token/migration.sql
+  - prisma/migrations/20261011225415_token_pending_password/migration.sql
+  - prisma/migrations/20261011230218_token_pending_name/migration.sql
+  - prisma/migrations/20261011234923_datasets/migration.sql
+  - prisma/migrations/20261011235601_storage_cleanup/migration.sql
+  - prisma/migrations/20261012011450_version_upload/migration.sql
+  - prisma/migrations/20261012044448_ingest_sheet/migration.sql
+  - prisma/migrations/migration_lock.toml
+  - prisma/schema.prisma
+  - prisma/seed.ts
+  - public/brand/mark-dark.png
+  - public/brand/mark.png
+  - public/brand/pcp-logo-dark.png
+  - public/brand/pcp-logo.png
+  - scripts/bench-hostile.ts
+  - scripts/bench-parsers.ts
+  - scripts/bench/parser-duckdb-csv.ts
+  - scripts/bench/parser-duckdb.ts
+  - scripts/bench/parser-exceljs.ts
+  - scripts/bench/parser-sax.ts
+  - scripts/bench/types.ts
+  - scripts/check-presign.mjs
+  - scripts/dev-create-user.ts
+  - scripts/dev-dataset-fixture.mjs
+  - scripts/dev-expire-reset.mjs
+  - scripts/dev-make-admin.mjs
+  - scripts/dev-purge-test-data.mjs
+  - scripts/dev-reset-ratelimit.mjs
+  - scripts/dev-upload-fixture.mjs
+  - scripts/fixtures/build-committed.ts
+  - scripts/fixtures/make-hostile.ts
+  - scripts/fixtures/model.ts
+  - scripts/gen-dev-env.mjs
+  - scripts/make-fixture.ts
+  - scripts/perf-ingest.ts
+  - scripts/perf.mjs
+  - scripts/smoke-prod-headers.mjs
+  - scripts/storage-init.mjs
+  - src/app/(app)/admin/page.tsx
+  - src/app/(app)/akun/keamanan/page.tsx
+  - src/app/(app)/akun/page.tsx
+  - src/app/(app)/dashboards/page.tsx
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/baru/page.tsx
+  - src/app/(app)/datasets/page.tsx
+  - src/app/(app)/layout.tsx
+  - src/app/(app)/page.tsx
+  - src/app/(app)/panduan/page.tsx
+  - src/app/(auth)/layout.tsx
+  - src/app/(auth)/login/page.tsx
+  - src/app/(auth)/lupa-password/page.tsx
+  - src/app/(auth)/register/page.tsx
+  - src/app/(auth)/reset-password/page.tsx
+  - src/app/(auth)/verify/page.tsx
+  - src/app/api/auth/dev-bump-session/route.ts
+  - src/app/api/auth/login/route.ts
+  - src/app/api/auth/me/route.ts
+  - src/app/api/health/route.ts
+  - src/app/api/uploads/[id]/complete/route.ts
+  - src/app/api/uploads/[id]/parts/route.ts
+  - src/app/api/uploads/[id]/route.ts
+  - src/app/api/uploads/route.ts
+  - src/app/globals.css
+  - src/app/health/page.tsx
+  - src/app/layout.tsx
+  - src/app/not-found.tsx
+  - src/components/auth/auth-card.tsx
+  - src/components/auth/forgot-password-form.tsx
+  - src/components/auth/form-alert.tsx
+  - src/components/auth/login-form.tsx
+  - src/components/auth/register-form.tsx
+  - src/components/auth/reset-password-form.tsx
+  - src/components/auth/security-settings.tsx
+  - src/components/auth/use-focus-on-error.ts
+  - src/components/auth/verify-form.tsx
+  - src/components/datasets/dataset-form.tsx
+  - src/components/datasets/dataset-list.tsx
+  - src/components/datasets/delete-dataset.tsx
+  - src/components/datasets/status-badge.tsx
+  - src/components/datasets/upload-panel.tsx
+  - src/components/shell/account-menu.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/shell/brand.tsx
+  - src/components/shell/nav-items.ts
+  - src/components/shell/sidebar-nav.tsx
+  - src/components/shell/theme-toggle.tsx
+  - src/components/theme-provider.tsx
+  - src/components/ui/avatar.tsx
+  - src/components/ui/button.tsx
+  - src/components/ui/card.tsx
+  - src/components/ui/dropdown-menu.tsx
+  - src/components/ui/empty-state.tsx
+  - src/components/ui/field.tsx
+  - src/components/ui/focus-notice.tsx
+  - src/components/ui/input.tsx
+  - src/components/ui/page-header.tsx
+  - src/components/ui/password-input.tsx
+  - src/components/ui/select.tsx
+  - src/components/ui/textarea.tsx
+  - src/features/auth/actions.ts
+  - src/features/auth/email-domain.ts
+  - src/features/auth/email.ts
+  - src/features/auth/form-state.ts
+  - src/features/auth/jwt.ts
+  - src/features/auth/password-recovery.ts
+  - src/features/auth/password.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/auth/redirect.ts
+  - src/features/auth/service.ts
+  - src/features/auth/session.ts
+  - src/features/auth/tokens.ts
+  - src/features/datasets/actions.ts
+  - src/features/datasets/label.ts
+  - src/features/datasets/service.ts
+  - src/features/datasets/validation.ts
+  - src/features/ingest/csv-sniff.ts
+  - src/features/ingest/csv.ts
+  - src/features/ingest/header.ts
+  - src/features/ingest/ingest.ts
+  - src/features/ingest/raw-writer.ts
+  - src/features/ingest/recovery.ts
+  - src/features/ingest/repo.ts
+  - src/features/uploads/client.ts
+  - src/features/uploads/http.ts
+  - src/features/uploads/parts.ts
+  - src/features/uploads/service.ts
+  - src/features/uploads/sniff.ts
+  - src/instrumentation.ts
+  - src/lib/db.ts
+  - src/lib/duckdb/index.ts
+  - src/lib/env.ts
+  - src/lib/health/checks.ts
+  - src/lib/health/index.ts
+  - src/lib/hooks/use-persisted-boolean.ts
+  - src/lib/logger.ts
+  - src/lib/mail.ts
+  - src/lib/queue/connection.ts
+  - src/lib/queue/versions.ts
+  - src/lib/redis.ts
+  - src/lib/security-headers.ts
+  - src/lib/storage/files.ts
+  - src/lib/storage/multipart.ts
+  - src/lib/storage/objects.ts
+  - src/lib/storage/s3.ts
+  - src/lib/utils.ts
+  - src/lib/xlsx/parser.ts
+  - src/lib/xlsx/types.ts
+  - src/proxy.ts
+  - src/styles/tokens.css
+  - src/worker/index.ts
+  - tests/e2e/auth.spec.ts
+  - tests/e2e/datasets.spec.ts
+  - tests/e2e/global-setup.ts
+  - tests/e2e/global-teardown.ts
+  - tests/e2e/health.spec.ts
+  - tests/e2e/helpers.ts
+  - tests/e2e/ingest.spec.ts
+  - tests/e2e/password.spec.ts
+  - tests/e2e/security-headers.spec.ts
+  - tests/e2e/shell.spec.ts
+  - tests/e2e/uploads.spec.ts
+  - tests/e2e/zz-rate-limit.spec.ts
+  - tests/features/auth/core.test.ts
+  - tests/features/auth/rate-limit.test.ts
+  - tests/features/datasets/create.test.ts
+  - tests/features/datasets/delete.test.ts
+  - tests/features/datasets/label.test.ts
+  - tests/features/ingest/fakes.ts
+  - tests/features/ingest/ingest-review.test.ts
+  - tests/features/ingest/ingest.test.ts
+  - tests/features/ingest/pure.test.ts
+  - tests/features/ingest/recovery.test.ts
+  - tests/features/ingest/wide.test.ts
+  - tests/features/uploads/pure.test.ts
+  - tests/features/uploads/service.test.ts
+  - tests/fixtures/README.md
+  - tests/fixtures/hostile/doctype.xlsx
+  - tests/fixtures/hostile/hostile.manifest.json
+  - tests/fixtures/hostile/zipbomb.xlsx
+  - tests/fixtures/kecil-id-titikkoma.csv
+  - tests/fixtures/kecil-id-titikkoma.csv.manifest.json
+  - tests/fixtures/kecil-us.csv
+  - tests/fixtures/kecil-us.csv.manifest.json
+  - tests/fixtures/kecil-win1252.csv
+  - tests/fixtures/kecil-win1252.csv.manifest.json
+  - tests/fixtures/kecil.xlsx
+  - tests/fixtures/kecil.xlsx.manifest.json
+  - tests/fixtures/sedang.xlsx
+  - tests/fixtures/sedang.xlsx.manifest.json
+  - tests/fixtures/tiga-sheet.xlsx
+  - tests/fixtures/tiga-sheet.xlsx.manifest.json
+  - tests/fixtures/utf16.csv
+  - tests/fixtures/utf16.csv.manifest.json
+  - tests/lib/env.test.ts
+  - tests/lib/health.test.ts
+  - tests/lib/security-headers.test.ts
+  - tests/lib/seed.test.ts
+  - tests/scripts/fixtures.test.ts
+  - tests/scripts/parser-sax-edge.test.ts
+  - tests/stubs/server-only.ts
+  - tsconfig.json
+  - vitest.config.mts
 review:
   passes:
     - "n": 1
@@ -31,11 +252,133 @@ review:
       by: claude-security-reviewer-subagen
       at: "2026-10-12T07:17:56Z"
       findings: 1
+    - "n": 4
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T07:19:57Z"
+      findings: 0
 evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 28041
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1791789608108,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791789608131,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  18 passed (18)
+            Tests  170 passed (170)
+         Start at  14:20:06
+         Duration  17.79s (tests 88%, import 6%, transform 5%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-12T07:20:25Z"
+    tree: a1bb30534053fb648dddc7cb5acc702a528fb7d948e1cd0463dc16662af1e266
+  commits:
+    - 00400de
+    - 03d94b3
+    - 0423efd
+    - "0458545"
+    - 0b3dbca
+    - 0d4c16b
+    - 15536b5
+    - 183aee3
+    - 1add773
+    - 22b384e
+    - 24e2978
+    - 2653b85
+    - 27bf134
+    - 29f1080
+    - 2a7eff2
+    - 2b68a94
+    - 2c2e6a4
+    - 2c5ffeb
+    - 30baa8d
+    - 3107c1b
+    - 401b86a
+    - 457220a
+    - 471d15b
+    - 4bff118
+    - 4d5aa50
+    - 4f751b8
+    - 561f910
+    - 5d46f4b
+    - 5f13bde
+    - 60938f4
+    - 60ea826
+    - 626d6d6
+    - 64a8e95
+    - 66ba1d5
+    - 6c7cef8
+    - 76c40e2
+    - 7c5267b
+    - 7d27e01
+    - 7dddfc4
+    - "8492031"
+    - 915c9f1
+    - 9558d66
+    - "9835114"
+    - 9b2bfc6
+    - 9cd6ff0
+    - 9cee0e6
+    - a384931
+    - ab9e083
+    - b189cbc
+    - b2a1115
+    - b2d4c94
+    - b330d22
+    - b6d2610
+    - be956d7
+    - bec0af8
+    - c0a7685
+    - c1db097
+    - c51c2b5
+    - d363c9a
+    - d6d03db
+    - d9f240b
+    - dbe1056
+    - e1ff563
+    - e28eb08
+    - e3d5ef8
+    - e3da62b
+    - e541eb1
+    - e56694e
+    - e594327
+    - e5a4396
+    - f511b61
+    - fbf5494
+    - fe5861e
+  acceptance:
+    total: 8
+    done: 8
   audit:
-    at: "2026-10-12T07:18:15Z"
+    at: "2026-10-12T07:21:39Z"
     passed: true
-    tree: a4690855c6d8d74b5c0fa465b34d2dfd40b72d377139f77ab26e97b7e1a764b3
+    tree: a1bb30534053fb648dddc7cb5acc702a528fb7d948e1cd0463dc16662af1e266
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -43,7 +386,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 715 packages
-          End status: 96 dirs visited, 391 inodes visited, 1 Extract calls, 60.197125ms elapsed, 60.198ms wall time
+          End status: 96 dirs visited, 391 inodes visited, 1 Extract calls, 63.289333ms elapsed, 63.29ms wall time
           Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
 
           No issues found
@@ -139,3 +482,13 @@ Open risks/assumptions:
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — diverifikasi: batas parser ADR-0005; kolom raw ≤ 2.048 (xlsx dan CSV), baris kosong CSV ≤ 1 juta, max_line_size 8 MB, sel dipotong 32.767; DuckDB memory_limit 1 GB + temp ≤ 8 GB, tanpa operator lebar yang OOM (test 1.000/1.100 kolom di 256 MB); deadline 60 menit + watchdog interrupt di semua query panjang; xlsx rusak/zip-bomb/DOCTYPE → FAILED (test)
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — diverifikasi: WORKER_TMP_DIR terdokumentasi (butuh upload + 8 GiB), autoinstall/autoload ekstensi DuckDB dimatikan, perf terpisah dari check
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-12T07:20:25Z (28041 ms)
+- Acceptance criteria: 8/8 satisfied
+- Commits: 00400de, 03d94b3, 0423efd, 0458545, 0b3dbca, 0d4c16b, 15536b5, 183aee3, 1add773, 22b384e, 24e2978, 2653b85, 27bf134, 29f1080, 2a7eff2, 2b68a94, 2c2e6a4, 2c5ffeb, 30baa8d, 3107c1b, 401b86a, 457220a, 471d15b, 4bff118, 4d5aa50, 4f751b8, 561f910, 5d46f4b, 5f13bde, 60938f4, 60ea826, 626d6d6, 64a8e95, 66ba1d5, 6c7cef8, 76c40e2, 7c5267b, 7d27e01, 7dddfc4, 8492031, 915c9f1, 9558d66, 9835114, 9b2bfc6, 9cd6ff0, 9cee0e6, a384931, ab9e083, b189cbc, b2a1115, b2d4c94, b330d22, b6d2610, be956d7, bec0af8, c0a7685, c1db097, c51c2b5, d363c9a, d6d03db, d9f240b, dbe1056, e1ff563, e28eb08, e3d5ef8, e3da62b, e541eb1, e56694e, e594327, e5a4396, f511b61, fbf5494, fe5861e
+- Review pass 1 by claude-security-reviewer-subagen: 13 findings
+- Review pass 2 by claude-security-reviewer-subagen: 2 findings
+- Review pass 3 by claude-security-reviewer-subagen: 1 findings
+- Review pass 4 by claude-security-reviewer-subagen: 0 findings
