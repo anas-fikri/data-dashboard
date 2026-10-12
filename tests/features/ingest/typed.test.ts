@@ -123,6 +123,28 @@ describe("AC 4: tanggal tanpa pergeseran zona", () => {
     expect(col("tgl_teks").dateFormat).toBe("dd/mm/yyyy");
   });
 
+  it("kolom campuran: sel tanggal asli + teks 'dd/mm/yyyy' + teks ISO → satu kolom DATE", async () => {
+    const serial = (Date.UTC(2026, 0, 3) - Date.UTC(1899, 11, 30)) / 86_400_000;
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>tgl</t></is></c></row>`;
+    for (let r = 2; r <= 31; r++) {
+      const cell =
+        r % 3 === 0
+          ? `<c r="A${r}" s="1"><v>${serial}</v></c>`
+          : r % 3 === 1
+            ? `<c r="A${r}" t="inlineStr"><is><t>04/01/2026</t></is></c>`
+            : `<c r="A${r}" t="inlineStr"><is><t>2026-01-05</t></is></c>`;
+      xml += `<row r="${r}">${cell}</row>`;
+    }
+    const { col } = await ingest(
+      t.file("campur-tgl.xlsx", await buildXlsx([{ name: "S", xml }], { dateStyle: true })),
+    );
+    const c = col("tgl");
+    expect(c).toMatchObject({ type: "date", dateFormat: "dd/mm/yyyy", castFailCount: 0 });
+    expect(
+      [...new Set(c.values.map((v) => (v as Date).toISOString().slice(0, 10)))].sort(),
+    ).toEqual(["2026-01-03", "2026-01-04", "2026-01-05"]);
+  });
+
   it("jam selain 00:00 → TIMESTAMP naive", async () => {
     const { col } = await ingest(
       t.file(

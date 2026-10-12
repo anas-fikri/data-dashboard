@@ -92,8 +92,15 @@ const norm = (v: string, loc: NumberLocale) =>
 const numExpr = (v: string, loc: NumberLocale) =>
   `CASE WHEN regexp_full_match(${v}, ${lit(loc === "id" ? RE.numId : RE.numUs)}) THEN TRY_CAST(${norm(v, loc)} AS DECIMAL(38,6)) END`;
 const isInt = (x: string) => `(${x} = trunc(${x}) AND abs(${x}) <= ${MAX_BIGINT})`;
+/**
+ * Format teks selalu ditambah ISO: sel tanggal asli xlsx tersimpan di raw sebagai yyyy-mm-dd, dan
+ * kolom Excel sering mencampur sel tanggal asli dengan teks "dd/mm/yyyy". ISO tidak ambigu (tahun 4
+ * digit di depan), jadi penggabungan ini tidak mengubah tafsiran hari/bulan format teksnya.
+ */
+const formatsFor = (f: Exclude<DateFormat, "serial">) =>
+  f === "yyyy-mm-dd" ? DATE_FORMATS[f] : [...DATE_FORMATS[f], ...DATE_FORMATS["yyyy-mm-dd"]];
 const strptime = (v: string, f: Exclude<DateFormat, "serial">) =>
-  `try_strptime(${v}, ${listLit(DATE_FORMATS[f])})`;
+  `try_strptime(${v}, ${listLit(formatsFor(f))})`;
 
 /** Profil satu kolom (hasil query profileSql). */
 export interface Profile {
