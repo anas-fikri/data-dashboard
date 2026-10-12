@@ -106,7 +106,7 @@ describe("completeUpload", () => {
     const enqueue = vi.fn(async () => {});
     const r = await completeUpload("u1", VID, { storage: storageMock(), enqueue });
     expect(r).toEqual({ ok: true, status: "UPLOADED" });
-    expect(enqueue).toHaveBeenCalledWith(VID);
+    expect(enqueue).toHaveBeenCalledWith(VID, DID);
   });
 
   it("part lebih besar dari rencana → abort multipart, FAILED, tanpa complete", async () => {
@@ -222,7 +222,7 @@ describe("completeUpload", () => {
       ok: true,
       status: "UPLOADED",
     });
-    expect(enqueue).toHaveBeenCalledWith(VID);
+    expect(enqueue).toHaveBeenCalledWith(VID, DID);
   });
 
   it("versi milik orang lain / tidak ada → NOT_FOUND", async () => {

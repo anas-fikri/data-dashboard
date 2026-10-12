@@ -3,9 +3,9 @@ import { logger } from "@/lib/logger";
 import { ingestQueue, withQueueTimeout } from "./connection";
 
 /** Masukkan versi ke antrean ingest. jobId = versionId sehingga enqueue ulang tidak menggandakan job. */
-export async function enqueueIngest(versionId: string): Promise<void> {
+export async function enqueueIngest(versionId: string, datasetId?: string): Promise<void> {
   await withQueueTimeout(
-    ingestQueue().add("ingest", { versionId }, { jobId: versionId }),
+    ingestQueue().add("ingest", { versionId, datasetId }, { jobId: versionId }),
     "enqueue ingest",
   );
   logger.info({ versionId }, "job ingest masuk antrean");

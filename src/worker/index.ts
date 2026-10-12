@@ -11,15 +11,21 @@ import { join } from "node:path";
 import { Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { runIngest } from "@/features/ingest/ingest";
+import {
+  finalizeFailed,
+  recoverStuckIngests,
+  removeStaleWorkDirs,
+} from "@/features/ingest/recovery";
 import { prismaIngestRepo, s3IngestStorage } from "@/features/ingest/repo";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { INGEST_QUEUE, type IngestJobData } from "@/lib/queue/connection";
+import { INGEST_JOB_OPTIONS, INGEST_QUEUE, type IngestJobData } from "@/lib/queue/connection";
 
 const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
+const RECOVER_INGESTS = "recover-stuck-ingests";
 const INGEST_LOCK_MS = 5 * 60 * 1000;
 
 /** Tandai semua unggahan > 24 jam sebagai FAILED (per batch 100 sampai habis). */
@@ -40,7 +46,7 @@ export async function runExpireStaleUploads(): Promise<number> {
 async function sweepUploaded(queue: Queue<IngestJobData>): Promise<number> {
   const versions = await prisma.datasetVersion.findMany({
     where: { status: "UPLOADED" },
-    select: { id: true },
+    select: { id: true, datasetId: true },
     take: 1000,
   });
   let n = 0;
@@ -49,7 +55,11 @@ async function sweepUploaded(queue: Queue<IngestJobData>): Promise<number> {
     const state = job ? await job.getState() : null;
     if (state && !["completed", "failed", "unknown"].includes(state)) continue;
     if (job) await job.remove().catch(() => {});
-    await queue.add("ingest", { versionId: v.id }, { jobId: v.id });
+    await queue.add(
+      "ingest",
+      { versionId: v.id, datasetId: v.datasetId },
+      { ...INGEST_JOB_OPTIONS, jobId: v.id },
+    );
     n++;
   }
   return n;
@@ -59,6 +69,13 @@ async function main() {
   const connection = () => new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
   const tmpRoot = env().WORKER_TMP_DIR ?? join(tmpdir(), "dd-worker");
   mkdirSync(tmpRoot, { recursive: true });
+  // Sisa job yang terhenti paksa (OOM/SIGKILL) bisa berukuran GB; WORKER_TMP_DIR wajib per replika.
+  const stale = removeStaleWorkDirs(tmpRoot);
+
+  const ingestQueue = new Queue<IngestJobData>(INGEST_QUEUE, {
+    connection: connection(),
+    defaultJobOptions: INGEST_JOB_OPTIONS,
+  });
 
   // --- maintenance ---
   const maintenance = new Queue(MAINTENANCE, { connection: connection() });
@@ -67,10 +84,17 @@ async function main() {
     { every: 60 * 60 * 1000 },
     { name: EXPIRE_UPLOADS, opts: { removeOnComplete: 50, removeOnFail: 100 } },
   );
+  await maintenance.upsertJobScheduler(
+    RECOVER_INGESTS,
+    { every: 15 * 60 * 1000 },
+    { name: RECOVER_INGESTS, opts: { removeOnComplete: 50, removeOnFail: 100 } },
+  );
   const maintenanceWorker = new Worker(
     MAINTENANCE,
     async (job) => {
       if (job.name === EXPIRE_UPLOADS) return { expired: await runExpireStaleUploads() };
+      if (job.name === RECOVER_INGESTS)
+        return { recovered: await recoverStuckIngests(ingestQueue) };
       logger.warn({ jobName: job.name }, "job maintenance tidak dikenal");
       return null;
     },
@@ -81,13 +105,15 @@ async function main() {
   );
 
   // --- ingest ---
-  const ingestQueue = new Queue<IngestJobData>(INGEST_QUEUE, { connection: connection() });
   const ingestWorker = new Worker<IngestJobData>(
     INGEST_QUEUE,
     async (job: Job<IngestJobData>) => {
       const { versionId } = job.data;
       logger.info({ jobId: job.id, versionId, attempt: job.attemptsMade + 1 }, "ingest mulai");
-      const r = await runIngest(versionId, prismaIngestRepo, s3IngestStorage, { tmpRoot });
+      const r = await runIngest(versionId, prismaIngestRepo, s3IngestStorage, {
+        tmpRoot,
+        datasetIdHint: job.data.datasetId,
+      });
       logger.info({ jobId: job.id, versionId, ...r }, "ingest selesai");
       return r;
     },
@@ -100,24 +126,31 @@ async function main() {
   );
   ingestWorker.on("failed", (job, err) => {
     if (!job) return;
-    const attempts = job.opts.attempts ?? 1;
     logger.error(
       { jobId: job.id, versionId: job.data.versionId, attempt: job.attemptsMade, err: err.message },
       "ingest gagal",
     );
-    // Percobaan terakhir habis (gangguan sementara yang terus berulang) → FAILED dengan pesan umum.
-    if (job.attemptsMade >= attempts) {
-      void prismaIngestRepo
-        .fail(
-          job.data.versionId,
-          "Pemrosesan file gagal setelah beberapa percobaan karena gangguan server. Coba unggah ulang; bila berulang, hubungi admin.",
-        )
-        .catch(() => {});
-    }
+    // Final bila tidak akan diulang lagi: percobaan habis ATAU dibuang sebagai stalled
+    // (UnrecoverableError, attemptsMade bisa masih 1). Status job adalah sumber kebenaran.
+    void (async () => {
+      const state = await job.getState().catch(() => "unknown");
+      const final = err.name === "UnrecoverableError" || state === "failed";
+      if (!final) return;
+      if (!(await finalizeFailed(job.data.versionId, job.data.datasetId))) {
+        logger.error(
+          { versionId: job.data.versionId },
+          "finalisasi ingest gagal; penyapu akan mengulang",
+        );
+      }
+    })();
   });
 
   const swept = await sweepUploaded(ingestQueue);
-  logger.info({ queues: [INGEST_QUEUE, MAINTENANCE], tmpRoot, swept }, "worker berjalan");
+  const recovered = await recoverStuckIngests(ingestQueue);
+  logger.info(
+    { queues: [INGEST_QUEUE, MAINTENANCE], tmpRoot, swept, recovered, staleDirs: stale },
+    "worker berjalan",
+  );
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "worker berhenti");

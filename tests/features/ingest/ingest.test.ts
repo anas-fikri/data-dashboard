@@ -1,180 +1,26 @@
 import { createHash } from "node:crypto";
-import {
-  copyFileSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { DuckDBInstance } from "@duckdb/node-api";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import yazl from "yazl";
-import {
-  DatasetGoneError,
-  runIngest,
-  type IngestProgress,
-  type IngestRepo,
-  type IngestStorage,
-  type SheetRecord,
-} from "@/features/ingest/ingest";
+import { runIngest } from "@/features/ingest/ingest";
 import { DEFAULT_LIMITS } from "@/lib/xlsx/parser";
+import { DS, readParquet, testRoot, VID } from "./fakes";
 
 /*
  * Ingest tahap raw (T-006) end-to-end di dalam proses: parser + DuckDB sungguhan, database dan storage
  * dipalsukan (in-memory + direktori lokal). AC: header baris 4, CSV Windows-1252, idempoten setelah
  * worker mati, dataset dihapus di tengah, file rusak/berbahaya → FAILED tanpa objek tersisa.
  */
-const root = mkdtempSync(join(tmpdir(), "dd-ingest-test-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
-
-const DS = "cmv4klj5r0007oczvgiofocpg";
-const VID = "cmv4kljx40009oczvdmpurrxf";
-
-class FakeStorage implements IngestStorage {
-  constructor(
-    readonly dir: string,
-    readonly sources: Record<string, string>,
-  ) {
-    mkdirSync(dir, { recursive: true });
-  }
-  failUploadOnce: number | null = null;
-  private uploads = 0;
-  async download(key: string, dest: string) {
-    copyFileSync(this.sources[key]!, dest);
-    const buf = readFileSync(dest);
-    return { sha256: createHash("sha256").update(buf).digest("hex"), bytes: buf.length };
-  }
-  async upload(key: string, path: string, _contentType?: string) {
-    this.uploads++;
-    if (this.failUploadOnce === this.uploads) {
-      this.failUploadOnce = null;
-      throw new Error("ECONNRESET storage");
-    }
-    const dest = join(this.dir, key);
-    mkdirSync(dirname(dest), { recursive: true });
-    copyFileSync(path, dest);
-  }
-  async deletePrefix(prefix: string) {
-    const target = join(this.dir, prefix);
-    if (!existsSync(target)) return 0;
-    const n = this.keys().filter((k) => k.startsWith(prefix)).length;
-    rmSync(target, { recursive: true, force: true });
-    return n;
-  }
-  keys(): string[] {
-    const out: string[] = [];
-    const walk = (d: string) => {
-      if (!existsSync(d)) return;
-      for (const f of readdirSync(d, { withFileTypes: true })) {
-        const p = join(d, f.name);
-        if (f.isDirectory()) walk(p);
-        else out.push(relative(this.dir, p));
-      }
-    };
-    walk(this.dir);
-    return out.sort();
-  }
-}
-
-class FakeRepo implements IngestRepo {
-  status = "UPLOADED";
-  stage: string | null = null;
-  sha256: string | null = null;
-  error: string | null = null;
-  alive = () => true;
-  progressLog: IngestProgress[] = [];
-  sheets = new Map<string, SheetRecord & { rawKey: string | null }>();
-  private n = 0;
-  constructor(readonly sourceKey: string) {}
-  async load() {
-    return this.alive() ? { datasetId: DS, sourceKey: this.sourceKey } : null;
-  }
-  async begin() {
-    if (!["UPLOADED", "INGESTING"].includes(this.status)) return false;
-    this.status = "INGESTING";
-    return true;
-  }
-  async exists() {
-    return this.alive();
-  }
-  async progress(_v: string, p: IngestProgress) {
-    this.progressLog.push(p);
-  }
-  async deleteSheets() {
-    this.sheets.clear();
-  }
-  // Seperti Prisma: dataset dihapus → baris versi/sheet ikut hilang (kaskade).
-  async createSheet(_v: string, s: SheetRecord) {
-    if (!this.alive()) throw new DatasetGoneError();
-    const id = `sheet${++this.n}`;
-    this.sheets.set(id, { ...s, rawKey: null });
-    return id;
-  }
-  async setSheetKey(id: string, key: string) {
-    if (!this.alive()) {
-      this.sheets.clear();
-      throw new DatasetGoneError();
-    }
-    this.sheets.get(id)!.rawKey = key;
-  }
-  cleanups: string[] = [];
-  async recordCleanup(prefix: string) {
-    this.cleanups.push(prefix);
-  }
-  async finishRaw(_v: string, d: { sha256: string }) {
-    if (!this.alive()) return false;
-    this.stage = "raw";
-    this.sha256 = d.sha256;
-    return true;
-  }
-  async fail(_v: string, message: string) {
-    this.status = "FAILED";
-    this.error = message;
-  }
-  byIndex(): (SheetRecord & { rawKey: string | null })[] {
-    return [...this.sheets.values()].sort((a, b) => a.index - b.index);
-  }
-}
-
-let seq = 0;
-function setup(fixture: string) {
-  const ext = fixture.endsWith(".csv") ? "csv" : "xlsx";
-  const sourceKey = `raw/${DS}/${VID}/source.${ext}`;
-  const storage = new FakeStorage(join(root, `store-${++seq}`), { [sourceKey]: fixture });
-  const repo = new FakeRepo(sourceKey);
-  return { storage, repo, opts: { tmpRoot: join(root, "tmp"), duckMemory: "256MB" } };
-}
-mkdirSync(join(root, "tmp"), { recursive: true });
-
-async function readParquet(path: string): Promise<unknown[][]> {
-  const db = await DuckDBInstance.create(":memory:");
-  const c = await db.connect();
-  try {
-    const r = await c.runAndReadAll(
-      `SELECT * FROM read_parquet('${path.replace(/'/g, "''")}') ORDER BY _row`,
-    );
-    return r.getRowsJS() as unknown[][];
-  } finally {
-    c.closeSync();
-    db.closeSync();
-  }
-}
+const t = testRoot("ingest-test");
+const { root, setup } = t;
+afterAll(t.cleanup);
+beforeEach(t.resetTmp);
 
 const manifest = (p: string) =>
   JSON.parse(readFileSync(`${p}.manifest.json`, "utf8")) as {
     sheets: { name: string; nonEmptyRows: number; lastRow: number }[];
   };
-
-beforeEach(() => {
-  rmSync(join(root, "tmp"), { recursive: true, force: true });
-  mkdirSync(join(root, "tmp"), { recursive: true });
-});
 
 describe("ingest raw: xlsx", () => {
   it("3 sheet, header baris 4 (judul + baris kosong di atasnya), header kosong/duplikat → nama unik + asli", async () => {
@@ -486,5 +332,3 @@ describe("ingest raw: ketahanan", () => {
     expect(await runIngest(VID, c.repo, c.storage, c.opts)).toEqual({ outcome: "skipped" });
   });
 });
-
-void statSync;

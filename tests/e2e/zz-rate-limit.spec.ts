@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 /*
- * Sengaja di file terpisah bernama zz-*: berjalan paling akhir (workers=1, urut nama file)
+ * Sengaja di project Playwright terpisah (dependencies: e2e) sehingga berjalan paling akhir
  * karena mengisi bucket rate limit IP 'local' (dev tanpa proxy) sehingga login lain akan 429.
  */
 test("rate limit: Route Handler login menjawab 429 setelah 10 kegagalan per IP", async ({

@@ -170,8 +170,10 @@ export async function scanCsv(path: string, delimiter: string, maxCols: number):
       records++;
       if (fields > maxFields) maxFields = fields;
       if (fields > maxCols) {
+        // Nomor baris = nomor record termasuk baris kosong (sama dengan _row di raw.parquet).
+        const id = (x: number) => x.toLocaleString("id-ID");
         throw new CsvFormatError(
-          `File CSV punya lebih dari ${maxCols.toLocaleString("id-ID")} kolom di baris ${records}.`,
+          `File CSV punya ${id(fields)} kolom di baris ${id(records + blanksBefore.length)}; maksimal ${id(maxCols)} kolom per sheet. Hapus kolom yang tidak dipakai lalu unggah lagi.`,
         );
       }
     } else {

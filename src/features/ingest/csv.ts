@@ -4,9 +4,10 @@
  *   2. pindai seluruh file (byte): kolom maksimum, record, baris kosong, akhir baris, validitas UTF-8;
  *   3. encoding dari pindaian seluruh file (bukan hanya 64 KB): UTF-8 valid → apa adanya (BOM dibuang),
  *      selain itu Windows-1252 → transcode ke UTF-8;
- *   4. DuckDB membaca semua sebagai VARCHAR dengan kolom eksplisit, satu thread pembaca
+ *   4. DuckDB membaca semua sebagai VARCHAR dengan kolom eksplisit, satu thread pembaca, ke tabel r0
  *      (parallel = false: pemindai paralel tidak mendukung baris baru di dalam kutip + null_padding);
- *   5. _row = nomor fisik (termasuk baris kosong, seperti Excel) lewat ASOF JOIN offset kumulatif.
+ *   5. _row = nomor fisik (termasuk baris kosong, seperti Excel): rowid r0, ditambah offset baris
+ *      kosong kumulatif (ASOF JOIN sempit + POSITIONAL JOIN) bila ada.
  */
 import { createReadStream, createWriteStream } from "node:fs";
 import { open } from "node:fs/promises";
@@ -17,7 +18,7 @@ import { ident, lit, type Duck } from "@/lib/duckdb";
 import { CsvFormatError, rejectUtf16, scanCsv, sniffDelimiter } from "./csv-sniff";
 import { columnNames, guessHeaderRow, type SampleRow } from "./header";
 import type { SheetRecord } from "./ingest";
-import { MAX_RAW_COLS, SAMPLE_ROWS, TooWideError, copyParquet } from "./raw-writer";
+import { MAX_RAW_COLS, SAMPLE_ROWS, copyParquet } from "./raw-writer";
 
 export const CSV_MAX_CELL = 32_767;
 const MAX_LINE = 8 * 1024 * 1024;
@@ -80,8 +81,7 @@ export async function csvToParquet(
   const head = await readHead(src);
   rejectUtf16(head);
   const delimiter = sniffDelimiter(head);
-  const scan = await scanCsv(src, delimiter, MAX_RAW_COLS + 1);
-  if (scan.maxFields > MAX_RAW_COLS) throw new TooWideError(scan.maxFields);
+  const scan = await scanCsv(src, delimiter, MAX_RAW_COLS);
   if (scan.records === 0) throw new CsvFormatError("File CSV tidak berisi data.");
   onEstimate(scan.records);
 
@@ -94,18 +94,54 @@ export async function csvToParquet(
   const n = scan.maxFields;
   const cols = Array.from({ length: n }, (_, i) => `c${i + 1}`);
   const columns = `{${cols.map((c) => `${lit(c)}: 'VARCHAR'`).join(", ")}}`;
+  const r0Cols = cols.map((c) => `r0.${ident(c)}`);
   const anyValue =
-    n === 1 ? `${ident("c1")} IS NOT NULL` : `coalesce(${cols.map(ident).join(", ")}) IS NOT NULL`;
+    n === 1 ? `${r0Cols[0]} IS NOT NULL` : `coalesce(${r0Cols.join(", ")}) IS NOT NULL`;
   const buffer = Math.max(opts.bufferSize ?? BUFFER, 1024 * 1024);
   const maxLine = Math.min(MAX_LINE, buffer);
 
+  // Watchdog: query panjang diinterupsi bila dataset dihapus / deadline lewat.
+  const watched = async <T>(fn: () => Promise<T>): Promise<T> => {
+    let watchErr: unknown = null;
+    const timer = setInterval(() => {
+      watch().catch((e: unknown) => {
+        watchErr ??= e;
+        duck.interrupt();
+      });
+    }, 5_000);
+    try {
+      const r = await fn();
+      if (watchErr) throw watchErr;
+      return r;
+    } catch (e) {
+      throw watchErr ?? e;
+    } finally {
+      clearInterval(timer);
+    }
+  };
+
+  // Muat apa adanya: satu pembaca + urutan sisip dipertahankan → rowid = urutan record. Tanpa
+  // window row_number(): operator window menyimpan semua kolom per blok dan OOM pada tabel lebar
+  // (1.100 kolom sudah > 256 MB walau hanya 2 baris).
+  await watched(() =>
+    duck.conn.run(
+      `CREATE TABLE r0 AS
+       SELECT * FROM read_csv($path, header = false, auto_detect = false, delim = $delim, quote = '"',
+                              escape = '"', null_padding = true, parallel = false,
+                              max_line_size = ${maxLine}, buffer_size = ${buffer}${scan.crOnly ? ", new_line = '\\r'" : ""},
+                              columns = ${columns})`,
+      { path, delim: delimiter },
+    ),
+  );
+  await watch();
+
   // Nomor fisik. CSV satu kolom: DuckDB mengembalikan baris kosong sebagai NULL (sudah terhitung di
-  // rn). Lebih dari satu kolom: baris kosong dilewati → tambah jumlah baris kosong sebelumnya
-  // lewat ASOF JOIN atas offset kumulatif (linear, bukan subquery berkorelasi).
-  let asofJoin = "";
-  let physical = "rn";
+  // rowid). Lebih dari satu kolom: baris kosong dilewati → tambah jumlah baris kosong sebelumnya.
+  // ASOF JOIN hanya atas kolom rowid (sempit), lalu POSITIONAL JOIN streaming ke tabel lebar.
+  let physical = "(r0.rowid + 1)::INTEGER";
+  let from = "r0";
   if (n > 1 && scan.blanksBefore.length) {
-    await duck.conn.run("CREATE TEMP TABLE blank_cum (b INTEGER, c INTEGER)");
+    await duck.conn.run("CREATE TABLE blank_cum (b INTEGER, c INTEGER)");
     const a = await duck.conn.createAppender("blank_cum");
     const bb = scan.blanksBefore;
     for (let i = 0; i < bb.length; i++) {
@@ -117,69 +153,64 @@ export async function csvToParquet(
     }
     a.flushSync();
     a.closeSync();
-    asofJoin = "ASOF LEFT JOIN blank_cum ON src.rn > blank_cum.b";
-    physical = "rn + coalesce(blank_cum.c, 0)";
-  }
-
-  // Watchdog: query panjang diinterupsi bila dataset dihapus / deadline lewat.
-  let watchErr: unknown = null;
-  const timer = setInterval(() => {
-    watch().catch((e: unknown) => {
-      watchErr ??= e;
-      duck.interrupt();
-    });
-  }, 5_000);
-  try {
-    await duck.conn.run(
-      `CREATE TABLE s0 AS
-       WITH src AS (
-         SELECT row_number() OVER () AS rn, *
-         FROM read_csv($path, header = false, auto_detect = false, delim = $delim, quote = '"', escape = '"',
-                       null_padding = true, parallel = false, max_line_size = ${maxLine},
-                       buffer_size = ${buffer}${scan.crOnly ? ", new_line = '\\r'" : ""}, columns = ${columns})
-       )
-       SELECT (${physical})::INTEGER AS _row, ${cols.map(ident).join(", ")}
-       FROM src ${asofJoin}
-       WHERE ${anyValue}
-       ORDER BY rn`,
-      { path, delim: delimiter },
+    await watched(() =>
+      duck.conn.run(
+        `CREATE TABLE pos AS
+         SELECT (r.rid + 1 + coalesce(blank_cum.c, 0))::INTEGER AS _row
+         FROM (SELECT rowid AS rid FROM r0) r ASOF LEFT JOIN blank_cum ON r.rid + 1 > blank_cum.b
+         ORDER BY r.rid`,
+      ),
     );
-  } catch (e) {
-    if (watchErr) throw watchErr;
-    throw e;
-  } finally {
-    clearInterval(timer);
+    physical = "pos._row";
+    from = "r0 POSITIONAL JOIN pos";
   }
-  if (watchErr) throw watchErr;
-  await watch();
-
-  const rows = Number(
-    (await duck.conn.runAndReadAll("SELECT count(*) AS n FROM s0")).getRowObjects()[0]!.n,
+  await duck.conn.run(
+    `CREATE VIEW s0 AS SELECT ${physical} AS _row, ${r0Cols.map((c, i) => `${c} AS ${ident(cols[i]!)}`).join(", ")}
+     FROM ${from} WHERE ${anyValue}`,
   );
-  if (rows === 0) throw new CsvFormatError("File CSV tidak berisi data.");
-  // Daftar agregat datar (bukan rantai a + b + … yang melampaui batas kedalaman ekspresi).
-  const counts = (
-    await duck.conn.runAndReadAll(
-      `SELECT ${cols.map((c, i) => `count(*) FILTER (WHERE length(${ident(c)}) > ${CSV_MAX_CELL}) AS t${i}`).join(", ")} FROM s0`,
+
+  // Satu pass: jumlah baris + sel terpotong. Satu list datar per baris: rantai a + b + … melampaui
+  // batas kedalaman ekspresi, dan N agregat FILTER tumbuh superlinear (2.048 kolom ≈ 5 s per baris).
+  const agg = (
+    await watched(() =>
+      duck.conn.runAndReadAll(
+        `SELECT count(*) AS n,
+                coalesce(sum(len(list_filter([${cols.map((c) => `length(${ident(c)})`).join(", ")}], l -> l > ${CSV_MAX_CELL}))), 0) AS t
+         FROM s0`,
+      ),
     )
   ).getRowsJS()[0] as unknown[];
-  const truncated = counts.reduce((s: number, v) => s + Number(v), 0);
+  const rows = Number(agg[0]);
+  if (rows === 0) throw new CsvFormatError("File CSV tidak berisi data.");
+  const truncated = Number(agg[1]);
+  // Top-N lebar (ORDER BY … LIMIT atas semua kolom) OOM pada tabel lebar seperti window; urutkan
+  // kolom _row saja lalu ambil barisnya.
   const sampleRows = (
-    await duck.conn.runAndReadAll(`SELECT * FROM s0 ORDER BY _row LIMIT ${SAMPLE_ROWS}`)
+    await watched(() =>
+      duck.conn.runAndReadAll(
+        `SELECT * FROM s0
+         WHERE _row <= (SELECT max(_row) FROM (SELECT _row FROM s0 ORDER BY _row LIMIT ${SAMPLE_ROWS}))`,
+      ),
+    )
   ).getRowsJS() as unknown[][];
+  sampleRows.sort((a, b) => Number(a[0]) - Number(b[0]));
   const sample: SampleRow[] = sampleRows.map((r) => ({
     row: Number(r[0]),
     vals: r.slice(1).map((v) => (typeof v === "string" ? v.slice(0, 256) : null)),
   }));
   const out = join(work, "sheet-0.parquet");
-  await copyParquet(
-    duck,
-    `SELECT _row, ${cols.map((c) => `left(${ident(c)}, ${CSV_MAX_CELL}) AS ${ident(c)}`).join(", ")} FROM s0 ORDER BY _row`,
-    out,
-    n,
+  await watched(() =>
+    copyParquet(
+      duck,
+      `SELECT _row, ${cols.map((c) => `left(${ident(c)}, ${CSV_MAX_CELL}) AS ${ident(c)}`).join(", ")} FROM s0 ORDER BY _row`,
+      out,
+      n,
+    ),
   );
-  await duck.conn.run("DROP TABLE s0");
+  await duck.conn.run("DROP VIEW s0");
+  await duck.conn.run("DROP TABLE IF EXISTS pos");
   await duck.conn.run("DROP TABLE IF EXISTS blank_cum");
+  await duck.conn.run("DROP TABLE r0");
   const headerRow = guessHeaderRow(sample);
   return {
     path: out,

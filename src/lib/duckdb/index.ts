@@ -30,6 +30,8 @@ export async function openDuck(o: DuckOptions): Promise<Duck> {
     threads: String(o.threads ?? 2),
     temp_directory: temp,
     max_temp_directory_size: o.maxTempSize ?? "8GB",
+    // Default DuckDB, dikunci eksplisit: ingest CSV memakai rowid sebagai urutan record (T-006).
+    preserve_insertion_order: "true",
     // Tanpa unduhan ekstensi saat runtime (on-prem tanpa internet); parquet sudah bawaan.
     autoinstall_known_extensions: "false",
     autoload_known_extensions: "false",

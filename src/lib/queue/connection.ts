@@ -10,7 +10,17 @@ export const QUEUE_OP_TIMEOUT_MS = 5_000;
 
 export interface IngestJobData {
   versionId: string;
+  /** Untuk membersihkan prefix Parquet walau versi sudah terhapus saat job diproses. */
+  datasetId?: string;
 }
+
+/** Opsi job ingest — dipakai app (enqueue) dan worker (sapuan) agar sama. */
+export const INGEST_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: "exponential" as const, delay: 30_000 },
+  removeOnComplete: { count: 1000 },
+  removeOnFail: { count: 5000 },
+};
 
 const globalForQueue = globalThis as unknown as {
   ingestQueueHolder?: { queue: Queue<IngestJobData>; connection: Redis };
@@ -36,12 +46,7 @@ export function ingestQueue(): Queue<IngestJobData> {
   connection.on("error", (e: Error) => logger.warn({ err: e.message }, "redis antrean error"));
   const queue = new Queue<IngestJobData>(INGEST_QUEUE, {
     connection,
-    defaultJobOptions: {
-      attempts: 3,
-      backoff: { type: "exponential", delay: 30_000 },
-      removeOnComplete: { count: 1000 },
-      removeOnFail: { count: 5000 },
-    },
+    defaultJobOptions: INGEST_JOB_OPTIONS,
   });
   globalForQueue.ingestQueueHolder = { queue, connection };
   return queue;

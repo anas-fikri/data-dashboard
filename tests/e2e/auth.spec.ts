@@ -14,7 +14,7 @@ import {
 
 /*
  * Alur auth end-to-end: butuh compose dev (PostgreSQL, Redis, Mailpit 8026), .env dengan
- * E2E_ENDPOINTS=1. Serial karena test terakhir mengisi bucket rate limit IP 'local'.
+ * E2E_ENDPOINTS=1. Dijalankan serial; spec pengisi bucket rate limit IP ada di zz-rate-limit.
  */
 test.describe.configure({ mode: "serial" });
 

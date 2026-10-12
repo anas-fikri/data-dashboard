@@ -10,6 +10,12 @@ export default defineConfig({
     baseURL: process.env.E2E_BASE_URL ?? "http://localhost:3100",
     trace: "retain-on-failure",
   },
+  // Spec rate limit mengisi bucket login IP 'local' (dev tanpa proxy): jalankan setelah semua spec
+  // lain selesai, apa pun jumlah worker-nya (urutan nama file tidak menjamin ini saat paralel).
+  projects: [
+    { name: "e2e", testIgnore: /zz-rate-limit\.spec\.ts$/ },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["e2e"] },
+  ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
     : {

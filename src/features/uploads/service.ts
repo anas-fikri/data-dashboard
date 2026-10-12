@@ -458,7 +458,7 @@ async function markFailed(id: string, message: string) {
 
 export interface CompleteDeps {
   storage?: MultipartStorage;
-  enqueue?: (versionId: string) => Promise<void>;
+  enqueue?: (versionId: string, datasetId: string) => Promise<void>;
 }
 
 export async function completeUpload(
@@ -477,7 +477,7 @@ export async function completeUpload(
     // Sudah selesai (idempoten). UPLOADED = belum diambil worker: antre ulang bila enqueue dulu
     // gagal (Redis mati). jobId = versionId sehingga tidak menggandakan job.
     if (v.status === "UPLOADED") {
-      await enqueue(v.id).catch((err: unknown) =>
+      await enqueue(v.id, v.datasetId).catch((err: unknown) =>
         logger.error({ versionId: v.id, err: String(err) }, "enqueue ulang ingest gagal"),
       );
     }
@@ -555,7 +555,7 @@ export async function completeUpload(
       return notFound();
     }
     try {
-      await enqueue(id);
+      await enqueue(id, v.datasetId);
     } catch (err) {
       // Versi tetap UPLOADED; complete berikutnya mengantre ulang, worker (T-006) menyapu saat start.
       logger.error({ versionId: id, err: String(err) }, "enqueue ingest gagal");
