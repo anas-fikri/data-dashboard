@@ -27,6 +27,14 @@ export interface SaxLimits {
   maxRows: number;
   maxCols: number;
   maxSheets: number;
+  /** Jumlah entri sharedStrings (indeks ± 4 byte/string; fixture 1 GB teks-berat: 40 juta). */
+  maxSharedStrings: number;
+  /** File spill sharedStrings ≤ min(maxSpillBytes, maxSpillFactor × ukuran file) di disk temp. */
+  maxSpillBytes: number;
+  maxSpillFactor: number;
+  /** Excel: ≤ 64.000 format sel dan beberapa ratus format angka kustom. */
+  maxCellXfs: number;
+  maxNumFmts: number;
   /** Batas waktu absolut (epoch ms); lewat → XlsxLimitError. */
   deadline?: number;
 }
@@ -42,6 +50,11 @@ export const DEFAULT_LIMITS: SaxLimits = {
   maxRows: 1_048_576,
   maxCols: 16_384,
   maxSheets: 50,
+  maxSharedStrings: 64 * 1024 * 1024,
+  maxSpillBytes: 8 * 1024 ** 3,
+  maxSpillFactor: 4,
+  maxCellXfs: 65_536,
+  maxNumFmts: 1_000,
 };
 
 export class XlsxLimitError extends Error {
@@ -65,6 +78,13 @@ function relId(attrs: Record<string, string>): string {
   for (const [k, v] of Object.entries(attrs)) if (k.endsWith(":id")) return v;
   return attrs.id ?? "";
 }
+
+/**
+ * Salinan mandiri string. Substring V8 (≥ 13 karakter) menunjuk ke string induknya, di sini potongan
+ * stream ± 16 KB, sehingga nilai pendek bisa menahan seluruh potongan (review T-005 putaran 5).
+ * (" " + s).slice(1) meratakan string gabungan baru lalu memotongnya: induk barunya hanya s + 1.
+ */
+export const own = (s: string): string => (s.length >= 13 ? (" " + s).slice(1) : s);
 
 /** Dekode escape OOXML _xHHHH_ (mis. _x000D_ = CR). _x005F_ = garis bawah literal. */
 const decodeOoxml = (s: string) =>
@@ -93,6 +113,10 @@ function listEntries(
     zip.on("entry", (e: Entry) => {
       if (all.length >= limits.maxEntries)
         return rej(new XlsxLimitError("terlalu banyak entri zip"));
+      // Excel menulis nama pendek tanpa komentar; metadata entri ditahan sepanjang parse.
+      if (e.fileNameLength > 1024 || e.extraFieldLength > 4096 || e.fileCommentLength > 1024) {
+        return rej(new XlsxLimitError("struktur zip tidak valid (metadata entri berlebihan)"));
+      }
       total += e.uncompressedSize;
       const ratio = e.uncompressedSize / Math.max(1, e.compressedSize);
       if (e.uncompressedSize > 1024 * 1024 && ratio > limits.maxRatio) {
@@ -253,13 +277,18 @@ class SstStore {
   constructor(
     private readonly tmpDir: string,
     private readonly spillBytes: number,
+    private readonly maxStrings: number,
+    private readonly maxFileBytes: number,
   ) {}
   get size() {
     return this.count;
   }
   push(s: string) {
+    if (this.count >= this.maxStrings) {
+      throw new XlsxLimitError("jumlah teks unik di file melebihi batas");
+    }
     if (this.fd === null) {
-      this.mem.push(s);
+      this.mem.push(own(s));
       this.memBytes += s.length * 2 + 40;
       this.count++;
       if (this.memBytes > this.spillBytes) this.spill();
@@ -285,6 +314,9 @@ class SstStore {
     if (i % CHUNK === 0) this.rel.push(new Uint32Array(CHUNK));
     this.rel[Math.floor(i / CHUNK)]![i % CHUNK] = this.filePos - this.base[Math.floor(i / BLOCK)]!;
     const b = Buffer.from(s, "utf8");
+    if (this.filePos + b.length > this.maxFileBytes) {
+      throw new XlsxLimitError("isi teks file terlalu besar untuk diproses");
+    }
     for (let w = 0; w < b.length;) w += writeSync(this.fd!, b, w, b.length - w, this.filePos + w);
     this.filePos += b.length;
     this.count++;
@@ -366,7 +398,13 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
     physicalRowNumbers: true,
     async parse(path, opts, onRow): Promise<ParseSummary> {
       const zip = await openZip(path);
-      const sst = new SstStore(opts.tmpDir, limits.spillBytes);
+      const fileSize = statSync(path).size;
+      const sst = new SstStore(
+        opts.tmpDir,
+        limits.spillBytes,
+        limits.maxSharedStrings,
+        Math.min(limits.maxSpillBytes, limits.maxSpillFactor * Math.max(fileSize, 1)),
+      );
       const summary: ParseSummary = { truncatedCells: 0 };
       const truncatedSst = new Set<number>();
       // Teks mentah ditampung sampai 7× batas (escape _xHHHH_ = 7 karakter → 1), lalu didekode dan
@@ -387,7 +425,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
         return { v, cut: true };
       };
       try {
-        const entries = await listEntries(zip, limits, statSync(path).size);
+        const entries = await listEntries(zip, limits, fileSize);
         const need = (name: string, what: string) => {
           const e = entries.get(name);
           if (!e)
@@ -409,7 +447,11 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                   if (out.length >= limits.maxEntries) {
                     throw new XlsxLimitError(`relasi berlebihan di ${relPath} (file rusak)`);
                   }
-                  out.push({ id: a.Id, type: a.Type ?? "", target: resolvePart(dir, a.Target) });
+                  out.push({
+                    id: own(a.Id),
+                    type: own(a.Type ?? ""),
+                    target: own(resolvePart(dir, a.Target)),
+                  });
                 }
               },
             },
@@ -441,7 +483,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                 if (name.length > MAX_SHEET_NAME) {
                   throw new XlsxLimitError("nama sheet terlalu panjang (file bukan buatan Excel)");
                 }
-                sheets.push({ name, rid: relId(a) });
+                sheets.push({ name: own(name), rid: own(relId(a)) });
               } else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
             },
           },
@@ -459,15 +501,22 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
           const customDate = new Set<number>();
           let inXfs = false;
           let xf = 0;
+          let numFmts = 0;
           await sax(
             zip,
             styles,
             {
               open: (n, a) => {
-                if (n === "numFmt" && isDateFormat(a.formatCode ?? ""))
-                  customDate.add(Number(a.numFmtId));
-                else if (n === "cellXfs") inXfs = true;
+                if (n === "numFmt") {
+                  if (++numFmts > limits.maxNumFmts) {
+                    throw new XlsxLimitError("format angka berlebihan (file bukan buatan Excel)");
+                  }
+                  if (isDateFormat(a.formatCode ?? "")) customDate.add(Number(a.numFmtId));
+                } else if (n === "cellXfs") inXfs = true;
                 else if (n === "xf" && inXfs) {
+                  if (xf >= limits.maxCellXfs) {
+                    throw new XlsxLimitError("format sel berlebihan (file bukan buatan Excel)");
+                  }
                   const id = Number(a.numFmtId ?? 0);
                   if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
                   xf++;
@@ -593,14 +642,16 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                   } else if (type === "inlineStr" || type === "str" || type === "e") {
                     if (text !== "") {
                       const f = finish(text);
-                      v = f.v;
+                      v = own(f.v);
                       if (f.cut) summary.truncatedCells++;
                     }
                   } else if (type === "b") v = text === "" ? null : text === "1";
-                  else if (type === "d") v = text === "" ? null : parseIsoNaive(text);
-                  else if (text !== "") {
+                  else if (type === "d") {
+                    const d = text === "" ? null : parseIsoNaive(text);
+                    v = typeof d === "string" ? own(d) : d;
+                  } else if (text !== "") {
                     const num = Number(text);
-                    if (Number.isNaN(num)) v = text;
+                    if (Number.isNaN(num)) v = own(text);
                     else
                       v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
                   }
