@@ -184,13 +184,34 @@ model StorageCleanup {
 
 /// Dashboard minimal (T-003: agar hapus kaskade teruji). Kolom builder ditambah di T-010.
 model Dashboard {
-  id        String   @id @default(cuid())
-  datasetId String
-  dataset   Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
-  name      String
-  layout    Json     @default("[]")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String   @id @default(cuid())
+  datasetId      String
+  dataset        Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  name           String
+  /// Nama ternormalisasi (trim + lowercase): unik per dataset tanpa peka kapital.
+  nameKey        String
+  /// Posisi widget di grid 12 kolom: [{ i: widgetId, x, y, w, h }] (T-010).
+  layout         Json     @default("[]")
+  /// Naik tiap layout/widget berubah; simpan otomatis memakai CAS agar tab lama tidak menimpa.
+  layoutRevision Int      @default(0)
+  widgets        Widget[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
+  @@unique([datasetId, nameKey])
   @@index([datasetId])
+}
+
+/// Isi widget (T-010: kosong; T-011: tabel/KPI/grafik). Posisi ada di Dashboard.layout.
+model Widget {
+  id          String    @id @default(cuid())
+  dashboardId String
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  type        String    @default("empty")
+  title       String    @default("")
+  spec        Json      @default("{}")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([dashboardId])
 }

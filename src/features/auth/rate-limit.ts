@@ -32,6 +32,8 @@ export const RULES = {
   recast: { name: "recast:user", limit: 20, windowSec: 10 * 60 },
   /** Ganti nama/sembunyikan kolom (tanpa worker; hanya tulis skema). */
   schemaEdit: { name: "schema-edit:user", limit: 60, windowSec: 10 * 60 },
+  /** Perubahan kanvas dashboard (simpan otomatis tiap geser/ubah ukuran, tambah/hapus widget). */
+  dashboardEdit: { name: "dashboard-edit:user", limit: 600, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {
