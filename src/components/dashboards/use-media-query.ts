@@ -21,8 +21,8 @@ function useMediaQuery(query: string): boolean {
 /** < 768 px: kanvas satu kolom, tanpa menyeret. */
 export const useIsPhone = () => useMediaQuery("(max-width: 767px)");
 
-/** Layar sentuh: hanya pegangan kecil yang menyeret, sisa kepala kartu tetap bisa di-scroll. */
-export const useIsCoarsePointer = () => useMediaQuery("(pointer: coarse)");
+/** Ada layar sentuh (termasuk laptop sentuh): hanya pegangan kecil yang menyeret, kepala kartu tetap bisa di-scroll. */
+export const useIsCoarsePointer = () => useMediaQuery("(any-pointer: coarse)");
 
 /** ≥ 1280 px: panel pengaturan widget menempel di samping kanvas (di bawahnya: lembar dialog). */
 export const useIsWide = () => useMediaQuery("(min-width: 1280px)");

@@ -51,7 +51,7 @@ async function uploadAndWait(
 
 test.describe("ingest", () => {
   test.beforeAll(async ({ browser, request }) => {
-    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs"]); // batas registrasi per IP di suite penuh
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]); // batas registrasi per IP di suite penuh
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);
     await p.close();

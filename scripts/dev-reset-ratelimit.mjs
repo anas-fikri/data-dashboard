@@ -1,5 +1,9 @@
 #!/usr/bin/env node
-// Dev/e2e saja: hapus semua counter rate limit (rl:*) di Redis lokal. Menolak jalan di produksi.
+// Dev/e2e saja: hapus counter rate limit di Redis lokal. Menolak jalan di produksi.
+//   node scripts/dev-reset-ratelimit.mjs                 → semua (rl:*), mis. di global setup
+//   node scripts/dev-reset-ratelimit.mjs register:ip     → hanya bucket itu (rl:register:ip:*)
+// Di tengah suite paralel pakai nama bucket: menghapus semua counter ikut mengosongkan bucket yang
+// sedang diuji test lain (mis. batas reset password per email) dan membuatnya gagal acak.
 import { readFileSync, existsSync } from "node:fs";
 import Redis from "ioredis";
 
@@ -14,9 +18,13 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 const r = new Redis(process.env.REDIS_URL);
+const buckets = process.argv.slice(2);
+const patterns = buckets.length ? buckets.map((b) => `rl:${b}:*`) : ["rl:*"];
 let n = 0;
-for await (const keys of r.scanStream({ match: "rl:*", count: 200 })) {
-  if (keys.length) n += await r.del(...keys);
+for (const match of patterns) {
+  for await (const keys of r.scanStream({ match, count: 200 })) {
+    if (keys.length) n += await r.del(...keys);
+  }
 }
 console.log(`rate limit direset: ${n} key`);
 await r.quit();

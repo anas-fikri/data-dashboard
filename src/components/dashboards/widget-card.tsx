@@ -54,7 +54,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           <span
             className={cn(
               GRIP_HANDLE,
-              "flex size-8 shrink-0 touch-none items-center justify-center text-muted-foreground @max-[6rem]:hidden pointer-coarse:size-11",
+              "flex size-8 shrink-0 touch-none items-center justify-center text-muted-foreground @max-[6rem]:hidden any-pointer-coarse:size-11",
             )}
             title="Seret kepala kartu untuk memindahkan"
             aria-hidden

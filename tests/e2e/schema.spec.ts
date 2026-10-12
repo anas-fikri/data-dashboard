@@ -115,7 +115,7 @@ async function saveAndWait(page: Page, click: () => Promise<void>, queued = true
 
 test.describe("skema", () => {
   test.beforeAll(async ({ browser, request }) => {
-    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs"]);
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]);
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);
     await p.close();

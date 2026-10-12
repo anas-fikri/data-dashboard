@@ -71,7 +71,7 @@ const init = (page: Page, datasetId: string, name: string, size: number, lastMod
 test.describe("unggah", () => {
   test.beforeAll(async ({ browser, request }) => {
     // Suite penuh mendaftarkan > 20 user dari satu IP (batas registrasi per jam).
-    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs"]);
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]);
     await createUser(browser, request, OWNER);
     await createUser(browser, request, OTHER);
   });
@@ -277,7 +277,7 @@ test.describe("unggah", () => {
     request,
   }) => {
     // Suite penuh mendaftarkan > 20 user dari satu IP (batas registrasi); test ini butuh 2 user baru.
-    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs"]);
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]);
     const email = uniqueEmail("up-limit");
     await createUser(browser, request, email);
     await apiLogin(page, email);
