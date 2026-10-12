@@ -86,3 +86,38 @@
     }
   }
 }
+
+/*
+ * react-grid-layout (kanvas dashboard T-010): warna bawaan pustaka (placeholder merah, ikon resize hitam
+ * yang hilang di tema gelap) diganti token; area tekan pegangan resize diperbesar. Sengaja di luar
+ * @layer dan diawali .react-grid-layout: CSS pustaka tidak ber-layer, jadi override harus menang lewat
+ * spesifisitas, bukan urutan muat.
+ */
+.react-grid-layout .react-grid-item.react-grid-placeholder {
+  background: var(--color-primary);
+  opacity: 0.12;
+  border-radius: var(--radius-lg);
+}
+.react-grid-layout .react-grid-item > .react-resizable-handle {
+  width: 1.5rem;
+  height: 1.5rem;
+  background-image: none;
+  color: var(--color-muted-foreground);
+}
+.react-grid-layout .react-grid-item > .react-resizable-handle::after {
+  right: 0.375rem;
+  bottom: 0.375rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+}
+.react-grid-layout .react-grid-item > .react-resizable-handle:hover {
+  color: var(--color-primary);
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-grid-layout,
+  .react-grid-layout .react-grid-item {
+    transition: none !important;
+  }
+}

@@ -1,0 +1,114 @@
+"use client";
+
+import { IconPlus } from "@tabler/icons-react";
+import { useActionState, useEffect, useRef } from "react";
+import { FormAlert } from "@/components/auth/form-alert";
+import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { createDashboardAction, type DashboardFormState } from "@/features/dashboards/actions";
+import { DASHBOARD_NAME_MAX, DASHBOARDS_PER_DATASET } from "@/features/dashboards/validation";
+
+/** Form buat dashboard: pilih dataset (Select kustom) + nama. Isian dipertahankan saat gagal. */
+export function DashboardForm({
+  datasets,
+  defaultDatasetId,
+}: {
+  datasets: { id: string; name: string; dashboardCount: number }[];
+  defaultDatasetId?: string;
+}) {
+  const [state, action, pending] = useActionState<DashboardFormState, FormData>(
+    createDashboardAction,
+    { status: "idle" },
+  );
+  const nameRef = useRef<HTMLInputElement>(null);
+  const datasetRef = useRef<HTMLButtonElement>(null);
+  const alertRef = useRef<HTMLDivElement>(null);
+  const error = state.status === "error" ? state : null;
+
+  useEffect(() => {
+    if (state.status !== "error") return;
+    if (state.field === "name") nameRef.current?.focus();
+    else if (state.field === "datasetId") datasetRef.current?.focus();
+    else alertRef.current?.focus();
+  }, [state]);
+
+  const datasetError = error?.field === "datasetId" ? error.message : undefined;
+  const datasetId = error?.values.datasetId || defaultDatasetId || undefined;
+
+  return (
+    <form action={action} className="flex max-w-xl flex-col gap-4" noValidate>
+      {error && !error.field ? (
+        <FormAlert tone="error" ref={alertRef}>
+          {error.message}
+        </FormAlert>
+      ) : null}
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="datasetId" className="text-sm font-medium">
+          Dataset
+          <span className="text-destructive" aria-hidden>
+            {" "}
+            *
+          </span>
+        </label>
+        <Select name="datasetId" defaultValue={datasetId} required>
+          <SelectTrigger
+            ref={datasetRef}
+            id="datasetId"
+            aria-invalid={datasetError ? true : undefined}
+            aria-describedby={datasetError ? "datasetId-error" : "datasetId-hint"}
+            className="h-(--control-h-lg) aria-invalid:border-destructive md:h-(--control-h)"
+          >
+            <SelectValue placeholder="Pilih dataset" />
+          </SelectTrigger>
+          <SelectContent>
+            {datasets.map((d) => (
+              <SelectItem key={d.id} value={d.id}>
+                {d.name} ({d.dashboardCount}/{DASHBOARDS_PER_DATASET} dashboard)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {datasetError ? (
+          <p id="datasetId-error" role="alert" className="text-sm text-destructive">
+            {datasetError}
+          </p>
+        ) : (
+          <p id="datasetId-hint" className="text-sm text-muted-foreground">
+            Data yang akan ditampilkan widget di dashboard ini.
+          </p>
+        )}
+      </div>
+      <Field
+        id="name"
+        label="Nama dashboard"
+        hint="Contoh: Ringkasan Pengiriman Harian. Unik di dataset yang sama."
+        required
+        error={error?.field === "name" ? error.message : undefined}
+      >
+        <Input
+          ref={nameRef}
+          name="name"
+          maxLength={DASHBOARD_NAME_MAX}
+          defaultValue={error?.values.name ?? ""}
+          className="h-(--control-h-lg) md:h-(--control-h)"
+        />
+      </Field>
+      <Button
+        type="submit"
+        pending={pending}
+        className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
+        leadingIcon={<IconPlus aria-hidden />}
+      >
+        Buat dashboard
+      </Button>
+    </form>
+  );
+}

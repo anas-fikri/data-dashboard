@@ -42,7 +42,9 @@ try {
         ingestFinishedAt: new Date(),
       },
     });
-    await prisma.dashboard.create({ data: { datasetId, name: "Ringkasan penjualan" } });
+    await prisma.dashboard.create({
+      data: { datasetId, name: "Ringkasan penjualan", nameKey: "ringkasan penjualan" },
+    });
     console.log(JSON.stringify({ ok: true }));
   } else if (cmd === "fill") {
     // datasetId di sini = email pemilik; argumen ke-3 = jumlah dataset total yang diinginkan
