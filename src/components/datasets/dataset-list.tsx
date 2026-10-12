@@ -44,7 +44,7 @@ export function DatasetList({ datasets, compact = false, bare = false }: Dataset
           <span />
         </div>
       ) : null}
-      <ul aria-label="Daftar dataset" className={cn(bare && "divide-y rounded-md border")}>
+      <ul aria-label="Daftar dataset" className={cn(bare && "-mx-5 divide-y border-t")}>
         {datasets.map((d) => (
           <li key={d.id} className={cn(!bare && "border-b last:border-b-0")}>
             <Link

@@ -57,9 +57,7 @@ export default async function DatasetDetailPage({
         title={dataset.name}
         description={dataset.description ?? undefined}
       />
-      {search.created === "1" ? (
-        <FocusNotice>Dataset dibuat. Langkah berikutnya: unggah file datanya.</FocusNotice>
-      ) : null}
+      {search.created === "1" ? <FocusNotice>Dataset dibuat.</FocusNotice> : null}
       <div>
         <StatusBadge label={dataset.label} />
       </div>
