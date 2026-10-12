@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import yazl from "yazl";
-import { createSaxParser, DEFAULT_LIMITS, isDateFormat } from "../../scripts/bench/parser-sax";
+import { createSaxParser, DEFAULT_LIMITS, isDateFormat, own } from "../../scripts/bench/parser-sax";
 import type { RawValue } from "../../scripts/bench/types";
 
 /* Kasus tepi OOXML dan input rusak untuk parser xlsx (review T-005). */
@@ -235,6 +235,62 @@ describe("parser SAX: struktur XML buatan yang menghabiskan memori ditolak", () 
       (_s, r) => out.push(r),
     );
     expect(out.length).toBeGreaterThan(0);
+  });
+});
+
+describe("parser SAX: anggaran memori dan disk (audit review putaran 5)", () => {
+  it("own(): substring panjang disalin mandiri, isi sama", () => {
+    const big = "x".repeat(16_000) + "nilai-yang-cukup-panjang";
+    const sub = big.slice(16_000);
+    expect(own(sub)).toBe(sub);
+    expect(own("pendek")).toBe("pendek");
+  });
+
+  it("jumlah sharedStrings melebihi batas ditolak", async () => {
+    const p = await book({
+      sheet: `<row r="1"><c r="A1"><v>1</v></c></row>`,
+      sst: Array.from({ length: 20 }, (_, i) => `<t>s${i}</t>`),
+    });
+    await expect(rows(p, { ...DEFAULT_LIMITS, maxSharedStrings: 10 })).rejects.toThrow(
+      /teks unik di file melebihi batas/,
+    );
+  });
+
+  it("file spill sharedStrings dibatasi relatif ukuran file", async () => {
+    const p = await book({
+      sheet: `<row r="1"><c r="A1"><v>1</v></c></row>`,
+      sst: Array.from({ length: 200 }, (_, i) => `<t>${"t".repeat(1000)}${i}</t>`),
+    });
+    await expect(
+      rows(p, { ...DEFAULT_LIMITS, spillBytes: 0, maxSpillFactor: 0.01 }),
+    ).rejects.toThrow(/isi teks file terlalu besar/);
+  });
+
+  it("numFmt dan cellXfs berlebihan ditolak", async () => {
+    const xfs = Array.from({ length: 20 }, () => `<xf numFmtId="14"/>`).join("");
+    const fmts = Array.from(
+      { length: 20 },
+      (_, i) => `<numFmt numFmtId="${200 + i}" formatCode="0"/>`,
+    ).join("");
+    const styles = `<?xml version="1.0"?><styleSheet xmlns="${NS}"><numFmts>${fmts}</numFmts><cellXfs>${xfs}</cellXfs></styleSheet>`;
+    const p = await book({ sheet: `<row r="1"><c r="A1"><v>1</v></c></row>`, styles });
+    await expect(rows(p, { ...DEFAULT_LIMITS, maxNumFmts: 10 })).rejects.toThrow(
+      /format angka berlebihan/,
+    );
+    await expect(rows(p, { ...DEFAULT_LIMITS, maxCellXfs: 10 })).rejects.toThrow(
+      /format sel berlebihan/,
+    );
+  });
+
+  it("entri zip dengan nama/komentar sangat panjang ditolak", async () => {
+    const zip = new yazl.ZipFile();
+    zip.addBuffer(Buffer.from("x"), `xl/${"n".repeat(2_000)}.xml`);
+    zip.end();
+    const chunks: Buffer[] = [];
+    for await (const c of zip.outputStream) chunks.push(c as Buffer);
+    const path = join(tmp, "nama-panjang-zip.xlsx");
+    writeFileSync(path, Buffer.concat(chunks));
+    await expect(rows(path)).rejects.toThrow(/metadata entri berlebihan/);
   });
 });
 
