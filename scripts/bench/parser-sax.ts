@@ -273,6 +273,9 @@ class SstStore {
   private base: number[] = [];
   private count = 0;
   private filePos = 0;
+  /** Buffer tulis 1 MB: satu syscall per MB, bukan per string (40 juta string pada file 1 GB). */
+  private pending = Buffer.allocUnsafe(1 << 20);
+  private pendLen = 0;
   private cache = new Map<number, string>();
   constructor(
     private readonly tmpDir: string,
@@ -313,16 +316,31 @@ class SstStore {
     if (i % BLOCK === 0) this.base.push(this.filePos);
     if (i % CHUNK === 0) this.rel.push(new Uint32Array(CHUNK));
     this.rel[Math.floor(i / CHUNK)]![i % CHUNK] = this.filePos - this.base[Math.floor(i / BLOCK)]!;
-    const b = Buffer.from(s, "utf8");
-    if (this.filePos + b.length > this.maxFileBytes) {
+    const len = Buffer.byteLength(s, "utf8");
+    if (this.filePos + len > this.maxFileBytes) {
       throw new XlsxLimitError("isi teks file terlalu besar untuk diproses");
     }
-    for (let w = 0; w < b.length;) w += writeSync(this.fd!, b, w, b.length - w, this.filePos + w);
-    this.filePos += b.length;
+    if (this.pendLen + len > this.pending.length) this.flush();
+    if (len > this.pending.length) {
+      this.writeAt(Buffer.from(s, "utf8"), this.filePos);
+    } else {
+      this.pending.write(s, this.pendLen, "utf8");
+      this.pendLen += len;
+    }
+    this.filePos += len;
     this.count++;
+  }
+  private writeAt(b: Buffer, pos: number) {
+    for (let w = 0; w < b.length;) w += writeSync(this.fd!, b, w, b.length - w, pos + w);
+  }
+  private flush() {
+    if (this.pendLen === 0) return;
+    this.writeAt(this.pending.subarray(0, this.pendLen), this.filePos - this.pendLen);
+    this.pendLen = 0;
   }
   get(i: number): string {
     if (this.fd === null) return this.mem[i]!;
+    if (this.pendLen) this.flush();
     const hit = this.cache.get(i);
     if (hit !== undefined) return hit;
     const start = this.offsetOf(i);
