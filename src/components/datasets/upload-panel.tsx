@@ -429,11 +429,7 @@ export function UploadPanel({
           </span>
           <div className="max-w-sm text-sm">
             <p className="font-medium">
-              {showPending
-                ? "Pilih file yang sama untuk melanjutkan"
-                : hasData
-                  ? "Ganti data dengan file baru"
-                  : "Belum ada data"}
+              {hasData ? "Ganti data dengan file baru" : "Belum ada data"}
             </p>
             <p id={hintId} className="mt-1 text-muted-foreground">
               Pilih atau seret file .xlsx/.csv (maks. {formatBytes(maxBytes)}). Unggahan bisa
@@ -452,9 +448,11 @@ export function UploadPanel({
             data-testid="upload-input"
             onChange={(e) => onFiles(e.target.files)}
           />
+          {/* Saat ada unggahan tertunda, CTA primer satu-satunya = "Lanjutkan unggahan". */}
           <Button
             type="button"
-            className="w-full sm:w-auto"
+            variant={showPending ? "outline" : "primary"}
+            className="h-11 w-full sm:h-(--control-h) sm:w-auto"
             aria-describedby={hintId}
             leadingIcon={<IconUpload aria-hidden />}
             onClick={() => inputRef.current?.click()}
