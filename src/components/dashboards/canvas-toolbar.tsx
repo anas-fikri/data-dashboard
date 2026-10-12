@@ -7,7 +7,6 @@ import {
   IconCloudUpload,
   IconCloudX,
   IconPlus,
-  IconRefresh,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import type { SaveState } from "./use-dashboard-editor";
@@ -16,7 +15,7 @@ import type { SaveState } from "./use-dashboard-editor";
  * Toolbar mode edit: tambah widget (aksi utama), urungkan satu langkah, status simpan otomatis
  * (diumumkan sopan ke pembaca layar), dan selesai (menyimpan dulu sebelum kembali ke mode lihat).
  * 768–1279 px: status turun ke baris sendiri agar tombol tidak meluber. Setelah STALE (diubah di
- * tab/perangkat lain) tambah dan urungkan dinonaktifkan sampai dimuat ulang.
+ * tab/perangkat lain) tambah dan urungkan dinonaktifkan; tombol muat ulang ada di peringatan kanvas.
  */
 const UNDO_LABEL = {
   layout: "Urungkan perubahan tata letak",
@@ -34,7 +33,6 @@ export function CanvasToolbar({
   onAdd,
   onUndo,
   onRetry,
-  onReload,
   onDone,
 }: {
   save: SaveState;
@@ -44,7 +42,6 @@ export function CanvasToolbar({
   onAdd: () => void;
   onUndo: () => void;
   onRetry: () => void;
-  onReload: () => void;
   onDone: () => void;
 }) {
   const phone = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
@@ -100,15 +97,6 @@ export function CanvasToolbar({
           <>
             <IconCloudX size={18} stroke={1.5} aria-hidden className={`${icon} text-destructive`} />
             <span className="text-foreground">Diubah di tab atau perangkat lain.</span>
-            <Button
-              size="sm"
-              variant="link"
-              className="h-auto p-0"
-              leadingIcon={<IconRefresh aria-hidden />}
-              onClick={onReload}
-            >
-              Muat ulang
-            </Button>
           </>
         ) : (
           <>

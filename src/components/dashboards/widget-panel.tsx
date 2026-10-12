@@ -20,6 +20,7 @@ import {
   type LayoutItem,
 } from "@/features/dashboards/validation";
 import type { StepKey } from "./layout-ops";
+import { useIsPhone } from "./use-media-query";
 
 /*
  * Isi panel pengaturan widget (hanya mode edit; bingkainya di widget-panel-frame). Posisi dan ukuran
@@ -58,6 +59,7 @@ export function WidgetPanel({
   const [title, setTitle] = useState(widget.title);
   const [pending, setPending] = useState(false);
   const [edge, setEdge] = useState<string | null>(null);
+  const phone = useIsPhone();
   const label = widget.title || "Widget tanpa judul";
 
   async function saveTitle(e?: React.FormEvent) {
@@ -118,7 +120,7 @@ export function WidgetPanel({
         </div>
         <p className="text-sm tabular-nums text-muted-foreground" aria-live="polite">
           {edge ??
-            `Kolom ${item.x + 1}–${Math.min(item.x + item.w, GRID_COLS)}, baris ${item.y + 1}`}
+            `${phone ? "Di layar lebar: kolom" : "Kolom"} ${item.x + 1}–${Math.min(item.x + item.w, GRID_COLS)}, baris ${item.y + 1}`}
         </p>
       </fieldset>
 

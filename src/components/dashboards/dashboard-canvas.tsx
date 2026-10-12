@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
+import { IconRefresh } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import type { WidgetView } from "@/features/dashboards/service";
 import { GRID_COLS, type LayoutItem } from "@/features/dashboards/validation";
@@ -13,8 +14,8 @@ import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
 import { MIN_H, MIN_W, applyStep, readingOrder, stepAvailability } from "./layout-ops";
 import { useDashboardEditor } from "./use-dashboard-editor";
-import { useIsPhone, useIsWide } from "./use-media-query";
-import { DRAG_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
+import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
+import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
 import { WidgetPanel } from "./widget-panel";
 import { WidgetPanelFrame } from "./widget-panel-frame";
 
@@ -28,6 +29,7 @@ const ROW_HEIGHT = 56;
 const MARGIN: [number, number] = [16, 16];
 const plain = (l: Layout): LayoutItem[] => l.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
 const settingsOf = (id: string) => `[data-widget-id="${id}"] [${SETTINGS_ATTR}]`;
+const STALE_RELOAD = "data-stale-reload";
 
 export function DashboardCanvas(props: {
   dashboardId: string;
@@ -41,6 +43,7 @@ export function DashboardCanvas(props: {
   const router = useRouter();
   const phone = useIsPhone();
   const wide = useIsWide();
+  const coarse = useIsCoarsePointer();
   const { width, containerRef, mounted } = useContainerWidth();
   const root = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -49,14 +52,24 @@ export function DashboardCanvas(props: {
   const [announce, setAnnounce] = useState("");
   /** Selektor yang difokus setelah commit berikutnya (elemen pertama yang ada menang). */
   const focusTo = useRef<string[] | null>(null);
+  /** Widget yang digulir ke dalam pandangan setelah commit berikutnya (panel dibuka / digeser). */
+  const reveal = useRef<string | null>(null);
   const canEdit = editing && ed.save !== "stale";
   const byId = new Map(ed.widgets.map((w) => [w.id, w]));
   const ordered = readingOrder(ed.layout);
   const panelItem = canEdit && selected ? ed.layout.find((it) => it.i === selected) : undefined;
   const panelWidget = panelItem ? byId.get(panelItem.i) : undefined;
 
-  // Tanpa deps: berjalan setelah tiap commit; permintaan fokus selalu menyertai perubahan state.
+  // Tanpa deps: berjalan setelah tiap commit; permintaan fokus/gulir selalu menyertai perubahan state.
   useEffect(() => {
+    const id = reveal.current;
+    reveal.current = null;
+    // Lembar (< 1280 px) menutup separuh bawah layar: widget ditaruh di atas, tepat di bawah topbar.
+    if (id) {
+      root.current
+        ?.querySelector(`[data-widget-id="${id}"]`)
+        ?.scrollIntoView({ block: wide ? "nearest" : "start" });
+    }
     const wanted = focusTo.current;
     if (!wanted) return;
     focusTo.current = null;
@@ -65,6 +78,15 @@ export function DashboardCanvas(props: {
       if (el) return el.focus();
     }
   });
+
+  // STALE saat panel terbuka: panel hilang dan fokus jatuh ke <body> → pindahkan ke "Muat ulang".
+  useEffect(() => {
+    if (ed.save !== "stale") return;
+    const active = document.activeElement;
+    if (!active || active === document.body) {
+      root.current?.querySelector<HTMLElement>(`[${STALE_RELOAD}]`)?.focus();
+    }
+  }, [ed.save]);
 
   // Ctrl/Cmd+Z = urungkan (di luar kolom isian).
   useEffect(() => {
@@ -91,6 +113,7 @@ export function DashboardCanvas(props: {
     const id = await ed.addWidget();
     setAdding(false);
     if (id) {
+      reveal.current = id;
       setSelected(id);
       setAnnounce("Widget kosong ditambahkan di bagian bawah.");
     }
@@ -115,15 +138,22 @@ export function DashboardCanvas(props: {
       widget={w}
       editing={canEdit}
       draggable={!phone}
-      selected={selected === w.id}
-      onSettings={() => setSelected(selected === w.id ? null : w.id)}
+      selected={canEdit && selected === w.id}
+      onSettings={() => {
+        if (selected !== w.id) reveal.current = w.id;
+        setSelected(selected === w.id ? null : w.id);
+      }}
       data-pos={`${it.x},${it.y},${it.w},${it.h}`}
       {...extra}
     />
   );
 
   return (
-    <div ref={root} className="flex flex-col gap-4">
+    <div
+      ref={root}
+      // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
+      className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
+    >
       {editing ? (
         <CanvasToolbar
           save={ed.save}
@@ -133,7 +163,6 @@ export function DashboardCanvas(props: {
           onAdd={() => void add()}
           onUndo={() => void ed.undo()}
           onRetry={() => void ed.flush()}
-          onReload={reload}
           onDone={() => void done()}
         />
       ) : null}
@@ -144,7 +173,12 @@ export function DashboardCanvas(props: {
         <FormAlert tone="error">
           <span className="block">{ed.notice}</span>
           {ed.save === "stale" ? (
-            <Button size="sm" className="mt-2" onClick={reload}>
+            <Button
+              className="mt-2 h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
+              leadingIcon={<IconRefresh aria-hidden />}
+              onClick={reload}
+              {...{ [STALE_RELOAD]: "" }}
+            >
               Muat ulang
             </Button>
           ) : (
@@ -184,7 +218,12 @@ export function DashboardCanvas(props: {
                   margin: MARGIN,
                   containerPadding: [0, 0],
                 }}
-                dragConfig={{ enabled: canEdit, handle: `.${DRAG_HANDLE}`, cancel: "button" }}
+                dragConfig={{
+                  enabled: canEdit,
+                  // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
+                  handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
+                  cancel: "button",
+                }}
                 resizeConfig={{ enabled: canEdit, handles: ["se"] }}
                 onDragStop={(l) => ed.commitLayout(plain(l))}
                 onResizeStop={(l) => ed.commitLayout(plain(l))}
@@ -208,7 +247,10 @@ export function DashboardCanvas(props: {
                 item={panelItem}
                 can={stepAvailability(ed.layout, panelItem.i)}
                 onRename={(t) => ed.renameWidget(panelItem.i, t)}
-                onStep={(k) => ed.commitLayout(applyStep(ed.layout, panelItem.i, k))}
+                onStep={(k) => {
+                  reveal.current = panelItem.i;
+                  ed.commitLayout(applyStep(ed.layout, panelItem.i, k));
+                }}
                 onDelete={() => void remove(panelItem.i)}
               />
             </WidgetPanelFrame>

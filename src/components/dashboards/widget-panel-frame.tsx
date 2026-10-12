@@ -7,11 +7,15 @@ import { Button } from "@/components/ui/button";
 
 /*
  * Bingkai panel pengaturan widget. ≥ 1280 px: menempel di samping kanvas (sticky di bawah topbar) dan
- * fokus pindah ke judulnya saat dibuka. < 1280 px: lembar Radix Dialog — dari bawah di ponsel, dari
- * kanan di tablet — dengan fokus terkunci dan Escape untuk menutup. Pemanggil mengembalikan fokus
- * setelah onClose (tombol pengaturan widget, atau tombol urungkan bila widgetnya dihapus).
+ * fokus pindah ke judulnya saat dibuka. < 1280 px: lembar Radix Dialog di bawah layar (ponsel: selebar
+ * layar, tablet: kartu di kanan bawah), maks. 55 % tinggi layar dengan overlay ringan sehingga widget
+ * yang diatur tetap terlihat; fokus terkunci, Escape menutup (isian yang sedang diketik tetap
+ * tersimpan). Pemanggil mengembalikan fokus setelah onClose (tombol pengaturan widget, atau tombol
+ * urungkan bila widgetnya dihapus).
  */
 const TITLE = "Pengaturan widget";
+/** Isian yang sedang difokus disimpan lewat blur-nya sendiri sebelum panel ditutup dengan Escape. */
+const commitFocused = () => (document.activeElement as HTMLElement | null)?.blur();
 const closeClass = "size-(--control-h-lg) md:size-(--control-h-sm)";
 
 export function WidgetPanelFrame({
@@ -39,6 +43,7 @@ export function WidgetPanelFrame({
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
+      commitFocused();
       close.current();
     };
     el?.addEventListener("keydown", onKey);
@@ -80,13 +85,15 @@ export function WidgetPanelFrame({
   return (
     <Dialog.Root open onOpenChange={(open) => !open && onClose()}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay/50" />
+        {/* Overlay ringan + lembar di bawah: widget yang diatur tetap terlihat di atasnya. */}
+        <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay/20" />
         <Dialog.Content
           data-testid="widget-panel"
           aria-describedby={undefined}
+          onEscapeKeyDown={commitFocused}
           // Fokus dikembalikan pemanggil (widget bisa sudah dihapus), bukan ke pemicu bawaan Radix.
           onCloseAutoFocus={(e) => e.preventDefault()}
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col gap-5 overflow-y-auto rounded-t-lg border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg md:inset-y-0 md:left-auto md:max-h-none md:w-96 md:rounded-l-lg md:rounded-tr-none"
+          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[55dvh] flex-col gap-5 overflow-y-auto rounded-t-lg border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:rounded-lg"
         >
           <div className="flex items-start justify-between gap-2">
             <Dialog.Title className="min-w-0 break-words text-base font-semibold">

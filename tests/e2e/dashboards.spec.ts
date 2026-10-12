@@ -182,6 +182,30 @@ test.describe("dashboard", () => {
       .toBeLessThanOrEqual(0);
   });
 
+  test("judul yang sedang diketik tetap tersimpan saat panel ditutup dengan Escape", async ({
+    page,
+  }) => {
+    for (const [width, title] of [
+      [1440, "Omzet per cabang"],
+      [1024, "Retur per kurir"],
+    ] as const) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(`${dashboardUrl}?mode=edit`);
+      await settingsOf(page).click();
+      const panel = page.getByTestId("widget-panel");
+      await panel.getByLabel("Judul", { exact: true }).fill(title);
+      const saved = page.waitForResponse(
+        (r) => /\/widgets\/[a-z0-9]+$/.test(r.url()) && r.request().method() === "PATCH" && r.ok(),
+      );
+      await page.keyboard.press("Escape");
+      await saved;
+      await expect(panel).toHaveCount(0);
+      await expect(page.getByTestId("widget").first().getByRole("heading")).toHaveText(title);
+      await page.reload();
+      await expect(page.getByTestId("widget").first().getByRole("heading")).toHaveText(title);
+    }
+  });
+
   test("hapus dari panel → fokus ke Urungkan; urungkan mengembalikan widget", async ({ page }) => {
     await page.goto(`${dashboardUrl}?mode=edit`);
     const widgets = page.getByTestId("widget");

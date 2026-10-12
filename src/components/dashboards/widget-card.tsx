@@ -14,6 +14,8 @@ import { cn } from "@/lib/utils";
  * react-grid-layout menempelkan style, kelas, dan handler ke anak langsung.
  */
 export const DRAG_HANDLE = "widget-drag-handle";
+/** Pegangan seret di layar sentuh: hanya ikon ini (44 px), agar menggeser kepala kartu tetap scroll. */
+export const GRIP_HANDLE = "widget-grip";
 export const SETTINGS_ATTR = "data-widget-settings";
 
 type Props = React.HTMLAttributes<HTMLDivElement> & {
@@ -36,7 +38,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       data-testid="widget"
       data-widget-id={widget.id}
       className={cn(
-        "@container flex flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs",
+        "@container flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs",
         selected && "ring-2 ring-primary",
         className,
       )}
@@ -50,7 +52,10 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       >
         {handle ? (
           <span
-            className="flex size-8 shrink-0 items-center justify-center text-muted-foreground @max-[6rem]:hidden"
+            className={cn(
+              GRIP_HANDLE,
+              "flex size-8 shrink-0 touch-none items-center justify-center text-muted-foreground @max-[6rem]:hidden pointer-coarse:size-11",
+            )}
             title="Seret kepala kartu untuk memindahkan"
             aria-hidden
           >
@@ -73,6 +78,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             variant="ghost"
             className="ml-auto size-(--control-h-lg) shrink-0 md:size-(--control-h-sm)"
             aria-label={`Pengaturan ${title}`}
+            title={`Pengaturan ${title}`}
             aria-pressed={selected}
             {...{ [SETTINGS_ATTR]: "" }}
             onClick={onSettings}
