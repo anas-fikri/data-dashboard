@@ -226,10 +226,10 @@ export function ChartWidget({
         : [items.map((r) => r.label)];
       const rooms = items.map((r) => listPx - beside(text(r.value)));
       const shown = rankedLabels(forms, rooms, (t) => px(t), temporal, inline);
-      return shown && { inline, ranked, items, beside, shown };
+      return shown && { inline, ranked, items, shown };
     };
     const laid = (room.width >= NARROW && lay(true)) || lay(false)!;
-    const { inline, ranked, items, beside, shown: shownLabels } = laid;
+    const { inline, ranked, items, shown: shownLabels } = laid;
     const hidden = ranked.more - (unsure ? 1 : 0);
     // "+N kategori lain" (bukan "lainnya" — itu irisan pai); yang tidak muat: "+N lagi".
     const more = hidden.toLocaleString("id-ID");
@@ -245,7 +245,11 @@ export function ChartWidget({
       : moreForms[0]!;
     // Nilai gabungan hanya untuk pai (bagian dari keseluruhan) dan bila diketahui.
     const moreValue = type === "pie" && ranked.moreValue !== null ? text(ranked.moreValue) : null;
-    const moreRoom = listPx - beside(moreValue);
+    // Baris '+N' satu baris (label di samping nilai) bila muat — juga di daftar bertumpuk, agar baris
+    // terakhir tidak keluar dari kartu pendek (kapasitas daftar bertumpuk dihitung per baris data).
+    const moreBeside = moreValue !== null ? px(moreValue, true) + 8 : 0; // gap-2
+    const moreInline = inline || moreForms.some((t) => px(t) <= listPx - moreBeside);
+    const moreRoom = listPx - (moreInline ? moreBeside : 0);
     const moreText = moreForms.find((t) => px(t) <= moreRoom) ?? moreForms.at(-1)!;
     body = (
       <ol
@@ -267,11 +271,11 @@ export function ChartWidget({
           <li
             className={cn(
               "flex min-w-0 text-muted-foreground",
-              inline ? "items-baseline gap-2" : "flex-col",
+              moreInline ? "items-baseline gap-2" : "flex-col",
             )}
             data-testid="chart-ranked-more"
           >
-            <span className={cn("truncate", inline && "min-w-0 flex-1")} title={moreFull}>
+            <span className={cn("truncate", moreInline && "min-w-0 flex-1")} title={moreFull}>
               <Both visible={moreText} full={moreFull} />
             </span>
             {moreValue !== null ? <span className="shrink-0 tabular-nums">{moreValue}</span> : null}

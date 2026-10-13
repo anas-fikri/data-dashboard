@@ -1648,6 +1648,18 @@ describe("putaran 6", () => {
         expect(more![1]).toMatch(/<span class="sr-only">\+\d+ kategori lain<\/span>/);
       });
     });
+
+    it("daftar bertumpuk: baris '+N' pai tetap sebaris bila muat (tidak keluar dari kartu pendek)", () => {
+      const rows = Array.from({ length: 5 }, (_, k) => [`Kantor ${k + 1}`, 10 - k]);
+      withBox({ width: 139, height: 82 }, () => {
+        const d = data(rows, { categories: 40, grandTotal: 400 });
+        const out = html("pie", d, false, spec());
+        const li = /<li class="([^"]*)" data-testid="chart-ranked-more">/.exec(out);
+        expect(li).not.toBeNull();
+        expect(li![1]).toContain("items-baseline");
+        expect(li![1]).not.toContain("flex-col");
+      });
+    });
   });
 
   describe("total gagal: daftar peringkat tidak tampak lengkap", () => {
