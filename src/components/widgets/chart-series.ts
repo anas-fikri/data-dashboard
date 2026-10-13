@@ -1,4 +1,4 @@
-import type { ValueType } from "@/features/widgets/format";
+import { WEEK_PREFIX, type ValueType } from "@/features/widgets/format";
 import type { Agg } from "@/features/query/spec";
 import type { ChartSort, ChartType } from "@/features/widgets/spec";
 
@@ -21,13 +21,10 @@ export function isoToUtcMs(iso: string): number | null {
 
 export const msToIso = (ms: number) => new Date(ms).toISOString().slice(0, 19);
 
-/**
- * "Kantor PCP Express Gambir Unit 11" → "Kantor P…bir Unit 11": awal + akhir tetap terlihat.
- * `tailShare`: bagian akhir yang dipertahankan (0,55; 1 = hanya akhir, "…12/25 18:00").
- */
-export function middleTruncate(text: string, maxChars: number, tailShare = 0.55): string {
+/** "Kantor PCP Express Gambir Unit 11" → "Kantor P…bir Unit 11": awal + akhir tetap terlihat. */
+export function middleTruncate(text: string, maxChars: number): string {
   if (text.length <= maxChars || maxChars < 5) return text;
-  const tail = Math.ceil((maxChars - 1) * tailShare);
+  const tail = Math.ceil((maxChars - 1) * 0.55);
   const head = maxChars - 1 - tail;
   return `${text.slice(0, head).trimEnd()}…${text.slice(text.length - tail).trimStart()}`;
 }
@@ -227,36 +224,52 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
   return { items, more, moreValue };
 }
 
-/** "Kantor P…Unit 11" sependek yang perlu agar muat `room` px. */
-function middleFit(
-  text: string,
-  room: number,
-  width: (t: string) => number,
-  tailShare?: number,
-): string {
+/** "Kantor P…Unit 11" sependek yang perlu agar muat `room` px (label teks, bukan tanggal). */
+function middleFit(text: string, room: number, width: (t: string) => number): string {
   const start = Math.min(text.length - 1, Math.ceil((text.length * room) / width(text)) + 2);
   for (let n = start; n >= 5; n--) {
-    const t = middleTruncate(text, n, tailShare);
+    const t = middleTruncate(text, n);
     if (width(t) <= room) return t;
   }
-  return middleTruncate(text, 5, tailShare);
+  return middleTruncate(text, 5);
 }
 
+/** Bagian label tanggal dipisah spasi, "/" dan ":" (pemisah ikut sebagai bagian sendiri). */
+const DATE_SEP = /([ /:])/;
+/** Bagian pembeda: angka, nama bulan, "K1" — bukan pemisah, bukan awalan "Mg". */
+const isDatePart = (t: string) => t !== "" && !DATE_SEP.test(t) && t !== WEEK_PREFIX;
+const dateParts = (label: string) =>
+  label.replace("…", "").split(DATE_SEP).filter(isDatePart).length;
+
 /**
- * Bagian akhir yang dipertahankan saat label tanggal dipotong di tengah, dicoba berurutan sampai label
- * tidak kembar: awal + akhir ("31/1…5 18:00"), lalu makin banyak akhir (jam yang membedakan baris di
- * hari yang sama). Tanggal tidak pernah dipotong di akhir.
+ * Label tanggal dengan hanya `keep` bagian pembeda pertama + "…": 'Mg 19/1/26' → 'Mg 19/1…' (2),
+ * 'Mg 19…' (1). Bagian dibuang utuh — angka tidak pernah terbelah. Utuh bila bagiannya ≤ `keep`.
  */
-const DATE_TAIL_SHARES = [0.55, 0.7, 0.85, 1, 0.4];
+function keepDateParts(label: string, keep: number): string {
+  const parts = label.split(DATE_SEP);
+  let seen = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (!isDatePart(parts[i]!)) continue;
+    if (seen++ < keep) continue;
+    const head = parts.slice(0, i).join("");
+    return `${head.replace(/[ /:]+$/, "")}…`;
+  }
+  return label;
+}
+
+/** Jam utuh di akhir label cap waktu yang bertanggal ('19/1/26 13:30' → '13:30'). */
+const timeTail = (label: string) => /^\S.* (\d{2}:\d{2})$/.exec(label)?.[1] ?? null;
 
 /**
  * Label daftar peringkat yang muat di `rooms[k]` px (`width` = lebar terukur teks 12 px). Teks: utuh
  * bila muat, selain itu dipendekkan di tengah seperlunya. Tanggal (`forms` dari dateLabelForms,
- * terpanjang dulu): bentuk pertama yang muat untuk SEMUA baris tanggal dan tetap membedakan semua
- * periode yang labelnya berbeda; label yang muat tidak pernah dipendekkan. Tidak ada yang muat: bentuk
- * pembeda yang paling sedikit melebihi ruangnya, baris yang tidak muat dipotong di tengah (awal dan akhir
- * tetap terlihat), dan bila masih ada yang kembar, bagian akhirnya diperbanyak — periode berbeda tidak
- * menjadi teks yang sama ("31/12/25 1…" untuk 18:00 dan 15:15).
+ * terpanjang dulu, tiap bentuk unik): bentuk utuh pertama yang muat untuk SEMUA baris tanggal. Tidak ada
+ * yang muat: bagian akhir dibuang UTUH + "…" ('Mg 19…', '19/1…'), bagian pembeda pertama (tanggal awal
+ * minggu, hari, bulan, kuartal) selalu tetap; cap waktu boleh membuang tanggal dan menyimpan jam utuh
+ * ('…13:30') bila jam yang membedakan. Dipilih bentuk seragam yang paling banyak menyimpan bagian dengan
+ * periode berbeda tetap berbeda; bila tidak ada, per baris bentuk terinformatif yang muat dan tidak bisa
+ * ditunjukkan periode lain yang tampil. Masih tidak ada: bentuk unik terpendek utuh — CSS memotongnya,
+ * label lengkap tetap di title dan untuk pembaca layar. Tanggal tidak pernah dipotong per huruf.
  */
 export function rankedLabels(
   forms: readonly (readonly string[])[],
@@ -264,26 +277,93 @@ export function rankedLabels(
   width: (t: string) => number,
   dates: boolean,
 ): string[] {
-  const fits = (t: string, k: number) => width(t) <= rooms[k]!;
-  const fit = (t: string, k: number, tail?: number) =>
-    fits(t, k) ? t : middleFit(t, rooms[k]!, width, tail);
+  const measured = new Map<string, number>();
+  const w = (t: string) => {
+    let px = measured.get(t);
+    if (px === undefined) measured.set(t, (px = width(t)));
+    return px;
+  };
+  const fits = (t: string, k: number) => w(t) <= rooms[k]!;
+  const fitText = (t: string, k: number) => (fits(t, k) ? t : middleFit(t, rooms[k]!, w));
   const first = forms[0]!;
-  if (!dates) return first.map((t, k) => fit(t, k));
-  const distinct = (f: readonly string[]) => new Set(f).size;
-  const unique = forms.filter((f) => distinct(f) === distinct(first));
+  if (!dates) return first.map(fitText);
   // Baris bukan tanggal ("Lainnya", "(kosong)") sama di semua bentuk: tidak ikut menentukan bentuk.
   const dated = first.map((_, k) => forms.some((f) => f[k] !== first[k]));
-  const shown = unique.find((f) => f.every((t, k) => !dated[k] || fits(t, k)));
-  if (shown) return shown.map((t, k) => fit(t, k));
-  const excess = (f: readonly string[]) =>
-    f.reduce((s, t, k) => s + Math.max(0, width(t) - rooms[k]!), 0);
-  const base = unique.reduce((best, f) => (excess(f) <= excess(best) ? f : best));
-  let cut: string[] = [];
-  for (const tail of DATE_TAIL_SHARES) {
-    cut = base.map((t, k) => fit(t, k, tail));
-    if (distinct(cut) === distinct(first)) break;
+  const rows = first.flatMap((_, k) => (dated[k] ? [k] : []));
+  // Periode berbeda (label lengkap berbeda) tidak boleh menjadi teks yang sama.
+  const distinct = (f: readonly string[]) => {
+    const owner = new Map<string, string>();
+    for (const k of rows) {
+      const prev = owner.get(f[k]!);
+      if (prev !== undefined && prev !== first[k]) return false;
+      owner.set(f[k]!, first[k]!);
+    }
+    return true;
+  };
+  const allFit = (f: readonly string[]) => rows.every((k) => fits(f[k]!, k));
+  const finish = (f: readonly string[]) => f.map((t, k) => (dated[k] ? t : fitText(t, k)));
+  const unique = forms.filter(distinct);
+  const whole = unique.find(allFit);
+  if (whole) return finish(whole);
+  // Bentuk pendek satu label: [teks, bagian yang tampil, bagian yang dibuang]. `keep` bagian pertama +
+  // "…" ('Mg 19/1…', 'Mg 19…'; utuh bila bagiannya ≤ keep), atau jam utuh tanpa tanggal ('…13:30').
+  type Short = [string, number, number];
+  const keepOf = (t: string, keep: number): Short => {
+    const n = dateParts(t);
+    return keep >= n ? [t, n, 0] : [keepDateParts(t, keep), keep, n - keep];
+  };
+  const timeOf = (t: string): Short | null => {
+    const time = timeTail(t);
+    return time ? [`…${time}`, 2, dateParts(t) - 2] : null;
+  };
+  // Lebih banyak bagian tampil lebih baik; sama banyak: lebih sedikit yang dibuang (bentuk tanpa tahun
+  // yang unik + jam, '30/12 22…', mengalahkan '30/12/25…'); sama juga: bentuk yang lebih dulu.
+  const rank = (a: Short, b: Short) => b[1] - a[1] || a[2] - b[2];
+  let best: readonly string[] | null = null;
+  let bestScore: Short = ["", 0, 0];
+  const consider = (f: readonly string[], short: (t: string) => Short | null) => {
+    const cut = [...f];
+    const score: Short = ["", 0, 0];
+    for (const k of rows) {
+      const s = short(f[k]!);
+      if (!s) return;
+      [cut[k], score[1], score[2]] = [s[0], score[1] + s[1], score[2] + s[2]];
+    }
+    if (allFit(cut) && distinct(cut) && rank(score, bestScore) < 0)
+      [best, bestScore] = [cut, score];
+  };
+  for (const f of unique) {
+    const most = Math.max(...rows.map((k) => dateParts(f[k]!)));
+    for (let keep = most - 1; keep >= 1; keep--) consider(f, (t) => keepOf(t, keep));
+    consider(f, timeOf);
   }
-  return cut;
+  if (best) return finish(best);
+  // Tidak ada bentuk seragam: tiap baris memakai bentuk paling informatif yang muat dan tidak mungkin
+  // ditunjukkan periode lain yang tampil ('…12:15' untuk dua jam di hari yang sama, '18/2…' lainnya).
+  const options = rows.map((k) =>
+    unique
+      .flatMap((f) => {
+        const t = f[k]!;
+        const cuts = Array.from({ length: dateParts(t) }, (_, i) => keepOf(t, dateParts(t) - i));
+        const time = timeOf(t);
+        return time ? [...cuts, time] : cuts;
+      })
+      .sort(rank)
+      .map(([t]) => t),
+  );
+  const owned = options.map((o) => new Set(o));
+  const mixed = [...first];
+  const each = rows.every((k, i) => {
+    const own = options[i]!.find(
+      (t) => fits(t, k) && rows.every((j, m) => first[j] === first[k] || !owned[m]!.has(t)),
+    );
+    if (own !== undefined) mixed[k] = own;
+    return own !== undefined;
+  });
+  if (each) return finish(mixed);
+  const excess = (f: readonly string[]) =>
+    rows.reduce((s, k) => s + Math.max(0, w(f[k]!) - rooms[k]!), 0);
+  return finish(unique.reduce((b, f) => (excess(f) <= excess(b) ? f : b)));
 }
 
 /** Lebar teks 14 px (px) — `header`: kepala kolom (font-medium); null = tidak bisa diukur. */

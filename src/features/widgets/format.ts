@@ -112,6 +112,9 @@ export const AUTO_FORMAT: NumberFormat = { style: "auto", decimals: 0 };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
+/** Awalan label minggu ("Mg 19 Jan 2026") — bukan bagian pembeda saat label dipendekkan. */
+export const WEEK_PREFIX = "Mg";
+
 /** Tanggal/waktu ISO naive ("2026-10-12" / "2026-10-12T08:30:00") → teks id-ID sesuai grain. */
 export function formatDate(iso: string, grain?: string, withTime = false): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso);
@@ -126,7 +129,7 @@ export function formatDate(iso: string, grain?: string, withTime = false): strin
     case "month":
       return `${month} ${y}`;
     case "week":
-      return `Mg ${Number(d)} ${month} ${y}`;
+      return `${WEEK_PREFIX} ${Number(d)} ${month} ${y}`;
     default:
       return `${Number(d)} ${month} ${y}${withTime && h ? ` ${h}:${mi}` : ""}`;
   }
@@ -134,11 +137,15 @@ export function formatDate(iso: string, grain?: string, withTime = false): strin
 
 /**
  * Bentuk label tanggal yang makin pendek untuk daftar sempit, satu bentuk untuk seluruh daftar (dicoba
- * dari yang terpanjang): lengkap ("31 Des 2025 18:00") → tanpa tahun ("31 Des 18:00") → angka bertahun
- * ("31/12/25 18:00"; "1/26", "K1/26", "Mg 29/12/25") → angka tanpa tahun ("31/12 18:00") → jam saja
- * ("18:00"). Boleh tidaknya membuang bagian diputuskan dari SEMUA baris yang dimuat (`all`), bukan
- * hanya yang tampil: tahun dibuang hanya bila semua baris setahun, tanggal hanya bila semua cap waktu di
- * hari yang sama — satu baris yang tampil dari deret beberapa hari tidak pernah menjadi "13:30" saja.
+ * dari yang terpanjang), disusun dari bagian utuh — tidak pernah dipotong per huruf:
+ * minggu 'Mg 19 Jan 2026' → 'Mg 19 Jan' → 'Mg 19/1/26' → 'Mg 19/1' → '19/1/26' → '19/1';
+ * hari '19 Jan 2026' → '19 Jan' → '19/1/26' → '19/1'; bulan 'Jan 2026' → 'Jan' → '1/26';
+ * kuartal 'K1 2026' → 'K1' → 'K1/26'; cap waktu '19 Jan 2026 13:30' → '19 Jan 13:30' →
+ * '19/1/26 13:30' → '19/1 13:30' → '13:30'.
+ * Bentuk tanpa tahun hanya ditawarkan bila tetap unik di SEMUA baris yang dimuat (`all`), bukan hanya
+ * yang tampil — 'Mg 19/1' juga untuk deret Des 2025–Jan 2026 selama tidak ada dua minggu bertanggal dan
+ * berbulan sama; deret lintas tahun mencoba angka bertahun ('Mg 19/1/26') sebelum teks tanpa tahun.
+ * Jam saja hanya bila semua cap waktu yang dimuat di hari yang sama. Bentuk bertahun selalu unik.
  * null = bukan tanggal (label tetap).
  */
 export function dateLabelForms(
@@ -151,46 +158,70 @@ export function dateLabelForms(
     iso ? /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso) : null;
   const parts = isos.map(parse);
   const loaded = [...all, ...isos].map(parse).filter((p) => p !== null);
-  const same = (key: (p: RegExpExecArray) => string) => new Set(loaded.map(key)).size <= 1;
-  const sameYear = same((p) => p[1]!);
-  const sameDay = withTime && loaded.every((p) => p[4]) && same((p) => p.slice(1, 4).join("-"));
   type Part = (p: RegExpExecArray) => string;
+  const full: Part = (p) => formatDate(p[0], grain, withTime);
+  // Unik = tidak ada dua periode berbeda (label lengkap berbeda) yang menjadi teks yang sama.
+  const fullCount = new Set(loaded.map(full)).size;
+  const unique = (f: Part) => new Set(loaded.map(f)).size === fullCount;
+  const sameDay =
+    withTime &&
+    loaded.every((p) => p[4]) &&
+    new Set(loaded.map((p) => p.slice(1, 4).join("-"))).size <= 1;
   const month: Part = (p) => MONTHS[Number(p[2]) - 1] ?? p[2]!;
   const time: Part = (p) => (withTime && p[4] ? ` ${p[4]}:${p[5]}` : "");
   const dayMonth: Part = (p) => `${Number(p[3])}/${Number(p[2])}`;
   const yy: Part = (p) => p[1]!.slice(2);
   const quarter: Part = (p) => `K${Math.floor((Number(p[2]) - 1) / 3) + 1}`;
-  // Urutan: lengkap → tanpa tahun (setahun) → angka bertahun → angka tanpa tahun (setahun) → jam saja.
-  const full: Part = (p) => formatDate(p[0], grain, withTime);
-  const yearly = (noYear: Part, withYear: Part, numeric?: Part) =>
-    [full, sameYear && noYear, withYear, sameYear && numeric].filter((f): f is Part => !!f);
-  let candidates: Part[];
+  // [bentuk, bertahun]: bentuk tanpa tahun/tanggal ikut hanya bila unik.
+  let candidates: [Part, boolean][];
   switch (grain) {
     case "year":
-      candidates = [full];
+      candidates = [[full, true]];
       break;
     case "quarter":
-      candidates = yearly(quarter, (p) => `${quarter(p)}/${yy(p)}`);
+      candidates = [
+        [full, true],
+        [quarter, false],
+        [(p) => `${quarter(p)}/${yy(p)}`, true],
+      ];
       break;
     case "month":
-      candidates = yearly(month, (p) => `${Number(p[2])}/${yy(p)}`);
+      candidates = [
+        [full, true],
+        [month, false],
+        [(p) => `${Number(p[2])}/${yy(p)}`, true],
+      ];
       break;
     case "week":
-      candidates = yearly(
-        (p) => `Mg ${Number(p[3])} ${month(p)}`,
-        (p) => `Mg ${dayMonth(p)}/${yy(p)}`,
-        (p) => `Mg ${dayMonth(p)}`,
-      );
+      candidates = [
+        [full, true],
+        [(p) => `${WEEK_PREFIX} ${Number(p[3])} ${month(p)}`, false],
+        [(p) => `${WEEK_PREFIX} ${dayMonth(p)}/${yy(p)}`, true],
+        [(p) => `${WEEK_PREFIX} ${dayMonth(p)}`, false],
+        [(p) => `${dayMonth(p)}/${yy(p)}`, true],
+        [dayMonth, false],
+      ];
       break;
     default:
-      candidates = yearly(
-        (p) => `${Number(p[3])} ${month(p)}${time(p)}`,
-        (p) => `${dayMonth(p)}/${yy(p)}${time(p)}`,
-        (p) => `${dayMonth(p)}${time(p)}`,
-      );
-      if (sameDay) candidates.push((p) => `${p[4]}:${p[5]}`);
+      candidates = [
+        [full, true],
+        [(p) => `${Number(p[3])} ${month(p)}${time(p)}`, false],
+        [(p) => `${dayMonth(p)}/${yy(p)}${time(p)}`, true],
+        [(p) => `${dayMonth(p)}${time(p)}`, false],
+      ];
+      if (sameDay) candidates.push([(p) => `${p[4]}:${p[5]}`, false]);
   }
-  return candidates.map((f) => parts.map((p) => (p ? f(p) : null)));
+  // Deret lintas tahun: angka bertahun ('Mg 22/12/25') dicoba sebelum teks tanpa tahun ('Mg 22 Des') —
+  // tahun tetap terlihat selama muat; setahun: tahun tidak membedakan apa pun, teks lebih dulu.
+  if (grain !== "year" && new Set(loaded.map((p) => p[1])).size > 1)
+    [candidates[1], candidates[2]] = [candidates[2]!, candidates[1]!];
+  // Tahun boleh hilang hanya bila baris tampil < 1 tahun ('31/12' lalu '1/1' terbaca berurutan);
+  // '16 Des' 2024 di samping '22 Des' 2025 akan terbaca setahun → tahun dipertahankan.
+  const days = parts.flatMap((p) => (p ? [Date.UTC(+p[1]!, +p[2]! - 1, +p[3]!) / 864e5] : []));
+  const withinYear = !days.length || Math.max(...days) - Math.min(...days) < 365;
+  return candidates
+    .filter(([f, withYear]) => withYear || (withinYear && unique(f)))
+    .map(([f]) => parts.map((p) => (p ? f(p) : null)));
 }
 
 export type ValueType =

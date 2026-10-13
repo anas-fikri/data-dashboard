@@ -32,6 +32,7 @@ import type { WidgetData } from "@/components/widgets/widget-query";
 import {
   dateLabelForms,
   formatAxis,
+  formatDate,
   formatCompact,
   formatMeasure,
   formatNumber,
@@ -1577,16 +1578,26 @@ describe("putaran 6", () => {
       }
     });
 
-    it("bentuk tanggal pendek: tahun dibuang hanya bila sama, angka bertahun bila beda, jam saja bila sehari", () => {
+    it("bentuk tanggal pendek: tanpa tahun hanya bila tetap unik, angka bertahun selalu, jam saja bila sehari", () => {
       expect(dateLabelForms(["2026-03-02", "2026-03-23"], "week")).toEqual([
         ["Mg 2 Mar 2026", "Mg 23 Mar 2026"],
         ["Mg 2 Mar", "Mg 23 Mar"],
         ["Mg 2/3/26", "Mg 23/3/26"],
         ["Mg 2/3", "Mg 23/3"],
+        ["2/3/26", "23/3/26"],
+        ["2/3", "23/3"],
       ]);
+      // Putaran 8: lintas tahun tetap boleh tanpa tahun selama tanggal/bulannya unik, tetapi angka
+      // bertahun dicoba lebih dulu (tahun tetap terlihat selama muat).
       expect(dateLabelForms(["2025-12-29", "2026-01-05"], "day")).toEqual([
         ["29 Des 2025", "5 Jan 2026"],
         ["29/12/25", "5/1/26"],
+        ["29 Des", "5 Jan"],
+        ["29/12", "5/1"],
+      ]);
+      expect(dateLabelForms(["2025-12-29", "2024-12-29"], "day")).toEqual([
+        ["29 Des 2025", "29 Des 2024"],
+        ["29/12/25", "29/12/24"],
       ]);
       expect(
         dateLabelForms(["2025-12-31T21:00:00", "2025-12-31T18:00:00", null], undefined, true),
@@ -1687,6 +1698,25 @@ describe("putaran 6", () => {
   });
 });
 
+// Lebar canvas font sistem 12 px (diukur di peramban; angka = "0" tabular) + 1 px seperti widget.
+const GLYPH: Record<string, number> = {
+  "0": 7.56,
+  "/": 3.66,
+  ":": 3.56,
+  " ": 3.38,
+  "…": 9.66,
+  K: 7.9,
+  M: 10.49,
+  g: 7.31,
+  J: 6.46,
+  a: 6.62,
+  n: 7,
+  D: 8.72,
+  e: 6.86,
+  s: 6.28,
+};
+const sf = (t: string) => [...t.replace(/\d/g, "0")].reduce((w, ch) => w + (GLYPH[ch] ?? 7), 0) + 1;
+
 describe("putaran 7", () => {
   const withBox = (size: { width: number; height: number }, run: () => void) => {
     box.size = size;
@@ -1702,25 +1732,6 @@ describe("putaran 7", () => {
         /<span class="truncate text-muted-foreground[^"]*" title="[^"]+">(?:<span aria-hidden="true">)?([^<]+)</g,
       ),
     ].map((m) => m[1]!);
-  // Lebar canvas font sistem 12 px (diukur di peramban; angka = "0" tabular) + 1 px seperti widget.
-  const GLYPH: Record<string, number> = {
-    "0": 7.56,
-    "/": 3.66,
-    ":": 3.56,
-    " ": 3.38,
-    "…": 9.66,
-    K: 7.9,
-    M: 10.49,
-    g: 7.31,
-    J: 6.46,
-    a: 6.62,
-    n: 7,
-    D: 8.72,
-    e: 6.86,
-    s: 6.28,
-  };
-  const sf = (t: string) =>
-    [...t.replace(/\d/g, "0")].reduce((w, ch) => w + (GLYPH[ch] ?? 7), 0) + 1;
   const est = (t: string) => [...t].length * 6.6 + 1;
   const stamps = (isos: string[], values: number[]): WidgetData => ({
     columns: [
@@ -1792,13 +1803,14 @@ describe("putaran 7", () => {
       ];
       const forms = dateLabelForms(isos, undefined, true) as string[][];
       const rooms = isos.map(() => 78);
-      // Dulu: '31/12/25 1…' untuk keempat jam 31 Des.
+      // Dulu: '31/12/25 1…' untuk keempat jam 31 Des, lalu '31/1…18:00' (terbaca 31 Jan). Putaran 8:
+      // bentuk tanpa tahun yang tetap unik, utuh.
       expect(rankedLabels(forms, rooms, sf, true)).toEqual([
-        "1/1/26 03:15",
-        "31/1…18:00",
-        "31/1…15:15",
-        "31/1…12:30",
-        "31/1…10:00",
+        "1/1 03:15",
+        "31/12 18:00",
+        "31/12 15:15",
+        "31/12 12:30",
+        "31/12 10:00",
       ]);
       for (const width of [sf, est, (t: string) => [...t].length * 7]) {
         const out = rankedLabels(forms, rooms, width, true);
@@ -1900,5 +1912,394 @@ describe("putaran 7", () => {
         canvas.measure = null;
       }
     });
+  });
+});
+
+describe("putaran 8", () => {
+  const withBox = (size: { width: number; height: number }, run: () => void) => {
+    box.size = size;
+    try {
+      run();
+    } finally {
+      box.size = null;
+    }
+  };
+  const rankedShown = (out: string) =>
+    [
+      ...out.matchAll(
+        /<span class="truncate text-muted-foreground[^"]*" title="[^"]+">(?:<span aria-hidden="true">)?([^<]+)</g,
+      ),
+    ].map((m) => m[1]!);
+  const at = (forms: (string | null)[][], room: number | number[]) =>
+    rankedLabels(
+      forms as string[][],
+      forms[0]!.map((_, k) => (typeof room === "number" ? room : room[k]!)),
+      sf,
+      true,
+    );
+  const SERIES = [
+    "2025-12-15",
+    "2025-12-22",
+    "2025-12-29",
+    "2026-01-05",
+    "2026-01-12",
+    "2026-01-19",
+  ];
+  const STAMPS = [
+    "2026-01-01T03:15:00",
+    "2025-12-31T18:00:00",
+    "2025-12-31T15:15:00",
+    "2025-12-31T12:30:00",
+    "2025-12-31T10:00:00",
+  ];
+
+  describe("label tanggal dipendekkan per bagian utuh, tidak pernah per huruf", () => {
+    it("minggu 22/12/25, 15/12/25, 16/12/24 di 53,9 px: 3 label berbeda, masing-masing dengan harinya", () => {
+      const isos = ["2025-12-22", "2025-12-15", "2024-12-16"];
+      const forms = dateLabelForms(isos, "week");
+      // Dulu 'Mg…/25 | Mg…/25 | Mg…/24' (kembar, tanpa hari dan bulan).
+      expect(at(forms, 53.9)).toEqual(["22/12/25", "15/12/25", "16/12/24"]);
+      for (let room = 30; room <= 170; room += 0.5) {
+        const out = at(forms, room);
+        expect(new Set(out).size, `${out.join(" | ")} @${room}`).toBe(3);
+        out.forEach((t, k) =>
+          expect(t, `@${room}`).toMatch(new RegExp(`^(Mg )?${Number(isos[k]!.slice(8))}(\\D|$)`)),
+        );
+      }
+    });
+
+    it("deret lintas tahun: tahun tetap terlihat selama bentuk bertahun muat", () => {
+      const isos = ["2025-12-22", "2025-12-15", "2024-12-16"];
+      // Daftar bertumpuk 96 px (ruang ±80 px): bukan 'Mg 22 Des | Mg 15 Des | Mg 16 Des' (2024 tak terlihat).
+      expect(at(dateLabelForms(isos, "week"), 80)).toEqual([
+        "Mg 22/12/25",
+        "Mg 15/12/25",
+        "Mg 16/12/24",
+      ]);
+      expect(at(dateLabelForms(isos, "day"), 53.9)).toEqual(["22/12/25", "15/12/25", "16/12/24"]);
+      const months = ["2025-11-01", "2026-02-01", "2025-05-01", "2025-08-01"];
+      expect(at(dateLabelForms(months.slice(2), "month", false, months), 53.9)).toEqual([
+        "5/25",
+        "8/25",
+      ]);
+      // Setahun: tahun tidak membedakan apa pun, teks tanpa tahun tetap lebih dulu.
+      expect(at(dateLabelForms(["2026-03-02", "2026-03-23"], "week"), 80)).toEqual([
+        "Mg 2 Mar",
+        "Mg 23 Mar",
+      ]);
+    });
+
+    it("Mg 19 Jan dan 12 Jan 2026 dari deret Des 2025–Jan 2026 di 53,9 px: 'Mg 19/1', 'Mg 12/1'", () => {
+      const forms = dateLabelForms(["2026-01-19", "2026-01-12"], "week", false, SERIES);
+      // Tanpa tahun tetap unik di seluruh deret walau lintas tahun. Dulu '…9/1/26 | …2/1/26'.
+      expect(forms).toContainEqual(["Mg 19/1", "Mg 12/1"]);
+      expect(at(forms, 53.9)).toEqual(["Mg 19/1", "Mg 12/1"]);
+      // Satu minggu bertanggal/bulan sama di tahun lain: bentuk tanpa tahun tidak ditawarkan.
+      const twice = dateLabelForms(["2026-01-12"], "week", false, ["2026-01-12", "2015-01-12"]);
+      expect(twice.flat()).not.toContain("Mg 12/1");
+      expect(twice.flat()).not.toContain("12/1");
+      expect(twice.flat()).toContain("12/1/26");
+    });
+
+    it("satu baris bertanggal 12/1/26 (setelah 'Lainnya') tidak pernah kehilangan tanggal dan bulan", () => {
+      const forms = dateLabelForms([null, "2026-01-12"], "week", false, [null, ...SERIES]).map(
+        (f) => f.map((t) => t ?? "Lainnya"),
+      );
+      expect(at(forms, 53.9)).toEqual(["Lainnya", "Mg 12/1"]); // dulu 'Mg…/26'
+      for (let room = 28; room <= 170; room += 0.5) {
+        const [, t] = at(forms, room);
+        expect(t, `@${room}`).toMatch(/^(Mg )?12( Jan|\/1)(\/26| 2026)?$/);
+      }
+    });
+
+    it("31 Des 2025 / 1 Jan 2026 di 78 px dan lebih sempit: baris Desember tidak pernah '31/1'", () => {
+      const forms = dateLabelForms(STAMPS, undefined, true);
+      expect(at(forms, 78)).toEqual([
+        "1/1 03:15",
+        "31/12 18:00",
+        "31/12 15:15",
+        "31/12 12:30",
+        "31/12 10:00",
+      ]);
+      for (let room = 30; room <= 170; room += 0.5) {
+        const out = at(forms, room);
+        expect(new Set(out).size, `${out.join(" | ")} @${room}`).toBe(5);
+        out.forEach((t, k) => {
+          expect(t, `@${room}`).not.toMatch(/\d…\d/);
+          if (STAMPS[k]!.startsWith("2025-12"))
+            expect(t, `@${room}`).not.toMatch(/(^|\D)31\/1(\D|$)/);
+        });
+      }
+      // Daftar sebaris 152 px (ruang 53,9 px), dua baris yang tampil: hari dan bulan utuh.
+      expect(at(dateLabelForms(STAMPS.slice(0, 2), undefined, true, STAMPS), 53.9)).toEqual([
+        "1 Jan…",
+        "31 Des…",
+      ]);
+    });
+
+    it("cap waktu di hari yang sama dalam deret beberapa hari: jam utuh ('…13:30'), bukan '23…3:30'", () => {
+      const all = [
+        "2026-03-23T13:30:00",
+        "2026-03-23T08:00:00",
+        "2026-03-12T21:00:00",
+        "2026-03-02T13:30:00",
+        "2026-03-02T08:00:00",
+      ];
+      const forms = dateLabelForms(all.slice(0, 2), undefined, true, all);
+      expect(forms.flat()).not.toContain("13:30");
+      expect(at(forms, 53.9)).toEqual(["…13:30", "…08:00"]);
+      // Cukup ruang: tanggal + jam utuh.
+      expect(at(forms, 66)).toEqual(["23/3 13:30", "23/3 08:00"]);
+    });
+
+    it("sama banyak bagian: yang membuang lebih sedikit menang ('30/12 22…', bukan '30/12/25…')", () => {
+      const all = [
+        "2025-12-30T22:00:00",
+        "2025-12-31T06:00:00",
+        "2025-12-31T14:30:00",
+        "2026-01-01T03:15:00",
+        "2026-01-01T18:00:00",
+      ];
+      const forms = dateLabelForms([all[0]!, all[3]!], undefined, true, all);
+      // Pai sebaris 152 px di 1280 (ruang 66,4 px): tanpa tahun unik di deret → jam lebih berguna.
+      expect(at(forms, 66.4)).toEqual(["30/12 22…", "1/1 03…"]);
+    });
+
+    it("tanggal kembar di dua baris dan jam kembar di dua baris lain: tiap baris bagian pembedanya sendiri", () => {
+      const isos = [
+        "2025-12-18T12:15:00",
+        "2025-12-18T20:45:00",
+        "2026-02-18T14:30:00",
+        "2025-12-17T14:30:00",
+      ];
+      const forms = dateLabelForms(isos, undefined, true);
+      // Seragam '18/12…' kembar, seragam '…14:30' kembar: per baris, tetap utuh per bagian dan muat.
+      expect(at(forms, 50)).toEqual(["…12:15", "…20:45", "18/2…", "17/12…"]);
+    });
+
+    it("daftar sebaris 152 px lewat widget: minggu lintas tahun 'Mg 19/1', bukan potongan per huruf", () => {
+      // Lebar canvas 12 px (diukur di peramban), font-medium ±2,9 % lebih lebar.
+      const VALUE: Record<string, number> = {
+        R: 7.84,
+        p: 7.32,
+        j: 2.96,
+        t: 4.36,
+        ",": 3.56,
+        ".": 3.56,
+      };
+      canvas.measure = (t, bold) =>
+        [...t].reduce((w, ch) => w + (VALUE[ch] ?? GLYPH[ch] ?? 7), 0) * (bold ? 1.029 : 1);
+      try {
+        const d: WidgetData = {
+          columns: [
+            { key: "d", label: "Minggu", type: "date" },
+            { key: "m", label: "Total Omzet", type: "decimal" },
+          ],
+          rows: [...SERIES].reverse().map((iso, k) => [iso, 711_340_000 - k * 4_920_000]),
+        };
+        const s = spec({
+          sort: "label_desc",
+          topN: 365,
+          dimension: { column: 1, timeGrain: "week" },
+          format: { style: "rupiah", decimals: 2 },
+        });
+        withBox({ width: 152, height: 66 }, () => {
+          const out = html("line", d, false, s);
+          const shown = rankedShown(out);
+          expect(shown).toEqual(["Mg 19/1", "Mg 12/1"]);
+          expect(out).toContain('title="Mg 19 Jan 2026"');
+          expect(out).toContain('<span class="sr-only">Mg 12 Jan 2026</span>');
+        });
+      } finally {
+        canvas.measure = null;
+      }
+    });
+  });
+
+  describe("sapuan acak berbenih: label tanggal selalu utuh per bagian, berbeda, dan benar", () => {
+    const MON = [
+      "Jan",
+      "Feb",
+      "Mar",
+      "Apr",
+      "Mei",
+      "Jun",
+      "Jul",
+      "Agu",
+      "Sep",
+      "Okt",
+      "Nov",
+      "Des",
+    ];
+    type Grain = "week" | "day" | "month" | "quarter" | "stamp";
+    // Bentuk yang benar untuk satu tanggal, disusun ulang di uji ini dari angkanya (bukan dari kode).
+    const truth = (iso: string, grain: Grain): string[] => {
+      const [, y, mo, d, hh, mm] = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso)!;
+      const [D, M, yy] = [Number(d), Number(mo), y!.slice(2)];
+      const mon = MON[M - 1]!;
+      const q = `K${Math.floor((M - 1) / 3) + 1}`;
+      const t = `${hh}:${mm}`;
+      switch (grain) {
+        case "week":
+          return [
+            `Mg ${D} ${mon} ${y}`,
+            `Mg ${D} ${mon}`,
+            `Mg ${D}/${M}/${yy}`,
+            `Mg ${D}/${M}`,
+            `${D}/${M}/${yy}`,
+            `${D}/${M}`,
+          ];
+        case "month":
+          return [`${mon} ${y}`, mon, `${M}/${yy}`];
+        case "quarter":
+          return [`${q} ${y}`, q, `${q}/${yy}`];
+        case "stamp":
+          return [
+            `${D} ${mon} ${y} ${t}`,
+            `${D} ${mon} ${t}`,
+            `${D}/${M}/${yy} ${t}`,
+            `${D}/${M} ${t}`,
+            t,
+          ];
+        default:
+          return [`${D} ${mon} ${y}`, `${D} ${mon}`, `${D}/${M}/${yy}`, `${D}/${M}`];
+      }
+    };
+    /** Bentuk benar utuh, bagian awalnya yang utuh + "…", atau "…" + jam utuh (cap waktu). */
+    const consistent = (label: string, iso: string, grain: Grain) => {
+      const ok = truth(iso, grain);
+      if (label.startsWith("…")) return grain === "stamp" && label.slice(1) === iso.slice(11, 16);
+      if (!label.endsWith("…")) return ok.includes(label);
+      const head = label.slice(0, -1);
+      return ok.some((t) => t.startsWith(head) && /^[ /:]/.test(t.slice(head.length)));
+    };
+    // mulberry32: deret acak yang sama di setiap jalan.
+    const prng = (seed: number) => () => {
+      seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const DAY = 86_400_000;
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const GRAINS: Grain[] = ["week", "day", "month", "quarter", "stamp"];
+    // Satu hari, satu tahun, lintas tahun (Nov 2025–Feb 2026), beberapa tahun (2020–2026).
+    const SPANS: [number, number][] = [
+      [Date.UTC(2025, 11, 31), 1],
+      [Date.UTC(2026, 0, 1), 365],
+      [Date.UTC(2025, 10, 1), 120],
+      [Date.UTC(2020, 0, 1), 7 * 365],
+    ];
+
+    /** Bentuk bertahun selain yang lengkap ('Mg 19/1/26', '19/1/26', '1/26', 'K1/26', '19/1/26 13:30'). */
+    const withYear = (iso: string, grain: Grain) =>
+      truth(iso, grain).filter((t) => /\/\d{2}( |$)/.test(t));
+
+    it("2.000 daftar × ruang 30–170 px: utuh per bagian, berbeda, sesuai tanggalnya", () => {
+      const rnd = prng(20261013);
+      const pick = <T>(xs: readonly T[]) => xs[Math.floor(rnd() * xs.length)]!;
+      const seen = { lists: 0, cut: 0, timeTail: 0, lastResort: 0, yearless: 0 };
+      for (let run = 0; run < 2000; run++) {
+        const grain = pick(GRAINS);
+        const [from, days] = pick(SPANS);
+        const n = 1 + Math.floor(rnd() * 50);
+        const loaded = new Set<string>();
+        for (let i = 0; i < n * 4 && loaded.size < n; i++) {
+          let ms = from + Math.floor(rnd() * days) * DAY;
+          const d = new Date(ms);
+          if (grain === "week") ms -= ((d.getUTCDay() + 6) % 7) * DAY;
+          if (grain === "month") ms = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+          if (grain === "quarter")
+            ms = Date.UTC(d.getUTCFullYear(), Math.floor(d.getUTCMonth() / 3) * 3, 1);
+          const iso = new Date(ms).toISOString().slice(0, 10);
+          loaded.add(
+            grain === "stamp"
+              ? `${iso}T${pad(Math.floor(rnd() * 24))}:${pad(Math.floor(rnd() * 4) * 15)}:00`
+              : iso,
+          );
+        }
+        const all: (string | null)[] = [...loaded];
+        // Baris yang tampil: sebagian acak dari yang dimuat, dicampur 'Lainnya' / '(kosong)'.
+        const rows: { iso: string | null; text: string }[] = [...loaded]
+          .sort(() => rnd() - 0.5)
+          .slice(0, 1 + Math.floor(rnd() * Math.min(loaded.size, 15)))
+          .map((iso) => ({ iso, text: "" }));
+        if (rnd() < 0.4)
+          rows.splice(Math.floor(rnd() * (rows.length + 1)), 0, { iso: null, text: "Lainnya" });
+        if (rnd() < 0.3) {
+          rows.splice(Math.floor(rnd() * (rows.length + 1)), 0, { iso: null, text: "(kosong)" });
+          all.push(null);
+        }
+        const g = grain === "stamp" ? undefined : grain;
+        const forms = dateLabelForms(
+          rows.map((r) => r.iso),
+          g,
+          grain === "stamp",
+          all,
+        ).map((f) => f.map((t, k) => t ?? rows[k]!.text));
+        const dated = rows.flatMap((r, k) => (r.iso ? [k] : []));
+        const fulls = rows.map((r) => (r.iso ? formatDate(r.iso, g, grain === "stamp") : r.text));
+        // Label lengkap pemilik setiap bentuk benar di antara SEMUA baris yang dimuat.
+        const owners = new Map<string, Set<string>>();
+        for (const iso of loaded)
+          for (const t of truth(iso, grain))
+            owners.set(t, (owners.get(t) ?? new Set()).add(formatDate(iso, g, grain === "stamp")));
+        // Lebar bentuk unik terpendek: dari ruang ini ke atas semua label tanggal harus muat utuh.
+        const shortest = Math.min(...forms.map((f) => Math.max(0, ...dated.map((k) => sf(f[k]!)))));
+        const jitter = rnd() < 0.3;
+        for (let room = 30; room <= 170; room += 10) {
+          const rooms = rows.map(() => (jitter ? room - rnd() * 8 : room));
+          const out = at(forms, rooms);
+          seen.lists++;
+          const tag = `${grain} ${rows.map((r) => r.iso ?? r.text).join(",")} @${room} → ${out.join(" | ")}`;
+          // (b) Periode berbeda tidak pernah menjadi teks yang sama — di ruang berapa pun.
+          for (const i of dated)
+            for (const j of dated)
+              if (i < j && fulls[i] !== fulls[j]) expect(out[i], tag).not.toBe(out[j]);
+          if (Math.min(...rooms) >= shortest)
+            for (const k of dated) expect(sf(out[k]!), tag).toBeLessThanOrEqual(rooms[k]!);
+          let resort = false;
+          for (const k of dated) {
+            const t = out[k]!;
+            const iso = rows[k]!.iso!;
+            // (a) Tidak ada '…' di antara dua angka; setiap deret angka utuh dari bentuk lengkap barisnya.
+            expect(t, tag).not.toMatch(/\d…\d/);
+            const runs = new Set(forms.flatMap((f) => f[k]!.match(/\d+/g) ?? []));
+            for (const r of t.match(/\d+/g) ?? []) expect(runs.has(r), `${r} ${tag}`).toBe(true);
+            // (c) Bagian yang tampil sesuai tanggal/jam baris itu sendiri.
+            expect(consistent(t, iso, grain), tag).toBe(true);
+            if (!t.includes("…")) {
+              // Label utuh tidak mungkin tertukar dengan baris lain yang dimuat.
+              expect([...(owners.get(t) ?? [])], tag).toEqual([fulls[k]]);
+              if (sf(t) > rooms[k]!) resort = true;
+              if (!truth(iso, grain).slice(0, 1).concat(withYear(iso, grain)).includes(t))
+                seen.yearless++;
+            } else {
+              seen.cut++;
+              if (t.startsWith("…")) seen.timeTail++;
+              expect(sf(t), tag).toBeLessThanOrEqual(rooms[k]!);
+            }
+          }
+          if (resort) seen.lastResort++;
+          // Baris bukan tanggal tetap teksnya (atau dipotong di tengah bila tidak muat).
+          rows.forEach((r, k) => {
+            if (!r.iso) expect(out[k] === r.text || /…/.test(out[k]!), tag).toBe(true);
+          });
+        }
+      }
+      // Sapuan memang melewati semua jalur: utuh tanpa tahun, dipotong per bagian, jam saja, upaya akhir.
+      expect(seen.lists).toBe(30_000);
+      expect(seen.yearless).toBeGreaterThan(1000);
+      expect(seen.cut).toBeGreaterThan(100);
+      expect(seen.timeTail).toBeGreaterThan(10);
+      expect(seen.lastResort).toBeGreaterThan(0);
+    }, 60_000);
+  });
+
+  it("baris tampil berjarak ≥ 1 tahun: bentuk tanpa tahun tidak ditawarkan", () => {
+    const forms = dateLabelForms(["2025-12-22", "2025-12-15", "2024-12-16"], "day") as string[][];
+    for (const f of forms) expect(f.every((l) => /2024|2025|\/2[45]\b/.test(l))).toBe(true);
+    // Des → Jan berurutan (< 1 tahun) tetap boleh tanpa tahun.
+    expect(dateLabelForms(["2025-12-31", "2026-01-01"], "day").flat()).toContain("31/12");
   });
 });
