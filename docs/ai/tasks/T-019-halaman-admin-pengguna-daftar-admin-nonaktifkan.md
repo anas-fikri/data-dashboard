@@ -12,7 +12,7 @@ depends_on:
   - T-003
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T13:50:25Z"
+updated: "2026-10-13T14:00:12Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,7 +22,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 32280
+    duration_ms: 31747
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -44,13 +44,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791899404116,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791899404139,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791899991079,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791899991101,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  34 passed (34)
             Tests  640 passed (640)
-         Start at  20:50:01
-         Duration  22.25s (tests 89%, import 6%, transform 5%)
+         Start at  20:59:48
+         Duration  22.38s (tests 89%, import 6%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -58,8 +58,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T13:50:25Z"
-    tree: 2235c38c5a93f91a58703eee2d98f63dfe40ecb0ee044395e50b36e3fca5af83
+    at: "2026-10-13T14:00:12Z"
+    tree: c1ef3f9999a3669a874d0fb4ce0397e922c42339e2a958f633ec4df21a3a060a
 ---
 
 ## Objective
@@ -80,7 +80,7 @@ evidence:
   - Modul baru src/features/admin (service, actions, types, transfer-names): listUsers, listTransferTargets, setUserAdmin, setUserActive, transferDatasets + Server Action setUserAdminAction, setUserActiveAction, transferDatasetsAction.
   - Perilaku bersama yang berubah: requireUser("page") kini mengarahkan sesi akun nonaktif ke /login?next=…&reason=disabled (alasan lain tetap /login?next=…); loginUrl(next, reason?) mendapat parameter opsional; getSessionUser dan requireUser("action") tidak berubah. RULES mendapat "admin" (60/menit per admin).
   - Seed: SEED_ADMIN_EMAIL hanya diberi isAdmin/isActive saat akun DIBUAT; seed ulang tidak lagi mengaktifkan/mengangkat akun yang sudah ada (sebelumnya diam-diam membatalkan nonaktif/cabut admin). Memulihkan admin kini lewat admin lain atau SQL manual.
-  - Memberi ATAU mencabut admin menaikkan sessionVersion target → target keluar dari semua perangkat (AC6); pelaku yang mencabut perannya sendiri mendapat sesi baru di perangkat ini (selfDemoted, tanpa revalidate — UI yang mengarahkan keluar).
+  - Mencabut admin menaikkan sessionVersion target → target keluar dari semua perangkat (AC6); memberi admin TIDAK memutus sesi (isAdmin dibaca dari DB tiap permintaan, jadi langsung berlaku); pelaku yang mencabut perannya sendiri mendapat sesi baru di perangkat ini (selfDemoted, tanpa revalidate — UI yang mengarahkan keluar).
   - Alih kepemilikan memindahkan Dataset.ownerId (dashboard/widget ikut karena tidak punya kolom pemilik); nama bentrok di pemilik baru diberi akhiran " (n)"; unggahan UPLOADING sumber ditandai FAILED dan multipart di-abort setelah commit. Kuota pemilik baru bisa terlampaui (dilaporkan quotaExceeded; unggahan berikutnya ditolak QUOTA_EXCEEDED oleh initUpload).
   - Catatan T-003 (hapus user → objek storage): T-019 tidak menghapus user dan nonaktif tidak menghapus dataset, jadi deleteDatasetObjects tidak dipanggil di sini; tetap berlaku bila penghapusan user ditambahkan kelak.
 - **Security (STRIDE):**
@@ -103,7 +103,7 @@ evidence:
   - Dataset yang sudah dialihkan tidak kembali otomatis; meta.datasetIds + meta.renamed di AuditLog cukup untuk mengembalikan pemilik/nama secara manual.
   - Revert seed mengembalikan perilaku lama (seed ulang mengaktifkan/mengangkat SEED_ADMIN_EMAIL).
 - **Validation:**
-  - tests/features/admin/service.test.ts (Prisma palsu dalam memori dengan rollback): LAST_ADMIN saat cabut/nonaktif diri sendiri, admin nonaktif tidak dihitung, FORBIDDEN nonaktif diri, sessionVersion naik saat beri/cabut/nonaktif dan tetap saat aktifkan, audit actor/target/ip, pelaku yang sudah dicabut → NOT_FOUND, alih: sumber aktif / tujuan tidak sah / tanpa dataset → INVALID, LIMIT_REACHED dengan jumlah yang muat, rename " (n)" termasuk nameKey lama, unggahan → FAILED + abort setelah commit, quotaExceeded, rollback penuh, P2002/P2028 → BUSY, listUsers/listTransferTargets.
+  - tests/features/admin/service.test.ts (Prisma palsu dalam memori dengan rollback): LAST_ADMIN saat cabut/nonaktif diri sendiri, admin nonaktif tidak dihitung, FORBIDDEN nonaktif diri, sessionVersion naik saat cabut/nonaktif dan tetap saat beri/aktifkan, audit actor/target/ip, pelaku yang sudah dicabut → NOT_FOUND, alih: sumber aktif / tujuan tidak sah / tanpa dataset → INVALID, LIMIT_REACHED dengan jumlah yang muat, rename " (n)" termasuk nameKey lama, unggahan → FAILED + abort setelah commit, quotaExceeded, rollback penuh, P2002/P2028 → BUSY, listUsers/listTransferTargets.
   - tests/features/admin/actions.test.ts: non-admin dan sesi dicabut → NOT_FOUND tanpa tulis/rate limit/revalidate, redirect Next dilempar ulang, DB mati → BUSY, RATE_LIMITED, Redis mati, selfDemoted menerbitkan ulang sesi, revalidatePath, ip dari X-Real-IP saat TRUST_PROXY.
   - tests/features/auth/session.test.ts (reason=disabled hanya untuk akun nonaktif dengan JWT sah; mode action tetap AuthError) dan tests/lib/seed.test.ts (seed tidak mengubah akun yang sudah ada).
   - e2e dan audit UI: lihat Notes (Conventions check) setelah halaman selesai.
@@ -116,7 +116,7 @@ evidence:
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
 - [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — Batas kepercayaan: browser → Server Actions admin (requireAdmin("action"), rate limit) → service admin (cek ulang pelaku + lock 'admins' + AuditLog dalam satu transaksi) → Postgres (User.isAdmin/isActive/sessionVersion, Dataset.ownerId, AuditLog) dan object storage (abort multipart). Data sensitif: peran/status akun dan jejak audit (ip). Dirinci di Risk.
 - [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — Tidak ada kredensial baru. Akun nonaktif tetap ditolak login (ACCOUNT_DISABLED setelah password benar); seed tidak lagi mengaktifkan ulang SEED_ADMIN_EMAIL dan tetap tanpa password bawaan.
-- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — Nonaktif dan beri/cabut admin menaikkan sessionVersion target → semua sesinya ditolak di permintaan berikutnya (cek DB tiap permintaan, D1); aktifkan tidak menghidupkan token lama. Cabut admin diri sendiri menerbitkan ulang sesi perangkat ini lewat createSession (pola changePassword). Diuji unit.
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — Nonaktif dan cabut admin menaikkan sessionVersion target → semua sesinya ditolak di permintaan berikutnya (cek DB tiap permintaan, D1); aktifkan tidak menghidupkan token lama. Cabut admin diri sendiri menerbitkan ulang sesi perangkat ini lewat createSession (pola changePassword). Diuji unit.
 - [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — Ketiga Server Action memanggil requireAdmin("action") sebelum apa pun; AuthError (non-admin/tanpa sesi/sesi dicabut) → NOT_FOUND tanpa kueri tulis (diuji). Pelaku dicek ulang di dalam transaksi; isAdmin selalu dari DB. Halaman /admin/pengguna wajib requireAdmin() (404) — dibuktikan e2e UI.
 - [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — id lewat isIdShape, flag harus boolean, kata kunci pencarian NFC tanpa karakter kontrol ≤ 100; semua kueri Prisma terparameter; advisory lock lewat $executeRaw tagged template. Nama hasil rename dibangun dari nama yang sudah tervalidasi, ≤ 80 karakter, nameKey dihitung ulang dengan nameKeyOf. Output dirender React.
 - [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data rahasia baru yang disimpan (AuditLog tanpa kredensial/token).

@@ -25,13 +25,16 @@ export default defineConfig({
         /ingest\.spec\.ts$/,
         /schema\.spec\.ts$/,
         /widgets\.spec\.ts$/,
+        /admin\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
     { name: "schema", testMatch: /schema\.spec\.ts$/, dependencies: ["ingest"] },
     // widgets: menyalakan worker sendiri untuk ingest fixture (setelah worker schema berhenti).
     { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["widgets"] },
+    // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
+    { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["admin"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
