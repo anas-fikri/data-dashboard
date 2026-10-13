@@ -1649,6 +1649,19 @@ describe("putaran 6", () => {
       });
     });
 
+    it("bertumpuk, '+N' tidak muat sebaris dan tak ada tempat di bawah label: nilai hanya di title/sr", () => {
+      const rows = Array.from({ length: 5 }, (_, k) => [`Kantor ${k + 1}`, 669110000 - k * 1000]);
+      withBox({ width: 109, height: 69 }, () => {
+        const d = data(rows, { categories: 40, grandTotal: 4e9 });
+        const out = html("pie", d, false, spec({ format: RP }));
+        const more = /data-testid="chart-ranked-more">(.*?)<\/li>/.exec(out);
+        expect(more).not.toBeNull();
+        expect(more![1]).not.toContain("tabular-nums");
+        expect(more![1]).toMatch(/title="[^"]*· Rp [^"]*"/);
+        expect(more![1]).toMatch(/<span class="sr-only">[^<]*· Rp [^<]*<\/span>/);
+      });
+    });
+
     it("daftar bertumpuk: baris '+N' pai tetap sebaris bila muat (tidak keluar dari kartu pendek)", () => {
       const rows = Array.from({ length: 5 }, (_, k) => [`Kantor ${k + 1}`, 10 - k]);
       withBox({ width: 139, height: 82 }, () => {

@@ -251,6 +251,11 @@ export function ChartWidget({
     const moreInline = inline || moreForms.some((t) => px(t) <= listPx - moreBeside);
     const moreRoom = listPx - (moreInline ? moreBeside : 0);
     const moreText = moreForms.find((t) => px(t) <= moreRoom) ?? moreForms.at(-1)!;
+    // Tidak muat sebaris dan tidak ada tempat di bawah label (baris data 36 px + nilai 32 px): nilai
+    // '+N' hanya di title/sr — baris terakhir tidak boleh terpotong tepi kartu.
+    const moreShown = moreInline || 4 + 36 * items.length + 32 <= room.height ? moreValue : null;
+    const moreTitle =
+      moreValue !== null && moreShown === null ? `${moreFull} · ${moreValue}` : moreFull;
     body = (
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
@@ -275,10 +280,10 @@ export function ChartWidget({
             )}
             data-testid="chart-ranked-more"
           >
-            <span className={cn("truncate", moreInline && "min-w-0 flex-1")} title={moreFull}>
-              <Both visible={moreText} full={moreFull} />
+            <span className={cn("truncate", moreInline && "min-w-0 flex-1")} title={moreTitle}>
+              <Both visible={moreText} full={moreTitle} />
             </span>
-            {moreValue !== null ? <span className="shrink-0 tabular-nums">{moreValue}</span> : null}
+            {moreShown !== null ? <span className="shrink-0 tabular-nums">{moreShown}</span> : null}
           </li>
         ) : null}
       </ol>
