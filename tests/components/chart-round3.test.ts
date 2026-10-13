@@ -1674,14 +1674,29 @@ describe("putaran 6", () => {
       });
     });
 
-    it("bertumpuk: nilai baris data lebih lebar dari daftar → kapasitas dihitung 52 px per baris", () => {
+    it("bertumpuk: nilai raksasa di luar kapasitas tidak mengurangi baris di atasnya", () => {
+      const rows = [
+        ["Cab 1", 77_700_000],
+        ["Cab 2", 76_600_000],
+        ["Cab 3", 75_500_000],
+        ["Cab 4", 5.38788e15],
+        ["Cab 5", 74_400_000],
+      ];
+      withBox({ width: 96, height: 153 }, () => {
+        const out = html("bar", data(rows, { categories: 40 }), false, spec({ format: RP }));
+        // 4 + 3 × 36 + 20 ('+N') = 132 ≤ 153 → 3 baris data + '+N' (bukan 1 baris seperti 52 px seragam).
+        expect((out.match(/<li /g) ?? []).length).toBe(4);
+      });
+    });
+
+    it("bertumpuk: baris yang nilainya lebih lebar dari daftar dihitung 52 px", () => {
       const rows = Array.from({ length: 6 }, (_, k) => [`Cab ${k + 1}`, 5.38788e15 - k * 1e12]);
       withBox({ width: 96, height: 153 }, () => {
         const d = data(rows, { categories: 40, grandTotal: 4e16 });
         const out = html("pie", d, false, spec({ format: RP }));
         const li = out.match(/<li /g) ?? [];
-        // (153 − 4) / 52 → 2 baris (data + '+N'), bukan 4 seperti hitungan 36 px.
-        expect(li.length).toBeLessThanOrEqual(Math.floor((153 - 4) / 52));
+        // 4 + 52 + 52 + 20 ('+N') = 128 ≤ 153 → 2 baris data + '+N'; 3 baris data (180) tidak muat.
+        expect(li.length).toBe(3);
       });
     });
 

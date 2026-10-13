@@ -211,13 +211,23 @@ export function ChartWidget({
     // Kartu cukup lebar: satu baris per kategori (label di samping nilai) — kecuali label tanggal tidak
     // muat utuh/terpotong seragam di sampingnya; daftar lalu bertumpuk (label selebar kartu) daripada
     // angka terpotong. Kartu sempit: selalu bertumpuk.
+    // Tinggi baris + gap-1: sebaris 20 px; bertumpuk 36 px, 52 px bila nilainya lebih lebar dari daftar
+    // (terbungkus 2 baris; +0,5 px: ukuran +1 px per titik/koma sedikit melebihi DOM).
+    const rowPx = (r: Row, inline: boolean) =>
+      inline ? 20 : px(text(r.value), true) > listPx + 0.5 ? 52 : 36;
     const lay = (inline: boolean) => {
-      // Bertumpuk: nilai lebih lebar dari daftar terbungkus 2 baris (52 px, bukan 36) — kapasitas
-      // dihitung dengan tinggi itu agar baris terakhir tidak terpotong tepi kartu.
-      const guess = Math.floor((room.height - 4) / (inline ? 20 : 36)) + 1;
-      const wraps = !inline && list.slice(0, guess).some((r) => px(text(r.value), true) > listPx);
-      const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : wraps ? 52 : 36)));
-      const ranked = rankedItems(list, fitRows, categories + (unsure ? 1 : 0));
+      // Kapasitas dari tinggi nyata baris dari atas; bila perlu baris '+N' (sama dengan rankedItems),
+      // sisakan 20 px untuknya.
+      const total = categories + (unsure ? 1 : 0);
+      let used = 4;
+      let k = 0;
+      while (k < list.length && used + rowPx(list[k]!, inline) <= room.height) {
+        used += rowPx(list[k++]!, inline);
+      }
+      const real = list.filter((r) => !r.others).length;
+      const needsMore = k < list.length || (!list.some((r) => r.others) && total > real);
+      if (needsMore) while (k > 1 && used + 20 > room.height) used -= rowPx(list[--k]!, inline);
+      const ranked = rankedItems(list, needsMore ? Math.max(1, k) + 1 : k, total);
       const items = ranked.items;
       const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
       const forms = temporal
@@ -260,7 +270,8 @@ export function ChartWidget({
     // Tidak muat sebaris dan tidak ada tempat di bawah label (baris data 36 px + nilai 32 px): nilai
     // '+N' hanya di title/sr — baris terakhir tidak boleh terpotong tepi kartu.
     // Nilai lebih lebar dari daftar akan terbungkus 2 baris → juga hanya di title/sr.
-    const moreFits = 4 + 36 * items.length + 32 <= room.height && moreBeside - 8 <= listPx;
+    const usedRows = items.reduce((sum, r) => sum + rowPx(r, inline), 0);
+    const moreFits = 4 + usedRows + 32 <= room.height && moreBeside - 8 <= listPx;
     const moreShown = moreInline || moreFits ? moreValue : null;
     const moreTitle =
       moreValue !== null && moreShown === null ? `${moreFull} · ${moreValue}` : moreFull;
