@@ -1674,6 +1674,20 @@ describe("putaran 6", () => {
       });
     });
 
+    it("satu baris pun tidak muat bersama '+N' (nilai raksasa, kartu 69 px) → hanya baris '+N'", () => {
+      const rows = Array.from({ length: 4 }, (_, k) => [
+        `Wilayah ${k + 1}`,
+        1.640742e16 - k * 1e12,
+      ]);
+      withBox({ width: 109, height: 69 }, () => {
+        const out = html("pie", data(rows, { categories: 4 }), false, spec({ format: RP }));
+        // 4 + 52 (nilai terbungkus) + 20 = 76 > 69 → 0 baris data + '+N'.
+        expect((out.match(/<li /g) ?? []).length).toBe(1);
+        expect(out).toMatch(/data-testid="chart-ranked-more">.*\+4 /);
+        expect(out).toMatch(/<span class="sr-only">[^<]*· Rp [^<]*T<\/span>/);
+      });
+    });
+
     it("daftar lengkap yang baris terakhirnya tidak muat → '+N' wajib (bukan semua baris terpotong)", () => {
       const rows = Array.from({ length: 6 }, (_, k) => [`Cab ${k + 1}`, 60 - k]);
       withBox({ width: 109, height: 213 }, () => {

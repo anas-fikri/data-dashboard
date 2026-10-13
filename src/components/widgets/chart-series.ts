@@ -220,7 +220,8 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
     return { items: [...rows], more: 0, moreValue: 0 };
   }
   // Satu baris untuk "+N lainnya".
-  const items = rows.slice(0, Math.max(1, Math.min(rows.length, fit - 1)));
+  // force + fit 1: tidak ada baris yang muat bersama '+N' → hanya baris '+N'.
+  const items = rows.slice(0, Math.max(force ? 0 : 1, Math.min(rows.length, fit - 1)));
   const hidden = rows.slice(items.length);
   const listed = items.filter((r) => !r.others).length;
   const more = real - listed + (items.some((r) => r.others) ? 0 : Math.max(0, categories - real));
