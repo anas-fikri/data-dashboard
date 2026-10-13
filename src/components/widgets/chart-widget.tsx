@@ -227,7 +227,7 @@ export function ChartWidget({
       const real = list.filter((r) => !r.others).length;
       const needsMore = k < list.length || (!list.some((r) => r.others) && total > real);
       if (needsMore) while (k > 1 && used + 20 > room.height) used -= rowPx(list[--k]!, inline);
-      const ranked = rankedItems(list, needsMore ? Math.max(1, k) + 1 : k, total);
+      const ranked = rankedItems(list, needsMore ? Math.max(1, k) + 1 : k, total, needsMore);
       const items = ranked.items;
       const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
       const forms = temporal

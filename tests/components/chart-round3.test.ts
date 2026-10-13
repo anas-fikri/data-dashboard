@@ -1674,6 +1674,26 @@ describe("putaran 6", () => {
       });
     });
 
+    it("daftar lengkap yang baris terakhirnya tidak muat → '+N' wajib (bukan semua baris terpotong)", () => {
+      const rows = Array.from({ length: 6 }, (_, k) => [`Cab ${k + 1}`, 60 - k]);
+      withBox({ width: 109, height: 213 }, () => {
+        // 4 + 6 × 36 = 220 > 213 → 5 baris (184) + '+N' 20 px = 204 ≤ 213.
+        const out = html("bar", data(rows, { categories: 6 }), false, spec());
+        expect((out.match(/<li /g) ?? []).length).toBe(6);
+        expect(out).toContain('data-testid="chart-ranked-more"');
+      });
+      // rankedItems: force = '+N' walau semua baris "muat" menurut jumlah slot; Lainnya dihitung.
+      const pie = [
+        { value: 5, label: "A" },
+        { value: 4, label: "B" },
+        { value: 3, label: "C" },
+        { value: 9, label: "Lainnya", others: true },
+      ];
+      const r = rankedItems(pie, 4, 10, true);
+      expect(r.items.map((x) => x.label)).toEqual(["A", "B", "C"]);
+      expect(r).toMatchObject({ more: 7, moreValue: 9 });
+    });
+
     it("bertumpuk: nilai raksasa di luar kapasitas tidak mengurangi baris di atasnya", () => {
       const rows = [
         ["Cab 1", 77_700_000],

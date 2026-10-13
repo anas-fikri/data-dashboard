@@ -211,10 +211,14 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
   rows: readonly T[],
   fit: number,
   categories: number,
+  /** Baris '+N' wajib (pemanggil tahu baris terakhir tidak muat menurut tingginya). */
+  force = false,
 ): { items: T[]; more: number; moreValue: number | null } {
   const real = rows.filter((r) => !r.others).length;
   const unlisted = rows.some((r) => r.others) ? 0 : Math.max(0, categories - real);
-  if (rows.length <= fit && unlisted === 0) return { items: [...rows], more: 0, moreValue: 0 };
+  if (!force && rows.length <= fit && unlisted === 0) {
+    return { items: [...rows], more: 0, moreValue: 0 };
+  }
   // Satu baris untuk "+N lainnya".
   const items = rows.slice(0, Math.max(1, Math.min(rows.length, fit - 1)));
   const hidden = rows.slice(items.length);
