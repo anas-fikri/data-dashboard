@@ -455,7 +455,12 @@ export async function addWidget(
       : { i: widget.id, x: 0, y: bottomOf(current), ...DEFAULT_WIDGET_SIZE };
     // Dipulihkan ke posisi semula: didahulukan agar widget yang sempat naik mengisi tempatnya
     // (setelah hapus + pemadatan) yang bergeser turun, bukan widget yang dipulihkan.
-    const layout = compactLayout(at?.success ? [item, ...current] : [...current, item]);
+    // Ukuran minimum per jenis juga untuk widget yang dipulihkan (posisi dari klien).
+    const types = typesOf([...d.widgets, { id: widget.id, type: widget.type }]);
+    const layout = fitMinSizes(
+      compactLayout(at?.success ? [item, ...current] : [...current, item]),
+      types,
+    );
     const layoutRevision = d.layoutRevision + 1;
     await writeLayout(tx, dashboardId, layout, layoutRevision);
     return {

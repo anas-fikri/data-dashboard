@@ -132,6 +132,53 @@ export function formatDate(iso: string, grain?: string, withTime = false): strin
   }
 }
 
+/**
+ * Bentuk label tanggal yang makin pendek untuk daftar sempit, satu bentuk untuk seluruh daftar (dicoba
+ * dari yang terpanjang): lengkap ("Mg 2 Mar 2026") → tanpa tahun bila semua tanggal setahun ("Mg 2
+ * Mar") → angka hari/bulan ("Mg 2/3"; "2/3/26" bila tahunnya beda) → jam saja bila semua cap waktu di
+ * hari yang sama ("21:00"). Bagian yang membedakan periode tidak pernah dibuang — tidak seperti
+ * pemotongan di tengah ("Mg 2…ar 2026" untuk 2 dan 23 Mar). null = bukan tanggal (label tetap).
+ */
+export function dateLabelForms(
+  isos: readonly (string | null)[],
+  grain?: string,
+  withTime = false,
+): (string | null)[][] {
+  const parts = isos.map((iso) =>
+    iso ? /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso) : null,
+  );
+  const real = parts.filter((p) => p !== null);
+  const same = (key: (p: RegExpExecArray) => string) => new Set(real.map(key)).size <= 1;
+  const sameYear = same((p) => p[1]!);
+  const form = (f: (p: RegExpExecArray) => string) => parts.map((p) => (p ? f(p) : null));
+  const month = (p: RegExpExecArray) => MONTHS[Number(p[2]) - 1] ?? p[2]!;
+  const time = (p: RegExpExecArray) => (withTime && p[4] ? ` ${p[4]}:${p[5]}` : "");
+  const numeric = (p: RegExpExecArray) =>
+    `${Number(p[3])}/${Number(p[2])}${sameYear ? "" : `/${p[1]!.slice(2)}`}`;
+  const forms = [form((p) => formatDate(p[0], grain, withTime))];
+  switch (grain) {
+    case "year":
+      break;
+    case "quarter":
+      if (sameYear) forms.push(form((p) => `K${Math.floor((Number(p[2]) - 1) / 3) + 1}`));
+      break;
+    case "month":
+      if (sameYear) forms.push(form(month));
+      break;
+    case "week":
+      if (sameYear) forms.push(form((p) => `Mg ${Number(p[3])} ${month(p)}`));
+      forms.push(form((p) => `Mg ${numeric(p)}`));
+      break;
+    default:
+      if (sameYear) forms.push(form((p) => `${Number(p[3])} ${month(p)}${time(p)}`));
+      forms.push(form((p) => `${numeric(p)}${time(p)}`));
+      if (withTime && real.every((p) => p[4]) && same((p) => p.slice(1, 4).join("-"))) {
+        forms.push(form((p) => `${p[4]}:${p[5]}`));
+      }
+  }
+  return forms;
+}
+
 export type ValueType =
   "text" | "integer" | "decimal" | "duration" | "date" | "timestamp" | "boolean" | "count";
 

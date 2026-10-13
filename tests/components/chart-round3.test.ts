@@ -20,14 +20,22 @@ import {
   noteLines,
   pieChartHeight,
   pieRest,
+  fitTwoLines,
   rankedItems,
+  rankedLabels,
   tableLayout,
   timeBuckets,
   type FitInput,
 } from "@/components/widgets/chart-series";
 import { ChartWidget } from "@/components/widgets/chart-widget";
 import type { WidgetData } from "@/components/widgets/widget-query";
-import { formatAxis, formatCompact, formatMeasure, formatNumber } from "@/features/widgets/format";
+import {
+  dateLabelForms,
+  formatAxis,
+  formatCompact,
+  formatMeasure,
+  formatNumber,
+} from "@/features/widgets/format";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 
 /*
@@ -1276,8 +1284,11 @@ describe("putaran 5", () => {
       for (const width of [66, 96, 109]) {
         withBox({ width, height: 272 }, () => {
           const out = html("line", d, false, s);
+          // Teks yang tampil (label yang dipendekkan: span aria-hidden, lengkap untuk pembaca layar).
           const labels = [
-            ...out.matchAll(/<span class="truncate text-muted-foreground" title="[^"]+">([^<]+)</g),
+            ...out.matchAll(
+              /<span class="truncate text-muted-foreground" title="[^"]+">(?:<span aria-hidden="true">)?([^<]+)</g,
+            ),
           ].map((m) => m[1]!);
           expect(labels.length).toBeGreaterThan(0);
           // ±7 px per karakter teks 12 px; isi daftar = lebar − px-2.
@@ -1321,5 +1332,341 @@ describe("putaran 5", () => {
     expect(formatCompact(0.004, AUTO)).toBe("0,004");
     expect(formatCompact(12.345, AUTO)).toBe("12,35");
     expect(formatCompact(405950, RP)).toBe("Rp 405,95 rb");
+  });
+});
+
+describe("putaran 6", () => {
+  const withBox = (size: { width: number; height: number }, run: () => void) => {
+    box.size = size;
+    try {
+      run();
+    } finally {
+      box.size = null;
+    }
+  };
+  /** Teks yang tampil di daftar peringkat (span aria-hidden bila dipendekkan). */
+  const rankedShown = (out: string) =>
+    [
+      ...out.matchAll(
+        /<span class="truncate text-muted-foreground" title="[^"]+">(?:<span aria-hidden="true">)?([^<]+)</g,
+      ),
+    ].map((m) => m[1]!);
+  const LONG = "Kantor Perwakilan Wilayah Operasional Jabodetabek dan Sekitarnya";
+  // Lebar tiruan font sistem 14 px (kepala kolom font-medium ±7,2 px, spasi 4 px).
+  const font = (t: string) => [...t].reduce((w, ch) => w + (/\s/.test(ch) ? 4 : 7.2), 0);
+  /** Baris yang dibutuhkan teks bila dibungkus kata demi kata (seperti peramban). */
+  const lines = (text: string, room: number) => {
+    let n = 1;
+    let cur = "";
+    for (const word of text.split(" ")) {
+      const next = cur ? `${cur} ${word}` : word;
+      if (font(next) <= room) cur = next;
+      else {
+        n++;
+        cur = word;
+      }
+    }
+    return n;
+  };
+
+  describe("tabel data bertumpuk: kepala kolom satu baris yang ikut tergulir", () => {
+    it("kartu 178x128: thead tidak lengket, satu baris ringkas; semantik kolom tetap", () => {
+      const d = data(
+        [
+          ["Kantor PCP Express Jakarta Pusat Gambir Unit 11", 350],
+          ["Kantor PCP Express Bekasi Barat Kalimalang Unit 01", 10],
+        ],
+        {
+          columns: [
+            { key: "d", label: LONG, type: "text" },
+            { key: "m", label: "Jumlah baris", type: "count" },
+          ],
+        },
+      );
+      withBox({ width: 178, height: 128 }, () => {
+        const out = html("pie", d, true, spec({ measure: { agg: "count" } }));
+        expect(out).toContain("data-stacked");
+        const head = /<thead[^>]*>.*?<\/thead>/.exec(out)![0];
+        // Tidak lengket dan tidak bertumpuk dua baris (53–93 px menutup wilayah 69–81 px).
+        expect(head).not.toContain("sticky");
+        expect(head).not.toContain("flex-col");
+        expect(head).not.toContain("line-clamp-2");
+        // Satu baris teks 12 px (py-1 + 16 px + garis = 25 px): wilayah 81 px masih memuat satu
+        // baris bertumpuk utuh (±52 px) di bawahnya; setelah digulir kepala kolom ikut hilang.
+        expect(head).toMatch(/<tr class="flex [^"]*py-1 text-xs[^"]*" role="row">/);
+        // Dua kepala kolom tetap ada dan lengkap (title + isi untuk pembaca layar).
+        expect([...head.matchAll(/role="columnheader"/g)]).toHaveLength(2);
+        expect(head).toContain(`title="${LONG}" role="columnheader">${LONG}</th>`);
+        expect(head).toContain('title="Jumlah baris" role="columnheader">Jumlah baris</th>');
+        // Nama ukuran didahulukan (≤ 60 %); dimensi memakai sisa lebar.
+        expect(head).toMatch(/class="min-w-0 flex-1 truncate[^"]*" title="Kantor/);
+        expect(head).not.toContain("sr-only");
+        expect(head).toMatch(/class="[^"]*max-w-\[60%\] shrink-0[^"]*" title="Jumlah baris"/);
+      });
+      // Kartu 109 px: "Ka… Jumla…" tidak terbaca — hanya nama ukuran yang tampil (selebar baris);
+      // nama dimensi tetap kepala kolom untuk pembaca layar (label tiap baris sudah menunjukkannya).
+      withBox({ width: 107, height: 128 }, () => {
+        const head = /<thead[^>]*>.*?<\/thead>/.exec(
+          html("pie", d, true, spec({ measure: { agg: "count" } })),
+        )![0];
+        expect(head).toMatch(
+          /<th scope="col" class="[^"]*sr-only[^"]*" title="Kantor[^"]*" role="columnheader">/,
+        );
+        expect(head).toMatch(/<th scope="col" class="[^"]*truncate[^"]*" title="Jumlah baris"/);
+        expect(head).not.toContain("max-w-[60%]");
+        expect([...head.matchAll(/role="columnheader"/g)]).toHaveLength(2);
+      });
+      // Dua kolom berdampingan: kepala lengket dua baris tetap seperti sebelumnya.
+      withBox({ width: 568, height: 300 }, () => {
+        const out = html("pie", d, true, spec({ measure: { agg: "count" } }));
+        expect(out).not.toContain("data-stacked");
+        expect(out).toContain('<thead class="sticky top-0 bg-card">');
+        expect(out).toContain('<span class="line-clamp-2 break-words">Jumlah baris</span>');
+      });
+    });
+
+    it("kartu setinggi 2 baris grid (wilayah 81 px), dua kolom: kepala dua baris ikut tergulir", () => {
+      const d = data(
+        [
+          ["Kantor PCP Express Jakarta Pusat Gambir Unit 01", 169028600],
+          ["Kantor PCP Express Jakarta Barat Kebon Jeruk Unit 40", 168330000],
+        ],
+        {
+          columns: [
+            { key: "d", label: LONG, type: "text" },
+            { key: "m", label: "Total Omzet", type: "decimal" },
+          ],
+        },
+      );
+      withBox({ width: 274, height: 81 }, () => {
+        const out = html("bar", d, true, spec({ format: RP }));
+        expect(out).not.toContain("data-stacked");
+        expect(out).not.toContain("sticky");
+        // Kepala lengket 53 px di wilayah 81 px menyisakan 28 px — tidak pernah satu baris utuh.
+        expect(out).toContain('<span class="line-clamp-2 break-words">');
+      });
+      withBox({ width: 274, height: 225 }, () => {
+        expect(html("bar", d, true, spec({ format: RP }))).toContain(
+          '<thead class="sticky top-0 bg-card">',
+        );
+      });
+    });
+  });
+
+  describe("kepala kolom nilai yang tidak muat dua baris: '…' eksplisit", () => {
+    const H = "Total Pendapatan Bersih Setelah Potongan Diskon Cabang";
+    const full = ["Rp 1.234.567", "Rp 987.654"];
+    const compact = ["Rp 1,23 jt", "Rp 987,65 rb"];
+
+    it("tableLayout 276/375 px: kepala dipendekkan dengan '…' dan muat dua baris", () => {
+      for (const width of [276, 375]) {
+        for (const measure of [(t: string) => font(t), undefined]) {
+          const l = tableLayout(width, full, compact, { header: H, labelLength: 12, measure });
+          const at = `@${width}${measure ? "" : " (perkiraan)"}`;
+          expect(l.stacked, at).toBe(false);
+          expect(l.header, at).toMatch(/…$/);
+          expect(H.startsWith(l.header.slice(0, -1).trimEnd()), at).toBe(true);
+          if (measure) expect(lines(l.header, l.valuePx! - 24), at).toBeLessThanOrEqual(2);
+        }
+      }
+      // Kepala yang muat tidak diubah.
+      expect(
+        tableLayout(568, ["80"], ["80"], { header: "Jumlah baris", measure: font }).header,
+      ).toBe("Jumlah baris");
+      expect(fitTwoLines("Jumlah baris", 60, font)).toBe("Jumlah baris");
+      expect(fitTwoLines(H, 100, font)).toMatch(/^Total Pendapatan.*…$/);
+    });
+
+    it("tabel 375 px: teks pendek untuk mata, nama lengkap di title dan untuk pembaca layar", () => {
+      const d = data(
+        [
+          ["Bandung", 1234567],
+          ["Medan", 987654],
+        ],
+        {
+          columns: [
+            { key: "d", label: "Cabang", type: "text" },
+            { key: "m", label: H, type: "decimal" },
+          ],
+        },
+      );
+      withBox({ width: 375, height: 300 }, () => {
+        const out = html("bar", d, true, spec({ format: RP }));
+        expect(out).not.toContain("data-stacked");
+        const th = new RegExp(
+          `<th scope="col" class="[^"]*text-right[^"]*" title="${H}"><span class="line-clamp-2 break-words"><span aria-hidden="true">([^<]+…)</span><span class="sr-only">${H}</span></span></th>`,
+        ).exec(out);
+        expect(th).not.toBeNull();
+        expect(H.startsWith(th![1]!.slice(0, -1).trimEnd())).toBe(true);
+      });
+    });
+  });
+
+  describe("daftar peringkat sempit: label diukur, periode tetap bisa dibedakan", () => {
+    const weekRows = (isos: string[]): WidgetData => ({
+      columns: [
+        { key: "d", label: "Tanggal", type: "date" },
+        { key: "m", label: "Total Omzet", type: "decimal" },
+      ],
+      rows: isos.map((iso, k) => [iso, 284750 - k * 1000]),
+    });
+    const weekly = spec({
+      sort: "label_desc",
+      topN: 365,
+      dimension: { column: 1, timeGrain: "week" },
+      format: RP,
+    });
+
+    it("minggu 2/23 Mar dan 12/19 Jan/15 Jun di kartu 96/109 px: tidak kembar, tidak dipotong di tengah", () => {
+      const d = weekRows(["2026-06-15", "2026-03-23", "2026-03-02", "2026-01-19", "2026-01-12"]);
+      for (const width of [96, 109]) {
+        withBox({ width, height: 300 }, () => {
+          const out = html("line", d, false, weekly);
+          const shown = rankedShown(out);
+          expect(shown, `@${width}`).toHaveLength(5);
+          expect(new Set(shown).size, `@${width}`).toBe(5);
+          for (const t of shown) expect(t, `@${width}`).not.toContain("…");
+          // Tahun sama untuk semua baris: dibuang, bagian pembeda tetap utuh.
+          expect(shown, `@${width}`).toContain("Mg 2 Mar");
+          expect(shown, `@${width}`).toContain("Mg 23 Mar");
+          // Label lengkap tetap untuk pembaca layar dan title.
+          expect(out).toContain('<span class="sr-only">Mg 2 Mar 2026</span>');
+          expect(out).toContain('title="Mg 23 Mar 2026"');
+        });
+      }
+    });
+
+    it("label yang muat menurut lebar terukur tidak dipotong; yang tidak muat dipendekkan seperlunya", () => {
+      // Lebar terukur 12 px (canvas): 'Mg 2 Mar 2026' 87 px dalam 91 px, 'Jakarta Pusat' 77/92,
+      // 'Lainnya' 43/66 — semuanya utuh (dulu 'Mg 2…ar 2026', 'Jaka…a Pusat', 'La…nya').
+      const px = new Map([
+        ["Mg 2 Mar 2026", 87],
+        ["Mg 5 Jan 2026", 85],
+        ["Jakarta Pusat", 77],
+        ["Lainnya", 43],
+      ]);
+      const width = (t: string) => px.get(t) ?? [...t].length * 6.6;
+      expect(rankedLabels([["Mg 2 Mar 2026", "Mg 5 Jan 2026"]], [91, 91], width, true)).toEqual([
+        "Mg 2 Mar 2026",
+        "Mg 5 Jan 2026",
+      ]);
+      expect(rankedLabels([["Jakarta Pusat", "Lainnya"]], [92, 66], width, false)).toEqual([
+        "Jakarta Pusat",
+        "Lainnya",
+      ]);
+      // Teks yang memang terlalu panjang: dipendekkan di tengah, tetap muat.
+      const [kantor] = rankedLabels([["Kantor PCP Express Gambir Unit 11"]], [91], width, false);
+      expect(kantor).toMatch(/^Kant.*…Unit 11$/);
+      expect(width(kantor!)).toBeLessThanOrEqual(91);
+      // Tanggal yang tetap tidak muat dalam bentuk terpendek: dipotong di akhir, bukan di tengah.
+      const forms = dateLabelForms(["2025-12-29", "2026-01-05"], "week") as string[][];
+      const tight = rankedLabels(forms, [40, 40], (t) => [...t].length * 7, true);
+      for (const t of tight) expect(t).toMatch(/^Mg [^…]*…$/);
+    });
+
+    it("bentuk tanggal pendek: tahun dibuang hanya bila sama, angka bertahun bila beda, jam saja bila sehari", () => {
+      expect(dateLabelForms(["2026-03-02", "2026-03-23"], "week")).toEqual([
+        ["Mg 2 Mar 2026", "Mg 23 Mar 2026"],
+        ["Mg 2 Mar", "Mg 23 Mar"],
+        ["Mg 2/3", "Mg 23/3"],
+      ]);
+      expect(dateLabelForms(["2025-12-29", "2026-01-05"], "day")).toEqual([
+        ["29 Des 2025", "5 Jan 2026"],
+        ["29/12/25", "5/1/26"],
+      ]);
+      expect(
+        dateLabelForms(["2025-12-31T21:00:00", "2025-12-31T18:00:00", null], undefined, true),
+      ).toEqual([
+        ["31 Des 2025 21:00", "31 Des 2025 18:00", null],
+        ["31 Des 21:00", "31 Des 18:00", null],
+        ["31/12 21:00", "31/12 18:00", null],
+        ["21:00", "18:00", null],
+      ]);
+      expect(dateLabelForms(["2026-01-01", "2026-04-01"], "quarter")).toEqual([
+        ["K1 2026", "K2 2026"],
+        ["K1", "K2"],
+      ]);
+    });
+
+    it("garis per cap waktu di kartu 96 px: tanggal dan jam yang membedakan tetap terlihat", () => {
+      const d: WidgetData = {
+        columns: [
+          { key: "d", label: "Waktu", type: "timestamp" },
+          { key: "m", label: "Jumlah baris", type: "count" },
+        ],
+        rows: ["2025-12-31T21:00:00", "2025-12-31T18:00:00", "2025-12-31T10:00:00"].map((t, k) => [
+          t,
+          k + 1,
+        ]),
+      };
+      withBox({ width: 96, height: 272 }, () => {
+        const s = spec({ sort: "label_desc", topN: 365, measure: { agg: "count" } });
+        expect(rankedShown(html("line", d, false, s))).toEqual([
+          "31/12 21:00",
+          "31/12 18:00",
+          "31/12 10:00",
+        ]);
+      });
+    });
+
+    it("baris '+N' sebaris: '+N lagi' bila '+N kategori lain' tidak muat di samping nilai", () => {
+      const rows = Array.from({ length: 5 }, (_, k) => [`Kantor ${k + 1}`, 669110000 - k * 1000]);
+      withBox({ width: 152, height: 82 }, () => {
+        const d = data(rows, { categories: 40, grandTotal: 4e9 });
+        const out = html("pie", d, false, spec({ format: RP }));
+        expect(out).toContain('data-testid="chart-ranked"');
+        const more = /data-testid="chart-ranked-more">(.*?)<\/li>/.exec(out);
+        expect(more).not.toBeNull();
+        expect(more![1]).toMatch(/<span aria-hidden="true">\+\d+ lagi<\/span>/);
+        expect(more![1]).toMatch(/<span class="sr-only">\+\d+ kategori lain<\/span>/);
+      });
+    });
+  });
+
+  describe("total gagal: daftar peringkat tidak tampak lengkap", () => {
+    const rows = [
+      ["Cabang Baru", 0],
+      ["Medan", 270990],
+      ["Surabaya", 307638],
+    ];
+    const asc3 = spec({ sort: "value_asc", topN: 3 });
+
+    it("batang 3 terkecil tanpa total di kartu 100 px: '+? lagi', keterangan lengkap untuk pembaca layar", () => {
+      withBox({ width: 100, height: 300 }, () => {
+        const out = html("bar", data(rows), false, asc3);
+        expect(out).toContain('data-testid="chart-ranked"');
+        // Semua 3 baris yang dimuat tetap tampil + satu penanda.
+        expect(rankedShown(out)).toEqual(["Cabang Baru", "Medan", "Surabaya"]);
+        expect(out).toContain('<span aria-hidden="true">+? lagi</span>');
+        expect(out).toContain(
+          "Mungkin ada kategori lain — 3 kategori terkecil dimuat, jumlah keseluruhan tidak tersedia",
+        );
+      });
+      // Total diketahui (3 dari 6): '+3' biasa, tanpa 'atau lebih'.
+      withBox({ width: 100, height: 300 }, () => {
+        const out = html("bar", data(rows, { categories: 6 }), false, asc3);
+        expect(out).toMatch(/\+3 (lagi|kategori lain)/);
+        expect(out).not.toContain("atau lebih");
+        expect(out).not.toContain("tidak tersedia");
+      });
+      // Lebih sedikit dari batas N: memang lengkap, tanpa penanda.
+      withBox({ width: 100, height: 300 }, () => {
+        const out = html("bar", data(rows.slice(0, 2)), false, asc3);
+        expect(out).not.toContain('data-testid="chart-ranked-more"');
+      });
+    });
+
+    it("pai mini tanpa total: '+N atau lebih', tanpa nilai gabungan yang seolah lengkap", () => {
+      withBox({ width: 177, height: 82 }, () => {
+        const out = html("pie", data(top5()));
+        expect(out).toContain('data-testid="chart-ranked"');
+        const more = /data-testid="chart-ranked-more">(.*?)<\/li>/.exec(out)![1]!;
+        expect(more).toContain('<span aria-hidden="true">+3 atau lebih</span>');
+        expect(more).toContain(
+          "+3 kategori lain atau lebih — 5 kategori terbesar dimuat, jumlah keseluruhan tidak tersedia",
+        );
+        expect(more).not.toContain("tabular-nums");
+      });
+    });
   });
 });

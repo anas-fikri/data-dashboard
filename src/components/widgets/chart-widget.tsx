@@ -2,12 +2,19 @@
 
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useRef } from "react";
-import { formatCell, formatLabelNumber, formatMeasure } from "@/features/widgets/format";
+import {
+  dateLabelForms,
+  formatCell,
+  formatLabelNumber,
+  formatMeasure,
+} from "@/features/widgets/format";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import { OTHERS_LABEL, periodFill } from "./chart-option";
 import {
+  MEASURE_SLACK,
   NARROW,
+  RANK_WORD,
   chartFit,
   emptyBucketValue,
   legendOrder,
@@ -16,10 +23,11 @@ import {
   percentShares,
   pieRest,
   rankedItems,
+  rankedLabels,
   valueCut,
   zeroWhenBlank,
 } from "./chart-series";
-import { ChartTable } from "./chart-table";
+import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
 import { useBoxSize } from "./use-box-size";
 import type { WidgetData } from "./widget-query";
@@ -31,18 +39,22 @@ import type { WidgetData } from "./widget-query";
  * hover — review H9), legenda HTML untuk pai (nama + persen berjumlah 100 %, terbesar dulu), daftar
  * peringkat sebagai ganti grafik di kartu < 140 px atau yang terlalu pendek untuk donat ("+N kategori
  * lain" bila baris terpotong — "Lainnya" hanya irisan pai; garis bertanggal terbaru dulu, "+N
- * sebelumnya"). Pai dengan nilai negatif tidak digambar (persen menyesatkan) — diberi penjelasan, dan
- * tabel datanya memuat "Lainnya" bertanda. Tanpa total keseluruhan (query total gagal) dan baris
- * sebanyak batas N: pai memberi tahu persennya hanya dari yang tampil, batang/garis menyebut "N
- * terbesar" (bukan seolah lengkap). Durasi j:mm:dd.
+ * sebelumnya"; label diukur dan hanya dipendekkan bila memang tidak muat — tanggal memakai bentuk
+ * pendek yang tetap membedakan periode, bukan dipotong di tengah). Pai dengan nilai negatif tidak
+ * digambar (persen menyesatkan) — diberi penjelasan, dan tabel datanya memuat "Lainnya" bertanda. Tanpa
+ * total keseluruhan (query total gagal) dan baris sebanyak batas N: pai memberi tahu persennya hanya
+ * dari yang tampil, batang/garis menyebut "N terbesar", daftar peringkat "mungkin ada kategori lain"
+ * (bukan seolah lengkap). Durasi j:mm:dd.
  */
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 const CHAR_PX = 6.6;
-const STACK_CHAR_PX = 7.5;
+/** Daftar peringkat (teks 12 px) tanpa canvas (SSR, uji): ±7 px per karakter. */
+const RANK_CHAR_PX = 7;
 /** Wilayah gulir yang bisa difokus: garis fokus di dalam kotak (tidak terpotong tepi kartu). */
 const SCROLL_REGION = "overflow-y-auto focus-visible:-outline-offset-2";
 
-type Row = { label: string; value: number | null; others?: boolean };
+/** iso: nilai tanggal/cap waktu mentah (bentuk pendek di daftar peringkat). */
+type Row = { label: string; value: number | null; others?: boolean; iso?: string | null };
 
 export function ChartWidget({
   type,
@@ -90,7 +102,11 @@ export function ChartWidget({
   const others = Math.max(0, rest);
   // "Lainnya" bertanda: sisa negatif tetap terlihat di tabel yang ditunjuk peringatan pai.
   const rows: Row[] = [
-    ...labels.map((label, i) => ({ label, value: values[i] ?? null })),
+    ...labels.map((label, i) => ({
+      label,
+      value: values[i] ?? null,
+      iso: temporal && source[i]![0] !== null ? String(source[i]![0]) : null,
+    })),
     ...(rest !== 0 ? [{ label: OTHERS_LABEL, value: rest, others: true }] : []),
   ];
   const shares = percentShares(rows.map((r) => Math.max(0, r.value ?? 0)));
@@ -140,6 +156,7 @@ export function ChartWidget({
         format={spec.format}
         label={`Data ${name}`}
         width={width}
+        height={room?.height ?? null}
       />
     );
   } else if (negative) {
@@ -175,32 +192,67 @@ export function ChartWidget({
     const newestFirst = type === "line" && temporal;
     const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
     const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
-    const ranked = rankedItems(list, fitRows, categories);
+    // Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: daftar tidak boleh tampak
+    // lengkap — satu baris dicadangkan untuk "mungkin ada kategori lain" (sama dengan keterangan grafik).
+    const unsure = partial && !list.some((r) => r.others);
+    const ranked = rankedItems(list, fitRows, categories + (unsure ? 1 : 0));
+    const hidden = ranked.more - (unsure ? 1 : 0);
     // Yang tidak muat hanya periode lama — kecuali server memotong N terlama/menurut nilai.
-    const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc");
+    const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc") && !unsure;
     const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
-    const valueChars = ranked.items.reduce((m, r) => Math.max(m, text(r.value).length), 0);
-    // Bertumpuk: label selebar isi daftar (px-2), 7,5 px per karakter (tanggal/angka, "M", "…").
-    const labelChars = inline
-      ? Math.max(6, Math.floor((room.width - 24 - valueChars * 7) / CHAR_PX))
-      : Math.max(6, Math.floor((room.width - 16) / STACK_CHAR_PX));
-    // "+N kategori lain" (bukan "lainnya" — itu irisan pai); kartu yang terlalu sempit: "+N lagi".
-    const more = ranked.more.toLocaleString("id-ID");
-    const moreFull = `+${more} ${olderOnly ? "sebelumnya" : type === "line" ? "titik lain" : "kategori lain"}`;
-    const moreText =
-      inline || moreFull.length * CHAR_PX <= room.width - 16 ? moreFull : `+${more} lagi`;
+    // Lebar terukur (canvas, teks 12 px). Halaman memakai angka tabular (tnum) yang tidak dikenal
+    // canvas: label diukur dengan semua angka = "0" (selebar angka tabular; +1 px pembulatan); nilai
+    // (font-medium) memakai kelonggaran tabel data.
+    const measure = canvasMeasure(12);
+    const px = (t: string, value = false) => {
+      const w = measure?.(value ? t : t.replace(/\d/g, "0"), value);
+      if (typeof w !== "number") return [...t].length * RANK_CHAR_PX;
+      return value ? w * MEASURE_SLACK : w + 1;
+    };
+    const listPx = room.width - 16; // px-2
+    const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
+    const items = ranked.items;
+    const forms = temporal
+      ? dateLabelForms(
+          items.map((r) => (r.others ? null : (r.iso ?? null))),
+          spec.dimension.timeGrain,
+          dimType === "timestamp" && !spec.dimension.timeGrain,
+        ).map((f) => f.map((t, k) => t ?? items[k]!.label))
+      : [items.map((r) => r.label)];
+    const shownLabels = rankedLabels(
+      forms,
+      items.map((r) => listPx - beside(text(r.value))),
+      (t) => px(t),
+      temporal,
+    );
+    // "+N kategori lain" (bukan "lainnya" — itu irisan pai); yang tidak muat: "+N lagi".
+    const more = hidden.toLocaleString("id-ID");
+    const tail = olderOnly ? "sebelumnya" : type === "line" ? "titik lain" : "kategori lain";
+    const moreForms = !unsure
+      ? [`+${more} ${tail}`, `+${more} lagi`]
+      : hidden > 0
+        ? [`+${more} ${tail} atau lebih`, `+${more} atau lebih`]
+        : [`Mungkin ada ${tail}`, "+? lagi"];
+    const noun = type === "line" ? "titik" : "kategori";
+    const moreFull = unsure
+      ? `${moreForms[0]} — ${labels.length.toLocaleString("id-ID")} ${noun} ${RANK_WORD[spec.sort]} dimuat, jumlah keseluruhan tidak tersedia`
+      : moreForms[0]!;
+    // Nilai gabungan hanya untuk pai (bagian dari keseluruhan) dan bila diketahui.
+    const moreValue = type === "pie" && ranked.moreValue !== null ? text(ranked.moreValue) : null;
+    const moreRoom = listPx - beside(moreValue);
+    const moreText = moreForms.find((t) => px(t) <= moreRoom) ?? moreForms.at(-1)!;
     body = (
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
         data-testid="chart-ranked"
       >
-        {ranked.items.map((r, i) => (
+        {items.map((r, i) => (
           <li key={i} className={cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col")}>
             <span
               className={cn("truncate text-muted-foreground", inline && "min-w-0 flex-1")}
               title={r.label}
             >
-              {middleTruncate(r.label, labelChars)}
+              <Both visible={shownLabels[i]!} full={r.label} />
             </span>
             <span className="shrink-0 font-medium tabular-nums">{text(r.value)}</span>
           </li>
@@ -214,12 +266,9 @@ export function ChartWidget({
             data-testid="chart-ranked-more"
           >
             <span className={cn("truncate", inline && "min-w-0 flex-1")} title={moreFull}>
-              {moreText}
+              <Both visible={moreText} full={moreFull} />
             </span>
-            {/* Nilai gabungan hanya untuk pai (bagian dari keseluruhan) dan bila diketahui. */}
-            {type === "pie" && ranked.moreValue !== null ? (
-              <span className="shrink-0 tabular-nums">{text(ranked.moreValue)}</span>
-            ) : null}
+            {moreValue !== null ? <span className="shrink-0 tabular-nums">{moreValue}</span> : null}
           </li>
         ) : null}
       </ol>

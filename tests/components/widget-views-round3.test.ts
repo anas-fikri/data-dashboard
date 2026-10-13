@@ -1,4 +1,6 @@
 import { IconChartBar, IconChartLine, IconChartPie, IconTable } from "@tabler/icons-react";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { cardConfig, dataToggle, toggleMode } from "@/components/dashboards/widget-card-model";
 import { bodyState, configVersion } from "@/components/widgets/body-state";
@@ -10,9 +12,10 @@ import {
   kpiTexts,
   type KpiOption,
 } from "@/components/widgets/kpi-fit";
+import { TableView } from "@/components/widgets/table-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { isIdLikeName, nameTokens } from "@/features/widgets/id-like";
+import { idLikeKind, isIdLikeName, nameTokens, resolveIdLike } from "@/features/widgets/id-like";
 import { MISSING_COLUMN, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { DEFAULT_FORMAT, type NumberFormat } from "@/features/widgets/spec";
 
@@ -394,6 +397,108 @@ describe("putaran 5", () => {
       expect(kpiTexts(12398, "integer", DEFAULT_FORMAT, "max", "Maksimum No Resi").full).toBe(
         "12398",
       );
+    });
+  });
+});
+
+describe("putaran 6", () => {
+  describe("kata arus ambigu (masuk/keluar/retur/kirim): diputuskan dari nilainya", () => {
+    it.each([
+      ["Resi Retur", "ambiguous"],
+      ["AWB Masuk", "ambiguous"],
+      ["Resi Kirim", "ambiguous"],
+      ["Telepon Masuk", "ambiguous"],
+      ["Telp Keluar", "ambiguous"],
+      ["Resi Retur Pengirim", "ambiguous"],
+      ["awb_inbound", "ambiguous"],
+      // Kata hitungan yang tegas tetap besaran, walau ada kata arus.
+      ["Resi Terkirim", "quantity"],
+      ["AWB Masuk Harian", "quantity"],
+      ["Resi Retur Gagal", "quantity"],
+      ["Jumlah Resi Retur", "quantity"],
+      // Penanda kuat di depan atau tanpa kata arus: kode.
+      ["No Resi Retur", "id"],
+      ["Resi", "id"],
+      ["Telepon Kantor", "id"],
+    ] as const)("%s → %s", (name, kind) => {
+      expect(idLikeKind(name)).toBe(kind);
+    });
+
+    it("ambigu: kode hanya bila semua bilangan bulat ≥ 10.000.000 (8+ digit)", () => {
+      expect(resolveIdLike("ambiguous", [880012345678, null, 880012345679, ""])).toBe(true);
+      expect(resolveIdLike("ambiguous", [8800123412])).toBe(true);
+      expect(resolveIdLike("ambiguous", [10_000_000])).toBe(true);
+      expect(resolveIdLike("ambiguous", [9_999_999])).toBe(false);
+      expect(resolveIdLike("ambiguous", [880012345678, 1200])).toBe(false);
+      expect(resolveIdLike("ambiguous", [10503])).toBe(false);
+      expect(resolveIdLike("ambiguous", [12_345_678.5])).toBe(false);
+      expect(resolveIdLike("ambiguous", [-880012345678])).toBe(false);
+      // Tidak ada nilai: besaran (tidak ada yang ditulis).
+      expect(resolveIdLike("ambiguous", [null, undefined])).toBe(false);
+      expect(resolveIdLike("ambiguous", [])).toBe(false);
+      // Jenis yang sudah pasti tidak melihat nilai.
+      expect(resolveIdLike("id", [1200])).toBe(true);
+      expect(resolveIdLike("quantity", [880012345678])).toBe(false);
+    });
+
+    it("KPI min/maks: nomor resi/AWB tanpa pemisah, hitungan berpemisah", () => {
+      const max = (v: number, column: string) =>
+        kpiTexts(v, "integer", DEFAULT_FORMAT, "max", `Maksimum ${column}`).full;
+      expect(max(880012345678, "Resi Retur")).toBe("880012345678");
+      expect(max(8800123412, "AWB Masuk")).toBe("8800123412");
+      expect(max(10503, "Telepon Masuk")).toBe("10.503");
+      expect(max(1200, "Resi Kirim")).toBe("1.200");
+      // Jumlah tetap berpemisah walau nilainya 12 digit.
+      expect(
+        kpiTexts(880012345678, "integer", DEFAULT_FORMAT, "sum", "Total Resi Retur").full,
+      ).toBe("880.012.345.678");
+      // Kata hitungan tegas tidak melihat nilai.
+      expect(max(880012345678, "Resi Terkirim")).toBe("880.012.345.678");
+    });
+
+    it("tabel: tiap kolom diputuskan dari nilainya di halaman ini", () => {
+      const col = (label: string) => ({ key: label, label, type: "integer" as const });
+      const data: WidgetData = {
+        columns: [
+          col("Resi Retur"),
+          col("Telepon Masuk"),
+          col("AWB Masuk"),
+          col("Resi Kirim"),
+          col("Resi Terkirim"),
+        ],
+        rows: [
+          [880012345678, 10503, 8800123412, 1200, 12398],
+          [null, 7, 8800123499, 35, 4],
+        ],
+        total: 2,
+        page: 0,
+        pageSize: 100,
+      };
+      const html = renderToStaticMarkup(
+        createElement(TableView, {
+          data,
+          positions: [1, 2, 3, 4, 5],
+          format: DEFAULT_FORMAT,
+          sort: null,
+          busy: false,
+          label: "Tabel",
+          onSort: () => {},
+          onPage: () => {},
+        }),
+      );
+      const cells = [...html.matchAll(/<td[^>]*>([^<]*)<\/td>/g)].map((m) => m[1]);
+      expect(cells).toEqual([
+        "880012345678",
+        "10.503",
+        "8800123412",
+        "1.200",
+        "12.398",
+        "(kosong)",
+        "7",
+        "8800123499",
+        "35",
+        "4",
+      ]);
     });
   });
 });

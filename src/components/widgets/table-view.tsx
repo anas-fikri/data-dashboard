@@ -14,7 +14,7 @@ import {
   formatLabelNumber,
   formatNumber,
 } from "@/features/widgets/format";
-import { isIdLikeName } from "@/features/widgets/id-like";
+import { idLikeKind, resolveIdLike } from "@/features/widgets/id-like";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import type { WidgetData } from "./widget-query";
@@ -82,7 +82,15 @@ export function TableView({
   const pagerButton =
     "size-(--control-h-lg) md:not-any-pointer-coarse:size-(--control-h-sm) aria-disabled:opacity-50";
   // Kode/nomor/tahun (dari nama kolom, lihat id-like.ts) tanpa pemisah ribuan pada format otomatis.
-  const plain = data.columns.map((c) => c.type === "integer" && isIdLikeName(c.label));
+  // Nama ambigu ("Resi Retur") diputuskan dari nilai kolom itu di halaman ini.
+  const plain = data.columns.map(
+    (c, i) =>
+      c.type === "integer" &&
+      resolveIdLike(
+        idLikeKind(c.label),
+        data.rows.map((row) => row[i]),
+      ),
+  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">

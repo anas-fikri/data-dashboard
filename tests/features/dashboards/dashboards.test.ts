@@ -436,6 +436,22 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     );
   });
 
+  it("widget tabel yang dipulihkan di bawah ukuran minimum disimpan 3x4 (verifikasi T-011 putaran 5)", async () => {
+    const table = { sheetId: SHEET, columns: [1], format: fmt };
+    prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 4, []));
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "table", title: "Detail", spec: table });
+    const r = await svc.addWidget(OWNER, DB, {
+      baseRevision: 4,
+      title: "Detail",
+      at: { x: 0, y: 0, w: 1, h: 1 },
+      type: "table",
+      spec: table,
+    });
+    expect(r).toMatchObject({ ok: true, data: { layout: [{ i: WA, w: 3, h: 4 }] } });
+  });
+
   it("sumber data panel: sheet siap di versi aktif milik user, tanpa kolom tersembunyi", async () => {
     prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Penjualan", schema }]);
     expect(await svc.getDashboardSources(OWNER, DS)).toEqual([

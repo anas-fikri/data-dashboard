@@ -13,7 +13,7 @@ import {
   formatNumber,
   type ValueType,
 } from "@/features/widgets/format";
-import { isIdLikeName } from "@/features/widgets/id-like";
+import { idLikeKind, resolveIdLike } from "@/features/widgets/id-like";
 import type { NumberFormat } from "@/features/widgets/spec";
 
 /** Ukuran huruf terkecil (text-sm, 14 px) untuk kartu yang terlalu sempit. */
@@ -75,9 +75,10 @@ export function kpiTexts(
   const only = (full: string) => ({ full, options: [{ text: full, unit: null }] });
   if (typeof value !== "number" || !NUMERIC.has(t)) return only(formatCell(value, t, format));
   // Min/maks kolom kode/tahun: "2026", bukan "2.026" atau "2,03 rb". Jumlah/rata-rata tetap berpemisah.
+  // Nama ambigu ("Maksimum Resi Retur") diputuskan dari nilai ini (id-like.ts).
   const column = label.replace(/^(minimum|maksimum)\s+/i, "");
   if ((agg === "min" || agg === "max") && t === "integer" && format.style === "auto") {
-    if (isIdLikeName(column)) return only(formatLabelNumber(value));
+    if (resolveIdLike(idLikeKind(column), [value])) return only(formatLabelNumber(value));
   }
   const full = formatCell(value, t, format);
   const compact =

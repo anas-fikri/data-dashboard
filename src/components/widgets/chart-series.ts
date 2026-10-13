@@ -224,13 +224,51 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
   return { items, more, moreValue };
 }
 
+/** "Kantor P…Unit 11" sependek yang perlu agar muat `room` px. */
+function middleFit(text: string, room: number, width: (t: string) => number): string {
+  const start = Math.min(text.length - 1, Math.ceil((text.length * room) / width(text)) + 2);
+  for (let n = start; n >= 5; n--) {
+    const t = middleTruncate(text, n);
+    if (width(t) <= room) return t;
+  }
+  return middleTruncate(text, 5);
+}
+
+/** "Mg 15/6/26…" — dipotong di akhir; upaya terakhir untuk tanggal. */
+function endFit(text: string, room: number, width: (t: string) => number): string {
+  for (let k = text.length - 1; k > 1; k--) {
+    const t = `${text.slice(0, k).trimEnd()}…`;
+    if (width(t) <= room) return t;
+  }
+  return `${text.slice(0, 1)}…`;
+}
+
+/**
+ * Label daftar peringkat yang muat di `rooms[k]` px (`width` = lebar terukur teks 12 px). Teks: utuh
+ * bila muat, selain itu dipendekkan di tengah seperlunya. Tanggal (`forms` dari dateLabelForms,
+ * terpanjang dulu): bentuk pertama yang muat untuk SEMUA baris — periode berbeda tidak pernah menjadi
+ * teks yang sama ("Mg 2 Mar" / "Mg 23 Mar"); bentuk terpendek dipotong di akhir hanya bila tetap tidak
+ * muat.
+ */
+export function rankedLabels(
+  forms: readonly (readonly string[])[],
+  rooms: readonly number[],
+  width: (t: string) => number,
+  dates: boolean,
+): string[] {
+  const fits = (t: string, k: number) => width(t) <= rooms[k]!;
+  if (!dates) return forms[0]!.map((t, k) => (fits(t, k) ? t : middleFit(t, rooms[k]!, width)));
+  const form = forms.find((f) => f.every(fits)) ?? forms.at(-1)!;
+  return form.map((t, k) => (fits(t, k) ? t : endFit(t, rooms[k]!, width)));
+}
+
 /** Lebar teks 14 px (px) — `header`: kepala kolom (font-medium); null = tidak bisa diukur. */
 export type TextMeasure = (text: string, header: boolean) => number | null;
 /** Perkiraan tanpa canvas (SSR, uji): ±9,5 px per angka/huruf, 4,5 px per spasi/tanda baca. */
 const CHAR_PX_EST = 9.5;
 const NARROW_CHAR_PX_EST = 4.5;
 /** Canvas tidak memakai angka tabular (tnum): titik/koma tabular ±9 % lebih lebar. */
-const MEASURE_SLACK = 1.1;
+export const MEASURE_SLACK = 1.1;
 const LABEL_CHAR_PX = 7.7;
 const CELL_PAD_PX = 24;
 /** Label tabel data minimal sepanjang ini; kurang dari itu baris ditumpuk (label di atas nilai). */
@@ -238,6 +276,49 @@ const LABEL_MIN_CHARS = 12;
 
 const estimate = (text: string) =>
   [...text].reduce((w, ch) => w + (/[\s.,:;']/.test(ch) ? NARROW_CHAR_PX_EST : CHAR_PX_EST), 0);
+
+/**
+ * Baris yang dibutuhkan teks selebar `room` bila dibungkus seperti peramban (kata demi kata; kata yang
+ * lebih lebar dari baris dipecah per huruf, seperti break-words).
+ */
+function lineCount(text: string, room: number, width: (t: string) => number): number {
+  let lines = 1;
+  let cur = "";
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const next = cur ? `${cur} ${word}` : word;
+    if (width(next) <= room) {
+      cur = next;
+      continue;
+    }
+    if (cur) lines++;
+    let rest = word;
+    while (rest.length > 1 && width(rest) > room) {
+      let k = rest.length - 1;
+      while (k > 1 && width(rest.slice(0, k)) > room) k--;
+      lines++;
+      rest = rest.slice(k);
+    }
+    cur = rest;
+  }
+  return lines;
+}
+
+/**
+ * Teks yang muat dalam dua baris selebar `room`; yang tidak muat dipendekkan di akhir dengan "…"
+ * ("Total Pendapatan…", bukan "Total Pendapatan" yang terbaca sebagai ukuran lain).
+ */
+export function fitTwoLines(text: string, room: number, width: (t: string) => number): string {
+  if (lineCount(text, room, width) <= 2) return text;
+  const cut = (k: number) => `${text.slice(0, k).trimEnd()}…`;
+  let lo = 1;
+  let hi = text.length - 1;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (lineCount(cut(mid), room, width) <= 2) lo = mid;
+    else hi = mid - 1;
+  }
+  return cut(lo);
+}
 
 /** Lebar terkecil yang memuat teks dalam dua baris (dipecah di spasi). */
 function twoLineWidth(text: string, width: (t: string) => number): number {
@@ -254,7 +335,7 @@ function twoLineWidth(text: string, width: (t: string) => number): number {
  * Tata letak tabel data grafik (teks 14 px). Kolom nilai selebar teks terpanjang yang diukur (canvas;
  * tanpa canvas perkiraan per karakter) — nilai yang muat tidak pernah dipotong — dan minimal selebar
  * kepala kolomnya: satu baris bila muat dalam 45 % lebar, selain itu dua baris (yang tetap tidak muat
- * dipendekkan; teks lengkap di title). Nilai lengkap memakan > 45 % lebar → nilai ringkas. Label
+ * dipendekkan dengan "…"; teks lengkap di title). Nilai lengkap memakan > 45 % lebar → nilai ringkas. Label
  * mendapat sisa lebar (dipendekkan di tengah agar nama berawalan sama tetap bisa dibedakan) dan
  * minimal 12 karakter (atau sepanjang label terpanjang) — bila tidak cukup, baris ditumpuk: label
  * selebar kartu (sampai dua baris), nilai di bawahnya (lengkap bila muat).
@@ -264,8 +345,18 @@ export function tableLayout(
   full: readonly string[],
   compact: readonly string[],
   opts: { header?: string; labelLength?: number; measure?: TextMeasure } = {},
-): { compact: boolean; valuePx: number | null; labelChars: number; stacked: boolean } {
-  if (!width) return { compact: false, valuePx: null, labelChars: 40, stacked: false };
+): {
+  compact: boolean;
+  valuePx: number | null;
+  labelChars: number;
+  stacked: boolean;
+  /** Kepala kolom nilai yang tampil (dua kolom: muat dua baris, selebihnya "…"). */
+  header: string;
+} {
+  const headFull = opts.header ?? "";
+  if (!width) {
+    return { compact: false, valuePx: null, labelChars: 40, stacked: false, header: headFull };
+  }
   const textPx = (t: string, header = false) => {
     const m = opts.measure?.(t, header);
     return typeof m === "number" ? m * MEASURE_SLACK : estimate(t);
@@ -289,10 +380,20 @@ export function tableLayout(
   // Semua label lebih pendek dari batas minimum: cukup sepanjang label terpanjang.
   const need = Math.min(LABEL_MIN_CHARS, Math.max(opts.labelLength ?? LABEL_MIN_CHARS, 4));
   if (labelChars >= need) {
-    return { compact: useCompact, valuePx, labelChars, stacked: false };
+    const shown = header
+      ? fitTwoLines(headFull, valuePx - CELL_PAD_PX, (t) => textPx(t, true))
+      : headFull;
+    return { compact: useCompact, valuePx, labelChars, stacked: false, header: shown };
   }
+  // Bertumpuk: kepala kolom satu baris ringkas (CSS memotong dengan "…"), teks lengkap tetap di sel.
   const line = Math.max(LABEL_MIN_CHARS, Math.floor((width - CELL_PAD_PX) / LABEL_CHAR_PX));
-  return { compact: fullPx > width, valuePx: null, labelChars: line * 2 - 2, stacked: true };
+  return {
+    compact: fullPx > width,
+    valuePx: null,
+    labelChars: line * 2 - 2,
+    stacked: true,
+    header: headFull,
+  };
 }
 
 /** N baris yang diambil server menurut urutan ("5 kategori terbesar"). */
