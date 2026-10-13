@@ -2303,3 +2303,20 @@ describe("putaran 8", () => {
     expect(dateLabelForms(["2025-12-31", "2026-01-01"], "day").flat()).toContain("31/12");
   });
 });
+
+describe("putaran 9: daftar inline bertumpuk bila tanggal tidak muat; tahun untuk 52 minggu", () => {
+  it("strict: tanggal+jam berulang di 53,9 px → null (pemanggil menumpuk), bukan potongan CSS", () => {
+    const isos = ["2026-03-23T13:30", "2026-03-23T08:00", "2026-03-22T13:30"];
+    const forms = dateLabelForms(isos, undefined, true) as string[][];
+    expect(rankedLabels(forms, [53.9, 53.9, 53.9], sf, true, true)).toBeNull();
+    // Lebar bertumpuk (±136 px): label utuh, berbeda.
+    const stacked = rankedLabels(forms, [136, 136, 136], sf, true, true)!;
+    expect(new Set(stacked).size).toBe(3);
+    expect(stacked.every((l) => !l.includes("…"))).toBe(true);
+  });
+
+  it("dua minggu berselisih 52 minggu (beda tahun kalender) tetap memuat tahun", () => {
+    const forms = dateLabelForms(["2025-12-22", "2024-12-23"], "week") as string[][];
+    for (const f of forms) expect(f.every((l) => /2024|2025|\/2[45]\b/.test(l))).toBe(true);
+  });
+});

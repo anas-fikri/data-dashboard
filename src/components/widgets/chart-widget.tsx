@@ -185,17 +185,12 @@ export function ChartWidget({
       </div>
     );
   } else if (fit?.ranked && room) {
-    // Kartu sempit: label di atas nilai. Kartu pendek tetapi cukup lebar: satu baris per kategori.
-    const inline = room.width >= NARROW;
     // Garis bertanggal: terbaru dulu — yang tidak muat adalah periode lama ("+N sebelumnya").
     const newestFirst = type === "line" && temporal;
     const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
-    const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
     // Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: daftar tidak boleh tampak
     // lengkap — satu baris dicadangkan untuk "mungkin ada kategori lain" (sama dengan keterangan grafik).
     const unsure = partial && !list.some((r) => r.others);
-    const ranked = rankedItems(list, fitRows, categories + (unsure ? 1 : 0));
-    const hidden = ranked.more - (unsure ? 1 : 0);
     // Yang tidak muat hanya periode lama — kecuali server memotong N terlama/menurut nilai.
     const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc") && !unsure;
     const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
@@ -210,25 +205,32 @@ export function ChartWidget({
       return value ? w + (t.match(/[.,]/g)?.length ?? 0) : w + 1;
     };
     const listPx = room.width - 16; // px-2
-    const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
-    const items = ranked.items;
     // Bentuk pendek ditentukan dari semua baris yang dimuat, bukan hanya yang tampil: tahun/tanggal
     // dibuang hanya bila memang sama untuk seluruh deret.
     const iso = (r: Row) => (r.others ? null : (r.iso ?? null));
-    const forms = temporal
-      ? dateLabelForms(
-          items.map(iso),
-          spec.dimension.timeGrain,
-          dimType === "timestamp" && !spec.dimension.timeGrain,
-          rows.map(iso),
-        ).map((f) => f.map((t, k) => t ?? items[k]!.label))
-      : [items.map((r) => r.label)];
-    const shownLabels = rankedLabels(
-      forms,
-      items.map((r) => listPx - beside(text(r.value))),
-      (t) => px(t),
-      temporal,
-    );
+    // Kartu cukup lebar: satu baris per kategori (label di samping nilai) — kecuali label tanggal tidak
+    // muat utuh/terpotong seragam di sampingnya; daftar lalu bertumpuk (label selebar kartu) daripada
+    // angka terpotong. Kartu sempit: selalu bertumpuk.
+    const lay = (inline: boolean) => {
+      const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
+      const ranked = rankedItems(list, fitRows, categories + (unsure ? 1 : 0));
+      const items = ranked.items;
+      const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
+      const forms = temporal
+        ? dateLabelForms(
+            items.map(iso),
+            spec.dimension.timeGrain,
+            dimType === "timestamp" && !spec.dimension.timeGrain,
+            rows.map(iso),
+          ).map((f) => f.map((t, k) => t ?? items[k]!.label))
+        : [items.map((r) => r.label)];
+      const rooms = items.map((r) => listPx - beside(text(r.value)));
+      const shown = rankedLabels(forms, rooms, (t) => px(t), temporal, inline);
+      return shown && { inline, ranked, items, beside, shown };
+    };
+    const laid = (room.width >= NARROW && lay(true)) || lay(false)!;
+    const { inline, ranked, items, beside, shown: shownLabels } = laid;
+    const hidden = ranked.more - (unsure ? 1 : 0);
     // "+N kategori lain" (bukan "lainnya" — itu irisan pai); yang tidak muat: "+N lagi".
     const more = hidden.toLocaleString("id-ID");
     const tail = olderOnly ? "sebelumnya" : type === "line" ? "titik lain" : "kategori lain";

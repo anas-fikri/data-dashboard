@@ -276,7 +276,22 @@ export function rankedLabels(
   rooms: readonly number[],
   width: (t: string) => number,
   dates: boolean,
-): string[] {
+): string[];
+/** strict: tanpa bentuk utuh/potongan seragam yang muat → null (pemanggil menumpuk daftar). */
+export function rankedLabels(
+  forms: readonly (readonly string[])[],
+  rooms: readonly number[],
+  width: (t: string) => number,
+  dates: boolean,
+  strict: boolean,
+): string[] | null;
+export function rankedLabels(
+  forms: readonly (readonly string[])[],
+  rooms: readonly number[],
+  width: (t: string) => number,
+  dates: boolean,
+  strict = false,
+): string[] | null {
   const measured = new Map<string, number>();
   const w = (t: string) => {
     let px = measured.get(t);
@@ -352,6 +367,7 @@ export function rankedLabels(
       .map(([t]) => t),
   );
   const owned = options.map((o) => new Set(o));
+  if (strict) return null;
   const mixed = [...first];
   const each = rows.every((k, i) => {
     const own = options[i]!.find(

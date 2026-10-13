@@ -215,10 +215,12 @@ export function dateLabelForms(
   // tahun tetap terlihat selama muat; setahun: tahun tidak membedakan apa pun, teks lebih dulu.
   if (grain !== "year" && new Set(loaded.map((p) => p[1])).size > 1)
     [candidates[1], candidates[2]] = [candidates[2]!, candidates[1]!];
-  // Tahun boleh hilang hanya bila baris tampil < 1 tahun ('31/12' lalu '1/1' terbaca berurutan);
-  // '16 Des' 2024 di samping '22 Des' 2025 akan terbaca setahun → tahun dipertahankan.
-  const days = parts.flatMap((p) => (p ? [Date.UTC(+p[1]!, +p[2]! - 1, +p[3]!) / 864e5] : []));
-  const withinYear = !days.length || Math.max(...days) - Math.min(...days) < 365;
+  // Tahun boleh hilang hanya bila baris tampil setahun kalender atau ≤ 183 hari ('31/12' lalu '1/1'
+  // terbaca berurutan); 'Mg 22 Des' 2025 di samping 'Mg 23 Des' 2024 akan terbaca bulan yang sama.
+  const shown = parts.filter((p) => p !== null);
+  const days = shown.map((p) => Date.UTC(+p[1]!, +p[2]! - 1, +p[3]!) / 864e5);
+  const withinYear =
+    new Set(shown.map((p) => p[1])).size <= 1 || Math.max(...days) - Math.min(...days) <= 183;
   return candidates
     .filter(([f, withYear]) => withYear || (withinYear && unique(f)))
     .map(([f]) => parts.map((p) => (p ? f(p) : null)));
