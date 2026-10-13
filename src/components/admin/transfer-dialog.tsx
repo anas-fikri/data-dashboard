@@ -9,10 +9,13 @@ import { cn } from "@/lib/utils";
 import { EmailText } from "./email-text";
 import { TransferPicker } from "./transfer-picker";
 
-/** Label tombol memuat email tujuan yang bisa panjang: boleh turun baris, tinggi minimal tetap token. */
+/**
+ * Label tombol memuat email tujuan yang bisa panjang: boleh turun baris, tinggi minimal tetap token.
+ * Di baris tombol mendatar (≥ md) tombol ini yang menyusut — Batal tidak pernah terdorong keluar.
+ */
 const CTA = cn(
   DIALOG_CTA,
-  "h-auto min-h-(--control-h-lg) whitespace-normal py-2 [overflow-wrap:anywhere] md:h-auto md:min-h-(--control-h)",
+  "h-auto min-h-(--control-h-lg) whitespace-normal py-2 [overflow-wrap:anywhere] md:h-auto md:min-h-(--control-h) md:min-w-0 md:shrink",
 );
 
 interface TransferDialogProps {

@@ -4,8 +4,9 @@
 // satu baris AuditLog ditulis (actorId null, action "user.admin.restore", ip "cli") di transaksi
 // yang sama, di bawah lock 'admins' yang sama dengan aplikasi. Meta audit mencatat operator
 // (user OS + hostname). Akun yang sudah admin aktif → tidak ada perubahan (tanpa audit, sesi utuh).
-// Hanya untuk keadaan darurat (tidak ada admin aktif yang bisa login). Wajib --confirm bila
-// NODE_ENV=production ATAU DATABASE_URL tidak menunjuk ke localhost/127.0.0.1/::1.
+// Hanya untuk keadaan darurat (tidak ada admin aktif yang bisa login). Tanpa --confirm hanya jalan
+// bila NODE_ENV development/test (lingkungan, atau .env proyek bila belum di-set) DAN DATABASE_URL
+// (termasuk ?host=) menunjuk ke localhost/127.0.0.1/::1.
 // Pakai: node scripts/admin-restore.mjs <email> [--confirm]
 import { readFileSync, existsSync } from "node:fs";
 import os from "node:os";
@@ -29,8 +30,10 @@ if (!email || !email.includes("@")) {
 function dbHost() {
   try {
     const u = new URL(process.env.DATABASE_URL ?? "");
-    // Prisma mendahulukan ?host= dari host di URL.
-    return u.searchParams.get("host") ?? u.hostname;
+    // Prisma mendahulukan ?host= dari host di URL; ?host= ganda dianggap bukan lokal.
+    const hosts = u.searchParams.getAll("host");
+    if (hosts.length > 1) return "";
+    return hosts[0] ?? u.hostname;
   } catch {
     return "";
   }

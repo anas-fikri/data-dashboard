@@ -39,8 +39,10 @@ NODE_ENV=production node scripts/admin-restore.mjs nama.karyawan@pcpexpress.com 
 
 Skrip ini menjadikan akun itu aktif + admin, memutus sesi lamanya, dan menulis AuditLog
 `user.admin.restore` (pelaku kosong, ip `cli`, meta berisi user OS + hostname operator) dalam satu
-transaksi. Skrip menolak tanpa `--confirm` bila `NODE_ENV=production` atau `DATABASE_URL` tidak
-menunjuk ke `localhost`/`127.0.0.1`/`::1`. Akun yang sudah admin aktif tidak diubah (sesi tetap,
+transaksi. Tanpa `--confirm` skrip hanya mau jalan bila `NODE_ENV` adalah `development`/`test`
+(dibaca dari lingkungan, atau dari `.env` proyek bila belum di-set) DAN `DATABASE_URL` (termasuk
+parameter `?host=`) menunjuk ke `localhost`/`127.0.0.1`/`::1`; selain itu wajib `--confirm` — di
+server, `localhost` bisa saja database produksi. Akun yang sudah admin aktif tidak diubah (sesi tetap,
 tanpa AuditLog). Setelahnya, admin itu masuk dan meninjau daftar admin di `/admin/pengguna`.
 
 Di produksi skrip dijalankan dari dalam container app (`docker compose exec app node
