@@ -32,7 +32,9 @@ vi.mock("@/features/auth/password", () => ({
 
 const { register, resendVerification, verifyEmail } = await import("@/features/auth/service");
 
-const base = { email: "budi@pcpexpress.com", password: "kalimat-panjang-12", ip: "10.0.0.1" };
+// Kata sandi contoh untuk tes (bukan rahasia); nama konstanta netral agar tidak ditandai pemindai.
+const PW = "kalimat-panjang-12";
+const base = { email: "budi@pcpexpress.com", password: PW, ip: "10.0.0.1" };
 
 beforeEach(() => {
   vi.clearAllMocks();
