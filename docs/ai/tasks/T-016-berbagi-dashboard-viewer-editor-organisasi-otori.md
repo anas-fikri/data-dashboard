@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-012
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-13T03:15:56Z"
 created_by: claude-code
 ---
 
@@ -32,6 +32,7 @@ Share {dashboardId, userId? | wholeOrg, role: VIEWER|EDITOR}. Organisasi = semua
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Model AuditLog dibuat di sini dan dipakai T-017, T-019.
+- 2026-10-13T03:15:56Z Dari verifikasi keamanan T-011: pesan COLUMN_UNAVAILABLE setelah data diganti menyebut nama kolom lama (features/widgets/remap.ts missingMessage) dan pesan kolom tersembunyi menyebut nama kolomnya (query/widget.ts). Saat ini hanya pemilik yang bisa memanggil query widget. Untuk viewer/editor bersama: jangan sebut nama kolom tersembunyi/lama ke viewer — pakai pesan umum 'Kolom yang dipakai widget ini tidak tersedia' kecuali peminta adalah pemilik/editor.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

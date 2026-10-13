@@ -127,11 +127,12 @@ export function TableView({
                         numeric ? "text-right" : "text-left",
                       )}
                     >
+                      {/* Layar sentuh: 44 px di semua lebar (pola tombol halaman). */}
                       <button
                         type="button"
                         title={c.label}
                         className={cn(
-                          "inline-flex min-h-11 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:min-h-8",
+                          "inline-flex min-h-11 max-w-[16rem] items-center gap-1 rounded-sm px-1 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:not-any-pointer-coarse:min-h-8",
                           // Kolom angka: ikon di kiri agar label sejajar dengan digit di kanan.
                           numeric && "flex-row-reverse",
                         )}

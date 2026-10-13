@@ -29,13 +29,16 @@ import type { WidgetData } from "./widget-query";
  * (lengkap, ringkas satu baris, atau hanya untuk pembaca layar — grafik tidak pernah lebih pendek dari
  * batas minimumnya), tabel data biasa saat tombol "data" di kepala kartu aktif (nilai persis tanpa
  * hover — review H9), legenda HTML untuk pai (nama + persen berjumlah 100 %, terbesar dulu), daftar
- * peringkat sebagai ganti grafik di kartu < 140 px atau yang terlalu pendek untuk donat ("+N lainnya"
- * bila baris terpotong; garis bertanggal terbaru dulu). Pai dengan nilai negatif tidak digambar (persen
- * menyesatkan) — diberi penjelasan, dan tabel datanya memuat "Lainnya" bertanda. Pai tanpa total
- * keseluruhan (query total gagal) diberi tahu bahwa persennya hanya dari yang tampil. Durasi j:mm:dd.
+ * peringkat sebagai ganti grafik di kartu < 140 px atau yang terlalu pendek untuk donat ("+N kategori
+ * lain" bila baris terpotong — "Lainnya" hanya irisan pai; garis bertanggal terbaru dulu, "+N
+ * sebelumnya"). Pai dengan nilai negatif tidak digambar (persen menyesatkan) — diberi penjelasan, dan
+ * tabel datanya memuat "Lainnya" bertanda. Tanpa total keseluruhan (query total gagal) dan baris
+ * sebanyak batas N: pai memberi tahu persennya hanya dari yang tampil, batang/garis menyebut "N
+ * terbesar" (bukan seolah lengkap). Durasi j:mm:dd.
  */
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 const CHAR_PX = 6.6;
+const STACK_CHAR_PX = 7.5;
 /** Wilayah gulir yang bisa difokus: garis fokus di dalam kotak (tidak terpotong tepi kartu). */
 const SCROLL_REGION = "overflow-y-auto focus-visible:-outline-offset-2";
 
@@ -76,13 +79,15 @@ export function ChartWidget({
   const blankZero = zeroWhenBlank(spec.measure.agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   const categories = data.categories ?? labels.length;
-  const cut = categories > labels.length;
+  // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
+  // hanya dari yang tampil; batang/garis: "N terbesar" (bukan "N kategori"); garis N titik menurut
+  // nilai: periode di luar N bukan 0 (celah "di luar N terbesar", bukan nol karangan).
+  const partial = data.categories === undefined && data.rows.length >= spec.topN;
+  const knownCut = categories > labels.length;
+  const cut = knownCut || partial;
   const rest = type === "pie" ? pieRest(values, data.grandTotal, cut) : 0;
   const negative = type === "pie" && (values.some((v) => v !== null && v < 0) || rest < 0);
   const others = Math.max(0, rest);
-  // Pai selalu meminta total; tanpa total (query total gagal) dan baris sebanyak batas N, kategori
-  // lain mungkin ada → persen hanya dari yang tampil.
-  const partial = type === "pie" && data.categories === undefined && data.rows.length >= spec.topN;
   // "Lainnya" bertanda: sisa negatif tetap terlihat di tabel yang ditunjuk peringatan pai.
   const rows: Row[] = [
     ...labels.map((label, i) => ({ label, value: values[i] ?? null })),
@@ -110,6 +115,7 @@ export function ChartWidget({
         legendRows: rows.length,
         others: others > 0,
         partial,
+        sort: spec.sort,
         fill: periodFill({ type, values, time }),
       })
     : null;
@@ -170,12 +176,19 @@ export function ChartWidget({
     const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
     const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
     const ranked = rankedItems(list, fitRows, categories);
-    const olderOnly = newestFirst && (!cut || spec.sort === "label_desc");
+    // Yang tidak muat hanya periode lama — kecuali server memotong N terlama/menurut nilai.
+    const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc");
     const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
     const valueChars = ranked.items.reduce((m, r) => Math.max(m, text(r.value).length), 0);
+    // Bertumpuk: label selebar isi daftar (px-2), 7,5 px per karakter (tanggal/angka, "M", "…").
     const labelChars = inline
       ? Math.max(6, Math.floor((room.width - 24 - valueChars * 7) / CHAR_PX))
-      : chars + 8;
+      : Math.max(6, Math.floor((room.width - 16) / STACK_CHAR_PX));
+    // "+N kategori lain" (bukan "lainnya" — itu irisan pai); kartu yang terlalu sempit: "+N lagi".
+    const more = ranked.more.toLocaleString("id-ID");
+    const moreFull = `+${more} ${olderOnly ? "sebelumnya" : type === "line" ? "titik lain" : "kategori lain"}`;
+    const moreText =
+      inline || moreFull.length * CHAR_PX <= room.width - 16 ? moreFull : `+${more} lagi`;
     body = (
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
@@ -184,10 +197,7 @@ export function ChartWidget({
         {ranked.items.map((r, i) => (
           <li key={i} className={cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col")}>
             <span
-              className={cn(
-                "whitespace-nowrap text-muted-foreground",
-                inline && "min-w-0 flex-1 truncate",
-              )}
+              className={cn("truncate text-muted-foreground", inline && "min-w-0 flex-1")}
               title={r.label}
             >
               {middleTruncate(r.label, labelChars)}
@@ -203,8 +213,8 @@ export function ChartWidget({
             )}
             data-testid="chart-ranked-more"
           >
-            <span className={cn("whitespace-nowrap", inline && "min-w-0 flex-1 truncate")}>
-              +{ranked.more.toLocaleString("id-ID")} {olderOnly ? "sebelumnya" : "lainnya"}
+            <span className={cn("truncate", inline && "min-w-0 flex-1")} title={moreFull}>
+              {moreText}
             </span>
             {/* Nilai gabungan hanya untuk pai (bagian dari keseluruhan) dan bila diketahui. */}
             {type === "pie" && ranked.moreValue !== null ? (
@@ -230,6 +240,7 @@ export function ChartWidget({
         categories={categories}
         limit={visible}
         partial={partial}
+        sort={spec.sort}
       />
     );
     body =

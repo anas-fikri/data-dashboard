@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { formatMeasure } from "@/features/widgets/format";
+import type { ChartSort } from "@/features/widgets/spec";
 import {
   OTHERS_LABEL,
   chartOption,
@@ -69,8 +70,12 @@ export function ChartView(
     categories?: number;
     /** Batang yang muat di tinggi kartu; tabel data (pembaca layar) tetap memuat semua baris. */
     limit?: number;
-    /** Pai tanpa total keseluruhan: ringkasan menyebut persen hanya dari kategori yang tampil. */
+    /**
+     * Tanpa total keseluruhan dan mungkin terpotong: ringkasan pai menyebut persen hanya dari yang
+     * tampil; batang/garis menyebut "N terbesar/terkecil/pertama/terakhir" menurut `sort`.
+     */
     partial?: boolean;
+    sort?: ChartSort;
   },
 ) {
   const box = useRef<HTMLDivElement>(null);
@@ -79,7 +84,7 @@ export function ChartView(
   const [failed, setFailed] = useState(false);
   const size = useBoxSize(box);
   const themeVersion = useThemeVersion();
-  const { categories, limit, partial, ...input } = props;
+  const { categories, limit, partial, sort, ...input } = props;
   const inputKey = JSON.stringify(
     limit && limit < input.labels.length
       ? { ...input, labels: input.labels.slice(0, limit), values: input.values.slice(0, limit) }
@@ -128,7 +133,7 @@ export function ChartView(
       {/* Grafik untuk mata; ringkasan + tabel data untuk pembaca layar. */}
       <div ref={box} className="absolute inset-0" aria-hidden />
       <table className="sr-only" data-testid="chart-data">
-        <caption>{chartSummary(input, categories, partial)}</caption>
+        <caption>{chartSummary(input, categories, partial, sort)}</caption>
         <thead>
           <tr>
             <th scope="col">{input.dimensionLabel}</th>

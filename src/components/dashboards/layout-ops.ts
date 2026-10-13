@@ -1,13 +1,27 @@
 import { moveElement, verticalCompactor, type Layout } from "react-grid-layout/core";
-import { GRID_COLS, WIDGET_H_MAX, type LayoutItem } from "@/features/dashboards/validation";
+import {
+  GRID_COLS,
+  WIDGET_H_MAX,
+  WIDGET_MIN_SIZE,
+  fitMinSizes,
+  type LayoutItem,
+} from "@/features/dashboards/validation";
 
 /*
  * Ubah tata letak tanpa menyeret (T-010, WCAG 2.5.7): geser satu sel dan ubah ukuran satu langkah lewat
  * tombol, memakai algoritma tabrakan + pemadatan vertikal yang sama dengan react-grid-layout sehingga
  * hasilnya identik dengan menyeret.
  */
-export const MIN_W = 2;
-export const MIN_H = 2;
+/** Ukuran terkecil satu widget (per jenis, lihat minSizeOf; bawaan WIDGET_MIN_SIZE 2×2). */
+export type MinSize = { w: number; h: number };
+
+/** Tata letak dengan setiap widget ≥ minimum jenisnya (tabel lama 2×2 → 3×4), dipadatkan. */
+export function fitToWidgets(
+  layout: LayoutItem[],
+  widgets: readonly { id: string; type: string }[],
+): LayoutItem[] {
+  return fitMinSizes(layout, new Map(widgets.map((w) => [w.id, w.type])));
+}
 
 const toPlain = (layout: Layout): LayoutItem[] =>
   layout.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
@@ -43,11 +57,17 @@ export function moveItem(layout: LayoutItem[], id: string, dx: number, dy: numbe
   return compact(moveElement(copy, target, x, y, true, false, "vertical", GRID_COLS));
 }
 
-export function resizeItem(layout: LayoutItem[], id: string, dw: number, dh: number): LayoutItem[] {
+export function resizeItem(
+  layout: LayoutItem[],
+  id: string,
+  dw: number,
+  dh: number,
+  min: MinSize = WIDGET_MIN_SIZE,
+): LayoutItem[] {
   const item = layout.find((it) => it.i === id);
   if (!item) return layout;
-  const w = Math.min(Math.max(MIN_W, item.w + dw), GRID_COLS);
-  const h = Math.min(Math.max(MIN_H, item.h + dh), WIDGET_H_MAX);
+  const w = Math.min(Math.max(min.w, item.w + dw), GRID_COLS);
+  const h = Math.min(Math.max(min.h, item.h + dh), WIDGET_H_MAX);
   // Melebar di tepi kanan: geser ke kiri secukupnya agar tetap di dalam grid.
   const x = Math.min(item.x, GRID_COLS - w);
   if (w === item.w && h === item.h && x === item.x) return layout;
@@ -67,8 +87,13 @@ export const STEP_KEYS: StepKey[] = [
   "taller",
 ];
 
-/** Satu langkah tombol panel (geser satu sel / ubah ukuran satu satuan). */
-export function applyStep(layout: LayoutItem[], id: string, key: StepKey): LayoutItem[] {
+/** Satu langkah tombol panel (geser satu sel / ubah ukuran satu satuan, tidak di bawah `min`). */
+export function applyStep(
+  layout: LayoutItem[],
+  id: string,
+  key: StepKey,
+  min: MinSize = WIDGET_MIN_SIZE,
+): LayoutItem[] {
   switch (key) {
     case "left":
       return moveItem(layout, id, -1, 0);
@@ -79,20 +104,24 @@ export function applyStep(layout: LayoutItem[], id: string, key: StepKey): Layou
     case "down":
       return moveItem(layout, id, 0, 1);
     case "narrower":
-      return resizeItem(layout, id, -1, 0);
+      return resizeItem(layout, id, -1, 0, min);
     case "wider":
-      return resizeItem(layout, id, 1, 0);
+      return resizeItem(layout, id, 1, 0, min);
     case "shorter":
-      return resizeItem(layout, id, 0, -1);
+      return resizeItem(layout, id, 0, -1, min);
     case "taller":
-      return resizeItem(layout, id, 0, 1);
+      return resizeItem(layout, id, 0, 1, min);
   }
 }
 
 /** Langkah panel mana yang masih mengubah tata letak (tepi grid / pemadatan → tidak). */
-export function stepAvailability(layout: LayoutItem[], id: string): Record<StepKey, boolean> {
+export function stepAvailability(
+  layout: LayoutItem[],
+  id: string,
+  min: MinSize = WIDGET_MIN_SIZE,
+): Record<StepKey, boolean> {
   const out = {} as Record<StepKey, boolean>;
-  for (const k of STEP_KEYS) out[k] = !sameLayout(applyStep(layout, id, k), layout);
+  for (const k of STEP_KEYS) out[k] = !sameLayout(applyStep(layout, id, k, min), layout);
   return out;
 }
 

@@ -16,6 +16,16 @@ export const WIDGET_H_MAX = 40;
 export const LAYOUT_Y_MAX = 2_000;
 /** Ukuran widget baru (sepertiga lebar, tinggi 4 baris). */
 export const DEFAULT_WIDGET_SIZE = { w: 4, h: 4 } as const;
+/** Ukuran terkecil widget (satuan grid). */
+export const WIDGET_MIN_SIZE = { w: 2, h: 2 } as const;
+/**
+ * Minimum per jenis (review desain T-011 putaran 4): tabel 2×2 (128 px) habis untuk kepala kartu, judul
+ * kolom, dan pager — 0 baris data. 3×4 menampilkan ≥ 2 baris walau pager terlipat dan tombolnya 44 px
+ * (layar sentuh), dan pager ‹ 1/4 › muat di 1024 px.
+ */
+const MIN_BY_TYPE: ReadonlyMap<string, { w: number; h: number }> = new Map([
+  ["table", { w: 3, h: 4 }],
+]);
 
 export interface LayoutItem {
   i: string;
@@ -87,6 +97,28 @@ export function cleanName(
   return { ok: true, value };
 }
 
+/** Ukuran terkecil untuk jenis widget ini (jenis tak dikenal/kosong = minimum umum). */
+export function minSizeOf(type: string | undefined): { w: number; h: number } {
+  return (type !== undefined && MIN_BY_TYPE.get(type)) || WIDGET_MIN_SIZE;
+}
+
+/**
+ * Widget yang lebih kecil dari minimum jenisnya diperbesar (tetap di dalam 12 kolom), lalu dipadatkan
+ * tanpa tumpang tindih — tata letak lama (mis. tabel 2×2) dan widget yang baru diganti jenisnya. Tidak
+ * ada yang perlu diperbesar → array yang sama dikembalikan (tanpa pemadatan ulang).
+ */
+export function fitMinSizes(items: LayoutItem[], types: ReadonlyMap<string, string>): LayoutItem[] {
+  let grown = false;
+  const next = items.map((it) => {
+    const min = minSizeOf(types.get(it.i));
+    if (it.w >= min.w && it.h >= min.h) return it;
+    grown = true;
+    const w = Math.min(Math.max(it.w, min.w), GRID_COLS);
+    return { ...it, w, h: Math.max(it.h, min.h), x: Math.min(it.x, GRID_COLS - w) };
+  });
+  return grown ? compactLayout(next) : items;
+}
+
 /** Baris pertama yang kosong di bawah semua widget (tempat widget baru). */
 export function bottomOf(layout: LayoutItem[]): number {
   return layout.reduce((m, it) => Math.max(m, it.y + it.h), 0);
@@ -111,8 +143,13 @@ export function compactLayout(items: LayoutItem[]): LayoutItem[] {
 /**
  * Layout tersimpan → layout yang cocok dengan widget yang ada: item tanpa widget dibuang, widget tanpa
  * item ditaruh di bawah, lalu dipadatkan. Melindungi tampilan dari data lama/rusak tanpa gagal total.
+ * Dengan `types` (id → jenis widget), item di bawah minimum jenisnya ikut diperbesar (fitMinSizes).
  */
-export function reconcileLayout(stored: unknown, widgetIds: string[]): LayoutItem[] {
+export function reconcileLayout(
+  stored: unknown,
+  widgetIds: string[],
+  types?: ReadonlyMap<string, string>,
+): LayoutItem[] {
   const ids = new Set(widgetIds);
   // Per item: satu item rusak tidak membuang posisi widget lain.
   const one = storedItem;
@@ -131,5 +168,6 @@ export function reconcileLayout(stored: unknown, widgetIds: string[]): LayoutIte
     items.push({ i: id, x: 0, y: bottomOf(items), ...DEFAULT_WIDGET_SIZE });
     seen.add(id);
   }
-  return compactLayout(items);
+  const compacted = compactLayout(items);
+  return types ? fitMinSizes(compacted, types) : compacted;
 }

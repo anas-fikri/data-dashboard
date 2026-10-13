@@ -3,7 +3,7 @@ import type { Agg } from "@/features/query/spec";
 import type { ChartSort, ChartType } from "@/features/widgets/spec";
 
 /*
- * Olahan data grafik (T-011, verifikasi putaran 3–4) — murni, diuji tanpa DOM: urutan titik garis,
+ * Olahan data grafik (T-011, verifikasi putaran 3–5) — murni, diuji tanpa DOM: urutan titik garis,
  * periode kontinu untuk sumbu garis per hari/minggu/bulan/kuartal/tahun, sisa "Lainnya" pai dengan
  * toleransi pembulatan, urutan legenda, skala sumbu durasi, baris daftar peringkat yang muat, tata
  * letak tabel data, dan keterangan "N dari M" yang menyesuaikan tinggi kartu.
@@ -48,15 +48,11 @@ export function percentShares(values: number[]): number[] {
   return out;
 }
 
-// Tanpa `numeric`: teks diurutkan per karakter seperti SQL nocase.noaccent, batang, dan tabel
-// ("Unit 10" sebelum "Unit 2", sama dengan A→Z di Excel).
-const collator = new Intl.Collator("id", { sensitivity: "base" });
-
 /**
- * Urutan titik garis di layar. Tanggal: kronologis naik. Dimensi lain dengan urutan label: naik
- * (angka dibanding sebagai angka — Bulan 1..12, bukan 1,10,11,12,2; teks dengan collation id tanpa
- * beda huruf besar/aksen dan tanpa urutan angka alami, seperti urutan server). Urutan nilai: urutan
- * server dipertahankan. Kategori kosong selalu di akhir.
+ * Urutan titik garis di layar. Tanggal: kronologis naik. Dimensi lain dengan urutan label: urutan
+ * server (SQL sudah mengurutkan teks dengan nocase.noaccent + pemecah seri byte, angka sebagai angka —
+ * sama dengan batang dan tabel), dibalik untuk Z→A agar tetap naik di layar. Urutan nilai: urutan
+ * server dipertahankan. Kategori kosong di akhir.
  */
 export function lineOrder<R extends readonly unknown[]>(
   rows: readonly R[],
@@ -65,16 +61,12 @@ export function lineOrder<R extends readonly unknown[]>(
 ): R[] {
   const temporal = dimType === "date" || dimType === "timestamp";
   if (!temporal && sort !== "label_asc" && sort !== "label_desc") return [...rows];
-  const cmp = (a: unknown, b: unknown) => {
-    if (typeof a === "number" && typeof b === "number") return a - b;
-    const x = String(a);
-    const y = String(b);
-    // ISO naive: urutan teks = urutan waktu.
-    return temporal ? (x < y ? -1 : x > y ? 1 : 0) : collator.compare(x, y);
-  };
-  return [...rows].sort((a, b) =>
-    a[0] === null ? (b[0] === null ? 0 : 1) : b[0] === null ? -1 : cmp(a[0], b[0]),
-  );
+  const real = rows.filter((r) => r[0] !== null);
+  const blank = rows.filter((r) => r[0] === null);
+  if (!temporal) return [...(sort === "label_desc" ? real.reverse() : real), ...blank];
+  // ISO naive: urutan teks = urutan waktu.
+  const key = (r: R) => String(r[0]);
+  return [...real.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : 0)), ...blank];
 }
 
 export type BucketGrain = "day" | "week" | "month" | "quarter" | "year";
@@ -212,7 +204,7 @@ export function durationScale(values: readonly (number | null)[]): { div: number
 
 /**
  * Daftar peringkat kartu sempit: kategori yang tidak terdaftar (baris yang tidak muat, atau sudah
- * dipotong server tanpa "Lainnya") diringkas di baris terakhir "+N lainnya". moreValue = jumlah nilai
+ * dipotong server tanpa "Lainnya") diringkas di baris terakhir ("+N kategori lain"). moreValue = jumlah nilai
  * baris tersembunyi; null bila sebagian tidak diketahui (kategori di luar N tanpa "Lainnya").
  */
 export function rankedItems<T extends { value: number | null; others?: boolean }>(
@@ -232,35 +224,84 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
   return { items, more, moreValue };
 }
 
-const VALUE_CHAR_PX = 8;
+/** Lebar teks 14 px (px) — `header`: kepala kolom (font-medium); null = tidak bisa diukur. */
+export type TextMeasure = (text: string, header: boolean) => number | null;
+/** Perkiraan tanpa canvas (SSR, uji): ±9,5 px per angka/huruf, 4,5 px per spasi/tanda baca. */
+const CHAR_PX_EST = 9.5;
+const NARROW_CHAR_PX_EST = 4.5;
+/** Canvas tidak memakai angka tabular (tnum): titik/koma tabular ±9 % lebih lebar. */
+const MEASURE_SLACK = 1.1;
 const LABEL_CHAR_PX = 7.7;
 const CELL_PAD_PX = 24;
 /** Label tabel data minimal sepanjang ini; kurang dari itu baris ditumpuk (label di atas nilai). */
 const LABEL_MIN_CHARS = 12;
 
+const estimate = (text: string) =>
+  [...text].reduce((w, ch) => w + (/[\s.,:;']/.test(ch) ? NARROW_CHAR_PX_EST : CHAR_PX_EST), 0);
+
+/** Lebar terkecil yang memuat teks dalam dua baris (dipecah di spasi). */
+function twoLineWidth(text: string, width: (t: string) => number): number {
+  const words = text.split(/\s+/);
+  let best = width(text);
+  for (let k = 1; k < words.length; k++) {
+    const a = width(words.slice(0, k).join(" "));
+    best = Math.min(best, Math.max(a, width(words.slice(k).join(" "))));
+  }
+  return best;
+}
+
 /**
- * Tata letak tabel data grafik (teks 14 px). Kolom nilai selebar teks terpanjang; nilai lengkap
- * memakan > 45 % lebar → nilai ringkas. Label mendapat sisa lebar (dipendekkan di tengah agar nama
- * berawalan sama tetap bisa dibedakan) dan minimal 12 karakter — bila tidak cukup, baris ditumpuk:
- * label selebar kartu (sampai dua baris), nilai di bawahnya (lengkap bila muat).
+ * Tata letak tabel data grafik (teks 14 px). Kolom nilai selebar teks terpanjang yang diukur (canvas;
+ * tanpa canvas perkiraan per karakter) — nilai yang muat tidak pernah dipotong — dan minimal selebar
+ * kepala kolomnya: satu baris bila muat dalam 45 % lebar, selain itu dua baris (yang tetap tidak muat
+ * dipendekkan; teks lengkap di title). Nilai lengkap memakan > 45 % lebar → nilai ringkas. Label
+ * mendapat sisa lebar (dipendekkan di tengah agar nama berawalan sama tetap bisa dibedakan) dan
+ * minimal 12 karakter (atau sepanjang label terpanjang) — bila tidak cukup, baris ditumpuk: label
+ * selebar kartu (sampai dua baris), nilai di bawahnya (lengkap bila muat).
  */
 export function tableLayout(
   width: number | null,
   full: readonly string[],
   compact: readonly string[],
+  opts: { header?: string; labelLength?: number; measure?: TextMeasure } = {},
 ): { compact: boolean; valuePx: number | null; labelChars: number; stacked: boolean } {
   if (!width) return { compact: false, valuePx: null, labelChars: 40, stacked: false };
-  const px = (t: readonly string[]) =>
-    t.reduce((m, s) => Math.max(m, s.length), 0) * VALUE_CHAR_PX + CELL_PAD_PX;
-  const useCompact = px(full) > width * 0.45;
-  const valuePx = Math.round(px(useCompact ? compact : full));
+  const textPx = (t: string, header = false) => {
+    const m = opts.measure?.(t, header);
+    return typeof m === "number" ? m * MEASURE_SLACK : estimate(t);
+  };
+  const widest = (t: readonly string[]) => t.reduce((m, s) => Math.max(m, textPx(s)), 0);
+  const fullPx = widest(full) + CELL_PAD_PX;
+  const useCompact = fullPx > width * 0.45;
+  const values = useCompact ? widest(compact) : fullPx - CELL_PAD_PX;
+  const header = opts.header?.trim() ?? "";
+  const headRoom = Math.max(0, width * 0.45 - CELL_PAD_PX);
+  const oneLine = header ? textPx(header, true) : 0;
+  const head =
+    oneLine <= headRoom
+      ? oneLine
+      : Math.min(
+          twoLineWidth(header, (t) => textPx(t, true)),
+          headRoom,
+        );
+  const valuePx = Math.ceil(Math.max(values, head) + CELL_PAD_PX);
   const labelChars = Math.floor((width - valuePx - CELL_PAD_PX) / LABEL_CHAR_PX);
-  if (labelChars >= LABEL_MIN_CHARS) {
+  // Semua label lebih pendek dari batas minimum: cukup sepanjang label terpanjang.
+  const need = Math.min(LABEL_MIN_CHARS, Math.max(opts.labelLength ?? LABEL_MIN_CHARS, 4));
+  if (labelChars >= need) {
     return { compact: useCompact, valuePx, labelChars, stacked: false };
   }
   const line = Math.max(LABEL_MIN_CHARS, Math.floor((width - CELL_PAD_PX) / LABEL_CHAR_PX));
-  return { compact: px(full) > width, valuePx: null, labelChars: line * 2 - 2, stacked: true };
+  return { compact: fullPx > width, valuePx: null, labelChars: line * 2 - 2, stacked: true };
 }
+
+/** N baris yang diambil server menurut urutan ("5 kategori terbesar"). */
+export const RANK_WORD: Record<ChartSort, string> = {
+  value_desc: "terbesar",
+  value_asc: "terkecil",
+  label_asc: "pertama",
+  label_desc: "terakhir",
+};
 
 export type NoteMode = "full" | "compact" | "none";
 /** Kartu < 140 px: daftar peringkat sebagai ganti grafik. */
@@ -299,8 +340,12 @@ export interface FitInput {
   /** Pai: baris legenda (termasuk "Lainnya") dan ada-tidaknya irisan "Lainnya". */
   legendRows: number;
   others: boolean;
-  /** Pai tanpa total keseluruhan (query total gagal) yang mungkin terpotong: persen dari yang tampil. */
+  /**
+   * Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: mungkin terpotong. Pai:
+   * persen dari yang tampil; batang/garis: "N teratas" menurut `sort`, bukan "N kategori".
+   */
   partial: boolean;
+  sort?: ChartSort;
   /** Garis per periode dengan periode tanpa data yang diisi: periode di sumbu dan yang berisi data. */
   fill?: { buckets: number; present: number; noun: string };
 }
@@ -325,6 +370,14 @@ export function chartFit(i: FitInput): Fit {
   const noun = i.type === "line" ? "titik" : "kategori";
   const all = i.categories.toLocaleString("id-ID");
   const texts = (visible: number) => {
+    if (i.partial && i.type !== "pie") {
+      const top = `${visible} ${noun} ${RANK_WORD[i.sort ?? "value_desc"]}`;
+      return {
+        important: true,
+        full: `Menampilkan ${top} (jumlah keseluruhan tidak tersedia)`,
+        compact: top,
+      };
+    }
     if (i.categories > visible) {
       return {
         important: true,

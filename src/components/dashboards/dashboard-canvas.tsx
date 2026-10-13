@@ -9,10 +9,10 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
 import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
-import { GRID_COLS, type LayoutItem } from "@/features/dashboards/validation";
+import { GRID_COLS, minSizeOf, type LayoutItem } from "@/features/dashboards/validation";
 import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
-import { MIN_H, MIN_W, applyStep, readingOrder, stepAvailability } from "./layout-ops";
+import { applyStep, readingOrder, stepAvailability } from "./layout-ops";
 import { useDashboardEditor } from "./use-dashboard-editor";
 import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
@@ -71,6 +71,8 @@ export function DashboardCanvas(props: {
   const ordered = readingOrder(ed.layout);
   const panelItem = canEdit && selected ? ed.layout.find((it) => it.i === selected) : undefined;
   const panelWidget = panelItem ? byId.get(panelItem.i) : undefined;
+  /** Ukuran terkecil per jenis widget (tabel 3×4) untuk pojok resize dan tombol panel. */
+  const minOf = (id: string) => minSizeOf(byId.get(id)?.type);
 
   /**
    * Gulir agar widget yang diatur terlihat. Ponsel (tumpukan biasa): langsung lewat DOM. Grid: posisi
@@ -246,7 +248,10 @@ export function DashboardCanvas(props: {
               </div>
             ) : mounted ? (
               <ReactGridLayout
-                layout={ed.layout.map((it) => ({ ...it, minW: MIN_W, minH: MIN_H }))}
+                layout={ed.layout.map((it) => {
+                  const min = minOf(it.i);
+                  return { ...it, minW: min.w, minH: min.h };
+                })}
                 width={width}
                 gridConfig={{
                   cols: GRID_COLS,
@@ -281,11 +286,11 @@ export function DashboardCanvas(props: {
               <WidgetPanel
                 widget={panelWidget}
                 item={panelItem}
-                can={stepAvailability(ed.layout, panelItem.i)}
+                can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
                 onRename={(t) => ed.renameWidget(panelItem.i, t)}
                 onStep={(k) => {
                   reveal.current = panelItem.i;
-                  ed.commitLayout(applyStep(ed.layout, panelItem.i, k));
+                  ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
                 }}
                 onDelete={() => void remove(panelItem.i)}
               >

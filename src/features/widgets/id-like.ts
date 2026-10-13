@@ -27,6 +27,49 @@ const MARK = new Set([
 ]);
 /** Penanda yang hanya berlaku sebagai kata pertama ("Telepon Kantor", "Resi"); "Pulsa Telp" besaran. */
 const HEAD_ONLY = new Set(["telp", "tlp", "telepon", "resi", "awb"]);
+/**
+ * Kata status/arus sesudah penanda kata-pertama: hitungan, bukan kode ("Resi Terkirim", "AWB Masuk",
+ * "Telepon Masuk", "Resi Retur" — rekap harian kurir).
+ */
+const STATUS = new Set([
+  "terkirim",
+  "dikirim",
+  "kirim",
+  "masuk",
+  "keluar",
+  "diterima",
+  "terima",
+  "gagal",
+  "retur",
+  "batal",
+  "dibatalkan",
+  "selesai",
+  "diproses",
+  "proses",
+  "pending",
+  "tertunda",
+  "sukses",
+  "berhasil",
+  "hilang",
+  "rusak",
+  "harian",
+  "mingguan",
+  "bulanan",
+  "tahunan",
+  "delivered",
+  "sent",
+  "received",
+  "failed",
+  "returned",
+  "cancelled",
+  "canceled",
+  "incoming",
+  "outgoing",
+  "inbound",
+  "outbound",
+  "daily",
+  "monthly",
+]);
 /** Tahun hanya sebagai kata pertama ("Tahun", "Tahun Lahir", "thn_masuk"); "Gaji per tahun" besaran. */
 const YEAR = new Set(["tahun", "thn", "year"]);
 /** "Tahun Lalu", "Tahun 2024", "Year to Date": kolom nilai per periode, bukan kolom tahun. */
@@ -134,7 +177,9 @@ export function isIdLikeName(name: string): boolean {
   const next = t[start + 1];
   if (YEAR.has(head)) return next === undefined || !(PERIOD.has(next) || /\p{N}/u.test(next));
   // "No. of Orders" = jumlah pesanan.
-  if (MARK.has(head) || HEAD_ONLY.has(head)) return next !== "of";
+  if (MARK.has(head)) return next !== "of";
+  // "Resi Terkirim", "Telepon Masuk Harian": hitungan; "Resi", "Telepon Kantor": kode.
+  if (HEAD_ONLY.has(head)) return next !== "of" && !t.slice(start + 1).some((w) => STATUS.has(w));
   for (let i = start; i < t.length; i++) {
     if (MEASURE.has(t[i]!)) return false;
     // "Pendapatan per ID", "Tarif per AWB": tarif per satuan, bukan kode.

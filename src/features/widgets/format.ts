@@ -69,15 +69,24 @@ export function formatAxis(value: number, format: NumberFormat): string {
   return noNegZero(nf({ notation: "compact", ...sig }).format(value));
 }
 
-/** Nilai ringkas untuk kartu sempit ("Rp 3,97 jt", "43,6%"); nilai lengkap tetap di title/sr-only. */
+/**
+ * Nilai ringkas untuk kartu sempit ("Rp 3,97 jt", "43,6%"); nilai lengkap tetap di title/sr-only.
+ * Format pilihan (bukan "Otomatis"): nilai yang tidak disingkat (< 1.000, persen) tidak lebih teliti
+ * dari nilai lengkap — "Rp 12" untuk 12,345 dengan 0 desimal, bukan "Rp 12,35".
+ */
 export function formatCompact(value: number, format: NumberFormat): string {
+  const chosen = format.style !== "auto";
+  const digits = (max: number) => (chosen ? Math.min(max, format.decimals) : max);
   if (format.style === "percent")
-    return noNegZero(nf({ style: "percent", maximumFractionDigits: 1 }).format(value));
+    return noNegZero(nf({ style: "percent", maximumFractionDigits: digits(1) }).format(value));
   // Nilai bukan nol < 0,01 tetap terbaca (0,004, bukan 0) — aturan yang sama dengan "Otomatis".
-  const tiny = format.style !== "rupiah" && value !== 0 && Math.abs(value) < 0.01;
+  const tiny = !chosen && value !== 0 && Math.abs(value) < 0.01;
   const opts: Intl.NumberFormatOptions = tiny
     ? { maximumSignificantDigits: 2 }
-    : { notation: "compact", maximumFractionDigits: 2 };
+    : {
+        notation: "compact",
+        maximumFractionDigits: Math.abs(value) < 1000 ? digits(2) : 2,
+      };
   if (format.style !== "rupiah") return noNegZero(nf(opts).format(value));
   // Tanda minus di depan "Rp", sama dengan formatNumber ("-Rp 3,97 jt"); "Rp 0" tanpa minus.
   return noNegZero(`${value < 0 ? "-" : ""}Rp ${nf(opts).format(Math.abs(value))}`);

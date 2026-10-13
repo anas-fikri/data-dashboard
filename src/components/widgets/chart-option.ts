@@ -1,4 +1,9 @@
-import { TOP_N_MAX, type ChartType, type NumberFormat } from "@/features/widgets/spec";
+import {
+  TOP_N_MAX,
+  type ChartSort,
+  type ChartType,
+  type NumberFormat,
+} from "@/features/widgets/spec";
 import {
   AUTO_FORMAT,
   formatAxis,
@@ -8,6 +13,7 @@ import {
 } from "@/features/widgets/format";
 import {
   GRAIN_NOUN,
+  RANK_WORD,
   durationScale,
   hasIsolated,
   isoToUtcMs,
@@ -129,8 +135,12 @@ export function chartSummary(
     "type" | "labels" | "values" | "measureLabel" | "dimensionLabel" | "others" | "time"
   >,
   categories?: number,
-  /** Pai tanpa total keseluruhan: persen hanya dari kategori yang tampil. */
+  /**
+   * Tanpa total keseluruhan dan mungkin terpotong. Pai: persen hanya dari kategori yang tampil;
+   * batang/garis: "N teratas" menurut `sort`, bukan "N kategori" seolah lengkap.
+   */
   partial = false,
+  sort: ChartSort = "value_desc",
 ) {
   const kind = i.type === "bar" ? "batang" : i.type === "line" ? "garis" : "pai";
   const noun = i.type === "line" ? "titik" : "kategori";
@@ -138,12 +148,15 @@ export function chartSummary(
   // "Lainnya" hanya disebut bila irisannya memang ada (sisa pembulatan tidak digambar).
   const others = i.type === "pie" && !!i.others && i.others > 0;
   const count =
-    categories && categories > shown
-      ? `${shown} dari ${categories} ${noun}${others ? ", sisanya digabung sebagai Lainnya" : ""}`
-      : `${shown} ${noun}`;
-  let extra = partial
-    ? ` Persentase dari ${shown} kategori yang tampil (total keseluruhan tidak tersedia).`
-    : "";
+    partial && i.type !== "pie"
+      ? `${shown} ${noun} ${RANK_WORD[sort]} (jumlah keseluruhan tidak tersedia)`
+      : categories && categories > shown
+        ? `${shown} dari ${categories} ${noun}${others ? ", sisanya digabung sebagai Lainnya" : ""}`
+        : `${shown} ${noun}`;
+  let extra =
+    partial && i.type === "pie"
+      ? ` Persentase dari ${shown} kategori yang tampil (total keseluruhan tidak tersedia).`
+      : "";
   const b = lineBuckets(i);
   const gaps = b ? b.filled.filter(Boolean).length : 0;
   if (b && gaps > 0) {
@@ -278,10 +291,21 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     : i.time?.empty === 0
       ? `${value(0)} (tidak ada data)`
       : "(tidak ada data)";
-  const symbolSize = (filled: readonly boolean[]) =>
-    filled.some(Boolean)
-      ? { symbolSize: (_: unknown, p: { dataIndex: number }) => (filled[p.dataIndex] ? 0 : 4) }
-      : {};
+  // Simbol titik garis: semua bila ≤ 60 titik atau ada titik terpencil. Ada periode yang diisi: titik
+  // bersimbol = periode berisi data (yang diisi tanpa simbol), jadi simbol tidak boleh dijarangkan
+  // ECharts ('auto' mengikuti label di kartu sempit) — juga di atas 60 periode bila yang berisi ≤ 60.
+  const symbols = (ys: readonly (number | null)[], filled: readonly boolean[]) => {
+    const fills = filled.some(Boolean);
+    const isolated = hasIsolated(ys);
+    const show = ys.length <= 60 || isolated || (fills && filled.filter((f) => !f).length <= 60);
+    return {
+      showSymbol: show,
+      ...(show && (fills || isolated) ? { showAllSymbol: true } : {}),
+      ...(fills
+        ? { symbolSize: (_: unknown, p: { dataIndex: number }) => (filled[p.dataIndex] ? 0 : 4) }
+        : {}),
+    };
+  };
 
   if (i.type === "line" && i.time && !isPeriod(grain)) {
     const day = buckets?.grain === "day" ? buckets : null;
@@ -307,20 +331,25 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     // Satu tanggal: label jam saja, tanggalnya sekali di nama sumbu (bila ada tempat).
     const oneDay = clock && first.slice(0, 10) === last.slice(0, 10);
     const when = (ms: number) => formatDate(msToIso(ms), grain, timestamp);
+    const dayName = oneDay && unitName ? formatDate(first) : "";
+    const dated = (iso: string) => `${formatDate(iso).replace(/ \d{4}$/, "")} ${iso.slice(11, 16)}`;
     const tick = (ms: number) => {
       const iso = msToIso(ms);
       if (!clock) return formatDate(iso, grain);
-      // Beberapa hari: setiap label "31 Des 18:00" (label tanggal saja bisa disembunyikan tumpang-tindih).
-      return oneDay
-        ? iso.slice(11, 16)
-        : `${formatDate(iso).replace(/ \d{4}$/, "")} ${iso.slice(11, 16)}`;
+      // Beberapa hari, atau satu hari tanpa tempat untuk nama sumbu (kotak pendek): setiap label
+      // "31 Des 18:00" — tanggal tidak hilang dari kartu (label tanggal saja bisa disembunyikan).
+      return oneDay && dayName ? iso.slice(11, 16) : dated(iso);
     };
-    const dayName = oneDay && unitName ? formatDate(first) : "";
+    // Label tick waktu jatuh di mana saja (bukan di ujung data) dan rata tengah: ruang kanan grid
+    // setengah label terpanjang — label paling kanan tidak terpotong tepi kartu. Paling banyak 20 %
+    // lebar: lebih dari itu ECharts menyerah memuat label sumbu nilai di kiri.
+    const edgeText = points.reduce((m, p) => Math.max(m, tick(p[0]).length), 0);
+    const right = Math.max(grid.right, Math.min((edgeText * AXIS_CHAR_PX) / 2, size.width * 0.2));
     return {
       ...base,
       // Tick dan label sumbu waktu dalam UTC, sama dengan nilai tanggal naive dari DuckDB.
       useUTC: true,
-      grid,
+      grid: { ...grid, right: Math.floor(right) },
       tooltip: {
         ...axisTooltip,
         formatter: (params: { value: [number, unknown]; dataIndex?: number }[]) => {
@@ -357,8 +386,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           type: "line" as const,
           name: i.measureLabel,
           data: points.map((p, n): [number, number | null] => [p[0], ys[n] ?? null]),
-          showSymbol: points.length <= 60 || hasIsolated(ys),
-          ...symbolSize(filled),
+          ...symbols(ys, filled),
           connectNulls: false,
         },
       ],
@@ -379,24 +407,32 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       : horizontal
         ? middleTruncate(v, labelChars)
         : middleTruncate(v, Math.max(labelChars, 10));
-  // Garis: label dihitung mundur dari periode terakhir (terbaru) — selalu tampil, rata kanan pada
-  // titiknya, tidak terpotong tepi kartu ("Sep 202"). Jarak label dari perkiraan lebar teks dan lebar
-  // satu periode di area plot (lebar − label sumbu nilai − jarak grid); hideOverlap tetap pengaman.
+  // Garis: label dihitung mundur dari periode terakhir (terbaru) — selalu tampil dan tidak terpotong
+  // tepi kartu ("Sep 202"): rata tengah bila muat di setengah periode + ruang kanan grid, selain itu
+  // rata kanan pada titiknya. Jarak label dari perkiraan lebar teks dan lebar satu periode di area plot
+  // (lebar − label sumbu nilai − jarak grid), sama rata di seluruh sumbu; hideOverlap tetap pengaman.
   const n = labels.length;
   const maxAbs = values.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
   const plotW = size.width - grid.left - grid.right - 8 - axisText(maxAbs).length * AXIS_CHAR_PX;
   const band = Math.max(plotW, 1) / Math.max(n, 1);
   const textW = labels.reduce((m, l) => Math.max(m, labelText(l).length), 1) * AXIS_CHAR_PX;
-  const step = Math.max(1, Math.ceil((textW + LABEL_GAP) / band));
-  const shownLabels = new Set<number>();
-  for (let k = n - 1; k >= 0; k -= step) {
-    // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: label sebelumnya harus lebih jauh.
-    if (k !== n - 1 && k === n - 1 - step && step * band < 1.5 * textW + LABEL_GAP) continue;
-    shownLabels.add(k);
+  const alignRight = n > 1 && textW / 2 > band / 2 + grid.right - 4;
+  // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: semua jarak dilebarkan (bukan satu
+  // label dilewati — celah tidak rata).
+  const minStep = Math.max(1, Math.ceil(((alignRight ? 1.5 : 1) * textW + LABEL_GAP) / band));
+  // Langkah yang membagi n − 1 (≤ 1,5×) bila ada: label pertama dan terakhir tampil dengan jarak sama.
+  let step = minStep;
+  for (let s = minStep; s <= Math.ceil(minStep * 1.5) && s < n; s++) {
+    if ((n - 1) % s === 0) {
+      step = s;
+      break;
+    }
   }
+  const shownLabels = new Set<number>();
+  for (let k = n - 1; k >= 0; k -= step) shownLabels.add(k);
   // Periode pertama ikut berlabel bila ada tempat (awal dan akhir rentang terbaca).
   const leftmost = Math.min(...shownLabels);
-  const leftEdge = leftmost === n - 1 ? leftmost * band - textW : leftmost * band - textW / 2;
+  const leftEdge = leftmost * band - (leftmost === n - 1 && alignRight ? textW : textW / 2);
   if (n > 1 && textW / 2 + LABEL_GAP <= leftEdge) shownLabels.add(0);
   const showLabel = (k: number) => shownLabels.has(k);
   const categoryAxis = {
@@ -415,7 +451,8 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         : {
             interval: showLabel,
             hideOverlap: true,
-            ...(n > 1 ? { showMaxLabel: true, alignMaxLabel: "right" as const } : {}),
+            ...(n > 1 ? { showMaxLabel: true } : {}),
+            ...(alignRight ? { alignMaxLabel: "right" as const } : {}),
           }),
       formatter: labelText,
     },
@@ -443,11 +480,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         ...(i.type === "line"
           ? {
               smooth: false,
-              showSymbol: values.length <= 60 || hasIsolated(values),
-              // Titik terpencil selalu bersimbol, juga saat ECharts menjarangkan simbol mengikuti label.
-              ...(hasIsolated(values) ? { showAllSymbol: true } : {}),
-              // Periode yang diisi tanpa simbol: titik yang terlihat = periode yang berisi data.
-              ...symbolSize(filled),
+              ...symbols(values, filled),
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),

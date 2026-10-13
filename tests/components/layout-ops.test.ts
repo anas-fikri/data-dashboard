@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
+  applyStep,
+  fitToWidgets,
   moveItem,
   readingOrder,
   resizeItem,
   sameLayout,
   stepAvailability,
 } from "@/components/dashboards/layout-ops";
-import type { LayoutItem } from "@/features/dashboards/validation";
+import {
+  DEFAULT_WIDGET_SIZE,
+  fitMinSizes,
+  minSizeOf,
+  reconcileLayout,
+  type LayoutItem,
+} from "@/features/dashboards/validation";
 
 /* T-010: geser/ubah ukuran lewat tombol (alternatif menyeret, WCAG 2.5.7) — tanpa tumpang tindih. */
 const A = { i: "a", x: 0, y: 0, w: 6, h: 4 };
@@ -98,5 +106,81 @@ describe("tepi grid di panel (aria-disabled + pengumuman)", () => {
     expect(sameLayout([A, B], [{ ...B }, { ...A }])).toBe(true);
     expect(sameLayout([A, B], [A, { ...B, y: 1 }])).toBe(false);
     expect(sameLayout([A], [A, B])).toBe(false);
+  });
+});
+
+describe("putaran 5 (T-011): ukuran minimum per jenis widget", () => {
+  // Tabel lama 2×2 (0 baris data terlihat) di kiri atas, grafik di sebelahnya, KPI di bawahnya.
+  const T = { i: "t", x: 0, y: 0, w: 2, h: 2 };
+  const K = { i: "k", x: 2, y: 0, w: 4, h: 4 };
+  const P = { i: "p", x: 0, y: 2, w: 2, h: 2 };
+  const types = new Map([
+    ["t", "table"],
+    ["k", "bar"],
+    ["p", "kpi"],
+  ]);
+  const TABLE_MIN = minSizeOf("table");
+
+  it("tabel minimal 3×4; jenis lain, widget kosong, dan jenis tak dikenal 2×2", () => {
+    expect(TABLE_MIN).toEqual({ w: 3, h: 4 });
+    for (const t of ["bar", "line", "pie", "kpi", "empty", "radar", "constructor", undefined]) {
+      expect(minSizeOf(t)).toEqual({ w: 2, h: 2 });
+    }
+    // Widget baru (4×4) sudah cukup besar untuk tabel.
+    expect(DEFAULT_WIDGET_SIZE.w).toBeGreaterThanOrEqual(TABLE_MIN.w);
+    expect(DEFAULT_WIDGET_SIZE.h).toBeGreaterThanOrEqual(TABLE_MIN.h);
+  });
+
+  it("tabel 2×2 lama diperbesar; widget lain tetap ukurannya dan tidak tumpang tindih", () => {
+    const fitted = fitMinSizes([T, K, P], types);
+    expect(byId(fitted, "t")).toMatchObject({ w: 3, h: 4 });
+    expect(byId(fitted, "k")).toMatchObject({ w: 4, h: 4 });
+    expect(byId(fitted, "p")).toMatchObject({ w: 2, h: 2 });
+    expect(fitted.map((it) => it.i)).toEqual(["t", "k", "p"]);
+    expect(overlaps(fitted)).toBe(false);
+    expect(fitted.every((it) => it.x >= 0 && it.x + it.w <= 12)).toBe(true);
+    // Idempoten: tata letak yang sudah cukup besar tidak berubah (array yang sama).
+    expect(fitMinSizes(fitted, types)).toBe(fitted);
+    expect(fitMinSizes([K, P], types)).toEqual([K, P]);
+  });
+
+  it("tabel sempit di tepi kanan bergeser ke kiri agar tetap di dalam grid", () => {
+    const fitted = fitMinSizes([{ i: "t", x: 10, y: 0, w: 2, h: 3 }], types);
+    expect(byId(fitted, "t")).toEqual({ i: "t", x: 9, y: 0, w: 3, h: 4 });
+  });
+
+  it("jadi tabel di kartu kecil (ganti jenis): fitToWidgets memakai jenis terbaru", () => {
+    const layout = [{ ...P, y: 0 }];
+    expect(fitToWidgets(layout, [{ id: "p", type: "kpi" }])).toBe(layout);
+    expect(byId(fitToWidgets(layout, [{ id: "p", type: "table" }]), "p")).toMatchObject({
+      w: 3,
+      h: 4,
+    });
+  });
+
+  it("muat dari server: reconcileLayout dengan jenis memperbesar tabel; tanpa jenis seperti dulu", () => {
+    const stored = [T, K, P];
+    const ids = ["t", "k", "p"];
+    expect(byId(reconcileLayout(stored, ids), "t")).toMatchObject({ w: 2, h: 2 });
+    const fitted = reconcileLayout(stored, ids, types);
+    expect(byId(fitted, "t")).toMatchObject({ w: 3, h: 4 });
+    expect(overlaps(fitted)).toBe(false);
+  });
+
+  it("tombol panel dan resize tidak mengecilkan tabel di bawah 3×4", () => {
+    const table = { i: "t", x: 0, y: 0, w: 3, h: 4 };
+    expect(resizeItem([table], "t", -1, 0, TABLE_MIN)).toEqual([table]);
+    expect(resizeItem([table], "t", 0, -1, TABLE_MIN)).toEqual([table]);
+    expect(applyStep([table], "t", "shorter", TABLE_MIN)).toEqual([table]);
+    expect(stepAvailability([table], "t", TABLE_MIN)).toMatchObject({
+      narrower: false,
+      shorter: false,
+      wider: true,
+      taller: true,
+    });
+    // Tanpa minimum tabel (jenis lain) langkah yang sama masih mengecilkan.
+    expect(stepAvailability([table], "t")).toMatchObject({ narrower: true, shorter: true });
+    // Lebih besar dari minimum: masih bisa dikecilkan sampai batasnya.
+    expect(byId(resizeItem([{ ...table, h: 6 }], "t", 0, -1, TABLE_MIN), "t").h).toBe(5);
   });
 });

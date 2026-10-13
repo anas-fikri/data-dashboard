@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import { api, type ApiResult } from "./dashboard-api";
-import { sameLayout } from "./layout-ops";
+import { fitToWidgets, sameLayout } from "./layout-ops";
 
 /*
  * Status editor kanvas (T-010). Semua mutasi melewati satu antrean berurutan dan membawa revisi tata
@@ -12,6 +12,8 @@ import { sameLayout } from "./layout-ops";
  * Server menolak revisi lama dengan STALE → editor berhenti mengirim sampai halaman dimuat ulang
  * (tidak pernah menimpa perubahan tab lain). Geser/ubah ukuran disimpan otomatis (debounce); halaman
  * yang ditutup sebelum jeda habis tetap mengirim lewat keepalive. "Urungkan" membatalkan satu langkah.
+ * Setiap tata letak (awal, dari server, hasil geser/urungkan, ganti jenis) dibuat ≥ ukuran minimum
+ * jenis widgetnya (tabel 3×4); tata letak lama hanya diperbesar di tampilan sampai disimpan berikutnya.
  */
 export type SaveState = "saved" | "pending" | "saving" | "error" | "stale";
 type Undo =
@@ -29,12 +31,12 @@ export function useDashboardEditor(o: {
   revision: number;
 }) {
   const [widgets, setWidgetsState] = useState(o.widgets);
-  const [layout, setLayoutState] = useState(o.layout);
+  const [layout, setLayoutState] = useState(() => fitToWidgets(o.layout, o.widgets));
   const [undo, setUndo] = useState<Undo | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
   const [notice, setNotice] = useState<string | null>(null);
   const revision = useRef(o.revision);
-  const latest = useRef(o.layout);
+  const latest = useRef(layout);
   const widgetsNow = useRef(o.widgets);
   /** Ada tata letak yang belum diterima server. */
   const dirty = useRef(false);
@@ -50,9 +52,11 @@ export function useDashboardEditor(o: {
     return next;
   }, []);
 
+  /** Tata letak baru (sudah ≥ minimum jenis tiap widget, lihat fitToWidgets). */
   const setLayout = useCallback((next: LayoutItem[]) => {
-    latest.current = next;
-    setLayoutState(next);
+    const fitted = fitToWidgets(next, widgetsNow.current);
+    latest.current = fitted;
+    setLayoutState(fitted);
   }, []);
   const setWidgets = useCallback((next: WidgetView[]) => {
     widgetsNow.current = next;
@@ -94,7 +98,8 @@ export function useDashboardEditor(o: {
 
   /** Tata letak baru dari geser/ubah ukuran (atau tombol posisi): simpan otomatis setelah jeda. */
   const commitLayout = useCallback(
-    (next: LayoutItem[], recordUndo = true) => {
+    (raw: LayoutItem[], recordUndo = true) => {
+      const next = fitToWidgets(raw, widgetsNow.current);
       // Klik pegangan tanpa bergeser / langkah di tepi grid: tidak ada yang disimpan atau diurungkan.
       if (stale.current || sameLayout(next, latest.current)) return;
       if (recordUndo) setUndo({ kind: "layout", layout: latest.current });
@@ -193,10 +198,12 @@ export function useDashboardEditor(o: {
             w.id === widgetId ? { ...w, type: r.data.type, spec: r.data.spec } : w,
           ),
         );
+        // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
+        commitLayout(latest.current, false);
         setNotice(null);
         return true;
       }),
-    [id, run, failed, setWidgets],
+    [id, run, failed, setWidgets, commitLayout],
   );
 
   const undoLast = useCallback(async () => {

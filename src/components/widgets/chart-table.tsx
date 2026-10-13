@@ -3,16 +3,31 @@
 import { formatMeasure, type ValueType } from "@/features/widgets/format";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
-import { middleTruncate, tableLayout } from "./chart-series";
+import { middleTruncate, tableLayout, type TextMeasure } from "./chart-series";
 
 /*
  * Nilai grafik sebagai tabel (tombol "data" di kepala kartu; cara tanpa hover membaca nilai persis —
  * review H9). Label baris dipendekkan di tengah (unit "…Unit 01"/"…Unit 02" tetap beda) dan minimal
- * 12 karakter; nilai lengkap, atau ringkas di kartu sempit. Kartu yang terlalu sempit untuk dua kolom:
- * baris ditumpuk (label di atas, nilai di bawah) — peran ARIA eksplisit menjaga semantik tabel saat
- * tampilannya diubah CSS. Teks lengkap selalu di title dan untuk pembaca layar. Cincin fokus digambar
- * di pembungkus (di atas header lengket), sama dengan tabel widget.
+ * 12 karakter; nilai lengkap, atau ringkas di kartu sempit — kolom nilai selebar teks yang diukur
+ * (canvas, font halaman) sehingga nilai yang muat tidak terpotong; kepala kolom boleh dua baris. Kartu
+ * yang terlalu sempit untuk dua kolom: baris ditumpuk (label di atas, nilai di bawah) — peran ARIA
+ * eksplisit menjaga semantik tabel saat tampilannya diubah CSS. Teks lengkap selalu di title dan untuk
+ * pembaca layar. Cincin fokus digambar di pembungkus (di atas header lengket), sama dengan tabel widget.
  */
+let ctx: CanvasRenderingContext2D | null | undefined;
+
+/** Lebar teks 14 px dengan font halaman (kepala kolom font-medium); undefined di luar browser. */
+function canvasMeasure(): TextMeasure | undefined {
+  if (typeof document === "undefined") return undefined;
+  ctx ??= document.createElement("canvas").getContext("2d");
+  const c = ctx;
+  if (!c) return undefined;
+  const family = getComputedStyle(document.body).fontFamily;
+  return (text, header) => {
+    c.font = `${header ? 500 : 400} 14px ${family}`;
+    return c.measureText(text).width;
+  };
+}
 export function ChartTable({
   rows,
   dimensionLabel,
@@ -33,7 +48,11 @@ export function ChartTable({
 }) {
   const full = rows.map((r) => formatMeasure(r.value, valueType, format));
   const short = rows.map((r) => formatMeasure(r.value, valueType, format, true));
-  const layout = tableLayout(width, full, short);
+  const layout = tableLayout(width, full, short, {
+    header: measureLabel,
+    labelLength: rows.reduce((m, r) => Math.max(m, r.label.length), 0),
+    measure: width ? canvasMeasure() : undefined,
+  });
   const shown = layout.compact ? short : full;
   const stacked = layout.stacked;
   const role = (r: string) => (stacked ? { role: r } : {});
@@ -66,30 +85,30 @@ export function ChartTable({
           )}
           <thead className={cn("sticky top-0 bg-card", stacked && "block")} {...role("rowgroup")}>
             <tr
-              className={cn("border-b text-left", stacked && "flex justify-between")}
+              // Bertumpuk: kepala kolom juga bertumpuk (label di atas, nilai di bawah) — dua kepala
+              // berdampingan di kartu ±100 px terpotong.
+              className={cn("border-b text-left", stacked && "flex flex-col")}
               {...role("row")}
             >
+              {/* Kepala kolom sampai dua baris ("Jumlah / baris"), bukan "J…"; lengkap di title. */}
               <th
                 scope="col"
-                className={cn(
-                  "truncate px-3 py-1.5 font-medium",
-                  stacked && "block min-w-0 flex-1",
-                )}
+                className={cn("px-3 py-1.5 align-bottom font-medium", stacked && "block pb-0")}
                 title={dimensionLabel}
                 {...role("columnheader")}
               >
-                {dimensionLabel}
+                <span className="line-clamp-2 break-words">{dimensionLabel}</span>
               </th>
               <th
                 scope="col"
                 className={cn(
-                  "truncate px-3 py-1.5 text-right font-medium",
-                  stacked && "block min-w-0 flex-1",
+                  "px-3 py-1.5 text-right align-bottom font-medium",
+                  stacked && "block pt-0",
                 )}
                 title={measureLabel}
                 {...role("columnheader")}
               >
-                {measureLabel}
+                <span className="line-clamp-2 break-words">{measureLabel}</span>
               </th>
             </tr>
           </thead>

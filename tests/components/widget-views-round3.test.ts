@@ -351,3 +351,49 @@ describe("putaran 4", () => {
     });
   });
 });
+
+describe("putaran 5", () => {
+  describe("kolom hitungan kurir: penanda kata-pertama + kata status = besaran", () => {
+    it.each([
+      "Resi Terkirim",
+      "Resi Masuk",
+      "Resi Gagal",
+      "Resi Retur",
+      "AWB Terkirim",
+      "AWB Masuk Harian",
+      "Telepon Masuk",
+      "Telp Keluar",
+      "Paket Diterima",
+      "resi_terkirim",
+      "resiTerkirim",
+      "awb-dikirim",
+    ])("%s → tetap berpemisah ribuan", (name) => {
+      expect(isIdLikeName(name)).toBe(false);
+    });
+
+    it.each([
+      // Tanpa kata status: tetap kode/nomor seperti putaran 3–4.
+      "Resi",
+      "AWB",
+      "No Resi",
+      "Nomor AWB",
+      "Resi Pengirim",
+      "Telepon Kantor",
+      "Kode Pos",
+      "Tahun Lahir",
+      // Penanda kuat di depan menang: nomor resi dari pengiriman yang terkirim.
+      "No Resi Terkirim",
+    ])("%s → tanpa pemisah ribuan", (name) => {
+      expect(isIdLikeName(name)).toBe(true);
+    });
+
+    it("tabel dan KPI maks: hitungan resi berpemisah, nomor resi tidak", () => {
+      expect(kpiTexts(12398, "integer", DEFAULT_FORMAT, "max", "Maksimum Resi Terkirim").full).toBe(
+        "12.398",
+      );
+      expect(kpiTexts(12398, "integer", DEFAULT_FORMAT, "max", "Maksimum No Resi").full).toBe(
+        "12398",
+      );
+    });
+  });
+});

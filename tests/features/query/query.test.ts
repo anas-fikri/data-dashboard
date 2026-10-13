@@ -896,3 +896,48 @@ describe("regresi review T-009 putaran 2", () => {
     }
   });
 });
+
+describe("verifikasi T-011 putaran 4: total grup kosong = 0 (SUMIF)", () => {
+  it("grup yang semua nilainya kosong ikut 'Terkecil' sebagai 0, bukan dibuang (NULLS LAST)", async () => {
+    const file = join(root, "kosong.parquet");
+    const db = await DuckDBInstance.create(":memory:");
+    const c = await db.connect();
+    await c.run(
+      `COPY (SELECT (i + 2)::INTEGER AS _row,
+                    ['A','B','C'][i % 3 + 1] AS c1,
+                    CASE WHEN i % 3 = 2 THEN NULL ELSE (i + 1)::DOUBLE END AS c2
+             FROM range(30) t(i)) TO '${file}' (FORMAT parquet)`,
+    );
+    c.closeSync();
+    db.closeSync();
+    const repo: QueryRepo = {
+      widget: async () => null,
+      ownedDataset: async () => ({ activeVersionId: VER }),
+      sheet: async () => ({
+        typedKey: "parquet/kosong",
+        schemaRevision: 1,
+        schema: [col(1, "Cabang", "text"), col(2, "Omzet", "decimal")],
+      }),
+    };
+    const parquet = new ParquetCache({
+      dir: join(root, "cache"),
+      maxBytes: 1 << 30,
+      download: async (_k, dest) => copyFileSync(file, dest),
+    });
+    const r = await runQuery(
+      USER,
+      body({
+        dimensions: [{ column: "Cabang" }],
+        measures: [{ agg: "sum", column: "Omzet" }],
+        sort: [{ by: "m0", dir: "asc" }],
+        limit: 2,
+      }),
+      deps({ repo, parquet }),
+    );
+    // C semuanya kosong → 0 dan menjadi yang terkecil (seperti SUMIF Excel).
+    expect(r.ok && r.rows).toEqual([
+      ["C", 0],
+      ["A", 145],
+    ]);
+  });
+});

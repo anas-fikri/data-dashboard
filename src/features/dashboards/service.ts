@@ -16,6 +16,7 @@ import {
   bottomOf,
   cleanName,
   compactLayout,
+  fitMinSizes,
   layoutBodySchema,
   positionSchema,
   reconcileLayout,
@@ -209,6 +210,7 @@ export const getDashboard = cache(async function getDashboard(
     layout: reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
+      typesOf(d.widgets),
     ),
   };
 });
@@ -348,11 +350,18 @@ async function locked<T>(fn: (tx: Tx) => Promise<T>): Promise<T | "BUSY" | null>
  * Dashboard milik user, dikunci untuk SEMUA perubahan tata letak/widget (tambah, hapus, simpan
  * otomatis) sehingga revisi tidak pernah dibagikan dua kali (review T-010 L1).
  */
+const typesOf = (widgets: { id: string; type: string }[]) =>
+  new Map(widgets.map((w) => [w.id, w.type]));
+
 async function lockedDashboard(tx: Tx, ownerId: string, dashboardId: string) {
   await tx.$executeRaw(lockKey("dashboard", dashboardId));
   return tx.dashboard.findFirst({
     where: { id: dashboardId, dataset: { ownerId } },
-    select: { layout: true, layoutRevision: true, widgets: { select: { id: true } } },
+    select: {
+      layout: true,
+      layoutRevision: true,
+      widgets: { select: { id: true, type: true } },
+    },
   });
 }
 
@@ -430,6 +439,7 @@ export async function addWidget(
     const current = reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
+      typesOf(d.widgets),
     );
     const widget = await tx.widget.create({
       data: {
@@ -488,6 +498,7 @@ export async function deleteWidget(
       reconcileLayout(
         d.layout,
         d.widgets.map((w) => w.id),
+        typesOf(d.widgets),
       ).filter((it) => it.i !== widgetId),
     );
     const layoutRevision = d.layoutRevision + 1;
@@ -585,7 +596,9 @@ export async function saveLayout(
     const ids = new Set(d.widgets.map((w) => w.id));
     if (items.length !== ids.size || items.some((it) => !ids.has(it.i))) return "STALE" as const;
     const layoutRevision = baseRevision + 1;
-    await writeLayout(tx, dashboardId, compactLayout(items), layoutRevision);
+    // Ukuran minimum per jenis (tabel 3×4) juga dijaga di server, bukan hanya di kanvas.
+    const fitted = fitMinSizes(compactLayout(items), typesOf(d.widgets));
+    await writeLayout(tx, dashboardId, fitted, layoutRevision);
     return { layoutRevision };
   });
   if (r === "BUSY") return busy();

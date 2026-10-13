@@ -80,12 +80,16 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   for (const d of plan.dimensions) select.push(`${dimensionExpr(d)} AS ${ident(d.key)}`);
   for (const m of plan.measures) {
     const c = m.col ? ident(m.col) : "*";
+    // Total seperti SUMIF Excel: grup yang semua nilainya kosong = 0 (bukan NULL), sehingga
+    // urutan/top-N ("Terkecil") sama dengan yang digambar grafik (verifikasi T-011 putaran 4).
     const e =
       m.agg === "count"
         ? `count(${c})`
         : m.agg === "count_distinct"
           ? `count(DISTINCT ${c})`
-          : `${m.agg}(${c})`;
+          : m.agg === "sum"
+            ? `coalesce(sum(${c}), 0)`
+            : `${m.agg}(${c})`;
     select.push(`${e} AS ${ident(m.key)}`);
   }
 
@@ -136,7 +140,7 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   const e = dimensionExpr(d);
   const grand =
     m.agg === "sum"
-      ? `sum(${ident(m.col!)})`
+      ? `coalesce(sum(${ident(m.col!)}), 0)`
       : m.agg === "count"
         ? `count(${m.col ? ident(m.col) : "*"})`
         : "NULL";

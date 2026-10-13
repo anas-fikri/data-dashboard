@@ -143,15 +143,22 @@ describe("garis per minggu/bulan/kuartal/tahun: sumbu kategori periode kontinu",
 
 describe("urutan titik garis", () => {
   const rows = (keys: unknown[]) => keys.map((k) => [k, 1] as const);
-  it("dimensi angka: 1..12 sebagai angka, bukan 1,10,11,12,2", () => {
-    const shuffled = rows([12, 1, 10, 2, 11, 3, 9, 4, 8, 5, 7, 6]);
-    expect(lineOrder(shuffled, "integer", "label_desc").map((r) => r[0])).toEqual([
+  // Putaran 5: urutan label server (SQL nocase.noaccent / angka sebagai angka) dipakai apa adanya.
+  it("dimensi angka Z→A dari server (12..1) digambar naik 1..12", () => {
+    const desc = rows([12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1]);
+    expect(lineOrder(desc, "integer", "label_desc").map((r) => r[0])).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
     ]);
   });
-  it("teks: collation id tanpa beda huruf besar/aksen; kosong di akhir", () => {
-    const out = lineOrder(rows(["Zebra", null, "apel", "Ábaco", "APEL"]), "text", "label_asc");
-    expect(out.map((r) => r[0])).toEqual(["Ábaco", "apel", "APEL", "Zebra", null]);
+  it("teks: urutan server dipertahankan; kosong di akhir", () => {
+    const server = rows(["Ábaco", "apel", "APEL", null, "Zebra"]);
+    expect(lineOrder(server, "text", "label_asc").map((r) => r[0])).toEqual([
+      "Ábaco",
+      "apel",
+      "APEL",
+      "Zebra",
+      null,
+    ]);
   });
   it("tanggal selalu kronologis; urutan nilai mempertahankan urutan server", () => {
     const dates = rows(["2025-10-01", "2025-08-01", "2025-09-01"]);
@@ -893,9 +900,10 @@ describe("putaran 4", () => {
       });
     });
 
-    it("teks pada garis: urutan per karakter seperti SQL (Unit 10 sebelum Unit 2); angka tetap angka", () => {
+    it("teks pada garis: urutan server (seperti SQL, batang, tabel); angka tetap angka", () => {
       const rows = (keys: unknown[]) => keys.map((k) => [k, 1] as const);
-      const units = rows(["Unit 2", "unit 3", "Unit 10", "Unit 1", "Unit 11"]);
+      // Urutan /api/query untuk A→Z (nocase.noaccent): "Unit 10" sebelum "Unit 2".
+      const units = rows(["Unit 1", "Unit 10", "Unit 11", "Unit 2", "unit 3"]);
       expect(lineOrder(units, "text", "label_asc").map((r) => r[0])).toEqual([
         "Unit 1",
         "Unit 10",
@@ -903,7 +911,7 @@ describe("putaran 4", () => {
         "Unit 2",
         "unit 3",
       ]);
-      expect(lineOrder(rows([10, 2]), "integer", "label_asc").map((r) => r[0])).toEqual([2, 10]);
+      expect(lineOrder(rows([2, 10]), "integer", "label_asc").map((r) => r[0])).toEqual([2, 10]);
     });
 
     it("tabel data di kartu 177 px: label ≥ 12 karakter atau baris ditumpuk (bukan 'Ka…01')", () => {
@@ -945,3 +953,373 @@ function top5() {
     ["E", 1],
   ];
 }
+
+describe("putaran 5", () => {
+  const withBox = (size: { width: number; height: number }, run: () => void) => {
+    box.size = size;
+    try {
+      run();
+    } finally {
+      box.size = null;
+    }
+  };
+  const svgOf = (o: unknown, width: number, height: number) => {
+    const c = echarts.init(null, null, { renderer: "svg", ssr: true, width, height });
+    c.setOption(o as echarts.EChartsCoreOption);
+    const svg = c.renderToSVGString();
+    c.dispose();
+    return svg;
+  };
+
+  describe("tabel data: kolom nilai selebar teks terukur, kepala kolom tidak 'J…'", () => {
+    // Lebar tiruan font sistem 14 px (angka tabular ±8,7 px; kepala kolom font-medium ±7,2 px).
+    const charPx = (ch: string) =>
+      /\d/.test(ch) ? 8.7 : /[.,\s]/.test(ch) ? 4 : ch === "%" ? 12 : 8;
+    const font = (t: string, header: boolean) =>
+      [...t].reduce((w, ch) => w + (header ? 7.2 : charPx(ch)), 0);
+    const widest = (t: readonly string[]) => Math.max(...t.map((s) => font(s, false)));
+    const cases: { header: string; full: string[]; compact?: string[] }[] = [
+      { header: "Jumlah baris", full: ["80", "75", "8"] },
+      { header: "Jumlah baris", full: ["350", "240", "160"] },
+      { header: "Rata-rata Gap", full: ["47,0%", "38,5%"] },
+      {
+        header: "Total Omzet",
+        full: ["Rp 169.028.600", "Rp 8.320.100"],
+        compact: ["Rp 169,03 jt", "Rp 8,32 jt"],
+      },
+    ];
+
+    it("['80'], ['350'], ['47,0%'], Rupiah di 177/373/568 px: nilai dan kepala kolom tidak terpotong", () => {
+      for (const c of cases) {
+        for (const width of [177, 373, 568]) {
+          for (const measure of [font, undefined]) {
+            const l = tableLayout(width, c.full, c.compact ?? c.full, {
+              header: c.header,
+              labelLength: 20,
+              measure,
+            });
+            const shown = l.compact ? c.compact! : c.full;
+            const at = `${c.full[0]} @${width}${measure ? "" : " (perkiraan)"}`;
+            if (l.stacked) {
+              expect(widest(shown), at).toBeLessThanOrEqual(width - 24);
+              continue;
+            }
+            const room = l.valuePx! - 24;
+            expect(widest(shown), at).toBeLessThanOrEqual(room);
+            // Kepala kolom muat paling banyak dua baris ("Jumlah / baris").
+            const words = c.header.split(" ").map((w) => font(w, true));
+            expect(Math.max(...words), at).toBeLessThanOrEqual(room);
+            expect(l.labelChars, at).toBeGreaterThanOrEqual(12);
+          }
+        }
+      }
+      // Kartu lebar: kepala kolom satu baris, nilai lengkap.
+      const wide = tableLayout(568, ["80"], ["80"], { header: "Jumlah baris", measure: font });
+      expect(wide).toMatchObject({ stacked: false, compact: false });
+      expect(wide.valuePx! - 24).toBeGreaterThanOrEqual(font("Jumlah baris", true));
+      expect(tableLayout(373, ["47,0%"], ["47%"], { header: "Rata-rata Gap" })).toMatchObject({
+        stacked: false,
+        compact: false,
+      });
+    });
+
+    it("label pendek (bulan) tidak perlu ditumpuk di kartu 177 px", () => {
+      const l = tableLayout(177, ["80"], ["80"], {
+        header: "Jumlah baris",
+        labelLength: "Jan 2026".length,
+        measure: font,
+      });
+      expect(l.stacked).toBe(false);
+      expect(l.labelChars).toBeGreaterThanOrEqual(8);
+    });
+
+    it("tabel: kepala kolom dua baris (line-clamp), bukan truncate; kolom nilai selebar kepala", () => {
+      withBox({ width: 568, height: 300 }, () => {
+        const d = data([["Kantor A", 80]], {
+          columns: [
+            { key: "d", label: "Kantor", type: "text" },
+            { key: "m", label: "Jumlah baris", type: "count" },
+          ],
+        });
+        const out = html("bar", d, true, spec({ measure: { agg: "count" } }));
+        expect(out).toMatch(
+          /<th scope="col" class="[^"]*text-right[^"]*" title="Jumlah baris"><span class="line-clamp-2 break-words">Jumlah baris<\/span><\/th>/,
+        );
+        expect(out).not.toMatch(/<th scope="col" class="[^"]*truncate/);
+        // Kolom nilai selebar kepala kolom (bukan 40 px untuk "80").
+        const col = /<col style="width:(\d+)px"\/>/.exec(out);
+        expect(Number(col![1])).toBeGreaterThanOrEqual(24 + "Jumlah baris".length * 7);
+      });
+    });
+  });
+
+  describe("total gagal: N teratas, bukan nol karangan", () => {
+    const weeks = (ks: number[]) =>
+      ks.map((k) => new Date(Date.UTC(2026, 0, 5) + k * 7 * 86_400_000).toISOString().slice(0, 10));
+    const lineData = (keys: string[], values: number[], categories?: number): WidgetData => ({
+      columns: [
+        { key: "d", label: "Tanggal", type: "date" },
+        { key: "m", label: "Total Omzet", type: "decimal" },
+      ],
+      rows: keys.map((k, i) => [k, values[i]!]),
+      ...(categories === undefined ? {} : { categories }),
+    });
+    const weekly = (sort: ChartSpec["sort"]) =>
+      spec({ sort, topN: 3, dimension: { column: 1, timeGrain: "week" } });
+
+    it("garis N terbesar tanpa total: celah '(di luar 3 terbesar)', bukan '0 (tidak ada data)'", () => {
+      // Server: 3 minggu bernilai terbesar dari 13 (minggu lain BERISI data).
+      const d = lineData(weeks([0, 3, 12]), [405950, 296900, 284750]);
+      withBox({ width: 568, height: 270 }, () => {
+        const out = html("line", d, false, weekly("value_desc"));
+        expect(out).toContain("3 titik terbesar (jumlah keseluruhan tidak tersedia)");
+        expect(out).toContain("minggu di luar 3 terbesar tidak digambar.");
+        expect(out).not.toContain("tanpa data digambar sebagai 0");
+        expect(out).toMatch(
+          /data-testid="chart-note">Menampilkan 3 titik terbesar \(jumlah keseluruhan tidak tersedia\)</,
+        );
+      });
+      // Opsi yang digambar dari masukan yang sama: celah null, tooltip "di luar".
+      const empty = emptyBucketValue("sum", "value_desc", true);
+      const o = line({ iso: weeks([0, 3, 12]), grain: "week", empty, cut: "top" }, [3, 2, 1]);
+      expect(o.series[0]!.data).toContain(null);
+      expect(o.series[0]!.data).not.toContain(0);
+      expect(o.tooltip.formatter([{ name: "x", value: null, dataIndex: 1 }])).toBe(
+        "x\nOmzet: (di luar 3 terbesar)",
+      );
+      // Total diketahui dan tidak terpotong: minggu kosong tetap 0.
+      withBox({ width: 568, height: 270 }, () => {
+        const known = lineData(weeks([0, 3, 12]), [1, 2, 3], 3);
+        expect(html("line", known, false, weekly("value_desc"))).toContain(
+          "tanpa data digambar sebagai 0",
+        );
+      });
+    });
+
+    it("garis N terakhir (urut label) tanpa total: periode kosong tetap 0, keterangan 'N titik terakhir'", () => {
+      const d = lineData(weeks([0, 3, 12]), [1, 2, 3]);
+      withBox({ width: 568, height: 270 }, () => {
+        const out = html("line", d, false, weekly("label_desc"));
+        expect(out).toContain("tanpa data digambar sebagai 0");
+        expect(out).toContain("3 titik terakhir (jumlah keseluruhan tidak tersedia)");
+      });
+    });
+
+    it("batang tanpa total dan baris = batas N: tidak mengaku 'N kategori' lengkap", () => {
+      withBox({ width: 400, height: 270 }, () => {
+        const out = html("bar", data(top5()));
+        expect(out).toContain(
+          "Grafik batang: Nilai per Jenis, 5 kategori terbesar (jumlah keseluruhan tidak tersedia).",
+        );
+        expect(out).toContain(
+          'data-testid="chart-note">Menampilkan 5 kategori terbesar (jumlah keseluruhan tidak tersedia)<',
+        );
+      });
+      // Baris lebih sedikit dari batas N: semua kategori tampil.
+      expect(html("bar", data(top5().slice(0, 3)))).toContain("Nilai per Jenis, 3 kategori.");
+      expect(html("bar", data(top5()), false, spec({ sort: "value_asc" }))).toContain(
+        "5 kategori terkecil (jumlah keseluruhan tidak tersedia)",
+      );
+    });
+  });
+
+  describe("garis dan sumbu", () => {
+    type Sym = { showSymbol: boolean; showAllSymbol?: boolean };
+
+    it("ada periode yang diisi: semua simbol titik berisi data tampil (tidak dijarangkan)", () => {
+      const iso = ["2026-01-05", "2026-03-02", "2026-04-27", "2026-06-15"];
+      const o = line({ iso, grain: "week", empty: 0 }, [3, 2, 4, 1], { format: RP });
+      expect(o.series[0] as unknown as Sym).toMatchObject({
+        showSymbol: true,
+        showAllSymbol: true,
+      });
+      // Tanpa periode yang diisi: perilaku ECharts biasa.
+      const full = line({ iso: ["2026-01-05", "2026-01-12"], grain: "week", empty: 0 }, [1, 2]);
+      expect((full.series[0] as unknown as Sym).showAllSymbol).toBeUndefined();
+      // > 60 periode, ≤ 60 yang berisi data: simbol tetap tampil.
+      const sparse = line({ iso: ["2024-01-01", "2026-01-01"], grain: "month", empty: 0 }, [1, 2]);
+      expect(sparse.series[0] as unknown as Sym).toMatchObject({
+        showSymbol: true,
+        showAllSymbol: true,
+      });
+    });
+
+    it("sumbu waktu (hari/cap waktu): ruang kanan untuk label terakhir; teks tidak keluar SVG 150–210 px", () => {
+      const days = [0, 3, 9, 20, 29].map((k) =>
+        new Date(Date.UTC(2026, 4, 3) + k * 86_400_000).toISOString().slice(0, 10),
+      );
+      const stamps = ["2025-12-31T06:00:00", "2026-01-01T12:00:00", "2026-01-02T12:00:00"];
+      const times: NonNullable<ChartInput["time"]>[] = [
+        { iso: days, grain: "day", empty: 0 },
+        { iso: stamps, dimType: "timestamp" },
+      ];
+      for (const time of times) {
+        for (const width of [150, 178, 208]) {
+          const o = chartOption(
+            {
+              type: "line",
+              labels: time.iso.map(String),
+              values: time.iso.map((_, k) => 1e5 * (k + 1)),
+              measureLabel: "Omzet",
+              dimensionLabel: "Tanggal",
+              format: RP,
+              time,
+              reducedMotion: true,
+            },
+            theme,
+            { width, height: 81 },
+          ) as unknown as { grid: { right: number } };
+          expect(o.grid.right).toBeGreaterThan(16);
+          expect(o.grid.right).toBeLessThanOrEqual(width * 0.2);
+          const svg = svgOf(o, width, 81);
+          for (const m of svg.matchAll(
+            /text-anchor="(middle|end)"[^>]*translate\(([\d.]+) [\d.]+\)[^>]*>([^<]+)</g,
+          )) {
+            const half = m[3]!.length * 3.3;
+            const right = Number(m[2]) + (m[1] === "middle" ? half : 0);
+            expect(right, `${m[3]} @${width}`).toBeLessThanOrEqual(width);
+          }
+        }
+      }
+    });
+
+    it("satu hari di kotak pendek: tanggal ikut di label ('31 Des 10:00'), tidak hilang", () => {
+      const times = ["06:00", "10:00", "18:00", "21:00"].map((t) => `2025-12-31T${t}:00`);
+      type T = { xAxis: { name?: string; axisLabel: { formatter: (ms: number) => string } } };
+      const short = chartOption(
+        {
+          type: "line",
+          labels: times,
+          values: [1, 2, 3, 4],
+          measureLabel: "Jumlah",
+          dimensionLabel: "Waktu",
+          format: AUTO,
+          time: { iso: times, dimType: "timestamp" },
+          reducedMotion: true,
+        },
+        theme,
+        { width: 178, height: 81 },
+      ) as unknown as T;
+      expect(short.xAxis.name).toBeUndefined();
+      expect(short.xAxis.axisLabel.formatter(Date.UTC(2025, 11, 31, 10))).toBe("31 Des 10:00");
+    });
+
+    it("sumbu periode: jarak label rata (tanpa celah ganda sebelum label terbaru)", () => {
+      type Cat = {
+        xAxis: { axisLabel: { interval: (k: number) => boolean; alignMaxLabel?: string } };
+      };
+      const shown = (n: number, width: number) => {
+        const iso = Array.from({ length: n }, (_, k) =>
+          new Date(Date.UTC(2025, k, 1)).toISOString().slice(0, 10),
+        );
+        const o = chartOption(
+          {
+            type: "line",
+            labels: iso,
+            values: iso.map((_, k) => 1e6 * (k + 1)),
+            measureLabel: "Omzet",
+            dimensionLabel: "Bulan",
+            format: RP,
+            time: { iso, grain: "month", empty: 0 },
+            reducedMotion: true,
+          },
+          theme,
+          { width, height: 200 },
+        ) as unknown as Cat;
+        return {
+          ks: iso.map((_, k) => k).filter((k) => o.xAxis.axisLabel.interval(k)),
+          align: o.xAxis.axisLabel.alignMaxLabel,
+        };
+      };
+      // 6 bulan di kartu lebar: semua label, label terakhir rata tengah (muat).
+      expect(shown(6, 568)).toEqual({ ks: [0, 1, 2, 3, 4, 5], align: undefined });
+      for (const [n, width] of [
+        [21, 568],
+        [21, 450],
+        [26, 400],
+      ] as const) {
+        const { ks, align } = shown(n, width);
+        expect(ks.at(-1)).toBe(n - 1);
+        expect(align).toBe("right");
+        // Jarak antarlabel sama (label pertama boleh lebih dekat bila ditambahkan).
+        const gaps = ks.slice(1).map((k, i) => k - ks[i]!);
+        expect(new Set(gaps.slice(1)).size, `${n}@${width}: ${ks.join(",")}`).toBeLessThanOrEqual(
+          1,
+        );
+      }
+    });
+  });
+
+  describe("daftar peringkat dan urutan", () => {
+    it("pai: '+N kategori lain' (bukan 'lainnya' kedua di samping irisan Lainnya)", () => {
+      withBox({ width: 176, height: 82 }, () => {
+        const out = html("pie", data(top5(), { categories: 40, grandTotal: 100 }));
+        expect(out).toContain('data-testid="chart-ranked"');
+        expect(out).toMatch(/\+\d+ kategori lain</);
+        expect(out).not.toMatch(/\+\d+ lainnya/);
+        expect(out).toContain('title="Lainnya"');
+      });
+    });
+
+    it("kartu < 110 px: label bertumpuk dipendekkan sesuai lebar, tidak melewati kartu", () => {
+      const d: WidgetData = {
+        columns: [
+          { key: "d", label: "Waktu", type: "timestamp" },
+          { key: "m", label: "Jumlah baris", type: "count" },
+        ],
+        rows: ["2025-12-31T21:00:00", "2025-12-31T18:00:00", "2025-12-31T10:00:00"].map((t, k) => [
+          t,
+          k + 1,
+        ]),
+      };
+      const s = spec({ sort: "label_desc", topN: 365, measure: { agg: "count" } });
+      for (const width of [66, 96, 109]) {
+        withBox({ width, height: 272 }, () => {
+          const out = html("line", d, false, s);
+          const labels = [
+            ...out.matchAll(/<span class="truncate text-muted-foreground" title="[^"]+">([^<]+)</g),
+          ].map((m) => m[1]!);
+          expect(labels.length).toBeGreaterThan(0);
+          // ±7 px per karakter teks 12 px; isi daftar = lebar − px-2.
+          for (const l of labels) {
+            expect(l.length * 7, `${l} @${width}`).toBeLessThanOrEqual(Math.max(width - 16, 42));
+          }
+        });
+      }
+    });
+
+    it("teks pada garis: urutan server ('Unit-5' sebelum 'Unit_4'); Z→A dibalik, kosong di akhir", () => {
+      const rows = (keys: unknown[]) => keys.map((k) => [k, 1] as const);
+      // ORDER BY v COLLATE nocase.noaccent, v (DuckDB) — bukan urutan ICU ('_' sebelum '-').
+      const asc = rows(["unit 3", "Unit-5", "Unit_4", "KODE 01", "KODE-01", "KODE.01"]);
+      expect(lineOrder(asc, "text", "label_asc").map((r) => r[0])).toEqual(asc.map((r) => r[0]));
+      const desc = rows(["Unit_4", "Unit-5", "unit 3", null]);
+      expect(lineOrder(desc, "text", "label_desc").map((r) => r[0])).toEqual([
+        "unit 3",
+        "Unit-5",
+        "Unit_4",
+        null,
+      ]);
+    });
+  });
+
+  it("ringkas mengikuti desimal pilihan untuk nilai yang tidak disingkat (sama dengan title)", () => {
+    const pairs: [number, ChartSpec["format"]][] = [
+      [12.345, RP],
+      [0.125, RP],
+      [0.004, { style: "number", decimals: 0 }],
+      [0.468, { style: "percent", decimals: 0 }],
+      [0.468, { style: "percent", decimals: 1 }],
+    ];
+    for (const [v, f] of pairs) {
+      expect(formatMeasure(v, "decimal", f, true), `${v} ${f.style}`).toBe(
+        formatMeasure(v, "decimal", f),
+      );
+    }
+    expect(formatCompact(12.345, RP)).toBe("Rp 12");
+    // Otomatis dan nilai besar tetap seperti sebelumnya.
+    expect(formatCompact(0.004, AUTO)).toBe("0,004");
+    expect(formatCompact(12.345, AUTO)).toBe("12,35");
+    expect(formatCompact(405950, RP)).toBe("Rp 405,95 rb");
+  });
+});
