@@ -11,7 +11,7 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T04:45:27Z"
+updated: "2026-10-13T05:23:24Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -47,11 +47,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-13T03:15:56Z"
       findings: 13
+    - "n": 8
+      by: claude-verify-workflow
+      at: "2026-10-13T04:46:22Z"
+      findings: 6
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 32431
+    duration_ms: 33894
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -73,13 +77,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791866704822,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791866704845,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791868980703,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791868980725,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  31 passed (31)
-            Tests  567 passed (567)
-         Start at  11:45:02
-         Duration  22.90s (tests 89%, import 7%, transform 4%)
+            Tests  574 passed (574)
+         Start at  12:22:58
+         Duration  24.56s (tests 89%, import 7%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -87,8 +91,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T04:45:27Z"
-    tree: fd02d4915713978a2b12dbd94de69d6187346e0a6d04a0064336448e4bef75ec
+    at: "2026-10-13T05:23:24Z"
+    tree: ce6e8ff2492d3cfaad17c99d4688bd3f8c7dd295283515b99ff38921c431c264
 ---
 
 ## Objective
@@ -149,6 +153,7 @@ Panel konfigurasi: sheet, dimensi, ukuran + agregasi (sum/avg/count/min/max/coun
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:56:59Z Kolom sort tabel divalidasi terhadap kolom widget, bukan seluruh skema.
 - 2026-10-12T14:28:33Z Dari review T-010 (L6): urungkan hapus widget saat ini memulihkan judul dan posisi saja karena widget masih kosong. Begitu widget punya type/spec, urungkan hapus wajib memulihkan type dan spec juga (dikirim di body restore, validasi sama dengan buat).
+- 2026-10-13T05:07:29Z Ukuran minimum widget tabel 3x4 (verifikasi putaran 4–6): dijaga di kanvas (resize, ubah jenis → simpan tata letak), di server pada getDashboard/addWidget/deleteWidget/saveLayout (fitMinSizes). configureWidget sengaja tidak menulis tata letak (menaikkan revisi di luar editor akan memicu STALE); kanvas menyimpan tata letak yang sudah diperbesar setelah ubah jenis dan semua jalur baca memperbesar, jadi selisih simpan-vs-tampil hanya sementara dan tidak terlihat pengguna.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

@@ -21,10 +21,13 @@ export function isoToUtcMs(iso: string): number | null {
 
 export const msToIso = (ms: number) => new Date(ms).toISOString().slice(0, 19);
 
-/** "Kantor PCP Express Gambir Unit 11" → "Kantor P…bir Unit 11": awal + akhir tetap terlihat. */
-export function middleTruncate(text: string, maxChars: number): string {
+/**
+ * "Kantor PCP Express Gambir Unit 11" → "Kantor P…bir Unit 11": awal + akhir tetap terlihat.
+ * `tailShare`: bagian akhir yang dipertahankan (0,55; 1 = hanya akhir, "…12/25 18:00").
+ */
+export function middleTruncate(text: string, maxChars: number, tailShare = 0.55): string {
   if (text.length <= maxChars || maxChars < 5) return text;
-  const tail = Math.ceil((maxChars - 1) * 0.55);
+  const tail = Math.ceil((maxChars - 1) * tailShare);
   const head = maxChars - 1 - tail;
   return `${text.slice(0, head).trimEnd()}…${text.slice(text.length - tail).trimStart()}`;
 }
@@ -225,30 +228,35 @@ export function rankedItems<T extends { value: number | null; others?: boolean }
 }
 
 /** "Kantor P…Unit 11" sependek yang perlu agar muat `room` px. */
-function middleFit(text: string, room: number, width: (t: string) => number): string {
+function middleFit(
+  text: string,
+  room: number,
+  width: (t: string) => number,
+  tailShare?: number,
+): string {
   const start = Math.min(text.length - 1, Math.ceil((text.length * room) / width(text)) + 2);
   for (let n = start; n >= 5; n--) {
-    const t = middleTruncate(text, n);
+    const t = middleTruncate(text, n, tailShare);
     if (width(t) <= room) return t;
   }
-  return middleTruncate(text, 5);
+  return middleTruncate(text, 5, tailShare);
 }
 
-/** "Mg 15/6/26…" — dipotong di akhir; upaya terakhir untuk tanggal. */
-function endFit(text: string, room: number, width: (t: string) => number): string {
-  for (let k = text.length - 1; k > 1; k--) {
-    const t = `${text.slice(0, k).trimEnd()}…`;
-    if (width(t) <= room) return t;
-  }
-  return `${text.slice(0, 1)}…`;
-}
+/**
+ * Bagian akhir yang dipertahankan saat label tanggal dipotong di tengah, dicoba berurutan sampai label
+ * tidak kembar: awal + akhir ("31/1…5 18:00"), lalu makin banyak akhir (jam yang membedakan baris di
+ * hari yang sama). Tanggal tidak pernah dipotong di akhir.
+ */
+const DATE_TAIL_SHARES = [0.55, 0.7, 0.85, 1, 0.4];
 
 /**
  * Label daftar peringkat yang muat di `rooms[k]` px (`width` = lebar terukur teks 12 px). Teks: utuh
  * bila muat, selain itu dipendekkan di tengah seperlunya. Tanggal (`forms` dari dateLabelForms,
- * terpanjang dulu): bentuk pertama yang muat untuk SEMUA baris — periode berbeda tidak pernah menjadi
- * teks yang sama ("Mg 2 Mar" / "Mg 23 Mar"); bentuk terpendek dipotong di akhir hanya bila tetap tidak
- * muat.
+ * terpanjang dulu): bentuk pertama yang muat untuk SEMUA baris tanggal dan tetap membedakan semua
+ * periode yang labelnya berbeda; label yang muat tidak pernah dipendekkan. Tidak ada yang muat: bentuk
+ * pembeda yang paling sedikit melebihi ruangnya, baris yang tidak muat dipotong di tengah (awal dan akhir
+ * tetap terlihat), dan bila masih ada yang kembar, bagian akhirnya diperbanyak — periode berbeda tidak
+ * menjadi teks yang sama ("31/12/25 1…" untuk 18:00 dan 15:15).
  */
 export function rankedLabels(
   forms: readonly (readonly string[])[],
@@ -257,9 +265,25 @@ export function rankedLabels(
   dates: boolean,
 ): string[] {
   const fits = (t: string, k: number) => width(t) <= rooms[k]!;
-  if (!dates) return forms[0]!.map((t, k) => (fits(t, k) ? t : middleFit(t, rooms[k]!, width)));
-  const form = forms.find((f) => f.every(fits)) ?? forms.at(-1)!;
-  return form.map((t, k) => (fits(t, k) ? t : endFit(t, rooms[k]!, width)));
+  const fit = (t: string, k: number, tail?: number) =>
+    fits(t, k) ? t : middleFit(t, rooms[k]!, width, tail);
+  const first = forms[0]!;
+  if (!dates) return first.map((t, k) => fit(t, k));
+  const distinct = (f: readonly string[]) => new Set(f).size;
+  const unique = forms.filter((f) => distinct(f) === distinct(first));
+  // Baris bukan tanggal ("Lainnya", "(kosong)") sama di semua bentuk: tidak ikut menentukan bentuk.
+  const dated = first.map((_, k) => forms.some((f) => f[k] !== first[k]));
+  const shown = unique.find((f) => f.every((t, k) => !dated[k] || fits(t, k)));
+  if (shown) return shown.map((t, k) => fit(t, k));
+  const excess = (f: readonly string[]) =>
+    f.reduce((s, t, k) => s + Math.max(0, width(t) - rooms[k]!), 0);
+  const base = unique.reduce((best, f) => (excess(f) <= excess(best) ? f : best));
+  let cut: string[] = [];
+  for (const tail of DATE_TAIL_SHARES) {
+    cut = base.map((t, k) => fit(t, k, tail));
+    if (distinct(cut) === distinct(first)) break;
+  }
+  return cut;
 }
 
 /** Lebar teks 14 px (px) — `header`: kepala kolom (font-medium); null = tidak bisa diukur. */

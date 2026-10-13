@@ -12,7 +12,6 @@ import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import { OTHERS_LABEL, periodFill } from "./chart-option";
 import {
-  MEASURE_SLACK,
   NARROW,
   RANK_WORD,
   chartFit,
@@ -40,11 +39,11 @@ import type { WidgetData } from "./widget-query";
  * peringkat sebagai ganti grafik di kartu < 140 px atau yang terlalu pendek untuk donat ("+N kategori
  * lain" bila baris terpotong — "Lainnya" hanya irisan pai; garis bertanggal terbaru dulu, "+N
  * sebelumnya"; label diukur dan hanya dipendekkan bila memang tidak muat — tanggal memakai bentuk
- * pendek yang tetap membedakan periode, bukan dipotong di tengah). Pai dengan nilai negatif tidak
- * digambar (persen menyesatkan) — diberi penjelasan, dan tabel datanya memuat "Lainnya" bertanda. Tanpa
- * total keseluruhan (query total gagal) dan baris sebanyak batas N: pai memberi tahu persennya hanya
- * dari yang tampil, batang/garis menyebut "N terbesar", daftar peringkat "mungkin ada kategori lain"
- * (bukan seolah lengkap). Durasi j:mm:dd.
+ * pendek yang tetap membedakan periode, dipotong di tengah hanya bila tidak ada yang muat). Pai dengan
+ * nilai negatif tidak digambar (persen menyesatkan) — diberi penjelasan, dan tabel datanya memuat
+ * "Lainnya" bertanda. Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: pai
+ * memberi tahu persennya hanya dari yang tampil, batang/garis menyebut "N terbesar", daftar peringkat
+ * "mungkin ada kategori lain" (bukan seolah lengkap). Durasi j:mm:dd.
  */
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 const CHAR_PX = 6.6;
@@ -201,22 +200,27 @@ export function ChartWidget({
     const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc") && !unsure;
     const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
     // Lebar terukur (canvas, teks 12 px). Halaman memakai angka tabular (tnum) yang tidak dikenal
-    // canvas: label diukur dengan semua angka = "0" (selebar angka tabular; +1 px pembulatan); nilai
-    // (font-medium) memakai kelonggaran tabel data.
+    // canvas: label dan nilai diukur dengan semua angka = "0" (selebar angka tabular) — nilai yang hanya
+    // beda angka memberi ruang label yang sama, baris satu daftar dipendekkan dengan cara yang sama.
+    // Label +1 px pembulatan; nilai (font-medium) +1 px per titik/koma (kerning angka tabular).
     const measure = canvasMeasure(12);
     const px = (t: string, value = false) => {
-      const w = measure?.(value ? t : t.replace(/\d/g, "0"), value);
+      const w = measure?.(t.replace(/\d/g, "0"), value);
       if (typeof w !== "number") return [...t].length * RANK_CHAR_PX;
-      return value ? w * MEASURE_SLACK : w + 1;
+      return value ? w + (t.match(/[.,]/g)?.length ?? 0) : w + 1;
     };
     const listPx = room.width - 16; // px-2
     const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
     const items = ranked.items;
+    // Bentuk pendek ditentukan dari semua baris yang dimuat, bukan hanya yang tampil: tahun/tanggal
+    // dibuang hanya bila memang sama untuk seluruh deret.
+    const iso = (r: Row) => (r.others ? null : (r.iso ?? null));
     const forms = temporal
       ? dateLabelForms(
-          items.map((r) => (r.others ? null : (r.iso ?? null))),
+          items.map(iso),
           spec.dimension.timeGrain,
           dimType === "timestamp" && !spec.dimension.timeGrain,
+          rows.map(iso),
         ).map((f) => f.map((t, k) => t ?? items[k]!.label))
       : [items.map((r) => r.label)];
     const shownLabels = rankedLabels(

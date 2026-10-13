@@ -134,49 +134,63 @@ export function formatDate(iso: string, grain?: string, withTime = false): strin
 
 /**
  * Bentuk label tanggal yang makin pendek untuk daftar sempit, satu bentuk untuk seluruh daftar (dicoba
- * dari yang terpanjang): lengkap ("Mg 2 Mar 2026") → tanpa tahun bila semua tanggal setahun ("Mg 2
- * Mar") → angka hari/bulan ("Mg 2/3"; "2/3/26" bila tahunnya beda) → jam saja bila semua cap waktu di
- * hari yang sama ("21:00"). Bagian yang membedakan periode tidak pernah dibuang — tidak seperti
- * pemotongan di tengah ("Mg 2…ar 2026" untuk 2 dan 23 Mar). null = bukan tanggal (label tetap).
+ * dari yang terpanjang): lengkap ("31 Des 2025 18:00") → tanpa tahun ("31 Des 18:00") → angka bertahun
+ * ("31/12/25 18:00"; "1/26", "K1/26", "Mg 29/12/25") → angka tanpa tahun ("31/12 18:00") → jam saja
+ * ("18:00"). Boleh tidaknya membuang bagian diputuskan dari SEMUA baris yang dimuat (`all`), bukan
+ * hanya yang tampil: tahun dibuang hanya bila semua baris setahun, tanggal hanya bila semua cap waktu di
+ * hari yang sama — satu baris yang tampil dari deret beberapa hari tidak pernah menjadi "13:30" saja.
+ * null = bukan tanggal (label tetap).
  */
 export function dateLabelForms(
   isos: readonly (string | null)[],
   grain?: string,
   withTime = false,
+  all: readonly (string | null)[] = isos,
 ): (string | null)[][] {
-  const parts = isos.map((iso) =>
-    iso ? /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso) : null,
-  );
-  const real = parts.filter((p) => p !== null);
-  const same = (key: (p: RegExpExecArray) => string) => new Set(real.map(key)).size <= 1;
+  const parse = (iso: string | null) =>
+    iso ? /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2}))?/.exec(iso) : null;
+  const parts = isos.map(parse);
+  const loaded = [...all, ...isos].map(parse).filter((p) => p !== null);
+  const same = (key: (p: RegExpExecArray) => string) => new Set(loaded.map(key)).size <= 1;
   const sameYear = same((p) => p[1]!);
-  const form = (f: (p: RegExpExecArray) => string) => parts.map((p) => (p ? f(p) : null));
-  const month = (p: RegExpExecArray) => MONTHS[Number(p[2]) - 1] ?? p[2]!;
-  const time = (p: RegExpExecArray) => (withTime && p[4] ? ` ${p[4]}:${p[5]}` : "");
-  const numeric = (p: RegExpExecArray) =>
-    `${Number(p[3])}/${Number(p[2])}${sameYear ? "" : `/${p[1]!.slice(2)}`}`;
-  const forms = [form((p) => formatDate(p[0], grain, withTime))];
+  const sameDay = withTime && loaded.every((p) => p[4]) && same((p) => p.slice(1, 4).join("-"));
+  type Part = (p: RegExpExecArray) => string;
+  const month: Part = (p) => MONTHS[Number(p[2]) - 1] ?? p[2]!;
+  const time: Part = (p) => (withTime && p[4] ? ` ${p[4]}:${p[5]}` : "");
+  const dayMonth: Part = (p) => `${Number(p[3])}/${Number(p[2])}`;
+  const yy: Part = (p) => p[1]!.slice(2);
+  const quarter: Part = (p) => `K${Math.floor((Number(p[2]) - 1) / 3) + 1}`;
+  // Urutan: lengkap → tanpa tahun (setahun) → angka bertahun → angka tanpa tahun (setahun) → jam saja.
+  const full: Part = (p) => formatDate(p[0], grain, withTime);
+  const yearly = (noYear: Part, withYear: Part, numeric?: Part) =>
+    [full, sameYear && noYear, withYear, sameYear && numeric].filter((f): f is Part => !!f);
+  let candidates: Part[];
   switch (grain) {
     case "year":
+      candidates = [full];
       break;
     case "quarter":
-      if (sameYear) forms.push(form((p) => `K${Math.floor((Number(p[2]) - 1) / 3) + 1}`));
+      candidates = yearly(quarter, (p) => `${quarter(p)}/${yy(p)}`);
       break;
     case "month":
-      if (sameYear) forms.push(form(month));
+      candidates = yearly(month, (p) => `${Number(p[2])}/${yy(p)}`);
       break;
     case "week":
-      if (sameYear) forms.push(form((p) => `Mg ${Number(p[3])} ${month(p)}`));
-      forms.push(form((p) => `Mg ${numeric(p)}`));
+      candidates = yearly(
+        (p) => `Mg ${Number(p[3])} ${month(p)}`,
+        (p) => `Mg ${dayMonth(p)}/${yy(p)}`,
+        (p) => `Mg ${dayMonth(p)}`,
+      );
       break;
     default:
-      if (sameYear) forms.push(form((p) => `${Number(p[3])} ${month(p)}${time(p)}`));
-      forms.push(form((p) => `${numeric(p)}${time(p)}`));
-      if (withTime && real.every((p) => p[4]) && same((p) => p.slice(1, 4).join("-"))) {
-        forms.push(form((p) => `${p[4]}:${p[5]}`));
-      }
+      candidates = yearly(
+        (p) => `${Number(p[3])} ${month(p)}${time(p)}`,
+        (p) => `${dayMonth(p)}/${yy(p)}${time(p)}`,
+        (p) => `${dayMonth(p)}${time(p)}`,
+      );
+      if (sameDay) candidates.push((p) => `${p[4]}:${p[5]}`);
   }
-  return forms;
+  return candidates.map((f) => parts.map((p) => (p ? f(p) : null)));
 }
 
 export type ValueType =

@@ -49,6 +49,14 @@ import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 // Ukuran kotak terukur (ResizeObserver tidak ada di SSR): null = belum diukur, seperti sebelumnya.
 const box = vi.hoisted(() => ({ size: null as { width: number; height: number } | null }));
 vi.mock("@/components/widgets/use-box-size", () => ({ useBoxSize: () => box.size }));
+// Ukuran canvas tiruan untuk daftar peringkat (putaran 7); null = tanpa canvas, seperti SSR.
+const canvas = vi.hoisted(() => ({
+  measure: null as null | ((t: string, bold: boolean) => number),
+}));
+vi.mock("@/components/widgets/chart-table", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/components/widgets/chart-table")>();
+  return { ...actual, canvasMeasure: (px?: number) => canvas.measure ?? actual.canvasMeasure(px) };
+});
 const theme: ChartTheme = {
   colors: ["c1", "c2", "c3", "c4", "c5", "c6"],
   text: "#000",
@@ -1558,16 +1566,22 @@ describe("putaran 6", () => {
       const [kantor] = rankedLabels([["Kantor PCP Express Gambir Unit 11"]], [91], width, false);
       expect(kantor).toMatch(/^Kant.*…Unit 11$/);
       expect(width(kantor!)).toBeLessThanOrEqual(91);
-      // Tanggal yang tetap tidak muat dalam bentuk terpendek: dipotong di akhir, bukan di tengah.
+      // Tanggal yang tetap tidak muat dalam bentuk terpendek (putaran 7): dipotong di tengah, tidak
+      // kembar, muat — tidak pernah dipotong di akhir (bagian pembeda bisa hilang).
       const forms = dateLabelForms(["2025-12-29", "2026-01-05"], "week") as string[][];
       const tight = rankedLabels(forms, [40, 40], (t) => [...t].length * 7, true);
-      for (const t of tight) expect(t).toMatch(/^Mg [^…]*…$/);
+      expect(new Set(tight).size).toBe(2);
+      for (const t of tight) {
+        expect(t).not.toMatch(/…$/);
+        expect([...t].length * 7).toBeLessThanOrEqual(40);
+      }
     });
 
     it("bentuk tanggal pendek: tahun dibuang hanya bila sama, angka bertahun bila beda, jam saja bila sehari", () => {
       expect(dateLabelForms(["2026-03-02", "2026-03-23"], "week")).toEqual([
         ["Mg 2 Mar 2026", "Mg 23 Mar 2026"],
         ["Mg 2 Mar", "Mg 23 Mar"],
+        ["Mg 2/3/26", "Mg 23/3/26"],
         ["Mg 2/3", "Mg 23/3"],
       ]);
       expect(dateLabelForms(["2025-12-29", "2026-01-05"], "day")).toEqual([
@@ -1579,12 +1593,14 @@ describe("putaran 6", () => {
       ).toEqual([
         ["31 Des 2025 21:00", "31 Des 2025 18:00", null],
         ["31 Des 21:00", "31 Des 18:00", null],
+        ["31/12/25 21:00", "31/12/25 18:00", null],
         ["31/12 21:00", "31/12 18:00", null],
         ["21:00", "18:00", null],
       ]);
       expect(dateLabelForms(["2026-01-01", "2026-04-01"], "quarter")).toEqual([
         ["K1 2026", "K2 2026"],
         ["K1", "K2"],
+        ["K1/26", "K2/26"],
       ]);
     });
 
@@ -1667,6 +1683,222 @@ describe("putaran 6", () => {
         );
         expect(more).not.toContain("tabular-nums");
       });
+    });
+  });
+});
+
+describe("putaran 7", () => {
+  const withBox = (size: { width: number; height: number }, run: () => void) => {
+    box.size = size;
+    try {
+      run();
+    } finally {
+      box.size = null;
+    }
+  };
+  const rankedShown = (out: string) =>
+    [
+      ...out.matchAll(
+        /<span class="truncate text-muted-foreground[^"]*" title="[^"]+">(?:<span aria-hidden="true">)?([^<]+)</g,
+      ),
+    ].map((m) => m[1]!);
+  // Lebar canvas font sistem 12 px (diukur di peramban; angka = "0" tabular) + 1 px seperti widget.
+  const GLYPH: Record<string, number> = {
+    "0": 7.56,
+    "/": 3.66,
+    ":": 3.56,
+    " ": 3.38,
+    "…": 9.66,
+    K: 7.9,
+    M: 10.49,
+    g: 7.31,
+    J: 6.46,
+    a: 6.62,
+    n: 7,
+    D: 8.72,
+    e: 6.86,
+    s: 6.28,
+  };
+  const sf = (t: string) =>
+    [...t.replace(/\d/g, "0")].reduce((w, ch) => w + (GLYPH[ch] ?? 7), 0) + 1;
+  const est = (t: string) => [...t].length * 6.6 + 1;
+  const stamps = (isos: string[], values: number[]): WidgetData => ({
+    columns: [
+      { key: "d", label: "Waktu", type: "timestamp" },
+      { key: "m", label: "Total Omzet", type: "decimal" },
+    ],
+    rows: isos.map((t, k) => [t, values[k] ?? 0]),
+  });
+  const byTime = spec({ sort: "label_desc", topN: 365, format: RP });
+
+  describe("label tanggal daftar peringkat: tetap berbeda bila label lengkapnya berbeda", () => {
+    const month = dateLabelForms(["2025-12-01", "2026-01-01", "2025-01-01"], "month") as string[][];
+    const quarter = dateLabelForms(
+      ["2025-10-01", "2026-01-01", "2025-01-01"],
+      "quarter",
+    ) as string[][];
+
+    it("Jan 2025/Jan 2026 dan K1 2025/K1 2026 tidak kembar di ruang yang dulu bertabrakan", () => {
+      // Dulu: 'Des 20…, Jan 20…, Jan 20…' (49 px) dan 'K4 20…, K1 20…, K1 20…' (45 px).
+      expect(rankedLabels(month, [49, 49, 49], est, true)).toEqual(["12/25", "1/26", "1/25"]);
+      expect(rankedLabels(quarter, [45, 45, 45], est, true)).toEqual(["K4/25", "K1/26", "K1/25"]);
+      for (const forms of [month, quarter]) {
+        for (const width of [est, sf]) {
+          for (let room = 40; room <= 60; room++) {
+            const out = rankedLabels(forms, [room, room, room], width, true);
+            expect(new Set(out).size, `${out.join(",")} @${room}`).toBe(3);
+            for (const t of out) {
+              expect(t, `@${room}`).not.toContain("…");
+              expect(width(t), `@${room}`).toBeLessThanOrEqual(room);
+            }
+          }
+        }
+      }
+      // Tahun tidak pernah dibuang bila periodenya lintas tahun.
+      expect(month.flat()).not.toContain("Jan");
+      expect(quarter.flat()).not.toContain("K1");
+    });
+
+    it("label yang muat tidak dipendekkan", () => {
+      expect(rankedLabels(quarter, [54, 54, 54], sf, true)).toEqual([
+        "K4 2025",
+        "K1 2026",
+        "K1 2025",
+      ]);
+      expect(rankedLabels(month, [58, 58, 58], sf, true)).toEqual([
+        "Des 2025",
+        "Jan 2026",
+        "Jan 2025",
+      ]);
+      // Satu bentuk untuk seluruh daftar: satu baris tidak muat → bentuk pendek untuk semua baris.
+      expect(rankedLabels(month, [58, 50, 58], sf, true)).toEqual(["12/25", "1/26", "1/25"]);
+      // Kartu 139 px (daftar bertumpuk 123 px): cap waktu lengkap.
+      const d = stamps(["2025-12-31T18:00:00", "2026-01-01T03:15:00"], [5e6, 7e6]);
+      withBox({ width: 139, height: 272 }, () => {
+        expect(rankedShown(html("line", d, false, byTime))).toEqual([
+          "1 Jan 2026 03:15",
+          "31 Des 2025 18:00",
+        ]);
+      });
+    });
+
+    it("1 Jan 2026 03:15 + 31 Des 2025 18:00/15:15/12:30/10:00 di 78 px: 5 label berbeda", () => {
+      const isos = [
+        "2026-01-01T03:15:00",
+        "2025-12-31T18:00:00",
+        "2025-12-31T15:15:00",
+        "2025-12-31T12:30:00",
+        "2025-12-31T10:00:00",
+      ];
+      const forms = dateLabelForms(isos, undefined, true) as string[][];
+      const rooms = isos.map(() => 78);
+      // Dulu: '31/12/25 1…' untuk keempat jam 31 Des.
+      expect(rankedLabels(forms, rooms, sf, true)).toEqual([
+        "1/1/26 03:15",
+        "31/1…18:00",
+        "31/1…15:15",
+        "31/1…12:30",
+        "31/1…10:00",
+      ]);
+      for (const width of [sf, est, (t: string) => [...t].length * 7]) {
+        const out = rankedLabels(forms, rooms, width, true);
+        expect(new Set(out).size).toBe(5);
+        out.forEach((t, k) => {
+          expect(width(t)).toBeLessThanOrEqual(78);
+          // Tidak dipotong di akhir: jam yang membedakan tetap terlihat.
+          expect(t.endsWith(isos[k]!.slice(11, 16))).toBe(true);
+        });
+      }
+      // Daftar bertumpuk di kartu 96 px (ruang 80 px), lewat widget.
+      withBox({ width: 96, height: 300 }, () => {
+        const shown = rankedShown(html("line", stamps(isos, [1, 2, 3, 4, 5]), false, byTime));
+        expect(shown).toHaveLength(5);
+        expect(new Set(shown).size).toBe(5);
+        for (const t of shown) expect(t).not.toMatch(/…$/);
+      });
+    });
+
+    it("bila potongan tengah masih kembar, bagian akhir diperbanyak", () => {
+      // Hanya menit yang berbeda: potongan biasa ('31/…:00') kembar; akhir yang lebih panjang tidak.
+      const forms = [
+        ["31 Des 2025 18:00", "31 Des 2025 19:00"],
+        ["31/12/25 18:00", "31/12/25 19:00"],
+      ];
+      for (let room = 50; room <= 80; room += 2) {
+        const out = rankedLabels(forms, [room, room], (t) => [...t].length * 7, true);
+        expect(new Set(out).size, `${out.join(",")} @${room}`).toBe(2);
+        for (const t of out) expect([...t].length * 7).toBeLessThanOrEqual(room);
+      }
+    });
+
+    it("satu cap waktu yang tampil dari deret beberapa hari tidak pernah menjadi jam saja", () => {
+      const all = [
+        "2026-03-23T13:30:00",
+        "2026-03-23T08:00:00",
+        "2026-03-12T21:00:00",
+        "2026-03-02T13:30:00",
+        "2026-03-02T08:00:00",
+      ];
+      const one = dateLabelForms([all[0]!], undefined, true, all);
+      expect(one.flat()).not.toContain("13:30");
+      for (const [t] of one) expect(t).toMatch(/23/);
+      // Dua baris yang tampil di hari yang sama: tetap bertanggal.
+      expect(dateLabelForms(all.slice(0, 2), undefined, true, all).at(-1)).toEqual([
+        "23/3 13:30",
+        "23/3 08:00",
+      ]);
+      // Kartu sebaris 152 px (nilai rupiah), 2 baris + '+3 sebelumnya' (dulu '13:30', '08:00').
+      withBox({ width: 152, height: 66 }, () => {
+        const shown = rankedShown(
+          html(
+            "line",
+            stamps(
+              all,
+              all.map(() => 1.24e9),
+            ),
+            false,
+            byTime,
+          ),
+        );
+        expect(shown).toHaveLength(2);
+        for (const t of shown) expect(t).toMatch(/^23\//);
+        expect(new Set(shown).size).toBe(2);
+      });
+    });
+
+    it("deret yang memang sehari tetap '21:00'", () => {
+      const all = ["2025-12-31T21:00:00", "2025-12-31T18:00:00", "2025-12-31T10:00:00"];
+      expect(dateLabelForms(all, undefined, true).at(-1)).toEqual(["21:00", "18:00", "10:00"]);
+      expect(dateLabelForms([all[0]!], undefined, true, all).at(-1)).toEqual(["21:00"]);
+      withBox({ width: 80, height: 272 }, () => {
+        const s = spec({ sort: "label_desc", topN: 365, measure: { agg: "count" } });
+        const d = stamps(all, [1, 2, 3]);
+        d.columns[1] = { key: "m", label: "Jumlah baris", type: "count" };
+        expect(rankedShown(html("line", d, false, s))).toEqual(["21:00", "18:00", "10:00"]);
+      });
+    });
+
+    it("nilai yang hanya beda angka memberi ruang label yang sama (angka diukur sebagai '0')", () => {
+      // Canvas tanpa angka tabular: '1' jauh lebih sempit dari '8'. Halaman memakai angka tabular.
+      const font = (t: string) =>
+        [...t].reduce(
+          (w, ch) => w + (ch === "1" ? 3 : /\d/.test(ch) ? 8 : /[\s.,:/]/.test(ch) ? 3.5 : 7),
+          0,
+        );
+      canvas.measure = font;
+      try {
+        const isos = ["2026-03-23T13:30:00", "2026-03-18T21:00:00", "2026-03-12T08:00:00"];
+        withBox({ width: 150, height: 68 }, () => {
+          const d = stamps(isos, [1.11e9, 8.88e9, 1.11e9]);
+          const shown = rankedShown(html("line", d, false, byTime));
+          expect(shown).toHaveLength(3);
+          expect(new Set(shown).size).toBe(3);
+          // Bentuk dan panjang potongan sama untuk semua baris.
+          expect(new Set(shown.map((t) => t.replace(/\d/g, "0"))).size).toBe(1);
+        });
+      } finally {
+        canvas.measure = null;
+      }
     });
   });
 });
