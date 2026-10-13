@@ -83,6 +83,8 @@ describe("pilihan awal panel konfigurasi", () => {
     const cols = sources[0]!.columns;
     expect(columnsForAgg("sum", cols).map((c) => c.name)).toEqual(["Omzet"]);
     expect(columnsForAgg("max", cols).map((c) => c.name)).toEqual(["Tanggal", "Omzet"]);
+    // Grafik hanya menggambar angka: min/maks tanggal tidak ditawarkan.
+    expect(columnsForAgg("max", cols, "bar").map((c) => c.name)).toEqual(["Omzet"]);
     expect(columnsForAgg("count_distinct", cols)).toHaveLength(4);
   });
 });

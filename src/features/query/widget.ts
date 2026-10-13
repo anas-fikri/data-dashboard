@@ -129,6 +129,16 @@ export function widgetPlan(
     }
     default: {
       const { dimension: d, measure: m } = config.spec;
+      const measureType = m.column ? byPos.get(m.column)?.type : undefined;
+      if (measureType === "date" || measureType === "timestamp") {
+        // Grafik hanya menggambar angka; min/maks tanggal tetap bisa lewat KPI atau tabel.
+        return {
+          ok: false,
+          code: "INVALID",
+          message:
+            "Grafik hanya bisa menggambar nilai angka. Pilih kolom angka di pengaturan widget, atau pakai KPI untuk tanggal terkecil/terbesar.",
+        };
+      }
       spec = {
         ...base,
         dimensions: [

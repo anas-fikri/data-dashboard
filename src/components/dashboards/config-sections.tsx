@@ -190,7 +190,7 @@ export function MeasureFields({
         options={aggOptions(type, columns).map((a) => ({ value: a, label: AGG_LABEL[a] }))}
         onChange={(agg) => {
           if (agg === "count") return onChange({ agg });
-          const allowed = columnsForAgg(agg, columns);
+          const allowed = columnsForAgg(agg, columns, type);
           const keep = allowed.some((c) => c.pos === measure.column);
           onChange({ agg, column: keep ? measure.column! : allowed[0]!.pos });
         }}
@@ -201,7 +201,7 @@ export function MeasureFields({
           label="dari kolom"
           testId="config-measure"
           value={measure.column}
-          columns={columnsForAgg(measure.agg, columns)}
+          columns={columnsForAgg(measure.agg, columns, type)}
           onChange={(column) => onChange({ ...measure, column })}
         />
       ) : null}

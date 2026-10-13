@@ -106,11 +106,19 @@ const TEMPORAL: ColumnType[] = ["date", "timestamp"];
 export const isNumeric = (t: ColumnType) => NUMERIC.includes(t);
 export const isTemporal = (t: ColumnType) => TEMPORAL.includes(t);
 
-/** Kolom yang boleh dipakai agregasi ini (count tanpa kolom = semua baris). */
-export function columnsForAgg(agg: Agg, columns: SourceColumn[]): SourceColumn[] {
+/**
+ * Kolom yang boleh dipakai agregasi ini (count tanpa kolom = semua baris). Min/maks tanggal hanya
+ * untuk KPI: grafik hanya bisa menggambar angka.
+ */
+export function columnsForAgg(
+  agg: Agg,
+  columns: SourceColumn[],
+  type: WidgetType = "kpi",
+): SourceColumn[] {
   if (agg === "sum" || agg === "avg") return columns.filter((c) => isNumeric(c.type));
   if (agg === "min" || agg === "max") {
-    return columns.filter((c) => isNumeric(c.type) || isTemporal(c.type));
+    const dates = type === "kpi";
+    return columns.filter((c) => isNumeric(c.type) || (dates && isTemporal(c.type)));
   }
   return columns;
 }
@@ -121,7 +129,7 @@ type Measure = { agg: Agg; column?: number };
 export function aggOptions(type: WidgetType, columns: SourceColumn[]): Agg[] {
   const allowed: readonly Agg[] = type === "pie" ? PIE_AGGS : AGG_ORDER;
   return AGG_ORDER.filter(
-    (a) => allowed.includes(a) && (a === "count" || columnsForAgg(a, columns).length > 0),
+    (a) => allowed.includes(a) && (a === "count" || columnsForAgg(a, columns, type).length > 0),
   );
 }
 
@@ -129,11 +137,13 @@ function defaultMeasure(
   columns: SourceColumn[],
   prev?: Measure,
   allowed: readonly Agg[] = AGG_ORDER,
+  type: WidgetType = "kpi",
 ): Measure {
   if (
     prev &&
     allowed.includes(prev.agg) &&
-    (prev.agg === "count" || columnsForAgg(prev.agg, columns).some((c) => c.pos === prev.column))
+    (prev.agg === "count" ||
+      columnsForAgg(prev.agg, columns, type).some((c) => c.pos === prev.column))
   ) {
     return prev.agg === "count" ? { agg: "count" } : prev;
   }
@@ -188,7 +198,7 @@ export function defaultConfig(
       : cols.slice(0, Math.min(6, TABLE_COLUMNS_MAX)).map((c) => c.pos);
     return { type, spec: { sheetId: sheet.id, columns, format } };
   }
-  const measure = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER);
+  const measure = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
   if (type === "kpi") return { type, spec: { sheetId: sheet.id, measure, format } };
 
   const prevChart =

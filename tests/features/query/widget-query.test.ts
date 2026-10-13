@@ -426,7 +426,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     expect(r.ok && (r.rows[0]![0] as number)).toBeCloseTo(all, 6);
   });
 
-  it("total grafik dengan ukuran tanggal tidak gagal (tanpa sum atas tanggal); kunci cache terpisah", async () => {
+  it("total grafik dengan ukuran non-aditif: tanpa grand total; ukuran tanggal ditolak dengan pesan", async () => {
     const d = deps();
     d.repo = {
       ...d.repo,
@@ -435,7 +435,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         spec: {
           sheetId: SHEET,
           dimension: { column: 1 },
-          measure: { agg: "max", column: 3 },
+          measure: { agg: "max", column: 2 },
           sort: "value_desc",
           topN: 2,
           format: fmt,
@@ -447,6 +447,18 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
     expect(r).toMatchObject({ ok: true, categories: 4, grandTotal: null });
     expect(r.ok && r.rows).toHaveLength(2);
+    // Grafik hanya menggambar angka: maks. Tanggal → INVALID yang bisa ditindak (bukan "(kosong)").
+    const base = d.repo.widget!;
+    d.repo = {
+      ...d.repo,
+      widget: async (...a) => {
+        const w = await base(...a);
+        return w && { ...w, spec: { ...(w.spec as object), measure: { agg: "max", column: 3 } } };
+      },
+    };
+    const dated = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(dated).toMatchObject({ ok: false, code: "INVALID" });
+    expect(!dated.ok && dated.message).toContain("nilai angka");
   });
 
   it("query total gagal → grafik tetap tampil tanpa total dan TIDAK di-cache (dicoba lagi)", async () => {
