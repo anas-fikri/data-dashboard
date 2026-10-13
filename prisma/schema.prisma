@@ -24,9 +24,10 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  tokens   VerificationToken[]
-  datasets Dataset[]
-  uploads  DatasetVersion[]    @relation("VersionUploader")
+  tokens    VerificationToken[]
+  datasets  Dataset[]
+  uploads   DatasetVersion[]    @relation("VersionUploader")
+  auditLogs AuditLog[]          @relation("AuditActor")
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -214,4 +215,27 @@ model Widget {
   updatedAt   DateTime  @updatedAt
 
   @@index([dashboardId])
+}
+
+/// Jejak tindakan sensitif (D14): admin (T-019), berbagi/hapus/ekspor (T-016, T-017). Hanya ditambah,
+/// tidak pernah diubah. actorId null bila akun pelaku dihapus; targetId sengaja tanpa FK agar jejak
+/// tetap ada setelah objeknya hilang.
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  /// Mis. "user.admin.grant", "user.deactivate", "datasets.transfer".
+  action     String
+  /// Jenis objek sasaran, mis. "user".
+  targetType String
+  targetId   String
+  /// Detail tambahan tanpa rahasia (mis. { from, to, moved, renamed }).
+  meta       Json?
+  /// clientIp(): "local" di dev tanpa proxy tepercaya.
+  ip         String
+  at         DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([actorId])
+  @@index([at])
 }

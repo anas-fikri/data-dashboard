@@ -26,7 +26,13 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
           ? { tone: "success" as const, text: "Anda sudah keluar dari semua perangkat." }
           : params.reason === "expired"
             ? { tone: "error" as const, text: "Sesi berakhir. Silakan masuk kembali." }
-            : null;
+            : params.reason === "disabled"
+              ? {
+                  tone: "error" as const,
+                  text: "Akun Anda dinonaktifkan oleh admin. Hubungi admin bila ini keliru.",
+                  testId: "login-disabled-notice",
+                }
+              : null;
 
   return (
     <AuthCard

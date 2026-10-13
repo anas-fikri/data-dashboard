@@ -67,14 +67,18 @@ export async function knownDeviceUserId(): Promise<string | null> {
 }
 
 /**
- * Pengguna sesi saat ini, atau null. Satu SELECT berindeks PK per permintaan: memastikan
- * isActive dan sessionVersion masih cocok (pencabutan seketika) dan isAdmin dari DB (bukan JWT).
+ * Sesi + alasan bila tidak berlaku. "disabled" hanya bila JWT sah (ditandatangani untuk akun itu)
+ * dan akunnya ada tetapi dinonaktifkan: pemegang cookie memang pemilik akun, jadi alasan ini tidak
+ * membuka oracle enumerasi akun.
  */
-export async function getSessionUser(): Promise<SessionUser | null> {
+type SessionLookup = { user: SessionUser } | { user: null; reason: "none" | "disabled" };
+
+async function lookupSession(): Promise<SessionLookup> {
+  const none = { user: null, reason: "none" } as const;
   const token = (await cookies()).get(sessionCookieName())?.value;
-  if (!token) return null;
+  if (!token) return none;
   const claims = await verifySession(token, env().AUTH_SECRET);
-  if (!claims) return null;
+  if (!claims) return none;
   const user = await prisma.user.findUnique({
     where: { id: claims.sub },
     select: {
@@ -89,9 +93,17 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   });
   if (!user || !user.isActive || user.sessionVersion !== claims.sv || !user.emailVerifiedAt) {
     logger.info({ userId: claims.sub }, "sesi tidak valid lagi (nonaktif/sessionVersion basi)");
-    return null;
+    return user && !user.isActive ? { user: null, reason: "disabled" } : none;
   }
-  return { id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin };
+  return { user: { id: user.id, email: user.email, name: user.name, isAdmin: user.isAdmin } };
+}
+
+/**
+ * Pengguna sesi saat ini, atau null. Satu SELECT berindeks PK per permintaan: memastikan
+ * isActive dan sessionVersion masih cocok (pencabutan seketika) dan isAdmin dari DB (bukan JWT).
+ */
+export async function getSessionUser(): Promise<SessionUser | null> {
+  return (await lookupSession()).user;
 }
 
 export class AuthError extends Error {
@@ -101,17 +113,18 @@ export class AuthError extends Error {
 }
 
 /**
- * Untuk halaman: redirect ke /login?next=<path saat ini> bila tidak ada sesi. Cookie basi
- * ditimpa saat login berikutnya (render server tidak boleh menulis cookie).
+ * Untuk halaman: redirect ke /login?next=<path saat ini> bila tidak ada sesi (ditambah
+ * &reason=disabled bila akunnya dinonaktifkan admin, AC1 T-019). Cookie basi ditimpa saat login
+ * berikutnya (render server tidak boleh menulis cookie).
  * Untuk Server Action / Route Handler: lempar AuthError agar pemanggil membalas kode/HTTP.
  */
 export async function requireUser(mode: "page" | "action" = "page"): Promise<SessionUser> {
-  const user = await getSessionUser();
-  if (user) return user;
+  const session = await lookupSession();
+  if (session.user) return session.user;
   if (mode === "action") throw new AuthError("UNAUTHENTICATED");
   const h = await headers();
   const current = h.get("x-current-path") ?? "/";
-  redirect(loginUrl(current));
+  redirect(loginUrl(current, session.reason === "disabled" ? "disabled" : undefined));
 }
 
 /** Admin: non-admin mendapat 404/NOT_FOUND (bukan 403) agar keberadaan halaman tidak bocor (D2). */

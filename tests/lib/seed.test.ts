@@ -5,7 +5,7 @@ import { parseDomains, seedAdmin } from "../../prisma/seed";
 interface UpsertArgs {
   where: { email: string };
   create: { isAdmin: boolean; isActive: boolean; emailVerifiedAt: Date };
-  update: { isAdmin: boolean; isActive: boolean };
+  update: Record<string, unknown>;
 }
 
 function fakePrisma() {
@@ -22,7 +22,23 @@ describe("seedAdmin", () => {
     if (!call) throw new Error("upsert tidak dipanggil");
     expect(call.create).toMatchObject({ isAdmin: true, isActive: true });
     expect(call.create.emailVerifiedAt).toBeInstanceOf(Date);
-    expect(call.update).toEqual({ isAdmin: true, isActive: true });
+    // Akun yang sudah ada tidak disentuh (T-019): seed ulang tidak mengaktifkan/mengangkat lagi.
+    expect(call.update).toEqual({});
+  });
+
+  it("seed ulang tidak mengaktifkan kembali atau mengangkat admin akun yang sudah ada", async () => {
+    const upsert = vi.fn(async (args: UpsertArgs) => ({
+      id: "u1",
+      email: args.where.email,
+      isAdmin: false,
+      isActive: false,
+      ...args.update,
+    }));
+    const prisma = { user: { upsert } } as unknown as PrismaClient;
+    const admin = await seedAdmin(prisma, "admin@pcpexpress.com", ["pcpexpress.com"]);
+    expect(admin).toMatchObject({ isAdmin: false, isActive: false });
+    expect(upsert.mock.calls[0]?.[0].update).not.toHaveProperty("isActive");
+    expect(upsert.mock.calls[0]?.[0].update).not.toHaveProperty("isAdmin");
   });
 
   it("gagal jelas bila SEED_ADMIN_EMAIL kosong, bukan email, atau di luar whitelist", async () => {

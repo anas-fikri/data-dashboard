@@ -14,7 +14,13 @@ export function safeNext(value: unknown, fallback = "/"): string {
   return value;
 }
 
-export function loginUrl(next?: string | null): string {
+/** Alasan yang ditampilkan halaman login (T-019: "disabled" = akun dinonaktifkan admin). */
+export type LoginReason = "disabled";
+
+export function loginUrl(next?: string | null, reason?: LoginReason): string {
   const target = safeNext(next ?? undefined);
-  return target === "/" ? "/login" : `/login?next=${encodeURIComponent(target)}`;
+  const params: string[] = [];
+  if (target !== "/") params.push(`next=${encodeURIComponent(target)}`);
+  if (reason) params.push(`reason=${reason}`);
+  return params.length ? `/login?${params.join("&")}` : "/login";
 }

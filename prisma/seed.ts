@@ -4,9 +4,11 @@ import { z } from "zod";
 const emailSchema = z.string().email();
 
 /**
- * Seed admin pertama dari SEED_ADMIN_EMAIL. Idempoten: jika sudah ada, hanya
- * memastikan isAdmin dan isActive. Tidak membuat password; akun belum bisa login
- * (passwordHash null → T-002 wajib menolak) sampai admin menetapkannya lewat alur reset (T-026).
+ * Seed admin pertama dari SEED_ADMIN_EMAIL. Idempoten: peran admin dan status aktif hanya diisi
+ * saat akun DIBUAT. Akun yang sudah ada tidak diubah sama sekali, agar seed ulang tidak membatalkan
+ * pencabutan admin atau penonaktifan yang dilakukan lewat /admin/pengguna (T-019). Tidak membuat
+ * password; akun belum bisa login (passwordHash null → T-002 wajib menolak) sampai admin
+ * menetapkannya lewat alur reset (T-026).
  */
 export async function seedAdmin(
   prisma: PrismaClient,
@@ -24,7 +26,7 @@ export async function seedAdmin(
   return prisma.user.upsert({
     where: { email: normalized },
     create: { email: normalized, isAdmin: true, isActive: true, emailVerifiedAt: new Date() },
-    update: { isAdmin: true, isActive: true },
+    update: {},
   });
 }
 
@@ -43,7 +45,14 @@ async function main() {
       process.env.SEED_ADMIN_EMAIL,
       parseDomains(process.env.ALLOWED_EMAIL_DOMAINS),
     );
-    console.log(`Admin siap: ${admin.email} (id ${admin.id})`);
+    if (admin.isAdmin && admin.isActive) {
+      console.log(`Admin siap: ${admin.email} (id ${admin.id})`);
+    } else {
+      console.warn(
+        `${admin.email} sudah ada tetapi bukan admin aktif; seed tidak mengubahnya (T-019). ` +
+          "Pulihkan lewat /admin/pengguna oleh admin lain.",
+      );
+    }
   } finally {
     await prisma.$disconnect();
   }

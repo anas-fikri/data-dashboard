@@ -17,8 +17,8 @@ export const AUTH_INPUT = "h-(--control-h-lg) md:h-(--control-h)";
 
 interface LoginFormProps {
   next: string;
-  /** Pesan konteks dari query (?verified=1, ?reason=expired|signed-out). */
-  notice?: { tone: "success" | "error"; text: string } | null;
+  /** Pesan konteks dari query (?verified=1, ?reason=expired|signed-out|disabled). */
+  notice?: { tone: "success" | "error"; text: string; testId?: string } | null;
 }
 
 export function LoginForm({ next, notice }: LoginFormProps) {
@@ -33,7 +33,11 @@ export function LoginForm({ next, notice }: LoginFormProps) {
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
       <input type="hidden" name="next" value={next} />
-      {notice && !error ? <FormAlert tone={notice.tone}>{notice.text}</FormAlert> : null}
+      {notice && !error ? (
+        <div data-testid={notice.testId}>
+          <FormAlert tone={notice.tone}>{notice.text}</FormAlert>
+        </div>
+      ) : null}
       {error && !error.field ? (
         <FormAlert tone="error" ref={alertRef}>
           {error.message}
