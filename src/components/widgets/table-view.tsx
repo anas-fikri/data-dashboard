@@ -14,6 +14,7 @@ import {
   formatLabelNumber,
   formatNumber,
 } from "@/features/widgets/format";
+import { isIdLikeName } from "@/features/widgets/id-like";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import type { WidgetData } from "./widget-query";
@@ -26,12 +27,6 @@ import type { WidgetData } from "./widget-query";
  */
 export type TableSort = { column: number; dir: "asc" | "desc" } | null;
 
-/**
- * Kolom bilangan bulat yang berupa kode/nomor/tahun (dari namanya) tampil tanpa pemisah ribuan pada
- * format otomatis — "2024" dan "40115", bukan "2.024"/"40.115" (review integritas T-011).
- */
-const ID_LIKE =
-  /\b(tahun|year|th|kode|code|id|no|nomor|nik|npwp|nip|telp|telepon|hp|wa|resi|awb|kodepos|zip)\b/i;
 const NUMERIC = new Set(["integer", "decimal", "duration", "count"]);
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
 
@@ -43,6 +38,7 @@ export function TableView({
   sort,
   busy,
   label,
+  reserveCorner = false,
   onSort,
   onPage,
 }: {
@@ -55,6 +51,8 @@ export function TableView({
   sort: TableSort;
   busy: boolean;
   label: string;
+  /** Mode edit di grid: pegangan resize (24 px) ada di pojok kanan bawah — jangan tutupi tombol halaman. */
+  reserveCorner?: boolean;
   onSort: (sort: TableSort) => void;
   onPage: (page: number) => void;
 }) {
@@ -81,6 +79,8 @@ export function TableView({
     if (!busy && to >= 0 && to < pages) onPage(to);
   };
   const pagerButton = "size-(--control-h-lg) md:size-(--control-h-sm) aria-disabled:opacity-50";
+  // Kode/nomor/tahun (dari nama kolom, lihat id-like.ts) tanpa pemisah ribuan pada format otomatis.
+  const plain = data.columns.map((c) => c.type === "integer" && isIdLikeName(c.label));
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -155,10 +155,7 @@ export function TableView({
                     const type = data.columns[i]!.type;
                     const f = formatOf(positions[i]!);
                     const text =
-                      type === "integer" &&
-                      typeof v === "number" &&
-                      f.style === "auto" &&
-                      ID_LIKE.test(data.columns[i]!.label)
+                      plain[i] && typeof v === "number" && f.style === "auto"
                         ? formatLabelNumber(v)
                         : formatCell(v, type, f);
                     return (
@@ -186,7 +183,12 @@ export function TableView({
           ) : null}
         </div>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-0.5 text-xs text-muted-foreground">
+      <div
+        className={cn(
+          "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-0.5 text-xs text-muted-foreground",
+          reserveCorner && "pr-7",
+        )}
+      >
         <span aria-live="polite" data-testid="table-range">
           {total ? `Baris ${count(from)}–${count(to)} dari ${count(total)}` : "Tidak ada baris"}
         </span>

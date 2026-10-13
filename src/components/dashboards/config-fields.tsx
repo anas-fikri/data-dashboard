@@ -10,12 +10,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { NumberFormat } from "@/features/widgets/spec";
-import type { SourceColumn } from "./widget-config-model";
+import { missingColumnText, type SourceColumn } from "./widget-config-model";
 
 /*
  * Kontrol kecil panel konfigurasi widget (T-011): pilihan kustom (Radix Select, bukan native), label
  * terlihat yang terhubung ke kontrol, ukuran sentuh 44 px di ponsel. Nilai yang tidak lagi tersedia
- * (kolom disembunyikan) tampil sebagai "Pilih kolom" dengan aria-invalid.
+ * (kolom disembunyikan, atau tidak ada di data terbaru) tampil sebagai "Pilih kolom" dengan
+ * aria-invalid dan pesan di bawahnya.
  */
 const control = "h-(--control-h-lg) w-full md:h-(--control-h)";
 
@@ -26,6 +27,7 @@ export function Choice<T extends string>({
   onChange,
   testId,
   placeholder,
+  invalidText,
 }: {
   label: string;
   /** Kosong = belum dipilih / tidak lagi tersedia → placeholder + aria-invalid. */
@@ -34,9 +36,12 @@ export function Choice<T extends string>({
   onChange: (v: T) => void;
   testId?: string;
   placeholder?: string;
+  /** Pesan saat nilai tersimpan tidak ada di pilihan. */
+  invalidText?: string;
 }) {
   const id = useId();
   const missing = value === "" || !options.some((o) => o.value === value);
+  const error = missing && invalidText ? invalidText : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
@@ -48,6 +53,7 @@ export function Choice<T extends string>({
           className={control}
           data-testid={testId}
           aria-invalid={missing && placeholder ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
         >
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
@@ -59,6 +65,11 @@ export function Choice<T extends string>({
           ))}
         </SelectContent>
       </Select>
+      {error ? (
+        <p id={`${id}-error`} className="text-xs text-destructive">
+          {error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -82,6 +93,7 @@ export function ColumnChoice({
       label={label}
       testId={testId}
       placeholder="Pilih kolom"
+      invalidText={value === undefined ? undefined : missingColumnText(value)}
       value={value === undefined ? "" : String(value)}
       options={columns.map((c) => ({
         value: String(c.pos),

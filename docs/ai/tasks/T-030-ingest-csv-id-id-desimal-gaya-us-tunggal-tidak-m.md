@@ -7,7 +7,7 @@ profile_pinned: true
 tags:
   - bug
 created: "2026-10-12T23:39:25Z"
-updated: "2026-10-12T23:39:25Z"
+updated: "2026-10-13T01:15:20Z"
 created_by: claude-code
 ---
 
@@ -22,3 +22,5 @@ Ditemukan verifikasi integritas T-011: pickLocale di src/features/ingest/infer.t
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-13T01:15:20Z Temuan verifikasi T-011 putaran 2 (Info): kolom CSV id-ID berisi desimal kecil '0,004'…'0,124' terbaca sebagai ribuan gaya US (bilangan bulat 4…124). Pastikan kasus ini ikut dicakup: tiga digit setelah koma dengan bagian bulat 0 tidak boleh dianggap pemisah ribuan.

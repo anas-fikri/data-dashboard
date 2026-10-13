@@ -299,4 +299,38 @@ test.describe("widget", () => {
     }
     await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("100");
   });
+
+  test("kolom diganti namanya di unggahan baru → widget menyebut kolom lama, widget lain tetap jalan", async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const lines = [`Cabang;Tanggal;Pendapatan;${XSS}`];
+    for (let i = 0; i < 40; i++) lines.push(`Bogor;02-10-2026;500;catatan ${i}`);
+    const path = join(dir, "omzet-ganti-nama.csv");
+    writeFileSync(path, lines.join("\n"));
+    const latest = () =>
+      JSON.parse(
+        execFileSync("node", ["scripts/dev-upload-fixture.mjs", "latest", datasetId]).toString(),
+      ) as { id: string; status: string };
+    const before = latest().id;
+    await page.goto(`/datasets/${datasetId}`);
+    await page.getByTestId("upload-input").setInputFiles(path);
+    await expect
+      .poll(
+        () => {
+          const v = latest();
+          return v.id !== before && v.status === "READY";
+        },
+        { timeout: 120_000, intervals: [1_000] },
+      )
+      .toBe(true);
+
+    await page.goto(dashboardUrl);
+    for (const title of ["Omzet per cabang", "Total omzet", "Detail transaksi"]) {
+      const error = widgetTitled(page, title).getByTestId("widget-error");
+      await expect(error).toHaveAttribute("data-code", "COLUMN_UNAVAILABLE");
+      await expect(error).toContainText('"Omzet" tidak ada di data terbaru');
+    }
+    await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("40");
+  });
 });

@@ -33,12 +33,15 @@ export function WidgetBody({
   config,
   title,
   editing,
+  resizable = false,
   showData = false,
 }: {
   widgetId: string;
   config: Configured;
   title: string;
   editing: boolean;
+  /** Kartu punya pegangan resize di pojok kanan bawah (mode edit di grid). */
+  resizable?: boolean;
   /** Grafik: tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData?: boolean;
 }) {
@@ -51,6 +54,7 @@ export function WidgetBody({
       config={config}
       title={title}
       editing={editing}
+      resizable={resizable}
       version={version}
       showData={showData}
     />
@@ -62,6 +66,7 @@ function Loaded({
   config,
   title,
   editing,
+  resizable,
   version,
   showData,
 }: {
@@ -69,6 +74,7 @@ function Loaded({
   config: Configured;
   title: string;
   editing: boolean;
+  resizable: boolean;
   version: string;
   showData: boolean;
 }) {
@@ -83,8 +89,14 @@ function Loaded({
     return (
       // justify-center-safe + overflow-hidden: pesan panjang di kartu kecil tidak menimpa judul (H4).
       <div
-        // Bisa digulir (bukan dipotong) di kartu kecil; pesan lengkap tetap terbaca dengan sentuh.
-        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-y-auto p-3 text-center"
+        // Bisa digulir (bukan dipotong) di kartu kecil; pesan lengkap tetap terbaca dengan sentuh. Wilayah
+        // gulir harus bisa difokus agar bisa digulir dengan keyboard (axe scrollable-region-focusable);
+        // cincin fokus di dalam (ring-inset) karena kartu memotong outline di luar.
+        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-y-auto rounded-sm p-3 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        role="region"
+        aria-label={`Pesan ${title || "widget"}`}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
         data-testid="widget-error"
         data-code={state.code}
       >
@@ -151,6 +163,7 @@ function Loaded({
             sort={sort}
             busy={state.status === "loading"}
             label={/^tabel\b/i.test(title) ? title : `Tabel ${title || "widget"}`}
+            reserveCorner={resizable}
             onSort={(s) => {
               setSort(s);
               setPage(0);

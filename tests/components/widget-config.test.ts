@@ -246,7 +246,7 @@ describe("verifikasi T-011 putaran 2", () => {
     expect(percentShares([0, 0])).toEqual([0, 0]);
   });
 
-  it("garis bertanggal: sumbu waktu UTC, titik urut naik, tanggal kosong tidak diplot", () => {
+  it("garis bertanggal tanpa grain: sumbu waktu UTC, titik urut naik, tanggal kosong tidak diplot", () => {
     expect(isoToUtcMs("2026-10-01")).toBe(Date.UTC(2026, 9, 1));
     const o = chartOption(
       {
@@ -256,7 +256,7 @@ describe("verifikasi T-011 putaran 2", () => {
         measureLabel: "Total",
         dimensionLabel: "Tanggal",
         format: { style: "auto", decimals: 0 },
-        time: { iso: ["2026-11-01", "2026-10-01", null], grain: "month" },
+        time: { iso: ["2026-11-01", "2026-10-01", null] },
         reducedMotion: true,
       },
       theme,
@@ -272,7 +272,7 @@ describe("verifikasi T-011 putaran 2", () => {
       [Date.UTC(2026, 9, 1), 3],
       [Date.UTC(2026, 10, 1), 5],
     ]);
-    expect(o.xAxis.axisLabel.formatter(Date.UTC(2026, 9, 1))).toBe("Okt 2026");
+    expect(o.xAxis.axisLabel.formatter(Date.UTC(2026, 9, 1))).toContain("Okt 2026");
   });
 
   it("label tanggal/angka tidak dipendekkan; label teks dipendekkan di tengah", () => {
@@ -293,5 +293,219 @@ describe("verifikasi T-011 putaran 2", () => {
       ) as { yAxis: { axisLabel: { formatter: (v: string) => string } } };
     expect(opt(false).yAxis.axisLabel.formatter("12 Okt 2026")).toBe("12 Okt 2026");
     expect(opt(true).yAxis.axisLabel.formatter("Kantor PCP Express Gambir Unit 11")).toContain("…");
+  });
+});
+
+// --- verifikasi T-011 putaran 3: panel pengaturan (fokus, urutan, kolom hilang setelah data diganti)
+import { vi } from "vitest";
+import { deferredTask } from "@/components/dashboards/config-focus";
+import {
+  missingColumnText,
+  missingNotice,
+  sortOptions,
+  withDimension,
+  withoutMissingColumns,
+} from "@/components/dashboards/widget-config-model";
+import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import { MISSING_COLUMN, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+
+describe("verifikasi T-011 putaran 3: panel pengaturan", () => {
+  type TableConfig = Extract<WidgetConfig, { type: "table" }>;
+  type ChartConfig = Extract<WidgetConfig, { type: "bar" | "line" | "pie" }>;
+  const rupiah = { style: "rupiah", decimals: 0 } as const;
+
+  it("D6: pemeriksaan Maks. saat blur ditunda ke giliran berikutnya; flush saat panel ditutup", () => {
+    vi.useFakeTimers();
+    try {
+      const task = deferredTask();
+      const first = vi.fn();
+      task.schedule(first);
+      expect(first).not.toHaveBeenCalled();
+      vi.runAllTimers();
+      expect(first).toHaveBeenCalledTimes(1);
+
+      // Jadwal baru menggantikan yang lama.
+      const a = vi.fn();
+      const b = vi.fn();
+      task.schedule(a);
+      task.schedule(b);
+      vi.runAllTimers();
+      expect(a).not.toHaveBeenCalled();
+      expect(b).toHaveBeenCalledTimes(1);
+
+      // Dilepas sebelum timer berjalan: dijalankan sekarang, tidak dua kali.
+      const c = vi.fn();
+      task.schedule(c);
+      task.flush();
+      expect(c).toHaveBeenCalledTimes(1);
+      vi.runAllTimers();
+      task.flush();
+      expect(c).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("hapus kolom tabel: yang hilang dibuang; semua hilang → kolom pertama sheet", () => {
+    const table: TableConfig = {
+      type: "table",
+      spec: { sheetId: S1, columns: [1, 9, 3], format: rupiah, formatColumns: [9, 3] },
+    };
+    expect(withoutMissingColumns(table, sources)).toMatchObject({
+      spec: { columns: [1, 3], formatColumns: [3], format: rupiah },
+    });
+    const ok = defaultConfig("table", sources, empty) as TableConfig;
+    expect(withoutMissingColumns(ok, sources)).toBe(ok);
+
+    const allGone: TableConfig = {
+      type: "table",
+      spec: { sheetId: S1, columns: [MISSING_COLUMN], format: rupiah },
+    };
+    // Perubahan lain tidak mengosongkan tabel (user memilih kolomnya sendiri).
+    expect(withoutMissingColumns(allGone, sources)).toBe(allGone);
+    const fixed = withoutMissingColumns(allGone, sources, true);
+    expect(fixed).toMatchObject({
+      type: "table",
+      spec: { sheetId: S1, columns: [1, 2, 3, 4], format: rupiah },
+    });
+    expect(valid(fixed)).toBe(true);
+    expect(missingColumns(fixed, sources)).toEqual([]);
+  });
+
+  it("label urutan: dimensi angka terkecil/terbesar; garis bertanggal hanya periode", () => {
+    expect(sortLabel("label_asc", "integer")).toBe("Terkecil ke terbesar");
+    expect(sortLabel("label_desc", "decimal", "bar")).toBe("Terbesar ke terkecil");
+    expect(sortLabel("label_asc", "text")).toBe("A–Z");
+    expect(sortLabel("label_desc", "date", "bar")).toBe("Terbaru dulu");
+
+    expect(sortOptions("line", "date", "label_desc")).toEqual([
+      { value: "label_desc", label: "Periode terbaru" },
+      { value: "label_asc", label: "Periode terlama" },
+    ]);
+    // Spec lama dengan urutan nilai tetap jadi pilihan (Select tidak kosong).
+    const legacy = sortOptions("line", "timestamp", "value_desc");
+    expect(legacy.map((o) => o.value)).toEqual(["label_desc", "label_asc", "value_desc"]);
+    expect(legacy.at(-1)!.label).toBe("Titik bernilai terbesar");
+    // Garis bukan tanggal dan batang: keempat urutan.
+    expect(sortOptions("line", "integer", "value_desc").map((o) => o.label)).toEqual([
+      "Nilai terbesar dulu",
+      "Nilai terkecil dulu",
+      "Terkecil ke terbesar",
+      "Terbesar ke terkecil",
+    ]);
+    expect(sortOptions("bar", "date", "value_desc")).toHaveLength(4);
+    expect(sortOptions("pie", undefined, "label_asc")).toHaveLength(4);
+  });
+
+  it("ganti kolom pengelompokan: tanggal → per bulan; garis bertanggal → periode terbaru", () => {
+    const line = defaultConfig("line", sources, empty) as ChartConfig;
+    const byText = withDimension(
+      { ...line, spec: { ...line.spec, sort: "value_desc" } },
+      1,
+      "text",
+    );
+    expect(byText.spec.dimension).toEqual({ column: 1 });
+    expect(byText.spec.sort).toBe("value_desc");
+    expect(withDimension(byText, 2, "date").spec).toMatchObject({
+      dimension: { column: 2, timeGrain: "month" },
+      sort: "label_desc",
+    });
+    const bar = defaultConfig("bar", sources, empty) as ChartConfig;
+    expect(withDimension(bar, 2, "date").spec).toMatchObject({
+      dimension: { column: 2, timeGrain: "month" },
+      sort: "value_desc",
+    });
+  });
+
+  it("data diganti, kolom diganti namanya: spec terbaca, kolom ditandai, pengaturan lain tetap", () => {
+    const S3 = "cmv4kljx40009oczvdmpurrs3";
+    const col = (pos: number, name: string, type: ColumnType): ColumnSchema => ({
+      pos,
+      name,
+      original: name,
+      type,
+      hidden: false,
+      nullPct: 0,
+      distinctCount: 1,
+      castFailCount: 0,
+    });
+    const old: SheetInfo = {
+      id: S1,
+      name: "Penjualan",
+      index: 0,
+      schema: [
+        col(1, "Cabang", "text"),
+        col(2, "Tanggal", "date"),
+        col(3, "Omzet", "decimal"),
+        col(4, "Rasio", "decimal"),
+      ],
+    };
+    const target: SheetInfo = {
+      id: S3,
+      name: "Penjualan",
+      index: 0,
+      schema: [
+        col(1, "Tanggal", "date"),
+        col(2, "Omzet", "decimal"),
+        col(3, "Kantor Cabang", "text"),
+        col(4, "Rasio Margin", "decimal"),
+      ],
+    };
+    const now: Source[] = [
+      {
+        id: S3,
+        name: "Penjualan",
+        columns: target.schema.map(({ pos, name, type }) => ({ pos, name, type })),
+      },
+    ];
+
+    const bar = remapConfig(
+      {
+        type: "bar",
+        spec: {
+          sheetId: S1,
+          dimension: { column: 1 },
+          measure: { agg: "avg", column: 4 },
+          sort: "label_asc",
+          topN: 7,
+          format: rupiah,
+        },
+      },
+      old,
+      target,
+    ).config;
+    // Panel tidak lagi kosong: spec dengan MISSING_COLUMN lolos validasi klien.
+    expect(valid(bar)).toBe(true);
+    expect(bar.spec).toMatchObject({ sheetId: S3, sort: "label_asc", topN: 7, format: rupiah });
+    const missing = missingColumns(bar, now);
+    expect(missing).toEqual([MISSING_COLUMN, MISSING_COLUMN]);
+    expect(missingNotice(missing)).toContain("tidak ada di data terbaru");
+    expect(missingColumnText(MISSING_COLUMN)).toBe(
+      "Kolom tidak ada di data terbaru — pilih pengganti.",
+    );
+    // Kolom yang disembunyikan di skema: pesan lain.
+    expect(missingNotice([9])).toContain("disembunyikan");
+    expect(missingColumnText(9)).toBe("Kolom tidak tersedia lagi — pilih pengganti.");
+
+    const kpi = remapConfig(
+      { type: "kpi", spec: { sheetId: S1, measure: { agg: "sum", column: 3 }, format: rupiah } },
+      old,
+      target,
+    ).config;
+    expect(missingColumns(kpi, now)).toEqual([]);
+
+    const table = remapConfig(
+      { type: "table", spec: { sheetId: S1, columns: [1, 2, 3], format: rupiah } },
+      old,
+      target,
+    ).config as TableConfig;
+    expect(valid(table)).toBe(true);
+    expect(table.spec.columns).toEqual([1, 2, MISSING_COLUMN]);
+    expect(missingColumns(table, now)).toEqual([MISSING_COLUMN]);
+    // "Hapus kolom itu dari tabel" tetap bisa dipakai.
+    expect(withoutMissingColumns(table, now, true)).toMatchObject({ spec: { columns: [1, 2] } });
+    expect(missingNotice([MISSING_COLUMN], true)).toMatch(
+      /^Semua kolom .* tidak ada di data terbaru/,
+    );
   });
 });

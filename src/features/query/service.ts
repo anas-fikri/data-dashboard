@@ -21,7 +21,7 @@ import {
   type AcquireOptions,
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
-import { matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import { matchSheet, missingMessage, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
@@ -93,7 +93,7 @@ export interface QueryRepo {
     datasetId: string,
     activeVersionId: string,
     sheetId: string,
-  ): Promise<{ old: SheetInfo; active: SheetInfo[] } | null>;
+  ): Promise<{ old: SheetInfo; oldSheetCount: number; active: SheetInfo[] } | null>;
   /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
   widget(
     userId: string,
@@ -322,11 +322,16 @@ async function runAggPlan(
 
   const r = await runOnParquet(userId, typedKey, deps, async (path, exec) => {
     const main = await exec(buildSql(plan, path));
-    if (!plan.totals) return { main, totals: null };
+    if (!plan.totals) return { main, totals: null, totalsFailed: false };
     // Total opsional: dibatasi TOTALS_MAX_MS; gagal/lewat waktu → grafik tetap tampil tanpa "M"/Lainnya.
     const sql = buildTotalsSql(plan, path);
-    const totals = sql ? await exec(sql, TOTALS_MAX_MS).catch(() => null) : null;
-    return { main, totals };
+    // exec bisa melempar sinkron (tenggat habis) — dibungkus agar tetap jadi "tanpa total".
+    const totals = sql
+      ? await Promise.resolve()
+          .then(() => exec(sql, TOTALS_MAX_MS))
+          .catch(() => null)
+      : null;
+    return { main, totals, totalsFailed: !!sql && !totals };
   });
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
@@ -341,7 +346,8 @@ async function runAggPlan(
     const g = toJson(t[1], "decimal");
     data.grandTotal = g === null || g === undefined ? null : Number(g);
   }
-  deps.cache?.set(key, data, out.bytes + (plan.totals ? 64 : 0));
+  // Total gagal → jangan di-cache: permintaan berikutnya mencoba lagi (pai tanpa "Lainnya" menyesatkan).
+  if (!r.value.totalsFailed) deps.cache?.set(key, data, out.bytes + (plan.totals ? 64 : 0));
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
 
@@ -377,9 +383,11 @@ export async function runWidgetQuery(
   if (!sheet && deps.repo.sheetHistory) {
     // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
     const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
-    const target = h ? matchSheet(h.old, h.active) : null;
+    const target = h ? matchSheet(h.old, h.active, h.oldSheetCount) : null;
     if (h && target) {
-      config = remapConfig(config, h.old, target);
+      const moved = remapConfig(config, h.old, target);
+      if (moved.missing.length) return fail("COLUMN_UNAVAILABLE", missingMessage(moved.missing));
+      config = moved.config;
       sheet = await deps.repo.sheet(w.activeVersionId, target.id);
     }
   }

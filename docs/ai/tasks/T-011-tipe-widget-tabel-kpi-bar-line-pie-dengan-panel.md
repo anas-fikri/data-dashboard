@@ -11,7 +11,7 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-12T22:52:45Z"
+updated: "2026-10-13T01:31:19Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -27,6 +27,56 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-12T22:52:45Z"
       findings: 13
+    - "n": 3
+      by: frontend-expert-design-reviewer
+      at: "2026-10-12T23:43:27Z"
+      findings: 8
+    - "n": 4
+      by: claude-security-reviewer-subagen
+      at: "2026-10-12T23:43:27Z"
+      findings: 1
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 32407
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1791855057021,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791855057042,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  30 passed (30)
+            Tests  422 passed (422)
+         Start at  08:30:54
+         Duration  23.42s (tests 90%, import 5%, transform 4%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-13T01:31:19Z"
+    tree: d257ea15658b0d2f0cb687e97404ec5cba08cb55e9ce31c64af640dc9514a057
 ---
 
 ## Objective
@@ -46,32 +96,42 @@ Panel konfigurasi: sheet, dimensi, ukuran + agregasi (sum/avg/count/min/max/coun
   - Widget mendapat isi: tipe table/kpi/bar/line/pie + spec (Widget.type/spec, kolom JSON yang sudah ada sejak T-010; tanpa migrasi).
   - /api/query menerima bentuk kedua `{ widgetId, filters?, page?, sort? }` (spec diambil dari widget di DB); bentuk T-009 `{ datasetId, spec }` tetap.
   - PATCH /api/dashboards/[id]/widgets/[widgetId] menerima `{ type, spec }`; tambah widget (urungkan hapus) menerima tipe + spec.
-  - Mesin query DuckDB: jatah per user kini antre ≤ queueWaitMs alih-alih langsung QUERY_BUSY (tetap tidak melebihi jatah).
+  - Mesin query DuckDB: jatah per user kini antre (maks. 8 penunggu, total antre ≤ queueWaitMs) alih-alih langsung QUERY_BUSY; jatah user dipegang sebelum menyewa file parquet (penunggu tidak menahan file); tetap tidak melebihi jatah.
+  - /api/query: rate limit 600/menit per user (429 + Retry-After).
+  - Grafik widget: query total terpisah (jumlah kategori + total Total/Jumlah baris) dibatasi 5 s; pai maks. 5 irisan + "Lainnya", hanya Total/Jumlah baris.
+  - Halaman tabel: materialisasi terlambat (urut + OFFSET hanya kolom urut dan _row), halaman dijepit ke halaman terakhir, urutan teks COLLATE nocase.noaccent (seperti Excel).
+  - Data diganti (unggahan baru langsung aktif): spec widget dipetakan ke versi aktif saat dibaca (sheet lewat nama, atau satu-satunya sheet hanya bila versi lama juga satu sheet; kolom lewat nama, kolom yang hilang → COLUMN_UNAVAILABLE menyebut nama lamanya; features/widgets/remap.ts); disimpan permanen saat user menyimpan widget (T-013 akan memindahkan ke aktivasi versi).
+  - Komponen bersama: ui/select.tsx (dropdown dibatasi layar, opsi membungkus, 44 px di ponsel).
   - Dependensi baru ECharts 6.1.0 (+ zrender 6.1.0), dimuat malas hanya bila ada grafik.
   - Token warna grafik --chart-1…6 diganti palet kategori (terang + gelap); sebelumnya tidak dipakai di mana pun.
 - **Security (STRIDE):**
   - **Spoofing:** semua rute memakai sesi server; tanpa sesi → 401.
   - **Tampering:**
     - Spec widget divalidasi zod ketat per tipe dan terhadap skema aktif (kolom ada, tidak disembunyikan, agregasi cocok) saat disimpan, dan diulang saat query.
-    - Kolom dirujuk lewat posisi → nama → kolom fisik c<pos> buatan program; nilai filter lewat parameter binding; urutan tabel hanya kolom milik tabel itu (indeks), halaman dibatasi 0–100.000.
+    - Kolom dirujuk lewat posisi → nama → kolom fisik c<pos> buatan program; nilai filter lewat parameter binding (angka dibatasi ±2^53); urutan tabel hanya kolom milik tabel itu (indeks), halaman dibatasi 0–100.000 dan dijepit ke data.
+    - Pemetaan versi baru hanya membaca sheet dataset yang sama (where version.datasetId) — tidak lintas tenant.
+    - PATCH judul + isi: judul divalidasi lebih dulu, tidak ada bagian yang tersimpan bila yang lain ditolak.
   - **Repudiation:** perubahan widget tidak diaudit per langkah (bukan data sensitif); kegagalan query dicatat dengan userId tanpa body.
   - **Information disclosure:**
     - Widget di-resolve lewat dashboard.dataset.ownerId; milik orang lain = tidak ada → 404 (tanpa oracle). Non-pemilik baru di T-016.
     - Cache hasil memakai kunci dataset/versi/sheet/revisi skema/spec; pemeriksaan pemilik terjadi sebelum cache.
     - Nilai sel dan nama kolom ditampilkan sebagai teks: React meng-escape; ECharts tooltip renderMode "richText" + formatter teks biasa; label sumbu/pai lewat formatter fungsi (AC 7).
-    - Error tak terduga → 500 tanpa detail.
+    - Error tak terduga → 500 tanpa detail. Nama kolom tersembunyi tidak disebut untuk kolom filter dari klien.
   - **DoS:**
-    - Query per user dibatasi slot DuckDB (antre ≤ 10 s, lalu QUERY_BUSY); klien maks. 2 query widget bersamaan per halaman dengan coba ulang bertahap.
-    - Halaman tabel 100 baris, teks sel ≤ 500 karakter, hasil ≤ 5 MB, timeout query, cache negatif untuk timeout.
+    - Query per user dibatasi slot DuckDB (antre maks. 8, ≤ 10 s, lalu QUERY_BUSY) + rate limit 600/menit; klien maks. 2 query widget bersamaan per halaman dengan coba ulang bertahap.
+    - Halaman tabel 100 baris dengan materialisasi terlambat (halaman terakhir tabel 20 kolom teks 1 juta baris ± 0,75 s, sebelumnya 17 s), teks sel ≤ 500 karakter, hasil ≤ 5 MB, timeout bersama count + halaman, cache negatif untuk timeout.
+    - Total grafik: query terpisah tanpa GROUP BY/window, maks. 5 s; gagal → grafik tanpa total.
     - Perubahan widget: rate limit dashboardEdit 600/10 menit, body ≤ 64 KB.
   - **Elevation:** CSRF — semua POST/PATCH wajib Origin = APP_URL (403).
 - **Rollback:**
   - Revert commit T-011. Tidak ada migrasi skema; widget yang sudah diatur akan tampil kosong lagi di kode lama (kolom type/spec diabaikan).
   - Antrean per user di mesin query bisa dikembalikan ke penolakan langsung tanpa perubahan data.
+  - Pemetaan versi saat dibaca tidak menulis apa pun; mematikannya mengembalikan perilaku "Sheet tidak ada di data aktif".
 - **Validation:**
-  - Unit: tests/features/query/widget-query.test.ts (DuckDB sungguhan: batang = SUMIF, tabel 100 baris + urut + halaman, COLUMN_UNAVAILABLE, SHEET_UNAVAILABLE, NOT_FOUND, format Rp), tests/features/dashboards/dashboards.test.ts (simpan/pulihkan spec), tests/features/query/query.test.ts (antrean per user), tests/components/widget-config.test.ts (pilihan awal, opsi grafik richText).
-  - e2e: tests/e2e/widgets.spec.ts (project widgets, worker sungguhan) — AC 1, 2, 3, 4, 7.
-  - Perf: docs/ai/perf/T-011.md — 1 juta baris p95 114 ms, maks 115 ms (AC 5).
+  - Unit: tests/features/query/widget-query.test.ts (DuckDB sungguhan: batang = SUMIF, total grafik termasuk ukuran tanggal, tabel 100 baris + urut + halaman + jepit, COLUMN_UNAVAILABLE, SHEET_UNAVAILABLE, NOT_FOUND, pemetaan versi baru, format Rp/otomatis/durasi), tests/features/dashboards/dashboards.test.ts (simpan/pulihkan spec, spec usang dipulihkan kosong), tests/features/query/query.test.ts (antrean per user + batas antrean), tests/components/widget-config.test.ts (pilihan awal, opsi grafik richText, sumbu waktu UTC, persen = 100, label), tests/lib/api-route.test.ts.
+  - e2e: tests/e2e/widgets.spec.ts (project widgets, worker sungguhan) — AC 1, 2, 3, 4, 7 + data diganti (unggah ulang → widget tampil angka baru).
+  - Perf: docs/ai/perf/T-011.md — 1 juta baris p95 94 ms; 20 kolom teks maks 791 ms (AC 5); scripts/perf-widget-table.ts, scripts/perf-table-wide.ts.
+  - Review: 3 lensa (desain/a11y, keamanan, integritas data) lewat workflow multi-agen; CSP produksi diperiksa (chunk ECharts tanpa eval).
 
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.

@@ -7,7 +7,7 @@ import {
   IconNumber123,
   IconTable,
 } from "@tabler/icons-react";
-import { useId, useState } from "react";
+import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import type { Agg } from "@/features/query/spec";
 import {
@@ -17,11 +17,13 @@ import {
   type WidgetType,
 } from "@/features/widgets/spec";
 import { Choice, ColumnChoice } from "./config-fields";
+import { deferredTask } from "./config-focus";
 import {
   AGG_LABEL,
   TYPE_OPTIONS,
   aggOptions,
   columnsForAgg,
+  missingNotice,
   type SourceColumn,
 } from "./widget-config-model";
 
@@ -75,19 +77,58 @@ export function TypeTiles({
   );
 }
 
+/**
+ * Peringatan kolom yang tidak lagi tersedia. Tabel bisa langsung membuangnya; bila semua kolomnya
+ * hilang, tombolnya memakai kolom pertama sheet (bukan tombol yang tidak melakukan apa-apa).
+ */
+export function MissingNotice({
+  missing,
+  all,
+  onFixTable,
+}: {
+  missing: number[];
+  all: boolean;
+  /** Hanya tabel. */
+  onFixTable?: () => void;
+}) {
+  return (
+    <p
+      role="status"
+      className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
+      data-testid="config-missing"
+    >
+      {missingNotice(missing, all)}{" "}
+      {onFixTable ? (
+        <button
+          type="button"
+          className="font-medium underline underline-offset-4"
+          onClick={onFixTable}
+        >
+          {all ? "Pakai kolom pertama sheet ini" : "Hapus kolom itu dari tabel"}
+        </button>
+      ) : (
+        "Pilih kolom lain di bawah."
+      )}
+    </p>
+  );
+}
+
 /** Kolom tabel: hanya kolom yang tampil di skema; jumlah dihitung dari yang benar-benar tersedia. */
 export function TableColumns({
   columns,
   selected,
   onChange,
+  ref,
 }: {
   columns: SourceColumn[];
   selected: number[];
   onChange: (next: number[]) => void;
+  /** Target fokus setelah kolom yang hilang dibuang (tabIndex -1: cadangan bila semua dinonaktifkan). */
+  ref?: React.Ref<HTMLFieldSetElement>;
 }) {
   const visible = selected.filter((p) => columns.some((c) => c.pos === p));
   return (
-    <fieldset className="flex min-w-0 flex-col gap-2">
+    <fieldset ref={ref} tabIndex={-1} className="flex min-w-0 flex-col gap-2">
       <legend className="mb-1 text-sm font-medium">
         Kolom ditampilkan{" "}
         <span className="font-normal text-muted-foreground">
@@ -154,7 +195,8 @@ export function MeasureFields({
           onChange({ agg, column: keep ? measure.column! : allowed[0]!.pos });
         }}
       />
-      {measure.agg !== "count" ? (
+      {/* count(kolom) hanya dari API/spec lama — tetap ditampilkan agar kolom yang hilang bisa diganti. */}
+      {measure.agg !== "count" || measure.column !== undefined ? (
         <ColumnChoice
           label="dari kolom"
           testId="config-measure"
@@ -175,6 +217,8 @@ export function MeasureFields({
 /**
  * Jumlah kategori/titik maksimal. Teks diketik bebas lalu diperiksa saat kolom ditinggalkan atau
  * Enter — tidak dijepit per ketukan (mengetik "20" tidak lagi tersimpan sebagai 50, review H7).
+ * Pemeriksaan saat blur ditunda sampai fokus tiba di kontrol berikutnya: pesan yang berganti saat
+ * fokus masih di body membuat panel dialog menarik fokus ke kontainernya (verifikasi D6).
  */
 export function TopNField({
   type,
@@ -206,6 +250,10 @@ export function TopNField({
     setError(null);
     if (n !== value) onCommit(n);
   };
+  const [blurCheck] = useState(deferredTask);
+  // Panel ditutup sebelum pemeriksaan berjalan (mis. Escape): jalankan sekarang agar nilai tersimpan.
+  // Layout effect: dilepas sebelum flush form induk (passive), jadi nilai ini ikut terkirim.
+  useLayoutEffect(() => blurCheck.flush, [blurCheck]);
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">
@@ -220,7 +268,7 @@ export function TopNField({
         aria-describedby={`${id}-hint`}
         className="h-(--control-h-lg) md:h-(--control-h)"
         onChange={(e) => setText(e.target.value)}
-        onBlur={check}
+        onBlur={() => blurCheck.schedule(check)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
@@ -241,5 +289,45 @@ export function TopNField({
         )}
       </p>
     </div>
+  );
+}
+
+/** Kolom angka tabel yang memakai format pilihan (selebihnya otomatis). */
+export function FormatColumnsField({
+  columns,
+  selected,
+  onChange,
+}: {
+  columns: { pos: number; name: string }[];
+  selected: number[];
+  onChange: (next: number[]) => void;
+}) {
+  if (!columns.length) return null;
+  return (
+    <fieldset className="flex min-w-0 flex-col gap-1">
+      <legend className="mb-1 text-sm font-medium">Pakai format ini untuk</legend>
+      {columns.map((c) => (
+        <label
+          key={c.pos}
+          className="flex min-h-11 min-w-0 items-center gap-2 rounded-sm px-2 text-sm hover:bg-accent md:min-h-9"
+        >
+          <input
+            type="checkbox"
+            className="size-4 shrink-0 accent-(--color-primary)"
+            checked={selected.includes(c.pos)}
+            onChange={(e) =>
+              onChange(
+                e.target.checked
+                  ? [...selected.filter((p) => p !== c.pos), c.pos]
+                  : selected.filter((p) => p !== c.pos),
+              )
+            }
+          />
+          <span className="min-w-0 truncate" title={c.name}>
+            {c.name}
+          </span>
+        </label>
+      ))}
+    </fieldset>
   );
 }

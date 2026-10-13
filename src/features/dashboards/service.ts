@@ -251,11 +251,20 @@ async function remapToActive(
     })
   ).map(info);
   const byId = new Map(stale.map((s) => [s.id, info(s)]));
+  const counts = await prisma.sheet.groupBy({
+    by: ["versionId"],
+    where: { versionId: { in: [...new Set(stale.map((s) => s.versionId))] } },
+    _count: { _all: true },
+  });
+  const sheetsIn = new Map(counts.map((c) => [c.versionId, c._count._all]));
+  const versionOf = new Map(stale.map((s) => [s.id, s.versionId]));
   return parsed.map(({ w, c }) => {
     if (!c.ok || c.config.type === "empty") return w;
     const old = byId.get(c.config.spec.sheetId);
-    const target = old ? matchSheet(old, active) : null;
-    return old && target ? { ...w, spec: remapConfig(c.config, old, target).spec } : w;
+    const count = sheetsIn.get(versionOf.get(c.config.spec.sheetId) ?? "") ?? 0;
+    const target = old ? matchSheet(old, active, count) : null;
+    // Kolom yang hilang tetap ditandai (MISSING_COLUMN): panel meminta kolom pengganti.
+    return old && target ? { ...w, spec: remapConfig(c.config, old, target).config.spec } : w;
   });
 }
 

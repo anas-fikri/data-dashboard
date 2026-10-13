@@ -17,8 +17,9 @@ function nf(options: Intl.NumberFormatOptions): Intl.NumberFormat {
   return f;
 }
 
-/** "-0" (nilai negatif kecil yang dibulatkan ke nol) ditampilkan "0". */
-const noNegZero = (text: string) => (/^-[0.,\s]*$/.test(text) ? text.slice(1) : text);
+/** "-0", "-0%", "-Rp 0" (nilai negatif kecil yang dibulatkan ke nol) ditampilkan tanpa minus. */
+const noNegZero = (text: string) =>
+  text.startsWith("-") && !/[1-9]/.test(text) ? text.slice(1) : text;
 
 export function formatNumber(value: number, format: NumberFormat): string {
   if (format.style === "auto") {
@@ -29,7 +30,8 @@ export function formatNumber(value: number, format: NumberFormat): string {
     );
   }
   const digits = { minimumFractionDigits: format.decimals, maximumFractionDigits: format.decimals };
-  if (format.style === "percent") return nf({ style: "percent", ...digits }).format(value);
+  if (format.style === "percent")
+    return noNegZero(nf({ style: "percent", ...digits }).format(value));
   if (format.style === "rupiah") {
     const text = nf(digits).format(Math.abs(value));
     // Nilai yang dibulatkan ke 0 tidak diberi tanda minus ("-Rp 0").
@@ -58,23 +60,42 @@ export function formatDuration(seconds: number): string {
 
 /**
  * Angka ringkas untuk sumbu grafik: 1,2 rb / 3,4 jt / 5,6 M. Tanpa "Rp" — satuan ditulis sekali di
- * nama sumbu, bukan di tiap angka (review desain T-011 H3).
+ * nama sumbu, bukan di tiap angka (review desain T-011 H3). 3 angka penting: garis sumbu 0,02 / 0,05 /
+ * 1,25 jt tidak dibulatkan jadi "0" atau label kembar.
  */
 export function formatAxis(value: number, format: NumberFormat): string {
-  if (format.style === "percent")
-    return nf({ style: "percent", maximumFractionDigits: 1 }).format(value);
-  return nf({ notation: "compact", maximumFractionDigits: 1 }).format(value);
+  const sig = { maximumSignificantDigits: 3 };
+  if (format.style === "percent") return noNegZero(nf({ style: "percent", ...sig }).format(value));
+  return noNegZero(nf({ notation: "compact", ...sig }).format(value));
 }
 
 /** Nilai ringkas untuk kartu sempit ("Rp 3,97 jt", "43,6%"); nilai lengkap tetap di title/sr-only. */
 export function formatCompact(value: number, format: NumberFormat): string {
   if (format.style === "percent")
-    return nf({ style: "percent", maximumFractionDigits: 1 }).format(value);
-  if (format.style !== "rupiah")
-    return nf({ notation: "compact", maximumFractionDigits: 2 }).format(value);
-  // Tanda minus di depan "Rp", sama dengan formatNumber ("-Rp 3,97 jt").
-  const text = nf({ notation: "compact", maximumFractionDigits: 2 }).format(Math.abs(value));
-  return `${value < 0 ? "-" : ""}Rp ${text}`;
+    return noNegZero(nf({ style: "percent", maximumFractionDigits: 1 }).format(value));
+  // Nilai bukan nol < 0,01 tetap terbaca (0,004, bukan 0) — aturan yang sama dengan "Otomatis".
+  const tiny = format.style !== "rupiah" && value !== 0 && Math.abs(value) < 0.01;
+  const opts: Intl.NumberFormatOptions = tiny
+    ? { maximumSignificantDigits: 2 }
+    : { notation: "compact", maximumFractionDigits: 2 };
+  if (format.style !== "rupiah") return noNegZero(nf(opts).format(value));
+  // Tanda minus di depan "Rp", sama dengan formatNumber ("-Rp 3,97 jt"); "Rp 0" tanpa minus.
+  return noNegZero(`${value < 0 ? "-" : ""}Rp ${nf(opts).format(Math.abs(value))}`);
+}
+
+/**
+ * Nilai ukuran grafik (tooltip, tabel data, daftar peringkat): durasi (detik) j:mm:dd bila format
+ * "Otomatis" — sama dengan KPI dan tabel — selain itu format angka pilihan.
+ */
+export function formatMeasure(
+  value: number | null,
+  type: ValueType | undefined,
+  format: NumberFormat,
+  compact = false,
+): string {
+  if (value === null) return "(kosong)";
+  if (type === "duration" && format.style === "auto") return formatDuration(value);
+  return compact ? formatCompact(value, format) : formatNumber(value, format);
 }
 
 /** Format yang dipakai sel tabel: format pilihan untuk kolom terpilih, selebihnya otomatis. */

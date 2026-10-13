@@ -18,7 +18,7 @@ import {
   formatLabelNumber,
   formatNumber,
 } from "@/features/widgets/format";
-import { matchSheet, remapConfig } from "@/features/widgets/remap";
+import { MISSING_COLUMN, matchSheet, missingMessage, remapConfig } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -335,7 +335,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     expect(formatCompact(-3969625, { style: "rupiah", decimals: 0 })).toBe("-Rp 3,97\u00a0jt");
   });
 
-  it("data diganti: sheet lewat nama, kolom lewat nama; yang tidak ketemu → posisi 0", () => {
+  it("data diganti: sheet lewat nama, kolom lewat nama; yang tidak ketemu → penanda + nama lama", () => {
     const old = { id: "old", name: "Penjualan", index: 0, schema: SCHEMA };
     const next = {
       id: "new",
@@ -343,25 +343,63 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       index: 1,
       schema: [col(1, "Tanggal", "date"), col(2, "Cabang", "text"), col(3, "omzet", "decimal")],
     };
-    expect(matchSheet(old, [next, { ...next, id: "x", name: "Lain" }])).toBe(next);
-    expect(matchSheet(old, [{ ...next, name: "Bulan Oktober" }])?.name).toBe("Bulan Oktober");
+    expect(matchSheet(old, [next, { ...next, id: "x", name: "Lain" }], 2)).toBe(next);
+    // Satu-satunya sheet hanya dipakai bila versi lama juga satu sheet (CSV/nama file berubah).
+    expect(matchSheet(old, [{ ...next, name: "Bulan Oktober" }], 1)?.name).toBe("Bulan Oktober");
+    expect(matchSheet(old, [{ ...next, name: "Bulan Oktober" }], 3)).toBeNull();
     expect(
-      matchSheet(old, [
-        { ...next, name: "A" },
-        { ...next, id: "b", name: "B" },
-      ]),
+      matchSheet(
+        old,
+        [
+          { ...next, name: "A" },
+          { ...next, id: "b", name: "B" },
+        ],
+        1,
+      ),
     ).toBeNull();
     const bar = parseWidgetConfig("bar", WIDGETS.bar!.spec);
     if (!bar.ok || bar.config.type === "empty") throw new Error("spec");
     const moved = remapConfig(bar.config, old, next);
-    expect(moved.spec).toMatchObject({
+    expect(moved.missing).toEqual([]);
+    expect(moved.config.spec).toMatchObject({
       sheetId: "new",
       dimension: { column: 2 },
       measure: { agg: "sum", column: 3 },
     });
     const table = parseWidgetConfig("table", WIDGETS.table!.spec);
     if (!table.ok || table.config.type !== "table") throw new Error("spec");
-    expect(remapConfig(table.config, old, next).spec).toMatchObject({ columns: [2, 3, 0] });
+    const t = remapConfig(table.config, old, next);
+    // Kolom yang hilang tidak pernah jatuh ke posisi 0 (bisa jadi kolom lain): satu penanda saja.
+    expect(t.config.spec).toMatchObject({ columns: [2, 3, MISSING_COLUMN] });
+    expect(t.missing.length).toBeGreaterThan(0);
+    expect(missingMessage(["Catatan"])).toContain('Kolom "Catatan" tidak ada di data terbaru');
+  });
+
+  it("kolom widget hilang di data baru → COLUMN_UNAVAILABLE menyebut nama lama", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const d = deps();
+    d.repo = {
+      ...d.repo,
+      widget: async () => ({
+        type: "kpi",
+        spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
+        datasetId: DS,
+        activeVersionId: VER,
+      }),
+      sheetHistory: async () => ({
+        old: {
+          id: OLD,
+          name: "Sheet1",
+          index: 0,
+          schema: [col(0, "Cabang", "text"), col(2, "Omzet Lama", "decimal")],
+        },
+        oldSheetCount: 1,
+        active: [{ id: SHEET, name: "Sheet1", index: 0, schema: SCHEMA }],
+      }),
+    };
+    const r = await runWidgetQuery(USER, { widgetId: WID("kpi") }, d);
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(!r.ok && r.message).toContain('"Omzet Lama"');
   });
 
   it("widget versi lama tetap jalan setelah data diganti (dipetakan saat query)", async () => {
@@ -378,6 +416,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       }),
       sheetHistory: async () => ({
         old: { id: OLD, name: "Sheet1", index: 0, schema: SCHEMA },
+        oldSheetCount: 1,
         active: [{ id: SHEET, name: "Sheet1", index: 0, schema: SCHEMA }],
       }),
     };
@@ -408,5 +447,26 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
     expect(r).toMatchObject({ ok: true, categories: 4, grandTotal: null });
     expect(r.ok && r.rows).toHaveLength(2);
+  });
+
+  it("query total gagal → grafik tetap tampil tanpa total dan TIDAK di-cache (dicoba lagi)", async () => {
+    const failing = {
+      exec: (sql: string, params: Record<string, unknown>, ms: number) =>
+        /count\(DISTINCT/.test(sql)
+          ? Promise.reject(new Error("total gagal"))
+          : engine.exec(sql, params as never, ms),
+      withSlot: <T>(u: string, fn: () => Promise<T>) => engine.withSlot(u, fn),
+    } as unknown as QueryEngine;
+    const d = deps({ engine: failing });
+    const first = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(first).toMatchObject({ ok: true, cached: false });
+    expect(first.ok && first.categories).toBeUndefined();
+    const again = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(again).toMatchObject({ ok: true, cached: false });
+    // Mesin pulih → total ada dan baru sekarang di-cache.
+    d.engine = engine;
+    const healed = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(healed.ok && healed.categories).toBeGreaterThan(0);
+    expect(await runWidgetQuery(USER, { widgetId: WID("bar") }, d)).toMatchObject({ cached: true });
   });
 });

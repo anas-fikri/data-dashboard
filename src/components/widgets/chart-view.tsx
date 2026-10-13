@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { formatNumber } from "@/features/widgets/format";
-import { chartOption, chartSummary, type ChartInput, type ChartTheme } from "./chart-option";
+import { formatMeasure } from "@/features/widgets/format";
+import {
+  OTHERS_LABEL,
+  chartOption,
+  chartSummary,
+  type ChartInput,
+  type ChartTheme,
+} from "./chart-option";
 import { useBoxSize } from "./use-box-size";
 
 /*
@@ -132,16 +138,16 @@ export function ChartView(
             <tr key={i}>
               <th scope="row">{label}</th>
               <td data-value={input.values[i] ?? ""}>
-                {input.values[i] === null
-                  ? "(kosong)"
-                  : formatNumber(input.values[i]!, input.format)}
+                {formatMeasure(input.values[i] ?? null, input.valueType, input.format)}
               </td>
             </tr>
           ))}
           {input.others ? (
             <tr>
-              <th scope="row">Lainnya</th>
-              <td data-value={input.others}>{formatNumber(input.others, input.format)}</td>
+              <th scope="row">{OTHERS_LABEL}</th>
+              <td data-value={input.others}>
+                {formatMeasure(input.others, input.valueType, input.format)}
+              </td>
             </tr>
           ) : null}
         </tbody>

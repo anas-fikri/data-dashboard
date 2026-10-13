@@ -1,17 +1,12 @@
 "use client";
 
-import {
-  IconAdjustmentsHorizontal,
-  IconChartBar,
-  IconGripVertical,
-  IconTable,
-} from "@tabler/icons-react";
+import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
 import { forwardRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetView } from "@/features/dashboards/service";
-import { parseWidgetConfig } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
+import { cardConfig, dataToggle } from "./widget-card-model";
 
 /*
  * Satu widget di kanvas. Mode lihat: hanya isi. Mode edit: seluruh kepala kartu jadi pegangan seret
@@ -39,11 +34,14 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
 ) {
   const title = widget.title || "Widget tanpa judul";
   const handle = editing && draggable;
-  const parsed = parseWidgetConfig(widget.type, widget.spec);
-  const config = parsed.ok && parsed.config.type !== "empty" ? parsed.config : null;
-  const chart = config?.type === "bar" || config?.type === "line" || config?.type === "pie";
+  const config = cardConfig(widget.type, widget.spec);
+  const chart =
+    config?.type === "bar" || config?.type === "line" || config?.type === "pie"
+      ? config.type
+      : null;
   // Nilai grafik sebagai tabel: tombol di kepala kartu (tidak ikut terpotong di kartu pendek/sempit).
   const [showData, setShowData] = useState(false);
+  const toggle = chart ? dataToggle(chart, showData) : null;
   return (
     <div
       ref={ref}
@@ -84,22 +82,25 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         >
           {title}
         </h2>
-        {chart ? (
+        {toggle ? (
           <Button
             size="icon-sm"
             variant="ghost"
             className={cn(
               "size-(--control-h-lg) shrink-0 md:size-(--control-h-sm)",
+              // Tertekan terlihat (bukan hanya aria-pressed); mode warna paksa: garis Highlight.
+              "aria-pressed:bg-accent aria-pressed:text-primary aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary",
+              "forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
               // Mode edit di kartu sempit: ruang kepala untuk pegangan + pengaturan.
               editing && "@max-[9rem]:hidden",
             )}
             aria-label={`Tampilkan data ${title} sebagai tabel`}
-            title="Tampilkan sebagai tabel"
+            title={toggle.tooltip}
             aria-pressed={showData}
             data-testid="widget-data-toggle"
             onClick={() => setShowData((s) => !s)}
           >
-            <IconTable aria-hidden />
+            <toggle.Icon aria-hidden />
           </Button>
         ) : null}
         {editing ? (
@@ -123,6 +124,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           config={config}
           title={widget.title}
           editing={editing}
+          resizable={handle}
           showData={showData}
         />
       ) : (

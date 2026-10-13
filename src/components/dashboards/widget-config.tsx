@@ -5,15 +5,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/features/widgets/spec";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
-import { MeasureFields, TableColumns, TopNField, TypeTiles } from "./config-sections";
+import { useFocusAfterRender } from "./config-focus";
 import {
-  CHART_SORT_ORDER,
+  FormatColumnsField,
+  MeasureFields,
+  MissingNotice,
+  TableColumns,
+  TopNField,
+  TypeTiles,
+} from "./config-sections";
+import {
   GRAIN_LABEL,
   defaultConfig,
   isNumeric,
   isTemporal,
   missingColumns,
-  sortLabel,
+  sortOptions,
+  withDimension,
+  withoutMissingColumns,
   type Source,
 } from "./widget-config-model";
 
@@ -22,7 +31,9 @@ import {
  * jumlah kategori, dan format angka. Perubahan yang valid tersimpan otomatis setelah jeda singkat dan
  * widget langsung memuat ulang datanya. Pilihan per jenis diingat selama panel terbuka — berpindah
  * jenis lalu kembali (mis. dengan panah keyboard) tidak menghapus pengaturan (review desain T-011 M3).
- * Kolom yang tidak lagi tersedia diberi tahu dan dibuang saat user mengubah sesuatu (M2).
+ * Kolom yang tidak lagi tersedia (disembunyikan, atau tidak ada di data terbaru — MISSING_COLUMN)
+ * diberi tahu dan ditandai; tidak tersimpan sampai diganti. Kolom tabel dibuang saat user mengubah
+ * sesuatu (M2).
  */
 const SAVE_DELAY_MS = 350;
 type Status = "idle" | "saving" | "saved" | "error";
@@ -46,6 +57,7 @@ export function WidgetConfigForm({
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const save = useRef(onSave);
+  const [columnsRef, focusColumns] = useFocusAfterRender<HTMLFieldSetElement>();
   useEffect(() => {
     save.current = onSave;
   });
@@ -65,20 +77,7 @@ export function WidgetConfigForm({
   const commit = (next: WidgetConfig | null) => {
     if (!next) return;
     // Kolom tabel yang tidak lagi tersedia dibuang begitu user mengubah sesuatu.
-    if (next.type === "table") {
-      const gone = new Set(missingColumns(next, sources));
-      const columns = next.spec.columns.filter((p) => !gone.has(p));
-      if (columns.length && columns.length !== next.spec.columns.length) {
-        next = {
-          ...next,
-          spec: {
-            ...next.spec,
-            columns,
-            formatColumns: next.spec.formatColumns?.filter((p) => columns.includes(p)),
-          },
-        };
-      }
-    }
+    if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
     if (next.type === "empty" || missingColumns(next, sources).length) return;
     if (!parseWidgetConfig(next.type, next.spec).ok) return;
@@ -123,25 +122,19 @@ export function WidgetConfigForm({
       ) : (
         <>
           {missing.length ? (
-            <p
-              role="status"
-              className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
-              data-testid="config-missing"
-            >
-              Sebagian kolom yang dipakai widget ini tidak tersedia lagi (disembunyikan atau dihapus
-              di skema).{" "}
-              {draft.type === "table" ? (
-                <button
-                  type="button"
-                  className="font-medium underline underline-offset-4"
-                  onClick={() => commit({ ...draft })}
-                >
-                  Hapus kolom itu dari tabel
-                </button>
-              ) : (
-                "Pilih kolom lain di bawah."
-              )}
-            </p>
+            <MissingNotice
+              missing={missing}
+              all={draft.type === "table" && missing.length === draft.spec.columns.length}
+              onFixTable={
+                draft.type === "table"
+                  ? () => {
+                      // Tombol ini hilang setelah diklik: fokus pindah ke daftar kolom.
+                      focusColumns();
+                      commit(withoutMissingColumns(draft, sources, true));
+                    }
+                  : undefined
+              }
+            />
           ) : null}
 
           {sources.length > 1 ? (
@@ -166,6 +159,7 @@ export function WidgetConfigForm({
 
           {draft.type === "table" ? (
             <TableColumns
+              ref={columnsRef}
               columns={cols}
               selected={draft.spec.columns}
               onChange={(columns) =>
@@ -188,17 +182,7 @@ export function WidgetConfigForm({
                     testId="config-dimension"
                     value={draft.spec.dimension.column}
                     columns={cols}
-                    onChange={(column) =>
-                      commit({
-                        ...draft,
-                        spec: {
-                          ...draft.spec,
-                          dimension: isTemporal(typeOf(column) ?? "text")
-                            ? { column, timeGrain: "month" }
-                            : { column },
-                        },
-                      })
-                    }
+                    onChange={(column) => commit(withDimension(draft, column, typeOf(column)))}
                   />
                   {isTemporal(typeOf(draft.spec.dimension.column) ?? "text") ? (
                     <Choice
@@ -242,10 +226,11 @@ export function WidgetConfigForm({
                   <Choice
                     label="Urutan"
                     value={draft.spec.sort}
-                    options={CHART_SORT_ORDER.map((value) => ({
-                      value,
-                      label: sortLabel(value, typeOf(draft.spec.dimension.column), draft.type),
-                    }))}
+                    options={sortOptions(
+                      draft.type,
+                      typeOf(draft.spec.dimension.column),
+                      draft.spec.sort,
+                    )}
                     onChange={(sort) => commit({ ...draft, spec: { ...draft.spec, sort } })}
                   />
                   <TopNField
@@ -302,45 +287,5 @@ export function WidgetConfigForm({
         </>
       )}
     </div>
-  );
-}
-
-/** Kolom angka tabel yang memakai format pilihan (selebihnya otomatis). */
-function FormatColumnsField({
-  columns,
-  selected,
-  onChange,
-}: {
-  columns: { pos: number; name: string }[];
-  selected: number[];
-  onChange: (next: number[]) => void;
-}) {
-  if (!columns.length) return null;
-  return (
-    <fieldset className="flex min-w-0 flex-col gap-1">
-      <legend className="mb-1 text-sm font-medium">Pakai format ini untuk</legend>
-      {columns.map((c) => (
-        <label
-          key={c.pos}
-          className="flex min-h-11 min-w-0 items-center gap-2 rounded-sm px-2 text-sm hover:bg-accent md:min-h-9"
-        >
-          <input
-            type="checkbox"
-            className="size-4 shrink-0 accent-(--color-primary)"
-            checked={selected.includes(c.pos)}
-            onChange={(e) =>
-              onChange(
-                e.target.checked
-                  ? [...selected.filter((p) => p !== c.pos), c.pos]
-                  : selected.filter((p) => p !== c.pos),
-              )
-            }
-          />
-          <span className="min-w-0 truncate" title={c.name}>
-            {c.name}
-          </span>
-        </label>
-      ))}
-    </fieldset>
   );
 }

@@ -43,8 +43,16 @@ export const SORT_DEFAULT: Record<ChartType, ChartSort> = {
 };
 
 const sheetId = z.string().regex(/^[a-z0-9]{20,32}$/);
-/** Posisi kolom di skema sheet (1-based, sama dengan c<pos>). */
-const column = z.number().int().min(1).max(16_384);
+/** Kolom terakhir yang bisa ada di sheet (batas xlsx, sama dengan maxCols parser). */
+export const MAX_COLUMN = 16_384;
+/**
+ * Penanda kolom lama yang tidak ada di versi data terbaru (lihat widgets/remap.ts). Di luar rentang
+ * kolom sungguhan agar tidak pernah tertukar dengan kolom ke-16.384; spec tetap valid sehingga kartu
+ * dan panel bisa menyebut kolom yang hilang.
+ */
+export const MISSING_COLUMN = MAX_COLUMN + 1;
+/** Posisi kolom di skema sheet (1-based, sama dengan c<pos>), atau MISSING_COLUMN. */
+const column = z.number().int().min(1).max(MISSING_COLUMN);
 
 /**
  * Format angka. "auto" (bawaan): bilangan bulat tanpa desimal, desimal maks. 2 angka di belakang

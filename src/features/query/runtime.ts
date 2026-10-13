@@ -19,6 +19,35 @@ import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
 /** Jeda sebelum mencoba lagi inisialisasi yang gagal (DuckDB tidak dibuat ulang per permintaan). */
 const INIT_RETRY_MS = 10_000;
 
+const HISTORY_TTL_MS = 30_000;
+const HISTORY_MAX = 200;
+type History = Awaited<ReturnType<NonNullable<QueryRepo["sheetHistory"]>>>;
+const historyCache = new Map<string, { at: number; value: Promise<History> }>();
+
+async function loadSheetHistory(
+  datasetId: string,
+  activeVersionId: string,
+  sheetId: string,
+): Promise<History> {
+  const select = { id: true, name: true, index: true, schema: true, versionId: true } as const;
+  const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
+    ...s,
+    schema: (s.schema as ColumnSchema[] | null) ?? [],
+  });
+  const old = await prisma.sheet.findFirst({
+    where: { id: sheetId, version: { datasetId } },
+    select,
+  });
+  if (!old) return null;
+  const active = await prisma.sheet.findMany({
+    where: { versionId: activeVersionId, typedKey: { not: null } },
+    orderBy: { index: "asc" },
+    select,
+  });
+  const oldSheetCount = await prisma.sheet.count({ where: { versionId: old.versionId } });
+  return { old: info(old), oldSheetCount, active: active.map(info) };
+}
+
 export const prismaQueryRepo: QueryRepo = {
   ownedDataset: (userId, datasetId) =>
     prisma.dataset.findFirst({
@@ -32,24 +61,18 @@ export const prismaQueryRepo: QueryRepo = {
     });
     return s && { ...s, schema: (s.schema as unknown as ColumnSchema[] | null) ?? null };
   },
-  async sheetHistory(datasetId, activeVersionId, sheetId) {
-    const select = { id: true, name: true, index: true, schema: true } as const;
-    const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
-      ...s,
-      schema: (s.schema as ColumnSchema[] | null) ?? [],
-    });
-    const old = await prisma.sheet.findFirst({
-      where: { id: sheetId, version: { datasetId } },
-      select,
-    });
-    if (!old) return null;
-    const active = await prisma.sheet.findMany({
-      where: { versionId: activeVersionId, typedKey: { not: null } },
-      orderBy: { index: "asc" },
-      select,
-    });
-    return { old: info(old), active: active.map(info) };
+  sheetHistory(datasetId, activeVersionId, sheetId) {
+    // Widget lama dibaca berulang (tiap muat dashboard): skema lama + aktif di-cache sebentar.
+    const k = `${datasetId}:${activeVersionId}:${sheetId}`;
+    const hit = historyCache.get(k);
+    if (hit && hit.at > Date.now() - HISTORY_TTL_MS) return hit.value;
+    const value = loadSheetHistory(datasetId, activeVersionId, sheetId);
+    historyCache.set(k, { at: Date.now(), value });
+    if (historyCache.size > HISTORY_MAX) historyCache.delete(historyCache.keys().next().value!);
+    value.catch(() => historyCache.delete(k));
+    return value;
   },
+
   async widget(userId, widgetId) {
     // Pemilik dataset saja untuk saat ini; non-pemilik lewat berbagi (T-016).
     const w = await prisma.widget.findFirst({

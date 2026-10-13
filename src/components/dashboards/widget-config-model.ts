@@ -1,6 +1,7 @@
 import type { SourceSheet } from "@/features/dashboards/service";
 import type { ColumnType } from "@/features/ingest/infer";
 import type { Agg } from "@/features/query/spec";
+import { MISSING_COLUMN } from "@/features/widgets/remap";
 import {
   DEFAULT_FORMAT,
   PIE_AGGS,
@@ -8,7 +9,9 @@ import {
   TABLE_COLUMNS_MAX,
   TOP_N_DEFAULT,
   TOP_N_MAX,
+  type ChartSort,
   type ChartSpec,
+  type ChartType,
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
@@ -47,17 +50,23 @@ export const GRAIN_LABEL = {
   year: "Per tahun",
 } as const;
 
-/** Label urutan sesuai jenis kolom pengelompokan (tanggal: terlama/terbaru, teks: A–Z/Z–A). */
+/**
+ * Label urutan sesuai jenis kolom pengelompokan (tanggal: terlama/terbaru, angka: terkecil/terbesar —
+ * "A–Z" untuk Bulan 1–12 membingungkan, teks: A–Z/Z–A).
+ */
 export function sortLabel(
   sort: ChartSpec["sort"],
   dimType: ColumnType | undefined,
   chart?: WidgetType,
 ): string {
   const temporal = !!dimType && isTemporal(dimType);
+  const numeric = !!dimType && isNumeric(dimType);
   // Garis selalu digambar urut waktu; urutan menentukan N titik mana yang diambil.
   if (chart === "line" && temporal) {
     if (sort === "label_desc") return "Periode terbaru";
     if (sort === "label_asc") return "Periode terlama";
+    // Spec lama dengan urutan nilai: tetap N titik bernilai terbesar/terkecil, digambar urut waktu.
+    return sort === "value_desc" ? "Titik bernilai terbesar" : "Titik bernilai terkecil";
   }
   switch (sort) {
     case "value_desc":
@@ -65,9 +74,9 @@ export function sortLabel(
     case "value_asc":
       return "Nilai terkecil dulu";
     case "label_asc":
-      return temporal ? "Terlama dulu" : "A–Z";
+      return temporal ? "Terlama dulu" : numeric ? "Terkecil ke terbesar" : "A–Z";
     case "label_desc":
-      return temporal ? "Terbaru dulu" : "Z–A";
+      return temporal ? "Terbaru dulu" : numeric ? "Terbesar ke terkecil" : "Z–A";
   }
 }
 export const CHART_SORT_ORDER: ChartSpec["sort"][] = [
@@ -76,6 +85,21 @@ export const CHART_SORT_ORDER: ChartSpec["sort"][] = [
   "label_asc",
   "label_desc",
 ];
+
+/**
+ * Pilihan urutan untuk Select. Garis bertanggal hanya periode terbaru/terlama (urutan nilai tidak
+ * mengubah urutan gambar); nilai lama di spec tetap jadi pilihan agar tidak tampil kosong.
+ */
+export function sortOptions(
+  chart: ChartType,
+  dimType: ColumnType | undefined,
+  current: ChartSort,
+): { value: ChartSort; label: string }[] {
+  const periodOnly = chart === "line" && !!dimType && isTemporal(dimType);
+  const order: ChartSort[] = periodOnly ? ["label_desc", "label_asc"] : CHART_SORT_ORDER;
+  const values = order.includes(current) ? order : [...order, current];
+  return values.map((value) => ({ value, label: sortLabel(value, dimType, chart) }));
+}
 
 const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
 const TEMPORAL: ColumnType[] = ["date", "timestamp"];
@@ -186,8 +210,9 @@ export function defaultConfig(
 }
 
 /**
- * Posisi kolom yang dirujuk konfigurasi tetapi tidak (lagi) ada di sheet yang tampil — disembunyikan
- * atau dihapus. Panel menampilkan peringatan dan membuangnya saat user mengubah sesuatu (review M2).
+ * Posisi kolom yang dirujuk konfigurasi tetapi tidak (lagi) ada di sheet yang tampil — disembunyikan,
+ * dihapus, atau MISSING_COLUMN (tidak ada di data terbaru setelah diganti). Panel menampilkan
+ * peringatan, menandai isiannya, dan tidak menyimpan sampai user memilih pengganti (review M2).
  */
 export function missingColumns(config: WidgetConfig, sources: Source[]): number[] {
   if (config.type === "empty") return [];
@@ -200,4 +225,66 @@ export function missingColumns(config: WidgetConfig, sources: Source[]): number[
         ? [config.spec.measure.column]
         : [config.spec.dimension.column, config.spec.measure.column];
   return used.filter((p): p is number => p !== undefined && !has.has(p));
+}
+
+/** Penjelasan di atas panel: data diganti (MISSING_COLUMN) atau kolom disembunyikan/dihapus. */
+export function missingNotice(missing: number[], all = false): string {
+  const which = all ? "Semua" : "Sebagian";
+  return missing.includes(MISSING_COLUMN)
+    ? `${which} kolom yang dipakai widget ini tidak ada di data terbaru (dihapus atau diganti namanya).`
+    : `${which} kolom yang dipakai widget ini tidak tersedia lagi (disembunyikan atau dihapus di skema).`;
+}
+
+/** Pesan di isian kolom yang nilainya tidak lagi bisa dipilih. */
+export function missingColumnText(pos: number): string {
+  return pos === MISSING_COLUMN
+    ? "Kolom tidak ada di data terbaru — pilih pengganti."
+    : "Kolom tidak tersedia lagi — pilih pengganti.";
+}
+
+type TableConfig = Extract<WidgetConfig, { type: "table" }>;
+type ChartConfig = Extract<WidgetConfig, { type: ChartType }>;
+
+/**
+ * Tabel tanpa kolom yang tidak lagi tersedia. Bila semuanya hilang: tetap apa adanya (user memilih
+ * sendiri), kecuali `fallback` — kolom pertama sheet (tombol di peringatan panel).
+ */
+export function withoutMissingColumns(
+  config: TableConfig,
+  sources: Source[],
+  fallback = false,
+): WidgetConfig {
+  const gone = new Set(missingColumns(config, sources));
+  if (!gone.size) return config;
+  const columns = config.spec.columns.filter((p) => !gone.has(p));
+  if (!columns.length) return (fallback && defaultConfig("table", sources, config)) || config;
+  return {
+    ...config,
+    spec: {
+      ...config.spec,
+      columns,
+      formatColumns: config.spec.formatColumns?.filter((p) => columns.includes(p)),
+    },
+  };
+}
+
+/**
+ * Ganti kolom pengelompokan: tanggal → per bulan. Garis yang kini bertanggal memakai urutan periode
+ * (pilihan urutan nilai tidak ditawarkan lagi di sana).
+ */
+export function withDimension(
+  config: ChartConfig,
+  column: number,
+  type: ColumnType | undefined,
+): ChartConfig {
+  const temporal = !!type && isTemporal(type);
+  const byValue = config.spec.sort === "value_desc" || config.spec.sort === "value_asc";
+  return {
+    ...config,
+    spec: {
+      ...config.spec,
+      dimension: temporal ? { column, timeGrain: "month" } : { column },
+      sort: config.type === "line" && temporal && byValue ? SORT_DEFAULT.line : config.spec.sort,
+    },
+  };
 }
