@@ -1,7 +1,7 @@
 "use client";
 
 import { IconArrowsExchange } from "@tabler/icons-react";
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import type { TransferTarget } from "@/features/admin/types";
@@ -37,6 +37,8 @@ export function TransferDialog({
   children,
 }: TransferDialogProps) {
   const [target, setTarget] = useState<TransferTarget | null>(null);
+  /** Langkah pertama memang mencari: kolom cari menerima fokus awal (bukan Batal). */
+  const searchRef = useRef<HTMLInputElement>(null);
   const who = (email: string) => (
     <strong className="font-medium text-foreground [overflow-wrap:anywhere]">
       <EmailText email={email} />
@@ -53,13 +55,15 @@ export function TransferDialog({
       title="Alihkan dataset?"
       description={
         <>
-          Semua {source.datasetCount} dataset milik {who(source.email)} beserta dashboard-nya pindah
-          ke {target ? who(target.email) : "pengguna yang Anda pilih"}. Dataset yang namanya sudah
+          {source.datasetCount === 1 ? "Dataset" : `Semua ${source.datasetCount} dataset`} milik{" "}
+          {who(source.email)} beserta dashboard-nya pindah ke{" "}
+          {target ? who(target.email) : "pengguna yang Anda pilih"}. Dataset yang namanya sudah
           dipakai pemilik baru diberi nama baru.
         </>
       }
       busy={pending}
       onCloseAutoFocus={onCloseAutoFocus}
+      initialFocus={searchRef}
       data-testid="admin-confirm"
       action={
         <Button
@@ -85,6 +89,7 @@ export function TransferDialog({
         selectedId={target?.id ?? null}
         disabled={pending}
         onSelect={setTarget}
+        inputRef={searchRef}
         onResults={(items) => setTarget((t) => (t && items.some((i) => i.id === t.id) ? t : null))}
       />
     </ConfirmDialog>

@@ -16,6 +16,14 @@ vi.mock("@/lib/env", () => ({
 }));
 vi.mock("@/lib/db", () => ({ prisma: { user: { findUnique } } }));
 vi.mock("@/lib/logger", () => ({ logger }));
+/** Pembatas volume log diuji di denial-log.test.ts; di sini diteruskan ke warn. */
+const logAccessDenied = vi.hoisted(() => vi.fn());
+vi.mock("@/features/auth/denial-log", () => ({
+  logAccessDenied: async (action: string, fields: object, msg: string) => {
+    logAccessDenied(action, fields, msg);
+    logger.warn(fields, msg);
+  },
+}));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (jar.has(name) ? { name, value: jar.get(name) } : undefined),
@@ -103,6 +111,12 @@ describe("requireUser / getSessionUser", () => {
     logger.warn.mockClear();
     await expect(requireAdmin()).rejects.toThrow("NOT_FOUND_PAGE");
     expect(logger.warn).toHaveBeenCalledWith(
+      { userId: ID, code: "NOT_FOUND", path: "/datasets" },
+      "akses halaman admin ditolak",
+    );
+    // Jatah log per pengguna untuk semua halaman admin (bukan per path).
+    expect(logAccessDenied).toHaveBeenCalledWith(
+      "page",
       { userId: ID, code: "NOT_FOUND", path: "/datasets" },
       "akses halaman admin ditolak",
     );

@@ -602,7 +602,7 @@ describe("listUsers / searchTransferTargets", () => {
     const cases: [string, object][] = [
       ["active", { isActive: true, emailVerifiedAt: { not: null } }],
       ["inactive", { isActive: false }],
-      ["unverified", { emailVerifiedAt: null }],
+      ["unverified", { isActive: true, emailVerifiedAt: null }],
       ["bukan-status", {}],
     ];
     for (const [status, where] of cases) {
@@ -611,6 +611,22 @@ describe("listUsers / searchTransferTargets", () => {
       const r = await svc.listUsers({ status: status as "all" });
       expect(r.status).toBe(status === "bukan-status" ? "all" : status);
       expect(db.prisma.user.count).toHaveBeenLastCalledWith({ where });
+    }
+    // Tiap akun (termasuk nonaktif yang belum verifikasi) masuk tepat satu saringan, sama dengan
+    // badge-nya: aktif + nonaktif + belum verifikasi = semua (review integritas T-019 putaran 2).
+    const matches = (where: object, row: Record<string, unknown>) =>
+      Object.entries(where).every(([k, v]) =>
+        v && typeof v === "object" ? row[k] !== null : row[k] === v,
+      );
+    const rows = [
+      { isActive: true, emailVerifiedAt: new Date(), badge: "active" },
+      { isActive: true, emailVerifiedAt: null, badge: "unverified" },
+      { isActive: false, emailVerifiedAt: new Date(), badge: "inactive" },
+      { isActive: false, emailVerifiedAt: null, badge: "inactive" },
+    ];
+    for (const row of rows) {
+      const hits = cases.slice(0, 3).filter(([, where]) => matches(where, row));
+      expect(hits.map(([status]) => status)).toEqual([row.badge]);
     }
     expect(db.prisma.user.findMany.mock.calls[1]![0]).toMatchObject({
       orderBy: [{ datasets: { _count: "desc" } }, { email: "asc" }],

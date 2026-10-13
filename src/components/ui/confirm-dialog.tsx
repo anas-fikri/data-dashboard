@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertDialog } from "radix-ui";
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 
 /** Tombol di baris aksi dialog: 44px dan full-width di ponsel, ukuran biasa mulai 768. */
@@ -24,13 +24,17 @@ interface ConfirmDialogProps {
   busy?: boolean;
   /** Mengatur ke mana fokus kembali saat dialog tertutup (dialog dibuka dari menu, bukan dari Trigger). */
   onCloseAutoFocus?: (event: Event) => void;
+  /** Fokus awal selain Batal (mis. kolom cari bila langkah pertama memang mencari). */
+  initialFocus?: RefObject<HTMLElement | null>;
   "data-testid"?: string;
 }
 
 /**
- * Dialog konfirmasi (role=alertdialog): fokus awal ke Batal, fokus terkunci, Esc menutup, klik di
- * luar tidak menutup. Gaya sama dengan dialog hapus dataset/dashboard. Urutan tombol di DOM sama
- * dengan urutan tampilan: Batal lalu tombol utama (di ponsel bertumpuk, tombol utama di bawah).
+ * Dialog konfirmasi (role=alertdialog): fokus awal ke Batal (atau `initialFocus`), fokus terkunci, Esc
+ * menutup, klik di luar tidak menutup. Gaya sama dengan dialog hapus dataset/dashboard. Urutan tombol
+ * di DOM sama dengan urutan tampilan: Batal lalu tombol utama (di ponsel bertumpuk, tombol utama di
+ * bawah). Satu area gulir (judul, deskripsi, isi); baris tombol di luarnya sehingga selalu terlihat,
+ * juga di layar pendek.
  */
 export function ConfirmDialog({
   open,
@@ -41,6 +45,7 @@ export function ConfirmDialog({
   action,
   busy = false,
   onCloseAutoFocus,
+  initialFocus,
   "data-testid": testId,
 }: ConfirmDialogProps) {
   const contentRef = useRef<HTMLDivElement>(null);
@@ -68,17 +73,29 @@ export function ConfirmDialog({
         <AlertDialog.Content
           ref={contentRef}
           data-testid={testId}
+          onOpenAutoFocus={
+            initialFocus
+              ? (event) => {
+                  const el = initialFocus.current;
+                  if (!el) return; // tanpa target: bawaan (Batal)
+                  event.preventDefault();
+                  el.focus();
+                }
+              : undefined
+          }
           onCloseAutoFocus={onCloseAutoFocus}
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col gap-4 overflow-y-auto rounded-lg border bg-card p-6 shadow-lg outline-none"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-card shadow-lg outline-none"
         >
-          <div>
-            <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
-            <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
-              {description}
-            </AlertDialog.Description>
+          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-6 pb-4">
+            <div>
+              <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
+              <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
+                {description}
+              </AlertDialog.Description>
+            </div>
+            {children}
           </div>
-          {children}
-          <div className="flex flex-col gap-2 md:flex-row md:justify-end">
+          <div className="flex shrink-0 flex-col gap-2 border-t px-6 pt-4 pb-6 md:flex-row md:justify-end">
             <AlertDialog.Cancel asChild>
               <Button variant="outline" disabled={busy} className={DIALOG_CTA}>
                 Batal

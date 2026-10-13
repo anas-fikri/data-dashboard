@@ -85,8 +85,15 @@ try {
   // Setelah dataset (dan storage-nya) habis lewat jalur di atas; akun yang masih punya dataset
   // (mis. dibuat bersamaan) dilewati agar tidak ada dataset terhapus cascade tanpa storage.
   const accountIds = users.filter((u) => ACCOUNT_EMAIL.test(u.email)).map((u) => u.id);
+  // --dry-run: dataset belum dihapus, jadi hitung akun yang tidak punya dataset SELAIN yang akan
+  // dihapus di atas (sama dengan filter jalur sungguhan setelah dataset itu habis).
   const accounts = dryRun
-    ? accountIds.length
+    ? await prisma.user.count({
+        where: {
+          id: { in: accountIds },
+          datasets: { none: { id: { notIn: datasets.map((d) => d.id) } } },
+        },
+      })
     : (await prisma.user.deleteMany({ where: { id: { in: accountIds }, datasets: { none: {} } } }))
         .count;
   console.log(

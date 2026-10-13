@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
+import { logAccessDenied } from "@/features/auth/denial-log";
 import { RULES, clientIp, hit } from "@/features/auth/rate-limit";
 import { AuthError, createSession, requireAdmin, type SessionUser } from "@/features/auth/session";
 import { env } from "@/lib/env";
@@ -25,7 +26,8 @@ export type AdminResult<T = null> = Result<T>;
  * rate limit per admin (hanya aksi yang mengubah data), lalu service (cek ulang peran pelaku +
  * AuditLog dalam satu transaksi).
  * Log keamanan (ASVS V7): penolakan akses → warn "aksi admin ditolak" { userId bila ada sesi, code,
- * action }; penolakan aturan (LAST_ADMIN/FORBIDDEN/RATE_LIMITED) → info. Tanpa isi permintaan.
+ * action }, dibatasi per pengguna + aksi per menit (denial-log.ts); penolakan aturan
+ * (LAST_ADMIN/FORBIDDEN/RATE_LIMITED) → info. Tanpa isi permintaan.
  */
 
 const PATH = "/admin/pengguna";
@@ -41,7 +43,8 @@ async function currentAdmin(action: string): Promise<SessionUser | null> {
   } catch (e) {
     unstable_rethrow(e);
     if (e instanceof AuthError) {
-      logger.warn(
+      await logAccessDenied(
+        action,
         { ...(e.userId ? { userId: e.userId } : {}), code: e.code, action },
         "aksi admin ditolak",
       );

@@ -86,7 +86,7 @@ export function DashboardCanvas(props: {
     const grid = containerRef.current;
     if (!card || !item) return;
     if (phone || !grid) return card.scrollIntoView({ block: "start" });
-    const gap = parseFloat(getComputedStyle(card).scrollMarginTop) || 0; // topbar + 1rem
+    const gap = parseFloat(getComputedStyle(card).scrollMarginTop) || 0; // topbar + 0.5rem (sama dengan scroll-padding-top global)
     const top =
       grid.getBoundingClientRect().top + window.scrollY + item.y * (ROW_HEIGHT + MARGIN[1]);
     const height = item.h * ROW_HEIGHT + (item.h - 1) * MARGIN[1];

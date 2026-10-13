@@ -12,7 +12,7 @@ depends_on:
   - T-003
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T15:11:15Z"
+updated: "2026-10-13T15:50:09Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -24,11 +24,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-13T14:32:41Z"
       findings: 19
+    - "n": 2
+      by: claude-verify-workflow
+      at: "2026-10-13T15:34:02Z"
+      findings: 9
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 33758
+    duration_ms: 33405
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -50,13 +54,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791904253507,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791904253530,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791906586678,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791906586701,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  36 passed (36)
-            Tests  666 passed (666)
-         Start at  22:10:50
-         Duration  23.85s (tests 88%, import 7%, transform 5%)
+       Test Files  37 passed (37)
+            Tests  672 passed (672)
+         Start at  22:49:44
+         Duration  23.44s (tests 89%, import 6%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -64,8 +68,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T15:11:15Z"
-    tree: 4386ba646cf9049b807cb0d56ef67a7b0de8023f7cf2ce26337024f81d90b707
+    at: "2026-10-13T15:50:09Z"
+    tree: 71cf30b4420d7f7af4965373fdc8e7d91f7db0619e916b8bec7cb58103a42e78
 ---
 
 ## Objective
@@ -129,6 +133,12 @@ evidence:
     - Pemulihan admin: scripts/admin-restore.mjs diuji manual di DB dev (tanpa email → exit 2; NODE_ENV=production tanpa --confirm → ditolak; email tidak ada → tanpa perubahan; akun uji terverifikasi → aktif + admin + AuditLog user.admin.restore ip cli).
     - Kebersihan dev: purge dijalankan 2026-10-13 → 913 akun uji dihapus (970 → 57 pengguna, admin aktif 46 → 3, calon tujuan 951 → 51); akun selain pola uniqueEmail (admin@, demo.admin@, audit-*, design-*, fixui19-*) tidak disentuh.
     - e2e: `npx playwright test tests/e2e/admin.spec.ts --project=admin --no-deps --reporter=line` 2026-10-13 di atas HEAD 467b44d + perubahan kerja (belum di-commit) → 5 passed (AC1, AC3, AC4 lewat pencarian server + tombol "Alihkan ke <email>", AC6, AC7); teardown: {"testUsers":39,"datasets":1,"objects":3,"accounts":4}.
+  - Perbaikan review putaran 2 (backend), 2026-10-13:
+    - Volume log penolakan: tests/features/auth/denial-log.test.ts (5 warn pertama per pengguna/anon + aksi per jendela 1 menit, lalu satu ringkasan "<n> penolakan ditekan" setelah jendela; jatah terpisah per pengguna/aksi/anon; Redis mati → setiap penolakan tetap dicatat; Redis putus sebelum ringkasan → ringkasan tanpa jumlah). actions.test.ts dan session.test.ts: penolakan aksi/halaman lewat logAccessDenied (halaman memakai satu jatah "page", bukan per path). Live di dev: non-admin 20× searchTransferTargets paralel + 8× GET /admin/pengguna → 5 + 5 warn, lalu "aksi admin ditolak: 15 penolakan ditekan" dan "akses halaman admin ditolak: 3 penolakan ditekan"; respons tetap NOT_FOUND / 404.
+    - Nama ber-@ dari token lama: register.test.ts (verifyEmail tidak memasang "a@b.com" / @ lebar penuh, nama biasa tetap dibersihkan; resendVerification menyalin pendingName null).
+    - Saringan "Belum verifikasi" = aktif + belum verifikasi: service.test.ts (where per status + tiap kombinasi aktif/nonaktif × verifikasi masuk tepat satu saringan). DB dev: semua 90 = aktif 53 + nonaktif 37 + belum verifikasi 0.
+    - admin-restore.mjs diuji manual di DB dev: DATABASE_URL host db.internal / URL rusak tanpa --confirm → ditolak exit 1; NODE_ENV=production → ditolak; akun uji nonaktif terverifikasi → aktif + admin, sessionVersion 1 → 2, AuditLog meta {wasAdmin, wasActive, osUser, host}; dijalankan ulang → "sudah admin aktif", exit 0, sessionVersion tetap 2, tetap satu baris AuditLog. Akun uji dihapus setelahnya.
+    - dev-purge-test-data.mjs --dry-run: jumlah akun = akun uniqueEmail yang tidak punya dataset selain yang akan dihapus (filter yang sama dengan jalur sungguhan); dijalankan → {"testUsers":36,"datasets":0,"objects":0,"accounts":1} (akun uji restore di atas).
   - e2e dan audit UI: lihat Notes (Conventions check) setelah halaman selesai.
 
 ## Notes
@@ -143,7 +153,7 @@ evidence:
 - [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — Keempat Server Action (termasuk searchTransferTargetsAction yang hanya baca) memanggil requireAdmin("action") sebelum apa pun; AuthError (non-admin/tanpa sesi/sesi dicabut) → NOT_FOUND tanpa kueri apa pun dan dicatat (diuji). Pelaku dicek ulang di dalam transaksi; isAdmin selalu dari DB. Halaman /admin/pengguna wajib requireAdmin() (404) — dibuktikan e2e UI (AC3/AC6, run 2026-10-13 di Validation).
 - [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — id lewat isIdShape, flag harus boolean, kata kunci pencarian NFC tanpa karakter kontrol ≤ 100 dengan wildcard LIKE di-escape; nama pengguna dibersihkan dari karakter kontrol/bidi saat registrasi dan saat dibaca, nama berbentuk email ditolak; semua kueri Prisma terparameter; advisory lock lewat $executeRaw tagged template. Nama hasil rename dibangun dari nama yang sudah tervalidasi, ≤ 80 karakter, nameKey dihitung ulang dengan nameKeyOf. Output dirender React.
 - [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data rahasia baru yang disimpan (AuditLog tanpa kredensial/token).
-- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — Kode tetap (NOT_FOUND/LAST_ADMIN/FORBIDDEN/INVALID/RATE_LIMITED/LIMIT_REACHED/BUSY) dengan pesan Indonesia; error tak terduga → BUSY dengan pesan umum, detail di log pino. Peristiwa keamanan (beri/cabut admin, nonaktif/aktif, alih, pemulihan admin lewat CLI) tercatat di AuditLog + log terstruktur tanpa rahasia. Keputusan akses yang gagal juga dicatat (ASVS V7.2.2): Server Action admin → warn "aksi admin ditolak" { userId bila ada sesi, code, action }, halaman /admin/* → warn "akses halaman admin ditolak" { userId, path tanpa query }, penolakan aturan LAST_ADMIN/FORBIDDEN/RATE_LIMITED → info. Diuji unit.
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — Kode tetap (NOT_FOUND/LAST_ADMIN/FORBIDDEN/INVALID/RATE_LIMITED/LIMIT_REACHED/BUSY) dengan pesan Indonesia; error tak terduga → BUSY dengan pesan umum, detail di log pino. Peristiwa keamanan (beri/cabut admin, nonaktif/aktif, alih, pemulihan admin lewat CLI) tercatat di AuditLog + log terstruktur tanpa rahasia. Keputusan akses yang gagal juga dicatat (ASVS V7.2.2): Server Action admin → warn "aksi admin ditolak" { userId bila ada sesi, code, action }, halaman /admin/* → warn "akses halaman admin ditolak" { userId, path tanpa query }, penolakan aturan LAST_ADMIN/FORBIDDEN/RATE_LIMITED → info. Diuji unit. Penolakan akses admin (aksi dan halaman) dicatat warn dengan userId/kode/aksi, dibatasi 5 per pengguna per aksi per menit lewat Redis (sisanya satu baris ringkasan 'N penolakan ditekan'; fail-open bila Redis mati).
 - [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — Daftar pengguna hanya memilih kolom yang ditampilkan (tanpa passwordHash/sessionVersion); meta audit tanpa email; actorId SetNull bila akun pelaku dihapus. Halaman dinamis per permintaan (cookie), tidak di-cache.
 - [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada lalu lintas eksternal baru (abort multipart memakai klien S3 yang ada).
 - [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — Tidak ada dependensi baru; tidak ada jalur pintas admin (seed tidak lagi mengangkat ulang akun).

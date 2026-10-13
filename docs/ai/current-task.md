@@ -4,9 +4,9 @@
 
 - T-019 [in_review] Halaman admin pengguna: daftar, admin, nonaktifkan, alihkan kepemilikan — docs/ai/tasks/T-019-halaman-admin-pengguna-daftar-admin-nonaktifkan.md ← active in this worktree
 - T-023 [todo] Paket deploy on-prem Docker Compose produksi — docs/ai/tasks/T-023-paket-deploy-on-prem-docker-compose-produksi.md
+- T-032 [todo] Polish widget kecil: penanda kategori terpotong, legenda pai samping, tab stop legenda — docs/ai/tasks/T-032-polish-widget-kecil-penanda-kategori-terpotong-l.md
 - T-031 [todo] Kanvas dashboard 768–1023 px: widget tidak menyempit sampai tak terbaca — docs/ai/tasks/T-031-kanvas-dashboard-768-1023-px-widget-tidak-menyem.md
 - T-016 [todo] Berbagi dashboard: viewer/editor, organisasi, otorisasi query berbasis widget — docs/ai/tasks/T-016-berbagi-dashboard-viewer-editor-organisasi-otori.md
-- T-032 [todo] Polish widget kecil: penanda kategori terpotong, legenda pai samping, tab stop legenda — docs/ai/tasks/T-032-polish-widget-kecil-penanda-kategori-terpotong-l.md
 - T-030 [todo] Ingest CSV id-ID: desimal gaya US tunggal tidak membalik locale satu kolom — docs/ai/tasks/T-030-ingest-csv-id-id-desimal-gaya-us-tunggal-tidak-m.md
 - T-013 [todo] Versi dataset: ganti data, aktivasi, rollback, retensi — docs/ai/tasks/T-013-versi-dataset-ganti-data-aktivasi-rollback-reten.md
 - T-028 [todo] Ingest: angka negatif gaya akuntansi '(1.000)' dibaca sebagai -1000 — docs/ai/tasks/T-028-ingest-angka-negatif-gaya-akuntansi-1-000-dibaca.md

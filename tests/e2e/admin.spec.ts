@@ -193,11 +193,13 @@ test.describe("admin pengguna", () => {
     await b.goto("/datasets");
     await expect(b).toHaveURL(/\/login\?next=%2Fdatasets&reason=disabled$/);
     await expect(b.getByTestId("login-disabled-notice")).toContainText(
-      "Akun Anda dinonaktifkan oleh admin.",
+      "Akun Anda dinonaktifkan oleh admin Data Dashboard.",
     );
 
     await login(b, B);
-    await expect(b.getByTestId("form-alert")).toHaveText("Akun dinonaktifkan. Hubungi admin.");
+    await expect(b.getByTestId("form-alert")).toHaveText(
+      "Akun Anda dinonaktifkan. Bila ini keliru, hubungi tim TI.",
+    );
     await expect(b).toHaveURL(/\/login/);
     const api = await b.request.post("/api/auth/login", { data: { email: B, password: PASSWORD } });
     expect(api.status()).toBe(403);
@@ -208,7 +210,7 @@ test.describe("admin pengguna", () => {
     await row.getByTestId("admin-row-actions").click();
     await a.getByRole("menuitem", { name: "Alihkan dataset…", exact: true }).click();
     const dialog = a.getByTestId("admin-confirm");
-    await expect(dialog).toContainText("Semua 1 dataset milik");
+    await expect(dialog).toContainText("Dataset milik");
     await expect(
       dialog.getByRole("button", { name: "Alihkan dataset", exact: true }),
     ).toBeDisabled();

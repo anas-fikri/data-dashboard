@@ -31,7 +31,13 @@ const unstable_rethrow = vi.fn((e: unknown) => {
   if (e instanceof Error && "digest" in e && String(e.digest).startsWith("NEXT_")) throw e;
 });
 
+/** Pembatas volume log diuji di tests/features/auth/denial-log.test.ts; di sini diteruskan ke warn. */
+const logAccessDenied = vi.fn(async (_action: string, fields: object, msg: string) => {
+  logger.warn(fields, msg);
+});
+
 vi.mock("@/features/auth/session", () => ({ AuthError, requireAdmin, createSession }));
+vi.mock("@/features/auth/denial-log", () => ({ logAccessDenied }));
 vi.mock("@/lib/db", () => ({ prisma: db.prisma }));
 vi.mock("@/lib/redis", () => ({ redisReady }));
 vi.mock("@/lib/logger", () => ({ logger }));
@@ -103,9 +109,14 @@ describe("guard admin", () => {
     expect(db.prisma.user.findMany).not.toHaveBeenCalled();
   });
 
-  it("setiap penolakan dicatat (warn): userId pemilik sesi bila ada, kode, nama aksi (ASVS V7)", async () => {
+  it("setiap penolakan dicatat (warn, dibatasi per pengguna + aksi): userId bila ada, kode, aksi (ASVS V7)", async () => {
     requireAdmin.mockRejectedValueOnce(new AuthError("NOT_FOUND", C));
     await actions.transferDatasetsAction(B, C);
+    expect(logAccessDenied).toHaveBeenLastCalledWith(
+      "transferDatasets",
+      { userId: C, code: "NOT_FOUND", action: "transferDatasets" },
+      "aksi admin ditolak",
+    );
     expect(logger.warn).toHaveBeenLastCalledWith(
       { userId: C, code: "NOT_FOUND", action: "transferDatasets" },
       "aksi admin ditolak",

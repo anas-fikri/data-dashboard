@@ -29,7 +29,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
             : params.reason === "disabled"
               ? {
                   tone: "error" as const,
-                  text: "Akun Anda dinonaktifkan oleh admin. Hubungi admin bila ini keliru.",
+                  text: "Akun Anda dinonaktifkan oleh admin Data Dashboard. Bila ini keliru, hubungi tim TI.",
                   testId: "login-disabled-notice",
                 }
               : null;

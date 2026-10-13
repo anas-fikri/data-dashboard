@@ -8,7 +8,7 @@ goal: G-4
 depends_on:
   - T-011
 created: "2026-10-13T02:41:40Z"
-updated: "2026-10-13T02:41:40Z"
+updated: "2026-10-13T15:34:02Z"
 created_by: claude-code
 ---
 
@@ -24,3 +24,5 @@ Sisa temuan Low/Info verifikasi T-011 yang sengaja ditunda: (1) kartu batang san
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-13T15:34:02Z Dari review T-019: axe 'region' (moderate, best-practice) pada portal Radix DropdownMenu/Select yang dirender ke <body> di luar landmark — pertimbangkan Portal container di dalam <main> atau wrapper landmark; bukan WCAG AA.

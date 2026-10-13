@@ -73,7 +73,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       data-testid="widget"
       data-widget-id={widget.id}
       className={cn(
-        "@container flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs",
+        "@container flex md:scroll-mt-[calc(var(--topbar-h)+0.5rem)] flex-col overflow-hidden rounded-lg border bg-card text-card-foreground shadow-xs",
         selected && "ring-2 ring-primary",
         className,
       )}

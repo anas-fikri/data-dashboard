@@ -1,7 +1,15 @@
 "use client";
 
 import { IconLoader2, IconRefresh, IconSearch } from "@tabler/icons-react";
-import { useEffect, useEffectEvent, useId, useRef, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type RefObject,
+} from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +33,8 @@ interface TransferPickerProps {
   onSelect: (target: TransferTarget) => void;
   /** Hasil terbaru; pemanggil membatalkan pilihan yang tidak ada lagi di hasil (yang terlihat = yang dipilih). */
   onResults: (items: TransferTarget[]) => void;
+  /** Kolom cari: fokus awal dialog, dan tujuan fokus setelah "Coba lagi" (tombolnya hilang saat memuat). */
+  inputRef: RefObject<HTMLInputElement | null>;
 }
 
 /**
@@ -38,6 +48,7 @@ export function TransferPicker({
   disabled,
   onSelect,
   onResults,
+  inputRef,
 }: TransferPickerProps) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -93,7 +104,7 @@ export function TransferPicker({
             ? `Tidak ada pengguna aktif terverifikasi yang cocok dengan “${itemsFor}”. Periksa ejaannya.`
             : "Belum ada pengguna aktif lain yang sudah memverifikasi email. Minta calon pemilik baru mendaftar dan memverifikasi emailnya dulu."
           : items.length >= RESULTS_MAX
-            ? `Menampilkan ${RESULTS_MAX} hasil pertama. Ketik email yang lebih lengkap bila pengguna tujuan belum terlihat.`
+            ? `Menampilkan ${RESULTS_MAX} hasil pertama. Ketik email atau nama yang lebih lengkap bila pengguna tujuan belum terlihat.`
             : `${items.length} pengguna ditemukan.`;
   const Icon = phase === "loading" ? IconLoader2 : IconSearch;
 
@@ -114,6 +125,7 @@ export function TransferPicker({
             )}
           />
           <Input
+            ref={inputRef}
             id={`${id}-q`}
             type="search"
             value={query}
@@ -140,7 +152,9 @@ export function TransferPicker({
           aria-labelledby={`${id}-label`}
           aria-busy={phase === "loading" || undefined}
           className={cn(
-            "max-h-[min(15rem,40dvh)] overflow-y-auto rounded-md border",
+            // Satu area gulir: di layar pendek/ponsel daftar ikut tergulir bersama isi dialog; daftar
+            // baru bergulir sendiri bila layar cukup lega (isi dialog muat tanpa digulir).
+            "rounded-md border [@media(min-width:48rem)_and_(min-height:48rem)]:max-h-60 [@media(min-width:48rem)_and_(min-height:48rem)]:overflow-y-auto",
             phase === "loading" && "opacity-60",
           )}
         >
@@ -186,7 +200,10 @@ export function TransferPicker({
             variant="outline"
             className="mt-2 h-(--control-h-lg) md:h-(--control-h-sm)"
             leadingIcon={<IconRefresh aria-hidden />}
-            onClick={() => search(query, 0)}
+            onClick={() => {
+              inputRef.current?.focus();
+              search(query, 0);
+            }}
           >
             Coba lagi
           </Button>

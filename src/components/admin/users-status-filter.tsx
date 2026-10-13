@@ -57,9 +57,10 @@ export function UsersStatusFilter({
             className,
           )}
         >
+          {/* Prefiks terlihat: "Nonaktif" saja bisa dibaca "saringan nonaktif". */}
           <span className="truncate">
-            <span className="sr-only">Saring status: </span>
-            {STATUS_LABEL[shown]}
+            <span className="text-muted-foreground">Status:</span>{" "}
+            {shown === "all" ? "Semua" : STATUS_LABEL[shown]}
           </span>
           <IconChevronDown aria-hidden className="opacity-60" />
         </Button>

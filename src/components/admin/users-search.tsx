@@ -41,7 +41,7 @@ export function UsersSearch({ q, status }: { q: string; status: UserStatusFilter
         />
       </div>
       {status !== "all" ? <input type="hidden" name="status" value={status} /> : null}
-      <UsersStatusFilter status={status} className="sm:w-48" />
+      <UsersStatusFilter status={status} className="sm:w-60 md:w-56" />
       <Button
         type="submit"
         variant="outline"

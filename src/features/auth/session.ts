@@ -13,6 +13,7 @@ import {
   verifySession,
 } from "./jwt";
 import { sessionCookieSpec } from "@/lib/security-headers";
+import { logAccessDenied } from "./denial-log";
 import { loginUrl } from "./redirect";
 
 export interface SessionUser {
@@ -133,7 +134,8 @@ export async function requireUser(mode: "page" | "action" = "page"): Promise<Ses
 
 /**
  * Admin: non-admin mendapat 404/NOT_FOUND (bukan 403) agar keberadaan halaman tidak bocor (D2).
- * Penolakan halaman dicatat di sini (ASVS V7); penolakan aksi dicatat pemanggil yang tahu nama aksinya.
+ * Penolakan halaman dicatat di sini (ASVS V7, volume dibatasi lewat denial-log.ts); penolakan aksi
+ * dicatat pemanggil yang tahu nama aksinya.
  */
 export async function requireAdmin(mode: "page" | "action" = "page"): Promise<SessionUser> {
   const user = await requireUser(mode);
@@ -141,6 +143,11 @@ export async function requireAdmin(mode: "page" | "action" = "page"): Promise<Se
   if (mode === "action") throw new AuthError("NOT_FOUND", user.id);
   // Path tanpa query: kata kunci cari bisa berisi email orang lain.
   const path = ((await headers()).get("x-current-path") ?? "").split("?")[0] || undefined;
-  logger.warn({ userId: user.id, code: "NOT_FOUND", path }, "akses halaman admin ditolak");
+  // Dibatasi per pengguna per menit (bukan per path: path bebas tidak boleh membuka jatah baru).
+  await logAccessDenied(
+    "page",
+    { userId: user.id, code: "NOT_FOUND", path },
+    "akses halaman admin ditolak",
+  );
   notFound();
 }

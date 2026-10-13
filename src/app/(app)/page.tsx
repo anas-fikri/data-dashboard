@@ -1,10 +1,10 @@
 import { IconDatabase, IconLayoutDashboard, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
+import { AdminRevokedNotice } from "@/components/admin/admin-revoked-notice";
 import { DatasetList } from "@/components/datasets/dataset-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { listDatasets } from "@/features/datasets/service";
@@ -31,12 +31,11 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
           </Button>
         }
       />
-      {/* Admin mencabut aksesnya sendiri (T-019): konfirmasi setelah muat ulang penuh ke Beranda. */}
-      {params.notice === "admin-dicabut" ? (
-        <div data-testid="admin-revoked-notice">
-          <FocusNotice>Akses admin Anda sudah dicabut.</FocusNotice>
-        </div>
-      ) : null}
+      {/*
+       * Admin mencabut aksesnya sendiri (T-019): konfirmasi setelah muat ulang penuh ke Beranda. Hanya
+       * bila memang bukan admin lagi, jadi tautan buatan tidak bisa menampilkannya ke admin aktif.
+       */}
+      {params.notice === "admin-dicabut" && !user.isAdmin ? <AdminRevokedNotice /> : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

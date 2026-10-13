@@ -38,5 +38,11 @@ NODE_ENV=production node scripts/admin-restore.mjs nama.karyawan@pcpexpress.com 
 ```
 
 Skrip ini menjadikan akun itu aktif + admin, memutus sesi lamanya, dan menulis AuditLog
-`user.admin.restore` (pelaku kosong, ip `cli`) dalam satu transaksi. Di produksi skrip menolak
-tanpa `--confirm`. Setelahnya, admin itu masuk dan meninjau daftar admin di `/admin/pengguna`.
+`user.admin.restore` (pelaku kosong, ip `cli`, meta berisi user OS + hostname operator) dalam satu
+transaksi. Skrip menolak tanpa `--confirm` bila `NODE_ENV=production` atau `DATABASE_URL` tidak
+menunjuk ke `localhost`/`127.0.0.1`/`::1`. Akun yang sudah admin aktif tidak diubah (sesi tetap,
+tanpa AuditLog). Setelahnya, admin itu masuk dan meninjau daftar admin di `/admin/pengguna`.
+
+Di produksi skrip dijalankan dari dalam container app (`docker compose exec app node
+scripts/admin-restore.mjs …`), jadi image app wajib membawa `scripts/admin-restore.mjs` dan
+`@prisma/client`; output standalone Next tidak membawanya otomatis (dikerjakan di T-023).

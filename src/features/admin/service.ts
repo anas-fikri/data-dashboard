@@ -122,12 +122,15 @@ const matchEmailOrName = (q: string): Prisma.UserWhereInput => ({
   ],
 });
 
-/** Status sama dengan badge di daftar: Nonaktif > Belum verifikasi > Aktif. */
+/**
+ * Status sama dengan badge di daftar: Nonaktif > Belum verifikasi > Aktif. Tiap akun masuk tepat satu
+ * saringan (aktif + nonaktif + belum verifikasi = semua): akun nonaktif hanya di "Nonaktif".
+ */
 const STATUS_WHERE: Record<UserStatusFilter, Prisma.UserWhereInput> = {
   all: {},
   active: { isActive: true, emailVerifiedAt: { not: null } },
   inactive: { isActive: false },
-  unverified: { emailVerifiedAt: null },
+  unverified: { isActive: true, emailVerifiedAt: null },
 };
 
 export const parseUserStatus = (raw: unknown): UserStatusFilter =>

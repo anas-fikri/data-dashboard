@@ -41,7 +41,7 @@ const MESSAGES: Record<AuthCode, string> = {
   RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi beberapa saat.",
   INVALID_CREDENTIALS: "Email atau password salah.",
   EMAIL_NOT_VERIFIED: "Akun belum diaktifkan. Periksa email verifikasi Anda.",
-  ACCOUNT_DISABLED: "Akun dinonaktifkan. Hubungi admin.",
+  ACCOUNT_DISABLED: "Akun Anda dinonaktifkan. Bila ini keliru, hubungi tim TI.",
   TOKEN_INVALID: "Tautan tidak valid atau sudah kedaluwarsa.",
   SERVICE_UNAVAILABLE: "Layanan sedang tidak tersedia. Coba lagi sebentar.",
 };
@@ -154,6 +154,15 @@ export async function register(input: RegisterInput): Promise<Result<{ email: st
   return { ok: true, data: { email } };
 }
 
+/**
+ * Nama dari token yang diterapkan/disalin: dibersihkan dan bukan bentuk email, atau null. Token dari
+ * sebelum registrasi menolak nama ber-@ tidak boleh memasang nama itu (review keamanan T-019 r2).
+ */
+function tokenName(raw: string | null): string | null {
+  const name = cleanName(raw);
+  return name && !looksLikeEmail(name) ? name : null;
+}
+
 /** Token baru TIDAK membatalkan token lain: tiap token membawa password pendaftarnya sendiri. */
 async function createVerifyToken(
   userId: string,
@@ -198,7 +207,8 @@ export async function resendVerification(emailRaw: unknown, ip: string): Promise
       orderBy: { createdAt: "desc" },
     });
     if (!latest?.pendingPasswordHash) return; // tidak ada pendaftaran yang masih berlaku
-    const token = await createVerifyToken(user.id, latest.pendingPasswordHash, latest.pendingName);
+    const name = tokenName(latest.pendingName);
+    const token = await createVerifyToken(user.id, latest.pendingPasswordHash, name);
     await sendVerificationEmail(email, token);
   });
   return { ok: true, data: undefined };
@@ -259,8 +269,8 @@ export async function verifyEmail(
     data: { usedAt: now },
   });
   if (marked.count !== 1) return fail("TOKEN_INVALID");
-  // Token lama (sebelum registrasi membersihkan nama) tetap dibersihkan saat diterapkan.
-  const pendingName = cleanName(record.pendingName);
+  // Token lama (sebelum aturan nama di registrasi) tetap dibersihkan; nama ber-@ tidak dipasang.
+  const pendingName = tokenName(record.pendingName);
   await prisma.$transaction([
     prisma.verificationToken.updateMany({
       where: { userId: record.user.id, purpose: "VERIFY_EMAIL", usedAt: null },
