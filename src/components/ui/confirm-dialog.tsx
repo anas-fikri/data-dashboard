@@ -84,9 +84,9 @@ export function ConfirmDialog({
               : undefined
           }
           onCloseAutoFocus={onCloseAutoFocus}
-          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-card shadow-lg outline-none"
+          className="fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border bg-card shadow-lg outline-none [@media(max-height:480px)]:overflow-y-auto"
         >
-          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-6 pb-4">
+          <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-6 pb-4 [@media(max-height:480px)]:min-h-fit [@media(max-height:480px)]:overflow-visible">
             <div>
               <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
               <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">

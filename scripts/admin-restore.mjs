@@ -28,18 +28,22 @@ if (!email || !email.includes("@")) {
 /** Host DATABASE_URL; URL kosong/rusak dianggap bukan lokal (wajib --confirm). */
 function dbHost() {
   try {
-    return new URL(process.env.DATABASE_URL ?? "").hostname;
+    const u = new URL(process.env.DATABASE_URL ?? "");
+    // Prisma mendahulukan ?host= dari host di URL.
+    return u.searchParams.get("host") ?? u.hostname;
   } catch {
     return "";
   }
 }
 const pgHost = dbHost();
 const localDb = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(pgHost);
-if ((process.env.NODE_ENV === "production" || !localDb) && !confirm) {
-  const why =
-    process.env.NODE_ENV === "production"
-      ? "NODE_ENV=production"
-      : `DATABASE_URL menunjuk ke ${pgHost || "host tidak dikenal"} (bukan localhost)`;
+// Tanpa --confirm hanya untuk dev/test lokal; di server (mis. PostgreSQL native di 127.0.0.1)
+// localhost bisa saja database produksi.
+const devEnv = ["development", "test"].includes(process.env.NODE_ENV ?? "");
+if (!(devEnv && localDb) && !confirm) {
+  const why = !devEnv
+    ? `NODE_ENV=${process.env.NODE_ENV ?? "(kosong)"} (bukan development/test)`
+    : `DATABASE_URL menunjuk ke ${pgHost || "host tidak dikenal"} (bukan localhost)`;
   console.error(
     `menolak: ${why}. Ini mengubah peran admin di database itu; ` +
       "ulangi dengan --confirm bila memang dimaksudkan.",

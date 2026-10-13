@@ -53,13 +53,15 @@ export function UsersStatusFilter({
           aria-busy={pending || undefined}
           data-testid="admin-status-filter"
           className={cn(
-            "h-(--control-h-lg) w-full justify-between px-3 text-base font-normal md:h-(--control-h) md:text-sm",
+            "group h-(--control-h-lg) w-full justify-between px-3 text-base font-normal md:h-(--control-h) md:text-sm",
             className,
           )}
         >
           {/* Prefiks terlihat: "Nonaktif" saja bisa dibaca "saringan nonaktif". */}
           <span className="truncate">
-            <span className="text-muted-foreground">Status:</span>{" "}
+            <span className="text-muted-foreground group-hover:text-foreground group-focus-visible:text-foreground">
+              Status:
+            </span>{" "}
             {shown === "all" ? "Semua" : STATUS_LABEL[shown]}
           </span>
           <IconChevronDown aria-hidden className="opacity-60" />

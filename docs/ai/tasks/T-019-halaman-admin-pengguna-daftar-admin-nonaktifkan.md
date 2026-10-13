@@ -12,7 +12,7 @@ depends_on:
   - T-003
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T15:50:09Z"
+updated: "2026-10-13T16:18:30Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -32,7 +32,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 33405
+    duration_ms: 34615
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -54,13 +54,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791906586678,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791906586701,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791908288155,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791908288179,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  37 passed (37)
-            Tests  672 passed (672)
-         Start at  22:49:44
-         Duration  23.44s (tests 89%, import 6%, transform 4%)
+            Tests  673 passed (673)
+         Start at  23:18:04
+         Duration  24.63s (tests 85%, transform 8%, import 6%)
 
 
       > data-dashboard@0.1.0 audit
@@ -68,8 +68,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T15:50:09Z"
-    tree: 71cf30b4420d7f7af4965373fdc8e7d91f7db0619e916b8bec7cb58103a42e78
+    at: "2026-10-13T16:18:30Z"
+    tree: a77fbc6eccc4e0eb1609d79bb67e0f72fa092161418fc734e2a3f791b9131593
 ---
 
 ## Objective

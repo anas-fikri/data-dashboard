@@ -46,11 +46,15 @@ export async function logAccessDenied(
   // yang menjadwalkan ringkasan jendela ini.
   if (n !== DENIAL_LOG_BURST + 1) return;
   const who = { ...(fields.userId ? { userId: fields.userId } : {}), action };
+  // Jejak segera: tetap ada walau proses berhenti sebelum ringkasan jendela ditulis.
+  logger.warn({ ...who, windowSec: DENIAL_LOG_WINDOW_SEC }, `${msg}: penolakan berikutnya ditekan`);
   const timer = setTimeout(
     async () => {
       let suppressed: number | null = null;
       try {
-        suppressed = Number(await r.get(key)) - DENIAL_LOG_BURST;
+        const v = await r.get(key);
+        // Key hilang (eviksi LRU): jumlah tidak diketahui, bukan negatif.
+        suppressed = v === null ? null : Math.max(0, Number(v) - DENIAL_LOG_BURST);
       } catch {
         // Redis putus setelah jendela: jumlah tidak diketahui, ringkasan tetap ditulis.
       }

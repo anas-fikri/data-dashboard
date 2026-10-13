@@ -41,12 +41,16 @@ afterEach(() => vi.useRealTimers());
 describe("logAccessDenied", () => {
   it("5 penolakan pertama per pengguna + aksi dicatat warn, sisanya diringkas sekali setelah jendela", async () => {
     for (let i = 0; i < 40; i++) await logAccessDenied("searchTransferTargets", fields("u1"), MSG);
-    expect(logger.warn).toHaveBeenCalledTimes(5);
-    expect(logger.warn).toHaveBeenLastCalledWith(fields("u1"), MSG);
+    // 5 warn + 1 penanda segera saat penekanan dimulai.
+    expect(logger.warn).toHaveBeenCalledTimes(6);
+    expect(logger.warn).toHaveBeenLastCalledWith(
+      { userId: "u1", action: "searchTransferTargets", windowSec: 60 },
+      "aksi admin ditolak: penolakan berikutnya ditekan",
+    );
     expect(store.eval.mock.calls[0]![3]).toBe("120"); // TTL dua jendela
 
     await vi.advanceTimersByTimeAsync(51_000); // jendela 10:00 berakhir (+1 s)
-    expect(logger.warn).toHaveBeenCalledTimes(6);
+    expect(logger.warn).toHaveBeenCalledTimes(7);
     expect(logger.warn).toHaveBeenLastCalledWith(
       { userId: "u1", action: "searchTransferTargets", suppressed: 35, windowSec: 60 },
       "aksi admin ditolak: 35 penolakan ditekan",
@@ -55,7 +59,7 @@ describe("logAccessDenied", () => {
     // Jendela berikutnya: jatah 5 warn lagi; tanpa penekanan → tanpa ringkasan.
     for (let i = 0; i < 5; i++) await logAccessDenied("searchTransferTargets", fields("u1"), MSG);
     await vi.advanceTimersByTimeAsync(120_000);
-    expect(logger.warn).toHaveBeenCalledTimes(11);
+    expect(logger.warn).toHaveBeenCalledTimes(12);
   });
 
   it("jatah terpisah per pengguna, per aksi, dan untuk anonim", async () => {
@@ -65,7 +69,7 @@ describe("logAccessDenied", () => {
       await logAccessDenied("transferDatasets", fields("u1"), MSG);
       await logAccessDenied("searchTransferTargets", fields(), MSG);
     }
-    expect(logger.warn).toHaveBeenCalledTimes(20);
+    expect(logger.warn).toHaveBeenCalledTimes(24); // 5 + penanda per bucket
     expect(new Set(store.eval.mock.calls.map((c) => c[2]))).toEqual(
       new Set([
         "deny-log:u1:searchTransferTargets:29864760",
@@ -75,7 +79,7 @@ describe("logAccessDenied", () => {
       ]),
     );
     await vi.advanceTimersByTimeAsync(51_000);
-    expect(logger.warn).toHaveBeenCalledTimes(24); // satu ringkasan per bucket
+    expect(logger.warn).toHaveBeenCalledTimes(28); // + satu ringkasan per bucket
     expect(logger.warn).toHaveBeenLastCalledWith(
       { action: "searchTransferTargets", suppressed: 2, windowSec: 60 },
       "aksi admin ditolak: 2 penolakan ditekan",
@@ -94,6 +98,16 @@ describe("logAccessDenied", () => {
   it("Redis putus sebelum ringkasan: ringkasan tetap ditulis tanpa jumlah", async () => {
     for (let i = 0; i < 6; i++) await logAccessDenied("page", fields("u1"), MSG);
     store.get.mockRejectedValueOnce(new Error("ECONNRESET"));
+    await vi.advanceTimersByTimeAsync(51_000);
+    expect(logger.warn).toHaveBeenLastCalledWith(
+      { userId: "u1", action: "page", suppressed: null, windowSec: 60 },
+      "aksi admin ditolak: ≥ 1 penolakan ditekan",
+    );
+  });
+
+  it("key hilang (eviksi) sebelum ringkasan: jumlah tidak diketahui, bukan negatif", async () => {
+    for (let i = 0; i < 7; i++) await logAccessDenied("page", fields("u1"), MSG);
+    store.get.mockResolvedValueOnce(null);
     await vi.advanceTimersByTimeAsync(51_000);
     expect(logger.warn).toHaveBeenLastCalledWith(
       { userId: "u1", action: "page", suppressed: null, windowSec: 60 },
