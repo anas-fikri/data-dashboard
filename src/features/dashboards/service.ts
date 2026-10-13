@@ -5,8 +5,16 @@ import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
 import { widgetPlan } from "@/features/query/widget";
 import { matchSheet, remapConfig } from "@/features/widgets/remap";
-import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
+import { CHART_TYPES, parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 import { prisma } from "@/lib/db";
+import {
+  checkFilterColumns,
+  crossFilterColumnsOf,
+  filterColumnViews,
+  storedFilterColumns,
+  type ActiveSheet,
+  type FilterColumnView,
+} from "./filter-columns";
 import {
   DASHBOARD_NAME_MAX,
   DASHBOARDS_PER_DATASET,
@@ -53,6 +61,8 @@ export interface SourceSheet {
 
 const WIDGET_SELECT = { id: true, type: true, title: true, spec: true } as const;
 
+export type { FilterColumnView } from "./filter-columns";
+
 export interface DashboardView {
   id: string;
   name: string;
@@ -61,6 +71,13 @@ export interface DashboardView {
   layoutRevision: number;
   widgets: WidgetView[];
   updatedAt: Date;
+  /** Kolom filter global (T-012), dicocokkan dengan versi data aktif. */
+  filterColumns: FilterColumnView[];
+  /**
+   * Nama kolom dimensi grafik yang cross-filter-nya aktif (versi aktif, tidak disembunyikan): bersama
+   * kolom filter, hanya kolom ini yang boleh dikirim sebagai filter dashboard (D6).
+   */
+  crossFilterColumns: string[];
 }
 
 export interface DashboardSummary {
@@ -196,6 +213,7 @@ export const getDashboard = cache(async function getDashboard(
       name: true,
       layout: true,
       layoutRevision: true,
+      filterColumns: true,
       updatedAt: true,
       dataset: { select: { id: true, name: true, activeVersionId: true } },
       widgets: { orderBy: { createdAt: "asc" }, select: WIDGET_SELECT },
@@ -203,17 +221,96 @@ export const getDashboard = cache(async function getDashboard(
   });
   if (!d) return null;
   const { activeVersionId, ...dataset } = d.dataset;
+  const widgets = await remapToActive(d.dataset.id, activeVersionId, d.widgets);
+  const stored = storedFilterColumns(d.filterColumns);
+  // Skema versi aktif hanya dibaca bila ada kolom filter atau grafik (sumber cross-filter).
+  const sheets =
+    activeVersionId && (stored.length || widgets.some((w) => isChart(w.type)))
+      ? await activeSheets(activeVersionId)
+      : [];
   return {
     ...d,
     dataset,
-    widgets: await remapToActive(d.dataset.id, activeVersionId, d.widgets),
+    widgets,
     layout: reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
       typesOf(d.widgets),
     ),
+    filterColumns: filterColumnViews(stored, sheets),
+    crossFilterColumns: crossFilterColumnsOf(widgets, sheets),
   };
 });
+
+const isChart = (type: string) => (CHART_TYPES as readonly string[]).includes(type);
+
+/** Sheet siap query di versi aktif (nama + skema), opsional hanya id tertentu. */
+async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSheet[]> {
+  const rows = await prisma.sheet.findMany({
+    where: { versionId, typedKey: { not: null }, ...(ids ? { id: { in: ids } } : {}) },
+    orderBy: { index: "asc" },
+    select: { id: true, name: true, schema: true },
+  });
+  return rows.map((s) => ({
+    id: s.id,
+    name: s.name,
+    schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
+  }));
+}
+
+/**
+ * Kolom cross-filter dashboard untuk validasi query widget (T-012). dashboardId berasal dari widget
+ * yang kepemilikannya sudah dicek pemanggil (query/runtime.ts); tidak dipakai untuk akses lain.
+ */
+export async function crossFilterColumnsFor(dashboardId: string): Promise<string[]> {
+  const d = await prisma.dashboard.findFirst({
+    where: { id: dashboardId },
+    select: {
+      datasetId: true,
+      dataset: { select: { activeVersionId: true } },
+      widgets: { where: { type: { in: [...CHART_TYPES] } }, select: WIDGET_SELECT },
+    },
+  });
+  const versionId = d?.dataset.activeVersionId;
+  if (!d || !versionId || !d.widgets.length) return [];
+  const widgets = await remapToActive(d.datasetId, versionId, d.widgets);
+  const ids = [
+    ...new Set(
+      widgets.flatMap((w) => {
+        const c = parseWidgetConfig(w.type, w.spec);
+        return c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [];
+      }),
+    ),
+  ];
+  return crossFilterColumnsOf(widgets, await activeSheets(versionId, ids));
+}
+
+/**
+ * Atur kolom filter dashboard (T-012), pemilik saja: ≤ 8, unik, setiap kolom ada dan tampil di versi
+ * data aktif. Hasil: tampilan kolom filter yang baru.
+ */
+export async function setDashboardFilterColumns(
+  ownerId: string,
+  dashboardId: unknown,
+  columns: unknown,
+): Promise<DashboardResult<{ filterColumns: FilterColumnView[] }>> {
+  if (!isIdShape(dashboardId)) return notFound();
+  const d = await prisma.dashboard.findFirst({
+    where: { id: dashboardId, dataset: { ownerId } },
+    select: { dataset: { select: { activeVersionId: true } } },
+  });
+  if (!d) return notFound();
+  const versionId = d.dataset.activeVersionId;
+  const sheets = versionId ? await activeSheets(versionId) : [];
+  const checked = checkFilterColumns(columns, sheets);
+  if (!checked.ok) return fail("INVALID", checked.message);
+  const r = await prisma.dashboard.updateMany({
+    where: { id: dashboardId, dataset: { ownerId } },
+    data: { filterColumns: checked.columns as unknown as Prisma.InputJsonValue },
+  });
+  if (r.count !== 1) return notFound();
+  return { ok: true, data: { filterColumns: filterColumnViews(checked.columns, sheets) } };
+}
 
 /**
  * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk

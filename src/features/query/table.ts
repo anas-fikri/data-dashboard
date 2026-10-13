@@ -11,10 +11,10 @@
 import { ident } from "@/lib/duckdb";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import type { Plan } from "./spec";
-import { DIM_TEXT_MAX, TEXT_COLLATE, filterClauses, type BuiltSql } from "./sql";
+import { DIM_TEXT_MAX, TEXT_COLLATE, whereClauses, type BuiltSql } from "./sql";
 
 function where(plan: Plan, params: BuiltSql["params"]): string {
-  const clauses = filterClauses(plan.filters, params);
+  const clauses = whereClauses(plan, params);
   return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
 }
 

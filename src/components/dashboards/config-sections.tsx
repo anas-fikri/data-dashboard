@@ -9,6 +9,7 @@ import {
 } from "@tabler/icons-react";
 import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
 import {
   TABLE_COLUMNS_MAX,
@@ -331,5 +332,38 @@ export function FormatColumnsField({
         </label>
       ))}
     </fieldset>
+  );
+}
+
+/**
+ * Filter silang (T-012): klik kategori grafik ini menyaring widget lain di dashboard. Bawaan aktif
+ * (spec tanpa crossFilter); dimatikan → crossFilter: false. Tidak memuat ulang data widget.
+ */
+export function CrossFilterField({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="flex min-w-0 items-start justify-between gap-3">
+      <div className="flex min-w-0 flex-col gap-0.5 pt-2.5 md:pt-0.5">
+        <label htmlFor={id} className="text-sm font-medium">
+          Klik grafik menyaring widget lain
+        </label>
+        <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+          Kategori yang diklik jadi filter untuk semua widget lain di dashboard ini.
+        </p>
+      </div>
+      <Switch
+        id={id}
+        checked={value}
+        onCheckedChange={onChange}
+        aria-describedby={`${id}-hint`}
+        data-testid="widget-crossfilter-switch"
+      />
+    </div>
   );
 }

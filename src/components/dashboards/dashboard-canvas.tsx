@@ -12,6 +12,9 @@ import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
 import { GRID_COLS, minSizeOf, type LayoutItem } from "@/features/dashboards/validation";
 import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
+import { FilterBar } from "./filters/filter-bar";
+import { DashboardFiltersProvider } from "./filters/filter-context";
+import { crossColumnsOf, type FilterColumnView, type FilterState } from "./filters/filter-model";
 import { applyStep, readingOrder, stepAvailability } from "./layout-ops";
 import { useDashboardEditor } from "./use-dashboard-editor";
 import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
@@ -25,6 +28,7 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
  * kepala kartu dan mengubah ukuran di pojok; mode lihat tanpa pegangan apa pun. < 768 px: satu kolom
  * urut baca, tanpa menyeret (posisi/ukuran lewat panel pengaturan). DOM grid juga urut baca agar
  * urutan Tab = urutan tampilan. Fokus dipindah eksplisit saat panel dibuka/ditutup dan setelah hapus.
+ * Bilah filter (T-012) di atas grid di kedua mode; status filter ikut saat berpindah mode (?f=).
  */
 const ROW_HEIGHT = 56;
 const MARGIN: [number, number] = [16, 16];
@@ -49,6 +53,10 @@ export function DashboardCanvas(props: {
   datasetId: string;
   /** Sheet + kolom untuk panel konfigurasi (hanya mode edit). */
   sources: SourceSheet[];
+  /** Filter dashboard (T-012): kolom filter, kolom filter silang (server), status awal dari ?f=. */
+  filterColumns: FilterColumnView[];
+  crossFilterColumns: string[];
+  initialFilters: FilterState;
 }) {
   const { dashboardId, editing } = props;
   const ed = useDashboardEditor(props);
@@ -164,7 +172,9 @@ export function DashboardCanvas(props: {
     setFinishing(true);
     // STALE: perubahan lokal memang tidak bisa disimpan; mode lihat menampilkan versi terbaru.
     if (ed.save !== "stale" && !(await ed.flush())) return setFinishing(false);
-    router.push(`/dashboards/${dashboardId}`);
+    // Filter yang sedang aktif ikut ke mode lihat.
+    const f = new URL(window.location.href).searchParams.get("f");
+    router.push(`/dashboards/${dashboardId}${f ? `?f=${encodeURIComponent(f)}` : ""}`);
   }
   const reload = () => window.location.reload();
 
@@ -184,127 +194,143 @@ export function DashboardCanvas(props: {
     />
   );
 
-  return (
-    <div
-      ref={root}
-      // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
-      className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
-    >
-      {editing ? (
-        <CanvasToolbar
-          save={ed.save}
-          undoKind={ed.canUndo ? ed.undoKind : null}
-          adding={adding}
-          finishing={finishing}
-          onAdd={() => void add()}
-          onUndo={() => void ed.undo()}
-          onRetry={() => void ed.flush()}
-          onDone={() => void done()}
-        />
-      ) : null}
-      <p className="sr-only" aria-live="polite">
-        {announce}
-      </p>
-      {ed.notice ? (
-        <FormAlert tone="error">
-          <span className="block">{ed.notice}</span>
-          {ed.save === "stale" ? (
-            <Button
-              className="mt-2 h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
-              leadingIcon={<IconRefresh aria-hidden />}
-              onClick={reload}
-              {...{ [STALE_RELOAD]: "" }}
-            >
-              Muat ulang
-            </Button>
-          ) : (
-            <Button size="sm" variant="outline" className="mt-2" onClick={ed.dismissNotice}>
-              Tutup
-            </Button>
-          )}
-        </FormAlert>
-      ) : null}
+  // Mode edit: kolom filter silang dari spec terbaru di kanvas (sakelar/kolom kategori yang baru
+  // disimpan langsung berlaku); mode lihat: dari server.
+  const crossColumns = editing
+    ? crossColumnsOf(ed.widgets, props.sources)
+    : props.crossFilterColumns;
 
-      {ed.widgets.length === 0 ? (
-        <CanvasEmpty dashboardId={dashboardId} editing={editing} />
-      ) : (
-        <div className="flex items-start gap-4">
-          <div
-            ref={containerRef}
-            className="min-w-0 flex-1"
-            data-testid="canvas"
-            data-layout={phone ? "stack" : "grid"}
-          >
-            {phone ? (
-              <div className="flex flex-col gap-4">
-                {ordered.map((it) => {
-                  const w = byId.get(it.i);
-                  return w
-                    ? // Tinggi tetap per jenis (bukan dari grid layar lebar): tabel/grafik menggulir di
-                      // dalam kartu tanpa memanjangkan halaman, KPI tidak memboroskan layar (review L6).
-                      card(w, it, { style: { height: PHONE_HEIGHT[w.type] ?? 160 } })
-                    : null;
-                })}
-              </div>
-            ) : mounted ? (
-              <ReactGridLayout
-                layout={ed.layout.map((it) => {
-                  const min = minOf(it.i);
-                  return { ...it, minW: min.w, minH: min.h };
-                })}
-                width={width}
-                gridConfig={{
-                  cols: GRID_COLS,
-                  rowHeight: ROW_HEIGHT,
-                  margin: MARGIN,
-                  containerPadding: [0, 0],
-                }}
-                dragConfig={{
-                  enabled: canEdit,
-                  // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
-                  handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
-                  cancel: "button",
-                }}
-                resizeConfig={{ enabled: canEdit, handles: ["se"] }}
-                onDragStop={(l) => ed.commitLayout(plain(l))}
-                onResizeStop={(l) => ed.commitLayout(plain(l))}
+  return (
+    <DashboardFiltersProvider
+      dashboardId={dashboardId}
+      initial={props.initialFilters}
+      columns={props.filterColumns}
+      crossColumns={crossColumns}
+      widgets={ed.widgets}
+    >
+      <div
+        ref={root}
+        // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
+        className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
+      >
+        {editing ? (
+          <CanvasToolbar
+            save={ed.save}
+            undoKind={ed.canUndo ? ed.undoKind : null}
+            adding={adding}
+            finishing={finishing}
+            onAdd={() => void add()}
+            onUndo={() => void ed.undo()}
+            onRetry={() => void ed.flush()}
+            onDone={() => void done()}
+          />
+        ) : null}
+        <p className="sr-only" aria-live="polite">
+          {announce}
+        </p>
+        {ed.notice ? (
+          <FormAlert tone="error">
+            <span className="block">{ed.notice}</span>
+            {ed.save === "stale" ? (
+              <Button
+                className="mt-2 h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
+                leadingIcon={<IconRefresh aria-hidden />}
+                onClick={reload}
+                {...{ [STALE_RELOAD]: "" }}
               >
-                {ordered.map((it) => {
-                  const w = byId.get(it.i);
-                  return w ? card(w, it) : <div key={it.i} />;
-                })}
-              </ReactGridLayout>
+                Muat ulang
+              </Button>
             ) : (
-              <div
-                className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
-                aria-hidden
-              />
+              <Button size="sm" variant="outline" className="mt-2" onClick={ed.dismissNotice}>
+                Tutup
+              </Button>
             )}
-          </div>
-          {panelItem && panelWidget ? (
-            <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
-              <WidgetPanel
-                widget={panelWidget}
-                item={panelItem}
-                can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
-                onRename={(t) => ed.renameWidget(panelItem.i, t)}
-                onStep={(k) => {
-                  reveal.current = panelItem.i;
-                  ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
-                }}
-                onDelete={() => void remove(panelItem.i)}
-              >
-                <WidgetConfigForm
-                  widget={panelWidget}
-                  sources={props.sources}
-                  datasetId={props.datasetId}
-                  onSave={(type, spec) => ed.configureWidget(panelItem.i, type, spec)}
+          </FormAlert>
+        ) : null}
+
+        {ed.widgets.length ? <FilterBar editing={editing} /> : null}
+
+        {ed.widgets.length === 0 ? (
+          <CanvasEmpty dashboardId={dashboardId} editing={editing} />
+        ) : (
+          <div className="flex items-start gap-4">
+            <div
+              ref={containerRef}
+              className="min-w-0 flex-1"
+              data-testid="canvas"
+              data-layout={phone ? "stack" : "grid"}
+            >
+              {phone ? (
+                <div className="flex flex-col gap-4">
+                  {ordered.map((it) => {
+                    const w = byId.get(it.i);
+                    return w
+                      ? // Tinggi tetap per jenis (bukan dari grid layar lebar): tabel/grafik menggulir di
+                        // dalam kartu tanpa memanjangkan halaman, KPI tidak memboroskan layar (review L6).
+                        card(w, it, { style: { height: PHONE_HEIGHT[w.type] ?? 160 } })
+                      : null;
+                  })}
+                </div>
+              ) : mounted ? (
+                <ReactGridLayout
+                  layout={ed.layout.map((it) => {
+                    const min = minOf(it.i);
+                    return { ...it, minW: min.w, minH: min.h };
+                  })}
+                  width={width}
+                  gridConfig={{
+                    cols: GRID_COLS,
+                    rowHeight: ROW_HEIGHT,
+                    margin: MARGIN,
+                    containerPadding: [0, 0],
+                  }}
+                  dragConfig={{
+                    enabled: canEdit,
+                    // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
+                    handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
+                    cancel: "button",
+                  }}
+                  resizeConfig={{ enabled: canEdit, handles: ["se"] }}
+                  onDragStop={(l) => ed.commitLayout(plain(l))}
+                  onResizeStop={(l) => ed.commitLayout(plain(l))}
+                >
+                  {ordered.map((it) => {
+                    const w = byId.get(it.i);
+                    return w ? card(w, it) : <div key={it.i} />;
+                  })}
+                </ReactGridLayout>
+              ) : (
+                <div
+                  className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+                  aria-hidden
                 />
-              </WidgetPanel>
-            </WidgetPanelFrame>
-          ) : null}
-        </div>
-      )}
-    </div>
+              )}
+            </div>
+            {panelItem && panelWidget ? (
+              <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
+                <WidgetPanel
+                  widget={panelWidget}
+                  item={panelItem}
+                  can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
+                  onRename={(t) => ed.renameWidget(panelItem.i, t)}
+                  onStep={(k) => {
+                    reveal.current = panelItem.i;
+                    ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
+                  }}
+                  onDelete={() => void remove(panelItem.i)}
+                >
+                  <WidgetConfigForm
+                    widget={panelWidget}
+                    sources={props.sources}
+                    datasetId={props.datasetId}
+                    onSave={(type, spec) => ed.configureWidget(panelItem.i, type, spec)}
+                  />
+                </WidgetPanel>
+              </WidgetPanelFrame>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </DashboardFiltersProvider>
   );
 }

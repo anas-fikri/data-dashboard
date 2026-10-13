@@ -1,0 +1,164 @@
+"use client";
+
+import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
+import { FormAlert } from "@/components/auth/form-alert";
+import { TYPE_LABEL } from "@/components/schema/labels";
+import { Button } from "@/components/ui/button";
+import { FILTER_COLUMNS_MAX } from "@/features/dashboards/filter-columns";
+import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
+import { AddFilterColumnMenu } from "./add-filter-column-menu";
+import { api } from "./dashboard-api";
+import { FILTER_SETTINGS_ID } from "./filters/filter-bar";
+
+/*
+ * Kolom filter dashboard (T-012, mode edit): kolom yang bisa disaring dari bilah filter oleh semua yang
+ * melihat dashboard (maks. 8). Tambah lewat menu kolom per sheet (non-modal), hapus per baris; tiap
+ * perubahan langsung disimpan (PATCH) lalu halaman disegarkan agar bilah filter memakai daftar baru.
+ * Kolom yang tidak lagi ada/tampil di data terbaru ditandai dan bisa dihapus. Setelah menghapus, fokus
+ * pindah ke baris berikutnya (atau tombol tambah).
+ */
+export function FilterColumnsSettings({
+  dashboardId,
+  columns,
+  sources,
+}: {
+  dashboardId: string;
+  columns: FilterColumnView[];
+  sources: SourceSheet[];
+}) {
+  const id = useId();
+  const router = useRouter();
+  const [list, setList] = useState(columns);
+  const [pending, setPending] = useState(false);
+  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const focusAt = useRef<number | null>(null);
+  const multiSheet = sources.length > 1;
+  const full = list.length >= FILTER_COLUMNS_MAX;
+  const taken = new Set(list.map((c) => c.key));
+
+  useEffect(() => {
+    const at = focusAt.current;
+    if (at === null) return;
+    focusAt.current = null;
+    const buttons = root.current?.querySelectorAll<HTMLElement>("[data-filter-remove]");
+    const next = buttons?.[Math.min(at, buttons.length - 1)];
+    (next ?? root.current?.querySelector<HTMLElement>("[data-filter-add]"))?.focus();
+  });
+
+  async function save(next: FilterColumnView[], focus?: number) {
+    // Satu simpan sekaligus (tombol tidak dinonaktifkan: fokus tidak boleh hilang ke <body>).
+    if (pending) return;
+    const before = list;
+    if (focus !== undefined) focusAt.current = focus;
+    setList(next);
+    setPending(true);
+    setResult(null);
+    const r = await api.setFilterColumns(
+      dashboardId,
+      next.map((c) => ({ sheet: c.sheet, column: c.column })),
+    );
+    setPending(false);
+    if (r.ok) {
+      setList(r.data.filterColumns);
+      setResult({ ok: true, message: "Kolom filter tersimpan." });
+      router.refresh();
+    } else {
+      setList(before);
+      setResult({ ok: false, message: r.message });
+    }
+  }
+
+  return (
+    <section
+      ref={root}
+      id={FILTER_SETTINGS_ID}
+      aria-labelledby={`${id}-h`}
+      data-testid="dashboard-filter-columns"
+      className="flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col gap-3 border-t pt-5"
+    >
+      <div className="flex flex-col gap-1">
+        <h3 id={`${id}-h`} className="text-sm font-semibold">
+          Kolom filter{" "}
+          <span className="font-normal text-muted-foreground">
+            ({list.length} dari maks. {FILTER_COLUMNS_MAX})
+          </span>
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Kolom yang bisa disaring dari bilah filter di atas widget. Kolom tanggal mendapat pilihan
+          periode, kolom angka rentang nilai, kolom lain daftar nilai.
+        </p>
+      </div>
+      {result ? (
+        <FormAlert tone={result.ok ? "success" : "error"}>{result.message}</FormAlert>
+      ) : (
+        <p role="status" className="text-sm text-muted-foreground empty:hidden">
+          {pending ? "Menyimpan kolom filter…" : ""}
+        </p>
+      )}
+      {list.length ? (
+        <ul className="flex max-w-xl flex-col rounded-md border" aria-label="Kolom filter">
+          {list.map((c, i) => (
+            <li
+              key={c.key}
+              className="flex min-h-11 min-w-0 items-center gap-2 border-b py-1 pr-1 pl-3 last:border-b-0"
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium" title={c.column}>
+                  {c.column}
+                </span>
+                <span className="block truncate text-xs text-muted-foreground">
+                  {c.available ? TYPE_LABEL[c.type] : null}
+                  {multiSheet ? `${c.available ? " · " : ""}Sheet ${c.sheet}` : null}
+                </span>
+                {!c.available ? (
+                  <span className="mt-0.5 flex items-start gap-1 text-xs">
+                    <IconAlertTriangle
+                      size={14}
+                      stroke={1.5}
+                      aria-hidden
+                      className="mt-px shrink-0 text-warning"
+                    />
+                    Tidak ada atau disembunyikan di data terbaru — hapus, atau tampilkan lagi
+                    kolomnya di skema.
+                  </span>
+                ) : null}
+              </span>
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="size-(--control-h-lg) md:not-any-pointer-coarse:size-(--control-h-sm)"
+                aria-label={`Hapus kolom filter ${c.column}`}
+                data-filter-remove=""
+                onClick={() =>
+                  void save(
+                    list.filter((x) => x.key !== c.key),
+                    i,
+                  )
+                }
+              >
+                <IconX aria-hidden />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm">Belum ada kolom filter.</p>
+      )}
+      <AddFilterColumnMenu
+        sources={sources}
+        taken={taken}
+        full={full}
+        describedBy={full ? `${id}-full` : undefined}
+        onAdd={(c) => void save([...list, c])}
+      />
+      {full ? (
+        <p id={`${id}-full`} className="text-xs text-muted-foreground">
+          Sudah {FILTER_COLUMNS_MAX} kolom. Hapus satu untuk menambah kolom lain.
+        </p>
+      ) : null}
+    </section>
+  );
+}

@@ -34,6 +34,18 @@ export function canvasMeasure(px = 14): TextMeasure | undefined {
     return c.measureText(text).width;
   };
 }
+export interface ChartTableRow {
+  label: string;
+  value: number | null;
+  /**
+   * Filter silang (T-012): baris jadi tombol tekan (aria-pressed) yang menyaring widget lain — jalan
+   * keyboard untuk klik grafik. `raw` = nilai mentah kategori (data-value untuk uji).
+   */
+  pick?: () => void;
+  pressed?: boolean;
+  raw?: string;
+}
+
 export function ChartTable({
   rows,
   dimensionLabel,
@@ -44,7 +56,7 @@ export function ChartTable({
   width,
   height = null,
 }: {
-  rows: { label: string; value: number | null }[];
+  rows: ChartTableRow[];
   dimensionLabel: string;
   measureLabel: string;
   valueType?: ValueType;
@@ -160,20 +172,42 @@ export function ChartTable({
               return (
                 <tr
                   key={i}
-                  className={cn("border-b last:border-b-0", stacked && "flex flex-col py-1.5")}
+                  className={cn(
+                    "border-b last:border-b-0",
+                    stacked && "flex flex-col py-1.5",
+                    r.pressed && "bg-primary/10",
+                  )}
                   {...role("row")}
                 >
                   <th
                     scope="row"
                     className={cn(
-                      "px-3 text-left font-normal",
+                      "text-left font-normal",
+                      !r.pick && "px-3",
                       // Bertumpuk: label boleh dua baris (tidak dipotong menjadi "Ka…01").
-                      stacked ? "block break-words" : "truncate py-1.5",
+                      stacked ? "block break-words" : cn("truncate", !r.pick && "py-1.5"),
                     )}
                     title={r.label}
                     {...role("rowheader")}
                   >
-                    <Both visible={name} full={r.label} />
+                    {r.pick ? (
+                      <button
+                        type="button"
+                        aria-pressed={!!r.pressed}
+                        data-testid="crossfilter-item"
+                        data-value={r.raw}
+                        onClick={r.pick}
+                        className={cn(
+                          "block w-full cursor-pointer px-3 text-left underline-offset-4 hover:underline focus-visible:-outline-offset-2",
+                          "aria-pressed:font-semibold",
+                          stacked ? "break-words" : "truncate py-1.5",
+                        )}
+                      >
+                        <Both visible={name} full={r.label} />
+                      </button>
+                    ) : (
+                      <Both visible={name} full={r.label} />
+                    )}
                   </th>
                   <td
                     className={cn(

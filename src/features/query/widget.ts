@@ -1,5 +1,6 @@
 /*
- * Query dari widget (T-011): /api/query menerima { widgetId, filters?, page?, sort? } dan spec diambil
+ * Query dari widget (T-011): /api/query menerima { widgetId, filters?, dashboardFilters?, page?, sort? }
+ * (dashboardFilters = filter dashboard T-012, diterapkan di service lewat filters.ts) dan spec diambil
  * dari widget di DB, bukan dari klien. Spec merujuk kolom lewat posisi; di sini posisi diterjemahkan ke
  * nama kolom skema aktif lalu masuk resolveSpec T-009 (aturan tipe/agregasi/filter yang sama).
  * Kolom yang disembunyikan atau hilang → "tidak tersedia" untuk widget ini saja. Murni (tanpa I/O).
@@ -7,6 +8,7 @@
 import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { TABLE_PAGE_SIZE, type ChartSort, type WidgetConfig } from "@/features/widgets/spec";
+import { dashFiltersSchema } from "./filters";
 import { FILTER_OPS, filterScalar, resolveSpec, type Plan, type QuerySpec } from "./spec";
 
 /** Halaman tabel maksimum (100 baris/halaman → 10 juta baris). */
@@ -18,7 +20,7 @@ const pos = z.number().int().min(1).max(16_384);
 export const widgetBodySchema = z
   .object({
     widgetId: cuid,
-    /** Filter dashboard (T-012) — kolom lewat posisi, aturan nilai sama dengan T-009. */
+    /** Filter posisional (kolom lewat posisi di sheet widget), aturan nilai sama dengan T-009. */
     filters: z
       .array(
         z
@@ -32,6 +34,11 @@ export const widgetBodySchema = z
       )
       .max(20)
       .default([]),
+    /**
+     * Filter dashboard (T-012): kolom lewat NAMA tampil, hanya kolom yang diizinkan dashboard (kolom
+     * filter + dimensi grafik cross-filter). Kolom yang tidak ada di sheet widget ini dilewati.
+     */
+    dashboardFilters: dashFiltersSchema.optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
     sort: z
       .object({ column: pos, dir: z.enum(["asc", "desc"]) })

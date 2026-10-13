@@ -1,9 +1,25 @@
 import pino from "pino";
 
-const SENSITIVE_KEYS = ["password", "passwordHash", "token", "secret", "filters", "cookie"];
+/**
+ * Kunci yang selalu diredaksi. Nilai filter (T-012): filters/dashboardFilters (body query widget),
+ * values/value (isi filter), q (kata cari slicer), cross (cross-filter di status URL).
+ */
+export const SENSITIVE_KEYS = [
+  "password",
+  "passwordHash",
+  "token",
+  "secret",
+  "filters",
+  "dashboardFilters",
+  "values",
+  "value",
+  "q",
+  "cross",
+  "cookie",
+];
 
 /** Jalur redaksi sampai kedalaman 4 (pino hanya mencocokkan wildcard satu level). */
-function redactPaths(): string[] {
+export function redactPaths(): string[] {
   const paths: string[] = ["req.headers.authorization", "req.headers.cookie"];
   for (const key of SENSITIVE_KEYS) {
     paths.push(key, `*.${key}`, `*.*.${key}`, `*.*.*.${key}`, `req.body.${key}`);

@@ -2,10 +2,12 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { hit, RULES } from "@/features/auth/rate-limit";
 import { isSameOrigin } from "@/features/uploads/http";
+import { json as routeJson, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { redisReady } from "@/lib/redis";
 import { env } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
+import { runFilterValues } from "./filter-values";
 import { queryDeps } from "./runtime";
 import { runQuery, runWidgetQuery, type QueryCode } from "./service";
 import { SPEC_MAX_BYTES } from "./spec";
@@ -78,4 +80,35 @@ export async function runtimeQuery(req: NextRequest, userId: string): Promise<Ne
       500,
     );
   }
+}
+
+/** Body slicer kecil: nama kolom ≤ 200 + kata cari ≤ 100 (+ escape JSON). */
+const FILTER_VALUES_BODY_MAX = 8 * 1024;
+
+/**
+ * POST /api/dashboards/[id]/filter-values (T-012): Origin = APP_URL, sesi, rate limit per user
+ * (RULES.filterValues — terpisah dari query widget karena dipanggil per ketikan), body JSON kecil.
+ * Error tak terduga → 503 tanpa detail; log hanya userId + pesan error (tanpa kolom/kata cari/nilai).
+ */
+export function filterValuesRoute(req: NextRequest, dashboardId: string): Promise<NextResponse> {
+  const cross = rejectCrossOrigin(req);
+  if (cross) return Promise.resolve(cross);
+  return withUser("nilai filter gagal", async (userId) => {
+    const rl = await hit(await redisReady(), RULES.filterValues, userId);
+    if (!rl.allowed) {
+      return routeJson(
+        {
+          ok: false,
+          code: "RATE_LIMITED",
+          message: `Terlalu banyak pencarian nilai filter. Coba lagi dalam ${rl.retryAfterSec} detik.`,
+        },
+        429,
+        { "Retry-After": String(rl.retryAfterSec) },
+      );
+    }
+    const read = await readJson(req, FILTER_VALUES_BODY_MAX);
+    if ("response" in read) return read.response;
+    const r = await runFilterValues(userId, dashboardId, read.body, await queryDeps());
+    return r.ok ? routeJson(r) : routeJson(r, STATUS[r.code]);
+  });
 }

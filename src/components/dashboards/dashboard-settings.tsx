@@ -13,13 +13,25 @@ import {
   renameDashboardAction,
   type DashboardFormState,
 } from "@/features/dashboards/actions";
+import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { DASHBOARD_NAME_MAX } from "@/features/dashboards/validation";
+import { FilterColumnsSettings } from "./filter-columns-settings";
 
 /*
- * Pengaturan dashboard (mode edit): ganti nama dan hapus. Hapus memakai dialog konfirmasi; data
+ * Pengaturan dashboard (mode edit): ganti nama, kolom filter (T-012), dan hapus. Hapus memakai dialog konfirmasi; data
  * tetap aman di dataset, hanya susunan widget dashboard ini yang hilang.
  */
-export function DashboardSettings({ id, name }: { id: string; name: string }) {
+export function DashboardSettings({
+  id,
+  name,
+  filterColumns,
+  sources,
+}: {
+  id: string;
+  name: string;
+  filterColumns: FilterColumnView[];
+  sources: SourceSheet[];
+}) {
   const [renameState, rename, renaming] = useActionState<DashboardFormState, FormData>(
     renameDashboardAction,
     { status: "idle" },
@@ -42,7 +54,7 @@ export function DashboardSettings({ id, name }: { id: string; name: string }) {
     <Card>
       <CardHeader>
         <CardTitle>Pengaturan dashboard</CardTitle>
-        <CardDescription>Nama tampil di daftar dashboard dan judul halaman.</CardDescription>
+        <CardDescription>Nama, kolom filter, dan penghapusan dashboard ini.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-6">
         <form action={rename} className="flex max-w-xl flex-col gap-3" noValidate>
@@ -76,6 +88,8 @@ export function DashboardSettings({ id, name }: { id: string; name: string }) {
             Simpan nama
           </Button>
         </form>
+
+        <FilterColumnsSettings dashboardId={id} columns={filterColumns} sources={sources} />
 
         <div className="flex flex-col gap-3 border-t pt-5">
           <p className="text-sm text-muted-foreground">

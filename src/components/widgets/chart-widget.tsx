@@ -9,6 +9,9 @@ import {
   formatMeasure,
 } from "@/features/widgets/format";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
+import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
+import { filterKey } from "@/components/dashboards/filters/filter-model";
+import { crossFilterFor } from "@/components/dashboards/filters/filter-text";
 import { cn } from "@/lib/utils";
 import { OTHERS_LABEL, periodFill } from "./chart-option";
 import {
@@ -52,8 +55,20 @@ const RANK_CHAR_PX = 7;
 /** Wilayah gulir yang bisa difokus: garis fokus di dalam kotak (tidak terpotong tepi kartu). */
 const SCROLL_REGION = "overflow-y-auto focus-visible:-outline-offset-2";
 
-/** iso: nilai tanggal/cap waktu mentah (bentuk pendek di daftar peringkat). */
-type Row = { label: string; value: number | null; others?: boolean; iso?: string | null };
+/**
+ * iso: nilai tanggal/cap waktu mentah (bentuk pendek di daftar peringkat); index: baris sumber
+ * (kategori nyata, bisa jadi filter silang — "Lainnya" tidak).
+ */
+type Row = {
+  label: string;
+  value: number | null;
+  others?: boolean;
+  iso?: string | null;
+  index?: number;
+};
+/** Tombol kategori yang ditekan (filter silang dari grafik ini): garis + latar, bukan warna saja. */
+const PRESSED =
+  "aria-pressed:bg-primary/10 aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight]";
 
 export function ChartWidget({
   type,
@@ -61,6 +76,7 @@ export function ChartWidget({
   spec,
   showData,
   title,
+  cross,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -68,6 +84,8 @@ export function ChartWidget({
   /** Tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData: boolean;
   title: string;
+  /** Filter dashboard widget ini (T-012): sorotan + klik kategori → filter silang. */
+  cross?: WidgetFilters;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
@@ -100,11 +118,33 @@ export function ChartWidget({
   const negative = type === "pie" && (values.some((v) => v !== null && v < 0) || rest < 0);
   const others = Math.max(0, rest);
   // "Lainnya" bertanda: sisa negatif tetap terlihat di tabel yang ditunjuk peringatan pai.
+  // Filter silang (T-012): nilai MENTAH kategori (bukan label); tanggal berperiode → rentang periode.
+  const filterAt = (k: number) =>
+    dim ? crossFilterFor(dim.label, dimType, spec.dimension.timeGrain, source[k]?.[0]) : null;
+  const canPick = !!cross?.pick && spec.crossFilter !== false && !!dim && cross.canPick(dim.label);
+  const pickAt = canPick
+    ? (k: number) => {
+        const f = filterAt(k);
+        if (f) cross!.pick!(f);
+      }
+    : undefined;
+  const selectedKey = cross?.selected ? filterKey(cross.selected) : null;
+  const selected = selectedKey
+    ? source.findIndex((_, k) => {
+        const f = filterAt(k);
+        return !!f && filterKey(f) === selectedKey;
+      })
+    : -1;
+  const rawText = (k: number) => {
+    const v = source[k]?.[0];
+    return v === null || v === undefined ? "" : String(v);
+  };
   const rows: Row[] = [
     ...labels.map((label, i) => ({
       label,
       value: values[i] ?? null,
       iso: temporal && source[i]![0] !== null ? String(source[i]![0]) : null,
+      index: i,
     })),
     ...(rest !== 0 ? [{ label: OTHERS_LABEL, value: rest, others: true }] : []),
   ];
@@ -148,7 +188,16 @@ export function ChartWidget({
   } else if (showData) {
     body = (
       <ChartTable
-        rows={rows}
+        rows={rows.map((r) =>
+          pickAt && r.index !== undefined
+            ? {
+                ...r,
+                pick: () => pickAt(r.index!),
+                pressed: r.index === selected,
+                raw: rawText(r.index),
+              }
+            : r,
+        )}
         dimensionLabel={dim!.label}
         measureLabel={measure!.label}
         valueType={valueType}
@@ -282,17 +331,46 @@ export function ChartWidget({
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
         data-testid="chart-ranked"
       >
-        {items.map((r, i) => (
-          <li key={i} className={cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col")}>
-            <span
-              className={cn("truncate text-muted-foreground", inline && "min-w-0 flex-1")}
-              title={r.label}
-            >
-              <Both visible={shownLabels[i]!} full={r.label} />
-            </span>
-            <span className="shrink-0 font-medium tabular-nums">{text(r.value)}</span>
-          </li>
-        ))}
+        {items.map((r, i) => {
+          const layout = cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col");
+          const content = (
+            <>
+              <span
+                className={cn("truncate text-muted-foreground", inline && "min-w-0 flex-1")}
+                title={r.label}
+              >
+                <Both visible={shownLabels[i]!} full={r.label} />
+              </span>
+              <span className="shrink-0 font-medium tabular-nums">{text(r.value)}</span>
+            </>
+          );
+          const k = r.others ? undefined : r.index;
+          return (
+            <li key={i} className={pickAt && k !== undefined ? "flex min-w-0" : layout}>
+              {pickAt && k !== undefined ? (
+                // Kategori sebagai tombol tekan: filter silang dengan keyboard (grafik aria-hidden).
+                <button
+                  type="button"
+                  aria-pressed={k === selected}
+                  data-testid="crossfilter-item"
+                  data-value={rawText(k)}
+                  onClick={() => pickAt(k)}
+                  className={cn(
+                    layout,
+                    // Latar disorot/ditekan: label (muted) ikut gelap agar kontras tetap ≥ 4,5:1. Latar
+                    // melebar ke padding daftar (-mx-1 px-1): teks tetap di tempat yang diukur.
+                    "-mx-1 flex-1 cursor-pointer rounded-sm px-1 text-left hover:bg-accent hover:*:text-foreground aria-pressed:*:text-foreground focus-visible:-outline-offset-2",
+                    PRESSED,
+                  )}
+                >
+                  {content}
+                </button>
+              ) : (
+                content
+              )}
+            </li>
+          );
+        })}
         {ranked.more > 0 ? (
           <li
             className={cn(
@@ -326,6 +404,8 @@ export function ChartWidget({
         limit={visible}
         partial={partial}
         sort={spec.sort}
+        selected={selected >= 0 ? selected : undefined}
+        onPick={pickAt}
       />
     );
     body =

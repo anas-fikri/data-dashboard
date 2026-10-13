@@ -1,0 +1,107 @@
+/*
+ * Nilai slicer dashboard (T-012, B4): DISTINCT satu kolom filter dashboard dari sheet versi aktif, paling
+ * banyak 1000 (+ penanda terpotong), dengan pencarian di server. Pemilik dashboard saja (lainnya
+ * NOT_FOUND, sama dengan dashboard yang tidak ada). Berjalan di jatah query user yang sama dengan
+ * widget (runOnParquet) dan di-cache seperti hasil query (kunci memuat versi + schemaRevision). Kata
+ * cari dan nilai tidak pernah masuk log.
+ */
+import { z } from "zod";
+import type { ColumnType } from "@/features/ingest/infer";
+import { columnNamed, storedFilterColumns } from "@/features/dashboards/filter-columns";
+import { normName } from "@/features/widgets/remap";
+import { resultKey } from "./cache";
+import type { DashValue } from "./filters";
+import {
+  fail,
+  rowBytes,
+  runOnParquet,
+  timeoutMessage,
+  TIMEOUT_CACHE_MS,
+  toJson,
+  type QueryDeps,
+  type QueryFailure,
+} from "./service";
+import { FILTER_VALUES_LIMIT, buildFilterValuesSql } from "./sql";
+
+export const filterValuesBodySchema = z
+  .object({
+    /** Nama kolom filter dashboard (Dashboard.filterColumns). */
+    column: z.string().min(1).max(200),
+    /** Kata cari (mengandung); kosong = tanpa pencarian. */
+    q: z.string().max(100).optional(),
+    /** Sheet kolom filter, bila nama kolom yang sama dipilih dari lebih dari satu sheet. */
+    sheet: z.string().min(1).max(200).optional(),
+  })
+  .strict();
+
+export type FilterValuesResult =
+  { ok: true; type: ColumnType; values: DashValue[]; truncated: boolean } | QueryFailure;
+
+/** Batas waktu satu daftar nilai (ketikan berikutnya membatalkan yang lama di klien). */
+export const FILTER_VALUES_MAX_MS = 10_000;
+
+const ID = /^[a-z0-9]{20,32}$/;
+
+export async function runFilterValues(
+  userId: string,
+  dashboardId: string,
+  body: unknown,
+  deps: QueryDeps,
+): Promise<FilterValuesResult> {
+  const parsed = filterValuesBodySchema.safeParse(body);
+  if (!parsed.success) return fail("INVALID", "Permintaan nilai filter tidak valid.");
+  if (!ID.test(dashboardId) || !deps.repo.filterSource) {
+    return fail("NOT_FOUND", "Dashboard tidak ditemukan.");
+  }
+  const src = await deps.repo.filterSource(userId, dashboardId);
+  if (!src) return fail("NOT_FOUND", "Dashboard tidak ditemukan.");
+  const { column, sheet: sheetName } = parsed.data;
+  const entry = storedFilterColumns(src.filterColumns).find(
+    (f) =>
+      normName(f.column) === normName(column) &&
+      (sheetName === undefined || normName(f.sheet) === normName(sheetName)),
+  );
+  if (!entry) return fail("INVALID", "Kolom ini bukan kolom filter dashboard.");
+  if (!src.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
+  const target = src.sheets.find((s) => normName(s.name) === normName(entry.sheet));
+  const sheet = target ? await deps.repo.sheet(src.activeVersionId, target.id) : null;
+  const col = sheet?.schema ? columnNamed(sheet.schema, entry.column) : undefined;
+  if (!target || !sheet || !sheet.typedKey || !col || col.hidden) {
+    return sheet && !sheet.typedKey
+      ? fail("NOT_READY", "Sheet ini belum siap.")
+      : fail("COLUMN_UNAVAILABLE", "Kolom filter ini tidak ada atau disembunyikan di data aktif.");
+  }
+
+  const q = parsed.data.q?.trim() || null;
+  // Batas waktu lebih pendek dari query widget (pesan timeout ikut menyebut batas ini).
+  const limited = { ...deps, timeoutMs: Math.min(deps.timeoutMs, FILTER_VALUES_MAX_MS) };
+  const key = resultKey({
+    datasetId: src.datasetId,
+    versionId: src.activeVersionId,
+    sheetId: target.id,
+    schemaRevision: sheet.schemaRevision,
+    spec: { filterValues: `c${col.pos}`, q },
+  });
+  const hit = deps.cache?.get(key);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(limited.timeoutMs));
+  if (hit && "filterValues" in hit) {
+    return { ok: true, type: col.type, values: hit.filterValues, truncated: hit.truncated };
+  }
+
+  const r = await runOnParquet(userId, sheet.typedKey, limited, (path, exec) =>
+    exec(buildFilterValuesSql({ col: `c${col.pos}`, type: col.type, float: col.float }, q, path)),
+  );
+  if (!r.ok) {
+    if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+    return r;
+  }
+  const all = r.value.rows.map((row) => toJson(row[0], col.type) as DashValue);
+  const truncated = all.length > FILTER_VALUES_LIMIT;
+  const values = all.slice(0, FILTER_VALUES_LIMIT);
+  deps.cache?.set(
+    key,
+    { filterValues: values, truncated },
+    values.reduce<number>((n, v) => n + rowBytes([v]), 64),
+  );
+  return { ok: true, type: col.type, values, truncated };
+}

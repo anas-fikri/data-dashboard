@@ -1,9 +1,11 @@
 "use client";
 
-import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
+import { IconAlertTriangle, IconFilterOff, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
+import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { Button } from "@/components/ui/button";
 import type { WidgetConfig } from "@/features/widgets/spec";
+import { cn } from "@/lib/utils";
 import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
@@ -16,6 +18,10 @@ import { useWidgetQuery } from "./widget-query";
  * disembunyikan) tidak mengganggu widget lain. Status: memuat (kerangka), gagal (pesan + coba lagi
  * untuk gangguan sementara), kosong, berhasil. Status itu dilaporkan ke kartu (onState) untuk tombol
  * data grafik di kepala kartu.
+ *
+ * Filter dashboard (T-012) ikut dikirim (dashboardFilters); filter berubah → tabel kembali ke halaman
+ * pertama, data lama tetap tampil redup (aria-busy) selama memuat ulang, dan filter yang tidak berlaku
+ * untuk sheet widget ini (kolomnya tidak ada) disebut di catatan kecil di bawah isi.
  */
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
@@ -88,10 +94,22 @@ function Loaded({
 }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
+  const cross = useWidgetFilters(widgetId);
+  // Filter berubah → halaman pertama (bukan halaman 7 dari hasil yang kini 2 halaman).
+  const filterKey = JSON.stringify(cross.filters);
+  const [seenFilters, setSeenFilters] = useState(filterKey);
+  if (seenFilters !== filterKey) {
+    setSeenFilters(filterKey);
+    setPage(0);
+  }
+  const filters = cross.filters.length ? { dashboardFilters: cross.filters } : {};
   const request =
-    config.type === "table" ? { widgetId, page, ...(sort ? { sort } : {}) } : { widgetId };
+    config.type === "table"
+      ? { widgetId, page, ...(sort ? { sort } : {}), ...filters }
+      : { widgetId, ...filters };
   const { state, retry } = useWidgetQuery(request, version);
   const data = state.data;
+  const refetching = state.status === "loading" && !!data;
   const shown = bodyState(state, config.type === "table");
   useEffect(() => onState?.(version, shown), [onState, version, shown]);
 
@@ -147,9 +165,10 @@ function Loaded({
     );
   }
 
+  let content: React.ReactNode;
   switch (config.type) {
     case "kpi":
-      return (
+      content = (
         <KpiView
           data={data}
           format={config.spec.format}
@@ -157,8 +176,9 @@ function Loaded({
           agg={config.spec.measure.agg}
         />
       );
+      break;
     case "table":
-      return (
+      content = (
         <>
           {state.status === "error" ? (
             <p role="alert" className="border-b px-3 py-1.5 text-xs text-destructive">
@@ -182,15 +202,48 @@ function Loaded({
           />
         </>
       );
+      break;
     default:
-      return (
+      content = (
         <ChartWidget
           type={config.type}
           data={data}
           spec={config.spec}
           showData={showData}
           title={title}
+          cross={cross}
         />
       );
   }
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-0 flex-1 flex-col transition-opacity motion-reduce:transition-none",
+        // Tabel meredupkan barisnya sendiri; grafik/KPI: seluruh isi, agar angka lama tidak terbaca
+        // seolah sudah tersaring.
+        refetching && config.type !== "table" && "opacity-60",
+      )}
+      aria-busy={refetching || undefined}
+    >
+      {content}
+      <SkippedNote names={data.skippedFilters} />
+    </div>
+  );
+}
+
+/** Filter dashboard yang tidak berlaku untuk widget ini (kolomnya tidak ada di sheet widget). */
+function SkippedNote({ names }: { names?: string[] }) {
+  if (!names?.length) return null;
+  const text = `Filter ${names.join(", ")} tidak berlaku untuk widget ini.`;
+  return (
+    <p
+      className="flex shrink-0 items-center gap-1.5 border-t px-3 py-1 text-xs text-muted-foreground"
+      title={`${text} Kolomnya tidak ada di sheet yang dipakai widget ini.`}
+      data-testid="widget-skipped-filters"
+    >
+      <IconFilterOff size={14} stroke={1.5} aria-hidden className="shrink-0" />
+      <span className="min-w-0 truncate">{text}</span>
+    </p>
+  );
 }

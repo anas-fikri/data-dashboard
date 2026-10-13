@@ -84,6 +84,11 @@ export const chartSpecSchema = z
     sort: z.enum(CHART_SORTS),
     topN: z.number().int().min(1).max(1000),
     format: formatSchema,
+    /**
+     * Klik elemen grafik menyaring widget lain (T-012). Tidak ada = aktif; false = dimatikan untuk
+     * widget ini (dimensinya tidak lagi termasuk kolom cross-filter yang diizinkan dashboard).
+     */
+    crossFilter: z.boolean().optional(),
   })
   .strict();
 export const tableSpecSchema = z

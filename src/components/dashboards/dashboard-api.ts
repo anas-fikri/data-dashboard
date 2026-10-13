@@ -1,4 +1,4 @@
-import type { WidgetView } from "@/features/dashboards/service";
+import type { FilterColumnView, WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 
 /* Panggilan API kanvas dari browser (T-010). Semua mengembalikan hasil berbentuk tetap, tidak melempar. */
@@ -69,6 +69,11 @@ export const api = {
     ),
   renameWidget: (id: string, widgetId: string, title: string) =>
     call<{ title: string }>(`${base(id)}/widgets/${widgetId}`, "PATCH", { title }),
+  /** Kolom filter global (T-012); hasil = tampilan kolom filter yang baru. */
+  setFilterColumns: (id: string, filterColumns: { sheet: string; column: string }[]) =>
+    call<{ filterColumns: FilterColumnView[] }>(`${base(id)}/filter-columns`, "PATCH", {
+      filterColumns,
+    }),
   configureWidget: (id: string, widgetId: string, type: string, spec: unknown) =>
     call<{ type: string; spec: unknown }>(`${base(id)}/widgets/${widgetId}`, "PATCH", {
       type,

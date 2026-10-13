@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DashFilter } from "@/components/dashboards/filters/filter-model";
 import type { ValueType } from "@/features/widgets/format";
 
 /*
@@ -20,6 +21,8 @@ export interface WidgetData {
   /** Grafik: jumlah kategori seluruhnya dan total ukuran seluruh kategori (sebelum batas N). */
   categories?: number;
   grandTotal?: number | null;
+  /** Filter dashboard yang dilewati karena kolomnya tidak ada di sheet widget ini (T-012). */
+  skippedFilters?: string[];
   /** Hanya tabel. */
   total?: number;
   page?: number;
@@ -78,6 +81,8 @@ export interface WidgetRequest {
   widgetId: string;
   page?: number;
   sort?: { column: number; dir: "asc" | "desc" };
+  /** Filter dashboard + filter silang (T-012); kolom lewat nama tampil. */
+  dashboardFilters?: DashFilter[];
 }
 
 async function fetchWidget(

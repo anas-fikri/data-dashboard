@@ -39,6 +39,11 @@ export const RULES = {
    * ulang beberapa kali per menit masih jauh di bawah batas; pemakaian otomatis tak terbatas tidak.
    */
   query: { name: "query:user", limit: 600, windowSec: 60 },
+  /**
+   * Daftar nilai slicer dashboard per user (T-012): dipanggil per ketikan (klien membatalkan yang
+   * lama), jadi terpisah dari query widget agar pencarian tidak menghabiskan jatah dashboard.
+   */
+  filterValues: { name: "filter-values:user", limit: 300, windowSec: 60 },
   /** Perubahan admin pengguna (peran, status, alih kepemilikan) per admin (T-019). */
   admin: { name: "admin:user", limit: 60, windowSec: 60 },
 } as const satisfies Record<string, RateLimitRule>;

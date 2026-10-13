@@ -7,6 +7,8 @@ import {
   OTHERS_LABEL,
   chartOption,
   chartSummary,
+  onTimeAxis,
+  pickIndex,
   type ChartInput,
   type ChartTheme,
 } from "./chart-option";
@@ -17,9 +19,13 @@ import { useBoxSize } from "./use-box-size";
  * teks tetap teks). Instans dibuat sekali lalu diperbarui di tempat — ganti tema/ukuran/data tidak
  * memutar ulang animasi masuk; opsi dibangun ulang dari ukuran kotak (label & sumbu menyesuaikan).
  * Warna dari token tema, dibaca ulang saat tema berganti. Tabel data tersembunyi untuk pembaca layar.
+ * Klik (T-012, `onPick`): batang/garis — seluruh pita kategori di area plot (batang pendek tetap mudah
+ * diklik), pai — irisannya; hasilnya indeks kategori sumber untuk filter silang. Jalan keyboard ada di
+ * tabel data/daftar peringkat (tombol di kartu), bukan di grafik yang aria-hidden.
  */
 type ECharts = typeof import("echarts/core");
-type Instance = { setOption(o: unknown, notMerge: boolean): void; resize(): void; dispose(): void };
+type Instance = ReturnType<ECharts["init"]>;
+type ZrEvent = { offsetX: number; offsetY: number };
 let loader: Promise<ECharts> | null = null;
 function loadECharts(): Promise<ECharts> {
   loader ??= Promise.all([
@@ -76,20 +82,30 @@ export function ChartView(
      */
     partial?: boolean;
     sort?: ChartSort;
+    /** Klik kategori → indeks label sumbernya (filter silang). Tanpa ini grafik tidak bisa diklik. */
+    onPick?: (index: number) => void;
   },
 ) {
   const box = useRef<HTMLDivElement>(null);
   const chart = useRef<Instance | null>(null);
+  /** Opsi sudah dipasang (sebelum itu instans belum punya grid — klik/gerak diabaikan). */
+  const drawn = useRef(false);
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
   const size = useBoxSize(box);
   const themeVersion = useThemeVersion();
-  const { categories, limit, partial, sort, ...input } = props;
-  const inputKey = JSON.stringify(
+  const { categories, limit, partial, sort, onPick, ...input } = props;
+  const shown =
     limit && limit < input.labels.length
       ? { ...input, labels: input.labels.slice(0, limit), values: input.values.slice(0, limit) }
-      : input,
-  );
+      : input;
+  const inputKey = JSON.stringify(shown);
+  // Data yang digambar + callback terbaru untuk handler klik yang dipasang sekali saat instans dibuat
+  // (indeks irisan "Lainnya" = jumlah label yang digambar, bukan jumlah semua label).
+  const latest = useRef({ input: shown, onPick });
+  useEffect(() => {
+    latest.current = { input: shown, onPick };
+  });
 
   useEffect(() => {
     const el = box.current;
@@ -98,7 +114,44 @@ export function ChartView(
     loadECharts().then(
       (echarts) => {
         if (disposed) return;
-        chart.current = echarts.init(el, null, { renderer: "svg" });
+        const c: Instance = echarts.init(el, null, { renderer: "svg" });
+        chart.current = c;
+        const pick = (at: { index: number } | { ms: number }) => {
+          const { input: i, onPick: cb } = latest.current;
+          const k = cb ? pickIndex(i, at) : null;
+          if (k !== null) cb?.(k);
+        };
+        // Pai: irisan yang diklik.
+        c.on("click", (p) => {
+          const index = (p as { dataIndex?: unknown }).dataIndex;
+          if (latest.current.input.type === "pie" && typeof index === "number") pick({ index });
+        });
+        // Batang/garis: pita kategori (atau waktu terdekat) di bawah penunjuk, di dalam area plot.
+        const zr = c.getZr();
+        const at = (e: ZrEvent) => {
+          const { input: i, onPick: cb } = latest.current;
+          if (
+            !cb ||
+            !drawn.current ||
+            i.type === "pie" ||
+            !c.containPixel({ gridIndex: 0 }, [e.offsetX, e.offsetY])
+          ) {
+            return null;
+          }
+          const xy = c.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY]);
+          if (!Array.isArray(xy)) return null;
+          if (i.type === "bar") return { index: Math.round(xy[1]!) };
+          return onTimeAxis(i) ? { ms: xy[0]! } : { index: Math.round(xy[0]!) };
+        };
+        zr.on("click", (e) => {
+          const hit = at(e);
+          if (hit) pick(hit);
+        });
+        zr.on("mousemove", (e) => {
+          const hit = at(e);
+          const { input: i } = latest.current;
+          if (hit) zr.setCursorStyle(pickIndex(i, hit) !== null ? "pointer" : "default");
+        });
         setReady(true);
       },
       () => {
@@ -119,6 +172,7 @@ export function ChartView(
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const parsed = JSON.parse(inputKey) as Omit<ChartInput, "reducedMotion">;
     c.setOption(chartOption({ ...parsed, reducedMotion }, readTheme(), size), true);
+    drawn.current = true;
   }, [ready, inputKey, themeVersion, size]);
 
   if (failed) {

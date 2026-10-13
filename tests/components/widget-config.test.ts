@@ -263,7 +263,7 @@ describe("verifikasi T-011 putaran 2", () => {
       },
       theme,
       { width: 600, height: 300 },
-    ) as {
+    ) as unknown as {
       useUTC: boolean;
       xAxis: { type: string; axisLabel: { formatter: (ms: number) => string } };
       series: { data: [number, number][] }[];

@@ -195,6 +195,9 @@ model Dashboard {
   layout         Json     @default("[]")
   /// Naik tiap layout/widget berubah; simpan otomatis memakai CAS agar tab lama tidak menimpa.
   layoutRevision Int      @default(0)
+  /// Kolom filter global (T-012): [{ sheet, column }] dengan nama tampil, ≤ 8, unik. Pengguna dashboard
+  /// hanya boleh memfilter kolom ini + dimensi grafik yang cross-filter-nya aktif (D6).
+  filterColumns  Json     @default("[]")
   widgets        Widget[]
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

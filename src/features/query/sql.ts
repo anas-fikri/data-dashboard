@@ -3,7 +3,9 @@
  * arah urut dari enum tertutup, semua nilai user lewat parameter binding ($p1, $p2, …). Path parquet
  * juga parameter. Murni (tanpa I/O).
  */
+import type { ColumnType } from "@/features/ingest/infer";
 import { ident } from "@/lib/duckdb";
+import type { DashClause } from "./filters";
 import type { Plan, PlanFilter } from "./spec";
 
 export interface BuiltSql {
@@ -57,6 +59,117 @@ export function filterClauses(filters: PlanFilter[], params: BuiltSql["params"])
 }
 
 /**
+ * Angka JS → teks desimal 6 digit pecahan, untuk dibandingkan dengan kolom DECIMAL(38,6) secara tepat
+ * (tanpa lewat DOUBLE yang bisa meleset 1 ulp pada nilai besar). Dihitung dari representasi terpendek
+ * angka (String(n)), bukan nilai biner persisnya: 0.1 tetap "0.100000". "exact": null bila angka punya
+ * > 6 digit pecahan (tidak mungkin sama dengan nilai tersimpan); "ceil"/"floor": dibulatkan ke atas/
+ * bawah sehingga c >= ceil(b) ⇔ c >= b, c < ceil(b) ⇔ c < b, dan c <= floor(b) ⇔ c <= b.
+ */
+export function decimal6(n: number, mode: "exact" | "ceil" | "floor"): string | null {
+  if (!Number.isFinite(n)) return null;
+  const [mant = "0", exp = "0"] = String(Math.abs(n)).split("e");
+  const [int = "0", frac = ""] = mant.split(".");
+  const digits = BigInt(int + frac);
+  // |n| = digits / 10^scale
+  const scale = frac.length - Number(exp);
+  let q: bigint;
+  let rest = false;
+  if (scale <= 6) q = digits * 10n ** BigInt(6 - scale);
+  else {
+    const div = 10n ** BigInt(scale - 6);
+    q = digits / div;
+    rest = digits % div !== 0n;
+  }
+  const neg = n < 0;
+  if (rest) {
+    if (mode === "exact") return null;
+    // Pemotongan = ke arah nol; ceil untuk positif / floor untuk negatif menjauh dari nol.
+    if ((mode === "ceil") !== neg) q += 1n;
+  }
+  const s = q.toString().padStart(7, "0");
+  return `${neg && q !== 0n ? "-" : ""}${s.slice(0, -6)}.${s.slice(-6)}`;
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Klausa filter dashboard (T-012); nilai lewat parameter $f1, $f2, … (terpisah dari $p filter rencana
+ * agar keduanya bisa digabung dalam satu WHERE). Angka dibandingkan dalam tipe kolomnya: DECIMAL(38,6)
+ * dengan batas DECIMAL (lihat decimal6), kolom DOUBLE/bilangan bulat dengan DOUBLE. Tanggal naive
+ * di-cast tanpa zona. Teks sepanjang DIM_TEXT_MAX dicocokkan dengan awalan (label grafik dipotong
+ * sepanjang itu, jadi cross-filter dari batang itu tetap mengenai baris aslinya). null = sel kosong.
+ */
+export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): string[] {
+  let n = 0;
+  const bind = (v: string | number | boolean) => {
+    const name = `f${++n}`;
+    params[name] = v;
+    return `$${name}`;
+  };
+  const value = (
+    cl: DashClause,
+    v: string | number | boolean,
+    mode: "exact" | "ceil" | "floor",
+  ): string | null => {
+    switch (cl.type) {
+      case "date":
+        return `CAST(${bind(v)} AS ${typeof v === "string" && DATE_ONLY.test(v) ? "DATE" : "TIMESTAMP"})`;
+      case "timestamp":
+        return `CAST(${bind(v)} AS TIMESTAMP)`;
+      case "decimal": {
+        if (cl.float || typeof v !== "number") return `CAST(${bind(v)} AS DOUBLE)`;
+        const d = decimal6(v, mode);
+        return d === null ? null : `CAST(${bind(d)} AS DECIMAL(38,6))`;
+      }
+      case "integer":
+      case "duration":
+        return `CAST(${bind(v)} AS DOUBLE)`;
+      default:
+        return bind(v);
+    }
+  };
+  return clauses.map((cl) => {
+    const c = ident(cl.col);
+    if (cl.op === "range") {
+      const cmp = (op: string, b: string | number | undefined, mode: "ceil" | "floor") => {
+        if (b === undefined) return [];
+        const x = value(cl, b, mode);
+        return [x === null ? "FALSE" : `${c} ${op} ${x}`];
+      };
+      const parts = [
+        ...cmp(">=", cl.gte, "ceil"),
+        ...cmp("<=", cl.lte, "floor"),
+        ...cmp("<", cl.lt, "ceil"),
+      ];
+      return parts.length ? `(${parts.join(" AND ")})` : "TRUE";
+    }
+    const vals = cl.values.filter((v): v is string | number | boolean => v !== null);
+    const parts: string[] = [];
+    if (cl.type === "text") {
+      const cut = (v: string | number | boolean) => [...String(v)].length === DIM_TEXT_MAX;
+      const full = vals.filter((v) => !cut(v));
+      const prefix = vals.filter(cut);
+      if (full.length) parts.push(`${c} IN (${full.map(bind).join(", ")})`);
+      if (prefix.length) {
+        parts.push(`left(${c}, ${DIM_TEXT_MAX}) IN (${prefix.map(bind).join(", ")})`);
+      }
+    } else {
+      // Waktu dibandingkan per detik: nilai di hasil query tidak membawa pecahan detik.
+      const target = cl.type === "timestamp" ? `date_trunc('second', ${c})` : c;
+      const xs = vals.map((v) => value(cl, v, "exact")).filter((x): x is string => x !== null);
+      if (xs.length) parts.push(`${target} IN (${xs.join(", ")})`);
+    }
+    if (vals.length !== cl.values.length) parts.push(`${c} IS NULL`);
+    return parts.length ? `(${parts.join(" OR ")})` : "FALSE";
+  });
+}
+
+/** Semua klausa WHERE rencana: filter spec/klien (T-009/T-011) + filter dashboard (T-012). */
+export function whereClauses(plan: Plan, params: BuiltSql["params"]): string[] {
+  return [...filterClauses(plan.filters, params), ...dashClauses(plan.dash ?? [], params)];
+}
+
+/**
  * Urutan teks seperti Excel: tidak peka huruf besar/kecil dan aksen ("Ácehe" sebelum "apel" sebelum
  * "Bandung"), bukan urutan byte (review integritas T-011). Nilai mentah tetap jadi pemecah seri.
  */
@@ -93,7 +206,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     select.push(`${e} AS ${ident(m.key)}`);
   }
 
-  const where = filterClauses(plan.filters, params);
+  const where = whereClauses(plan, params);
   const group = plan.dimensions.length && plan.measures.length ? "GROUP BY ALL" : "";
   const distinct = plan.dimensions.length && !plan.measures.length ? "DISTINCT " : "";
   // Urutan deterministik: urutan pilihan user lalu dimensi naik sebagai pemecah seri, sehingga baris
@@ -136,7 +249,7 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   const m = plan.measures[0];
   if (!d || !m) return null;
   const params: BuiltSql["params"] = { path: parquetPath };
-  const where = filterClauses(plan.filters, params);
+  const where = whereClauses(plan, params);
   const e = dimensionExpr(d);
   const grand =
     m.agg === "sum"
@@ -149,6 +262,55 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
     `  ${grand} AS t`,
     `FROM read_parquet($path)`,
     where.length ? `WHERE ${where.join(" AND ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+  return { sql, params };
+}
+
+/** Batas daftar nilai slicer (T-012); diambil satu lebih untuk mendeteksi "lebih dari 1000". */
+export const FILTER_VALUES_LIMIT = 1_000;
+/** Teks lebih panjang dari ini tidak masuk daftar slicer (tidak praktis dipilih dan dikirim balik). */
+export const FILTER_TEXT_MAX = 1_000;
+
+/** Wildcard LIKE (% _) dan karakter escape-nya diperlakukan sebagai huruf biasa. */
+export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
+
+/**
+ * Nilai unik satu kolom untuk slicer (T-012): kosong (NULL) dulu, lalu teks urut seperti Excel
+ * (nocase.noaccent, byte-exact sebagai pemecah seri) atau urutan alami untuk tipe lain; LIMIT 1001.
+ * Pencarian `q` di server: teks → mengandung, tidak peka huruf besar/kecil dan aksen; tipe lain →
+ * mengandung pada teks bakunya (angka dengan titik desimal — koma dari user dianggap titik, tanggal
+ * YYYY-MM-DD). Wildcard di `q` di-escape; nilainya lewat parameter.
+ */
+export function buildFilterValuesSql(
+  col: { col: string; type: ColumnType; float?: boolean },
+  q: string | null,
+  parquetPath: string,
+): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const c = ident(col.col);
+  const v = ident("v");
+  const text = col.type === "text";
+  const where: string[] = [];
+  if (text) where.push(`(${c} IS NULL OR length(${c}) <= ${FILTER_TEXT_MAX})`);
+  if (q) {
+    params.q = escapeLikePattern(text ? q : q.replace(/,/g, "."));
+    const hay = text
+      ? `strip_accents(lower(${c}))`
+      : `lower(CAST(${col.type === "decimal" ? `CAST(${c} AS DOUBLE)` : c} AS VARCHAR))`;
+    where.push(`${hay} LIKE '%' || strip_accents(lower($q)) || '%' ESCAPE '\\'`);
+  }
+  // Waktu per detik: sama dengan nilai yang dikirim balik sebagai filter (tanpa pecahan detik).
+  const expr = col.type === "timestamp" ? `date_trunc('second', ${c})` : c;
+  const order = text ? `${v} ${TEXT_COLLATE} ASC NULLS FIRST, ${v} ASC` : `${v} ASC NULLS FIRST`;
+  const sql = [
+    `SELECT ${v} FROM (`,
+    `  SELECT DISTINCT ${expr} AS ${v} FROM read_parquet($path)`,
+    where.length ? `  WHERE ${where.join(" AND ")}` : "",
+    `)`,
+    `ORDER BY ${order}`,
+    `LIMIT ${FILTER_VALUES_LIMIT + 1}`,
   ]
     .filter(Boolean)
     .join("\n");

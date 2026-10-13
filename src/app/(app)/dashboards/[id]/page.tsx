@@ -1,15 +1,15 @@
-import { IconPencil } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
 import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
-import { Button } from "@/components/ui/button";
+import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
+import { parseFilterParam } from "@/components/dashboards/filters/filter-model";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ mode?: string }>;
+type Search = Promise<{ mode?: string; f?: string | string[] }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -18,7 +18,10 @@ export async function generateMetadata({ params }: { params: Params }) {
   return { title: d?.name ?? "Tidak ditemukan" };
 }
 
-/** Dashboard: mode lihat (statis) atau mode edit (?mode=edit). Bukan pemilik → 404 (T-010). */
+/**
+ * Dashboard: mode lihat (statis) atau mode edit (?mode=edit). Bukan pemilik → 404 (T-010). Filter
+ * aktif di ?f= (JSON, T-012): rusak → diabaikan; disaring lagi terhadap kolom yang diizinkan di klien.
+ */
 export default async function DashboardPage({
   params,
   searchParams,
@@ -56,16 +59,7 @@ export default async function DashboardPage({
         }
         title={d.name}
         description={editing ? "Mode edit: perubahan tata letak tersimpan otomatis." : undefined}
-        actions={
-          editing ? undefined : (
-            <Button asChild className="h-(--control-h-lg) md:h-(--control-h)">
-              <Link href={`/dashboards/${d.id}?mode=edit`} data-testid="edit-dashboard">
-                <IconPencil aria-hidden />
-                Ubah tata letak
-              </Link>
-            </Button>
-          )
-        }
+        actions={editing ? undefined : <EditDashboardLink id={d.id} />}
       />
       {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
           membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. */}
@@ -78,8 +72,18 @@ export default async function DashboardPage({
         editing={editing}
         datasetId={d.dataset.id}
         sources={sources}
+        filterColumns={d.filterColumns}
+        crossFilterColumns={d.crossFilterColumns}
+        initialFilters={parseFilterParam(search.f)}
       />
-      {editing ? <DashboardSettings id={d.id} name={d.name} /> : null}
+      {editing ? (
+        <DashboardSettings
+          id={d.id}
+          name={d.name}
+          filterColumns={d.filterColumns}
+          sources={sources}
+        />
+      ) : null}
     </div>
   );
 }

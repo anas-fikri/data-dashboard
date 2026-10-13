@@ -1,6 +1,7 @@
 import "server-only";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { crossFilterColumnsFor } from "@/features/dashboards/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
@@ -27,6 +28,19 @@ const historyCache = new HistoryCache<History>({
   // Total kolom skema lama yang disimpan (skema bisa ribuan kolom per sheet).
   maxSize: 100_000,
   size: (h) => 1 + (h?.old.schema.length ?? 0),
+});
+
+/**
+ * Kolom cross-filter per dashboard (T-012): dibaca sekali untuk banyak query widget dalam satu muat
+ * dashboard. Kunci memuat versi aktif + updatedAt dashboard (atur widget/kolom filter menaikkannya),
+ * jadi perubahan pemilik langsung berlaku; umur pendek menutup sisanya (mis. kolom disembunyikan —
+ * filter pada kolom tersembunyi tetap dilewati widget).
+ */
+const crossFilterCache = new HistoryCache<string[]>({
+  ttlMs: 30_000,
+  maxEntries: 1_000,
+  maxSize: 50_000,
+  size: (names) => 1 + names.length,
 });
 
 async function loadSheetHistory(
@@ -81,7 +95,15 @@ export const prismaQueryRepo: QueryRepo = {
       select: {
         type: true,
         spec: true,
-        dashboard: { select: { datasetId: true, dataset: { select: { activeVersionId: true } } } },
+        dashboard: {
+          select: {
+            id: true,
+            datasetId: true,
+            filterColumns: true,
+            updatedAt: true,
+            dataset: { select: { activeVersionId: true } },
+          },
+        },
       },
     });
     return (
@@ -90,8 +112,38 @@ export const prismaQueryRepo: QueryRepo = {
         spec: w.spec,
         datasetId: w.dashboard.datasetId,
         activeVersionId: w.dashboard.dataset.activeVersionId,
+        dashboardId: w.dashboard.id,
+        filterColumns: w.dashboard.filterColumns,
+        dashboardUpdatedAt: w.dashboard.updatedAt,
       }
     );
+  },
+  crossFilterColumns({ dashboardId, activeVersionId, updatedAt }) {
+    return crossFilterCache.get(
+      `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}`,
+      () => crossFilterColumnsFor(dashboardId),
+    );
+  },
+  async filterSource(userId, dashboardId) {
+    // Pemilik dataset saja untuk saat ini (berbagi di T-016); lainnya null → 404.
+    const d = await prisma.dashboard.findFirst({
+      where: { id: dashboardId, dataset: { ownerId: userId } },
+      select: {
+        datasetId: true,
+        filterColumns: true,
+        dataset: { select: { activeVersionId: true } },
+      },
+    });
+    if (!d) return null;
+    const activeVersionId = d.dataset.activeVersionId;
+    const sheets = activeVersionId
+      ? await prisma.sheet.findMany({
+          where: { versionId: activeVersionId, typedKey: { not: null } },
+          orderBy: { index: "asc" },
+          select: { id: true, name: true },
+        })
+      : [];
+    return { datasetId: d.datasetId, activeVersionId, filterColumns: d.filterColumns, sheets };
   },
 };
 

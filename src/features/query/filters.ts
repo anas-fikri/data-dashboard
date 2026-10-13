@@ -1,0 +1,269 @@
+/*
+ * Filter dashboard (T-012): slicer, rentang angka/tanggal, preset tanggal, dan cross-filter dari klik
+ * grafik. Klien mengirim { widgetId, dashboardFilters } dengan kolom lewat NAMA tampil (bukan posisi):
+ * satu filter berlaku untuk semua widget yang sheet-nya punya kolom bernama sama (tidak peka besar/kecil
+ * dan spasi, NFC). Widget yang sheet-nya tidak punya kolom itu — atau kolomnya disembunyikan, atau
+ * tipenya tidak cocok dengan nilai filter — melewati filter tersebut dan melaporkannya (skippedFilters),
+ * bukan gagal. Preset dihitung di Asia/Jakarta sebagai tanggal naive dan dibandingkan tanpa pergeseran
+ * zona (D8). Murni (tanpa I/O) — dipakai server dan bar filter di klien.
+ */
+import { z } from "zod";
+import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import { normName } from "@/features/widgets/remap";
+import { isCalendarDate } from "./spec";
+
+export const DASH_FILTERS_MAX = 20;
+export const DASH_VALUES_MAX = 500;
+export const PRESETS = ["this_month", "this_quarter", "ytd"] as const;
+export type Preset = (typeof PRESETS)[number];
+export const JAKARTA_TZ = "Asia/Jakarta";
+
+const column = z.string().min(1).max(200);
+const num = z.number().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
+/**
+ * Nilai slicer/cross-filter; null = (Kosong). Teks ≤ 2000 unit UTF-16: daftar slicer memuat teks
+ * ≤ 1000 karakter (karakter di luar BMP = 2 unit).
+ */
+const inValue = z.union([z.string().max(2_000), num, z.boolean(), z.null()]);
+/** Batas rentang: angka, atau tanggal/waktu naive ISO (YYYY-MM-DD[THH:MM[:SS]]). */
+const bound = z.union([
+  z.string().max(19).refine(isCalendarDate, { message: "Tanggal tidak valid" }),
+  num,
+]);
+
+export const dashFilterSchema = z
+  .discriminatedUnion("op", [
+    z
+      .object({
+        column,
+        op: z.literal("in"),
+        values: z.array(inValue).min(1).max(DASH_VALUES_MAX),
+      })
+      .strict(),
+    z
+      .object({
+        column,
+        op: z.literal("range"),
+        gte: bound.optional(),
+        lte: bound.optional(),
+        lt: bound.optional(),
+      })
+      .strict(),
+    z.object({ column, op: z.literal("preset"), preset: z.enum(PRESETS) }).strict(),
+  ])
+  .superRefine((f, ctx) => {
+    if (f.op === "range" && f.gte === undefined && f.lte === undefined && f.lt === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Rentang membutuhkan minimal satu batas",
+      });
+    }
+  });
+export type DashFilter = z.infer<typeof dashFilterSchema>;
+export type DashValue = string | number | boolean | null;
+
+export const dashFiltersSchema = z.array(dashFilterSchema).max(DASH_FILTERS_MAX);
+
+/**
+ * Status filter di URL (?f=, JSON): filter bar + satu cross-filter aktif beserta widget sumbernya.
+ * Tidak valid → diabaikan (lihat parseFilterState).
+ */
+export const filterStateSchema = z
+  .object({
+    filters: dashFiltersSchema,
+    cross: z
+      .object({ widgetId: z.string().regex(/^[a-z0-9]{20,32}$/), filter: dashFilterSchema })
+      .strict()
+      .optional(),
+  })
+  .strict();
+export type FilterState = z.infer<typeof filterStateSchema>;
+
+/** Nilai ?f= (sudah di-decode dari URL) → status filter, atau null bila rusak/tidak valid. */
+export function parseFilterState(raw: string | null | undefined): FilterState | null {
+  if (!raw || raw.length > 16_384) return null;
+  try {
+    const p = filterStateSchema.safeParse(JSON.parse(raw));
+    return p.success ? p.data : null;
+  } catch {
+    return null;
+  }
+}
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+
+const DAY_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: JAKARTA_TZ,
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/** Tanggal hari ini di Asia/Jakarta sebagai tanggal naive YYYY-MM-DD (bukan toISOString yang UTC). */
+export function todayJakarta(now: Date = new Date()): string {
+  const p = Object.fromEntries(DAY_FORMAT.formatToParts(now).map((x) => [x.type, x.value]));
+  return `${pad(Number(p.year), 4)}-${p.month}-${p.day}`;
+}
+
+/** Geser tanggal naive YYYY-MM-DD sebanyak n hari (aritmetika kalender, tanpa zona). */
+export function addDays(day: string, n: number): string {
+  const [y = 0, m = 1, d = 1] = day.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return `${pad(t.getUTCFullYear(), 4)}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+}
+
+/** Rentang preset sampai hari ini (inklusif): awal bulan / awal kuartal / 1 Januari. */
+export function presetRange(preset: Preset, today: string): { start: string; end: string } {
+  const [y = "", m = ""] = today.split("-");
+  const month = Number(m);
+  const start =
+    preset === "ytd"
+      ? `${y}-01-01`
+      : preset === "this_month"
+        ? `${y}-${m}-01`
+        : `${y}-${pad(Math.floor((month - 1) / 3) * 3 + 1)}-01`;
+  return { start, end: today };
+}
+
+type Bound = string | number;
+interface ClauseBase {
+  /** Kolom fisik c<pos> di sheet widget. */
+  col: string;
+  type: ColumnType;
+  /** Desimal yang disimpan DOUBLE (ColumnSchema.float); selain itu DECIMAL(38,6). */
+  float: boolean;
+}
+/** Filter dashboard yang sudah dicocokkan dengan sheet satu widget (preset sudah jadi rentang). */
+export type DashClause = ClauseBase &
+  ({ op: "in"; values: DashValue[] } | { op: "range"; gte?: Bound; lte?: Bound; lt?: Bound });
+
+const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
+
+/** Waktu naive ke bentuk penuh YYYY-MM-DDTHH:MM:SS (urutan teks = urutan waktu, kunci cache stabil). */
+function fullTimestamp(v: string): string {
+  const s = v.replace(" ", "T");
+  return DATE_ONLY.test(s) ? `${s}T00:00:00` : s.length === 16 ? `${s}:00` : s;
+}
+
+function fits(type: ColumnType, v: Exclude<DashValue, null>): boolean {
+  switch (type) {
+    case "integer":
+    case "decimal":
+    case "duration":
+      return typeof v === "number";
+    case "boolean":
+      return typeof v === "boolean";
+    case "date":
+      return typeof v === "string" && DATE_ONLY.test(v) && isCalendarDate(v);
+    case "timestamp":
+      return typeof v === "string" && isCalendarDate(v);
+    case "text":
+      return typeof v === "string";
+  }
+}
+
+const rank = (v: DashValue) =>
+  v === null ? 0 : typeof v === "boolean" ? 1 : typeof v === "number" ? 2 : 3;
+
+/** Nilai unik terurut (null dulu): pilihan yang sama dalam urutan berbeda = kunci cache yang sama. */
+export function canonicalValues(values: DashValue[]): DashValue[] {
+  const unique = new Map(values.map((v) => [JSON.stringify(v), v]));
+  return [...unique.values()].sort(
+    (a, b) =>
+      rank(a) - rank(b) || (a === b ? 0 : (a as string | number) < (b as string | number) ? -1 : 1),
+  );
+}
+
+function toClause(f: DashFilter, c: ColumnSchema, today: string): DashClause | null {
+  const base: ClauseBase = { col: `c${c.pos}`, type: c.type, float: c.float === true };
+  const temporal = c.type === "date" || c.type === "timestamp";
+  switch (f.op) {
+    case "in": {
+      if (!f.values.every((v) => v === null || fits(c.type, v))) return null;
+      const values =
+        c.type === "timestamp"
+          ? f.values.map((v) => (typeof v === "string" ? fullTimestamp(v) : v))
+          : f.values;
+      return { ...base, op: "in", values: canonicalValues(values) };
+    }
+    case "range": {
+      const bounds = [f.gte, f.lte, f.lt].filter((b) => b !== undefined);
+      const ok = NUMERIC.includes(c.type)
+        ? bounds.every((b) => typeof b === "number")
+        : temporal && bounds.every((b) => typeof b === "string");
+      if (!ok) return null;
+      if (c.type !== "timestamp") {
+        return {
+          ...base,
+          op: "range",
+          ...(f.gte !== undefined ? { gte: f.gte } : {}),
+          ...(f.lte !== undefined ? { lte: f.lte } : {}),
+          ...(f.lt !== undefined ? { lt: f.lt } : {}),
+        };
+      }
+      const ts = (b: Bound | undefined) => (b === undefined ? undefined : fullTimestamp(String(b)));
+      let lte = ts(f.lte);
+      let lt = ts(f.lt);
+      // Batas atas berupa tanggal saja pada kolom waktu = sampai akhir hari itu (< hari berikutnya
+      // 00:00), bukan tepat tengah malam yang membuang data hari terakhir.
+      if (typeof f.lte === "string" && DATE_ONLY.test(f.lte)) {
+        const next = `${addDays(f.lte, 1)}T00:00:00`;
+        lt = lt === undefined || next < lt ? next : lt;
+        lte = undefined;
+      }
+      const gte = ts(f.gte);
+      return {
+        ...base,
+        op: "range",
+        ...(gte !== undefined ? { gte } : {}),
+        ...(lte !== undefined ? { lte } : {}),
+        ...(lt !== undefined ? { lt } : {}),
+      };
+    }
+    case "preset": {
+      if (!temporal) return null;
+      const { start, end } = presetRange(f.preset, today);
+      // DATE: awal ≤ c ≤ hari ini. TIMESTAMP: awal 00:00 ≤ c < besok 00:00 (tanpa geser zona, D8).
+      return c.type === "date"
+        ? { ...base, op: "range", gte: start, lte: end }
+        : { ...base, op: "range", gte: `${start}T00:00:00`, lt: `${addDays(end, 1)}T00:00:00` };
+    }
+  }
+}
+
+/**
+ * Terapkan filter dashboard ke sheet satu widget: kolom dicocokkan lewat nama di antara kolom yang
+ * tidak disembunyikan. Hasil: klausa kanonik (unik, terurut — untuk kunci cache) + nama kolom filter
+ * yang dilewati di widget ini.
+ */
+export function applyDashFilters(
+  filters: DashFilter[],
+  schema: ColumnSchema[],
+  now: Date,
+): { clauses: DashClause[]; skipped: string[] } {
+  const byName = new Map<string, ColumnSchema>();
+  for (const c of schema) {
+    if (!c.hidden && !byName.has(normName(c.name))) byName.set(normName(c.name), c);
+  }
+  const today = todayJakarta(now);
+  const clauses = new Map<string, DashClause>();
+  const skipped: string[] = [];
+  for (const f of filters) {
+    const c = byName.get(normName(f.column));
+    const clause = c ? toClause(f, c, today) : null;
+    if (clause) clauses.set(JSON.stringify(clause), clause);
+    else if (!skipped.includes(f.column)) skipped.push(f.column);
+  }
+  const sorted = [...clauses.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return { clauses: sorted.map(([, c]) => c), skipped };
+}
+
+/** Filter pertama yang kolomnya tidak termasuk nama yang diizinkan dashboard (D6), bila ada. */
+export function disallowedFilter(
+  filters: DashFilter[],
+  allowed: Iterable<string>,
+): DashFilter | undefined {
+  const names = new Set([...allowed].map(normName));
+  return filters.find((f) => !names.has(normName(f.column)));
+}

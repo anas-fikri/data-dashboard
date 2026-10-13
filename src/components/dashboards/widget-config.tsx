@@ -7,6 +7,7 @@ import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/feature
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
 import {
+  CrossFilterField,
   FormatColumnsField,
   MeasureFields,
   MissingNotice,
@@ -246,6 +247,15 @@ export function WidgetConfigForm({
                     onCommit={(topN) => commit({ ...draft, spec: { ...draft.spec, topN } })}
                   />
                 </div>
+              ) : null}
+              {draft.type !== "kpi" ? (
+                <CrossFilterField
+                  value={draft.spec.crossFilter !== false}
+                  onChange={(on) => {
+                    const { crossFilter: _, ...spec } = draft.spec;
+                    commit({ ...draft, spec: on ? spec : { ...spec, crossFilter: false } });
+                  }}
+                />
               ) : null}
             </>
           )}

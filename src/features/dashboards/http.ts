@@ -10,6 +10,7 @@ import {
   deleteWidget,
   renameWidget,
   saveLayout,
+  setDashboardFilterColumns,
   type DashboardCode,
   type DashboardResult,
 } from "./service";
@@ -105,3 +106,10 @@ export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan tata letak gagal", async (userId, body) =>
     reply(await saveLayout(userId, dashboardId, body)),
   );
+
+/** PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik saja. */
+export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
+  mutation(req, "simpan kolom filter gagal", async (userId, body) => {
+    const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };
+    return reply(await setDashboardFilterColumns(userId, dashboardId, b.filterColumns));
+  });

@@ -22,7 +22,12 @@ export interface SheetInfo {
 
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
-const key = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+/**
+ * Nama sheet/kolom ternormalisasi untuk pencocokan lewat nama (NFC, trim, spasi dirapatkan, huruf
+ * kecil). Juga dipakai filter dashboard (T-012) untuk mencocokkan kolom filter di sheet tiap widget.
+ */
+export const normName = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
+const key = normName;
 
 /**
  * Sheet pengganti di versi aktif, atau null bila tidak bisa ditentukan dengan aman. Fallback "satu-

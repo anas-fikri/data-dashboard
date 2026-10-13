@@ -15,6 +15,14 @@ export function bodyState(state: WidgetQueryState, table: boolean): BodyState {
   return state.data.rows.length > 0 ? "rows" : "none";
 }
 
-/** Kunci isi widget: berubah setiap spec disimpan → isi dimuat ulang dan status lama tidak dipakai. */
-export const configVersion = (config: { type: string; spec: unknown }) =>
-  `${config.type}:${JSON.stringify(config.spec)}`;
+/**
+ * Kunci isi widget: berubah setiap spec disimpan → isi dimuat ulang dan status lama tidak dipakai.
+ * Sakelar filter silang (T-012) tidak mengubah data, jadi tidak ikut (tidak memuat ulang).
+ */
+export const configVersion = (config: { type: string; spec: unknown }) => {
+  const spec =
+    config.spec && typeof config.spec === "object" && "crossFilter" in config.spec
+      ? { ...config.spec, crossFilter: undefined }
+      : config.spec;
+  return `${config.type}:${JSON.stringify(spec)}`;
+};

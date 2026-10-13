@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import type { DashClause } from "./filters";
 
 export const SPEC_MAX_BYTES = 64 * 1024;
 export const LIMIT_MAX = 10_000;
@@ -110,6 +111,8 @@ export interface Plan {
   dimensions: PlanDimension[];
   measures: PlanMeasure[];
   filters: PlanFilter[];
+  /** Filter dashboard (T-012) yang berlaku untuk sheet widget ini; di-AND dengan `filters`. */
+  dash?: DashClause[];
   sort: { key: string; dir: "asc" | "desc" }[];
   limit: number;
   columns: OutColumn[];
@@ -140,7 +143,7 @@ const AGG_LABEL: Record<Agg, string> = {
 };
 
 /** Tanggal/waktu ISO yang benar-benar ada (2024-02-30 atau 25:99 ditolak sebelum DuckDB, review F5). */
-function isCalendarDate(v: string): boolean {
+export function isCalendarDate(v: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(v);
   if (!m) return false;
   const [y, mo, d, h = "0", mi = "0", s = "0"] = m.slice(1).map((x) => x ?? undefined) as string[];

@@ -75,6 +75,11 @@ export interface ChartInput {
   };
   /** Tipe kolom ukuran (mis. "duration" → j:mm:dd dan sumbu jam; "count" → sumbu bilangan bulat). */
   valueType?: ValueType;
+  /**
+   * Kategori terpilih (indeks label) — filter silang dari widget ini (T-012): batang/irisan lain
+   * diredupkan dan yang terpilih diberi garis tepi; titik garis terpilih diperbesar.
+   */
+  selected?: number;
   reducedMotion: boolean;
 }
 
@@ -93,6 +98,9 @@ const LABEL_GAP = 12;
 const DAY_MS = 86_400_000;
 /** Kotak grafik lebih pendek dari ini: nama satuan sumbu ("Rp", "jam") pindah ke tiap label sumbu. */
 const UNIT_NAME_MIN_H = 120;
+
+/** Kegelapan batang/irisan yang tidak terpilih saat ada filter silang dari grafik ini. */
+const DIMMED = 0.35;
 
 /** Teks tooltip richText: "{a|b}" ditafsirkan sebagai gaya ECharts → disisipi spasi lebar-nol. */
 const plain = (s: string) => s.replace(/\{/g, "{​");
@@ -126,6 +134,71 @@ export function periodFill(i: Pick<ChartInput, "type" | "values" | "time">) {
   return present < b.keys.length
     ? { buckets: b.keys.length, present, noun: GRAIN_NOUN[b.grain] }
     : undefined;
+}
+
+/**
+ * Titik garis di sumbu waktu (per hari, atau kolom waktu tanpa grain): titik bertanggal kosong tidak
+ * diplot (tetap ada di tabel data); urut waktu naik. `filled` = hari tanpa data yang diisi.
+ */
+function timePoints(
+  i: Pick<ChartInput, "values" | "time">,
+  buckets: ReturnType<typeof lineBuckets>,
+): { points: [number, number | null][]; filled: boolean[] } {
+  const day = buckets?.grain === "day" ? buckets : null;
+  if (day) {
+    return { points: day.keys.map((k, n) => [k, day.values[n] ?? null]), filled: day.filled };
+  }
+  const points = (i.time?.iso ?? [])
+    .map((iso, k) => {
+      const ms = iso ? isoToUtcMs(iso) : null;
+      return ms === null ? null : ([ms, i.values[k] ?? null] as [number, number | null]);
+    })
+    .filter((p): p is [number, number | null] => p !== null)
+    .sort((a, b) => a[0] - b[0]);
+  return { points, filled: points.map(() => false) };
+}
+
+/** Garis bertanggal per hari / tanpa grain: sumbu waktu (selain itu sumbu kategori). */
+export const onTimeAxis = (i: Pick<ChartInput, "type" | "time">) =>
+  i.type === "line" && !!i.time && !isPeriod(i.time.grain);
+
+/** Waktu (ms) kategori terpilih pada garis bertanggal sama dengan `ms` (awal periode/titik). */
+function selectedPoint(i: Pick<ChartInput, "selected" | "time">, ms: number): boolean {
+  const iso = i.selected === undefined ? null : i.time?.iso[i.selected];
+  return !!iso && isoToUtcMs(iso) === ms;
+}
+
+/**
+ * Titik yang diklik → indeks kategori (label) sumber, untuk filter silang (T-012). `at` = indeks
+ * kategori di sumbu (batang/garis/pai) atau waktu (ms) di sumbu waktu. null: irisan "Lainnya",
+ * periode/hari kosong yang diisi, atau di luar data.
+ */
+export function pickIndex(
+  i: Pick<ChartInput, "type" | "labels" | "values" | "time">,
+  at: { index: number } | { ms: number },
+): number | null {
+  const buckets = lineBuckets(i);
+  const time = onTimeAxis(i);
+  let ms: number | null = null;
+  if (time) {
+    const { points, filled } = timePoints(i, buckets);
+    const target = "ms" in at ? at.ms : (points[at.index]?.[0] ?? NaN);
+    let best = -1;
+    points.forEach((p, k) => {
+      if (best < 0 || Math.abs(p[0] - target) < Math.abs(points[best]![0] - target)) best = k;
+    });
+    if (best < 0 || filled[best]) return null;
+    ms = points[best]![0];
+  } else if ("index" in at) {
+    const k = at.index;
+    const periods = buckets && buckets.grain !== "day" ? buckets : null;
+    if (!periods) return k >= 0 && k < i.labels.length ? k : null;
+    if (periods.filled[k] ?? true) return null;
+    ms = periods.keys[k]!;
+  }
+  if (ms === null) return null;
+  const k = (i.time?.iso ?? []).findIndex((s) => !!s && isoToUtcMs(s) === ms);
+  return k >= 0 ? k : null;
 }
 
 /** Ringkasan untuk pembaca layar (rincian lengkap ada di tabel data). */
@@ -188,6 +261,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     textStyle: { color: theme.text, fontSize: 12, fontFamily: theme.font },
     confine: true,
   };
+  /** Titik garis terpilih: lebih besar dengan tepi warna kartu (tidak bergantung warna saja). */
+  const picked = <V>(value: V) => ({
+    value,
+    symbol: "circle",
+    symbolSize: 10,
+    itemStyle: { borderColor: theme.card, borderWidth: 2 },
+  });
   const base = {
     color: theme.colors,
     animation: !i.reducedMotion,
@@ -205,6 +285,21 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       } as (typeof data)[number]);
     }
     const shares = percentShares(data.map((d) => Math.max(0, d.value)));
+    const sel = i.selected;
+    const items =
+      sel === undefined
+        ? data
+        : data.map((d, k) => ({
+            ...d,
+            itemStyle:
+              k === sel
+                ? {
+                    ...(d as { itemStyle?: object }).itemStyle,
+                    borderColor: theme.text,
+                    borderWidth: 2,
+                  }
+                : { ...(d as { itemStyle?: object }).itemStyle, opacity: DIMMED },
+          }));
     return {
       ...base,
       tooltip: {
@@ -222,7 +317,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           // Tanpa label luar: nama + persen di legenda HTML (tidak terpotong "…" di kartu sempit).
           label: { show: false },
           labelLine: { show: false },
-          data,
+          data: items,
         },
       ],
     };
@@ -309,17 +404,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
 
   if (i.type === "line" && i.time && !isPeriod(grain)) {
     const day = buckets?.grain === "day" ? buckets : null;
-    // Titik bertanggal kosong tidak diplot (tetap ada di tabel data); urut waktu naik.
-    const points: [number, number | null][] = day
-      ? day.keys.map((k, n) => [k, day.values[n] ?? null])
-      : i.time.iso
-          .map((iso, k) => {
-            const ms = iso ? isoToUtcMs(iso) : null;
-            return ms === null ? null : ([ms, i.values[k] ?? null] as [number, number | null]);
-          })
-          .filter((p): p is [number, number | null] => p !== null)
-          .sort((a, b) => a[0] - b[0]);
-    const filled = day ? day.filled : points.map(() => false);
+    const { points, filled } = timePoints(i, buckets);
     const ys = scaled(points.map((p) => p[1]));
     // Kolom waktu tanpa grain: jam selalu di tooltip; di label sumbu bila rentang < 3 hari (selain
     // itu tick paling rapat sehari — tidak ada "31 Des 2025" kembar).
@@ -385,7 +470,9 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         {
           type: "line" as const,
           name: i.measureLabel,
-          data: points.map((p, n): [number, number | null] => [p[0], ys[n] ?? null]),
+          data: points.map((p, n) =>
+            selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
+          ),
           ...symbols(ys, filled),
           connectNulls: false,
         },
@@ -398,6 +485,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   const periods = buckets && buckets.grain !== "day" ? buckets : null;
   const labels = periods ? periods.keys.map((k) => formatDate(msToIso(k), grain)) : i.labels;
   const filled = periods ? periods.filled : labels.map(() => false);
+  // Indeks data terpilih: periode yang memuat tanggal kategori terpilih, atau indeks label.
+  const sel = periods
+    ? (() => {
+        const k = periods.keys.findIndex((ms) => selectedPoint(i, ms));
+        return k >= 0 ? k : undefined;
+      })()
+    : i.selected;
   const values = scaled(periods ? periods.values : i.values);
   const textLabels = !periods && i.textLabels;
   // Kata pendek (≤ 10 karakter) di sumbu garis tidak dipotong — label yang tidak muat dijarangkan.
@@ -476,7 +570,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       {
         type: i.type,
         name: i.measureLabel,
-        data: values,
+        data: values.map((v, k) => {
+          if (sel === undefined) return v;
+          if (i.type === "line") return k === sel ? picked(v) : v;
+          return k === sel
+            ? { value: v, itemStyle: { borderColor: theme.text, borderWidth: 1.5 } }
+            : { value: v, itemStyle: { opacity: DIMMED } };
+        }),
         ...(i.type === "line"
           ? {
               smooth: false,
