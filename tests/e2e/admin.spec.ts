@@ -135,7 +135,7 @@ test.describe("admin pengguna", () => {
 
   test.beforeAll(async ({ browser, request }) => {
     test.setTimeout(180_000);
-    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]);
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]); // suite penuh: batas per IP
     const setup = await browser.newPage();
     for (const email of [A, B, C, D]) {
       await setup.context().clearCookies();
