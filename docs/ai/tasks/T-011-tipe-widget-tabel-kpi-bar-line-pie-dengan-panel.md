@@ -11,7 +11,7 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T08:06:53Z"
+updated: "2026-10-13T08:26:56Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -71,11 +71,15 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-13T07:54:10Z"
       findings: 1
+    - "n": 14
+      by: frontend-expert-design-reviewer
+      at: "2026-10-13T08:07:45Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 33387
+    duration_ms: 35267
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -97,13 +101,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791878790665,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791878790688,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791879992619,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791879992641,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  31 passed (31)
-            Tests  590 passed (590)
-         Start at  15:06:28
-         Duration  23.67s (tests 90%, import 6%, transform 4%)
+            Tests  591 passed (591)
+         Start at  15:26:29
+         Duration  25.24s (tests 88%, import 8%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -111,8 +115,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T08:06:53Z"
-    tree: 2417b59d30a5093514f9b3ea262508bda9be2983f2f42ef5934b20ef1cb2b367
+    at: "2026-10-13T08:26:56Z"
+    tree: d09561a516e2e71a7c016ff14685eac9f205909689d5a0647b776c9d36411d16
 ---
 
 ## Objective

@@ -212,7 +212,11 @@ export function ChartWidget({
     // muat utuh/terpotong seragam di sampingnya; daftar lalu bertumpuk (label selebar kartu) daripada
     // angka terpotong. Kartu sempit: selalu bertumpuk.
     const lay = (inline: boolean) => {
-      const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
+      // Bertumpuk: nilai lebih lebar dari daftar terbungkus 2 baris (52 px, bukan 36) — kapasitas
+      // dihitung dengan tinggi itu agar baris terakhir tidak terpotong tepi kartu.
+      const guess = Math.floor((room.height - 4) / (inline ? 20 : 36)) + 1;
+      const wraps = !inline && list.slice(0, guess).some((r) => px(text(r.value), true) > listPx);
+      const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : wraps ? 52 : 36)));
       const ranked = rankedItems(list, fitRows, categories + (unsure ? 1 : 0));
       const items = ranked.items;
       const beside = (v: string | null) => (inline && v !== null ? px(v, true) + 8 : 0); // gap-2
@@ -247,7 +251,9 @@ export function ChartWidget({
     const moreValue = type === "pie" && ranked.moreValue !== null ? text(ranked.moreValue) : null;
     // Baris '+N' satu baris (label di samping nilai) bila muat — juga di daftar bertumpuk, agar baris
     // terakhir tidak keluar dari kartu pendek (kapasitas daftar bertumpuk dihitung per baris data).
-    const moreBeside = moreValue !== null ? px(moreValue, true) + 8 : 0; // gap-2
+    // Nilai '+N' tampil bobot 400 (bukan font-medium): diukur sama, +1 px per titik/koma.
+    const moreBeside =
+      moreValue !== null ? px(moreValue) - 1 + (moreValue.match(/[.,]/g)?.length ?? 0) + 8 : 0; // gap-2
     const moreInline = inline || moreForms.some((t) => px(t) <= listPx - moreBeside);
     const moreRoom = listPx - (moreInline ? moreBeside : 0);
     const moreText = moreForms.find((t) => px(t) <= moreRoom) ?? moreForms.at(-1)!;

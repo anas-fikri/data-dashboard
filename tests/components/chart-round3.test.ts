@@ -1674,6 +1674,17 @@ describe("putaran 6", () => {
       });
     });
 
+    it("bertumpuk: nilai baris data lebih lebar dari daftar → kapasitas dihitung 52 px per baris", () => {
+      const rows = Array.from({ length: 6 }, (_, k) => [`Cab ${k + 1}`, 5.38788e15 - k * 1e12]);
+      withBox({ width: 96, height: 153 }, () => {
+        const d = data(rows, { categories: 40, grandTotal: 4e16 });
+        const out = html("pie", d, false, spec({ format: RP }));
+        const li = out.match(/<li /g) ?? [];
+        // (153 − 4) / 52 → 2 baris (data + '+N'), bukan 4 seperti hitungan 36 px.
+        expect(li.length).toBeLessThanOrEqual(Math.floor((153 - 4) / 52));
+      });
+    });
+
     it("daftar bertumpuk: baris '+N' pai tetap sebaris bila muat (tidak keluar dari kartu pendek)", () => {
       const rows = Array.from({ length: 5 }, (_, k) => [`Kantor ${k + 1}`, 10 - k]);
       withBox({ width: 139, height: 82 }, () => {
