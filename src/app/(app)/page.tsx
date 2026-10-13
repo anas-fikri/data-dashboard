@@ -4,14 +4,17 @@ import { DatasetList } from "@/components/datasets/dataset-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { listDatasets } from "@/features/datasets/service";
 
+type Search = Promise<{ notice?: string | string[] }>;
+
 /** Beranda: satu aksi utama (buat dataset) + dataset terbaru. Dashboard dibagikan datang di T-016. */
-export default async function HomePage() {
+export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const datasets = await listDatasets(user.id);
+  const [datasets, params] = await Promise.all([listDatasets(user.id), searchParams]);
   const recent = datasets.slice(0, 5);
 
   return (
@@ -20,7 +23,7 @@ export default async function HomePage() {
         title="Beranda"
         description="Dataset dan dashboard yang bisa Anda akses."
         actions={
-          <Button asChild>
+          <Button asChild className="h-(--control-h-lg) md:h-(--control-h)">
             <Link href="/datasets/baru">
               <IconPlus aria-hidden />
               Buat dataset
@@ -28,6 +31,12 @@ export default async function HomePage() {
           </Button>
         }
       />
+      {/* Admin mencabut aksesnya sendiri (T-019): konfirmasi setelah muat ulang penuh ke Beranda. */}
+      {params.notice === "admin-dicabut" ? (
+        <div data-testid="admin-revoked-notice">
+          <FocusNotice>Akses admin Anda sudah dicabut.</FocusNotice>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

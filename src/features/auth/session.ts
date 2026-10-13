@@ -107,7 +107,11 @@ export async function getSessionUser(): Promise<SessionUser | null> {
 }
 
 export class AuthError extends Error {
-  constructor(public readonly code: "UNAUTHENTICATED" | "NOT_FOUND") {
+  constructor(
+    public readonly code: "UNAUTHENTICATED" | "NOT_FOUND",
+    /** Pemilik sesi sah yang ditolak (untuk log penolakan akses); kosong bila tanpa sesi. */
+    public readonly userId?: string,
+  ) {
     super(code);
   }
 }
@@ -127,10 +131,16 @@ export async function requireUser(mode: "page" | "action" = "page"): Promise<Ses
   redirect(loginUrl(current, session.reason === "disabled" ? "disabled" : undefined));
 }
 
-/** Admin: non-admin mendapat 404/NOT_FOUND (bukan 403) agar keberadaan halaman tidak bocor (D2). */
+/**
+ * Admin: non-admin mendapat 404/NOT_FOUND (bukan 403) agar keberadaan halaman tidak bocor (D2).
+ * Penolakan halaman dicatat di sini (ASVS V7); penolakan aksi dicatat pemanggil yang tahu nama aksinya.
+ */
 export async function requireAdmin(mode: "page" | "action" = "page"): Promise<SessionUser> {
   const user = await requireUser(mode);
   if (user.isAdmin) return user;
-  if (mode === "action") throw new AuthError("NOT_FOUND");
+  if (mode === "action") throw new AuthError("NOT_FOUND", user.id);
+  // Path tanpa query: kata kunci cari bisa berisi email orang lain.
+  const path = ((await headers()).get("x-current-path") ?? "").split("?")[0] || undefined;
+  logger.warn({ userId: user.id, code: "NOT_FOUND", path }, "akses halaman admin ditolak");
   notFound();
 }

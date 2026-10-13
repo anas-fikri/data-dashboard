@@ -80,8 +80,8 @@ export function confirmCopy(kind: ConfirmKind, email: string, isSelf: boolean): 
         </>
       ) : (
         <>
-          {who} tidak bisa lagi membuka halaman Admin. Semua sesinya akan berakhir, jadi ia perlu
-          masuk lagi.
+          {who} tidak bisa lagi membuka halaman Admin. Ia otomatis keluar dari semua perangkat dan
+          perlu masuk lagi.
         </>
       ),
       label: isSelf ? "Cabut akses saya" : "Cabut admin",
@@ -93,8 +93,9 @@ export function confirmCopy(kind: ConfirmKind, email: string, isSelf: boolean): 
     title: "Nonaktifkan pengguna?",
     body: (
       <>
-        Semua sesi {who} akan berakhir dan ia tidak bisa masuk sampai diaktifkan lagi. Dataset dan
-        dashboard miliknya tetap ada dan bisa Anda alihkan ke pengguna lain.
+        {who} otomatis keluar dari semua perangkat dan tidak bisa masuk sampai diaktifkan lagi.
+        Dataset dan dashboard miliknya tetap ada dan bisa Anda alihkan ke pengguna lain lewat
+        saringan status Nonaktif.
       </>
     ),
     label: "Nonaktifkan",
@@ -105,8 +106,8 @@ export function confirmCopy(kind: ConfirmKind, email: string, isSelf: boolean): 
 
 export const SUCCESS = {
   grant: (email: string) => `${email} sekarang admin.`,
-  revoke: (email: string) => `${email} bukan admin lagi. Semua sesinya sudah berakhir.`,
-  deactivate: (email: string) => `${email} dinonaktifkan. Semua sesinya sudah berakhir.`,
+  revoke: (email: string) => `${email} bukan admin lagi. Ia otomatis keluar dari semua perangkat.`,
+  deactivate: (email: string) => `${email} dinonaktifkan. Ia otomatis keluar dari semua perangkat.`,
   activate: (email: string) => `${email} aktif kembali dan bisa masuk lagi.`,
 };
 
@@ -128,7 +129,7 @@ export function transferResult(data: TransferSummary, targetEmail: string): Reac
           <span className="mt-2 block">Diberi nama baru karena namanya sudah dipakai:</span>
           <ul className="mt-1 list-disc pl-5 [overflow-wrap:anywhere]">
             {shown.map((r) => (
-              <li key={r.to}>
+              <li key={r.datasetId}>
                 “{r.from}” menjadi “{r.to}”
               </li>
             ))}
@@ -138,8 +139,8 @@ export function transferResult(data: TransferSummary, targetEmail: string): Reac
       ) : null}
       {data.quotaExceeded ? (
         <span className="mt-2 block font-medium">
-          Perhatian: penyimpanan {targetEmail} kini melebihi kuota, jadi unggahan berikutnya akan
-          ditolak sampai sebagian data dihapus.
+          Perhatian: penyimpanan {targetEmail} kini penuh atau melebihi kuota, jadi unggahan
+          berikutnya akan ditolak sampai sebagian data dihapus.
         </span>
       ) : null}
     </>

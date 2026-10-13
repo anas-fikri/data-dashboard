@@ -2,6 +2,10 @@
 // Dev/e2e saja: hapus data user uji (email buatan uniqueEmail: "<prefix>-<13 digit>-<angka>@" atau
 // akun audit "audit<n>-...@") — dataset beserta objek storage-nya (raw/, parquet/, multipart
 // yang belum selesai). Mencegah volume storage dev membengkak oleh unggahan e2e (200 MB per putaran).
+// Lalu hapus AKUN buatan uniqueEmail saja (ACCOUNT_EMAIL) yang datasetnya sudah habis: akun uji
+// tidak menumpuk (ribuan pengguna, puluhan admin e2e) dan tidak mengganggu daftar/pemilih admin.
+// Akun lain (termasuk audit*) tidak pernah dihapus. Token ikut terhapus (cascade); AuditLog tetap
+// (actorId → null, targetId tanpa FK).
 // Menolak NODE_ENV=production. Pakai: node scripts/dev-purge-test-data.mjs [--dry-run]
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
@@ -25,6 +29,8 @@ if (process.env.NODE_ENV === "production") {
 }
 const dryRun = process.argv.includes("--dry-run");
 const TEST_EMAIL = /^([a-z0-9-]+-\d{13}-\d+|audit\d*-[a-z0-9-]+)@/i;
+/** Hanya akun buatan uniqueEmail (tests/e2e/helpers.ts) yang dihapus. */
+const ACCOUNT_EMAIL = /^[a-z0-9-]+-\d{13}-\d+@pcpexpress\.com$/;
 
 const prisma = new PrismaClient();
 const s3 = new S3Client({
@@ -76,8 +82,21 @@ try {
   }
   if (!dryRun)
     await prisma.dataset.deleteMany({ where: { id: { in: datasets.map((d) => d.id) } } });
+  // Setelah dataset (dan storage-nya) habis lewat jalur di atas; akun yang masih punya dataset
+  // (mis. dibuat bersamaan) dilewati agar tidak ada dataset terhapus cascade tanpa storage.
+  const accountIds = users.filter((u) => ACCOUNT_EMAIL.test(u.email)).map((u) => u.id);
+  const accounts = dryRun
+    ? accountIds.length
+    : (await prisma.user.deleteMany({ where: { id: { in: accountIds }, datasets: { none: {} } } }))
+        .count;
   console.log(
-    JSON.stringify({ dryRun, testUsers: users.length, datasets: datasets.length, objects }),
+    JSON.stringify({
+      dryRun,
+      testUsers: users.length,
+      datasets: datasets.length,
+      objects,
+      accounts,
+    }),
   );
 } finally {
   await prisma.$disconnect();

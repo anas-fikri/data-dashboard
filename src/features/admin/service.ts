@@ -6,8 +6,16 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
+import { cleanLine, cleanName, escapeLike } from "@/lib/text";
 import { planNames } from "./transfer-names";
-import type { AdminErrorCode, AdminResult, TransferSummary } from "./types";
+import {
+  USER_STATUSES,
+  type AdminErrorCode,
+  type AdminResult,
+  type TransferSummary,
+  type TransferTarget,
+  type UserStatusFilter,
+} from "./types";
 
 /*
  * Admin pengguna (T-019). Pemanggil WAJIB sudah lolos requireAdmin() (halaman) atau
@@ -20,8 +28,8 @@ import type { AdminErrorCode, AdminResult, TransferSummary } from "./types";
 
 export const USERS_PAGE_SIZE = 50;
 const QUERY_MAX = 100;
-/** Daftar tujuan alih kepemilikan: pengguna internal, ratusan; batas hanya pengaman. */
-const TARGETS_MAX = 1000;
+/** Hasil cari calon pemilik baru per ketikan (combobox di dialog alih dataset). */
+export const TARGETS_MAX = 20;
 
 export interface Actor {
   id: string;
@@ -45,8 +53,14 @@ const fail = <T>(code: AdminErrorCode, message: string): AdminResult<T> => ({
   message,
 });
 const userNotFound = <T>() => fail<T>("NOT_FOUND", "Pengguna tidak ditemukan.");
-/** Pelaku bukan admin aktif lagi: sama seperti non-admin (D2), tanpa membocorkan alasan. */
-const pageNotFound = <T>() => fail<T>("NOT_FOUND", "Halaman tidak ditemukan.");
+/**
+ * Pelaku bukan admin aktif lagi (dicabut/dinonaktifkan admin lain di antara requireAdmin dan lock):
+ * sama seperti non-admin (D2), tanpa membocorkan alasan. Dicatat sebagai penolakan akses (ASVS V7).
+ */
+function actorDenied<T>(actor: Actor, action: string): AdminResult<T> {
+  logger.warn({ userId: actor.id, code: "NOT_FOUND", action }, "aksi admin ditolak");
+  return fail<T>("NOT_FOUND", "Halaman tidak ditemukan.");
+}
 const lastAdmin = <T>() => fail<T>("LAST_ADMIN", "Minimal harus ada satu admin aktif.");
 const invalid = <T>() => fail<T>("INVALID", "Permintaan tidak valid.");
 const busy = <T>() => fail<T>("BUSY", "Sedang memproses permintaan lain. Coba lagi.");
@@ -95,15 +109,29 @@ async function guarded<T>(run: () => Promise<AdminResult<T>>): Promise<AdminResu
 // ---------------------------------------------------------------------------------------------
 // Baca
 
-function cleanQuery(q: unknown): string | null {
-  if (typeof q !== "string") return null;
-  const s = q
-    .normalize("NFC")
-    .replace(/[\p{Cc}\p{Cf}]/gu, "")
-    .trim()
-    .slice(0, QUERY_MAX);
-  return s || null;
+/** Kata kunci cari: teks satu baris yang bersih, lalu wildcard LIKE di-escape (`_`/`%` literal). */
+function likeQuery(q: unknown): string | null {
+  const s = cleanLine(q, QUERY_MAX);
+  return s ? escapeLike(s) : null;
 }
+
+const matchEmailOrName = (q: string): Prisma.UserWhereInput => ({
+  OR: [
+    { email: { contains: q, mode: "insensitive" } },
+    { name: { contains: q, mode: "insensitive" } },
+  ],
+});
+
+/** Status sama dengan badge di daftar: Nonaktif > Belum verifikasi > Aktif. */
+const STATUS_WHERE: Record<UserStatusFilter, Prisma.UserWhereInput> = {
+  all: {},
+  active: { isActive: true, emailVerifiedAt: { not: null } },
+  inactive: { isActive: false },
+  unverified: { emailVerifiedAt: null },
+};
+
+export const parseUserStatus = (raw: unknown): UserStatusFilter =>
+  USER_STATUSES.find((s) => s === raw) ?? "all";
 
 const userRowSelect = {
   id: true,
@@ -117,22 +145,27 @@ const userRowSelect = {
   _count: { select: { datasets: true } },
 } satisfies Prisma.UserSelect;
 
-/** Daftar pengguna untuk /admin/pengguna: cari email/nama (tanpa peka kapital), aktif dulu. */
-export async function listUsers(opts: { q?: string; page?: number } = {}): Promise<{
+/**
+ * Daftar pengguna untuk /admin/pengguna: cari email/nama (tanpa peka kapital), saring status, aktif
+ * dulu. Saringan "Nonaktif" mengurutkan pemilik dataset terbanyak di atas (yang perlu dialihkan).
+ * Nama dibersihkan dari karakter kontrol/bidi juga untuk data lama (sebelum registrasi membersihkan).
+ */
+export async function listUsers(
+  opts: { q?: string; page?: number; status?: UserStatusFilter } = {},
+): Promise<{
   users: AdminUserRow[];
   total: number;
   page: number;
   pageSize: number;
+  status: UserStatusFilter;
 }> {
-  const q = cleanQuery(opts.q);
-  const where: Prisma.UserWhereInput = q
-    ? {
-        OR: [
-          { email: { contains: q, mode: "insensitive" } },
-          { name: { contains: q, mode: "insensitive" } },
-        ],
-      }
-    : {};
+  const q = likeQuery(opts.q);
+  const status = parseUserStatus(opts.status);
+  // STATUS_WHERE tidak memakai kunci OR, jadi aman digabung dengan saringan kata kunci.
+  const where: Prisma.UserWhereInput = {
+    ...STATUS_WHERE[status],
+    ...(q ? matchEmailOrName(q) : {}),
+  };
   const total = await prisma.user.count({ where });
   const lastPage = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
   const requested =
@@ -140,9 +173,13 @@ export async function listUsers(opts: { q?: string; page?: number } = {}): Promi
       ? opts.page
       : 1;
   const page = Math.min(requested, lastPage);
+  const orderBy: Prisma.UserOrderByWithRelationInput[] =
+    status === "inactive"
+      ? [{ datasets: { _count: "desc" } }, { email: "asc" }]
+      : [{ isActive: "desc" }, { email: "asc" }];
   const rows = await prisma.user.findMany({
     where,
-    orderBy: [{ isActive: "desc" }, { email: "asc" }],
+    orderBy,
     skip: (page - 1) * USERS_PAGE_SIZE,
     take: USERS_PAGE_SIZE,
     select: userRowSelect,
@@ -151,7 +188,7 @@ export async function listUsers(opts: { q?: string; page?: number } = {}): Promi
     users: rows.map((r) => ({
       id: r.id,
       email: r.email,
-      name: r.name,
+      name: cleanName(r.name),
       isAdmin: r.isAdmin,
       isActive: r.isActive,
       emailVerified: r.emailVerifiedAt !== null,
@@ -162,19 +199,33 @@ export async function listUsers(opts: { q?: string; page?: number } = {}): Promi
     total,
     page,
     pageSize: USERS_PAGE_SIZE,
+    status,
   };
 }
 
-/** Calon pemilik baru: aktif + terverifikasi, selain pengguna sumber. */
-export async function listTransferTargets(
-  excludeUserId: string,
-): Promise<{ id: string; email: string; name: string | null }[]> {
-  return prisma.user.findMany({
-    where: { id: { not: excludeUserId }, isActive: true, emailVerifiedAt: { not: null } },
+/**
+ * Calon pemilik baru, dicari di server per ketikan: aktif + terverifikasi, selain pengguna sumber,
+ * cocok email/nama (tanpa peka kapital, wildcard literal), maks. TARGETS_MAX, urut email.
+ * q kosong → TARGETS_MAX pertama. Pemanggil WAJIB sudah lolos requireAdmin("action").
+ */
+export async function searchTransferTargets(
+  fromUserId: unknown,
+  q: unknown,
+): Promise<AdminResult<TransferTarget[]>> {
+  if (!isIdShape(fromUserId)) return userNotFound();
+  const like = likeQuery(q);
+  const rows = await prisma.user.findMany({
+    where: {
+      id: { not: fromUserId },
+      isActive: true,
+      emailVerifiedAt: { not: null },
+      ...(like ? matchEmailOrName(like) : {}),
+    },
     orderBy: { email: "asc" },
     take: TARGETS_MAX,
     select: { id: true, email: true, name: true },
   });
+  return { ok: true, data: rows.map((r) => ({ ...r, name: cleanName(r.name) })) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -203,7 +254,7 @@ export async function setUserAdmin(
   return guarded(() =>
     prisma.$transaction(async (tx): Promise<AdminResult<SetAdminOk>> => {
       await lock(tx, "admins");
-      if (!(await actorIsActiveAdmin(tx, actor.id))) return pageNotFound();
+      if (!(await actorIsActiveAdmin(tx, actor.id))) return actorDenied(actor, "setUserAdmin");
       const target = await tx.user.findUnique({
         where: { id: userId },
         select: {
@@ -274,7 +325,7 @@ export async function setUserActive(
   return guarded(() =>
     prisma.$transaction(async (tx): Promise<AdminResult<{ changed: boolean }>> => {
       await lock(tx, "admins");
-      if (!(await actorIsActiveAdmin(tx, actor.id))) return pageNotFound();
+      if (!(await actorIsActiveAdmin(tx, actor.id))) return actorDenied(actor, "setUserActive");
       const target = await tx.user.findUnique({
         where: { id: userId },
         select: { id: true, isAdmin: true, isActive: true },
@@ -347,7 +398,9 @@ export async function transferDatasets(
       // Urutan lock tetap (admins → datasets → uploads): tidak ada jalur lain yang memegang
       // 'admins', dan createDataset/initUpload masing-masing hanya memegang satu lock.
       await lock(tx, "admins");
-      if (!(await actorIsActiveAdmin(tx, actor.id))) return pageNotFound();
+      if (!(await actorIsActiveAdmin(tx, actor.id))) {
+        return actorDenied(actor, "transferDatasets");
+      }
       await lock(tx, `datasets:${toUserId}`);
       await lock(tx, `uploads:${toUserId}`);
 
@@ -376,6 +429,13 @@ export async function transferDatasets(
         select: { name: true, nameKey: true },
       });
       const room = Math.max(0, DATASETS_PER_USER - existing.length);
+      if (room === 0) {
+        return fail(
+          "LIMIT_REACHED",
+          `Pengguna tujuan sudah memiliki batas maksimal ${DATASETS_PER_USER} dataset. ` +
+            "Pilih pengguna lain atau minta pengguna tujuan menghapus dataset yang tidak dipakai.",
+        );
+      }
       if (incoming.length > room) {
         return fail(
           "LIMIT_REACHED",
@@ -420,7 +480,7 @@ export async function transferDatasets(
           data: { ownerId: to.id, name: p.name, nameKey: p.nameKey },
         });
         moved += r.count;
-        renamed.push({ from: p.renamedFrom, to: p.name });
+        renamed.push({ datasetId: p.id, from: p.renamedFrom, to: p.name });
       }
       // Semua-atau-tidak: dataset berubah di tengah jalan → batalkan seluruh transaksi.
       if (moved !== incoming.length) throw new Rollback(busy());
@@ -430,7 +490,8 @@ export async function transferDatasets(
         where: { dataset: { ownerId: to.id }, status: { not: "FAILED" } },
         _sum: { sizeBytes: true },
       });
-      const quotaExceeded = Number(used._sum.sizeBytes ?? 0n) > quota;
+      // Tepat sama dengan kuota juga "penuh": initUpload menolak used + size > quota untuk size ≥ 1.
+      const quotaExceeded = Number(used._sum.sizeBytes ?? 0n) >= quota;
 
       await recordAudit(tx, {
         actorId: actor.id,

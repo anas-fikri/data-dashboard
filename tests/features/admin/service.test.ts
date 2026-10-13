@@ -9,7 +9,8 @@ import { cuid, fakeDb, user, type FakeDataset } from "./fake-db";
  */
 const db = fakeDb();
 vi.mock("@/lib/db", () => ({ prisma: db.prisma }));
-vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
+vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/storage/multipart", () => ({ s3Multipart: {} }));
 vi.mock("@/lib/env", () => ({ env: () => ({ USER_STORAGE_QUOTA_BYTES: 1000 }) }));
 
@@ -261,6 +262,49 @@ describe("transferDatasets", () => {
     noWrites();
   });
 
+  it("tujuan sudah 50 dataset → LIMIT_REACHED 'batas maksimal', bukan 'hanya 0 lagi'", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C));
+    for (let i = 0; i < 50; i++) ds(C, `C ${i}`);
+    ds(B, "B 0");
+    const r = await svc.transferDatasets({ id: A }, B, C, IP, { storage });
+    expect(r).toMatchObject({ ok: false, code: "LIMIT_REACHED" });
+    if (!r.ok) {
+      expect(r.message).toMatch(/^Pengguna tujuan sudah memiliki batas maksimal 50 dataset\./);
+      expect(r.message).not.toMatch(/hanya 0/);
+    }
+    noWrites();
+  });
+
+  it("pemakaian tepat sama dengan kuota → quotaExceeded (unggahan berikutnya pasti ditolak)", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C));
+    const d = ds(B, "Penuh");
+    db.state.versions.push({
+      id: cuid("vq"),
+      datasetId: d.id,
+      status: "READY",
+      sourceKey: null,
+      uploadId: null,
+      sizeBytes: 800n,
+    });
+    const r = await svc.transferDatasets({ id: A }, B, C, IP, { storage, quotaBytes: 800 });
+    expect(r).toMatchObject({ ok: true, data: { quotaExceeded: true } });
+  });
+
+  it("nama yang tidak bentrok tidak ikut diganti dan tidak diambil dataset lain (rantai)", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C));
+    ds(C, "Penjualan Uji");
+    const x = ds(B, "Penjualan Uji");
+    const x2 = ds(B, "Penjualan Uji (2)");
+    const r = await svc.transferDatasets({ id: A }, B, C, IP, { storage });
+    const renamed = [{ datasetId: x.id, from: "Penjualan Uji", to: "Penjualan Uji (3)" }];
+    expect(r).toMatchObject({ ok: true, data: { moved: 2, renamed } });
+    expect(db.state.datasets.find((d) => d.id === x2.id)).toMatchObject({
+      ownerId: C,
+      name: "Penjualan Uji (2)",
+    });
+    expect(db.state.audits[0]!.meta).toMatchObject({ renamed });
+  });
+
   it("memindahkan semua dataset, mengganti nama yang bentrok, menggagalkan unggahan, mengaudit", async () => {
     seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C));
     ds(C, "Penjualan");
@@ -293,8 +337,8 @@ describe("transferDatasets", () => {
       data: {
         moved: 3,
         renamed: [
-          { from: "Penjualan", to: "Penjualan (2)" },
-          { from: "STOK", to: "STOK (3)" },
+          { datasetId: p.id, from: "Penjualan", to: "Penjualan (2)" },
+          { datasetId: s2.id, from: "STOK", to: "STOK (3)" },
         ],
         // 900 byte READY > kuota 800; unggahan 600 byte FAILED tidak dihitung.
         quotaExceeded: true,
@@ -330,8 +374,8 @@ describe("transferDatasets", () => {
           moved: 3,
           datasetIds: [p.id, s.id, s2.id],
           renamed: [
-            { from: "Penjualan", to: "Penjualan (2)" },
-            { from: "STOK", to: "STOK (3)" },
+            { datasetId: p.id, from: "Penjualan", to: "Penjualan (2)" },
+            { datasetId: s2.id, from: "STOK", to: "STOK (3)" },
           ],
           failedUploads: 1,
         },
@@ -406,7 +450,79 @@ describe("rencana nama", () => {
   });
 });
 
-describe("listUsers / listTransferTargets", () => {
+describe("rencana nama: rantai", () => {
+  const names = (plan: ReturnType<typeof planNames>) => plan.map((p) => [p.name, p.renamedFrom]);
+
+  it("tujuan [X], masuk [X, X (2)] → X (2) tetap, X menjadi X (3)", () => {
+    const plan = planNames(
+      [
+        { id: "1", name: "X", nameKey: "x" },
+        { id: "2", name: "X (2)", nameKey: "x (2)" },
+      ],
+      [{ name: "X", nameKey: "x" }],
+    );
+    expect(names(plan)).toEqual([
+      ["X (3)", "X"],
+      ["X (2)", null],
+    ]);
+  });
+
+  it("tujuan [data], masuk [Data, Data (2), DATA (3)] → hanya 'Data' diganti, ke nomor bebas", () => {
+    const plan = planNames(
+      [
+        { id: "1", name: "Data", nameKey: "data" },
+        { id: "2", name: "Data (2)", nameKey: "data (2)" },
+        { id: "3", name: "DATA (3)", nameKey: "data (3)" },
+      ],
+      [{ name: "data", nameKey: "data" }],
+    );
+    expect(names(plan)).toEqual([
+      ["Data (4)", "Data"],
+      ["Data (2)", null],
+      ["DATA (3)", null],
+    ]);
+  });
+
+  it("dua dataset masuk yang bentrok satu sama lain (kunci lama) → yang belakangan diganti", () => {
+    const plan = planNames(
+      [
+        { id: "1", name: "Stok", nameKey: "stok" },
+        { id: "2", name: "STOK", nameKey: "stok-lama" },
+      ],
+      [],
+    );
+    expect(names(plan)).toEqual([
+      ["Stok", null],
+      ["STOK (2)", "STOK"],
+    ]);
+  });
+
+  it("deterministik, dan tidak ada dua nama sama di pemilik baru setelah alih", () => {
+    const incoming = [
+      { id: "1", name: "A", nameKey: "a" },
+      { id: "2", name: "A (3)", nameKey: "a (3)" },
+      { id: "3", name: "A (2)", nameKey: "a (2)" },
+      { id: "4", name: "a", nameKey: "a-lama" },
+    ];
+    const existing = [
+      { name: "A", nameKey: "a" },
+      { name: "A (2)", nameKey: "a (2)" },
+      { name: "A (4)", nameKey: "a (4)" },
+    ];
+    const plan = planNames(incoming, existing);
+    expect(planNames(incoming, existing)).toEqual(plan);
+    expect(names(plan)).toEqual([
+      ["A (5)", "A"],
+      ["A (3)", null],
+      ["A (2) (2)", "A (2)"],
+      ["a (6)", "a"],
+    ]);
+    const keys = [...existing.map((e) => e.nameKey), ...plan.map((p) => p.nameKey)];
+    expect(new Set(keys).size).toBe(keys.length);
+  });
+});
+
+describe("listUsers / searchTransferTargets", () => {
   it("cari email/nama tanpa peka kapital, aktif dulu, halaman 50, halaman di luar batas dijepit", async () => {
     db.prisma.user.count.mockResolvedValueOnce(51);
     db.prisma.user.findMany.mockResolvedValueOnce([
@@ -455,6 +571,7 @@ describe("listUsers / listTransferTargets", () => {
       total: 51,
       page: 2,
       pageSize: 50,
+      status: "all",
     });
   });
 
@@ -466,15 +583,117 @@ describe("listUsers / listTransferTargets", () => {
     expect(r).toMatchObject({ users: [], total: 0, page: 1 });
   });
 
-  it("tujuan alih: aktif + terverifikasi selain sumber, urut email", async () => {
+  it("wildcard LIKE (_ % backslash) di-escape: q='_' tidak lagi cocok dengan semua pengguna", async () => {
+    db.prisma.user.count.mockResolvedValueOnce(0);
     db.prisma.user.findMany.mockResolvedValueOnce([]);
-    await svc.listTransferTargets(B);
+    await svc.listUsers({ q: "a_b%c\\" });
+    const like = "a\\_b\\%c\\\\";
+    expect(db.prisma.user.count).toHaveBeenCalledWith({
+      where: {
+        OR: [
+          { email: { contains: like, mode: "insensitive" } },
+          { name: { contains: like, mode: "insensitive" } },
+        ],
+      },
+    });
+  });
+
+  it("saring status: aktif/nonaktif/belum verifikasi; nonaktif urut dataset terbanyak", async () => {
+    const cases: [string, object][] = [
+      ["active", { isActive: true, emailVerifiedAt: { not: null } }],
+      ["inactive", { isActive: false }],
+      ["unverified", { emailVerifiedAt: null }],
+      ["bukan-status", {}],
+    ];
+    for (const [status, where] of cases) {
+      db.prisma.user.count.mockResolvedValueOnce(0);
+      db.prisma.user.findMany.mockResolvedValueOnce([]);
+      const r = await svc.listUsers({ status: status as "all" });
+      expect(r.status).toBe(status === "bukan-status" ? "all" : status);
+      expect(db.prisma.user.count).toHaveBeenLastCalledWith({ where });
+    }
+    expect(db.prisma.user.findMany.mock.calls[1]![0]).toMatchObject({
+      orderBy: [{ datasets: { _count: "desc" } }, { email: "asc" }],
+    });
+    db.prisma.user.count.mockResolvedValueOnce(0);
+    db.prisma.user.findMany.mockResolvedValueOnce([]);
+    await svc.listUsers({ q: "budi", status: "inactive" });
+    expect(db.prisma.user.count).toHaveBeenLastCalledWith({
+      where: {
+        isActive: false,
+        OR: [
+          { email: { contains: "budi", mode: "insensitive" } },
+          { name: { contains: "budi", mode: "insensitive" } },
+        ],
+      },
+    });
+  });
+
+  it("nama data lama dibersihkan dari karakter bidi/kontrol (anti menyamar)", async () => {
+    db.prisma.user.count.mockResolvedValueOnce(1);
+    db.prisma.user.findMany.mockResolvedValueOnce([
+      {
+        id: B,
+        email: "b@pcpexpress.com",
+        name: "\u202Emoc.sserpxepcp@x\u2066 Budi\u0000",
+        isAdmin: false,
+        isActive: true,
+        emailVerifiedAt: new Date(0),
+        lastLoginAt: null,
+        createdAt: new Date(0),
+        _count: { datasets: 0 },
+      },
+    ]);
+    const r = await svc.listUsers();
+    expect(r.users[0]!.name).toBe("moc.sserpxepcp@x Budi");
+  });
+
+  it("cari tujuan alih: aktif + terverifikasi selain sumber, cocok email/nama, ≤ 20, nama bersih", async () => {
+    db.prisma.user.findMany.mockResolvedValueOnce([
+      { id: C, email: "c@pcpexpress.com", name: "\u202ECici" },
+    ]);
+    const r = await svc.searchTransferTargets(B, "  Ci_ ");
+    expect(r).toEqual({ ok: true, data: [{ id: C, email: "c@pcpexpress.com", name: "Cici" }] });
+    expect(db.prisma.user.findMany).toHaveBeenCalledWith({
+      where: {
+        id: { not: B },
+        isActive: true,
+        emailVerifiedAt: { not: null },
+        OR: [
+          { email: { contains: "Ci\\_", mode: "insensitive" } },
+          { name: { contains: "Ci\\_", mode: "insensitive" } },
+        ],
+      },
+      orderBy: { email: "asc" },
+      take: 20,
+      select: { id: true, email: true, name: true },
+    });
+  });
+
+  it("cari tujuan alih: q kosong → 20 pertama urut email; id sumber rusak → NOT_FOUND", async () => {
+    db.prisma.user.findMany.mockResolvedValueOnce([]);
+    expect(await svc.searchTransferTargets(B, "")).toEqual({ ok: true, data: [] });
     expect(db.prisma.user.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: { not: B }, isActive: true, emailVerifiedAt: { not: null } },
-        orderBy: { email: "asc" },
-        select: { id: true, email: true, name: true },
+        take: 20,
       }),
     );
+    expect(await svc.searchTransferTargets("../x", "a")).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+});
+
+describe("log penolakan akses", () => {
+  it("pelaku dicabut di antara requireAdmin dan lock → warn 'aksi admin ditolak'", async () => {
+    seed(user(A, { isAdmin: false }), user(B));
+    expect(await svc.setUserActive({ id: A }, B, false, IP)).toMatchObject({ code: "NOT_FOUND" });
+    expect(logger.warn).toHaveBeenCalledWith(
+      { userId: A, code: "NOT_FOUND", action: "setUserActive" },
+      "aksi admin ditolak",
+    );
+    noWrites();
   });
 });

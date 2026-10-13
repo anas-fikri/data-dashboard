@@ -2,20 +2,24 @@ import { IconSearch, IconX } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-
-export const USERS_PATH = "/admin/pengguna";
+import type { UserStatusFilter } from "@/features/admin/types";
+import { UsersStatusFilter } from "./users-status-filter";
+import { USERS_PATH, usersHref } from "./users-url";
 
 const CONTROL = "h-(--control-h-lg) md:h-(--control-h)";
 
-/** Pencarian GET biasa (?q=): bekerja tanpa JavaScript dan selalu kembali ke halaman 1. */
-export function UsersSearch({ q }: { q: string }) {
+/**
+ * Pencarian GET biasa (?q=, bekerja tanpa JavaScript) + saringan status. Keduanya selalu ikut satu
+ * sama lain dan kembali ke halaman 1. Di ponsel kontrol ditumpuk full-width.
+ */
+export function UsersSearch({ q, status }: { q: string; status: UserStatusFilter }) {
   return (
     <form
       role="search"
       action={USERS_PATH}
-      className="flex flex-col gap-2 sm:flex-row sm:items-center"
+      className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
     >
-      <div className="relative sm:w-80">
+      <div className="relative min-w-0 sm:max-w-80 sm:flex-1 sm:basis-56">
         <label htmlFor="q" className="sr-only">
           Cari pengguna menurut email atau nama
         </label>
@@ -36,6 +40,8 @@ export function UsersSearch({ q }: { q: string }) {
           className={`${CONTROL} pl-10`}
         />
       </div>
+      {status !== "all" ? <input type="hidden" name="status" value={status} /> : null}
+      <UsersStatusFilter status={status} className="sm:w-48" />
       <Button
         type="submit"
         variant="outline"
@@ -46,7 +52,8 @@ export function UsersSearch({ q }: { q: string }) {
       </Button>
       {q ? (
         <Button asChild variant="ghost" className={`${CONTROL} w-full sm:w-auto`}>
-          <Link href={USERS_PATH}>
+          {/* Hanya kata kunci yang dihapus; saringan status tetap. */}
+          <Link href={usersHref({ status })}>
             <IconX aria-hidden />
             Hapus pencarian
           </Link>

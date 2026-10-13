@@ -2,9 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition, type ReactNode } from "react";
-import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
+import { FocusNotice } from "@/components/ui/focus-notice";
 import {
   setUserActiveAction,
   setUserAdminAction,
@@ -20,27 +20,27 @@ import {
   transferResult,
   type ConfirmKind,
 } from "./admin-messages";
-import { TransferDialog, type TransferTarget } from "./transfer-dialog";
+import { TransferDialog } from "./transfer-dialog";
 import { UserRowMenu, type RowChoice, type RowUser } from "./user-row-menu";
 
 interface UserRowActionsProps {
   user: RowUser;
   isSelf: boolean;
-  /** Calon pemilik baru; hanya terisi untuk pengguna nonaktif yang punya dataset. */
-  targets: TransferTarget[];
 }
 
 /**
- * Aksi per baris: menu → dialog konfirmasi → Server Action. Galat tampil di dialog yang terbuka
- * (atau di pemberitahuan atas tabel bila tanpa dialog); sukses → pemberitahuan + router.refresh().
+ * Aksi per baris: menu → dialog konfirmasi → Server Action. Galat tampil di dialog yang terbuka dan
+ * menerima fokus (atau di pemberitahuan atas tabel bila tanpa dialog); sukses → pemberitahuan +
+ * router.refresh().
  */
-export function UserRowActions({ user, isSelf, targets }: UserRowActionsProps) {
+export function UserRowActions({ user, isSelf }: UserRowActionsProps) {
   const router = useRouter();
   const notify = useAdminNotify();
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** Aksi berhasil: fokus pindah ke pemberitahuan hasil, bukan kembali ke pemicu menu. */
   const succeeded = useRef(false);
   const [dialog, setDialog] = useState<ConfirmKind | "transfer" | null>(null);
+  /** Direset di awal setiap aksi: FocusNotice galat dipasang ulang (dan menerima fokus) tiap kali gagal. */
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -90,8 +90,9 @@ export function UserRowActions({ user, isSelf, targets }: UserRowActionsProps) {
     run(
       () => setUserAdminAction(user.id, kind === "grant"),
       (data) => {
-        // Akses admin sendiri hilang: muat penuh agar shell (menu Admin) ikut diperbarui.
-        if (data.selfDemoted) window.location.assign("/");
+        // Akses admin sendiri hilang: muat penuh agar shell (menu Admin) ikut diperbarui; Beranda
+        // menampilkan pemberitahuan yang menerima fokus.
+        if (data.selfDemoted) window.location.assign("/?notice=admin-dicabut");
         else done(SUCCESS[kind](user.email));
       },
     );
@@ -109,6 +110,7 @@ export function UserRowActions({ user, isSelf, targets }: UserRowActionsProps) {
 
   const kind: ConfirmKind = dialog && dialog !== "transfer" ? dialog : "deactivate";
   const copy = confirmCopy(kind, user.email, isSelf);
+  const alert = error ? <FocusNotice tone="error">{error}</FocusNotice> : null;
 
   return (
     <>
@@ -139,16 +141,14 @@ export function UserRowActions({ user, isSelf, targets }: UserRowActionsProps) {
           </Button>
         }
       >
-        {error ? <FormAlert tone="error">{error}</FormAlert> : null}
+        {alert}
       </ConfirmDialog>
       {!user.isActive && user.datasetCount > 0 ? (
         <TransferDialog
           open={dialog === "transfer"}
           onOpenChange={closeDialog}
           source={user}
-          targets={targets}
           pending={pending}
-          error={error}
           onCloseAutoFocus={restoreFocus}
           onConfirm={(target) =>
             run(
@@ -156,7 +156,9 @@ export function UserRowActions({ user, isSelf, targets }: UserRowActionsProps) {
               (data) => done(transferResult(data, target.email)),
             )
           }
-        />
+        >
+          {alert}
+        </TransferDialog>
       ) : null}
     </>
   );

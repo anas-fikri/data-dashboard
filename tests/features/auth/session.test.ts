@@ -9,12 +9,13 @@ import { loginUrl } from "@/features/auth/redirect";
 const SECRET = "s".repeat(32);
 const jar = new Map<string, string>();
 const findUnique = vi.fn();
+const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 
 vi.mock("@/lib/env", () => ({
   env: () => ({ APP_URL: "http://localhost:3100", AUTH_SECRET: [SECRET] }),
 }));
 vi.mock("@/lib/db", () => ({ prisma: { user: { findUnique } } }));
-vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("next/headers", () => ({
   cookies: async () => ({
     get: (name: string) => (jar.has(name) ? { name, value: jar.get(name) } : undefined),
@@ -93,7 +94,26 @@ describe("requireUser / getSessionUser", () => {
       name: null,
       isAdmin: false,
     });
-    await expect(requireAdmin("action")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(requireAdmin("action")).rejects.toMatchObject({ code: "NOT_FOUND", userId: ID });
+  });
+
+  it("non-admin membuka halaman admin → 404 dan penolakan dicatat (userId + path tanpa query)", async () => {
+    await login(3);
+    findUnique.mockResolvedValue(row());
+    logger.warn.mockClear();
+    await expect(requireAdmin()).rejects.toThrow("NOT_FOUND_PAGE");
+    expect(logger.warn).toHaveBeenCalledWith(
+      { userId: ID, code: "NOT_FOUND", path: "/datasets" },
+      "akses halaman admin ditolak",
+    );
+  });
+
+  it("admin → lolos tanpa log penolakan", async () => {
+    await login(3);
+    findUnique.mockResolvedValue(row({ isAdmin: true }));
+    logger.warn.mockClear();
+    expect(await requireAdmin()).toMatchObject({ id: ID, isAdmin: true });
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
 

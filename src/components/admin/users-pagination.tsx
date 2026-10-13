@@ -1,15 +1,8 @@
 import { IconChevronLeft, IconChevronRight } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { USERS_PATH } from "./users-search";
-
-export function usersHref(q: string, page: number): string {
-  const params = new URLSearchParams();
-  if (q) params.set("q", q);
-  if (page > 1) params.set("page", String(page));
-  const qs = params.toString();
-  return qs ? `${USERS_PATH}?${qs}` : USERS_PATH;
-}
+import type { UserStatusFilter } from "@/features/admin/types";
+import { usersHref } from "./users-url";
 
 /* Di ponsel tombol hanya ikon (44px, nama tetap terbaca pembaca layar); label tampil mulai 640. */
 const NAV_BTN = "h-(--control-h-lg) w-(--control-h-lg) px-0 sm:w-auto sm:px-4 md:h-(--control-h)";
@@ -17,12 +10,13 @@ const LABEL = "sr-only sm:not-sr-only";
 
 interface UsersPaginationProps {
   q: string;
+  status: UserStatusFilter;
   page: number;
   totalPages: number;
 }
 
 /** Sebelumnya/berikutnya; posisi tombol tetap (tombol nonaktif di ujung, bukan hilang). */
-export function UsersPagination({ q, page, totalPages }: UsersPaginationProps) {
+export function UsersPagination({ q, status, page, totalPages }: UsersPaginationProps) {
   if (totalPages <= 1) return null;
   const hasPrev = page > 1;
   const hasNext = page < totalPages;
@@ -42,7 +36,7 @@ export function UsersPagination({ q, page, totalPages }: UsersPaginationProps) {
     <nav aria-label="Halaman daftar pengguna" className="flex items-center justify-between gap-3">
       {hasPrev ? (
         <Button asChild variant="outline" className={NAV_BTN}>
-          <Link href={usersHref(q, page - 1)} rel="prev">
+          <Link href={usersHref({ q, status, page: page - 1 })} rel="prev">
             {prev}
           </Link>
         </Button>
@@ -56,7 +50,7 @@ export function UsersPagination({ q, page, totalPages }: UsersPaginationProps) {
       </p>
       {hasNext ? (
         <Button asChild variant="outline" className={NAV_BTN}>
-          <Link href={usersHref(q, page + 1)} rel="next">
+          <Link href={usersHref({ q, status, page: page + 1 })} rel="next">
             {next}
           </Link>
         </Button>

@@ -10,7 +10,7 @@ import { PASSWORD, apiLogin, login, registerAndVerify, uniqueEmail } from "./hel
  * Semua pengguna dibuat di sini (uniqueEmail) dan A diangkat lewat dev-make-admin, jadi test tidak
  * bergantung pada jumlah admin global; LAST_ADMIN diuji unit (tests/features/admin).
  *   A = admin pelaku · B = pemilik dataset yang dinonaktifkan · C = penerima dataset · D = admin sementara
- * Awalan "admin-c" menaruh C di awal daftar calon pemilik (urut email, dibatasi 1000 pengguna).
+ * C dipilih lewat pencarian server di dialog alih (ketik email → opsi radio), bukan daftar statis.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -166,6 +166,8 @@ test.describe("admin pengguna", () => {
     await addCountKpi(b);
   });
 
+  // Admin A dan akun B–D tidak dicabut di sini: global teardown (dev-purge-test-data) menghapus
+  // semua akun uniqueEmail setelah datasetnya dibersihkan, jadi admin e2e tidak menumpuk di DB dev.
   test.afterAll(async () => {
     worker?.kill("SIGTERM");
     await Promise.all([a, b, c, d].map((p) => p?.context().close()));
@@ -207,11 +209,16 @@ test.describe("admin pengguna", () => {
     await a.getByRole("menuitem", { name: "Alihkan dataset…", exact: true }).click();
     const dialog = a.getByTestId("admin-confirm");
     await expect(dialog).toContainText("Semua 1 dataset milik");
-    const confirm = dialog.getByRole("button", { name: "Alihkan dataset", exact: true });
-    await expect(confirm).toBeDisabled();
-    await dialog.getByTestId("admin-transfer-target").click();
-    await a.getByRole("option", { name: C }).click();
-    await expect(dialog.getByTestId("admin-transfer-target")).toContainText(C);
+    await expect(
+      dialog.getByRole("button", { name: "Alihkan dataset", exact: true }),
+    ).toBeDisabled();
+    await dialog.getByTestId("admin-transfer-target").fill(C);
+    const option = dialog.locator(`[data-testid="admin-transfer-option"][data-email="${C}"]`);
+    await expect(option).toHaveCount(1);
+    await option.getByRole("radio").check();
+    // Tombol konfirmasi menyebut email tujuan (anti salah orang / nama yang menyamar).
+    const confirm = dialog.getByRole("button", { name: `Alihkan ke ${C}`, exact: true });
+    await expect(confirm).toBeEnabled();
     await confirm.click();
     await expect(dialog).toBeHidden();
     const result = a.getByTestId("admin-result");

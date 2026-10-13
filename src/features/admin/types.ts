@@ -7,8 +7,22 @@ export type AdminResult<T = null> =
 
 export interface TransferSummary {
   moved: number;
-  /** Dataset yang diberi akhiran " (n)" karena nama bentrok di pemilik baru. */
-  renamed: { from: string; to: string }[];
-  /** Pemakaian penyimpanan pemilik baru kini melebihi kuota (unggahan berikutnya ditolak). */
+  /**
+   * Hanya dataset yang namanya bentrok di pemilik baru, diberi akhiran " (n)". datasetId ikut agar
+   * rollback manual dari meta AuditLog tidak bergantung pada nama (yang bisa diganti lagi).
+   */
+  renamed: { datasetId: string; from: string; to: string }[];
+  /** Pemakaian penyimpanan pemilik baru kini penuh atau melebihi kuota (unggahan berikutnya ditolak). */
   quotaExceeded: boolean;
+}
+
+/** Status yang bisa disaring di /admin/pengguna (sama dengan badge status di daftar). */
+export const USER_STATUSES = ["all", "active", "inactive", "unverified"] as const;
+export type UserStatusFilter = (typeof USER_STATUSES)[number];
+
+/** Calon pemilik baru (hasil cari server, nama sudah dibersihkan). */
+export interface TransferTarget {
+  id: string;
+  email: string;
+  name: string | null;
 }

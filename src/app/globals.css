@@ -61,6 +61,11 @@
   }
   html {
     color-scheme: light;
+    /*
+     * Topbar lengket (sticky, setinggi --topbar-h) tidak boleh menutupi elemen yang difokus atau
+     * di-scroll ke tampilan (Tab/Shift+Tab, anchor, scrollIntoView): WCAG 2.2 SC 2.4.11.
+     */
+    scroll-padding-top: calc(var(--topbar-h) + 0.5rem);
   }
   html.dark {
     color-scheme: dark;

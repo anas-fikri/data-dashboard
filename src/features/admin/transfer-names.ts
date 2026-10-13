@@ -28,8 +28,14 @@ export function suffixedName(name: string, n: number): string {
 }
 
 /**
- * Kunci yang dianggap terpakai: nameKey tersimpan DAN nameKeyOf(nama) — kunci lama (sebelum NFC)
- * bisa berbeda dari normalisasi sekarang, padahal tampilannya sama.
+ * Dua putaran, deterministik (urutan `incoming`):
+ *  1. Dataset masuk yang namanya TIDAK bentrok dengan milik pemilik baru (maupun dengan dataset masuk
+ *     sebelumnya) tetap memakai namanya, dan kuncinya ditandai terpakai lebih dulu.
+ *  2. Hanya yang bentrok diberi akhiran " (n)" terkecil yang belum terpakai, jadi nama baru tidak
+ *     pernah mengambil nama yang tetap dipakai dataset masuk lain (tujuan punya "X", masuk "X" dan
+ *     "X (2)" → "X (2)" tetap, "X" menjadi "X (3)").
+ * Kunci terpakai: nameKey tersimpan DAN nameKeyOf(nama) — kunci lama (sebelum NFC) bisa berbeda dari
+ * normalisasi sekarang, padahal tampilannya sama.
  */
 export function planNames(
   incoming: NamedDataset[],
@@ -40,13 +46,16 @@ export function planNames(
     taken.add(e.nameKey);
     taken.add(nameKeyOf(e.name));
   }
-  return incoming.map((d) => {
+  const keeps = new Set<string>();
+  for (const d of incoming) {
     const key = nameKeyOf(d.name);
-    if (!taken.has(d.nameKey) && !taken.has(key)) {
-      taken.add(d.nameKey);
-      taken.add(key);
-      return { id: d.id, name: d.name, nameKey: d.nameKey, renamedFrom: null };
-    }
+    if (taken.has(d.nameKey) || taken.has(key)) continue;
+    taken.add(d.nameKey);
+    taken.add(key);
+    keeps.add(d.id);
+  }
+  return incoming.map((d) => {
+    if (keeps.has(d.id)) return { id: d.id, name: d.name, nameKey: d.nameKey, renamedFrom: null };
     // Akhiran berbeda untuk tiap n dan himpunan terpakai berhingga: loop pasti berhenti.
     for (let n = 2; ; n++) {
       const name = suffixedName(d.name, n);

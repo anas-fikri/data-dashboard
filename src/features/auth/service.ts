@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
+import { cleanName, looksLikeEmail } from "@/lib/text";
 import { sendAlreadyRegisteredEmail, sendVerificationEmail } from "./email";
 import { isAllowedDomain, normalizeEmail } from "./email-domain";
 import { hashPassword, isPasswordAcceptable, verifyPassword } from "./password";
@@ -17,6 +18,7 @@ import { generateToken, hashToken, isTokenShape, VERIFY_EMAIL_TTL_MS } from "./t
 export type AuthCode =
   | "DOMAIN_NOT_ALLOWED"
   | "INVALID_EMAIL"
+  | "INVALID_NAME"
   | "PASSWORD_REQUIRED"
   | "WEAK_PASSWORD"
   | "RATE_LIMITED"
@@ -32,6 +34,8 @@ export type Result<T = undefined> =
 const MESSAGES: Record<AuthCode, string> = {
   DOMAIN_NOT_ALLOWED: "Email harus memakai domain perusahaan yang diizinkan.",
   INVALID_EMAIL: "Format email tidak valid.",
+  INVALID_NAME:
+    "Nama tidak boleh berisi alamat email atau tanda @. Tulis nama Anda saja, mis. Budi Santoso.",
   PASSWORD_REQUIRED: "Masukkan password Anda.",
   WEAK_PASSWORD: "Password harus 12 sampai 128 karakter.",
   RATE_LIMITED: "Terlalu banyak percobaan. Coba lagi beberapa saat.",
@@ -118,7 +122,10 @@ export async function register(input: RegisterInput): Promise<Result<{ email: st
   if (typeof input.password !== "string" || !isPasswordAcceptable(input.password)) {
     return fail("WEAK_PASSWORD");
   }
-  const name = typeof input.name === "string" ? input.name.trim().slice(0, 80) || null : null;
+  // Nama tampil di daftar admin dan pemilih pemilik baru: buang karakter kontrol/bidi (mis. U+202E
+  // yang membalik teks) dan tolak bentuk email agar tidak bisa menyamar sebagai pengguna lain.
+  const name = cleanName(input.name);
+  if (name && looksLikeEmail(name)) return fail("INVALID_NAME");
 
   const byIp = await counted("registerIp", input.ip);
   const byEmail = await counted("registerEmail", emailBucket(email));
@@ -252,6 +259,8 @@ export async function verifyEmail(
     data: { usedAt: now },
   });
   if (marked.count !== 1) return fail("TOKEN_INVALID");
+  // Token lama (sebelum registrasi membersihkan nama) tetap dibersihkan saat diterapkan.
+  const pendingName = cleanName(record.pendingName);
   await prisma.$transaction([
     prisma.verificationToken.updateMany({
       where: { userId: record.user.id, purpose: "VERIFY_EMAIL", usedAt: null },
@@ -262,7 +271,7 @@ export async function verifyEmail(
       data: {
         emailVerifiedAt: record.user.emailVerifiedAt ?? now,
         ...(record.pendingPasswordHash ? { passwordHash: record.pendingPasswordHash } : {}),
-        ...(record.pendingName ? { name: record.pendingName } : {}),
+        ...(pendingName ? { name: pendingName } : {}),
         sessionVersion: { increment: 1 },
       },
     }),

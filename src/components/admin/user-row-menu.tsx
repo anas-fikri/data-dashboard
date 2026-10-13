@@ -3,12 +3,13 @@
 import {
   IconArrowsExchange,
   IconDots,
+  IconLoader2,
   IconShieldOff,
   IconShieldPlus,
   IconUserCheck,
   IconUserOff,
 } from "@tabler/icons-react";
-import { useRef, type RefObject } from "react";
+import { useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -19,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { ConfirmKind } from "./admin-messages";
+import { EmailText } from "./email-text";
 
 export interface RowUser {
   id: string;
@@ -50,6 +52,7 @@ const ITEM = "h-11 md:h-9";
 export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: UserRowMenuProps) {
   /** Pilihan membuka dialog: fokus jangan dikembalikan ke pemicu (dialog yang memegang fokus). */
   const toDialog = useRef(false);
+  const [open, setOpen] = useState(false);
   const canGrant = !user.isAdmin && user.isActive && user.emailVerified;
   const canTransfer = !user.isActive && user.datasetCount > 0;
   const hint = isSelf
@@ -60,22 +63,32 @@ export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: Use
 
   function choose(choice: RowChoice) {
     toDialog.current = choice !== "activate";
+    // Tutup eksplisit: onSelect berjalan di flushSync Radix, jadi `pending` bisa sudah true saat
+    // Radix menutup menu, dan onOpenChange(false) tidak lagi dipanggil untuk menu terkendali.
+    setOpen(false);
     onChoose(choice);
   }
 
   return (
-    <DropdownMenu modal={false}>
+    // Selama aksi tanpa dialog (Aktifkan) berjalan, pemicu tetap fokus (bukan disabled, yang membuang
+    // fokus ke <body>) tetapi menu tidak bisa dibuka; spinner menggantikan ikon di slot yang sama.
+    <DropdownMenu modal={false} open={open} onOpenChange={(o) => setOpen(o && !pending)}>
       <DropdownMenuTrigger asChild>
         <Button
           ref={triggerRef}
           variant="ghost"
           size="icon"
-          pending={pending}
           aria-label={`Aksi untuk ${user.email}`}
+          aria-busy={pending || undefined}
+          aria-disabled={pending || undefined}
           data-testid="admin-row-actions"
           className="size-(--control-h-lg) md:size-(--control-h)"
         >
-          <IconDots aria-hidden />
+          {pending ? (
+            <IconLoader2 className="motion-safe:animate-spin" aria-hidden />
+          ) : (
+            <IconDots aria-hidden />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -86,7 +99,9 @@ export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: Use
           toDialog.current = false;
         }}
       >
-        <DropdownMenuLabel className="truncate">{user.email}</DropdownMenuLabel>
+        <DropdownMenuLabel className="[overflow-wrap:anywhere]">
+          <EmailText email={user.email} />
+        </DropdownMenuLabel>
         <DropdownMenuSeparator />
         {user.isAdmin ? (
           <DropdownMenuItem destructive className={ITEM} onSelect={() => choose("revoke")}>

@@ -6,13 +6,21 @@ import { cuid, fakeDb, user } from "./fake-db";
  * kueri tulis (AC3, AC6); rate limit per admin; cabut admin diri sendiri menerbitkan ulang sesi;
  * ip audit dari clientIp(headers, TRUST_PROXY).
  */
-const { AuthError, requireAdmin, createSession } = vi.hoisted(() => {
+const { AuthError, requireAdmin, createSession, logger } = vi.hoisted(() => {
   class AuthError extends Error {
-    constructor(public readonly code: "UNAUTHENTICATED" | "NOT_FOUND") {
+    constructor(
+      public readonly code: "UNAUTHENTICATED" | "NOT_FOUND",
+      public readonly userId?: string,
+    ) {
       super(code);
     }
   }
-  return { AuthError, requireAdmin: vi.fn(), createSession: vi.fn(async () => {}) };
+  return {
+    AuthError,
+    requireAdmin: vi.fn(),
+    createSession: vi.fn(async () => {}),
+    logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  };
 });
 const db = fakeDb();
 const store = { eval: vi.fn(async () => [1, 60]) };
@@ -26,7 +34,7 @@ const unstable_rethrow = vi.fn((e: unknown) => {
 vi.mock("@/features/auth/session", () => ({ AuthError, requireAdmin, createSession }));
 vi.mock("@/lib/db", () => ({ prisma: db.prisma }));
 vi.mock("@/lib/redis", () => ({ redisReady }));
-vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
+vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/storage/multipart", () => ({ s3Multipart: {} }));
 vi.mock("@/lib/env", () => ({
   env: () => ({ TRUST_PROXY: true, USER_STORAGE_QUOTA_BYTES: 10_000 }),
@@ -60,6 +68,7 @@ function expectNoDb() {
 beforeEach(() => {
   db.reset();
   requireAdmin.mockReset();
+  for (const fn of Object.values(logger)) fn.mockClear();
   store.eval.mockResolvedValue([1, 60]);
   redisReady.mockResolvedValue(store);
 });
@@ -69,6 +78,7 @@ describe("guard admin", () => {
     () => actions.setUserAdminAction(B, true),
     () => actions.setUserActiveAction(B, false),
     () => actions.transferDatasetsAction(B, C),
+    () => actions.searchTransferTargetsAction(B, "c"),
   ];
 
   it("non-admin (AuthError NOT_FOUND) → NOT_FOUND tanpa perubahan apa pun (AC3)", async () => {
@@ -90,6 +100,22 @@ describe("guard admin", () => {
     requireAdmin.mockRejectedValue(new AuthError("UNAUTHENTICATED"));
     for (const call of calls) expect(await call()).toMatchObject({ ok: false, code: "NOT_FOUND" });
     expectNoDb();
+    expect(db.prisma.user.findMany).not.toHaveBeenCalled();
+  });
+
+  it("setiap penolakan dicatat (warn): userId pemilik sesi bila ada, kode, nama aksi (ASVS V7)", async () => {
+    requireAdmin.mockRejectedValueOnce(new AuthError("NOT_FOUND", C));
+    await actions.transferDatasetsAction(B, C);
+    expect(logger.warn).toHaveBeenLastCalledWith(
+      { userId: C, code: "NOT_FOUND", action: "transferDatasets" },
+      "aksi admin ditolak",
+    );
+    requireAdmin.mockRejectedValueOnce(new AuthError("UNAUTHENTICATED"));
+    await actions.searchTransferTargetsAction(B, "c");
+    expect(logger.warn).toHaveBeenLastCalledWith(
+      { code: "UNAUTHENTICATED", action: "searchTransferTargets" },
+      "aksi admin ditolak",
+    );
   });
 
   it("redirect/notFound milik Next dilempar ulang, bukan ditelan", async () => {
@@ -146,13 +172,39 @@ describe("aksi admin", () => {
     expect(await actions.setUserActiveAction(B, false)).toMatchObject({ ok: true });
   });
 
-  it("LAST_ADMIN diteruskan apa adanya", async () => {
+  it("LAST_ADMIN diteruskan apa adanya dan dicatat (info)", async () => {
     db.state.users.set(A, user(A, { isAdmin: true }));
     expect(await actions.setUserAdminAction(A, false)).toMatchObject({
       ok: false,
       code: "LAST_ADMIN",
     });
     expect(createSession).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      { userId: A, code: "LAST_ADMIN", action: "setUserAdmin" },
+      "aksi admin ditolak aturan",
+    );
+  });
+
+  it("FORBIDDEN (menonaktifkan diri sendiri) dicatat (info)", async () => {
+    db.state.users.set(A, user(A, { isAdmin: true }));
+    db.state.users.set(D, user(D, { isAdmin: true }));
+    expect(await actions.setUserActiveAction(A, false)).toMatchObject({ code: "FORBIDDEN" });
+    expect(logger.info).toHaveBeenCalledWith(
+      { userId: A, code: "FORBIDDEN", action: "setUserActive" },
+      "aksi admin ditolak aturan",
+    );
+  });
+
+  it("cari calon pemilik: hasil service diteruskan, tanpa memakai jatah rate limit", async () => {
+    db.prisma.user.findMany.mockResolvedValueOnce([
+      { id: C, email: "c@pcpexpress.com", name: "Cici" },
+    ]);
+    expect(await actions.searchTransferTargetsAction(B, "ci")).toEqual({
+      ok: true,
+      data: [{ id: C, email: "c@pcpexpress.com", name: "Cici" }],
+    });
+    expect(store.eval).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
   it("cabut admin diri sendiri: sesi perangkat ini diterbitkan ulang, tanpa revalidate", async () => {
