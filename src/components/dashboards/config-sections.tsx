@@ -23,6 +23,7 @@ import {
   TYPE_OPTIONS,
   aggOptions,
   columnsForAgg,
+  measureColumnText,
   missingNotice,
   type SourceColumn,
 } from "./widget-config-model";
@@ -202,6 +203,7 @@ export function MeasureFields({
           testId="config-measure"
           value={measure.column}
           columns={columnsForAgg(measure.agg, columns, type)}
+          invalidText={measureColumnText(measure, columns, type)}
           onChange={(column) => onChange({ ...measure, column })}
         />
       ) : null}

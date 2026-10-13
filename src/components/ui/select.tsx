@@ -23,6 +23,7 @@ export const SelectTrigger = React.forwardRef<
       className={cn(
         "flex h-(--control-h) w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-base md:text-sm",
         "data-[placeholder]:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+        "aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive",
         "[&>span]:truncate",
         className,
       )}

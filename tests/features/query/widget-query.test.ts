@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { ResultCache } from "@/features/query/cache";
 import {
+  TOTALS_RETRY_MS,
   runWidgetQuery,
   type CachedQuery,
   type QueryDeps,
@@ -394,7 +395,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
           schema: [col(0, "Cabang", "text"), col(2, "Omzet Lama", "decimal")],
         },
         oldSheetCount: 1,
-        active: [{ id: SHEET, name: "Sheet1", index: 0, schema: SCHEMA }],
+        active: [{ id: SHEET, name: "Sheet1", index: 0 }],
       }),
     };
     const r = await runWidgetQuery(USER, { widgetId: WID("kpi") }, d);
@@ -417,7 +418,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       sheetHistory: async () => ({
         old: { id: OLD, name: "Sheet1", index: 0, schema: SCHEMA },
         oldSheetCount: 1,
-        active: [{ id: SHEET, name: "Sheet1", index: 0, schema: SCHEMA }],
+        active: [{ id: SHEET, name: "Sheet1", index: 0 }],
       }),
     };
     let all = 0;
@@ -459,9 +460,24 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     const dated = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
     expect(dated).toMatchObject({ ok: false, code: "INVALID" });
     expect(!dated.ok && dated.message).toContain("nilai angka");
+    // Jumlah nilai unik / jumlah baris atas kolom tanggal tetap angka → tetap boleh.
+    d.repo = {
+      ...d.repo,
+      widget: async (...a) => {
+        const w = await base(...a);
+        return (
+          w && {
+            ...w,
+            spec: { ...(w.spec as object), measure: { agg: "count_distinct", column: 3 } },
+          }
+        );
+      },
+    };
+    const distinct = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(distinct).toMatchObject({ ok: true });
   });
 
-  it("query total gagal → grafik tetap tampil tanpa total dan TIDAK di-cache (dicoba lagi)", async () => {
+  it("query total gagal → grafik tetap tampil tanpa total, di-cache sebentar lalu dicoba lagi", async () => {
     const failing = {
       exec: (sql: string, params: Record<string, unknown>, ms: number) =>
         /count\(DISTINCT/.test(sql)
@@ -469,15 +485,19 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
           : engine.exec(sql, params as never, ms),
       withSlot: <T>(u: string, fn: () => Promise<T>) => engine.withSlot(u, fn),
     } as unknown as QueryEngine;
-    const d = deps({ engine: failing });
+    let now = 1_000_000;
+    const d = deps({ engine: failing, cache: new ResultCache<CachedQuery>(64 << 20, () => now) });
     const first = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
     expect(first).toMatchObject({ ok: true, cached: false });
     expect(first.ok && first.categories).toBeUndefined();
+    // Dalam TOTALS_RETRY_MS: dilayani cache (query utama tidak dijalankan ulang di tiap muat).
     const again = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
-    expect(again).toMatchObject({ ok: true, cached: false });
-    // Mesin pulih → total ada dan baru sekarang di-cache.
+    expect(again).toMatchObject({ ok: true, cached: true });
+    // Lewat TOTALS_RETRY_MS + mesin pulih → dicoba lagi, total ada, lalu di-cache normal.
+    now += TOTALS_RETRY_MS + 1;
     d.engine = engine;
     const healed = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(healed).toMatchObject({ ok: true, cached: false });
     expect(healed.ok && healed.categories).toBeGreaterThan(0);
     expect(await runWidgetQuery(USER, { widgetId: WID("bar") }, d)).toMatchObject({ cached: true });
   });

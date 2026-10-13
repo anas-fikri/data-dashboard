@@ -2,11 +2,14 @@
  * Kolom bilangan bulat berupa kode/nomor/tahun (dilihat dari namanya) tampil tanpa pemisah ribuan pada
  * format otomatis — "2024" dan "40115", bukan "2.024"/"40.115" (review integritas T-011). Nama dipecah
  * per kata (spasi, _, -, ., angka, camelCase) agar "kode_pos", "tahunLahir", "noResi" ikut cocok.
- * Kolom besaran ("Jumlah WA terkirim", "Gaji per tahun", "Penjualan HP") tetap berpemisah. Murni.
+ *
+ * Kata pertama menentukan (frasa bahasa Indonesia berkepala di depan): "No Tagihan" dan "Kode Biaya"
+ * kode, "Tagihan Telepon", "Ongkir per Resi", "Tahun Lalu" besaran. Salah tebak ke arah kode lebih
+ * berbahaya (10 digit tanpa pemisah mudah salah baca 10×), jadi aturannya sempit. Murni.
  */
 
-/** Penanda kode/nomor di posisi mana pun ("Kode Pos", "Order ID", "Invoice No"). */
-const ID_ANY = new Set([
+/** Penanda kode/nomor yang berlaku di posisi mana pun setelah kata netral ("Order ID", "Pengirim No HP"). */
+const MARK = new Set([
   "id",
   "kode",
   "kd",
@@ -18,59 +21,124 @@ const ID_ANY = new Set([
   "nip",
   "nis",
   "nisn",
-  "telp",
-  "tlp",
-  "telepon",
-  "resi",
-  "awb",
   "kodepos",
   "zip",
   "postal",
 ]);
-/** Tahun hanya sebagai kata pertama ("Tahun", "Tahun Ajaran", "thn_masuk"); "Gaji per tahun" besaran. */
-const ID_FIRST = new Set(["tahun", "thn", "year"]);
-/** Kata besaran: kolom tetap berpemisah ribuan walau ada penanda kode ("Jumlah Resi", "Total ID"). */
-const QUANTITY = new Set([
+/** Penanda yang hanya berlaku sebagai kata pertama ("Telepon Kantor", "Resi"); "Pulsa Telp" besaran. */
+const HEAD_ONLY = new Set(["telp", "tlp", "telepon", "resi", "awb"]);
+/** Tahun hanya sebagai kata pertama ("Tahun", "Tahun Lahir", "thn_masuk"); "Gaji per tahun" besaran. */
+const YEAR = new Set(["tahun", "thn", "year"]);
+/** "Tahun Lalu", "Tahun 2024", "Year to Date": kolom nilai per periode, bukan kolom tahun. */
+const PERIOD = new Set([
+  "lalu",
+  "ini",
+  "sebelumnya",
+  "sebelum",
+  "depan",
+  "berikutnya",
+  "kemarin",
+  "berjalan",
+  "sekarang",
+  "last",
+  "this",
+  "next",
+  "previous",
+  "prev",
+  "current",
+  "to",
+]);
+/** Kata agregat: besaran di posisi mana pun ("Jumlah Resi", "Total ID", "ID Count"). */
+const AGG = new Set([
   "jumlah",
   "jml",
   "qty",
   "kuantitas",
   "total",
-  "nilai",
-  "harga",
-  "omzet",
-  "omset",
-  "biaya",
-  "gaji",
-  "upah",
-  "saldo",
-  "nominal",
-  "berat",
-  "volume",
-  "stok",
-  "stock",
   "banyak",
   "rata",
   "amount",
   "count",
   "sum",
+  "avg",
+  "average",
+]);
+/** Kata uang/ukuran: besaran bila muncul sebelum penanda ("Ongkir per Resi", "Penjualan Kode Pos"). */
+const MEASURE = new Set([
+  "nilai",
+  "harga",
+  "omzet",
+  "omset",
+  "biaya",
+  "ongkir",
+  "ongkos",
+  "tagihan",
+  "tarif",
+  "gaji",
+  "upah",
+  "saldo",
+  "nominal",
+  "pendapatan",
+  "penjualan",
+  "pemakaian",
+  "pulsa",
+  "laba",
+  "rugi",
+  "diskon",
+  "potongan",
+  "pajak",
+  "denda",
+  "komisi",
+  "bonus",
+  "fee",
+  "selisih",
+  "setoran",
+  "pembayaran",
+  "piutang",
+  "utang",
+  "hutang",
+  "cicilan",
+  "angsuran",
+  "iuran",
+  "sewa",
+  "berat",
+  "volume",
+  "stok",
+  "stock",
   "price",
   "cost",
+  "revenue",
+  "sales",
+  "profit",
 ]);
 
-/** "tahunLahir" → ["tahun", "lahir"], "IDPelanggan" → ["id", "pelanggan"], "No. HP" → ["no", "hp"]. */
-export function nameTokens(name: string): string[] {
-  return name
+const words = (name: string, re: RegExp): string[] =>
+  name
     .replace(/(\p{Ll})(\p{Lu})/gu, "$1 $2")
     .replace(/(\p{Lu})(\p{Lu}\p{Ll})/gu, "$1 $2")
     .toLowerCase()
-    .split(/[^\p{L}]+/u)
-    .filter(Boolean);
+    .match(re) ?? [];
+
+/** "tahunLahir" → ["tahun", "lahir"], "IDPelanggan" → ["id", "pelanggan"], "No. HP" → ["no", "hp"]. */
+export function nameTokens(name: string): string[] {
+  return words(name, /\p{L}+/gu);
 }
 
 /** Nama kolom kode/nomor/tahun (bukan besaran) → angkanya ditulis tanpa pemisah ribuan. */
 export function isIdLikeName(name: string): boolean {
-  const words = nameTokens(name);
-  if (words.length === 0 || words.some((w) => QUANTITY.has(w))) return false;
-  return ID_FIRST.has(words[0]!) || words.some((w) => ID_ANY.has(w));
+  // Angka ikut sebagai kata: "Tahun 2024" ≠ "Tahun"; nomor urut di depan ("1. Kode") dilewati.
+  const t = words(name, /\p{L}+|\p{N}+/gu);
+  const start = t.findIndex((w) => /\p{L}/u.test(w));
+  if (start < 0 || t.some((w) => AGG.has(w))) return false;
+  const head = t[start]!;
+  const next = t[start + 1];
+  if (YEAR.has(head)) return next === undefined || !(PERIOD.has(next) || /\p{N}/u.test(next));
+  // "No. of Orders" = jumlah pesanan.
+  if (MARK.has(head) || HEAD_ONLY.has(head)) return next !== "of";
+  for (let i = start; i < t.length; i++) {
+    if (MEASURE.has(t[i]!)) return false;
+    // "Pendapatan per ID", "Tarif per AWB": tarif per satuan, bukan kode.
+    if (MARK.has(t[i]!) && t[i - 1] !== "per") return true;
+  }
+  return false;
 }

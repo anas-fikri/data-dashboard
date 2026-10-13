@@ -8,6 +8,7 @@ import { ParquetCache } from "@/lib/duckdb/parquet-cache";
 import { env } from "@/lib/env";
 import { downloadToFile, objectSize } from "@/lib/storage/files";
 import { ResultCache } from "./cache";
+import { HistoryCache } from "./history-cache";
 import { registerLocalParquet } from "./local-parquet";
 import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
 
@@ -19,33 +20,38 @@ import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
 /** Jeda sebelum mencoba lagi inisialisasi yang gagal (DuckDB tidak dibuat ulang per permintaan). */
 const INIT_RETRY_MS = 10_000;
 
-const HISTORY_TTL_MS = 30_000;
-const HISTORY_MAX = 200;
 type History = Awaited<ReturnType<NonNullable<QueryRepo["sheetHistory"]>>>;
-const historyCache = new Map<string, { at: number; value: Promise<History> }>();
+const historyCache = new HistoryCache<History>({
+  ttlMs: 30_000,
+  maxEntries: 500,
+  // Total kolom skema lama yang disimpan (skema bisa ribuan kolom per sheet).
+  maxSize: 100_000,
+  size: (h) => 1 + (h?.old.schema.length ?? 0),
+});
 
 async function loadSheetHistory(
   datasetId: string,
   activeVersionId: string,
   sheetId: string,
 ): Promise<History> {
-  const select = { id: true, name: true, index: true, schema: true, versionId: true } as const;
-  const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
-    ...s,
-    schema: (s.schema as ColumnSchema[] | null) ?? [],
-  });
   const old = await prisma.sheet.findFirst({
     where: { id: sheetId, version: { datasetId } },
-    select,
+    select: { id: true, name: true, index: true, schema: true, versionId: true },
   });
   if (!old) return null;
+  // Sheet aktif tanpa skema (bisa ribuan kolom per sheet); skema target dibaca segar oleh query.
   const active = await prisma.sheet.findMany({
     where: { versionId: activeVersionId, typedKey: { not: null } },
     orderBy: { index: "asc" },
-    select,
+    select: { id: true, name: true, index: true },
   });
   const oldSheetCount = await prisma.sheet.count({ where: { versionId: old.versionId } });
-  return { old: info(old), oldSheetCount, active: active.map(info) };
+  const schema = (old.schema as unknown as ColumnSchema[] | null) ?? [];
+  return {
+    old: { id: old.id, name: old.name, index: old.index, schema },
+    oldSheetCount,
+    active,
+  };
 }
 
 export const prismaQueryRepo: QueryRepo = {
@@ -62,15 +68,10 @@ export const prismaQueryRepo: QueryRepo = {
     return s && { ...s, schema: (s.schema as unknown as ColumnSchema[] | null) ?? null };
   },
   sheetHistory(datasetId, activeVersionId, sheetId) {
-    // Widget lama dibaca berulang (tiap muat dashboard): skema lama + aktif di-cache sebentar.
-    const k = `${datasetId}:${activeVersionId}:${sheetId}`;
-    const hit = historyCache.get(k);
-    if (hit && hit.at > Date.now() - HISTORY_TTL_MS) return hit.value;
-    const value = loadSheetHistory(datasetId, activeVersionId, sheetId);
-    historyCache.set(k, { at: Date.now(), value });
-    if (historyCache.size > HISTORY_MAX) historyCache.delete(historyCache.keys().next().value!);
-    value.catch(() => historyCache.delete(k));
-    return value;
+    // Widget lama dibaca berulang (tiap muat dashboard): skema lama + daftar sheet aktif di-cache sebentar.
+    return historyCache.get(`${datasetId}:${activeVersionId}:${sheetId}`, () =>
+      loadSheetHistory(datasetId, activeVersionId, sheetId),
+    );
   },
 
   async widget(userId, widgetId) {

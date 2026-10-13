@@ -78,7 +78,9 @@ export function TableView({
   const go = (to: number) => {
     if (!busy && to >= 0 && to < pages) onPage(to);
   };
-  const pagerButton = "size-(--control-h-lg) md:size-(--control-h-sm) aria-disabled:opacity-50";
+  // Layar sentuh: tetap 44 px di semua lebar (pola tombol kepala kartu).
+  const pagerButton =
+    "size-(--control-h-lg) md:not-any-pointer-coarse:size-(--control-h-sm) aria-disabled:opacity-50";
   // Kode/nomor/tahun (dari nama kolom, lihat id-like.ts) tanpa pemisah ribuan pada format otomatis.
   const plain = data.columns.map((c) => c.type === "integer" && isIdLikeName(c.label));
 

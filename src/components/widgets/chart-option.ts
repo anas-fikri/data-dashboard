@@ -7,6 +7,7 @@ import {
   type ValueType,
 } from "@/features/widgets/format";
 import {
+  GRAIN_NOUN,
   durationScale,
   hasIsolated,
   isoToUtcMs,
@@ -14,9 +15,10 @@ import {
   msToIso,
   percentShares,
   timeBuckets,
+  type BucketGrain,
 } from "./chart-series";
 
-export { isoToUtcMs, middleTruncate, percentShares } from "./chart-series";
+export { barsThatFit, isoToUtcMs, middleTruncate, percentShares } from "./chart-series";
 
 /*
  * Opsi ECharts dari hasil query widget (T-011). Semua teks (label, tooltip) dirender sebagai teks:
@@ -24,10 +26,11 @@ export { isoToUtcMs, middleTruncate, percentShares } from "./chart-series";
  * formatter fungsi — nilai sel atau nama kolom berisi HTML tidak pernah menjadi markup (AC 7).
  * Opsi menyesuaikan ukuran kartu (review desain T-011 H2/H3): lebar label teks sebanding lebar grafik
  * dan dipendekkan di tengah (nama berawalan sama tetap bisa dibedakan; tanggal tidak dipotong), garis
- * sumbu lebih sedikit di kartu sempit. Garis per minggu/bulan/kuartal/tahun: sumbu kategori berisi
- * periode kontinu (satu label = satu periode nyata; periode kosong diisi); per hari/tanpa grain: sumbu
- * waktu UTC. Durasi (detik) di sumbu dalam jam/menit, di tooltip j:mm:dd. Pai tanpa label luar —
- * legenda HTML di bawah/samping. Murni.
+ * sumbu lebih sedikit di kartu sempit, satuan pindah ke label sumbu di kotak pendek. Garis per
+ * minggu/bulan/kuartal/tahun: sumbu kategori berisi periode kontinu (satu label = satu periode nyata;
+ * periode kosong diisi tanpa simbol titik); per hari (dan kolom tanggal tanpa grain): sumbu waktu UTC
+ * dengan hari kosong diisi; kolom waktu tanpa grain: jam ikut tampil. Durasi (detik) di sumbu dalam
+ * jam/menit, di tooltip j:mm:dd. Pai tanpa label luar — legenda HTML di bawah/samping. Murni.
  */
 export interface ChartTheme {
   colors: string[];
@@ -53,10 +56,18 @@ export interface ChartInput {
   textLabels?: boolean;
   /**
    * Garis dengan dimensi tanggal: nilai ISO mentah per titik (null = tanggal kosong) + grain + nilai
-   * periode tanpa data (0 = total/jumlah, null = garis putus; bawaan null).
+   * periode tanpa data (0 = total/jumlah, null = garis putus; bawaan null). `dimType` "date" tanpa
+   * grain = per hari (hari kosong diisi); "timestamp" tanpa grain = jam ikut tampil. `cut`: periode
+   * kosong karena hanya N titik bernilai terbesar/terkecil yang diambil.
    */
-  time?: { iso: (string | null)[]; grain?: string; empty?: 0 | null };
-  /** Tipe kolom ukuran (mis. "duration" → j:mm:dd dan sumbu jam). */
+  time?: {
+    iso: (string | null)[];
+    grain?: string;
+    empty?: 0 | null;
+    dimType?: "date" | "timestamp";
+    cut?: "top" | "bottom";
+  };
+  /** Tipe kolom ukuran (mis. "duration" → j:mm:dd dan sumbu jam; "count" → sumbu bilangan bulat). */
   valueType?: ValueType;
   reducedMotion: boolean;
 }
@@ -70,29 +81,83 @@ export const OTHERS_LABEL = "Lainnya";
 
 /** Perkiraan lebar karakter 12 px (huruf campuran) untuk memotong label sebelum ECharts mengukur. */
 const CHAR_PX = 6.6;
+/** Perkiraan longgar (angka/huruf besar) untuk jarak label sumbu — lebih baik jarang daripada hilang. */
+const AXIS_CHAR_PX = 7;
+const LABEL_GAP = 12;
+const DAY_MS = 86_400_000;
+/** Kotak grafik lebih pendek dari ini: nama satuan sumbu ("Rp", "jam") pindah ke tiap label sumbu. */
+const UNIT_NAME_MIN_H = 120;
 
 /** Teks tooltip richText: "{a|b}" ditafsirkan sebagai gaya ECharts → disisipi spasi lebar-nol. */
 const plain = (s: string) => s.replace(/\{/g, "{​");
 
+const PERIOD_GRAINS = ["week", "month", "quarter", "year"] as const;
+const isPeriod = (g?: string): g is (typeof PERIOD_GRAINS)[number] =>
+  (PERIOD_GRAINS as readonly string[]).includes(g ?? "");
+
+/**
+ * Titik garis bertanggal yang diisi per periode: per minggu/bulan/kuartal/tahun (sumbu kategori) atau
+ * per hari (sumbu waktu; juga kolom tanggal tanpa grain). Null = titik apa adanya (kolom waktu tanpa
+ * grain, atau tipe tidak diketahui).
+ */
+function lineBuckets(i: Pick<ChartInput, "type" | "values" | "time">) {
+  const t = i.time;
+  if (i.type !== "line" || !t) return null;
+  const grain: BucketGrain | null = isPeriod(t.grain)
+    ? t.grain
+    : t.grain === "day" || (!t.grain && t.dimType === "date")
+      ? "day"
+      : null;
+  if (!grain) return null;
+  return { grain, ...timeBuckets(t.iso, i.values, grain, t.empty ?? null, TOP_N_MAX.line) };
+}
+
+/** Garis dengan periode tanpa data yang diisi: jumlah periode di sumbu dan nama periodenya. */
+export function periodFill(i: Pick<ChartInput, "type" | "values" | "time">) {
+  const b = lineBuckets(i);
+  if (!b) return undefined;
+  const present = b.filled.filter((f) => !f).length;
+  return present < b.keys.length
+    ? { buckets: b.keys.length, present, noun: GRAIN_NOUN[b.grain] }
+    : undefined;
+}
+
 /** Ringkasan untuk pembaca layar (rincian lengkap ada di tabel data). */
 export function chartSummary(
-  i: Pick<ChartInput, "type" | "labels" | "measureLabel" | "dimensionLabel">,
+  i: Pick<
+    ChartInput,
+    "type" | "labels" | "values" | "measureLabel" | "dimensionLabel" | "others" | "time"
+  >,
   categories?: number,
+  /** Pai tanpa total keseluruhan: persen hanya dari kategori yang tampil. */
+  partial = false,
 ) {
   const kind = i.type === "bar" ? "batang" : i.type === "line" ? "garis" : "pai";
   const noun = i.type === "line" ? "titik" : "kategori";
   const shown = i.labels.length;
+  // "Lainnya" hanya disebut bila irisannya memang ada (sisa pembulatan tidak digambar).
+  const others = i.type === "pie" && !!i.others && i.others > 0;
   const count =
     categories && categories > shown
-      ? `${shown} dari ${categories} ${noun}${i.type === "pie" ? ", sisanya digabung sebagai Lainnya" : ""}`
+      ? `${shown} dari ${categories} ${noun}${others ? ", sisanya digabung sebagai Lainnya" : ""}`
       : `${shown} ${noun}`;
-  return `Grafik ${kind}: ${i.measureLabel} per ${i.dimensionLabel}, ${count}.`;
+  let extra = partial
+    ? ` Persentase dari ${shown} kategori yang tampil (total keseluruhan tidak tersedia).`
+    : "";
+  const b = lineBuckets(i);
+  const gaps = b ? b.filled.filter(Boolean).length : 0;
+  if (b && gaps > 0) {
+    const what = `${gaps} ${GRAIN_NOUN[b.grain]}`;
+    extra += i.time?.cut
+      ? ` ${what} di luar ${shown} ${i.time.cut === "top" ? "terbesar" : "terkecil"} tidak digambar.`
+      : i.time?.empty === 0
+        ? ` ${what} tanpa data digambar sebagai 0.`
+        : ` ${what} tanpa data tidak digambar (garis terputus).`;
+  }
+  return `Grafik ${kind}: ${i.measureLabel} per ${i.dimensionLabel}, ${count}.${extra}`;
 }
 
 const splitNumber = (px: number) => (px < 240 ? 2 : px < 420 ? 3 : 5);
-const PERIOD_GRAINS = ["week", "month", "quarter", "year"] as const;
-const isPeriod = (g?: string): g is (typeof PERIOD_GRAINS)[number] =>
-  (PERIOD_GRAINS as readonly string[]).includes(g ?? "");
 
 export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // Durasi "Otomatis": sumbu dalam jam/menit (nilai seri dibagi), tooltip kembali ke detik → j:mm:dd.
@@ -156,23 +221,38 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     : Math.round(Math.min(Math.max(size.width / Math.max(i.labels.length, 1), 48), 120));
   const labelChars = Math.max(5, Math.floor(labelPx / CHAR_PX));
   const unit = duration ? scale.unit : i.format.style === "rupiah" ? "Rp" : "";
+  // Nama satuan butuh ±20 px tinggi; di kotak pendek ia jatuh di luar SVG → satuan di tiap label.
+  const unitName = size.height >= UNIT_NAME_MIN_H;
+  const axisText = (v: number) => {
+    const t = formatAxis(v, duration ? AUTO_FORMAT : i.format);
+    if (!unit || unitName) return t;
+    if (unit !== "Rp") return `${t} ${unit}`;
+    return t.startsWith("-") ? `-Rp ${t.slice(1)}` : `Rp ${t}`;
+  };
+  // Jumlah baris/unik dan bilangan bulat: garis sumbu tidak pernah di 0,3 / 0,6.
+  const integral =
+    !duration &&
+    i.format.style !== "percent" &&
+    (i.valueType === "count" ||
+      (i.valueType === "integer" && i.values.every((v) => v === null || Number.isInteger(v))));
   const valuePx = horizontal ? size.width - labelPx - 24 : size.height;
   const valueAxis = {
     type: "value" as const,
     // Satuan sekali di nama sumbu, bukan di tiap angka. Batang horizontal: di tengah bawah sumbu
     // (tidak menimpa angka terakhir); garis/kolom: di atas sumbu.
-    name: unit,
+    name: unitName ? unit : "",
     ...(horizontal
       ? { nameLocation: "middle" as const, nameGap: 4, nameMoveOverlap: true }
       : { nameGap: 10 }),
     nameTextStyle: { color: theme.muted, fontFamily: theme.font, align: "center" as const },
     splitNumber: splitNumber(valuePx),
+    ...(integral ? { minInterval: 1 } : {}),
     splitLine: { lineStyle: { color: theme.border } },
     axisLabel: {
       color: theme.muted,
       hideOverlap: true,
       showMaxLabel: true,
-      formatter: (v: number) => formatAxis(v, duration ? AUTO_FORMAT : i.format),
+      formatter: axisText,
     },
   };
   // Batas grid memuat label DAN nama sumbu (ECharts 6 outerBounds; containLabel hanya label).
@@ -191,12 +271,20 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   };
 
   const grain = i.time?.grain;
+  const buckets = lineBuckets(i);
+  // Tooltip periode yang diisi: bukan nilai terukur.
+  const gap = i.time?.cut
+    ? `(di luar ${i.labels.length} ${i.time.cut === "top" ? "terbesar" : "terkecil"})`
+    : i.time?.empty === 0
+      ? `${value(0)} (tidak ada data)`
+      : "(tidak ada data)";
+  const symbolSize = (filled: readonly boolean[]) =>
+    filled.some(Boolean)
+      ? { symbolSize: (_: unknown, p: { dataIndex: number }) => (filled[p.dataIndex] ? 0 : 4) }
+      : {};
+
   if (i.type === "line" && i.time && !isPeriod(grain)) {
-    // Per hari: hari tanpa data diisi (0/null), tidak dilompati garis lurus. Tanpa grain: apa adanya.
-    const day =
-      grain === "day"
-        ? timeBuckets(i.time.iso, i.values, "day", i.time.empty ?? null, TOP_N_MAX.line)
-        : null;
+    const day = buckets?.grain === "day" ? buckets : null;
     // Titik bertanggal kosong tidak diplot (tetap ada di tabel data); urut waktu naik.
     const points: [number, number | null][] = day
       ? day.keys.map((k, n) => [k, day.values[n] ?? null])
@@ -207,8 +295,27 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           })
           .filter((p): p is [number, number | null] => p !== null)
           .sort((a, b) => a[0] - b[0]);
+    const filled = day ? day.filled : points.map(() => false);
     const ys = scaled(points.map((p) => p[1]));
-    const dateOnly = grain === "day" || i.time.iso.every((s) => !s || s.length <= 10);
+    // Kolom waktu tanpa grain: jam selalu di tooltip; di label sumbu bila rentang < 3 hari (selain
+    // itu tick paling rapat sehari — tidak ada "31 Des 2025" kembar).
+    const timestamp =
+      !day && (i.time.dimType === "timestamp" || i.time.iso.some((s) => !!s && s.length > 10));
+    const first = points.length ? msToIso(points[0]![0]) : "";
+    const last = points.length ? msToIso(points.at(-1)![0]) : "";
+    const clock = timestamp && (isoToUtcMs(last) ?? 0) - (isoToUtcMs(first) ?? 0) < 3 * DAY_MS;
+    // Satu tanggal: label jam saja, tanggalnya sekali di nama sumbu (bila ada tempat).
+    const oneDay = clock && first.slice(0, 10) === last.slice(0, 10);
+    const when = (ms: number) => formatDate(msToIso(ms), grain, timestamp);
+    const tick = (ms: number) => {
+      const iso = msToIso(ms);
+      if (!clock) return formatDate(iso, grain);
+      // Beberapa hari: setiap label "31 Des 18:00" (label tanggal saja bisa disembunyikan tumpang-tindih).
+      return oneDay
+        ? iso.slice(11, 16)
+        : `${formatDate(iso).replace(/ \d{4}$/, "")} ${iso.slice(11, 16)}`;
+    };
+    const dayName = oneDay && unitName ? formatDate(first) : "";
     return {
       ...base,
       // Tick dan label sumbu waktu dalam UTC, sama dengan nilai tanggal naive dari DuckDB.
@@ -216,24 +323,32 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       grid,
       tooltip: {
         ...axisTooltip,
-        formatter: (params: { value: [number, unknown] }[]) => {
+        formatter: (params: { value: [number, unknown]; dataIndex?: number }[]) => {
           const p = params[0];
           if (!p) return "";
-          return `${formatDate(msToIso(p.value[0]), grain)}\n${plain(i.measureLabel)}: ${value(p.value[1])}`;
+          const shown = filled[p.dataIndex ?? -1] ? gap : value(p.value[1]);
+          return `${when(p.value[0])}\n${plain(i.measureLabel)}: ${shown}`;
         },
       },
       xAxis: {
         type: "time" as const,
         min: "dataMin",
         max: "dataMax",
-        // Tanggal tanpa jam: tick paling rapat sehari (tidak ada "8 Okt" kembar di tengah hari).
-        ...(dateOnly ? { minInterval: 86_400_000 } : {}),
+        ...(clock ? {} : { minInterval: DAY_MS }),
+        ...(dayName
+          ? {
+              name: dayName,
+              nameLocation: "middle" as const,
+              nameGap: 26,
+              nameTextStyle: { color: theme.muted, fontFamily: theme.font },
+            }
+          : {}),
         axisLine: { lineStyle: { color: theme.border } },
         splitLine: { show: false },
         axisLabel: {
           color: theme.muted,
           hideOverlap: true,
-          formatter: (ms: number) => formatDate(msToIso(ms), grain),
+          formatter: tick,
         },
       },
       yAxis: valueAxis,
@@ -243,6 +358,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           name: i.measureLabel,
           data: points.map((p, n): [number, number | null] => [p[0], ys[n] ?? null]),
           showSymbol: points.length <= 60 || hasIsolated(ys),
+          ...symbolSize(filled),
           connectNulls: false,
         },
       ],
@@ -251,22 +367,57 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
 
   // Garis per minggu/bulan/kuartal/tahun: satu kategori per periode, kontinu dari yang pertama s.d.
   // terakhir — label selalu periode nyata (bukan tick otomatis yang diformat ulang).
-  const periods =
-    i.type === "line" && i.time && isPeriod(grain)
-      ? timeBuckets(i.time.iso, i.values, grain, i.time.empty ?? null, TOP_N_MAX.line)
-      : null;
+  const periods = buckets && buckets.grain !== "day" ? buckets : null;
   const labels = periods ? periods.keys.map((k) => formatDate(msToIso(k), grain)) : i.labels;
+  const filled = periods ? periods.filled : labels.map(() => false);
   const values = scaled(periods ? periods.values : i.values);
   const textLabels = !periods && i.textLabels;
+  // Kata pendek (≤ 10 karakter) di sumbu garis tidak dipotong — label yang tidak muat dijarangkan.
+  const labelText = (v: string) =>
+    !textLabels
+      ? v
+      : horizontal
+        ? middleTruncate(v, labelChars)
+        : middleTruncate(v, Math.max(labelChars, 10));
+  // Garis: label dihitung mundur dari periode terakhir (terbaru) — selalu tampil, rata kanan pada
+  // titiknya, tidak terpotong tepi kartu ("Sep 202"). Jarak label dari perkiraan lebar teks dan lebar
+  // satu periode di area plot (lebar − label sumbu nilai − jarak grid); hideOverlap tetap pengaman.
+  const n = labels.length;
+  const maxAbs = values.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
+  const plotW = size.width - grid.left - grid.right - 8 - axisText(maxAbs).length * AXIS_CHAR_PX;
+  const band = Math.max(plotW, 1) / Math.max(n, 1);
+  const textW = labels.reduce((m, l) => Math.max(m, labelText(l).length), 1) * AXIS_CHAR_PX;
+  const step = Math.max(1, Math.ceil((textW + LABEL_GAP) / band));
+  const shownLabels = new Set<number>();
+  for (let k = n - 1; k >= 0; k -= step) {
+    // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: label sebelumnya harus lebih jauh.
+    if (k !== n - 1 && k === n - 1 - step && step * band < 1.5 * textW + LABEL_GAP) continue;
+    shownLabels.add(k);
+  }
+  // Periode pertama ikut berlabel bila ada tempat (awal dan akhir rentang terbaca).
+  const leftmost = Math.min(...shownLabels);
+  const leftEdge = leftmost === n - 1 ? leftmost * band - textW : leftmost * band - textW / 2;
+  if (n > 1 && textW / 2 + LABEL_GAP <= leftEdge) shownLabels.add(0);
+  const showLabel = (k: number) => shownLabels.has(k);
   const categoryAxis = {
     type: "category" as const,
     data: labels,
     axisLine: { lineStyle: { color: theme.border } },
-    axisTick: { show: false },
+    // Garis: tick tepat di bawah titik — per periode bila cukup renggang (≥ 6 px), selain itu di
+    // label yang tampil — sehingga titik terpencil bisa dicocokkan dengan periodenya.
+    axisTick: horizontal
+      ? { show: false }
+      : { show: true, alignWithLabel: true, length: 4, interval: band >= 6 ? 0 : showLabel },
     axisLabel: {
       color: theme.muted,
-      ...(horizontal ? { interval: 0 } : { hideOverlap: true }),
-      formatter: (v: string) => (textLabels ? middleTruncate(v, labelChars) : v),
+      ...(horizontal
+        ? { interval: 0 }
+        : {
+            interval: showLabel,
+            hideOverlap: true,
+            ...(n > 1 ? { showMaxLabel: true, alignMaxLabel: "right" as const } : {}),
+          }),
+      formatter: labelText,
     },
   };
   return {
@@ -274,9 +425,11 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     grid,
     tooltip: {
       ...axisTooltip,
-      formatter: (params: { name: string; value: unknown }[]) => {
+      formatter: (params: { name: string; value: unknown; dataIndex?: number }[]) => {
         const p = params[0];
-        return p ? `${plain(p.name)}\n${plain(i.measureLabel)}: ${value(p.value)}` : "";
+        if (!p) return "";
+        const shown = filled[p.dataIndex ?? -1] ? gap : value(p.value);
+        return `${plain(p.name)}\n${plain(i.measureLabel)}: ${shown}`;
       },
     },
     // Batang horizontal: nama kategori panjang tetap terbaca; urutan dari atas, semua label tampil.
@@ -291,6 +444,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           ? {
               smooth: false,
               showSymbol: values.length <= 60 || hasIsolated(values),
+              // Titik terpencil selalu bersimbol, juga saat ECharts menjarangkan simbol mengikuti label.
+              ...(hasIsolated(values) ? { showAllSymbol: true } : {}),
+              // Periode yang diisi tanpa simbol: titik yang terlihat = periode yang berisi data.
+              ...symbolSize(filled),
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
@@ -298,6 +455,3 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     ],
   };
 }
-
-/** Bar per 18 px tinggi kartu: lebih dari itu label bertabrakan → tampilkan N teratas saja. */
-export const barsThatFit = (height: number) => Math.max(1, Math.floor((height - 32) / 18));

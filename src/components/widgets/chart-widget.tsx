@@ -5,8 +5,10 @@ import { useRef } from "react";
 import { formatCell, formatLabelNumber, formatMeasure } from "@/features/widgets/format";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
-import { OTHERS_LABEL, barsThatFit } from "./chart-option";
+import { OTHERS_LABEL, periodFill } from "./chart-option";
 import {
+  NARROW,
+  chartFit,
   emptyBucketValue,
   legendOrder,
   lineOrder,
@@ -14,6 +16,8 @@ import {
   percentShares,
   pieRest,
   rankedItems,
+  valueCut,
+  zeroWhenBlank,
 } from "./chart-series";
 import { ChartTable } from "./chart-table";
 import { ChartView } from "./chart-view";
@@ -21,14 +25,15 @@ import { useBoxSize } from "./use-box-size";
 import type { WidgetData } from "./widget-query";
 
 /*
- * Widget grafik (T-011): grafik + keterangan "Menampilkan N dari M" setiap kali kategori dipotong (dua
- * baris maks.; pembaca layar selalu mendapatnya), tabel data biasa saat tombol "data" di kepala kartu
- * aktif (nilai persis tanpa hover — review H9), legenda HTML untuk pai (nama + persen berjumlah 100 %,
- * terbesar dulu), daftar peringkat sebagai ganti grafik di kartu < 140 px ("+N lainnya" bila baris
- * terpotong). Pai dengan nilai negatif tidak digambar (persen menyesatkan) — diberi penjelasan, dan
- * tabel datanya memuat "Lainnya" bertanda. Durasi tampil j:mm:dd.
+ * Widget grafik (T-011): grafik + keterangan "Menampilkan N dari M" yang menyesuaikan tinggi kartu
+ * (lengkap, ringkas satu baris, atau hanya untuk pembaca layar — grafik tidak pernah lebih pendek dari
+ * batas minimumnya), tabel data biasa saat tombol "data" di kepala kartu aktif (nilai persis tanpa
+ * hover — review H9), legenda HTML untuk pai (nama + persen berjumlah 100 %, terbesar dulu), daftar
+ * peringkat sebagai ganti grafik di kartu < 140 px atau yang terlalu pendek untuk donat ("+N lainnya"
+ * bila baris terpotong; garis bertanggal terbaru dulu). Pai dengan nilai negatif tidak digambar (persen
+ * menyesatkan) — diberi penjelasan, dan tabel datanya memuat "Lainnya" bertanda. Pai tanpa total
+ * keseluruhan (query total gagal) diberi tahu bahwa persennya hanya dari yang tampil. Durasi j:mm:dd.
  */
-const NARROW = 140;
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 const CHAR_PX = 6.6;
 /** Wilayah gulir yang bisa difokus: garis fokus di dalam kotak (tidak terpotong tepi kartu). */
@@ -50,16 +55,15 @@ export function ChartWidget({
   showData: boolean;
   title: string;
 }) {
-  // Kotak luar (grafik + keterangan) menentukan ada-tidaknya keterangan — bukan kotak grafik yang
+  // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
   const outer = useRef<HTMLDivElement>(null);
-  const box = useRef<HTMLDivElement>(null);
-  const size = useBoxSize(box);
   const room = useBoxSize(outer);
   const [dim, measure] = data.columns;
   const dimType = dim?.type ?? "text";
   const valueType = measure?.type;
   const name = title || measure?.label || "grafik";
+  const temporal = dimType === "date" || dimType === "timestamp";
 
   // Garis: urut waktu/label naik di layar (urutan nilai: urutan server), apa pun urutan pengambilan.
   const source = type === "line" ? lineOrder(data.rows, dimType, spec.sort) : data.rows;
@@ -68,14 +72,17 @@ export function ChartWidget({
       ? formatLabelNumber(r[0])
       : formatCell(r[0], dimType, { style: "auto", decimals: 0 }, spec.dimension.timeGrain),
   );
-  const values = source.map((r) => (typeof r[1] === "number" ? r[1] : null));
+  // Total/jumlah: kategori yang semua nilainya kosong = 0 (SUMIF Excel, sama dengan KPI).
+  const blankZero = zeroWhenBlank(spec.measure.agg);
+  const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   const categories = data.categories ?? labels.length;
-  const rest = type === "pie" ? pieRest(values, data.grandTotal, categories > labels.length) : 0;
+  const cut = categories > labels.length;
+  const rest = type === "pie" ? pieRest(values, data.grandTotal, cut) : 0;
   const negative = type === "pie" && (values.some((v) => v !== null && v < 0) || rest < 0);
   const others = Math.max(0, rest);
-  const fit = type === "bar" && size ? barsThatFit(size.height) : labels.length;
-  const visible = Math.min(fit, labels.length);
-  const narrow = !!size && size.width < NARROW;
+  // Pai selalu meminta total; tanpa total (query total gagal) dan baris sebanyak batas N, kategori
+  // lain mungkin ada → persen hanya dari yang tampil.
+  const partial = type === "pie" && data.categories === undefined && data.rows.length >= spec.topN;
   // "Lainnya" bertanda: sisa negatif tetap terlihat di tabel yang ditunjuk peringatan pai.
   const rows: Row[] = [
     ...labels.map((label, i) => ({ label, value: values[i] ?? null })),
@@ -84,13 +91,31 @@ export function ChartWidget({
   const shares = percentShares(rows.map((r) => Math.max(0, r.value ?? 0)));
   // Pai: legenda/peringkat terbesar dulu — irisan terbesar (sering "Lainnya") terlihat lebih dulu.
   const order = type === "pie" ? legendOrder(rows.map((r) => r.value)) : rows.map((_, i) => i);
-  const noun = type === "line" ? "titik" : "kategori";
-  const shownCount = type === "bar" ? visible : labels.length;
-  const cutShown = categories > shownCount;
-  const note = cutShown
-    ? `Menampilkan ${shownCount} dari ${categories.toLocaleString("id-ID")} ${noun}${others ? " · sisanya di Lainnya" : ""}`
-    : `${categories.toLocaleString("id-ID")} ${noun}`;
-  const chars = size ? Math.max(6, Math.floor((size.width - 72) / CHAR_PX)) : 24;
+  const time =
+    type === "line" && temporal
+      ? {
+          iso: source.map((r) => (r[0] === null ? null : String(r[0]))),
+          grain: spec.dimension.timeGrain,
+          empty: emptyBucketValue(spec.measure.agg, spec.sort, cut),
+          dimType,
+          cut: valueCut(spec.sort, cut),
+        }
+      : undefined;
+  const fit = room
+    ? chartFit({
+        type,
+        room,
+        rows: labels.length,
+        categories,
+        legendRows: rows.length,
+        others: others > 0,
+        partial,
+        fill: periodFill({ type, values, time }),
+      })
+    : null;
+  const visible = fit?.visible ?? labels.length;
+  const width = room?.width ?? null;
+  const chars = width ? Math.max(6, Math.floor((width - 72) / CHAR_PX)) : 24;
 
   let body: React.ReactNode;
   if (data.rows.length === 0) {
@@ -108,7 +133,7 @@ export function ChartWidget({
         valueType={valueType}
         format={spec.format}
         label={`Data ${name}`}
-        width={size?.width ?? null}
+        width={width}
       />
     );
   } else if (negative) {
@@ -137,41 +162,53 @@ export function ChartWidget({
         </p>
       </div>
     );
-  } else if (narrow) {
-    const fitRows = Math.max(1, Math.floor((size?.height ?? 160) / 34));
-    const ranked = rankedItems(
-      order.map((i) => rows[i]!),
-      fitRows,
-      categories,
-    );
+  } else if (fit?.ranked && room) {
+    // Kartu sempit: label di atas nilai. Kartu pendek tetapi cukup lebar: satu baris per kategori.
+    const inline = room.width >= NARROW;
+    // Garis bertanggal: terbaru dulu — yang tidak muat adalah periode lama ("+N sebelumnya").
+    const newestFirst = type === "line" && temporal;
+    const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
+    const fitRows = Math.max(1, Math.floor((room.height - 4) / (inline ? 20 : 36)));
+    const ranked = rankedItems(list, fitRows, categories);
+    const olderOnly = newestFirst && (!cut || spec.sort === "label_desc");
+    const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
+    const valueChars = ranked.items.reduce((m, r) => Math.max(m, text(r.value).length), 0);
+    const labelChars = inline
+      ? Math.max(6, Math.floor((room.width - 24 - valueChars * 7) / CHAR_PX))
+      : chars + 8;
     body = (
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
         data-testid="chart-ranked"
       >
         {ranked.items.map((r, i) => (
-          <li key={i} className="flex min-w-0 flex-col">
-            <span className="whitespace-nowrap text-muted-foreground" title={r.label}>
-              {middleTruncate(r.label, chars + 8)}
+          <li key={i} className={cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col")}>
+            <span
+              className={cn(
+                "whitespace-nowrap text-muted-foreground",
+                inline && "min-w-0 flex-1 truncate",
+              )}
+              title={r.label}
+            >
+              {middleTruncate(r.label, labelChars)}
             </span>
-            <span className="font-medium tabular-nums">
-              {formatMeasure(r.value, valueType, spec.format, true)}
-            </span>
+            <span className="shrink-0 font-medium tabular-nums">{text(r.value)}</span>
           </li>
         ))}
         {ranked.more > 0 ? (
           <li
-            className="flex min-w-0 flex-col text-muted-foreground"
+            className={cn(
+              "flex min-w-0 text-muted-foreground",
+              inline ? "items-baseline gap-2" : "flex-col",
+            )}
             data-testid="chart-ranked-more"
           >
-            <span className="whitespace-nowrap">
-              +{ranked.more.toLocaleString("id-ID")} lainnya
+            <span className={cn("whitespace-nowrap", inline && "min-w-0 flex-1 truncate")}>
+              +{ranked.more.toLocaleString("id-ID")} {olderOnly ? "sebelumnya" : "lainnya"}
             </span>
             {/* Nilai gabungan hanya untuk pai (bagian dari keseluruhan) dan bila diketahui. */}
             {type === "pie" && ranked.moreValue !== null ? (
-              <span className="tabular-nums">
-                {formatMeasure(ranked.moreValue, valueType, spec.format, true)}
-              </span>
+              <span className="shrink-0 tabular-nums">{text(ranked.moreValue)}</span>
             ) : null}
           </li>
         ) : null}
@@ -185,21 +222,14 @@ export function ChartWidget({
         values={values}
         others={others || undefined}
         textLabels={dimType === "text"}
-        time={
-          type === "line" && (dimType === "date" || dimType === "timestamp")
-            ? {
-                iso: source.map((r) => (r[0] === null ? null : String(r[0]))),
-                grain: spec.dimension.timeGrain,
-                empty: emptyBucketValue(spec.measure.agg, spec.sort, categories > labels.length),
-              }
-            : undefined
-        }
+        time={time}
         valueType={valueType}
         measureLabel={measure!.label}
         dimensionLabel={dim!.label}
         format={spec.format}
         categories={categories}
         limit={visible}
+        partial={partial}
       />
     );
     body =
@@ -232,9 +262,7 @@ export function ChartWidget({
                     <span className="min-w-0 flex-1 whitespace-nowrap" title={r.label}>
                       {middleTruncate(
                         r.label,
-                        size && size.width >= 448
-                          ? Math.floor((size.width * 0.45 - 56) / CHAR_PX)
-                          : chars,
+                        width && width >= 448 ? Math.floor((width * 0.45 - 56) / CHAR_PX) : chars,
                       )}
                     </span>
                     <span className="shrink-0 tabular-nums text-muted-foreground">
@@ -251,28 +279,36 @@ export function ChartWidget({
       );
   }
 
-  // Kategori terpotong selalu diberi tahu (cukup satu baris); jumlah kategori biasa hanya bila lega.
-  const showNote =
-    data.rows.length > 0 &&
-    !showData &&
-    !narrow &&
-    !negative &&
-    !!room &&
-    room.height >= (cutShown ? 72 : 220);
+  // Keterangan yang muat (lengkap/ringkas); teks lengkap tetap di title dan untuk pembaca layar.
+  const note =
+    fit && fit.note !== "none" && !fit.ranked && data.rows.length > 0 && !showData && !negative
+      ? fit
+      : null;
 
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
-      <div ref={box} className="relative flex min-h-0 flex-1 flex-col">
-        {body}
-      </div>
-      {showNote ? (
-        <p
-          className="line-clamp-2 shrink-0 px-3 pb-1 text-xs text-muted-foreground"
-          title={note}
-          data-testid="chart-note"
-        >
-          {note}
-        </p>
+      <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+      {note ? (
+        // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
+        <div className="shrink-0 px-3 pb-1">
+          <p
+            className={cn(
+              "text-xs text-muted-foreground",
+              note.note === "full" ? "line-clamp-2" : "line-clamp-1",
+            )}
+            title={note.full}
+            data-testid="chart-note"
+          >
+            {note.shown === note.full ? (
+              note.full
+            ) : (
+              <>
+                <span aria-hidden>{note.shown}</span>
+                <span className="sr-only">{note.full}</span>
+              </>
+            )}
+          </p>
+        </div>
       ) : null}
     </div>
   );

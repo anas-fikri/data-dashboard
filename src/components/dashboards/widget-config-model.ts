@@ -107,7 +107,8 @@ export const isNumeric = (t: ColumnType) => NUMERIC.includes(t);
 export const isTemporal = (t: ColumnType) => TEMPORAL.includes(t);
 
 /**
- * Kolom yang boleh dipakai agregasi ini (count tanpa kolom = semua baris). Min/maks tanggal hanya
+ * Kolom yang boleh dipakai agregasi ini (count tanpa kolom = semua baris). Jumlah baris/nilai unik:
+ * semua kolom di semua jenis (hasilnya angka, termasuk dari kolom tanggal). Min/maks tanggal hanya
  * untuk KPI: grafik hanya bisa menggambar angka.
  */
 export function columnsForAgg(
@@ -250,6 +251,41 @@ export function missingColumnText(pos: number): string {
   return pos === MISSING_COLUMN
     ? "Kolom tidak ada di data terbaru — pilih pengganti."
     : "Kolom tidak tersedia lagi — pilih pengganti.";
+}
+
+/**
+ * Pesan di isian "dari kolom" bila kolom tersimpan tidak bisa dipilih: tidak ada di sheet (tidak
+ * tersedia lagi), atau ada tetapi tidak cocok untuk agregasi/jenis ini — mis. spec lama berisi
+ * maks. tanggal di grafik (server menolaknya; KPI boleh). undefined bila kolomnya sah.
+ */
+export function measureColumnText(
+  measure: Measure,
+  columns: SourceColumn[],
+  type: WidgetType,
+): string | undefined {
+  const { agg, column } = measure;
+  if (column === undefined) return undefined;
+  const col = columns.find((c) => c.pos === column);
+  if (!col) return missingColumnText(column);
+  if (columnsForAgg(agg, columns, type).includes(col)) return undefined;
+  const minMax = agg === "min" || agg === "max";
+  if (minMax && type !== "kpi" && isTemporal(col.type)) {
+    return "Kolom tanggal tidak bisa digambar di grafik — pilih kolom angka, atau ubah jenis tampilan ke Angka.";
+  }
+  const kind = minMax && type === "kpi" ? "angka atau tanggal" : "angka";
+  return `${AGG_LABEL[agg]} hanya bisa dari kolom ${kind} — pilih kolom lain.`;
+}
+
+/**
+ * Kolom nilai ada di sheet tetapi tidak cocok untuk agregasi/jenis ini (spec lama). Panel menandai
+ * isiannya dan tidak menyimpan sampai diganti — server akan menolaknya.
+ */
+export function measureMismatch(config: WidgetConfig, sources: Source[]): boolean {
+  if (config.type === "empty" || config.type === "table") return false;
+  const { column } = config.spec.measure;
+  const cols = sources.find((s) => s.id === config.spec.sheetId)?.columns ?? [];
+  if (!cols.some((c) => c.pos === column)) return false;
+  return measureColumnText(config.spec.measure, cols, config.type) !== undefined;
 }
 
 type TableConfig = Extract<WidgetConfig, { type: "table" }>;

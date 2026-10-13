@@ -1,9 +1,10 @@
 "use client";
 
 import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { WidgetConfig } from "@/features/widgets/spec";
+import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { TableView, type TableSort } from "./table-view";
@@ -13,7 +14,8 @@ import { useWidgetQuery } from "./widget-query";
  * Isi widget yang sudah diatur (T-011): memuat data lewat /api/query { widgetId } dan menampilkan
  * KPI, grafik, atau tabel. Setiap widget berdiri sendiri — gagal di satu widget (mis. kolom
  * disembunyikan) tidak mengganggu widget lain. Status: memuat (kerangka), gagal (pesan + coba lagi
- * untuk gangguan sementara), kosong, berhasil.
+ * untuk gangguan sementara), kosong, berhasil. Status itu dilaporkan ke kartu (onState) untuk tombol
+ * data grafik di kepala kartu.
  */
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
@@ -35,6 +37,7 @@ export function WidgetBody({
   editing,
   resizable = false,
   showData = false,
+  onState,
 }: {
   widgetId: string;
   config: Configured;
@@ -44,9 +47,11 @@ export function WidgetBody({
   resizable?: boolean;
   /** Grafik: tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData?: boolean;
+  /** Status isi untuk versi spec ini; fungsi harus stabil (useCallback). */
+  onState?: (version: string, state: BodyState) => void;
 }) {
   // Spec berubah → mount baru (halaman/urutan tabel kembali ke awal, query ulang).
-  const version = `${config.type}:${JSON.stringify(config.spec)}`;
+  const version = configVersion(config);
   return (
     <Loaded
       key={version}
@@ -57,6 +62,7 @@ export function WidgetBody({
       resizable={resizable}
       version={version}
       showData={showData}
+      onState={onState}
     />
   );
 }
@@ -69,6 +75,7 @@ function Loaded({
   resizable,
   version,
   showData,
+  onState,
 }: {
   widgetId: string;
   config: Configured;
@@ -77,6 +84,7 @@ function Loaded({
   resizable: boolean;
   version: string;
   showData: boolean;
+  onState?: (version: string, state: BodyState) => void;
 }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
@@ -84,6 +92,8 @@ function Loaded({
     config.type === "table" ? { widgetId, page, ...(sort ? { sort } : {}) } : { widgetId };
   const { state, retry } = useWidgetQuery(request, version);
   const data = state.data;
+  const shown = bodyState(state, config.type === "table");
+  useEffect(() => onState?.(version, shown), [onState, version, shown]);
 
   if (state.status === "error" && !(data && config.type === "table")) {
     return (

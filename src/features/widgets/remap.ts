@@ -29,11 +29,11 @@ const key = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowe
  * satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus dari workbook tidak boleh
  * diam-diam menunjuk sheet lain (angka salah dengan judul lama).
  */
-export function matchSheet(
-  old: SheetInfo,
-  active: SheetInfo[],
+export function matchSheet<T extends { name: string }>(
+  old: { name: string },
+  active: T[],
   oldSheetCount: number,
-): SheetInfo | null {
+): T | null {
   const byName = active.filter((s) => key(s.name) === key(old.name));
   if (byName.length === 1) return byName[0]!;
   if (byName.length === 0 && active.length === 1 && oldSheetCount === 1) return active[0]!;

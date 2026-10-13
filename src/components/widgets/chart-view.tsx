@@ -69,6 +69,8 @@ export function ChartView(
     categories?: number;
     /** Batang yang muat di tinggi kartu; tabel data (pembaca layar) tetap memuat semua baris. */
     limit?: number;
+    /** Pai tanpa total keseluruhan: ringkasan menyebut persen hanya dari kategori yang tampil. */
+    partial?: boolean;
   },
 ) {
   const box = useRef<HTMLDivElement>(null);
@@ -77,7 +79,7 @@ export function ChartView(
   const [failed, setFailed] = useState(false);
   const size = useBoxSize(box);
   const themeVersion = useThemeVersion();
-  const { categories, limit, ...input } = props;
+  const { categories, limit, partial, ...input } = props;
   const inputKey = JSON.stringify(
     limit && limit < input.labels.length
       ? { ...input, labels: input.labels.slice(0, limit), values: input.values.slice(0, limit) }
@@ -126,7 +128,7 @@ export function ChartView(
       {/* Grafik untuk mata; ringkasan + tabel data untuk pembaca layar. */}
       <div ref={box} className="absolute inset-0" aria-hidden />
       <table className="sr-only" data-testid="chart-data">
-        <caption>{chartSummary(input, categories)}</caption>
+        <caption>{chartSummary(input, categories, partial)}</caption>
         <thead>
           <tr>
             <th scope="col">{input.dimensionLabel}</th>

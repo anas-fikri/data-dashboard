@@ -70,7 +70,7 @@ export function KpiView({
       <p
         className={cn(
           "leading-tight font-semibold tabular-nums tracking-tight",
-          shown.small ? "text-[0.875rem]" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
+          shown.small ? "text-sm" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
           // Belum diukur: satu baris (title tetap lengkap). Tidak ada yang muat: boleh pindah baris.
           shown.wrap ? "[overflow-wrap:anywhere]" : "truncate whitespace-nowrap",
         )}

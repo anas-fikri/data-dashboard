@@ -93,7 +93,12 @@ export interface QueryRepo {
     datasetId: string,
     activeVersionId: string,
     sheetId: string,
-  ): Promise<{ old: SheetInfo; oldSheetCount: number; active: SheetInfo[] } | null>;
+  ): Promise<{
+    old: SheetInfo;
+    oldSheetCount: number;
+    /** Sheet versi aktif tanpa skema: skema target dibaca segar lewat sheet(). */
+    active: Pick<SheetInfo, "id" | "name" | "index">[];
+  } | null>;
   /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
   widget(
     userId: string,
@@ -346,13 +351,20 @@ async function runAggPlan(
     const g = toJson(t[1], "decimal");
     data.grandTotal = g === null || g === undefined ? null : Number(g);
   }
-  // Total gagal → jangan di-cache: permintaan berikutnya mencoba lagi (pai tanpa "Lainnya" menyesatkan).
-  if (!r.value.totalsFailed) deps.cache?.set(key, data, out.bytes + (plan.totals ? 64 : 0));
+  // Total gagal → di-cache sebentar saja: dicoba lagi tanpa menjalankan query utama di tiap muat.
+  deps.cache?.set(
+    key,
+    data,
+    out.bytes + (plan.totals ? 64 : 0),
+    r.value.totalsFailed ? TOTALS_RETRY_MS : undefined,
+  );
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
 
 /** Batas waktu query total grafik (opsional) — query kategori sangat banyak tidak menahan slot lama. */
 export const TOTALS_MAX_MS = 5_000;
+/** Umur cache hasil grafik yang totalnya gagal (dicoba lagi setelahnya). */
+export const TOTALS_RETRY_MS = 30_000;
 
 /**
  * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
@@ -384,11 +396,13 @@ export async function runWidgetQuery(
     // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
     const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
     const target = h ? matchSheet(h.old, h.active, h.oldSheetCount) : null;
-    if (h && target) {
-      const moved = remapConfig(config, h.old, target);
+    const fresh = target ? await deps.repo.sheet(w.activeVersionId, target.id) : null;
+    if (h && target && fresh?.schema) {
+      // Skema aktif segar (bukan dari cache riwayat): ganti nama kolom di skema langsung berlaku.
+      const moved = remapConfig(config, h.old, { ...target, schema: fresh.schema });
       if (moved.missing.length) return fail("COLUMN_UNAVAILABLE", missingMessage(moved.missing));
       config = moved.config;
-      sheet = await deps.repo.sheet(w.activeVersionId, target.id);
+      sheet = fresh;
     }
   }
   if (!sheet) {

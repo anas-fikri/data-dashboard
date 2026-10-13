@@ -511,3 +511,164 @@ describe("verifikasi T-011 putaran 3: panel pengaturan", () => {
     );
   });
 });
+
+// --- verifikasi T-011 putaran 4: kolom nilai spec lama yang tidak cocok, tabel yang semua kolomnya hilang
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { MeasureFields, MissingNotice } from "@/components/dashboards/config-sections";
+import { measureColumnText, measureMismatch } from "@/components/dashboards/widget-config-model";
+
+describe("verifikasi T-011 putaran 4: panel pengaturan", () => {
+  type TableConfig = Extract<WidgetConfig, { type: "table" }>;
+  const cols = sources[0]!.columns;
+  const rupiah = { style: "rupiah", decimals: 0 } as const;
+  const DATE_TEXT =
+    "Kolom tanggal tidak bisa digambar di grafik — pilih kolom angka, atau ubah jenis tampilan ke Angka.";
+  // Grafik lama (sebelum 8fe24a0): Terbesar dari kolom Tanggal — kini ditolak server.
+  const legacy: WidgetConfig = {
+    type: "bar",
+    spec: {
+      sheetId: S1,
+      dimension: { column: 1 },
+      measure: { agg: "max", column: 2 },
+      sort: "label_asc",
+      topN: 7,
+      format: rupiah,
+    },
+  };
+  const withMeasure = (measure: { agg: string; column?: number }) =>
+    ({ ...legacy, spec: { ...legacy.spec, measure } }) as WidgetConfig;
+
+  it("jumlah baris/nilai unik menawarkan semua kolom (termasuk tanggal) di semua jenis", () => {
+    for (const t of ["kpi", "bar", "line", "pie", "table"] as const) {
+      for (const agg of ["count", "count_distinct"] as const) {
+        expect(columnsForAgg(agg, cols, t)).toEqual(cols);
+      }
+    }
+    // Grafik Jumlah nilai unik dari Tanggal sah: tidak ditandai, tetap tersimpan.
+    expect(measureMismatch(withMeasure({ agg: "count_distinct", column: 2 }), sources)).toBe(false);
+    expect(measureColumnText({ agg: "count_distinct", column: 2 }, cols, "line")).toBeUndefined();
+    expect(measureColumnText({ agg: "count", column: 2 }, cols, "bar")).toBeUndefined();
+  });
+
+  it("alasan di isian kolom: tanggal di grafik ≠ kolom tidak tersedia", () => {
+    expect(missingColumns(legacy, sources)).toEqual([]);
+    expect(measureMismatch(legacy, sources)).toBe(true);
+    expect(measureColumnText({ agg: "max", column: 2 }, cols, "bar")).toBe(DATE_TEXT);
+    expect(measureColumnText({ agg: "min", column: 2 }, cols, "line")).toBe(DATE_TEXT);
+    // KPI boleh tanggal terkecil/terbesar.
+    expect(measureColumnText({ agg: "max", column: 2 }, cols, "kpi")).toBeUndefined();
+    // Kolom ada tetapi jenisnya tidak cocok: pesan umum per agregasi.
+    expect(measureColumnText({ agg: "sum", column: 2 }, cols, "bar")).toBe(
+      "Total hanya bisa dari kolom angka — pilih kolom lain.",
+    );
+    expect(measureColumnText({ agg: "max", column: 1 }, cols, "kpi")).toBe(
+      "Terbesar hanya bisa dari kolom angka atau tanggal — pilih kolom lain.",
+    );
+    // "Tidak tersedia" hanya untuk kolom yang disembunyikan/dihapus/tidak ada di data terbaru.
+    expect(measureColumnText({ agg: "max", column: 9 }, cols, "bar")).toBe(
+      "Kolom tidak tersedia lagi — pilih pengganti.",
+    );
+    expect(measureColumnText({ agg: "sum", column: MISSING_COLUMN }, cols, "bar")).toBe(
+      "Kolom tidak ada di data terbaru — pilih pengganti.",
+    );
+    expect(measureMismatch(withMeasure({ agg: "max", column: 9 }), sources)).toBe(false);
+    expect(measureColumnText({ agg: "sum", column: 3 }, cols, "bar")).toBeUndefined();
+  });
+
+  it("isian 'dari kolom' grafik lama: alasan tanggal + aria-invalid (render server)", () => {
+    const html = (type: "bar" | "kpi", column: number) =>
+      renderToStaticMarkup(
+        createElement(MeasureFields, {
+          type,
+          columns: cols,
+          measure: { agg: "max", column },
+          onChange: () => {},
+        }),
+      );
+    const trigger = (s: string) => s.match(/<button[^>]*data-testid="config-measure"[^>]*>/)?.[0];
+    const bar = html("bar", 2);
+    expect(bar).toContain(DATE_TEXT);
+    expect(bar).not.toContain("tidak tersedia lagi");
+    expect(trigger(bar)).toContain('aria-invalid="true"');
+    expect(html("bar", 9)).toContain("Kolom tidak tersedia lagi — pilih pengganti.");
+    const kpi = html("kpi", 2);
+    expect(trigger(kpi)).toBeDefined();
+    expect(trigger(kpi)).not.toContain('aria-invalid="');
+    expect(kpi).not.toContain(DATE_TEXT);
+  });
+
+  it("grafik lama → KPI mempertahankan Terbesar Tanggal; kembali ke grafik memilih kolom angka", () => {
+    const kpi = defaultConfig("kpi", sources, legacy)!;
+    expect(kpi).toMatchObject({ type: "kpi", spec: { measure: { agg: "max", column: 2 } } });
+    expect(valid(kpi)).toBe(true);
+    expect(measureMismatch(kpi, sources)).toBe(false);
+
+    for (const t of ["bar", "line", "pie"] as const) {
+      const back = defaultConfig(t, sources, kpi)!;
+      expect(back.type).toBe(t);
+      expect(back).toMatchObject({ spec: { measure: { agg: "sum", column: 3 } } });
+      expect(measureMismatch(back, sources)).toBe(false);
+      expect(valid(back)).toBe(true);
+    }
+    // Batang yang diingat panel (spec lama) diperbaiki nilainya saja; kelompok/urutan/jumlah tetap.
+    expect(defaultConfig("bar", sources, legacy)).toMatchObject({
+      type: "bar",
+      spec: {
+        dimension: { column: 1 },
+        measure: { agg: "sum", column: 3 },
+        sort: "label_asc",
+        topN: 7,
+        format: rupiah,
+      },
+    });
+    // Sheet tanpa kolom angka: Jumlah baris.
+    const noNumber: Source[] = [
+      { id: S1, name: "Penjualan", columns: cols.filter((c) => c.type !== "decimal") },
+    ];
+    expect(defaultConfig("bar", noNumber, kpi)).toMatchObject({
+      spec: { measure: { agg: "count" } },
+    });
+  });
+
+  it("tabel yang semua kolomnya hilang: tombol 'Pakai kolom pertama sheet ini' → kolom bawaan sheet", () => {
+    const wide: Source[] = [
+      {
+        id: S1,
+        name: "Lebar",
+        columns: Array.from({ length: 9 }, (_, i) => ({
+          pos: i + 1,
+          name: `K${i + 1}`,
+          type: "text" as const,
+        })),
+      },
+    ];
+    const allGone: TableConfig = {
+      type: "table",
+      spec: { sheetId: S1, columns: [MISSING_COLUMN, 42], format: rupiah },
+    };
+    const fixed = withoutMissingColumns(allGone, wide, true);
+    expect(fixed).toEqual(defaultConfig("table", wide, allGone));
+    expect(fixed).toMatchObject({ spec: { columns: [1, 2, 3, 4, 5, 6], format: rupiah } });
+    expect(missingColumns(fixed, wide)).toEqual([]);
+    expect(valid(fixed)).toBe(true);
+    // Tanpa tombol (perubahan lain) tabel tidak dikosongkan atau diisi diam-diam.
+    expect(withoutMissingColumns(allGone, wide)).toBe(allGone);
+
+    const notice = (all: boolean, fix: boolean) =>
+      renderToStaticMarkup(
+        createElement(MissingNotice, {
+          missing: [MISSING_COLUMN],
+          all,
+          onFixTable: fix ? () => {} : undefined,
+        }),
+      );
+    const all = notice(true, true);
+    expect(all).toContain("Semua kolom yang dipakai widget ini tidak ada di data terbaru");
+    expect(all).toMatch(/<button type="button"[^>]*>Pakai kolom pertama sheet ini<\/button>/);
+    expect(notice(false, true)).toMatch(/<button[^>]*>Hapus kolom itu dari tabel<\/button>/);
+    const chart = notice(false, false);
+    expect(chart).not.toContain("<button");
+    expect(chart).toContain("Pilih kolom lain di bawah.");
+  });
+});

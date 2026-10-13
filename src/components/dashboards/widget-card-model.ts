@@ -3,6 +3,7 @@
  * kartu. Dipisah dari widget-card.tsx agar bisa diuji tanpa DOM.
  */
 import { IconChartBar, IconChartLine, IconChartPie, IconTable } from "@tabler/icons-react";
+import type { BodyState } from "@/components/widgets/body-state";
 import { parseWidgetConfig, type ChartType, type WidgetConfig } from "@/features/widgets/spec";
 
 export type CardConfig = Exclude<WidgetConfig, { type: "empty" }>;
@@ -27,4 +28,13 @@ export function dataToggle(chart: ChartType, showData: boolean) {
   return showData
     ? { tooltip: "Tampilkan grafik", Icon: CHART_ICON[chart] }
     : { tooltip: "Tampilkan tabel data", Icon: IconTable };
+}
+
+/**
+ * Tombol data grafik menurut isi kartu: aktif bila grafik punya baris; saat memuat tetap di tempat
+ * tetapi nonaktif (aria-disabled, kepala kartu tidak bergeser); galat/kosong → tidak ditampilkan
+ * (bukan tab stop yang tidak berbuat apa-apa).
+ */
+export function toggleMode(state: BodyState): "on" | "wait" | null {
+  return state === "rows" ? "on" : state === "loading" ? "wait" : null;
 }

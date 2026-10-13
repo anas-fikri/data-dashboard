@@ -18,6 +18,7 @@ import { missingColumnText, type SourceColumn } from "./widget-config-model";
  * (kolom disembunyikan, atau tidak ada di data terbaru) tampil sebagai "Pilih kolom" dengan
  * aria-invalid dan pesan di bawahnya.
  */
+// Isian tidak sah ditandai seperti Input (garis merah), bukan hanya teks placeholder.
 const control = "h-(--control-h-lg) w-full md:h-(--control-h)";
 
 export function Choice<T extends string>({
@@ -74,26 +75,31 @@ export function Choice<T extends string>({
   );
 }
 
-/** Pilih satu kolom; nama kolom + jenis datanya agar mudah dibedakan. */
+/**
+ * Pilih satu kolom; nama kolom + jenis datanya agar mudah dibedakan. `invalidText` menggantikan pesan
+ * bawaan "tidak tersedia" bila kolomnya ada tetapi tidak cocok (mis. tanggal untuk grafik).
+ */
 export function ColumnChoice({
   label,
   value,
   columns,
   onChange,
   testId,
+  invalidText,
 }: {
   label: string;
   value: number | undefined;
   columns: SourceColumn[];
   onChange: (pos: number) => void;
   testId?: string;
+  invalidText?: string;
 }) {
   return (
     <Choice
       label={label}
       testId={testId}
       placeholder="Pilih kolom"
-      invalidText={value === undefined ? undefined : missingColumnText(value)}
+      invalidText={invalidText ?? (value === undefined ? undefined : missingColumnText(value))}
       value={value === undefined ? "" : String(value)}
       options={columns.map((c) => ({
         value: String(c.pos),

@@ -19,6 +19,7 @@ import {
   defaultConfig,
   isNumeric,
   isTemporal,
+  measureMismatch,
   missingColumns,
   sortOptions,
   withDimension,
@@ -80,6 +81,8 @@ export function WidgetConfigForm({
     if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
     if (next.type === "empty" || missingColumns(next, sources).length) return;
+    // Kolom nilai spec lama yang tidak cocok (mis. maks. tanggal di grafik): server menolaknya.
+    if (measureMismatch(next, sources)) return;
     if (!parseWidgetConfig(next.type, next.spec).ok) return;
     pending.current = next;
     clearTimeout(timer.current);
@@ -90,7 +93,9 @@ export function WidgetConfigForm({
     memory.current[draft.type] = draft;
     const kept = memory.current[type];
     const usable = kept && kept.type !== "empty" && sources.some((s) => s.id === kept.spec.sheetId);
-    commit(usable ? kept : defaultConfig(type, sources, draft));
+    if (!usable) return commit(defaultConfig(type, sources, draft));
+    // Yang diingat berisi nilai yang tidak cocok (spec lama): pilih ulang nilainya saja, sisanya tetap.
+    commit(measureMismatch(kept, sources) ? defaultConfig(type, sources, kept) : kept);
   };
 
   if (!sources.some((s) => s.columns.length)) {
@@ -110,6 +115,7 @@ export function WidgetConfigForm({
   const cols = sheet?.columns ?? [];
   const typeOf = (pos: number | undefined) => cols.find((c) => c.pos === pos)?.type;
   const missing = missingColumns(draft, sources);
+  const unsaved = missing.length > 0 || measureMismatch(draft, sources);
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="widget-config">
@@ -280,7 +286,7 @@ export function WidgetConfigForm({
                 ? "Tersimpan. Widget memuat data terbaru."
                 : status === "error"
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
-                  : missing.length
+                  : unsaved
                     ? "Belum tersimpan — pilih kolom pengganti."
                     : "Perubahan tersimpan otomatis."}
           </p>

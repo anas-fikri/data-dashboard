@@ -1,6 +1,6 @@
 /*
  * Teks angka KPI yang muat di kartu (T-011, review desain). Urutan: bentuk lengkap; ringkas
- * ("Rp 6,22 M", "8 h 17 j"); ringkas dengan "Rp" pindah ke baris label ("6,22 M"); huruf 0,875rem;
+ * ("Rp 6,22 M", "8 h 17 j"); ringkas dengan "Rp" pindah ke baris label ("6,22 M"); huruf text-sm;
  * terakhir boleh pindah baris. Nilai lengkap selalu di title dan untuk pembaca layar — yang tampil
  * tidak pernah potongan berelipsis. Min/maks kolom kode/tahun tanpa pemisah ribuan ("2026").
  * Murni; lebar teks diukur pemanggil (canvas).
@@ -16,7 +16,7 @@ import {
 import { isIdLikeName } from "@/features/widgets/id-like";
 import type { NumberFormat } from "@/features/widgets/spec";
 
-/** Ukuran huruf terkecil (0,875rem) untuk kartu yang terlalu sempit. */
+/** Ukuran huruf terkecil (text-sm, 14 px) untuk kartu yang terlalu sempit. */
 export const KPI_MIN_PX = 14;
 /** Sama dengan clamp(1.125rem, 15cqi, 2.25rem); cqi = lebar isi kotak KPI (kotak itu container). */
 export const kpiFontPx = (room: number) => Math.min(36, Math.max(18, room * 0.15));
@@ -30,7 +30,7 @@ export interface KpiOption {
   unit: string | null;
 }
 export interface KpiChoice extends KpiOption {
-  /** Huruf 0,875rem. */
+  /** Huruf text-sm. */
   small: boolean;
   /** Boleh pindah baris: tidak ada bentuk yang muat satu baris. */
   wrap: boolean;

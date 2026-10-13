@@ -243,13 +243,12 @@ async function remapToActive(
     index: s.index,
     schema: (s.schema as unknown as ColumnSchema[] | null) ?? [],
   });
-  const active = (
-    await prisma.sheet.findMany({
-      where: { versionId: activeVersionId, typedKey: { not: null } },
-      orderBy: { index: "asc" },
-      select,
-    })
-  ).map(info);
+  // Daftar sheet aktif tanpa skema; skema hanya dibaca untuk sheet yang benar-benar jadi target.
+  const active = await prisma.sheet.findMany({
+    where: { versionId: activeVersionId, typedKey: { not: null } },
+    orderBy: { index: "asc" },
+    select: { id: true, name: true, index: true },
+  });
   const byId = new Map(stale.map((s) => [s.id, info(s)]));
   const counts = await prisma.sheet.groupBy({
     by: ["versionId"],
@@ -258,13 +257,29 @@ async function remapToActive(
   });
   const sheetsIn = new Map(counts.map((c) => [c.versionId, c._count._all]));
   const versionOf = new Map(stale.map((s) => [s.id, s.versionId]));
+  const targetOf = (sheetId: string) => {
+    const old = byId.get(sheetId);
+    const count = sheetsIn.get(versionOf.get(sheetId) ?? "") ?? 0;
+    return old ? matchSheet(old, active, count) : null;
+  };
+  const targetIds = [...new Set(stale.flatMap((s) => targetOf(s.id)?.id ?? []))];
+  const schemas = new Map(
+    (
+      await prisma.sheet.findMany({
+        where: { id: { in: targetIds }, versionId: activeVersionId },
+        select: { id: true, schema: true },
+      })
+    ).map((s) => [s.id, (s.schema as unknown as ColumnSchema[] | null) ?? []]),
+  );
   return parsed.map(({ w, c }) => {
     if (!c.ok || c.config.type === "empty") return w;
     const old = byId.get(c.config.spec.sheetId);
-    const count = sheetsIn.get(versionOf.get(c.config.spec.sheetId) ?? "") ?? 0;
-    const target = old ? matchSheet(old, active, count) : null;
+    const target = targetOf(c.config.spec.sheetId);
+    const schema = target && schemas.get(target.id);
     // Kolom yang hilang tetap ditandai (MISSING_COLUMN): panel meminta kolom pengganti.
-    return old && target ? { ...w, spec: remapConfig(c.config, old, target).config.spec } : w;
+    return old && target && schema
+      ? { ...w, spec: remapConfig(c.config, old, { ...target, schema }).config.spec }
+      : w;
   });
 }
 

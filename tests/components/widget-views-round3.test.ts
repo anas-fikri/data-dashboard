@@ -1,6 +1,7 @@
 import { IconChartBar, IconChartLine, IconChartPie, IconTable } from "@tabler/icons-react";
 import { describe, expect, it } from "vitest";
-import { cardConfig, dataToggle } from "@/components/dashboards/widget-card-model";
+import { cardConfig, dataToggle, toggleMode } from "@/components/dashboards/widget-card-model";
+import { bodyState, configVersion } from "@/components/widgets/body-state";
 import {
   chooseKpi,
   formatDurationCompact,
@@ -9,6 +10,7 @@ import {
   kpiTexts,
   type KpiOption,
 } from "@/components/widgets/kpi-fit";
+import type { WidgetData } from "@/components/widgets/widget-query";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { isIdLikeName, nameTokens } from "@/features/widgets/id-like";
 import { MISSING_COLUMN, remapConfig, type SheetInfo } from "@/features/widgets/remap";
@@ -238,5 +240,114 @@ describe("kartu widget", () => {
     expect(cardConfig("empty", {})).toBeNull();
     expect(cardConfig("kpi", { sheetId: SHEET_OLD })).toBeNull();
     expect(cardConfig("radar", {})).toBeNull();
+  });
+});
+
+describe("putaran 4", () => {
+  describe("kolom kode/tahun: kata pertama menentukan", () => {
+    it.each([
+      // Tahun dengan kata keterangan biasa tetap kolom tahun.
+      "Tahun Lahir",
+      "Tahun Anggaran",
+      "thn_masuk",
+      // Penanda di depan menang atas kata uang sesudahnya (frasa berkepala di depan).
+      "No Tagihan",
+      "Kode Biaya",
+      "ID Penjualan",
+      "Nomor Telepon",
+      "Telepon Kantor",
+      "Resi",
+      "No AWB",
+      // Penanda kuat setelah kata netral.
+      "Pengirim No HP",
+      "Penerima Kode Pos",
+      "Customer Code",
+      "1. Kode Cabang",
+    ])("%s → tanpa pemisah ribuan", (name) => {
+      expect(isIdLikeName(name)).toBe(true);
+    });
+
+    it.each([
+      // Tahun relatif atau tahun tertentu: kolom nilai per periode.
+      "Tahun Lalu",
+      "Tahun Ini",
+      "Tahun Sebelumnya",
+      "Tahun Depan",
+      "tahunLalu",
+      "Tahun 2024",
+      "Thn 2025",
+      "thn2025",
+      "Year to Date",
+      // "per <kode>" = tarif per satuan.
+      "Ongkir per Resi",
+      "Pendapatan per Kode Pos",
+      "Tarif per AWB",
+      "Pendapatan per ID",
+      "Order per ID",
+      // Kata uang di depan; penanda sesudahnya hanya keterangan.
+      "Tagihan Telepon",
+      "Pulsa Telp",
+      "Pemakaian Telepon",
+      "Penjualan Kode Pos",
+      // Telepon/resi bukan di depan: bukan kepala frasa.
+      "Penerima Telp",
+      // Agregat di mana pun.
+      "ID Count",
+      "No. of Orders",
+    ])("%s → tetap berpemisah ribuan", (name) => {
+      expect(isIdLikeName(name)).toBe(false);
+    });
+
+    it("KPI min/maks kolom besaran tetap berpemisah; kolom tahun tidak", () => {
+      expect(
+        kpiTexts(1234567890, "integer", DEFAULT_FORMAT, "max", "Maksimum Tahun Lalu").full,
+      ).toBe("1.234.567.890");
+      expect(
+        kpiTexts(15000, "integer", DEFAULT_FORMAT, "max", "Maksimum Ongkir per Resi").full,
+      ).toBe("15.000");
+      expect(kpiTexts(1990, "integer", DEFAULT_FORMAT, "min", "Minimum Tahun Lahir").full).toBe(
+        "1990",
+      );
+    });
+  });
+
+  describe("tombol data grafik mengikuti isi kartu", () => {
+    const rows = (n: number): WidgetData => ({
+      columns: [
+        { key: "d", label: "Cabang", type: "text" },
+        { key: "m", label: "Omzet", type: "decimal" },
+      ],
+      rows: Array.from({ length: n }, (_, i) => [`C${i}`, i]),
+    });
+    const err = (data?: WidgetData) =>
+      ({ status: "error", code: "COLUMN_UNAVAILABLE", message: "x", data }) as const;
+
+    it("memuat → loading; ada baris → rows; kosong → none", () => {
+      expect(bodyState({ status: "loading" }, false)).toBe("loading");
+      expect(bodyState({ status: "ok", data: rows(3) }, false)).toBe("rows");
+      expect(bodyState({ status: "ok", data: rows(0) }, false)).toBe("none");
+      // Memuat ulang dengan data lama: data lama yang tampil menentukan.
+      expect(bodyState({ status: "loading", data: rows(2) }, false)).toBe("rows");
+    });
+
+    it("galat grafik → none walau ada data lama; tabel tetap menampilkan data lama", () => {
+      expect(bodyState(err(), false)).toBe("none");
+      expect(bodyState(err(rows(4)), false)).toBe("none");
+      expect(bodyState(err(rows(4)), true)).toBe("rows");
+      expect(bodyState(err(), true)).toBe("none");
+    });
+
+    it("aktif bila ada baris, nonaktif saat memuat, tidak ada saat galat/kosong", () => {
+      expect(toggleMode("rows")).toBe("on");
+      expect(toggleMode("loading")).toBe("wait");
+      expect(toggleMode("none")).toBeNull();
+    });
+
+    it("versi isi berubah saat spec berubah (status lama tidak dipakai)", () => {
+      const a = configVersion({ type: "bar", spec: { topN: 5 } });
+      expect(configVersion({ type: "bar", spec: { topN: 5 } })).toBe(a);
+      expect(configVersion({ type: "bar", spec: { topN: 6 } })).not.toBe(a);
+      expect(configVersion({ type: "pie", spec: { topN: 5 } })).not.toBe(a);
+    });
   });
 });
