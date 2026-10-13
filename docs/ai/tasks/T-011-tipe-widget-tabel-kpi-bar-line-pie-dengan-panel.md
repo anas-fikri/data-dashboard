@@ -11,7 +11,7 @@ depends_on:
   - T-009
   - T-010
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T07:53:17Z"
+updated: "2026-10-13T08:06:53Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -67,11 +67,15 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-13T07:40:58Z"
       findings: 1
+    - "n": 13
+      by: frontend-expert-design-reviewer
+      at: "2026-10-13T07:54:10Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 32983
+    duration_ms: 33387
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -93,13 +97,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791877975519,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791877975542,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791878790665,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791878790688,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  31 passed (31)
-            Tests  589 passed (589)
-         Start at  14:52:52
-         Duration  23.41s (tests 89%, import 6%, transform 4%)
+            Tests  590 passed (590)
+         Start at  15:06:28
+         Duration  23.67s (tests 90%, import 6%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -107,8 +111,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-13T07:53:17Z"
-    tree: 3f66aa2db727517b2cfade797e4783c461f0224d8a7989f7c11d495f96cb7281
+    at: "2026-10-13T08:06:53Z"
+    tree: 2417b59d30a5093514f9b3ea262508bda9be2983f2f42ef5934b20ef1cb2b367
 ---
 
 ## Objective

@@ -253,7 +253,9 @@ export function ChartWidget({
     const moreText = moreForms.find((t) => px(t) <= moreRoom) ?? moreForms.at(-1)!;
     // Tidak muat sebaris dan tidak ada tempat di bawah label (baris data 36 px + nilai 32 px): nilai
     // '+N' hanya di title/sr — baris terakhir tidak boleh terpotong tepi kartu.
-    const moreShown = moreInline || 4 + 36 * items.length + 32 <= room.height ? moreValue : null;
+    // Nilai lebih lebar dari daftar akan terbungkus 2 baris → juga hanya di title/sr.
+    const moreFits = 4 + 36 * items.length + 32 <= room.height && moreBeside - 8 <= listPx;
+    const moreShown = moreInline || moreFits ? moreValue : null;
     const moreTitle =
       moreValue !== null && moreShown === null ? `${moreFull} · ${moreValue}` : moreFull;
     body = (
