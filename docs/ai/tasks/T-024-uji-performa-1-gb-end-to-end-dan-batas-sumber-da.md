@@ -9,7 +9,7 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T09:51:46Z"
+updated: "2026-10-14T11:12:14Z"
 created_by: claude-code
 ---
 
@@ -27,3 +27,4 @@ npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 j
 ## Notes
 - 2026-10-11T14:57:00Z AC kuota mencakup upload berjalan (versi UPLOADING).
 - 2026-10-14T09:51:46Z Dari T-013: e2e schema.spec AC1 (ingest gagal di dalam sheet) kadang gagal di suite penuh (3 dari 7 putaran pada 2026-10-14) karena versi tertahan di 'Menyiapkan file' > 60 s — job ingest tidak diambil worker spec; lolos bila dijalankan sendiri. Akar belum tertangkap (log worker dengan pipa dikuras tidak mereproduksi). Kandidat: worker e2e dibunuh lewat SIGTERM ke npm saja (anak tsx bisa yatim) dan stderr tidak dikuras — satukan startWorker/stopWorker di tests/e2e/helpers.ts seperti versions.spec (detached + kill grup proses + kuras stdout/stderr ke log).
+- 2026-10-14T11:12:14Z Update dari T-013: akar flake schema AC1 ditemukan & diperbaiki — bukan worker, tetapi balapan di halaman profil dataset: status versi dibaca 3x dalam satu render; bila ingest selesai di antaranya, IngestProgress menerima status awal yang sudah final dan usePolling tidak pernah memanggil onDone/router.refresh (panel 'diproses' basi). Kini usePolling memanggil onDone sekali saat data awal sudah final (finalInitial). Worker e2e kini lewat startWorker/stopWorker bersama di tests/e2e/helpers.ts (grup proses + log di tmpdir dd-e2e-worker-<nama>.log).

@@ -1,8 +1,8 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
+import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
 /*
  * T-006/T-007: unggah dari UI → worker sungguhan (proses terpisah) → raw.parquet + typed-1.parquet per
@@ -55,24 +55,11 @@ test.describe("ingest", () => {
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);
     await p.close();
-    worker = spawn("npm", ["run", "worker"], {
-      stdio: ["ignore", "pipe", "pipe"],
-      env: process.env,
-    });
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(() => reject(new Error("worker tidak siap dalam 30 s")), 30_000);
-      worker!.stdout!.on("data", (d: Buffer) => {
-        if (d.toString().includes("worker berjalan")) {
-          clearTimeout(t);
-          resolve();
-        }
-      });
-      worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-    });
+    worker = await startWorker("ingest");
   });
 
-  test.afterAll(() => {
-    worker?.kill("SIGTERM");
+  test.afterAll(async () => {
+    await stopWorker(worker);
   });
 
   test("xlsx 3 sheet → raw + typed per sheet, headerRow 4, SHA-256, versi READY aktif", async ({

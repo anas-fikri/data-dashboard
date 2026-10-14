@@ -1,9 +1,17 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
-import { PASSWORD, apiLogin, login, registerAndVerify, uniqueEmail } from "./helpers";
+import {
+  PASSWORD,
+  apiLogin,
+  login,
+  registerAndVerify,
+  startWorker,
+  stopWorker,
+  uniqueEmail,
+} from "./helpers";
 
 /*
  * T-019: halaman admin pengguna (nonaktifkan, alihkan dataset, beri/cabut admin, AuditLog).
@@ -56,21 +64,6 @@ function fixtureCsv(): string {
   const path = join(dir, "omzet-alih.csv");
   writeFileSync(path, lines.join("\n"));
   return path;
-}
-
-/** Worker sendiri untuk ingest fixture (pola widgets.spec.ts); worker lain yang hidup tidak mengganggu. */
-async function startWorker() {
-  worker = spawn("npm", ["run", "worker"], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("worker tidak siap dalam 30 s")), 30_000);
-    worker!.stdout!.on("data", (d: Buffer) => {
-      if (d.toString().includes("worker berjalan")) {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-  });
 }
 
 /** Satu konteks browser (cookie terpisah) per pengguna. */
@@ -150,7 +143,7 @@ test.describe("admin pengguna", () => {
     d = await pageFor(browser, D);
 
     // B: dataset berisi data sungguhan + dashboard dengan KPI jumlah baris.
-    await startWorker();
+    worker = await startWorker("admin");
     await b.goto("/datasets/baru");
     await b.getByLabel("Nama dataset").fill(DATASET);
     await b.getByRole("button", { name: "Buat dataset" }).click();
@@ -169,7 +162,7 @@ test.describe("admin pengguna", () => {
   // Admin A dan akun B–D tidak dicabut di sini: global teardown (dev-purge-test-data) menghapus
   // semua akun uniqueEmail setelah datasetnya dibersihkan, jadi admin e2e tidak menumpuk di DB dev.
   test.afterAll(async () => {
-    worker?.kill("SIGTERM");
+    await stopWorker(worker);
     await Promise.all([a, b, c, d].map((p) => p?.context().close()));
   });
 

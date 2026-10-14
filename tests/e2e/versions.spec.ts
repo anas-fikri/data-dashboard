@@ -1,10 +1,10 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { createWriteStream, mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync, type ChildProcess } from "node:child_process";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import yazl from "yazl";
-import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
+import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
 /*
  * T-013: versi dataset sungguhan (unggah → worker → finish) dari sudut pandang pemilik.
@@ -101,51 +101,6 @@ async function brokenXlsx(): Promise<string> {
 }
 
 /**
- * Worker di grup prosesnya sendiri (npm → sh → tsx → node) agar afterAll bisa mematikan semuanya;
- * stdout/stderr selalu dikuras (pipe penuh membuat worker macet) ke worker.log di dir sementara.
- */
-async function startWorker() {
-  const log = createWriteStream(join(dir, "worker.log"));
-  worker = spawn("npm", ["run", "worker"], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
-    detached: true,
-  });
-  worker.stderr!.pipe(log);
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("worker tidak siap dalam 60 s")), 60_000);
-    worker!.stdout!.on("data", (d: Buffer) => {
-      log.write(d);
-      if (d.toString().includes("worker berjalan")) {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-  });
-}
-
-async function stopWorker() {
-  const w = worker;
-  worker = null;
-  if (!w?.pid || w.exitCode !== null) return;
-  const exited = new Promise<void>((r) => w.once("exit", () => r()));
-  try {
-    process.kill(-w.pid, "SIGTERM");
-  } catch {
-    return; // grup sudah tidak ada
-  }
-  const timer = new Promise<"timeout">((r) => setTimeout(() => r("timeout"), 15_000));
-  if ((await Promise.race([exited, timer])) === "timeout") {
-    try {
-      process.kill(-w.pid, "SIGKILL");
-    } catch {
-      /* sudah berhenti */
-    }
-  }
-}
-
-/**
  * Unggah dari profil dataset lalu tunggu versi baru mencapai status terminal (READY/FAILED/
  * AWAITING_MAPPING) lewat fixture DB. Mengembalikan id + status versi itu.
  */
@@ -218,7 +173,7 @@ test.describe("versi dataset", () => {
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);
     await apiLogin(p, OWNER);
-    await startWorker();
+    worker = await startWorker("versions");
 
     // V1: Kode (angka → nanti dipaksa Teks), Cabang, Nilai 10 × 10 baris = 100.
     await p.goto("/datasets/baru");
@@ -260,7 +215,7 @@ test.describe("versi dataset", () => {
   });
 
   test.afterAll(async () => {
-    await stopWorker();
+    await stopWorker(worker);
   });
 
   test.beforeEach(async ({ page }) => {

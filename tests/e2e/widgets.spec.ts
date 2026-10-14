@@ -1,9 +1,9 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
+import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
 /*
  * T-011: widget tabel, KPI, batang dengan data sungguhan (unggah → ingest worker → query DuckDB).
@@ -47,20 +47,6 @@ function fixtureCsv(): string {
   return path;
 }
 
-async function startWorker() {
-  worker = spawn("npm", ["run", "worker"], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("worker tidak siap dalam 30 s")), 30_000);
-    worker!.stdout!.on("data", (d: Buffer) => {
-      if (d.toString().includes("worker berjalan")) {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-  });
-}
-
 const widgetTitled = (page: Page, title: string) =>
   page.getByTestId("widget").filter({ has: page.getByRole("heading", { name: title }) });
 
@@ -96,7 +82,7 @@ test.describe("widget", () => {
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);
     await apiLogin(p, OWNER);
-    await startWorker();
+    worker = await startWorker("widgets");
     await p.goto("/datasets/baru");
     await p.getByLabel("Nama dataset").fill(`Omzet cabang ${Date.now()}`);
     await p.getByRole("button", { name: "Buat dataset" }).click();
@@ -112,8 +98,8 @@ test.describe("widget", () => {
     await p.close();
   });
 
-  test.afterAll(() => {
-    worker?.kill("SIGTERM");
+  test.afterAll(async () => {
+    await stopWorker(worker);
   });
 
   test.beforeEach(async ({ page }) => {

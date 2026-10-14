@@ -1,9 +1,9 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
+import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
 /*
  * T-012: filter global dashboard (slicer, preset tanggal, filter silang) dengan data sungguhan
@@ -92,21 +92,6 @@ function fixtureCsv(): string {
   const path = join(dir, "omzet-filter.csv");
   writeFileSync(path, lines.join("\n"));
   return path;
-}
-
-/** Worker sendiri untuk ingest fixture (pola widgets.spec.ts); worker lain yang hidup tidak mengganggu. */
-async function startWorker() {
-  worker = spawn("npm", ["run", "worker"], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("worker tidak siap dalam 30 s")), 30_000);
-    worker!.stdout!.on("data", (d: Buffer) => {
-      if (d.toString().includes("worker berjalan")) {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-  });
 }
 
 const widgetTitled = (page: Page, title: string) =>
@@ -205,7 +190,7 @@ test.describe("filter dashboard", () => {
     const p = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     await registerAndVerify(p, request, OWNER);
     await apiLogin(p, OWNER);
-    await startWorker();
+    worker = await startWorker("filters");
     await p.goto("/datasets/baru");
     await p.getByLabel("Nama dataset").fill(`Omzet filter ${Date.now()}`);
     await p.getByRole("button", { name: "Buat dataset" }).click();
@@ -244,8 +229,8 @@ test.describe("filter dashboard", () => {
     await p.close();
   });
 
-  test.afterAll(() => {
-    worker?.kill("SIGTERM");
+  test.afterAll(async () => {
+    await stopWorker(worker);
   });
 
   test.beforeEach(async ({ page }) => {

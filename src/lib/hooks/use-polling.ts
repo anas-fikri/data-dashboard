@@ -9,13 +9,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * `retry()` memaksa percobaan segera. Data, error, dan status selesai terikat ke URL: URL baru
  * (mis. job berikutnya) mulai bersih.
  */
+/**
+ * Data awal yang sudah final untuk URL ini (polling tidak perlu), atau null. Data itu tetap dilaporkan
+ * sekali lewat `onDone`: render server bisa membaca status di antara dua bacaan (mis. ingest selesai
+ * ~50 ms setelah badge "Memproses" dibaca) dan pemanggil harus merender ulang, bukan diam di panel basi.
+ */
+export function finalInitial<T>(
+  initial: T | null,
+  url: string | null,
+  done: (data: T) => boolean,
+): T | null {
+  return url !== null && initial !== null && done(initial) ? initial : null;
+}
+
 export function usePolling<T>(opts: {
   url: string | null;
   intervalMs: number;
   /** Data awal untuk URL awal (mis. dari render server) — layar tidak pernah kosong. */
   initial: T | null;
   done: (data: T) => boolean;
-  /** Dipanggil sekali per URL saat `done` pertama kali benar. */
+  /** Dipanggil sekali per URL saat `done` pertama kali benar (juga bila data awal sudah final). */
   onDone?: (data: T) => void;
   /**
    * Respons 401/403/404/410: polling berhenti (bukan diulang selamanya) dan pemanggil memutuskan
@@ -35,8 +48,13 @@ export function usePolling<T>(opts: {
     latest.current = opts;
   });
   const finished = useRef<string | null>(
-    opts.initial !== null && opts.done(opts.initial) ? url : null,
+    finalInitial(opts.initial, url, opts.done) !== null ? url : null,
   );
+  useEffect(() => {
+    const { initial, url: first, done, onDone } = latest.current;
+    const data = finalInitial(initial, first, done);
+    if (data !== null) onDone?.(data);
+  }, []);
 
   useEffect(() => {
     if (!url || finished.current === url) return;

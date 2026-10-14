@@ -12,7 +12,10 @@ import { join } from "node:path";
 export default function globalTeardown() {
   if (process.env.E2E_KEEP_DATA === "1" || process.env.E2E_BASE_URL) return;
   for (const name of readdirSync(tmpdir())) {
-    if (name.startsWith("dd-e2e-")) rmSync(join(tmpdir(), name), { recursive: true, force: true });
+    // Log worker (dd-e2e-worker-<spec>.log, ditimpa tiap run) disimpan untuk men-debug flake.
+    if (name.startsWith("dd-e2e-") && !name.startsWith("dd-e2e-worker-")) {
+      rmSync(join(tmpdir(), name), { recursive: true, force: true });
+    }
   }
   const out = execFileSync("node", ["scripts/dev-purge-test-data.mjs"]).toString().trim();
   console.log(`data uji dibersihkan: ${out}`);

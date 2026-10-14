@@ -1,3 +1,7 @@
+import { spawn, type ChildProcess } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 export const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8026";
@@ -114,4 +118,77 @@ export async function login(page: Page, email: string, password = PASSWORD) {
 export async function apiLogin(page: Page, email: string, password = PASSWORD) {
   const res = await page.request.post("/api/auth/login", { data: { email, password } });
   expect(res.status(), await res.text()).toBe(200);
+}
+
+/** Log worker per spec; ditimpa tiap run dan tidak dihapus global-teardown (bahan debug flake). */
+export function workerLogPath(name: string): string {
+  return join(tmpdir(), `dd-e2e-worker-${name}.log`);
+}
+
+/**
+ * Worker ingest sungguhan (`npm run worker`) di grup prosesnya sendiri (npm → tsx → node) agar
+ * stopWorker bisa mematikan semuanya. stdout DAN stderr selalu dikuras ke workerLogPath(name): pipe
+ * yang tidak dibaca bisa penuh dan membuat worker macet. Selesai saat log "worker berjalan" (≤ 60 s).
+ */
+export async function startWorker(name: string): Promise<ChildProcess> {
+  const log = createWriteStream(workerLogPath(name));
+  const w = spawn("npm", ["run", "worker"], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: process.env,
+    detached: true,
+  });
+  w.stdout!.pipe(log, { end: false });
+  w.stderr!.pipe(log, { end: false });
+  w.once("close", () => log.end());
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let seen = "";
+      const t = setTimeout(() => reject(new Error("worker tidak siap dalam 60 s")), 60_000);
+      w.stdout!.on("data", (d: Buffer) => {
+        // Sisa potongan sebelumnya ikut diperiksa: penanda bisa terbelah di batas chunk.
+        seen = (seen + d.toString()).slice(-4096);
+        if (seen.includes("worker berjalan")) {
+          clearTimeout(t);
+          resolve();
+        }
+      });
+      w.once("error", (e) => {
+        clearTimeout(t);
+        reject(e);
+      });
+      w.once("exit", (code) => {
+        clearTimeout(t);
+        reject(new Error(`worker keluar (${code}); lihat ${workerLogPath(name)}`));
+      });
+    });
+  } catch (e) {
+    await stopWorker(w);
+    throw e;
+  }
+  return w;
+}
+
+/** SIGTERM ke seluruh grup (shutdown rapi menunggu job aktif), SIGKILL bila belum keluar dalam 15 s. */
+export async function stopWorker(w: ChildProcess | null | undefined): Promise<void> {
+  if (!w?.pid || w.exitCode !== null || w.signalCode !== null) return;
+  const pid = w.pid;
+  const exited = new Promise<"exit">((r) => w.once("exit", () => r("exit")));
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    return; // grup sudah tidak ada
+  }
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<"timeout">((r) => {
+    timer = setTimeout(() => r("timeout"), 15_000);
+  });
+  const result = await Promise.race([exited, timeout]);
+  clearTimeout(timer);
+  if (result === "timeout") {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      /* sudah berhenti */
+    }
+  }
 }

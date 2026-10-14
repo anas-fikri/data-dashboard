@@ -1,10 +1,10 @@
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import { execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import yazl from "yazl";
-import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
+import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
 /*
  * T-008: progres ingest diperbarui sendiri, review skema (kolom, statistik, 50 baris sampel), dan
@@ -79,20 +79,6 @@ async function brokenXlsx(): Promise<string> {
   return path;
 }
 
-async function startWorker() {
-  worker = spawn("npm", ["run", "worker"], { stdio: ["ignore", "pipe", "pipe"], env: process.env });
-  await new Promise<void>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("worker tidak siap dalam 30 s")), 30_000);
-    worker!.stdout!.on("data", (d: Buffer) => {
-      if (d.toString().includes("worker berjalan")) {
-        clearTimeout(t);
-        resolve();
-      }
-    });
-    worker!.on("exit", (code) => reject(new Error(`worker keluar (${code})`)));
-  });
-}
-
 async function createDataset(page: Page, name: string): Promise<string> {
   await page.goto("/datasets/baru");
   await page.getByLabel("Nama dataset").fill(name);
@@ -125,8 +111,8 @@ test.describe("skema", () => {
     await apiLogin(page, OWNER);
   });
 
-  test.afterAll(() => {
-    worker?.kill("SIGTERM");
+  test.afterAll(async () => {
+    await stopWorker(worker);
   });
 
   test("AC 1: progres tampil saat menunggu/diproses dan halaman berubah sendiri saat siap", async ({
@@ -141,7 +127,7 @@ test.describe("skema", () => {
     const progress = await page.request.get(`/api/datasets/${datasetId}/progress`);
     expect((await progress.json()).status.status).toBe("UPLOADED");
 
-    await startWorker();
+    worker = await startWorker("schema");
     // Tanpa muat ulang: polling ≤ 5 s membawa halaman ke keadaan siap.
     await expect(page.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 60_000 });
     await expect(panel).toHaveCount(0);
