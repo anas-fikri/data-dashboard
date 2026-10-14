@@ -9,6 +9,7 @@ export function MappingSummary({
   missing,
   lowCast,
   hidden,
+  retyped = 0,
   sheets,
   done,
   total,
@@ -17,6 +18,8 @@ export function MappingSummary({
   missing: number;
   lowCast: number;
   hidden: number;
+  /** Kolom cocok otomatis yang tipe aktifnya diubah setelah unggah (diperiksa saat disimpan). */
+  retyped?: number;
   /** Sheet aktif yang tidak ada di file baru. */
   sheets: number;
   done: number;
@@ -57,7 +60,7 @@ export function MappingSummary({
               </span>{" "}
               diputuskan
             </>
-          ) : lowCast > 0 || reviewing ? (
+          ) : lowCast > 0 || retyped > 0 || reviewing ? (
             "Tidak ada kolom yang perlu dipilih; tinjau tipe kolom lalu simpan."
           ) : (
             // Skema aktif berubah sejak ingest sehingga kini cocok: cukup simpan.

@@ -15,6 +15,7 @@ import {
   pairOptions,
   pickOptions,
   progress,
+  retypedColumns,
   reviewOf,
   samePayload,
   sheetDraft,
@@ -550,5 +551,37 @@ describe("baseKey", () => {
   it("berubah bila revisi skema aktif berubah", () => {
     const next = { ...view, base: { ...view.base, sheets: [{ id: "a1", schemaRevision: 4 }] } };
     expect(baseKey(view)).not.toBe(baseKey(next));
+  });
+});
+
+describe("review putaran 3 (T-014)", () => {
+  it("R3-UI-2: isu di sheet yang belum dipasangkan → pemilih sheet-nya; sheet 'tidak dipakai' → null", () => {
+    const issue: MappingReviewIssue = {
+      sheet: "Retur",
+      column: "Nilai",
+      header: "Jumlah",
+      pct: 0.5,
+      typeLabel: "Angka desimal",
+    };
+    expect(issueTargets(view, {}, {}, [issue])).toEqual(["map-a2-sheet"]);
+    const dropped: MappingDraft = { a2: { target: null, columns: {}, casts: {} } };
+    expect(issueTargets(view, dropped, {}, [issue])).toEqual([null]);
+  });
+
+  it("R3-INT-2: kolom cocok otomatis yang tipe aktifnya diubah setelah unggah ditandai (kecuali sudah punya baris)", () => {
+    const changed: MappingSheetView = {
+      ...sales,
+      newColumns: sales.newColumns.map((c) => (c.pos === 1 ? { ...c, type: "integer" } : c)),
+      active: {
+        ...sales.active,
+        columns: sales.active.columns.map((c) =>
+          c.pos === 1 ? { ...c, type: "decimal", numberLocale: "id" } : c,
+        ),
+      },
+    };
+    // Kode: aktif desimal, versi baru dibaca bilangan bulat → diperiksa ulang. Tanggal sudah punya baris.
+    expect(retypedColumns(changed, changed)).toEqual(["Kode"]);
+    expect(retypedColumns(changed, changed, { 1: { pct: 0.5, typeLabel: "x" } })).toEqual([]);
+    expect(retypedColumns(sales, sales)).toEqual([]);
   });
 });

@@ -294,8 +294,34 @@ export function issueTargets(
     if (!at || !sheet) return null;
     const d = sheetDraft(draft, sheet.active.id);
     const pair = pairOf(sheet, d, plans);
-    return pair ? castTargetId(sheet, pair, d, at.activePos) : null;
+    if (pair) return castTargetId(sheet, pair, d, at.activePos);
+    return !sheet.target && d.target !== null ? domId(sheetKey(sheet.active.id)) : null;
   });
+}
+
+/**
+ * Kolom cocok otomatis yang tipe/format aktifnya diubah setelah file diunggah (R3): versi baru dibaca
+ * dengan pilihan lama, jadi nilainya diperiksa ulang saat disimpan. Kolom yang sudah ditandai tinjau
+ * (punya baris tipe) dan kolom aktif Teks tidak ikut.
+ */
+export function retypedColumns(
+  sheet: MappingSheetView,
+  pair: MappingPlanView,
+  flags?: ReviewFlags[string],
+): string[] {
+  const fresh = new Map(pair.newColumns.map((c) => [c.pos, c]));
+  const shown = new Set(pair.lowCast.map((r) => r.pos));
+  const out: string[] = [];
+  for (const { activePos, newPos } of pair.autoMatched) {
+    if (flags?.[activePos] || shown.has(newPos)) continue;
+    const a = sheet.active.columns.find((c) => c.pos === activePos);
+    const n = fresh.get(newPos);
+    if (!a || !n || a.type === "text") continue;
+    if (a.type !== n.type || a.numberLocale !== n.numberLocale || a.dateFormat !== n.dateFormat) {
+      out.push(a.name);
+    }
+  }
+  return out;
 }
 
 /** Draf setelah kolom aktif `activePos` diputuskan ulang: override tipe kolom baru sebelumnya dibuang. */
@@ -351,6 +377,7 @@ export function summaryCounts(
   let missing = 0;
   let lowCast = 0;
   let hidden = 0;
+  let retyped = 0;
   for (const s of view.sheets) {
     const d = sheetDraft(draft, s.active.id);
     const pair = pairOf(s, d, plans);
@@ -359,9 +386,16 @@ export function summaryCounts(
     missing += pair.missing.length;
     lowCast += castRows(pair, f).length;
     lowCast += pair.missing.filter((pos) => mappedCast(s, pair, d, pos, f)?.review).length;
+    retyped += retypedColumns(s, pair, f).length;
     hidden += hiddenExtras(pair, d).length;
   }
-  return { missing, lowCast, hidden, sheets: view.sheets.filter((s) => !s.target).length };
+  return {
+    missing,
+    lowCast,
+    hidden,
+    retyped,
+    sheets: view.sheets.filter((s) => !s.target).length,
+  };
 }
 
 /**

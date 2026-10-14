@@ -70,7 +70,11 @@ export function matchSheet<T extends Named>(
         key(s.name) === alias || aliasKey(s) === name || (alias !== null && aliasKey(s) === alias),
     );
     if (byAlias.length === 1) return byAlias[0]!;
-    if (byAlias.length > 1) return null;
+    if (byAlias.length > 1) {
+      // Nama akar dipakai ulang oleh sheet lain: keturunan sejati membawa akar yang sama (alias↔alias).
+      const lineage = alias === null ? [] : byAlias.filter((s) => aliasKey(s) === alias);
+      return lineage.length === 1 ? lineage[0]! : null;
+    }
   }
   if (byName.length === 0 && active.length === 1 && oldSheetCount === 1) return active[0]!;
   return null;

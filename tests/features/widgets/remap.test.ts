@@ -169,4 +169,13 @@ describe("matchSheet + alias pemetaan (T-014)", () => {
     // Alias sama di dua sheet target → tidak bisa ditentukan dengan aman.
     expect(matchSheet(v3[0]!, [s("A", "Penjualan"), s("B", "penjualan ")], 2)).toBeNull();
   });
+
+  it("R3-INT-3: nama akar dipakai ulang sheet lain → keturunan alias↔alias yang menang", () => {
+    const v3 = [s("Revenue", "Sales"), s("Target"), s("Sales")];
+    const income = s("Income", "Sales");
+    expect(matchSheet(income, v3, 3)).toBe(v3[0]);
+    // Roll-forward dari Revenue (akar Sales) ke versi berisi Income + Sales baru.
+    const v4 = [income, s("Target"), s("Sales")];
+    expect(matchSheet(v3[0]!, v4, 3)).toBe(v4[0]);
+  });
 });

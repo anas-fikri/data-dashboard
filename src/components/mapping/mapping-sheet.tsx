@@ -16,6 +16,7 @@ import {
   mappedCast,
   pairOf,
   pickOptions,
+  retypedColumns,
   sheetKey,
   withCast,
   withColumn,
@@ -99,6 +100,7 @@ export function MappingSheet({
   const fresh = new Map((pair?.newColumns ?? []).map((c) => [c.pos, c]));
   const hidden = pair ? hiddenExtras(pair, d) : [];
   const casts = pair ? castRows(pair, flags) : [];
+  const retyped = pair ? retypedColumns(sheet, pair, flags) : [];
   const renamed = sheet.target?.name !== sheet.active.name ? sheet.target?.name : undefined;
   const sheetError =
     !attempted || pair ? null : d.target === undefined ? ERR_SHEET : d.target ? ERR_PLAN : null;
@@ -183,6 +185,16 @@ export function MappingSheet({
             );
           })}
         </Block>
+      ) : null}
+
+      {retyped.length > 0 ? (
+        <p
+          className="border-t px-5 py-3 text-sm text-muted-foreground"
+          data-testid="mapping-retyped"
+        >
+          Tipe {retyped.map((n) => `“${n}”`).join(", ")} diubah setelah file ini diunggah; nilainya
+          diperiksa ulang saat disimpan.
+        </p>
       ) : null}
 
       {hidden.length > 0 ? <MappingExtra id={`map-${sid}-extra`} columns={hidden} /> : null}

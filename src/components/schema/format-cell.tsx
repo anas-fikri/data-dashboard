@@ -49,10 +49,13 @@ export function FormatCell<D extends FormatDraft>({
         <>
           {label("Format tanggal", `${id}-fmt`)}
           <Select
+            // Dipasang ulang per tipe: Select yang dipakai ulang lintas tipe bisa memancarkan "" (opsi
+            // "Deteksi otomatis" belum ada di select tersembunyi Radix) → nilai kosong ditolak server.
+            key={`fmt-${draft.type}`}
             value={draft.dateFormat ?? AUTO}
             disabled={disabled}
             onValueChange={(v) =>
-              onChange({ ...draft, dateFormat: v === AUTO ? undefined : (v as DateFormat) })
+              onChange({ ...draft, dateFormat: !v || v === AUTO ? undefined : (v as DateFormat) })
             }
           >
             <SelectTrigger id={`${id}-fmt`} className="h-(--control-h-lg) md:h-(--control-h)">
@@ -74,10 +77,14 @@ export function FormatCell<D extends FormatDraft>({
         <>
           {label("Penulisan angka", `${id}-loc`)}
           <Select
+            key={`loc-${draft.type}`}
             value={draft.numberLocale ?? AUTO}
             disabled={disabled}
             onValueChange={(v) =>
-              onChange({ ...draft, numberLocale: v === AUTO ? undefined : (v as NumberLocale) })
+              onChange({
+                ...draft,
+                numberLocale: !v || v === AUTO ? undefined : (v as NumberLocale),
+              })
             }
           >
             <SelectTrigger id={`${id}-loc`} className="h-(--control-h-lg) md:h-(--control-h)">
