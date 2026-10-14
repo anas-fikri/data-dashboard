@@ -62,6 +62,9 @@ export interface SourceSheet {
 }
 
 const WIDGET_SELECT = { id: true, type: true, title: true, spec: true } as const;
+/** Widget tersimpan + kolom yang hilang saat aktivasi versi (T-013); dipetakan oleh remapToActive. */
+const STORED_WIDGET_SELECT = { ...WIDGET_SELECT, missingColumns: true } as const;
+type StoredWidget = WidgetView & { missingColumns?: string[] };
 
 export type { FilterColumnView } from "./filter-columns";
 
@@ -218,7 +221,7 @@ export const getDashboard = cache(async function getDashboard(
       filterColumns: true,
       updatedAt: true,
       dataset: { select: { id: true, name: true, activeVersionId: true } },
-      widgets: { orderBy: { createdAt: "asc" }, select: WIDGET_SELECT },
+      widgets: { orderBy: { createdAt: "asc" }, select: STORED_WIDGET_SELECT },
     },
   });
   if (!d) return null;
@@ -273,7 +276,7 @@ export async function filterSourcesFor(dashboardId: string): Promise<FilterSourc
       datasetId: true,
       filterColumns: true,
       dataset: { select: { activeVersionId: true } },
-      widgets: { where: { type: { in: [...CHART_TYPES] } }, select: WIDGET_SELECT },
+      widgets: { where: { type: { in: [...CHART_TYPES] } }, select: STORED_WIDGET_SELECT },
     },
   });
   if (!d) return [];
@@ -324,17 +327,35 @@ export async function setDashboardFilterColumns(
   return { ok: true, data: { filterColumns: filterColumnViews(checked.columns, sheets) } };
 }
 
+const toView = ({ missingColumns: _, ...w }: StoredWidget): WidgetView => w;
+
+/**
+ * Semua kolom spec ditandai MISSING_COLUMN (sheetId tetap): remapConfig tanpa skema lama tidak
+ * menemukan satu nama pun.
+ */
+function allMissing(config: Exclude<WidgetConfig, { type: "empty" }>): unknown {
+  const none = { id: config.spec.sheetId, name: "", index: 0, schema: [] };
+  return remapConfig(config, none, none).config.spec;
+}
+
 /**
  * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk
- * ditampilkan dan diedit (lihat features/widgets/remap.ts). Tidak menulis ke DB.
+ * ditampilkan dan diedit (lihat features/widgets/remap.ts). Sheet lama yang sudah dihapus retensi
+ * dengan kolom hilang tercatat saat aktivasi (T-013) → semua kolomnya ditandai hilang, sehingga panel
+ * meminta kolom pengganti dan query memberi COLUMN_UNAVAILABLE. Tidak menulis ke DB.
  */
 async function remapToActive(
   datasetId: string,
   activeVersionId: string | null,
-  widgets: WidgetView[],
+  stored: StoredWidget[],
 ): Promise<WidgetView[]> {
+  const widgets = stored.map(toView);
   if (!activeVersionId) return widgets;
-  const parsed = widgets.map((w) => ({ w, c: parseWidgetConfig(w.type, w.spec) }));
+  const parsed = stored.map((w) => ({
+    w: toView(w),
+    c: parseWidgetConfig(w.type, w.spec),
+    m: w.missingColumns,
+  }));
   const sheetIds = [
     ...new Set(
       parsed.flatMap(({ c }) => (c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [])),
@@ -346,8 +367,11 @@ async function remapToActive(
     where: { id: { in: sheetIds }, version: { datasetId } },
     select,
   });
+  const found = new Set(sheets.map((s) => s.id));
+  const lost = (c: (typeof parsed)[number]["c"], missing: string[] = []) =>
+    c.ok && c.config.type !== "empty" && !found.has(c.config.spec.sheetId) && missing.length > 0;
   const stale = sheets.filter((s) => s.versionId !== activeVersionId);
-  if (!stale.length) return widgets;
+  if (!stale.length && !parsed.some(({ c, m }) => lost(c, m))) return widgets;
   const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
     id: s.id,
     name: s.name,
@@ -382,8 +406,9 @@ async function remapToActive(
       })
     ).map((s) => [s.id, (s.schema as unknown as ColumnSchema[] | null) ?? []]),
   );
-  return parsed.map(({ w, c }) => {
+  return parsed.map(({ w, c, m }) => {
     if (!c.ok || c.config.type === "empty") return w;
+    if (lost(c, m)) return { ...w, spec: allMissing(c.config) };
     const old = byId.get(c.config.spec.sheetId);
     const target = targetOf(c.config.spec.sheetId);
     const schema = target && schemas.get(target.id);
@@ -674,7 +699,12 @@ export async function configureWidget(
   const { config } = checked;
   const r = await prisma.widget.updateMany({
     where,
-    data: { type: config.type, spec: config.spec as unknown as Prisma.InputJsonValue },
+    // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013).
+    data: {
+      type: config.type,
+      spec: config.spec as unknown as Prisma.InputJsonValue,
+      missingColumns: [],
+    },
   });
   if (r.count !== 1) return widgetNotFound();
   await prisma.dashboard.updateMany({

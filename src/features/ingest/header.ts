@@ -74,6 +74,21 @@ export function headerText(v: RawValue): string {
   return (rawText(v) ?? "").slice(0, ORIGINAL_MAX);
 }
 
+/** Nama dasar kolom dari teks asli: spasi dirapikan; kosong → kolom_<pos>. */
+export const baseName = (original: string, pos: number) =>
+  original.replace(/\s+/g, " ").trim().slice(0, 120) || `kolom_${pos}`;
+
+/**
+ * Nama yang belum dipakai (tidak peka kapital): "Total", "Total_2", "Total_3" …; nama terpilih
+ * langsung dicatat di `used`.
+ */
+export function uniqueName(base: string, used: Set<string>): string {
+  let name = base;
+  for (let k = 2; used.has(name.toLowerCase()); k++) name = `${base}_${k}`;
+  used.add(name.toLowerCase());
+  return name;
+}
+
 /**
  * Nama kolom unik deterministik: rapikan spasi; kosong → kolom_<pos>; duplikat (tidak peka kapital)
  * → "Total", "Total_2", "Total_3" … dengan melewati nama yang sudah dipakai.
@@ -83,11 +98,7 @@ export function columnNames(headerVals: RawValue[], colCount: number): ColumnMet
   const out: ColumnMeta[] = [];
   for (let pos = 1; pos <= colCount; pos++) {
     const original = headerText(headerVals[pos - 1]);
-    const base = original.replace(/\s+/g, " ").trim().slice(0, 120) || `kolom_${pos}`;
-    let name = base;
-    for (let k = 2; used.has(name.toLowerCase()); k++) name = `${base}_${k}`;
-    used.add(name.toLowerCase());
-    out.push({ pos, name, original });
+    out.push({ pos, name: uniqueName(baseName(original, pos), used), original });
   }
   return out;
 }

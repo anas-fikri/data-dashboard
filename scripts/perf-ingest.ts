@@ -63,6 +63,7 @@ async function main() {
     load: async () => ({
       datasetId: "perf",
       sourceKey: `raw/perf/v/source.${file!.endsWith(".csv") ? "csv" : "xlsx"}`,
+      active: null,
     }),
     begin: async () => true,
     exists: async () => true,
@@ -81,7 +82,7 @@ async function main() {
       for (const c of d.schema) counts[c.type] = (counts[c.type] ?? 0) + 1;
       types.push(counts);
     },
-    finish: async () => true,
+    finish: async () => "activated",
     recordCleanup: async () => {},
     fail: async (_v, m) => {
       console.error("FAILED:", m);

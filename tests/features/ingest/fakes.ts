@@ -19,12 +19,20 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import yazl from "yazl";
 import {
   DatasetGoneError,
+  type FinishOutcome,
   type IngestProgress,
   type IngestRepo,
   type IngestStorage,
   type SheetRecord,
 } from "@/features/ingest/ingest";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import {
+  sameSnapshot,
+  snapshotRef,
+  type ActiveSnapshot,
+  type SnapshotRef,
+  type Verdict,
+} from "@/features/ingest/refresh";
 
 export const DS = "cmv4klj5r0007oczvgiofocpg";
 export const VID = "cmv4kljx40009oczvdmpurrxf";
@@ -95,10 +103,14 @@ export class FakeRepo implements IngestRepo {
   progressLog: IngestProgress[] = [];
   sheets = new Map<string, FakeSheet>();
   cleanups: string[] = [];
+  /** Versi aktif dataset (null = versi pertama); load memberi salinan seperti baris DB. */
+  active: ActiveSnapshot | null = null;
+  activated = false;
   private n = 0;
   constructor(readonly sourceKey: string) {}
   async load() {
-    return this.alive() ? { datasetId: DS, sourceKey: this.sourceKey } : null;
+    if (!this.alive()) return null;
+    return { datasetId: DS, sourceKey: this.sourceKey, active: structuredClone(this.active) };
   }
   async begin() {
     if (!["UPLOADED", "INGESTING"].includes(this.status)) return false;
@@ -140,12 +152,25 @@ export class FakeRepo implements IngestRepo {
     }
     Object.assign(this.sheets.get(id)!, d);
   }
-  async finish(_v: string, d: { sha256: string }) {
-    if (!this.alive()) return false;
-    this.status = "READY";
+  /** Meniru finish Prisma: acuan cast dibandingkan dengan `active` saat ini (bisa diubah uji). */
+  async finish(
+    _v: string,
+    d: { sha256: string; verdict: Verdict; snapshot: SnapshotRef },
+  ): Promise<FinishOutcome> {
+    if (!this.alive()) return "gone";
+    if (!sameSnapshot(d.snapshot, snapshotRef(this.active))) return "stale";
+    if (this.status !== "INGESTING") return "gone";
     this.stage = "typed";
     this.sha256 = d.sha256;
-    return true;
+    if (!d.verdict.ok) {
+      this.status = "AWAITING_MAPPING";
+      this.error = d.verdict.reason;
+      return "awaiting";
+    }
+    this.status = "READY";
+    this.error = null;
+    this.activated = true;
+    return "activated";
   }
   async fail(_v: string, message: string) {
     this.status = "FAILED";

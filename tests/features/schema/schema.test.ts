@@ -196,6 +196,7 @@ describe("AC 2: sampel 50 baris typed", () => {
 describe("AC 1: status ingest", () => {
   const p = {
     stage: "baca" as const,
+    refresh: false,
     sheet: 1,
     sheetName: "Penjualan",
     rows: 50_000,

@@ -6,6 +6,7 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import { parsePreview } from "@/features/ingest/preview";
 import type { RecastInput, RecastOutcome } from "@/features/ingest/recast-input";
+import { lockActiveSheet } from "@/features/ingest/active-lock";
 import { prisma } from "@/lib/db";
 import { acquireLock, redisLockStore, releaseLock } from "@/lib/lock";
 import { recastQueue, withQueueTimeout } from "@/lib/queue/connection";
@@ -16,6 +17,12 @@ import type { EditKind, RecastJobView, SchemaDeps, SchemaRepo } from "./service"
 /* Perakitan produksi T-008: Prisma, antrean recast BullMQ, rate limit Redis. */
 
 const schemaOf = (v: unknown) => (v as ColumnSchema[] | null) ?? null;
+
+/** Progres tersimpan; versi yang diproses sebelum T-013 belum punya `refresh`. */
+const progressOf = (v: unknown): IngestProgress | null => {
+  const p = v as IngestProgress | null;
+  return p ? { ...p, refresh: p.refresh === true } : null;
+};
 
 export const prismaSchemaRepo: SchemaRepo = {
   async latestVersion(userId, datasetId) {
@@ -48,7 +55,7 @@ export const prismaSchemaRepo: SchemaRepo = {
       versionId: v.id,
       status: v.status,
       fileName: v.originalName,
-      progress: (v.progress as unknown as IngestProgress | null) ?? null,
+      progress: progressOf(v.progress),
       sheets: v.sheets.map((s) => ({
         index: s.index,
         name: s.name,
@@ -136,16 +143,20 @@ export const prismaSchemaRepo: SchemaRepo = {
   },
 
   async applyMetadata(sheetId, baseRevision, schema) {
-    // Optimistik: hanya bila revisi belum berubah dan versi masih READY (recast yang sedang berjalan
-    // untuk revisi yang sama akan basi saat menukar typed).
-    const r = await prisma.sheet.updateMany({
-      where: { id: sheetId, schemaRevision: baseRevision, version: { status: "READY" } },
-      data: {
-        schema: schema as unknown as Prisma.InputJsonValue,
-        schemaRevision: baseRevision + 1,
-      },
+    // Optimistik: hanya bila revisi belum berubah dan versi sheet masih versi aktif READY (recast yang
+    // sedang berjalan untuk revisi yang sama akan basi saat menukar typed; ingest refresh yang memakai
+    // revisi lama akan basi saat finish, T-013).
+    return prisma.$transaction(async (tx) => {
+      if (!(await lockActiveSheet(tx, sheetId))) return null;
+      const r = await tx.sheet.updateMany({
+        where: { id: sheetId, schemaRevision: baseRevision, version: { status: "READY" } },
+        data: {
+          schema: schema as unknown as Prisma.InputJsonValue,
+          schemaRevision: baseRevision + 1,
+        },
+      });
+      return r.count === 1 ? baseRevision + 1 : null;
     });
-    return r.count === 1 ? baseRevision + 1 : null;
   },
 };
 

@@ -44,6 +44,7 @@ async function main() {
     load: async () => ({
       datasetId: DS,
       sourceKey: `raw/${DS}/${VER}/source.${file!.endsWith(".csv") ? "csv" : "xlsx"}`,
+      active: null,
     }),
     begin: async () => true,
     exists: async () => true,
@@ -55,7 +56,7 @@ async function main() {
       typedKey = d.typedKey;
       schema = d.schema;
     },
-    finish: async () => true,
+    finish: async () => "activated",
     recordCleanup: async () => {},
     fail: async (_v, m) => {
       console.error("FAILED:", m);

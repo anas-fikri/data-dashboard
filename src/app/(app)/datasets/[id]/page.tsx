@@ -6,6 +6,8 @@ import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
+import { VersionHistory } from "@/components/datasets/version-history";
+import { formatJakarta } from "@/components/datasets/version-history-status";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNotice } from "@/components/ui/focus-notice";
@@ -15,18 +17,11 @@ import { getDataset } from "@/features/datasets/service";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
+import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
 type Search = Promise<{ created?: string }>;
-
-function formatDate(d: Date): string {
-  return d.toLocaleString("id-ID", {
-    timeZone: "Asia/Jakarta",
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
-}
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -52,7 +47,13 @@ export default async function DatasetDetailPage({
   const active = dataset.active;
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
   const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
-  const pending = processing ? null : await getPendingUpload(user.id, dataset.id);
+  // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
+  const [pending, versions] = await Promise.all([
+    processing ? null : getPendingUpload(user.id, dataset.id),
+    listVersions(user.id, dataset.id),
+  ]);
+  // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
+  const mapping = versions.find((v) => v.canDiscard) ?? null;
   // Status awal progres dirender server (tidak ada layar kosong sebelum polling pertama, T-008).
   let ingest: IngestStatus | null = null;
   if (badge?.kind === "processing") {
@@ -129,7 +130,7 @@ export default async function DatasetDetailPage({
                 </span>
                 {active.finishedAt ? (
                   <span className="block text-muted-foreground">
-                    Diperbarui {formatDate(active.finishedAt)}
+                    Diperbarui {formatJakarta(active.finishedAt)}
                   </span>
                 ) : null}
               </span>
@@ -159,12 +160,19 @@ export default async function DatasetDetailPage({
               ingest
                 ? { kind: "ingest", status: ingest }
                 : badge?.kind === "awaiting_mapping"
-                  ? { kind: "mapping", fileName: dataset.latestFileName }
+                  ? {
+                      kind: "mapping",
+                      versionId: mapping?.id ?? null,
+                      fileName: mapping?.fileName ?? dataset.latestFileName,
+                      message: mapping?.message ?? null,
+                    }
                   : null
             }
           />
         </CardContent>
       </Card>
+
+      {versions.length > 0 ? <VersionHistory datasetId={dataset.id} versions={versions} /> : null}
 
       <Card>
         <CardHeader>

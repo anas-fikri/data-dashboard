@@ -21,6 +21,8 @@ const STEPS: { key: Progress["stage"]; label: string }[] = [
   { key: "tipe", label: "Mendeteksi tipe kolom" },
 ];
 const ACTIVE = new Set(["UPLOADED", "INGESTING"]);
+/** Ganti data (refresh) di-cast dengan skema aktif tanpa deteksi tipe (D4), jadi labelnya lain. */
+const REFRESH_TYPE_LABEL = "Menerapkan skema aktif";
 const fmt = (n: number) => n.toLocaleString("id-ID");
 
 type Response = { ok: boolean; status: IngestStatus | null };
@@ -45,6 +47,10 @@ export function IngestProgress({
   const s = data?.status ?? initial;
   const p = s.progress;
   const step = p ? STEPS.findIndex((x) => x.key === p.stage) : -1;
+  // `=== true`: progres tersimpan sebelum T-013 tidak punya field refresh.
+  const refresh = p?.refresh === true;
+  const labelOf = (x: (typeof STEPS)[number]) =>
+    x.key === "tipe" && refresh ? REFRESH_TYPE_LABEL : x.label;
   const fraction = p?.stage === "baca" && p.fraction !== null ? p.fraction : null;
   const pct = fraction === null ? null : Math.round(Math.min(1, Math.max(0, fraction)) * 100);
 
@@ -100,7 +106,7 @@ export function IngestProgress({
                   )}
                 />
               )}
-              <span>{x.label}</span>
+              <span>{labelOf(x)}</span>
               {state === "done" ? <span className="sr-only">(selesai)</span> : null}
             </li>
           );
@@ -158,7 +164,7 @@ export function IngestProgress({
       ) : null}
 
       <p className="sr-only" aria-live="polite">
-        {step >= 0 ? `Tahap: ${STEPS[step]!.label}` : ""}
+        {step >= 0 ? `Tahap: ${labelOf(STEPS[step]!)}` : ""}
       </p>
       {error ? (
         <p className="flex flex-wrap items-center gap-2 text-muted-foreground" role="status">

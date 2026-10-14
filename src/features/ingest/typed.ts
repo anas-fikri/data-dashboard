@@ -4,7 +4,8 @@
  * typed.parquet: _row (nomor baris fisik) + c<pos> bertipe, hanya baris data (_row > headerRow).
  */
 import { lit, watched, type Duck } from "@/lib/duckdb";
-import type { ColumnMeta } from "./header";
+import type { RawValue } from "@/lib/xlsx/types";
+import { columnNames, type ColumnMeta } from "./header";
 import {
   decide,
   EXACT_DISTINCT_MAX,
@@ -42,6 +43,19 @@ export interface ColumnOverride {
   hidden?: boolean;
 }
 
+/**
+ * Pilihan yang sudah berlaku di satu kolom skema (nama tampil, tipe, locale, format, sembunyi) sebagai
+ * override untuk posisi `pos` (recast: posisi sama; versi refresh: posisi kolom di file baru).
+ */
+export const choiceOf = (c: ColumnSchema, pos = c.pos): ColumnOverride => ({
+  pos,
+  name: c.name,
+  type: c.type,
+  numberLocale: c.numberLocale,
+  dateFormat: c.dateFormat,
+  hidden: c.hidden,
+});
+
 export interface TypedInput {
   rawPath: string;
   outPath: string;
@@ -59,6 +73,22 @@ export interface TypedResult {
   schema: ColumnSchema[];
   /** Baris data di typed.parquet. */
   dataRows: number;
+  /** Nilai non-kosong per kolom (indeks pos − 1): penyebut rasio cast versi refresh (T-013). */
+  nonEmpty: number[];
+}
+
+/** Nama kolom dari baris fisik `row` di raw.parquet (header dipilih ulang: recast, versi refresh). */
+export async function headerColumns(
+  duck: Duck,
+  rawPath: string,
+  row: number,
+  colCount: number,
+): Promise<ColumnMeta[]> {
+  const r = await duck.conn.runAndReadAll(
+    `SELECT * EXCLUDE (_row) FROM read_parquet(${lit(rawPath)}) WHERE _row = ${Math.trunc(row)}`,
+  );
+  const vals = ((r.getRowsJS()[0] as RawValue[] | undefined) ?? []).map((v) => v ?? null);
+  return columnNames(vals, colCount);
 }
 
 /**
@@ -173,5 +203,5 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
       rowGroupFor(cols.length + 1, dataRows > 0 ? chars / dataRows : 0),
     ),
   );
-  return { schema, dataRows };
+  return { schema, dataRows, nonEmpty: cols.map((col) => profiles.get(col)?.n ?? 0) };
 }

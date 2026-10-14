@@ -438,6 +438,26 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     expect(!r.ok && r.message).toContain('"Omzet Lama"');
   });
 
+  it("T-013: sheet lama sudah dihapus retensi → COLUMN_UNAVAILABLE dari missingColumns; tanpa catatan → SHEET_UNAVAILABLE", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const d = deps();
+    const stored = (missingColumns: string[]) => async () => ({
+      type: "kpi",
+      spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
+      missingColumns,
+      datasetId: DS,
+      activeVersionId: VER,
+    });
+    d.repo = { ...d.repo, widget: stored(["Omzet Lama"]), sheetHistory: async () => null };
+    const r = await runWidgetQuery(USER, { widgetId: WID("kpi") }, d);
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(!r.ok && r.message).toBe(missingMessage(["Omzet Lama"]));
+    d.repo = { ...d.repo, widget: stored([]) };
+    expect(await runWidgetQuery(USER, { widgetId: WID("kpi") }, d)).toMatchObject({
+      code: "SHEET_UNAVAILABLE",
+    });
+  });
+
   it("widget versi lama tetap jalan setelah data diganti (dipetakan saat query)", async () => {
     const OLD = "cmv4kljx40009oczvdmpurrol";
     const d = deps();

@@ -4,7 +4,6 @@ import {
   IconFileSpreadsheet,
   IconPlayerPause,
   IconPlayerPlay,
-  IconRoute,
   IconUpload,
   IconX,
 } from "@tabler/icons-react";
@@ -12,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { IngestProgress } from "@/components/datasets/ingest-progress";
+import { VersionMappingNotice } from "@/components/datasets/version-history-mapping";
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import type { IngestStatus } from "@/features/schema/service";
@@ -38,10 +38,11 @@ interface UploadPanelProps {
   hasData: boolean;
   /** Unggahan milik user yang belum selesai (dari server), untuk ajakan melanjutkan. */
   pending: PendingUploadInfo | null;
-  /** Versi terbaru menunggu/sedang diproses → unggah baru ditahan (D4: satu versi non-terminal). */
-  /** Versi terbaru sedang diproses (progres hidup) atau menunggu pemetaan kolom; unggah baru ditahan. */
+  /** Versi terbaru sedang diproses (progres hidup) atau menunggu pemetaan kolom; unggah baru ditahan (D4). */
   processing:
-    { kind: "ingest"; status: IngestStatus } | { kind: "mapping"; fileName: string | null } | null;
+    | { kind: "ingest"; status: IngestStatus }
+    | { kind: "mapping"; versionId: string | null; fileName: string | null; message: string | null }
+    | null;
 }
 
 type State =
@@ -50,7 +51,8 @@ type State =
   | { kind: "running"; file: File; progress: UploadProgress }
   | { kind: "paused"; file: File; progress: UploadProgress }
   | { kind: "error"; file: File | null; message: string; retryable: boolean; versionId?: string }
-  | { kind: "done"; name: string };
+  | { kind: "done"; name: string }
+  | { kind: "discarded"; name: string };
 
 const RETRYABLE = new Set(["NETWORK", "STORAGE_ERROR", "BUSY", "RATE_LIMITED", "UNAUTHENTICATED"]);
 
@@ -215,7 +217,8 @@ export function UploadPanel({
     state.kind === "idle" ||
     state.kind === "cancelled" ||
     state.kind === "error" ||
-    state.kind === "done";
+    state.kind === "done" ||
+    state.kind === "discarded";
   const showDropzone = idleLike && !processing;
   const showPending = Boolean(pendingInfo) && idleLike;
   // Kontrol unggahan: tinggi 44px di ponsel (target sentuh), ringkas di ≥640.
@@ -229,25 +232,28 @@ export function UploadPanel({
 
       {state.kind === "done" ? <FocusNotice>{`"${state.name}" terunggah.`}</FocusNotice> : null}
       {state.kind === "cancelled" ? <FocusNotice>Unggahan dibatalkan.</FocusNotice> : null}
+      {state.kind === "discarded" ? (
+        <div data-testid="version-discard-result">
+          <FocusNotice>
+            <span className="[overflow-wrap:anywhere]">
+              Versi “{state.name}” dibuang. Data aktif tetap dipakai; unggah file yang sudah
+              diperbaiki.
+            </span>
+          </FocusNotice>
+        </div>
+      ) : null}
 
       {processing?.kind === "ingest" && idleLike ? (
         <IngestProgress datasetId={datasetId} initial={processing.status} />
       ) : null}
       {processing?.kind === "mapping" && idleLike ? (
-        <p
-          className="flex items-start gap-3 rounded-md border bg-muted/40 p-3 text-sm"
-          data-testid="dataset-processing"
-        >
-          <IconRoute size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
-          <span>
-            <span className="block font-medium">Perlu pemetaan kolom</span>
-            <span className="block text-muted-foreground">
-              {processing.fileName ? `Kolom di "${processing.fileName}"` : "Kolom file baru"}{" "}
-              berbeda dari data aktif. Petakan kolomnya agar dashboard tetap jalan; file baru bisa
-              diunggah setelah itu.
-            </span>
-          </span>
-        </p>
+        <VersionMappingNotice
+          datasetId={datasetId}
+          versionId={processing.versionId}
+          fileName={processing.fileName}
+          message={processing.message}
+          onDiscarded={(name) => setState({ kind: "discarded", name })}
+        />
       ) : null}
 
       {state.kind === "error" ? (

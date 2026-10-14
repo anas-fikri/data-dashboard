@@ -46,6 +46,8 @@ export const RULES = {
   filterValues: { name: "filter-values:user", limit: 300, windowSec: 60 },
   /** Perubahan admin pengguna (peran, status, alih kepemilikan) per admin (T-019). */
   admin: { name: "admin:user", limit: 60, windowSec: 60 },
+  /** Aktifkan (rollback) / buang versi dataset per pemilik (T-013); tiap aktivasi menulis ulang widget. */
+  versionChange: { name: "version-change:user", limit: 30, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { MISSING_COLUMN } from "@/features/widgets/spec";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DASHBOARDS_PER_DATASET,
@@ -25,7 +26,7 @@ const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dashboard: { findFirst: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
   widget: { updateMany: vi.fn(), findFirst: vi.fn() },
-  sheet: { findFirst: vi.fn(), findMany: vi.fn() },
+  sheet: { findFirst: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(async () => []) },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -370,10 +371,54 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       where: { id: SHEET, version: { activeFor: { id: DS } } },
       select: { schema: true },
     });
+    // Pengaturan baru menghapus catatan kolom hilang dari aktivasi versi (T-013).
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
       where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
-      data: { type: "bar", spec: bar },
+      data: { type: "bar", spec: bar, missingColumns: [] },
     });
+  });
+
+  it("T-013: sheet lama sudah dihapus + kolom hilang tercatat → semua kolom ditandai hilang di tampilan", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const VER = "cmv4kljx40009oczvdmpurrve";
+    const kpi = { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt };
+    const widget = (missingColumns: string[]) => ({
+      id: WA,
+      type: "kpi",
+      title: "",
+      spec: kpi,
+      missingColumns,
+    });
+    const dashboard = (widgets: unknown[]) => ({
+      id: DB,
+      name: "Penjualan",
+      layout: [],
+      layoutRevision: 0,
+      filterColumns: [],
+      updatedAt: new Date(),
+      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      widgets,
+    });
+    prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard([widget(["Omzet"])]));
+    // Sheet lama tidak ada lagi; versi aktif punya satu sheet lain.
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Sheet1", index: 0 }]);
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    const view = await svc.getDashboard(OWNER, DB);
+    expect(view?.widgets).toEqual([
+      {
+        id: WA,
+        type: "kpi",
+        title: "",
+        spec: { ...kpi, measure: { agg: "sum", column: MISSING_COLUMN } },
+      },
+    ]);
+    // Tanpa catatan kolom hilang: spec apa adanya (panel/query memberi "sheet tidak ada").
+    prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard([widget([])]));
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
+      { id: WA, type: "kpi", title: "", spec: kpi },
+    ]);
   });
 
   it("kolom tersembunyi, agregasi tidak cocok, sheet lain, atau bentuk salah → INVALID tanpa menulis", async () => {

@@ -1,21 +1,73 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { activateVersionInTx } from "@/features/versions/activation";
 import { prisma } from "@/lib/db";
 import { deletePrefix } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
+import { lockActiveSheet } from "./active-lock";
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
-import { DatasetGoneError, type IngestRepo, type IngestStorage } from "./ingest";
+import {
+  DatasetGoneError,
+  type FinishOutcome,
+  type IngestRepo,
+  type IngestStorage,
+} from "./ingest";
 import type { RecastRepo } from "./recast";
+import { sameSnapshot } from "./refresh";
+
+/**
+ * Aktivasi (persist spec widget semua dashboard + retensi) berjalan di dalam transaksi finish; batas
+ * bawaan Prisma 5 detik terlalu ketat untuk dataset dengan banyak dashboard.
+ */
+const FINISH_TX_TIMEOUT_MS = 30_000;
 
 /** Implementasi Prisma untuk ingest (worker). Semua update dijaga status agar idempoten. */
 export const prismaIngestRepo: IngestRepo = {
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: { datasetId: true, sourceKey: true },
+      select: {
+        datasetId: true,
+        sourceKey: true,
+        dataset: {
+          select: {
+            activeVersion: {
+              select: {
+                id: true,
+                sheets: {
+                  orderBy: { index: "asc" },
+                  select: {
+                    id: true,
+                    name: true,
+                    index: true,
+                    headerRow: true,
+                    schemaRevision: true,
+                    schema: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
     });
-    return v?.sourceKey ? { datasetId: v.datasetId, sourceKey: v.sourceKey } : null;
+    if (!v?.sourceKey) return null;
+    const a = v.dataset.activeVersion;
+    return {
+      datasetId: v.datasetId,
+      sourceKey: v.sourceKey,
+      active:
+        a && a.id !== versionId
+          ? {
+              versionId: a.id,
+              sheets: a.sheets.map((s) => ({
+                ...s,
+                schema: (s.schema as unknown as ColumnSchema[] | null) ?? [],
+              })),
+            }
+          : null,
+    };
   },
 
   async begin(versionId) {
@@ -92,32 +144,44 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async finish(versionId, d) {
-    return prisma.$transaction(async (tx) => {
-      // Kunci baris Dataset lebih dulu, urutan yang sama dengan hapus dataset (Dataset → versi lewat
-      // cascade); urutan terbalik bisa deadlock bila keduanya berjalan bersamaan.
-      const owner = await tx.datasetVersion.findUnique({
-        where: { id: versionId },
-        select: { datasetId: true },
-      });
-      if (!owner) return false;
-      await tx.$queryRaw`SELECT id FROM "Dataset" WHERE id = ${owner.datasetId} FOR UPDATE`;
-      const r = await tx.datasetVersion.updateMany({
-        where: { id: versionId, status: "INGESTING" },
-        data: {
-          status: "READY",
-          ingestStage: "typed",
-          sha256: d.sha256,
-          ingestFinishedAt: new Date(),
-          errorMessage: null,
-        },
-      });
-      if (r.count === 0) return false;
-      await tx.dataset.update({
-        where: { id: owner.datasetId },
-        data: { activeVersionId: versionId },
-      });
-      return true;
-    });
+    return prisma.$transaction(
+      async (tx): Promise<FinishOutcome> => {
+        // Kunci baris Dataset lebih dulu, urutan yang sama dengan hapus dataset (Dataset → versi lewat
+        // cascade); urutan terbalik bisa deadlock bila keduanya berjalan bersamaan.
+        const owner = await tx.datasetVersion.findUnique({
+          where: { id: versionId },
+          select: { datasetId: true },
+        });
+        if (!owner) return "gone";
+        const [ds] = await tx.$queryRaw<{ activeVersionId: string | null }[]>`
+          SELECT "activeVersionId" FROM "Dataset" WHERE id = ${owner.datasetId} FOR UPDATE`;
+        if (!ds) return "gone";
+        // Koreksi skema yang commit sebelum lock ini (recast/metadata memegang FOR SHARE baris yang
+        // sama) atau versi aktif lain → cast diulang dengan acuan baru, tidak ada yang hilang.
+        const sheets = ds.activeVersionId
+          ? await tx.sheet.findMany({
+              where: { versionId: ds.activeVersionId },
+              select: { id: true, schemaRevision: true },
+            })
+          : [];
+        if (!sameSnapshot(d.snapshot, { activeVersionId: ds.activeVersionId, sheets })) {
+          return "stale";
+        }
+        const done = { ingestStage: "typed", sha256: d.sha256, ingestFinishedAt: new Date() };
+        const r = await tx.datasetVersion.updateMany({
+          where: { id: versionId, status: "INGESTING" },
+          data: d.verdict.ok
+            ? { ...done, status: "READY", errorMessage: null }
+            : { ...done, status: "AWAITING_MAPPING", errorMessage: d.verdict.reason },
+        });
+        if (r.count === 0) return "gone";
+        if (!d.verdict.ok) return "awaiting";
+        // Worker: tidak ada cache Parquet lokal yang perlu dilupakan (deletedTypedKeys diabaikan).
+        await activateVersionInTx(tx, owner.datasetId, versionId);
+        return "activated";
+      },
+      { timeout: FINISH_TX_TIMEOUT_MS },
+    );
   },
 
   async recordCleanup(prefix, reason) {
@@ -170,16 +234,19 @@ export const prismaRecastRepo: RecastRepo = {
   },
 
   async swapTyped(sheetId, expectedRevision, next) {
-    const r = await prisma.sheet.updateMany({
-      where: { id: sheetId, schemaRevision: expectedRevision },
-      data: {
-        typedKey: next.typedKey,
-        schema: next.schema as unknown as Prisma.InputJsonValue,
-        schemaRevision: next.schemaRevision,
-        headerRow: next.headerRow,
-        columns: next.columns as unknown as Prisma.InputJsonValue,
-      },
+    return prisma.$transaction(async (tx) => {
+      if (!(await lockActiveSheet(tx, sheetId))) return false;
+      const r = await tx.sheet.updateMany({
+        where: { id: sheetId, schemaRevision: expectedRevision },
+        data: {
+          typedKey: next.typedKey,
+          schema: next.schema as unknown as Prisma.InputJsonValue,
+          schemaRevision: next.schemaRevision,
+          headerRow: next.headerRow,
+          columns: next.columns as unknown as Prisma.InputJsonValue,
+        },
+      });
+      return r.count > 0;
     });
-    return r.count > 0;
   },
 };

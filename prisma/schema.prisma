@@ -108,6 +108,9 @@ model DatasetVersion {
   sha256           String?
   errorMessage     String?
   ingestFinishedAt DateTime?
+  /// File asli (raw/<ds>/<ver>/) sudah dihapus job retensi 7 hari (T-013). sourceKey sengaja tetap:
+  /// recast menurunkan jenis sumber (csv/xlsx) dari ekstensinya.
+  sourceDeletedAt  DateTime?
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
 
@@ -171,16 +174,21 @@ model Sheet {
   @@unique([versionId, index])
 }
 
-/// Prefix storage yang gagal dihapus; diproses ulang oleh job pembersihan (T-013/T-023) agar
-/// file pengguna tidak tertinggal setelah dataset dihapus (review T-003 #2).
+/// Prefix storage yang menunggu dihapus: gagal dihapus (review T-003 #2) atau milik versi yang
+/// dibuang retensi (T-013, ditunda ≥ 1 jam agar query yang sedang berjalan selesai). Diproses job
+/// pembersihan di worker; baris dihapus setelah berhasil.
 model StorageCleanup {
   id        String   @id @default(cuid())
   prefix    String
   reason    String
   attempts  Int      @default(0)
+  /// Tidak diproses sebelum waktu ini (masa tenggang retensi / backoff setelah gagal).
+  notBefore DateTime @default(now())
+  lastError String?
   createdAt DateTime @default(now())
 
   @@index([createdAt])
+  @@index([notBefore])
 }
 
 /// Dashboard minimal (T-003: agar hapus kaskade teruji). Kolom builder ditambah di T-010.
@@ -208,14 +216,18 @@ model Dashboard {
 
 /// Isi widget (T-010: kosong; T-011: tabel/KPI/grafik). Posisi ada di Dashboard.layout.
 model Widget {
-  id          String    @id @default(cuid())
-  dashboardId String
-  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
-  type        String    @default("empty")
-  title       String    @default("")
-  spec        Json      @default("{}")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  dashboardId    String
+  dashboard      Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  type           String    @default("empty")
+  title          String    @default("")
+  spec           Json      @default("{}")
+  /// Nama kolom lama yang tidak ditemukan saat versi diaktifkan (T-013): spec dibiarkan menunjuk sheet
+  /// lama; setelah sheet itu dihapus retensi, pesan "kolom tidak ada" tetap bisa menyebut namanya.
+  /// Kosong = spec cocok dengan versi aktif. Dikosongkan saat user menyimpan pengaturan widget.
+  missingColumns String[]  @default([])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([dashboardId])
 }

@@ -3,7 +3,8 @@
  *   - "ingest": file unggahan → raw.parquet per sheet (T-006). Concurrency 1 per proses (D7); lock job
  *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih.
  *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock).
- *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet) dan hapus typed lama.
+ *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, pembersihan storage,
+ *     file asli > 7 hari) dan hapus typed lama.
  * Jalankan: npm run worker (tsx dengan kondisi react-server agar modul "server-only" bisa dimuat).
  */
 import { mkdirSync } from "node:fs";
@@ -20,6 +21,7 @@ import {
 } from "@/features/ingest/recovery";
 import { prismaIngestRepo, prismaRecastRepo, s3IngestStorage } from "@/features/ingest/repo";
 import { expireStaleUploads } from "@/features/uploads/service";
+import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -37,6 +39,11 @@ const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
 const RECOVER_INGESTS = "recover-stuck-ingests";
 const DELETE_OBJECT = "delete-object";
+/** Proses StorageCleanup (T-013): prefix versi yang dibuang retensi/pemilik + hapus yang gagal. */
+const STORAGE_CLEANUP = "storage-cleanup";
+/** Hapus file asli 7 hari setelah ingest selesai (T-013, B1). */
+const RAW_RETENTION = "raw-retention";
+const SCHEDULED_OPTS = { removeOnComplete: 50, removeOnFail: 100 };
 /** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
 const RECAST_BUSY_DELAY_MS = 30 * 1000;
 const RECAST_BUSY_MAX_MS = 30 * 60 * 1000;
@@ -95,22 +102,23 @@ async function main() {
 
   // --- maintenance ---
   const maintenance = new Queue(MAINTENANCE, { connection: connection() });
-  await maintenance.upsertJobScheduler(
-    EXPIRE_UPLOADS,
-    { every: 60 * 60 * 1000 },
-    { name: EXPIRE_UPLOADS, opts: { removeOnComplete: 50, removeOnFail: 100 } },
-  );
-  await maintenance.upsertJobScheduler(
-    RECOVER_INGESTS,
-    { every: 15 * 60 * 1000 },
-    { name: RECOVER_INGESTS, opts: { removeOnComplete: 50, removeOnFail: 100 } },
-  );
+  const schedules: [string, number][] = [
+    [EXPIRE_UPLOADS, 60 * 60 * 1000],
+    [RECOVER_INGESTS, 15 * 60 * 1000],
+    [STORAGE_CLEANUP, 15 * 60 * 1000],
+    [RAW_RETENTION, 60 * 60 * 1000],
+  ];
+  for (const [name, every] of schedules) {
+    await maintenance.upsertJobScheduler(name, { every }, { name, opts: SCHEDULED_OPTS });
+  }
   const maintenanceWorker = new Worker(
     MAINTENANCE,
     async (job) => {
       if (job.name === EXPIRE_UPLOADS) return { expired: await runExpireStaleUploads() };
       if (job.name === RECOVER_INGESTS)
         return { recovered: await recoverStuckIngests(ingestQueue) };
+      if (job.name === STORAGE_CLEANUP) return await runStorageCleanup();
+      if (job.name === RAW_RETENTION) return await runRawRetention();
       if (job.name === DELETE_OBJECT) {
         await deleteObject(String((job.data as { key: string }).key));
         return null;
@@ -213,6 +221,8 @@ async function main() {
   );
 
   const swept = await sweepUploaded(ingestQueue);
+  // Sisa pembersihan saat worker mati (mis. deploy) tidak menunggu 15 menit jadwal berikutnya.
+  await maintenance.add(STORAGE_CLEANUP, {}, SCHEDULED_OPTS);
   const recovered = await recoverStuckIngests(ingestQueue);
   logger.info(
     {

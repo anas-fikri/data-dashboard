@@ -10,14 +10,13 @@
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { lit, openDuck, type Duck } from "@/lib/duckdb";
+import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
-import type { RawValue } from "@/lib/xlsx/types";
-import { columnNames, type ColumnMeta } from "./header";
+import type { ColumnMeta } from "./header";
 import type { ColumnSchema, SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, type IngestStorage } from "./ingest";
 import { parseRecastInput, type RecastInput, type RecastOutcome } from "./recast-input";
-import { writeTyped, type ColumnOverride } from "./typed";
+import { choiceOf, headerColumns, writeTyped, type ColumnOverride } from "./typed";
 
 export { parseRecastInput, type RecastInput, type RecastOutcome };
 
@@ -44,8 +43,9 @@ export interface RecastSheet {
 export interface RecastRepo {
   loadSheet(sheetId: string): Promise<RecastSheet | null>;
   /**
-   * Ganti pointer typed bila schemaRevision masih `expectedRevision` (optimistic). false = revisi
-   * sudah berubah atau sheet hilang.
+   * Ganti pointer typed bila schemaRevision masih `expectedRevision` (optimistic) dan versi sheet masih
+   * versi aktif dataset (T-013: versi refresh tidak boleh aktif tanpa koreksi ini). false = revisi
+   * sudah berubah, versi tidak lagi aktif, atau sheet hilang.
    */
   swapTyped(
     sheetId: string,
@@ -76,14 +76,7 @@ export interface RecastDeps {
 
 /** Pilihan yang sudah berlaku di skema sekarang, sebagai dasar override recast berikutnya. */
 function currentChoices(schema: ColumnSchema[]): ColumnOverride[] {
-  return schema.map((c) => ({
-    pos: c.pos,
-    name: c.name,
-    type: c.type,
-    numberLocale: c.numberLocale,
-    dateFormat: c.dateFormat,
-    hidden: c.hidden,
-  }));
+  return schema.map((c) => choiceOf(c));
 }
 
 function merge(base: ColumnOverride[], changes: ColumnOverride[] = []): ColumnOverride[] {
@@ -110,13 +103,6 @@ function duplicateName(columns: ColumnMeta[], overrides: ColumnOverride[]): stri
     seen.add(k);
   }
   return null;
-}
-
-async function headerValues(duck: Duck, rawPath: string, row: number): Promise<RawValue[]> {
-  const r = await duck.conn.runAndReadAll(
-    `SELECT * EXCLUDE (_row) FROM read_parquet(${lit(rawPath)}) WHERE _row = ${Math.trunc(row)}`,
-  );
-  return ((r.getRowsJS()[0] as RawValue[] | undefined) ?? []).map((v) => v ?? null);
 }
 
 export async function recastSheet(
@@ -175,7 +161,7 @@ export async function recastSheet(
     // Header baru: rentang data berubah → nama dari baris itu dan inferensi ulang (pilihan lama
     // tidak dibawa); selain itu pilihan yang sudah berlaku tetap dipakai.
     const columns = newHeader
-      ? columnNames(await headerValues(duck, rawPath, headerRow), s.colCount)
+      ? await headerColumns(duck, rawPath, headerRow, s.colCount)
       : s.columns;
     const base = newHeader || !s.schema ? [] : currentChoices(s.schema);
     const overrides = merge(base, input.columns);

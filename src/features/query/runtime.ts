@@ -96,6 +96,7 @@ export const prismaQueryRepo: QueryRepo = {
       select: {
         type: true,
         spec: true,
+        missingColumns: true,
         dashboard: {
           select: {
             id: true,
@@ -111,6 +112,7 @@ export const prismaQueryRepo: QueryRepo = {
       w && {
         type: w.type,
         spec: w.spec,
+        missingColumns: w.missingColumns,
         datasetId: w.dashboard.datasetId,
         activeVersionId: w.dashboard.dataset.activeVersionId,
         dashboardId: w.dashboard.id,

@@ -6,6 +6,9 @@
  * Tiap batch: cek versi/dataset masih ada (dihapus → berhenti + hapus objek). Gagal permanen (file
  * rusak/melebihi batas) → hapus objek + FAILED dengan pesan sheet/baris. Gagal sementara (storage/DB)
  * → dilempar agar BullMQ mengulang; pengulangan mulai bersih sehingga hasil akhir identik.
+ * Versi refresh (dataset sudah punya versi aktif, T-013): sheet yang cocok di-cast dengan skema aktif
+ * (refresh.ts) lalu finish memutuskan aktif atau menunggu pemetaan; skema aktif yang berubah selama
+ * cast → ingest diulang dengan acuan baru.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -18,13 +21,28 @@ import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
 import { previewOf, type SheetPreview } from "./preview";
 import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
-import { writeTyped } from "./typed";
+import {
+  chooseHeader,
+  missingSheetIssue,
+  planColumns,
+  planSheets,
+  sheetIssues,
+  snapshotRef,
+  verdictOf,
+  type ActiveSheet,
+  type ActiveSnapshot,
+  type SnapshotRef,
+  type Verdict,
+} from "./refresh";
+import { headerColumns, writeTyped } from "./typed";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
 const PROGRESS_EVERY_MS = 5_000;
 
 export interface IngestProgress {
   stage: "unduh" | "baca" | "simpan" | "tipe";
+  /** Sheet berjalan di-cast dengan skema aktif (versi refresh), bukan inferensi tipe. */
+  refresh: boolean;
   sheet: number;
   sheetName: string | null;
   rows: number;
@@ -54,9 +72,26 @@ export class DatasetGoneError extends Error {
   }
 }
 
+/** Skema aktif berubah sejak cast (koreksi user/versi lain aktif): sementara, BullMQ mengulang. */
+export class StaleSnapshotError extends Error {
+  constructor() {
+    super("skema aktif berubah selama ingest");
+    this.name = "StaleSnapshotError";
+  }
+}
+
+/**
+ * Hasil finish: activated = READY + aktif; awaiting = AWAITING_MAPPING (tidak aktif, T-014);
+ * stale = acuan cast basi (tidak ada yang ditulis); gone = versi/dataset hilang atau bukan INGESTING.
+ */
+export type FinishOutcome = "activated" | "awaiting" | "stale" | "gone";
+
 /** Akses database yang dibutuhkan ingest (implementasi Prisma di worker; palsu di unit test). */
 export interface IngestRepo {
-  load(versionId: string): Promise<{ datasetId: string; sourceKey: string } | null>;
+  /** `active` = versi aktif dataset (selain versi ini) beserta skema sheet-nya; null = versi pertama. */
+  load(
+    versionId: string,
+  ): Promise<{ datasetId: string; sourceKey: string; active: ActiveSnapshot | null } | null>;
   /** UPLOADED|INGESTING → INGESTING (progress direset). false = versi tidak layak diproses. */
   begin(versionId: string): Promise<boolean>;
   /** Versi dan datasetnya masih ada. */
@@ -73,10 +108,14 @@ export interface IngestRepo {
     data: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number },
   ): Promise<void>;
   /**
-   * Semua sheet raw + typed tertulis → versi READY dan menjadi versi aktif dataset (mode REPLACE;
-   * T-013 menambah cast dengan skema aktif untuk versi refresh). false bila versi sudah hilang.
+   * Semua sheet raw + typed tertulis. Di bawah lock baris Dataset: acuan cast (`snapshot`) basi →
+   * "stale"; verdict cocok → READY + aktif (activateVersionInTx); tidak cocok → AWAITING_MAPPING
+   * dengan alasan, versi aktif tetap.
    */
-  finish(versionId: string, data: { sha256: string }): Promise<boolean>;
+  finish(
+    versionId: string,
+    data: { sha256: string; verdict: Verdict; snapshot: SnapshotRef },
+  ): Promise<FinishOutcome>;
   fail(versionId: string, message: string): Promise<void>;
   /** Prefix storage yang gagal dibersihkan → diproses ulang job pembersihan (StorageCleanup). */
   recordCleanup(prefix: string, reason: string): Promise<void>;
@@ -106,6 +145,8 @@ export interface IngestOptions {
 
 export type IngestOutcome =
   | { outcome: "done"; sheets: number }
+  /** Versi refresh tidak cocok dengan skema aktif: menunggu pemetaan (T-014). */
+  | { outcome: "awaiting"; sheets: number; message: string }
   | { outcome: "gone" }
   | { outcome: "skipped" }
   | { outcome: "failed"; message: string };
@@ -119,6 +160,7 @@ export const versionParquetPrefix = (datasetId: string, versionId: string) =>
 
 /** Pesan user untuk kegagalan permanen; null = sementara (diulang BullMQ). */
 export function permanentMessage(e: unknown): string | null {
+  if (e instanceof StaleSnapshotError) return null;
   if (
     e instanceof XlsxLimitError ||
     e instanceof CsvFormatError ||
@@ -215,6 +257,7 @@ export async function runIngest(
   // Progres: snapshot terkini ditulis tiap ≤ 5 detik (juga selama COPY/unggah/parse sharedStrings).
   let current: IngestProgress = {
     stage: "unduh",
+    refresh: false,
     sheet: 0,
     sheetName: null,
     rows: 0,
@@ -275,13 +318,27 @@ export async function runIngest(
           ];
     await ensureAlive();
 
+    // Versi refresh: pasangan sheet aktif per sheet baru; sheet aktif yang hilang = tidak cocok.
+    const plan = v.active
+      ? planSheets(
+          sheets.map((s) => s.rec),
+          v.active.sheets,
+        )
+      : null;
+    const issues = (plan?.missing ?? []).map(missingSheetIssue);
+
     // Per sheet: tipe kolom (typed-1) lalu unggah raw + typed + metadata.
-    for (const s of sheets) {
+    for (const [i, s] of sheets.entries()) {
+      const active = plan?.pairs[i] ?? null;
+      // Baris header aktif (bisa hasil koreksi user) dicoba lebih dulu; yang dipilih disimpan.
+      if (active) Object.assign(s.rec, await refreshHeader(duck, s, active));
+      const cols = active ? planColumns(s.rec.columns, active.schema) : null;
       const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
       const sheetId = await repo.createSheet(versionId, s.rec);
 
-      // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang): inferensi → typed-1.parquet.
-      setProgress({ stage: "tipe", ...at });
+      // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
+      // untuk kolom yang cocok, inferensi untuk sheet/kolom baru.
+      setProgress({ stage: "tipe", refresh: active !== null, ...at });
       const typedPath = join(work, `typed-${s.rec.index}.parquet`);
       const typed = await writeTyped(duck, {
         rawPath: s.path,
@@ -290,8 +347,13 @@ export async function runIngest(
         headerRow: s.rec.headerRow,
         colCount: s.rec.colCount,
         columns: s.rec.columns,
+        overrides: cols?.overrides,
         watch: ensureAlive,
       });
+      if (active && cols) {
+        const label = v.active!.sheets.length > 1 ? active.name : null;
+        issues.push(...sheetIssues(label, cols, typed.schema, typed.nonEmpty));
+      }
       setProgress({ stage: "simpan", ...at });
       const key = `${prefix}${sheetId}/raw.parquet`;
       await storage.upload(key, s.path, PARQUET);
@@ -303,9 +365,18 @@ export async function runIngest(
       rmSync(typedPath, { force: true });
       await ensureAlive();
     }
-    if (!(await repo.finish(versionId, { sha256: dl.sha256 }))) throw new DatasetGoneError();
+    const verdict = verdictOf(issues);
+    const done = await repo.finish(versionId, {
+      sha256: dl.sha256,
+      verdict,
+      snapshot: snapshotRef(v.active),
+    });
+    if (done === "gone") throw new DatasetGoneError();
+    if (done === "stale") throw new StaleSnapshotError();
     await repo.progress(versionId, current).catch(() => {});
-    return { outcome: "done", sheets: sheets.length };
+    return verdict.ok
+      ? { outcome: "done", sheets: sheets.length }
+      : { outcome: "awaiting", sheets: sheets.length, message: verdict.reason };
   } catch (e) {
     if (e instanceof DatasetGoneError) {
       await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
@@ -335,6 +406,21 @@ export async function runIngest(
     duck?.close();
     rmSync(work, { recursive: true, force: true });
   }
+}
+
+/**
+ * Header sheet refresh: baris header sheet aktif (dibaca dari raw lokal) lalu tebakan; dipilih yang
+ * tidak kehilangan kolom aktif terlihat (refresh.chooseHeader).
+ */
+async function refreshHeader(
+  duck: Duck,
+  s: { rec: SheetRecord; path: string },
+  active: ActiveSheet,
+): Promise<Pick<SheetRecord, "headerRow" | "columns">> {
+  const guessed = { headerRow: s.rec.headerRow, columns: s.rec.columns };
+  if (active.headerRow === guessed.headerRow) return guessed;
+  const columns = await headerColumns(duck, s.path, active.headerRow, s.rec.colCount);
+  return chooseHeader([{ headerRow: active.headerRow, columns }, guessed], active.schema);
 }
 
 /** xlsx: parser memancarkan baris secara sinkron; antrean dikuras di titik `drain` (≤ satu potongan). */

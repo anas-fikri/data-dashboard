@@ -11,13 +11,15 @@ export type AuditAction =
   | "user.admin.revoke"
   | "user.deactivate"
   | "user.activate"
-  | "datasets.transfer";
+  | "datasets.transfer"
+  /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
+  | "dataset.version.activate";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */
   actorId: string | null;
   action: AuditAction;
-  targetType: "user";
+  targetType: "user" | "dataset";
   targetId: string;
   /** Detail tanpa rahasia (tanpa password/token/cookie). */
   meta?: Prisma.InputJsonValue;

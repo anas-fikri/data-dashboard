@@ -123,6 +123,11 @@ export interface QueryRepo {
     spec: unknown;
     datasetId: string;
     activeVersionId: string | null;
+    /**
+     * Nama kolom yang hilang saat versi diaktifkan (T-013): pesan widget setelah sheet lama spec-nya
+     * dihapus retensi.
+     */
+    missingColumns?: string[];
     /** Dashboard widget (T-012): kolom filter tersimpan + kapan terakhir berubah. */
     dashboardId?: string;
     filterColumns?: unknown;
@@ -487,6 +492,10 @@ export async function runWidgetQuery(
   if (!sheet && deps.repo.sheetHistory) {
     // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
     const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
+    // Sheet lama sudah dihapus retensi: kolom yang hilang tercatat saat aktivasi (T-013).
+    if (!h && w.missingColumns?.length) {
+      return fail("COLUMN_UNAVAILABLE", missingMessage(w.missingColumns));
+    }
     const target = h ? matchSheet(h.old, h.active, h.oldSheetCount) : null;
     const fresh = target ? await deps.repo.sheet(w.activeVersionId, target.id) : null;
     if (h && target && fresh?.schema) {

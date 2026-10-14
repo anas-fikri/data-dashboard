@@ -34,6 +34,7 @@ export interface IngestStatus {
   versionId: string;
   status: VersionStatus;
   fileName: string | null;
+  /** `progress.refresh`: tahap "tipe" menerapkan skema aktif (versi refresh, T-013). */
   progress: IngestProgress | null;
   /** Sheet yang sudah tersimpan mentah (raw), urut indeks. */
   sheets: { index: number; name: string; rawRows: number; typed: boolean }[];
@@ -89,8 +90,8 @@ export interface SchemaRepo {
   /** Cek kepemilikan ringan (polling status tiap 1,5 s tidak membaca skema, review T-008 L3). */
   ownsActiveSheet(userId: string, sheetId: string): Promise<boolean>;
   /**
-   * Terapkan perubahan metadata (nama/sembunyikan) bila revisi masih baseRevision dan versi READY.
-   * Revisi baru, atau null bila basi.
+   * Terapkan perubahan metadata (nama/sembunyikan) bila revisi masih baseRevision dan versi sheet
+   * masih versi aktif READY. Revisi baru, atau null bila basi.
    */
   applyMetadata(
     sheetId: string,

@@ -93,7 +93,9 @@ export function ConfirmDialog({
         >
           <div className="flex min-h-0 flex-col gap-4 overflow-y-auto p-6 pb-4 [@media(max-height:480px)]:min-h-fit [@media(max-height:480px)]:overflow-visible">
             <div>
-              <AlertDialog.Title className="text-lg font-semibold">{title}</AlertDialog.Title>
+              <AlertDialog.Title className="text-lg font-semibold [overflow-wrap:anywhere]">
+                {title}
+              </AlertDialog.Title>
               <AlertDialog.Description className="mt-2 text-sm text-muted-foreground">
                 {description}
               </AlertDialog.Description>

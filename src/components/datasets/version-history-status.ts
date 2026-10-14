@@ -1,0 +1,82 @@
+import type { VersionCode, VersionRow } from "@/features/versions/types";
+
+/*
+ * Teks dan nada riwayat versi (T-013), murni agar bisa diuji unit. Hanya versi aktif yang bernada
+ * primer, jadi penanda "Aktif" tidak tertukar dengan status lain; status selalu teks + ikon.
+ */
+export type VersionKind = "active" | "ready" | "failed" | "mapping" | "processing" | "uploading";
+
+export interface VersionStatusView {
+  kind: VersionKind;
+  label: string;
+  tone: "neutral" | "primary" | "warning" | "destructive";
+}
+
+export function versionStatusView(v: Pick<VersionRow, "status" | "active">): VersionStatusView {
+  if (v.active) return { kind: "active", label: "Aktif", tone: "primary" };
+  switch (v.status) {
+    case "READY":
+      return { kind: "ready", label: "Siap", tone: "neutral" };
+    case "FAILED":
+      return { kind: "failed", label: "Gagal", tone: "destructive" };
+    case "AWAITING_MAPPING":
+      return { kind: "mapping", label: "Menunggu pemetaan", tone: "warning" };
+    case "INGESTING":
+      return { kind: "processing", label: "Memproses", tone: "neutral" };
+    case "UPLOADED":
+      return { kind: "processing", label: "Menunggu diproses", tone: "neutral" };
+    default:
+      return { kind: "uploading", label: "Belum selesai", tone: "neutral" };
+  }
+}
+
+/** Waktu yang ditampilkan: selesai diproses bila ada, selain itu waktu unggah. */
+export function versionTime(v: Pick<VersionRow, "finishedAt" | "createdAt">): {
+  verb: "Diproses" | "Diunggah";
+  iso: string;
+} {
+  return v.finishedAt
+    ? { verb: "Diproses", iso: v.finishedAt }
+    : { verb: "Diunggah", iso: v.createdAt };
+}
+
+/** Waktu metadata selalu Asia/Jakarta (konvensi), sama dengan formatDate halaman profil. */
+export function formatJakarta(at: string | Date): string {
+  return new Date(at).toLocaleString("id-ID", {
+    timeZone: "Asia/Jakarta",
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+export const NETWORK_ERROR = "Tidak bisa menghubungi server. Periksa koneksi, lalu coba lagi.";
+
+/*
+ * NOT_FOUND memakai teks UI (tidak membedakan "tidak ada" dari "tidak berhak", D2); kode lain
+ * memakai pesan server yang lebih spesifik (sisa waktu rate limit, alasan sibuk/tidak valid).
+ */
+const ERRORS: Record<VersionCode, { text: string; preferServer: boolean }> = {
+  NOT_FOUND: {
+    text: "Versi ini tidak ditemukan lagi; mungkin sudah dihapus otomatis. Muat ulang halaman.",
+    preferServer: false,
+  },
+  DATASET_BUSY: {
+    text: "Tunggu file baru selesai diproses (atau buang versi yang menunggu pemetaan) sebelum mengganti versi aktif.",
+    preferServer: true,
+  },
+  INVALID: {
+    text: "Status versi ini sudah berubah. Muat ulang halaman untuk melihat status terbaru.",
+    preferServer: true,
+  },
+  RATE_LIMITED: {
+    text: "Terlalu banyak perubahan dalam waktu singkat. Tunggu sebentar, lalu coba lagi.",
+    preferServer: true,
+  },
+};
+
+export function versionErrorText(code: string, serverMessage: string): string {
+  // Kode baru yang belum dikenal UI: tampilkan pesan server apa adanya.
+  const known: { text: string; preferServer: boolean } | undefined = ERRORS[code as VersionCode];
+  if (!known) return serverMessage || NETWORK_ERROR;
+  return known.preferServer && serverMessage ? serverMessage : known.text;
+}
