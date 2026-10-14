@@ -8,8 +8,11 @@
  *    dicocokkan urut di antara yang kosong). Kolom tambahan diinferensi tetapi disembunyikan.
  *  - Cocok = semua sheet aktif ada, semua kolom terlihat ada, dan tiap kolom non-teks yang cocok
  *    ≥ 98% nilainya lolos konversi; selain itu versi menunggu pemetaan (T-014) dengan alasan.
+ *  - Kolom kosong (absent, T-014) yang tetap tidak ada di file ditulis ulang kosong (bukan "hilang");
+ *    bila kembali di file, kolom itu cocok lewat judul asli dan menjadi kolom nyata lagi.
  */
 import { columnKeys, matchSheet, normName } from "@/features/widgets/remap";
+import { MAX_COLUMN } from "@/features/widgets/spec";
 import { baseName, uniqueName, type ColumnMeta } from "./header";
 import { INFER_THRESHOLD, type ColumnSchema, type ColumnType } from "./infer";
 import { choiceOf, type ColumnOverride } from "./typed";
@@ -82,6 +85,11 @@ export interface ColumnPlan {
   matched: Map<number, ColumnSchema>;
   /** Kolom aktif terlihat yang tidak ada di file baru (kolom tersembunyi yang hilang diabaikan). */
   missing: ColumnSchema[];
+  /**
+   * Kolom kosong (absent, T-014) terlihat yang tetap tidak ada di file baru: ditulis ulang kosong tanpa
+   * keputusan baru (urut posisi aktif). Melewati MAX_COLUMN → masuk `missing` (perlu pemetaan).
+   */
+  absent: ColumnSchema[];
 }
 
 export function planColumns(columns: ColumnMeta[], active: ColumnSchema[]): ColumnPlan {
@@ -95,14 +103,20 @@ export function planColumns(columns: ColumnMeta[], active: ColumnSchema[]): Colu
     if (a) matched.set(c.pos, a);
   });
   const found = new Set(matched.values());
-  // Nama tampil kolom tambahan tidak boleh bentrok dengan nama yang dibawa dari skema aktif.
-  const used = new Set([...found].map((a) => a.name.toLowerCase()));
+  // Nama tampil kolom tambahan tidak boleh bentrok dengan nama akhir mana pun (cocok, dipetakan,
+  // kosong — T-014): semua nama skema aktif dicadangkan.
+  const used = new Set(act.map((a) => a.name.toLowerCase()));
   const overrides = columns.map((c): ColumnOverride => {
     const a = matched.get(c.pos);
     if (a) return choiceOf(a, c.pos);
     return { pos: c.pos, name: uniqueName(baseName(c.original, c.pos), used), hidden: true };
   });
-  return { overrides, matched, missing: act.filter((a) => !a.hidden && !found.has(a)) };
+  const lost = act.filter((a) => !a.hidden && !found.has(a));
+  const absent = lost.filter((a) => a.absent);
+  if (columns.length + absent.length > MAX_COLUMN) {
+    return { overrides, matched, missing: lost, absent: [] };
+  }
+  return { overrides, matched, missing: lost.filter((a) => !a.absent), absent };
 }
 
 /**
@@ -152,7 +166,7 @@ const TYPE_LABEL: Record<ColumnType, string> = {
   boolean: "Ya / Tidak",
 };
 
-function typeLabel(c: ColumnSchema): string {
+export function typeLabel(c: ColumnSchema): string {
   const base = TYPE_LABEL[c.type];
   if (c.type === "date" || c.type === "timestamp") {
     return `${base} (${c.dateFormat === "serial" ? "nomor seri Excel" : (c.dateFormat ?? "yyyy-mm-dd")})`;

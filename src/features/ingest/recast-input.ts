@@ -30,31 +30,47 @@ export type RecastOutcome =
 /** Batas baris Excel; headerRow di luar ini pasti tidak ada di raw. */
 export const MAX_ROW = 1_048_576;
 
+/** Enum pilihan kolom dari user (recast T-008, pemetaan T-014). */
+export const columnTypeSchema = z.enum([
+  "integer",
+  "decimal",
+  "date",
+  "timestamp",
+  "duration",
+  "boolean",
+  "text",
+]);
+export const numberLocaleSchema = z.enum(["id", "us"]);
+export const dateFormatSchema = z.enum([
+  "yyyy-mm-dd",
+  "dd/mm/yyyy",
+  "dd-mm-yyyy",
+  "dd.mm.yyyy",
+  "yyyy/mm/dd",
+  "mm/dd/yyyy",
+  "serial",
+]);
+
+/**
+ * Posisi kolom terbesar sheet: kolom kosong (absent, T-014) berada setelah colCount dan tetap bisa
+ * diganti nama/tipe/disembunyikan.
+ */
+export const maxSchemaPos = (colCount: number, schema: Pick<ColumnSchema, "pos">[] | null) =>
+  Math.max(colCount, ...(schema ?? []).map((c) => c.pos));
+
 /**
  * Input recast berasal dari user (T-008) dan ikut menentukan SQL: hanya enum dan angka bulat dalam
  * rentang yang diterima (nama tampil tidak pernah masuk SQL). Divalidasi di sini sebagai pertahanan
- * berlapis selain validasi di API.
+ * berlapis selain validasi di API. `maxPos` = maxSchemaPos sheet.
  */
-export function parseRecastInput(input: unknown, colCount: number) {
+export function parseRecastInput(input: unknown, maxPos: number) {
   const column = z
     .object({
-      pos: z.number().int().min(1).max(colCount),
+      pos: z.number().int().min(1).max(maxPos),
       name: z.string().trim().min(1).max(120).optional(),
-      type: z
-        .enum(["integer", "decimal", "date", "timestamp", "duration", "boolean", "text"])
-        .optional(),
-      numberLocale: z.enum(["id", "us"]).optional(),
-      dateFormat: z
-        .enum([
-          "yyyy-mm-dd",
-          "dd/mm/yyyy",
-          "dd-mm-yyyy",
-          "dd.mm.yyyy",
-          "yyyy/mm/dd",
-          "mm/dd/yyyy",
-          "serial",
-        ])
-        .optional(),
+      type: columnTypeSchema.optional(),
+      numberLocale: numberLocaleSchema.optional(),
+      dateFormat: dateFormatSchema.optional(),
       hidden: z.boolean().optional(),
     })
     .strict();
@@ -62,7 +78,7 @@ export function parseRecastInput(input: unknown, colCount: number) {
     .object({
       baseRevision: z.number().int().min(0).optional(),
       headerRow: z.number().int().min(1).max(MAX_ROW).optional(),
-      columns: z.array(column).max(colCount).optional(),
+      columns: z.array(column).max(maxPos).optional(),
     })
     .strict()
     .safeParse(input);

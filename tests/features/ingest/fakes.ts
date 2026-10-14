@@ -26,6 +26,7 @@ import {
   type SheetRecord,
 } from "@/features/ingest/ingest";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import type { LockStore } from "@/lib/lock";
 import {
   sameSnapshot,
   snapshotRef,
@@ -181,6 +182,24 @@ export class FakeRepo implements IngestRepo {
   }
 }
 
+/** Redis palsu: SET NX + compare-and-delete/pexpire. `lose()` meniru lock kedaluwarsa lalu diambil lain. */
+export function fakeLock(): LockStore & { held: Map<string, string>; lose(): void } {
+  const held = new Map<string, string>();
+  return {
+    held,
+    lose: () => {
+      for (const k of held.keys()) held.set(k, "milik-proses-lain");
+    },
+    setNx: async (key, value) => {
+      if (held.has(key)) return null;
+      held.set(key, value);
+      return "OK";
+    },
+    delIfEquals: async (key, value) => (held.get(key) === value && held.delete(key) ? 1 : 0),
+    pexpireIfEquals: async (key, value) => (held.get(key) === value ? 1 : 0),
+  };
+}
+
 /** Akar temp per file test; panggil cleanup() di afterAll. */
 export function testRoot(name: string) {
   const root = mkdtempSync(join(tmpdir(), `dd-${name}-`));
@@ -217,6 +236,23 @@ export async function readParquet(path: string): Promise<unknown[][]> {
       `SELECT * FROM read_parquet('${path.replace(/'/g, "''")}') ORDER BY _row`,
     );
     return r.getRowsJS() as unknown[][];
+  } finally {
+    c.closeSync();
+    db.closeSync();
+  }
+}
+
+/** Tipe DuckDB per kolom parquet (c<pos> → "DATE", …). */
+export async function parquetTypes(path: string): Promise<Record<string, string>> {
+  const db = await DuckDBInstance.create(":memory:");
+  const c = await db.connect();
+  try {
+    const r = await c.runAndReadAll(
+      `DESCRIBE SELECT * FROM read_parquet('${path.replace(/'/g, "''")}')`,
+    );
+    return Object.fromEntries(
+      r.getRowObjects().map((x) => [String(x.column_name), String(x.column_type)]),
+    );
   } finally {
     c.closeSync();
     db.closeSync();

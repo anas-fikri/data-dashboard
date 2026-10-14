@@ -31,7 +31,7 @@ const notFound = <T>() => fail<T>("NOT_FOUND", "Versi data tidak ditemukan.");
 const busy = <T>() =>
   fail<T>(
     "DATASET_BUSY",
-    "Tunggu file baru selesai diproses (atau buang versi yang menunggu pemetaan) sebelum mengganti versi aktif.",
+    "Tunggu file baru selesai diproses, atau versi yang menunggu pemetaan dipetakan atau dibuang, sebelum mengganti versi aktif.",
   );
 
 const rowSelect = {

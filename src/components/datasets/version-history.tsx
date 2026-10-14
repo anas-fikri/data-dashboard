@@ -21,11 +21,14 @@ export function VersionHistory({
   datasetId,
   versions,
   busy,
+  mappingApplying = false,
 }: {
   datasetId: string;
   versions: VersionRow[];
   /** Alasan dataset sibuk (jenis badge versi terbaru), null bila aktivasi bisa dilakukan. */
   busy: ActivationBusy | null;
+  /** Pemetaan versi yang menunggu sedang diterapkan (T-014): baris itu menampilkan status. */
+  mappingApplying?: boolean;
 }) {
   return (
     <Card data-testid="version-history">
@@ -67,7 +70,13 @@ export function VersionHistory({
               </thead>
               <tbody role="rowgroup" className="block @3xl:table-row-group">
                 {versions.map((v) => (
-                  <VersionHistoryRow key={v.id} datasetId={datasetId} v={v} busy={busy !== null} />
+                  <VersionHistoryRow
+                    key={v.id}
+                    datasetId={datasetId}
+                    v={v}
+                    busy={busy !== null}
+                    mappingApplying={mappingApplying}
+                  />
                 ))}
               </tbody>
             </table>

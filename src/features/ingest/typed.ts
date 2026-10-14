@@ -14,6 +14,7 @@ import {
   okCount,
   pickLocale,
   profileSqls,
+  sqlType,
   toProfile,
   typedParts,
   type ColumnSchema,
@@ -56,6 +57,16 @@ export const choiceOf = (c: ColumnSchema, pos = c.pos): ColumnOverride => ({
   hidden: c.hidden,
 });
 
+/**
+ * Kolom kosong (absent, T-014): kolom skema aktif yang tidak ada di file. Ditulis setelah kolom nyata
+ * (pos = colCount + 1..k, urutan input = urutan posisi aktif) sebagai NULL bertipe; pilihan user (nama,
+ * tipe, format, sembunyi) dan judul asli aktif dibawa agar widget dan refresh berikutnya tetap cocok.
+ */
+export type AbsentColumn = Pick<
+  ColumnSchema,
+  "name" | "original" | "type" | "numberLocale" | "dateFormat" | "float" | "hidden"
+>;
+
 export interface TypedInput {
   rawPath: string;
   outPath: string;
@@ -65,6 +76,8 @@ export interface TypedInput {
   /** Nama kolom dari baris header ({ pos, name, original }). */
   columns: ColumnMeta[];
   overrides?: ColumnOverride[];
+  /** Kolom kosong setelah kolom nyata (T-014). */
+  absent?: AbsentColumn[];
   /** Dipanggil berkala selama query panjang; melempar → query diinterupsi. */
   watch: () => Promise<void>;
 }
@@ -73,7 +86,10 @@ export interface TypedResult {
   schema: ColumnSchema[];
   /** Baris data di typed.parquet. */
   dataRows: number;
-  /** Nilai non-kosong per kolom (indeks pos − 1): penyebut rasio cast versi refresh (T-013). */
+  /**
+   * Nilai non-kosong per kolom (indeks pos − 1, kolom kosong = 0): penyebut rasio cast versi refresh
+   * (T-013); juga disimpan per kolom di skema (T-014).
+   */
   nonEmpty: number[];
 }
 
@@ -184,6 +200,24 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
       nullPct: dataRows > 0 ? Math.round(((dataRows - n) / dataRows) * 10_000) / 10_000 : 0,
       distinctCount: p?.distinct ?? 0,
       castFailCount: s.type === "text" ? 0 : Math.max(0, n - ok),
+      nonEmpty: n,
+    };
+  });
+  // Kolom kosong: tanpa profil; locale/format dilengkapi seperti pilihan user tanpa data.
+  const absent: ColumnSchema[] = (input.absent ?? []).map((a, i) => {
+    const s = resolve(undefined, input.source, { pos: 0, ...a });
+    return {
+      pos: input.colCount + i + 1,
+      name: a.name,
+      original: a.original,
+      ...s,
+      ...(s.type === "decimal" && a.float ? { float: true } : {}),
+      hidden: a.hidden,
+      nullPct: dataRows > 0 ? 1 : 0,
+      distinctCount: 0,
+      castFailCount: 0,
+      nonEmpty: 0,
+      absent: true,
     };
   });
 
@@ -192,16 +226,22 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
   const chars = [...profiles.values()].reduce((sum, p) => sum + p.chars, 0);
   // Dua tahap: parse sekali di subquery (a<pos>), penjaga diterapkan pada hasilnya di luar.
   const parts = schema.map((s, i) => typedParts(cols[i]!, s));
+  const outer = [
+    ...parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`),
+    ...absent.map((a) => `CAST(NULL AS ${sqlType(a)}) AS c${a.pos}`),
+  ];
+  const width = outer.length + 1;
   await watched(duck, input.watch, () =>
     copyParquet(
       duck,
-      `SELECT _row, ${parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`).join(", ")}
+      `SELECT _row, ${outer.join(", ")}
        FROM (SELECT _row, ${parts.map((p, i) => `${p.inner} AS a${i + 1}`).join(", ")}
              FROM read_parquet(${lit(input.rawPath)}) WHERE ${where})`,
       input.outPath,
-      cols.length + 1,
-      rowGroupFor(cols.length + 1, dataRows > 0 ? chars / dataRows : 0),
+      width,
+      rowGroupFor(width, dataRows > 0 ? chars / dataRows : 0),
     ),
   );
-  return { schema, dataRows, nonEmpty: cols.map((col) => profiles.get(col)?.n ?? 0) };
+  const all = [...schema, ...absent];
+  return { schema: all, dataRows, nonEmpty: all.map((c) => c.nonEmpty ?? 0) };
 }

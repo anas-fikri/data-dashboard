@@ -7,6 +7,8 @@
  *  - Kunci file unik per percobaan: percobaan yang kalah hanya menghapus file miliknya sendiri.
  *  - Pointer typedKey diganti hanya setelah file baru lengkap dan revisi belum berubah; file lama
  *    dihapus 1 jam kemudian (job) agar query yang sedang membaca revisi lama tetap selesai.
+ *  - Kolom kosong (absent, T-014) selalu dibawa, juga saat baris header diganti: edit nama/tipe/format/
+ *    sembunyi berlaku; ganti tipe hanya mengganti tipe CAST NULL-nya.
  */
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -15,8 +17,19 @@ import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema, SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, type IngestStorage } from "./ingest";
-import { parseRecastInput, type RecastInput, type RecastOutcome } from "./recast-input";
-import { choiceOf, headerColumns, writeTyped, type ColumnOverride } from "./typed";
+import {
+  maxSchemaPos,
+  parseRecastInput,
+  type RecastInput,
+  type RecastOutcome,
+} from "./recast-input";
+import {
+  choiceOf,
+  headerColumns,
+  writeTyped,
+  type AbsentColumn,
+  type ColumnOverride,
+} from "./typed";
 
 export { parseRecastInput, type RecastInput, type RecastOutcome };
 
@@ -85,6 +98,27 @@ function merge(base: ColumnOverride[], changes: ColumnOverride[] = []): ColumnOv
   return [...m.values()];
 }
 
+/** Kolom kosong skema sekarang (urut posisi) dengan override yang berlaku untuk posisinya. */
+function carryAbsent(schema: ColumnSchema[] | null, overrides: ColumnOverride[]): AbsentColumn[] {
+  const by = new Map(overrides.map((o) => [o.pos, o]));
+  return (schema ?? [])
+    .filter((c) => c.absent)
+    .sort((a, b) => a.pos - b.pos)
+    .map((c) => {
+      const o = by.get(c.pos);
+      const type = o?.type ?? c.type;
+      return {
+        name: o?.name?.trim() || c.name,
+        original: c.original,
+        type,
+        numberLocale: o?.numberLocale ?? c.numberLocale,
+        dateFormat: o?.dateFormat ?? c.dateFormat,
+        float: type === c.type ? c.float : undefined,
+        hidden: o?.hidden ?? c.hidden,
+      };
+    });
+}
+
 class LockLostError extends Error {
   constructor() {
     super("lock recast hilang");
@@ -136,7 +170,7 @@ export async function recastSheet(
     if (s.versionStatus === "UPLOADED" || s.versionStatus === "INGESTING")
       return { outcome: "busy" };
     if (s.versionStatus !== "READY") return { outcome: "gone" };
-    const parsed = parseRecastInput(rawInput, s.colCount);
+    const parsed = parseRecastInput(rawInput, maxSchemaPos(s.colCount, s.schema));
     if (!parsed.success) {
       return {
         outcome: "invalid",
@@ -165,7 +199,9 @@ export async function recastSheet(
       : s.columns;
     const base = newHeader || !s.schema ? [] : currentChoices(s.schema);
     const overrides = merge(base, input.columns);
-    const dup = duplicateName(columns, overrides);
+    const absent = carryAbsent(s.schema, overrides);
+    const absentMeta = absent.map((a, i) => ({ ...a, pos: s.colCount + i + 1 }));
+    const dup = duplicateName([...columns, ...absentMeta], overrides);
     if (dup)
       return { outcome: "invalid", message: `Nama kolom "${dup}" dipakai lebih dari sekali.` };
     const revision = s.schemaRevision + 1;
@@ -178,6 +214,7 @@ export async function recastSheet(
       colCount: s.colCount,
       columns,
       overrides,
+      absent,
       watch,
     });
 

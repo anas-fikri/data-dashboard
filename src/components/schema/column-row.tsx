@@ -1,6 +1,7 @@
 "use client";
 
-import { IconAlertTriangle, IconEyeOff } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleOff, IconEyeOff } from "@tabler/icons-react";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -80,6 +81,16 @@ export function ColumnRow({
           {column.original && column.original !== draft.name ? ` · asli: "${column.original}"` : ""}
           {changed ? <span className="font-medium text-primary"> · diubah</span> : null}
         </p>
+        {column.absent ? (
+          // Kolom kosong hasil pemetaan (T-014): tetap bisa diganti nama/tipe/disembunyikan.
+          <Badge
+            tone="neutral"
+            icon={<IconCircleOff />}
+            className="mt-1.5 h-auto min-h-6 whitespace-normal py-0.5"
+          >
+            <span data-testid="schema-absent">Tidak ada di file — kosong</span>
+          </Badge>
+        ) : null}
         {error ? (
           <p id={`${id}-err`} className="mt-1 text-sm text-destructive">
             {error}

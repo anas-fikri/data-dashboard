@@ -337,7 +337,8 @@ export async function runIngest(
       const sheetId = await repo.createSheet(versionId, s.rec);
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
-      // untuk kolom yang cocok, inferensi untuk sheet/kolom baru.
+      // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang
+      // tetap tidak ada di file ditulis ulang kosong tanpa menunggu pemetaan.
       setProgress({ stage: "tipe", refresh: active !== null, ...at });
       const typedPath = join(work, `typed-${s.rec.index}.parquet`);
       const typed = await writeTyped(duck, {
@@ -348,6 +349,7 @@ export async function runIngest(
         colCount: s.rec.colCount,
         columns: s.rec.columns,
         overrides: cols?.overrides,
+        absent: cols?.absent,
         watch: ensureAlive,
       });
       if (active && cols) {

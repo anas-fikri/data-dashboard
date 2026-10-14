@@ -3,11 +3,14 @@ import { Queue } from "bullmq";
 import Redis from "ioredis";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import type { MappingInput } from "@/features/ingest/mapping-input";
 import type { RecastInput } from "@/features/ingest/recast";
 
 export const INGEST_QUEUE = "ingest";
-/** Recast typed.parquet per sheet (T-007; dipicu koreksi skema T-008). */
+/** Recast typed.parquet per sheet (T-007; dipicu koreksi skema T-008) dan pemetaan versi (T-014). */
 export const RECAST_QUEUE = "recast";
+/** Nama job pemetaan kolom di antrean recast (worker membedakan lewat job.name). */
+export const MAP_VERSION_JOB = "map-version";
 /** Batas waktu satu operasi antrean dari app (enqueue/batal) agar permintaan user tidak menggantung. */
 export const QUEUE_OP_TIMEOUT_MS = 5_000;
 
@@ -30,6 +33,15 @@ export interface RecastJobData {
   input: RecastInput;
   /** Peminta (batas job berjalan per user, review T-008 M2); kosong untuk job lama. */
   userId?: string;
+}
+
+/** Job pemetaan kolom versi AWAITING_MAPPING (T-014); pelaku + ip untuk AuditLog commit. */
+export interface MappingJobData {
+  versionId: string;
+  datasetId: string;
+  input: MappingInput;
+  actorId: string;
+  ip: string;
 }
 
 /**
@@ -77,6 +89,11 @@ export function ingestQueue(): Queue<IngestJobData> {
 
 export function recastQueue(): Queue<RecastJobData> {
   return producerQueue<RecastJobData>(RECAST_QUEUE, RECAST_JOB_OPTIONS);
+}
+
+/** Antrean recast yang sama, bertipe data job pemetaan (job "map-version"). */
+export function mappingQueue(): Queue<MappingJobData> {
+  return producerQueue<MappingJobData>(RECAST_QUEUE, RECAST_JOB_OPTIONS);
 }
 
 /** Jalankan operasi antrean dengan batas waktu; melempar bila lewat. */

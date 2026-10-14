@@ -23,6 +23,8 @@ export interface WidgetData {
   grandTotal?: number | null;
   /** Filter dashboard yang dilewati karena kolomnya tidak ada di sheet widget ini (T-012). */
   skippedFilters?: string[];
+  /** Kolom yang dipakai widget dan kosong di versi data ini (kolom absent hasil pemetaan, T-014). */
+  absent?: string[];
   /** Hanya tabel. */
   total?: number;
   page?: number;

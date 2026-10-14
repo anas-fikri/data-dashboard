@@ -16,11 +16,12 @@ import { getDataset } from "@/features/datasets/service";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
+import { mappingView } from "@/features/versions/mapping";
 import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ created?: string }>;
+type Search = Promise<{ created?: string; mapped?: string; discarded?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -50,10 +51,14 @@ export default async function DatasetDetailPage({
   // yang sedang ditransfer di tab ini dikabarkan UploadPanel lewat DatasetActivityProvider (tanpa refresh).
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
-  const [pending, versions] = await Promise.all([
+  const awaiting = badge?.kind === "awaiting_mapping";
+  const [pending, versions, mappingState] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
     listVersions(user.id, dataset.id),
+    // Job pemetaan yang sedang diterapkan (T-014): status di panel unggah dan riwayat versi.
+    awaiting ? mappingView(user.id, dataset.id) : null,
   ]);
+  const mappingJobId = mappingState && !mappingState.none ? mappingState.jobId : null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
   const mapping = versions.find((v) => v.canDiscard) ?? null;
   // Status awal progres dirender server (tidak ada layar kosong sebelum polling pertama, T-008).
@@ -88,6 +93,24 @@ export default async function DatasetDetailPage({
         description={dataset.description ?? undefined}
       />
       {search.created === "1" ? <FocusNotice>Dataset dibuat.</FocusNotice> : null}
+      {/* Kembali dari halaman pemetaan (T-014); hanya bila keadaannya memang sudah begitu. */}
+      {search.mapped === "1" && active && !awaiting ? (
+        <div data-testid="mapping-done">
+          <FocusNotice>
+            <span className="[overflow-wrap:anywhere]">
+              Pemetaan disimpan. Versi “{active.originalName ?? "file baru"}” aktif.
+            </span>
+          </FocusNotice>
+        </div>
+      ) : null}
+      {search.discarded === "1" && !awaiting ? (
+        <div data-testid="version-discard-result">
+          <FocusNotice>
+            Versi yang menunggu pemetaan dibuang. Data aktif tetap dipakai; unggah file yang sudah
+            diperbaiki.
+          </FocusNotice>
+        </div>
+      ) : null}
       <div>
         <StatusBadge label={dataset.label} />
       </div>
@@ -116,12 +139,13 @@ export default async function DatasetDetailPage({
               processing={
                 ingest
                   ? { kind: "ingest", status: ingest }
-                  : badge?.kind === "awaiting_mapping"
+                  : awaiting
                     ? {
                         kind: "mapping",
                         versionId: mapping?.id ?? null,
                         fileName: mapping?.fileName ?? dataset.latestFileName,
                         message: mapping?.message ?? null,
+                        mappingJobId,
                       }
                     : null
               }
@@ -130,7 +154,12 @@ export default async function DatasetDetailPage({
         </Card>
 
         {versions.length > 0 ? (
-          <VersionHistory datasetId={dataset.id} versions={versions} busy={busy} />
+          <VersionHistory
+            datasetId={dataset.id}
+            versions={versions}
+            busy={busy}
+            mappingApplying={mappingJobId !== null}
+          />
         ) : null}
       </DatasetActivityProvider>
 

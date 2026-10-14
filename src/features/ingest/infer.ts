@@ -47,6 +47,13 @@ export interface ColumnSchema {
   distinctCount: number;
   /** Nilai non-kosong yang gagal dikonversi ke tipe kolom (menjadi NULL). */
   castFailCount: number;
+  /** Nilai non-kosong (penyebut rasio cast, T-014); skema lama tanpa field ini. */
+  nonEmpty?: number;
+  /**
+   * Kolom skema aktif yang tidak ada di file dan dikonfirmasi kosong (T-014): kolom fisik bertipe berisi
+   * NULL setelah kolom nyata. Refresh berikutnya yang juga tidak memuatnya menulisnya ulang kosong.
+   */
+  absent?: boolean;
 }
 
 export const INFER_THRESHOLD = 0.98;
@@ -441,6 +448,28 @@ export function decide(p: Profile | undefined, source: SourceKind): Inferred {
   }
   if (passes(p.bool, p.n)) return { type: "boolean" };
   return { type: "text" };
+}
+
+/**
+ * Tipe SQL hasil typedParts per tipe kolom; dipakai kolom kosong (absent, T-014): NULL tanpa tipe
+ * tersimpan INTEGER dan membuat date_trunc/perbandingan tanggal gagal.
+ */
+export function sqlType(s: Pick<Inferred, "type" | "float">): string {
+  switch (s.type) {
+    case "text":
+      return "VARCHAR";
+    case "integer":
+    case "duration":
+      return "BIGINT";
+    case "decimal":
+      return s.float ? "DOUBLE" : "DECIMAL(38,6)";
+    case "boolean":
+      return "BOOLEAN";
+    case "date":
+      return "DATE";
+    case "timestamp":
+      return "TIMESTAMP";
+  }
 }
 
 /**

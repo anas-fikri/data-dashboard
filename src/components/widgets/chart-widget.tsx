@@ -30,6 +30,7 @@ import {
   valueCut,
   zeroWhenBlank,
 } from "./chart-series";
+import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
 import { useBoxSize } from "./use-box-size";
@@ -183,7 +184,7 @@ export function ChartWidget({
   const chars = width ? Math.max(6, Math.floor((width - 72) / CHAR_PX)) : 24;
 
   let body: React.ReactNode;
-  if (data.rows.length === 0) {
+  if (chartEmpty(data)) {
     body = (
       <p className="flex min-h-0 flex-1 items-center justify-center p-4 text-center text-sm text-muted-foreground">
         Tidak ada data untuk ditampilkan.
@@ -463,7 +464,7 @@ export function ChartWidget({
 
   // Keterangan yang muat (lengkap/ringkas); teks lengkap tetap di title dan untuk pembaca layar.
   const note =
-    fit && fit.note !== "none" && !fit.ranked && data.rows.length > 0 && !showData && !negative
+    fit && fit.note !== "none" && !fit.ranked && !chartEmpty(data) && !showData && !negative
       ? fit
       : null;
 

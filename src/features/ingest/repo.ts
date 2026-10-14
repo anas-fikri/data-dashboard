@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { recordAudit } from "@/features/audit/service";
 import { activateVersionInTx } from "@/features/versions/activation";
 import { prisma } from "@/lib/db";
 import { deletePrefix } from "@/lib/storage/objects";
@@ -13,8 +14,9 @@ import {
   type IngestRepo,
   type IngestStorage,
 } from "./ingest";
+import type { MappingRepo } from "./mapping";
 import type { RecastRepo } from "./recast";
-import { sameSnapshot } from "./refresh";
+import { sameSnapshot, type ActiveSnapshot } from "./refresh";
 
 /**
  * Aktivasi (persist spec widget semua dashboard + retensi) berjalan di dalam transaksi finish; batas
@@ -22,51 +24,64 @@ import { sameSnapshot } from "./refresh";
  */
 const FINISH_TX_TIMEOUT_MS = 30_000;
 
+/** Versi aktif dataset beserta skema sheet-nya (acuan cast versi refresh dan pemetaan). */
+const activeSelect = {
+  select: {
+    activeVersion: {
+      select: {
+        id: true,
+        sheets: {
+          orderBy: { index: "asc" as const },
+          select: {
+            id: true,
+            name: true,
+            index: true,
+            headerRow: true,
+            schemaRevision: true,
+            schema: true,
+          },
+        },
+      },
+    },
+  },
+};
+
+type ActiveRow = {
+  id: string;
+  sheets: {
+    id: string;
+    name: string;
+    index: number;
+    headerRow: number;
+    schemaRevision: number;
+    schema: unknown;
+  }[];
+} | null;
+
+/** Snapshot versi aktif selain `versionId` (versi itu sendiri bukan acuan). */
+const snapshotOf = (a: ActiveRow, versionId: string): ActiveSnapshot | null =>
+  a && a.id !== versionId
+    ? {
+        versionId: a.id,
+        sheets: a.sheets.map((s) => ({
+          ...s,
+          schema: (s.schema as ColumnSchema[] | null) ?? [],
+        })),
+      }
+    : null;
+
 /** Implementasi Prisma untuk ingest (worker). Semua update dijaga status agar idempoten. */
 export const prismaIngestRepo: IngestRepo = {
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: {
-        datasetId: true,
-        sourceKey: true,
-        dataset: {
-          select: {
-            activeVersion: {
-              select: {
-                id: true,
-                sheets: {
-                  orderBy: { index: "asc" },
-                  select: {
-                    id: true,
-                    name: true,
-                    index: true,
-                    headerRow: true,
-                    schemaRevision: true,
-                    schema: true,
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
+      select: { datasetId: true, sourceKey: true, dataset: activeSelect },
     });
     if (!v?.sourceKey) return null;
-    const a = v.dataset.activeVersion;
     return {
       datasetId: v.datasetId,
       sourceKey: v.sourceKey,
-      active:
-        a && a.id !== versionId
-          ? {
-              versionId: a.id,
-              sheets: a.sheets.map((s) => ({
-                ...s,
-                schema: (s.schema as unknown as ColumnSchema[] | null) ?? [],
-              })),
-            }
-          : null,
+      active: snapshotOf(v.dataset.activeVersion, versionId),
     };
   },
 
@@ -248,5 +263,121 @@ export const prismaRecastRepo: RecastRepo = {
       });
       return r.count > 0;
     });
+  },
+};
+
+/** Commit pemetaan dibatalkan di tengah transaksi (sheet berubah/hilang): semua tulisan di-rollback. */
+class MappingAbort extends Error {
+  constructor() {
+    super("sheet versi berubah saat commit pemetaan");
+    this.name = "MappingAbort";
+  }
+}
+
+export const prismaMappingRepo: MappingRepo = {
+  async load(versionId) {
+    const v = await prisma.datasetVersion.findUnique({
+      where: { id: versionId },
+      select: {
+        datasetId: true,
+        status: true,
+        sourceKey: true,
+        sheets: {
+          orderBy: { index: "asc" },
+          select: {
+            id: true,
+            name: true,
+            index: true,
+            colCount: true,
+            headerRow: true,
+            columns: true,
+            rawKey: true,
+            typedKey: true,
+            schemaRevision: true,
+          },
+        },
+        dataset: activeSelect,
+      },
+    });
+    if (!v) return null;
+    return {
+      datasetId: v.datasetId,
+      status: v.status,
+      source: v.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
+      sheets: v.sheets.map((s) => ({ ...s, columns: s.columns as unknown as ColumnMeta[] })),
+      active: snapshotOf(v.dataset.activeVersion, versionId),
+    };
+  },
+
+  async alive(versionId) {
+    const n = await prisma.datasetVersion.count({
+      where: { id: versionId, status: "AWAITING_MAPPING" },
+    });
+    return n > 0;
+  },
+
+  async commit(versionId, d) {
+    try {
+      return await prisma.$transaction(
+        async (tx) => {
+          const v = await tx.datasetVersion.findUnique({
+            where: { id: versionId },
+            select: { datasetId: true, originalName: true },
+          });
+          if (!v) return "gone" as const;
+          // Urutan kunci sama dengan finish/hapus dataset: Dataset lebih dulu.
+          const [ds] = await tx.$queryRaw<{ activeVersionId: string | null }[]>`
+            SELECT "activeVersionId" FROM "Dataset" WHERE id = ${v.datasetId} FOR UPDATE`;
+          if (!ds) return "gone" as const;
+          const sheets = ds.activeVersionId
+            ? await tx.sheet.findMany({
+                where: { versionId: ds.activeVersionId },
+                select: { id: true, schemaRevision: true },
+              })
+            : [];
+          if (!sameSnapshot(d.base, { activeVersionId: ds.activeVersionId, sheets })) {
+            return "stale" as const;
+          }
+          const r = await tx.datasetVersion.updateMany({
+            where: { id: versionId, status: "AWAITING_MAPPING" },
+            data: { status: "READY", errorMessage: null },
+          });
+          if (r.count === 0) return "gone" as const;
+          for (const s of d.sheets) {
+            const u = await tx.sheet.updateMany({
+              where: { id: s.id, versionId, schemaRevision: s.expectedRevision },
+              data: {
+                typedKey: s.typedKey,
+                schema: s.schema as unknown as Prisma.InputJsonValue,
+                schemaRevision: s.schemaRevision,
+                headerRow: s.headerRow,
+                columns: s.columns as unknown as Prisma.InputJsonValue,
+              },
+            });
+            if (u.count === 0) throw new MappingAbort();
+          }
+          // Worker: tidak ada cache Parquet lokal yang perlu dilupakan (deletedTypedKeys diabaikan).
+          await activateVersionInTx(tx, v.datasetId, versionId, { sheetMap: d.sheetMap });
+          await recordAudit(tx, {
+            actorId: d.actorId,
+            action: "dataset.version.map",
+            targetType: "dataset",
+            targetId: v.datasetId,
+            meta: {
+              from: ds.activeVersionId,
+              versionId,
+              fileName: v.originalName,
+              ...d.meta,
+            },
+            ip: d.ip,
+          });
+          return "done" as const;
+        },
+        { timeout: FINISH_TX_TIMEOUT_MS },
+      );
+    } catch (e) {
+      if (e instanceof MappingAbort) return "stale";
+      throw e;
+    }
   },
 };

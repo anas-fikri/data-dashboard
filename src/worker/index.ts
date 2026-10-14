@@ -2,7 +2,8 @@
  * Proses worker terpisah dari app (flow-kerja B1). Antrean:
  *   - "ingest": file unggahan → raw.parquet per sheet (T-006). Concurrency 1 per proses (D7); lock job
  *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih.
- *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock).
+ *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock),
+ *     dan job "map-version": pemetaan kolom versi AWAITING_MAPPING lalu aktivasi (T-014).
  *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, pembersihan storage,
  *     file asli > 7 hari) dan hapus typed lama.
  * Jalankan: npm run worker (tsx dengan kondisi react-server agar modul "server-only" bisa dimuat).
@@ -13,6 +14,7 @@ import { join } from "node:path";
 import { DelayedError, Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
+import { applyMapping } from "@/features/ingest/mapping";
 import { recastSheet } from "@/features/ingest/recast";
 import {
   finalizeFailed,
@@ -20,7 +22,12 @@ import {
   removeStaleWorkDirs,
   STALE_FAILURE_MESSAGE,
 } from "@/features/ingest/recovery";
-import { prismaIngestRepo, prismaRecastRepo, s3IngestStorage } from "@/features/ingest/repo";
+import {
+  prismaIngestRepo,
+  prismaMappingRepo,
+  prismaRecastRepo,
+  s3IngestStorage,
+} from "@/features/ingest/repo";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { prisma } from "@/lib/db";
@@ -30,8 +37,10 @@ import { redisLockStore } from "@/lib/lock";
 import {
   INGEST_JOB_OPTIONS,
   INGEST_QUEUE,
+  MAP_VERSION_JOB,
   RECAST_QUEUE,
   type IngestJobData,
+  type MappingJobData,
   type RecastJobData,
 } from "@/lib/queue/connection";
 import { deleteObject } from "@/lib/storage/objects";
@@ -48,6 +57,8 @@ const SCHEDULED_OPTS = { removeOnComplete: 50, removeOnFail: 100 };
 /** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
 const RECAST_BUSY_DELAY_MS = 30 * 1000;
 const RECAST_BUSY_MAX_MS = 30 * 60 * 1000;
+/** Batas tunggu pemetaan "busy" (> deadline pemetaan 60 menit). */
+const MAPPING_BUSY_MAX_MS = 70 * 60 * 1000;
 const INGEST_LOCK_MS = 5 * 60 * 1000;
 
 /** Tandai semua unggahan > 24 jam sebagai FAILED (per batch 100 sampai habis). */
@@ -175,29 +186,53 @@ async function main() {
     })();
   });
 
-  // --- recast ---
+  // --- recast (+ pemetaan versi) ---
   const lockRedis = connection();
-  const recastWorker = new Worker<RecastJobData>(
+  const scheduleDelete = async (key: string, delay: number) => {
+    await maintenance.add(
+      DELETE_OBJECT,
+      { key },
+      {
+        delay,
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+        attempts: 5,
+        backoff: { type: "exponential", delay: 60_000 },
+      },
+    );
+  };
+  /** Job lain sedang memegang lock → tunda tanpa memakai jatah percobaan sampai batas tunggu. */
+  const delayBusy = async (job: Job, maxMs: number, token?: string): Promise<never> => {
+    if (Date.now() - job.timestamp > maxMs) throw new Error("job lain berjalan terlalu lama");
+    await job.moveToDelayed(Date.now() + RECAST_BUSY_DELAY_MS, token);
+    throw new DelayedError();
+  };
+  const mapVersion = async (job: Job<MappingJobData>, token?: string) => {
+    const { versionId, input, actorId, ip } = job.data;
+    const r = await applyMapping(
+      { versionId, input, actorId, ip },
+      {
+        repo: prismaMappingRepo,
+        storage: s3IngestStorage,
+        lock: redisLockStore(lockRedis),
+        scheduleDelete,
+        tmpRoot,
+      },
+    );
+    logger.info({ jobId: job.id, versionId, ...r }, "pemetaan selesai");
+    if (r.outcome === "busy") return delayBusy(job, MAPPING_BUSY_MAX_MS, token);
+    return r;
+  };
+  const recastWorker = new Worker<RecastJobData | MappingJobData>(
     RECAST_QUEUE,
-    async (job: Job<RecastJobData>, token?: string) => {
-      const { sheetId, input } = job.data;
+    async (job: Job<RecastJobData | MappingJobData>, token?: string) => {
+      if (job.name === MAP_VERSION_JOB) return mapVersion(job as Job<MappingJobData>, token);
+      const { sheetId, input } = job.data as RecastJobData;
       const r = await recastSheet(sheetId, input, {
         repo: prismaRecastRepo,
         storage: s3IngestStorage,
         lock: redisLockStore(lockRedis),
-        scheduleDelete: async (key, delay) => {
-          await maintenance.add(
-            DELETE_OBJECT,
-            { key },
-            {
-              delay,
-              removeOnComplete: 100,
-              removeOnFail: 1000,
-              attempts: 5,
-              backoff: { type: "exponential", delay: 60_000 },
-            },
-          );
-        },
+        scheduleDelete,
         tmpRoot,
         watch: async () => {
           if ((await prisma.sheet.count({ where: { id: sheetId } })) === 0) {
@@ -208,18 +243,13 @@ async function main() {
       logger.info({ jobId: job.id, sheetId, ...r, schema: undefined }, "recast selesai");
       // Recast lain sedang memegang lock sheet ini (bisa sampai deadline 20 menit) → tunda tanpa
       // memakai jatah percobaan, sampai batas tunggu > deadline; perubahan user tidak dibuang.
-      if (r.outcome === "busy") {
-        const waited = Date.now() - job.timestamp;
-        if (waited > RECAST_BUSY_MAX_MS) throw new Error("recast lain berjalan terlalu lama");
-        await job.moveToDelayed(Date.now() + RECAST_BUSY_DELAY_MS, token);
-        throw new DelayedError();
-      }
+      if (r.outcome === "busy") return delayBusy(job, RECAST_BUSY_MAX_MS, token);
       return r.outcome === "done" ? { outcome: r.outcome, revision: r.revision } : r;
     },
     { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS },
   );
   recastWorker.on("failed", (job, err) =>
-    logger.error({ jobId: job?.id, sheetId: job?.data.sheetId, err: err.message }, "recast gagal"),
+    logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "recast gagal"),
   );
 
   const swept = await sweepUploaded(ingestQueue);

@@ -59,7 +59,8 @@ export function shownBusy(
 export const BUSY_TEXT: Record<ActivationBusy, string> = {
   uploading: "Versi aktif bisa diganti setelah unggahan selesai diproses atau dibatalkan.",
   processing: "Versi aktif bisa diganti setelah file baru selesai diproses.",
-  awaiting_mapping: "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dibuang.",
+  awaiting_mapping:
+    "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dipetakan atau dibuang.",
 };
 
 /**
@@ -104,7 +105,7 @@ const ERRORS: Record<VersionCode, { text: string; preferServer: boolean }> = {
     preferServer: false,
   },
   DATASET_BUSY: {
-    text: "Tunggu file baru selesai diproses (atau buang versi yang menunggu pemetaan) sebelum mengganti versi aktif.",
+    text: "Tunggu file baru selesai diproses, atau versi yang menunggu pemetaan dipetakan atau dibuang, sebelum mengganti versi aktif.",
     preferServer: true,
   },
   INVALID: {
@@ -114,6 +115,10 @@ const ERRORS: Record<VersionCode, { text: string; preferServer: boolean }> = {
   RATE_LIMITED: {
     text: "Terlalu banyak perubahan dalam waktu singkat. Tunggu sebentar, lalu coba lagi.",
     preferServer: true,
+  },
+  STALE: {
+    text: "Skema aktif berubah. Muat ulang halaman ini.",
+    preferServer: false,
   },
 };
 

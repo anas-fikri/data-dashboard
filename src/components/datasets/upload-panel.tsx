@@ -52,7 +52,14 @@ interface UploadPanelProps {
   /** Versi terbaru sedang diproses (progres hidup) atau menunggu pemetaan kolom; unggah baru ditahan (D4). */
   processing:
     | { kind: "ingest"; status: IngestStatus }
-    | { kind: "mapping"; versionId: string | null; fileName: string | null; message: string | null }
+    | {
+        kind: "mapping";
+        versionId: string | null;
+        fileName: string | null;
+        message: string | null;
+        /** Job pemetaan yang sedang antre/diterapkan (T-014), atau null. */
+        mappingJobId: string | null;
+      }
     | null;
 }
 
@@ -274,6 +281,7 @@ export function UploadPanel({
           versionId={processing.versionId}
           fileName={processing.fileName}
           message={processing.message}
+          mappingJobId={processing.mappingJobId}
           onDiscarded={(name) => setState({ kind: "discarded", name })}
         />
       ) : null}

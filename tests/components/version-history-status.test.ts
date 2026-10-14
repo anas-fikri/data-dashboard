@@ -97,7 +97,7 @@ describe("BUSY_TEXT", () => {
       "Versi aktif bisa diganti setelah file baru selesai diproses.",
     );
     expect(BUSY_TEXT.awaiting_mapping).toBe(
-      "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dibuang.",
+      "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dipetakan atau dibuang.",
     );
     expect(BUSY_TEXT.processing).not.toMatch(/pemetaan|dibatalkan/);
     expect(BUSY_TEXT.awaiting_mapping).not.toMatch(/diunggah|diproses/);

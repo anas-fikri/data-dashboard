@@ -19,11 +19,14 @@ import {
 
 const AUTO = "auto";
 
+/** Bagian draf yang diatur sel ini (editor skema dan baris pemetaan T-014). */
+type FormatDraft = Pick<ColumnDraft, "type" | "numberLocale" | "dateFormat">;
+
 /**
  * Format sesuai tipe: tanggal → format tanggal, angka → penulisan angka, lainnya kosong. "Deteksi
  * otomatis" hanya bila kolom belum punya pilihan (worker memilih yang paling cocok).
  */
-export function FormatCell({
+export function FormatCell<D extends FormatDraft>({
   id,
   column,
   draft,
@@ -32,10 +35,11 @@ export function FormatCell({
   label,
 }: {
   id: string;
-  column: ColumnSchema;
-  draft: ColumnDraft;
+  /** Pilihan tersimpan kolom (menentukan apakah "Deteksi otomatis" ditawarkan). */
+  column: Pick<ColumnSchema, "numberLocale" | "dateFormat">;
+  draft: D;
   disabled: boolean;
-  onChange: (next: ColumnDraft) => void;
+  onChange: (next: D) => void;
   label: (text: string, htmlFor: string) => React.ReactNode;
 }) {
   const none = !needsDateFormat(draft.type) && !needsLocale(draft.type);

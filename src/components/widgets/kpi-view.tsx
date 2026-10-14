@@ -13,7 +13,8 @@ import type { WidgetData } from "./widget-query";
  * isi yang diukur — tanpa potong padding dua kali). Bentuk yang tampil dipilih di kpi-fit: lengkap,
  * ringkas, "Rp" pindah ke label, huruf kecil, lalu dua baris — tidak pernah potongan berelipsis. Nilai
  * lengkap selalu di title dan untuk pembaca layar (review desain T-011). Total/jumlah atas nol baris = 0
- * seperti SUM Excel. Label ukuran disembunyikan bila sama dengan judul widget.
+ * seperti SUM Excel; kolom ukuran yang kosong di versi data ini (T-014) = "(kosong)". Label ukuran
+ * disembunyikan bila sama dengan judul widget.
  */
 let ctx: CanvasRenderingContext2D | null | undefined;
 
@@ -40,9 +41,11 @@ export function KpiView({
   const box = useRef<HTMLDivElement>(null);
   const size = useBoxSize(box);
   const column = data.columns[0];
-  const raw = data.rows[0]?.[0] ?? null;
-  const value =
-    raw === null && (agg === "sum" || agg === "count" || agg === "count_distinct") ? 0 : raw;
+  // Kolom ukuran kosong di versi ini (absent, T-014): "(kosong)", bukan 0 dari SUM/COUNT.
+  const absent = !!data.absent?.length;
+  const raw = absent ? null : (data.rows[0]?.[0] ?? null);
+  const countish = agg === "sum" || agg === "count" || agg === "count_distinct";
+  const value = raw === null && countish && !absent ? 0 : raw;
   const label = column?.label ?? "";
   const { full, options } = kpiTexts(value, column?.type ?? "decimal", format, agg, label);
   const shown = chooseKpi(options, size?.width ?? null, textWidth);

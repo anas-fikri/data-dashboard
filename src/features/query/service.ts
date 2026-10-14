@@ -42,7 +42,7 @@ import {
 import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
-import { widgetBodySchema, widgetPlan } from "./widget";
+import { absentNames, widgetBodySchema, widgetPlan } from "./widget";
 
 export type QueryCode =
   | "INVALID"
@@ -71,6 +71,11 @@ export interface QueryData {
    * nilainya tidak cocok).
    */
   skippedFilters?: string[];
+  /**
+   * Widget: nama tampil kolom yang dipakai widget dan kosong di versi data ini (kolom absent hasil
+   * pemetaan T-014). Hanya ada bila tidak kosong; tidak ikut cache hasil.
+   */
+  absent?: string[];
 }
 
 /** Halaman widget tabel: total baris (dengan filter) + nomor halaman. */
@@ -541,8 +546,16 @@ export async function runWidgetQuery(
   // Klausa kanonik (unik, terurut, preset sudah jadi tanggal) masuk kunci cache; tanpa filter
   // dashboard kunci tetap sama dengan sebelum T-012.
   const dashKey = dash.clauses.length ? dash.clauses : undefined;
-  const withSkipped = <R extends WidgetQueryResult>(r: R): R =>
-    r.ok && dash.skipped.length ? { ...r, skippedFilters: dash.skipped } : r;
+  // Catatan per permintaan (bukan bagian hasil yang di-cache): filter yang dilewati + kolom kosong.
+  const absent = absentNames(config, sheet.schema);
+  const withNotes = <R extends WidgetQueryResult>(r: R): R =>
+    r.ok && (dash.skipped.length || absent.length)
+      ? {
+          ...r,
+          ...(dash.skipped.length ? { skippedFilters: dash.skipped } : {}),
+          ...(absent.length ? { absent } : {}),
+        }
+      : r;
 
   const keyParts = {
     datasetId: w.datasetId,
@@ -551,7 +564,7 @@ export async function runWidgetQuery(
     schemaRevision: sheet.schemaRevision,
   };
   if (planned.kind === "agg") {
-    return withSkipped(
+    return withNotes(
       await runAggPlan(
         userId,
         // Kunci berbeda dari query bebas dengan spec sama: hasil grafik membawa total (review T-011).
@@ -575,7 +588,7 @@ export async function runWidgetQuery(
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
   if (hit && "total" in hit) {
-    return withSkipped({ ok: true, ...hit, cached: true, ms: Date.now() - t0 });
+    return withNotes({ ok: true, ...hit, cached: true, ms: Date.now() - t0 });
   }
   // Total (dengan filter) tidak bergantung pada urutan/halaman: disimpan terpisah agar pindah halaman
   // hanya menjalankan query halaman.
@@ -611,5 +624,5 @@ export async function runWidgetQuery(
     pageSize: TABLE_PAGE_SIZE,
   };
   deps.cache?.set(key, data, out.bytes + 64);
-  return withSkipped({ ok: true, ...data, cached: false, ms: Date.now() - t0 });
+  return withNotes({ ok: true, ...data, cached: false, ms: Date.now() - t0 });
 }

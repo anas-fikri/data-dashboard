@@ -94,7 +94,8 @@ export default async function SchemaPage({
 
   const facts = [
     ["Baris data", fmtInt(dataRows(sheet))],
-    ["Kolom", fmtInt(sheet.colCount)],
+    // Termasuk kolom kosong hasil pemetaan (T-014) yang tidak ada di file.
+    ["Kolom", fmtInt(sheet.schema?.length ?? sheet.colCount)],
     ["Baris judul", fmtInt(sheet.headerRow)],
     ["Kolom disembunyikan", fmtInt(sheet.schema?.filter((c) => c.hidden).length ?? 0)],
   ] as const;

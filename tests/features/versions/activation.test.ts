@@ -176,6 +176,30 @@ describe("planWidget", () => {
     });
   });
 
+  it("T-014 sheetMap: sheet ganti nama di dataset multi-sheet → widget ikut pasangan pemetaan", () => {
+    const multi = { ...oldSheet, sheetCount: 2 };
+    const renamed: SheetInfo[] = [
+      { ...target[0]!, name: "Sales" },
+      { id: "cmv4kljx40009oczvdmpurrsc", name: "Retur", index: 1, schema: OLD_SCHEMA },
+    ];
+    // Tanpa peta: nama tidak cocok dan lebih dari satu sheet → spec dibiarkan di sheet lama.
+    expect(planWidget(w("w1", "bar", bar(SA)), renamed, multi)).toBeNull();
+    expect(planWidget(w("w1", "bar", bar(SA)), renamed, multi, new Set(), { [SA]: SB })).toEqual({
+      spec: { ...bar(SB), dimension: { column: 2 }, measure: { agg: "sum", column: 3 } },
+      missingColumns: [],
+    });
+  });
+
+  it("T-014 kolom kosong (absent, pos > kolom file) di target → widget pindah lewat judul asli, tanpa penanda", () => {
+    const withAbsent: SheetInfo[] = [
+      { ...target[0]!, schema: [...NEW_SCHEMA, { ...col(4, "Diskon", "decimal"), absent: true }] },
+    ];
+    expect(planWidget(w("w2", "kpi", kpi(SA, 3)), withAbsent, oldSheet)).toEqual({
+      spec: kpi(SB, 4),
+      missingColumns: [],
+    });
+  });
+
   it("widget kosong / spec rusak → tidak disentuh", () => {
     expect(planWidget(w("w6", "empty", {}), target, oldSheet)).toBeNull();
     expect(planWidget(w("w7", "bar", { rusak: true }), target, oldSheet)).toBeNull();
@@ -335,6 +359,24 @@ describe("activateVersionInTx", () => {
       },
       select: { id: true },
     });
+  });
+
+  it("T-014: sheetMap diteruskan ke rencana widget (sheet ganti nama ikut dipindah)", async () => {
+    tx.sheet.findMany
+      .mockReset()
+      .mockResolvedValueOnce([{ ...target[0]!, name: "Sales" }])
+      .mockResolvedValueOnce([{ ...oldSheet, versionId: A }])
+      .mockResolvedValueOnce([]);
+    tx.sheet.groupBy.mockResolvedValue([{ versionId: A, _count: { _all: 2 } }]);
+    await run({ sheetMap: { [SA]: SB } });
+    expect(tx.widget.updateMany).toHaveBeenCalledWith({
+      where: { id: "w1" },
+      data: {
+        missingColumns: [],
+        spec: { ...bar(SB), dimension: { column: 2 }, measure: { agg: "sum", column: 3 } },
+      },
+    });
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 
   it("tanpa versi yang perlu dibuang → tidak ada hapus/pembersihan; tanpa dashboard → tanpa lock", async () => {

@@ -10,8 +10,10 @@ import {
   IconPlayerPause,
   IconRoute,
 } from "@tabler/icons-react";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/features/uploads/client";
 import type { VersionRow } from "@/features/versions/types";
 import { cn } from "@/lib/utils";
@@ -39,15 +41,57 @@ const ICONS: Record<VersionKind, ReactNode> = {
  */
 const CELL = "block @3xl:table-cell @3xl:px-3 @3xl:py-2.5 @3xl:align-top";
 
+/*
+ * Sama dengan ROW_CTA (44px dan selebar kartu di ponsel). Ditulis ulang di sini: nilai yang diekspor
+ * modul "use client" terbaca sebagai referensi klien di komponen server, bukan string kelas.
+ */
+const ROW_LINK = "h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto";
+
+/** Aksi baris versi yang menunggu pemetaan (T-014): petakan, atau status saat sedang diterapkan. */
+function MappingAction({
+  datasetId,
+  name,
+  applying,
+}: {
+  datasetId: string;
+  name: string;
+  applying: boolean;
+}) {
+  if (applying) {
+    return (
+      <span className="flex items-center gap-1.5 text-sm text-muted-foreground @3xl:h-(--control-h-sm) @3xl:whitespace-nowrap">
+        <IconLoader2
+          size={16}
+          stroke={1.5}
+          aria-hidden
+          className="shrink-0 motion-safe:animate-spin"
+        />
+        Menerapkan pemetaan…
+      </span>
+    );
+  }
+  return (
+    <Button asChild variant="outline" size="sm" className={ROW_LINK}>
+      <Link href={`/datasets/${datasetId}/pemetaan`} data-testid="version-map">
+        <IconRoute aria-hidden />
+        Petakan kolom<span className="sr-only"> versi “{name}”</span>
+      </Link>
+    </Button>
+  );
+}
+
 export function VersionHistoryRow({
   datasetId,
   v,
   busy,
+  mappingApplying,
 }: {
   datasetId: string;
   v: VersionRow;
   /** Ada versi yang sedang diunggah/diproses/menunggu pemetaan: aktivasi pasti DATASET_BUSY. */
   busy: boolean;
+  /** Pemetaan versi yang menunggu sedang diterapkan (T-014). */
+  mappingApplying: boolean;
 }) {
   const canActivate = v.canActivate && !busy;
   const status = versionStatusView(v);
@@ -128,6 +172,8 @@ export function VersionHistoryRow({
       >
         {canActivate ? (
           <VersionActivate datasetId={datasetId} versionId={v.id} fileName={name} />
+        ) : v.canDiscard ? (
+          <MappingAction datasetId={datasetId} name={name} applying={mappingApplying} />
         ) : null}
       </td>
     </tr>

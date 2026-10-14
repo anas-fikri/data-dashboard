@@ -8,31 +8,20 @@ import {
   type RecastDeps,
   type RecastRepo,
 } from "@/features/ingest/recast";
-import type { LockStore } from "@/lib/lock";
-import { readParquet, testRoot, VID, type FakeRepo, type FakeStorage } from "./fakes";
+import {
+  fakeLock,
+  parquetTypes,
+  readParquet,
+  testRoot,
+  VID,
+  type FakeRepo,
+  type FakeStorage,
+} from "./fakes";
 
 /* Recast (T-007 AC 5): satu per sheet (lock), typed-<rev+1>, file lama dihapus 1 jam kemudian. */
 const t = testRoot("ingest-recast");
 afterAll(t.cleanup);
 beforeEach(t.resetTmp);
-
-/** Redis palsu: SET NX + compare-and-delete/pexpire. `lose()` meniru lock kedaluwarsa lalu diambil lain. */
-function fakeLock(): LockStore & { held: Map<string, string>; lose(): void } {
-  const held = new Map<string, string>();
-  return {
-    held,
-    lose: () => {
-      for (const k of held.keys()) held.set(k, "milik-proses-lain");
-    },
-    setNx: async (key, value) => {
-      if (held.has(key)) return null;
-      held.set(key, value);
-      return "OK";
-    },
-    delIfEquals: async (key, value) => (held.get(key) === value && held.delete(key) ? 1 : 0),
-    pexpireIfEquals: async (key, value) => (held.get(key) === value ? 1 : 0),
-  };
-}
 
 function recastRepo(repo: FakeRepo): RecastRepo {
   return {
@@ -271,5 +260,69 @@ describe("recast", () => {
     expect(active).toMatch(/typed-2-[0-9a-f]{12}\.parquet$/);
     expect(has(r.storage, active)).toBe(true);
     expect(r.lock.held.size).toBe(0);
+  });
+});
+
+describe("kolom kosong (absent, T-014) bertahan di setiap recast", () => {
+  /** Sheet 2 kolom + kolom kosong "Tanggal" di pos 3 (seperti hasil pemetaan "kosongkan"). */
+  async function withAbsent() {
+    const r = await setup(DATA);
+    r.sheet().schema!.push({
+      pos: 3,
+      name: "Tanggal",
+      original: "Tanggal",
+      type: "date",
+      dateFormat: "dd/mm/yyyy",
+      hidden: false,
+      nullPct: 1,
+      distinctCount: 0,
+      castFailCount: 0,
+      nonEmpty: 0,
+      absent: true,
+    });
+    return r;
+  }
+  const typesOf = async (r: Awaited<ReturnType<typeof withAbsent>>) =>
+    parquetTypes(join(r.storage.dir, r.sheet().typedKey!));
+
+  it("ganti nama/tipe kolom kosong (pos > colCount) → tipe CAST berganti; recast kolom lain tetap membawanya", async () => {
+    const r = await withAbsent();
+    const out = await recastSheet(
+      r.sheetId,
+      { columns: [{ pos: 3, name: "Waktu", type: "timestamp" }] },
+      r.deps,
+    );
+    expect(out).toMatchObject({ outcome: "done", revision: 2 });
+    expect(r.sheet().schema![2]).toMatchObject({
+      pos: 3,
+      name: "Waktu",
+      original: "Tanggal",
+      type: "timestamp",
+      dateFormat: "dd/mm/yyyy",
+      absent: true,
+      nonEmpty: 0,
+    });
+    expect((await typesOf(r)).c3).toBe("TIMESTAMP");
+    const b = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "text" }] }, r.deps);
+    expect(b).toMatchObject({ outcome: "done", revision: 3 });
+    expect(r.sheet().schema!.map((c) => [c.pos, c.name, c.absent ?? false])).toEqual([
+      [1, "kode", false],
+      [2, "nilai", false],
+      [3, "Waktu", true],
+    ]);
+    const rows = await readParquet(join(r.storage.dir, r.sheet().typedKey!));
+    expect(rows.map((x) => x[3])).toEqual([null, null, null]);
+  });
+
+  it("baris header diganti → kolom kosong tetap; nama bentrok dengan kolom lain → invalid", async () => {
+    const r = await withAbsent();
+    expect(await recastSheet(r.sheetId, { headerRow: 2 }, r.deps)).toMatchObject({
+      outcome: "done",
+    });
+    expect(r.sheet().schema!.at(-1)).toMatchObject({ pos: 3, name: "Tanggal", absent: true });
+    expect((await typesOf(r)).c3).toBe("DATE");
+    expect(
+      await recastSheet(r.sheetId, { columns: [{ pos: 3, name: "A" }] }, r.deps),
+    ).toMatchObject({ outcome: "invalid" });
   });
 });

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import type { WidgetConfig } from "@/features/widgets/spec";
+import { AbsentNote } from "./absent-note";
 import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
@@ -81,7 +82,7 @@ function Loaded({
   const refetching = state.status === "loading" && !!data;
   // Tabel: data lama tetap di bawah pesan galat hanya bila filternya sama (halaman/urutan gagal).
   const keepOnError = config.type === "table" && state.filters === JSON.stringify(cross.filters);
-  const shown = bodyState(state, keepOnError);
+  const shown = bodyState(state, keepOnError, config.type !== "kpi" && config.type !== "table");
   // Data yang tampil milik filter lain dan belum terganti setelah jeda singkat → label "Memperbarui…"
   // di kepala kartu (bukan untuk ganti halaman/urutan tabel atau coba lagi dengan filter yang sama).
   const otherFilters = refetching && state.filters !== JSON.stringify(cross.filters);
@@ -184,6 +185,7 @@ function Loaded({
         />
       ) : null}
       {content}
+      <AbsentNote names={data.absent} />
       <SkippedNote names={data.skippedFilters} />
     </div>
   );

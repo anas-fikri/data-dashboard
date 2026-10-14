@@ -13,7 +13,9 @@ export type AuditAction =
   | "user.activate"
   | "datasets.transfer"
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
-  | "dataset.version.activate";
+  | "dataset.version.activate"
+  /** Pemetaan kolom versi yang menunggu pemetaan disimpan lalu versinya aktif (T-014). */
+  | "dataset.version.map";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

@@ -16,6 +16,7 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import type { SheetPreview } from "@/features/ingest/preview";
 import {
+  maxSchemaPos,
   parseRecastInput,
   type RecastInput,
   type RecastOutcome,
@@ -303,7 +304,8 @@ export async function requestRecast(
   if (sheet.versionStatus !== "READY" || !sheet.schema) {
     return fail("NOT_READY", "Data sheet ini masih diproses. Coba lagi setelah selesai.");
   }
-  const parsed = parseRecastInput(body, sheet.colCount);
+  // Kolom kosong (absent, T-014) berada setelah colCount dan tetap bisa diedit.
+  const parsed = parseRecastInput(body, maxSchemaPos(sheet.colCount, sheet.schema));
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
     return fail(

@@ -350,6 +350,43 @@ describe("AC 3–5: permintaan koreksi skema", () => {
     ).toMatchObject({ code: "STALE" });
   });
 
+  it("T-014: kolom kosong (absent, pos > colCount) bisa diganti nama/disembunyikan/diganti tipe; di luar skema ditolak", async () => {
+    const absent = { ...col(4, "Diskon", "decimal"), nullPct: 1, absent: true };
+    const sheet = { schema: [...SCHEMA, absent] };
+    const meta = schemaDeps({}, sheet);
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 4, name: "Potongan", hidden: true }] },
+        meta.deps,
+      ),
+    ).toEqual({ ok: true, applied: true, revision: 3 });
+    const [, , schema] = meta.applyMetadata.mock.calls[0]! as unknown as [
+      string,
+      number,
+      ColumnSchema[],
+    ];
+    expect(schema[3]).toMatchObject({ pos: 4, name: "Potongan", hidden: true, absent: true });
+    const retype = schemaDeps({}, sheet);
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 4, type: "integer" }] },
+        retype.deps,
+      ),
+    ).toEqual({ ok: true, jobId: "17" });
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 5, name: "X" }] },
+        schemaDeps({}, sheet).deps,
+      ),
+    ).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
   it("baris header baru dikirim tanpa edit kolom (nama dan tipe dibentuk ulang dari baris itu)", async () => {
     const { deps, enqueue } = schemaDeps();
     const r = await requestRecast(

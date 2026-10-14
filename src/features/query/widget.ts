@@ -8,7 +8,12 @@
  */
 import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { TABLE_PAGE_SIZE, type ChartSort, type WidgetConfig } from "@/features/widgets/spec";
+import {
+  TABLE_PAGE_SIZE,
+  columnsOf,
+  type ChartSort,
+  type WidgetConfig,
+} from "@/features/widgets/spec";
 import { dashFiltersSchema } from "./filters";
 import { resolveSpec, type Plan, type QuerySpec } from "./spec";
 
@@ -160,4 +165,18 @@ export function widgetPlan(
   // Grafik: sertakan jumlah kategori + total (irisan "Lainnya", "N teratas dari M").
   const totals = config.type !== "kpi";
   return { ok: true, kind: "agg", spec, plan: { ...resolved.plan, totals } };
+}
+
+/**
+ * Nama tampil kolom kosong (absent, T-014: tidak ada di file versi ini dan dikonfirmasi pemilik saat
+ * pemetaan) yang dipakai widget, urut spec tanpa duplikat. Widget tetap jalan (nilainya NULL); UI
+ * memberi catatan "kosong di versi data ini" alih-alih angka 0 yang menyesatkan.
+ */
+export function absentNames(config: WidgetConfig, schema: ColumnSchema[]): string[] {
+  const byPos = new Map(schema.map((c) => [c.pos, c]));
+  const names = columnsOf(config).flatMap((p) => {
+    const c = byPos.get(p);
+    return c?.absent ? [c.name] : [];
+  });
+  return [...new Set(names)];
 }
