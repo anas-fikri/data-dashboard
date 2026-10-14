@@ -107,8 +107,9 @@ export function WidgetConfigForm({
     if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
     if (next.type === "empty" || missingColumns(next, sources).length) return;
-    // Sheet spec tidak ada di data aktif: server menolaknya; tunggu sheet dipilih.
-    if (!sources.some((s) => s.id === next.spec.sheetId)) return;
+    // Sheet spec tidak ada di data aktif (server menolaknya) atau semua kolomnya disembunyikan:
+    // tunggu sheet lain dipilih.
+    if (!sources.some((s) => s.id === next.spec.sheetId && s.columns.length)) return;
     // Kolom nilai spec lama yang tidak cocok (mis. maks. tanggal di grafik): server menolaknya.
     if (measureMismatch(next, sources)) return;
     if (!parseWidgetConfig(next.type, next.spec).ok) return;

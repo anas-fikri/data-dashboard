@@ -51,6 +51,8 @@ async function uploadAndWait(
 
 test.describe("ingest", () => {
   test.beforeAll(async ({ browser, request }) => {
+    // Registrasi + start worker (≤ 60 s di mesin sibuk) melebihi batas bawaan 30 s.
+    test.setTimeout(120_000);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip"]); // batas registrasi per IP di suite penuh
     const p = await browser.newPage();
     await registerAndVerify(p, request, OWNER);

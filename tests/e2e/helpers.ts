@@ -140,6 +140,17 @@ export async function startWorker(name: string): Promise<ChildProcess> {
   w.stdout!.pipe(log, { end: false });
   w.stderr!.pipe(log, { end: false });
   w.once("close", () => log.end());
+  // Grup terpisah (detached) tidak ikut mati bersama runner: bila tes timeout sebelum `worker` di-set,
+  // afterAll tidak mengenalnya — matikan paksa saat proses runner keluar.
+  const killGroup = () => {
+    try {
+      process.kill(-w.pid!, "SIGKILL");
+    } catch {
+      /* sudah berhenti */
+    }
+  };
+  process.once("exit", killGroup);
+  w.once("exit", () => process.off("exit", killGroup));
   try {
     await new Promise<void>((resolve, reject) => {
       let seen = "";

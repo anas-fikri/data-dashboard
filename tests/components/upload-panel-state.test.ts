@@ -39,7 +39,7 @@ describe("ownVersionAfterError", () => {
 
   it("versi hilang atau gagal permanen di server → dilepas", () => {
     expect(ownVersionAfterError({ code: "NOT_FOUND" }, "v1")).toBeUndefined();
-    for (const code of ["INVALID_FORMAT", "UPLOAD_CORRUPT", "UPLOAD_FAILED"]) {
+    for (const code of ["INVALID_FORMAT", "FILE_TOO_LARGE", "UPLOAD_CORRUPT", "UPLOAD_FAILED"]) {
       expect(ownVersionAfterError({ code, versionId: "v1" }, "v1")).toBeUndefined();
     }
   });

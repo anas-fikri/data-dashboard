@@ -118,6 +118,8 @@ test.describe("skema", () => {
   test("AC 1: progres tampil saat menunggu/diproses dan halaman berubah sendiri saat siap", async ({
     page,
   }) => {
+    // Start worker di tengah tes (≤ 60 s di mesin sibuk) + tunggu siap: di atas batas bawaan 30 s.
+    test.setTimeout(150_000);
     datasetId = await createDataset(page, `Skema ${Date.now()}`);
     await page.getByTestId("upload-input").setInputFiles(reportCsv());
     const panel = page.getByTestId("dataset-processing");

@@ -36,14 +36,15 @@ export const CANCEL_FAILED =
 /**
  * Versi server sudah tidak UPLOADING: hilang (NOT_FOUND) atau gagal permanen di server. UPLOAD_FAILED/
  * UPLOAD_CORRUPT hanya dikirim server (mis. init: unggahan lama kedaluwarsa, tanpa versionId);
- * INVALID_FORMAT juga dari pra-cek file lokal, jadi hanya dihitung bila membawa versionId.
+ * INVALID_FORMAT/FILE_TOO_LARGE juga dari pra-cek file lokal, jadi hanya dihitung bila membawa
+ * versionId (complete menandai versinya FAILED).
  */
 export function versionGone(err: Pick<UploadErrLike, "code" | "versionId">): boolean {
   return (
     err.code === "NOT_FOUND" ||
     err.code === "UPLOAD_FAILED" ||
     err.code === "UPLOAD_CORRUPT" ||
-    (err.code === "INVALID_FORMAT" && Boolean(err.versionId))
+    ((err.code === "INVALID_FORMAT" || err.code === "FILE_TOO_LARGE") && Boolean(err.versionId))
   );
 }
 
