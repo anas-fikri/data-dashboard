@@ -144,6 +144,12 @@ export function WidgetConfigForm({
   const typeOf = (pos: number | undefined) => cols.find((c) => c.pos === pos)?.type;
   // Sheet lama widget tidak ada di versi aktif (dataset banyak sheet): pilih sheet dulu.
   const noSheet = draft.type !== "empty" && !sheet;
+  // Sheet yang semua kolomnya disembunyikan tidak ditawarkan di pilihan sheet: beri alasannya sendiri.
+  const sheetError = noSheet
+    ? "Sheet lama widget ini tidak ada di data aktif — pilih sheet."
+    : sheet && !sheet.columns.length
+      ? "Semua kolom sheet ini disembunyikan di skema — pilih sheet lain."
+      : undefined;
   const missing = noSheet ? [] : missingColumns(draft, sources);
   const unsaved = noSheet || missing.length > 0 || measureMismatch(draft, sources);
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
@@ -190,8 +196,8 @@ export function WidgetConfigForm({
             <Choice
               label="Sheet"
               value={draft.spec.sheetId}
-              placeholder="Pilih sheet"
-              invalidText="Sheet lama widget ini tidak ada di data aktif — pilih sheet."
+              placeholder={sheetError ? "Pilih sheet" : undefined}
+              invalidText={sheetError}
               options={sources
                 .filter((s) => s.columns.length)
                 .map((s) => ({ value: s.id, label: s.name }))}
@@ -208,7 +214,8 @@ export function WidgetConfigForm({
             />
           ) : null}
 
-          {draft.type === "table" ? (
+          {/* Tanpa sheet belum ada kolom untuk dipilih: bagian kolom/nilai muncul setelah sheet dipilih. */}
+          {noSheet ? null : draft.type === "table" ? (
             <TableColumns
               ref={columnsRef}
               columns={cols}
@@ -318,7 +325,7 @@ export function WidgetConfigForm({
               commit({ ...draft, spec: { ...draft.spec, format } } as WidgetConfig);
             }}
           />
-          {draft.type === "table" && draft.spec.format.style !== "auto" ? (
+          {draft.type === "table" && !noSheet && draft.spec.format.style !== "auto" ? (
             <FormatColumnsField
               columns={cols.filter((c) => draft.spec.columns.includes(c.pos) && isNumeric(c.type))}
               selected={draft.spec.formatColumns ?? draft.spec.columns}

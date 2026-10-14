@@ -12,6 +12,16 @@ import { useCallback, useEffect, useId, useRef, useState, useTransition } from "
 import { FormAlert } from "@/components/auth/form-alert";
 import { usePublishUploading } from "@/components/datasets/dataset-activity";
 import { IngestProgress } from "@/components/datasets/ingest-progress";
+import {
+  RETRYABLE,
+  cancelFailedState,
+  holdsActivation,
+  isIdleLike,
+  ownVersionAfterError,
+  showsPendingCard,
+  versionGone,
+  type UploadPanelState,
+} from "@/components/datasets/upload-panel-state";
 import { VersionMappingNotice } from "@/components/datasets/version-history-mapping";
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
@@ -46,17 +56,6 @@ interface UploadPanelProps {
     | null;
 }
 
-type State =
-  | { kind: "idle" }
-  | { kind: "cancelled" }
-  | { kind: "running"; file: File; progress: UploadProgress }
-  | { kind: "paused"; file: File; progress: UploadProgress }
-  | { kind: "error"; file: File | null; message: string; retryable: boolean; versionId?: string }
-  | { kind: "done"; name: string }
-  | { kind: "discarded"; name: string };
-
-const RETRYABLE = new Set(["NETWORK", "STORAGE_ERROR", "BUSY", "RATE_LIMITED", "UNAUTHENTICATED"]);
-
 function percentOf(p: UploadProgress): number {
   return p.total > 0 ? Math.floor((p.loaded / p.total) * 100) : 0;
 }
@@ -88,10 +87,12 @@ export function UploadPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<State>({ kind: "idle" });
+  const [state, setState] = useState<UploadPanelState>({ kind: "idle" });
   const [dragging, setDragging] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [pendingInfo, setPendingInfo] = useState(pending);
+  // Versi server yang dimulai/dilanjutkan tab ini dan mungkin masih UPLOADING (upload-panel-state).
+  const [ownVersion, setOwnVersion] = useState<string | undefined>();
   const [announce, setAnnounce] = useState("");
   const lastAnnounced = useRef(-1);
 
@@ -101,13 +102,9 @@ export function UploadPanel({
   const [refreshing, startRefresh] = useTransition();
   // Versi UPLOADING sudah ada di server → riwayat versi di tab ini menahan "Aktifkan" (tanpa refresh
   // di tengah unggahan; badge dan alert gagal di atas panel tetap sampai unggahan selesai/batal).
-  // Setelah selesai tetap ditahan sampai refresh membawa status "diproses" dari server (tanpa kedip).
-  // Gagal sementara (bisa diulang) → versi tetap UPLOADING di server: tetap ditahan.
-  usePublishUploading(
-    Boolean(progress?.versionId) ||
-      (state.kind === "error" && state.retryable && Boolean(state.versionId)) ||
-      (state.kind === "done" && refreshing),
-  );
+  // Galat yang masih memegang versi milik tab ini (gagal sementara, file lain → DATASET_BUSY, batal
+  // gagal) tetap menahan; setelah selesai ditahan sampai refresh membawa status server (tanpa kedip).
+  usePublishUploading(holdsActivation(state, ownVersion, refreshing));
 
   // Peringatan saat menutup tab di tengah unggahan (unggahan tetap bisa dilanjutkan nanti).
   useEffect(() => {
@@ -119,11 +116,15 @@ export function UploadPanel({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Tiap galat baru (termasuk galat → galat, mis. batal gagal) memindahkan fokus ke alert.
   useEffect(() => {
     if (state.kind === "error") errorRef.current?.focus();
-  }, [state.kind]);
+  }, [state]);
 
-  /** `versionId`: versi yang dilanjutkan dari jeda (server memakai versi yang sama untuk file ini). */
+  /**
+   * `versionId`: versi yang dilanjutkan (jeda/galat/pilih ulang file); server memakai versi yang sama
+   * untuk file yang sama, dan selama pra-cek/init versi itu tetap dianggap ditransfer (tanpa kedip).
+   */
   const start = useCallback(
     async (file: File, versionId?: string) => {
       abortRef.current?.abort();
@@ -131,8 +132,6 @@ export function UploadPanel({
       abortRef.current = controller;
       lastAnnounced.current = -1;
       let started: { t: number; loaded: number } | null = null;
-      // Versi terakhir yang diketahui: tanda tangan part bisa gagal tanpa membawa versionId.
-      let known = versionId;
       setEta(null);
       setState({
         kind: "running",
@@ -147,7 +146,8 @@ export function UploadPanel({
           signal: controller.signal,
           onProgress: (p) => {
             if (controller.signal.aborted) return;
-            known = p.versionId ?? known;
+            // Tanda tangan part bisa gagal tanpa membawa versionId: versi diingat sejak diketahui.
+            if (p.versionId) setOwnVersion(p.versionId);
             // Pra-cek saat melanjutkan belum membawa versionId: versi lama tetap dianggap ditransfer
             // (tanpa kedip "Aktifkan") dan "Batalkan" tetap membatalkannya di server.
             setState({
@@ -172,23 +172,21 @@ export function UploadPanel({
           },
         });
         setPendingInfo(null);
+        setOwnVersion(undefined);
         setState({ kind: "done", name: file.name });
         startRefresh(() => router.refresh());
       } catch (e) {
         if (controller.signal.aborted) return; // jeda/batal ditangani pemanggil
+        // Part lain masih berjalan: hentikan, agar progres yang terlambat tidak menimpa galat ini.
+        controller.abort();
         const err =
           e instanceof UploadError
             ? e
             : new UploadError("NETWORK", "Terjadi gangguan. Coba lagi beberapa saat lagi.");
-        setState({
-          kind: "error",
-          file,
-          message: err.message,
-          retryable: RETRYABLE.has(err.code),
-          versionId: err.versionId ?? known,
-        });
-        // Unggahan gagal permanen di server (rusak/format) → perbarui badge status di halaman.
-        if (["INVALID_FORMAT", "UPLOAD_CORRUPT", "UPLOAD_FAILED"].includes(err.code)) {
+        setState({ kind: "error", file, message: err.message, retryable: RETRYABLE.has(err.code) });
+        setOwnVersion((cur) => ownVersionAfterError(err, cur));
+        // Versi hilang/gagal permanen di server (rusak/format) → perbarui badge status di halaman.
+        if (versionGone(err)) {
           setPendingInfo(null);
           router.refresh();
         }
@@ -199,7 +197,9 @@ export function UploadPanel({
 
   const onFiles = (files: FileList | null) => {
     const file = files?.[0];
-    if (file) void start(file);
+    // Versi milik tab ini ikut dibawa: file yang sama melanjutkannya; file lain → DATASET_BUSY dan
+    // galat tetap menawarkan "Batalkan unggahan" untuk versi itu.
+    if (file) void start(file, ownVersion);
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -212,36 +212,37 @@ export function UploadPanel({
 
   const cancel = async (versionId: string | undefined) => {
     abortRef.current?.abort();
+    // Penanda panggilan ini: start() yang lebih baru menggantinya → hasil batal terlambat diabaikan.
+    const mine = new AbortController();
+    abortRef.current = mine;
     setCancelling(true);
     try {
       if (versionId) await cancelUploadRequest(versionId);
+      if (abortRef.current !== mine) return;
       setPendingInfo(null);
+      setOwnVersion(undefined);
       // Notice yang menerima fokus (tombol yang ditekan hilang setelah batal).
       setState({ kind: "cancelled" });
       router.refresh();
     } catch (e) {
-      setState({
-        kind: "error",
-        file: null,
-        message: e instanceof UploadError ? e.message : "Unggahan gagal dibatalkan. Coba lagi.",
-        retryable: false,
-      });
+      if (abortRef.current !== mine) return;
+      const err = e instanceof UploadError ? e : null;
+      // Versi sudah tidak ada → tidak ditahan/ditawarkan lagi; selain itu konteks galat tetap.
+      if (err?.code === "NOT_FOUND") {
+        setOwnVersion(undefined);
+        setPendingInfo((p) => (p?.versionId === versionId ? null : p));
+        router.refresh();
+      }
+      setState((prev) => cancelFailedState(prev, err));
     } finally {
       setCancelling(false);
     }
   };
 
-  const busyVersionId =
-    progress?.versionId ?? (state.kind === "error" ? state.versionId : undefined);
   const pct = progress ? percentOf(progress) : 0;
-  const idleLike =
-    state.kind === "idle" ||
-    state.kind === "cancelled" ||
-    state.kind === "error" ||
-    state.kind === "done" ||
-    state.kind === "discarded";
+  const idleLike = isIdleLike(state);
   const showDropzone = idleLike && !processing;
-  const showPending = Boolean(pendingInfo) && idleLike;
+  const showPending = showsPendingCard(state, pendingInfo?.versionId, ownVersion);
   // Kontrol unggahan: tinggi 44px di ponsel (target sentuh), ringkas di ≥640.
   const control = "h-11 w-full sm:h-(--control-h-sm) sm:w-auto";
 
@@ -280,24 +281,27 @@ export function UploadPanel({
       {state.kind === "error" ? (
         <FormAlert tone="error" ref={errorRef}>
           <span className="block">{state.message}</span>
-          {state.retryable && state.file ? (
+          {(state.retryable && state.file) || ownVersion ? (
             <span className="mt-2 flex flex-col gap-2 sm:flex-row">
-              <Button
-                size="sm"
-                variant="outline"
-                className={control}
-                onClick={() => state.file && void start(state.file, state.versionId)}
-              >
-                Coba lagi
-              </Button>
-              {state.versionId ? (
+              {state.retryable && state.file ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className={control}
+                  disabled={cancelling}
+                  onClick={() => state.file && void start(state.file, ownVersion)}
+                >
+                  Coba lagi
+                </Button>
+              ) : null}
+              {ownVersion ? (
                 <Button
                   size="sm"
                   variant="ghost"
                   className={control}
                   pending={cancelling}
                   leadingIcon={<IconX aria-hidden />}
-                  onClick={() => void cancel(state.versionId)}
+                  onClick={() => void cancel(ownVersion)}
                 >
                   Batalkan unggahan
                 </Button>
@@ -328,6 +332,7 @@ export function UploadPanel({
             <Button
               size="sm"
               className={control}
+              disabled={cancelling}
               leadingIcon={<IconPlayerPlay aria-hidden />}
               onClick={() => inputRef.current?.click()}
             >
@@ -407,8 +412,9 @@ export function UploadPanel({
               <Button
                 size="sm"
                 className={control}
+                disabled={cancelling}
                 leadingIcon={<IconPlayerPlay aria-hidden />}
-                onClick={() => void start(state.file, progress.versionId)}
+                onClick={() => void start(state.file, progress.versionId ?? ownVersion)}
               >
                 Lanjutkan
               </Button>
@@ -420,7 +426,7 @@ export function UploadPanel({
               pending={cancelling}
               disabled={progress.phase === "finishing"}
               leadingIcon={<IconX aria-hidden />}
-              onClick={() => void cancel(busyVersionId)}
+              onClick={() => void cancel(progress.versionId ?? ownVersion)}
             >
               Batalkan
             </Button>

@@ -716,28 +716,70 @@ describe("R3-CC-2: panel widget retargeted", () => {
   });
 });
 
-describe("R4-CC-2: sheet widget tidak ada di data aktif (banyak sheet)", () => {
-  it("minta pilih sheet: pilihan sheet ditandai, status belum tersimpan, tanpa peringatan kolom", () => {
-    const html = renderToStaticMarkup(
+describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak sheet)", () => {
+  const GONE = "cmv4kljx40009oczvdmpurrgo";
+  const fmt = { style: "number", decimals: 0 } as const;
+  const form = (type: string, spec: unknown, src: Source[] = sources) =>
+    renderToStaticMarkup(
       createElement(WidgetConfigForm, {
-        widget: {
-          id: "w",
-          type: "kpi",
-          title: "",
-          spec: {
-            sheetId: "cmv4kljx40009oczvdmpurrgo",
-            measure: { agg: "count" },
-            format: { style: "number", decimals: 0 },
-          },
-        },
-        sources,
+        widget: { id: "w", type, title: "", spec },
+        sources: src,
         datasetId: "ds",
         onSave: () => Promise.resolve(true),
       }),
     );
-    expect(html).toContain("Sheet lama widget ini tidak ada di data aktif — pilih sheet.");
-    expect(html).toMatch(/data-testid="config-status"[^>]*>Belum tersimpan — pilih sheet\.</);
+  const status = (html: string) => html.match(/data-testid="config-status"[^>]*>([^<]*)</)?.[1];
+  const SHEET_GONE = "Sheet lama widget ini tidak ada di data aktif — pilih sheet.";
+  const bar = (column: number) => ({
+    sheetId: GONE,
+    dimension: { column: 1 },
+    measure: { agg: "sum", column },
+    sort: "value_desc",
+    topN: 12,
+    format: fmt,
+  });
+
+  it("minta pilih sheet: pilihan sheet ditandai, status belum tersimpan, tanpa peringatan kolom", () => {
+    const html = form("kpi", { sheetId: GONE, measure: { agg: "count" }, format: fmt });
+    expect(html).toContain(SHEET_GONE);
+    expect(status(html)).toBe("Belum tersimpan — pilih sheet.");
     expect(html).not.toContain('data-testid="config-missing"');
     expect(html).not.toContain("Perubahan tersimpan otomatis.");
+  });
+
+  it("grafik, KPI jumlah, tabel (juga kolom MISSING_COLUMN): hanya jenis, sheet, format, status", () => {
+    const cases: [string, unknown][] = [
+      ["bar", bar(3)],
+      ["bar", bar(MISSING_COLUMN)],
+      ["kpi", { sheetId: GONE, measure: { agg: "sum", column: 3 }, format: fmt }],
+      ["table", { sheetId: GONE, columns: [1, MISSING_COLUMN], format: fmt }],
+    ];
+    for (const [type, spec] of cases) {
+      const html = form(type, spec);
+      expect(html).toContain(SHEET_GONE);
+      expect(html).not.toContain("pilih pengganti");
+      expect(html).not.toContain('data-testid="config-dimension"');
+      expect(html).not.toContain('data-testid="config-agg"');
+      expect(html).not.toContain('data-testid="config-missing"');
+      expect(html).not.toContain("Kolom ditampilkan");
+      expect(html).not.toContain("Pakai format ini untuk");
+      // Satu-satunya isian tidak sah adalah pilihan sheet.
+      expect(html.match(/aria-invalid="true"/g)).toHaveLength(1);
+      expect(html).toContain("Format angka");
+      expect(status(html)).toBe("Belum tersimpan — pilih sheet.");
+    }
+  });
+
+  it("sheet ada tetapi semua kolomnya disembunyikan → alasan sendiri, bukan 'tidak ada di data aktif'", () => {
+    const hidden: Source[] = [sources[0]!, { id: S2, name: "Kurir", columns: [] }];
+    const html = form("kpi", { sheetId: S2, measure: { agg: "count" }, format: fmt }, hidden);
+    expect(html).toContain("Semua kolom sheet ini disembunyikan di skema — pilih sheet lain.");
+    expect(html).not.toContain(SHEET_GONE);
+    // Sheet biasa di sumber banyak sheet: pilihan sheet tanpa pesan atau tanda tidak sah.
+    const ok = form("kpi", { sheetId: S1, measure: { agg: "count" }, format: fmt });
+    expect(ok).toContain(">Sheet</label>");
+    expect(ok).not.toContain("pilih sheet");
+    expect(ok).not.toContain('aria-invalid="true"');
+    expect(status(ok)).toBe("Perubahan tersimpan otomatis.");
   });
 });

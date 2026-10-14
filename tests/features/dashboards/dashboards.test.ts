@@ -36,7 +36,13 @@ const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dashboard: { findFirst: vi.fn(), updateMany: dashboardUpdateMany, deleteMany: vi.fn() },
   widget: { updateMany: widgetUpdateMany, findFirst: vi.fn() },
-  sheet: { findFirst: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(async () => []) },
+  sheet: {
+    findFirst: vi.fn(),
+    findMany: vi.fn(),
+    groupBy: vi.fn(async () => []),
+    /** Sheet spec di versi lain dataset ini (bawaan: tidak). */
+    count: vi.fn(async () => 0),
+  },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 
@@ -406,6 +412,45 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
     tx.sheet.count.mockResolvedValueOnce(0);
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
+    expect(
+      await svc.addWidget(OWNER, DB, { baseRevision: 2, type: "bar", spec: bar }),
+    ).toMatchObject({ ok: true, data: { configDropped: true } });
+    expect(tx.widget.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { dashboardId: DB, title: "", type: "empty", spec: {} } }),
+    );
+  });
+
+  it("R5-CC-2: sheet versi lain dataset ini (versi berganti saat panel terbuka) → STALE muat ulang; urungkan hapus → kosong", async () => {
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    prisma.sheet.count.mockResolvedValueOnce(1);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
+      ok: false,
+      code: "STALE",
+      message:
+        "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
+    });
+    expect(prisma.sheet.count).toHaveBeenCalledWith({
+      where: { id: SHEET, version: { datasetId: DS } },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(widgetUpdateMany).not.toHaveBeenCalled();
+
+    // Sheet aktif yang belum punya skema bukan tanda versi berganti: tetap INVALID.
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema: null });
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
+      code: "INVALID",
+      message: "Sheet tidak ditemukan di data aktif dataset ini.",
+    });
+    expect(prisma.sheet.count).toHaveBeenCalledTimes(1);
+
+    // Urungkan hapus tetap memulihkan widget kosong (configDropped), bukan STALE.
+    prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
+    prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    prisma.sheet.count.mockResolvedValueOnce(1);
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
     tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
     expect(
       await svc.addWidget(OWNER, DB, { baseRevision: 2, type: "bar", spec: bar }),

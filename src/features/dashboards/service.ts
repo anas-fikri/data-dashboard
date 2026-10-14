@@ -463,12 +463,14 @@ export async function getDashboardSources(
 /**
  * Validasi tipe + spec widget terhadap data aktif dataset: bentuk (zod), sheet ada di versi aktif,
  * kolom ada dan tampil, agregasi cocok dengan tipe kolom (aturan yang sama dengan saat query).
+ * `stale`: sheet milik versi lain dataset ini — halaman klien memuat sumber dari versi aktif lama
+ * (versi berganti saat panel terbuka; panel tidak pernah mengirim sheet di luar sumbernya).
  */
 async function checkConfig(
   datasetId: string,
   type: unknown,
   spec: unknown,
-): Promise<{ ok: true; config: WidgetConfig } | { ok: false; message: string }> {
+): Promise<{ ok: true; config: WidgetConfig } | { ok: false; message: string; stale?: true }> {
   const parsed = parseWidgetConfig(type, spec);
   if (!parsed.ok || parsed.config.type === "empty") return parsed;
   const config = parsed.config;
@@ -477,7 +479,14 @@ async function checkConfig(
     select: { schema: true },
   });
   const schema = sheet?.schema as unknown as ColumnSchema[] | null | undefined;
-  if (!schema) return { ok: false, message: "Sheet tidak ditemukan di data aktif dataset ini." };
+  if (!schema) {
+    const message = "Sheet tidak ditemukan di data aktif dataset ini.";
+    if (sheet) return { ok: false, message };
+    const other = { id: config.spec.sheetId, version: { datasetId } };
+    return (await prisma.sheet.count({ where: other })) > 0
+      ? { ok: false, message, stale: true }
+      : { ok: false, message };
+  }
   const planned = widgetPlan(config, schema, { page: 0 });
   return planned.ok ? { ok: true, config } : { ok: false, message: planned.message };
 }
@@ -535,6 +544,11 @@ const staleLayout = <T>() =>
   fail<T>(
     "STALE",
     "Perubahan terakhir Anda belum tersimpan karena dashboard ini diubah di tab atau perangkat lain. Muat ulang, lalu ulangi perubahan.",
+  );
+const versionChanged = <T>() =>
+  fail<T>(
+    "STALE",
+    "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
   );
 const widgetNotFound = <T>() => fail<T>("NOT_FOUND", "Widget tidak ditemukan.");
 const baseOf = (v: unknown) => (Number.isInteger(v) && (v as number) >= 0 ? (v as number) : null);
@@ -734,7 +748,8 @@ export async function configureWidget(
   });
   if (!w) return widgetNotFound();
   const checked = await checkConfig(w.dashboard.datasetId, type, spec);
-  if (!checked.ok) return fail("INVALID", checked.message);
+  // Sheet versi lain dataset ini: versi aktif berganti saat panel terbuka → minta muat ulang.
+  if (!checked.ok) return checked.stale ? versionChanged() : fail("INVALID", checked.message);
   const { config } = checked;
   const r = await locked(async (tx) => {
     await tx.$executeRaw(lockKey("dashboard", dashboardId));
@@ -757,12 +772,7 @@ export async function configureWidget(
   });
   if (r === "BUSY") return busy();
   if (r === null) return widgetNotFound();
-  if (r === "STALE") {
-    return fail(
-      "STALE",
-      "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
-    );
-  }
+  if (r === "STALE") return versionChanged();
   return { ok: true, data: { type: config.type, spec: config.spec } };
 }
 
