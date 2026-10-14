@@ -106,8 +106,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         ) : null}
         <h2
           className={cn(
-            // Judul tidak diperas penanda "Memperbarui…": minimal ±6 huruf, penanda yang mengalah.
-            "min-w-[min(4.5rem,100%)] flex-1 truncate px-1 text-sm font-medium",
+            // Basis = lebar judul; penanda "Memperbarui…" (shrink-[1000]) yang menyusut lebih dulu.
+            "min-w-0 flex-auto truncate px-1 text-sm font-medium",
             // Setinggi tombol kepala: kepala KPI/tabel sama tinggi dengan kepala grafik bertombol.
             "leading-(--control-h-lg) md:not-any-pointer-coarse:leading-(--control-h-sm)",
             editing && [
