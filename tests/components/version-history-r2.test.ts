@@ -67,7 +67,10 @@ describe("FormAlert pembungkus isi", () => {
     const out = renderToStaticMarkup(
       createElement(DatasetDataSummary, {
         datasetId: "d1",
-        failed: { fileName: `${longName}.xlsx`, message: `Sheet "${longName}" baris 41: file rusak.` },
+        failed: {
+          fileName: `${longName}.xlsx`,
+          message: `Sheet "${longName}" baris 41: file rusak.`,
+        },
         active: null,
       }),
     );
