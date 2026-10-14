@@ -3,13 +3,12 @@ import { notFound } from "next/navigation";
 import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
 import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
-import { parseFilterParam } from "@/components/dashboards/filters/filter-model";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ mode?: string; f?: string | string[] }>;
+type Search = Promise<{ mode?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -20,7 +19,8 @@ export async function generateMetadata({ params }: { params: Params }) {
 
 /**
  * Dashboard: mode lihat (statis) atau mode edit (?mode=edit). Bukan pemilik → 404 (T-010). Filter
- * aktif di ?f= (JSON, T-012): rusak → diabaikan; disaring lagi terhadap kolom yang diizinkan di klien.
+ * aktif di ?f= (JSON, T-012) dibaca di klien dari URL (useSearchParams): rusak → diabaikan; disaring
+ * terhadap kolom yang diizinkan.
  */
 export default async function DashboardPage({
   params,
@@ -74,7 +74,6 @@ export default async function DashboardPage({
         sources={sources}
         filterColumns={d.filterColumns}
         crossFilterColumns={d.crossFilterColumns}
-        initialFilters={parseFilterParam(search.f)}
       />
       {editing ? (
         <DashboardSettings

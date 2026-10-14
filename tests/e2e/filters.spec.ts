@@ -302,6 +302,32 @@ test.describe("filter dashboard", () => {
     expect(checked.sort()).toEqual([...picked].sort());
   });
 
+  test("AC1 regresi Back: pindah ke Dataset lewat tautan lalu Back → filter tetap berlaku", async ({
+    page,
+  }) => {
+    const expected = countWhere((r) => r.cabang === "Medan");
+    const state = { filters: [{ column: "Cabang", op: "in", values: ["Medan"] }] };
+    await page.goto(dashboardUrl);
+    await expectKpi(page, ROWS);
+    await page.locator('[data-testid=filter-slicer][data-column="Cabang"]').click();
+    await page.locator('[data-testid=filter-slicer-option][data-value="Medan"] input').check();
+    await page.keyboard.press("Escape");
+    await expect.poll(() => urlFilters(page)).toEqual(state);
+    await expectKpi(page, expected);
+
+    // Navigasi klien (tautan sidebar), bukan muat penuh: halaman kembali dari cache router.
+    await page.getByRole("link", { name: "Dataset", exact: true }).first().click();
+    await expect(page).toHaveURL(/\/datasets(\?|$)/);
+    await page.goBack();
+    const chip = page.locator('[data-testid=filter-chip][data-column="Cabang"]');
+    await expect(chip).toContainText("Medan");
+    await expectKpi(page, expected);
+    // Status tetap di URL (tidak dihapus setelah kembali) — Forward/Back berikutnya tetap konsisten.
+    await page.waitForTimeout(500);
+    expect(urlFilters(page)).toEqual(state);
+    await expect(chip).toContainText("Medan");
+  });
+
   test("AC2: filter silang 'Jakarta' dari grafik A → KPI B dan tabel C hanya Jakarta; hapus memulihkan", async ({
     page,
   }) => {

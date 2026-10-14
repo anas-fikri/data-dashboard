@@ -5,16 +5,18 @@ import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { ResultCache } from "@/features/query/cache";
-import { runFilterValues } from "@/features/query/filter-values";
+import { normalizeSearch, runFilterValues } from "@/features/query/filter-values";
 import type { CachedQuery, QueryDeps, QueryRepo } from "@/features/query/service";
-import { escapeLikePattern } from "@/features/query/sql";
+import { escapeLikePattern, numberNeedle } from "@/features/query/sql";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
 
 /*
  * T-012 AC 4: daftar nilai slicer dari DuckDB sungguhan — 5.000 nilai unik → 1000 pertama + penanda
  * terpotong, kosong lebih dulu, urutan seperti Excel, pencarian di server (tidak peka huruf besar/kecil
- * dan aksen, wildcard di-escape), pemilik saja.
+ * dan aksen, wildcard di-escape, boolean lewat label Ya/Tidak, angka format Indonesia), kunci cache dari
+ * kata cari ternormalisasi, daftar besar tidak di-cache, permintaan batal tidak menjalankan DuckDB,
+ * pemilik saja.
  */
 const DS = "cmv4klj5r0007oczvgiofocpg";
 const VER = "cmv4kljx40009oczvdmpurrxf";
@@ -38,6 +40,9 @@ const SCHEMA: ColumnSchema[] = [
   col(2, "Jumlah", "integer"),
   col(3, "Tanggal", "date"),
   col(4, "Rahasia", "text", true),
+  col(5, "Aktif", "boolean"),
+  col(6, "Nilai", "decimal"),
+  col(7, "Catatan", "text"),
 ];
 const SPECIAL = ["Jakarta", "JAKARTA Selatan", "Jákarta Barat", "Bekasi", "a%b", "a_b", "axb"];
 const DISTINCT = 5_000;
@@ -55,7 +60,8 @@ beforeAll(async () => {
   await c.run(
     `COPY (
        SELECT row_number() OVER () + 1 AS _row, k AS c1, CAST(n AS BIGINT) AS c2,
-              DATE '2026-01-01' + CAST(n % 300 AS INTEGER) AS c3, 'r' AS c4
+              DATE '2026-01-01' + CAST(n % 300 AS INTEGER) AS c3, 'r' AS c4, n % 2 = 0 AS c5,
+              CAST(n AS DECIMAL(38,6)) / 4 AS c6, repeat(k, 20) AS c7
        FROM (
          SELECT 'Kota ' || lpad(CAST(i AS VARCHAR), 4, '0') AS k, i AS n FROM range(${DISTINCT}) t(i)
          UNION ALL SELECT 'Kota 0001', 1
@@ -88,6 +94,9 @@ const FILTER_COLUMNS = [
   { sheet: "Data", column: "Jumlah" },
   { sheet: "Data", column: "Tanggal" },
   { sheet: "Data", column: "Rahasia" },
+  { sheet: "Data", column: "Aktif" },
+  { sheet: "Data", column: "Nilai" },
+  { sheet: "Data", column: "Catatan" },
 ];
 
 function deps(over: Partial<QueryDeps> = {}): QueryDeps {
@@ -186,6 +195,72 @@ describe("AC 4: slicer dengan 5.000 nilai unik", () => {
       "2026-10-26",
       "2026-10-27",
     ]);
+  });
+});
+
+describe("pencarian boolean/angka, cache, dan pembatalan", () => {
+  it('boolean dicari lewat label tampil "Ya"/"Tidak" (atau true/false)', async () => {
+    const values = async (q: string) => {
+      const r = await runFilterValues(USER, DASH, { column: "Aktif", q }, deps());
+      return r.ok ? r.values : r;
+    };
+    expect(await values("ya")).toEqual([true]);
+    expect(await values("Tidak")).toEqual([false]);
+    expect(await values("TRUE")).toEqual([true]);
+    expect(await values("a")).toEqual([false, true]);
+    expect(await values("x")).toEqual([]);
+  });
+
+  it("angka: koma desimal dan titik ribuan gaya Indonesia", async () => {
+    expect(numberNeedle("1.234,25")).toBe("1234.25");
+    expect(numberNeedle("1,5")).toBe("1.5");
+    expect(numberNeedle("4.999")).toBe("4999");
+    expect(numberNeedle("0.500")).toBe("0.500");
+    expect(numberNeedle("12.5")).toBe("12.5");
+    const n = await runFilterValues(USER, DASH, { column: "Nilai", q: "1.234,25" }, deps());
+    expect(n).toEqual({ ok: true, type: "decimal", values: [1234.25], truncated: false });
+    const j = await runFilterValues(USER, DASH, { column: "Jumlah", q: "4.999" }, deps());
+    expect(j).toEqual({ ok: true, type: "integer", values: [4999], truncated: false });
+  });
+
+  it("kunci cache dari kata cari ternormalisasi (NFC, huruf kecil, tanpa aksen) — satu query", async () => {
+    expect(normalizeSearch(" JÁK ")).toBe("jak");
+    expect(normalizeSearch("Ja\u0301k")).toBe("jak");
+    expect(normalizeSearch("  ")).toBeNull();
+    const d = deps();
+    const exec = vi.spyOn(engine, "exec");
+    const first = await runFilterValues(USER, DASH, { column: "Kota", q: "Jak" }, d);
+    for (const q of ["JAK", "jÁk", " ják ", "Ja\u0301K"]) {
+      expect(await runFilterValues(USER, DASH, { column: "Kota", q }, d)).toEqual(first);
+    }
+    expect(exec).toHaveBeenCalledTimes(1);
+    exec.mockRestore();
+  });
+
+  it("daftar nilai > 256 KB tidak di-cache (cache hasil bersama tidak terkuras)", async () => {
+    const d = deps();
+    const exec = vi.spyOn(engine, "exec");
+    const r = await runFilterValues(USER, DASH, { column: "Catatan" }, d);
+    expect(r).toMatchObject({ ok: true, truncated: true });
+    await runFilterValues(USER, DASH, { column: "Catatan" }, d);
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(d.cache?.totalBytes).toBe(0);
+    exec.mockRestore();
+  });
+
+  it("permintaan yang sudah dibatalkan klien tidak menjalankan DuckDB dan tidak di-cache", async () => {
+    const d = deps();
+    const exec = vi.spyOn(engine, "exec");
+    const ac = new AbortController();
+    ac.abort();
+    expect(await runFilterValues(USER, DASH, { column: "Kota", q: "x" }, d, ac.signal)).toEqual({
+      ok: false,
+      code: "QUERY_BUSY",
+      message: "Permintaan dibatalkan.",
+    });
+    expect(exec).not.toHaveBeenCalled();
+    expect(d.cache?.totalBytes).toBe(0);
+    exec.mockRestore();
   });
 });
 

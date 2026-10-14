@@ -3,6 +3,7 @@ import {
   crossFilterColumnsOf,
   filterColumnKey,
   filterColumnViews,
+  filterSourcesOf,
   storedFilterColumns,
   type ActiveSheet,
 } from "@/features/dashboards/filter-columns";
@@ -106,6 +107,14 @@ describe("setDashboardFilterColumns", () => {
         ],
         'Kolom "cabang" dipilih lebih dari sekali.',
       ],
+      // Satu nama kolom = satu kontrol filter, walau dari sheet lain.
+      [
+        [
+          { sheet: "Penjualan", column: "Cabang" },
+          { sheet: "Target", column: "CABANG" },
+        ],
+        'Kolom "CABANG" sudah dipilih dari sheet "Penjualan". Satu nama kolom hanya bisa menjadi satu filter.',
+      ],
       [[{ sheet: "Biaya", column: "Cabang" }], 'Sheet "Biaya" tidak ada di data aktif.'],
       [
         [{ sheet: "Penjualan", column: "Gaji" }],
@@ -156,11 +165,13 @@ describe("setDashboardFilterColumns", () => {
 });
 
 describe("tampilan kolom filter dan kolom cross-filter", () => {
-  it("terhadap versi aktif: kolom disembunyikan/hilang tetap tampil sebagai tidak tersedia", () => {
+  it("terhadap versi aktif: kolom disembunyikan/hilang tampil tidak tersedia dengan nama tersimpan dan tipe netral", () => {
     const stored = storedFilterColumns([
       { sheet: "Penjualan", column: "Cabang" },
       { sheet: "Penjualan", column: "cabang" },
-      { sheet: "Penjualan", column: "Gaji" },
+      // Nama sama dari sheet lain (data lama sebelum aturan satu kontrol per nama) → dibuang.
+      { sheet: "Target", column: "CABANG" },
+      { sheet: "Penjualan", column: "gaji" },
       { sheet: "Lama", column: "Kota" },
       { sheet: "x" },
       "rusak",
@@ -173,11 +184,12 @@ describe("tampilan kolom filter dan kolom cross-filter", () => {
         type: "text",
         available: true,
       },
+      // Kolom tersembunyi: nama tersimpan ("gaji", bukan nama terkini) + tipe netral, bukan DECIMAL.
       {
         key: "penjualan\u0000gaji",
         sheet: "Penjualan",
-        column: "Gaji",
-        type: "decimal",
+        column: "gaji",
+        type: "text",
         available: false,
       },
       { key: "lama\u0000kota", sheet: "Lama", column: "Kota", type: "text", available: false },
@@ -212,16 +224,30 @@ describe("tampilan kolom filter dan kolom cross-filter", () => {
     ).toEqual(["Tanggal"]);
   });
 
-  it("crossFilterColumnsFor membaca widget grafik dashboard di versi aktif", async () => {
+  it("sumber filter: kolom filter + tipe (null bila tidak tersedia) dan dimensi grafik cross-filter", () => {
+    const stored = storedFilterColumns([
+      { sheet: "Penjualan", column: "Cabang" },
+      { sheet: "Penjualan", column: "Gaji" },
+    ]);
+    expect(filterSourcesOf(stored, [{ type: "bar", spec: chart(2) }], SHEETS)).toEqual([
+      { name: "Cabang", type: "text" },
+      { name: "Gaji", type: null },
+      { name: "Tanggal", type: "date" },
+    ]);
+  });
+
+  it("filterSourcesFor membaca kolom filter + widget grafik dashboard di versi aktif", async () => {
     prisma.dashboard.findFirst.mockResolvedValueOnce({
       datasetId: DS,
+      filterColumns: [],
       dataset: { activeVersionId: VER },
       widgets: [{ id: WA, type: "bar", title: "", spec: chart(2) }],
     });
     // remapToActive: sheet widget sudah di versi aktif → tidak dipetakan ulang.
     prisma.sheet.findMany.mockResolvedValueOnce([{ ...SHEETS[0], index: 0, versionId: VER }]);
     prisma.sheet.findMany.mockResolvedValueOnce([SHEETS[0]]);
-    expect(await svc.crossFilterColumnsFor(DB)).toEqual(["Tanggal"]);
+    expect(await svc.filterSourcesFor(DB)).toEqual([{ name: "Tanggal", type: "date" }]);
+    // Tanpa kolom filter cukup sheet grafik.
     expect(prisma.sheet.findMany).toHaveBeenLastCalledWith(
       expect.objectContaining({
         where: { versionId: VER, typedKey: { not: null }, id: { in: [S1] } },
@@ -230,5 +256,13 @@ describe("tampilan kolom filter dan kolom cross-filter", () => {
     expect(prisma.dashboard.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: DB } }),
     );
+    // Data belum siap: nama kolom filter tetap diizinkan, tanpa tipe (filternya dilewati).
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      datasetId: DS,
+      filterColumns: [{ sheet: "Penjualan", column: "Cabang" }],
+      dataset: { activeVersionId: null },
+      widgets: [],
+    });
+    expect(await svc.filterSourcesFor(DB)).toEqual([{ name: "Cabang", type: null }]);
   });
 });

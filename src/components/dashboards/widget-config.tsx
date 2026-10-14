@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { configVersion } from "@/components/widgets/body-state";
 import type { WidgetView } from "@/features/dashboards/service";
 import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/features/widgets/spec";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
@@ -54,7 +55,14 @@ export function WidgetConfigForm({
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const [draft, setDraft] = useState<WidgetConfig>(parsed.ok ? parsed.config : EMPTY);
-  const [status, setStatus] = useState<Status>("idle");
+  // reloads: simpanan terakhir mengubah data widget (bukan hanya sakelar filter silang, yang tidak
+  // memuat ulang) — teks status tidak menjanjikan "memuat data terbaru" yang tidak terjadi.
+  const [saveState, setStatus] = useState<{ status: Status; reloads: boolean }>({
+    status: "idle",
+    reloads: true,
+  });
+  const { status, reloads } = saveState;
+  const savedVersion = useRef(configVersion(parsed.ok ? parsed.config : EMPTY));
   const memory = useRef<Partial<Record<WidgetType, WidgetConfig>>>({});
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -70,9 +78,14 @@ export function WidgetConfigForm({
     const next = pending.current;
     pending.current = null;
     if (!next || next.type === "empty") return;
-    setStatus("saving");
-    void save.current(next.type, next.spec).then((ok) => setStatus(ok ? "saved" : "error"));
-  }, []);
+    const version = configVersion(next);
+    setStatus({ status: "saving", reloads: true });
+    void save.current(next.type, next.spec).then((ok) => {
+      const reloads = version !== savedVersion.current;
+      if (ok) savedVersion.current = version;
+      setStatus({ status: ok ? "saved" : "error", reloads });
+    });
+  }, [setStatus]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
 
@@ -293,7 +306,9 @@ export function WidgetConfigForm({
             {status === "saving"
               ? "Menyimpan…"
               : status === "saved"
-                ? "Tersimpan. Widget memuat data terbaru."
+                ? reloads
+                  ? "Tersimpan. Widget memuat data terbaru."
+                  : "Tersimpan."
                 : status === "error"
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
                   : unsaved

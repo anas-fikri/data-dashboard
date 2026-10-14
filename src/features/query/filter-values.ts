@@ -2,8 +2,10 @@
  * Nilai slicer dashboard (T-012, B4): DISTINCT satu kolom filter dashboard dari sheet versi aktif, paling
  * banyak 1000 (+ penanda terpotong), dengan pencarian di server. Pemilik dashboard saja (lainnya
  * NOT_FOUND, sama dengan dashboard yang tidak ada). Berjalan di jatah query user yang sama dengan
- * widget (runOnParquet) dan di-cache seperti hasil query (kunci memuat versi + schemaRevision). Kata
- * cari dan nilai tidak pernah masuk log.
+ * widget (runOnParquet) dan di-cache seperti hasil query (kunci memuat versi + schemaRevision + kata
+ * cari ternormalisasi; hasil > SLICER_CACHE_MAX_BYTES tidak di-cache). Permintaan yang dibatalkan klien
+ * (ketikan berikutnya) tidak menjalankan DuckDB bila masih antre. Kata cari dan nilai tidak pernah
+ * masuk log.
  */
 import { z } from "zod";
 import type { ColumnType } from "@/features/ingest/infer";
@@ -39,6 +41,25 @@ export type FilterValuesResult =
 
 /** Batas waktu satu daftar nilai (ketikan berikutnya membatalkan yang lama di klien). */
 export const FILTER_VALUES_MAX_MS = 10_000;
+/**
+ * Daftar nilai lebih besar dari ini (perkiraan heap, rowBytes) tidak di-cache: 1000 teks panjang ≈ 2 MB
+ * per entri akan mengusir hasil widget semua user dari cache bersama (review keamanan T-012).
+ */
+export const SLICER_CACHE_MAX_BYTES = 256 * 1024;
+
+/**
+ * Kata cari → bentuk baku untuk kunci cache DAN SQL (NFC, huruf kecil, tanpa aksen), sehingga "Jak",
+ * "JAK", dan "Ják" berbagi satu entri dan hasilnya pasti sama. Kosong → null (tanpa pencarian).
+ */
+export function normalizeSearch(q: string | undefined): string | null {
+  const s = (q ?? "")
+    .normalize("NFD")
+    .replace(/\p{Mn}/gu, "")
+    .normalize("NFC")
+    .toLowerCase()
+    .trim();
+  return s || null;
+}
 
 const ID = /^[a-z0-9]{20,32}$/;
 
@@ -47,6 +68,7 @@ export async function runFilterValues(
   dashboardId: string,
   body: unknown,
   deps: QueryDeps,
+  signal?: AbortSignal,
 ): Promise<FilterValuesResult> {
   const parsed = filterValuesBodySchema.safeParse(body);
   if (!parsed.success) return fail("INVALID", "Permintaan nilai filter tidak valid.");
@@ -72,9 +94,9 @@ export async function runFilterValues(
       : fail("COLUMN_UNAVAILABLE", "Kolom filter ini tidak ada atau disembunyikan di data aktif.");
   }
 
-  const q = parsed.data.q?.trim() || null;
+  const q = normalizeSearch(parsed.data.q);
   // Batas waktu lebih pendek dari query widget (pesan timeout ikut menyebut batas ini).
-  const limited = { ...deps, timeoutMs: Math.min(deps.timeoutMs, FILTER_VALUES_MAX_MS) };
+  const limited = { ...deps, timeoutMs: Math.min(deps.timeoutMs, FILTER_VALUES_MAX_MS), signal };
   const key = resultKey({
     datasetId: src.datasetId,
     versionId: src.activeVersionId,
@@ -98,10 +120,8 @@ export async function runFilterValues(
   const all = r.value.rows.map((row) => toJson(row[0], col.type) as DashValue);
   const truncated = all.length > FILTER_VALUES_LIMIT;
   const values = all.slice(0, FILTER_VALUES_LIMIT);
-  deps.cache?.set(
-    key,
-    { filterValues: values, truncated },
-    values.reduce<number>((n, v) => n + rowBytes([v]), 64),
-  );
+  const bytes = values.reduce<number>((n, v) => n + rowBytes([v]), 64);
+  if (bytes <= SLICER_CACHE_MAX_BYTES)
+    deps.cache?.set(key, { filterValues: values, truncated }, bytes);
   return { ok: true, type: col.type, values, truncated };
 }

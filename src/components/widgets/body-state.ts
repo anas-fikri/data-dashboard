@@ -8,9 +8,12 @@ import type { WidgetQueryState } from "./widget-query";
 /** memuat = kerangka; rows = data berbaris tampil; none = pesan galat atau "tidak ada data". */
 export type BodyState = "loading" | "rows" | "none";
 
-/** Tabel tetap menampilkan data lama di bawah pesan galat (pindah halaman/urutan gagal). */
-export function bodyState(state: WidgetQueryState, table: boolean): BodyState {
-  if (state.status === "error" && !(state.data && table)) return "none";
+/**
+ * Tabel tetap menampilkan data lama di bawah pesan galat bila `keepOnError` — pindah halaman/urutan
+ * gagal dengan filter yang sama (bukan data dari filter lain, T-012).
+ */
+export function bodyState(state: WidgetQueryState, keepOnError: boolean): BodyState {
+  if (state.status === "error" && !(state.data && keepOnError)) return "none";
   if (!state.data) return "loading";
   return state.data.rows.length > 0 ? "rows" : "none";
 }

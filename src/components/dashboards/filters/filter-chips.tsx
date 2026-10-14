@@ -10,9 +10,11 @@ import { filterText } from "./filter-text";
 
 /*
  * Filter aktif sebagai chip (T-012): "Kolom: isi" + tombol hapus berlabel, filter silang "Disaring
- * dari <widget>: <nilai>" dengan tombol hapusnya sendiri, dan "Hapus semua filter". Setelah menghapus,
- * fokus pindah ke chip berikutnya (atau sebelumnya); bila tidak ada lagi → `onEmpty` (pemanggil
- * memfokuskan kontrol filter pertama), agar fokus tidak jatuh ke <body>.
+ * dari <widget>: <nilai>" dengan tombol hapusnya sendiri, dan "Hapus semua filter". Nama kolom panjang
+ * yang dipotong, isinya tetap terlihat (teks lengkap di title dan untuk pembaca layar). Setelah
+ * menghapus, fokus pindah ke chip berikutnya (atau sebelumnya); chip terakhir → `onEmpty` dipanggil
+ * SEBELUM status berubah (pemanggil memfokuskan kontrol filter pertama atau sumber filter silang —
+ * bilah bisa hilang bersama chip), agar fokus tidak jatuh ke <body>.
  */
 const CHIP =
   "inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border bg-muted pl-3 text-sm";
@@ -38,23 +40,27 @@ export function FilterChips({ onEmpty }: { onEmpty: () => void }) {
   });
 
   if (count === 0) return null;
-  const remove = (index: number, run: () => void) => {
-    focusAt.current = index;
+  const remove = (index: number, run: () => void, all = false) => {
+    if (all || count === 1) onEmpty();
+    else focusAt.current = index;
     run();
   };
   const cross = state.cross;
   const crossTitle = cross ? widgetTitle(cross.widgetId) : "";
 
   return (
-    <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center">
+    <div className="flex flex-col gap-2 @2xl:flex-row @2xl:flex-wrap @2xl:items-center">
       <ul ref={list} aria-label="Filter aktif" className="flex min-w-0 flex-wrap gap-2">
         {state.filters.map((f, i) => {
           const col = columns.find((c) => normName(c.column) === normName(f.column));
-          const text = `${f.column}: ${filterText(f, col?.type)}`;
+          const value = filterText(f, col?.type);
+          const text = `${f.column}: ${value}`;
           return (
             <li key={f.column} className={CHIP} data-testid="filter-chip" data-column={f.column}>
-              <span className="min-w-0 truncate" title={text}>
-                {text}
+              <span className="sr-only">{text}</span>
+              <span aria-hidden className="flex min-w-0 items-baseline gap-1" title={text}>
+                <span className="min-w-0 truncate">{f.column}:</span>
+                <span className="max-w-40 shrink-0 truncate font-medium">{value}</span>
               </span>
               <Button
                 size="icon-sm"
@@ -102,7 +108,7 @@ export function FilterChips({ onEmpty }: { onEmpty: () => void }) {
         size="sm"
         className="h-(--control-h-lg) self-start md:h-(--control-h-sm)"
         data-testid="filter-clear-all"
-        onClick={() => remove(0, clearAll)}
+        onClick={() => remove(0, clearAll, true)}
       >
         Hapus semua filter
       </Button>

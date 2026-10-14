@@ -10,9 +10,12 @@ import { parseNumber } from "./filter-text";
 /*
  * Rentang angka (T-012): batas bawah dan/atau atas (inklusif), ditulis gaya Indonesia ("1.500.000",
  * "2,5"). Berlaku lewat "Terapkan" (atau Enter) — bukan tiap ketukan, agar widget tidak memuat ulang
- * untuk angka setengah jadi. Durasi diisi dalam jam (disimpan detik, sama dengan data).
+ * untuk angka setengah jadi. Durasi diisi dalam jam (disimpan detik, sama dengan data). Batas dikirim
+ * apa adanya (tidak dibulatkan ke 6 desimal — server yang membulatkan aman untuk DECIMAL dan
+ * membandingkan persis untuk DOUBLE); jam → detik hanya dibersihkan dari sisa pecahan biner.
  */
 const HOUR = 3600;
+const toStored = (n: number, unit: number) => (unit === 1 ? n : Math.round(n * unit * 1e6) / 1e6);
 
 export function NumberPanel({
   column,
@@ -29,7 +32,9 @@ export function NumberPanel({
   const id = useId();
   const unit = column.type === "duration" ? HOUR : 1;
   const show = (b: unknown) =>
-    typeof b === "number" ? (b / unit).toLocaleString("id-ID", { maximumFractionDigits: 6 }) : "";
+    typeof b === "number"
+      ? (b / unit).toLocaleString("id-ID", { maximumSignificantDigits: 15 })
+      : "";
   const range = value?.op === "range" ? value : undefined;
   const [min, setMin] = useState(show(range?.gte));
   const [max, setMax] = useState(show(range?.lte));
@@ -55,8 +60,8 @@ export function NumberPanel({
     }
     setError(null);
     const f: DashFilter = { column: column.column, op: "range" };
-    if (lo !== undefined) f.gte = Math.round(lo * unit * 1e6) / 1e6;
-    if (hi !== undefined) f.lte = Math.round(hi * unit * 1e6) / 1e6;
+    if (lo !== undefined) f.gte = toStored(lo, unit);
+    if (hi !== undefined) f.lte = toStored(hi, unit);
     onChange(lo === undefined && hi === undefined ? null : f);
     onDone?.();
   };

@@ -55,12 +55,15 @@ export function ChartTable({
   label,
   width,
   height = null,
+  describedBy,
 }: {
   rows: ChartTableRow[];
   dimensionLabel: string;
   measureLabel: string;
   valueType?: ValueType;
   format: NumberFormat;
+  /** Id penjelasan efek tombol kategori (filter silang, T-012). */
+  describedBy?: string;
   /** Nama wilayah gulir ("Data <judul>"). */
   label: string;
   width: number | null;
@@ -194,12 +197,14 @@ export function ChartTable({
                       <button
                         type="button"
                         aria-pressed={!!r.pressed}
+                        aria-describedby={describedBy}
                         data-testid="crossfilter-item"
                         data-value={r.raw}
                         onClick={r.pick}
                         className={cn(
                           "block w-full cursor-pointer px-3 text-left underline-offset-4 hover:underline focus-visible:-outline-offset-2",
-                          "aria-pressed:font-semibold",
+                          // Ditekan: tebal + latar baris; mode warna paksa: garis Highlight (latar hilang).
+                          "aria-pressed:font-semibold forced-colors:aria-pressed:outline forced-colors:aria-pressed:-outline-offset-2 forced-colors:aria-pressed:outline-[Highlight]",
                           stacked ? "break-words" : "truncate py-1.5",
                         )}
                       >

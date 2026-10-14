@@ -6,50 +6,57 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { SELECTED_MAX, type FilterColumnView, type FilterValue } from "./filter-model";
+import type { DashFilter, FilterColumnView } from "./filter-model";
 import { valueText } from "./filter-text";
+import { slicerModel } from "./slicer-model";
 import { useFilterValues, VALUES_MAX } from "./use-filter-values";
 
 /*
- * Isi slicer (T-012): cari di server (jeda 250 ms), daftar centang maks. 1.000 nilai unik (urut
- * seperti Excel, "(Kosong)" dulu), peringatan bila nilai lebih banyak dari yang tampil, "Pilih semua
- * hasil" / "Hapus pilihan", maks. 500 nilai terpilih. Pilihan langsung berlaku. Nilai terpilih yang
- * tidak ada di daftar pertama (mis. dari URL) ditaruh paling atas agar tetap bisa dilepas. Dipakai di
- * popover (layar lebar) dan di lembar filter ponsel.
+ * Isi slicer (T-012, popover dan lembar ponsel): cari di server, maks. 1.000 nilai, mode pilih /
+ * kecualikan (slicer-model.ts). "Pilih semua" / "Hapus pilihan" memakai aria-disabled (fokus tidak
+ * jatuh ke <body>); hasilnya diumumkan lewat status.
  */
 const num = (n: number) => n.toLocaleString("id-ID");
+const LINK =
+  "h-(--control-h-lg) px-0 md:h-(--control-h-sm) aria-disabled:cursor-not-allowed aria-disabled:no-underline aria-disabled:opacity-50";
 
 export function SlicerPanel({
   dashboardId,
   column,
-  selected,
+  value,
   onChange,
 }: {
   dashboardId: string;
   column: FilterColumnView;
-  selected: FilterValue[];
-  onChange: (next: FilterValue[]) => void;
+  value: DashFilter | undefined;
+  onChange: (f: DashFilter | null) => void;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const { loading, data, error, retry } = useFilterValues(dashboardId, column, query);
+  const [allMode, setAllMode] = useState(value?.op === "not_in");
   const results = data?.values ?? [];
-  const isOn = (v: FilterValue) => selected.some((s) => s === v);
-  const pinned = !query.trim() ? selected.filter((v) => !results.some((r) => r === v)) : [];
-  const list = [...pinned, ...results];
-  const full = selected.length >= SELECTED_MAX;
-  const addable = results.filter((v) => !isOn(v));
+  const m = slicerModel({
+    column: column.column,
+    value,
+    allMode,
+    results,
+    truncated: !!data?.truncated,
+    searching: !!data?.q,
+  });
+  const list = [...m.pinned, ...results];
+  const all = m.selectAll;
 
-  const status = !data
-    ? loading
-      ? "Memuat nilai…"
-      : ""
-    : results.length === 0
-      ? data.q
-        ? `Tidak ada nilai yang cocok dengan “${data.q}”.`
-        : "Kolom ini belum berisi nilai."
-      : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${num(selected.length)} dipilih.`;
+  const status = loading
+    ? "Memuat nilai…"
+    : !data
+      ? ""
+      : results.length === 0
+        ? data.q
+          ? `Tidak ada nilai yang cocok dengan “${data.q}”.`
+          : "Kolom ini belum berisi nilai."
+        : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${m.summary}`;
   const Icon = loading ? IconLoader2 : IconSearch;
 
   return (
@@ -115,42 +122,50 @@ export function SlicerPanel({
             <Button
               size="sm"
               variant="link"
-              className="h-(--control-h-lg) px-0 md:h-(--control-h-sm)"
-              disabled={!addable.length || full}
-              onClick={() => onChange([...selected, ...addable].slice(0, SELECTED_MAX))}
+              className={LINK}
+              aria-disabled={all.off || !!all.blocked || undefined}
+              aria-describedby={all.blocked ? `${id}-blocked` : undefined}
+              data-testid="filter-slicer-select-all"
+              onClick={() => {
+                if (all.off || all.blocked) return;
+                setAllMode(all.allMode);
+                onChange(all.next);
+              }}
             >
-              Pilih semua hasil
+              {all.label}
             </Button>
             <Button
               size="sm"
               variant="link"
-              className="h-(--control-h-lg) px-0 md:h-(--control-h-sm)"
-              disabled={!selected.length}
-              onClick={() => onChange([])}
+              className={LINK}
+              aria-disabled={m.cleared || undefined}
+              data-testid="filter-slicer-clear"
+              onClick={() => {
+                if (m.cleared) return;
+                setAllMode(false);
+                onChange(null);
+              }}
             >
               Hapus pilihan
             </Button>
           </div>
-          {full ? (
-            <p className="text-xs text-muted-foreground" role="status">
-              Maksimal {num(SELECTED_MAX)} nilai dipilih. Lepas sebagian untuk memilih nilai lain.
+          {all.blocked || m.full ? (
+            <p id={`${id}-blocked`} className="text-xs text-muted-foreground">
+              {[all.blocked, m.full && m.fullText].filter(Boolean).join(" ")}
             </p>
           ) : null}
           <div
             role="group"
             aria-label={`Nilai ${column.column}`}
             aria-busy={loading || undefined}
-            className={cn(
-              "max-h-64 min-h-0 overflow-y-auto rounded-md border p-1",
-              loading && "opacity-60",
-            )}
+            className="max-h-64 min-h-0 overflow-y-auto rounded-md border p-1"
           >
             {list.map((v, i) => {
-              const on = isOn(v);
+              const on = m.isOn(v);
               const text = valueText(v, column.type);
               return (
                 <label
-                  key={`${i < pinned.length ? "p" : "r"}:${JSON.stringify(v)}`}
+                  key={`${i < m.pinned.length ? "p" : "r"}:${JSON.stringify(v)}`}
                   data-testid="filter-slicer-option"
                   data-value={v === null ? "" : String(v)}
                   className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-sm hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-60 md:min-h-9"
@@ -159,10 +174,11 @@ export function SlicerPanel({
                     type="checkbox"
                     className="size-4 shrink-0 accent-(--color-primary)"
                     checked={on}
-                    disabled={!on && full}
-                    onChange={() =>
-                      onChange(on ? selected.filter((s) => s !== v) : [...selected, v])
-                    }
+                    disabled={m.locked(v)}
+                    onChange={() => {
+                      if (m.exclude) setAllMode(true);
+                      onChange(m.toggle(v));
+                    }}
                   />
                   <span
                     className={cn(

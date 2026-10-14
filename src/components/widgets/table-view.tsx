@@ -98,10 +98,8 @@ export function TableView({
       <div className="relative flex min-h-0 flex-1 flex-col after:pointer-events-none after:absolute after:inset-0 after:z-20 after:rounded-sm after:ring-inset has-[[data-scroll]:focus-visible]:after:ring-2 has-[[data-scroll]:focus-visible]:after:ring-ring">
         <div
           data-scroll=""
-          className={cn(
-            "relative min-h-0 flex-1 overflow-auto focus-visible:outline-none",
-            busy && "opacity-60",
-          )}
+          // Memuat: tidak diredupkan (teks redup gagal kontras); penandanya garis progres di WidgetBody.
+          className="relative min-h-0 flex-1 overflow-auto focus-visible:outline-none"
           role="region"
           aria-label={label}
           aria-busy={busy || undefined}

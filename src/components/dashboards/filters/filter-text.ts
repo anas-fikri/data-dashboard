@@ -18,10 +18,13 @@ export const PRESET_LABEL: Record<Preset, string> = {
   this_quarter: "Kuartal ini",
   ytd: "Sejak awal tahun",
 };
-export const EMPTY_LABEL = "(Kosong)";
+/** Sama dengan sumbu grafik dan sel tabel (features/widgets/format.ts). */
+export const EMPTY_LABEL = "(kosong)";
 
 const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/;
-const num = (n: number) => n.toLocaleString("id-ID", { maximumFractionDigits: 6 });
+// Angka apa adanya (sampai 15 digit bermakna), bukan dibulatkan ke 6 desimal: chip harus memuat
+// batas yang benar-benar dikirim.
+const num = (n: number) => n.toLocaleString("id-ID", { maximumSignificantDigits: 15 });
 
 /** Satu nilai sebagai teks; tipe tidak diketahui (filter silang dari URL) → ditebak dari bentuknya. */
 export function valueText(v: FilterValue, type?: ColumnType, grain?: string): string {
@@ -76,6 +79,7 @@ export function filterText(f: DashFilter, type?: ColumnType, grain?: string): st
       ? valueText(f.values[0]!, type, grain)
       : valuesText(f.values, type);
   }
+  if (f.op === "not_in") return `Semua kecuali ${valuesText(f.values, type)}`;
   const numeric =
     typeof (f.gte ?? f.lte ?? f.lt) === "number" || type === "integer" || type === "decimal";
   if (numeric || type === "duration") {
@@ -101,14 +105,14 @@ export function filterText(f: DashFilter, type?: ColumnType, grain?: string): st
 
 /**
  * Angka ketikan id-ID → number. "1.500.000", "2,5", "1.234,5", "-3"; kosong → undefined;
- * tidak terbaca → null.
+ * tidak terbaca → null. Grup ribuan tidak diawali 0: "0.500" = 0,5 (bukan 500).
  */
 export function parseNumber(text: string): number | null | undefined {
   const t = text.replace(/\s/g, "");
   if (!t) return undefined;
   let n: string;
   if (t.includes(",")) n = t.replace(/\./g, "").replace(",", ".");
-  else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) n = t.replace(/\./g, "");
+  else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(t)) n = t.replace(/\./g, "");
   else n = t;
   if (!/^-?\d+(\.\d+)?$/.test(n)) return null;
   const v = Number(n);

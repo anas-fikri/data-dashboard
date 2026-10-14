@@ -1,11 +1,13 @@
 /*
- * Filter dashboard (T-012): slicer, rentang angka/tanggal, preset tanggal, dan cross-filter dari klik
- * grafik. Klien mengirim { widgetId, dashboardFilters } dengan kolom lewat NAMA tampil (bukan posisi):
- * satu filter berlaku untuk semua widget yang sheet-nya punya kolom bernama sama (tidak peka besar/kecil
- * dan spasi, NFC). Widget yang sheet-nya tidak punya kolom itu — atau kolomnya disembunyikan, atau
- * tipenya tidak cocok dengan nilai filter — melewati filter tersebut dan melaporkannya (skippedFilters),
- * bukan gagal. Preset dihitung di Asia/Jakarta sebagai tanggal naive dan dibandingkan tanpa pergeseran
- * zona (D8). Murni (tanpa I/O) — dipakai server dan bar filter di klien.
+ * Filter dashboard (T-012): slicer (in / not_in "semua kecuali"), rentang angka/tanggal, preset tanggal,
+ * dan cross-filter dari klik grafik. Klien mengirim { widgetId, dashboardFilters } dengan kolom lewat
+ * NAMA tampil (bukan posisi): satu filter berlaku untuk widget yang sheet-nya punya kolom bernama sama
+ * (tidak peka besar/kecil dan spasi, NFC) DAN kelompok tipenya sama dengan kolom sumber filter (kolom
+ * filter dashboard atau dimensi grafik cross-filter; teks | angka | waktu | boolean). Widget yang
+ * sheet-nya tidak punya kolom itu — atau kolomnya disembunyikan, tipenya beda kelompok, atau nilai filter
+ * tidak cocok dengan tipenya — melewati filter tersebut dan melaporkannya (skippedFilters), bukan gagal.
+ * Preset dihitung di Asia/Jakarta sebagai tanggal naive dan dibandingkan tanpa pergeseran zona (D8).
+ * Murni (tanpa I/O).
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
@@ -37,6 +39,14 @@ export const dashFilterSchema = z
       .object({
         column,
         op: z.literal("in"),
+        values: z.array(inValue).min(1).max(DASH_VALUES_MAX),
+      })
+      .strict(),
+    /** "Semua kecuali" nilai ini (pilih semua lalu buang beberapa); null = kecualikan (Kosong). */
+    z
+      .object({
+        column,
+        op: z.literal("not_in"),
         values: z.array(inValue).min(1).max(DASH_VALUES_MAX),
       })
       .strict(),
@@ -136,11 +146,22 @@ interface ClauseBase {
 }
 /** Filter dashboard yang sudah dicocokkan dengan sheet satu widget (preset sudah jadi rentang). */
 export type DashClause = ClauseBase &
-  ({ op: "in"; values: DashValue[] } | { op: "range"; gte?: Bound; lte?: Bound; lt?: Bound });
+  (
+    | { op: "in" | "not_in"; values: DashValue[] }
+    | { op: "range"; gte?: Bound; lte?: Bound; lt?: Bound }
+  );
 
 const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
 
-/** Waktu naive ke bentuk penuh YYYY-MM-DDTHH:MM:SS (urutan teks = urutan waktu, kunci cache stabil). */
+/** Kelompok tipe untuk mencocokkan filter dashboard antar-sheet (kontrak T-012 putaran 1). */
+export type TypeFamily = "text" | "number" | "time" | "boolean";
+export const typeFamily = (t: ColumnType): TypeFamily =>
+  NUMERIC.includes(t) ? "number" : t === "date" || t === "timestamp" ? "time" : (t as TypeFamily);
+
+/**
+ * Waktu naive ke bentuk penuh YYYY-MM-DDTHH:MM:SS (urutan teks = urutan waktu, kunci cache stabil).
+ * Tanggal saja (YYYY-MM-DD) → tengah malam; dipakai untuk batas rentang, bukan nilai in/not_in.
+ */
 function fullTimestamp(v: string): string {
   const s = v.replace(" ", "T");
   return DATE_ONLY.test(s) ? `${s}T00:00:00` : s.length === 16 ? `${s}:00` : s;
@@ -179,13 +200,18 @@ function toClause(f: DashFilter, c: ColumnSchema, today: string): DashClause | n
   const base: ClauseBase = { col: `c${c.pos}`, type: c.type, float: c.float === true };
   const temporal = c.type === "date" || c.type === "timestamp";
   switch (f.op) {
-    case "in": {
+    case "in":
+    case "not_in": {
       if (!f.values.every((v) => v === null || fits(c.type, v))) return null;
+      // TIMESTAMP: tanggal saja tetap tanggal (dicocokkan sehari penuh di SQL, sama dengan kolom DATE);
+      // nilai berjam dilengkapi detiknya.
       const values =
         c.type === "timestamp"
-          ? f.values.map((v) => (typeof v === "string" ? fullTimestamp(v) : v))
+          ? f.values.map((v) =>
+              typeof v === "string" && !DATE_ONLY.test(v) ? fullTimestamp(v) : v,
+            )
           : f.values;
-      return { ...base, op: "in", values: canonicalValues(values) };
+      return { ...base, op: f.op, values: canonicalValues(values) };
     }
     case "range": {
       const bounds = [f.gte, f.lte, f.lt].filter((b) => b !== undefined);
@@ -232,15 +258,36 @@ function toClause(f: DashFilter, c: ColumnSchema, today: string): DashClause | n
   }
 }
 
+/** Kelompok tipe kolom sumber per nama ternormalisasi (lihat sourceFamilies). */
+export type SourceFamilies = Map<string, Set<TypeFamily>>;
+
+/**
+ * Kelompok tipe sumber filter dashboard: kolom filter tersimpan + dimensi grafik cross-filter yang
+ * tersedia di versi aktif (type null = tidak tersedia → tidak menyumbang kelompok).
+ */
+export function sourceFamilies(
+  sources: { name: string; type: ColumnType | null }[],
+): SourceFamilies {
+  const out: SourceFamilies = new Map();
+  for (const s of sources) {
+    if (!s.type) continue;
+    const k = normName(s.name);
+    out.set(k, (out.get(k) ?? new Set()).add(typeFamily(s.type)));
+  }
+  return out;
+}
+
 /**
  * Terapkan filter dashboard ke sheet satu widget: kolom dicocokkan lewat nama di antara kolom yang
- * tidak disembunyikan. Hasil: klausa kanonik (unik, terurut — untuk kunci cache) + nama kolom filter
- * yang dilewati di widget ini.
+ * tidak disembunyikan, dan (bila `families` diberikan) hanya bila kelompok tipenya sama dengan kolom
+ * sumber filter — "Tanggal" bertipe tanggal tidak dipakai untuk kolom teks "Tanggal" di sheet lain.
+ * Hasil: klausa kanonik (unik, terurut — untuk kunci cache) + nama kolom filter yang dilewati.
  */
 export function applyDashFilters(
   filters: DashFilter[],
   schema: ColumnSchema[],
   now: Date,
+  families?: SourceFamilies,
 ): { clauses: DashClause[]; skipped: string[] } {
   const byName = new Map<string, ColumnSchema>();
   for (const c of schema) {
@@ -251,7 +298,9 @@ export function applyDashFilters(
   const skipped: string[] = [];
   for (const f of filters) {
     const c = byName.get(normName(f.column));
-    const clause = c ? toClause(f, c, today) : null;
+    const sameFamily =
+      !families || (!!c && !!families.get(normName(f.column))?.has(typeFamily(c.type)));
+    const clause = c && sameFamily ? toClause(f, c, today) : null;
     if (clause) clauses.set(JSON.stringify(clause), clause);
     else if (!skipped.includes(f.column)) skipped.push(f.column);
   }

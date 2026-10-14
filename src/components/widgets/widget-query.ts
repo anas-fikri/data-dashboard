@@ -28,10 +28,15 @@ export interface WidgetData {
   page?: number;
   pageSize?: number;
 }
-export type WidgetQueryState =
+/**
+ * `filters`: filter dashboard (JSON) milik `data` — data lama dari filter lain tidak boleh tampil
+ * seolah sudah tersaring (T-012).
+ */
+export type WidgetQueryState = { filters?: string } & (
   | { status: "loading"; data?: WidgetData }
   | { status: "ok"; data: WidgetData }
-  | { status: "error"; code: string; message: string; data?: WidgetData };
+  | { status: "error"; code: string; message: string; data?: WidgetData }
+);
 
 const MAX_ACTIVE = 2;
 const RETRIES = 2;
@@ -141,18 +146,27 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
     if (!key) return;
     // Request diturunkan dari key (string stabil), bukan objek baru tiap render.
     const req = JSON.parse(key) as WidgetRequest;
+    const filters = JSON.stringify(req.dashboardFilters ?? []);
     const ctl = new AbortController();
     // Penanda memuat diset di callback async (bukan langsung di effect) — data lama tetap tampil.
     void Promise.resolve().then(() => {
-      if (!ctl.signal.aborted) setState((s) => ({ status: "loading", data: s.data }));
+      if (!ctl.signal.aborted) {
+        setState((s) => ({ status: "loading", data: s.data, filters: s.filters }));
+      }
     });
     fetchWidget(req, ctl.signal).then(
       (r) => {
         if (ctl.signal.aborted) return;
         setState((s) =>
           r.ok
-            ? { status: "ok", data: r.data }
-            : { status: "error", code: r.code, message: r.message, data: s.data },
+            ? { status: "ok", data: r.data, filters }
+            : {
+                status: "error",
+                code: r.code,
+                message: r.message,
+                data: s.data,
+                filters: s.filters,
+              },
         );
       },
       () => {},

@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-13T15:34:02Z"
+updated: "2026-10-13T23:51:57Z"
 created_by: claude-code
 ---
 
@@ -42,6 +42,7 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - 2026-10-12T10:24:01Z Dari T-009: Route /api/query memuat @duckdb/node-api (native, serverExternalPackages). Output standalone harus membawa @duckdb/node-bindings-linux-<arch> (dipilih per platform saat runtime; nft bisa melewatkannya) — pastikan ter-copy di image (mis. outputFileTracingIncludes atau salin node_modules/@duckdb). QUERY_CACHE_DIR per replika di volume lokal.
 - 2026-10-13T14:32:41Z Dari review keamanan T-019: reverse proxy produksi WAJIB menimpa (bukan meneruskan dari klien) header Host, X-Forwarded-Host dan X-Real-IP (nginx: proxy_set_header Host $host; proxy_set_header X-Forwarded-Host $host; proxy_set_header X-Real-IP $remote_addr;). Tanpa itu: cek Origin Server Action bisa diakali dengan X-Forwarded-Host palsu dan IP di AuditLog/rate limit bisa dipalsukan (TRUST_PROXY=true). Tambahkan uji di scripts/smoke-prod-headers.mjs: POST Server Action dengan Origin + X-Forwarded-Host jahat ditolak; X-Real-IP palsu tidak muncul di AuditLog.
 - 2026-10-13T15:34:02Z Dari review T-019 putaran 2: (1) image app produksi wajib membawa scripts/admin-restore.mjs + @prisma/client (output standalone Next tidak otomatis membawanya); smoke test: docker compose exec app node scripts/admin-restore.mjs tidak-ada@pcpexpress.com --confirm harus exit 1 tanpa perubahan. (2) logging Docker wajib dirotasi (max-size/max-file) untuk app dan worker — log penolakan akses admin sudah dibatasi per pengguna, tapi stdout tetap perlu rotasi.
+- 2026-10-13T23:51:57Z Dari review keamanan T-012: status filter dashboard ada di URL (?f=, berisi nilai filter seperti nama cabang/kode). Access log reverse proxy WAJIB membuang query string (Caddy: filter request>uri; nginx: log $uri, bukan $request_uri) agar nilai filter tidak tersimpan di log server.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

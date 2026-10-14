@@ -1,7 +1,7 @@
 import "server-only";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { crossFilterColumnsFor } from "@/features/dashboards/service";
+import { filterSourcesFor } from "@/features/dashboards/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
@@ -11,7 +11,7 @@ import { downloadToFile, objectSize } from "@/lib/storage/files";
 import { ResultCache } from "./cache";
 import { HistoryCache } from "./history-cache";
 import { registerLocalParquet } from "./local-parquet";
-import type { CachedQuery, QueryDeps, QueryRepo } from "./service";
+import type { CachedQuery, FilterSource, QueryDeps, QueryRepo } from "./service";
 
 /*
  * Perakitan produksi query (T-009): satu cache parquet, satu mesin DuckDB, dan satu cache hasil per
@@ -31,16 +31,17 @@ const historyCache = new HistoryCache<History>({
 });
 
 /**
- * Kolom cross-filter per dashboard (T-012): dibaca sekali untuk banyak query widget dalam satu muat
- * dashboard. Kunci memuat versi aktif + updatedAt dashboard (atur widget/kolom filter menaikkannya),
- * jadi perubahan pemilik langsung berlaku; umur pendek menutup sisanya (mis. kolom disembunyikan —
- * filter pada kolom tersembunyi tetap dilewati widget).
+ * Sumber filter per dashboard (T-012: kolom filter + dimensi cross-filter beserta tipenya): dibaca
+ * sekali untuk banyak query widget dalam satu muat dashboard. Kunci memuat versi aktif + updatedAt
+ * dashboard (atur widget/kolom filter menaikkannya), jadi perubahan pemilik langsung berlaku; umur
+ * pendek menutup sisanya (mis. kolom disembunyikan atau tipenya diubah — filter pada kolom tersembunyi
+ * tetap dilewati widget).
  */
-const crossFilterCache = new HistoryCache<string[]>({
+const filterSourceCache = new HistoryCache<FilterSource[]>({
   ttlMs: 30_000,
   maxEntries: 1_000,
   maxSize: 50_000,
-  size: (names) => 1 + names.length,
+  size: (sources) => 1 + sources.length,
 });
 
 async function loadSheetHistory(
@@ -118,10 +119,10 @@ export const prismaQueryRepo: QueryRepo = {
       }
     );
   },
-  crossFilterColumns({ dashboardId, activeVersionId, updatedAt }) {
-    return crossFilterCache.get(
+  filterSources({ dashboardId, activeVersionId, updatedAt }) {
+    return filterSourceCache.get(
       `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}`,
-      () => crossFilterColumnsFor(dashboardId),
+      () => filterSourcesFor(dashboardId),
     );
   },
   async filterSource(userId, dashboardId) {

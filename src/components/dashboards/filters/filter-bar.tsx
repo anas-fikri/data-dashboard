@@ -1,43 +1,76 @@
 "use client";
 
 import { IconFilter } from "@tabler/icons-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
+import { normName } from "./filter-model";
 import { filterText } from "./filter-text";
 import { FilterSheet } from "./filter-sheet";
 
 /*
- * Bilah filter di atas kanvas (T-012), mode lihat dan edit. ≥ 768 px: satu kontrol per kolom filter
- * (popover); < 768 px: tombol "Filter (n)" yang membuka lembar. Di bawahnya chip filter aktif + filter
- * silang. Tanpa kolom filter: di mode lihat hanya muncul saat ada filter silang; di mode edit memberi
- * tahu tempat menambah kolom filter. Perubahan diumumkan sopan ke pembaca layar.
+ * Bilah filter di atas kanvas (T-012), mode lihat dan edit. Bilah selebar ≥ 42rem (container query,
+ * bukan viewport — sidebar 240 px di tablet menyempitkan konten): satu kontrol per kolom filter
+ * (popover); lebih sempit: tombol "Filter (n)" yang membuka lembar, jadi tidak ada pemicu + chip
+ * ganda yang menumpuk. Di bawahnya chip filter aktif + filter silang. Tanpa kolom filter: di mode lihat
+ * hanya muncul saat ada filter silang; di mode edit memberi tahu tempat menambah kolom filter.
+ * Perubahan (termasuk nilai) diumumkan sopan ke pembaca layar — tidak ada pengumuman saat dimuat.
  */
 export const FILTER_SETTINGS_ID = "kolom-filter";
 
+/** Fokus ke sumber filter silang (bilah hilang bersama chip terakhirnya): kategori, atau judul kartu. */
+function focusCrossSource(widgetId: string) {
+  const card = document.querySelector<HTMLElement>(
+    `[data-testid=widget][data-widget-id="${widgetId}"]`,
+  );
+  const item = card?.querySelector<HTMLElement>(
+    "[data-testid=crossfilter-item][aria-pressed=true]",
+  );
+  const heading = card?.querySelector<HTMLElement>("h2");
+  if (item) return item.focus();
+  heading?.setAttribute("tabindex", "-1");
+  heading?.focus();
+}
+
 export function FilterBar({ editing }: { editing: boolean }) {
-  const { columns, state, urlTooLong, widgetTitle } = useDashboardFilters();
+  const { columns, state, urlTooLong, widgetTitle, widgetGrain } = useDashboardFilters();
   const sheetButton = useRef<HTMLButtonElement>(null);
   const desktop = useRef<HTMLDivElement>(null);
   const active = state.filters.length + (state.cross ? 1 : 0);
 
-  // Fokus setelah chip terakhir dihapus: kontrol pertama yang terlihat (ponsel: tombol lembar).
+  // Fokus setelah chip terakhir dihapus: kontrol pertama yang terlihat (bilah sempit: tombol lembar);
+  // tanpa kolom filter: sumber filter silang.
   const focusFirst = () => {
     const first = desktop.current?.querySelector<HTMLElement>("button");
     if (first && first.offsetParent !== null) first.focus();
-    else sheetButton.current?.focus();
+    else if (sheetButton.current) sheetButton.current.focus();
+    else if (state.cross) focusCrossSource(state.cross.widgetId);
   };
-  const announce = state.cross
-    ? `Widget lain disaring dari ${widgetTitle(state.cross.widgetId)}: ${filterText(state.cross.filter)}.`
-    : active
-      ? `${active} filter aktif.`
-      : "Semua filter dihapus.";
+
+  // Pengumuman hanya setelah status berubah (bukan "Semua filter dihapus." sejak halaman dimuat).
+  const key = JSON.stringify(state);
+  const [seen, setSeen] = useState(key);
+  const [announce, setAnnounce] = useState("");
+  if (seen !== key) {
+    setSeen(key);
+    const parts = state.filters.map((f) => {
+      const type = columns.find((c) => normName(c.column) === normName(f.column))?.type;
+      return `${f.column}: ${filterText(f, type)}`;
+    });
+    if (state.cross) {
+      const { widgetId, filter } = state.cross;
+      parts.push(
+        `disaring dari ${widgetTitle(widgetId)}: ${filterText(filter, undefined, widgetGrain(widgetId))}`,
+      );
+    }
+    setAnnounce(parts.length ? `Filter aktif: ${parts.join("; ")}.` : "Semua filter dihapus.");
+  }
 
   // Wilayah pengumuman selalu terpasang (di luar bilah yang bisa muncul/hilang) agar perubahan pertama
   // pun terbaca.
   const live = (
-    <p className="sr-only" aria-live="polite">
+    <p className="sr-only" role="status">
       {announce}
     </p>
   );
@@ -48,16 +81,16 @@ export function FilterBar({ editing }: { editing: boolean }) {
       <section
         aria-label="Filter dashboard"
         data-testid="filter-bar"
-        className="flex flex-col gap-3 rounded-lg border bg-card p-3"
+        className="@container flex flex-col gap-3 rounded-lg border bg-card p-3"
       >
         {columns.length ? (
           <>
-            <div className="md:hidden">
+            <div className="@2xl:hidden">
               <FilterSheet triggerRef={sheetButton} />
             </div>
             <div
               ref={desktop}
-              className="hidden min-w-0 md:flex md:flex-wrap md:items-center md:gap-2"
+              className="hidden min-w-0 @2xl:flex @2xl:flex-wrap @2xl:items-center @2xl:gap-2"
             >
               <span className="mr-1 inline-flex items-center gap-1.5 text-sm font-medium">
                 <IconFilter size={18} stroke={1.5} aria-hidden className="text-muted-foreground" />

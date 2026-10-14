@@ -11,9 +11,11 @@ import {
   checkFilterColumns,
   crossFilterColumnsOf,
   filterColumnViews,
+  filterSourcesOf,
   storedFilterColumns,
   type ActiveSheet,
   type FilterColumnView,
+  type FilterSourceColumn,
 } from "./filter-columns";
 import {
   DASHBOARD_NAME_MAX,
@@ -259,30 +261,40 @@ async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSh
 }
 
 /**
- * Kolom cross-filter dashboard untuk validasi query widget (T-012). dashboardId berasal dari widget
- * yang kepemilikannya sudah dicek pemanggil (query/runtime.ts); tidak dipakai untuk akses lain.
+ * Sumber filter dashboard untuk query widget (T-012): kolom filter tersimpan + dimensi grafik
+ * cross-filter, dengan tipenya di versi aktif (izin kolom D6 + kecocokan tipe antar-sheet). dashboardId
+ * berasal dari widget yang kepemilikannya sudah dicek pemanggil (query/runtime.ts); tidak dipakai untuk
+ * akses lain.
  */
-export async function crossFilterColumnsFor(dashboardId: string): Promise<string[]> {
+export async function filterSourcesFor(dashboardId: string): Promise<FilterSourceColumn[]> {
   const d = await prisma.dashboard.findFirst({
     where: { id: dashboardId },
     select: {
       datasetId: true,
+      filterColumns: true,
       dataset: { select: { activeVersionId: true } },
       widgets: { where: { type: { in: [...CHART_TYPES] } }, select: WIDGET_SELECT },
     },
   });
-  const versionId = d?.dataset.activeVersionId;
-  if (!d || !versionId || !d.widgets.length) return [];
+  if (!d) return [];
+  const stored = storedFilterColumns(d.filterColumns);
+  const versionId = d.dataset.activeVersionId;
+  if (!versionId || (!stored.length && !d.widgets.length)) {
+    return stored.map((f) => ({ name: f.column, type: null }));
+  }
   const widgets = await remapToActive(d.datasetId, versionId, d.widgets);
-  const ids = [
-    ...new Set(
-      widgets.flatMap((w) => {
-        const c = parseWidgetConfig(w.type, w.spec);
-        return c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [];
-      }),
-    ),
-  ];
-  return crossFilterColumnsOf(widgets, await activeSheets(versionId, ids));
+  // Kolom filter dicocokkan lewat nama sheet → semua sheet aktif; tanpa kolom filter cukup sheet grafik.
+  const ids = stored.length
+    ? undefined
+    : [
+        ...new Set(
+          widgets.flatMap((w) => {
+            const c = parseWidgetConfig(w.type, w.spec);
+            return c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [];
+          }),
+        ),
+      ];
+  return filterSourcesOf(stored, widgets, await activeSheets(versionId, ids));
 }
 
 /**

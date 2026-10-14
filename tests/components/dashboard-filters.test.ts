@@ -156,7 +156,7 @@ describe("filter silang dari kategori grafik", () => {
   it("teks chip periode memakai nama periode grafik", () => {
     const f = crossFilterFor("Tgl", "date", "month", "2026-01-01")!;
     expect(filterText(f, undefined, "month")).toBe("Jan 2026");
-    expect(filterText({ column: "C", op: "in", values: [null] })).toBe("(Kosong)");
+    expect(filterText({ column: "C", op: "in", values: [null] })).toBe("(kosong)");
   });
 
   it("klik irisan Lainnya dan periode kosong yang diisi tidak menjadi filter", () => {

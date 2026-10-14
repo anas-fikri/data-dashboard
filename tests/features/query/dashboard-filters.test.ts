@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { filterSourcesOf, storedFilterColumns } from "@/features/dashboards/filter-columns";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { ResultCache } from "@/features/query/cache";
 import {
@@ -18,6 +19,7 @@ import {
 import {
   runWidgetQuery,
   type CachedQuery,
+  type FilterSource,
   type QueryDeps,
   type QueryRepo,
 } from "@/features/query/service";
@@ -29,7 +31,8 @@ import { ParquetCache } from "@/lib/duckdb/parquet-cache";
  * T-012: filter dashboard pada query widget dengan mesin DuckDB + cache parquet sungguhan (repo palsu).
  * Data kecil yang ditulis eksplisit agar hasil yang diharapkan bisa dihitung tangan: slicer (in + kosong),
  * rentang angka DECIMAL/DOUBLE dan tanggal, preset Asia/Jakarta (D8) pada DATE dan TIMESTAMP, filter yang
- * dilewati widget sheet lain, kolom tidak diizinkan, dan kunci cache kanonik.
+ * dilewati widget sheet lain (kolom tidak ada atau kelompok tipe beda), "semua kecuali" (not_in), kolom
+ * tidak diizinkan (juga filter posisional lama), dan kunci cache kanonik.
  */
 const DS = "cmv4klj5r0007oczvgiofocpg";
 const VER = "cmv4kljx40009oczvdmpurrxf";
@@ -64,8 +67,16 @@ const SCHEMA: ColumnSchema[] = [
   col(5, "Rahasia", "text", { hidden: true }),
   col(6, "Rasio", "decimal", { float: true }),
 ];
-/** Sheet lain di versi yang sama: tidak punya kolom "Cabang". */
-const SCHEMA2: ColumnSchema[] = [col(1, "Wilayah", "text"), col(2, "Omzet", "decimal")];
+/**
+ * Sheet lain di versi yang sama: tidak punya kolom "Cabang"; "Tanggal" dan "Rasio" di sini bertipe teks
+ * (kelompok tipe beda dengan kolom filter di sheet Penjualan → filternya dilewati).
+ */
+const SCHEMA2: ColumnSchema[] = [
+  col(1, "Wilayah", "text"),
+  col(2, "Omzet", "decimal"),
+  col(3, "Tanggal", "text"),
+  col(6, "Rasio", "text"),
+];
 
 // [Cabang, Omzet, Tanggal, Waktu, Rasio]
 const ROWS: [string | null, string, string | null, string | null, number][] = [
@@ -136,7 +147,7 @@ const WIDGETS: Record<string, { type: string; spec: unknown }> = {
 };
 const WID = (name: string) => `cmv4kljx40009oczvdmpu${name.padEnd(4, "x").slice(0, 4)}0`;
 
-/** Kolom filter dashboard; dimensi grafik cross-filter lewat repo.crossFilterColumns. */
+/** Kolom filter dashboard; sumber filter (+ dimensi grafik cross-filter) lewat repo.filterSources. */
 const FILTER_COLUMNS = [
   { sheet: "Penjualan", column: "Cabang" },
   { sheet: "Penjualan", column: "Omzet" },
@@ -146,7 +157,18 @@ const FILTER_COLUMNS = [
   { sheet: "Penjualan", column: "Rahasia" },
 ];
 
-function deps(over: Partial<QueryDeps> = {}, cross: string[] = []): QueryDeps {
+/** Sumber filter seperti produksi (dashboards/filter-columns): kolom filter + tipenya di sheet aktif. */
+const SOURCES: FilterSource[] = filterSourcesOf(
+  storedFilterColumns(FILTER_COLUMNS),
+  [],
+  [{ id: SHEET, name: "Penjualan", schema: SCHEMA }],
+);
+
+function deps(
+  over: Partial<QueryDeps> = {},
+  cross: FilterSource[] = [],
+  sources: FilterSource[] = SOURCES,
+): QueryDeps {
   const repo: QueryRepo = {
     ownedDataset: async () => null,
     sheet: async (versionId, sheetId) =>
@@ -168,7 +190,7 @@ function deps(over: Partial<QueryDeps> = {}, cross: string[] = []): QueryDeps {
         filterColumns: FILTER_COLUMNS,
       };
     },
-    crossFilterColumns: vi.fn(async () => cross),
+    filterSources: vi.fn(async () => [...sources, ...cross]),
   };
   const parquet = new ParquetCache({
     dir: join(root, "cache"),
@@ -259,6 +281,47 @@ describe("AC 1: slicer (in) — nilai terpilih + (Kosong)", () => {
     const label = LONG.slice(0, DIM_TEXT_MAX);
     expect(await count([{ column: "Cabang", op: "in", values: [label] }])).toBe(1);
     expect(await count([{ column: "Cabang", op: "in", values: [LONG.slice(0, 499)] }])).toBe(0);
+  });
+});
+
+describe('"semua kecuali" (not_in) dan tanggal saja pada TIMESTAMP', () => {
+  it("not_in: sel kosong ikut kecuali (Kosong) ikut dikecualikan", async () => {
+    // 10 baris: Jakarta 3, Bandung 3, Surabaya, Medan, LONG, kosong.
+    expect(await count([{ column: "Cabang", op: "not_in", values: ["Jakarta"] }])).toBe(7);
+    expect(await count([{ column: "Cabang", op: "not_in", values: ["Jakarta", null] }])).toBe(6);
+    expect(await count([{ column: "Cabang", op: "not_in", values: [null] }])).toBe(9);
+    // Label grafik terpotong 500 karakter dikecualikan lewat awalan, sama dengan in.
+    const label = LONG.slice(0, DIM_TEXT_MAX);
+    expect(await count([{ column: "Cabang", op: "not_in", values: [label] }])).toBe(9);
+    // Nilai yang tidak mungkin ada (> 6 desimal pada DECIMAL) tidak mengecualikan apa pun.
+    expect(await count([{ column: "Omzet", op: "not_in", values: [0.1000001] }])).toBe(10);
+    expect(await count([{ column: "Omzet", op: "not_in", values: [0.1, 300] }])).toBe(8);
+    // in + not_in = semua baris.
+    const sel: DashFilter = { column: "Cabang", op: "in", values: ["Bandung", null] };
+    const both = Number(await count([sel])) + Number(await count([{ ...sel, op: "not_in" }]));
+    expect(both).toBe(ROWS.length);
+    expect(dashFilterSchema.safeParse({ column: "x", op: "not_in", values: [] }).success).toBe(
+      false,
+    );
+  });
+
+  it("tanggal saja pada kolom TIMESTAMP cocok sehari penuh (in dan not_in), seperti kolom DATE", async () => {
+    // 2026-10-11 23:59:00.4 dan 2026-03-31 12:00 — dulu hanya jam 00:00:00 yang cocok.
+    expect(await count([{ column: "Waktu", op: "in", values: ["2026-10-11", "2026-03-31"] }])).toBe(
+      2,
+    );
+    expect(await count([{ column: "Waktu", op: "in", values: ["2026-10-11", null] }])).toBe(2);
+    expect(await count([{ column: "Waktu", op: "not_in", values: ["2026-10-11"] }])).toBe(9);
+    // Nilai berjam tetap dicocokkan per detik.
+    expect(
+      await count([{ column: "Waktu", op: "in", values: ["2026-10-11T23:59:00", "2026-03-31"] }]),
+    ).toBe(2);
+    const { clauses } = applyDashFilters(
+      [{ column: "Waktu", op: "in", values: ["2026-10-11", "2026-10-11T08:00"] }],
+      SCHEMA,
+      new Date(),
+    );
+    expect(clauses[0]).toMatchObject({ values: ["2026-10-11", "2026-10-11T08:00:00"] });
   });
 });
 
@@ -410,19 +473,81 @@ describe("filter yang dilewati, kolom tidak diizinkan", () => {
       message: "Filter tidak diizinkan untuk dashboard ini.",
     });
     expect(exec).not.toHaveBeenCalled();
-    expect(d.repo.crossFilterColumns).toHaveBeenCalledWith({
+    expect(d.repo.filterSources).toHaveBeenCalledWith({
       dashboardId: DASH,
       activeVersionId: VER,
       updatedAt: undefined,
     });
-    // Kolom filter dashboard tidak perlu membaca kolom cross-filter.
+    // Tanpa filter apa pun sumber filter tidak dibaca.
     const d2 = deps();
-    await count([{ column: "Cabang", op: "in", values: ["Jakarta"] }], d2);
-    expect(d2.repo.crossFilterColumns).not.toHaveBeenCalled();
+    await runWidgetQuery(USER, { widgetId: WID("kpi") }, d2);
+    expect(d2.repo.filterSources).not.toHaveBeenCalled();
+  });
+
+  it("filter posisional lama di luar kolom yang diizinkan → INVALID tanpa DuckDB (D6)", async () => {
+    const exec = vi.fn();
+    const onlyCabang: FilterSource[] = [{ name: "Cabang", type: "text" }];
+    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } }, [], onlyCabang);
+    // Omzet (posisi 2) bukan kolom filter / dimensi cross-filter: KPI tidak boleh jadi penebak nilainya.
+    for (const filters of [
+      [{ column: 2, op: "gte", value: 120 }],
+      [
+        { column: 1, op: "eq", value: "Jakarta" },
+        { column: 2, op: "gt", value: 140 },
+      ],
+    ]) {
+      expect(await runWidgetQuery(USER, { widgetId: WID("kpi"), filters }, d)).toEqual({
+        ok: false,
+        code: "INVALID",
+        message: "Filter tidak diizinkan untuk dashboard ini.",
+      });
+    }
+    expect(exec).not.toHaveBeenCalled();
+    const ok = await runWidgetQuery(
+      USER,
+      { widgetId: WID("kpi"), filters: [{ column: 1, op: "eq", value: "Jakarta" }] },
+      deps({}, [], onlyCabang),
+    );
+    expect(ok).toMatchObject({ ok: true, rows: [[3]] });
+  });
+
+  it("kelompok tipe beda dengan kolom sumber filter → dilewati (tanggal vs teks, angka vs teks)", async () => {
+    const r = await runWidgetQuery(
+      USER,
+      {
+        widgetId: WID("other"),
+        dashboardFilters: [
+          // Sumber Tanggal = DATE (Penjualan); di sheet lain Tanggal = teks → tidak dicocokkan sebagai teks.
+          { column: "Tanggal", op: "in", values: ["2026-10-11"] },
+          { column: "Tanggal", op: "not_in", values: ["2026-10-11"] },
+          { column: "Rasio", op: "in", values: [0.5] },
+          { column: "Omzet", op: "range", gte: 100 },
+        ],
+      },
+      deps(),
+    );
+    // Omzet (DECIMAL di kedua sheet) tetap berlaku: 4 baris.
+    expect(r).toMatchObject({ ok: true, rows: [[4]], skippedFilters: ["Tanggal", "Rasio"] });
+    // Di sheet sumbernya sendiri filter Tanggal tetap berlaku.
+    expect(await count([{ column: "Tanggal", op: "in", values: ["2026-10-11"] }])).toBe(1);
+    // Nama yang hanya dikenal lewat dimensi cross-filter: tipe dimensinya (tanggal) yang menentukan.
+    const viaCross = await runWidgetQuery(
+      USER,
+      {
+        widgetId: WID("other"),
+        dashboardFilters: [{ column: "Wilayah", op: "in", values: ["Jakarta"] }],
+      },
+      deps({}, [{ name: "Wilayah", type: "date" }]),
+    );
+    expect(viaCross).toMatchObject({
+      ok: true,
+      rows: [[ROWS.length]],
+      skippedFilters: ["Wilayah"],
+    });
   });
 
   it("dimensi grafik cross-filter diizinkan walau bukan kolom filter", async () => {
-    const d = deps({}, ["Wilayah"]);
+    const d = deps({}, [{ name: "Wilayah", type: "text" }]);
     const r = await runWidgetQuery(
       USER,
       {

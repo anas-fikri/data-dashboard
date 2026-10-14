@@ -108,7 +108,7 @@ export function filterValuesRoute(req: NextRequest, dashboardId: string): Promis
     }
     const read = await readJson(req, FILTER_VALUES_BODY_MAX);
     if ("response" in read) return read.response;
-    const r = await runFilterValues(userId, dashboardId, read.body, await queryDeps());
+    const r = await runFilterValues(userId, dashboardId, read.body, await queryDeps(), req.signal);
     return r.ok ? routeJson(r) : routeJson(r, STATUS[r.code]);
   });
 }

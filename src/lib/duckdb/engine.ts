@@ -182,11 +182,15 @@ export class QueryEngine {
     return this.withUser(userId, (left) => this.withGlobal(fn, left));
   }
 
-  /** Satu query (parameter binding) dengan batas waktu; lewat → interrupt + QueryTimeoutError. */
+  /**
+   * Satu query (parameter binding) dengan batas waktu; lewat → interrupt + QueryTimeoutError. `signal`
+   * dibatalkan (klien pergi) → interrupt; galatnya dilempar apa adanya (pemanggil memeriksa signal).
+   */
   async exec(
     sql: string,
     params: Record<string, string | number | boolean>,
     timeoutMs: number,
+    signal?: AbortSignal,
   ): Promise<EngineResult> {
     let timedOut = false;
     let conn: Awaited<ReturnType<DuckDBInstance["connect"]>> | null = null;
@@ -194,8 +198,11 @@ export class QueryEngine {
       timedOut = true;
       conn?.interrupt();
     }, timeoutMs);
+    const onAbort = () => conn?.interrupt();
+    signal?.addEventListener("abort", onAbort, { once: true });
     try {
       conn = await this.db.connect();
+      signal?.throwIfAborted();
       const r = await conn.runAndReadAll(sql, params);
       if (timedOut) throw new QueryTimeoutError();
       return { columns: r.columnNames(), rows: r.getRowsJS() as unknown[][] };
@@ -204,6 +211,7 @@ export class QueryEngine {
       throw e;
     } finally {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       try {
         conn?.closeSync();
       } catch {

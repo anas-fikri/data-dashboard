@@ -1,5 +1,6 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import {
@@ -7,6 +8,8 @@ import {
   filterKey,
   filtersFor,
   normName,
+  oneControlPerName,
+  parseFilterParam,
   sanitize,
   URL_PARAM_MAX,
   type DashFilter,
@@ -17,8 +20,10 @@ import {
 /*
  * Status filter dashboard (T-012) untuk bilah filter dan semua widget. Perubahan langsung tampil di
  * kontrol/chip; widget baru memuat ulang setelah jeda singkat (beberapa klik beruntun = satu query per
- * widget). Status ditulis ke ?f= dengan history.replaceState — tanpa perjalanan ke server; Next
- * menyinkronkannya ke useSearchParams (tautan ganti mode membawanya).
+ * widget). Sumbernya URL (?f=, dibaca lewat useSearchParams — bukan prop server yang bisa basi dari
+ * cache router): perubahan pengguna ditulis dengan history.replaceState (tanpa perjalanan ke server,
+ * riwayat tidak dibanjiri tiap centang), dan URL yang berubah dari luar — Back/Forward, tautan ganti
+ * mode — diikuti. Pindah halaman lalu Back memulihkan filter dari URL entri itu.
  */
 const APPLY_DELAY_MS = 150;
 
@@ -43,27 +48,39 @@ interface FiltersApi {
 
 const FiltersContext = createContext<FiltersApi | null>(null);
 
+/** Nilai ?f= yang ditulis untuk status ini ("" = tanpa f: kosong, atau terlalu panjang untuk URL). */
+function urlValue(state: FilterState): string {
+  const encoded = encodeFilterParam(state);
+  return encoded && encoded.length <= URL_PARAM_MAX ? encoded : "";
+}
+
 export function DashboardFiltersProvider({
   dashboardId,
-  initial,
-  columns,
+  columns: allColumns,
   crossColumns,
   widgets,
   children,
 }: {
   dashboardId: string;
-  initial: FilterState;
   columns: FilterColumnView[];
   crossColumns: readonly string[];
   widgets: { id: string; title: string; type: string; spec: unknown }[];
   children: React.ReactNode;
 }) {
-  const [raw, setRaw] = useState(initial);
+  const columns = useMemo(() => oneControlPerName(allColumns), [allColumns]);
+  const urlF = useSearchParams().get("f") ?? "";
+  const [raw, setRaw] = useState(() => parseFilterParam(urlF));
   const ids = widgets.map((w) => w.id).join(",");
   const state = useMemo(
     () => sanitize(raw, { columns, crossColumns, widgetIds: ids.split(",") }),
     [raw, columns, crossColumns, ids],
   );
+  // URL berubah: ikuti, kecuali URL itu memang tulisan status sekarang (replaceState kita sendiri).
+  const [seenUrl, setSeenUrl] = useState(urlF);
+  if (seenUrl !== urlF) {
+    setSeenUrl(urlF);
+    if (urlF !== urlValue(state)) setRaw(parseFilterParam(urlF));
+  }
   const key = JSON.stringify(state);
   const [applied, setApplied] = useState({ key, state });
   useEffect(() => {
@@ -75,14 +92,16 @@ export function DashboardFiltersProvider({
     return () => clearTimeout(t);
   }, [key, applied.key]);
 
-  const encoded = encodeFilterParam(state);
-  const urlTooLong = !!encoded && encoded.length > URL_PARAM_MAX;
-  useEffect(() => {
+  const urlTooLong = !!encodeFilterParam(state) && !urlValue(state);
+  /** Perubahan pengguna: status baru + URL (di handler, bukan effect — status basi tidak ditulis). */
+  const update = (next: FilterState) => {
+    setRaw(next);
+    const f = urlValue(sanitize(next, { columns, crossColumns, widgetIds: ids.split(",") }));
     const url = new URL(window.location.href);
-    if (encoded && !urlTooLong) url.searchParams.set("f", encoded);
+    if (f) url.searchParams.set("f", f);
     else url.searchParams.delete("f");
     if (url.href !== window.location.href) window.history.replaceState(null, "", url.href);
-  }, [encoded, urlTooLong]);
+  };
 
   const api: FiltersApi = {
     dashboardId,
@@ -98,21 +117,21 @@ export function DashboardFiltersProvider({
       return p?.ok && "dimension" in p.config.spec ? p.config.spec.dimension.timeGrain : undefined;
     },
     setFilter: (column, f) =>
-      setRaw((s) => ({
-        ...s,
+      update({
+        ...state,
         filters: [
-          ...s.filters.filter((x) => normName(x.column) !== normName(column)),
+          ...state.filters.filter((x) => normName(x.column) !== normName(column)),
           ...(f ? [f] : []),
         ],
-      })),
+      }),
     toggleCross: (widgetId, f) =>
-      setRaw((s) =>
-        s.cross?.widgetId === widgetId && filterKey(s.cross.filter) === filterKey(f)
-          ? { filters: s.filters }
-          : { filters: s.filters, cross: { widgetId, filter: f } },
+      update(
+        state.cross?.widgetId === widgetId && filterKey(state.cross.filter) === filterKey(f)
+          ? { filters: state.filters }
+          : { filters: state.filters, cross: { widgetId, filter: f } },
       ),
-    clearCross: () => setRaw((s) => ({ filters: s.filters })),
-    clearAll: () => setRaw({ filters: [] }),
+    clearCross: () => update({ filters: state.filters }),
+    clearAll: () => update({ filters: [] }),
   };
   return <FiltersContext.Provider value={api}>{children}</FiltersContext.Provider>;
 }

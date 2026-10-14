@@ -14,7 +14,7 @@ import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
 import { FilterBar } from "./filters/filter-bar";
 import { DashboardFiltersProvider } from "./filters/filter-context";
-import { crossColumnsOf, type FilterColumnView, type FilterState } from "./filters/filter-model";
+import { crossColumnsOf, type FilterColumnView } from "./filters/filter-model";
 import { applyStep, readingOrder, stepAvailability } from "./layout-ops";
 import { useDashboardEditor } from "./use-dashboard-editor";
 import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
@@ -53,10 +53,9 @@ export function DashboardCanvas(props: {
   datasetId: string;
   /** Sheet + kolom untuk panel konfigurasi (hanya mode edit). */
   sources: SourceSheet[];
-  /** Filter dashboard (T-012): kolom filter, kolom filter silang (server), status awal dari ?f=. */
+  /** Filter dashboard (T-012): kolom filter dan kolom filter silang (server); status dari ?f=. */
   filterColumns: FilterColumnView[];
   crossFilterColumns: string[];
-  initialFilters: FilterState;
 }) {
   const { dashboardId, editing } = props;
   const ed = useDashboardEditor(props);
@@ -203,7 +202,6 @@ export function DashboardCanvas(props: {
   return (
     <DashboardFiltersProvider
       dashboardId={dashboardId}
-      initial={props.initialFilters}
       columns={props.filterColumns}
       crossColumns={crossColumns}
       widgets={ed.widgets}

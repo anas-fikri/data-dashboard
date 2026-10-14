@@ -130,7 +130,12 @@ function deps(over: Partial<QueryDeps> = {}): QueryDeps {
     widget: async (userId, widgetId) => {
       const name = Object.keys(WIDGETS).find((n) => WID(n) === widgetId);
       if (userId !== USER || !name) return null;
-      return { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER };
+      // Kolom filter dashboard (D6): filter posisional hanya untuk kolom ini (T-012).
+      const filterColumns = [
+        { sheet: "Data", column: "Omzet" },
+        { sheet: "Data", column: "Rahasia" },
+      ];
+      return { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER, filterColumns };
     },
   };
   const parquet = new ParquetCache({
@@ -248,7 +253,7 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     });
   });
 
-  it("filter dari klien: kolom tersembunyi tidak disebut namanya; angka di luar ±2^53 → INVALID", async () => {
+  it("filter dari klien: kolom tersembunyi tidak disebut namanya; di luar kolom filter dashboard atau angka di luar ±2^53 → INVALID", async () => {
     const exec = vi.fn();
     const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
     const r = await runWidgetQuery(
@@ -258,6 +263,18 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     );
     expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
     expect(r.ok === false && r.message).not.toContain("Rahasia");
+    // Cabang bukan kolom filter dashboard ini (D6, review keamanan T-012).
+    expect(
+      await runWidgetQuery(
+        USER,
+        { widgetId: WID("kpi"), filters: [{ column: 1, op: "eq", value: "Jakarta" }] },
+        d,
+      ),
+    ).toEqual({
+      ok: false,
+      code: "INVALID",
+      message: "Filter tidak diizinkan untuk dashboard ini.",
+    });
     expect(
       await runWidgetQuery(
         USER,

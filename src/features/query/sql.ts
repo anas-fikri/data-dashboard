@@ -96,8 +96,10 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
  * Klausa filter dashboard (T-012); nilai lewat parameter $f1, $f2, … (terpisah dari $p filter rencana
  * agar keduanya bisa digabung dalam satu WHERE). Angka dibandingkan dalam tipe kolomnya: DECIMAL(38,6)
  * dengan batas DECIMAL (lihat decimal6), kolom DOUBLE/bilangan bulat dengan DOUBLE. Tanggal naive
- * di-cast tanpa zona. Teks sepanjang DIM_TEXT_MAX dicocokkan dengan awalan (label grafik dipotong
- * sepanjang itu, jadi cross-filter dari batang itu tetap mengenai baris aslinya). null = sel kosong.
+ * di-cast tanpa zona; tanggal saja pada kolom TIMESTAMP = sehari penuh (CAST(c AS DATE)), sama dengan
+ * kolom DATE. Teks sepanjang DIM_TEXT_MAX dicocokkan dengan awalan (label grafik dipotong sepanjang itu,
+ * jadi cross-filter dari batang itu tetap mengenai baris aslinya). null = sel kosong. not_in = kebalikan
+ * in: sel kosong ikut kecuali (Kosong) termasuk yang dikecualikan.
  */
 export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): string[] {
   let n = 0;
@@ -144,6 +146,8 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
       return parts.length ? `(${parts.join(" AND ")})` : "TRUE";
     }
     const vals = cl.values.filter((v): v is string | number | boolean => v !== null);
+    const hasNull = vals.length !== cl.values.length;
+    // Kecocokan nilai non-kosong (OR); kosong ditangani terpisah agar NOT IN tidak tertukar NULL.
     const parts: string[] = [];
     if (cl.type === "text") {
       const cut = (v: string | number | boolean) => [...String(v)].length === DIM_TEXT_MAX;
@@ -153,14 +157,28 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
       if (prefix.length) {
         parts.push(`left(${c}, ${DIM_TEXT_MAX}) IN (${prefix.map(bind).join(", ")})`);
       }
-    } else {
+    } else if (cl.type === "timestamp") {
+      const day = vals.filter((v) => typeof v === "string" && DATE_ONLY.test(v));
+      const exact = vals.filter((v) => !day.includes(v));
+      if (day.length) {
+        parts.push(
+          `CAST(${c} AS DATE) IN (${day.map((v) => `CAST(${bind(v)} AS DATE)`).join(", ")})`,
+        );
+      }
       // Waktu dibandingkan per detik: nilai di hasil query tidak membawa pecahan detik.
-      const target = cl.type === "timestamp" ? `date_trunc('second', ${c})` : c;
+      const xs = exact.map((v) => value(cl, v, "exact")).filter((x): x is string => x !== null);
+      if (xs.length) parts.push(`date_trunc('second', ${c}) IN (${xs.join(", ")})`);
+    } else {
       const xs = vals.map((v) => value(cl, v, "exact")).filter((x): x is string => x !== null);
-      if (xs.length) parts.push(`${target} IN (${xs.join(", ")})`);
+      if (xs.length) parts.push(`${c} IN (${xs.join(", ")})`);
     }
-    if (vals.length !== cl.values.length) parts.push(`${c} IS NULL`);
-    return parts.length ? `(${parts.join(" OR ")})` : "FALSE";
+    const match = parts.length ? parts.join(" OR ") : null;
+    if (cl.op === "not_in") {
+      if (!match) return hasNull ? `${c} IS NOT NULL` : "TRUE";
+      return hasNull ? `(${c} IS NOT NULL AND NOT (${match}))` : `(${c} IS NULL OR NOT (${match}))`;
+    }
+    if (!match) return hasNull ? `${c} IS NULL` : "FALSE";
+    return hasNull ? `(${match} OR ${c} IS NULL)` : `(${match})`;
   });
 }
 
@@ -273,15 +291,33 @@ export const FILTER_VALUES_LIMIT = 1_000;
 /** Teks lebih panjang dari ini tidak masuk daftar slicer (tidak praktis dipilih dan dikirim balik). */
 export const FILTER_TEXT_MAX = 1_000;
 
+/** Label tampil boolean di slicer (klien: "Ya"/"Tidak") + nama bakunya, untuk pencarian. */
+const BOOL_LABELS: [boolean, string[]][] = [
+  [true, ["ya", "true"]],
+  [false, ["tidak", "false"]],
+];
+
+/**
+ * Kata cari angka → teks baku (titik desimal, tanpa pemisah ribuan) untuk dicocokkan dengan
+ * CAST(c AS VARCHAR): "1.234,5" → "1234.5", "1,5" → "1.5", "1.234" / "12.345.678" (grup ribuan, tidak
+ * diawali 0) → tanpa titik; selain itu titik dianggap desimal ("0.5", "12.5").
+ */
+export function numberNeedle(q: string): string {
+  const s = q.replace(/\s/g, "");
+  if (s.includes(",")) return s.replace(/\./g, "").replace(/,/g, ".");
+  return /^-?[1-9]\d{0,2}(\.\d{3})+$/.test(s) ? s.replace(/\./g, "") : s;
+}
+
 /** Wildcard LIKE (% _) dan karakter escape-nya diperlakukan sebagai huruf biasa. */
 export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
 /**
  * Nilai unik satu kolom untuk slicer (T-012): kosong (NULL) dulu, lalu teks urut seperti Excel
  * (nocase.noaccent, byte-exact sebagai pemecah seri) atau urutan alami untuk tipe lain; LIMIT 1001.
- * Pencarian `q` di server: teks → mengandung, tidak peka huruf besar/kecil dan aksen; tipe lain →
- * mengandung pada teks bakunya (angka dengan titik desimal — koma dari user dianggap titik, tanggal
- * YYYY-MM-DD). Wildcard di `q` di-escape; nilainya lewat parameter.
+ * Pencarian `q` di server: teks → mengandung, tidak peka huruf besar/kecil dan aksen; boolean → label
+ * tampil "Ya"/"Tidak" (atau true/false) yang mengandung `q`; tipe lain → mengandung pada teks bakunya
+ * (angka dengan titik desimal — format Indonesia diterima, lihat numberNeedle; tanggal YYYY-MM-DD).
+ * Wildcard di `q` di-escape; nilainya lewat parameter.
  */
 export function buildFilterValuesSql(
   col: { col: string; type: ColumnType; float?: boolean },
@@ -294,8 +330,15 @@ export function buildFilterValuesSql(
   const text = col.type === "text";
   const where: string[] = [];
   if (text) where.push(`(${c} IS NULL OR length(${c}) <= ${FILTER_TEXT_MAX})`);
-  if (q) {
-    params.q = escapeLikePattern(text ? q : q.replace(/,/g, "."));
+  if (q && col.type === "boolean") {
+    // Konstanta TRUE/FALSE dari program, bukan nilai user.
+    const hit = BOOL_LABELS.filter(([, labels]) => labels.some((l) => l.includes(q.toLowerCase())));
+    where.push(
+      hit.length ? `${c} IN (${hit.map(([b]) => (b ? "TRUE" : "FALSE")).join(", ")})` : "FALSE",
+    );
+  } else if (q) {
+    const numeric = col.type === "integer" || col.type === "decimal" || col.type === "duration";
+    params.q = escapeLikePattern(text ? q : numeric ? numberNeedle(q) : q.replace(/,/g, "."));
     const hay = text
       ? `strip_accents(lower(${c}))`
       : `lower(CAST(${col.type === "decimal" ? `CAST(${c} AS DOUBLE)` : c} AS VARCHAR))`;

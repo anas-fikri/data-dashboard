@@ -21,16 +21,22 @@ import {
   type AcquireOptions,
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
-import { storedFilterColumns } from "@/features/dashboards/filter-columns";
-import { matchSheet, missingMessage, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
+import {
+  matchSheet,
+  missingMessage,
+  normName,
+  remapConfig,
+  type SheetInfo,
+} from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import {
   applyDashFilters,
   disallowedFilter,
+  sourceFamilies,
   type DashClause,
-  type DashFilter,
   type DashValue,
 } from "./filters";
 import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
@@ -61,7 +67,8 @@ export interface QueryData {
   grandTotal?: number | null;
   /**
    * Filter dashboard (T-012) yang dilewati widget ini: nama kolom seperti dikirim klien (kolom tidak
-   * ada/disembunyikan di sheet widget, atau tipe nilainya tidak cocok).
+   * ada/disembunyikan di sheet widget, kelompok tipenya beda dengan kolom sumber filter, atau tipe
+   * nilainya tidak cocok).
    */
   skippedFilters?: string[];
 }
@@ -128,14 +135,16 @@ export interface QueryRepo {
     dashboardUpdatedAt?: Date;
   } | null>;
   /**
-   * Nama kolom dimensi grafik dashboard yang cross-filter-nya aktif (T-012). Opsional; tanpa ini
-   * hanya kolom filter dashboard yang diizinkan.
+   * Sumber filter dashboard (T-012, D6): kolom filter tersimpan + dimensi grafik yang cross-filter-nya
+   * aktif, dengan tipe di versi aktif (null = tidak ada/disembunyikan). Nama = daftar kolom yang boleh
+   * difilter; tipe = kelompok tipe yang boleh dikenai filter bernama itu. Opsional (repo uji); tanpa
+   * ini hanya nama kolom filter tersimpan yang diizinkan dan tidak ada filter dashboard yang berlaku.
    */
-  crossFilterColumns?(dashboard: {
+  filterSources?(dashboard: {
     dashboardId: string;
     activeVersionId: string | null;
     updatedAt?: Date;
-  }): Promise<string[]>;
+  }): Promise<FilterSource[]>;
   /**
    * Dashboard milik user untuk daftar nilai slicer (T-012): kolom filter tersimpan + sheet siap di
    * versi aktif (tanpa skema; skema dibaca lewat sheet()). null → 404.
@@ -151,6 +160,9 @@ export interface QueryRepo {
   } | null>;
 }
 
+/** Kolom sumber filter dashboard (lihat QueryRepo.filterSources). */
+export type FilterSource = FilterSourceColumn;
+
 export interface QueryDeps {
   repo: QueryRepo;
   parquet: { acquire(key: string, opts?: AcquireOptions): Promise<ParquetLease> };
@@ -163,6 +175,7 @@ export interface QueryDeps {
       sql: string,
       params: Record<string, string | number | boolean>,
       timeoutMs: number,
+      signal?: AbortSignal,
     ): Promise<EngineResult>;
   };
   cache: ResultCache<CachedQuery> | null;
@@ -171,6 +184,11 @@ export interface QueryDeps {
   prepareWaitMs?: number;
   /** Jam untuk preset tanggal filter dashboard (T-012); bisa diganti di test. */
   now?: () => Date;
+  /**
+   * Permintaan dibatalkan klien (slicer per ketikan): yang masih antre tidak menjalankan DuckDB, yang
+   * sedang berjalan di-interrupt.
+   */
+  signal?: AbortSignal;
 }
 
 /** Hasil yang dikirim ke klien dibatasi (perkiraan byte di memori; lihat resultBytes). */
@@ -232,7 +250,7 @@ export const timeoutMessage = (ms: number) =>
 export async function execOnParquet(
   userId: string,
   key: string,
-  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
+  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
   build: (path: string) => BuiltSql,
 ): Promise<{ ok: true; out: EngineResult } | QueryFailure> {
   const r = await runOnParquet(userId, key, deps, (path, exec) => exec(build(path)));
@@ -248,10 +266,10 @@ export async function execOnParquet(
 export async function runOnParquet<T>(
   userId: string,
   key: string,
-  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs">,
+  deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
   work: (path: string, exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>) => Promise<T>,
 ): Promise<{ ok: true; value: T } | QueryFailure> {
-  const engine = deps.engine;
+  const { engine, signal } = deps;
   // Mesin palsu di test hanya punya withSlot: jatah user + global sekaligus.
   const userGate = <R>(fn: (waitLeftMs: number) => Promise<R>) =>
     engine.withUser ? engine.withUser(userId, fn) : fn(Infinity);
@@ -259,6 +277,7 @@ export async function runOnParquet<T>(
     engine.withGlobal ? engine.withGlobal(fn, waitLeftMs) : engine.withSlot(userId, fn);
   try {
     const value = await userGate(async (waitLeftMs) => {
+      signal?.throwIfAborted();
       const lease = await deps.parquet.acquire(key, {
         owner: userId,
         waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
@@ -267,9 +286,10 @@ export async function runOnParquet<T>(
         return await globalGate(() => {
           const deadline = Date.now() + deps.timeoutMs;
           const exec = (s: BuiltSql, maxMs = Infinity) => {
+            signal?.throwIfAborted();
             const left = deadline - Date.now();
             if (left <= 0) throw new QueryTimeoutError();
-            return engine.exec(s.sql, s.params, Math.min(left, maxMs));
+            return engine.exec(s.sql, s.params, Math.min(left, maxMs), signal);
           };
           return work(lease.path, exec);
         }, waitLeftMs);
@@ -279,6 +299,8 @@ export async function runOnParquet<T>(
     });
     return { ok: true, value };
   } catch (e) {
+    // Klien sudah pergi: jawaban tidak dibaca, cukup tidak di-cache dan tidak dicatat sebagai error.
+    if (signal?.aborted) return fail("QUERY_BUSY", "Permintaan dibatalkan.");
     if (e instanceof QueryTimeoutError)
       return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
     if (e instanceof QueryBusyError) {
@@ -412,31 +434,35 @@ export const TOTALS_MAX_MS = 5_000;
 /** Umur cache hasil grafik yang totalnya gagal (dicoba lagi setelahnya). */
 export const TOTALS_RETRY_MS = 30_000;
 
+const NOT_ALLOWED = "Filter tidak diizinkan untuk dashboard ini.";
+
 /**
- * Filter dashboard hanya untuk kolom yang diizinkan dashboard (D6): kolom filter tersimpan, ditambah
- * dimensi grafik cross-filter — yang kedua hanya dimuat bila perlu.
+ * Sumber filter dashboard widget ini (D6): kolom filter tersimpan + dimensi grafik cross-filter beserta
+ * tipenya (dibaca sekali per dashboard lewat cache repo). Repo tanpa filterSources (uji): nama kolom
+ * filter tersimpan saja, tanpa tipe.
  */
-async function dashFiltersAllowed(
+function dashboardSources(
   w: NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>,
-  filters: DashFilter[],
   repo: QueryRepo,
-): Promise<boolean> {
-  const own = storedFilterColumns(w.filterColumns).map((f) => f.column);
-  if (!disallowedFilter(filters, own)) return true;
-  if (!w.dashboardId || !repo.crossFilterColumns) return false;
-  const cross = await repo.crossFilterColumns({
-    dashboardId: w.dashboardId,
-    activeVersionId: w.activeVersionId,
-    updatedAt: w.dashboardUpdatedAt,
-  });
-  return !disallowedFilter(filters, [...own, ...cross]);
+): Promise<FilterSource[]> {
+  if (w.dashboardId && repo.filterSources) {
+    return repo.filterSources({
+      dashboardId: w.dashboardId,
+      activeVersionId: w.activeVersionId,
+      updatedAt: w.dashboardUpdatedAt,
+    });
+  }
+  return Promise.resolve(
+    storedFilterColumns(w.filterColumns).map((f) => ({ name: f.column, type: null })),
+  );
 }
 
 /**
  * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
  * rencana agregat; tabel mengembalikan satu halaman 100 baris + total baris dengan filter yang sama.
- * Filter dashboard (T-012) dicocokkan lewat nama dengan sheet widget ini; yang tidak berlaku dilewati
- * dan dilaporkan di skippedFilters.
+ * Filter dashboard (T-012) dicocokkan lewat nama + kelompok tipe dengan sheet widget ini; yang tidak
+ * berlaku dilewati dan dilaporkan di skippedFilters. Kolom filter — dashboardFilters maupun `filters`
+ * posisional lama — hanya kolom yang diizinkan dashboard (D6); lainnya INVALID tanpa query.
  */
 export async function runWidgetQuery(
   userId: string,
@@ -455,9 +481,11 @@ export async function runWidgetQuery(
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
   if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
   const dashFilters = parsed.data.dashboardFilters ?? [];
-  if (dashFilters.length && !(await dashFiltersAllowed(w, dashFilters, deps.repo))) {
-    return fail("INVALID", "Filter tidak diizinkan untuk dashboard ini.");
-  }
+  const positional = parsed.data.filters;
+  const sources =
+    dashFilters.length || positional.length ? await dashboardSources(w, deps.repo) : [];
+  const allowed = new Set(sources.map((x) => normName(x.name)));
+  if (disallowedFilter(dashFilters, allowed)) return fail("INVALID", NOT_ALLOWED);
   const cfg = parseWidgetConfig(w.type, w.spec);
   if (!cfg.ok) return fail("INVALID", cfg.message);
   if (cfg.config.type === "empty") return fail("INVALID", "Widget ini belum diatur.");
@@ -484,10 +512,21 @@ export async function runWidgetQuery(
     );
   }
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
+  // Filter posisional: posisi → nama di skema aktif → daftar yang sama (posisi yang tidak ada
+  // dilaporkan widgetPlan sebagai kolom tidak tersedia).
+  const byPos = new Map(sheet.schema.map((c) => [c.pos, c.name]));
+  if (positional.some((f) => byPos.has(f.column) && !allowed.has(normName(byPos.get(f.column)!)))) {
+    return fail("INVALID", NOT_ALLOWED);
+  }
   const planned = widgetPlan(config, sheet.schema, parsed.data);
   if (!planned.ok) return fail(planned.code, planned.message);
   const dash = dashFilters.length
-    ? applyDashFilters(dashFilters, sheet.schema, deps.now?.() ?? new Date())
+    ? applyDashFilters(
+        dashFilters,
+        sheet.schema,
+        deps.now?.() ?? new Date(),
+        sourceFamilies(sources),
+      )
     : { clauses: [] as DashClause[], skipped: [] as string[] };
   // Klausa kanonik (unik, terurut, preset sudah jadi tanggal) masuk kunci cache; tanpa filter
   // dashboard kunci tetap sama dengan sebelum T-012.

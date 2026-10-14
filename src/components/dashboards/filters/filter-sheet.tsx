@@ -2,7 +2,7 @@
 
 import { IconAdjustmentsHorizontal, IconChevronDown, IconX } from "@tabler/icons-react";
 import { Dialog } from "radix-ui";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { DatePanel } from "./date-panel";
@@ -13,15 +13,17 @@ import { NumberPanel } from "./number-panel";
 import { SlicerPanel } from "./slicer-panel";
 
 /*
- * Filter di ponsel (< 768 px, T-012): tombol "Filter (n)" selebar layar membuka lembar dari bawah
- * berisi kontrol yang sama, satu bagian per kolom (dibuka satu per satu — slicer baru memuat nilainya
- * saat bagiannya dibuka). Pilihan langsung berlaku; "Selesai" hanya menutup lembar. Fokus terkunci di
- * lembar, Escape menutup, fokus kembali ke tombol pemicu.
+ * Filter di bilah sempit (ponsel, tablet dengan sidebar; T-012): tombol "Filter (n)" selebar bilah
+ * membuka lembar dari bawah berisi kontrol yang sama, satu bagian per kolom (dibuka satu per satu —
+ * slicer baru memuat nilainya saat bagiannya dibuka). Pilihan langsung berlaku; "Selesai" hanya
+ * menutup lembar. Fokus terkunci di lembar, Escape menutup, fokus kembali ke tombol pemicu; setelah
+ * "Hapus semua filter" (tombolnya hilang) fokus pindah ke "Selesai".
  */
 export function FilterSheet({ triggerRef }: { triggerRef: React.Ref<HTMLButtonElement> }) {
   const { columns, state, clearAll } = useDashboardFilters();
   const count = state.filters.length + (state.cross ? 1 : 0);
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const done = useRef<HTMLButtonElement>(null);
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
@@ -40,7 +42,7 @@ export function FilterSheet({ triggerRef }: { triggerRef: React.Ref<HTMLButtonEl
         <Dialog.Content
           aria-describedby={undefined}
           data-testid="filter-sheet"
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] flex-col rounded-t-lg border bg-card shadow-lg"
+          className="fixed inset-x-0 bottom-0 z-50 mx-auto flex max-h-[85dvh] max-w-2xl flex-col rounded-t-lg border bg-card shadow-lg"
         >
           <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
             <Dialog.Title className="text-base font-semibold">Filter dashboard</Dialog.Title>
@@ -68,10 +70,19 @@ export function FilterSheet({ triggerRef }: { triggerRef: React.Ref<HTMLButtonEl
           </div>
           <div className="flex flex-col gap-2 border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <Dialog.Close asChild>
-              <Button className="h-(--control-h-lg) w-full">Selesai</Button>
+              <Button ref={done} className="h-(--control-h-lg) w-full">
+                Selesai
+              </Button>
             </Dialog.Close>
             {count ? (
-              <Button variant="outline" className="h-(--control-h-lg) w-full" onClick={clearAll}>
+              <Button
+                variant="outline"
+                className="h-(--control-h-lg) w-full"
+                onClick={() => {
+                  done.current?.focus();
+                  clearAll();
+                }}
+              >
                 Hapus semua filter
               </Button>
             ) : null}
@@ -125,14 +136,7 @@ function Section({
       {open ? (
         <div id={`${id}-panel`} className="pb-3">
           {kind === "slicer" ? (
-            <SlicerPanel
-              dashboardId={dashboardId}
-              column={column}
-              selected={value?.op === "in" ? value.values : []}
-              onChange={(vs) =>
-                set(vs.length ? { column: column.column, op: "in", values: vs } : null)
-              }
-            />
+            <SlicerPanel dashboardId={dashboardId} column={column} value={value} onChange={set} />
           ) : kind === "date" ? (
             <DatePanel column={column} value={value} onChange={set} />
           ) : (

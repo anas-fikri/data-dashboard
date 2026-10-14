@@ -26,6 +26,8 @@ export type Bound = string | number;
 
 export type DashFilter =
   | { column: string; op: "in"; values: FilterValue[] }
+  /** "Semua kecuali …" (slicer: pilih semua lalu lepas sebagian). */
+  | { column: string; op: "not_in"; values: FilterValue[] }
   | { column: string; op: "range"; gte?: Bound; lte?: Bound; lt?: Bound }
   | { column: string; op: "preset"; preset: Preset };
 
@@ -42,10 +44,10 @@ export const EMPTY_STATE: FilterState = { filters: [] };
 const name = z.string().min(1).max(200);
 const scalar = z.union([z.string().max(1000), z.number().finite(), z.boolean(), z.null()]);
 const bound = z.union([z.string().max(40), z.number().finite()]);
+const values = z.array(scalar).min(1).max(SELECTED_MAX);
 const filterSchema = z.union([
-  z
-    .object({ column: name, op: z.literal("in"), values: z.array(scalar).min(1).max(SELECTED_MAX) })
-    .strict(),
+  z.object({ column: name, op: z.literal("in"), values }).strict(),
+  z.object({ column: name, op: z.literal("not_in"), values }).strict(),
   z
     .object({
       column: name,
@@ -93,11 +95,11 @@ const uniqueValues = (vs: FilterValue[]) =>
 /** Kunci pembanding filter (urutan nilai/kunci tidak berpengaruh). */
 export function filterKey(f: DashFilter): string {
   const col = normName(f.column);
-  if (f.op === "in") {
+  if (f.op === "in" || f.op === "not_in") {
     const vs = uniqueValues(f.values)
       .map((v) => JSON.stringify(v))
       .sort();
-    return `${col}|in|${vs.join(",")}`;
+    return `${col}|${f.op}|${vs.join(",")}`;
   }
   if (f.op === "preset") return `${col}|preset|${f.preset}`;
   return `${col}|range|${JSON.stringify([f.gte ?? null, f.lte ?? null, f.lt ?? null])}`;
@@ -116,7 +118,7 @@ export const controlOf = (t: ColumnType): ControlKind =>
 /** Operasi filter cocok dengan jenis kontrol kolomnya (filter basi setelah tipe kolom diubah dibuang). */
 function fits(f: DashFilter, t: ColumnType): boolean {
   const kind = controlOf(t);
-  if (f.op === "in") return kind === "slicer";
+  if (f.op === "in" || f.op === "not_in") return kind === "slicer";
   if (f.op === "preset") return kind === "date";
   const ok = (b: Bound | undefined) =>
     b === undefined || (kind === "number" ? typeof b === "number" : typeof b === "string");
@@ -139,7 +141,7 @@ export function sanitize(
     if (!col || seen.has(normName(col.column)) || !fits(f, col.type)) continue;
     seen.add(normName(col.column));
     filters.push(
-      f.op === "in"
+      f.op === "in" || f.op === "not_in"
         ? { ...f, column: col.column, values: uniqueValues(f.values).slice(0, SELECTED_MAX) }
         : { ...f, column: col.column },
     );
@@ -150,6 +152,20 @@ export function sanitize(
     opts.widgetIds.includes(c.widgetId) &&
     opts.crossColumns.some((n) => normName(n) === normName(c.filter.column));
   return crossOk ? { filters, cross: c } : { filters };
+}
+
+/**
+ * Satu kontrol per nama kolom: filter berlaku global per nama (semua sheet), jadi kolom bernama sama
+ * dari sheet lain (data lama, sebelum pengaturan menolaknya) tidak menjadi kontrol kedua. Yang
+ * tersedia didahulukan.
+ */
+export function oneControlPerName(columns: FilterColumnView[]): FilterColumnView[] {
+  const out = new Map<string, FilterColumnView>();
+  for (const c of columns) {
+    const prev = out.get(normName(c.column));
+    if (!prev || (!prev.available && c.available)) out.set(normName(c.column), c);
+  }
+  return [...out.values()];
 }
 
 /** Filter yang dikirim widget: filter global + filter silang (kecuali widget sumbernya sendiri). */

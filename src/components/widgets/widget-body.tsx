@@ -1,14 +1,14 @@
 "use client";
 
-import { IconAlertTriangle, IconFilterOff, IconRefresh } from "@tabler/icons-react";
+import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { Button } from "@/components/ui/button";
 import type { WidgetConfig } from "@/features/widgets/spec";
-import { cn } from "@/lib/utils";
 import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
+import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
 import { useWidgetQuery } from "./widget-query";
 
@@ -20,8 +20,10 @@ import { useWidgetQuery } from "./widget-query";
  * data grafik di kepala kartu.
  *
  * Filter dashboard (T-012) ikut dikirim (dashboardFilters); filter berubah → tabel kembali ke halaman
- * pertama, data lama tetap tampil redup (aria-busy) selama memuat ulang, dan filter yang tidak berlaku
- * untuk sheet widget ini (kolomnya tidak ada) disebut di catatan kecil di bawah isi.
+ * pertama. Selama memuat ulang data lama tetap tampil dengan kontras penuh (bukan diredupkan — teks
+ * redup gagal kontras), ditandai garis progres di bawah kepala kartu + aria-busy. Query dengan filter
+ * baru gagal → keadaan galat penuh (dengan coba lagi), bukan baris/total lama seolah sudah tersaring.
+ * Filter yang tidak berlaku untuk widget ini disebut di catatan di bawah isi (skipped-note.tsx).
  */
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
@@ -110,10 +112,12 @@ function Loaded({
   const { state, retry } = useWidgetQuery(request, version);
   const data = state.data;
   const refetching = state.status === "loading" && !!data;
-  const shown = bodyState(state, config.type === "table");
+  // Tabel: data lama tetap di bawah pesan galat hanya bila filternya sama (halaman/urutan gagal).
+  const keepOnError = config.type === "table" && state.filters === JSON.stringify(cross.filters);
+  const shown = bodyState(state, keepOnError);
   useEffect(() => onState?.(version, shown), [onState, version, shown]);
 
-  if (state.status === "error" && !(data && config.type === "table")) {
+  if (state.status === "error" && !(data && keepOnError)) {
     return (
       // justify-center-safe + overflow-hidden: pesan panjang di kartu kecil tidak menimpa judul (H4).
       <div
@@ -212,38 +216,25 @@ function Loaded({
           showData={showData}
           title={title}
           cross={cross}
+          hint={!editing}
         />
       );
   }
 
   return (
-    <div
-      className={cn(
-        "flex min-h-0 flex-1 flex-col transition-opacity motion-reduce:transition-none",
-        // Tabel meredupkan barisnya sendiri; grafik/KPI: seluruh isi, agar angka lama tidak terbaca
-        // seolah sudah tersaring.
-        refetching && config.type !== "table" && "opacity-60",
-      )}
-      aria-busy={refetching || undefined}
-    >
+    <div className="relative flex min-h-0 flex-1 flex-col" aria-busy={refetching || undefined}>
+      {refetching ? (
+        // Angka lama sedang diperbarui: garis progres di tepi atas isi (tepat di bawah kepala kartu),
+        // di atas kepala tabel yang lengket. Gerak dikurangi: garis diam.
+        <div
+          role="progressbar"
+          aria-label={`Memperbarui ${title || "widget"}`}
+          data-testid="widget-refreshing"
+          className="absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-primary"
+        />
+      ) : null}
       {content}
       <SkippedNote names={data.skippedFilters} />
     </div>
-  );
-}
-
-/** Filter dashboard yang tidak berlaku untuk widget ini (kolomnya tidak ada di sheet widget). */
-function SkippedNote({ names }: { names?: string[] }) {
-  if (!names?.length) return null;
-  const text = `Filter ${names.join(", ")} tidak berlaku untuk widget ini.`;
-  return (
-    <p
-      className="flex shrink-0 items-center gap-1.5 border-t px-3 py-1 text-xs text-muted-foreground"
-      title={`${text} Kolomnya tidak ada di sheet yang dipakai widget ini.`}
-      data-testid="widget-skipped-filters"
-    >
-      <IconFilterOff size={14} stroke={1.5} aria-hidden className="shrink-0" />
-      <span className="min-w-0 truncate">{text}</span>
-    </p>
   );
 }

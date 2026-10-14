@@ -9,9 +9,15 @@ import { PRESET_LABEL, dateBounds, dateRange } from "./filter-text";
 /*
  * Rentang tanggal (T-012): preset (bulan ini, kuartal ini, sejak awal tahun — dihitung server menurut
  * tanggal hari ini di Jakarta, dibandingkan apa adanya tanpa geser zona, D8) atau rentang sendiri
- * lewat dua isian tanggal. Isian yang belum lengkap (badInput) belum mengubah filter. Kolom cap waktu:
- * hari "Sampai" ikut utuh (server menerima < hari berikutnya).
+ * lewat dua isian tanggal (bertumpuk: ikon kalender tidak terpotong). Isian hanya diterapkan saat
+ * tanggalnya lengkap dan sah, tahun 1900–2100 (min/max) — tahun yang sedang diketik (0002, 0020,
+ * 0202) tidak dikirim sebagai filter. Kolom cap waktu: hari "Sampai" ikut utuh (server menerima
+ * < hari berikutnya).
  */
+const MIN = "1900-01-01";
+const MAX = "2100-12-31";
+/** Kosong (batas terbuka) atau tanggal lengkap 1900–2100 (tahun 5 digit tidak). */
+const usable = (d: string) => !d || (/^\d{4}-\d{2}-\d{2}$/.test(d) && d >= MIN && d <= MAX);
 const OPTIONS: { value: Preset | "all"; label: string }[] = [
   { value: "all", label: "Semua tanggal" },
   ...PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] })),
@@ -32,13 +38,17 @@ export function DatePanel({
   const [seen, setSeen] = useState(valueKey);
   const [from, setFrom] = useState(range.from);
   const [to, setTo] = useState(range.to);
+  // Isian yang ditinggalkan (blur) dengan tanggal belum lengkap/di luar 1900–2100.
+  const [bad, setBad] = useState({ from: false, to: false });
   // Filter berubah dari luar (preset, chip dihapus): isian mengikuti.
   if (seen !== valueKey) {
     setSeen(valueKey);
     setFrom(range.from);
     setTo(range.to);
+    setBad({ from: false, to: false });
   }
   const wrongOrder = !!from && !!to && from > to;
+  const outOfRange = bad.from || bad.to;
   const active: Preset | "all" | null =
     value?.op === "preset" ? value.preset : value ? null : "all";
 
@@ -46,10 +56,12 @@ export function DatePanel({
     const next = e.target.value;
     if (which === "from") setFrom(next);
     else setTo(next);
-    if (e.target.validity.badInput) return;
+    // Belum lengkap (badInput) atau di luar 1900–2100 (tahun setengah diketik): belum diterapkan.
+    if (e.target.validity.badInput || !usable(next)) return;
+    setBad((b) => ({ ...b, [which]: false }));
     const f = which === "from" ? next : from;
     const t = which === "to" ? next : to;
-    if (f && t && f > t) return;
+    if (!usable(f) || !usable(t) || (f && t && f > t)) return;
     onChange(dateRange(column.column, column.type, f, t));
   };
 
@@ -89,7 +101,7 @@ export function DatePanel({
       </div>
       <fieldset className="flex min-w-0 flex-col gap-1.5">
         <legend className="mb-1.5 text-sm font-medium">Rentang sendiri</legend>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="flex flex-col gap-2">
           {(["from", "to"] as const).map((which) => (
             <div key={which} className="flex min-w-0 flex-col gap-1">
               <label htmlFor={`${id}-${which}`} className="text-xs text-muted-foreground">
@@ -98,18 +110,28 @@ export function DatePanel({
               <Input
                 id={`${id}-${which}`}
                 type="date"
+                min={MIN}
+                max={MAX}
                 value={which === "from" ? from : to}
-                invalid={wrongOrder}
-                aria-describedby={wrongOrder ? `${id}-err` : undefined}
+                invalid={wrongOrder || bad[which]}
+                aria-describedby={wrongOrder || bad[which] ? `${id}-err` : undefined}
                 onChange={(e) => edit(which, e)}
-                className="h-(--control-h-lg) min-w-0 px-2 md:h-(--control-h)"
+                onBlur={(e) =>
+                  setBad((b) => ({
+                    ...b,
+                    [which]: e.target.validity.badInput || !usable(e.target.value),
+                  }))
+                }
+                className="h-(--control-h-lg) md:h-(--control-h)"
               />
             </div>
           ))}
         </div>
-        {wrongOrder ? (
+        {wrongOrder || outOfRange ? (
           <p id={`${id}-err`} role="alert" className="text-xs text-destructive">
-            Tanggal “Dari” harus sebelum atau sama dengan “Sampai”.
+            {outOfRange
+              ? "Isi tanggal lengkap antara 1900 dan 2100."
+              : "Tanggal “Dari” harus sebelum atau sama dengan “Sampai”."}
           </p>
         ) : null}
       </fieldset>

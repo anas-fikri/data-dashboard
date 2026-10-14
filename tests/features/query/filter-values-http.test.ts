@@ -90,6 +90,8 @@ describe("filter-values HTTP", () => {
       DASH,
       { column: "Kota", q: "jak" },
       expect.anything(),
+      // Sinyal permintaan diteruskan: ketikan berikutnya membatalkan query yang masih antre.
+      expect.any(AbortSignal),
     );
   });
 

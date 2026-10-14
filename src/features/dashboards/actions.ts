@@ -1,12 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect, unstable_rethrow } from "next/navigation";
-import { RULES, hit } from "@/features/auth/rate-limit";
-import { AuthError, requireUser } from "@/features/auth/session";
-import { logger } from "@/lib/logger";
-import { redisReady } from "@/lib/redis";
-import type { FilterColumnView } from "./filter-columns";
+import { redirect } from "next/navigation";
+import { requireUser } from "@/features/auth/session";
 import * as service from "./service";
 
 export type DashboardFormState =
@@ -68,44 +64,4 @@ export async function deleteDashboardAction(
   if (!r.ok) return toError(r, formData);
   revalidatePath("/dashboards");
   redirect("/dashboards?deleted=1");
-}
-
-export type FilterColumnsActionResult =
-  | service.DashboardResult<{ filterColumns: FilterColumnView[] }>
-  | { ok: false; code: "RATE_LIMITED" | "UNAUTHENTICATED"; message: string };
-
-/**
- * Atur kolom filter global dashboard (T-012), pemilik saja (lainnya NOT_FOUND). Sama dengan
- * PATCH /api/dashboards/[id]/filter-columns; rate limit perubahan dashboard yang sama dengan kanvas.
- * Tidak melempar: error tak terduga → BUSY (detail hanya di log, tanpa isi permintaan).
- */
-export async function setDashboardFilterColumnsAction(
-  dashboardId: string,
-  filterColumns: unknown,
-): Promise<FilterColumnsActionResult> {
-  try {
-    const user = await requireUser("action");
-    const rl = await hit(await redisReady(), RULES.dashboardEdit, user.id);
-    if (!rl.allowed) {
-      return {
-        ok: false,
-        code: "RATE_LIMITED",
-        message: `Terlalu banyak perubahan. Coba lagi dalam ${Math.max(1, Math.ceil(rl.retryAfterSec / 60))} menit.`,
-      };
-    }
-    const r = await service.setDashboardFilterColumns(user.id, dashboardId, filterColumns);
-    if (r.ok) revalidatePath(`/dashboards/${dashboardId}`);
-    return r;
-  } catch (e) {
-    unstable_rethrow(e);
-    if (e instanceof AuthError) {
-      return {
-        ok: false,
-        code: "UNAUTHENTICATED",
-        message: "Sesi Anda berakhir. Masuk lagi untuk melanjutkan.",
-      };
-    }
-    logger.error({ err: e instanceof Error ? e.message : String(e) }, "simpan kolom filter gagal");
-    return { ok: false, code: "BUSY", message: "Terjadi kesalahan. Coba lagi beberapa saat lagi." };
-  }
 }

@@ -1,12 +1,13 @@
 "use client";
 
-import { IconAlertTriangle, IconX } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { TYPE_LABEL } from "@/components/schema/labels";
 import { Button } from "@/components/ui/button";
 import { FILTER_COLUMNS_MAX } from "@/features/dashboards/filter-columns";
+import { normName } from "@/features/widgets/remap";
 import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { AddFilterColumnMenu } from "./add-filter-column-menu";
 import { api } from "./dashboard-api";
@@ -16,8 +17,10 @@ import { FILTER_SETTINGS_ID } from "./filters/filter-bar";
  * Kolom filter dashboard (T-012, mode edit): kolom yang bisa disaring dari bilah filter oleh semua yang
  * melihat dashboard (maks. 8). Tambah lewat menu kolom per sheet (non-modal), hapus per baris; tiap
  * perubahan langsung disimpan (PATCH) lalu halaman disegarkan agar bilah filter memakai daftar baru.
- * Kolom yang tidak lagi ada/tampil di data terbaru ditandai dan bisa dihapus. Setelah menghapus, fokus
- * pindah ke baris berikutnya (atau tombol tambah).
+ * Kolom yang tidak lagi ada/tampil di data terbaru ditandai dan bisa dihapus. Satu kolom per nama: filter
+ * berlaku per nama di semua sheet, jadi kolom bernama sama dari sheet lain tidak bisa ditambahkan.
+ * Setelah menghapus, fokus pindah ke baris berikutnya (atau tombol tambah). Status simpan diumumkan
+ * lewat wilayah status yang selalu terpasang (isinya saja yang berganti).
  */
 export function FilterColumnsSettings({
   dashboardId,
@@ -38,6 +41,7 @@ export function FilterColumnsSettings({
   const multiSheet = sources.length > 1;
   const full = list.length >= FILTER_COLUMNS_MAX;
   const taken = new Set(list.map((c) => c.key));
+  const names = new Set(list.map((c) => normName(c.column)));
 
   useEffect(() => {
     const at = focusAt.current;
@@ -90,14 +94,18 @@ export function FilterColumnsSettings({
           Kolom yang bisa disaring dari bilah filter di atas widget. Kolom tanggal mendapat pilihan
           periode, kolom angka rentang nilai, kolom lain daftar nilai.
         </p>
-      </div>
-      {result ? (
-        <FormAlert tone={result.ok ? "success" : "error"}>{result.message}</FormAlert>
-      ) : (
-        <p role="status" className="text-sm text-muted-foreground empty:hidden">
-          {pending ? "Menyimpan kolom filter…" : ""}
+        <p role="status" className="flex items-center gap-1.5 text-sm empty:sr-only">
+          {pending ? (
+            <span className="text-muted-foreground">Menyimpan kolom filter…</span>
+          ) : result?.ok ? (
+            <>
+              <IconCircleCheck size={18} stroke={1.5} aria-hidden className="text-success" />
+              {result.message}
+            </>
+          ) : null}
         </p>
-      )}
+      </div>
+      {result && !result.ok ? <FormAlert tone="error">{result.message}</FormAlert> : null}
       {list.length ? (
         <ul className="flex max-w-xl flex-col rounded-md border" aria-label="Kolom filter">
           {list.map((c, i) => (
@@ -150,6 +158,7 @@ export function FilterColumnsSettings({
       <AddFilterColumnMenu
         sources={sources}
         taken={taken}
+        names={names}
         full={full}
         describedBy={full ? `${id}-full` : undefined}
         onAdd={(c) => void save([...list, c])}
