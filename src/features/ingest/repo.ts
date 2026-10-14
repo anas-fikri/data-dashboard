@@ -3,18 +3,13 @@ import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import { activateVersionInTx } from "@/features/versions/activation";
 import { prisma } from "@/lib/db";
-import { deletePrefix } from "@/lib/storage/objects";
+import { deleteObject, deletePrefix } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
 import { lockActiveSheet } from "./active-lock";
 import { parsePreview } from "./preview";
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
-import {
-  DatasetGoneError,
-  type FinishOutcome,
-  type IngestRepo,
-  type IngestStorage,
-} from "./ingest";
+import { DatasetGoneError, type FinishOutcome, type IngestRepo, type TypedStorage } from "./ingest";
 import type { MappingRepo } from "./mapping";
 import type { RecastRepo } from "./recast";
 import { sameSnapshot, type ActiveSnapshot } from "./refresh";
@@ -215,10 +210,11 @@ export const prismaIngestRepo: IngestRepo = {
   },
 };
 
-export const s3IngestStorage: IngestStorage = {
+export const s3IngestStorage: TypedStorage = {
   download: downloadToFile,
   upload: uploadFile,
   deletePrefix,
+  deleteObject,
 };
 
 export const prismaRecastRepo: RecastRepo = {

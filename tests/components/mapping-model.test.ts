@@ -15,6 +15,7 @@ import {
   pairOptions,
   pickOptions,
   progress,
+  reviewOf,
   samePayload,
   sheetDraft,
   summaryCounts,
@@ -33,6 +34,7 @@ import type {
   MappingReviewIssue,
   MappingSheetView,
 } from "@/components/mapping/mapping-types";
+import type { MappingLocal } from "@/components/mapping/use-mapping-job";
 
 /* T-014: pemetaan kolom — keputusan wajib, satu-ke-satu, kolom tersembunyi, payload ringkas. */
 
@@ -391,6 +393,44 @@ describe("tahap tinjau (review)", () => {
     ).toEqual(["map-a1-cast-3-type", null]);
   });
 
+  it("R2-UI-7: kolom hilang yang belum dipilih lagi → pemilih kolomnya, bukan saran halaman Skema", () => {
+    const num: MappingSheetView = {
+      ...sales,
+      active: {
+        ...sales.active,
+        columns: sales.active.columns.map((c) => (c.pos === 2 ? { ...c, type: "integer" } : c)),
+      },
+    };
+    // Hasil tinjau tersimpan + draf kosong (muat ulang): kolomnya masih bisa dipilih di halaman ini.
+    expect(castTargetId(num, num, { columns: {}, casts: {} }, 2)).toBe("map-a1-2");
+    // Teks (tidak pernah ditinjau) dan "kosongkan" tetap tanpa pemicu.
+    expect(castTargetId(sales, sales, { columns: {}, casts: {} }, 2)).toBeNull();
+    expect(castTargetId(num, num, { columns: { 2: null }, casts: {} }, 2)).toBeNull();
+    const numView: MappingReady = { ...view, sheets: [num] };
+    expect(issueTargets(numView, {}, {}, [issue("Cabang", 0)])).toEqual(["map-a1-2"]);
+  });
+
+  it("R2-UI-10: ringkasan menghitung kolom hilang yang dipetakan dan ditandai tinjau", () => {
+    const num: MappingSheetView = {
+      ...sales,
+      active: {
+        ...sales.active,
+        columns: sales.active.columns.map((c) => (c.pos === 2 ? { ...c, type: "integer" } : c)),
+      },
+    };
+    const numView: MappingReady = { ...view, sheets: [num] };
+    // Tanggal (cocok otomatis) + Cabang (dipetakan ke Kantor) sama-sama ditandai: 2, sama dengan panel.
+    const flags = withReview({}, numView, [issue("Tanggal", 0.85), issue("Cabang", 0)]);
+    const mapped: MappingDraft = { a1: { columns: { 2: 2 }, casts: {} } };
+    expect(summaryCounts(numView, mapped, {}, flags).lowCast).toBe(2);
+    // Belum dipilih lagi atau dikosongkan: baris tipenya tidak tampil, jadi tidak dihitung.
+    expect(summaryCounts(numView, {}, {}, flags).lowCast).toBe(1);
+    const cleared: MappingDraft = { a1: { columns: { 2: null }, casts: {} } };
+    expect(summaryCounts(numView, cleared, {}, flags).lowCast).toBe(1);
+    // Tanpa tanda tinjau: kolom yang hanya beda tipe tidak menambah hitungan.
+    expect(summaryCounts(numView, mapped, {}, {}).lowCast).toBe(1);
+  });
+
   it("override pada kolom cocok yang ditandai ikut payload; persetujuan hanya untuk payload sama", () => {
     const draft: MappingDraft = {
       a1: { columns: { 2: 2 }, casts: { 1: { type: "integer", numberLocale: "id" } } },
@@ -403,6 +443,47 @@ describe("tahap tinjau (review)", () => {
     expect(samePayload(payload, toPayload(view, draft, plans))).toBe(true);
     const changed = { ...draft, a1: { ...draft.a1!, casts: {} } };
     expect(samePayload(payload, toPayload(view, changed, plans))).toBe(false);
+  });
+});
+
+describe("reviewOf (R2-UI-2 / R2-UI-6)", () => {
+  const issues: MappingReviewIssue[] = [
+    { sheet: "Penjualan", column: "Tanggal", header: "Tgl", pct: 0.85, typeLabel: "Tanggal" },
+  ];
+  const draft: MappingDraft = {
+    a1: { columns: { 2: 2 }, casts: {} },
+    a2: { target: null, columns: {}, casts: {} },
+  };
+  const sent = toPayload(view, draft, plans);
+  const own: MappingLocal = { phase: "review", issues, payload: sent };
+
+  it("job tab ini dengan keputusan yang sama: live dan boleh disetujui (bar simpan tidak mengulang job)", () => {
+    expect(reviewOf(view, draft, plans, own, null)).toEqual({ issues, live: true, ackable: true });
+  });
+
+  it("keputusan berubah sejak ditinjau: tetap live, tetapi harus diperiksa ulang", () => {
+    const changed: MappingDraft = { ...draft, a1: { columns: { 2: null }, casts: {} } };
+    expect(reviewOf(view, changed, plans, own, null)).toMatchObject({ live: true, ackable: false });
+  });
+
+  it("job tab lain/sebelum muat ulang (payload tidak diketahui): tidak live, tanpa persetujuan", () => {
+    const other: MappingLocal = { phase: "review", issues, payload: null };
+    expect(reviewOf(view, draft, plans, other, null)).toEqual({
+      issues,
+      live: false,
+      ackable: false,
+    });
+  });
+
+  it("hasil tinjau tersimpan dari server: tidak live; hasil lain atau tanpa hasil: tanpa panel", () => {
+    const idle: MappingLocal = { phase: "idle" };
+    expect(reviewOf(view, {}, plans, idle, { jobId: "j1", state: "review", issues })).toEqual({
+      issues,
+      live: false,
+      ackable: false,
+    });
+    expect(reviewOf(view, {}, plans, idle, { jobId: "j1", state: "stale" })).toBeNull();
+    expect(reviewOf(view, {}, plans, idle, null)).toBeNull();
   });
 });
 

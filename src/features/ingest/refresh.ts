@@ -24,8 +24,9 @@ export interface ActiveSheet {
   id: string;
   name: string;
   /**
-   * Nama sheet aktif sebelumnya yang dipasangkan user saat pemetaan (T-014, sheet ganti nama): sheet
-   * file baru dengan nama itu tetap berpasangan (matchSheet). null/kosong = tidak ada.
+   * Akar silsilah nama sheet (T-014, sheet ganti nama yang dipasangkan user): nama sheet sebelum
+   * rantai ganti nama pertama, sehingga V1 → V2 → V3 tetap saling cocok (matchSheet). Sheet file baru
+   * dengan nama itu tetap berpasangan. null/kosong = tidak ada.
    */
   aliasName?: string | null;
   index: number;
@@ -68,16 +69,29 @@ export function sameSnapshot(a: SnapshotRef, b: SnapshotRef): boolean {
 
 /**
  * Pasangan sheet aktif untuk tiap sheet baru (urutan input; null = sheet tambahan) dan sheet aktif yang
- * tidak ada di file baru. Satu sheet baru tidak pernah dipasangkan dua kali.
+ * tidak ada di file baru. Satu sheet baru tidak pernah dipasangkan dua kali. Dua tahap: semua pasangan
+ * nama sama lebih dulu, baru alias/fallback satu-sheet (matchSheet) untuk sheet aktif yang belum
+ * berpasangan dan hanya ke sheet baru yang masih bebas — alias sheet aktif mana pun tidak pernah
+ * merebut sheet baru milik sheet aktif lain yang namanya sama (tidak bergantung urutan sheet).
  */
 export function planSheets(
   fresh: { name: string }[],
   active: ActiveSheet[],
 ): { pairs: (ActiveSheet | null)[]; missing: ActiveSheet[] } {
   const pairs: (ActiveSheet | null)[] = fresh.map(() => null);
-  const missing: ActiveSheet[] = [];
   const named = fresh.map((f, i) => ({ name: f.name, i }));
-  for (const a of [...active].sort((x, y) => x.index - y.index)) {
+  const sorted = [...active].sort((x, y) => x.index - y.index);
+  const exact = new Set<string>();
+  for (const a of sorted) {
+    const hit = named.filter((n) => normName(n.name) === normName(a.name));
+    if (hit.length === 1 && !pairs[hit[0]!.i]) {
+      pairs[hit[0]!.i] = a;
+      exact.add(a.id);
+    }
+  }
+  const missing: ActiveSheet[] = [];
+  for (const a of sorted) {
+    if (exact.has(a.id)) continue;
     const m = matchSheet(a, named, active.length);
     if (m && !pairs[m.i]) pairs[m.i] = a;
     else missing.push(a);
@@ -148,16 +162,25 @@ export function chooseHeader<T extends { columns: ColumnMeta[] }>(
 }
 
 /**
+ * Akar silsilah nama sheet aktif `a` (T-014): aliasnya bila ada (selalu akar), selain itu namanya
+ * sendiri. Sheet yang dipasangkan user dengan `a` mendapat ini sebagai alias, sehingga ganti nama
+ * berantai (V1 → V2 → V3) tetap menunjuk nama V1 dan alias semua versi di rantai itu sama.
+ */
+export function lineageRoot(a: Pick<ActiveSheet, "name" | "aliasName">): string {
+  return a.aliasName?.trim() ? a.aliasName : a.name;
+}
+
+/**
  * Alias sheet versi baru yang berpasangan otomatis dengan sheet aktif `a` (T-014): nama sama → alias
- * sheet aktif terbawa (rantai V1 → V2 dipetakan → V3 → rollback ke V1 tetap cocok); cocok lewat alias
- * (nama lama kembali) → nama sheet aktif menjadi alias; fallback satu-sheet → tanpa alias.
+ * (akar silsilah) sheet aktif terbawa (V1 → V2 dipetakan → V3 → rollback ke V1 tetap cocok); cocok
+ * lewat alias (nama akar kembali) → tanpa alias, karena sheet itu sendiri sudah bernama akar (versi
+ * di antaranya tetap cocok lewat aliasnya); fallback satu-sheet → tanpa alias.
  */
 export function carriedAlias(
   name: string,
   a: Pick<ActiveSheet, "name" | "aliasName">,
 ): string | null {
-  if (normName(name) === normName(a.name)) return a.aliasName?.trim() ? a.aliasName : null;
-  return a.aliasName?.trim() && normName(name) === normName(a.aliasName) ? a.name : null;
+  return normName(name) === normName(a.name) && a.aliasName?.trim() ? a.aliasName : null;
 }
 
 /** Sheet versi baru yang header-nya bisa dipilih ulang dari pratinjau tersimpan. */

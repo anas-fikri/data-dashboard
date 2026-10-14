@@ -180,6 +180,22 @@ export function pairPlan(active: ActiveSheet, f: FreshSheet, userPaired = false)
   };
 }
 
+/**
+ * Pasangan otomatis yang punya kolom cocok non-teks dengan pilihan aktif TERKINI berbeda dari statistik
+ * typed-1 (tipe/format aktif diubah setelah unggah): rasionya tidak bisa dihitung di sini, tetapi job
+ * tetap memeriksanya ("review"). Sheet seperti itu tetap ditampilkan agar isu review punya baris
+ * "Ubah tipe" di halaman.
+ */
+function choiceChanged(a: ActiveSheet, f: FreshSheet, autoMatched: MappingPairPlan["autoMatched"]) {
+  const typed = new Map((f.schema ?? []).map((s) => [s.pos, s]));
+  const act = new Map(a.schema.map((c) => [c.pos, c]));
+  return autoMatched.some(({ activePos, newPos }) => {
+    const c = act.get(activePos);
+    const s = typed.get(newPos);
+    return c !== undefined && c.type !== "text" && s !== undefined && !sameChoice(s, c);
+  });
+}
+
 const activeView = (a: ActiveSheet): MappingSheetView["active"] => ({
   id: a.id,
   name: a.name,
@@ -200,9 +216,10 @@ const activeView = (a: ActiveSheet): MappingSheetView["active"] => ({
 
 /**
  * Sheet aktif yang perlu keputusan, urut sheet aktif: pasangan otomatis dengan kolom terlihat yang
- * hilang atau cast < 98 %, dan sheet aktif tanpa pasangan (kandidat = sheet baru tanpa pasangan, hanya
- * id/nama/jumlah kolom; rencananya lewat pairPlanAction saat dipilih, sehingga ukuran halaman tidak
- * tumbuh kuadratik terhadap jumlah sheet). Sheet baru tanpa pasangan sendiri bukan masalah (tetap
+ * hilang, cast < 98 %, atau kolom yang tipe aktifnya berubah setelah unggah (choiceChanged), dan
+ * sheet aktif tanpa pasangan (kandidat = sheet baru tanpa pasangan, hanya id/nama/jumlah kolom;
+ * rencananya lewat pairPlanAction saat dipilih, sehingga ukuran halaman tidak tumbuh kuadratik
+ * terhadap jumlah sheet). Sheet baru tanpa pasangan sendiri bukan masalah (tetap
  * sheet tambahan, T-013).
  */
 export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): MappingSheetView[] {
@@ -222,7 +239,7 @@ export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): Mappi
     if (f) {
       // Header pasangan otomatis sudah dipilih saat ingest (tetap header tersimpan).
       const { headerRow: _row, headerChanged: _changed, ...plan } = pairPlan(a, f);
-      if (plan.missing.length || plan.lowCast.length) {
+      if (plan.missing.length || plan.lowCast.length || choiceChanged(a, f, plan.autoMatched)) {
         out.push({ active: view, target: { id: f.id, name: f.name }, candidates: [], ...plan });
       }
       continue;

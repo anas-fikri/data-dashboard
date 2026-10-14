@@ -198,6 +198,32 @@ describe("mappingSheets (murni)", () => {
     expect(m.mappingSheets([activeData], [clean])).toEqual([]);
   });
 
+  it("R2-INT-5: tipe aktif non-teks berubah setelah unggah, tanpa kolom hilang → sheet tetap tampil (target 'Ubah tipe')", () => {
+    const clean: FreshSheet = {
+      ...freshData,
+      columns: freshData.columns.map((c) => (c.pos === 2 ? { ...c, original: "Cabang" } : c)),
+      schema: freshData.schema!.map((c) => (c.pos === 3 ? { ...c, castFailCount: 0 } : c)),
+    };
+    const retype = (over: Partial<ColumnSchema>): ActiveSheet => ({
+      ...activeData,
+      schema: activeData.schema.map((c) => (c.pos === 3 ? { ...c, ...over } : c)),
+    });
+    // Desimal format id → bilangan bulat, atau format angka saja yang berubah: job memeriksa ulang.
+    for (const a of [
+      retype({ type: "integer", numberLocale: "us" }),
+      retype({ numberLocale: "us" }),
+    ]) {
+      const views = m.mappingSheets([a], [clean]);
+      expect(views).toHaveLength(1);
+      expect(views[0]).toMatchObject({ target: { id: FS1 }, missing: [], lowCast: [] });
+      expect(views[0]!.autoMatched).toContainEqual({ activePos: 3, newPos: 3 });
+    }
+    // Diubah ke teks: job tidak memeriksa kolom teks → tidak ada yang perlu ditampilkan.
+    expect(m.mappingSheets([retype({ type: "text", numberLocale: undefined })], [clean])).toEqual(
+      [],
+    );
+  });
+
   const ringkas: ActiveSheet = {
     id: AS2,
     name: "Ringkasan",

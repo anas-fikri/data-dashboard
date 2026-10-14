@@ -689,4 +689,26 @@ describe("applyMapping (job map-version)", () => {
     expect(await applyMapping(ack, m.deps)).toEqual({ outcome: "done" });
     expect(m.sheet().schema![2]).toMatchObject({ type: "integer", castFailCount: 2, nonEmpty: 10 });
   });
+
+  it("R2-INT-1: review berulang tidak meninggalkan typed yatim; setelah commit hanya typed-1 + typed aktif", async () => {
+    const m = await renamed((i) => (i < 2 ? "N/A" : String(i)));
+    const before = m.typedKeys();
+    // Storage palsu menolak kunci objek penuh sebagai prefix, sama dengan S3 storage.
+    await expect(m.storage.deletePrefix(before[0]!)).rejects.toThrow(/diakhiri/);
+    for (let round = 0; round < 2; round++) {
+      expect(await applyMapping(m.job, m.deps)).toMatchObject({ outcome: "review" });
+      expect(m.typedKeys()).toEqual(before);
+    }
+    const ack = { ...m.job, input: { ...m.job.input, acknowledge: true as const } };
+    expect(await applyMapping(ack, m.deps)).toEqual({ outcome: "done" });
+    expect(m.typedKeys()).toEqual([...before, m.sheet().typedKey!].sort());
+  });
+
+  it("R2-UI-4: sheet aktif yang sudah punya alias dipasangkan lagi → alias tetap akar silsilah", async () => {
+    const m = await renamed((i) => String(i * 5));
+    // Sheet aktif "Data" sendiri hasil pemetaan "Penjualan" → "Data" (V1 → V2); V3 dipasangkan user.
+    m.repo.active!.sheets[0]!.aliasName = "Penjualan";
+    expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "done" });
+    expect(m.commits[0]!.sheets[0]!.aliasName).toBe("Penjualan");
+  });
 });

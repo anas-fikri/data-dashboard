@@ -22,8 +22,8 @@ import {
   type FinishOutcome,
   type IngestProgress,
   type IngestRepo,
-  type IngestStorage,
   type SheetRecord,
+  type TypedStorage,
 } from "@/features/ingest/ingest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { LockStore } from "@/lib/lock";
@@ -38,7 +38,7 @@ import {
 export const DS = "cmv4klj5r0007oczvgiofocpg";
 export const VID = "cmv4kljx40009oczvdmpurrxf";
 
-export class FakeStorage implements IngestStorage {
+export class FakeStorage implements TypedStorage {
   constructor(
     readonly dir: string,
     readonly sources: Record<string, string>,
@@ -64,11 +64,16 @@ export class FakeStorage implements IngestStorage {
     copyFileSync(path, dest);
   }
   async deletePrefix(prefix: string) {
+    // Sama dengan S3 storage (lib/storage/objects.ts): kunci objek penuh bukan prefix.
+    if (!prefix.endsWith("/")) throw new Error("prefix wajib diakhiri '/'");
     const target = join(this.dir, prefix);
     if (!existsSync(target)) return 0;
     const n = this.keys().filter((k) => k.startsWith(prefix)).length;
     rmSync(target, { recursive: true, force: true });
     return n;
+  }
+  async deleteObject(key: string) {
+    rmSync(join(this.dir, key), { force: true });
   }
   keys(): string[] {
     const out: string[] = [];

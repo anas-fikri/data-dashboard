@@ -162,7 +162,7 @@ export function MappingSheet({
         <Block
           id={`map-${sid}-lowcast`}
           title={`Nilai yang tidak cocok dengan tipe (${fmtInt(casts.length)})`}
-          hint="Nilai yang tidak cocok dengan tipe yang dipilih dikosongkan saat disimpan. Ganti tipe (mis. ke Teks) atau formatnya bila perlu."
+          hint="Saat disimpan, nilai diperiksa ulang; bila masih banyak yang tidak cocok, Anda diminta memastikan sebelum nilai itu dikosongkan. Ganti tipe (mis. ke Teks) atau formatnya bila perlu."
         >
           {casts.map((row) => {
             const base = castBase(sheet, pair, row);

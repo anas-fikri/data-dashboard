@@ -96,6 +96,9 @@ describe("enqueueMapping", () => {
     expect(r.jobId).toMatch(/^mp_[0-9a-f]{24}$/);
     expect(redis.kv.get("mapping:v1")).toBe(r.jobId);
     expect([...redis.sets.get("recast:inflight:u:u1")!]).toEqual([r.jobId]);
+    // R2-INT-4: TTL set per user = konstanta bersama recast (schema/runtime.ts), 7 hari.
+    expect(q.USER_INFLIGHT_TTL_MS).toBe(7 * 24 * 60 * 60 * 1000);
+    expect(redis.ttl.get("recast:inflight:u:u1")).toBe(q.USER_INFLIGHT_TTL_MS);
     expect(redis.kv.has("mapping-last:v1")).toBe(false);
     expect(add).toHaveBeenCalledWith("map-version", data("v1"), { jobId: r.jobId });
     expect(await q.mappingInFlight("v1")).toBe(r.jobId);

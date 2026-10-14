@@ -20,9 +20,9 @@ import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retenti
  *     StorageCleanup dengan masa tenggang 1 jam.
  *  4. Rollback (opts.audit): AuditLog "dataset.version.activate".
  * Pemetaan kolom (T-014) memberi `sheetMap` (sheet lama → sheet versi target) agar widget ikut sheet
- * yang ganti nama; AuditLog-nya dicatat pemanggil ("dataset.version.map"). Pasangan itu juga tersimpan
- * sebagai Sheet.aliasName sehingga rollback/roll-forward berikutnya tetap menemukan sheet-nya
- * (matchSheet mencocokkan alias ke dua arah).
+ * yang ganti nama; AuditLog-nya dicatat pemanggil ("dataset.version.map"). Akar silsilah nama sheet
+ * itu juga tersimpan sebagai Sheet.aliasName sehingga rollback/roll-forward berikutnya, juga lintas
+ * beberapa ganti nama, tetap menemukan sheet-nya (matchSheet: alias ↔ nama dan alias ↔ alias).
  * typedKey versi yang dibuang dikembalikan agar pemanggil di proses app bisa membuang salinan lokal
  * (forgetLocalParquet) setelah commit; di worker itu tanpa efek.
  */

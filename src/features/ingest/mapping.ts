@@ -10,7 +10,8 @@
  *    diterapkan; ada yang < 98 % dan input tanpa acknowledge → "review" (≤ 50 kolom, terburuk dulu),
  *    tanpa commit. User mengirim ulang dengan acknowledge (atau cast lain).
  *  - Commit satu transaksi (repo): acuan + status dijaga, sheet diganti (pasangan user mendapat alias
- *    nama sheet aktif), READY + aktif dengan sheetMap, AuditLog dataset.version.map (+ id job).
+ *    akar silsilah nama sheet aktif), READY + aktif dengan sheetMap, AuditLog dataset.version.map
+ *    (+ id job).
  *    typed lama dihapus 1 jam kemudian.
  *  - Versi sudah READY saat dimuat: "done" hanya bila commit-nya oleh job ini; selain itu "gone".
  *  - Hasil selain done → file yang diunggah job ini dihapus.
@@ -21,7 +22,7 @@ import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
 import type { ColumnMeta } from "./header";
 import { INFER_THRESHOLD, type ColumnSchema, type SourceKind } from "./infer";
-import { DatasetGoneError, DeadlineError, permanentMessage, type IngestStorage } from "./ingest";
+import { DatasetGoneError, DeadlineError, permanentMessage, type TypedStorage } from "./ingest";
 import {
   REVIEW_MAX,
   validateMapping,
@@ -31,7 +32,7 @@ import {
   type VersionSheet,
 } from "./mapping-input";
 import { OLD_TYPED_TTL_MS, RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
-import { typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
+import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
 import { writeTyped } from "./typed";
 
 export const MAPPING_DEADLINE_MS = 60 * 60 * 1000;
@@ -68,7 +69,10 @@ export interface MappingSheetUpdate {
   schemaRevision: number;
   headerRow: number;
   columns: ColumnMeta[];
-  /** Sheet yang dipasangkan user: nama sheet aktif pasangannya (Sheet.aliasName, T-014). */
+  /**
+   * Sheet yang dipasangkan user: akar silsilah nama sheet aktif pasangannya (alias sheet aktif bila
+   * ada, selain itu namanya; Sheet.aliasName, T-014), lihat lineageRoot.
+   */
   aliasName?: string;
 }
 
@@ -94,7 +98,7 @@ export interface MappingRepo {
 
 export interface MappingDeps {
   repo: MappingRepo;
-  storage: Pick<IngestStorage, "download" | "upload" | "deletePrefix">;
+  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject">;
   lock: LockStore;
   scheduleDelete(key: string, delayMs: number): Promise<void>;
   tmpRoot: string;
@@ -227,7 +231,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         schemaRevision: revision,
         headerRow: p.headerRow,
         columns: p.columns,
-        ...(p.userPaired ? { aliasName: p.active.name } : {}),
+        ...(p.userPaired ? { aliasName: lineageRoot(p.active) } : {}),
       });
       await watch();
     }
@@ -278,7 +282,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
     throw e; // sementara (storage/DB): BullMQ mengulang, versi tetap AWAITING_MAPPING
   } finally {
     clearInterval(renew);
-    for (const key of uploaded) await deps.storage.deletePrefix(key).catch(() => 0);
+    for (const key of uploaded) await deps.storage.deleteObject(key).catch(() => {});
     duck?.close();
     if (work) rmSync(work, { recursive: true, force: true });
     await releaseLock(deps.lock, lockKey, token).catch(() => false);

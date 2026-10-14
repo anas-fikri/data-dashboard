@@ -134,6 +134,24 @@ describe("recast", () => {
     expect(r.storage.parquetKeys().some((k) => k.includes("typed-2"))).toBe(false);
   });
 
+  it("R2-INT-1: gagal setelah unggah (swap putus, pointer belum berganti) → typed baru dihapus", async () => {
+    const r = await setup(DATA);
+    const before = r.storage.parquetKeys();
+    const deps: RecastDeps = {
+      ...r.deps,
+      repo: {
+        ...r.deps.repo,
+        swapTyped: async () => {
+          throw new Error("ECONNRESET db");
+        },
+      },
+    };
+    await expect(recastSheet(r.sheetId, {}, deps)).rejects.toThrow(/ECONNRESET/);
+    expect(r.storage.parquetKeys()).toEqual(before);
+    expect(r.sheet().schemaRevision).toBe(1);
+    expect(r.lock.held.size).toBe(0);
+  });
+
   it("error di tengah → lock dilepas (recast berikutnya tidak 'busy')", async () => {
     const r = await setup(DATA);
     const broken: RecastDeps = {
@@ -144,7 +162,7 @@ describe("recast", () => {
           throw new Error("ECONNRESET");
         },
         upload: r.storage.upload.bind(r.storage),
-        deletePrefix: r.storage.deletePrefix.bind(r.storage),
+        deleteObject: r.storage.deleteObject.bind(r.storage),
       },
     };
     await expect(recastSheet(r.sheetId, {}, broken)).rejects.toThrow(/ECONNRESET/);

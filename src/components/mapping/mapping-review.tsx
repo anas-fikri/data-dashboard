@@ -11,14 +11,32 @@ import { Button } from "@/components/ui/button";
 import type { MappingReviewIssue } from "./mapping-types";
 
 const SMALL_CTA = "h-(--control-h-lg) w-full sm:w-auto md:h-(--control-h-sm)";
+/*
+ * Label persetujuan panjang: di ponsel membungkus dalam tombol selebar panel (tidak terpotong, tanpa
+ * gulir samping di 320); mulai md satu baris setinggi kontrol biasa, berdampingan dengan teks mulai lg.
+ */
+const ACK_CTA =
+  "h-auto min-h-(--control-h-lg) w-full shrink-0 whitespace-normal py-2 text-center md:min-h-(--control-h) md:w-auto md:self-start md:whitespace-nowrap md:py-0 lg:self-auto";
+
+/** Judul panel tinjau (fokus dari bar simpan selama persetujuan ditunggu). */
+export const REVIEW_TITLE_ID = "mapping-review-title";
+
+/** Awal kalimat penutup: di mana tipe kolom yang tercantum bisa diubah. */
+function changeHint(targets: (string | null)[]): string {
+  const offPage = targets.filter((t) => t === null).length;
+  if (offPage === 0) return "Ubah tipe kolomnya (mis. ke Teks)";
+  if (offPage === targets.length) return "Ubah tipe kolomnya dari halaman Skema";
+  return "Ubah tipe kolomnya di sini atau dari halaman Skema (lihat tiap kolom)";
+}
 
 /**
  * Tahap tinjau (T-014): job sudah mencoba menerapkan pemetaan, tetapi di beberapa kolom kurang dari
  * 98 % nilai cocok dengan tipenya. Belum ada yang disimpan. Dua jalan: ubah tipe kolomnya (tombol
- * memfokuskan pemicu tipe baris terkait) lalu simpan lagi, atau simpan keputusan yang sama dengan
- * persetujuan bahwa nilai yang tidak cocok dikosongkan. `live` = hasil simpan barusan (judul menerima
- * fokus); tanpa `live` = hasil terakhir dari server saat halaman dibuka (tanpa simpan langsung, karena
- * keputusan di halaman ini belum tentu sama).
+ * memfokuskan pemicu tipe baris terkait, atau pemilih kolomnya bila belum dipilih lagi; kolom yang
+ * tidak tampil di halaman ini diubah dari halaman Skema) lalu simpan lagi, atau simpan keputusan
+ * yang sama dengan persetujuan bahwa nilai yang tidak cocok dikosongkan. `live` = hasil job yang
+ * dikirim tab ini (judul menerima fokus); tanpa `live` = hasil job tab lain/sebelum muat ulang atau
+ * hasil terakhir dari server (tanpa simpan langsung, karena keputusan di halaman ini belum tentu sama).
  */
 export function MappingReview({
   issues,
@@ -48,13 +66,13 @@ export function MappingReview({
   const n = fmtInt(issues.length);
   return (
     <section
-      aria-labelledby="mapping-review-title"
+      aria-labelledby={REVIEW_TITLE_ID}
       data-testid="mapping-review"
       data-live={live || undefined}
       className="flex flex-col gap-3 rounded-lg border border-warning/60 bg-warning/10 p-4 text-sm"
     >
       <h2
-        id="mapping-review-title"
+        id={REVIEW_TITLE_ID}
         ref={titleRef}
         tabIndex={-1}
         className="flex items-start gap-2 text-base font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -93,7 +111,7 @@ export function MappingReview({
                 </Button>
               ) : (
                 <span className="shrink-0 text-xs text-muted-foreground">
-                  Ubah dari halaman Skema setelah versi aktif.
+                  Tipenya hanya bisa diubah dari halaman Skema.
                 </span>
               )}
             </li>
@@ -101,14 +119,14 @@ export function MappingReview({
         })}
       </ul>
       {live && canAcknowledge ? (
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between md:gap-4">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
           {/* Teks utama, bukan muted: latar peringatan menurunkan kontras muted di bawah 4,5:1. */}
-          <p>Ubah tipe kolomnya (mis. ke Teks) lalu simpan lagi, atau simpan apa adanya.</p>
+          <p>{changeHint(targets)} lalu simpan lagi, atau simpan apa adanya.</p>
           <Button
             data-testid="mapping-acknowledge"
             disabled={disabled}
             leadingIcon={<IconDeviceFloppy aria-hidden />}
-            className="h-(--control-h-lg) w-full shrink-0 md:h-(--control-h) md:w-auto"
+            className={ACK_CTA}
             onClick={onAcknowledge}
           >
             Simpan dan kosongkan nilai yang tidak cocok

@@ -16,7 +16,7 @@ import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema, SourceKind } from "./infer";
-import { DatasetGoneError, DeadlineError, type IngestStorage } from "./ingest";
+import { DatasetGoneError, DeadlineError, type TypedStorage } from "./ingest";
 import {
   maxSchemaPos,
   parseRecastInput,
@@ -75,7 +75,7 @@ export interface RecastRepo {
 
 export interface RecastDeps {
   repo: RecastRepo;
-  storage: Pick<IngestStorage, "download" | "upload" | "deletePrefix">;
+  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject">;
   lock: LockStore;
   /** Jadwalkan penghapusan objek (job tertunda). */
   scheduleDelete(key: string, delayMs: number): Promise<void>;
@@ -256,7 +256,7 @@ export async function recastSheet(
   } finally {
     clearInterval(renew);
     // File percobaan ini yang tidak menjadi typed aktif (kunci unik: tidak pernah milik recast lain).
-    if (uploaded) await deps.storage.deletePrefix(uploaded).catch(() => 0);
+    if (uploaded) await deps.storage.deleteObject(uploaded).catch(() => {});
     duck?.close();
     if (work) rmSync(work, { recursive: true, force: true });
     await releaseLock(deps.lock, lockKey, token).catch(() => false);

@@ -2,7 +2,8 @@ import { fmtInt } from "@/components/schema/labels";
 
 /**
  * Ringkasan masalah semua sheet + kemajuan keputusan. Kemajuan diumumkan sopan (aria-live) setiap
- * kali satu keputusan dibuat; batang kemajuan hanya visual (angkanya sudah dibacakan).
+ * kali satu keputusan dibuat; batang kemajuan hanya visual (angkanya sudah dibacakan). Selama panel
+ * tinjau tampil, ringkasan tidak menyatakan kolomnya "sudah cocok" (isunya bisa di sheet lain).
  */
 export function MappingSummary({
   missing,
@@ -11,6 +12,7 @@ export function MappingSummary({
   sheets,
   done,
   total,
+  reviewing = false,
 }: {
   missing: number;
   lowCast: number;
@@ -19,6 +21,8 @@ export function MappingSummary({
   sheets: number;
   done: number;
   total: number;
+  /** Panel tinjau sedang tampil. */
+  reviewing?: boolean;
 }) {
   const facts = [
     ["Kolom tidak ditemukan", missing],
@@ -53,7 +57,7 @@ export function MappingSummary({
               </span>{" "}
               diputuskan
             </>
-          ) : lowCast > 0 ? (
+          ) : lowCast > 0 || reviewing ? (
             "Tidak ada kolom yang perlu dipilih; tinjau tipe kolom lalu simpan."
           ) : (
             // Skema aktif berubah sejak ingest sehingga kini cocok: cukup simpan.

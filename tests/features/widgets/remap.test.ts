@@ -152,4 +152,21 @@ describe("matchSheet + alias pemetaan (T-014)", () => {
     expect(matchSheet(s("X", " "), [s(" "), s("Y")], 2)).toBeNull();
     expect(matchSheet(s("X"), [s("Y")], 1)?.name).toBe("Y");
   });
+
+  it("rantai ganti nama V1 → V2 → V3 (alias = akar silsilah): rollback dan roll-forward ke versi mana pun", () => {
+    const v1 = [s("Penjualan"), s("Target")];
+    const v2 = [s("Sales", "Penjualan"), s("Target")];
+    const v3 = [s("Revenue", "Penjualan"), s("Target")];
+    // Rollback V3 → V1 (alias = nama) dan V3 → V2 (alias sama).
+    expect(matchSheet(v3[0]!, v1, 2)).toBe(v1[0]);
+    expect(matchSheet(v3[0]!, v2, 2)).toBe(v2[0]);
+    // Roll-forward V1 → V3 (nama = alias) dan V2 → V3 (alias sama).
+    expect(matchSheet(v1[0]!, v3, 2)).toBe(v3[0]);
+    expect(matchSheet(v2[0]!, v3, 2)).toBe(v3[0]);
+    expect(matchSheet(v2[0]!, v1, 2)).toBe(v1[0]);
+    // Sheet lain tetap lewat nama.
+    expect(matchSheet(v3[1]!, v1, 2)).toBe(v1[1]);
+    // Alias sama di dua sheet target → tidak bisa ditentukan dengan aman.
+    expect(matchSheet(v3[0]!, [s("A", "Penjualan"), s("B", "penjualan ")], 2)).toBeNull();
+  });
 });

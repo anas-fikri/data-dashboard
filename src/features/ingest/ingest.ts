@@ -127,7 +127,14 @@ export interface IngestRepo {
 export interface IngestStorage {
   download(key: string, dest: string): Promise<{ sha256: string; bytes: number }>;
   upload(key: string, path: string, contentType: string): Promise<void>;
+  /** Prefix wajib diakhiri '/' (S3 storage menolak selainnya). */
   deletePrefix(prefix: string): Promise<number>;
+}
+
+/** Storage recast/pemetaan: plus hapus satu objek (file percobaan yang tidak menjadi typed aktif). */
+export interface TypedStorage extends IngestStorage {
+  /** Satu typed-<rev>[-<token>].parquet; kunci objek penuh, bukan prefix. */
+  deleteObject(key: string): Promise<void>;
 }
 
 export interface IngestOptions {

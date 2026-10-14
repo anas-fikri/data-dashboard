@@ -10,7 +10,7 @@ import { lockActiveSheet } from "@/features/ingest/active-lock";
 import { prisma } from "@/lib/db";
 import { acquireLock, redisLockStore, releaseLock } from "@/lib/lock";
 import { recastQueue, withQueueTimeout } from "@/lib/queue/connection";
-import { enqueueRecast } from "@/lib/queue/versions";
+import { enqueueRecast, USER_INFLIGHT_TTL_MS } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
 import type { EditKind, RecastJobView, SchemaDeps, SchemaRepo } from "./service";
 
@@ -181,7 +181,7 @@ async function recastJob(jobId: string): Promise<RecastJobView | null> {
  * Indeks job recast yang belum selesai (review T-008 M2): set id job per user dan id job per sheet di
  * Redis, divalidasi malas dengan state BullMQ (getJobState tidak memuat payload job). Entri yang sudah
  * selesai/hilang dibuang saat dibaca; TTL 2 jam sebagai pengaman (recast ≤ 20 menit + tunda busy
- * ≤ 30 menit).
+ * ≤ 30 menit). Set per user dipakai bersama job pemetaan (T-014): TTL-nya USER_INFLIGHT_TTL_MS.
  */
 const INDEX_TTL_MS = 2 * 60 * 60 * 1000;
 const userKey = (userId: string) => `recast:inflight:u:${userId}`;
@@ -224,7 +224,7 @@ async function enqueue(sheetId: string, userId: string, input: RecastInput): Pro
   await r
     .multi()
     .sadd(userKey(userId), jobId)
-    .pexpire(userKey(userId), INDEX_TTL_MS)
+    .pexpire(userKey(userId), USER_INFLIGHT_TTL_MS)
     .set(sheetKey(sheetId), jobId, "PX", INDEX_TTL_MS)
     .exec();
   return enqueueRecast(sheetId, input, userId, jobId);

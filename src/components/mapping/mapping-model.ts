@@ -1,6 +1,7 @@
 import type {
   CastChoice,
   MappingActiveColumn,
+  MappingLast,
   MappingLowCast,
   MappingNewColumn,
   MappingPayload,
@@ -9,6 +10,7 @@ import type {
   MappingReviewIssue,
   MappingSheetView,
 } from "./mapping-types";
+import type { MappingLocal } from "./use-mapping-job";
 
 /*
  * Model murni halaman pemetaan (T-014): draf keputusan → kemajuan, pilihan kolom satu-ke-satu,
@@ -254,7 +256,11 @@ export function mappedCast(
   return { column, base: activeChoice(a), ...(review ? { review } : {}) };
 }
 
-/** Id pemicu tipe untuk kolom aktif `activePos` (tombol "Ubah tipe" di panel tinjau), atau null. */
+/**
+ * Id pemicu tipe untuk kolom aktif `activePos` (tombol "Ubah tipe" di panel tinjau), atau null.
+ * Kolom hilang yang belum dipilih lagi (mis. hasil tinjau tersimpan setelah muat ulang) → pemilih
+ * kolomnya: pilihan tipe muncul setelah kolom file dipilih.
+ */
 export function castTargetId(
   sheet: MappingSheetView,
   pair: MappingPlanView,
@@ -265,9 +271,11 @@ export function castTargetId(
   if (pair.missing.includes(activePos)) {
     // Sama dengan mappedCast: kolom aktif Teks tidak punya pilihan tipe di barisnya.
     const text = sheet.active.columns.find((c) => c.pos === activePos)?.type === "text";
-    return d.columns[activePos] != null && !text
-      ? `${domId(columnKey(sid, activePos))}-cast-type`
-      : null;
+    const v = d.columns[activePos];
+    if (text || v === null) return null;
+    return v === undefined
+      ? domId(columnKey(sid, activePos))
+      : `${domId(columnKey(sid, activePos))}-cast-type`;
   }
   const m = pair.autoMatched.find((p) => p.activePos === activePos);
   return m ? `${castRowId(sid, m.newPos)}-type` : null;
@@ -329,7 +337,11 @@ export function nullChoices(view: MappingReady, draft: MappingDraft, plans: Pair
   return { columns, droppedSheets };
 }
 
-/** Angka ringkasan dari pasangan yang sedang dipakai tiap sheet (berubah saat sheet dipasangkan). */
+/**
+ * Angka ringkasan dari pasangan yang sedang dipakai tiap sheet (berubah saat sheet dipasangkan).
+ * "Nilai tidak cocok tipe" = baris tipe + kolom hilang yang dipetakan dan ditandai tahap tinjau
+ * (sama dengan jumlah di panel tinjau untuk isu yang ada di halaman ini).
+ */
 export function summaryCounts(
   view: MappingReady,
   draft: MappingDraft,
@@ -343,8 +355,10 @@ export function summaryCounts(
     const d = sheetDraft(draft, s.active.id);
     const pair = pairOf(s, d, plans);
     if (!pair) continue;
+    const f = flags[s.active.id];
     missing += pair.missing.length;
-    lowCast += castRows(pair, flags[s.active.id]).length;
+    lowCast += castRows(pair, f).length;
+    lowCast += pair.missing.filter((pos) => mappedCast(s, pair, d, pos, f)?.review).length;
     hidden += hiddenExtras(pair, d).length;
   }
   return { missing, lowCast, hidden, sheets: view.sheets.filter((s) => !s.target).length };
@@ -405,6 +419,31 @@ export function toPayload(
 /** Keputusan yang sama dengan yang ditinjau job (boleh disimpan ulang dengan acknowledge). */
 export const samePayload = (a: MappingPayload, b: MappingPayload) =>
   JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Panel tinjau yang tampil. `live` = hasil job yang dikirim tab ini (judul menerima fokus); `ackable`
+ * = keputusannya masih sama dengan yang ditinjau, jadi boleh disimpan dengan persetujuan (bar simpan
+ * tidak menjalankan job yang sama lagi). Job tab lain/sebelum muat ulang (payload tidak diketahui) dan
+ * hasil terakhir dari server: tidak live, tanpa persetujuan.
+ */
+export function reviewOf(
+  view: MappingReady,
+  draft: MappingDraft,
+  plans: PairPlans,
+  local: MappingLocal,
+  last: MappingLast | null,
+): { issues: MappingReviewIssue[]; live: boolean; ackable: boolean } | null {
+  if (local.phase === "review") {
+    return {
+      issues: local.issues,
+      live: local.payload !== null,
+      ackable: local.payload !== null && samePayload(local.payload, toPayload(view, draft, plans)),
+    };
+  }
+  return last?.state === "review"
+    ? { issues: last.issues ?? [], live: false, ackable: false }
+    : null;
+}
 
 /** Kunci acuan skema aktif: berubah (mis. setelah STALE + muat ulang) → form dipasang ulang. */
 export const baseKey = (view: MappingReady) =>

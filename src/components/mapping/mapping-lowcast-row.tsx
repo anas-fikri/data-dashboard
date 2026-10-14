@@ -8,8 +8,9 @@ import type { CastChoice, MappingLowCast } from "./mapping-types";
 
 /*
  * Kolom yang cocok tetapi banyak nilainya tidak lolos konversi ke tipe aktif (< 98 %). Pemilik boleh
- * mengganti tipe/format untuk versi ini; menyimpan = menerima bahwa nilai yang tidak cocok dikosongkan.
- * Label terlihat di semua lebar (baris ini jarang dan tidak membentuk tabel).
+ * mengganti tipe/format untuk versi ini. Menyimpan belum mengosongkan apa pun: job memeriksa ulang
+ * nilainya, dan bila masih < 98 % cocok, tahap tinjau meminta persetujuan sebelum nilai yang tidak
+ * cocok dikosongkan. Label terlihat di semua lebar (baris ini jarang dan tidak membentuk tabel).
  */
 export function MappingLowCastRow({
   id,

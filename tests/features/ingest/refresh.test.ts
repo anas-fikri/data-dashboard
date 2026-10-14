@@ -5,6 +5,7 @@ import { PREVIEW_CHARS } from "@/features/ingest/preview";
 import {
   carriedAlias,
   chooseHeader,
+  lineageRoot,
   missingSheetIssue,
   pairedHeader,
   planColumns,
@@ -66,16 +67,47 @@ describe("planSheets", () => {
     const both = planSheets([{ name: "Penjualan" }, { name: "Sales" }], active);
     expect(both.pairs.map((a) => a?.name ?? null)).toEqual([null, "Sales"]);
   });
+
+  it("R2-INT-2: nama sama di sheet aktif mana pun lebih dulu; alias tidak merebut sheet itu (urutan apa pun)", () => {
+    // Revenue (alias "Sales", hasil pemetaan) + sheet "Sales" baru yang terpisah + Target.
+    const revenue = { ...sheet("Revenue", 0), aliasName: "Sales" };
+    const sales = { ...sheet("Sales", 1), id: "sales" };
+    const target = { ...sheet("Target", 2), id: "target" };
+    for (const active of [
+      [revenue, sales, target],
+      [
+        { ...sales, index: 0 },
+        { ...revenue, index: 1 },
+        { ...target, index: 2 },
+      ],
+    ]) {
+      const p = planSheets([{ name: "Sales" }, { name: "Target" }], active);
+      expect(p.pairs.map((a) => a?.name ?? null)).toEqual(["Sales", "Target"]);
+      expect(p.missing.map((a) => a.name)).toEqual(["Revenue"]);
+    }
+    // Pemilik nama sama tidak ada di daftar aktif → alias tetap berpasangan dengan sheet bebas.
+    const solo = planSheets([{ name: "Sales" }, { name: "Target" }], [revenue, target]);
+    expect(solo.pairs.map((a) => a?.name ?? null)).toEqual(["Revenue", "Target"]);
+    expect(solo.missing).toEqual([]);
+  });
 });
 
-describe("carriedAlias (T-014)", () => {
-  it("nama sama → alias aktif terbawa; cocok lewat alias → nama aktif jadi alias; fallback → null", () => {
+describe("carriedAlias + lineageRoot (T-014)", () => {
+  it("nama sama → alias (akar) terbawa; cocok lewat alias → tanpa alias (sudah bernama akar); fallback → null", () => {
     const sales = { name: "Sales", aliasName: "Penjualan" };
     expect(carriedAlias(" sales ", sales)).toBe("Penjualan");
-    expect(carriedAlias("PENJUALAN", sales)).toBe("Sales");
+    expect(carriedAlias("PENJUALAN", sales)).toBeNull();
     expect(carriedAlias("Sheet1", sales)).toBeNull();
     expect(carriedAlias("Sales", { name: "Sales", aliasName: null })).toBeNull();
     expect(carriedAlias("Sheet1", { name: "CSV" })).toBeNull();
+  });
+
+  it("akar silsilah: alias sheet aktif bila ada (rantai ganti nama), selain itu namanya", () => {
+    expect(lineageRoot({ name: "Penjualan" })).toBe("Penjualan");
+    expect(lineageRoot({ name: "Sales", aliasName: null })).toBe("Sales");
+    expect(lineageRoot({ name: "Sales", aliasName: " " })).toBe("Sales");
+    // V2 "Sales" (alias "Penjualan") dipasangkan lagi ke "Revenue" → alias V3 tetap "Penjualan".
+    expect(lineageRoot({ name: "Sales", aliasName: "Penjualan" })).toBe("Penjualan");
   });
 });
 

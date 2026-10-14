@@ -231,6 +231,46 @@ describe("planWidget", () => {
     });
   });
 
+  it("R2-UI-4: dua ganti nama dipetakan berturut-turut (V1 → V2 → V3) → rollback ke V1/V2 dan roll-forward", () => {
+    const SC = "cmv4kljx40009oczvdmpurrse";
+    const C = "cmv4kljx40009oczvdmpurrvc";
+    const retur = (id: string) => ({ id, name: "Retur", index: 1, schema: OLD_SCHEMA });
+    const v1: SheetInfo[] = [
+      { id: SA, name: "Penjualan", index: 0, schema: OLD_SCHEMA },
+      retur("cmv4kljx40009oczvdmpurrr1"),
+    ];
+    // Alias V2 dan V3 sama-sama akar silsilah ("Penjualan"), bukan nama versi sebelumnya.
+    const v2: SheetInfo[] = [
+      { id: SB, name: "Sales", aliasName: "Penjualan", index: 0, schema: NEW_SCHEMA },
+      retur("cmv4kljx40009oczvdmpurrr2"),
+    ];
+    const v3: SheetInfo[] = [
+      { id: SC, name: "Revenue", aliasName: "Penjualan", index: 0, schema: NEW_SCHEMA },
+      retur("cmv4kljx40009oczvdmpurrr3"),
+    ];
+    const onV3: OldSheet = { ...v3[0]!, versionId: C, sheetCount: 2 };
+    // Rollback V3 → V1 (lompat dua versi) dan V3 → V2.
+    expect(planWidget(w("w1", "kpi", kpi(SC, 3)), v1, onV3)).toEqual({
+      spec: kpi(SA, 2),
+      missingColumns: [],
+    });
+    expect(planWidget(w("w1", "kpi", kpi(SC, 3)), v2, onV3)).toEqual({
+      spec: kpi(SB, 3),
+      missingColumns: [],
+    });
+    // Roll-forward V1 → V3 dan V2 → V3.
+    const onV1: OldSheet = { ...v1[0]!, versionId: A, sheetCount: 2 };
+    expect(planWidget(w("w2", "kpi", kpi(SA, 2)), v3, onV1)).toEqual({
+      spec: kpi(SC, 3),
+      missingColumns: [],
+    });
+    const onV2: OldSheet = { ...v2[0]!, versionId: B, sheetCount: 2 };
+    expect(planWidget(w("w3", "kpi", kpi(SB, 3)), v3, onV2)).toEqual({
+      spec: kpi(SC, 3),
+      missingColumns: [],
+    });
+  });
+
   it("T-014 kolom kosong (absent, pos > kolom file) di target → widget pindah lewat judul asli, tanpa penanda", () => {
     const withAbsent: SheetInfo[] = [
       { ...target[0]!, schema: [...NEW_SCHEMA, { ...col(4, "Diskon", "decimal"), absent: true }] },

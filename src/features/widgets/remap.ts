@@ -49,9 +49,10 @@ const aliasKey = (s: Named) => (s.aliasName?.trim() ? key(s.aliasName) : null);
 
 /**
  * Sheet pengganti di versi aktif, atau null bila tidak bisa ditentukan dengan aman: nama sama lebih
- * dulu, lalu nama alias pasangan pemetaan (T-014) ke dua arah — alias sheet lama = nama sheet target
- * (rollback setelah sheet ganti nama dipetakan) atau nama sheet lama = alias sheet target (roll-
- * forward). Fallback "satu-satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus
+ * dulu, lalu alias pasangan pemetaan (T-014, akar silsilah nama sheet) — alias sheet lama = nama sheet
+ * target (rollback ke versi akar), nama sheet lama = alias sheet target (roll-forward dari versi akar),
+ * atau alias sama (dua versi di tengah rantai ganti nama V1 → V2 → V3). Lebih dari satu kandidat →
+ * null. Fallback "satu-satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus
  * dari workbook tidak boleh diam-diam menunjuk sheet lain (angka salah dengan judul lama).
  */
 export function matchSheet<T extends Named>(
@@ -64,7 +65,10 @@ export function matchSheet<T extends Named>(
   if (byName.length === 1) return byName[0]!;
   if (byName.length === 0) {
     const alias = aliasKey(old);
-    const byAlias = active.filter((s) => key(s.name) === alias || aliasKey(s) === name);
+    const byAlias = active.filter(
+      (s) =>
+        key(s.name) === alias || aliasKey(s) === name || (alias !== null && aliasKey(s) === alias),
+    );
     if (byAlias.length === 1) return byAlias[0]!;
     if (byAlias.length > 1) return null;
   }

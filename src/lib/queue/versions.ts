@@ -56,7 +56,13 @@ const LIVE = new Set(["waiting", "prioritized", "waiting-children", "active", "d
  * aturan SAMA dengan schema/runtime.ts (set recast:inflight:u:<userId> + lock enqueue per user),
  * sehingga recast juga menghitung job pemetaan dan sebaliknya.
  */
-const USER_TTL_MS = 3 * 60 * 60 * 1000;
+/**
+ * TTL set itu, SATU nilai untuk kedua penulis (penulis terakhir menentukan TTL key). Panjang (7 hari,
+ * sama dengan indeks versi): entri dicek ke state BullMQ saat dibaca dan dibuang bila selesai/hilang,
+ * jadi TTL hanya pengaman agar job yang antre/berjalan lama (worker mati, antrean panjang, tunda busy,
+ * percobaan ulang) tetap terhitung dalam batas per user.
+ */
+export const USER_INFLIGHT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const userKey = (userId: string) => `recast:inflight:u:${userId}`;
 const enqueueLockKey = (userId: string) => `recast:enqueue-lock:${userId}`;
 
@@ -119,7 +125,7 @@ export async function enqueueMapping(
     await r
       .multi()
       .sadd(userKey(data.actorId), jobId)
-      .pexpire(userKey(data.actorId), USER_TTL_MS)
+      .pexpire(userKey(data.actorId), USER_INFLIGHT_TTL_MS)
       .del(lastKey(data.versionId))
       .exec();
     await withQueueTimeout(

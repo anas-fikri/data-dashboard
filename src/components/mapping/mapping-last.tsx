@@ -11,7 +11,7 @@ export function lastOutcome(last: MappingLast): { title: string; text: string } 
     case "review":
       return {
         title: "Pemetaan terakhir perlu diperiksa",
-        text: `Di ${fmtInt(last.issues?.length ?? 0)} kolom, banyak nilai tidak cocok dengan tipenya; belum ada yang disimpan. Buka pemetaan kolom untuk mengubah tipe atau menyimpan apa adanya.`,
+        text: `Di ${fmtInt(last.issues?.length ?? 0)} kolom, banyak nilai tidak cocok dengan tipenya; belum ada yang disimpan. Buka pemetaan kolom, buat lagi pilihannya, lalu ubah tipenya atau simpan dan kosongkan nilai yang tidak cocok.`,
       };
     case "stale":
       return {

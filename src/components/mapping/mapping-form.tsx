@@ -10,8 +10,9 @@ import {
   pairKey,
   pairOptions,
   progress,
-  samePayload,
+  reviewOf,
   sheetDraft,
+  sheetKey,
   summaryCounts,
   toPayload,
   undecided,
@@ -20,7 +21,7 @@ import {
   type MappingDraft,
   type ReviewFlags,
 } from "./mapping-model";
-import { MappingReview } from "./mapping-review";
+import { MappingReview, REVIEW_TITLE_ID } from "./mapping-review";
 import { MappingSaveBar } from "./mapping-save-bar";
 import { MappingSheet } from "./mapping-sheet";
 import { MappingStatus, STATUS_ID } from "./mapping-status";
@@ -59,12 +60,9 @@ export function MappingForm({ view }: { view: MappingReady }) {
   const csv = !multi && /\.csv$/i.test(view.awaiting.fileName ?? "");
   const idle = local.phase === "idle" && !job.phase;
   const last = showLast && idle ? view.last : null;
-  const review =
-    local.phase === "review"
-      ? { issues: local.issues, live: true }
-      : last?.state === "review"
-        ? { issues: last.issues ?? [], live: false }
-        : null;
+  const review = reviewOf(view, draft, ready, local, last);
+  // Keputusan sama dengan yang ditinjau: satu-satunya jalan simpan = persetujuan di panel tinjau.
+  const ackable = review?.ackable ?? false;
 
   // Draf belum disimpan: peringatan saat menutup/memuat ulang tab (navigasi klien tidak terpengaruh).
   useEffect(() => {
@@ -86,6 +84,11 @@ export function MappingForm({ view }: { view: MappingReady }) {
   function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
+    // Job yang sama hanya menghasilkan tinjau yang sama: arahkan ke panel, jangan kirim ulang.
+    if (ackable) {
+      document.getElementById(REVIEW_TITLE_ID)?.focus();
+      return;
+    }
     const open = undecided(view, draft, ready);
     if (open.length > 0) {
       setAttempted(true);
@@ -107,11 +110,7 @@ export function MappingForm({ view }: { view: MappingReady }) {
           targets={issueTargets(view, draft, ready, review.issues)}
           showSheet={!csv}
           live={review.live}
-          canAcknowledge={
-            local.phase === "review" &&
-            local.payload !== null &&
-            samePayload(local.payload, toPayload(view, draft, ready))
-          }
+          canAcknowledge={ackable}
           disabled={busy}
           onAcknowledge={() => {
             send(true);
@@ -126,7 +125,12 @@ export function MappingForm({ view }: { view: MappingReady }) {
           ? `Pemetaan belum disimpan: ${local.issues.length} kolom perlu diperiksa.`
           : ""}
       </p>
-      <MappingSummary {...summaryCounts(view, draft, ready, flags)} done={done} total={total} />
+      <MappingSummary
+        {...summaryCounts(view, draft, ready, flags)}
+        done={done}
+        total={total}
+        reviewing={review !== null}
+      />
       <form
         onSubmit={onSubmit}
         noValidate
@@ -154,7 +158,11 @@ export function MappingForm({ view }: { view: MappingReady }) {
                 if (target) void plans.load(sid, target);
               }}
               onRetry={() => {
-                if (d.target) void plans.load(sid, d.target);
+                if (!d.target) return;
+                // Blok galat (dan tombol "Muat lagi" yang difokus) diganti status memuat: fokus ke
+                // pemicu sheet dulu agar tidak jatuh ke <body>.
+                document.getElementById(domId(sheetKey(sid)))?.focus();
+                void plans.load(sid, d.target);
               }}
             />
           );
@@ -164,6 +172,7 @@ export function MappingForm({ view }: { view: MappingReady }) {
           total={total}
           busy={busy}
           pending={local.phase === "submitting"}
+          reviewPending={ackable}
         />
       </form>
       <MappingConfirm
