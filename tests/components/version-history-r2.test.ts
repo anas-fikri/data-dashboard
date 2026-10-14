@@ -63,16 +63,16 @@ describe("FormAlert pembungkus isi", () => {
   const WRAP = /<div class="min-w-0 \[overflow-wrap:anywhere\]">(.*?)<\/div>/;
 
   it("alasan gagal di kartu Data berada di pembungkus yang boleh menyusut dan dipecah", () => {
-    const token = "Rekap_Penjualan_Cabang_Jabodetabek_Kuartal_Ketiga_2026_FinalRevisi_v2";
+    const longName = "Rekap_Penjualan_Cabang_Jabodetabek_Kuartal_Ketiga_2026_FinalRevisi_v2";
     const out = renderToStaticMarkup(
       createElement(DatasetDataSummary, {
         datasetId: "d1",
-        failed: { fileName: `${token}.xlsx`, message: `Sheet "${token}" baris 41: file rusak.` },
+        failed: { fileName: `${longName}.xlsx`, message: `Sheet "${longName}" baris 41: file rusak.` },
         active: null,
       }),
     );
     const inner = out.match(WRAP)?.[1];
     expect(inner).toContain('data-testid="dataset-status-message"');
-    expect(inner).toContain(`${token}.xlsx`);
+    expect(inner).toContain(`${longName}.xlsx`);
   });
 });
