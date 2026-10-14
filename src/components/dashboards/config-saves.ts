@@ -20,7 +20,7 @@ export function createConfigSaves() {
     },
     /**
      * Jawaban server untuk `save`. failure = alasan gagal; null = tersimpan (atau tidak ada yang
-     * disimpan). retry=false: ditolak permanen (tidak valid) — alasannya tetap tampil di panel, tetapi
+     * disimpan). retry=false: ditolak permanen (tidak valid / sudah dihapus) — alasan tetap tampil di panel, tetapi
      * tidak dikirim ulang dan tidak menahan "Selesai". Tanda "dikirim" hanya dilepas oleh simpanan
      * pemiliknya: simpanan yang lebih baru untuk widget yang sama tetap tercatat.
      */

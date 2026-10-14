@@ -56,7 +56,7 @@ export function WidgetPanelFrame({
         ref={box}
         aria-labelledby={`${id}-h`}
         data-testid="widget-panel"
-        className="sticky top-[calc(var(--topbar-h)+1rem)] flex max-h-[calc(100dvh-var(--topbar-h)-2rem)] w-80 shrink-0 flex-col gap-5 overflow-y-auto rounded-lg border bg-card p-4 shadow-xs"
+        className="sticky top-[calc(var(--topbar-h)+1rem)] flex max-h-[calc(100dvh-var(--topbar-h)-2rem)] w-80 shrink-0 scroll-pb-20 flex-col gap-5 overflow-y-auto rounded-lg border bg-card p-4 shadow-xs"
       >
         <div className="flex items-start justify-between gap-2">
           <h2
@@ -93,7 +93,11 @@ export function WidgetPanelFrame({
           onEscapeKeyDown={commitFocused}
           // Fokus dikembalikan pemanggil (widget bisa sudah dihapus), bukan ke pemicu bawaan Radix.
           onCloseAutoFocus={(e) => e.preventDefault()}
-          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[55dvh] flex-col gap-5 overflow-y-auto rounded-t-lg border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:rounded-lg"
+          // Radix memindah fokus saat Tab berputar dengan preventScroll: tampilkan elemen itu.
+          onFocus={(e) => {
+            if (e.currentTarget.contains(e.target)) e.target.scrollIntoView({ block: "nearest" });
+          }}
+          className="fixed inset-x-0 bottom-0 z-50 flex max-h-[55dvh] scroll-pb-20 flex-col gap-5 overflow-y-auto rounded-t-lg border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:rounded-lg"
         >
           <div className="flex items-start justify-between gap-2">
             <Dialog.Title className="min-w-0 break-words text-base font-semibold">

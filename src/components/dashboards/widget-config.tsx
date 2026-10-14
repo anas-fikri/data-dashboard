@@ -180,7 +180,8 @@ export function WidgetConfigForm({
   const saveFailed = status === "error" && !unsaved;
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
   // memindahkan spec ke sheet aktif.
-  const retargetedOnly = retargeted && !unsaved && !!sheet;
+  // Prop ikut menentukan: kirim ulang dari toolbar yang berhasil menghapus tanda di kartu.
+  const retargetedOnly = retargeted && widget.retargeted === true && !unsaved && !!sheet;
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="widget-config">

@@ -215,12 +215,12 @@ export function useDashboardEditor(o: {
       }
       const r = await api.configureWidget(id, widgetId, c.type, c.spec);
       // Gagal bukan STALE: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di
-      // layar < 1280 px pesan kanvas tertutup panel). Ditolak permanen: widget sudah dihapus di tab lain
-      // (tidak ada yang disimpan) atau pengaturan tidak valid (alasan tetap tampil, tidak dikirim ulang,
-      // tidak menahan "Selesai").
+      // layar < 1280 px pesan kanvas tertutup panel). Ditolak permanen — widget/dashboard sudah dihapus
+      // di tab lain, atau pengaturan tidak valid: alasan tetap tampil, tidak dikirim ulang, tidak menahan
+      // "Selesai".
       const gone = !r.ok && r.code === "NOT_FOUND";
       const invalid = !r.ok && r.code === "INVALID";
-      saves.finish(widgetId, c, r.ok || r.code === "STALE" || gone ? null : r.message, !invalid);
+      saves.finish(widgetId, c, r.ok || r.code === "STALE" ? null : r.message, !invalid && !gone);
       setConfigErrors(saves.errors());
       if (!r.ok) {
         failed(r, !gone && !invalid);
@@ -259,9 +259,16 @@ export function useDashboardEditor(o: {
     clearTimeout(timer.current);
     return run(async () => {
       if (stale.current) return false;
+      if (saves.retries().length) setSave("saving");
       for (const [widgetId, c] of saves.retries()) {
+        // Sudah ada simpanan lebih baru untuk widget ini di antrean: yang gagal tidak dikirim ulang.
+        if (saves.unsaved(widgetId) !== c) continue;
         saves.start(widgetId, c);
-        if (!(await sendConfig(widgetId, c))) return false;
+        if (!(await sendConfig(widgetId, c))) {
+          // Ditolak permanen dengan tata letak belum terkirim: settled() tidak mengubah status saat dirty.
+          if (!stale.current && dirty.current) setSave("error");
+          return false;
+        }
       }
       return saveNow();
     });
