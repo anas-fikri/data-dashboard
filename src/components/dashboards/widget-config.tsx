@@ -106,6 +106,10 @@ export function WidgetConfigForm({
     // Kolom tabel yang tidak lagi tersedia dibuang begitu user mengubah sesuatu.
     if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
+    // Draf baru menggantikan simpanan yang masih tertunda (itu bukan lagi isi panel); draf yang belum
+    // bisa disimpan tidak menyimpan apa pun.
+    clearTimeout(timer.current);
+    pending.current = null;
     if (next.type === "empty" || missingColumns(next, sources).length) return;
     // Sheet spec tidak ada di data aktif (server menolaknya) atau semua kolomnya disembunyikan:
     // tunggu sheet lain dipilih.
@@ -114,14 +118,17 @@ export function WidgetConfigForm({
     if (measureMismatch(next, sources)) return;
     if (!parseWidgetConfig(next.type, next.spec).ok) return;
     pending.current = next;
-    clearTimeout(timer.current);
     timer.current = setTimeout(flush, SAVE_DELAY_MS);
   };
 
   const switchType = (type: Exclude<WidgetType, "empty">) => {
     memory.current[draft.type] = draft;
     const kept = memory.current[type];
-    const usable = kept && kept.type !== "empty" && sources.some((s) => s.id === kept.spec.sheetId);
+    // Aturan sheet sama dengan commit(): sheet hilang atau tanpa kolom terlihat → pilihan bawaan.
+    const usable =
+      kept &&
+      kept.type !== "empty" &&
+      sources.some((s) => s.id === kept.spec.sheetId && s.columns.length);
     if (!usable) return commit(defaultConfig(type, sources, draft));
     // Yang diingat berisi nilai yang tidak cocok (spec lama): pilih ulang nilainya saja, sisanya tetap.
     commit(measureMismatch(kept, sources) ? defaultConfig(type, sources, kept) : kept);
@@ -346,20 +353,21 @@ export function WidgetConfigForm({
             data-testid="config-status"
             data-state={status}
           >
+            {/* Draf yang belum bisa disimpan didahulukan dari "Tersimpan" milik draf sebelumnya. */}
             {status === "saving"
               ? "Menyimpan…"
-              : status === "saved"
-                ? reloads
-                  ? "Tersimpan. Widget memuat data terbaru."
-                  : "Tersimpan."
-                : status === "error"
-                  ? "Belum tersimpan — lihat pesan di atas kanvas."
-                  : noColumns
-                    ? noSheet
-                      ? "Belum tersimpan — pilih sheet."
-                      : "Belum tersimpan — pilih sheet lain."
-                    : unsaved
-                      ? "Belum tersimpan — pilih kolom pengganti."
+              : status === "error"
+                ? "Belum tersimpan — lihat pesan di atas kanvas."
+                : noColumns
+                  ? noSheet
+                    ? "Belum tersimpan — pilih sheet."
+                    : "Belum tersimpan — pilih sheet lain."
+                  : unsaved
+                    ? "Belum tersimpan — pilih kolom pengganti."
+                    : status === "saved"
+                      ? reloads
+                        ? "Tersimpan. Widget memuat data terbaru."
+                        : "Tersimpan."
                       : retargetedOnly
                         ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
                         : "Perubahan tersimpan otomatis."}
