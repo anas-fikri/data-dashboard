@@ -44,6 +44,17 @@ export function activationBusy(badge: DatasetLabel["badge"]): ActivationBusy | n
   return badge && badge.kind !== "failed" ? badge.kind : null;
 }
 
+/**
+ * Keadaan sibuk yang ditampilkan: versi terbaru di server didahulukan; bila server belum melihatnya
+ * (halaman tidak di-refresh di tengah unggahan), unggahan yang sedang ditransfer di tab ini.
+ */
+export function shownBusy(
+  server: ActivationBusy | null,
+  uploadingInTab: boolean,
+): ActivationBusy | null {
+  return server ?? (uploadingInTab ? "uploading" : null);
+}
+
 /** Satu kalimat per keadaan sibuk: hanya menyebut tindakan yang benar-benar membuka aktivasi. */
 export const BUSY_TEXT: Record<ActivationBusy, string> = {
   uploading: "Versi aktif bisa diganti setelah unggahan selesai diproses atau dibatalkan.",

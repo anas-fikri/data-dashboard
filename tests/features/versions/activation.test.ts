@@ -148,6 +148,21 @@ describe("planWidget", () => {
     expect(planWidget(w("w5", "kpi", kpi(SA, 2)), target, other)).toBeNull();
   });
 
+  it("R3-CC-1: spec dengan penanda tanpa pasangan sheet → nama penanda tetap tercatat (bukan dikosongkan)", () => {
+    const marked = { ...bar(SA), measure: { agg: "sum", column: MISSING_COLUMN } };
+    const other = { ...oldSheet, name: "Retur", sheetCount: 2 };
+    // Versi sheet lama tetap disimpan: nama di balik penanda satu-satunya ada di missingColumns.
+    expect(planWidget(w("wm", "bar", marked, ["Diskon"]), target, other)).toBeNull();
+    // Catatan memuat kolom spec yang masih ada di sheet lama ("Cabang") → hanya nama penanda tersisa.
+    expect(planWidget(w("wm", "bar", marked, ["Cabang", "Diskon"]), target, other)).toEqual({
+      missingColumns: ["Diskon"],
+    });
+    // Versi sheet lama ikut dibuang: sheet hilang (SHEET_UNAVAILABLE), catatan dikosongkan.
+    expect(planWidget(w("wm", "bar", marked, ["Diskon"]), target, other, new Set([A]))).toEqual({
+      missingColumns: [],
+    });
+  });
+
   it("rollback setelah ganti nama di versi baru → kolom lewat judul asli, tidak ada yang hilang", () => {
     // Versi baru: "Omzet" diganti nama tampilnya jadi "Pendapatan", "Cabang"↔"Diskon" ditukar.
     const renamed = { ...col(2, "Pendapatan", "decimal"), original: "Omzet" };

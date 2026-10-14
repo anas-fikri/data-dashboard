@@ -449,6 +449,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         type: "kpi",
         title: "",
         spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+        retargeted: true,
       },
     ]);
     // Lebih dari satu sheet aktif → sheet lama tetap (panel memberi pilihan sheet).
@@ -499,6 +500,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       type: "kpi",
       title: "",
       spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+      retargeted: true,
     };
     // Sheet lama sudah dihapus retensi, catatan kosong (sheet tanpa pasangan saat rollback).
     prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard());
@@ -517,6 +519,37 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     ] as never);
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([retargeted]);
+  });
+
+  it("R3-CC-2: KPI Jumlah baris (tanpa kolom) yang diarahkan ke satu-satunya sheet aktif → ditandai retargeted; widget biasa tidak", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const VER = "cmv4kljx40009oczvdmpurrve";
+    const WB = WA.replace(/.$/, "b");
+    const count = (sheetId: string) => ({ sheetId, measure: { agg: "count" }, format: fmt });
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      id: DB,
+      name: "Penjualan",
+      layout: [],
+      layoutRevision: 0,
+      filterColumns: [],
+      updatedAt: new Date(),
+      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      widgets: [
+        { id: WA, type: "kpi", title: "", spec: count(OLD), missingColumns: [] },
+        { id: WB, type: "kpi", title: "", spec: count(SHEET), missingColumns: [] },
+      ],
+    });
+    // Sheet lama sudah dihapus retensi; sheet widget kedua ada di versi aktif.
+    prisma.sheet.findMany.mockResolvedValueOnce([
+      { id: SHEET, name: "Data", index: 0, schema, versionId: VER },
+    ]);
+    prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Data", index: 0 }]);
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    // Tidak ada kolom yang bisa ditandai: spec tampilan lengkap, hanya flag yang memberi tahu panel.
+    expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
+      { id: WA, type: "kpi", title: "", spec: count(SHEET), retargeted: true },
+      { id: WB, type: "kpi", title: "", spec: count(SHEET) },
+    ]);
   });
 
   it("kolom tersembunyi, agregasi tidak cocok, sheet lain, atau bentuk salah → INVALID tanpa menulis", async () => {

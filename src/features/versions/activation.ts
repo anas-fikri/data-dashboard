@@ -83,7 +83,9 @@ const sameList = (a: string[], b: string[]) =>
  * `victims` = id versi yang dibuang retensi aktivasi ini.
  *  - sudah di sheet versi target → missingColumns hanya menyisakan nama penanda MISSING_COLUMN spec;
  *  - sheet lama tidak ada lagi → dibiarkan (missingColumns lama tetap menjadi pesan widget);
- *  - sheet lama tidak punya pasangan → spec dibiarkan (SHEET_UNAVAILABLE), missingColumns kosong;
+ *  - sheet lama tidak punya pasangan → spec dibiarkan (SHEET_UNAVAILABLE); missingColumns hanya
+ *    menyisakan nama penanda MISSING_COLUMN spec (satu-satunya tempat nama itu tersimpan — R3-CC-1),
+ *    kosong bila versi sheet lama ikut dibuang (sheet hilang: SHEET_UNAVAILABLE lebih tepat);
  *  - semua kolom ketemu → spec baru disimpan; ada yang hilang → nama kolom dicatat, spec dibiarkan
  *    (roll-forward ke versi lama memulihkannya) kecuali versi sheet lama ikut dibuang: spec disimpan di
  *    sheet target dengan penanda untuk kolom yang hilang saja (panel dan kartu sepakat).
@@ -104,10 +106,11 @@ export function planWidget(
   if (here) return record(markerNames(config, here.schema, w.missingColumns));
   if (!old) return null;
   const to = matchSheet(old, target, old.sheetCount);
-  if (!to) return record([]);
+  const gone = victims.has(old.versionId);
+  if (!to) return record(gone ? [] : markerNames(config, old.schema, w.missingColumns));
   const moved = remapConfig(config, old, to, w.missingColumns);
   if (!moved.missing.length) return { spec: moved.config.spec, missingColumns: [] };
-  if (victims.has(old.versionId)) return { spec: moved.config.spec, missingColumns: moved.missing };
+  if (gone) return { spec: moved.config.spec, missingColumns: moved.missing };
   return record(moved.missing);
 }
 

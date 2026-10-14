@@ -115,6 +115,28 @@ export function MissingNotice({
   );
 }
 
+/**
+ * Sheet lama widget tidak ada lagi di data aktif; pengaturan ditampilkan di satu-satunya sheet aktif
+ * (WidgetView.retargeted) tanpa kolom yang perlu diganti — mis. KPI Jumlah baris. Spec tersimpan belum
+ * berubah (kartu tetap meminta atur ulang) sampai user memakai sheet ini; tidak disimpan otomatis saat
+ * panel dibuka (R3-CC-2).
+ */
+export function RetargetNotice({ sheet, onUse }: { sheet: string; onUse: () => void }) {
+  return (
+    <p
+      role="status"
+      className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm break-words"
+      data-testid="config-retarget"
+    >
+      Sheet lama widget ini sudah tidak ada di data aktif. Pengaturan di bawah memakai sheet{" "}
+      <span className="font-medium">“{sheet}”</span> — widget baru memakainya setelah disimpan.{" "}
+      <button type="button" className="font-medium underline underline-offset-4" onClick={onUse}>
+        Pakai sheet ini
+      </button>
+    </p>
+  );
+}
+
 /** Kolom tabel: hanya kolom yang tampil di skema; jumlah dihitung dari yang benar-benar tersedia. */
 export function TableColumns({
   columns,

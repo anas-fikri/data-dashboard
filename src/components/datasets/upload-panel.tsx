@@ -8,8 +8,9 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState, useTransition } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
+import { usePublishUploading } from "@/components/datasets/dataset-activity";
 import { IngestProgress } from "@/components/datasets/ingest-progress";
 import { VersionMappingNotice } from "@/components/datasets/version-history-mapping";
 import { Button } from "@/components/ui/button";
@@ -97,6 +98,11 @@ export function UploadPanel({
   const running = state.kind === "running";
   const progress = state.kind === "running" || state.kind === "paused" ? state.progress : null;
   const [eta, setEta] = useState<string | null>(null);
+  const [refreshing, startRefresh] = useTransition();
+  // Versi UPLOADING sudah ada di server → riwayat versi di tab ini menahan "Aktifkan" (tanpa refresh
+  // di tengah unggahan; badge dan alert gagal di atas panel tetap sampai unggahan selesai/batal).
+  // Setelah selesai tetap ditahan sampai refresh membawa status "diproses" dari server (tanpa kedip).
+  usePublishUploading(Boolean(progress?.versionId) || (state.kind === "done" && refreshing));
 
   // Peringatan saat menutup tab di tengah unggahan (unggahan tetap bisa dilanjutkan nanti).
   useEffect(() => {
@@ -112,21 +118,19 @@ export function UploadPanel({
     if (state.kind === "error") errorRef.current?.focus();
   }, [state.kind]);
 
+  /** `versionId`: versi yang dilanjutkan dari jeda (server memakai versi yang sama untuk file ini). */
   const start = useCallback(
-    async (file: File) => {
+    async (file: File, versionId?: string) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
       lastAnnounced.current = -1;
       let started: { t: number; loaded: number } | null = null;
-      // Versi UPLOADING sudah ada di server begitu progres membawa versionId → refresh sekali agar
-      // halaman (badge, "Aktifkan" di riwayat versi) tahu dataset sibuk. State panel ini tetap.
-      let refreshed = false;
       setEta(null);
       setState({
         kind: "running",
         file,
-        progress: { phase: "checking", loaded: 0, total: file.size, resumed: false },
+        progress: { phase: "checking", loaded: 0, total: file.size, resumed: false, versionId },
       });
       try {
         await uploadFile({
@@ -136,11 +140,13 @@ export function UploadPanel({
           signal: controller.signal,
           onProgress: (p) => {
             if (controller.signal.aborted) return;
-            setState({ kind: "running", file, progress: p });
-            if (p.versionId && !refreshed) {
-              refreshed = true;
-              router.refresh();
-            }
+            // Pra-cek saat melanjutkan belum membawa versionId: versi lama tetap dianggap ditransfer
+            // (tanpa kedip "Aktifkan") dan "Batalkan" tetap membatalkannya di server.
+            setState({
+              kind: "running",
+              file,
+              progress: { ...p, versionId: p.versionId ?? versionId },
+            });
             if (p.phase === "uploading") {
               const now = performance.now();
               started ??= { t: now, loaded: p.loaded };
@@ -159,7 +165,7 @@ export function UploadPanel({
         });
         setPendingInfo(null);
         setState({ kind: "done", name: file.name });
-        router.refresh();
+        startRefresh(() => router.refresh());
       } catch (e) {
         if (controller.signal.aborted) return; // jeda/batal ditangani pemanggil
         const err =
@@ -380,7 +386,7 @@ export function UploadPanel({
                 size="sm"
                 className={control}
                 leadingIcon={<IconPlayerPlay aria-hidden />}
-                onClick={() => void start(state.file)}
+                onClick={() => void start(state.file, progress.versionId)}
               >
                 Lanjutkan
               </Button>

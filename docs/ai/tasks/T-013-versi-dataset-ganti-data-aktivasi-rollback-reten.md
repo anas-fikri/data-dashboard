@@ -11,7 +11,7 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T07:43:59Z"
+updated: "2026-10-14T08:18:48Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -27,11 +27,15 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-14T07:32:12Z"
       findings: 6
+    - "n": 3
+      by: claude-verify-workflow
+      at: "2026-10-14T08:07:20Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 37170
+    duration_ms: 35965
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -53,13 +57,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791963815540,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791963815566,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791965907030,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791965907051,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
        Test Files  56 passed (56)
-            Tests  847 passed (847)
-         Start at  14:43:31
-         Duration  25.75s (tests 86%, import 9%, transform 5%)
+            Tests  856 passed (856)
+         Start at  15:18:23
+         Duration  24.34s (tests 86%, import 9%, transform 5%)
 
 
       > data-dashboard@0.1.0 audit
@@ -67,8 +71,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-14T07:43:59Z"
-    tree: f2888cfae77fa2a2175db8da76f356b5d5128a58fb204e2119eae6ebb5322359
+    at: "2026-10-14T08:18:48Z"
+    tree: 3c83ec5b20ff34cce902142f6c12dab35d3101c7d34d5ef084ece2cfd815e92d
 ---
 
 ## Objective

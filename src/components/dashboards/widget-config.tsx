@@ -12,6 +12,7 @@ import {
   FormatColumnsField,
   MeasureFields,
   MissingNotice,
+  RetargetNotice,
   TableColumns,
   TopNField,
   TypeTiles,
@@ -36,7 +37,9 @@ import {
  * jenis lalu kembali (mis. dengan panah keyboard) tidak menghapus pengaturan (review desain T-011 M3).
  * Kolom yang tidak lagi tersedia (disembunyikan, atau tidak ada di data terbaru — MISSING_COLUMN)
  * diberi tahu dan ditandai; tidak tersimpan sampai diganti. Kolom tabel dibuang saat user mengubah
- * sesuatu (M2).
+ * sesuatu (M2). Widget yang sheet lamanya tidak ada lagi ditampilkan di satu-satunya sheet aktif
+ * (retargeted): belum tersimpan sampai user memakainya — tidak disimpan otomatis saat panel dibuka,
+ * rollback ke versi yang punya sheet lama masih bisa memulihkan spec tersimpan (R3-CC-2).
  */
 const SAVE_DELAY_MS = 350;
 type Status = "idle" | "saving" | "saved" | "error";
@@ -62,11 +65,16 @@ export function WidgetConfigForm({
     reloads: true,
   });
   const { status, reloads } = saveState;
-  const savedVersion = useRef(configVersion(parsed.ok ? parsed.config : EMPTY));
+  const [retargeted, setRetargeted] = useState(widget.retargeted === true);
+  // Spec tampilan widget retargeted belum tersimpan: simpanan pertama selalu memuat ulang kartu.
+  const savedVersion = useRef(
+    widget.retargeted ? "" : configVersion(parsed.ok ? parsed.config : EMPTY),
+  );
   const memory = useRef<Partial<Record<WidgetType, WidgetConfig>>>({});
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const save = useRef(onSave);
+  const statusRef = useRef<HTMLParagraphElement>(null);
   const [columnsRef, focusColumns] = useFocusAfterRender<HTMLFieldSetElement>();
   useEffect(() => {
     save.current = onSave;
@@ -82,10 +90,14 @@ export function WidgetConfigForm({
     setStatus({ status: "saving", reloads: true });
     void save.current(next.type, next.spec).then((ok) => {
       const reloads = version !== savedVersion.current;
-      if (ok) savedVersion.current = version;
+      if (ok) {
+        savedVersion.current = version;
+        // Spec tersimpan kini di sheet aktif (sumber panel hanya sheet versi aktif).
+        setRetargeted(false);
+      }
       setStatus({ status: ok ? "saved" : "error", reloads });
     });
-  }, [setStatus]);
+  }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
 
@@ -130,6 +142,9 @@ export function WidgetConfigForm({
   const typeOf = (pos: number | undefined) => cols.find((c) => c.pos === pos)?.type;
   const missing = missingColumns(draft, sources);
   const unsaved = missing.length > 0 || measureMismatch(draft, sources);
+  // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
+  // memindahkan spec ke sheet aktif.
+  const retargetedOnly = retargeted && !unsaved && !!sheet;
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="widget-config">
@@ -154,6 +169,15 @@ export function WidgetConfigForm({
                     }
                   : undefined
               }
+            />
+          ) : retargetedOnly ? (
+            <RetargetNotice
+              sheet={sheet.name}
+              onUse={() => {
+                // Tombol hilang setelah tersimpan: fokus ke baris status yang melaporkan hasilnya.
+                statusRef.current?.focus();
+                commit(draft);
+              }}
             />
           ) : null}
 
@@ -298,6 +322,8 @@ export function WidgetConfigForm({
           ) : null}
 
           <p
+            ref={statusRef}
+            tabIndex={-1}
             className="text-xs text-muted-foreground"
             aria-live="polite"
             data-testid="config-status"
@@ -313,7 +339,9 @@ export function WidgetConfigForm({
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
                   : unsaved
                     ? "Belum tersimpan — pilih kolom pengganti."
-                    : "Perubahan tersimpan otomatis."}
+                    : retargetedOnly
+                      ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
+                      : "Perubahan tersimpan otomatis."}
           </p>
         </>
       )}

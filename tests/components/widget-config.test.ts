@@ -672,3 +672,46 @@ describe("verifikasi T-011 putaran 4: panel pengaturan", () => {
     expect(chart).toContain("Pilih kolom lain di bawah.");
   });
 });
+
+// --- review T-013 putaran 3 (R3-CC-2): widget yang diarahkan ke satu-satunya sheet aktif
+import { WidgetConfigForm } from "@/components/dashboards/widget-config";
+import type { WidgetView } from "@/features/dashboards/service";
+
+describe("R3-CC-2: panel widget retargeted", () => {
+  const one: Source[] = [sources[0]!];
+  const fmt = { style: "number", decimals: 0 } as const;
+  const form = (widget: WidgetView) =>
+    renderToStaticMarkup(
+      createElement(WidgetConfigForm, {
+        widget,
+        sources: one,
+        datasetId: "ds",
+        onSave: () => Promise.resolve(true),
+      }),
+    );
+  const status = (html: string) => html.match(/data-testid="config-status"[^>]*>([^<]*)</)?.[1];
+  const count = { sheetId: S1, measure: { agg: "count" }, format: fmt };
+
+  it("KPI Jumlah baris tanpa kolom yang diganti → pemberitahuan + tombol simpan, status belum tersimpan", () => {
+    const html = form({ id: "w", type: "kpi", title: "", spec: count, retargeted: true });
+    expect(html).toContain('data-testid="config-retarget"');
+    expect(html).toContain("Sheet lama widget ini sudah tidak ada di data aktif.");
+    expect(html).toContain("“Penjualan”");
+    expect(html).toMatch(/<button type="button"[^>]*>Pakai sheet ini<\/button>/);
+    expect(status(html)).toBe("Belum tersimpan — pilih “Pakai sheet ini” di atas.");
+    expect(html).not.toContain("Perubahan tersimpan otomatis.");
+    // Status bisa menerima fokus setelah tombol hilang (tidak jatuh ke <body>).
+    expect(html).toMatch(/<p[^>]*tabindex="-1"[^>]*data-testid="config-status"/);
+  });
+
+  it("widget biasa → tanpa pemberitahuan; retargeted dengan kolom hilang → hanya peringatan kolom", () => {
+    const plain = form({ id: "w", type: "kpi", title: "", spec: count });
+    expect(plain).not.toContain('data-testid="config-retarget"');
+    expect(status(plain)).toBe("Perubahan tersimpan otomatis.");
+    const marked = { ...count, measure: { agg: "sum", column: MISSING_COLUMN } };
+    const html = form({ id: "w", type: "kpi", title: "", spec: marked, retargeted: true });
+    expect(html).toContain('data-testid="config-missing"');
+    expect(html).not.toContain('data-testid="config-retarget"');
+    expect(status(html)).toBe("Belum tersimpan — pilih kolom pengganti.");
+  });
+});

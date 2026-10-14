@@ -52,6 +52,12 @@ export interface WidgetView {
   title: string;
   /** Spec tersimpan (T-011); klien memvalidasi ulang dengan parseWidgetConfig sebelum dipakai. */
   spec: unknown;
+  /**
+   * Hanya tampilan (remapToActive): sheet spec tersimpan tidak bisa ditentukan dan `spec` diarahkan ke
+   * satu-satunya sheet aktif. Spec tersimpan belum berubah — kartu tetap SHEET_UNAVAILABLE sampai panel
+   * menyimpannya (R3-CC-2). Tidak pernah ada di widget biasa.
+   */
+  retargeted?: true;
 }
 
 /** Sumber data panel konfigurasi widget: sheet siap di versi aktif + kolom yang tampil. */
@@ -345,10 +351,11 @@ function allMissing(
  * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk
  * ditampilkan dan diedit (lihat features/widgets/remap.ts). Sheet yang tidak bisa ditentukan — sudah
  * dihapus retensi, atau sheet lama tanpa pasangan di versi aktif — dan versi aktif hanya punya satu
- * sheet → spec dipindah ke sheet itu dengan semua kolom ditandai hilang, agar panel menampilkan
- * kolomnya (dataset satu sheet tidak punya pilihan sheet); query tetap memberi SHEET_UNAVAILABLE atau
- * COLUMN_UNAVAILABLE dari spec tersimpan. Lebih dari satu sheet → pilihan sheet di panel; sheet yang
- * dihapus dengan kolom hilang tercatat (T-013) tetap ditandai semua kolomnya. Tidak menulis ke DB.
+ * sheet → spec dipindah ke sheet itu dengan semua kolom ditandai hilang (`retargeted`), agar panel
+ * menampilkan kolomnya (dataset satu sheet tidak punya pilihan sheet) dan meminta simpan bila tidak ada
+ * kolom yang perlu diganti; query tetap memberi SHEET_UNAVAILABLE atau COLUMN_UNAVAILABLE dari spec
+ * tersimpan. Lebih dari satu sheet → pilihan sheet di panel; sheet yang dihapus dengan kolom hilang
+ * tercatat (T-013) tetap ditandai semua kolomnya. Tidak menulis ke DB.
  */
 async function remapToActive(
   datasetId: string,
@@ -424,7 +431,9 @@ async function remapToActive(
         : w;
     }
     // Sheet tidak bisa ditentukan (dihapus retensi / tanpa pasangan di versi aktif).
-    if (active.length === 1) return { ...w, spec: allMissing(c.config, active[0]!.id) };
+    if (active.length === 1) {
+      return { ...w, spec: allMissing(c.config, active[0]!.id), retargeted: true as const };
+    }
     return !old && m?.length ? { ...w, spec: allMissing(c.config) } : w;
   });
 }

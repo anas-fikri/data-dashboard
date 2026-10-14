@@ -1,12 +1,13 @@
 "use client";
 
-import { IconRestore } from "@tabler/icons-react";
+import { IconInfoCircle, IconRestore } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { createContext, use, useCallback, useState, type ReactNode } from "react";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { activateVersionAction } from "@/features/versions/actions";
+import { UploadingInTab } from "./dataset-activity";
 import { VersionConfirm } from "./version-history-confirm";
-import { keepNotice } from "./version-history-status";
+import { BUSY_TEXT, keepNotice, shownBusy, type ActivationBusy } from "./version-history-status";
 
 const NotifyContext = createContext<(versionId: string, fileName: string) => void>(() => {});
 
@@ -53,7 +54,25 @@ export function VersionFeedback({
   );
 }
 
-/** "Aktifkan" pada versi siap yang tidak aktif (rollback atau maju lagi), khusus pemilik. */
+/** Satu kalimat alasan "Aktifkan" tidak ditawarkan (server didahulukan, lalu unggahan di tab ini). */
+export function VersionBusyNote({ busy }: { busy: ActivationBusy | null }) {
+  const kind = shownBusy(busy, use(UploadingInTab));
+  if (!kind) return null;
+  return (
+    <p
+      className="flex items-start gap-1.5 text-sm text-muted-foreground"
+      data-testid="version-busy"
+    >
+      <IconInfoCircle size={20} stroke={1.5} aria-hidden className="shrink-0" />
+      {BUSY_TEXT[kind]}
+    </p>
+  );
+}
+
+/**
+ * "Aktifkan" pada versi siap yang tidak aktif (rollback atau maju lagi), khusus pemilik. Disembunyikan
+ * selama unggahan di tab ini sedang ditransfer (aktivasi pasti DATASET_BUSY).
+ */
 export function VersionActivate({
   datasetId,
   versionId,
@@ -65,6 +84,7 @@ export function VersionActivate({
 }) {
   const router = useRouter();
   const notify = use(NotifyContext);
+  if (use(UploadingInTab)) return null;
   return (
     <VersionConfirm
       label={

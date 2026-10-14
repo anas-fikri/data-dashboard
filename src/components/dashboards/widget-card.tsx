@@ -172,6 +172,9 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       </div>
       {config ? (
         <WidgetBody
+          // Widget yang dialihkan ke sheet aktif (T-013): spec tampilan sama sebelum/sesudah disimpan,
+          // jadi kunci ini yang memicu query ulang setelah "Pakai sheet ini".
+          key={widget.retargeted ? "retargeted" : "stored"}
           widgetId={widget.id}
           config={config}
           title={widget.title}

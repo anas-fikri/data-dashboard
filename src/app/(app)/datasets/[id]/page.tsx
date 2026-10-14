@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DatasetActivityProvider } from "@/components/datasets/dataset-activity";
 import { DatasetDataSummary } from "@/components/datasets/dataset-data-summary";
 import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
@@ -46,7 +47,7 @@ export default async function DatasetDetailPage({
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
   const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
   // Ada versi non-terminal (termasuk unggahan belum selesai) → "Aktifkan" pasti DATASET_BUSY. Unggahan
-  // yang dimulai di tab ini memicu refresh begitu versinya dibuat (UploadPanel), jadi ikut tercakup.
+  // yang sedang ditransfer di tab ini dikabarkan UploadPanel lewat DatasetActivityProvider (tanpa refresh).
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const [pending, versions] = await Promise.all([
@@ -91,45 +92,47 @@ export default async function DatasetDetailPage({
         <StatusBadge label={dataset.label} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Data</CardTitle>
-          <CardDescription>File Excel/CSV yang menjadi isi dataset ini.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <DatasetDataSummary
-            datasetId={dataset.id}
-            failed={
-              badge?.kind === "failed"
-                ? { fileName: dataset.latestFileName, message: badge.message ?? null }
-                : null
-            }
-            active={active}
-          />
-          <UploadPanel
-            datasetId={dataset.id}
-            maxBytes={env().MAX_UPLOAD_BYTES}
-            hasData={Boolean(active)}
-            pending={pending}
-            processing={
-              ingest
-                ? { kind: "ingest", status: ingest }
-                : badge?.kind === "awaiting_mapping"
-                  ? {
-                      kind: "mapping",
-                      versionId: mapping?.id ?? null,
-                      fileName: mapping?.fileName ?? dataset.latestFileName,
-                      message: mapping?.message ?? null,
-                    }
+      <DatasetActivityProvider>
+        <Card>
+          <CardHeader>
+            <CardTitle>Data</CardTitle>
+            <CardDescription>File Excel/CSV yang menjadi isi dataset ini.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <DatasetDataSummary
+              datasetId={dataset.id}
+              failed={
+                badge?.kind === "failed"
+                  ? { fileName: dataset.latestFileName, message: badge.message ?? null }
                   : null
-            }
-          />
-        </CardContent>
-      </Card>
+              }
+              active={active}
+            />
+            <UploadPanel
+              datasetId={dataset.id}
+              maxBytes={env().MAX_UPLOAD_BYTES}
+              hasData={Boolean(active)}
+              pending={pending}
+              processing={
+                ingest
+                  ? { kind: "ingest", status: ingest }
+                  : badge?.kind === "awaiting_mapping"
+                    ? {
+                        kind: "mapping",
+                        versionId: mapping?.id ?? null,
+                        fileName: mapping?.fileName ?? dataset.latestFileName,
+                        message: mapping?.message ?? null,
+                      }
+                    : null
+              }
+            />
+          </CardContent>
+        </Card>
 
-      {versions.length > 0 ? (
-        <VersionHistory datasetId={dataset.id} versions={versions} busy={busy} />
-      ) : null}
+        {versions.length > 0 ? (
+          <VersionHistory datasetId={dataset.id} versions={versions} busy={busy} />
+        ) : null}
+      </DatasetActivityProvider>
 
       <Card>
         <CardHeader>

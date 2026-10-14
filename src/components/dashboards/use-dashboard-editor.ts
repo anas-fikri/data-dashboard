@@ -195,7 +195,10 @@ export function useDashboardEditor(o: {
         }
         setWidgets(
           widgetsNow.current.map((w) =>
-            w.id === widgetId ? { ...w, type: r.data.type, spec: r.data.spec } : w,
+            // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
+            w.id === widgetId
+              ? { ...w, type: r.data.type, spec: r.data.spec, retargeted: undefined }
+              : w,
           ),
         );
         // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.

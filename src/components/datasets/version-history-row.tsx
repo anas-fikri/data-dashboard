@@ -121,7 +121,9 @@ export function VersionHistoryRow({
         className={cn(
           CELL,
           "order-last basis-full md:ms-auto md:basis-auto @3xl:w-px @3xl:py-1.5 @3xl:pr-5",
-          !canActivate && "hidden @3xl:table-cell",
+          // Sel kosong (tidak bisa diaktifkan, atau "Aktifkan" disembunyikan selama unggahan di tab
+          // ini) tidak memakan baris kartu; di tabel tetap sel agar garis baris utuh.
+          "empty:hidden @3xl:empty:table-cell",
         )}
       >
         {canActivate ? (
