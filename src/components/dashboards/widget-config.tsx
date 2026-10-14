@@ -74,7 +74,7 @@ export function WidgetConfigForm({
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const save = useRef(onSave);
-  const statusRef = useRef<HTMLParagraphElement>(null);
+  const [statusRef, focusStatus] = useFocusAfterRender<HTMLParagraphElement>();
   const [columnsRef, focusColumns] = useFocusAfterRender<HTMLFieldSetElement>();
   useEffect(() => {
     save.current = onSave;
@@ -107,6 +107,8 @@ export function WidgetConfigForm({
     if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
     if (next.type === "empty" || missingColumns(next, sources).length) return;
+    // Sheet spec tidak ada di data aktif: server menolaknya; tunggu sheet dipilih.
+    if (!sources.some((s) => s.id === next.spec.sheetId)) return;
     // Kolom nilai spec lama yang tidak cocok (mis. maks. tanggal di grafik): server menolaknya.
     if (measureMismatch(next, sources)) return;
     if (!parseWidgetConfig(next.type, next.spec).ok) return;
@@ -140,8 +142,10 @@ export function WidgetConfigForm({
     draft.type === "empty" ? undefined : sources.find((s) => s.id === draft.spec.sheetId);
   const cols = sheet?.columns ?? [];
   const typeOf = (pos: number | undefined) => cols.find((c) => c.pos === pos)?.type;
-  const missing = missingColumns(draft, sources);
-  const unsaved = missing.length > 0 || measureMismatch(draft, sources);
+  // Sheet lama widget tidak ada di versi aktif (dataset banyak sheet): pilih sheet dulu.
+  const noSheet = draft.type !== "empty" && !sheet;
+  const missing = noSheet ? [] : missingColumns(draft, sources);
+  const unsaved = noSheet || missing.length > 0 || measureMismatch(draft, sources);
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
   // memindahkan spec ke sheet aktif.
   const retargetedOnly = retargeted && !unsaved && !!sheet;
@@ -174,17 +178,20 @@ export function WidgetConfigForm({
             <RetargetNotice
               sheet={sheet.name}
               onUse={() => {
-                // Tombol hilang setelah tersimpan: fokus ke baris status yang melaporkan hasilnya.
-                statusRef.current?.focus();
+                // Simpan sekarang (tanpa jeda); fokus ke baris status setelah ia berbunyi "Menyimpan…".
+                focusStatus();
                 commit(draft);
+                flush();
               }}
             />
           ) : null}
 
-          {sources.length > 1 ? (
+          {sources.length > 1 || noSheet ? (
             <Choice
               label="Sheet"
               value={draft.spec.sheetId}
+              placeholder="Pilih sheet"
+              invalidText="Sheet lama widget ini tidak ada di data aktif — pilih sheet."
               options={sources
                 .filter((s) => s.columns.length)
                 .map((s) => ({ value: s.id, label: s.name }))}
@@ -337,11 +344,13 @@ export function WidgetConfigForm({
                   : "Tersimpan."
                 : status === "error"
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
-                  : unsaved
-                    ? "Belum tersimpan — pilih kolom pengganti."
-                    : retargetedOnly
-                      ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
-                      : "Perubahan tersimpan otomatis."}
+                  : noSheet
+                    ? "Belum tersimpan — pilih sheet."
+                    : unsaved
+                      ? "Belum tersimpan — pilih kolom pengganti."
+                      : retargetedOnly
+                        ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
+                        : "Perubahan tersimpan otomatis."}
           </p>
         </>
       )}

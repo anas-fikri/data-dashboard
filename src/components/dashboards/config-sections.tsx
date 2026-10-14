@@ -129,7 +129,7 @@ export function RetargetNotice({ sheet, onUse }: { sheet: string; onUse: () => v
       data-testid="config-retarget"
     >
       Sheet lama widget ini sudah tidak ada di data aktif. Pengaturan di bawah memakai sheet{" "}
-      <span className="font-medium">“{sheet}”</span> — widget baru memakainya setelah disimpan.{" "}
+      <span className="font-medium">“{sheet}”</span> — widget ini baru memakainya setelah disimpan.{" "}
       <button type="button" className="font-medium underline underline-offset-4" onClick={onUse}>
         Pakai sheet ini
       </button>

@@ -760,7 +760,7 @@ export async function configureWidget(
   if (r === "STALE") {
     return fail(
       "STALE",
-      "Data dataset ini baru saja berganti versi. Tutup pengaturan widget, buka lagi, lalu simpan.",
+      "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
     );
   }
   return { ok: true, data: { type: config.type, spec: config.spec } };

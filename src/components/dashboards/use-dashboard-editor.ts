@@ -158,7 +158,14 @@ export function useDashboardEditor(o: {
         setLayout(dirty.current ? latest.current.filter((it) => it.i !== widgetId) : r.data.layout);
         setUndo(
           recordUndo && item
-            ? { kind: "delete", title, item, type: gone?.type ?? "empty", spec: gone?.spec ?? {} }
+            ? {
+                kind: "delete",
+                title,
+                item,
+                type: gone?.type ?? "empty",
+                // Spec widget yang dialihkan hanya tampilan (T-013): tidak valid → dipulihkan kosong.
+                spec: gone?.retargeted ? null : (gone?.spec ?? {}),
+              }
             : null,
         );
         setNotice(null);

@@ -102,7 +102,12 @@ export function UploadPanel({
   // Versi UPLOADING sudah ada di server → riwayat versi di tab ini menahan "Aktifkan" (tanpa refresh
   // di tengah unggahan; badge dan alert gagal di atas panel tetap sampai unggahan selesai/batal).
   // Setelah selesai tetap ditahan sampai refresh membawa status "diproses" dari server (tanpa kedip).
-  usePublishUploading(Boolean(progress?.versionId) || (state.kind === "done" && refreshing));
+  // Gagal sementara (bisa diulang) → versi tetap UPLOADING di server: tetap ditahan.
+  usePublishUploading(
+    Boolean(progress?.versionId) ||
+      (state.kind === "error" && state.retryable && Boolean(state.versionId)) ||
+      (state.kind === "done" && refreshing),
+  );
 
   // Peringatan saat menutup tab di tengah unggahan (unggahan tetap bisa dilanjutkan nanti).
   useEffect(() => {
@@ -126,6 +131,8 @@ export function UploadPanel({
       abortRef.current = controller;
       lastAnnounced.current = -1;
       let started: { t: number; loaded: number } | null = null;
+      // Versi terakhir yang diketahui: tanda tangan part bisa gagal tanpa membawa versionId.
+      let known = versionId;
       setEta(null);
       setState({
         kind: "running",
@@ -140,6 +147,7 @@ export function UploadPanel({
           signal: controller.signal,
           onProgress: (p) => {
             if (controller.signal.aborted) return;
+            known = p.versionId ?? known;
             // Pra-cek saat melanjutkan belum membawa versionId: versi lama tetap dianggap ditransfer
             // (tanpa kedip "Aktifkan") dan "Batalkan" tetap membatalkannya di server.
             setState({
@@ -177,7 +185,7 @@ export function UploadPanel({
           file,
           message: err.message,
           retryable: RETRYABLE.has(err.code),
-          versionId: err.versionId,
+          versionId: err.versionId ?? known,
         });
         // Unggahan gagal permanen di server (rusak/format) → perbarui badge status di halaman.
         if (["INVALID_FORMAT", "UPLOAD_CORRUPT", "UPLOAD_FAILED"].includes(err.code)) {
@@ -273,14 +281,28 @@ export function UploadPanel({
         <FormAlert tone="error" ref={errorRef}>
           <span className="block">{state.message}</span>
           {state.retryable && state.file ? (
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-2"
-              onClick={() => state.file && void start(state.file)}
-            >
-              Coba lagi
-            </Button>
+            <span className="mt-2 flex flex-col gap-2 sm:flex-row">
+              <Button
+                size="sm"
+                variant="outline"
+                className={control}
+                onClick={() => state.file && void start(state.file, state.versionId)}
+              >
+                Coba lagi
+              </Button>
+              {state.versionId ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className={control}
+                  pending={cancelling}
+                  leadingIcon={<IconX aria-hidden />}
+                  onClick={() => void cancel(state.versionId)}
+                >
+                  Batalkan unggahan
+                </Button>
+              ) : null}
+            </span>
           ) : null}
         </FormAlert>
       ) : null}

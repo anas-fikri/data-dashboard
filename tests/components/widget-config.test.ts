@@ -715,3 +715,29 @@ describe("R3-CC-2: panel widget retargeted", () => {
     expect(status(html)).toBe("Belum tersimpan — pilih kolom pengganti.");
   });
 });
+
+describe("R4-CC-2: sheet widget tidak ada di data aktif (banyak sheet)", () => {
+  it("minta pilih sheet: pilihan sheet ditandai, status belum tersimpan, tanpa peringatan kolom", () => {
+    const html = renderToStaticMarkup(
+      createElement(WidgetConfigForm, {
+        widget: {
+          id: "w",
+          type: "kpi",
+          title: "",
+          spec: {
+            sheetId: "cmv4kljx40009oczvdmpurrgo",
+            measure: { agg: "count" },
+            format: { style: "number", decimals: 0 },
+          },
+        },
+        sources,
+        datasetId: "ds",
+        onSave: () => Promise.resolve(true),
+      }),
+    );
+    expect(html).toContain("Sheet lama widget ini tidak ada di data aktif — pilih sheet.");
+    expect(html).toMatch(/data-testid="config-status"[^>]*>Belum tersimpan — pilih sheet\.</);
+    expect(html).not.toContain('data-testid="config-missing"');
+    expect(html).not.toContain("Perubahan tersimpan otomatis.");
+  });
+});
