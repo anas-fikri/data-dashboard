@@ -424,7 +424,12 @@ export function UploadPanel({
               variant="ghost"
               className={control}
               pending={cancelling}
-              disabled={progress.phase === "finishing"}
+              // Versi server belum diketahui saat memeriksa (mis. lanjut dari kartu tertunda): batal
+              // hanya lokal dan versi tetap UPLOADING → tunggu sampai init membawa versionId.
+              disabled={
+                progress.phase === "finishing" ||
+                (progress.phase === "checking" && !(progress.versionId ?? ownVersion))
+              }
               leadingIcon={<IconX aria-hidden />}
               onClick={() => void cancel(progress.versionId ?? ownVersion)}
             >

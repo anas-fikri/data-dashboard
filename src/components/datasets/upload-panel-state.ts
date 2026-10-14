@@ -29,16 +29,22 @@ export const RETRYABLE = new Set([
   "RATE_LIMITED",
   "UNAUTHENTICATED",
 ]);
-const PERMANENT = new Set(["INVALID_FORMAT", "UPLOAD_CORRUPT", "UPLOAD_FAILED"]);
 
-export const CANCEL_FAILED = "Unggahan gagal dibatalkan. Periksa koneksi, lalu coba lagi.";
+export const CANCEL_FAILED =
+  "Unggahan gagal dibatalkan. Periksa koneksi, lalu tekan “Batalkan unggahan” lagi.";
 
 /**
- * Versi server sudah tidak UPLOADING: hilang (NOT_FOUND) atau gagal permanen saat diperiksa server.
- * Galat pra-cek file lokal (mis. format salah, tanpa versionId) tidak menyentuh versi yang dikenal.
+ * Versi server sudah tidak UPLOADING: hilang (NOT_FOUND) atau gagal permanen di server. UPLOAD_FAILED/
+ * UPLOAD_CORRUPT hanya dikirim server (mis. init: unggahan lama kedaluwarsa, tanpa versionId);
+ * INVALID_FORMAT juga dari pra-cek file lokal, jadi hanya dihitung bila membawa versionId.
  */
 export function versionGone(err: Pick<UploadErrLike, "code" | "versionId">): boolean {
-  return err.code === "NOT_FOUND" || (PERMANENT.has(err.code) && Boolean(err.versionId));
+  return (
+    err.code === "NOT_FOUND" ||
+    err.code === "UPLOAD_FAILED" ||
+    err.code === "UPLOAD_CORRUPT" ||
+    (err.code === "INVALID_FORMAT" && Boolean(err.versionId))
+  );
 }
 
 /** `ownVersion` setelah start() gagal; DATASET_BUSY (file lain) dan galat tanpa versionId mempertahankannya. */
@@ -50,8 +56,9 @@ export function ownVersionAfterError(
 }
 
 /**
- * Status galat saat "Batalkan" gagal: file dan "Coba lagi" dari status sebelumnya tetap (konteks tidak
- * hilang); versi yang sudah hilang (NOT_FOUND) tidak ditawarkan untuk diulang.
+ * Status galat saat "Batalkan" gagal: file tetap (konteks tidak hilang), tetapi tanpa "Coba lagi" —
+ * tombol itu melanjutkan unggahan yang justru ingin dibatalkan. Yang ditawarkan "Batalkan unggahan"
+ * (selama versi milik tab ini masih ada); melanjutkan tetap bisa dengan memilih file yang sama.
  */
 export function cancelFailedState(prev: UploadPanelState, err: UploadErrLike | null): ErrorState {
   const file =
@@ -60,8 +67,7 @@ export function cancelFailedState(prev: UploadPanelState, err: UploadErrLike | n
     kind: "error",
     file,
     message: !err || err.code === "NETWORK" ? CANCEL_FAILED : err.message,
-    retryable:
-      err?.code !== "NOT_FOUND" && (prev.kind === "error" ? prev.retryable : file !== null),
+    retryable: false,
   };
 }
 

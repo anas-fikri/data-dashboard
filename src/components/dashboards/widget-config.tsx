@@ -150,8 +150,10 @@ export function WidgetConfigForm({
     : sheet && !sheet.columns.length
       ? "Semua kolom sheet ini disembunyikan di skema — pilih sheet lain."
       : undefined;
-  const missing = noSheet ? [] : missingColumns(draft, sources);
-  const unsaved = noSheet || missing.length > 0 || measureMismatch(draft, sources);
+  // Tanpa sheet atau sheet tanpa kolom terlihat: tidak ada kolom pengganti yang bisa dipilih.
+  const noColumns = noSheet || (!!sheet && !sheet.columns.length);
+  const missing = noColumns ? [] : missingColumns(draft, sources);
+  const unsaved = noColumns || missing.length > 0 || measureMismatch(draft, sources);
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
   // memindahkan spec ke sheet aktif.
   const retargetedOnly = retargeted && !unsaved && !!sheet;
@@ -215,7 +217,7 @@ export function WidgetConfigForm({
           ) : null}
 
           {/* Tanpa sheet belum ada kolom untuk dipilih: bagian kolom/nilai muncul setelah sheet dipilih. */}
-          {noSheet ? null : draft.type === "table" ? (
+          {noColumns ? null : draft.type === "table" ? (
             <TableColumns
               ref={columnsRef}
               columns={cols}
@@ -325,7 +327,7 @@ export function WidgetConfigForm({
               commit({ ...draft, spec: { ...draft.spec, format } } as WidgetConfig);
             }}
           />
-          {draft.type === "table" && !noSheet && draft.spec.format.style !== "auto" ? (
+          {draft.type === "table" && !noColumns && draft.spec.format.style !== "auto" ? (
             <FormatColumnsField
               columns={cols.filter((c) => draft.spec.columns.includes(c.pos) && isNumeric(c.type))}
               selected={draft.spec.formatColumns ?? draft.spec.columns}
@@ -351,8 +353,10 @@ export function WidgetConfigForm({
                   : "Tersimpan."
                 : status === "error"
                   ? "Belum tersimpan — lihat pesan di atas kanvas."
-                  : noSheet
-                    ? "Belum tersimpan — pilih sheet."
+                  : noColumns
+                    ? noSheet
+                      ? "Belum tersimpan — pilih sheet."
+                      : "Belum tersimpan — pilih sheet lain."
                     : unsaved
                       ? "Belum tersimpan — pilih kolom pengganti."
                       : retargetedOnly

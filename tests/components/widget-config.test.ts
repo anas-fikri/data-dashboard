@@ -775,6 +775,24 @@ describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak shee
     const html = form("kpi", { sheetId: S2, measure: { agg: "count" }, format: fmt }, hidden);
     expect(html).toContain("Semua kolom sheet ini disembunyikan di skema — pilih sheet lain.");
     expect(html).not.toContain(SHEET_GONE);
+    expect(status(html)).toBe("Belum tersimpan — pilih sheet lain.");
+    // Grafik di sheet itu: tanpa permintaan kolom pengganti yang mustahil dipilih (R6-WC-1).
+    const bar = form(
+      "bar",
+      {
+        sheetId: S2,
+        dimension: { column: 1 },
+        measure: { agg: "count" },
+        sort: "value_desc",
+        topN: 12,
+        format: fmt,
+      },
+      hidden,
+    );
+    expect(bar).not.toContain("pilih pengganti");
+    expect(bar).not.toContain('data-testid="config-missing"');
+    expect(bar).not.toContain('data-testid="config-dimension"');
+    expect(status(bar)).toBe("Belum tersimpan — pilih sheet lain.");
     // Sheet biasa di sumber banyak sheet: pilihan sheet tanpa pesan atau tanda tidak sah.
     const ok = form("kpi", { sheetId: S1, measure: { agg: "count" }, format: fmt });
     expect(ok).toContain(">Sheet</label>");

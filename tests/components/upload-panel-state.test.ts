@@ -44,6 +44,12 @@ describe("ownVersionAfterError", () => {
     }
   });
 
+  it("init: unggahan lama kedaluwarsa (UPLOAD_FAILED tanpa versionId) → versi dilepas", () => {
+    expect(versionGone({ code: "UPLOAD_FAILED" })).toBe(true);
+    expect(versionGone({ code: "UPLOAD_CORRUPT" })).toBe(true);
+    expect(ownVersionAfterError({ code: "UPLOAD_FAILED" }, "v1")).toBeUndefined();
+  });
+
   it("pra-cek file lokal (format/ukuran, tanpa versionId) tidak melepas versi yang dikenal", () => {
     expect(versionGone({ code: "INVALID_FORMAT" })).toBe(false);
     expect(ownVersionAfterError({ code: "INVALID_FORMAT" }, "v1")).toBe("v1");
@@ -52,9 +58,10 @@ describe("ownVersionAfterError", () => {
 });
 
 describe("cancelFailedState", () => {
-  it("batal gagal karena koneksi: file + Coba lagi tetap, pesan khusus batal", () => {
+  it("batal gagal karena koneksi: file tetap, tanpa Coba lagi (melanjutkan unggahan), pesan khusus batal", () => {
     const next = cancelFailedState(retryErr, { code: "NETWORK", message: "Koneksi terputus." });
-    expect(next).toEqual({ kind: "error", file, message: CANCEL_FAILED, retryable: true });
+    expect(next).toEqual({ kind: "error", file, message: CANCEL_FAILED, retryable: false });
+    expect(CANCEL_FAILED).toContain("Batalkan unggahan");
   });
 
   it("galat lain memakai pesan server; status sebelumnya yang tidak bisa diulang tetap begitu", () => {
@@ -63,10 +70,10 @@ describe("cancelFailedState", () => {
     expect(next).toMatchObject({ file, message: "File sedang diperiksa.", retryable: false });
   });
 
-  it("dari progres (berjalan/jeda) file tetap dan bisa dilanjutkan", () => {
+  it("dari progres (berjalan/jeda) file tetap, tanpa Coba lagi", () => {
     for (const kind of ["running", "paused"] as const) {
       const prev: UploadPanelState = { kind, file, progress: progress({ versionId: "v1" }) };
-      expect(cancelFailedState(prev, null)).toMatchObject({ file, retryable: true });
+      expect(cancelFailedState(prev, null)).toMatchObject({ file, retryable: false });
     }
   });
 
