@@ -76,7 +76,9 @@ export function VersionHistoryRow({
           </span>
         ) : null}
       </td>
-      <td role="cell" className={cn(CELL, v.message && "basis-full", "@3xl:min-w-64")}>
+      {/* Lebar minimum hanya bila ada alasan: kolom tabel berbagi lebar, jadi satu baris beralasan
+          sudah melebarkan seluruh kolom; tanpa alasan kolom selebar pil dan nama file tidak terpotong. */}
+      <td role="cell" className={cn(CELL, v.message && "basis-full @3xl:min-w-64")}>
         <Badge tone={status.tone} icon={ICONS[status.kind]}>
           {status.label}
         </Badge>

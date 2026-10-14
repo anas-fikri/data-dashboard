@@ -467,12 +467,56 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         spec: { ...kpi, measure: { agg: "sum", column: MISSING_COLUMN } },
       },
     ]);
-    // Tanpa catatan kolom hilang: spec apa adanya (panel/query memberi "sheet tidak ada").
+    // Lebih dari satu sheet aktif, tanpa catatan kolom hilang: spec apa adanya (pilihan sheet di panel).
     prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard([widget([])]));
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    prisma.sheet.findMany.mockResolvedValueOnce([
+      { id: SHEET, name: "Sheet1", index: 0 },
+      { id: OLD.replace("rol", "rs2"), name: "Sheet2", index: 1 },
+    ]);
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
       { id: WA, type: "kpi", title: "", spec: kpi },
     ]);
+  });
+
+  it("R2-CC-1a: sheet tidak bisa ditentukan tanpa catatan kolom hilang + satu sheet aktif → spec pindah ke sheet itu, semua kolom ditandai", async () => {
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    const VER = "cmv4kljx40009oczvdmpurrve";
+    const kpi = { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt };
+    const dashboard = () => ({
+      id: DB,
+      name: "Penjualan",
+      layout: [],
+      layoutRevision: 0,
+      filterColumns: [],
+      updatedAt: new Date(),
+      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      widgets: [{ id: WA, type: "kpi", title: "", spec: kpi, missingColumns: [] }],
+    });
+    const retargeted = {
+      id: WA,
+      type: "kpi",
+      title: "",
+      spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+    };
+    // Sheet lama sudah dihapus retensi, catatan kosong (sheet tanpa pasangan saat rollback).
+    prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard());
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Data", index: 0 }]);
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([retargeted]);
+    // Sheet lama masih ada (versi lain) tetapi tanpa pasangan di versi aktif (sheet baru "Extra").
+    prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard());
+    prisma.sheet.findMany.mockResolvedValueOnce([
+      { id: OLD, name: "Extra", index: 1, schema: [], versionId: "cmv4kljx40009oczvdmpurrv2" },
+    ]);
+    prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Data", index: 0 }]);
+    prisma.sheet.groupBy.mockResolvedValueOnce([
+      { versionId: "cmv4kljx40009oczvdmpurrv2", _count: { _all: 2 } },
+    ] as never);
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([retargeted]);
   });
 
   it("kolom tersembunyi, agregasi tidak cocok, sheet lain, atau bentuk salah → INVALID tanpa menulis", async () => {

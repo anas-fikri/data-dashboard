@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { activateVersionInTx, planWidget, type OldSheet } from "@/features/versions/activation";
-import type { SheetInfo } from "@/features/widgets/remap";
+import { MISSING_COLUMN, type SheetInfo } from "@/features/widgets/remap";
 
 /*
  * T-013: aktivasi versi — keputusan spec widget (murni) dan urutan di dalam transaksi pemanggil:
@@ -45,6 +45,7 @@ const oldSheet: OldSheet = {
   name: "Penjualan",
   index: 0,
   schema: OLD_SCHEMA,
+  versionId: A,
   sheetCount: 1,
 };
 const target: SheetInfo[] = [{ id: SB, name: " penjualan ", index: 0, schema: NEW_SCHEMA }];
@@ -83,6 +84,52 @@ describe("planWidget", () => {
       missingColumns: ["Diskon"],
     });
     expect(planWidget(w("w2", "kpi", kpi(SA, 3), ["Diskon"]), target, oldSheet)).toBeNull();
+  });
+
+  it("R2-CC-1b: kolom hilang + versi sheet lama ikut dibuang retensi → spec pindah ke target, hanya kolom hilang yang ditandai", () => {
+    const partly = { ...bar(SA), dimension: { column: 1 }, measure: { agg: "sum", column: 3 } };
+    const moved = {
+      ...bar(SB),
+      dimension: { column: 2 },
+      measure: { agg: "sum", column: MISSING_COLUMN },
+    };
+    // Versi sheet lama dibuang → tidak bisa roll-forward ke sana: spec disimpan dengan penanda.
+    expect(planWidget(w("w9", "bar", partly), target, oldSheet, new Set([A]))).toEqual({
+      spec: moved,
+      missingColumns: ["Diskon"],
+    });
+    // Versi sheet lama tetap disimpan → spec dibiarkan (roll-forward memulihkannya).
+    expect(planWidget(w("w9", "bar", partly), target, oldSheet, new Set(["lain"]))).toEqual({
+      missingColumns: ["Diskon"],
+    });
+  });
+
+  it("spec dengan penanda: nama kolom tersimpan ikut terbawa, tidak pernah 'kolom 16385'", () => {
+    const marked = {
+      ...bar(SA),
+      dimension: { column: 1 },
+      measure: { agg: "sum", column: MISSING_COLUMN },
+    };
+    // Penanda + kolom lain hilang di target: catatan = nama tersimpan + nama kolom yang baru hilang.
+    const noCabang: SheetInfo[] = [{ ...target[0]!, schema: [col(1, "Omzet", "decimal")] }];
+    expect(planWidget(w("wa", "bar", marked, ["Diskon"]), noCabang, oldSheet)).toEqual({
+      missingColumns: ["Cabang", "Diskon"],
+    });
+    // Roll-forward ke versi spec itu: catatan menyisakan nama penanda saja (bukan "Cabang").
+    const back: SheetInfo[] = [{ id: SA, name: "Penjualan", index: 0, schema: OLD_SCHEMA }];
+    expect(planWidget(w("wa", "bar", marked, ["Cabang", "Diskon"]), back, undefined)).toEqual({
+      missingColumns: ["Diskon"],
+    });
+    expect(planWidget(w("wa", "bar", marked, ["Diskon"]), back, undefined)).toBeNull();
+    // Dipindah karena sheet lama dibuang: penanda tetap, nama tersimpan tetap.
+    expect(planWidget(w("wa", "bar", marked, ["Diskon"]), target, oldSheet, new Set([A]))).toEqual({
+      spec: {
+        ...bar(SB),
+        dimension: { column: 2 },
+        measure: { agg: "sum", column: MISSING_COLUMN },
+      },
+      missingColumns: ["Diskon"],
+    });
   });
 
   it("sudah di versi target → catatan kolom hilang dikosongkan; sudah kosong → tidak ada tulis", () => {
@@ -239,6 +286,24 @@ describe("activateVersionInTx", () => {
       expect(x.notBefore.getTime() - t0).toBeGreaterThanOrEqual(60 * 60 * 1000);
     }
     expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("R2-CC-1b: sheet lama widget di versi yang dibuang retensi → spec disimpan di target dengan penanda sebelum hapus", async () => {
+    tx.sheet.findMany
+      .mockReset()
+      .mockResolvedValueOnce(target)
+      .mockResolvedValueOnce([{ ...oldSheet, versionId: R1 }])
+      .mockResolvedValueOnce([]);
+    tx.sheet.groupBy.mockResolvedValue([{ versionId: R1, _count: { _all: 1 } }]);
+    await run();
+    expect(tx.widget.updateMany).toHaveBeenCalledWith({
+      where: { id: "w2" },
+      data: {
+        missingColumns: ["Diskon"],
+        spec: { ...kpi(SB, 3), measure: { agg: "sum", column: MISSING_COLUMN } },
+      },
+    });
+    expect(order.indexOf("widget:w2")).toBeLessThan(order.indexOf("versions.delete"));
   });
 
   it("rollback (audit) → AuditLog dataset.version.activate {from, to, fileName}", async () => {

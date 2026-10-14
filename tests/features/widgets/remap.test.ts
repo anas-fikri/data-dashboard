@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { MISSING_COLUMN, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import { MISSING_COLUMN, markerNames, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 
 /*
  * T-013 (temuan T013-DI-1): rollback/roll-forward memetakan kolom widget lewat judul asli + urutan
@@ -93,5 +93,34 @@ describe("remapConfig: kolom lewat judul asli + urutan", () => {
       formatColumns: [1],
     });
     expect(r.missing).toEqual(["Catatan"]);
+  });
+
+  it("R2-CC-1b: penanda MISSING_COLUMN tetap penanda, namanya dari catatan tersimpan (bukan 'kolom 16385')", () => {
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Omzet")]);
+    const next = sheet(NEW, [col(1, "Omzet"), col(2, "Cabang")]);
+    const bar = {
+      type: "bar",
+      spec: {
+        sheetId: OLD,
+        dimension: { column: 1 },
+        measure: { agg: "sum", column: MISSING_COLUMN },
+        sort: "value_desc",
+        topN: 12,
+        format: fmt,
+      },
+    } as const;
+    // Catatan juga memuat "Cabang" (hilang terhadap versi lain) — kolom itu ada di sheet spec.
+    const r = remapConfig(bar, old, next, ["Cabang", "Diskon"]);
+    expect(r.config.spec).toMatchObject({
+      sheetId: NEW,
+      dimension: { column: 2 },
+      measure: { column: MISSING_COLUMN },
+    });
+    expect(r.missing).toEqual(["Diskon"]);
+    expect(markerNames(bar, old.schema, ["Cabang", "Diskon"])).toEqual(["Diskon"]);
+    // Tanpa catatan: penanda tanpa nama (pesan umum di query), tidak pernah "kolom 16385".
+    expect(remapConfig(bar, old, next).missing).toEqual([]);
+    // Spec tanpa penanda → tidak ada nama penanda.
+    expect(markerNames(kpi(2), old.schema, ["Diskon"])).toEqual([]);
   });
 });

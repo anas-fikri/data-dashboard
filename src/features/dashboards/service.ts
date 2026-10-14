@@ -343,11 +343,12 @@ function allMissing(
 
 /**
  * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk
- * ditampilkan dan diedit (lihat features/widgets/remap.ts). Sheet lama yang sudah dihapus retensi
- * dengan kolom hilang tercatat saat aktivasi (T-013) → semua kolomnya ditandai hilang, sehingga panel
- * meminta kolom pengganti dan query memberi COLUMN_UNAVAILABLE. Bila versi aktif hanya punya satu
- * sheet, spec dipindah ke sheet itu agar panel menampilkan kolomnya (dataset satu sheet tidak punya
- * pilihan sheet); lebih dari satu sheet → pilihan sheet di panel. Tidak menulis ke DB.
+ * ditampilkan dan diedit (lihat features/widgets/remap.ts). Sheet yang tidak bisa ditentukan — sudah
+ * dihapus retensi, atau sheet lama tanpa pasangan di versi aktif — dan versi aktif hanya punya satu
+ * sheet → spec dipindah ke sheet itu dengan semua kolom ditandai hilang, agar panel menampilkan
+ * kolomnya (dataset satu sheet tidak punya pilihan sheet); query tetap memberi SHEET_UNAVAILABLE atau
+ * COLUMN_UNAVAILABLE dari spec tersimpan. Lebih dari satu sheet → pilihan sheet di panel; sheet yang
+ * dihapus dengan kolom hilang tercatat (T-013) tetap ditandai semua kolomnya. Tidak menulis ke DB.
  */
 async function remapToActive(
   datasetId: string,
@@ -373,10 +374,8 @@ async function remapToActive(
     select,
   });
   const found = new Set(sheets.map((s) => s.id));
-  const lost = (c: (typeof parsed)[number]["c"], missing: string[] = []) =>
-    c.ok && c.config.type !== "empty" && !found.has(c.config.spec.sheetId) && missing.length > 0;
   const stale = sheets.filter((s) => s.versionId !== activeVersionId);
-  if (!stale.length && !parsed.some(({ c, m }) => lost(c, m))) return widgets;
+  if (!stale.length && sheetIds.every((id) => found.has(id))) return widgets;
   const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
     id: s.id,
     name: s.name,
@@ -413,16 +412,20 @@ async function remapToActive(
   );
   return parsed.map(({ w, c, m }) => {
     if (!c.ok || c.config.type === "empty") return w;
-    if (lost(c, m)) {
-      return { ...w, spec: allMissing(c.config, active.length === 1 ? active[0]!.id : undefined) };
-    }
-    const old = byId.get(c.config.spec.sheetId);
-    const target = targetOf(c.config.spec.sheetId);
+    const sheetId = c.config.spec.sheetId;
+    const old = byId.get(sheetId);
+    if (!old && found.has(sheetId)) return w; // sudah di versi aktif
+    const target = targetOf(sheetId);
     const schema = target && schemas.get(target.id);
     // Kolom yang hilang tetap ditandai (MISSING_COLUMN): panel meminta kolom pengganti.
-    return old && target && schema
-      ? { ...w, spec: remapConfig(c.config, old, { ...target, schema }).config.spec }
-      : w;
+    if (old && target) {
+      return schema
+        ? { ...w, spec: remapConfig(c.config, old, { ...target, schema }).config.spec }
+        : w;
+    }
+    // Sheet tidak bisa ditentukan (dihapus retensi / tanpa pasangan di versi aktif).
+    if (active.length === 1) return { ...w, spec: allMissing(c.config, active[0]!.id) };
+    return !old && m?.length ? { ...w, spec: allMissing(c.config) } : w;
   });
 }
 

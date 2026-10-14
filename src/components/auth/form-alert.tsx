@@ -36,7 +36,8 @@ export const FormAlert = React.forwardRef<HTMLDivElement, FormAlertProps>(functi
         aria-hidden
         className={cn("mt-px shrink-0", tone === "error" ? "text-destructive" : "text-success")}
       />
-      <div>{children}</div>
+      {/* min-w-0 + pemecahan kata: nama file/sheet panjang tanpa spasi tidak melebarkan halaman. */}
+      <div className="min-w-0 [overflow-wrap:anywhere]">{children}</div>
     </div>
   );
 });

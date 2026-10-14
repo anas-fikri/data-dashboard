@@ -7,6 +7,7 @@ import type { VersionRow } from "@/features/versions/types";
 import { cn } from "@/lib/utils";
 import { VersionFeedback } from "./version-history-actions";
 import { VersionHistoryRow } from "./version-history-row";
+import { BUSY_TEXT, type ActivationBusy } from "./version-history-status";
 
 const TH = "px-3 py-2.5 text-left text-xs font-medium whitespace-nowrap text-muted-foreground";
 
@@ -23,7 +24,8 @@ export function VersionHistory({
 }: {
   datasetId: string;
   versions: VersionRow[];
-  busy: boolean;
+  /** Alasan dataset sibuk (jenis badge versi terbaru), null bila aktivasi bisa dilakukan. */
+  busy: ActivationBusy | null;
 }) {
   return (
     <Card data-testid="version-history">
@@ -41,8 +43,7 @@ export function VersionHistory({
             data-testid="version-busy"
           >
             <IconInfoCircle size={20} stroke={1.5} aria-hidden className="shrink-0" />
-            Versi aktif bisa diganti setelah file baru selesai diunggah dan diproses, atau setelah
-            versi yang menunggu pemetaan dibuang.
+            {BUSY_TEXT[busy]}
           </p>
         ) : null}
         <VersionFeedback activeVersionId={versions.find((v) => v.active)?.id ?? null}>
@@ -74,7 +75,7 @@ export function VersionHistory({
               </thead>
               <tbody role="rowgroup" className="block @3xl:table-row-group">
                 {versions.map((v) => (
-                  <VersionHistoryRow key={v.id} datasetId={datasetId} v={v} busy={busy} />
+                  <VersionHistoryRow key={v.id} datasetId={datasetId} v={v} busy={busy !== null} />
                 ))}
               </tbody>
             </table>

@@ -69,8 +69,15 @@ export interface Remapped {
  * nama hanya mengenai versi aktif, jadi rollback tidak boleh bergantung padanya). Nama tampil hanya
  * cadangan bila judul aslinya tidak ada di target (T-011: judul di file berganti), dan tidak pernah
  * menunjuk kolom target yang judul aslinya juga ada di sheet lama (itu kolom sumber lain).
+ * Penanda MISSING_COLUMN di spec tetap penanda; namanya diambil dari `stored` (Widget.missingColumns,
+ * lihat markerNames), tidak pernah "kolom 16385".
  */
-export function remapConfig(config: Configured, old: SheetInfo, target: SheetInfo): Remapped {
+export function remapConfig(
+  config: Configured,
+  old: SheetInfo,
+  target: SheetInfo,
+  stored: string[] = [],
+): Remapped {
   const byPos = (s: SheetInfo) => [...s.schema].sort((a, b) => a.pos - b.pos);
   const oldCols = byPos(old);
   const oldKeys = columnKeys(oldCols.map((c) => c.original));
@@ -85,7 +92,12 @@ export function remapConfig(config: Configured, old: SheetInfo, target: SheetInf
     namePos.set(key(c.name), c.pos);
   });
   const missing: string[] = [];
+  const marked = markerNames(config, old.schema, stored);
   const pos = (p: number): number => {
+    if (p === MISSING_COLUMN) {
+      for (const n of marked) if (!missing.includes(n)) missing.push(n);
+      return MISSING_COLUMN;
+    }
     const o = oldCol.get(p);
     const found = o && (keyPos.get(o.key) ?? namePos.get(key(o.name)));
     if (found !== undefined) return found;
@@ -142,6 +154,31 @@ export function remapConfig(config: Configured, old: SheetInfo, target: SheetInf
         missing,
       };
   }
+}
+
+/** Posisi kolom yang dipakai spec (dimensi, ukuran, kolom tabel). */
+function usedColumns(config: Configured): number[] {
+  if (config.type === "table") return config.spec.columns;
+  const m = config.spec.measure.column;
+  const measure = m === undefined ? [] : [m];
+  return config.type === "kpi" ? measure : [config.spec.dimension.column, ...measure];
+}
+
+/**
+ * Nama kolom lama di balik penanda MISSING_COLUMN spec (T-013: spec dipindah dengan penanda saat sheet
+ * lamanya dihapus retensi). Nama itu hanya tercatat di Widget.missingColumns (`stored`), yang juga bisa
+ * memuat kolom spec yang hilang terhadap versi lain: nama kolom spec yang masih ada di `schema` (sheet
+ * spec) dikeluarkan. [] bila spec tidak memakai penanda.
+ */
+export function markerNames(
+  config: Configured,
+  schema: ColumnSchema[],
+  stored: string[],
+): string[] {
+  const used = usedColumns(config);
+  if (!used.includes(MISSING_COLUMN)) return [];
+  const present = new Set(schema.filter((c) => used.includes(c.pos)).map((c) => c.name));
+  return stored.filter((n) => !present.has(n));
 }
 
 /** Pesan widget untuk kolom yang hilang setelah data diganti (nama lama disebut). */

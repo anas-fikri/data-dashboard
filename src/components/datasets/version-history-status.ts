@@ -1,4 +1,4 @@
-import type { DatasetLabel } from "@/features/datasets/label";
+import type { BadgeKind, DatasetLabel } from "@/features/datasets/label";
 import type { VersionCode, VersionRow } from "@/features/versions/types";
 
 /*
@@ -31,14 +31,25 @@ export function versionStatusView(v: Pick<VersionRow, "status" | "active">): Ver
   }
 }
 
+/** Alasan dataset sibuk = jenis badge versi terbaru yang belum terminal. */
+export type ActivationBusy = Exclude<BadgeKind, "failed">;
+
 /**
  * Dataset sibuk = versi terbaru belum aktif dan belum terminal (diunggah/diproses/menunggu
- * pemetaan). Versi non-terminal selalu yang terbaru, jadi badge label cukup; server tetap menolak
- * DATASET_BUSY sebagai penjaga balapan. Versi terbaru GAGAL tidak menahan aktivasi.
+ * pemetaan); null bila tidak sibuk. Versi non-terminal selalu yang terbaru, jadi badge label cukup;
+ * server tetap menolak DATASET_BUSY sebagai penjaga balapan. Versi terbaru GAGAL tidak menahan
+ * aktivasi.
  */
-export function activationBusy(badge: DatasetLabel["badge"]): boolean {
-  return Boolean(badge && badge.kind !== "failed");
+export function activationBusy(badge: DatasetLabel["badge"]): ActivationBusy | null {
+  return badge && badge.kind !== "failed" ? badge.kind : null;
 }
+
+/** Satu kalimat per keadaan sibuk: hanya menyebut tindakan yang benar-benar membuka aktivasi. */
+export const BUSY_TEXT: Record<ActivationBusy, string> = {
+  uploading: "Versi aktif bisa diganti setelah unggahan selesai diproses atau dibatalkan.",
+  processing: "Versi aktif bisa diganti setelah file baru selesai diproses.",
+  awaiting_mapping: "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dibuang.",
+};
 
 /**
  * Pemberitahuan "Versi X aktif" hanya benar selama X masih aktif: bila versi aktif berganti

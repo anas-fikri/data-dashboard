@@ -119,6 +119,9 @@ export function UploadPanel({
       abortRef.current = controller;
       lastAnnounced.current = -1;
       let started: { t: number; loaded: number } | null = null;
+      // Versi UPLOADING sudah ada di server begitu progres membawa versionId → refresh sekali agar
+      // halaman (badge, "Aktifkan" di riwayat versi) tahu dataset sibuk. State panel ini tetap.
+      let refreshed = false;
       setEta(null);
       setState({
         kind: "running",
@@ -134,6 +137,10 @@ export function UploadPanel({
           onProgress: (p) => {
             if (controller.signal.aborted) return;
             setState({ kind: "running", file, progress: p });
+            if (p.versionId && !refreshed) {
+              refreshed = true;
+              router.refresh();
+            }
             if (p.phase === "uploading") {
               const now = performance.now();
               started ??= { t: now, loaded: p.loaded };

@@ -458,6 +458,52 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     });
   });
 
+  it("R2-CC-1b: spec di sheet aktif dengan penanda MISSING_COLUMN → COLUMN_UNAVAILABLE menyebut nama tersimpan, tanpa SQL", async () => {
+    const d = deps();
+    const exec = vi.spyOn(engine, "exec");
+    const marked =
+      (missingColumns: string[], sheetId = SHEET) =>
+      async () => ({
+        type: "bar",
+        spec: {
+          sheetId,
+          dimension: { column: 1 },
+          measure: { agg: "sum", column: MISSING_COLUMN },
+          sort: "value_desc",
+          topN: 12,
+          format: fmt,
+        },
+        // "Cabang" ada di sheet spec (sisa catatan versi lain) → tidak disebut.
+        missingColumns,
+        datasetId: DS,
+        activeVersionId: VER,
+      });
+    d.repo = { ...d.repo, widget: marked(["Cabang", "Diskon"]) };
+    const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(!r.ok && r.message).toBe(missingMessage(["Diskon"]));
+    // Tanpa catatan nama: pesan umum, tetap tanpa query dan tanpa "kolom 16385".
+    d.repo = { ...d.repo, widget: marked([]) };
+    const g = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(g).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(!g.ok && g.message).not.toContain("16385");
+    // Spec penanda di sheet versi lain (rollback): dipetakan, nama tersimpan tetap disebut.
+    const OLD = "cmv4kljx40009oczvdmpurrol";
+    d.repo = {
+      ...d.repo,
+      widget: marked(["Diskon"], OLD),
+      sheetHistory: async () => ({
+        old: { id: OLD, name: "Sheet1", index: 0, schema: SCHEMA },
+        oldSheetCount: 1,
+        active: [{ id: SHEET, name: "Sheet1", index: 0 }],
+      }),
+    };
+    const h = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
+    expect(!h.ok && h.message).toBe(missingMessage(["Diskon"]));
+    expect(exec).not.toHaveBeenCalled();
+    exec.mockRestore();
+  });
+
   it("widget versi lama tetap jalan setelah data diganti (dipetakan saat query)", async () => {
     const OLD = "cmv4kljx40009oczvdmpurrol";
     const d = deps();

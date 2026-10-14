@@ -2,7 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import { markerNames, matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retention";
 
@@ -12,8 +12,10 @@ import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retenti
  * Dataset → advisory lock dashboard (urut id, kunci sama dengan dashboards/service.ts) → tulis widget/
  * versi. Langkah:
  *  1. Dataset.activeVersionId = versi target.
- *  2. Spec widget dipetakan ke sheet versi target dan DISIMPAN (sebelum retensi menghapus sheet lama).
- *     Kolom yang tidak ketemu: spec dibiarkan, nama kolomnya dicatat di Widget.missingColumns.
+ *  2. Versi yang dibuang retensi ditentukan dulu, lalu spec widget dipetakan ke sheet versi target dan
+ *     DISIMPAN (sebelum retensi menghapus sheet lama). Kolom yang tidak ketemu: nama kolomnya dicatat di
+ *     Widget.missingColumns; spec dibiarkan di sheet lama (roll-forward memulihkannya), kecuali sheet
+ *     lama ikut dibuang — spec dipindah dengan penanda MISSING_COLUMN untuk kolom itu saja.
  *  3. Retensi: versi yang dibuang dihapus (Sheet ikut kaskade) dan prefix objeknya diantrekan ke
  *     StorageCleanup dengan masa tenggang 1 jam.
  *  4. Rollback (opts.audit): AuditLog "dataset.version.activate".
@@ -42,8 +44,9 @@ export async function activateVersionInTx(
   // Kesalahan pemanggil (versi dataset lain / belum siap): batalkan seluruh transaksi.
   if (!v) throw new Error("versi tidak bisa diaktifkan: bukan versi READY dataset ini");
   await tx.dataset.update({ where: { id: datasetId }, data: { activeVersionId: versionId } });
-  await persistWidgets(tx, datasetId, versionId);
-  const deletedTypedKeys = await applyRetention(tx, datasetId, versionId);
+  const victims = await retentionOf(tx, datasetId, versionId);
+  await persistWidgets(tx, datasetId, versionId, new Set(victims));
+  const deletedTypedKeys = await applyRetention(tx, datasetId, victims);
   if (opts.audit) {
     await recordAudit(tx, {
       actorId: opts.actorId ?? null,
@@ -64,8 +67,9 @@ export interface StoredWidget {
   missingColumns: string[];
 }
 
-/** Sheet lama widget + jumlah sheet di versinya (fallback "satu-satunya sheet" di matchSheet). */
+/** Sheet lama widget + versinya + jumlah sheet di versi itu (fallback "satu-satunya sheet" di matchSheet). */
 export interface OldSheet extends SheetInfo {
+  versionId: string;
   sheetCount: number;
 }
 
@@ -76,28 +80,35 @@ const sameList = (a: string[], b: string[]) =>
 
 /**
  * Perubahan satu widget saat versi target diaktifkan (murni); null = tidak ada yang ditulis.
- *  - sudah di sheet versi target → missingColumns dikosongkan;
+ * `victims` = id versi yang dibuang retensi aktivasi ini.
+ *  - sudah di sheet versi target → missingColumns hanya menyisakan nama penanda MISSING_COLUMN spec;
  *  - sheet lama tidak ada lagi → dibiarkan (missingColumns lama tetap menjadi pesan widget);
  *  - sheet lama tidak punya pasangan → spec dibiarkan (SHEET_UNAVAILABLE), missingColumns kosong;
- *  - semua kolom ketemu → spec baru disimpan; ada yang hilang → spec dibiarkan, nama kolom dicatat.
+ *  - semua kolom ketemu → spec baru disimpan; ada yang hilang → nama kolom dicatat, spec dibiarkan
+ *    (roll-forward ke versi lama memulihkannya) kecuali versi sheet lama ikut dibuang: spec disimpan di
+ *    sheet target dengan penanda untuk kolom yang hilang saja (panel dan kartu sepakat).
  */
 export function planWidget(
   w: StoredWidget,
   target: SheetInfo[],
   old: OldSheet | undefined,
+  victims: ReadonlySet<string> = new Set(),
 ): WidgetUpdate | null {
   const parsed = parseWidgetConfig(w.type, w.spec);
   if (!parsed.ok) return null;
   const config = parsed.config;
   if (config.type === "empty") return null;
-  const clear = w.missingColumns.length ? { missingColumns: [] } : null;
-  if (target.some((s) => s.id === config.spec.sheetId)) return clear;
+  const record = (names: string[]) =>
+    sameList(names, w.missingColumns) ? null : { missingColumns: names };
+  const here = target.find((s) => s.id === config.spec.sheetId);
+  if (here) return record(markerNames(config, here.schema, w.missingColumns));
   if (!old) return null;
   const to = matchSheet(old, target, old.sheetCount);
-  if (!to) return clear;
-  const moved = remapConfig(config, old, to);
+  if (!to) return record([]);
+  const moved = remapConfig(config, old, to, w.missingColumns);
   if (!moved.missing.length) return { spec: moved.config.spec, missingColumns: [] };
-  return sameList(moved.missing, w.missingColumns) ? null : { missingColumns: moved.missing };
+  if (victims.has(old.versionId)) return { spec: moved.config.spec, missingColumns: moved.missing };
+  return record(moved.missing);
 }
 
 const schemaOf = (s: unknown) => (s as ColumnSchema[] | null) ?? [];
@@ -106,7 +117,12 @@ const sheetIdOf = (w: StoredWidget): string | null => {
   return c.ok && c.config.type !== "empty" ? c.config.spec.sheetId : null;
 };
 
-async function persistWidgets(tx: Tx, datasetId: string, versionId: string): Promise<void> {
+async function persistWidgets(
+  tx: Tx,
+  datasetId: string,
+  versionId: string,
+  victims: ReadonlySet<string>,
+): Promise<void> {
   const dashboards = await tx.dashboard.findMany({
     where: { datasetId },
     orderBy: { id: "asc" },
@@ -158,12 +174,13 @@ async function persistWidgets(tx: Tx, datasetId: string, versionId: string): Pro
         name: s.name,
         index: s.index,
         schema: schemaOf(s.schema),
+        versionId: s.versionId,
         sheetCount: countOf.get(s.versionId) ?? 0,
       },
     ]),
   );
   for (const w of widgets) {
-    const change = planWidget(w, target, olds.get(sheetIdOf(w) ?? ""));
+    const change = planWidget(w, target, olds.get(sheetIdOf(w) ?? ""), victims);
     if (!change) continue;
     // updateMany: widget yang terhapus bersamaan (hapus dashboard) tidak menggagalkan aktivasi.
     await tx.widget.updateMany({
@@ -176,12 +193,16 @@ async function persistWidgets(tx: Tx, datasetId: string, versionId: string): Pro
   }
 }
 
-async function applyRetention(tx: Tx, datasetId: string, activeId: string): Promise<string[]> {
+/** Id versi yang dibuang retensi bila versi ini aktif. */
+async function retentionOf(tx: Tx, datasetId: string, activeId: string): Promise<string[]> {
   const versions = await tx.datasetVersion.findMany({
     where: { datasetId, status: { in: ["READY", "FAILED"] } },
     select: { id: true, status: true, createdAt: true },
   });
-  const victims = retentionVictims(versions, activeId);
+  return retentionVictims(versions, activeId);
+}
+
+async function applyRetention(tx: Tx, datasetId: string, victims: string[]): Promise<string[]> {
   if (!victims.length) return [];
   const typed = await tx.sheet.findMany({
     where: { versionId: { in: victims }, typedKey: { not: null } },

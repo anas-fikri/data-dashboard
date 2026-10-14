@@ -11,7 +11,7 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T07:16:35Z"
+updated: "2026-10-14T07:43:59Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -23,11 +23,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-14T07:09:12Z"
       findings: 5
+    - "n": 2
+      by: frontend-expert-design-reviewer
+      at: "2026-10-14T07:32:12Z"
+      findings: 6
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 40346
+    duration_ms: 37170
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -49,13 +53,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791962171191,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791962171212,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791963815540,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791963815566,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  55 passed (55)
-            Tests  835 passed (835)
-         Start at  14:16:06
-         Duration  27.52s (tests 85%, import 9%, transform 6%)
+       Test Files  56 passed (56)
+            Tests  847 passed (847)
+         Start at  14:43:31
+         Duration  25.75s (tests 86%, import 9%, transform 5%)
 
 
       > data-dashboard@0.1.0 audit
@@ -63,8 +67,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-14T07:16:35Z"
-    tree: 3ffcf1e032d5e3486b23a523210f971cf739f415b3d86a6b8dec55d63b914d22
+    at: "2026-10-14T07:43:59Z"
+    tree: f2888cfae77fa2a2175db8da76f356b5d5128a58fb204e2119eae6ebb5322359
 ---
 
 ## Objective
@@ -108,8 +112,11 @@ Mode REPLACE. Ingest versi refresh men-cast raw dengan skema aktif per nama asli
   (5) Cocok = semua sheet aktif ketemu, semua kolom aktif yang TAMPIL ketemu, cast ≥ 98%; kolom tersembunyi yang
   hilang tidak menghalangi. Tidak cocok → AWAITING_MAPPING + alasan; sementara T-014 belum ada, pemilik bisa
   "Buang versi ini". (6) Skema aktif berubah selama ingest → finish "stale" → BullMQ mengulang; recast/metadata
-  hanya menulis ke versi yang masih aktif. (7) Aktivasi menyimpan spec widget ke sheet versi aktif; kolom yang
-  hilang dicatat di Widget.missingColumns. (8) Retensi saat aktivasi: simpan 3 READY terbaru + aktif; FAILED yang
+  hanya menulis ke versi yang masih aktif. (7) Aktivasi menyimpan spec widget ke sheet versi aktif bila
+  semua kolom ketemu (kolom dicocokkan lewat judul asli + urutan, nama tampil hanya cadangan). Ada kolom hilang:
+  spec dibiarkan di sheet lama (roll-forward memulihkannya) dan namanya dicatat di Widget.missingColumns —
+  kecuali versi lama itu ikut dihapus retensi: spec disimpan ke sheet aktif dengan penanda kolom hilang. Widget
+  yang sheet-nya tak terpetakan diarahkan (hanya tampilan) ke satu-satunya sheet aktif agar bisa diperbaiki. (8) Retensi saat aktivasi: simpan 3 READY terbaru + aktif; FAILED yang
   lebih tua dari READY terbaru dihapus; baris langsung dihapus, prefix storage dihapus job setelah ≥ 1 jam.
   (9) Rollback/roll-forward ke versi READY mana pun yang tersimpan; ditolak DATASET_BUSY selama ada versi non-terminal.
 

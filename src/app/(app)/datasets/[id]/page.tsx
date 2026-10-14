@@ -45,7 +45,8 @@ export default async function DatasetDetailPage({
   const active = dataset.active;
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
   const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
-  // Ada versi non-terminal (termasuk unggahan belum selesai) → "Aktifkan" pasti DATASET_BUSY.
+  // Ada versi non-terminal (termasuk unggahan belum selesai) → "Aktifkan" pasti DATASET_BUSY. Unggahan
+  // yang dimulai di tab ini memicu refresh begitu versinya dibuat (UploadPanel), jadi ikut tercakup.
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const [pending, versions] = await Promise.all([

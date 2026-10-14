@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  BUSY_TEXT,
   NETWORK_ERROR,
   activationBusy,
   formatJakarta,
@@ -75,15 +76,31 @@ describe("versionErrorText", () => {
 });
 
 describe("activationBusy", () => {
-  it("versi terbaru diunggah/diproses/menunggu pemetaan → sibuk (server pasti DATASET_BUSY)", () => {
+  it("versi terbaru diunggah/diproses/menunggu pemetaan → sibuk dengan alasannya (server pasti DATASET_BUSY)", () => {
     for (const kind of ["uploading", "processing", "awaiting_mapping"] as const) {
-      expect(activationBusy({ kind, text: "x" })).toBe(true);
+      expect(activationBusy({ kind, text: "x" })).toBe(kind);
     }
   });
 
   it("tanpa badge atau versi terbaru gagal → tidak sibuk", () => {
-    expect(activationBusy(null)).toBe(false);
-    expect(activationBusy({ kind: "failed", text: "Gagal", message: "rusak" })).toBe(false);
+    expect(activationBusy(null)).toBeNull();
+    expect(activationBusy({ kind: "failed", text: "Gagal", message: "rusak" })).toBeNull();
+  });
+});
+
+describe("BUSY_TEXT", () => {
+  it("satu kalimat per keadaan, hanya menyebut tindakan yang membuka aktivasi", () => {
+    expect(BUSY_TEXT.uploading).toBe(
+      "Versi aktif bisa diganti setelah unggahan selesai diproses atau dibatalkan.",
+    );
+    expect(BUSY_TEXT.processing).toBe(
+      "Versi aktif bisa diganti setelah file baru selesai diproses.",
+    );
+    expect(BUSY_TEXT.awaiting_mapping).toBe(
+      "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dibuang.",
+    );
+    expect(BUSY_TEXT.processing).not.toMatch(/pemetaan|dibatalkan/);
+    expect(BUSY_TEXT.awaiting_mapping).not.toMatch(/diunggah|diproses/);
   });
 });
 

@@ -22,7 +22,13 @@ import {
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
 import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
-import { matchSheet, missingMessage, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import {
+  markerNames,
+  matchSheet,
+  missingMessage,
+  remapConfig,
+  type SheetInfo,
+} from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
@@ -125,7 +131,7 @@ export interface QueryRepo {
     activeVersionId: string | null;
     /**
      * Nama kolom yang hilang saat versi diaktifkan (T-013): pesan widget setelah sheet lama spec-nya
-     * dihapus retensi.
+     * dihapus retensi, dan nama di balik penanda MISSING_COLUMN spec.
      */
     missingColumns?: string[];
     /** Dashboard widget (T-012): kolom filter tersimpan + kapan terakhir berubah. */
@@ -489,6 +495,10 @@ export async function runWidgetQuery(
   let config = cfg.config;
   if (!w.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
   let sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
+  // Spec di sheet aktif dengan penanda MISSING_COLUMN (disimpan saat aktivasi, T-013): nama kolom lama
+  // dari catatan aktivasi, tanpa SQL. Tanpa catatan nama → pesan umum widgetPlan (juga tanpa SQL).
+  const marked = sheet?.schema ? markerNames(config, sheet.schema, w.missingColumns ?? []) : [];
+  if (marked.length) return fail("COLUMN_UNAVAILABLE", missingMessage(marked));
   if (!sheet && deps.repo.sheetHistory) {
     // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
     const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
@@ -500,7 +510,12 @@ export async function runWidgetQuery(
     const fresh = target ? await deps.repo.sheet(w.activeVersionId, target.id) : null;
     if (h && target && fresh?.schema) {
       // Skema aktif segar (bukan dari cache riwayat): ganti nama kolom di skema langsung berlaku.
-      const moved = remapConfig(config, h.old, { ...target, schema: fresh.schema });
+      const moved = remapConfig(
+        config,
+        h.old,
+        { ...target, schema: fresh.schema },
+        w.missingColumns ?? [],
+      );
       if (moved.missing.length) return fail("COLUMN_UNAVAILABLE", missingMessage(moved.missing));
       config = moved.config;
       sheet = fresh;
