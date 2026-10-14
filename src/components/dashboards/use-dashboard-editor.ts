@@ -259,10 +259,11 @@ export function useDashboardEditor(o: {
     clearTimeout(timer.current);
     return run(async () => {
       if (stale.current) return false;
-      if (saves.retries().length) setSave("saving");
       for (const [widgetId, c] of saves.retries()) {
         // Sudah ada simpanan lebih baru untuk widget ini di antrean: yang gagal tidak dikirim ulang.
         if (saves.unsaved(widgetId) !== c) continue;
+        // Per kiriman: settled() simpanan sebelumnya mengembalikan "error" selama sisa antrean gagal.
+        setSave("saving");
         saves.start(widgetId, c);
         if (!(await sendConfig(widgetId, c))) {
           // Ditolak permanen dengan tata letak belum terkirim: settled() tidak mengubah status saat dirty.

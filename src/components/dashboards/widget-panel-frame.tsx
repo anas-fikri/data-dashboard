@@ -93,9 +93,13 @@ export function WidgetPanelFrame({
           onEscapeKeyDown={commitFocused}
           // Fokus dikembalikan pemanggil (widget bisa sudah dihapus), bukan ke pemicu bawaan Radix.
           onCloseAutoFocus={(e) => e.preventDefault()}
-          // Radix memindah fokus saat Tab berputar dengan preventScroll: tampilkan elemen itu.
+          // Radix memindah fokus saat Tab berputar dengan preventScroll: tampilkan elemen itu. Hanya fokus
+          // keyboard — fokus dari klik/tap tidak boleh menggulir lembar di antara mousedown dan mouseup
+          // (klik pertama di bagian bawah lembar hilang).
           onFocus={(e) => {
-            if (e.currentTarget.contains(e.target)) e.target.scrollIntoView({ block: "nearest" });
+            if (e.currentTarget.contains(e.target) && e.target.matches(":focus-visible")) {
+              e.target.scrollIntoView({ block: "nearest" });
+            }
           }}
           className="fixed inset-x-0 bottom-0 z-50 flex max-h-[55dvh] scroll-pb-20 flex-col gap-5 overflow-y-auto rounded-t-lg border bg-card p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-lg md:inset-x-auto md:right-4 md:bottom-4 md:w-96 md:rounded-lg"
         >
