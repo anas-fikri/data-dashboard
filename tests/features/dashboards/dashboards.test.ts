@@ -16,16 +16,26 @@ import {
  * dataset, nama unik, dan semua perubahan kanvas (simpan otomatis, tambah/hapus widget) di bawah lock
  * per dashboard dengan revisi wajib — tab yang tertinggal mendapat STALE, layout selalu dipadatkan.
  */
+// Simpan pengaturan widget berjalan di transaksi (lock dashboard, T-013): updateMany sama di tx/prisma.
+const widgetUpdateMany = vi.fn();
+const dashboardUpdateMany = vi.fn();
 const tx = {
   $executeRaw: vi.fn(async () => 1),
   dataset: { findFirst: vi.fn() },
-  dashboard: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(async () => ({})) },
-  widget: { create: vi.fn(), delete: vi.fn(async () => ({})) },
+  dashboard: {
+    create: vi.fn(),
+    findFirst: vi.fn(),
+    update: vi.fn(async () => ({})),
+    updateMany: dashboardUpdateMany,
+  },
+  widget: { create: vi.fn(), delete: vi.fn(async () => ({})), updateMany: widgetUpdateMany },
+  /** Sheet spec masih di versi aktif (dicek ulang di bawah lock). */
+  sheet: { count: vi.fn(async () => 1) },
 };
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
-  dashboard: { findFirst: vi.fn(), updateMany: vi.fn(), deleteMany: vi.fn() },
-  widget: { updateMany: vi.fn(), findFirst: vi.fn() },
+  dashboard: { findFirst: vi.fn(), updateMany: dashboardUpdateMany, deleteMany: vi.fn() },
+  widget: { updateMany: widgetUpdateMany, findFirst: vi.fn() },
   sheet: { findFirst: vi.fn(), findMany: vi.fn(), groupBy: vi.fn(async () => []) },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -376,6 +386,33 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
       data: { type: "bar", spec: bar, missingColumns: [] },
     });
+  });
+
+  it("T-013: versi aktif berganti setelah validasi → STALE, tidak ditulis; urungkan hapus → kosong", async () => {
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    tx.sheet.count.mockResolvedValueOnce(0);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
+      ok: false,
+      code: "STALE",
+    });
+    expect(tx.$executeRaw).toHaveBeenCalled();
+    expect(tx.sheet.count).toHaveBeenCalledWith({
+      where: { id: SHEET, version: { activeFor: { id: DS } } },
+    });
+    expect(widgetUpdateMany).not.toHaveBeenCalled();
+
+    prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
+    tx.sheet.count.mockResolvedValueOnce(0);
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
+    expect(
+      await svc.addWidget(OWNER, DB, { baseRevision: 2, type: "bar", spec: bar }),
+    ).toMatchObject({ ok: true, data: { configDropped: true } });
+    expect(tx.widget.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { dashboardId: DB, title: "", type: "empty", spec: {} } }),
+    );
   });
 
   it("T-013: sheet lama sudah dihapus + kolom hilang tercatat → semua kolom ditandai hilang di tampilan", async () => {

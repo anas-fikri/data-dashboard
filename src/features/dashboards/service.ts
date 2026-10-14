@@ -499,6 +499,19 @@ async function lockedDashboard(tx: Tx, ownerId: string, dashboardId: string) {
   });
 }
 
+/**
+ * Spec masih menunjuk sheet versi aktif. Dibaca di bawah lock dashboard yang juga diambil aktivasi
+ * versi (T-013): spec yang divalidasi terhadap versi aktif lama tidak tersimpan setelah aktivasi
+ * memetakan widget lain (spec itu tidak ikut dipetakan dan sheet-nya bisa langsung dihapus retensi).
+ */
+async function onActiveVersion(tx: Tx, datasetId: string, config: WidgetConfig): Promise<boolean> {
+  if (config.type === "empty") return true;
+  const n = await tx.sheet.count({
+    where: { id: config.spec.sheetId, version: { activeFor: { id: datasetId } } },
+  });
+  return n === 1;
+}
+
 const staleLayout = <T>() =>
   fail<T>(
     "STALE",
@@ -555,12 +568,14 @@ export async function addWidget(
   // menggagalkan pemulihan: widget kembali kosong di posisinya dan klien diberi tahu.
   let config: WidgetConfig = { type: "empty", spec: {} };
   let configDropped = false;
+  let datasetId: string | null = null;
   if (input.type !== undefined) {
     const owner = await prisma.dashboard.findFirst({
       where: { id: dashboardId, dataset: { ownerId } },
       select: { datasetId: true },
     });
     if (!owner) return notFound();
+    datasetId = owner.datasetId;
     const checked = await checkConfig(owner.datasetId, input.type, input.spec);
     if (checked.ok) config = checked.config;
     else configDropped = true;
@@ -570,6 +585,11 @@ export async function addWidget(
     if (!d) return null;
     if (d.layoutRevision !== base) return "STALE" as const;
     if (d.widgets.length >= WIDGETS_PER_DASHBOARD) return "LIMIT_REACHED" as const;
+    // Versi aktif berganti sejak validasi: dipulihkan kosong seperti spec yang tidak lagi valid.
+    if (datasetId && !(await onActiveVersion(tx, datasetId, config))) {
+      config = { type: "empty", spec: {} };
+      configDropped = true;
+    }
     const current = reconcileLayout(
       d.layout,
       d.widgets.map((w) => w.id),
@@ -697,20 +717,33 @@ export async function configureWidget(
   const checked = await checkConfig(w.dashboard.datasetId, type, spec);
   if (!checked.ok) return fail("INVALID", checked.message);
   const { config } = checked;
-  const r = await prisma.widget.updateMany({
-    where,
-    // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013).
-    data: {
-      type: config.type,
-      spec: config.spec as unknown as Prisma.InputJsonValue,
-      missingColumns: [],
-    },
+  const r = await locked(async (tx) => {
+    await tx.$executeRaw(lockKey("dashboard", dashboardId));
+    if (!(await onActiveVersion(tx, w.dashboard.datasetId, config))) return "STALE" as const;
+    const u = await tx.widget.updateMany({
+      where,
+      // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013).
+      data: {
+        type: config.type,
+        spec: config.spec as unknown as Prisma.InputJsonValue,
+        missingColumns: [],
+      },
+    });
+    if (u.count !== 1) return null;
+    await tx.dashboard.updateMany({
+      where: { id: dashboardId },
+      data: { updatedAt: new Date() },
+    });
+    return "ok" as const;
   });
-  if (r.count !== 1) return widgetNotFound();
-  await prisma.dashboard.updateMany({
-    where: { id: dashboardId },
-    data: { updatedAt: new Date() },
-  });
+  if (r === "BUSY") return busy();
+  if (r === null) return widgetNotFound();
+  if (r === "STALE") {
+    return fail(
+      "STALE",
+      "Data dataset ini baru saja berganti versi. Tutup pengaturan widget, buka lagi, lalu simpan.",
+    );
+  }
   return { ok: true, data: { type: config.type, spec: config.spec } };
 }
 

@@ -220,7 +220,9 @@ try {
     if (!MAINTENANCE_JOBS.includes(a)) throw new Error(`job tidak dikenal: ${a}`);
     const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });
     const q = new Queue("maintenance", { connection });
-    const events = new QueueEvents("maintenance", { connection: connection.duplicate() });
+    // QueueEvents menduplikasi koneksi sendiri dan menutupnya di close(); duplikat buatan sendiri
+    // di sini tidak pernah ditutup dan menahan proses tetap hidup setelah hasil dicetak.
+    const events = new QueueEvents("maintenance", { connection });
     try {
       await events.waitUntilReady();
       const job = await q.add(a, {}, { removeOnComplete: 50, removeOnFail: 100 });

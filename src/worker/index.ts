@@ -18,6 +18,7 @@ import {
   finalizeFailed,
   recoverStuckIngests,
   removeStaleWorkDirs,
+  STALE_FAILURE_MESSAGE,
 } from "@/features/ingest/recovery";
 import { prismaIngestRepo, prismaRecastRepo, s3IngestStorage } from "@/features/ingest/repo";
 import { expireStaleUploads } from "@/features/uploads/service";
@@ -164,7 +165,8 @@ async function main() {
       const state = await job.getState().catch(() => "unknown");
       const final = err.name === "UnrecoverableError" || state === "failed";
       if (!final) return;
-      if (!(await finalizeFailed(job.data.versionId, job.data.datasetId))) {
+      const message = err.name === "StaleSnapshotError" ? STALE_FAILURE_MESSAGE : undefined;
+      if (!(await finalizeFailed(job.data.versionId, job.data.datasetId, message))) {
         logger.error(
           { versionId: job.data.versionId },
           "finalisasi ingest gagal; penyapu akan mengulang",

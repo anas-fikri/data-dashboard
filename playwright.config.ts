@@ -27,6 +27,7 @@ export default defineConfig({
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /filters\.spec\.ts$/,
+        /versions\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -37,7 +38,9 @@ export default defineConfig({
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
     // filters (T-012): worker sendiri untuk fixture 5.000 baris (slicer, preset tanggal, filter silang).
     { name: "filters", testMatch: /filters\.spec\.ts$/, dependencies: ["admin"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["filters"] },
+    // versions (T-013): worker sendiri; ganti data, retensi, rollback, dan job maintenance sungguhan.
+    { name: "versions", testMatch: /versions\.spec\.ts$/, dependencies: ["filters"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["versions"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

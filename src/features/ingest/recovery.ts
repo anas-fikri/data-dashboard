@@ -15,6 +15,9 @@ import { prismaIngestRepo, s3IngestStorage } from "./repo";
 
 export const FINAL_FAILURE_MESSAGE =
   "Pemrosesan file gagal setelah beberapa percobaan karena gangguan server. Coba unggah ulang; bila berulang, hubungi admin.";
+/** Semua percobaan berakhir "stale": skema aktif terus diubah selama file diproses (T-013). */
+export const STALE_FAILURE_MESSAGE =
+  "Skema data aktif diubah selama file ini diproses, berulang kali. Selesaikan perubahan skema, lalu unggah ulang file.";
 const STUCK_AFTER_MS = INGEST_DEADLINE_MS + 30 * 60 * 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
