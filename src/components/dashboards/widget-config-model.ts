@@ -334,3 +334,16 @@ export function withDimension(
     },
   };
 }
+
+export type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+/**
+ * Status simpanan yang ditampilkan panel. Kegagalan dicatat editor (saveError) sampai simpanan widget
+ * ini berhasil — juga lewat "Coba lagi"/"Selesai" di toolbar. Jadi alasan dari editor menang (juga di
+ * panel yang dibuka ulang setelah gagal), dan "error" panel tanpa alasan dari editor = sudah tersimpan.
+ */
+export function panelSaveStatus(own: SaveStatus, saveError: string | undefined): SaveStatus {
+  if (own === "saving") return own;
+  if (saveError !== undefined) return "error";
+  return own === "error" ? "saved" : own;
+}

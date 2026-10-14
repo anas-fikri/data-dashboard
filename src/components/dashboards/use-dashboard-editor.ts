@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
+import { createConfigSaves, type ConfigSave } from "./config-saves";
 import { api, type ApiResult } from "./dashboard-api";
 import { fitToWidgets, sameLayout } from "./layout-ops";
 
@@ -14,6 +15,8 @@ import { fitToWidgets, sameLayout } from "./layout-ops";
  * yang ditutup sebelum jeda habis tetap mengirim lewat keepalive. "Urungkan" membatalkan satu langkah.
  * Setiap tata letak (awal, dari server, hasil geser/urungkan, ganti jenis) dibuat ≥ ukuran minimum
  * jenis widgetnya (tabel 3×4); tata letak lama hanya diperbesar di tampilan sampai disimpan berikutnya.
+ * Pengaturan widget yang gagal disimpan (bukan STALE) membuat status "error" sampai berhasil; flush()
+ * ("Coba lagi", "Selesai") mengirimnya ulang lebih dulu (config-saves).
  */
 export type SaveState = "saved" | "pending" | "saving" | "error" | "stale";
 type Undo =
@@ -44,6 +47,9 @@ export function useDashboardEditor(o: {
   const stale = useRef(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [saves] = useState(createConfigSaves);
+  /** Alasan gagal simpanan pengaturan per widget (baris status panel). */
+  const [configErrors, setConfigErrors] = useState(saves.errors);
   const id = o.dashboardId;
 
   const run = useCallback(<T>(op: () => Promise<T>): Promise<T> => {
@@ -63,14 +69,20 @@ export function useDashboardEditor(o: {
     setWidgetsState(next);
   }, []);
 
-  const failed = useCallback((r: Failure, layoutSave = false) => {
+  /** unsaved: perubahannya belum tersimpan → toolbar "Belum tersimpan. Coba lagi" (flush). */
+  const failed = useCallback((r: Failure, unsaved = false) => {
     if (r.code === "STALE") {
       stale.current = true;
       clearTimeout(timer.current);
       setSave("stale");
-    } else if (layoutSave) setSave("error");
+    } else if (unsaved) setSave("error");
     setNotice(r.message);
   }, []);
+
+  /** Simpanan berhasil: tanpa tata letak tertunda, status mengikuti pengaturan widget yang gagal. */
+  const settled = useCallback(() => {
+    if (!dirty.current && !stale.current) setSave(saves.retries().length ? "error" : "saved");
+  }, [saves]);
 
   /** Kirim tata letak yang belum tersimpan. Hanya dari dalam antrean. */
   const saveNow = useCallback(async () => {
@@ -86,15 +98,10 @@ export function useDashboardEditor(o: {
     }
     revision.current = r.data.layoutRevision;
     // Digeser lagi selama permintaan berjalan → tetap "pending", simpan berikutnya menyusul.
-    if (!dirty.current) setSave("saved");
+    settled();
     setNotice(null);
     return true;
-  }, [id, failed]);
-
-  const flush = useCallback(() => {
-    clearTimeout(timer.current);
-    return run(saveNow);
-  }, [run, saveNow]);
+  }, [id, failed, settled]);
 
   /** Tata letak baru dari geser/ubah ukuran (atau tombol posisi): simpan otomatis setelah jeda. */
   const commitLayout = useCallback(
@@ -107,9 +114,9 @@ export function useDashboardEditor(o: {
       dirty.current = true;
       setSave("pending");
       clearTimeout(timer.current);
-      timer.current = setTimeout(() => void flush(), SAVE_DELAY_MS);
+      timer.current = setTimeout(() => void run(saveNow), SAVE_DELAY_MS);
     },
-    [flush, setLayout],
+    [run, saveNow, setLayout],
   );
 
   const addWidget = useCallback(
@@ -156,6 +163,10 @@ export function useDashboardEditor(o: {
         revision.current = r.data.layoutRevision;
         setWidgets(widgetsNow.current.filter((w) => w.id !== widgetId));
         setLayout(dirty.current ? latest.current.filter((it) => it.i !== widgetId) : r.data.layout);
+        // Pengaturannya yang gagal tidak perlu dikirim ulang lagi.
+        saves.forget(widgetId);
+        setConfigErrors(saves.errors());
+        settled();
         setUndo(
           recordUndo && item
             ? {
@@ -172,7 +183,7 @@ export function useDashboardEditor(o: {
         return true;
       });
     },
-    [id, run, saveNow, failed, setLayout, setWidgets],
+    [id, run, saveNow, failed, setLayout, setWidgets, saves, settled],
   );
 
   const renameWidget = useCallback(
@@ -191,31 +202,70 @@ export function useDashboardEditor(o: {
     [id, run, failed, setWidgets],
   );
 
-  /** Atur jenis + isi widget (T-011); hasil server (spec ternormalisasi) jadi sumber kebenaran. */
-  const configureWidget = useCallback(
-    (widgetId: string, type: string, spec: unknown) =>
-      run(async () => {
-        const r = await api.configureWidget(id, widgetId, type, spec);
-        if (!r.ok) {
-          failed(r);
-          // Alasan juga untuk baris status panel: di layar < 1280 px pesan kanvas tertutup panel.
-          return r.message;
-        }
-        setWidgets(
-          widgetsNow.current.map((w) =>
-            // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
-            w.id === widgetId
-              ? { ...w, type: r.data.type, spec: r.data.spec, retargeted: undefined }
-              : w,
-          ),
-        );
-        // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
-        commitLayout(latest.current, false);
-        setNotice(null);
+  /**
+   * Kirim pengaturan widget; hasil server (spec ternormalisasi) jadi sumber kebenaran. Hanya dari dalam
+   * antrean, setelah saves.start(widgetId, c).
+   */
+  const sendConfig = useCallback(
+    async (widgetId: string, c: ConfigSave) => {
+      // Widget sudah dihapus (mis. simpanan tertunda panel saat "Hapus widget"): tidak ada yang disimpan.
+      if (!widgetsNow.current.some((w) => w.id === widgetId)) {
+        saves.finish(widgetId, c, null);
         return true;
-      }),
-    [id, run, failed, setWidgets, commitLayout],
+      }
+      const r = await api.configureWidget(id, widgetId, c.type, c.spec);
+      // Gagal bukan STALE: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di
+      // layar < 1280 px pesan kanvas tertutup panel). Ditolak permanen: widget sudah dihapus di tab lain
+      // (tidak ada yang disimpan) atau pengaturan tidak valid (alasan tetap tampil, tidak dikirim ulang,
+      // tidak menahan "Selesai").
+      const gone = !r.ok && r.code === "NOT_FOUND";
+      const invalid = !r.ok && r.code === "INVALID";
+      saves.finish(widgetId, c, r.ok || r.code === "STALE" || gone ? null : r.message, !invalid);
+      setConfigErrors(saves.errors());
+      if (!r.ok) {
+        failed(r, !gone && !invalid);
+        if (gone || invalid) settled();
+        return false;
+      }
+      setWidgets(
+        widgetsNow.current.map((w) =>
+          // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
+          w.id === widgetId
+            ? { ...w, type: r.data.type, spec: r.data.spec, retargeted: undefined }
+            : w,
+        ),
+      );
+      settled();
+      // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
+      commitLayout(latest.current, false);
+      setNotice(null);
+      return true;
+    },
+    [id, saves, failed, setWidgets, settled, commitLayout],
   );
+
+  /** Atur jenis + isi widget (T-011). Tercatat "dikirim" sejak masuk antrean (panel yang dibuka ulang). */
+  const configureWidget = useCallback(
+    (widgetId: string, type: string, spec: unknown) => {
+      const c = { type, spec };
+      saves.start(widgetId, c);
+      return run(() => sendConfig(widgetId, c));
+    },
+    [run, saves, sendConfig],
+  );
+
+  /** Simpan semua yang belum tersimpan ("Coba lagi", "Selesai"): pengaturan widget yang gagal dulu. */
+  const flush = useCallback(() => {
+    clearTimeout(timer.current);
+    return run(async () => {
+      if (stale.current) return false;
+      for (const [widgetId, c] of saves.retries()) {
+        saves.start(widgetId, c);
+        if (!(await sendConfig(widgetId, c))) return false;
+      }
+      return saveNow();
+    });
+  }, [run, saves, sendConfig, saveNow]);
 
   const undoLast = useCallback(async () => {
     const u = undo;
@@ -274,6 +324,9 @@ export function useDashboardEditor(o: {
     removeWidget,
     renameWidget,
     configureWidget,
+    /** Spec widget yang sedang dikirim atau gagal: panel yang dibuka ulang mulai dari sini. */
+    unsavedConfig: saves.unsaved,
+    configError: (widgetId: string) => configErrors[widgetId],
     undo: undoLast,
     flush,
     dismissNotice: () => setNotice(null),

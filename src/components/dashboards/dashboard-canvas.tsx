@@ -12,6 +12,7 @@ import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
 import { GRID_COLS, minSizeOf, type LayoutItem } from "@/features/dashboards/validation";
 import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
+import { withUnsaved } from "./config-saves";
 import { FilterBar } from "./filters/filter-bar";
 import { DashboardFiltersProvider } from "./filters/filter-context";
 import { crossColumnsOf, type FilterColumnView } from "./filters/filter-model";
@@ -318,7 +319,10 @@ export function DashboardCanvas(props: {
                   onDelete={() => void remove(panelItem.i)}
                 >
                   <WidgetConfigForm
-                    widget={panelWidget}
+                    // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
+                    // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
+                    widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
+                    saveError={ed.configError(panelItem.i)}
                     sources={props.sources}
                     datasetId={props.datasetId}
                     onSave={(type, spec) => ed.configureWidget(panelItem.i, type, spec)}

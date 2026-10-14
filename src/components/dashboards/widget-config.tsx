@@ -1,5 +1,6 @@
 "use client";
 
+import { IconAlertCircle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { configVersion } from "@/components/widgets/body-state";
@@ -24,9 +25,11 @@ import {
   isTemporal,
   measureMismatch,
   missingColumns,
+  panelSaveStatus,
   sortOptions,
   withDimension,
   withoutMissingColumns,
+  type SaveStatus,
   type Source,
 } from "./widget-config-model";
 
@@ -42,30 +45,32 @@ import {
  * rollback ke versi yang punya sheet lama masih bisa memulihkan spec tersimpan (R3-CC-2).
  */
 const SAVE_DELAY_MS = 350;
-type Status = "idle" | "saving" | "saved" | "error";
 const EMPTY: WidgetConfig = { type: "empty", spec: {} };
 
 export function WidgetConfigForm({
   widget,
   sources,
   datasetId,
+  saveError,
   onSave,
 }: {
   widget: WidgetView;
   sources: Source[];
   datasetId: string;
-  /** true = tersimpan; teks = alasan gagal (ditampilkan di baris status). */
-  onSave: (type: WidgetType, spec: unknown) => Promise<true | string>;
+  /** Alasan simpanan widget ini yang gagal, dari editor (ada sampai simpanan widget ini berhasil). */
+  saveError?: string;
+  onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const [draft, setDraft] = useState<WidgetConfig>(parsed.ok ? parsed.config : EMPTY);
   // reloads: simpanan terakhir mengubah data widget (bukan hanya sakelar filter silang, yang tidak
   // memuat ulang) — teks status tidak menjanjikan "memuat data terbaru" yang tidak terjadi.
-  const [saveState, setStatus] = useState<{ status: Status; reloads: boolean; message?: string }>({
+  const [saveState, setStatus] = useState<{ status: SaveStatus; reloads: boolean }>({
     status: "idle",
     reloads: true,
   });
-  const { status, reloads } = saveState;
+  const status = panelSaveStatus(saveState.status, saveError);
+  const { reloads } = saveState;
   const [retargeted, setRetargeted] = useState(widget.retargeted === true);
   // Spec tampilan widget retargeted belum tersimpan: simpanan pertama selalu memuat ulang kartu.
   const savedVersion = useRef(
@@ -95,8 +100,7 @@ export function WidgetConfigForm({
     const version = configVersion(next);
     const mine = ++saveSeq.current;
     setStatus({ status: "saving", reloads: true });
-    void save.current(next.type, next.spec).then((result) => {
-      const ok = result === true;
+    void save.current(next.type, next.spec).then((ok) => {
       const reloads = version !== savedVersion.current;
       if (ok) {
         savedVersion.current = version;
@@ -104,7 +108,7 @@ export function WidgetConfigForm({
         setRetargeted(false);
       }
       if (mine !== saveSeq.current) return;
-      setStatus(ok ? { status: "saved", reloads } : { status: "error", reloads, message: result });
+      setStatus({ status: ok ? "saved" : "error", reloads });
     });
   }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
@@ -172,6 +176,8 @@ export function WidgetConfigForm({
   const noColumns = noSheet || (!!sheet && !sheet.columns.length);
   const missing = noColumns ? [] : missingColumns(draft, sources);
   const unsaved = noColumns || missing.length > 0 || measureMismatch(draft, sources);
+  // Baris status berisi alasan gagal simpan (draf yang belum bisa disimpan didahulukan).
+  const saveFailed = status === "error" && !unsaved;
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
   // memindahkan spec ke sheet aktif.
   const retargetedOnly = retargeted && !unsaved && !!sheet;
@@ -372,11 +378,20 @@ export function WidgetConfigForm({
           <p
             ref={statusRef}
             tabIndex={-1}
-            className="text-xs text-muted-foreground"
+            // Gagal simpan: menempel di bawah area gulir panel/lembar, terlihat dari isian mana pun.
+            // Bayangan sewarna kartu menutup padding bawah panel (isi tidak mengintip di bawahnya).
+            className={
+              saveFailed
+                ? "sticky bottom-0 flex items-start gap-1.5 bg-card py-2 text-xs text-destructive shadow-[0_--spacing(4)_0_var(--color-card)]"
+                : "text-xs text-muted-foreground"
+            }
             aria-live="polite"
             data-testid="config-status"
             data-state={status}
           >
+            {saveFailed ? (
+              <IconAlertCircle size={16} stroke={1.5} aria-hidden className="shrink-0" />
+            ) : null}
             {/* Draf yang belum bisa disimpan didahulukan dari hasil simpanan draf sebelumnya. */}
             {status === "saving"
               ? "Menyimpan…"
@@ -386,8 +401,8 @@ export function WidgetConfigForm({
                   : "Belum tersimpan — pilih sheet lain."
                 : unsaved
                   ? "Belum tersimpan — pilih kolom pengganti."
-                  : status === "error"
-                    ? `Belum tersimpan — ${saveState.message || "coba ubah lagi."}`
+                  : saveFailed
+                    ? `Belum tersimpan — ${saveError || "coba ubah lagi."}`
                     : status === "saved"
                       ? reloads
                         ? "Tersimpan. Widget memuat data terbaru."

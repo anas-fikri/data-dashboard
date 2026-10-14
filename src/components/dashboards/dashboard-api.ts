@@ -26,10 +26,11 @@ async function call<T>(
       ok: false,
       status: res.status,
       code: json?.code ?? "UNAVAILABLE",
+      // Pesan cadangan menyebut penyebab, bukan akibat: pemanggil sudah menulis "Belum tersimpan".
       message:
         res.status === 401
           ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
-          : (json?.message ?? "Perubahan belum tersimpan. Coba lagi beberapa saat lagi."),
+          : (json?.message ?? "Server sedang bermasalah. Coba lagi beberapa saat lagi."),
     };
   } catch {
     return {

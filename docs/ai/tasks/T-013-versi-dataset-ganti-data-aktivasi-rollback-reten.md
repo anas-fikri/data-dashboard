@@ -11,7 +11,7 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T13:36:37Z"
+updated: "2026-10-14T14:51:02Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -55,11 +55,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-14T13:35:09Z"
       findings: 5
+    - "n": 10
+      by: frontend-expert-design-reviewer
+      at: "2026-10-14T14:27:12Z"
+      findings: 4
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 35737
+    duration_ms: 36376
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -81,13 +85,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791984976029,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791984976053,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791989440679,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791989440703,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  59 passed (59)
-            Tests  878 passed (878)
-         Start at  20:36:11
-         Duration  23.61s (tests 86%, import 9%, transform 5%)
+       Test Files  60 passed (60)
+            Tests  888 passed (888)
+         Start at  21:50:36
+         Duration  24.88s (tests 86%, import 9%, transform 4%)
 
 
       > data-dashboard@0.1.0 audit
@@ -95,8 +99,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-14T13:36:37Z"
-    tree: 392c4e3035b1b696ed21b02d82083f3573439eafccaf3b1003ac6ed17747658f
+    at: "2026-10-14T14:51:02Z"
+    tree: 68d6d3ca8dca7b64d9b81e999c60dbbd45dff3d5475ab1d1d691b33dd2aaa927
 ---
 
 ## Objective
