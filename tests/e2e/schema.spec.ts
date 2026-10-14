@@ -271,6 +271,8 @@ test.describe("skema", () => {
   test("AC 1: ingest gagal di dalam sheet → pesan menyebut sheet dan baris, tanpa muat ulang", async ({
     page,
   }) => {
+    // Menunggu worker sampai 60 s (mesin sibuk): batas tes harus di atas batas tunggu itu.
+    test.setTimeout(90_000);
     const id = await createDataset(page, `Rusak ${Date.now()}`);
     await page.getByTestId("upload-input").setInputFiles(await brokenXlsx());
     const msg = page.getByTestId("dataset-status-message");
