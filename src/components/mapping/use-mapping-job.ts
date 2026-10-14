@@ -18,11 +18,15 @@ export interface MappingJobStatus {
 }
 const RUNNING: MappingJobState[] = ["queued", "running"];
 
-/** Polling status job sampai selesai; null = tidak ada job yang ditunggu. */
+/**
+ * Polling status job sampai selesai; null = tidak ada job yang ditunggu. `onStop` = polling berhenti
+ * tanpa hasil (401/403/404/410), dipanggil sebelum halaman dirender ulang.
+ */
 export function useMappingPoll(
   datasetId: string,
   jobId: string | null,
   onDone: (s: MappingJobStatus) => void,
+  onStop?: () => void,
 ) {
   const router = useRouter();
   const poll = usePolling<MappingJobStatus>({
@@ -32,7 +36,10 @@ export function useMappingPoll(
     done: (s) => !RUNNING.includes(s.state),
     onDone,
     // Sesi habis / dataset dihapus / job sudah dibersihkan: tampilkan keadaan terbaru dari server.
-    onStop: () => router.refresh(),
+    onStop: () => {
+      onStop?.();
+      router.refresh();
+    },
   });
   const state = poll.data?.state;
   const phase: "queued" | "running" | null =
@@ -55,14 +62,21 @@ export function useMappingJob(datasetId: string, versionId: string, serverJobId:
   const router = useRouter();
   const [local, setLocal] = useState<MappingLocal>({ phase: "idle" });
   const [jobId, setJobId] = useState<string | null>(null);
-  const job = useMappingPoll(datasetId, jobId ?? serverJobId, (s) => {
-    setJobId(null);
-    if (s.state === "done") router.push(`/datasets/${datasetId}?mapped=1`);
-    else if (s.state === "stale") setLocal(errorOf("STALE", ""));
-    else if (s.state === "gone")
-      router.refresh(); // dibuang/diaktifkan di tab lain
-    else setLocal({ phase: "error", message: s.message || FAILED, reload: false });
-  });
+  const job = useMappingPoll(
+    datasetId,
+    jobId ?? serverJobId,
+    (s) => {
+      setJobId(null);
+      if (s.state === "done") router.push(`/datasets/${datasetId}?mapped=1`);
+      else if (s.state === "stale") setLocal(errorOf("STALE", ""));
+      else if (s.state === "gone")
+        router.refresh(); // dibuang/diaktifkan di tab lain
+      else setLocal({ phase: "error", message: s.message || FAILED, reload: false });
+    },
+    // Job sudah hilang dari antrean (404): lepaskan job lokal agar form tidak terkunci; render ulang
+    // membawa job yang masih berjalan dari server, bila ada.
+    () => setJobId(null),
+  );
 
   async function submit(payload: MappingPayload) {
     setLocal({ phase: "submitting" });

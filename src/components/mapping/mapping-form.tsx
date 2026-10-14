@@ -7,6 +7,7 @@ import {
   hiddenExtras,
   nullChoices,
   pairOf,
+  pairOptions,
   progress,
   sheetDraft,
   toPayload,
@@ -102,6 +103,7 @@ export function MappingForm({ view }: { view: MappingReady }) {
             sheet={s}
             title={csv ? "Kolom" : `Sheet “${s.active.name}”`}
             draft={sheetDraft(draft, s.active.id)}
+            candidates={pairOptions(view, draft, s)}
             attempted={attempted}
             disabled={busy}
             onChange={(next) => setDraft((prev) => ({ ...prev, [s.active.id]: next }))}

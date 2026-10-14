@@ -1,6 +1,5 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import type { MappingOutcome } from "@/features/ingest/mapping-input";
 import type { RecastInput } from "@/features/ingest/recast";
 import { redisLockStore, releaseLock } from "@/lib/lock";
 import { logger } from "@/lib/logger";
@@ -75,23 +74,6 @@ export async function enqueueMapping(data: MappingJobData): Promise<string | nul
   await withQueueTimeout(mappingQueue().add(MAP_VERSION_JOB, data, { jobId }), "enqueue pemetaan");
   logger.info({ versionId: data.versionId, jobId }, "job pemetaan masuk antrean");
   return jobId;
-}
-
-/** Job pemetaan (polling status); null = tidak ada atau bukan job pemetaan. */
-export async function mappingJob(jobId: string): Promise<{
-  versionId: string;
-  /** State BullMQ mentah (waiting/delayed/active/completed/failed/…). */
-  state: string;
-  result: MappingOutcome | null;
-} | null> {
-  const job = await withQueueTimeout(mappingQueue().getJob(jobId), "status pemetaan");
-  if (!job || job.name !== MAP_VERSION_JOB) return null;
-  const state = await withQueueTimeout(job.getState(), "status pemetaan");
-  return {
-    versionId: job.data.versionId,
-    state,
-    result: (job.returnvalue as MappingOutcome | null | undefined) ?? null,
-  };
 }
 
 /**

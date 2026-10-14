@@ -8,7 +8,7 @@ goal: G-4
 depends_on:
   - T-011
 created: "2026-10-13T02:41:40Z"
-updated: "2026-10-13T15:34:02Z"
+updated: "2026-10-14T17:24:28Z"
 created_by: claude-code
 ---
 
@@ -24,5 +24,5 @@ Sisa temuan Low/Info verifikasi T-011 yang sengaja ditunda: (1) kartu batang san
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-13T15:34:02Z Dari review T-019: axe 'region' (moderate, best-practice) pada portal Radix DropdownMenu/Select yang dirender ke <body> di luar landmark — pertimbangkan Portal container di dalam <main> atau wrapper landmark; bukan WCAG AA.
+- 2026-10-14T17:24:28Z Dari T-014: Radix Select (src/components/ui/select.tsx) selalu modal dan menyembunyikan halaman dengan aria-hidden saat listbox terbuka → axe aria-hidden-focus (skip link, sidebar, topbar) di /skema, /pemetaan, panel widget, filter. Fokus terkunci di listbox sehingga tidak bisa dijangkau keyboard, tetapi axe tetap melapor. Perlu primitive listbox non-modal untuk seluruh app (T-019 baru menangani satu filter sebagai menu).

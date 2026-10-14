@@ -11,10 +11,13 @@ import {
   columnKey,
   domId,
   hiddenExtras,
+  mappedCast,
   pairOf,
   pickOptions,
   sheetKey,
   withCast,
+  withColumn,
+  type PairOption,
   type SheetDraft,
 } from "./mapping-model";
 import { MappingPair } from "./mapping-pair";
@@ -56,6 +59,7 @@ export function MappingSheet({
   sheet,
   title,
   draft: d,
+  candidates,
   attempted,
   disabled,
   onChange,
@@ -63,6 +67,8 @@ export function MappingSheet({
   sheet: MappingSheetView;
   title: string;
   draft: SheetDraft;
+  /** Sheet baru yang bisa dipasangkan (pairOptions); hanya dipakai bila tanpa pasangan otomatis. */
+  candidates: PairOption[];
   /** Simpan sudah dicoba: keputusan yang belum dibuat menampilkan galat. */
   attempted: boolean;
   disabled: boolean;
@@ -85,7 +91,7 @@ export function MappingSheet({
         <MappingPair
           id={domId(sheetKey(sid))}
           sheetName={sheet.active.name}
-          candidates={sheet.candidates}
+          candidates={candidates}
           value={d.target}
           error={attempted && d.target === undefined ? ERR_SHEET : null}
           disabled={disabled}
@@ -104,6 +110,11 @@ export function MappingSheet({
             const column = active.get(pos);
             if (!column) return null;
             const value = d.columns[pos];
+            const mismatch = mappedCast(sheet, pair, d, pos);
+            const cast = mismatch && {
+              ...mismatch,
+              value: d.casts[mismatch.column.pos] ?? mismatch.base,
+            };
             return (
               <MappingMissingRow
                 key={pos}
@@ -112,8 +123,10 @@ export function MappingSheet({
                 options={pickOptions(sheet, pair, d, pos)}
                 value={value}
                 error={attempted && value === undefined ? ERR_COLUMN : null}
+                cast={cast}
                 disabled={disabled}
-                onChange={(next) => onChange({ ...d, columns: { ...d.columns, [pos]: next } })}
+                onChange={(next) => onChange(withColumn(d, pos, next))}
+                onCast={(next) => cast && onChange(withCast(d, cast.base, cast.column.pos, next))}
               />
             );
           })}

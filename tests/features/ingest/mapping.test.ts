@@ -108,6 +108,26 @@ describe("validateMapping", () => {
     expect(bad).toMatchObject({ ok: false, code: "INVALID" });
   });
 
+  it("cast untuk kolom yang dipetakan user → tipe pilihan, nama dan format lain dari kolom aktif", () => {
+    // Nilai (bilangan bulat) tidak ada; "Jumlah" di file baru dipetakan ke sana sebagai teks.
+    const sheets = [
+      {
+        id: "N1",
+        name: "penjualan",
+        index: 0,
+        colCount: 4,
+        columns: meta(["Kode", "Cabang", "Jumlah", "Baru"]),
+      },
+    ];
+    const r = validateMapping(
+      one([{ activePos: 3, newPos: 3 }], { casts: [{ pos: 3, type: "text" }] }),
+      ctx({ sheets }),
+    );
+    if (!r.ok) throw new Error(r.message);
+    expect(r.plan.pairs[0]!.overrides[2]).toMatchObject({ pos: 3, name: "Nilai", type: "text" });
+    expect(r.plan.pairs[0]!.mapped).toBe(1);
+  });
+
   it("keputusan kurang, kolom bukan yang hilang, kolom baru yang sudah cocok, di luar rentang → INVALID", () => {
     for (const cols of [
       [],

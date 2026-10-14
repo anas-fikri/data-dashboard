@@ -9,12 +9,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { PairOption } from "./mapping-model";
 
 const DROP = "drop";
 
 /**
  * Sheet aktif yang tidak ditemukan di file baru: pasangkan dengan sheet baru yang belum berpasangan
- * (mis. sheet yang diganti nama), atau nyatakan tidak dipakai lagi.
+ * (mis. sheet yang diganti nama), atau nyatakan tidak dipakai lagi. Satu-ke-satu: sheet baru yang
+ * sudah dipilih sheet aktif lain tetap terlihat tetapi tidak bisa dipilih, dengan alasannya.
  */
 export function MappingPair({
   id,
@@ -27,7 +29,7 @@ export function MappingPair({
 }: {
   id: string;
   sheetName: string;
-  candidates: { id: string; name: string }[];
+  candidates: PairOption[];
   /** undefined = belum dipilih, null = tidak dipakai lagi. */
   value: string | null | undefined;
   error: string | null;
@@ -36,6 +38,7 @@ export function MappingPair({
 }) {
   const hintId = `${id}-hint`;
   const errorId = `${id}-err`;
+  const free = candidates.some((c) => c.takenBy === null);
   return (
     <div className="flex flex-col gap-3 border-t px-5 py-4">
       <p className="flex items-start gap-2 text-sm">
@@ -47,7 +50,7 @@ export function MappingPair({
         />
         <span className="min-w-0 [overflow-wrap:anywhere]">
           Sheet “{sheetName}” tidak ada di file baru.{" "}
-          {candidates.length > 0
+          {free
             ? "Pilih sheet file baru yang berisi datanya, atau nyatakan sheet ini tidak dipakai lagi."
             : "Semua sheet file baru sudah berpasangan, jadi sheet ini hanya bisa dinyatakan tidak dipakai lagi."}
         </span>
@@ -75,8 +78,24 @@ export function MappingPair({
           </SelectTrigger>
           <SelectContent>
             {candidates.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                Sheet “{c.name}”
+              <SelectItem
+                key={c.id}
+                value={c.id}
+                textValue={c.name}
+                disabled={c.takenBy !== null}
+                className="group"
+              >
+                {/* Hanya sheet bebas yang bisa terpilih: teksnya tetap polos untuk tampilan pemicu. */}
+                {c.takenBy === null ? (
+                  `Sheet “${c.name}”`
+                ) : (
+                  <>
+                    <span className="block [overflow-wrap:anywhere]">Sheet “{c.name}”</span>
+                    <span className="block text-xs text-muted-foreground group-data-[highlighted]:text-accent-foreground [overflow-wrap:anywhere]">
+                      sudah dipakai untuk “{c.takenBy}”
+                    </span>
+                  </>
+                )}
               </SelectItem>
             ))}
             {candidates.length > 0 ? (

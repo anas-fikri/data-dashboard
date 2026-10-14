@@ -3,14 +3,17 @@ import {
   baseKey,
   castBase,
   hiddenExtras,
+  mappedCast,
   nullChoices,
   pairOf,
+  pairOptions,
   pickOptions,
   progress,
   sheetDraft,
   toPayload,
   undecided,
   withCast,
+  withColumn,
   type MappingDraft,
 } from "@/components/mapping/mapping-model";
 import type { MappingReady, MappingSheetView } from "@/components/mapping/mapping-types";
@@ -189,6 +192,94 @@ describe("cast override", () => {
     const d1 = withCast({ columns: {}, casts: {} }, base, 3, { type: "text" });
     expect(d1.casts).toEqual({ 3: { type: "text" } });
     expect(withCast(d1, base, 3, { ...base }).casts).toEqual({});
+  });
+});
+
+describe("pairOptions", () => {
+  // Dua sheet aktif tanpa pasangan berebut kandidat yang sama.
+  const other: MappingSheetView = {
+    ...returns,
+    active: { ...returns.active, id: "a3", name: "Retur Lama" },
+  };
+  const two: MappingReady = { ...view, sheets: [sales, returns, other] };
+
+  it("sheet baru yang dipilih sheet aktif lain ditandai; pilihan sendiri tidak", () => {
+    const draft: MappingDraft = { a2: { target: "n2", columns: {}, casts: {} } };
+    expect(pairOptions(two, draft, other).map((o) => [o.id, o.takenBy])).toEqual([
+      ["n2", "Retur"],
+      ["n3", null],
+    ]);
+    expect(pairOptions(two, draft, returns).every((o) => o.takenBy === null)).toBe(true);
+  });
+
+  it("'tidak dipakai lagi' dan belum dipilih tidak memakai kandidat", () => {
+    const draft: MappingDraft = { a2: { target: null, columns: {}, casts: {} } };
+    expect(pairOptions(two, draft, other).every((o) => o.takenBy === null)).toBe(true);
+    expect(pairOptions(two, {}, other).every((o) => o.takenBy === null)).toBe(true);
+  });
+});
+
+describe("mappedCast / withColumn", () => {
+  // Jumlah (4, bilangan bulat) hilang; di file baru hanya ada "Catatan" (teks) dan "Kantor" (teks).
+  const qty: MappingSheetView = {
+    ...sales,
+    active: {
+      ...sales.active,
+      columns: [
+        ...sales.active.columns,
+        {
+          pos: 4,
+          name: "Jumlah",
+          original: "Qty",
+          type: "integer",
+          numberLocale: "id",
+          hidden: false,
+          absent: false,
+        },
+      ],
+    },
+    missing: [2, 4],
+    lowCast: [],
+  };
+  const qtyView: MappingReady = { ...view, sheets: [qty] };
+
+  it("kolom file bertipe lain → peringatan dengan pilihan awal = kolom aktif", () => {
+    expect(mappedCast(qty, qty, { columns: { 4: 4 }, casts: {} }, 4)).toEqual({
+      column: expect.objectContaining({ pos: 4, original: "Catatan", type: "text" }),
+      base: { type: "integer", numberLocale: "id", dateFormat: undefined },
+    });
+  });
+
+  it("tipe sama, tipe aktif Teks, dikosongkan, atau belum dipilih → tidak perlu", () => {
+    const same: MappingSheetView = {
+      ...qty,
+      newColumns: qty.newColumns.map((c) => (c.pos === 4 ? { ...c, type: "integer" } : c)),
+    };
+    expect(mappedCast(same, same, { columns: { 4: 4 }, casts: {} }, 4)).toBeNull();
+    expect(mappedCast(qty, qty, { columns: { 2: 4 }, casts: {} }, 2)).toBeNull();
+    expect(mappedCast(qty, qty, { columns: { 4: null }, casts: {} }, 4)).toBeNull();
+    expect(mappedCast(qty, qty, { columns: {}, casts: {} }, 4)).toBeNull();
+  });
+
+  it("payload membawa cast kolom yang dipetakan hanya bila berbeda dari pilihan aktif", () => {
+    const keep: MappingDraft = { a1: { columns: { 2: null, 4: 4 }, casts: {} } };
+    expect(toPayload(qtyView, keep).sheets[0]).not.toHaveProperty("casts");
+    const same: MappingDraft = {
+      a1: { columns: { 2: null, 4: 4 }, casts: { 4: { type: "integer", numberLocale: "id" } } },
+    };
+    expect(toPayload(qtyView, same).sheets[0]).not.toHaveProperty("casts");
+    const text: MappingDraft = {
+      a1: { columns: { 2: null, 4: 4 }, casts: { 4: { type: "text" } } },
+    };
+    expect(toPayload(qtyView, text).sheets[0]).toMatchObject({ casts: [{ pos: 4, type: "text" }] });
+  });
+
+  it("memetakan ulang membuang override kolom file sebelumnya", () => {
+    const d = { columns: { 4: 4 }, casts: { 4: { type: "text" as const } } };
+    const moved = withColumn(d, 4, 2);
+    expect(moved).toEqual({ columns: { 4: 2 }, casts: {} });
+    expect(withColumn(d, 4, 4).casts).toEqual(d.casts);
+    expect(withColumn(d, 2, null)).toEqual({ columns: { 4: 4, 2: null }, casts: d.casts });
   });
 });
 

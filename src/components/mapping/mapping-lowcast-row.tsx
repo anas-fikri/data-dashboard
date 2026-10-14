@@ -1,16 +1,8 @@
 "use client";
 
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { FormatCell } from "@/components/schema/format-cell";
-import { TYPE_LABEL, fmtPct, typeOptions } from "@/components/schema/labels";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import type { ColumnType } from "@/features/ingest/infer";
+import { fmtPct } from "@/components/schema/labels";
+import { MappingCastFields } from "./mapping-cast-fields";
 import { sameCast } from "./mapping-model";
 import type { CastChoice, MappingLowCast } from "./mapping-types";
 
@@ -40,12 +32,6 @@ export function MappingLowCastRow({
   disabled: boolean;
   onChange: (next: CastChoice) => void;
 }) {
-  const label = (text: string, htmlFor: string) => (
-    <label htmlFor={htmlFor} className="mb-1 block text-xs font-medium text-muted-foreground">
-      {text}
-      <span className="sr-only"> untuk “{name}”</span>
-    </label>
-  );
   const changed = !sameCast(value, base);
   return (
     <li
@@ -68,33 +54,13 @@ export function MappingLowCastRow({
           </span>
         </p>
       </div>
-      <div>
-        {label("Tipe", `${id}-type`)}
-        <Select
-          value={value.type}
-          disabled={disabled}
-          // Tipe lain mulai dari deteksi otomatis; kembali ke tipe aktif memulihkan formatnya.
-          onValueChange={(v) => onChange(v === base.type ? base : { type: v as ColumnType })}
-        >
-          <SelectTrigger id={`${id}-type`} className="h-(--control-h-lg) md:h-(--control-h)">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {typeOptions(base.type).map((t) => (
-              <SelectItem key={t} value={t}>
-                {TYPE_LABEL[t]}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <FormatCell
+      <MappingCastFields
         id={id}
-        column={value.type === base.type ? base : {}}
-        draft={value}
+        name={name}
+        base={base}
+        value={value}
         disabled={disabled}
         onChange={onChange}
-        label={label}
       />
     </li>
   );

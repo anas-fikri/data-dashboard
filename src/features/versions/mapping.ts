@@ -242,6 +242,20 @@ async function runningJob(versionId: string): Promise<string | null> {
 }
 
 /**
+ * Job pemetaan yang sedang diterapkan untuk versi dataset milik user yang menunggu pemetaan, atau null
+ * (bukan pemilik, tidak ada versi menunggu, tidak ada job). Halaman dataset hanya butuh id ini.
+ */
+export async function mappingJobId(userId: string, datasetId: string): Promise<string | null> {
+  if (!isIdShape(datasetId)) return null;
+  const v = await prisma.datasetVersion.findFirst({
+    where: { datasetId, status: "AWAITING_MAPPING", dataset: { ownerId: userId } },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  return v ? runningJob(v.id) : null;
+}
+
+/**
  * Tampilan halaman pemetaan: null = bukan pemilik/tidak ada (notFound); { none } = tidak ada versi yang
  * menunggu pemetaan (sudah dipetakan, dibuang, atau tab lain).
  */
@@ -417,7 +431,7 @@ export async function mappingStatus(
   if (!isIdShape(datasetId) || typeof jobId !== "string" || !JOB_ID.test(jobId)) return null;
   const owned = await prisma.dataset.count({ where: { id: datasetId, ownerId: userId } });
   if (!owned) return null;
-  // Bukan mappingJob(): job harus milik dataset ini juga, termasuk setelah versinya dibuang ("gone").
+  // Job harus milik dataset ini juga, termasuk setelah versinya dibuang ("gone").
   const job = await withQueueTimeout(mappingQueue().getJob(jobId), "status pemetaan");
   if (!job || job.name !== MAP_VERSION_JOB || job.data.datasetId !== datasetId) return null;
   const state = await withQueueTimeout(job.getState(), "status pemetaan");

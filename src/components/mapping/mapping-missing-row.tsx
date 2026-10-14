@@ -3,9 +3,10 @@
 import { IconAlertTriangle, IconArrowRight, IconCheck, IconCircleOff } from "@tabler/icons-react";
 import { TYPE_LABEL } from "@/components/schema/labels";
 import { Badge } from "@/components/ui/badge";
+import { MappingCastFields } from "./mapping-cast-fields";
 import type { PickOption } from "./mapping-model";
 import { MappingPicker } from "./mapping-picker";
-import type { MappingActiveColumn } from "./mapping-types";
+import type { CastChoice, MappingActiveColumn, MappingNewColumn } from "./mapping-types";
 
 /** Status baris: ikon + teks (tidak hanya warna). */
 function RowStatus({ value }: { value: number | null | undefined }) {
@@ -30,7 +31,8 @@ function RowStatus({ value }: { value: number | null | undefined }) {
 /*
  * Satu kolom aktif yang tidak ditemukan di file baru: kartu kolom aktif → pilihan kolom file baru.
  * Tata letak mengikuti lebar kartu sheet (container query): bertumpuk di kartu sempit, tiga kolom
- * (aktif · panah · pilihan) mulai @2xl.
+ * (aktif · panah · pilihan) mulai @2xl. Kolom file yang dipilih terbaca bertipe lain → peringatan +
+ * pilihan tipe/format seperti baris "nilai tidak cocok".
  */
 export function MappingMissingRow({
   id,
@@ -38,18 +40,24 @@ export function MappingMissingRow({
   options,
   value,
   error,
+  cast,
   disabled,
   onChange,
+  onCast,
 }: {
   id: string;
   column: MappingActiveColumn;
   options: PickOption[];
   value: number | null | undefined;
   error: string | null;
+  /** Kolom file terpilih yang tipenya berbeda (mappedCast) + pilihan saat ini; null = tidak perlu. */
+  cast: { column: MappingNewColumn; base: CastChoice; value: CastChoice } | null;
   disabled: boolean;
   onChange: (next: number | null) => void;
+  onCast: (next: CastChoice) => void;
 }) {
   const errorId = `${id}-err`;
+  const castId = `${id}-cast-note`;
   return (
     <li
       data-testid="mapping-missing-row"
@@ -99,6 +107,30 @@ export function MappingMissingRow({
           <p id={errorId} className="text-sm text-destructive">
             {error}
           </p>
+        ) : null}
+        {cast ? (
+          <div data-testid="mapping-mapped-cast" className="mt-1.5 flex flex-col gap-3">
+            <p id={castId} className="flex items-start gap-1.5 text-xs text-muted-foreground">
+              <IconAlertTriangle size={16} stroke={1.5} aria-hidden className="shrink-0" />
+              {/* Tipe yang disebut = pilihan saat ini (awalnya tipe kolom aktif). */}
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                Kolom file “{cast.column.original}” terbaca sebagai {TYPE_LABEL[cast.column.type]};
+                nilai yang tidak cocok dengan {TYPE_LABEL[cast.value.type]} akan dikosongkan.
+              </span>
+            </p>
+            <div className="grid gap-3 @4xl:grid-cols-2">
+              <MappingCastFields
+                id={`${id}-cast`}
+                name={column.name}
+                base={cast.base}
+                value={cast.value}
+                describedBy={castId}
+                placeholder={false}
+                disabled={disabled}
+                onChange={onCast}
+              />
+            </div>
+          </div>
         ) : null}
       </div>
     </li>

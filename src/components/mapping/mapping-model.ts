@@ -1,5 +1,6 @@
 import type {
   CastChoice,
+  MappingActiveColumn,
   MappingLowCast,
   MappingNewColumn,
   MappingPayload,
@@ -104,6 +105,31 @@ export function pickOptions(
   });
 }
 
+export interface PairOption {
+  id: string;
+  name: string;
+  /** Nama sheet aktif lain yang sudah memilih sheet baru ini (satu-ke-satu), atau null. */
+  takenBy: string | null;
+}
+
+/** Sheet baru tanpa pasangan yang bisa dipilih untuk `sheet`; yang dipilih sheet aktif lain ditandai. */
+export function pairOptions(
+  view: MappingReady,
+  draft: MappingDraft,
+  sheet: MappingSheetView,
+): PairOption[] {
+  const taken = new Map<string, string>();
+  for (const s of view.sheets) {
+    const t = s.target || s.active.id === sheet.active.id ? null : draft[s.active.id]?.target;
+    if (t) taken.set(t, s.active.name);
+  }
+  return sheet.candidates.map((c) => ({
+    id: c.id,
+    name: c.name,
+    takenBy: taken.get(c.id) ?? null,
+  }));
+}
+
 /** Kolom baru yang tidak dipakai pemetaan: masuk skema sebagai kolom tersembunyi. */
 export function hiddenExtras(pair: MappingPlanView, d: SheetDraft): MappingNewColumn[] {
   const used = new Set(Object.values(d.columns));
@@ -123,6 +149,40 @@ export function castBase(
   const a = sheet.active.columns.find((c) => c.pos === row.activePos);
   const src = a ?? pair.newColumns.find((c) => c.pos === row.pos);
   return { type: src?.type ?? "text", numberLocale: a?.numberLocale, dateFormat: a?.dateFormat };
+}
+
+const activeChoice = (a: MappingActiveColumn): CastChoice => ({
+  type: a.type,
+  numberLocale: a.numberLocale,
+  dateFormat: a.dateFormat,
+});
+
+/**
+ * Kolom file baru yang dipetakan ke kolom aktif `activePos` tetapi terbaca bertipe lain: nilai yang
+ * tidak cocok dengan tipe aktif dikosongkan, jadi barisnya menawarkan tipe/format seperti baris "nilai
+ * tidak cocok". null = belum dipetakan/dikosongkan, tipe sama, atau tipe aktif Teks (semua nilai cocok).
+ */
+export function mappedCast(
+  sheet: MappingSheetView,
+  pair: MappingPlanView,
+  d: SheetDraft,
+  activePos: number,
+): { column: MappingNewColumn; base: CastChoice } | null {
+  const newPos = d.columns[activePos];
+  if (newPos == null) return null;
+  const a = sheet.active.columns.find((c) => c.pos === activePos);
+  const column = pair.newColumns.find((c) => c.pos === newPos);
+  if (!a || !column || a.type === "text" || column.type === a.type) return null;
+  return { column, base: activeChoice(a) };
+}
+
+/** Draf setelah kolom aktif `activePos` diputuskan ulang: override tipe kolom baru sebelumnya dibuang. */
+export function withColumn(d: SheetDraft, activePos: number, next: number | null): SheetDraft {
+  const prev = d.columns[activePos];
+  const columns = { ...d.columns, [activePos]: next };
+  if (prev == null || prev === next) return { ...d, columns };
+  const { [prev]: _, ...casts } = d.casts;
+  return { ...d, columns, casts };
 }
 
 export const sameCast = (a: CastChoice, b: CastChoice) =>
@@ -166,11 +226,19 @@ export function toPayload(view: MappingReady, draft: MappingDraft): MappingPaylo
         const newPos = d.columns[activePos];
         return newPos === undefined ? [] : [{ activePos, newPos }];
       });
+      const override = (pos: number, base: CastChoice) => {
+        const c = d.casts[pos];
+        return c && !sameCast(c, base) ? [{ pos, ...c }] : [];
+      };
       const casts = pair
-        ? pair.lowCast.flatMap((row) => {
-            const c = d.casts[row.pos];
-            return c && !sameCast(c, castBase(s, pair, row)) ? [{ pos: row.pos, ...c }] : [];
-          })
+        ? [
+            ...pair.lowCast.flatMap((row) => override(row.pos, castBase(s, pair, row))),
+            // Kolom yang dipetakan user dengan tipe terbaca lain (mappedCast).
+            ...columns.flatMap(({ activePos }) => {
+              const m = mappedCast(s, pair, d, activePos);
+              return m ? override(m.column.pos, m.base) : [];
+            }),
+          ]
         : [];
       return {
         activeSheetId: s.active.id,
