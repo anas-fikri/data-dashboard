@@ -76,14 +76,14 @@ describe("chip durasi ≥ 24 jam = batas yang dikirim", () => {
     expect(gte).toBe(90018);
     expect(filterText({ column: "D", op: "range", gte }, "duration")).toBe("≥ 1 hari 1:00:18");
     expect(filterText({ column: "D", op: "range", gte: 86_401, lte: 90_000 }, "duration")).toBe(
-      "1 hari 0:00:01 – 1 hari 1:00",
+      "1 hari 0:00:01 – 1 hari 1:00:00",
     );
     expect(valueText(-90_018, "duration")).toBe("-1 hari 1:00:18");
   });
 
-  it("detik 0 dan < 24 jam tidak berubah (sama dengan label grafik)", () => {
-    expect(valueText(90_000, "duration")).toBe("1 hari 1:00");
-    expect(valueText(86_400, "duration")).toBe("1 hari 0:00");
+  it("≥ 24 jam selalu berdetik (satu bentuk per chip); < 24 jam tidak berubah", () => {
+    expect(valueText(90_000, "duration")).toBe("1 hari 1:00:00");
+    expect(valueText(86_400, "duration")).toBe("1 hari 0:00:00");
     expect(valueText(86_399, "duration")).toBe("23:59:59");
     expect(filterText({ column: "D", op: "range", lte: 2699 }, "duration")).toBe("≤ 0:44:59");
   });

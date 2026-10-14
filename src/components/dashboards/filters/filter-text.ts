@@ -27,13 +27,13 @@ const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/;
 const num = (n: number) => n.toLocaleString("id-ID", { maximumSignificantDigits: 15 });
 
 /**
- * Durasi di filter: seperti grafik ("1:05:09", "1 hari 1:00"), tetapi ≥ 24 jam detiknya tetap tampil
- * bila bukan 0 ("1 hari 1:00:18") — chip = batas yang dikirim, dan nilai slicer tidak kembar.
+ * Durasi di filter selalu j:mm:dd — juga ≥ 24 jam ("1 hari 1:00:18", "1 hari 2:00:00"; grafik memakai
+ * "1 hari 1:00"): chip = batas yang dikirim, satu bentuk dalam satu chip, nilai slicer tidak kembar.
  */
 function durationText(seconds: number): string {
   const text = formatDuration(seconds);
   const s = Math.round(Math.abs(seconds));
-  return s >= 86_400 && s % 60 ? `${text}:${String(s % 60).padStart(2, "0")}` : text;
+  return s >= 86_400 ? `${text}:${String(s % 60).padStart(2, "0")}` : text;
 }
 
 /** Satu nilai sebagai teks; tipe tidak diketahui (filter silang dari URL) → ditebak dari bentuknya. */

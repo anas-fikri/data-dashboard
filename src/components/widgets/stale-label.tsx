@@ -15,7 +15,7 @@ export function StaleLabel({ stale, title }: { stale: boolean; title: string }) 
     <span
       data-testid="widget-stale"
       title="Memperbarui…"
-      className="inline-flex shrink-0 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground @max-[5rem]:[:has(>[data-testid=widget-data-toggle])>&]:sr-only"
+      className="inline-flex min-w-0 shrink items-center gap-1 text-xs whitespace-nowrap text-muted-foreground @max-[5rem]:[:has(>[data-testid=widget-data-toggle])>&]:sr-only"
     >
       <IconLoader2
         size={14}
@@ -23,7 +23,7 @@ export function StaleLabel({ stale, title }: { stale: boolean; title: string }) 
         aria-hidden
         className="shrink-0 motion-safe:animate-spin"
       />
-      <span className="sr-only @min-[12rem]:not-sr-only">
+      <span className="sr-only @min-[12rem]:not-sr-only @min-[12rem]:min-w-0 @min-[12rem]:truncate">
         Memperbarui<span className="sr-only"> {title}</span>…
       </span>
     </span>
