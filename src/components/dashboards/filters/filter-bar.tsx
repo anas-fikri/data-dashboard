@@ -1,7 +1,7 @@
 "use client";
 
 import { IconFilter } from "@tabler/icons-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { CrossFilterHint } from "./cross-hint";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
@@ -19,8 +19,12 @@ import { FilterSheet } from "./filter-sheet";
  * Petunjuk filter silang (satu untuk seluruh dashboard) di baris terakhir bilah, atau sendiri di atas
  * kanvas bila bilah tidak tampil.
  * Perubahan (termasuk nilai) diumumkan sopan ke pembaca layar — tidak ada pengumuman saat dimuat.
+ * Kartu yang masih menampilkan angka filter lama > 0,4 s ("Memperbarui…") diumumkan SEKALI untuk
+ * semuanya ("Memperbarui 8 widget…"), lalu dikosongkan setelah semua kartu diperbarui.
  */
 export const FILTER_SETTINGS_ID = "kolom-filter";
+/** Timer basi semua kartu berjalan bersamaan: tunggu laporan semuanya, lalu umumkan satu kali. */
+const STALE_SETTLE_MS = 100;
 
 /** Fokus ke sumber filter silang (bilah hilang bersama chip terakhirnya): kategori, atau judul kartu. */
 function focusCrossSource(widgetId: string) {
@@ -37,7 +41,7 @@ function focusCrossSource(widgetId: string) {
 }
 
 export function FilterBar({ editing }: { editing: boolean }) {
-  const { columns, state, urlTooLong, widgetTitle, widgetGrain } = useDashboardFilters();
+  const { columns, state, urlTooLong, widgetTitle, widgetGrain, stale } = useDashboardFilters();
   const sheetButton = useRef<HTMLButtonElement>(null);
   const desktop = useRef<HTMLDivElement>(null);
   const active = state.filters.length + (state.cross ? 1 : 0);
@@ -70,11 +74,26 @@ export function FilterBar({ editing }: { editing: boolean }) {
     setAnnounce(parts.length ? `Filter aktif: ${parts.join("; ")}.` : "Semua filter dihapus.");
   }
 
+  const busy = useSyncExternalStore(stale.subscribe, stale.count, () => 0) > 0;
+  const [busyText, setBusyText] = useState("");
+  useEffect(() => {
+    if (!busy) return;
+    const t = setTimeout(() => {
+      const n = stale.count();
+      if (n) setBusyText(`Memperbarui ${n.toLocaleString("id-ID")} widget…`);
+    }, STALE_SETTLE_MS);
+    return () => {
+      clearTimeout(t);
+      setBusyText("");
+    };
+  }, [busy, stale]);
+
   // Wilayah pengumuman selalu terpasang (di luar bilah yang bisa muncul/hilang) agar perubahan pertama
-  // pun terbaca.
+  // pun terbaca. Tidak atomik: munculnya "Memperbarui …" tidak membacakan ulang daftar filter.
   const live = (
-    <p className="sr-only" role="status">
+    <p className="sr-only" role="status" aria-atomic="false">
       {announce}
+      {busyText ? <span> {busyText}</span> : null}
     </p>
   );
   if (!columns.length && !active && !editing) {

@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T02:31:33Z"
+updated: "2026-10-14T03:32:04Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -26,11 +26,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-14T01:58:53Z"
       findings: 15
+    - "n": 3
+      by: frontend-expert-design-reviewer
+      at: "2026-10-14T03:10:57Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 45200
+    duration_ms: 35553
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -52,13 +56,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791945059970,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791945059994,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791948701426,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791948701448,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  45 passed (45)
-            Tests  749 passed (749)
-         Start at  09:30:57
-         Duration  22.32s (tests 87%, import 8%, transform 5%)
+       Test Files  46 passed (46)
+            Tests  757 passed (757)
+         Start at  10:31:38
+         Duration  24.59s (tests 87%, import 8%, transform 5%)
 
 
       > data-dashboard@0.1.0 audit
@@ -66,8 +70,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-14T02:31:33Z"
-    tree: a3fa49470e59873f71a9ca4a96bec2c75afe6e8809fb1be883fcbb7f241a57ce
+    at: "2026-10-14T03:32:04Z"
+    tree: e39c3482deba0ad4e55b0adb46e0ca73d8dd6e9b4f9d0351ab3adc84d093deab
 ---
 
 ## Objective

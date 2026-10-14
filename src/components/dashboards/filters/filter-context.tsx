@@ -16,6 +16,7 @@ import {
   type FilterColumnView,
   type FilterState,
 } from "./filter-model";
+import { createStaleStore, type StaleStore } from "./stale-store";
 
 /*
  * Status filter dashboard (T-012) untuk bilah filter dan semua widget. Perubahan langsung tampil di
@@ -47,6 +48,8 @@ interface FiltersApi {
   toggleCross: (widgetId: string, f: DashFilter) => void;
   clearCross: () => void;
   clearAll: () => void;
+  /** Kartu yang menampilkan angka basi ("Memperbarui…"): satu pengumuman di bilah filter. */
+  stale: StaleStore;
 }
 
 const FiltersContext = createContext<FiltersApi | null>(null);
@@ -97,6 +100,7 @@ export function DashboardFiltersProvider({
 
   const urlTooLong = !!encodeFilterParam(state) && !urlValue(state);
   const [allMode, setAllMode] = useState<ReadonlySet<string>>(() => new Set());
+  const [stale] = useState(createStaleStore);
   /** Perubahan pengguna: status baru + URL (di handler, bukan effect — status basi tidak ditulis). */
   const update = (next: FilterState) => {
     setRaw(next);
@@ -146,6 +150,7 @@ export function DashboardFiltersProvider({
       ),
     clearCross: () => update({ filters: state.filters }),
     clearAll: () => update({ filters: [] }),
+    stale,
   };
   return <FiltersContext.Provider value={api}>{children}</FiltersContext.Provider>;
 }
@@ -168,6 +173,16 @@ export interface WidgetFilters {
 }
 
 const NONE: WidgetFilters = { filters: [], selected: null, pick: null, canPick: () => false };
+
+/** Kartu melaporkan angka basi ke bilah filter (satu pengumuman untuk semua kartu, bukan per kartu). */
+export function useReportStale(widgetId: string, stale: boolean) {
+  const store = useContext(FiltersContext)?.stale;
+  useEffect(() => {
+    if (!store || !stale) return;
+    store.set(widgetId, true);
+    return () => store.set(widgetId, false);
+  }, [store, widgetId, stale]);
+}
 
 /** Filter untuk satu widget; di luar dashboard (tanpa provider) tidak ada filter. */
 export function useWidgetFilters(widgetId: string): WidgetFilters {

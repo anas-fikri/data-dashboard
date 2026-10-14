@@ -9,6 +9,8 @@ import type { FilterValue } from "./filter-model";
  * mengembalikan maks. 1.000 nilai (+ truncated) dan menyaring sendiri — tidak peka besar/kecil dan
  * aksen. Ketikan ditunda 250 ms; permintaan lama dibatalkan (AbortController)
  * sehingga hanya jawaban kata kunci terakhir yang dipakai. Daftar lama tetap tampil selama memuat.
+ * `full`: daftar lengkap terakhir (tanpa kata cari, tidak terpotong) — tetap diingat selama mencari,
+ * agar kunci "minimal satu nilai" mode kecualikan juga berlaku pada hasil cari (slicer-model.ts).
  */
 const DEBOUNCE_MS = 250;
 export const VALUES_MAX = 1000;
@@ -62,11 +64,12 @@ export function useFilterValues(
   const q = query.trim();
   const [attempt, setAttempt] = useState(0);
   const key = JSON.stringify([column, sheet, q, attempt]);
-  const [res, setRes] = useState<{ key: string; data: Loaded | null; error: string | null }>({
-    key: "",
-    data: null,
-    error: null,
-  });
+  const [res, setRes] = useState<{
+    key: string;
+    data: Loaded | null;
+    error: string | null;
+    full: FilterValue[] | null;
+  }>({ key: "", data: null, error: null, full: null });
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -78,8 +81,13 @@ export function useFilterValues(
             if (ctl.signal.aborted) return;
             setRes((prev) =>
               r.ok
-                ? { key, data: { values: r.values, truncated: r.truncated, q }, error: null }
-                : { key, data: prev.data, error: r.message },
+                ? {
+                    key,
+                    data: { values: r.values, truncated: r.truncated, q },
+                    error: null,
+                    full: q ? prev.full : r.truncated ? null : r.values,
+                  }
+                : { ...prev, key, error: r.message },
             );
           },
           () => {},
@@ -97,6 +105,7 @@ export function useFilterValues(
     loading: res.key !== key,
     data: res.data,
     error: res.key === key ? res.error : null,
+    full: res.full,
     retry: () => setAttempt((n) => n + 1),
   };
 }

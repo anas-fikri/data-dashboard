@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
+import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import type { WidgetConfig } from "@/features/widgets/spec";
 import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
@@ -21,8 +21,9 @@ import { useWidgetQuery } from "./widget-query";
  * Filter dashboard (T-012) ikut dikirim (dashboardFilters); filter berubah → tabel kembali ke halaman
  * pertama. Selama memuat ulang data lama tetap tampil dengan kontras penuh (bukan diredupkan — teks
  * redup gagal kontras), ditandai garis progres di bawah kepala kartu (mode warna paksa: Highlight) +
- * aria-busy. Data lama dari filter LAIN yang belum terganti setelah 0,4 s → label "Memperbarui…" di
- * kepala kartu (onState `stale`), agar angka basi tidak terbaca seolah sudah tersaring. Query dengan
+ * aria-busy. Data lama dari filter LAIN yang belum terganti setelah 0,4 s → penanda "Memperbarui…" di
+ * kepala kartu (onState `stale`), agar angka basi tidak terbaca seolah sudah tersaring; diumumkan
+ * sekali untuk semua kartu oleh bilah filter (useReportStale). Query dengan
  * filter baru gagal → keadaan galat penuh (widget-error.tsx), bukan baris/total lama seolah sudah
  * tersaring. Filter yang tidak berlaku disebut di catatan di bawah isi (skipped-note.tsx).
  */
@@ -94,6 +95,8 @@ function Loaded({
     };
   }, [otherFilters]);
   useEffect(() => onState?.(version, shown, stale), [onState, version, shown, stale]);
+  // Pembaca layar: satu pengumuman di bilah filter untuk semua kartu basi (bukan satu per kartu).
+  useReportStale(widgetId, stale);
 
   if (state.status === "error" && !(data && keepOnError)) {
     return (

@@ -26,11 +26,21 @@ const ISO = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/;
 // batas yang benar-benar dikirim.
 const num = (n: number) => n.toLocaleString("id-ID", { maximumSignificantDigits: 15 });
 
+/**
+ * Durasi di filter: seperti grafik ("1:05:09", "1 hari 1:00"), tetapi ≥ 24 jam detiknya tetap tampil
+ * bila bukan 0 ("1 hari 1:00:18") — chip = batas yang dikirim, dan nilai slicer tidak kembar.
+ */
+function durationText(seconds: number): string {
+  const text = formatDuration(seconds);
+  const s = Math.round(Math.abs(seconds));
+  return s >= 86_400 && s % 60 ? `${text}:${String(s % 60).padStart(2, "0")}` : text;
+}
+
 /** Satu nilai sebagai teks; tipe tidak diketahui (filter silang dari URL) → ditebak dari bentuknya. */
 export function valueText(v: FilterValue, type?: ColumnType, grain?: string): string {
   if (v === null || v === "") return EMPTY_LABEL;
   if (typeof v === "boolean") return v ? "Ya" : "Tidak";
-  if (typeof v === "number") return type === "duration" ? formatDuration(v) : num(v);
+  if (typeof v === "number") return type === "duration" ? durationText(v) : num(v);
   if (type === "date" || type === "timestamp" || (!type && ISO.test(v))) {
     return formatDate(v, grain, type === "timestamp" || (!type && v.length > 10));
   }

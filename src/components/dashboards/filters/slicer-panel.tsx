@@ -40,7 +40,7 @@ export function SlicerPanel({
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const { loading, data, error, retry } = useFilterValues(dashboardId, column, query);
+  const { loading, data, error, full, retry } = useFilterValues(dashboardId, column, query);
   const results = data?.values ?? [];
   const m = slicerModel({
     column: column.column,
@@ -49,6 +49,7 @@ export function SlicerPanel({
     results,
     truncated: !!data?.truncated,
     searching: !!data?.q,
+    fullList: full,
   });
   const list = [...m.pinned, ...results];
   const all = m.selectAll;
@@ -61,7 +62,7 @@ export function SlicerPanel({
         ? data.q
           ? `Tidak ada nilai yang cocok dengan “${data.q}”.`
           : "Kolom ini belum berisi nilai."
-        : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${m.summary}${m.minOne ? ` ${m.minOne}` : ""}`;
+        : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${m.summary}`;
   const Icon = loading ? IconLoader2 : IconSearch;
 
   return (
@@ -92,6 +93,10 @@ export function SlicerPanel({
       </div>
       <p id={`${id}-status`} role="status" className="text-xs text-muted-foreground">
         {status}
+        {/* Alasan kunci terlihat sekali (paragraf -min di bawah); di status hanya untuk pembaca layar. */}
+        {m.minOne && !loading && results.length ? (
+          <span className="sr-only"> {m.minOne}</span>
+        ) : null}
       </p>
       {data?.truncated ? (
         <p
