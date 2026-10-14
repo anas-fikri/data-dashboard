@@ -9,7 +9,7 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:00Z"
+updated: "2026-10-14T09:51:46Z"
 created_by: claude-code
 ---
 
@@ -25,5 +25,5 @@ npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 j
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-11T14:57:00Z AC kuota mencakup upload berjalan (versi UPLOADING).
+- 2026-10-14T09:51:46Z Dari T-013: e2e schema.spec AC1 (ingest gagal di dalam sheet) kadang gagal di suite penuh (3 dari 7 putaran pada 2026-10-14) karena versi tertahan di 'Menyiapkan file' > 60 s — job ingest tidak diambil worker spec; lolos bila dijalankan sendiri. Akar belum tertangkap (log worker dengan pipa dikuras tidak mereproduksi). Kandidat: worker e2e dibunuh lewat SIGTERM ke npm saja (anak tsx bisa yatim) dan stderr tidak dikuras — satukan startWorker/stopWorker di tests/e2e/helpers.ts seperti versions.spec (detached + kill grup proses + kuras stdout/stderr ke log).
