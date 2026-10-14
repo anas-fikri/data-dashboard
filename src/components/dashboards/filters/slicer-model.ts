@@ -6,6 +6,10 @@
  *   kebiasaan Excel "pilih semua lalu lepas satu" tidak terpotong batas 500 pilihan.
  * "Pilih semua hasil" (dengan kata cari) tidak pernah diam-diam memotong: bila hasil belum lengkap
  * atau pilihan akan melebihi 500, tombolnya nonaktif dengan alasan yang menawarkan mode kecualikan.
+ * Mode diturunkan dari filter (not_in = kecualikan); "Pilih semua" tanpa pengecualian (tanpa filter)
+ * diingat per kolom di filter-context, jadi tetap sama saat popover/bagian lembar dibuka lagi. Mode
+ * kecualikan dengan daftar lengkap tidak bisa mengecualikan semua nilai (0 baris yang tampak seperti
+ * "Semua"): centang terakhir dikunci.
  */
 import { SELECTED_MAX, type DashFilter, type FilterValue } from "./filter-model";
 
@@ -40,6 +44,8 @@ export function slicerModel({
   const filter = (vs: FilterValue[]): DashFilter | null =>
     vs.length ? { column, op: exclude ? "not_in" : "in", values: vs } : null;
   const addable = results.filter((v) => !has(v));
+  // Daftar lengkap (tanpa kata cari, tidak terpotong) dalam mode kecualikan: nilai yang masih tercentang.
+  const kept = exclude && !truncated && !searching ? results.filter((v) => !has(v)) : null;
 
   const selectAll = !searching
     ? // Tanpa kata cari: mode kecualikan tanpa pengecualian (= semua nilai, termasuk yang tidak tampil).
@@ -74,6 +80,9 @@ export function slicerModel({
     isOn: (v: FilterValue) => (exclude ? !has(v) : has(v)),
     /** Daftar penuh: hanya centang yang akan menambah daftar (pilih/kecualikan) yang nonaktif. */
     locked: (v: FilterValue) => full && !has(v),
+    /** Centang terakhir di mode kecualikan: tidak bisa dilepas (alasannya di minOne). */
+    lastKept: (v: FilterValue) => kept?.length === 1 && kept[0] === v,
+    minOne: kept?.length === 1 ? "Minimal satu nilai harus dipilih." : null,
     toggle: (v: FilterValue) => filter(has(v) ? picked.filter((s) => s !== v) : [...picked, v]),
     selectAll: { ...selectAll, blocked },
     cleared: !value && !allMode,

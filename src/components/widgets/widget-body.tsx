@@ -1,15 +1,14 @@
 "use client";
 
-import { IconAlertTriangle, IconRefresh } from "@tabler/icons-react";
 import { useEffect, useState } from "react";
 import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
-import { Button } from "@/components/ui/button";
 import type { WidgetConfig } from "@/features/widgets/spec";
 import { bodyState, configVersion, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
+import { WidgetError } from "./widget-error";
 import { useWidgetQuery } from "./widget-query";
 
 /*
@@ -21,32 +20,18 @@ import { useWidgetQuery } from "./widget-query";
  *
  * Filter dashboard (T-012) ikut dikirim (dashboardFilters); filter berubah → tabel kembali ke halaman
  * pertama. Selama memuat ulang data lama tetap tampil dengan kontras penuh (bukan diredupkan — teks
- * redup gagal kontras), ditandai garis progres di bawah kepala kartu + aria-busy. Query dengan filter
- * baru gagal → keadaan galat penuh (dengan coba lagi), bukan baris/total lama seolah sudah tersaring.
- * Filter yang tidak berlaku untuk widget ini disebut di catatan di bawah isi (skipped-note.tsx).
+ * redup gagal kontras), ditandai garis progres di bawah kepala kartu (mode warna paksa: Highlight) +
+ * aria-busy. Data lama dari filter LAIN yang belum terganti setelah 0,4 s → label "Memperbarui…" di
+ * kepala kartu (onState `stale`), agar angka basi tidak terbaca seolah sudah tersaring. Query dengan
+ * filter baru gagal → keadaan galat penuh (widget-error.tsx), bukan baris/total lama seolah sudah
+ * tersaring. Filter yang tidak berlaku disebut di catatan di bawah isi (skipped-note.tsx).
  */
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
-/** Gangguan sementara → tombol coba lagi; selain itu pesan menjelaskan apa yang harus diubah. */
-const TRANSIENT = new Set([
-  "QUERY_BUSY",
-  "QUERY_TIMEOUT",
-  "OFFLINE",
-  "UNAVAILABLE",
-  "QUERY_FAILED",
-  "NOT_READY",
-  "RATE_LIMITED",
-]);
+/** Data lama dari filter lain dianggap basi (label di kepala kartu) bila memuat lebih lama dari ini. */
+const STALE_LABEL_MS = 400;
 
-export function WidgetBody({
-  widgetId,
-  config,
-  title,
-  editing,
-  resizable = false,
-  showData = false,
-  onState,
-}: {
+interface Props {
   widgetId: string;
   config: Configured;
   title: string;
@@ -55,24 +40,14 @@ export function WidgetBody({
   resizable?: boolean;
   /** Grafik: tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData?: boolean;
-  /** Status isi untuk versi spec ini; fungsi harus stabil (useCallback). */
-  onState?: (version: string, state: BodyState) => void;
-}) {
+  /** Status isi untuk versi spec ini (+ data basi sedang diperbarui); fungsi harus stabil. */
+  onState?: (version: string, state: BodyState, stale: boolean) => void;
+}
+
+export function WidgetBody(props: Props) {
   // Spec berubah → mount baru (halaman/urutan tabel kembali ke awal, query ulang).
-  const version = configVersion(config);
-  return (
-    <Loaded
-      key={version}
-      widgetId={widgetId}
-      config={config}
-      title={title}
-      editing={editing}
-      resizable={resizable}
-      version={version}
-      showData={showData}
-      onState={onState}
-    />
-  );
+  const version = configVersion(props.config);
+  return <Loaded key={version} {...props} version={version} />;
 }
 
 function Loaded({
@@ -80,20 +55,11 @@ function Loaded({
   config,
   title,
   editing,
-  resizable,
+  resizable = false,
   version,
-  showData,
+  showData = false,
   onState,
-}: {
-  widgetId: string;
-  config: Configured;
-  title: string;
-  editing: boolean;
-  resizable: boolean;
-  version: string;
-  showData: boolean;
-  onState?: (version: string, state: BodyState) => void;
-}) {
+}: Props & { version: string }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
   const cross = useWidgetFilters(widgetId);
@@ -115,48 +81,29 @@ function Loaded({
   // Tabel: data lama tetap di bawah pesan galat hanya bila filternya sama (halaman/urutan gagal).
   const keepOnError = config.type === "table" && state.filters === JSON.stringify(cross.filters);
   const shown = bodyState(state, keepOnError);
-  useEffect(() => onState?.(version, shown), [onState, version, shown]);
+  // Data yang tampil milik filter lain dan belum terganti setelah jeda singkat → label "Memperbarui…"
+  // di kepala kartu (bukan untuk ganti halaman/urutan tabel atau coba lagi dengan filter yang sama).
+  const otherFilters = refetching && state.filters !== JSON.stringify(cross.filters);
+  const [stale, setStale] = useState(false);
+  useEffect(() => {
+    if (!otherFilters) return;
+    const t = setTimeout(() => setStale(true), STALE_LABEL_MS);
+    return () => {
+      clearTimeout(t);
+      setStale(false);
+    };
+  }, [otherFilters]);
+  useEffect(() => onState?.(version, shown, stale), [onState, version, shown, stale]);
 
   if (state.status === "error" && !(data && keepOnError)) {
     return (
-      // justify-center-safe + overflow-hidden: pesan panjang di kartu kecil tidak menimpa judul (H4).
-      <div
-        // Bisa digulir (bukan dipotong) di kartu kecil; pesan lengkap tetap terbaca dengan sentuh. Wilayah
-        // gulir harus bisa difokus agar bisa digulir dengan keyboard (axe scrollable-region-focusable);
-        // cincin fokus di dalam (ring-inset) karena kartu memotong outline di luar.
-        className="flex min-h-0 flex-1 flex-col items-center justify-center-safe gap-2 overflow-y-auto rounded-sm p-3 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        role="region"
-        aria-label={`Pesan ${title || "widget"}`}
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={0}
-        data-testid="widget-error"
-        data-code={state.code}
-      >
-        <IconAlertTriangle
-          size={24}
-          stroke={1.5}
-          aria-hidden
-          className="shrink-0 text-warning @max-[10rem]:hidden"
-        />
-        <p className="max-w-prose shrink-0 text-sm" title={state.message}>
-          {state.message}
-        </p>
-        {TRANSIENT.has(state.code) ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-(--control-h-lg) shrink-0 md:h-(--control-h-sm)"
-            leadingIcon={<IconRefresh aria-hidden />}
-            onClick={retry}
-          >
-            Coba lagi
-          </Button>
-        ) : editing ? (
-          <p className="text-xs text-muted-foreground @max-[10rem]:hidden">
-            Ubah lewat tombol pengaturan widget.
-          </p>
-        ) : null}
-      </div>
+      <WidgetError
+        title={title}
+        code={state.code}
+        message={state.message}
+        editing={editing}
+        onRetry={retry}
+      />
     );
   }
   if (!data) {
@@ -216,7 +163,6 @@ function Loaded({
           showData={showData}
           title={title}
           cross={cross}
-          hint={!editing}
         />
       );
   }
@@ -225,12 +171,13 @@ function Loaded({
     <div className="relative flex min-h-0 flex-1 flex-col" aria-busy={refetching || undefined}>
       {refetching ? (
         // Angka lama sedang diperbarui: garis progres di tepi atas isi (tepat di bawah kepala kartu),
-        // di atas kepala tabel yang lengket. Gerak dikurangi: garis diam.
+        // di atas kepala tabel yang lengket. Gerak dikurangi: garis diam. Mode warna paksa: latar
+        // dipaksa sama dengan Canvas — garis memakai warna sistem Highlight.
         <div
           role="progressbar"
           aria-label={`Memperbarui ${title || "widget"}`}
           data-testid="widget-refreshing"
-          className="absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-primary"
+          className="absolute inset-x-0 top-0 z-30 h-0.5 animate-pulse bg-primary motion-reduce:animate-none forced-colors:bg-[Highlight] forced-colors:forced-color-adjust-none"
         />
       ) : null}
       {content}

@@ -69,7 +69,9 @@ export function KpiView({
       )}
       <p
         className={cn(
-          "leading-tight font-semibold tabular-nums tracking-tight",
+          // shrink-0: kotak pendek (kartu sempit di tablet sentuh) tidak memotong angka di dalam barisnya
+          // sendiri — angka boleh memakai padding bawah.
+          "shrink-0 leading-tight font-semibold tabular-nums tracking-tight",
           shown.small ? "text-sm" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
           // Belum diukur: satu baris (title tetap lengkap). Tidak ada yang muat: boleh pindah baris.
           shown.wrap ? "[overflow-wrap:anywhere]" : "truncate whitespace-nowrap",

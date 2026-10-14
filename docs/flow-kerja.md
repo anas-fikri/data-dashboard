@@ -241,11 +241,11 @@ sequenceDiagram
   participant R as Redis
   participant D as DuckDB
   participant S as Parquet (lokal / MinIO)
-  B->>A: POST /api/query {widgetId, filters[]} — atau {datasetId, spec} khusus pemilik/editor saat mengonfigurasi
+  B->>A: POST /api/query {widgetId, dashboardFilters[]} — atau {datasetId, spec} khusus pemilik/editor saat mengonfigurasi
   A->>P: resolusi akses: widget → dashboard → share/pemilik; dataset → pemilik
   A-->>B: 404 bila tidak berhak
   A->>P: skema aktif (versi aktif + schemaRevision per sheet), cache memori per dataset, di-invalidate saat skema/versi berubah
-  A->>A: spec efektif = spec tersimpan widget + filters client (hanya kolom filter yang diizinkan dashboard); validasi zod; agregasi sesuai tipe
+  A->>A: spec efektif = spec tersimpan widget + dashboardFilters client (hanya kolom yang diizinkan dashboard, lewat nama + kelompok tipe); validasi zod; agregasi sesuai tipe
   A-->>B: 400 bila spec tidak valid (tidak menyentuh DuckDB)
   A->>R: GET key = hash(datasetId, versionId, sheetId, schemaRevision, JSON kanonik spec)
   alt hit
@@ -259,7 +259,7 @@ sequenceDiagram
   end
   A-->>B: rows → ECharts / tabel
 ```
-- **Viewer tidak pernah mengirim spec bebas**: hanya `{widgetId, filters}`, spec dari widget tersimpan, filter dibatasi `allowedFilterColumns` dashboard. **Pemilik** boleh `{datasetId, spec}`. **Editor** boleh `{dashboardId, spec}`: authz = share EDITOR dashboard itu, dataset diturunkan server; editor dengan sengaja boleh membaca semua kolom tidak tersembunyi dataset, dan dialog share menampilkan peringatan itu. `sheetId` selalu di-resolve `where {id, datasetId}` sehingga spec tidak bisa menunjuk sheet dataset lain. Kolom sort/filter divalidasi terhadap kolom widget/dashboard, bukan seluruh skema.
+- **Viewer tidak pernah mengirim spec bebas**: hanya `{widgetId, dashboardFilters}` (T-012; `filters` posisional lama dihapus, body strict → 400), spec dari widget tersimpan. Kolom filter lewat nama tampil, dibatasi kolom filter dashboard (`Dashboard.filterColumns`, dipilih pemilik) ∪ dimensi grafik ber-cross-filter; filter hanya berlaku pada kolom tidak tersembunyi bernama sama **dan** sekelompok tipe (teks | angka | waktu | boolean) dengan kolom sumbernya, selain itu dilewati. Konsekuensi: kolom bernama sama dan bertipe sama di sheet lain dataset ikut tersaring — dialog share (T-016) menampilkan peringatan itu. **Pemilik** boleh `{datasetId, spec}`. **Editor** boleh `{dashboardId, spec}`: authz = share EDITOR dashboard itu, dataset diturunkan server; editor dengan sengaja boleh membaca semua kolom tidak tersembunyi dataset, dan dialog share menampilkan peringatan itu. `sheetId` selalu di-resolve `where {id, datasetId}` sehingga spec tidak bisa menunjuk sheet dataset lain. Kolom sort/filter divalidasi terhadap kolom widget/dashboard, bukan seluruh skema.
 - Key cache memuat `versionId` **dan** `schemaRevision`; perubahan versi atau re-cast otomatis miss tanpa penghapusan massal. Spec dikanonikkan (urut key, dedupe filter) sebelum di-hash.
 - Slicer: `SELECT DISTINCT kolom ORDER BY 1 LIMIT 1000` + pencarian server-side; > 1000 nilai unik → peringatan.
 - Tabel baris mentah: paginasi server 100 baris, `ORDER BY` + `LIMIT/OFFSET` di DuckDB.
@@ -332,7 +332,7 @@ Memungkinkan, dan slicer akan jauh lebih ringan dari Excel karena pekerjaan bera
 | D3 | Parquet dua lapis per sheet; raw posisional semua baris; typed per `schemaRevision`; header = metadata | Re-cast tanpa file asli, tanpa parse ulang, tanpa korupsi baca |
 | D4 | Versi self-contained; refresh di-cast dengan skema aktif, tanpa inferensi; satu versi non-terminal per dataset | Append + retensi aman; koreksi user terbawa; tidak ada balapan upload |
 | D5 | MinIO di subdomain sendiri; S3 client menandatangani dengan endpoint publik | SigV4 menyertakan host + path |
-| D6 | Viewer hanya `{widgetId, filters}`; editor `{dashboardId, spec}`; pemilik `{datasetId, spec}`; sheet selalu di-resolve dalam dataset dashboard | Viewer tidak boleh membaca kolom di luar widget; tidak ada baca lintas dataset |
+| D6 | Viewer hanya `{widgetId, dashboardFilters}` (filter lewat nama, hanya kolom yang dipilih pemilik + dimensi cross-filter, berlaku pada kolom bernama sama dengan kelompok tipe sama); editor `{dashboardId, spec}`; pemilik `{datasetId, spec}`; sheet selalu di-resolve dalam dataset dashboard | Viewer tidak boleh membaca kolom di luar widget; tidak ada baca lintas dataset |
 | D7 | Worker 1 job/proses × 2 replika @ 3 GB; DuckDB `memory_limit` eksplisit di setiap proses | Hindari OOM-kill |
 | D8 | Tanggal dataset naive, tidak digeser zona; preset dihitung Asia/Jakarta sebagai naive | Tanggal Excel tidak bertimezone |
 | D9 | AC performa = bukti manual via `npm run perf` + laporan `docs/ai/perf/<task>.md`; `npm run check` memakai fixture kecil (≤ 50k baris) | Check CI harus cepat dan deterministik |

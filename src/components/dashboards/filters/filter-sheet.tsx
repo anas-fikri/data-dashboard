@@ -104,7 +104,7 @@ function Section({
 }) {
   const id = useId();
   const { dashboardId } = useDashboardFilters();
-  const { value, set } = useColumnFilter(column);
+  const { value, set, allMode, setAllMode } = useColumnFilter(column);
   const kind = controlOf(column.type);
   return (
     <section className="border-b last:border-b-0">
@@ -136,7 +136,14 @@ function Section({
       {open ? (
         <div id={`${id}-panel`} className="pb-3">
           {kind === "slicer" ? (
-            <SlicerPanel dashboardId={dashboardId} column={column} value={value} onChange={set} />
+            <SlicerPanel
+              dashboardId={dashboardId}
+              column={column}
+              value={value}
+              onChange={set}
+              allMode={allMode}
+              onAllMode={setAllMode}
+            />
           ) : kind === "date" ? (
             <DatePanel column={column} value={value} onChange={set} />
           ) : (

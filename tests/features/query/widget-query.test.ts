@@ -130,7 +130,7 @@ function deps(over: Partial<QueryDeps> = {}): QueryDeps {
     widget: async (userId, widgetId) => {
       const name = Object.keys(WIDGETS).find((n) => WID(n) === widgetId);
       if (userId !== USER || !name) return null;
-      // Kolom filter dashboard (D6): filter posisional hanya untuk kolom ini (T-012).
+      // Kolom filter dashboard (D6): dashboardFilters hanya untuk kolom ini (T-012).
       const filterColumns = [
         { sheet: "Data", column: "Omzet" },
         { sheet: "Data", column: "Rahasia" },
@@ -253,21 +253,31 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     });
   });
 
-  it("filter dari klien: kolom tersembunyi tidak disebut namanya; di luar kolom filter dashboard atau angka di luar ±2^53 → INVALID", async () => {
+  it("filter dari klien: `filters` posisional lama → INVALID; di luar kolom filter dashboard atau angka di luar ±2^53 → INVALID; kolom tersembunyi dilewati", async () => {
     const exec = vi.fn();
     const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
-    const r = await runWidgetQuery(
-      USER,
-      { widgetId: WID("kpi"), filters: [{ column: 5, op: "gt", value: 1 }] },
-      d,
-    );
-    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
-    expect(r.ok === false && r.message).not.toContain("Rahasia");
+    // Jalur viewer D6 = { widgetId, dashboardFilters } (review keamanan T-012 putaran 2): body strict,
+    // jadi posisi yang ada/tidak ada/tersembunyi dijawab sama dan nama kolom tidak disebut.
+    const answers = [];
+    for (const column of [1, 5, 99]) {
+      const r = await runWidgetQuery(
+        USER,
+        { widgetId: WID("kpi"), filters: [{ column, op: "gt", value: 1 }] },
+        d,
+      );
+      expect(r).toMatchObject({ ok: false, code: "INVALID" });
+      expect(r.ok === false && r.message).not.toContain("Rahasia");
+      answers.push(r);
+    }
+    expect(new Set(answers.map((r) => JSON.stringify(r))).size).toBe(1);
     // Cabang bukan kolom filter dashboard ini (D6, review keamanan T-012).
     expect(
       await runWidgetQuery(
         USER,
-        { widgetId: WID("kpi"), filters: [{ column: 1, op: "eq", value: "Jakarta" }] },
+        {
+          widgetId: WID("kpi"),
+          dashboardFilters: [{ column: "Cabang", op: "in", values: ["Jakarta"] }],
+        },
         d,
       ),
     ).toEqual({
@@ -278,11 +288,19 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     expect(
       await runWidgetQuery(
         USER,
-        { widgetId: WID("kpi"), filters: [{ column: 2, op: "gt", value: 1e308 }] },
+        { widgetId: WID("kpi"), dashboardFilters: [{ column: "Omzet", op: "range", gte: 1e308 }] },
         d,
       ),
     ).toMatchObject({ ok: false, code: "INVALID" });
     expect(exec).not.toHaveBeenCalled();
+    // Kolom filter yang disembunyikan di skema: dilewati (bukan error, bukan dipakai).
+    expect(
+      await runWidgetQuery(
+        USER,
+        { widgetId: WID("kpi"), dashboardFilters: [{ column: "Rahasia", op: "range", gte: 1 }] },
+        deps(),
+      ),
+    ).toMatchObject({ ok: true, rows: [[ROWS]], skippedFilters: ["Rahasia"] });
   });
 
   it("sheet tidak ada di versi aktif → SHEET_UNAVAILABLE; widget kosong → INVALID; bukan pemilik → NOT_FOUND", async () => {

@@ -2,6 +2,7 @@
 
 import { IconFilter } from "@tabler/icons-react";
 import { useRef, useState } from "react";
+import { CrossFilterHint } from "./cross-hint";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
@@ -15,6 +16,8 @@ import { FilterSheet } from "./filter-sheet";
  * (popover); lebih sempit: tombol "Filter (n)" yang membuka lembar, jadi tidak ada pemicu + chip
  * ganda yang menumpuk. Di bawahnya chip filter aktif + filter silang. Tanpa kolom filter: di mode lihat
  * hanya muncul saat ada filter silang; di mode edit memberi tahu tempat menambah kolom filter.
+ * Petunjuk filter silang (satu untuk seluruh dashboard) di baris terakhir bilah, atau sendiri di atas
+ * kanvas bila bilah tidak tampil.
  * Perubahan (termasuk nilai) diumumkan sopan ke pembaca layar — tidak ada pengumuman saat dimuat.
  */
 export const FILTER_SETTINGS_ID = "kolom-filter";
@@ -74,7 +77,14 @@ export function FilterBar({ editing }: { editing: boolean }) {
       {announce}
     </p>
   );
-  if (!columns.length && !active && !editing) return live;
+  if (!columns.length && !active && !editing) {
+    return (
+      <>
+        {live}
+        <CrossFilterHint editing={false} className="px-1" />
+      </>
+    );
+  }
   return (
     <>
       {live}
@@ -123,6 +133,7 @@ export function FilterBar({ editing }: { editing: boolean }) {
             tetapi hilang bila halaman dimuat ulang.
           </p>
         ) : null}
+        <CrossFilterHint editing={editing} />
       </section>
     </>
   );

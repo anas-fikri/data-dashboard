@@ -7,14 +7,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { DashFilter, FilterColumnView } from "./filter-model";
-import { valueText } from "./filter-text";
 import { slicerModel } from "./slicer-model";
+import { SlicerOption } from "./slicer-option";
 import { useFilterValues, VALUES_MAX } from "./use-filter-values";
 
 /*
  * Isi slicer (T-012, popover dan lembar ponsel): cari di server, maks. 1.000 nilai, mode pilih /
- * kecualikan (slicer-model.ts). "Pilih semua" / "Hapus pilihan" memakai aria-disabled (fokus tidak
- * jatuh ke <body>); hasilnya diumumkan lewat status.
+ * kecualikan (slicer-model.ts; mode "Pilih semua" diingat pemanggil). "Pilih semua" / "Hapus
+ * pilihan" dan centang terakhir mode kecualikan memakai aria-disabled (fokus tidak jatuh ke <body>,
+ * alasannya terhubung lewat aria-describedby); hasilnya diumumkan lewat status.
  */
 const num = (n: number) => n.toLocaleString("id-ID");
 const LINK =
@@ -25,17 +26,21 @@ export function SlicerPanel({
   column,
   value,
   onChange,
+  allMode,
+  onAllMode,
 }: {
   dashboardId: string;
   column: FilterColumnView;
   value: DashFilter | undefined;
   onChange: (f: DashFilter | null) => void;
+  /** "Pilih semua" tanpa filter (semua tercentang) — disimpan di luar panel agar bertahan. */
+  allMode: boolean;
+  onAllMode: (on: boolean) => void;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const { loading, data, error, retry } = useFilterValues(dashboardId, column, query);
-  const [allMode, setAllMode] = useState(value?.op === "not_in");
   const results = data?.values ?? [];
   const m = slicerModel({
     column: column.column,
@@ -56,7 +61,7 @@ export function SlicerPanel({
         ? data.q
           ? `Tidak ada nilai yang cocok dengan “${data.q}”.`
           : "Kolom ini belum berisi nilai."
-        : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${m.summary}`;
+        : `${num(results.length)}${data.truncated ? "+" : ""} nilai${data.q ? ` cocok dengan “${data.q}”` : ""}. ${m.summary}${m.minOne ? ` ${m.minOne}` : ""}`;
   const Icon = loading ? IconLoader2 : IconSearch;
 
   return (
@@ -128,7 +133,7 @@ export function SlicerPanel({
               data-testid="filter-slicer-select-all"
               onClick={() => {
                 if (all.off || all.blocked) return;
-                setAllMode(all.allMode);
+                onAllMode(all.allMode);
                 onChange(all.next);
               }}
             >
@@ -142,7 +147,7 @@ export function SlicerPanel({
               data-testid="filter-slicer-clear"
               onClick={() => {
                 if (m.cleared) return;
-                setAllMode(false);
+                onAllMode(false);
                 onChange(null);
               }}
             >
@@ -154,44 +159,32 @@ export function SlicerPanel({
               {[all.blocked, m.full && m.fullText].filter(Boolean).join(" ")}
             </p>
           ) : null}
+          {m.minOne ? (
+            <p id={`${id}-min`} className="text-xs text-muted-foreground">
+              {m.minOne}
+            </p>
+          ) : null}
           <div
             role="group"
             aria-label={`Nilai ${column.column}`}
             aria-busy={loading || undefined}
             className="max-h-64 min-h-0 overflow-y-auto rounded-md border p-1"
           >
-            {list.map((v, i) => {
-              const on = m.isOn(v);
-              const text = valueText(v, column.type);
-              return (
-                <label
-                  key={`${i < m.pinned.length ? "p" : "r"}:${JSON.stringify(v)}`}
-                  data-testid="filter-slicer-option"
-                  data-value={v === null ? "" : String(v)}
-                  className="flex min-h-11 min-w-0 cursor-pointer items-center gap-2 rounded-sm px-2 py-1 text-sm hover:bg-accent has-disabled:cursor-not-allowed has-disabled:opacity-60 md:min-h-9"
-                >
-                  <input
-                    type="checkbox"
-                    className="size-4 shrink-0 accent-(--color-primary)"
-                    checked={on}
-                    disabled={m.locked(v)}
-                    onChange={() => {
-                      if (m.exclude) setAllMode(true);
-                      onChange(m.toggle(v));
-                    }}
-                  />
-                  <span
-                    className={cn(
-                      "line-clamp-2 min-w-0 break-words [overflow-wrap:anywhere]",
-                      v === null && "italic",
-                    )}
-                    title={text}
-                  >
-                    {text}
-                  </span>
-                </label>
-              );
-            })}
+            {list.map((v, i) => (
+              <SlicerOption
+                key={`${i < m.pinned.length ? "p" : "r"}:${JSON.stringify(v)}`}
+                value={v}
+                type={column.type}
+                on={m.isOn(v)}
+                locked={m.locked(v)}
+                last={m.lastKept(v)}
+                reasonId={`${id}-min`}
+                onToggle={() => {
+                  onAllMode(m.exclude);
+                  onChange(m.toggle(v));
+                }}
+              />
+            ))}
           </div>
         </>
       ) : null}

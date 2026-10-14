@@ -32,7 +32,8 @@ import { ParquetCache } from "@/lib/duckdb/parquet-cache";
  * Data kecil yang ditulis eksplisit agar hasil yang diharapkan bisa dihitung tangan: slicer (in + kosong),
  * rentang angka DECIMAL/DOUBLE dan tanggal, preset Asia/Jakarta (D8) pada DATE dan TIMESTAMP, filter yang
  * dilewati widget sheet lain (kolom tidak ada atau kelompok tipe beda), "semua kecuali" (not_in), kolom
- * tidak diizinkan (juga filter posisional lama), dan kunci cache kanonik.
+ * tidak diizinkan, `filters` posisional lama ditolak (jalur viewer D6 hanya dashboardFilters), dan kunci
+ * cache kanonik.
  */
 const DS = "cmv4klj5r0007oczvgiofocpg";
 const VER = "cmv4kljx40009oczvdmpurrxf";
@@ -484,31 +485,32 @@ describe("filter yang dilewati, kolom tidak diizinkan", () => {
     expect(d2.repo.filterSources).not.toHaveBeenCalled();
   });
 
-  it("filter posisional lama di luar kolom yang diizinkan → INVALID tanpa DuckDB (D6)", async () => {
+  it("`filters` posisional lama ditolak (strict) tanpa membaca sumber filter atau DuckDB (D6, review putaran 2)", async () => {
     const exec = vi.fn();
-    const onlyCabang: FilterSource[] = [{ name: "Cabang", type: "text" }];
-    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } }, [], onlyCabang);
-    // Omzet (posisi 2) bukan kolom filter / dimensi cross-filter: KPI tidak boleh jadi penebak nilainya.
-    for (const filters of [
-      [{ column: 2, op: "gte", value: 120 }],
-      [
-        { column: 1, op: "eq", value: "Jakarta" },
-        { column: 2, op: "gt", value: 140 },
-      ],
-    ]) {
-      expect(await runWidgetQuery(USER, { widgetId: WID("kpi"), filters }, d)).toEqual({
-        ok: false,
-        code: "INVALID",
-        message: "Filter tidak diizinkan untuk dashboard ini.",
-      });
-    }
-    expect(exec).not.toHaveBeenCalled();
-    const ok = await runWidgetQuery(
-      USER,
+    const d = deps({ engine: { withSlot: (_u, fn) => fn(), exec } });
+    // Juga untuk kolom yang diizinkan (Cabang) dan bersama dashboardFilters yang sah: tidak ada jalur
+    // posisional yang melewati pemeriksaan nama + kelompok tipe (oracle kolom bernama sama di sheet lain).
+    const answers = [];
+    for (const body of [
       { widgetId: WID("kpi"), filters: [{ column: 1, op: "eq", value: "Jakarta" }] },
-      deps({}, [], onlyCabang),
-    );
-    expect(ok).toMatchObject({ ok: true, rows: [[3]] });
+      { widgetId: WID("other"), filters: [{ column: 3, op: "contains", value: "2026" }] },
+      { widgetId: WID("kpi"), filters: [{ column: 99, op: "is_null" }] },
+      {
+        widgetId: WID("kpi"),
+        filters: [{ column: 2, op: "gte", value: 120 }],
+        dashboardFilters: [{ column: "Cabang", op: "in", values: ["Jakarta"] }],
+      },
+    ]) {
+      const r = await runWidgetQuery(USER, body, d);
+      expect(r).toMatchObject({ ok: false, code: "INVALID" });
+      answers.push(JSON.stringify(r));
+    }
+    // Posisi ada/tidak ada dijawab sama: lebar skema (termasuk kolom tersembunyi) tidak terbaca.
+    expect(new Set(answers).size).toBe(1);
+    expect(exec).not.toHaveBeenCalled();
+    expect(d.repo.filterSources).not.toHaveBeenCalled();
+    // Jalur pengganti: dashboardFilters pada kolom yang diizinkan tetap jalan.
+    expect(await count([{ column: "Cabang", op: "in", values: ["Jakarta"] }])).toBe(3);
   });
 
   it("kelompok tipe beda dengan kolom sumber filter → dilewati (tanggal vs teks, angka vs teks)", async () => {

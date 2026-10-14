@@ -16,17 +16,23 @@ import { SlicerPanel } from "./slicer-panel";
  * Satu kontrol filter di bilah layar lebar (T-012): tombol "Kolom: isi" (aktif = garis + latar
  * primer tipis, bukan hanya warna — isinya ikut berubah; mode warna paksa: garis Highlight) yang
  * membuka popover non-modal berisi slicer, rentang tanggal, atau rentang angka sesuai tipe kolom.
- * Nama kolom panjang yang dipotong, isinya tetap terlihat (teks lengkap di title dan nama aksesibel).
+ * Nama kolom panjang yang dipotong lebih dulu, isinya memakai sisa lebar tombol (teks lengkap di title
+ * dan nama aksesibel).
  * Kolom yang tidak tersedia di data terbaru tampil nonaktif dengan alasannya (bukan tombol yang
  * diam-diam tidak berbuat apa-apa).
  */
 const TESTID = { slicer: "filter-slicer", date: "filter-date", number: "filter-number" } as const;
 
-/** Filter aktif untuk satu kolom. */
+/** Filter aktif untuk satu kolom (+ mode "Pilih semua" slicer yang diingat konteks). */
 export function useColumnFilter(column: FilterColumnView) {
-  const { state, setFilter } = useDashboardFilters();
+  const { state, setFilter, allMode, setAllMode } = useDashboardFilters();
   const value = state.filters.find((f) => normName(f.column) === normName(column.column));
-  return { value, set: (f: DashFilter | null) => setFilter(column.column, f) };
+  return {
+    value,
+    set: (f: DashFilter | null) => setFilter(column.column, f),
+    allMode: allMode(column.column),
+    setAllMode: (on: boolean) => setAllMode(column.column, on),
+  };
 }
 
 /** Ringkasan isi kontrol ("Semua", "Bulan ini", "2 dipilih"). */
@@ -34,7 +40,7 @@ export function controlSummary(column: FilterColumnView, value: DashFilter | und
   if (!value) return "Semua";
   const n = value.op === "in" || value.op === "not_in" ? value.values.length : 0;
   if (value.op === "in" && n > 1) return `${n.toLocaleString("id-ID")} dipilih`;
-  if (value.op === "not_in" && n > 1) return `Semua kecuali ${n.toLocaleString("id-ID")}`;
+  if (value.op === "not_in" && n > 1) return `Kecuali ${n.toLocaleString("id-ID")} nilai`;
   return filterText(value, column.type);
 }
 
@@ -59,7 +65,7 @@ export function UnavailableColumn({ column }: { column: FilterColumnView }) {
 
 export function FilterControl({ column }: { column: FilterColumnView }) {
   const { dashboardId } = useDashboardFilters();
-  const { value, set } = useColumnFilter(column);
+  const { value, set, allMode, setAllMode } = useColumnFilter(column);
   const [open, setOpen] = useState(false);
   if (!column.available) return <UnavailableColumn column={column} />;
   const kind = controlOf(column.type);
@@ -80,12 +86,14 @@ export function FilterControl({ column }: { column: FilterColumnView }) {
             "forced-colors:data-active:border-2 forced-colors:data-active:border-[Highlight]",
           )}
         >
-          {/* Nama yang dipotong; isi filter (maks. 11 rem) tetap terlihat. */}
+          {/* Nama mengalah lebih dulu (paling sempit ±4 huruf); isi filter memakai sisa lebar. */}
           <span className="flex min-w-0 items-baseline gap-1">
             <span className="min-w-0 truncate text-muted-foreground group-hover:text-foreground group-data-active:text-foreground">
               {column.column}:
             </span>
-            <span className={cn("max-w-44 shrink-0 truncate", value && "font-medium")}>
+            <span
+              className={cn("max-w-[calc(100%-4ch)] shrink-0 truncate", value && "font-medium")}
+            >
               {summary}
             </span>
           </span>
@@ -100,7 +108,14 @@ export function FilterControl({ column }: { column: FilterColumnView }) {
           {column.column}
         </p>
         {kind === "slicer" ? (
-          <SlicerPanel dashboardId={dashboardId} column={column} value={value} onChange={set} />
+          <SlicerPanel
+            dashboardId={dashboardId}
+            column={column}
+            value={value}
+            onChange={set}
+            allMode={allMode}
+            onAllMode={setAllMode}
+          />
         ) : kind === "date" ? (
           <DatePanel column={column} value={value} onChange={set} />
         ) : (

@@ -343,6 +343,11 @@ test.describe("filter dashboard", () => {
     await expect(items).toHaveCount(categories);
     const item = chart.locator('[data-testid=crossfilter-item][data-value="Jakarta"]');
     await expect(item).toHaveAttribute("aria-pressed", "false");
+    // Satu petunjuk untuk seluruh dashboard (bukan per grafik); tombol kategori menunjuk ke sana.
+    const hint = page.getByTestId("crossfilter-hint");
+    await expect(hint).toHaveCount(1);
+    await expect(hint).toBeVisible();
+    await expect(item).toHaveAccessibleDescription(/Pilih kategori di grafik untuk menyaring/);
     await item.click();
 
     const chip = page.getByTestId("cross-filter-chip");

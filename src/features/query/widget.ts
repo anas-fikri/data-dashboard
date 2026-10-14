@@ -1,7 +1,8 @@
 /*
- * Query dari widget (T-011): /api/query menerima { widgetId, filters?, dashboardFilters?, page?, sort? }
+ * Query dari widget (T-011): /api/query menerima { widgetId, dashboardFilters?, page?, sort? }
  * (dashboardFilters = filter dashboard T-012, diterapkan di service lewat filters.ts) dan spec diambil
- * dari widget di DB, bukan dari klien. Spec merujuk kolom lewat posisi; di sini posisi diterjemahkan ke
+ * dari widget di DB, bukan dari klien. Filter posisional `filters` lama dihapus (review keamanan T-012
+ * putaran 2): body strict → field itu ditolak INVALID; jalur viewer D6 = { widgetId, dashboardFilters }. Spec merujuk kolom lewat posisi; di sini posisi diterjemahkan ke
  * nama kolom skema aktif lalu masuk resolveSpec T-009 (aturan tipe/agregasi/filter yang sama).
  * Kolom yang disembunyikan atau hilang → "tidak tersedia" untuk widget ini saja. Murni (tanpa I/O).
  */
@@ -9,7 +10,7 @@ import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { TABLE_PAGE_SIZE, type ChartSort, type WidgetConfig } from "@/features/widgets/spec";
 import { dashFiltersSchema } from "./filters";
-import { FILTER_OPS, filterScalar, resolveSpec, type Plan, type QuerySpec } from "./spec";
+import { resolveSpec, type Plan, type QuerySpec } from "./spec";
 
 /** Halaman tabel maksimum (100 baris/halaman → 10 juta baris). */
 export const TABLE_PAGE_MAX = 100_000;
@@ -20,23 +21,10 @@ const pos = z.number().int().min(1).max(16_384);
 export const widgetBodySchema = z
   .object({
     widgetId: cuid,
-    /** Filter posisional (kolom lewat posisi di sheet widget), aturan nilai sama dengan T-009. */
-    filters: z
-      .array(
-        z
-          .object({
-            column: pos,
-            op: z.enum(FILTER_OPS),
-            value: filterScalar.optional(),
-            values: z.array(filterScalar).max(500).optional(),
-          })
-          .strict(),
-      )
-      .max(20)
-      .default([]),
     /**
-     * Filter dashboard (T-012): kolom lewat NAMA tampil, hanya kolom yang diizinkan dashboard (kolom
-     * filter + dimensi grafik cross-filter). Kolom yang tidak ada di sheet widget ini dilewati.
+     * Filter dashboard (T-012) — satu-satunya filter dari klien: kolom lewat NAMA tampil, hanya kolom
+     * yang diizinkan dashboard (kolom filter + dimensi grafik cross-filter, D6). Kolom yang tidak ada di
+     * sheet widget ini, disembunyikan, atau beda kelompok tipe dengan sumbernya dilewati.
      */
     dashboardFilters: dashFiltersSchema.optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
@@ -67,20 +55,22 @@ const SORT: Record<ChartSort, { by: string; dir: "asc" | "desc" }> = {
   label_desc: { by: "d0", dir: "desc" },
 };
 
+/**
+ * Rencana query satu widget dari spec tersimpan + halaman/urutan dari klien. Filter dashboard tidak
+ * lewat sini (diterapkan service sebagai klausa terpisah), jadi spec.filters selalu kosong.
+ */
 export function widgetPlan(
   config: Exclude<WidgetConfig, { type: "empty" }>,
   schema: ColumnSchema[],
-  body: WidgetQueryBody,
+  body: Pick<WidgetQueryBody, "page" | "sort">,
 ): WidgetPlan {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   let unavailable: string | null = null;
-  /** Kolom spec widget boleh disebut namanya (pemilik yang mengatur); kolom filter dari klien tidak. */
-  const name = (p: number, fromSpec = true): string => {
+  /** Kolom spec widget (diatur pemilik) boleh disebut namanya di pesan. */
+  const name = (p: number): string => {
     const c = byPos.get(p);
-    if (!c || (c.hidden && !fromSpec)) {
-      unavailable ??= fromSpec
-        ? "Kolom yang dipakai widget ini sudah tidak ada di data. Atur ulang widget."
-        : "Kolom filter tidak tersedia untuk widget ini.";
+    if (!c) {
+      unavailable ??= "Kolom yang dipakai widget ini sudah tidak ada di data. Atur ulang widget.";
       return "";
     }
     if (c.hidden) {
@@ -91,12 +81,7 @@ export function widgetPlan(
   };
 
   const base = { sheetId: config.spec.sheetId };
-  const filters: QuerySpec["filters"] = body.filters.map((f) => ({
-    column: name(f.column, false),
-    op: f.op,
-    ...(f.value !== undefined ? { value: f.value } : {}),
-    ...(f.values !== undefined ? { values: f.values } : {}),
-  }));
+  const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
   let table: { sort: { index: number; dir: "asc" | "desc" } | null } | null = null;
   switch (config.type) {

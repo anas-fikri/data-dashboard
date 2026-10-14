@@ -1,10 +1,18 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PRESETS, type DashFilter, type FilterColumnView, type Preset } from "./filter-model";
-import { PRESET_LABEL, dateBounds, dateRange } from "./filter-text";
+import {
+  DATE_MAX,
+  DATE_MIN,
+  PRESET_LABEL,
+  dateBounds,
+  dateRange,
+  dateUsable as usable,
+  datesReversed,
+} from "./filter-text";
 
 /*
  * Rentang tanggal (T-012): preset (bulan ini, kuartal ini, sejak awal tahun — dihitung server menurut
@@ -12,12 +20,9 @@ import { PRESET_LABEL, dateBounds, dateRange } from "./filter-text";
  * lewat dua isian tanggal (bertumpuk: ikon kalender tidak terpotong). Isian hanya diterapkan saat
  * tanggalnya lengkap dan sah, tahun 1900–2100 (min/max) — tahun yang sedang diketik (0002, 0020,
  * 0202) tidak dikirim sebagai filter. Kolom cap waktu: hari "Sampai" ikut utuh (server menerima
- * < hari berikutnya).
+ * < hari berikutnya). Galat urutan ("Dari" sesudah "Sampai") hanya setelah isian ditetapkan — blur,
+ * Enter, atau dipilih dari kalender — bukan di tengah ketikan (mis. hari "1" dari "15").
  */
-const MIN = "1900-01-01";
-const MAX = "2100-12-31";
-/** Kosong (batas terbuka) atau tanggal lengkap 1900–2100 (tahun 5 digit tidak). */
-const usable = (d: string) => !d || (/^\d{4}-\d{2}-\d{2}$/.test(d) && d >= MIN && d <= MAX);
 const OPTIONS: { value: Preset | "all"; label: string }[] = [
   { value: "all", label: "Semua tanggal" },
   ...PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] })),
@@ -40,14 +45,18 @@ export function DatePanel({
   const [to, setTo] = useState(range.to);
   // Isian yang ditinggalkan (blur) dengan tanggal belum lengkap/di luar 1900–2100.
   const [bad, setBad] = useState({ from: false, to: false });
+  // Urutan diperiksa setelah isian ditetapkan; perubahan lewat ketikan menunda pemeriksaan.
+  const [settled, setSettled] = useState(false);
+  const typing = useRef(false);
   // Filter berubah dari luar (preset, chip dihapus): isian mengikuti.
   if (seen !== valueKey) {
     setSeen(valueKey);
     setFrom(range.from);
     setTo(range.to);
     setBad({ from: false, to: false });
+    setSettled(false);
   }
-  const wrongOrder = !!from && !!to && from > to;
+  const wrongOrder = settled && datesReversed(from, to);
   const outOfRange = bad.from || bad.to;
   const active: Preset | "all" | null =
     value?.op === "preset" ? value.preset : value ? null : "all";
@@ -56,6 +65,9 @@ export function DatePanel({
     const next = e.target.value;
     if (which === "from") setFrom(next);
     else setTo(next);
+    // Dipilih dari kalender (tanpa tombol ditekan) = ditetapkan; ketikan = belum.
+    setSettled(!typing.current);
+    typing.current = false;
     // Belum lengkap (badInput) atau di luar 1900–2100 (tahun setengah diketik): belum diterapkan.
     if (e.target.validity.badInput || !usable(next)) return;
     setBad((b) => ({ ...b, [which]: false }));
@@ -110,18 +122,24 @@ export function DatePanel({
               <Input
                 id={`${id}-${which}`}
                 type="date"
-                min={MIN}
-                max={MAX}
+                min={DATE_MIN}
+                max={DATE_MAX}
                 value={which === "from" ? from : to}
                 invalid={wrongOrder || bad[which]}
                 aria-describedby={wrongOrder || bad[which] ? `${id}-err` : undefined}
                 onChange={(e) => edit(which, e)}
-                onBlur={(e) =>
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") setSettled(true);
+                  else typing.current = true;
+                }}
+                onBlur={(e) => {
+                  typing.current = false;
+                  setSettled(true);
                   setBad((b) => ({
                     ...b,
                     [which]: e.target.validity.badInput || !usable(e.target.value),
-                  }))
-                }
+                  }));
+                }}
                 className="h-(--control-h-lg) md:h-(--control-h)"
               />
             </div>

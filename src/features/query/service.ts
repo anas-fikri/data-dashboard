@@ -22,13 +22,7 @@ import {
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
 import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
-import {
-  matchSheet,
-  missingMessage,
-  normName,
-  remapConfig,
-  type SheetInfo,
-} from "@/features/widgets/remap";
+import { matchSheet, missingMessage, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
@@ -461,8 +455,8 @@ function dashboardSources(
  * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
  * rencana agregat; tabel mengembalikan satu halaman 100 baris + total baris dengan filter yang sama.
  * Filter dashboard (T-012) dicocokkan lewat nama + kelompok tipe dengan sheet widget ini; yang tidak
- * berlaku dilewati dan dilaporkan di skippedFilters. Kolom filter — dashboardFilters maupun `filters`
- * posisional lama — hanya kolom yang diizinkan dashboard (D6); lainnya INVALID tanpa query.
+ * berlaku dilewati dan dilaporkan di skippedFilters. Kolom filter hanya kolom yang diizinkan dashboard
+ * (D6); lainnya INVALID tanpa query. `filters` posisional lama tidak diterima lagi (body strict → INVALID).
  */
 export async function runWidgetQuery(
   userId: string,
@@ -481,10 +475,8 @@ export async function runWidgetQuery(
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
   if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
   const dashFilters = parsed.data.dashboardFilters ?? [];
-  const positional = parsed.data.filters;
-  const sources =
-    dashFilters.length || positional.length ? await dashboardSources(w, deps.repo) : [];
-  const allowed = new Set(sources.map((x) => normName(x.name)));
+  const sources = dashFilters.length ? await dashboardSources(w, deps.repo) : [];
+  const allowed = sources.map((x) => x.name);
   if (disallowedFilter(dashFilters, allowed)) return fail("INVALID", NOT_ALLOWED);
   const cfg = parseWidgetConfig(w.type, w.spec);
   if (!cfg.ok) return fail("INVALID", cfg.message);
@@ -512,12 +504,6 @@ export async function runWidgetQuery(
     );
   }
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
-  // Filter posisional: posisi → nama di skema aktif → daftar yang sama (posisi yang tidak ada
-  // dilaporkan widgetPlan sebagai kolom tidak tersedia).
-  const byPos = new Map(sheet.schema.map((c) => [c.pos, c.name]));
-  if (positional.some((f) => byPos.has(f.column) && !allowed.has(normName(byPos.get(f.column)!)))) {
-    return fail("INVALID", NOT_ALLOWED);
-  }
   const planned = widgetPlan(config, sheet.schema, parsed.data);
   if (!planned.ok) return fail(planned.code, planned.message);
   const dash = dashFilters.length

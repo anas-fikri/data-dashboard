@@ -10,8 +10,9 @@ import { filterText } from "./filter-text";
 
 /*
  * Filter aktif sebagai chip (T-012): "Kolom: isi" + tombol hapus berlabel, filter silang "Disaring
- * dari <widget>: <nilai>" dengan tombol hapusnya sendiri, dan "Hapus semua filter". Nama kolom panjang
- * yang dipotong, isinya tetap terlihat (teks lengkap di title dan untuk pembaca layar). Setelah
+ * dari <widget>: <nilai>" dengan tombol hapusnya sendiri, dan "Hapus semua filter". Isi memakai lebar
+ * yang ada (bukan batas tetap) dan nama kolom yang mengalah lebih dulu — paling sempit ±4 huruf; teks
+ * lengkap di title dan untuk pembaca layar. Setelah
  * menghapus, fokus pindah ke chip berikutnya (atau sebelumnya); chip terakhir → `onEmpty` dipanggil
  * SEBELUM status berubah (pemanggil memfokuskan kontrol filter pertama atau sumber filter silang —
  * bilah bisa hilang bersama chip), agar fokus tidak jatuh ke <body>.
@@ -60,7 +61,9 @@ export function FilterChips({ onEmpty }: { onEmpty: () => void }) {
               <span className="sr-only">{text}</span>
               <span aria-hidden className="flex min-w-0 items-baseline gap-1" title={text}>
                 <span className="min-w-0 truncate">{f.column}:</span>
-                <span className="max-w-40 shrink-0 truncate font-medium">{value}</span>
+                <span className="max-w-[calc(100%-4ch)] shrink-0 truncate font-medium">
+                  {value}
+                </span>
               </span>
               <Button
                 size="icon-sm"

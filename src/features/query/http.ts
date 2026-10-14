@@ -14,7 +14,7 @@ import { SPEC_MAX_BYTES } from "./spec";
 
 /*
  * HTTP /api/query (T-009, T-011): Origin wajib sama dengan APP_URL (CSRF), body JSON ≤ 64 KB +
- * amplop, status per kode. Dua bentuk body: { widgetId, filters?, page?, sort? } (widget dashboard) dan
+ * amplop, status per kode. Dua bentuk body: { widgetId, dashboardFilters?, page?, sort? } (widget dashboard) dan
  * { datasetId, spec } (query bebas pemilik). Error tak terduga → 500 tanpa detail internal.
  */
 

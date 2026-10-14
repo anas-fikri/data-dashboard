@@ -4,6 +4,7 @@ import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabl
 import { forwardRef, useCallback, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
+import { StaleLabel } from "@/components/widgets/stale-label";
 import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetView } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
@@ -15,13 +16,12 @@ import { cardConfig, dataToggle, toggleMode } from "./widget-card-model";
  * agar kartu sempit tetap muat dan tidak ada hapus sekali ketuk. forwardRef + sisa props:
  * react-grid-layout menempelkan style, kelas, dan handler ke anak langsung.
  *
- * Kepala semua kartu setinggi satu tombol (judul ber-line-height tombol) agar judul sebaris rata.
- * Kartu adalah container. Mode lihat < 9rem (2 kolom di 1024): padding kepala dirapatkan dan judul
- * dua baris kecil (2 × 16 px = tombol 32 px; sentuh + margin = 44 px), bukan 4–5 huruf di samping
- * tombol data. Tombol data tetap ada: di kartu < 140 px grafik diganti daftar peringkat ("+N
- * lainnya"), jadi tabel itulah satu-satunya jalan ke baris yang tidak muat. Di mode edit judul tetap
- * terlihat (terpotong, lengkap di title) dan yang disembunyikan lebih dulu adalah perlengkapan yang
- * kurang penting:
+ * Kepala semua kartu setinggi satu tombol (judul ber-line-height tombol) agar judul sebaris rata;
+ * "Memperbarui…" di samping judul saat angka dari filter lama masih tampil (stale-label.tsx). Kartu
+ * adalah container. Mode lihat < 9rem (2 kolom di 1024): padding kepala dirapatkan dan judul dua baris
+ * kecil (2 × 16 px = tombol 32 px; sentuh + margin = 44 px), bukan 4–5 huruf di samping tombol data
+ * (di kartu < 140 px grafik diganti daftar peringkat, jadi tabel satu-satunya jalan ke baris yang tidak
+ * muat). Mode edit: judul tetap terlihat (terpotong, lengkap di title); yang disembunyikan lebih dulu:
  * - tombol data: < 12rem (mouse) / < 14,5rem (sentuh);
  * - ikon pegangan dengan mouse: < 10rem (seluruh kepala tetap pegangan, kursor "grab");
  * - sentuh (ikon pegangan satu-satunya pegangan, 44 px): < 10rem judul pindah ke baris sendiri di
@@ -36,6 +36,7 @@ export const SETTINGS_ATTR = "data-widget-settings";
 const HEAD_BUTTON =
   "size-(--control-h-lg) shrink-0 md:not-any-pointer-coarse:size-(--control-h-sm)";
 
+type Body = { version: string; state: BodyState; stale: boolean }; // status isi per versi spec
 type Props = React.HTMLAttributes<HTMLDivElement> & {
   widget: WidgetView;
   editing: boolean;
@@ -57,14 +58,14 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       : null;
   // Nilai grafik sebagai tabel: tombol di kepala kartu (tidak ikut terpotong di kartu pendek/sempit).
   const [showData, setShowData] = useState(false);
-  // Status isi dari WidgetBody, ditandai versi spec: spec baru dianggap memuat sampai isinya melapor.
-  const [body, setBody] = useState<{ version: string; state: BodyState } | null>(null);
+  // Spec baru dianggap memuat sampai isinya melapor (dipanggil hanya saat statusnya berubah).
+  const [body, setBody] = useState<Body | null>(null);
   const onState = useCallback(
-    (version: string, state: BodyState) =>
-      setBody((b) => (b?.version === version && b.state === state ? b : { version, state })),
+    (version: string, state: BodyState, stale: boolean) => setBody({ version, state, stale }),
     [],
   );
-  const status = config && body?.version === configVersion(config) ? body.state : "loading";
+  const current = config && body?.version === configVersion(config) ? body : null;
+  const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
   const toggle = chart && mode ? dataToggle(chart, showData) : null;
   return (
@@ -126,6 +127,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         >
           {title}
         </h2>
+        <StaleLabel stale={!!current?.stale} title={title} />
         {toggle ? (
           <Button
             size="icon-sm"

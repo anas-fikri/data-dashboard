@@ -434,7 +434,7 @@ async function checkConfig(
   });
   const schema = sheet?.schema as unknown as ColumnSchema[] | null | undefined;
   if (!schema) return { ok: false, message: "Sheet tidak ditemukan di data aktif dataset ini." };
-  const planned = widgetPlan(config, schema, { widgetId: "", filters: [], page: 0 });
+  const planned = widgetPlan(config, schema, { page: 0 });
   return planned.ok ? { ok: true, config } : { ok: false, message: planned.message };
 }
 

@@ -5,17 +5,17 @@ import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DashFilter, FilterColumnView } from "./filter-model";
-import { parseNumber } from "./filter-text";
+import { hoursToSeconds, parseNumber } from "./filter-text";
 
 /*
  * Rentang angka (T-012): batas bawah dan/atau atas (inklusif), ditulis gaya Indonesia ("1.500.000",
  * "2,5"). Berlaku lewat "Terapkan" (atau Enter) — bukan tiap ketukan, agar widget tidak memuat ulang
- * untuk angka setengah jadi. Durasi diisi dalam jam (disimpan detik, sama dengan data). Batas dikirim
- * apa adanya (tidak dibulatkan ke 6 desimal — server yang membulatkan aman untuk DECIMAL dan
- * membandingkan persis untuk DOUBLE); jam → detik hanya dibersihkan dari sisa pecahan biner.
+ * untuk angka setengah jadi. Durasi diisi dalam jam dan disimpan sebagai detik bulat, sama dengan
+ * data (hoursToSeconds: chip j:mm:dd = batas yang dikirim). Angka lain dikirim apa adanya (tidak
+ * dibulatkan ke 6 desimal — server yang membulatkan aman untuk DECIMAL dan membandingkan persis untuk
+ * DOUBLE).
  */
 const HOUR = 3600;
-const toStored = (n: number, unit: number) => (unit === 1 ? n : Math.round(n * unit * 1e6) / 1e6);
 
 export function NumberPanel({
   column,
@@ -60,8 +60,8 @@ export function NumberPanel({
     }
     setError(null);
     const f: DashFilter = { column: column.column, op: "range" };
-    if (lo !== undefined) f.gte = toStored(lo, unit);
-    if (hi !== undefined) f.lte = toStored(hi, unit);
+    if (lo !== undefined) f.gte = unit === HOUR ? hoursToSeconds(lo, "gte") : lo;
+    if (hi !== undefined) f.lte = unit === HOUR ? hoursToSeconds(hi, "lte") : hi;
     onChange(lo === undefined && hi === undefined ? null : f);
     onDone?.();
   };

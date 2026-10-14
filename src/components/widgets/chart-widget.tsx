@@ -1,7 +1,7 @@
 "use client";
 
-import { IconAlertTriangle, IconClick } from "@tabler/icons-react";
-import { useId, useRef } from "react";
+import { IconAlertTriangle } from "@tabler/icons-react";
+import { useRef } from "react";
 import {
   dateLabelForms,
   formatCell,
@@ -9,6 +9,7 @@ import {
   formatMeasure,
 } from "@/features/widgets/format";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
+import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { filterKey } from "@/components/dashboards/filters/filter-model";
 import { crossFilterFor } from "@/components/dashboards/filters/filter-text";
@@ -54,15 +55,6 @@ const CHAR_PX = 6.6;
 const RANK_CHAR_PX = 7;
 /** Wilayah gulir yang bisa difokus: garis fokus di dalam kotak (tidak terpotong tepi kartu). */
 const SCROLL_REGION = "overflow-y-auto focus-visible:-outline-offset-2";
-/**
- * Petunjuk filter silang (T-012, mode lihat): satu baris 20 px di bawah grafik, hanya bila kartu cukup
- * besar — tingginya dikurangkan dari ruang grafik. Pembaca layar mendapat penjelasannya lewat
- * aria-describedby di setiap tombol kategori.
- */
-const HINT_PX = 20;
-const HINT_MIN = { width: 160, height: 140 };
-const CROSS_HELP =
-  "Menekan kategori menyaring widget lain di dashboard ini; tekan lagi untuk melepas.";
 
 /**
  * iso: nilai tanggal/cap waktu mentah (bentuk pendek di daftar peringkat); index: baris sumber
@@ -86,7 +78,6 @@ export function ChartWidget({
   showData,
   title,
   cross,
-  hint = false,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -94,16 +85,16 @@ export function ChartWidget({
   /** Tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData: boolean;
   title: string;
-  /** Filter dashboard widget ini (T-012): sorotan + klik kategori → filter silang. */
+  /**
+   * Filter dashboard widget ini (T-012): sorotan + klik kategori → filter silang. Petunjuknya satu
+   * untuk seluruh dashboard (cross-hint.tsx); tombol kategori menunjuk ke sana (aria-describedby).
+   */
   cross?: WidgetFilters;
-  /** Tampilkan petunjuk "Klik kategori…" bila grafik bisa menyaring (mode lihat). */
-  hint?: boolean;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
   const outer = useRef<HTMLDivElement>(null);
-  const box = useBoxSize(outer);
-  const helpId = useId();
+  const room = useBoxSize(outer);
   const [dim, measure] = data.columns;
   const dimType = dim?.type ?? "text";
   const valueType = measure?.type;
@@ -141,16 +132,6 @@ export function ChartWidget({
         if (f) cross!.pick!(f);
       }
     : undefined;
-  // Petunjuk filter silang: ruangnya dikurangkan dari kotak untuk semua keputusan tata letak.
-  const showHint =
-    !!pickAt &&
-    hint &&
-    data.rows.length > 0 &&
-    !negative &&
-    !!box &&
-    box.width >= HINT_MIN.width &&
-    box.height >= HINT_MIN.height;
-  const room = box && showHint ? { ...box, height: box.height - HINT_PX } : box;
   const selectedKey = cross?.selected ? filterKey(cross.selected) : null;
   const selected = selectedKey
     ? source.findIndex((_, k) => {
@@ -225,7 +206,7 @@ export function ChartWidget({
         measureLabel={measure!.label}
         valueType={valueType}
         format={spec.format}
-        describedBy={pickAt ? helpId : undefined}
+        describedBy={pickAt ? CROSS_HINT_ID : undefined}
         label={`Data ${name}`}
         width={width}
         height={room?.height ?? null}
@@ -376,7 +357,7 @@ export function ChartWidget({
                 <button
                   type="button"
                   aria-pressed={k === selected}
-                  aria-describedby={helpId}
+                  aria-describedby={CROSS_HINT_ID}
                   data-testid="crossfilter-item"
                   data-value={rawText(k)}
                   onClick={() => pickAt(k)}
@@ -489,26 +470,6 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
-      {pickAt ? (
-        <span id={helpId} className="sr-only">
-          {CROSS_HELP}
-        </span>
-      ) : null}
-      {showHint ? (
-        <p
-          aria-hidden
-          className="flex h-5 shrink-0 items-center gap-1 px-3 text-xs text-muted-foreground"
-          title={CROSS_HELP}
-          data-testid="crossfilter-hint"
-        >
-          <IconClick size={14} stroke={1.5} className="shrink-0" />
-          <span className="truncate">
-            {box!.width >= 300
-              ? "Klik kategori untuk menyaring widget lain"
-              : "Klik untuk menyaring"}
-          </span>
-        </p>
-      ) : null}
       {note ? (
         // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
         <div className="shrink-0 px-3 pb-1">

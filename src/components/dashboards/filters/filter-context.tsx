@@ -41,6 +41,9 @@ interface FiltersApi {
   /** Periode kategori tanggal grafik (filter silang "Jan 2026", bukan rentang tanggal). */
   widgetGrain: (id: string) => string | undefined;
   setFilter: (column: string, f: DashFilter | null) => void;
+  /** Slicer "Pilih semua" tanpa filter (semua tercentang): diingat per kolom selama halaman terbuka. */
+  allMode: (column: string) => boolean;
+  setAllMode: (column: string, on: boolean) => void;
   toggleCross: (widgetId: string, f: DashFilter) => void;
   clearCross: () => void;
   clearAll: () => void;
@@ -93,6 +96,7 @@ export function DashboardFiltersProvider({
   }, [key, applied.key]);
 
   const urlTooLong = !!encodeFilterParam(state) && !urlValue(state);
+  const [allMode, setAllMode] = useState<ReadonlySet<string>>(() => new Set());
   /** Perubahan pengguna: status baru + URL (di handler, bukan effect — status basi tidak ditulis). */
   const update = (next: FilterState) => {
     setRaw(next);
@@ -123,6 +127,16 @@ export function DashboardFiltersProvider({
           ...state.filters.filter((x) => normName(x.column) !== normName(column)),
           ...(f ? [f] : []),
         ],
+      }),
+    allMode: (column) => allMode.has(normName(column)),
+    setAllMode: (column, on) =>
+      setAllMode((s) => {
+        const k = normName(column);
+        if (s.has(k) === on) return s;
+        const next = new Set(s);
+        if (on) next.add(k);
+        else next.delete(k);
+        return next;
       }),
     toggleCross: (widgetId, f) =>
       update(

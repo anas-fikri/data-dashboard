@@ -79,7 +79,8 @@ export function filterText(f: DashFilter, type?: ColumnType, grain?: string): st
       ? valueText(f.values[0]!, type, grain)
       : valuesText(f.values, type);
   }
-  if (f.op === "not_in") return `Semua kecuali ${valuesText(f.values, type)}`;
+  // "Kecuali …" (bukan "Semua kecuali …"): nilai yang dikecualikan tetap muat di chip/pemicu sempit.
+  if (f.op === "not_in") return `Kecuali ${valuesText(f.values, type)}`;
   const numeric =
     typeof (f.gte ?? f.lte ?? f.lt) === "number" || type === "integer" || type === "decimal";
   if (numeric || type === "duration") {
@@ -101,6 +102,26 @@ export function filterText(f: DashFilter, type?: ColumnType, grain?: string): st
   const day = (s: string) => formatDate(s);
   if (from && to) return from === to ? day(from) : `${day(from)} – ${day(to)}`;
   return from ? `Sejak ${day(from)}` : `Sampai ${day(to)}`;
+}
+
+export const DATE_MIN = "1900-01-01";
+export const DATE_MAX = "2100-12-31";
+/** Isian tanggal: kosong (batas terbuka) atau tanggal lengkap 1900–2100 (tahun setengah diketik tidak). */
+export const dateUsable = (d: string) =>
+  !d || (/^\d{4}-\d{2}-\d{2}$/.test(d) && d >= DATE_MIN && d <= DATE_MAX);
+/** "Dari" sesudah "Sampai" — hanya bila keduanya tanggal lengkap yang sah (bukan tahun 0202). */
+export const datesReversed = (from: string, to: string) =>
+  !!from && !!to && dateUsable(from) && dateUsable(to) && from > to;
+
+/**
+ * Batas durasi dari jam ketikan → detik bulat (durasi tersimpan sebagai detik bulat): batas bawah
+ * dibulatkan ke atas, batas atas ke bawah. Baris yang tercakup sama dengan batas pecahannya, dan chip
+ * j:mm:dd menampilkan persis batas yang dikirim (0,7499 jam → ≤ 0:44:59, bukan ≤ 0:45:00).
+ */
+export function hoursToSeconds(hours: number, bound: "gte" | "lte"): number {
+  const s = hours * 3600;
+  // 1e-6: sisa pecahan biner (0,749722… jam × 3600 = 2698,9999…) tidak menggeser satu detik.
+  return (bound === "gte" ? Math.ceil(s - 1e-6) : Math.floor(s + 1e-6)) || 0;
 }
 
 /**

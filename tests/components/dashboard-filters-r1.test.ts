@@ -43,7 +43,7 @@ describe("mode kecualikan (not_in)", () => {
     expect(clean.filters).toEqual([{ column: "Cabang", op: "not_in", values: ["Jakarta", null] }]);
     expect(filterKey(f)).not.toBe(filterKey({ ...f, op: "in" }));
     expect(filterText({ column: "Cabang", op: "not_in", values: ["Jakarta"] })).toBe(
-      "Semua kecuali Jakarta",
+      "Kecuali Jakarta",
     );
     expect(
       parseFilterParam(JSON.stringify({ filters: [{ column: "C", op: "not_in", values: [] }] })),
