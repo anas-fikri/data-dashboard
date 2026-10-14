@@ -106,7 +106,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         ) : null}
         <h2
           className={cn(
-            // Basis = lebar judul; penanda "Memperbarui…" (shrink-[1000]) yang menyusut lebih dulu.
+            // Basis = lebar judul; penanda "Memperbarui…" (basis 0) hanya mengisi sisa ruang.
             "min-w-0 flex-auto truncate px-1 text-sm font-medium",
             // Setinggi tombol kepala: kepala KPI/tabel sama tinggi dengan kepala grafik bertombol.
             "leading-(--control-h-lg) md:not-any-pointer-coarse:leading-(--control-h-sm)",

@@ -15,7 +15,7 @@ export function StaleLabel({ stale, title }: { stale: boolean; title: string }) 
     <span
       data-testid="widget-stale"
       title="Memperbarui…"
-      className="inline-flex min-w-3.5 shrink-[1000] items-center gap-1 text-xs whitespace-nowrap text-muted-foreground @max-[5rem]:[:has(>[data-testid=widget-data-toggle])>&]:sr-only"
+      className="inline-flex min-w-3.5 grow-[1000] basis-0 items-center gap-1 text-xs whitespace-nowrap text-muted-foreground @max-[5rem]:[:has(>[data-testid=widget-data-toggle])>&]:sr-only"
     >
       <IconLoader2
         size={14}
