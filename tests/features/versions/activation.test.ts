@@ -190,6 +190,47 @@ describe("planWidget", () => {
     });
   });
 
+  it("T-014 alias: rollback dan roll-forward setelah sheet ganti nama dipetakan (multi-sheet)", () => {
+    const RETUR_OLD = "cmv4kljx40009oczvdmpurrsc";
+    const RETUR_NEW = "cmv4kljx40009oczvdmpurrsd";
+    // V2 (dipetakan): sheet "Sales" = pasangan "Penjualan" (alias), "Retur" tetap.
+    const sales: OldSheet = {
+      id: SB,
+      name: "Sales",
+      aliasName: "Penjualan",
+      index: 0,
+      schema: NEW_SCHEMA,
+      versionId: B,
+      sheetCount: 2,
+    };
+    const v1: SheetInfo[] = [
+      { id: SA, name: "Penjualan", index: 0, schema: OLD_SCHEMA },
+      { id: RETUR_OLD, name: "Retur", index: 1, schema: OLD_SCHEMA },
+    ];
+    // Rollback ke V1: widget di V2.Sales kembali ke V1.Penjualan (alias sheet lama = nama target).
+    const onSales = { ...bar(SB), dimension: { column: 2 }, measure: { agg: "sum", column: 3 } };
+    expect(planWidget(w("w1", "bar", onSales), v1, sales)).toEqual({
+      spec: bar(SA),
+      missingColumns: [],
+    });
+    // Roll-forward ke V2: widget di V1.Penjualan ke V2.Sales (nama sheet lama = alias target).
+    const v2: SheetInfo[] = [
+      { id: SB, name: "Sales", aliasName: "Penjualan", index: 0, schema: NEW_SCHEMA },
+      { id: RETUR_NEW, name: "Retur", index: 1, schema: OLD_SCHEMA },
+    ];
+    const penjualan: OldSheet = { ...oldSheet, sheetCount: 2 };
+    expect(planWidget(w("w2", "kpi", kpi(SA, 2)), v2, penjualan)).toEqual({
+      spec: kpi(SB, 3),
+      missingColumns: [],
+    });
+    // Sheet lain tetap lewat nama; alias tidak pernah mengalahkan nama yang sama.
+    const retur: OldSheet = { ...penjualan, id: RETUR_OLD, name: "Retur" };
+    expect(planWidget(w("w3", "kpi", kpi(RETUR_OLD, 2)), v2, retur)).toEqual({
+      spec: kpi(RETUR_NEW, 2),
+      missingColumns: [],
+    });
+  });
+
   it("T-014 kolom kosong (absent, pos > kolom file) di target → widget pindah lewat judul asli, tanpa penanda", () => {
     const withAbsent: SheetInfo[] = [
       { ...target[0]!, schema: [...NEW_SCHEMA, { ...col(4, "Diskon", "decimal"), absent: true }] },

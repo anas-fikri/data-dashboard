@@ -6,34 +6,42 @@ import type {
   MappingPayload,
   MappingPlanView,
   MappingReady,
+  MappingReviewIssue,
   MappingSheetView,
 } from "./mapping-types";
 
 /*
  * Model murni halaman pemetaan (T-014): draf keputusan → kemajuan, pilihan kolom satu-ke-satu,
- * kolom baru yang disembunyikan, ringkasan konfirmasi NULL, dan payload. Diuji unit; server tetap
- * memvalidasi ulang semuanya.
+ * kolom baru yang disembunyikan, ringkasan konfirmasi NULL, tahap tinjau cast, dan payload. Diuji
+ * unit; server tetap memvalidasi ulang semuanya.
  */
 
-export interface SheetDraft {
-  /** Hanya sheet aktif tanpa pasangan otomatis: undefined = belum dipilih, null = tidak dipakai lagi. */
-  target?: string | null;
+/** Keputusan kolom satu pasangan sheet. */
+export interface PairDraft {
   /** Posisi kolom aktif → posisi kolom baru, atau null (kosongkan). Tanpa kunci = belum diputuskan. */
   columns: Record<number, number | null>;
   /** Posisi kolom baru → tipe/format yang berbeda dari pilihan aktif. */
   casts: Record<number, CastChoice>;
 }
+
+export interface SheetDraft extends PairDraft {
+  /** Hanya sheet aktif tanpa pasangan otomatis: undefined = belum dipilih, null = tidak dipakai lagi. */
+  target?: string | null;
+  /** Keputusan pasangan lain yang pernah dipilih: kembali ke sheet itu = keputusannya kembali. */
+  stash?: Record<string, PairDraft>;
+}
 /** Draf per id sheet aktif. */
 export type MappingDraft = Record<string, SheetDraft>;
 
+/** Rencana pasangan pilihan user yang sudah dimuat (pairPlanAction), per pairKey. */
+export type PairPlans = Record<string, MappingPlanView>;
+export const pairKey = (activeSheetId: string, newSheetId: string) =>
+  `${activeSheetId}>${newSheetId}`;
+
+/** Hasil tahap tinjau per id sheet aktif → posisi kolom aktif. */
+export type ReviewFlags = Record<string, Record<number, { pct: number; typeLabel: string }>>;
+
 const BLANK: SheetDraft = Object.freeze({ columns: {}, casts: {} }) as SheetDraft;
-const NO_PAIR: MappingPlanView = {
-  newColumns: [],
-  autoMatched: [],
-  missing: [],
-  extra: [],
-  lowCast: [],
-};
 
 export const sheetDraft = (draft: MappingDraft, sheetId: string): SheetDraft =>
   draft[sheetId] ?? BLANK;
@@ -42,41 +50,51 @@ export const sheetDraft = (draft: MappingDraft, sheetId: string): SheetDraft =>
 export const sheetKey = (sheetId: string) => `${sheetId}-sheet`;
 export const columnKey = (sheetId: string, pos: number) => `${sheetId}-${pos}`;
 export const domId = (key: string) => `map-${key}`;
+/** Baris "nilai tidak cocok" kolom baru `pos` (pemicu tipenya: `${id}-type`). */
+export const castRowId = (sheetId: string, pos: number) => `map-${sheetId}-cast-${pos}`;
 
 /** Sheet baru yang dipakai: pasangan otomatis, pilihan user, null (tidak dipakai), undefined (belum). */
 export function targetOf(sheet: MappingSheetView, d: SheetDraft): string | null | undefined {
   return sheet.target ? sheet.target.id : d.target;
 }
 
-/** Data kolom pasangan yang dipakai; null bila sheet belum/tidak dipasangkan. */
-export function pairOf(sheet: MappingSheetView, d: SheetDraft): MappingPlanView | null {
+/** Rencana kolom pasangan yang dipakai; null bila sheet belum/tidak dipasangkan atau belum dimuat. */
+export function pairOf(
+  sheet: MappingSheetView,
+  d: SheetDraft,
+  plans: PairPlans,
+): MappingPlanView | null {
   const t = targetOf(sheet, d);
   if (t == null) return null;
   if (sheet.target?.id === t) return sheet;
-  return sheet.candidates.find((x) => x.id === t) ?? NO_PAIR;
+  return plans[pairKey(sheet.active.id, t)] ?? null;
 }
 
-/** Keputusan wajib dalam urutan tampil: pasangan sheet (bila perlu) lalu tiap kolom yang hilang. */
-export function decisions(view: MappingReady, draft: MappingDraft) {
+/**
+ * Keputusan wajib dalam urutan tampil: pasangan sheet (bila perlu; selesai setelah kolomnya termuat)
+ * lalu tiap kolom yang hilang.
+ */
+export function decisions(view: MappingReady, draft: MappingDraft, plans: PairPlans) {
   const out: { key: string; done: boolean }[] = [];
   for (const s of view.sheets) {
     const d = sheetDraft(draft, s.active.id);
-    if (!s.target) out.push({ key: sheetKey(s.active.id), done: d.target !== undefined });
-    for (const pos of pairOf(s, d)?.missing ?? []) {
+    const pair = pairOf(s, d, plans);
+    if (!s.target) out.push({ key: sheetKey(s.active.id), done: d.target === null || !!pair });
+    for (const pos of pair?.missing ?? []) {
       out.push({ key: columnKey(s.active.id, pos), done: d.columns[pos] !== undefined });
     }
   }
   return out;
 }
 
-export function progress(view: MappingReady, draft: MappingDraft) {
-  const all = decisions(view, draft);
+export function progress(view: MappingReady, draft: MappingDraft, plans: PairPlans) {
+  const all = decisions(view, draft, plans);
   return { done: all.filter((x) => x.done).length, total: all.length };
 }
 
 /** Kunci keputusan yang belum dibuat (kosong = siap disimpan). */
-export const undecided = (view: MappingReady, draft: MappingDraft) =>
-  decisions(view, draft)
+export const undecided = (view: MappingReady, draft: MappingDraft, plans: PairPlans) =>
+  decisions(view, draft, plans)
     .filter((x) => !x.done)
     .map((x) => x.key);
 
@@ -108,6 +126,7 @@ export function pickOptions(
 export interface PairOption {
   id: string;
   name: string;
+  colCount: number;
   /** Nama sheet aktif lain yang sudah memilih sheet baru ini (satu-ke-satu), atau null. */
   takenBy: string | null;
 }
@@ -126,8 +145,17 @@ export function pairOptions(
   return sheet.candidates.map((c) => ({
     id: c.id,
     name: c.name,
+    colCount: c.colCount,
     takenBy: taken.get(c.id) ?? null,
   }));
+}
+
+/** Draf setelah sheet pasangan diganti: keputusan pasangan lama disimpan, pasangan baru dipulihkan. */
+export function withTarget(d: SheetDraft, next: string | null): SheetDraft {
+  const stash = { ...d.stash };
+  if (typeof d.target === "string") stash[d.target] = { columns: d.columns, casts: d.casts };
+  const kept = typeof next === "string" ? stash[next] : undefined;
+  return { target: next, columns: kept?.columns ?? {}, casts: kept?.casts ?? {}, stash };
 }
 
 /** Kolom baru yang tidak dipakai pemetaan: masuk skema sebagai kolom tersembunyi. */
@@ -157,23 +185,109 @@ const activeChoice = (a: MappingActiveColumn): CastChoice => ({
   dateFormat: a.dateFormat,
 });
 
+/** Sheet + kolom aktif yang dimaksud satu isu tinjau (nama sheet aktif + nama tampil), atau null. */
+export function locateIssue(
+  view: MappingReady,
+  issue: Pick<MappingReviewIssue, "sheet" | "column">,
+): { sheetId: string; activePos: number } | null {
+  const s = view.sheets.find((x) => x.active.name === issue.sheet);
+  const c = s?.active.columns.find((x) => x.name === issue.column);
+  return s && c ? { sheetId: s.active.id, activePos: c.pos } : null;
+}
+
+/** Tanda tinjau setelah job mengembalikan isu: persen tepat (tipe yang benar-benar diterapkan). */
+export function withReview(
+  flags: ReviewFlags,
+  view: MappingReady,
+  issues: MappingReviewIssue[],
+): ReviewFlags {
+  const next = { ...flags };
+  for (const i of issues) {
+    const at = locateIssue(view, i);
+    if (!at) continue;
+    next[at.sheetId] = {
+      ...next[at.sheetId],
+      [at.activePos]: { pct: i.pct, typeLabel: i.typeLabel },
+    };
+  }
+  return next;
+}
+
 /**
- * Kolom file baru yang dipetakan ke kolom aktif `activePos` tetapi terbaca bertipe lain: nilai yang
- * tidak cocok dengan tipe aktif dikosongkan, jadi barisnya menawarkan tipe/format seperti baris "nilai
- * tidak cocok". null = belum dipetakan/dikosongkan, tipe sama, atau tipe aktif Teks (semua nilai cocok).
+ * Baris "nilai tidak cocok" sebuah pasangan: hasil ingest (lowCast) + kolom yang cocok otomatis dan
+ * ditandai tahap tinjau (persennya menggantikan perkiraan ingest).
+ */
+export function castRows(
+  pair: MappingPlanView,
+  flags: ReviewFlags[string] | undefined,
+): MappingLowCast[] {
+  const rows = new Map(pair.lowCast.map((r) => [r.pos, r]));
+  for (const { activePos, newPos } of pair.autoMatched) {
+    const f = flags?.[activePos];
+    if (f) rows.set(newPos, { pos: newPos, activePos, ...f, approx: false });
+  }
+  return [...rows.values()].sort((a, b) => a.pos - b.pos);
+}
+
+/**
+ * Kolom file baru yang dipetakan ke kolom aktif `activePos` dan perlu pilihan tipe/format: terbaca
+ * bertipe lain (nilai yang tidak cocok dengan tipe aktif dikosongkan), atau ditandai tahap tinjau.
+ * null = belum dipetakan/dikosongkan, tipe aktif Teks, atau tipe sama tanpa tanda tinjau.
  */
 export function mappedCast(
   sheet: MappingSheetView,
   pair: MappingPlanView,
   d: SheetDraft,
   activePos: number,
-): { column: MappingNewColumn; base: CastChoice } | null {
+  flags?: ReviewFlags[string],
+): {
+  column: MappingNewColumn;
+  base: CastChoice;
+  review?: { pct: number; typeLabel: string };
+} | null {
   const newPos = d.columns[activePos];
   if (newPos == null) return null;
   const a = sheet.active.columns.find((c) => c.pos === activePos);
   const column = pair.newColumns.find((c) => c.pos === newPos);
-  if (!a || !column || a.type === "text" || column.type === a.type) return null;
-  return { column, base: activeChoice(a) };
+  const review = flags?.[activePos];
+  if (!a || !column || a.type === "text" || (column.type === a.type && !review)) return null;
+  return { column, base: activeChoice(a), ...(review ? { review } : {}) };
+}
+
+/** Id pemicu tipe untuk kolom aktif `activePos` (tombol "Ubah tipe" di panel tinjau), atau null. */
+export function castTargetId(
+  sheet: MappingSheetView,
+  pair: MappingPlanView,
+  d: SheetDraft,
+  activePos: number,
+): string | null {
+  const sid = sheet.active.id;
+  if (pair.missing.includes(activePos)) {
+    // Sama dengan mappedCast: kolom aktif Teks tidak punya pilihan tipe di barisnya.
+    const text = sheet.active.columns.find((c) => c.pos === activePos)?.type === "text";
+    return d.columns[activePos] != null && !text
+      ? `${domId(columnKey(sid, activePos))}-cast-type`
+      : null;
+  }
+  const m = pair.autoMatched.find((p) => p.activePos === activePos);
+  return m ? `${castRowId(sid, m.newPos)}-type` : null;
+}
+
+/** Pemicu tipe per isu tinjau (urutan sama); null = sheet/kolomnya tidak bisa diubah di halaman ini. */
+export function issueTargets(
+  view: MappingReady,
+  draft: MappingDraft,
+  plans: PairPlans,
+  issues: MappingReviewIssue[],
+): (string | null)[] {
+  return issues.map((issue) => {
+    const at = locateIssue(view, issue);
+    const sheet = at && view.sheets.find((s) => s.active.id === at.sheetId);
+    if (!at || !sheet) return null;
+    const d = sheetDraft(draft, sheet.active.id);
+    const pair = pairOf(sheet, d, plans);
+    return pair ? castTargetId(sheet, pair, d, at.activePos) : null;
+  });
 }
 
 /** Draf setelah kolom aktif `activePos` diputuskan ulang: override tipe kolom baru sebelumnya dibuang. */
@@ -200,13 +314,13 @@ export function withCast(
 }
 
 /** Kolom yang dikosongkan dan sheet yang tidak dipakai lagi (isi dialog konfirmasi). */
-export function nullChoices(view: MappingReady, draft: MappingDraft) {
+export function nullChoices(view: MappingReady, draft: MappingDraft, plans: PairPlans) {
   const columns: { sheet: string; name: string }[] = [];
   const droppedSheets: string[] = [];
   for (const s of view.sheets) {
     const d = sheetDraft(draft, s.active.id);
     if (targetOf(s, d) === null) droppedSheets.push(s.active.name);
-    for (const pos of pairOf(s, d)?.missing ?? []) {
+    for (const pos of pairOf(s, d, plans)?.missing ?? []) {
       if (d.columns[pos] !== null) continue;
       const name = s.active.columns.find((c) => c.pos === pos)?.name ?? `Kolom ${pos}`;
       columns.push({ sheet: s.active.name, name });
@@ -215,30 +329,68 @@ export function nullChoices(view: MappingReady, draft: MappingDraft) {
   return { columns, droppedSheets };
 }
 
+/** Angka ringkasan dari pasangan yang sedang dipakai tiap sheet (berubah saat sheet dipasangkan). */
+export function summaryCounts(
+  view: MappingReady,
+  draft: MappingDraft,
+  plans: PairPlans,
+  flags: ReviewFlags,
+) {
+  let missing = 0;
+  let lowCast = 0;
+  let hidden = 0;
+  for (const s of view.sheets) {
+    const d = sheetDraft(draft, s.active.id);
+    const pair = pairOf(s, d, plans);
+    if (!pair) continue;
+    missing += pair.missing.length;
+    lowCast += castRows(pair, flags[s.active.id]).length;
+    hidden += hiddenExtras(pair, d).length;
+  }
+  return { missing, lowCast, hidden, sheets: view.sheets.filter((s) => !s.target).length };
+}
+
+/**
+ * Kolom baru yang boleh membawa tipe/format sendiri + pilihan awalnya: baris "nilai tidak cocok",
+ * kolom yang cocok otomatis, dan kolom yang dipetakan user (semuanya mengikuti kolom aktifnya).
+ */
+function castable(s: MappingSheetView, pair: MappingPlanView, d: SheetDraft) {
+  const active = new Map(s.active.columns.map((c) => [c.pos, c]));
+  const out = new Map<number, CastChoice>();
+  for (const row of pair.lowCast) out.set(row.pos, castBase(s, pair, row));
+  const linked = [
+    ...pair.autoMatched,
+    ...Object.entries(d.columns).map(([a, n]) => ({ activePos: Number(a), newPos: n })),
+  ];
+  for (const { activePos, newPos } of linked) {
+    const a = active.get(activePos);
+    if (newPos != null && a && !out.has(newPos)) out.set(newPos, activeChoice(a));
+  }
+  return out;
+}
+
 /** Payload keputusan untuk server: hanya keputusan yang dibuat dan override yang berbeda. */
-export function toPayload(view: MappingReady, draft: MappingDraft): MappingPayload {
+export function toPayload(
+  view: MappingReady,
+  draft: MappingDraft,
+  plans: PairPlans,
+): MappingPayload {
   return {
     base: view.base,
     sheets: view.sheets.map((s) => {
       const d = sheetDraft(draft, s.active.id);
-      const pair = pairOf(s, d);
+      const pair = pairOf(s, d, plans);
       const columns = (pair?.missing ?? []).flatMap((activePos) => {
         const newPos = d.columns[activePos];
         return newPos === undefined ? [] : [{ activePos, newPos }];
       });
-      const override = (pos: number, base: CastChoice) => {
-        const c = d.casts[pos];
-        return c && !sameCast(c, base) ? [{ pos, ...c }] : [];
-      };
       const casts = pair
-        ? [
-            ...pair.lowCast.flatMap((row) => override(row.pos, castBase(s, pair, row))),
-            // Kolom yang dipetakan user dengan tipe terbaca lain (mappedCast).
-            ...columns.flatMap(({ activePos }) => {
-              const m = mappedCast(s, pair, d, activePos);
-              return m ? override(m.column.pos, m.base) : [];
-            }),
-          ]
+        ? [...castable(s, pair, d)]
+            .sort(([a], [b]) => a - b)
+            .flatMap(([pos, base]) => {
+              const c = d.casts[pos];
+              return c && !sameCast(c, base) ? [{ pos, ...c }] : [];
+            })
         : [];
       return {
         activeSheetId: s.active.id,
@@ -249,6 +401,10 @@ export function toPayload(view: MappingReady, draft: MappingDraft): MappingPaylo
     }),
   };
 }
+
+/** Keputusan yang sama dengan yang ditinjau job (boleh disimpan ulang dengan acknowledge). */
+export const samePayload = (a: MappingPayload, b: MappingPayload) =>
+  JSON.stringify(a) === JSON.stringify(b);
 
 /** Kunci acuan skema aktif: berubah (mis. setelah STALE + muat ulang) → form dipasang ulang. */
 export const baseKey = (view: MappingReady) =>

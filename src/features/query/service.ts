@@ -123,7 +123,7 @@ export interface QueryRepo {
     old: SheetInfo;
     oldSheetCount: number;
     /** Sheet versi aktif tanpa skema: skema target dibaca segar lewat sheet(). */
-    active: Pick<SheetInfo, "id" | "name" | "index">[];
+    active: Pick<SheetInfo, "id" | "name" | "aliasName" | "index">[];
   } | null>;
   /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
   widget(

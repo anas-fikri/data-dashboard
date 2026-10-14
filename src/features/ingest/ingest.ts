@@ -22,6 +22,7 @@ import type { ColumnSchema } from "./infer";
 import { previewOf, type SheetPreview } from "./preview";
 import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import {
+  carriedAlias,
   chooseHeader,
   missingSheetIssue,
   planColumns,
@@ -62,6 +63,8 @@ export interface SheetRecord {
   truncatedCells: number;
   /** Baris mentah awal untuk memilih ulang header (T-008). */
   preview: SheetPreview;
+  /** Alias pasangan pemetaan sheet ganti nama yang terbawa dari sheet aktif (T-014, carriedAlias). */
+  aliasName?: string | null;
 }
 
 /** Versi/dataset sudah dihapus (repo boleh melemparnya saat baris yang ditulis hilang). */
@@ -331,7 +334,10 @@ export async function runIngest(
     for (const [i, s] of sheets.entries()) {
       const active = plan?.pairs[i] ?? null;
       // Baris header aktif (bisa hasil koreksi user) dicoba lebih dulu; yang dipilih disimpan.
-      if (active) Object.assign(s.rec, await refreshHeader(duck, s, active));
+      if (active) {
+        Object.assign(s.rec, await refreshHeader(duck, s, active));
+        s.rec.aliasName = carriedAlias(s.rec.name, active);
+      }
       const cols = active ? planColumns(s.rec.columns, active.schema) : null;
       const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
       const sheetId = await repo.createSheet(versionId, s.rec);

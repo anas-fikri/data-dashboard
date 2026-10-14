@@ -150,6 +150,9 @@ model Sheet {
   /// Urutan sheet di workbook (0-based); CSV selalu 0.
   index          Int
   name           String
+  /// Nama sheet aktif yang dipasangkan pengguna saat pemetaan (T-014, sheet yang ganti nama): widget,
+  /// rollback, dan remap tetap mencocokkan sheet ini lewat nama tersebut. null = tidak ada.
+  aliasName      String?
   rawKey         String
   /// Jumlah baris yang tersimpan di raw.parquet (baris kosong tidak disimpan).
   rawRows        Int

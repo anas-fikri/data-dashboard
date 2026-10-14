@@ -56,8 +56,13 @@ export default async function MappingPage({ params }: { params: Params }) {
         </span>
       }
       title="Pemetaan kolom"
-      description="Kolom file baru tidak cocok dengan skema aktif. Petakan kolomnya; sampai disimpan, dashboard tetap memakai data aktif."
-      actions={back}
+      // Tanpa versi yang menunggu: deskripsi dan "Kembali" hanya dari keadaan kosong (tidak dobel).
+      description={
+        view.none
+          ? undefined
+          : "Kolom file baru tidak cocok dengan skema aktif. Petakan kolomnya; sampai disimpan, dashboard tetap memakai data aktif."
+      }
+      actions={view.none ? undefined : back}
     />
   );
 

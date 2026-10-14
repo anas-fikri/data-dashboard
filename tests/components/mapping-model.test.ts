@@ -2,21 +2,37 @@ import { describe, expect, it } from "vitest";
 import {
   baseKey,
   castBase,
+  castRowId,
+  castRows,
+  castTargetId,
   hiddenExtras,
+  issueTargets,
+  locateIssue,
   mappedCast,
   nullChoices,
+  pairKey,
   pairOf,
   pairOptions,
   pickOptions,
   progress,
+  samePayload,
   sheetDraft,
+  summaryCounts,
   toPayload,
   undecided,
   withCast,
   withColumn,
+  withReview,
+  withTarget,
   type MappingDraft,
+  type PairPlans,
 } from "@/components/mapping/mapping-model";
-import type { MappingReady, MappingSheetView } from "@/components/mapping/mapping-types";
+import type {
+  MappingPlanView,
+  MappingReady,
+  MappingReviewIssue,
+  MappingSheetView,
+} from "@/components/mapping/mapping-types";
 
 /* T-014: pemetaan kolom — keputusan wajib, satu-ke-satu, kolom tersembunyi, payload ringkas. */
 
@@ -72,33 +88,34 @@ const returns: MappingSheetView = {
     ],
   },
   target: null,
+  // Hanya nama + jumlah kolom; rencana kolomnya dimuat saat dipilih (pairPlanAction).
   candidates: [
-    {
-      id: "n2",
-      name: "Retur 2026",
-      newColumns: [col(1, "Jumlah")],
-      autoMatched: [],
-      missing: [1],
-      extra: [1],
-      lowCast: [],
-    },
-    {
-      id: "n3",
-      name: "Catatan",
-      newColumns: [],
-      autoMatched: [],
-      missing: [],
-      extra: [],
-      lowCast: [],
-    },
+    { id: "n2", name: "Retur 2026", colCount: 1 },
+    { id: "n3", name: "Catatan", colCount: 0 },
   ],
-  // Tanpa pasangan otomatis: rencana kolom ada di kandidat.
   newColumns: [],
   autoMatched: [],
   missing: [1],
   extra: [],
   lowCast: [],
 };
+
+const planN2: MappingPlanView = {
+  newColumns: [col(1, "Jumlah")],
+  autoMatched: [],
+  missing: [1],
+  extra: [1],
+  lowCast: [],
+};
+const planN3: MappingPlanView = {
+  newColumns: [],
+  autoMatched: [],
+  missing: [],
+  extra: [],
+  lowCast: [],
+};
+/** Rencana kedua kandidat sudah dimuat. */
+const plans: PairPlans = { [pairKey("a2", "n2")]: planN2, [pairKey("a2", "n3")]: planN3 };
 
 const view: MappingReady = {
   none: false,
@@ -120,19 +137,27 @@ const view: MappingReady = {
   },
   applying: false,
   jobId: null,
+  last: null,
   sheets: [sales, returns],
 };
 
 describe("progress / undecided", () => {
   it("menghitung pasangan sheet dan kolom hilang sebagai keputusan wajib", () => {
-    expect(progress(view, {})).toEqual({ done: 0, total: 2 });
-    expect(undecided(view, {})).toEqual(["a1-2", "a2-sheet"]);
+    expect(progress(view, {}, plans)).toEqual({ done: 0, total: 2 });
+    expect(undecided(view, {}, plans)).toEqual(["a1-2", "a2-sheet"]);
   });
 
   it("memilih sheet kandidat menambah keputusan kolom milik pasangan itu", () => {
     const draft: MappingDraft = { a2: { target: "n2", columns: {}, casts: {} } };
-    expect(progress(view, draft)).toEqual({ done: 1, total: 3 });
-    expect(undecided(view, draft)).toEqual(["a1-2", "a2-1"]);
+    expect(progress(view, draft, plans)).toEqual({ done: 1, total: 3 });
+    expect(undecided(view, draft, plans)).toEqual(["a1-2", "a2-1"]);
+  });
+
+  it("kandidat yang rencananya belum termuat: pasangan belum selesai, belum ada keputusan kolom", () => {
+    const draft: MappingDraft = { a2: { target: "n2", columns: {}, casts: {} } };
+    expect(pairOf(returns, sheetDraft(draft, "a2"), {})).toBeNull();
+    expect(progress(view, draft, {})).toEqual({ done: 0, total: 2 });
+    expect(undecided(view, draft, {})).toEqual(["a1-2", "a2-sheet"]);
   });
 
   it("NULL dan 'tidak dipakai lagi' juga keputusan", () => {
@@ -140,14 +165,32 @@ describe("progress / undecided", () => {
       a1: { columns: { 2: null }, casts: {} },
       a2: { target: null, columns: {}, casts: {} },
     };
-    expect(progress(view, draft)).toEqual({ done: 2, total: 2 });
-    expect(undecided(view, draft)).toEqual([]);
+    expect(progress(view, draft, plans)).toEqual({ done: 2, total: 2 });
+    expect(undecided(view, draft, {})).toEqual([]);
   });
 
   it("kandidat tanpa kolom hilang tidak menambah keputusan kolom", () => {
     const draft: MappingDraft = { a2: { target: "n3", columns: {}, casts: {} } };
-    expect(pairOf(returns, sheetDraft(draft, "a2"))?.missing).toEqual([]);
-    expect(progress(view, draft)).toEqual({ done: 1, total: 2 });
+    expect(pairOf(returns, sheetDraft(draft, "a2"), plans)?.missing).toEqual([]);
+    expect(progress(view, draft, plans)).toEqual({ done: 1, total: 2 });
+  });
+});
+
+describe("withTarget (draf per pasangan)", () => {
+  it("ganti sheet menyimpan keputusan pasangan lama; kembali memulihkannya", () => {
+    const onN2 = { target: "n2", columns: { 1: 1 }, casts: { 1: { type: "text" as const } } };
+    const onN3 = withTarget(onN2, "n3");
+    expect(onN3).toMatchObject({ target: "n3", columns: {}, casts: {} });
+    const back = withTarget({ ...onN3, columns: { 1: null } }, "n2");
+    expect(back).toMatchObject({ target: "n2", columns: { 1: 1 }, casts: { 1: { type: "text" } } });
+    // Keputusan n3 ikut tersimpan.
+    expect(withTarget(back, "n3").columns).toEqual({ 1: null });
+  });
+
+  it("'tidak dipakai lagi' tidak membawa keputusan kolom ke payload", () => {
+    const d = withTarget({ target: "n2", columns: { 1: null }, casts: {} }, null);
+    const payload = toPayload(view, { a1: { columns: { 2: 2 }, casts: {} }, a2: d }, plans);
+    expect(payload.sheets[1]).toEqual({ activeSheetId: "a2", target: null, columns: [] });
   });
 });
 
@@ -205,9 +248,9 @@ describe("pairOptions", () => {
 
   it("sheet baru yang dipilih sheet aktif lain ditandai; pilihan sendiri tidak", () => {
     const draft: MappingDraft = { a2: { target: "n2", columns: {}, casts: {} } };
-    expect(pairOptions(two, draft, other).map((o) => [o.id, o.takenBy])).toEqual([
-      ["n2", "Retur"],
-      ["n3", null],
+    expect(pairOptions(two, draft, other).map((o) => [o.id, o.colCount, o.takenBy])).toEqual([
+      ["n2", 1, "Retur"],
+      ["n3", 0, null],
     ]);
     expect(pairOptions(two, draft, returns).every((o) => o.takenBy === null)).toBe(true);
   });
@@ -261,17 +304,31 @@ describe("mappedCast / withColumn", () => {
     expect(mappedCast(qty, qty, { columns: {}, casts: {} }, 4)).toBeNull();
   });
 
+  it("tipe sama tetapi ditandai tahap tinjau → pilihan tipe dengan persen tepat", () => {
+    const same: MappingSheetView = {
+      ...qty,
+      newColumns: qty.newColumns.map((c) => (c.pos === 4 ? { ...c, type: "integer" } : c)),
+    };
+    const flag = { 4: { pct: 0.61, typeLabel: "Bilangan bulat (id)" } };
+    expect(mappedCast(same, same, { columns: { 4: 4 }, casts: {} }, 4, flag)).toMatchObject({
+      column: { pos: 4 },
+      review: { pct: 0.61 },
+    });
+  });
+
   it("payload membawa cast kolom yang dipetakan hanya bila berbeda dari pilihan aktif", () => {
     const keep: MappingDraft = { a1: { columns: { 2: null, 4: 4 }, casts: {} } };
-    expect(toPayload(qtyView, keep).sheets[0]).not.toHaveProperty("casts");
+    expect(toPayload(qtyView, keep, {}).sheets[0]).not.toHaveProperty("casts");
     const same: MappingDraft = {
       a1: { columns: { 2: null, 4: 4 }, casts: { 4: { type: "integer", numberLocale: "id" } } },
     };
-    expect(toPayload(qtyView, same).sheets[0]).not.toHaveProperty("casts");
+    expect(toPayload(qtyView, same, {}).sheets[0]).not.toHaveProperty("casts");
     const text: MappingDraft = {
       a1: { columns: { 2: null, 4: 4 }, casts: { 4: { type: "text" } } },
     };
-    expect(toPayload(qtyView, text).sheets[0]).toMatchObject({ casts: [{ pos: 4, type: "text" }] });
+    expect(toPayload(qtyView, text, {}).sheets[0]).toMatchObject({
+      casts: [{ pos: 4, type: "text" }],
+    });
   });
 
   it("memetakan ulang membuang override kolom file sebelumnya", () => {
@@ -283,17 +340,83 @@ describe("mappedCast / withColumn", () => {
   });
 });
 
+describe("tahap tinjau (review)", () => {
+  const issue = (column: string, pct: number, sheet = "Penjualan"): MappingReviewIssue => ({
+    sheet,
+    column,
+    header: column,
+    pct,
+    typeLabel: "Tanggal (dd/mm/yyyy)",
+  });
+
+  it("isu dicari lewat nama sheet aktif + nama tampil; yang tidak ada di halaman → null", () => {
+    expect(locateIssue(view, issue("Tanggal", 0.5))).toEqual({ sheetId: "a1", activePos: 3 });
+    expect(locateIssue(view, issue("Tanggal", 0.5, "Lain"))).toBeNull();
+    expect(locateIssue(view, issue("Tidak ada", 0.5))).toBeNull();
+  });
+
+  it("kolom cocok otomatis yang ditandai jadi baris tipe; persen job menggantikan perkiraan", () => {
+    const flags = withReview({}, view, [issue("Kode", 0.4), issue("Tanggal", 0.61)]);
+    expect(flags).toEqual({
+      a1: {
+        1: { pct: 0.4, typeLabel: "Tanggal (dd/mm/yyyy)" },
+        3: { pct: 0.61, typeLabel: "Tanggal (dd/mm/yyyy)" },
+      },
+    });
+    expect(castRows(sales, flags.a1).map((r) => [r.pos, r.activePos, r.pct, r.approx])).toEqual([
+      [1, 1, 0.4, false],
+      [3, 3, 0.61, false],
+    ]);
+    expect(castRows(sales, undefined)).toEqual(sales.lowCast);
+    expect(summaryCounts(view, {}, plans, flags)).toMatchObject({ lowCast: 2, missing: 1 });
+  });
+
+  it("'Ubah tipe' memfokuskan pemicu tipe baris terkait", () => {
+    const d = { columns: { 2: 4 }, casts: {} };
+    expect(castTargetId(sales, sales, d, 3)).toBe(`${castRowId("a1", 3)}-type`);
+    // Kolom aktif Teks (Cabang) tidak punya pilihan tipe di barisnya.
+    expect(castTargetId(sales, sales, d, 2)).toBeNull();
+    const num: MappingSheetView = {
+      ...sales,
+      active: {
+        ...sales.active,
+        columns: sales.active.columns.map((c) => (c.pos === 2 ? { ...c, type: "integer" } : c)),
+      },
+    };
+    expect(castTargetId(num, num, d, 2)).toBe("map-a1-2-cast-type");
+    expect(castTargetId(num, num, { columns: { 2: null }, casts: {} }, 2)).toBeNull();
+    const draft: MappingDraft = { a1: d };
+    expect(
+      issueTargets(view, draft, plans, [issue("Tanggal", 0.5), issue("X", 0.1, "Lain")]),
+    ).toEqual(["map-a1-cast-3-type", null]);
+  });
+
+  it("override pada kolom cocok yang ditandai ikut payload; persetujuan hanya untuk payload sama", () => {
+    const draft: MappingDraft = {
+      a1: { columns: { 2: 2 }, casts: { 1: { type: "integer", numberLocale: "id" } } },
+      a2: { target: null, columns: {}, casts: {} },
+    };
+    const payload = toPayload(view, draft, plans);
+    expect(payload.sheets[0]).toMatchObject({
+      casts: [{ pos: 1, type: "integer", numberLocale: "id" }],
+    });
+    expect(samePayload(payload, toPayload(view, draft, plans))).toBe(true);
+    const changed = { ...draft, a1: { ...draft.a1!, casts: {} } };
+    expect(samePayload(payload, toPayload(view, changed, plans))).toBe(false);
+  });
+});
+
 describe("nullChoices", () => {
   it("menyebut kolom yang dikosongkan dan sheet yang tidak dipakai lagi", () => {
     const draft: MappingDraft = {
       a1: { columns: { 2: null }, casts: {} },
       a2: { target: null, columns: {}, casts: {} },
     };
-    expect(nullChoices(view, draft)).toEqual({
+    expect(nullChoices(view, draft, plans)).toEqual({
       columns: [{ sheet: "Penjualan", name: "Cabang" }],
       droppedSheets: ["Retur"],
     });
-    expect(nullChoices(view, { a1: { columns: { 2: 2 }, casts: {} } })).toEqual({
+    expect(nullChoices(view, { a1: { columns: { 2: 2 }, casts: {} } }, plans)).toEqual({
       columns: [],
       droppedSheets: [],
     });
@@ -306,7 +429,7 @@ describe("toPayload", () => {
       a1: { columns: { 2: 2 }, casts: { 3: { type: "text" } } },
       a2: { target: "n2", columns: { 1: null }, casts: {} },
     };
-    expect(toPayload(view, draft)).toEqual({
+    expect(toPayload(view, draft, plans)).toEqual({
       base: view.base,
       sheets: [
         {
@@ -325,7 +448,7 @@ describe("toPayload", () => {
       a1: { columns: { 2: null }, casts: { 3: { type: "date", dateFormat: "dd/mm/yyyy" } } },
       a2: { target: null, columns: { 1: null }, casts: {} },
     };
-    expect(toPayload(view, draft).sheets).toEqual([
+    expect(toPayload(view, draft, plans).sheets).toEqual([
       { activeSheetId: "a1", target: "n1", columns: [{ activePos: 2, newPos: null }] },
       { activeSheetId: "a2", target: null, columns: [] },
     ]);
@@ -336,7 +459,7 @@ describe("toPayload", () => {
     const wide: MappingSheetView = { ...sales, missing, lowCast: [] };
     const columns = Object.fromEntries(missing.map((p) => [p, null]));
     const body = JSON.stringify(
-      toPayload({ ...view, sheets: [wide] }, { a1: { columns, casts: {} } }),
+      toPayload({ ...view, sheets: [wide] }, { a1: { columns, casts: {} } }, {}),
     );
     expect(body.length).toBeLessThan(100_000);
   });

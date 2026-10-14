@@ -1,60 +1,80 @@
 ---
 id: T-014
 title: Pemetaan kolom saat skema versi baru tidak cocok
-status: in_progress
+status: in_review
 profile: standard
 goal: G-5
 depends_on:
   - T-013
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T17:36:28Z"
+updated: "2026-10-14T22:30:33Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: d03c1fa28b220019d844fc3fc017ed63278c1074
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-14T18:25:26Z"
+      findings: 15
 evidence:
   check:
     cmd: npm run check
-    exit_code: 0
-    duration_ms: 34635
+    exit_code: 1
+    duration_ms: 37971
     summary: |-
-      > data-dashboard@0.1.0 check
-      > npm run lint && npm run typecheck && npm run test && npm run audit
+      …ning test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+       ❯ tests/features/ingest/wide.test.ts:54:3
+           52|   }, 120_000);
+           53|
+           54|   it("CSV string unik per sel", async () => {
+             |   ^
+           55|     const { r, sheet, storage } = await ingest(
+           56|       t.file(
+
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/13]⎯
+
+      ⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+      Vitest caught 2 unhandled errors during the test run.
+      This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+      ⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+      Error: [vitest-pool]: Failed to start forks worker for test files /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/tests/components/dashboard-filters-r1.test.ts.
+       ❯ node_modules/vitest/dist/chunks/index.DpLw24bj.js:11538:94
+       ❯ runNextTicks node:internal/process/task_queues:65:5
+       ❯ listOnTimeout node:internal/timers:567:9
+       ❯ process.processTimers node:internal/timers:541:7
+       ❯ Pool.schedule node_modules/vitest/dist/chunks/index.DpLw24bj.js:11538:5
+
+      Caused by: Error: [vitest-pool-runner]: Timeout waiting for worker to respond
+       ❯ Timeout.<anonymous> node_modules/vitest/dist/chunks/index.DpLw24bj.js:11035:58
+       ❯ listOnTimeout node:internal/timers:605:17
+       ❯ process.processTimers node:internal/timers:541:7
 
 
-      > data-dashboard@0.1.0 lint
-      > eslint . && prettier --check .
+      ⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+      Error: [vitest-pool]: Timeout starting forks runner.
+       ❯ Timeout.<anonymous> node_modules/vitest/dist/chunks/index.DpLw24bj.js:11537:65
+       ❯ listOnTimeout node:internal/timers:605:17
+       ❯ process.processTimers node:internal/timers:541:7
 
-      Checking formatting...
-      All matched files use Prettier code style!
-
-      > data-dashboard@0.1.0 typecheck
-      > tsc --noEmit
-
-
-      > data-dashboard@0.1.0 test
-      > vitest run
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
 
 
-       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+       Test Files  9 failed | 56 passed (65)
+            Tests  13 failed | 963 passed (976)
+           Errors  2 errors
+         Start at  05:04:57
+         Duration  1536.43s (tests 91%, import 9%)
 
-      {"level":40,"time":1791999367476,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791999367500,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-
-       Test Files  66 passed (66)
-            Tests  960 passed (960)
-         Start at  00:36:03
-         Duration  22.69s (tests 85%, import 10%, transform 5%)
-
-
-      > data-dashboard@0.1.0 audit
-      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
-
-      found 0 vulnerabilities
-      found 0 vulnerabilities
-    at: "2026-10-14T17:36:27Z"
-    tree: 3fa63c94424b5401c044621cd9f2efbd946be635c7d7e7b8137bc85b9fe292b4
+          Isolate  66 workers spawned · ~9.16s startup each (spawn + environment, per file)
+                   at least ~57.99s faster with isolate: false — reuses workers across files instead of one per file
+    at: "2026-10-14T22:30:33Z"
+    tree: d04b63780ef169fde092ac5faa4ada2090f497d7df0059ce2c995fa5e5ad40c3
+  check_failures: 2
 ---
 
 ## Objective

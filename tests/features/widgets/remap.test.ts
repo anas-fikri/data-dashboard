@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { MISSING_COLUMN, markerNames, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import {
+  MISSING_COLUMN,
+  markerNames,
+  matchSheet,
+  remapConfig,
+  type SheetInfo,
+} from "@/features/widgets/remap";
 
 /*
  * T-013 (temuan T013-DI-1): rollback/roll-forward memetakan kolom widget lewat judul asli + urutan
@@ -122,5 +128,28 @@ describe("remapConfig: kolom lewat judul asli + urutan", () => {
     expect(remapConfig(bar, old, next).missing).toEqual([]);
     // Spec tanpa penanda → tidak ada nama penanda.
     expect(markerNames(kpi(2), old.schema, ["Diskon"])).toEqual([]);
+  });
+});
+
+describe("matchSheet + alias pemetaan (T-014)", () => {
+  const s = (name: string, aliasName: string | null = null) => ({ name, aliasName });
+
+  it("alias ke dua arah, nama sama didahulukan, alias ganda → null", () => {
+    // Rollback: sheet lama "Sales" (alias "Penjualan") → target "Penjualan".
+    expect(matchSheet(s("Sales", "Penjualan"), [s(" penjualan "), s("Retur")], 2)?.name).toBe(
+      " penjualan ",
+    );
+    // Roll-forward: sheet lama "Penjualan" → target "Sales" (alias "Penjualan").
+    expect(matchSheet(s("Penjualan"), [s("Sales", "PENJUALAN"), s("Retur")], 2)?.name).toBe(
+      "Sales",
+    );
+    // Nama yang sama menang atas alias.
+    expect(matchSheet(s("Penjualan"), [s("Sales", "Penjualan"), s("Penjualan")], 2)?.name).toBe(
+      "Penjualan",
+    );
+    expect(matchSheet(s("Penjualan"), [s("A", "Penjualan"), s("B", "Penjualan")], 2)).toBeNull();
+    // Alias kosong tidak pernah cocok dengan apa pun; fallback satu sheet tetap.
+    expect(matchSheet(s("X", " "), [s(" "), s("Y")], 2)).toBeNull();
+    expect(matchSheet(s("X"), [s("Y")], 1)?.name).toBe("Y");
   });
 });

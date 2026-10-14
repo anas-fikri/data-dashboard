@@ -4,10 +4,15 @@
  *  - Satu job per versi: lock Redis map:<versionId> yang diperpanjang (pola recast); deadline 60 menit.
  *  - Validasi ulang (validateMapping) dengan skema aktif TERKINI; acuan berubah → "stale".
  *  - Per pasangan sheet: unduh raw.parquet saja (file asli tidak pernah dibaca), override dari skema aktif
- *    terkini + keputusan user, baris header aktif dicoba lagi (chooseHeader) bila keputusan tetap utuh
- *    di header itu, tulis typed-<rev+1>-<token>.parquet dengan kolom kosong (absent), unggah.
- *  - Commit satu transaksi (repo): acuan + status dijaga, sheet diganti, READY + aktif dengan sheetMap,
- *    AuditLog dataset.version.map. typed lama dihapus 1 jam kemudian.
+ *    terkini + keputusan user, header dari rencana validasi (pasangan user: pairedHeader, sama dengan
+ *    halaman/app), tulis typed-<rev+1>-<token>.parquet dengan kolom kosong (absent), unggah.
+ *  - Sebelum commit: rasio cast tepat tiap kolom non-teks yang cocok/dipetakan dengan tipe yang
+ *    diterapkan; ada yang < 98 % dan input tanpa acknowledge → "review" (≤ 50 kolom, terburuk dulu),
+ *    tanpa commit. User mengirim ulang dengan acknowledge (atau cast lain).
+ *  - Commit satu transaksi (repo): acuan + status dijaga, sheet diganti (pasangan user mendapat alias
+ *    nama sheet aktif), READY + aktif dengan sheetMap, AuditLog dataset.version.map (+ id job).
+ *    typed lama dihapus 1 jam kemudian.
+ *  - Versi sudah READY saat dimuat: "done" hanya bila commit-nya oleh job ini; selain itu "gone".
  *  - Hasil selain done → file yang diunggah job ini dihapus.
  */
 import { mkdtempSync, rmSync } from "node:fs";
@@ -15,28 +20,30 @@ import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
 import type { ColumnMeta } from "./header";
-import type { ColumnSchema, SourceKind } from "./infer";
+import { INFER_THRESHOLD, type ColumnSchema, type SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, permanentMessage, type IngestStorage } from "./ingest";
 import {
-  planPair,
+  REVIEW_MAX,
   validateMapping,
   type MappingOutcome,
-  type PairCast,
+  type MappingReviewIssue,
   type PairPlan,
   type VersionSheet,
 } from "./mapping-input";
 import { OLD_TYPED_TTL_MS, RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
-import { chooseHeader, type ActiveSnapshot, type SnapshotRef } from "./refresh";
-import { headerColumns, writeTyped } from "./typed";
+import { typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
+import { writeTyped } from "./typed";
 
 export const MAPPING_DEADLINE_MS = 60 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
+/** Versi sudah READY oleh simpan lain (job lain): keputusan job ini tidak diterapkan. */
+export const ALREADY_MAPPED_MESSAGE =
+  "Versi ini sudah dipetakan oleh penyimpanan lain, jadi pemetaan ini tidak diterapkan. Periksa skema versi aktif.";
 
 /** Hasil satu percobaan; "busy" (versi sedang dipetakan proses lain) ditunda worker, bukan hasil akhir. */
 export type MappingRun = MappingOutcome | { outcome: "busy" };
 
 export interface MappingVersionSheet extends VersionSheet {
-  headerRow: number;
   rawKey: string;
   typedKey: string | null;
   schemaRevision: number;
@@ -49,6 +56,8 @@ export interface MappingVersion {
   sheets: MappingVersionSheet[];
   /** Versi aktif dataset (selain versi ini) beserta skemanya. */
   active: ActiveSnapshot | null;
+  /** Versi READY: id job pemetaan yang meng-commit-nya (AuditLog), null bila tidak diketahui. */
+  mappedBy?: string | null;
 }
 
 export interface MappingSheetUpdate {
@@ -59,6 +68,8 @@ export interface MappingSheetUpdate {
   schemaRevision: number;
   headerRow: number;
   columns: ColumnMeta[];
+  /** Sheet yang dipasangkan user: nama sheet aktif pasangannya (Sheet.aliasName, T-014). */
+  aliasName?: string;
 }
 
 export interface MappingCommit {
@@ -67,7 +78,7 @@ export interface MappingCommit {
   sheetMap: Record<string, string>;
   actorId: string;
   ip: string;
-  meta: { mapped: number; nulls: number; droppedSheets: string[] };
+  meta: { mapped: number; nulls: number; droppedSheets: string[]; jobId?: string };
 }
 
 export interface MappingRepo {
@@ -96,6 +107,8 @@ export interface MappingJob {
   input: unknown;
   actorId: string;
   ip: string;
+  /** Id job BullMQ: dicatat saat commit agar percobaan ulang job yang sama tahu commit itu miliknya. */
+  jobId?: string;
 }
 
 class LockLostError extends Error {
@@ -106,26 +119,28 @@ class LockLostError extends Error {
 }
 
 /**
- * Header sheet: baris header aktif (bisa koreksi user) dipilih chooseHeader bila berbeda dari yang
- * tersimpan, tetapi dipakai hanya bila keputusan user (dibuat atas header tersimpan) tetap sah di sana;
- * selain itu header tersimpan beserta rencana yang sudah divalidasi.
+ * Kolom cocok/dipetakan non-teks yang < 98 % nilainya lolos cast dengan tipe yang diterapkan (n =
+ * nilai non-kosong; n = 0 lolos), dari skema typed yang baru ditulis.
  */
-async function pickHeader(
-  duck: Duck,
-  rawPath: string,
-  s: MappingVersionSheet,
-  p: PairPlan,
-): Promise<PairCast & { headerRow: number; columns: ColumnMeta[] }> {
-  const stored = { ...p, headerRow: s.headerRow, columns: s.columns };
-  if (p.active.headerRow === s.headerRow) return stored;
-  const columns = await headerColumns(duck, rawPath, p.active.headerRow, s.colCount);
-  const candidates = [
-    { headerRow: p.active.headerRow, columns },
-    { headerRow: s.headerRow, columns: s.columns },
-  ];
-  if (chooseHeader(candidates, p.active.schema).headerRow === s.headerRow) return stored;
-  const r = planPair(columns, s.colCount, p.active, p.decision);
-  return "error" in r ? stored : { ...r, headerRow: p.active.headerRow, columns };
+export function reviewIssues(p: PairPlan, schema: ColumnSchema[]): MappingReviewIssue[] {
+  const byPos = new Map(schema.map((c) => [c.pos, c]));
+  const out: MappingReviewIssue[] = [];
+  for (const pos of p.checked) {
+    const c = byPos.get(pos);
+    const n = c?.nonEmpty ?? 0;
+    if (!c || c.type === "text" || n === 0) continue;
+    const ok = n - c.castFailCount;
+    if (ok / n >= INFER_THRESHOLD) continue;
+    out.push({
+      sheet: p.active.name,
+      column: c.name,
+      header: c.original,
+      // Persen bulat ke bawah: 97,9 % tidak pernah tampil "98%".
+      pct: Math.floor((ok * 100) / n) / 100,
+      typeLabel: typeLabel(c),
+    });
+  }
+  return out;
 }
 
 export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<MappingRun> {
@@ -153,8 +168,13 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
   try {
     const v = await deps.repo.load(job.versionId);
     if (!v) return { outcome: "gone" };
-    // Percobaan sebelumnya sudah commit lalu gagal sesudahnya (mis. menjadwalkan hapus): selesai.
-    if (v.status === "READY") return { outcome: "done" };
+    // Percobaan sebelumnya job INI sudah commit lalu gagal sesudahnya (mis. menjadwalkan hapus):
+    // selesai. Di-commit job lain → keputusan job ini tidak pernah diterapkan.
+    if (v.status === "READY") {
+      return job.jobId && v.mappedBy === job.jobId
+        ? { outcome: "done" }
+        : { outcome: "gone", message: ALREADY_MAPPED_MESSAGE };
+    }
     if (v.status !== "AWAITING_MAPPING") return { outcome: "gone" };
     const check = validateMapping(job.input, { sheets: v.sheets, active: v.active });
     if (!check.ok) {
@@ -172,25 +192,26 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
     });
     const updates: MappingSheetUpdate[] = [];
     const old: string[] = [];
+    const issues: MappingReviewIssue[] = [];
     for (const p of plan.pairs) {
       const s = v.sheets.find((x) => x.id === p.target.id)!;
       const rawPath = join(work, `raw-${s.index}.parquet`);
       const outPath = join(work, `typed-${s.index}.parquet`);
       await deps.storage.download(s.rawKey, rawPath);
       await watch();
-      const h = await pickHeader(duck, rawPath, s, p);
       const revision = s.schemaRevision + 1;
       const typed = await writeTyped(duck, {
         rawPath,
         outPath,
         source: v.source,
-        headerRow: h.headerRow,
+        headerRow: p.headerRow,
         colCount: s.colCount,
-        columns: h.columns,
-        overrides: h.overrides,
-        absent: h.absent,
+        columns: p.columns,
+        overrides: p.overrides,
+        absent: p.absent,
         watch,
       });
+      issues.push(...reviewIssues(p, typed.schema));
       const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
       const typedKey = `${dir}typed-${revision}-${token.slice(0, 12)}.parquet`;
       await deps.storage.upload(typedKey, outPath, PARQUET);
@@ -204,10 +225,17 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         typedKey,
         schema: typed.schema,
         schemaRevision: revision,
-        headerRow: h.headerRow,
-        columns: h.columns,
+        headerRow: p.headerRow,
+        columns: p.columns,
+        ...(p.userPaired ? { aliasName: p.active.name } : {}),
       });
       await watch();
+    }
+
+    if (issues.length && !check.input.acknowledge) {
+      // Terburuk dulu (sort stabil: urutan sheet lalu posisi untuk persen yang sama).
+      issues.sort((a, b) => a.pct - b.pct);
+      return { outcome: "review", issues: issues.slice(0, REVIEW_MAX) };
     }
 
     await watch(); // lock masih milik kita tepat sebelum commit
@@ -223,6 +251,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
           mapped: plan.pairs.reduce((n, p) => n + p.mapped, 0),
           nulls: plan.pairs.reduce((n, p) => n + p.nulls, 0),
           droppedSheets: plan.dropped.map((s) => s.name),
+          ...(job.jobId ? { jobId: job.jobId } : {}),
         },
       });
     } catch (e) {

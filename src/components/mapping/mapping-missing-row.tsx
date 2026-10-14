@@ -1,7 +1,7 @@
 "use client";
 
 import { IconAlertTriangle, IconArrowRight, IconCheck, IconCircleOff } from "@tabler/icons-react";
-import { TYPE_LABEL } from "@/components/schema/labels";
+import { TYPE_LABEL, fmtPct } from "@/components/schema/labels";
 import { Badge } from "@/components/ui/badge";
 import { MappingCastFields } from "./mapping-cast-fields";
 import type { PickOption } from "./mapping-model";
@@ -50,8 +50,16 @@ export function MappingMissingRow({
   options: PickOption[];
   value: number | null | undefined;
   error: string | null;
-  /** Kolom file terpilih yang tipenya berbeda (mappedCast) + pilihan saat ini; null = tidak perlu. */
-  cast: { column: MappingNewColumn; base: CastChoice; value: CastChoice } | null;
+  /**
+   * Kolom file terpilih yang tipenya berbeda atau ditandai tahap tinjau (mappedCast) + pilihan saat
+   * ini; null = tidak perlu.
+   */
+  cast: {
+    column: MappingNewColumn;
+    base: CastChoice;
+    value: CastChoice;
+    review?: { pct: number; typeLabel: string };
+  } | null;
   disabled: boolean;
   onChange: (next: number | null) => void;
   onCast: (next: CastChoice) => void;
@@ -66,11 +74,10 @@ export function MappingMissingRow({
       className="flex flex-col gap-3 border-b px-5 py-4 last:border-b-0 @2xl:grid @2xl:grid-cols-[minmax(0,1fr)_1.25rem_minmax(0,1.2fr)] @2xl:items-start @2xl:gap-4"
     >
       <div className="flex min-w-0 flex-col items-start gap-1.5">
-        <p className="w-full min-w-0">
-          <span className="block truncate font-medium" title={column.name}>
-            {column.name}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground" title={column.original}>
+        {/* Nama panjang membungkus (bukan terpotong + title): terbaca utuh di layar sentuh. */}
+        <p className="w-full min-w-0 [overflow-wrap:anywhere]">
+          <span className="block font-medium">{column.name}</span>
+          <span className="block text-xs text-muted-foreground">
             Kolom aktif {column.pos} · {TYPE_LABEL[column.type]}
             {column.original && column.original !== column.name
               ? ` · asli: “${column.original}”`
@@ -112,11 +119,23 @@ export function MappingMissingRow({
           <div data-testid="mapping-mapped-cast" className="mt-1.5 flex flex-col gap-3">
             <p id={castId} className="flex items-start gap-1.5 text-xs text-muted-foreground">
               <IconAlertTriangle size={16} stroke={1.5} aria-hidden className="shrink-0" />
-              {/* Tipe yang disebut = pilihan saat ini (awalnya tipe kolom aktif). */}
-              <span className="min-w-0 [overflow-wrap:anywhere]">
-                Kolom file “{cast.column.original}” terbaca sebagai {TYPE_LABEL[cast.column.type]};
-                nilai yang tidak cocok dengan {TYPE_LABEL[cast.value.type]} akan dikosongkan.
-              </span>
+              {cast.review ? (
+                // Rasio tepat dari job (tahap tinjau), dengan tipe yang diterapkan saat itu.
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Hanya{" "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {fmtPct(cast.review.pct)}
+                  </span>{" "}
+                  nilai “{cast.column.original}” cocok dengan {cast.review.typeLabel}; nilai yang
+                  tidak cocok dikosongkan.
+                </span>
+              ) : (
+                // Tipe yang disebut = pilihan saat ini (awalnya tipe kolom aktif).
+                <span className="min-w-0 [overflow-wrap:anywhere]">
+                  Kolom file “{cast.column.original}” terbaca sebagai {TYPE_LABEL[cast.column.type]}
+                  ; nilai yang tidak cocok dengan {TYPE_LABEL[cast.value.type]} akan dikosongkan.
+                </span>
+              )}
             </p>
             <div className="grid gap-3 @4xl:grid-cols-2">
               <MappingCastFields

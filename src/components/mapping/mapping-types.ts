@@ -9,10 +9,14 @@ export type {
   MappingActiveColumn,
   MappingCandidate,
   MappingJobState,
+  MappingLast,
   MappingLowCast,
   MappingNewColumn,
+  MappingPairPlan,
   MappingPlanView,
+  MappingReviewIssue,
   MappingSheetView,
+  MappingStatus,
 } from "@/features/versions/types";
 
 /** Tampilan halaman bila ada versi yang menunggu pemetaan. */

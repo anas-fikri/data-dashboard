@@ -3,7 +3,8 @@
  * dengan skema aktif per nama asli, tanpa inferensi, sehingga koreksi user (tipe, format, nama tampil,
  * sembunyi) terbawa. Murni; eksekusi di ingest.ts, keputusan aktivasi di repo.finish.
  *  - Sheet: lewat nama ternormalisasi (atau satu-satunya sheet bila keduanya satu sheet), aturan yang
- *    sama dengan remap widget. Sheet baru tanpa pasangan diinferensi biasa.
+ *    sama dengan remap widget; nama alias sheet aktif (pasangan pemetaan T-014) juga dicocokkan. Sheet
+ *    baru tanpa pasangan diinferensi biasa.
  *  - Kolom: nama asli ternormalisasi + urutan kemunculannya ("Total" ke-2 ↔ "Total" ke-2; judul kosong
  *    dicocokkan urut di antara yang kosong). Kolom tambahan diinferensi tetapi disembunyikan.
  *  - Cocok = semua sheet aktif ada, semua kolom terlihat ada, dan tiap kolom non-teks yang cocok
@@ -13,14 +14,20 @@
  */
 import { columnKeys, matchSheet, normName } from "@/features/widgets/remap";
 import { MAX_COLUMN } from "@/features/widgets/spec";
-import { baseName, uniqueName, type ColumnMeta } from "./header";
+import { baseName, columnNames, uniqueName, type ColumnMeta } from "./header";
 import { INFER_THRESHOLD, type ColumnSchema, type ColumnType } from "./infer";
+import { PREVIEW_CHARS, type SheetPreview } from "./preview";
 import { choiceOf, type ColumnOverride } from "./typed";
 
 /** Sheet versi aktif yang menjadi acuan cast. */
 export interface ActiveSheet {
   id: string;
   name: string;
+  /**
+   * Nama sheet aktif sebelumnya yang dipasangkan user saat pemetaan (T-014, sheet ganti nama): sheet
+   * file baru dengan nama itu tetap berpasangan (matchSheet). null/kosong = tidak ada.
+   */
+  aliasName?: string | null;
   index: number;
   headerRow: number;
   schemaRevision: number;
@@ -138,6 +145,52 @@ export function chooseHeader<T extends { columns: ColumnMeta[] }>(
     }
   }
   return best;
+}
+
+/**
+ * Alias sheet versi baru yang berpasangan otomatis dengan sheet aktif `a` (T-014): nama sama → alias
+ * sheet aktif terbawa (rantai V1 → V2 dipetakan → V3 → rollback ke V1 tetap cocok); cocok lewat alias
+ * (nama lama kembali) → nama sheet aktif menjadi alias; fallback satu-sheet → tanpa alias.
+ */
+export function carriedAlias(
+  name: string,
+  a: Pick<ActiveSheet, "name" | "aliasName">,
+): string | null {
+  if (normName(name) === normName(a.name)) return a.aliasName?.trim() ? a.aliasName : null;
+  return a.aliasName?.trim() && normName(name) === normName(a.aliasName) ? a.name : null;
+}
+
+/** Sheet versi baru yang header-nya bisa dipilih ulang dari pratinjau tersimpan. */
+export interface HeaderSource {
+  headerRow: number;
+  colCount: number;
+  columns: ColumnMeta[];
+  preview: SheetPreview | null;
+}
+
+/**
+ * Header sheet versi baru yang dipasangkan USER dengan sheet aktif (T-014, sheet ganti nama; ingest
+ * belum mencoba baris header aktif karena tidak tahu pasangannya): baris header sheet aktif (bisa
+ * koreksi user) dibentuk dari pratinjau tersimpan, lalu dipilih dengan aturan chooseHeader terhadap
+ * header tersimpan. Pratinjau hanya dipakai bila hasilnya sama persis dengan header dari raw.parquet:
+ * baris itu ada di pratinjau, semua kolom termuat (≤ 50 kolom), dan tidak ada sel yang mungkin
+ * terpotong; selain itu header tersimpan. Satu fungsi murni untuk halaman, validasi app, dan worker,
+ * sehingga keputusan kolom selalu merujuk kolom yang sama.
+ */
+export function pairedHeader(
+  s: HeaderSource,
+  active: Pick<ActiveSheet, "headerRow" | "schema">,
+): { headerRow: number; columns: ColumnMeta[] } {
+  const stored = { headerRow: s.headerRow, columns: s.columns };
+  if (active.headerRow === s.headerRow) return stored;
+  const row = s.preview?.rows.find((r) => r.row === active.headerRow);
+  const exact =
+    row !== undefined &&
+    row.cells.length >= s.colCount &&
+    row.cells.every((c) => c === null || c.length < PREVIEW_CHARS);
+  if (!exact) return stored;
+  const columns = columnNames(row.cells, s.colCount);
+  return chooseHeader([{ headerRow: active.headerRow, columns }, stored], active.schema);
 }
 
 const clip = (s: string) => {

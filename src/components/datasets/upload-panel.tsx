@@ -26,6 +26,7 @@ import { VersionMappingNotice } from "@/components/datasets/version-history-mapp
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import type { IngestStatus } from "@/features/schema/service";
+import type { MappingLast } from "@/features/versions/types";
 import {
   UploadError,
   cancelUploadRequest,
@@ -59,6 +60,8 @@ interface UploadPanelProps {
         message: string | null;
         /** Job pemetaan yang sedang antre/diterapkan (T-014), atau null. */
         mappingJobId: string | null;
+        /** Hasil terakhir job pemetaan yang tidak selesai (gagal/perlu diperiksa), atau null. */
+        mappingLast: MappingLast | null;
       }
     | null;
 }
@@ -282,6 +285,7 @@ export function UploadPanel({
           fileName={processing.fileName}
           message={processing.message}
           mappingJobId={processing.mappingJobId}
+          last={processing.mappingLast}
           onDiscarded={(name) => setState({ kind: "discarded", name })}
         />
       ) : null}

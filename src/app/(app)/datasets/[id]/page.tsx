@@ -52,12 +52,13 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, applyingJobId] = await Promise.all([
+  const [pending, versions, mappingJob] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
     listVersions(user.id, dataset.id),
-    // Job pemetaan yang sedang diterapkan (T-014): status di panel unggah dan riwayat versi.
+    // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
     awaiting ? mappingJobId(user.id, dataset.id) : null,
   ]);
+  const applyingJobId = mappingJob?.jobId ?? null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
   const mapping = versions.find((v) => v.canDiscard) ?? null;
   // Status awal progres dirender server (tidak ada layar kosong sebelum polling pertama, T-008).
@@ -145,6 +146,7 @@ export default async function DatasetDetailPage({
                         fileName: mapping?.fileName ?? dataset.latestFileName,
                         message: mapping?.message ?? null,
                         mappingJobId: applyingJobId,
+                        mappingLast: mappingJob?.last ?? null,
                       }
                     : null
               }

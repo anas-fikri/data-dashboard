@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { columnNames } from "@/features/ingest/header";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { PREVIEW_CHARS } from "@/features/ingest/preview";
 import {
+  carriedAlias,
   chooseHeader,
   missingSheetIssue,
+  pairedHeader,
   planColumns,
   planSheets,
   sameSnapshot,
@@ -53,6 +56,74 @@ describe("planSheets", () => {
     const extra = planSheets([{ name: "A" }, { name: "B" }], [sheet("CSV", 0)]);
     expect(extra.pairs).toEqual([null, null]);
     expect(extra.missing).toHaveLength(1);
+  });
+
+  it("T-014: sheet aktif hasil pemetaan sheet ganti nama juga cocok lewat aliasnya (nama sama didahulukan)", () => {
+    const active = [{ ...sheet("Sales", 0), aliasName: "Penjualan" }, sheet("Retur", 1)];
+    const back = planSheets([{ name: "penjualan" }, { name: "Retur" }], active);
+    expect(back.pairs.map((a) => a?.name ?? null)).toEqual(["Sales", "Retur"]);
+    expect(back.missing).toEqual([]);
+    const both = planSheets([{ name: "Penjualan" }, { name: "Sales" }], active);
+    expect(both.pairs.map((a) => a?.name ?? null)).toEqual([null, "Sales"]);
+  });
+});
+
+describe("carriedAlias (T-014)", () => {
+  it("nama sama → alias aktif terbawa; cocok lewat alias → nama aktif jadi alias; fallback → null", () => {
+    const sales = { name: "Sales", aliasName: "Penjualan" };
+    expect(carriedAlias(" sales ", sales)).toBe("Penjualan");
+    expect(carriedAlias("PENJUALAN", sales)).toBe("Sales");
+    expect(carriedAlias("Sheet1", sales)).toBeNull();
+    expect(carriedAlias("Sales", { name: "Sales", aliasName: null })).toBeNull();
+    expect(carriedAlias("Sheet1", { name: "CSV" })).toBeNull();
+  });
+});
+
+describe("pairedHeader (T-014, sheet yang dipasangkan user)", () => {
+  const active = { headerRow: 2, schema: [col(1, "Tanggal"), col(2, "Jumlah")] };
+  const stored = { headerRow: 1, colCount: 2, columns: meta(["Laporan Jan", "Dicetak"]) };
+  const preview = (row2: (string | null)[], colCount = 2) => ({
+    colCount,
+    rows: [
+      { row: 1, cells: ["Laporan Jan", "Dicetak"] },
+      { row: 2, cells: row2 },
+      { row: 3, cells: ["1 Jan", "10"] },
+    ],
+  });
+
+  it("baris header aktif dari pratinjau bila tidak kehilangan kolom → sama dengan header dari raw", () => {
+    const h = pairedHeader({ ...stored, preview: preview(["Tanggal", "Jumlah"]) }, active);
+    expect(h).toEqual({ headerRow: 2, columns: meta(["Tanggal", "Jumlah"]) });
+  });
+
+  it("header tersimpan bila: baris sama, tidak ada di pratinjau, pratinjau tidak memuat semua kolom/sel terpotong, atau lebih buruk", () => {
+    const keep = { headerRow: 1, columns: stored.columns };
+    expect(pairedHeader({ ...stored, preview: null }, active)).toEqual(keep);
+    expect(
+      pairedHeader(
+        { ...stored, preview: preview(["Tanggal", "Jumlah"]) },
+        { ...active, headerRow: 1 },
+      ),
+    ).toEqual(keep);
+    expect(
+      pairedHeader(
+        { ...stored, preview: preview(["Tanggal", "Jumlah"]) },
+        { ...active, headerRow: 9 },
+      ),
+    ).toEqual(keep);
+    const wide = { ...stored, colCount: 60, preview: preview(["Tanggal", "Jumlah"], 60) };
+    expect(pairedHeader(wide, active).headerRow).toBe(1);
+    const long = preview(["Tanggal", "J".repeat(PREVIEW_CHARS)]);
+    expect(pairedHeader({ ...stored, preview: long }, active)).toEqual(keep);
+    // Baris aktif kehilangan lebih banyak kolom aktif daripada tebakan → tebakan tetap.
+    const worse = pairedHeader(
+      { ...stored, preview: preview(["x", "y"]) },
+      {
+        ...active,
+        schema: [col(1, "Laporan Jan"), col(2, "Jumlah")],
+      },
+    );
+    expect(worse).toEqual(keep);
   });
 });
 

@@ -40,9 +40,7 @@ export function MappingLowCastRow({
       className="flex flex-col gap-3 border-b px-5 py-4 last:border-b-0 @2xl:grid @2xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)] @2xl:items-start @2xl:gap-4"
     >
       <div className="min-w-0">
-        <p className="truncate font-medium" title={name}>
-          {name}
-        </p>
+        <p className="font-medium [overflow-wrap:anywhere]">{name}</p>
         <p className="mt-0.5 flex items-start gap-1.5 text-xs text-muted-foreground">
           <IconAlertTriangle size={16} stroke={1.5} aria-hidden className="shrink-0" />
           <span className="min-w-0 [overflow-wrap:anywhere]">

@@ -51,19 +51,19 @@ async function loadSheetHistory(
 ): Promise<History> {
   const old = await prisma.sheet.findFirst({
     where: { id: sheetId, version: { datasetId } },
-    select: { id: true, name: true, index: true, schema: true, versionId: true },
+    select: { id: true, name: true, aliasName: true, index: true, schema: true, versionId: true },
   });
   if (!old) return null;
   // Sheet aktif tanpa skema (bisa ribuan kolom per sheet); skema target dibaca segar oleh query.
   const active = await prisma.sheet.findMany({
     where: { versionId: activeVersionId, typedKey: { not: null } },
     orderBy: { index: "asc" },
-    select: { id: true, name: true, index: true },
+    select: { id: true, name: true, aliasName: true, index: true },
   });
   const oldSheetCount = await prisma.sheet.count({ where: { versionId: old.versionId } });
   const schema = (old.schema as unknown as ColumnSchema[] | null) ?? [];
   return {
-    old: { id: old.id, name: old.name, index: old.index, schema },
+    old: { id: old.id, name: old.name, aliasName: old.aliasName, index: old.index, schema },
     oldSheetCount,
     active,
   };

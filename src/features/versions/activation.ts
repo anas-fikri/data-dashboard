@@ -20,7 +20,9 @@ import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retenti
  *     StorageCleanup dengan masa tenggang 1 jam.
  *  4. Rollback (opts.audit): AuditLog "dataset.version.activate".
  * Pemetaan kolom (T-014) memberi `sheetMap` (sheet lama → sheet versi target) agar widget ikut sheet
- * yang ganti nama; AuditLog-nya dicatat pemanggil ("dataset.version.map").
+ * yang ganti nama; AuditLog-nya dicatat pemanggil ("dataset.version.map"). Pasangan itu juga tersimpan
+ * sebagai Sheet.aliasName sehingga rollback/roll-forward berikutnya tetap menemukan sheet-nya
+ * (matchSheet mencocokkan alias ke dua arah).
  * typedKey versi yang dibuang dikembalikan agar pemanggil di proses app bisa membuang salinan lokal
  * (forgetLocalParquet) setelah commit; di worker itu tanpa efek.
  */
@@ -156,7 +158,7 @@ async function persistWidgets(
     await tx.sheet.findMany({
       where: { versionId, typedKey: { not: null } },
       orderBy: { index: "asc" },
-      select: { id: true, name: true, index: true, schema: true },
+      select: { id: true, name: true, aliasName: true, index: true, schema: true },
     })
   ).map((s) => ({ ...s, schema: schemaOf(s.schema) }));
   const targetIds = new Set(target.map((s) => s.id));
@@ -166,7 +168,14 @@ async function persistWidgets(
   const oldRows = oldIds.length
     ? await tx.sheet.findMany({
         where: { id: { in: oldIds }, version: { datasetId } },
-        select: { id: true, name: true, index: true, schema: true, versionId: true },
+        select: {
+          id: true,
+          name: true,
+          aliasName: true,
+          index: true,
+          schema: true,
+          versionId: true,
+        },
       })
     : [];
   const counts = oldRows.length
@@ -183,6 +192,7 @@ async function persistWidgets(
       {
         id: s.id,
         name: s.name,
+        aliasName: s.aliasName,
         index: s.index,
         schema: schemaOf(s.schema),
         versionId: s.versionId,

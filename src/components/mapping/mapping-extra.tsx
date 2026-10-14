@@ -21,18 +21,21 @@ export function MappingExtra({ id, columns }: { id: string; columns: MappingNewC
         {columns.map((c) => (
           <li
             key={c.pos}
-            className="inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-md border bg-muted/40 px-2 text-sm"
+            className="inline-flex min-h-8 max-w-full items-start gap-1.5 rounded-md border bg-muted/40 px-2 py-1.5 text-sm"
           >
             <IconEyeOff
               size={16}
               stroke={1.5}
               aria-hidden
-              className="shrink-0 text-muted-foreground"
+              className="mt-0.5 shrink-0 text-muted-foreground"
             />
-            <span className="truncate" title={c.original}>
+            {/* Judul panjang membungkus ke baris berikut (chip boleh lebih dari satu baris). */}
+            <span className="min-w-0 [overflow-wrap:anywhere]">
               “{c.original || `Kolom ${c.pos}`}”
             </span>
-            <span className="shrink-0 text-xs text-muted-foreground">{TYPE_LABEL[c.type]}</span>
+            <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">
+              {TYPE_LABEL[c.type]}
+            </span>
           </li>
         ))}
       </ul>

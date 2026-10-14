@@ -17,6 +17,8 @@ export { MISSING_COLUMN };
 export interface SheetInfo {
   id: string;
   name: string;
+  /** Nama sheet aktif yang dipasangkan user saat pemetaan (T-014); lihat matchSheet. */
+  aliasName?: string | null;
   index: number;
   schema: ColumnSchema[];
 }
@@ -42,18 +44,30 @@ export function columnKeys(originals: string[]): string[] {
   });
 }
 
+type Named = { name: string; aliasName?: string | null };
+const aliasKey = (s: Named) => (s.aliasName?.trim() ? key(s.aliasName) : null);
+
 /**
- * Sheet pengganti di versi aktif, atau null bila tidak bisa ditentukan dengan aman. Fallback "satu-
- * satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus dari workbook tidak boleh
- * diam-diam menunjuk sheet lain (angka salah dengan judul lama).
+ * Sheet pengganti di versi aktif, atau null bila tidak bisa ditentukan dengan aman: nama sama lebih
+ * dulu, lalu nama alias pasangan pemetaan (T-014) ke dua arah — alias sheet lama = nama sheet target
+ * (rollback setelah sheet ganti nama dipetakan) atau nama sheet lama = alias sheet target (roll-
+ * forward). Fallback "satu-satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus
+ * dari workbook tidak boleh diam-diam menunjuk sheet lain (angka salah dengan judul lama).
  */
-export function matchSheet<T extends { name: string }>(
-  old: { name: string },
+export function matchSheet<T extends Named>(
+  old: Named,
   active: T[],
   oldSheetCount: number,
 ): T | null {
-  const byName = active.filter((s) => key(s.name) === key(old.name));
+  const name = key(old.name);
+  const byName = active.filter((s) => key(s.name) === name);
   if (byName.length === 1) return byName[0]!;
+  if (byName.length === 0) {
+    const alias = aliasKey(old);
+    const byAlias = active.filter((s) => key(s.name) === alias || aliasKey(s) === name);
+    if (byAlias.length === 1) return byAlias[0]!;
+    if (byAlias.length > 1) return null;
+  }
   if (byName.length === 0 && active.length === 1 && oldSheetCount === 1) return active[0]!;
   return null;
 }

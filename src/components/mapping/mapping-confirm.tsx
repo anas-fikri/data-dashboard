@@ -1,10 +1,13 @@
 "use client";
 
 import { IconDeviceFloppy } from "@tabler/icons-react";
+import { useRef } from "react";
 import { fmtInt } from "@/components/schema/labels";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import type { nullChoices } from "./mapping-model";
+import { SAVE_ID } from "./mapping-save-bar";
+import { STATUS_ID } from "./mapping-status";
 
 const SHOWN = 8;
 
@@ -26,7 +29,9 @@ function Names({ label, names }: { label: string; names: string[] }) {
 
 /**
  * Konfirmasi sebelum menyimpan pemetaan yang mengosongkan kolom atau tidak lagi memakai sheet:
- * akibatnya disebut dengan bahasa sehari-hari. Fokus awal di Batal (bawaan ConfirmDialog).
+ * akibatnya disebut dengan bahasa sehari-hari. Fokus awal di Batal (bawaan ConfirmDialog). Dialog
+ * dibuka tanpa Trigger, jadi fokus saat tertutup diatur di sini: Batal/Esc → tombol simpan; disetujui
+ * → banner status (galat cepat sudah memegang fokus lewat FocusNotice, tidak direbut).
  */
 export function MappingConfirm({
   open,
@@ -41,12 +46,19 @@ export function MappingConfirm({
   onCancel: () => void;
   onConfirm: () => void;
 }) {
+  const confirmed = useRef(false);
   const { columns, droppedSheets } = choices;
   return (
     <ConfirmDialog
       open={open}
       onOpenChange={(next) => {
         if (!next) onCancel();
+      }}
+      onCloseAutoFocus={(e) => {
+        e.preventDefault();
+        const target = confirmed.current ? STATUS_ID : SAVE_ID;
+        confirmed.current = false;
+        document.getElementById(target)?.focus();
       }}
       title={
         columns.length > 0
@@ -59,7 +71,10 @@ export function MappingConfirm({
         <Button
           className={DIALOG_CTA}
           leadingIcon={<IconDeviceFloppy aria-hidden />}
-          onClick={onConfirm}
+          onClick={() => {
+            confirmed.current = true;
+            onConfirm();
+          }}
         >
           Simpan &amp; aktifkan
         </Button>

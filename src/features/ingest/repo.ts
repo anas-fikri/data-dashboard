@@ -6,6 +6,7 @@ import { prisma } from "@/lib/db";
 import { deletePrefix } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
 import { lockActiveSheet } from "./active-lock";
+import { parsePreview } from "./preview";
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
 import {
@@ -35,6 +36,7 @@ const activeSelect = {
           select: {
             id: true,
             name: true,
+            aliasName: true,
             index: true,
             headerRow: true,
             schemaRevision: true,
@@ -51,6 +53,7 @@ type ActiveRow = {
   sheets: {
     id: string;
     name: string;
+    aliasName: string | null;
     index: number;
     headerRow: number;
     schemaRevision: number;
@@ -128,6 +131,7 @@ export const prismaIngestRepo: IngestRepo = {
           columns: s.columns as unknown as Prisma.InputJsonValue,
           truncatedCells: s.truncatedCells,
           preview: s.preview as unknown as Prisma.InputJsonValue,
+          aliasName: s.aliasName ?? null,
         },
         select: { id: true },
       });
@@ -266,6 +270,22 @@ export const prismaRecastRepo: RecastRepo = {
   },
 };
 
+/** Id job pemetaan yang meng-commit versi ini (meta AuditLog dataset.version.map), atau null. */
+async function mappedBy(datasetId: string, versionId: string): Promise<string | null> {
+  const log = await prisma.auditLog.findFirst({
+    where: {
+      action: "dataset.version.map",
+      targetType: "dataset",
+      targetId: datasetId,
+      meta: { path: ["versionId"], equals: versionId },
+    },
+    orderBy: { at: "desc" },
+    select: { meta: true },
+  });
+  const jobId = (log?.meta as { jobId?: unknown } | null)?.jobId;
+  return typeof jobId === "string" ? jobId : null;
+}
+
 /** Commit pemetaan dibatalkan di tengah transaksi (sheet berubah/hilang): semua tulisan di-rollback. */
 class MappingAbort extends Error {
   constructor() {
@@ -291,6 +311,7 @@ export const prismaMappingRepo: MappingRepo = {
             colCount: true,
             headerRow: true,
             columns: true,
+            preview: true,
             rawKey: true,
             typedKey: true,
             schemaRevision: true,
@@ -304,8 +325,13 @@ export const prismaMappingRepo: MappingRepo = {
       datasetId: v.datasetId,
       status: v.status,
       source: v.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
-      sheets: v.sheets.map((s) => ({ ...s, columns: s.columns as unknown as ColumnMeta[] })),
+      sheets: v.sheets.map((s) => ({
+        ...s,
+        columns: s.columns as unknown as ColumnMeta[],
+        preview: parsePreview(s.preview),
+      })),
       active: snapshotOf(v.dataset.activeVersion, versionId),
+      mappedBy: v.status === "READY" ? await mappedBy(v.datasetId, versionId) : null,
     };
   },
 
@@ -352,6 +378,8 @@ export const prismaMappingRepo: MappingRepo = {
                 schemaRevision: s.schemaRevision,
                 headerRow: s.headerRow,
                 columns: s.columns as unknown as Prisma.InputJsonValue,
+                // Sheet ganti nama yang dipasangkan user: widget/rollback/refresh tetap menemukannya.
+                ...(s.aliasName !== undefined ? { aliasName: s.aliasName } : {}),
               },
             });
             if (u.count === 0) throw new MappingAbort();

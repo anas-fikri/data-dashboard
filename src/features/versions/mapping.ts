@@ -3,33 +3,50 @@ import { Prisma } from "@prisma/client";
 import { isIdShape } from "@/features/datasets/validation";
 import type { ColumnMeta } from "@/features/ingest/header";
 import { INFER_THRESHOLD, type ColumnSchema } from "@/features/ingest/infer";
-import { validateMapping } from "@/features/ingest/mapping-input";
+import {
+  parseMappingInput,
+  validateMapping,
+  type MappingReviewIssue,
+  type VersionSheet,
+} from "@/features/ingest/mapping-input";
 import { parsePreview, type SheetPreview } from "@/features/ingest/preview";
 import {
+  pairedHeader,
   planColumns,
   planSheets,
   snapshotRef,
   typeLabel,
   type ActiveSheet,
 } from "@/features/ingest/refresh";
+import { RECAST_INFLIGHT_PER_USER } from "@/features/schema/service";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { MAP_VERSION_JOB, mappingQueue, withQueueTimeout } from "@/lib/queue/connection";
-import { enqueueMapping, mappingInFlight } from "@/lib/queue/versions";
+import {
+  enqueueMapping,
+  mappingInFlight,
+  mappingLast,
+  type MappingEnqueue,
+} from "@/lib/queue/versions";
 import type {
-  MappingJobState,
+  MappingJobInfo,
+  MappingLast,
   MappingLowCast,
   MappingNewColumn,
-  MappingPlanView,
+  MappingPairPlan,
   MappingSheetView,
+  MappingStatus,
   MappingView,
   VersionCode,
   VersionResult,
 } from "./types";
 
+export type { MappingStatus };
+
 /*
  * Pemetaan kolom versi yang menunggu pemetaan (T-014), sisi app: tampilan halaman /pemetaan (isu
- * dihitung ulang dari Sheet versi + skema aktif TERKINI, sama dengan aturan refresh T-013), simpan
+ * dihitung ulang dari Sheet versi + skema aktif TERKINI, sama dengan aturan refresh T-013), rencana
+ * satu pasangan sheet pilihan user (diminta saat dipilih, bukan semua kandidat sekaligus), simpan
  * keputusan (divalidasi di bawah lock Dataset, lalu job map-version di antrean recast), dan status job
  * untuk polling. Pemilik saja; lainnya NOT_FOUND (D2). Versi tetap AWAITING_MAPPING sampai worker
  * commit, jadi gagal di mana pun = bisa disimpan ulang atau dibuang.
@@ -58,17 +75,18 @@ export interface FreshSheet {
   name: string;
   headerRow: number;
   rawRows: number;
+  colCount: number;
   columns: ColumnMeta[];
   schema: ColumnSchema[] | null;
   preview: SheetPreview | null;
 }
 
-/** ≤ 3 contoh nilai unik kolom `pos` dari baris data pratinjau (di bawah baris header). */
-function samplesOf(f: FreshSheet, pos: number): string[] {
+/** ≤ 3 contoh nilai unik kolom `pos` dari baris data pratinjau (di bawah baris header `headerRow`). */
+function samplesOf(f: FreshSheet, pos: number, headerRow: number): string[] {
   const out = new Set<string>();
   for (const r of f.preview?.rows ?? []) {
     if (out.size === SAMPLE_MAX) break;
-    const v = r.row > f.headerRow ? r.cells[pos - 1] : null;
+    const v = r.row > headerRow ? r.cells[pos - 1] : null;
     if (v != null && v.trim() !== "") out.add(v);
   }
   return [...out];
@@ -102,35 +120,63 @@ export function lowCastOf(
   return { pct: Math.floor((ok * 100) / n) / 100, typeLabel: typeLabel(s), approx };
 }
 
-/** Rencana satu pasangan sheet aktif ↔ sheet baru (aturan refresh: nama asli + urutan kemunculan). */
-export function pairPlan(active: ActiveSheet, f: FreshSheet): MappingPlanView {
+/**
+ * Statistik typed-1 kolom ini dihitung dengan pilihan kolom aktif TERKINI (tipe + locale/format yang
+ * memengaruhi konversi), sehingga rasio cast-nya tepat untuk tipe yang akan diterapkan.
+ */
+function sameChoice(s: ColumnSchema, a: ColumnSchema): boolean {
+  if (s.type !== a.type) return false;
+  if (s.type === "integer" || s.type === "decimal") return s.numberLocale === a.numberLocale;
+  if (s.type === "date" || s.type === "timestamp") return s.dateFormat === a.dateFormat;
+  return true;
+}
+
+/**
+ * Rencana satu pasangan sheet aktif ↔ sheet baru (aturan refresh: nama asli + urutan kemunculan).
+ * Pasangan user (`userPaired`): header dipilih pairedHeader (sama dengan validasi dan worker) dan
+ * tanpa lowCast — statistik typed-1 sheet itu hasil inferensi, bukan tipe aktif; rasio tepat datang
+ * dari job ("review"). Pasangan otomatis: lowCast hanya untuk kolom yang tipe typed-1-nya masih sama
+ * dengan pilihan aktif terkini (tipe aktif yang berubah setelah unggah juga diperiksa job).
+ */
+export function pairPlan(active: ActiveSheet, f: FreshSheet, userPaired = false): MappingPairPlan {
+  const header = userPaired
+    ? pairedHeader(f, active)
+    : { headerRow: f.headerRow, columns: f.columns };
   const byPos = new Map((f.schema ?? []).map((s) => [s.pos, s]));
-  const plan = planColumns(f.columns, active.schema);
+  const plan = planColumns(header.columns, active.schema);
+  const names = new Map(plan.overrides.map((o) => [o.pos, o.name]));
   const dataRows = dataRowsOf(f);
   const lowCast: MappingLowCast[] = [];
-  for (const [pos, a] of plan.matched) {
-    const s = byPos.get(pos);
-    const low = s ? lowCastOf(s, dataRows) : null;
-    if (low) lowCast.push({ pos, activePos: a.pos, ...low });
+  if (!userPaired) {
+    for (const [pos, a] of plan.matched) {
+      const s = byPos.get(pos);
+      const low = s && sameChoice(s, a) ? lowCastOf(s, dataRows) : null;
+      if (low) lowCast.push({ pos, activePos: a.pos, ...low });
+    }
   }
   return {
-    newColumns: f.columns.map((c): MappingNewColumn => {
+    newColumns: header.columns.map((c): MappingNewColumn => {
       const s = byPos.get(c.pos);
       return {
         pos: c.pos,
         original: c.original,
-        name: s?.name ?? c.name,
+        // Nama akhir di versi baru (sama dengan worker): nama aktif bila cocok, nama unik bila tambahan.
+        name: names.get(c.pos) ?? s?.name ?? c.name,
         type: s?.type ?? "text",
+        ...(s?.numberLocale ? { numberLocale: s.numberLocale } : {}),
+        ...(s?.dateFormat ? { dateFormat: s.dateFormat } : {}),
         castFailCount: s?.castFailCount ?? 0,
         ...(typeof s?.nonEmpty === "number" ? { nonEmpty: s.nonEmpty } : {}),
-        samples: samplesOf(f, c.pos),
+        samples: samplesOf(f, c.pos, header.headerRow),
       };
     }),
     autoMatched: [...plan.matched].map(([newPos, a]) => ({ activePos: a.pos, newPos })),
     // Sama persis dengan validateMapping: kolom kosong (absent) yang tetap hilang dibawa otomatis.
     missing: plan.missing.map((a) => a.pos),
-    extra: f.columns.filter((c) => !plan.matched.has(c.pos)).map((c) => c.pos),
+    extra: header.columns.filter((c) => !plan.matched.has(c.pos)).map((c) => c.pos),
     lowCast: lowCast.sort((a, b) => a.pos - b.pos),
+    headerRow: header.headerRow,
+    headerChanged: header.headerRow !== f.headerRow,
   };
 }
 
@@ -154,9 +200,10 @@ const activeView = (a: ActiveSheet): MappingSheetView["active"] => ({
 
 /**
  * Sheet aktif yang perlu keputusan, urut sheet aktif: pasangan otomatis dengan kolom terlihat yang
- * hilang atau cast < 98 %, dan sheet aktif tanpa pasangan (kandidat = sheet baru tanpa pasangan,
- * masing-masing dengan rencananya). Sheet baru tanpa pasangan sendiri bukan masalah (tetap sheet
- * tambahan, T-013).
+ * hilang atau cast < 98 %, dan sheet aktif tanpa pasangan (kandidat = sheet baru tanpa pasangan, hanya
+ * id/nama/jumlah kolom; rencananya lewat pairPlanAction saat dipilih, sehingga ukuran halaman tidak
+ * tumbuh kuadratik terhadap jumlah sheet). Sheet baru tanpa pasangan sendiri bukan masalah (tetap
+ * sheet tambahan, T-013).
  */
 export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): MappingSheetView[] {
   const sorted = [...fresh].sort((a, b) => a.index - b.index);
@@ -165,13 +212,16 @@ export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): Mappi
   pairs.forEach((a, i) => {
     if (a) pairOf.set(a.id, sorted[i]!);
   });
-  const unpaired = sorted.filter((_, i) => !pairs[i]);
+  const candidates = sorted
+    .filter((_, i) => !pairs[i])
+    .map((u) => ({ id: u.id, name: u.name, colCount: u.colCount }));
   const out: MappingSheetView[] = [];
   for (const a of [...active].sort((x, y) => x.index - y.index)) {
     const f = pairOf.get(a.id);
     const view = activeView(a);
     if (f) {
-      const plan = pairPlan(a, f);
+      // Header pasangan otomatis sudah dipilih saat ingest (tetap header tersimpan).
+      const { headerRow: _row, headerChanged: _changed, ...plan } = pairPlan(a, f);
       if (plan.missing.length || plan.lowCast.length) {
         out.push({ active: view, target: { id: f.id, name: f.name }, candidates: [], ...plan });
       }
@@ -180,7 +230,7 @@ export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): Mappi
     out.push({
       active: view,
       target: null,
-      candidates: unpaired.map((u) => ({ id: u.id, name: u.name, ...pairPlan(a, u) })),
+      candidates,
       newColumns: [],
       autoMatched: [],
       missing: view.columns.filter((c) => !c.hidden && !c.absent).map((c) => c.pos),
@@ -196,6 +246,7 @@ export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): Mappi
 const activeSheetSelect = {
   id: true,
   name: true,
+  aliasName: true,
   index: true,
   headerRow: true,
   schemaRevision: true,
@@ -214,45 +265,79 @@ const freshSheetSelect = {
   preview: true,
 } satisfies Prisma.SheetSelect;
 
+/** Yang dibutuhkan validateMapping saja (tanpa skema typed-1). */
+const versionSheetSelect = {
+  id: true,
+  index: true,
+  name: true,
+  headerRow: true,
+  colCount: true,
+  columns: true,
+  preview: true,
+} satisfies Prisma.SheetSelect;
+
 type ActiveRow = Prisma.SheetGetPayload<{ select: typeof activeSheetSelect }>;
 type FreshRow = Prisma.SheetGetPayload<{ select: typeof freshSheetSelect }>;
+type VersionRow = Prisma.SheetGetPayload<{ select: typeof versionSheetSelect }>;
 
 const activeSheetOf = (s: ActiveRow): ActiveSheet => ({
   ...s,
   schema: (s.schema as ColumnSchema[] | null) ?? [],
 });
-const freshSheetOf = (s: FreshRow): FreshSheet & { colCount: number } => ({
+const freshSheetOf = (s: FreshRow): FreshSheet => ({
   ...s,
   columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
   schema: (s.schema as ColumnSchema[] | null) ?? null,
   preview: parsePreview(s.preview),
 });
+const versionSheetOf = (s: VersionRow): VersionSheet => ({
+  ...s,
+  columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
+  preview: parsePreview(s.preview),
+});
+
+const redisDown = (versionId: string, e: unknown, what: string) =>
+  logger.warn({ versionId, err: e instanceof Error ? e.message : String(e) }, what);
 
 /** Job pemetaan versi yang sedang antre/berjalan; Redis mati → dianggap tidak ada (simpan tetap dijaga). */
 async function runningJob(versionId: string): Promise<string | null> {
   try {
     return await mappingInFlight(versionId);
   } catch (e) {
-    logger.warn(
-      { versionId, err: e instanceof Error ? e.message : String(e) },
-      "status job pemetaan tidak terbaca",
-    );
+    redisDown(versionId, e, "status job pemetaan tidak terbaca");
+    return null;
+  }
+}
+
+/** Hasil terakhir job pemetaan versi yang bukan "done" (24 jam); Redis mati → null. */
+async function lastJob(versionId: string): Promise<MappingLast | null> {
+  try {
+    const r = await mappingLast(versionId);
+    const status = r ? statusOf("completed", r.result) : null;
+    return r && status ? { jobId: r.jobId, ...status } : null;
+  } catch (e) {
+    redisDown(versionId, e, "hasil terakhir pemetaan tidak terbaca");
     return null;
   }
 }
 
 /**
- * Job pemetaan yang sedang diterapkan untuk versi dataset milik user yang menunggu pemetaan, atau null
- * (bukan pemilik, tidak ada versi menunggu, tidak ada job). Halaman dataset hanya butuh id ini.
+ * Job pemetaan yang sedang diterapkan + hasil terakhir untuk versi dataset milik user yang menunggu
+ * pemetaan, atau null (bukan pemilik, tidak ada versi menunggu). Ringan untuk halaman dataset.
  */
-export async function mappingJobId(userId: string, datasetId: string): Promise<string | null> {
+export async function mappingJobId(
+  userId: string,
+  datasetId: string,
+): Promise<MappingJobInfo | null> {
   if (!isIdShape(datasetId)) return null;
   const v = await prisma.datasetVersion.findFirst({
     where: { datasetId, status: "AWAITING_MAPPING", dataset: { ownerId: userId } },
     orderBy: { createdAt: "desc" },
     select: { id: true },
   });
-  return v ? runningJob(v.id) : null;
+  if (!v) return null;
+  const [jobId, last] = await Promise.all([runningJob(v.id), lastJob(v.id)]);
+  return { jobId, last };
 }
 
 /**
@@ -288,7 +373,7 @@ export async function mappingView(userId: string, datasetId: string): Promise<Ma
   const a = ds.activeVersion;
   if (!v || !a) return { none: true, datasetId: ds.id, datasetName: ds.name };
   const active = a.sheets.map(activeSheetOf);
-  const jobId = await runningJob(v.id);
+  const [jobId, last] = await Promise.all([runningJob(v.id), lastJob(v.id)]);
   return {
     none: false,
     datasetId: ds.id,
@@ -303,21 +388,64 @@ export async function mappingView(userId: string, datasetId: string): Promise<Ma
     base: snapshotRef({ versionId: a.id, sheets: active }),
     applying: jobId !== null,
     jobId,
+    last,
     sheets: mappingSheets(active, v.sheets.map(freshSheetOf)),
   };
 }
 
+/**
+ * Rencana satu pasangan pilihan user (sheet aktif versi aktif dataset milik user ↔ sheet versi yang
+ * menunggu pemetaan), dengan header yang sama dengan validasi/worker. Id lain → NOT_FOUND.
+ */
+export async function pairPlanFor(
+  userId: string,
+  datasetId: unknown,
+  versionId: unknown,
+  activeSheetId: unknown,
+  newSheetId: unknown,
+): Promise<VersionResult<MappingPairPlan>> {
+  if (
+    !isIdShape(datasetId) ||
+    !isIdShape(versionId) ||
+    !isIdShape(activeSheetId) ||
+    !isIdShape(newSheetId)
+  ) {
+    return notFound();
+  }
+  const ds = await prisma.dataset.findFirst({
+    where: { id: datasetId, ownerId: userId },
+    select: { activeVersionId: true },
+  });
+  if (!ds?.activeVersionId) return notFound();
+  const [a, f] = await Promise.all([
+    prisma.sheet.findFirst({
+      where: { id: activeSheetId, versionId: ds.activeVersionId },
+      select: activeSheetSelect,
+    }),
+    prisma.sheet.findFirst({
+      where: { id: newSheetId, version: { id: versionId, datasetId, status: "AWAITING_MAPPING" } },
+      select: freshSheetSelect,
+    }),
+  ]);
+  if (!a || !f) return notFound();
+  return { ok: true, data: pairPlan(activeSheetOf(a), freshSheetOf(f), true) };
+}
+
 // ── Simpan ──────────────────────────────────────────────────────────────────────────────────────
 
-const applying = <T>() =>
-  fail<T>("DATASET_BUSY", "Pemetaan versi ini sedang diterapkan. Tunggu sampai selesai.");
+const BUSY: Record<Exclude<MappingEnqueue, { ok: true }>["reason"], string> = {
+  version: "Pemetaan versi ini sedang diterapkan. Tunggu sampai selesai.",
+  user: "Masih ada koreksi skema atau pemetaan Anda yang sedang diproses. Tunggu salah satunya selesai, lalu coba lagi.",
+  lock: "Permintaan Anda yang lain sedang dikirim. Coba lagi sebentar.",
+};
 
 /**
- * Simpan pemetaan: pemilik + versi masih menunggu pemetaan → acuan skema aktif sama (di bawah lock
- * Dataset FOR UPDATE, urutan lock sama dengan aktivasi/buang; berubah → STALE) → keputusan valid
- * (validateMapping) → belum ada job pemetaan versi ini (DATASET_BUSY) → rate limit (hanya untuk
- * keputusan valid) → masuk antrean. Lock memegang buang/simpan lain sampai job tercatat, jadi buang
- * yang menyusul membuat job berakhir "gone".
+ * Simpan pemetaan: bentuk payload (murni, tanpa DB) → rate limit → pemilik + versi masih menunggu
+ * pemetaan → acuan skema aktif sama (di bawah lock Dataset FOR UPDATE, urutan lock sama dengan
+ * aktivasi/buang; berubah → STALE) → keputusan valid (validateMapping) → antre bila versi ini belum
+ * punya job dan job recast/pemetaan user yang berjalan < batas per user (DATASET_BUSY). Rate limit
+ * sebelum lock dan membaca baris berat: kiriman yang ditolak pun memakan kuota. Lock memegang
+ * buang/simpan lain sampai job tercatat, jadi buang yang menyusul membuat job berakhir "gone".
  */
 export async function submitMapping(
   userId: string,
@@ -328,6 +456,10 @@ export async function submitMapping(
   rateLimit: () => Promise<VersionResult<never> | null>,
 ): Promise<VersionResult<{ jobId: string }>> {
   if (!isIdShape(datasetId) || !isIdShape(versionId)) return notFound();
+  const shape = parseMappingInput(payload);
+  if (!shape.ok) return fail(shape.code, shape.message);
+  const limited = await rateLimit();
+  if (limited) return limited;
   const run = async (tx: Tx): Promise<VersionResult<{ jobId: string }>> => {
     const rows = await tx.$queryRaw<{ activeVersionId: string | null }[]>`
       SELECT "activeVersionId" FROM "Dataset" WHERE id = ${datasetId} AND "ownerId" = ${userId} FOR UPDATE`;
@@ -335,7 +467,7 @@ export async function submitMapping(
     if (!ds) return notFound();
     const v = await tx.datasetVersion.findFirst({
       where: { id: versionId, datasetId },
-      select: { status: true, sheets: { select: freshSheetSelect } },
+      select: { status: true, sheets: { select: versionSheetSelect } },
     });
     if (!v) return notFound();
     if (v.status !== "AWAITING_MAPPING") {
@@ -352,21 +484,14 @@ export async function submitMapping(
           ).map(activeSheetOf),
         }
       : null;
-    // Bentuk + acuan skema aktif (STALE) + semua keputusan, terhadap skema aktif di bawah lock ini.
-    const checked = validateMapping(payload, { sheets: v.sheets.map(freshSheetOf), active });
+    // Acuan skema aktif (STALE) + semua keputusan, terhadap skema aktif di bawah lock ini.
+    const checked = validateMapping(shape.input, { sheets: v.sheets.map(versionSheetOf), active });
     if (!checked.ok) return fail(checked.code, checked.message);
-    // Dicek sebelum rate limit (kiriman ganda tidak memakan kuota); enqueue menjaga balapan (SET NX).
-    if (await mappingInFlight(versionId)) return applying();
-    const limited = await rateLimit();
-    if (limited) return limited;
-    const jobId = await enqueueMapping({
-      versionId,
-      datasetId,
-      input: checked.input,
-      actorId: userId,
-      ip,
-    });
-    return jobId ? { ok: true, data: { jobId } } : applying();
+    const q = await enqueueMapping(
+      { versionId, datasetId, input: checked.input, actorId: userId, ip },
+      RECAST_INFLIGHT_PER_USER,
+    );
+    return q.ok ? { ok: true, data: { jobId: q.jobId } } : fail("DATASET_BUSY", BUSY[q.reason]);
   };
   try {
     const r = await prisma.$transaction(run, TX_OPTIONS);
@@ -383,11 +508,6 @@ export async function submitMapping(
 
 // ── Status job ──────────────────────────────────────────────────────────────────────────────────
 
-export interface MappingStatus {
-  state: MappingJobState;
-  message?: string;
-}
-
 /** Termasuk menunggu ulang setelah percobaan gagal (attempts tersisa). */
 const QUEUED = new Set(["waiting", "prioritized", "waiting-children", "delayed"]);
 const FAILED =
@@ -402,16 +522,26 @@ export function statusOf(state: string, result: unknown): MappingStatus | null {
   if (state === "active") return { state: "running" };
   if (state === "failed") return { state: "failed", message: FAILED };
   if (state !== "completed") return null;
-  const r = (result ?? null) as { outcome?: unknown; message?: unknown } | null;
-  const message = typeof r?.message === "string" && r.message ? r.message : FAILED;
+  const r = (result ?? null) as {
+    outcome?: unknown;
+    message?: unknown;
+    issues?: unknown;
+  } | null;
+  const text = typeof r?.message === "string" && r.message ? r.message : null;
   switch (r?.outcome) {
     case "done":
     case "stale":
-    case "gone":
       return { state: r.outcome };
+    case "gone":
+      return text ? { state: "gone", message: text } : { state: "gone" };
     case "invalid":
     case "failed":
-      return { state: r.outcome, message };
+      return { state: r.outcome, message: text ?? FAILED };
+    case "review":
+      return {
+        state: "review",
+        issues: Array.isArray(r.issues) ? (r.issues as MappingReviewIssue[]) : [],
+      };
     case undefined:
       return { state: "failed", message: FAILED };
     default:

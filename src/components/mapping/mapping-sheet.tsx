@@ -8,6 +8,8 @@ import { MappingLowCastRow } from "./mapping-lowcast-row";
 import { MappingMissingRow } from "./mapping-missing-row";
 import {
   castBase,
+  castRowId,
+  castRows,
   columnKey,
   domId,
   hiddenExtras,
@@ -18,13 +20,17 @@ import {
   withCast,
   withColumn,
   type PairOption,
+  type PairPlans,
+  type ReviewFlags,
   type SheetDraft,
 } from "./mapping-model";
-import { MappingPair } from "./mapping-pair";
+import { MappingPair, PairPlanStatus } from "./mapping-pair";
 import type { MappingSheetView } from "./mapping-types";
+import type { PlanState } from "./use-pair-plans";
 
 const ERR_COLUMN = "Pilih kolom file baru, atau kosongkan kolom ini.";
 const ERR_SHEET = "Pilih sheet file baru, atau nyatakan sheet ini tidak dipakai lagi.";
+const ERR_PLAN = "Kolom sheet ini belum termuat. Tunggu sebentar atau muat lagi.";
 
 /** Blok bertajuk di dalam kartu sheet (h3 + penjelasan + daftar baris). */
 function Block({
@@ -52,34 +58,50 @@ function Block({
 }
 
 /**
- * Satu sheet aktif yang bermasalah: pasangan sheet (bila tidak ada pasangan otomatis), kolom yang
- * hilang, kolom dengan nilai tidak cocok, kolom baru yang disembunyikan, dan pasangan otomatis.
+ * Satu sheet aktif yang bermasalah: pasangan sheet (bila tidak ada pasangan otomatis; kolom sheet
+ * pilihan dimuat saat dipilih), kolom yang hilang, kolom dengan nilai tidak cocok (termasuk yang
+ * ditandai tahap tinjau), kolom baru yang disembunyikan, dan pasangan otomatis.
  */
 export function MappingSheet({
   sheet,
   title,
   draft: d,
+  plans,
+  planState,
+  flags,
   candidates,
   attempted,
   disabled,
   onChange,
+  onTarget,
+  onRetry,
 }: {
   sheet: MappingSheetView;
   title: string;
   draft: SheetDraft;
+  plans: PairPlans;
+  /** Status muat rencana sheet pilihan user (undefined bila tidak ada pilihan sheet). */
+  planState: PlanState | undefined;
+  flags: ReviewFlags[string] | undefined;
   /** Sheet baru yang bisa dipasangkan (pairOptions); hanya dipakai bila tanpa pasangan otomatis. */
   candidates: PairOption[];
   /** Simpan sudah dicoba: keputusan yang belum dibuat menampilkan galat. */
   attempted: boolean;
   disabled: boolean;
   onChange: (next: SheetDraft) => void;
+  /** Sheet pasangan dipilih: draf per pasangan + muat rencana kolomnya. */
+  onTarget: (target: string | null) => void;
+  onRetry: () => void;
 }) {
   const sid = sheet.active.id;
-  const pair = pairOf(sheet, d);
+  const pair = pairOf(sheet, d, plans);
   const active = new Map(sheet.active.columns.map((c) => [c.pos, c]));
   const fresh = new Map((pair?.newColumns ?? []).map((c) => [c.pos, c]));
   const hidden = pair ? hiddenExtras(pair, d) : [];
+  const casts = pair ? castRows(pair, flags) : [];
   const renamed = sheet.target?.name !== sheet.active.name ? sheet.target?.name : undefined;
+  const sheetError =
+    !attempted || pair ? null : d.target === undefined ? ERR_SHEET : d.target ? ERR_PLAN : null;
   return (
     <Card data-testid="mapping-sheet" data-sheet={sid} className="@container">
       <CardHeader>
@@ -93,11 +115,14 @@ export function MappingSheet({
           sheetName={sheet.active.name}
           candidates={candidates}
           value={d.target}
-          error={attempted && d.target === undefined ? ERR_SHEET : null}
+          error={sheetError}
           disabled={disabled}
-          // Pasangan lain = kolom lain: keputusan kolom sebelumnya tidak berlaku lagi.
-          onChange={(target) => onChange({ target, columns: {}, casts: {} })}
-        />
+          onChange={onTarget}
+        >
+          {d.target && planState ? (
+            <PairPlanStatus state={planState} disabled={disabled} onRetry={onRetry} />
+          ) : null}
+        </MappingPair>
       ) : null}
 
       {pair && pair.missing.length > 0 ? (
@@ -110,7 +135,7 @@ export function MappingSheet({
             const column = active.get(pos);
             if (!column) return null;
             const value = d.columns[pos];
-            const mismatch = mappedCast(sheet, pair, d, pos);
+            const mismatch = mappedCast(sheet, pair, d, pos, flags);
             const cast = mismatch && {
               ...mismatch,
               value: d.casts[mismatch.column.pos] ?? mismatch.base,
@@ -133,20 +158,20 @@ export function MappingSheet({
         </Block>
       ) : null}
 
-      {pair && pair.lowCast.length > 0 ? (
+      {pair && casts.length > 0 ? (
         <Block
           id={`map-${sid}-lowcast`}
-          title={`Nilai yang tidak cocok dengan tipe (${fmtInt(pair.lowCast.length)})`}
+          title={`Nilai yang tidak cocok dengan tipe (${fmtInt(casts.length)})`}
           hint="Nilai yang tidak cocok dengan tipe yang dipilih dikosongkan saat disimpan. Ganti tipe (mis. ke Teks) atau formatnya bila perlu."
         >
-          {pair.lowCast.map((row) => {
+          {casts.map((row) => {
             const base = castBase(sheet, pair, row);
             const column = row.activePos !== null ? active.get(row.activePos) : undefined;
             const original = fresh.get(row.pos)?.original ?? "";
             return (
               <MappingLowCastRow
                 key={row.pos}
-                id={`map-${sid}-cast-${row.pos}`}
+                id={castRowId(sid, row.pos)}
                 row={row}
                 name={column?.name ?? (original || `Kolom ${row.pos}`)}
                 original={original}

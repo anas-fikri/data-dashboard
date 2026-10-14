@@ -101,6 +101,14 @@ describe("refresh cocok → aktif dengan skema aktif", () => {
     expect(r.repo.progressLog.at(-1)).toMatchObject({ stage: "simpan", refresh: true });
   });
 
+  it("T-014: alias pasangan pemetaan sheet aktif terbawa ke sheet versi baru (rollback lintas versi)", async () => {
+    const active = await activeFrom(v1Rows);
+    active.sheets[0]!.aliasName = "Penjualan";
+    const r = await refresh(v1Rows, active);
+    expect(await r.run()).toEqual({ outcome: "done", sheets: 1 });
+    expect(r.sheet().aliasName).toBe("Penjualan");
+  });
+
   it("kolom tersembunyi yang hilang diabaikan", async () => {
     const active = await activeFrom(v1Rows, corrected);
     const r = await refresh(

@@ -4,6 +4,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { runIngest } from "@/features/ingest/ingest";
 import {
+  ALREADY_MAPPED_MESSAGE,
   applyMapping,
   type MappingCommit,
   type MappingDeps,
@@ -64,6 +65,8 @@ describe("validateMapping", () => {
         name: "penjualan",
         index: 0,
         colCount: 4,
+        headerRow: 1,
+        preview: null,
         columns: meta(["Kode", "Kantor", "Nilai", "Baru"]),
       },
     ],
@@ -116,6 +119,8 @@ describe("validateMapping", () => {
         name: "penjualan",
         index: 0,
         colCount: 4,
+        headerRow: 1,
+        preview: null,
         columns: meta(["Kode", "Cabang", "Jumlah", "Baru"]),
       },
     ];
@@ -172,7 +177,15 @@ describe("validateMapping", () => {
       one([{ activePos: 2, newPos: null }]),
       ctx({
         sheets: [
-          { id: "N1", name: "Penjualan", index: 0, colCount: wide.length, columns: meta(wide) },
+          {
+            id: "N1",
+            name: "Penjualan",
+            index: 0,
+            colCount: wide.length,
+            headerRow: 1,
+            preview: null,
+            columns: meta(wide),
+          },
         ],
         active: {
           versionId: "V1",
@@ -182,6 +195,16 @@ describe("validateMapping", () => {
     );
     expect(tooWide).toMatchObject({ ok: false, code: "INVALID" });
     if (!tooWide.ok) expect(tooWide.message).toMatch(/16\.384/);
+  });
+
+  it("acknowledge hanya true; posisi yang diperiksa job = kolom cocok + dipetakan", () => {
+    const r = validateMapping({ ...one([{ activePos: 2, newPos: 2 }]), acknowledge: true }, ctx());
+    if (!r.ok) throw new Error(r.message);
+    expect(r.input.acknowledge).toBe(true);
+    expect(r.plan.pairs[0]).toMatchObject({ checked: [1, 2, 3], userPaired: false, headerRow: 1 });
+    expect(
+      validateMapping({ ...one([{ activePos: 2, newPos: 2 }]), acknowledge: false }, ctx()),
+    ).toMatchObject({ ok: false, code: "INVALID" });
   });
 
   describe("sheet aktif hilang (multi-sheet)", () => {
@@ -194,9 +217,19 @@ describe("validateMapping", () => {
           name: "Penjualan",
           index: 0,
           colCount: 3,
+          headerRow: 1,
+          preview: null,
           columns: meta(["Kode", "Cabang", "Nilai"]),
         },
-        { id: "N2", name: "Retur 2026", index: 1, colCount: 1, columns: meta(["Nomor"]) },
+        {
+          id: "N2",
+          name: "Retur 2026",
+          index: 1,
+          colCount: 1,
+          headerRow: 1,
+          preview: null,
+          columns: meta(["Nomor"]),
+        },
       ],
     });
     const mbase = {
@@ -231,6 +264,50 @@ describe("validateMapping", () => {
       if (!dropped.ok) throw new Error(dropped.message);
       expect(dropped.plan.dropped.map((s) => s.name)).toEqual(["Retur"]);
       expect(dropped.plan.sheetMap).toEqual({ A1: "N1" });
+    });
+
+    it("pasangan user: header aktif (koreksi user) dari pratinjau bila lebih cocok; keputusan merujuk header itu", () => {
+      // Sheet aktif "Retur" ber-header baris 2; file baru menebak baris 1 (judul laporan).
+      const A2h: ActiveSheet = { ...A2, headerRow: 2, schema: [col(1, "No"), col(2, "Alasan")] };
+      const fresh = {
+        id: "N2",
+        name: "Retur 2026",
+        index: 1,
+        colCount: 2,
+        headerRow: 1,
+        columns: meta(["Laporan retur", "Jan 2026"]),
+        preview: {
+          colCount: 2,
+          rows: [
+            { row: 1, cells: ["Laporan retur", "Jan 2026"] },
+            { row: 2, cells: ["No", "Alasan"] },
+            { row: 3, cells: ["1", "Rusak"] },
+          ],
+        },
+      };
+      const c = ctx({
+        active: { versionId: "V1", sheets: [A1, A2h] },
+        sheets: [multi.sheets[0]!, fresh],
+      });
+      const input = (columns: { activePos: number; newPos: number | null }[]) => ({
+        base: mbase,
+        sheets: [{ activeSheetId: "A2", target: "N2", columns }],
+      });
+      const r = validateMapping(input([]), c);
+      if (!r.ok) throw new Error(r.message);
+      expect(r.plan.pairs[1]).toMatchObject({
+        userPaired: true,
+        headerRow: 2,
+        columns: meta(["No", "Alasan"]),
+        checked: [1, 2],
+      });
+      // Keputusan yang dibuat atas header tebakan tidak sah lagi (kolomnya cocok di header aktif).
+      expect(validateMapping(input([{ activePos: 1, newPos: 1 }]), c)).toMatchObject({
+        ok: false,
+        code: "INVALID",
+      });
+      // Pasangan otomatis tetap memakai header tersimpan.
+      expect(r.plan.pairs[0]).toMatchObject({ userPaired: false, headerRow: 1 });
     });
 
     it("sheet yang sudah berpasangan otomatis tidak bisa dipilih/diganti; null hanya tanpa pasangan", () => {
@@ -363,12 +440,14 @@ describe("applyMapping (job map-version)", () => {
                 index: s.index,
                 colCount: s.colCount,
                 columns: s.columns,
+                preview: s.preview ?? null,
                 headerRow: s.headerRow,
                 rawKey: s.rawKey!,
                 typedKey: s.typedKey ?? null,
                 schemaRevision: s.schemaRevision ?? 1,
               })),
               active: structuredClone(r.active),
+              mappedBy: r.status === "READY" ? (commits.at(-1)?.meta.jobId ?? null) : null,
             }
           : null,
       alive: async () => r.alive() && r.status === "AWAITING_MAPPING",
@@ -384,6 +463,7 @@ describe("applyMapping (job map-version)", () => {
             schemaRevision: u.schemaRevision,
             headerRow: u.headerRow,
             columns: u.columns,
+            ...(u.aliasName !== undefined ? { aliasName: u.aliasName } : {}),
           });
         }
         r.status = "READY";
@@ -479,5 +559,134 @@ describe("applyMapping (job map-version)", () => {
     m.lock.held.set(`map:${VID}`, "proses-lain");
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "busy" });
     expect(m.repo.status).toBe("AWAITING_MAPPING");
+  });
+
+  it("versi sudah READY: done hanya untuk job yang meng-commit-nya, job lain → gone dengan pesan", async () => {
+    const m = await awaiting();
+    const job = { ...m.job, jobId: "mp_a" };
+    expect(await applyMapping(job, m.deps)).toEqual({ outcome: "done" });
+    expect(m.commits[0]!.meta.jobId).toBe("mp_a");
+    // Percobaan ulang job yang sama (gagal setelah commit) → tetap done tanpa kerja.
+    expect(await applyMapping(job, m.deps)).toEqual({ outcome: "done" });
+    expect(await applyMapping({ ...m.job, jobId: "mp_b" }, m.deps)).toEqual({
+      outcome: "gone",
+      message: ALREADY_MAPPED_MESSAGE,
+    });
+    expect(m.commits).toHaveLength(1);
+  });
+
+  /**
+   * Dataset dua sheet: "Data" (header baris 2 hasil koreksi user, Jumlah bilangan bulat) + "Ringkasan".
+   * File baru CSV (sheet "CSV") tanpa pasangan otomatis, dengan baris judul laporan di baris 1 → tebakan
+   * header baris 1. User memasangkan Data → CSV dan membuang Ringkasan.
+   */
+  async function renamed(jumlah: (i: number) => string) {
+    const s = t.setup(
+      t.file(
+        `v2-${Math.random().toString(36).slice(2)}.csv`,
+        csv([
+          ["Periode Jan 2026", "Cabang Semua", "Dicetak admin"],
+          ["Tanggal", "Cabang", "Jumlah"],
+          ...range(10, (i) => [`T${i}`, `C${i}`, jumlah(i)]),
+        ]),
+      ),
+    );
+    s.repo.active = {
+      versionId: "aktif0000000000000001",
+      sheets: [
+        {
+          id: "sheetaktif00000000001",
+          name: "Data",
+          index: 0,
+          headerRow: 2,
+          schemaRevision: 4,
+          schema: [
+            col(1, "Tanggal"),
+            col(2, "Cabang"),
+            col(3, "Jumlah", { type: "integer", numberLocale: "us" }),
+          ],
+        },
+        {
+          id: "sheetaktif00000000002",
+          name: "Ringkasan",
+          index: 1,
+          headerRow: 1,
+          schemaRevision: 1,
+          schema: [col(1, "Bulan")],
+        },
+      ],
+    };
+    expect((await runIngest(VID, s.repo, s.storage, s.opts)).outcome).toBe("awaiting");
+    const [sheetId] = [...s.repo.sheets.keys()];
+    expect(s.repo.sheets.get(sheetId!)!.headerRow).toBe(1);
+    const commits: MappingCommit[] = [];
+    const deps: MappingDeps = {
+      repo: mappingRepo(s.repo, commits),
+      storage: s.storage,
+      lock: fakeLock(),
+      scheduleDelete: async () => {},
+      tmpRoot: join(t.root, "tmp"),
+      duckMemory: "256MB",
+    };
+    const input: MappingInput = {
+      base: snapshotRef(s.repo.active),
+      sheets: [
+        { activeSheetId: "sheetaktif00000000001", target: sheetId!, columns: [] },
+        { activeSheetId: "sheetaktif00000000002", target: null, columns: [] },
+      ],
+    };
+    return {
+      ...s,
+      sheet: () => s.repo.sheets.get(sheetId!)!,
+      sheetId: sheetId!,
+      deps,
+      commits,
+      job: { versionId: VID, input, actorId: "owner1", ip: "10.0.0.1" },
+      typedKeys: () => s.storage.parquetKeys().filter((k) => k.includes("typed-")),
+    };
+  }
+
+  it("sheet ganti nama dipasangkan user → header aktif dari pratinjau, alias nama sheet aktif, sheetMap", async () => {
+    const m = await renamed((i) => String(i * 5));
+    expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "done" });
+    expect(m.commits[0]).toMatchObject({
+      sheetMap: { sheetaktif00000000001: m.sheetId },
+      meta: { mapped: 0, nulls: 0, droppedSheets: ["Ringkasan"] },
+      sheets: [{ headerRow: 2, aliasName: "Data" }],
+    });
+    const s = m.sheet();
+    expect(s.headerRow).toBe(2);
+    expect(s.schema!.map((c) => [c.name, c.original, c.type])).toEqual([
+      ["Tanggal", "Tanggal", "text"],
+      ["Cabang", "Cabang", "text"],
+      ["Jumlah", "Jumlah", "integer"],
+    ]);
+    // Baris judul kolom tidak menjadi data.
+    const rows = await readParquet(join(m.storage.dir, s.typedKey!));
+    expect(rows).toHaveLength(10);
+    expect(rows[0]!.slice(1)).toEqual(["T0", "C0", 0n]);
+  });
+
+  it("rasio cast < 98 % dengan tipe yang diterapkan → review (tanpa commit, file dibuang); acknowledge → diterapkan", async () => {
+    const m = await renamed((i) => (i < 2 ? "N/A" : String(i)));
+    const before = m.typedKeys();
+    expect(await applyMapping(m.job, m.deps)).toEqual({
+      outcome: "review",
+      issues: [
+        {
+          sheet: "Data",
+          column: "Jumlah",
+          header: "Jumlah",
+          pct: 0.8,
+          typeLabel: "Bilangan bulat (format 1,234)",
+        },
+      ],
+    });
+    expect(m.repo.status).toBe("AWAITING_MAPPING");
+    expect(m.commits).toEqual([]);
+    expect(m.typedKeys()).toEqual(before);
+    const ack = { ...m.job, input: { ...m.job.input, acknowledge: true as const } };
+    expect(await applyMapping(ack, m.deps)).toEqual({ outcome: "done" });
+    expect(m.sheet().schema![2]).toMatchObject({ type: "integer", castFailCount: 2, nonEmpty: 10 });
   });
 });

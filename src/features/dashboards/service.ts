@@ -375,7 +375,14 @@ async function remapToActive(
     ),
   ];
   if (!sheetIds.length) return widgets;
-  const select = { id: true, name: true, index: true, schema: true, versionId: true } as const;
+  const select = {
+    id: true,
+    name: true,
+    aliasName: true,
+    index: true,
+    schema: true,
+    versionId: true,
+  } as const;
   const sheets = await prisma.sheet.findMany({
     where: { id: { in: sheetIds }, version: { datasetId } },
     select,
@@ -383,9 +390,16 @@ async function remapToActive(
   const found = new Set(sheets.map((s) => s.id));
   const stale = sheets.filter((s) => s.versionId !== activeVersionId);
   if (!stale.length && sheetIds.every((id) => found.has(id))) return widgets;
-  const info = (s: { id: string; name: string; index: number; schema: unknown }) => ({
+  const info = (s: {
+    id: string;
+    name: string;
+    aliasName: string | null;
+    index: number;
+    schema: unknown;
+  }) => ({
     id: s.id,
     name: s.name,
+    aliasName: s.aliasName,
     index: s.index,
     schema: (s.schema as unknown as ColumnSchema[] | null) ?? [],
   });
@@ -393,7 +407,7 @@ async function remapToActive(
   const active = await prisma.sheet.findMany({
     where: { versionId: activeVersionId, typedKey: { not: null } },
     orderBy: { index: "asc" },
-    select: { id: true, name: true, index: true },
+    select: { id: true, name: true, aliasName: true, index: true },
   });
   const byId = new Map(stale.map((s) => [s.id, info(s)]));
   const counts = await prisma.sheet.groupBy({

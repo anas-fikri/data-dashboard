@@ -3,9 +3,11 @@
 import { IconLoader2, IconRoute, IconTrash } from "@tabler/icons-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { MappingLastNotice } from "@/components/mapping/mapping-last";
 import { useMappingPoll } from "@/components/mapping/use-mapping-job";
 import { Button } from "@/components/ui/button";
 import { discardVersionAction } from "@/features/versions/actions";
+import type { MappingLast } from "@/features/versions/types";
 import { ROW_CTA, VersionConfirm } from "./version-history-confirm";
 
 interface VersionMappingNoticeProps {
@@ -17,6 +19,8 @@ interface VersionMappingNoticeProps {
   message: string | null;
   /** Job pemetaan yang sedang antre/diterapkan, atau null. */
   mappingJobId: string | null;
+  /** Hasil terakhir job pemetaan yang tidak selesai (gagal/perlu diperiksa), atau null. */
+  last: MappingLast | null;
   /** Versi dibuang: panel unggah menampilkan hasil (yang menerima fokus). */
   onDiscarded: (fileName: string) => void;
 }
@@ -32,6 +36,7 @@ export function VersionMappingNotice({
   fileName,
   message,
   mappingJobId,
+  last,
   onDiscarded,
 }: VersionMappingNoticeProps) {
   const router = useRouter();
@@ -79,6 +84,8 @@ export function VersionMappingNotice({
             <span className="font-medium">Alasan:</span> {message}
           </p>
         ) : null}
+        {/* Hasil job pemetaan sebelumnya (gagal/perlu diperiksa) tidak hilang diam-diam. */}
+        {last && !applying ? <MappingLastNotice last={last} /> : null}
         <div className="flex flex-col gap-2 md:flex-row">
           {applying ? null : (
             <Button asChild size="sm" className={ROW_CTA}>

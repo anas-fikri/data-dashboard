@@ -43,6 +43,7 @@ import {
   type MappingJobData,
   type RecastJobData,
 } from "@/lib/queue/connection";
+import { recordMappingLast, type MappingLastRecord } from "@/lib/queue/versions";
 import { deleteObject } from "@/lib/storage/objects";
 
 const MAINTENANCE = "maintenance";
@@ -207,10 +208,19 @@ async function main() {
     await job.moveToDelayed(Date.now() + RECAST_BUSY_DELAY_MS, token);
     throw new DelayedError();
   };
+  /** Hasil terakhir pemetaan versi (T-014, 24 jam); gagal mencatat tidak menggagalkan job. */
+  const recordLast = async (versionId: string, record: MappingLastRecord | null) => {
+    await recordMappingLast(lockRedis, versionId, record).catch((e: unknown) =>
+      logger.warn(
+        { versionId, err: e instanceof Error ? e.message : String(e) },
+        "hasil pemetaan tidak tercatat",
+      ),
+    );
+  };
   const mapVersion = async (job: Job<MappingJobData>, token?: string) => {
     const { versionId, input, actorId, ip } = job.data;
     const r = await applyMapping(
-      { versionId, input, actorId, ip },
+      { versionId, input, actorId, ip, jobId: job.id },
       {
         repo: prismaMappingRepo,
         storage: s3IngestStorage,
@@ -219,8 +229,17 @@ async function main() {
         tmpRoot,
       },
     );
-    logger.info({ jobId: job.id, versionId, ...r }, "pemetaan selesai");
+    logger.info(
+      {
+        jobId: job.id,
+        versionId,
+        ...r,
+        issues: r.outcome === "review" ? r.issues.length : undefined,
+      },
+      "pemetaan selesai",
+    );
     if (r.outcome === "busy") return delayBusy(job, MAPPING_BUSY_MAX_MS, token);
+    await recordLast(versionId, r.outcome === "done" ? null : { jobId: job.id ?? "", result: r });
     return r;
   };
   const recastWorker = new Worker<RecastJobData | MappingJobData>(
@@ -248,9 +267,17 @@ async function main() {
     },
     { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS },
   );
-  recastWorker.on("failed", (job, err) =>
-    logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "recast gagal"),
-  );
+  recastWorker.on("failed", (job, err) => {
+    logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "recast gagal");
+    if (job?.name !== MAP_VERSION_JOB) return;
+    // Pemetaan gagal final (percobaan habis): dicatat sebagai hasil terakhir versi.
+    void (async () => {
+      const state = await job.getState().catch(() => "unknown");
+      if (state !== "failed") return;
+      const { versionId } = job.data as MappingJobData;
+      await recordLast(versionId, { jobId: job.id ?? "", result: { outcome: "failed" } });
+    })();
+  });
 
   const swept = await sweepUploaded(ingestQueue);
   // Sisa pembersihan saat worker mati (mis. deploy) tidak menunggu 15 menit jadwal berikutnya.

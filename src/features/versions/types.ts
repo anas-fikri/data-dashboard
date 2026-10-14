@@ -4,9 +4,10 @@
  */
 import type { VersionStatus } from "@/features/datasets/label";
 import type { ColumnType, DateFormat, NumberLocale } from "@/features/ingest/infer";
+import type { MappingReviewIssue } from "@/features/ingest/mapping-input";
 import type { SnapshotRef } from "@/features/ingest/refresh";
 
-export type { VersionStatus };
+export type { MappingReviewIssue, VersionStatus };
 
 /** Satu baris "Riwayat versi" di profil dataset (terbaru dulu, tanpa UPLOADING). */
 export interface VersionRow {
@@ -66,6 +67,9 @@ export interface MappingNewColumn {
   name: string;
   /** Tipe cast versi baru (tipe aktif bila cocok otomatis, hasil inferensi bila tidak). */
   type: ColumnType;
+  /** Locale angka / format tanggal tipe itu (bila relevan). */
+  numberLocale?: NumberLocale;
+  dateFormat?: DateFormat;
   /** Nilai non-kosong yang gagal dikonversi ke `type`. */
   castFailCount: number;
   /** Nilai non-kosong (tidak ada di skema versi lama). */
@@ -98,13 +102,30 @@ export interface MappingPlanView {
   missing: number[];
   /** Kolom file baru yang tidak dipakai: masuk tersembunyi (posisi baru). */
   extra: number[];
+  /**
+   * Kolom cocok otomatis yang < 98 % nilainya lolos cast, hanya bila angkanya tepat (pasangan otomatis
+   * dengan tipe typed-1 = pilihan aktif TERKINI). Selain itu (pasangan user, kolom dipetakan, tipe
+   * aktif sudah berubah) rasio tepat datang dari job ("review") sebelum versi diaktifkan.
+   */
   lowCast: MappingLowCast[];
 }
 
-/** Sheet file baru yang belum berpasangan, beserta rencananya bila dipasangkan dengan sheet aktif ini. */
-export interface MappingCandidate extends MappingPlanView {
+/**
+ * Rencana satu pasangan sheet aktif ↔ sheet file baru pilihan user (pairPlanAction), dihitung dengan
+ * header yang sama dengan validasi/worker (pairedHeader).
+ */
+export interface MappingPairPlan extends MappingPlanView {
+  /** Baris header yang dipakai pasangan ini. */
+  headerRow: number;
+  /** Baris header aktif (pratinjau) dipakai, bukan tebakan saat unggah. */
+  headerChanged: boolean;
+}
+
+/** Sheet file baru yang belum berpasangan; rencananya diminta saat dipilih (pairPlanAction). */
+export interface MappingCandidate {
   id: string;
   name: string;
+  colCount: number;
 }
 
 export interface MappingSheetView extends MappingPlanView {
@@ -114,7 +135,7 @@ export interface MappingSheetView extends MappingPlanView {
    * lagi"). Bila null, `missing` = semua kolom aktif terlihat dan kolom/rencana ada di `candidates`.
    */
   target: { id: string; name: string } | null;
-  /** Sheet baru tanpa pasangan (hanya bila target null). */
+  /** Sheet baru tanpa pasangan (hanya bila target null), tanpa rencana kolom. */
   candidates: MappingCandidate[];
 }
 
@@ -134,10 +155,33 @@ export type MappingView =
       /** Job pemetaan sedang berjalan (indeks Redis); jobId untuk polling status. */
       applying: boolean;
       jobId: string | null;
+      /** Hasil terakhir job pemetaan versi ini yang bukan "done" (24 jam), mis. "review". */
+      last: MappingLast | null;
       /** Hanya sheet aktif yang bermasalah. */
       sheets: MappingSheetView[];
     };
 
-/** Status job pemetaan (GET /api/datasets/[id]/mapping/[jobId]). */
+/**
+ * Status job pemetaan (GET /api/datasets/[id]/mapping/[jobId]). "review" = ada kolom dengan < 98 %
+ * nilai lolos cast: kirim ulang keputusan dengan acknowledge (atau ubah tipe).
+ */
 export type MappingJobState =
-  "queued" | "running" | "done" | "stale" | "invalid" | "failed" | "gone";
+  "queued" | "running" | "done" | "stale" | "invalid" | "failed" | "gone" | "review";
+
+export interface MappingStatus {
+  state: MappingJobState;
+  message?: string;
+  /** Hanya untuk "review": ≤ 50 kolom, terburuk dulu. */
+  issues?: MappingReviewIssue[];
+}
+
+/** Hasil terakhir job pemetaan versi (mapping-last, 24 jam). */
+export interface MappingLast extends MappingStatus {
+  jobId: string;
+}
+
+/** Halaman dataset: job pemetaan yang sedang berjalan + hasil terakhir versi yang menunggu. */
+export interface MappingJobInfo {
+  jobId: string | null;
+  last: MappingLast | null;
+}
