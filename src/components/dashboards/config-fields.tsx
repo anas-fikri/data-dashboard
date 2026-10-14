@@ -125,7 +125,13 @@ export function FormatFields({
   onChange: (f: NumberFormat) => void;
 }) {
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
+    <div
+      className={
+        value.style === "auto"
+          ? "grid min-w-0"
+          : "grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"
+      }
+    >
       <Choice
         label="Format angka"
         testId="config-format"

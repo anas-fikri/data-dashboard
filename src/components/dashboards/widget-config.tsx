@@ -54,13 +54,14 @@ export function WidgetConfigForm({
   widget: WidgetView;
   sources: Source[];
   datasetId: string;
-  onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
+  /** true = tersimpan; teks = alasan gagal (ditampilkan di baris status). */
+  onSave: (type: WidgetType, spec: unknown) => Promise<true | string>;
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const [draft, setDraft] = useState<WidgetConfig>(parsed.ok ? parsed.config : EMPTY);
   // reloads: simpanan terakhir mengubah data widget (bukan hanya sakelar filter silang, yang tidak
   // memuat ulang) — teks status tidak menjanjikan "memuat data terbaru" yang tidak terjadi.
-  const [saveState, setStatus] = useState<{ status: Status; reloads: boolean }>({
+  const [saveState, setStatus] = useState<{ status: Status; reloads: boolean; message?: string }>({
     status: "idle",
     reloads: true,
   });
@@ -71,6 +72,11 @@ export function WidgetConfigForm({
     widget.retargeted ? "" : configVersion(parsed.ok ? parsed.config : EMPTY),
   );
   const memory = useRef<Partial<Record<WidgetType, WidgetConfig>>>({});
+  // Draf terbaru untuk callback tertunda (mis. cek "Maks." saat blur) — closure render lama bisa
+  // menimpa ketukan yang terjadi sebelum callback itu berjalan (R9-1).
+  const latestDraft = useRef(draft);
+  // Nomor simpanan terbaru: hasil simpanan lama tidak menimpa status simpanan yang sedang berjalan.
+  const saveSeq = useRef(0);
   const pending = useRef<WidgetConfig | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const save = useRef(onSave);
@@ -87,15 +93,18 @@ export function WidgetConfigForm({
     pending.current = null;
     if (!next || next.type === "empty") return;
     const version = configVersion(next);
+    const mine = ++saveSeq.current;
     setStatus({ status: "saving", reloads: true });
-    void save.current(next.type, next.spec).then((ok) => {
+    void save.current(next.type, next.spec).then((result) => {
+      const ok = result === true;
       const reloads = version !== savedVersion.current;
       if (ok) {
         savedVersion.current = version;
         // Spec tersimpan kini di sheet aktif (sumber panel hanya sheet versi aktif).
         setRetargeted(false);
       }
-      setStatus({ status: ok ? "saved" : "error", reloads });
+      if (mine !== saveSeq.current) return;
+      setStatus(ok ? { status: "saved", reloads } : { status: "error", reloads, message: result });
     });
   }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
@@ -106,6 +115,7 @@ export function WidgetConfigForm({
     // Kolom tabel yang tidak lagi tersedia dibuang begitu user mengubah sesuatu.
     if (next.type === "table") next = withoutMissingColumns(next, sources);
     setDraft(next);
+    latestDraft.current = next;
     // Draf baru menggantikan simpanan yang masih tertunda (itu bukan lagi isi panel); draf yang belum
     // bisa disimpan tidak menyimpan apa pun.
     clearTimeout(timer.current);
@@ -305,7 +315,21 @@ export function WidgetConfigForm({
                     key={draft.type}
                     type={draft.type}
                     value={draft.spec.topN}
-                    onCommit={(topN) => commit({ ...draft, spec: { ...draft.spec, topN } })}
+                    onCommit={(topN) => {
+                      const field = draft.type;
+                      const cur = latestDraft.current;
+                      if (cur.type === field) {
+                        commit({ ...cur, spec: { ...cur.spec, topN } } as WidgetConfig);
+                        return;
+                      }
+                      const kept = memory.current[field];
+                      if (kept && kept.type === field) {
+                        memory.current[field] = {
+                          ...kept,
+                          spec: { ...kept.spec, topN },
+                        } as WidgetConfig;
+                      }
+                    }}
                   />
                 </div>
               ) : null}
@@ -353,17 +377,17 @@ export function WidgetConfigForm({
             data-testid="config-status"
             data-state={status}
           >
-            {/* Draf yang belum bisa disimpan didahulukan dari "Tersimpan" milik draf sebelumnya. */}
+            {/* Draf yang belum bisa disimpan didahulukan dari hasil simpanan draf sebelumnya. */}
             {status === "saving"
               ? "Menyimpan…"
-              : status === "error"
-                ? "Belum tersimpan — lihat pesan di atas kanvas."
-                : noColumns
-                  ? noSheet
-                    ? "Belum tersimpan — pilih sheet."
-                    : "Belum tersimpan — pilih sheet lain."
-                  : unsaved
-                    ? "Belum tersimpan — pilih kolom pengganti."
+              : noColumns
+                ? noSheet
+                  ? "Belum tersimpan — pilih sheet."
+                  : "Belum tersimpan — pilih sheet lain."
+                : unsaved
+                  ? "Belum tersimpan — pilih kolom pengganti."
+                  : status === "error"
+                    ? `Belum tersimpan — ${saveState.message || "coba ubah lagi."}`
                     : status === "saved"
                       ? reloads
                         ? "Tersimpan. Widget memuat data terbaru."

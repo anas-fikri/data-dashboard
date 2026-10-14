@@ -198,7 +198,8 @@ export function useDashboardEditor(o: {
         const r = await api.configureWidget(id, widgetId, type, spec);
         if (!r.ok) {
           failed(r);
-          return false;
+          // Alasan juga untuk baris status panel: di layar < 1280 px pesan kanvas tertutup panel.
+          return r.message;
         }
         setWidgets(
           widgetsNow.current.map((w) =>

@@ -686,7 +686,7 @@ describe("R3-CC-2: panel widget retargeted", () => {
         widget,
         sources: one,
         datasetId: "ds",
-        onSave: () => Promise.resolve(true),
+        onSave: () => Promise.resolve(true as const),
       }),
     );
   const status = (html: string) => html.match(/data-testid="config-status"[^>]*>([^<]*)</)?.[1];
@@ -725,7 +725,7 @@ describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak shee
         widget: { id: "w", type, title: "", spec },
         sources: src,
         datasetId: "ds",
-        onSave: () => Promise.resolve(true),
+        onSave: () => Promise.resolve(true as const),
       }),
     );
   const status = (html: string) => html.match(/data-testid="config-status"[^>]*>([^<]*)</)?.[1];
