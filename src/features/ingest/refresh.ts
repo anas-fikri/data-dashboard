@@ -9,7 +9,7 @@
  *  - Cocok = semua sheet aktif ada, semua kolom terlihat ada, dan tiap kolom non-teks yang cocok
  *    ≥ 98% nilainya lolos konversi; selain itu versi menunggu pemetaan (T-014) dengan alasan.
  */
-import { matchSheet, normName } from "@/features/widgets/remap";
+import { columnKeys, matchSheet, normName } from "@/features/widgets/remap";
 import { baseName, uniqueName, type ColumnMeta } from "./header";
 import { INFER_THRESHOLD, type ColumnSchema, type ColumnType } from "./infer";
 import { choiceOf, type ColumnOverride } from "./typed";
@@ -73,18 +73,6 @@ export function planSheets(
     else missing.push(a);
   }
   return { pairs, missing };
-}
-
-/** Kunci pencocokan kolom: nama asli ternormalisasi + urutan kemunculan nama itu di sheet. */
-export function columnKeys(originals: string[]): string[] {
-  const seen = new Map<string, number>();
-  return originals.map((o) => {
-    const k = normName(o);
-    const n = (seen.get(k) ?? 0) + 1;
-    seen.set(k, n);
-    // Baris baru tidak mungkin ada di nama ternormalisasi (spasi dirapatkan) → pemisah aman.
-    return `${k}\n${n}`;
-  });
 }
 
 export interface ColumnPlan {

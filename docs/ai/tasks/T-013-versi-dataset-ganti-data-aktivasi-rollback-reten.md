@@ -1,7 +1,7 @@
 ---
 id: T-013
 title: 'Versi dataset: ganti data, aktivasi, rollback, retensi'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-5
@@ -11,17 +11,23 @@ depends_on:
   - T-008
   - T-011
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T06:31:03Z"
+updated: "2026-10-14T07:16:35Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 3a7b69d955891663b7e7b95b8db03c2b138b806a
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-14T07:09:12Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 44654
+    duration_ms: 40346
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -43,13 +49,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1791959436086,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1791959436107,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1791962171191,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1791962171212,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  53 passed (53)
-            Tests  822 passed (822)
-         Start at  13:30:31
-         Duration  30.67s (tests 86%, import 9%, transform 5%)
+       Test Files  55 passed (55)
+            Tests  835 passed (835)
+         Start at  14:16:06
+         Duration  27.52s (tests 85%, import 9%, transform 6%)
 
 
       > data-dashboard@0.1.0 audit
@@ -57,8 +63,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-14T06:31:03Z"
-    tree: f1179b3c50094d61c9835c6b78d71cd3fdedd8710d01facd7b52e822a0ecf55c
+    at: "2026-10-14T07:16:35Z"
+    tree: 3ffcf1e032d5e3486b23a523210f971cf739f415b3d86a6b8dec55d63b914d22
 ---
 
 ## Objective

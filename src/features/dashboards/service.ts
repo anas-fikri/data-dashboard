@@ -330,11 +330,14 @@ export async function setDashboardFilterColumns(
 const toView = ({ missingColumns: _, ...w }: StoredWidget): WidgetView => w;
 
 /**
- * Semua kolom spec ditandai MISSING_COLUMN (sheetId tetap): remapConfig tanpa skema lama tidak
- * menemukan satu nama pun.
+ * Semua kolom spec ditandai MISSING_COLUMN, spec menunjuk sheetId (bawaan: sheet lama tetap):
+ * remapConfig tanpa skema lama tidak menemukan satu nama pun.
  */
-function allMissing(config: Exclude<WidgetConfig, { type: "empty" }>): unknown {
-  const none = { id: config.spec.sheetId, name: "", index: 0, schema: [] };
+function allMissing(
+  config: Exclude<WidgetConfig, { type: "empty" }>,
+  sheetId = config.spec.sheetId,
+): unknown {
+  const none = { id: sheetId, name: "", index: 0, schema: [] };
   return remapConfig(config, none, none).config.spec;
 }
 
@@ -342,7 +345,9 @@ function allMissing(config: Exclude<WidgetConfig, { type: "empty" }>): unknown {
  * Spec widget yang menunjuk sheet versi lama (data sudah diganti) dipetakan ke versi aktif untuk
  * ditampilkan dan diedit (lihat features/widgets/remap.ts). Sheet lama yang sudah dihapus retensi
  * dengan kolom hilang tercatat saat aktivasi (T-013) → semua kolomnya ditandai hilang, sehingga panel
- * meminta kolom pengganti dan query memberi COLUMN_UNAVAILABLE. Tidak menulis ke DB.
+ * meminta kolom pengganti dan query memberi COLUMN_UNAVAILABLE. Bila versi aktif hanya punya satu
+ * sheet, spec dipindah ke sheet itu agar panel menampilkan kolomnya (dataset satu sheet tidak punya
+ * pilihan sheet); lebih dari satu sheet → pilihan sheet di panel. Tidak menulis ke DB.
  */
 async function remapToActive(
   datasetId: string,
@@ -408,7 +413,9 @@ async function remapToActive(
   );
   return parsed.map(({ w, c, m }) => {
     if (!c.ok || c.config.type === "empty") return w;
-    if (lost(c, m)) return { ...w, spec: allMissing(c.config) };
+    if (lost(c, m)) {
+      return { ...w, spec: allMissing(c.config, active.length === 1 ? active[0]!.id : undefined) };
+    }
     const old = byId.get(c.config.spec.sheetId);
     const target = targetOf(c.config.spec.sheetId);
     const schema = target && schemas.get(target.id);

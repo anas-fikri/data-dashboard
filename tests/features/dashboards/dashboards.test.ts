@@ -415,7 +415,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     );
   });
 
-  it("T-013: sheet lama sudah dihapus + kolom hilang tercatat → semua kolom ditandai hilang di tampilan", async () => {
+  it("T-013: sheet lama sudah dihapus + kolom hilang tercatat → semua kolom ditandai hilang di tampilan, satu sheet aktif → spec pindah ke sheet itu", async () => {
     const OLD = "cmv4kljx40009oczvdmpurrol";
     const VER = "cmv4kljx40009oczvdmpurrve";
     const kpi = { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt };
@@ -442,7 +442,24 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Sheet1", index: 0 }]);
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     const view = await svc.getDashboard(OWNER, DB);
+    // Dataset satu sheet tidak punya pilihan sheet: panel harus menampilkan kolom sheet aktif.
     expect(view?.widgets).toEqual([
+      {
+        id: WA,
+        type: "kpi",
+        title: "",
+        spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+      },
+    ]);
+    // Lebih dari satu sheet aktif → sheet lama tetap (panel memberi pilihan sheet).
+    prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard([widget(["Omzet"])]));
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    prisma.sheet.findMany.mockResolvedValueOnce([
+      { id: SHEET, name: "Sheet1", index: 0 },
+      { id: OLD.replace("rol", "rs2"), name: "Sheet2", index: 1 },
+    ]);
+    prisma.sheet.findMany.mockResolvedValueOnce([]);
+    expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
       {
         id: WA,
         type: "kpi",

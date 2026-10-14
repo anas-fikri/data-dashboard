@@ -3,7 +3,6 @@ import { columnNames } from "@/features/ingest/header";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import {
   chooseHeader,
-  columnKeys,
   missingSheetIssue,
   planColumns,
   planSheets,
@@ -13,6 +12,7 @@ import {
   verdictOf,
   type ActiveSheet,
 } from "@/features/ingest/refresh";
+import { columnKeys } from "@/features/widgets/remap";
 
 /* Versi refresh (T-013): pencocokan sheet/kolom ke skema aktif dan putusan cocok/menunggu pemetaan. */
 

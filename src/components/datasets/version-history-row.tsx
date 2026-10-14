@@ -39,7 +39,17 @@ const ICONS: Record<VersionKind, ReactNode> = {
  */
 const CELL = "block @3xl:table-cell @3xl:px-3 @3xl:py-2.5 @3xl:align-top";
 
-export function VersionHistoryRow({ datasetId, v }: { datasetId: string; v: VersionRow }) {
+export function VersionHistoryRow({
+  datasetId,
+  v,
+  busy,
+}: {
+  datasetId: string;
+  v: VersionRow;
+  /** Ada versi yang sedang diunggah/diproses/menunggu pemetaan: aktivasi pasti DATASET_BUSY. */
+  busy: boolean;
+}) {
+  const canActivate = v.canActivate && !busy;
   const status = versionStatusView(v);
   const time = versionTime(v);
   const name = v.fileName ?? "Tanpa nama file";
@@ -66,7 +76,7 @@ export function VersionHistoryRow({ datasetId, v }: { datasetId: string; v: Vers
           </span>
         ) : null}
       </td>
-      <td role="cell" className={cn(CELL, v.message && "basis-full", "@3xl:w-64")}>
+      <td role="cell" className={cn(CELL, v.message && "basis-full", "@3xl:min-w-64")}>
         <Badge tone={status.tone} icon={ICONS[status.kind]}>
           {status.label}
         </Badge>
@@ -109,10 +119,10 @@ export function VersionHistoryRow({ datasetId, v }: { datasetId: string; v: Vers
         className={cn(
           CELL,
           "order-last basis-full md:ms-auto md:basis-auto @3xl:w-px @3xl:py-1.5 @3xl:pr-5",
-          !v.canActivate && "hidden @3xl:table-cell",
+          !canActivate && "hidden @3xl:table-cell",
         )}
       >
-        {v.canActivate ? (
+        {canActivate ? (
           <VersionActivate datasetId={datasetId} versionId={v.id} fileName={name} />
         ) : null}
       </td>

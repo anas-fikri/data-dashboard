@@ -1,3 +1,4 @@
+import type { DatasetLabel } from "@/features/datasets/label";
 import type { VersionCode, VersionRow } from "@/features/versions/types";
 
 /*
@@ -28,6 +29,26 @@ export function versionStatusView(v: Pick<VersionRow, "status" | "active">): Ver
     default:
       return { kind: "uploading", label: "Belum selesai", tone: "neutral" };
   }
+}
+
+/**
+ * Dataset sibuk = versi terbaru belum aktif dan belum terminal (diunggah/diproses/menunggu
+ * pemetaan). Versi non-terminal selalu yang terbaru, jadi badge label cukup; server tetap menolak
+ * DATASET_BUSY sebagai penjaga balapan. Versi terbaru GAGAL tidak menahan aktivasi.
+ */
+export function activationBusy(badge: DatasetLabel["badge"]): boolean {
+  return Boolean(badge && badge.kind !== "failed");
+}
+
+/**
+ * Pemberitahuan "Versi X aktif" hanya benar selama X masih aktif: bila versi aktif berganti
+ * (mis. refresh yang cocok mengaktifkan unggahan baru), pemberitahuan versi lain dibuang.
+ */
+export function keepNotice<T extends { versionId: string }>(
+  notice: T | null,
+  activeVersionId: string | null,
+): T | null {
+  return notice && notice.versionId === activeVersionId ? notice : null;
 }
 
 /** Waktu yang ditampilkan: selesai diproses bila ada, selain itu waktu unggah. */

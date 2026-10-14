@@ -6,18 +6,35 @@ import { createContext, use, useCallback, useState, type ReactNode } from "react
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { activateVersionAction } from "@/features/versions/actions";
 import { VersionConfirm } from "./version-history-confirm";
+import { keepNotice } from "./version-history-status";
 
-const NotifyContext = createContext<(fileName: string) => void>(() => {});
+const NotifyContext = createContext<(versionId: string, fileName: string) => void>(() => {});
 
 /**
  * Satu tempat untuk hasil aktivasi di atas daftar versi: diumumkan (role status) dan menerima fokus.
  * State klien bertahan saat router.refresh(), jadi pemberitahuan tetap terlihat setelah daftar
  * dirender ulang; key baru = mount ulang = fokus dan pengumuman lagi untuk aktivasi berikutnya.
+ * Bila versi aktif kemudian berganti ke versi lain, pemberitahuan dibuang agar tidak menyebut versi
+ * yang sudah tidak aktif (reset saat prop berubah, tanpa efek).
  */
-export function VersionFeedback({ children }: { children: ReactNode }) {
-  const [notice, setNotice] = useState<{ id: number; fileName: string } | null>(null);
+export function VersionFeedback({
+  activeVersionId,
+  children,
+}: {
+  activeVersionId: string | null;
+  children: ReactNode;
+}) {
+  const [notice, setNotice] = useState<{ id: number; versionId: string; fileName: string } | null>(
+    null,
+  );
+  const [seenActive, setSeenActive] = useState(activeVersionId);
+  if (seenActive !== activeVersionId) {
+    setSeenActive(activeVersionId);
+    setNotice((prev) => keepNotice(prev, activeVersionId));
+  }
   const notify = useCallback(
-    (fileName: string) => setNotice((prev) => ({ id: (prev?.id ?? 0) + 1, fileName })),
+    (versionId: string, fileName: string) =>
+      setNotice((prev) => ({ id: (prev?.id ?? 0) + 1, versionId, fileName })),
     [],
   );
   return (
@@ -62,7 +79,7 @@ export function VersionActivate({
       confirmLabel="Aktifkan"
       run={() => activateVersionAction(datasetId, versionId)}
       onDone={(name) => {
-        notify(name);
+        notify(versionId, name);
         router.refresh();
       }}
     />

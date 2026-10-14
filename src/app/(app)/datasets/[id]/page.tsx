@@ -6,6 +6,7 @@ import { DeleteDataset } from "@/components/datasets/delete-dataset";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
 import { VersionHistory } from "@/components/datasets/version-history";
+import { activationBusy } from "@/components/datasets/version-history-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
@@ -44,6 +45,8 @@ export default async function DatasetDetailPage({
   const active = dataset.active;
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
   const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
+  // Ada versi non-terminal (termasuk unggahan belum selesai) → "Aktifkan" pasti DATASET_BUSY.
+  const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const [pending, versions] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
@@ -123,7 +126,9 @@ export default async function DatasetDetailPage({
         </CardContent>
       </Card>
 
-      {versions.length > 0 ? <VersionHistory datasetId={dataset.id} versions={versions} /> : null}
+      {versions.length > 0 ? (
+        <VersionHistory datasetId={dataset.id} versions={versions} busy={busy} />
+      ) : null}
 
       <Card>
         <CardHeader>

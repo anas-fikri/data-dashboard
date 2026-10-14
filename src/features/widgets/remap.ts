@@ -2,8 +2,9 @@
  * Widget setelah data diganti (T-011, temuan verifikasi): setiap unggahan baru membuat versi baru
  * dengan id sheet baru dan langsung aktif, sehingga spec widget (sheetId + posisi kolom) menunjuk ke
  * versi lama. Di sini spec dipetakan ke versi aktif saat dibaca: sheet lewat nama (atau satu-satunya
- * sheet bila versi lama JUGA hanya punya satu sheet — CSV/nama file berubah), kolom lewat nama di skema
- * lama → posisi di skema baru (tidak peka besar/kecil dan spasi). Kolom yang tidak ketemu diberi posisi
+ * sheet bila versi lama JUGA hanya punya satu sheet — CSV/nama file berubah), kolom lewat judul asli +
+ * urutan kemunculannya (kunci yang sama dengan versi refresh, T-013) lalu nama tampil sebagai cadangan
+ * (tidak peka besar/kecil dan spasi). Kolom yang tidak ketemu diberi posisi
  * MISSING_COLUMN (tidak pernah ada di skema): query memberi pesan "kolom tidak ada di data terbaru"
  * dengan nama lamanya dan panel menandainya untuk dipilih ulang. Pemetaan disimpan permanen saat user
  * menyimpan pengaturan widget; T-013/T-014 memindahkannya ke saat aktivasi versi. Murni.
@@ -29,6 +30,18 @@ type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 export const normName = (s: string) => s.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 const key = normName;
 
+/** Kunci pencocokan kolom: nama asli ternormalisasi + urutan kemunculan nama itu di sheet. */
+export function columnKeys(originals: string[]): string[] {
+  const seen = new Map<string, number>();
+  return originals.map((o) => {
+    const k = normName(o);
+    const n = (seen.get(k) ?? 0) + 1;
+    seen.set(k, n);
+    // Baris baru tidak mungkin ada di nama ternormalisasi (spasi dirapatkan) → pemisah aman.
+    return `${k}\n${n}`;
+  });
+}
+
 /**
  * Sheet pengganti di versi aktif, atau null bila tidak bisa ditentukan dengan aman. Fallback "satu-
  * satunya sheet" hanya bila versi lama juga satu sheet — sheet yang dihapus dari workbook tidak boleh
@@ -51,16 +64,32 @@ export interface Remapped {
   missing: string[];
 }
 
+/**
+ * Kolom dikenali seperti versi refresh: judul asli + urutan kemunculan (nama tampil per versi — ganti
+ * nama hanya mengenai versi aktif, jadi rollback tidak boleh bergantung padanya). Nama tampil hanya
+ * cadangan bila judul aslinya tidak ada di target (T-011: judul di file berganti), dan tidak pernah
+ * menunjuk kolom target yang judul aslinya juga ada di sheet lama (itu kolom sumber lain).
+ */
 export function remapConfig(config: Configured, old: SheetInfo, target: SheetInfo): Remapped {
-  const oldName = new Map(old.schema.map((c) => [c.pos, c.name]));
-  const newPos = new Map<string, number>();
-  for (const c of target.schema) if (!newPos.has(key(c.name))) newPos.set(key(c.name), c.pos);
+  const byPos = (s: SheetInfo) => [...s.schema].sort((a, b) => a.pos - b.pos);
+  const oldCols = byPos(old);
+  const oldKeys = columnKeys(oldCols.map((c) => c.original));
+  const oldCol = new Map(oldCols.map((c, i) => [c.pos, { name: c.name, key: oldKeys[i]! }]));
+  const oldKeySet = new Set(oldKeys);
+  const newCols = byPos(target);
+  const newKeys = columnKeys(newCols.map((c) => c.original));
+  const keyPos = new Map(newKeys.map((k, i) => [k, newCols[i]!.pos]));
+  const namePos = new Map<string, number>();
+  newCols.forEach((c, i) => {
+    if (oldKeySet.has(newKeys[i]!) || namePos.has(key(c.name))) return;
+    namePos.set(key(c.name), c.pos);
+  });
   const missing: string[] = [];
   const pos = (p: number): number => {
-    const name = oldName.get(p);
-    const found = name === undefined ? undefined : newPos.get(key(name));
+    const o = oldCol.get(p);
+    const found = o && (keyPos.get(o.key) ?? namePos.get(key(o.name)));
     if (found !== undefined) return found;
-    const label = name ?? `kolom ${p}`;
+    const label = o?.name ?? `kolom ${p}`;
     if (!missing.includes(label)) missing.push(label);
     return MISSING_COLUMN;
   };

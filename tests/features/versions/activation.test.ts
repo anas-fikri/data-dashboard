@@ -101,6 +101,19 @@ describe("planWidget", () => {
     expect(planWidget(w("w5", "kpi", kpi(SA, 2)), target, other)).toBeNull();
   });
 
+  it("rollback setelah ganti nama di versi baru → kolom lewat judul asli, tidak ada yang hilang", () => {
+    // Versi baru: "Omzet" diganti nama tampilnya jadi "Pendapatan", "Cabang"↔"Diskon" ditukar.
+    const renamed = { ...col(2, "Pendapatan", "decimal"), original: "Omzet" };
+    const swapA = { ...col(1, "Diskon", "text"), original: "Cabang" };
+    const swapB = { ...col(3, "Cabang", "decimal"), original: "Diskon" };
+    const newer: OldSheet = { ...oldSheet, id: SB, schema: [swapA, renamed, swapB], sheetCount: 1 };
+    const older: SheetInfo[] = [{ id: SA, name: "Penjualan", index: 0, schema: OLD_SCHEMA }];
+    expect(planWidget(w("w8", "bar", bar(SB)), older, newer)).toEqual({
+      spec: bar(SA),
+      missingColumns: [],
+    });
+  });
+
   it("widget kosong / spec rusak → tidak disentuh", () => {
     expect(planWidget(w("w6", "empty", {}), target, oldSheet)).toBeNull();
     expect(planWidget(w("w7", "bar", { rusak: true }), target, oldSheet)).toBeNull();

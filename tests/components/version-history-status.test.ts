@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   NETWORK_ERROR,
+  activationBusy,
   formatJakarta,
+  keepNotice,
   versionErrorText,
   versionStatusView,
   versionTime,
@@ -69,5 +71,32 @@ describe("versionErrorText", () => {
   it("kode tak dikenal: pesan server apa adanya, atau teks jaringan bila kosong", () => {
     expect(versionErrorText("BARU", "Pesan baru")).toBe("Pesan baru");
     expect(versionErrorText("BARU", "")).toBe(NETWORK_ERROR);
+  });
+});
+
+describe("activationBusy", () => {
+  it("versi terbaru diunggah/diproses/menunggu pemetaan → sibuk (server pasti DATASET_BUSY)", () => {
+    for (const kind of ["uploading", "processing", "awaiting_mapping"] as const) {
+      expect(activationBusy({ kind, text: "x" })).toBe(true);
+    }
+  });
+
+  it("tanpa badge atau versi terbaru gagal → tidak sibuk", () => {
+    expect(activationBusy(null)).toBe(false);
+    expect(activationBusy({ kind: "failed", text: "Gagal", message: "rusak" })).toBe(false);
+  });
+});
+
+describe("keepNotice", () => {
+  const notice = { id: 1, versionId: "v2", fileName: "oktober.xlsx" };
+
+  it("tetap tampil selama versi yang disebut masih aktif", () => {
+    expect(keepNotice(notice, "v2")).toBe(notice);
+  });
+
+  it("dibuang bila versi aktif berganti ke versi lain atau tidak ada", () => {
+    expect(keepNotice(notice, "v3")).toBeNull();
+    expect(keepNotice(notice, null)).toBeNull();
+    expect(keepNotice(null, "v2")).toBeNull();
   });
 });
