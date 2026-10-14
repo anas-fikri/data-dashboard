@@ -30,6 +30,7 @@ export default defineConfig({
         /admin\.spec\.ts$/,
         /filters\.spec\.ts$/,
         /versions\.spec\.ts$/,
+        /mapping\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -42,7 +43,9 @@ export default defineConfig({
     { name: "filters", testMatch: /filters\.spec\.ts$/, dependencies: ["admin"] },
     // versions (T-013): worker sendiri; ganti data, retensi, rollback, dan job maintenance sungguhan.
     { name: "versions", testMatch: /versions\.spec\.ts$/, dependencies: ["filters"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["versions"] },
+    // mapping (T-014): worker sendiri; ganti nama/hilang/tambah kolom → pemetaan → versi aktif.
+    { name: "mapping", testMatch: /mapping\.spec\.ts$/, dependencies: ["versions"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["mapping"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
