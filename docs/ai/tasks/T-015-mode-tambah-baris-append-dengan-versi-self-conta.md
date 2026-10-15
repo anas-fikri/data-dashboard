@@ -7,7 +7,7 @@ goal: G-5
 depends_on:
   - T-014
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:45:09Z"
+updated: "2026-10-15T01:33:00Z"
 created_by: claude-code
 ---
 
@@ -23,3 +23,5 @@ Mode APPEND: worker menulis raw versi baru = raw versi aktif ∪ raw file baru (
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-15T01:33:00Z Dari T-014 (review R5-1, Low): finish ingest biasa (repo.ts ~194) mengaktifkan versi tanpa sheetMap, jadi widget dipindah lewat matchSheet; pada rantai nama akar dipakai ulang (alias ganda) hasilnya null dan widget tertinggal SHEET_UNAVAILABLE padahal planSheets sudah tahu pasangan pastinya. Saat menyentuh jalur ingest (append), catat sheetMap[active.id] = sheetId di loop sheet ingest.ts dan teruskan ke repo.finish → activateVersionInTx({ sheetMap }).

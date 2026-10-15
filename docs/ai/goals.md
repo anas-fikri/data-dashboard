@@ -6,4 +6,4 @@
 - G-2 [planned] Fondasi & akses: app berjalan, registrasi terbatas domain, profil dataset (under G-1) — 7/7 tasks done
 - G-3 [planned] Pipeline data: upload 1 GB, ingest streaming ke Parquet, skema terkoreksi, query cepat (under G-1) — 6/6 tasks done
 - G-4 [planned] Dashboard builder: widget, chart, filter, sharing, export (under G-1) — 3/11 tasks done
-- G-5 [planned] Operasional: deploy on-prem, refresh data, performa 1 GB terbukti (under G-1) — 1/5 tasks done
+- G-5 [planned] Operasional: deploy on-prem, refresh data, performa 1 GB terbukti (under G-1) — 2/5 tasks done
