@@ -62,9 +62,11 @@ export const patchWidget = (
  * di editor yang dipulihkan ditolak STALE. Back/forward cache browser ditangani `pageshow` di bawah.
  */
 let popped: { at: number; href: string } | null = null;
+/** popstate yang sudah dipakai kanvas yang dirender di dalam event itu (tidak mempersenjatai `popped`). */
+let consumed: Event | null = null;
 if (typeof window !== "undefined") {
-  window.addEventListener("popstate", () => {
-    popped = { at: Date.now(), href: window.location.href };
+  window.addEventListener("popstate", (e) => {
+    if (e !== consumed) popped = { at: Date.now(), href: window.location.href };
   });
 }
 /** Pemulihan dari cache riwayat dirender segera setelah popstate; lebih lambat = props dari server. */
@@ -81,6 +83,23 @@ export function isHistoryMount(
   return !!last && last.href === href && now >= last.at && now - last.at < HISTORY_MOUNT_MS;
 }
 
+/**
+ * Pemasangan ini berasal dari Back/Forward. React merender pemulihan riwayat secara sinkron DI DALAM
+ * event popstate (window.event, sama dengan yang dipakai React): saat dashboard dibuka lewat navigasi
+ * klien (klik baris /dashboards, Beranda), modul ini dimuat SETELAH router Next memasang pendengar
+ * popstate-nya, jadi kanvas sudah terpasang sebelum pendengar modul di atas berjalan (lead review T-016
+ * R4; atribut capture tidak mengubah urutan di window). Render yang tertunda (bukan di dalam event)
+ * tetap tertangkap lewat `popped`.
+ */
+function mountedFromHistory(): boolean {
+  const ev = window.event;
+  if (ev?.type === "popstate") {
+    consumed = ev;
+    return true;
+  }
+  return isHistoryMount(popped, Date.now(), window.location.href);
+}
+
 /** Kanvas boleh dirender: bukan dari riwayat, atau refresh yang diminta sudah selesai. Murni. */
 export const historyReady = (fromHistory: boolean, refreshed: boolean, refreshing: boolean) =>
   !fromHistory || (refreshed && !refreshing);
@@ -91,9 +110,7 @@ export const historyReady = (fromHistory: boolean, refreshed: boolean, refreshin
  */
 export function useFreshAfterHistory(): boolean {
   const router = useRouter();
-  const [fromHistory] = useState(
-    () => typeof window !== "undefined" && isHistoryMount(popped, Date.now(), window.location.href),
-  );
+  const [fromHistory] = useState(() => typeof window !== "undefined" && mountedFromHistory());
   const [refreshed, setRefreshed] = useState(false);
   const [refreshing, startRefresh] = useTransition();
   const asked = useRef(false);
