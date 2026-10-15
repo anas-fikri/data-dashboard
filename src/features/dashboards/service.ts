@@ -159,8 +159,9 @@ export interface SharedDashboardSummary {
 /** Batas daftar "Dibagikan ke saya": share organisasi bisa mencakup banyak dashboard. */
 export const SHARED_LIST_MAX = 200;
 /**
- * Share langsung per pemilik dataset (pemberi share) di "Dibagikan ke saya": satu orang tidak bisa
- * memenuhi daftar penerima dengan share langsung tanpa persetujuannya (review T-016 R3 SEC-2).
+ * Share (langsung + organisasi) per pemilik dataset di "Dibagikan ke saya" bila kandidat melewati
+ * SHARED_LIST_MAX: satu orang tidak bisa memenuhi daftar penerima tanpa persetujuannya (review T-016
+ * R3 SEC-2, R4 DI-1/DI-2). Selama muat, tidak dibatasi per pemilik.
  */
 export const SHARED_PER_OWNER_MAX = 20;
 
@@ -238,39 +239,38 @@ export async function listDashboards(ownerId: string): Promise<DashboardSummary[
 export interface SharedDashboardList {
   items: SharedDashboardSummary[];
   /**
-   * Share langsung yang tidak ikut terdaftar karena batas SHARED_PER_OWNER_MAX per pemilik (atau batas
-   * daftar): ditampilkan sebagai catatan agar pemotongan tidak diam-diam. Aksesnya lewat URL tetap.
+   * Dashboard yang dibagikan (langsung atau organisasi) tetapi tidak ikut terdaftar karena kandidat
+   * melewati SHARED_LIST_MAX (batas per pemilik berlaku): ditampilkan sebagai catatan agar pemotongan
+   * tidak diam-diam. Aksesnya lewat URL tetap.
    */
-  hiddenDirect: number;
+  hidden: number;
 }
 
 /**
- * "Dibagikan ke saya": dashboard dataset orang lain yang dibagikan ke user. Share langsung ke user
- * DULU (terbaru dulu), baru share organisasi saja (terbaru dulu) — dua query terpisah, jadi banyaknya
- * share organisasi (siapa pun bisa membuatnya) tidak bisa mendorong share langsung keluar dari daftar
- * atau dari 5 teratas Beranda (review T-016 SEC-3). Share langsung juga tidak butuh persetujuan
- * penerima: paling banyak SHARED_PER_OWNER_MAX per pemilik dataset (window function), sisanya dihitung
- * di hiddenDirect, sehingga satu pemberi share tidak bisa menutupi share dari orang lain (review T-016
- * R3 SEC-2). Share organisasi dari pemilik yang sudah dinonaktifkan tidak didaftar (aksesnya lewat URL
- * tetap). Dibatasi SHARED_LIST_MAX: daftar ini dirender utuh tanpa halaman.
+ * "Dibagikan ke saya": dashboard dataset orang lain yang dibagikan ke user, share langsung (peran
+ * share) atau share organisasi saja (VIEWER; share organisasi dari pemilik yang sudah dinonaktifkan
+ * tidak didaftar, aksesnya lewat URL tetap). Dashboard yang dibagikan dua-duanya muncul sekali sebagai
+ * share langsung. Selama kandidat muat dalam SHARED_LIST_MAX semuanya didaftar, share langsung dulu lalu
+ * terbaru dulu (review T-016 R4 DI-1). Lebih dari itu (share langsung dan organisasi sama-sama tidak
+ * butuh persetujuan penerima): paling banyak SHARED_PER_OWNER_MAX per pemilik dataset untuk kedua jenis
+ * bersama (share langsungnya dulu), sisanya dihitung di `hidden`, sehingga satu pemberi share tidak bisa
+ * mendorong share orang lain keluar dari daftar atau dari 5 teratas Beranda (review T-016 SEC-3, R3
+ * SEC-2, R4 DI-2). Dirender utuh tanpa halaman.
  */
 export async function listSharedDashboards(userId: string): Promise<SharedDashboardList> {
-  const select = sharedSelect(userId);
-  const list = { orderBy: { updatedAt: "desc" as const }, take: SHARED_LIST_MAX, select };
-  const [{ direct, hiddenDirect }, org] = await Promise.all([
-    directShared(userId, select),
-    prisma.dashboard.findMany({
-      ...list,
-      where: {
-        dataset: { ownerId: { not: userId }, owner: { isActive: true } },
-        orgShared: true,
-        shares: { none: { userId } },
-      },
-    }),
-  ]);
-  const items = [...direct, ...org].slice(0, SHARED_LIST_MAX).flatMap((r) => {
-    const role = roleOf(userId, r);
-    if (role !== "EDITOR" && role !== "VIEWER") return [];
+  const { ids, hidden } = await sharedRanked(userId);
+  // Akses dicek ulang saat baris dibaca: share yang dicabut di antara dua query ikut hilang.
+  const rows = ids.length
+    ? await prisma.dashboard.findMany({
+        where: { id: { in: ids }, dataset: { ownerId: { not: userId } }, ...canViewWhere(userId) },
+        select: sharedSelect(userId),
+      })
+    : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const items = ids.flatMap((id) => {
+    const r = byId.get(id);
+    const role = r && roleOf(userId, r);
+    if (!r || (role !== "EDITOR" && role !== "VIEWER")) return [];
     return [
       {
         id: r.id,
@@ -284,7 +284,7 @@ export async function listSharedDashboards(userId: string): Promise<SharedDashbo
       },
     ];
   });
-  return { items, hiddenDirect };
+  return { items, hidden };
 }
 
 const sharedSelect = (userId: string) =>
@@ -300,41 +300,30 @@ const sharedSelect = (userId: string) =>
   }) satisfies Prisma.DashboardSelect;
 
 /**
- * Share langsung user (dashboard dataset orang lain), terbaru dulu, paling banyak SHARED_PER_OWNER_MAX
- * per pemilik dataset dan SHARED_LIST_MAX seluruhnya. Urutan + batas dihitung Postgres (ROW_NUMBER per
- * pemilik; `total` = semua share langsung sebelum dibatasi), lalu baris dibaca dengan select yang sama
- * dengan share organisasi dan urutannya dipertahankan. Share yang dicabut di antara dua query ikut hilang.
+ * Urutan + batas "Dibagikan ke saya" dihitung Postgres dalam SATU query berparameter. Kandidat: dashboard
+ * dataset orang lain dengan baris share user (langsung) atau share organisasi dari pemilik aktif tanpa
+ * baris share user (`org`). n = urutan per pemilik dataset untuk kedua jenis bersama (langsung dulu,
+ * lalu terbaru dulu), total = semua kandidat. total <= SHARED_LIST_MAX → semuanya; lebih → hanya
+ * n <= SHARED_PER_OWNER_MAX, langsung dulu lalu terbaru dulu, paling banyak SHARED_LIST_MAX.
+ * `hidden` = total - yang terdaftar.
  */
-async function directShared(userId: string, select: ReturnType<typeof sharedSelect>) {
+async function sharedRanked(userId: string) {
   const ranked = await prisma.$queryRaw<{ id: string; total: number }[]>`
     SELECT id, total FROM (
-      SELECT d.id, d."updatedAt",
-        ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY d."updatedAt" DESC, d.id DESC) AS n,
+      SELECT d.id, d."updatedAt", s."userId" IS NULL AS org,
+        ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY s."userId" IS NULL, d."updatedAt" DESC, d.id DESC) AS n,
         CAST(COUNT(*) OVER () AS int) AS total
-      FROM "DashboardShare" s
-      JOIN "Dashboard" d ON d.id = s."dashboardId"
+      FROM "Dashboard" d
       JOIN "Dataset" ds ON ds.id = d."datasetId"
-      WHERE s."userId" = ${userId} AND ds."ownerId" <> ${userId}
+      JOIN "User" u ON u.id = ds."ownerId"
+      LEFT JOIN "DashboardShare" s ON s."dashboardId" = d.id AND s."userId" = ${userId}
+      WHERE ds."ownerId" <> ${userId} AND (s."userId" IS NOT NULL OR (d."orgShared" AND u."isActive"))
     ) r
-    WHERE n <= ${SHARED_PER_OWNER_MAX}
-    ORDER BY "updatedAt" DESC, id DESC
+    WHERE total <= ${SHARED_LIST_MAX} OR n <= ${SHARED_PER_OWNER_MAX}
+    ORDER BY org, "updatedAt" DESC, id DESC
     LIMIT ${SHARED_LIST_MAX}`;
   const ids = ranked.map((r) => r.id);
-  const rows = ids.length
-    ? await prisma.dashboard.findMany({
-        where: {
-          id: { in: ids },
-          dataset: { ownerId: { not: userId } },
-          shares: { some: { userId } },
-        },
-        select,
-      })
-    : [];
-  const byId = new Map(rows.map((r) => [r.id, r]));
-  return {
-    direct: ids.flatMap((id) => byId.get(id) ?? []),
-    hiddenDirect: Math.max(0, Number(ranked[0]?.total ?? 0) - ids.length),
-  };
+  return { ids, hidden: Math.max(0, Number(ranked[0]?.total ?? 0) - ids.length) };
 }
 
 export async function createDashboard(
@@ -895,7 +884,7 @@ async function onActiveVersion(tx: Tx, datasetId: string, config: WidgetConfig):
 const staleLayout = <T>() =>
   fail<T>(
     "STALE",
-    "Perubahan terakhir Anda belum tersimpan karena dashboard ini diubah di tab atau perangkat lain. Muat ulang, lalu ulangi perubahan.",
+    "Perubahan terakhir Anda belum tersimpan karena dashboard ini baru saja diubah orang lain atau di tab lain. Muat ulang, lalu ulangi perubahan.",
   );
 const versionChanged = <T>() =>
   fail<T>(

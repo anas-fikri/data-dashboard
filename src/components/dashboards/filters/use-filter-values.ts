@@ -26,7 +26,15 @@ interface Loaded {
 }
 type Result =
   | { ok: true; values: FilterValue[]; truncated: boolean }
-  | { ok: false; message: string; status: number };
+  | { ok: false; message: string; status: number; code?: string };
+
+/**
+ * Galat yang tidak pulih dengan mengulang permintaan yang sama: INVALID (kolom filter yang sudah
+ * dihapus/disembunyikan pemilik dijawab "bukan kolom filter dashboard") dan sesi berakhir. Aksinya
+ * "Muat ulang" halaman (kolom filter terbaru dari server), bukan "Coba lagi" (review T-016 R4-CC-1).
+ */
+export const needsReload = (r: { ok: boolean; status?: number; code?: string }) =>
+  !r.ok && (r.code === "INVALID" || r.status === 401);
 
 export async function fetchValues(
   dashboardId: string,
@@ -50,13 +58,16 @@ export async function fetchValues(
     };
   }
   const json = (await res.json().catch(() => null)) as
-    { ok: true; values?: unknown; truncated?: unknown } | { ok: false; message?: string } | null;
+    | { ok: true; values?: unknown; truncated?: unknown }
+    | { ok: false; code?: string; message?: string }
+    | null;
   if (json?.ok && Array.isArray(json.values)) {
     return { ok: true, values: json.values as FilterValue[], truncated: json.truncated === true };
   }
   return {
     ok: false,
     status: res.status,
+    code: json && !json.ok && typeof json.code === "string" ? json.code : undefined,
     message:
       res.status === 401
         ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
@@ -78,8 +89,10 @@ export function useFilterValues(
     key: string;
     data: Loaded | null;
     error: string | null;
+    /** Galat ini butuh muat ulang halaman, bukan coba lagi (needsReload). */
+    reload: boolean;
     full: FilterValue[] | null;
-  }>({ key: "", data: null, error: null, full: null });
+  }>({ key: "", data: null, error: null, reload: false, full: null });
 
   useEffect(() => {
     const ctl = new AbortController();
@@ -97,9 +110,10 @@ export function useFilterValues(
                     key,
                     data: { values: r.values, truncated: r.truncated, q },
                     error: null,
+                    reload: false,
                     full: q ? prev.full : r.truncated ? null : r.values,
                   }
-                : { ...prev, key, error: r.message },
+                : { ...prev, key, error: r.message, reload: needsReload(r) },
             );
           },
           () => {},
@@ -118,6 +132,7 @@ export function useFilterValues(
     loading: res.key !== key,
     data: res.data,
     error: res.key === key ? res.error : null,
+    reload: res.key === key && res.reload,
     full: res.full,
     retry: () => setAttempt((n) => n + 1),
   };

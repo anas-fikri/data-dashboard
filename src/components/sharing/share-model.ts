@@ -27,12 +27,13 @@ export const sharedRoleLabel = (role: Exclude<DashboardAccessRole, "OWNER">) =>
   role === "EDITOR" ? "Editor" : "Hanya lihat";
 
 /**
- * "Dibagikan ke saya" dibatasi per pemilik (SHARED_PER_OWNER_MAX; juga batas daftar seluruhnya):
- * dashboard yang terpotong disebut, tidak hilang diam-diam (review T-016 R3-SEC-2). Aksesnya lewat
- * tautan tetap ada.
+ * "Dibagikan ke saya" baru dipotong bila daftarnya melebihi batas (SHARED_LIST_MAX): paling banyak
+ * SHARED_PER_OWNER_MAX per pemilik, share langsung dan organisasi dihitung bersama — catatan ini tidak
+ * pernah bertentangan dengan baris yang terlihat. Dashboard yang terpotong disebut, tidak hilang
+ * diam-diam (review T-016 R3-SEC-2); langkah berikutnya: tautan dari pemiliknya (R4-UI-2).
  */
 export const hiddenSharedText = (hidden: number, perOwner: number) =>
-  `${hidden.toLocaleString("id-ID")} dashboard lain tidak ditampilkan karena batas daftar: paling banyak ${perOwner.toLocaleString("id-ID")} dashboard dari satu pemilik.`;
+  `${hidden.toLocaleString("id-ID")} dashboard lain yang dibagikan kepada Anda tidak ditampilkan karena daftar terlalu panjang (paling banyak ${perOwner.toLocaleString("id-ID")} per pemilik). Buka lewat tautan dari pemiliknya.`;
 
 /**
  * Konfirmasi hapus dashboard yang dibagikan (review T-016 R3-CC-2), sejalan dengan hapus dataset:

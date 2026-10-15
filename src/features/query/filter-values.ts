@@ -86,7 +86,14 @@ export async function runFilterValues(
       normName(f.column) === normName(column) &&
       (sheetName === undefined || normName(f.sheet) === normName(sheetName)),
   );
-  const notFilter = () => fail("INVALID", "Kolom ini bukan kolom filter dashboard.");
+  // Petunjuk muat ulang untuk SEMUA pemanggil, seperti NOT_ALLOWED query widget: kolom yang baru
+  // dikeluarkan dari pengaturan atau disembunyikan saat halaman terbuka dijawab sama dengan nama asing
+  // (review T-016 R4 CC-1).
+  const notFilter = () =>
+    fail(
+      "INVALID",
+      "Kolom ini bukan kolom filter dashboard. Muat ulang halaman bila pengaturan dashboard baru diubah.",
+    );
   if (!entry) return notFilter();
   // Non-pemilik tidak menerima nama kolom filter yang tidak tersedia di versi aktif (getDashboard):
   // kolom hilang/disembunyikan, sheet belum siap, atau dataset tanpa data dijawab persis seperti nama

@@ -267,6 +267,19 @@ describe("widget dan tata letak: OWNER/EDITOR boleh, VIEWER FORBIDDEN, tanpa aks
       }),
     ).toMatchObject({ code: "STALE" });
   });
+
+  it("editor mengubah tata letak lebih dulu → pemilik STALE dengan penyebab netral, bukan 'tab atau perangkat lain' (review R4 CC-2)", async () => {
+    expect(await svc.addWidget(EDITOR, D1, { baseRevision: 1 })).toMatchObject({ ok: true });
+    const stale = {
+      ok: false,
+      code: "STALE",
+      message:
+        "Perubahan terakhir Anda belum tersimpan karena dashboard ini baru saja diubah orang lain atau di tab lain. Muat ulang, lalu ulangi perubahan.",
+    };
+    expect(await editOps.saveLayout(OWNER, D1)).toEqual(stale);
+    expect(await editOps.addWidget(OWNER, D1)).toEqual(stale);
+    expect(await editOps.deleteWidget(OWNER, D1)).toEqual(stale);
+  });
 });
 
 describe("pemilik saja: nama, hapus, kolom filter", () => {
@@ -421,8 +434,8 @@ describe("baca: getDashboard, sumber panel, daftar", () => {
     expect(await shared(VIEWER)).toEqual({ [D1]: "VIEWER", [D2]: "VIEWER" });
     expect(await shared(STRANGER)).toEqual({ [D2]: "VIEWER", [D3]: "VIEWER" });
     expect(await shared(OWNER)).toEqual({});
-    const { items, hiddenDirect } = await svc.listSharedDashboards(ORG);
-    expect(hiddenDirect).toBe(0);
+    const { items, hidden } = await svc.listSharedDashboards(ORG);
+    expect(hidden).toBe(0);
     expect(items[0]).toEqual({
       id: D2,
       name: expect.any(String),
@@ -471,7 +484,7 @@ describe("review SEC-1: nama kolom tersembunyi tidak bisa didaftar lewat atur wi
 });
 
 describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
-  it("banjir share organisasi yang lebih baru tidak mendorong share langsung keluar daftar/5 teratas", async () => {
+  it("banjir share organisasi yang lebih baru tidak mendorong share langsung (atau share organisasi pemilik lain) keluar daftar/5 teratas", async () => {
     // STRANGER (pemilik DSY) membagikan banyak dashboard ke organisasi, semuanya lebih baru dari D1.
     const flood = Array.from({ length: svc.SHARED_LIST_MAX + 5 }, (_, n) => ({
       id: cuid(`f${String(n).padStart(4, "0")}`),
@@ -484,15 +497,24 @@ describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
       updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, n)),
     }));
     fake.state.dashboards.push(...flood);
-    const ids = (await svc.listSharedDashboards(VIEWER)).items.map((r) => r.id);
-    expect(ids).toHaveLength(svc.SHARED_LIST_MAX);
-    // Share langsung (D1) pertama; lalu share organisasi terbaru dulu.
-    expect(ids[0]).toBe(D1);
-    expect(ids[1]).toBe(flood.at(-1)!.id);
-    expect(ids).not.toContain(D2);
-    // Pemilik banjir dinonaktifkan → share organisasinya hilang dari daftar.
+    const { items, hidden } = await svc.listSharedDashboards(VIEWER);
+    // Share langsung (D1) pertama; lalu share organisasi terbaru dulu: 20 dari STRANGER, lalu D2 dari
+    // pemilik lain yang tidak lagi terdesak (review T-016 R4 DI-2).
+    expect(items.map((r) => r.id)).toEqual([
+      D1,
+      ...flood
+        .slice(-svc.SHARED_PER_OWNER_MAX)
+        .reverse()
+        .map((d) => d.id),
+      D2,
+    ]);
+    expect(hidden).toBe(flood.length + 2 - items.length);
+    // Pemilik banjir dinonaktifkan → share organisasinya hilang dari daftar (dan dari hitungan).
     fake.state.users.find((u) => u.id === STRANGER)!.isActive = false;
-    expect((await svc.listSharedDashboards(VIEWER)).items.map((r) => r.id)).toEqual([D1, D2]);
+    expect(await svc.listSharedDashboards(VIEWER)).toMatchObject({
+      items: [{ id: D1 }, { id: D2 }],
+      hidden: 0,
+    });
   });
 
   it("share langsung tetap terdaftar walau pemilik nonaktif; share + organisasi → sekali dengan peran share", async () => {
@@ -507,62 +529,133 @@ describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
   });
 });
 
-describe("review R3 SEC-2: share langsung dibatasi per pemilik dataset", () => {
-  /** STRANGER (pemilik DSY) membuat n dashboard yang lebih baru dari D1 dan membagikan semuanya ke `to`. */
-  function flood(n: number, to: string) {
+describe("review R3 SEC-2 / R4 DI-1, DI-2: batas per pemilik dataset hanya bila daftar melewati batas", () => {
+  /**
+   * STRANGER (pemilik DSY) membuat n dashboard yang lebih baru dari D1 (detik ke-`start` + i pada
+   * 2026-10-16): dibagikan langsung ke `to` dan/atau ke organisasi (`org`).
+   */
+  function flood(
+    n: number,
+    {
+      to,
+      org = false,
+      tag = "g",
+      start = 0,
+    }: { to?: string; org?: boolean; tag?: string; start?: number },
+  ) {
     const rows = Array.from({ length: n }, (_, i) => ({
-      id: cuid(`g${String(i).padStart(4, "0")}`),
+      id: cuid(`${tag}${String(i).padStart(4, "0")}`),
       datasetId: DSY,
-      name: `Banjir langsung ${i}`,
-      orgShared: false,
+      name: `Banjir ${tag} ${i}`,
+      orgShared: org,
       layout: [],
       layoutRevision: 0,
       filterColumns: [],
-      updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, i)),
+      updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, start + i)),
     }));
     fake.state.dashboards.push(...rows);
-    fake.state.shares.push(
-      ...rows.map((d) => ({
-        dashboardId: d.id,
-        userId: to,
-        role: "VIEWER" as const,
-        createdById: STRANGER,
-        createdAt: new Date("2026-10-16T00:00:00Z"),
-      })),
-    );
+    if (to) {
+      fake.state.shares.push(
+        ...rows.map((d) => ({
+          dashboardId: d.id,
+          userId: to,
+          role: "VIEWER" as const,
+          createdById: STRANGER,
+          createdAt: new Date("2026-10-16T00:00:00Z"),
+        })),
+      );
+    }
     return rows;
   }
+  const newestFirst = (rows: { id: string }[], take = rows.length) =>
+    rows
+      .slice(-take)
+      .reverse()
+      .map((d) => d.id);
+  const listed = async (u: string) => {
+    const { items, hidden } = await svc.listSharedDashboards(u);
+    return { ids: items.map((r) => r.id), hidden };
+  };
 
-  it("satu pemberi share paling banyak SHARED_PER_OWNER_MAX baris; share pemilik lain + organisasi tetap terdaftar", async () => {
-    const rows = flood(svc.SHARED_PER_OWNER_MAX + 5, VIEWER);
-    const { items, hiddenDirect } = await svc.listSharedDashboards(VIEWER);
-    const ids = items.map((r) => r.id);
-    // 20 terbaru dari STRANGER, lalu share langsung D1 dari pemilik lain, lalu share organisasi D2.
-    expect(ids).toEqual([
-      ...rows
-        .slice(-svc.SHARED_PER_OWNER_MAX)
-        .reverse()
-        .map((d) => d.id),
+  it("pemakaian normal: 25 share langsung dari satu pemilik + 3 share organisasi → semua 28 terdaftar, tanpa catatan", async () => {
+    const direct = flood(25, { to: ORG });
+    const [orgNew] = flood(1, { org: true, tag: "h", start: 100 });
+    const d3 = fake.state.dashboards.find((d) => d.id === D3)!;
+    Object.assign(d3, { orgShared: true, updatedAt: new Date("2026-10-14T00:00:00Z") });
+    const { items, hidden } = await svc.listSharedDashboards(ORG);
+    // Lebih dari 20 dari STRANGER tetap terdaftar: tidak ada banjir (review T-016 R4 DI-1).
+    expect(items.map((r) => r.id)).toEqual([...newestFirst(direct), orgNew!.id, D2, D3]);
+    expect(items.every((r) => r.role === "VIEWER")).toBe(true);
+    expect(hidden).toBe(0);
+  });
+
+  it("batas tepat SHARED_LIST_MAX: semua terdaftar; satu lagi → paling banyak 20 per pemilik untuk langsung + organisasi bersama", async () => {
+    // D1 (langsung) + D2 (organisasi) dari OWNER + 198 share langsung dari STRANGER = 200.
+    const direct = flood(svc.SHARED_LIST_MAX - 2, { to: VIEWER });
+    expect(await listed(VIEWER)).toEqual({ ids: [...newestFirst(direct), D1, D2], hidden: 0 });
+    // Share organisasi STRANGER yang lebih baru: total 201. Jatah STRANGER diisi share langsungnya dulu,
+    // jadi share organisasinya tidak ikut dan catatan tidak bertentangan dengan baris yang terlihat.
+    flood(1, { org: true, tag: "h", start: 500 });
+    expect(await listed(VIEWER)).toEqual({
+      ids: [...newestFirst(direct, svc.SHARED_PER_OWNER_MAX), D1, D2],
+      hidden: svc.SHARED_LIST_MAX + 1 - (svc.SHARED_PER_OWNER_MAX + 2),
+    });
+  });
+
+  it("banjir share langsung: 20 terbaru dari pemberi share, share pemilik lain + organisasi tetap; dashboard langsung + organisasi dihitung sekali; SQL berparameter", async () => {
+    const rows = flood(svc.SHARED_LIST_MAX + 5, { to: VIEWER });
+    // D1 dibagikan langsung DAN ke organisasi: satu kandidat, sebagai share langsung.
+    fake.state.dashboards.find((d) => d.id === D1)!.orgShared = true;
+    const { items, hidden } = await svc.listSharedDashboards(VIEWER);
+    expect(items.map((r) => r.id)).toEqual([
+      ...newestFirst(rows, svc.SHARED_PER_OWNER_MAX),
       D1,
       D2,
     ]);
-    expect(hiddenDirect).toBe(5);
+    expect(hidden).toBe(rows.length + 2 - items.length);
     expect(items.find((r) => r.id === D1)).toMatchObject({
       ownerEmail: "pemilik@pcpexpress.com",
       role: "VIEWER",
     });
-    // Batas dihitung Postgres per pemilik (window function), parameter terikat (bukan teks SQL).
+    // Satu query; peringkat dihitung Postgres per pemilik (window function); semua nilai parameter
+    // terikat, tidak pernah masuk teks SQL.
+    expect(fake.db.$queryRaw).toHaveBeenCalledTimes(1);
     const [sql, ...values] = fake.db.$queryRaw.mock.calls[0]!;
-    expect((sql as string[]).join("?")).toContain(
-      'ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY d."updatedAt" DESC, d.id DESC)',
+    const text = (sql as string[]).join("?");
+    expect(text).toContain(
+      'ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY s."userId" IS NULL, d."updatedAt" DESC, d.id DESC)',
     );
-    expect(values).toEqual([VIEWER, VIEWER, svc.SHARED_PER_OWNER_MAX, svc.SHARED_LIST_MAX]);
+    expect(text).not.toContain(VIEWER);
+    expect(values).toEqual([
+      VIEWER,
+      VIEWER,
+      svc.SHARED_LIST_MAX,
+      svc.SHARED_PER_OWNER_MAX,
+      svc.SHARED_LIST_MAX,
+    ]);
+  });
+
+  it("banjir share organisasi dari pemberi share langsung: share langsungnya dulu dalam jatah 20; pemilik nonaktif → share organisasi saja hilang", async () => {
+    const direct = flood(2, { to: VIEWER });
+    const org = flood(svc.SHARED_LIST_MAX + 5, { org: true, tag: "h", start: 100 });
+    const total = direct.length + org.length + 2;
+    expect(await listed(VIEWER)).toEqual({
+      ids: [
+        ...newestFirst(direct),
+        D1,
+        ...newestFirst(org, svc.SHARED_PER_OWNER_MAX - direct.length),
+        D2,
+      ],
+      hidden: total - (svc.SHARED_PER_OWNER_MAX + 2),
+    });
+    fake.state.users.find((u) => u.id === STRANGER)!.isActive = false;
+    expect(await listed(VIEWER)).toEqual({ ids: [...newestFirst(direct), D1, D2], hidden: 0 });
   });
 
   it("tanpa banjir: tidak ada yang tersembunyi; share yang dicabut di antara dua query tidak ikut", async () => {
-    flood(3, VIEWER);
-    expect((await svc.listSharedDashboards(VIEWER)).hiddenDirect).toBe(0);
-    expect((await svc.listSharedDashboards(STRANGER)).hiddenDirect).toBe(0);
+    flood(3, { to: VIEWER });
+    expect((await svc.listSharedDashboards(VIEWER)).hidden).toBe(0);
+    expect((await svc.listSharedDashboards(STRANGER)).hidden).toBe(0);
     // Peringkat dibaca saat share masih ada, lalu share D1 dicabut sebelum baris dibaca.
     const real = fake.db.$queryRaw.getMockImplementation()!;
     fake.db.$queryRaw.mockImplementationOnce(async (...args: unknown[]) => {

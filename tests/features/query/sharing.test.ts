@@ -33,6 +33,8 @@ import {
 
 const NOT_ALLOWED =
   "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
+const NOT_FILTER =
+  "Kolom ini bukan kolom filter dashboard. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 /** Versi pengaturan semua widget fixture (widgetVersion di setiap jawaban setelah otorisasi). */
 const V = WIDGET_UPDATED_AT.toISOString();
 
@@ -318,11 +320,9 @@ describe("review T-016 R3 SEC-1: kolom filter tersimpan yang kini tersembunyi/hi
     const { deps, repo, exec } = staleDeps();
     for (const user of [VIEWER, EDITOR]) {
       const never = await runFilterValues(user, DASH, { column: "Wilayah" }, deps);
-      expect(never).toEqual({
-        ok: false,
-        code: "INVALID",
-        message: "Kolom ini bukan kolom filter dashboard.",
-      });
+      // Petunjuk muat ulang (review T-016 R4 CC-1): kolom yang baru dikeluarkan/disembunyikan saat
+      // halaman terbuka tidak berujung "Coba lagi" yang tidak pernah berhasil.
+      expect(never).toEqual({ ok: false, code: "INVALID", message: NOT_FILTER });
       for (const body of [
         { column: "Rahasia" },
         { column: "Rahasia", sheet: "Data" },
@@ -331,6 +331,12 @@ describe("review T-016 R3 SEC-1: kolom filter tersimpan yang kini tersembunyi/hi
         expect(await runFilterValues(user, DASH, body, deps)).toEqual(never);
       }
     }
+    // Pesan yang sama untuk pemilik (nama yang bukan kolom filter dashboard ini).
+    expect(await runFilterValues(OWNER, DASH, { column: "Wilayah" }, deps)).toEqual({
+      ok: false,
+      code: "INVALID",
+      message: NOT_FILTER,
+    });
     expect(await runFilterValues(OWNER, DASH, { column: "Rahasia" }, deps)).toMatchObject({
       code: "COLUMN_UNAVAILABLE",
     });

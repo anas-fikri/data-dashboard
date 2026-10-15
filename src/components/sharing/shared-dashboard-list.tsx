@@ -28,8 +28,10 @@ export function SharedDashboardList({
 }: SharedDashboardListProps) {
   const cols =
     "@3xl:grid-cols-[minmax(0,2fr)_minmax(8rem,1.2fr)_minmax(8rem,1.2fr)_7.5rem_11rem_1.25rem]";
-  // Bertumpuk (ponsel, kartu Beranda): nama dataset/pemilik panjang membungkus — di layar sentuh
-  // title tidak terbaca. Tabel lebar: satu baris terpotong, lengkap di title.
+  // Bertumpuk (ponsel, kartu Beranda): nama dashboard/dataset/pemilik panjang membungkus utuh — di
+  // layar sentuh title tidak terbaca (review T-016 UI-5, R4-UI-1). Tabel lebar: nama dashboard paling
+  // banyak dua baris, dataset/pemilik satu baris; lengkap di title.
+  const name = cn("min-w-0 font-medium [overflow-wrap:anywhere]", !compact && "@3xl:line-clamp-2");
   const detail = cn(
     "min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]",
     !compact && "@3xl:truncate",
@@ -70,7 +72,7 @@ export function SharedDashboardList({
                 !compact && cols,
               )}
             >
-              <span className="line-clamp-2 min-w-0 break-words font-medium" title={d.name}>
+              <span className={name} title={d.name}>
                 {d.name}
               </span>
               <IconChevronRight

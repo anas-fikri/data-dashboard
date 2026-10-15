@@ -19,7 +19,11 @@ const m = vi.hoisted(() => ({
   listDatasets: vi.fn(async () => [] as unknown[]),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: m.refresh }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: m.refresh }),
+  // Tautan peringatan share membawa ?f= (R4-CL-3).
+  useSearchParams: () => new URLSearchParams(),
+}));
 // Pemilih pengguna memanggil Server Action; di sini cukup penanda.
 vi.mock("@/components/sharing/share-picker", () => ({
   SharePicker: () => createElement("i", { "data-testid": "share-search" }),
@@ -318,18 +322,19 @@ describe("R3-SEC-2: share langsung yang terpotong batas per pemilik disebut", ()
     widgetCount: 1,
     updatedAt: new Date("2026-10-15T03:00:00Z"),
   };
-  const render = async (hiddenDirect: number) => {
-    m.listSharedDashboards.mockResolvedValue({ items: [item], hiddenDirect });
+  // R4: hiddenDirect → hidden (share langsung + organisasi dihitung bersama).
+  const render = async (hidden: number) => {
+    m.listSharedDashboards.mockResolvedValue({ items: [item], hidden });
     return html((await DashboardsPage({ searchParams: Promise.resolve({}) })) as ReactElement);
   };
 
-  it("teks: jumlah + batas per pemilik (format id-ID)", () => {
+  it("teks: jumlah + batas per pemilik (format id-ID) + langkah berikutnya (R4-UI-2)", () => {
     expect(model.hiddenSharedText(1500, 20)).toBe(
-      "1.500 dashboard lain tidak ditampilkan karena batas daftar: paling banyak 20 dashboard dari satu pemilik.",
+      "1.500 dashboard lain yang dibagikan kepada Anda tidak ditampilkan karena daftar terlalu panjang (paling banyak 20 per pemilik). Buka lewat tautan dari pemiliknya.",
     );
   });
 
-  it("/dashboards: hiddenDirect > 0 → catatan redup di bagian 'Dibagikan ke saya'", async () => {
+  it("/dashboards: hidden > 0 → catatan redup di bagian 'Dibagikan ke saya'", async () => {
     const out = await render(7);
     const section = out.slice(out.indexOf('aria-labelledby="dibagikan-ke-saya"'));
     expect(section).toContain(
@@ -338,7 +343,7 @@ describe("R3-SEC-2: share langsung yang terpotong batas per pemilik disebut", ()
     expect(section).toContain('data-testid="shared-row"');
   });
 
-  it("/dashboards: hiddenDirect 0 → tanpa catatan", async () => {
+  it("/dashboards: hidden 0 → tanpa catatan", async () => {
     expect(await render(0)).not.toContain('data-testid="shared-hidden"');
   });
 });

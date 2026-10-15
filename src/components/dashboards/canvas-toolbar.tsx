@@ -14,9 +14,10 @@ import { isFrozen, type SaveState } from "./use-dashboard-editor";
 /*
  * Toolbar mode edit: tambah widget (aksi utama), urungkan satu langkah, status simpan otomatis
  * (diumumkan sopan ke pembaca layar), dan selesai (menyimpan dulu sebelum kembali ke mode lihat).
- * 768–1279 px: status turun ke baris sendiri agar tombol tidak meluber. Setelah STALE (diubah di
- * tab/perangkat lain) atau akses edit berubah (T-016) tambah dan urungkan dinonaktifkan; tombol muat
- * ulang ada di peringatan kanvas.
+ * 768–1279 px: status turun ke baris sendiri agar tombol tidak meluber. Setelah STALE (diubah orang
+ * lain, atau di tab/perangkat lain) atau akses edit berubah (T-016) tambah dan urungkan dinonaktifkan;
+ * tombol muat ulang ada di peringatan kanvas. Status STALE netral: sejak berbagi, penyebab tersering
+ * adalah editor lain, bukan tab sendiri (review T-016 R4-CC-2).
  */
 const UNDO_LABEL = {
   layout: "Urungkan perubahan tata letak",
@@ -98,7 +99,7 @@ export function CanvasToolbar({
           <>
             <IconCloudX size={18} stroke={1.5} aria-hidden className={`${icon} text-destructive`} />
             <span className="text-foreground">
-              {save === "denied" ? "Akses edit berubah." : "Diubah di tab atau perangkat lain."}
+              {save === "denied" ? "Akses edit berubah." : "Diubah di tempat lain."}
             </span>
           </>
         ) : (

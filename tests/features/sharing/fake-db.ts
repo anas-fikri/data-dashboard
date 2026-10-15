@@ -270,29 +270,54 @@ export function fakeShareDb() {
       throw new Error(`fake-db: SQL mentah tidak didukung: ${text}`);
     }),
     /**
-     * listSharedDashboards (review T-016 R3 SEC-2): share langsung user, ROW_NUMBER per pemilik dataset
-     * (terbaru dulu), `total` sebelum dibatasi. Nilai: userId, userId (bukan pemilik), batas per pemilik,
-     * batas daftar.
+     * listSharedDashboards (review T-016 R4 DI-1/DI-2): kandidat = share langsung user ATAU share
+     * organisasi dari pemilik aktif tanpa share user; ROW_NUMBER per pemilik dataset untuk kedua jenis
+     * (langsung dulu, terbaru dulu), `total` = semua kandidat; batas per pemilik hanya bila total melewati
+     * batas daftar. Potongan SQL yang diemulasikan wajib ada (bentuk lain melempar). Nilai: userId (share),
+     * userId (bukan pemilik), batas daftar, batas per pemilik, batas daftar (LIMIT).
      */
     $queryRaw: vi.fn(async (sql: unknown, ...values: unknown[]) => {
-      const text = (sql as readonly string[]).join("?");
-      if (!text.includes('ROW_NUMBER() OVER (PARTITION BY ds."ownerId"')) {
+      const text = (sql as readonly string[]).join("?").replace(/\s+/g, " ");
+      const shape = [
+        'ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY s."userId" IS NULL, d."updatedAt" DESC, d.id DESC) AS n',
+        "CAST(COUNT(*) OVER () AS int) AS total",
+        'LEFT JOIN "DashboardShare" s ON s."dashboardId" = d.id AND s."userId" = ?',
+        'WHERE ds."ownerId" <> ? AND (s."userId" IS NOT NULL OR (d."orgShared" AND u."isActive"))',
+        "WHERE total <= ? OR n <= ?",
+        'ORDER BY org, "updatedAt" DESC, id DESC LIMIT ?',
+      ];
+      if (!shape.every((s) => text.includes(s))) {
         throw new Error(`fake-db: SQL mentah tidak didukung: ${text}`);
       }
-      const [userId, notOwner, perOwner, max] = values as [string, string, number, number];
+      const [userId, notOwner, listMax, perOwner, limit] = values as [
+        string,
+        string,
+        number,
+        number,
+        number,
+      ];
       const ownerOf = (d: FDashboard) => datasetOf(d.datasetId).ownerId;
-      const all = state.shares
-        .filter((s) => s.userId === userId)
-        .map((s) => state.dashboards.find((d) => d.id === s.dashboardId)!)
+      const all = state.dashboards
         .filter((d) => ownerOf(d) !== notOwner)
-        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? 1 : -1));
+        .flatMap((d) => {
+          const direct = state.shares.some((s) => s.dashboardId === d.id && s.userId === userId);
+          const org = d.orgShared && !!userOf(ownerOf(d))?.isActive;
+          return direct || org ? [{ d, org: !direct }] : [];
+        })
+        .sort(
+          (a, b) =>
+            Number(a.org) - Number(b.org) ||
+            b.d.updatedAt.getTime() - a.d.updatedAt.getTime() ||
+            (a.d.id < b.d.id ? 1 : -1),
+        );
+      // Urutan partisi = urutan global, jadi n = nomor urut per pemilik saat menyusuri `all`.
       const seen = new Map<string, number>();
-      const kept = all.filter((d) => {
+      const kept = all.filter(({ d }) => {
         const n = (seen.get(ownerOf(d)) ?? 0) + 1;
         seen.set(ownerOf(d), n);
-        return n <= perOwner;
+        return all.length <= listMax || n <= perOwner;
       });
-      return kept.slice(0, max).map((d) => ({ id: d.id, total: all.length }));
+      return kept.slice(0, limit).map(({ d }) => ({ id: d.id, total: all.length }));
     }),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
       const snapshot = structuredClone(state);

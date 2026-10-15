@@ -2,8 +2,10 @@
 
 import { IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { Fragment, type ReactNode } from "react";
+import { editModeHref } from "@/components/dashboards/edit-dashboard-link";
 import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
 import { CROSS_FILTER_LABEL } from "@/components/dashboards/filters/filter-model";
 import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
@@ -19,7 +21,8 @@ import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
  * Daftar kolom memuat kolom filter DAN kolom kategori grafik yang menyaring silang, jadi sarannya
  * menyebut keduanya — sakelar filter silang dengan label aslinya (review T-016 R2-UI-3). Tautan ke
  * pengaturan kolom filter ditandai FILTER_LINK_ATTR: dialog memindah fokus ke bagian itu, bukan ke
- * tombol "Bagikan" (R2-UI-6).
+ * tombol "Bagikan" (R2-UI-6). Tautan itu membawa filter aktif (?f=) seperti "Ubah tata letak" — filter
+ * tidak hilang saat pindah mode (R4-CL-3).
  */
 export const FILTER_LINK_ATTR = "data-filter-settings-link";
 
@@ -53,6 +56,7 @@ export function ShareWarnings({
   editorId?: string;
   filterColumns: readonly string[];
 }) {
+  const f = useSearchParams().get("f");
   return (
     <div aria-live="polite" className="flex flex-col gap-2 empty:-mt-3">
       {editor ? (
@@ -77,7 +81,7 @@ export function ShareWarnings({
             Sebelum berbagi, ganti nama kolomnya di skema, hapus kolom filternya di{" "}
             <Dialog.Close asChild>
               <Link
-                href={`/dashboards/${dashboardId}?mode=edit#${FILTER_SETTINGS_ID}`}
+                href={`${editModeHref(dashboardId, f)}#${FILTER_SETTINGS_ID}`}
                 className="font-medium underline underline-offset-4"
                 {...{ [FILTER_LINK_ATTR]: "" }}
               >

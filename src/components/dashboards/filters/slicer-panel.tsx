@@ -15,7 +15,9 @@ import { useFilterValues, VALUES_MAX } from "./use-filter-values";
  * Isi slicer (T-012, popover dan lembar ponsel): cari di server, maks. 1.000 nilai, mode pilih /
  * kecualikan (slicer-model.ts; mode "Pilih semua" diingat pemanggil). "Pilih semua" / "Hapus
  * pilihan" dan centang terakhir mode kecualikan memakai aria-disabled (fokus tidak jatuh ke <body>,
- * alasannya terhubung lewat aria-describedby); hasilnya diumumkan lewat status.
+ * alasannya terhubung lewat aria-describedby); hasilnya diumumkan lewat status. Galat yang tidak pulih
+ * dengan mengulang (kolom filter sudah diubah pemilik, sesi berakhir) memberi "Muat ulang" halaman,
+ * bukan "Coba lagi" (review T-016 R4-CC-1).
  */
 const num = (n: number) => n.toLocaleString("id-ID");
 const LINK =
@@ -40,7 +42,7 @@ export function SlicerPanel({
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const { loading, data, error, full, retry } = useFilterValues(dashboardId, column, query);
+  const { loading, data, error, reload, full, retry } = useFilterValues(dashboardId, column, query);
   const results = data?.values ?? [];
   const m = slicerModel({
     column: column.column,
@@ -117,12 +119,14 @@ export function SlicerPanel({
             variant="outline"
             className="mt-2 h-(--control-h-lg) md:h-(--control-h-sm)"
             leadingIcon={<IconRefresh aria-hidden />}
+            data-testid="filter-slicer-retry"
             onClick={() => {
+              if (reload) return window.location.reload();
               input.current?.focus();
               retry();
             }}
           >
-            Coba lagi
+            {reload ? "Muat ulang" : "Coba lagi"}
           </Button>
         </FormAlert>
       ) : null}

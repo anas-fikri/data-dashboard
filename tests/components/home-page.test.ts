@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 const m = vi.hoisted(() => ({
   requireUser: vi.fn(async () => ({ id: "u1", isAdmin: false })),
   listDatasets: vi.fn(async () => Array.from({ length: 6 }, (_, i) => ({ id: `s${i}` }))),
-  // R3-SEC-2: { items, hiddenDirect } — Beranda memakai items saja.
+  // R3-SEC-2/R4: { items, hidden } — Beranda memakai items saja.
   listSharedDashboards: vi.fn(async () => ({
     items: Array.from({ length: 7 }, (_, i) => ({
       id: `d${i}`,
@@ -21,7 +21,7 @@ const m = vi.hoisted(() => ({
       widgetCount: 1,
       updatedAt: new Date("2026-10-15T03:00:00Z"),
     })),
-    hiddenDirect: 4,
+    hidden: 4,
   })),
 }));
 

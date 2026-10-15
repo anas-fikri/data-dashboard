@@ -23,12 +23,13 @@ type Search = Promise<{ deleted?: string }>;
  * Dashboard milik user (T-010) dan yang dibagikan ke user (T-016, termasuk berbagi organisasi). Bagian
  * "Dibagikan ke saya" selalu tampil — juga bagi user tanpa dataset (persona viewer); keadaan kosong
  * "Belum ada dataset" hanya untuk bagian milik sendiri. User tanpa dashboard sendiri tetapi punya
- * dashboard bersama melihat bagian bersama lebih dulu. Share langsung yang terpotong batas per pemilik
- * disebut di bawah daftar, tidak hilang diam-diam (review T-016 R3-SEC-2).
+ * dashboard bersama melihat bagian bersama lebih dulu. Dashboard bersama yang terpotong (daftar terlalu
+ * panjang, batas per pemilik) disebut di bawah daftar, tidak hilang diam-diam (review T-016 R3-SEC-2,
+ * R4-UI-2).
  */
 export default async function DashboardsPage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const [dashboards, { items: shared, hiddenDirect }, datasets, params] = await Promise.all([
+  const [dashboards, { items: shared, hidden }, datasets, params] = await Promise.all([
     listDashboards(user.id),
     listSharedDashboards(user.id),
     listDatasets(user.id),
@@ -94,9 +95,9 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
           className="py-8"
         />
       )}
-      {hiddenDirect > 0 ? (
+      {hidden > 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="shared-hidden">
-          {hiddenSharedText(hiddenDirect, SHARED_PER_OWNER_MAX)}
+          {hiddenSharedText(hidden, SHARED_PER_OWNER_MAX)}
         </p>
       ) : null}
     </section>

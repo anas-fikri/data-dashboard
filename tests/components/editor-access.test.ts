@@ -62,7 +62,8 @@ describe("editor membeku saat akses edit berubah", () => {
     expect(out).toContain('data-state="denied"');
     // Tambah widget dan Urungkan: keduanya disabled.
     expect(out.match(/<button[^>]*disabled=""[^>]*>/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(toolbar("stale")).toContain("Diubah di tab atau perangkat lain.");
+    // R4-CC-2: penyebab netral (editor lain atau tab lain).
+    expect(toolbar("stale")).toContain("Diubah di tempat lain.");
   });
 });
 

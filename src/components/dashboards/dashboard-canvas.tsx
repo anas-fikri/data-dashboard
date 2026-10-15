@@ -3,7 +3,7 @@
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
@@ -43,12 +43,51 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
  * server berubah, widget yang sudah dihapus di server diabaikan — review T-016 R3-CL-1).
  * Back/Forward (review T-016 R2-CL-1): props dari cache riwayat tidak pernah dipakai — kerangka sampai
  * refresh selesai (useFreshAfterHistory); mode lihat dipasang ulang bila versi widget/tata letak berubah.
+ * Kerangka itu setinggi kanvas terakhir dashboard ini (R4-CL-2) agar posisi gulir yang dipulihkan
+ * browser tidak terpotong ke atas.
  */
 const ROW_HEIGHT = 56;
 const MARGIN: [number, number] = [16, 16];
 const plain = (l: Layout): LayoutItem[] => l.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
 const settingsOf = (id: string) => `[data-widget-id="${id}"] [${SETTINGS_ATTR}]`;
 const STALE_RELOAD = "data-stale-reload";
+
+/**
+ * Tinggi kanvas terakhir per dashboard + mode, di modul (riwayat Back/Forward berada di dokumen yang
+ * sama). Kuncinya dari props, bukan location.href: saat kanvas lama dilepas, Next sudah menulis URL
+ * halaman tujuan (pushState di insertion effect), dan ?f= berubah lewat replaceState tanpa mengubah
+ * tinggi grid. 0 (sudah tidak tampil) tidak menimpa (review T-016 R4-CL-2).
+ */
+const lastHeight = new Map<string, number>();
+export const canvasHeightKey = (dashboardId: string, editing: boolean) =>
+  `${dashboardId}:${editing ? "edit" : "view"}`;
+export function rememberCanvasHeight(key: string, px: number) {
+  if (px > 0) lastHeight.set(key, px);
+}
+export const lastCanvasHeight = (key: string) => lastHeight.get(key);
+
+/**
+ * Dialog lain yang terbuka: "Bagikan" beserta konfirmasinya, hapus dashboard, popover filter. Radix
+ * membongkar dialog yang tertutup, jadi cukup cek keberadaannya (daftar Select yang terbuka di dalamnya
+ * berada di luar DOM dialog, jadi target saja tidak cukup). Lembar pengaturan widget kanvas sendiri
+ * (< 1280 px) bukan dialog lain.
+ */
+export const OTHER_MODAL =
+  '[role="dialog"]:not([data-testid="widget-panel"]), [role="alertdialog"]';
+
+/**
+ * Ctrl/Cmd+Z milik kanvas: bukan di kolom isian, belum ditangani pihak lain (defaultPrevented), dan
+ * tidak ada dialog lain yang terbuka — urungkan di belakang dialog bisa menghapus widget yang baru
+ * ditambahkan tanpa terlihat (review T-016 R4-CL-1). Murni.
+ */
+export function isCanvasUndo(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "defaultPrevented" | "target">,
+  doc: Pick<Document, "querySelector">,
+): boolean {
+  if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return false;
+  const typing = (e.target as Element | null)?.closest?.("input, textarea, [contenteditable]");
+  return !typing && !doc.querySelector(OTHER_MODAL);
+}
 
 type CanvasProps = {
   dashboardId: string;
@@ -71,6 +110,7 @@ export function DashboardCanvas(props: CanvasProps) {
     return (
       <div
         className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+        style={{ minHeight: lastCanvasHeight(canvasHeightKey(props.dashboardId, props.editing)) }}
         aria-busy="true"
         data-testid="canvas-refreshing"
       >
@@ -163,17 +203,22 @@ function Canvas(props: CanvasProps) {
     }
   }, [frozen]);
 
-  // Ctrl/Cmd+Z = urungkan (di luar kolom isian).
+  // Tinggi terakhir untuk kerangka Back/Forward: dibaca saat dilepas (DOM masih terpasang).
+  useLayoutEffect(() => {
+    const el = root.current;
+    const key = canvasHeightKey(dashboardId, editing);
+    return () => {
+      if (el) rememberCanvasHeight(key, el.offsetHeight);
+    };
+  }, [dashboardId, editing]);
+
+  // Ctrl/Cmd+Z = urungkan (di luar kolom isian dan dialog lain).
   useEffect(() => {
     if (!canEdit) return;
     const onKey = (e: KeyboardEvent) => {
-      const typing = (e.target as HTMLElement | null)?.closest(
-        "input, textarea, [contenteditable]",
-      );
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !typing && ed.canUndo) {
-        e.preventDefault();
-        void ed.undo();
-      }
+      if (!ed.canUndo || !isCanvasUndo(e, document)) return;
+      e.preventDefault();
+      void ed.undo();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

@@ -17,7 +17,9 @@ export function formatUpdated(d: Date): string {
  * kontainer lebar (@container), bertumpuk saat sempit; label kolom tetap terbaca pembaca layar. Kolom
  * Akses (T-016): Pribadi / N orang / Organisasi. Kepala dan tiap baris adalah grid terpisah, jadi
  * semua lajur harus tidak bergantung isi (tanpa `auto`): dua badge (Organisasi + N orang) membungkus
- * di dalam selnya, bukan melebarkan lajur baris itu sehingga tidak sejajar dengan kepala.
+ * di dalam selnya, bukan melebarkan lajur baris itu sehingga tidak sejajar dengan kepala. Nama
+ * dashboard bertumpuk membungkus utuh (title tidak terbaca di layar sentuh), tabel lebar paling banyak
+ * dua baris — aturan yang sama dengan "Dibagikan ke saya" (review T-016 R4-UI-1).
  */
 export function DashboardList({ dashboards }: { dashboards: DashboardSummary[] }) {
   const cols =
@@ -43,7 +45,10 @@ export function DashboardList({ dashboards }: { dashboards: DashboardSummary[] }
               data-testid="dashboard-row"
               className={`grid min-h-11 grid-cols-[minmax(0,1fr)_1.25rem] items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-accent/60 ${cols}`}
             >
-              <span className="line-clamp-2 min-w-0 break-words font-medium" title={d.name}>
+              <span
+                className="min-w-0 font-medium [overflow-wrap:anywhere] @3xl:line-clamp-2"
+                title={d.name}
+              >
                 {d.name}
               </span>
               <IconChevronRight

@@ -1,7 +1,7 @@
 import { Dialog } from "radix-ui";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { CanvasEmpty } from "@/components/dashboards/canvas-empty";
 import { DashboardList } from "@/components/dashboards/dashboard-list";
 import { WidgetConfigForm } from "@/components/dashboards/widget-config";
@@ -28,6 +28,12 @@ import { ShareWarnings } from "@/components/sharing/share-warnings";
 import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { ShareGrantView } from "@/features/sharing/types";
+
+// Tautan peringatan share membaca ?f= (R4-CL-3); di luar App Router diganti (tanpa filter).
+vi.mock("next/navigation", async (orig) => ({
+  ...(await orig<typeof import("next/navigation")>()),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 /*
  * T-016 UI berbagi: kapan peringatan dialog share tampil, teks badge akses/peran, syarat pencarian,

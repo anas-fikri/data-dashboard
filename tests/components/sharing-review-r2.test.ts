@@ -22,7 +22,11 @@ import { WIDGET_CHANGED, withChangeCheck } from "@/components/widgets/body-state
 import { fetchWidget, type WidgetQueryState } from "@/components/widgets/widget-query";
 
 // FilterColumnsSettings memakai useRouter (refresh setelah simpan); di luar App Router diganti.
-vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {} }) }));
+// Tautan peringatan share membaca ?f= (R4-CL-3): tanpa filter di sini.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ refresh: () => {} }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 /*
  * Perbaikan review T-016 putaran 2 (klien): Back/Forward tidak memakai versi widget dari cache riwayat

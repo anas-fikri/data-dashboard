@@ -23,10 +23,12 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  * usang → STALE) → Back/Forward memuat versi terbaru (mode lihat + editor) → editor diturunkan →
  * tabel: urut kolom yang baru dibuang → CHANGED → KPI CHANGED di ponsel 320 px → cabut + AuditLog →
  * hapus dataset X → dataset Y: daftar "Dibagikan ke saya" (share langsung dulu) → pencabutan yang
- * muatan pertamanya nilai slicer → dataset Z (2 sheet): tautan peringatan kolom filter memindah fokus →
+ * muatan pertamanya nilai slicer → dataset Z (2 sheet): tautan peringatan kolom filter memindah fokus
+ * dan membawa ?f=; Ctrl+Z di dialog Bagikan bukan milik kanvas →
  * review R3 di D3: E viewer → editor lewat konfirmasi → mode edit E: widget dihapus pemilik lalu E dicabut
- * → kolom filter disembunyikan (viewer B tidak bisa menebak nama) → hapus D3 yang dibagikan (audit) →
- * pemilik X dengan 21 share langsung ke C (batas 20 per pemilik).
+ * → kolom filter disembunyikan (viewer B tidak bisa menebak nama; slicer usang → "Muat ulang") → hapus
+ * D3 yang dibagikan (audit) → pemilik X dengan 21 share langsung ke C (semua terdaftar: batas 20 per
+ * pemilik hanya bila daftar melewati 200).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -65,14 +67,22 @@ const FILTER_LINK = "pengaturan dashboard (mode edit)";
 const EDITOR_WARNING = "Editor dapat membaca semua kolom tidak tersembunyi dataset ini.";
 /** Widget D3 yang dihapus pemilik selagi editor E di mode edit (review T-016 R3-CL-1). */
 const GONE_WIDGET = "Hapus nanti";
-/** Jawaban non-pemilik untuk nama yang bukan (lagi) kolom filter dashboard (review T-016 R3-SEC-1). */
-const NOT_FILTER = "Kolom ini bukan kolom filter dashboard.";
+/**
+ * Jawaban untuk nama yang bukan (lagi) kolom filter dashboard: nama lama dan tebakan dijawab sama untuk
+ * non-pemilik (review T-016 R3-SEC-1), dengan petunjuk muat ulang untuk semua pemanggil (R4-CC-1).
+ */
+const NOT_FILTER =
+  "Kolom ini bukan kolom filter dashboard. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 const NOT_ALLOWED =
   "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 /** Pesan server untuk ubahan widget dari versi pengaturan lama (review T-016 DI-1). */
 const STALE_WIDGET =
   "Widget ini sudah berubah sejak halaman ini dimuat. Muat ulang halaman untuk melihat versi terbaru.";
 const WIDGET_CHANGED = "Widget ini sudah diubah. Muat ulang halaman.";
+/** Status toolbar editor yang membeku karena STALE: penyebabnya netral (review T-016 R4-CC-2). */
+const STALE_STATUS = "Diubah di tempat lain.";
+/** Widget sementara uji Ctrl+Z di dialog Bagikan (review T-016 R4-CL-1). */
+const UNDO_WIDGET = "Urungkan nanti";
 /** Versi pengaturan widget = Widget.updatedAt dalam bentuk Date.toISOString(). */
 const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const ROWS = 60;
@@ -935,7 +945,7 @@ test.describe("berbagi dashboard", () => {
     });
     // Editor membeku: pesan server + "Muat ulang", panel tertutup, tidak ada aksi tulis lagi.
     await expect(a.getByTestId("save-state")).toHaveAttribute("data-state", "stale");
-    await expect(a.getByTestId("save-state")).toContainText("Diubah di tab atau perangkat lain.");
+    await expect(a.getByTestId("save-state")).toContainText(STALE_STATUS);
     await expect(a.getByText(STALE_WIDGET)).toBeVisible();
     await expect(a.locator("[data-stale-reload]")).toBeVisible();
     await expect(a.getByTestId("widget-panel")).toHaveCount(0);
@@ -1034,7 +1044,7 @@ test.describe("berbagi dashboard", () => {
     expect(await seenDom(a)).toEqual(["refreshing"]);
   });
 
-  test("Back ke editor setelah 'Selesai' (review R2-CL-1): ganti judul lagi → 200, bukan 409 STALE; tanpa 'Diubah di tab atau perangkat lain.'", async () => {
+  test("Back ke editor setelah 'Selesai' (review R2-CL-1): ganti judul lagi → 200, bukan 409 STALE; tanpa 'Diubah di tempat lain.'", async () => {
     /** Ganti judul lewat panel; PATCH membawa versi yang dipegang editor dan harus diterima (200). */
     const rename = async (from: string, to: string) => {
       const panel = await openPanel(a, from);
@@ -1071,9 +1081,7 @@ test.describe("berbagi dashboard", () => {
     await expect(widgetTitled(a, EDITOR_WIDGET)).toHaveCount(0);
     // Ganti judul lagi dari editor yang dipulihkan: versi terbaru → 200 (dulu: versi lama → 409 STALE).
     await rename(OWNER_TITLE, EDITOR_WIDGET);
-    await expect(a.getByTestId("save-state")).not.toContainText(
-      "Diubah di tab atau perangkat lain.",
-    );
+    await expect(a.getByTestId("save-state")).not.toContainText(STALE_STATUS);
     await expect(a.getByText(STALE_WIDGET)).toHaveCount(0);
     await expect(a.locator("[data-stale-reload]")).toHaveCount(0);
     await expect(a.getByTestId("widget-error")).toHaveCount(0);
@@ -1471,6 +1479,62 @@ test.describe("berbagi dashboard", () => {
       await link.focus();
       await link.press("Enter");
     });
+
+    // Filter aktif (?f=) ikut ke mode edit lewat tautan ini, seperti "Ubah tata letak" (review T-016
+    // R4-CL-3). Status filter menulis ?f= hanya saat pengguna mengubahnya, jadi URL dipakai apa adanya.
+    const f = JSON.stringify({ filters: [{ column: "No Resi", op: "in", values: ["R-1"] }] });
+    const filtered = await openShare(a, `/dashboards/${d5}?f=${encodeURIComponent(f)}`);
+    const link = filtered
+      .getByTestId("share-warning-filters")
+      .getByRole("link", { name: FILTER_LINK });
+    await expect(link).toHaveAttribute(
+      "href",
+      `/dashboards/${d5}?mode=edit&f=${encodeURIComponent(f)}#kolom-filter`,
+    );
+    await link.click();
+    await expect(a.getByTestId("share-dialog")).toHaveCount(0);
+    await expect(a.getByTestId("canvas-toolbar")).toBeVisible();
+    await expect
+      .poll(() => {
+        const u = new URL(a.url());
+        return [u.searchParams.get("mode"), u.searchParams.get("f")];
+      })
+      .toEqual(["edit", f]);
+
+    // Ctrl+Z di dialog Bagikan bukan milik kanvas di belakangnya: widget yang baru ditambahkan tidak
+    // terhapus diam-diam. Setelah dialog ditutup, Ctrl+Z kembali mengurungkan langkah kanvas (review
+    // T-016 R4-CL-1).
+    await a.goto(`/dashboards/${d5}?mode=edit`);
+    await expect(a.getByTestId("canvas-toolbar")).toBeVisible();
+    await expect(widgetTitled(a, Z_KPI)).toHaveCount(1);
+    const before = await a.getByTestId("widget").count();
+    await addWidget(a, UNDO_WIDGET, "Angka");
+    await expect(
+      a.getByTestId("canvas-toolbar").getByRole("button", { name: "Urungkan tambah widget" }),
+    ).toBeVisible();
+    const isDelete = (r: Request) =>
+      r.method() === "DELETE" && r.url().includes(`/api/dashboards/${d5}/widgets/`);
+    const deletes: string[] = [];
+    const track = (r: Request) => {
+      if (isDelete(r)) deletes.push(r.url());
+    };
+    a.on("request", track);
+    await a.getByTestId("share-open").click();
+    const share = a.getByTestId("share-dialog");
+    await expect(share.getByTestId("share-search")).toBeVisible();
+    await share.getByTestId("share-role").focus();
+    await a.keyboard.press("Control+z");
+    await a.waitForTimeout(1_000);
+    expect(deletes).toEqual([]);
+    await expect(a.getByTestId("widget")).toHaveCount(before + 1);
+    await closeShare(a);
+    await expect(widgetTitled(a, UNDO_WIDGET)).toHaveCount(1);
+    const undone = a.waitForResponse((r) => isDelete(r.request()));
+    await a.keyboard.press("Control+z");
+    expect((await undone).status()).toBe(200);
+    await expect(a.getByTestId("widget")).toHaveCount(before);
+    a.off("request", track);
+    expect(deletes).toHaveLength(1);
   });
 
   test("R3-UI-2: VIEWER → EDITOR di 'Orang dengan akses' lewat konfirmasi 'Jadikan editor?' (Batal = tetap viewer, fokus kembali); peringatan editor dirujuk aria-describedby", async () => {
@@ -1674,6 +1738,12 @@ test.describe("berbagi dashboard", () => {
     expect((await answer(await values(b, "Produk"))).status).toBe(200);
     expect((await answer(await filtered(b, "Produk"))).status).toBe(200);
 
+    // B membuka D3 sebelum Produk disembunyikan: halamannya memuat slicer Produk (dipakai di bawah).
+    await b.goto(d3Path);
+    await expectValue(b, PRODUK_KPI, SUM_JUMLAH);
+    const staleSlicer = b.locator('[data-testid=filter-slicer][data-column="Produk"]');
+    await expect(staleSlicer).toBeVisible();
+
     // Pemilik menyembunyikan Produk di halaman Skema dataset Y.
     await a.goto(`/datasets/${datasetY}/skema`);
     await expect(a.getByTestId("schema-column").first()).toBeVisible({ timeout: 30_000 });
@@ -1722,7 +1792,13 @@ test.describe("berbagi dashboard", () => {
       status: 400,
       body: { ok: false, code: "INVALID", message: NOT_ALLOWED },
     });
-    // Halaman B tidak memuat nama itu sebagai slicer.
+    // Slicer di halaman B yang usang: pesan dengan petunjuk muat ulang + tombol "Muat ulang", bukan
+    // "Coba lagi" yang selalu mendapat 400 yang sama (review T-016 R4-CC-1).
+    await staleSlicer.click();
+    await expect(b.getByText(NOT_FILTER, { exact: true })).toBeVisible();
+    await expect(b.getByTestId("filter-slicer-retry")).toHaveText("Muat ulang");
+    await b.keyboard.press("Escape");
+    // Halaman B yang dimuat ulang tidak memuat nama itu sebagai slicer.
     await b.goto(d3Path);
     await expectValue(b, PRODUK_KPI, SUM_JUMLAH);
     await expect(b.locator('[data-testid=filter-slicer][data-column="Produk"]')).toHaveCount(0);
@@ -1794,7 +1870,7 @@ test.describe("berbagi dashboard", () => {
     expect(rows.some((r) => r.action === "dashboard.share.grant")).toBe(true);
   });
 
-  test("R3-SEC-2: 21 share langsung dari satu pemilik → 'Dibagikan ke saya' C memuat 20 terbaru + catatan '1 dashboard lain…'", async () => {
+  test("R3-SEC-2 / R4-DI-1: 21 share langsung dari satu pemilik tanpa banjir → 'Dibagikan ke saya' C memuat ke-21-nya, tanpa catatan", async () => {
     test.setTimeout(180_000);
     const capName = (i: number) => `Batas ${String(i).padStart(2, "0")} ${TAG}`;
     // X (pemilik baru): 3 dataset kosong (maks. 10 dashboard per dataset) → 21 dashboard.
@@ -1825,7 +1901,7 @@ test.describe("berbagi dashboard", () => {
         ]),
       ),
     ) as Record<string, string>;
-    // Share langsung ke C, urut dibuat (updatedAt naik): dashboard pertama paling lama → terpotong.
+    // Share langsung ke C, urut dibuat (updatedAt naik): dashboard pertama paling lama.
     for (let i = 1; i <= 21; i++) {
       const id = idOf[capName(i)];
       expect(id, capName(i)).toBeTruthy();
@@ -1838,18 +1914,20 @@ test.describe("berbagi dashboard", () => {
       ).toContain('"ok":true');
     }
 
+    // Daftar C jauh di bawah SHARED_LIST_MAX (200): batas 20 per pemilik tidak berlaku, ke-21-nya
+    // terdaftar (terbaru dulu) tanpa catatan (review T-016 R4-DI-1). Banjir yang melewati 200 (batas per
+    // pemilik + catatan) diuji di tests/features/dashboards/roles.test.ts.
     await c.goto("/dashboards");
     const fromX = c.getByTestId("shared-list").getByTestId("shared-row").filter({ hasText: X });
-    await expect(fromX).toHaveCount(20);
-    await expect(c.getByTestId("shared-hidden")).toHaveText(
-      "1 dashboard lain tidak ditampilkan karena batas daftar: paling banyak 20 dashboard dari satu pemilik.",
+    await expect(fromX).toHaveCount(21);
+    await expect(fromX.first()).toContainText(capName(21));
+    await expect(fromX.last()).toContainText(capName(1));
+    await expect(sharedRow(c, capName(1))).toHaveAttribute(
+      "href",
+      `/dashboards/${idOf[capName(1)]}`,
     );
-    await expect(sharedRow(c, capName(1))).toHaveCount(0);
-    await expect(sharedRow(c, capName(21))).toBeVisible();
-    await expect(sharedRow(c, capName(2))).toBeVisible();
-    // Share organisasi A (D4) tidak ikut terdesak.
+    await expect(c.getByTestId("shared-hidden")).toHaveCount(0);
+    // Share organisasi A (D4) tetap terdaftar.
     await expect(sharedRow(c, D4_NAME)).toBeVisible();
-    // Yang terpotong hanya tidak terdaftar: aksesnya lewat URL tetap.
-    expect((await c.goto(`/dashboards/${idOf[capName(1)]}`))?.status()).toBe(200);
   });
 });
