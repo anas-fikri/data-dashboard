@@ -69,22 +69,33 @@ function setup(
     status: "QUEUED",
     params: { requestedAt: "2026-03-15T05:00:00.000Z", ...over.params },
     fileName: "Penjualan-20260315-1200.csv",
+    key: null,
     title: WIDGETS[over.widget ?? "table"]!.title,
   };
-  const state: { status: string; failed?: { code: string; message: string }; done?: unknown } = {
+  const state: {
+    status: string;
+    failed?: { code: string; message: string };
+    done?: { key: string };
+  } = {
     status: "QUEUED",
   };
   const objects = new Map<string, string>();
   const repo = {
-    load: vi.fn(async () =>
-      row ? { ...row, status: state.status as ExportJobRow["status"] } : null,
+    load: vi.fn(async (_id: string) =>
+      row
+        ? {
+            ...row,
+            status: state.status as ExportJobRow["status"],
+            key: state.done?.key ?? null,
+          }
+        : null,
     ),
     start: vi.fn(async () => {
       if (!row || (state.status !== "QUEUED" && state.status !== "RUNNING")) return false;
       state.status = "RUNNING";
       return true;
     }),
-    finish: vi.fn(async (_id: string, done: unknown) => {
+    finish: vi.fn(async (_id: string, done: { key: string }) => {
       if (!row || state.status !== "RUNNING") return false;
       state.status = "DONE";
       state.done = done;
@@ -287,6 +298,68 @@ describe("runExportJob", () => {
     expect(t.storage.remove).toHaveBeenCalled();
     expect(t.state.status).toBe("RUNNING");
     expect(readdirSync(t.tmpRoot)).toEqual([]);
+  });
+
+  it("INT-1: dua run tumpang tindih — run yang kalah tidak menghapus objek baris DONE", async () => {
+    const t = setup();
+    const key = `exports/${OWNER}/${EXPORT_ID}.csv`;
+    // Run A tertahan tepat sebelum unggah; run B (lock lepas → replika lain) berjalan sampai DONE.
+    let atUpload!: () => void;
+    const reachedUpload = new Promise<void>((r) => (atUpload = r));
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const upload = t.storage.upload.getMockImplementation()!;
+    const depsA: ExportJobDeps = {
+      ...t.deps,
+      storage: {
+        ...t.storage,
+        upload: async (...args: Parameters<typeof upload>) => {
+          atUpload();
+          await gate;
+          return upload(...args);
+        },
+      },
+    };
+    const runA = runExportJob(EXPORT_ID, depsA);
+    await reachedUpload;
+    expect(t.state.status).toBe("RUNNING");
+    expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done" });
+    expect(t.state).toMatchObject({ status: "DONE", done: { key } });
+    // A lanjut: unggah ke key yang sama, finish() → false (baris sudah DONE) → objek TIDAK dihapus.
+    release();
+    expect(await runA).toEqual({ outcome: "skipped" });
+    expect(t.repo.finish).toHaveBeenCalledTimes(2);
+    expect(t.storage.remove).not.toHaveBeenCalled();
+    expect(t.objects.has(key)).toBe(true);
+    expect(t.state).toMatchObject({ status: "DONE", done: { key } });
+    expect(t.scheduleDelete).toHaveBeenCalledTimes(1);
+    expect(readdirSync(t.tmpRoot)).toEqual([]);
+  });
+
+  it("INT-1: finish() sudah commit DONE lalu koneksi putus → galat dilempar, objek tetap ada", async () => {
+    const t = setup();
+    const key = `exports/${OWNER}/${EXPORT_ID}.csv`;
+    t.repo.finish.mockImplementationOnce(async (_id: string, done: { key: string }) => {
+      t.state.status = "DONE";
+      t.state.done = done;
+      throw new Error("koneksi putus setelah commit");
+    });
+    await expect(runExportJob(EXPORT_ID, t.deps)).rejects.toThrow("koneksi putus");
+    expect(t.storage.remove).not.toHaveBeenCalled();
+    expect(t.objects.has(key)).toBe(true);
+    // Ulangan BullMQ melihat DONE → dilewati, objek tetap.
+    expect(await runExportJob(EXPORT_ID, t.deps)).toEqual({ outcome: "skipped" });
+    expect(t.objects.has(key)).toBe(true);
+
+    // Baca ulang juga gagal → objek dibiarkan (sapuan yatim yang membereskan bila memang yatim).
+    const u = setup();
+    u.repo.finish.mockRejectedValueOnce(new Error("db putus"));
+    u.repo.load
+      .mockImplementationOnce(u.repo.load.getMockImplementation()!)
+      .mockRejectedValueOnce(new Error("db masih putus"));
+    await expect(runExportJob(EXPORT_ID, u.deps)).rejects.toThrow("db putus");
+    expect(u.storage.remove).not.toHaveBeenCalled();
+    expect(u.objects.has(key)).toBe(true);
   });
 
   it("removeStaleExportDirs hanya menghapus direktori export-*", () => {

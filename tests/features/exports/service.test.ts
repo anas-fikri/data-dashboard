@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { AuditEntry } from "@/features/audit/service";
+import { RULES } from "@/features/auth/rate-limit";
 import {
   BUSY_MESSAGE,
   createExport,
@@ -60,6 +61,11 @@ function makeDeps(over: { rows?: ExportRow[]; roles?: Record<string, DashboardAc
   } satisfies ExportRepo;
   const enqueue = vi.fn(async () => {});
   const rateLimit = vi.fn(async () => ({ allowed: true, remaining: 29, retryAfterSec: 600 }));
+  const downloadRateLimit = vi.fn(async (_userId: string) => ({
+    allowed: true,
+    remaining: 59,
+    retryAfterSec: 600,
+  }));
   const presign = vi.fn(
     async (key: string, _o: PresignGetOptions) =>
       `http://localhost:9100/bucket/${key}?X-Amz-Expires=300`,
@@ -69,10 +75,11 @@ function makeDeps(over: { rows?: ExportRow[]; roles?: Record<string, DashboardAc
     query: { repo: fakeQueryRepo() },
     enqueue,
     rateLimit,
+    downloadRateLimit,
     presign,
     now: () => NOW,
   };
-  return { deps, repo, enqueue, rateLimit, presign, created, audits };
+  return { deps, repo, enqueue, rateLimit, downloadRateLimit, presign, created, audits };
 }
 
 const done = (over: Partial<ExportRow> = {}): ExportRow => ({
@@ -246,6 +253,19 @@ describe("exportStatus", () => {
     }
   });
 
+  it("review CL-3: akses dashboard dicabut (atau dashboard terhapus) → 404, bukan 'selesai'", async () => {
+    const revoked = makeDeps({ rows: [done()], roles: {} });
+    expect(await exportStatus(OWNER, EXPORT_ID, revoked.deps)).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+    const gone = makeDeps({ rows: [done({ dashboardId: null })] });
+    expect(await exportStatus(OWNER, EXPORT_ID, gone.deps)).toMatchObject({
+      ok: false,
+      code: "NOT_FOUND",
+    });
+  });
+
   it("statusView: queued/running/failed/expired", () => {
     const base = done();
     expect(statusView({ ...base, status: "QUEUED" }, NOW)).toEqual({
@@ -360,5 +380,38 @@ describe("downloadExport (AC6)", () => {
     const t = makeDeps({ rows: [done()] });
     t.repo.audit.mockRejectedValueOnce(new Error("db putus"));
     await expect(downloadExport(OWNER, EXPORT_ID, "local", t.deps)).rejects.toThrow("db putus");
+  });
+
+  it("SEC-2: rate limit unduh per user → 429 RATE_LIMITED + Retry-After, tanpa DB/presign/AuditLog", async () => {
+    const t = makeDeps({ rows: [done()] });
+    await downloadExport(OWNER, EXPORT_ID, "local", t.deps);
+    expect(t.downloadRateLimit).toHaveBeenCalledWith(OWNER);
+    expect(t.audits).toHaveLength(1);
+    t.repo.findOwned.mockClear();
+    t.presign.mockClear();
+    t.downloadRateLimit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 95 });
+    expect(await downloadExport(OWNER, EXPORT_ID, "local", t.deps)).toEqual({
+      ok: false,
+      code: "RATE_LIMITED",
+      message: "Terlalu banyak unduhan ekspor. Coba lagi dalam 95 detik.",
+      retryAfterSec: 95,
+    });
+    expect(EXPORT_STATUS.RATE_LIMITED).toBe(429);
+    expect(t.repo.findOwned).not.toHaveBeenCalled();
+    expect(t.presign).not.toHaveBeenCalled();
+    expect(t.audits).toHaveLength(1);
+    // Rate limit tidak terjangkau (Redis mati) → galat (503 di route), bukan lolos tanpa batas.
+    t.downloadRateLimit.mockRejectedValueOnce(new Error("redis mati"));
+    await expect(downloadExport(OWNER, EXPORT_ID, "local", t.deps)).rejects.toThrow("redis mati");
+    expect(t.audits).toHaveLength(1);
+  });
+
+  it("SEC-2: RULES.exportDownload = 60 unduhan per 10 menit per user (bucket sendiri)", () => {
+    expect(RULES.exportDownload).toEqual({
+      name: "export-download:user",
+      limit: 60,
+      windowSec: 600,
+    });
+    expect(RULES.exportDownload.name).not.toBe(RULES.export.name);
   });
 });

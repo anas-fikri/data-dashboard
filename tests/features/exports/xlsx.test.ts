@@ -3,7 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import yauzl from "yauzl";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { columnRef, writeXlsx, XLSX_CELL_MAX, type XlsxColumn } from "@/features/exports/xlsx";
+import {
+  columnRef,
+  excelSerial,
+  writeXlsx,
+  XLSX_CELL_MAX,
+  type XlsxColumn,
+} from "@/features/exports/xlsx";
 import { createSaxParser } from "@/lib/xlsx/parser";
 import type { RawValue } from "@/lib/xlsx/types";
 
@@ -45,6 +51,43 @@ function entries(path: string): Promise<string[]> {
       zip.readEntry();
     }),
   );
+}
+
+/** Isi mentah xl/worksheets/sheet1.xml (nomor seri apa adanya, tanpa tafsiran parser proyek). */
+function sheetXml(path: string): Promise<string> {
+  return new Promise((resolve, reject) =>
+    yauzl.open(path, { lazyEntries: true }, (err, zip) => {
+      if (err || !zip) return reject(err ?? new Error("zip"));
+      zip.on("entry", (e: yauzl.Entry) => {
+        if (e.fileName !== "xl/worksheets/sheet1.xml") return zip.readEntry();
+        zip.openReadStream(e, (err2, s) => {
+          if (err2 || !s) return reject(err2 ?? new Error("entry"));
+          const parts: Buffer[] = [];
+          s.on("data", (b: Buffer) => parts.push(b));
+          s.on("end", () => {
+            zip.close();
+            resolve(Buffer.concat(parts).toString("utf8"));
+          });
+          s.on("error", reject);
+        });
+      });
+      zip.on("end", () => reject(new Error("sheet1.xml tidak ada")));
+      zip.on("error", reject);
+      zip.readEntry();
+    }),
+  );
+}
+
+/** Sel per ref: { s: gaya, v: nilai <v> } atau { t: teks inlineStr }. */
+function cellsOf(xml: string): Record<string, { s?: string; v?: string; t?: string }> {
+  const out: Record<string, { s?: string; v?: string; t?: string }> = {};
+  for (const m of xml.matchAll(/<c r="([A-Z]+\d+)"([^>]*)>(.*?)<\/c>/g)) {
+    const s = /s="(\d+)"/.exec(m[2]!)?.[1];
+    const v = /<v>(.*?)<\/v>/.exec(m[3]!)?.[1];
+    const t = /<t[^>]*>(.*?)<\/t>/.exec(m[3]!)?.[1];
+    out[m[1]!] = { ...(s ? { s } : {}), ...(v !== undefined ? { v } : {}), ...(t ? { t } : {}) };
+  }
+  return out;
 }
 
 const COLS: XlsxColumn[] = [
@@ -168,6 +211,64 @@ describe("writeXlsx", () => {
         broken(),
       ),
     ).rejects.toThrow("duckdb putus");
+  });
+
+  it("INT-2: nomor seri sistem 1900 Excel (bug kabisat 1900) dan tanggal < 1900 sebagai teks tanpa zona", async () => {
+    const d = (y: number, m: number, day: number, h = 0, mi = 0, s = 0) =>
+      new Date(Date.UTC(y, m - 1, day, h, mi, s));
+    // Nomor seri langsung (bukan lewat parser proyek, yang memakai epoch 1899-12-30 yang sama).
+    expect(excelSerial(d(1899, 12, 31))).toBeNull();
+    expect(excelSerial(d(1900, 1, 1))).toBe(1);
+    expect(excelSerial(d(1900, 2, 28))).toBe(59);
+    expect(excelSerial(d(1900, 2, 28, 12))).toBe(59.5);
+    expect(excelSerial(d(1900, 3, 1))).toBe(61);
+    expect(excelSerial(d(1850, 5, 1))).toBeNull();
+    expect(excelSerial(d(2024, 1, 2))).toBe(45293);
+    expect(excelSerial(d(2024, 1, 2, 6))).toBe(45293.25);
+    expect(excelSerial(new Date(Number.NaN))).toBeNull();
+
+    const path = join(dir, "dates.xlsx");
+    const rows: unknown[][] = [
+      [d(1899, 12, 31), d(1899, 12, 31, 23, 59, 58)],
+      [d(1900, 1, 1), d(1900, 1, 1, 6)],
+      [d(1900, 2, 28), d(1900, 2, 28, 12)],
+      [d(1900, 3, 1), d(1900, 3, 1, 18)],
+      [d(1850, 5, 1), d(1850, 5, 1, 13, 45, 30)],
+      [d(2024, 1, 2), d(2024, 1, 2, 3, 4, 5)],
+      [new Date(Number.NaN), null],
+    ];
+    await writeXlsx(
+      path,
+      {
+        sheetName: "Data",
+        columns: [
+          { label: "Tanggal", kind: "date" },
+          { label: "Waktu", kind: "timestamp" },
+        ],
+      },
+      chunks(rows),
+    );
+    const c = cellsOf(await sheetXml(path));
+    // Tanggal (gaya 2 = numFmt 14) / tanggal-waktu (gaya 3 = numFmt 22).
+    expect([c.A2, c.B2]).toEqual([{ t: "1899-12-31" }, { t: "1899-12-31 23:59:58" }]);
+    expect([c.A3, c.B3]).toEqual([
+      { s: "2", v: "1" },
+      { s: "3", v: "1.25" },
+    ]);
+    expect([c.A4, c.B4]).toEqual([
+      { s: "2", v: "59" },
+      { s: "3", v: "59.5" },
+    ]);
+    expect([c.A5, c.B5]).toEqual([
+      { s: "2", v: "61" },
+      { s: "3", v: "61.75" },
+    ]);
+    expect([c.A6, c.B6]).toEqual([{ t: "1850-05-01" }, { t: "1850-05-01 13:45:30" }]);
+    expect(c.A7).toEqual({ s: "2", v: "45293" });
+    expect(Number(c.B7!.v)).toBeCloseTo(45293 + (3 * 3600 + 4 * 60 + 5) / 86_400, 9);
+    expect(c.B7!.s).toBe("3");
+    // Tanggal tidak valid → sel kosong (tidak melempar RangeError dari toISOString).
+    expect(c.A8).toBeUndefined();
   });
 
   it("columnRef: A, Z, AA, AZ, BA, XFD", () => {

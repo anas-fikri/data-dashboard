@@ -60,6 +60,11 @@ export const RULES = {
    * Di atasnya ada batas 2 ekspor berjalan per user (exports/service).
    */
   export: { name: "export:user", limit: 30, windowSec: 10 * 60 },
+  /**
+   * Unduh hasil ekspor per user (review T-017 SEC-2): tiap unduhan membuat presigned URL dan menulis satu
+   * baris AuditLog, jadi pengulangan otomatis dibatasi agar tidak membanjiri jejak audit.
+   */
+  exportDownload: { name: "export-download:user", limit: 60, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

@@ -10,7 +10,7 @@ import type { WidgetRequest } from "@/components/widgets/widget-query";
 import type { WidgetView } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
 import { DataToggleButton, HEAD_BUTTON, HeadExport } from "./widget-card-head";
-import { cardConfig, toggleMode } from "./widget-card-model";
+import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
 
 /*
  * Satu widget di kanvas. Mode lihat: hanya isi. Mode edit: seluruh kepala kartu jadi pegangan seret
@@ -51,10 +51,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   const title = widget.title || "Widget tanpa judul";
   const handle = editing && draggable;
   const config = cardConfig(widget.type, widget.spec);
-  const chart =
-    config?.type === "bar" || config?.type === "line" || config?.type === "pie"
-      ? config.type
-      : null;
+  const chart = config ? chartOf(config.type) : null;
   // Nilai grafik sebagai tabel: tombol di kepala kartu (tidak ikut terpotong di kartu pendek/sempit).
   const [showData, setShowData] = useState(false);
   // Spec baru dianggap memuat sampai isinya melapor (dipanggil hanya saat statusnya berubah).
@@ -142,8 +139,9 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         ) : null}
         {config ? (
           <HeadExport
+            widgetId={widget.id}
+            type={config.type}
             title={title}
-            table={config.type === "table"}
             editing={editing}
             request={request}
           />

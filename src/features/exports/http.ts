@@ -21,7 +21,8 @@ import {
 /*
  * HTTP ekspor (T-017): POST /api/exports (Origin = APP_URL, sesi, rate limit + batas berjalan, body JSON
  * ≤ 64 KB) → 202 { ok, exportId }; GET /api/exports/[id] → status (pemilik saja); GET
- * /api/exports/[id]/download → 302 ke presigned GET (Referrer-Policy no-referrer) atau 404/410. Semua
+ * /api/exports/[id]/download (rate limit per user) → 302 ke presigned GET (Referrer-Policy no-referrer)
+ * atau 404/410/429 + Retry-After. Semua
  * no-store; galat tak terduga → 503 tanpa detail internal (withUser).
  */
 
@@ -38,6 +39,7 @@ function deps(): ExportDeps {
       );
     },
     rateLimit: async (userId) => hit(await redisReady(), RULES.export, userId),
+    downloadRateLimit: async (userId) => hit(await redisReady(), RULES.exportDownload, userId),
     presign: presignExportGet,
   };
 }

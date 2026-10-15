@@ -1,7 +1,7 @@
 ---
 id: T-017
 title: Ekspor widget ke CSV dan XLSX
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -10,17 +10,23 @@ tags:
 depends_on:
   - T-016
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T16:02:44Z"
+updated: "2026-10-15T17:12:14Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 046944798220dd6d6383c6e0c212eee06378bb8f
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-15T16:54:29Z"
+      findings: 10
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 38323
+    duration_ms: 37055
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -42,16 +48,16 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792080143395,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792080143419,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792084313941,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792084313966,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  98 passed (98)
-            Tests  1426 passed (1426)
-         Start at  23:02:17
-         Duration  25.44s (tests 76%, import 16%, transform 7%, worker 1%)
+       Test Files  100 passed (100)
+            Tests  1468 passed (1468)
+         Start at  00:11:48
+         Duration  23.80s (tests 77%, import 16%, transform 7%, worker 1%)
 
-          Isolate  98 workers spawned · ~141ms startup each (spawn + environment, per file)
-                   at least ~1.39s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  100 workers spawned · ~123ms startup each (spawn + environment, per file)
+                   at least ~1.25s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -59,8 +65,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-15T16:02:44Z"
-    tree: 457f3b31ad7ec30adbcd5cd3a9359868197f2dabb76f9784683b4d557109474d
+    at: "2026-10-15T17:12:13Z"
+    tree: 0e1aa8123d63c56e447885fbd07816966611e3b9ab95b099b1aa4c40424deada
 ---
 
 ## Objective

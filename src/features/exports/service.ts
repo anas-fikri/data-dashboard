@@ -76,6 +76,8 @@ export interface ExportDeps {
   enqueue(exportId: string): Promise<void>;
   /** Satu hit rate limit RULES.export untuk user ini. */
   rateLimit(userId: string): Promise<RateLimitResult>;
+  /** Satu hit rate limit RULES.exportDownload untuk user ini (tiap unduhan = presign + AuditLog). */
+  downloadRateLimit(userId: string): Promise<RateLimitResult>;
   presign(key: string, o: PresignGetOptions): Promise<string>;
   now?: () => Date;
 }
@@ -235,7 +237,11 @@ export function statusView(row: ExportRow, now: Date): ExportStatusView {
   }
 }
 
-/** GET /api/exports/[id]: pemilik saja (lainnya 404), tanpa efek samping. */
+/**
+ * GET /api/exports/[id]: pemilik yang masih punya akses ke dashboard-nya (lainnya 404, sama seperti unduh —
+ * akses dicabut tidak lagi tampil "selesai" lalu gagal diam-diam saat diunduh, review T-017 CL-3), tanpa
+ * efek samping.
+ */
 export async function exportStatus(
   userId: string,
   id: string,
@@ -243,21 +249,33 @@ export async function exportStatus(
 ): Promise<({ ok: true } & ExportStatusView) | ExportFailure> {
   if (!isExportId(id)) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const row = await deps.repo.findOwned(userId, id);
-  if (!row) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
+  if (!row || !row.dashboardId) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
+  if (!(await deps.repo.dashboardRole(userId, row.dashboardId))) {
+    return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
+  }
   return { ok: true, ...statusView(row, deps.now?.() ?? new Date()) };
 }
 
 /**
  * GET /api/exports/[id]/download: bukan pemilik atau akses dashboard sudah tidak ada → 404; pemilik +
  * kedaluwarsa/terhapus → 410; selesai → presigned GET ≤ 5 menit (≤ sisa umur) + AuditLog. Audit gagal →
- * galat dilempar (tanpa tautan): unduhan tanpa jejak tidak pernah diberikan.
+ * galat dilempar (tanpa tautan): unduhan tanpa jejak tidak pernah diberikan. Rate limit per user dicek
+ * paling awal (setelah sesi, sebelum DB/presign/AuditLog); Redis mati → galat (503), bukan lolos.
  */
 export async function downloadExport(
   userId: string,
   id: string,
   ip: string,
-  deps: Pick<ExportDeps, "repo" | "presign" | "now">,
+  deps: Pick<ExportDeps, "repo" | "presign" | "downloadRateLimit" | "now">,
 ): Promise<{ ok: true; url: string } | ExportFailure> {
+  const rl = await deps.downloadRateLimit(userId);
+  if (!rl.allowed) {
+    return failure(
+      "RATE_LIMITED",
+      `Terlalu banyak unduhan ekspor. Coba lagi dalam ${rl.retryAfterSec} detik.`,
+      rl.retryAfterSec,
+    );
+  }
   if (!isExportId(id)) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const row = await deps.repo.findOwned(userId, id);
   if (!row || !row.dashboardId) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);

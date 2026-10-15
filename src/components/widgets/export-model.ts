@@ -102,7 +102,9 @@ export type ExportEvent =
   /** Polling berhenti tanpa hasil: 401/403/404/410 (use-polling onStop). */
   | { type: "stopped"; id: string; status: number }
   /** Jam lokal melewati expiresAt (dikurangi margin). */
-  | { type: "expired"; id: string };
+  | { type: "expired"; id: string }
+  /** "Unduh lagi" membaca status ulang dan tautannya tidak berlaku lagi (recheckOutcome). */
+  | { type: "recheck"; id: string; code: string; message?: string };
 
 export const EXPORT_IDLE: ExportJob = { phase: "idle" };
 export const exportBusy = (job: ExportJob) => job.phase === "starting" || job.phase === "running";
@@ -136,14 +138,53 @@ export function exportReducer(job: ExportJob, e: ExportEvent): ExportJob {
       // failed, atau status yang tidak dikenal: polling sudah berhenti — jangan menunggu selamanya.
       return fail(job.format, v.code || C.EXPORT_FAILED, v.message);
     }
-    case "stopped": {
-      if (job.phase !== "running" || job.id !== e.id) return job;
-      const code = e.status === 401 ? SESSION : e.status === 410 ? C.EXPORT_EXPIRED : EXPORT_GONE;
-      return fail(job.format, code);
-    }
+    case "stopped":
+      return job.phase === "running" && job.id === e.id
+        ? fail(job.format, stopCode(e.status))
+        : job;
     case "expired":
       return job.phase === "done" && job.id === e.id ? fail(job.format, C.EXPORT_EXPIRED) : job;
+    case "recheck":
+      return job.phase === "done" && job.id === e.id ? fail(job.format, e.code, e.message) : job;
   }
+}
+
+/** Status berhenti tanpa hasil (401/403/404/410) → kode galat. */
+const stopCode = (status: number) =>
+  status === 401 ? SESSION : status === 410 ? C.EXPORT_EXPIRED : EXPORT_GONE;
+
+export type RecheckOutcome =
+  | { kind: "download" }
+  /** Jaringan/server sesaat (0, 5xx, 429): tautan tetap, user mencoba lagi. */
+  | { kind: "retry" }
+  | { kind: "error"; code: string; message?: string; accessLost: boolean };
+
+/**
+ * "Unduh lagi" (review R1 CL-3): status GET /api/exports/<id> dibaca dulu (tanpa jejak audit) agar tautan
+ * yang mati tidak gagal diam-diam sebagai unduhan "download.json". Selesai dan belum lewat expiresAt
+ * (margin sama dengan penghitung mundur) → unduh; kedaluwarsa → "Ekspor lagi"; gagal → pesan server;
+ * 404 → akses dicabut: halaman diambil ulang seperti saat membuat ekspor. Murni.
+ */
+export function recheckOutcome(
+  status: number,
+  view: ExportStatusView | null,
+  now: number,
+): RecheckOutcome {
+  const error = (code: string, message?: string): RecheckOutcome => ({
+    kind: "error",
+    code,
+    ...(message ? { message } : {}),
+    accessLost: status === 404,
+  });
+  if (status === 404) return error(C.NOT_FOUND);
+  if ([401, 403, 410].includes(status)) return error(stopCode(status));
+  if (status !== 200 || !view) return { kind: "retry" };
+  if (view.state === "done") {
+    const expired = expiryDelay(view.expiresAt ?? null, now) === 0;
+    return expired ? error(C.EXPORT_EXPIRED) : { kind: "download" };
+  }
+  if (view.state === "expired") return error(C.EXPORT_EXPIRED);
+  return error(view.code || C.EXPORT_FAILED, view.message);
 }
 
 /** "Unduh lagi" disembunyikan sedikit sebelum expiresAt server (jam klien bisa terlambat). */

@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ExportDeps } from "@/features/exports/service";
 
 /*
  * T-017 HTTP /api/exports: Origin wajib untuk POST, sesi (401), status per kode (202/400/429 +
@@ -14,7 +15,12 @@ const requireUser = vi.fn();
 const createExport = vi.fn();
 const exportStatus = vi.fn();
 const downloadExport = vi.fn();
+const hit = vi.fn();
 vi.mock("@/features/auth/session", () => ({ AuthError, requireUser }));
+vi.mock("@/features/auth/rate-limit", async (orig) => ({
+  ...(await orig<typeof import("@/features/auth/rate-limit")>()),
+  hit,
+}));
 vi.mock("@/lib/redis", () => ({ redisReady: vi.fn(async () => ({})) }));
 vi.mock("@/lib/env", () => ({
   env: () => ({ APP_URL: "http://localhost:3100", TRUST_PROXY: true }),
@@ -121,5 +127,27 @@ describe("GET /api/exports/[id] dan /download", () => {
     expect((await exportDownloadRoute(get("/x"), ID)).status).toBe(410);
     requireUser.mockRejectedValueOnce(new AuthError("UNAUTHENTICATED"));
     expect((await exportDownloadRoute(get("/x"), ID)).status).toBe(401);
+  });
+
+  it("unduh (SEC-2): rate limit per user RULES.exportDownload → 429 + Retry-After, no-store", async () => {
+    const { RULES } = await import("@/features/auth/rate-limit");
+    hit.mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 42 });
+    downloadExport.mockImplementationOnce(
+      async (userId: string, _id: string, _ip: string, deps: ExportDeps) => {
+        const rl = await deps.downloadRateLimit(userId);
+        return {
+          ok: false,
+          code: "RATE_LIMITED",
+          message: "x",
+          retryAfterSec: rl.retryAfterSec,
+        };
+      },
+    );
+    const r = await exportDownloadRoute(get(`/api/exports/${ID}/download`), ID);
+    expect(hit).toHaveBeenCalledWith(expect.anything(), RULES.exportDownload, "u1");
+    expect(r.status).toBe(429);
+    expect(r.headers.get("retry-after")).toBe("42");
+    expect(r.headers.get("cache-control")).toBe("no-store");
+    expect(r.headers.get("location")).toBeNull();
   });
 });

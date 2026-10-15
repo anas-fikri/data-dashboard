@@ -7,6 +7,8 @@ import { JAKARTA_TZ } from "@/features/query/filters";
 
 /** Panjang judul di nama file (titik kode); nama lengkap tetap pendek untuk sistem berkas mana pun. */
 const TITLE_MAX = 80;
+/** Panjang akhiran "-YYYYMMDD-HHmm" setelah judul. */
+const STAMP_LEN = 14;
 
 const STAMP = new Intl.DateTimeFormat("en-GB", {
   timeZone: JAKARTA_TZ,
@@ -25,24 +27,29 @@ export function jakartaStamp(at: Date): string {
 }
 
 /**
- * Judul aman untuk nama file: tanpa karakter kendali (termasuk CR/LF), tanpa " \ / ; serta karakter
- * yang ditolak sistem berkas (< > : | ? *), spasi dirapatkan, titik/spasi di ujung dibuang.
+ * Teks aman untuk nama file, dipotong \u2264 `max` titik kode: tanpa karakter kendali (termasuk CR/LF), tanpa
+ * " \ / ; serta karakter yang ditolak sistem berkas (< > : | ? *), spasi dirapatkan, titik/spasi di
+ * ujung dibuang. Idempoten: nama yang sudah bersih tidak berubah.
  */
-export function cleanTitle(title: string): string {
-  const s = title
+function sanitise(text: string, max: number): string {
+  const s = text
     .normalize("NFC")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u001f\u007f-\u009f\u2028\u2029"\\/;<>:|?*]/g, " ")
     .replace(/\s+/g, " ")
     .replace(/^[\s.]+|[\s.]+$/g, "");
-  return (
-    [...s]
-      .slice(0, TITLE_MAX)
-      .join("")
-      .replace(/[\s.]+$/, "") || "widget"
-  );
+  return [...s]
+    .slice(0, max)
+    .join("")
+    .replace(/[\s.]+$/, "");
 }
 
+/** Judul aman untuk nama file (\u2264 80 titik kode); kosong \u2192 "widget". */
+export function cleanTitle(title: string): string {
+  return sanitise(title, TITLE_MAX) || "widget";
+}
+
+/** Judul dipotong DULU, baru diberi cap waktu + ekstensi: cap waktu selalu utuh (review T-017 R1-D-3). */
 export function exportFileName(title: string, at: Date, ext: "csv" | "xlsx"): string {
   return `${cleanTitle(title)}-${jakartaStamp(at)}.${ext}`;
 }
@@ -62,12 +69,15 @@ const rfc5987 = (s: string) =>
 
 /**
  * Header Content-Disposition unduhan: attachment + filename ASCII + filename* UTF-8 (RFC 6266). Nama
- * dibersihkan lagi di sini sehingga aman walau dipanggil dengan nama dari sumber lain.
+ * dibersihkan lagi di sini sehingga aman walau dipanggil dengan nama dari sumber lain, tapi batasnya
+ * judul + cap waktu (bukan TITLE_MAX lagi): nama dari exportFileName tetap persis sama dengan fileName
+ * di status, termasuk cap waktunya untuk judul 80 karakter.
  */
 export function contentDisposition(fileName: string): string {
   const dot = fileName.lastIndexOf(".");
   const ext = dot > 0 ? fileName.slice(dot + 1).replace(/[^a-z0-9]/gi, "") : "";
-  const base = cleanTitle(dot > 0 ? fileName.slice(0, dot) : fileName);
+  const base =
+    sanitise(dot > 0 ? fileName.slice(0, dot) : fileName, TITLE_MAX + STAMP_LEN) || "widget";
   const name = ext ? `${base}.${ext}` : base;
   return `attachment; filename="${asciiFileName(name)}"; filename*=UTF-8''${rfc5987(name)}`;
 }

@@ -44,6 +44,36 @@ describe("nama file ekspor", () => {
     expect(asciiFileName("Ünïcödé")).toBe("Unicode");
   });
 
+  it("R1-D-3: judul 67/80 karakter — cap waktu utuh, nama Content-Disposition = fileName status", () => {
+    const at = new Date("2026-10-15T16:38:00.000Z"); // 15 Okt 23:38 WIB
+    const title67 = "Tabel transaksi omzet harian per cabang untuk tim keuangan regional";
+    const title80 = `${title67} dan pusat!`.padEnd(80, "x");
+    expect([...title67]).toHaveLength(67);
+    expect([...title80]).toHaveLength(80);
+    const fromHeader = (h: string) => ({
+      ascii: /filename="([^"]*)"/.exec(h)![1],
+      utf8: decodeURIComponent(/filename\*=UTF-8''(.*)$/.exec(h)![1]!),
+    });
+    for (const [title, ext] of [
+      [title67, "csv"],
+      [title80, "xlsx"],
+    ] as const) {
+      const name = exportFileName(title, at, ext);
+      expect(name).toBe(`${title}-20261015-2338.${ext}`);
+      expect(fromHeader(contentDisposition(name))).toEqual({ ascii: name, utf8: name });
+    }
+    // Judul > 80 dipotong dulu, cap waktu tetap utuh; non-ASCII juga utuh di filename*.
+    const long = exportFileName("y".repeat(200), at, "csv");
+    expect(long).toBe(`${"y".repeat(80)}-20261015-2338.csv`);
+    expect(fromHeader(contentDisposition(long)).utf8).toBe(long);
+    const emoji = exportFileName("😀".repeat(90), at, "xlsx");
+    expect(emoji).toBe(`${"😀".repeat(80)}-20261015-2338.xlsx`);
+    expect(fromHeader(contentDisposition(emoji)).utf8).toBe(emoji);
+    // Nama dari sumber lain tetap dibatasi (judul + cap waktu) dan disanitasi.
+    const huge = fromHeader(contentDisposition(`${"z".repeat(300)}.csv`)).utf8;
+    expect(huge).toBe(`${"z".repeat(94)}.csv`);
+  });
+
   it("nama sheet Excel: ≤ 31, tanpa [ ] : * ? / \\, bukan History, tidak diawali/diakhiri '", () => {
     expect(sheetName("Omzet [2026]: Q1/Q2?")).toBe("Omzet 2026 Q1 Q2");
     expect(sheetName("x".repeat(40))).toHaveLength(31);

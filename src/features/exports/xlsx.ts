@@ -6,8 +6,9 @@
  *  - Teks selalu inlineStr (tanpa sharedStrings): "=1+1" tetap string, tidak pernah formula (AC5).
  *    Karakter yang tidak sah di XML dibuang; CR dan "_xHHHH_" literal di-escape seperti Excel sehingga
  *    terbaca kembali persis; sel dipotong di 32.767 karakter (batas Excel) tanpa membelah surrogate.
- *  - Angka di <v>; boolean t="b"; DATE/TIMESTAMP nomor seri 1900 dengan numFmt 14/22; durasi (detik)
- *    nomor seri dengan format [h]:mm:ss.
+ *  - Angka di <v>; boolean t="b"; DATE/TIMESTAMP nomor seri 1900 dengan numFmt 14/22 (koreksi bug
+ *    kabisat 1900 Excel; sebelum 1900-01-01 → teks tanpa zona); durasi (detik) nomor seri dengan format
+ *    [h]:mm:ss.
  *  - Part minimal yang dibutuhkan Excel: [Content_Types].xml, _rels/.rels, workbook (+ rels), styles,
  *    sheet1. Dibaca ulang di uji lewat parser xlsx proyek (src/lib/xlsx/parser.ts).
  */
@@ -88,6 +89,29 @@ export function columnRef(i: number): string {
 const EPOCH_1900 = Date.UTC(1899, 11, 30);
 const DAY_MS = 86_400_000;
 
+/**
+ * Nomor seri sistem tanggal 1900 Excel (review T-017 INT-2). Excel menganggap 1900 tahun kabisat (seri 60
+ * = 29/02/1900 yang tidak ada, ECMA-376 §18.17.4.1): seri 1 = 1900-01-01, 59 = 1900-02-28, 61 =
+ * 1900-03-01. Dari epoch 1899-12-30 hitungan baru benar mulai 1900-03-01, jadi seri < 61 digeser satu.
+ * null = sebelum 1900-01-01 (tidak punya nomor seri) atau tanggal tidak valid.
+ */
+export function excelSerial(d: Date): number | null {
+  const raw = (d.getTime() - EPOCH_1900) / DAY_MS;
+  if (!Number.isFinite(raw)) return null;
+  const serial = raw < 61 ? raw - 1 : raw;
+  return serial < 1 ? null : serial;
+}
+
+/**
+ * Tanggal sebelum 1900 sebagai teks tanpa zona (data naif, D8): "YYYY-MM-DD" untuk tanggal,
+ * "YYYY-MM-DD HH:MM:SS" untuk tanggal-waktu — sama dengan layar dan CSV, bukan ISO UTC berakhiran Z.
+ */
+function naiveDateText(d: Date, kind: XlsxKind): string {
+  const iso = d.toISOString();
+  const t = iso.indexOf("T");
+  return kind === "date" ? iso.slice(0, t) : `${iso.slice(0, t)} ${iso.slice(t + 1, t + 9)}`;
+}
+
 function stringCell(ref: string, v: string, style = 0): string {
   const t = cellText(v);
   if (!t) return "";
@@ -101,9 +125,10 @@ const numberCell = (ref: string, v: string, style = 0) =>
 function cell(ref: string, v: unknown, kind: XlsxKind): string {
   if (v === null || v === undefined) return "";
   if (v instanceof Date) {
-    const serial = (v.getTime() - EPOCH_1900) / DAY_MS;
-    // Sebelum 1900 tidak bisa jadi nomor seri Excel: ditulis sebagai teks ISO.
-    if (!Number.isFinite(serial) || serial < 1) return stringCell(ref, v.toISOString());
+    if (Number.isNaN(v.getTime())) return "";
+    const serial = excelSerial(v);
+    // Sebelum 1900 tidak bisa jadi nomor seri Excel: ditulis sebagai teks tanpa zona.
+    if (serial === null) return stringCell(ref, naiveDateText(v, kind));
     return numberCell(ref, String(serial), kind === "date" ? STYLE.date : STYLE.timestamp);
   }
   if (typeof v === "boolean") return `<c r="${ref}" t="b"><v>${v ? 1 : 0}</v></c>`;

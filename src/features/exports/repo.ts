@@ -86,6 +86,7 @@ export const prismaExportJobRepo: ExportJobRepo = {
         status: true,
         params: true,
         fileName: true,
+        key: true,
       },
     });
     if (!e) return null;

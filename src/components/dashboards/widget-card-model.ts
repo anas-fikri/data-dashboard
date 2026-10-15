@@ -4,9 +4,18 @@
  */
 import { IconChartBar, IconChartLine, IconChartPie, IconTable } from "@tabler/icons-react";
 import type { BodyState } from "@/components/widgets/body-state";
-import { parseWidgetConfig, type ChartType, type WidgetConfig } from "@/features/widgets/spec";
+import {
+  CHART_TYPES,
+  parseWidgetConfig,
+  type ChartType,
+  type WidgetConfig,
+} from "@/features/widgets/spec";
 
 export type CardConfig = Exclude<WidgetConfig, { type: "empty" }>;
+
+/** Jenis grafik (kartu bertombol data di kepala), atau null untuk KPI/tabel. */
+export const chartOf = (type: string): ChartType | null =>
+  (CHART_TYPES as readonly string[]).includes(type) ? (type as ChartType) : null;
 
 /**
  * Spec widget → isi kartu; null = belum diatur atau tidak valid. Spec yang dipetakan ke data terbaru

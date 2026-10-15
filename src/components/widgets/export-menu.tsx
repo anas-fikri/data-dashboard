@@ -13,7 +13,8 @@ import {
   FORMAT_LABEL,
   type ExportJob,
 } from "./export-model";
-import { AGAIN_ATTR, ExportStatus } from "./export-status";
+import { AGAIN_ATTR, ExportStatus, NEWS_ATTR } from "./export-status";
+import { exportJobOf } from "./export-store";
 import { useExportJob } from "./use-export-job";
 import type { WidgetRequest } from "./widget-query";
 
@@ -25,12 +26,14 @@ import type { WidgetRequest } from "./widget-query";
  * saat status berubah (Ekspor lagi, Coba sekarang, Unduh lagi) mengembalikan fokus ke dalam menu.
  * Menu tertutup: ikon berputar selama ekspor, titik galat sampai menu dibuka, dan status diumumkan
  * lewat wilayah status tersembunyi. Ukuran tombol dan urutan sembunyi di kartu sempit milik kartu
- * (className dari widget-card.tsx).
+ * (className dari widget-card-head.tsx). Status ekspor hidup di export-store.ts per widget: kartu yang
+ * dipasang ulang (rotasi tumpukan ↔ grid, mode lihat ↔ edit) menampilkan ekspor yang sama.
  */
 const FORMAT_ICON = { csv: IconFileTypeCsv, xlsx: IconFileTypeXls } as const;
 const FORMATS = ["csv", "xlsx"] as const;
 
 interface Props {
+  widgetId: string;
   title: string;
   /** Jenis widget: tabel = semua baris tersaring; lainnya = nilai yang tampil. */
   table: boolean;
@@ -39,12 +42,16 @@ interface Props {
   className?: string;
 }
 
-export function ExportMenu({ title, table, request, className }: Props) {
+export function ExportMenu({ widgetId, title, table, request, className }: Props) {
   const headingId = useId();
   const [open, setOpen] = useState(false);
   // Keadaan yang terakhir terlihat di menu: galat sesudahnya (menu tertutup) diberi titik di tombol.
-  const [seen, setSeen] = useState<ExportJob | null>(null);
-  const { job, start, pollError, retryPoll } = useExportJob();
+  // Dipasang ulang: ekspor yang sedang berjalan/selesai tidak diumumkan ulang; galat tetap bertitik.
+  const [seen, setSeen] = useState<ExportJob | null>(() => {
+    const now = exportJobOf(widgetId);
+    return now.phase === "error" ? null : now;
+  });
+  const { job, start, pollError, retryPoll, downloadAgain, again } = useExportJob(widgetId);
   const busy = exportBusy(job);
   const content = useRef<HTMLDivElement>(null);
   const buttons = useRef<Partial<Record<ExportFormatInput, HTMLButtonElement | null>>>({});
@@ -60,11 +67,18 @@ export function ExportMenu({ title, table, request, className }: Props) {
     const again = content.current?.querySelector<HTMLElement>(`[${AGAIN_ATTR}]`);
     (again ?? (job.phase === "idle" ? null : buttons.current[job.format]))?.focus();
   }, [open, job, pollError]);
-  // Menu setinggi sisa layar bergulir: status/galat baru (di bawah) digulir ke dalam pandangan.
+  // Menu setinggi sisa layar bergulir: status/galat baru (di bawah) digulir ke pandangan seperlunya,
+  // lalu kontrol yang terfokus dijaga tetap terlihat (skrip tidak pernah menggulir fokus keluar menu).
   useEffect(() => {
     const el = content.current;
-    if (el && job.phase !== "idle") el.scrollTop = el.scrollHeight;
-  }, [job]);
+    if (!el || job.phase === "idle") return;
+    const fresh = el.querySelectorAll<HTMLElement>(`[${NEWS_ATTR}]`);
+    fresh[fresh.length - 1]?.scrollIntoView({ block: "nearest" });
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && el.contains(focused)) {
+      focused.scrollIntoView({ block: "nearest" });
+    }
+  }, [job, pollError, again]);
 
   const unseenError = job.phase === "error" && seen !== job && !open;
   return (
@@ -157,7 +171,14 @@ export function ExportMenu({ title, table, request, className }: Props) {
           <p className="text-xs text-muted-foreground">
             File CSV memakai koma; untuk Excel berbahasa Indonesia pilih Excel (XLSX).
           </p>
-          <ExportStatus job={job} pollError={pollError} onRetryPoll={retryPoll} onAgain={run} />
+          <ExportStatus
+            job={job}
+            pollError={pollError}
+            onRetryPoll={retryPoll}
+            onAgain={run}
+            again={again}
+            onDownloadAgain={() => void downloadAgain()}
+          />
         </div>
       </PopoverContent>
     </Popover>

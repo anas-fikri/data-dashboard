@@ -270,10 +270,8 @@ describe("markup", () => {
     const done = run([{ type: "status", id: "exp1", view: { state: "done", rows: 5 } }], running);
     const html = status(done);
     expect(html).toContain("Siap diunduh");
-    // `download`: tanpa navigasi (galat 404/410 tidak membuka halaman JSON, beforeunload editor diam).
-    expect(html).toMatch(
-      /<a href="\/api\/exports\/exp1\/download" download="" data-testid="export-download"/,
-    );
+    // Tombol (review R1 CL-3): status dibaca dulu, lalu unduhan lewat <a download> yang sama.
+    expect(html).toMatch(/<button[^>]*data-testid="export-download"/);
     expect(html).toContain("Unduh lagi");
     const expired = exportReducer(done, { type: "stopped", id: "x", status: 410 });
     expect(expired).toBe(done); // id lain diabaikan
@@ -294,6 +292,7 @@ describe("markup", () => {
   it("tombol pemicu: nama aksesibel, test id, ukuran dari kartu", () => {
     const html = renderToStaticMarkup(
       createElement(ExportMenu, {
+        widgetId: "w1",
         title: "Penjualan",
         table: true,
         request: { current: null },

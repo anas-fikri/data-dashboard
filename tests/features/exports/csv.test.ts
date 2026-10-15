@@ -68,7 +68,7 @@ async function csvOf(r: ResolvedWidget, maxRows = 1_000_000) {
   const rows = await writeCsv(
     duck.conn,
     buildExportSql(r, src, "csv", maxRows),
-    exportColumns(r).map((c) => c.label),
+    exportColumns(r),
     join(work, `body-${seq}.csv`),
     out,
   );
@@ -164,6 +164,30 @@ describe("CSV tabel lewat DuckDB", () => {
     // Teks dengan CR/LF/koma/kutip dikutip sesuai RFC 4180 di isi mentah.
     expect(text).toContain(`"'\rcr"`);
     expect(text).toContain('"kutip ""x"""');
+    // SEC-1: kolom teks selalu dikutip (juga teks biasa); angka tetap tanpa kutip.
+    expect(text.split("\n")[1]).toMatch(/^"Cabang \d",100,/);
+    expect(text).toContain(',"biasa"\n');
+  });
+
+  it("SEC-1: teks dengan ';' atau tab selalu dikutip (Excel id-ID tidak memecahnya jadi sel formula)", async () => {
+    const out = join(work, "sec1.csv");
+    const rows = await writeCsv(
+      duck.conn,
+      {
+        sql: "SELECT d0, m0 FROM (VALUES ($a, 1), ($b, 2), ($c, 3), (NULL, 4), ('', 5)) AS t(d0, m0)",
+        params: { a: "x;=1+1", b: "y\t-2", c: "@a;b" },
+      },
+      [
+        { key: "d0", label: "Catatan", type: "text" },
+        { key: "m0", label: "Jumlah", type: "integer" },
+      ],
+      join(work, "sec1-body.csv"),
+      out,
+    );
+    expect(rows).toBe(5);
+    expect(readFileSync(out, "utf8")).toBe(
+      '﻿"Catatan","Jumlah"\n"x;=1+1",1\n"y\t-2",2\n"@a;b",3\n,4\n"",5\n',
+    );
   });
 
   it("batas baris: LIMIT penjaga + hitungan dengan WHERE yang sama", async () => {

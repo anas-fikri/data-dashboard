@@ -37,6 +37,8 @@ export interface ExportJobRow {
   status: ExportStatus;
   params: unknown;
   fileName: string | null;
+  /** Objek hasil (terisi saat DONE). */
+  key: string | null;
   /** Judul widget sekarang (nama sheet XLSX); null bila widget sudah dihapus. */
   title: string | null;
 }
@@ -238,13 +240,7 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
     const out = join(work, `ekspor.${ext}`);
     const rows = await watched(d, watch, async () => {
       if (ext === "csv") {
-        return writeCsv(
-          d.conn,
-          built,
-          cols.map((c) => c.label),
-          join(work, "body.csv"),
-          out,
-        );
+        return writeCsv(d.conn, built, cols, join(work, "body.csv"), out);
       }
       const result = await d.conn.stream(built.sql, built.params);
       return writeXlsx(
@@ -262,7 +258,7 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
     uploaded = true;
     const finishedAt = deps.now?.() ?? new Date();
     const expiresAt = new Date(finishedAt.getTime() + deps.ttlMs);
-    // Baris hilang/berubah (user dihapus) → objek dihapus di finally.
+    // Baris hilang/berubah (user dihapus, atau run lain sudah DONE) → finally memutuskan hapus objek.
     if (!(await repo.finish(row.id, { key, rows, bytes, finishedAt, expiresAt }))) {
       return { outcome: "skipped" };
     }
@@ -280,8 +276,25 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
     }
     throw e;
   } finally {
-    if (uploaded) await deps.storage.remove(key).catch(() => {});
+    if (uploaded && !(await referencedByDone(repo, row.id, key))) {
+      await deps.storage.remove(key).catch(() => {});
+    }
     duck?.close();
     rmSync(work, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Objek `key` dipakai baris DONE (review T-017 INT-1)? Semua run ekspor yang sama mengunggah ke key yang
+ * sama: run yang kalah/tumpang tindih (lock BullMQ lepas → replika lain menjalankan ulang) atau finish()
+ * yang sudah commit tapi koneksinya putus tidak boleh menghapus objek yang ditunjuk baris DONE. Baca ulang
+ * gagal → dianggap dipakai (objek dibiarkan; sapuan yatim export-cleanup > 2 jam yang membereskannya).
+ */
+async function referencedByDone(repo: ExportJobRepo, id: string, key: string): Promise<boolean> {
+  try {
+    const cur = await repo.load(id);
+    return cur?.status === "DONE" && cur.key === key;
+  } catch {
+    return true;
   }
 }
