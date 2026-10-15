@@ -33,6 +33,19 @@ export function GrantDone({ email, role }: { email: string; role: ShareRole }) {
   );
 }
 
+interface GrantAdded {
+  userId: string;
+  email: string;
+  role: ShareRole;
+}
+
+/**
+ * Konfirmasi hanya selama masih benar (review T-016 R7): orang itu dicabut atau perannya diubah di
+ * daftar akses → baris hilang, tidak menyebut akses yang sudah tidak ada.
+ */
+export const grantStillTrue = (added: GrantAdded | null, granted: ReadonlyMap<string, ShareRole>) =>
+  added !== null && granted.get(added.userId) === added.role;
+
 interface ShareAddProps {
   dashboardId: string;
   role: ShareRole;
@@ -55,8 +68,9 @@ interface ShareAddProps {
 /**
  * Tambah orang (T-016): cari pengguna → pilih peran → "Bagikan". Tanpa pilihan, "Bagikan" memberi
  * tahu di bawah kolom cari dan memindah fokus ke sana. Berhasil → pencarian dikosongkan dan fokus
- * kembali ke kolom cari untuk orang berikutnya, hasilnya tampil di atas tombol (GrantDone) sampai
- * memilih orang lain atau menekan "Bagikan" lagi; gagal → pilihan dan peran tetap.
+ * kembali ke kolom cari untuk orang berikutnya, hasilnya tampil tepat di bawah kolom cari (GrantDone;
+ * tetap terlihat di ponsel walau ada peringatan, review R7) sampai memilih orang lain, menekan
+ * "Bagikan" lagi, atau akses orang itu berubah di daftar; gagal → pilihan dan peran tetap.
  */
 export function ShareAdd({
   dashboardId,
@@ -74,7 +88,7 @@ export function ShareAdd({
   const [user, setUser] = useState<ShareUserOption | null>(null);
   const [missing, setMissing] = useState(false);
   /** "Bagikan" terakhir yang berhasil (baris konfirmasi terlihat). */
-  const [added, setAdded] = useState<{ email: string; role: ShareRole } | null>(null);
+  const [added, setAdded] = useState<GrantAdded | null>(null);
   /** Naik setiap berhasil: pemilih dipasang ulang (kata kunci + hasil kosong). */
   const [round, setRound] = useState(0);
   const focusSearch = useRef(false);
@@ -94,7 +108,7 @@ export function ShareAdd({
       return;
     }
     if (await onAdd(user, role)) {
-      setAdded({ email: user.email, role });
+      setAdded({ userId: user.id, email: user.email, role });
       setUser(null);
       focusSearch.current = true;
       setRound((n) => n + 1);
@@ -122,6 +136,9 @@ export function ShareAdd({
         }}
         onResults={(items) => setUser((u) => keepSelection(u, items))}
       />
+      {added && grantStillTrue(added, granted) ? (
+        <GrantDone email={added.email} role={added.role} />
+      ) : null}
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-role`} className="text-sm font-medium">
           Peran
@@ -138,7 +155,6 @@ export function ShareAdd({
       </div>
       {warnings}
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
-      {added ? <GrantDone {...added} /> : null}
       <Button
         type="submit"
         pending={busy === "add"}

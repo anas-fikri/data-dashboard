@@ -477,8 +477,8 @@ const grantRow = (dialog: Locator, email: string) =>
 const announcement = (dialog: Locator) => dialog.locator("p.sr-only[aria-live]");
 
 /**
- * "Bagikan" berhasil: diumumkan di wilayah aria-live DAN tampil sebagai baris konfirmasi di atas tombol
- * (review T-016 R6-UI-3). Teksnya sama di kedua tempat, jadi diperiksa per wadah.
+ * "Bagikan" berhasil: diumumkan di wilayah aria-live DAN tampil sebagai baris konfirmasi di bawah kolom
+ * cari (review T-016 R6-UI-3, R7). Teksnya sama di kedua tempat, jadi diperiksa per wadah.
  */
 async function expectGranted(dialog: Locator, email: string, role: "VIEWER" | "EDITOR" = "VIEWER") {
   const text = `${email} kini ${role === "EDITOR" ? "bisa mengedit widget" : "bisa melihat"} dashboard ini.`;
@@ -2633,6 +2633,55 @@ test.describe("berbagi dashboard", () => {
         await expect(line).toHaveCount(0);
         await closeShare(a);
       }
+    } finally {
+      await a.setViewportSize(viewport);
+    }
+  });
+
+  test("R7: konfirmasi 'Bagikan' tepat di bawah kolom cari (terlihat di 320×640 walau ada peringatan editor) dan hilang saat orang itu dicabut atau dijadikan editor di daftar akses", async () => {
+    test.setTimeout(90_000);
+    const viewport = a.viewportSize()!;
+    try {
+      await a.setViewportSize({ width: 320, height: 640 });
+      const dialog = await openShare(a, d7Path());
+      // B editor D7 (tes sebelumnya): peringatan editor tampil di atas tombol "Bagikan".
+      await expect(dialog.getByTestId("share-warning-editor")).toBeVisible();
+      const line = dialog.getByTestId("share-add-done");
+      const revoke = a.getByTestId("share-revoke-confirm");
+      const grantX = async () => {
+        const option = await searchUsers(dialog, X.split("@")[0]!);
+        await expect(option).toHaveCount(1);
+        await option.click();
+        await dialog.getByTestId("share-add").click();
+        await expectGranted(dialog, X);
+        await expectInDialogView(line);
+      };
+      const revokeX = async () => {
+        await grantRow(dialog, X).getByTestId("share-revoke").click();
+        await revoke.getByRole("button", { name: "Cabut akses" }).click();
+        await expect(grantRow(dialog, X)).toHaveCount(0);
+      };
+
+      // Dicabut di daftar akses → konfirmasi "kini bisa melihat" tidak lagi benar → hilang.
+      await grantX();
+      await revokeX();
+      await expect(line).toHaveCount(0);
+
+      // Dijadikan editor di daftar akses → "bisa melihat" sudah salah → hilang.
+      await grantX();
+      await grantRow(dialog, X).getByTestId("share-grant-role").click();
+      await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+      const promote = a.getByTestId("share-promote-confirm");
+      await promote.getByTestId("share-promote").click();
+      await expect(promote).toHaveCount(0);
+      await expect(grantRow(dialog, X).getByTestId("share-grant-role")).toContainText(
+        "Bisa mengedit widget",
+      );
+      await expect(line).toHaveCount(0);
+
+      // Kembalikan: X tanpa akses ke D7.
+      await revokeX();
+      await closeShare(a);
     } finally {
       await a.setViewportSize(viewport);
     }
