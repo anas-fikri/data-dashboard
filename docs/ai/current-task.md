@@ -35,7 +35,6 @@
 - T-033 [todo] Teruskan sheetMap saat aktivasi ingest biasa (R5-1) — docs/ai/tasks/T-033-teruskan-sheetmap-saat-aktivasi-ingest-biasa-r5.md
 - T-034 [todo] Spike penyimpanan segmen per periode dan tetapkan ADR model data periode — docs/ai/tasks/T-034-spike-penyimpanan-segmen-per-periode-dan-tetapka.md
 - T-035 [todo] Spike komponen grid: AG Grid Community vs Glide Data Grid di React 19/Next 16 — docs/ai/tasks/T-035-spike-komponen-grid-ag-grid-community-vs-glide-d.md
-- T-016 [in_progress] Berbagi dashboard: viewer/editor, organisasi, otorisasi query berbasis widget — docs/ai/tasks/T-016-berbagi-dashboard-viewer-editor-organisasi-otori.md ← active in this worktree
 - T-032 [todo] Polish widget kecil: penanda kategori terpotong, legenda pai samping, tab stop legenda — docs/ai/tasks/T-032-polish-widget-kecil-penanda-kategori-terpotong-l.md
 - T-024 [todo] Uji performa 1 GB end-to-end dan batas sumber daya — docs/ai/tasks/T-024-uji-performa-1-gb-end-to-end-dan-batas-sumber-da.md
 - T-023 [todo] Paket deploy on-prem Docker Compose produksi — docs/ai/tasks/T-023-paket-deploy-on-prem-docker-compose-produksi.md
