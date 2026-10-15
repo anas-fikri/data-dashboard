@@ -60,8 +60,10 @@ export function MappingSummary({
               </span>{" "}
               diputuskan
             </>
-          ) : lowCast > 0 || retyped > 0 || reviewing ? (
+          ) : lowCast > 0 || reviewing ? (
             "Tidak ada kolom yang perlu dipilih; tinjau tipe kolom lalu simpan."
+          ) : retyped > 0 ? (
+            "Tidak ada kolom yang perlu dipilih; kolom yang tipe/formatnya diubah diperiksa ulang saat disimpan."
           ) : (
             // Skema aktif berubah sejak ingest sehingga kini cocok: cukup simpan.
             "Kolom file baru sudah cocok dengan skema aktif; simpan untuk mengaktifkan versi ini."

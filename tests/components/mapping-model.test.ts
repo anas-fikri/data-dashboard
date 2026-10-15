@@ -584,4 +584,17 @@ describe("review putaran 3 (T-014)", () => {
     expect(retypedColumns(changed, changed, { 1: { pct: 0.5, typeLabel: "x" } })).toEqual([]);
     expect(retypedColumns(sales, sales)).toEqual([]);
   });
+
+  it("R4-2: pasangan pengguna (tipe hasil inferensi) tidak pernah ditandai 'diubah setelah unggah'", () => {
+    const paired: MappingPlanView = {
+      ...planN2,
+      newColumns: [{ ...col(1, "Jumlah"), type: "integer" }],
+      autoMatched: [{ activePos: 1, newPos: 1 }],
+      missing: [],
+    };
+    expect(retypedColumns(returns, paired)).toEqual([]);
+    const draft: MappingDraft = { a2: { target: "n2", columns: {}, casts: {} } };
+    const loaded: PairPlans = { [pairKey("a2", "n2")]: paired };
+    expect(summaryCounts({ ...view, sheets: [returns] }, draft, loaded, {}).retyped).toBe(0);
+  });
 });

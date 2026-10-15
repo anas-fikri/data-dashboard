@@ -189,11 +189,11 @@ export function MappingSheet({
 
       {retyped.length > 0 ? (
         <p
-          className="border-t px-5 py-3 text-sm text-muted-foreground"
+          className="border-t px-5 py-3 text-sm text-muted-foreground [overflow-wrap:anywhere]"
           data-testid="mapping-retyped"
         >
-          Tipe {retyped.map((n) => `“${n}”`).join(", ")} diubah setelah file ini diunggah; nilainya
-          diperiksa ulang saat disimpan.
+          Tipe/format {retyped.map((n) => `“${n}”`).join(", ")} diubah setelah file ini diunggah;
+          nilainya diperiksa ulang saat disimpan.
         </p>
       ) : null}
 

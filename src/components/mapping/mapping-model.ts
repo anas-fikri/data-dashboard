@@ -309,6 +309,9 @@ export function retypedColumns(
   pair: MappingPlanView,
   flags?: ReviewFlags[string],
 ): string[] {
+  // Pasangan pengguna dibaca dengan inferensi (belum berpasangan saat ingest): beda tipe bukan berarti
+  // diubah setelah unggah — hasil tepatnya datang dari tahap tinjau.
+  if (!sheet.target || pair !== sheet) return [];
   const fresh = new Map(pair.newColumns.map((c) => [c.pos, c]));
   const shown = new Set(pair.lowCast.map((r) => r.pos));
   const out: string[] = [];

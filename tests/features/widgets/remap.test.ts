@@ -170,12 +170,13 @@ describe("matchSheet + alias pemetaan (T-014)", () => {
     expect(matchSheet(v3[0]!, [s("A", "Penjualan"), s("B", "penjualan ")], 2)).toBeNull();
   });
 
-  it("R3-INT-3: nama akar dipakai ulang sheet lain → keturunan alias↔alias yang menang", () => {
+  it("R3-INT-3 / R4-1: nama akar dipakai ulang sheet lain → ambigu, tidak ditebak (null)", () => {
     const v3 = [s("Revenue", "Sales"), s("Target"), s("Sales")];
-    const income = s("Income", "Sales");
-    expect(matchSheet(income, v3, 3)).toBe(v3[0]);
-    // Roll-forward dari Revenue (akar Sales) ke versi berisi Income + Sales baru.
-    const v4 = [income, s("Target"), s("Sales")];
-    expect(matchSheet(v3[0]!, v4, 3)).toBe(v4[0]);
+    // Income keturunan Revenue (alias Sales) dan "Sales Baru" keturunan Sales baru (juga alias Sales)
+    // tidak bisa dibedakan dari nama + alias: keduanya null, bukan pindah diam-diam ke silsilah lain.
+    expect(matchSheet(s("Income", "Sales"), v3, 3)).toBeNull();
+    expect(matchSheet(s("Sales Baru", "Sales"), v3, 3)).toBeNull();
+    const v4 = [s("Income", "Sales"), s("Target"), s("Sales")];
+    expect(matchSheet(v3[0]!, v4, 3)).toBeNull();
   });
 });
