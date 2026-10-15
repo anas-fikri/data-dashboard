@@ -168,6 +168,20 @@ export async function openExportDuck(work: string, memoryLimit = "768MB"): Promi
   return duck;
 }
 
+/**
+ * Ukuran row group parquet kerja = row group typed.parquet sumber (ingest sudah menyesuaikannya dengan
+ * lebar baris): bawaan DuckDB 122.880 baris kehabisan memori di 768MB untuk tabel teks panjang (±4,7 rb
+ * karakter per baris), sedangkan ROW_GROUP_SIZE_BYTES ditolak saat preserve_insertion_order aktif
+ * (review T-017 INT-R4-1).
+ */
+export async function rowGroupOf(conn: DuckDBConnection, src: string): Promise<number> {
+  const r = await conn.runAndReadAll(
+    `SELECT max(row_group_num_rows) FROM parquet_metadata(${lit(src)})`,
+  );
+  const n = Number(r.getRows()[0]?.[0] ?? 0);
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 122_880) : 122_880;
+}
+
 async function countRows(
   conn: DuckDBConnection,
   sql: string,
@@ -245,7 +259,11 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
       // Sort penuh lewat COPY ke parquet kerja dulu, lalu dibaca berurutan: stream() langsung atas SELECT
       // terurut kehabisan memori pada tabel lebar 1 juta baris di 768MB, COPY tidak (review T-017 INT-R3-1).
       const sorted = join(work, "sorted.parquet");
-      await d.conn.run(`COPY (${built.sql}) TO ${lit(sorted)} (FORMAT parquet)`, built.params);
+      const groupRows = await rowGroupOf(d.conn, src);
+      await d.conn.run(
+        `COPY (${built.sql}) TO ${lit(sorted)} (FORMAT parquet, ROW_GROUP_SIZE ${groupRows})`,
+        built.params,
+      );
       const result = await d.conn.stream(`SELECT * FROM read_parquet(${lit(sorted)})`);
       return writeXlsx(
         out,
