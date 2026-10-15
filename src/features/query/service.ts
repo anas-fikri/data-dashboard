@@ -184,6 +184,11 @@ export interface QueryRepo {
     dashboardId?: string;
     filterColumns?: unknown;
     dashboardUpdatedAt?: Date;
+    /**
+     * Jumlah schemaRevision sheet versi aktif (hanya naik): bagian kunci cache sumber filter, agar
+     * kolom yang baru disembunyikan langsung tidak diizinkan lagi (review T-016 R3 SEC-1).
+     */
+    schemaStamp?: number;
   } | null>;
   /**
    * Sumber filter dashboard (T-012, D6): kolom filter tersimpan + dimensi grafik yang cross-filter-nya
@@ -195,6 +200,7 @@ export interface QueryRepo {
     dashboardId: string;
     activeVersionId: string | null;
     updatedAt?: Date;
+    schemaStamp?: number;
   }): Promise<FilterSource[]>;
   /**
    * Dashboard yang boleh dilihat user (pemilik/editor/viewer, T-016) untuk daftar nilai slicer (T-012):
@@ -578,6 +584,7 @@ function dashboardSources(w: AuthorizedWidget, repo: QueryRepo): Promise<FilterS
       dashboardId: w.dashboardId,
       activeVersionId: w.activeVersionId,
       updatedAt: w.dashboardUpdatedAt,
+      schemaStamp: w.schemaStamp,
     });
   }
   return Promise.resolve(

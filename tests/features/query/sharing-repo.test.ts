@@ -17,7 +17,8 @@ vi.mock("@/lib/db", () => ({
     sheet: { findMany: sheetFindMany },
   },
 }));
-vi.mock("@/features/dashboards/service", () => ({ filterSourcesFor: vi.fn() }));
+const filterSourcesFor = vi.fn();
+vi.mock("@/features/dashboards/service", () => ({ filterSourcesFor }));
 vi.mock("@/lib/storage/files", () => ({ downloadToFile: vi.fn(), objectSize: vi.fn() }));
 
 const { prismaQueryRepo } = await import("@/features/query/runtime");
@@ -41,7 +42,11 @@ const widgetRow = (opts: { owner?: string; shares?: ("VIEWER" | "EDITOR")[]; org
     filterColumns: [],
     updatedAt: UPDATED,
     orgShared: opts.org ?? false,
-    dataset: { ownerId: opts.owner ?? OWNER_ID, activeVersionId: VER },
+    dataset: {
+      ownerId: opts.owner ?? OWNER_ID,
+      activeVersionId: VER,
+      activeVersion: { sheets: [{ schemaRevision: 2 }, { schemaRevision: 3 }] },
+    },
     shares: (opts.shares ?? []).map((role) => ({ role })),
   },
 });
@@ -82,6 +87,7 @@ describe("prismaQueryRepo.widget (T-016)", () => {
       dashboardId: D,
       filterColumns: [],
       dashboardUpdatedAt: UPDATED,
+      schemaStamp: 5,
       role,
     });
   });
@@ -89,6 +95,16 @@ describe("prismaQueryRepo.widget (T-016)", () => {
   it("baris tanpa peran yang bisa dihitung → null (deny by default)", async () => {
     widgetFind.mockResolvedValueOnce(widgetRow({}));
     expect(await prismaQueryRepo.widget(U, W)).toBeNull();
+  });
+
+  it("review R3 SEC-1: revisi skema naik (kolom disembunyikan) → sumber filter dibaca ulang, bukan dari cache", async () => {
+    filterSourcesFor.mockResolvedValue([]);
+    const base = { dashboardId: "stamp-dash", activeVersionId: VER, updatedAt: UPDATED };
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 5 });
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 5 });
+    expect(filterSourcesFor).toHaveBeenCalledTimes(1);
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 6 });
+    expect(filterSourcesFor).toHaveBeenCalledTimes(2);
   });
 });
 

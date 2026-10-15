@@ -23,7 +23,10 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  * usang → STALE) → Back/Forward memuat versi terbaru (mode lihat + editor) → editor diturunkan →
  * tabel: urut kolom yang baru dibuang → CHANGED → KPI CHANGED di ponsel 320 px → cabut + AuditLog →
  * hapus dataset X → dataset Y: daftar "Dibagikan ke saya" (share langsung dulu) → pencabutan yang
- * muatan pertamanya nilai slicer → dataset Z (2 sheet): tautan peringatan kolom filter memindah fokus.
+ * muatan pertamanya nilai slicer → dataset Z (2 sheet): tautan peringatan kolom filter memindah fokus →
+ * review R3 di D3: E viewer → editor lewat konfirmasi → mode edit E: widget dihapus pemilik lalu E dicabut
+ * → kolom filter disembunyikan (viewer B tidak bisa menebak nama) → hapus D3 yang dibagikan (audit) →
+ * pemilik X dengan 21 share langsung ke C (batas 20 per pemilik).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -58,6 +61,14 @@ const DATASET_Z = `Dua sheet ${TAG}`;
 const D5_NAME = `Dua sheet ringkas ${TAG}`;
 const Z_KPI = "Jumlah kiriman";
 const FILTER_LINK = "pengaturan dashboard (mode edit)";
+/** Peringatan editor (AC6) di bagian tambah orang dan di konfirmasi "Jadikan editor?". */
+const EDITOR_WARNING = "Editor dapat membaca semua kolom tidak tersembunyi dataset ini.";
+/** Widget D3 yang dihapus pemilik selagi editor E di mode edit (review T-016 R3-CL-1). */
+const GONE_WIDGET = "Hapus nanti";
+/** Jawaban non-pemilik untuk nama yang bukan (lagi) kolom filter dashboard (review T-016 R3-SEC-1). */
+const NOT_FILTER = "Kolom ini bukan kolom filter dashboard.";
+const NOT_ALLOWED =
+  "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 /** Pesan server untuk ubahan widget dari versi pengaturan lama (review T-016 DI-1). */
 const STALE_WIDGET =
   "Widget ini sudah berubah sejak halaman ini dimuat. Muat ulang halaman untuk melihat versi terbaru.";
@@ -108,6 +119,9 @@ let secretKpiId = "";
 let editorWidgetId = "";
 let d3 = "";
 let d4 = "";
+let d5 = "";
+/** KPI D3 (dataset Y), dipakai lagi setelah D3 dihapus. */
+let produkKpiId = "";
 let grantAction: Captured | null = null;
 let renameAction: Captured | null = null;
 const d1Path = () => `/dashboards/${d1}`;
@@ -170,12 +184,39 @@ async function replay(page: Page, action: Captured | null, from: string, to: str
   return res.text();
 }
 
-async function createDataset(page: Page, name: string, file: string): Promise<string> {
+/**
+ * Kirim ulang Server Action dengan cookie `page` dan beberapa penggantian (di body DAN URL halaman, mis.
+ * id dashboard). Status < 400 diperiksa; hasil = payload RSC mentah.
+ */
+async function send(page: Page, action: Captured | null, pairs: [string, string][]) {
+  expect(action).not.toBeNull();
+  let { url, body } = action!;
+  for (const [from, to] of pairs) {
+    url = url.replaceAll(from, to);
+    body = body.replaceAll(from, to);
+  }
+  const res = await page.request.fetch(url, {
+    method: "POST",
+    headers: action!.headers,
+    data: body,
+    maxRedirects: 0,
+  });
+  const text = await res.text();
+  expect(res.status(), text.slice(0, 500)).toBeLessThan(400);
+  return text;
+}
+
+/** Dataset tanpa unggahan (cukup untuk membuat dashboard). */
+async function newDataset(page: Page, name: string): Promise<string> {
   await page.goto("/datasets/baru");
   await page.getByLabel("Nama dataset").fill(name);
   await page.getByRole("button", { name: "Buat dataset" }).click();
   await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
-  const id = new URL(page.url()).pathname.split("/").pop()!;
+  return new URL(page.url()).pathname.split("/").pop()!;
+}
+
+async function createDataset(page: Page, name: string, file: string): Promise<string> {
+  const id = await newDataset(page, name);
   await page.getByTestId("upload-input").setInputFiles(file);
   await expect(page.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 120_000 });
   return id;
@@ -1381,7 +1422,7 @@ test.describe("berbagi dashboard", () => {
     // Workbook 2 sheet: KPI di sheet pertama, kolom filter "No Resi" dari sheet kedua → nama sama di dua
     // sheet yang dipakai dashboard → peringatan tumpang tindih di dialog share.
     const datasetZ = await createDataset(a, DATASET_Z, "tests/fixtures/kecil.xlsx");
-    const d5 = await createDashboard(a, datasetZ, D5_NAME);
+    d5 = await createDashboard(a, datasetZ, D5_NAME);
     const panel = await addWidget(a, Z_KPI, "Angka");
     await expect(panel.getByLabel("Sheet", { exact: true })).toContainText("Pengiriman 1");
     const section = a.getByTestId("dashboard-filter-columns");
@@ -1430,5 +1471,385 @@ test.describe("berbagi dashboard", () => {
       await link.focus();
       await link.press("Enter");
     });
+  });
+
+  test("R3-UI-2: VIEWER → EDITOR di 'Orang dengan akses' lewat konfirmasi 'Jadikan editor?' (Batal = tetap viewer, fokus kembali); peringatan editor dirujuk aria-describedby", async () => {
+    test.setTimeout(90_000);
+    const d3Path = `/dashboards/${d3}`;
+    const dialog = await openShare(a, d3Path);
+    await expect(dialog.getByText("Belum ada orang yang diberi akses.")).toBeVisible();
+    const options = await searchUsers(dialog, `shr_ed-${TAG}`);
+    await expect(options).toHaveCount(1);
+    await expect(options).toHaveAttribute("data-email", E);
+    await options.click();
+    await expect(options.getByRole("radio")).toBeChecked();
+
+    // Wilayah peringatan (aria-live) sudah ada dan tidak display:none SEBELUM peringatan editor
+    // muncul, jadi kemunculannya diumumkan (review T-016 R3-UI-1).
+    await dialog.evaluate((el) =>
+      el
+        .querySelectorAll("[aria-live]")
+        .forEach((n) => n.setAttribute("data-e2e-live", getComputedStyle(n).display)),
+    );
+    const role = dialog.getByTestId("share-role");
+    const add = dialog.getByTestId("share-add");
+    await role.click();
+    await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+    const warning = dialog.getByTestId("share-warning-editor");
+    await expect(warning).toHaveText(EDITOR_WARNING);
+    await expect(warning.locator("xpath=..")).toHaveAttribute("aria-live", "polite");
+    const before = await warning.locator("xpath=..").getAttribute("data-e2e-live");
+    expect(before, "wilayah aria-live dipasang bersama peringatannya").not.toBeNull();
+    expect(before).not.toBe("none");
+    await warning.locator("xpath=..").evaluate((el) => el.setAttribute("data-e2e-region", ""));
+    const region = dialog.locator("[data-e2e-region]");
+    const warningId = (await warning.getAttribute("id"))!;
+    expect(warningId).toBeTruthy();
+    await expect(role).toHaveAttribute("aria-describedby", warningId);
+    await expect(add).toHaveAttribute("aria-describedby", warningId);
+    // Kembali ke "Hanya lihat": peringatan dan rujukannya hilang; wilayahnya tetap.
+    await role.click();
+    await a.getByRole("option", { name: "Hanya lihat" }).click();
+    await expect(warning).toHaveCount(0);
+    expect(await add.getAttribute("aria-describedby")).toBeNull();
+    await expect(region).toHaveAttribute("aria-live", "polite");
+    expect(await region.evaluate((el) => getComputedStyle(el).display)).not.toBe("none");
+
+    await add.click();
+    await expect(dialog.getByText(`${E} kini bisa melihat dashboard ini.`)).toBeAttached();
+    const select = grantRow(dialog, E).getByTestId("share-grant-role");
+    await expect(select).toContainText("Hanya lihat");
+
+    // Naik ke editor dari daftar akses: konfirmasi dengan peringatan editor; Batal = tetap viewer dan
+    // fokus kembali ke Select baris itu (review T-016 R3-UI-2).
+    const confirm = a.getByTestId("share-promote-confirm");
+    const promote = async () => {
+      await select.click();
+      await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+      await expect(confirm).toBeVisible();
+      await expect(confirm).toContainText("Jadikan editor?");
+      await expect(confirm).toContainText(E);
+      await expect(confirm.getByTestId("share-promote-warning")).toHaveText(EDITOR_WARNING);
+    };
+    await promote();
+    await confirm.getByRole("button", { name: "Batal" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(select).toBeFocused();
+    await expect(select).toContainText("Hanya lihat");
+    await expect(dialog.getByTestId("share-warning-editor")).toHaveCount(0);
+    expect(audit("dashboard", d3).filter((r) => r.action === "dashboard.share.role")).toEqual([]);
+
+    await promote();
+    await confirm.getByTestId("share-promote").click();
+    await expect(confirm).toHaveCount(0);
+    await expect(
+      dialog.getByText(`Peran ${E} diubah menjadi Bisa mengedit widget.`),
+    ).toBeAttached();
+    await expect(select).toContainText("Bisa mengedit widget");
+    await expect(select).toBeFocused();
+    // Ada editor → peringatan di bagian tambah orang, dirujuk Select peran dan "Bagikan".
+    const shown = dialog.getByTestId("share-warning-editor");
+    await expect(shown).toBeVisible();
+    const shownId = (await shown.getAttribute("id"))!;
+    await expect(role).toHaveAttribute("aria-describedby", shownId);
+    await expect(add).toHaveAttribute("aria-describedby", shownId);
+    await closeShare(a);
+
+    expect(
+      audit("dashboard", d3)
+        .filter((r) => r.action === "dashboard.share.role")
+        .map((r) => [r.actorId, r.meta]),
+    ).toEqual([[ids[A], { userId: ids[E], from: "VIEWER", to: "EDITOR" }]]);
+    expect((await e.goto(d3Path))?.status()).toBe(200);
+    await expect(e.getByText("Editor", { exact: true })).toBeVisible();
+    await expect(e.getByTestId("edit-dashboard")).toBeVisible();
+  });
+
+  test("R3-CL-1: mode edit — widget dihapus pemilik di tempat lain memakai satu refresh; pencabutan SESUDAHNYA tetap me-refresh ke 404", async () => {
+    test.setTimeout(90_000);
+    const d3Path = `/dashboards/${d3}`;
+    await a.goto(`${d3Path}?mode=edit`);
+    await expectValue(a, PRODUK_KPI, SUM_JUMLAH);
+    produkKpiId = await widgetId(a, PRODUK_KPI);
+    await addWidget(a, GONE_WIDGET, "Angka");
+    await expectValue(a, GONE_WIDGET, SUM_JUMLAH);
+    const goneId = await widgetId(a, GONE_WIDGET);
+
+    await e.goto(`${d3Path}?mode=edit`);
+    await expect(e.getByTestId("canvas-toolbar")).toBeVisible();
+    await expectValue(e, PRODUK_KPI, SUM_JUMLAH);
+    await expectValue(e, GONE_WIDGET, SUM_JUMLAH);
+
+    // Pemilik menghapus widget itu di tab/perangkat lain (panelnya masih terbuka dari addWidget).
+    await expect(a.getByTestId("widget-panel").getByLabel("Judul", { exact: true })).toHaveValue(
+      GONE_WIDGET,
+    );
+    const removed = a.waitForResponse(
+      (r) =>
+        r.url().includes(`/api/dashboards/${d3}/widgets/${goneId}`) &&
+        r.request().method() === "DELETE",
+    );
+    await a.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
+    const del = await removed;
+    expect(del.status(), await del.text()).toBe(200);
+    await expect(widgetTitled(a, GONE_WIDGET)).toHaveCount(0);
+
+    // Refresh RSC halaman ini (router.refresh), bukan prefetch tautan.
+    let refreshes = 0;
+    const track = (r: Request) => {
+      const h = r.headers();
+      if (
+        r.method() === "GET" &&
+        h["rsc"] === "1" &&
+        !h["next-router-prefetch"] &&
+        new URL(r.url()).pathname === d3Path
+      ) {
+        refreshes++;
+      }
+    };
+    e.on("request", track);
+    const queryOf = (id: string, status: number) =>
+      e.waitForResponse(
+        (r) =>
+          r.url().endsWith("/api/query") &&
+          r.status() === status &&
+          (r.request().postData() ?? "").includes(id),
+      );
+
+    // E memfilter → semua widget dimuat ulang: widget yang dihapus 404 → satu refresh; E tetap di editor.
+    const gone404 = queryOf(goneId, 404);
+    await e.locator('[data-testid=filter-slicer][data-column="Produk"]').click();
+    await e.locator('[data-testid=filter-slicer-option][data-value="Produk 1"] input').check();
+    await e.keyboard.press("Escape");
+    await gone404;
+    await expectValue(e, PRODUK_KPI, 2);
+    await expect.poll(() => refreshes).toBe(1);
+    await e.waitForTimeout(1_000);
+    expect(refreshes).toBe(1);
+    await expect(e.getByRole("heading", { level: 1 })).toHaveText(D3_NAME);
+    await expect(e.getByTestId("canvas-toolbar")).toBeVisible();
+    // Editor tidak dipasang ulang oleh refresh (perubahan tertunda aman): kartu widget yang dihapus tetap
+    // di kanvas edit dengan galatnya — yang dipasang ulang hanya penjaga refresh.
+    await expect(widgetTitled(e, GONE_WIDGET).getByTestId("widget-error")).toContainText(
+      "Widget tidak ditemukan.",
+    );
+    await expect(widgetTitled(e, PRODUK_KPI).getByTestId("widget-error")).toHaveCount(0);
+
+    // Pemilik mencabut E; muatan E berikutnya 404 → refresh lagi (penjaga dipasang ulang) → 404.
+    const dialog = await openShare(a, d3Path);
+    await grantRow(dialog, E).getByTestId("share-revoke").click();
+    const confirm = a.getByTestId("share-revoke-confirm");
+    await expect(confirm).toContainText(E);
+    await confirm.getByRole("button", { name: "Cabut akses" }).click();
+    await expect(dialog.getByText(`Akses ${E} dicabut.`)).toBeAttached();
+    await closeShare(a);
+
+    const kpi404 = queryOf(produkKpiId, 404);
+    await e.getByTestId("filter-clear-all").click();
+    await kpi404;
+    await expect(e.getByRole("heading", { level: 1 })).toHaveText("Halaman tidak ditemukan");
+    await expect(e.getByTestId("widget")).toHaveCount(0);
+    expect(new URL(e.url()).pathname).toBe(d3Path);
+    expect(refreshes).toBe(2);
+    e.off("request", track);
+  });
+
+  test("R3-SEC-1: kolom filter tersimpan yang disembunyikan → viewer mendapat jawaban yang sama dengan nama tebakan (nilai slicer + query widget); pemilik tetap COLUMN_UNAVAILABLE / skippedFilters", async () => {
+    test.setTimeout(120_000);
+    const d3Path = `/dashboards/${d3}`;
+    // B jadi viewer D3: Server Action grant pemilik (uji AC1) dikirim ulang untuk D3.
+    expect(await send(a, grantAction, [[d1, d3]])).toContain('"ok":true');
+    const values = (p: Page, column: string) =>
+      api(p, "POST", `/api/dashboards/${d3}/filter-values`, { column });
+    const filtered = (p: Page, column: string) =>
+      query(p, {
+        widgetId: produkKpiId,
+        dashboardFilters: [{ column, op: "in", values: ["Produk 1"] }],
+      });
+    const answer = async (res: APIResponse) => ({
+      status: res.status(),
+      body: (await res.json()) as Record<string, unknown>,
+    });
+    // Sebelum disembunyikan: Produk kolom filter yang sah untuk B.
+    expect((await answer(await values(b, "Produk"))).status).toBe(200);
+    expect((await answer(await filtered(b, "Produk"))).status).toBe(200);
+
+    // Pemilik menyembunyikan Produk di halaman Skema dataset Y.
+    await a.goto(`/datasets/${datasetY}/skema`);
+    await expect(a.getByTestId("schema-column").first()).toBeVisible({ timeout: 30_000 });
+    const pos = await a
+      .getByTestId("schema-column")
+      .evaluateAll(
+        (els) =>
+          els
+            .find(
+              (el) => el.querySelector<HTMLInputElement>('input[id$="-name"]')?.value === "Produk",
+            )
+            ?.getAttribute("data-pos") ?? "",
+      );
+    expect(pos).toMatch(/^\d+$/);
+    await a.getByLabel(`Sembunyikan kolom ${pos}`).check();
+    await a.getByRole("button", { name: "Simpan perubahan" }).click();
+    await expect(a.getByTestId("recast-done")).toBeVisible({ timeout: 60_000 });
+
+    // Viewer: kolom yang kini disembunyikan = nama yang tidak pernah jadi kolom filter (kedua endpoint).
+    const GUESS = `Tebakan ${TAG}`;
+    const [hiddenV, guessV] = [
+      await answer(await values(b, "Produk")),
+      await answer(await values(b, GUESS)),
+    ];
+    expect(hiddenV).toEqual(guessV);
+    expect(hiddenV).toMatchObject({
+      status: 400,
+      body: { ok: false, code: "INVALID", message: NOT_FILTER },
+    });
+    // Query widget: sumber filter dashboard di-cache ≤ 30 dtk per (dashboard, versi aktif, updatedAt) —
+    // menyembunyikan kolom tidak mengubah kuncinya, jadi jawaban yang dimuat sebelum disembunyikan (cek
+    // di atas) bisa bertahan sampai umur cache habis (query/runtime.ts filterSourceCache).
+    const guessQ = await answer(await filtered(b, GUESS));
+    let hiddenQ: Awaited<ReturnType<typeof answer>> | undefined;
+    await expect
+      .poll(
+        async () => {
+          hiddenQ = await answer(await filtered(b, "Produk"));
+          return hiddenQ.status;
+        },
+        { timeout: 45_000, intervals: [2_000] },
+      )
+      .toBe(400);
+    expect(hiddenQ).toEqual(guessQ);
+    expect(hiddenQ).toMatchObject({
+      status: 400,
+      body: { ok: false, code: "INVALID", message: NOT_ALLOWED },
+    });
+    // Halaman B tidak memuat nama itu sebagai slicer.
+    await b.goto(d3Path);
+    await expectValue(b, PRODUK_KPI, SUM_JUMLAH);
+    await expect(b.locator('[data-testid=filter-slicer][data-column="Produk"]')).toHaveCount(0);
+
+    // Pemilik tetap mendapat jawaban rinci untuk diperbaiki.
+    expect(await answer(await values(a, "Produk"))).toMatchObject({
+      status: 409,
+      body: {
+        ok: false,
+        code: "COLUMN_UNAVAILABLE",
+        message: "Kolom filter ini tidak ada atau disembunyikan di data aktif.",
+      },
+    });
+    expect(await answer(await values(a, GUESS))).toMatchObject({
+      status: 400,
+      body: { code: "INVALID", message: NOT_FILTER },
+    });
+    const ownQ = await answer(await filtered(a, "Produk"));
+    expect(ownQ).toMatchObject({ status: 200, body: { ok: true, skippedFilters: ["Produk"] } });
+    expect(Number((ownQ.body.rows as unknown[][])[0]![0])).toBe(SUM_JUMLAH);
+    expect(await answer(await filtered(a, GUESS))).toMatchObject({
+      status: 400,
+      body: { code: "INVALID", message: NOT_ALLOWED },
+    });
+  });
+
+  test("R3-CC-2: hapus dashboard yang dibagikan → konfirmasi menyebut dampaknya; grantee 404; AuditLog dashboard.delete {name, shares, orgShared}", async () => {
+    test.setTimeout(90_000);
+    const d3Path = `/dashboards/${d3}`;
+    // Dashboard pribadi (D5): konfirmasi tanpa kalimat dampak.
+    await a.goto(`/dashboards/${d5}?mode=edit`);
+    await a.getByRole("button", { name: "Hapus dashboard" }).click();
+    const plain = a.getByRole("dialog", { name: `Hapus “${D5_NAME}”?` });
+    await expect(plain).toContainText("Dashboard dan semua widgetnya dihapus permanen.");
+    await expect(plain.getByTestId("delete-dashboard-share-impact")).toHaveCount(0);
+    await plain.getByRole("button", { name: "Batal" }).click();
+    await expect(plain).toHaveCount(0);
+
+    // D3: B (viewer langsung) + organisasi.
+    const dialog = await openShare(a, d3Path);
+    await expect(grantRow(dialog, B)).toHaveCount(1);
+    const org = dialog.getByTestId("share-org");
+    await org.click();
+    await expect(org).toBeChecked();
+    await closeShare(a);
+    expect((await c.goto(d3Path))?.status()).toBe(200);
+
+    await a.goto(`${d3Path}?mode=edit`);
+    await a.getByRole("button", { name: "Hapus dashboard" }).click();
+    const confirm = a.getByRole("dialog", { name: `Hapus “${D3_NAME}”?` });
+    await expect(confirm.getByTestId("delete-dashboard-share-impact")).toHaveText(
+      "1 orang dan seluruh organisasi kehilangan akses ke dashboard ini.",
+    );
+    await confirm.getByRole("button", { name: "Hapus permanen" }).click();
+    await expect(a).toHaveURL(/\/dashboards\?deleted=1$/);
+
+    for (const p of [b, c]) {
+      expect((await p.goto(d3Path))?.status()).toBe(404);
+      await expectStatus(await query(p, { widgetId: produkKpiId }), 404, "NOT_FOUND");
+    }
+    const rows = audit("dashboard", d3);
+    const deleted = rows.filter((r) => r.action === "dashboard.delete");
+    expect(deleted, JSON.stringify(rows)).toHaveLength(1);
+    expect(deleted[0]).toMatchObject({ actorId: ids[A], targetType: "dashboard", targetId: d3 });
+    expect(deleted[0]!.meta).toEqual({ name: D3_NAME, shares: 1, orgShared: true });
+    expect(deleted[0]!.ip.length).toBeGreaterThan(0);
+    expect(Number.isNaN(Date.parse(deleted[0]!.at))).toBe(false);
+    // Riwayat sebelumnya tetap (targetId tanpa FK).
+    expect(rows.some((r) => r.action === "dashboard.share.grant")).toBe(true);
+  });
+
+  test("R3-SEC-2: 21 share langsung dari satu pemilik → 'Dibagikan ke saya' C memuat 20 terbaru + catatan '1 dashboard lain…'", async () => {
+    test.setTimeout(180_000);
+    const capName = (i: number) => `Batas ${String(i).padStart(2, "0")} ${TAG}`;
+    // X (pemilik baru): 3 dataset kosong (maks. 10 dashboard per dataset) → 21 dashboard.
+    const sets: string[] = [];
+    for (let i = 1; i <= 3; i++) sets.push(await newDataset(x, `Batas data ${i} ${TAG}`));
+    const setOf = (i: number) => sets[Math.floor((i - 1) / 10)]!;
+    // Dashboard pertama lewat formulir (Server Action ditangkap); sisanya Server Action yang sama.
+    await x.goto(`/dashboards/baru?dataset=${sets[0]}`);
+    await x.getByLabel("Nama dashboard").fill(capName(1));
+    const create = nextAction(x, capName(1));
+    await x.getByRole("button", { name: "Buat dashboard" }).click();
+    const createAction = await create;
+    await expect(x).toHaveURL(/\?mode=edit$/);
+    for (let i = 2; i <= 21; i++) {
+      await send(x, createAction, [
+        [capName(1), capName(i)],
+        [sets[0]!, setOf(i)],
+      ]);
+    }
+    await x.goto("/dashboards");
+    const own = x.getByTestId("dashboard-row");
+    await expect(own).toHaveCount(21);
+    const idOf = Object.fromEntries(
+      await own.evaluateAll((els) =>
+        els.map((el) => [
+          el.querySelector("span")?.textContent?.trim() ?? "",
+          el.getAttribute("href")!.split("/").pop()!,
+        ]),
+      ),
+    ) as Record<string, string>;
+    // Share langsung ke C, urut dibuat (updatedAt naik): dashboard pertama paling lama → terpotong.
+    for (let i = 1; i <= 21; i++) {
+      const id = idOf[capName(i)];
+      expect(id, capName(i)).toBeTruthy();
+      expect(
+        await send(x, grantAction, [
+          [d1, id!],
+          [ids[B]!, ids[C]!],
+        ]),
+        capName(i),
+      ).toContain('"ok":true');
+    }
+
+    await c.goto("/dashboards");
+    const fromX = c.getByTestId("shared-list").getByTestId("shared-row").filter({ hasText: X });
+    await expect(fromX).toHaveCount(20);
+    await expect(c.getByTestId("shared-hidden")).toHaveText(
+      "1 dashboard lain tidak ditampilkan karena batas daftar: paling banyak 20 dashboard dari satu pemilik.",
+    );
+    await expect(sharedRow(c, capName(1))).toHaveCount(0);
+    await expect(sharedRow(c, capName(21))).toBeVisible();
+    await expect(sharedRow(c, capName(2))).toBeVisible();
+    // Share organisasi A (D4) tidak ikut terdesak.
+    await expect(sharedRow(c, D4_NAME)).toBeVisible();
+    // Yang terpotong hanya tidak terdaftar: aksesnya lewat URL tetap.
+    expect((await c.goto(`/dashboards/${idOf[capName(1)]}`))?.status()).toBe(200);
   });
 });

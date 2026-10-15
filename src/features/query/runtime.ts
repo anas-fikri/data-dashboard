@@ -34,9 +34,8 @@ const historyCache = new HistoryCache<History>({
 /**
  * Sumber filter per dashboard (T-012: kolom filter + dimensi cross-filter beserta tipenya): dibaca
  * sekali untuk banyak query widget dalam satu muat dashboard. Kunci memuat versi aktif + updatedAt
- * dashboard (atur widget/kolom filter menaikkannya), jadi perubahan pemilik langsung berlaku; umur
- * pendek menutup sisanya (mis. kolom disembunyikan atau tipenya diubah — filter pada kolom tersembunyi
- * tetap dilewati widget).
+ * dashboard (atur widget/kolom filter menaikkannya) + jumlah schemaRevision sheet aktif (sembunyikan /
+ * ubah tipe kolom menaikkannya), jadi perubahan pemilik langsung berlaku; umur pendek menutup sisanya.
  */
 const filterSourceCache = new HistoryCache<FilterSource[]>({
   ttlMs: 30_000,
@@ -108,7 +107,13 @@ export const prismaQueryRepo: QueryRepo = {
             filterColumns: true,
             updatedAt: true,
             ...roleSelect(userId),
-            dataset: { select: { ownerId: true, activeVersionId: true } },
+            dataset: {
+              select: {
+                ownerId: true,
+                activeVersionId: true,
+                activeVersion: { select: { sheets: { select: { schemaRevision: true } } } },
+              },
+            },
           },
         },
       },
@@ -126,13 +131,17 @@ export const prismaQueryRepo: QueryRepo = {
         dashboardId: w.dashboard.id,
         filterColumns: w.dashboard.filterColumns,
         dashboardUpdatedAt: w.dashboard.updatedAt,
+        schemaStamp: (w.dashboard.dataset.activeVersion?.sheets ?? []).reduce(
+          (sum, s) => sum + s.schemaRevision,
+          0,
+        ),
         role,
       }
     );
   },
-  filterSources({ dashboardId, activeVersionId, updatedAt }) {
+  filterSources({ dashboardId, activeVersionId, updatedAt, schemaStamp }) {
     return filterSourceCache.get(
-      `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}`,
+      `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}:${schemaStamp ?? 0}`,
       () => filterSourcesFor(dashboardId),
     );
   },
