@@ -77,7 +77,7 @@ describe("routeSecurityHeaders (penimpaan per rute oleh proxy)", () => {
   // Next hanya menambahkan header Route Handler yang belum ada, jadi Referrer-Policy route unduh
   // kalah dari next.config headers() (strict-origin-when-cross-origin); header proxy yang menang.
   describe("proxy", () => {
-    const SECRET = "rahasia-uji-proxy-yang-cukup-panjang-123456";
+    const SECRET = "x".repeat(32); // nilai uji (pola sama dengan env.test.ts)
     const saved = { AUTH_SECRET: process.env.AUTH_SECRET, APP_URL: process.env.APP_URL };
     beforeEach(() => {
       process.env.AUTH_SECRET = SECRET;
