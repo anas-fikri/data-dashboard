@@ -17,15 +17,15 @@ tidak punya akses ke PostgreSQL, Redis, atau object storage.
 
 ## Env
 
-| Variabel                  | Default     | Keterangan                                                                                                                                                                                                              |
-| ------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `RENDERER_SECRET`         | —           | Wajib, ≥ 32 karakter, sama dengan milik worker. Produksi menolak placeholder `change-me`.                                                                                                                               |
-| `APP_INTERNAL_URL`        | —           | Wajib. Origin app saja (`http://host:port`). Host http yang dipaksa https oleh HSTS preload Chromium ditolak (`app`, `dev`, `page`, `foo`, `*.app`, …; daftar di `env.ts`). Pakai nama service seperti `dashboard-web`. |
-| `RENDERER_HOST`           | `127.0.0.1` | `0.0.0.0` di container.                                                                                                                                                                                                 |
-| `RENDERER_PORT`           | `3200`      |                                                                                                                                                                                                                         |
-| `RENDERER_CONCURRENCY`    | `1`         | 1–2 job bersamaan; penuh → 503 `RENDERER_BUSY`.                                                                                                                                                                         |
-| `RENDER_READY_TIMEOUT_MS` | `30000`     | Batas tukar token + navigasi + tunggu `data-render-ready="1"`.                                                                                                                                                          |
-| `ALLOW_DEV_WEBSOCKET`     | `false`     | Dev saja (ditolak di produksi): WebSocket same-origin (HMR `next dev`) diteruskan. Tanpa ini WebSocket same-origin ditutup; lintas origin selalu menggagalkan job.                                                      |
+| Variabel                  | Default     | Keterangan                                                                                                                                                                                                                     |
+| ------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `RENDERER_SECRET`         | —           | Wajib, ≥ 32 karakter, sama dengan milik worker. Produksi menolak placeholder `change-me`.                                                                                                                                      |
+| `APP_INTERNAL_URL`        | —           | Wajib. Origin app saja (`http://host:port`). Host http yang dipaksa https oleh HSTS preload Chromium ditolak (`app`, `dev`, `page`, `foo`, `*.app`, …; daftar di `env.ts`). Pakai nama service seperti `dashboard-web`.        |
+| `RENDERER_HOST`           | `127.0.0.1` | `0.0.0.0` di container.                                                                                                                                                                                                        |
+| `RENDERER_PORT`           | `3200`      |                                                                                                                                                                                                                                |
+| `RENDERER_CONCURRENCY`    | `1`         | 1–2 job bersamaan; penuh → 503 `RENDERER_BUSY`.                                                                                                                                                                                |
+| `RENDER_READY_TIMEOUT_MS` | `30000`     | Batas tukar token + navigasi + tunggu `data-render-ready="1"`.                                                                                                                                                                 |
+| `ALLOW_DEV_WEBSOCKET`     | `false`     | Dev saja (ditolak di produksi): WebSocket same-origin (HMR `next dev`) diteruskan dan Local Network Access Chromium dimatikan (`browserArgs`). Tanpa ini WebSocket same-origin ditutup; lintas origin selalu menggagalkan job. |
 
 ## Kontrak HTTP
 
@@ -78,7 +78,12 @@ Dev (host, dipakai worker dan e2e): `.env` berisi `RENDERER_SECRET` (sama dengan
 npm run renderer            # siap saat log "renderer berjalan"
 ```
 
-Untuk `next dev` tambahkan `ALLOW_DEV_WEBSOCKET=true` agar klien HMR tidak memutus/memuat ulang halaman.
+Untuk `next dev` tambahkan `ALLOW_DEV_WEBSOCKET=true`: klien HMR `next dev` baru menghidrasi halaman setelah
+WebSocket-nya tersambung. Dokumen yang dipenuhi `route.fulfill` tidak punya alamat IP, jadi Chromium
+menganggapnya publik dan Local Network Access memblokir WebSocket ke localhost
+(`net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS` → tanda siap tidak pernah muncul → `RENDER_TIMEOUT`);
+karena itu flag ini juga meluncurkan Chromium dengan `--disable-features=LocalNetworkAccessChecks`
+(menggantikan daftar `--disable-features` bawaan Playwright — dev saja).
 Chromium berasal dari `npx playwright install chromium` (revisi sama dengan playwright-core 1.64.0).
 
 Container (profil `renderer`, tidak ikut `npm run compose:up`): image Playwright yang di-pin, user

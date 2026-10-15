@@ -132,3 +132,16 @@ export function browserEnv(source: Record<string, string | undefined>): Record<s
   }
   return out;
 }
+
+/**
+ * Argumen tambahan Chromium. Hanya dev (ALLOW_DEV_WEBSOCKET, ditolak di produksi): Local Network Access
+ * dimatikan. Dokumen /render dipenuhi lewat route.fulfill (allowlist) sehingga tidak punya alamat IP;
+ * Chromium menganggapnya publik dan memblokir WebSocket HMR ke localhost yang dibuka connectToServer
+ * (net::ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS). Tanpa HMR, klien `next dev` tidak menghidrasi halaman
+ * → tanda siap tidak pernah dipasang → RENDER_TIMEOUT. Catatan: --disable-features ini menggantikan
+ * daftar bawaan Playwright (Chromium memakai nilai terakhir) — dapat diterima di dev saja. Produksi:
+ * tanpa argumen (tanpa WebSocket; semua permintaan HTTP dipenuhi route, tidak terkena LNA).
+ */
+export function browserArgs(env: { ALLOW_DEV_WEBSOCKET: boolean }): string[] {
+  return env.ALLOW_DEV_WEBSOCKET ? ["--disable-features=LocalNetworkAccessChecks"] : [];
+}

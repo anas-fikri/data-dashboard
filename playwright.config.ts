@@ -33,6 +33,7 @@ export default defineConfig({
         /mapping\.spec\.ts$/,
         /sharing\.spec\.ts$/,
         /exports\.spec\.ts$/,
+        /pdf\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -53,7 +54,10 @@ export default defineConfig({
     // exports (T-017): worker sendiri (antrean export); CSV/XLSX dari filter + urutan layar, batas baris
     // (worker kedua dengan EXPORT_MAX_ROWS kecil), kedaluwarsa + pembersihan, unduh pemilik/orang lain.
     { name: "exports", testMatch: /exports\.spec\.ts$/, dependencies: ["sharing"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["exports"] },
+    // pdf (T-018): worker sendiri (antrean pdf) + renderer sendiri (npm run renderer, dimatikan untuk AC3
+    // lalu dinyalakan lagi); PDF 6 widget = layar, token render sekali pakai, peran, AuditLog.
+    { name: "pdf", testMatch: /pdf\.spec\.ts$/, dependencies: ["exports"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["pdf"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

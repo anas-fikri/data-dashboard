@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { createWriteStream, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
@@ -141,12 +141,92 @@ export function workerLogPath(name: string): string {
  * `env`: variabel tambahan untuk worker ini saja (mis. EXPORT_MAX_ROWS kecil); menang atas .env karena
  * --env-file tidak menimpa variabel yang sudah ada.
  */
-export async function startWorker(
+export function startWorker(name: string, env: Record<string, string> = {}): Promise<ChildProcess> {
+  return startNpmScript("worker", workerLogPath(name), "worker berjalan", env);
+}
+
+/** Nilai satu variabel dari .env lokal (process.env menang, seperti --env-file). Jangan dicetak. */
+export function envFileValue(name: string): string | undefined {
+  if (process.env[name] !== undefined) return process.env[name];
+  if (!existsSync(".env")) return undefined;
+  for (const line of readFileSync(".env", "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)=(.*)$/);
+    if (m?.[1] === name) return m[2]!.replace(/^"(.*)"$/, "$1");
+  }
+  return undefined;
+}
+
+/** Renderer PDF dev (T-018): RENDERER_URL dari .env, bawaan port 3200. */
+export const RENDERER_URL = (envFileValue("RENDERER_URL") ?? "http://127.0.0.1:3200").replace(
+  /\/+$/,
+  "",
+);
+
+/**
+ * Renderer PDF sungguhan (`npm run renderer`, T-018) di grup prosesnya sendiri (npm → tsx → node →
+ * Chromium) — log di workerLogPath(`renderer-<name>`), siap saat log "renderer berjalan" lalu
+ * GET /healthz 200 (Chromium tersambung). ALLOW_DEV_WEBSOCKET=true: app berjalan di `next dev` (klien
+ * HMR membuka WebSocket same-origin; tanpa ini halaman render tidak pernah tenang). Matikan dengan
+ * stopRenderer (SIGTERM ke grup: job berjalan ditunggu, Chromium ikut ditutup; SIGKILL setelah 15 s).
+ */
+export async function startRenderer(
   name: string,
   env: Record<string, string> = {},
 ): Promise<ChildProcess> {
-  const log = createWriteStream(workerLogPath(name));
-  const w = spawn("npm", ["run", "worker"], {
+  const r = await startNpmScript(
+    "renderer",
+    workerLogPath(`renderer-${name}`),
+    "renderer berjalan",
+    { ALLOW_DEV_WEBSOCKET: "true", ...env },
+  );
+  try {
+    const res = await fetch(`${RENDERER_URL}/healthz`, { signal: AbortSignal.timeout(5_000) });
+    if (res.status !== 200) throw new Error(`renderer /healthz ${res.status}`);
+  } catch (e) {
+    await stopRenderer(r);
+    throw e;
+  }
+  return r;
+}
+
+/**
+ * SIGTERM ke grup renderer lalu tunggu SAMPAI GRUPNYA HABIS (≤ 15 s; lalu SIGKILL): npm bisa keluar
+ * lebih dulu daripada node renderer yang masih menutup Chromium (Chromium di grupnya sendiri — ditutup
+ * renderer saat SIGTERM, jadi SIGKILL hanya jalan terakhir). Sesudahnya port renderer bebas: uji
+ * "renderer mati" benar-benar tanpa renderer, dan startRenderer berikutnya tidak bentrok port.
+ */
+export async function stopRenderer(r: ChildProcess | null | undefined): Promise<void> {
+  if (!r?.pid) return;
+  const group = -r.pid;
+  const signal = (s: NodeJS.Signals | 0) => {
+    try {
+      process.kill(group, s);
+      return true;
+    } catch {
+      return false; // grup sudah tidak ada
+    }
+  };
+  const gone = async (ms: number) => {
+    for (const until = Date.now() + ms; Date.now() < until;) {
+      if (!signal(0)) return true;
+      await new Promise((res) => setTimeout(res, 200));
+    }
+    return !signal(0);
+  };
+  if (!signal("SIGTERM")) return;
+  if (await gone(15_000)) return;
+  signal("SIGKILL");
+  if (!(await gone(5_000))) throw new Error(`grup renderer ${r.pid} tidak berhenti`);
+}
+
+async function startNpmScript(
+  script: string,
+  logPath: string,
+  ready: string,
+  env: Record<string, string>,
+): Promise<ChildProcess> {
+  const log = createWriteStream(logPath);
+  const w = spawn("npm", ["run", script], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, ...env },
     detached: true,
@@ -168,11 +248,11 @@ export async function startWorker(
   try {
     await new Promise<void>((resolve, reject) => {
       let seen = "";
-      const t = setTimeout(() => reject(new Error("worker tidak siap dalam 60 s")), 60_000);
+      const t = setTimeout(() => reject(new Error(`${script} tidak siap dalam 60 s`)), 60_000);
       w.stdout!.on("data", (d: Buffer) => {
         // Sisa potongan sebelumnya ikut diperiksa: penanda bisa terbelah di batas chunk.
         seen = (seen + d.toString()).slice(-4096);
-        if (seen.includes("worker berjalan")) {
+        if (seen.includes(ready)) {
           clearTimeout(t);
           resolve();
         }
@@ -183,7 +263,7 @@ export async function startWorker(
       });
       w.once("exit", (code) => {
         clearTimeout(t);
-        reject(new Error(`worker keluar (${code}); lihat ${workerLogPath(name)}`));
+        reject(new Error(`${script} keluar (${code}); lihat ${logPath}`));
       });
     });
   } catch (e) {

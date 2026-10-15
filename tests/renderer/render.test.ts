@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_BODY_BYTES,
+  browserArgs,
   browserEnv,
   checkSecret,
   decideRoute,
@@ -173,5 +174,17 @@ describe("browserEnv", () => {
       LC_ALL: "C.UTF-8",
       XDG_CACHE_HOME: "/tmp/.cache",
     });
+  });
+});
+
+describe("browserArgs", () => {
+  it("dev (ALLOW_DEV_WEBSOCKET): Local Network Access dimatikan agar WebSocket HMR tidak diblokir", () => {
+    expect(browserArgs({ ALLOW_DEV_WEBSOCKET: true })).toEqual([
+      "--disable-features=LocalNetworkAccessChecks",
+    ]);
+  });
+
+  it("produksi/tanpa izin WebSocket: tanpa argumen tambahan (proteksi peramban bawaan tetap)", () => {
+    expect(browserArgs({ ALLOW_DEV_WEBSOCKET: false })).toEqual([]);
   });
 });

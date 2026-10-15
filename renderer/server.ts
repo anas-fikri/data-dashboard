@@ -6,7 +6,7 @@
  */
 import { chromium } from "playwright-core";
 import { parseRendererEnv } from "./env";
-import { browserEnv } from "./render";
+import { browserArgs, browserEnv } from "./render";
 import { createRenderer } from "./renderer";
 
 function logLine(level: "info" | "fatal", msg: string, extra: Record<string, unknown> = {}) {
@@ -22,6 +22,8 @@ async function main(): Promise<void> {
       // Sandbox Chromium tetap aktif (tanpa --no-sandbox); di container butuh seccomp profile Playwright.
       chromiumSandbox: true,
       env: browserEnv(process.env),
+      // Dev (ALLOW_DEV_WEBSOCKET) saja: WebSocket HMR tidak diblokir Local Network Access (render.ts).
+      args: browserArgs(env),
       // Sinyal ditangani di sini agar job berjalan selesai dulu sebelum peramban ditutup.
       handleSIGINT: false,
       handleSIGTERM: false,
