@@ -8,8 +8,9 @@ import { shareErrorText } from "./share-model";
 /*
  * Status dialog share (T-016): memuat daftar akses saat dialog dibuka (komponen ini hanya terpasang
  * selama dialog terbuka), lalu menjalankan satu aksi share sekaligus. Setiap aksi mengembalikan
- * keadaan share terbaru dari server — itu yang ditampilkan (tidak ada tebakan optimistis). Galat aksi
- * diingat per bagian dialog (`at`) agar pesannya tampil di dekat kontrol yang memicunya.
+ * keadaan share terbaru dari server — itu yang ditampilkan (tidak ada tebakan optimistis); aksi yang
+ * ditolak NOT_FOUND memuat ulang daftarnya. Galat aksi diingat per bagian dialog (`at`) agar pesannya
+ * tampil di dekat kontrol yang memicunya.
  */
 export type ShareSection = "org" | "add" | "grants" | "revoke";
 type Load =
@@ -74,6 +75,10 @@ export function useShareState(dashboardId: string) {
       setBusy(key);
       setError(null);
       const r = await op().catch(() => null);
+      // NOT_FOUND: keadaan di dialog sudah usang (mis. orangnya dicabut di tab/perangkat lain) → daftar
+      // dimuat ulang dulu, masih sibuk, agar galat tampil terhadap daftar terbaru dan fokus dipulihkan
+      // setelah daftar itu tampil — tidak jatuh ke <body> saat barisnya hilang (review T-016 R5-DI-1).
+      if (r && !r.ok && r.code === "NOT_FOUND") await fetchState();
       running.current = false;
       setBusy(null);
       if (r?.ok) {

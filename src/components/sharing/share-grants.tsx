@@ -19,6 +19,17 @@ import { EDITOR_WARNING, roleChangeStep } from "./share-model";
  */
 export const revealRowError = (el: HTMLElement | null) => el?.scrollIntoView({ block: "nearest" });
 
+/**
+ * Fokus setelah konfirmasi di atas daftar tertutup: kontrol baris itu bila masih aktif. Selama aksinya
+ * berjalan kontrol itu disabled → fokus ke kotak dialog share (bukan <body>); panel memulihkannya ke
+ * kontrol baris setelah aksi selesai (review T-016 R5-UI-3).
+ */
+export function focusRowControl(list: HTMLElement | null, selector: string) {
+  const el = list?.querySelector<HTMLButtonElement>(selector);
+  if (el && !el.disabled) el.focus();
+  else list?.closest<HTMLElement>('[role="dialog"]')?.focus();
+}
+
 /** Isi konfirmasi "Jadikan editor?": siapa, apa yang bisa dilakukannya, dan peringatan editor (AC6). */
 export function PromoteDescription({ email }: { email: string }) {
   return (
@@ -51,7 +62,8 @@ interface ShareGrantsProps {
 }
 
 /**
- * Daftar orang dengan akses (T-016): email lebih dulu (identitas), nama kedua; peran lewat Select
+ * Daftar orang dengan akses (T-016): email lebih dulu (identitas), nama kedua — keduanya membungkus
+ * utuh, tanpa tooltip title yang tidak terjangkau layar sentuh (R5-UI-4); peran lewat Select
  * kustom; "Cabut" lewat konfirmasi. Setelah dicabut fokus pindah ke judul daftar (barisnya hilang);
  * batal → kembali ke tombol "Cabut" baris itu. Ponsel: kontrol bertumpuk selebar layar. Ganti peran
  * gagal: Select kembali ke peran tersimpan dan alasannya tampil di baris itu (bukan di bawah daftar
@@ -106,7 +118,7 @@ export function ShareGrants({
                   <EmailText email={g.email} />
                 </p>
                 {g.name ? (
-                  <p className="truncate text-muted-foreground" title={g.name}>
+                  <p className="text-muted-foreground [overflow-wrap:anywhere]">
                     <bdi>{g.name}</bdi>
                   </p>
                 ) : null}
@@ -218,13 +230,12 @@ export function ShareGrants({
         description={promoting ? <PromoteDescription email={promoting.email} /> : ""}
         data-testid="share-promote-confirm"
         onCloseAutoFocus={(e) => {
-          // Kembali ke Select baris itu (bila sedang disimpan dan disabled, panel memulihkannya nanti).
+          // Kembali ke Select baris itu (sedang disimpan dan disabled → kotak dialog, lalu panel).
           e.preventDefault();
-          list.current
-            ?.querySelector<HTMLElement>(
-              `[data-user-id="${lastPromote.current}"] [data-testid=share-grant-role]`,
-            )
-            ?.focus();
+          focusRowControl(
+            list.current,
+            `[data-user-id="${lastPromote.current}"] [data-testid=share-grant-role]`,
+          );
         }}
         action={
           <Button

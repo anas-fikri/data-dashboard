@@ -7,8 +7,9 @@ import { roleLabel } from "./share-model";
 
 /**
  * Hasil pencarian pengguna sebagai grup radio (pola pemilih alih dataset T-019): baris = target sentuh
- * penuh, email lebih dulu dan utuh, nama kedua; pengguna yang sudah punya akses ditandai (memilihnya
- * lagi mengganti perannya). Satu area gulir: di layar pendek ikut tergulir bersama isi dialog.
+ * penuh, email lebih dulu dan utuh, nama kedua (membungkus, R5-UI-4); pengguna yang sudah punya akses
+ * ditandai (memilihnya lagi mengganti perannya). Satu area gulir: di layar pendek ikut tergulir bersama
+ * isi dialog.
  */
 export function ShareOptions({
   name,
@@ -65,7 +66,7 @@ export function ShareOptions({
                 <EmailText email={u.email} />
               </span>
               {u.name ? (
-                <span className="block truncate text-muted-foreground" title={u.name}>
+                <span className="block text-muted-foreground [overflow-wrap:anywhere]">
                   <bdi>{u.name}</bdi>
                 </span>
               ) : null}

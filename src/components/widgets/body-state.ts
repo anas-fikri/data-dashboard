@@ -24,7 +24,8 @@ export const WIDGET_CHANGED = "Widget ini sudah diubah. Muat ulang halaman.";
 /**
  * Data dari versi pengaturan yang tidak dikenal kartu ini (diubah editor/pemilik lain) tidak
  * ditampilkan: jenis, judul, format, dan kolom di kartu masih milik pengaturan lama → galat CHANGED
- * + "Muat ulang" (bukan router.refresh: kanvas menyimpan widget di state, refresh tidak menggantinya).
+ * + "Muat ulang" (bukan router.refresh: kanvas mode edit menyimpan widget di state, refresh tidak
+ * menggantinya).
  * `known` = versi yang pernah dipegang kartu ini: awal dari server + hasil simpanan tab ini sendiri,
  * jadi jawaban dari versi lama milik sendiri (query yang berjalan saat tab ini mengganti judul) tetap
  * tampil, dan jawaban versi baru yang mendahului jawaban simpanannya tampil begitu versi itu tercatat.

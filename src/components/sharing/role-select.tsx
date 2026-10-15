@@ -7,9 +7,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import type { KeyboardEvent } from "react";
 import type { ShareRole } from "@/features/sharing/types";
 import { cn } from "@/lib/utils";
 import { isShareRole, ROLE_OPTIONS } from "./share-model";
+
+/**
+ * Enter di daftar pilihan: Radix sudah memilih opsinya di keydown item (sebelum bubbling ke sini), tetapi
+ * tidak mencegah aksi bawaan Enter. Pilihan yang membuka konfirmasi ("Jadikan editor?") memindah fokus
+ * ke tombol "Batal" di keydown itu, lalu keypress Enter yang sama mengekliknya → konfirmasi langsung
+ * tertutup. Dicegah di sini (review T-016 R5-UI-1). Handler Radix di konten tidak melakukan apa pun
+ * untuk Enter, jadi tidak ada yang hilang saat dilewati.
+ */
+export function keepEnterInList(e: Pick<KeyboardEvent, "key" | "preventDefault">) {
+  if (e.key === "Enter") e.preventDefault();
+}
 
 /**
  * Pilihan peran share (Select kustom, bukan native). Label terlihat atau aria-label wajib dari
@@ -40,7 +52,7 @@ export function RoleSelect({
       >
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent onKeyDown={keepEnterInList}>
         {ROLE_OPTIONS.map((o) => (
           <SelectItem key={o.value} value={o.value}>
             {o.label}

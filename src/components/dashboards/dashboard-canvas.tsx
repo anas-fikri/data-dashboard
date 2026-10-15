@@ -39,10 +39,11 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
  * Bilah filter (T-012) di atas grid di kedua mode; status filter ikut saat berpindah mode (?f=).
  * Peran (T-016): viewer hanya mode lihat (server mengalihkan ?mode=edit); editor mengedit widget dan
  * tata letak tanpa tautan/pengaturan milik pemilik. Query widget 404 (akses dicabut) → halaman dimuat
- * ulang dari server sekali per keadaan halaman (AccessRefreshProvider; dipasang lagi bila daftar widget
- * server berubah, widget yang sudah dihapus di server diabaikan — review T-016 R3-CL-1).
+ * ulang dari server sekali per keadaan halaman (AccessRefreshProvider; dipasang lagi bila props server
+ * berubah, widget yang sudah dihapus di server diabaikan — review T-016 R3-CL-1, R5-CL-1).
  * Back/Forward (review T-016 R2-CL-1): props dari cache riwayat tidak pernah dipakai — kerangka sampai
- * refresh selesai (useFreshAfterHistory); mode lihat dipasang ulang bila versi widget/tata letak berubah.
+ * refresh selesai (useFreshAfterHistory). Mode lihat mengisi ulang widget/tata letak dari props server
+ * baru TANPA dipasang ulang (R5-CL-2): bilah filter, popover slicer yang terbuka, dan fokus tetap.
  * Kerangka itu setinggi kanvas terakhir dashboard ini (R4-CL-2) agar posisi gulir yang dipulihkan
  * browser tidak terpotong ke atas.
  */
@@ -118,12 +119,8 @@ export function DashboardCanvas(props: CanvasProps) {
       </div>
     );
   }
-  return (
-    <Canvas
-      key={props.editing ? "edit" : viewCanvasKey(props.widgets, props.revision)}
-      {...props}
-    />
-  );
+  // Satu pemasangan per mode: props server baru di mode lihat diisi ulang oleh useDashboardEditor.
+  return <Canvas key={props.editing ? "edit" : "view"} {...props} />;
 }
 
 function Canvas(props: CanvasProps) {
@@ -278,8 +275,11 @@ function Canvas(props: CanvasProps) {
     : props.crossFilterColumns;
 
   return (
-    // Props server (bukan ed.widgets): refresh yang membawa daftar widget lain memasang penjaga lagi.
-    <AccessRefreshProvider serverWidgetIds={props.widgets.map((w) => w.id)}>
+    // Props server (bukan ed.widgets): refresh yang membawa props lain memasang penjaga lagi.
+    <AccessRefreshProvider
+      serverWidgetIds={props.widgets.map((w) => w.id)}
+      stateKey={viewCanvasKey(props.widgets, props.revision)}
+    >
       <DashboardFiltersProvider
         dashboardId={dashboardId}
         columns={props.filterColumns}

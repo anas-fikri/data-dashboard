@@ -9,6 +9,7 @@ import {
   type Locator,
   type Page,
   type Request,
+  type Route,
 } from "@playwright/test";
 import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
 
@@ -30,6 +31,10 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  * → kolom filter disembunyikan (viewer B tidak bisa menebak nama; slicer usang → "Muat ulang") → hapus
  * D3 yang dibagikan (audit) → pemilik X dengan 21 share langsung ke C (semua terdaftar: batas 20 per
  * pemilik hanya bila daftar melewati 200).
+ * Review R5 di D7 (dataset Y, pribadi — tanpa organisasi), sebelum kolom filter disembunyikan: ponsel
+ * "Bagikan" tanpa pilihan (B, E jadi viewer) → mode lihat B: widget dihapus pemilik saat popover slicer
+ * dipakai → B naik ke editor hanya dengan keyboard → mode edit B: widget sesi B dihapus pemilik, lalu B
+ * dicabut → ganti peran E yang sudah dicabut di tab lain.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -84,6 +89,16 @@ const WIDGET_CHANGED = "Widget ini sudah diubah. Muat ulang halaman.";
 const STALE_STATUS = "Diubah di tempat lain.";
 /** Widget sementara uji Ctrl+Z di dialog Bagikan (review T-016 R4-CL-1). */
 const UNDO_WIDGET = "Urungkan nanti";
+/** D7 (dataset Y, review T-016 R5): pribadi; B viewer → editor (lalu dicabut), E viewer (dicabut). */
+const D7_NAME = `Ulasan R5 ${TAG}`;
+/** Widget D7 yang dihapus pemilik selagi viewer B memakai slicer (review T-016 R5-CL-2). */
+const TEMP_WIDGET = "Sementara R5";
+/** Widget yang ditambahkan editor B di sesinya lalu dihapus pemilik (review T-016 R5-CL-1). */
+const LOKAL_WIDGET = "Lokal editor";
+/** Alasan "Bagikan" tanpa pengguna terpilih (review T-016 R5-UI-2). */
+const MISSING_USER = "Pilih pengguna dari hasil pencarian dulu.";
+/** Ganti peran orang yang sudah tidak punya share (review T-016 R5-DI-1). */
+const NO_SHARE = "Pengguna ini belum punya akses ke dashboard ini.";
 /** Versi pengaturan widget = Widget.updatedAt dalam bentuk Date.toISOString(). */
 const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const ROWS = 60;
@@ -133,9 +148,13 @@ let d4 = "";
 let d5 = "";
 /** KPI D3 (dataset Y), dipakai lagi setelah D3 dihapus. */
 let produkKpiId = "";
+let d7 = "";
+/** KPI D7 (tetap ada sampai akhir; muatan pertamanya setelah B dicabut = 404). */
+let d7KpiId = "";
 let grantAction: Captured | null = null;
 let renameAction: Captured | null = null;
 const d1Path = () => `/dashboards/${d1}`;
+const d7Path = () => `/dashboards/${d7}`;
 
 const node = (script: string, ...args: string[]): unknown =>
   JSON.parse(execFileSync("node", [script, ...args]).toString());
@@ -442,6 +461,41 @@ async function searchUsers(dialog: Locator, q: string): Promise<Locator> {
 
 const grantRow = (dialog: Locator, email: string) =>
   dialog.locator(`[data-testid=share-grant][data-user-id="${ids[email]}"]`);
+
+/** Hitung refresh RSC halaman `path` (router.refresh), bukan prefetch tautan. */
+function trackRefreshes(page: Page, path: string) {
+  let n = 0;
+  const track = (r: Request) => {
+    const h = r.headers();
+    if (
+      r.method() === "GET" &&
+      h["rsc"] === "1" &&
+      !h["next-router-prefetch"] &&
+      new URL(r.url()).pathname === path
+    ) {
+      n++;
+    }
+  };
+  page.on("request", track);
+  return { count: () => n, stop: () => page.off("request", track) };
+}
+
+/** Jawaban /api/query berikutnya untuk widget `id` dengan status `status`. */
+const queryAnswer = (page: Page, id: string, status: number) =>
+  page.waitForResponse(
+    (r) =>
+      r.url().endsWith("/api/query") &&
+      r.status() === status &&
+      (r.request().postData() ?? "").includes(id),
+  );
+
+/** DELETE widget `id` berikutnya di dashboard `dashboardId`. */
+const widgetDelete = (page: Page, dashboardId: string, id: string) =>
+  page.waitForResponse(
+    (r) =>
+      r.url().includes(`/api/dashboards/${dashboardId}/widgets/${id}`) &&
+      r.request().method() === "DELETE",
+  );
 
 /** Baris dashboard milik sendiri di /dashboards. */
 const ownRow = (page: Page, name: string) =>
@@ -1819,6 +1873,355 @@ test.describe("berbagi dashboard", () => {
     expect(new URL(e.url()).pathname).toBe(d3Path);
     expect(refreshes).toBe(2);
     e.off("request", track);
+  });
+
+  test("R5-UI-2: ponsel 375×667 — 'Bagikan' tanpa pilihan: alasannya tepat di bawah kolom cari dan di dalam layar, bukan di bawah daftar hasil", async () => {
+    test.setTimeout(150_000);
+    // D7: KPI + widget sementara (dihapus pemilik di uji mode lihat) + kolom filter Produk; pribadi.
+    d7 = await createDashboard(a, datasetY, D7_NAME);
+    await addWidget(a, PRODUK_KPI, "Angka");
+    await expectValue(a, PRODUK_KPI, SUM_JUMLAH);
+    await addWidget(a, TEMP_WIDGET, "Angka");
+    await expectValue(a, TEMP_WIDGET, SUM_JUMLAH);
+    await addFilterColumn(a, "Produk", 1);
+    d7KpiId = await widgetId(a, PRODUK_KPI);
+
+    const viewport = a.viewportSize()!;
+    await a.setViewportSize({ width: 375, height: 667 });
+    try {
+      const dialog = await openShare(a, d7Path());
+      // Banyak hasil (akun uji run ini dan run sebelumnya): daftar radio memanjang di bawah kolom cari.
+      const options = await searchUsers(dialog, "shr");
+      expect(await options.count()).toBeGreaterThanOrEqual(3);
+      const search = dialog.getByTestId("share-search");
+      const add = dialog.getByTestId("share-add");
+      // Tombol penuh di bawah daftar hasil (digulir ke sana); tanpa pilihan → fokus ke kolom cari.
+      await add.click();
+      await expect(search).toBeFocused();
+      await expect(search).toHaveAttribute("aria-invalid", "true");
+      const msg = dialog.getByText(MISSING_USER, { exact: true });
+      await expect(msg).toBeVisible();
+      await expect(msg).toHaveAttribute("role", "alert");
+      await expect(msg).toBeInViewport({ ratio: 1 });
+      const msgId = (await msg.getAttribute("id"))!;
+      expect((await search.getAttribute("aria-describedby"))?.split(" ")).toContain(msgId);
+      // Tepat di bawah kolom cari, sebelum hasil pencarian.
+      const [inputBox, msgBox, firstBox] = await Promise.all([
+        search.boundingBox(),
+        msg.boundingBox(),
+        options.first().boundingBox(),
+      ]);
+      const boxes = JSON.stringify({ inputBox, msgBox, firstBox });
+      const inputBottom = inputBox!.y + inputBox!.height;
+      expect(msgBox!.y, boxes).toBeGreaterThanOrEqual(inputBottom - 0.5);
+      expect(msgBox!.y - inputBottom, boxes).toBeLessThanOrEqual(16);
+      expect(msgBox!.y + msgBox!.height, boxes).toBeLessThanOrEqual(firstBox!.y);
+      // Di dalam area isi dialog yang terlihat (kepala dan kaki "Selesai" tidak menutupinya).
+      const clip = await msg.evaluate((el) => {
+        let p = el.parentElement;
+        while (p && getComputedStyle(p).overflowY !== "auto") p = p.parentElement;
+        const r = el.getBoundingClientRect();
+        const v = (p ?? document.documentElement).getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, viewTop: v.top, viewBottom: v.bottom };
+      });
+      expect(clip.top, JSON.stringify(clip)).toBeGreaterThanOrEqual(clip.viewTop);
+      expect(clip.bottom, JSON.stringify(clip)).toBeLessThanOrEqual(clip.viewBottom);
+
+      // Memilih pengguna menghapus pesannya; B dan E dibagikan sebagai viewer dari ponsel.
+      for (const [email, q] of [
+        [B, B.split("@")[0]!],
+        [E, `shr_ed-${TAG}`],
+      ] as const) {
+        const only = await searchUsers(dialog, q);
+        await expect(only).toHaveCount(1);
+        await expect(only).toHaveAttribute("data-email", email);
+        await only.click();
+        await expect(only.getByRole("radio")).toBeChecked();
+        await expect(msg).toHaveCount(0);
+        await expect(search).not.toHaveAttribute("aria-invalid", "true");
+        await add.click();
+        await expect(dialog.getByText(`${email} kini bisa melihat dashboard ini.`)).toBeAttached();
+        await expect(grantRow(dialog, email).getByTestId("share-grant-role")).toContainText(
+          "Hanya lihat",
+        );
+      }
+      await closeShare(a);
+    } finally {
+      await a.setViewportSize(viewport);
+    }
+  });
+
+  test("R5-CL-2: mode lihat — widget dihapus pemilik saat viewer memakai slicer: refresh akses mengisi ulang kanvas tanpa menutup popover; fokus tetap di dalamnya", async () => {
+    test.setTimeout(90_000);
+    expect((await b.goto(d7Path()))?.status()).toBe(200);
+    await expect(b.getByTestId("widget")).toHaveCount(2);
+    await expectValue(b, PRODUK_KPI, SUM_JUMLAH);
+    await expectValue(b, TEMP_WIDGET, SUM_JUMLAH);
+    const tempId = await widgetId(b, TEMP_WIDGET);
+
+    // Pemilik menghapus widget sementara di tab/perangkat lain.
+    await a.goto(`${d7Path()}?mode=edit`);
+    await expectValue(a, TEMP_WIDGET, SUM_JUMLAH);
+    const panel = await openPanel(a, TEMP_WIDGET);
+    const removed = widgetDelete(a, d7, tempId);
+    await panel.getByRole("button", { name: "Hapus widget" }).click();
+    expect((await removed).status()).toBe(200);
+    await expect(widgetTitled(a, TEMP_WIDGET)).toHaveCount(0);
+
+    // B membuka slicer dan mencentang nilai dengan keyboard → semua widget dimuat ulang → widget yang
+    // dihapus 404 → satu refresh halaman.
+    const refreshes = trackRefreshes(b, d7Path());
+    const trigger = b.locator('[data-testid=filter-slicer][data-column="Produk"]');
+    await trigger.click();
+    const popover = b.getByRole("dialog", { name: "Filter Produk" });
+    await expect(popover).toBeVisible();
+    const options = popover.getByTestId("filter-slicer-option");
+    await expect(options).toHaveCount(8);
+    const box = popover.locator('[data-testid=filter-slicer-option][data-value="Produk 1"] input');
+    await box.focus();
+    const gone404 = queryAnswer(b, tempId, 404);
+    await b.keyboard.press("Space");
+    await expect(box).toBeChecked();
+    await gone404;
+    await expect.poll(refreshes.count).toBe(1);
+    // Props server baru (tanpa widget itu) mengisi ulang kanvas mode lihat — tanpa memasang ulang.
+    await expect(widgetTitled(b, TEMP_WIDGET)).toHaveCount(0);
+    await expect(b.getByTestId("widget")).toHaveCount(1);
+    await expectValue(b, PRODUK_KPI, 2);
+    // Popover tetap terbuka dengan daftarnya, fokus tetap di kotak centang yang dipakai.
+    await expect(popover).toBeVisible();
+    await expect(options).toHaveCount(8);
+    await expect(box).toBeFocused();
+    await expect(box).toBeChecked();
+    await b.waitForTimeout(1_000);
+    expect(refreshes.count()).toBe(1);
+    await expect(popover).toBeVisible();
+    await expect(box).toBeFocused();
+    refreshes.stop();
+    // Esc menutup popover dan mengembalikan fokus ke pemicunya.
+    await b.keyboard.press("Escape");
+    await expect(popover).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+
+  test("R5-UI-1 / R5-UI-3: hanya keyboard — VIEWER → EDITOR: Enter di opsi membuka konfirmasi yang tetap terbuka (Batal tidak tertekan); Enter di 'Jadikan editor' menyimpan; fokus di kotak dialog selama simpan, lalu di Select baris", async () => {
+    test.setTimeout(90_000);
+    const dialog = await openShare(a, d7Path());
+    const select = grantRow(dialog, B).getByTestId("share-grant-role");
+    await expect(select).toContainText("Hanya lihat");
+    // Catat setiap klik tombol (keypress Enter yang menekan tombol muncul sebagai klik).
+    await a.evaluate(() => {
+      const w = window as unknown as { __clicks: string[] };
+      w.__clicks = [];
+      document.addEventListener(
+        "click",
+        (ev) => {
+          const el = ev.target instanceof Element ? ev.target.closest("button") : null;
+          w.__clicks.push(el?.textContent?.trim() ?? String(ev.target));
+        },
+        true,
+      );
+    });
+    const clicks = () => a.evaluate(() => (window as unknown as { __clicks: string[] }).__clicks);
+
+    await select.focus();
+    await a.keyboard.press("Enter");
+    const listbox = a.getByRole("listbox");
+    await expect(listbox).toBeVisible();
+    await expect(listbox.getByRole("option", { name: "Hanya lihat" })).toBeFocused();
+    await a.keyboard.press("ArrowDown");
+    await expect(listbox.getByRole("option", { name: "Bisa mengedit widget" })).toBeFocused();
+    await a.keyboard.press("Enter");
+
+    const confirm = a.getByTestId("share-promote-confirm");
+    await expect(confirm).toBeVisible();
+    await expect(confirm).toContainText("Jadikan editor?");
+    await expect(confirm).toContainText(B);
+    const cancel = confirm.getByRole("button", { name: "Batal" });
+    await expect(cancel).toBeFocused();
+    // Keypress dari Enter yang sama tidak mengeklik "Batal" yang baru difokus: konfirmasi tetap terbuka.
+    await a.waitForTimeout(500);
+    await expect(confirm).toBeVisible();
+    await expect(cancel).toBeFocused();
+    expect(await clicks()).not.toContain("Batal");
+    await expect(select).toContainText("Hanya lihat");
+
+    // Tab → "Jadikan editor" (urutan DOM = urutan tampilan: Batal lalu tombol utama).
+    await a.keyboard.press("Tab");
+    const promote = confirm.getByTestId("share-promote");
+    await expect(promote).toBeFocused();
+
+    // Simpan diperlambat 1,5 s: selama berjalan Select baris disabled → fokus di kotak dialog share,
+    // bukan <body>; setelah selesai kembali ke Select baris itu (review T-016 R5-UI-3).
+    const isPage = (u: URL) => u.pathname === d7Path();
+    const slow = async (route: Route) => {
+      const r = route.request();
+      const body = r.postData() ?? "";
+      if (
+        r.method() === "POST" &&
+        !!r.headers()["next-action"] &&
+        body.includes(ids[B]!) &&
+        body.includes("EDITOR")
+      ) {
+        await new Promise((res) => setTimeout(res, 1_500));
+      }
+      await route.continue();
+    };
+    await a.route(isPage, slow);
+    try {
+      await a.keyboard.press("Enter");
+      await expect(confirm).toHaveCount(0);
+      await expect(select).toBeDisabled();
+      await expect(dialog).toBeFocused();
+      await a.waitForTimeout(400);
+      await expect(select).toBeDisabled(); // masih menyimpan
+      await expect(dialog).toBeFocused();
+      await expect(
+        dialog.getByText(`Peran ${B} diubah menjadi Bisa mengedit widget.`),
+      ).toBeAttached();
+      await expect(select).toContainText("Bisa mengedit widget");
+      await expect(select).toBeEnabled();
+      await expect(select).toBeFocused();
+      // Sesudah simpan selesai fokus tidak jatuh ke <body>.
+      for (let i = 0; i < 5; i++) {
+        await a.waitForTimeout(200);
+        expect(await a.evaluate(() => document.activeElement === document.body)).toBe(false);
+      }
+      await expect(select).toBeFocused();
+    } finally {
+      await a.unroute(isPage, slow);
+    }
+    expect(await clicks()).not.toContain("Batal");
+    await closeShare(a);
+
+    expect(
+      audit("dashboard", d7)
+        .filter((r) => r.action === "dashboard.share.role")
+        .map((r) => [r.actorId, r.meta]),
+    ).toEqual([[ids[A], { userId: ids[B], from: "VIEWER", to: "EDITOR" }]]);
+    expect((await b.goto(d7Path()))?.status()).toBe(200);
+    await expect(b.getByText("Editor", { exact: true })).toBeVisible();
+    await expect(b.getByTestId("edit-dashboard")).toBeVisible();
+  });
+
+  test("R5-CL-1: mode edit — widget yang ditambahkan editor sesi ini lalu dihapus pemilik memakai satu refresh sendiri; pencabutan sesudahnya tetap me-refresh ke 404", async () => {
+    test.setTimeout(120_000);
+    await b.goto(`${d7Path()}?mode=edit`);
+    await expect(b.getByTestId("canvas-toolbar")).toBeVisible();
+    await expectValue(b, PRODUK_KPI, SUM_JUMLAH);
+    // Widget sesi ini: belum pernah ada di props server halaman B.
+    const panel = await addWidget(b, LOKAL_WIDGET, "Angka");
+    await expectValue(b, LOKAL_WIDGET, SUM_JUMLAH);
+    const lokalId = await widgetId(b, LOKAL_WIDGET);
+    await panel.getByRole("button", { name: "Tutup pengaturan" }).click();
+    await expect(b.getByTestId("widget-panel")).toHaveCount(0);
+
+    // Pemilik menghapus widget itu di tempat lain.
+    await a.goto(`${d7Path()}?mode=edit`);
+    await expectValue(a, LOKAL_WIDGET, SUM_JUMLAH);
+    const ownerPanel = await openPanel(a, LOKAL_WIDGET);
+    const removed = widgetDelete(a, d7, lokalId);
+    await ownerPanel.getByRole("button", { name: "Hapus widget" }).click();
+    expect((await removed).status()).toBe(200);
+    await expect(widgetTitled(a, LOKAL_WIDGET)).toHaveCount(0);
+
+    const refreshes = trackRefreshes(b, d7Path());
+    const pick = async (value: string) => {
+      await b.locator('[data-testid=filter-slicer][data-column="Produk"]').click();
+      await b.locator(`[data-testid=filter-slicer-option][data-value="${value}"] input`).check();
+      await b.keyboard.press("Escape");
+    };
+    // Muatan pertama sesudahnya: widget sesi itu 404 → satu refresh; B tetap di editor.
+    let lokal404 = queryAnswer(b, lokalId, 404);
+    await pick("Produk 1");
+    await lokal404;
+    await expectValue(b, PRODUK_KPI, 2);
+    await expect.poll(refreshes.count).toBe(1);
+    await b.waitForTimeout(1_000);
+    expect(refreshes.count()).toBe(1);
+    await expect(b.getByRole("heading", { level: 1 })).toHaveText(D7_NAME);
+    await expect(b.getByTestId("canvas-toolbar")).toBeVisible();
+    await expect(widgetTitled(b, LOKAL_WIDGET).getByTestId("widget-error")).toContainText(
+      "Widget tidak ditemukan.",
+    );
+
+    // Muatan berikutnya: widget itu 404 lagi → tanpa refresh lagi (satu per widget sesi, tanpa loop).
+    lokal404 = queryAnswer(b, lokalId, 404);
+    await pick("Produk 2");
+    await lokal404;
+    await expectValue(b, PRODUK_KPI, 5);
+    await b.waitForTimeout(1_000);
+    expect(refreshes.count()).toBe(1);
+    await expect(b.getByTestId("canvas-toolbar")).toBeVisible();
+
+    // Pemilik mencabut B; muatan B berikutnya tetap me-refresh (jatah bersama utuh) → 404.
+    const dialog = await openShare(a, d7Path());
+    await grantRow(dialog, B).getByTestId("share-revoke").click();
+    const confirm = a.getByTestId("share-revoke-confirm");
+    await expect(confirm).toContainText(B);
+    await confirm.getByRole("button", { name: "Cabut akses" }).click();
+    await expect(dialog.getByText(`Akses ${B} dicabut.`)).toBeAttached();
+    await closeShare(a);
+
+    const kpi404 = queryAnswer(b, d7KpiId, 404);
+    await b.getByTestId("filter-clear-all").click();
+    await kpi404;
+    await expect(b.getByRole("heading", { level: 1 })).toHaveText("Halaman tidak ditemukan");
+    await expect(b.getByTestId("widget")).toHaveCount(0);
+    expect(new URL(b.url()).pathname).toBe(d7Path());
+    expect(refreshes.count()).toBe(2);
+    refreshes.stop();
+  });
+
+  test("R5-DI-1: ganti peran orang yang sudah dicabut di tab lain → galat 'belum punya akses' terhadap daftar yang dimuat ulang (barisnya hilang, fokus tetap di dialog)", async ({
+    browser,
+  }) => {
+    test.setTimeout(90_000);
+    const dialog = await openShare(a, d7Path());
+    const heading = dialog.getByRole("heading", { name: /^Orang dengan akses/ });
+    await expect(heading).toHaveText("Orang dengan akses (1)");
+    const row = grantRow(dialog, E);
+    const select = row.getByTestId("share-grant-role");
+    await expect(select).toContainText("Hanya lihat");
+
+    // Pemilik mencabut E di tab/perangkat lain; dialog tab pertama masih menampilkan E.
+    const a2 = await pageFor(browser, A);
+    try {
+      const other = await openShare(a2, d7Path());
+      await grantRow(other, E).getByTestId("share-revoke").click();
+      const revoke = a2.getByTestId("share-revoke-confirm");
+      await expect(revoke).toContainText(E);
+      await revoke.getByRole("button", { name: "Cabut akses" }).click();
+      await expect(other.getByText(`Akses ${E} dicabut.`)).toBeAttached();
+    } finally {
+      await a2.context().close();
+    }
+    await expect(row).toHaveCount(1);
+    await expect(heading).toHaveText("Orang dengan akses (1)");
+
+    await select.click();
+    await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+    const confirm = a.getByTestId("share-promote-confirm");
+    await expect(confirm).toContainText(E);
+    await confirm.getByTestId("share-promote").click();
+    await expect(confirm).toHaveCount(0);
+    // Server: NOT_FOUND → daftar dimuat ulang; galat tampil di bawah daftar terbaru (bukan di baris usang).
+    await expect(dialog.getByText(NO_SHARE, { exact: true })).toBeVisible();
+    await expect(row).toHaveCount(0);
+    await expect(heading).toHaveText("Orang dengan akses");
+    await expect(dialog.getByText("Belum ada orang yang diberi akses.")).toBeVisible();
+    await expect(dialog.getByTestId("share-grant-error")).toHaveCount(0);
+    // Fokus tidak jatuh ke <body> saat barisnya hilang: kembali ke kolom cari di dialog.
+    await expect(dialog.getByTestId("share-search")).toBeFocused();
+    await closeShare(a);
+
+    const ofE = (action: string) =>
+      audit("dashboard", d7).filter(
+        (r) => r.action === action && (r.meta as { userId?: string } | null)?.userId === ids[E],
+      );
+    expect(ofE("dashboard.share.role")).toEqual([]);
+    expect(ofE("dashboard.share.revoke")).toHaveLength(1);
+    expect((await e.goto(d7Path()))?.status()).toBe(404);
   });
 
   test("R3-SEC-1: kolom filter tersimpan yang disembunyikan → viewer mendapat jawaban yang sama dengan nama tebakan (nilai slicer + query widget); pemilik tetap COLUMN_UNAVAILABLE / skippedFilters", async () => {

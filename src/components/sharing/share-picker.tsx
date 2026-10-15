@@ -32,6 +32,11 @@ interface SharePickerProps {
   inputRef: RefObject<HTMLInputElement | null>;
   /** id pesan galat kolom cari dari pemanggil ("Bagikan" tanpa pilihan); ada = kolom ditandai invalid. */
   errorId?: string;
+  /**
+   * Pesan galat itu: tampil tepat di bawah kolom cari, sebelum hasil — di ponsel pesan di bawah daftar
+   * hasil berada di luar layar saat fokus pindah ke kolom cari (review T-016 R5-UI-2).
+   */
+  errorText?: string;
 }
 
 /**
@@ -48,6 +53,7 @@ export function SharePicker({
   onResults,
   inputRef,
   errorId,
+  errorText,
 }: SharePickerProps) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -132,6 +138,11 @@ export function SharePicker({
             className="h-(--control-h-lg) pl-10 md:h-(--control-h)"
           />
         </div>
+        {errorId && errorText ? (
+          <p id={errorId} role="alert" className="text-sm text-destructive">
+            {errorText}
+          </p>
+        ) : null}
         <p id={`${id}-hint`} className="text-sm text-muted-foreground">
           Hanya pengguna aktif dengan email terverifikasi.
         </p>

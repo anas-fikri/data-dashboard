@@ -127,7 +127,8 @@ export default async function DashboardPage({
       />
       {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
           membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. Mode
-          lihat dan Back/Forward: kanvas sendiri yang memasang ulang/menyegarkan (dashboard-canvas). */}
+          lihat memuat ulang widget/tata letak dari props baru tanpa remount (filter/popover tetap);
+          Back/Forward disegarkan oleh kanvas sendiri (dashboard-canvas). */}
       <DashboardCanvas
         key={`${d.id}:${editing ? "edit" : "view"}`}
         dashboardId={d.id}

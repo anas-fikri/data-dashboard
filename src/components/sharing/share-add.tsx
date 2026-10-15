@@ -93,17 +93,13 @@ export function ShareAdd({
         granted={granted}
         inputRef={inputRef}
         errorId={missing && !user ? `${id}-missing` : undefined}
+        errorText="Pilih pengguna dari hasil pencarian dulu."
         onSelect={(u) => {
           setUser(u);
           setMissing(false);
         }}
         onResults={(items) => setUser((u) => keepSelection(u, items))}
       />
-      {missing && !user ? (
-        <p id={`${id}-missing`} role="alert" className="text-sm text-destructive">
-          Pilih pengguna dari hasil pencarian dulu.
-        </p>
-      ) : null}
       <div className="flex flex-col gap-1.5">
         <label htmlFor={`${id}-role`} className="text-sm font-medium">
           Peran

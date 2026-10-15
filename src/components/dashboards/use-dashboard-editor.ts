@@ -118,7 +118,7 @@ export function useFreshAfterHistory(): boolean {
   useEffect(() => {
     if (!fromHistory || asked.current) return;
     asked.current = true;
-    // Dipakai sekali: kanvas yang dipasang ulang oleh props segar (key versi) tidak menyegarkan lagi.
+    // Dipakai sekali: kanvas yang dipasang lagi di URL ini sesudahnya tidak menyegarkan lagi.
     popped = null;
     startRefresh(() => {
       setRefreshed(true);
@@ -134,10 +134,12 @@ export function useFreshAfterHistory(): boolean {
 }
 
 /**
- * Key kanvas mode lihat: id + versi tiap widget + revisi tata letak. Props baru dari server (refresh
- * setelah Back, akses berubah) memasang ulang kanvas dengan pengaturan terbaru — aman karena mode lihat
- * tidak punya perubahan yang belum terkirim. Mode edit TIDAK memakainya: refresh dari ganti nama/kolom
- * filter tidak boleh membuang tata letak tertunda atau panel yang terbuka. Murni.
+ * Kunci keadaan halaman dari props server: id + versi tiap widget + revisi tata letak. Mode lihat:
+ * berubah (refresh setelah Back, widget dihapus/diubah di tempat lain) → widget dan tata letak diisi
+ * ulang dari props (useDashboardEditor) tanpa memasang ulang kanvas — aman karena mode lihat tidak punya
+ * perubahan yang belum terkirim. Mode edit TIDAK diisi ulang: refresh dari ganti nama/kolom filter tidak
+ * boleh membuang tata letak tertunda atau panel yang terbuka. Juga memasang lagi penjaga refresh akses
+ * (AccessRefreshProvider). Murni.
  */
 export const viewCanvasKey = (
   widgets: readonly Pick<WidgetView, "id" | "version">[],
@@ -157,9 +159,22 @@ export function useDashboardEditor(o: {
   widgets: WidgetView[];
   layout: LayoutItem[];
   revision: number;
+  /** Mode edit: state lokal tidak pernah diganti props server (lihat viewCanvasKey). */
+  editing?: boolean;
 }) {
   const [widgets, setWidgetsState] = useState(o.widgets);
   const [layout, setLayoutState] = useState(() => fitToWidgets(o.layout, o.widgets));
+  // Mode lihat (review T-016 R5-CL-2): props server baru diisi ulang saat render — bukan dengan memasang
+  // ulang kanvas, yang menutup popover slicer yang sedang dipakai dan menjatuhkan fokus ke <body>. Kartu
+  // tetap ber-key id widget: versi yang berubah dimuat ulang sendiri, widget yang dihapus hilang. Ref
+  // (widgetsNow, latest, revision) hanya dipakai tulisan mode edit, yang tidak pernah diisi ulang.
+  const seedKey = viewCanvasKey(o.widgets, o.revision);
+  const [seed, setSeed] = useState(seedKey);
+  if (!o.editing && seed !== seedKey) {
+    setSeed(seedKey);
+    setWidgetsState(o.widgets);
+    setLayoutState(fitToWidgets(o.layout, o.widgets));
+  }
   const [undo, setUndo] = useState<Undo | null>(null);
   const [save, setSave] = useState<SaveState>("saved");
   const [notice, setNotice] = useState<string | null>(null);
