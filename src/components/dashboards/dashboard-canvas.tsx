@@ -4,6 +4,7 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
@@ -88,6 +89,18 @@ export function isCanvasUndo(
   if (e.defaultPrevented || !(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") return false;
   const typing = (e.target as Element | null)?.closest?.("input, textarea, [contenteditable]");
   return !typing && !doc.querySelector(OTHER_MODAL);
+}
+
+/**
+ * Simpan semua sebelum meninggalkan mode edit ("Selesai"): panel pengaturan yang terbuka ditutup
+ * SINKRON lebih dulu — saat dilepas, panel mengirim simpanannya yang masih menunggu jeda ke antrean
+ * editor — lalu flush() menunggu antrean itu. Tanpa ini props mode lihat dibaca sebelum PATCH-nya
+ * terkirim: kartu sendiri tampil "Widget ini sudah diubah" atau dengan pengaturan lama sampai dimuat
+ * ulang (review T-016 R6-CL-1).
+ */
+export function saveBeforeLeave(closePanel: (() => void) | null, flush: () => Promise<boolean>) {
+  if (closePanel) flushSync(closePanel);
+  return flush();
 }
 
 type CanvasProps = {
@@ -245,7 +258,8 @@ function Canvas(props: CanvasProps) {
     setFinishing(true);
     // STALE / akses berubah: perubahan lokal memang tidak bisa disimpan; mode lihat menampilkan versi
     // terbaru (atau 404 bila aksesnya dicabut).
-    if (!frozen && !(await ed.flush())) return setFinishing(false);
+    const close = selected ? () => setSelected(null) : null;
+    if (!frozen && !(await saveBeforeLeave(close, ed.flush))) return setFinishing(false);
     // Filter yang sedang aktif ikut ke mode lihat.
     const f = new URL(window.location.href).searchParams.get("f");
     router.push(`/dashboards/${dashboardId}${f ? `?f=${encodeURIComponent(f)}` : ""}`);

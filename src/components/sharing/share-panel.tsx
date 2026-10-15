@@ -10,9 +10,14 @@ import {
   setOrgShareAction,
   setShareRoleAction,
 } from "@/features/sharing/actions";
-import type { ShareActionResult, ShareRole, ShareState } from "@/features/sharing/types";
+import type {
+  ShareActionResult,
+  ShareGrantView,
+  ShareRole,
+  ShareState,
+} from "@/features/sharing/types";
 import { ShareAdd } from "./share-add";
-import { ShareGrants } from "./share-grants";
+import { ShareGrants, roleRestoreTarget } from "./share-grants";
 import { announce, showEditorWarning, showFilterWarning } from "./share-model";
 import { ShareOrg } from "./share-org";
 import { ShareWarnings } from "./share-warnings";
@@ -24,17 +29,23 @@ const bar = "animate-pulse rounded-md bg-muted motion-reduce:animate-none";
  * Isi dialog share (T-016): berbagi organisasi, tambah orang (+ peringatan), daftar akses. Fokus:
  * kolom cari setelah dimuat; selama aksi berjalan fokus ditahan di dialog (tombol yang ditekan jadi
  * disabled), lalu kembali ke kontrol pemicunya. Hasil diumumkan sopan lewat satu wilayah aria-live.
+ * Selama aksi berjalan dialog tidak bisa ditutup (onBusyChange): galatnya selalu terlihat (R6-UI-2).
  */
 export function SharePanel({
   dashboardId,
   boxRef,
+  onBusyChange,
 }: {
   dashboardId: string;
   /** Kontainer dialog (tabIndex -1): tempat fokus ditahan selama aksi berjalan. */
   boxRef: RefObject<HTMLDivElement | null>;
+  /** Ada aksi share yang berjalan (dialog menahan diri tetap terbuka). */
+  onBusyChange: (busy: boolean) => void;
 }) {
   const s = useShareState(dashboardId);
   const [addRole, setAddRole] = useState<ShareRole>("VIEWER");
+  /** Orang yang perannya terakhir diubah: disebut di galat bila barisnya sudah hilang (R6-UI-1). */
+  const [roleTarget, setRoleTarget] = useState<ShareGrantView | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   /** id peringatan editor: deskripsi Select peran dan tombol "Bagikan" (review T-016 R3-UI-1). */
   const editorWarnId = useId();
@@ -46,6 +57,11 @@ export function SharePanel({
   useEffect(() => {
     if (ready && document.activeElement === boxRef.current) searchRef.current?.focus();
   }, [ready, boxRef]);
+
+  useEffect(() => {
+    onBusyChange(s.busy !== null);
+    return () => onBusyChange(false);
+  }, [s.busy, onBusyChange]);
 
   // Fokus tidak jatuh ke <body> saat kontrol yang ditekan menjadi disabled; kembali setelah selesai.
   useEffect(() => {
@@ -98,6 +114,11 @@ export function SharePanel({
   const granted = new Map(data.grants.map((g) => [g.userId, g.role] as const));
   const editorWarning = showEditorWarning(data.grants, data.warnings, addRole);
   const errorAt = (at: ShareSection) => (s.error?.at === at ? s.error.message : null);
+  /** Orang yang ganti perannya gagal (galat di barisnya, atau di atas daftar bila barisnya hilang). */
+  const roleErrorUser =
+    s.error?.at === "grants" && s.error.key.startsWith("role:")
+      ? s.error.key.slice("role:".length)
+      : null;
   const run = (
     key: string,
     at: ShareSection,
@@ -170,25 +191,20 @@ export function SharePanel({
           orgShared={data.orgShared}
           busy={s.busy}
           error={errorAt("grants")}
-          errorUserId={
-            s.error?.at === "grants" && s.error.key.startsWith("role:")
-              ? s.error.key.slice("role:".length)
-              : null
-          }
+          errorUserId={roleErrorUser}
+          errorEmail={roleTarget?.userId === roleErrorUser ? roleTarget.email : null}
           revokeError={errorAt("revoke")}
           onRevokeCancel={s.clearError}
-          onRole={(g, role) =>
+          onRole={(g, role) => {
+            setRoleTarget(g);
             void run(
               `role:${g.userId}`,
               "grants",
-              () =>
-                boxRef.current?.querySelector<HTMLElement>(
-                  `[data-user-id="${g.userId}"] [data-testid=share-grant-role]`,
-                ) ?? null,
+              () => roleRestoreTarget(boxRef.current, g.userId),
               () => setShareRoleAction(dashboardId, g.userId, role),
               () => announce.role(g.email, role),
-            )
-          }
+            );
+          }}
           onRevoke={(g) =>
             run(
               `revoke:${g.userId}`,

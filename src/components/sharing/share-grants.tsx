@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import type { ShareGrantView, ShareRole } from "@/features/sharing/types";
 import { RoleSelect } from "./role-select";
-import { EDITOR_WARNING, roleChangeStep } from "./share-model";
+import { EDITOR_WARNING, ROLE_GONE, roleChangeStep } from "./share-model";
 
 /**
  * Galat ganti peran baris terakhir bisa jatuh di bawah area gulir dialog (tertutup kaki "Selesai"):
@@ -29,6 +29,16 @@ export function focusRowControl(list: HTMLElement | null, selector: string) {
   if (el && !el.disabled) el.focus();
   else list?.closest<HTMLElement>('[role="dialog"]')?.focus();
 }
+
+/**
+ * Fokus setelah ganti peran selesai: Select baris itu; barisnya sudah hilang (orangnya dicabut di
+ * tempat lain, daftar dimuat ulang) → judul daftar, tepat di atas pesan galatnya — bukan kolom cari di
+ * puncak dialog yang menggulir galat keluar layar (review T-016 R6-UI-1).
+ */
+export const roleRestoreTarget = (box: ParentNode | null | undefined, userId: string) =>
+  box?.querySelector<HTMLElement>(`[data-user-id="${userId}"] [data-testid=share-grant-role]`) ??
+  box?.querySelector<HTMLElement>("[data-testid=share-grants-heading]") ??
+  null;
 
 /** Isi konfirmasi "Jadikan editor?": siapa, apa yang bisa dilakukannya, dan peringatan editor (AC6). */
 export function PromoteDescription({ email }: { email: string }) {
@@ -50,10 +60,12 @@ interface ShareGrantsProps {
   orgShared: boolean;
   /** Kunci aksi yang berjalan (lihat useShareState); semua kontrol dikunci selama ada aksi. */
   busy: string | null;
-  /** Galat ganti peran: di baris `errorUserId` (tepat di bawah Select-nya), atau di bawah daftar. */
+  /** Galat ganti peran: di baris `errorUserId` (tepat di bawah Select-nya), atau di atas daftar. */
   error: string | null;
-  /** Baris yang ganti perannya gagal (null / barisnya sudah tidak ada → di bawah daftar). */
+  /** Baris yang ganti perannya gagal (null / barisnya sudah tidak ada → di atas daftar). */
   errorUserId?: string | null;
+  /** Email orang di `errorUserId`: disebut di pesan bila barisnya sudah hilang (R6-UI-1). */
+  errorEmail?: string | null;
   /** Galat cabut akses (tampil di dalam konfirmasi yang tetap terbuka). */
   revokeError: string | null;
   onRole: (grant: ShareGrantView, role: ShareRole) => void;
@@ -69,7 +81,9 @@ interface ShareGrantsProps {
  * gagal: Select kembali ke peran tersimpan dan alasannya tampil di baris itu (bukan di bawah daftar
  * yang bisa di luar layar), terhubung ke Select lewat aria-describedby — fokus tetap di Select.
  * Naik ke "Bisa mengedit widget" lewat konfirmasi yang memuat peringatan editor (R3-UI-2); Select
- * tetap di peran tersimpan sampai dikonfirmasi, lalu fokus kembali ke Select baris itu.
+ * tetap di peran tersimpan sampai dikonfirmasi, lalu fokus kembali ke Select baris itu. Galat tanpa
+ * baris (orangnya sudah dicabut di tempat lain) tampil tepat di bawah judul, menyebut emailnya, dan
+ * fokus ke judul (R6-UI-1).
  */
 export function ShareGrants({
   grants,
@@ -77,6 +91,7 @@ export function ShareGrants({
   busy,
   error,
   errorUserId = null,
+  errorEmail = null,
   revokeError,
   onRole,
   onRevoke,
@@ -92,12 +107,31 @@ export function ShareGrants({
   const revokeBusy = revoking ? busy === `revoke:${revoking.userId}` : false;
   const rowError = (userId: string) => (error && errorUserId === userId ? error : null);
   const errorInRow = grants.some((g) => rowError(g.userId));
+  // Baris ganti peran yang gagal sudah hilang dari daftar yang dimuat ulang (R5-DI-1): sebut siapa.
+  const gone = errorUserId !== null && !errorInRow ? errorEmail : null;
 
   return (
     <section aria-labelledby={`${id}-h`} className="flex flex-col gap-2">
-      <h3 id={`${id}-h`} ref={heading} tabIndex={-1} className="text-sm font-semibold outline-none">
+      <h3
+        id={`${id}-h`}
+        ref={heading}
+        tabIndex={-1}
+        data-testid="share-grants-heading"
+        className="text-sm font-semibold outline-none"
+      >
         Orang dengan akses{grants.length ? ` (${grants.length})` : ""}
       </h3>
+      {error && !errorInRow ? (
+        <FormAlert tone="error">
+          {gone ? (
+            <>
+              <EmailText email={gone} /> {ROLE_GONE}
+            </>
+          ) : (
+            error
+          )}
+        </FormAlert>
+      ) : null}
       {grants.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Belum ada orang yang diberi akses.
@@ -172,7 +206,6 @@ export function ShareGrants({
           ))}
         </ul>
       )}
-      {error && !errorInRow ? <FormAlert tone="error">{error}</FormAlert> : null}
 
       <ConfirmDialog
         open={revoking !== null}

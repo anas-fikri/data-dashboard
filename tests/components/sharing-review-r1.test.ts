@@ -239,11 +239,12 @@ describe("T016-UI-2: ganti peran gagal tampil di baris itu", () => {
     expect(out.slice(out.indexOf("</ul>"))).not.toContain('role="alert"');
   });
 
-  it("baris sudah tidak ada / galat tanpa baris → tetap tampil di bawah daftar", () => {
+  // R6-UI-1: di atas daftar (tepat di bawah judul), bukan di bawahnya yang bisa di luar layar.
+  it("baris sudah tidak ada / galat tanpa baris → tetap tampil, di atas daftar", () => {
     const out = grants("Gagal", "u9");
     expect(out).not.toContain('data-testid="share-grant-error"');
-    expect(out.slice(out.indexOf("</ul>"))).toContain("Gagal");
-    expect(grants("Gagal", null).slice(grants("Gagal", null).indexOf("</ul>"))).toContain("Gagal");
+    expect(out.slice(0, out.indexOf("<ul"))).toContain("Gagal");
+    expect(grants("Gagal", null).slice(0, grants("Gagal", null).indexOf("<ul"))).toContain("Gagal");
   });
 });
 

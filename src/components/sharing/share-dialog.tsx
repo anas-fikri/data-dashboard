@@ -2,7 +2,7 @@
 
 import { IconShare, IconX } from "@tabler/icons-react";
 import { Dialog } from "radix-ui";
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
 import { Button } from "@/components/ui/button";
 import { DIALOG_CTA } from "@/components/ui/confirm-dialog";
@@ -20,7 +20,13 @@ import { FILTER_LINK_ATTR } from "./share-warnings";
  * Ditutup lewat tautan peringatan ke pengaturan kolom filter (review T-016 R2-UI-6): fokus ke bagian
  * kolom filter bila sudah ada (dialog dibuka di mode edit), bukan kembali ke tombol "Bagikan" di atas
  * halaman; dari mode lihat bagian itu memfokus dirinya saat terpasang (filter-columns-settings).
+ * Selama aksi share berjalan dialog tetap terbuka (Esc, klik di luar, X, "Selesai" diabaikan; X dan
+ * "Selesai" dinonaktifkan) — sama dengan ConfirmDialog: galat yang datang sesudahnya selalu terlihat
+ * (review T-016 R6-UI-2).
  */
+/** Permintaan buka/tutup dialog share: tutup diabaikan selama aksi berjalan. Murni. */
+export const keepOpenWhileBusy = (next: boolean, busy: boolean) => next || busy;
+
 export const SHARE_DIALOG_BOX =
   "fixed inset-0 z-40 flex h-dvh w-full flex-col bg-card outline-none md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:max-h-[calc(100dvh-2rem)] md:w-[calc(100%-2rem)] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border md:shadow-lg [@media(max-height:480px)]:overflow-y-auto";
 export const SHARE_DIALOG_BODY =
@@ -34,8 +40,16 @@ export function ShareDialog({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const toFilters = useRef(false);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  // X / "Selesai" dinonaktifkan selama aksi berjalan: fokus di sana ditahan di kotak dialog, bukan <body>.
+  useEffect(() => {
+    const el = document.activeElement;
+    const inBox = el instanceof HTMLButtonElement && el.disabled && box.current?.contains(el);
+    if (busy && (el === document.body || inBox)) box.current?.focus();
+  }, [busy]);
   return (
-    <Dialog.Root>
+    <Dialog.Root open={open} onOpenChange={(next) => setOpen(keepOpenWhileBusy(next, busy))}>
       <Dialog.Trigger asChild>
         <Button
           variant="outline"
@@ -89,6 +103,7 @@ export function ShareDialog({
               <Button
                 size="icon-sm"
                 variant="ghost"
+                disabled={busy}
                 aria-label="Tutup"
                 className="size-(--control-h-lg) shrink-0 md:size-(--control-h-sm)"
               >
@@ -97,11 +112,11 @@ export function ShareDialog({
             </Dialog.Close>
           </div>
           <div className={SHARE_DIALOG_BODY}>
-            <SharePanel dashboardId={dashboardId} boxRef={box} />
+            <SharePanel dashboardId={dashboardId} boxRef={box} onBusyChange={setBusy} />
           </div>
           <div className="flex shrink-0 flex-col border-t px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:flex-row md:justify-end md:px-6 md:pb-5">
             <Dialog.Close asChild>
-              <Button variant="outline" className={DIALOG_CTA}>
+              <Button variant="outline" disabled={busy} className={DIALOG_CTA}>
                 Selesai
               </Button>
             </Dialog.Close>

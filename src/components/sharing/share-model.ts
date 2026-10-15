@@ -143,10 +143,20 @@ export function shareErrorText(r: Extract<ShareActionResult<unknown>, { ok: fals
   return r.message || "Pengaturan berbagi belum bisa disimpan. Coba lagi.";
 }
 
+/**
+ * Ganti peran gagal karena orangnya sudah tidak punya akses (barisnya hilang dari daftar yang dimuat
+ * ulang); didahului emailnya (review T-016 R6-UI-1).
+ */
+export const ROLE_GONE =
+  "sudah tidak punya akses ke dashboard ini (mis. dicabut di tab atau perangkat lain). Daftar akses sudah diperbarui.";
+
+/** Hasil "Bagikan" setelah email penerimanya (pengumuman dan baris terlihat, R6-UI-3). */
+export const grantResult = (role: ShareRole) =>
+  `kini ${role === "EDITOR" ? "bisa mengedit widget" : "bisa melihat"} dashboard ini.`;
+
 /** Pengumuman hasil (wilayah aria-live): email = identitas yang tidak bisa dipalsukan nama. */
 export const announce = {
-  grant: (email: string, role: ShareRole) =>
-    `${email} kini ${role === "EDITOR" ? "bisa mengedit widget" : "bisa melihat"} dashboard ini.`,
+  grant: (email: string, role: ShareRole) => `${email} ${grantResult(role)}`,
   role: (email: string, role: ShareRole) => `Peran ${email} diubah menjadi ${roleLabel(role)}.`,
   revoke: (email: string) => `Akses ${email} dicabut.`,
   org: (on: boolean) =>

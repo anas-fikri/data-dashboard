@@ -1,6 +1,6 @@
 "use client";
 
-import { IconUserPlus } from "@tabler/icons-react";
+import { IconCircleCheck, IconUserPlus } from "@tabler/icons-react";
 import {
   useEffect,
   useId,
@@ -10,12 +10,28 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { EmailText } from "@/components/admin/email-text";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import type { ShareRole, ShareUserOption } from "@/features/sharing/types";
 import { RoleSelect } from "./role-select";
-import { keepSelection } from "./share-model";
+import { grantResult, keepSelection } from "./share-model";
 import { SharePicker } from "./share-picker";
+
+/**
+ * Konfirmasi terlihat setelah "Bagikan" berhasil (review T-016 R6-UI-3): baris baru di daftar akses
+ * biasanya di luar layar. Tanpa role=status — wilayah aria-live panel sudah mengumumkan teks yang sama.
+ */
+export function GrantDone({ email, role }: { email: string; role: ShareRole }) {
+  return (
+    <p data-testid="share-add-done" className="flex items-start gap-2 text-sm">
+      <IconCircleCheck size={20} stroke={1.5} aria-hidden className="mt-px shrink-0 text-success" />
+      <span className="min-w-0 [overflow-wrap:anywhere]">
+        <EmailText email={email} /> {grantResult(role)}
+      </span>
+    </p>
+  );
+}
 
 interface ShareAddProps {
   dashboardId: string;
@@ -39,7 +55,8 @@ interface ShareAddProps {
 /**
  * Tambah orang (T-016): cari pengguna → pilih peran → "Bagikan". Tanpa pilihan, "Bagikan" memberi
  * tahu di bawah kolom cari dan memindah fokus ke sana. Berhasil → pencarian dikosongkan dan fokus
- * kembali ke kolom cari untuk orang berikutnya; gagal → pilihan dan peran tetap.
+ * kembali ke kolom cari untuk orang berikutnya, hasilnya tampil di atas tombol (GrantDone) sampai
+ * memilih orang lain atau menekan "Bagikan" lagi; gagal → pilihan dan peran tetap.
  */
 export function ShareAdd({
   dashboardId,
@@ -56,6 +73,8 @@ export function ShareAdd({
   const id = useId();
   const [user, setUser] = useState<ShareUserOption | null>(null);
   const [missing, setMissing] = useState(false);
+  /** "Bagikan" terakhir yang berhasil (baris konfirmasi terlihat). */
+  const [added, setAdded] = useState<{ email: string; role: ShareRole } | null>(null);
   /** Naik setiap berhasil: pemilih dipasang ulang (kata kunci + hasil kosong). */
   const [round, setRound] = useState(0);
   const focusSearch = useRef(false);
@@ -68,12 +87,14 @@ export function ShareAdd({
 
   async function submit(e: FormEvent) {
     e.preventDefault();
+    setAdded(null);
     if (!user) {
       setMissing(true);
       inputRef.current?.focus();
       return;
     }
     if (await onAdd(user, role)) {
+      setAdded({ email: user.email, role });
       setUser(null);
       focusSearch.current = true;
       setRound((n) => n + 1);
@@ -97,6 +118,7 @@ export function ShareAdd({
         onSelect={(u) => {
           setUser(u);
           setMissing(false);
+          setAdded(null);
         }}
         onResults={(items) => setUser((u) => keepSelection(u, items))}
       />
@@ -116,6 +138,7 @@ export function ShareAdd({
       </div>
       {warnings}
       {error ? <FormAlert tone="error">{error}</FormAlert> : null}
+      {added ? <GrantDone {...added} /> : null}
       <Button
         type="submit"
         pending={busy === "add"}

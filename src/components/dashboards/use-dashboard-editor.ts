@@ -73,6 +73,31 @@ if (typeof window !== "undefined") {
 const HISTORY_MOUNT_MS = 2000;
 /** Refresh tidak selesai (jaringan/antrean router): muat ulang penuh daripada kerangka selamanya. */
 const HISTORY_RELOAD_MS = 8000;
+/** Tulisan editor yang dilepas ditunggu paling lama ini sebelum refresh Back/Forward. */
+const HISTORY_WRITES_MS = 3000;
+
+/*
+ * Tulisan editor yang belum selesai, lintas pemasangan kanvas (review T-016 R6-CL-1): antrean editor
+ * (termasuk simpanan tertunda panel pengaturan yang dikirim saat panel dilepas) dan tata letak
+ * keepalive dari pelepasan editor. Back dari mode edit melepas editor dan memasang kanvas lihat dalam
+ * commit yang sama — effect pelepasan berjalan lebih dulu — jadi refresh kanvas lihat menunggu tulisan
+ * itu: props segarnya memuat perubahan terakhir sendiri (bukan "Widget ini sudah diubah" / posisi lama).
+ */
+let unsettled: Promise<void> = Promise.resolve();
+export function trackWrite(p: Promise<unknown>) {
+  unsettled = Promise.all([unsettled, p.catch(() => {})]).then(() => {});
+}
+/** Selesai saat semua tulisan yang tercatat sampai saat ini selesai (berhasil atau gagal), atau `ms`. */
+export function writesSettled(ms = HISTORY_WRITES_MS): Promise<void> {
+  const writes = unsettled;
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    void writes.then(() => {
+      clearTimeout(t);
+      resolve();
+    });
+  });
+}
 
 /** Pemasangan ini menyusul Back/Forward ke URL yang sama, belum lama. Murni. */
 export function isHistoryMount(
@@ -120,10 +145,13 @@ export function useFreshAfterHistory(): boolean {
     asked.current = true;
     // Dipakai sekali: kanvas yang dipasang lagi di URL ini sesudahnya tidak menyegarkan lagi.
     popped = null;
-    startRefresh(() => {
-      setRefreshed(true);
-      router.refresh();
-    });
+    // Simpanan editor yang baru dilepas (Back dari mode edit) diterima server dulu (R6-CL-1).
+    void writesSettled().then(() =>
+      startRefresh(() => {
+        setRefreshed(true);
+        router.refresh();
+      }),
+    );
   }, [fromHistory, router]);
   useEffect(() => {
     if (ready) return;
@@ -195,6 +223,7 @@ export function useDashboardEditor(o: {
   const run = useCallback(<T>(op: () => Promise<T>): Promise<T> => {
     const next = queue.current.then(op);
     queue.current = next.catch(() => {});
+    trackWrite(queue.current);
     return next;
   }, []);
 
@@ -450,25 +479,27 @@ export function useDashboardEditor(o: {
   // Perubahan yang belum terkirim saat meninggalkan editor: tab ditutup → kirim sekarang dengan
   // keepalive (tidak bisa menunggu); pindah halaman di dalam aplikasi → kirim setelah antrean selesai
   // agar memakai revisi terbaru. Kembali dari back/forward cache: revisi di memori bisa sudah usang
-  // (keepalive tadi menaikkannya) → muat ulang daripada menampilkan STALE palsu.
+  // (keepalive tadi menaikkannya) → muat ulang daripada menampilkan STALE palsu. Kiriman saat dilepas
+  // dicatat (trackWrite): refresh setelah Back menunggunya (R6-CL-1).
   useEffect(() => {
     const send = () => {
       clearTimeout(timer.current);
       if (!dirty.current || stale.current) return;
       dirty.current = false;
-      void api.saveLayout(id, revision.current, latest.current, { keepalive: true });
+      return api.saveLayout(id, revision.current, latest.current, { keepalive: true });
     };
+    const hide = () => void send();
     const restored = (e: PageTransitionEvent) => {
       if (e.persisted) window.location.reload();
     };
-    window.addEventListener("pagehide", send);
+    window.addEventListener("pagehide", hide);
     window.addEventListener("pageshow", restored);
     const pending = queue;
     return () => {
-      window.removeEventListener("pagehide", send);
+      window.removeEventListener("pagehide", hide);
       window.removeEventListener("pageshow", restored);
       clearTimeout(timer.current);
-      void pending.current.then(send);
+      trackWrite(pending.current.then(send));
     };
   }, [id]);
 

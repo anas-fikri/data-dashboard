@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-012
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T09:59:30Z"
+updated: "2026-10-15T14:02:14Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -38,11 +38,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-15T09:59:30Z"
       findings: 7
+    - "n": 6
+      by: claude-verify-workflow
+      at: "2026-10-15T12:57:33Z"
+      findings: 4
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 44836
+    duration_ms: 40609
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -64,13 +68,13 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792049160568,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792049160598,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792072913395,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792072913419,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
 
-       Test Files  84 passed (84)
-            Tests  1278 passed (1278)
-         Start at  14:25:53
-         Duration  30.05s (tests 80%, import 14%, transform 6%)
+       Test Files  88 passed (88)
+            Tests  1342 passed (1342)
+         Start at  21:01:47
+         Duration  25.50s (tests 79%, import 14%, transform 7%)
 
 
       > data-dashboard@0.1.0 audit
@@ -78,8 +82,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-15T07:26:26Z"
-    tree: 0d0ef102cac2503d30fb8718c8f28b2e9abba66da715a91bceeffea43ffa85c5
+    at: "2026-10-15T14:02:14Z"
+    tree: 109b05af08d1c692197290869af7da77c47b4a3a21a9743e6c78ee8b44a4e0f3
 ---
 
 ## Objective
