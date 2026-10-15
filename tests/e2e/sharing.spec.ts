@@ -20,8 +20,10 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  *   X = orang asing; emailnya sama dengan E kecuali "_" → "x" (ikut cocok bila "_" jadi wildcard)
  * Serial: grant → viewer → tulis ditolak → widget dashboard lain → filter D6 → organisasi →
  * pencabutan di tengah sesi → editor → versi widget (viewer melihat "sudah diubah", simpan dari panel
- * usang → STALE) → editor diturunkan → cabut + AuditLog → hapus dataset X → dataset Y: daftar
- * "Dibagikan ke saya" (share langsung dulu) → pencabutan yang muatan pertamanya nilai slicer.
+ * usang → STALE) → Back/Forward memuat versi terbaru (mode lihat + editor) → editor diturunkan →
+ * tabel: urut kolom yang baru dibuang → CHANGED → KPI CHANGED di ponsel 320 px → cabut + AuditLog →
+ * hapus dataset X → dataset Y: daftar "Dibagikan ke saya" (share langsung dulu) → pencabutan yang
+ * muatan pertamanya nilai slicer → dataset Z (2 sheet): tautan peringatan kolom filter memindah fokus.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -45,6 +47,15 @@ const D3_NAME = `Produk langsung ${TAG}`;
 const D4_NAME = `Produk organisasi ${TAG}`;
 const PRODUK_KPI = "Jumlah produk";
 const ORG_WIDGET = "Widget organisasi";
+/** Judul sementara widget editor (uji Back ke editor); tidak memuat EDITOR_WIDGET (cocok substring). */
+const OWNER_TITLE = "Catatan pemilik";
+/** Tabel D1 (review T-016 R2-CL-2): kolom bawaan Cabang, Tanggal, Omzet; pemilik membuang Omzet. */
+const TABLE = "Tabel omzet";
+/** Dataset Z: workbook 2 sheet — "No Resi" ada di keduanya → peringatan kolom filter di dialog share. */
+const DATASET_Z = `Dua sheet ${TAG}`;
+const D5_NAME = `Dua sheet ringkas ${TAG}`;
+const Z_KPI = "Jumlah kiriman";
+const FILTER_LINK = "pengaturan dashboard (mode edit)";
 /** Pesan server untuk ubahan widget dari versi pengaturan lama (review T-016 DI-1). */
 const STALE_WIDGET =
   "Widget ini sudah berubah sejak halaman ini dimuat. Muat ulang halaman untuk melihat versi terbaru.";
@@ -277,6 +288,47 @@ const layoutItems = (page: Page) =>
       return { i: el.getAttribute("data-widget-id")!, x, y, w, h };
     }),
   );
+
+/** Keadaan yang diamati selama navigasi klien (Back/Forward tidak mengganti dokumen). */
+const SEEN = {
+  refreshing: "[data-testid=canvas-refreshing]",
+  changed: "[data-testid=widget-error][data-code=CHANGED]",
+  stale: "[data-testid=save-state][data-state=stale]",
+} as const;
+
+/** Catat setiap keadaan SEEN yang PERNAH muncul di dokumen ini mulai sekarang (juga yang sekejap). */
+async function watchDom(page: Page) {
+  await page.evaluate((selectors) => {
+    const w = window as unknown as { __seen: Set<string> };
+    w.__seen = new Set();
+    const note = (el: Element) => {
+      for (const [name, sel] of Object.entries(selectors)) {
+        if (el.matches(sel) || el.querySelector(sel)) w.__seen.add(name);
+      }
+    };
+    note(document.body);
+    new MutationObserver((records) => {
+      for (const r of records) {
+        if (r.type === "attributes" && r.target instanceof Element) note(r.target);
+        r.addedNodes.forEach((n) => {
+          if (n instanceof Element) note(n);
+        });
+      }
+    }).observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["data-code", "data-state"],
+    });
+  }, SEEN);
+}
+
+/** Keadaan yang tercatat watchDom; null = dokumen diganti (muat ulang penuh) sejak dipasang. */
+const seenDom = (page: Page) =>
+  page.evaluate(() => {
+    const s = (window as unknown as { __seen?: Set<string> }).__seen;
+    return s ? [...s].sort() : null;
+  });
 
 async function openShare(page: Page, path = d1Path()): Promise<Locator> {
   await page.goto(path);
@@ -902,6 +954,78 @@ test.describe("berbagi dashboard", () => {
     ).toBeEnabled();
   });
 
+  test("Back setelah 'Ubah tata letak' (review R2-CL-1): isi widget yang baru diubah pemilik tampil di mode lihat, tanpa 'sudah diubah'", async () => {
+    await a.goto(d1Path());
+    await expectValue(a, EDITOR_WIDGET, SUM_OMZET);
+    await a.getByTestId("edit-dashboard").click();
+    await expect(a).toHaveURL(/\?mode=edit$/);
+    const panel = await openPanel(a, EDITOR_WIDGET);
+    const saved = widgetPatch(a, editorWidgetId);
+    await pickAgg(a, panel, "Jumlah baris");
+    const res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+
+    // Back = halaman lihat dari cache riwayat router (versi widget lama) → kerangka sampai refresh
+    // selesai → kanvas dengan versi terbaru. Kartu tidak pernah menampilkan CHANGED, walau sekejap.
+    await watchDom(a);
+    await a.goBack();
+    await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+    await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+    await expect(a.getByTestId("canvas-refreshing")).toHaveCount(0);
+    await expect(a.locator(SEEN.changed)).toHaveCount(0);
+    await expect(a.getByTestId("widget-error")).toHaveCount(0);
+    expect(await seenDom(a)).toEqual(["refreshing"]);
+  });
+
+  test("Back ke editor setelah 'Selesai' (review R2-CL-1): ganti judul lagi → 200, bukan 409 STALE; tanpa 'Diubah di tab atau perangkat lain.'", async () => {
+    /** Ganti judul lewat panel; PATCH membawa versi yang dipegang editor dan harus diterima (200). */
+    const rename = async (from: string, to: string) => {
+      const panel = await openPanel(a, from);
+      const saved = widgetPatch(a, editorWidgetId);
+      const title = panel.getByLabel("Judul", { exact: true });
+      await title.fill(to);
+      await title.press("Enter");
+      const res = await saved;
+      expect(res.status(), await res.text()).toBe(200);
+      expect(res.request().postDataJSON()).toMatchObject({
+        title: to,
+        version: expect.stringMatching(ISO_MS),
+      });
+      await expect(widgetTitled(a, to)).toHaveCount(1);
+      await expect(a.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    };
+    await a.goto(`${d1Path()}?mode=edit`);
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+    await rename(EDITOR_WIDGET, OWNER_TITLE);
+    await a
+      .getByTestId("canvas-toolbar")
+      .getByRole("button", { name: "Selesai", exact: true })
+      .click();
+    await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+    await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+    await expectValue(a, OWNER_TITLE, ROWS);
+
+    // Back → editor dari cache riwayat (judul + versi lama) → kerangka → props segar → editor.
+    await watchDom(a);
+    await a.goBack();
+    await expect(a).toHaveURL(/\?mode=edit$/);
+    await expect(a.getByTestId("canvas-toolbar")).toBeVisible();
+    await expectValue(a, OWNER_TITLE, ROWS);
+    await expect(widgetTitled(a, EDITOR_WIDGET)).toHaveCount(0);
+    // Ganti judul lagi dari editor yang dipulihkan: versi terbaru → 200 (dulu: versi lama → 409 STALE).
+    await rename(OWNER_TITLE, EDITOR_WIDGET);
+    await expect(a.getByTestId("save-state")).not.toContainText(
+      "Diubah di tab atau perangkat lain.",
+    );
+    await expect(a.getByText(STALE_WIDGET)).toHaveCount(0);
+    await expect(a.locator("[data-stale-reload]")).toHaveCount(0);
+    await expect(a.getByTestId("widget-error")).toHaveCount(0);
+    expect(await seenDom(a)).toEqual(["refreshing"]);
+  });
+
   test("editor diturunkan jadi viewer saat mode edit terbuka → editor membeku, muat ulang = mode lihat", async () => {
     await e.goto(`${d1Path()}?mode=edit`);
     await expect(e.getByTestId("canvas-toolbar")).toBeVisible();
@@ -936,6 +1060,131 @@ test.describe("berbagi dashboard", () => {
       404,
       "NOT_FOUND",
     );
+  });
+
+  test("versi widget di jawaban gagal (review R2-CL-2): B mengurutkan kolom tabel yang baru dibuang pemilik → CHANGED + Muat ulang, bukan galat INVALID", async () => {
+    await a.goto(`${d1Path()}?mode=edit`);
+    await expect(a.getByTestId("canvas-toolbar")).toBeVisible();
+    const panel = await addWidget(a, TABLE, "Tabel");
+    const tableId = await widgetId(a, TABLE);
+    const heads = (p: Page) =>
+      widgetTitled(p, TABLE).getByTestId("widget-table").getByRole("columnheader");
+    await expect(heads(a)).toHaveText(["Cabang", "Tanggal", "Omzet"]);
+
+    // B membuka tabel dengan pengaturan lama (3 kolom).
+    await b.goto(d1Path());
+    await expect(heads(b)).toHaveText(["Cabang", "Tanggal", "Omzet"]);
+
+    // A membuang kolom Omzet dari tabel.
+    const saved = widgetPatch(a, tableId);
+    await panel
+      .getByRole("group", { name: /^Kolom ditampilkan/ })
+      .getByRole("checkbox", { name: "Omzet", exact: true })
+      .uncheck();
+    const res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    await expect(heads(a)).toHaveText(["Cabang", "Tanggal"]);
+
+    // B mengurutkan Omzet (posisi dari pengaturan lama) → 400 INVALID yang membawa versi widget
+    // terbaru → kartu CHANGED + "Muat ulang", bukan baris galat urutan di atas tabel lama.
+    const refused = b.waitForResponse(
+      (r) =>
+        r.url().endsWith("/api/query") &&
+        r.request().method() === "POST" &&
+        (r.request().postData() ?? "").includes(tableId) &&
+        (r.request().postData() ?? "").includes('"sort"'),
+    );
+    await widgetTitled(b, TABLE)
+      .getByRole("columnheader", { name: "Omzet", exact: true })
+      .getByRole("button")
+      .click();
+    const bad = await refused;
+    const body = (await bad.json()) as Record<string, unknown>;
+    expect(bad.status(), JSON.stringify(body)).toBe(400);
+    expect(body).toMatchObject({
+      ok: false,
+      code: "INVALID",
+      widgetVersion: expect.stringMatching(ISO_MS),
+    });
+    expect(bad.request().postDataJSON()).toMatchObject({
+      widgetId: tableId,
+      sort: expect.anything(),
+    });
+    const card = widgetTitled(b, TABLE);
+    const changed = card.getByTestId("widget-error");
+    await expect(changed).toHaveAttribute("data-code", "CHANGED");
+    await expect(changed).toContainText(WIDGET_CHANGED);
+    await expect(changed.getByTestId("widget-reload")).toBeVisible();
+    await expect(card.getByText("Urutan hanya untuk kolom di tabel ini.")).toHaveCount(0);
+    await expect(card.getByTestId("widget-table")).toHaveCount(0);
+
+    // Muat ulang → tabel dengan pengaturan terbaru (2 kolom), tanpa galat.
+    const loaded = b.waitForEvent("load");
+    await changed.getByTestId("widget-reload").click();
+    await loaded;
+    await expect(heads(b)).toHaveText(["Cabang", "Tanggal"]);
+    await expect(card.getByTestId("widget-error")).toHaveCount(0);
+  });
+
+  test("ponsel 320×640 (review R2-UI-2): kartu KPI berstatus CHANGED memuat 'Muat ulang' utuh di dalam kartu", async () => {
+    const viewport = b.viewportSize()!;
+    await b.setViewportSize({ width: 320, height: 640 });
+    try {
+      await b.goto(d1Path());
+      await expectValue(b, EDITOR_WIDGET, ROWS);
+      await expect(b.getByTestId("filter-sheet-open")).toBeVisible();
+
+      // A mengubah isi KPI editor: Jumlah baris → Total.
+      await a.goto(`${d1Path()}?mode=edit`);
+      await expectValue(a, EDITOR_WIDGET, ROWS);
+      const panel = await openPanel(a, EDITOR_WIDGET);
+      const saved = widgetPatch(a, editorWidgetId);
+      await pickAgg(a, panel, "Total");
+      expect((await saved).status()).toBe(200);
+      await expectValue(a, EDITOR_WIDGET, SUM_OMZET);
+
+      // B memfilter lewat lembar filter ponsel → semua widget dimuat ulang → KPI editor CHANGED.
+      await b.getByTestId("filter-sheet-open").click();
+      const sheet = b.getByTestId("filter-sheet");
+      await sheet.getByRole("button", { name: /^Cabang/ }).click();
+      await sheet.locator('[data-testid=filter-slicer-option][data-value="Jakarta"] input').check();
+      await sheet.getByRole("button", { name: "Selesai", exact: true }).click();
+      await expect(sheet).toHaveCount(0);
+      await expectKpi(b, countOf("Jakarta"));
+      const card = widgetTitled(b, EDITOR_WIDGET);
+      const changed = card.getByTestId("widget-error");
+      await expect(changed).toHaveAttribute("data-code", "CHANGED");
+      await expect(changed).toContainText(WIDGET_CHANGED);
+      const reload = changed.getByTestId("widget-reload");
+      await reload.scrollIntoViewIfNeeded();
+      await expect(reload).toBeInViewport({ ratio: 1 });
+
+      // Tombol utuh di dalam kartu DAN di dalam wilayah pesan (tanpa menggulir di dalam kartu).
+      const [cardBox, regionBox, btnBox] = await Promise.all([
+        card.boundingBox(),
+        changed.boundingBox(),
+        reload.boundingBox(),
+      ]);
+      const inside = (
+        inner: { x: number; y: number; width: number; height: number },
+        outer: { x: number; y: number; width: number; height: number },
+      ) =>
+        inner.x >= outer.x - 0.5 &&
+        inner.y >= outer.y - 0.5 &&
+        inner.x + inner.width <= outer.x + outer.width + 0.5 &&
+        inner.y + inner.height <= outer.y + outer.height + 0.5;
+      const boxes = JSON.stringify({ cardBox, regionBox, btnBox });
+      expect(inside(btnBox!, cardBox!), boxes).toBe(true);
+      expect(inside(btnBox!, regionBox!), boxes).toBe(true);
+      expect(await changed.evaluate((el) => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(
+        1,
+      );
+      // KPI tanpa galat tetap ringkas (tinggi minimum 150 px, review L6).
+      expect((await widgetTitled(b, KPI).boundingBox())!.height).toBeLessThanOrEqual(151);
+    } finally {
+      await b.setViewportSize(viewport);
+    }
   });
 
   test("AC7: cabut lewat konfirmasi; AuditLog grant/role/revoke/open lengkap {actorId, action, target, meta, ip, at}", async () => {
@@ -1112,5 +1361,61 @@ test.describe("berbagi dashboard", () => {
     await c.goto("/dashboards");
     await expect(sharedRow(c, D3_NAME)).toHaveCount(0);
     await expect(sharedRow(c, D4_NAME)).toBeVisible();
+  });
+
+  test("peringatan kolom filter (review R2-UI-6): tautan 'pengaturan dashboard (mode edit)' memindah fokus ke bagian #kolom-filter", async () => {
+    test.setTimeout(240_000);
+    // Workbook 2 sheet: KPI di sheet pertama, kolom filter "No Resi" dari sheet kedua → nama sama di dua
+    // sheet yang dipakai dashboard → peringatan tumpang tindih di dialog share.
+    const datasetZ = await createDataset(a, DATASET_Z, "tests/fixtures/kecil.xlsx");
+    const d5 = await createDashboard(a, datasetZ, D5_NAME);
+    const panel = await addWidget(a, Z_KPI, "Angka");
+    await expect(panel.getByLabel("Sheet", { exact: true })).toContainText("Pengiriman 1");
+    const section = a.getByTestId("dashboard-filter-columns");
+    await section.getByRole("button", { name: "Tambah kolom filter" }).click();
+    const saved = a.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await a
+      .getByRole("menuitem", { name: /^No Resi/ })
+      .last()
+      .click();
+    const res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    await expect(
+      section.getByRole("list", { name: "Kolom filter" }).getByRole("listitem"),
+    ).toHaveCount(1);
+
+    const target = `/dashboards/${d5}?mode=edit#kolom-filter`;
+    const focusInSection = () =>
+      a.evaluate(() => !!document.activeElement?.closest("section#kolom-filter"));
+    const viaLink = async (from: string, activate: (link: Locator) => Promise<void>) => {
+      const dialog = await openShare(a, from);
+      const warning = dialog.getByTestId("share-warning-filters");
+      await expect(warning).toContainText("No Resi");
+      const link = warning.getByRole("link", { name: FILTER_LINK });
+      await expect(link).toHaveAttribute("href", target);
+      await activate(link);
+      await expect(a.getByTestId("share-dialog")).toHaveCount(0);
+      await expect.poll(() => a.url()).toMatch(new RegExp(`${target.replace("?", "\\?")}$`));
+      await expect(a.getByTestId("canvas-toolbar")).toBeVisible();
+      const settings = a.locator("section#kolom-filter");
+      await expect(settings).toBeInViewport();
+      // Fokus di bagian kolom filter (bukan kembali ke "Bagikan" di atas halaman), dan bertahan.
+      await expect.poll(focusInSection).toBe(true);
+      await expect(a.getByTestId("share-open")).not.toBeFocused();
+      await a.waitForTimeout(500);
+      expect(await focusInSection()).toBe(true);
+      // Tab berikutnya berlanjut dari bagian itu (urutan fokus, WCAG 2.4.3).
+      await a.keyboard.press("Tab");
+      expect(await focusInSection()).toBe(true);
+    };
+    // Dari mode lihat (klik): bagian kolom filter terpasang setelah navigasi lalu memfokus dirinya.
+    await viaLink(`/dashboards/${d5}`, (link) => link.click());
+    // Dari mode edit (keyboard): bagian sudah ada — fokus dipindah saat dialog tertutup.
+    await viaLink(`/dashboards/${d5}?mode=edit`, async (link) => {
+      await link.focus();
+      await link.press("Enter");
+    });
   });
 });
