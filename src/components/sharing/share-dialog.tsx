@@ -3,9 +3,11 @@
 import { IconShare, IconX } from "@tabler/icons-react";
 import { Dialog } from "radix-ui";
 import { useRef } from "react";
+import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
 import { Button } from "@/components/ui/button";
 import { DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import { SharePanel } from "./share-panel";
+import { FILTER_LINK_ATTR } from "./share-warnings";
 
 /*
  * Dialog "Bagikan" (T-016, pemilik saja — halaman hanya merender tombolnya untuk pemilik; server tetap
@@ -15,6 +17,9 @@ import { SharePanel } from "./share-panel";
  * jadi satu area gulir (aturan sama dengan ConfirmDialog), agar kepala + kaki tidak menyisakan ~1
  * kontrol untuk isi. z-40 (bukan 50): konfirmasi "Cabut" (AlertDialog z-40/50) dan menu Select (z-50)
  * yang dibuka dari dalamnya tampil di atasnya, termasuk lapisan peredupnya.
+ * Ditutup lewat tautan peringatan ke pengaturan kolom filter (review T-016 R2-UI-6): fokus ke bagian
+ * kolom filter bila sudah ada (dialog dibuka di mode edit), bukan kembali ke tombol "Bagikan" di atas
+ * halaman; dari mode lihat bagian itu memfokus dirinya saat terpasang (filter-columns-settings).
  */
 export const SHARE_DIALOG_BOX =
   "fixed inset-0 z-40 flex h-dvh w-full flex-col bg-card outline-none md:inset-auto md:top-1/2 md:left-1/2 md:h-auto md:max-h-[calc(100dvh-2rem)] md:w-[calc(100%-2rem)] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-lg md:border md:shadow-lg [@media(max-height:480px)]:overflow-y-auto";
@@ -28,6 +33,7 @@ export function ShareDialog({
   dashboardName: string;
 }) {
   const box = useRef<HTMLDivElement>(null);
+  const toFilters = useRef(false);
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
@@ -50,6 +56,19 @@ export function ShareDialog({
           onOpenAutoFocus={(e) => {
             e.preventDefault();
             box.current?.focus();
+          }}
+          onClickCapture={(e) => {
+            // Klik biasa (bukan tab baru) pada tautan kolom filter; Dialog.Close menutup sesudahnya.
+            const plain = !(e.metaKey || e.ctrlKey || e.shiftKey);
+            toFilters.current =
+              plain && e.target instanceof Element && !!e.target.closest(`[${FILTER_LINK_ATTR}]`);
+          }}
+          onCloseAutoFocus={(e) => {
+            const target = closeFocusTarget(toFilters.current, document);
+            toFilters.current = false;
+            if (!target) return;
+            e.preventDefault();
+            target.focus();
           }}
           onFocusCapture={(e) => {
             // Fokus keyboard (Tab berputar) tidak boleh mendarat di luar area terlihat isi yang bergulir.
@@ -92,3 +111,9 @@ export function ShareDialog({
     </Dialog.Root>
   );
 }
+
+/** Elemen yang difokus saat dialog ditutup lewat tautan kolom filter; null = bawaan Radix (pemicu). */
+export const closeFocusTarget = (
+  viaFilterLink: boolean,
+  doc: Pick<Document, "getElementById">,
+): HTMLElement | null => (viaFilterLink ? doc.getElementById(FILTER_SETTINGS_ID) : null);

@@ -18,6 +18,7 @@ import {
   type WidgetType,
 } from "@/features/widgets/spec";
 import { Choice, ColumnChoice } from "./config-fields";
+import { CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { deferredTask } from "./config-focus";
 import {
   AGG_LABEL,
@@ -373,7 +374,7 @@ export function CrossFilterField({
     <div className="flex min-w-0 items-start justify-between gap-3">
       <div className="flex min-w-0 flex-col gap-0.5 pt-2.5 md:pt-0.5">
         <label htmlFor={id} className="text-sm font-medium">
-          Klik grafik menyaring widget lain
+          {CROSS_FILTER_LABEL}
         </label>
         <p id={`${id}-hint`} className="text-xs text-muted-foreground">
           Kategori yang diklik jadi filter untuk semua widget lain di dashboard ini.

@@ -13,6 +13,14 @@ import { AddFilterColumnMenu } from "./add-filter-column-menu";
 import { api } from "./dashboard-api";
 import { FILTER_SETTINGS_ID } from "./filters/filter-bar";
 
+/** Fokus ke bagian kolom filter bila URL menunjuk ke sana; true = difokus. */
+export function focusIfTargeted(el: HTMLElement | null, hash: string): boolean {
+  if (!el || hash !== `#${FILTER_SETTINGS_ID}`) return false;
+  // Next sudah menggulir ke hash (efek tata letak, sebelum efek ini): jangan menggulir lagi.
+  el.focus({ preventScroll: true });
+  return true;
+}
+
 /*
  * Kolom filter dashboard (T-012, mode edit): kolom yang bisa disaring dari bilah filter oleh semua yang
  * melihat dashboard (maks. 8). Tambah lewat menu kolom per sheet (non-modal), hapus per baris; tiap
@@ -21,6 +29,8 @@ import { FILTER_SETTINGS_ID } from "./filters/filter-bar";
  * berlaku per nama di semua sheet, jadi kolom bernama sama dari sheet lain tidak bisa ditambahkan.
  * Setelah menghapus, fokus pindah ke baris berikutnya (atau tombol tambah). Status simpan diumumkan
  * lewat wilayah status yang selalu terpasang (isinya saja yang berganti).
+ * Dibuka lewat #kolom-filter (tautan peringatan dialog share, review T-016 R2-UI-6): bagian ini difokus
+ * saat terpasang — Next hanya menggulir ke hash, fokus tetap di tombol pemicu di atas halaman (2.4.3).
  */
 export function FilterColumnsSettings({
   dashboardId,
@@ -42,6 +52,10 @@ export function FilterColumnsSettings({
   const full = list.length >= FILTER_COLUMNS_MAX;
   const taken = new Set(list.map((c) => c.key));
   const names = new Set(list.map((c) => normName(c.column)));
+
+  useEffect(() => {
+    focusIfTargeted(root.current, window.location.hash);
+  }, []);
 
   useEffect(() => {
     const at = focusAt.current;
@@ -81,7 +95,9 @@ export function FilterColumnsSettings({
       id={FILTER_SETTINGS_ID}
       aria-labelledby={`${id}-h`}
       data-testid="dashboard-filter-columns"
-      className="flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col gap-3 border-t pt-5"
+      // Target fokus tautan #kolom-filter (bukan tab stop); cincin hanya untuk fokus keyboard.
+      tabIndex={-1}
+      className="flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col gap-3 rounded-sm border-t pt-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex flex-col gap-1">
         <h3 id={`${id}-h`} className="text-sm font-semibold">

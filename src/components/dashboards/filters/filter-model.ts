@@ -188,6 +188,12 @@ export function isIsoDate(s: string): boolean {
 }
 
 /**
+ * Label sakelar filter silang di pengaturan grafik — juga dirujuk peringatan dialog share sebagai cara
+ * menghapus kolom kategori dari daftar kolom lintas sheet (review T-016 R2-UI-3), jadi satu sumber.
+ */
+export const CROSS_FILTER_LABEL = "Klik grafik menyaring widget lain";
+
+/**
  * Kolom kategori grafik yang boleh menyaring widget lain, dihitung di klien dari widget + sumber data
  * mode edit (spec yang baru disimpan langsung berlaku tanpa memuat ulang halaman). Aturannya sama
  * dengan server (crossFilterColumnsOf): grafik dengan crossFilter ≠ false, kolom tampil di sheetnya.

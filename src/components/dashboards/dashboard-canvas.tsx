@@ -18,8 +18,13 @@ import { withUnsaved } from "./config-saves";
 import { FilterBar } from "./filters/filter-bar";
 import { DashboardFiltersProvider } from "./filters/filter-context";
 import { crossColumnsOf, type FilterColumnView } from "./filters/filter-model";
-import { applyStep, readingOrder, stepAvailability } from "./layout-ops";
-import { isFrozen, useDashboardEditor } from "./use-dashboard-editor";
+import { applyStep, phoneCardStyle, readingOrder, stepAvailability } from "./layout-ops";
+import {
+  isFrozen,
+  useDashboardEditor,
+  useFreshAfterHistory,
+  viewCanvasKey,
+} from "./use-dashboard-editor";
 import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
 import { WidgetConfigForm } from "./widget-config";
@@ -35,22 +40,16 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
  * Peran (T-016): viewer hanya mode lihat (server mengalihkan ?mode=edit); editor mengedit widget dan
  * tata letak tanpa tautan/pengaturan milik pemilik. Query widget 404 (akses dicabut) → halaman dimuat
  * ulang dari server sekali per pemasangan kanvas (AccessRefreshProvider).
+ * Back/Forward (review T-016 R2-CL-1): props dari cache riwayat tidak pernah dipakai — kerangka sampai
+ * refresh selesai (useFreshAfterHistory); mode lihat dipasang ulang bila versi widget/tata letak berubah.
  */
 const ROW_HEIGHT = 56;
 const MARGIN: [number, number] = [16, 16];
 const plain = (l: Layout): LayoutItem[] => l.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }));
-/** Tinggi kartu di tumpukan ponsel per jenis widget (px). */
-const PHONE_HEIGHT: Record<string, number> = {
-  table: 440,
-  bar: 320,
-  line: 280,
-  pie: 320,
-  kpi: 150,
-};
 const settingsOf = (id: string) => `[data-widget-id="${id}"] [${SETTINGS_ATTR}]`;
 const STALE_RELOAD = "data-stale-reload";
 
-export function DashboardCanvas(props: {
+type CanvasProps = {
   dashboardId: string;
   role: DashboardAccessRole;
   widgets: WidgetView[];
@@ -63,7 +62,30 @@ export function DashboardCanvas(props: {
   /** Filter dashboard (T-012): kolom filter dan kolom filter silang (server); status dari ?f=. */
   filterColumns: FilterColumnView[];
   crossFilterColumns: string[];
-}) {
+};
+
+export function DashboardCanvas(props: CanvasProps) {
+  const ready = useFreshAfterHistory();
+  if (!ready) {
+    return (
+      <div
+        className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
+        aria-busy="true"
+        data-testid="canvas-refreshing"
+      >
+        <span className="sr-only">Memuat versi terbaru dashboard…</span>
+      </div>
+    );
+  }
+  return (
+    <Canvas
+      key={props.editing ? "edit" : viewCanvasKey(props.widgets, props.revision)}
+      {...props}
+    />
+  );
+}
+
+function Canvas(props: CanvasProps) {
   const { dashboardId, editing } = props;
   const isOwner = props.role === "OWNER";
   const ed = useDashboardEditor(props);
@@ -277,11 +299,7 @@ export function DashboardCanvas(props: {
                   <div className="flex flex-col gap-4">
                     {ordered.map((it) => {
                       const w = byId.get(it.i);
-                      return w
-                        ? // Tinggi tetap per jenis (bukan dari grid layar lebar): tabel/grafik menggulir di
-                          // dalam kartu tanpa memanjangkan halaman, KPI tidak memboroskan layar (review L6).
-                          card(w, it, { style: { height: PHONE_HEIGHT[w.type] ?? 160 } })
-                        : null;
+                      return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
                     })}
                   </div>
                 ) : mounted ? (

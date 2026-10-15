@@ -111,6 +111,8 @@ function strMatch(v: string | null, f: unknown): boolean {
 export function fakeShareDb() {
   let state = fresh();
   const locks: string[] = [];
+  /** Lock baris Dashboard (SELECT … FOR NO KEY UPDATE, review T-016 R2 DI-1), urut panggilan. */
+  const rowLocks: string[] = [];
 
   const datasetOf = (id: string) => state.datasets.find((d) => d.id === id)!;
   const userOf = (id: string) => state.users.find((u) => u.id === id);
@@ -244,10 +246,25 @@ export function fakeShareDb() {
   let seq = 0;
   const db = {
     $executeRaw: vi.fn(async (sql: unknown, ...values: unknown[]) => {
-      // Prisma.sql (dashboards/service) atau template tag (sharing/service).
-      const v = (sql as { values?: unknown[] }).values?.[0] ?? values[0];
-      locks.push(String(v));
-      return 1;
+      // Prisma.sql (objek strings + values) atau template tag (array strings + argumen nilai).
+      const q = sql as { strings?: readonly string[]; values?: unknown[] };
+      const text = (Array.isArray(sql) ? (sql as string[]) : (q.strings ?? [])).join("?");
+      const vals = Array.isArray(sql) ? values : (q.values ?? []);
+      if (text.includes("pg_advisory_xact_lock")) {
+        locks.push(String(vals[0]));
+        return 1;
+      }
+      if (/^SELECT 1 FROM "Dashboard" WHERE "id" = \? FOR NO KEY UPDATE$/.test(text)) {
+        rowLocks.push(String(vals[0]));
+        return state.dashboards.filter((d) => d.id === vals[0]).length;
+      }
+      // setOrgShare: SQL mentah TANPA @updatedAt (review T-016 R2 SEC-1/DI-2).
+      if (/^UPDATE "Dashboard" SET "orgShared" = \? WHERE "id" = \?$/.test(text)) {
+        const hit = state.dashboards.filter((d) => d.id === vals[1]);
+        for (const d of hit) d.orgShared = vals[0] as boolean;
+        return hit.length;
+      }
+      throw new Error(`fake-db: SQL mentah tidak didukung: ${text}`);
     }),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
       const snapshot = structuredClone(state);
@@ -395,6 +412,7 @@ export function fakeShareDb() {
   return {
     db,
     locks,
+    rowLocks,
     get state() {
       return state;
     },
@@ -402,6 +420,7 @@ export function fakeShareDb() {
       vi.clearAllMocks();
       state = fresh();
       locks.length = 0;
+      rowLocks.length = 0;
     },
   };
 }

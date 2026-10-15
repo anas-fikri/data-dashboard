@@ -28,13 +28,15 @@ export const WIDGET_CHANGED = "Widget ini sudah diubah. Muat ulang halaman.";
  * `known` = versi yang pernah dipegang kartu ini: awal dari server + hasil simpanan tab ini sendiri,
  * jadi jawaban dari versi lama milik sendiri (query yang berjalan saat tab ini mengganti judul) tetap
  * tampil, dan jawaban versi baru yang mendahului jawaban simpanannya tampil begitu versi itu tercatat.
- * Tanpa versi di salah satu sisi → tidak diperiksa. Murni.
+ * Jawaban gagal membawa versinya sendiri (review T-016 R2-CL-2: urutan kolom dari pengaturan lama →
+ * INVALID); versi itu didahulukan dari data lama yang masih dipegang. Tanpa versi di salah satu sisi →
+ * tidak diperiksa. Murni.
  */
 export function withChangeCheck(
   state: WidgetQueryState,
   known: readonly string[],
 ): WidgetQueryState {
-  const v = state.data?.widgetVersion;
+  const v = (state.status === "error" ? state.version : undefined) ?? state.data?.widgetVersion;
   if (v === undefined || known.length === 0 || known.includes(v)) return state;
   return { status: "error", code: "CHANGED", message: WIDGET_CHANGED, filters: state.filters };
 }

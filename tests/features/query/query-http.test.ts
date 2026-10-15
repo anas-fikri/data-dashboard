@@ -10,6 +10,7 @@ import {
   STRANGER,
   VIEWER,
   WID,
+  WIDGET_UPDATED_AT,
   makeDeps,
 } from "./sharing-fixtures";
 
@@ -81,7 +82,17 @@ describe("/api/query widget { widgetId, … } (T-016)", () => {
       widgetId: WID("kpi"),
       dashboardFilters: [{ column: "Omzet", op: "in", values: ["1"] }],
     });
-    expect(r).toMatchObject({ status: 400, json: { ok: false, code: "INVALID" } });
+    // Tetap 400 (AC3), dengan petunjuk muat ulang + versi widget di JSON (review T-016 R2 CL-2).
+    expect(r).toEqual({
+      status: 400,
+      json: {
+        ok: false,
+        code: "INVALID",
+        message:
+          "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.",
+        widgetVersion: WIDGET_UPDATED_AT.toISOString(),
+      },
+    });
     expect(current.exec).not.toHaveBeenCalled();
   });
 
@@ -92,7 +103,24 @@ describe("/api/query widget { widgetId, … } (T-016)", () => {
       ok: false,
       code: "COLUMN_UNAVAILABLE",
       message: "Kolom yang dipakai widget ini tidak tersedia.",
+      widgetVersion: WIDGET_UPDATED_AT.toISOString(),
     });
+  });
+
+  it("review R2 CL-2: urutan kolom yang sudah tidak ada di tabel → 400 + widgetVersion; 404 tanpa versi", async () => {
+    const r = await call(VIEWER, { widgetId: WID("gone"), sort: { column: 2, dir: "asc" } });
+    expect(r).toEqual({
+      status: 400,
+      json: {
+        ok: false,
+        code: "INVALID",
+        message: "Urutan hanya untuk kolom di tabel ini.",
+        widgetVersion: WIDGET_UPDATED_AT.toISOString(),
+      },
+    });
+    const denied = await call(STRANGER, { widgetId: WID("gone"), sort: { column: 2, dir: "asc" } });
+    expect(denied.status).toBe(404);
+    expect(denied.json).not.toHaveProperty("widgetVersion");
   });
 });
 

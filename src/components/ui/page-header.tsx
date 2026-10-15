@@ -13,7 +13,11 @@ interface PageHeaderProps {
   className?: string;
 }
 
-/** Satu h1 per halaman; fokus utama + satu CTA utama (gerbang hierarki plugin). */
+/**
+ * Satu h1 per halaman; fokus utama + satu CTA utama (gerbang hierarki plugin). ≥ 768 px: judul dan aksi
+ * sebaris; judul paling sempit 16rem — bila aksi (mis. "Bagikan" + "Ubah tata letak") tidak muat di
+ * sisanya, aksi turun ke baris sendiri, bukan memeras h1 jadi 6 baris (review T-016 R2-UI-5).
+ */
 export function PageHeader({
   title,
   description,
@@ -25,11 +29,11 @@ export function PageHeader({
   return (
     <header
       className={cn(
-        "flex flex-col gap-4 border-b pb-5 md:flex-row md:items-end md:justify-between",
+        "flex flex-col gap-4 border-b pb-5 md:flex-row md:flex-wrap md:items-end md:justify-between",
         className,
       )}
     >
-      <div className="min-w-0">
+      <div className="min-w-0 md:grow md:basis-64">
         {eyebrow ? <div className="mb-1 text-sm text-muted-foreground">{eyebrow}</div> : null}
         <h1 className="text-balance break-words text-2xl font-semibold tracking-tight">{title}</h1>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}

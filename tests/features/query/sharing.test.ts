@@ -30,7 +30,10 @@ import {
  * pesan umum COLUMN_UNAVAILABLE untuk viewer, cached/ms hanya untuk pemilik.
  */
 
-const NOT_ALLOWED = "Filter tidak diizinkan untuk dashboard ini.";
+const NOT_ALLOWED =
+  "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
+/** Versi pengaturan semua widget fixture (widgetVersion di setiap jawaban setelah otorisasi). */
+const V = WIDGET_UPDATED_AT.toISOString();
 
 describe("T-016 widget { widgetId, … }: matriks peran", () => {
   it("pemilik, editor, viewer dashboard → hasil; orang lain → NOT_FOUND tanpa cache/DuckDB", async () => {
@@ -52,7 +55,7 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
     expect(exec).not.toHaveBeenCalled();
   });
 
-  it("review DI-1: jawaban sukses membawa widgetVersion (Widget.updatedAt ISO) untuk semua peran, juga dari cache; gagal tanpa versi", async () => {
+  it("review DI-1: jawaban sukses membawa widgetVersion (Widget.updatedAt ISO) untuk semua peran, juga dari cache", async () => {
     const { deps, repo } = makeDeps();
     const version = WIDGET_UPDATED_AT.toISOString();
     for (const user of [VIEWER, EDITOR, OWNER]) {
@@ -77,9 +80,54 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
       ok: true,
       widgetVersion: later.toISOString(),
     });
-    const failed = await runWidgetQuery(VIEWER, { widgetId: WID("hidden") }, deps);
-    expect(failed).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
-    expect(failed).not.toHaveProperty("widgetVersion");
+  });
+
+  it("review R2 CL-2: jawaban GAGAL setelah otorisasi juga membawa widgetVersion; 404/body rusak tanpa versi", async () => {
+    const { deps, repo, exec } = makeDeps();
+    // Tabel yang kolom Omzet-nya baru dihapus editor (spec [1]); klien lama mengurutkan kolom 2.
+    const later = new Date("2026-10-15T10:00:00.002Z");
+    repo.widget.mockImplementationOnce(async () => ({
+      type: "table",
+      spec: { sheetId: SHEET, columns: [1], format: { style: "number", decimals: 0 } },
+      updatedAt: later,
+      datasetId: DS,
+      activeVersionId: VER,
+      dashboardId: DASH,
+      filterColumns: [],
+      role: "VIEWER" as const,
+    }));
+    expect(
+      await runWidgetQuery(VIEWER, { widgetId: WID("kpi"), sort: { column: 2, dir: "asc" } }, deps),
+    ).toEqual({
+      ok: false,
+      code: "INVALID",
+      message: "Urutan hanya untuk kolom di tabel ini.",
+      widgetVersion: later.toISOString(),
+    });
+    // Filter yang tidak diizinkan (kolom filter baru dihapus pemilik): petunjuk muat ulang + versi.
+    expect(
+      await runWidgetQuery(
+        VIEWER,
+        { widgetId: WID("kpi"), dashboardFilters: [{ column: "Omzet", op: "in", values: ["1"] }] },
+        deps,
+      ),
+    ).toEqual({ ok: false, code: "INVALID", message: NOT_ALLOWED, widgetVersion: V });
+    // COLUMN_UNAVAILABLE (pesan umum viewer) dan error mesin query juga membawa versi.
+    expect(await runWidgetQuery(VIEWER, { widgetId: WID("hidden") }, deps)).toEqual({
+      ok: false,
+      code: "COLUMN_UNAVAILABLE",
+      message: COLUMN_UNAVAILABLE_VIEWER,
+      widgetVersion: V,
+    });
+    exec.mockRejectedValueOnce(new Error("Out of Memory Error: x"));
+    const failed = await runWidgetQuery(EDITOR, { widgetId: WID("kpi") }, deps);
+    expect(failed).toMatchObject({ ok: false, code: "QUERY_TOO_HEAVY", widgetVersion: V });
+    // Sebelum otorisasi: tanpa versi (tidak membocorkan apa pun tentang widget yang tidak boleh dilihat).
+    const denied = await runWidgetQuery(STRANGER, { widgetId: WID("kpi") }, deps);
+    expect(denied).toEqual({ ok: false, code: "NOT_FOUND", message: "Widget tidak ditemukan." });
+    const invalid = await runWidgetQuery(VIEWER, { widgetId: WID("kpi"), page: -1 }, deps);
+    expect(invalid).toMatchObject({ ok: false, code: "INVALID" });
+    expect(invalid).not.toHaveProperty("widgetVersion");
   });
 
   it("cached/ms hanya untuk pemilik — juga saat dilayani cache bersama", async () => {
@@ -111,6 +159,7 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
         ok: false,
         code: "INVALID",
         message: NOT_ALLOWED,
+        widgetVersion: V,
       });
     }
     expect(exec).not.toHaveBeenCalled();
@@ -140,6 +189,7 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
       ok: false,
       code: "COLUMN_UNAVAILABLE",
       message: COLUMN_UNAVAILABLE_VIEWER,
+      widgetVersion: V,
     });
     const r = await runWidgetQuery(OWNER, { widgetId: WID("kpi") }, deps);
     expect(r).toMatchObject({ ok: true });
@@ -166,6 +216,7 @@ describe("T-016 pesan COLUMN_UNAVAILABLE per peran (catatan T-011)", () => {
         ok: false,
         code: "COLUMN_UNAVAILABLE",
         message: COLUMN_UNAVAILABLE_VIEWER,
+        widgetVersion: V,
       });
       for (const n of ["Rahasia", "Diskon", "Omzet Lama"]) {
         expect(JSON.stringify(viewer)).not.toContain(n);

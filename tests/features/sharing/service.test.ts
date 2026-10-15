@@ -403,15 +403,64 @@ describe("setShareRole / revokeShare / setOrgShare", () => {
     expect(await svc.setOrgShare(OWNER, D1, true, IP)).toMatchObject({ ok: true });
     expect(await svc.setOrgShare(OWNER, D1, false, IP)).toMatchObject({ ok: true });
     expect(at()).toBe(before);
-    // Nilai lama dikirim eksplisit (Prisma memakai nilai @updatedAt yang disetel sendiri).
-    expect(fake.db.dashboard.update).toHaveBeenCalledWith({
-      where: { id: D1 },
-      data: { orgShared: true, updatedAt: new Date(before) },
-      select: { id: true },
+    // SQL mentah yang hanya menulis orgShared (review T-016 R2 SEC-1/DI-2): tidak lewat update Prisma
+    // (@updatedAt diisi di klien) dan tidak menulis updatedAt sama sekali.
+    expect(fake.db.dashboard.update).not.toHaveBeenCalled();
+    expect(fake.db.dashboard.updateMany).not.toHaveBeenCalled();
+    const raw = fake.db.$executeRaw.mock.calls.map((c) => [
+      (c[0] as string[]).join("?"),
+      ...c.slice(1),
+    ]);
+    expect(raw).toContainEqual(['UPDATE "Dashboard" SET "orgShared" = ? WHERE "id" = ?', true, D1]);
+    expect(raw.filter(([sql]) => String(sql).includes("updatedAt"))).toEqual([]);
+  });
+
+  it("review R2 SEC-1/DI-2: penulis tanpa lock dashboard menggeser updatedAt di tengah toggle → tidak dikembalikan ke nilai lama", async () => {
+    const at = () => fake.state.dashboards.find((d) => d.id === D1)!.updatedAt.getTime();
+    const before = at();
+    const later = new Date(before + 60_000);
+    // Ganti judul widget / kolom filter (tanpa lock `dashboard:<id>`) commit tepat setelah ownerTx
+    // membaca baris dashboard dan sebelum UPDATE-nya.
+    const read = fake.db.dashboard.findFirst.getMockImplementation()!;
+    fake.db.dashboard.findFirst.mockImplementationOnce(async (args) => {
+      const row = await read(args);
+      fake.state.dashboards.find((d) => d.id === D1)!.updatedAt = later;
+      return row;
     });
-    // Pembanding: penulisan isi lewat update yang sama (palsu meniru @updatedAt) tetap menggesernya.
-    await fake.db.dashboard.update({ where: { id: D1 }, data: { layoutRevision: 1 } });
-    expect(at()).not.toBe(before);
+    expect(await svc.setOrgShare(OWNER, D1, true, IP)).toMatchObject({
+      ok: true,
+      data: { orgShared: true },
+    });
+    expect(at()).toBe(later.getTime());
+    expect(fake.state.audits.map((a) => a.action)).toEqual(["dashboard.org.share"]);
+  });
+
+  it("review R2: dashboard dihapus bersamaan (UPDATE mentah 0 baris) → NOT_FOUND tanpa audit", async () => {
+    const read = fake.db.dashboard.findFirst.getMockImplementation()!;
+    fake.db.dashboard.findFirst.mockImplementationOnce(async (args) => {
+      const row = await read(args);
+      fake.state.dashboards = fake.state.dashboards.filter((d) => d.id !== D1);
+      return row;
+    });
+    expect(await svc.setOrgShare(OWNER, D1, true, IP)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Dashboard tidak ditemukan.",
+    });
+    expect(fake.state.audits).toEqual([]);
+  });
+
+  it("review R2 DI-1: transaksi akses jadi korban deadlock / P2034 → BUSY, bukan 500", async () => {
+    const { Prisma } = await import("@prisma/client");
+    for (const e of [
+      new Prisma.PrismaClientUnknownRequestError('PostgresError { code: "40P01" }', {
+        clientVersion: "6.12.0",
+      }),
+      new Prisma.PrismaClientKnownRequestError("x", { code: "P2034", clientVersion: "6.12.0" }),
+    ]) {
+      fake.db.$transaction.mockRejectedValueOnce(e);
+      expect(await svc.setOrgShare(OWNER, D1, true, IP)).toMatchObject({ ok: false, code: "BUSY" });
+    }
   });
 });
 

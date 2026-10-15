@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
+import { isTxConflict } from "@/features/dashboards/tx-conflict";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -284,8 +285,12 @@ export async function deleteDataset(
       { maxWait: 5_000, timeout: 30_000 },
     );
   } catch (e) {
-    // Lock tetap dipegang transaksi lain melewati batas waktu → dibatalkan utuh, coba lagi (review T-016).
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") {
+    // Lock tetap dipegang transaksi lain melewati batas waktu, atau korban deadlock dengan simpan widget
+    // editor (review T-016 R2 DI-1) → dibatalkan utuh, coba lagi (review T-016).
+    if (
+      (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") ||
+      isTxConflict(e)
+    ) {
       return { ok: false, code: "BUSY", message: "Sedang memproses permintaan lain. Coba lagi." };
     }
     throw e;

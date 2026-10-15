@@ -216,6 +216,8 @@ describe("widget dan tata letak: OWNER/EDITOR boleh, VIEWER FORBIDDEN, tanpa aks
   it("cek akses di DALAM transaksi lock: tulis editor memakai canEditWhere setelah pg_advisory_xact_lock", async () => {
     expect(await editOps.saveLayout(EDITOR, D1)).toMatchObject({ ok: true });
     expect(fake.locks).toEqual([`dashboard:${D1}`]);
+    // Baris Dashboard dikunci setelah lock advisory, sebelum widget mana pun (review T-016 R2 DI-1).
+    expect(fake.rowLocks).toEqual([D1]);
     // Panggilan findFirst pertama dalam transaksi (lockedDashboard) membawa predikat edit.
     expect(fake.db.dashboard.findFirst.mock.calls[0]![0].where).toEqual({
       id: D1,

@@ -28,6 +28,7 @@ import {
   type FilterColumnView,
   type FilterSourceColumn,
 } from "./filter-columns";
+import { isTxConflict } from "./tx-conflict";
 import {
   DASHBOARD_NAME_MAX,
   DASHBOARDS_PER_DATASET,
@@ -335,7 +336,14 @@ export async function deleteDashboard(
   id: unknown,
 ): Promise<DashboardResult<{ id: string }>> {
   if (!isIdShape(id)) return notFound();
-  const r = await prisma.dashboard.deleteMany({ where: { id, ...ownedWhere(userId) } });
+  let r: Prisma.BatchPayload;
+  try {
+    r = await prisma.dashboard.deleteMany({ where: { id, ...ownedWhere(userId) } });
+  } catch (e) {
+    // Korban deadlock dengan transaksi lain (dibatalkan utuh, dashboard tetap ada) → coba lagi.
+    if (isTxConflict(e)) return busy();
+    throw e;
+  }
   return r.count === 1 ? { ok: true, data: { id } } : denied(userId, id, "owner");
 }
 
@@ -722,12 +730,15 @@ type Tx = Prisma.TransactionClient;
 const isGone = (e: unknown) =>
   e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2003" || e.code === "P2025");
 
-/** Transaksi ber-lock; lock yang tidak didapat dalam batas waktu → "BUSY", data hilang → null. */
+/**
+ * Transaksi ber-lock; lock yang tidak didapat dalam batas waktu, atau dibatalkan Postgres karena
+ * deadlock/serialisasi (review T-016 R2 DI-1) → "BUSY"; data hilang → null.
+ */
 async function locked<T>(fn: (tx: Tx) => Promise<T>): Promise<T | "BUSY" | null> {
   try {
     return await prisma.$transaction(fn);
   } catch (e) {
-    if (isLockTimeout(e)) return "BUSY";
+    if (isLockTimeout(e) || isTxConflict(e)) return "BUSY";
     if (isGone(e)) return null;
     throw e;
   }
@@ -737,13 +748,26 @@ const typesOf = (widgets: { id: string; type: string }[]) =>
   new Map(widgets.map((w) => [w.id, w.type]));
 
 /**
+ * Lock advisory `dashboard:<id>`, lalu baris Dashboard SEBELUM baris Widget mana pun (review T-016 R2
+ * DI-1). Hapus dashboard/dataset pemilik tidak memegang lock advisory dan mengunci baris Dashboard
+ * dulu, baru Widget lewat kaskade; penulis widget (editor) memakai urutan yang sama sehingga keduanya
+ * saling menunggu, bukan deadlock. NO KEY UPDATE: tidak bentrok dengan FOR KEY SHARE dari FK (share
+ * atau widget baru). Dashboard terhapus lebih dulu → 0 baris; pembacaan/penulisan berikutnya juga 0
+ * baris → NOT_FOUND seperti biasa.
+ */
+async function lockDashboard(tx: Tx, dashboardId: string) {
+  await tx.$executeRaw(lockKey("dashboard", dashboardId));
+  await tx.$executeRaw`SELECT 1 FROM "Dashboard" WHERE "id" = ${dashboardId} FOR NO KEY UPDATE`;
+}
+
+/**
  * Dashboard yang boleh diubah user (OWNER/EDITOR), dikunci untuk SEMUA perubahan tata letak/widget
  * (tambah, hapus, simpan otomatis) sehingga revisi tidak pernah dibagikan dua kali (review T-010 L1).
  * Akses dibaca SETELAH lock, di transaksi yang sama dengan penulisannya: share yang dicabut sebelum
  * lock didapat tidak bisa lagi menulis (tanpa TOCTOU).
  */
 async function lockedDashboard(tx: Tx, userId: string, dashboardId: string) {
-  await tx.$executeRaw(lockKey("dashboard", dashboardId));
+  await lockDashboard(tx, dashboardId);
   return tx.dashboard.findFirst({
     where: { id: dashboardId, ...canEditWhere(userId) },
     select: {
@@ -993,7 +1017,9 @@ export async function renameWidget(
     data: { title, updatedAt: version },
   });
   if (r.count !== 1) return denied(userId, dashboardId, "edit", staleOrGone(where, base.value));
-  // "Diperbarui" di daftar dashboard ikut berubah.
+  // "Diperbarui" di daftar dashboard ikut berubah. Pernyataan terpisah (autocommit), bukan satu
+  // transaksi: lock baris Widget sudah lepas sebelum baris Dashboard dikunci, jadi tidak ada urutan
+  // Widget → Dashboard yang bisa deadlock dengan hapus dashboard/dataset (review T-016 R2 DI-1).
   await prisma.dashboard.updateMany({
     where: { id: dashboardId },
     data: { updatedAt: new Date() },
@@ -1033,7 +1059,7 @@ export async function configureWidget(
   const { config } = checked;
   const version = nextVersion(base.value);
   const r = await locked(async (tx) => {
-    await tx.$executeRaw(lockKey("dashboard", dashboardId));
+    await lockDashboard(tx, dashboardId);
     if (!(await onActiveVersion(tx, w.dashboard.datasetId, config))) return "STALE" as const;
     const u = await tx.widget.updateMany({
       // CAS pada versi yang dilihat klien (bila dikirim): simpan bersamaan dari tab lain tidak tertimpa.

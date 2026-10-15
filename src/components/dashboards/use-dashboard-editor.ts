@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
@@ -52,6 +53,79 @@ export const patchWidget = (
   widgetId: string,
   patch: Partial<Pick<WidgetView, "type" | "spec" | "title" | "version" | "retargeted">>,
 ): WidgetView[] => widgets.map((w) => (w.id === widgetId ? { ...w, ...patch } : w));
+
+/*
+ * Back/Forward (review T-016 R2-CL-1): Next memulihkan halaman dari cache riwayat klien — props kanvas
+ * (versi widget, revisi tata letak) adalah milik kunjungan lama. Kanvas yang dipasang tepat setelah
+ * popstate ke URL ini meminta router.refresh() SEKALI dan belum dirender (tanpa query/tulis) sampai
+ * props segar tiba. Tanpa ini: suntingan sendiri tampil "Widget ini sudah diubah" dan tulisan pertama
+ * di editor yang dipulihkan ditolak STALE. Back/forward cache browser ditangani `pageshow` di bawah.
+ */
+let popped: { at: number; href: string } | null = null;
+if (typeof window !== "undefined") {
+  window.addEventListener("popstate", () => {
+    popped = { at: Date.now(), href: window.location.href };
+  });
+}
+/** Pemulihan dari cache riwayat dirender segera setelah popstate; lebih lambat = props dari server. */
+const HISTORY_MOUNT_MS = 2000;
+/** Refresh tidak selesai (jaringan/antrean router): muat ulang penuh daripada kerangka selamanya. */
+const HISTORY_RELOAD_MS = 8000;
+
+/** Pemasangan ini menyusul Back/Forward ke URL yang sama, belum lama. Murni. */
+export function isHistoryMount(
+  last: { at: number; href: string } | null,
+  now: number,
+  href: string,
+): boolean {
+  return !!last && last.href === href && now >= last.at && now - last.at < HISTORY_MOUNT_MS;
+}
+
+/** Kanvas boleh dirender: bukan dari riwayat, atau refresh yang diminta sudah selesai. Murni. */
+export const historyReady = (fromHistory: boolean, refreshed: boolean, refreshing: boolean) =>
+  !fromHistory || (refreshed && !refreshing);
+
+/**
+ * false selama props kanvas mungkin dari cache riwayat dan refresh-nya belum selesai. setRefreshed
+ * ikut transisi refresh, jadi true bersamaan dengan props segar (isPending selesai di commit yang sama).
+ */
+export function useFreshAfterHistory(): boolean {
+  const router = useRouter();
+  const [fromHistory] = useState(
+    () => typeof window !== "undefined" && isHistoryMount(popped, Date.now(), window.location.href),
+  );
+  const [refreshed, setRefreshed] = useState(false);
+  const [refreshing, startRefresh] = useTransition();
+  const asked = useRef(false);
+  const ready = historyReady(fromHistory, refreshed, refreshing);
+  useEffect(() => {
+    if (!fromHistory || asked.current) return;
+    asked.current = true;
+    // Dipakai sekali: kanvas yang dipasang ulang oleh props segar (key versi) tidak menyegarkan lagi.
+    popped = null;
+    startRefresh(() => {
+      setRefreshed(true);
+      router.refresh();
+    });
+  }, [fromHistory, router]);
+  useEffect(() => {
+    if (ready) return;
+    const t = setTimeout(() => window.location.reload(), HISTORY_RELOAD_MS);
+    return () => clearTimeout(t);
+  }, [ready]);
+  return ready;
+}
+
+/**
+ * Key kanvas mode lihat: id + versi tiap widget + revisi tata letak. Props baru dari server (refresh
+ * setelah Back, akses berubah) memasang ulang kanvas dengan pengaturan terbaru — aman karena mode lihat
+ * tidak punya perubahan yang belum terkirim. Mode edit TIDAK memakainya: refresh dari ganti nama/kolom
+ * filter tidak boleh membuang tata letak tertunda atau panel yang terbuka. Murni.
+ */
+export const viewCanvasKey = (
+  widgets: readonly Pick<WidgetView, "id" | "version">[],
+  revision: number,
+) => `${revision}|${widgets.map((w) => `${w.id}:${w.version}`).join(",")}`;
 
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }

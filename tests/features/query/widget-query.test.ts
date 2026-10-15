@@ -290,7 +290,10 @@ describe("AC 4: kolom disembunyikan/hilang → pesan di widget itu saja", () => 
     ).toEqual({
       ok: false,
       code: "INVALID",
-      message: "Filter tidak diizinkan untuk dashboard ini.",
+      message:
+        "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.",
+      // Versi widget juga di jawaban gagal setelah otorisasi (review T-016 R2 CL-2).
+      widgetVersion: new Date(0).toISOString(),
     });
     expect(
       await runWidgetQuery(

@@ -5,13 +5,20 @@ import Link from "next/link";
 import { Dialog } from "radix-ui";
 import { Fragment, type ReactNode } from "react";
 import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
+import { CROSS_FILTER_LABEL } from "@/components/dashboards/filters/filter-model";
 import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
 
 /*
  * Dua peringatan wajib dialog share (T-016, AC6 + catatan review T-012). Wilayahnya selalu terpasang
  * dan sopan (aria-live) sehingga peringatan editor yang muncul saat peran "Bisa mengedit widget"
  * dipilih ikut dibacakan. Teks memakai warna latar depan penuh di atas latar peringatan (kontras).
+ * Daftar kolom memuat kolom filter DAN kolom kategori grafik yang menyaring silang, jadi sarannya
+ * menyebut keduanya — sakelar filter silang dengan label aslinya (review T-016 R2-UI-3). Tautan ke
+ * pengaturan kolom filter ditandai FILTER_LINK_ATTR: dialog memindah fokus ke bagian itu, bukan ke
+ * tombol "Bagikan" (R2-UI-6).
  */
+export const FILTER_LINK_ATTR = "data-filter-settings-link";
+
 function Warning({ testId, children }: { testId: string; children: ReactNode }) {
   return (
     <div
@@ -55,16 +62,18 @@ export function ShareWarnings({
             .
           </p>
           <p className="mt-1">
-            Sebelum berbagi, ganti nama kolomnya di skema atau hapus kolom filternya di{" "}
+            Sebelum berbagi, ganti nama kolomnya di skema, hapus kolom filternya di{" "}
             <Dialog.Close asChild>
               <Link
                 href={`/dashboards/${dashboardId}?mode=edit#${FILTER_SETTINGS_ID}`}
                 className="font-medium underline underline-offset-4"
+                {...{ [FILTER_LINK_ATTR]: "" }}
               >
                 pengaturan dashboard (mode edit)
               </Link>
             </Dialog.Close>
-            .
+            , atau matikan “{CROSS_FILTER_LABEL}” di pengaturan grafik yang kategorinya memakai
+            kolom itu.
           </p>
         </Warning>
       ) : null}

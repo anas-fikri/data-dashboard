@@ -13,7 +13,9 @@ import { isAccessLost, useAccessLost } from "./access-refresh";
  * halaman dimuat ulang dari server sekali (access-refresh.tsx). Jawaban untuk non-pemilik tidak
  * memuat `cached`/`ms` (T-016): klien tidak bergantung pada keduanya. Jawaban berhasil membawa
  * `widgetVersion` (versi pengaturan yang dipakai server); WidgetBody tidak menampilkan data dari versi
- * yang tidak dikenal kartu (diubah di tab/perangkat lain — body-state.ts withChangeCheck).
+ * yang tidak dikenal kartu (diubah di tab/perangkat lain — body-state.ts withChangeCheck). Jawaban gagal
+ * untuk widget yang terotorisasi juga membawanya (review T-016 R2-CL-2): urutan/filter dari pengaturan
+ * lama yang ditolak INVALID terbaca sebagai CHANGED + "Muat ulang", bukan galat yang berulang.
  */
 export interface QueryColumn {
   key: string;
@@ -44,7 +46,14 @@ export interface WidgetData {
 export type WidgetQueryState = { filters?: string } & (
   | { status: "loading"; data?: WidgetData }
   | { status: "ok"; data: WidgetData }
-  | { status: "error"; code: string; message: string; data?: WidgetData }
+  | {
+      status: "error";
+      code: string;
+      message: string;
+      data?: WidgetData;
+      /** Versi pengaturan widget dari jawaban gagal (bila server menyertakannya). */
+      version?: string;
+    }
 );
 
 const MAX_ACTIVE = 2;
@@ -100,9 +109,10 @@ export interface WidgetRequest {
 }
 
 type WidgetResult =
-  { ok: true; data: WidgetData } | { ok: false; code: string; message: string; status: number };
+  | { ok: true; data: WidgetData }
+  | { ok: false; code: string; message: string; status: number; version?: string };
 
-async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<WidgetResult> {
+export async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<WidgetResult> {
   for (let attempt = 0; ; attempt++) {
     const release = await slot(signal);
     let res: Response;
@@ -124,7 +134,9 @@ async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<Wi
       };
     }
     const json = (await res.json().catch(() => null)) as
-      ({ ok: true } & WidgetData) | { ok: false; code?: string; message?: string } | null;
+      | ({ ok: true } & WidgetData)
+      | { ok: false; code?: string; message?: string; widgetVersion?: unknown }
+      | null;
     release();
     if (json?.ok) return { ok: true, data: json };
     const code = json?.code ?? "UNAVAILABLE";
@@ -136,6 +148,7 @@ async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<Wi
       ok: false,
       code,
       status: res.status,
+      ...(typeof json?.widgetVersion === "string" ? { version: json.widgetVersion } : {}),
       message:
         res.status === 401
           ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
@@ -180,6 +193,7 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
                 message: r.message,
                 data: s.data,
                 filters: s.filters,
+                version: r.version,
               },
         );
       },

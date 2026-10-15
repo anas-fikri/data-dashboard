@@ -224,7 +224,8 @@ describe("AC 1: simpan otomatis tata letak (lock + revisi)", () => {
       ok: true,
       data: { layoutRevision: 4 },
     });
-    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    // Lock advisory + lock baris Dashboard (review T-016 R2 DI-1).
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(2);
     expect(tx.dashboard.update).toHaveBeenCalledWith({
       where: { id: DB },
       data: { layout: items, layoutRevision: 4 },
@@ -781,5 +782,171 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         },
       }),
     );
+  });
+});
+
+describe("review T-016 R2 DI-1: baris Dashboard dikunci sebelum Widget; deadlock → BUSY", () => {
+  const SHEET = "cmv4kljx40009oczvdmpurrsh";
+  const schema = [
+    { pos: 1, name: "Cabang", original: "Cabang", type: "text", hidden: false },
+    { pos: 2, name: "Omzet", original: "Omzet", type: "decimal", hidden: false },
+  ];
+  const bar = {
+    sheetId: SHEET,
+    dimension: { column: 1 },
+    measure: { agg: "sum", column: 2 },
+    sort: "value_desc",
+    topN: 12,
+    format: { style: "rupiah", decimals: 0 },
+  };
+  const ROW_LOCK = 'SELECT 1 FROM "Dashboard" WHERE "id" = ? FOR NO KEY UPDATE';
+  /** Teks SQL panggilan $executeRaw: Prisma.sql (objek strings) atau template tag (array strings). */
+  const sqlOf = (call: unknown[]) => {
+    const q = call[0];
+    return (Array.isArray(q) ? q : ((q as { strings?: string[] }).strings ?? [])).join("?");
+  };
+  /** Nilai pertama panggilan $executeRaw (Prisma.sql: values; template tag: argumen kedua). */
+  const valueOf = (call: unknown[]) =>
+    Array.isArray(call[0]) ? call[1] : (call[0] as { values: unknown[] }).values[0];
+  type Mocked = { mock: { invocationCallOrder: number[] } };
+  /** Urutan global panggilan mock. */
+  const at = (fn: Mocked, i = 0) => fn.mock.invocationCallOrder[i]!;
+
+  function expectLockedFirst(firstWidgetWrite: Mocked) {
+    const calls = tx.$executeRaw.mock.calls as unknown[][];
+    expect(calls.map(sqlOf)).toEqual([expect.stringContaining("pg_advisory_xact_lock"), ROW_LOCK]);
+    expect(valueOf(calls[0]!)).toBe(`dashboard:${DB}`);
+    expect(valueOf(calls[1]!)).toBe(DB);
+    // Advisory → baris Dashboard → baris Widget: urutan yang sama dengan hapus dashboard/dataset.
+    expect(at(tx.$executeRaw, 0)).toBeLessThan(at(tx.$executeRaw, 1));
+    expect(at(tx.$executeRaw, 1)).toBeLessThan(at(firstWidgetWrite));
+  }
+
+  it("hapus widget (lockedDashboard): baris Dashboard dikunci sebelum Widget dihapus", async () => {
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash([{ i: WA, x: 0, y: 0, w: 6, h: 4 }], 2, [WA]),
+    );
+    expect(await svc.deleteWidget(OWNER, DB, WA, 2)).toMatchObject({ ok: true });
+    expectLockedFirst(tx.widget.delete);
+    // Akses dibaca setelah kedua lock (tanpa TOCTOU).
+    expect(at(tx.$executeRaw, 1)).toBeLessThan(at(tx.dashboard.findFirst));
+  });
+
+  it("tambah widget dan simpan tata letak (lockedDashboard): baris Dashboard dikunci lebih dulu", async () => {
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 0, []));
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", updatedAt: AT });
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 0 })).toMatchObject({ ok: true });
+    expectLockedFirst(tx.widget.create);
+
+    vi.clearAllMocks();
+    const one = [{ i: WA, x: 0, y: 0, w: 6, h: 4 }];
+    tx.dashboard.findFirst.mockResolvedValueOnce(dash(one, 1, [WA]));
+    expect(await svc.saveLayout(OWNER, DB, { baseRevision: 1, items: one })).toMatchObject({
+      ok: true,
+    });
+    expectLockedFirst(tx.dashboard.update);
+  });
+
+  it("atur isi widget: baris Dashboard dikunci sebelum Widget ditulis (bukan lagi Widget → Dashboard)", async () => {
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    widgetUpdateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar, VERSION)).toMatchObject({
+      ok: true,
+    });
+    expectLockedFirst(widgetUpdateMany);
+    expect(at(widgetUpdateMany)).toBeLessThan(at(dashboardUpdateMany));
+  });
+
+  it("dashboard dihapus pemilik selagi editor menunggu lock baris → 0 baris → NOT_FOUND, bukan 500", async () => {
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
+    prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+    tx.$executeRaw.mockResolvedValueOnce(1).mockResolvedValueOnce(0);
+    widgetUpdateMany.mockResolvedValueOnce({ count: 0 });
+    // denied(): dashboard sudah tidak ada → tanpa akses.
+    prisma.dashboard.findFirst.mockResolvedValueOnce(null);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar, VERSION)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Dashboard tidak ditemukan.",
+    });
+    expect(dashboardUpdateMany).not.toHaveBeenCalled();
+  });
+
+  /** Bentuk deadlock yang teramati (review): tanpa `code`, SQLSTATE hanya di pesan. */
+  const deadlock = () =>
+    new Prisma.PrismaClientUnknownRequestError(
+      'Error occurred during query execution: ConnectorError(ConnectorError { kind: QueryError(PostgresError { code: "40P01", message: "deadlock detected" }) })',
+      { clientVersion: "6.12.0" },
+    );
+  /** Deadlock di query mentah (lock baris/advisory): P2010 dengan SQLSTATE di meta. */
+  const rawDeadlock = () =>
+    new Prisma.PrismaClientKnownRequestError("Raw query failed. Code: `40P01`.", {
+      code: "P2010",
+      clientVersion: "6.12.0",
+      meta: { code: "40P01", message: "deadlock detected" },
+    });
+  const conflict = () => known("P2034");
+
+  it("isTxConflict: 40P01/40001 (tanpa code atau P2010 query mentah) dan P2034 saja", async () => {
+    const { isTxConflict } = await import("@/features/dashboards/tx-conflict");
+    expect(isTxConflict(deadlock())).toBe(true);
+    expect(isTxConflict(rawDeadlock())).toBe(true);
+    expect(isTxConflict(conflict())).toBe(true);
+    const unknown = (m: string) =>
+      new Prisma.PrismaClientUnknownRequestError(m, { clientVersion: "6.12.0" });
+    expect(isTxConflict(unknown('PostgresError { code: "40001" }'))).toBe(true);
+    expect(isTxConflict(unknown("connection reset"))).toBe(false);
+    expect(isTxConflict(known("P2028"))).toBe(false);
+    expect(isTxConflict(known("P2002"))).toBe(false);
+    const otherRaw = new Prisma.PrismaClientKnownRequestError("Raw query failed.", {
+      code: "P2010",
+      clientVersion: "6.12.0",
+      meta: { code: "23505" },
+    });
+    expect(isTxConflict(otherRaw)).toBe(false);
+    expect(isTxConflict(new Error("40P01"))).toBe(false);
+  });
+
+  it("penulis widget/tata letak: deadlock atau gagal serialisasi → BUSY, bukan 500", async () => {
+    const one = [{ i: WA, x: 0, y: 0, w: 6, h: 4 }];
+    const ops = [
+      () => svc.saveLayout(OWNER, DB, { baseRevision: 1, items: one }),
+      () => svc.addWidget(OWNER, DB, { baseRevision: 1 }),
+      () => svc.deleteWidget(OWNER, DB, WA, 1),
+      () => {
+        prisma.widget.findFirst.mockResolvedValueOnce(editable);
+        prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
+        return svc.configureWidget(OWNER, DB, WA, "bar", bar, VERSION);
+      },
+    ];
+    for (const op of ops) {
+      for (const e of [deadlock(), rawDeadlock(), conflict()]) {
+        prisma.$transaction.mockRejectedValueOnce(e);
+        expect(await op()).toEqual({
+          ok: false,
+          code: "BUSY",
+          message: "Sedang memproses perubahan lain. Coba lagi.",
+        });
+      }
+    }
+    // Error lain tetap dilempar (tidak disamarkan BUSY).
+    prisma.$transaction.mockRejectedValueOnce(new Error("db down"));
+    await expect(ops[2]!()).rejects.toThrow("db down");
+  });
+
+  it("hapus dashboard pemilik: korban deadlock → BUSY (dashboard tetap ada, coba lagi)", async () => {
+    prisma.dashboard.deleteMany.mockRejectedValueOnce(deadlock());
+    expect(await svc.deleteDashboard(OWNER, DB)).toEqual({
+      ok: false,
+      code: "BUSY",
+      message: "Sedang memproses perubahan lain. Coba lagi.",
+    });
+    prisma.dashboard.deleteMany.mockRejectedValueOnce(conflict());
+    expect(await svc.deleteDashboard(OWNER, DB)).toMatchObject({ code: "BUSY" });
+    prisma.dashboard.deleteMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.deleteDashboard(OWNER, DB)).toEqual({ ok: true, data: { id: DB } });
+    prisma.dashboard.deleteMany.mockRejectedValueOnce(new Error("db down"));
+    await expect(svc.deleteDashboard(OWNER, DB)).rejects.toThrow("db down");
   });
 });

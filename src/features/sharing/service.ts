@@ -5,6 +5,7 @@ import { recordAudit } from "@/features/audit/service";
 import { logAccessDenied } from "@/features/auth/denial-log";
 import { normalizeEmail } from "@/features/auth/email-domain";
 import { filterOverlapFor } from "@/features/dashboards/service";
+import { isTxConflict } from "@/features/dashboards/tx-conflict";
 import { isIdShape } from "@/features/datasets/validation";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -93,8 +94,6 @@ type Tx = Prisma.TransactionClient;
 interface Owned {
   ownerId: string;
   orgShared: boolean;
-  /** Waktu isi terakhir berubah: perubahan akses tidak menggesernya (review T-016 DI-3). */
-  updatedAt: Date;
 }
 
 /**
@@ -115,21 +114,17 @@ async function ownerTx(
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`dashboard:${id}`}))`;
         const d = await tx.dashboard.findFirst({
           where: { id, ...canViewWhere(userId) },
-          select: { ...roleSelect(userId), updatedAt: true },
+          select: roleSelect(userId),
         });
         const role = d ? roleOf(userId, d) : null;
         if (!d || role !== "OWNER") return { role };
-        const owned = {
-          ownerId: d.dataset.ownerId,
-          orgShared: d.orgShared,
-          updatedAt: d.updatedAt,
-        };
-        return { result: await fn(tx, id, owned) };
+        return { result: await fn(tx, id, { ownerId: d.dataset.ownerId, orgShared: d.orgShared }) };
       },
     );
     return "result" in out ? out.result : deny(userId, id, action, out.role);
   } catch (e) {
-    if (isLockTimeout(e)) return busy();
+    // Deadlock/serialisasi: dibatalkan utuh, aman dicoba lagi (review T-016 R2 DI-1).
+    if (isLockTimeout(e) || isTxConflict(e)) return busy();
     if (isGone(e)) return fail("NOT_FOUND", "Dashboard tidak ditemukan.");
     throw e;
   }
@@ -370,13 +365,13 @@ export async function setOrgShare(
   if (typeof on !== "boolean") return fail("INVALID", "Permintaan tidak valid.");
   const r = await ownerTx(userId, dashboardId, "org", async (tx, id, d) => {
     if (d.orgShared === on) return ok(null);
-    // updatedAt = nilai lama (dibaca di bawah lock): berbagi bukan perubahan isi — "Diperbarui" dan
-    // urutan "Dibagikan ke saya" tidak bergeser, sama seperti share per user (review T-016 DI-3).
-    await tx.dashboard.update({
-      where: { id },
-      data: { orgShared: on, updatedAt: d.updatedAt },
-      select: { id: true },
-    });
+    // SQL mentah agar updatedAt tidak disentuh sama sekali (@updatedAt Prisma diisi di klien, tanpa
+    // trigger DB): berbagi bukan perubahan isi — "Diperbarui", urutan "Dibagikan ke saya", dan kunci
+    // cache sumber filter tidak bergeser (review T-016 DI-3). Menulis balik nilai lama bisa menimpa
+    // updatedAt baru dari penulis tanpa lock dashboard (ganti judul widget/nama/kolom filter, review
+    // T-016 R2 SEC-1/DI-2). 0 baris = dashboard terhapus bersamaan (DELETE tanpa lock advisory).
+    const n = await tx.$executeRaw`UPDATE "Dashboard" SET "orgShared" = ${on} WHERE "id" = ${id}`;
+    if (n !== 1) return fail("NOT_FOUND", "Dashboard tidak ditemukan.");
     await recordAudit(tx, {
       actorId: userId,
       action: "dashboard.org.share",

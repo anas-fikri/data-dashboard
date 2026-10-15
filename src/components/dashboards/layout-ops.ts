@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import { moveElement, verticalCompactor, type Layout } from "react-grid-layout/core";
 import {
   GRID_COLS,
@@ -139,3 +140,21 @@ export function sameLayout(a: LayoutItem[], b: LayoutItem[]): boolean {
 export function readingOrder(layout: LayoutItem[]): LayoutItem[] {
   return [...layout].sort((a, b) => a.y - b.y || a.x - b.x);
 }
+
+/** Tinggi kartu di tumpukan ponsel (< 768 px) per jenis widget (px). */
+export const PHONE_HEIGHT: Record<string, number> = {
+  table: 440,
+  bar: 320,
+  line: 280,
+  pie: 320,
+  kpi: 150,
+};
+
+/**
+ * Ukuran kartu di tumpukan ponsel. Tabel/grafik: tinggi tetap (bukan dari grid layar lebar) — isinya
+ * menggulir di dalam kartu tanpa memanjangkan halaman. KPI: tinggi minimum (review L6: tidak memboroskan
+ * layar), tetapi tumbuh saat blok galat butuh ruang — "Muat ulang"/"Coba lagi" selalu terlihat tanpa
+ * menggulir di dalam kartu 150 px (review T-016 R2-UI-2). Isi KPI hanya mengukur lebar (kpi-fit).
+ */
+export const phoneCardStyle = (type: string): CSSProperties =>
+  type === "kpi" ? { minHeight: PHONE_HEIGHT.kpi } : { height: PHONE_HEIGHT[type] ?? 160 };

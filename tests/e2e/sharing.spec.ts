@@ -561,7 +561,8 @@ test.describe("berbagi dashboard", () => {
       expect(JSON.parse(text)).toMatchObject({
         ok: false,
         code: "INVALID",
-        message: "Filter tidak diizinkan untuk dashboard ini.",
+        message:
+          "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.",
       });
     }
     const allowed = await query(b, {

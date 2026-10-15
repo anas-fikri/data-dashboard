@@ -113,12 +113,15 @@ export type QueryResult =
 export type WidgetQueryResult = QueryResult | ({ ok: true } & Timing & TablePage);
 
 /**
- * Jawaban mode widget { widgetId, … }: hasil sukses membawa `widgetVersion` = versi pengaturan widget
- * yang dipakai server (Widget.updatedAt ISO, review T-016 DI-1). Beda dengan versi salinan lokal klien
- * → klien tidak menggambar data dengan tipe/format lama, tetapi meminta muat ulang.
+ * Jawaban mode widget { widgetId, … }: setiap jawaban SETELAH widget lolos otorisasi — sukses maupun
+ * gagal (INVALID urutan/filter, COLUMN_UNAVAILABLE, …) — membawa `widgetVersion` = versi pengaturan
+ * widget yang dipakai server (Widget.updatedAt ISO, review T-016 DI-1/R2 CL-2). Beda dengan versi
+ * salinan lokal klien → klien tidak menggambar data dengan tipe/format lama, dan error dari permintaan
+ * yang disusun dari pengaturan lama (mis. urut kolom yang baru dihapus) menjadi "muat ulang". Gagal
+ * sebelum otorisasi (body tidak valid, 404) tanpa versi.
  */
 export type WidgetModeResult =
-  | Extract<WidgetQueryResult, { ok: false }>
+  | (Extract<WidgetQueryResult, { ok: false }> & { widgetVersion?: string })
   | (Extract<WidgetQueryResult, { ok: true }> & { widgetVersion: string });
 
 export interface QueryRepo {
@@ -547,7 +550,13 @@ export const TOTALS_MAX_MS = 5_000;
 /** Umur cache hasil grafik yang totalnya gagal (dicoba lagi setelahnya). */
 export const TOTALS_RETRY_MS = 30_000;
 
-const NOT_ALLOWED = "Filter tidak diizinkan untuk dashboard ini.";
+/**
+ * Klien hanya mengirim filter yang tidak diizinkan bila daftar filternya basi (sanitize membuangnya saat
+ * halaman dimuat), mis. pemilik baru menghapus kolom filter — versi widget tidak berubah karenanya,
+ * jadi pesannya sendiri memberi petunjuk muat ulang (review T-016 R2 CL-2).
+ */
+const NOT_ALLOWED =
+  "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 
 /** Widget yang sudah lolos otorisasi repo (membawa peran peminta). */
 type AuthorizedWidget = NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>;
@@ -596,8 +605,9 @@ export async function runWidgetQuery(
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
   if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
   const r = forRole(w.role, await widgetResult(userId, w, parsed.data, deps, t0));
-  // Versi spec yang benar-benar dipakai (dibaca bersama widget), bukan bagian nilai cache hasil.
-  return r.ok ? { ...r, widgetVersion: w.updatedAt.toISOString() } : r;
+  // Versi spec yang benar-benar dipakai (dibaca bersama widget), bukan bagian nilai cache hasil; juga
+  // di jawaban gagal agar klien bisa membedakan error dari pengaturan lokal yang basi (R2 CL-2).
+  return { ...r, widgetVersion: w.updatedAt.toISOString() };
 }
 
 /** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */

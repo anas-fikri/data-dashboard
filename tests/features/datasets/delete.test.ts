@@ -129,6 +129,35 @@ describe("deleteDataset", () => {
     expect(deps.deleteObjects).toHaveBeenCalledTimes(1); // hanya dari penghapusan pertama
   });
 
+  it("review T-016 R2 DI-1: korban deadlock (40P01 tanpa code) atau P2034 → BUSY tanpa hapus storage", async () => {
+    for (const e of [
+      new Prisma.PrismaClientUnknownRequestError(
+        'Error occurred during query execution: ConnectorError(... code: "40P01", message: "deadlock detected" ...)',
+        { clientVersion: "6.12.0" },
+      ),
+      new Prisma.PrismaClientKnownRequestError("write conflict or deadlock", {
+        code: "P2034",
+        clientVersion: "6.12.0",
+      }),
+    ]) {
+      deleteMany.mockRejectedValueOnce(e);
+      expect(await deleteDataset("owner1", ID, "penjualan cabang", IP, deps)).toEqual({
+        ok: false,
+        code: "BUSY",
+        message: "Sedang memproses permintaan lain. Coba lagi.",
+      });
+    }
+    expect(deps.deleteObjects).not.toHaveBeenCalled();
+    expect(auditCreate).not.toHaveBeenCalled();
+    // Error lain tetap dilempar (bukan disamarkan BUSY).
+    deleteMany.mockRejectedValueOnce(
+      new Prisma.PrismaClientUnknownRequestError("connection reset", { clientVersion: "6.12.0" }),
+    );
+    await expect(deleteDataset("owner1", ID, "penjualan cabang", IP, deps)).rejects.toThrow(
+      "connection reset",
+    );
+  });
+
   it("audit gagal → transaksi gagal, storage tidak disentuh (tidak ada penghapusan tanpa jejak)", async () => {
     auditCreate.mockRejectedValueOnce(new Error("db down"));
     await expect(deleteDataset("owner1", ID, "penjualan cabang", IP, deps)).rejects.toThrow(

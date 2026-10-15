@@ -473,7 +473,10 @@ describe("filter yang dilewati, kolom tidak diizinkan", () => {
     expect(r).toEqual({
       ok: false,
       code: "INVALID",
-      message: "Filter tidak diizinkan untuk dashboard ini.",
+      // Petunjuk muat ulang: kolom filter bisa baru dihapus pemilik (review T-016 R2 CL-2).
+      message:
+        "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.",
+      widgetVersion: new Date(0).toISOString(),
     });
     expect(exec).not.toHaveBeenCalled();
     expect(d.repo.filterSources).toHaveBeenCalledWith({
