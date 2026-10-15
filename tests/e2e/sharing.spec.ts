@@ -9,6 +9,7 @@ import {
   type Locator,
   type Page,
   type Request,
+  type Response,
   type Route,
 } from "@playwright/test";
 import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
@@ -34,7 +35,12 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  * Review R5 di D7 (dataset Y, pribadi — tanpa organisasi), sebelum kolom filter disembunyikan: ponsel
  * "Bagikan" tanpa pilihan (B, E jadi viewer) → mode lihat B: widget dihapus pemilik saat popover slicer
  * dipakai → B naik ke editor hanya dengan keyboard → mode edit B: widget sesi B dihapus pemilik, lalu B
- * dicabut → ganti peran E yang sudah dicabut di tab lain.
+ * dicabut → ganti peran E yang sudah dicabut di tab lain (galat di bawah judul daftar, fokus ke judul;
+ * 1440 dan 320 px) → sakelar organisasi yang lambat lalu gagal: dialog tidak bisa ditutup → baris
+ * konfirmasi "Bagikan" terlihat (C viewer di 320 px, B editor di 1440 px).
+ * Review R6-CL-1 di D1 (sebelum editor diturunkan): "Selesai"/Back sesaat setelah mengubah isi di panel
+ * atau menggeser widget → mode lihat memuat perubahan terakhir (PATCH/PUT diperlambat, selesai sebelum
+ * props mode lihat diminta).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -99,6 +105,11 @@ const LOKAL_WIDGET = "Lokal editor";
 const MISSING_USER = "Pilih pengguna dari hasil pencarian dulu.";
 /** Ganti peran orang yang sudah tidak punya share (review T-016 R5-DI-1). */
 const NO_SHARE = "Pengguna ini belum punya akses ke dashboard ini.";
+/** Galat ganti peran yang barisnya hilang, setelah email orangnya (klien, review T-016 R6-UI-1). */
+const ROLE_GONE =
+  "sudah tidak punya akses ke dashboard ini (mis. dicabut di tab atau perangkat lain). Daftar akses sudah diperbarui.";
+/** Aksi share yang melempar (jaringan putus). */
+const NETWORK_ERROR = "Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi.";
 /** Versi pengaturan widget = Widget.updatedAt dalam bentuk Date.toISOString(). */
 const ISO_MS = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const ROWS = 60;
@@ -462,6 +473,38 @@ async function searchUsers(dialog: Locator, q: string): Promise<Locator> {
 const grantRow = (dialog: Locator, email: string) =>
   dialog.locator(`[data-testid=share-grant][data-user-id="${ids[email]}"]`);
 
+/** Wilayah aria-live panel share (sr-only): pengumuman hasil aksi terakhir. */
+const announcement = (dialog: Locator) => dialog.locator("p.sr-only[aria-live]");
+
+/**
+ * "Bagikan" berhasil: diumumkan di wilayah aria-live DAN tampil sebagai baris konfirmasi di atas tombol
+ * (review T-016 R6-UI-3). Teksnya sama di kedua tempat, jadi diperiksa per wadah.
+ */
+async function expectGranted(dialog: Locator, email: string, role: "VIEWER" | "EDITOR" = "VIEWER") {
+  const text = `${email} kini ${role === "EDITOR" ? "bisa mengedit widget" : "bisa melihat"} dashboard ini.`;
+  await expect(announcement(dialog)).toHaveText(text);
+  const done = dialog.getByTestId("share-add-done");
+  await expect(done).toHaveText(text);
+  await expect(done).toBeVisible();
+}
+
+/**
+ * Elemen `el` utuh di dalam area terlihat isi dialog yang bergulir (kepala dan kaki "Selesai" tidak
+ * menutupinya) dan di dalam layar.
+ */
+async function expectInDialogView(el: Locator) {
+  await expect(el).toBeInViewport({ ratio: 1 });
+  const clip = await el.evaluate((node) => {
+    let p = node.parentElement;
+    while (p && getComputedStyle(p).overflowY !== "auto") p = p.parentElement;
+    const r = node.getBoundingClientRect();
+    const v = (p ?? document.documentElement).getBoundingClientRect();
+    return { top: r.top, bottom: r.bottom, viewTop: v.top, viewBottom: v.bottom };
+  });
+  expect(clip.top, JSON.stringify(clip)).toBeGreaterThanOrEqual(clip.viewTop - 0.5);
+  expect(clip.bottom, JSON.stringify(clip)).toBeLessThanOrEqual(clip.viewBottom + 0.5);
+}
+
 /** Hitung refresh RSC halaman `path` (router.refresh), bukan prefetch tautan. */
 function trackRefreshes(page: Page, path: string) {
   let n = 0;
@@ -479,6 +522,67 @@ function trackRefreshes(page: Page, path: string) {
   page.on("request", track);
   return { count: () => n, stop: () => page.off("request", track) };
 }
+
+/**
+ * Urutan kejadian jaringan halaman (review T-016 R6-CL-1): jawaban PATCH widget ("patch:<status>") dan
+ * PUT tata letak ("layout:<status>"), dan permintaan RSC halaman `path` ("rsc": navigasi atau refresh,
+ * bukan prefetch) — props server yang dibaca mode lihat.
+ */
+function netLog(page: Page, path: string) {
+  const log: string[] = [];
+  const onRequest = (r: Request) => {
+    const h = r.headers();
+    if (
+      r.method() === "GET" &&
+      h["rsc"] === "1" &&
+      !h["next-router-prefetch"] &&
+      new URL(r.url()).pathname === path
+    ) {
+      log.push("rsc");
+    }
+  };
+  const onResponse = (r: Response) => {
+    const method = r.request().method();
+    const { pathname } = new URL(r.url());
+    if (method === "PATCH" && /\/widgets\/[a-z0-9]+$/.test(pathname))
+      log.push(`patch:${r.status()}`);
+    if (method === "PUT" && pathname.endsWith("/layout")) log.push(`layout:${r.status()}`);
+  };
+  page.on("request", onRequest);
+  page.on("response", onResponse);
+  return {
+    log,
+    /** `first` terjadi, dan sebelum permintaan RSC pertama (yang juga harus ada). */
+    expectBeforeRsc(first: string) {
+      const at = log.indexOf(first);
+      expect(at, log.join(" → ")).toBeGreaterThanOrEqual(0);
+      expect(log.indexOf("rsc"), log.join(" → ")).toBeGreaterThan(at);
+    },
+    stop() {
+      page.off("request", onRequest);
+      page.off("response", onResponse);
+    },
+  };
+}
+
+/** Tulisan `method` ditahan `ms` sebelum diteruskan: perlombaan dengan pembacaan props jadi pasti. */
+function slowWrite(method: "PATCH" | "PUT", ms = 1_000) {
+  const handler = async (route: Route) => {
+    if (route.request().method() === method) await new Promise((r) => setTimeout(r, ms));
+    await route.continue();
+  };
+  return handler;
+}
+
+/** Posisi/ukuran tiap widget (id → "x,y,w,h") yang tampil. */
+const positions = (page: Page) =>
+  page
+    .getByTestId("widget")
+    .evaluateAll((els) =>
+      Object.fromEntries(
+        els.map((el) => [el.getAttribute("data-widget-id"), el.getAttribute("data-pos")]),
+      ),
+    );
 
 /** Jawaban /api/query berikutnya untuk widget `id` dengan status `status`. */
 const queryAnswer = (page: Page, id: string, status: number) =>
@@ -588,7 +692,7 @@ test.describe("berbagi dashboard", () => {
     const grant = nextAction(a, ids[B]!);
     await dialog.getByTestId("share-add").click();
     grantAction = await grant;
-    await expect(dialog.getByText(`${B} kini bisa melihat dashboard ini.`)).toBeAttached();
+    await expectGranted(dialog, B);
     const row = grantRow(dialog, B);
     await expect(row).toBeVisible();
     await expect(row.getByTestId("share-grant-role")).toContainText("Hanya lihat");
@@ -874,7 +978,7 @@ test.describe("berbagi dashboard", () => {
     expect(warningId).toBeTruthy();
     await expect(dialog.getByTestId("share-add")).toHaveAttribute("aria-describedby", warningId!);
     await dialog.getByTestId("share-add").click();
-    await expect(dialog.getByText(`${E} kini bisa mengedit widget dashboard ini.`)).toBeAttached();
+    await expectGranted(dialog, E, "EDITOR");
     await expect(grantRow(dialog, E).getByTestId("share-grant-role")).toContainText(
       "Bisa mengedit widget",
     );
@@ -1245,6 +1349,166 @@ test.describe("berbagi dashboard", () => {
     expect(await seenDom(a)).toEqual(["refreshing"]);
   });
 
+  test("R6-CL-1: 'Selesai' sesaat setelah mengubah isi di panel (PATCH diperlambat) → mode lihat memuat isi baru tanpa 'sudah diubah'; PATCH selesai sebelum props mode lihat diminta", async () => {
+    await a.goto(`${d1Path()}?mode=edit`);
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+    const panel = await openPanel(a, EDITOR_WIDGET);
+    const target = `**/api/dashboards/${d1}/widgets/${editorWidgetId}`;
+    const slow = slowWrite("PATCH");
+    await a.route(target, slow);
+    const net = netLog(a, d1Path());
+    try {
+      await watchDom(a);
+      const saved = widgetPatch(a, editorWidgetId);
+      await pickAgg(a, panel, "Total");
+      // Panel masih terbuka dan simpanannya masih menunggu jeda 350 ms: langsung "Selesai".
+      await a
+        .getByTestId("canvas-toolbar")
+        .getByRole("button", { name: "Selesai", exact: true })
+        .click();
+      const res = await saved;
+      expect(res.status(), await res.text()).toBe(200);
+      expect(res.request().postDataJSON()).toMatchObject({ spec: { measure: { agg: "sum" } } });
+      await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+      await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+      await expectValue(a, EDITOR_WIDGET, SUM_OMZET);
+      // Muatan widget mode lihat memakai versi terbaru: tidak pernah "sudah diubah", juga sesudahnya.
+      await a.waitForTimeout(1_000);
+      await expect(a.getByTestId("widget-error")).toHaveCount(0);
+      const seen = await seenDom(a);
+      expect(seen).not.toContain("changed");
+      expect(seen).not.toContain("stale");
+      net.expectBeforeRsc("patch:200");
+    } finally {
+      net.stop();
+      await a.unroute(target, slow);
+    }
+  });
+
+  test("R6-CL-1: Back sesaat setelah mengubah isi (editor dibuka lewat 'Ubah tata letak', PATCH diperlambat) → mode lihat yang dipulihkan memuat isi baru tanpa 'sudah diubah'; refresh menunggu PATCH", async () => {
+    await a.goto(d1Path());
+    await expectValue(a, EDITOR_WIDGET, SUM_OMZET);
+    await a.getByTestId("edit-dashboard").click();
+    await expect(a).toHaveURL(/\?mode=edit$/);
+    const panel = await openPanel(a, EDITOR_WIDGET);
+    const target = `**/api/dashboards/${d1}/widgets/${editorWidgetId}`;
+    const slow = slowWrite("PATCH");
+    await a.route(target, slow);
+    const net = netLog(a, d1Path());
+    try {
+      await watchDom(a);
+      const saved = widgetPatch(a, editorWidgetId);
+      await pickAgg(a, panel, "Jumlah baris");
+      // Simpanan panel masih menunggu jeda: langsung Back (panel dilepas → PATCH dikirim saat itu).
+      await a.goBack();
+      const res = await saved;
+      expect(res.status(), await res.text()).toBe(200);
+      expect(res.request().postDataJSON()).toMatchObject({ spec: { measure: { agg: "count" } } });
+      await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+      await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+      await expectValue(a, EDITOR_WIDGET, ROWS);
+      await expect(a.getByTestId("canvas-refreshing")).toHaveCount(0);
+      await a.waitForTimeout(1_000);
+      await expectValue(a, EDITOR_WIDGET, ROWS);
+      await expect(a.getByTestId("widget-error")).toHaveCount(0);
+      // Kerangka sampai refresh (yang menunggu PATCH) selesai; tanpa CHANGED, walau sekejap.
+      expect(await seenDom(a)).toEqual(["refreshing"]);
+      net.expectBeforeRsc("patch:200");
+    } finally {
+      net.stop();
+      await a.unroute(target, slow);
+    }
+  });
+
+  test("R6-CL-1: geser widget lalu langsung 'Selesai' / Back (PUT tata letak diperlambat) → mode lihat menampilkan posisi baru, sama dengan setelah muat ulang", async () => {
+    test.setTimeout(90_000);
+    const target = `**/api/dashboards/${d1}/layout`;
+    const slow = slowWrite("PUT");
+    /** Geser widget editor satu sel ke arah pertama yang masih mengubah tata letak. */
+    const step = async (panel: Locator, dirs: string[]) => {
+      for (const dir of dirs) {
+        const button = panel.getByRole("button", { name: `Geser ${EDITOR_WIDGET} ${dir}` });
+        if ((await button.getAttribute("aria-disabled")) === "true") continue;
+        const before = await positions(a);
+        await button.click();
+        await expect.poll(() => positions(a)).not.toEqual(before);
+        return dir;
+      }
+      throw new Error(`tidak ada langkah yang tersedia: ${dirs.join(", ")}`);
+    };
+
+    // "Selesai" sesaat setelah geser (jeda simpan otomatis 500 ms belum habis).
+    await a.goto(`${d1Path()}?mode=edit`);
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+    let panel = await openPanel(a, EDITOR_WIDGET);
+    await a.route(target, slow);
+    let net = netLog(a, d1Path());
+    let moved: Record<string, string | null> = {};
+    let dir = "";
+    try {
+      await watchDom(a);
+      dir = await step(panel, ["ke kanan", "ke kiri", "ke bawah", "ke atas"]);
+      moved = await positions(a);
+      const put = a.waitForResponse(
+        (r) => r.url().endsWith(`/api/dashboards/${d1}/layout`) && r.request().method() === "PUT",
+      );
+      await a
+        .getByTestId("canvas-toolbar")
+        .getByRole("button", { name: "Selesai", exact: true })
+        .click();
+      expect((await put).status()).toBe(200);
+      await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+      await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+      await expect.poll(() => positions(a)).toEqual(moved);
+      await expectValue(a, EDITOR_WIDGET, ROWS);
+      expect(await seenDom(a)).not.toContain("stale");
+      net.expectBeforeRsc("layout:200");
+    } finally {
+      net.stop();
+      await a.unroute(target, slow);
+    }
+
+    // Back sesaat setelah geser balik dari editor yang dibuka lewat "Ubah tata letak": tata letak
+    // dikirim saat editor dilepas (keepalive) dan refresh mode lihat menunggunya.
+    const back: Record<string, string> = {
+      "ke kanan": "ke kiri",
+      "ke kiri": "ke kanan",
+      "ke bawah": "ke atas",
+      "ke atas": "ke bawah",
+    };
+    await a.getByTestId("edit-dashboard").click();
+    await expect(a).toHaveURL(/\?mode=edit$/);
+    await expect.poll(() => positions(a)).toEqual(moved);
+    panel = await openPanel(a, EDITOR_WIDGET);
+    await a.route(target, slow);
+    net = netLog(a, d1Path());
+    let restored: Record<string, string | null> = {};
+    try {
+      await watchDom(a);
+      await step(panel, [back[dir]!]);
+      restored = await positions(a);
+      const put = a.waitForResponse(
+        (r) => r.url().endsWith(`/api/dashboards/${d1}/layout`) && r.request().method() === "PUT",
+      );
+      await a.goBack();
+      expect((await put).status()).toBe(200);
+      await expect.poll(() => new URL(a.url()).searchParams.get("mode")).toBeNull();
+      await expect(a.getByTestId("canvas-toolbar")).toHaveCount(0);
+      await expect(a.getByTestId("canvas-refreshing")).toHaveCount(0);
+      await expect.poll(() => positions(a)).toEqual(restored);
+      await expectValue(a, EDITOR_WIDGET, ROWS);
+      expect(await seenDom(a)).toEqual(["refreshing"]);
+      net.expectBeforeRsc("layout:200");
+    } finally {
+      net.stop();
+      await a.unroute(target, slow);
+    }
+    // Server menyimpan posisi yang sama.
+    await a.reload();
+    await expectValue(a, EDITOR_WIDGET, ROWS);
+    await expect.poll(() => positions(a)).toEqual(restored);
+  });
+
   test("editor diturunkan jadi viewer saat mode edit terbuka → editor membeku, muat ulang = mode lihat", async () => {
     await e.goto(`${d1Path()}?mode=edit`);
     await expect(e.getByTestId("canvas-toolbar")).toBeVisible();
@@ -1511,7 +1775,7 @@ test.describe("berbagi dashboard", () => {
     await options.click();
     await expect(options.getByRole("radio")).toBeChecked();
     await dialog.getByTestId("share-add").click();
-    await expect(dialog.getByText(`${C} kini bisa melihat dashboard ini.`)).toBeAttached();
+    await expectGranted(dialog, C);
     await closeShare(a);
 
     dialog = await openShare(a, `/dashboards/${d4}`);
@@ -1737,7 +2001,7 @@ test.describe("berbagi dashboard", () => {
     expect(await region.evaluate((el) => getComputedStyle(el).display)).not.toBe("none");
 
     await add.click();
-    await expect(dialog.getByText(`${E} kini bisa melihat dashboard ini.`)).toBeAttached();
+    await expectGranted(dialog, E);
     const select = grantRow(dialog, E).getByTestId("share-grant-role");
     await expect(select).toContainText("Hanya lihat");
 
@@ -1940,7 +2204,7 @@ test.describe("berbagi dashboard", () => {
         await expect(msg).toHaveCount(0);
         await expect(search).not.toHaveAttribute("aria-invalid", "true");
         await add.click();
-        await expect(dialog.getByText(`${email} kini bisa melihat dashboard ini.`)).toBeAttached();
+        await expectGranted(dialog, email);
         await expect(grantRow(dialog, email).getByTestId("share-grant-role")).toContainText(
           "Hanya lihat",
         );
@@ -2173,55 +2437,205 @@ test.describe("berbagi dashboard", () => {
     refreshes.stop();
   });
 
-  test("R5-DI-1: ganti peran orang yang sudah dicabut di tab lain → galat 'belum punya akses' terhadap daftar yang dimuat ulang (barisnya hilang, fokus tetap di dialog)", async ({
+  test("R5-DI-1 / R6-UI-1: ganti peran orang yang sudah dicabut di tab lain → daftar dimuat ulang (barisnya hilang); galat menyebut emailnya tepat di bawah judul 'Orang dengan akses', di dalam layar, fokus di judul (1440×900 dan 320×640)", async ({
     browser,
   }) => {
-    test.setTimeout(90_000);
-    const dialog = await openShare(a, d7Path());
-    const heading = dialog.getByRole("heading", { name: /^Orang dengan akses/ });
-    await expect(heading).toHaveText("Orang dengan akses (1)");
-    const row = grantRow(dialog, E);
-    const select = row.getByTestId("share-grant-role");
-    await expect(select).toContainText("Hanya lihat");
-
-    // Pemilik mencabut E di tab/perangkat lain; dialog tab pertama masih menampilkan E.
-    const a2 = await pageFor(browser, A);
+    test.setTimeout(150_000);
+    const viewport = a.viewportSize()!;
     try {
-      const other = await openShare(a2, d7Path());
-      await grantRow(other, E).getByTestId("share-revoke").click();
-      const revoke = a2.getByTestId("share-revoke-confirm");
-      await expect(revoke).toContainText(E);
-      await revoke.getByRole("button", { name: "Cabut akses" }).click();
-      await expect(other.getByText(`Akses ${E} dicabut.`)).toBeAttached();
-    } finally {
-      await a2.context().close();
-    }
-    await expect(row).toHaveCount(1);
-    await expect(heading).toHaveText("Orang dengan akses (1)");
+      for (const size of [
+        { width: 1440, height: 900 },
+        { width: 320, height: 640 },
+      ]) {
+        await a.setViewportSize(size);
+        // Putaran kedua: E dibagikan lagi (Server Action grant pemilik dari uji AC1, dikirim ulang).
+        if (size.width === 320) {
+          expect(
+            await send(a, grantAction, [
+              [d1, d7],
+              [ids[B]!, ids[E]!],
+            ]),
+          ).toContain('"ok":true');
+        }
+        const dialog = await openShare(a, d7Path());
+        const heading = dialog.getByTestId("share-grants-heading");
+        await expect(heading).toHaveText("Orang dengan akses (1)");
+        const row = grantRow(dialog, E);
+        const select = row.getByTestId("share-grant-role");
+        await expect(select).toContainText("Hanya lihat");
 
-    await select.click();
-    await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
-    const confirm = a.getByTestId("share-promote-confirm");
-    await expect(confirm).toContainText(E);
-    await confirm.getByTestId("share-promote").click();
-    await expect(confirm).toHaveCount(0);
-    // Server: NOT_FOUND → daftar dimuat ulang; galat tampil di bawah daftar terbaru (bukan di baris usang).
-    await expect(dialog.getByText(NO_SHARE, { exact: true })).toBeVisible();
-    await expect(row).toHaveCount(0);
-    await expect(heading).toHaveText("Orang dengan akses");
-    await expect(dialog.getByText("Belum ada orang yang diberi akses.")).toBeVisible();
-    await expect(dialog.getByTestId("share-grant-error")).toHaveCount(0);
-    // Fokus tidak jatuh ke <body> saat barisnya hilang: kembali ke kolom cari di dialog.
-    await expect(dialog.getByTestId("share-search")).toBeFocused();
-    await closeShare(a);
+        // Pemilik mencabut E di tab/perangkat lain; dialog tab pertama masih menampilkan E.
+        const a2 = await pageFor(browser, A);
+        try {
+          const other = await openShare(a2, d7Path());
+          await grantRow(other, E).getByTestId("share-revoke").click();
+          const revoke = a2.getByTestId("share-revoke-confirm");
+          await expect(revoke).toContainText(E);
+          await revoke.getByRole("button", { name: "Cabut akses" }).click();
+          await expect(announcement(other)).toHaveText(`Akses ${E} dicabut.`);
+        } finally {
+          await a2.context().close();
+        }
+        await expect(row).toHaveCount(1);
+        await expect(heading).toHaveText("Orang dengan akses (1)");
+
+        await select.click();
+        await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+        const confirm = a.getByTestId("share-promote-confirm");
+        await expect(confirm).toContainText(E);
+        await confirm.getByTestId("share-promote").click();
+        await expect(confirm).toHaveCount(0);
+        // Server: NOT_FOUND → daftar dimuat ulang; galat tampil terhadap daftar terbaru (bukan di baris
+        // usang), tepat di bawah judul dan di atas isi daftar — menyebut emailnya (review T-016 R6-UI-1).
+        const alert = dialog.getByRole("alert");
+        await expect(alert).toHaveText(`${E} ${ROLE_GONE}`);
+        await expect(dialog.getByText(NO_SHARE)).toHaveCount(0);
+        await expect(row).toHaveCount(0);
+        await expect(heading).toHaveText("Orang dengan akses");
+        const empty = dialog.getByText("Belum ada orang yang diberi akses.");
+        await expect(empty).toBeVisible();
+        await expect(dialog.getByTestId("share-grant-error")).toHaveCount(0);
+        // Fokus ke judul daftar (bukan kolom cari di puncak dialog yang menggulir galat keluar layar).
+        await expect(heading).toBeFocused();
+        await expect(dialog.getByTestId("share-search")).not.toBeFocused();
+        await expectInDialogView(heading);
+        await expectInDialogView(alert);
+        const [headBox, alertBox, emptyBox] = await Promise.all([
+          heading.boundingBox(),
+          alert.boundingBox(),
+          empty.boundingBox(),
+        ]);
+        const boxes = JSON.stringify({ size, headBox, alertBox, emptyBox });
+        const headBottom = headBox!.y + headBox!.height;
+        expect(alertBox!.y, boxes).toBeGreaterThanOrEqual(headBottom - 0.5);
+        expect(alertBox!.y - headBottom, boxes).toBeLessThanOrEqual(16);
+        expect(alertBox!.y + alertBox!.height, boxes).toBeLessThanOrEqual(emptyBox!.y + 0.5);
+        await closeShare(a);
+      }
+    } finally {
+      await a.setViewportSize(viewport);
+    }
 
     const ofE = (action: string) =>
       audit("dashboard", d7).filter(
         (r) => r.action === action && (r.meta as { userId?: string } | null)?.userId === ids[E],
       );
     expect(ofE("dashboard.share.role")).toEqual([]);
-    expect(ofE("dashboard.share.revoke")).toHaveLength(1);
+    expect(ofE("dashboard.share.revoke")).toHaveLength(2);
     expect((await e.goto(d7Path()))?.status()).toBe(404);
+  });
+
+  test("R6-UI-2: selama berbagi organisasi berjalan (≥ 1,5 s, lalu gagal) dialog tidak bisa ditutup — Esc, klik di luar, X, 'Selesai'; galatnya tampil di dialog yang tetap terbuka", async () => {
+    test.setTimeout(90_000);
+    const dialog = await openShare(a, d7Path());
+    const org = dialog.getByTestId("share-org");
+    await expect(org).not.toBeChecked();
+    const done = dialog.getByRole("button", { name: "Selesai", exact: true });
+    const close = dialog.getByRole("button", { name: "Tutup", exact: true });
+
+    // Server Action berikutnya (sakelar organisasi) ditahan ≥ 1,5 s dan selama pemeriksaan, lalu gagal
+    // (jaringan putus).
+    let release = () => {};
+    const released = new Promise<void>((r) => (release = r));
+    let held = 0;
+    const isPage = (u: URL) => u.pathname === d7Path();
+    const failing = async (route: Route) => {
+      const r = route.request();
+      if (r.method() !== "POST" || !r.headers()["next-action"]) return route.continue();
+      held++;
+      await Promise.all([new Promise((res) => setTimeout(res, 1_500)), released]);
+      await route.abort("internetdisconnected");
+    };
+    await a.route(isPage, failing);
+    try {
+      await org.click();
+      await expect.poll(() => held).toBe(1);
+      await expect(org).toBeDisabled();
+      await expect(done).toBeDisabled();
+      await expect(close).toBeDisabled();
+      // Fokus tidak jatuh ke <body> (kontrol yang ditekan jadi disabled → kotak dialog).
+      await expect(dialog).toBeFocused();
+
+      await a.keyboard.press("Escape");
+      await a.mouse.click(8, 8); // lapisan di luar dialog
+      await done.click({ force: true });
+      await close.click({ force: true });
+      await a.waitForTimeout(300);
+      await expect(dialog).toBeVisible();
+      await expect(org).toBeDisabled(); // masih berjalan
+      expect(await a.evaluate(() => document.activeElement === document.body)).toBe(false);
+    } finally {
+      release();
+    }
+    try {
+      // Gagal → galat di bawah sakelar, di dialog yang masih terbuka; sakelar tetap keadaan server.
+      const alert = dialog.getByRole("alert");
+      await expect(alert).toHaveText(NETWORK_ERROR);
+      await expect(dialog).toBeVisible();
+      await expectInDialogView(alert);
+      await expect(org).toBeEnabled();
+      await expect(org).not.toBeChecked();
+      await expect(done).toBeEnabled();
+      await expect(close).toBeEnabled();
+      expect(held).toBe(1);
+    } finally {
+      await a.unroute(isPage, failing);
+    }
+    // Setelah selesai, dialog bisa ditutup lagi; dibuka ulang = tetap pribadi, tanpa audit organisasi.
+    await closeShare(a);
+    await expect(a.getByTestId("share-open")).toBeFocused();
+    const again = await openShare(a, d7Path());
+    await expect(again.getByTestId("share-org")).not.toBeChecked();
+    await again.getByRole("button", { name: "Tutup", exact: true }).click();
+    await expect(again).toHaveCount(0);
+    expect(audit("dashboard", d7).filter((r) => r.action === "dashboard.org.share")).toEqual([]);
+  });
+
+  test("R6-UI-3: 'Bagikan' berhasil → baris konfirmasi '<email> kini bisa …' terlihat di dalam layar (320×640 dan 1440×900), tanpa role/aria-live; hilang saat memilih orang lain", async () => {
+    test.setTimeout(90_000);
+    const viewport = a.viewportSize()!;
+    try {
+      for (const [size, email, role] of [
+        [{ width: 320, height: 640 }, C, "VIEWER"],
+        [{ width: 1440, height: 900 }, B, "EDITOR"],
+      ] as const) {
+        await a.setViewportSize(size);
+        const dialog = await openShare(a, d7Path());
+        const line = dialog.getByTestId("share-add-done");
+        const options = await searchUsers(dialog, email.split("@")[0]!);
+        await expect(options).toHaveCount(1);
+        await expect(options).toHaveAttribute("data-email", email);
+        await options.click();
+        await expect(options.getByRole("radio")).toBeChecked();
+        if (role === "EDITOR") {
+          await dialog.getByTestId("share-role").click();
+          await a.getByRole("option", { name: "Bisa mengedit widget" }).click();
+          await expect(dialog.getByTestId("share-role")).toContainText("Bisa mengedit widget");
+        }
+        await expect(line).toHaveCount(0);
+        await dialog.getByTestId("share-add").click();
+        await expectGranted(dialog, email, role);
+        await expectInDialogView(line);
+        // Tidak diumumkan dua kali: hanya wilayah aria-live panel yang diumumkan.
+        expect(await line.getAttribute("role")).toBeNull();
+        expect(await line.getAttribute("aria-live")).toBeNull();
+        expect(await line.locator("[role], [aria-live]").count()).toBe(0);
+        const search = dialog.getByTestId("share-search");
+        await expect(search).toBeFocused();
+        await expect(search).toHaveValue("");
+        const row = grantRow(dialog, email).getByTestId("share-grant-role");
+        await expect(row).toContainText(role === "EDITOR" ? "Bisa mengedit widget" : "Hanya lihat");
+
+        // Memilih orang berikutnya menghapus baris konfirmasi.
+        const next = await searchUsers(dialog, `shrxed-${TAG}`);
+        await expect(next).toHaveCount(1);
+        await next.click();
+        await expect(line).toHaveCount(0);
+        await closeShare(a);
+      }
+    } finally {
+      await a.setViewportSize(viewport);
+    }
   });
 
   test("R3-SEC-1: kolom filter tersimpan yang disembunyikan → viewer mendapat jawaban yang sama dengan nama tebakan (nilai slicer + query widget); pemilik tetap COLUMN_UNAVAILABLE / skippedFilters", async () => {

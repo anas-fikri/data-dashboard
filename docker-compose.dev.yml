@@ -73,7 +73,7 @@ services:
   mailpit:
     image: axllent/mailpit:v1.31
     ports:
-      - "127.0.0.1:1026:1025" # SMTP
+      - "127.0.0.1:2526:1025" # SMTP (1026 bisa direbut Synology Drive FinderSync setelah reboot)
       - "127.0.0.1:8026:8025" # UI + API (dipakai test T-002)
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
