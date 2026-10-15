@@ -138,12 +138,17 @@ export function workerLogPath(name: string): string {
  * Worker ingest sungguhan (`npm run worker`) di grup prosesnya sendiri (npm → tsx → node) agar
  * stopWorker bisa mematikan semuanya. stdout DAN stderr selalu dikuras ke workerLogPath(name): pipe
  * yang tidak dibaca bisa penuh dan membuat worker macet. Selesai saat log "worker berjalan" (≤ 60 s).
+ * `env`: variabel tambahan untuk worker ini saja (mis. EXPORT_MAX_ROWS kecil); menang atas .env karena
+ * --env-file tidak menimpa variabel yang sudah ada.
  */
-export async function startWorker(name: string): Promise<ChildProcess> {
+export async function startWorker(
+  name: string,
+  env: Record<string, string> = {},
+): Promise<ChildProcess> {
   const log = createWriteStream(workerLogPath(name));
   const w = spawn("npm", ["run", "worker"], {
     stdio: ["ignore", "pipe", "pipe"],
-    env: process.env,
+    env: { ...process.env, ...env },
     detached: true,
   });
   w.stdout!.pipe(log, { end: false });

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
+import { takeDownloadNavigation } from "@/lib/download-navigation";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
 import { api, type ApiResult } from "./dashboard-api";
 import { fitToWidgets, sameLayout } from "./layout-ops";
@@ -471,7 +472,10 @@ export function useDashboardEditor(o: {
   // Perubahan yang belum tersimpan: peringatkan sebelum meninggalkan halaman.
   useEffect(() => {
     if (save !== "pending" && save !== "saving" && save !== "error") return;
-    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    // Navigasi unduhan ekspor (302 lintas origin → attachment) tidak meninggalkan halaman.
+    const warn = (e: BeforeUnloadEvent) => {
+      if (!takeDownloadNavigation()) e.preventDefault();
+    };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [save]);

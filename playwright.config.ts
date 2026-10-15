@@ -32,6 +32,7 @@ export default defineConfig({
         /versions\.spec\.ts$/,
         /mapping\.spec\.ts$/,
         /sharing\.spec\.ts$/,
+        /exports\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -49,7 +50,10 @@ export default defineConfig({
     // sharing (T-016): worker sendiri; pemilik, viewer, organisasi, editor, dan orang asing di atas
     // dataset sungguhan (query widget, pencabutan di tengah sesi, AuditLog, hapus dataset).
     { name: "sharing", testMatch: /sharing\.spec\.ts$/, dependencies: ["mapping"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["sharing"] },
+    // exports (T-017): worker sendiri (antrean export); CSV/XLSX dari filter + urutan layar, batas baris
+    // (worker kedua dengan EXPORT_MAX_ROWS kecil), kedaluwarsa + pembersihan, unduh pemilik/orang lain.
+    { name: "exports", testMatch: /exports\.spec\.ts$/, dependencies: ["sharing"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["exports"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

@@ -4,6 +4,7 @@ import { IconCircleCheck, IconDownload } from "@tabler/icons-react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import type { ExportFormatInput } from "@/features/exports/types";
+import { markDownloadNavigation } from "@/lib/download-navigation";
 import { doneDetail, exportBusy, exportDownloadUrl, type ExportJob } from "./export-model";
 
 /*
@@ -58,11 +59,12 @@ export function ExportStatus({ job, pollError, onRetryPoll, onAgain }: Props) {
         </Button>
       ) : null}
       {job.phase === "done" ? (
-        // `download`: tanpa navigasi (route unduh menjawab 302 ke URL `attachment`); galat 404/410 tidak
-        // membuka halaman JSON dan peringatan beforeunload editor tidak muncul.
+        // `download`: galat 404/410 tidak membuka halaman JSON. 302 lintas origin ke storage tetap jadi
+        // navigasi di Chromium → ditandai agar peringatan beforeunload editor tidak muncul.
         <a
           href={exportDownloadUrl(job.id)}
           download
+          onClick={() => markDownloadNavigation()}
           data-testid="export-download"
           className={`inline-flex items-center gap-1.5 self-start rounded-sm text-sm font-medium text-primary underline underline-offset-4 ${SMALL_CONTROL}`}
         >

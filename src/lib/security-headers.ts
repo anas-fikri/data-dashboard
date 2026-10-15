@@ -76,6 +76,19 @@ export function staticSecurityHeaders(): { key: string; value: string }[] {
   return headers;
 }
 
+/** Unduh ekspor (T-017): GET /api/exports/<id>/download → 302 ke URL presigned storage. */
+const EXPORT_DOWNLOAD = /^\/api\/exports\/[^/]+\/download\/?$/;
+
+/**
+ * Header per rute yang MENIMPA header statis next.config, dipasang proxy saat runtime. Next hanya
+ * menambahkan header Route Handler yang belum ada di respons (send-response.js), sehingga
+ * Referrer-Policy dari route kalah dari staticSecurityHeaders(); header proxy diterapkan sesudah
+ * headers() next.config dan menang. Unduh ekspor: tanpa Referer ke storage (kontrak T-017 E10).
+ */
+export function routeSecurityHeaders(pathname: string): { key: string; value: string }[] {
+  return EXPORT_DOWNLOAD.test(pathname) ? [{ key: "Referrer-Policy", value: "no-referrer" }] : [];
+}
+
 /** Atribut cookie sesi sesuai skema URL aplikasi (dipakai session.ts dan diuji unit). */
 export function sessionCookieSpec(appUrl: string, maxAgeSec: number) {
   const https = appUrl.startsWith("https://");

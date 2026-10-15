@@ -2,6 +2,7 @@
 
 import { useEffect, useReducer, useRef } from "react";
 import type { ExportCreateBody, ExportStatusView } from "@/features/exports/types";
+import { markDownloadNavigation } from "@/lib/download-navigation";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { isAccessLost, useAccessLost } from "./access-refresh";
 import {
@@ -16,12 +17,15 @@ import {
 /*
  * Satu ekspor per kartu (T-017): POST → polling status 1 s (usePolling: satu permintaan sekaligus,
  * jeda saat tab tersembunyi, berhenti di 401/403/404/410) → selesai: unduhan dimulai SEKALI lewat
- * <a download> ke route unduh (302 ke presigned `attachment`) tanpa navigasi — tidak memicu peringatan
- * beforeunload editor dan galat 404/410 tidak menampilkan halaman JSON → tautan "Unduh lagi"
+ * <a download> ke route unduh (302 ke presigned `attachment`; Chromium menjadikan 302 lintas origin
+ * navigasi, jadi ditandai untuk penjaga beforeunload editor — lib/download-navigation.ts) dan galat
+ * 404/410 tidak menampilkan halaman JSON → tautan "Unduh lagi"
  * sampai kedaluwarsa. Status dipegang reducer murni (export-model.ts). 404 saat membuat = akses
  * dashboard dicabut → halaman dimuat ulang dari server, sama seperti query widget (access-refresh.tsx).
  */
 function triggerDownload(url: string) {
+  // 302 lintas origin ke storage = navigasi di Chromium: penjaga beforeunload editor melewatinya.
+  markDownloadNavigation();
   const a = document.createElement("a");
   a.href = url;
   a.download = "";

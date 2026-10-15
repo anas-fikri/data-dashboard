@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { verifySession } from "@/features/auth/jwt";
 import { loginUrl } from "@/features/auth/redirect";
-import { buildCsp, generateNonce, sessionCookieSpec } from "@/lib/security-headers";
+import {
+  buildCsp,
+  generateNonce,
+  routeSecurityHeaders,
+  sessionCookieSpec,
+} from "@/lib/security-headers";
 
 /*
  * Proxy (middleware Next 16):
@@ -58,7 +63,12 @@ export async function proxy(request: NextRequest) {
   requestHeaders.set("x-current-path", pathname + search);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
-  const next = () => withCsp(NextResponse.next({ request: { headers: requestHeaders } }), csp);
+  const next = () => {
+    const res = withCsp(NextResponse.next({ request: { headers: requestHeaders } }), csp);
+    // Header route dengan kunci sama kalah dari next.config headers(); penimpaan per rute di sini.
+    for (const h of routeSecurityHeaders(pathname)) res.headers.set(h.key, h.value);
+    return res;
+  };
 
   if (isPublic(pathname)) return next();
 
