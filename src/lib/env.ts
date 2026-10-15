@@ -135,6 +135,15 @@ export const envSchema = z.object({
     .min(60_000)
     .max(24 * 60 * 60 * 1000)
     .default(60 * 60 * 1000),
+  /**
+   * memory_limit DuckDB job ekspor. 768MB: sort penuh tabel lebar 1 juta baris (±16 kolom teks unik)
+   * gagal OOM di 512MB tetapi selesai ±3 s di 768MB (review T-017 INT-R2-1); memori gabungan worker
+   * (ingest + recast + ekspor) diukur di T-024.
+   */
+  EXPORT_DUCKDB_MEMORY: z
+    .string()
+    .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)
+    .default("768MB"),
   /** Batas waktu satu job ekspor di worker (unduh parquet + DuckDB + tulis + unggah). */
   EXPORT_DEADLINE_MS: z.coerce
     .number()

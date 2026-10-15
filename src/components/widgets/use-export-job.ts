@@ -14,7 +14,14 @@ import {
   recheckOutcome,
   type ExportEvent,
 } from "./export-model";
-import { claimDownload, dispatchExport, exportJobOf, subscribeExport } from "./export-store";
+import {
+  claimDownload,
+  dispatchExport,
+  exportJobOf,
+  exportKey,
+  subscribeExport,
+} from "./export-store";
+import { useExportUser } from "./export-user";
 
 /*
  * Satu ekspor per widget (T-017): POST → polling status 1 s (usePolling: satu permintaan sekaligus,
@@ -23,8 +30,9 @@ import { claimDownload, dispatchExport, exportJobOf, subscribeExport } from "./e
  * navigasi, jadi ditandai untuk penjaga beforeunload editor — lib/download-navigation.ts) → tombol
  * "Unduh lagi" sampai kedaluwarsa; tombol itu membaca status dulu (recheckOutcome) agar tautan mati
  * tidak gagal diam-diam. Status hidup di export-store.ts (bukan state kartu): kartu yang dipasang ulang
- * melanjutkan polling, dan POST yang masih berjalan saat itu tetap mendarat di store. 404 saat membuat
- * atau membaca ulang = akses dashboard dicabut → halaman dimuat ulang dari server (access-refresh.tsx).
+ * melanjutkan polling, dan POST yang masih berjalan saat itu tetap mendarat di store; kuncinya user +
+ * widget (review R2-CL-1). 404 saat membuat, polling, atau membaca ulang = akses dashboard dicabut →
+ * halaman dimuat ulang dari server (access-refresh.tsx).
  */
 function triggerDownload(url: string) {
   // 302 lintas origin ke storage = navigasi di Chromium: penjaga beforeunload editor melewatinya.
@@ -40,14 +48,30 @@ function triggerDownload(url: string) {
 type CreateResponse =
   { ok: true; exportId: string } | { ok: false; code?: string; message?: string } | null;
 
+/**
+ * Polling berhenti tanpa hasil (401/403/404/410). 404 = akses dicabut di tengah ekspor (review R2-CL-2):
+ * halaman diambil ulang seperti saat membuat ekspor dan "Unduh lagi", galat NOT_FOUND tanpa "Ekspor
+ * lagi" (yang hanya bisa gagal lagi).
+ */
+export function pollStopped(
+  key: string,
+  job: { widgetId: string; id: string },
+  status: number,
+  accessLost: ((widgetId?: string) => boolean) | null,
+) {
+  if (isAccessLost({ ok: false, status })) accessLost?.(job.widgetId);
+  dispatchExport(key, { type: "stopped", id: job.id, status });
+}
+
 export function useExportJob(widgetId: string) {
-  const subscribe = useCallback((cb: () => void) => subscribeExport(widgetId, cb), [widgetId]);
+  const key = exportKey(useExportUser(), widgetId);
+  const subscribe = useCallback((cb: () => void) => subscribeExport(key, cb), [key]);
   const job = useSyncExternalStore(
     subscribe,
-    () => exportJobOf(widgetId),
+    () => exportJobOf(key),
     () => EXPORT_IDLE,
   );
-  const dispatch = useCallback((e: ExportEvent) => dispatchExport(widgetId, e), [widgetId]);
+  const dispatch = useCallback((e: ExportEvent) => dispatchExport(key, e), [key]);
   const accessLost = useAccessLost();
   // "Unduh lagi": membaca status (checking) / status tidak terbaca (jaringan, tautan tetap).
   const [again, setAgain] = useState<"idle" | "checking" | "failed">("idle");
@@ -62,11 +86,10 @@ export function useExportJob(widgetId: string) {
     onDone: (view) => {
       if (!id) return;
       dispatch({ type: "status", id, view });
-      if (view.state === "done" && claimDownload(widgetId, id))
-        triggerDownload(exportDownloadUrl(id));
+      if (view.state === "done" && claimDownload(key, id)) triggerDownload(exportDownloadUrl(id));
     },
     onStop: (status) => {
-      if (id) dispatch({ type: "stopped", id, status });
+      if (id) pollStopped(key, { widgetId, id }, status, accessLost);
     },
   });
 
@@ -81,7 +104,7 @@ export function useExportJob(widgetId: string) {
   }, [doneId, expiresAt, dispatch]);
 
   async function start(body: ExportCreateBody) {
-    if (exportBusy(exportJobOf(widgetId))) return;
+    if (exportBusy(exportJobOf(key))) return;
     dispatch({ type: "start", format: body.format });
     setAgain("idle");
     // Tanpa abort saat unmount: jawaban tetap masuk ke store untuk kartu yang dipasang ulang.
@@ -105,7 +128,7 @@ export function useExportJob(widgetId: string) {
   }
 
   async function downloadAgain() {
-    const current = exportJobOf(widgetId);
+    const current = exportJobOf(key);
     if (current.phase !== "done" || again === "checking") return;
     setAgain("checking");
     let status = 0;

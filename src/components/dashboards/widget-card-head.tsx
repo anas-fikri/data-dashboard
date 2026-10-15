@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { chartOf, dataToggle, type CardConfig } from "./widget-card-model";
 
 /*
- * Tombol di kepala kartu widget (widget-card.tsx): tombol data grafik dan tombol ekspor (T-017). Di
+ * Kepala kartu widget (widget-card.tsx): judul, tombol data grafik, dan tombol ekspor (T-017). Di
  * kartu sempit (container query) tombol mengalah sebelum judul jadi tidak terbaca, ekspor PALING DULU
  * (lebih jarang dipakai daripada tombol data). Batas ekspor dihitung dari tombol yang benar-benar ada di
  * kepala (review R1 D-1): padding 16 px + judul ±4rem + tiap tombol (32 px mouse / 44 px sentuh) + gap.
@@ -18,6 +18,69 @@ import { chartOf, dataToggle, type CardConfig } from "./widget-card-model";
 /** Tombol kepala kartu: 44 px di ponsel dan bila ada layar sentuh, 32 px dengan mouse di ≥ md. */
 export const HEAD_BUTTON =
   "size-(--control-h-lg) shrink-0 md:not-any-pointer-coarse:size-(--control-h-sm)";
+
+/**
+ * Mode lihat di kartu sempit: padding kepala dirapatkan dan judul dua baris kecil (2 × 16 px = tombol
+ * 32 px; sentuh + margin = 44 px), bukan 4–5 huruf di samping tombol. KPI/tabel: < 9rem. Grafik (tombol
+ * data + ekspor) sampai judul sebaris ≥ 4rem — 16 padding + 2 × (gap 4 + tombol) + 64: < 9,5rem mouse /
+ * < 11rem sentuh, seluruh rentang tempat kedua tombol tampil di kartu sesempit itu (review R2-D-2: 768 px
+ * mouse, tablet sentuh 820/834 px, 844×390 tidak lagi "Omz…"); judul grafik tanpa padding sendiri (+4 px:
+ * "Omzet per" muat sebaris di 820 px sentuh). Kelas utuh agar terbaca Tailwind.
+ */
+export const NARROW_VIEW = {
+  head: {
+    plain: "@max-[9rem]:px-1",
+    chart: "@max-[9.5rem]:px-1 @max-[11rem]:any-pointer-coarse:px-1",
+  },
+  title: {
+    plain: [
+      "@max-[9rem]:line-clamp-2 @max-[9rem]:whitespace-normal @max-[9rem]:break-words @max-[9rem]:px-0.5",
+      "@max-[9rem]:text-xs @max-[9rem]:leading-4 @max-[9rem]:min-h-(--control-h-sm) @max-[9rem]:my-1.5",
+      "md:not-any-pointer-coarse:@max-[9rem]:leading-4 md:not-any-pointer-coarse:@max-[9rem]:my-0",
+    ],
+    chart: [
+      "@max-[9.5rem]:line-clamp-2 @max-[9.5rem]:whitespace-normal @max-[9.5rem]:break-words",
+      "@max-[9.5rem]:px-0 @max-[9.5rem]:text-xs @max-[9.5rem]:leading-4",
+      "@max-[9.5rem]:min-h-(--control-h-sm) @max-[9.5rem]:my-1.5",
+      "md:not-any-pointer-coarse:@max-[9.5rem]:leading-4 md:not-any-pointer-coarse:@max-[9.5rem]:my-0",
+      "@max-[11rem]:any-pointer-coarse:line-clamp-2 @max-[11rem]:any-pointer-coarse:whitespace-normal",
+      "@max-[11rem]:any-pointer-coarse:break-words @max-[11rem]:any-pointer-coarse:px-0",
+      "@max-[11rem]:any-pointer-coarse:text-xs @max-[11rem]:any-pointer-coarse:leading-4",
+      "@max-[11rem]:any-pointer-coarse:min-h-(--control-h-sm) @max-[11rem]:any-pointer-coarse:my-1.5",
+    ],
+  },
+} as const;
+
+/** Judul kartu setinggi tombol kepala (kepala KPI/tabel sama tinggi dengan kepala grafik bertombol). */
+export function CardTitle(props: {
+  title: string;
+  /** Widget tanpa judul: teks pengganti diredupkan. */
+  placeholder: boolean;
+  editing: boolean;
+  chart: boolean;
+}) {
+  const { title, placeholder, editing, chart } = props;
+  return (
+    <h2
+      className={cn(
+        // Basis = lebar judul; penanda "Memperbarui…" (basis 0) hanya mengisi sisa ruang.
+        "min-w-0 flex-auto truncate px-1 text-sm font-medium",
+        "leading-(--control-h-lg) md:not-any-pointer-coarse:leading-(--control-h-sm)",
+        editing && [
+          "@max-[8rem]:px-0.5 @max-[5rem]:sr-only",
+          "@max-[10rem]:any-pointer-coarse:order-first @max-[10rem]:any-pointer-coarse:basis-full @max-[10rem]:any-pointer-coarse:leading-5",
+        ],
+        // Margin, bukan padding: baris ke-3 yang dipotong line-clamp tidak mengintip di padding bawah.
+        // Judul sebaris rata atas, sejajar baris pertama judul dua baris.
+        !editing && NARROW_VIEW.title[chart ? "chart" : "plain"],
+        placeholder && "text-muted-foreground",
+      )}
+      title={title}
+    >
+      {title}
+    </h2>
+  );
+}
 
 /** Nilai grafik sebagai tabel. `mode` "wait": memuat — tetap memegang fokus dan tempatnya. */
 export function DataToggleButton(props: {

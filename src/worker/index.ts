@@ -334,6 +334,7 @@ async function main() {
         maxRows: e.EXPORT_MAX_ROWS,
         ttlMs: e.EXPORT_TTL_MS,
         deadlineMs: e.EXPORT_DEADLINE_MS,
+        duckMemory: e.EXPORT_DUCKDB_MEMORY,
       });
       logger.info({ jobId: job.id, exportId: job.data.exportId, ...r }, "ekspor selesai");
       return r;

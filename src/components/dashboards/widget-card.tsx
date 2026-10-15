@@ -9,7 +9,13 @@ import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetRequest } from "@/components/widgets/widget-query";
 import type { WidgetView } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
-import { DataToggleButton, HEAD_BUTTON, HeadExport } from "./widget-card-head";
+import {
+  CardTitle,
+  DataToggleButton,
+  HEAD_BUTTON,
+  HeadExport,
+  NARROW_VIEW,
+} from "./widget-card-head";
 import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
 
 /*
@@ -20,10 +26,10 @@ import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
  *
  * Kepala semua kartu setinggi satu tombol (judul ber-line-height tombol) agar judul sebaris rata;
  * "Memperbarui…" di samping judul saat angka dari filter lama masih tampil (stale-label.tsx). Kartu
- * adalah container. Mode lihat < 9rem (2 kolom di 1024): padding kepala dirapatkan dan judul dua baris
- * kecil (2 × 16 px = tombol 32 px; sentuh + margin = 44 px), bukan 4–5 huruf di samping tombol data
- * (di kartu < 140 px grafik diganti daftar peringkat, jadi tabel satu-satunya jalan ke baris yang tidak
- * muat). Mode edit: judul tetap terlihat (terpotong, lengkap di title); yang disembunyikan lebih dulu:
+ * adalah container. Mode lihat < 9rem (2 kolom di 1024; grafik < 9,5rem / < 11rem sentuh —
+ * NARROW_VIEW): padding kepala dirapatkan dan judul dua baris kecil, bukan 4–5 huruf di samping tombol
+ * data (di kartu < 140 px grafik diganti daftar peringkat, jadi tabel satu-satunya jalan ke baris yang
+ * tidak muat). Mode edit: judul tetap terlihat (terpotong, lengkap di title); yang disembunyikan dulu:
  * - tombol ekspor (T-017; juga mode lihat) lalu tombol data — batasnya di widget-card-head.tsx;
  * - ikon pegangan dengan mouse: < 10rem (seluruh kepala tetap pegangan, kursor "grab");
  * - sentuh (ikon pegangan satu-satunya pegangan, 44 px): < 10rem judul pindah ke baris sendiri di
@@ -81,7 +87,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       <div
         className={cn(
           "flex items-center gap-1 border-b px-2 py-1.5",
-          !editing && "@max-[9rem]:px-1",
+          !editing && NARROW_VIEW.head[chart ? "chart" : "plain"],
           editing && [
             "@max-[8rem]:px-1",
             "@max-[10rem]:any-pointer-coarse:flex-wrap @max-[10rem]:any-pointer-coarse:gap-y-0",
@@ -102,30 +108,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             <IconGripVertical size={18} stroke={1.5} />
           </span>
         ) : null}
-        <h2
-          className={cn(
-            // Basis = lebar judul; penanda "Memperbarui…" (basis 0) hanya mengisi sisa ruang.
-            "min-w-0 flex-auto truncate px-1 text-sm font-medium",
-            // Setinggi tombol kepala: kepala KPI/tabel sama tinggi dengan kepala grafik bertombol.
-            "leading-(--control-h-lg) md:not-any-pointer-coarse:leading-(--control-h-sm)",
-            editing && [
-              "@max-[8rem]:px-0.5 @max-[5rem]:sr-only",
-              "@max-[10rem]:any-pointer-coarse:order-first @max-[10rem]:any-pointer-coarse:basis-full @max-[10rem]:any-pointer-coarse:leading-5",
-            ],
-            // Mode lihat di kartu sempit: dua baris kecil (kotak 32 px; sentuh + margin = 44 px). Margin,
-            // bukan padding: baris ke-3 yang dipotong line-clamp tidak mengintip di padding bawah.
-            // Judul sebaris rata atas, sejajar baris pertama judul dua baris.
-            !editing && [
-              "@max-[9rem]:line-clamp-2 @max-[9rem]:whitespace-normal @max-[9rem]:break-words @max-[9rem]:px-0.5",
-              "@max-[9rem]:text-xs @max-[9rem]:leading-4 @max-[9rem]:min-h-(--control-h-sm) @max-[9rem]:my-1.5",
-              "md:not-any-pointer-coarse:@max-[9rem]:leading-4 md:not-any-pointer-coarse:@max-[9rem]:my-0",
-            ],
-            !widget.title && "text-muted-foreground",
-          )}
-          title={title}
-        >
-          {title}
-        </h2>
+        <CardTitle title={title} placeholder={!widget.title} editing={editing} chart={!!chart} />
         <StaleLabel stale={!!current?.stale} title={title} />
         {chart && mode ? (
           <DataToggleButton

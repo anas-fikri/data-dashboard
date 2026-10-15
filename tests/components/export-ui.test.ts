@@ -183,15 +183,16 @@ describe("exportReducer", () => {
     });
   });
 
-  it("polling berhenti: 401 sesi, 410 kedaluwarsa, 404/403 ekspor hilang (Ekspor lagi)", () => {
+  it("polling berhenti: 401 sesi, 410 kedaluwarsa, 404 akses dicabut, 403 ekspor hilang", () => {
     const stop = (status: number) =>
       exportReducer(running, { type: "stopped", id: "exp1", status });
     expect(stop(401)).toMatchObject({ error: { code: "SESSION", again: false } });
     expect(stop(410)).toMatchObject({ error: { code: "EXPORT_EXPIRED", again: true } });
-    expect(stop(404)).toMatchObject({
+    // Review R2-CL-2: sama dengan membuat ekspor / "Unduh lagi" — tanpa "Ekspor lagi".
+    expect(stop(404)).toMatchObject({ error: { code: "NOT_FOUND", again: false } });
+    expect(stop(403)).toMatchObject({
       error: { code: "EXPORT_GONE", message: "Ekspor ini tidak ditemukan lagi.", again: true },
     });
-    expect(stop(403)).toMatchObject({ error: { code: "EXPORT_GONE" } });
   });
 });
 

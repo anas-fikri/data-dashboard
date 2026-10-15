@@ -27,6 +27,14 @@ describe("parseEnv", () => {
     expect(env.TRUST_PROXY).toBe(false);
   });
 
+  it("EXPORT_DUCKDB_MEMORY: default 768MB (review T-017 INT-R2-1), format ukuran divalidasi", () => {
+    expect(parseEnv(valid).EXPORT_DUCKDB_MEMORY).toBe("768MB");
+    expect(parseEnv({ ...valid, EXPORT_DUCKDB_MEMORY: "1GB" }).EXPORT_DUCKDB_MEMORY).toBe("1GB");
+    expect(() => parseEnv({ ...valid, EXPORT_DUCKDB_MEMORY: "banyak" })).toThrow(
+      /EXPORT_DUCKDB_MEMORY/,
+    );
+  });
+
   it("gagal cepat dengan nama variabel yang hilang", () => {
     const { DATABASE_URL: _omit, ...rest } = valid;
     expect(() => parseEnv(rest)).toThrow(/DATABASE_URL/);

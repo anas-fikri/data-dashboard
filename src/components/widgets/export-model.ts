@@ -39,7 +39,7 @@ export interface ExportError {
   again: boolean;
 }
 
-/** Kode klien (bukan dari server): jaringan, sesi habis, ekspor hilang dari polling (404). */
+/** Kode klien (bukan dari server): jaringan, sesi habis, ekspor hilang dari polling (403). */
 const OFFLINE = "OFFLINE";
 const SESSION = "SESSION";
 const EXPORT_GONE = "EXPORT_GONE";
@@ -99,7 +99,7 @@ export type ExportEvent =
   | { type: "created"; id: string }
   | { type: "rejected"; status: number; code?: string; message?: string }
   | { type: "status"; id: string; view: ExportStatusView }
-  /** Polling berhenti tanpa hasil: 401/403/404/410 (use-polling onStop). */
+  /** Polling berhenti tanpa hasil: 401/403/404/410 (use-polling onStop; 404 = akses dicabut). */
   | { type: "stopped"; id: string; status: number }
   /** Jam lokal melewati expiresAt (dikurangi margin). */
   | { type: "expired"; id: string }
@@ -149,9 +149,13 @@ export function exportReducer(job: ExportJob, e: ExportEvent): ExportJob {
   }
 }
 
-/** Status berhenti tanpa hasil (401/403/404/410) → kode galat. */
-const stopCode = (status: number) =>
-  status === 401 ? SESSION : status === 410 ? C.EXPORT_EXPIRED : EXPORT_GONE;
+/**
+ * Status berhenti tanpa hasil (401/403/404/410) → kode galat. 404 pada ekspor milik sendiri = akses
+ * dashboard dicabut (baris ekspor tidak pernah dihapus): NOT_FOUND tanpa "Ekspor lagi", sama dengan
+ * membuat ekspor dan "Unduh lagi" (review R2-CL-2; pemanggil juga mengambil ulang halaman).
+ */
+const STOP_CODE: Record<number, string> = { 401: SESSION, 404: C.NOT_FOUND, 410: C.EXPORT_EXPIRED };
+const stopCode = (status: number) => STOP_CODE[status] ?? EXPORT_GONE;
 
 export type RecheckOutcome =
   | { kind: "download" }
@@ -176,8 +180,7 @@ export function recheckOutcome(
     ...(message ? { message } : {}),
     accessLost: status === 404,
   });
-  if (status === 404) return error(C.NOT_FOUND);
-  if ([401, 403, 410].includes(status)) return error(stopCode(status));
+  if ([401, 403, 404, 410].includes(status)) return error(stopCode(status));
   if (status !== 200 || !view) return { kind: "retry" };
   if (view.state === "done") {
     const expired = expiryDelay(view.expiresAt ?? null, now) === 0;

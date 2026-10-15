@@ -9,6 +9,7 @@ import { EmailText } from "@/components/admin/email-text";
 import { SharedRoleBadge } from "@/components/sharing/access-badge";
 import { ShareDialog } from "@/components/sharing/share-dialog";
 import { PageHeader } from "@/components/ui/page-header";
+import { ExportUserProvider } from "@/components/widgets/export-user";
 import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
 import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
@@ -128,20 +129,23 @@ export default async function DashboardPage({
       {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
           membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. Mode
           lihat memuat ulang widget/tata letak dari props baru tanpa remount (filter/popover tetap);
-          Back/Forward disegarkan oleh kanvas sendiri (dashboard-canvas). */}
-      <DashboardCanvas
-        key={`${d.id}:${editing ? "edit" : "view"}`}
-        dashboardId={d.id}
-        role={d.role}
-        widgets={d.widgets}
-        layout={d.layout}
-        revision={d.layoutRevision}
-        editing={editing}
-        datasetId={d.dataset.id}
-        sources={sources}
-        filterColumns={d.filterColumns}
-        crossFilterColumns={d.crossFilterColumns}
-      />
+          Back/Forward disegarkan oleh kanvas sendiri (dashboard-canvas). Ekspor widget disimpan per
+          user (review T-017 R2-CL-1): keluar → masuk sebagai user lain tanpa reload tidak mewarisinya. */}
+      <ExportUserProvider userId={user.id}>
+        <DashboardCanvas
+          key={`${d.id}:${editing ? "edit" : "view"}`}
+          dashboardId={d.id}
+          role={d.role}
+          widgets={d.widgets}
+          layout={d.layout}
+          revision={d.layoutRevision}
+          editing={editing}
+          datasetId={d.dataset.id}
+          sources={sources}
+          filterColumns={d.filterColumns}
+          crossFilterColumns={d.crossFilterColumns}
+        />
+      </ExportUserProvider>
       {/* Nama, kolom filter (D6), dan hapus: pemilik saja; editor hanya widget dan tata letak. */}
       {editing && isOwner ? (
         <DashboardSettings

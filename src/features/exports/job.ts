@@ -4,7 +4,7 @@
  *  2. akses dicek ulang (repo.widget dengan peran sekarang) + resolver yang sama dengan /api/query —
  *     filter dashboard divalidasi lagi terhadap kolom yang diizinkan (D6), preset tanggal memakai waktu
  *     permintaan (E9), typed.parquet diambil dari versi aktif SAAT INI (E13);
- *  3. parquet diunduh ke direktori kerja; DuckDB ekspor (512 MB, 2 thread, akses berkas hanya direktori
+ *  3. parquet diunduh ke direktori kerja; DuckDB ekspor (EXPORT_DUCKDB_MEMORY, 2 thread, akses berkas hanya direktori
  *     kerja) menghitung baris (> batas → EXPORT_TOO_LARGE, E5) lalu menulis CSV (COPY) atau XLSX
  *     (streaming), semua di bawah tenggat EXPORT_DEADLINE_MS (watched);
  *  4. unggah ke exports/<userId>/<id>.<ext> dengan Content-Type/Disposition, DONE + expiresAt, lalu
@@ -80,7 +80,7 @@ export interface ExportJobDeps {
   ttlMs: number;
   deadlineMs: number;
   now?: () => Date;
-  /** memory_limit DuckDB ekspor (default 512MB, E12). */
+  /** memory_limit DuckDB ekspor (env EXPORT_DUCKDB_MEMORY, default 768MB — review INT-R2-1). */
   duckMemory?: string;
 }
 
@@ -147,7 +147,7 @@ export function xlsxColumn(c: OutColumn): XlsxColumn {
  * direktori kerja, dan akses berkas dikunci ke direktori kerja (berbeda dengan openDuck biasa) — SQL
  * hanya berisi identifier program + nilai terikat, tapi COPY TO tetap tidak bisa menulis ke luar.
  */
-export async function openExportDuck(work: string, memoryLimit = "512MB"): Promise<Duck> {
+export async function openExportDuck(work: string, memoryLimit = "768MB"): Promise<Duck> {
   const duck = await openDuck({
     path: ":memory:",
     tmpDir: work,

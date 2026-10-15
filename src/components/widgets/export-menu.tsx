@@ -14,7 +14,6 @@ import {
   type ExportJob,
 } from "./export-model";
 import { AGAIN_ATTR, ExportStatus, NEWS_ATTR } from "./export-status";
-import { exportJobOf } from "./export-store";
 import { useExportJob } from "./use-export-job";
 import type { WidgetRequest } from "./widget-query";
 
@@ -26,8 +25,8 @@ import type { WidgetRequest } from "./widget-query";
  * saat status berubah (Ekspor lagi, Coba sekarang, Unduh lagi) mengembalikan fokus ke dalam menu.
  * Menu tertutup: ikon berputar selama ekspor, titik galat sampai menu dibuka, dan status diumumkan
  * lewat wilayah status tersembunyi. Ukuran tombol dan urutan sembunyi di kartu sempit milik kartu
- * (className dari widget-card-head.tsx). Status ekspor hidup di export-store.ts per widget: kartu yang
- * dipasang ulang (rotasi tumpukan ↔ grid, mode lihat ↔ edit) menampilkan ekspor yang sama.
+ * (className dari widget-card-head.tsx). Status ekspor hidup di export-store.ts per user + widget: kartu
+ * yang dipasang ulang (rotasi tumpukan ↔ grid, mode lihat ↔ edit) menampilkan ekspor yang sama.
  */
 const FORMAT_ICON = { csv: IconFileTypeCsv, xlsx: IconFileTypeXls } as const;
 const FORMATS = ["csv", "xlsx"] as const;
@@ -45,13 +44,10 @@ interface Props {
 export function ExportMenu({ widgetId, title, table, request, className }: Props) {
   const headingId = useId();
   const [open, setOpen] = useState(false);
+  const { job, start, pollError, retryPoll, downloadAgain, again } = useExportJob(widgetId);
   // Keadaan yang terakhir terlihat di menu: galat sesudahnya (menu tertutup) diberi titik di tombol.
   // Dipasang ulang: ekspor yang sedang berjalan/selesai tidak diumumkan ulang; galat tetap bertitik.
-  const [seen, setSeen] = useState<ExportJob | null>(() => {
-    const now = exportJobOf(widgetId);
-    return now.phase === "error" ? null : now;
-  });
-  const { job, start, pollError, retryPoll, downloadAgain, again } = useExportJob(widgetId);
+  const [seen, setSeen] = useState<ExportJob | null>(() => (job.phase === "error" ? null : job));
   const busy = exportBusy(job);
   const content = useRef<HTMLDivElement>(null);
   const buttons = useRef<Partial<Record<ExportFormatInput, HTMLButtonElement | null>>>({});
@@ -119,8 +115,12 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
         ref={content}
         aria-labelledby={headingId}
         align="end"
-        className="w-72"
+        // Margin gulir = padding menu: cincin fokus (2 px + offset 2 px) tidak terpotong tepi gulir.
+        className="w-72 [&_button]:scroll-my-3"
         data-testid="export-menu"
+        // Tab/Shift+Tab berputar di dalam menu (Radix FocusScope: focus tanpa gulir) — di menu setinggi
+        // sisa layar kontrol tujuan bisa di luar area terlihat; gulir seperlunya (review R2-D-1).
+        onFocus={(e) => (e.target as HTMLElement).scrollIntoView({ block: "nearest" })}
       >
         <div>
           <p id={headingId} className="truncate text-sm font-semibold" title={title}>
