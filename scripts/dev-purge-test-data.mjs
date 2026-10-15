@@ -28,9 +28,12 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 const dryRun = process.argv.includes("--dry-run");
-const TEST_EMAIL = /^([a-z0-9-]+-\d{13}-\d+|audit\d*-[a-z0-9-]+)@/i;
-/** Hanya akun buatan uniqueEmail (tests/e2e/helpers.ts) yang dihapus. */
-const ACCOUNT_EMAIL = /^[a-z0-9-]+-\d{13}-\d+@pcpexpress\.com$/;
+const TEST_EMAIL = /^([a-z0-9_-]+-\d{13}-\d+|audit\d*-[a-z0-9-]+)@/i;
+/**
+ * Hanya akun buatan uniqueEmail (tests/e2e/helpers.ts) yang dihapus; prefix boleh memuat "_"
+ * (sharing.spec.ts menguji pencarian pengguna dengan email ber-garis bawah).
+ */
+const ACCOUNT_EMAIL = /^[a-z0-9_-]+-\d{13}-\d+@pcpexpress\.com$/;
 
 const prisma = new PrismaClient();
 const s3 = new S3Client({

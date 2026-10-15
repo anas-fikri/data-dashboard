@@ -31,6 +31,7 @@ export default defineConfig({
         /filters\.spec\.ts$/,
         /versions\.spec\.ts$/,
         /mapping\.spec\.ts$/,
+        /sharing\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -45,7 +46,10 @@ export default defineConfig({
     { name: "versions", testMatch: /versions\.spec\.ts$/, dependencies: ["filters"] },
     // mapping (T-014): worker sendiri; ganti nama/hilang/tambah kolom → pemetaan → versi aktif.
     { name: "mapping", testMatch: /mapping\.spec\.ts$/, dependencies: ["versions"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["mapping"] },
+    // sharing (T-016): worker sendiri; pemilik, viewer, organisasi, editor, dan orang asing di atas
+    // dataset sungguhan (query widget, pencabutan di tengah sesi, AuditLog, hapus dataset).
+    { name: "sharing", testMatch: /sharing\.spec\.ts$/, dependencies: ["mapping"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["sharing"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createWriteStream } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type Browser, type Page } from "@playwright/test";
 
 export const MAILPIT = process.env.MAILPIT_URL ?? "http://localhost:8026";
 export const PASSWORD = "dummy-kalimat-panjang-uji-123";
@@ -118,6 +118,15 @@ export async function login(page: Page, email: string, password = PASSWORD) {
 export async function apiLogin(page: Page, email: string, password = PASSWORD) {
   const res = await page.request.post("/api/auth/login", { data: { email, password } });
   expect(res.status(), await res.text()).toBe(200);
+}
+
+/** Satu konteks browser (cookie terpisah) per pengguna, sudah login; tutup lewat page.context(). */
+export async function pageFor(browser: Browser, email: string): Promise<Page> {
+  const page = await (
+    await browser.newContext({ viewport: { width: 1440, height: 900 } })
+  ).newPage();
+  await apiLogin(page, email);
+  return page;
 }
 
 /** Log worker per spec; ditimpa tiap run dan tidak dihapus global-teardown (bahan debug flake). */

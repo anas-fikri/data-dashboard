@@ -2,11 +2,11 @@ import { execFileSync, type ChildProcess } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { expect, test, type Browser, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   PASSWORD,
-  apiLogin,
   login,
+  pageFor,
   registerAndVerify,
   startWorker,
   stopWorker,
@@ -64,15 +64,6 @@ function fixtureCsv(): string {
   const path = join(dir, "omzet-alih.csv");
   writeFileSync(path, lines.join("\n"));
   return path;
-}
-
-/** Satu konteks browser (cookie terpisah) per pengguna. */
-async function pageFor(browser: Browser, email: string): Promise<Page> {
-  const page = await (
-    await browser.newContext({ viewport: { width: 1440, height: 900 } })
-  ).newPage();
-  await apiLogin(page, email);
-  return page;
 }
 
 const widgetTitled = (page: Page, title: string) =>
