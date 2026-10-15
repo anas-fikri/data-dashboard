@@ -97,6 +97,24 @@ export function cleanName(
   return { ok: true, value };
 }
 
+/** Bentuk Date.toISOString() (presisi milidetik = presisi kolom timestamp(3) Prisma). */
+const VERSION_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * Versi pengaturan widget yang dilihat klien (T-016, review DI-1) = Widget.updatedAt dalam bentuk ISO.
+ * Tidak dikirim (undefined) → null: tulis tanpa CAS (jalan pintas pemanggil API lama). Bentuk lain →
+ * tidak valid (400).
+ */
+export function parseWidgetVersion(raw: unknown): { ok: true; value: Date | null } | { ok: false } {
+  if (raw === undefined) return { ok: true, value: null };
+  if (typeof raw !== "string" || !VERSION_RE.test(raw)) return { ok: false };
+  const value = new Date(raw);
+  // Bolak-balik persis: tanggal kalender mustahil (mis. 31 Februari) tidak digeser diam-diam.
+  return Number.isNaN(value.getTime()) || value.toISOString() !== raw
+    ? { ok: false }
+    : { ok: true, value };
+}
+
 /** Ukuran terkecil untuk jenis widget ini (jenis tak dikenal/kosong = minimum umum). */
 export function minSizeOf(type: string | undefined): { w: number; h: number } {
   return (type !== undefined && MIN_BY_TYPE.get(type)) || WIDGET_MIN_SIZE;

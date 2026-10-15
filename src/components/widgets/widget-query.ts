@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DashFilter } from "@/components/dashboards/filters/filter-model";
 import type { ValueType } from "@/features/widgets/format";
-import { useAccessLost } from "./access-refresh";
+import { isAccessLost, useAccessLost } from "./access-refresh";
 
 /*
  * Query widget dari browser (T-011). Mesin query mengantrekan query per user (antrean terbatas);
@@ -11,7 +11,9 @@ import { useAccessLost } from "./access-refresh";
  * berjalan sekaligus per halaman dan QUERY_BUSY dicoba ulang dua kali dengan jeda. Permintaan
  * dibatalkan saat widget berganti spec/halaman atau dilepas. HTTP 404 (akses dicabut, T-016) →
  * halaman dimuat ulang dari server sekali (access-refresh.tsx). Jawaban untuk non-pemilik tidak
- * memuat `cached`/`ms` (T-016): klien tidak bergantung pada keduanya.
+ * memuat `cached`/`ms` (T-016): klien tidak bergantung pada keduanya. Jawaban berhasil membawa
+ * `widgetVersion` (versi pengaturan yang dipakai server); WidgetBody tidak menampilkan data dari versi
+ * yang tidak dikenal kartu (diubah di tab/perangkat lain — body-state.ts withChangeCheck).
  */
 export interface QueryColumn {
   key: string;
@@ -32,6 +34,8 @@ export interface WidgetData {
   total?: number;
   page?: number;
   pageSize?: number;
+  /** Versi pengaturan widget yang dibaca server untuk data ini (T-016); dibandingkan dengan kartu. */
+  widgetVersion?: string;
 }
 /**
  * `filters`: filter dashboard (JSON) milik `data` — data lama dari filter lain tidak boleh tampil
@@ -166,7 +170,7 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
       (r) => {
         if (ctl.signal.aborted) return;
         // Akses dashboard dicabut (atau widgetnya dihapus di tempat lain): halaman dari server lagi.
-        if (!r.ok && r.status === 404) accessLost?.();
+        if (isAccessLost(r)) accessLost?.();
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }

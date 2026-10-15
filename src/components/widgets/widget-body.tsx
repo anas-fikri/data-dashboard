@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import type { WidgetConfig } from "@/features/widgets/spec";
 import { AbsentNote } from "./absent-note";
-import { bodyState, configVersion, type BodyState } from "./body-state";
+import { bodyState, configVersion, withChangeCheck, type BodyState } from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { SkippedNote } from "./skipped-note";
@@ -27,6 +27,9 @@ import { useWidgetQuery } from "./widget-query";
  * sekali untuk semua kartu oleh bilah filter (useReportStale). Query dengan
  * filter baru gagal → keadaan galat penuh (widget-error.tsx), bukan baris/total lama seolah sudah
  * tersaring. Filter yang tidak berlaku disebut di catatan di bawah isi (skipped-note.tsx).
+ *
+ * Pengaturan widget diubah di tab/perangkat lain (T-016): jawaban server membawa versi pengaturan yang
+ * tidak dikenal kartu → data tidak ditampilkan, galat "Widget ini sudah diubah" + "Muat ulang".
  */
 type Configured = Exclude<WidgetConfig, { type: "empty" }>;
 
@@ -35,6 +38,8 @@ const STALE_LABEL_MS = 400;
 
 interface Props {
   widgetId: string;
+  /** Versi pengaturan widget di kanvas (T-016; dari server, diperbarui oleh simpanan tab ini). */
+  widgetVersion?: string;
   config: Configured;
   title: string;
   editing: boolean;
@@ -54,6 +59,7 @@ export function WidgetBody(props: Props) {
 
 function Loaded({
   widgetId,
+  widgetVersion,
   config,
   title,
   editing,
@@ -77,7 +83,13 @@ function Loaded({
     config.type === "table"
       ? { widgetId, page, ...(sort ? { sort } : {}), ...filters }
       : { widgetId, ...filters };
-  const { state, retry } = useWidgetQuery(request, version);
+  // Versi pengaturan yang pernah dipegang kartu ini (awal + simpanan tab ini): hanya data dari versi
+  // ini yang ditampilkan.
+  const [known, setKnown] = useState<string[]>(widgetVersion ? [widgetVersion] : []);
+  if (widgetVersion && !known.includes(widgetVersion)) setKnown([...known, widgetVersion]);
+  const query = useWidgetQuery(request, version);
+  const { retry } = query;
+  const state = withChangeCheck(query.state, known);
   const data = state.data;
   const refetching = state.status === "loading" && !!data;
   // Tabel: data lama tetap di bawah pesan galat hanya bila filternya sama (halaman/urutan gagal).

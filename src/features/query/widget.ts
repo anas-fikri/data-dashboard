@@ -129,6 +129,11 @@ export function widgetPlan(
     }
     default: {
       const { dimension: d, measure: m } = config.spec;
+      // Kolom dulu (tersembunyi/hilang), baru tipenya: tipe kolom tersembunyi tidak boleh mengubah
+      // jawaban (review T-016 SEC-1 — editor bisa mencoba posisi kolom apa pun saat menyimpan).
+      const dimension = name(d.column);
+      const measure = m.column ? name(m.column) : "";
+      if (unavailable) return { ok: false, code: "COLUMN_UNAVAILABLE", message: unavailable };
       const measureType = m.column ? byPos.get(m.column)?.type : undefined;
       const dated = measureType === "date" || measureType === "timestamp";
       if (dated && (m.agg === "min" || m.agg === "max")) {
@@ -142,10 +147,8 @@ export function widgetPlan(
       }
       spec = {
         ...base,
-        dimensions: [
-          { column: name(d.column), ...(d.timeGrain ? { timeGrain: d.timeGrain } : {}) },
-        ],
-        measures: [{ agg: m.agg, ...(m.column ? { column: name(m.column) } : {}) }],
+        dimensions: [{ column: dimension, ...(d.timeGrain ? { timeGrain: d.timeGrain } : {}) }],
+        measures: [{ agg: m.agg, ...(m.column ? { column: measure } : {}) }],
         filters,
         sort: [SORT[config.spec.sort]],
         limit: config.spec.topN,

@@ -1,7 +1,7 @@
 ---
 id: T-016
 title: 'Berbagi dashboard: viewer/editor, organisasi, otorisasi query berbasis widget'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -10,12 +10,18 @@ tags:
 depends_on:
   - T-012
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T02:38:02Z"
+updated: "2026-10-15T03:39:10Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 94df0a4153bf645653471d49852b3eb78591ced8
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-15T03:39:10Z"
+      findings: 11
 evidence:
   check:
     cmd: npm run check

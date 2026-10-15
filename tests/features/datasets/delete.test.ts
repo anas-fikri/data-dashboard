@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
@@ -104,6 +105,28 @@ describe("deleteDataset", () => {
       },
       select: { id: true },
     });
+  });
+
+  it("review T-016 DI-2: batas waktu transaksi = transaksi Dataset lain; P2028 → BUSY tanpa hapus storage", async () => {
+    expect(await deleteDataset("owner1", ID, "penjualan cabang", IP, deps)).toMatchObject({
+      ok: true,
+    });
+    expect($transaction).toHaveBeenCalledWith(expect.any(Function), {
+      maxWait: 5_000,
+      timeout: 30_000,
+    });
+    deleteMany.mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError("timeout", { code: "P2028", clientVersion: "6" }),
+    );
+    order.length = 0;
+    const r = await deleteDataset("owner1", ID, "penjualan cabang", IP, deps);
+    expect(r).toEqual({
+      ok: false,
+      code: "BUSY",
+      message: "Sedang memproses permintaan lain. Coba lagi.",
+    });
+    expect(order).toEqual(["cancel:v1"]);
+    expect(deps.deleteObjects).toHaveBeenCalledTimes(1); // hanya dari penghapusan pertama
   });
 
   it("audit gagal → transaksi gagal, storage tidak disentuh (tidak ada penghapusan tanpa jejak)", async () => {

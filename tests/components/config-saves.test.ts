@@ -35,12 +35,21 @@ describe("R10-SM-2: spec yang sedang dikirim", () => {
   });
 
   it("form mulai dari spec terkirim, tanpa tanda dialihkan; tanpa simpanan → widget apa adanya", () => {
-    const w: WidgetView = { id: "w", type: "kpi", title: "Omzet", spec: {}, retargeted: true };
+    const w: WidgetView = {
+      id: "w",
+      type: "kpi",
+      title: "Omzet",
+      spec: {},
+      version: "v1",
+      retargeted: true,
+    };
+    // Versi pengaturan (T-016) tetap milik widget tersimpan: simpanan berikutnya membawanya.
     expect(withUnsaved(w, sortAsc)).toEqual({
       id: "w",
       type: "bar",
       title: "Omzet",
       spec: { sort: "value_asc" },
+      version: "v1",
       retargeted: undefined,
     });
     expect(withUnsaved(w, undefined)).toBe(w);
@@ -117,7 +126,7 @@ describe("R10-1: baris status saat gagal simpan terlihat dan terbaca sebagai kes
   const statusOf = (spec: unknown, saveError?: string) => {
     const html = renderToStaticMarkup(
       createElement(WidgetConfigForm, {
-        widget: { id: "w", type: "kpi", title: "", spec },
+        widget: { id: "w", type: "kpi", title: "", spec, version: "v1" },
         sources,
         datasetId: "ds",
         saveError,

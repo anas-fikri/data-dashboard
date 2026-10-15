@@ -242,7 +242,7 @@ describe("tampilan kolom filter dan kolom cross-filter", () => {
       datasetId: DS,
       filterColumns: [],
       dataset: { activeVersionId: VER },
-      widgets: [{ id: WA, type: "bar", title: "", spec: chart(2) }],
+      widgets: [{ id: WA, type: "bar", title: "", spec: chart(2), updatedAt: new Date(0) }],
     });
     // remapToActive: sheet widget sudah di versi aktif → tidak dipetakan ulang.
     prisma.sheet.findMany.mockResolvedValueOnce([{ ...SHEETS[0], index: 0, versionId: VER }]);

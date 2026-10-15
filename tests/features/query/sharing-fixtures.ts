@@ -87,6 +87,8 @@ export const WIDGETS: Record<string, { type: string; spec: unknown; missingColum
   },
 };
 export const WID = (name: string) => `cmv4kljx40009oczvdmpu${name.padEnd(4, "x").slice(0, 4)}0`;
+/** Widget.updatedAt semua widget fixture = versi pengaturan (review T-016 DI-1). */
+export const WIDGET_UPDATED_AT = new Date("2026-10-15T03:04:05.678Z");
 
 /** Spec bebas yang sah atas sheet aktif. */
 export const SPEC = { sheetId: SHEET, measures: [{ agg: "count" }] };
@@ -122,6 +124,7 @@ export function makeDeps() {
       if (!name || !role) return null;
       return {
         ...WIDGETS[name]!,
+        updatedAt: WIDGET_UPDATED_AT,
         datasetId: DS,
         activeVersionId: VER,
         dashboardId: DASH,

@@ -7,6 +7,7 @@ import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
 import { SharedRoleBadge } from "@/components/sharing/access-badge";
 import { ShareDialog } from "@/components/sharing/share-dialog";
+import { ownerLabel } from "@/components/sharing/share-model";
 import { PageHeader } from "@/components/ui/page-header";
 import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
@@ -72,7 +73,8 @@ export default async function DashboardPage({
               Dashboard
             </Link>
             <span aria-hidden>/</span>
-            {/* Halaman dataset hanya untuk pemilik: non-pemilik melihat namanya tanpa tautan (bukan 404). */}
+            {/* Halaman dataset hanya untuk pemilik: non-pemilik melihat namanya tanpa tautan (bukan 404)
+                dan membungkus, bukan terpotong — di sini satu-satunya tempat nama lengkapnya terbaca. */}
             {isOwner ? (
               <Link
                 href={`/datasets/${d.dataset.id}`}
@@ -82,7 +84,9 @@ export default async function DashboardPage({
               </Link>
             ) : (
               <span className="inline-flex min-h-6 min-w-0 items-center">
-                <span className="truncate">{d.dataset.name}</span>
+                <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="dashboard-dataset">
+                  {d.dataset.name}
+                </span>
               </span>
             )}
           </span>
@@ -95,9 +99,7 @@ export default async function DashboardPage({
               <SharedRoleBadge role={sharedRole} />
               <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="dashboard-owner">
                 Dibagikan oleh{" "}
-                <bdi className="font-medium text-foreground">
-                  {d.ownerName ?? "pemilik dataset"}
-                </bdi>
+                <bdi className="font-medium text-foreground">{ownerLabel(d.ownerName)}</bdi>
               </span>
             </>
           ) : undefined

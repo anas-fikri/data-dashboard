@@ -165,6 +165,11 @@ export function SharePanel({
           orgShared={data.orgShared}
           busy={s.busy}
           error={errorAt("grants")}
+          errorUserId={
+            s.error?.at === "grants" && s.error.key.startsWith("role:")
+              ? s.error.key.slice("role:".length)
+              : null
+          }
           revokeError={errorAt("revoke")}
           onRevokeCancel={s.clearError}
           onRole={(g, role) =>

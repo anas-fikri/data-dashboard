@@ -39,6 +39,7 @@ import {
   compactLayout,
   fitMinSizes,
   layoutBodySchema,
+  parseWidgetVersion,
   positionSchema,
   reconcileLayout,
   type LayoutItem,
@@ -67,6 +68,11 @@ export interface WidgetView {
   /** Spec tersimpan (T-011); klien memvalidasi ulang dengan parseWidgetConfig sebelum dipakai. */
   spec: unknown;
   /**
+   * Versi pengaturan (review T-016 DI-1) = Widget.updatedAt (ISO). Klien membandingkannya dengan
+   * `widgetVersion` jawaban query, dan mengirimnya saat atur/ganti judul (STALE bila sudah berubah).
+   */
+  version: string;
+  /**
    * Hanya tampilan (remapToActive): sheet spec tersimpan tidak bisa ditentukan dan `spec` diarahkan ke
    * satu-satunya sheet aktif. Spec tersimpan belum berubah — kartu tetap SHEET_UNAVAILABLE sampai panel
    * menyimpannya (R3-CC-2). Tidak pernah ada di widget biasa.
@@ -81,10 +87,10 @@ export interface SourceSheet {
   columns: { pos: number; name: string; type: ColumnType }[];
 }
 
-const WIDGET_SELECT = { id: true, type: true, title: true, spec: true } as const;
+const WIDGET_SELECT = { id: true, type: true, title: true, spec: true, updatedAt: true } as const;
 /** Widget tersimpan + kolom yang hilang saat aktivasi versi (T-013); dipetakan oleh remapToActive. */
 const STORED_WIDGET_SELECT = { ...WIDGET_SELECT, missingColumns: true } as const;
-type StoredWidget = WidgetView & { missingColumns?: string[] };
+type StoredWidget = Omit<WidgetView, "version"> & { updatedAt: Date; missingColumns?: string[] };
 
 export type { FilterColumnView } from "./filter-columns";
 
@@ -176,7 +182,7 @@ async function denied<T>(
   userId: string,
   dashboardId: string,
   need: "owner" | "edit",
-  gone: () => DashboardResult<never> = notFound,
+  gone: () => DashboardResult<never> | Promise<DashboardResult<never>> = notFound,
 ): Promise<DashboardResult<T>> {
   const a = await dashboardAccess(userId, dashboardId);
   if (!a) return notFound();
@@ -211,28 +217,38 @@ export async function listDashboards(ownerId: string): Promise<DashboardSummary[
 }
 
 /**
- * "Dibagikan ke saya": dashboard dataset orang lain yang dibagikan ke user (share user atau
- * organisasi), terbaru dulu. Dibatasi SHARED_LIST_MAX: share organisasi dari banyak pemilik bisa
- * menghasilkan daftar panjang, dan daftar ini dirender utuh tanpa halaman.
+ * "Dibagikan ke saya": dashboard dataset orang lain yang dibagikan ke user. Share langsung ke user
+ * DULU (terbaru dulu), baru share organisasi saja (terbaru dulu) — dua query terpisah, jadi banyaknya
+ * share organisasi (siapa pun bisa membuatnya) tidak bisa mendorong share langsung keluar dari daftar
+ * atau dari 5 teratas Beranda (review T-016 SEC-3). Share organisasi dari pemilik yang sudah dinonaktifkan
+ * tidak didaftar (aksesnya lewat URL tetap). Dibatasi SHARED_LIST_MAX: daftar ini dirender utuh tanpa
+ * halaman.
  */
 export async function listSharedDashboards(userId: string): Promise<SharedDashboardSummary[]> {
-  const rows = await prisma.dashboard.findMany({
-    where: {
-      dataset: { ownerId: { not: userId } },
-      OR: [{ shares: { some: { userId } } }, { orgShared: true }],
-    },
-    orderBy: { updatedAt: "desc" },
-    take: SHARED_LIST_MAX,
-    select: {
-      ...roleSelect(userId),
-      id: true,
-      name: true,
-      updatedAt: true,
-      dataset: { select: { ownerId: true, name: true, owner: { select: { name: true } } } },
-      _count: { select: { widgets: true } },
-    },
-  });
-  return rows.flatMap((r) => {
+  const select = {
+    ...roleSelect(userId),
+    id: true,
+    name: true,
+    updatedAt: true,
+    dataset: { select: { ownerId: true, name: true, owner: { select: { name: true } } } },
+    _count: { select: { widgets: true } },
+  } satisfies Prisma.DashboardSelect;
+  const list = { orderBy: { updatedAt: "desc" as const }, take: SHARED_LIST_MAX, select };
+  const [direct, org] = await Promise.all([
+    prisma.dashboard.findMany({
+      ...list,
+      where: { dataset: { ownerId: { not: userId } }, shares: { some: { userId } } },
+    }),
+    prisma.dashboard.findMany({
+      ...list,
+      where: {
+        dataset: { ownerId: { not: userId }, owner: { isActive: true } },
+        orgShared: true,
+        shares: { none: { userId } },
+      },
+    }),
+  ]);
+  return [...direct, ...org].slice(0, SHARED_LIST_MAX).flatMap((r) => {
     const role = roleOf(userId, r);
     if (role !== "EDITOR" && role !== "VIEWER") return [];
     return [
@@ -492,7 +508,10 @@ export async function setDashboardFilterColumns(
   return { ok: true, data: { filterColumns: filterColumnViews(checked.columns, sheets) } };
 }
 
-const toView = ({ missingColumns: _, ...w }: StoredWidget): WidgetView => w;
+const toView = ({ missingColumns: _, updatedAt, ...w }: StoredWidget): WidgetView => ({
+  ...w,
+  version: updatedAt.toISOString(),
+});
 
 /**
  * Semua kolom spec ditandai MISSING_COLUMN, spec menunjuk sheetId (bawaan: sheet lama tetap):
@@ -640,6 +659,9 @@ export async function getDashboardSources(
   }));
 }
 
+/** Pesan umum kolom tersembunyi/hilang saat menyimpan pengaturan widget oleh selain pemilik. */
+export const COLUMN_UNAVAILABLE_EDITOR = "Kolom yang dipilih tidak tersedia.";
+
 /**
  * Validasi tipe + spec widget terhadap data aktif dataset: bentuk (zod), sheet ada di versi aktif,
  * kolom ada dan tampil, agregasi cocok dengan tipe kolom (aturan yang sama dengan saat query).
@@ -647,11 +669,15 @@ export async function getDashboardSources(
  * (versi berganti saat panel terbuka; panel tidak pernah mengirim sheet di luar sumbernya).
  * `outside`: sheet bukan milik dataset dashboard ini — "foreign" (ada di dataset lain) atau "gone"
  * (tidak ada lagi di mana pun, mis. dihapus retensi). Tidak ada data dataset lain yang dibaca.
+ * `detailed` (pemilik saja): pesan kolom tersembunyi/hilang menyebut nama kolomnya. Selain pemilik
+ * mendapat pesan umum — editor bisa mengirim posisi kolom apa pun, jadi nama kolom tersembunyi tidak
+ * boleh bisa didaftar lewat jalur tulis ini (review T-016 SEC-1).
  */
 async function checkConfig(
   datasetId: string,
   type: unknown,
   spec: unknown,
+  detailed = false,
 ): Promise<
   | { ok: true; config: WidgetConfig }
   | { ok: false; message: string; stale?: true; outside?: "foreign" | "gone" }
@@ -677,7 +703,14 @@ async function checkConfig(
       : { ok: false, message, outside: "foreign" };
   }
   const planned = widgetPlan(config, schema, { page: 0 });
-  return planned.ok ? { ok: true, config } : { ok: false, message: planned.message };
+  if (planned.ok) return { ok: true, config };
+  return {
+    ok: false,
+    message:
+      planned.code === "COLUMN_UNAVAILABLE" && !detailed
+        ? COLUMN_UNAVAILABLE_EDITOR
+        : planned.message,
+  };
 }
 
 /** Sheet di luar dataset dashboard (AC6: tidak boleh diakses = 404, bukan 400). */
@@ -847,7 +880,7 @@ export async function addWidget(
     const layoutRevision = d.layoutRevision + 1;
     await writeLayout(tx, dashboardId, layout, layoutRevision);
     return {
-      widget,
+      widget: toView(widget),
       layout,
       layoutRevision,
       ...(configDropped ? { configDropped: true as const } : {}),
@@ -908,31 +941,64 @@ const editableWidget = (userId: string, dashboardId: string, widgetId: string) =
     dashboard: canEditWhere(userId),
   }) satisfies Prisma.WidgetWhereInput;
 
+/*
+ * Versi pengaturan widget (review T-016 DI-1) = Widget.updatedAt. Atur isi dan ganti judul menerima
+ * `version` yang dilihat klien: tulisan memakai CAS pada versi itu, dan versi yang sudah berganti (tab
+ * atau pengguna lain menyimpan lebih dulu, atau aktivasi versi data memetakan spec-nya) → STALE,
+ * tidak pernah menimpa diam-diam. Tanpa `version`: tulis tanpa CAS (shortcut: pemanggil API yang
+ * belum mengirim versi; klien kanvas selalu mengirim).
+ * Versi baru ditulis eksplisit dan dikembalikan agar tab yang menyimpan memperbarui salinannya.
+ */
+const staleWidget = <T>() =>
+  fail<T>(
+    "STALE",
+    "Widget ini sudah berubah sejak halaman ini dimuat. Muat ulang halaman untuk melihat versi terbaru.",
+  );
+const invalidVersion = <T>() => fail<T>("INVALID", "Versi widget tidak valid.");
+/** Selalu lebih baru dari versi dasar klien (dua simpan di milidetik yang sama tetap berbeda versi). */
+const nextVersion = (base: Date | null) =>
+  new Date(Math.max(Date.now(), (base?.getTime() ?? 0) + 1));
+
+/**
+ * Untuk denied(): tulisan widget 0 baris oleh user yang masih boleh mengubah dashboard (akses sudah
+ * dicek lebih dulu — tanpa akses 404, viewer 403 — SEBELUM versi dibandingkan). Widget masih ada dan
+ * versi dikirim → versinya sudah berganti (STALE); selain itu widget hilang.
+ */
+const staleOrGone = (where: Prisma.WidgetWhereInput, base: Date | null) => async () =>
+  base && (await prisma.widget.findFirst({ where, select: { id: true } }))
+    ? staleWidget<never>()
+    : widgetNotFound<never>();
+
 export async function renameWidget(
   userId: string,
   dashboardId: unknown,
   widgetId: unknown,
   titleRaw: unknown,
-): Promise<DashboardResult<{ title: string }>> {
+  versionRaw?: unknown,
+): Promise<DashboardResult<{ title: string; version: string }>> {
   if (!isIdShape(dashboardId)) return notFound();
   if (!isIdShape(widgetId)) return widgetNotFound();
+  const base = parseWidgetVersion(versionRaw);
+  if (!base.ok) return invalidVersion();
   let title = "";
   if (titleRaw !== "") {
     const t = cleanName(titleRaw, WIDGET_TITLE_MAX, "widget");
     if (!t.ok) return fail("INVALID", t.message, "name");
     title = t.value;
   }
+  const where = editableWidget(userId, dashboardId, widgetId);
+  const version = nextVersion(base.value);
   const r = await prisma.widget.updateMany({
-    where: editableWidget(userId, dashboardId, widgetId),
-    data: { title },
+    where: base.value ? { ...where, updatedAt: base.value } : where,
+    data: { title, updatedAt: version },
   });
-  if (r.count !== 1) return denied(userId, dashboardId, "edit", widgetNotFound);
+  if (r.count !== 1) return denied(userId, dashboardId, "edit", staleOrGone(where, base.value));
   // "Diperbarui" di daftar dashboard ikut berubah.
   await prisma.dashboard.updateMany({
     where: { id: dashboardId },
     data: { updatedAt: new Date() },
   });
-  return { ok: true, data: { title } };
+  return { ok: true, data: { title, version: version.toISOString() } };
 }
 
 /** Atur tipe dan isi widget (T-011). Divalidasi terhadap data aktif; tidak menyentuh tata letak. */
@@ -942,16 +1008,22 @@ export async function configureWidget(
   widgetId: unknown,
   type: unknown,
   spec: unknown,
-): Promise<DashboardResult<{ type: string; spec: unknown }>> {
+  versionRaw?: unknown,
+): Promise<DashboardResult<{ type: string; spec: unknown; version: string }>> {
   if (!isIdShape(dashboardId)) return notFound();
   if (!isIdShape(widgetId)) return widgetNotFound();
+  const base = parseWidgetVersion(versionRaw);
+  if (!base.ok) return invalidVersion();
   const where = editableWidget(userId, dashboardId, widgetId);
   const w = await prisma.widget.findFirst({
     where,
-    select: { dashboard: { select: { datasetId: true } } },
+    select: { dashboard: { select: { datasetId: true, ...roleSelect(userId) } } },
   });
   if (!w) return denied(userId, dashboardId, "edit", widgetNotFound);
-  const checked = await checkConfig(w.dashboard.datasetId, type, spec);
+  // Versi dibandingkan di CAS penulisan (di bawah lock), setelah validasi: sheet versi data lama tetap
+  // mendapat pesan "berganti versi" yang lebih jelas (aktivasi T-013 juga mengubah spec + versinya).
+  const owner = roleOf(userId, w.dashboard) === "OWNER";
+  const checked = await checkConfig(w.dashboard.datasetId, type, spec, owner);
   if (!checked.ok) {
     // Sheet versi lain dataset ini: versi aktif berganti saat panel terbuka → minta muat ulang.
     if (checked.stale) return versionChanged();
@@ -959,16 +1031,19 @@ export async function configureWidget(
     return checked.outside ? sheetNotFound() : fail("INVALID", checked.message);
   }
   const { config } = checked;
+  const version = nextVersion(base.value);
   const r = await locked(async (tx) => {
     await tx.$executeRaw(lockKey("dashboard", dashboardId));
     if (!(await onActiveVersion(tx, w.dashboard.datasetId, config))) return "STALE" as const;
     const u = await tx.widget.updateMany({
-      where,
+      // CAS pada versi yang dilihat klien (bila dikirim): simpan bersamaan dari tab lain tidak tertimpa.
+      where: base.value ? { ...where, updatedAt: base.value } : where,
       // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013).
       data: {
         type: config.type,
         spec: config.spec as unknown as Prisma.InputJsonValue,
         missingColumns: [],
+        updatedAt: version,
       },
     });
     if (u.count !== 1) return null;
@@ -979,10 +1054,14 @@ export async function configureWidget(
     return "ok" as const;
   });
   if (r === "BUSY") return busy();
-  // Share dicabut/diturunkan di antara cek awal dan lock, atau widget dihapus bersamaan.
-  if (r === null) return denied(userId, dashboardId, "edit", widgetNotFound);
+  // Share dicabut/diturunkan di antara cek awal dan lock, widget dihapus bersamaan, atau versinya
+  // berganti sejak cek awal.
+  if (r === null) return denied(userId, dashboardId, "edit", staleOrGone(where, base.value));
   if (r === "STALE") return versionChanged();
-  return { ok: true, data: { type: config.type, spec: config.spec } };
+  return {
+    ok: true,
+    data: { type: config.type, spec: config.spec, version: version.toISOString() },
+  };
 }
 
 /**

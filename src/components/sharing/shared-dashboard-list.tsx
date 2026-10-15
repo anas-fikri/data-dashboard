@@ -4,6 +4,7 @@ import { formatUpdated } from "@/components/dashboards/dashboard-list";
 import type { SharedDashboardSummary } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
 import { SharedRoleBadge } from "./access-badge";
+import { ownerLabel } from "./share-model";
 
 interface SharedDashboardListProps {
   dashboards: SharedDashboardSummary[];
@@ -25,6 +26,12 @@ export function SharedDashboardList({
 }: SharedDashboardListProps) {
   const cols =
     "@3xl:grid-cols-[minmax(0,2fr)_minmax(8rem,1.2fr)_minmax(8rem,1.2fr)_7.5rem_11rem_1.25rem]";
+  // Bertumpuk (ponsel, kartu Beranda): nama dataset/pemilik panjang membungkus — di layar sentuh
+  // title tidak terbaca. Tabel lebar: satu baris terpotong, lengkap di title.
+  const detail = cn(
+    "min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]",
+    !compact && "@3xl:truncate",
+  );
   return (
     <div
       data-testid="shared-list"
@@ -73,14 +80,14 @@ export function SharedDashboardList({
                 )}
               />
               {compact ? null : (
-                <span className="min-w-0 truncate text-sm text-muted-foreground">
+                <span className={detail} title={d.datasetName}>
                   <span className="@3xl:sr-only">Dataset: </span>
                   <bdi>{d.datasetName}</bdi>
                 </span>
               )}
-              <span className="min-w-0 truncate text-sm text-muted-foreground">
+              <span className={detail} title={ownerLabel(d.ownerName)}>
                 <span className={compact ? undefined : "@3xl:sr-only"}>Pemilik: </span>
-                <bdi>{d.ownerName ?? "Tanpa nama"}</bdi>
+                <bdi>{ownerLabel(d.ownerName)}</bdi>
               </span>
               <span>
                 <span className="sr-only">Peran Anda: </span>

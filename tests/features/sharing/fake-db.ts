@@ -46,6 +46,8 @@ export interface FWidget {
   title: string;
   spec: unknown;
   missingColumns: string[];
+  /** Versi pengaturan (review T-016 DI-1); kosong di seed → SEED_WIDGET_AT. */
+  updatedAt?: Date;
 }
 export interface FSheet {
   id: string;
@@ -79,6 +81,13 @@ const fresh = (): State => ({
   audits: [],
 });
 
+/** Widget.updatedAt bawaan untuk widget seed tanpa updatedAt. */
+export const SEED_WIDGET_AT = new Date("2026-10-01T00:00:00.000Z");
+const widgetAt = (w: FWidget) => w.updatedAt ?? SEED_WIDGET_AT;
+/** Seperti @updatedAt Prisma: diisi waktu sekarang kecuali `data` menyetelnya sendiri. */
+const touch = <T extends object>(row: T, data: Partial<T>) =>
+  Object.assign(row, { updatedAt: new Date() }, data);
+
 function unknownKey(model: string, key: string): never {
   throw new Error(`fake-db: kunci where ${model}.${key} tidak didukung`);
 }
@@ -110,6 +119,10 @@ export function fakeShareDb() {
     return Object.entries(w).every(([k, v]) => {
       if (k === "ownerId") return strMatch(d.ownerId, v);
       if (k === "id") return strMatch(d.id, v);
+      if (k === "owner") {
+        const owner = userOf(d.ownerId);
+        return !!owner && matchUser(v as Where, owner);
+      }
       return unknownKey("dataset", k);
     });
   }
@@ -122,13 +135,17 @@ export function fakeShareDb() {
       if (k === "OR") return (v as Where[]).some((x) => matchDashboard(x, d));
       if (k === "dataset") return matchDataset(v as Where, datasetOf(d.datasetId));
       if (k === "shares") {
-        const some = (v as { some: { userId?: string; role?: string } }).some;
-        return state.shares.some(
+        type ShareWhere = { userId?: string; role?: string };
+        const { some, none } = v as { some?: ShareWhere; none?: ShareWhere };
+        const f = some ?? none;
+        if (!f) return unknownKey("dashboard.shares", Object.keys(v as object).join(","));
+        const hit = state.shares.some(
           (s) =>
             s.dashboardId === d.id &&
-            (some.userId === undefined || s.userId === some.userId) &&
-            (some.role === undefined || s.role === some.role),
+            (f.userId === undefined || s.userId === f.userId) &&
+            (f.role === undefined || s.role === f.role),
         );
+        return some ? hit : !hit;
       }
       return unknownKey("dashboard", k);
     });
@@ -138,6 +155,7 @@ export function fakeShareDb() {
     return Object.entries(w).every(([k, v]) => {
       if (k === "id") return x.id === v;
       if (k === "dashboardId") return x.dashboardId === v;
+      if (k === "updatedAt") return widgetAt(x).getTime() === (v as Date).getTime();
       if (k === "type") return (v as { in: string[] }).in.includes(x.type);
       if (k === "dashboard") {
         return matchDashboard(
@@ -208,7 +226,7 @@ export function fakeShareDb() {
       ...d,
       dataset: { ...ds, owner: { name: userOf(ds.ownerId)?.name ?? null } },
       shares: shares.map((s) => ({ ...s, user: { ...userOf(s.userId)! } })),
-      widgets: widgets.map((w) => ({ ...w })),
+      widgets: widgets.map((w) => ({ ...w, updatedAt: widgetAt(w) })),
       _count: {
         widgets: state.widgets.filter((w) => w.dashboardId === d.id).length,
         shares: state.shares.filter((s) => s.dashboardId === d.id).length,
@@ -255,14 +273,14 @@ export function fakeShareDb() {
       ),
       updateMany: vi.fn(async ({ where, data }: { where: Where; data: Partial<FDashboard> }) => {
         const hit = state.dashboards.filter((x) => matchDashboard(where, x));
-        for (const d of hit) Object.assign(d, data);
+        for (const d of hit) touch(d, data);
         return { count: hit.length };
       }),
       update: vi.fn(
         async ({ where, data }: { where: { id: string }; data: Partial<FDashboard> }) => {
           const d = state.dashboards.find((x) => x.id === where.id);
           if (!d) throw new Error("P2025");
-          Object.assign(d, data);
+          touch(d, data);
           return { id: d.id };
         },
       ),
@@ -277,25 +295,28 @@ export function fakeShareDb() {
       }),
     },
     widget: {
-      findFirst: vi.fn(async ({ where }: { where: Where }) => {
+      findFirst: vi.fn(async ({ where, select }: { where: Where; select?: Sel }) => {
         const w = state.widgets.find((x) => matchWidget(where, x));
         if (!w) return null;
         const d = state.dashboards.find((x) => x.id === w.dashboardId)!;
-        return { ...w, dashboard: { datasetId: d.datasetId } };
+        // Kolom peran (roleSelect) dashboard bila diminta, mis. configureWidget (review T-016 SEC-1).
+        const dashSel = (select?.dashboard as { select?: Sel } | undefined)?.select;
+        return { ...w, updatedAt: widgetAt(w), dashboard: dashRow(d, dashSel) };
       }),
       updateMany: vi.fn(async ({ where, data }: { where: Where; data: Partial<FWidget> }) => {
         const hit = state.widgets.filter((x) => matchWidget(where, x));
-        for (const w of hit) Object.assign(w, data);
+        for (const w of hit) touch(w, data);
         return { count: hit.length };
       }),
       create: vi.fn(async ({ data }: { data: Omit<FWidget, "id" | "missingColumns"> }) => {
         const w = {
           id: `cmv4kljx40009oczvdmpunw${String(++seq).padStart(2, "0")}`,
           missingColumns: [],
+          updatedAt: new Date(),
           ...data,
         };
         state.widgets.push(w);
-        return { id: w.id, type: w.type, title: w.title, spec: w.spec };
+        return { id: w.id, type: w.type, title: w.title, spec: w.spec, updatedAt: w.updatedAt };
       }),
       delete: vi.fn(async ({ where }: { where: { id: string } }) => {
         state.widgets = state.widgets.filter((w) => w.id !== where.id);

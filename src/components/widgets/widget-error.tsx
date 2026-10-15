@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
  * Keadaan galat isi widget (T-011/T-012): pesan + "Coba lagi" untuk gangguan sementara, atau petunjuk
  * pengaturan (mode edit). Blok ini hilang begitu memuat ulang dimulai, jadi "Coba lagi" memindah fokus
  * ke judul kartu dulu (stabil selama isi berganti) — fokus tidak jatuh ke <body> (WCAG 2.4.3).
+ * CHANGED (pengaturan widget diubah di tempat lain, T-016): "Muat ulang" memuat ulang seluruh halaman —
+ * mengulang query dengan pengaturan lama di kartu tidak pernah benar.
  */
 
 /** Gangguan sementara → tombol coba lagi; selain itu pesan menjelaskan apa yang harus diubah. */
@@ -64,7 +66,18 @@ export function WidgetError({
       <p className="max-w-prose shrink-0 text-sm" title={message}>
         {message}
       </p>
-      {TRANSIENT.has(code) ? (
+      {code === "CHANGED" ? (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-(--control-h-lg) shrink-0 md:h-(--control-h-sm)"
+          leadingIcon={<IconRefresh aria-hidden />}
+          data-testid="widget-reload"
+          onClick={() => window.location.reload()}
+        >
+          Muat ulang
+        </Button>
+      ) : TRANSIENT.has(code) ? (
         <Button
           size="sm"
           variant="outline"

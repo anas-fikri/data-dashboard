@@ -396,6 +396,23 @@ describe("setShareRole / revokeShare / setOrgShare", () => {
     ]);
     expect(await svc.setOrgShare(OWNER, D1, "ya", IP)).toMatchObject({ code: "INVALID" });
   });
+
+  it("review DI-3: organisasi nyala/mati tidak menggeser Dashboard.updatedAt (bukan perubahan isi)", async () => {
+    const at = () => fake.state.dashboards.find((d) => d.id === D1)!.updatedAt.getTime();
+    const before = at();
+    expect(await svc.setOrgShare(OWNER, D1, true, IP)).toMatchObject({ ok: true });
+    expect(await svc.setOrgShare(OWNER, D1, false, IP)).toMatchObject({ ok: true });
+    expect(at()).toBe(before);
+    // Nilai lama dikirim eksplisit (Prisma memakai nilai @updatedAt yang disetel sendiri).
+    expect(fake.db.dashboard.update).toHaveBeenCalledWith({
+      where: { id: D1 },
+      data: { orgShared: true, updatedAt: new Date(before) },
+      select: { id: true },
+    });
+    // Pembanding: penulisan isi lewat update yang sama (palsu meniru @updatedAt) tetap menggesernya.
+    await fake.db.dashboard.update({ where: { id: D1 }, data: { layoutRevision: 1 } });
+    expect(at()).not.toBe(before);
+  });
 });
 
 describe("searchShareUsers", () => {

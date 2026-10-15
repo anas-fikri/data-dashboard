@@ -1,6 +1,7 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { OWNER_UNNAMED } from "@/components/sharing/share-model";
 
 /*
  * T-016 halaman /dashboards/[id] per peran: viewer + ?mode=edit dialihkan ke URL lihat (?f= ikut)
@@ -110,6 +111,16 @@ describe("akses halaman dashboard", () => {
     expect(m.getDashboardSources).not.toHaveBeenCalled();
   });
 
+  it("non-pemilik: nama dataset di breadcrumb membungkus, tidak terpotong (T016-UI-5)", async () => {
+    m.getDashboard.mockResolvedValue(view("VIEWER"));
+    const out = await render();
+    const crumb = /<span class="([^"]*)" data-testid="dashboard-dataset">Rekap 2026<\/span>/.exec(
+      out,
+    )?.[1];
+    expect(crumb).toContain("[overflow-wrap:anywhere]");
+    expect(crumb).not.toContain("truncate");
+  });
+
   it("audit pembukaan lewat after() dengan peran dan IP yang dibaca saat render", async () => {
     m.getDashboard.mockResolvedValue(view("VIEWER"));
     await open();
@@ -124,7 +135,10 @@ describe("akses halaman dashboard", () => {
     const out = await render({ mode: "edit" });
     expect(m.getDashboardSources).toHaveBeenCalledWith("u1", D);
     expect(out).toContain("Editor");
-    expect(out).toContain("pemilik dataset"); // pemilik tanpa nama
+    // Pemilik tanpa nama: frasa yang sama dengan daftar "Dibagikan ke saya" (QUEUED-2).
+    expect(out).toContain(
+      `Dibagikan oleh <bdi class="font-medium text-foreground">${OWNER_UNNAMED}</bdi>`,
+    );
     expect(out).not.toContain('data-testid="settings"');
     expect(out).not.toContain('data-testid="share-open"');
     expect(out).not.toContain('href="/datasets/ds1"');

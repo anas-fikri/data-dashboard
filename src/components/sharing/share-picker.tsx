@@ -8,7 +8,13 @@ import { Input } from "@/components/ui/input";
 import { searchShareUsersAction } from "@/features/sharing/actions";
 import type { ShareRole, ShareUserOption } from "@/features/sharing/types";
 import { cn } from "@/lib/utils";
-import { pickerStatus, searchable, shareErrorText, type PickerPhase } from "./share-model";
+import {
+  pickerStatus,
+  searchable,
+  shareErrorText,
+  visibleResults,
+  type PickerPhase,
+} from "./share-model";
 import { ShareOptions } from "./share-options";
 
 const DEBOUNCE_MS = 250;
@@ -75,11 +81,13 @@ export function SharePicker({
     r.timer = setTimeout(async () => {
       const res = await searchShareUsersAction(dashboardId, q).catch(() => null);
       if (n !== r.seq) return; // jawaban basi
+      // Gagal pun dilaporkan (daftar kosong): daftar opsi tidak tampil saat galat, jadi pilihan lama
+      // yang kini tersembunyi ikut dibatalkan pemanggil.
+      onResults(visibleResults(res));
       if (res?.ok) {
         setItems(res.data);
         setItemsFor(q);
         setPhase("done");
-        onResults(res.data);
       } else {
         setError(shareErrorText(res));
         setPhase("error");

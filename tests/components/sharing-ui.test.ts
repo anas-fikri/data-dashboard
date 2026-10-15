@@ -273,7 +273,7 @@ describe("daftar dashboard", () => {
     expect(out).toContain('href="/dashboards/d1"');
     expect(out).toContain("Rekap 2026");
     expect(out).toContain("Sari");
-    expect(out).toContain("Tanpa nama");
+    expect(out).toContain("pengguna tanpa nama");
     expect(out).toContain("Hanya lihat");
     expect(out).toContain("Editor");
   });
@@ -324,7 +324,7 @@ describe("tautan milik pemilik tidak tampil untuk non-pemilik", () => {
   });
 
   it("panel widget tanpa data siap: tautan /datasets hanya untuk pemilik", () => {
-    const widget: WidgetView = { id: "w1", type: "empty", title: "", spec: {} };
+    const widget: WidgetView = { id: "w1", type: "empty", title: "", spec: {}, version: "v1" };
     const props = { widget, sources: [], onSave: async () => true };
     const owner = html(createElement(WidgetConfigForm, { ...props, datasetId: "ds1" }));
     expect(owner).toContain('href="/datasets/ds1"');

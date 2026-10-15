@@ -137,6 +137,7 @@ function deps(over: Partial<QueryDeps> = {}): QueryDeps {
       ];
       return {
         ...WIDGETS[name]!,
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         filterColumns,
@@ -425,6 +426,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       widget: async () => ({
         type: "kpi",
         spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         role: "OWNER" as const,
@@ -452,6 +454,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       type: "kpi",
       spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
       missingColumns,
+      updatedAt: new Date(0),
       datasetId: DS,
       activeVersionId: VER,
       role: "OWNER" as const,
@@ -483,6 +486,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         },
         // "Cabang" ada di sheet spec (sisa catatan versi lain) → tidak disebut.
         missingColumns,
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         role: "OWNER" as const,
@@ -522,6 +526,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       widget: async () => ({
         type: "kpi",
         spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         role: "OWNER" as const,
@@ -552,6 +557,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
           topN: 2,
           format: fmt,
         },
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         role: "OWNER" as const,

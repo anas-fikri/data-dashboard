@@ -161,6 +161,7 @@ async function main() {
           return name
             ? {
                 ...WIDGETS[name]!,
+                updatedAt: new Date(0),
                 datasetId: DS,
                 activeVersionId: VER,
                 dashboardId: DASH,

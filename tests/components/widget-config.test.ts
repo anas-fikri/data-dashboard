@@ -680,10 +680,10 @@ import type { WidgetView } from "@/features/dashboards/service";
 describe("R3-CC-2: panel widget retargeted", () => {
   const one: Source[] = [sources[0]!];
   const fmt = { style: "number", decimals: 0 } as const;
-  const form = (widget: WidgetView) =>
+  const form = (widget: Omit<WidgetView, "version">) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {
-        widget,
+        widget: { ...widget, version: "v1" },
         sources: one,
         datasetId: "ds",
         onSave: () => Promise.resolve(true as const),
@@ -722,7 +722,7 @@ describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak shee
   const form = (type: string, spec: unknown, src: Source[] = sources) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {
-        widget: { id: "w", type, title: "", spec },
+        widget: { id: "w", type, title: "", spec, version: "v1" },
         sources: src,
         datasetId: "ds",
         onSave: () => Promise.resolve(true as const),

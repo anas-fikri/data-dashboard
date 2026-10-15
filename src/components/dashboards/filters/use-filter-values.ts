@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { isAccessLost, useAccessLost } from "@/components/widgets/access-refresh";
 import type { FilterValue } from "./filter-model";
 
 /*
@@ -11,6 +12,8 @@ import type { FilterValue } from "./filter-model";
  * sehingga hanya jawaban kata kunci terakhir yang dipakai. Daftar lama tetap tampil selama memuat.
  * `full`: daftar lengkap terakhir (tanpa kata cari, tidak terpotong) — tetap diingat selama mencari,
  * agar kunci "minimal satu nilai" mode kecualikan juga berlaku pada hasil cari (slicer-model.ts).
+ * HTTP 404 (akses dashboard dicabut, T-016) → halaman dimuat ulang dari server sekali, penjaga yang
+ * sama dengan query widget (access-refresh.tsx).
  */
 const DEBOUNCE_MS = 250;
 export const VALUES_MAX = 1000;
@@ -22,9 +25,10 @@ interface Loaded {
   q: string;
 }
 type Result =
-  { ok: true; values: FilterValue[]; truncated: boolean } | { ok: false; message: string };
+  | { ok: true; values: FilterValue[]; truncated: boolean }
+  | { ok: false; message: string; status: number };
 
-async function fetchValues(
+export async function fetchValues(
   dashboardId: string,
   body: { column: string; sheet: string; q?: string },
   signal: AbortSignal,
@@ -39,7 +43,11 @@ async function fetchValues(
     });
   } catch (e) {
     if (signal.aborted) throw e;
-    return { ok: false, message: "Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi." };
+    return {
+      ok: false,
+      status: 0,
+      message: "Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi.",
+    };
   }
   const json = (await res.json().catch(() => null)) as
     { ok: true; values?: unknown; truncated?: unknown } | { ok: false; message?: string } | null;
@@ -48,6 +56,7 @@ async function fetchValues(
   }
   return {
     ok: false,
+    status: res.status,
     message:
       res.status === 401
         ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
@@ -63,6 +72,7 @@ export function useFilterValues(
 ) {
   const q = query.trim();
   const [attempt, setAttempt] = useState(0);
+  const accessLost = useAccessLost();
   const key = JSON.stringify([column, sheet, q, attempt]);
   const [res, setRes] = useState<{
     key: string;
@@ -79,6 +89,8 @@ export function useFilterValues(
         fetchValues(dashboardId, q ? { column, sheet, q } : { column, sheet }, ctl.signal).then(
           (r) => {
             if (ctl.signal.aborted) return;
+            // Akses dashboard dicabut: halaman dari server lagi (sekali, bersama query widget).
+            if (isAccessLost(r)) accessLost?.();
             setRes((prev) =>
               r.ok
                 ? {
@@ -99,7 +111,8 @@ export function useFilterValues(
       clearTimeout(t);
       ctl.abort();
     };
-  }, [dashboardId, column, sheet, q, key]);
+    // accessLost stabil (satu penjaga per pemasangan kanvas).
+  }, [dashboardId, column, sheet, q, key, accessLost]);
 
   return {
     loading: res.key !== key,

@@ -65,6 +65,11 @@ const ownerAccess = {
 /** Kolom peran (roleSelect) + pemilik yang dibaca getDashboard sejak T-016. */
 const roleCols = { orgShared: false, shares: [] };
 const ownerCols = { ownerId: OWNER, owner: { name: "Pemilik" } };
+/** Widget.updatedAt = versi pengaturan widget (review T-016 DI-1). */
+const AT = new Date("2026-10-15T01:02:03.004Z");
+const VERSION = AT.toISOString();
+/** Baris configureWidget: dataset + kolom peran (pemilik → pesan validasi rinci, review SEC-1). */
+const editable = { dashboard: { datasetId: DS, ...roleCols, dataset: { ownerId: OWNER } } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -256,14 +261,19 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     tx.dashboard.findFirst.mockResolvedValueOnce(
       dash([{ i: WA, x: 0, y: 0, w: 12, h: 5 }], 7, [WA]),
     );
-    tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "" });
+    tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "", updatedAt: AT });
     const layout = [
       { i: WA, x: 0, y: 0, w: 12, h: 5 },
       { i: WB, x: 0, y: 5, w: 4, h: 4 },
     ];
     expect(await svc.addWidget(OWNER, DB, { baseRevision: 7 })).toEqual({
       ok: true,
-      data: { widget: { id: WB, type: "empty", title: "" }, layout, layoutRevision: 8 },
+      data: {
+        // Widget baru membawa versi pengaturannya (review T-016 DI-1).
+        widget: { id: WB, type: "empty", title: "", version: VERSION },
+        layout,
+        layoutRevision: 8,
+      },
     });
     expect(tx.dashboard.update).toHaveBeenCalledWith({
       where: { id: DB },
@@ -287,7 +297,12 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
 
   it("pulihkan di posisi semula (urungkan hapus); posisi rusak → INVALID; 50 widget → LIMIT_REACHED", async () => {
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 1, []));
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "Omzet" });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WA,
+      type: "empty",
+      title: "Omzet",
+      updatedAt: AT,
+    });
     const r = await svc.addWidget(OWNER, DB, {
       baseRevision: 1,
       title: "Omzet",
@@ -315,7 +330,7 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     tx.dashboard.findFirst.mockResolvedValueOnce(
       dash([{ i: WB, x: 0, y: 0, w: 6, h: 4 }], 5, [WB]),
     );
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "" });
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", updatedAt: AT });
     const r = await svc.addWidget(OWNER, DB, { baseRevision: 5, at: { x: 0, y: 0, w: 12, h: 4 } });
     expect(r.ok && Object.fromEntries(r.data.layout.map((it) => [it.i, it.y]))).toEqual({
       [WA]: 0,
@@ -353,11 +368,12 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     prisma.widget.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.renameWidget(OWNER, DB, WA, "  Omzet   cabang ")).toEqual({
       ok: true,
-      data: { title: "Omzet cabang" },
+      data: { title: "Omzet cabang", version: expect.any(String) },
     });
+    // Tanpa versi dari klien: tanpa CAS; versi baru tetap ditulis eksplisit dan dikembalikan.
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
       where: { id: WA, dashboardId: DB, dashboard: canEditWhere(OWNER) },
-      data: { title: "Omzet cabang" },
+      data: { title: "Omzet cabang", updatedAt: expect.any(Date) },
     });
     expect(prisma.dashboard.updateMany).toHaveBeenCalledTimes(1);
     // Pemilik, widget tidak ada → "Widget tidak ditemukan." (satu cek akses memilih kodenya).
@@ -394,12 +410,12 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
   };
 
   it("spec valid terhadap data aktif → disimpan; sheet dicari di versi aktif dataset widget", async () => {
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     prisma.widget.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
       ok: true,
-      data: { type: "bar", spec: bar },
+      data: { type: "bar", spec: bar, version: expect.any(String) },
     });
     expect(prisma.sheet.findFirst).toHaveBeenCalledWith({
       where: { id: SHEET, version: { activeFor: { id: DS } } },
@@ -409,12 +425,12 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     // (T-016) ada di where penulisan di dalam transaksi lock.
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
       where: { id: WA, dashboardId: DB, dashboard: canEditWhere(OWNER) },
-      data: { type: "bar", spec: bar, missingColumns: [] },
+      data: { type: "bar", spec: bar, missingColumns: [], updatedAt: expect.any(Date) },
     });
   });
 
   it("T-013: versi aktif berganti setelah validasi → STALE, tidak ditulis; urungkan hapus → kosong", async () => {
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     tx.sheet.count.mockResolvedValueOnce(0);
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
@@ -431,7 +447,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
     tx.sheet.count.mockResolvedValueOnce(0);
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WA,
+      type: "empty",
+      title: "",
+      spec: {},
+      updatedAt: AT,
+    });
     expect(
       await svc.addWidget(OWNER, DB, { baseRevision: 2, type: "bar", spec: bar }),
     ).toMatchObject({ ok: true, data: { configDropped: true } });
@@ -441,7 +463,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
   });
 
   it("R5-CC-2: sheet versi lain dataset ini (versi berganti saat panel terbuka) → STALE muat ulang; urungkan hapus → kosong", async () => {
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
     prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: DS } });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
@@ -459,7 +481,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     expect(widgetUpdateMany).not.toHaveBeenCalled();
 
     // Sheet aktif yang belum punya skema bukan tanda versi berganti: tetap INVALID.
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema: null });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
       code: "INVALID",
@@ -472,7 +494,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
     prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: DS } });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WA,
+      type: "empty",
+      title: "",
+      spec: {},
+      updatedAt: AT,
+    });
     expect(
       await svc.addWidget(OWNER, DB, { baseRevision: 2, type: "bar", spec: bar }),
     ).toMatchObject({ ok: true, data: { configDropped: true } });
@@ -491,6 +519,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       title: "",
       spec: kpi,
       missingColumns,
+      updatedAt: AT,
     });
     const dashboard = (widgets: unknown[]) => ({
       id: DB,
@@ -509,13 +538,15 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Sheet1", index: 0 }]);
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     const view = await svc.getDashboard(OWNER, DB);
-    // Dataset satu sheet tidak punya pilihan sheet: panel harus menampilkan kolom sheet aktif.
+    // Dataset satu sheet tidak punya pilihan sheet: panel harus menampilkan kolom sheet aktif. Widget
+    // yang diarahkan ulang tetap membawa versi pengaturan tersimpan (review T-016 DI-1).
     expect(view?.widgets).toEqual([
       {
         id: WA,
         type: "kpi",
         title: "",
         spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+        version: VERSION,
         retargeted: true,
       },
     ]);
@@ -533,6 +564,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         type: "kpi",
         title: "",
         spec: { ...kpi, measure: { agg: "sum", column: MISSING_COLUMN } },
+        version: VERSION,
       },
     ]);
     // Lebih dari satu sheet aktif, tanpa catatan kolom hilang: spec apa adanya (pilihan sheet di panel).
@@ -544,7 +576,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     ]);
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
-      { id: WA, type: "kpi", title: "", spec: kpi },
+      { id: WA, type: "kpi", title: "", spec: kpi, version: VERSION },
     ]);
   });
 
@@ -561,13 +593,14 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       updatedAt: new Date(),
       ...roleCols,
       dataset: { id: DS, name: "Data", activeVersionId: VER, ...ownerCols },
-      widgets: [{ id: WA, type: "kpi", title: "", spec: kpi, missingColumns: [] }],
+      widgets: [{ id: WA, type: "kpi", title: "", spec: kpi, missingColumns: [], updatedAt: AT }],
     });
     const retargeted = {
       id: WA,
       type: "kpi",
       title: "",
       spec: { ...kpi, sheetId: SHEET, measure: { agg: "sum", column: MISSING_COLUMN } },
+      version: VERSION,
       retargeted: true,
     };
     // Sheet lama sudah dihapus retensi, catatan kosong (sheet tanpa pasangan saat rollback).
@@ -604,8 +637,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       ...roleCols,
       dataset: { id: DS, name: "Data", activeVersionId: VER, ...ownerCols },
       widgets: [
-        { id: WA, type: "kpi", title: "", spec: count(OLD), missingColumns: [] },
-        { id: WB, type: "kpi", title: "", spec: count(SHEET), missingColumns: [] },
+        { id: WA, type: "kpi", title: "", spec: count(OLD), missingColumns: [], updatedAt: AT },
+        { id: WB, type: "kpi", title: "", spec: count(SHEET), missingColumns: [], updatedAt: AT },
       ],
     });
     // Sheet lama sudah dihapus retensi; sheet widget kedua ada di versi aktif.
@@ -616,8 +649,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findMany.mockResolvedValueOnce([]);
     // Tidak ada kolom yang bisa ditandai: spec tampilan lengkap, hanya flag yang memberi tahu panel.
     expect((await svc.getDashboard(OWNER, DB))?.widgets).toEqual([
-      { id: WA, type: "kpi", title: "", spec: count(SHEET), retargeted: true },
-      { id: WB, type: "kpi", title: "", spec: count(SHEET) },
+      { id: WA, type: "kpi", title: "", spec: count(SHEET), version: VERSION, retargeted: true },
+      { id: WB, type: "kpi", title: "", spec: count(SHEET), version: VERSION },
     ]);
   });
 
@@ -630,14 +663,14 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     ];
     prisma.sheet.findFirst.mockResolvedValue({ schema });
     for (const [type, spec] of cases) {
-      prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+      prisma.widget.findFirst.mockResolvedValueOnce(editable);
       expect(await svc.configureWidget(OWNER, DB, WA, type, spec)).toMatchObject({
         ok: false,
         code: "INVALID",
       });
     }
     // Sheet yang tidak ada di dataset ini (dataset lain / sudah tidak ada) → NOT_FOUND (AC6, T-016).
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockReset();
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
@@ -646,7 +679,7 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       code: "NOT_FOUND",
       message: "Sheet tidak ditemukan.",
     });
-    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.widget.findFirst.mockResolvedValueOnce(editable);
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
     prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: "dataset-lain" } });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
@@ -664,7 +697,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "bar", title: "Omzet", spec: bar });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WA,
+      type: "bar",
+      title: "Omzet",
+      spec: bar,
+      updatedAt: AT,
+    });
     const r = await svc.addWidget(OWNER, DB, {
       baseRevision: 2,
       title: "Omzet",
@@ -682,7 +721,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     // Spec yang tidak lagi valid → widget tetap dipulihkan, kosong, dengan tanda untuk klien.
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 3, []));
-    tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "Omzet", spec: {} });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WB,
+      type: "empty",
+      title: "Omzet",
+      spec: {},
+      updatedAt: AT,
+    });
     expect(
       await svc.addWidget(OWNER, DB, { baseRevision: 3, type: "bar", spec: { ...bar, topN: 0 } }),
     ).toMatchObject({ ok: true, data: { configDropped: true, widget: { type: "empty" } } });
@@ -696,7 +741,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
     prisma.sheet.findFirst.mockResolvedValueOnce({ schema });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 4, []));
-    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "table", title: "Detail", spec: table });
+    tx.widget.create.mockResolvedValueOnce({
+      id: WA,
+      type: "table",
+      title: "Detail",
+      spec: table,
+      updatedAt: AT,
+    });
     const r = await svc.addWidget(OWNER, DB, {
       baseRevision: 4,
       title: "Detail",

@@ -15,8 +15,10 @@ interface ShareGrantsProps {
   orgShared: boolean;
   /** Kunci aksi yang berjalan (lihat useShareState); semua kontrol dikunci selama ada aksi. */
   busy: string | null;
-  /** Galat ganti peran (tampil di bawah daftar). */
+  /** Galat ganti peran: di baris `errorUserId` (tepat di bawah Select-nya), atau di bawah daftar. */
   error: string | null;
+  /** Baris yang ganti perannya gagal (null / barisnya sudah tidak ada → di bawah daftar). */
+  errorUserId?: string | null;
   /** Galat cabut akses (tampil di dalam konfirmasi yang tetap terbuka). */
   revokeError: string | null;
   onRole: (grant: ShareGrantView, role: ShareRole) => void;
@@ -27,13 +29,16 @@ interface ShareGrantsProps {
 /**
  * Daftar orang dengan akses (T-016): email lebih dulu (identitas), nama kedua; peran lewat Select
  * kustom; "Cabut" lewat konfirmasi. Setelah dicabut fokus pindah ke judul daftar (barisnya hilang);
- * batal → kembali ke tombol "Cabut" baris itu. Ponsel: kontrol bertumpuk selebar layar.
+ * batal → kembali ke tombol "Cabut" baris itu. Ponsel: kontrol bertumpuk selebar layar. Ganti peran
+ * gagal: Select kembali ke peran tersimpan dan alasannya tampil di baris itu (bukan di bawah daftar
+ * yang bisa di luar layar), terhubung ke Select lewat aria-describedby — fokus tetap di Select.
  */
 export function ShareGrants({
   grants,
   orgShared,
   busy,
   error,
+  errorUserId = null,
   revokeError,
   onRole,
   onRevoke,
@@ -45,6 +50,8 @@ export function ShareGrants({
   const list = useRef<HTMLUListElement>(null);
   const lastRevoke = useRef<string | null>(null);
   const revokeBusy = revoking ? busy === `revoke:${revoking.userId}` : false;
+  const rowError = (userId: string) => (error && errorUserId === userId ? error : null);
+  const errorInRow = grants.some((g) => rowError(g.userId));
 
   return (
     <section aria-labelledby={`${id}-h`} className="flex flex-col gap-2">
@@ -87,6 +94,7 @@ export function ShareGrants({
                   onChange={(role) => role !== g.role && onRole(g, role)}
                   disabled={busy !== null}
                   aria-label={`Peran ${g.email}`}
+                  aria-describedby={rowError(g.userId) ? `${id}-err-${g.userId}` : undefined}
                   data-testid="share-grant-role"
                   className="md:w-56"
                 />
@@ -105,11 +113,16 @@ export function ShareGrants({
                   Cabut
                 </Button>
               </div>
+              {rowError(g.userId) ? (
+                <div id={`${id}-err-${g.userId}`} data-testid="share-grant-error">
+                  <FormAlert tone="error">{rowError(g.userId)}</FormAlert>
+                </div>
+              ) : null}
             </li>
           ))}
         </ul>
       )}
-      {error ? <FormAlert tone="error">{error}</FormAlert> : null}
+      {error && !errorInRow ? <FormAlert tone="error">{error}</FormAlert> : null}
 
       <ConfirmDialog
         open={revoking !== null}

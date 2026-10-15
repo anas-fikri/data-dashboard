@@ -86,4 +86,40 @@ describe("status HTTP per kode (T-016)", () => {
     expect(r.status).toBe(403);
     expect(service.renameWidget).not.toHaveBeenCalled();
   });
+
+  it("review DI-1: version diteruskan ke service; isi + judul → judul memakai versi baru dari isi; STALE → 409", async () => {
+    const V = "2026-10-15T01:02:03.004Z";
+    const V2 = "2026-10-15T01:02:03.005Z";
+    const V3 = "2026-10-15T01:02:03.006Z";
+    service.configureWidget.mockResolvedValueOnce({
+      ok: true,
+      data: { type: "kpi", spec: {}, version: V2 },
+    });
+    service.renameWidget.mockResolvedValueOnce({ ok: true, data: { title: "X", version: V3 } });
+    const r = await http.updateWidgetRoute(
+      req("PATCH", { type: "kpi", spec: {}, title: "X", version: V }),
+      D,
+      W,
+    );
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, data: { title: "X", version: V3 } });
+    expect(service.configureWidget).toHaveBeenCalledWith("u1", D, W, "kpi", {}, V);
+    expect(service.renameWidget).toHaveBeenCalledWith("u1", D, W, "X", V2);
+
+    const STALE = { ok: false, code: "STALE", message: "Widget ini sudah diubah." };
+    service.renameWidget.mockResolvedValueOnce(STALE);
+    const s = await http.updateWidgetRoute(req("PATCH", { title: "Y", version: V }), D, W);
+    expect(s.status).toBe(409);
+    expect(await s.json()).toEqual(STALE);
+    expect(service.renameWidget).toHaveBeenLastCalledWith("u1", D, W, "Y", V);
+
+    // Tanpa versi dari klien: judul juga tanpa CAS (shortcut pemanggil API lama).
+    service.configureWidget.mockResolvedValueOnce({
+      ok: true,
+      data: { type: "kpi", spec: {}, version: V2 },
+    });
+    service.renameWidget.mockResolvedValueOnce({ ok: true, data: { title: "Z", version: V3 } });
+    await http.updateWidgetRoute(req("PATCH", { type: "kpi", spec: {}, title: "Z" }), D, W);
+    expect(service.renameWidget).toHaveBeenLastCalledWith("u1", D, W, "Z", undefined);
+  });
 });

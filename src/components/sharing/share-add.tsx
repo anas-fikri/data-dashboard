@@ -14,6 +14,7 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import type { ShareRole, ShareUserOption } from "@/features/sharing/types";
 import { RoleSelect } from "./role-select";
+import { keepSelection } from "./share-model";
 import { SharePicker } from "./share-picker";
 
 interface ShareAddProps {
@@ -90,7 +91,7 @@ export function ShareAdd({
           setUser(u);
           setMissing(false);
         }}
-        onResults={(items) => setUser((u) => (u && items.some((i) => i.id === u.id) ? u : null))}
+        onResults={(items) => setUser((u) => keepSelection(u, items))}
       />
       {missing && !user ? (
         <p id={`${id}-missing`} role="alert" className="text-sm text-destructive">

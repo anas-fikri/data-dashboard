@@ -18,6 +18,27 @@ export function bodyState(state: WidgetQueryState, keepOnError: boolean, chart =
   return (chart ? !chartEmpty(state.data) : state.data.rows.length > 0) ? "rows" : "none";
 }
 
+/** Galat isi widget saat pengaturannya diubah di tab/perangkat lain (T-016). */
+export const WIDGET_CHANGED = "Widget ini sudah diubah. Muat ulang halaman.";
+
+/**
+ * Data dari versi pengaturan yang tidak dikenal kartu ini (diubah editor/pemilik lain) tidak
+ * ditampilkan: jenis, judul, format, dan kolom di kartu masih milik pengaturan lama → galat CHANGED
+ * + "Muat ulang" (bukan router.refresh: kanvas menyimpan widget di state, refresh tidak menggantinya).
+ * `known` = versi yang pernah dipegang kartu ini: awal dari server + hasil simpanan tab ini sendiri,
+ * jadi jawaban dari versi lama milik sendiri (query yang berjalan saat tab ini mengganti judul) tetap
+ * tampil, dan jawaban versi baru yang mendahului jawaban simpanannya tampil begitu versi itu tercatat.
+ * Tanpa versi di salah satu sisi → tidak diperiksa. Murni.
+ */
+export function withChangeCheck(
+  state: WidgetQueryState,
+  known: readonly string[],
+): WidgetQueryState {
+  const v = state.data?.widgetVersion;
+  if (v === undefined || known.length === 0 || known.includes(v)) return state;
+  return { status: "error", code: "CHANGED", message: WIDGET_CHANGED, filters: state.filters };
+}
+
 /**
  * Grafik tanpa nilai untuk digambar: tanpa baris, atau ada kolom kosong (absent, T-014) dan semua
  * ukurannya kosong/0 — batang/irisan nol semua menyesatkan, jadi "Tidak ada data" + catatan kolom.

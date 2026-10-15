@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { col, cuid, fakeShareDb, userRow } from "../sharing/fake-db";
+import { SEED_WIDGET_AT, col, cuid, fakeShareDb, userRow } from "../sharing/fake-db";
 
 /*
  * T-016: peran per dashboard di service dashboard, dengan Prisma palsu yang MENGEVALUASI predikat akses.
@@ -425,5 +425,167 @@ describe("baca: getDashboard, sumber panel, daftar", () => {
       widgetCount: 1,
       updatedAt: expect.any(Date),
     });
+  });
+});
+
+describe("review SEC-1: nama kolom tersembunyi tidak bisa didaftar lewat atur widget", () => {
+  const chart = (column: number, agg = "sum") => ({ ...bar(S1), measure: { agg, column } });
+  beforeEach(() => {
+    // Kolom tanggal tersembunyi: tipenya tidak boleh mengubah jawaban untuk editor.
+    fake.state.sheets.find((s) => s.id === S1)!.schema!.push(col(4, "Tgl Rahasia", "date", true));
+  });
+
+  it("editor: kolom tersembunyi/tidak ada → pesan umum tanpa nama; tipe kolom tersembunyi tidak terlihat", async () => {
+    const before = snapshot();
+    const generic = { ok: false, code: "INVALID", message: svc.COLUMN_UNAVAILABLE_EDITOR };
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", chart(3))).toEqual(generic);
+    expect(
+      await svc.configureWidget(EDITOR, D1, W1, "kpi", {
+        sheetId: S1,
+        measure: { agg: "sum", column: 3 },
+        format: fmt,
+      }),
+    ).toEqual(generic);
+    // min/maks grafik: kolom tanggal tersembunyi dijawab sama dengan kolom angka tersembunyi, bukan
+    // "Grafik hanya bisa menggambar nilai angka" (yang membocorkan tipe tanggal).
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", chart(4, "min"))).toEqual(generic);
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", chart(3, "min"))).toEqual(generic);
+    // Kolom yang tidak ada sama sekali: jawaban sama (tersembunyi vs tidak ada tidak bisa dibedakan).
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", chart(99))).toEqual(generic);
+    expect(snapshot()).toBe(before);
+  });
+
+  it("pemilik tetap mendapat pesan rinci (nama kolom) untuk diperbaiki; tipe dicek setelah kolom", async () => {
+    const r = await svc.configureWidget(OWNER, D1, W1, "bar", chart(4, "min"));
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(!r.ok && r.message).toContain('"Tgl Rahasia" disembunyikan');
+  });
+});
+
+describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
+  it("banjir share organisasi yang lebih baru tidak mendorong share langsung keluar daftar/5 teratas", async () => {
+    // STRANGER (pemilik DSY) membagikan banyak dashboard ke organisasi, semuanya lebih baru dari D1.
+    const flood = Array.from({ length: svc.SHARED_LIST_MAX + 5 }, (_, n) => ({
+      id: cuid(`f${String(n).padStart(4, "0")}`),
+      datasetId: DSY,
+      name: `Banjir ${n}`,
+      orgShared: true,
+      layout: [],
+      layoutRevision: 0,
+      filterColumns: [],
+      updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, n)),
+    }));
+    fake.state.dashboards.push(...flood);
+    const ids = (await svc.listSharedDashboards(VIEWER)).map((r) => r.id);
+    expect(ids).toHaveLength(svc.SHARED_LIST_MAX);
+    // Share langsung (D1) pertama; lalu share organisasi terbaru dulu.
+    expect(ids[0]).toBe(D1);
+    expect(ids[1]).toBe(flood.at(-1)!.id);
+    expect(ids).not.toContain(D2);
+    // Pemilik banjir dinonaktifkan → share organisasinya hilang dari daftar.
+    fake.state.users.find((u) => u.id === STRANGER)!.isActive = false;
+    expect((await svc.listSharedDashboards(VIEWER)).map((r) => r.id)).toEqual([D1, D2]);
+  });
+
+  it("share langsung tetap terdaftar walau pemilik nonaktif; share + organisasi → sekali dengan peran share", async () => {
+    fake.state.dashboards.find((d) => d.id === D1)!.orgShared = true;
+    const rows = await svc.listSharedDashboards(EDITOR);
+    expect(rows.map((r) => [r.id, r.role])).toEqual([
+      [D1, "EDITOR"],
+      [D2, "VIEWER"],
+    ]);
+    fake.state.users.find((u) => u.id === OWNER)!.isActive = false;
+    expect((await svc.listSharedDashboards(EDITOR)).map((r) => r.id)).toEqual([D1]);
+  });
+});
+
+describe("review DI-1: versi pengaturan widget (Widget.updatedAt) — CAS atur isi/ganti judul", () => {
+  const V0 = SEED_WIDGET_AT.toISOString();
+  const stale = {
+    ok: false,
+    code: "STALE",
+    message:
+      "Widget ini sudah berubah sejak halaman ini dimuat. Muat ulang halaman untuk melihat versi terbaru.",
+  };
+  const missing = { ok: false, code: "NOT_FOUND", message: "Widget tidak ditemukan." };
+  const w1 = () => fake.state.widgets.find((w) => w.id === W1)!;
+
+  it("getDashboard: tiap widget membawa version = updatedAt ISO (semua peran); tambah widget → versinya", async () => {
+    for (const user of [OWNER, EDITOR, VIEWER]) {
+      expect((await svc.getDashboard(user, D1))!.widgets.map((w) => w.version)).toEqual([V0]);
+    }
+    const r = await svc.addWidget(EDITOR, D1, { baseRevision: 1 });
+    expect(r.ok && r.data.widget.version).toBe(fake.state.widgets.at(-1)!.updatedAt!.toISOString());
+  });
+
+  it("dua tab: A menyimpan dengan versi yang dilihat → versi baru; B dengan versi lama → STALE tanpa menimpa", async () => {
+    const a = await svc.configureWidget(OWNER, D1, W1, "bar", bar(S1), V0);
+    expect(a).toMatchObject({ ok: true, data: { type: "bar" } });
+    const v1 = a.ok ? a.data.version : "";
+    expect(v1 > V0).toBe(true);
+    expect(w1().updatedAt!.toISOString()).toBe(v1);
+    // Tab B (editor) masih memegang V0: atur isi dan ganti judul ditolak, tidak ada yang tertulis.
+    const before = snapshot();
+    expect(await svc.configureWidget(EDITOR, D1, W1, "kpi", kpi(S2), V0)).toEqual(stale);
+    expect(await svc.renameWidget(EDITOR, D1, W1, "Judul B", V0)).toEqual(stale);
+    expect(snapshot()).toBe(before);
+    // Setelah muat ulang (versi terbaru) editor bisa menyimpan; versinya berantai.
+    const b = await svc.renameWidget(EDITOR, D1, W1, "Judul B", v1);
+    expect(b).toMatchObject({ ok: true, data: { title: "Judul B" } });
+    expect(b.ok && b.data.version > v1).toBe(true);
+    expect(w1()).toMatchObject({ title: "Judul B", type: "bar" });
+  });
+
+  it("viewer → FORBIDDEN, tanpa akses → NOT_FOUND SEBELUM versi dibandingkan; widget hilang → widget NOT_FOUND", async () => {
+    const before = snapshot();
+    for (const version of [V0, "2020-01-01T00:00:00.000Z"]) {
+      for (const op of [
+        (u: string) => svc.configureWidget(u, D1, W1, "bar", bar(S1), version),
+        (u: string) => svc.renameWidget(u, D1, W1, "X", version),
+      ]) {
+        expect(await op(VIEWER)).toMatchObject({ code: "FORBIDDEN" });
+        expect(await op(STRANGER)).toMatchObject({
+          code: "NOT_FOUND",
+          message: "Dashboard tidak ditemukan.",
+        });
+      }
+    }
+    expect(snapshot()).toBe(before);
+    fake.state.widgets = fake.state.widgets.filter((w) => w.id !== W1);
+    expect(await svc.renameWidget(EDITOR, D1, W1, "X", V0)).toEqual(missing);
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", bar(S1), V0)).toEqual(missing);
+  });
+
+  it("versi bukan bentuk toISOString → INVALID (400); tanpa versi → tulis tanpa CAS (pemanggil API lama)", async () => {
+    const invalid = { ok: false, code: "INVALID", message: "Versi widget tidak valid." };
+    for (const bad of ["kemarin", 123, null, "2026-02-31T00:00:00.000Z", "2026-10-01T00:00:00Z"]) {
+      expect(await svc.configureWidget(EDITOR, D1, W1, "bar", bar(S1), bad)).toEqual(invalid);
+      expect(await svc.renameWidget(EDITOR, D1, W1, "X", bad)).toEqual(invalid);
+    }
+    w1().updatedAt = new Date("2026-10-15T05:00:00.000Z");
+    expect(await svc.renameWidget(EDITOR, D1, W1, "Tanpa versi")).toMatchObject({ ok: true });
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", bar(S1))).toMatchObject({ ok: true });
+  });
+
+  it("aktivasi versi data (spec + versi widget berganti), panel lama → pesan 'berganti versi', tidak ditulis", async () => {
+    w1().updatedAt = new Date("2026-10-15T07:00:00.000Z");
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", bar(S_OLD), V0)).toEqual({
+      ok: false,
+      code: "STALE",
+      message:
+        "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
+    });
+    expect(w1().spec).toEqual(kpi(S1));
+  });
+
+  it("versi berganti di antara cek awal dan tulis (simpan bersamaan) → STALE, tidak tertimpa", async () => {
+    const orig = fake.db.widget.updateMany.getMockImplementation()!;
+    fake.db.widget.updateMany.mockImplementationOnce(async (args: Parameters<typeof orig>[0]) => {
+      // Tab lain menyimpan tepat sebelum tulisan ini: CAS mengenai 0 baris, widget masih ada.
+      w1().updatedAt = new Date("2026-10-15T06:00:00.000Z");
+      return orig(args);
+    });
+    expect(await svc.configureWidget(EDITOR, D1, W1, "bar", bar(S1), V0)).toEqual(stale);
+    expect(w1().spec).toEqual(kpi(S1));
   });
 });

@@ -19,7 +19,9 @@ import { fitToWidgets, sameLayout } from "./layout-ops";
  * ("Coba lagi", "Selesai") mengirimnya ulang lebih dulu (config-saves).
  * Akses edit berubah di tengah sesi (T-016: editor diturunkan jadi viewer → FORBIDDEN/403, akses dicabut
  * → NOT_FOUND/404) membekukan editor seperti STALE ("denied"): tidak ada yang dikirim ulang, tanpa loop
- * "Coba lagi"; satu-satunya jalan adalah muat ulang halaman.
+ * "Coba lagi"; satu-satunya jalan adalah muat ulang halaman. Ubah judul / jenis + isi widget membawa
+ * versi pengaturan widget yang diketahui tab ini (T-016): widget yang sudah diubah di tab lain → STALE
+ * (pesan server, editor membeku); berhasil → versi baru disimpan di widget lokal (patchWidget).
  */
 export type SaveState = "saved" | "pending" | "saving" | "error" | "stale" | "denied";
 
@@ -39,6 +41,18 @@ export function freezeOf(code: string): { state: "stale" | "denied"; message?: s
   }
   return null;
 }
+
+/**
+ * Widget setelah PATCH berhasil: nilai dari server + versi pengaturan barunya (T-016). Ubahan
+ * berikutnya mengirim versi ini, dan query yang menjawab dengan versi ini tidak dianggap perubahan dari
+ * tab lain (kartu tab yang menyimpan tidak pernah menandai dirinya sendiri). Murni.
+ */
+export const patchWidget = (
+  widgets: WidgetView[],
+  widgetId: string,
+  patch: Partial<Pick<WidgetView, "type" | "spec" | "title" | "version" | "retargeted">>,
+): WidgetView[] => widgets.map((w) => (w.id === widgetId ? { ...w, ...patch } : w));
+
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }
   | { kind: "add"; widgetId: string }
@@ -207,20 +221,30 @@ export function useDashboardEditor(o: {
     [id, run, saveNow, failed, setLayout, setWidgets, saves, settled],
   );
 
+  /** Versi pengaturan widget yang terakhir diketahui tab ini (dikirim bersama ubahan, T-016). */
+  const versionOf = useCallback(
+    (widgetId: string) => widgetsNow.current.find((w) => w.id === widgetId)?.version,
+    [],
+  );
+
   const renameWidget = useCallback(
     (widgetId: string, title: string) =>
       run(async () => {
-        const r = await api.renameWidget(id, widgetId, title);
+        const r = await api.renameWidget(id, widgetId, title, versionOf(widgetId));
         if (!r.ok) {
+          // STALE (diubah di tab lain) membekukan editor seperti tata letak: pesan server + "Muat ulang".
           failed(r);
           return false;
         }
         setWidgets(
-          widgetsNow.current.map((w) => (w.id === widgetId ? { ...w, title: r.data.title } : w)),
+          patchWidget(widgetsNow.current, widgetId, {
+            title: r.data.title,
+            version: r.data.version,
+          }),
         );
         return true;
       }),
-    [id, run, failed, setWidgets],
+    [id, run, failed, setWidgets, versionOf],
   );
 
   /**
@@ -234,7 +258,7 @@ export function useDashboardEditor(o: {
         saves.finish(widgetId, c, null);
         return true;
       }
-      const r = await api.configureWidget(id, widgetId, c.type, c.spec);
+      const r = await api.configureWidget(id, widgetId, c.type, c.spec, versionOf(widgetId));
       // Gagal biasa: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di layar
       // < 1280 px pesan kanvas tertutup panel). Pengaturan tidak valid: alasan tetap tampil, tidak dikirim
       // ulang, tidak menahan "Selesai". STALE / akses berubah / sudah dihapus di tempat lain (freezeOf):
@@ -249,12 +273,13 @@ export function useDashboardEditor(o: {
         return false;
       }
       setWidgets(
-        widgetsNow.current.map((w) =>
-          // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
-          w.id === widgetId
-            ? { ...w, type: r.data.type, spec: r.data.spec, retargeted: undefined }
-            : w,
-        ),
+        // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
+        patchWidget(widgetsNow.current, widgetId, {
+          type: r.data.type,
+          spec: r.data.spec,
+          version: r.data.version,
+          retargeted: undefined,
+        }),
       );
       settled();
       // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
@@ -262,7 +287,7 @@ export function useDashboardEditor(o: {
       setNotice(null);
       return true;
     },
-    [id, saves, failed, setWidgets, settled, commitLayout],
+    [id, saves, failed, setWidgets, settled, commitLayout, versionOf],
   );
 
   /** Atur jenis + isi widget (T-011). Tercatat "dikirim" sejak masuk antrean (panel yang dibuka ulang). */

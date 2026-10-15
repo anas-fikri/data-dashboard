@@ -15,11 +15,13 @@ export function formatUpdated(d: Date): string {
 /**
  * Daftar dashboard milik sendiri (<ul> berisi tautan), pola yang sama dengan daftar dataset: tabel saat
  * kontainer lebar (@container), bertumpuk saat sempit; label kolom tetap terbaca pembaca layar. Kolom
- * Akses (T-016): Pribadi / N orang / Organisasi.
+ * Akses (T-016): Pribadi / N orang / Organisasi. Kepala dan tiap baris adalah grid terpisah, jadi
+ * semua lajur harus tidak bergantung isi (tanpa `auto`): dua badge (Organisasi + N orang) membungkus
+ * di dalam selnya, bukan melebarkan lajur baris itu sehingga tidak sejajar dengan kepala.
  */
 export function DashboardList({ dashboards }: { dashboards: DashboardSummary[] }) {
   const cols =
-    "@3xl:grid-cols-[minmax(0,2fr)_minmax(9rem,1.4fr)_minmax(7rem,auto)_5rem_11rem_1.25rem]";
+    "@3xl:grid-cols-[minmax(0,2fr)_minmax(9rem,1.4fr)_minmax(7rem,1fr)_5rem_11rem_1.25rem]";
   return (
     <div className="@container overflow-hidden rounded-lg border bg-card">
       <div

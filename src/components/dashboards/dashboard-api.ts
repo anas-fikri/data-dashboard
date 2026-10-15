@@ -68,16 +68,24 @@ export const api = {
       `${base(id)}/widgets/${widgetId}?baseRevision=${baseRevision}`,
       "DELETE",
     ),
-  renameWidget: (id: string, widgetId: string, title: string) =>
-    call<{ title: string }>(`${base(id)}/widgets/${widgetId}`, "PATCH", { title }),
+  /**
+   * Ubah widget (judul / jenis + isi) membawa `version` pengaturan yang dilihat tab ini (T-016): server
+   * menolak STALE bila widget sudah diubah di tempat lain; berhasil → versi baru untuk disimpan lokal.
+   */
+  renameWidget: (id: string, widgetId: string, title: string, version?: string) =>
+    call<{ title: string; version: string }>(`${base(id)}/widgets/${widgetId}`, "PATCH", {
+      title,
+      version,
+    }),
   /** Kolom filter global (T-012); hasil = tampilan kolom filter yang baru. */
   setFilterColumns: (id: string, filterColumns: { sheet: string; column: string }[]) =>
     call<{ filterColumns: FilterColumnView[] }>(`${base(id)}/filter-columns`, "PATCH", {
       filterColumns,
     }),
-  configureWidget: (id: string, widgetId: string, type: string, spec: unknown) =>
-    call<{ type: string; spec: unknown }>(`${base(id)}/widgets/${widgetId}`, "PATCH", {
-      type,
-      spec,
-    }),
+  configureWidget: (id: string, widgetId: string, type: string, spec: unknown, version?: string) =>
+    call<{ type: string; spec: unknown; version: string }>(
+      `${base(id)}/widgets/${widgetId}`,
+      "PATCH",
+      { type, spec, version },
+    ),
 };

@@ -112,6 +112,15 @@ export type QueryResult =
 
 export type WidgetQueryResult = QueryResult | ({ ok: true } & Timing & TablePage);
 
+/**
+ * Jawaban mode widget { widgetId, … }: hasil sukses membawa `widgetVersion` = versi pengaturan widget
+ * yang dipakai server (Widget.updatedAt ISO, review T-016 DI-1). Beda dengan versi salinan lokal klien
+ * → klien tidak menggambar data dengan tipe/format lama, tetapi meminta muat ulang.
+ */
+export type WidgetModeResult =
+  | Extract<WidgetQueryResult, { ok: false }>
+  | (Extract<WidgetQueryResult, { ok: true }> & { widgetVersion: string });
+
 export interface QueryRepo {
   /** Dataset milik user (null bila tidak ada atau bukan pemilik → 404, tidak membocorkan keberadaan). */
   ownedDataset(
@@ -151,6 +160,11 @@ export interface QueryRepo {
   ): Promise<{
     type: string;
     spec: unknown;
+    /**
+     * Versi pengaturan widget (Widget.updatedAt, review T-016 DI-1): dikirim sebagai `widgetVersion`
+     * agar klien tahu spec yang dipakai server berbeda dari salinan lokalnya.
+     */
+    updatedAt: Date;
     datasetId: string;
     activeVersionId: string | null;
     /**
@@ -569,7 +583,7 @@ export async function runWidgetQuery(
   userId: string,
   body: unknown,
   deps: QueryDeps,
-): Promise<WidgetQueryResult> {
+): Promise<WidgetModeResult> {
   const t0 = Date.now();
   const parsed = widgetBodySchema.safeParse(body);
   if (!parsed.success) {
@@ -581,7 +595,9 @@ export async function runWidgetQuery(
   }
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
   if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
-  return forRole(w.role, await widgetResult(userId, w, parsed.data, deps, t0));
+  const r = forRole(w.role, await widgetResult(userId, w, parsed.data, deps, t0));
+  // Versi spec yang benar-benar dipakai (dibaca bersama widget), bukan bagian nilai cache hasil.
+  return r.ok ? { ...r, widgetVersion: w.updatedAt.toISOString() } : r;
 }
 
 /** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */

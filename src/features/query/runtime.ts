@@ -99,6 +99,7 @@ export const prismaQueryRepo: QueryRepo = {
       select: {
         type: true,
         spec: true,
+        updatedAt: true,
         missingColumns: true,
         dashboard: {
           select: {
@@ -118,6 +119,7 @@ export const prismaQueryRepo: QueryRepo = {
       role && {
         type: w.type,
         spec: w.spec,
+        updatedAt: w.updatedAt,
         missingColumns: w.missingColumns,
         datasetId: w.dashboard.datasetId,
         activeVersionId: w.dashboard.dataset.activeVersionId,

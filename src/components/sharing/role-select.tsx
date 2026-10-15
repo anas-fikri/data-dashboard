@@ -28,6 +28,8 @@ export function RoleSelect({
   className?: string;
   id?: string;
   "aria-label"?: string;
+  /** Pesan galat baris (ganti peran gagal) yang dibacakan bersama Select. */
+  "aria-describedby"?: string;
   "data-testid": string;
 }) {
   return (

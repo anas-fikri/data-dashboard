@@ -13,6 +13,14 @@ import { listDatasets } from "@/features/datasets/service";
 
 type Search = Promise<{ notice?: string | string[] }>;
 
+/**
+ * Kepala kartu: kartu sempit (320 px, kolom 1024 px) → tautan "Lihat semua (N)" pindah utuh ke bawah
+ * judul, tidak terbelah dua baris di samping judul dua baris. Tautan setinggi ≥ 24 px (WCAG 2.5.8).
+ */
+const CARD_HEAD = "flex-row flex-wrap items-center justify-between gap-x-3 gap-y-1";
+const SEE_ALL =
+  "inline-flex min-h-6 items-center whitespace-nowrap text-sm font-medium underline underline-offset-4";
+
 /** Beranda: satu aksi utama (buat dataset) + dataset terbaru + dashboard yang dibagikan (T-016). */
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
@@ -46,10 +54,10 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className={CARD_HEAD}>
             <CardTitle>Dataset saya</CardTitle>
             {datasets.length > recent.length ? (
-              <Link href="/datasets" className="text-sm font-medium underline underline-offset-4">
+              <Link href="/datasets" className={SEE_ALL}>
                 Lihat semua ({datasets.length})
               </Link>
             ) : null}
@@ -70,10 +78,10 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex-row items-center justify-between">
+          <CardHeader className={CARD_HEAD}>
             <CardTitle>Dashboard dibagikan ke saya</CardTitle>
             {shared.length > recentShared.length ? (
-              <Link href="/dashboards" className="text-sm font-medium underline underline-offset-4">
+              <Link href="/dashboards" className={SEE_ALL}>
                 Lihat semua ({shared.length})
               </Link>
             ) : null}

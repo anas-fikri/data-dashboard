@@ -93,6 +93,8 @@ type Tx = Prisma.TransactionClient;
 interface Owned {
   ownerId: string;
   orgShared: boolean;
+  /** Waktu isi terakhir berubah: perubahan akses tidak menggesernya (review T-016 DI-3). */
+  updatedAt: Date;
 }
 
 /**
@@ -113,11 +115,16 @@ async function ownerTx(
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`dashboard:${id}`}))`;
         const d = await tx.dashboard.findFirst({
           where: { id, ...canViewWhere(userId) },
-          select: roleSelect(userId),
+          select: { ...roleSelect(userId), updatedAt: true },
         });
         const role = d ? roleOf(userId, d) : null;
         if (!d || role !== "OWNER") return { role };
-        return { result: await fn(tx, id, { ownerId: d.dataset.ownerId, orgShared: d.orgShared }) };
+        const owned = {
+          ownerId: d.dataset.ownerId,
+          orgShared: d.orgShared,
+          updatedAt: d.updatedAt,
+        };
+        return { result: await fn(tx, id, owned) };
       },
     );
     return "result" in out ? out.result : deny(userId, id, action, out.role);
@@ -363,7 +370,13 @@ export async function setOrgShare(
   if (typeof on !== "boolean") return fail("INVALID", "Permintaan tidak valid.");
   const r = await ownerTx(userId, dashboardId, "org", async (tx, id, d) => {
     if (d.orgShared === on) return ok(null);
-    await tx.dashboard.update({ where: { id }, data: { orgShared: on }, select: { id: true } });
+    // updatedAt = nilai lama (dibaca di bawah lock): berbagi bukan perubahan isi — "Diperbarui" dan
+    // urutan "Dibagikan ke saya" tidak bergeser, sama seperti share per user (review T-016 DI-3).
+    await tx.dashboard.update({
+      where: { id },
+      data: { orgShared: on, updatedAt: d.updatedAt },
+      select: { id: true },
+    });
     await recordAudit(tx, {
       actorId: userId,
       action: "dashboard.org.share",

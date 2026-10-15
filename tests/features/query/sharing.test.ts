@@ -20,6 +20,7 @@ import {
   VIEWER,
   WID,
   WIDGETS,
+  WIDGET_UPDATED_AT,
   makeDeps,
 } from "./sharing-fixtures";
 
@@ -49,6 +50,36 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
     });
     expect(get).not.toHaveBeenCalled();
     expect(exec).not.toHaveBeenCalled();
+  });
+
+  it("review DI-1: jawaban sukses membawa widgetVersion (Widget.updatedAt ISO) untuk semua peran, juga dari cache; gagal tanpa versi", async () => {
+    const { deps, repo } = makeDeps();
+    const version = WIDGET_UPDATED_AT.toISOString();
+    for (const user of [VIEWER, EDITOR, OWNER]) {
+      expect(await runWidgetQuery(user, { widgetId: WID("kpi") }, deps)).toMatchObject({
+        ok: true,
+        widgetVersion: version,
+      });
+    }
+    // Versi dibaca bersama widget per permintaan, bukan bagian nilai cache hasil: spec yang baru
+    // diubah editor (updatedAt baru) langsung terlihat walau hasilnya dilayani cache.
+    const later = new Date("2026-10-15T09:00:00.001Z");
+    repo.widget.mockImplementationOnce(async () => ({
+      ...WIDGETS.kpi!,
+      updatedAt: later,
+      datasetId: DS,
+      activeVersionId: VER,
+      dashboardId: DASH,
+      filterColumns: [],
+      role: "VIEWER" as const,
+    }));
+    expect(await runWidgetQuery(VIEWER, { widgetId: WID("kpi") }, deps)).toMatchObject({
+      ok: true,
+      widgetVersion: later.toISOString(),
+    });
+    const failed = await runWidgetQuery(VIEWER, { widgetId: WID("hidden") }, deps);
+    expect(failed).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(failed).not.toHaveProperty("widgetVersion");
   });
 
   it("cached/ms hanya untuk pemilik — juga saat dilayani cache bersama", async () => {
@@ -98,7 +129,12 @@ describe("T-016 widget { widgetId, … }: matriks peran", () => {
     const { deps, repo } = makeDeps();
     repo.widget.mockImplementation(async (_u: string, widgetId: string) => {
       const name = Object.keys(WIDGETS).find((n) => WID(n) === widgetId)!;
-      return { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER } as never;
+      return {
+        ...WIDGETS[name]!,
+        updatedAt: WIDGET_UPDATED_AT,
+        datasetId: DS,
+        activeVersionId: VER,
+      } as never;
     });
     expect(await runWidgetQuery(OWNER, { widgetId: WID("hidden") }, deps)).toEqual({
       ok: false,

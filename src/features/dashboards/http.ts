@@ -82,16 +82,21 @@ export const deleteWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
     false,
   );
 
-/** PATCH widget: { title } ganti judul, atau { type, spec } atur isi widget (T-011). */
+/**
+ * PATCH widget: { title } ganti judul, atau { type, spec } atur isi widget (T-011). `version` opsional
+ * (review T-016 DI-1): versi pengaturan yang dilihat klien; sudah berganti → 409 STALE. Sukses membawa
+ * `version` baru.
+ */
 export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetId: string) =>
   mutation(req, "ubah widget gagal", async (userId, body) => {
     const b = (body && typeof body === "object" ? body : {}) as {
       title?: unknown;
       type?: unknown;
       spec?: unknown;
+      version?: unknown;
     };
     if (b.type === undefined)
-      return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
+      return reply(await renameWidget(userId, dashboardId, widgetId, b.title, b.version));
     // Keduanya dikirim: judul diperiksa dulu, isi disimpan, lalu judul — tidak ada bagian yang
     // tersimpan bila yang lain ditolak validasi (review keamanan T-011).
     if (b.title !== undefined && b.title !== "") {
@@ -99,9 +104,18 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
       if (!t.ok)
         return json({ ok: false, code: "INVALID", message: t.message, field: "name" }, 400);
     }
-    const configured = await configureWidget(userId, dashboardId, widgetId, b.type, b.spec);
+    const configured = await configureWidget(
+      userId,
+      dashboardId,
+      widgetId,
+      b.type,
+      b.spec,
+      b.version,
+    );
     if (!configured.ok || b.title === undefined) return reply(configured);
-    return reply(await renameWidget(userId, dashboardId, widgetId, b.title));
+    // Judul di atas versi yang baru saja ditulis (CAS berantai bila klien mengirim versi).
+    const next = b.version === undefined ? undefined : configured.data.version;
+    return reply(await renameWidget(userId, dashboardId, widgetId, b.title, next));
   });
 
 export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>

@@ -176,6 +176,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           // jadi kunci ini yang memicu query ulang setelah "Pakai sheet ini".
           key={widget.retargeted ? "retargeted" : "stored"}
           widgetId={widget.id}
+          widgetVersion={widget.version}
           config={config}
           title={widget.title}
           editing={editing}

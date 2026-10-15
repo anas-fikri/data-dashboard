@@ -254,28 +254,42 @@ export async function deleteDataset(
     where: { version: { datasetId: id }, typedKey: { not: null } },
     select: { typedKey: true },
   });
-  const deleted = await prisma.$transaction(async (tx) => {
-    // Hitungan untuk jejak audit: dashboard dan share yang ikut terhapus lewat kaskade.
-    const dashboards = await tx.dashboard.findMany({
-      where: { datasetId: id, dataset: { ownerId } },
-      select: { _count: { select: { shares: true } } },
-    });
-    const r = await tx.dataset.deleteMany({ where: { id, ownerId } });
-    if (r.count !== 1) return false;
-    await recordAudit(tx, {
-      actorId: ownerId,
-      action: "dataset.delete",
-      targetType: "dataset",
-      targetId: id,
-      meta: {
-        name: row.name,
-        dashboards: dashboards.length,
-        shares: dashboards.reduce((n, d) => n + d._count.shares, 0),
+  let deleted: boolean;
+  try {
+    // Batas waktu sama dengan transaksi lain yang mengunci baris Dataset (aktivasi, pemetaan, akhir
+    // ingest: 30 dtk): hapus yang menunggu lock mereka tidak kedaluwarsa di batas bawaan 5 dtk.
+    deleted = await prisma.$transaction(
+      async (tx) => {
+        // Hitungan untuk jejak audit: dashboard dan share yang ikut terhapus lewat kaskade.
+        const dashboards = await tx.dashboard.findMany({
+          where: { datasetId: id, dataset: { ownerId } },
+          select: { _count: { select: { shares: true } } },
+        });
+        const r = await tx.dataset.deleteMany({ where: { id, ownerId } });
+        if (r.count !== 1) return false;
+        await recordAudit(tx, {
+          actorId: ownerId,
+          action: "dataset.delete",
+          targetType: "dataset",
+          targetId: id,
+          meta: {
+            name: row.name,
+            dashboards: dashboards.length,
+            shares: dashboards.reduce((n, d) => n + d._count.shares, 0),
+          },
+          ip,
+        });
+        return true;
       },
-      ip,
-    });
-    return true;
-  });
+      { maxWait: 5_000, timeout: 30_000 },
+    );
+  } catch (e) {
+    // Lock tetap dipegang transaksi lain melewati batas waktu → dibatalkan utuh, coba lagi (review T-016).
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") {
+      return { ok: false, code: "BUSY", message: "Sedang memproses permintaan lain. Coba lagi." };
+    }
+    throw e;
+  }
   if (!deleted) return notFound();
   await deps
     .forgetParquet?.(typed.flatMap((s) => (s.typedKey ? [s.typedKey] : [])))

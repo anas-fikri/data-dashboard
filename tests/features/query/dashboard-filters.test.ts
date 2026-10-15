@@ -185,6 +185,7 @@ function deps(
       if (userId !== USER || !name) return null;
       return {
         ...WIDGETS[name]!,
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         dashboardId: DASH,

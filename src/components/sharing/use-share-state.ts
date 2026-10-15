@@ -21,7 +21,10 @@ export function useShareState(dashboardId: string) {
   const [load, setLoad] = useState<Load>({ status: "loading" });
   /** Kunci kontrol yang sedang berjalan (mis. "role:<userId>"); null = tidak ada aksi. */
   const [busy, setBusy] = useState<string | null>(null);
-  const [error, setError] = useState<{ at: ShareSection; message: string } | null>(null);
+  /** Galat aksi terakhir; `key` = kontrol pemicunya (mis. "role:<userId>" → tampil di baris itu). */
+  const [error, setError] = useState<{ at: ShareSection; key: string; message: string } | null>(
+    null,
+  );
   const [announcement, setAnnouncement] = useState("");
   /** Nomor muatan terakhir: jawaban basi (dialog ditutup / coba lagi lebih baru) dibuang. */
   const seq = useRef(0);
@@ -78,7 +81,7 @@ export function useShareState(dashboardId: string) {
         setAnnouncement(done(r.data));
         return true;
       }
-      setError({ at, message: shareErrorText(r) });
+      setError({ at, key, message: shareErrorText(r) });
       return false;
     },
   };

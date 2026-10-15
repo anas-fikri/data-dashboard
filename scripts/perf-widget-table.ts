@@ -116,6 +116,7 @@ async function main() {
       widget: async () => ({
         type: "table",
         spec,
+        updatedAt: new Date(0),
         datasetId: DS,
         activeVersionId: VER,
         role: "OWNER" as const,

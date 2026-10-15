@@ -3,6 +3,7 @@ import type {
   ShareActionResult,
   ShareGrantView,
   ShareRole,
+  ShareUserOption,
   ShareWarnings,
 } from "@/features/sharing/types";
 
@@ -24,6 +25,13 @@ export const isShareRole = (v: string): v is ShareRole => v === "VIEWER" || v ==
 /** Peran non-pemilik di kepala dashboard dan daftar "Dibagikan ke saya" (pemilik tidak diberi label). */
 export const sharedRoleLabel = (role: Exclude<DashboardAccessRole, "OWNER">) =>
   role === "EDITOR" ? "Editor" : "Hanya lihat";
+
+/**
+ * Pemilik dataset yang belum mengisi nama tampilan. Satu frasa untuk kepala dashboard ("Dibagikan
+ * oleh …") dan daftar "Dibagikan ke saya" ("Pemilik: …") — terbaca wajar di keduanya.
+ */
+export const OWNER_UNNAMED = "pengguna tanpa nama";
+export const ownerLabel = (name: string | null) => name ?? OWNER_UNNAMED;
 
 export const EDITOR_WARNING = "Editor dapat membaca semua kolom tidak tersembunyi dataset ini.";
 export const FILTER_WARNING =
@@ -52,6 +60,20 @@ export const searchable = (q: string) => q.trim().length >= SEARCH_MIN;
 export const SEARCH_MAX = 10;
 
 export type PickerPhase = "idle" | "loading" | "done" | "error";
+
+/**
+ * Hasil pencarian yang diteruskan ke pemanggil (onResults). Gagal = daftar kosong: daftar opsi tidak
+ * tampil saat galat, jadi pilihan sebelumnya ikut dibuang — "Bagikan" tidak memberi akses ke orang
+ * yang sudah tidak terlihat (review T016-CL-1).
+ */
+export const visibleResults = (res: ShareActionResult<ShareUserOption[]> | null) =>
+  res?.ok ? res.data : [];
+
+/** Pilihan tetap hanya bila orangnya masih ada di hasil yang terlihat (yang terlihat = yang dipilih). */
+export const keepSelection = (
+  user: ShareUserOption | null,
+  items: readonly ShareUserOption[],
+): ShareUserOption | null => (user && items.some((i) => i.id === user.id) ? user : null);
 
 /** Baris status pemilih pengguna (role=status, dibacakan sopan); kosong saat galat (ada FormAlert). */
 export function pickerStatus(phase: PickerPhase, count: number, itemsFor: string): string {
