@@ -4,7 +4,7 @@ import { IconDownload, IconFileTypeCsv, IconFileTypeXls, IconLoader2 } from "@ta
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { ExportFormatInput } from "@/features/exports/types";
+import type { ExportFileFormat } from "@/features/exports/types";
 import { cn } from "@/lib/utils";
 import {
   exportAnnouncement,
@@ -59,11 +59,12 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
   const [seen, setSeen] = useState<ExportJob | null>(() => (job.phase === "error" ? null : job));
   const busy = exportBusy(job);
   const content = useRef<HTMLDivElement>(null);
-  const buttons = useRef<Partial<Record<ExportFormatInput, HTMLButtonElement | null>>>({});
+  const buttons = useRef<Partial<Record<ExportFileFormat, HTMLButtonElement | null>>>({});
 
-  function run(format: ExportFormatInput) {
+  function run(format: ExportFileFormat) {
     const body = request.current; // null hanya sebelum isi kartu pertama kali dirender
-    if (body && !busy) void start(exportBody(body, format));
+    // PDF hanya untuk dashboard utuh (kepala halaman); store kartu tidak pernah memegangnya.
+    if (body && !busy && format !== "pdf") void start(exportBody(body, format));
   }
 
   // Elemen terfokus hilang karena status berubah → fokus ke "Ekspor lagi" atau tombol format.

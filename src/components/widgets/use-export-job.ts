@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
-import type { ExportCreateBody, ExportStatusView } from "@/features/exports/types";
+import type { ExportStatusView } from "@/features/exports/types";
 import { markDownloadNavigation } from "@/lib/download-navigation";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { isAccessLost, useAccessLost } from "./access-refresh";
@@ -13,6 +13,7 @@ import {
   expiryDelay,
   recheckOutcome,
   type ExportEvent,
+  type ExportStartBody,
 } from "./export-model";
 import {
   claimDownload,
@@ -24,15 +25,16 @@ import {
 import { useExportUser } from "./export-user";
 
 /*
- * Satu ekspor per widget (T-017): POST → polling status 1 s (usePolling: satu permintaan sekaligus,
+ * Satu ekspor per sasaran (widget T-017, PDF dashboard T-018): POST → polling status 1 s (usePolling: satu permintaan sekaligus,
  * jeda saat tab tersembunyi, berhenti di 401/403/404/410) → selesai: unduhan dimulai SEKALI lewat
  * <a download> ke route unduh (302 ke presigned `attachment`; Chromium menjadikan 302 lintas origin
  * navigasi, jadi ditandai untuk penjaga beforeunload editor — lib/download-navigation.ts) → tombol
  * "Unduh lagi" sampai kedaluwarsa; tombol itu membaca status dulu (recheckOutcome) agar tautan mati
  * tidak gagal diam-diam. Status hidup di export-store.ts (bukan state kartu): kartu yang dipasang ulang
  * melanjutkan polling, dan POST yang masih berjalan saat itu tetap mendarat di store; kuncinya user +
- * widget (review R2-CL-1). 404 saat membuat, polling, atau membaca ulang = akses dashboard dicabut →
- * halaman dimuat ulang dari server (access-refresh.tsx).
+ * sasaran (review R2-CL-1). 404 saat membuat, polling, atau membaca ulang = akses dashboard dicabut →
+ * halaman dimuat ulang dari server (access-refresh.tsx di kanvas; PDF dashboard T-018 di kepala halaman,
+ * di luar kanvas, memberi `onAccessLost` sendiri).
  */
 function triggerDownload(url: string) {
   // 302 lintas origin ke storage = navigasi di Chromium: penjaga beforeunload editor melewatinya.
@@ -55,16 +57,20 @@ type CreateResponse =
  */
 export function pollStopped(
   key: string,
-  job: { widgetId: string; id: string },
+  job: { target: string; id: string },
   status: number,
-  accessLost: ((widgetId?: string) => boolean) | null,
+  accessLost: ((target?: string) => boolean) | null,
 ) {
-  if (isAccessLost({ ok: false, status })) accessLost?.(job.widgetId);
+  if (isAccessLost({ ok: false, status })) accessLost?.(job.target);
   dispatchExport(key, { type: "stopped", id: job.id, status });
 }
 
-export function useExportJob(widgetId: string) {
-  const key = exportKey(useExportUser(), widgetId);
+/**
+ * `target`: id widget (T-017) atau dashboardExportTarget(id) (PDF, T-018). `onAccessLost` menggantikan
+ * penjaga akses kanvas untuk pemanggil di luar kanvas (kepala halaman).
+ */
+export function useExportJob(target: string, onAccessLost?: () => void) {
+  const key = exportKey(useExportUser(), target);
   const subscribe = useCallback((cb: () => void) => subscribeExport(key, cb), [key]);
   const job = useSyncExternalStore(
     subscribe,
@@ -72,7 +78,13 @@ export function useExportJob(widgetId: string) {
     () => EXPORT_IDLE,
   );
   const dispatch = useCallback((e: ExportEvent) => dispatchExport(key, e), [key]);
-  const accessLost = useAccessLost();
+  const canvasLost = useAccessLost();
+  const accessLost = onAccessLost
+    ? () => {
+        onAccessLost();
+        return true;
+      }
+    : canvasLost;
   // "Unduh lagi": membaca status (checking) / status tidak terbaca (jaringan, tautan tetap).
   const [again, setAgain] = useState<"idle" | "checking" | "failed">("idle");
 
@@ -89,7 +101,7 @@ export function useExportJob(widgetId: string) {
       if (view.state === "done" && claimDownload(key, id)) triggerDownload(exportDownloadUrl(id));
     },
     onStop: (status) => {
-      if (id) pollStopped(key, { widgetId, id }, status, accessLost);
+      if (id) pollStopped(key, { target, id }, status, accessLost);
     },
   });
 
@@ -103,7 +115,7 @@ export function useExportJob(widgetId: string) {
     return () => clearTimeout(t);
   }, [doneId, expiresAt, dispatch]);
 
-  async function start(body: ExportCreateBody) {
+  async function start(body: ExportStartBody) {
     if (exportBusy(exportJobOf(key))) return;
     dispatch({ type: "start", format: body.format });
     setAgain("idle");
@@ -119,7 +131,7 @@ export function useExportJob(widgetId: string) {
         dispatch({ type: "created", id: json.exportId });
         return;
       }
-      if (isAccessLost({ ok: false, status: res.status })) accessLost?.(body.widgetId);
+      if (isAccessLost({ ok: false, status: res.status })) accessLost?.(target);
       const fail = json && !json.ok ? json : null;
       dispatch({ type: "rejected", status: res.status, code: fail?.code, message: fail?.message });
     } catch {
@@ -144,7 +156,7 @@ export function useExportJob(widgetId: string) {
     setAgain(outcome.kind === "retry" ? "failed" : "idle");
     if (outcome.kind === "download") triggerDownload(exportDownloadUrl(current.id));
     if (outcome.kind !== "error") return;
-    if (outcome.accessLost) accessLost?.(widgetId);
+    if (outcome.accessLost) accessLost?.(target);
     dispatch({ type: "recheck", id: current.id, code: outcome.code, message: outcome.message });
   }
 

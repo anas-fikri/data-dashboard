@@ -3,6 +3,7 @@
 import { useSearchParams } from "next/navigation";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { parseWidgetConfig } from "@/features/widgets/spec";
+import { usePublishApplied } from "./applied-store";
 import {
   encodeFilterParam,
   filterKey,
@@ -97,6 +98,7 @@ export function DashboardFiltersProvider({
     );
     return () => clearTimeout(t);
   }, [key, applied.key]);
+  usePublishApplied(dashboardId, applied.state); // tombol PDF di kepala halaman (T-018 D9)
 
   const urlTooLong = !!encodeFilterParam(state) && !urlValue(state);
   const [allMode, setAllMode] = useState<ReadonlySet<string>>(() => new Set());

@@ -17,6 +17,8 @@ const secrets = {
   REDIS_PASSWORD: rand(),
   S3_ACCESS_KEY: `app${rand(6).replace(/[-_]/g, "")}`,
   S3_SECRET_KEY: rand(),
+  // Secret bersama app/worker ↔ renderer PDF (T-018), 43 karakter.
+  RENDERER_SECRET: rand(32),
 };
 
 let out = readFileSync(".env.example", "utf8");

@@ -13,6 +13,7 @@ class AuthError extends Error {
 }
 const requireUser = vi.fn();
 const createExport = vi.fn();
+const createPdfExport = vi.fn();
 const exportStatus = vi.fn();
 const downloadExport = vi.fn();
 const hit = vi.fn();
@@ -31,9 +32,11 @@ vi.mock("@/features/exports/repo", () => ({ prismaExportRepo: {} }));
 vi.mock("@/features/exports/service", async (orig) => ({
   ...(await orig<typeof import("@/features/exports/service")>()),
   createExport,
+  createPdfExport,
   exportStatus,
   downloadExport,
 }));
+vi.mock("@/features/dashboards/service", () => ({ getDashboard: vi.fn() }));
 
 const { createExportRoute, exportDownloadRoute, exportStatusRoute } =
   await import("@/features/exports/http");
@@ -90,6 +93,31 @@ describe("POST /api/exports", () => {
     expect(limited.headers.get("retry-after")).toBe("77");
     createExport.mockResolvedValueOnce({ ok: false, code: "COLUMN_UNAVAILABLE", message: "x" });
     expect((await createExportRoute(post({}))).status).toBe(409);
+  });
+
+  it("format pdf (T-018) → createPdfExport dengan deps PDF; RENDERER_UNAVAILABLE → 503", async () => {
+    createPdfExport.mockResolvedValueOnce({ ok: true, exportId: ID });
+    const body = { dashboardId: ID, format: "pdf", f: null };
+    const r = await createExportRoute(post(body));
+    expect(r.status).toBe(202);
+    expect(createPdfExport).toHaveBeenCalledWith(
+      "u1",
+      body,
+      expect.objectContaining({ rendererHealth: expect.any(Function) }),
+    );
+    expect(createExport).not.toHaveBeenCalled();
+    createPdfExport.mockResolvedValueOnce({
+      ok: false,
+      code: "RENDERER_UNAVAILABLE",
+      message: "Layanan PDF sedang tidak tersedia.",
+    });
+    const down = await createExportRoute(post(body));
+    expect(down.status).toBe(503);
+    expect(await down.json()).toMatchObject({ ok: false, code: "RENDERER_UNAVAILABLE" });
+    // Bentuk lain (tanpa format pdf) tetap jalur widget.
+    createExport.mockResolvedValueOnce({ ok: false, code: "INVALID", message: "x" });
+    await createExportRoute(post({ dashboardId: ID, format: "csv" }));
+    expect(createExport).toHaveBeenCalledTimes(1);
   });
 
   it("galat tak terduga (antrean mati) → 503 tanpa detail", async () => {

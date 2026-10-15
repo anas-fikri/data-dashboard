@@ -134,7 +134,8 @@ flowchart LR
   A --> PG[("PostgreSQL<br/>metadata")]
   A --> RD[("Redis<br/>antrean BullMQ + cache hasil + lock")]
   RD --> WK["Worker ingest ×2<br/>1 job per proses, 3 GB"]
-  RD --> RN["Renderer PDF<br/>Chromium terpisah"]
+  WK -- "antrean pdf: POST /render token<br/>+ RENDERER_SECRET (network render)" --> RN["Renderer PDF<br/>Chromium terpisah"]
+  RN -- "GET APP_INTERNAL_URL/render/token<br/>(network render)" --> A
   WK --> MO
   WK --> PG
   A --> MO
@@ -149,7 +150,7 @@ flowchart LR
   - `exports/<userId>/<jobId>.<csv|xlsx|pdf>` — dihapus job pembersihan setelah 1 jam (lifecycle MinIO hanya granularitas hari); unduh lewat `GET /api/exports/<id>/download` yang mengecek pemilik lalu 302 ke presigned 5 menit `attachment`.
 - **Worker**: proses Node terpisah, **concurrency BullMQ = 1 per proses**, 2 replika @ 3 GB. DuckDB di worker: `memory_limit='1GB'`, `threads=2`, `temp_directory` di disk.
 - **DuckDB di app**: membaca `typed-<rev>.parquet`; salinan di disk lokal dengan batas `MAX_LOCAL_PARQUET_BYTES` (LRU evict); fallback S3 httpfs. `memory_limit` app = 2 GB.
-- **Renderer**: proses terpisah berisi Chromium untuk PDF; hanya di network frontend (tidak bisa mencapai MinIO/Redis/PostgreSQL); dipanggil app dengan header `RENDERER_SECRET`; membuka `APP_INTERNAL_URL/render/<token>` sendiri; route allowlist hanya origin app; non-root + seccomp.
+- **Renderer** (T-018, ADR-0006): proses terpisah berisi Chromium untuk PDF; hanya di network compose internal `render` (tanpa egress) bersama app + worker, tidak di network lain (tidak bisa mencapai MinIO/Redis/PostgreSQL); dipanggil **worker** (antrean `pdf`, concurrency 1) dengan body `{token}` saja + header `x-renderer-secret` (`RENDERER_SECRET`); app hanya mengecek `GET /healthz` ≤ 3 detik saat ekspor diminta (mati → 503 `RENDERER_UNAVAILABLE`). Renderer membuka `APP_INTERNAL_URL/render/<token>` sendiri: token sekali pakai 60 detik ditukar cookie `dd.render` (Path=/render) lalu 303 ke `/render`, yang mengambil data widget di server. Route allowlist hanya origin app (3xx dan origin lain dibatalkan); non-root + seccomp Playwright. Worker yang memeriksa `%PDF-` + `PDF_MAX_BYTES` lalu mengunggah ke `exports/`. `APP_INTERNAL_URL` http tidak boleh ber-host TLD HSTS preload (`app`, `dev`, …).
 - **Jaringan compose**: hanya reverse proxy mempublikasikan port; Redis `requirepass`; app/worker memakai service account MinIO berpolicy prefix; proxy `storage.<domain>` hanya meneruskan PUT/GET/HEAD/OPTIONS bertanda tangan ke prefix `raw|guides|exports`, memblokir `/minio/*`, dan menambahkan `nosniff` + `CSP: sandbox`.
 
 ### B2. Upload — T-004
@@ -263,7 +264,7 @@ sequenceDiagram
 - Key cache memuat `versionId` **dan** `schemaRevision`; perubahan versi atau re-cast otomatis miss tanpa penghapusan massal. Spec dikanonikkan (urut key, dedupe filter) sebelum di-hash.
 - Slicer: `SELECT DISTINCT kolom ORDER BY 1 LIMIT 1000` + pencarian server-side; > 1000 nilai unik → peringatan.
 - Tabel baris mentah: paginasi server 100 baris, `ORDER BY` + `LIMIT/OFFSET` di DuckDB.
-- Ekspor tabular (T-017) memakai jalur sama tanpa batas 10k, maks 1 juta baris, sebagai job; unduh via presigned 1 jam. PDF (T-018) oleh renderer dengan **token render** sekali pakai (60 detik, terikat dashboardId + userId).
+- Ekspor tabular (T-017) memakai jalur sama tanpa batas 10k, maks 1 juta baris, sebagai job; unduh via presigned 1 jam. PDF (T-018) oleh renderer dengan **token render** sekali pakai (60 detik, terikat exportId + dashboardId + userId + filter), dibuat worker; data widget halaman render diambil di server lewat resolver yang sama (filter disaring ulang saat buat dan saat render).
 
 ### B5. Status dan versi — T-003, T-013
 Dua enum, keduanya di kode English:

@@ -22,6 +22,12 @@ describe("nama file ekspor", () => {
     expect(exportFileName("...", at, "xlsx")).toBe("widget-20261016-0030.xlsx");
   });
 
+  it("PDF dashboard (T-018): <nama dashboard>-<stempel>.pdf; nama kosong → dashboard", () => {
+    const at = new Date("2026-10-15T17:30:00.000Z");
+    expect(exportFileName("Penjualan / Q1", at, "pdf")).toBe("Penjualan Q1-20261016-0030.pdf");
+    expect(exportFileName("  ", at, "pdf")).toBe("dashboard-20261016-0030.pdf");
+  });
+
   it('karakter berbahaya dibuang: " \\ / ; CR LF kendali < > : | ? *', () => {
     expect(cleanTitle('a"b\\c/d;e\r\nf\u0000g<h>i:j|k?l*m')).toBe("a b c d e f g h i j k l m");
     expect(cleanTitle("../../etc/passwd")).toBe("etc passwd");

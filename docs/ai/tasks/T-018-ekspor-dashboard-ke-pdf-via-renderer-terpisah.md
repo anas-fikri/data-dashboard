@@ -1,7 +1,7 @@
 ---
 id: T-018
 title: Ekspor dashboard ke PDF via renderer terpisah
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -10,8 +10,58 @@ tags:
 depends_on:
   - T-016
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:01Z"
+updated: "2026-10-15T22:41:14Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 2496574ef8c25e79908d5c853085d7b7f22fd9ca
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 36523
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792104054292,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792104054317,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792104054325,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  117 passed (117)
+            Tests  1641 passed (1641)
+         Start at  05:40:48
+         Duration  24.54s (tests 75%, import 18%, transform 7%, worker 1%)
+
+          Isolate  117 workers spawned · ~128ms startup each (spawn + environment, per file)
+                   at least ~1.54s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-15T22:41:14Z"
+    tree: 4242180b941390ab21248f54d0668c3f9c8d7136aa4f86dc4aa87787049f1269
 ---
 
 ## Objective
@@ -26,7 +76,10 @@ Layanan renderer (Chromium/Playwright) terpisah dari app dan worker. App menerbi
 - [ ] Given halaman render mencoba memuat resource di luar origin app, when Chromium meminta, then diblokir oleh route allowlist; Chromium berjalan non-root dengan seccomp profile Playwright
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: komponen baru renderer (Chromium) + halaman /render publik bertoken + antrean/worker `pdf`; jalur ekspor T-017 diperluas ke format PDF (Export tanpa widget, kunci .pdf, audit dashboard.export). Ketergantungan baru playwright-core (runtime) dan pdfjs-dist (dev). Dokumen flow-kerja/conventions/T-023 diselaraskan (pemanggil = worker, jaringan render).
+Security (STRIDE): S — token render acak sekali pakai 60 detik (hash di Redis, GETDEL) ditukar cookie Path=/render sekali pakai; renderer hanya menerima {token} + header RENDERER_SECRET (timingSafeEqual), tidak pernah URL. T — data widget diambil di server lewat resolver yang sama dengan /api/query (D6, filter disanitasi saat buat dan saat render); renderer tidak bisa menulis ke storage (worker yang mengunggah setelah cek %PDF- + batas ukuran). R — AuditLog dashboard.export saat unduh. I — akses dashboard dicek ulang di worker dan halaman render; token tidak pernah memberi akses /api; path /render/<token> diredaksi dari log; CSP /render tanpa upgrade-insecure-requests, Referrer-Policy no-referrer, noindex, no-store. D — rate limit 10/10 menit + maks 2 ekspor berjalan per user, semaphore renderer (503), timeout render 60 s, PDF_MAX_BYTES. E — Chromium non-root + seccomp Playwright + cap_drop ALL + read_only di jaringan internal `render` tanpa egress; allowlist rute hanya origin app, 3xx dan origin lain diblokir (menutup bypass redirect).
+Rollback: revert commit T-018; hapus service/jaringan renderer dari compose; antrean `pdf` di Redis boleh dihapus; baris Export PDF lama dibersihkan sapuan ekspor (tidak ada migrasi baru).
+Validation: unit (token mint/exchange/consume + kedaluwarsa, klien renderer timeout → RENDERER_UNAVAILABLE, job PDF, pageBands, CSP /render, redaksi log, env refine host HSTS, validasi body/secret/allowlist renderer termasuk 3xx), e2e (AC1 nilai PDF = layar via pdfjs, AC2 token dipakai/kedaluwarsa 404, AC3 renderer mati → RENDERER_UNAVAILABLE ≤ 10 s, AC5 tanpa secret 401 / {url} 400), bukti docker non-root + seccomp (AC6), review adversarial berulang sampai 0 temuan + design-reviewer, next build.
 
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.

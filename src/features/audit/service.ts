@@ -32,7 +32,12 @@ export type AuditAction =
    * File ekspor widget (CSV/XLSX) diunduh (T-017): ditulis setiap kali tautan unduh diberikan, meta
    * { widgetId, exportId, format, rows, role }.
    */
-  | "dashboard.widget.export";
+  | "dashboard.widget.export"
+  /**
+   * File PDF dashboard diunduh (T-018): ditulis setiap kali tautan unduh diberikan, meta
+   * { exportId, format: "pdf", role } (tanpa nilai filter).
+   */
+  | "dashboard.export";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

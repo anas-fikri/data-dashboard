@@ -19,6 +19,13 @@ export interface CspOptions {
   storageUrl?: string;
   /** React dev butuh eval; jangan pernah aktif di produksi. */
   dev?: boolean;
+  /**
+   * upgrade-insecure-requests (default: bukan dev). Halaman render PDF (T-018) mematikannya: renderer
+   * membuka app lewat http internal, dan direktif ini memaksa script same-origin ke https lalu gagal.
+   */
+  upgradeInsecure?: boolean;
+  /** form-action (default 'self'); halaman render: 'none'. */
+  formAction?: "'self'" | "'none'";
 }
 
 /**
@@ -26,7 +33,13 @@ export interface CspOptions {
  * script turunannya) yang boleh jalan. style-src 'unsafe-inline' disengaja: ECharts dan
  * react-grid-layout menulis style inline (risiko rendah dibanding script).
  */
-export function buildCsp({ nonce, storageUrl, dev = false }: CspOptions): string {
+export function buildCsp({
+  nonce,
+  storageUrl,
+  dev = false,
+  upgradeInsecure = !dev,
+  formAction = "'self'",
+}: CspOptions): string {
   const storage = originOf(storageUrl);
   const extra = storage ? ` ${storage}` : "";
   const directives = [
@@ -39,14 +52,26 @@ export function buildCsp({ nonce, storageUrl, dev = false }: CspOptions): string
     "font-src 'self' data:",
     "object-src 'none'",
     "base-uri 'self'",
-    "form-action 'self'",
+    `form-action ${formAction}`,
     "frame-ancestors 'none'",
     "frame-src 'none'",
     "worker-src 'self' blob:",
     "manifest-src 'self'",
   ];
-  if (!dev) directives.push("upgrade-insecure-requests");
+  if (upgradeInsecure) directives.push("upgrade-insecure-requests");
   return directives.join("; ");
+}
+
+/** Halaman render PDF (T-018): /render (halaman) dan /render/<token> (tukar token). */
+export const isRenderPath = (pathname: string) => /^\/render(?:\/|$)/.test(pathname);
+
+/**
+ * CSP halaman render PDF (T-018, D14): tanpa upgrade-insecure-requests (renderer memakai http internal;
+ * terbukti mematahkan script di origin http non-loopback), tanpa origin storage (halaman tidak memuat
+ * apa pun dari luar app), form-action 'none'. Dev tetap butuh eval + websocket HMR.
+ */
+export function buildRenderCsp(nonce: string, dev = false): string {
+  return buildCsp({ nonce, dev, upgradeInsecure: false, formAction: "'none'" });
 }
 
 /** Nonce acak 128-bit, base64 (Web Crypto, tersedia di edge dan Node). */
@@ -83,9 +108,17 @@ const EXPORT_DOWNLOAD = /^\/api\/exports\/[^/]+\/download\/?$/;
  * Header per rute yang MENIMPA header statis next.config, dipasang proxy saat runtime. Next hanya
  * menambahkan header Route Handler yang belum ada di respons (send-response.js), sehingga
  * Referrer-Policy dari route kalah dari staticSecurityHeaders(); header proxy diterapkan sesudah
- * headers() next.config dan menang. Unduh ekspor: tanpa Referer ke storage (kontrak T-017 E10).
+ * headers() next.config dan menang. Unduh ekspor: tanpa Referer ke storage (kontrak T-017 E10). Halaman
+ * render PDF (T-018 D14): tanpa Referer, tidak diindeks, tidak di-cache.
  */
 export function routeSecurityHeaders(pathname: string): { key: string; value: string }[] {
+  if (isRenderPath(pathname)) {
+    return [
+      { key: "Referrer-Policy", value: "no-referrer" },
+      { key: "X-Robots-Tag", value: "noindex" },
+      { key: "Cache-Control", value: "no-store" },
+    ];
+  }
   return EXPORT_DOWNLOAD.test(pathname) ? [{ key: "Referrer-Policy", value: "no-referrer" }] : [];
 }
 

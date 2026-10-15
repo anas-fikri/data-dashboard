@@ -1,5 +1,6 @@
 /*
- * Nama file ekspor (T-017, E14): "<judul widget atau widget>-<YYYYMMDD-HHmm Asia/Jakarta>.<ext>". Judul
+ * Nama file ekspor (T-017, E14): "<judul widget atau widget>-<YYYYMMDD-HHmm Asia/Jakarta>.<ext>"; PDF
+ * dashboard (T-018): "<nama dashboard atau dashboard>-<YYYYMMDD-HHmm>.pdf". Judul
  * berasal dari user, jadi disanitasi sebelum masuk header Content-Disposition (tanpa " \ ; / CR LF dan
  * karakter kendali → tidak bisa menyisipkan parameter/header lain) dan nama sheet Excel. Murni.
  */
@@ -44,14 +45,22 @@ function sanitise(text: string, max: number): string {
     .replace(/[\s.]+$/, "");
 }
 
-/** Judul aman untuk nama file (\u2264 80 titik kode); kosong \u2192 "widget". */
-export function cleanTitle(title: string): string {
-  return sanitise(title, TITLE_MAX) || "widget";
+/** Judul aman untuk nama file (\u2264 80 titik kode); kosong \u2192 `fallback` ("widget"). */
+export function cleanTitle(title: string, fallback = "widget"): string {
+  return sanitise(title, TITLE_MAX) || fallback;
 }
 
-/** Judul dipotong DULU, baru diberi cap waktu + ekstensi: cap waktu selalu utuh (review T-017 R1-D-3). */
-export function exportFileName(title: string, at: Date, ext: "csv" | "xlsx"): string {
-  return `${cleanTitle(title)}-${jakartaStamp(at)}.${ext}`;
+/**
+ * Judul dipotong DULU, baru diberi cap waktu + ekstensi: cap waktu selalu utuh (review T-017 R1-D-3).
+ * PDF dashboard (T-018): judul = nama dashboard, cadangan "dashboard".
+ */
+export function exportFileName(
+  title: string,
+  at: Date,
+  ext: "csv" | "xlsx" | "pdf",
+  fallback = ext === "pdf" ? "dashboard" : "widget",
+): string {
+  return `${cleanTitle(title, fallback)}-${jakartaStamp(at)}.${ext}`;
 }
 
 /** Cadangan ASCII untuk filename="…": huruf beraksen → huruf dasar, sisanya non-ASCII/% → "_". */

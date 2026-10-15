@@ -28,6 +28,9 @@ const nextConfig: NextConfig = {
   },
   // Badge overlay dev Next menutupi sudut kiri bawah (tombol ciut sidebar) dan mencegat klik e2e.
   devIndicators: false,
+  // Token render sekali pakai ada di path /render/<token>: logger permintaan dev Next tidak boleh
+  // mencetaknya (T-018 D15; produksi tidak mencatat permintaan, proxy akses log diredaksi di T-023).
+  logging: { incomingRequests: { ignore: [/^\/render\//] } },
   // Server Action: Next menolak Origin yang tidak cocok dengan Host/X-Forwarded-Host. Tidak memakai
   // experimental.serverActions.allowedOrigins karena nilainya dibekukan saat build dari .env mana
   // pun (review T-027 #1); reverse proxy (T-023) wajib meneruskan Host atau X-Forwarded-Host asli.

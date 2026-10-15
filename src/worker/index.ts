@@ -5,6 +5,8 @@
  *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock),
  *     dan job "map-version": pemetaan kolom versi AWAITING_MAPPING lalu aktivasi (T-014).
  *   - "export": ekspor widget CSV/XLSX (T-017), job ringan terpisah dari ingest; status di tabel Export.
+ *   - "pdf": PDF dashboard (T-018): token render → renderer (POST /render) → cek PDF → unggah; terpisah
+ *     dari "export" agar PDF tidak menunggu XLSX besar. Concurrency 1 per proses.
  *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, pembersihan storage,
  *     file asli > 7 hari, pembersihan ekspor tiap 5 menit) dan hapus typed lama / objek ekspor
  *     kedaluwarsa (delete-export, tertunda 60 menit).
@@ -17,12 +19,16 @@ import { DelayedError, Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { expireExport, runExportCleanup } from "@/features/exports/cleanup";
 import { removeStaleExportDirs, runExportJob } from "@/features/exports/job";
+import { RendererBusyError, runPdfJob } from "@/features/exports/pdf-job";
+import { mintRenderToken, redisRenderStore } from "@/features/exports/render-token";
+import { rendererClient } from "@/features/exports/renderer-client";
 import {
   prismaExportCleanupRepo,
   prismaExportJobRepo,
+  prismaPdfJobRepo,
   s3ExportStorage,
 } from "@/features/exports/repo";
-import { FAILED_MESSAGE } from "@/features/exports/service";
+import { FAILED_MESSAGE, RENDERER_UNAVAILABLE_MESSAGE } from "@/features/exports/service";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
 import { applyMapping } from "@/features/ingest/mapping";
 import { recastSheet } from "@/features/ingest/recast";
@@ -45,11 +51,13 @@ import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisLockStore } from "@/lib/lock";
+import { redisReady } from "@/lib/redis";
 import {
   EXPORT_QUEUE,
   INGEST_JOB_OPTIONS,
   INGEST_QUEUE,
   MAP_VERSION_JOB,
+  PDF_QUEUE,
   RECAST_QUEUE,
   type ExportJobData,
   type IngestJobData,
@@ -72,6 +80,8 @@ const EXPORT_CLEANUP = "export-cleanup";
 /** Hapus objek satu ekspor saat kedaluwarsa (tertunda EXPORT_TTL_MS). */
 const DELETE_EXPORT = "delete-export";
 const EXPORT_LOCK_MS = 5 * 60 * 1000;
+/** Lock job PDF (diperpanjang otomatis selama proses hidup); > RENDER_TIMEOUT_MS bawaan 60 detik. */
+const PDF_LOCK_MS = 2 * 60 * 1000;
 const SCHEDULED_OPTS = { removeOnComplete: 50, removeOnFail: 100 };
 /** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
 const RECAST_BUSY_DELAY_MS = 30 * 1000;
@@ -309,6 +319,19 @@ async function main() {
   });
 
   // --- export (T-017) ---
+  const scheduleExportDelete = async (exportId: string, key: string, delay: number) => {
+    await maintenance.add(
+      DELETE_EXPORT,
+      { exportId, key },
+      {
+        delay,
+        removeOnComplete: 100,
+        removeOnFail: 1000,
+        attempts: 5,
+        backoff: { type: "exponential", delay: 60_000 },
+      },
+    );
+  };
   const exportWorker = new Worker<ExportJobData>(
     EXPORT_QUEUE,
     async (job: Job<ExportJobData>) => {
@@ -317,19 +340,7 @@ async function main() {
         repo: prismaExportJobRepo,
         query: { repo: prismaQueryRepo },
         storage: s3ExportStorage,
-        scheduleDelete: async (exportId, key, delay) => {
-          await maintenance.add(
-            DELETE_EXPORT,
-            { exportId, key },
-            {
-              delay,
-              removeOnComplete: 100,
-              removeOnFail: 1000,
-              attempts: 5,
-              backoff: { type: "exponential", delay: 60_000 },
-            },
-          );
-        },
+        scheduleDelete: scheduleExportDelete,
         tmpRoot,
         maxRows: e.EXPORT_MAX_ROWS,
         ttlMs: e.EXPORT_TTL_MS,
@@ -362,13 +373,59 @@ async function main() {
     })();
   });
 
+  // --- pdf (T-018) ---
+  const pdfWorker = new Worker<ExportJobData>(
+    PDF_QUEUE,
+    async (job: Job<ExportJobData>) => {
+      const e = env();
+      const r = await runPdfJob(job.data.exportId, {
+        repo: prismaPdfJobRepo,
+        renderer: rendererClient({ url: e.RENDERER_URL, secret: e.RENDERER_SECRET }),
+        mintToken: async (claims) => mintRenderToken(redisRenderStore(await redisReady()), claims),
+        storage: s3ExportStorage,
+        scheduleDelete: scheduleExportDelete,
+        ttlMs: e.EXPORT_TTL_MS,
+        timeoutMs: e.RENDER_TIMEOUT_MS,
+        maxBytes: e.PDF_MAX_BYTES,
+      });
+      logger.info({ jobId: job.id, exportId: job.data.exportId, ...r }, "ekspor PDF selesai");
+      return r;
+    },
+    { connection: connection(), concurrency: 1, lockDuration: PDF_LOCK_MS },
+  );
+  pdfWorker.on("failed", (job, err) => {
+    if (!job) return;
+    logger.error(
+      { jobId: job.id, exportId: job.data.exportId, attempt: job.attemptsMade, err: err.message },
+      "ekspor PDF gagal",
+    );
+    // Gagal final: renderer penuh di semua percobaan → RENDERER_UNAVAILABLE; selain itu pesan umum.
+    void (async () => {
+      const state = await job.getState().catch(() => "unknown");
+      if (err.name !== "UnrecoverableError" && state !== "failed") return;
+      const busy = err.name === RendererBusyError.name;
+      await prismaPdfJobRepo
+        .fail(
+          job.data.exportId,
+          busy ? "RENDERER_UNAVAILABLE" : "EXPORT_FAILED",
+          busy ? RENDERER_UNAVAILABLE_MESSAGE : FAILED_MESSAGE,
+        )
+        .catch((e: unknown) =>
+          logger.error(
+            { exportId: job.data.exportId, err: e instanceof Error ? e.message : String(e) },
+            "status ekspor PDF gagal tidak tercatat; sapuan export-cleanup akan menutupnya",
+          ),
+        );
+    })();
+  });
+
   const swept = await sweepUploaded(ingestQueue);
   // Sisa pembersihan saat worker mati (mis. deploy) tidak menunggu 15 menit jadwal berikutnya.
   await maintenance.add(STORAGE_CLEANUP, {}, SCHEDULED_OPTS);
   const recovered = await recoverStuckIngests(ingestQueue);
   logger.info(
     {
-      queues: [INGEST_QUEUE, RECAST_QUEUE, EXPORT_QUEUE, MAINTENANCE],
+      queues: [INGEST_QUEUE, RECAST_QUEUE, EXPORT_QUEUE, PDF_QUEUE, MAINTENANCE],
       tmpRoot,
       swept,
       recovered,
@@ -382,6 +439,7 @@ async function main() {
     await ingestWorker.close();
     await recastWorker.close();
     await exportWorker.close();
+    await pdfWorker.close();
     await maintenanceWorker.close();
     lockRedis.disconnect();
     await ingestQueue.close();

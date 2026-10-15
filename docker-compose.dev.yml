@@ -1,7 +1,8 @@
 # Infrastruktur lokal untuk pengembangan. Aplikasi Next.js dan worker berjalan di host.
 # Kredensial dibaca dari .env (buat dengan: npm run secrets:dev).
 # Setelah `up`, jalankan `node scripts/storage-init.mjs` (otomatis lewat npm run compose:up).
-# Paritas jaringan dengan produksi: "data" (PostgreSQL, Redis, RustFS) dan "frontend" (Mailpit).
+# Paritas jaringan dengan produksi: "data" (PostgreSQL, Redis, RustFS) dan "frontend" (Mailpit);
+# "render" (internal) hanya untuk renderer PDF di profil "renderer" (T-018).
 name: data-dashboard-dev
 
 services:
@@ -80,9 +81,71 @@ services:
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
     networks: [frontend]
 
+  # Renderer PDF (T-018 D13). Profil "renderer": TIDAK ikut `compose:up`. Dev biasa menjalankan
+  # `npm run renderer` di host; service ini untuk bukti AC6 (non-root + seccomp Playwright) dan dasar
+  # T-023. Hanya di jaringan internal "render" (tanpa egress, tanpa akses PostgreSQL/Redis/RustFS).
+  # Cara pakai dan provenance: renderer/README.md.
+  renderer:
+    profiles: [renderer]
+    # v1.64.0-noble = versi playwright-core di package.json (browser chromium_headless_shell-1248).
+    image: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+    user: pwuser
+    init: true
+    working_dir: /app
+    command:
+      [
+        "node",
+        "--disable-warning=MODULE_TYPELESS_PACKAGE_JSON",
+        "--import",
+        "./renderer/loader.mjs",
+        "renderer/server.ts",
+      ]
+    environment:
+      NODE_ENV: development
+      RENDERER_SECRET: ${RENDERER_SECRET:-}
+      # Nama service app di jaringan render (T-023); bukan "app"/"dev" (HSTS preload Chromium).
+      APP_INTERNAL_URL: http://dashboard-web:3100
+      RENDERER_HOST: 0.0.0.0
+      RENDERER_PORT: "3200"
+      HOME: /tmp
+      XDG_CACHE_HOME: /tmp/.cache
+      XDG_CONFIG_HOME: /tmp/.config
+    volumes:
+      # Hanya kode renderer + dua dependensi runtime-nya (JS murni), read-only.
+      - ./renderer:/app/renderer:ro
+      - ./node_modules/playwright-core:/app/node_modules/playwright-core:ro
+      - ./node_modules/zod:/app/node_modules/zod:ro
+    security_opt:
+      - seccomp=./renderer/seccomp_profile.json
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    # Satu-satunya capability: aturan chroot di profil seccomp hanya aktif bila container memegang
+    # CAP_SYS_CHROOT; tanpanya sandbox Chromium gagal (Check failed: sys_chroot("/proc/self/fdinfo/")).
+    # Sebagai pwuser (non-root) capability efektif tetap 0; chroot hanya terpakai di user namespace sandbox.
+    cap_add: [SYS_CHROOT]
+    read_only: true
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=512m
+    mem_limit: 2g
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3200/healthz').then(r=>process.exit(r.ok?0:1),()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    networks: [render]
+
 networks:
   data: {}
   frontend: {}
+  # internal: tanpa rute keluar. Di produksi (T-023) berisi renderer + app + worker saja.
+  render:
+    internal: true
 
 volumes:
   pgdata: {}

@@ -17,7 +17,56 @@ const SENSITIVE_VARS = [
   "S3_ACCESS_KEY",
   "S3_SECRET_KEY",
   "AUTH_SECRET",
+  "RENDERER_SECRET",
 ] as const;
+
+/**
+ * TLD yang seluruhnya ada di daftar HSTS preload Chromium (mis. .app, .dev): http://app:3100 atau
+ * http://x.dev selalu dipaksa https oleh Chromium dan gagal ERR_SSL_PROTOCOL_ERROR (probe T-018). Nama
+ * host internal renderer → app tidak boleh berakhiran label ini bila memakai http.
+ */
+export const HSTS_PRELOADED_TLDS = [
+  "android",
+  "app",
+  "bank",
+  "boo",
+  "channel",
+  "chrome",
+  "dad",
+  "day",
+  "dev",
+  "eat",
+  "esq",
+  "fly",
+  "foo",
+  "gle",
+  "google",
+  "how",
+  "ing",
+  "insurance",
+  "meme",
+  "mov",
+  "new",
+  "nexus",
+  "page",
+  "phd",
+  "prof",
+  "rsvp",
+  "soy",
+  "youtube",
+  "zip",
+] as const;
+
+/** URL http dengan host berakhiran TLD HSTS preload (selalu gagal dibuka Chromium lewat http). */
+export function isHstsPreloadedHttp(url: string): boolean {
+  try {
+    const u = new URL(url);
+    const last = u.hostname.toLowerCase().replace(/\.$/, "").split(".").pop() ?? "";
+    return u.protocol === "http:" && (HSTS_PRELOADED_TLDS as readonly string[]).includes(last);
+  } catch {
+    return false;
+  }
+}
 
 const booleanFromString = z
   .enum(["true", "false"])
@@ -151,6 +200,34 @@ export const envSchema = z.object({
     .min(10_000)
     .max(60 * 60 * 1000)
     .default(10 * 60 * 1000),
+
+  // --- PDF dashboard lewat renderer (T-018) ---
+  /**
+   * URL internal app yang dibuka renderer (http://<host internal>:<port>). Di app hanya menentukan
+   * atribut Secure cookie render (Secure hanya bila https). Host http tidak boleh ber-TLD HSTS preload
+   * (mis. "app", "dev"): Chromium memaksanya https lalu gagal.
+   */
+  APP_INTERNAL_URL: z
+    .string()
+    .url()
+    .refine((v) => !isHstsPreloadedHttp(v), {
+      message:
+        "APP_INTERNAL_URL: host http ber-TLD HSTS preload (mis. app, dev) selalu dipaksa https oleh Chromium; pakai nama lain (mis. web, dashboard)",
+    })
+    .optional(),
+  /** Renderer PDF (worker + cek kesehatan app). Kosong → ekspor PDF dijawab RENDERER_UNAVAILABLE. */
+  RENDERER_URL: z.string().url().optional(),
+  /** Header x-renderer-secret ke renderer; ≥ 32 karakter, wajib bersama RENDERER_URL. */
+  RENDERER_SECRET: z.string().min(32).optional(),
+  /** Batas waktu satu permintaan render (POST /render sampai PDF selesai dibaca). */
+  RENDER_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(300_000).default(60_000),
+  /** Ukuran PDF maksimum yang diterima dari renderer; lebih → EXPORT_TOO_LARGE. */
+  PDF_MAX_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1024 * 1024)
+    .max(200 * 1024 * 1024)
+    .default(25 * 1024 * 1024),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -168,6 +245,12 @@ export function parseEnv(source: NodeJS.ProcessEnv): Env {
   if (!parsed.success) {
     const missing = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Konfigurasi env tidak valid: ${missing}`);
+  }
+  // Renderer opsional, tapi URL tanpa secret (atau sebaliknya) pasti salah konfigurasi.
+  if (!parsed.data.RENDERER_URL !== !parsed.data.RENDERER_SECRET) {
+    throw new Error(
+      "Konfigurasi env tidak valid: RENDERER_URL dan RENDERER_SECRET wajib diisi bersama (atau keduanya kosong)",
+    );
   }
   if (parsed.data.NODE_ENV === "production") {
     const placeholders = findPlaceholderVars(source);

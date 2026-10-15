@@ -1,12 +1,16 @@
 /*
- * Kontrak ekspor widget (T-017) yang aman dipakai klien: bentuk permintaan, status, dan kode galat.
- * Rute: POST /api/exports (buat), GET /api/exports/[id] (status, pemilik saja), GET
- * /api/exports/[id]/download (302 ke presigned 5 menit; 404 bukan pemilik/tanpa akses; 410 kedaluwarsa).
+ * Kontrak ekspor widget (T-017) dan dashboard PDF (T-018) yang aman dipakai klien: bentuk permintaan,
+ * status, dan kode galat. Rute: POST /api/exports (buat), GET /api/exports/[id] (status, pemilik saja),
+ * GET /api/exports/[id]/download (302 ke presigned 5 menit; 404 bukan pemilik/tanpa akses; 410
+ * kedaluwarsa).
  */
 import type { DashFilter } from "@/features/query/filters";
 
+/** Format ekspor widget (tabular). PDF hanya untuk dashboard utuh (PdfExportCreateBody). */
 export const EXPORT_FORMATS = ["csv", "xlsx"] as const;
 export type ExportFormatInput = (typeof EXPORT_FORMATS)[number];
+/** Ekstensi file ekspor apa pun (kunci objek, MIME, nama file). */
+export type ExportFileFormat = ExportFormatInput | "pdf";
 
 export type ExportState = "queued" | "running" | "done" | "failed" | "expired";
 
@@ -17,6 +21,17 @@ export interface ExportCreateBody {
   dashboardFilters?: DashFilter[];
   /** Urutan tabel (posisi kolom), sama dengan permintaan /api/query kartu tabel. */
   sort?: { column: number; dir: "asc" | "desc" };
+}
+
+/**
+ * Body POST /api/exports untuk PDF dashboard (T-018): `f` = encodeFilterParam(status filter yang
+ * berlaku di layar) — null/kosong = tanpa filter. Server memvalidasi + menyaring ulang `f` terhadap
+ * kolom filter dan cross-filter dashboard saat buat DAN saat render.
+ */
+export interface PdfExportCreateBody {
+  dashboardId: string;
+  format: "pdf";
+  f?: string | null;
 }
 
 /** Jawaban GET /api/exports/[id] (selain { ok: true }). */
@@ -52,6 +67,11 @@ export const EXPORT_CODES = {
   EXPORT_FAILED: "EXPORT_FAILED",
   FORBIDDEN: "FORBIDDEN",
   UNAVAILABLE: "UNAVAILABLE",
+  /**
+   * Renderer PDF tidak bisa dihubungi (T-018): 503 langsung saat buat (cek kesehatan ≤ 3 detik), atau
+   * kode FAILED bila renderer mati/penuh setelah ekspor masuk antrean.
+   */
+  RENDERER_UNAVAILABLE: "RENDERER_UNAVAILABLE",
 } as const;
 export type ExportCode = (typeof EXPORT_CODES)[keyof typeof EXPORT_CODES];
 

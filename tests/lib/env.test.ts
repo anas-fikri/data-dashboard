@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findPlaceholderVars, parseEnv } from "@/lib/env";
+import { findPlaceholderVars, isHstsPreloadedHttp, parseEnv } from "@/lib/env";
 
 const valid: NodeJS.ProcessEnv = {
   NODE_ENV: "test",
@@ -118,5 +118,80 @@ describe("findPlaceholderVars", () => {
     expect(findPlaceholderVars(withPlaceholders).sort()).toEqual(
       ["AUTH_SECRET", "DATABASE_URL", "S3_ACCESS_KEY"].sort(),
     );
+  });
+});
+
+/*
+ * T-018 D11: env renderer di app/worker — opsional, tapi URL dan secret wajib bersama; secret ≥ 32 dan
+ * ikut pemeriksaan placeholder; APP_INTERNAL_URL http tidak boleh ber-TLD HSTS preload (probe: Chromium
+ * memaksa https lalu gagal).
+ */
+describe("env renderer PDF (T-018)", () => {
+  const SECRET = "r".repeat(43); // nilai uji
+
+  it("opsional; default RENDER_TIMEOUT_MS 60 s dan PDF_MAX_BYTES 25 MB", () => {
+    const e = parseEnv(valid);
+    expect(e.RENDERER_URL).toBeUndefined();
+    expect(e.RENDERER_SECRET).toBeUndefined();
+    expect(e.RENDER_TIMEOUT_MS).toBe(60_000);
+    expect(e.PDF_MAX_BYTES).toBe(25 * 1024 * 1024);
+    const full = parseEnv({
+      ...valid,
+      RENDERER_URL: "http://127.0.0.1:3200",
+      RENDERER_SECRET: SECRET,
+      APP_INTERNAL_URL: "http://localhost:3100",
+      RENDER_TIMEOUT_MS: "90000",
+    });
+    expect(full.RENDERER_URL).toBe("http://127.0.0.1:3200");
+    expect(full.RENDER_TIMEOUT_MS).toBe(90_000);
+  });
+
+  it("URL tanpa secret (atau sebaliknya) dan secret pendek ditolak", () => {
+    expect(() => parseEnv({ ...valid, RENDERER_URL: "http://127.0.0.1:3200" })).toThrow(
+      /RENDERER_URL dan RENDERER_SECRET/,
+    );
+    expect(() => parseEnv({ ...valid, RENDERER_SECRET: SECRET })).toThrow(
+      /RENDERER_URL dan RENDERER_SECRET/,
+    );
+    expect(() =>
+      parseEnv({ ...valid, RENDERER_URL: "http://127.0.0.1:3200", RENDERER_SECRET: "pendek" }),
+    ).toThrow(/RENDERER_SECRET/);
+    expect(() => parseEnv({ ...valid, RENDER_TIMEOUT_MS: "100" })).toThrow(/RENDER_TIMEOUT_MS/);
+  });
+
+  it("APP_INTERNAL_URL http dengan host app/dev (TLD HSTS preload) ditolak; web/dashboard/localhost/https boleh", () => {
+    for (const bad of [
+      "http://app:3000",
+      "http://dev:3000",
+      "http://renderer.app",
+      "http://x.dev:80",
+    ]) {
+      expect(isHstsPreloadedHttp(bad), bad).toBe(true);
+      expect(() => parseEnv({ ...valid, APP_INTERNAL_URL: bad }), bad).toThrow(/APP_INTERNAL_URL/);
+    }
+    for (const ok of [
+      "http://web:3000",
+      "http://dashboard:3000",
+      "http://data-dashboard-app:3000",
+      "http://localhost:3100",
+      "https://app.dev",
+    ]) {
+      expect(isHstsPreloadedHttp(ok), ok).toBe(false);
+      expect(() => parseEnv({ ...valid, APP_INTERNAL_URL: ok }), ok).not.toThrow();
+    }
+  });
+
+  it("RENDERER_SECRET placeholder (.env.example) terdeteksi dan menolak start produksi", () => {
+    const placeholder = "change-me-renderer-secret-min-32-chars";
+    const env = { ...valid, RENDERER_URL: "http://renderer:3200", RENDERER_SECRET: placeholder };
+    expect(findPlaceholderVars(env)).toEqual(["RENDERER_SECRET"]);
+    expect(() =>
+      parseEnv({
+        ...env,
+        NODE_ENV: "production",
+        APP_URL: "https://dashboard.pcpexpress.com",
+        TRUST_PROXY: "true",
+      }),
+    ).toThrow(/RENDERER_SECRET/);
   });
 });

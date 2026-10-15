@@ -27,8 +27,39 @@ import type { WidgetData } from "./widget-query";
  */
 export type TableSort = { column: number; dir: "asc" | "desc" } | null;
 
-const NUMERIC = new Set(["integer", "decimal", "duration", "count"]);
-const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
+export const NUMERIC = new Set(["integer", "decimal", "duration", "count"]);
+export const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
+
+/**
+ * Teks sel (layar dan cetak PDF T-018 memakai yang sama): format pilihan hanya untuk kolom terpilih,
+ * selebihnya otomatis; kode/nomor/tahun (dari nama kolom, lihat id-like.ts) tanpa pemisah ribuan pada
+ * format otomatis — nama ambigu ("Resi Retur") diputuskan dari nilai kolom itu di halaman ini. Murni.
+ */
+export function tableCellText(
+  data: Pick<WidgetData, "columns" | "rows">,
+  positions: number[],
+  format: NumberFormat,
+  formatColumns?: number[],
+): (value: unknown, column: number) => string {
+  const formatOf = (pos: number) =>
+    format.style === "auto" || (formatColumns && !formatColumns.includes(pos))
+      ? AUTO_FORMAT
+      : format;
+  const plain = data.columns.map(
+    (c, i) =>
+      c.type === "integer" &&
+      resolveIdLike(
+        idLikeKind(c.label),
+        data.rows.map((row) => row[i]),
+      ),
+  );
+  return (v, i) => {
+    const f = formatOf(positions[i]!);
+    return plain[i] && typeof v === "number" && f.style === "auto"
+      ? formatLabelNumber(v)
+      : formatCell(v, data.columns[i]!.type, f);
+  };
+}
 
 export function TableView({
   data,
@@ -62,10 +93,7 @@ export function TableView({
   const pages = Math.max(1, Math.ceil(total / size));
   const from = data.rows.length ? page * size + 1 : 0;
   const to = page * size + data.rows.length;
-  const formatOf = (pos: number) =>
-    format.style === "auto" || (formatColumns && !formatColumns.includes(pos))
-      ? AUTO_FORMAT
-      : format;
+  const cellText = tableCellText(data, positions, format, formatColumns);
 
   const cycle = (pos: number): TableSort =>
     sort?.column !== pos
@@ -81,16 +109,6 @@ export function TableView({
   // Layar sentuh: tetap 44 px di semua lebar (pola tombol kepala kartu).
   const pagerButton =
     "size-(--control-h-lg) md:not-any-pointer-coarse:size-(--control-h-sm) aria-disabled:opacity-50";
-  // Kode/nomor/tahun (dari nama kolom, lihat id-like.ts) tanpa pemisah ribuan pada format otomatis.
-  // Nama ambigu ("Resi Retur") diputuskan dari nilai kolom itu di halaman ini.
-  const plain = data.columns.map(
-    (c, i) =>
-      c.type === "integer" &&
-      resolveIdLike(
-        idLikeKind(c.label),
-        data.rows.map((row) => row[i]),
-      ),
-  );
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -162,11 +180,7 @@ export function TableView({
                 <tr key={page * size + r} className="border-b last:border-b-0">
                   {row.map((v, i) => {
                     const type = data.columns[i]!.type;
-                    const f = formatOf(positions[i]!);
-                    const text =
-                      plain[i] && typeof v === "number" && f.style === "auto"
-                        ? formatLabelNumber(v)
-                        : formatCell(v, type, f);
+                    const text = cellText(v, i);
                     return (
                       <td
                         key={i}

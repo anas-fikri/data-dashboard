@@ -3,9 +3,9 @@
 import { IconCircleCheck, IconDownload, IconLoader2 } from "@tabler/icons-react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
-import type { ExportFormatInput } from "@/features/exports/types";
+import type { ExportFileFormat } from "@/features/exports/types";
 import { cn } from "@/lib/utils";
-import { doneDetail, exportBusy, type ExportJob } from "./export-model";
+import { busyLabel, doneDetail, exportBusy, type ExportJob } from "./export-model";
 
 /*
  * Bagian bawah menu ekspor (T-017): baris status (role=status, selalu terpasang agar perubahan
@@ -15,6 +15,9 @@ import { doneDetail, exportBusy, type ExportJob } from "./export-model";
  * (aria-disabled — fokus tetap di tombol); status tidak terbaca → catatan coba lagi, tautan tetap.
  * Elemen yang hilang saat status berubah tidak membuang fokus: menu memindahkannya (export-menu.tsx).
  * NEWS_ATTR menandai isi baru yang digulir ke pandangan menu seperlunya.
+ * PDF dashboard (T-018): teks per format, tanpa jumlah baris, dan `showCode` menampilkan kode galat
+ * sebagai teks ("Kode: RENDERER_UNAVAILABLE") — warna teks alert biasa, bukan muted: abu-abu di latar
+ * merah muda alert < 4,5:1.
  */
 export const AGAIN_ATTR = "data-export-again";
 export const NEWS_ATTR = "data-export-news";
@@ -26,26 +29,29 @@ interface Props {
   job: ExportJob;
   pollError: boolean;
   onRetryPoll: () => void;
-  onAgain: (format: ExportFormatInput) => void;
+  onAgain: (format: ExportFileFormat) => void;
   /** "Unduh lagi": membaca status / status tidak terbaca. */
   again?: "idle" | "checking" | "failed";
   onDownloadAgain?: () => void;
+  /** Kode galat juga sebagai teks terlihat (PDF dashboard); selalu ada di data-code. */
+  showCode?: boolean;
 }
 
 export function ExportStatus(props: Props) {
-  const { job, pollError, onRetryPoll, onAgain, again = "idle", onDownloadAgain } = props;
+  const { job, pollError, onRetryPoll, onAgain, again = "idle", onDownloadAgain, showCode } = props;
   const busy = exportBusy(job);
   const checking = again === "checking";
+  const pdf = job.phase !== "idle" && job.format === "pdf";
   return (
     <>
       <div role="status" data-testid="export-status" className="text-sm">
         {busy ? (
           <div className="mt-3" {...news}>
-            <p className="font-medium">Menyiapkan ekspor…</p>
+            <p className="font-medium">{busyLabel(job.format)}</p>
             <p className="text-xs text-muted-foreground">
               {pollError
                 ? "Status belum terbaca. Periksa koneksi; kami terus mencoba."
-                : "Menu boleh ditutup; unduhan dimulai otomatis."}
+                : `${pdf ? "Panel" : "Menu"} boleh ditutup; unduhan dimulai otomatis.`}
             </p>
           </div>
         ) : job.phase === "done" ? (
@@ -54,7 +60,9 @@ export function ExportStatus(props: Props) {
               <IconCircleCheck size={16} stroke={1.5} aria-hidden className="text-success" />
               Siap diunduh
             </p>
-            <p className="text-xs text-muted-foreground">{doneDetail(job.rows, job.expiresAt)}</p>
+            <p className="text-xs text-muted-foreground">
+              {doneDetail(pdf ? null : job.rows, job.expiresAt)}
+            </p>
           </div>
         ) : null}
       </div>
@@ -104,6 +112,11 @@ export function ExportStatus(props: Props) {
           <FormAlert tone="error">
             <p>{job.error.message}</p>
             {job.error.hint ? <p className="mt-1">{job.error.hint}</p> : null}
+            {showCode ? (
+              <p className="mt-1 text-xs" data-testid="export-error-code">
+                Kode: {job.error.code}
+              </p>
+            ) : null}
             {job.error.again ? (
               <Button
                 variant="outline"

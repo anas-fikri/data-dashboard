@@ -1,21 +1,35 @@
 /*
- * Ekspor widget (T-017), logika murni: body permintaan, mesin status satu ekspor per kartu, dan teks
- * status/galat. Alur: tombol format → POST /api/exports (202 {exportId}) → status GET
- * /api/exports/<id> tiap 1 s → selesai: unduhan otomatis lewat /api/exports/<id>/download + tautan
- * "Unduh lagi" sampai kedaluwarsa (60 menit) → setelah itu galat "kedaluwarsa" + "Ekspor lagi".
- * Satu ekspor berjalan per kartu; server membatasi 2 per user (EXPORT_BUSY).
+ * Ekspor widget (T-017) dan PDF dashboard (T-018), logika murni: body permintaan, mesin status satu
+ * ekspor per sasaran (kartu widget, atau dashboard untuk PDF), dan teks status/galat. Alur: tombol
+ * format → POST /api/exports (202 {exportId}) → status GET /api/exports/<id> tiap 1 s → selesai:
+ * unduhan otomatis lewat /api/exports/<id>/download + tautan "Unduh lagi" sampai kedaluwarsa (60 menit)
+ * → setelah itu galat "kedaluwarsa" + "Ekspor lagi". Satu ekspor berjalan per sasaran; server membatasi
+ * 2 per user (EXPORT_BUSY).
  */
 import {
   EXPORT_CODES as C,
   type ExportCreateBody,
+  type ExportFileFormat,
   type ExportFormatInput,
   type ExportStatusView,
+  type PdfExportCreateBody,
 } from "@/features/exports/types";
 import type { WidgetRequest } from "./widget-query";
 
-export const FORMAT_LABEL: Record<ExportFormatInput, string> = { csv: "CSV", xlsx: "Excel (XLSX)" };
+export const FORMAT_LABEL: Record<ExportFileFormat, string> = {
+  csv: "CSV",
+  xlsx: "Excel (XLSX)",
+  pdf: "PDF",
+};
 export const exportStatusUrl = (id: string) => `/api/exports/${encodeURIComponent(id)}`;
 export const exportDownloadUrl = (id: string) => `${exportStatusUrl(id)}/download`;
+/**
+ * Sasaran ekspor di export-store: id widget (T-017, kunci lama tetap) atau PDF satu dashboard. Id
+ * widget berbentuk cuid (tanpa ":"), jadi tidak pernah bertabrakan dengan awalan "dashboard:".
+ */
+export const dashboardExportTarget = (dashboardId: string) => `dashboard:${dashboardId}`;
+/** Body POST yang dimulai use-export-job: ekspor widget atau PDF dashboard. */
+export type ExportStartBody = ExportCreateBody | PdfExportCreateBody;
 
 /**
  * Body ekspor dari body query widget yang sedang tampil (body-state.ts widgetRequest): filter dashboard
@@ -55,6 +69,16 @@ const TEXT: Record<string, string> = {
   [EXPORT_GONE]: "Ekspor ini tidak ditemukan lagi.",
   [OFFLINE]: "Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi.",
   [SESSION]: "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi.",
+  [C.RENDERER_UNAVAILABLE]:
+    "Layanan pembuat PDF sedang tidak tersedia. Coba lagi beberapa saat lagi.",
+};
+/** PDF dashboard (T-018): sasarannya dashboard utuh, batasnya waktu render dan ukuran file. */
+const PDF_TEXT: Record<string, string> = {
+  [C.NOT_FOUND]: "Dashboard ini tidak ditemukan atau akses Anda sudah dicabut. Muat ulang halaman.",
+  [C.EXPORT_TIMEOUT]: "PDF tidak selesai dibuat dalam batas waktu. Coba lagi beberapa saat lagi.",
+  [C.EXPORT_TOO_LARGE]:
+    "PDF melebihi batas ukuran file. Persempit filter dashboard lalu ekspor lagi.",
+  [C.EXPORT_FAILED]: "PDF gagal dibuat. Coba lagi beberapa saat lagi.",
 };
 const FALLBACK = "Ekspor belum bisa dibuat. Coba lagi beberapa saat lagi.";
 /** Kode yang teksnya milik klien: langkah berikutnya ada di tombol/teks sendiri, bukan pesan server. */
@@ -63,12 +87,18 @@ export const TOO_LARGE_HINT =
   "Misalnya pilih rentang tanggal yang lebih pendek atau lebih sedikit nilai di filter dashboard.";
 
 /** Kode → pesan. Pesan server (berbentuk peran, mis. jumlah baris atau menit tunggu) didahulukan. */
-export function exportError(code: string, serverMessage?: string): ExportError {
+export function exportError(
+  code: string,
+  serverMessage?: string,
+  format?: ExportFileFormat,
+): ExportError {
   const own = OWN_TEXT.has(code) ? undefined : serverMessage?.trim();
+  const pdf = format === "pdf";
   return {
     code,
-    message: own || TEXT[code] || FALLBACK,
-    ...(code === C.EXPORT_TOO_LARGE ? { hint: TOO_LARGE_HINT } : {}),
+    message: own || (pdf ? PDF_TEXT[code] : undefined) || TEXT[code] || FALLBACK,
+    // Saran mempersempit baris hanya untuk file tabular (batas PDF = ukuran file, bukan baris).
+    ...(code === C.EXPORT_TOO_LARGE && !pdf ? { hint: TOO_LARGE_HINT } : {}),
     again: code === C.EXPORT_EXPIRED || code === EXPORT_GONE,
   };
 }
@@ -83,19 +113,19 @@ export function rejectCode(status: number, code?: string): string {
 
 export type ExportJob =
   | { phase: "idle" }
-  | { phase: "starting"; format: ExportFormatInput }
-  | { phase: "running"; format: ExportFormatInput; id: string }
+  | { phase: "starting"; format: ExportFileFormat }
+  | { phase: "running"; format: ExportFileFormat; id: string }
   | {
       phase: "done";
-      format: ExportFormatInput;
+      format: ExportFileFormat;
       id: string;
       rows: number | null;
       expiresAt: string | null;
     }
-  | { phase: "error"; format: ExportFormatInput; error: ExportError };
+  | { phase: "error"; format: ExportFileFormat; error: ExportError };
 
 export type ExportEvent =
-  | { type: "start"; format: ExportFormatInput }
+  | { type: "start"; format: ExportFileFormat }
   | { type: "created"; id: string }
   | { type: "rejected"; status: number; code?: string; message?: string }
   | { type: "status"; id: string; view: ExportStatusView }
@@ -107,12 +137,15 @@ export type ExportEvent =
   | { type: "recheck"; id: string; code: string; message?: string };
 
 export const EXPORT_IDLE: ExportJob = { phase: "idle" };
-export const exportBusy = (job: ExportJob) => job.phase === "starting" || job.phase === "running";
+export const exportBusy = (
+  job: ExportJob,
+): job is Extract<ExportJob, { phase: "starting" | "running" }> =>
+  job.phase === "starting" || job.phase === "running";
 
-const fail = (format: ExportFormatInput, code: string, message?: string): ExportJob => ({
+const fail = (format: ExportFileFormat, code: string, message?: string): ExportJob => ({
   phase: "error",
   format,
-  error: exportError(code, message),
+  error: exportError(code, message, format),
 });
 
 /** Peristiwa milik ekspor lain (id lama) atau di luar urutan diabaikan. Murni. */
@@ -218,8 +251,13 @@ export function doneDetail(rows: number | null, expiresAt: string | null): strin
     .join(" · ");
 }
 
+/** Baris status selama ekspor berjalan (teks yang juga diumumkan wilayah status). */
+export const busyLabel = (format: ExportFileFormat) =>
+  format === "pdf" ? "Menyiapkan PDF…" : "Menyiapkan ekspor…";
+
 /** Pengumuman pembaca layar saat menu ekspor tertutup (wilayah status di dalam menu ikut tertutup). */
 export function exportAnnouncement(job: ExportJob, title: string): string {
+  if (job.phase !== "idle" && job.format === "pdf") return pdfAnnouncement(job);
   switch (job.phase) {
     case "starting":
     case "running":
@@ -231,4 +269,11 @@ export function exportAnnouncement(job: ExportJob, title: string): string {
     default:
       return "";
   }
+}
+
+/** PDF dashboard (T-018): satu sasaran per halaman, jadi tanpa judul widget. */
+function pdfAnnouncement(job: Exclude<ExportJob, { phase: "idle" }>): string {
+  if (job.phase === "done") return "PDF siap diunduh.";
+  if (job.phase === "error") return "Ekspor PDF gagal. Buka Ekspor PDF untuk detail.";
+  return busyLabel("pdf");
 }

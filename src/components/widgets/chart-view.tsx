@@ -22,6 +22,9 @@ import { useBoxSize } from "./use-box-size";
  * Klik (T-012, `onPick`): batang/garis — seluruh pita kategori di area plot (batang pendek tetap mudah
  * diklik), pai — irisannya; hasilnya indeks kategori sumber untuk filter silang. Jalan keyboard ada di
  * tabel data/daftar peringkat (tombol di kartu), bukan di grafik yang aria-hidden.
+ * Cetak PDF (T-018): `print` = label nilai tanpa animasi (chart-option); `onSettled` dipanggil setiap
+ * gambar selesai (event ECharts "finished") atau saat modul grafik gagal dimuat — sinyal kesiapan
+ * halaman render (galat juga dihitung selesai).
  */
 type ECharts = typeof import("echarts/core");
 type Instance = ReturnType<ECharts["init"]>;
@@ -84,6 +87,8 @@ export function ChartView(
     sort?: ChartSort;
     /** Klik kategori → indeks label sumbernya (filter silang). Tanpa ini grafik tidak bisa diklik. */
     onPick?: (index: number) => void;
+    /** Gambar selesai atau grafik gagal dimuat (halaman render PDF). */
+    onSettled?: () => void;
   },
 ) {
   const box = useRef<HTMLDivElement>(null);
@@ -94,7 +99,7 @@ export function ChartView(
   const [failed, setFailed] = useState(false);
   const size = useBoxSize(box);
   const themeVersion = useThemeVersion();
-  const { categories, limit, partial, sort, onPick, ...input } = props;
+  const { categories, limit, partial, sort, onPick, onSettled, ...input } = props;
   const shown =
     limit && limit < input.labels.length
       ? { ...input, labels: input.labels.slice(0, limit), values: input.values.slice(0, limit) }
@@ -102,9 +107,9 @@ export function ChartView(
   const inputKey = JSON.stringify(shown);
   // Data yang digambar + callback terbaru untuk handler klik yang dipasang sekali saat instans dibuat
   // (indeks irisan "Lainnya" = jumlah label yang digambar, bukan jumlah semua label).
-  const latest = useRef({ input: shown, onPick });
+  const latest = useRef({ input: shown, onPick, onSettled });
   useEffect(() => {
-    latest.current = { input: shown, onPick };
+    latest.current = { input: shown, onPick, onSettled };
   });
 
   useEffect(() => {
@@ -116,6 +121,8 @@ export function ChartView(
         if (disposed) return;
         const c: Instance = echarts.init(el, null, { renderer: "svg" });
         chart.current = c;
+        // setOption menggambar sinkron (zr.flush); tanpa animasi "finished" ikut sinkron.
+        c.on("finished", () => latest.current.onSettled?.());
         const pick = (at: { index: number } | { ms: number }) => {
           const { input: i, onPick: cb } = latest.current;
           const k = cb ? pickIndex(i, at) : null;
@@ -155,7 +162,9 @@ export function ChartView(
         setReady(true);
       },
       () => {
-        if (!disposed) setFailed(true);
+        if (disposed) return;
+        setFailed(true);
+        latest.current.onSettled?.();
       },
     );
     return () => {

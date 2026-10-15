@@ -1,7 +1,7 @@
 "use client";
 
 import { IconAlertTriangle } from "@tabler/icons-react";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import {
   dateLabelForms,
   formatCell,
@@ -49,6 +49,9 @@ import type { WidgetData } from "./widget-query";
  * "Lainnya" bertanda. Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: pai
  * memberi tahu persennya hanya dari yang tampil, batang/garis menyebut "N terbesar", daftar peringkat
  * "mungkin ada kategori lain" (bukan seolah lengkap). Durasi j:mm:dd.
+ * Cetak PDF (T-018): `print` = label nilai di grafik dan nilai di legenda pai (nilai jadi teks PDF);
+ * `onSettled` = isi kartu siap — dari grafik yang selesai digambar, atau langsung bila isinya bukan
+ * grafik (kosong, pai negatif, daftar peringkat).
  */
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
 const CHAR_PX = 6.6;
@@ -79,6 +82,8 @@ export function ChartWidget({
   showData,
   title,
   cross,
+  print = false,
+  onSettled,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -91,6 +96,10 @@ export function ChartWidget({
    * untuk seluruh dashboard (cross-hint.tsx); tombol kategori menunjuk ke sana (aria-describedby).
    */
   cross?: WidgetFilters;
+  /** Halaman render PDF: nilai sebagai teks, tanpa animasi. */
+  print?: boolean;
+  /** Isi siap (grafik tergambar/gagal, atau isi bukan grafik). */
+  onSettled?: () => void;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
@@ -182,6 +191,11 @@ export function ChartWidget({
   const visible = fit?.visible ?? labels.length;
   const width = room?.width ?? null;
   const chars = width ? Math.max(6, Math.floor((width - 72) / CHAR_PX)) : 24;
+  // Isi bukan grafik ECharts (tidak ada gambar yang ditunggu): langsung siap untuk halaman render.
+  const drawsChart = !chartEmpty(data) && !showData && !negative && !(fit?.ranked && room);
+  useEffect(() => {
+    if (!drawsChart) onSettled?.();
+  }, [drawsChart, onSettled]);
 
   let body: React.ReactNode;
   if (chartEmpty(data)) {
@@ -413,6 +427,8 @@ export function ChartWidget({
         sort={spec.sort}
         selected={selected >= 0 ? selected : undefined}
         onPick={pickAt}
+        print={print || undefined}
+        onSettled={onSettled}
       />
     );
     body =
@@ -442,12 +458,21 @@ export function ChartWidget({
                         r.others ? SWATCH[5] : SWATCH[i % 5],
                       )}
                     />
-                    <span className="min-w-0 flex-1 whitespace-nowrap" title={r.label}>
+                    <span
+                      className={cn("min-w-0 flex-1 whitespace-nowrap", print && "truncate")}
+                      title={r.label}
+                    >
                       {middleTruncate(
                         r.label,
                         width && width >= 448 ? Math.floor((width * 0.45 - 56) / CHAR_PX) : chars,
                       )}
                     </span>
+                    {/* Cetak: nilai irisan sebagai teks (layar: di tabel data/tooltip). */}
+                    {print ? (
+                      <span className="shrink-0 tabular-nums" data-testid="pie-legend-value">
+                        {formatMeasure(r.value, valueType, spec.format)}
+                      </span>
+                    ) : null}
                     <span className="shrink-0 tabular-nums text-muted-foreground">
                       {shares[i]}%
                     </span>

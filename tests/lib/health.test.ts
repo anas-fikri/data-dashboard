@@ -6,7 +6,7 @@ import {
   runHealthChecks,
   safeMessage,
 } from "@/lib/health";
-import { configCheck } from "@/lib/health/checks";
+import { configCheck, rendererCheck, rendererChecks } from "@/lib/health/checks";
 
 describe("runHealthChecks", () => {
   it("semua ok → status ok dengan detail per item", async () => {
@@ -126,5 +126,27 @@ describe("safeMessage", () => {
     const msg = safeMessage(new Error(`${"a".repeat(300)}\nstack line`));
     expect(msg.length).toBeLessThanOrEqual(160);
     expect(msg).not.toContain("stack");
+  });
+});
+
+/*
+ * T-018 (T-023 AC: /health memuat renderer): renderer diperiksa hanya di produksi dengan RENDERER_URL;
+ * mati → gagal tanpa URL di detail.
+ */
+describe("renderer PDF di /health", () => {
+  it("hanya produksi + RENDERER_URL terisi", () => {
+    const url = { RENDERER_URL: "http://renderer:3200", RENDERER_SECRET: "s".repeat(43) };
+    expect(rendererChecks({ NODE_ENV: "development", ...url })).toEqual([]);
+    expect(rendererChecks({ NODE_ENV: "production" })).toEqual([]);
+    const checks = rendererChecks({ NODE_ENV: "production", ...url });
+    expect(checks.map((c) => c.name)).toEqual(["Renderer PDF"]);
+  });
+
+  it("hidup → ok; mati → fail tanpa URL internal", async () => {
+    const up = await runHealthChecks([rendererCheck({ health: async () => true })]);
+    expect(up.items[0]).toMatchObject({ name: "Renderer PDF", status: "ok" });
+    const down = await runHealthChecks([rendererCheck({ health: async () => false })]);
+    expect(down.status).toBe("fail");
+    expect(down.items[0]?.detail).toBe("renderer tidak menjawab /healthz");
   });
 });

@@ -107,7 +107,7 @@ describe("R2-CL-2: polling 404 = akses dicabut di tengah ekspor", () => {
   it("404 → refresh akses bersama dipanggil dengan id widget + NOT_FOUND tanpa 'Ekspor lagi'", () => {
     running(A);
     const lost = vi.fn(() => true);
-    pollStopped(A, { widgetId: "w1", id: "e1" }, 404, lost);
+    pollStopped(A, { target: "w1", id: "e1" }, 404, lost);
     expect(lost).toHaveBeenCalledTimes(1);
     expect(lost).toHaveBeenCalledWith("w1");
     expect(exportJobOf(A)).toMatchObject({
@@ -131,7 +131,7 @@ describe("R2-CL-2: polling 404 = akses dicabut di tengah ekspor", () => {
       resetExportStore();
       running(A);
       const lost = vi.fn(() => true);
-      pollStopped(A, { widgetId: "w1", id: "e1" }, status, lost);
+      pollStopped(A, { target: "w1", id: "e1" }, status, lost);
       expect(lost).not.toHaveBeenCalled();
       expect(exportJobOf(A)).toMatchObject({ phase: "error", error: { code, again } });
     }
@@ -139,9 +139,9 @@ describe("R2-CL-2: polling 404 = akses dicabut di tengah ekspor", () => {
 
   it("di luar kanvas (tanpa penjaga akses) tetap NOT_FOUND; id ekspor lain diabaikan", () => {
     running(A);
-    pollStopped(A, { widgetId: "w1", id: "lain" }, 404, null);
+    pollStopped(A, { target: "w1", id: "lain" }, 404, null);
     expect(exportJobOf(A)).toMatchObject({ phase: "running", id: "e1" });
-    pollStopped(A, { widgetId: "w1", id: "e1" }, 404, null);
+    pollStopped(A, { target: "w1", id: "e1" }, 404, null);
     expect(exportJobOf(A)).toMatchObject({ phase: "error", error: { code: "NOT_FOUND" } });
   });
 

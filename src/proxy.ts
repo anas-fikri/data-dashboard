@@ -3,7 +3,9 @@ import { verifySession } from "@/features/auth/jwt";
 import { loginUrl } from "@/features/auth/redirect";
 import {
   buildCsp,
+  buildRenderCsp,
   generateNonce,
+  isRenderPath,
   routeSecurityHeaders,
   sessionCookieSpec,
 } from "@/lib/security-headers";
@@ -11,14 +13,17 @@ import {
 /*
  * Proxy (middleware Next 16):
  * 1. CSP ber-nonce per permintaan (T-027). Nonce diteruskan ke render lewat header permintaan
- *    `Content-Security-Policy` (Next memasangnya di script framework) dan `x-nonce`.
+ *    `Content-Security-Policy` (Next memasangnya di script framework) dan `x-nonce`. Halaman render PDF
+ *    /render dan /render/<token> (T-018) memakai CSP sendiri (tanpa upgrade-insecure-requests).
  * 2. Gerbang awal rute terlindungi: hanya memeriksa keberadaan + tanda tangan + kedaluwarsa JWT
  *    (murah, tanpa DB). Keputusan akhir (isActive, sessionVersion, isAdmin) ada di requireUser()
  *    Node-side (D1).
- * 3. Meneruskan path saat ini lewat header agar requireUser() bisa menyusun ?next=.
+ * 3. Meneruskan path saat ini lewat header agar requireUser() bisa menyusun ?next=; untuk /render/*
+ *    path tidak diteruskan (berisi token render).
  */
 
 // Deny-by-default: hanya rute ini yang boleh tanpa sesi (rute /api/auth eksplisit, bukan prefix).
+// /render: autentikasinya token render sekali pakai → cookie dd.render (T-018), bukan sesi user.
 const PUBLIC_PREFIXES = [
   "/login",
   "/register",
@@ -28,6 +33,7 @@ const PUBLIC_PREFIXES = [
   "/health",
   "/api/health",
   "/api/auth/login",
+  "/render",
 ];
 
 function isPublic(pathname: string): boolean {
@@ -54,13 +60,13 @@ function withCsp(response: NextResponse, csp: string): NextResponse {
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const nonce = generateNonce();
-  const csp = buildCsp({
-    nonce,
-    storageUrl: process.env.S3_PUBLIC_ENDPOINT,
-    dev: process.env.NODE_ENV === "development",
-  });
+  const dev = process.env.NODE_ENV === "development";
+  const render = isRenderPath(pathname);
+  const csp = render
+    ? buildRenderCsp(nonce, dev)
+    : buildCsp({ nonce, storageUrl: process.env.S3_PUBLIC_ENDPOINT, dev });
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-current-path", pathname + search);
+  requestHeaders.set("x-current-path", render ? "/render" : pathname + search);
   requestHeaders.set("x-nonce", nonce);
   requestHeaders.set("Content-Security-Policy", csp);
   const next = () => {

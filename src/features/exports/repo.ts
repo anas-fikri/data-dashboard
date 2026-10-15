@@ -3,14 +3,15 @@ import { recordAudit } from "@/features/audit/service";
 import { dashboardAccess } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
-import { deleteExportObject, listExportObjects } from "@/lib/storage/exports";
+import { deleteExportObject, listExportObjects, putExportObject } from "@/lib/storage/exports";
 import type { ExportCleanupRepo, ExportCleanupStorage } from "./cleanup";
 import type { ExportJobRepo, ExportStorage } from "./job";
+import type { PdfJobRepo, PdfStorage } from "./pdf-job";
 import type { ExportRepo, ExportRow } from "./service";
 
 /*
- * Perakitan produksi ekspor (T-017): Prisma (tabel Export, AuditLog) + storage S3. Dipakai app (buat,
- * status, unduh) dan worker (job, pembersihan).
+ * Perakitan produksi ekspor (T-017, PDF T-018): Prisma (tabel Export, AuditLog) + storage S3. Dipakai
+ * app (buat, status, unduh, halaman render) dan worker (job, pembersihan).
  */
 
 const ROW_SELECT = {
@@ -124,6 +125,39 @@ export const prismaExportJobRepo: ExportJobRepo = {
   },
 };
 
+/** Job PDF (T-018): repo job ekspor + peran dashboard sekarang. */
+export const prismaPdfJobRepo: PdfJobRepo = {
+  ...prismaExportJobRepo,
+  dashboardRole: (userId, dashboardId) => prismaExportRepo.dashboardRole(userId, dashboardId),
+};
+
+/**
+ * Halaman render (T-018): user masih aktif + terverifikasi, dan ekspor PDF yang ditunjuk token masih
+ * RUNNING milik user itu untuk dashboard itu (token dari ekspor yang sudah gagal/dihapus tidak berlaku).
+ */
+export async function renderSubjectLive(c: {
+  userId: string;
+  exportId: string;
+  dashboardId: string;
+}): Promise<boolean> {
+  const [user, exp] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: c.userId },
+      select: { isActive: true, emailVerifiedAt: true },
+    }),
+    prisma.export.count({
+      where: {
+        id: c.exportId,
+        userId: c.userId,
+        dashboardId: c.dashboardId,
+        format: "PDF",
+        status: "RUNNING",
+      },
+    }),
+  ]);
+  return !!user?.isActive && !!user.emailVerifiedAt && exp === 1;
+}
+
 export const prismaExportCleanupRepo: ExportCleanupRepo = {
   async expired(now, limit) {
     const rows = await prisma.export.findMany({
@@ -167,9 +201,10 @@ export const prismaExportCleanupRepo: ExportCleanupRepo = {
   },
 };
 
-export const s3ExportStorage: ExportStorage & ExportCleanupStorage = {
+export const s3ExportStorage: ExportStorage & ExportCleanupStorage & PdfStorage = {
   download: (key, dest, signal) => downloadToFile(key, dest, signal),
   upload: (key, path, contentType, opts) => uploadFile(key, path, contentType, opts),
+  put: (key, body, contentType, opts) => putExportObject(key, body, contentType, opts),
   remove: (key) => deleteExportObject(key),
   listOlderThan: (before, limit) => listExportObjects(before, limit),
 };

@@ -21,13 +21,18 @@ const key = (id: string, ext = "csv") => `exports/${U}/${id}.${ext}`;
 const NOW = new Date("2026-10-15T08:00:00.000Z");
 
 describe("kunci objek ekspor", () => {
-  it("hanya exports/<cuid>/<cuid>.(csv|xlsx); prefix, traversal, kunci lain ditolak", async () => {
+  it("hanya exports/<cuid>/<cuid>.(csv|xlsx|pdf); prefix, traversal, kunci lain ditolak", async () => {
     expect(EXPORT_KEY.test(key(A))).toBe(true);
     expect(EXPORT_KEY.test(key(A, "xlsx"))).toBe(true);
+    // PDF dashboard (T-018).
+    expect(EXPORT_KEY.test(key(A, "pdf"))).toBe(true);
+    expect(exportKey(U, A, "pdf")).toBe(key(A, "pdf"));
     for (const bad of [
       "exports/",
       `exports/${U}/`,
-      `exports/${U}/${A}.pdf`,
+      `exports/${U}/${A}.txt`,
+      `exports/${U}/${A}.PDF`,
+      `exports/${U}/${A}.pdf.html`,
       `exports/${U}/${A}.csv/x`,
       `exports/../parquet/${U}/${A}.csv`,
       `exports/${U}/../${A}.csv`,

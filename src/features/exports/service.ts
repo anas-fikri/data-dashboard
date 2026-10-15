@@ -1,11 +1,13 @@
 /*
- * Ekspor widget CSV/XLSX (T-017): buat, status, unduh. Tabel Export adalah sumber kebenaran (pemilik,
- * status, kedaluwarsa); antrean BullMQ hanya menjalankan job (jobId = Export.id).
+ * Ekspor widget CSV/XLSX (T-017) dan dashboard PDF (T-018): buat, status, unduh. Tabel Export adalah
+ * sumber kebenaran (pemilik, status, kedaluwarsa); antrean BullMQ hanya menjalankan job (jobId =
+ * Export.id) — "export" untuk CSV/XLSX, "pdf" untuk PDF.
  *
- * Akses dicek tiga kali (E7): saat buat (resolver yang sama dengan /api/query mode widget, termasuk D6
- * dan pesan per peran), di worker sebelum DuckDB (job.ts), dan saat unduh (peran dashboard dibaca lagi,
- * tanpa akses → 404). Unduh hanya pemilik ekspor; selain pemilik → 404 tanpa membedakan "tidak ada".
- * Setiap tautan unduh yang diberikan dicatat di AuditLog (dashboard.widget.export).
+ * Akses dicek tiga kali (E7): saat buat (widget: resolver yang sama dengan /api/query mode widget,
+ * termasuk D6 dan pesan per peran; PDF: dashboard yang boleh dilihat), di worker (job.ts / pdf-job.ts;
+ * PDF juga di halaman render), dan saat unduh (peran dashboard dibaca lagi, tanpa akses → 404). Unduh
+ * hanya pemilik ekspor; selain pemilik → 404 tanpa membedakan "tidak ada". Setiap tautan unduh yang
+ * diberikan dicatat di AuditLog (dashboard.widget.export / dashboard.export untuk PDF).
  * Dependensi diinjeksi agar bisa diuji tanpa DB/Redis/storage; perakitan produksi di repo.ts/http.ts.
  */
 import type { AuditEntry } from "@/features/audit/service";
@@ -14,12 +16,24 @@ import { forRole, resolveWidget, type QueryDeps } from "@/features/query/service
 import type { DashboardAccessRole } from "@/features/sharing/access";
 import type { PresignGetOptions } from "@/lib/storage/exports";
 import { contentDisposition, exportFileName } from "./filename";
-import { exportBodySchema, isExportId, type ExportParams } from "./schema";
+import {
+  encodePdfFilter,
+  parsePdfFilter,
+  sanitizePdfFilter,
+  type FilterTarget,
+} from "./pdf-filter";
+import {
+  exportBodySchema,
+  isExportId,
+  pdfBodySchema,
+  type ExportParams,
+  type PdfParams,
+} from "./schema";
 import {
   EXPORT_CODES,
   EXPORT_IN_FLIGHT_MAX,
   type ExportCode,
-  type ExportFormatInput,
+  type ExportFileFormat,
   type ExportStatusView,
 } from "./types";
 
@@ -43,14 +57,24 @@ export interface ExportRow {
   deletedAt: Date | null;
 }
 
-export interface NewExport {
-  userId: string;
-  dashboardId: string;
-  widgetId: string;
-  format: Exclude<ExportFormat, "PDF">;
-  params: ExportParams;
-  fileName: string;
-}
+export type NewExport =
+  | {
+      userId: string;
+      dashboardId: string;
+      widgetId: string;
+      format: Exclude<ExportFormat, "PDF">;
+      params: ExportParams;
+      fileName: string;
+    }
+  /** PDF dashboard utuh (T-018): tanpa widget. */
+  | {
+      userId: string;
+      dashboardId: string;
+      widgetId: null;
+      format: "PDF";
+      params: PdfParams;
+      fileName: string;
+    };
 
 export interface ExportRepo {
   /**
@@ -79,6 +103,26 @@ export interface ExportDeps {
   /** Satu hit rate limit RULES.exportDownload untuk user ini (tiap unduhan = presign + AuditLog). */
   downloadRateLimit(userId: string): Promise<RateLimitResult>;
   presign(key: string, o: PresignGetOptions): Promise<string>;
+  now?: () => Date;
+}
+
+/** Dashboard untuk PDF: nama + yang menentukan filter berlaku (getDashboard memenuhinya). */
+export interface PdfDashboard extends FilterTarget {
+  id: string;
+  name: string;
+}
+
+/** Dependensi POST /api/exports format "pdf" (T-018). */
+export interface PdfExportDeps {
+  repo: Pick<ExportRepo, "createIfRoom" | "fail">;
+  /** Dashboard yang boleh dilihat user (pemilik/editor/viewer); null = tanpa akses → 404. */
+  dashboard(userId: string, dashboardId: string): Promise<PdfDashboard | null>;
+  /** Renderer hidup? (GET /healthz ≤ 3 detik; galat/waktu habis → false). */
+  rendererHealth(): Promise<boolean>;
+  /** Antrekan job di antrean "pdf" (jobId = Export.id). */
+  enqueue(exportId: string): Promise<void>;
+  /** Satu hit RULES.exportPdf untuk user ini. */
+  rateLimit(userId: string): Promise<RateLimitResult>;
   now?: () => Date;
 }
 
@@ -111,6 +155,7 @@ export const EXPORT_STATUS: Record<ExportCode, number> = {
   EXPORT_FAILED: 500,
   FORBIDDEN: 403,
   UNAVAILABLE: 503,
+  RENDERER_UNAVAILABLE: 503,
 };
 
 /**
@@ -125,14 +170,17 @@ export const EXPIRED_MESSAGE = "Tautan unduhan sudah kedaluwarsa. Ekspor lagi.";
 export const BUSY_MESSAGE = `Masih ada ${EXPORT_IN_FLIGHT_MAX} ekspor yang berjalan. Tunggu salah satu selesai.`;
 export const FAILED_MESSAGE = "Ekspor gagal diproses. Coba ekspor lagi beberapa saat lagi.";
 const NOT_FOUND_MESSAGE = "Ekspor tidak ditemukan.";
+export const RENDERER_UNAVAILABLE_MESSAGE =
+  "Layanan PDF sedang tidak tersedia. Coba lagi beberapa saat lagi.";
 
-export const MIME: Record<ExportFormatInput, string> = {
+export const MIME: Record<ExportFileFormat, string> = {
   csv: "text/csv; charset=utf-8",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  pdf: "application/pdf",
 };
 
-const extOf = (f: ExportFormat): ExportFormatInput | null =>
-  f === "CSV" ? "csv" : f === "XLSX" ? "xlsx" : null;
+export const extOf = (f: ExportFormat): ExportFileFormat =>
+  f === "CSV" ? "csv" : f === "XLSX" ? "xlsx" : "pdf";
 
 /** Kode kegagalan resolver widget (INVALID/NOT_READY/…_UNAVAILABLE) sebagai kode ekspor. */
 export function exportCodeOf(code: string): ExportCode {
@@ -200,6 +248,70 @@ export async function createExport(
     await deps.enqueue(created.id);
   } catch (e) {
     // Tanpa job baris ini tidak akan pernah selesai: digagalkan agar tidak menahan batas berjalan.
+    await deps.repo.fail(created.id, EXPORT_CODES.UNAVAILABLE, FAILED_MESSAGE).catch(() => {});
+    throw e;
+  }
+  return { ok: true, exportId: created.id };
+}
+
+/**
+ * POST /api/exports { dashboardId, format: "pdf", f? } (T-018): rate limit RULES.exportPdf → body strict
+ * → dashboard yang boleh dilihat (semua peran; orang lain 404) → `f` divalidasi lalu disaring terhadap
+ * kolom filter dashboard (D9) → renderer dicek ≤ 3 detik (mati → 503 RENDERER_UNAVAILABLE seketika, tanpa
+ * baris, AC3) → baris Export PDF (batas 2 berjalan per user, bersama CSV/XLSX) → antrean "pdf".
+ */
+export async function createPdfExport(
+  userId: string,
+  body: unknown,
+  deps: PdfExportDeps,
+): Promise<{ ok: true; exportId: string } | ExportFailure> {
+  const rl = await deps.rateLimit(userId);
+  if (!rl.allowed) {
+    return failure(
+      "RATE_LIMITED",
+      `Terlalu banyak permintaan ekspor PDF. Coba lagi dalam ${rl.retryAfterSec} detik.`,
+      rl.retryAfterSec,
+    );
+  }
+  const parsed = pdfBodySchema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return failure(
+      "INVALID",
+      `Permintaan ekspor tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
+    );
+  }
+  const { dashboardId, f } = parsed.data;
+  const d = await deps.dashboard(userId, dashboardId);
+  if (!d) return failure("NOT_FOUND", "Dashboard tidak ditemukan.");
+  if (!d.widgets.length)
+    return failure("INVALID", "Dashboard ini belum punya widget untuk diekspor.");
+  const state = parsePdfFilter(f);
+  // Filter rusak tidak boleh diam-diam menjadi PDF tanpa filter (nilainya berbeda dengan layar).
+  if (!state) {
+    return failure("INVALID", "Filter dashboard tidak valid. Muat ulang halaman lalu ekspor lagi.");
+  }
+  if (!(await deps.rendererHealth())) {
+    return failure("RENDERER_UNAVAILABLE", RENDERER_UNAVAILABLE_MESSAGE);
+  }
+  const now = deps.now?.() ?? new Date();
+  const encoded = encodePdfFilter(sanitizePdfFilter(state, d));
+  const created = await deps.repo.createIfRoom(
+    {
+      userId,
+      dashboardId: d.id,
+      widgetId: null,
+      format: "PDF",
+      params: { ...(encoded ? { f: encoded } : {}), requestedAt: now.toISOString() },
+      fileName: exportFileName(d.name, now, "pdf"),
+    },
+    EXPORT_IN_FLIGHT_MAX,
+    new Date(now.getTime() - IN_FLIGHT_STALE_MS),
+  );
+  if (!created) return failure("EXPORT_BUSY", BUSY_MESSAGE);
+  try {
+    await deps.enqueue(created.id);
+  } catch (e) {
     await deps.repo.fail(created.id, EXPORT_CODES.UNAVAILABLE, FAILED_MESSAGE).catch(() => {});
     throw e;
   }
@@ -281,7 +393,7 @@ export async function downloadExport(
   if (!row || !row.dashboardId) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const role = await deps.repo.dashboardRole(userId, row.dashboardId);
   const ext = extOf(row.format);
-  if (!role || !ext) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
+  if (!role) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   if (row.status === "QUEUED" || row.status === "RUNNING") {
     return failure("NOT_READY", "Ekspor belum selesai. Tunggu sebentar lalu coba lagi.");
   }
@@ -294,13 +406,25 @@ export async function downloadExport(
     contentDisposition: contentDisposition(row.fileName ?? `ekspor.${ext}`),
     contentType: MIME[ext],
   });
-  await deps.repo.audit({
-    actorId: userId,
-    action: "dashboard.widget.export",
-    targetType: "dashboard",
-    targetId: row.dashboardId,
-    meta: { widgetId: row.widgetId, exportId: row.id, format: ext, rows: row.rows, role },
-    ip,
-  });
+  // PDF dashboard: aksi sendiri, meta tanpa nilai filter (T-018 D16).
+  await deps.repo.audit(
+    ext === "pdf"
+      ? {
+          actorId: userId,
+          action: "dashboard.export",
+          targetType: "dashboard",
+          targetId: row.dashboardId,
+          meta: { exportId: row.id, format: ext, role },
+          ip,
+        }
+      : {
+          actorId: userId,
+          action: "dashboard.widget.export",
+          targetType: "dashboard",
+          targetId: row.dashboardId,
+          meta: { widgetId: row.widgetId, exportId: row.id, format: ext, rows: row.rows, role },
+          ip,
+        },
+  );
   return { ok: true, url };
 }

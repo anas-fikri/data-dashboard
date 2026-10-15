@@ -81,6 +81,11 @@ export interface ChartInput {
    */
   selected?: number;
   reducedMotion: boolean;
+  /**
+   * Cetak PDF (T-018 D8): nilai batang/titik garis sebagai label teks (tersalin dari PDF; tabel data
+   * sr-only terpotong saat cetak) dan tanpa animasi. Pai: nilainya di legenda HTML (chart-widget).
+   */
+  print?: boolean;
 }
 
 export interface ChartSize {
@@ -101,6 +106,9 @@ const UNIT_NAME_MIN_H = 120;
 
 /** Kegelapan batang/irisan yang tidak terpilih saat ada filter silang dari grafik ini. */
 const DIMMED = 0.35;
+/** Cetak: ruang atas grid untuk label nilai di atas titik garis tertinggi (11 px + jarak). */
+const PRINT_TOP = 28;
+const PRINT_LABEL_PX = 11;
 
 /** Teks tooltip richText: "{a|b}" ditafsirkan sebagai gaya ECharts → disisipi spasi lebar-nol. */
 const plain = (s: string) => s.replace(/\{/g, "{​");
@@ -270,9 +278,29 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   });
   const base = {
     color: theme.colors,
-    animation: !i.reducedMotion,
+    animation: !i.reducedMotion && !i.print,
     textStyle: { color: theme.muted, fontFamily: theme.font },
   };
+  /**
+   * Label nilai cetak; `skip` = periode tanpa data yang diisi (bukan nilai terukur, tanpa label).
+   * Titik sumbu waktu bernilai [ms, y]. Label yang bertumpuk disembunyikan ECharts (hideOverlap).
+   */
+  const valueLabel = (position: "right" | "top", skip: readonly boolean[]) =>
+    i.print
+      ? {
+          label: {
+            show: true,
+            position,
+            distance: 4,
+            color: theme.text,
+            fontSize: PRINT_LABEL_PX,
+            fontFamily: theme.font,
+            formatter: (p: { value: unknown; dataIndex: number }) =>
+              skip[p.dataIndex] ? "" : value(Array.isArray(p.value) ? p.value[1] : p.value),
+          },
+          labelLayout: { hideOverlap: true },
+        }
+      : {};
 
   if (i.type === "pie") {
     const data = i.labels.map((name, k) => ({ name, value: i.values[k] ?? 0 }));
@@ -434,7 +462,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       ...base,
       // Tick dan label sumbu waktu dalam UTC, sama dengan nilai tanggal naive dari DuckDB.
       useUTC: true,
-      grid: { ...grid, right: Math.floor(right) },
+      grid: { ...grid, right: Math.floor(right), ...(i.print ? { top: PRINT_TOP } : {}) },
       tooltip: {
         ...axisTooltip,
         formatter: (params: { value: [number, unknown]; dataIndex?: number }[]) => {
@@ -474,6 +502,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
           ),
           ...symbols(ys, filled),
+          ...valueLabel("top", filled),
           connectNulls: false,
         },
       ],
@@ -551,9 +580,29 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       formatter: labelText,
     },
   };
+  // Cetak: label nilai di ujung batang (ruang kanan selebar label terpanjang, maks. 30 %) atau di atas
+  // titik garis (ruang atas; label titik terakhir rata tengah butuh setengah lebarnya di kanan).
+  const valueTextPx = (v: number | null) => value(v).length * AXIS_CHAR_PX;
+  const printGrid = !i.print
+    ? grid
+    : horizontal
+      ? {
+          ...grid,
+          right: Math.round(
+            Math.max(
+              grid.right,
+              Math.min(Math.max(0, ...values.map(valueTextPx)) + 8, size.width * 0.3),
+            ),
+          ),
+        }
+      : {
+          ...grid,
+          top: PRINT_TOP,
+          right: Math.round(Math.max(grid.right, valueTextPx(values.at(-1) ?? null) / 2)),
+        };
   return {
     ...base,
-    grid,
+    grid: printGrid,
     tooltip: {
       ...axisTooltip,
       formatter: (params: { name: string; value: unknown; dataIndex?: number }[]) => {
@@ -584,6 +633,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
+        ...valueLabel(horizontal ? "right" : "top", filled),
       },
     ],
   };

@@ -1,4 +1,5 @@
 import { HeadBucketCommand } from "@aws-sdk/client-s3";
+import { rendererClient, type RendererClient } from "@/features/exports/renderer-client";
 import { prisma } from "@/lib/db";
 import { findPlaceholderVars, parseEnv } from "@/lib/env";
 import { mailer } from "@/lib/mail";
@@ -21,6 +22,29 @@ export function configCheck(source: NodeJS.ProcessEnv = process.env): HealthChec
       return "env lengkap, tidak ada placeholder";
     },
   };
+}
+
+/** Renderer PDF (T-018): GET /healthz; mati → gagal (detail tanpa URL). */
+export function rendererCheck(client: Pick<RendererClient, "health">): HealthCheck {
+  return {
+    name: "Renderer PDF",
+    run: async () => {
+      if (!(await client.health())) throw new Error("renderer tidak menjawab /healthz");
+      return "renderer menjawab /healthz";
+    },
+  };
+}
+
+/**
+ * Renderer ikut diperiksa hanya di produksi dengan RENDERER_URL terisi (T-023 AC: /health memuat
+ * renderer). Di dev renderer sering sengaja tidak jalan (npm run renderer terpisah; e2e AC3 mematikannya),
+ * jadi tidak membuat /health merah.
+ */
+export function rendererChecks(source: NodeJS.ProcessEnv = process.env): HealthCheck[] {
+  if (source.NODE_ENV !== "production" || !source.RENDERER_URL) return [];
+  return [
+    rendererCheck(rendererClient({ url: source.RENDERER_URL, secret: source.RENDERER_SECRET })),
+  ];
 }
 
 /** Pemeriksaan nyata terhadap layanan infrastruktur. Dipakai /health dan /api/health. */
@@ -56,5 +80,6 @@ export function infraChecks(): HealthCheck[] {
         return "koneksi SMTP terverifikasi";
       },
     },
+    ...rendererChecks(),
   ];
 }

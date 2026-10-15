@@ -65,6 +65,11 @@ export const RULES = {
    * baris AuditLog, jadi pengulangan otomatis dibatasi agar tidak membanjiri jejak audit.
    */
   exportDownload: { name: "export-download:user", limit: 60, windowSec: 10 * 60 },
+  /**
+   * Permintaan PDF dashboard per user (T-018): tiap PDF menjalankan query semua widget + satu halaman
+   * Chromium di renderer. Batas 2 ekspor berjalan per user dipakai bersama CSV/XLSX.
+   */
+  exportPdf: { name: "export-pdf:user", limit: 10, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

@@ -8,6 +8,8 @@
  * ulang (diterima: ekspor tidak dipulihkan setelah reload).
  * User ikut di kunci (review R2-CL-1): keluar lalu masuk sebagai user lain di tab yang sama adalah
  * navigasi lunak — modul ini tidak dimuat ulang, dan ekspor user sebelumnya tidak boleh terlihat.
+ * Sasaran (T-018): id widget, atau dashboardExportTarget(id) untuk PDF dashboard di kepala halaman —
+ * PDF dan ekspor widget di dashboard yang sama tidak saling menimpa.
  */
 import { EXPORT_IDLE, exportReducer, type ExportEvent, type ExportJob } from "./export-model";
 
@@ -20,8 +22,8 @@ interface Entry {
 const entries = new Map<string, Entry>();
 const listeners = new Map<string, Set<() => void>>();
 
-/** Kunci store: id user yang masuk (props server, export-user.tsx) + id widget. */
-export const exportKey = (userId: string, widgetId: string) => `${userId}:${widgetId}`;
+/** Kunci store: id user yang masuk (props server, export-user.tsx) + sasaran (id widget / PDF). */
+export const exportKey = (userId: string, target: string) => `${userId}:${target}`;
 
 /** Snapshot stabil (objek yang sama sampai ada perubahan) untuk useSyncExternalStore. */
 export function exportJobOf(key: string): ExportJob {

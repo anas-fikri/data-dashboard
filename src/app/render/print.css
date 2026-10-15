@@ -1,0 +1,14 @@
+/*
+ * Halaman /render (T-018 D6): kertas A4 lanskap bermargin 10 mm; area isi 277 × 190 mm sama dengan
+ * konstanta src/components/render/print-layout.ts. Warna latar kartu/alert ikut tercetak.
+ */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+html,
+body {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}

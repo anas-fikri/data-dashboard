@@ -50,7 +50,8 @@ export interface ExportJobRepo {
   /** RUNNING → DONE dengan objek + kedaluwarsa; false bila baris hilang/berubah (objek dihapus pemanggil). */
   finish(
     id: string,
-    done: { key: string; rows: number; bytes: number; finishedAt: Date; expiresAt: Date },
+    /** rows null untuk PDF (T-018: bukan file baris). */
+    done: { key: string; rows: number | null; bytes: number; finishedAt: Date; expiresAt: Date },
   ): Promise<boolean>;
   /** QUEUED/RUNNING → FAILED (pesan sudah aman untuk user). */
   fail(id: string, code: string, message: string): Promise<void>;
@@ -311,8 +312,13 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
  * sama: run yang kalah/tumpang tindih (lock BullMQ lepas → replika lain menjalankan ulang) atau finish()
  * yang sudah commit tapi koneksinya putus tidak boleh menghapus objek yang ditunjuk baris DONE. Baca ulang
  * gagal → dianggap dipakai (objek dibiarkan; sapuan yatim export-cleanup > 2 jam yang membereskannya).
+ * Dipakai juga job PDF (T-018).
  */
-async function referencedByDone(repo: ExportJobRepo, id: string, key: string): Promise<boolean> {
+export async function referencedByDone(
+  repo: Pick<ExportJobRepo, "load">,
+  id: string,
+  key: string,
+): Promise<boolean> {
   try {
     const cur = await repo.load(id);
     return cur?.status === "DONE" && cur.key === key;

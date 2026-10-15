@@ -16,6 +16,11 @@ export const MAP_VERSION_JOB = "map-version";
  * ada di tabel Export; antrean hanya menjalankan (jobId = Export.id).
  */
 export const EXPORT_QUEUE = "export";
+/**
+ * PDF dashboard (T-018): antrean sendiri (bukan "export") agar PDF tidak menunggu job XLSX 10 menit.
+ * Worker memanggil renderer lalu mengunggah hasilnya; status tetap di tabel Export (jobId = Export.id).
+ */
+export const PDF_QUEUE = "pdf";
 /** Batas waktu satu operasi antrean dari app (enqueue/batal) agar permintaan user tidak menggantung. */
 export const QUEUE_OP_TIMEOUT_MS = 5_000;
 
@@ -77,6 +82,17 @@ export const EXPORT_JOB_OPTIONS = {
   removeOnFail: { age: 24 * 60 * 60 },
 };
 
+/**
+ * Opsi job PDF: renderer penuh (503) dan galat tak terduga diulang (jeda 5 detik, token render baru
+ * tiap percobaan); renderer mati, akses dicabut, PDF rusak/terlalu besar langsung FAILED tanpa ulang.
+ */
+export const PDF_JOB_OPTIONS = {
+  attempts: 3,
+  backoff: { type: "fixed" as const, delay: 5_000 },
+  removeOnComplete: { age: 2 * 60 * 60 },
+  removeOnFail: { age: 24 * 60 * 60 },
+};
+
 type Holder = { queue: Queue; connection: Redis };
 const globalForQueue = globalThis as unknown as { queueHolders?: Map<string, Holder> };
 
@@ -120,6 +136,11 @@ export function mappingQueue(): Queue<MappingJobData> {
 /** Antrean ekspor (T-017): jobId = Export.id → enqueue idempoten. */
 export function exportQueue(): Queue<ExportJobData> {
   return producerQueue<ExportJobData>(EXPORT_QUEUE, EXPORT_JOB_OPTIONS);
+}
+
+/** Antrean PDF dashboard (T-018): jobId = Export.id → enqueue idempoten. */
+export function pdfQueue(): Queue<ExportJobData> {
+  return producerQueue<ExportJobData>(PDF_QUEUE, PDF_JOB_OPTIONS);
 }
 
 /** Jalankan operasi antrean dengan batas waktu; melempar bila lewat. */

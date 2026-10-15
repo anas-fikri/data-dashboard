@@ -9,3 +9,4 @@ Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 - ADR-0003 [accepted] Sesi memakai JWT jose + cookie HttpOnly dengan sessionVersion, bukan Auth.js — ../../docs/adr/0003-sesi-memakai-jwt-jose-cookie-httponly-dengan-sessionversion.md
 - ADR-0004 [accepted] Redis memakai maxmemory-policy noeviction karena juga menampung antrean BullMQ — ../../docs/adr/0004-redis-memakai-maxmemory-policy-noeviction-karena-juga-menamp.md
 - ADR-0005 [accepted] Parser xlsx streaming sendiri (yauzl + saxes) dengan spill sharedStrings; CSV lewat DuckDB read_csv — ../../docs/adr/0005-parser-xlsx-streaming-sendiri-yauzl-saxes-dengan-spill-share.md
+- ADR-0006 [accepted] Renderer PDF: dipanggil worker, jaringan render, token → cookie — ../../docs/adr/0006-renderer-pdf-dipanggil-worker-jaringan-render-token-cookie.md

@@ -32,4 +32,30 @@ export const exportParamsSchema = z
   .strict();
 export type ExportParams = z.infer<typeof exportParamsSchema>;
 
+/**
+ * `f` PDF (T-018) = encodeFilterParam(status filter). Batas panjang ≤ body ekspor (64 KB): status filter
+ * yang terlalu panjang untuk URL (?f= 6000, urlTooLong) tetap boleh, dibaca lewat parsePdfFilter.
+ */
+export const PDF_FILTER_MAX = 60_000;
+const pdfFilterParam = z.string().max(PDF_FILTER_MAX);
+
+/** Body PDF dashboard (T-018): strict { dashboardId, format: "pdf", f? }; field lain → INVALID. */
+export const pdfBodySchema = z
+  .object({
+    dashboardId: cuid,
+    format: z.literal("pdf"),
+    f: pdfFilterParam.nullable().optional(),
+  })
+  .strict();
+export type PdfBody = z.infer<typeof pdfBodySchema>;
+
+/** Export.params PDF: status filter yang sudah disaring saat buat (encoded) + jam preset tanggal. */
+export const pdfParamsSchema = z
+  .object({
+    f: pdfFilterParam.optional(),
+    requestedAt: z.string().datetime(),
+  })
+  .strict();
+export type PdfParams = z.infer<typeof pdfParamsSchema>;
+
 export const isExportId = (v: unknown): v is string => cuid.safeParse(v).success;

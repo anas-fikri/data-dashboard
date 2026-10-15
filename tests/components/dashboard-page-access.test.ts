@@ -47,6 +47,9 @@ vi.mock("@/components/dashboards/edit-dashboard-link", () => ({
   EditDashboardLink: marker("edit-dashboard"),
 }));
 vi.mock("@/components/sharing/share-dialog", () => ({ ShareDialog: marker("share-open") }));
+vi.mock("@/components/dashboards/dashboard-pdf-export", () => ({
+  DashboardPdfExport: marker("dashboard-pdf-export"),
+}));
 
 const { default: DashboardPage } = await import("@/app/(app)/dashboards/[id]/page");
 
@@ -185,5 +188,44 @@ describe("review T-016 R3", () => {
     expect(out).toContain(
       "&quot;access&quot;:{&quot;orgShared&quot;:true,&quot;shareCount&quot;:3}",
     );
+  });
+});
+
+describe("T-018 D10: Ekspor PDF di kepala halaman", () => {
+  const W = { id: "w1", type: "kpi", title: "Omzet", spec: {}, version: "v1" };
+  const withWidgets = (role: "OWNER" | "EDITOR" | "VIEWER") => ({ ...view(role), widgets: [W] });
+  const pdf = 'data-testid="dashboard-pdf-export"';
+
+  it("mode lihat, semua peran (viewer juga), bila dashboard punya widget", async () => {
+    for (const role of ["OWNER", "EDITOR", "VIEWER"] as const) {
+      m.getDashboard.mockResolvedValue(withWidgets(role));
+      const out = await render();
+      expect(out, role).toContain(pdf);
+      expect(out, role).toContain(`&quot;dashboardId&quot;:&quot;${D}&quot;`);
+    }
+  });
+
+  it("viewer: slot aksi hanya berisi Ekspor PDF (tanpa edit/Bagikan)", async () => {
+    m.getDashboard.mockResolvedValue(withWidgets("VIEWER"));
+    const out = await render();
+    expect(out).toContain(pdf);
+    expect(out).not.toContain('data-testid="edit-dashboard"');
+    expect(out).not.toContain('data-testid="share-open"');
+  });
+
+  it("disembunyikan di mode edit dan untuk dashboard tanpa widget", async () => {
+    m.getDashboard.mockResolvedValue(withWidgets("OWNER"));
+    expect(await render({ mode: "edit" })).not.toContain(pdf);
+    m.getDashboard.mockResolvedValue(view("VIEWER"));
+    const empty = await render();
+    expect(empty).not.toContain(pdf);
+    // Viewer tanpa widget: tanpa slot aksi kosong.
+    expect(empty).not.toContain("md:[&amp;&gt;*]:w-auto");
+  });
+
+  it("kepala halaman di dalam ExportUserProvider (status ekspor per user)", async () => {
+    m.getDashboard.mockResolvedValue(withWidgets("VIEWER"));
+    const page = (await open()) as ReactElement<{ userId?: string }>;
+    expect(page.props.userId).toBe("u1");
   });
 });
