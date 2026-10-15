@@ -13,8 +13,10 @@
 //   backdate <versionId> <days>         → ingestFinishedAt = sekarang − <days> hari
 //   cleanup-rows <datasetId>            → baris StorageCleanup yang prefix-nya memuat id itu
 //   cleanup-due <datasetId>             → baris di atas jatuh tempo sekarang (notBefore = now)
-//   run-job <storage-cleanup|raw-retention> → jalankan job maintenance di worker, tunggu ≤ 60 s
-//   prefix-count <prefix>               → jumlah objek di bawah prefix (raw|parquet)/<cuid>/[<cuid>/]
+//   run-job <storage-cleanup|raw-retention|export-cleanup> → jalankan job maintenance di worker,
+//                                         tunggu ≤ 60 s
+//   prefix-count <prefix>               → jumlah objek di bawah prefix (raw|parquet)/<cuid>/[<cuid>/],
+//                                         exports/, exports/<userId>/, atau exports/<userId>/<exportId>.
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -53,7 +55,9 @@ const s3 = new S3Client({
 });
 const Bucket = process.env.S3_BUCKET;
 const CLEANUP_PREFIX = /^(raw|parquet)\/[a-z0-9]{20,32}\/([a-z0-9]{20,32}\/)?$/;
-const MAINTENANCE_JOBS = ["storage-cleanup", "raw-retention"];
+/** Ekspor (T-017): seluruh exports/, per user, atau satu objek ekspor (prefix "<exportId>."). */
+const EXPORT_PREFIX = /^exports\/([a-z0-9]{20,32}\/([a-z0-9]{20,32}\.)?)?$/;
+const MAINTENANCE_JOBS = ["storage-cleanup", "raw-retention", "export-cleanup"];
 
 async function describe(v) {
   if (!v) return { exists: false };
@@ -233,7 +237,9 @@ try {
       connection.disconnect();
     }
   } else if (cmd === "prefix-count") {
-    if (!CLEANUP_PREFIX.test(a ?? "")) throw new Error("prefix tidak valid");
+    if (!CLEANUP_PREFIX.test(a ?? "") && !EXPORT_PREFIX.test(a ?? "")) {
+      throw new Error("prefix tidak valid");
+    }
     let count = 0;
     let token;
     do {

@@ -11,6 +11,11 @@ export const INGEST_QUEUE = "ingest";
 export const RECAST_QUEUE = "recast";
 /** Nama job pemetaan kolom di antrean recast (worker membedakan lewat job.name). */
 export const MAP_VERSION_JOB = "map-version";
+/**
+ * Ekspor widget CSV/XLSX (T-017): job ringan, antrean terpisah dari ingest. Status/kepemilikan/kedaluwarsa
+ * ada di tabel Export; antrean hanya menjalankan (jobId = Export.id).
+ */
+export const EXPORT_QUEUE = "export";
 /** Batas waktu satu operasi antrean dari app (enqueue/batal) agar permintaan user tidak menggantung. */
 export const QUEUE_OP_TIMEOUT_MS = 5_000;
 
@@ -56,6 +61,22 @@ export const RECAST_JOB_OPTIONS = {
   removeOnFail: { age: 24 * 60 * 60, count: 500 },
 };
 
+export interface ExportJobData {
+  exportId: string;
+}
+
+/**
+ * Opsi job ekspor: satu ulangan untuk galat tak terduga (galat yang dikenal — terlalu besar, akses
+ * dicabut, batas waktu — langsung FAILED di tabel Export tanpa ulang). Hasil dibaca dari tabel Export,
+ * jadi job selesai cukup disimpan sebentar.
+ */
+export const EXPORT_JOB_OPTIONS = {
+  attempts: 2,
+  backoff: { type: "fixed" as const, delay: 10_000 },
+  removeOnComplete: { age: 2 * 60 * 60 },
+  removeOnFail: { age: 24 * 60 * 60 },
+};
+
 type Holder = { queue: Queue; connection: Redis };
 const globalForQueue = globalThis as unknown as { queueHolders?: Map<string, Holder> };
 
@@ -94,6 +115,11 @@ export function recastQueue(): Queue<RecastJobData> {
 /** Antrean recast yang sama, bertipe data job pemetaan (job "map-version"). */
 export function mappingQueue(): Queue<MappingJobData> {
   return producerQueue<MappingJobData>(RECAST_QUEUE, RECAST_JOB_OPTIONS);
+}
+
+/** Antrean ekspor (T-017): jobId = Export.id → enqueue idempoten. */
+export function exportQueue(): Queue<ExportJobData> {
+  return producerQueue<ExportJobData>(EXPORT_QUEUE, EXPORT_JOB_OPTIONS);
 }
 
 /** Jalankan operasi antrean dengan batas waktu; melempar bila lewat. */

@@ -2,7 +2,8 @@
 // Inisialisasi object storage (idempoten) lewat API S3 standar, tanpa CLI vendor:
 // bucket, CORS untuk presigned PUT/GET dari browser (ExposeHeaders ETag wajib untuk resume multipart),
 // dan lifecycle abort multipart yang tidak selesai setelah 1 hari (flow-kerja B2).
-// File mentah 7 hari dan ekspor 1 jam dibersihkan job aplikasi (granularitas lifecycle = hari).
+// File mentah 7 hari dan ekspor 1 jam dibersihkan job aplikasi (granularitas lifecycle = hari);
+// lifecycle exports/ 1 hari hanya jaring terakhir bila job pembersihan ekspor tidak berjalan.
 import { readFileSync, existsSync } from "node:fs";
 import {
   S3Client,
@@ -96,11 +97,18 @@ await s3.send(
           Filter: { Prefix: "" },
           AbortIncompleteMultipartUpload: { DaysAfterInitiation: 1 },
         },
+        {
+          // Jaring terakhir ekspor (T-017): job aplikasi menghapusnya 60 menit setelah selesai.
+          ID: "exports-expire-1d",
+          Status: "Enabled",
+          Filter: { Prefix: "exports/" },
+          Expiration: { Days: 1 },
+        },
       ],
     },
   }),
 );
 
 console.log(
-  `object storage siap: bucket=${Bucket}, CORS origin=${appOrigin}, lifecycle abort-mpu=1 hari`,
+  `object storage siap: bucket=${Bucket}, CORS origin=${appOrigin}, lifecycle abort-mpu=1 hari, exports/=1 hari`,
 );

@@ -4,13 +4,19 @@ import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import type { WidgetConfig } from "@/features/widgets/spec";
 import { AbsentNote } from "./absent-note";
-import { bodyState, configVersion, withChangeCheck, type BodyState } from "./body-state";
+import {
+  bodyState,
+  configVersion,
+  widgetRequest,
+  withChangeCheck,
+  type BodyState,
+} from "./body-state";
 import { ChartWidget } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
 import { WidgetError } from "./widget-error";
-import { useWidgetQuery } from "./widget-query";
+import { useWidgetQuery, type WidgetRequest } from "./widget-query";
 
 /*
  * Isi widget yang sudah diatur (T-011): memuat data lewat /api/query { widgetId } dan menampilkan
@@ -49,6 +55,8 @@ interface Props {
   showData?: boolean;
   /** Status isi untuk versi spec ini (+ data basi sedang diperbarui); fungsi harus stabil. */
   onState?: (version: string, state: BodyState, stale: boolean) => void;
+  /** Body query yang sedang dipakai (berubah bersama filter/urutan/halaman); fungsi harus stabil. */
+  onRequest?: (request: WidgetRequest) => void;
 }
 
 export function WidgetBody(props: Props) {
@@ -67,6 +75,7 @@ function Loaded({
   version,
   showData = false,
   onState,
+  onRequest,
 }: Props & { version: string }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
@@ -78,11 +87,10 @@ function Loaded({
     setSeenFilters(filterKey);
     setPage(0);
   }
-  const filters = cross.filters.length ? { dashboardFilters: cross.filters } : {};
-  const request =
-    config.type === "table"
-      ? { widgetId, page, ...(sort ? { sort } : {}), ...filters }
-      : { widgetId, ...filters };
+  const request = widgetRequest(widgetId, config.type, page, sort, cross.filters);
+  // Ekspor di kepala kartu (T-017) memakai body yang sama persis (filter + urutan tabel).
+  const requestKey = JSON.stringify(request);
+  useEffect(() => onRequest?.(JSON.parse(requestKey) as WidgetRequest), [onRequest, requestKey]);
   // Versi pengaturan yang pernah dipegang kartu ini (awal + simpanan tab ini): hanya data dari versi
   // ini yang ditampilkan.
   const [known, setKnown] = useState<string[]>(widgetVersion ? [widgetVersion] : []);

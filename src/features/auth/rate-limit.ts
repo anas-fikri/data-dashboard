@@ -55,6 +55,11 @@ export const RULES = {
    * oleh siapa pun yang memiliki dataset.
    */
   shareSearch: { name: "share-search:user", limit: 120, windowSec: 60 },
+  /**
+   * Permintaan ekspor CSV/XLSX per user (T-017): tiap ekspor membaca seluruh baris terfilter di worker.
+   * Di atasnya ada batas 2 ekspor berjalan per user (exports/service).
+   */
+  export: { name: "export:user", limit: 30, windowSec: 10 * 60 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export interface RateLimitResult {

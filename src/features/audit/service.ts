@@ -27,7 +27,12 @@ export type AuditAction =
   /** Dashboard dibuka (dedup per user+dashboard 30 menit) (T-016). */
   | "dashboard.open"
   /** Pemilik menghapus dashboard; share user + organisasinya ikut berakhir (review T-016 R3 CC-2). */
-  | "dashboard.delete";
+  | "dashboard.delete"
+  /**
+   * File ekspor widget (CSV/XLSX) diunduh (T-017): ditulis setiap kali tautan unduh diberikan, meta
+   * { widgetId, exportId, format, rows, role }.
+   */
+  | "dashboard.widget.export";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

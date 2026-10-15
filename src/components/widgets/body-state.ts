@@ -3,10 +3,29 @@
  * grafik punya baris. Dipakai WidgetBody (memilih tampilan) dan kartu (tombol), jadi keduanya selalu
  * sepakat. Plus teks catatan kolom kosong (T-014). Murni.
  */
-import type { WidgetData, WidgetQueryState } from "./widget-query";
+import type { DashFilter } from "@/components/dashboards/filters/filter-model";
+import type { WidgetData, WidgetQueryState, WidgetRequest } from "./widget-query";
 
 /** memuat = kerangka; rows = data berbaris tampil; none = pesan galat atau "tidak ada data". */
 export type BodyState = "loading" | "rows" | "none";
+
+/**
+ * Body query widget (/api/query). Satu pembuat untuk query dan ekspor (T-017, export-model.ts
+ * exportBody): file ekspor memakai filter dan urutan tabel yang persis sama dengan layar. Hanya tabel
+ * yang berhalaman dan berurutan. Murni.
+ */
+export function widgetRequest(
+  widgetId: string,
+  type: string,
+  page: number,
+  sort: WidgetRequest["sort"] | null,
+  filters: DashFilter[],
+): WidgetRequest {
+  const dash = filters.length ? { dashboardFilters: filters } : {};
+  return type === "table"
+    ? { widgetId, page, ...(sort ? { sort } : {}), ...dash }
+    : { widgetId, ...dash };
+}
 
 /**
  * Tabel tetap menampilkan data lama di bawah pesan galat bila `keepOnError` — pindah halaman/urutan

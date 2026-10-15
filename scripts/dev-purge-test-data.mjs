@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Dev/e2e saja: hapus data user uji (email buatan uniqueEmail: "<prefix>-<13 digit>-<angka>@" atau
 // akun audit "audit<n>-...@") — dataset beserta objek storage-nya (raw/, parquet/, multipart
-// yang belum selesai). Mencegah volume storage dev membengkak oleh unggahan e2e (200 MB per putaran).
+// yang belum selesai) dan file ekspor user itu (exports/<userId>/, T-017). Mencegah volume storage dev membengkak oleh unggahan e2e (200 MB per putaran).
 // Lalu hapus AKUN buatan uniqueEmail saja (ACCOUNT_EMAIL) yang datasetnya sudah habis: akun uji
 // tidak menumpuk (ribuan pengguna, puluhan admin e2e) dan tidak mengganggu daftar/pemilih admin.
 // Akun lain (termasuk audit*) tidak pernah dihapus. Token ikut terhapus (cascade); AuditLog tetap
@@ -82,6 +82,10 @@ try {
   let objects = 0;
   for (const d of datasets) {
     for (const p of [`raw/${d.id}/`, `parquet/${d.id}/`]) objects += await purgePrefix(p);
+  }
+  // File ekspor user uji (T-017): baris Export ikut terhapus bersama akun, objeknya tidak.
+  for (const u of users) {
+    if (/^[a-z0-9]{20,32}$/.test(u.id)) objects += await purgePrefix(`exports/${u.id}/`);
   }
   if (!dryRun)
     await prisma.dataset.deleteMany({ where: { id: { in: datasets.map((d) => d.id) } } });

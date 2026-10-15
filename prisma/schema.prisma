@@ -32,6 +32,8 @@ model User {
   dashboardShares DashboardShare[]    @relation("DashboardShareUser")
   /// Pemberian akses yang dibuat user ini (T-016).
   sharesGranted   DashboardShare[]    @relation("DashboardShareGranter")
+  /// Ekspor milik user ini (T-017/T-018); objek exports/<userId>/ dibersihkan job ekspor.
+  exports         Export[]
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -217,6 +219,7 @@ model Dashboard {
   orgShared      Boolean          @default(false)
   shares         DashboardShare[]
   widgets        Widget[]
+  exports        Export[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
@@ -287,4 +290,48 @@ model DashboardShare {
 
   @@unique([dashboardId, userId])
   @@index([userId])
+}
+
+enum ExportStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum ExportFormat {
+  CSV
+  XLSX
+  PDF
+}
+
+/// Ekspor widget/dashboard (T-017 CSV/XLSX, T-018 PDF). Status di DB (bukan antrean) agar kepemilikan,
+/// kedaluwarsa, dan pembersihan deterministik: unduh hanya pemilik, berlaku sampai expiresAt
+/// (selesai + 60 menit), objek exports/<userId>/<id>.<ext> dihapus job pembersihan.
+model Export {
+  id           String       @id @default(cuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dashboardId  String?
+  dashboard    Dashboard?   @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
+  /// Widget sumber (tanpa FK: widget boleh dihapus setelah ekspor dibuat).
+  widgetId     String?
+  format       ExportFormat
+  status       ExportStatus @default(QUEUED)
+  /// Parameter permintaan (filter dashboard, urutan, requestedAt untuk preset tanggal).
+  params       Json         @default("{}")
+  errorCode    String?
+  errorMessage String?
+  key          String?
+  fileName     String?
+  rows         Int?
+  bytes        BigInt?
+  createdAt    DateTime     @default(now())
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  expiresAt    DateTime?
+  deletedAt    DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status, expiresAt])
 }

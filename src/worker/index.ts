@@ -4,8 +4,10 @@
  *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih.
  *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock),
  *     dan job "map-version": pemetaan kolom versi AWAITING_MAPPING lalu aktivasi (T-014).
+ *   - "export": ekspor widget CSV/XLSX (T-017), job ringan terpisah dari ingest; status di tabel Export.
  *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, pembersihan storage,
- *     file asli > 7 hari) dan hapus typed lama.
+ *     file asli > 7 hari, pembersihan ekspor tiap 5 menit) dan hapus typed lama / objek ekspor
+ *     kedaluwarsa (delete-export, tertunda 60 menit).
  * Jalankan: npm run worker (tsx dengan kondisi react-server agar modul "server-only" bisa dimuat).
  */
 import { mkdirSync } from "node:fs";
@@ -13,6 +15,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DelayedError, Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
+import { expireExport, runExportCleanup } from "@/features/exports/cleanup";
+import { removeStaleExportDirs, runExportJob } from "@/features/exports/job";
+import {
+  prismaExportCleanupRepo,
+  prismaExportJobRepo,
+  s3ExportStorage,
+} from "@/features/exports/repo";
+import { FAILED_MESSAGE } from "@/features/exports/service";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
 import { applyMapping } from "@/features/ingest/mapping";
 import { recastSheet } from "@/features/ingest/recast";
@@ -28,6 +38,7 @@ import {
   prismaRecastRepo,
   s3IngestStorage,
 } from "@/features/ingest/repo";
+import { prismaQueryRepo } from "@/features/query/runtime";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { prisma } from "@/lib/db";
@@ -35,10 +46,12 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisLockStore } from "@/lib/lock";
 import {
+  EXPORT_QUEUE,
   INGEST_JOB_OPTIONS,
   INGEST_QUEUE,
   MAP_VERSION_JOB,
   RECAST_QUEUE,
+  type ExportJobData,
   type IngestJobData,
   type MappingJobData,
   type RecastJobData,
@@ -54,6 +67,11 @@ const DELETE_OBJECT = "delete-object";
 const STORAGE_CLEANUP = "storage-cleanup";
 /** Hapus file asli 7 hari setelah ingest selesai (T-013, B1). */
 const RAW_RETENTION = "raw-retention";
+/** Sapuan ekspor (T-017): kedaluwarsa, job basi, objek yatim di exports/. */
+const EXPORT_CLEANUP = "export-cleanup";
+/** Hapus objek satu ekspor saat kedaluwarsa (tertunda EXPORT_TTL_MS). */
+const DELETE_EXPORT = "delete-export";
+const EXPORT_LOCK_MS = 5 * 60 * 1000;
 const SCHEDULED_OPTS = { removeOnComplete: 50, removeOnFail: 100 };
 /** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
 const RECAST_BUSY_DELAY_MS = 30 * 1000;
@@ -106,7 +124,7 @@ async function main() {
   const tmpRoot = env().WORKER_TMP_DIR ?? join(tmpdir(), "dd-worker");
   mkdirSync(tmpRoot, { recursive: true });
   // Sisa job yang terhenti paksa (OOM/SIGKILL) bisa berukuran GB; WORKER_TMP_DIR wajib per replika.
-  const stale = removeStaleWorkDirs(tmpRoot);
+  const stale = removeStaleWorkDirs(tmpRoot) + removeStaleExportDirs(tmpRoot);
 
   const ingestQueue = new Queue<IngestJobData>(INGEST_QUEUE, {
     connection: connection(),
@@ -120,10 +138,16 @@ async function main() {
     [RECOVER_INGESTS, 15 * 60 * 1000],
     [STORAGE_CLEANUP, 15 * 60 * 1000],
     [RAW_RETENTION, 60 * 60 * 1000],
+    [EXPORT_CLEANUP, 5 * 60 * 1000],
   ];
   for (const [name, every] of schedules) {
     await maintenance.upsertJobScheduler(name, { every }, { name, opts: SCHEDULED_OPTS });
   }
+  const exportCleanupDeps = {
+    repo: prismaExportCleanupRepo,
+    storage: s3ExportStorage,
+    log: (msg: string, meta: Record<string, unknown>) => logger.warn(meta, msg),
+  };
   const maintenanceWorker = new Worker(
     MAINTENANCE,
     async (job) => {
@@ -132,6 +156,11 @@ async function main() {
         return { recovered: await recoverStuckIngests(ingestQueue) };
       if (job.name === STORAGE_CLEANUP) return await runStorageCleanup();
       if (job.name === RAW_RETENTION) return await runRawRetention();
+      if (job.name === EXPORT_CLEANUP) return await runExportCleanup(exportCleanupDeps);
+      if (job.name === DELETE_EXPORT) {
+        const { exportId, key } = job.data as { exportId: string; key: string };
+        return { result: await expireExport(String(exportId), String(key), exportCleanupDeps) };
+      }
       if (job.name === DELETE_OBJECT) {
         await deleteObject(String((job.data as { key: string }).key));
         return null;
@@ -279,13 +308,66 @@ async function main() {
     })();
   });
 
+  // --- export (T-017) ---
+  const exportWorker = new Worker<ExportJobData>(
+    EXPORT_QUEUE,
+    async (job: Job<ExportJobData>) => {
+      const e = env();
+      const r = await runExportJob(job.data.exportId, {
+        repo: prismaExportJobRepo,
+        query: { repo: prismaQueryRepo },
+        storage: s3ExportStorage,
+        scheduleDelete: async (exportId, key, delay) => {
+          await maintenance.add(
+            DELETE_EXPORT,
+            { exportId, key },
+            {
+              delay,
+              removeOnComplete: 100,
+              removeOnFail: 1000,
+              attempts: 5,
+              backoff: { type: "exponential", delay: 60_000 },
+            },
+          );
+        },
+        tmpRoot,
+        maxRows: e.EXPORT_MAX_ROWS,
+        ttlMs: e.EXPORT_TTL_MS,
+        deadlineMs: e.EXPORT_DEADLINE_MS,
+      });
+      logger.info({ jobId: job.id, exportId: job.data.exportId, ...r }, "ekspor selesai");
+      return r;
+    },
+    { connection: connection(), concurrency: 1, lockDuration: EXPORT_LOCK_MS },
+  );
+  exportWorker.on("failed", (job, err) => {
+    if (!job) return;
+    logger.error(
+      { jobId: job.id, exportId: job.data.exportId, attempt: job.attemptsMade, err: err.message },
+      "ekspor gagal",
+    );
+    // Gagal final (percobaan habis/stalled): baris Export → FAILED dengan pesan umum (detail di log).
+    void (async () => {
+      const state = await job.getState().catch(() => "unknown");
+      if (err.name !== "UnrecoverableError" && state !== "failed") return;
+      await prismaExportJobRepo
+        .fail(job.data.exportId, "EXPORT_FAILED", FAILED_MESSAGE)
+        .catch((e: unknown) =>
+          logger.error(
+            { exportId: job.data.exportId, err: e instanceof Error ? e.message : String(e) },
+            "status ekspor gagal tidak tercatat; sapuan export-cleanup akan menutupnya",
+          ),
+        );
+    })();
+  });
+
   const swept = await sweepUploaded(ingestQueue);
   // Sisa pembersihan saat worker mati (mis. deploy) tidak menunggu 15 menit jadwal berikutnya.
   await maintenance.add(STORAGE_CLEANUP, {}, SCHEDULED_OPTS);
   const recovered = await recoverStuckIngests(ingestQueue);
   logger.info(
     {
-      queues: [INGEST_QUEUE, RECAST_QUEUE, MAINTENANCE],
+      queues: [INGEST_QUEUE, RECAST_QUEUE, EXPORT_QUEUE, MAINTENANCE],
       tmpRoot,
       swept,
       recovered,
@@ -298,6 +380,7 @@ async function main() {
     logger.info({ signal }, "worker berhenti");
     await ingestWorker.close();
     await recastWorker.close();
+    await exportWorker.close();
     await maintenanceWorker.close();
     lockRedis.disconnect();
     await ingestQueue.close();

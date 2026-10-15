@@ -1,14 +1,16 @@
 "use client";
 
 import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
-import { forwardRef, useCallback, useState } from "react";
+import { forwardRef, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
 import { StaleLabel } from "@/components/widgets/stale-label";
 import { WidgetBody } from "@/components/widgets/widget-body";
+import type { WidgetRequest } from "@/components/widgets/widget-query";
 import type { WidgetView } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
-import { cardConfig, dataToggle, toggleMode } from "./widget-card-model";
+import { DataToggleButton, HEAD_BUTTON, HeadExport } from "./widget-card-head";
+import { cardConfig, toggleMode } from "./widget-card-model";
 
 /*
  * Satu widget di kanvas. Mode lihat: hanya isi. Mode edit: seluruh kepala kartu jadi pegangan seret
@@ -22,7 +24,7 @@ import { cardConfig, dataToggle, toggleMode } from "./widget-card-model";
  * kecil (2 × 16 px = tombol 32 px; sentuh + margin = 44 px), bukan 4–5 huruf di samping tombol data
  * (di kartu < 140 px grafik diganti daftar peringkat, jadi tabel satu-satunya jalan ke baris yang tidak
  * muat). Mode edit: judul tetap terlihat (terpotong, lengkap di title); yang disembunyikan lebih dulu:
- * - tombol data: < 12rem (mouse) / < 14,5rem (sentuh);
+ * - tombol ekspor (T-017; juga mode lihat) lalu tombol data — batasnya di widget-card-head.tsx;
  * - ikon pegangan dengan mouse: < 10rem (seluruh kepala tetap pegangan, kursor "grab");
  * - sentuh (ikon pegangan satu-satunya pegangan, 44 px): < 10rem judul pindah ke baris sendiri di
  *   atas pegangan + pengaturan; < 6,5rem ikon pegangan hilang (geser lewat tombol di panel);
@@ -32,9 +34,6 @@ export const DRAG_HANDLE = "widget-drag-handle";
 /** Pegangan seret di layar sentuh: hanya ikon ini (44 px), agar menggeser kepala kartu tetap scroll. */
 export const GRIP_HANDLE = "widget-grip";
 export const SETTINGS_ATTR = "data-widget-settings";
-/** Tombol kepala kartu: 44 px di ponsel dan bila ada layar sentuh, 32 px dengan mouse di ≥ md. */
-const HEAD_BUTTON =
-  "size-(--control-h-lg) shrink-0 md:not-any-pointer-coarse:size-(--control-h-sm)";
 
 type Body = { version: string; state: BodyState; stale: boolean }; // status isi per versi spec
 type Props = React.HTMLAttributes<HTMLDivElement> & {
@@ -64,10 +63,12 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
     (version: string, state: BodyState, stale: boolean) => setBody({ version, state, stale }),
     [],
   );
+  // Body query isi kartu (filter + urutan tabel): ekspor membacanya saat dimulai, tanpa render ulang.
+  const request = useRef<WidgetRequest | null>(null);
+  const onRequest = useCallback((r: WidgetRequest) => void (request.current = r), []);
   const current = config && body?.version === configVersion(config) ? body : null;
   const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
-  const toggle = chart && mode ? dataToggle(chart, showData) : null;
   return (
     <div
       ref={ref}
@@ -129,31 +130,23 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           {title}
         </h2>
         <StaleLabel stale={!!current?.stale} title={title} />
-        {toggle ? (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            className={cn(
-              HEAD_BUTTON,
-              // Tertekan terlihat (bukan hanya aria-pressed); mode warna paksa: garis Highlight.
-              "aria-pressed:bg-accent aria-pressed:text-primary aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary",
-              "forced-colors:aria-pressed:border-2 forced-colors:aria-pressed:border-[Highlight]",
-              "aria-disabled:opacity-50",
-              // Mode edit di kartu sempit: ruang kepala untuk judul + pengaturan.
-              editing && "@max-[12rem]:hidden @max-[14.5rem]:any-pointer-coarse:hidden",
-            )}
-            aria-label={`Tampilkan data ${title} sebagai tabel`}
-            title={toggle.tooltip}
-            aria-pressed={showData}
-            // Memuat: tetap memegang fokus dan tempatnya; tekan diabaikan (pola tombol pager tabel).
-            aria-disabled={mode === "wait" || undefined}
-            data-testid="widget-data-toggle"
-            onClick={() => {
-              if (mode === "on") setShowData((s) => !s);
-            }}
-          >
-            <toggle.Icon aria-hidden />
-          </Button>
+        {chart && mode ? (
+          <DataToggleButton
+            chart={chart}
+            mode={mode}
+            pressed={showData}
+            title={title}
+            editing={editing}
+            onToggle={() => setShowData((s) => !s)}
+          />
+        ) : null}
+        {config ? (
+          <HeadExport
+            title={title}
+            table={config.type === "table"}
+            editing={editing}
+            request={request}
+          />
         ) : null}
         {editing ? (
           <Button
@@ -183,6 +176,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           resizable={handle}
           showData={showData}
           onState={onState}
+          onRequest={onRequest}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">

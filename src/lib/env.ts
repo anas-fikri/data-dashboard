@@ -124,6 +124,24 @@ export const envSchema = z.object({
     .default(64 * 1024 * 1024),
   /** Batas waktu satu query; lewat → interrupt + QUERY_TIMEOUT. */
   QUERY_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(300_000).default(30_000),
+
+  // --- Ekspor widget (T-017) ---
+  /** Batas baris hasil ekspor CSV/XLSX; lebih → EXPORT_TOO_LARGE (XLSX maksimal 1.048.575 baris data). */
+  EXPORT_MAX_ROWS: z.coerce.number().int().min(1).max(1_048_575).default(1_000_000),
+  /** Umur tautan unduh ekspor sejak selesai; setelahnya objek dihapus job pembersihan. */
+  EXPORT_TTL_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(24 * 60 * 60 * 1000)
+    .default(60 * 60 * 1000),
+  /** Batas waktu satu job ekspor di worker (unduh parquet + DuckDB + tulis + unggah). */
+  EXPORT_DEADLINE_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(60 * 60 * 1000)
+    .default(10 * 60 * 1000),
 });
 
 export type Env = z.infer<typeof envSchema>;

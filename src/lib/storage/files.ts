@@ -57,9 +57,22 @@ export async function downloadToFile(
   return { sha256: hash.digest("hex"), bytes };
 }
 
-export async function uploadFile(key: string, path: string, contentType: string): Promise<void> {
+/**
+ * `contentDisposition`: metadata objek (mis. ekspor T-017: `attachment; filename=…`) sebagai cadangan
+ * bila storage mengabaikan response-content-disposition di presigned GET. Selalu dari server.
+ */
+export async function uploadFile(
+  key: string,
+  path: string,
+  contentType: string,
+  opts: { contentDisposition?: string } = {},
+): Promise<void> {
   const s3 = s3Internal();
   const { size } = await stat(path);
+  const meta = {
+    ContentType: contentType,
+    ...(opts.contentDisposition ? { ContentDisposition: opts.contentDisposition } : {}),
+  };
   if (size <= PART) {
     await s3.send(
       new PutObjectCommand({
@@ -67,13 +80,13 @@ export async function uploadFile(key: string, path: string, contentType: string)
         Key: key,
         Body: createReadStream(path),
         ContentLength: size,
-        ContentType: contentType,
+        ...meta,
       }),
     );
     return;
   }
   const { UploadId } = await s3.send(
-    new CreateMultipartUploadCommand({ Bucket: bucket(), Key: key, ContentType: contentType }),
+    new CreateMultipartUploadCommand({ Bucket: bucket(), Key: key, ...meta }),
   );
   if (!UploadId) throw new Error("storage tidak mengembalikan UploadId");
   const fh = await open(path, "r");

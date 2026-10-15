@@ -34,7 +34,7 @@ import {
   remapConfig,
   type SheetInfo,
 } from "@/features/widgets/remap";
-import { parseWidgetConfig } from "@/features/widgets/spec";
+import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import {
@@ -54,7 +54,13 @@ import {
 } from "./spec";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
-import { absentNames, widgetBodySchema, widgetPlan, type WidgetQueryBody } from "./widget";
+import {
+  absentNames,
+  widgetBodySchema,
+  widgetPlan,
+  type WidgetPlan,
+  type WidgetQueryBody,
+} from "./widget";
 
 export type QueryCode =
   | "INVALID"
@@ -475,7 +481,7 @@ export const COLUMN_UNAVAILABLE_VIEWER = "Kolom yang dipakai widget ini tidak te
  * tersembunyi tidak disebut; pemilik/editor tetap mendapat detail), dan cached/ms hanya untuk pemilik.
  * Aman terhadap cache: kegagalan tidak pernah di-cache dan cached/ms bukan bagian nilai cache.
  */
-function forRole<R extends WidgetQueryResult>(role: DashboardAccessRole, r: R): R {
+export function forRole<R extends WidgetQueryResult>(role: DashboardAccessRole, r: R): R {
   if (!r.ok) {
     // Deny by default: detail hanya untuk pemilik/editor yang eksplisit (peran tak dikenal = viewer).
     const detailed = role === "OWNER" || role === "EDITOR";
@@ -571,7 +577,7 @@ const NOT_ALLOWED =
   "Filter tidak diizinkan untuk dashboard ini. Muat ulang halaman bila pengaturan dashboard baru diubah.";
 
 /** Widget yang sudah lolos otorisasi repo (membawa peran peminta). */
-type AuthorizedWidget = NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>;
+export type AuthorizedWidget = NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>;
 
 /**
  * Sumber filter dashboard widget ini (D6): kolom filter tersimpan + dimensi grafik cross-filter beserta
@@ -623,14 +629,34 @@ export async function runWidgetQuery(
   return { ...r, widgetVersion: w.updatedAt.toISOString() };
 }
 
-/** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */
-async function widgetResult(
-  userId: string,
+/**
+ * Rencana widget siap dijalankan, tanpa DuckDB: dipakai bersama query widget (/api/query) dan job
+ * ekspor (T-017) agar aturan filter, remap, dan rencana persis sama dengan yang tampil di layar.
+ */
+export interface ResolvedWidget {
+  ok: true;
+  /** Versi aktif dataset yang dipakai (kunci cache hasil). */
+  versionId: string;
+  config: Exclude<WidgetConfig, { type: "empty" }>;
+  sheet: { typedKey: string; schemaRevision: number; schema: ColumnSchema[] };
+  planned: Extract<WidgetPlan, { ok: true }>;
+  /** Filter dashboard yang berlaku (klausa kanonik) + nama yang dilewati. */
+  dash: { clauses: DashClause[]; skipped: string[] };
+  /** Nama tampil kolom kosong (absent, T-014) yang dipakai widget. */
+  absent: string[];
+}
+
+/**
+ * Bagian query widget setelah otorisasi dan sebelum cache/DuckDB (diekstrak dari widgetResult, T-017):
+ * izin kolom filter (D6), konfigurasi, sheet aktif + remap setelah ganti data, rencana widget, filter
+ * dashboard, dan kolom absent. Gagal → kegagalan mentah (bentuk per peran di forRole pemanggil).
+ * `deps.now` = jam preset tanggal (job ekspor memakai waktu permintaan).
+ */
+export async function resolveWidget(
   w: AuthorizedWidget,
-  body: WidgetQueryBody,
-  deps: QueryDeps,
-  t0: number,
-): Promise<WidgetQueryResult> {
+  body: Pick<WidgetQueryBody, "dashboardFilters" | "page" | "sort">,
+  deps: Pick<QueryDeps, "repo" | "now">,
+): Promise<ResolvedWidget | QueryFailure> {
   const dashFilters = body.dashboardFilters ?? [];
   const sources = dashFilters.length ? await dashboardSources(w, deps.repo) : [];
   // Non-pemilik: kolom filter tersimpan yang kini hilang/disembunyikan (tipe null) tidak diizinkan —
@@ -692,11 +718,32 @@ async function widgetResult(
         sourceFamilies(sources),
       )
     : { clauses: [] as DashClause[], skipped: [] as string[] };
+  return {
+    ok: true,
+    versionId: w.activeVersionId,
+    config,
+    sheet: { typedKey: sheet.typedKey, schemaRevision: sheet.schemaRevision, schema: sheet.schema },
+    planned,
+    dash,
+    absent: absentNames(config, sheet.schema),
+  };
+}
+
+/** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */
+async function widgetResult(
+  userId: string,
+  w: AuthorizedWidget,
+  body: WidgetQueryBody,
+  deps: QueryDeps,
+  t0: number,
+): Promise<WidgetQueryResult> {
+  const resolved = await resolveWidget(w, body, deps);
+  if (!resolved.ok) return resolved;
+  const { versionId, config, sheet, planned, dash, absent } = resolved;
   // Klausa kanonik (unik, terurut, preset sudah jadi tanggal) masuk kunci cache; tanpa filter
   // dashboard kunci tetap sama dengan sebelum T-012.
   const dashKey = dash.clauses.length ? dash.clauses : undefined;
   // Catatan per permintaan (bukan bagian hasil yang di-cache): filter yang dilewati + kolom kosong.
-  const absent = absentNames(config, sheet.schema);
   const withNotes = <R extends WidgetQueryResult>(r: R): R =>
     r.ok && (dash.skipped.length || absent.length)
       ? {
@@ -708,7 +755,7 @@ async function widgetResult(
 
   const keyParts = {
     datasetId: w.datasetId,
-    versionId: w.activeVersionId,
+    versionId,
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
