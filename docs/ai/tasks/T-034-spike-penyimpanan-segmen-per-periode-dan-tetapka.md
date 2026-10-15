@@ -25,7 +25,7 @@ depends_on:
   - T-032
   - T-033
 created: "2026-10-15T02:30:54Z"
-updated: "2026-10-15T02:30:54Z"
+updated: "2026-10-15T15:16:21Z"
 created_by: claude-code
 ---
 
@@ -42,3 +42,5 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-15T15:16:21Z T-015 sudah dibatalkan sebagai digantikan pada 2026-10-15 (memutus ketergantungan melingkar T-024 → T-015); bagian AC4 'T-015 ditutup sebagai digantikan' tinggal diverifikasi dengan aitk task show T-015.
