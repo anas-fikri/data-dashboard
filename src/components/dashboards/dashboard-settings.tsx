@@ -4,6 +4,7 @@ import { IconDeviceFloppy, IconTrash } from "@tabler/icons-react";
 import { Dialog } from "radix-ui";
 import { useActionState, useEffect, useRef } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
+import { deleteLostAccess } from "@/components/sharing/share-model";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field } from "@/components/ui/field";
@@ -19,19 +20,24 @@ import { FilterColumnsSettings } from "./filter-columns-settings";
 
 /*
  * Pengaturan dashboard (mode edit): ganti nama, kolom filter (T-012), dan hapus. Hapus memakai dialog konfirmasi; data
- * tetap aman di dataset, hanya susunan widget dashboard ini yang hilang.
+ * tetap aman di dataset, hanya susunan widget dashboard ini yang hilang. Dashboard yang dibagikan:
+ * konfirmasinya menyebut siapa yang kehilangan akses (review T-016 R3-CC-2).
  */
 export function DashboardSettings({
   id,
   name,
   filterColumns,
   sources,
+  access = null,
 }: {
   id: string;
   name: string;
   filterColumns: FilterColumnView[];
   sources: SourceSheet[];
+  /** Status berbagi (pemilik saja; null = tidak diketahui / bukan pemilik). */
+  access?: { orgShared: boolean; shareCount: number } | null;
 }) {
+  const lost = deleteLostAccess(access);
   const [renameState, rename, renaming] = useActionState<DashboardFormState, FormData>(
     renameDashboardAction,
     { status: "idle" },
@@ -113,6 +119,17 @@ export function DashboardSettings({
                 </Dialog.Title>
                 <Dialog.Description className="mt-2 text-sm text-muted-foreground">
                   Dashboard dan semua widgetnya dihapus permanen. Data di dataset tetap ada.
+                  {lost ? (
+                    <>
+                      {" "}
+                      <span
+                        data-testid="delete-dashboard-share-impact"
+                        className="font-medium text-foreground"
+                      >
+                        {lost}
+                      </span>
+                    </>
+                  ) : null}
                 </Dialog.Description>
                 <form action={remove} className="mt-4 flex flex-col gap-4">
                   <input type="hidden" name="id" value={id} />

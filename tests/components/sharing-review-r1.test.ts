@@ -7,12 +7,7 @@ import { fetchValues } from "@/components/dashboards/filters/use-filter-values";
 import { patchWidget } from "@/components/dashboards/use-dashboard-editor";
 import { SHARE_DIALOG_BODY, SHARE_DIALOG_BOX } from "@/components/sharing/share-dialog";
 import { ShareGrants } from "@/components/sharing/share-grants";
-import {
-  OWNER_UNNAMED,
-  keepSelection,
-  ownerLabel,
-  visibleResults,
-} from "@/components/sharing/share-model";
+import { keepSelection, visibleResults } from "@/components/sharing/share-model";
 import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import { isAccessLost } from "@/components/widgets/access-refresh";
 import { WIDGET_CHANGED, bodyState, withChangeCheck } from "@/components/widgets/body-state";
@@ -262,6 +257,7 @@ describe("T016-UI-5 / Q-2: nama dataset/pemilik panjang dan pemilik tanpa nama",
       name: "Penjualan",
       datasetName: long,
       ownerName: owner,
+      ownerEmail: "raden.ayu@pcp.co.id",
       role: "VIEWER" as const,
       widgetCount: 3,
       updatedAt: at,
@@ -271,6 +267,7 @@ describe("T016-UI-5 / Q-2: nama dataset/pemilik panjang dan pemilik tanpa nama",
       name: "Stok",
       datasetName: "Gudang",
       ownerName: null,
+      ownerEmail: "gudang@pcp.co.id",
       role: "EDITOR" as const,
       widgetCount: 0,
       updatedAt: at,
@@ -296,13 +293,10 @@ describe("T016-UI-5 / Q-2: nama dataset/pemilik panjang dan pemilik tanpa nama",
     expect(cls).not.toContain("truncate");
   });
 
-  it("pemilik tanpa nama: satu frasa yang wajar di kepala dashboard dan daftar", () => {
-    expect(OWNER_UNNAMED).toBe("pengguna tanpa nama");
-    expect(ownerLabel(null)).toBe(OWNER_UNNAMED);
-    expect(ownerLabel("Sari")).toBe("Sari");
+  it("pemilik tanpa nama: emailnya setelah label (R3-CC-1 menggantikan frasa 'pengguna tanpa nama')", () => {
     const out = html(createElement(SharedDashboardList, { dashboards, compact: true }));
-    expect(out).toContain(`Pemilik: </span><bdi>${OWNER_UNNAMED}</bdi>`);
-    expect(out).not.toContain("Tanpa nama");
+    expect(out).toContain(`Pemilik: </span><bdi dir="ltr">gudang<wbr/>@pcp.co.id</bdi>`);
+    expect(out).not.toContain("tanpa nama");
   });
 });
 

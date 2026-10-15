@@ -1,10 +1,10 @@
 import { IconChevronRight } from "@tabler/icons-react";
 import Link from "next/link";
+import { EmailText } from "@/components/admin/email-text";
 import { formatUpdated } from "@/components/dashboards/dashboard-list";
 import type { SharedDashboardSummary } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
 import { SharedRoleBadge } from "./access-badge";
-import { ownerLabel } from "./share-model";
 
 interface SharedDashboardListProps {
   dashboards: SharedDashboardSummary[];
@@ -18,6 +18,8 @@ interface SharedDashboardListProps {
  * Dashboard yang dibagikan ke saya (T-016), termasuk lewat berbagi organisasi: nama, dataset, pemilik,
  * peran. Pola sama dengan daftar dashboard sendiri — tabel saat kontainer lebar, bertumpuk saat sempit;
  * label kolom tetap terbaca pembaca layar. Nama pemilik/dataset diisolasi (<bdi>) dari teks sekitarnya.
+ * Pemilik: nama tampilan bisa meniru rekan, jadi emailnya selalu tampil di baris sendiri dan tidak
+ * pernah terpotong; tanpa nama → email saja (review T-016 R3-CC-1).
  */
 export function SharedDashboardList({
   dashboards,
@@ -32,6 +34,7 @@ export function SharedDashboardList({
     "min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]",
     !compact && "@3xl:truncate",
   );
+  const ownerCaption = <span className={compact ? undefined : "@3xl:sr-only"}>Pemilik: </span>;
   return (
     <div
       data-testid="shared-list"
@@ -85,9 +88,17 @@ export function SharedDashboardList({
                   <bdi>{d.datasetName}</bdi>
                 </span>
               )}
-              <span className={detail} title={ownerLabel(d.ownerName)}>
-                <span className={compact ? undefined : "@3xl:sr-only"}>Pemilik: </span>
-                <bdi>{ownerLabel(d.ownerName)}</bdi>
+              <span className="min-w-0 text-sm text-muted-foreground" data-testid="shared-owner">
+                {d.ownerName ? (
+                  <span className={cn("block", detail)} title={d.ownerName}>
+                    {ownerCaption}
+                    <bdi>{d.ownerName}</bdi>
+                  </span>
+                ) : null}
+                <span className="block min-w-0 [overflow-wrap:anywhere]">
+                  {d.ownerName ? null : ownerCaption}
+                  <EmailText email={d.ownerEmail} />
+                </span>
               </span>
               <span>
                 <span className="sr-only">Peran Anda: </span>

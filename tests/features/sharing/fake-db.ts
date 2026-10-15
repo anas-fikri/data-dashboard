@@ -226,7 +226,10 @@ export function fakeShareDb() {
     );
     return {
       ...d,
-      dataset: { ...ds, owner: { name: userOf(ds.ownerId)?.name ?? null } },
+      dataset: {
+        ...ds,
+        owner: { name: userOf(ds.ownerId)?.name ?? null, email: userOf(ds.ownerId)?.email ?? "" },
+      },
       shares: shares.map((s) => ({ ...s, user: { ...userOf(s.userId)! } })),
       widgets: widgets.map((w) => ({ ...w, updatedAt: widgetAt(w) })),
       _count: {
@@ -265,6 +268,31 @@ export function fakeShareDb() {
         return hit.length;
       }
       throw new Error(`fake-db: SQL mentah tidak didukung: ${text}`);
+    }),
+    /**
+     * listSharedDashboards (review T-016 R3 SEC-2): share langsung user, ROW_NUMBER per pemilik dataset
+     * (terbaru dulu), `total` sebelum dibatasi. Nilai: userId, userId (bukan pemilik), batas per pemilik,
+     * batas daftar.
+     */
+    $queryRaw: vi.fn(async (sql: unknown, ...values: unknown[]) => {
+      const text = (sql as readonly string[]).join("?");
+      if (!text.includes('ROW_NUMBER() OVER (PARTITION BY ds."ownerId"')) {
+        throw new Error(`fake-db: SQL mentah tidak didukung: ${text}`);
+      }
+      const [userId, notOwner, perOwner, max] = values as [string, string, number, number];
+      const ownerOf = (d: FDashboard) => datasetOf(d.datasetId).ownerId;
+      const all = state.shares
+        .filter((s) => s.userId === userId)
+        .map((s) => state.dashboards.find((d) => d.id === s.dashboardId)!)
+        .filter((d) => ownerOf(d) !== notOwner)
+        .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime() || (a.id < b.id ? 1 : -1));
+      const seen = new Map<string, number>();
+      const kept = all.filter((d) => {
+        const n = (seen.get(ownerOf(d)) ?? 0) + 1;
+        seen.set(ownerOf(d), n);
+        return n <= perOwner;
+      });
+      return kept.slice(0, max).map((d) => ({ id: d.id, total: all.length }));
     }),
     $transaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
       const snapshot = structuredClone(state);

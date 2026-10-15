@@ -138,15 +138,18 @@ export const prismaQueryRepo: QueryRepo = {
   },
   async filterSource(userId, dashboardId) {
     // Slicer untuk semua peran yang boleh melihat dashboard (T-016); lainnya null → 404. Tanpa cache.
+    // Peran dihitung di query yang sama (pesan kolom tidak tersedia per peran, review T-016 R3 SEC-1).
     const d = await prisma.dashboard.findFirst({
       where: { id: dashboardId, ...canViewWhere(userId) },
       select: {
+        ...roleSelect(userId),
         datasetId: true,
         filterColumns: true,
-        dataset: { select: { activeVersionId: true } },
+        dataset: { select: { ownerId: true, activeVersionId: true } },
       },
     });
-    if (!d) return null;
+    const role = d && roleOf(userId, d);
+    if (!d || !role) return null;
     const activeVersionId = d.dataset.activeVersionId;
     const sheets = activeVersionId
       ? await prisma.sheet.findMany({
@@ -155,7 +158,13 @@ export const prismaQueryRepo: QueryRepo = {
           select: { id: true, name: true },
         })
       : [];
-    return { datasetId: d.datasetId, activeVersionId, filterColumns: d.filterColumns, sheets };
+    return {
+      datasetId: d.datasetId,
+      activeVersionId,
+      filterColumns: d.filterColumns,
+      sheets,
+      role,
+    };
   },
   // Mode { dashboardId, spec } (T-016): service yang memutuskan peran mana yang boleh.
   dashboardAccess,

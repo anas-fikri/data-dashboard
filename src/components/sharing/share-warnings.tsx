@@ -11,7 +11,11 @@ import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
 /*
  * Dua peringatan wajib dialog share (T-016, AC6 + catatan review T-012). Wilayahnya selalu terpasang
  * dan sopan (aria-live) sehingga peringatan editor yang muncul saat peran "Bisa mengedit widget"
- * dipilih ikut dibacakan. Teks memakai warna latar depan penuh di atas latar peringatan (kontras).
+ * dipilih ikut dibacakan. Saat kosong tingginya nol (bukan display:none) agar wilayahnya tetap ada di
+ * pohon aksesibilitas; margin negatif menetralkan gap form (review T-016 R3-UI-1). Pengumuman bisa
+ * hilang (Select Radix menyembunyikan dialog selama daftarnya terbuka), jadi peringatan editor juga
+ * diberi id untuk aria-describedby Select peran dan tombol "Bagikan" (`editorId`). Teks memakai warna
+ * latar depan penuh di atas latar peringatan (kontras).
  * Daftar kolom memuat kolom filter DAN kolom kategori grafik yang menyaring silang, jadi sarannya
  * menyebut keduanya — sakelar filter silang dengan label aslinya (review T-016 R2-UI-3). Tautan ke
  * pengaturan kolom filter ditandai FILTER_LINK_ATTR: dialog memindah fokus ke bagian itu, bukan ke
@@ -19,9 +23,10 @@ import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
  */
 export const FILTER_LINK_ATTR = "data-filter-settings-link";
 
-function Warning({ testId, children }: { testId: string; children: ReactNode }) {
+function Warning({ id, testId, children }: { id?: string; testId: string; children: ReactNode }) {
   return (
     <div
+      id={id}
       data-testid={testId}
       className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm text-foreground"
     >
@@ -39,15 +44,22 @@ function Warning({ testId, children }: { testId: string; children: ReactNode }) 
 export function ShareWarnings({
   dashboardId,
   editor,
+  editorId,
   filterColumns,
 }: {
   dashboardId: string;
   editor: boolean;
+  /** id peringatan editor (rujukan aria-describedby kontrol tambah orang). */
+  editorId?: string;
   filterColumns: readonly string[];
 }) {
   return (
-    <div aria-live="polite" className="flex flex-col gap-2 empty:hidden">
-      {editor ? <Warning testId="share-warning-editor">{EDITOR_WARNING}</Warning> : null}
+    <div aria-live="polite" className="flex flex-col gap-2 empty:-mt-3">
+      {editor ? (
+        <Warning id={editorId} testId="share-warning-editor">
+          {EDITOR_WARNING}
+        </Warning>
+      ) : null}
       {filterColumns.length ? (
         <Warning testId="share-warning-filters">
           <p>{FILTER_WARNING}</p>

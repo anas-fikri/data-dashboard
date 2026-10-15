@@ -1,13 +1,18 @@
 import { IconDatabase, IconLayoutDashboard, IconPlus, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { DashboardList } from "@/components/dashboards/dashboard-list";
+import { hiddenSharedText } from "@/components/sharing/share-model";
 import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
-import { listDashboards, listSharedDashboards } from "@/features/dashboards/service";
+import {
+  listDashboards,
+  listSharedDashboards,
+  SHARED_PER_OWNER_MAX,
+} from "@/features/dashboards/service";
 import { listDatasets } from "@/features/datasets/service";
 
 export const metadata = { title: "Dashboard" };
@@ -18,11 +23,12 @@ type Search = Promise<{ deleted?: string }>;
  * Dashboard milik user (T-010) dan yang dibagikan ke user (T-016, termasuk berbagi organisasi). Bagian
  * "Dibagikan ke saya" selalu tampil — juga bagi user tanpa dataset (persona viewer); keadaan kosong
  * "Belum ada dataset" hanya untuk bagian milik sendiri. User tanpa dashboard sendiri tetapi punya
- * dashboard bersama melihat bagian bersama lebih dulu.
+ * dashboard bersama melihat bagian bersama lebih dulu. Share langsung yang terpotong batas per pemilik
+ * disebut di bawah daftar, tidak hilang diam-diam (review T-016 R3-SEC-2).
  */
 export default async function DashboardsPage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const [dashboards, shared, datasets, params] = await Promise.all([
+  const [dashboards, { items: shared, hiddenDirect }, datasets, params] = await Promise.all([
     listDashboards(user.id),
     listSharedDashboards(user.id),
     listDatasets(user.id),
@@ -88,6 +94,11 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
           className="py-8"
         />
       )}
+      {hiddenDirect > 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="shared-hidden">
+          {hiddenSharedText(hiddenDirect, SHARED_PER_OWNER_MAX)}
+        </p>
+      ) : null}
     </section>
   );
 

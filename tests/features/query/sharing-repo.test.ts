@@ -99,18 +99,48 @@ describe("prismaQueryRepo.filterSource (T-016)", () => {
     expect(dashboardFind.mock.calls[0]![0].where).toEqual({ id: D, ...canViewWhere(U) });
     expect(sheetFindMany).not.toHaveBeenCalled();
 
-    dashboardFind.mockResolvedValueOnce({
+    const row = (opts: { owner?: string; shares?: ("VIEWER" | "EDITOR")[]; org?: boolean }) => ({
       datasetId: DS,
       filterColumns: [{ sheet: "Data", column: "Cabang" }],
-      dataset: { activeVersionId: VER },
+      orgShared: opts.org ?? false,
+      dataset: { ownerId: opts.owner ?? OWNER_ID, activeVersionId: VER },
+      shares: (opts.shares ?? []).map((role) => ({ role })),
     });
+    dashboardFind.mockResolvedValueOnce(row({ shares: ["VIEWER"] }));
     sheetFindMany.mockResolvedValueOnce([{ id: "s1", name: "Data" }]);
     expect(await prismaQueryRepo.filterSource!(U, D)).toEqual({
       datasetId: DS,
       activeVersionId: VER,
       filterColumns: [{ sheet: "Data", column: "Cabang" }],
       sheets: [{ id: "s1", name: "Data" }],
+      role: "VIEWER",
     });
+  });
+
+  it("review R3 SEC-1: peran dihitung di query yang sama (pemilik vs share); baris tanpa peran → null", async () => {
+    dashboardFind.mockResolvedValueOnce(null);
+    await prismaQueryRepo.filterSource!(U, D);
+    expect(dashboardFind.mock.calls[0]![0].select).toMatchObject({
+      orgShared: true,
+      shares: { where: { userId: U }, select: { role: true }, take: 1 },
+      dataset: { select: { ownerId: true, activeVersionId: true } },
+    });
+    const row = (owner: string, shares: ("VIEWER" | "EDITOR")[], org = false) => ({
+      datasetId: DS,
+      filterColumns: [],
+      orgShared: org,
+      dataset: { ownerId: owner, activeVersionId: null },
+      shares: shares.map((role) => ({ role })),
+    });
+    dashboardFind.mockResolvedValueOnce(row(U, []));
+    expect(await prismaQueryRepo.filterSource!(U, D)).toMatchObject({ role: "OWNER" });
+    dashboardFind.mockResolvedValueOnce(row(OWNER_ID, ["EDITOR"]));
+    expect(await prismaQueryRepo.filterSource!(U, D)).toMatchObject({ role: "EDITOR" });
+    dashboardFind.mockResolvedValueOnce(row(OWNER_ID, [], true));
+    expect(await prismaQueryRepo.filterSource!(U, D)).toMatchObject({ role: "VIEWER" });
+    dashboardFind.mockResolvedValueOnce(row(OWNER_ID, []));
+    expect(await prismaQueryRepo.filterSource!(U, D)).toBeNull();
+    expect(sheetFindMany).not.toHaveBeenCalled();
   });
 });
 

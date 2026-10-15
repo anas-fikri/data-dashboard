@@ -27,11 +27,30 @@ export const sharedRoleLabel = (role: Exclude<DashboardAccessRole, "OWNER">) =>
   role === "EDITOR" ? "Editor" : "Hanya lihat";
 
 /**
- * Pemilik dataset yang belum mengisi nama tampilan. Satu frasa untuk kepala dashboard ("Dibagikan
- * oleh …") dan daftar "Dibagikan ke saya" ("Pemilik: …") — terbaca wajar di keduanya.
+ * "Dibagikan ke saya" dibatasi per pemilik (SHARED_PER_OWNER_MAX; juga batas daftar seluruhnya):
+ * dashboard yang terpotong disebut, tidak hilang diam-diam (review T-016 R3-SEC-2). Aksesnya lewat
+ * tautan tetap ada.
  */
-export const OWNER_UNNAMED = "pengguna tanpa nama";
-export const ownerLabel = (name: string | null) => name ?? OWNER_UNNAMED;
+export const hiddenSharedText = (hidden: number, perOwner: number) =>
+  `${hidden.toLocaleString("id-ID")} dashboard lain tidak ditampilkan karena batas daftar: paling banyak ${perOwner.toLocaleString("id-ID")} dashboard dari satu pemilik.`;
+
+/**
+ * Konfirmasi hapus dashboard yang dibagikan (review T-016 R3-CC-2), sejalan dengan hapus dataset:
+ * siapa yang kehilangan akses. null = tidak dibagikan (atau bukan pemilik).
+ */
+export function deleteLostAccess(
+  access: { orgShared: boolean; shareCount: number } | null | undefined,
+): string | null {
+  if (!access || (!access.orgShared && access.shareCount === 0)) return null;
+  const people = `${access.shareCount.toLocaleString("id-ID")} orang`;
+  const who =
+    access.shareCount > 0 && access.orgShared
+      ? `${people} dan seluruh organisasi`
+      : access.shareCount > 0
+        ? people
+        : "Seluruh organisasi";
+  return `${who} kehilangan akses ke dashboard ini.`;
+}
 
 export const EDITOR_WARNING = "Editor dapat membaca semua kolom tidak tersembunyi dataset ini.";
 export const FILTER_WARNING =
@@ -48,6 +67,14 @@ export function showEditorWarning(
 ): boolean {
   return warnings.editor || adding === "EDITOR" || grants.some((g) => g.role === "EDITOR");
 }
+
+/**
+ * Ganti peran di daftar akses: naik ke EDITOR dikonfirmasi dulu dengan peringatan editor — di ponsel
+ * peringatan di bagian "Tambah orang" bisa di luar layar (review T-016 R3-UI-2). Turun ke VIEWER
+ * langsung disimpan; peran sama → tidak ada aksi.
+ */
+export const roleChangeStep = (from: ShareRole, to: ShareRole): "none" | "confirm" | "save" =>
+  from === to ? "none" : to === "EDITOR" ? "confirm" : "save";
 
 /** Peringatan kolom filter lintas sheet: hanya bila server menemukan nama kolomnya. */
 export const showFilterWarning = (w: Pick<ShareWarnings, "filterColumns">) =>

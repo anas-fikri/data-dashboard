@@ -1,6 +1,7 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
+import { recordAudit } from "@/features/audit/service";
 import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
 import { widgetPlan } from "@/features/query/widget";
@@ -103,6 +104,16 @@ export interface DashboardView {
   role: DashboardAccessRole;
   /** Nama tampilan pemilik dataset (sudah dibersihkan); null bila belum diisi. */
   ownerName: string | null;
+  /**
+   * Email pemilik dataset: identitas yang tidak bisa dipalsukan (nama bebas diisi siapa pun dan tidak
+   * unik), ditampilkan di samping nama (review T-016 R3 CC-1).
+   */
+  ownerEmail: string;
+  /**
+   * Ringkasan akses dashboard, HANYA untuk pemilik (null untuk editor/viewer): share organisasi + jumlah
+   * share per user, mis. untuk peringatan saat menghapus dashboard (review T-016 R3 CC-2).
+   */
+  access: { orgShared: boolean; shareCount: number } | null;
   layout: LayoutItem[];
   layoutRevision: number;
   widgets: WidgetView[];
@@ -138,6 +149,8 @@ export interface SharedDashboardSummary {
   name: string;
   datasetName: string;
   ownerName: string | null;
+  /** Email pemilik dataset (identitas yang tidak bisa dipalsukan nama, review T-016 R3 CC-1). */
+  ownerEmail: string;
   role: "EDITOR" | "VIEWER";
   widgetCount: number;
   updatedAt: Date;
@@ -145,6 +158,11 @@ export interface SharedDashboardSummary {
 
 /** Batas daftar "Dibagikan ke saya": share organisasi bisa mencakup banyak dashboard. */
 export const SHARED_LIST_MAX = 200;
+/**
+ * Share langsung per pemilik dataset (pemberi share) di "Dibagikan ke saya": satu orang tidak bisa
+ * memenuhi daftar penerima dengan share langsung tanpa persetujuannya (review T-016 R3 SEC-2).
+ */
+export const SHARED_PER_OWNER_MAX = 20;
 
 const fail = <T>(
   code: DashboardCode,
@@ -217,29 +235,30 @@ export async function listDashboards(ownerId: string): Promise<DashboardSummary[
   }));
 }
 
+export interface SharedDashboardList {
+  items: SharedDashboardSummary[];
+  /**
+   * Share langsung yang tidak ikut terdaftar karena batas SHARED_PER_OWNER_MAX per pemilik (atau batas
+   * daftar): ditampilkan sebagai catatan agar pemotongan tidak diam-diam. Aksesnya lewat URL tetap.
+   */
+  hiddenDirect: number;
+}
+
 /**
  * "Dibagikan ke saya": dashboard dataset orang lain yang dibagikan ke user. Share langsung ke user
  * DULU (terbaru dulu), baru share organisasi saja (terbaru dulu) — dua query terpisah, jadi banyaknya
  * share organisasi (siapa pun bisa membuatnya) tidak bisa mendorong share langsung keluar dari daftar
- * atau dari 5 teratas Beranda (review T-016 SEC-3). Share organisasi dari pemilik yang sudah dinonaktifkan
- * tidak didaftar (aksesnya lewat URL tetap). Dibatasi SHARED_LIST_MAX: daftar ini dirender utuh tanpa
- * halaman.
+ * atau dari 5 teratas Beranda (review T-016 SEC-3). Share langsung juga tidak butuh persetujuan
+ * penerima: paling banyak SHARED_PER_OWNER_MAX per pemilik dataset (window function), sisanya dihitung
+ * di hiddenDirect, sehingga satu pemberi share tidak bisa menutupi share dari orang lain (review T-016
+ * R3 SEC-2). Share organisasi dari pemilik yang sudah dinonaktifkan tidak didaftar (aksesnya lewat URL
+ * tetap). Dibatasi SHARED_LIST_MAX: daftar ini dirender utuh tanpa halaman.
  */
-export async function listSharedDashboards(userId: string): Promise<SharedDashboardSummary[]> {
-  const select = {
-    ...roleSelect(userId),
-    id: true,
-    name: true,
-    updatedAt: true,
-    dataset: { select: { ownerId: true, name: true, owner: { select: { name: true } } } },
-    _count: { select: { widgets: true } },
-  } satisfies Prisma.DashboardSelect;
+export async function listSharedDashboards(userId: string): Promise<SharedDashboardList> {
+  const select = sharedSelect(userId);
   const list = { orderBy: { updatedAt: "desc" as const }, take: SHARED_LIST_MAX, select };
-  const [direct, org] = await Promise.all([
-    prisma.dashboard.findMany({
-      ...list,
-      where: { dataset: { ownerId: { not: userId } }, shares: { some: { userId } } },
-    }),
+  const [{ direct, hiddenDirect }, org] = await Promise.all([
+    directShared(userId, select),
     prisma.dashboard.findMany({
       ...list,
       where: {
@@ -249,7 +268,7 @@ export async function listSharedDashboards(userId: string): Promise<SharedDashbo
       },
     }),
   ]);
-  return [...direct, ...org].slice(0, SHARED_LIST_MAX).flatMap((r) => {
+  const items = [...direct, ...org].slice(0, SHARED_LIST_MAX).flatMap((r) => {
     const role = roleOf(userId, r);
     if (role !== "EDITOR" && role !== "VIEWER") return [];
     return [
@@ -258,12 +277,64 @@ export async function listSharedDashboards(userId: string): Promise<SharedDashbo
         name: r.name,
         datasetName: r.dataset.name,
         ownerName: cleanUserName(r.dataset.owner.name),
+        ownerEmail: r.dataset.owner.email,
         role,
         widgetCount: r._count.widgets,
         updatedAt: r.updatedAt,
       },
     ];
   });
+  return { items, hiddenDirect };
+}
+
+const sharedSelect = (userId: string) =>
+  ({
+    ...roleSelect(userId),
+    id: true,
+    name: true,
+    updatedAt: true,
+    dataset: {
+      select: { ownerId: true, name: true, owner: { select: { name: true, email: true } } },
+    },
+    _count: { select: { widgets: true } },
+  }) satisfies Prisma.DashboardSelect;
+
+/**
+ * Share langsung user (dashboard dataset orang lain), terbaru dulu, paling banyak SHARED_PER_OWNER_MAX
+ * per pemilik dataset dan SHARED_LIST_MAX seluruhnya. Urutan + batas dihitung Postgres (ROW_NUMBER per
+ * pemilik; `total` = semua share langsung sebelum dibatasi), lalu baris dibaca dengan select yang sama
+ * dengan share organisasi dan urutannya dipertahankan. Share yang dicabut di antara dua query ikut hilang.
+ */
+async function directShared(userId: string, select: ReturnType<typeof sharedSelect>) {
+  const ranked = await prisma.$queryRaw<{ id: string; total: number }[]>`
+    SELECT id, total FROM (
+      SELECT d.id, d."updatedAt",
+        ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY d."updatedAt" DESC, d.id DESC) AS n,
+        CAST(COUNT(*) OVER () AS int) AS total
+      FROM "DashboardShare" s
+      JOIN "Dashboard" d ON d.id = s."dashboardId"
+      JOIN "Dataset" ds ON ds.id = d."datasetId"
+      WHERE s."userId" = ${userId} AND ds."ownerId" <> ${userId}
+    ) r
+    WHERE n <= ${SHARED_PER_OWNER_MAX}
+    ORDER BY "updatedAt" DESC, id DESC
+    LIMIT ${SHARED_LIST_MAX}`;
+  const ids = ranked.map((r) => r.id);
+  const rows = ids.length
+    ? await prisma.dashboard.findMany({
+        where: {
+          id: { in: ids },
+          dataset: { ownerId: { not: userId } },
+          shares: { some: { userId } },
+        },
+        select,
+      })
+    : [];
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  return {
+    direct: ids.flatMap((id) => byId.get(id) ?? []),
+    hiddenDirect: Math.max(0, Number(ranked[0]?.total ?? 0) - ids.length),
+  };
 }
 
 export async function createDashboard(
@@ -330,21 +401,47 @@ export async function renameDashboard(
   }
 }
 
-/** Hapus dashboard (share ikut terhapus lewat kaskade): pemilik saja. */
+/**
+ * Hapus dashboard (share ikut terhapus lewat kaskade): pemilik saja. Akses yang ikut berakhir (jumlah
+ * share per user + share organisasi) dicatat AuditLog "dashboard.delete" dalam transaksi yang sama,
+ * seperti hapus dataset (review T-016 R3 CC-2). Lock `dashboard:<id>` lebih dulu: perubahan share atau
+ * widget yang sedang berjalan selesai dulu sehingga hitungannya tepat; urutannya sama dengan penulis
+ * widget (lock advisory → baris Dashboard → Widget), jadi tidak menambah jalur deadlock.
+ */
 export async function deleteDashboard(
   userId: string,
   id: unknown,
+  ip: string,
 ): Promise<DashboardResult<{ id: string }>> {
   if (!isIdShape(id)) return notFound();
-  let r: Prisma.BatchPayload;
+  let deleted: boolean;
   try {
-    r = await prisma.dashboard.deleteMany({ where: { id, ...ownedWhere(userId) } });
+    deleted = await prisma.$transaction(async (tx) => {
+      await tx.$executeRaw(lockKey("dashboard", id));
+      const where = { id, ...ownedWhere(userId) };
+      const d = await tx.dashboard.findFirst({
+        where,
+        select: { name: true, orgShared: true, _count: { select: { shares: true } } },
+      });
+      if (!d) return false;
+      const r = await tx.dashboard.deleteMany({ where });
+      if (r.count !== 1) return false;
+      await recordAudit(tx, {
+        actorId: userId,
+        action: "dashboard.delete",
+        targetType: "dashboard",
+        targetId: id,
+        meta: { name: d.name, shares: d._count.shares, orgShared: d.orgShared },
+        ip,
+      });
+      return true;
+    });
   } catch (e) {
-    // Korban deadlock dengan transaksi lain (dibatalkan utuh, dashboard tetap ada) → coba lagi.
-    if (isTxConflict(e)) return busy();
+    // Korban deadlock atau antre lock terlalu lama (dibatalkan utuh, dashboard tetap ada) → coba lagi.
+    if (isTxConflict(e) || isLockTimeout(e)) return busy();
     throw e;
   }
-  return r.count === 1 ? { ok: true, data: { id } } : denied(userId, id, "owner");
+  return deleted ? { ok: true, data: { id } } : denied(userId, id, "owner");
 }
 
 /**
@@ -373,10 +470,11 @@ export const getDashboard = cache(async function getDashboard(
           name: true,
           activeVersionId: true,
           ownerId: true,
-          owner: { select: { name: true } },
+          owner: { select: { name: true, email: true } },
         },
       },
       widgets: { orderBy: { createdAt: "asc" }, select: STORED_WIDGET_SELECT },
+      _count: { select: { shares: true } },
     },
   });
   const role = d && roleOf(userId, d);
@@ -396,6 +494,9 @@ export const getDashboard = cache(async function getDashboard(
     dataset: { id: d.dataset.id, name: d.dataset.name },
     role,
     ownerName: cleanUserName(d.dataset.owner.name),
+    ownerEmail: d.dataset.owner.email,
+    // Data share hanya untuk pemilik (editor/viewer tidak melihat siapa/berapa yang diberi akses).
+    access: role === "OWNER" ? { orgShared: d.orgShared, shareCount: d._count.shares } : null,
     layoutRevision: d.layoutRevision,
     updatedAt: d.updatedAt,
     widgets,

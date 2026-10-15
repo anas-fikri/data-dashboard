@@ -209,6 +209,12 @@ export interface QueryRepo {
     activeVersionId: string | null;
     filterColumns: unknown;
     sheets: { id: string; name: string }[];
+    /**
+     * Peran peminta, dihitung di query yang sama (tanpa cache): non-pemilik tidak bisa membedakan kolom
+     * filter yang tidak tersedia dari nama lain (review T-016 R3 SEC-1). Wajib: setiap repo harus
+     * memutuskan peran (seperti widget()).
+     */
+    role: DashboardAccessRole;
   } | null>;
   /**
    * Peran user pada dashboard + dataset/versi aktif dashboard itu (T-016, mode { dashboardId, spec }).
@@ -620,7 +626,15 @@ async function widgetResult(
 ): Promise<WidgetQueryResult> {
   const dashFilters = body.dashboardFilters ?? [];
   const sources = dashFilters.length ? await dashboardSources(w, deps.repo) : [];
-  const allowed = sources.map((x) => x.name);
+  // Non-pemilik: kolom filter tersimpan yang kini hilang/disembunyikan (tipe null) tidak diizinkan —
+  // jawabannya sama dengan nama yang tidak pernah jadi kolom filter (NOT_ALLOWED + petunjuk muat
+  // ulang), jadi nama yang tidak dikirim ke halaman mereka tidak bisa dikonfirmasi lewat tebakan
+  // (review T-016 R3 SEC-1). Pemilik tetap mendapat skippedFilters. Repo tanpa tipe (uji tanpa
+  // filterSources): semua nama tersimpan tetap diizinkan.
+  const typed = Boolean(w.dashboardId && deps.repo.filterSources);
+  const allowed = sources
+    .filter((x) => x.type !== null || w.role === "OWNER" || !typed)
+    .map((x) => x.name);
   if (disallowedFilter(dashFilters, allowed)) return fail("INVALID", NOT_ALLOWED);
   const cfg = parseWidgetConfig(w.type, w.spec);
   if (!cfg.ok) return fail("INVALID", cfg.message);

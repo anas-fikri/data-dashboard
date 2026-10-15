@@ -20,6 +20,10 @@ const { requireUser, revalidatePath, redirect } = vi.hoisted(() => ({
 vi.mock("@/features/auth/session", () => ({ requireUser }));
 vi.mock("next/cache", () => ({ revalidatePath }));
 vi.mock("next/navigation", () => ({ redirect }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-real-ip": "198.51.100.7" }),
+}));
+vi.mock("@/lib/env", () => ({ env: () => ({ TRUST_PROXY: true }) }));
 
 const svc = await import("@/features/dashboards/service");
 const actions = await import("@/features/dashboards/actions");
@@ -167,7 +171,7 @@ const editOps = {
 };
 const ownerOps = {
   renameDashboard: (u: string, d: string) => svc.renameDashboard(u, d, "Nama baru"),
-  deleteDashboard: (u: string, d: string) => svc.deleteDashboard(u, d),
+  deleteDashboard: (u: string, d: string) => svc.deleteDashboard(u, d, "198.51.100.7"),
   setDashboardFilterColumns: (u: string, d: string) =>
     svc.setDashboardFilterColumns(u, d, [{ sheet: "Penjualan", column: "Omzet" }]),
 };
@@ -412,17 +416,19 @@ describe("baca: getDashboard, sumber panel, daftar", () => {
 
   it("Dibagikan ke saya: share user + organisasi, peran tertinggi, tanpa dashboard milik sendiri", async () => {
     const shared = async (u: string) =>
-      Object.fromEntries((await svc.listSharedDashboards(u)).map((r) => [r.id, r.role]));
+      Object.fromEntries((await svc.listSharedDashboards(u)).items.map((r) => [r.id, r.role]));
     expect(await shared(EDITOR)).toEqual({ [D1]: "EDITOR", [D2]: "VIEWER" });
     expect(await shared(VIEWER)).toEqual({ [D1]: "VIEWER", [D2]: "VIEWER" });
     expect(await shared(STRANGER)).toEqual({ [D2]: "VIEWER", [D3]: "VIEWER" });
     expect(await shared(OWNER)).toEqual({});
-    const [row] = await svc.listSharedDashboards(ORG);
-    expect(row).toEqual({
+    const { items, hiddenDirect } = await svc.listSharedDashboards(ORG);
+    expect(hiddenDirect).toBe(0);
+    expect(items[0]).toEqual({
       id: D2,
       name: expect.any(String),
       datasetName: "Penjualan",
       ownerName: "Pemilik Satu",
+      ownerEmail: "pemilik@pcpexpress.com",
       role: "VIEWER",
       widgetCount: 1,
       updatedAt: expect.any(Date),
@@ -478,7 +484,7 @@ describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
       updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, n)),
     }));
     fake.state.dashboards.push(...flood);
-    const ids = (await svc.listSharedDashboards(VIEWER)).map((r) => r.id);
+    const ids = (await svc.listSharedDashboards(VIEWER)).items.map((r) => r.id);
     expect(ids).toHaveLength(svc.SHARED_LIST_MAX);
     // Share langsung (D1) pertama; lalu share organisasi terbaru dulu.
     expect(ids[0]).toBe(D1);
@@ -486,18 +492,153 @@ describe("review SEC-3: Dibagikan ke saya — share langsung dulu", () => {
     expect(ids).not.toContain(D2);
     // Pemilik banjir dinonaktifkan → share organisasinya hilang dari daftar.
     fake.state.users.find((u) => u.id === STRANGER)!.isActive = false;
-    expect((await svc.listSharedDashboards(VIEWER)).map((r) => r.id)).toEqual([D1, D2]);
+    expect((await svc.listSharedDashboards(VIEWER)).items.map((r) => r.id)).toEqual([D1, D2]);
   });
 
   it("share langsung tetap terdaftar walau pemilik nonaktif; share + organisasi → sekali dengan peran share", async () => {
     fake.state.dashboards.find((d) => d.id === D1)!.orgShared = true;
-    const rows = await svc.listSharedDashboards(EDITOR);
+    const rows = (await svc.listSharedDashboards(EDITOR)).items;
     expect(rows.map((r) => [r.id, r.role])).toEqual([
       [D1, "EDITOR"],
       [D2, "VIEWER"],
     ]);
     fake.state.users.find((u) => u.id === OWNER)!.isActive = false;
-    expect((await svc.listSharedDashboards(EDITOR)).map((r) => r.id)).toEqual([D1]);
+    expect((await svc.listSharedDashboards(EDITOR)).items.map((r) => r.id)).toEqual([D1]);
+  });
+});
+
+describe("review R3 SEC-2: share langsung dibatasi per pemilik dataset", () => {
+  /** STRANGER (pemilik DSY) membuat n dashboard yang lebih baru dari D1 dan membagikan semuanya ke `to`. */
+  function flood(n: number, to: string) {
+    const rows = Array.from({ length: n }, (_, i) => ({
+      id: cuid(`g${String(i).padStart(4, "0")}`),
+      datasetId: DSY,
+      name: `Banjir langsung ${i}`,
+      orgShared: false,
+      layout: [],
+      layoutRevision: 0,
+      filterColumns: [],
+      updatedAt: new Date(Date.UTC(2026, 9, 16, 0, 0, i)),
+    }));
+    fake.state.dashboards.push(...rows);
+    fake.state.shares.push(
+      ...rows.map((d) => ({
+        dashboardId: d.id,
+        userId: to,
+        role: "VIEWER" as const,
+        createdById: STRANGER,
+        createdAt: new Date("2026-10-16T00:00:00Z"),
+      })),
+    );
+    return rows;
+  }
+
+  it("satu pemberi share paling banyak SHARED_PER_OWNER_MAX baris; share pemilik lain + organisasi tetap terdaftar", async () => {
+    const rows = flood(svc.SHARED_PER_OWNER_MAX + 5, VIEWER);
+    const { items, hiddenDirect } = await svc.listSharedDashboards(VIEWER);
+    const ids = items.map((r) => r.id);
+    // 20 terbaru dari STRANGER, lalu share langsung D1 dari pemilik lain, lalu share organisasi D2.
+    expect(ids).toEqual([
+      ...rows
+        .slice(-svc.SHARED_PER_OWNER_MAX)
+        .reverse()
+        .map((d) => d.id),
+      D1,
+      D2,
+    ]);
+    expect(hiddenDirect).toBe(5);
+    expect(items.find((r) => r.id === D1)).toMatchObject({
+      ownerEmail: "pemilik@pcpexpress.com",
+      role: "VIEWER",
+    });
+    // Batas dihitung Postgres per pemilik (window function), parameter terikat (bukan teks SQL).
+    const [sql, ...values] = fake.db.$queryRaw.mock.calls[0]!;
+    expect((sql as string[]).join("?")).toContain(
+      'ROW_NUMBER() OVER (PARTITION BY ds."ownerId" ORDER BY d."updatedAt" DESC, d.id DESC)',
+    );
+    expect(values).toEqual([VIEWER, VIEWER, svc.SHARED_PER_OWNER_MAX, svc.SHARED_LIST_MAX]);
+  });
+
+  it("tanpa banjir: tidak ada yang tersembunyi; share yang dicabut di antara dua query tidak ikut", async () => {
+    flood(3, VIEWER);
+    expect((await svc.listSharedDashboards(VIEWER)).hiddenDirect).toBe(0);
+    expect((await svc.listSharedDashboards(STRANGER)).hiddenDirect).toBe(0);
+    // Peringkat dibaca saat share masih ada, lalu share D1 dicabut sebelum baris dibaca.
+    const real = fake.db.$queryRaw.getMockImplementation()!;
+    fake.db.$queryRaw.mockImplementationOnce(async (...args: unknown[]) => {
+      const r = await real(...(args as Parameters<typeof real>));
+      fake.state.shares = fake.state.shares.filter((x) => x.dashboardId !== D1);
+      return r;
+    });
+    expect((await svc.listSharedDashboards(VIEWER)).items.map((r) => r.id)).not.toContain(D1);
+  });
+});
+
+describe("review R3 CC-1/CC-2: email pemilik + ringkasan akses di DashboardView", () => {
+  it("email pemilik untuk semua peran; jumlah share + organisasi hanya untuk pemilik", async () => {
+    expect(await svc.getDashboard(OWNER, D1)).toMatchObject({
+      ownerEmail: "pemilik@pcpexpress.com",
+      access: { orgShared: false, shareCount: 2 },
+    });
+    expect(await svc.getDashboard(OWNER, D2)).toMatchObject({
+      access: { orgShared: true, shareCount: 0 },
+    });
+    for (const [user, dash] of [
+      [EDITOR, D1],
+      [VIEWER, D1],
+      [ORG, D2],
+    ] as const) {
+      expect(await svc.getDashboard(user, dash)).toMatchObject({
+        ownerEmail: "pemilik@pcpexpress.com",
+        access: null,
+      });
+    }
+  });
+});
+
+describe("review R3 CC-2: hapus dashboard tercatat di AuditLog", () => {
+  it("pemilik: dashboard.delete {name, shares, orgShared} + IP, di bawah lock dashboard; share ikut terhapus", async () => {
+    fake.state.dashboards.find((d) => d.id === D1)!.orgShared = true;
+    expect(await svc.deleteDashboard(OWNER, D1, "198.51.100.7")).toEqual({
+      ok: true,
+      data: { id: D1 },
+    });
+    expect(fake.locks).toEqual([`dashboard:${D1}`]);
+    expect(fake.state.shares.some((x) => x.dashboardId === D1)).toBe(false);
+    expect(fake.state.audits).toEqual([
+      {
+        actorId: OWNER,
+        action: "dashboard.delete",
+        targetType: "dashboard",
+        targetId: D1,
+        meta: { name: "Dashboard dashpri", shares: 2, orgShared: true },
+        ip: "198.51.100.7",
+      },
+    ]);
+  });
+
+  it("jejak gagal ditulis → hapus dibatalkan utuh (satu transaksi)", async () => {
+    fake.db.auditLog.create.mockRejectedValueOnce(new Error("audit down"));
+    await expect(svc.deleteDashboard(OWNER, D1, "198.51.100.7")).rejects.toThrow("audit down");
+    expect(fake.state.dashboards.map((d) => d.id)).toContain(D1);
+    expect(fake.state.shares.filter((x) => x.dashboardId === D1)).toHaveLength(2);
+  });
+
+  it("editor → FORBIDDEN, orang asing → NOT_FOUND, tanpa jejak; Server Action meneruskan IP klien", async () => {
+    expect(await svc.deleteDashboard(EDITOR, D1, "x")).toMatchObject({ code: "FORBIDDEN" });
+    expect(await svc.deleteDashboard(cuid("nobody"), D1, "x")).toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(fake.state.audits).toEqual([]);
+    requireUser.mockResolvedValue({ id: OWNER });
+    const f = new FormData();
+    f.set("id", D1);
+    await expect(actions.deleteDashboardAction({ status: "idle" }, f)).rejects.toThrow(
+      "NEXT_REDIRECT",
+    );
+    expect(fake.state.audits).toMatchObject([
+      { action: "dashboard.delete", targetId: D1, ip: "198.51.100.7" },
+    ]);
   });
 });
 

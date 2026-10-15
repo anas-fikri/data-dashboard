@@ -175,6 +175,7 @@ async function main() {
           activeVersionId: VER,
           filterColumns: [{ sheet: "Data", column: "Kota" }],
           sheets: [{ id: SHEET, name: "Data" }],
+          role: "OWNER" as const,
         }),
       },
       parquet: { acquire: async () => ({ path: file, release: () => {} }) },

@@ -243,7 +243,7 @@ describe("pemilih pengguna dan daftar akses (render)", () => {
 describe("daftar dashboard", () => {
   const at = new Date("2026-10-15T03:00:00Z");
 
-  it("Dibagikan ke saya: test id, pemilik (fallback tanpa nama), peran, tautan dashboard", () => {
+  it("Dibagikan ke saya: test id, pemilik (fallback email), peran, tautan dashboard", () => {
     const out = html(
       createElement(SharedDashboardList, {
         dashboards: [
@@ -252,6 +252,7 @@ describe("daftar dashboard", () => {
             name: "Penjualan",
             datasetName: "Rekap 2026",
             ownerName: "Sari",
+            ownerEmail: "sari@pcp.co.id",
             role: "VIEWER",
             widgetCount: 3,
             updatedAt: at,
@@ -261,6 +262,7 @@ describe("daftar dashboard", () => {
             name: "Stok",
             datasetName: "Gudang",
             ownerName: null,
+            ownerEmail: "gudang@pcp.co.id",
             role: "EDITOR",
             widgetCount: 0,
             updatedAt: at,
@@ -273,7 +275,7 @@ describe("daftar dashboard", () => {
     expect(out).toContain('href="/dashboards/d1"');
     expect(out).toContain("Rekap 2026");
     expect(out).toContain("Sari");
-    expect(out).toContain("pengguna tanpa nama");
+    expect(out).toContain("gudang<wbr/>@pcp.co.id");
     expect(out).toContain("Hanya lihat");
     expect(out).toContain("Editor");
   });

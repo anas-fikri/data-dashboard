@@ -39,7 +39,8 @@ import { WidgetPanelFrame } from "./widget-panel-frame";
  * Bilah filter (T-012) di atas grid di kedua mode; status filter ikut saat berpindah mode (?f=).
  * Peran (T-016): viewer hanya mode lihat (server mengalihkan ?mode=edit); editor mengedit widget dan
  * tata letak tanpa tautan/pengaturan milik pemilik. Query widget 404 (akses dicabut) → halaman dimuat
- * ulang dari server sekali per pemasangan kanvas (AccessRefreshProvider).
+ * ulang dari server sekali per keadaan halaman (AccessRefreshProvider; dipasang lagi bila daftar widget
+ * server berubah, widget yang sudah dihapus di server diabaikan — review T-016 R3-CL-1).
  * Back/Forward (review T-016 R2-CL-1): props dari cache riwayat tidak pernah dipakai — kerangka sampai
  * refresh selesai (useFreshAfterHistory); mode lihat dipasang ulang bila versi widget/tata letak berubah.
  */
@@ -232,7 +233,8 @@ function Canvas(props: CanvasProps) {
     : props.crossFilterColumns;
 
   return (
-    <AccessRefreshProvider>
+    // Props server (bukan ed.widgets): refresh yang membawa daftar widget lain memasang penjaga lagi.
+    <AccessRefreshProvider serverWidgetIds={props.widgets.map((w) => w.id)}>
       <DashboardFiltersProvider
         dashboardId={dashboardId}
         columns={props.filterColumns}

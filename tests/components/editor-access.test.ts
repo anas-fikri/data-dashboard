@@ -8,7 +8,7 @@ import {
   isFrozen,
   type SaveState,
 } from "@/components/dashboards/use-dashboard-editor";
-import { createRefreshOnce } from "@/components/widgets/access-refresh";
+import { createAccessGuard } from "@/components/widgets/access-refresh";
 
 /*
  * T-016 pencabutan/penurunan akses di tengah sesi: editor membeku pada FORBIDDEN/NOT_FOUND seperti
@@ -69,17 +69,17 @@ describe("editor membeku saat akses edit berubah", () => {
 describe("query widget 404 → muat ulang halaman sekali", () => {
   it("banyak widget gagal bersamaan → satu refresh; berikutnya diabaikan", () => {
     const refresh = vi.fn();
-    const lost = createRefreshOnce(refresh);
-    expect(lost()).toBe(true);
-    expect(lost()).toBe(false);
+    const { lost } = createAccessGuard(refresh, ["w1", "w2"]);
+    expect(lost("w1")).toBe(true);
+    expect(lost("w2")).toBe(false);
     lost();
     expect(refresh).toHaveBeenCalledTimes(1);
   });
 
   it("pemasangan baru (pindah mode / dashboard lain) punya penjaga sendiri", () => {
     const refresh = vi.fn();
-    createRefreshOnce(refresh)();
-    createRefreshOnce(refresh)();
+    createAccessGuard(refresh).lost();
+    createAccessGuard(refresh).lost();
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 });

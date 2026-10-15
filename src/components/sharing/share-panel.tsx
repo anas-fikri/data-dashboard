@@ -1,7 +1,7 @@
 "use client";
 
 import { IconRefresh } from "@tabler/icons-react";
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -36,6 +36,8 @@ export function SharePanel({
   const s = useShareState(dashboardId);
   const [addRole, setAddRole] = useState<ShareRole>("VIEWER");
   const searchRef = useRef<HTMLInputElement>(null);
+  /** id peringatan editor: deskripsi Select peran dan tombol "Bagikan" (review T-016 R3-UI-1). */
+  const editorWarnId = useId();
   /** Kontrol yang menerima fokus lagi setelah aksi selesai. */
   const restoreTo = useRef<() => HTMLElement | null>(() => null);
   const ready = s.load.status === "ready";
@@ -94,6 +96,7 @@ export function SharePanel({
 
   const data = s.load.data;
   const granted = new Map(data.grants.map((g) => [g.userId, g.role] as const));
+  const editorWarning = showEditorWarning(data.grants, data.warnings, addRole);
   const errorAt = (at: ShareSection) => (s.error?.at === at ? s.error.message : null);
   const run = (
     key: string,
@@ -140,6 +143,7 @@ export function SharePanel({
           busy={s.busy}
           error={errorAt("add")}
           inputRef={searchRef}
+          describedBy={editorWarning ? editorWarnId : undefined}
           onAdd={(user, role) =>
             run(
               "add",
@@ -152,7 +156,8 @@ export function SharePanel({
           warnings={
             <ShareWarnings
               dashboardId={dashboardId}
-              editor={showEditorWarning(data.grants, data.warnings, addRole)}
+              editor={editorWarning}
+              editorId={editorWarnId}
               filterColumns={showFilterWarning(data.warnings) ? data.warnings.filterColumns : []}
             />
           }

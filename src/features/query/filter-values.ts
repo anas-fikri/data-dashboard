@@ -2,7 +2,9 @@
  * Nilai slicer dashboard (T-012, B4): DISTINCT satu kolom filter dashboard dari sheet versi aktif, paling
  * banyak 1000 (+ penanda terpotong), dengan pencarian di server. Pemilik, editor, dan viewer dashboard
  * (T-016, dicek repo.filterSource tanpa cache sebelum cache/DuckDB); lainnya NOT_FOUND, sama dengan
- * dashboard yang tidak ada. Pesan kolom tidak tersedia tidak menyebut nama. Berjalan di jatah query user yang sama dengan
+ * dashboard yang tidak ada. Pesan kolom tidak tersedia tidak menyebut nama; bagi non-pemilik kolom filter
+ * tersimpan yang tidak tersedia dijawab sama dengan nama yang bukan kolom filter (review T-016 R3
+ * SEC-1). Berjalan di jatah query user yang sama dengan
  * widget (runOnParquet) dan di-cache seperti hasil query (kunci memuat versi + schemaRevision + kata
  * cari ternormalisasi; hasil > SLICER_CACHE_MAX_BYTES tidak di-cache). Permintaan yang dibatalkan klien
  * (ketikan berikutnya) tidak menjalankan DuckDB bila masih antre. Kata cari dan nilai tidak pernah
@@ -84,12 +86,21 @@ export async function runFilterValues(
       normName(f.column) === normName(column) &&
       (sheetName === undefined || normName(f.sheet) === normName(sheetName)),
   );
-  if (!entry) return fail("INVALID", "Kolom ini bukan kolom filter dashboard.");
-  if (!src.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
+  const notFilter = () => fail("INVALID", "Kolom ini bukan kolom filter dashboard.");
+  if (!entry) return notFilter();
+  // Non-pemilik tidak menerima nama kolom filter yang tidak tersedia di versi aktif (getDashboard):
+  // kolom hilang/disembunyikan, sheet belum siap, atau dataset tanpa data dijawab persis seperti nama
+  // yang bukan kolom filter, sehingga tebakan nama tidak terkonfirmasi (review T-016 R3 SEC-1).
+  // Pemilik tetap mendapat pesan rinci untuk diperbaiki.
+  const owner = src.role === "OWNER";
+  if (!src.activeVersionId) {
+    return owner ? fail("NOT_READY", "Data dataset ini belum siap.") : notFilter();
+  }
   const target = src.sheets.find((s) => normName(s.name) === normName(entry.sheet));
   const sheet = target ? await deps.repo.sheet(src.activeVersionId, target.id) : null;
   const col = sheet?.schema ? columnNamed(sheet.schema, entry.column) : undefined;
   if (!target || !sheet || !sheet.typedKey || !col || col.hidden) {
+    if (!owner) return notFilter();
     return sheet && !sheet.typedKey
       ? fail("NOT_READY", "Sheet ini belum siap.")
       : fail("COLUMN_UNAVAILABLE", "Kolom filter ini tidak ada atau disembunyikan di data aktif.");

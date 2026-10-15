@@ -114,6 +114,7 @@ function deps(over: Partial<QueryDeps> = {}): QueryDeps {
             activeVersionId: VER,
             filterColumns: FILTER_COLUMNS,
             sheets: [{ id: SHEET, name: "Data" }],
+            role: "OWNER" as const,
           }
         : null,
     ),

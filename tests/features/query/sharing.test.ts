@@ -11,6 +11,7 @@ import {
   DASH,
   DS,
   EDITOR,
+  FILTER_COLUMNS,
   FOREIGN_SHEET,
   OWNER,
   SHEET,
@@ -259,6 +260,96 @@ describe("T-016 nilai slicer: pemilik/editor/viewer; lainnya NOT_FOUND sebelum c
       ok: false,
       code: "INVALID",
     });
+  });
+});
+
+describe("review T-016 R3 SEC-1: kolom filter tersimpan yang kini tersembunyi/hilang", () => {
+  // Pemilik menjadikan "Rahasia" kolom filter lalu menyembunyikannya; "Gaji" ada di sheet yang sudah
+  // tidak ada. Non-pemilik tidak menerima nama itu (getDashboard), jadi jawabannya harus sama persis
+  // dengan nama yang tidak pernah jadi kolom filter ("Wilayah") — kode, pesan, dan status HTTP (dari kode).
+  const STORED = [
+    ...FILTER_COLUMNS,
+    { sheet: "Data", column: "Rahasia" },
+    { sheet: "Hilang", column: "Gaji" },
+  ];
+  function staleDeps() {
+    const made = makeDeps();
+    made.deps.repo.filterSources = async () => [
+      { name: "Cabang", type: "text" },
+      { name: "Rahasia", type: null },
+      { name: "Gaji", type: null },
+    ];
+    const base = made.repo.filterSource.getMockImplementation()!;
+    made.repo.filterSource.mockImplementation(async (u: string, d: string) => {
+      const src = await base(u, d);
+      return src && { ...src, filterColumns: STORED };
+    });
+    return made;
+  }
+  const filterBody = (column: string) => ({
+    widgetId: WID("kpi"),
+    dashboardFilters: [{ column, op: "in", values: ["x"] }],
+  });
+
+  it("widget: viewer/editor → NOT_ALLOWED persis seperti nama asing, tanpa DuckDB; pemilik → skippedFilters", async () => {
+    const { deps, exec } = staleDeps();
+    for (const user of [VIEWER, EDITOR]) {
+      const never = await runWidgetQuery(user, filterBody("Wilayah"), deps);
+      expect(never).toEqual({ ok: false, code: "INVALID", message: NOT_ALLOWED, widgetVersion: V });
+      for (const stale of ["Rahasia", "rahasia", "Gaji"]) {
+        expect(await runWidgetQuery(user, filterBody(stale), deps)).toEqual(never);
+      }
+    }
+    expect(exec).not.toHaveBeenCalled();
+    // Pemilik melihat kolom itu di pengaturan: filternya tetap dilewati (bukan ditolak).
+    expect(await runWidgetQuery(OWNER, filterBody("Rahasia"), deps)).toMatchObject({
+      ok: true,
+      skippedFilters: ["Rahasia"],
+    });
+    expect(await runWidgetQuery(OWNER, filterBody("Wilayah"), deps)).toMatchObject({
+      code: "INVALID",
+      message: NOT_ALLOWED,
+    });
+    // Kolom filter yang tersedia tetap jalan untuk viewer.
+    expect(await runWidgetQuery(VIEWER, filterBody("Cabang"), deps)).toMatchObject({ ok: true });
+  });
+
+  it("slicer: viewer/editor → INVALID persis seperti nama asing; pemilik → COLUMN_UNAVAILABLE/NOT_READY", async () => {
+    const { deps, repo, exec } = staleDeps();
+    for (const user of [VIEWER, EDITOR]) {
+      const never = await runFilterValues(user, DASH, { column: "Wilayah" }, deps);
+      expect(never).toEqual({
+        ok: false,
+        code: "INVALID",
+        message: "Kolom ini bukan kolom filter dashboard.",
+      });
+      for (const body of [
+        { column: "Rahasia" },
+        { column: "Rahasia", sheet: "Data" },
+        { column: "Gaji" },
+      ]) {
+        expect(await runFilterValues(user, DASH, body, deps)).toEqual(never);
+      }
+    }
+    expect(await runFilterValues(OWNER, DASH, { column: "Rahasia" }, deps)).toMatchObject({
+      code: "COLUMN_UNAVAILABLE",
+    });
+    expect(await runFilterValues(OWNER, DASH, { column: "Gaji" }, deps)).toMatchObject({
+      code: "COLUMN_UNAVAILABLE",
+    });
+    // Dataset tanpa versi aktif: non-pemilik tidak bisa membedakan nama tersimpan dari nama asing.
+    const base = repo.filterSource.getMockImplementation()!;
+    deps.repo.filterSource = async (u, d) => {
+      const src = await base(u, d);
+      return src && { ...src, activeVersionId: null };
+    };
+    expect(await runFilterValues(VIEWER, DASH, { column: "Cabang" }, deps)).toEqual(
+      await runFilterValues(VIEWER, DASH, { column: "Wilayah" }, deps),
+    );
+    expect(await runFilterValues(OWNER, DASH, { column: "Cabang" }, deps)).toMatchObject({
+      code: "NOT_READY",
+    });
+    expect(exec).not.toHaveBeenCalled();
   });
 });
 

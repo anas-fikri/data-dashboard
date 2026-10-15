@@ -132,16 +132,18 @@ export function makeDeps() {
         role,
       };
     }),
-    filterSource: vi.fn(async (userId: string, dashboardId: string) =>
-      dashboardId === DASH && ROLES[userId]
+    filterSource: vi.fn(async (userId: string, dashboardId: string) => {
+      const role = ROLES[userId];
+      return dashboardId === DASH && role
         ? {
             datasetId: DS,
             activeVersionId: VER,
             filterColumns: FILTER_COLUMNS,
             sheets: [{ id: SHEET, name: "Data" }],
+            role,
           }
-        : null,
-    ),
+        : null;
+    }),
     dashboardAccess: vi.fn(
       async (userId: string, dashboardId: string): Promise<DashboardAccess | null> => {
         const role = ROLES[userId];

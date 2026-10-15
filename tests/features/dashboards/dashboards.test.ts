@@ -19,6 +19,8 @@ import {
 // Simpan pengaturan widget berjalan di transaksi (lock dashboard, T-013): updateMany sama di tx/prisma.
 const widgetUpdateMany = vi.fn();
 const dashboardUpdateMany = vi.fn();
+/** Hapus dashboard berjalan di transaksi + AuditLog (review T-016 R3 CC-2): deleteMany sama di tx/prisma. */
+const dashboardDeleteMany = vi.fn();
 const tx = {
   $executeRaw: vi.fn(async () => 1),
   dataset: { findFirst: vi.fn() },
@@ -27,14 +29,20 @@ const tx = {
     findFirst: vi.fn(),
     update: vi.fn(async () => ({})),
     updateMany: dashboardUpdateMany,
+    deleteMany: dashboardDeleteMany,
   },
+  auditLog: { create: vi.fn(async () => ({ id: "audit1" })) },
   widget: { create: vi.fn(), delete: vi.fn(async () => ({})), updateMany: widgetUpdateMany },
   /** Sheet spec masih di versi aktif (dicek ulang di bawah lock). */
   sheet: { count: vi.fn(async () => 1) },
 };
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
-  dashboard: { findFirst: vi.fn(), updateMany: dashboardUpdateMany, deleteMany: vi.fn() },
+  dashboard: {
+    findFirst: vi.fn(),
+    updateMany: dashboardUpdateMany,
+    deleteMany: dashboardDeleteMany,
+  },
   widget: { updateMany: widgetUpdateMany, findFirst: vi.fn() },
   sheet: {
     findFirst: vi.fn(),
@@ -62,9 +70,12 @@ const ownerAccess = {
   shares: [],
   dataset: { id: DS, ownerId: OWNER, activeVersionId: null },
 };
-/** Kolom peran (roleSelect) + pemilik yang dibaca getDashboard sejak T-016. */
-const roleCols = { orgShared: false, shares: [] };
-const ownerCols = { ownerId: OWNER, owner: { name: "Pemilik" } };
+/**
+ * Kolom peran (roleSelect) + pemilik yang dibaca getDashboard sejak T-016 (jumlah share + email pemilik:
+ * review T-016 R3 CC-1/CC-2).
+ */
+const roleCols = { orgShared: false, shares: [], _count: { shares: 0 } };
+const ownerCols = { ownerId: OWNER, owner: { name: "Pemilik", email: "pemilik@pcpexpress.com" } };
 /** Widget.updatedAt = versi pengaturan widget (review T-016 DI-1). */
 const AT = new Date("2026-10-15T01:02:03.004Z");
 const VERSION = AT.toISOString();
@@ -935,18 +946,32 @@ describe("review T-016 R2 DI-1: baris Dashboard dikunci sebelum Widget; deadlock
     await expect(ops[2]!()).rejects.toThrow("db down");
   });
 
-  it("hapus dashboard pemilik: korban deadlock → BUSY (dashboard tetap ada, coba lagi)", async () => {
+  it("hapus dashboard pemilik: korban deadlock/antre lock → BUSY (dashboard tetap ada, coba lagi)", async () => {
+    const IP = "203.0.113.9";
+    const attempt = () => {
+      tx.dashboard.findFirst.mockResolvedValueOnce({
+        name: "Penjualan",
+        orgShared: true,
+        _count: { shares: 3 },
+      });
+      return svc.deleteDashboard(OWNER, DB, IP);
+    };
     prisma.dashboard.deleteMany.mockRejectedValueOnce(deadlock());
-    expect(await svc.deleteDashboard(OWNER, DB)).toEqual({
+    expect(await attempt()).toEqual({
       ok: false,
       code: "BUSY",
       message: "Sedang memproses perubahan lain. Coba lagi.",
     });
     prisma.dashboard.deleteMany.mockRejectedValueOnce(conflict());
-    expect(await svc.deleteDashboard(OWNER, DB)).toMatchObject({ code: "BUSY" });
+    expect(await attempt()).toMatchObject({ code: "BUSY" });
+    // Lock advisory dashboard tidak didapat dalam batas waktu transaksi → BUSY juga.
+    prisma.$transaction.mockRejectedValueOnce(known("P2028"));
+    expect(await svc.deleteDashboard(OWNER, DB, IP)).toMatchObject({ code: "BUSY" });
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
     prisma.dashboard.deleteMany.mockResolvedValueOnce({ count: 1 });
-    expect(await svc.deleteDashboard(OWNER, DB)).toEqual({ ok: true, data: { id: DB } });
+    expect(await attempt()).toEqual({ ok: true, data: { id: DB } });
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
     prisma.dashboard.deleteMany.mockRejectedValueOnce(new Error("db down"));
-    await expect(svc.deleteDashboard(OWNER, DB)).rejects.toThrow("db down");
+    await expect(attempt()).rejects.toThrow("db down");
   });
 });

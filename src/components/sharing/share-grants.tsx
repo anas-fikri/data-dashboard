@@ -1,6 +1,6 @@
 "use client";
 
-import { IconBan, IconUserMinus } from "@tabler/icons-react";
+import { IconBan, IconPencil, IconUserMinus } from "@tabler/icons-react";
 import { useId, useRef, useState } from "react";
 import { EmailText } from "@/components/admin/email-text";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -9,6 +9,30 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import type { ShareGrantView, ShareRole } from "@/features/sharing/types";
 import { RoleSelect } from "./role-select";
+import { EDITOR_WARNING, roleChangeStep } from "./share-model";
+
+/**
+ * Galat ganti peran baris terakhir bisa jatuh di bawah area gulir dialog (tertutup kaki "Selesai"):
+ * saat dipasang digulir seperlunya saja ('nearest'), fokus tetap di Select (review T-016 R3-UI-3).
+ * Tingkat modul = callback ref stabil: React 19 memanggil ulang ref inline di setiap render, yang akan
+ * menarik area gulir kembali ke galat setiap kali dialog dirender ulang.
+ */
+export const revealRowError = (el: HTMLElement | null) => el?.scrollIntoView({ block: "nearest" });
+
+/** Isi konfirmasi "Jadikan editor?": siapa, apa yang bisa dilakukannya, dan peringatan editor (AC6). */
+export function PromoteDescription({ email }: { email: string }) {
+  return (
+    <>
+      <strong className="font-medium text-foreground [overflow-wrap:anywhere]">
+        <EmailText email={email} />
+      </strong>{" "}
+      bisa menambah, mengubah, dan menghapus widget serta mengatur tata letak dashboard ini.{" "}
+      <span data-testid="share-promote-warning" className="font-medium text-foreground">
+        {EDITOR_WARNING}
+      </span>
+    </>
+  );
+}
 
 interface ShareGrantsProps {
   grants: ShareGrantView[];
@@ -32,6 +56,8 @@ interface ShareGrantsProps {
  * batal → kembali ke tombol "Cabut" baris itu. Ponsel: kontrol bertumpuk selebar layar. Ganti peran
  * gagal: Select kembali ke peran tersimpan dan alasannya tampil di baris itu (bukan di bawah daftar
  * yang bisa di luar layar), terhubung ke Select lewat aria-describedby — fokus tetap di Select.
+ * Naik ke "Bisa mengedit widget" lewat konfirmasi yang memuat peringatan editor (R3-UI-2); Select
+ * tetap di peran tersimpan sampai dikonfirmasi, lalu fokus kembali ke Select baris itu.
  */
 export function ShareGrants({
   grants,
@@ -46,9 +72,11 @@ export function ShareGrants({
 }: ShareGrantsProps) {
   const id = useId();
   const [revoking, setRevoking] = useState<ShareGrantView | null>(null);
+  const [promoting, setPromoting] = useState<ShareGrantView | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const lastRevoke = useRef<string | null>(null);
+  const lastPromote = useRef<string | null>(null);
   const revokeBusy = revoking ? busy === `revoke:${revoking.userId}` : false;
   const rowError = (userId: string) => (error && errorUserId === userId ? error : null);
   const errorInRow = grants.some((g) => rowError(g.userId));
@@ -91,7 +119,13 @@ export function ShareGrants({
               <div className="flex flex-col gap-2 md:flex-row md:items-center">
                 <RoleSelect
                   value={g.role}
-                  onChange={(role) => role !== g.role && onRole(g, role)}
+                  onChange={(role) => {
+                    const step = roleChangeStep(g.role, role);
+                    if (step === "save") onRole(g, role);
+                    if (step !== "confirm") return;
+                    lastPromote.current = g.userId;
+                    setPromoting(g);
+                  }}
                   disabled={busy !== null}
                   aria-label={`Peran ${g.email}`}
                   aria-describedby={rowError(g.userId) ? `${id}-err-${g.userId}` : undefined}
@@ -114,7 +148,11 @@ export function ShareGrants({
                 </Button>
               </div>
               {rowError(g.userId) ? (
-                <div id={`${id}-err-${g.userId}`} data-testid="share-grant-error">
+                <div
+                  ref={revealRowError}
+                  id={`${id}-err-${g.userId}`}
+                  data-testid="share-grant-error"
+                >
                   <FormAlert tone="error">{rowError(g.userId)}</FormAlert>
                 </div>
               ) : null}
@@ -170,6 +208,38 @@ export function ShareGrants({
       >
         {revokeError ? <FormAlert tone="error">{revokeError}</FormAlert> : null}
       </ConfirmDialog>
+
+      <ConfirmDialog
+        open={promoting !== null}
+        onOpenChange={(open) => {
+          if (!open) setPromoting(null);
+        }}
+        title="Jadikan editor?"
+        description={promoting ? <PromoteDescription email={promoting.email} /> : ""}
+        data-testid="share-promote-confirm"
+        onCloseAutoFocus={(e) => {
+          // Kembali ke Select baris itu (bila sedang disimpan dan disabled, panel memulihkannya nanti).
+          e.preventDefault();
+          list.current
+            ?.querySelector<HTMLElement>(
+              `[data-user-id="${lastPromote.current}"] [data-testid=share-grant-role]`,
+            )
+            ?.focus();
+        }}
+        action={
+          <Button
+            leadingIcon={<IconPencil aria-hidden />}
+            className={DIALOG_CTA}
+            data-testid="share-promote"
+            onClick={() => {
+              if (promoting) onRole(promoting, "EDITOR");
+              setPromoting(null);
+            }}
+          >
+            Jadikan editor
+          </Button>
+        }
+      />
     </section>
   );
 }

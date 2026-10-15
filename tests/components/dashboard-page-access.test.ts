@@ -1,7 +1,6 @@
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { OWNER_UNNAMED } from "@/components/sharing/share-model";
 
 /*
  * T-016 halaman /dashboards/[id] per peran: viewer + ?mode=edit dialihkan ke URL lihat (?f= ikut)
@@ -57,6 +56,8 @@ const view = (role: "OWNER" | "EDITOR" | "VIEWER", ownerName: string | null = "S
   name: "Penjualan",
   role,
   ownerName,
+  ownerEmail: "sari@pcp.co.id",
+  access: role === "OWNER" ? { orgShared: true, shareCount: 3 } : null,
   dataset: { id: "ds1", name: "Rekap 2026" },
   layout: [],
   layoutRevision: 1,
@@ -135,10 +136,11 @@ describe("akses halaman dashboard", () => {
     const out = await render({ mode: "edit" });
     expect(m.getDashboardSources).toHaveBeenCalledWith("u1", D);
     expect(out).toContain("Editor");
-    // Pemilik tanpa nama: frasa yang sama dengan daftar "Dibagikan ke saya" (QUEUED-2).
+    // Pemilik tanpa nama: emailnya (identitas), bukan frasa "pengguna tanpa nama" (R3-CC-1).
     expect(out).toContain(
-      `Dibagikan oleh <bdi class="font-medium text-foreground">${OWNER_UNNAMED}</bdi>`,
+      'Dibagikan oleh <span class="font-medium text-foreground"><bdi dir="ltr">sari<wbr/>@pcp.co.id</bdi></span>',
     );
+    expect(out).not.toContain("tanpa nama");
     expect(out).not.toContain('data-testid="settings"');
     expect(out).not.toContain('data-testid="share-open"');
     expect(out).not.toContain('href="/datasets/ds1"');
@@ -165,5 +167,23 @@ describe("akses halaman dashboard", () => {
     expect(edit).toContain('data-testid="share-open"');
     expect(edit).not.toContain('data-testid="edit-dashboard"');
     expect(m.getDashboardSources).toHaveBeenCalledWith("u1", D);
+  });
+});
+
+describe("review T-016 R3", () => {
+  it("CC-1: 'Dibagikan oleh' memuat nama DAN email pemilik (nama bisa meniru rekan)", async () => {
+    m.getDashboard.mockResolvedValue(view("VIEWER"));
+    const out = await render();
+    expect(out).toContain(
+      'Dibagikan oleh <bdi class="font-medium text-foreground">Sari</bdi> (<bdi dir="ltr">sari<wbr/>@pcp.co.id</bdi>)',
+    );
+  });
+
+  it("CC-2: pengaturan dashboard (pemilik) menerima status berbagi untuk konfirmasi hapus", async () => {
+    m.getDashboard.mockResolvedValue(view("OWNER"));
+    const out = await render({ mode: "edit" });
+    expect(out).toContain(
+      "&quot;access&quot;:{&quot;orgShared&quot;:true,&quot;shareCount&quot;:3}",
+    );
   });
 });

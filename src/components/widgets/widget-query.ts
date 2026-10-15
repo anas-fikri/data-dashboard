@@ -183,7 +183,8 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
       (r) => {
         if (ctl.signal.aborted) return;
         // Akses dashboard dicabut (atau widgetnya dihapus di tempat lain): halaman dari server lagi.
-        if (isAccessLost(r)) accessLost?.();
+        // Id widget: widget yang sudah hilang dari props server tidak memakai jatah refresh.
+        if (isAccessLost(r)) accessLost?.(req.widgetId);
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }

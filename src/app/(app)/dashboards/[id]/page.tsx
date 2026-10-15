@@ -5,9 +5,9 @@ import { after } from "next/server";
 import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
 import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
+import { EmailText } from "@/components/admin/email-text";
 import { SharedRoleBadge } from "@/components/sharing/access-badge";
 import { ShareDialog } from "@/components/sharing/share-dialog";
-import { ownerLabel } from "@/components/sharing/share-model";
 import { PageHeader } from "@/components/ui/page-header";
 import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
@@ -97,9 +97,21 @@ export default async function DashboardPage({
           sharedRole ? (
             <>
               <SharedRoleBadge role={sharedRole} />
+              {/* Nama tampilan bisa meniru rekan: email pemilik selalu ikut (review T-016 R3-CC-1). */}
               <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="dashboard-owner">
                 Dibagikan oleh{" "}
-                <bdi className="font-medium text-foreground">{ownerLabel(d.ownerName)}</bdi>
+                {d.ownerName ? (
+                  <>
+                    <bdi className="font-medium text-foreground">{d.ownerName}</bdi>
+                    {" ("}
+                    <EmailText email={d.ownerEmail} />
+                    {")"}
+                  </>
+                ) : (
+                  <span className="font-medium text-foreground">
+                    <EmailText email={d.ownerEmail} />
+                  </span>
+                )}
               </span>
             </>
           ) : undefined
@@ -136,6 +148,7 @@ export default async function DashboardPage({
           name={d.name}
           filterColumns={d.filterColumns}
           sources={sources}
+          access={d.access}
         />
       ) : null}
     </div>

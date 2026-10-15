@@ -25,7 +25,9 @@ export type AuditAction =
   /** Share organisasi dinyalakan/dimatikan (meta.on) (T-016). */
   | "dashboard.org.share"
   /** Dashboard dibuka (dedup per user+dashboard 30 menit) (T-016). */
-  | "dashboard.open";
+  | "dashboard.open"
+  /** Pemilik menghapus dashboard; share user + organisasinya ikut berakhir (review T-016 R3 CC-2). */
+  | "dashboard.delete";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

@@ -1,8 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
+import { env } from "@/lib/env";
 import * as service from "./service";
 
 export type DashboardFormState =
@@ -60,7 +63,12 @@ export async function deleteDashboardAction(
   formData: FormData,
 ): Promise<DashboardFormState> {
   const user = await requireUser();
-  const r = await service.deleteDashboard(user.id, formData.get("id"));
+  const r = await service.deleteDashboard(
+    user.id,
+    formData.get("id"),
+    // AuditLog "dashboard.delete" (review T-016 R3 CC-2) ditulis dalam transaksi penghapusan.
+    clientIp(await headers(), env().TRUST_PROXY),
+  );
   if (!r.ok) return toError(r, formData);
   revalidatePath("/dashboards");
   redirect("/dashboards?deleted=1");

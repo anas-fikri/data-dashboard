@@ -42,6 +42,8 @@ const HACKED = `Diretas ${TAG}`;
 const KPI = "Jumlah transaksi";
 const CHART = "Omzet per cabang";
 const EDITOR_WIDGET = "Catatan editor";
+/** Nama tampilan semua akun uji (helpers.register); pemilik tampil sebagai nama + email (R3-CC-1). */
+const OWNER_NAME = "Uji E2E";
 /** Dashboard dataset Y (setelah dataset X dihapus): D3 dibagikan langsung ke C, D4 ke organisasi saja. */
 const D3_NAME = `Produk langsung ${TAG}`;
 const D4_NAME = `Produk organisasi ${TAG}`;
@@ -470,7 +472,10 @@ test.describe("berbagi dashboard", () => {
     expect((await b.goto(d1Path()))?.status()).toBe(200);
     await expect(b.getByRole("heading", { level: 1 })).toHaveText(D1_NAME);
     await expectKpi(b, ROWS);
-    await expect(b.getByTestId("dashboard-owner")).toContainText("Dibagikan oleh");
+    // Nama bebas bisa meniru rekan: email pemilik selalu ikut (review T-016 R3-CC-1).
+    await expect(b.getByTestId("dashboard-owner")).toHaveText(
+      `Dibagikan oleh ${OWNER_NAME} (${A})`,
+    );
     await expect(b.getByText("Hanya lihat", { exact: true })).toBeVisible();
     await expect(b.getByTestId("edit-dashboard")).toHaveCount(0);
     await expect(b.getByTestId("canvas-toolbar")).toHaveCount(0);
@@ -506,6 +511,9 @@ test.describe("berbagi dashboard", () => {
     const row = sharedRow(b, D1_NAME);
     await expect(row).toHaveAttribute("href", d1Path());
     await expect(row).toContainText("Hanya lihat");
+    await expect(row.getByTestId("shared-owner")).toContainText(OWNER_NAME);
+    await expect(row.getByTestId("shared-owner")).toContainText(A);
+    await expect(b.getByTestId("shared-hidden")).toHaveCount(0);
     await expect(sharedRow(b, D2_NAME)).toHaveCount(0);
   });
 
@@ -656,6 +664,7 @@ test.describe("berbagi dashboard", () => {
     await expect(row).toContainText("Hanya lihat");
     await c.goto("/");
     await expect(sharedRow(c, D1_NAME)).toBeVisible();
+    await expect(sharedRow(c, D1_NAME).getByTestId("shared-owner")).toContainText(A);
 
     await a.goto("/dashboards");
     const access = ownRow(a, D1_NAME).getByTestId("dashboard-access");
@@ -722,6 +731,10 @@ test.describe("berbagi dashboard", () => {
     await expect(warning).toContainText(
       /editor dapat membaca semua kolom tidak tersembunyi dataset ini/i,
     );
+    // Peringatan terbaca saat fokus di "Bagikan" walau pengumuman live hilang (review T-016 R3-UI-1).
+    const warningId = await warning.getAttribute("id");
+    expect(warningId).toBeTruthy();
+    await expect(dialog.getByTestId("share-add")).toHaveAttribute("aria-describedby", warningId!);
     await dialog.getByTestId("share-add").click();
     await expect(dialog.getByText(`${E} kini bisa mengedit widget dashboard ini.`)).toBeAttached();
     await expect(grantRow(dialog, E).getByTestId("share-grant-role")).toContainText(

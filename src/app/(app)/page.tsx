@@ -24,7 +24,7 @@ const SEE_ALL =
 /** Beranda: satu aksi utama (buat dataset) + dataset terbaru + dashboard yang dibagikan (T-016). */
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const [datasets, shared, params] = await Promise.all([
+  const [datasets, { items: shared }, params] = await Promise.all([
     listDatasets(user.id),
     listSharedDashboards(user.id),
     searchParams,

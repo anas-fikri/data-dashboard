@@ -29,6 +29,11 @@ interface ShareAddProps {
   onAdd: (user: ShareUserOption, role: ShareRole) => Promise<boolean>;
   /** Peringatan (editor / kolom filter) tepat di atas tombol "Bagikan": dibaca sebelum menekan. */
   warnings: ReactNode;
+  /**
+   * id peringatan editor saat tampil: deskripsi Select peran dan tombol "Bagikan", jadi tetap
+   * terbaca walau pengumuman wilayah aria-live terlewat (review T-016 R3-UI-1).
+   */
+  describedBy?: string;
 }
 
 /**
@@ -46,6 +51,7 @@ export function ShareAdd({
   inputRef,
   onAdd,
   warnings,
+  describedBy,
 }: ShareAddProps) {
   const id = useId();
   const [user, setUser] = useState<ShareUserOption | null>(null);
@@ -107,6 +113,7 @@ export function ShareAdd({
           value={role}
           onChange={onRole}
           disabled={busy !== null}
+          aria-describedby={describedBy}
           data-testid="share-role"
           className="md:w-56"
         />
@@ -118,6 +125,7 @@ export function ShareAdd({
         pending={busy === "add"}
         disabled={busy !== null}
         leadingIcon={<IconUserPlus aria-hidden />}
+        aria-describedby={describedBy}
         data-testid="share-add"
         className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
       >
