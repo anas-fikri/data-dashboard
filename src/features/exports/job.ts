@@ -242,7 +242,11 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
       if (ext === "csv") {
         return writeCsv(d.conn, built, cols, join(work, "body.csv"), out);
       }
-      const result = await d.conn.stream(built.sql, built.params);
+      // Sort penuh lewat COPY ke parquet kerja dulu, lalu dibaca berurutan: stream() langsung atas SELECT
+      // terurut kehabisan memori pada tabel lebar 1 juta baris di 768MB, COPY tidak (review T-017 INT-R3-1).
+      const sorted = join(work, "sorted.parquet");
+      await d.conn.run(`COPY (${built.sql}) TO ${lit(sorted)} (FORMAT parquet)`, built.params);
+      const result = await d.conn.stream(`SELECT * FROM read_parquet(${lit(sorted)})`);
       return writeXlsx(
         out,
         { sheetName: sheetName(row.title ?? ""), columns: cols.map(xlsxColumn) },

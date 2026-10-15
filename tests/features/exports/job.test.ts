@@ -204,6 +204,23 @@ describe("runExportJob", () => {
     expect(rows[1]![6]).toBe("=1+1");
   });
 
+  it("review INT-R3-1: XLSX terurut lewat parquet kerja → urutan layar (Omzet turun, seri: _row) utuh", async () => {
+    const t = setup({ format: "XLSX", params: { sort: { column: 2, dir: "desc" } } });
+    expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: ROWS });
+    const rows: RawValue[][] = [];
+    await createSaxParser().parse(
+      t.objects.get(`exports/${OWNER}/${EXPORT_ID}.xlsx`)!,
+      { sheetNames: ['Penjualan Cabang; "Q1"'], tmpDir: root },
+      (_s, _n, v) => rows.push([...v]),
+    );
+    const expected = Array.from({ length: ROWS }, (_, i) => i)
+      .sort((a, b) => omzetOf(b) - omzetOf(a) || a - b)
+      .map(omzetOf);
+    expect(rows.slice(1).map((r) => r[1])).toEqual(expected);
+    // parquet kerja ikut dibersihkan bersama direktori kerja.
+    expect(readdirSync(t.tmpRoot)).toEqual([]);
+  });
+
   it("AC2: hasil > batas → FAILED EXPORT_TOO_LARGE dengan saran mempersempit filter, tanpa unggah", async () => {
     const t = setup({ deps: { maxRows: 100 } });
     expect(await runExportJob(EXPORT_ID, t.deps)).toEqual({

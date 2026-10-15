@@ -31,6 +31,15 @@ import type { WidgetRequest } from "./widget-query";
 const FORMAT_ICON = { csv: IconFileTypeCsv, xlsx: IconFileTypeXls } as const;
 const FORMATS = ["csv", "xlsx"] as const;
 
+/**
+ * Gulir kontrol terfokus ke area terlihat hanya untuk fokus keyboard (:focus-visible): fokus dari tekan
+ * mouse/sentuh di tepi gulir akan menggeser tombol keluar dari bawah penunjuk sebelum klik selesai,
+ * sehingga klik hilang (review T-017 R3-CL-1).
+ */
+export function revealKeyboardFocus(el: Pick<HTMLElement, "matches" | "scrollIntoView">) {
+  if (el.matches(":focus-visible")) el.scrollIntoView({ block: "nearest" });
+}
+
 interface Props {
   widgetId: string;
   title: string;
@@ -64,16 +73,15 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
     (again ?? (job.phase === "idle" ? null : buttons.current[job.format]))?.focus();
   }, [open, job, pollError]);
   // Menu setinggi sisa layar bergulir: status/galat baru (di bawah) digulir ke pandangan seperlunya,
-  // lalu kontrol yang terfokus dijaga tetap terlihat (skrip tidak pernah menggulir fokus keluar menu).
+  // lalu kontrol yang terfokus keyboard dijaga tetap terlihat (skrip tidak pernah menggulir fokus keluar
+  // menu). Fokus dari ketuk/klik tidak menarik gulir kembali — hasil tetap terbaca (review R3-D-1).
   useEffect(() => {
     const el = content.current;
     if (!el || job.phase === "idle") return;
     const fresh = el.querySelectorAll<HTMLElement>(`[${NEWS_ATTR}]`);
     fresh[fresh.length - 1]?.scrollIntoView({ block: "nearest" });
     const focused = document.activeElement;
-    if (focused instanceof HTMLElement && el.contains(focused)) {
-      focused.scrollIntoView({ block: "nearest" });
-    }
+    if (focused instanceof HTMLElement && el.contains(focused)) revealKeyboardFocus(focused);
   }, [job, pollError, again]);
 
   const unseenError = job.phase === "error" && seen !== job && !open;
@@ -120,7 +128,7 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
         data-testid="export-menu"
         // Tab/Shift+Tab berputar di dalam menu (Radix FocusScope: focus tanpa gulir) — di menu setinggi
         // sisa layar kontrol tujuan bisa di luar area terlihat; gulir seperlunya (review R2-D-1).
-        onFocus={(e) => (e.target as HTMLElement).scrollIntoView({ block: "nearest" })}
+        onFocus={(e) => revealKeyboardFocus(e.target as HTMLElement)}
       >
         <div>
           <p id={headingId} className="truncate text-sm font-semibold" title={title}>
