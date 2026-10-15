@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { recordAudit } from "@/features/audit/service";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -16,7 +17,8 @@ import {
 
 /*
  * Profil dataset. Setiap operasi dibatasi pada pemilik (where {id, ownerId}); bukan pemilik atau
- * tidak ada → NOT_FOUND (D2). Berbagi ke user lain datang di T-016.
+ * tidak ada → NOT_FOUND (D2). Berbagi (T-016) per dashboard, bukan per dataset: halaman dataset tetap
+ * pemilik saja.
  */
 
 export type DatasetCode =
@@ -189,15 +191,39 @@ const defaultDeps: DeleteDeps = {
   forgetParquet: async (keys) => forgetLocalParquet(keys),
 };
 
+export interface ShareImpact {
+  /** Dashboard dataset ini yang dibagikan (ke orang atau organisasi). */
+  sharedDashboards: number;
+  /** Orang berbeda yang punya share di dashboard dataset ini. */
+  people: number;
+  /** Ada dashboard yang dibagikan ke seluruh organisasi. */
+  orgShared: boolean;
+}
+
+/** Siapa yang kehilangan akses bila dataset dihapus (dialog hapus, T-016). Pemilik saja. */
+export async function datasetShareImpact(ownerId: string, id: string): Promise<ShareImpact> {
+  const rows = await prisma.dashboard.findMany({
+    where: { datasetId: id, dataset: { ownerId } },
+    select: { orgShared: true, shares: { select: { userId: true } } },
+  });
+  return {
+    sharedDashboards: rows.filter((r) => r.orgShared || r.shares.length > 0).length,
+    people: new Set(rows.flatMap((r) => r.shares.map((s) => s.userId))).size,
+    orgShared: rows.some((r) => r.orgShared),
+  };
+}
+
 /**
  * Hapus profil (langkah kedua: konfirmasi nama dicek server). Urutan: batalkan job versi yang
- * belum terminal → hapus baris (kaskade versi + dashboard) → hapus objek storage. Kegagalan
- * storage tidak membatalkan penghapusan (dicatat; objek yatim dibersihkan job pemeliharaan).
+ * belum terminal → hapus baris (kaskade versi + dashboard + share) bersama AuditLog
+ * "dataset.delete" dalam SATU transaksi → hapus objek storage. Kegagalan storage tidak membatalkan
+ * penghapusan (dicatat; objek yatim dibersihkan job pemeliharaan).
  */
 export async function deleteDataset(
   ownerId: string,
   id: unknown,
   confirmRaw: unknown,
+  ip: string,
   deps: DeleteDeps = defaultDeps,
 ): Promise<DatasetResult<{ id: string }>> {
   if (!isIdShape(id)) return notFound();
@@ -228,8 +254,29 @@ export async function deleteDataset(
     where: { version: { datasetId: id }, typedKey: { not: null } },
     select: { typedKey: true },
   });
-  const r = await prisma.dataset.deleteMany({ where: { id, ownerId } });
-  if (r.count !== 1) return notFound();
+  const deleted = await prisma.$transaction(async (tx) => {
+    // Hitungan untuk jejak audit: dashboard dan share yang ikut terhapus lewat kaskade.
+    const dashboards = await tx.dashboard.findMany({
+      where: { datasetId: id, dataset: { ownerId } },
+      select: { _count: { select: { shares: true } } },
+    });
+    const r = await tx.dataset.deleteMany({ where: { id, ownerId } });
+    if (r.count !== 1) return false;
+    await recordAudit(tx, {
+      actorId: ownerId,
+      action: "dataset.delete",
+      targetType: "dataset",
+      targetId: id,
+      meta: {
+        name: row.name,
+        dashboards: dashboards.length,
+        shares: dashboards.reduce((n, d) => n + d._count.shares, 0),
+      },
+      ip,
+    });
+    return true;
+  });
+  if (!deleted) return notFound();
   await deps
     .forgetParquet?.(typed.flatMap((s) => (s.typedKey ? [s.typedKey] : [])))
     .catch(() => {});

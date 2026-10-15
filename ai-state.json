@@ -28,6 +28,12 @@
       "parent": "G-1",
       "status": "planned",
       "title": "Operasional: deploy on-prem, refresh data, performa 1 GB terbukti"
+    },
+    {
+      "id": "G-6",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Lihat data gaya Excel (baca-saja) untuk file besar dan data per periode tanpa memotong periode (rencana 2026-10-15)"
     }
   ],
   "project": {

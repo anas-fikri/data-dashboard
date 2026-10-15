@@ -108,7 +108,13 @@ function deps(): QueryDeps {
       widget: async (userId, widgetId) => {
         const name = Object.keys(WIDGETS).find((n) => WID(n) === widgetId);
         if (userId !== USER || !name) return null;
-        return { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER, filterColumns: [] };
+        return {
+          ...WIDGETS[name]!,
+          datasetId: DS,
+          activeVersionId: VER,
+          filterColumns: [],
+          role: "OWNER" as const,
+        };
       },
     },
     parquet: new ParquetCache({

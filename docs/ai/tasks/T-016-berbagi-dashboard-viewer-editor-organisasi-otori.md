@@ -1,7 +1,7 @@
 ---
 id: T-016
 title: 'Berbagi dashboard: viewer/editor, organisasi, otorisasi query berbasis widget'
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -10,8 +10,54 @@ tags:
 depends_on:
   - T-012
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-14T02:01:59Z"
+updated: "2026-10-15T02:38:02Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 94df0a4153bf645653471d49852b3eb78591ced8
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 35957
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792031861651,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792031861674,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+
+       Test Files  79 passed (79)
+            Tests  1179 passed (1179)
+         Start at  09:37:37
+         Duration  23.15s (tests 82%, import 11%, transform 7%)
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-15T02:38:02Z"
+    tree: 79a4997ccad5ec09a5c854061ef8ec513a2e53ec4e98258b20dadb882d51af67
 ---
 
 ## Objective
@@ -27,7 +73,10 @@ Share {dashboardId, userId? | wholeOrg, role: VIEWER|EDITOR}. Organisasi = semua
 - [ ] Given grant/revoke share, hapus dataset, atau pembukaan dashboard, when terjadi, then baris AuditLog {actorId, action, targetType, targetId, meta, ip, at} tercatat
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: semua jalur baca/tulis dashboard (halaman, widget query, filter-values, Server Action widget/layout, getDashboardSources, daftar /dashboards) berpindah dari cek inline `dataset.ownerId` ke satu fungsi `dashboardAccess` → regresi di satu tempat bisa membuka data ke user lain atau mengunci pemilik. Migrasi baru: tabel DashboardShare + kolom Dashboard.orgShared (default false, aditif). Hapus dataset kini menulis audit dalam transaksi yang sama.
+Security (STRIDE): S — sesi wajib aktif+terverifikasi (requireUser), grantee hanya user aktif terverifikasi, bukan diri sendiri. T — penulisan widget/layout oleh editor tetap di dalam transaksi advisory lock dengan cek akses di dalamnya (tanpa TOCTOU); filterColumns, rename/hapus dashboard, share tetap pemilik. R — AuditLog dashboard.share.grant/role/revoke, dashboard.org.share, dashboard.open (dedup 30 menit), dataset.delete. I — akses per dashboard, bukan per dataset; mode bebas /api/query hanya pemilik (non-pemilik 404); viewer dapat pesan umum COLUMN_UNAVAILABLE tanpa nama kolom tersembunyi/lama; cached/ms disembunyikan; filter D6 tetap (400); pencarian user dibatasi prefix ≥3, maks 10, rate limit; peringatan editor & kolom filter lintas sheet di dialog share. D — rate limit baru RULES.share + pencarian user; query widget memakai batas yang ada. E — editor tidak bisa mengubah kolom filter/share/hapus; viewer tidak punya jalur tulis (FORBIDDEN/403); akses tidak di-cache sehingga pencabutan berlaku pada muatan berikutnya.
+Rollback: revert commit T-016 + `prisma migrate` turun manual (DROP TABLE "DashboardShare", DROP TYPE "DashboardRole", ALTER TABLE "Dashboard" DROP COLUMN "orgShared") — data share hilang, dashboard pemilik tidak terpengaruh; baris AuditLog tetap.
+Validation: unit test dashboardAccess (owner/editor/viewer/org/none, dashboard lain dataset sama 404), Server Action FORBIDDEN vs NOT_FOUND, /api/query mode bebas 404 untuk non-pemilik, mode {dashboardId, spec} lintas dataset 404, filter kolom tak diizinkan 400, audit per aksi; e2e B viewer/C org/pencabutan mid-session/editor; review adversarial berulang sampai 0 temuan; axe + render 320/768/1024/1440; next build.
 
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.

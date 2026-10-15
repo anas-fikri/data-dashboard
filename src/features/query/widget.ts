@@ -71,7 +71,10 @@ export function widgetPlan(
 ): WidgetPlan {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   let unavailable: string | null = null;
-  /** Kolom spec widget (diatur pemilik) boleh disebut namanya di pesan. */
+  /**
+   * Kolom spec widget (diatur pemilik/editor) boleh disebut namanya di pesan; untuk viewer pesan
+   * COLUMN_UNAVAILABLE diganti pesan umum di service (forRole, T-016).
+   */
   const name = (p: number): string => {
     const c = byPos.get(p);
     if (!c) {

@@ -9,13 +9,14 @@ import {
   IconPlus,
 } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
-import type { SaveState } from "./use-dashboard-editor";
+import { isFrozen, type SaveState } from "./use-dashboard-editor";
 
 /*
  * Toolbar mode edit: tambah widget (aksi utama), urungkan satu langkah, status simpan otomatis
  * (diumumkan sopan ke pembaca layar), dan selesai (menyimpan dulu sebelum kembali ke mode lihat).
  * 768–1279 px: status turun ke baris sendiri agar tombol tidak meluber. Setelah STALE (diubah di
- * tab/perangkat lain) tambah dan urungkan dinonaktifkan; tombol muat ulang ada di peringatan kanvas.
+ * tab/perangkat lain) atau akses edit berubah (T-016) tambah dan urungkan dinonaktifkan; tombol muat
+ * ulang ada di peringatan kanvas.
  */
 const UNDO_LABEL = {
   layout: "Urungkan perubahan tata letak",
@@ -45,7 +46,7 @@ export function CanvasToolbar({
   onDone: () => void;
 }) {
   const phone = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
-  const frozen = save === "stale";
+  const frozen = isFrozen(save);
   return (
     <div
       className="flex flex-col gap-3 rounded-lg border bg-card p-3 md:flex-row md:flex-wrap md:items-center"
@@ -96,7 +97,9 @@ export function CanvasToolbar({
         ) : frozen ? (
           <>
             <IconCloudX size={18} stroke={1.5} aria-hidden className={`${icon} text-destructive`} />
-            <span className="text-foreground">Diubah di tab atau perangkat lain.</span>
+            <span className="text-foreground">
+              {save === "denied" ? "Akses edit berubah." : "Diubah di tab atau perangkat lain."}
+            </span>
           </>
         ) : (
           <>

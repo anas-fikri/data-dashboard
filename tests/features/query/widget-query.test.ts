@@ -135,7 +135,13 @@ function deps(over: Partial<QueryDeps> = {}): QueryDeps {
         { sheet: "Data", column: "Omzet" },
         { sheet: "Data", column: "Rahasia" },
       ];
-      return { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER, filterColumns };
+      return {
+        ...WIDGETS[name]!,
+        datasetId: DS,
+        activeVersionId: VER,
+        filterColumns,
+        role: "OWNER" as const,
+      };
     },
   };
   const parquet = new ParquetCache({
@@ -421,6 +427,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
         datasetId: DS,
         activeVersionId: VER,
+        role: "OWNER" as const,
       }),
       sheetHistory: async () => ({
         old: {
@@ -447,6 +454,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
       missingColumns,
       datasetId: DS,
       activeVersionId: VER,
+      role: "OWNER" as const,
     });
     d.repo = { ...d.repo, widget: stored(["Omzet Lama"]), sheetHistory: async () => null };
     const r = await runWidgetQuery(USER, { widgetId: WID("kpi") }, d);
@@ -477,6 +485,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         missingColumns,
         datasetId: DS,
         activeVersionId: VER,
+        role: "OWNER" as const,
       });
     d.repo = { ...d.repo, widget: marked(["Cabang", "Diskon"]) };
     const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);
@@ -515,6 +524,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         spec: { sheetId: OLD, measure: { agg: "sum", column: 2 }, format: fmt },
         datasetId: DS,
         activeVersionId: VER,
+        role: "OWNER" as const,
       }),
       sheetHistory: async () => ({
         old: { id: OLD, name: "Sheet1", index: 0, schema: SCHEMA },
@@ -544,6 +554,7 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
         },
         datasetId: DS,
         activeVersionId: VER,
+        role: "OWNER" as const,
       }),
     };
     const r = await runWidgetQuery(USER, { widgetId: WID("bar") }, d);

@@ -2,20 +2,27 @@ import { IconDatabase, IconLayoutDashboard, IconPlus } from "@tabler/icons-react
 import Link from "next/link";
 import { AdminRevokedNotice } from "@/components/admin/admin-revoked-notice";
 import { DatasetList } from "@/components/datasets/dataset-list";
+import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
+import { listSharedDashboards } from "@/features/dashboards/service";
 import { listDatasets } from "@/features/datasets/service";
 
 type Search = Promise<{ notice?: string | string[] }>;
 
-/** Beranda: satu aksi utama (buat dataset) + dataset terbaru. Dashboard dibagikan datang di T-016. */
+/** Beranda: satu aksi utama (buat dataset) + dataset terbaru + dashboard yang dibagikan (T-016). */
 export default async function HomePage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const [datasets, params] = await Promise.all([listDatasets(user.id), searchParams]);
+  const [datasets, shared, params] = await Promise.all([
+    listDatasets(user.id),
+    listSharedDashboards(user.id),
+    searchParams,
+  ]);
   const recent = datasets.slice(0, 5);
+  const recentShared = shared.slice(0, 5);
 
   return (
     <div className="flex flex-col gap-6">
@@ -63,18 +70,27 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
+          <CardHeader className="flex-row items-center justify-between">
             <CardTitle>Dashboard dibagikan ke saya</CardTitle>
+            {shared.length > recentShared.length ? (
+              <Link href="/dashboards" className="text-sm font-medium underline underline-offset-4">
+                Lihat semua ({shared.length})
+              </Link>
+            ) : null}
           </CardHeader>
           <CardContent>
-            <EmptyState
-              bare
-              as="p"
-              icon={<IconLayoutDashboard />}
-              title="Belum ada dashboard"
-              description="Dashboard yang dibagikan rekan akan muncul di sini."
-              className="py-8"
-            />
+            {recentShared.length === 0 ? (
+              <EmptyState
+                bare
+                as="p"
+                icon={<IconLayoutDashboard />}
+                title="Belum ada dashboard"
+                description="Dashboard yang dibagikan rekan akan muncul di sini."
+                className="py-8"
+              />
+            ) : (
+              <SharedDashboardList dashboards={recentShared} compact bare />
+            )}
           </CardContent>
         </Card>
       </div>

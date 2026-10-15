@@ -56,7 +56,8 @@ export function WidgetConfigForm({
 }: {
   widget: WidgetView;
   sources: Source[];
-  datasetId: string;
+  /** null = bukan pemilik (editor, T-016): halaman dataset bukan miliknya, jadi tanpa tautan ke sana. */
+  datasetId: string | null;
   /** Alasan simpanan widget ini yang gagal, dari editor (ada sampai simpanan widget ini berhasil). */
   saveError?: string;
   onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
@@ -152,10 +153,19 @@ export function WidgetConfigForm({
     return (
       <p className="rounded-md bg-muted px-3 py-2 text-sm">
         Dataset ini belum punya data yang siap dipakai.{" "}
-        <Link href={`/datasets/${datasetId}`} className="font-medium underline underline-offset-4">
-          Unggah atau periksa data
-        </Link>
-        .
+        {datasetId ? (
+          <>
+            <Link
+              href={`/datasets/${datasetId}`}
+              className="font-medium underline underline-offset-4"
+            >
+              Unggah atau periksa data
+            </Link>
+            .
+          </>
+        ) : (
+          "Data dataset diatur oleh pemiliknya."
+        )}
       </p>
     );
   }

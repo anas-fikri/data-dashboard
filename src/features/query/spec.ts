@@ -77,6 +77,14 @@ export const bodySchema = z
   .object({ datasetId: z.string().regex(/^[a-z0-9]{20,32}$/), spec: specSchema })
   .strict();
 
+/**
+ * Mode editor (T-016, D6): spec bebas terhadap dataset dashboard. Dataset/versi aktif diambil dari
+ * dashboard di server, tidak pernah dari body (field lain → INVALID).
+ */
+export const dashboardBodySchema = z
+  .object({ dashboardId: z.string().regex(/^[a-z0-9]{20,32}$/), spec: specSchema })
+  .strict();
+
 /** Kolom keluaran (kunci stabil d<i>/m<i>, label untuk tampilan). */
 export interface OutColumn {
   key: string;

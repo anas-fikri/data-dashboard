@@ -378,9 +378,48 @@ describe("transferDatasets", () => {
             { datasetId: s2.id, from: "STOK", to: "STOK (3)" },
           ],
           failedUploads: 1,
+          sharesRemoved: 0,
         },
       },
     ]);
+  });
+
+  it("T-016: share milik pemilik baru di dashboard dataset yang dialihkan dihapus (jumlah di audit); share lain tetap", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C), user(D));
+    const p = ds(B, "Penjualan");
+    const other = ds(D, "Milik D");
+    const share = (dashboardId: string, datasetId: string, userId: string) => ({
+      dashboardId,
+      datasetId,
+      userId,
+      role: "EDITOR" as const,
+    });
+    db.state.shares.push(
+      share(cuid("dbp1"), p.id, C), // pemilik baru di dashboard yang ikut pindah → dihapus
+      share(cuid("dbp2"), p.id, C),
+      share(cuid("dbp1"), p.id, D), // orang lain di dashboard yang pindah → tetap
+      share(cuid("dbo"), other.id, C), // pemilik baru di dataset lain → tetap
+    );
+    const r = await svc.transferDatasets({ id: A }, B, C, IP, { storage });
+    expect(r).toMatchObject({ ok: true, data: { moved: 1 } });
+    expect(db.tx.dashboardShare.deleteMany).toHaveBeenCalledWith({
+      where: { userId: C, dashboard: { datasetId: { in: [p.id] } } },
+    });
+    expect(db.state.shares.map((s) => [s.dashboardId, s.userId])).toEqual([
+      [cuid("dbp1"), D],
+      [cuid("dbo"), C],
+    ]);
+    expect(db.state.audits[0]!.meta).toMatchObject({ sharesRemoved: 2 });
+  });
+
+  it("T-016: transfer gagal di tengah → share pemilik baru tidak terhapus (semua-atau-tidak)", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }), user(C));
+    const p = ds(B, "Penjualan");
+    db.state.shares.push({ dashboardId: cuid("dbp1"), datasetId: p.id, userId: C, role: "VIEWER" });
+    db.tx.auditLog.create.mockRejectedValueOnce(new Error("db down"));
+    await expect(svc.transferDatasets({ id: A }, B, C, IP, { storage })).rejects.toThrow("db down");
+    expect(db.state.shares).toHaveLength(1);
+    expect(db.state.datasets.find((d) => d.id === p.id)).toMatchObject({ ownerId: B });
   });
 
   it("dataset berubah di tengah transaksi → BUSY, semua perubahan dibatalkan, storage tak disentuh", async () => {

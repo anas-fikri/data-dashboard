@@ -8,19 +8,35 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { deleteDatasetAction, type DatasetFormState } from "@/features/datasets/actions";
+import type { ShareImpact } from "@/features/datasets/service";
 import { nameKeyOf } from "@/features/datasets/validation";
 
 interface DeleteDatasetProps {
   id: string;
   name: string;
   dashboardCount: number;
+  /** Akses yang ikut hilang (T-016); null = tidak ada dashboard. */
+  shareImpact?: ShareImpact | null;
+}
+
+/** "3 orang dan seluruh organisasi kehilangan akses ke 2 dashboard yang dibagikan." */
+function lostAccess(i: ShareImpact | null | undefined): string | null {
+  if (!i || i.sharedDashboards === 0) return null;
+  const who =
+    i.people > 0 && i.orgShared
+      ? `${i.people} orang dan seluruh organisasi`
+      : i.people > 0
+        ? `${i.people} orang`
+        : "Seluruh organisasi";
+  return `${who} kehilangan akses ke ${i.sharedDashboards} dashboard yang dibagikan.`;
 }
 
 /**
  * Hapus dua langkah: tombol membuka dialog, lalu pengguna mengetik nama dataset. Server memeriksa
  * nama itu lagi (tidak mengandalkan tombol yang dinonaktifkan di klien).
  */
-export function DeleteDataset({ id, name, dashboardCount }: DeleteDatasetProps) {
+export function DeleteDataset({ id, name, dashboardCount, shareImpact }: DeleteDatasetProps) {
+  const lost = lostAccess(shareImpact);
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [state, action, pending] = useActionState<DatasetFormState, FormData>(deleteDatasetAction, {
@@ -53,7 +69,14 @@ export function DeleteDataset({ id, name, dashboardCount }: DeleteDatasetProps) 
           <Dialog.Title className="text-lg font-semibold">Hapus “{name}”?</Dialog.Title>
           <Dialog.Description className="mt-2 text-sm text-muted-foreground">
             Semua versi data, file yang diunggah
-            {dashboardCount > 0 ? `, dan ${dashboardCount} dashboard` : ""} akan dihapus permanen.
+            {dashboardCount > 0 ? `, dan ${dashboardCount} dashboard` : ""} akan dihapus permanen.{" "}
+            {lost ? (
+              <>
+                <span data-testid="delete-share-impact" className="font-medium text-foreground">
+                  {lost}
+                </span>{" "}
+              </>
+            ) : null}
             Tindakan ini tidak bisa dibatalkan.
           </Dialog.Description>
           <form action={action} className="mt-4 flex flex-col gap-4" noValidate>

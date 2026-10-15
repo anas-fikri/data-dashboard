@@ -113,7 +113,13 @@ async function main() {
   };
   const deps: QueryDeps = {
     repo: {
-      widget: async () => ({ type: "table", spec, datasetId: DS, activeVersionId: VER }),
+      widget: async () => ({
+        type: "table",
+        spec,
+        datasetId: DS,
+        activeVersionId: VER,
+        role: "OWNER" as const,
+      }),
       ownedDataset: async () => null,
       sheet: async () => ({ typedKey, schemaRevision: 1, schema }),
     },

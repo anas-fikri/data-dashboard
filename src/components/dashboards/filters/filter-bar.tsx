@@ -40,7 +40,14 @@ function focusCrossSource(widgetId: string) {
   heading?.focus();
 }
 
-export function FilterBar({ editing }: { editing: boolean }) {
+export function FilterBar({
+  editing,
+  columnSettings,
+}: {
+  editing: boolean;
+  /** Pengaturan "Kolom filter" ada di halaman (pemilik saja, T-016); editor tidak bisa mengubahnya. */
+  columnSettings: boolean;
+}) {
   const { columns, state, urlTooLong, widgetTitle, widgetGrain, stale } = useDashboardFilters();
   const sheetButton = useRef<HTMLButtonElement>(null);
   const desktop = useRef<HTMLDivElement>(null);
@@ -133,16 +140,20 @@ export function FilterBar({ editing }: { editing: boolean }) {
         ) : editing ? (
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <IconFilter size={18} stroke={1.5} aria-hidden className="mt-px shrink-0" />
-            <span>
-              Belum ada kolom filter. Tambahkan lewat{" "}
-              <a
-                href={`#${FILTER_SETTINGS_ID}`}
-                className="font-medium text-foreground underline underline-offset-4"
-              >
-                Kolom filter
-              </a>{" "}
-              di pengaturan dashboard.
-            </span>
+            {columnSettings ? (
+              <span>
+                Belum ada kolom filter. Tambahkan lewat{" "}
+                <a
+                  href={`#${FILTER_SETTINGS_ID}`}
+                  className="font-medium text-foreground underline underline-offset-4"
+                >
+                  Kolom filter
+                </a>{" "}
+                di pengaturan dashboard.
+              </span>
+            ) : (
+              <span>Belum ada kolom filter. Kolom filter dipilih oleh pemilik dataset.</span>
+            )}
           </p>
         ) : null}
         <FilterChips onEmpty={focusFirst} />

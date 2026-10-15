@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { filterSourcesFor } from "@/features/dashboards/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { canViewWhere, dashboardAccess, roleOf, roleSelect } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -90,9 +91,11 @@ export const prismaQueryRepo: QueryRepo = {
   },
 
   async widget(userId, widgetId) {
-    // Pemilik dataset saja untuk saat ini; non-pemilik lewat berbagi (T-016).
+    // Akses per DASHBOARD widget ini (T-016): pemilik, share user, atau share organisasi — tidak
+    // pernah lewat dataset (widget dashboard lain yang tidak dibagikan tetap 404). Peran dihitung di
+    // query yang sama dan tidak di-cache: pencabutan berlaku pada muatan berikutnya.
     const w = await prisma.widget.findFirst({
-      where: { id: widgetId, dashboard: { dataset: { ownerId: userId } } },
+      where: { id: widgetId, dashboard: canViewWhere(userId) },
       select: {
         type: true,
         spec: true,
@@ -103,13 +106,16 @@ export const prismaQueryRepo: QueryRepo = {
             datasetId: true,
             filterColumns: true,
             updatedAt: true,
-            dataset: { select: { activeVersionId: true } },
+            ...roleSelect(userId),
+            dataset: { select: { ownerId: true, activeVersionId: true } },
           },
         },
       },
     });
+    const role = w && roleOf(userId, w.dashboard);
     return (
-      w && {
+      w &&
+      role && {
         type: w.type,
         spec: w.spec,
         missingColumns: w.missingColumns,
@@ -118,6 +124,7 @@ export const prismaQueryRepo: QueryRepo = {
         dashboardId: w.dashboard.id,
         filterColumns: w.dashboard.filterColumns,
         dashboardUpdatedAt: w.dashboard.updatedAt,
+        role,
       }
     );
   },
@@ -128,9 +135,9 @@ export const prismaQueryRepo: QueryRepo = {
     );
   },
   async filterSource(userId, dashboardId) {
-    // Pemilik dataset saja untuk saat ini (berbagi di T-016); lainnya null → 404.
+    // Slicer untuk semua peran yang boleh melihat dashboard (T-016); lainnya null → 404. Tanpa cache.
     const d = await prisma.dashboard.findFirst({
-      where: { id: dashboardId, dataset: { ownerId: userId } },
+      where: { id: dashboardId, ...canViewWhere(userId) },
       select: {
         datasetId: true,
         filterColumns: true,
@@ -148,6 +155,8 @@ export const prismaQueryRepo: QueryRepo = {
       : [];
     return { datasetId: d.datasetId, activeVersionId, filterColumns: d.filterColumns, sheets };
   },
+  // Mode { dashboardId, spec } (T-016): service yang memutuskan peran mana yang boleh.
+  dashboardAccess,
 };
 
 interface Runtime {

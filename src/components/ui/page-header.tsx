@@ -8,11 +8,20 @@ interface PageHeaderProps {
   actions?: ReactNode;
   /** Breadcrumb atau label konteks di atas judul. */
   eyebrow?: ReactNode;
+  /** Keterangan singkat di bawah judul/deskripsi (mis. badge peran + pemilik dashboard bersama). */
+  meta?: ReactNode;
   className?: string;
 }
 
 /** Satu h1 per halaman; fokus utama + satu CTA utama (gerbang hierarki plugin). */
-export function PageHeader({ title, description, actions, eyebrow, className }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+  eyebrow,
+  meta,
+  className,
+}: PageHeaderProps) {
   return (
     <header
       className={cn(
@@ -24,6 +33,11 @@ export function PageHeader({ title, description, actions, eyebrow, className }: 
         {eyebrow ? <div className="mb-1 text-sm text-muted-foreground">{eyebrow}</div> : null}
         <h1 className="text-balance break-words text-2xl font-semibold tracking-tight">{title}</h1>
         {description ? <p className="mt-1 text-sm text-muted-foreground">{description}</p> : null}
+        {meta ? (
+          <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+            {meta}
+          </div>
+        ) : null}
       </div>
       {actions ? (
         <div className="flex flex-col gap-2 md:flex-row md:items-center [&>*]:w-full md:[&>*]:w-auto">

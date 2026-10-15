@@ -15,13 +15,23 @@ export type AuditAction =
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
   | "dataset.version.activate"
   /** Pemetaan kolom versi yang menunggu pemetaan disimpan lalu versinya aktif (T-014). */
-  | "dataset.version.map";
+  | "dataset.version.map"
+  /** Pemilik menghapus dataset beserta dashboard dan share-nya (T-016). */
+  | "dataset.delete"
+  /** Share dashboard per user: diberikan, perannya diubah, dicabut (T-016). */
+  | "dashboard.share.grant"
+  | "dashboard.share.role"
+  | "dashboard.share.revoke"
+  /** Share organisasi dinyalakan/dimatikan (meta.on) (T-016). */
+  | "dashboard.org.share"
+  /** Dashboard dibuka (dedup per user+dashboard 30 menit) (T-016). */
+  | "dashboard.open";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */
   actorId: string | null;
   action: AuditAction;
-  targetType: "user" | "dataset";
+  targetType: "user" | "dataset" | "dashboard";
   targetId: string;
   /** Detail tanpa rahasia (tanpa password/token/cookie). */
   meta?: Prisma.InputJsonValue;

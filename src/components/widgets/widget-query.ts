@@ -3,12 +3,15 @@
 import { useEffect, useState } from "react";
 import type { DashFilter } from "@/components/dashboards/filters/filter-model";
 import type { ValueType } from "@/features/widgets/format";
+import { useAccessLost } from "./access-refresh";
 
 /*
  * Query widget dari browser (T-011). Mesin query mengantrekan query per user (antrean terbatas);
  * QUERY_BUSY berarti antrean penuh atau terlalu lama, jadi di sini paling banyak 2 query widget
  * berjalan sekaligus per halaman dan QUERY_BUSY dicoba ulang dua kali dengan jeda. Permintaan
- * dibatalkan saat widget berganti spec/halaman atau dilepas.
+ * dibatalkan saat widget berganti spec/halaman atau dilepas. HTTP 404 (akses dicabut, T-016) →
+ * halaman dimuat ulang dari server sekali (access-refresh.tsx). Jawaban untuk non-pemilik tidak
+ * memuat `cached`/`ms` (T-016): klien tidak bergantung pada keduanya.
  */
 export interface QueryColumn {
   key: string;
@@ -92,10 +95,10 @@ export interface WidgetRequest {
   dashboardFilters?: DashFilter[];
 }
 
-async function fetchWidget(
-  body: WidgetRequest,
-  signal: AbortSignal,
-): Promise<{ ok: true; data: WidgetData } | { ok: false; code: string; message: string }> {
+type WidgetResult =
+  { ok: true; data: WidgetData } | { ok: false; code: string; message: string; status: number };
+
+async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<WidgetResult> {
   for (let attempt = 0; ; attempt++) {
     const release = await slot(signal);
     let res: Response;
@@ -113,6 +116,7 @@ async function fetchWidget(
         ok: false,
         code: "OFFLINE",
         message: "Tidak bisa menghubungi server. Periksa koneksi lalu coba lagi.",
+        status: 0,
       };
     }
     const json = (await res.json().catch(() => null)) as
@@ -127,6 +131,7 @@ async function fetchWidget(
     return {
       ok: false,
       code,
+      status: res.status,
       message:
         res.status === 401
           ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
@@ -142,6 +147,7 @@ async function fetchWidget(
 export function useWidgetQuery(request: WidgetRequest | null, version: string) {
   const [state, setState] = useState<WidgetQueryState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  const accessLost = useAccessLost();
   const key = request ? JSON.stringify(request) : "";
 
   useEffect(() => {
@@ -159,6 +165,8 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
     fetchWidget(req, ctl.signal).then(
       (r) => {
         if (ctl.signal.aborted) return;
+        // Akses dashboard dicabut (atau widgetnya dihapus di tempat lain): halaman dari server lagi.
+        if (!r.ok && r.status === 404) accessLost?.();
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }
@@ -174,8 +182,8 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
       () => {},
     );
     return () => ctl.abort();
-    // version (spec disimpan) dan attempt (tombol coba lagi) memicu query ulang.
-  }, [key, version, attempt]);
+    // version (spec disimpan) dan attempt (tombol coba lagi) memicu query ulang; accessLost stabil.
+  }, [key, version, attempt, accessLost]);
 
   return { state, retry: () => setAttempt((n) => n + 1) };
 }

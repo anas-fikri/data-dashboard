@@ -17,8 +17,28 @@ import { fitToWidgets, sameLayout } from "./layout-ops";
  * jenis widgetnya (tabel 3×4); tata letak lama hanya diperbesar di tampilan sampai disimpan berikutnya.
  * Pengaturan widget yang gagal disimpan (bukan STALE) membuat status "error" sampai berhasil; flush()
  * ("Coba lagi", "Selesai") mengirimnya ulang lebih dulu (config-saves).
+ * Akses edit berubah di tengah sesi (T-016: editor diturunkan jadi viewer → FORBIDDEN/403, akses dicabut
+ * → NOT_FOUND/404) membekukan editor seperti STALE ("denied"): tidak ada yang dikirim ulang, tanpa loop
+ * "Coba lagi"; satu-satunya jalan adalah muat ulang halaman.
  */
-export type SaveState = "saved" | "pending" | "saving" | "error" | "stale";
+export type SaveState = "saved" | "pending" | "saving" | "error" | "stale" | "denied";
+
+/** Editor berhenti mengirim sampai halaman dimuat ulang. */
+export const isFrozen = (s: SaveState) => s === "stale" || s === "denied";
+export const ACCESS_CHANGED = "Akses edit Anda berubah. Muat ulang halaman.";
+
+/**
+ * Jawaban tulis yang membekukan editor (null = bisa dicoba lagi atau hanya ditampilkan). 404 pada
+ * tulis berarti tampilan tab ini sudah usang (akses dicabut, atau dashboard/widget dihapus di tempat
+ * lain) — mengirim ulang tidak akan pernah berhasil.
+ */
+export function freezeOf(code: string): { state: "stale" | "denied"; message?: string } | null {
+  if (code === "STALE") return { state: "stale" };
+  if (code === "FORBIDDEN" || code === "NOT_FOUND") {
+    return { state: "denied", message: ACCESS_CHANGED };
+  }
+  return null;
+}
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }
   | { kind: "add"; widgetId: string }
@@ -43,7 +63,7 @@ export function useDashboardEditor(o: {
   const widgetsNow = useRef(o.widgets);
   /** Ada tata letak yang belum diterima server. */
   const dirty = useRef(false);
-  /** Server menjawab STALE: jangan kirim apa pun lagi sampai dimuat ulang. */
+  /** Server menjawab STALE atau akses berubah: jangan kirim apa pun lagi sampai dimuat ulang. */
   const stale = useRef(false);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -71,12 +91,13 @@ export function useDashboardEditor(o: {
 
   /** unsaved: perubahannya belum tersimpan → toolbar "Belum tersimpan. Coba lagi" (flush). */
   const failed = useCallback((r: Failure, unsaved = false) => {
-    if (r.code === "STALE") {
+    const frozen = freezeOf(r.code);
+    if (frozen) {
       stale.current = true;
       clearTimeout(timer.current);
-      setSave("stale");
+      setSave(frozen.state);
     } else if (unsaved) setSave("error");
-    setNotice(r.message);
+    setNotice(frozen?.message ?? r.message);
   }, []);
 
   /** Simpanan berhasil: tanpa tata letak tertunda, status mengikuti pengaturan widget yang gagal. */
@@ -214,17 +235,17 @@ export function useDashboardEditor(o: {
         return true;
       }
       const r = await api.configureWidget(id, widgetId, c.type, c.spec);
-      // Gagal bukan STALE: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di
-      // layar < 1280 px pesan kanvas tertutup panel). Ditolak permanen — widget/dashboard sudah dihapus
-      // di tab lain, atau pengaturan tidak valid: alasan tetap tampil, tidak dikirim ulang, tidak menahan
-      // "Selesai".
-      const gone = !r.ok && r.code === "NOT_FOUND";
+      // Gagal biasa: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di layar
+      // < 1280 px pesan kanvas tertutup panel). Pengaturan tidak valid: alasan tetap tampil, tidak dikirim
+      // ulang, tidak menahan "Selesai". STALE / akses berubah / sudah dihapus di tempat lain (freezeOf):
+      // editor membeku — panel tertutup, tidak ada yang dikirim ulang.
+      const frozen = !r.ok && freezeOf(r.code) !== null;
       const invalid = !r.ok && r.code === "INVALID";
-      saves.finish(widgetId, c, r.ok || r.code === "STALE" ? null : r.message, !invalid && !gone);
+      saves.finish(widgetId, c, r.ok || frozen ? null : r.message, !invalid);
       setConfigErrors(saves.errors());
       if (!r.ok) {
-        failed(r, !gone && !invalid);
-        if (gone || invalid) settled();
+        failed(r, !invalid);
+        if (invalid) settled();
         return false;
       }
       setWidgets(
@@ -325,7 +346,7 @@ export function useDashboardEditor(o: {
     layout,
     save,
     notice,
-    canUndo: undo !== null && save !== "stale",
+    canUndo: undo !== null && !isFrozen(save),
     undoKind: undo?.kind ?? null,
     commitLayout,
     addWidget,

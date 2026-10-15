@@ -1,7 +1,8 @@
 /*
  * Nilai slicer dashboard (T-012, B4): DISTINCT satu kolom filter dashboard dari sheet versi aktif, paling
- * banyak 1000 (+ penanda terpotong), dengan pencarian di server. Pemilik dashboard saja (lainnya
- * NOT_FOUND, sama dengan dashboard yang tidak ada). Berjalan di jatah query user yang sama dengan
+ * banyak 1000 (+ penanda terpotong), dengan pencarian di server. Pemilik, editor, dan viewer dashboard
+ * (T-016, dicek repo.filterSource tanpa cache sebelum cache/DuckDB); lainnya NOT_FOUND, sama dengan
+ * dashboard yang tidak ada. Pesan kolom tidak tersedia tidak menyebut nama. Berjalan di jatah query user yang sama dengan
  * widget (runOnParquet) dan di-cache seperti hasil query (kunci memuat versi + schemaRevision + kata
  * cari ternormalisasi; hasil > SLICER_CACHE_MAX_BYTES tidak di-cache). Permintaan yang dibatalkan klien
  * (ketikan berikutnya) tidak menjalankan DuckDB bila masih antre. Kata cari dan nilai tidak pernah

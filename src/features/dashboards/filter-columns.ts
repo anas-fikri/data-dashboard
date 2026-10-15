@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import { typeFamily } from "@/features/query/filters";
 import { normName } from "@/features/widgets/remap";
 import { CHART_TYPES, parseWidgetConfig } from "@/features/widgets/spec";
 
@@ -155,6 +156,47 @@ export function filterSourcesOf(
   }));
   const cross = crossFilterDims(widgets, sheets).map((c) => ({ name: c.name, type: c.type }));
   return [...own, ...cross];
+}
+
+/**
+ * Peringatan dialog share (T-016, catatan review T-012): kolom filter tersimpan yang tersedia dan dimensi
+ * grafik cross-filter yang juga ada — nama ternormalisasi sama, tidak disembunyikan, kelompok tipe sama
+ * (aturan applyDashFilters) — di LEBIH DARI SATU sheet: sheet yang dipakai widget ditambah sheet sumber
+ * kolom filter itu sendiri. Widget harus sudah dipetakan ke versi aktif; `sheets` = sheet versi aktif.
+ */
+export function overlappingFilterColumns(
+  stored: FilterColumn[],
+  widgets: { type: string; spec: unknown }[],
+  sheets: ActiveSheet[],
+): string[] {
+  const used = new Set(
+    widgets.flatMap((w) => {
+      const c = parseWidgetConfig(w.type, w.spec);
+      return c.ok && c.config.type !== "empty" ? [c.config.spec.sheetId] : [];
+    }),
+  );
+  const sources = [
+    ...stored.flatMap((f) => {
+      const a = availableColumn(f, sheets);
+      return a ? [{ col: a.col, home: sheetNamed(sheets, f.sheet)?.id }] : [];
+    }),
+    ...crossFilterDims(widgets, sheets).map((col) => ({ col, home: undefined })),
+  ];
+  const out = new Map<string, string>();
+  for (const { col, home } of sources) {
+    const key = normName(col.name);
+    if (out.has(key)) continue;
+    const family = typeFamily(col.type);
+    const hits = sheets.filter(
+      (s) =>
+        (used.has(s.id) || s.id === home) &&
+        (s.schema ?? []).some(
+          (c) => !c.hidden && normName(c.name) === key && typeFamily(c.type) === family,
+        ),
+    ).length;
+    if (hits > 1) out.set(key, col.name);
+  }
+  return [...out.values()];
 }
 
 export type CheckedFilterColumns =

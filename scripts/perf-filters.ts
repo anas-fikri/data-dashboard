@@ -159,7 +159,13 @@ async function main() {
         widget: async (_u, id) => {
           const name = names[names.findIndex((_, i) => wid(i) === id)];
           return name
-            ? { ...WIDGETS[name]!, datasetId: DS, activeVersionId: VER, dashboardId: DASH }
+            ? {
+                ...WIDGETS[name]!,
+                datasetId: DS,
+                activeVersionId: VER,
+                dashboardId: DASH,
+                role: "OWNER" as const,
+              }
             : null;
         },
         filterSources: async () => SCHEMA.map((s) => ({ name: s.name, type: s.type })),

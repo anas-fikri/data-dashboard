@@ -1,5 +1,8 @@
 /*
- * Query deklaratif mode bebas (T-009, alur B4): hanya pemilik dataset. Dependensi diinjeksi (DB,
+ * Query deklaratif mode bebas (T-009, alur B4): hanya pemilik dataset. Berbagi (T-016): widget
+ * dashboard untuk pemilik/editor/viewer dashboard itu, spec bebas atas dataset dashboard
+ * ({ dashboardId, spec }) untuk pemilik/editor saja; peran dibaca tanpa cache sebelum cache hasil atau
+ * DuckDB, dan menentukan detail pesan + field cached/ms (lihat forRole). Dependensi diinjeksi (DB,
  * cache parquet lokal, mesin DuckDB, cache hasil) agar bisa diuji tanpa layanan; perakitan produksi di
  * runtime.ts. Skema dibaca dari DB setiap permintaan (query berindeks, selalu sesuai revisi aktif),
  * bukan cache in-memory yang harus di-invalidate antarproses.
@@ -22,6 +25,8 @@ import {
   type ParquetLease,
 } from "@/lib/duckdb/parquet-cache";
 import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
+// Tipe saja: access.ts server-only + prisma, service ini juga dipakai test tanpa DB.
+import type { DashboardAccess, DashboardAccessRole } from "@/features/sharing/access";
 import {
   markerNames,
   matchSheet,
@@ -39,10 +44,17 @@ import {
   type DashClause,
   type DashValue,
 } from "./filters";
-import { bodySchema, resolveSpec, type OutColumn, type Plan } from "./spec";
+import {
+  bodySchema,
+  dashboardBodySchema,
+  resolveSpec,
+  type OutColumn,
+  type Plan,
+  type QuerySpec,
+} from "./spec";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
-import { absentNames, widgetBodySchema, widgetPlan } from "./widget";
+import { absentNames, widgetBodySchema, widgetPlan, type WidgetQueryBody } from "./widget";
 
 export type QueryCode =
   | "INVALID"
@@ -89,12 +101,16 @@ export interface TablePage extends QueryData {
 export type CachedQuery =
   QueryData | TablePage | { filterValues: DashValue[]; truncated: boolean } | { timeout: true };
 
-export type QueryResult =
-  | ({ ok: true; cached: boolean; ms: number } & QueryData)
-  | { ok: false; code: QueryCode; message: string };
+/**
+ * `cached`/`ms` hanya untuk pemilik (T-016): non-pemilik tidak bisa menebak apakah user lain baru saja
+ * menjalankan widget/filter yang sama (cache hasil lintas user). Klien tidak bergantung padanya.
+ */
+type Timing = { cached?: boolean; ms?: number };
 
-export type WidgetQueryResult =
-  QueryResult | ({ ok: true; cached: boolean; ms: number } & TablePage);
+export type QueryResult =
+  ({ ok: true } & Timing & QueryData) | { ok: false; code: QueryCode; message: string };
+
+export type WidgetQueryResult = QueryResult | ({ ok: true } & Timing & TablePage);
 
 export interface QueryRepo {
   /** Dataset milik user (null bila tidak ada atau bukan pemilik → 404, tidak membocorkan keberadaan). */
@@ -125,7 +141,10 @@ export interface QueryRepo {
     /** Sheet versi aktif tanpa skema: skema target dibaca segar lewat sheet(). */
     active: Pick<SheetInfo, "id" | "name" | "aliasName" | "index">[];
   } | null>;
-  /** Widget di dashboard milik user (null → 404, sama dengan widget yang tidak ada). */
+  /**
+   * Widget di dashboard yang boleh dilihat user (T-016: pemilik, share user, atau share organisasi pada
+   * DASHBOARD itu, bukan lewat dataset). null → 404, sama dengan widget yang tidak ada.
+   */
   widget(
     userId: string,
     widgetId: string,
@@ -134,6 +153,11 @@ export interface QueryRepo {
     spec: unknown;
     datasetId: string;
     activeVersionId: string | null;
+    /**
+     * Peran peminta pada dashboard widget, dihitung di query yang sama (tanpa cache). Wajib: setiap
+     * repo harus memutuskan peran (bentuk jawaban + pesan per peran, lihat forRole).
+     */
+    role: DashboardAccessRole;
     /**
      * Nama kolom yang hilang saat versi diaktifkan (T-013): pesan widget setelah sheet lama spec-nya
      * dihapus retensi, dan nama di balik penanda MISSING_COLUMN spec.
@@ -156,8 +180,9 @@ export interface QueryRepo {
     updatedAt?: Date;
   }): Promise<FilterSource[]>;
   /**
-   * Dashboard milik user untuk daftar nilai slicer (T-012): kolom filter tersimpan + sheet siap di
-   * versi aktif (tanpa skema; skema dibaca lewat sheet()). null → 404.
+   * Dashboard yang boleh dilihat user (pemilik/editor/viewer, T-016) untuk daftar nilai slicer (T-012):
+   * kolom filter tersimpan + sheet siap di versi aktif (tanpa skema; skema dibaca lewat sheet()).
+   * null → 404.
    */
   filterSource?(
     userId: string,
@@ -168,6 +193,11 @@ export interface QueryRepo {
     filterColumns: unknown;
     sheets: { id: string; name: string }[];
   } | null>;
+  /**
+   * Peran user pada dashboard + dataset/versi aktif dashboard itu (T-016, mode { dashboardId, spec }).
+   * Satu query tanpa cache; null → 404. Opsional (repo uji); tanpa ini mode itu selalu 404.
+   */
+  dashboardAccess?(userId: string, dashboardId: string): Promise<DashboardAccess | null>;
 }
 
 /** Kolom sumber filter dashboard (lihat QueryRepo.filterSources). */
@@ -336,6 +366,13 @@ export async function runOnParquet<T>(
   }
 }
 
+const invalidSpec = (issue: { path: PropertyKey[]; message: string } | undefined) =>
+  fail(
+    "INVALID",
+    `Spec query tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
+  );
+
+/** Query bebas { datasetId, spec } (T-009): pemilik dataset saja; lainnya NOT_FOUND (T-016 AC1). */
 export async function runQuery(
   userId: string,
   body: unknown,
@@ -343,16 +380,46 @@ export async function runQuery(
 ): Promise<QueryResult> {
   const t0 = Date.now();
   const parsed = bodySchema.safeParse(body);
-  if (!parsed.success) {
-    const issue = parsed.error.issues[0];
-    return fail(
-      "INVALID",
-      `Spec query tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
-    );
-  }
+  if (!parsed.success) return invalidSpec(parsed.error.issues[0]);
   const { datasetId, spec } = parsed.data;
   const ds = await deps.repo.ownedDataset(userId, datasetId);
   if (!ds) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
+  return runSpec(userId, { datasetId, activeVersionId: ds.activeVersionId }, spec, deps, t0);
+}
+
+/**
+ * Mode editor { dashboardId, spec } (T-016, D6): pratinjau spec bebas atas dataset dashboard. Body
+ * divalidasi dulu (400), lalu peran dibaca tanpa cache: pemilik/editor saja — viewer dan orang lain
+ * NOT_FOUND (mode ini membaca kolom mana pun, bukan hanya kolom widget). Dataset + versi aktif dari
+ * dashboard di server; sheet dicari di versi aktif itu saja, jadi sheet dataset lain → NOT_FOUND (AC6).
+ * Jalur eksekusi, batas, dan kunci cache sama dengan query bebas.
+ */
+export async function runDashboardQuery(
+  userId: string,
+  body: unknown,
+  deps: QueryDeps,
+): Promise<QueryResult> {
+  const t0 = Date.now();
+  const parsed = dashboardBodySchema.safeParse(body);
+  if (!parsed.success) return invalidSpec(parsed.error.issues[0]);
+  const { dashboardId, spec } = parsed.data;
+  const access = deps.repo.dashboardAccess
+    ? await deps.repo.dashboardAccess(userId, dashboardId)
+    : null;
+  if (!access || (access.role !== "OWNER" && access.role !== "EDITOR")) {
+    return fail("NOT_FOUND", "Dashboard tidak ditemukan.");
+  }
+  return forRole(access.role, await runSpec(userId, access, spec, deps, t0));
+}
+
+/** Spec bebas atas versi aktif dataset yang SUDAH diotorisasi pemanggil. */
+async function runSpec(
+  userId: string,
+  ds: { datasetId: string; activeVersionId: string | null },
+  spec: QuerySpec,
+  deps: QueryDeps,
+  t0: number,
+): Promise<QueryResult> {
   if (!ds.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
   const sheet = await deps.repo.sheet(ds.activeVersionId, spec.sheetId);
   if (!sheet) return fail("NOT_FOUND", "Sheet tidak ditemukan.");
@@ -361,13 +428,35 @@ export async function runQuery(
   if (!resolved.ok) return fail("INVALID", resolved.message);
 
   const key = resultKey({
-    datasetId,
+    datasetId: ds.datasetId,
     versionId: ds.activeVersionId,
     sheetId: spec.sheetId,
     schemaRevision: sheet.schemaRevision,
     spec,
   });
   return runAggPlan(userId, key, sheet.typedKey, resolved.plan, deps, t0);
+}
+
+/** Pesan umum COLUMN_UNAVAILABLE untuk viewer (catatan T-011): tanpa nama kolom lama/tersembunyi. */
+export const COLUMN_UNAVAILABLE_VIEWER = "Kolom yang dipakai widget ini tidak tersedia.";
+
+/**
+ * Hasil sesuai peran peminta (T-016), satu titik untuk semua jalur widget/dashboard: viewer mendapat
+ * pesan umum untuk SEMUA varian COLUMN_UNAVAILABLE (nama kolom lama setelah ganti data atau kolom
+ * tersembunyi tidak disebut; pemilik/editor tetap mendapat detail), dan cached/ms hanya untuk pemilik.
+ * Aman terhadap cache: kegagalan tidak pernah di-cache dan cached/ms bukan bagian nilai cache.
+ */
+function forRole<R extends WidgetQueryResult>(role: DashboardAccessRole, r: R): R {
+  if (!r.ok) {
+    // Deny by default: detail hanya untuk pemilik/editor yang eksplisit (peran tak dikenal = viewer).
+    const detailed = role === "OWNER" || role === "EDITOR";
+    return !detailed && r.code === "COLUMN_UNAVAILABLE"
+      ? (fail("COLUMN_UNAVAILABLE", COLUMN_UNAVAILABLE_VIEWER) as R)
+      : r;
+  }
+  if (role === "OWNER") return r;
+  const { cached: _cached, ms: _ms, ...rest } = r;
+  return rest as R;
 }
 
 const tooLarge = () =>
@@ -446,15 +535,15 @@ export const TOTALS_RETRY_MS = 30_000;
 
 const NOT_ALLOWED = "Filter tidak diizinkan untuk dashboard ini.";
 
+/** Widget yang sudah lolos otorisasi repo (membawa peran peminta). */
+type AuthorizedWidget = NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>;
+
 /**
  * Sumber filter dashboard widget ini (D6): kolom filter tersimpan + dimensi grafik cross-filter beserta
  * tipenya (dibaca sekali per dashboard lewat cache repo). Repo tanpa filterSources (uji): nama kolom
  * filter tersimpan saja, tanpa tipe.
  */
-function dashboardSources(
-  w: NonNullable<Awaited<ReturnType<QueryRepo["widget"]>>>,
-  repo: QueryRepo,
-): Promise<FilterSource[]> {
+function dashboardSources(w: AuthorizedWidget, repo: QueryRepo): Promise<FilterSource[]> {
   if (w.dashboardId && repo.filterSources) {
     return repo.filterSources({
       dashboardId: w.dashboardId,
@@ -468,11 +557,13 @@ function dashboardSources(
 }
 
 /**
- * Query widget (T-011): spec diambil dari widget milik user, bukan dari klien. KPI/grafik memakai
+ * Query widget (T-011): spec diambil dari widget di DB, bukan dari klien. KPI/grafik memakai
  * rencana agregat; tabel mengembalikan satu halaman 100 baris + total baris dengan filter yang sama.
  * Filter dashboard (T-012) dicocokkan lewat nama + kelompok tipe dengan sheet widget ini; yang tidak
  * berlaku dilewati dan dilaporkan di skippedFilters. Kolom filter hanya kolom yang diizinkan dashboard
- * (D6); lainnya INVALID tanpa query. `filters` posisional lama tidak diterima lagi (body strict → INVALID).
+ * (D6); lainnya INVALID tanpa query, untuk peran apa pun. `filters` posisional lama tidak diterima lagi
+ * (body strict → INVALID). T-016: pemilik, editor, dan viewer dashboard widget itu; peran dibaca
+ * bersama widget sebelum cache/DuckDB dan menentukan bentuk jawaban (forRole).
  */
 export async function runWidgetQuery(
   userId: string,
@@ -490,7 +581,18 @@ export async function runWidgetQuery(
   }
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
   if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
-  const dashFilters = parsed.data.dashboardFilters ?? [];
+  return forRole(w.role, await widgetResult(userId, w, parsed.data, deps, t0));
+}
+
+/** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */
+async function widgetResult(
+  userId: string,
+  w: AuthorizedWidget,
+  body: WidgetQueryBody,
+  deps: QueryDeps,
+  t0: number,
+): Promise<WidgetQueryResult> {
+  const dashFilters = body.dashboardFilters ?? [];
   const sources = dashFilters.length ? await dashboardSources(w, deps.repo) : [];
   const allowed = sources.map((x) => x.name);
   if (disallowedFilter(dashFilters, allowed)) return fail("INVALID", NOT_ALLOWED);
@@ -533,7 +635,7 @@ export async function runWidgetQuery(
     );
   }
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
-  const planned = widgetPlan(config, sheet.schema, parsed.data);
+  const planned = widgetPlan(config, sheet.schema, body);
   if (!planned.ok) return fail(planned.code, planned.message);
   const dash = dashFilters.length
     ? applyDashFilters(

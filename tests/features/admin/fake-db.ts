@@ -33,10 +33,19 @@ export interface FakeVersion {
   errorMessage?: string | null;
 }
 
+/** Share dashboard (T-016); datasetId dashboard-nya disalin agar filter relasi mudah dipalsukan. */
+export interface FakeShare {
+  dashboardId: string;
+  datasetId: string;
+  userId: string;
+  role: "VIEWER" | "EDITOR";
+}
+
 interface State {
   users: Map<string, FakeUser>;
   datasets: FakeDataset[];
   versions: FakeVersion[];
+  shares: FakeShare[];
   audits: Record<string, unknown>[];
 }
 
@@ -44,7 +53,7 @@ type IdFilter = string | { in: string[] };
 const idsOf = (f: IdFilter) => (typeof f === "string" ? [f] : f.in);
 
 export function fakeDb() {
-  const state: State = { users: new Map(), datasets: [], versions: [], audits: [] };
+  const state: State = { users: new Map(), datasets: [], versions: [], shares: [], audits: [] };
   const locks: string[] = [];
 
   const tx = {
@@ -144,6 +153,21 @@ export function fakeDb() {
         return { _sum: { sizeBytes: sum } };
       }),
     },
+    dashboardShare: {
+      deleteMany: vi.fn(
+        async ({
+          where,
+        }: {
+          where: { userId: string; dashboard: { datasetId: { in: string[] } } };
+        }) => {
+          const hit = (s: FakeShare) =>
+            s.userId === where.userId && where.dashboard.datasetId.in.includes(s.datasetId);
+          const count = state.shares.filter(hit).length;
+          state.shares = state.shares.filter((s) => !hit(s));
+          return { count };
+        },
+      ),
+    },
     auditLog: {
       create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
         state.audits.push(data);
@@ -157,6 +181,7 @@ export function fakeDb() {
       users: state.users,
       datasets: state.datasets,
       versions: state.versions,
+      shares: state.shares,
       audits: state.audits,
     });
     try {
@@ -178,6 +203,7 @@ export function fakeDb() {
     state.users = new Map();
     state.datasets = [];
     state.versions = [];
+    state.shares = [];
     state.audits = [];
     locks.length = 0;
     prisma.$transaction.mockImplementation(transaction);

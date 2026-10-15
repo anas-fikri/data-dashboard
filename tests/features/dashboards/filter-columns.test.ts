@@ -4,6 +4,7 @@ import {
   filterColumnKey,
   filterColumnViews,
   filterSourcesOf,
+  overlappingFilterColumns,
   storedFilterColumns,
   type ActiveSheet,
 } from "@/features/dashboards/filter-columns";
@@ -264,5 +265,88 @@ describe("tampilan kolom filter dan kolom cross-filter", () => {
       widgets: [],
     });
     expect(await svc.filterSourcesFor(DB)).toEqual([{ name: "Cabang", type: null }]);
+  });
+});
+
+describe("peringatan share: kolom filter yang juga menyaring sheet lain (T-016, catatan T-012)", () => {
+  const S3 = "cmv4kljx40009oczvdmpurrs3";
+  const sheets = [
+    {
+      id: S1,
+      name: "Penjualan",
+      schema: [col(1, "Cabang", "text"), col(2, "Tanggal", "date"), col(3, "Kode", "text")],
+    },
+    {
+      id: S2,
+      name: "Stok",
+      // "tanggal " (spasi/kapital beda) sekelompok tipe (waktu); "Kode" angka = kelompok lain.
+      schema: [
+        col(1, "CABANG", "text"),
+        col(2, "tanggal ", "timestamp"),
+        col(3, "Kode", "integer"),
+      ],
+    },
+    {
+      id: S3,
+      name: "Rahasia",
+      schema: [col(1, "Cabang", "text", true), col(2, "Tanggal", "date")],
+    },
+  ] as ActiveSheet[];
+  const kpiOn = (sheetId: string) => ({
+    type: "kpi",
+    spec: { sheetId, measure: { agg: "count" }, format: { style: "auto", decimals: 0 } },
+  });
+  const barOn = (sheetId: string, dim: number, extra: object = {}) => ({
+    type: "bar",
+    spec: {
+      sheetId,
+      dimension: { column: dim },
+      measure: { agg: "count" },
+      sort: "value_desc",
+      topN: 5,
+      format: { style: "auto", decimals: 0 },
+      ...extra,
+    },
+  });
+  const stored = (...cols: [string, string][]) =>
+    storedFilterColumns(cols.map(([sheet, column]) => ({ sheet, column })));
+
+  it("nama + kelompok tipe sama di > 1 sheet (sheet widget + sheet sumber) → diperingatkan", () => {
+    expect(
+      overlappingFilterColumns(
+        stored(["Penjualan", "Cabang"], ["Penjualan", "Tanggal"], ["Penjualan", "Kode"]),
+        [kpiOn(S1), kpiOn(S2)],
+        sheets,
+      ),
+    ).toEqual(["Cabang", "Tanggal"]);
+  });
+
+  it("sheet sumber kolom filter tidak dipakai widget, tetapi sheet widget punya kolom itu → tetap diperingatkan", () => {
+    expect(overlappingFilterColumns(stored(["Penjualan", "Cabang"]), [kpiOn(S2)], sheets)).toEqual([
+      "Cabang",
+    ]);
+  });
+
+  it("hanya satu sheet; kolom tersembunyi di sheet lain; kolom filter tidak tersedia → tanpa peringatan", () => {
+    expect(overlappingFilterColumns(stored(["Penjualan", "Cabang"]), [kpiOn(S1)], sheets)).toEqual(
+      [],
+    );
+    expect(
+      overlappingFilterColumns(stored(["Penjualan", "Cabang"]), [kpiOn(S1), kpiOn(S3)], sheets),
+    ).toEqual([]);
+    expect(
+      overlappingFilterColumns(stored(["Penjualan", "Hilang"]), [kpiOn(S1), kpiOn(S2)], sheets),
+    ).toEqual([]);
+  });
+
+  it("dimensi grafik cross-filter ikut; crossFilter:false tidak", () => {
+    expect(overlappingFilterColumns([], [barOn(S1, 1), kpiOn(S2)], sheets)).toEqual(["Cabang"]);
+    expect(
+      overlappingFilterColumns([], [barOn(S1, 1, { crossFilter: false }), kpiOn(S2)], sheets),
+    ).toEqual([]);
+    // Nama yang sama dari kolom filter dan dimensi grafik hanya sekali.
+    expect(
+      overlappingFilterColumns(stored(["Penjualan", "Cabang"]), [barOn(S1, 1), kpiOn(S2)], sheets),
+    ).toEqual(["Cabang"]);
   });
 });

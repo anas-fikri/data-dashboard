@@ -12,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
-import { getDataset } from "@/features/datasets/service";
+import { datasetShareImpact, getDataset } from "@/features/datasets/service";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
@@ -52,11 +52,13 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, mappingJob] = await Promise.all([
+  const [pending, versions, mappingJob, shareImpact] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
     listVersions(user.id, dataset.id),
     // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
     awaiting ? mappingJobId(user.id, dataset.id) : null,
+    // Dialog hapus menyebut siapa yang kehilangan akses ke dashboard yang dibagikan (T-016).
+    dataset.dashboardCount > 0 ? datasetShareImpact(user.id, dataset.id) : null,
   ]);
   const applyingJobId = mappingJob?.jobId ?? null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
@@ -188,6 +190,7 @@ export default async function DatasetDetailPage({
             id={dataset.id}
             name={dataset.name}
             dashboardCount={dataset.dashboardCount}
+            shareImpact={shareImpact}
           />
         </CardContent>
       </Card>

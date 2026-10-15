@@ -189,6 +189,7 @@ function deps(
         activeVersionId: VER,
         dashboardId: DASH,
         filterColumns: FILTER_COLUMNS,
+        role: "OWNER" as const,
       };
     },
     filterSources: vi.fn(async () => [...sources, ...cross]),

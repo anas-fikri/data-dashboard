@@ -24,10 +24,14 @@ model User {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
-  tokens    VerificationToken[]
-  datasets  Dataset[]
-  uploads   DatasetVersion[]    @relation("VersionUploader")
-  auditLogs AuditLog[]          @relation("AuditActor")
+  tokens          VerificationToken[]
+  datasets        Dataset[]
+  uploads         DatasetVersion[]    @relation("VersionUploader")
+  auditLogs       AuditLog[]          @relation("AuditActor")
+  /// Dashboard yang dibagikan ke user ini (T-016).
+  dashboardShares DashboardShare[]    @relation("DashboardShareUser")
+  /// Pemberian akses yang dibuat user ini (T-016).
+  sharesGranted   DashboardShare[]    @relation("DashboardShareGranter")
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -196,22 +200,25 @@ model StorageCleanup {
 
 /// Dashboard minimal (T-003: agar hapus kaskade teruji). Kolom builder ditambah di T-010.
 model Dashboard {
-  id             String   @id @default(cuid())
+  id             String           @id @default(cuid())
   datasetId      String
-  dataset        Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  dataset        Dataset          @relation(fields: [datasetId], references: [id], onDelete: Cascade)
   name           String
   /// Nama ternormalisasi (trim + lowercase): unik per dataset tanpa peka kapital.
   nameKey        String
   /// Posisi widget di grid 12 kolom: [{ i: widgetId, x, y, w, h }] (T-010).
-  layout         Json     @default("[]")
+  layout         Json             @default("[]")
   /// Naik tiap layout/widget berubah; simpan otomatis memakai CAS agar tab lama tidak menimpa.
-  layoutRevision Int      @default(0)
+  layoutRevision Int              @default(0)
   /// Kolom filter global (T-012): [{ sheet, column }] dengan nama tampil, ≤ 8, unik. Pengguna dashboard
   /// hanya boleh memfilter kolom ini + dimensi grafik yang cross-filter-nya aktif (D6).
-  filterColumns  Json     @default("[]")
+  filterColumns  Json             @default("[]")
+  /// Dibagikan ke seluruh organisasi (semua user aktif) sebagai VIEWER (T-016; tabel peran flow-kerja).
+  orgShared      Boolean          @default(false)
+  shares         DashboardShare[]
   widgets        Widget[]
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
   @@unique([datasetId, nameKey])
   @@index([datasetId])
@@ -256,4 +263,28 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([actorId])
   @@index([at])
+}
+
+/// Peran akses dashboard bagi non-pemilik (T-016). Pemilik dataset selalu OWNER (tidak disimpan).
+enum DashboardRole {
+  VIEWER
+  EDITOR
+}
+
+/// Akses dashboard untuk satu user (T-016). Satu baris per (dashboard, user); akses organisasi ada di
+/// Dashboard.orgShared. Dihapus ikut dashboard/user.
+model DashboardShare {
+  id          String        @id @default(cuid())
+  dashboardId String
+  dashboard   Dashboard     @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User          @relation("DashboardShareUser", fields: [userId], references: [id], onDelete: Cascade)
+  role        DashboardRole
+  createdById String?
+  createdBy   User?         @relation("DashboardShareGranter", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([dashboardId, userId])
+  @@index([userId])
 }

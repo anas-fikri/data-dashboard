@@ -378,7 +378,8 @@ interface PendingAbort {
 
 /**
  * Pindahkan SEMUA dataset pengguna nonaktif ke pengguna aktif lain, semua-atau-tidak-sama-sekali.
- * Dashboard dan widget ikut otomatis (kepemilikan hanya lewat Dataset.ownerId). Lock sama dengan
+ * Dashboard dan widget ikut otomatis (kepemilikan hanya lewat Dataset.ownerId); share dashboard tetap,
+ * kecuali share milik pemilik baru di dashboard itu (dihapus, jumlahnya di audit). Lock sama dengan
  * createDataset ('datasets:<to>') dan initUpload ('uploads:<to>') → batas 50 dataset dan kuota
  * pemilik baru tidak bisa diakali permintaan paralel. Nama bentrok → akhiran " (n)".
  * Unggahan sumber yang belum selesai ditandai FAILED (pemilik baru tidak bisa melanjutkannya karena
@@ -488,6 +489,14 @@ export async function transferDatasets(
       // Semua-atau-tidak: dataset berubah di tengah jalan → batalkan seluruh transaksi.
       if (moved !== incoming.length) throw new Rollback(busy());
 
+      // Pemilik baru kini OWNER dashboard-dashboard ini: share yang ia pegang di sana tidak berarti
+      // lagi (pemilik tidak pernah jadi penerima share, T-016). Share orang lain tetap.
+      const sharesRemoved = (
+        await tx.dashboardShare.deleteMany({
+          where: { userId: to.id, dashboard: { datasetId: { in: ids } } },
+        })
+      ).count;
+
       // Sama dengan hitungan kuota initUpload (uploads/service.ts): versi non-FAILED milik pemilik.
       const used = await tx.datasetVersion.aggregate({
         where: { dataset: { ownerId: to.id }, status: { not: "FAILED" } },
@@ -508,6 +517,7 @@ export async function transferDatasets(
           datasetIds: ids,
           renamed,
           failedUploads: pending.length,
+          sharesRemoved,
         },
         ip,
       });

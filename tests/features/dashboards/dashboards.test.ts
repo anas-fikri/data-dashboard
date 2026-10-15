@@ -47,6 +47,7 @@ const prisma = {
 vi.mock("@/lib/db", () => ({ prisma }));
 
 const svc = await import("@/features/dashboards/service");
+const { canEditWhere } = await import("@/features/sharing/access");
 
 const OWNER = "owner1";
 const DS = "cmv4klj5r0007oczvgiofocpg";
@@ -55,6 +56,15 @@ const WA = "cmv4kljx40009oczvdmpurrwa";
 const WB = "cmv4kljx40009oczvdmpurrwb";
 const known = (code: string) =>
   new Prisma.PrismaClientKnownRequestError("x", { code, clientVersion: "6.12.0" });
+/** Baris dashboardAccess (T-016) untuk pemilik: penulisan 0 baris → widget/dashboard hilang, bukan FORBIDDEN. */
+const ownerAccess = {
+  orgShared: false,
+  shares: [],
+  dataset: { id: DS, ownerId: OWNER, activeVersionId: null },
+};
+/** Kolom peran (roleSelect) + pemilik yang dibaca getDashboard sejak T-016. */
+const roleCols = { orgShared: false, shares: [] };
+const ownerCols = { ownerId: OWNER, owner: { name: "Pemilik" } };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -339,21 +349,29 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     expect(await svc.deleteWidget(OWNER, DB, WA, 1)).toMatchObject({ code: "BUSY" });
   });
 
-  it("ganti judul: milik user saja, ikut menyegarkan waktu 'diperbarui' dashboard", async () => {
+  it("ganti judul: pemilik/editor saja, ikut menyegarkan waktu 'diperbarui' dashboard", async () => {
     prisma.widget.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.renameWidget(OWNER, DB, WA, "  Omzet   cabang ")).toEqual({
       ok: true,
       data: { title: "Omzet cabang" },
     });
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
-      where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
+      where: { id: WA, dashboardId: DB, dashboard: canEditWhere(OWNER) },
       data: { title: "Omzet cabang" },
     });
     expect(prisma.dashboard.updateMany).toHaveBeenCalledTimes(1);
+    // Pemilik, widget tidak ada → "Widget tidak ditemukan." (satu cek akses memilih kodenya).
     prisma.widget.updateMany.mockResolvedValueOnce({ count: 0 });
+    prisma.dashboard.findFirst.mockResolvedValueOnce(ownerAccess);
     expect(await svc.renameWidget(OWNER, DB, WA, "X")).toMatchObject({
       code: "NOT_FOUND",
       message: "Widget tidak ditemukan.",
+    });
+    // Tanpa akses ke dashboard → NOT_FOUND dashboard.
+    prisma.widget.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await svc.renameWidget(OWNER, DB, WA, "X")).toMatchObject({
+      code: "NOT_FOUND",
+      message: "Dashboard tidak ditemukan.",
     });
   });
 });
@@ -387,9 +405,10 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       where: { id: SHEET, version: { activeFor: { id: DS } } },
       select: { schema: true },
     });
-    // Pengaturan baru menghapus catatan kolom hilang dari aktivasi versi (T-013).
+    // Pengaturan baru menghapus catatan kolom hilang dari aktivasi versi (T-013). Cek akses edit
+    // (T-016) ada di where penulisan di dalam transaksi lock.
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
-      where: { id: WA, dashboardId: DB, dashboard: { dataset: { ownerId: OWNER } } },
+      where: { id: WA, dashboardId: DB, dashboard: canEditWhere(OWNER) },
       data: { type: "bar", spec: bar, missingColumns: [] },
     });
   });
@@ -424,15 +443,17 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
   it("R5-CC-2: sheet versi lain dataset ini (versi berganti saat panel terbuka) → STALE muat ulang; urungkan hapus → kosong", async () => {
     prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
-    prisma.sheet.count.mockResolvedValueOnce(1);
+    prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: DS } });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
       ok: false,
       code: "STALE",
       message:
         "Data dataset ini baru saja berganti versi. Muat ulang halaman, lalu atur lagi widget ini.",
     });
-    expect(prisma.sheet.count).toHaveBeenCalledWith({
-      where: { id: SHEET, version: { datasetId: DS } },
+    // Sheet di luar versi aktif dicari di mana pun: dataset ini → STALE; dataset lain → NOT_FOUND.
+    expect(prisma.sheet.findFirst).toHaveBeenLastCalledWith({
+      where: { id: SHEET },
+      select: { version: { select: { datasetId: true } } },
     });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(widgetUpdateMany).not.toHaveBeenCalled();
@@ -444,12 +465,12 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       code: "INVALID",
       message: "Sheet tidak ditemukan di data aktif dataset ini.",
     });
-    expect(prisma.sheet.count).toHaveBeenCalledTimes(1);
+    expect(prisma.sheet.findFirst).toHaveBeenCalledTimes(3);
 
     // Urungkan hapus tetap memulihkan widget kosong (configDropped), bukan STALE.
     prisma.dashboard.findFirst.mockResolvedValueOnce({ datasetId: DS });
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
-    prisma.sheet.count.mockResolvedValueOnce(1);
+    prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: DS } });
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 2, []));
     tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", spec: {} });
     expect(
@@ -478,7 +499,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       layoutRevision: 0,
       filterColumns: [],
       updatedAt: new Date(),
-      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      ...roleCols,
+      dataset: { id: DS, name: "Data", activeVersionId: VER, ...ownerCols },
       widgets,
     });
     prisma.dashboard.findFirst.mockResolvedValueOnce(dashboard([widget(["Omzet"])]));
@@ -537,7 +559,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       layoutRevision: 0,
       filterColumns: [],
       updatedAt: new Date(),
-      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      ...roleCols,
+      dataset: { id: DS, name: "Data", activeVersionId: VER, ...ownerCols },
       widgets: [{ id: WA, type: "kpi", title: "", spec: kpi, missingColumns: [] }],
     });
     const retargeted = {
@@ -578,7 +601,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
       layoutRevision: 0,
       filterColumns: [],
       updatedAt: new Date(),
-      dataset: { id: DS, name: "Data", activeVersionId: VER },
+      ...roleCols,
+      dataset: { id: DS, name: "Data", activeVersionId: VER, ...ownerCols },
       widgets: [
         { id: WA, type: "kpi", title: "", spec: count(OLD), missingColumns: [] },
         { id: WB, type: "kpi", title: "", spec: count(SHEET), missingColumns: [] },
@@ -612,12 +636,22 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         code: "INVALID",
       });
     }
+    // Sheet yang tidak ada di dataset ini (dataset lain / sudah tidak ada) → NOT_FOUND (AC6, T-016).
     prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
     prisma.sheet.findFirst.mockReset();
     prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Sheet tidak ditemukan.",
+    });
+    prisma.widget.findFirst.mockResolvedValueOnce({ dashboard: { datasetId: DS } });
+    prisma.sheet.findFirst.mockResolvedValueOnce(null);
+    prisma.sheet.findFirst.mockResolvedValueOnce({ version: { datasetId: "dataset-lain" } });
     expect(await svc.configureWidget(OWNER, DB, WA, "bar", bar)).toMatchObject({
-      code: "INVALID",
-      message: "Sheet tidak ditemukan di data aktif dataset ini.",
+      code: "NOT_FOUND",
+      message: "Sheet tidak ditemukan.",
     });
     expect(prisma.widget.updateMany).not.toHaveBeenCalled();
     prisma.widget.findFirst.mockResolvedValueOnce(null);
@@ -673,9 +707,9 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     expect(r).toMatchObject({ ok: true, data: { layout: [{ i: WA, w: 3, h: 4 }] } });
   });
 
-  it("sumber data panel: sheet siap di versi aktif milik user, tanpa kolom tersembunyi", async () => {
+  it("sumber data panel: sheet siap di versi aktif dataset dashboard yang boleh diubah user, tanpa kolom tersembunyi", async () => {
     prisma.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, name: "Penjualan", schema }]);
-    expect(await svc.getDashboardSources(OWNER, DS)).toEqual([
+    expect(await svc.getDashboardSources(OWNER, DB)).toEqual([
       {
         id: SHEET,
         name: "Penjualan",
@@ -685,9 +719,15 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
         ],
       },
     ]);
+    // Akses (pemilik/editor dashboard ini) dan sheet dalam satu query (T-016).
     expect(prisma.sheet.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { typedKey: { not: null }, version: { activeFor: { id: DS, ownerId: OWNER } } },
+        where: {
+          typedKey: { not: null },
+          version: {
+            activeFor: { dashboards: { some: { id: DB, ...canEditWhere(OWNER) } } },
+          },
+        },
       }),
     );
   });

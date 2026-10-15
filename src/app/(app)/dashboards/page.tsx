@@ -1,23 +1,30 @@
-import { IconDatabase, IconLayoutDashboard, IconPlus } from "@tabler/icons-react";
+import { IconDatabase, IconLayoutDashboard, IconPlus, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { DashboardList } from "@/components/dashboards/dashboard-list";
+import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
-import { listDashboards } from "@/features/dashboards/service";
+import { listDashboards, listSharedDashboards } from "@/features/dashboards/service";
 import { listDatasets } from "@/features/datasets/service";
 
 export const metadata = { title: "Dashboard" };
 
 type Search = Promise<{ deleted?: string }>;
 
-/** Daftar dashboard milik user di semua dataset-nya (T-010). */
+/**
+ * Dashboard milik user (T-010) dan yang dibagikan ke user (T-016, termasuk berbagi organisasi). Bagian
+ * "Dibagikan ke saya" selalu tampil — juga bagi user tanpa dataset (persona viewer); keadaan kosong
+ * "Belum ada dataset" hanya untuk bagian milik sendiri. User tanpa dashboard sendiri tetapi punya
+ * dashboard bersama melihat bagian bersama lebih dulu.
+ */
 export default async function DashboardsPage({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  const [dashboards, datasets, params] = await Promise.all([
+  const [dashboards, shared, datasets, params] = await Promise.all([
     listDashboards(user.id),
+    listSharedDashboards(user.id),
     listDatasets(user.id),
     searchParams,
   ]);
@@ -30,18 +37,17 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
       </Link>
     </Button>
   );
+  const heading = "text-base font-semibold";
 
-  return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Dashboard"
-        description="Susun ringkasan data dari dataset Anda. Perubahan tersimpan otomatis."
-        actions={dashboards.length > 0 ? createButton : undefined}
-      />
-      {params.deleted === "1" ? <FocusNotice>Dashboard dihapus.</FocusNotice> : null}
+  const own = (
+    <section key="own" aria-labelledby="dashboard-saya" className="flex flex-col gap-3">
+      <h2 id="dashboard-saya" className={heading}>
+        Dashboard saya
+      </h2>
       {datasets.length === 0 ? (
         <EmptyState
           icon={<IconDatabase />}
+          as="p"
           title="Belum ada dataset"
           description="Dashboard menampilkan isi sebuah dataset. Buat dataset dan unggah file dulu."
           action={
@@ -56,6 +62,7 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
       ) : dashboards.length === 0 ? (
         <EmptyState
           icon={<IconLayoutDashboard />}
+          as="p"
           title="Belum ada dashboard"
           description="Buat dashboard pertama untuk salah satu dataset Anda."
           action={createButton}
@@ -63,6 +70,36 @@ export default async function DashboardsPage({ searchParams }: { searchParams: S
       ) : (
         <DashboardList dashboards={dashboards} />
       )}
+    </section>
+  );
+  const sharedSection = (
+    <section key="shared" aria-labelledby="dibagikan-ke-saya" className="flex flex-col gap-3">
+      <h2 id="dibagikan-ke-saya" className={heading}>
+        Dibagikan ke saya
+      </h2>
+      {shared.length ? (
+        <SharedDashboardList dashboards={shared} />
+      ) : (
+        <EmptyState
+          icon={<IconUsers />}
+          as="p"
+          title="Belum ada dashboard yang dibagikan"
+          description="Dashboard yang dibagikan rekan atau ke seluruh organisasi muncul di sini."
+          className="py-8"
+        />
+      )}
+    </section>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Dashboard"
+        description="Dashboard dari dataset Anda dan yang dibagikan rekan."
+        actions={dashboards.length > 0 ? createButton : undefined}
+      />
+      {params.deleted === "1" ? <FocusNotice>Dashboard dihapus.</FocusNotice> : null}
+      {dashboards.length === 0 && shared.length > 0 ? [sharedSection, own] : [own, sharedSection]}
     </div>
   );
 }

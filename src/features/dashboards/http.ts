@@ -18,12 +18,14 @@ import {
 /*
  * HTTP kanvas dashboard (T-010): tambah/hapus/ganti judul widget dan simpan otomatis tata letak. Semua
  * mutasi: Origin wajib = APP_URL, body JSON ≤ 64 KB, rate limit per user (simpan otomatis tiap
- * geser/ubah ukuran, jadi batasnya longgar tetapi tetap ada).
+ * geser/ubah ukuran, jadi batasnya longgar tetapi tetap ada). T-016: tanpa akses ke dashboard → 404;
+ * bisa melihat tetapi tidak boleh mengubah (viewer; editor pada kolom filter) → 403 FORBIDDEN.
  */
 
 const STATUS: Record<DashboardCode, number> = {
   INVALID: 400,
   NOT_FOUND: 404,
+  FORBIDDEN: 403,
   LIMIT_REACHED: 409,
   NAME_TAKEN: 409,
   STALE: 409,
@@ -107,7 +109,10 @@ export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
     reply(await saveLayout(userId, dashboardId, body)),
   );
 
-/** PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik saja. */
+/**
+ * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik saja
+ * (editor/viewer → 403).
+ */
 export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan kolom filter gagal", async (userId, body) => {
     const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };

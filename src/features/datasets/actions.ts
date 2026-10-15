@@ -1,8 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
+import { env } from "@/lib/env";
 import * as service from "./service";
 import type { DatasetField } from "./validation";
 
@@ -68,7 +71,13 @@ export async function deleteDatasetAction(
   formData: FormData,
 ): Promise<DatasetFormState> {
   const user = await requireUser();
-  const r = await service.deleteDataset(user.id, formData.get("id"), formData.get("confirm"));
+  const r = await service.deleteDataset(
+    user.id,
+    formData.get("id"),
+    formData.get("confirm"),
+    // AuditLog "dataset.delete" (T-016) ditulis dalam transaksi penghapusan.
+    clientIp(await headers(), env().TRUST_PROXY),
+  );
   if (!r.ok) return toError(r, formData);
   revalidatePath("/datasets");
   redirect("/datasets?deleted=1");
