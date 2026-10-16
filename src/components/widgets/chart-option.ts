@@ -287,30 +287,34 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
    * (R6-DS-2). Bila label itu sudah bertumpuk dengan label pertama walau keduanya rata tengah (grafik
    * rapat): geser penuh — label pertama yang tetap bertumpuk dibuang hideOverlap (label terbaru
    * berprioritas, R8-DS-2), tidak tercetak di atas label sumbu. Tinggi plot/rentang nilai diperkirakan
-   * hati-hati (selisih tinggi lebih kecil).
+   * hati-hati (selisih tinggi lebih kecil). Label titik BERIKUTNYA yang rata tengahnya juga melewati
+   * tepi kiri plot (grafik rapat: ia yang tercetak setelah label pertama dibuang) digeser penuh — bila
+   * lalu bertumpuk dengan label yang lebih baru, ia yang dibuang (R9-INT-2). Hasil: geseran per titik.
    */
-  const firstShift = (
+  const labelShifts = (
     xs: readonly number[],
     vals: readonly (number | null)[],
     skip: readonly boolean[],
-  ) => {
+  ): number[] => {
     const w = (k: number) =>
       skip[k] || vals[k] == null ? 0 : value(vals[k]).length * PRINT_LABEL_CHAR_PX;
-    const need = w(0) / 2 + 2 - (xs[0] ?? 0);
-    if (!w(0) || need <= 0) return 0;
+    const needAt = (k: number) => (w(k) ? Math.max(0, w(k) / 2 + 2 - (xs[k] ?? 0)) : 0);
+    const shifts = vals.map((_, k) => (k === 0 ? 0 : needAt(k)));
+    const need = needAt(0);
+    if (!need) return shifts;
     const lo = Math.min(0, ...vals.map((v) => v ?? 0));
     const hi = Math.max(0, ...vals.map((v) => v ?? 0));
     const plotH = size.height - PRINT_TOP - 48;
     const rise = (k: number) =>
       (Math.abs(vals[k]! - vals[0]!) / Math.max((hi - lo) * 1.25, 1e-9)) * plotH;
     const next = vals.findIndex((v, k) => k > 0 && w(k) > 0 && rise(k) < PRINT_LABEL_PX + 4);
-    if (next < 0) return need;
     // Lebar label sudah perkiraan atas (6,1 px/karakter): celah 1 px cukup — hideOverlap hanya membuang
     // label yang kotaknya benar-benar berpotongan.
-    const room = xs[next]! - w(next) / 2 - 1 - (xs[0]! + w(0) / 2);
+    const room = next < 0 ? Infinity : xs[next]! - w(next) / 2 - 1 - (xs[0]! + w(0) / 2);
     // Rapat: label pertama (prioritas terendah, lihat symbols) memang dibuang bila tetap bertumpuk —
     // lebih baik daripada tercetak di atas label sumbu.
-    return room < 0 ? need : Math.min(need, room);
+    shifts[0] = room < 0 ? need : Math.min(need, room);
+    return shifts;
   };
   const base = {
     color: theme.colors,
@@ -320,10 +324,14 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   /**
    * Label nilai cetak; `skip` = periode tanpa data yang diisi (bukan nilai terukur, tanpa label).
    * Titik sumbu waktu bernilai [ms, y]. Label yang bertumpuk disembunyikan ECharts (hideOverlap).
-   * `shift` = geseran label pertama (firstShift) — lewat labelLayout: ECharts mengabaikan label.offset
-   * per titik bila seri punya labelLayout (R6-INT-1).
+   * `shifts` = geseran label per titik (labelShifts) — lewat labelLayout: ECharts mengabaikan
+   * label.offset per titik bila seri punya labelLayout (R6-INT-1).
    */
-  const valueLabel = (position: "right" | "top", skip: readonly boolean[], shift = 0) =>
+  const valueLabel = (
+    position: "right" | "top",
+    skip: readonly boolean[],
+    shifts: readonly number[] = [],
+  ) =>
     i.print
       ? {
           label: {
@@ -336,13 +344,12 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             formatter: (p: { value: unknown; dataIndex: number }) =>
               skip[p.dataIndex] ? "" : value(Array.isArray(p.value) ? p.value[1] : p.value),
           },
-          labelLayout:
-            shift > 0
-              ? (p: { dataIndex: number }) => ({
-                  hideOverlap: true,
-                  ...(p.dataIndex === 0 ? { dx: shift } : {}),
-                })
-              : { hideOverlap: true },
+          labelLayout: shifts.some((s) => s > 0)
+            ? (p: { dataIndex: number }) => ({
+                hideOverlap: true,
+                ...(shifts[p.dataIndex] ? { dx: shifts[p.dataIndex] } : {}),
+              })
+            : { hideOverlap: true },
         }
       : {};
 
@@ -474,10 +481,12 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     const isolated = hasIsolated(ys);
     const show = ys.length <= 60 || isolated || (fills && filled.filter((f) => !f).length <= 60);
     // Cetak: label nilai yang bertumpuk disembunyikan menurut prioritas = luas simbol (ECharts
-    // hideOverlap) — simbol yang makin baru sedikit lebih besar (+0,001 px per titik, tak terlihat) agar
+    // hideOverlap) — simbol yang makin baru sedikit lebih besar (total < 0,01 px, tak terlihat) agar
     // nilai terbaru yang tercetak, sama dengan label sumbu yang dihitung mundur dari periode terakhir
-    // (review T-018 R8-DS-2). Layar: ukuran bawaan 4.
-    const sizeAt = (k: number) => (i.print ? 4 + k * 1e-3 : 4);
+    // (review T-018 R8-DS-2). Ukuran dasar sama dengan layar: 4 bila ada periode kosong, selain itu 6
+    // (bawaan ECharts 6, R9-DS-2).
+    const dot = fills ? 4 : 6;
+    const sizeAt = (k: number) => (i.print ? dot + (0.005 * k) / Math.max(1, ys.length) : dot);
     return {
       showSymbol: show,
       ...(show && (fills || isolated) ? { showAllSymbol: true } : {}),
@@ -517,13 +526,23 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     // setengah label terpanjang — label paling kanan tidak terpotong tepi kartu. Paling banyak 20 %
     // lebar: lebih dari itu ECharts menyerah memuat label sumbu nilai di kiri.
     const edgeText = points.reduce((m, p) => Math.max(m, tick(p[0]).length), 0);
-    const right = Math.max(grid.right, Math.min((edgeText * AXIS_CHAR_PX) / 2, size.width * 0.2));
+    const tickRight = Math.max(
+      grid.right,
+      Math.min((edgeText * AXIS_CHAR_PX) / 2, size.width * 0.2),
+    );
+    // Cetak: label nilai terbaru rata tengah di titik terakhir (tepi kanan plot) — setengahnya harus
+    // muat di ruang kanan, sama dengan sumbu kategori (review T-018 R9-INT-1/DS-1).
+    const lastLabelled = ys.reduce<number>((m, v, k) => (v != null && !filled[k] ? k : m), -1);
+    const right =
+      i.print && lastLabelled >= 0
+        ? Math.max(tickRight, (value(ys[lastLabelled]).length * AXIS_CHAR_PX) / 2)
+        : tickRight;
     // Titik pertama tepat di tepi kiri plot (min dataMin); posisi titik dari lebar plot perkiraan
     // (lebar − label sumbu nilai − jarak grid), sama seperti sumbu kategori.
     const maxY = ys.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
     const plotT = size.width - grid.left - right - 8 - axisText(maxY).length * AXIS_CHAR_PX;
     const span = points.length > 1 ? points.at(-1)![0] - points[0]![0] : 0;
-    const shift0 = firstShift(
+    const shifts = labelShifts(
       points.map((p) => (span > 0 ? ((p[0] - points[0]![0]) / span) * Math.max(plotT, 1) : 0)),
       ys,
       filled,
@@ -572,7 +591,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
           ),
           ...symbols(ys, filled),
-          ...valueLabel("top", filled, shift0),
+          ...valueLabel("top", filled, shifts),
           connectNulls: false,
         },
       ],
@@ -615,14 +634,14 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   const plotW = size.width - grid.left - plotRight - 8 - axisText(maxAbs).length * AXIS_CHAR_PX;
   const band = Math.max(plotW, 1) / Math.max(n, 1);
   // Titik garis di tengah pitanya (setengah pita dari sumbu nilai).
-  const shift0 =
+  const shifts =
     i.type === "line"
-      ? firstShift(
+      ? labelShifts(
           values.map((_, k) => band / 2 + k * band),
           values,
           filled,
         )
-      : 0;
+      : [];
   const textW = labels.reduce((m, l) => Math.max(m, labelText(l).length), 1) * AXIS_CHAR_PX;
   const alignRight = n > 1 && textW / 2 > band / 2 + grid.right - 4;
   // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: semua jarak dilebarkan (bukan satu
@@ -718,7 +737,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
-        ...valueLabel(horizontal ? "right" : "top", filled, shift0),
+        ...valueLabel(horizontal ? "right" : "top", filled, shifts),
       },
     ],
   };

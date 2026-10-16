@@ -154,6 +154,15 @@ describe("chartOption cetak (print)", () => {
     expect(series(option({ ...daily(2), print: true, selected: 0 })).data[0]).toMatchObject({
       symbolSize: 10,
     });
+    // Rapat dengan label panjang: label titik kedua yang rata tengahnya juga melewati tepi kiri plot
+    // ikut digeser (ia yang tercetak bila label pertama dibuang, R9-INT-2); titik jauh tidak.
+    const long = Array.from({ length: 31 }, () => 1_234_567);
+    const dense = option({ ...daily(31, long), print: true });
+    expect(dxOf(dense, 1)).toBeGreaterThan(0);
+    expect(dxOf(dense, 20)).toBe(0);
+    // Sumbu waktu cetak: ruang kanan grid memuat setengah label nilai terbaru "Rp 1.234.567" (R9-INT-1).
+    const grid = (dense as unknown as { grid: { right: number } }).grid;
+    expect(grid.right).toBeGreaterThanOrEqual(("Rp 1.234.567".length * 7) / 2 - 1);
     // Nama satuan sumbu nilai cetak di kiri garis sumbu (tidak menimpa label pertama, R7-DS-1).
     type Axis = { yAxis: { nameTextStyle: { align: string } } };
     expect(
@@ -176,7 +185,9 @@ describe("chartOption cetak (print)", () => {
     const print = size(option({ ...line, print: true }))!;
     const sizes = [0, 1, 2, 3].map((k) => print(null, { dataIndex: k }));
     for (let k = 1; k < sizes.length; k++) expect(sizes[k]!).toBeGreaterThan(sizes[k - 1]!);
-    expect(sizes[3]! - 4).toBeLessThan(0.01);
+    // Ukuran dasar = bawaan ECharts 6 (6 px) seperti layar; tambahannya < 0,01 px (R9-DS-2).
+    expect(sizes[0]).toBe(6);
+    expect(sizes[3]! - 6).toBeLessThan(0.01);
     // Layar: ukuran bawaan.
     expect(size(option(line))).toBeUndefined();
   });
