@@ -1,24 +1,34 @@
 ---
 id: T-032
 title: 'Polish widget kecil: penanda kategori terpotong, legenda pai samping, tab stop legenda'
-status: in_progress
+status: in_review
 profile: standard
 profile_pinned: true
 goal: G-4
 depends_on:
   - T-011
 created: "2026-10-13T02:41:40Z"
-updated: "2026-10-16T19:04:19Z"
+updated: "2026-10-16T19:37:07Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 0d77bf58cbaa4d434fa33508084eb6ff6394418f
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-16T19:26:18Z"
+      findings: 0
+    - "n": 2
+      by: frontend-expert-design-reviewer
+      at: "2026-10-16T19:26:18Z"
+      findings: 3
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42885
+    duration_ms: 42427
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -40,17 +50,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792177406938,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792177406960,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792177406964,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792179403715,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792179403739,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792179403748,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  121 passed (121)
             Tests  1707 passed (1707)
-         Start at  02:03:20
-         Duration  29.17s (tests 76%, import 18%, transform 6%, worker 1%)
+         Start at  02:36:37
+         Duration  28.81s (tests 76%, import 18%, transform 6%, worker 1%)
 
-          Isolate  121 workers spawned · ~130ms startup each (spawn + environment, per file)
-                   at least ~1.61s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  121 workers spawned · ~126ms startup each (spawn + environment, per file)
+                   at least ~1.57s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -58,8 +68,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T19:03:50Z"
-    tree: 454fc9f939a98d5a2fbd5b6312682eaaed428d7a0e1acb73ed4e6e1f4f4bc7e1
+    at: "2026-10-16T19:37:07Z"
+    tree: 03e2f857d14d4dc8e3ef01a07690ab6357da0a4958f954008e8761b52cc4b984
 ---
 
 ## Objective
@@ -71,7 +81,7 @@ Sisa temuan Low/Info verifikasi T-011 yang sengaja ditunda: (1) kartu batang san
 - [ ] Given mode forced-colors, when legenda pai/garis dilihat, then tiap seri bisa dibedakan tanpa warna
 
 ## Risk
-Impact: tampilan widget grafik layar: (1) chartFit memberi badge 'N/M' ('N+' tanpa total) saat keterangan tidak muat tetapi kategori terpotong (batang/garis), ditampilkan di kepala kartu (title = keterangan lengkap; pembaca layar memakai ringkasan grafik); (2) legenda dan peringatan negatif pai menjadi tab stop hanya bila meluap (useScrollFocus, ResizeObserver); (3) swatch legenda pai berbeda bentuk per warna dan mempertahankan warna di forced-colors. Cetak/PDF: tanpa badge dan tanpa tabindex; bentuk swatch ikut tercetak. Butir objective di luar AC tidak dikerjakan (label 'Mg', kartu sentuh sempit mode edit, kunci cache halaman tabel) — tetap tercatat. Security (STRIDE): tidak ada permukaan baru. Rollback: revert commit. Validation: unit chartFit.badge, render legenda tanpa tabindex awal; e2e chart-polish (lencana N/12, legenda muat tanpa tab stop vs meluap bisa difokus + panah menggulir, forced-colors 6 bentuk berwarna).
+Impact: tampilan widget grafik layar: (1) chartFit memberi badge 'N/M' ('N+' tanpa total) saat keterangan tidak muat tetapi kategori terpotong (batang/garis), ditampilkan sebagai "N dari M" di kepala kartu hanya bila kartu ≥ 12,5rem (mode edit ≥ 17rem) agar judul tidak terperas; kartu lebih sempit tanpa lencana (tabel data tetap tersedia) karena di badan grafik lencana menimpa label sumbu (review desain r1/r2); title = keterangan lengkap; pembaca layar memakai ringkasan grafik; (2) legenda dan peringatan negatif pai menjadi tab stop hanya bila meluap (useScrollFocus, ResizeObserver); (3) swatch legenda pai berbeda bentuk per warna dan mempertahankan warna di forced-colors. Cetak/PDF: tanpa badge dan tanpa tabindex; bentuk swatch ikut tercetak. Butir objective di luar AC tidak dikerjakan (label 'Mg', kartu sentuh sempit mode edit, kunci cache halaman tabel) — tetap tercatat. Security (STRIDE): tidak ada permukaan baru. Rollback: revert commit. Validation: unit chartFit.badge, render legenda tanpa tabindex awal; e2e chart-polish (lencana N/12, legenda muat tanpa tab stop vs meluap bisa difokus + panah menggulir, forced-colors 6 bentuk berwarna).
 
 ## Notes
 - 2026-10-13T15:34:02Z Dari review T-019: axe 'region' (moderate, best-practice) pada portal Radix DropdownMenu/Select yang dirender ke <body> di luar landmark — pertimbangkan Portal container di dalam <main> atau wrapper landmark; bukan WCAG AA.

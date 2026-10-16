@@ -100,6 +100,7 @@ export function ChartWidget({
   cross,
   print = false,
   onSettled,
+  onBadge,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -116,6 +117,8 @@ export function ChartWidget({
   print?: boolean;
   /** Isi siap (grafik tergambar/gagal, atau isi bukan grafik). */
   onSettled?: () => void;
+  /** Lencana "N dari M" kategori untuk kepala kartu saat keterangan tidak muat (T-032); fungsi stabil. */
+  onBadge?: (badge: { short: string; full: string } | null) => void;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
@@ -556,24 +559,19 @@ export function ChartWidget({
   // Keterangan yang muat (lengkap/ringkas); teks lengkap tetap di title dan untuk pembaca layar.
   const drawn = fit && !fit.ranked && !chartEmpty(data) && !showData && !negative ? fit : null;
   const note = drawn && drawn.note !== "none" ? drawn : null;
-  // Keterangan tidak muat (kartu pendek): lencana "N dari M" di celah kiri bawah grafik — tidak memeras
-  // judul di kepala kartu (review desain T-032). Pembaca layar: ringkasan grafik.
+  // Keterangan tidak muat (kartu pendek): lencana "N dari M" di kepala kartu, tidak di badan grafik (di sana
+  // menimpa label sumbu — review desain T-032 r2). Pembaca layar: ringkasan grafik.
   const badge = !print && drawn?.badge ? drawn.badge : "";
+  const badgeFull = drawn?.full ?? "";
+  useEffect(
+    () => onBadge?.(badge ? { short: badge, full: badgeFull } : null),
+    [onBadge, badge, badgeFull],
+  );
+  useEffect(() => () => onBadge?.(null), [onBadge]);
 
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {body}
-        {badge ? (
-          <span
-            className="pointer-events-none absolute bottom-0.5 left-2 rounded-sm bg-card/90 px-1 text-[0.6875rem] leading-4 tabular-nums text-foreground"
-            aria-hidden
-            data-testid="chart-badge"
-          >
-            {badge}
-          </span>
-        ) : null}
-      </div>
+      <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
       {note ? (
         // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
         <div className="shrink-0 px-3 pb-1">

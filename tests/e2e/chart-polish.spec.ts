@@ -8,7 +8,7 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
 /*
  * T-032 (polish widget kecil) di kanvas 1440 px dengan data sungguhan (12 kota):
  *   AC1 batang setinggi 2 baris (keterangan "Menampilkan N dari M" tidak muat) → lencana "N dari 12" di
- *       celah kiri bawah grafik (judul di kepala kartu tidak terperas);
+ *       kepala kartu (hanya kartu ≥ 12,5rem / 17rem saat edit, agar judul tidak terperas);
  *   AC2 legenda pai yang muat (kartu tinggi) bukan tab stop; yang meluap (kartu sempit-sedang) bisa difokus;
  *   AC3 forced-colors: swatch legenda berbeda bentuk dan tetap berwarna (bukan hanya warna).
  */
@@ -112,16 +112,17 @@ test.describe("polish widget kecil (T-032)", () => {
     await owner.goto(`/dashboards/${d}`);
   });
 
-  test("AC1: batang 2 baris tanpa ruang keterangan → lencana 'N dari 12' di grafik, judul utuh", async () => {
+  test("AC1: batang 2 baris tanpa ruang keterangan → lencana 'N dari 12' di kepala kartu, judul utuh", async () => {
     const bar = widgetTitled(owner, "Batang pendek");
     const badge = bar.getByTestId("chart-badge");
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText(/^\d+ dari 12$/);
-    // Di badan grafik, bukan kepala kartu: judul tidak terperas.
+    await expect(badge).toHaveAttribute("title", /^Menampilkan \d+ dari 12 kategori/);
+    // Sebaris dengan judul di kepala kartu (tidak menimpa label sumbu di badan grafik); judul utuh.
     const title = bar.getByRole("heading", { name: "Batang pendek" });
     expect(await title.evaluate((h) => h.scrollWidth - h.clientWidth)).toBeLessThanOrEqual(0);
     const [b, t] = [(await badge.boundingBox())!, (await title.boundingBox())!];
-    expect(b.y).toBeGreaterThan(t.y + t.height);
+    expect(Math.abs(b.y + b.height / 2 - (t.y + t.height / 2))).toBeLessThan(6);
     await expect(bar.getByTestId("chart-note")).toHaveCount(0);
     // Tabel data: lencana disembunyikan (semua baris tampil di tabel).
     await bar.getByTestId("widget-data-toggle").click();

@@ -59,6 +59,8 @@ interface Props {
   onState?: (version: string, state: BodyState, stale: boolean) => void;
   /** Body query yang sedang dipakai (berubah bersama filter/urutan/halaman); fungsi harus stabil. */
   onRequest?: (request: WidgetRequest) => void;
+  /** Grafik: lencana "N/M" kategori untuk kepala kartu (T-032); fungsi harus stabil. */
+  onBadge?: (badge: { short: string; full: string } | null) => void;
 }
 
 export function WidgetBody(props: Props) {
@@ -79,6 +81,7 @@ function Loaded({
   showData = false,
   onState,
   onRequest,
+  onBadge,
 }: Props & { version: string }) {
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
@@ -191,6 +194,7 @@ function Loaded({
           showData={showData}
           title={title}
           cross={cross}
+          onBadge={onBadge}
         />
       );
   }

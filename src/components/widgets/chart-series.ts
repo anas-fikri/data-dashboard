@@ -653,8 +653,8 @@ export interface Fit {
   full: string;
   shown: string;
   /**
-   * Keterangan tidak muat tetapi penting (kategori terpotong): lencana ringkas "N dari M" di sudut
-   * grafik ("N teratas" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
+   * Keterangan tidak muat tetapi penting (kategori terpotong): lencana ringkas "N dari M" di kepala
+   * kartu ("N teratas" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
    */
   badge: string;
 }
