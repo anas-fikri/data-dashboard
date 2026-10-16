@@ -5,8 +5,14 @@
  * batas.
  */
 export async function readTextLimited(req: Request, maxBytes: number): Promise<string | null> {
+  const bytes = await readBytesLimited(req, maxBytes);
+  return bytes === null ? null : new TextDecoder().decode(bytes);
+}
+
+/** Sama dengan readTextLimited, hasilnya byte mentah (mis. poster PNG). */
+export async function readBytesLimited(req: Request, maxBytes: number): Promise<Uint8Array | null> {
   if (Number(req.headers.get("content-length") ?? "0") > maxBytes) return null;
-  if (!req.body) return "";
+  if (!req.body) return new Uint8Array();
   const reader = req.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
@@ -20,5 +26,5 @@ export async function readTextLimited(req: Request, maxBytes: number): Promise<s
     }
     chunks.push(value);
   }
-  return new TextDecoder().decode(Buffer.concat(chunks));
+  return Buffer.concat(chunks);
 }

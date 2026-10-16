@@ -27,7 +27,8 @@ export interface ListedPart {
  * bisa diuji tanpa storage. Semua presigned URL ditandatangani dengan endpoint publik (D5).
  */
 export interface MultipartStorage {
-  create(key: string): Promise<string>;
+  /** contentType ditetapkan server (bawaan application/octet-stream). */
+  create(key: string, contentType?: string): Promise<string>;
   /** Presigned UploadPart dengan Content-Length sebagai signed header (ukuran lain → 403). */
   signPart(
     key: string,
@@ -55,13 +56,13 @@ const isNotFound = (e: unknown) =>
     (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode === 404);
 
 export const s3Multipart: MultipartStorage = {
-  async create(key) {
+  async create(key, contentType = "application/octet-stream") {
     const res = await s3Internal().send(
       new CreateMultipartUploadCommand({
         Bucket: bucket(),
         Key: key,
         // Ditetapkan server, tidak pernah dari klien (flow-kerja B2).
-        ContentType: "application/octet-stream",
+        ContentType: contentType,
       }),
     );
     if (!res.UploadId) throw new Error("storage tidak mengembalikan UploadId");

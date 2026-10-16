@@ -370,6 +370,33 @@ model GuideArticle {
   status       GuideStatus   @default(DRAFT)
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  videos       GuideVideo[]
 
   @@index([status, role, order])
+}
+
+enum GuideVideoStatus {
+  UPLOADING
+  READY
+}
+
+/// Video panduan (T-021): mp4/webm ≤ 500 MB lewat multipart langsung ke storage; durasi dan poster PNG
+/// diambil di browser. Objek: guides/videos/<id>.<ext>, guides/posters/<id>.png.
+model GuideVideo {
+  id          String           @id @default(cuid())
+  articleId   String
+  article     GuideArticle     @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  title       String
+  /// mp4 | webm (menentukan Content-Type yang ditetapkan server).
+  ext         String
+  sizeBytes   BigInt
+  objectKey   String           @unique
+  uploadId    String?
+  posterKey   String?
+  durationSec Int?
+  status      GuideVideoStatus @default(UPLOADING)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([articleId, status])
 }

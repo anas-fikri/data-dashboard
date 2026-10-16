@@ -3,6 +3,7 @@ import { Prisma, type GuideArticle, type GuideRole } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import { prisma } from "@/lib/db";
 import { cuidSchema, guideInputSchema, type GuideInput } from "./validation";
+import { removeVideoObjects } from "./videos";
 
 /*
  * Artikel panduan (T-020). Pemanggil perubahan WAJIB sudah lolos requireAdmin("action") (actions.ts);
@@ -138,12 +139,18 @@ export async function moveGuide(id: string, dir: "up" | "down"): Promise<GuideRe
 
 export async function deleteGuide(actorId: string, id: string, ip: string): Promise<GuideResult> {
   if (!cuidSchema.safeParse(id).success) return notFound;
-  return prisma.$transaction(async (tx) => {
+  let videos: Parameters<typeof removeVideoObjects>[0] = [];
+  const result = await prisma.$transaction(async (tx) => {
     const row = await tx.guideArticle.findUnique({
       where: { id },
       select: { slug: true, role: true },
     });
     if (!row) return notFound;
+    // Baris video ikut terhapus (cascade); objeknya dihapus setelah transaksi.
+    videos = await tx.guideVideo.findMany({
+      where: { articleId: id },
+      select: { id: true, objectKey: true, uploadId: true, posterKey: true },
+    });
     await tx.guideArticle.delete({ where: { id } });
     await recordAudit(tx, {
       actorId,
@@ -155,6 +162,8 @@ export async function deleteGuide(actorId: string, id: string, ip: string): Prom
     });
     return { ok: true, data: null } as const;
   });
+  if (result.ok) await removeVideoObjects(videos);
+  return result;
 }
 
 /** Artikel terbit untuk peran-peran ini (+ ALL), urut tampil. */

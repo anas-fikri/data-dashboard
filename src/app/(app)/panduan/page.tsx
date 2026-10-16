@@ -1,10 +1,12 @@
 import { IconBook2 } from "@tabler/icons-react";
+import { GuideVideoPlayer } from "@/components/guides/video-player";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { GuideMarkdown } from "@/features/guides/markdown";
 import { guideOrigins } from "@/features/guides/origins";
 import { publishedGuides } from "@/features/guides/service";
+import { videosFor } from "@/features/guides/videos";
 
 export const metadata = { title: "Panduan" };
 
@@ -19,6 +21,7 @@ export default async function Page() {
     user.isAdmin ? ["OWNER", "EDITOR", "VIEWER", "ADMIN"] : ["OWNER", "EDITOR", "VIEWER"],
   );
   const origins = guideOrigins();
+  const videos = await videosFor(guides.map((g) => g.id));
   return (
     <div className="flex flex-col gap-6">
       <PageHeader title="Panduan penggunaan" />
@@ -36,6 +39,15 @@ export default async function Page() {
                   {g.title}
                 </h2>
                 <GuideMarkdown markdown={g.bodyMarkdown} origins={origins} />
+                {videos.some((v) => v.articleId === g.id) ? (
+                  <div className="mt-4 flex flex-col gap-4">
+                    {videos
+                      .filter((v) => v.articleId === g.id)
+                      .map((v) => (
+                        <GuideVideoPlayer key={v.id} video={v} />
+                      ))}
+                  </div>
+                ) : null}
               </article>
             </li>
           ))}

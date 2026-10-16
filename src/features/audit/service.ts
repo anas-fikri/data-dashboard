@@ -41,7 +41,10 @@ export type AuditAction =
   /** Admin menerbitkan / menarik / menghapus artikel panduan (T-020), meta { slug, role }. */
   | "guide.publish"
   | "guide.unpublish"
-  | "guide.delete";
+  | "guide.delete"
+  /** Admin menambah (unggah selesai) / menghapus video panduan (T-021), meta { videoId, … }. */
+  | "guide.video.add"
+  | "guide.video.delete";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

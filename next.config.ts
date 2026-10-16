@@ -18,13 +18,14 @@ const nextConfig: NextConfig = {
   poweredByHeader: false,
   experimental: {
     // proxy.ts mencakup /api/*: Next menyalin body permintaan ke memori sampai batas ini (default
-    // 10 MB) sebelum Route Handler membacanya. Body JSON aplikasi ≤ 65 KB dan Server Action ≤ 1 MB
-    // (bawaan); unggahan file langsung ke S3 lewat presigned URL, tidak lewat aplikasi.
+    // 10 MB) sebelum Route Handler membacanya. Body JSON aplikasi ≤ 65 KB, Server Action ≤ 1 MB
+    // (bawaan), poster PNG video panduan ≤ 2 MB (T-021); unggahan file (data, video) langsung ke S3
+    // lewat presigned URL, tidak lewat aplikasi.
     // Body di atas batas ini dipotong diam-diam (hanya peringatan di log, bukan 413), jadi
     // serverActions.bodySizeLimit dan batas body Route Handler harus tetap ≤ nilai ini. Proxy tetap
     // menunggu seluruh body tiba; yang dibatasi memori, bukan durasi (durasi: requestTimeout Node dan
     // client_max_body_size reverse proxy, T-023).
-    proxyClientMaxBodySize: "1mb",
+    proxyClientMaxBodySize: "3mb",
   },
   // Badge overlay dev Next menutupi sudut kiri bawah (tombol ciut sidebar) dan mencegat klik e2e.
   devIndicators: false,

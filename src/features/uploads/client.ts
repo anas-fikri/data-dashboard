@@ -39,7 +39,7 @@ interface ApiOk {
   [k: string]: unknown;
 }
 
-async function api<T extends ApiOk>(
+export async function api<T extends ApiOk>(
   path: string,
   method: "POST" | "DELETE",
   body: unknown,
@@ -166,6 +166,39 @@ export async function uploadFile(opts: UploadOptions): Promise<{ versionId: stri
     { datasetId, name: file.name, size: file.size, lastModified: file.lastModified },
     signal,
   );
+  await runMultipart({
+    file,
+    signal,
+    onProgress,
+    plan: init,
+    base: `/api/uploads/${init.versionId}`,
+  });
+  return { versionId: init.versionId };
+}
+
+export interface MultipartRun {
+  file: File;
+  signal: AbortSignal;
+  onProgress: (p: UploadProgress) => void;
+  /** Rencana dari server; versionId = id unggahan (dataset: versi, video: id video). */
+  plan: {
+    versionId: string;
+    partSize: number;
+    partCount: number;
+    uploadedParts: number[];
+    resumed: boolean;
+  };
+  /** Route unggahan: `${base}/parts` dan `${base}/complete`. */
+  base: string;
+  completeBody?: Record<string, unknown>;
+}
+
+/**
+ * Part paralel ke storage lewat presigned URL (part yang sudah ada dilewati), lalu complete; part
+ * yang dilaporkan hilang diunggah ulang (≤ 2 putaran).
+ */
+export async function runMultipart(run: MultipartRun): Promise<void> {
+  const { file, signal, onProgress, plan: init, base, completeBody = {} } = run;
   const { versionId, partSize, partCount } = init;
   const size = file.size;
   const done = new Set(init.uploadedParts);
@@ -186,14 +219,7 @@ export async function uploadFile(opts: UploadOptions): Promise<{ versionId: stri
   emit();
 
   const sign = async (nums: number[]) =>
-    (
-      await api<SignResponse>(
-        `/api/uploads/${versionId}/parts`,
-        "POST",
-        { partNumbers: nums },
-        signal,
-      )
-    ).urls;
+    (await api<SignResponse>(`${base}/parts`, "POST", { partNumbers: nums }, signal)).urls;
 
   const uploadPart = async (n: number, firstUrl: string) => {
     const [start, end] = partRange(n, partSize);
@@ -247,8 +273,8 @@ export async function uploadFile(opts: UploadOptions): Promise<{ versionId: stri
   for (let round = 0; ; round++) {
     onProgress({ phase: "finishing", loaded: size, total: size, resumed: init.resumed, versionId });
     try {
-      await api(`/api/uploads/${versionId}/complete`, "POST", {}, signal);
-      return { versionId };
+      await api(`${base}/complete`, "POST", completeBody, signal);
+      return;
     } catch (e) {
       const missing = (e as UploadError & { missing?: number[] }).missing;
       if (e instanceof UploadError && e.code === "INCOMPLETE" && missing?.length && round < 2) {

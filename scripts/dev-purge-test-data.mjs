@@ -107,6 +107,16 @@ try {
   const guideIds = (await prisma.guideArticle.findMany({ select: { id: true, title: true } }))
     .filter((g) => / \d{13}-\d{1,6}$/.test(g.title))
     .map((g) => g.id);
+  // Objek video/poster artikel itu (T-021) dihapus dulu; barisnya ikut terhapus (cascade).
+  const media = (
+    await prisma.guideVideo.findMany({
+      where: { articleId: { in: guideIds } },
+      select: { objectKey: true, posterKey: true },
+    })
+  ).flatMap((v) => [v.objectKey, v.posterKey].filter(Boolean).map((Key) => ({ Key })));
+  if (media.length && !dryRun)
+    await s3.send(new DeleteObjectsCommand({ Bucket, Delete: { Objects: media } }));
+  objects += media.length;
   if (guideIds.length && !dryRun)
     await prisma.guideArticle.deleteMany({ where: { id: { in: guideIds } } });
   console.log(
