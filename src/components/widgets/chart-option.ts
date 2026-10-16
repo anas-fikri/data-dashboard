@@ -276,6 +276,19 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     symbolSize: 10,
     itemStyle: { borderColor: theme.card, borderWidth: 2 },
   });
+  /**
+   * Cetak: label nilai titik garis PERTAMA rata kiri pada titiknya — label rata tengah menjorok setengah
+   * lebarnya ke kiri, ke atas label sumbu nilai (review T-018 R1-DS-5). Layar tidak berubah.
+   */
+  const firstPoint = <D>(k: number, datum: D) =>
+    !i.print || k !== 0
+      ? datum
+      : {
+          ...(typeof datum === "object" && datum !== null && !Array.isArray(datum)
+            ? datum
+            : { value: datum }),
+          label: { align: "left" as const },
+        };
   const base = {
     color: theme.colors,
     animation: !i.reducedMotion && !i.print,
@@ -499,7 +512,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           type: "line" as const,
           name: i.measureLabel,
           data: points.map((p, n) =>
-            selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
+            firstPoint(
+              n,
+              selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
+            ),
           ),
           ...symbols(ys, filled),
           ...valueLabel("top", filled),
@@ -620,8 +636,8 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         type: i.type,
         name: i.measureLabel,
         data: values.map((v, k) => {
+          if (i.type === "line") return firstPoint(k, k === sel ? picked(v) : v);
           if (sel === undefined) return v;
-          if (i.type === "line") return k === sel ? picked(v) : v;
           return k === sel
             ? { value: v, itemStyle: { borderColor: theme.text, borderWidth: 1.5 } }
             : { value: v, itemStyle: { opacity: DIMMED } };

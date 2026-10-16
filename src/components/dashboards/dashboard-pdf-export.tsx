@@ -44,6 +44,30 @@ export function pdfExportBody(
 
 const SPINNER = <IconLoader2 className="motion-safe:animate-spin" aria-hidden />;
 
+/**
+ * Pengganti tombol saat tombol tidak tampil (mode edit, dashboard tanpa widget — review R1-CL-1): PDF
+ * yang dimulai di mode lihat tetap dipantau — polling dan unduhan otomatis (sekali per ekspor lewat
+ * klaim store) berjalan, perubahan statusnya diumumkan lewat wilayah status tersembunyi. Halaman
+ * memasang tepat satu dari keduanya, jadi status tidak pernah di-polling ganda.
+ */
+export function DashboardPdfWatch({ dashboardId }: { dashboardId: string }) {
+  const router = useRouter();
+  const { job } = useExportJob(dashboardExportTarget(dashboardId), () => router.refresh());
+  // Keadaan saat dipasang sudah diumumkan di mode lihat: hanya perubahan sesudahnya.
+  const [mounted] = useState(job);
+  const news =
+    job === mounted
+      ? ""
+      : job.phase === "error"
+        ? "Ekspor PDF gagal. Detailnya ada di Ekspor PDF pada mode lihat."
+        : exportAnnouncement(job, "");
+  return (
+    <span role="status" className="sr-only" data-testid="dashboard-pdf-watch">
+      {news}
+    </span>
+  );
+}
+
 export function DashboardPdfExport({ dashboardId }: { dashboardId: string }) {
   const router = useRouter();
   const headingId = useId();

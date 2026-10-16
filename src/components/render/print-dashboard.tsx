@@ -1,4 +1,5 @@
-import type { RenderData } from "@/features/exports/render-data";
+import type { RenderData, RenderWidget } from "@/features/exports/render-data";
+import { cn } from "@/lib/utils";
 import { PrintCard } from "./print-card";
 import {
   bandPlacement,
@@ -9,15 +10,44 @@ import {
   PRINT_HEADER_PX,
   ROWS_PER_PAGE,
   rowsPx,
+  type PrintPlacement,
 } from "./print-layout";
 
 /*
  * Dashboard untuk dicetak renderer (T-018 D6), komponen server: kepala (nama, dataset, ringkasan
  * filter, waktu ekspor WIB — diformat di server, tanpa beda hidrasi) lalu pita tata letak (pageBands),
- * satu pita per halaman. Tiap pita grid 12 kolom selebar isi kertas (277 mm); pita yang lebih tinggi
- * dari halamannya diperkecil utuh (transform), kotaknya setinggi hasil perkecilan. Tanpa shell
- * aplikasi, tanpa kontrol: kertas tidak bisa diklik. Kartu memakai tampilan widget layar (print-card).
+ * satu pita per halaman. Tiap pita grid 12 kolom selebar isi kertas (277 mm), setinggi isinya dan tidak
+ * bisa dipecah halaman (overflow-hidden + break-inside: avoid — tidak ada sisa yang menimpa pita
+ * berikutnya). Widget yang lebih tinggi dari halamannya diperkecil sendiri di selnya (transform; kotak
+ * tata letaknya dilebarkan 1/skala agar tetap selebar kolomnya). Tanpa shell aplikasi, tanpa kontrol:
+ * kertas tidak bisa diklik. Kartu memakai tampilan widget layar (print-card). <title> = nama dashboard
+ * (diangkat React 19 ke <head>): judul dokumen PDF.
  */
+function PrintSlot({ placement: p, widget }: { placement: PrintPlacement; widget: RenderWidget }) {
+  if (p.scale === 1) {
+    return <PrintCard widget={widget} heightPx={p.heightPx} style={bandPlacement(p)} />;
+  }
+  return (
+    <div
+      style={bandPlacement(p)}
+      className="min-h-0 min-w-0 overflow-hidden"
+      data-testid="print-scaled"
+      data-scale={p.scale}
+    >
+      <PrintCard
+        widget={widget}
+        heightPx={p.heightPx}
+        className="origin-top-left"
+        style={{
+          width: `${100 / p.scale}%`,
+          height: p.heightPx,
+          transform: `scale(${p.scale})`,
+        }}
+      />
+    </div>
+  );
+}
+
 export function PrintDashboard({ data }: { data: RenderData }) {
   const { dashboard, widgets } = data;
   const byId = new Map(widgets.map((w) => [w.id, w]));
@@ -28,13 +58,15 @@ export function PrintDashboard({ data }: { data: RenderData }) {
   );
   return (
     <main className="w-[277mm] bg-background text-foreground" data-testid="print-dashboard">
+      <title>{dashboard.name}</title>
       <header
-        className="flex flex-col gap-2 overflow-hidden border-b pb-3"
-        // Tinggi paling banyak ini: halaman pertama tetap memuat FIRST_PAGE_ROWS baris grid di bawahnya.
+        className="flex flex-col gap-1.5 overflow-hidden border-b pb-2"
+        // Tinggi paling banyak ini (nama 2 baris + filter 3 baris muat): halaman pertama tetap memuat
+        // FIRST_PAGE_ROWS baris grid di bawahnya.
         style={{ maxHeight: PRINT_HEADER_PX - PRINT_GAP_PX }}
       >
         <div className="flex items-baseline justify-between gap-6">
-          <h1 className="min-w-0 truncate text-xl font-semibold tracking-tight">
+          <h1 className="line-clamp-2 min-w-0 text-xl/tight font-semibold tracking-tight [overflow-wrap:anywhere]">
             {dashboard.name}
           </h1>
           <p className="shrink-0 text-xs text-muted-foreground" data-testid="print-exported">
@@ -55,22 +87,17 @@ export function PrintDashboard({ data }: { data: RenderData }) {
       ) : null}
       {bands.map((band, k) => (
         <div
-          key={band.start}
-          className={k === 0 ? "mt-4" : "break-before-page"}
-          style={{ height: Math.ceil(rowsPx(band.rows) * band.scale) }}
+          key={k}
+          className={cn(
+            "overflow-hidden break-inside-avoid",
+            k === 0 ? "mt-4" : "break-before-page",
+          )}
+          style={{ height: rowsPx(band.rows) }}
           data-testid="print-band"
         >
-          <div
-            className="grid w-[277mm] origin-top auto-rows-[3.5rem] grid-cols-12 gap-4"
-            style={band.scale < 1 ? { transform: `scale(${band.scale})` } : undefined}
-          >
-            {band.items.map((it) => (
-              <PrintCard
-                key={it.i}
-                widget={byId.get(it.i)!}
-                h={it.h}
-                style={bandPlacement(it, band)}
-              />
+          <div className="grid w-[277mm] auto-rows-[3.5rem] grid-cols-12 gap-4">
+            {band.items.map((p) => (
+              <PrintSlot key={p.item.i} placement={p} widget={byId.get(p.item.i)!} />
             ))}
           </div>
         </div>

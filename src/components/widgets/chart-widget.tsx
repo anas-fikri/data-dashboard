@@ -458,15 +458,18 @@ export function ChartWidget({
                         r.others ? SWATCH[5] : SWATCH[i % 5],
                       )}
                     />
-                    <span
-                      className={cn("min-w-0 flex-1 whitespace-nowrap", print && "truncate")}
-                      title={r.label}
-                    >
-                      {middleTruncate(
-                        r.label,
-                        width && width >= 448 ? Math.floor((width * 0.45 - 56) / CHAR_PX) : chars,
-                      )}
-                    </span>
+                    {/* Cetak: nama lengkap membungkus di samping nilainya (kertas tanpa tooltip; dua
+                      irisan berawalan sama tetap terbedakan — review R1-DS-3). Layar: satu baris. */}
+                    {print ? (
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.label}</span>
+                    ) : (
+                      <span className="min-w-0 flex-1 whitespace-nowrap" title={r.label}>
+                        {middleTruncate(
+                          r.label,
+                          width && width >= 448 ? Math.floor((width * 0.45 - 56) / CHAR_PX) : chars,
+                        )}
+                      </span>
+                    )}
                     {/* Cetak: nilai irisan sebagai teks (layar: di tabel data/tooltip). */}
                     {print ? (
                       <span className="shrink-0 tabular-nums" data-testid="pie-legend-value">

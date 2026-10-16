@@ -1,7 +1,7 @@
 ---
 id: T-018
 title: Ekspor dashboard ke PDF via renderer terpisah
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -10,12 +10,18 @@ tags:
 depends_on:
   - T-016
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T22:41:14Z"
+updated: "2026-10-15T23:54:44Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 2496574ef8c25e79908d5c853085d7b7f22fd9ca
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-15T23:54:44Z"
+      findings: 9
 evidence:
   check:
     cmd: npm run check

@@ -29,7 +29,7 @@ import { useExportJob } from "@/components/widgets/use-export-job";
 
 const refresh = vi.hoisted(() => vi.fn());
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
-const { DashboardPdfExport, pdfExportBody } =
+const { DashboardPdfExport, DashboardPdfWatch, pdfExportBody } =
   await import("@/components/dashboards/dashboard-pdf-export");
 
 /*
@@ -222,6 +222,31 @@ describe("tombol kepala halaman", () => {
     const out = button();
     expect(out).not.toContain("animate-spin");
     expect(out).not.toContain("Ekspor PDF gagal");
+  });
+});
+
+describe("pemantau tanpa tombol (mode edit, review R1-CL-1)", () => {
+  beforeEach(resetExportStore);
+  const watch = (userId = "u1") =>
+    renderToStaticMarkup(
+      createElement(() =>
+        ExportUserProvider({
+          userId,
+          children: createElement(DashboardPdfWatch, { dashboardId: D }),
+        }),
+      ),
+    );
+
+  it("tanpa tombol/kontrol: hanya wilayah status tersembunyi, diam saat dipasang", () => {
+    // Keadaan saat dipasang (mis. PDF yang sedang dibuat) sudah diumumkan di mode lihat.
+    const key = exportKey("u1", TARGET);
+    dispatchExport(key, { type: "start", format: "pdf" });
+    dispatchExport(key, { type: "created", id: "p1" });
+    const out = watch();
+    expect(out).toBe(
+      '<span role="status" class="sr-only" data-testid="dashboard-pdf-watch"></span>',
+    );
+    expect(out).not.toContain("<button");
   });
 });
 

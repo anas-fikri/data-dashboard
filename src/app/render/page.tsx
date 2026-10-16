@@ -8,7 +8,9 @@ import { consumeRenderSession, RENDER_COOKIE } from "@/features/exports/render-d
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Ekspor PDF",
+  // Tanpa judul metadata: <title> nama dashboard dari PrintDashboard menjadi judul dokumen PDF (review
+  // R1-DS-4). Bukan generateMetadata — sesi render sekali pakai, tidak boleh dibaca dua kali.
+  title: null,
   robots: { index: false, follow: false },
 };
 

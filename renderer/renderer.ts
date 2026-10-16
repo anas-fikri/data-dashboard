@@ -4,7 +4,7 @@
  *   1. ctx.request.get(APP_INTERNAL_URL/render/<token>, maxRedirects 0) → wajib 303 ke /render; cookie
  *      dd.render (Path=/render) tersimpan di context, token tidak pernah masuk URL halaman/riwayat/Referer.
  *   2. page.goto(APP_INTERNAL_URL/render) dengan media print; tunggu html[data-render-ready="1"].
- *   3. page.pdf A4 landscape + footer "Halaman X dari Y".
+ *   3. page.pdf A4 landscape + footer "Halaman X dari Y", bertanda (tagged) + kerangka dari judul.
  * Semua permintaan halaman lewat context.route: hanya origin app via route.fetch({maxRedirects:0}); 3xx
  * dan origin lain di-abort dan menggagalkan job (fail closed). WebSocket diblokir kecuali dev HMR.
  * Log hanya {requestId, ms, bytes, outcome}: token, URL, dan pesan error tidak pernah ditulis.
@@ -171,6 +171,10 @@ export async function renderPdf(
         headerTemplate: "<span></span>",
         footerTemplate: FOOTER_TEMPLATE,
         margin: { top: "10mm", right: "10mm", bottom: "10mm", left: "10mm" },
+        // PDF bertanda (judul H1/H2, tabel, daftar untuk teknologi bantu; WCAG 1.3.1) + kerangka dari
+        // judul (review R1-DS-4). Judul dokumen = <title> halaman (nama dashboard).
+        tagged: true,
+        outline: true,
       }),
     );
     if (violation) throw new RenderError("RENDER_BLOCKED");

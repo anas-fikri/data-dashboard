@@ -103,6 +103,40 @@ describe("chartOption cetak (print)", () => {
     expect(o.animation).toBe(false);
   });
 
+  it("garis: label titik pertama rata kiri di cetak (tidak menimpa label sumbu nilai, R1-DS-5)", () => {
+    type Datum = { value: unknown; label?: { align: string } };
+    const first = (o: unknown) => (o as { series: { data: Datum[] }[] }).series[0]!.data[0]!;
+    const monthly = {
+      type: "line" as const,
+      labels: ["Jan 2026", "Feb 2026"],
+      values: [3_768_000_000, 4_000_000_000],
+      time: { iso: ["2026-01-01", "2026-02-01"], grain: "month" as const, empty: null },
+    };
+    expect(first(option({ ...monthly, print: true }))).toEqual({
+      value: 3_768_000_000,
+      label: { align: "left" },
+    });
+    // Sumbu waktu (per hari): titik [ms, y].
+    const daily = {
+      type: "line" as const,
+      labels: ["1 Jan", "2 Jan"],
+      values: [5, 7],
+      time: { iso: ["2026-01-01", "2026-01-02"], grain: "day" as const },
+    };
+    expect(first(option({ ...daily, print: true }))).toEqual({
+      value: [Date.UTC(2026, 0, 1), 5],
+      label: { align: "left" },
+    });
+    // Titik pertama terpilih (filter silang) tetap membawa gaya terpilihnya.
+    expect(first(option({ ...monthly, print: true, selected: 0 }))).toMatchObject({
+      symbolSize: 10,
+      label: { align: "left" },
+    });
+    // Layar tidak berubah.
+    expect(first(option(monthly))).toBe(3_768_000_000);
+    expect(first(option(daily))).toEqual([Date.UTC(2026, 0, 1), 5]);
+  });
+
   it("pai cetak: tanpa animasi; label grafik tetap mati (nilai di legenda)", () => {
     const o = option({ type: "pie", print: true });
     expect(o.animation).toBe(false);
@@ -151,5 +185,37 @@ describe("ChartWidget cetak: legenda pai memuat nilai", () => {
 
   it("layar: legenda hanya nama + persen (tidak berubah)", () => {
     expect(html(false)).not.toContain('data-testid="pie-legend-value"');
+  });
+
+  it("R1-DS-3: nama irisan lengkap dan membungkus di cetak — awalan sama tetap terbedakan", () => {
+    const long: WidgetData = {
+      ...data,
+      rows: [
+        ["Paket Reguler Antar Kota Jawa Barat", 19_065_000],
+        ["Paket Reguler Antar Kota Jawa Timur", 18_695_000],
+        ["Paket Reguler Antar Kota Luar Jawa", 18_325_000],
+      ],
+      categories: 3,
+      grandTotal: 56_085_000,
+    };
+    const out = renderToStaticMarkup(
+      createElement(ChartWidget, {
+        type: "pie",
+        data: long,
+        spec,
+        showData: false,
+        title: "Omzet",
+        print: true,
+      }),
+    );
+    const names = [
+      ...out.matchAll(/<span class="min-w-0 flex-1 \[overflow-wrap:anywhere\]">([^<]*)<\/span>/g),
+    ].map((m) => m[1]);
+    expect(names).toEqual([
+      "Paket Reguler Antar Kota Jawa Barat",
+      "Paket Reguler Antar Kota Jawa Timur",
+      "Paket Reguler Antar Kota Luar Jawa",
+    ]);
+    expect(out).not.toContain("…");
   });
 });

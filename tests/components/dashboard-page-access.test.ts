@@ -49,6 +49,7 @@ vi.mock("@/components/dashboards/edit-dashboard-link", () => ({
 vi.mock("@/components/sharing/share-dialog", () => ({ ShareDialog: marker("share-open") }));
 vi.mock("@/components/dashboards/dashboard-pdf-export", () => ({
   DashboardPdfExport: marker("dashboard-pdf-export"),
+  DashboardPdfWatch: marker("dashboard-pdf-watch"),
 }));
 
 const { default: DashboardPage } = await import("@/app/(app)/dashboards/[id]/page");
@@ -221,6 +222,24 @@ describe("T-018 D10: Ekspor PDF di kepala halaman", () => {
     expect(empty).not.toContain(pdf);
     // Viewer tanpa widget: tanpa slot aksi kosong.
     expect(empty).not.toContain("md:[&amp;&gt;*]:w-auto");
+  });
+
+  it("tanpa tombol (mode edit / tanpa widget): PDF yang berjalan tetap dipantau, tepat satu pemantau", async () => {
+    // Review R1-CL-1: PDF dimulai di mode lihat lalu pindah ke mode edit → tetap diunduh otomatis.
+    const watch = 'data-testid="dashboard-pdf-watch"';
+    const count = (html: string, needle: string) => html.split(needle).length - 1;
+    for (const role of ["OWNER", "EDITOR"] as const) {
+      m.getDashboard.mockResolvedValue(withWidgets(role));
+      const edit = await render({ mode: "edit" });
+      expect(count(edit, watch), role).toBe(1);
+      expect(edit, role).toContain(`&quot;dashboardId&quot;:&quot;${D}&quot;`);
+      expect(edit, role).not.toContain(pdf);
+      const shown = await render();
+      expect(count(shown, pdf), role).toBe(1);
+      expect(shown, role).not.toContain(watch);
+    }
+    m.getDashboard.mockResolvedValue(view("VIEWER"));
+    expect(count(await render(), watch)).toBe(1);
   });
 
   it("kepala halaman di dalam ExportUserProvider (status ekspor per user)", async () => {

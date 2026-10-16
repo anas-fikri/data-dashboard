@@ -5,11 +5,14 @@
  * dan jarak 16 px seperti kanvas layar (dashboard-canvas ROW_HEIGHT/MARGIN): tinggi kartu sama dengan
  * layar, jadi isi yang menyesuaikan kotaknya (batang yang muat, bentuk KPI) sama juga.
  *
- * pageBands memotong tata letak hanya di batas y yang tidak dilintasi widget mana pun — satu pita = satu
- * halaman (break-before: page), tidak ada widget yang terbelah. Halaman pertama lebih pendek (kepala:
- * nama, dataset, filter, waktu ekspor). Pita yang tetap lebih tinggi dari halamannya (widget setinggi
- * lebih dari satu halaman, beserta widget di sampingnya) DIPERKECIL utuh agar muat — tidak dipotong.
- * Murni.
+ * pageBands menomori halaman dengan ALIR ULANG (review T-018 R1 INT-3/DS-2): widget diisi ke halaman
+ * dalam urutan tata letak (y, lalu x), tetap di kolomnya (x/w); widget yang akan melintasi batas halaman
+ * pindah UTUH ke awal halaman berikutnya, dan widget di bawahnya di kolom yang sama tetap sesudahnya.
+ * Satu pita = satu halaman (break-before: page); dashboard biasa tercetak skala 1. Halaman pertama lebih
+ * pendek (kepala: nama, dataset, filter, waktu ekspor). Hanya SATU widget yang lebih tinggi dari
+ * halamannya yang diperkecil (paling kecil PRINT_MIN_SCALE — tetangganya tidak); tidak muat juga pada
+ * skala itu → tingginya dibatasi satu halaman (tabel memuat lebih sedikit baris, grafik digambar di
+ * kotak yang dibatasi). Murni.
  */
 import type { LayoutItem } from "@/features/dashboards/validation";
 
@@ -31,14 +34,35 @@ export const rowsIn = (px: number) =>
 export const ROWS_PER_PAGE = rowsIn(PRINT_PAGE_PX);
 export const FIRST_PAGE_ROWS = rowsIn(PRINT_PAGE_PX - PRINT_HEADER_PX);
 
-export interface PageBand {
-  /** Baris grid pertama pita (y tata letak). */
-  start: number;
+/** Skala terkecil widget yang lebih tinggi dari halamannya (teks 12 px → 9 px, masih terbaca). */
+export const PRINT_MIN_SCALE = 0.75;
+
+export interface PrintPlacement {
+  item: LayoutItem;
+  /** Baris grid pertama di halamannya (0 = atas pita). */
+  row: number;
+  /** Baris grid yang ditempati di kertas: h, atau kapasitas halaman bila diperkecil. */
   rows: number;
-  /** Widget yang seluruhnya berada di pita ini (y dalam [start, start + rows)). */
-  items: LayoutItem[];
-  /** 1, atau < 1 bila pita lebih tinggi dari halamannya (diperkecil utuh). */
+  /** 1, atau [PRINT_MIN_SCALE, 1) untuk widget yang lebih tinggi dari halamannya. */
   scale: number;
+  /** Tinggi tata letak kartu sebelum diperkecil (px): rowsPx(h), atau dibatasi agar muat satu halaman. */
+  heightPx: number;
+}
+
+export interface PageBand {
+  /** Baris grid terpakai: tinggi kotak pita = rowsPx(rows), tidak pernah lebih dari halamannya. */
+  rows: number;
+  items: PrintPlacement[];
+}
+
+/**
+ * Widget setinggi `h` baris di halaman berkapasitas `cap` baris (h > cap): diperkecil agar muat, paling
+ * kecil PRINT_MIN_SCALE; pada skala itu pun tidak muat → tinggi kartunya dibatasi (cap / skala minimum).
+ */
+export function shrinkToPage(h: number, cap: number): Pick<PrintPlacement, "scale" | "heightPx"> {
+  const fit = rowsPx(cap) / rowsPx(h);
+  if (fit >= PRINT_MIN_SCALE) return { scale: Math.floor(fit * 1e4) / 1e4, heightPx: rowsPx(h) };
+  return { scale: PRINT_MIN_SCALE, heightPx: Math.floor(rowsPx(cap) / PRINT_MIN_SCALE) };
 }
 
 export function pageBands(
@@ -46,41 +70,45 @@ export function pageBands(
   rowsPerPage: number,
   firstPageRows = rowsPerPage,
 ): PageBand[] {
-  const items = layout.filter((it) => it.w > 0 && it.h > 0);
-  if (!items.length) return [];
-  const crossed = (c: number) => items.some((it) => it.y < c && c < it.y + it.h);
-  // Batas potong yang sah: tepi bawah widget yang tidak dilintasi widget lain (akhir tata letak selalu).
-  const cuts = [...new Set(items.map((it) => it.y + it.h))]
-    .filter((c) => !crossed(c))
-    .sort((a, b) => a - b);
-  const end = cuts[cuts.length - 1]!;
+  const items = layout.filter((it) => it.w > 0 && it.h > 0).sort((a, b) => a.y - b.y || a.x - b.x);
+  const capOf = (page: number) => Math.max(1, page === 0 ? firstPageRows : rowsPerPage);
+  // Per kolom grid: halaman + baris tempat widget berikutnya di kolom itu paling cepat boleh mulai.
+  // Tata letak tersimpan dipadatkan vertikal, jadi tanpa batas halaman posisinya sama dengan layar
+  // (baris kosong bekas widget yang hilang ikut dipadatkan).
+  const cursor = new Map<number, { page: number; row: number }>();
   const bands: PageBand[] = [];
-  let start = Math.min(...items.map((it) => it.y));
-  while (start < end) {
-    const cap = Math.max(1, bands.length === 0 ? firstPageRows : rowsPerPage);
-    const after = cuts.filter((c) => c > start);
-    const fitting = after.filter((c) => c - start <= cap);
-    // Potongan terjauh yang muat; tidak ada → potongan sah pertama (pita lebih tinggi dari halaman).
-    const cut = fitting.length ? fitting[fitting.length - 1]! : after[0]!;
-    const rows = cut - start;
-    bands.push({
-      start,
-      rows,
-      items: items.filter((it) => it.y >= start && it.y < cut),
-      scale: rows > cap ? Math.floor((rowsPx(cap) / rowsPx(rows)) * 1e4) / 1e4 : 1,
-    });
-    // Baris kosong sesudah potongan (tata letak tersimpan dipadatkan, jadi jarang) dilewati.
-    const next = items.filter((it) => it.y >= cut).map((it) => it.y);
-    start = next.length ? Math.min(...next) : end;
+  for (const item of items) {
+    let page = 0;
+    let row = 0;
+    for (let c = item.x; c < item.x + item.w; c++) {
+      const at = cursor.get(c);
+      if (at && (at.page > page || (at.page === page && at.row > row))) ({ page, row } = at);
+    }
+    // Melintasi batas halaman → pindah utuh ke awal halaman berikutnya (bukan diperkecil).
+    if (row > 0 && row + item.h > capOf(page)) {
+      page++;
+      row = 0;
+    }
+    // Di awal halaman pun lebih tinggi dari halamannya → satu-satunya kasus yang diperkecil.
+    const cap = capOf(page);
+    const placed =
+      item.h <= cap
+        ? { rows: item.h, scale: 1, heightPx: rowsPx(item.h) }
+        : { rows: cap, ...shrinkToPage(item.h, cap) };
+    const band = bands[page] ?? { rows: 0, items: [] };
+    bands[page] = band;
+    band.items.push({ item, row, ...placed });
+    band.rows = Math.max(band.rows, row + placed.rows);
+    for (let c = item.x; c < item.x + item.w; c++) cursor.set(c, { page, row: row + placed.rows });
   }
   return bands;
 }
 
-/** Posisi widget di grid pitanya (baris dihitung dari awal pita). */
-export function bandPlacement(item: LayoutItem, band: Pick<PageBand, "start">) {
+/** Posisi kartu di grid pitanya. */
+export function bandPlacement(p: Pick<PrintPlacement, "item" | "row" | "rows">) {
   return {
-    gridColumn: `${item.x + 1} / span ${item.w}`,
-    gridRow: `${item.y - band.start + 1} / span ${item.h}`,
+    gridColumn: `${p.item.x + 1} / span ${p.item.w}`,
+    gridRow: `${p.row + 1} / span ${p.rows}`,
   };
 }
 
@@ -91,13 +119,17 @@ export const PRINT_TABLE_ROW_PX = 25;
 export const PRINT_LINE_PX = 24;
 
 /**
- * Baris data tabel yang muat utuh di kartu setinggi `h` baris grid: dikurangi kepala kartu, kepala
- * kolom, keterangan "Menampilkan X dari N baris", dan catatan kolom kosong/filter dilewati (D8).
+ * Perkiraan baris data tabel yang muat utuh di kartu setinggi `px` (judul satu baris): dikurangi kepala
+ * kartu, kepala kolom, keterangan "Menampilkan X dari N baris", dan catatan kolom kosong/filter
+ * dilewati (D8). Tabel cetak mengukur ulang di kotak sebenarnya (judul bisa membungkus 3 baris).
  */
-export function tableRowsFit(h: number, notes = 0): number {
-  const room = rowsPx(h) - PRINT_CARD_CHROME_PX - PRINT_TABLE_ROW_PX - PRINT_LINE_PX * (1 + notes);
+export function tableRowsFitPx(px: number, notes = 0): number {
+  const room = px - PRINT_CARD_CHROME_PX - PRINT_TABLE_ROW_PX - PRINT_LINE_PX * (1 + notes);
   return Math.max(0, Math.floor(room / PRINT_TABLE_ROW_PX));
 }
+
+/** tableRowsFitPx untuk kartu setinggi `h` baris grid. */
+export const tableRowsFit = (h: number, notes = 0) => tableRowsFitPx(rowsPx(h), notes);
 
 const DAY = new Intl.DateTimeFormat("id-ID", {
   day: "numeric",

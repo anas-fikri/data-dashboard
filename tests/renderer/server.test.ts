@@ -60,7 +60,7 @@ function renderPage(variant: Variant): { html: string; csp?: string } {
       // CSP ketat tanpa unsafe-eval: deteksi siap tidak boleh bergantung pada eval di halaman.
       return {
         csp: "default-src 'self'; script-src 'nonce-t018'; style-src 'unsafe-inline'; img-src 'self'",
-        html: `${head}<h1>Omzet Jakarta Rp 1.234.568</h1><img src="/same.png" alt="">
+        html: `${head}<title>Penjualan Oktober</title><h1>Omzet Jakarta Rp 1.234.568</h1><img src="/same.png" alt="">
 <section style="break-before:page"><h2>Halaman kedua</h2></section>${READY(50)}</body></html>`,
       };
     case "offorigin":
@@ -175,6 +175,12 @@ async function readPdf(bytes: ArrayBuffer) {
     verbosity: 0,
   });
   const doc = await task.promise;
+  // PDF bertanda = pohon struktur per halaman (pdfjs tidak mengurai /MarkInfo Chromium).
+  const tagged = (await (await doc.getPage(1)).getStructTree()) !== null;
+  type Outline = { title: string; items: Outline[] };
+  const flat = (items: Outline[]): string[] => items.flatMap((o) => [o.title, ...flat(o.items)]);
+  const outline = flat(((await doc.getOutline()) ?? []) as Outline[]);
+  const { info } = (await doc.getMetadata()) as { info: { Title?: string } };
   const pages: { width: number; height: number; text: string }[] = [];
   for (let n = 1; n <= doc.numPages; n++) {
     const page = await doc.getPage(n);
@@ -184,7 +190,7 @@ async function readPdf(bytes: ArrayBuffer) {
     pages.push({ width, height, text: text.replace(/\s+/g, " ") });
   }
   await task.destroy();
-  return pages;
+  return Object.assign(pages, { tagged, outline, title: info.Title });
 }
 
 describe.skipIf(!probe)("renderer PDF (integrasi, Chromium sungguhan)", () => {
@@ -261,6 +267,10 @@ describe.skipIf(!probe)("renderer PDF (integrasi, Chromium sungguhan)", () => {
     expect(pages[0]!.text).toContain("Omzet Jakarta Rp 1.234.568");
     expect(pages[0]!.text).toContain("Halaman 1 dari 2");
     expect(pages[1]!.text).toContain("Halaman 2 dari 2");
+    // Review R1-DS-4: PDF bertanda + kerangka dari judul; judul dokumen dari <title> halaman.
+    expect(pages.tagged).toBe(true);
+    expect(pages.outline).toEqual(["Omzet Jakarta Rp 1.234.568", "Halaman kedua"]);
+    expect(pages.title).toBe("Penjualan Oktober");
 
     // Cookie render dikirim ke /render; token tidak pernah ada di Referer subresource.
     expect(appHits.some((h) => h.path === "/render" && h.cookie === "dd.render=ok")).toBe(true);

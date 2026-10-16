@@ -1,8 +1,14 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { PrintDashboard } from "@/components/render/print-dashboard";
-import { tableRowsFit } from "@/components/render/print-layout";
-import { fittingColumns, printTableNote } from "@/components/render/print-table";
+import {
+  PRINT_MIN_SCALE,
+  ROWS_PER_PAGE,
+  rowsPx,
+  tableRowsFit,
+  tableRowsFitPx,
+} from "@/components/render/print-layout";
+import { fittingColumns, fittingRows, printTableNote } from "@/components/render/print-table";
 import type { RenderData, RenderWidget } from "@/features/exports/render-data";
 
 /*
@@ -158,6 +164,58 @@ describe("PrintDashboard", () => {
   it("tanpa kontrol layar: tidak ada tombol (urut, halaman, ekspor, coba lagi)", () => {
     expect(html).not.toContain("<button");
   });
+
+  it("judul dokumen PDF = nama dashboard (<title>, diangkat React 19 ke <head>)", () => {
+    expect(html).toContain("<title>Penjualan Oktober</title>");
+  });
+
+  it("pita tidak bisa dipecah halaman dan setinggi isinya (review R1 INT-1)", () => {
+    const bands = [
+      ...html.matchAll(/<div class="([^"]*)" style="height:(\d+)px" data-testid="print-band"/g),
+    ];
+    expect(bands.map((b) => Number(b[2]))).toEqual([rowsPx(7), rowsPx(6)]);
+    for (const [, cls] of bands) {
+      expect(cls).toContain("overflow-hidden");
+      expect(cls).toContain("break-inside-avoid");
+    }
+  });
+
+  it("nama dashboard dan judul kartu membungkus, bukan satu baris berelipsis (R1-DS-6)", () => {
+    expect(html).toMatch(/<h1 class="[^"]*line-clamp-2[^"]*\[overflow-wrap:anywhere\]/);
+    expect(html).not.toMatch(/<h1 class="[^"]*truncate/);
+    const titles = [...html.matchAll(/<h2 class="[^"]*"><span class="([^"]*)">/g)].map((m) => m[1]);
+    expect(titles).toHaveLength(5);
+    for (const cls of titles) expect(cls).toBe("line-clamp-3 min-w-0 [overflow-wrap:anywhere]");
+  });
+});
+
+describe("widget lebih tinggi dari halamannya (review R1 DS-2)", () => {
+  const tall = renderToStaticMarkup(
+    PrintDashboard({
+      data: {
+        ...data,
+        dashboard: {
+          ...data.dashboard,
+          layout: [
+            { i: "kpi", x: 0, y: 0, w: 6, h: 2 },
+            { i: "tbl", x: 0, y: 2, w: 6, h: 40 },
+            { i: "bar", x: 6, y: 0, w: 6, h: 5 },
+          ],
+        },
+      },
+    }),
+  );
+
+  it("hanya widget itu diperkecil (0,75, dibatasi satu halaman) dan tetap selebar kolomnya", () => {
+    expect(tall.match(/data-testid="print-scaled"/g)).toHaveLength(1);
+    const capped = Math.floor(rowsPx(ROWS_PER_PAGE) / PRINT_MIN_SCALE);
+    expect(tall).toContain(
+      `data-testid="print-scaled" data-scale="${PRINT_MIN_SCALE}"><article style="width:133.33333333333334%;height:${capped}px;transform:scale(${PRINT_MIN_SCALE})" data-testid="print-widget" data-widget-id="tbl"`,
+    );
+    // Tetangga skala 1, tabel memuat baris untuk tinggi yang dibatasi.
+    expect(tall).toContain(`Menampilkan ${tableRowsFitPx(capped)} dari 250 baris`);
+    expect(tall.match(/data-testid="print-band"/g)).toHaveLength(2);
+  });
 });
 
 describe("kolom tabel cetak", () => {
@@ -168,6 +226,19 @@ describe("kolom tabel cetak", () => {
     expect(fittingColumns([], 392)).toBe(0);
     // Pembulatan sub-piksel bukan "tidak muat".
     expect(fittingColumns([392.4], 392)).toBe(1);
+  });
+
+  it("review R1 INT-2: kolom terakhir yang pas di tepi kotak tetap dicetak", () => {
+    // Kartu w=4: tepi kanan bulat [124, 219, 337] vs lebar 336 (pecahan: 336,297 = lebar kotak).
+    expect(fittingColumns([124, 219, 337], 336)).toBe(3);
+    expect(fittingColumns([123.6, 218.9, 336.297], 336.297)).toBe(3);
+    expect(fittingColumns([124, 219, 338.5], 336.297)).toBe(2);
+  });
+
+  it("baris yang muat diukur dari kotak sebenarnya (judul kartu bisa 1–3 baris)", () => {
+    // Kotak 181 px, kepala kolom 25 px → 6 baris utuh (156 px).
+    expect(fittingRows(181, 25)).toBe(6);
+    expect(fittingRows(20, 25)).toBe(0);
   });
 
   it("keterangan: baris yang tampil + kolom yang tidak muat disebut namanya", () => {

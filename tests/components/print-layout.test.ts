@@ -7,19 +7,29 @@ import {
   PRINT_CARD_CHROME_PX,
   PRINT_HEADER_PX,
   PRINT_LINE_PX,
+  PRINT_MIN_SCALE,
   PRINT_PAGE_PX,
   PRINT_TABLE_ROW_PX,
   ROWS_PER_PAGE,
   rowsPx,
+  shrinkToPage,
   tableRowsFit,
+  tableRowsFitPx,
   type PageBand,
 } from "@/components/render/print-layout";
-import type { LayoutItem } from "@/features/dashboards/validation";
+import {
+  compactLayout,
+  GRID_COLS,
+  WIDGET_H_MAX,
+  type LayoutItem,
+} from "@/features/dashboards/validation";
 
 /*
- * T-018 D6: tata letak cetak PDF. pageBands memotong hanya di batas yang tidak dilintasi widget,
- * halaman pertama lebih pendek (kepala), widget setinggi lebih dari satu halaman mendapat pita sendiri
- * yang diperkecil utuh. D8: baris tabel yang muat utuh di kartu.
+ * T-018 D6: tata letak cetak PDF dengan alir ulang (review R1 INT-3/DS-2). Widget mengisi halaman dalam
+ * urutan tata letak; yang melintasi batas halaman pindah utuh ke halaman berikutnya (kolomnya tetap,
+ * urutan di kolom yang sama tetap) — dashboard biasa skala 1. Hanya satu widget yang lebih tinggi dari
+ * halamannya diperkecil (≥ 0,75), lebih tinggi lagi dibatasi satu halaman. Halaman pertama lebih pendek
+ * (kepala). D8: baris tabel yang muat utuh di kartu.
  */
 const item = (i: string, x: number, y: number, w: number, h: number): LayoutItem => ({
   i,
@@ -28,15 +38,63 @@ const item = (i: string, x: number, y: number, w: number, h: number): LayoutItem
   w,
   h,
 });
+const capOf = (page: number) => (page === 0 ? FIRST_PAGE_ROWS : ROWS_PER_PAGE);
+const paged = (layout: LayoutItem[]) => pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
+/** id → [halaman, baris, baris di kertas, skala]. */
+const where = (bands: PageBand[]) =>
+  Object.fromEntries(
+    bands.flatMap((b, page) => b.items.map((p) => [p.item.i, [page, p.row, p.rows, p.scale]])),
+  );
 
-/** Tidak ada widget yang terbelah: setiap widget seluruhnya di dalam satu pita. */
-function expectWhole(layout: LayoutItem[], bands: PageBand[]) {
-  for (const it of layout) {
-    const owners = bands.filter((b) => b.items.includes(it));
-    expect(owners, it.i).toHaveLength(1);
-    const b = owners[0]!;
-    expect(it.y).toBeGreaterThanOrEqual(b.start);
-    expect(it.y + it.h).toBeLessThanOrEqual(b.start + b.rows);
+/**
+ * Sifat wajib untuk tata letak apa pun: setiap widget tepat sekali dan utuh di satu halaman; tidak ada
+ * yang bertumpuk; pita tidak lebih tinggi dari halamannya; skala 1 kecuali widget lebih tinggi dari
+ * halamannya (≥ PRINT_MIN_SCALE, hasil perkecilan muat); urutan widget di kolom yang sama tetap.
+ */
+function expectValid(layout: LayoutItem[], bands: PageBand[]) {
+  const seen = bands.flatMap((b) => b.items.map((p) => p.item.i));
+  expect(seen.sort()).toEqual(layout.map((it) => it.i).sort());
+  const at = new Map<string, { page: number; row: number }>();
+  bands.forEach((band, page) => {
+    const cap = capOf(page);
+    expect(band.items.length, `halaman ${page + 1} tidak kosong`).toBeGreaterThan(0);
+    expect(band.rows).toBeLessThanOrEqual(cap);
+    expect(band.rows).toBe(Math.max(...band.items.map((p) => p.row + p.rows)));
+    for (const p of band.items) {
+      at.set(p.item.i, { page, row: p.row });
+      expect(p.row + p.rows, p.item.i).toBeLessThanOrEqual(cap);
+      if (p.scale === 1) {
+        expect(p.rows).toBe(p.item.h);
+        expect(p.heightPx).toBe(rowsPx(p.item.h));
+      } else {
+        expect(
+          p.item.h,
+          `${p.item.i}: diperkecil hanya bila lebih tinggi dari halamannya`,
+        ).toBeGreaterThan(cap);
+        expect(p.row).toBe(0);
+        expect(p.rows).toBe(cap);
+        expect(p.scale).toBeGreaterThanOrEqual(PRINT_MIN_SCALE);
+        expect(p.heightPx * p.scale).toBeLessThanOrEqual(rowsPx(cap));
+      }
+      for (const q of band.items) {
+        if (q === p) continue;
+        const cols = p.item.x < q.item.x + q.item.w && q.item.x < p.item.x + p.item.w;
+        const rows = p.row < q.row + q.rows && q.row < p.row + p.rows;
+        expect(cols && rows, `${p.item.i} menimpa ${q.item.i}`).toBe(false);
+      }
+    }
+  });
+  for (const a of layout) {
+    for (const b of layout) {
+      const shareCol = a.x < b.x + b.w && b.x < a.x + a.w;
+      if (!shareCol || a.y >= b.y) continue;
+      const pa = at.get(a.i)!;
+      const pb = at.get(b.i)!;
+      expect(
+        pa.page < pb.page || (pa.page === pb.page && pa.row < pb.row),
+        `${a.i} sebelum ${b.i}`,
+      ).toBe(true);
+    }
   }
 }
 
@@ -58,12 +116,12 @@ describe("geometri halaman", () => {
   });
 });
 
-describe("pageBands", () => {
+describe("pageBands (alir ulang)", () => {
   it("tata letak kosong → tanpa pita", () => {
-    expect(pageBands([], ROWS_PER_PAGE, FIRST_PAGE_ROWS)).toEqual([]);
+    expect(paged([])).toEqual([]);
   });
 
-  it("dashboard 6 widget muat di dua halaman tanpa membelah widget", () => {
+  it("dashboard 6 widget: dua halaman, skala 1", () => {
     const layout = [
       item("k1", 0, 0, 4, 2),
       item("k2", 4, 0, 4, 2),
@@ -72,17 +130,51 @@ describe("pageBands", () => {
       item("pie", 6, 2, 6, 5),
       item("tbl", 0, 7, 12, 6),
     ];
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expectWhole(layout, bands);
-    expect(bands.map((b) => [b.start, b.rows, b.scale])).toEqual([
-      [0, 7, 1],
-      [7, 6, 1],
-    ]);
-    expect(bands[0]!.rows).toBeLessThanOrEqual(FIRST_PAGE_ROWS);
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(where(bands)).toEqual({
+      k1: [0, 0, 2, 1],
+      k2: [0, 0, 2, 1],
+      k3: [0, 0, 2, 1],
+      bar: [0, 2, 5, 1],
+      pie: [0, 2, 5, 1],
+      tbl: [1, 0, 6, 1],
+    });
+    expect(bands.map((b) => b.rows)).toEqual([7, 6]);
   });
 
-  it("memotong di batas terjauh yang muat, bukan di tengah widget yang berdampingan", () => {
-    // Widget kiri 0–6 dan kanan 3–9: batas 6 dilintasi kanan → pita pertama berhenti di 3.
+  it("dua kolom bertingkat (kiri h5, kanan h4): tidak diperkecil, tiap widget utuh, 3 halaman", () => {
+    // Review R1 INT-3: dulu satu pita 20 baris pada skala 0,39.
+    const layout = [
+      item("kiri1", 0, 0, 6, 5),
+      item("kanan1", 6, 0, 6, 4),
+      item("kanan2", 6, 4, 6, 4),
+      item("kiri2", 0, 5, 6, 5),
+      item("kanan3", 6, 8, 6, 4),
+      item("kiri3", 0, 10, 6, 5),
+      item("kanan4", 6, 12, 6, 4),
+      item("kiri4", 0, 15, 6, 5),
+      item("kanan5", 6, 16, 6, 4),
+    ];
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(bands).toHaveLength(3);
+    for (const b of bands) for (const p of b.items) expect(p.scale).toBe(1);
+    expect(where(bands)).toEqual({
+      kiri1: [0, 0, 5, 1],
+      kanan1: [0, 0, 4, 1],
+      kanan2: [0, 4, 4, 1],
+      // Akan melintasi baris 8 halaman pertama → pindah utuh, kolomnya tetap.
+      kiri2: [1, 0, 5, 1],
+      kanan3: [1, 0, 4, 1],
+      kiri3: [1, 5, 5, 1],
+      kanan4: [1, 4, 4, 1],
+      kiri4: [2, 0, 5, 1],
+      kanan5: [2, 0, 4, 1],
+    });
+  });
+
+  it("widget yang melintasi batas pindah utuh; yang di bawahnya di kolom itu tetap sesudahnya", () => {
     const layout = [
       item("a", 0, 0, 6, 3),
       item("b", 6, 0, 6, 3),
@@ -91,68 +183,120 @@ describe("pageBands", () => {
       item("e", 0, 6, 6, 3),
       item("f", 0, 9, 12, 2),
     ];
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expectWhole(layout, bands);
-    expect(bands.map((b) => [b.start, b.rows])).toEqual([
-      [0, 3],
-      [3, 8],
-    ]);
-    for (const b of bands) expect(b.scale).toBe(1);
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(where(bands)).toEqual({
+      a: [0, 0, 3, 1],
+      b: [0, 0, 3, 1],
+      c: [0, 3, 3, 1],
+      d: [1, 0, 6, 1],
+      e: [1, 0, 3, 1],
+      // Selebar halaman: di bawah keduanya.
+      f: [1, 6, 2, 1],
+    });
   });
 
-  it("widget lebih tinggi dari satu halaman: pita sendiri, diperkecil utuh agar muat", () => {
+  it("halaman pertama memuat lebih sedikit baris (di bawah kepala)", () => {
+    const layout = Array.from({ length: 10 }, (_, k) => item(`r${k}`, 0, k * 2, 12, 2));
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(bands.map((b) => b.items.length)).toEqual([4, 5, 1]);
+    expect(bands.map((b) => b.rows)).toEqual([8, 10, 2]);
+  });
+
+  it("satu widget lebih tinggi dari satu halaman: diperkecil ≥ 0,75 lalu dibatasi; tetangga skala 1", () => {
     const layout = [item("kpi", 0, 0, 12, 2), item("tall", 0, 2, 8, 14), item("next", 0, 16, 6, 3)];
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expectWhole(layout, bands);
+    const bands = paged(layout);
+    expectValid(layout, bands);
     expect(bands).toHaveLength(3);
-    const tall = bands[1]!;
-    expect(tall.items.map((it) => it.i)).toEqual(["tall"]);
-    expect(tall.rows).toBe(14);
-    expect(tall.scale).toBeLessThan(1);
-    // Hasil perkecilan tidak lebih tinggi dari halaman (pita bukan halaman pertama: 10 baris).
-    expect(rowsPx(tall.rows) * tall.scale).toBeLessThanOrEqual(rowsPx(ROWS_PER_PAGE));
-    expect(rowsPx(tall.rows) * tall.scale).toBeGreaterThan(rowsPx(ROWS_PER_PAGE) - 1);
-    expect(bands[2]!.scale).toBe(1);
+    const tall = bands[1]!.items[0]!;
+    expect(tall.item.i).toBe("tall");
+    // 704 / 992 = 0,71 < 0,75 → skala minimum, tinggi kartu dibatasi satu halaman pada skala itu.
+    expect(tall.scale).toBe(PRINT_MIN_SCALE);
+    expect(tall.rows).toBe(ROWS_PER_PAGE);
+    expect(tall.heightPx).toBe(Math.floor(rowsPx(ROWS_PER_PAGE) / PRINT_MIN_SCALE));
+    expect(tall.heightPx).toBeLessThan(rowsPx(14));
+    expect(where(bands).next).toEqual([2, 0, 3, 1]);
   });
 
-  it("widget tinggi sebagai pita pertama diperkecil ke tinggi halaman pertama (di bawah kepala)", () => {
-    const bands = pageBands([item("tall", 0, 0, 12, 12)], ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expect(bands).toHaveLength(1);
-    expect(rowsPx(12) * bands[0]!.scale).toBeLessThanOrEqual(rowsPx(FIRST_PAGE_ROWS));
+  it("shrinkToPage: sedikit lebih tinggi → diperkecil utuh; jauh lebih tinggi → 0,75 dan dibatasi", () => {
+    // 12 baris di halaman 10 baris: 704 / 848 = 0,83 — isi utuh.
+    expect(shrinkToPage(12, ROWS_PER_PAGE)).toEqual({ scale: 0.8301, heightPx: rowsPx(12) });
+    for (let h = ROWS_PER_PAGE + 1; h <= WIDGET_H_MAX; h++) {
+      const s = shrinkToPage(h, ROWS_PER_PAGE);
+      expect(s.scale, `h=${h}`).toBeGreaterThanOrEqual(PRINT_MIN_SCALE);
+      expect(s.heightPx * s.scale).toBeLessThanOrEqual(rowsPx(ROWS_PER_PAGE));
+      expect(s.heightPx).toBeLessThanOrEqual(rowsPx(h));
+    }
+    expect(shrinkToPage(WIDGET_H_MAX, ROWS_PER_PAGE)).toEqual({
+      scale: PRINT_MIN_SCALE,
+      heightPx: Math.floor(rowsPx(ROWS_PER_PAGE) / PRINT_MIN_SCALE),
+    });
   });
 
-  it("tetangga yang berbagi baris dengan widget tinggi ikut di pitanya (tidak terbelah)", () => {
-    const layout = [item("tall", 0, 0, 6, 12), item("s1", 6, 0, 6, 4), item("s2", 6, 4, 6, 4)];
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expectWhole(layout, bands);
-    expect(bands).toHaveLength(1);
-    expect(bands[0]!.items.map((it) => it.i).sort()).toEqual(["s1", "s2", "tall"]);
+  it("widget tinggi di awal halaman pertama diperkecil ke halaman itu (tidak meninggalkan halaman kosong)", () => {
+    // Review R1 INT-1 (2): A 12×10 lalu B 12×4.
+    const layout = [item("a", 0, 0, 12, 10), item("b", 0, 10, 12, 4)];
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(where(bands)).toEqual({ a: [0, 0, 8, 0.7954], b: [1, 0, 4, 1] });
+    expect(bands[0]!.items[0]!.heightPx).toBe(rowsPx(10));
   });
 
-  it("baris kosong di antara widget dilewati; widget berukuran 0 diabaikan", () => {
+  it("tetangga widget tinggi tetap skala 1 dan berlanjut ke halaman berikutnya", () => {
+    const layout = [
+      item("tall", 0, 0, 6, 12),
+      item("s1", 6, 0, 6, 4),
+      item("s2", 6, 4, 6, 4),
+      item("s3", 6, 8, 6, 4),
+    ];
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    expect(where(bands)).toEqual({
+      tall: [0, 0, 8, PRINT_MIN_SCALE],
+      s1: [0, 0, 4, 1],
+      s2: [0, 4, 4, 1],
+      s3: [1, 0, 4, 1],
+    });
+  });
+
+  it("baris kosong (widget yang hilang) dipadatkan; widget berukuran 0 diabaikan", () => {
     const layout = [item("a", 0, 0, 12, 4), item("z", 0, 4, 0, 0), item("b", 0, 20, 12, 4)];
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expect(bands.map((b) => [b.start, b.rows, b.items.map((it) => it.i)])).toEqual([
-      [0, 4, ["a"]],
-      [20, 4, ["b"]],
-    ]);
+    expect(where(paged(layout))).toEqual({ a: [0, 0, 4, 1], b: [0, 4, 4, 1] });
   });
 
-  it("dashboard panjang: setiap pita ≤ kapasitas halamannya, semua widget tepat sekali", () => {
+  it("dashboard panjang: halaman diisi sebisanya, skala 1, semua widget tepat sekali", () => {
     const layout = Array.from({ length: 30 }, (_, k) =>
       item(`w${k}`, (k % 3) * 4, Math.floor(k / 3) * 3, 4, 3),
     );
-    const bands = pageBands(layout, ROWS_PER_PAGE, FIRST_PAGE_ROWS);
-    expectWhole(layout, bands);
-    bands.forEach((b, k) => {
-      expect(b.rows).toBeLessThanOrEqual(k === 0 ? FIRST_PAGE_ROWS : ROWS_PER_PAGE);
-      expect(b.scale).toBe(1);
-    });
-    expect(bands.flatMap((b) => b.items)).toHaveLength(30);
+    const bands = paged(layout);
+    expectValid(layout, bands);
+    // 10 baris widget: 2 (6 baris grid) di halaman pertama, 3 (9) di halaman berikutnya, sisa 2.
+    expect(bands.map((b) => b.rows)).toEqual([6, 9, 9, 6]);
+    for (const b of bands) for (const p of b.items) expect(p.scale).toBe(1);
   });
 
-  it("bandPlacement: kolom dari x/w, baris dihitung dari awal pita", () => {
-    expect(bandPlacement(item("a", 3, 12, 6, 4), { start: 10 })).toEqual({
+  it("tata letak acak yang dipadatkan (seperti tersimpan): sifat wajib selalu terpenuhi", () => {
+    let seed = 7;
+    const rand = (n: number) => {
+      seed = (seed * 1_103_515_245 + 12_345) % 2 ** 31;
+      return seed % n;
+    };
+    for (let run = 0; run < 200; run++) {
+      const items = Array.from({ length: 1 + rand(14) }, (_, k) => {
+        const w = 1 + rand(GRID_COLS);
+        // Kebanyakan widget biasa; sesekali tinggi sampai batas.
+        const h = rand(10) === 0 ? 1 + rand(WIDGET_H_MAX) : 1 + rand(8);
+        return item(`w${k}`, rand(GRID_COLS - w + 1), rand(30), w, h);
+      });
+      const layout = compactLayout(items);
+      const bands = paged(layout);
+      expectValid(layout, bands);
+    }
+  });
+
+  it("bandPlacement: kolom dari x/w, baris dari posisi di halaman", () => {
+    expect(bandPlacement({ item: item("a", 3, 12, 6, 4), row: 2, rows: 4 })).toEqual({
       gridColumn: "4 / span 6",
       gridRow: "3 / span 4",
     });
@@ -175,8 +319,9 @@ describe("tableRowsFit (D8)", () => {
     expect(tableRowsFit(4, 1)).toBeLessThan(tableRowsFit(4));
   });
 
-  it("kartu sangat pendek → 0 baris (bukan negatif)", () => {
+  it("kartu sangat pendek → 0 baris (bukan negatif); versi px sama dengan versi baris grid", () => {
     expect(tableRowsFit(1, 2)).toBe(0);
+    expect(tableRowsFitPx(rowsPx(6), 1)).toBe(tableRowsFit(6, 1));
   });
 });
 

@@ -9,7 +9,7 @@ import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { RenderWidget } from "@/features/exports/render-data";
 import { cn } from "@/lib/utils";
-import { tableRowsFit } from "./print-layout";
+import { tableRowsFitPx } from "./print-layout";
 import { PrintTable } from "./print-table";
 import { useRenderPending } from "./render-ready";
 
@@ -18,7 +18,9 @@ import { useRenderPending } from "./render-ready";
  * galat per peran), jadi isinya memakai tampilan layar yang sama: KpiView, ChartWidget (varian cetak:
  * label nilai, tanpa animasi), dan tabel cetak. Keadaan yang sama dengan layar: galat (pesan + kode,
  * tanpa tombol coba lagi), widget kosong, "Tidak ada data", catatan kolom kosong dan filter yang tidak
- * berlaku (satu baris; kertas tidak punya popover). Grafik mendaftar ke sinyal siap cetak.
+ * berlaku (satu baris; kertas tidak punya popover). Grafik mendaftar ke sinyal siap cetak. Judul
+ * membungkus sampai 3 baris (kertas tidak punya tooltip; dua judul yang hanya beda di ujung tetap
+ * terbedakan) — tabel mengukur sisa tinggi kartunya sendiri.
  */
 const NOTE = "flex h-6 shrink-0 items-center gap-1 border-t px-2 text-xs text-muted-foreground";
 
@@ -69,12 +71,12 @@ function Body({
   config,
   data,
   title,
-  h,
+  heightPx,
 }: {
   config: CardConfig;
   data: WidgetData;
   title: string;
-  h: number;
+  heightPx: number;
 }) {
   if (config.type === "kpi") {
     return (
@@ -94,7 +96,7 @@ function Body({
         positions={config.spec.columns}
         format={config.spec.format}
         formatColumns={config.spec.formatColumns}
-        fit={tableRowsFit(h, notes)}
+        fit={tableRowsFitPx(heightPx, notes)}
       />
     );
   }
@@ -103,13 +105,15 @@ function Body({
 
 export function PrintCard({
   widget,
-  h,
+  heightPx,
   style,
+  className,
 }: {
   widget: RenderWidget;
-  /** Tinggi kartu (baris grid): tabel menghitung baris yang muat. */
-  h: number;
+  /** Tinggi tata letak kartu (px, sebelum diperkecil): perkiraan awal baris tabel yang muat. */
+  heightPx: number;
   style: CSSProperties;
+  className?: string;
 }) {
   const title = widget.title || "Widget tanpa judul";
   const config = cardConfig(widget.type, widget.spec);
@@ -141,7 +145,7 @@ export function PrintCard({
   } else {
     content = (
       <>
-        <Body config={config} data={r} title={widget.title} h={h} />
+        <Body config={config} data={r} title={widget.title} heightPx={heightPx} />
         {r.absent?.length ? (
           <Note icon={<IconCircleOff size={14} stroke={1.5} aria-hidden className="shrink-0" />}>
             {absentText(r.absent)}
@@ -160,15 +164,18 @@ export function PrintCard({
       style={style}
       data-testid="print-widget"
       data-widget-id={widget.id}
-      className="@container flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground"
+      className={cn(
+        "@container flex min-h-0 flex-col overflow-hidden rounded-lg border bg-card text-card-foreground",
+        className,
+      )}
     >
       <h2
         className={cn(
-          "flex h-10 shrink-0 items-center border-b px-3 text-sm font-medium",
+          "flex min-h-10 shrink-0 items-center border-b px-3 py-2 text-sm font-medium",
           !widget.title && "text-muted-foreground",
         )}
       >
-        <span className="min-w-0 truncate">{title}</span>
+        <span className="line-clamp-3 min-w-0 [overflow-wrap:anywhere]">{title}</span>
       </h2>
       {content}
     </article>

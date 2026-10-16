@@ -3,7 +3,10 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { after } from "next/server";
 import { DashboardCanvas } from "@/components/dashboards/dashboard-canvas";
-import { DashboardPdfExport } from "@/components/dashboards/dashboard-pdf-export";
+import {
+  DashboardPdfExport,
+  DashboardPdfWatch,
+} from "@/components/dashboards/dashboard-pdf-export";
 import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
 import { EmailText } from "@/components/admin/email-text";
@@ -63,7 +66,8 @@ export default async function DashboardPage({
   // Sumber data panel konfigurasi hanya untuk mode edit (pemilik/editor; viewer sudah dialihkan).
   const sources = editing ? await getDashboardSources(user.id, d.id) : [];
   // Aksi kepala: Ekspor PDF (T-018) mode lihat untuk semua peran bila ada widget; Bagikan pemilik
-  // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot.
+  // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot. Tanpa tombol
+  // (mode edit), PDF yang sedang dibuat tetap dipantau dan diunduh otomatis (DashboardPdfWatch).
   const pdf = !editing && d.widgets.length > 0;
   const hasActions = pdf || isOwner || (canEdit && !editing);
 
@@ -138,6 +142,7 @@ export default async function DashboardPage({
             ) : undefined
           }
         />
+        {pdf ? null : <DashboardPdfWatch dashboardId={d.id} />}
         {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
           membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. Mode
           lihat memuat ulang widget/tata letak dari props baru tanpa remount (filter/popover tetap);

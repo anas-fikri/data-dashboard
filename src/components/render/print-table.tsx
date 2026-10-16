@@ -5,20 +5,31 @@ import { count, NUMERIC, tableCellText } from "@/components/widgets/table-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
+import { PRINT_TABLE_ROW_PX } from "./print-layout";
 
 /*
  * Tabel di PDF (T-018 D8): halaman pertama dalam urutan bawaan (urutan/halaman per kartu di layar tidak
  * ikut — perbedaan yang diterima), hanya baris yang muat utuh di kartu (`fit`, dari tableRowsFit) +
  * "Menampilkan X dari N baris". Teks sel sama dengan layar (tableCellText). Tanpa tombol urut, pager,
  * atau wilayah gulir: kertas tidak bisa digulir — kolom yang tidak muat utuh di lebar kartu tidak
- * dicetak setengah ("Jumla"), tetapi disebut namanya di keterangan bawah. Kolom diukur sekali sebelum
- * dilukis (layout effect; sinyal siap cetak menunggu DOM tenang).
+ * dicetak setengah ("Jumla"), tetapi disebut namanya di keterangan bawah. Kolom dan baris diukur sekali
+ * sebelum dilukis (layout effect; sinyal siap cetak menunggu DOM tenang): kolom dengan geometri pecahan
+ * (getBoundingClientRect — offset* dibulatkan dan bisa menolak kolom yang pas di tepi, review R1 INT-2),
+ * baris dari tinggi kotak yang sebenarnya (judul kartu bisa 1–3 baris; `fit` hanya perkiraan awal).
  */
 
-/** Kolom depan yang muat utuh (tepi kanan ≤ lebar kotak); paling sedikit satu. Murni. */
+/** Selisih sub-piksel/pembulatan di tepi kanan yang masih dianggap muat. */
+const EDGE_TOLERANCE_PX = 1;
+
+/** Kolom depan yang muat utuh (tepi kanan ≤ lebar kotak + toleransi 1 px); paling sedikit satu. Murni. */
 export function fittingColumns(rights: readonly number[], width: number): number {
-  const k = rights.findIndex((r) => r > width + 0.5);
+  const k = rights.findIndex((r) => r > width + EDGE_TOLERANCE_PX);
   return k < 0 ? rights.length : Math.max(1, k);
+}
+
+/** Baris data utuh di kotak setinggi `boxPx` di bawah kepala kolom setinggi `headPx`. Murni. */
+export function fittingRows(boxPx: number, headPx: number, rowPx = PRINT_TABLE_ROW_PX): number {
+  return Math.max(0, Math.floor((boxPx - headPx) / rowPx));
 }
 
 /** Keterangan bawah tabel cetak. Murni. */
@@ -43,16 +54,24 @@ export function PrintTable({
 }) {
   const box = useRef<HTMLDivElement>(null);
   const [cols, setCols] = useState(data.columns.length);
+  const [shown, setShown] = useState(fit);
   useLayoutEffect(() => {
     const el = box.current;
     if (!el) return;
-    const rights = [...el.querySelectorAll("th")].map((th) => th.offsetLeft + th.offsetWidth);
+    // Kotak dan kepala kolom diperkecil sama (widget tinggi): perbandingannya tetap benar.
+    const frame = el.getBoundingClientRect();
+    const rights = [...el.querySelectorAll("th")].map(
+      (th) => th.getBoundingClientRect().right - frame.left,
+    );
     // Ukuran DOM baru diketahui setelah tata letak: satu render ulang sebelum dilukis.
-    setCols(fittingColumns(rights, el.clientWidth));
+    setCols(fittingColumns(rights, frame.width));
+    // Tinggi tata letak (tidak terpengaruh transform); kotak flex-1 tidak ikut tinggi isinya.
+    const head = el.querySelector("thead")?.offsetHeight ?? PRINT_TABLE_ROW_PX;
+    setShown(fittingRows(el.clientHeight, head));
   }, [data.columns.length]);
 
   const total = data.total ?? data.rows.length;
-  const rows = data.rows.slice(0, fit);
+  const rows = data.rows.slice(0, shown);
   const columns = data.columns.slice(0, cols);
   const cellText = tableCellText(data, positions, format, formatColumns);
   return (
