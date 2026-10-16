@@ -14,6 +14,8 @@ export const GUIDE_BODY_MAX = 20_000;
 /** Tanda * / _ per paragraf dan tingkat kutipan/daftar per baris (penguraian bertingkat rekursif). */
 const EMPHASIS_MAX = 200;
 const DEPTH_MAX = 12;
+/** Baris per artikel: paragraf lanjutan malas dalam kutipan/daftar kuadratik per baris (review R3-1). */
+const LINE_MAX = 2_000;
 /** Awalan kontainer satu baris: spasi lalu > atau penanda daftar, berulang. */
 const PREFIX = /^(?:[ \t]*(?:>|[-*+](?=[ \t]|$)|\d{1,9}[.)](?=[ \t]|$)))*/;
 
@@ -27,7 +29,10 @@ export function guideBodyProblem(md: string): string | null {
     if ((para.match(/[*_]/g)?.length ?? 0) > EMPHASIS_MAX)
       return `Terlalu banyak tanda * atau _ dalam satu paragraf (maks. ${EMPHASIS_MAX}); pisahkan dengan baris kosong.`;
   }
-  for (const line of md.split(/\r\n?|\n/)) {
+  const lines = md.split(/\r\n?|\n/);
+  if (lines.length > LINE_MAX)
+    return `Terlalu banyak baris (maks. ${LINE_MAX.toLocaleString("id-ID")}); pecah menjadi beberapa artikel.`;
+  for (const line of lines) {
     const prefix = PREFIX.exec(line)?.[0] ?? "";
     const marks = prefix.replace(/[ \t]/g, "").replace(/\d+/g, "").length;
     const indent = prefix.replace(/\t/g, "    ").replace(/[^ ]/g, "").length;

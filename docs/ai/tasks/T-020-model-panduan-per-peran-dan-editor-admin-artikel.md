@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-019
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-16T20:52:23Z"
+updated: "2026-10-16T21:15:27Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -30,11 +30,15 @@ review:
       by: frontend-expert-design-reviewer
       at: "2026-10-16T20:52:23Z"
       findings: 2
+    - "n": 4
+      by: claude-verify-workflow
+      at: "2026-10-16T21:15:27Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42146
+    duration_ms: 42453
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -56,14 +60,14 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792183912095,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792183912119,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792183912124,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792185299410,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792185299434,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792185299441,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  123 passed (123)
             Tests  1718 passed (1718)
-         Start at  03:51:45
-         Duration  28.53s (tests 76%, import 18%, transform 6%, worker 1%)
+         Start at  04:14:53
+         Duration  28.63s (tests 75%, import 18%, transform 7%, worker 1%)
 
           Isolate  123 workers spawned · ~127ms startup each (spawn + environment, per file)
                    at least ~1.61s faster with isolate: false — reuses workers across files instead of one per file
@@ -74,8 +78,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T20:52:15Z"
-    tree: 8c99bef8864fbf6fc86cd918a5482ef60d435f502b58a3d321770138766a6d10
+    at: "2026-10-16T21:15:23Z"
+    tree: 8a018224db92c2166117dd3e3c9add5079f92119512bc35359303654754791c3
 ---
 
 ## Objective
@@ -95,6 +99,7 @@ Impact: tabel baru GuideArticle (migrasi t020_guide_articles, enum GuideRole/Gui
 ## Notes
 - 2026-10-11T14:49:25Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.
 - 2026-10-11T14:57:00Z rehype-sanitize schema allowlist; skema URL hanya http/https/mailto/relatif; sanitasi setelah render.
+- 2026-10-16T20:53:00Z AC5 Conventions check (audit frontend-expert:design-reviewer putaran 1–2, app nyata localhost:3100): Tokens: preset project (zinc-blue, src/styles/tokens.css), tanpa warna mentah/gradien. Icons: waiver @tabler/icons-react (Tabler saja; tombol ikon punya nama). States: loading = spinner tombol (pending, lebar tetap); empty = EmptyState daftar admin + /panduan; error = galat per kolom + fokus ke kolom pertama, galat tanpa kolom → FormAlert difokus, galat aksi baris → FocusNotice; sukses diumumkan aria-live / pesan difokus. Responsive: 320/768/1024/1440 terang+gelap, tanpa overflow horizontal, CTA utama full-width 44 px di ponsel, pratinjau bertumpuk < 1024 dan berdampingan sticky ≥ 1024, textarea 16 px di ponsel. A11y: WCAG 2.2 AA; axe 0 serious/critical di /admin, daftar, editor+pratinjau, dialog hapus, /panduan (320 & 1440); keyboard: urutan Tab, Select, fokus kembali setelah aksi baris dan dialog hapus; blok kode bisa difokus; judul isi h3–h6 di bawah judul artikel h2. Not verified: pembaca layar, zoom 200%, forced-colors.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

@@ -70,6 +70,8 @@ describe("GuideMarkdown (T-020)", () => {
       "*a".repeat(5000),
       "*_".repeat(3000),
       "a\r" + ">".repeat(19_998), // R2-2: \r tunggal = pemisah baris bagi pengurai
+      "> a\n" + "=\n".repeat(9998), // R3-1: kutipan + ribuan baris lanjutan malas
+      "- a\n" + "=\nb\n".repeat(4999),
     ];
     for (const md of bombs) {
       expect(guideBodyProblem(md), md.slice(0, 8)).not.toBeNull();
@@ -90,6 +92,12 @@ describe("GuideMarkdown (T-020)", () => {
     const real = prose.repeat(Math.floor(20_000 / prose.length));
     expect(guideBodyProblem(real)).toBeNull();
     expect(html(real)).toContain("<strong>file Excel</strong>");
+    // Tepat di bawah batas baris: pola terburuk R3-1 tetap cepat.
+    const edge = "> a\n" + "=\nb\n".repeat(999);
+    expect(guideBodyProblem(edge)).toBeNull();
+    const t = performance.now();
+    html(edge);
+    expect(performance.now() - t).toBeLessThan(200);
   });
   it("review R2-1: HTML mentah tidak diurai — pembuka tanpa penutup tidak kuadratik, tampil sebagai teks", () => {
     for (const md of ["a " + "<?".repeat(9999), "<!A".repeat(6666), "<!--".repeat(5000)]) {
