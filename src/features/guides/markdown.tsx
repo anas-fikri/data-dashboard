@@ -1,5 +1,6 @@
 import Markdown, { type Components } from "react-markdown";
 import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from "rehype-sanitize";
+import { GUIDE_BODY_MAX, guideBodyProblem } from "./validation";
 
 /*
  * Render markdown artikel panduan (T-020), dipakai halaman /panduan dan pratinjau editor admin. Tiga
@@ -38,7 +39,8 @@ export function guideUrl(url: string, key: string, origins: readonly string[]): 
 }
 
 function externalHref(href: string | undefined, origins: readonly string[]): boolean {
-  if (!href || !/^https?:\/\//i.test(href)) return false;
+  // "http:evil.example" (tanpa //) juga diurai peramban menjadi http://evil.example/.
+  if (!href || !/^https?:/i.test(href)) return false;
   try {
     return !origins.includes(new URL(href).origin);
   } catch {
@@ -54,6 +56,16 @@ export function GuideMarkdown({
   /** Origin app + storage publik (gambar boleh dari sini; tautan ke sini bukan "eksternal"). */
   origins: readonly string[];
 }) {
+  // Data yang lolos sebelum batas struktur berlaku tidak boleh menjatuhkan atau membekukan halaman.
+  const problem =
+    markdown.length > GUIDE_BODY_MAX ? "isi melebihi batas panjang" : guideBodyProblem(markdown);
+  if (problem) {
+    return (
+      <p className="text-sm text-muted-foreground" data-testid="guide-markdown">
+        Isi artikel tidak dapat ditampilkan: {problem}
+      </p>
+    );
+  }
   const components: Components = {
     a: ({ href, children }) => (
       <a
@@ -68,9 +80,13 @@ export function GuideMarkdown({
       typeof src === "string" && src ? (
         <img src={src} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-md border" />
       ) : null,
-    h1: ({ children }) => <h2 className="mt-6 text-xl font-semibold first:mt-0">{children}</h2>,
-    h2: ({ children }) => <h3 className="mt-6 text-lg font-semibold first:mt-0">{children}</h3>,
-    h3: ({ children }) => <h4 className="mt-4 text-base font-semibold first:mt-0">{children}</h4>,
+    // Judul artikel = h2 (text-lg); judul di isi turun satu tingkat dan lebih kecil dari judul artikel.
+    h1: ({ children }) => <h3 className="mt-6 text-base font-semibold first:mt-0">{children}</h3>,
+    h2: ({ children }) => <h4 className="mt-5 text-sm font-semibold first:mt-0">{children}</h4>,
+    h3: ({ children }) => <h5 className="mt-4 text-sm font-semibold first:mt-0">{children}</h5>,
+    h4: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
+    h5: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
+    h6: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
     p: ({ children }) => <p className="mt-3 leading-relaxed first:mt-0">{children}</p>,
     ul: ({ children }) => <ul className="mt-3 list-disc space-y-1 pl-5">{children}</ul>,
     ol: ({ children }) => <ol className="mt-3 list-decimal space-y-1 pl-5">{children}</ol>,
@@ -81,7 +97,16 @@ export function GuideMarkdown({
       <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.875em]">{children}</code>
     ),
     pre: ({ children }) => (
-      <pre className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-sm">{children}</pre>
+      // tabIndex: blok kode yang meluap bisa digulir dengan keyboard (axe scrollable-region-focusable).
+      <pre
+        role="region"
+        aria-label="Blok kode"
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        {children}
+      </pre>
     ),
   };
   return (

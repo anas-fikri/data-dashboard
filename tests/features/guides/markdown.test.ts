@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { GuideMarkdown, guideUrl } from "@/features/guides/markdown";
+import { guideBodyProblem, guideInputSchema } from "@/features/guides/validation";
 
 /* T-020 AC2/AC6: markdown panduan disanitasi — tag/URL berbahaya hilang, tautan luar rel aman. */
 const ORIGINS = ["https://dashboard.pcpexpress.com", "https://storage.pcpexpress.com"];
@@ -47,5 +48,40 @@ describe("GuideMarkdown (T-020)", () => {
     expect(guideUrl("#bagian", "href", ORIGINS)).toBe("#bagian");
     expect(guideUrl("relatif/a", "src", ORIGINS)).toBe("");
     expect(guideUrl("https://storage.pcpexpress.com.evil.example/x.png", "src", ORIGINS)).toBe("");
+  });
+  it("review AC5: judul isi di bawah judul artikel (h2) — # → h3, #### → h6; blok kode bisa difokus", () => {
+    const out = html("# Satu\n\n## Dua\n\n#### Empat\n\n```\nkode panjang\n```");
+    expect(out).not.toMatch(/<h[12][\s>]/);
+    expect(out).toMatch(/<h3[^>]*>Satu<\/h3>/);
+    expect(out).toMatch(/<h4[^>]*>Dua<\/h4>/);
+    expect(out).toMatch(/<h6[^>]*>Empat<\/h6>/);
+    expect(out).toMatch(/<pre[^>]*tabindex="0"/);
+  });
+  it("review R3: http:host tanpa // (tautan + autolink) tetap dianggap eksternal → rel", () => {
+    const out = html("[a](http:evil.example) [b](https:/evil.example/x) <http:evil.example>");
+    expect(out.match(/rel="noopener noreferrer"/g)).toHaveLength(3);
+  });
+
+  it("review R2: struktur bertingkat/penekanan berlebih ditolak saat simpan dan tidak dirender", () => {
+    const bombs = [">".repeat(2000), "> - ".repeat(500), "*a".repeat(5000), "*_".repeat(3000)];
+    for (const md of bombs) {
+      expect(guideBodyProblem(md), md.slice(0, 8)).not.toBeNull();
+      const t = performance.now();
+      expect(html(md)).toContain("Isi artikel tidak dapat ditampilkan");
+      expect(performance.now() - t).toBeLessThan(200);
+      const r = guideInputSchema.safeParse({
+        title: "A",
+        slug: "a",
+        role: "ALL",
+        contextKey: null,
+        bodyMarkdown: md,
+      });
+      expect(r.success).toBe(false);
+    }
+    const prose =
+      "## Langkah\n\nUnggah **file Excel** lalu periksa [skema](/datasets) dan `kolom_a`.\n\n- satu\n  - dua\n    1. tiga\n\n> catatan *penting*\n\n";
+    const real = prose.repeat(Math.floor(20_000 / prose.length));
+    expect(guideBodyProblem(real)).toBeNull();
+    expect(html(real)).toContain("<strong>file Excel</strong>");
   });
 });

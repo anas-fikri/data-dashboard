@@ -9,8 +9,32 @@ export type GuideContextValue = (typeof GUIDE_CONTEXTS)[number];
 
 export const GUIDE_TITLE_MAX = 120;
 export const GUIDE_SLUG_MAX = 80;
-/** Batas isi markdown (±50 ribu karakter ≈ 25 halaman). */
-export const GUIDE_BODY_MAX = 50_000;
+/** Batas isi markdown (±3.000 kata). Penguraian penekanan kuadratik: 50 ribu bisa > 2 s (review R2). */
+export const GUIDE_BODY_MAX = 20_000;
+/** Tanda * / _ per paragraf dan tingkat kutipan/daftar per baris (penguraian bertingkat rekursif). */
+const EMPHASIS_MAX = 200;
+const DEPTH_MAX = 12;
+/** Awalan kontainer satu baris: spasi lalu > atau penanda daftar, berulang. */
+const PREFIX = /^(?:[ \t]*(?:>|[-*+](?=[ \t]|$)|\d{1,9}[.)](?=[ \t]|$)))*/;
+
+/**
+ * Masalah struktur markdown yang membuat render lambat atau melempar (mis. ">" × 2000, "*a" × 10 ribu),
+ * selain itu null. Linear tanpa mengurai, dipakai saat simpan dan sebelum render (data lama).
+ */
+export function guideBodyProblem(md: string): string | null {
+  for (const para of md.split(/\n[ \t>\r]*\n/)) {
+    if ((para.match(/[*_]/g)?.length ?? 0) > EMPHASIS_MAX)
+      return `Terlalu banyak tanda * atau _ dalam satu paragraf (maks. ${EMPHASIS_MAX}); pisahkan dengan baris kosong.`;
+  }
+  for (const line of md.split("\n")) {
+    const prefix = PREFIX.exec(line)?.[0] ?? "";
+    const marks = prefix.replace(/[ \t]/g, "").replace(/\d+/g, "").length;
+    const indent = prefix.replace(/\t/g, "    ").replace(/[^ ]/g, "").length;
+    if (marks + Math.floor(indent / 2) > DEPTH_MAX)
+      return `Kutipan atau daftar bersarang terlalu dalam (maks. ${DEPTH_MAX} tingkat).`;
+  }
+  return null;
+}
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -44,10 +68,11 @@ export const guideInputSchema = z
     contextKey: z.enum(GUIDE_CONTEXTS).nullable(),
     bodyMarkdown: z
       .string()
-      .max(
-        GUIDE_BODY_MAX,
-        `Isi paling panjang ${GUIDE_BODY_MAX.toLocaleString("id-ID")} karakter.`,
-      ),
+      .max(GUIDE_BODY_MAX, `Isi paling panjang ${GUIDE_BODY_MAX.toLocaleString("id-ID")} karakter.`)
+      .superRefine((v, ctx) => {
+        const problem = guideBodyProblem(v);
+        if (problem) ctx.addIssue({ code: "custom", message: problem });
+      }),
   })
   .strict();
 export type GuideInput = z.infer<typeof guideInputSchema>;

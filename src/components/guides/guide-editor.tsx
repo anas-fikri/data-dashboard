@@ -45,19 +45,33 @@ type Fields = Partial<Record<keyof GuideInput, string>>;
 export function GuideEditor({
   guide,
   origins,
+  created = false,
 }: {
   /** Artikel yang diubah; tanpa = artikel baru. */
   guide?: GuideInput & { id: string };
   origins: string[];
+  /** Baru saja dibuat (redirect dari /baru): tampilkan konfirmasi. */
+  created?: boolean;
 }) {
   const router = useRouter();
-  const [draft, setDraft] = useState<GuideInput>(
-    guide ?? { title: "", slug: "", role: "ALL", contextKey: null, bodyMarkdown: "" },
+  // Hanya kolom isian: skema server strict menolak kunci lain (mis. id).
+  const [draft, setDraft] = useState<GuideInput>(() =>
+    guide
+      ? {
+          title: guide.title,
+          slug: guide.slug,
+          role: guide.role,
+          contextKey: guide.contextKey,
+          bodyMarkdown: guide.bodyMarkdown,
+        }
+      : { title: "", slug: "", role: "ALL", contextKey: null, bodyMarkdown: "" },
   );
   const [slugTouched, setSlugTouched] = useState(!!guide);
   const [pending, setPending] = useState(false);
   const [fields, setFields] = useState<Fields>({});
-  const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(null);
+  const [notice, setNotice] = useState<{ tone: "error" | "success"; text: string } | null>(
+    created ? { tone: "success", text: "Artikel tersimpan sebagai draf." } : null,
+  );
   const titleRef = useRef<HTMLInputElement>(null);
   const slugRef = useRef<HTMLInputElement>(null);
   const roleRef = useRef<HTMLButtonElement>(null);
@@ -101,8 +115,9 @@ export function GuideEditor({
       setNotice({ tone: "success", text: "Perubahan tersimpan." });
       return;
     }
-    setFields((r.fields ?? {}) as Fields);
-    setNotice(r.fields ? null : { tone: "error", text: r.message });
+    const bad = (r.fields ?? {}) as Fields;
+    setFields(bad);
+    setNotice(Object.keys(bad).length ? null : { tone: "error", text: r.message });
     setFocusKey((k) => k + 1);
   }
 
@@ -131,7 +146,7 @@ export function GuideEditor({
           label="Slug (alamat)"
           required
           error={fields.slug}
-          hint={`Dipakai di /panduan/<slug>. Huruf kecil, angka, tanda hubung; ≤ ${GUIDE_SLUG_MAX} karakter.`}
+          hint={`Alamat artikel di halaman Panduan (/panduan#slug). Huruf kecil, angka, tanda hubung; ≤ ${GUIDE_SLUG_MAX} karakter.`}
         >
           <Input
             ref={slugRef}
@@ -179,7 +194,7 @@ export function GuideEditor({
             value={draft.bodyMarkdown}
             maxLength={GUIDE_BODY_MAX}
             rows={16}
-            className="font-mono text-sm"
+            className="font-mono text-base md:text-sm"
             onChange={(e) => set("bodyMarkdown", e.target.value)}
           />
         </Field>

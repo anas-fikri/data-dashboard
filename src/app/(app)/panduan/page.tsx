@@ -13,8 +13,11 @@ export const metadata = { title: "Panduan" };
  * di sini", pencarian, dan bantuan kontekstual menyusul di T-022.
  */
 export default async function Page() {
-  await requireUser();
-  const guides = await publishedGuides(["OWNER", "EDITOR", "VIEWER", "ADMIN"]);
+  const user = await requireUser();
+  // Artikel untuk peran Admin hanya untuk admin (sisa penyaringan per peran di T-022).
+  const guides = await publishedGuides(
+    user.isAdmin ? ["OWNER", "EDITOR", "VIEWER", "ADMIN"] : ["OWNER", "EDITOR", "VIEWER"],
+  );
   const origins = guideOrigins();
   return (
     <div className="flex flex-col gap-6">

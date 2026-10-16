@@ -16,6 +16,7 @@ const B = uniqueEmail("guide-user");
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const T1 = `Membaca skema dataset ${TAG}`;
 const T2 = `Menyusun dashboard pertama ${TAG}`;
+const T3 = `Mengelola pengguna ${TAG}`;
 const EVIL = [
   "Halo **viewer**. <script>window.__guideXss = 1</script>",
   "",
@@ -105,7 +106,9 @@ test.describe("panduan admin (T-020)", () => {
     await expect(r).toContainText("Viewer");
     await expect(r).toContainText("Bantuan Skema dataset");
     await r.getByRole("button", { name: /^Terbitkan/ }).click();
-    await expect(r).toContainText("Terbit");
+    // Tunggu hasil aksi (tombol berganti "Tarik"); "Terbit" saja sudah cocok dengan label "Terbitkan".
+    await expect(r.getByRole("button", { name: /^Tarik/ })).toBeVisible();
+    await expect(r.getByText("Terbit", { exact: true })).toBeVisible();
 
     await b.goto("/panduan");
     const article = b.getByTestId("guide-article").filter({ hasText: T1 });
@@ -129,5 +132,57 @@ test.describe("panduan admin (T-020)", () => {
     await b.goto("/panduan");
     await expect(b.getByTestId("guide-article").filter({ hasText: T1 })).toHaveCount(1);
     await expect(b.getByTestId("guide-article").filter({ hasText: T2 })).toHaveCount(0);
+  });
+
+  test("review AC5: ubah artikel tersimpan; fokus kembali setelah aksi baris dan dialog hapus", async () => {
+    await a.goto("/admin/panduan");
+    await row(a, T1).getByRole("link", { name: T1, exact: true }).click();
+    await expect(a.getByLabel("Isi (markdown)")).toHaveValue(EVIL);
+    await a.getByLabel("Isi (markdown)").fill("Isi **diperbarui**.");
+    await a.getByRole("button", { name: "Simpan perubahan" }).click();
+    await expect(a.getByText("Perubahan tersimpan.")).toBeVisible();
+    await a.reload();
+    await expect(a.getByLabel("Isi (markdown)")).toHaveValue("Isi **diperbarui**.");
+
+    // Urutan kini [.., T2, T1]: aksi lewat keyboard, fokus kembali ke tombol pemicu.
+    await a.goto("/admin/panduan");
+    await row(a, T2)
+      .getByRole("button", { name: /^Terbitkan/ })
+      .focus();
+    await a.keyboard.press("Enter");
+    await expect(row(a, T2).getByRole("button", { name: /^Tarik/ })).toBeFocused();
+    await expect(a.getByText(`“${T2}” diterbitkan.`)).toBeAttached();
+    // T2 turun ke paling bawah: Turunkan jadi nonaktif → fokus ke Naikkan di baris yang sama.
+    await row(a, T2)
+      .getByRole("button", { name: `Turunkan ${T2}` })
+      .focus();
+    await a.keyboard.press("Enter");
+    await expect(row(a, T2).getByRole("button", { name: `Naikkan ${T2}` })).toBeFocused();
+
+    // Dialog hapus: Esc → fokus kembali ke tombol Hapus; hapus → ke baris tetangga.
+    const del = row(a, T2).getByRole("button", { name: `Hapus ${T2}` });
+    await del.focus();
+    await a.keyboard.press("Enter");
+    await expect(a.getByRole("alertdialog")).toBeVisible();
+    await a.keyboard.press("Escape");
+    await expect(del).toBeFocused();
+    await a.keyboard.press("Enter");
+    await a.getByRole("alertdialog").getByRole("button", { name: "Hapus" }).click();
+    await expect(row(a, T2)).toHaveCount(0);
+    await expect(row(a, T1).getByRole("link", { name: `Ubah ${T1}` })).toBeFocused();
+  });
+
+  test("review R4: artikel peran Admin terbit hanya tampil untuk admin di /panduan", async () => {
+    await createGuide(a, T3, "Admin", "Khusus admin.");
+    await a.goto("/admin/panduan");
+    await row(a, T3)
+      .getByRole("button", { name: /^Terbitkan/ })
+      .click();
+    await expect(row(a, T3).getByRole("button", { name: /^Tarik/ })).toBeVisible();
+    await b.goto("/panduan");
+    await expect(b.getByTestId("guide-article").filter({ hasText: T1 })).toHaveCount(1);
+    await expect(b.getByTestId("guide-article").filter({ hasText: T3 })).toHaveCount(0);
+    await a.goto("/panduan");
+    await expect(a.getByTestId("guide-article").filter({ hasText: T3 })).toHaveCount(1);
   });
 });

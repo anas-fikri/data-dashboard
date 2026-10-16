@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { AdminCrumb } from "@/components/admin/admin-crumb";
 import { GuideEditor } from "@/components/guides/guide-editor";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/features/auth/session";
@@ -7,14 +8,22 @@ import { getGuide } from "@/features/guides/service";
 
 export const metadata = { title: "Ubah artikel panduan · Admin" };
 
-export default async function Page({ params }: { params: Promise<{ id: string }> }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string }>;
+}) {
   await requireAdmin();
   const { id } = await params;
+  const { created } = await searchParams;
   const g = await getGuide(id);
   if (!g) notFound();
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
+        eyebrow={<AdminCrumb href="/admin/panduan">Panduan</AdminCrumb>}
         title="Ubah artikel panduan"
         description={
           g.status === "PUBLISHED"
@@ -24,6 +33,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
       />
       <GuideEditor
         origins={guideOrigins()}
+        created={created === "1"}
         guide={{
           id: g.id,
           title: g.title,

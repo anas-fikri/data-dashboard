@@ -1,5 +1,6 @@
 import { IconBook2, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
+import { AdminCrumb } from "@/components/admin/admin-crumb";
 import { GuideList } from "@/components/guides/guide-list";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -16,6 +17,7 @@ export default async function Page() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
+        eyebrow={<AdminCrumb />}
         title="Panduan"
         description="Artikel panduan per peran. Hanya artikel terbit yang tampil di halaman Panduan."
         actions={
