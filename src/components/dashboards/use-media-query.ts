@@ -21,6 +21,9 @@ function useMediaQuery(query: string): boolean {
 /** < 768 px: kanvas satu kolom, tanpa menyeret. */
 export const useIsPhone = () => useMediaQuery("(max-width: 767px)");
 
+/** 768–1023 px: grid tampilan 6 kolom tanpa menyeret (T-031); tata letak tersimpan tetap 12 kolom. */
+export const useIsTablet = () => useMediaQuery("(min-width: 768px) and (max-width: 1023px)");
+
 /** Ada layar sentuh (termasuk laptop sentuh): hanya pegangan kecil yang menyeret, kepala kartu tetap bisa di-scroll. */
 export const useIsCoarsePointer = () => useMediaQuery("(any-pointer: coarse)");
 

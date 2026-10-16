@@ -310,4 +310,69 @@ test.describe("dashboard", () => {
     await page.goto("/dashboards");
     await expect(page.getByTestId("dashboard-row")).toHaveCount(10);
   });
+
+  test("T-031: 768–1023 px — kartu 2 kolom ≥ 160 px, judul utuh; tata letak ≥ 1024 px tidak berubah", async ({
+    page,
+  }) => {
+    // Dataset sendiri: batas 10 dashboard per dataset (AC 4) dihitung dari dataset bersama.
+    await page.goto("/datasets/baru");
+    await page.getByLabel("Nama dataset").fill(`Tablet data ${Date.now()}`);
+    await page.getByRole("button", { name: "Buat dataset" }).click();
+    await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
+    const ds = new URL(page.url()).pathname.split("/").pop()!;
+    await page.goto(`/dashboards/baru?dataset=${ds}`);
+    await page.getByLabel("Nama dashboard").fill(`Tablet ${Date.now()}`);
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\/dashboards\/[a-z0-9]{20,32}\?mode=edit$/);
+    const id = new URL(page.url()).pathname.split("/").pop()!;
+    const headers = { Origin: new URL(page.url()).origin };
+    // Enam widget lebar 2 dalam satu baris (lewat API, sama dengan tombol Tambah + pengaturan ukuran).
+    let rev = 0;
+    const ids: string[] = [];
+    for (let k = 0; k < 6; k++) {
+      const r = await page.request.post(`/api/dashboards/${id}/widgets`, {
+        headers,
+        data: { baseRevision: rev, title: `Omzet ${k + 1}` },
+      });
+      const j = (await r.json()) as { data: { layoutRevision: number; widget: { id: string } } };
+      expect(r.status(), JSON.stringify(j)).toBe(200);
+      rev = j.data.layoutRevision;
+      ids.push(j.data.widget.id);
+    }
+    const put = await page.request.put(`/api/dashboards/${id}/layout`, {
+      headers,
+      data: { baseRevision: rev, items: ids.map((i, k) => ({ i, x: k * 2, y: 0, w: 2, h: 4 })) },
+    });
+    expect(put.status(), await put.text()).toBe(200);
+
+    const layoutPuts: string[] = [];
+    page.on("request", (r) => {
+      if (r.method() === "PUT" && r.url().endsWith("/layout")) layoutPuts.push(r.url());
+    });
+    await page.goto(`/dashboards/${id}?mode=edit`);
+    const before = await geometry(page);
+    expect(Object.values(before)).toEqual(ids.map((_, k) => `${k * 2},0,2,4`));
+    for (const width of [768, 1023]) {
+      await page.setViewportSize({ width, height: 900 });
+      await expect(page.getByTestId("canvas")).toHaveAttribute("data-layout", "tablet");
+      const cards = await page.getByTestId("widget").evaluateAll((els) =>
+        els.map((e) => {
+          const h = e.querySelector("h2")!;
+          return { w: e.getBoundingClientRect().width, cut: h.scrollWidth - h.clientWidth };
+        }),
+      );
+      expect(cards).toHaveLength(6);
+      for (const c of cards) {
+        expect(c.w, `${width} px`).toBeGreaterThanOrEqual(160);
+        expect(c.cut, `${width} px judul terpotong`).toBeLessThanOrEqual(0);
+      }
+    }
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(page.getByTestId("canvas")).toHaveAttribute("data-layout", "grid");
+    expect(await geometry(page)).toEqual(before);
+    expect(layoutPuts, "tampilan tablet tidak menyimpan tata letak").toEqual([]);
+    await page.reload();
+    await expect(page.getByTestId("widget")).toHaveCount(6);
+    expect(await geometry(page)).toEqual(before);
+  });
 });

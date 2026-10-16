@@ -159,3 +159,20 @@ export const PHONE_HEIGHT: Record<string, number> = {
  */
 export const phoneCardStyle = (type: string): CSSProperties =>
   type === "kpi" ? { minHeight: PHONE_HEIGHT.kpi } : { height: PHONE_HEIGHT[type] ?? 160 };
+
+/** Kolom grid tampilan 768–1023 px (T-031). */
+export const TABLET_COLS = 6;
+
+/**
+ * Tata letak tampilan 768–1023 px (T-031): grid 12 kolom di kanvas ±480 px (sidebar tetap tampil)
+ * membuat kartu 2 kolom hanya 66 px. Di sini 6 kolom: lebar = separuh lebar 12 kolom, paling sedikit
+ * setengah kanvas (3 → ±232 px di 768 px), posisi kolom ikut diskalakan; tumpang tindih diselesaikan
+ * pemadatan vertikal react-grid-layout. Hanya tampilan — tidak pernah disimpan, jadi tata letak ≥ 1024 px
+ * tetap; posisi/ukuran diatur lewat panel (satuan 12 kolom) seperti di ponsel.
+ */
+export function tabletLayout(layout: LayoutItem[]): LayoutItem[] {
+  return layout.map((it) => {
+    const w = Math.min(TABLET_COLS, Math.max(3, Math.round(it.w / 2)));
+    return { ...it, w, x: Math.min(Math.floor(it.x / 2), TABLET_COLS - w) };
+  });
+}

@@ -7,6 +7,8 @@ import {
   resizeItem,
   sameLayout,
   stepAvailability,
+  TABLET_COLS,
+  tabletLayout,
 } from "@/components/dashboards/layout-ops";
 import {
   DEFAULT_WIDGET_SIZE,
@@ -182,5 +184,36 @@ describe("putaran 5 (T-011): ukuran minimum per jenis widget", () => {
     expect(stepAvailability([table], "t")).toMatchObject({ narrower: true, shorter: true });
     // Lebih besar dari minimum: masih bisa dikecilkan sampai batasnya.
     expect(byId(resizeItem([{ ...table, h: 6 }], "t", 0, -1, TABLE_MIN), "t").h).toBe(5);
+  });
+});
+
+describe("tabletLayout (T-031, 768–1023 px)", () => {
+  it("lebar separuh (paling sedikit setengah kanvas), posisi diskalakan, tidak melewati 6 kolom", () => {
+    const out = tabletLayout([
+      { i: "a", x: 0, y: 0, w: 2, h: 4 },
+      { i: "b", x: 10, y: 0, w: 2, h: 4 },
+      { i: "c", x: 0, y: 4, w: 8, h: 3 },
+      { i: "d", x: 8, y: 4, w: 4, h: 3 },
+      { i: "e", x: 0, y: 7, w: 12, h: 2 },
+      { i: "f", x: 3, y: 9, w: 9, h: 2 },
+    ]);
+    expect(out.map(({ i, x, w }) => `${i}:${x},${w}`)).toEqual([
+      "a:0,3",
+      "b:3,3",
+      "c:0,4",
+      "d:3,3",
+      "e:0,6",
+      "f:1,5",
+    ]);
+    for (const it of out) expect(it.x + it.w).toBeLessThanOrEqual(TABLET_COLS);
+    // y/h tidak berubah: tumpang tindih diselesaikan pemadatan react-grid-layout.
+    expect(out.map((it) => [it.y, it.h])).toEqual([
+      [0, 4],
+      [0, 4],
+      [4, 3],
+      [4, 3],
+      [7, 2],
+      [9, 2],
+    ]);
   });
 });

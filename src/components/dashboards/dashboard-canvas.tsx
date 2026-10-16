@@ -19,22 +19,30 @@ import { withUnsaved } from "./config-saves";
 import { FilterBar } from "./filters/filter-bar";
 import { DashboardFiltersProvider } from "./filters/filter-context";
 import { crossColumnsOf, type FilterColumnView } from "./filters/filter-model";
-import { applyStep, phoneCardStyle, readingOrder, stepAvailability } from "./layout-ops";
+import {
+  applyStep,
+  phoneCardStyle,
+  readingOrder,
+  stepAvailability,
+  TABLET_COLS,
+  tabletLayout,
+} from "./layout-ops";
 import {
   isFrozen,
   useDashboardEditor,
   useFreshAfterHistory,
   viewCanvasKey,
 } from "./use-dashboard-editor";
-import { useIsCoarsePointer, useIsPhone, useIsWide } from "./use-media-query";
+import { useIsCoarsePointer, useIsPhone, useIsTablet, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
 import { WidgetConfigForm } from "./widget-config";
 import { WidgetPanel } from "./widget-panel";
 import { WidgetPanelFrame } from "./widget-panel-frame";
 
 /*
- * Kanvas dashboard (T-010). ≥ 768 px: grid 12 kolom (react-grid-layout) — mode edit menyeret lewat
- * kepala kartu dan mengubah ukuran di pojok; mode lihat tanpa pegangan apa pun. < 768 px: satu kolom
+ * Kanvas dashboard (T-010). ≥ 1024 px: grid 12 kolom (react-grid-layout) — mode edit menyeret lewat
+ * kepala kartu dan mengubah ukuran di pojok; mode lihat tanpa pegangan apa pun. 768–1023 px: grid
+ * tampilan 6 kolom turunan (tabletLayout, T-031) tanpa menyeret, tidak disimpan. < 768 px: satu kolom
  * urut baca, tanpa menyeret (posisi/ukuran lewat panel pengaturan). DOM grid juga urut baca agar
  * urutan Tab = urutan tampilan. Fokus dipindah eksplisit saat panel dibuka/ditutup dan setelah hapus.
  * Bilah filter (T-012) di atas grid di kedua mode; status filter ikut saat berpindah mode (?f=).
@@ -143,6 +151,7 @@ function Canvas(props: CanvasProps) {
   const frozen = isFrozen(ed.save);
   const router = useRouter();
   const phone = useIsPhone();
+  const tablet = useIsTablet();
   const wide = useIsWide();
   const coarse = useIsCoarsePointer();
   const { width, containerRef, mounted } = useContainerWidth();
@@ -171,7 +180,7 @@ function Canvas(props: CanvasProps) {
    */
   function revealWidget(id: string) {
     const card = root.current?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`);
-    const item = ed.layout.find((it) => it.i === id);
+    const item = (tablet ? tabletLayout(ed.layout) : ed.layout).find((it) => it.i === id);
     const grid = containerRef.current;
     if (!card || !item) return;
     if (phone || !grid) return card.scrollIntoView({ block: "start" });
@@ -271,7 +280,7 @@ function Canvas(props: CanvasProps) {
       key={w.id}
       widget={w}
       editing={canEdit}
-      draggable={!phone}
+      draggable={!phone && !tablet}
       selected={canEdit && selected === w.id}
       onSettings={() => {
         if (selected !== w.id) reveal.current = w.id;
@@ -354,7 +363,7 @@ function Canvas(props: CanvasProps) {
                 ref={containerRef}
                 className="min-w-0 flex-1"
                 data-testid="canvas"
-                data-layout={phone ? "stack" : "grid"}
+                data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
               >
                 {phone ? (
                   <div className="flex flex-col gap-4">
@@ -365,24 +374,28 @@ function Canvas(props: CanvasProps) {
                   </div>
                 ) : mounted ? (
                   <ReactGridLayout
-                    layout={ed.layout.map((it) => {
-                      const min = minOf(it.i);
-                      return { ...it, minW: min.w, minH: min.h };
-                    })}
+                    layout={
+                      tablet
+                        ? tabletLayout(ed.layout)
+                        : ed.layout.map((it) => {
+                            const min = minOf(it.i);
+                            return { ...it, minW: min.w, minH: min.h };
+                          })
+                    }
                     width={width}
                     gridConfig={{
-                      cols: GRID_COLS,
+                      cols: tablet ? TABLET_COLS : GRID_COLS,
                       rowHeight: ROW_HEIGHT,
                       margin: MARGIN,
                       containerPadding: [0, 0],
                     }}
                     dragConfig={{
-                      enabled: canEdit,
+                      enabled: canEdit && !tablet,
                       // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
                       handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
                       cancel: "button",
                     }}
-                    resizeConfig={{ enabled: canEdit, handles: ["se"] }}
+                    resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
                     onDragStop={(l) => ed.commitLayout(plain(l))}
                     onResizeStop={(l) => ed.commitLayout(plain(l))}
                   >
