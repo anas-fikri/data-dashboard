@@ -352,11 +352,11 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             color: theme.text,
             fontSize: PRINT_LABEL_PX,
             fontFamily: theme.font,
-            // Kotak label 2 px lebih lebar tiap sisi (latar transparan agar padding dihitung ECharts):
-            // dua label yang menempel tidak lagi terbaca sebagai satu angka — yang lebih lama dibuang
-            // hideOverlap (review T-018 R12-DS-2).
-            padding: [0, 2],
-            backgroundColor: "rgba(0,0,0,0)",
+            // Garis: kotak label 2 px lebih lebar tiap sisi (latar transparan agar padding dihitung
+            // ECharts) — dua label yang menempel tidak lagi terbaca sebagai satu angka, yang lebih lama
+            // dibuang hideOverlap (review T-018 R12-DS-2). Batang tidak berbagi baris: tanpa padding
+            // (padding hanya menggeser penjepit tepi ke atas batang, R13-DS-1).
+            ...(position === "top" ? { padding: [0, 2], backgroundColor: "rgba(0,0,0,0)" } : {}),
             formatter: (p: { value: unknown; dataIndex: number }) =>
               skip[p.dataIndex]
                 ? ""
@@ -716,14 +716,23 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     value(v, compact).length * PRINT_LABEL_CHAR_PX;
   const fullW = Math.max(0, ...values.map((v) => labelW(v)));
   const fullRight = Math.min(fullW + 8, size.width * 0.3);
+  // Sumbu perkiraan [−niceCeil(−min), niceCeil(maks)]; label batang negatif ada di kanan garis nol
+  // (ruangnya bagian positif sumbu + ruang kanan), batang positif di kanan ujungnya (R13-INT-1).
   const top = Math.max(0, ...values.map((v) => v ?? 0));
+  const bottom = Math.min(0, ...values.map((v) => v ?? 0));
+  const axisHi = top > 0 ? niceCeil(top) : 0;
+  const axisLo = bottom < 0 ? -niceCeil(-bottom) : 0;
   const plotLen = Math.max(0, valuePx - fullRight) * 0.8;
   const roomAt = (v: number | null) =>
-    fullRight + (top > 0 && (v ?? 0) > 0 ? (1 - (v ?? 0) / niceCeil(top)) * plotLen : 0);
+    fullRight +
+    (axisHi > axisLo ? (1 - (Math.max(v ?? 0, 0) - axisLo) / (axisHi - axisLo)) * plotLen : 0);
   const overflow = (compact: boolean) =>
     Math.max(...values.map((v) => labelW(v, compact) + 4 - roomAt(v)));
   const barCompact =
-    i.print && horizontal && overflow(false) > 0 && overflow(true) < overflow(false);
+    !!i.print && horizontal && overflow(false) > 0 && overflow(true) < overflow(false);
+  // Bentuk terpilih pun belum muat (kartu sangat sempit): ruang kanan boleh sampai 40 % agar label
+  // tidak ditarik ke atas batangnya oleh penjepit tepi (R13-DS-1/INT-2).
+  const barRightCap = size.width * (horizontal && overflow(barCompact) > 0 ? 0.4 : 0.3);
   const printGrid = !i.print
     ? grid
     : horizontal
@@ -734,7 +743,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               grid.right,
               Math.min(
                 Math.max(0, ...values.map((v) => valueTextPx(v, barCompact))) + 8,
-                size.width * 0.3,
+                barRightCap,
               ),
             ),
           ),

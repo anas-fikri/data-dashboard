@@ -225,7 +225,8 @@ describe("chartOption cetak (print)", () => {
     expect(narrow.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
       "Rp 1,7\u00a0M",
     );
-    expect(narrow.grid.right).toBeLessThanOrEqual(Math.ceil(159 * 0.3));
+    // Ringkas pun belum muat di 30 %: ruang kanan boleh sampai 40 % (tidak ditarik ke atas batang, R13-DS-1).
+    expect(narrow.grid.right).toBeLessThanOrEqual(Math.ceil(159 * 0.4));
     // Kartu w4 (338 px): label lengkap muat berkat sisa sumbu di kanan batang terpanjang (R11-INT-1).
     const w4 = chartOption(input, theme, { width: 338, height: 200 }) as unknown as Opt;
     expect(w4.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
@@ -248,10 +249,26 @@ describe("chartOption cetak (print)", () => {
       height: 200,
     }) as unknown as Opt;
     expect(tie.series[0]!.label!.formatter({ value: 3_504_384, dataIndex: 0 })).toBe("Rp 3,5 jt");
-    // Label cetak berpadding 2 px (latar transparan) agar label yang menempel tidak terbaca satu angka.
-    const style = tie.series[0]!.label as unknown as { padding: number[]; backgroundColor: string };
+    // Label GARIS cetak berpadding 2 px (latar transparan) agar label yang menempel tidak terbaca satu
+    // angka (R12-DS-2).
+    const lineOpt = chartOption({ ...input, type: "line" }, theme, SIZE) as unknown as Opt;
+    const style = lineOpt.series[0]!.label as unknown as {
+      padding: number[];
+      backgroundColor: string;
+    };
     expect(style.padding).toEqual([0, 2]);
     expect(style.backgroundColor).toBe("rgba(0,0,0,0)");
+    // Campuran positif-negatif di w4: label batang negatif di kanan garis nol (ruang bagian positif
+    // sumbu) → nilai lengkap tetap tercetak (R13-INT-1).
+    const mixed = chartOption({ ...input, values: [14_143_273_022, -1_200_000_000] }, theme, {
+      width: 338,
+      height: 200,
+    }) as unknown as Opt;
+    expect(mixed.series[0]!.label!.formatter({ value: 14_143_273_022, dataIndex: 0 })).toBe(
+      "Rp 14.143.273.022",
+    );
+    // Label batang tanpa padding (hanya label garis yang berpadding, R13-DS-1).
+    expect((mixed.series[0]!.label as unknown as { padding?: number[] }).padding).toBeUndefined();
     // Kartu lebar: nilai lengkap seperti sebelumnya.
     const wide = chartOption(input, theme, SIZE) as unknown as Opt;
     expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
