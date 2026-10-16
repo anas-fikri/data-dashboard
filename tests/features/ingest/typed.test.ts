@@ -186,6 +186,26 @@ describe("kasus pelengkap", () => {
     expect(col("lama").values[0]).toBe(129_600n); // 36 jam
   });
 
+  it("T-065: tanggal Jan–Feb 1900 sama dengan Excel; seri 60 (29/02/1900 fiktif) gagal cast, bukan tanggal salah", async () => {
+    const serials = [1, 59, 61, 45293, ...range(46, () => 45293), 60];
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>tgl</t></is></c></row>`;
+    serials.forEach(
+      (v, i) => (xml += `<row r="${i + 2}"><c r="A${i + 2}" s="1"><v>${v}</v></c></row>`),
+    );
+    const { col } = await ingest(
+      t.file("kabisat-1900.xlsx", await buildXlsx([{ name: "S", xml }], { dateStyle: true })),
+    );
+    const c = col("tgl");
+    expect(c).toMatchObject({ type: "date", castFailCount: 1 });
+    expect(c.values.slice(0, 4).map((v) => (v as Date).toISOString().slice(0, 10))).toEqual([
+      "1900-01-01",
+      "1900-02-28",
+      "1900-03-01",
+      "2024-01-02",
+    ]);
+    expect(c.values.at(-1)).toBeNull();
+  });
+
   it("statistik: nullPct dan distinctCount; header ikut nama tampil + asli", async () => {
     const { col, rows } = await ingest(
       t.file(

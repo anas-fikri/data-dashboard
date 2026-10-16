@@ -382,13 +382,34 @@ const BUILTIN_DATE_FMTS = new Set([
   14, 15, 16, 17, 18, 19, 20, 21, 22, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 45, 46, 47, 50, 51,
   52, 53, 54, 55, 56, 57, 58,
 ]);
+/** Format bawaan yang hanya jam/durasi (h:mm AM/PM … [h]:mm:ss, mm:ss.0), tanpa bagian tanggal. */
+const BUILTIN_TIME_FMTS = new Set([18, 19, 20, 21, 45, 46, 47]);
 const EPOCH_1900 = Date.UTC(1899, 11, 30);
 const EPOCH_1904 = Date.UTC(1904, 0, 1);
+const DAY_MS = 86_400_000;
 
 /** Format kustom bertanggal: buang literal "…", [..], \x, _x, *x lalu cari d/m/y/h/s. */
 export function isDateFormat(code: string): boolean {
-  const stripped = code.replace(/"[^"]*"|\[[^\]]*\]|\\.|_.|\*./g, "");
+  const stripped = stripLiterals(code);
   return /[dmyhs]/i.test(stripped) && !/^general$/i.test(stripped.trim());
+}
+
+/** Format bertanggal yang punya bagian tanggal (hari/tahun), bukan hanya jam atau durasi [h]:mm. */
+export const hasDatePart = (code: string) => /[dy]/i.test(stripLiterals(code));
+
+const stripLiterals = (code: string) => code.replace(/"[^"]*"|\[[^\]]*\]|\\.|_.|\*./g, "");
+
+/**
+ * Nomor seri → tanggal. Sistem 1900 Excel menganggap 1900 kabisat (seri 60 = 29/02/1900 fiktif,
+ * ECMA-376 §18.17.4.1): seri 1–59 bersel tanggal digeser satu hari agar sama dengan tampilan Excel, seri 60
+ * menjadi teks (gagal cast saat diketik tanggal, bukan tanggal salah diam-diam). Jam/durasi tanpa bagian
+ * tanggal (`leap1900` false) tetap dari epoch 1899-12-30: panjang durasi dihitung dari sana (infer.ts).
+ * Kebalikan excelSerial di ekspor XLSX (T-017).
+ */
+export function excelDate(serial: number, epoch: number, leap1900: boolean): Date | string {
+  if (leap1900 && serial >= 60 && serial < 61) return "1900-02-29";
+  const shift = leap1900 && serial >= 1 && serial < 60 ? 1 : 0;
+  return new Date(epoch + Math.round((serial + shift) * DAY_MS));
 }
 
 function colIndex(ref: string): number {
@@ -523,12 +544,14 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
       const byId = new Map(wbRels.map((r) => [r.id, r.target]));
       const epoch = date1904 ? EPOCH_1904 : EPOCH_1900;
 
-      // styles → indeks xf bergaya tanggal
+      // styles → indeks xf bergaya tanggal; dayXf = yang punya bagian tanggal (koreksi kabisat 1900)
       const dateXf = new Set<number>();
+      const dayXf = new Set<number>();
       const stylesPath = wbRels.find((r) => r.type.endsWith("/styles"))?.target;
       const styles = stylesPath ? entries.get(stylesPath) : undefined;
       if (styles) {
         const customDate = new Set<number>();
+        const customDay = new Set<number>();
         let inXfs = false;
         let xf = 0;
         let numFmts = 0;
@@ -541,7 +564,9 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                 if (++numFmts > limits.maxNumFmts) {
                   throw new XlsxLimitError("format angka berlebihan (file bukan buatan Excel)");
                 }
-                if (isDateFormat(a.formatCode ?? "")) customDate.add(Number(a.numFmtId));
+                const code = a.formatCode ?? "";
+                if (isDateFormat(code)) customDate.add(Number(a.numFmtId));
+                if (isDateFormat(code) && hasDatePart(code)) customDay.add(Number(a.numFmtId));
               } else if (n === "cellXfs") inXfs = true;
               else if (n === "xf" && inXfs) {
                 if (xf >= limits.maxCellXfs) {
@@ -549,6 +574,12 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                 }
                 const id = Number(a.numFmtId ?? 0);
                 if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
+                if (
+                  customDate.has(id)
+                    ? customDay.has(id)
+                    : BUILTIN_DATE_FMTS.has(id) && !BUILTIN_TIME_FMTS.has(id)
+                )
+                  dayXf.add(xf);
                 xf++;
               }
             },
@@ -693,7 +724,9 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                     const num = Number(text);
                     if (Number.isNaN(num)) v = own(text);
                     else
-                      v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
+                      v = dateXf.has(style)
+                        ? excelDate(num, epoch, !date1904 && dayXf.has(style))
+                        : num;
                   }
                   if (v !== null) {
                     if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {

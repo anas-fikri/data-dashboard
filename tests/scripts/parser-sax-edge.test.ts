@@ -113,6 +113,41 @@ describe("parser SAX: kasus tepi OOXML", () => {
     );
   });
 
+  it("T-065: kabisat 1900 Excel — seri 1/59/61 = tampilan Excel, 60 → teks; jam/durasi dan 1904 tidak digeser", async () => {
+    const styles = `<?xml version="1.0"?><styleSheet xmlns="${NS}"><numFmts><numFmt numFmtId="164" formatCode="dd/mm/yyyy"/><numFmt numFmtId="165" formatCode="[h]:mm"/></numFmts><cellXfs><xf numFmtId="0"/><xf numFmtId="14"/><xf numFmtId="164"/><xf numFmtId="20"/><xf numFmtId="46"/><xf numFmtId="165"/></cellXfs></styleSheet>`;
+    const cells = (s: number, vs: number[]) =>
+      vs.map((v, i) => `<c r="${"ABCDEF"[i]}1" s="${s}"><v>${v}</v></c>`).join("");
+    const iso = (v: RawValue) => (v instanceof Date ? v.toISOString() : v);
+    const p = await book({
+      styles,
+      sheet: `<row r="1">${cells(1, [1, 59, 60, 61, 45293, 59.5])}</row>`,
+    });
+    expect((await rows(p)).out[0]!.vals.map(iso)).toEqual([
+      "1900-01-01T00:00:00.000Z",
+      "1900-02-28T00:00:00.000Z",
+      "1900-02-29",
+      "1900-03-01T00:00:00.000Z",
+      "2024-01-02T00:00:00.000Z",
+      "1900-02-28T12:00:00.000Z",
+    ]);
+    // Format kustom bertanggal ikut dikoreksi; h:mm (20), [h]:mm:ss (46), [h]:mm kustom tetap dari 1899-12-30.
+    const q = await book({
+      styles,
+      sheet: `<row r="1"><c r="A1" s="2"><v>59</v></c><c r="B1" s="3"><v>0.5</v></c><c r="C1" s="4"><v>1.5</v></c><c r="D1" s="5"><v>2.25</v></c></row>`,
+    });
+    expect((await rows(q)).out[0]!.vals.map(iso)).toEqual([
+      "1900-02-28T00:00:00.000Z",
+      "1899-12-30T12:00:00.000Z",
+      "1899-12-31T12:00:00.000Z",
+      "1900-01-01T06:00:00.000Z",
+    ]);
+    const r = await book({
+      workbookPr: `<workbookPr date1904="1"/>`,
+      sheet: `<row r="1"><c r="A1" s="1"><v>59</v></c></row>`,
+    });
+    expect(iso((await rows(r)).out[0]!.vals[0]!)).toBe("1904-02-29T00:00:00.000Z");
+  });
+
   it("format kustom: escape \\m dan padding _/* bukan tanggal; d/m/yyyy tanggal", () => {
     expect(isDateFormat("0\\ \\m")).toBe(false);
     expect(isDateFormat("0.00\\h")).toBe(false);
