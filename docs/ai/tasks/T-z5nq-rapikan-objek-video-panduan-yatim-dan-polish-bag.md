@@ -6,7 +6,7 @@ profile: standard
 depends_on:
   - T-021
 created: "2026-10-16T21:53:58Z"
-updated: "2026-10-16T21:53:58Z"
+updated: "2026-10-16T22:02:08Z"
 created_by: claude-code
 ---
 
@@ -22,3 +22,5 @@ created_by: claude-code
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-16T22:02:08Z Dari review T-021 putaran 2 (non-blocking): (1) Medium a11y — saat admin mengetik di kolom lain, pesan 'Video … tersimpan.' tidak difokus dan wilayah status dikosongkan bersamaan → pembaca layar bisa tidak mengumumkan; isi wilayah status dengan pesan akhir (video-upload.tsx). (2) Low UX — di 5 video form tetap bisa memilih/membaca file sebelum ditolak saat init; tampilkan batas di awal.
