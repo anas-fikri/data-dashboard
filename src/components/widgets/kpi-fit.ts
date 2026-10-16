@@ -18,6 +18,12 @@ import type { NumberFormat } from "@/features/widgets/spec";
 
 /** Ukuran huruf terkecil (text-sm, 14 px) untuk kartu yang terlalu sempit. */
 export const KPI_MIN_PX = 14;
+/**
+ * Kotak bertinggi tetap yang sangat sempit/pendek: label + "Rp" dipertahankan selama angka ≥ 12 px;
+ * paling kecil 10 px (masih terbaca) sebelum boleh pindah baris.
+ */
+export const KPI_READABLE_PX = 12;
+export const KPI_FLOOR_PX = 10;
 /** Sama dengan clamp(1.125rem, 15cqi, 2.25rem); cqi = lebar isi kotak KPI (kotak itu container). */
 export const kpiFontPx = (room: number) => Math.min(36, Math.max(18, room * 0.15));
 /**
@@ -117,6 +123,7 @@ export function kpiTexts(
  * `cap(label)` = batas ukuran huruf dari tinggi kotak dengan/tanpa baris label (kpiHeightPx); tidak ada =
  * kotak tumbuh mengikuti isi (hanya lebar). `labelled` = label beda dari judul (barisnya selalu tampil);
  * selain itu baris label hanya ada bila "Rp" pindah ke sana — dihitung per bentuk (review T-018 R4-CL-1).
+ * `smallPx` = text-sm dalam px (ikut huruf akar).
  */
 export function chooseKpi(
   options: KpiOption[],
@@ -124,6 +131,7 @@ export function chooseKpi(
   measure: (text: string, px: number) => number | null,
   cap?: (label: boolean) => number,
   labelled = true,
+  smallPx = KPI_MIN_PX,
 ): KpiChoice {
   const fits = (text: string, px: number) => {
     if (room === null) return true;
@@ -138,20 +146,44 @@ export function chooseKpi(
     }
     return null;
   };
-  const small = (o: KpiOption, label: boolean): KpiChoice => ({
-    ...o,
-    small: true,
-    wrap: !fits(o.text, KPI_MIN_PX),
-    px: null,
-    label,
-  });
   const withLabel = (o: KpiOption) => labelled || !!o.unit;
   const last = options[options.length - 1]!;
   const chosen = pick(options, withLabel);
   if (chosen) return chosen;
-  if (!cap || cap(withLabel(last)) >= KPI_MIN_PX) return small(last, withLabel(last));
-  // Kotak terlalu pendek untuk label + angka (sentuh: kepala/catatan 44 px; huruf akar besar): angka
-  // didahulukan, label disembunyikan (tetap di title/pembaca layar), "Rp" tidak pindah (R4-CL-2).
+  if (!cap || room === null) {
+    // Kartu tumbuh mengikuti isi (tumpukan ponsel): text-sm, boleh pindah baris (perilaku T-011).
+    return {
+      ...last,
+      small: true,
+      wrap: !fits(last.text, KPI_MIN_PX),
+      px: null,
+      label: withLabel(last),
+    };
+  }
+  // Kotak bertinggi tetap: angka didahulukan dan SATU baris yang muat lebar dan tingginya — baris yang
+  // dibungkus terpotong kotak ("696,51" tanpa "jt", R5-DS-1/INT-2). Urutan: tanpa label (tetap di
+  // title/pembaca layar) dengan "Rp" tetap di angka (R4-CL-2); lalu huruf kecil satu baris — text-sm
+  // (ikut huruf akar, R5-CL-1) dibatasi tinggi dan lebar — dengan label, tanpa label, lalu bentuk "Rp"
+  // pindah tanpa label ("Rp" hilang dari tampilan; nilai lengkap tetap di title/pembaca layar).
   const plain = options.filter((o) => !o.unit);
-  return pick(plain, () => false) ?? small(plain[plain.length - 1] ?? last, false);
+  const hidden = pick(plain, () => false);
+  if (hidden) return hidden;
+  const oneLine = (o: KpiOption, label: boolean) => {
+    const w = measure(o.text, 100);
+    const byWidth = w === null ? Infinity : (room * 100) / (w * SLACK);
+    return Math.min(smallPx, cap(label), byWidth);
+  };
+  const stages: [label: boolean, use: (o: KpiOption) => boolean, min: number][] = [
+    [true, withLabel, KPI_READABLE_PX],
+    [false, (o) => !o.unit, KPI_READABLE_PX],
+    [false, () => true, KPI_FLOOR_PX],
+  ];
+  for (const [label, use, min] of stages) {
+    // Huruf terbesar; yang hampir sama (≤ 0,5 px) → bentuk paling lengkap.
+    const sized = options.filter(use).map((o) => ({ o, px: oneLine(o, label) }));
+    const best = Math.max(...sized.map((s) => s.px));
+    const at = sized.find((s) => s.px >= best - 0.5);
+    if (at && best >= min) return { ...at.o, small: true, wrap: false, px: at.px, label };
+  }
+  return { ...last, small: true, wrap: true, px: KPI_FLOOR_PX, label: false };
 }

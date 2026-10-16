@@ -229,6 +229,29 @@ describe("KPI: memilih bentuk yang muat", () => {
     // Sempit juga: tidak ada bentuk yang memindah "Rp" ke baris label yang tidak muat.
     expect(chooseKpi(rp, 90, measure, cap12, true)).toMatchObject({ unit: null, label: false });
   });
+
+  it("huruf akar besar: huruf kecil ikut dibatasi tinggi kotak, bukan text-sm 21 px (R5-CL-1)", () => {
+    expect(chooseKpi(rp, 400, measure, () => 13, true, 21)).toMatchObject({
+      text: "Rp 6.215.000.000",
+      small: true,
+      wrap: false,
+      px: 13,
+      label: true,
+    });
+  });
+
+  it("kartu sangat sempit bercatatan: satu baris yang muat, tidak dibungkus lalu terpotong (R5-DS-1/INT-2/CL-2)", () => {
+    const cap12 = (label: boolean) => kpiHeightPx(12, label);
+    const c = chooseKpi(rp, 70, measure, cap12, true);
+    expect(c).toMatchObject({ text: `Rp 6,22${NB}M`, unit: null, label: false, wrap: false });
+    expect(c.px!).toBeGreaterThanOrEqual(12);
+    // Lebih sempit lagi: "Rp" boleh hilang dari tampilan (nilai lengkap tetap di title), satu baris ≥ 10 px.
+    const tiny = chooseKpi(rp, 50, measure, cap12, true);
+    expect(tiny).toMatchObject({ text: `6,22${NB}M`, wrap: false, label: false });
+    expect(tiny.px!).toBeGreaterThanOrEqual(10);
+    // Kartu yang tumbuh (tanpa batas tinggi): tetap text-sm yang boleh pindah baris seperti sebelumnya.
+    expect(chooseKpi(rp, 30, measure)).toMatchObject({ small: true, wrap: true, px: null });
+  });
 });
 
 const cap40 = (label: boolean) => kpiHeightPx(40, label);

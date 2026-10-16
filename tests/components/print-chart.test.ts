@@ -103,8 +103,8 @@ describe("chartOption cetak (print)", () => {
     expect(o.animation).toBe(false);
   });
 
-  it("garis: label titik pertama rata kiri di cetak (tidak menimpa label sumbu nilai, R1-DS-5)", () => {
-    type Datum = { value: unknown; label?: { align: string } };
+  it("garis: label titik pertama digeser seperlunya dari sumbu nilai (R1-DS-5) tanpa menutupi label kedua (R5-INT-1)", () => {
+    type Datum = { value: unknown; label?: { offset: [number, number] } };
     const first = (o: unknown) => (o as { series: { data: Datum[] }[] }).series[0]!.data[0]!;
     const monthly = {
       type: "line" as const,
@@ -112,29 +112,36 @@ describe("chartOption cetak (print)", () => {
       values: [3_768_000_000, 4_000_000_000],
       time: { iso: ["2026-01-01", "2026-02-01"], grain: "month" as const, empty: null },
     };
-    expect(first(option({ ...monthly, print: true }))).toEqual({
-      value: 3_768_000_000,
-      label: { align: "left" },
-    });
-    // Sumbu waktu (per hari): titik [ms, y].
-    const daily = {
+    // Sumbu kategori: titik pertama di tengah pita lebar — label rata tengah sudah muat, tidak digeser.
+    expect(first(option({ ...monthly, print: true }))).toBe(3_768_000_000);
+    // Sumbu waktu (per hari): titik [ms, y] tepat di tepi plot → digeser setengah label "Rp 5" + 2 px.
+    const daily = (n: number) => ({
       type: "line" as const,
-      labels: ["1 Jan", "2 Jan"],
-      values: [5, 7],
-      time: { iso: ["2026-01-01", "2026-01-02"], grain: "day" as const },
-    };
-    expect(first(option({ ...daily, print: true }))).toEqual({
-      value: [Date.UTC(2026, 0, 1), 5],
-      label: { align: "left" },
+      labels: Array.from({ length: n }, (_, k) => `${k + 1} Jan`),
+      values: Array.from({ length: n }, () => 5),
+      time: {
+        iso: Array.from({ length: n }, (_, k) => `2026-01-${String(k + 1).padStart(2, "0")}`),
+        grain: "day" as const,
+      },
     });
+    expect(first(option({ ...daily(2), print: true }))).toEqual({
+      value: [Date.UTC(2026, 0, 1), 5],
+      label: { offset: [16, 0] },
+    });
+    // Titik lebih rapat: geseran berhenti sebelum menutupi label titik kedua (yang lalu dibuang).
+    const tight = first(option({ ...daily(15), print: true }));
+    expect(tight.label!.offset[0]).toBeGreaterThan(0);
+    expect(tight.label!.offset[0]).toBeLessThan(16);
+    // Sangat rapat: tidak digeser (kepadatan label diurus hideOverlap seperti biasa).
+    expect(first(option({ ...daily(31), print: true }))).toEqual([Date.UTC(2026, 0, 1), 5]);
     // Titik pertama terpilih (filter silang) tetap membawa gaya terpilihnya.
-    expect(first(option({ ...monthly, print: true, selected: 0 }))).toMatchObject({
+    expect(first(option({ ...daily(2), print: true, selected: 0 }))).toMatchObject({
       symbolSize: 10,
-      label: { align: "left" },
+      label: { offset: [16, 0] },
     });
     // Layar tidak berubah.
     expect(first(option(monthly))).toBe(3_768_000_000);
-    expect(first(option(daily))).toEqual([Date.UTC(2026, 0, 1), 5]);
+    expect(first(option(daily(2)))).toEqual([Date.UTC(2026, 0, 1), 5]);
   });
 
   it("pai cetak: tanpa animasi; label grafik tetap mati (nilai di legenda)", () => {

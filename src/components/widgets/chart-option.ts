@@ -277,18 +277,28 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     itemStyle: { borderColor: theme.card, borderWidth: 2 },
   });
   /**
-   * Cetak: label nilai titik garis PERTAMA rata kiri pada titiknya — label rata tengah menjorok setengah
-   * lebarnya ke kiri, ke atas label sumbu nilai (review T-018 R1-DS-5). Layar tidak berubah.
+   * Cetak: label nilai titik garis PERTAMA digeser ke kanan sejauh perlu agar tidak menjorok ke label
+   * sumbu nilai (review T-018 R1-DS-5), tetapi tidak melewati celah ke label titik kedua — rata kiri
+   * penuh menutupi label itu dan ECharts membuangnya (hideOverlap, R5-INT-1). Layar tidak berubah.
    */
-  const firstPoint = <D>(k: number, datum: D) =>
-    !i.print || k !== 0
+  const firstPoint = <D>(k: number, datum: D, shift: number) =>
+    !i.print || k !== 0 || shift <= 0
       ? datum
       : {
           ...(typeof datum === "object" && datum !== null && !Array.isArray(datum)
             ? datum
             : { value: datum }),
-          label: { align: "left" as const },
+          label: { offset: [shift, 0] },
         };
+  /** Lebar perkiraan label nilai cetak (px); periode kosong yang diisi tanpa label. */
+  const valueLabelPx = (v: number | null | undefined, skip = false) =>
+    skip ? 0 : value(v ?? null).length * AXIS_CHAR_PX;
+  /**
+   * Geseran label pertama (px): `room` = jarak titik pertama ke sumbu nilai, `spacing` = jarak ke titik
+   * kedua (Infinity bila tidak ada), w0/w1 = lebar kedua label (rata tengah), sisakan 4 px di antaranya.
+   */
+  const firstShift = (room: number, spacing: number, w0: number, w1: number) =>
+    Math.max(0, Math.min(w0 / 2 + 2 - room, spacing - (w0 + w1) / 2 - 4));
   const base = {
     color: theme.colors,
     animation: !i.reducedMotion && !i.print,
@@ -471,6 +481,17 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     // lebar: lebih dari itu ECharts menyerah memuat label sumbu nilai di kiri.
     const edgeText = points.reduce((m, p) => Math.max(m, tick(p[0]).length), 0);
     const right = Math.max(grid.right, Math.min((edgeText * AXIS_CHAR_PX) / 2, size.width * 0.2));
+    // Titik pertama tepat di tepi kiri plot (min dataMin): jarak ke titik kedua dari lebar plot
+    // perkiraan (lebar − label sumbu nilai − jarak grid), sama seperti sumbu kategori.
+    const maxY = ys.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
+    const plotT = size.width - grid.left - right - 8 - axisText(maxY).length * AXIS_CHAR_PX;
+    const span = points.length > 1 ? points.at(-1)![0] - points[0]![0] : 0;
+    const shift0 = firstShift(
+      0,
+      span > 0 ? ((points[1]![0] - points[0]![0]) / span) * Math.max(plotT, 1) : Infinity,
+      valueLabelPx(ys[0], filled[0]),
+      valueLabelPx(ys[1], filled[1]),
+    );
     return {
       ...base,
       // Tick dan label sumbu waktu dalam UTC, sama dengan nilai tanggal naive dari DuckDB.
@@ -515,6 +536,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             firstPoint(
               n,
               selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
+              shift0,
             ),
           ),
           ...symbols(ys, filled),
@@ -554,6 +576,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   const maxAbs = values.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
   const plotW = size.width - grid.left - grid.right - 8 - axisText(maxAbs).length * AXIS_CHAR_PX;
   const band = Math.max(plotW, 1) / Math.max(n, 1);
+  // Titik garis pertama di tengah pita pertama: setengah pita ke sumbu nilai, satu pita ke titik kedua.
+  const shift0 = firstShift(
+    band / 2,
+    n > 1 ? band : Infinity,
+    valueLabelPx(values[0], filled[0]),
+    valueLabelPx(values[1], filled[1]),
+  );
   const textW = labels.reduce((m, l) => Math.max(m, labelText(l).length), 1) * AXIS_CHAR_PX;
   const alignRight = n > 1 && textW / 2 > band / 2 + grid.right - 4;
   // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: semua jarak dilebarkan (bukan satu
@@ -636,7 +665,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         type: i.type,
         name: i.measureLabel,
         data: values.map((v, k) => {
-          if (i.type === "line") return firstPoint(k, k === sel ? picked(v) : v);
+          if (i.type === "line") return firstPoint(k, k === sel ? picked(v) : v, shift0);
           if (sel === undefined) return v;
           return k === sel
             ? { value: v, itemStyle: { borderColor: theme.text, borderWidth: 1.5 } }

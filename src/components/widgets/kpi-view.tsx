@@ -66,6 +66,7 @@ export function KpiView({
     // Tinggi kotak hanya membatasi bila kartu tidak tumbuh mengikuti isinya (tumpukan ponsel tumbuh).
     fixedHeight && size ? (row) => kpiHeightPx(size.height, row, rootPx()) : undefined,
     !sameAsTitle,
+    0.875 * rootPx(),
   );
 
   return (
@@ -96,7 +97,8 @@ export function KpiView({
           // shrink-0: kotak pendek (kartu sempit di tablet sentuh) tidak memotong angka di dalam barisnya
           // sendiri — angka boleh memakai padding bawah.
           "shrink-0 leading-tight font-semibold tabular-nums tracking-tight",
-          shown.small ? "text-sm" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
+          // Ukuran inline (kotak bertinggi tetap) menggantikan text-sm — tinggi baris 1,25rem-nya tetap.
+          shown.small && shown.px === null ? "text-sm" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
           // Belum diukur: satu baris (title tetap lengkap). Tidak ada yang muat: boleh pindah baris.
           shown.wrap ? "[overflow-wrap:anywhere]" : "truncate whitespace-nowrap",
         )}
