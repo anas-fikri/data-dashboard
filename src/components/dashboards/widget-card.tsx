@@ -71,8 +71,6 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   // Body query isi kartu (filter + urutan tabel): ekspor membacanya saat dimulai, tanpa render ulang.
   const request = useRef<WidgetRequest | null>(null);
   const onRequest = useCallback((r: WidgetRequest) => void (request.current = r), []);
-  // Grafik di kartu pendek: "N/M" kategori saat keterangan "Menampilkan N dari M" tidak muat (T-032).
-  const [badge, setBadge] = useState<{ short: string; full: string } | null>(null);
   const current = config && body?.version === configVersion(config) ? body : null;
   const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
@@ -114,17 +112,6 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         ) : null}
         <CardTitle title={title} placeholder={!widget.title} editing={editing} chart={!!chart} />
         <StaleLabel stale={!!current?.stale} title={title} />
-        {badge && !showData ? (
-          <span
-            className="shrink-0 rounded-sm bg-muted px-1 text-xs leading-5 tabular-nums text-muted-foreground @max-[8rem]:hidden"
-            title={badge.full}
-            // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
-            aria-hidden
-            data-testid="chart-badge"
-          >
-            {badge.short}
-          </span>
-        ) : null}
         {chart && mode ? (
           <DataToggleButton
             chart={chart}
@@ -176,7 +163,6 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           showData={showData}
           onState={onState}
           onRequest={onRequest}
-          onBadge={setBadge}
         />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">

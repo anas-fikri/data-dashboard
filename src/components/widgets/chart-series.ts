@@ -653,8 +653,8 @@ export interface Fit {
   full: string;
   shown: string;
   /**
-   * Keterangan tidak muat tetapi penting (kategori terpotong): lencana ringkas "N/M" di kepala kartu
-   * ("N+" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
+   * Keterangan tidak muat tetapi penting (kategori terpotong): lencana ringkas "N dari M" di sudut
+   * grafik ("N teratas" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
    */
   badge: string;
 }
@@ -731,7 +731,7 @@ export function chartFit(i: FitInput): Fit {
   const visible = visibleAt(height);
   const ranked = plot(height) < PLOT_MIN[i.type];
   const t = texts(visible);
-  const cut = i.partial && i.type !== "pie" ? `${visible}+` : `${visible}/${all}`;
+  const cut = i.partial && i.type !== "pie" ? `${visible} teratas` : `${visible} dari ${all}`;
   return {
     note: "none",
     visible,

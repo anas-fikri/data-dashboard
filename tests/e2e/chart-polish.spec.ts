@@ -7,7 +7,8 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
 
 /*
  * T-032 (polish widget kecil) di kanvas 1440 px dengan data sungguhan (12 kota):
- *   AC1 batang setinggi 2 baris (keterangan "Menampilkan N dari M" tidak muat) → lencana "N/12" di kepala;
+ *   AC1 batang setinggi 2 baris (keterangan "Menampilkan N dari M" tidak muat) → lencana "N dari 12" di
+ *       celah kiri bawah grafik (judul di kepala kartu tidak terperas);
  *   AC2 legenda pai yang muat (kartu tinggi) bukan tab stop; yang meluap (kartu sempit-sedang) bisa difokus;
  *   AC3 forced-colors: swatch legenda berbeda bentuk dan tetap berwarna (bukan hanya warna).
  */
@@ -111,12 +112,16 @@ test.describe("polish widget kecil (T-032)", () => {
     await owner.goto(`/dashboards/${d}`);
   });
 
-  test("AC1: batang 2 baris tanpa ruang keterangan → lencana N/12 di kepala kartu", async () => {
+  test("AC1: batang 2 baris tanpa ruang keterangan → lencana 'N dari 12' di grafik, judul utuh", async () => {
     const bar = widgetTitled(owner, "Batang pendek");
     const badge = bar.getByTestId("chart-badge");
     await expect(badge).toBeVisible();
-    await expect(badge).toHaveText(/^\d+\/12$/);
-    await expect(badge).toHaveAttribute("title", /^Menampilkan \d+ dari 12 kategori/);
+    await expect(badge).toHaveText(/^\d+ dari 12$/);
+    // Di badan grafik, bukan kepala kartu: judul tidak terperas.
+    const title = bar.getByRole("heading", { name: "Batang pendek" });
+    expect(await title.evaluate((h) => h.scrollWidth - h.clientWidth)).toBeLessThanOrEqual(0);
+    const [b, t] = [(await badge.boundingBox())!, (await title.boundingBox())!];
+    expect(b.y).toBeGreaterThan(t.y + t.height);
     await expect(bar.getByTestId("chart-note")).toHaveCount(0);
     // Tabel data: lencana disembunyikan (semua baris tampil di tabel).
     await bar.getByTestId("widget-data-toggle").click();
@@ -148,12 +153,17 @@ test.describe("polish widget kecil (T-032)", () => {
           const s = getComputedStyle(e);
           return {
             shape: `${s.clipPath}|${s.borderRadius}|${s.height}`,
+            radius: parseFloat(s.borderTopLeftRadius) || 0,
             bg: s.backgroundColor,
             adjust: s.getPropertyValue("forced-color-adjust"),
           };
         }),
       );
       expect(new Set(looks.map((l) => l.shape)).size, JSON.stringify(looks)).toBe(6);
+      // Kotak bersudut tajam: radius besar pada 10 px terbaca lingkaran (review desain T-032).
+      // (Urutan legenda = terbesar dulu, bisa diawali "Lainnya": cari kotak tanpa clip-path.)
+      const square = looks.filter((l) => l.shape.startsWith("none|") && l.radius <= 1);
+      expect(square, JSON.stringify(looks)).toHaveLength(1);
       for (const l of looks) {
         expect(l.adjust).toBe("none");
         expect(l.bg).not.toMatch(/rgba\(0, 0, 0, 0\)|transparent/);

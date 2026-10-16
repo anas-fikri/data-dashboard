@@ -61,7 +61,8 @@ const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-char
  * warna). Di forced-colors warnanya dipertahankan (forced-color-adjust) agar tetap cocok dengan grafik.
  */
 const SHAPE = [
-  "rounded-sm",
+  // Kotak bersudut tajam: rounded-sm (4 px pada 10 px) terbaca lingkaran (review desain T-032).
+  "rounded-none",
   "rounded-full",
   "[clip-path:polygon(50%_0,100%_100%,0_100%)]",
   "[clip-path:polygon(50%_0,100%_50%,50%_100%,0_50%)]",
@@ -99,7 +100,6 @@ export function ChartWidget({
   cross,
   print = false,
   onSettled,
-  onBadge,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -116,8 +116,6 @@ export function ChartWidget({
   print?: boolean;
   /** Isi siap (grafik tergambar/gagal, atau isi bukan grafik). */
   onSettled?: () => void;
-  /** Lencana "N/M" kategori untuk kepala kartu saat keterangan tidak muat (T-032); fungsi stabil. */
-  onBadge?: (badge: { short: string; full: string } | null) => void;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
@@ -276,7 +274,7 @@ export function ChartWidget({
         aria-label={`Keterangan ${name}`}
         // Pesan bisa lebih tinggi dari kartu pendek: wilayah gulir bisa difokus bila meluap (WCAG 2.1.1).
         ref={noticeEl}
-        tabIndex={noticeTab}
+        tabIndex={print ? undefined : noticeTab}
         data-testid="pie-negative"
       >
         <IconAlertTriangle
@@ -475,7 +473,8 @@ export function ChartWidget({
           {chart}
           <div
             className={cn(
-              "shrink-0 px-3 pb-1 text-xs @md:max-h-none @md:w-[45%] @md:self-center",
+              // Samping donat (≥ 28rem): dibatasi tinggi kartu → digulir, bukan terpotong (T-032).
+              "shrink-0 px-3 pb-1 text-xs @md:max-h-full @md:w-[45%] @md:self-center",
               // Cetak: legenda = satu-satunya teks irisan di kertas (tanpa gulir) → boleh setinggi kartu
               // kecuali 4,5rem untuk donat (grafik setinggi 0 tidak pernah memberi sinyal siap).
               print ? "max-h-[calc(100%-4.5rem)]" : "max-h-[45%]",
@@ -557,18 +556,24 @@ export function ChartWidget({
   // Keterangan yang muat (lengkap/ringkas); teks lengkap tetap di title dan untuk pembaca layar.
   const drawn = fit && !fit.ranked && !chartEmpty(data) && !showData && !negative ? fit : null;
   const note = drawn && drawn.note !== "none" ? drawn : null;
-  // Tidak muat sama sekali (kartu pendek): lencana "N/M" di kepala kartu (pembaca layar: ringkasan grafik).
+  // Keterangan tidak muat (kartu pendek): lencana "N dari M" di celah kiri bawah grafik — tidak memeras
+  // judul di kepala kartu (review desain T-032). Pembaca layar: ringkasan grafik.
   const badge = !print && drawn?.badge ? drawn.badge : "";
-  const badgeFull = drawn?.full ?? "";
-  useEffect(
-    () => onBadge?.(badge ? { short: badge, full: badgeFull } : null),
-    [onBadge, badge, badgeFull],
-  );
-  useEffect(() => () => onBadge?.(null), [onBadge]);
 
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
-      <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {body}
+        {badge ? (
+          <span
+            className="pointer-events-none absolute bottom-0.5 left-2 rounded-sm bg-card/90 px-1 text-[0.6875rem] leading-4 tabular-nums text-foreground"
+            aria-hidden
+            data-testid="chart-badge"
+          >
+            {badge}
+          </span>
+        ) : null}
+      </div>
       {note ? (
         // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
         <div className="shrink-0 px-3 pb-1">
