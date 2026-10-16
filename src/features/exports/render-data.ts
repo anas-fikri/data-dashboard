@@ -30,10 +30,20 @@ export async function consumeRenderSession(sessionId: string): Promise<RenderDat
       subjectLive: renderSubjectLive,
       dashboard: (userId, dashboardId) => getDashboard(userId, dashboardId),
       query: async (userId, body, now) => {
-        deps ??= await queryDeps();
-        const r = await runWidgetQuery(userId, body, { ...deps, now: () => now });
-        // Persis body JSON /api/query (tanpa nilai non-JSON).
-        return JSON.parse(JSON.stringify(r)) as typeof r;
+        try {
+          deps ??= await queryDeps();
+          const r = await runWidgetQuery(userId, body, { ...deps, now: () => now });
+          // Persis body JSON /api/query (tanpa nilai non-JSON).
+          return JSON.parse(JSON.stringify(r)) as typeof r;
+        } catch (e) {
+          // render-session memetakannya ke kartu QUERY_FAILED; dicatat agar tidak hilang diam-diam.
+          const widgetId = (body as { widgetId?: unknown }).widgetId;
+          logger.error(
+            { err: e instanceof Error ? e.message : String(e), widgetId },
+            "query widget render PDF gagal",
+          );
+          throw e;
+        }
       },
     });
   } catch (e) {

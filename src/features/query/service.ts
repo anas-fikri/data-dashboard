@@ -16,14 +16,8 @@
  *  - timeout di-cache negatif sebentar agar spec mahal yang sama tidak bisa diulang gratis (F2).
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { QueryBusyError, QueryTimeoutError, type EngineResult } from "@/lib/duckdb/engine";
-import {
-  CacheFullError,
-  DownloadPendingError,
-  ForgottenError,
-  type AcquireOptions,
-  type ParquetLease,
-} from "@/lib/duckdb/parquet-cache";
+import { QueryTimeoutError, type EngineResult } from "@/lib/duckdb/engine";
+import { type AcquireOptions, type ParquetLease } from "@/lib/duckdb/parquet-cache";
 import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
 // Tipe saja: access.ts server-only + prisma, service ini juga dipakai test tanpa DB.
 import type { DashboardAccess, DashboardAccessRole } from "@/features/sharing/access";
@@ -376,21 +370,26 @@ export async function runOnParquet<T>(
   } catch (e) {
     // Klien sudah pergi: jawaban tidak dibaca, cukup tidak di-cache dan tidak dicatat sebagai error.
     if (signal?.aborted) return fail("QUERY_BUSY", "Permintaan dibatalkan.");
-    if (e instanceof QueryTimeoutError)
-      return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
-    if (e instanceof QueryBusyError) {
-      return fail("QUERY_BUSY", "Sedang banyak query berjalan. Coba lagi sebentar lagi.");
+    // Dikenali dari `name`, bukan instanceof: mesin + cache parquet dibagi lewat globalThis, sedangkan
+    // kelas galatnya bisa salinan modul lain (layer route /api/query vs RSC /render) — review T-018 R16-INT-1.
+    switch (e instanceof Error ? e.name : "") {
+      case "QueryTimeoutError":
+        return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+      case "QueryBusyError":
+        return fail("QUERY_BUSY", "Sedang banyak query berjalan. Coba lagi sebentar lagi.");
+      case "DownloadPendingError":
+        return fail(
+          "QUERY_BUSY",
+          "Data sedang disiapkan untuk query pertama setelah diperbarui. Coba lagi dalam beberapa detik.",
+        );
+      case "CacheFullError":
+        return fail(
+          "QUERY_BUSY",
+          "Data sedang disiapkan untuk query lain. Coba lagi sebentar lagi.",
+        );
+      case "ForgottenError":
+        return fail("NOT_FOUND", "Dataset tidak ditemukan.");
     }
-    if (e instanceof DownloadPendingError) {
-      return fail(
-        "QUERY_BUSY",
-        "Data sedang disiapkan untuk query pertama setelah diperbarui. Coba lagi dalam beberapa detik.",
-      );
-    }
-    if (e instanceof CacheFullError) {
-      return fail("QUERY_BUSY", "Data sedang disiapkan untuk query lain. Coba lagi sebentar lagi.");
-    }
-    if (e instanceof ForgottenError) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
     if (/Out of Memory Error/i.test(e instanceof Error ? e.message : String(e))) {
       return fail(
         "QUERY_TOO_HEAVY",

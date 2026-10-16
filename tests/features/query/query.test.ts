@@ -884,6 +884,31 @@ describe("regresi review T-009 putaran 2", () => {
     });
   });
 
+  it.each([
+    [new QueryTimeoutError(), "QUERY_TIMEOUT"],
+    [new QueryBusyError(), "QUERY_BUSY"],
+    [new DownloadPendingError(), "QUERY_BUSY"],
+    [new CacheFullError(), "QUERY_BUSY"],
+    [new ForgottenError(), "NOT_FOUND"],
+  ])("review T-018 R16-INT-1: %s dari salinan modul lain tetap → %s", async (orig, code) => {
+    // Runtime query dibagi lewat globalThis antar layer modul (route vs RSC /render): galatnya bisa
+    // berasal dari salinan kelas lain, jadi instanceof false — pemetaan harus tetap sama.
+    const copy = Object.assign(new Error(orig.message), { name: orig.name });
+    for (const err of [orig, copy]) {
+      const d = deps({
+        parquet: {
+          acquire: async () => {
+            throw err;
+          },
+        },
+      });
+      expect(await runQuery(USER, body({ measures: [{ agg: "count" }] }), d)).toMatchObject({
+        ok: false,
+        code,
+      });
+    }
+  });
+
   it("N3: penghapusan dataset memakai registri tanpa DuckDB yang meneruskan forget", () => {
     const forgot: string[] = [];
     registerLocalParquet({ forget: (k) => forgot.push(k) });
