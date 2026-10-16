@@ -253,4 +253,60 @@ test.describe("video panduan (T-021)", () => {
       .toBe(true);
     expect(ranges.every((r) => r.status === 206)).toBe(true);
   });
+
+  test("review AC4: progres diumumkan; selesai tidak merebut fokus; hapus berturut-turut fokus ke pesan", async () => {
+    test.setTimeout(120_000);
+    await a.goto(`/admin/panduan/${articleId}`);
+    // F1: 5 unggahan yang ditinggal (init tanpa part) tidak menghabiskan batas 5 video.
+    for (let i = 0; i < 5; i++) {
+      const r = await call(a, "/api/guides/videos", {
+        method: "POST",
+        json: { articleId, title: `Ditinggal ${i}`, name: "x.mp4", size: 1000 },
+      });
+      expect(r.status).toBe(200);
+    }
+    // Tahan complete agar unggahan masih berjalan saat admin mengetik di kolom lain.
+    await a.route("**/api/guides/videos/*/complete", async (route) => {
+      await new Promise((r) => setTimeout(r, 1500));
+      await route.continue();
+    });
+    await a.evaluate(() => {
+      const el = document.querySelector(
+        'form[aria-labelledby="video-upload-title"] p[role="status"]',
+      )!;
+      const seen: string[] = ((window as { __vs?: string[] }).__vs = []);
+      new MutationObserver(() => seen.push(el.textContent ?? "")).observe(el, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+    });
+    await a.getByLabel("Judul video").fill("Video kedua");
+    await a.getByTestId("video-input").setInputFiles(DEMO);
+    await a.getByRole("button", { name: "Unggah video" }).click();
+    await expect(a.getByRole("button", { name: "Batalkan" })).toBeFocused();
+    const body = a.getByLabel("Isi (markdown)");
+    await body.click();
+    await body.press("End");
+    await a.keyboard.type(" lanjut");
+    await expect(a.getByText("Video “Video kedua” tersimpan.")).toBeVisible({ timeout: 60_000 });
+    await expect(body).toBeFocused();
+    await expect(body).toHaveValue(/ lanjut$/);
+    const seen = await a.evaluate(() => (window as { __vs?: string[] }).__vs ?? []);
+    expect(
+      seen.some((t) => /Mengunggah \d+%|Memeriksa video di server/.test(t)),
+      seen.join("|"),
+    ).toBe(true);
+    await a.unroute("**/api/guides/videos/*/complete");
+
+    await a.reload();
+    for (const title of ["Video kedua", "Mengunggah data"]) {
+      await a.getByRole("button", { name: `Hapus video ${title}` }).click();
+      await a.getByRole("alertdialog").getByRole("button", { name: "Hapus" }).click();
+      await expect(
+        a.getByRole("status").filter({ hasText: `Video “${title}” dihapus.` }),
+      ).toBeFocused();
+    }
+    await expect(a.getByTestId("guide-video")).toHaveCount(0);
+  });
 });

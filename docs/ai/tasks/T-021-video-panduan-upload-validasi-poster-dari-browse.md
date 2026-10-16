@@ -1,7 +1,7 @@
 ---
 id: T-021
 title: 'Video panduan: upload, validasi, poster dari browser, streaming'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-4
@@ -11,17 +11,27 @@ depends_on:
   - T-020
   - T-004
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-16T21:33:53Z"
+updated: "2026-10-16T21:53:58Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: aab1818da86ed40fc91314d56151f602ee14076a
+review:
+  passes:
+    - "n": 1
+      by: frontend-expert-design-reviewer
+      at: "2026-10-16T21:53:57Z"
+      findings: 3
+    - "n": 2
+      by: claude-verify-workflow
+      at: "2026-10-16T21:53:58Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 43118
+    duration_ms: 42760
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -43,16 +53,16 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792186409386,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792186409409,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792186409417,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792187607217,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792187607240,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792187607246,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  124 passed (124)
             Tests  1723 passed (1723)
-         Start at  04:33:22
-         Duration  28.95s (tests 76%, import 17%, transform 6%, worker 1%)
+         Start at  04:53:20
+         Duration  28.90s (tests 76%, import 18%, transform 6%, worker 1%)
 
-          Isolate  124 workers spawned · ~132ms startup each (spawn + environment, per file)
+          Isolate  124 workers spawned · ~131ms startup each (spawn + environment, per file)
                    at least ~1.68s faster with isolate: false — reuses workers across files instead of one per file
 
 
@@ -61,8 +71,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T21:33:53Z"
-    tree: 3fc3d7193e482e32c26b81584917de3565a42007f57381502e7726bcfe005ac8
+    at: "2026-10-16T21:53:50Z"
+    tree: e266ddf9081704511addde2518c4661e1f1dfcb95bb6cef6a5760e4c4b1d3e3a
 ---
 
 ## Objective

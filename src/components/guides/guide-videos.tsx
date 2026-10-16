@@ -28,7 +28,8 @@ export function GuideVideos({
   const [deleting, setDeleting] = useState<GuideVideoView | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [deleted, setDeleted] = useState<string | null>(null);
+  /** n: kunci agar pesan berikutnya dipasang ulang dan menerima fokus lagi. */
+  const [deleted, setDeleted] = useState<{ n: number; text: string } | null>(null);
   const trigger = useRef<HTMLButtonElement | null>(null);
 
   async function remove() {
@@ -38,7 +39,7 @@ export function GuideVideos({
     try {
       await api(`/api/guides/videos/${deleting.id}`, "DELETE", null);
       trigger.current = null;
-      setDeleted(`Video “${deleting.title}” dihapus.`);
+      setDeleted((d) => ({ n: (d?.n ?? 0) + 1, text: `Video “${deleting.title}” dihapus.` }));
       setDeleting(null);
       router.refresh();
     } catch (e) {
@@ -53,7 +54,11 @@ export function GuideVideos({
       <h2 id="guide-videos-title" className="text-lg font-semibold">
         Video panduan
       </h2>
-      {deleted ? <FocusNotice tone="success">{deleted}</FocusNotice> : null}
+      {deleted ? (
+        <FocusNotice key={deleted.n} tone="success">
+          {deleted.text}
+        </FocusNotice>
+      ) : null}
       {videos.length ? (
         <ul className="grid gap-4 md:grid-cols-2" aria-label="Video artikel ini">
           {videos.map((v) => (
@@ -64,6 +69,7 @@ export function GuideVideos({
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="h-(--control-h-lg) md:h-(--control-h-sm)"
                   leadingIcon={<IconTrash aria-hidden />}
                   onClick={(e) => {
                     trigger.current = e.currentTarget;

@@ -60,6 +60,7 @@ async function expireStale(storage: MultipartStorage): Promise<void> {
   for (const v of stale) {
     try {
       if (v.uploadId) await storage.abort(v.objectKey, v.uploadId);
+      await storage.remove(v.objectKey); // sudah complete tapi belum READY (proses mati)
       await prisma.guideVideo.delete({ where: { id: v.id } });
     } catch (e) {
       logger.warn({ videoId: v.id, err: String(e) }, "video panduan basi gagal dibersihkan");
@@ -83,12 +84,16 @@ export async function initVideo(
   if (!ext) return { ok: false, code: "INVALID_FORMAT", message: "Hanya video .mp4 atau .webm." };
   if (size > VIDEO_MAX_BYTES)
     return { ok: false, code: "FILE_TOO_LARGE", message: "Ukuran video melebihi batas 500 MB." };
+  await expireStale(storage);
   const article = await prisma.guideArticle.findUnique({
     where: { id: body.articleId },
-    select: { id: true, _count: { select: { videos: true } } },
+    select: {
+      id: true,
+      // Hanya video siap: unggahan yang ditinggal tidak memblokir; batas pasti dicek saat complete.
+      _count: { select: { videos: { where: { status: "READY" } } } },
+    },
   });
   if (!article) return { ...notFound, message: "Artikel tidak ditemukan." };
-  await expireStale(storage);
   if (article._count.videos >= VIDEOS_PER_ARTICLE)
     return {
       ok: false,
@@ -194,7 +199,11 @@ export async function completeVideo(
     typeof d === "number" && Number.isFinite(d) && d > 0 && d <= VIDEO_DURATION_MAX
       ? Math.max(1, Math.round(d))
       : null;
-  await prisma.$transaction(async (tx) => {
+  const full = await prisma.$transaction(async (tx) => {
+    // Kunci baris artikel: complete paralel untuk artikel yang sama berurutan, batas tetap pasti.
+    await tx.$queryRaw`SELECT id FROM "GuideArticle" WHERE id = ${v.articleId} FOR UPDATE`;
+    const ready = await tx.guideVideo.count({ where: { articleId: v.articleId, status: "READY" } });
+    if (ready >= VIDEOS_PER_ARTICLE) return true;
     await tx.guideVideo.update({
       where: { id: v.id },
       data: { status: "READY", uploadId: null, durationSec },
@@ -207,7 +216,16 @@ export async function completeVideo(
       meta: { videoId: v.id, size, ext: v.ext },
       ip,
     });
+    return false;
   });
+  if (full) {
+    await discard({ ...v, uploadId: null }, storage);
+    return {
+      ok: false,
+      code: "LIMIT_REACHED",
+      message: `Satu artikel paling banyak ${VIDEOS_PER_ARTICLE} video. Hapus video lama dulu.`,
+    };
+  }
   return { ok: true, videoId: v.id };
 }
 

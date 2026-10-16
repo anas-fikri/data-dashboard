@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T20:31:39Z"
+updated: "2026-10-16T21:54:05Z"
 created_by: claude-code
 ---
 
@@ -45,6 +45,7 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - 2026-10-13T23:51:57Z Dari review keamanan T-012: status filter dashboard ada di URL (?f=, berisi nilai filter seperti nama cabang/kode). Access log reverse proxy WAJIB membuang query string (Caddy: filter request>uri; nginx: log $uri, bukan $request_uri) agar nilai filter tidak tersimpan di log server.
 - 2026-10-15T20:25:41Z Dari T-018 (ADR-0006): (1) renderer HANYA di network compose internal 'render' (internal: true, tanpa egress) bersama app + worker — bukan network frontend (RustFS/proxy ada di sana); ganti AC 'renderer hanya di network frontend' dengan itu. (2) Nama host internal app untuk APP_INTERNAL_URL tidak boleh 'app'/'dev' atau TLD HSTS preload lain bila http (Chromium memaksa https lalu gagal; env app + renderer menolaknya) — pakai mis. http://web:3000. (3) Access log reverse proxy + app WAJIB meredaksi /render/* (token render di path); pino sudah meredaksi nilai string /render/<token>. (4) Font (Noto/DejaVu yang dipakai print) dipasang di image renderer; image mcr.microsoft.com/playwright:v1.64.0-noble dipin per digest. (5) Seccomp profile Playwright: renderer/seccomp_profile.json (vendored v1.64.0) via security_opt seccomp=… + no-new-privileges, cap_drop ALL, read_only + tmpfs /tmp, user pwuser, mem_limit 2g. (6) /health produksi memuat 'Renderer PDF' bila RENDERER_URL terisi (rendererChecks). (7) Worker butuh RENDERER_URL/RENDERER_SECRET/RENDER_TIMEOUT_MS/PDF_MAX_BYTES; renderer butuh RENDERER_SECRET + APP_INTERNAL_URL saja (tanpa secret DB/S3).
 - 2026-10-15T20:31:39Z Dari T-018 (builder renderer): service renderer butuh cap_add SYS_CHROOT di samping cap_drop ALL (sandbox Chromium gagal start tanpa itu; kapabilitas efektif tetap 0). Image mcr.microsoft.com/playwright:v1.64.0-noble dipin digest sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f; menjalankan renderer/*.ts lewat renderer/loader.mjs (type stripping Node, tanpa tsx/esbuild host); RENDERER_HOST=0.0.0.0 di kontainer; nama service app di network render bukan app/dev (mis. dashboard-web); perintah bukti AC6 memakai -f docker-compose.dev.yml.
+- 2026-10-16T21:54:05Z Dari review T-021 N7: next.config proxyClientMaxBodySize kini 3 MB untuk semua rute (poster video ≤ 2 MB). Di reverse proxy set client_max_body_size kecil per lokasi (mis. 64 KB untuk /api/auth/*, 1 MB default) dan 3 MB hanya untuk /api/guides/videos/*/poster.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

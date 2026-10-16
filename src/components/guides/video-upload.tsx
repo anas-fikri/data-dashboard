@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
-import { FocusNotice } from "@/components/ui/focus-notice";
 import { Input } from "@/components/ui/input";
 import {
   VIDEO_MAX_BYTES,
@@ -29,7 +28,9 @@ const LABEL: Record<Phase, string> = {
 /**
  * Form unggah video panduan (T-021): judul + file mp4/webm ≤ 500 MB. Pra-cek signature di browser,
  * durasi + poster PNG dari file lokal, unggah multipart langsung ke storage (progres + Batalkan), lalu
- * poster. Galat: kolom pertama yang salah atau pesan form difokus; isian dipertahankan.
+ * poster. Progres diumumkan (role=status, per 25%); selama unggah fokus di Batalkan (atau form saat
+ * pemeriksaan). Hasil/galat hanya mengambil fokus bila pengguna masih di form ini (atau fokus hilang),
+ * tidak merebut fokus dari kolom lain yang sedang diketik; isian dipertahankan saat galat.
  */
 export function VideoUpload({ articleId }: { articleId: string }) {
   const router = useRouter();
@@ -42,10 +43,20 @@ export function VideoUpload({ articleId }: { articleId: string }) {
   const titleRef = useRef<HTMLInputElement>(null);
   const fileBtnRef = useRef<HTMLButtonElement>(null);
   const alertRef = useRef<HTMLDivElement>(null);
+  const doneRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const ctrl = useRef<AbortController | null>(null);
   const videoId = useRef<string | null>(null);
 
+  /** Fokus boleh dipindah: pengguna masih di form ini atau fokus jatuh ke <body>. */
+  const here = () => {
+    const a = document.activeElement;
+    return !a || a === document.body || !!formRef.current?.contains(a);
+  };
+
   useEffect(() => {
+    if (!here()) return;
     (errors.title
       ? titleRef
       : errors.file
@@ -55,6 +66,21 @@ export function VideoUpload({ articleId }: { articleId: string }) {
           : null
     )?.current?.focus();
   }, [errors]);
+
+  useEffect(() => {
+    if (done && here()) doneRef.current?.focus();
+  }, [done]);
+
+  // Tombol Unggah jadi disabled saat mulai: fokus ke Batalkan (pemeriksaan server: ke form).
+  const phase = run?.phase;
+  useEffect(() => {
+    const a = document.activeElement;
+    const lost =
+      !a ||
+      a === document.body ||
+      (!!formRef.current?.contains(a) && (a as HTMLButtonElement).disabled === true);
+    if (phase && lost) (cancelRef.current ?? formRef.current)?.focus();
+  }, [phase]);
 
   const fail = (e: Errors) => {
     setRun(null);
@@ -134,14 +160,34 @@ export function VideoUpload({ articleId }: { articleId: string }) {
   }
 
   return (
-    <form onSubmit={start} noValidate className="flex flex-col gap-4 rounded-lg border p-4">
-      <h3 className="text-base font-semibold">Tambah video</h3>
+    <form
+      ref={formRef}
+      tabIndex={-1}
+      aria-labelledby="video-upload-title"
+      onSubmit={start}
+      noValidate
+      className="flex flex-col gap-4 rounded-lg border p-4 outline-none"
+    >
+      <h3 id="video-upload-title" className="text-base font-semibold">
+        Tambah video
+      </h3>
+      <p role="status" className="sr-only">
+        {run
+          ? run.phase === "uploading"
+            ? `Mengunggah ${Math.floor(run.pct / 25) * 25}%`
+            : LABEL[run.phase]
+          : ""}
+      </p>
       {errors.form ? (
         <FormAlert tone="error" ref={alertRef}>
           {errors.form}
         </FormAlert>
       ) : null}
-      {done ? <FocusNotice tone="success">{done}</FocusNotice> : null}
+      {done ? (
+        <FormAlert tone="success" ref={doneRef}>
+          {done}
+        </FormAlert>
+      ) : null}
       <Field id="video-title" label="Judul video" required error={errors.title}>
         <Input
           ref={titleRef}
@@ -213,6 +259,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={run.pct}
+            aria-valuetext={run.phase === "uploading" ? `${run.pct}%` : LABEL[run.phase]}
             className="h-2 overflow-hidden rounded-full bg-muted"
           >
             <div
@@ -233,6 +280,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
         </Button>
         {run && run.phase !== "finishing" ? (
           <Button
+            ref={cancelRef}
             type="button"
             variant="ghost"
             leadingIcon={<IconX aria-hidden />}
