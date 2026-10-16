@@ -1,14 +1,64 @@
 ---
 id: T-p24e
 title: 'KPI h=2 dengan catatan filter tidak berlaku: angka terpotong setengah di kartu lebar'
-status: todo
+status: in_progress
 profile: standard
 goal: G-4
 tags:
   - bug
 created: "2026-10-16T01:58:55Z"
-updated: "2026-10-16T02:17:53Z"
+updated: "2026-10-16T15:25:49Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 48745498b682e380c4840bebacfbd9b0f2720e9f
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 38647
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792164330818,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792164330840,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792164330848,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  117 passed (117)
+            Tests  1681 passed (1681)
+         Start at  22:25:23
+         Duration  24.57s (tests 74%, import 19%, transform 6%, worker 1%)
+
+          Isolate  117 workers spawned · ~134ms startup each (spawn + environment, per file)
+                   at least ~1.60s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-16T15:25:49Z"
+    tree: 319f8d4ef18269b9e4a6a5ee2c752859c8066007b507385987fe4a78b31a2664
 ---
 
 ## Objective

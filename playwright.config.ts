@@ -34,6 +34,7 @@ export default defineConfig({
         /sharing\.spec\.ts$/,
         /exports\.spec\.ts$/,
         /pdf\.spec\.ts$/,
+        /kpi-fit\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -57,7 +58,9 @@ export default defineConfig({
     // pdf (T-018): worker sendiri (antrean pdf) + renderer sendiri (npm run renderer, dimatikan untuk AC3
     // lalu dinyalakan lagi); PDF 6 widget = layar, token render sekali pakai, peran, AuditLog.
     { name: "pdf", testMatch: /pdf\.spec\.ts$/, dependencies: ["exports"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["pdf"] },
+    // kpi-fit (T-p24e): worker sendiri (workbook 2 sheet); angka KPI h=2 bercatatan di layar + halaman cetak.
+    { name: "kpi-fit", testMatch: /kpi-fit\.spec\.ts$/, dependencies: ["pdf"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["kpi-fit"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
