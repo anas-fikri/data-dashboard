@@ -692,8 +692,13 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
                   } else if (text !== "") {
                     const num = Number(text);
                     if (Number.isNaN(num)) v = own(text);
-                    else
-                      v = dateXf.has(style) ? new Date(epoch + Math.round(num * 86_400_000)) : num;
+                    else if (!dateXf.has(style)) v = num;
+                    else {
+                      const d = new Date(epoch + Math.round(num * 86_400_000));
+                      // Seri < 61 sistem 1900: teks ISO lengkap ber-T (19 karakter) — penanda sel bernomor
+                      // seri untuk koreksi kabisat 1900 Excel di cast kolom tanggal (infer.ts excel1900).
+                      v = !date1904 && num < 61 ? d.toISOString().slice(0, 19) : d;
+                    }
                   }
                   if (v !== null) {
                     if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {

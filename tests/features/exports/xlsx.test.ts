@@ -145,10 +145,17 @@ describe("writeXlsx", () => {
     expect(first[2]).toEqual(new Date(Date.UTC(2024, 0, 2)));
     expect((first[3] as Date).toISOString()).toBe("2024-01-02T03:04:05.000Z");
     expect(first[4]).toBe(true);
-    // Durasi 3661 detik = 1:01:01 (format [h]:mm:ss bergaya tanggal → parser membacanya sebagai waktu).
-    expect((first[5] as Date).getTime()).toBe(Date.UTC(1899, 11, 30) + 3661 * 1000);
+    // Durasi 3661 detik = 1:01:01 (format [h]:mm:ss bergaya tanggal; seri < 61 → teks ISO ber-T, T-065).
+    expect(first[5]).toBe("1899-12-30T01:01:01");
     expect(first[6]).toBe(42);
-    expect(back[2]!.slice(1, 7)).toEqual([-2, undefined, undefined, false, expect.any(Date), 0]);
+    expect(back[2]!.slice(1, 7)).toEqual([
+      -2,
+      undefined,
+      undefined,
+      false,
+      expect.stringMatching(/^1899-12-30T\d\d:\d\d:\d\d$/),
+      0,
+    ]);
     // NULL → sel tidak ditulis.
     expect(back[3]!.slice(1)).toEqual([]);
     // BIGINT ditulis dengan semua digitnya; Excel/parser membacanya sebagai double.

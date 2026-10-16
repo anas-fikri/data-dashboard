@@ -194,17 +194,22 @@ function familyParse(v: string, f: TextDateFormat, s: DateShape, iso: string): s
 /** TIMESTAMP mentah dari teks ter-trim untuk konversi (prafilter bentuk tanggal; penjaga = dateOk). */
 const dateParse = (v: string, f: TextDateFormat, iso = isoParse(v)) =>
   `CASE WHEN ${match(v, RE.datey)} THEN ${familyParse(v, f, shapeOf(v), iso)} END`;
-/** Raw ISO seri 60 Excel (29/02/1900 fiktif; parser linier dari 1899-12-30 → "1900-02-28…"). */
-const fict1900 = (v: string) => `(${v} >= '1900-02-28' AND ${v} < '1900-03')`;
+/** Raw sel bernomor seri < 61 dari parser: "YYYY-MM-DDTHH:MM:SS" (teks ketikan/t="d"/ekspor tidak). */
+const serialRaw = (v: string) => `(length(${v}) = 19 AND substr(${v}, 11, 1) = 'T')`;
+/** Raw seri 60 Excel (29/02/1900 fiktif; parser linier dari 1899-12-30 → "1900-02-28T…"). */
+const fict1900 = (v: string) => `(${serialRaw(v)} AND ${v} >= '1900-02-28' AND ${v} < '1900-03')`;
 /**
  * Sel tanggal asli xlsx di kolom tanggal/waktu (T-065). Parser memetakan nomor seri linier dari
  * 1899-12-30 (durasi dihitung dari sana), sedangkan Excel menganggap 1900 kabisat (ECMA-376 §18.17.4.1):
  * seri 1–59 (raw 1899-12-31 … 1900-02-27) tampil sehari lebih lambat di Excel, seri 60 tidak punya
- * tanggal → NULL (gagal cast, dihitung Profile.fict). Raw ISO dari parser kanonik (ber-nol depan), jadi
- * dibandingkan sebagai teks; cabang eksklusif → parse ISO tetap sekali. Kebalikan excelSerial (ekspor).
+ * tanggal → NULL (gagal cast, dihitung Profile.fict). Hanya raw berbentuk penanda parser (serialRaw):
+ * teks ISO ketikan, sel t="d", dan teks "1899-12-31" dari ekspor tidak digeser. Raw kanonik (ber-nol
+ * depan) → dibandingkan sebagai teks; cabang eksklusif → parse ISO tetap sekali. Kebalikan excelSerial.
+ * shortcut: teks ketikan persis "YYYY-MM-DDTHH:MM:SS" di Jan–Feb 1900 ikut digeser; ubah ke penanda di luar
+ * teks (kolom raw tambahan) bila kasus itu pernah muncul.
  */
 const excel1900 = (v: string, iso: string) =>
-  `CASE WHEN ${v} >= '1899-12-31' AND ${v} < '1900-02-28' THEN ${iso} + INTERVAL 1 DAY WHEN ${fict1900(v)} THEN NULL ELSE ${iso} END`;
+  `CASE WHEN ${serialRaw(v)} AND ${v} >= '1899-12-31' AND ${v} < '1900-02-28' THEN ${iso} + INTERVAL 1 DAY WHEN ${fict1900(v)} THEN NULL ELSE ${iso} END`;
 const dateOk = (ts: string) => `year(${ts}) >= 1000`;
 /** Durasi Excel ([h]:mm): parser mengubahnya menjadi tanggal 1899-12-30 s.d. sebelum 1900-03-01. */
 const isDuration = (ts: string) =>

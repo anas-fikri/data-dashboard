@@ -206,6 +206,30 @@ describe("kasus pelengkap", () => {
     expect(c.values.at(-1)).toBeNull();
   });
 
+  it('review T-065 INT-R2-1: teks ISO, sel t="d", dan teks ekspor 1899-12-31 di kolom tanggal xlsx tidak digeser', async () => {
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>tgl</t></is></c></row>`;
+    const cells = [
+      ...range(50, () => `<v>45293</v>`),
+      ...["1900-01-15", "1899-12-31", "1900-02-28"].map((s) => `<is><t>${s}</t></is>`),
+    ];
+    cells.forEach((c, i) => {
+      const kind = c.startsWith("<is>") ? ` t="inlineStr"` : ` s="1"`;
+      xml += `<row r="${i + 2}"><c r="A${i + 2}"${kind}>${c}</c></row>`;
+    });
+    xml += `<row r="${cells.length + 2}"><c r="A${cells.length + 2}" t="d"><v>1900-02-10T00:00:00</v></c></row>`;
+    const { col } = await ingest(
+      t.file("tgl-teks-1900.xlsx", await buildXlsx([{ name: "S", xml }], { dateStyle: true })),
+    );
+    const c = col("tgl");
+    expect(c).toMatchObject({ type: "date", castFailCount: 0 });
+    expect(c.values.slice(50).map((v) => (v as Date).toISOString().slice(0, 10))).toEqual([
+      "1900-01-15",
+      "1899-12-31",
+      "1900-02-28",
+      "1900-02-10",
+    ]);
+  });
+
   it("review T-065 INT-1: durasi bergaya tanggal (=B2-A2 mewarisi format tanggal) tetap persis, tanpa koreksi kabisat", async () => {
     const serials = [0.25, 1.5, 59.5, 60.5];
     let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>lama</t></is></c></row>`;

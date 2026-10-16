@@ -1,23 +1,33 @@
 ---
 id: T-065
 title: 'Ingest XLSX: tanggal 1 Jan–28 Feb 1900 terbaca mundur satu hari (bug tahun kabisat 1900 Excel)'
-status: in_progress
+status: in_review
 profile: standard
 goal: G-3
 tags:
   - bug
 created: "2026-10-15T19:47:05Z"
-updated: "2026-10-16T16:03:42Z"
+updated: "2026-10-16T16:13:23Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: a01a9ef33c04775e308d26e0eb6222594e049296
+review:
+  passes:
+    - "n": 1
+      by: frontend-expert-test-engineer
+      at: "2026-10-16T16:03:58Z"
+      findings: 1
+    - "n": 2
+      by: claude-verify-workflow
+      at: "2026-10-16T16:03:58Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42872
+    duration_ms: 39959
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -39,17 +49,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792166600096,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792166600119,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792166600128,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792167182923,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792167182946,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792167182956,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  117 passed (117)
-            Tests  1683 passed (1683)
-         Start at  23:03:12
-         Duration  27.75s (tests 72%, import 19%, transform 8%, worker 1%)
+            Tests  1684 passed (1684)
+         Start at  23:12:55
+         Duration  26.28s (tests 71%, import 20%, transform 8%, worker 1%)
 
-          Isolate  117 workers spawned · ~149ms startup each (spawn + environment, per file)
-                   at least ~1.79s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  117 workers spawned · ~139ms startup each (spawn + environment, per file)
+                   at least ~1.67s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -57,8 +67,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T16:03:42Z"
-    tree: 0309db116bce1c3259e3d072c44d930869eaec47a2364a05e19c41e358d85c51
+    at: "2026-10-16T16:13:23Z"
+    tree: e5612923d015f843925014d7a94965b1a9811a2c85de4fd6b263dc5233fbf5d4
 ---
 
 ## Objective
