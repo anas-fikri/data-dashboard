@@ -111,7 +111,7 @@ const RE = {
   wideUs: String.raw`\.\d{7}|[eE]`,
   wideId: String.raw`,\d{7}`,
   /** Kode yang tidak boleh menjadi angka: nol di depan (no. HP, kode) atau ≥ 16 digit (NIK, rekening). */
-  code: String.raw`[+-]?(0\d+|\d{16,})`,
+  code: String.raw`[+-]?0\d+|\d{16,}`,
   /** Bentuk angka (prafilter murah: superset semua pola angka di atas; teks biasa tidak lolos). */
   numy: String.raw`[+-]?[0-9.,]*[0-9][0-9.,]*([eE][+-]?[0-9]+)?`,
   /** Kandidat tanggal (prafilter murah sebelum strptime; dipakai juga di konversi). */

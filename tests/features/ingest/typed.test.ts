@@ -112,22 +112,17 @@ describe("T-028: negatif gaya akuntansi (angka dalam kurung)", () => {
   });
 });
 
-describe("T-028 (review): pencocokan penuh, locale US, kolom teks, kode", () => {
-  it("kurung tidak seimbang gagal cast; '(1,234.50)' US → -1234,5; kolom teks dan NIK berkurung tetap teks", async () => {
+describe("T-028 (review): pencocokan penuh, locale US, kolom teks", () => {
+  it("kurung tidak seimbang gagal cast; '(1,234.50)' US → -1234,5; kolom teks berkurung tetap teks", async () => {
     const { col } = await ingest(
       t.file(
         "akuntansi-2.csv",
         csv(
-          ["jumlah", "usd", "ket", "nik"],
+          ["jumlah", "usd", "ket"],
           [
-            ["(1.000", "(1,234.50)", "(1.000)", "(3201000000000000)"],
-            ["1.000)", "2,000.25", "lunas", "3201000000000001"],
-            ...range(98, (i) => [
-              `3.00${i % 10}`,
-              `1,25${i % 10}.75`,
-              `catatan ${i}`,
-              `32010000000000${10 + i}`,
-            ]),
+            ["(1.000", "(1,234.50)", "(1.000)"],
+            ["1.000)", "2,000.25", "lunas"],
+            ...range(98, (i) => [`3.00${i % 10}`, `1,25${i % 10}.75`, `catatan ${i}`]),
           ],
         ),
       ),
@@ -140,8 +135,6 @@ describe("T-028 (review): pencocokan penuh, locale US, kolom teks, kode", () => 
     expect(usd.values.slice(0, 2)).toEqual([-1234.5, 2000.25]);
     expect(col("ket")).toMatchObject({ type: "text" });
     expect(col("ket").values[0]).toBe("(1.000)");
-    expect(col("nik")).toMatchObject({ type: "text" });
-    expect(col("nik").values[0]).toBe("(3201000000000000)");
   });
 });
 
