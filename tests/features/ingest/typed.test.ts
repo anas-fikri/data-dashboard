@@ -112,6 +112,39 @@ describe("T-028: negatif gaya akuntansi (angka dalam kurung)", () => {
   });
 });
 
+describe("T-028 (review): pencocokan penuh, locale US, kolom teks, kode", () => {
+  it("kurung tidak seimbang gagal cast; '(1,234.50)' US → -1234,5; kolom teks dan NIK berkurung tetap teks", async () => {
+    const { col } = await ingest(
+      t.file(
+        "akuntansi-2.csv",
+        csv(
+          ["jumlah", "usd", "ket", "nik"],
+          [
+            ["(1.000", "(1,234.50)", "(1.000)", "(3201000000000000)"],
+            ["1.000)", "2,000.25", "lunas", "3201000000000001"],
+            ...range(98, (i) => [
+              `3.00${i % 10}`,
+              `1,25${i % 10}.75`,
+              `catatan ${i}`,
+              `32010000000000${10 + i}`,
+            ]),
+          ],
+        ),
+      ),
+    );
+    const jumlah = col("jumlah");
+    expect(jumlah).toMatchObject({ type: "integer", numberLocale: "id", castFailCount: 2 });
+    expect(jumlah.values.slice(0, 3)).toEqual([null, null, 3000n]);
+    const usd = col("usd");
+    expect(usd).toMatchObject({ type: "decimal", numberLocale: "us", castFailCount: 0 });
+    expect(usd.values.slice(0, 2)).toEqual([-1234.5, 2000.25]);
+    expect(col("ket")).toMatchObject({ type: "text" });
+    expect(col("ket").values[0]).toBe("(1.000)");
+    expect(col("nik")).toMatchObject({ type: "text" });
+    expect(col("nik").values[0]).toBe("(3201000000000000)");
+  });
+});
+
 describe("AC 3: locale angka per kolom", () => {
   it("'1.234.567,89' → ID 1234567.89; '1234.5' → US 1234.5", async () => {
     const { col } = await ingest(

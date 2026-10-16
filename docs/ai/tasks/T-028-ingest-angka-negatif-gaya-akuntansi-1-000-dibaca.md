@@ -7,7 +7,7 @@ profile_pinned: true
 tags:
   - bug
 created: "2026-10-12T23:39:16Z"
-updated: "2026-10-16T16:22:49Z"
+updated: "2026-10-16T16:41:52Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -17,7 +17,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42934
+    duration_ms: 41583
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -39,14 +39,14 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792167745084,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792167745108,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792167745114,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792168888891,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792168888915,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792168888921,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  117 passed (117)
-            Tests  1686 passed (1686)
-         Start at  23:22:18
-         Duration  29.27s (tests 75%, import 18%, transform 6%, worker 1%)
+            Tests  1688 passed (1688)
+         Start at  23:41:22
+         Duration  28.28s (tests 75%, import 18%, transform 6%, worker 1%)
 
           Isolate  117 workers spawned · ~133ms startup each (spawn + environment, per file)
                    at least ~1.59s faster with isolate: false — reuses workers across files instead of one per file
@@ -57,8 +57,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T16:22:48Z"
-    tree: e7451724a1185f7c6090aed70d4e66a2f36069941b1d461cae19936888c9b401
+    at: "2026-10-16T16:41:52Z"
+    tree: 9908acff0e706c38425bca4ffd3e28f5f88b84266918cd4ca130b94953be9a25
 ---
 
 ## Objective

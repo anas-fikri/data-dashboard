@@ -260,6 +260,18 @@ describe("recast", () => {
     ).toEqual(["2023-03-15", null, "2023-03-16"]);
   });
 
+  it("review T-028 INT-1: '(0)' di kolom serial gagal cast dan terhitung (negatif akuntansi bukan nomor seri)", async () => {
+    const r = await setup(`tgl;n\n45000;1\n(0);2\n45001;3\n`);
+    await recastSheet(
+      r.sheetId,
+      { columns: [{ pos: 1, type: "date", dateFormat: "serial" }] },
+      r.deps,
+    );
+    expect(r.sheet().schema![0]).toMatchObject({ type: "date", castFailCount: 1 });
+    const rows = await readParquet(join(r.storage.dir, r.sheet().typedKey!));
+    expect(rows.map((x) => x[1])).toEqual([expect.any(Date), null, expect.any(Date)]);
+  });
+
   it("swap commit lalu koneksi putus → file yang kini aktif tidak dihapus (N1)", async () => {
     const r = await setup(DATA);
     const real = r.deps.repo.swapTyped;

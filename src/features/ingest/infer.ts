@@ -111,7 +111,7 @@ const RE = {
   wideUs: String.raw`\.\d{7}|[eE]`,
   wideId: String.raw`,\d{7}`,
   /** Kode yang tidak boleh menjadi angka: nol di depan (no. HP, kode) atau ≥ 16 digit (NIK, rekening). */
-  code: String.raw`[+-]?0\d+|\d{16,}`,
+  code: String.raw`[+-]?(0\d+|\d{16,})`,
   /** Bentuk angka (prafilter murah: superset semua pola angka di atas; teks biasa tidak lolos). */
   numy: String.raw`[+-]?[0-9.,]*[0-9][0-9.,]*([eE][+-]?[0-9]+)?`,
   /** Kandidat tanggal (prafilter murah sebelum strptime; dipakai juga di konversi). */
@@ -126,7 +126,8 @@ const norm = (v: string, loc: NumberLocale) =>
   loc === "id" ? `replace(replace(${v}, '.', ''), ',', '.')` : `replace(${v}, ',', '')`;
 /**
  * Negatif gaya akuntansi "(1.000)" / "(1,234.50)" → "-1.000" (T-028): hanya bila seluruh nilai adalah
- * angka dalam kurung tanpa tanda; teks berkurung lain ("(N/A)", "(021) 555") tidak berubah.
+ * angka dalam kurung tanpa tanda; teks berkurung lain ("(N/A)", "(021) 555") tidak berubah. Nomor seri
+ * (format serial) tetap dari teks asli, jadi profil `ser` hanya menghitung nilai yang tidak diubah acct.
  */
 const acct = (v: string) =>
   `CASE WHEN ${match(v, String.raw`\(\s*\d[\d.,]*\s*\)`)} THEN '-' || trim(substr(${v}, 2, length(${v}) - 2)) ELSE ${v} END`;
@@ -314,9 +315,9 @@ SELECT col,
     count(*) FILTER (WHERE nid IS NOT NULL AND wid) AS wide_id,
     count(*) FILTER (WHERE nus IS NOT NULL AND NOT wus AND TRY_CAST(${norm("v", "us")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_us,
     count(*) FILTER (WHERE nid IS NOT NULL AND NOT wid AND TRY_CAST(${norm("v", "id")} AS DECIMAL(38,6)) IS NOT NULL) AS dec_id,
-    count(*) FILTER (WHERE ${serialOk("nus")}) AS ser
+    count(*) FILTER (WHERE ${serialOk("nus")} AND o = v) AS ser
 FROM (
-  SELECT col, v,
+  SELECT col, v, o,
       ${match("v", RE.code)} AS code,
       ${match("v", RE.idStrong)} AS ids,
       ${match("v", RE.usStrong)} AS uss,
@@ -328,7 +329,7 @@ FROM (
       ${wideExpr("v", "id")} AS wid,
       ${intExpr("v", "us")} AS ius,
       ${intExpr("v", "id")} AS iid
-  FROM (SELECT col, ${acct("v")} AS v FROM ${f}) WHERE ${match("v", RE.numy)}
+  FROM (SELECT col, v AS o, ${acct("v")} AS v FROM ${f}) WHERE ${match("v", RE.numy)}
 ) GROUP BY col`;
   const date = `
 SELECT col,
