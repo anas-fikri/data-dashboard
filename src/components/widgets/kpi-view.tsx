@@ -25,7 +25,10 @@ function textWidth(text: string, px: number): number | null {
   ctx ??= document.createElement("canvas").getContext("2d");
   if (!ctx) return null;
   ctx.font = `600 ${px}px ${getComputedStyle(document.body).fontFamily}`;
-  // Halaman memakai angka tabular (tnum), canvas tidak: semua angka diukur selebar "0" (R6-CL-2).
+  // Sama dengan angka di halaman: tracking-tight (−0,025em) dan angka tabular (tnum) — canvas tidak
+  // mengenal tnum, jadi semua angka diukur selebar "0" (R6-CL-2). Terukur −2,1 %…+1,5 % dari DOM di
+  // 10–36 px; SLACK 6 % menutupinya. Tanpa letterSpacing (peramban lama) ukuran berlebih = aman.
+  ctx.letterSpacing = `${-0.025 * px}px`;
   return ctx.measureText(text.replace(/\d/g, "0")).width;
 }
 
