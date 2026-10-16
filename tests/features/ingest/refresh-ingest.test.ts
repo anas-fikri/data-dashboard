@@ -109,6 +109,18 @@ describe("refresh cocok → aktif dengan skema aktif", () => {
     expect(r.sheet().aliasName).toBe("Penjualan");
   });
 
+  it("T-033: pasangan planSheets (sheet aktif → sheet versi baru) diteruskan ke finish sebagai sheetMap", async () => {
+    const active = await activeFrom(v1Rows);
+    const r = await refresh(v1Rows, active);
+    expect(await r.run()).toEqual({ outcome: "done", sheets: 1 });
+    const [newId] = [...r.repo.sheets.keys()];
+    expect(r.repo.sheetMap).toEqual({ [active.sheets[0]!.id]: newId });
+    // Versi pertama (tanpa versi aktif): tidak ada pasangan.
+    const first = t.setup(t.file("v1-pertama.csv", csv(v1Rows)));
+    await runIngest(VID, first.repo, first.storage, first.opts);
+    expect(first.repo.sheetMap).toEqual({});
+  });
+
   it("kolom tersembunyi yang hilang diabaikan", async () => {
     const active = await activeFrom(v1Rows, corrected);
     const r = await refresh(

@@ -176,6 +176,29 @@ describe("planWidget", () => {
     });
   });
 
+  it("T-033 (R5-1): nama akar dipakai ulang (alias ganda) → tebakan null; sheetMap ingest 'Ganti semua' memasang widget", () => {
+    const SC = "cmv4kljx40009oczvdmpurrsc";
+    const sales: OldSheet = {
+      id: SA,
+      name: "Sales",
+      aliasName: "Penjualan",
+      index: 0,
+      schema: OLD_SCHEMA,
+      versionId: A,
+      sheetCount: 2,
+    };
+    const next: SheetInfo[] = [
+      // Sheet baru yang kebetulan bernama akar lama, dan pewaris silsilah (alias terbawa planSheets).
+      { id: SB, name: "Penjualan", index: 0, schema: OLD_SCHEMA },
+      { id: SC, name: "Sales 2026", aliasName: "Penjualan", index: 1, schema: OLD_SCHEMA },
+    ];
+    expect(planWidget(w("w1", "bar", bar(SA)), next, sales)).toBeNull();
+    expect(planWidget(w("w1", "bar", bar(SA)), next, sales, new Set(), { [SA]: SC })).toEqual({
+      spec: bar(SC),
+      missingColumns: [],
+    });
+  });
+
   it("T-014 sheetMap: sheet ganti nama di dataset multi-sheet → widget ikut pasangan pemetaan", () => {
     const multi = { ...oldSheet, sheetCount: 2 };
     const renamed: SheetInfo[] = [

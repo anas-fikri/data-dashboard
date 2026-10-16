@@ -113,11 +113,17 @@ export interface IngestRepo {
   /**
    * Semua sheet raw + typed tertulis. Di bawah lock baris Dataset: acuan cast (`snapshot`) basi →
    * "stale"; verdict cocok → READY + aktif (activateVersionInTx); tidak cocok → AWAITING_MAPPING
-   * dengan alasan, versi aktif tetap.
+   * dengan alasan, versi aktif tetap. `sheetMap` = pasangan sheet aktif → sheet versi ini dari
+   * planSheets, diteruskan ke aktivasi agar widget ikut sheetnya walau tebakan nama ambigu (T-033).
    */
   finish(
     versionId: string,
-    data: { sha256: string; verdict: Verdict; snapshot: SnapshotRef },
+    data: {
+      sha256: string;
+      verdict: Verdict;
+      snapshot: SnapshotRef;
+      sheetMap: Record<string, string>;
+    },
   ): Promise<FinishOutcome>;
   fail(versionId: string, message: string): Promise<void>;
   /** Prefix storage yang gagal dibersihkan → diproses ulang job pembersihan (StorageCleanup). */
@@ -336,6 +342,7 @@ export async function runIngest(
         )
       : null;
     const issues = (plan?.missing ?? []).map(missingSheetIssue);
+    const sheetMap: Record<string, string> = {};
 
     // Per sheet: tipe kolom (typed-1) lalu unggah raw + typed + metadata.
     for (const [i, s] of sheets.entries()) {
@@ -348,6 +355,7 @@ export async function runIngest(
       const cols = active ? planColumns(s.rec.columns, active.schema) : null;
       const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
       const sheetId = await repo.createSheet(versionId, s.rec);
+      if (active) sheetMap[active.id] = sheetId;
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
       // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang
@@ -385,6 +393,7 @@ export async function runIngest(
       sha256: dl.sha256,
       verdict,
       snapshot: snapshotRef(v.active),
+      sheetMap,
     });
     if (done === "gone") throw new DatasetGoneError();
     if (done === "stale") throw new StaleSnapshotError();

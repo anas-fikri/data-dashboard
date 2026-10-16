@@ -159,11 +159,19 @@ export class FakeRepo implements IngestRepo {
     Object.assign(this.sheets.get(id)!, d);
   }
   /** Meniru finish Prisma: acuan cast dibandingkan dengan `active` saat ini (bisa diubah uji). */
+  /** sheetMap terakhir yang diteruskan finish (T-033). */
+  sheetMap: Record<string, string> | null = null;
   async finish(
     _v: string,
-    d: { sha256: string; verdict: Verdict; snapshot: SnapshotRef },
+    d: {
+      sha256: string;
+      verdict: Verdict;
+      snapshot: SnapshotRef;
+      sheetMap: Record<string, string>;
+    },
   ): Promise<FinishOutcome> {
     if (!this.alive()) return "gone";
+    this.sheetMap = d.sheetMap;
     if (!sameSnapshot(d.snapshot, snapshotRef(this.active))) return "stale";
     if (this.status !== "INGESTING") return "gone";
     this.stage = "typed";

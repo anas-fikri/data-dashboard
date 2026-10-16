@@ -191,7 +191,7 @@ export const prismaIngestRepo: IngestRepo = {
         if (r.count === 0) return "gone";
         if (!d.verdict.ok) return "awaiting";
         // Worker: tidak ada cache Parquet lokal yang perlu dilupakan (deletedTypedKeys diabaikan).
-        await activateVersionInTx(tx, owner.datasetId, versionId);
+        await activateVersionInTx(tx, owner.datasetId, versionId, { sheetMap: d.sheetMap });
         return "activated";
       },
       { timeout: FINISH_TX_TIMEOUT_MS },
