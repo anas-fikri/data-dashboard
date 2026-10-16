@@ -124,6 +124,12 @@ const listLit = (xs: string[]) => `[${xs.map(lit).join(", ")}]`;
 const match = (v: string, re: string) => `regexp_full_match(${v}, ${lit(re)})`;
 const norm = (v: string, loc: NumberLocale) =>
   loc === "id" ? `replace(replace(${v}, '.', ''), ',', '.')` : `replace(${v}, ',', '')`;
+/**
+ * Negatif gaya akuntansi "(1.000)" / "(1,234.50)" → "-1.000" (T-028): hanya bila seluruh nilai adalah
+ * angka dalam kurung tanpa tanda; teks berkurung lain ("(N/A)", "(021) 555") tidak berubah.
+ */
+const acct = (v: string) =>
+  `CASE WHEN ${match(v, String.raw`\(\s*\d[\d.,]*\s*\)`)} THEN '-' || trim(substr(${v}, 2, length(${v}) - 2)) ELSE ${v} END`;
 /** Bilangan bulat persis dari teks ter-trim, atau NULL. */
 const intExpr = (v: string, loc: NumberLocale) =>
   `CASE WHEN ${match(v, loc === "id" ? RE.intId : RE.intUs)} THEN TRY_CAST(${norm(v, loc)} AS BIGINT) END`;
@@ -322,7 +328,7 @@ FROM (
       ${wideExpr("v", "id")} AS wid,
       ${intExpr("v", "us")} AS ius,
       ${intExpr("v", "id")} AS iid
-  FROM ${f} WHERE ${match("v", RE.numy)}
+  FROM (SELECT col, ${acct("v")} AS v FROM ${f}) WHERE ${match("v", RE.numy)}
 ) GROUP BY col`;
   const date = `
 SELECT col,
@@ -513,9 +519,9 @@ export function typedParts(
     case "text":
       return { inner: raw, outer: (a) => `CASE WHEN trim(${a}) <> '' THEN ${a} END` };
     case "integer":
-      return { inner: intExpr(v, loc), outer: same };
+      return { inner: intExpr(acct(v), loc), outer: same };
     case "decimal":
-      return { inner: decExpr(v, loc, s.float ?? false), outer: same };
+      return { inner: decExpr(acct(v), loc, s.float ?? false), outer: same };
     case "boolean":
       return {
         inner: `CASE WHEN lower(${v}) IN (${BOOL_TRUE.map(lit).join(", ")}) THEN true WHEN lower(${v}) IN (${BOOL_FALSE.map(lit).join(", ")}) THEN false END`,

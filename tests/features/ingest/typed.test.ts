@@ -71,6 +71,47 @@ describe("AC 2: bilangan bulat vs boolean", () => {
   });
 });
 
+describe("T-028: negatif gaya akuntansi (angka dalam kurung)", () => {
+  it("CSV id-ID '(1.000)' dan '(1.234,50)' → -1000 dan -1234,5; teks berkurung bukan angka tetap teks", async () => {
+    const { col } = await ingest(
+      t.file(
+        "akuntansi.csv",
+        csv(
+          ["saldo", "jumlah", "ket"],
+          [
+            ["(1.000)", "(1.000)", "(N/A)"],
+            ["(1.234,50)", "( 2.500 )", "(021) 555-1234"],
+            ...range(18, (i) => [`1.25${i % 10},75`, `3.00${i % 10}`, `(catatan ${i})`]),
+          ],
+        ),
+      ),
+    );
+    const saldo = col("saldo");
+    expect(saldo).toMatchObject({ type: "decimal", numberLocale: "id", castFailCount: 0 });
+    expect(saldo.values.slice(0, 3)).toEqual([-1000, -1234.5, 1250.75]);
+    const jumlah = col("jumlah");
+    expect(jumlah).toMatchObject({ type: "integer", numberLocale: "id", castFailCount: 0 });
+    expect(jumlah.values.slice(0, 3)).toEqual([-1000n, -2500n, 3000n]);
+    const ket = col("ket");
+    expect(ket.type).toBe("text");
+    expect(ket.values.slice(0, 2)).toEqual(["(N/A)", "(021) 555-1234"]);
+  });
+
+  it("xlsx: sel teks '(1.000)' di antara angka asli → -1000; '(abc)' di kolom angka gagal cast, bukan angka", async () => {
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>nilai</t></is></c></row>`;
+    const cells = [
+      `<c r="A2" t="inlineStr"><is><t>(1.000)</t></is></c>`,
+      `<c r="A3" t="inlineStr"><is><t>(abc)</t></is></c>`,
+      ...range(60, (i) => `<c r="A${i + 4}"><v>${2500 + i}</v></c>`),
+    ];
+    cells.forEach((c, i) => (xml += `<row r="${i + 2}">${c}</row>`));
+    const { col } = await ingest(t.file("akuntansi.xlsx", await buildXlsx([{ name: "S", xml }])));
+    const nilai = col("nilai");
+    expect(nilai).toMatchObject({ type: "integer", castFailCount: 1 });
+    expect(nilai.values.slice(0, 3)).toEqual([-1000n, null, 2500n]);
+  });
+});
+
 describe("AC 3: locale angka per kolom", () => {
   it("'1.234.567,89' → ID 1234567.89; '1234.5' → US 1234.5", async () => {
     const { col } = await ingest(
