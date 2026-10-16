@@ -8,7 +8,7 @@ import {
   type SheetRecord,
 } from "@/features/ingest/ingest";
 import type { ActiveSnapshot } from "@/features/ingest/refresh";
-import { readParquet, testRoot, VID } from "./fakes";
+import { buildXlsx, readParquet, testRoot, VID } from "./fakes";
 
 /*
  * Versi refresh end-to-end (T-013, D4/A4): parser + DuckDB sungguhan, versi aktif dipalsukan dari hasil
@@ -119,6 +119,66 @@ describe("refresh cocok → aktif dengan skema aktif", () => {
     const first = t.setup(t.file("v1-pertama.csv", csv(v1Rows)));
     await runIngest(VID, first.repo, first.storage, first.opts);
     expect(first.repo.sheetMap).toEqual({});
+  });
+
+  it("T-033 (review T2): xlsx 2 sheet, urutan ditukar, satu berpasangan lewat alias → sheetMap per silsilah, bukan posisi", async () => {
+    const xml = (n: number) =>
+      `<row r="1"><c r="A1" t="inlineStr"><is><t>Kode</t></is></c><c r="B1" t="inlineStr"><is><t>Omzet</t></is></c></row>` +
+      range(
+        10,
+        (i) =>
+          `<row r="${i + 2}"><c r="A${i + 2}"><v>${n + i}</v></c><c r="B${i + 2}"><v>${i * 3}</v></c></row>`,
+      ).join("");
+    const v1 = t.setup(
+      t.file(
+        "v1-dua.xlsx",
+        await buildXlsx([
+          { name: "Sales", xml: xml(1) },
+          { name: "Sales 2026", xml: xml(100) },
+        ]),
+      ),
+    );
+    expect(await runIngest(VID, v1.repo, v1.storage, v1.opts)).toMatchObject({ outcome: "done" });
+    const [sales, y2026] = v1.repo.byIndex();
+    const active: ActiveSnapshot = {
+      versionId: "aktif0000000000000001",
+      sheets: [
+        {
+          id: "aktifsales00000000001",
+          name: "Sales",
+          aliasName: "Penjualan",
+          index: 0,
+          headerRow: sales!.headerRow,
+          schemaRevision: 1,
+          schema: sales!.schema!,
+        },
+        {
+          id: "aktif2026000000000002",
+          name: "Sales 2026",
+          index: 1,
+          headerRow: y2026!.headerRow,
+          schemaRevision: 1,
+          schema: y2026!.schema!,
+        },
+      ],
+    };
+    // File baru: urutan ditukar; "Penjualan" = sheet "Sales" yang dikembalikan ke nama akarnya.
+    const s = t.setup(
+      t.file(
+        "v2-dua.xlsx",
+        await buildXlsx([
+          { name: "Sales 2026", xml: xml(200) },
+          { name: "Penjualan", xml: xml(300) },
+        ]),
+      ),
+    );
+    s.repo.active = active;
+    expect(await runIngest(VID, s.repo, s.storage, s.opts)).toEqual({ outcome: "done", sheets: 2 });
+    const idOf = (name: string) => [...s.repo.sheets].find(([, x]) => x.name === name)![0];
+    expect(s.repo.sheetMap).toEqual({
+      aktifsales00000000001: idOf("Penjualan"),
+      aktif2026000000000002: idOf("Sales 2026"),
+    });
   });
 
   it("kolom tersembunyi yang hilang diabaikan", async () => {

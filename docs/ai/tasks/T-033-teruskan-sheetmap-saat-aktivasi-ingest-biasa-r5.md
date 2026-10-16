@@ -8,7 +8,7 @@ tags:
   - bug
   - ingest
 created: "2026-10-15T02:30:54Z"
-updated: "2026-10-16T18:09:06Z"
+updated: "2026-10-16T18:20:45Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -18,7 +18,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 41642
+    duration_ms: 43143
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -40,17 +40,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792174123105,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792174123128,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792174123133,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792174822220,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792174822243,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792174822251,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
-       Test Files  119 passed (119)
-            Tests  1700 passed (1700)
-         Start at  01:08:36
-         Duration  28.18s (tests 76%, import 17%, transform 6%, worker 1%)
+       Test Files  120 passed (120)
+            Tests  1703 passed (1703)
+         Start at  01:20:14
+         Duration  29.20s (tests 74%, import 18%, transform 8%, worker 1%)
 
-          Isolate  119 workers spawned · ~126ms startup each (spawn + environment, per file)
-                   at least ~1.54s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  120 workers spawned · ~130ms startup each (spawn + environment, per file)
+                   at least ~1.60s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -58,8 +58,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T18:09:06Z"
-    tree: 1d362468f39658da91d99021f6af0c6f55d2c4b45109b67755ff6ffa9a5af3f3
+    at: "2026-10-16T18:20:45Z"
+    tree: 024f1e47518e7b46899d8e09fbb4368eb727e7f90b3b5b69cf12e2164d0b8473
 ---
 
 ## Objective
@@ -70,7 +70,7 @@ Bug saat ini (temuan T-014 R5-1), dipisah dari rencana docs/ai/plans/2026-10-15-
 - [ ] Given unit test ingest dan FakeRepo.finish, then sheetMap dari loop sheet ingest.ts diteruskan ke repo.finish → activateVersionInTx dan teruji
 
 ## Risk
-Impact: aktivasi otomatis ingest biasa ('Ganti semua') kini memakai pasangan sheet pasti dari planSheets (sheet aktif → sheet versi baru) sebelum tebakan nama/alias matchSheet; widget pada rantai alias ganda tidak lagi tertinggal SHEET_UNAVAILABLE. Tanpa pasangan (versi pertama, sheet baru) perilaku sama seperti sebelumnya (matchSheet). Security (STRIDE): tidak ada permukaan baru (id sheet internal dari transaksi yang sama). Rollback: revert commit ingest.ts/repo.ts. Validation: tes ingest (FakeRepo.finish menerima sheetMap pasangan; versi pertama {}), tes planner (alias ganda: tanpa peta null, dengan peta widget pindah), uji mutasi; repo.finish → activateVersionInTx satu baris (Prisma, diuji lewat e2e versions/mapping).
+Impact: aktivasi otomatis ingest biasa ('Ganti semua') kini memakai pasangan sheet pasti dari planSheets (sheet aktif → sheet versi baru) sebelum tebakan nama/alias matchSheet; widget pada rantai alias ganda tidak lagi tertinggal SHEET_UNAVAILABLE. Tanpa pasangan (versi pertama, sheet baru) perilaku sama seperti sebelumnya (matchSheet). Security (STRIDE): tidak ada permukaan baru (id sheet internal dari transaksi yang sama). Rollback: revert commit ingest.ts/repo.ts. Validation: tes ingest (FakeRepo.finish menerima sheetMap pasangan; versi pertama {}), tes planner (alias ganda: tanpa peta null, dengan peta widget pindah), uji mutasi; refresh xlsx 2 sheet berurutan tertukar + pasangan alias (sheetMap per silsilah, bukan posisi), repo.finish dengan Prisma tiruan (sheetMap diteruskan; menunggu pemetaan tanpa aktivasi); e2e versions 7/7 + mapping 4/4 sebagai regresi.
 
 ## Notes
 

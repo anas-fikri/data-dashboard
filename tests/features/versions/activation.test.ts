@@ -188,13 +188,14 @@ describe("planWidget", () => {
       sheetCount: 2,
     };
     const next: SheetInfo[] = [
-      // Sheet baru yang kebetulan bernama akar lama, dan pewaris silsilah (alias terbawa planSheets).
+      // "Penjualan" = sheet "Sales" yang kembali ke nama akarnya (planSheets memasangkannya lewat
+      // alias); "Sales 2026" sheet lain yang juga membawa alias "Penjualan" → tebakan nama ambigu.
       { id: SB, name: "Penjualan", index: 0, schema: OLD_SCHEMA },
       { id: SC, name: "Sales 2026", aliasName: "Penjualan", index: 1, schema: OLD_SCHEMA },
     ];
     expect(planWidget(w("w1", "bar", bar(SA)), next, sales)).toBeNull();
-    expect(planWidget(w("w1", "bar", bar(SA)), next, sales, new Set(), { [SA]: SC })).toEqual({
-      spec: bar(SC),
+    expect(planWidget(w("w1", "bar", bar(SA)), next, sales, new Set(), { [SA]: SB })).toEqual({
+      spec: bar(SB),
       missingColumns: [],
     });
   });

@@ -158,9 +158,9 @@ export class FakeRepo implements IngestRepo {
     }
     Object.assign(this.sheets.get(id)!, d);
   }
-  /** Meniru finish Prisma: acuan cast dibandingkan dengan `active` saat ini (bisa diubah uji). */
   /** sheetMap terakhir yang diteruskan finish (T-033). */
   sheetMap: Record<string, string> | null = null;
+  /** Meniru finish Prisma: acuan cast dibandingkan dengan `active` saat ini (bisa diubah uji). */
   async finish(
     _v: string,
     d: {
