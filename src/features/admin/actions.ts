@@ -3,12 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { unstable_rethrow } from "next/navigation";
-import { logAccessDenied } from "@/features/auth/denial-log";
-import { RULES, clientIp, hit } from "@/features/auth/rate-limit";
-import { AuthError, createSession, requireAdmin, type SessionUser } from "@/features/auth/session";
+import { clientIp } from "@/features/auth/rate-limit";
+import { createSession, type SessionUser } from "@/features/auth/session";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { redisReady } from "@/lib/redis";
+import { currentAdmin, rateLimited } from "./guard";
 import * as service from "./service";
 import type {
   AdminErrorCode as Code,
@@ -35,43 +34,6 @@ const NOT_FOUND = { ok: false, code: "NOT_FOUND", message: "Halaman tidak ditemu
 
 /** Kode penolakan aturan bisnis yang dicatat (info): jejak percobaan tanpa membanjiri warn. */
 const RULE_REJECTIONS: ReadonlySet<Code> = new Set(["LAST_ADMIN", "FORBIDDEN", "RATE_LIMITED"]);
-
-/** Admin aktif dari DB, atau null (dicatat). redirect()/notFound() milik Next tetap dilempar ulang. */
-async function currentAdmin(action: string): Promise<SessionUser | null> {
-  try {
-    return await requireAdmin("action");
-  } catch (e) {
-    unstable_rethrow(e);
-    if (e instanceof AuthError) {
-      await logAccessDenied(
-        action,
-        { ...(e.userId ? { userId: e.userId } : {}), code: e.code, action },
-        "aksi admin ditolak",
-      );
-      return null;
-    }
-    throw e;
-  }
-}
-
-async function rateLimited(actorId: string): Promise<AdminResult<never> | null> {
-  try {
-    const rl = await hit(await redisReady(), RULES.admin, actorId);
-    if (rl.allowed) return null;
-    return {
-      ok: false,
-      code: "RATE_LIMITED",
-      message: `Terlalu banyak perubahan. Coba lagi dalam ${Math.max(1, Math.ceil(rl.retryAfterSec / 60))} menit.`,
-    };
-  } catch (e) {
-    // Redis mati: aksi admin tetap jalan (mis. menonaktifkan akun yang disalahgunakan), dicatat.
-    logger.warn(
-      { actorId, err: e instanceof Error ? e.message : String(e) },
-      "rate limit admin tidak tersedia; aksi dilanjutkan",
-    );
-    return null;
-  }
-}
 
 async function asAdmin<T>(
   action: string,

@@ -37,13 +37,17 @@ export type AuditAction =
    * File PDF dashboard diunduh (T-018): ditulis setiap kali tautan unduh diberikan, meta
    * { exportId, format: "pdf", role } (tanpa nilai filter).
    */
-  | "dashboard.export";
+  | "dashboard.export"
+  /** Admin menerbitkan / menarik / menghapus artikel panduan (T-020), meta { slug, role }. */
+  | "guide.publish"
+  | "guide.unpublish"
+  | "guide.delete";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */
   actorId: string | null;
   action: AuditAction;
-  targetType: "user" | "dataset" | "dashboard";
+  targetType: "user" | "dataset" | "dashboard" | "guide";
   targetId: string;
   /** Detail tanpa rahasia (tanpa password/token/cookie). */
   meta?: Prisma.InputJsonValue;

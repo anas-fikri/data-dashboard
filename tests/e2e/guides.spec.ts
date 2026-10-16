@@ -1,0 +1,133 @@
+import { execFileSync } from "node:child_process";
+import { expect, test, type Page } from "@playwright/test";
+import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
+
+/*
+ * T-020 panduan per peran (admin): A = admin (dev-make-admin), B = pengguna biasa.
+ *   AC3 B membuka /admin/panduan → 404;
+ *   AC1/AC2/AC6 A menulis artikel viewer + konteks skema berisi <script>, javascript:, gambar luar →
+ *     pratinjau tersanitasi (tanpa skrip berjalan), tersimpan draf, diterbitkan → tampil di /panduan;
+ *   AC4 dua artikel: tukar urutan → urutan baru tersimpan; draf tidak tampil di /panduan.
+ */
+test.describe.configure({ mode: "serial" });
+
+const A = uniqueEmail("guide-admin");
+const B = uniqueEmail("guide-user");
+const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const T1 = `Membaca skema dataset ${TAG}`;
+const T2 = `Menyusun dashboard pertama ${TAG}`;
+const EVIL = [
+  "Halo **viewer**. <script>window.__guideXss = 1</script>",
+  "",
+  "[klik](javascript:window.__guideXss=2) [data](data:text/html,x)",
+  "",
+  '<iframe src="https://evil.example"></iframe>',
+  "",
+  "![luar](https://evil.example/a.png)",
+  "",
+  "[Dokumentasi luar](https://example.org/doc)",
+].join("\n");
+
+let a: Page;
+let b: Page;
+
+const row = (page: Page, title: string) =>
+  page.getByTestId("guide-row").filter({ has: page.getByRole("link", { name: title }) });
+
+async function expectSanitized(page: Page, scope: ReturnType<Page["getByTestId"]>) {
+  await expect(scope.locator("script, iframe, object, form, style")).toHaveCount(0);
+  await expect(scope.locator('a[href^="javascript:"], a[href^="data:"]')).toHaveCount(0);
+  await expect(scope.locator('img[src*="evil.example"]')).toHaveCount(0);
+  await expect(scope.getByRole("link", { name: "Dokumentasi luar" })).toHaveAttribute(
+    "rel",
+    "noopener noreferrer",
+  );
+  expect(await page.evaluate(() => (window as { __guideXss?: number }).__guideXss)).toBeUndefined();
+}
+
+async function createGuide(page: Page, title: string, role: string, body: string) {
+  await page.goto("/admin/panduan/baru");
+  await page.getByLabel("Judul").fill(title);
+  await page.getByLabel("Peran").click();
+  await page.getByRole("option", { name: role, exact: true }).click();
+  await page.getByLabel("Isi (markdown)").fill(body);
+  await page.getByRole("button", { name: "Simpan sebagai draf" }).click();
+  await expect(page).toHaveURL(/\/admin\/panduan\/[a-z0-9]{20,32}\?created=1$/);
+}
+
+test.describe("panduan admin (T-020)", () => {
+  test.beforeAll(async ({ browser, request }) => {
+    test.setTimeout(120_000);
+    execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
+    const setup = await browser.newPage();
+    for (const email of [A, B]) {
+      await setup.context().clearCookies();
+      await registerAndVerify(setup, request, email);
+    }
+    await setup.close();
+    execFileSync("node", ["scripts/dev-make-admin.mjs", A]);
+    a = await pageFor(browser, A);
+    b = await pageFor(browser, B);
+  });
+
+  test.afterAll(async () => {
+    await Promise.all([a, b].map((p) => p?.context().close()));
+  });
+
+  test("AC3: pengguna biasa membuka /admin/panduan → 404", async () => {
+    for (const path of ["/admin/panduan", "/admin/panduan/baru"]) {
+      const res = await b.goto(path);
+      expect(res?.status(), path).toBe(404);
+    }
+  });
+
+  test("AC1/AC2/AC6: artikel viewer + konteks skema — pratinjau tersanitasi, terbit, tampil di /panduan", async () => {
+    a.on("dialog", (d) => {
+      throw new Error(`dialog tak terduga: ${d.message()}`);
+    });
+    await a.goto("/admin/panduan/baru");
+    await a.getByLabel("Judul").fill(T1);
+    await expect(a.getByLabel("Slug (alamat)")).toHaveValue(/^membaca-skema-dataset-\d+-\d+$/);
+    await a.getByLabel("Peran").click();
+    await a.getByRole("option", { name: "Viewer", exact: true }).click();
+    await a.getByLabel("Bantuan di halaman").click();
+    await a.getByRole("option", { name: "Skema dataset", exact: true }).click();
+    await a.getByLabel("Isi (markdown)").fill(EVIL);
+    const preview = a.getByTestId("guide-markdown");
+    await expect(preview.locator("strong")).toHaveText("viewer");
+    await expectSanitized(a, preview);
+    await a.getByRole("button", { name: "Simpan sebagai draf" }).click();
+    await expect(a).toHaveURL(/\/admin\/panduan\/[a-z0-9]{20,32}\?created=1$/);
+
+    await a.goto("/admin/panduan");
+    const r = row(a, T1);
+    await expect(r).toContainText("Draf");
+    await expect(r).toContainText("Viewer");
+    await expect(r).toContainText("Bantuan Skema dataset");
+    await r.getByRole("button", { name: /^Terbitkan/ }).click();
+    await expect(r).toContainText("Terbit");
+
+    await b.goto("/panduan");
+    const article = b.getByTestId("guide-article").filter({ hasText: T1 });
+    await expect(article).toHaveCount(1);
+    await expectSanitized(b, article.getByTestId("guide-markdown"));
+  });
+
+  test("AC4: tukar urutan tersimpan; draf tidak tampil di /panduan", async () => {
+    await createGuide(a, T2, "Semua peran", "Langkah menyusun dashboard.");
+    await a.goto("/admin/panduan");
+    const titles = () =>
+      a.getByTestId("guide-row").getByRole("link").filter({ hasText: TAG }).allTextContents();
+    expect(await titles()).toEqual([T1, T2]);
+    await row(a, T2)
+      .getByRole("button", { name: `Naikkan ${T2}` })
+      .click();
+    await expect.poll(titles).toEqual([T2, T1]);
+    await a.reload();
+    expect(await titles()).toEqual([T2, T1]);
+
+    await b.goto("/panduan");
+    await expect(b.getByTestId("guide-article").filter({ hasText: T1 })).toHaveCount(1);
+    await expect(b.getByTestId("guide-article").filter({ hasText: T2 })).toHaveCount(0);
+  });
+});

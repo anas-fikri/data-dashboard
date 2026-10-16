@@ -1,4 +1,4 @@
-import { IconChevronRight, IconUsers, type Icon } from "@tabler/icons-react";
+import { IconBook2, IconChevronRight, IconUsers, type Icon } from "@tabler/icons-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/features/auth/session";
@@ -12,7 +12,7 @@ interface AdminSection {
   icon: Icon;
 }
 
-/** Bagian admin. Panduan (T-020) ditambahkan di sini. */
+/** Bagian admin. */
 const SECTIONS: AdminSection[] = [
   {
     href: "/admin/pengguna",
@@ -20,6 +20,12 @@ const SECTIONS: AdminSection[] = [
     description:
       "Jadikan atau cabut admin, nonaktifkan akun, dan alihkan dataset milik pengguna nonaktif.",
     icon: IconUsers,
+  },
+  {
+    href: "/admin/panduan",
+    title: "Panduan",
+    description: "Tulis, urutkan, dan terbitkan artikel panduan untuk tiap peran.",
+    icon: IconBook2,
   },
 ];
 
