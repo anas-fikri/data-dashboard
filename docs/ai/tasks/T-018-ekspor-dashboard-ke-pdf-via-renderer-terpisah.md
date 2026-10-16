@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-016
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-16T01:46:56Z"
+updated: "2026-10-16T02:17:37Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -26,11 +26,15 @@ review:
       by: claude-verify-workflow
       at: "2026-10-16T01:45:24Z"
       findings: 1
+    - "n": 3
+      by: claude-verify-workflow
+      at: "2026-10-16T02:05:22Z"
+      findings: 3
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 40813
+    duration_ms: 38625
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -52,17 +56,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792115195744,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792115195767,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792115195775,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792117037269,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792117037293,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792117037301,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  117 passed (117)
-            Tests  1658 passed (1658)
-         Start at  08:46:28
-         Duration  26.09s (tests 75%, import 18%, transform 7%, worker 1%)
+            Tests  1662 passed (1662)
+         Start at  09:17:11
+         Duration  24.29s (tests 75%, import 18%, transform 6%, worker 1%)
 
-          Isolate  117 workers spawned · ~143ms startup each (spawn + environment, per file)
-                   at least ~1.72s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  117 workers spawned · ~126ms startup each (spawn + environment, per file)
+                   at least ~1.52s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -70,8 +74,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T01:46:56Z"
-    tree: 3ff6c5c3c92f11ce72c65911b5ef136302b58042dd03bd85168b068e4bc6414b
+    at: "2026-10-16T02:17:37Z"
+    tree: 368eea35dff6f122515d40e29f3d6c546d1f17af3bd5a2b9a9316ac12733a081
 ---
 
 ## Objective
@@ -97,17 +101,17 @@ Validation: unit (token mint/exchange/consume + kedaluwarsa, klien renderer time
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — batas kepercayaan (ADR-0006): POST /api/exports {dashboardId, format pdf, f} (sesi + Origin + rate limit) → tabel Export → antrean BullMQ `pdf` → worker cek akses ulang + cetak token → renderer (jaringan internal `render`, hanya {token} + header secret) → Chromium membuka APP_INTERNAL_URL/render/<token> → cookie sesi render → halaman /render mengambil data di server lewat resolver /api/query → PDF kembali ke worker (cek %PDF- + ukuran) → S3 exports/<userId>/<id>.pdf → presigned 5 menit; data sensitif = nilai widget terfilter, token/sesi render, RENDERER_SECRET
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — route app memakai requireUser (sesi aktif + terverifikasi); renderer menolak tanpa x-renderer-secret yang benar (401, timingSafeEqual atas digest sha256); RENDERER_SECRET ≥ 32 karakter, dicek placeholder, masuk SENSITIVE_VARS, dibangkitkan gen-dev-env (tidak ada secret bawaan/hard-coded)
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — token render 32 byte acak (base64url 43), disimpan hanya sebagai sha256 di Redis SET NX PX 60000, GETDEL sekali pakai; ditukar sesi render (sisa TTL) → cookie dd.render HttpOnly SameSite=Strict Path=/render Max-Age ≤ 60 (Secure bila https); halaman /render GETDEL sesi (sekali pakai); HEAD tidak mengonsumsi; token tidak pernah memberi akses /api/* (diuji e2e AC2: dipakai/kedaluwarsa → 404)
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — akses dashboard dicek saat buat, di worker, di halaman render (pengguna aktif + akses belum dicabut), saat status dan unduh; ekspor hanya milik pemilik (404 untuk lainnya); viewer/editor/pemilik memakai jalur role-shaped yang sama dengan /api/query (D6 400); render tanpa cookie/pemakaian kedua/user lain → 404 polos
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — body zod strict (dashboardId, format, f ≤ 60 000 karakter); filter disanitasi terhadap kolom filter + cross-filter dashboard saat buat DAN saat render; renderer: content-type JSON, body ≤ 1 KB, {token} strict /^[A-Za-z0-9_-]{43}$/, kunci lain (mis. url) → 400; identifier SQL tetap c<pos>, nilai di-bind; teks PDF dirender React (escape); nama file disanitasi (ASCII + RFC 5987)
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — token/sesi render disimpan hanya sebagai sha256 (bukan nilai mentah) dan kedaluwarsa ≤ 60 detik; RENDERER_SECRET hanya dari env, tidak di kode; tidak ada data rahasia baru at rest
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — renderer log hanya {requestId, ms, bytes, outcome}; galat ke user berupa kode (RENDERER_UNAVAILABLE, EXPORT_TIMEOUT, EXPORT_FAILED) tanpa galat mentah Chromium/S3; pino meredaksi /render/<token> di nilai string + kunci token, logger next dev mengabaikan /render/; AuditLog dashboard.export {exportId, format pdf, role} saat unduh
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — objek PDF kedaluwarsa 60 menit lalu dihapus oleh mekanisme T-017 (job + sapuan + lifecycle 1 hari); /render: Cache-Control no-store, Referrer-Policy no-referrer, X-Robots-Tag noindex; presigned 5 menit attachment; renderer tidak punya akses storage/DB/Redis
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada lalu lintas eksternal baru — app ↔ renderer ↔ app hanya di jaringan internal `render` tanpa egress (TLS publik diterminasi reverse proxy, T-023); route allowlist Chromium memblokir origin lain
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — dependensi baru dipin exact: playwright-core 1.64.0 (runtime renderer) dan pdfjs-dist (dev, verifikasi e2e); seccomp profile divendor dari repo Playwright tag v1.64.0 dengan catatan provenans; npm audit 0 kerentanan; Chromium tanpa unduhan (acceptDownloads false), service worker diblokir, websocket hanya dev HMR
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — rate limit ekspor PDF 10/10 menit + maks 2 ekspor berjalan per user (dibagi dengan T-017, advisory lock); token sekali pakai 60 detik (replay → 404); semaphore renderer → 503 dicoba ulang dengan token baru; renderer mati → RENDERER_UNAVAILABLE ≤ 10 detik tanpa retry (precheck /healthz ≤ 3 s di app + probe di worker); timeout render → EXPORT_TIMEOUT; PDF_MAX_BYTES
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — renderer tidak pernah menerima URL (hanya token; membuka APP_INTERNAL_URL sendiri — menutup SSRF); allowlist rute hanya origin app lewat route.fetch maxRedirects 0, 3xx dan origin lain di-abort (fail closed); APP_INTERNAL_URL di-refine (host HSTS-preload ditolak); hapus objek dijaga EXPORT_KEY ^exports/<id>/<id>\.(csv|xlsx|pdf)$ + MIME application/pdf; Chromium non-root (uid 1001) + seccomp Playwright + cap_drop ALL (cap SYS_CHROOT untuk sandbox, ADR-0006) + read_only + no-new-privileges
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — kontrak HTTP POST /api/exports 202/400/404/429/503 + no-store, Origin same-origin; renderer API GET /healthz → {ok:true} saja, POST /render 401/400/404/405/503; status/unduh tidak berubah bentuk (pemilik saja)
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — env app (RENDERER_URL/SECRET/RENDER_TIMEOUT_MS/PDF_MAX_BYTES) dan renderer (env zod sendiri, tidak mengimpor src/lib/env.ts) divalidasi; CSP /render per-route tanpa upgrade-insecure-requests dan tanpa origin storage + form-action 'none'; flag dev LNA hanya saat ALLOW_DEV_WEBSOCKET; service compose renderer di profile `renderer` (seccomp + no-new-privileges + cap_drop ALL + read_only + tmpfs + mem_limit); next build produksi diverifikasi saat penutupan

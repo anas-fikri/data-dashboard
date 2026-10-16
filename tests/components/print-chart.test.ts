@@ -209,7 +209,9 @@ describe("ChartWidget cetak: legenda pai memuat nilai", () => {
       }),
     );
     const names = [
-      ...out.matchAll(/<span class="min-w-0 flex-1 \[overflow-wrap:anywhere\]">([^<]*)<\/span>/g),
+      ...out.matchAll(
+        /<span class="min-w-0 flex-1 \[overflow-wrap:anywhere\][^"]*">([^<]*)<\/span>/g,
+      ),
     ].map((m) => m[1]);
     expect(names).toEqual([
       "Paket Reguler Antar Kota Jawa Barat",
@@ -217,5 +219,19 @@ describe("ChartWidget cetak: legenda pai memuat nilai", () => {
       "Paket Reguler Antar Kota Luar Jawa",
     ]);
     expect(out).not.toContain("…");
+  });
+
+  it("R3-DS-2: kartu sempit → nama sebaris penuh, nilai + persen di baris bawah; legenda tanpa batas 45%", () => {
+    const out = html(true);
+    expect(
+      out.match(/<li class="flex min-h-5 min-w-0 items-center flex-wrap gap-x-1\.5">/g),
+    ).toHaveLength(2);
+    expect(out).toContain("@max-[14rem]:basis-[calc(100%-1rem)]");
+    expect(out).toContain("max-h-[calc(100%-4.5rem)]");
+    expect(out).not.toContain("max-h-[45%]");
+    // Layar tidak berubah.
+    const screen = html(false);
+    expect(screen).toContain("max-h-[45%]");
+    expect(screen).not.toContain("flex-wrap");
   });
 });

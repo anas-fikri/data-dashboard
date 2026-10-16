@@ -20,6 +20,14 @@ import type { NumberFormat } from "@/features/widgets/spec";
 export const KPI_MIN_PX = 14;
 /** Sama dengan clamp(1.125rem, 15cqi, 2.25rem); cqi = lebar isi kotak KPI (kotak itu container). */
 export const kpiFontPx = (room: number) => Math.min(36, Math.max(18, room * 0.15));
+/**
+ * Ukuran huruf terbesar yang muat setinggi kotak KPI (review T-018 R3-DS-1, T-p24e): kartu pendek dengan
+ * judul dua baris atau baris catatan menyisakan kotak rendah — angka selebar kartu terpotong setengah.
+ * `height` = tinggi isi kotak; angka boleh memakai padding bawah (pb-3, 12 px) kecuali 2 px untuk ekor
+ * huruf ("p" pada "Rp"); baris label 20 px + gap 4 px; tinggi baris angka leading-tight (1,25).
+ */
+export const kpiHeightPx = (height: number, label: boolean) =>
+  (height + 10 - (label ? 24 : 0)) / 1.25;
 /** Canvas tidak memakai angka tabular (tnum): sisakan ruang agar teks tidak terpotong 1–2 px. */
 const SLACK = 1.06;
 const NUMERIC = new Set<ValueType>(["integer", "decimal", "duration"]);
@@ -32,6 +40,8 @@ export interface KpiOption {
 export interface KpiChoice extends KpiOption {
   /** Huruf text-sm. */
   small: boolean;
+  /** Ukuran huruf angka (px) bila sudah diukur dan bukan text-sm; null = ikut kelas CSS. */
+  px: number | null;
   /** Boleh pindah baris: tidak ada bentuk yang muat satu baris. */
   wrap: boolean;
 }
@@ -100,19 +110,24 @@ export function kpiTexts(
 /**
  * Bentuk yang ditampilkan untuk lebar isi `room` (px; null = belum diukur → bentuk lengkap).
  * `measure` = lebar teks pada ukuran huruf `px`, null bila tidak bisa diukur (dianggap muat).
+ * `maxPx` = batas ukuran huruf dari tinggi kotak (kpiHeightPx).
  */
 export function chooseKpi(
   options: KpiOption[],
   room: number | null,
   measure: (text: string, px: number) => number | null,
+  maxPx = Infinity,
 ): KpiChoice {
   const fits = (text: string, px: number) => {
     if (room === null) return true;
     const w = measure(text, px);
     return w === null || w * SLACK <= room;
   };
-  const px = room === null ? 0 : kpiFontPx(room);
-  for (const o of options) if (fits(o.text, px)) return { ...o, small: false, wrap: false };
+  const px = room === null ? null : Math.min(kpiFontPx(room), maxPx);
+  if (px === null || px > KPI_MIN_PX) {
+    for (const o of options)
+      if (fits(o.text, px ?? 0)) return { ...o, small: false, wrap: false, px };
+  }
   const last = options[options.length - 1]!;
-  return { ...last, small: true, wrap: !fits(last.text, KPI_MIN_PX) };
+  return { ...last, small: true, wrap: !fits(last.text, KPI_MIN_PX), px: null };
 }

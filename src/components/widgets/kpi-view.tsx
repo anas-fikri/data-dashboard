@@ -4,13 +4,14 @@ import { useRef } from "react";
 import type { Agg } from "@/features/query/spec";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
-import { chooseKpi, kpiTexts } from "./kpi-fit";
+import { chooseKpi, kpiHeightPx, kpiTexts } from "./kpi-fit";
 import { useBoxSize } from "./use-box-size";
 import type { WidgetData } from "./widget-query";
 
 /*
  * Satu angka besar (T-011). Ukuran huruf mengikuti lebar kotak ini (container sendiri, jadi cqi = lebar
- * isi yang diukur — tanpa potong padding dua kali). Bentuk yang tampil dipilih di kpi-fit: lengkap,
+ * isi yang diukur — tanpa potong padding dua kali), dibatasi tingginya setelah diukur (kartu pendek
+ * dengan catatan/judul dua baris). Bentuk yang tampil dipilih di kpi-fit: lengkap,
  * ringkas, "Rp" pindah ke label, huruf kecil, lalu dua baris — tidak pernah potongan berelipsis. Nilai
  * lengkap selalu di title dan untuk pembaca layar (review desain T-011). Total/jumlah atas nol baris = 0
  * seperti SUM Excel; kolom ukuran yang kosong di versi data ini (T-014) = "(kosong)". Label ukuran
@@ -48,8 +49,15 @@ export function KpiView({
   const value = raw === null && countish && !absent ? 0 : raw;
   const label = column?.label ?? "";
   const { full, options } = kpiTexts(value, column?.type ?? "decimal", format, agg, label);
-  const shown = chooseKpi(options, size?.width ?? null, textWidth);
   const sameAsTitle = label.trim().toLowerCase() === title.trim().toLowerCase();
+  // Baris label dicadangkan bila mungkin tampil (label beda dari judul, atau "Rp" bisa pindah ke sana).
+  const labelRow = !sameAsTitle || options.some((o) => o.unit);
+  const shown = chooseKpi(
+    options,
+    size?.width ?? null,
+    textWidth,
+    size ? kpiHeightPx(size.height, labelRow) : undefined,
+  );
 
   return (
     <div
@@ -79,6 +87,8 @@ export function KpiView({
           // Belum diukur: satu baris (title tetap lengkap). Tidak ada yang muat: boleh pindah baris.
           shown.wrap ? "[overflow-wrap:anywhere]" : "truncate whitespace-nowrap",
         )}
+        // Sudah diukur: ukuran dari lebar DAN tinggi kotak (kelas clamp hanya lebar, untuk render awal).
+        style={shown.px === null ? undefined : { fontSize: shown.px }}
         data-testid="kpi-value"
         title={full}
       >

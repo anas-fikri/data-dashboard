@@ -9,6 +9,7 @@ import {
   formatDurationCompact,
   KPI_MIN_PX,
   kpiFontPx,
+  kpiHeightPx,
   kpiTexts,
   type KpiOption,
 } from "@/components/widgets/kpi-fit";
@@ -183,6 +184,19 @@ describe("KPI: memilih bentuk yang muat", () => {
   it("persen tanpa bentuk ringkas tetap lengkap di kartu sangat sempit (huruf kecil, bukan '4…')", () => {
     const pct: KpiOption[] = kpiTexts(0.468, "decimal", PCT, "avg", "Rasio").options;
     expect(chooseKpi(pct, 48, measure)).toMatchObject({ text: "46,8%", small: true, wrap: false });
+  });
+
+  it("kotak pendek (judul dua baris / baris catatan) membatasi huruf dari tingginya (R3-DS-1, T-p24e)", () => {
+    // Isi kotak 33 px + label → angka ≤ (33 + 12 pb − 2 ekor huruf − 24 label) / 1,25 px.
+    expect(kpiHeightPx(33, true)).toBe(15.2);
+    expect(kpiHeightPx(35, false)).toBe(36);
+    const capped = chooseKpi(rp, 400, measure, kpiHeightPx(33, true));
+    // Huruf lebih kecil: bentuk lengkap muat lagi, tidak terpotong setengah.
+    expect(capped).toMatchObject({ text: "Rp 6.215.000.000", small: false, px: 15.2 });
+    // Kotak tinggi: hanya lebar yang menentukan, seperti sebelumnya.
+    expect(chooseKpi(rp, 400, measure, kpiHeightPx(200, true)).px).toBe(36);
+    // Tidak muat bahkan 14 px → text-sm (ukuran dari kelas).
+    expect(chooseKpi(rp, 400, measure, 12)).toMatchObject({ small: true, px: null });
   });
 });
 

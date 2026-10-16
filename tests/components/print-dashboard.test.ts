@@ -196,6 +196,28 @@ describe("PrintDashboard", () => {
     expect(printTitleClamp(rowsPx(3))).toBe("line-clamp-3");
     expect(printTitleClamp(rowsPx(10))).toBe("line-clamp-3");
   });
+
+  it("kartu < 3 baris dengan baris catatan: judul 1 baris (R3-DS-1); kartu tinggi tetap 3", () => {
+    expect(printTitleClamp(rowsPx(2), 1)).toBe("line-clamp-1");
+    expect(printTitleClamp(rowsPx(2), 2)).toBe("line-clamp-1");
+    expect(printTitleClamp(rowsPx(3), 1)).toBe("line-clamp-3");
+    const short = renderToStaticMarkup(
+      PrintDashboard({
+        data: {
+          ...data,
+          dashboard: { ...data.dashboard, layout: [{ i: "bar", x: 0, y: 0, w: 4, h: 2 }] },
+        },
+      }),
+    );
+    expect(short).toContain('<span class="line-clamp-1 min-w-0 [overflow-wrap:anywhere]">');
+  });
+
+  it("catatan kartu dan keterangan tabel membungkus sampai 2 baris, nama tidak terpotong (R3-DS-3)", () => {
+    const wrap = '<span class="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">';
+    expect(html).toContain(`${wrap}Filter Kota tidak berlaku untuk widget ini.`);
+    expect(html).toContain(`data-testid="print-table-range">${wrap}Menampilkan`);
+    expect(html).not.toMatch(/data-testid="print-table-range"><span class="[^"]*truncate/);
+  });
 });
 
 describe("widget lebih tinggi dari halamannya (review R1 DS-2)", () => {

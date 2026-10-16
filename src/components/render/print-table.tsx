@@ -12,8 +12,9 @@ import { PRINT_TABLE_ROW_PX } from "./print-layout";
  * ikut — perbedaan yang diterima), hanya baris yang muat utuh di kartu (`fit`, dari tableRowsFit) +
  * "Menampilkan X dari N baris". Teks sel sama dengan layar (tableCellText). Tanpa tombol urut, pager,
  * atau wilayah gulir: kertas tidak bisa digulir — kolom yang tidak muat utuh di lebar kartu tidak
- * dicetak setengah ("Jumla"), tetapi disebut namanya di keterangan bawah. Kolom dan baris diukur sekali
- * sebelum dilukis (layout effect; sinyal siap cetak menunggu DOM tenang): kolom dengan geometri pecahan
+ * dicetak setengah ("Jumla"), tetapi disebut namanya di keterangan bawah. Kolom dan baris diukur
+ * sebelum dilukis (layout effect, sekali lagi bila kolom berkurang; sinyal siap cetak menunggu DOM
+ * tenang): kolom dengan geometri pecahan
  * (getBoundingClientRect — offset* dibulatkan dan bisa menolak kolom yang pas di tepi, review R1 INT-2),
  * baris dari tinggi kotak yang sebenarnya (judul kartu bisa 1–3 baris; `fit` hanya perkiraan awal).
  */
@@ -68,7 +69,8 @@ export function PrintTable({
     // Tinggi tata letak (tidak terpengaruh transform); kotak flex-1 tidak ikut tinggi isinya.
     const head = el.querySelector("thead")?.offsetHeight ?? PRINT_TABLE_ROW_PX;
     setShown(fittingRows(el.clientHeight, head));
-  }, [data.columns.length]);
+    // Ukur ulang setelah kolom dibuang: keterangan menyebut namanya dan bisa membungkus 2 baris.
+  }, [data.columns.length, cols]);
 
   const total = data.total ?? data.rows.length;
   const rows = data.rows.slice(0, shown);
@@ -120,10 +122,10 @@ export function PrintTable({
         ) : null}
       </div>
       <p
-        className="flex h-6 shrink-0 items-center border-t px-3 text-xs text-muted-foreground"
+        className="flex min-h-6 shrink-0 items-center border-t px-3 py-1 text-xs text-muted-foreground"
         data-testid="print-table-range"
       >
-        <span className="min-w-0 truncate">
+        <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">
           {printTableNote(
             rows.length,
             total,

@@ -11,15 +11,17 @@ import type { RenderWidget } from "@/features/exports/render-data";
 import { cn } from "@/lib/utils";
 import { rowsPx, tableRowsFitPx } from "./print-layout";
 
-/**
- * Batas baris judul kartu cetak: kartu < 3 baris grid (mis. KPI h=2) memakai 2 baris — judul 3 baris
- * memakan ruang angka KPI sampai terpotong (review T-018 R2-INT-1/R2-DS-1); kartu lain 3 baris.
- * Kelas utuh agar terbaca Tailwind.
- */
-export const printTitleClamp = (heightPx: number) =>
-  heightPx < rowsPx(3) ? "line-clamp-2" : "line-clamp-3";
 import { PrintTable } from "./print-table";
 import { useRenderPending } from "./render-ready";
+
+/**
+ * Batas baris judul kartu cetak: kartu < 3 baris grid (mis. KPI h=2) memakai 2 baris — judul 3 baris
+ * memakan ruang angka KPI sampai terpotong (review T-018 R2-INT-1/R2-DS-1) — dan 1 baris bila kartu itu
+ * juga punya baris catatan (R3-DS-1: catatan 1–2 baris + judul 2 baris tidak menyisakan ruang untuk
+ * label dan angka); kartu lain 3 baris. Kelas utuh agar terbaca Tailwind.
+ */
+export const printTitleClamp = (heightPx: number, notes = 0) =>
+  heightPx >= rowsPx(3) ? "line-clamp-3" : notes ? "line-clamp-1" : "line-clamp-2";
 
 /*
  * Satu widget di PDF (T-018). Data sudah diambil server (jawaban /api/query yang sama persis, termasuk
@@ -30,13 +32,16 @@ import { useRenderPending } from "./render-ready";
  * membungkus sampai 3 baris (kertas tidak punya tooltip; dua judul yang hanya beda di ujung tetap
  * terbedakan) — tabel mengukur sisa tinggi kartunya sendiri.
  */
-const NOTE = "flex h-6 shrink-0 items-center gap-1 border-t px-2 text-xs text-muted-foreground";
+// Catatan membungkus sampai 2 baris: nama filter/kolom yang disebut tidak boleh hilang di kertas
+// (review R3-DS-3); isi kartu (KPI, grafik, tabel) mengukur sisa kotaknya sendiri.
+const NOTE =
+  "flex min-h-6 shrink-0 items-center gap-1 border-t px-2 py-1 text-xs text-muted-foreground";
 
 function Note({ icon, children }: { icon: ReactNode; children: string }) {
   return (
     <p className={NOTE}>
       {icon}
-      <span className="min-w-0 truncate">{children}</span>
+      <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{children}</span>
     </p>
   );
 }
@@ -80,11 +85,13 @@ function Body({
   data,
   title,
   heightPx,
+  notes,
 }: {
   config: CardConfig;
   data: WidgetData;
   title: string;
   heightPx: number;
+  notes: number;
 }) {
   if (config.type === "kpi") {
     return (
@@ -97,7 +104,6 @@ function Body({
     );
   }
   if (config.type === "table") {
-    const notes = (data.absent?.length ? 1 : 0) + (data.skippedFilters?.length ? 1 : 0);
     return (
       <PrintTable
         data={data}
@@ -126,6 +132,7 @@ export function PrintCard({
   const title = widget.title || "Widget tanpa judul";
   const config = cardConfig(widget.type, widget.spec);
   const r = widget.result;
+  const notes = r.ok ? (r.absent?.length ? 1 : 0) + (r.skippedFilters?.length ? 1 : 0) : 0;
   let content: ReactNode;
   if (!config) {
     content = (
@@ -153,7 +160,7 @@ export function PrintCard({
   } else {
     content = (
       <>
-        <Body config={config} data={r} title={widget.title} heightPx={heightPx} />
+        <Body config={config} data={r} title={widget.title} heightPx={heightPx} notes={notes} />
         {r.absent?.length ? (
           <Note icon={<IconCircleOff size={14} stroke={1.5} aria-hidden className="shrink-0" />}>
             {absentText(r.absent)}
@@ -183,7 +190,7 @@ export function PrintCard({
           !widget.title && "text-muted-foreground",
         )}
       >
-        <span className={cn(printTitleClamp(heightPx), "min-w-0 [overflow-wrap:anywhere]")}>
+        <span className={cn(printTitleClamp(heightPx, notes), "min-w-0 [overflow-wrap:anywhere]")}>
           {title}
         </span>
       </h2>

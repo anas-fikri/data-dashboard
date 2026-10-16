@@ -437,7 +437,10 @@ export function ChartWidget({
           {chart}
           <div
             className={cn(
-              "max-h-[45%] shrink-0 px-3 pb-1 text-xs @md:max-h-none @md:w-[45%] @md:self-center",
+              "shrink-0 px-3 pb-1 text-xs @md:max-h-none @md:w-[45%] @md:self-center",
+              // Cetak: legenda = satu-satunya teks irisan di kertas (tanpa gulir) → boleh setinggi kartu
+              // kecuali 4,5rem untuk donat (grafik setinggi 0 tidak pernah memberi sinyal siap).
+              print ? "max-h-[calc(100%-4.5rem)]" : "max-h-[45%]",
               SCROLL_REGION,
             )}
             role="region"
@@ -450,7 +453,13 @@ export function ChartWidget({
               {order.map((i) => {
                 const r = rows[i]!;
                 return (
-                  <li key={i} className="flex min-h-5 min-w-0 items-center gap-1.5">
+                  <li
+                    key={i}
+                    className={cn(
+                      "flex min-h-5 min-w-0 items-center",
+                      print ? "flex-wrap gap-x-1.5" : "gap-1.5",
+                    )}
+                  >
                     <span
                       aria-hidden
                       className={cn(
@@ -459,9 +468,12 @@ export function ChartWidget({
                       )}
                     />
                     {/* Cetak: nama lengkap membungkus di samping nilainya (kertas tanpa tooltip; dua
-                      irisan berawalan sama tetap terbedakan — review R1-DS-3). Layar: satu baris. */}
+                      irisan berawalan sama tetap terbedakan — review R1-DS-3); kartu sempit: nama
+                      sebaris penuh, nilai di bawahnya (R3-DS-2). Layar: satu baris. */}
                     {print ? (
-                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{r.label}</span>
+                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere] @max-[14rem]:basis-[calc(100%-1rem)]">
+                        {r.label}
+                      </span>
                     ) : (
                       <span className="min-w-0 flex-1 whitespace-nowrap" title={r.label}>
                         {middleTruncate(
@@ -472,7 +484,10 @@ export function ChartWidget({
                     )}
                     {/* Cetak: nilai irisan sebagai teks (layar: di tabel data/tooltip). */}
                     {print ? (
-                      <span className="shrink-0 tabular-nums" data-testid="pie-legend-value">
+                      <span
+                        className="shrink-0 tabular-nums @max-[14rem]:ml-4"
+                        data-testid="pie-legend-value"
+                      >
                         {formatMeasure(r.value, valueType, spec.format)}
                       </span>
                     ) : null}
