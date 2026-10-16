@@ -5,7 +5,7 @@ status: in_progress
 profile: standard
 profile_pinned: true
 created: "2026-10-12T23:39:16Z"
-updated: "2026-10-16T17:35:28Z"
+updated: "2026-10-16T17:57:17Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -15,7 +15,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42712
+    duration_ms: 41213
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -37,17 +37,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792172104925,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792172104949,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792172104965,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792173413465,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792173413492,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792173413503,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  119 passed (119)
-            Tests  1696 passed (1696)
-         Start at  00:34:58
-         Duration  28.81s (tests 76%, import 17%, transform 6%, worker 1%)
+            Tests  1698 passed (1698)
+         Start at  00:56:47
+         Duration  28.00s (tests 75%, import 18%, transform 7%)
 
-          Isolate  119 workers spawned · ~127ms startup each (spawn + environment, per file)
-                   at least ~1.55s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  119 workers spawned · ~128ms startup each (spawn + environment, per file)
+                   at least ~1.56s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -55,8 +55,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T17:35:28Z"
-    tree: 3b4176af2f79f1fbd566f4f5c8c205ec9f57c1c6aae6ca5a0a90c1c94aa6811b
+    at: "2026-10-16T17:57:17Z"
+    tree: b9d933805304117ec27088ac0921c87c9925603aac972742431e9fe37c55dbf2
 ---
 
 ## Objective
@@ -67,7 +67,7 @@ Ditemukan verifikasi integritas T-011: GROUP BY pada dimensi teks memisahkan 'Ba
 - [ ] Given filter = 'bandung', when diterapkan, then baris ketiga variasi itu ikut
 
 ## Risk
-Impact: lapisan query (src/features/query/sql.ts) untuk semua widget grafik, KPI berfilter, tabel berfilter, ekspor CSV/XLSX/PDF, dan daftar nilai slicer: dimensi teks dikelompokkan lower(...) dengan label mode(...) (variasi paling sering; seri → kemunculan pertama); filter teks widget (in/not_in/eq/neq) dan dashboard (slicer, filter silang) dicocokkan lower di kedua sisi; jumlah kategori ikut digabung. Aksen dan spasi tetap membedakan (seperti Excel). Hasil cache lama (LRU memori, TTL) bisa tampil sampai kedaluwarsa. Tidak digabung: count_distinct kolom teks (PlanMeasure tanpa tipe kolom). Security (STRIDE): tidak ada permukaan baru — nilai tetap parameter ($p/$f), fungsi lower/mode konstanta. Rollback: revert commit sql.ts. Validation: tes SQL builder di DuckDB sungguhan (grup, label, total kategori, filter widget/dashboard, not_in, slicer) gagal tanpa perbaikan; mode() deterministik pada seri (3 juta baris, 4 thread, 15×); biaya lower+mode ±9 ms/3 juta baris; e2e penuh.
+Impact: lapisan query (src/features/query/sql.ts) untuk semua widget grafik, KPI berfilter, tabel berfilter, ekspor CSV/XLSX/PDF, dan daftar nilai slicer: dimensi teks dikelompokkan lower(...) dengan label variasi paling sering lewat histogram() (seri → urutan byte terkecil, deterministik lintas thread/row group; mode() DuckDB tidak — review T-029 TF3/INT-1); filter teks widget (in/not_in/eq/neq) dan dashboard (slicer, filter silang) dicocokkan lower di kedua sisi; jumlah kategori ikut digabung. Aksen dan spasi tetap membedakan (seperti Excel). Hasil cache lama (LRU memori, TTL) bisa tampil sampai kedaluwarsa. Tidak digabung: count_distinct kolom teks (PlanMeasure tanpa tipe kolom). Security (STRIDE): tidak ada permukaan baru — nilai tetap parameter ($p/$f), fungsi lower/mode konstanta. Rollback: revert commit sql.ts. Validation: tes SQL builder di DuckDB sungguhan (grup, label, total kategori, filter widget/dashboard, not_in, slicer) gagal tanpa perbaikan; label seri diuji lintas 32 row group × 4 thread (10× sama); uji mutasi mode()/first() gagal. Biaya terukur (2 thread): 3 juta baris/100 ribu kategori 32 → 131 ms; 5 juta baris/4 juta kategori 0,30 → 1,17 s (di bawah batas waktu query, tetapi perlu diukur ulang terhadap target p95 < 3 s di T-024; optimasi: label hanya untuk N kategori teratas). e2e penuh 158/158.
 
 ## Notes
 

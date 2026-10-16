@@ -202,11 +202,18 @@ export const TEXT_COLLATE = `COLLATE "nocase.noaccent"`;
 
 /**
  * Kunci kelompok dimensi: teks tidak peka huruf besar/kecil seperti PivotTable/UNIQUE Excel ("Bandung",
- * "BANDUNG", "bandung" = satu kategori; T-029). Label = variasi paling sering (mode; seri → kemunculan
- * pertama). Aksen dan spasi tetap membedakan, sama dengan Excel.
+ * "BANDUNG", "bandung" = satu kategori; T-029). Aksen dan spasi tetap membedakan, sama dengan Excel.
  */
 const groupKey = (d: Plan["dimensions"][number]) =>
   d.type === "text" ? `lower(${dimensionExpr(d)})` : dimensionExpr(d);
+
+/**
+ * Label kategori teks: variasi paling sering; seri → urutan byte terkecil ("BANDUNG" < "Bandung" <
+ * "bandung"). Deterministik lintas thread/row group, jadi grafik, ekspor, dan slicer memberi label sama
+ * (mode() DuckDB tidak: seri bergantung urutan thread — review T-029 TF3).
+ */
+const textLabel = (e: string) =>
+  `list_sort(list_transform(map_entries(histogram(${e})), lambda x: {'n': -x.value, 'k': x.key}))[1].k`;
 
 /** Ekspresi dimensi: teks dipotong, tanggal dikelompokkan per grain. */
 function dimensionExpr(d: Plan["dimensions"][number]): string {
@@ -225,7 +232,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const select: string[] = [];
   for (const d of plan.dimensions) {
     const e = dimensionExpr(d);
-    select.push(`${d.type === "text" ? `mode(${e})` : e} AS ${ident(d.key)}`);
+    select.push(`${d.type === "text" ? textLabel(e) : e} AS ${ident(d.key)}`);
   }
   for (const m of plan.measures) {
     const c = m.col ? ident(m.col) : "*";
@@ -368,7 +375,7 @@ export function buildFilterValuesSql(
   const expr = col.type === "timestamp" ? `date_trunc('second', ${c})` : c;
   const order = text ? `${v} ${TEXT_COLLATE} ASC NULLS FIRST, ${v} ASC` : `${v} ASC NULLS FIRST`;
   // Teks: satu opsi per kategori tidak peka huruf besar/kecil (label = variasi paling sering, T-029).
-  const pick = text ? `mode(${c})` : `DISTINCT ${expr}`;
+  const pick = text ? textLabel(c) : `DISTINCT ${expr}`;
   const sql = [
     `SELECT ${v} FROM (`,
     `  SELECT ${pick} AS ${v} FROM read_parquet($path)`,
