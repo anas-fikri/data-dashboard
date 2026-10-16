@@ -58,14 +58,35 @@ function externalHref(href: string | undefined, origins: readonly string[]): boo
   }
 }
 
+const HEADING = [
+  "mt-6 text-base font-semibold first:mt-0",
+  "mt-5 text-sm font-semibold first:mt-0",
+  "mt-4 text-sm font-semibold first:mt-0",
+  "mt-4 text-sm font-medium first:mt-0",
+];
+
 export function GuideMarkdown({
   markdown,
   origins,
+  headingOffset = 2,
 }: {
   markdown: string;
   /** Origin app + storage publik (gambar boleh dari sini; tautan ke sini bukan "eksternal"). */
   origins: readonly string[];
+  /**
+   * Tingkat tambahan judul isi: 2 = "#" → h3 (judul artikel h2 di daftar/pratinjau), 1 = "#" → h2
+   * (halaman artikel, judul h1), 3 = "#" → h4 (panel bantuan, judul artikel h3). Ukuran tetap lebih
+   * kecil dari judul artikel.
+   */
+  headingOffset?: 1 | 2 | 3;
 }) {
+  const heading =
+    (n: number) =>
+    // eslint-disable-next-line react/display-name -- pemetaan komponen react-markdown
+    ({ children }: { children?: React.ReactNode }) => {
+      const Tag = `h${Math.min(6, n + headingOffset)}` as "h2";
+      return <Tag className={HEADING[Math.min(n, 4) - 1]}>{children}</Tag>;
+    };
   // Data yang lolos sebelum batas struktur berlaku tidak boleh menjatuhkan atau membekukan halaman.
   const problem =
     markdown.length > GUIDE_BODY_MAX ? "isi melebihi batas panjang" : guideBodyProblem(markdown);
@@ -90,13 +111,13 @@ export function GuideMarkdown({
       typeof src === "string" && src ? (
         <img src={src} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-md border" />
       ) : null,
-    // Judul artikel = h2 (text-lg); judul di isi turun satu tingkat dan lebih kecil dari judul artikel.
-    h1: ({ children }) => <h3 className="mt-6 text-base font-semibold first:mt-0">{children}</h3>,
-    h2: ({ children }) => <h4 className="mt-5 text-sm font-semibold first:mt-0">{children}</h4>,
-    h3: ({ children }) => <h5 className="mt-4 text-sm font-semibold first:mt-0">{children}</h5>,
-    h4: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
-    h5: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
-    h6: ({ children }) => <h6 className="mt-4 text-sm font-medium first:mt-0">{children}</h6>,
+    // Judul di isi turun di bawah judul artikel (headingOffset) dan lebih kecil darinya.
+    h1: heading(1),
+    h2: heading(2),
+    h3: heading(3),
+    h4: heading(4),
+    h5: heading(5),
+    h6: heading(6),
     p: ({ children }) => <p className="mt-3 leading-relaxed first:mt-0">{children}</p>,
     ul: ({ children }) => <ul className="mt-3 list-disc space-y-1 pl-5">{children}</ul>,
     ol: ({ children }) => <ol className="mt-3 list-decimal space-y-1 pl-5">{children}</ol>,

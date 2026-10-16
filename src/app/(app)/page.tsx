@@ -2,6 +2,7 @@ import { IconDatabase, IconLayoutDashboard, IconPlus } from "@tabler/icons-react
 import Link from "next/link";
 import { AdminRevokedNotice } from "@/components/admin/admin-revoked-notice";
 import { DatasetList } from "@/components/datasets/dataset-list";
+import { StartHereCard } from "@/components/guides/start-here-card";
 import { SharedDashboardList } from "@/components/sharing/shared-dashboard-list";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,6 +52,7 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
        * bila memang bukan admin lagi, jadi tautan buatan tidak bisa menampilkannya ke admin aktif.
        */}
       {params.notice === "admin-dicabut" && !user.isAdmin ? <AdminRevokedNotice /> : null}
+      <StartHereCard userId={user.id} isAdmin={user.isAdmin} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

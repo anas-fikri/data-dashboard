@@ -147,7 +147,7 @@ export function GuideEditor({
           label="Slug (alamat)"
           required
           error={fields.slug}
-          hint={`Alamat artikel di halaman Panduan (/panduan#slug). Huruf kecil, angka, tanda hubung; ≤ ${GUIDE_SLUG_MAX} karakter.`}
+          hint={`Alamat artikel: /panduan/<slug>. Huruf kecil, angka, tanda hubung; ≤ ${GUIDE_SLUG_MAX} karakter.`}
         >
           <Input
             ref={slugRef}

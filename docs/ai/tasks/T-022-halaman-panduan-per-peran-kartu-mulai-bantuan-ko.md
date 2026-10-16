@@ -1,7 +1,7 @@
 ---
 id: T-022
 title: Halaman /panduan per peran, kartu mulai, bantuan kontekstual
-status: todo
+status: in_progress
 profile: standard
 goal: G-4
 depends_on:
@@ -9,8 +9,58 @@ depends_on:
   - T-016
   - T-008
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-11T14:57:00Z"
+updated: "2026-10-16T22:15:02Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: f423ad55faf7dc0cfefe444768ba02d7db3b2004
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 42527
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792188878657,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792188878681,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792188878689,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  125 passed (125)
+            Tests  1725 passed (1725)
+         Start at  05:14:32
+         Duration  28.52s (tests 76%, import 17%, transform 6%, worker 1%)
+
+          Isolate  125 workers spawned · ~131ms startup each (spawn + environment, per file)
+                   at least ~1.69s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-16T22:15:02Z"
+    tree: f3e2e7cec17c93669e096a7a1c02b6f119260c33f812616825e61781ac87da8b
 ---
 
 ## Objective
@@ -24,7 +74,7 @@ created_by: claude-code
 - [ ] Given halaman/komponen task ini selesai, when /frontend-expert:audit dijalankan (anti-slop-design, responsive 320/768/1024/1440, accessibility), then tidak ada temuan Critical/High dan blok Conventions check (Tokens: preset project; Icons: waiver @tabler/icons-react; States loading/empty/error; Responsive; A11y) dicatat sebagai note task
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: tabel baru GuideRead (migrasi t022_guide_reads, cascade dari User/GuideArticle); /panduan kini daftar kartu per tab peran + cari (?peran=, ?q=), isi artikel pindah ke /panduan/[slug] (+ tombol Tandai sudah dibaca, Server Action markGuideReadAction); kartu Mulai di sini di Beranda; tombol Bantuan + panel samping di halaman dataset (UPLOAD), skema (SCHEMA), dashboard bagi yang bisa mengedit (BUILDER); GuideMarkdown headingOffset 1|2|3; skrip dev-share-fixture (dataset+dashboard+share uji). Security (STRIDE): Info disclosure/EoP — peran diturunkan server dari data (isAdmin, dataset milik, share eksplisit), bukan dari parameter; semua query pembaca memakai filter PUBLISHED + peran user + ALL (daftar, cari, slug, bantuan, kartu); slug di luar peran → 404; markRead hanya untuk artikel yang boleh dilihat (selain itu NOT_FOUND); pencarian: panjang 2..100, wildcard LIKE di-escape, ≤ 50 hasil; Tampering — tidak ada input yang mengubah peran. Rollback: revert commit + migrasi turun (drop GuideRead); /panduan kembali menampilkan artikel penuh. Validation: e2e guide-roles (viewer: tab Viewer+Umum, artikel pemilik tak tampil + slug 404; user baru: tab Pemilik data+Umum, kartu Mulai di sini hilang setelah tandai dibaca; skema: panel Bantuan hanya artikel konteks skema untuk perannya, URL tetap, Esc kembali ke tombol; cari 'upload' sesuai peran, '%%' bukan wildcard); e2e guides 5/5 + guide-videos 5/5 disesuaikan; unit excerpt; mutasi filter peran membuat uji gagal.
 
 ## Notes
 - 2026-10-11T14:49:26Z UI wajib lewat rantai frontend-expert: design-foundations → tokens (preset dari T-025) → (+forms/data-fetching/app-shell sesuai kebutuhan) → components → anti-slop-code → responsive → motion ringan → anti-slop-design → polish → accessibility. Skip design-direction karena arah sudah dipilih di T-025, kecuali layar baru yang ambigu. Chart via skill dataviz; filter/select pakai Select kustom dari T-025, bukan native.

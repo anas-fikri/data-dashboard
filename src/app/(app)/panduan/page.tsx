@@ -1,63 +1,88 @@
-import { IconBook2 } from "@tabler/icons-react";
-import { GuideVideoPlayer } from "@/components/guides/video-player";
+import { IconBook2, IconSearch } from "@tabler/icons-react";
+import type { GuideRole } from "@prisma/client";
+import Link from "next/link";
+import {
+  GuideCards,
+  GuideSearch,
+  ROLE_PARAM,
+  RoleTabs,
+  TAB_LABEL,
+} from "@/components/guides/guide-browse";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
-import { GuideMarkdown } from "@/features/guides/markdown";
-import { guideOrigins } from "@/features/guides/origins";
-import { publishedGuides } from "@/features/guides/service";
-import { videosFor } from "@/features/guides/videos";
+import {
+  SEARCH_MIN,
+  excerptOf,
+  guideRolesFor,
+  guidesForTab,
+  readArticleIds,
+  searchGuides,
+} from "@/features/guides/reader";
 
 export const metadata = { title: "Panduan" };
 
+type Search = Promise<{ peran?: string | string[]; q?: string | string[] }>;
+const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "");
+
 /**
- * Panduan penggunaan: artikel terbit sesuai urutan admin (T-020). Penyaringan per peran, kartu "Mulai
- * di sini", pencarian, dan bantuan kontekstual menyusul di T-022.
+ * Panduan penggunaan (T-022): tab per peran yang dimiliki user (diturunkan dari data, lihat
+ * guideRolesFor) + Umum; pencarian judul/isi hanya di artikel yang boleh dilihat user.
  */
-export default async function Page() {
+export default async function Page({ searchParams }: { searchParams: Search }) {
   const user = await requireUser();
-  // Artikel untuk peran Admin hanya untuk admin (sisa penyaringan per peran di T-022).
-  const guides = await publishedGuides(
-    user.isAdmin ? ["OWNER", "EDITOR", "VIEWER", "ADMIN"] : ["OWNER", "EDITOR", "VIEWER"],
+  const roles = await guideRolesFor(user.id, user.isAdmin);
+  const sp = await searchParams;
+  const q = one(sp.q).trim();
+  const tabs: GuideRole[] = [...roles, "ALL"];
+  const current = tabs.find((t) => ROLE_PARAM[t] === one(sp.peran)) ?? tabs[0]!;
+  const list = q ? await searchGuides(roles, q) : await guidesForTab(roles, current);
+  const read = await readArticleIds(
+    user.id,
+    list.map((g) => g.id),
   );
-  const origins = guideOrigins();
-  const videos = await videosFor(guides.map((g) => g.id));
+  const items = list.map((g) => ({ ...g, excerpt: excerptOf(g.bodyMarkdown) }));
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Panduan penggunaan" />
-      {guides.length ? (
-        <ol aria-label="Artikel panduan" className="flex max-w-3xl flex-col gap-4">
-          {guides.map((g) => (
-            <li
-              key={g.id}
-              id={g.slug}
-              data-testid="guide-article"
-              className="rounded-lg border bg-card p-5 shadow-xs"
-            >
-              <article aria-labelledby={`${g.slug}-title`}>
-                <h2 id={`${g.slug}-title`} className="mb-3 text-lg font-semibold">
-                  {g.title}
-                </h2>
-                <GuideMarkdown markdown={g.bodyMarkdown} origins={origins} />
-                {videos.some((v) => v.articleId === g.id) ? (
-                  <div className="mt-4 flex flex-col gap-4">
-                    {videos
-                      .filter((v) => v.articleId === g.id)
-                      .map((v) => (
-                        <GuideVideoPlayer key={v.id} video={v} />
-                      ))}
-                  </div>
-                ) : null}
-              </article>
-            </li>
-          ))}
-        </ol>
+      <PageHeader
+        title="Panduan penggunaan"
+        description="Artikel dan video sesuai peran Anda di aplikasi ini."
+      />
+      <GuideSearch q={q} />
+      {q ? (
+        <div className="flex flex-col gap-4">
+          <p role="status" className="text-sm text-muted-foreground">
+            {q.length < SEARCH_MIN
+              ? `Ketik minimal ${SEARCH_MIN} huruf untuk mencari.`
+              : `${items.length} artikel cocok dengan “${q}”.`}{" "}
+            <Link href="/panduan" className="font-medium text-primary underline underline-offset-2">
+              Lihat semua panduan
+            </Link>
+          </p>
+          {items.length ? (
+            <GuideCards guides={items} read={read} label={`Hasil pencarian ${q}`} />
+          ) : q.length >= SEARCH_MIN ? (
+            <EmptyState
+              icon={<IconSearch />}
+              title="Tidak ada artikel yang cocok"
+              description="Coba kata lain yang lebih umum, mis. “unggah” atau “dashboard”."
+            />
+          ) : null}
+        </div>
       ) : (
-        <EmptyState
-          icon={<IconBook2 />}
-          title="Panduan belum tersedia"
-          description="Admin belum menerbitkan artikel panduan. Coba lagi nanti."
-        />
+        <div className="flex flex-col gap-4">
+          {tabs.length > 1 ? <RoleTabs tabs={tabs} current={current} /> : null}
+          {items.length ? (
+            <GuideCards guides={items} read={read} label={`Artikel ${TAB_LABEL[current]}`} />
+          ) : (
+            <EmptyState
+              icon={<IconBook2 />}
+              title="Belum ada artikel di sini"
+              description="Admin belum menerbitkan panduan untuk peran ini. Coba tab lain atau cari."
+            />
+          )}
+        </div>
       )}
     </div>
   );

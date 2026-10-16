@@ -22,6 +22,8 @@ const m = vi.hoisted(() => ({
   }),
 }));
 
+// Komponen server async panduan (T-022) di luar cakupan uji halaman ini.
+vi.mock("@/components/guides/guide-help", () => ({ GuideHelp: () => null }));
 vi.mock("@/features/auth/session", () => ({ requireUser: m.requireUser }));
 vi.mock("@/features/dashboards/service", () => ({
   getDashboard: m.getDashboard,

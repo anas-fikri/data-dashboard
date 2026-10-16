@@ -34,6 +34,7 @@ model User {
   sharesGranted   DashboardShare[]    @relation("DashboardShareGranter")
   /// Ekspor milik user ini (T-017/T-018); objek exports/<userId>/ dibersihkan job ekspor.
   exports         Export[]
+  guideReads      GuideRead[]
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -371,8 +372,22 @@ model GuideArticle {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   videos       GuideVideo[]
+  reads        GuideRead[]
 
   @@index([status, role, order])
+}
+
+/// Artikel panduan yang sudah ditandai dibaca user (T-022): kartu "Mulai di sini" hilang setelah satu.
+model GuideRead {
+  id        String       @id @default(cuid())
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  articleId String
+  article   GuideArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  readAt    DateTime     @default(now())
+
+  @@unique([userId, articleId])
+  @@index([articleId])
 }
 
 enum GuideVideoStatus {

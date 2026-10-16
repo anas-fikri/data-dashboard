@@ -13,6 +13,7 @@ import { RecastProvider } from "@/components/schema/use-recast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GuideHelp } from "@/components/guides/guide-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { isIdShape } from "@/features/datasets/validation";
@@ -73,7 +74,12 @@ export default async function SchemaPage({
       }
       title="Skema data"
       description="Periksa nama dan tipe kolom hasil deteksi otomatis, lalu perbaiki bila perlu. Perubahan diterapkan ke data aktif tanpa mengunggah ulang file."
-      actions={back}
+      actions={
+        <>
+          <GuideHelp context="SCHEMA" page="Skema data" />
+          {back}
+        </>
+      }
     />
   );
 

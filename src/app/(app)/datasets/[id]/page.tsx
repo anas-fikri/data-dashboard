@@ -10,6 +10,7 @@ import { VersionHistory } from "@/components/datasets/version-history";
 import { activationBusy } from "@/components/datasets/version-history-status";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNotice } from "@/components/ui/focus-notice";
+import { GuideHelp } from "@/components/guides/guide-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { datasetShareImpact, getDataset } from "@/features/datasets/service";
@@ -93,6 +94,7 @@ export default async function DatasetDetailPage({
         }
         title={dataset.name}
         description={dataset.description ?? undefined}
+        actions={<GuideHelp context="UPLOAD" page="Unggah data" />}
       />
       {search.created === "1" ? <FocusNotice>Dataset dibuat.</FocusNotice> : null}
       {/* Kembali dari halaman pemetaan (T-014); hanya bila keadaannya memang sudah begitu. */}

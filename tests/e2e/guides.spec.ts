@@ -3,7 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
 
 /*
- * T-020 panduan per peran (admin): A = admin (dev-make-admin), B = pengguna biasa.
+ * T-020 panduan per peran (admin): A = admin (dev-make-admin), B = pengguna biasa yang menjadi viewer
+ * satu dashboard A (dev-share-fixture) — /panduan menyaring per peran (T-022).
  *   AC3 B membuka /admin/panduan → 404;
  *   AC1/AC2/AC6 A menulis artikel viewer + konteks skema berisi <script>, javascript:, gambar luar →
  *     pratinjau tersanitasi (tanpa skrip berjalan), tersimpan draf, diterbitkan → tampil di /panduan;
@@ -67,6 +68,7 @@ test.describe("panduan admin (T-020)", () => {
     }
     await setup.close();
     execFileSync("node", ["scripts/dev-make-admin.mjs", A]);
+    execFileSync("node", ["scripts/dev-share-fixture.mjs", A, B, "VIEWER"]);
     a = await pageFor(browser, A);
     b = await pageFor(browser, B);
   });
@@ -111,9 +113,11 @@ test.describe("panduan admin (T-020)", () => {
     await expect(r.getByText("Terbit", { exact: true })).toBeVisible();
 
     await b.goto("/panduan");
-    const article = b.getByTestId("guide-article").filter({ hasText: T1 });
-    await expect(article).toHaveCount(1);
-    await expectSanitized(b, article.getByTestId("guide-markdown"));
+    const card = b.getByTestId("guide-card").filter({ hasText: T1 });
+    await expect(card).toHaveCount(1);
+    await card.getByRole("link", { name: T1 }).click();
+    await expect(b).toHaveURL(/\/panduan\/membaca-skema-dataset-\d+-\d+$/);
+    await expectSanitized(b, b.getByTestId("guide-markdown"));
   });
 
   test("AC4: tukar urutan tersimpan; draf tidak tampil di /panduan", async () => {
@@ -130,8 +134,9 @@ test.describe("panduan admin (T-020)", () => {
     expect(await titles()).toEqual([T2, T1]);
 
     await b.goto("/panduan");
-    await expect(b.getByTestId("guide-article").filter({ hasText: T1 })).toHaveCount(1);
-    await expect(b.getByTestId("guide-article").filter({ hasText: T2 })).toHaveCount(0);
+    await expect(b.getByTestId("guide-card").filter({ hasText: T1 })).toHaveCount(1);
+    await b.goto("/panduan?peran=umum");
+    await expect(b.getByTestId("guide-card").filter({ hasText: T2 })).toHaveCount(0);
   });
 
   test("review AC5: ubah artikel tersimpan; fokus kembali setelah aksi baris dan dialog hapus", async () => {
@@ -179,10 +184,13 @@ test.describe("panduan admin (T-020)", () => {
       .getByRole("button", { name: /^Terbitkan/ })
       .click();
     await expect(row(a, T3).getByRole("button", { name: /^Tarik/ })).toBeVisible();
-    await b.goto("/panduan");
-    await expect(b.getByTestId("guide-article").filter({ hasText: T1 })).toHaveCount(1);
-    await expect(b.getByTestId("guide-article").filter({ hasText: T3 })).toHaveCount(0);
-    await a.goto("/panduan");
-    await expect(a.getByTestId("guide-article").filter({ hasText: T3 })).toHaveCount(1);
+    await b.goto("/panduan?peran=admin"); // bukan perannya → tab pertama (Viewer)
+    await expect(b.getByTestId("guide-card").filter({ hasText: T1 })).toHaveCount(1);
+    await expect(b.getByTestId("guide-card").filter({ hasText: T3 })).toHaveCount(0);
+    await a.goto("/panduan?peran=admin");
+    const card = a.getByTestId("guide-card").filter({ hasText: T3 });
+    await expect(card).toHaveCount(1);
+    const href = (await card.getByRole("link", { name: T3 }).getAttribute("href"))!;
+    expect((await b.goto(href))?.status()).toBe(404);
   });
 });

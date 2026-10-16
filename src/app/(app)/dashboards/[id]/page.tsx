@@ -12,6 +12,7 @@ import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
 import { EmailText } from "@/components/admin/email-text";
 import { SharedRoleBadge } from "@/components/sharing/access-badge";
 import { ShareDialog } from "@/components/sharing/share-dialog";
+import { GuideHelp } from "@/components/guides/guide-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { ExportUserProvider } from "@/components/widgets/export-user";
 import { clientIp } from "@/features/auth/rate-limit";
@@ -69,7 +70,7 @@ export default async function DashboardPage({
   // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot. Tanpa tombol
   // (mode edit), PDF yang sedang dibuat tetap dipantau dan diunduh otomatis (DashboardPdfWatch).
   const pdf = !editing && d.widgets.length > 0;
-  const hasActions = pdf || isOwner || (canEdit && !editing);
+  const hasActions = pdf || isOwner || canEdit;
 
   return (
     // Ekspor widget dan PDF disimpan per user (review T-017 R2-CL-1): keluar → masuk sebagai user lain
@@ -135,6 +136,7 @@ export default async function DashboardPage({
           actions={
             hasActions ? (
               <>
+                {canEdit ? <GuideHelp context="BUILDER" page="Penyusun dashboard" /> : null}
                 {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
                 {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
                 {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}

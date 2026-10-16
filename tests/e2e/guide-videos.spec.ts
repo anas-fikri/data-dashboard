@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
@@ -21,6 +21,7 @@ const A = uniqueEmail("video-admin");
 const B = uniqueEmail("video-user");
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const ARTICLE = `Video panduan ${TAG}`; // akhiran tag → dibersihkan dev-purge-test-data
+const SLUG = `video-panduan-${TAG}`;
 const DIR = join(tmpdir(), `guide-videos-${TAG}`);
 const DEMO = join(DIR, "demo.mp4");
 const FAKE = join(DIR, "fake.mp4");
@@ -233,23 +234,30 @@ test.describe("video panduan (T-021)", () => {
       const range = (await res.request().allHeaders())["range"] ?? "";
       ranges.push({ status: res.status(), start: Number(/bytes=(\d+)-/.exec(range)?.[1] ?? -1) });
     });
-    await b.goto("/panduan");
-    const video = b
-      .getByTestId("guide-article")
-      .filter({ hasText: ARTICLE })
-      .getByTestId("guide-video")
-      .locator("video");
-    await expect(video).toHaveAttribute("preload", "none");
+    await b.goto(`/panduan/${SLUG}`);
+    const video = b.getByTestId("guide-video").locator("video");
     await video.evaluate(async (v: HTMLVideoElement) => {
       v.muted = true;
       await v.play();
-      await new Promise<void>((resolve) => {
-        v.addEventListener("seeked", () => resolve(), { once: true });
-        v.currentTime = 300;
-      });
     });
+    // Hanya permintaan karena lompatan: rentang di tengah file (bukan awal, bukan indeks moov di akhir).
+    const before = ranges.length;
+    await video.evaluate(
+      (v: HTMLVideoElement) =>
+        new Promise<void>((resolve) => {
+          v.addEventListener("seeked", () => resolve(), { once: true });
+          v.currentTime = 300;
+        }),
+    );
+    const size = statSync(DEMO).size;
     await expect
-      .poll(() => ranges.some((r) => r.status === 206 && r.start > 4 * 1024 * 1024))
+      .poll(() =>
+        ranges
+          .slice(before)
+          .some(
+            (r) => r.status === 206 && r.start > 4 * 1024 * 1024 && r.start < size - 512 * 1024,
+          ),
+      )
       .toBe(true);
     expect(ranges.every((r) => r.status === 206)).toBe(true);
   });
