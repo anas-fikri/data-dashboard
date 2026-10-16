@@ -241,6 +241,17 @@ describe("chartOption cetak (print)", () => {
     expect([niceCeil(1.7e9), niceCeil(19_323), niceCeil(2.4), niceCeil(0)]).toEqual([
       2e9, 20_000, 2.5, 1,
     ]);
+    // Seri panjang ('Rp 675,86 rb' = 'Rp 3.504.384'): per batang, bentuk ringkas mengurangi kelebihan
+    // label batang terpanjang → ringkas, tidak lagi lengkap lalu ditarik ke atas batangnya (R12-INT-1).
+    const tie = chartOption({ ...input, values: [3_504_384, 675_860] }, theme, {
+      width: 159,
+      height: 200,
+    }) as unknown as Opt;
+    expect(tie.series[0]!.label!.formatter({ value: 3_504_384, dataIndex: 0 })).toBe("Rp 3,5 jt");
+    // Label cetak berpadding 2 px (latar transparan) agar label yang menempel tidak terbaca satu angka.
+    const style = tie.series[0]!.label as unknown as { padding: number[]; backgroundColor: string };
+    expect(style.padding).toEqual([0, 2]);
+    expect(style.backgroundColor).toBe("rgba(0,0,0,0)");
     // Kartu lebar: nilai lengkap seperti sebelumnya.
     const wide = chartOption(input, theme, SIZE) as unknown as Opt;
     expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(

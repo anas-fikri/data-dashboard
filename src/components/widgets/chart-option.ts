@@ -316,9 +316,9 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     const rise = (k: number) =>
       (Math.abs(vals[k]! - vals[0]!) / Math.max((hi - lo) * 1.25, 1e-9)) * plotH;
     const next = vals.findIndex((v, k) => k > 0 && w(k) > 0 && rise(k) < PRINT_LABEL_PX + 4);
-    // Lebar label sudah perkiraan atas (6,1 px/karakter): celah 1 px cukup — hideOverlap hanya membuang
-    // label yang kotaknya benar-benar berpotongan.
-    const room = next < 0 ? Infinity : xs[next]! - w(next) / 2 - 1 - (xs[0]! + w(0) / 2);
+    // Lebar label sudah perkiraan atas (6,1 px/karakter); celah 5 px = 1 px + padding 2 px tiap sisi
+    // label cetak (valueLabel) — hideOverlap hanya membuang kotak yang benar-benar berpotongan.
+    const room = next < 0 ? Infinity : xs[next]! - w(next) / 2 - 5 - (xs[0]! + w(0) / 2);
     // Rapat: label pertama (prioritas terendah, lihat symbols) memang dibuang bila tetap bertumpuk —
     // lebih baik daripada tercetak di atas label sumbu.
     shifts[0] = room < 0 ? need : Math.min(need, room);
@@ -352,6 +352,11 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             color: theme.text,
             fontSize: PRINT_LABEL_PX,
             fontFamily: theme.font,
+            // Kotak label 2 px lebih lebar tiap sisi (latar transparan agar padding dihitung ECharts):
+            // dua label yang menempel tidak lagi terbaca sebagai satu angka — yang lebih lama dibuang
+            // hideOverlap (review T-018 R12-DS-2).
+            padding: [0, 2],
+            backgroundColor: "rgba(0,0,0,0)",
             formatter: (p: { value: unknown; dataIndex: number }) =>
               skip[p.dataIndex]
                 ? ""
@@ -702,21 +707,23 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // titik garis (ruang atas; label titik terakhir rata tengah butuh setengah lebarnya di kanan).
   const valueTextPx = (v: number | null, compact = false) =>
     value(v, compact).length * AXIS_CHAR_PX;
-  // Batang cetak di kartu sempit: label lengkap terpanjang (6,1 px/karakter) tidak muat di ruang kanan
-  // (maks. 30 %) ditambah sisa sumbu nilai di kanan batang terpanjang (maksimum sumbu dibulatkan ke
-  // atas, diperkirakan 1/2/2,5/5 × 10ⁿ, dihitung 80 %) → semua label batang memakai bentuk ringkas
-  // ("Rp 1,7 M"), asal memang lebih pendek (review T-018 R10-INT-1, R11-INT-1).
+  // Batang cetak di kartu sempit: per batang, label (6,1 px/karakter + celah) dibanding ruangnya = ruang
+  // kanan grid (maks. 30 %) + sisa sumbu di kanan ujung batang itu (maksimum sumbu dibulatkan ke atas,
+  // diperkirakan 1/2/2,5/5 × 10ⁿ, dihitung 80 %; nilai negatif/semua negatif tanpa sisa). Label
+  // lengkap ada yang tidak muat dan bentuk ringkas mengurangi kelebihan terbesar → semua label batang
+  // ringkas ("Rp 1,7 M") (review T-018 R10-INT-1, R11-INT-1, R12-INT-1/DS-1).
   const labelW = (v: number | null, compact = false) =>
     value(v, compact).length * PRINT_LABEL_CHAR_PX;
   const fullW = Math.max(0, ...values.map((v) => labelW(v)));
   const fullRight = Math.min(fullW + 8, size.width * 0.3);
-  const top = Math.max(0, ...values.map((v) => Math.abs(v ?? 0)));
-  const headroom = top > 0 ? (1 - top / niceCeil(top)) * Math.max(0, valuePx - fullRight) * 0.8 : 0;
+  const top = Math.max(0, ...values.map((v) => v ?? 0));
+  const plotLen = Math.max(0, valuePx - fullRight) * 0.8;
+  const roomAt = (v: number | null) =>
+    fullRight + (top > 0 && (v ?? 0) > 0 ? (1 - (v ?? 0) / niceCeil(top)) * plotLen : 0);
+  const overflow = (compact: boolean) =>
+    Math.max(...values.map((v) => labelW(v, compact) + 4 - roomAt(v)));
   const barCompact =
-    i.print &&
-    horizontal &&
-    fullW + 4 > fullRight + headroom &&
-    Math.max(0, ...values.map((v) => labelW(v, true))) < fullW;
+    i.print && horizontal && overflow(false) > 0 && overflow(true) < overflow(false);
   const printGrid = !i.print
     ? grid
     : horizontal
