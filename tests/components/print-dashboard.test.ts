@@ -215,7 +215,10 @@ describe("PrintDashboard", () => {
   it("catatan kartu dan keterangan tabel membungkus sampai 2 baris, nama tidak terpotong (R3-DS-3)", () => {
     const wrap = '<span class="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">';
     expect(html).toContain(`${wrap}Filter Kota tidak berlaku untuk widget ini.`);
-    expect(html).toContain(`data-testid="print-table-range">${wrap}Menampilkan`);
+    // Keterangan tabel tanpa batas baris: setiap kolom yang tidak muat disebut (R4-DS-2).
+    expect(html).toContain(
+      `data-testid="print-table-range"><span class="min-w-0 [overflow-wrap:anywhere]">Menampilkan`,
+    );
     expect(html).not.toMatch(/data-testid="print-table-range"><span class="[^"]*truncate/);
   });
 });

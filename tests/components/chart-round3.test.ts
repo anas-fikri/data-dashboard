@@ -20,6 +20,8 @@ import {
   noteLines,
   pieChartHeight,
   pieRest,
+  printLegend,
+  wrapLines,
   fitTwoLines,
   rankedItems,
   rankedLabels,
@@ -2415,5 +2417,51 @@ describe("putaran 9: daftar inline bertumpuk bila tanggal tidak muat; tahun untu
   it("dua minggu berselisih 52 minggu (beda tahun kalender) tetap memuat tahun", () => {
     const forms = dateLabelForms(["2025-12-22", "2024-12-23"], "week") as string[][];
     for (const f of forms) expect(f.every((l) => /2024|2025|\/2[45]\b/.test(l))).toBe(true);
+  });
+});
+
+describe("legenda pai cetak utuh (review T-018 R4-DS-1/INT-1/INT-2)", () => {
+  const items = (n: number, label: string, tail: string) =>
+    Array.from({ length: n }, () => ({ label, tail }));
+  const short = items(5, "Teh", "637.860.000 21%");
+  const long = items(5, "Paket Reguler Antar Kota Jawa Barat", "Rp 21.530.863.728 27%");
+
+  it("dibungkus per kata seperti peramban; kata lebih panjang dari baris dipecah", () => {
+    // 6,6 px per karakter: "Paket Reguler Antar" | "Kota Jawa" ... di 119 px → 3 baris.
+    expect(wrapLines("Paket Reguler Antar Kota Jawa Barat", 119)).toBe(3);
+    expect(wrapLines("Teh", 119)).toBe(1);
+    expect(wrapLines("x".repeat(40), 66)).toBe(4);
+  });
+
+  it("nama terlalu sempit di samping nilai → bertumpuk (nama sebaris, nilai di bawah, 32 px per irisan)", () => {
+    expect(printLegend(159, short)).toEqual({ px: 4 + 5 * 32, stack: true });
+    expect(pieChartHeight(159, 230, 5, printLegend(159, short).px)).toBe(230 - 164 - 8);
+    // Cukup ruang di samping nilai: satu baris 20 px per irisan.
+    expect(printLegend(400, short)).toEqual({ px: 4 + 5 * 20, stack: false });
+  });
+
+  it("legenda utuh tidak muat bersama donat ≥ PLOT_MIN → daftar peringkat (tidak ada irisan hilang)", () => {
+    const fit = chartFit({
+      type: "pie",
+      room: { width: 159, height: 150 },
+      rows: 5,
+      categories: 5,
+      legendRows: 5,
+      others: false,
+      partial: false,
+      printLegendPx: printLegend(159, long).px,
+    });
+    expect(fit.ranked).toBe(true);
+  });
+
+  it("legenda di samping (≥ 448 px) harus muat setinggi kotak", () => {
+    expect(printLegend(500, long).px).toBe(4 + 5 * 48);
+    expect(pieChartHeight(500, 200, 5, printLegend(500, long).px)).toBe(0);
+    expect(pieChartHeight(500, 200, 5, printLegend(500, short).px)).toBe(200);
+  });
+
+  it("layar tidak berubah (tanpa printPx: legenda paling banyak 45 %)", () => {
+    expect(pieChartHeight(300, 200, 5)).toBe(200 - 90 - 8);
+    expect(pieChartHeight(500, 200, 5)).toBe(200);
   });
 });

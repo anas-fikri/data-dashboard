@@ -190,15 +190,48 @@ describe("KPI: memilih bentuk yang muat", () => {
     // Isi kotak 33 px + label → angka ≤ (33 + 12 pb − 2 ekor huruf − 24 label) / 1,25 px.
     expect(kpiHeightPx(33, true)).toBe(15.2);
     expect(kpiHeightPx(35, false)).toBe(36);
-    const capped = chooseKpi(rp, 400, measure, kpiHeightPx(33, true));
+    // Huruf akar 20 px (pengguna memperbesar huruf): padding dan baris label ber-rem ikut membesar.
+    expect(kpiHeightPx(40, true, 20)).toBe((40 + 15 - 2 - 30) / 1.25);
+    const cap = (h: number) => (label: boolean) => kpiHeightPx(h, label);
     // Huruf lebih kecil: bentuk lengkap muat lagi, tidak terpotong setengah.
-    expect(capped).toMatchObject({ text: "Rp 6.215.000.000", small: false, px: 15.2 });
+    expect(chooseKpi(rp, 400, measure, cap(33))).toMatchObject({
+      text: "Rp 6.215.000.000",
+      small: false,
+      px: 15.2,
+      label: true,
+    });
     // Kotak tinggi: hanya lebar yang menentukan, seperti sebelumnya.
-    expect(chooseKpi(rp, 400, measure, kpiHeightPx(200, true)).px).toBe(36);
-    // Tidak muat bahkan 14 px → text-sm (ukuran dari kelas).
-    expect(chooseKpi(rp, 400, measure, 12)).toMatchObject({ small: true, px: null });
+    expect(chooseKpi(rp, 400, measure, cap(200)).px).toBe(36);
+    // Tanpa batas tinggi (kartu ponsel tumbuh mengikuti isi): hanya lebar.
+    expect(chooseKpi(rp, 400, measure).px).toBe(36);
+  });
+
+  it("baris label dihitung per bentuk: label = judul → tidak ada baris label, angka tidak dikecilkan (R4-CL-1)", () => {
+    // Isi 40 px: dengan baris label (40 + 10 − 24) / 1,25 = 20,8 px; tanpa: 40 → dibatasi lebar 36 px.
+    expect(chooseKpi(rp, 400, measure, cap40, false)).toMatchObject({
+      text: "Rp 6.215.000.000",
+      px: 36,
+      label: false,
+    });
+    expect(chooseKpi(rp, 400, measure, cap40, true)).toMatchObject({ px: 20.8, label: true });
+  });
+
+  it("kotak terlalu pendek untuk label + angka (sentuh, huruf besar): label disembunyikan, 'Rp' tidak pindah (R4-CL-2)", () => {
+    // Isi 12 px: dengan label < 0; tanpa label (12 + 10) / 1,25 = 17,6 px.
+    const cap12 = (label: boolean) => kpiHeightPx(12, label);
+    expect(chooseKpi(rp, 400, measure, cap12, true)).toMatchObject({
+      text: "Rp 6.215.000.000",
+      unit: null,
+      label: false,
+      small: false,
+      px: 17.6,
+    });
+    // Sempit juga: tidak ada bentuk yang memindah "Rp" ke baris label yang tidak muat.
+    expect(chooseKpi(rp, 90, measure, cap12, true)).toMatchObject({ unit: null, label: false });
   });
 });
+
+const cap40 = (label: boolean) => kpiHeightPx(40, label);
 
 describe("kartu widget", () => {
   it("tombol data: tooltip dan ikon berganti, sesuai jenis grafik", () => {

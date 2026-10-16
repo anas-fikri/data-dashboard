@@ -100,6 +100,7 @@ function Body({
         format={config.spec.format}
         title={title}
         agg={config.spec.measure.agg}
+        fixedHeight
       />
     );
   }

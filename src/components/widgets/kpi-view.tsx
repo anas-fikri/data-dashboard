@@ -10,8 +10,8 @@ import type { WidgetData } from "./widget-query";
 
 /*
  * Satu angka besar (T-011). Ukuran huruf mengikuti lebar kotak ini (container sendiri, jadi cqi = lebar
- * isi yang diukur — tanpa potong padding dua kali), dibatasi tingginya setelah diukur (kartu pendek
- * dengan catatan/judul dua baris). Bentuk yang tampil dipilih di kpi-fit: lengkap,
+ * isi yang diukur — tanpa potong padding dua kali), di kartu bertinggi tetap juga dibatasi tingginya
+ * setelah diukur (kartu pendek dengan catatan/judul dua baris). Bentuk yang tampil dipilih di kpi-fit: lengkap,
  * ringkas, "Rp" pindah ke label, huruf kecil, lalu dua baris — tidak pernah potongan berelipsis. Nilai
  * lengkap selalu di title dan untuk pembaca layar (review desain T-011). Total/jumlah atas nol baris = 0
  * seperti SUM Excel; kolom ukuran yang kosong di versi data ini (T-014) = "(kosong)". Label ukuran
@@ -28,16 +28,25 @@ function textWidth(text: string, px: number): number | null {
   return ctx.measureText(text).width;
 }
 
+/** Ukuran huruf akar (px): padding/baris label ber-rem membesar bila pengguna memperbesar huruf. */
+const rootPx = () =>
+  typeof document === "undefined"
+    ? 16
+    : parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+
 export function KpiView({
   data,
   format,
   title,
   agg,
+  fixedHeight = false,
 }: {
   data: WidgetData;
   format: NumberFormat;
   title: string;
   agg: Agg;
+  /** Tinggi kartu tetap (grid, kertas): angka juga dibatasi tinggi kotak. Tumpukan ponsel: tidak. */
+  fixedHeight?: boolean;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const size = useBoxSize(box);
@@ -50,13 +59,13 @@ export function KpiView({
   const label = column?.label ?? "";
   const { full, options } = kpiTexts(value, column?.type ?? "decimal", format, agg, label);
   const sameAsTitle = label.trim().toLowerCase() === title.trim().toLowerCase();
-  // Baris label dicadangkan bila mungkin tampil (label beda dari judul, atau "Rp" bisa pindah ke sana).
-  const labelRow = !sameAsTitle || options.some((o) => o.unit);
   const shown = chooseKpi(
     options,
     size?.width ?? null,
     textWidth,
-    size ? kpiHeightPx(size.height, labelRow) : undefined,
+    // Tinggi kotak hanya membatasi bila kartu tidak tumbuh mengikuti isinya (tumpukan ponsel tumbuh).
+    fixedHeight && size ? (row) => kpiHeightPx(size.height, row, rootPx()) : undefined,
+    !sameAsTitle,
   );
 
   return (
@@ -64,9 +73,13 @@ export function KpiView({
       ref={box}
       className="@container flex min-h-0 flex-1 flex-col justify-center-safe gap-1 overflow-hidden px-4 pb-3 @max-[9rem]:px-2"
     >
-      {sameAsTitle && !shown.unit ? null : (
+      {/* Label yang tidak muat bersama angka: tetap untuk pembaca layar (angka didahulukan). */}
+      {shown.label || !sameAsTitle ? (
         <p
-          className="flex min-w-0 gap-1 text-sm text-muted-foreground"
+          className={cn(
+            "flex min-w-0 gap-1 text-sm text-muted-foreground",
+            !shown.label && "sr-only",
+          )}
           title={sameAsTitle ? undefined : label}
         >
           {sameAsTitle ? null : <span className="truncate">{label}</span>}
@@ -77,7 +90,7 @@ export function KpiView({
             </span>
           ) : null}
         </p>
-      )}
+      ) : null}
       <p
         className={cn(
           // shrink-0: kotak pendek (kartu sempit di tablet sentuh) tidak memotong angka di dalam barisnya

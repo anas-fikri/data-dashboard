@@ -549,11 +549,70 @@ export const barsThatFit = (height: number) => Math.max(1, Math.floor((height - 
 
 /**
  * Tinggi kotak donat: legenda di samping mulai 448 px (container @md); di bawahnya legenda di bawah
- * donat setinggi isinya (baris 20 px) dan paling banyak 45 % (+ jarak 8 px).
+ * donat setinggi isinya (baris 20 px) dan paling banyak 45 % (+ jarak 8 px). Cetak (`printPx`, dari
+ * printLegend): legenda selalu utuh — di samping harus muat setinggi kotak, di bawah donat mendapat
+ * sisanya; tidak muat → 0 (daftar peringkat).
  */
-export function pieChartHeight(width: number, height: number, legendRows: number): number {
+export function pieChartHeight(
+  width: number,
+  height: number,
+  legendRows: number,
+  printPx?: number,
+): number {
+  if (printPx !== undefined)
+    return width >= 448 ? (printPx > height ? 0 : height) : height - printPx - 8;
   if (width >= 448) return height;
   return height - Math.min(legendRows * 20 + 4, height * 0.45) - 8;
+}
+
+/** Lebar teks 12 px (px); tanpa canvas: rata-rata per karakter seperti keterangan grafik. */
+export type TextPx = (text: string) => number;
+const charPx: TextPx = (t) => [...t].length * NOTE_CHAR_PX;
+
+/** Baris teks yang dibutuhkan `text` dibungkus per kata selebar `w` (kata lebih panjang dipecah). */
+export function wrapLines(text: string, w: number, px: TextPx = charPx): number {
+  const room = Math.max(1, w);
+  const space = px(" ");
+  let lines = 1;
+  let x = 0;
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const ww = px(word);
+    if (x > 0 && x + space + ww <= room) {
+      x += space + ww;
+      continue;
+    }
+    if (x > 0) lines++;
+    const extra = Math.max(0, Math.ceil(ww / room) - 1);
+    lines += extra;
+    x = ww - extra * room;
+  }
+  return lines;
+}
+
+/**
+ * Legenda pai CETAK di kotak luar selebar `width` (review T-018 R4-DS-1/INT-1/INT-2): kertas tidak bisa
+ * digulir dan Chromium tidak memotong wilayah ber-max-height saat page.pdf(), jadi tinggi legenda utuh
+ * dihitung (`px`) dan donat yang tidak muat diganti daftar peringkat. `stack`: nama sebaris penuh dengan
+ * "nilai persen" di bawahnya (ml-4) bila itu lebih pendek dari nama di samping nilai. Per irisan baris 16 px
+ * (text-xs), paling sedikit 20 px (min-h-5). ≥ 448 px: legenda di samping selebar 45 %. px-3 + kotak
+ * warna + jarak = 40 px; dua jarak nilai 12 px; pb-1 4 px. Murni.
+ */
+export function printLegend(
+  width: number,
+  items: readonly { label: string; tail: string }[],
+  px: TextPx = charPx,
+): { px: number; stack: boolean } {
+  const room = (width >= 448 ? width * 0.45 : width) - 40;
+  const total = (stack: boolean) =>
+    items.reduce((sum, { label, tail }) => {
+      const n = stack
+        ? wrapLines(label, room, px) + (px(tail) > room ? 2 : 1)
+        : wrapLines(label, room - px(tail) - 12, px);
+      return sum + Math.max(20, n * 16);
+    }, 4);
+  const side = total(false);
+  const stacked = total(true);
+  return stacked < side ? { px: stacked, stack: true } : { px: side, stack: false };
 }
 
 export interface FitInput {
@@ -566,6 +625,8 @@ export interface FitInput {
   /** Pai: baris legenda (termasuk "Lainnya") dan ada-tidaknya irisan "Lainnya". */
   legendRows: number;
   others: boolean;
+  /** Pai cetak: tinggi legenda utuh (printLegend). */
+  printLegendPx?: number;
   /**
    * Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: mungkin terpotong. Pai:
    * persen dari yang tampil; batang/garis: "N teratas" menurut `sort`, bukan "N kategori".
@@ -624,7 +685,8 @@ export function chartFit(i: FitInput): Fit {
       : `${all} ${noun}`;
     return { important: false, full, compact: "" };
   };
-  const plot = (h: number) => (i.type === "pie" ? pieChartHeight(width, h, i.legendRows) : h);
+  const plot = (h: number) =>
+    i.type === "pie" ? pieChartHeight(width, h, i.legendRows, i.printLegendPx) : h;
   const visibleAt = (h: number) => (i.type === "bar" ? Math.min(barsThatFit(h), i.rows) : i.rows);
 
   if (width < NARROW) {

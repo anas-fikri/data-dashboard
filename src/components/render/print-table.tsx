@@ -125,7 +125,9 @@ export function PrintTable({
         className="flex min-h-6 shrink-0 items-center border-t px-3 py-1 text-xs text-muted-foreground"
         data-testid="print-table-range"
       >
-        <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">
+        {/* Tanpa batas baris: setiap kolom yang tidak muat disebut namanya (R4-DS-2); baris tabel diukur
+          ulang setelah kolom dibuang. */}
+        <span className="min-w-0 [overflow-wrap:anywhere]">
           {printTableNote(
             rows.length,
             total,

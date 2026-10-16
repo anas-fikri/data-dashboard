@@ -221,12 +221,13 @@ describe("ChartWidget cetak: legenda pai memuat nilai", () => {
     expect(out).not.toContain("…");
   });
 
-  it("R3-DS-2: kartu sempit → nama sebaris penuh, nilai + persen di baris bawah; legenda tanpa batas 45%", () => {
+  it("R3-DS-2: baris legenda cetak boleh membungkus (nilai turun ke bawah nama); legenda tanpa batas 45%", () => {
     const out = html(true);
     expect(
       out.match(/<li class="flex min-h-5 min-w-0 items-center flex-wrap gap-x-1\.5">/g),
     ).toHaveLength(2);
-    expect(out).toContain("@max-[14rem]:basis-[calc(100%-1rem)]");
+    // Bertumpuk atau tidak diputuskan printLegend setelah kotak diukur (render awal: belum).
+    expect(out).not.toContain("basis-[calc(100%-1rem)]");
     expect(out).toContain("max-h-[calc(100%-4.5rem)]");
     expect(out).not.toContain("max-h-[45%]");
     // Layar tidak berubah.

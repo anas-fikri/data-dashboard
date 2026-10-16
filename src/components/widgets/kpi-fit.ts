@@ -23,11 +23,13 @@ export const kpiFontPx = (room: number) => Math.min(36, Math.max(18, room * 0.15
 /**
  * Ukuran huruf terbesar yang muat setinggi kotak KPI (review T-018 R3-DS-1, T-p24e): kartu pendek dengan
  * judul dua baris atau baris catatan menyisakan kotak rendah — angka selebar kartu terpotong setengah.
- * `height` = tinggi isi kotak; angka boleh memakai padding bawah (pb-3, 12 px) kecuali 2 px untuk ekor
- * huruf ("p" pada "Rp"); baris label 20 px + gap 4 px; tinggi baris angka leading-tight (1,25).
+ * `height` = tinggi isi kotak; `rem` = ukuran huruf akar (px; pengguna bisa memperbesarnya): angka boleh
+ * memakai padding bawah (pb-3, 0,75rem) kecuali 2 px untuk ekor huruf ("p" pada "Rp"); baris label
+ * text-sm 1,25rem + gap 0,25rem; tinggi baris angka leading-tight (1,25). Hanya untuk kotak yang
+ * tingginya TIDAK mengikuti isinya (grid, kertas) — kartu yang tumbuh akan berputar mengecil.
  */
-export const kpiHeightPx = (height: number, label: boolean) =>
-  (height + 10 - (label ? 24 : 0)) / 1.25;
+export const kpiHeightPx = (height: number, label: boolean, rem = 16) =>
+  (height + 0.75 * rem - 2 - (label ? 1.5 * rem : 0)) / 1.25;
 /** Canvas tidak memakai angka tabular (tnum): sisakan ruang agar teks tidak terpotong 1–2 px. */
 const SLACK = 1.06;
 const NUMERIC = new Set<ValueType>(["integer", "decimal", "duration"]);
@@ -44,6 +46,8 @@ export interface KpiChoice extends KpiOption {
   px: number | null;
   /** Boleh pindah baris: tidak ada bentuk yang muat satu baris. */
   wrap: boolean;
+  /** Baris label tampil (label beda dari judul, atau "Rp" pindah ke sana). */
+  label: boolean;
 }
 
 /** Durasi ringkas, dua satuan terbesar: "8 h 17 j", "1 j 5 m", "5 m 9 d" (lengkap tetap di title). */
@@ -110,24 +114,44 @@ export function kpiTexts(
 /**
  * Bentuk yang ditampilkan untuk lebar isi `room` (px; null = belum diukur → bentuk lengkap).
  * `measure` = lebar teks pada ukuran huruf `px`, null bila tidak bisa diukur (dianggap muat).
- * `maxPx` = batas ukuran huruf dari tinggi kotak (kpiHeightPx).
+ * `cap(label)` = batas ukuran huruf dari tinggi kotak dengan/tanpa baris label (kpiHeightPx); tidak ada =
+ * kotak tumbuh mengikuti isi (hanya lebar). `labelled` = label beda dari judul (barisnya selalu tampil);
+ * selain itu baris label hanya ada bila "Rp" pindah ke sana — dihitung per bentuk (review T-018 R4-CL-1).
  */
 export function chooseKpi(
   options: KpiOption[],
   room: number | null,
   measure: (text: string, px: number) => number | null,
-  maxPx = Infinity,
+  cap?: (label: boolean) => number,
+  labelled = true,
 ): KpiChoice {
   const fits = (text: string, px: number) => {
     if (room === null) return true;
     const w = measure(text, px);
     return w === null || w * SLACK <= room;
   };
-  const px = room === null ? null : Math.min(kpiFontPx(room), maxPx);
-  if (px === null || px > KPI_MIN_PX) {
-    for (const o of options)
-      if (fits(o.text, px ?? 0)) return { ...o, small: false, wrap: false, px };
-  }
+  const pick = (opts: KpiOption[], label: (o: KpiOption) => boolean): KpiChoice | null => {
+    for (const o of opts) {
+      const px = room === null ? null : Math.min(kpiFontPx(room), cap?.(label(o)) ?? Infinity);
+      if ((px === null || px > KPI_MIN_PX) && fits(o.text, px ?? 0))
+        return { ...o, small: false, wrap: false, px, label: label(o) };
+    }
+    return null;
+  };
+  const small = (o: KpiOption, label: boolean): KpiChoice => ({
+    ...o,
+    small: true,
+    wrap: !fits(o.text, KPI_MIN_PX),
+    px: null,
+    label,
+  });
+  const withLabel = (o: KpiOption) => labelled || !!o.unit;
   const last = options[options.length - 1]!;
-  return { ...last, small: true, wrap: !fits(last.text, KPI_MIN_PX), px: null };
+  const chosen = pick(options, withLabel);
+  if (chosen) return chosen;
+  if (!cap || cap(withLabel(last)) >= KPI_MIN_PX) return small(last, withLabel(last));
+  // Kotak terlalu pendek untuk label + angka (sentuh: kepala/catatan 44 px; huruf akar besar): angka
+  // didahulukan, label disembunyikan (tetap di title/pembaca layar), "Rp" tidak pindah (R4-CL-2).
+  const plain = options.filter((o) => !o.unit);
+  return pick(plain, () => false) ?? small(plain[plain.length - 1] ?? last, false);
 }

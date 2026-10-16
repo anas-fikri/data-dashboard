@@ -19,6 +19,7 @@ import {
   NARROW,
   RANK_WORD,
   chartFit,
+  printLegend,
   emptyBucketValue,
   legendOrder,
   lineOrder,
@@ -175,6 +176,22 @@ export function ChartWidget({
           cut: valueCut(spec.sort, cut),
         }
       : undefined;
+  // Pai cetak: legenda utuh (nama + nilai + persen) menentukan apakah donat masih muat. Lebar teks dari
+  // canvas; angka tabular (tnum) tidak dikenal canvas → semua angka diukur sebagai "0" (+1 px bulat).
+  const printMeasure = print && type === "pie" && room ? canvasMeasure(12) : undefined;
+  const legend =
+    print && type === "pie" && room
+      ? printLegend(
+          room.width,
+          order.map((k) => ({
+            label: rows[k]!.label,
+            tail: `${formatMeasure(rows[k]!.value, valueType, spec.format)} ${shares[k]}%`,
+          })),
+          printMeasure
+            ? (t) => (printMeasure(t.replace(/\d/g, "0"), false) ?? [...t].length * 7) + 1
+            : undefined,
+        )
+      : null;
   const fit = room
     ? chartFit({
         type,
@@ -182,6 +199,7 @@ export function ChartWidget({
         rows: labels.length,
         categories,
         legendRows: rows.length,
+        printLegendPx: legend?.px,
         others: others > 0,
         partial,
         sort: spec.sort,
@@ -468,10 +486,16 @@ export function ChartWidget({
                       )}
                     />
                     {/* Cetak: nama lengkap membungkus di samping nilainya (kertas tanpa tooltip; dua
-                      irisan berawalan sama tetap terbedakan — review R1-DS-3); kartu sempit: nama
-                      sebaris penuh, nilai di bawahnya (R3-DS-2). Layar: satu baris. */}
+                      irisan berawalan sama tetap terbedakan — review R1-DS-3); nama terlalu sempit di
+                      samping nilai: sebaris penuh, nilai di bawahnya (R3-DS-2, printLegend). Layar:
+                      satu baris. */}
                     {print ? (
-                      <span className="min-w-0 flex-1 [overflow-wrap:anywhere] @max-[14rem]:basis-[calc(100%-1rem)]">
+                      <span
+                        className={cn(
+                          "min-w-0 flex-1 [overflow-wrap:anywhere]",
+                          legend?.stack && "basis-[calc(100%-1rem)]",
+                        )}
+                      >
                         {r.label}
                       </span>
                     ) : (
@@ -485,7 +509,7 @@ export function ChartWidget({
                     {/* Cetak: nilai irisan sebagai teks (layar: di tabel data/tooltip). */}
                     {print ? (
                       <span
-                        className="shrink-0 tabular-nums @max-[14rem]:ml-4"
+                        className={cn("shrink-0 tabular-nums", legend?.stack && "ml-4")}
                         data-testid="pie-legend-value"
                       >
                         {formatMeasure(r.value, valueType, spec.format)}

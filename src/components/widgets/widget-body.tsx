@@ -51,6 +51,8 @@ interface Props {
   editing: boolean;
   /** Kartu punya pegangan resize di pojok kanan bawah (mode edit di grid). */
   resizable?: boolean;
+  /** Tinggi kartu tetap (grid layar lebar); tumpukan ponsel: kartu KPI tumbuh mengikuti isinya. */
+  fixedHeight?: boolean;
   /** Grafik: tampilkan nilai sebagai tabel (tombol di kepala kartu). */
   showData?: boolean;
   /** Status isi untuk versi spec ini (+ data basi sedang diperbarui); fungsi harus stabil. */
@@ -72,6 +74,7 @@ function Loaded({
   title,
   editing,
   resizable = false,
+  fixedHeight = false,
   version,
   showData = false,
   onState,
@@ -149,6 +152,7 @@ function Loaded({
           format={config.spec.format}
           title={title}
           agg={config.spec.measure.agg}
+          fixedHeight={fixedHeight}
         />
       );
       break;

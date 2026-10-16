@@ -154,7 +154,8 @@ export const PHONE_HEIGHT: Record<string, number> = {
  * Ukuran kartu di tumpukan ponsel. Tabel/grafik: tinggi tetap (bukan dari grid layar lebar) — isinya
  * menggulir di dalam kartu tanpa memanjangkan halaman. KPI: tinggi minimum (review L6: tidak memboroskan
  * layar), tetapi tumbuh saat blok galat butuh ruang — "Muat ulang"/"Coba lagi" selalu terlihat tanpa
- * menggulir di dalam kartu 150 px (review T-016 R2-UI-2). Isi KPI hanya mengukur lebar (kpi-fit).
+ * menggulir di dalam kartu 150 px (review T-016 R2-UI-2). Isi KPI di sini hanya mengukur lebar (kpi-fit
+ * tanpa batas tinggi — WidgetBody fixedHeight false; batas tinggi pada kartu yang tumbuh akan berputar).
  */
 export const phoneCardStyle = (type: string): CSSProperties =>
   type === "kpi" ? { minHeight: PHONE_HEIGHT.kpi } : { height: PHONE_HEIGHT[type] ?? 160 };
