@@ -171,7 +171,8 @@ export function excerptOf(md: string, max = 160): string {
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[#>*_`~|]+/g, " ")
+    .replace(/[#>*`~|]+/g, " ")
+    .replace(/(^|\s)_+|_+(?=\s|$)/g, " ")
     .replace(/(^|\s)-+(?=\s)/g, " ")
     .replace(/\s+/g, " ")
     .trim();

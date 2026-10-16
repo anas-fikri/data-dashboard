@@ -108,4 +108,16 @@ describe("GuideMarkdown (T-020)", () => {
     }
     expect(html("x <b>tebal</b>")).toContain("&lt;b&gt;tebal&lt;/b&gt;");
   });
+  it("review T-022 D2: tingkat judul relatif terhadap judul teratas isi — tidak melompat", () => {
+    const md = "## Dua\n\n### Tiga\n\n##### Lima";
+    const at = (offset: 1 | 2 | 3) =>
+      [
+        ...renderToStaticMarkup(
+          createElement(GuideMarkdown, { markdown: md, origins: ORIGINS, headingOffset: offset }),
+        ).matchAll(/<h(\d)/g),
+      ].map((m) => Number(m[1]));
+    expect(at(1)).toEqual([2, 3, 5]);
+    expect(at(2)).toEqual([3, 4, 6]);
+    expect(at(3)).toEqual([4, 5, 6]);
+  });
 });

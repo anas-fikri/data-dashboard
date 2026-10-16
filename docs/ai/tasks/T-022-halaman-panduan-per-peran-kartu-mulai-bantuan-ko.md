@@ -1,7 +1,7 @@
 ---
 id: T-022
 title: Halaman /panduan per peran, kartu mulai, bantuan kontekstual
-status: in_progress
+status: in_review
 profile: standard
 goal: G-4
 depends_on:
@@ -9,17 +9,23 @@ depends_on:
   - T-016
   - T-008
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-16T22:15:02Z"
+updated: "2026-10-16T22:30:56Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: f423ad55faf7dc0cfefe444768ba02d7db3b2004
+review:
+  passes:
+    - "n": 1
+      by: frontend-expert-design-reviewer
+      at: "2026-10-16T22:30:56Z"
+      findings: 2
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 42527
+    duration_ms: 43720
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -41,14 +47,14 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792188878657,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792188878681,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792188878689,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792189825523,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792189825547,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792189825555,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  125 passed (125)
-            Tests  1725 passed (1725)
-         Start at  05:14:32
-         Duration  28.52s (tests 76%, import 17%, transform 6%, worker 1%)
+            Tests  1727 passed (1727)
+         Start at  05:30:18
+         Duration  29.63s (tests 76%, import 17%, transform 6%, worker 1%)
 
           Isolate  125 workers spawned · ~131ms startup each (spawn + environment, per file)
                    at least ~1.69s faster with isolate: false — reuses workers across files instead of one per file
@@ -59,8 +65,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T22:15:02Z"
-    tree: f3e2e7cec17c93669e096a7a1c02b6f119260c33f812616825e61781ac87da8b
+    at: "2026-10-16T22:30:49Z"
+    tree: 5303cc27302c4e8eb8d56b567ea5a0c1905bef1e68abb548246c201e79de96ff
 ---
 
 ## Objective

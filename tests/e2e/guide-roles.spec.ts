@@ -136,4 +136,18 @@ test.describe("panduan per peran (T-022)", () => {
     await n.getByRole("button", { name: "Cari" }).click();
     await expect(n.getByRole("status")).toContainText("0 artikel cocok");
   });
+  test("review AC5: kata panjang tidak menggeser halaman di 320 px; judul isi tidak melompat tingkat", async () => {
+    const LONG = `Nomor resi ${"A1B2C3D4E5".repeat(8)} ${TAG}`;
+    await publish(a, LONG, "Semua peran", `## Bagian\n\nResi ${"X9".repeat(60)} tanpa spasi.`);
+    await n.setViewportSize({ width: 320, height: 800 });
+    await n.goto("/panduan?peran=umum");
+    await expect(card(n, LONG)).toHaveCount(1);
+    expect(await n.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    await n.goto(`/panduan/${slugs[LONG]}`);
+    const levels = await n
+      .locator("main h1, main h2, main h3, main h4")
+      .evaluateAll((els) => els.map((e) => Number(e.tagName[1])));
+    expect(levels).toEqual([1, 2]);
+    expect(await n.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
 });

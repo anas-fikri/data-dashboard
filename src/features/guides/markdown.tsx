@@ -30,6 +30,29 @@ function remarkNoHtml(this: { data(): object }) {
   (data.micromarkExtensions ??= []).push({ disable: { null: ["htmlFlow", "htmlText"] } });
 }
 
+interface MdNode {
+  type: string;
+  depth?: number;
+  children?: MdNode[];
+}
+
+/**
+ * Plugin remark: tingkat judul relatif terhadap judul teratas di isi, lalu + offset — isi yang dimulai
+ * dari "##" tidak melompat tingkat (h1 → h3) di bawah judul artikel (review T-022 D2).
+ */
+function remarkShiftHeadings(offset: number) {
+  return (tree: MdNode) => {
+    const heads: MdNode[] = [];
+    const walk = (n: MdNode) => {
+      if (n.type === "heading") heads.push(n);
+      n.children?.forEach(walk);
+    };
+    walk(tree);
+    const top = Math.min(...heads.map((h) => h.depth ?? 1));
+    for (const h of heads) h.depth = Math.min(6, (h.depth ?? 1) - top + 1 + offset);
+  };
+}
+
 const relative = (url: string) => !url.startsWith("//") && !/^[a-z][a-z0-9+.-]*:/i.test(url);
 
 /** URL aman untuk atribut `key` (href/src), "" bila ditolak. `origins`: origin yang boleh untuk gambar. */
@@ -80,12 +103,14 @@ export function GuideMarkdown({
    */
   headingOffset?: 1 | 2 | 3;
 }) {
+  // Tingkat tag sudah digeser remarkShiftHeadings; ukuran mengikuti tingkat relatif di isi.
   const heading =
-    (n: number) =>
+    (level: number) =>
     // eslint-disable-next-line react/display-name -- pemetaan komponen react-markdown
     ({ children }: { children?: React.ReactNode }) => {
-      const Tag = `h${Math.min(6, n + headingOffset)}` as "h2";
-      return <Tag className={HEADING[Math.min(n, 4) - 1]}>{children}</Tag>;
+      const Tag = `h${level}` as "h2";
+      const rel = Math.max(1, level - headingOffset);
+      return <Tag className={HEADING[Math.min(rel, 4) - 1]}>{children}</Tag>;
     };
   // Data yang lolos sebelum batas struktur berlaku tidak boleh menjatuhkan atau membekukan halaman.
   const problem =
@@ -111,7 +136,7 @@ export function GuideMarkdown({
       typeof src === "string" && src ? (
         <img src={src} alt={alt ?? ""} loading="lazy" className="max-w-full rounded-md border" />
       ) : null,
-    // Judul di isi turun di bawah judul artikel (headingOffset) dan lebih kecil darinya.
+    // Judul di isi di bawah judul artikel (headingOffset) dan lebih kecil darinya.
     h1: heading(1),
     h2: heading(2),
     h3: heading(3),
@@ -143,7 +168,7 @@ export function GuideMarkdown({
   return (
     <div className="min-w-0 text-sm [overflow-wrap:anywhere]" data-testid="guide-markdown">
       <Markdown
-        remarkPlugins={[remarkNoHtml]}
+        remarkPlugins={[remarkNoHtml, [remarkShiftHeadings, headingOffset]]}
         rehypePlugins={[[rehypeSanitize, SCHEMA]]}
         urlTransform={(url, key) => guideUrl(url, key, origins)}
         components={components}

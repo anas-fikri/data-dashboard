@@ -103,7 +103,11 @@ export function GuideCards({
               {g.title}
             </Link>
           </h2>
-          {g.excerpt ? <p className="mt-1 text-sm text-muted-foreground">{g.excerpt}</p> : null}
+          {g.excerpt ? (
+            <p className="mt-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+              {g.excerpt}
+            </p>
+          ) : null}
           {read.has(g.id) || g.videoCount ? (
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               {read.has(g.id) ? (

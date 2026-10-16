@@ -31,7 +31,12 @@ export async function StartHereCard({ userId, isAdmin }: { userId: string; isAdm
           Baru memakai aplikasi ini? Baca “{first.title}”, lalu tandai sudah dibaca.
         </p>
       </div>
-      <Button asChild className="h-(--control-h-lg) w-full sm:w-auto md:h-(--control-h)">
+      {/* Outline: CTA utama Beranda tetap "Buat dataset" (satu tombol utama per layar). */}
+      <Button
+        asChild
+        variant="outline"
+        className="h-(--control-h-lg) w-full sm:w-auto md:h-(--control-h)"
+      >
         <Link href={`/panduan/${first.slug}`}>Baca panduan</Link>
       </Button>
     </section>
