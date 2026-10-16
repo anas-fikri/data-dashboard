@@ -181,7 +181,7 @@ describe("env renderer PDF (T-018)", () => {
     }
   });
 
-  it("RENDERER_SECRET placeholder (.env.example) terdeteksi dan menolak start produksi", () => {
+  it("RENDERER_SECRET berpenanda change-me (placeholder) terdeteksi dan menolak start produksi", () => {
     const placeholder = "change-me-renderer-secret-min-32-chars";
     const env = { ...valid, RENDERER_URL: "http://renderer:3200", RENDERER_SECRET: placeholder };
     expect(findPlaceholderVars(env)).toEqual(["RENDERER_SECRET"]);
