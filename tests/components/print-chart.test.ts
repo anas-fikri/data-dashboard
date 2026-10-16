@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { chartFit } from "@/components/widgets/chart-series";
 import {
   chartOption,
   niceCeil,
@@ -269,15 +270,24 @@ describe("chartOption cetak (print)", () => {
     );
     // Label batang tanpa padding (hanya label garis yang berpadding, R13-DS-1).
     expect((mixed.series[0]!.label as unknown as { padding?: number[] }).padding).toBeUndefined();
-    // Nama kategori batang cetak dipotong ECharts selebar sisa setelah ruang kanan (R14-INT-1/DS-1).
+    // Nama kategori batang cetak tidak dipotong dari ujung oleh ECharts (nama pendek tetap terbedakan,
+    // R15-INT-1); kartu < 200 px memakai daftar peringkat (chartFit, R14/R15).
     type Cat = { yAxis: { axisLabel: { width?: number; overflow?: string } } };
-    const cat = (narrow as unknown as Cat).yAxis.axisLabel;
-    expect(cat.overflow).toBe("truncate");
-    expect(cat.width).toBe(Math.floor((159 - 8 - narrow.grid.right) * 0.75 - 12));
-    expect(
-      (chartOption({ ...input, print: false }, theme, SIZE) as unknown as Cat).yAxis.axisLabel
-        .overflow,
-    ).toBeUndefined();
+    expect((narrow as unknown as Cat).yAxis.axisLabel.overflow).toBeUndefined();
+    const fit = (width: number, print: boolean) =>
+      chartFit({
+        type: "bar",
+        room: { width, height: 200 },
+        rows: 7,
+        categories: 7,
+        legendRows: 0,
+        others: false,
+        partial: false,
+        print,
+      }).ranked;
+    expect(fit(159, true)).toBe(true);
+    expect(fit(159, false)).toBe(false);
+    expect(fit(248, true)).toBe(false);
     // Kartu lebar: nilai lengkap seperti sebelumnya.
     const wide = chartOption(input, theme, SIZE) as unknown as Opt;
     expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(

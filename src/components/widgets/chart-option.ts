@@ -750,19 +750,6 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           top: PRINT_TOP,
           right: plotRight,
         };
-  // Batang cetak: nama kategori dipotong ECharts (ukuran teks sebenarnya) selebar sisa setelah ruang
-  // kanan — ECharts menjaga plot ≥ 25 % lebar grid, nama yang lebih lebar tercetak di luar kartu
-  // (review T-018 R14-INT-1/DS-1).
-  const printCategoryLabel =
-    i.print && horizontal
-      ? {
-          width: Math.max(
-            24,
-            Math.floor((size.width - 8 - (printGrid as { right: number }).right) * 0.75 - 12),
-          ),
-          overflow: "truncate" as const,
-        }
-      : {};
   return {
     ...base,
     grid: printGrid,
@@ -777,13 +764,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     },
     // Batang horizontal: nama kategori panjang tetap terbaca; urutan dari atas, semua label tampil.
     xAxis: horizontal ? valueAxis : categoryAxis,
-    yAxis: horizontal
-      ? {
-          ...categoryAxis,
-          inverse: true,
-          axisLabel: { ...categoryAxis.axisLabel, ...printCategoryLabel },
-        }
-      : valueAxis,
+    yAxis: horizontal ? { ...categoryAxis, inverse: true } : valueAxis,
     series: [
       {
         type: i.type,

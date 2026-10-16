@@ -532,6 +532,12 @@ export const RANK_WORD: Record<ChartSort, string> = {
 export type NoteMode = "full" | "compact" | "none";
 /** Kartu < 140 px: daftar peringkat sebagai ganti grafik. */
 export const NARROW = 140;
+/**
+ * Batang CETAK di kartu < 200 px (2 kolom): nama kategori, batang, dan label nilai tidak muat
+ * berdampingan di kertas (nama terpotong/keluar kartu, label di atas batang) → daftar peringkat (nama +
+ * nilai utuh per baris) (review T-018 R14/R15).
+ */
+export const PRINT_BAR_NARROW = 200;
 /** Tinggi kotak grafik minimum: batang/garis 72 px, donat 64 px. */
 export const PLOT_MIN: Record<ChartType, number> = { bar: 72, line: 72, pie: 64 };
 const NOTE_CHAR_PX = 6.6;
@@ -627,6 +633,8 @@ export interface FitInput {
   others: boolean;
   /** Pai cetak: tinggi legenda utuh (printLegend). */
   printLegendPx?: number;
+  /** Varian cetak (PDF). */
+  print?: boolean;
   /**
    * Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: mungkin terpotong. Pai:
    * persen dari yang tampil; batang/garis: "N teratas" menurut `sort`, bukan "N kategori".
@@ -689,7 +697,7 @@ export function chartFit(i: FitInput): Fit {
     i.type === "pie" ? pieChartHeight(width, h, i.legendRows, i.printLegendPx) : h;
   const visibleAt = (h: number) => (i.type === "bar" ? Math.min(barsThatFit(h), i.rows) : i.rows);
 
-  if (width < NARROW) {
+  if (width < (i.print && i.type === "bar" ? PRINT_BAR_NARROW : NARROW)) {
     return { note: "none", visible: i.rows, ranked: true, full: texts(i.rows).full, shown: "" };
   }
   for (const note of ["full", "compact"] as const) {

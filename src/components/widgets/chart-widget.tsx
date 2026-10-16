@@ -200,6 +200,7 @@ export function ChartWidget({
         categories,
         legendRows: rows.length,
         printLegendPx: legend?.px,
+        print: !!print,
         others: others > 0,
         partial,
         sort: spec.sort,
