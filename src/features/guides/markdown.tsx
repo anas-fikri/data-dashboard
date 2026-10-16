@@ -20,6 +20,16 @@ const SCHEMA: SanitizeSchema = {
   },
 };
 
+/**
+ * Plugin remark: matikan penguraian HTML mentah (htmlFlow/htmlText) di micromark. HTML memang tidak
+ * pernah dirender, tetapi pembuka tanpa penutup (`<?`, `<!--`, `<![CDATA[`) membuat penguraian
+ * kuadratik (20 ribu karakter ≈ 5 s, review R2-1); kini tampil sebagai teks biasa.
+ */
+function remarkNoHtml(this: { data(): object }) {
+  const data = this.data() as { micromarkExtensions?: unknown[] };
+  (data.micromarkExtensions ??= []).push({ disable: { null: ["htmlFlow", "htmlText"] } });
+}
+
 const relative = (url: string) => !url.startsWith("//") && !/^[a-z][a-z0-9+.-]*:/i.test(url);
 
 /** URL aman untuk atribut `key` (href/src), "" bila ditolak. `origins`: origin yang boleh untuk gambar. */
@@ -112,6 +122,7 @@ export function GuideMarkdown({
   return (
     <div className="min-w-0 text-sm [overflow-wrap:anywhere]" data-testid="guide-markdown">
       <Markdown
+        remarkPlugins={[remarkNoHtml]}
         rehypePlugins={[[rehypeSanitize, SCHEMA]]}
         urlTransform={(url, key) => guideUrl(url, key, origins)}
         components={components}

@@ -113,6 +113,7 @@ export function GuideEditor({
       setFields({});
       if (!guide && r.data) return router.push(`/admin/panduan/${r.data.id}?created=1`);
       setNotice({ tone: "success", text: "Perubahan tersimpan." });
+      setFocusKey((k) => k + 1); // tanpa galat kolom → fokus ke pesan (tombol sempat disabled)
       return;
     }
     const bad = (r.fields ?? {}) as Fields;

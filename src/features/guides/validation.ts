@@ -22,11 +22,12 @@ const PREFIX = /^(?:[ \t]*(?:>|[-*+](?=[ \t]|$)|\d{1,9}[.)](?=[ \t]|$)))*/;
  * selain itu null. Linear tanpa mengurai, dipakai saat simpan dan sebelum render (data lama).
  */
 export function guideBodyProblem(md: string): string | null {
-  for (const para of md.split(/\n[ \t>\r]*\n/)) {
+  // Pemisah baris sama dengan pengurai markdown: \r\n, \n, atau \r tunggal (review R2-2).
+  for (const para of md.split(/(?:\r\n?|\n)[ \t>]*(?:\r\n?|\n)/)) {
     if ((para.match(/[*_]/g)?.length ?? 0) > EMPHASIS_MAX)
       return `Terlalu banyak tanda * atau _ dalam satu paragraf (maks. ${EMPHASIS_MAX}); pisahkan dengan baris kosong.`;
   }
-  for (const line of md.split("\n")) {
+  for (const line of md.split(/\r\n?|\n/)) {
     const prefix = PREFIX.exec(line)?.[0] ?? "";
     const marks = prefix.replace(/[ \t]/g, "").replace(/\d+/g, "").length;
     const indent = prefix.replace(/\t/g, "    ").replace(/[^ ]/g, "").length;

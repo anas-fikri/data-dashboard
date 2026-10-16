@@ -103,6 +103,12 @@ try {
       })
     : (await prisma.user.deleteMany({ where: { id: { in: accountIds }, datasets: { none: {} } } }))
         .count;
+  // Artikel panduan e2e (T-020): judul berakhiran tag uji "<Date.now()>-<acak>", tidak terikat akun.
+  const guideIds = (await prisma.guideArticle.findMany({ select: { id: true, title: true } }))
+    .filter((g) => / \d{13}-\d{1,6}$/.test(g.title))
+    .map((g) => g.id);
+  if (guideIds.length && !dryRun)
+    await prisma.guideArticle.deleteMany({ where: { id: { in: guideIds } } });
   console.log(
     JSON.stringify({
       dryRun,
@@ -110,6 +116,7 @@ try {
       datasets: datasets.length,
       objects,
       accounts,
+      guides: guideIds.length,
     }),
   );
 } finally {

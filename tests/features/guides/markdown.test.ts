@@ -26,7 +26,8 @@ describe("GuideMarkdown (T-020)", () => {
       ].join("\n\n"),
     );
     expect(out).not.toMatch(/javascript:|data:text|<iframe|<object|<form|<style|<input/i);
-    expect(out).not.toContain("evil.example");
+    // HTML mentah tampil sebagai teks (di-escape); yang dilarang: atribut yang memuat origin jahat.
+    expect(out).not.toMatch(/(?:src|href)="[^"]*evil\.example/);
   });
 
   it("tautan eksternal rel noopener noreferrer; tautan internal/mailto tanpa rel; gambar self/storage tetap", () => {
@@ -63,7 +64,13 @@ describe("GuideMarkdown (T-020)", () => {
   });
 
   it("review R2: struktur bertingkat/penekanan berlebih ditolak saat simpan dan tidak dirender", () => {
-    const bombs = [">".repeat(2000), "> - ".repeat(500), "*a".repeat(5000), "*_".repeat(3000)];
+    const bombs = [
+      ">".repeat(2000),
+      "> - ".repeat(500),
+      "*a".repeat(5000),
+      "*_".repeat(3000),
+      "a\r" + ">".repeat(19_998), // R2-2: \r tunggal = pemisah baris bagi pengurai
+    ];
     for (const md of bombs) {
       expect(guideBodyProblem(md), md.slice(0, 8)).not.toBeNull();
       const t = performance.now();
@@ -83,5 +90,14 @@ describe("GuideMarkdown (T-020)", () => {
     const real = prose.repeat(Math.floor(20_000 / prose.length));
     expect(guideBodyProblem(real)).toBeNull();
     expect(html(real)).toContain("<strong>file Excel</strong>");
+  });
+  it("review R2-1: HTML mentah tidak diurai — pembuka tanpa penutup tidak kuadratik, tampil sebagai teks", () => {
+    for (const md of ["a " + "<?".repeat(9999), "<!A".repeat(6666), "<!--".repeat(5000)]) {
+      expect(guideBodyProblem(md)).toBeNull();
+      const t = performance.now();
+      html(md);
+      expect(performance.now() - t, md.slice(0, 6)).toBeLessThan(300);
+    }
+    expect(html("x <b>tebal</b>")).toContain("&lt;b&gt;tebal&lt;/b&gt;");
   });
 });
