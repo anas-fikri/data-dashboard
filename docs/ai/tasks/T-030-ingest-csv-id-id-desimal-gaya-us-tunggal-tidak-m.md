@@ -7,7 +7,7 @@ profile_pinned: true
 tags:
   - bug
 created: "2026-10-12T23:39:25Z"
-updated: "2026-10-16T16:54:27Z"
+updated: "2026-10-16T17:16:57Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -17,7 +17,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 41643
+    duration_ms: 43877
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -39,17 +39,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792169644272,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792169644294,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792169644300,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792170992878,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792170992902,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792170992909,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  118 passed (118)
-            Tests  1692 passed (1692)
-         Start at  23:53:58
-         Duration  28.29s (tests 76%, import 18%, transform 6%, worker 1%)
+            Tests  1693 passed (1693)
+         Start at  00:16:26
+         Duration  29.82s (tests 76%, import 17%, transform 6%)
 
-          Isolate  118 workers spawned · ~126ms startup each (spawn + environment, per file)
-                   at least ~1.52s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  118 workers spawned · ~132ms startup each (spawn + environment, per file)
+                   at least ~1.60s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -57,8 +57,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T16:54:27Z"
-    tree: cd7e27bcec1537ce4975df24d0b012ab2fd8a6950dc5cf63d4cc37213d773cf8
+    at: "2026-10-16T17:16:57Z"
+    tree: 2a770f1b69310c168f2cf0e114eb6f6d6894533bda96f9f3dbee85f263174ae0
 ---
 
 ## Objective

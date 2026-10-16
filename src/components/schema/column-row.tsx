@@ -158,7 +158,7 @@ export function ColumnRow({
               aria-hidden
               className="mt-0.5 shrink-0 text-warning"
             />
-            <dt className="sr-only">Penulisan angka</dt>
+            <dt className="sr-only">Peringatan</dt>
             <dd className="text-foreground">
               Penulisan angka ambigu: “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan.
             </dd>

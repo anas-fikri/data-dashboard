@@ -144,8 +144,17 @@ describe("T-030: locale angka ambigu ditandai", () => {
       t.file(
         "ambigu.csv",
         csv(
-          ["omzet", "bersih"],
-          [["1.5", "1.234.567"], ...range(40, (i) => [`1.${500 + i}`, `2.${100 + i}.000`])],
+          ["omzet", "bersih", "unit", "kurs"],
+          [
+            ["1.5", "1.234.567", "1,234,567", "0.1234567"],
+            // Ganjil: tidak berakhiran 0 (bukti CSV = idWeak, bukan idText0 xlsx).
+            ...range(40, (i) => [
+              `1.${501 + 2 * i}`,
+              `2.${100 + i}.000`,
+              `${i + 1}.000`,
+              `1.${501 + 2 * i}`,
+            ]),
+          ],
         ),
       ),
     );
@@ -156,6 +165,35 @@ describe("T-030: locale angka ambigu ditandai", () => {
     });
     expect(col("bersih")).toMatchObject({ type: "integer", numberLocale: "id" });
     expect(col("bersih").localeAmbiguous).toBeUndefined();
+    // Cabang bilangan bulat ("1.000" terbaca 1 di US) dan desimal DOUBLE ikut ditandai.
+    expect(col("unit")).toMatchObject({
+      type: "integer",
+      numberLocale: "us",
+      localeAmbiguous: true,
+    });
+    expect(col("kurs")).toMatchObject({
+      type: "decimal",
+      numberLocale: "us",
+      float: true,
+      localeAmbiguous: true,
+    });
+  });
+
+  it("review T-030 INT-1: desimal kecil id-ID '0,004'…'0,121' tetap desimal id-ID, bukan ribuan US", async () => {
+    const { col } = await ingest(
+      t.file(
+        "desimal-kecil.csv",
+        // Dua kolom: delimiter ';' terdeteksi (satu kolom "0,004" membuat koma terbaca pemisah).
+        csv(
+          ["berat", "no"],
+          range(40, (i) => [`0,${String(4 + 3 * i).padStart(3, "0")}`, `${i}`]),
+        ),
+      ),
+    );
+    const berat = col("berat");
+    expect(berat).toMatchObject({ type: "decimal", numberLocale: "id", castFailCount: 0 });
+    expect(berat.values.slice(0, 2)).toEqual([0.004, 0.007]);
+    expect(berat.localeAmbiguous).toBeUndefined();
   });
 
   it("xlsx: angka asli berdesimal + teks '1.500' → ditandai; angka asli saja (1.234) tidak", async () => {

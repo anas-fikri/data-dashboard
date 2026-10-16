@@ -18,7 +18,7 @@ export function ColumnToolbar({
   onQuery: (q: string) => void;
   onlyIssues: boolean;
   onOnlyIssues: (v: boolean) => void;
-  /** Jumlah kolom dengan nilai gagal konversi. */
+  /** Jumlah kolom yang perlu diperiksa (nilai gagal konversi atau penulisan angka ambigu). */
   issues: number;
   shown: number;
   total: number;
@@ -52,7 +52,7 @@ export function ColumnToolbar({
             checked={onlyIssues}
             onChange={(e) => onOnlyIssues(e.target.checked)}
           />
-          Hanya kolom dengan nilai gagal konversi ({fmtInt(issues)})
+          Hanya kolom yang perlu diperiksa ({fmtInt(issues)})
         </label>
       ) : null}
       <p className="text-sm text-muted-foreground sm:ml-auto" aria-live="polite">

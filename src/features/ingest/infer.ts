@@ -93,15 +93,18 @@ const ISO_FORMATS = [
 
 /* Pola (RE2, dicocokkan penuh pada nilai yang sudah di-trim). */
 const RE = {
-  /** Angka gaya US: ribuan koma, desimal titik, eksponen (angka asli xlsx selalu bentuk ini). */
-  numUs: String.raw`[+-]?((\d{1,3}(,\d{3})+|\d+)(\.\d+)?|\.\d+)([eE][+-]?\d+)?`,
+  /**
+   * Angka gaya US: ribuan koma (grup pertama tidak diawali 0 — "0,125" desimal id-ID, bukan ribuan;
+   * T-030), desimal titik, eksponen (angka asli xlsx selalu bentuk ini).
+   */
+  numUs: String.raw`[+-]?(([1-9]\d{0,2}(,\d{3})+|\d+)(\.\d+)?|\.\d+)([eE][+-]?\d+)?`,
   /** Angka gaya ID: ribuan titik (grup pertama tidak diawali 0), desimal koma. */
   numId: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3})+|\d+)(,\d+)?`,
   /** Bilangan bulat persis (pecahan hanya nol) per locale. */
-  intUs: String.raw`[+-]?(\d{1,3}(,\d{3})+|\d+)(\.0+)?`,
+  intUs: String.raw`[+-]?([1-9]\d{0,2}(,\d{3})+|\d+)(\.0+)?`,
   intId: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3})+|\d+)(,0+)?`,
-  /** Bukti kuat ID: ≥ 2 grup titik, grup titik + koma, atau koma desimal bukan 3 digit. */
-  idStrong: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3}){2,}(,\d+)?|[1-9]\d{0,2}(\.\d{3})+,\d+|\d+,(\d{1,2}|\d{4,}))`,
+  /** Bukti kuat ID: ≥ 2 grup titik, grup titik + koma, koma desimal bukan 3 digit, atau 0,xxx. */
+  idStrong: String.raw`[+-]?([1-9]\d{0,2}(\.\d{3}){2,}(,\d+)?|[1-9]\d{0,2}(\.\d{3})+,\d+|\d+,(\d{1,2}|\d{4,})|0,\d+)`,
   /**
    * Grup titik berakhir 0 ("15.000"). Di xlsx ini bukti kuat ID: angka asli (String(number)) tidak
    * pernah berakhir 0 di pecahan, jadi bentuk ini pasti teks ribuan. Di CSV tidak (alat ekspor sering
@@ -109,7 +112,7 @@ const RE = {
    */
   idText0: String.raw`[+-]?[1-9]\d{0,2}(\.\d{3})*\.\d\d0`,
   /** Bukti kuat US: ≥ 2 grup koma, grup koma + titik, titik desimal bukan 3 digit, 0.xxx, eksponen. */
-  usStrong: String.raw`[+-]?(\d{1,3}(,\d{3}){2,}(\.\d+)?|\d{1,3}(,\d{3})+\.\d+|\d*\.(\d{1,2}|\d{4,})([eE][+-]?\d+)?|0\.\d+|\d+(\.\d+)?[eE][+-]?\d+)`,
+  usStrong: String.raw`[+-]?([1-9]\d{0,2}(,\d{3}){2,}(\.\d+)?|[1-9]\d{0,2}(,\d{3})+\.\d+|\d*\.(\d{1,2}|\d{4,})([eE][+-]?\d+)?|0\.\d+|\d+(\.\d+)?[eE][+-]?\d+)`,
   /** Ambigu: 1.234 (ID ribuan / US desimal 3 digit). */
   idWeak: String.raw`[+-]?[1-9]\d{0,2}\.\d{3}`,
   /** Tidak muat persis di DECIMAL(38,6): > 6 digit pecahan atau eksponen. */
