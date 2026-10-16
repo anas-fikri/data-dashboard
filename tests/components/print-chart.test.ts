@@ -269,6 +269,15 @@ describe("chartOption cetak (print)", () => {
     );
     // Label batang tanpa padding (hanya label garis yang berpadding, R13-DS-1).
     expect((mixed.series[0]!.label as unknown as { padding?: number[] }).padding).toBeUndefined();
+    // Nama kategori batang cetak dipotong ECharts selebar sisa setelah ruang kanan (R14-INT-1/DS-1).
+    type Cat = { yAxis: { axisLabel: { width?: number; overflow?: string } } };
+    const cat = (narrow as unknown as Cat).yAxis.axisLabel;
+    expect(cat.overflow).toBe("truncate");
+    expect(cat.width).toBe(Math.floor((159 - 8 - narrow.grid.right) * 0.75 - 12));
+    expect(
+      (chartOption({ ...input, print: false }, theme, SIZE) as unknown as Cat).yAxis.axisLabel
+        .overflow,
+    ).toBeUndefined();
     // Kartu lebar: nilai lengkap seperti sebelumnya.
     const wide = chartOption(input, theme, SIZE) as unknown as Opt;
     expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(

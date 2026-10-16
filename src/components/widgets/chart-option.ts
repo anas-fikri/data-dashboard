@@ -705,8 +705,6 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   };
   // Cetak: label nilai di ujung batang (ruang kanan selebar label terpanjang, maks. 30 %) atau di atas
   // titik garis (ruang atas; label titik terakhir rata tengah butuh setengah lebarnya di kanan).
-  const valueTextPx = (v: number | null, compact = false) =>
-    value(v, compact).length * AXIS_CHAR_PX;
   // Batang cetak di kartu sempit: per batang, label (6,1 px/karakter + celah) dibanding ruangnya = ruang
   // kanan grid (maks. 30 %) + sisa sumbu di kanan ujung batang itu (maksimum sumbu dibulatkan ke atas,
   // diperkirakan 1/2/2,5/5 × 10ⁿ, dihitung 80 %; nilai negatif/semua negatif tanpa sisa). Label
@@ -738,13 +736,12 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     : horizontal
       ? {
           ...grid,
+          // Lebar label nilai cetak 6,1 px/karakter + 8 (bukan perkiraan sumbu 7 px) — ruang kanan tidak
+          // lebih lebar dari perlu (review T-018 R14-DS-1).
           right: Math.round(
             Math.max(
               grid.right,
-              Math.min(
-                Math.max(0, ...values.map((v) => valueTextPx(v, barCompact))) + 8,
-                barRightCap,
-              ),
+              Math.min(Math.max(0, ...values.map((v) => labelW(v, barCompact))) + 8, barRightCap),
             ),
           ),
         }
@@ -753,6 +750,19 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           top: PRINT_TOP,
           right: plotRight,
         };
+  // Batang cetak: nama kategori dipotong ECharts (ukuran teks sebenarnya) selebar sisa setelah ruang
+  // kanan — ECharts menjaga plot ≥ 25 % lebar grid, nama yang lebih lebar tercetak di luar kartu
+  // (review T-018 R14-INT-1/DS-1).
+  const printCategoryLabel =
+    i.print && horizontal
+      ? {
+          width: Math.max(
+            24,
+            Math.floor((size.width - 8 - (printGrid as { right: number }).right) * 0.75 - 12),
+          ),
+          overflow: "truncate" as const,
+        }
+      : {};
   return {
     ...base,
     grid: printGrid,
@@ -767,7 +777,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     },
     // Batang horizontal: nama kategori panjang tetap terbaca; urutan dari atas, semua label tampil.
     xAxis: horizontal ? valueAxis : categoryAxis,
-    yAxis: horizontal ? { ...categoryAxis, inverse: true } : valueAxis,
+    yAxis: horizontal
+      ? {
+          ...categoryAxis,
+          inverse: true,
+          axisLabel: { ...categoryAxis.axisLabel, ...printCategoryLabel },
+        }
+      : valueAxis,
     series: [
       {
         type: i.type,
