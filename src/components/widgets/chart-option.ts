@@ -255,6 +255,13 @@ export function chartSummary(
 
 const splitNumber = (px: number) => (px < 240 ? 2 : px < 420 ? 3 : 5);
 
+/** Maksimum sumbu nilai yang "rapi" ≥ v (1, 2, 2,5, 5 × 10ⁿ) — perkiraan pembulatan ECharts. */
+export function niceCeil(v: number): number {
+  if (!(v > 0)) return 1;
+  const p = 10 ** Math.floor(Math.log10(v));
+  return ([1, 2, 2.5, 5, 10].find((m) => m * p >= v) ?? 10) * p;
+}
+
 export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // Durasi "Otomatis": sumbu dalam jam/menit (nilai seri dibagi), tooltip kembali ke detik → j:mm:dd.
   const duration = i.valueType === "duration" && i.format.style === "auto";
@@ -695,12 +702,21 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // titik garis (ruang atas; label titik terakhir rata tengah butuh setengah lebarnya di kanan).
   const valueTextPx = (v: number | null, compact = false) =>
     value(v, compact).length * AXIS_CHAR_PX;
-  // Batang cetak di kartu sempit: label lengkap terpanjang tidak muat di ruang kanan (maks. 30 %) →
-  // semua label batang memakai bentuk ringkas ("Rp 1,7 M"; review T-018 R10-INT-1).
+  // Batang cetak di kartu sempit: label lengkap terpanjang (6,1 px/karakter) tidak muat di ruang kanan
+  // (maks. 30 %) ditambah sisa sumbu nilai di kanan batang terpanjang (maksimum sumbu dibulatkan ke
+  // atas, diperkirakan 1/2/2,5/5 × 10ⁿ, dihitung 80 %) → semua label batang memakai bentuk ringkas
+  // ("Rp 1,7 M"), asal memang lebih pendek (review T-018 R10-INT-1, R11-INT-1).
+  const labelW = (v: number | null, compact = false) =>
+    value(v, compact).length * PRINT_LABEL_CHAR_PX;
+  const fullW = Math.max(0, ...values.map((v) => labelW(v)));
+  const fullRight = Math.min(fullW + 8, size.width * 0.3);
+  const top = Math.max(0, ...values.map((v) => Math.abs(v ?? 0)));
+  const headroom = top > 0 ? (1 - top / niceCeil(top)) * Math.max(0, valuePx - fullRight) * 0.8 : 0;
   const barCompact =
     i.print &&
     horizontal &&
-    Math.max(0, ...values.map((v) => valueTextPx(v))) + 8 > size.width * 0.3;
+    fullW + 4 > fullRight + headroom &&
+    Math.max(0, ...values.map((v) => labelW(v, true))) < fullW;
   const printGrid = !i.print
     ? grid
     : horizontal

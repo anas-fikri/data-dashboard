@@ -1,7 +1,12 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { chartOption, type ChartInput, type ChartTheme } from "@/components/widgets/chart-option";
+import {
+  chartOption,
+  niceCeil,
+  type ChartInput,
+  type ChartTheme,
+} from "@/components/widgets/chart-option";
 import { ChartWidget } from "@/components/widgets/chart-widget";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { ChartSpec } from "@/features/widgets/spec";
@@ -221,6 +226,21 @@ describe("chartOption cetak (print)", () => {
       "Rp 1,7\u00a0M",
     );
     expect(narrow.grid.right).toBeLessThanOrEqual(Math.ceil(159 * 0.3));
+    // Kartu w4 (338 px): label lengkap muat berkat sisa sumbu di kanan batang terpanjang (R11-INT-1).
+    const w4 = chartOption(input, theme, { width: 338, height: 200 }) as unknown as Opt;
+    expect(w4.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
+      "Rp 1.701.234.567",
+    );
+    // Ribuan: bentuk ringkas ("19,32 rb") lebih panjang dari lengkap ("19.323") → tidak diringkas.
+    const thousands = chartOption(
+      { ...input, values: [19_323, 18_657], format: { style: "auto", decimals: 0 } },
+      theme,
+      { width: 159, height: 200 },
+    ) as unknown as Opt;
+    expect(thousands.series[0]!.label!.formatter({ value: 19_323, dataIndex: 0 })).toBe("19.323");
+    expect([niceCeil(1.7e9), niceCeil(19_323), niceCeil(2.4), niceCeil(0)]).toEqual([
+      2e9, 20_000, 2.5, 1,
+    ]);
     // Kartu lebar: nilai lengkap seperti sebelumnya.
     const wide = chartOption(input, theme, SIZE) as unknown as Opt;
     expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(

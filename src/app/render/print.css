@@ -12,3 +12,12 @@ body {
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
+
+/*
+ * Teks grafik (SVG ECharts): tanpa fitur font body (tnum/cv11/ss01) — ECharts mengukur lebar label di
+ * canvas yang mengabaikan fitur itu; dengan fitur aktif label tercetak 2–20 px lebih lebar dari kotak
+ * yang dipakai penjepit tepi dan hideOverlap (review T-018 R11-DS-1).
+ */
+[data-testid="print-widget"] svg text {
+  font-feature-settings: normal;
+}
