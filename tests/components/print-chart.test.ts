@@ -122,7 +122,7 @@ describe("chartOption cetak (print)", () => {
     // Sumbu kategori: titik pertama di tengah pita lebar — label rata tengah sudah muat, tidak digeser.
     expect(series(option({ ...monthly, print: true })).labelLayout).toEqual({ hideOverlap: true });
     // Sumbu waktu (per hari): titik [ms, y] tepat di tepi plot → label pertama digeser setengah lebar
-    // "Rp 5" + 2 px lewat labelLayout (ECharts mengabaikan label.offset per titik bila ada labelLayout).
+    // "Rp 5" (4 × 6,1 px) + 2 px lewat labelLayout (ECharts mengabaikan label.offset per titik bila ada labelLayout).
     const daily = (n: number, values?: number[]) => ({
       type: "line" as const,
       labels: Array.from({ length: n }, (_, k) => `${k + 1} Jan`),
@@ -133,7 +133,7 @@ describe("chartOption cetak (print)", () => {
       },
     });
     const two = option({ ...daily(2), print: true });
-    expect(dxOf(two)).toBe(16);
+    expect(dxOf(two)).toBeCloseTo(14.2, 5);
     expect(dxOf(two, 1)).toBe(0);
     const layout = series(two).labelLayout as (p: { dataIndex: number }) => {
       hideOverlap: boolean;
@@ -143,17 +143,23 @@ describe("chartOption cetak (print)", () => {
     // Titik berikutnya sebaris dan rapat: geseran berhenti sebelum menutupi labelnya.
     const tight = dxOf(option({ ...daily(15), print: true }));
     expect(tight).toBeGreaterThan(0);
-    expect(tight).toBeLessThan(16);
+    expect(tight).toBeLessThan(14.2);
     // Label berikutnya jauh lebih tinggi (beda baris): tidak membatasi geseran.
     const rising = [5, 500, ...Array.from({ length: 13 }, () => 5)];
-    expect(dxOf(option({ ...daily(15, rising), print: true }))).toBe(16);
+    expect(dxOf(option({ ...daily(15, rising), print: true }))).toBeCloseTo(14.2, 5);
     // Sangat rapat: label kedua sudah bertumpuk dengan label pertama walau rata tengah (dibuang
     // hideOverlap apa pun geserannya) → label pertama digeser penuh dari sumbu nilai.
-    expect(dxOf(option({ ...daily(31), print: true }))).toBe(16);
+    expect(dxOf(option({ ...daily(31), print: true }))).toBeCloseTo(14.2, 5);
     // Titik pertama terpilih (filter silang) tetap membawa gaya terpilihnya.
     expect(series(option({ ...daily(2), print: true, selected: 0 })).data[0]).toMatchObject({
       symbolSize: 10,
     });
+    // Nama satuan sumbu nilai cetak di kiri garis sumbu (tidak menimpa label pertama, R7-DS-1).
+    type Axis = { yAxis: { nameTextStyle: { align: string } } };
+    expect(
+      (option({ ...daily(2), print: true }) as unknown as Axis).yAxis.nameTextStyle.align,
+    ).toBe("right");
+    expect((option(daily(2)) as unknown as Axis).yAxis.nameTextStyle.align).toBe("center");
     // Layar tidak berubah: tanpa label/labelLayout.
     expect(series(option(daily(2))).labelLayout).toBeUndefined();
     expect(series(option(monthly)).data[0]).toBe(3_768_000_000);

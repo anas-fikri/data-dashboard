@@ -109,6 +109,8 @@ const DIMMED = 0.35;
 /** Cetak: ruang atas grid untuk label nilai di atas titik garis tertinggi (11 px + jarak). */
 const PRINT_TOP = 28;
 const PRINT_LABEL_PX = 11;
+/** Lebar rata-rata karakter label nilai cetak 11 px — terukur 5,7–6,1 px (review T-018 R7-INT-1). */
+const PRINT_LABEL_CHAR_PX = 6.1;
 
 /** Teks tooltip richText: "{a|b}" ditafsirkan sebagai gaya ECharts → disisipi spasi lebar-nol. */
 const plain = (s: string) => s.replace(/\{/g, "{​");
@@ -292,7 +294,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     skip: readonly boolean[],
   ) => {
     const w = (k: number) =>
-      skip[k] || vals[k] == null ? 0 : value(vals[k]).length * AXIS_CHAR_PX;
+      skip[k] || vals[k] == null ? 0 : value(vals[k]).length * PRINT_LABEL_CHAR_PX;
     const need = w(0) / 2 + 2 - (xs[0] ?? 0);
     if (!w(0) || need <= 0) return 0;
     const lo = Math.min(0, ...vals.map((v) => v ?? 0));
@@ -417,7 +419,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     ...(horizontal
       ? { nameLocation: "middle" as const, nameGap: 4, nameMoveOverlap: true }
       : { nameGap: 10 }),
-    nameTextStyle: { color: theme.muted, fontFamily: theme.font, align: "center" as const },
+    nameTextStyle: {
+      color: theme.muted,
+      fontFamily: theme.font,
+      // Cetak (garis/kolom): nama satuan di kiri garis sumbu — rata tengah menjorok ke area plot dan
+      // menimpa label nilai titik pertama yang dekat maksimum (review T-018 R7-DS-1).
+      align: i.print && !horizontal ? ("right" as const) : ("center" as const),
+    },
     splitNumber: splitNumber(valuePx),
     ...(integral ? { minInterval: 1 } : {}),
     splitLine: { lineStyle: { color: theme.border } },
