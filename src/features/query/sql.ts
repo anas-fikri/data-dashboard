@@ -213,7 +213,7 @@ const groupKey = (d: Plan["dimensions"][number]) =>
  * (mode() DuckDB tidak: seri bergantung urutan thread — review T-029 TF3).
  */
 const textLabel = (e: string) =>
-  `list_sort(list_transform(map_entries(histogram(${e})), lambda x: {'n': -x.value, 'k': x.key}))[1].k`;
+  `list_sort(list_transform(map_entries(histogram(${e})), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k`;
 
 /** Ekspresi dimensi: teks dipotong, tanggal dikelompokkan per grain. */
 function dimensionExpr(d: Plan["dimensions"][number]): string {
