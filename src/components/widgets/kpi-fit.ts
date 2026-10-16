@@ -19,8 +19,8 @@ import type { NumberFormat } from "@/features/widgets/spec";
 /** Ukuran huruf terkecil (text-sm, 14 px) untuk kartu yang terlalu sempit. */
 export const KPI_MIN_PX = 14;
 /**
- * Kotak bertinggi tetap yang sangat sempit/pendek: label + "Rp" dipertahankan selama angka ≥ 12 px;
- * paling kecil 10 px (masih terbaca) sebelum boleh pindah baris.
+ * Kotak bertinggi tetap yang sangat sempit/pendek: label + "Rp" dipertahankan selama angka ≥ 12 px
+ * (atau text-sm bila huruf akar kecil); paling kecil 10 px (masih terbaca) sebelum boleh pindah baris.
  */
 export const KPI_READABLE_PX = 12;
 export const KPI_FLOOR_PX = 10;
@@ -161,29 +161,30 @@ export function chooseKpi(
     };
   }
   // Kotak bertinggi tetap: angka didahulukan dan SATU baris yang muat lebar dan tingginya — baris yang
-  // dibungkus terpotong kotak ("696,51" tanpa "jt", R5-DS-1/INT-2). Urutan: tanpa label (tetap di
-  // title/pembaca layar) dengan "Rp" tetap di angka (R4-CL-2); lalu huruf kecil satu baris — text-sm
-  // (ikut huruf akar, R5-CL-1) dibatasi tinggi dan lebar — dengan label, tanpa label, lalu bentuk "Rp"
-  // pindah tanpa label ("Rp" hilang dari tampilan; nilai lengkap tetap di title/pembaca layar).
+  // dibungkus terpotong kotak ("696,51" tanpa "jt", R5-DS-1/INT-2). Pertama tanpa label (tetap di
+  // title/pembaca layar) dengan "Rp" tetap di angka (R4-CL-2); lalu huruf kecil satu baris.
   const plain = options.filter((o) => !o.unit);
   const hidden = pick(plain, () => false);
   if (hidden) return hidden;
+  // Huruf kecil: text-sm (ikut huruf akar, R5-CL-1) dibatasi tinggi, lalu diturunkan 0,5 px sampai
+  // muat lebar PADA ukuran itu — huruf sistem tidak berskala linear di ukuran kecil (R6-CL-1/DS-1).
   const oneLine = (o: KpiOption, label: boolean) => {
-    const w = measure(o.text, 100);
-    const byWidth = w === null ? Infinity : (room * 100) / (w * SLACK);
-    return Math.min(smallPx, cap(label), byWidth);
+    let px = Math.min(smallPx, cap(label));
+    while (px >= KPI_FLOOR_PX && !fits(o.text, px)) px -= 0.5;
+    return px;
   };
-  const stages: [label: boolean, use: (o: KpiOption) => boolean, min: number][] = [
-    [true, withLabel, KPI_READABLE_PX],
-    [false, (o) => !o.unit, KPI_READABLE_PX],
-    [false, () => true, KPI_FLOOR_PX],
-  ];
-  for (const [label, use, min] of stages) {
-    // Huruf terbesar; yang hampir sama (≤ 0,5 px) → bentuk paling lengkap.
-    const sized = options.filter(use).map((o) => ({ o, px: oneLine(o, label) }));
-    const best = Math.max(...sized.map((s) => s.px));
-    const at = sized.find((s) => s.px >= best - 0.5);
-    if (at && best >= min) return { ...at.o, small: true, wrap: false, px: at.px, label };
-  }
+  // Calon menurut kesukaan: label tampil (termasuk "Rp" di baris label), tanpa label dengan "Rp" di
+  // angka, lalu bentuk "Rp" pindah tanpa label ("Rp" hilang dari tampilan). Dipilih calon pertama yang
+  // hurufnya hampir sebesar yang terbesar atau sudah terbaca (12 px, atau text-sm bila huruf akar
+  // kecil) — label tidak disembunyikan bila tidak membuat angka lebih besar (R6-DS-1, R6-CL-3).
+  const sized = [
+    ...options.filter(withLabel).map((o) => ({ o, label: true })),
+    ...plain.map((o) => ({ o, label: false })),
+    ...options.filter((o) => o.unit).map((o) => ({ o, label: false })),
+  ].map((c) => ({ ...c, px: oneLine(c.o, c.label) }));
+  const best = Math.max(...sized.map((c) => c.px));
+  const enough = Math.min(best - 0.5, KPI_READABLE_PX, smallPx);
+  const at = sized.find((c) => c.px >= enough && c.px >= KPI_FLOOR_PX);
+  if (at) return { ...at.o, small: true, wrap: false, px: at.px, label: at.label };
   return { ...last, small: true, wrap: true, px: KPI_FLOOR_PX, label: false };
 }

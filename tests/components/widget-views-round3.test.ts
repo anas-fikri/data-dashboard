@@ -252,6 +252,32 @@ describe("KPI: memilih bentuk yang muat", () => {
     // Kartu yang tumbuh (tanpa batas tinggi): tetap text-sm yang boleh pindah baris seperti sebelumnya.
     expect(chooseKpi(rp, 30, measure)).toMatchObject({ small: true, wrap: true, px: null });
   });
+
+  it("angka dibatasi LEBAR: label (dan 'Rp' di baris label) tetap tampil bila tingginya muat (R6-DS-1)", () => {
+    // Tinggi cukup untuk label (20 px dengan label, 39 tanpa), lebar 49 px yang membatasi.
+    expect(chooseKpi(rp, 49, measure, (l) => (l ? 20 : 39), true)).toMatchObject({
+      text: `6,22${NB}M`,
+      unit: "Rp",
+      label: true,
+      wrap: false,
+      px: 12.5,
+    });
+  });
+
+  it("huruf akar kecil (12 px → text-sm 10,5 px): label tidak disembunyikan karena ambang 12 px (R6-CL-3)", () => {
+    expect(chooseKpi(rp, 60, measure, () => 30, true, 10.5)).toMatchObject({
+      label: true,
+      wrap: false,
+    });
+  });
+
+  it("ukuran kecil diturunkan sampai muat pada ukuran itu (bukan skala linear, R6-CL-1)", () => {
+    // Pengukur tak linear: huruf kecil relatif lebih lebar (seperti huruf sistem di 10–13 px).
+    const wide = (text: string, px: number) => text.length * px * (px < 14 ? 0.68 : 0.6);
+    const c = chooseKpi(rp, 70, wide, () => 17.6, false);
+    expect(c.px).not.toBeNull();
+    expect(wide(c.text, c.px!) * 1.06).toBeLessThanOrEqual(70);
+  });
 });
 
 const cap40 = (label: boolean) => kpiHeightPx(40, label);

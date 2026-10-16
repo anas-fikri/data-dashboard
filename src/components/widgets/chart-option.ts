@@ -277,28 +277,34 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     itemStyle: { borderColor: theme.card, borderWidth: 2 },
   });
   /**
-   * Cetak: label nilai titik garis PERTAMA digeser ke kanan sejauh perlu agar tidak menjorok ke label
-   * sumbu nilai (review T-018 R1-DS-5), tetapi tidak melewati celah ke label titik kedua — rata kiri
-   * penuh menutupi label itu dan ECharts membuangnya (hideOverlap, R5-INT-1). Layar tidak berubah.
+   * Cetak: geseran (px) label nilai titik garis PERTAMA ke kanan — sejauh perlu agar tidak menjorok ke
+   * label sumbu nilai (review T-018 R1-DS-5), tetapi tidak sampai menutupi label berikutnya yang sebaris
+   * (rata kiri penuh membuat ECharts membuang label itu, R5-INT-1). `xs` = posisi titik dari sumbu nilai
+   * (px), `vals` = nilai (sudah diskalakan), `skip` = tanpa label. Label berikutnya = titik BERLABEL
+   * sesudahnya (periode kosong dilewati) yang sebaris — beda tinggi ≥ satu baris label tidak membatasi
+   * (R6-DS-2). Bila label itu sudah bertumpuk dengan label pertama walau keduanya rata tengah (grafik
+   * rapat), ia dibuang hideOverlap apa pun geserannya: geser penuh. Tinggi plot/rentang nilai
+   * diperkirakan hati-hati (selisih tinggi lebih kecil).
    */
-  const firstPoint = <D>(k: number, datum: D, shift: number) =>
-    !i.print || k !== 0 || shift <= 0
-      ? datum
-      : {
-          ...(typeof datum === "object" && datum !== null && !Array.isArray(datum)
-            ? datum
-            : { value: datum }),
-          label: { offset: [shift, 0] },
-        };
-  /** Lebar perkiraan label nilai cetak (px); periode kosong yang diisi tanpa label. */
-  const valueLabelPx = (v: number | null | undefined, skip = false) =>
-    skip ? 0 : value(v ?? null).length * AXIS_CHAR_PX;
-  /**
-   * Geseran label pertama (px): `room` = jarak titik pertama ke sumbu nilai, `spacing` = jarak ke titik
-   * kedua (Infinity bila tidak ada), w0/w1 = lebar kedua label (rata tengah), sisakan 4 px di antaranya.
-   */
-  const firstShift = (room: number, spacing: number, w0: number, w1: number) =>
-    Math.max(0, Math.min(w0 / 2 + 2 - room, spacing - (w0 + w1) / 2 - 4));
+  const firstShift = (
+    xs: readonly number[],
+    vals: readonly (number | null)[],
+    skip: readonly boolean[],
+  ) => {
+    const w = (k: number) =>
+      skip[k] || vals[k] == null ? 0 : value(vals[k]).length * AXIS_CHAR_PX;
+    const need = w(0) / 2 + 2 - (xs[0] ?? 0);
+    if (!w(0) || need <= 0) return 0;
+    const lo = Math.min(0, ...vals.map((v) => v ?? 0));
+    const hi = Math.max(0, ...vals.map((v) => v ?? 0));
+    const plotH = size.height - PRINT_TOP - 48;
+    const rise = (k: number) =>
+      (Math.abs(vals[k]! - vals[0]!) / Math.max((hi - lo) * 1.25, 1e-9)) * plotH;
+    const next = vals.findIndex((v, k) => k > 0 && w(k) > 0 && rise(k) < PRINT_LABEL_PX + 4);
+    if (next < 0) return need;
+    const room = xs[next]! - w(next) / 2 - 4 - (xs[0]! + w(0) / 2);
+    return room < 0 ? need : Math.min(need, room);
+  };
   const base = {
     color: theme.colors,
     animation: !i.reducedMotion && !i.print,
@@ -307,8 +313,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   /**
    * Label nilai cetak; `skip` = periode tanpa data yang diisi (bukan nilai terukur, tanpa label).
    * Titik sumbu waktu bernilai [ms, y]. Label yang bertumpuk disembunyikan ECharts (hideOverlap).
+   * `shift` = geseran label pertama (firstShift) — lewat labelLayout: ECharts mengabaikan label.offset
+   * per titik bila seri punya labelLayout (R6-INT-1).
    */
-  const valueLabel = (position: "right" | "top", skip: readonly boolean[]) =>
+  const valueLabel = (position: "right" | "top", skip: readonly boolean[], shift = 0) =>
     i.print
       ? {
           label: {
@@ -321,7 +329,13 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             formatter: (p: { value: unknown; dataIndex: number }) =>
               skip[p.dataIndex] ? "" : value(Array.isArray(p.value) ? p.value[1] : p.value),
           },
-          labelLayout: { hideOverlap: true },
+          labelLayout:
+            shift > 0
+              ? (p: { dataIndex: number }) => ({
+                  hideOverlap: true,
+                  ...(p.dataIndex === 0 ? { dx: shift } : {}),
+                })
+              : { hideOverlap: true },
         }
       : {};
 
@@ -481,16 +495,15 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     // lebar: lebih dari itu ECharts menyerah memuat label sumbu nilai di kiri.
     const edgeText = points.reduce((m, p) => Math.max(m, tick(p[0]).length), 0);
     const right = Math.max(grid.right, Math.min((edgeText * AXIS_CHAR_PX) / 2, size.width * 0.2));
-    // Titik pertama tepat di tepi kiri plot (min dataMin): jarak ke titik kedua dari lebar plot
-    // perkiraan (lebar − label sumbu nilai − jarak grid), sama seperti sumbu kategori.
+    // Titik pertama tepat di tepi kiri plot (min dataMin); posisi titik dari lebar plot perkiraan
+    // (lebar − label sumbu nilai − jarak grid), sama seperti sumbu kategori.
     const maxY = ys.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
     const plotT = size.width - grid.left - right - 8 - axisText(maxY).length * AXIS_CHAR_PX;
     const span = points.length > 1 ? points.at(-1)![0] - points[0]![0] : 0;
     const shift0 = firstShift(
-      0,
-      span > 0 ? ((points[1]![0] - points[0]![0]) / span) * Math.max(plotT, 1) : Infinity,
-      valueLabelPx(ys[0], filled[0]),
-      valueLabelPx(ys[1], filled[1]),
+      points.map((p) => (span > 0 ? ((p[0] - points[0]![0]) / span) * Math.max(plotT, 1) : 0)),
+      ys,
+      filled,
     );
     return {
       ...base,
@@ -533,14 +546,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           type: "line" as const,
           name: i.measureLabel,
           data: points.map((p, n) =>
-            firstPoint(
-              n,
-              selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
-              shift0,
-            ),
+            selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
           ),
           ...symbols(ys, filled),
-          ...valueLabel("top", filled),
+          ...valueLabel("top", filled, shift0),
           connectNulls: false,
         },
       ],
@@ -576,13 +585,15 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   const maxAbs = values.reduce<number>((m, v) => Math.max(m, Math.abs(v ?? 0)), 0);
   const plotW = size.width - grid.left - grid.right - 8 - axisText(maxAbs).length * AXIS_CHAR_PX;
   const band = Math.max(plotW, 1) / Math.max(n, 1);
-  // Titik garis pertama di tengah pita pertama: setengah pita ke sumbu nilai, satu pita ke titik kedua.
-  const shift0 = firstShift(
-    band / 2,
-    n > 1 ? band : Infinity,
-    valueLabelPx(values[0], filled[0]),
-    valueLabelPx(values[1], filled[1]),
-  );
+  // Titik garis di tengah pitanya (setengah pita dari sumbu nilai).
+  const shift0 =
+    i.type === "line"
+      ? firstShift(
+          values.map((_, k) => band / 2 + k * band),
+          values,
+          filled,
+        )
+      : 0;
   const textW = labels.reduce((m, l) => Math.max(m, labelText(l).length), 1) * AXIS_CHAR_PX;
   const alignRight = n > 1 && textW / 2 > band / 2 + grid.right - 4;
   // Label terakhir rata kanan memakan seluruh lebarnya ke kiri: semua jarak dilebarkan (bukan satu
@@ -665,7 +676,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         type: i.type,
         name: i.measureLabel,
         data: values.map((v, k) => {
-          if (i.type === "line") return firstPoint(k, k === sel ? picked(v) : v, shift0);
+          if (i.type === "line") return k === sel ? picked(v) : v;
           if (sel === undefined) return v;
           return k === sel
             ? { value: v, itemStyle: { borderColor: theme.text, borderWidth: 1.5 } }
@@ -678,7 +689,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
-        ...valueLabel(horizontal ? "right" : "top", filled),
+        ...valueLabel(horizontal ? "right" : "top", filled, shift0),
       },
     ],
   };

@@ -25,7 +25,8 @@ function textWidth(text: string, px: number): number | null {
   ctx ??= document.createElement("canvas").getContext("2d");
   if (!ctx) return null;
   ctx.font = `600 ${px}px ${getComputedStyle(document.body).fontFamily}`;
-  return ctx.measureText(text).width;
+  // Halaman memakai angka tabular (tnum), canvas tidak: semua angka diukur selebar "0" (R6-CL-2).
+  return ctx.measureText(text.replace(/\d/g, "0")).width;
 }
 
 /** Ukuran huruf akar (px): padding/baris label ber-rem membesar bila pengguna memperbesar huruf. */
