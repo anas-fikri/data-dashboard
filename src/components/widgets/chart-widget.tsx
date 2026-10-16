@@ -35,6 +35,7 @@ import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
 import { useBoxSize } from "./use-box-size";
+import { useScrollFocus } from "./use-scroll-focus";
 import type { WidgetData } from "./widget-query";
 
 /*
@@ -55,6 +56,19 @@ import type { WidgetData } from "./widget-query";
  * grafik (kosong, pai negatif, daftar peringkat).
  */
 const SWATCH = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5", "bg-chart-6"];
+/**
+ * Bentuk swatch legenda per warna (T-032): irisan tetap terbedakan tanpa warna (forced-colors, buta
+ * warna). Di forced-colors warnanya dipertahankan (forced-color-adjust) agar tetap cocok dengan grafik.
+ */
+const SHAPE = [
+  "rounded-sm",
+  "rounded-full",
+  "[clip-path:polygon(50%_0,100%_100%,0_100%)]",
+  "[clip-path:polygon(50%_0,100%_50%,50%_100%,0_50%)]",
+  "[clip-path:polygon(50%_0,100%_38%,82%_100%,18%_100%,0_38%)]",
+];
+/** "Lainnya": garis pendek. */
+const OTHERS_SHAPE = "h-1 rounded-full";
 const CHAR_PX = 6.6;
 /** Daftar peringkat (teks 12 px) tanpa canvas (SSR, uji): ±7 px per karakter. */
 const RANK_CHAR_PX = 7;
@@ -85,6 +99,7 @@ export function ChartWidget({
   cross,
   print = false,
   onSettled,
+  onBadge,
 }: {
   type: ChartType;
   data: WidgetData;
@@ -101,10 +116,14 @@ export function ChartWidget({
   print?: boolean;
   /** Isi siap (grafik tergambar/gagal, atau isi bukan grafik). */
   onSettled?: () => void;
+  /** Lencana "N/M" kategori untuk kepala kartu saat keterangan tidak muat (T-032); fungsi stabil. */
+  onBadge?: (badge: { short: string; full: string } | null) => void;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
   const outer = useRef<HTMLDivElement>(null);
+  const [legendEl, legendTab] = useScrollFocus<HTMLDivElement>();
+  const [noticeEl, noticeTab] = useScrollFocus<HTMLDivElement>();
   const room = useBoxSize(outer);
   const [dim, measure] = data.columns;
   const dimType = dim?.type ?? "text";
@@ -255,9 +274,9 @@ export function ChartWidget({
         )}
         role="region"
         aria-label={`Keterangan ${name}`}
-        // Pesan bisa lebih tinggi dari kartu pendek: wilayah gulir harus bisa difokus (WCAG 2.1.1).
-        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-        tabIndex={0}
+        // Pesan bisa lebih tinggi dari kartu pendek: wilayah gulir bisa difokus bila meluap (WCAG 2.1.1).
+        ref={noticeEl}
+        tabIndex={noticeTab}
         data-testid="pie-negative"
       >
         <IconAlertTriangle
@@ -464,9 +483,11 @@ export function ChartWidget({
             )}
             role="region"
             aria-label={`Legenda ${name}`}
-            // Legenda bisa lebih panjang dari kartu pendek: wilayah gulir harus bisa difokus.
-            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
-            tabIndex={0}
+            // Legenda bisa lebih panjang dari kartu pendek: bisa difokus (panah menggulir) hanya bila
+            // meluap — legenda yang muat bukan tab stop (T-032).
+            ref={legendEl}
+            tabIndex={print ? undefined : legendTab}
+            data-testid="pie-legend-region"
           >
             <ul data-testid="pie-legend">
               {order.map((i) => {
@@ -481,9 +502,12 @@ export function ChartWidget({
                   >
                     <span
                       aria-hidden
+                      data-testid="pie-swatch"
                       className={cn(
-                        "size-2.5 shrink-0 rounded-sm forced-colors:border forced-colors:border-[CanvasText]",
-                        r.others ? SWATCH[5] : SWATCH[i % 5],
+                        "w-2.5 shrink-0 forced-color-adjust-none",
+                        r.others
+                          ? [SWATCH[5], OTHERS_SHAPE]
+                          : ["h-2.5", SWATCH[i % 5], SHAPE[i % 5]],
                       )}
                     />
                     {/* Cetak: nama lengkap membungkus di samping nilainya (kertas tanpa tooltip; dua
@@ -531,10 +555,16 @@ export function ChartWidget({
   }
 
   // Keterangan yang muat (lengkap/ringkas); teks lengkap tetap di title dan untuk pembaca layar.
-  const note =
-    fit && fit.note !== "none" && !fit.ranked && !chartEmpty(data) && !showData && !negative
-      ? fit
-      : null;
+  const drawn = fit && !fit.ranked && !chartEmpty(data) && !showData && !negative ? fit : null;
+  const note = drawn && drawn.note !== "none" ? drawn : null;
+  // Tidak muat sama sekali (kartu pendek): lencana "N/M" di kepala kartu (pembaca layar: ringkasan grafik).
+  const badge = !print && drawn?.badge ? drawn.badge : "";
+  const badgeFull = drawn?.full ?? "";
+  useEffect(
+    () => onBadge?.(badge ? { short: badge, full: badgeFull } : null),
+    [onBadge, badge, badgeFull],
+  );
+  useEffect(() => () => onBadge?.(null), [onBadge]);
 
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">

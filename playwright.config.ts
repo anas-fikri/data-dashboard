@@ -35,6 +35,7 @@ export default defineConfig({
         /exports\.spec\.ts$/,
         /pdf\.spec\.ts$/,
         /kpi-fit\.spec\.ts$/,
+        /chart-polish\.spec\.ts$/,
       ],
     },
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
@@ -60,7 +61,9 @@ export default defineConfig({
     { name: "pdf", testMatch: /pdf\.spec\.ts$/, dependencies: ["exports"] },
     // kpi-fit (T-p24e): worker sendiri (workbook 2 sheet); angka KPI h=2 bercatatan di layar + halaman cetak.
     { name: "kpi-fit", testMatch: /kpi-fit\.spec\.ts$/, dependencies: ["pdf"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["kpi-fit"] },
+    // chart-polish (T-032): worker sendiri (12 kota); lencana N/M, tab stop legenda, forced-colors.
+    { name: "chart-polish", testMatch: /chart-polish\.spec\.ts$/, dependencies: ["kpi-fit"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["chart-polish"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

@@ -299,14 +299,16 @@ describe("pai: legenda, peringatan, tabel data", () => {
     ["E", 1],
   ];
 
-  it("legenda dan peringatan negatif = wilayah gulir yang bisa difokus dan bernama", () => {
+  it("legenda dan peringatan negatif = wilayah bernama; tab stop hanya bila meluap (T-032, diukur di peramban)", () => {
     const legend = html("pie", data(top5, { categories: 40, grandTotal: 100 }));
-    expect(legend).toMatch(/role="region"[^>]*aria-label="Legenda Porsi"[^>]*tabindex="0"/);
+    expect(legend).toMatch(/role="region"[^>]*aria-label="Legenda Porsi"/);
+    // Render server/awal: belum terukur meluap → bukan tab stop (e2e menguji kartu yang meluap).
+    expect(legend).not.toMatch(/aria-label="Legenda Porsi"[^>]*tabindex=/);
     // Terbesar dulu: Lainnya (85) di baris pertama.
     const order = [...legend.matchAll(/title="([^"]+)"/g)].map((m) => m[1]);
     expect(order.slice(0, 3)).toEqual(["Lainnya", "A", "B"]);
     const neg = html("pie", data([...top5.slice(0, 4), ["E", -1]]));
-    expect(neg).toMatch(/role="region"[^>]*aria-label="Keterangan Porsi"[^>]*tabindex="0"/);
+    expect(neg).toMatch(/role="region"[^>]*aria-label="Keterangan Porsi"/);
     expect(neg).toContain('data-testid="pie-negative"');
   });
 

@@ -652,6 +652,11 @@ export interface Fit {
   /** Keterangan lengkap (title + pembaca layar) dan yang tampil ("" = tidak ada). */
   full: string;
   shown: string;
+  /**
+   * Keterangan tidak muat tetapi penting (kategori terpotong): lencana ringkas "N/M" di kepala kartu
+   * ("N+" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
+   */
+  badge: string;
 }
 
 /**
@@ -698,7 +703,14 @@ export function chartFit(i: FitInput): Fit {
   const visibleAt = (h: number) => (i.type === "bar" ? Math.min(barsThatFit(h), i.rows) : i.rows);
 
   if (width < (i.print && i.type === "bar" ? PRINT_BAR_NARROW : NARROW)) {
-    return { note: "none", visible: i.rows, ranked: true, full: texts(i.rows).full, shown: "" };
+    return {
+      note: "none",
+      visible: i.rows,
+      ranked: true,
+      full: texts(i.rows).full,
+      shown: "",
+      badge: "",
+    };
   }
   for (const note of ["full", "compact"] as const) {
     // Tinggi keterangan menentukan jumlah batang, dan jumlah batang menentukan teksnya.
@@ -713,15 +725,19 @@ export function chartFit(i: FitInput): Fit {
         if (!t.important && height < NOTE_PLAIN_MIN) continue;
         if (lines === 2 && height < NOTE_TWO_LINES_MIN) continue;
       }
-      return { note, visible, ranked: false, full: t.full, shown: text };
+      return { note, visible, ranked: false, full: t.full, shown: text, badge: "" };
     }
   }
   const visible = visibleAt(height);
+  const ranked = plot(height) < PLOT_MIN[i.type];
+  const t = texts(visible);
+  const cut = i.partial && i.type !== "pie" ? `${visible}+` : `${visible}/${all}`;
   return {
     note: "none",
     visible,
-    ranked: plot(height) < PLOT_MIN[i.type],
-    full: texts(visible).full,
+    ranked,
+    full: t.full,
     shown: "",
+    badge: !ranked && t.important && i.type !== "pie" ? cut : "",
   };
 }
