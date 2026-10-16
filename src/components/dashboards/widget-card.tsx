@@ -119,8 +119,9 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             className={cn(
               "shrink-0 rounded-sm bg-muted px-1 text-xs leading-5 whitespace-nowrap tabular-nums text-foreground",
               // Judul didahulukan: kartu sempit tanpa lencana (tabel data tetap tersedia) — di badan grafik
-              // lencana menimpa label sumbu (review desain T-032 r1/r2).
-              editing ? "@max-[17rem]:hidden" : "@max-[12.5rem]:hidden",
+              // lencana menimpa label sumbu (review desain T-032 r1/r2). Ambang memuat "9.999 dari 9.999"
+              // dengan judul ≥ 4rem (r3).
+              editing ? "@max-[20rem]:hidden" : "@max-[15.5rem]:hidden",
             )}
             title={badge.full}
             // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.

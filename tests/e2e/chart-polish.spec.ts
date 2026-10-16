@@ -81,6 +81,7 @@ test.describe("polish widget kecil (T-032)", () => {
       ["Batang pendek", "Batang"],
       ["Pai sedang", "Pai"],
       ["Pai tinggi", "Pai"],
+      ["Omzet harian per kota tiga puluh hari terakhir", "Batang"],
     ] as const) {
       await addWidget(owner, title, type);
       ids[title] = (await widgetTitled(owner, title).getAttribute("data-widget-id"))!;
@@ -96,6 +97,8 @@ test.describe("polish widget kecil (T-032)", () => {
           // Sempit (< 28rem): legenda di bawah donat, setinggi ≤ 45% kartu → meluap.
           { i: ids["Pai sedang"]!, x: 6, y: 0, w: 3, h: 4 },
           { i: ids["Pai tinggi"]!, x: 0, y: 4, w: 6, h: 9 },
+          // w3 berjudul panjang: pita lebar tepat di sekitar ambang lencana (review desain T-032 r3).
+          { i: ids["Omzet harian per kota tiga puluh hari terakhir"]!, x: 9, y: 0, w: 3, h: 2 },
         ],
       },
     });
@@ -127,6 +130,30 @@ test.describe("polish widget kecil (T-032)", () => {
     // Tabel data: lencana disembunyikan (semua baris tampil di tabel).
     await bar.getByTestId("widget-data-toggle").click();
     await expect(badge).toHaveCount(0);
+  });
+
+  test("review T-032 r3: lencana hanya bila judul tetap ≥ 4rem (lihat/edit, 1440/1024 px)", async () => {
+    for (const mode of ["", "?mode=edit"]) {
+      for (const width of [1440, 1024]) {
+        await owner.setViewportSize({ width, height: 1100 });
+        await owner.goto(`/dashboards/${d}${mode}`);
+        await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
+        const cards = await owner.getByTestId("widget").evaluateAll((els) =>
+          els.map((e) => {
+            const badge = e.querySelector<HTMLElement>("[data-testid=chart-badge]");
+            const h = e.querySelector("h2")!;
+            return {
+              title: h.textContent,
+              shown: !!badge && badge.getBoundingClientRect().width > 0,
+              titleW: h.getBoundingClientRect().width,
+            };
+          }),
+        );
+        for (const c of cards.filter((c) => c.shown)) {
+          expect(c.titleW, `${width} px ${mode || "lihat"}: ${c.title}`).toBeGreaterThanOrEqual(64);
+        }
+      }
+    }
   });
 
   test("AC2: legenda pai muat → bukan tab stop; meluap → bisa difokus dan digulir panah", async () => {
