@@ -260,6 +260,26 @@ describe("recast", () => {
     ).toEqual(["2023-03-15", null, "2023-03-16"]);
   });
 
+  it("T-030 AC2: kolom ambigu dikoreksi ke Indonesia → '1.500' = 1500, '1.5' gagal terhitung, tanda hilang", async () => {
+    const lines = [
+      "omzet;n",
+      "1.5;0",
+      ...Array.from({ length: 40 }, (_, i) => `1.${500 + i};${i}`),
+    ];
+    const r = await setup(`${lines.join("\n")}\n`);
+    expect(r.sheet().schema![0]).toMatchObject({ numberLocale: "us", localeAmbiguous: true });
+    await recastSheet(
+      r.sheetId,
+      { columns: [{ pos: 1, type: "decimal", numberLocale: "id" }] },
+      r.deps,
+    );
+    const c = r.sheet().schema![0]!;
+    expect(c).toMatchObject({ type: "decimal", numberLocale: "id", castFailCount: 1 });
+    expect(c.localeAmbiguous).toBeUndefined();
+    const rows = await readParquet(join(r.storage.dir, r.sheet().typedKey!));
+    expect(rows.slice(0, 3).map((x) => x[1])).toEqual([null, 1500, 1501]);
+  });
+
   it("review T-028 INT-1: '(0)' di kolom serial gagal cast dan terhitung (negatif akuntansi bukan nomor seri)", async () => {
     const r = await setup(`tgl;n\n45000;1\n(0);2\n45001;3\n`);
     await recastSheet(

@@ -150,6 +150,20 @@ export function ColumnRow({
             </dd>
           </div>
         ) : null}
+        {column.localeAmbiguous ? (
+          <div className="flex w-full items-start gap-1 text-sm" data-testid="locale-ambiguous">
+            <IconAlertTriangle
+              size={14}
+              stroke={2}
+              aria-hidden
+              className="mt-0.5 shrink-0 text-warning"
+            />
+            <dt className="sr-only">Penulisan angka</dt>
+            <dd className="text-foreground">
+              Penulisan angka ambigu: “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan.
+            </dd>
+          </div>
+        ) : null}
       </dl>
 
       <div className="flex items-center @4xl:h-(--control-h)">

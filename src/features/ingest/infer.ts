@@ -40,6 +40,11 @@ export interface ColumnSchema {
   dateFormat?: DateFormat;
   /** Desimal disimpan DOUBLE (ada nilai > 6 digit pecahan atau notasi eksponen); selain itu DECIMAL(38,6). */
   float?: boolean;
+  /**
+   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030): total bisa
+   * 1000× lebih kecil tanpa gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
+   */
+  localeAmbiguous?: true;
   hidden: boolean;
   /** Proporsi sel kosong di baris data (0–1). */
   nullPct: number;
@@ -445,6 +450,11 @@ export interface Inferred {
   numberLocale?: NumberLocale;
   dateFormat?: DateFormat;
   float?: boolean;
+  /**
+   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030): total bisa
+   * 1000× lebih kecil tanpa gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
+   */
+  localeAmbiguous?: true;
 }
 
 /** Keputusan tipe dari profil (urutan kandidat dan ambang 98%, lihat atas). */

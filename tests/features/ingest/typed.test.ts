@@ -138,6 +138,39 @@ describe("T-028 (review): pencocokan penuh, locale US, kolom teks", () => {
   });
 });
 
+describe("T-030: locale angka ambigu ditandai", () => {
+  it("CSV: mayoritas '1.500' + satu '1.5' → dibaca US tapi ditandai ambigu; ribuan id-ID jelas tidak ditandai", async () => {
+    const { col } = await ingest(
+      t.file(
+        "ambigu.csv",
+        csv(
+          ["omzet", "bersih"],
+          [["1.5", "1.234.567"], ...range(40, (i) => [`1.${500 + i}`, `2.${100 + i}.000`])],
+        ),
+      ),
+    );
+    expect(col("omzet")).toMatchObject({
+      type: "decimal",
+      numberLocale: "us",
+      localeAmbiguous: true,
+    });
+    expect(col("bersih")).toMatchObject({ type: "integer", numberLocale: "id" });
+    expect(col("bersih").localeAmbiguous).toBeUndefined();
+  });
+
+  it("xlsx: angka asli berdesimal + teks '1.500' → ditandai; angka asli saja (1.234) tidak", async () => {
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>a</t></is></c><c r="B1" t="inlineStr"><is><t>b</t></is></c></row>`;
+    xml += `<row r="2"><c r="A2" t="inlineStr"><is><t>1.500</t></is></c><c r="B2"><v>1.234</v></c></row>`;
+    for (let r = 3; r <= 40; r++) {
+      xml += `<row r="${r}"><c r="A${r}"><v>${r}.25</v></c><c r="B${r}"><v>${r}.5</v></c></row>`;
+    }
+    const { col } = await ingest(t.file("ambigu.xlsx", await buildXlsx([{ name: "S", xml }])));
+    expect(col("a")).toMatchObject({ numberLocale: "us", localeAmbiguous: true });
+    expect(col("b")).toMatchObject({ numberLocale: "us" });
+    expect(col("b").localeAmbiguous).toBeUndefined();
+  });
+});
+
 describe("AC 3: locale angka per kolom", () => {
   it("'1.234.567,89' → ID 1234567.89; '1234.5' → US 1234.5", async () => {
     const { col } = await ingest(

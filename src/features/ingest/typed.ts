@@ -117,10 +117,16 @@ function resolve(p: Profile | undefined, source: SourceKind, o?: ColumnOverride)
   if (t === "integer" || t === "decimal") {
     const numberLocale =
       o?.numberLocale ?? inferred.numberLocale ?? (p ? pickLocale(p, source) : "us");
-    if (t === "integer") return { type: t, numberLocale };
+    // Bukti ribuan id-ID di kolom yang dibaca US (CSV "1.234"; xlsx hanya teks berakhiran 0, karena angka
+    // asli xlsx selalu kanonik). Dihitung dari data setiap kali, termasuk pilihan US yang dibawa recast.
+    const flag =
+      numberLocale === "us" && p && (source === "csv" ? p.idWeak : p.idText0) > 0
+        ? { localeAmbiguous: true as const }
+        : {};
+    if (t === "integer") return { type: t, numberLocale, ...flag };
     return p && needsFloat(p, numberLocale)
-      ? { type: t, numberLocale, float: true }
-      : { type: t, numberLocale };
+      ? { type: t, numberLocale, float: true, ...flag }
+      : { type: t, numberLocale, ...flag };
   }
   if (t === "date" || t === "timestamp") {
     let f = o?.dateFormat ?? inferred.dateFormat;

@@ -39,11 +39,12 @@ export function ColumnEditor({ schema }: { schema: ColumnSchema[] }) {
   const changed = Object.values(drafts)
     .filter((d) => Object.keys(diff(d, base.get(d.pos)!)).length > 1)
     .map((d) => d.pos);
-  const issues = schema.filter((c) => c.castFailCount > 0).length;
+  const issue = (c: ColumnSchema) => c.castFailCount > 0 || !!c.localeAmbiguous;
+  const issues = schema.filter(issue).length;
   const q = query.trim().toLowerCase();
   const filtered = schema.filter(
     (c) =>
-      (!onlyIssues || c.castFailCount > 0) &&
+      (!onlyIssues || issue(c)) &&
       (!q || `${draftFor(c).name} ${c.original}`.toLowerCase().includes(q)),
   );
 
