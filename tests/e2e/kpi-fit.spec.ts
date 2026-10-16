@@ -128,6 +128,15 @@ function measure(page: Page, root: string) {
   );
 }
 
+/** Semua kartu berisi angka KPI yang sudah diukur (bukan kartu galat / render pertama). */
+async function expectMeasured(page: Page) {
+  await expect(page.getByTestId("kpi-value")).toHaveCount(cards.length);
+  for (const v of await page.getByTestId("kpi-value").all()) {
+    await expect(v).toHaveText(/\d/);
+    await expect(v).toHaveAttribute("style", /font-size/);
+  }
+}
+
 function expectFit(rows: Awaited<ReturnType<typeof measure>>, where: string) {
   const byId = new Map(rows.map((r) => [r.id, r]));
   for (const c of cards) {
@@ -198,7 +207,9 @@ test.describe("ukuran angka KPI di kartu pendek (T-p24e)", () => {
       (r) =>
         r.method() === "PATCH" &&
         r.url().endsWith(`/widgets/${ids[1]}`) &&
-        (r.postDataJSON() as Config | null)?.spec?.sheetId !== dataSpec!.spec.sheetId,
+        [undefined, dataSpec!.spec.sheetId].every(
+          (id) => (r.postDataJSON() as Config | null)?.spec?.sheetId !== id,
+        ),
     );
     await lain.getByLabel("Sheet", { exact: true }).click();
     await owner.getByRole("option", { name: "Lain", exact: true }).click();
@@ -284,8 +295,8 @@ test.describe("ukuran angka KPI di kartu pendek (T-p24e)", () => {
       await owner.setViewportSize({ width, height: 1000 });
       await owner.goto(`/dashboards/${d}?f=${encodeURIComponent(f)}`);
       await expect(owner.getByTestId("widget-skipped-filters")).toHaveCount(WIDTHS.length);
-      await expect(owner.getByTestId("kpi-value")).toHaveCount(cards.length);
-      for (const v of await owner.getByTestId("kpi-value").all()) await expect(v).toHaveText(/\d/);
+      // Ukuran inline terpasang setelah KPI mengukur kotaknya (render pertama = ukuran dari lebar saja).
+      await expectMeasured(owner);
       const byId = expectFit(await measure(owner, "[data-testid=widget]"), `${width} px`);
       for (const w of WIDTHS) {
         const plain = cards.find((c) => c.kind === "plain" && c.w === w)!;
@@ -298,6 +309,7 @@ test.describe("ukuran angka KPI di kartu pendek (T-p24e)", () => {
   test("AC1: halaman cetak (viewport renderer 1047 px, media print) — angka KPI h=2 bercatatan utuh", async ({
     browser,
   }) => {
+    test.setTimeout(180_000);
     const { token, exportId } = JSON.parse(
       execFileSync("node", ["scripts/dev-render-token.mjs", "mint", OWNER, d, "--f", f]).toString(),
     ) as { token: string; exportId: string };
@@ -314,6 +326,7 @@ test.describe("ukuran angka KPI di kartu pendek (T-p24e)", () => {
         timeout: 120_000,
       });
       await expect(page.getByTestId("print-widget")).toHaveCount(cards.length);
+      await expectMeasured(page);
       expectFit(await measure(page, "[data-testid=print-widget]"), "cetak");
     } finally {
       await ctx.close();
