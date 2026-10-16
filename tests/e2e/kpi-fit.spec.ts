@@ -290,7 +290,8 @@ test.describe("ukuran angka KPI di kartu pendek (T-p24e)", () => {
     await owner?.context().close();
   });
 
-  for (const width of [1024, 1440, 1920]) {
+  // 768/1023: tampilan grid 6 kolom (T-031) tetap bertinggi tetap — review T-031 INT-1.
+  for (const width of [768, 1023, 1024, 1440, 1920]) {
     test(`AC1+AC2: layar ${width} px — angka KPI h=2 bercatatan utuh, tanpa catatan tidak mengecil`, async () => {
       await owner.setViewportSize({ width, height: 1000 });
       await owner.goto(`/dashboards/${d}?f=${encodeURIComponent(f)}`);

@@ -46,12 +46,14 @@ type Props = React.HTMLAttributes<HTMLDivElement> & {
   widget: WidgetView;
   editing: boolean;
   draggable: boolean;
+  /** Kotak bertinggi tetap (grid, termasuk tampilan 768–1023 px); tumpukan ponsel tumbuh mengikuti isi. */
+  fixedHeight: boolean;
   selected: boolean;
   onSettings?: () => void;
 };
 
 export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
-  { widget, editing, draggable, selected, onSettings, className, children, ...rest },
+  { widget, editing, draggable, fixedHeight, selected, onSettings, className, children, ...rest },
   ref,
 ) {
   const title = widget.title || "Widget tanpa judul";
@@ -155,8 +157,9 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           title={widget.title}
           editing={editing}
           resizable={handle}
-          // Bisa diseret = grid (tinggi tetap); tumpukan ponsel tidak (kartu KPI tumbuh mengikuti isi).
-          fixedHeight={draggable}
+          // Grid (tinggi tetap, juga 768–1023 px yang tidak bisa diseret — review T-031 INT-1); tumpukan
+          // ponsel tidak (kartu KPI tumbuh mengikuti isi).
+          fixedHeight={fixedHeight}
           showData={showData}
           onState={onState}
           onRequest={onRequest}

@@ -188,32 +188,29 @@ describe("putaran 5 (T-011): ukuran minimum per jenis widget", () => {
 });
 
 describe("tabletLayout (T-031, 768–1023 px)", () => {
-  it("lebar separuh (paling sedikit setengah kanvas), posisi diskalakan, tidak melewati 6 kolom", () => {
-    const out = tabletLayout([
-      { i: "a", x: 0, y: 0, w: 2, h: 4 },
-      { i: "b", x: 10, y: 0, w: 2, h: 4 },
-      { i: "c", x: 0, y: 4, w: 8, h: 3 },
-      { i: "d", x: 8, y: 4, w: 4, h: 3 },
-      { i: "e", x: 0, y: 7, w: 12, h: 2 },
-      { i: "f", x: 3, y: 9, w: 9, h: 2 },
+  it("dialirkan per baris dalam urutan baca: lebar separuh (min setengah kanvas), tanpa tangga, dalam 6 kolom", () => {
+    const six = Array.from({ length: 6 }, (_, k) => ({ i: `w${k}`, x: k * 2, y: 0, w: 2, h: 4 }));
+    expect(tabletLayout(six).map(({ i, x, y, w }) => `${i}:${x},${y},${w}`)).toEqual([
+      "w0:0,0,3",
+      "w1:3,0,3",
+      "w2:0,4,3",
+      "w3:3,4,3",
+      "w4:0,8,3",
+      "w5:3,8,3",
     ]);
-    expect(out.map(({ i, x, w }) => `${i}:${x},${w}`)).toEqual([
-      "a:0,3",
-      "b:3,3",
-      "c:0,4",
-      "d:3,3",
-      "e:0,6",
-      "f:1,5",
+    const mixed = tabletLayout([
+      { i: "kpi", x: 0, y: 0, w: 3, h: 2 },
+      { i: "bar", x: 3, y: 0, w: 9, h: 4 },
+      { i: "tbl", x: 0, y: 4, w: 12, h: 6 },
+      { i: "pie", x: 0, y: 10, w: 4, h: 4 },
     ]);
-    for (const it of out) expect(it.x + it.w).toBeLessThanOrEqual(TABLET_COLS);
-    // y/h tidak berubah: tumpang tindih diselesaikan pemadatan react-grid-layout.
-    expect(out.map((it) => [it.y, it.h])).toEqual([
-      [0, 4],
-      [0, 4],
-      [4, 3],
-      [4, 3],
-      [7, 2],
-      [9, 2],
+    expect(mixed.map(({ i, x, y, w, h }) => `${i}:${x},${y},${w},${h}`)).toEqual([
+      "kpi:0,0,3,2",
+      // 9 kolom → 5 dari 6: tidak muat di samping KPI, turun satu baris.
+      "bar:0,2,5,4",
+      "tbl:0,6,6,6",
+      "pie:0,12,3,4",
     ]);
+    for (const it of mixed) expect(it.x + it.w).toBeLessThanOrEqual(TABLET_COLS);
   });
 });

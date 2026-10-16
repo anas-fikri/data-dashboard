@@ -355,6 +355,14 @@ test.describe("dashboard", () => {
     for (const width of [768, 1023]) {
       await page.setViewportSize({ width, height: 900 });
       await expect(page.getByTestId("canvas")).toHaveAttribute("data-layout", "tablet");
+      if (width === 768) {
+        // Mode edit: kepala kartu tidak bisa diseret di tampilan ini (tidak ada pegangan, tidak disimpan).
+        await expect(page.locator(".widget-drag-handle")).toHaveCount(0);
+        await drag(page, page.getByTestId("widget").first().locator("h2"), 240, 0);
+        // Jeda simpan otomatis tata letak (debounce) agar PUT yang salah sempat terkirim.
+        await page.waitForTimeout(1500);
+        await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+      }
       const cards = await page.getByTestId("widget").evaluateAll((els) =>
         els.map((e) => {
           const h = e.querySelector("h2")!;

@@ -166,7 +166,11 @@ function Canvas(props: CanvasProps) {
   const reveal = useRef<string | null>(null);
   const canEdit = editing && !frozen;
   const byId = new Map(ed.widgets.map((w) => [w.id, w]));
-  const ordered = readingOrder(ed.layout);
+  // 768–1023 px: posisi tampilan turunan (sudah dipadatkan) untuk grid, gulir, dan urutan DOM/Tab.
+  const shown = tablet ? tabletLayout(ed.layout) : null;
+  const saved = new Map(ed.layout.map((it) => [it.i, it]));
+  // DOM urut tampilan; data-pos tetap satuan 12 kolom tersimpan.
+  const ordered = shown ? shown.map((it) => saved.get(it.i)!) : readingOrder(ed.layout);
   const panelItem = canEdit && selected ? ed.layout.find((it) => it.i === selected) : undefined;
   const panelWidget = panelItem ? byId.get(panelItem.i) : undefined;
   /** Ukuran terkecil per jenis widget (tabel 3×4) untuk pojok resize dan tombol panel. */
@@ -180,7 +184,7 @@ function Canvas(props: CanvasProps) {
    */
   function revealWidget(id: string) {
     const card = root.current?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`);
-    const item = (tablet ? tabletLayout(ed.layout) : ed.layout).find((it) => it.i === id);
+    const item = (shown ?? ed.layout).find((it) => it.i === id);
     const grid = containerRef.current;
     if (!card || !item) return;
     if (phone || !grid) return card.scrollIntoView({ block: "start" });
@@ -281,6 +285,7 @@ function Canvas(props: CanvasProps) {
       widget={w}
       editing={canEdit}
       draggable={!phone && !tablet}
+      fixedHeight={!phone}
       selected={canEdit && selected === w.id}
       onSettings={() => {
         if (selected !== w.id) reveal.current = w.id;
@@ -374,9 +379,12 @@ function Canvas(props: CanvasProps) {
                   </div>
                 ) : mounted ? (
                   <ReactGridLayout
+                    // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
+                    // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
+                    key={tablet ? "tablet" : "grid"}
                     layout={
-                      tablet
-                        ? tabletLayout(ed.layout)
+                      shown
+                        ? shown
                         : ed.layout.map((it) => {
                             const min = minOf(it.i);
                             return { ...it, minW: min.w, minH: min.h };
@@ -396,8 +404,8 @@ function Canvas(props: CanvasProps) {
                       cancel: "button",
                     }}
                     resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
-                    onDragStop={(l) => ed.commitLayout(plain(l))}
-                    onResizeStop={(l) => ed.commitLayout(plain(l))}
+                    onDragStop={(l) => !tablet && ed.commitLayout(plain(l))}
+                    onResizeStop={(l) => !tablet && ed.commitLayout(plain(l))}
                   >
                     {ordered.map((it) => {
                       const w = byId.get(it.i);

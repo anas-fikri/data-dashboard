@@ -166,13 +166,24 @@ export const TABLET_COLS = 6;
 /**
  * Tata letak tampilan 768–1023 px (T-031): grid 12 kolom di kanvas ±480 px (sidebar tetap tampil)
  * membuat kartu 2 kolom hanya 66 px. Di sini 6 kolom: lebar = separuh lebar 12 kolom, paling sedikit
- * setengah kanvas (3 → ±232 px di 768 px), posisi kolom ikut diskalakan; tumpang tindih diselesaikan
- * pemadatan vertikal react-grid-layout. Hanya tampilan — tidak pernah disimpan, jadi tata letak ≥ 1024 px
+ * setengah kanvas (3 → ±232 px di 768 px). Kartu dialirkan per baris dalam urutan baca lalu dipadatkan
+ * dengan compactor yang sama dengan grid, jadi posisi hasil = yang digambar (gulir ke widget dan urutan
+ * Tab memakainya; review T-031 INT-2). Hanya tampilan — tidak pernah disimpan, jadi tata letak ≥ 1024 px
  * tetap; posisi/ukuran diatur lewat panel (satuan 12 kolom) seperti di ponsel.
  */
 export function tabletLayout(layout: LayoutItem[]): LayoutItem[] {
-  return layout.map((it) => {
+  let x = 0;
+  let y = 0;
+  let rowH = 0;
+  const flowed = readingOrder(layout).map((it) => {
     const w = Math.min(TABLET_COLS, Math.max(3, Math.round(it.w / 2)));
-    return { ...it, w, x: Math.min(Math.floor(it.x / 2), TABLET_COLS - w) };
+    if (x + w > TABLET_COLS) [x, y, rowH] = [0, y + rowH, 0];
+    const out = { i: it.i, x, y, w, h: it.h };
+    x += w;
+    rowH = Math.max(rowH, it.h);
+    return out;
   });
+  return readingOrder(
+    verticalCompactor.compact(flowed, TABLET_COLS).map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
+  );
 }
