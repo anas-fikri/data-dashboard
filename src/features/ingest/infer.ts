@@ -192,8 +192,19 @@ function familyParse(v: string, f: TextDateFormat, s: DateShape, iso: string): s
 }
 
 /** TIMESTAMP mentah dari teks ter-trim untuk konversi (prafilter bentuk tanggal; penjaga = dateOk). */
-const dateParse = (v: string, f: TextDateFormat) =>
-  `CASE WHEN ${match(v, RE.datey)} THEN ${familyParse(v, f, shapeOf(v), isoParse(v))} END`;
+const dateParse = (v: string, f: TextDateFormat, iso = isoParse(v)) =>
+  `CASE WHEN ${match(v, RE.datey)} THEN ${familyParse(v, f, shapeOf(v), iso)} END`;
+/** Raw ISO seri 60 Excel (29/02/1900 fiktif; parser linier dari 1899-12-30 → "1900-02-28…"). */
+const fict1900 = (v: string) => `(${v} >= '1900-02-28' AND ${v} < '1900-03')`;
+/**
+ * Sel tanggal asli xlsx di kolom tanggal/waktu (T-065). Parser memetakan nomor seri linier dari
+ * 1899-12-30 (durasi dihitung dari sana), sedangkan Excel menganggap 1900 kabisat (ECMA-376 §18.17.4.1):
+ * seri 1–59 (raw 1899-12-31 … 1900-02-27) tampil sehari lebih lambat di Excel, seri 60 tidak punya
+ * tanggal → NULL (gagal cast, dihitung Profile.fict). Raw ISO dari parser kanonik (ber-nol depan), jadi
+ * dibandingkan sebagai teks; cabang eksklusif → parse ISO tetap sekali. Kebalikan excelSerial (ekspor).
+ */
+const excel1900 = (v: string, iso: string) =>
+  `CASE WHEN ${v} >= '1899-12-31' AND ${v} < '1900-02-28' THEN ${iso} + INTERVAL 1 DAY WHEN ${fict1900(v)} THEN NULL ELSE ${iso} END`;
 const dateOk = (ts: string) => `year(${ts}) >= 1000`;
 /** Durasi Excel ([h]:mm): parser mengubahnya menjadi tanggal 1899-12-30 s.d. sebelum 1900-03-01. */
 const isDuration = (ts: string) =>
@@ -206,6 +217,8 @@ export interface Profile {
   col: string;
   /** Nilai non-kosong. */
   n: number;
+  /** Raw ISO seri 60 Excel (29/02/1900 fiktif): tanggal sah di teks, gagal cast di kolom tanggal xlsx. */
+  fict: number;
   distinct: number;
   /** Total karakter nilai non-kosong (untuk ukuran row group). */
   chars: number;
@@ -259,7 +272,9 @@ export function profileSqls(rawPath: string, cols: string[], headerRow: number):
     .join(",\n        ");
   const dateCols = TEXT_DATE_FORMATS.map(
     (fmt) => `${familyParse("v", fmt, shape, "p_iso")} AS ${dateAlias(fmt, "p")}`,
-  ).join(",\n      ");
+  )
+    .concat(`(p_iso IS NOT NULL AND ${fict1900("v")}) AS fict`)
+    .join(",\n      ");
   const dateAggs = TEXT_DATE_FORMATS.map((fmt) => {
     const a = dateAlias(fmt, "p");
     return `count(*) FILTER (WHERE ${dateOk(a)}) AS ${dateAlias(fmt, "d")},
@@ -307,7 +322,8 @@ FROM (
   const date = `
 SELECT col,
     ${dateAggs},
-    count(*) FILTER (WHERE ${dateOk(iso)} AND ${isDuration(iso)}) AS dur
+    count(*) FILTER (WHERE ${dateOk(iso)} AND ${isDuration(iso)}) AS dur,
+    count(*) FILTER (WHERE fict) AS fict
 FROM (
   SELECT col,
       ${dateCols}
@@ -347,6 +363,7 @@ export function toProfile(r: Record<string, unknown>): Profile {
   return {
     col: String(r.col),
     n: num("n"),
+    fict: num("fict"),
     distinct: num("distinct_n"),
     chars: num("chars"),
     code: num("code"),
@@ -390,7 +407,7 @@ export const needsFloat = (p: Profile, locale: NumberLocale) =>
 const passes = (ok: number, n: number) => n > 0 && ok / n >= INFER_THRESHOLD;
 
 /** Jumlah nilai yang lolos konversi untuk pilihan tipe/locale/format tertentu (= non-NULL di typed). */
-export function okCount(p: Profile, s: Inferred): number {
+export function okCount(p: Profile, s: Inferred, source: SourceKind): number {
   const id = s.numberLocale === "id";
   switch (s.type) {
     case "text":
@@ -407,7 +424,7 @@ export function okCount(p: Profile, s: Inferred): number {
     case "date":
     case "timestamp":
       if (s.dateFormat === "serial") return p.serial;
-      return p.date[s.dateFormat ?? "yyyy-mm-dd"];
+      return p.date[s.dateFormat ?? "yyyy-mm-dd"] - (source === "xlsx" ? p.fict : 0);
   }
 }
 
@@ -481,6 +498,7 @@ export function sqlType(s: Pick<Inferred, "type" | "float">): string {
 export function typedParts(
   col: string,
   s: Inferred,
+  source: SourceKind,
 ): { inner: string; outer: (a: string) => string } {
   const raw = ident(col);
   const v = `trim(${raw})`;
@@ -518,7 +536,7 @@ export function typedParts(
         };
       }
       return {
-        inner: dateParse(v, f),
+        inner: source === "xlsx" ? dateParse(v, f, excel1900(v, isoParse(v))) : dateParse(v, f),
         outer: (a) =>
           `CASE WHEN ${dateOk(a)} THEN ${s.type === "date" ? `CAST(${a} AS DATE)` : a} END`,
       };

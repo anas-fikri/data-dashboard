@@ -206,6 +206,19 @@ describe("kasus pelengkap", () => {
     expect(c.values.at(-1)).toBeNull();
   });
 
+  it("review T-065 INT-1: durasi bergaya tanggal (=B2-A2 mewarisi format tanggal) tetap persis, tanpa koreksi kabisat", async () => {
+    const serials = [0.25, 1.5, 59.5, 60.5];
+    let xml = `<row r="1"><c r="A1" t="inlineStr"><is><t>lama</t></is></c></row>`;
+    serials.forEach(
+      (v, i) => (xml += `<row r="${i + 2}"><c r="A${i + 2}" s="1"><v>${v}</v></c></row>`),
+    );
+    const { col } = await ingest(
+      t.file("durasi-tgl.xlsx", await buildXlsx([{ name: "S", xml }], { dateStyle: true })),
+    );
+    expect(col("lama")).toMatchObject({ type: "duration", castFailCount: 0 });
+    expect(col("lama").values).toEqual(serials.map((d) => BigInt(d * 86_400)));
+  });
+
   it("statistik: nullPct dan distinctCount; header ikut nama tampil + asli", async () => {
     const { col, rows } = await ingest(
       t.file(
@@ -345,6 +358,7 @@ describe("decide (unit)", () => {
   const base: Profile = {
     col: "c1",
     n: 0,
+    fict: 0,
     distinct: 0,
     chars: 0,
     code: 0,

@@ -189,7 +189,7 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
     const o = overrides.get(pos);
     const s = resolve(p, input.source, o);
     const n = p?.n ?? 0;
-    const ok = p ? okCount(p, s) : 0;
+    const ok = p ? okCount(p, s, input.source) : 0;
     const info = names.get(pos);
     return {
       pos,
@@ -225,7 +225,7 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
   // tanpa sort atas data lebar. Row group dibatasi juga oleh rata-rata karakter per baris.
   const chars = [...profiles.values()].reduce((sum, p) => sum + p.chars, 0);
   // Dua tahap: parse sekali di subquery (a<pos>), penjaga diterapkan pada hasilnya di luar.
-  const parts = schema.map((s, i) => typedParts(cols[i]!, s));
+  const parts = schema.map((s, i) => typedParts(cols[i]!, s, input.source));
   const outer = [
     ...parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`),
     ...absent.map((a) => `CAST(NULL AS ${sqlType(a)}) AS c${a.pos}`),

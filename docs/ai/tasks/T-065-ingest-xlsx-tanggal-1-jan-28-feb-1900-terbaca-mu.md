@@ -7,7 +7,7 @@ goal: G-3
 tags:
   - bug
 created: "2026-10-15T19:47:05Z"
-updated: "2026-10-16T15:47:50Z"
+updated: "2026-10-16T16:03:42Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -17,7 +17,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 41355
+    duration_ms: 42872
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -39,17 +39,17 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792165649188,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792165649224,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792165649233,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792166600096,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792166600119,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792166600128,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  117 passed (117)
             Tests  1683 passed (1683)
-         Start at  22:47:21
-         Duration  27.12s (tests 72%, import 19%, transform 9%, worker 1%)
+         Start at  23:03:12
+         Duration  27.75s (tests 72%, import 19%, transform 8%, worker 1%)
 
-          Isolate  117 workers spawned · ~148ms startup each (spawn + environment, per file)
-                   at least ~1.78s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  117 workers spawned · ~149ms startup each (spawn + environment, per file)
+                   at least ~1.79s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -57,8 +57,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-16T15:47:50Z"
-    tree: 4baa3394b948fa743bda3ecee8dc36978c0db0338851664fb62be9eb9d9df941
+    at: "2026-10-16T16:03:42Z"
+    tree: 0309db116bce1c3259e3d072c44d930869eaec47a2364a05e19c41e358d85c51
 ---
 
 ## Objective
@@ -69,6 +69,23 @@ Ditemukan saat review T-017 INT-2: src/lib/xlsx/parser.ts memakai epoch 1899-12-
 - [ ] Given serial 60 (29 Feb 1900 fiktif Excel), when diingest, then tidak menjadi tanggal salah diam-diam (ditandai gagal cast atau dipetakan jelas) dan tanggal 1900-03-01 ke atas tidak berubah
 
 ## Risk
-Impact: hanya ingest XLSX sistem tanggal 1900 untuk sel bertanggal bernomor seri 1–60 (1 Jan–29 Feb 1900); seri ≥ 61, sistem 1904, jam (h:mm) dan durasi ([h]:mm) tidak berubah; data lama tidak di-ingest ulang (berlaku untuk unggahan/versi baru). Security (STRIDE): tidak ada permukaan baru — parser tetap memakai batas yang sama; seri 60 menjadi teks konstan (bukan dari isi file). Rollback: revert commit parser. Validation: tes parser (seri 1/59/60/61/45293/59,5, format kustom, h:mm, [h]:mm:ss, 1904) + tes ingest DuckDB sungguhan (kolom DATE, seri 60 = 1 gagal cast → NULL); keduanya gagal tanpa perbaikan.
+Impact: hanya kolom date/timestamp dari sumber xlsx untuk raw ISO 1899-12-31 … 1900-02-28 (seri Excel 1–60); parser tetap linier sehingga durasi (termasuk durasi bergaya tanggal =B2-A2) tidak berubah; seri ≥ 61, CSV, format serial koreksi user, dan sistem 1904 tidak berubah; data lama baru terkoreksi saat ingest ulang/koreksi skema. Security (STRIDE): tidak ada permukaan baru — pembandingan teks raw di SQL memakai literal konstan. Rollback: revert commit infer.ts/typed.ts. Validation: tes ingest DuckDB sungguhan — seri 1/59/61/45293 = tampilan Excel, seri 60 = 1 gagal cast (NULL, castFailCount 1), durasi bergaya tanggal 0,25/1,5/59,5/60,5 hari persis; tes tanggal gagal bila koreksi dimatikan (uji mutasi); review integritas INT-1 (durasi) ditangani dengan memindahkan koreksi dari parser ke cast kolom tanggal.
 
 ## Notes
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — perubahan hanya di cast kolom tanggal ingest (src/features/ingest/infer.ts excel1900/fict1900 + okCount/typedParts menerima sumber; typed.ts meneruskan input.source); parser xlsx tidak berubah; batas kepercayaan sama (file unggahan diproses worker)
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak menyentuh autentikasi
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak menyentuh sesi
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — N/A: tidak menyentuh otorisasi; ingest tetap per versi milik dataset
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — pembandingan raw memakai literal SQL konstan ('1899-12-31', '1900-02-28', '1900-03'), tanpa nilai pengguna di teks SQL; seri 60 → NULL lewat CASE (bukan galat), dihitung castFailCount lewat Profile.fict dengan predikat yang sama
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data rahasia
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — N/A: tidak ada jalur galat/log baru; seri 60 tercatat sebagai gagal cast kolom (ditampilkan di skema), bukan galat
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A: tidak ada data pribadi baru
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada lalu lintas jaringan
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — tidak ada dependensi baru; npm audit 0 kerentanan
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — nilai tanggal impor kini sama dengan tampilan Excel (sebelumnya mundur 1 hari untuk Jan–Feb 1900) dan konsisten dengan ekspor XLSX T-017 (excelSerial); durasi tetap persis; tanggal fiktif tidak lagi diam-diam menjadi tanggal salah
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — batas parser (ukuran, sel, format, sheet) tidak berubah; tidak ada path/URL baru
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak ada konfigurasi baru
