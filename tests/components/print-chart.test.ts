@@ -165,6 +165,22 @@ describe("chartOption cetak (print)", () => {
     expect(series(option(monthly)).data[0]).toBe(3_768_000_000);
   });
 
+  it("garis cetak: label nilai terbaru menang saat bertumpuk — simbol makin baru sedikit lebih besar (R8-DS-2)", () => {
+    type Size = (v: unknown, p: { dataIndex: number }) => number;
+    const line = {
+      type: "line" as const,
+      labels: ["Cabang 1", "Cabang 2", "Cabang 3", "Cabang 4"],
+      values: [10, 11, 12, 13],
+    };
+    const size = (o: unknown) => (o as { series: { symbolSize?: Size }[] }).series[0]!.symbolSize;
+    const print = size(option({ ...line, print: true }))!;
+    const sizes = [0, 1, 2, 3].map((k) => print(null, { dataIndex: k }));
+    for (let k = 1; k < sizes.length; k++) expect(sizes[k]!).toBeGreaterThan(sizes[k - 1]!);
+    expect(sizes[3]! - 4).toBeLessThan(0.01);
+    // Layar: ukuran bawaan.
+    expect(size(option(line))).toBeUndefined();
+  });
+
   it("pai cetak: tanpa animasi; label grafik tetap mati (nilai di legenda)", () => {
     const o = option({ type: "pie", print: true });
     expect(o.animation).toBe(false);
