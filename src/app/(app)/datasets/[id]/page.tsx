@@ -94,7 +94,7 @@ export default async function DatasetDetailPage({
         }
         title={dataset.name}
         description={dataset.description ?? undefined}
-        actions={<GuideHelp context="UPLOAD" page="Unggah data" />}
+        actions={<GuideHelp context="UPLOAD" page="Unggah data" as="OWNER" />}
       />
       {search.created === "1" ? <FocusNotice>Dataset dibuat.</FocusNotice> : null}
       {/* Kembali dari halaman pemetaan (T-014); hanya bila keadaannya memang sudah begitu. */}

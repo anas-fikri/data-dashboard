@@ -76,7 +76,7 @@ export default async function SchemaPage({
       description="Periksa nama dan tipe kolom hasil deteksi otomatis, lalu perbaiki bila perlu. Perubahan diterapkan ke data aktif tanpa mengunggah ulang file."
       actions={
         <>
-          <GuideHelp context="SCHEMA" page="Skema data" />
+          <GuideHelp context="SCHEMA" page="Skema data" as="OWNER" />
           {back}
         </>
       }

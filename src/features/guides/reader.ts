@@ -1,14 +1,16 @@
 import "server-only";
-import type { GuideArticle, GuideContext, GuideRole, Prisma } from "@prisma/client";
+import { Prisma, type GuideArticle, type GuideContext, type GuideRole } from "@prisma/client";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import { cleanLine, escapeLike } from "@/lib/text";
 import { cuidSchema } from "./validation";
 
 /*
  * Sisi pembaca panduan (T-022). Peran diturunkan dari data user, bukan dipilih user:
  *   ADMIN  = isAdmin;
  *   OWNER  = punya dataset, atau user baru (belum punya dataset dan belum menerima share);
- *   EDITOR / VIEWER = menerima share dashboard dengan peran itu (share eksplisit).
+ *   EDITOR / VIEWER = menerima share dashboard dengan peran itu; VIEWER juga bila ada dashboard yang
+ *            dibagikan ke seluruh organisasi oleh pemilik aktif lain (model akses sharing/access.ts).
  * Artikel role ALL selalu terlihat. Artikel di luar peran user tidak pernah dikembalikan (slug → 404).
  */
 
@@ -17,18 +19,24 @@ export const SEARCH_MAX = 100;
 
 export const guideRolesFor = cache(
   async (userId: string, isAdmin: boolean): Promise<GuideRole[]> => {
-    const [dataset, shares] = await Promise.all([
-      prisma.dataset.findFirst({ where: { ownerId: userId }, select: { id: true } }),
-      prisma.dashboardShare.findMany({
-        where: { userId },
-        select: { role: true },
-        distinct: ["role"],
+    const id = { select: { id: true } } as const;
+    const [dataset, editor, viewer, org] = await Promise.all([
+      prisma.dataset.findFirst({ where: { ownerId: userId }, ...id }),
+      prisma.dashboardShare.findFirst({ where: { userId, role: "EDITOR" }, ...id }),
+      prisma.dashboardShare.findFirst({ where: { userId, role: "VIEWER" }, ...id }),
+      prisma.dashboard.findFirst({
+        where: {
+          orgShared: true,
+          dataset: { ownerId: { not: userId }, owner: { isActive: true } },
+        },
+        ...id,
       }),
     ]);
     const roles: GuideRole[] = [];
-    if (dataset || !shares.length) roles.push("OWNER");
-    if (shares.some((s) => s.role === "EDITOR")) roles.push("EDITOR");
-    if (shares.some((s) => s.role === "VIEWER")) roles.push("VIEWER");
+    // Share organisasi tidak menjadikan user "bukan baru": tanpa dataset dan share eksplisit tetap OWNER.
+    if (dataset || (!editor && !viewer)) roles.push("OWNER");
+    if (editor) roles.push("EDITOR");
+    if (viewer || org) roles.push("VIEWER");
     if (isAdmin) roles.push("ADMIN");
     return roles;
   },
@@ -83,17 +91,15 @@ export async function guidesForTab(
   return rows.map(summary);
 }
 
-/** Wildcard LIKE di kata kunci diperlakukan sebagai huruf biasa. */
-const likeSafe = (q: string) => q.replace(/[\\%_]/g, "\\$&");
-
 /** Cari judul/isi (tanpa beda huruf besar-kecil) di artikel yang boleh dilihat user. */
 export async function searchGuides(
   roles: readonly GuideRole[],
   rawQuery: string,
 ): Promise<GuideSummary[]> {
-  const q = rawQuery.trim().slice(0, SEARCH_MAX);
+  // Satu baris bersih (tanpa NUL/karakter kontrol); wildcard LIKE diperlakukan sebagai huruf biasa.
+  const q = cleanLine(rawQuery, SEARCH_MAX) ?? "";
   if (q.length < SEARCH_MIN) return [];
-  const term = likeSafe(q);
+  const term = escapeLike(q);
   const rows = await prisma.guideArticle.findMany({
     where: {
       ...visible(roles),
@@ -157,17 +163,18 @@ export async function markRead(
     select: { id: true },
   });
   if (!article) return false;
-  await prisma.guideRead.upsert({
-    where: { userId_articleId: { userId, articleId: article.id } },
-    create: { userId, articleId: article.id },
-    update: {},
+  // Dua tab menandai bersamaan: baris sudah ada = berhasil (bukan galat).
+  await prisma.guideRead.create({ data: { userId, articleId: article.id } }).catch((e: unknown) => {
+    if (!(e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002")) throw e;
   });
   return true;
 }
 
 /** Cuplikan teks polos dari markdown untuk daftar (tanpa sintaks, ≤ 160 karakter). */
 export function excerptOf(md: string, max = 160): string {
+  // Cuplikan hanya butuh awal isi; regex tidak dijalankan atas seluruh 20 ribu karakter per kartu.
   const text = md
+    .slice(0, 2_000)
     .replace(/```[\s\S]*?```/g, " ")
     .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")

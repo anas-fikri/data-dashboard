@@ -1,20 +1,29 @@
-import type { GuideContext } from "@prisma/client";
+import type { GuideContext, GuideRole } from "@prisma/client";
 import Link from "next/link";
-import { requireUser } from "@/features/auth/session";
 import { GuideMarkdown } from "@/features/guides/markdown";
 import { guideOrigins } from "@/features/guides/origins";
-import { contextGuides, guideRolesFor } from "@/features/guides/reader";
+import { contextGuides } from "@/features/guides/reader";
 import { videosFor } from "@/features/guides/videos";
 import { HelpSheet } from "./help-sheet";
 import { GuideVideoPlayer } from "./video-player";
 
 /**
  * Tombol "Bantuan" + panel samping untuk satu halaman (T-022): artikel terbit dengan contextKey cocok
- * yang boleh dilihat user. Tanpa artikel → tidak ada tombol.
+ * untuk peran user DI HALAMAN INI (+ Semua peran). `as` ditetapkan halaman server yang sudah menjaga
+ * aksesnya (dataset/skema: pemilik; dashboard: pemilik atau editor), bukan dari input user — artikel
+ * peran lain milik user (mis. Viewer dari share organisasi) tidak relevan di sini. Tanpa artikel →
+ * tidak ada tombol.
  */
-export async function GuideHelp({ context, page }: { context: GuideContext; page: string }) {
-  const user = await requireUser();
-  const guides = await contextGuides(await guideRolesFor(user.id, user.isAdmin), context);
+export async function GuideHelp({
+  context,
+  page,
+  as,
+}: {
+  context: GuideContext;
+  page: string;
+  as: GuideRole;
+}) {
+  const guides = await contextGuides([as], context);
   if (!guides.length) return null;
   const [videos, origins] = [await videosFor(guides.map((g) => g.id)), guideOrigins()];
   return (

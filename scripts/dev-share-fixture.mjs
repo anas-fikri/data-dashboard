@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Dev/e2e saja (akses DB langsung, menolak NODE_ENV=production):
-//   node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR>
-// → dataset kosong + 1 dashboard milik pemilik, dibagikan ke penerima dengan peran itu (uji peran
-//   panduan T-022). Data ikut terhapus dev-purge-test-data bersama akun uji.
+//   node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR|ORG>
+// → dataset kosong + 1 dashboard milik pemilik, dibagikan ke penerima dengan peran itu, atau (ORG)
+//   dibagikan ke seluruh organisasi tanpa share per orang (uji peran panduan T-022). Data ikut
+//   terhapus dev-purge-test-data bersama akun uji.
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 
@@ -17,9 +18,9 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 const [ownerEmail, userEmail, role] = process.argv.slice(2);
-if (!ownerEmail || !userEmail || !["VIEWER", "EDITOR"].includes(role)) {
+if (!ownerEmail || !userEmail || !["VIEWER", "EDITOR", "ORG"].includes(role)) {
   console.error(
-    "pakai: node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR>",
+    "pakai: node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR|ORG>",
   );
   process.exit(1);
 }
@@ -38,11 +39,12 @@ try {
     data: { ownerId: owner.id, name, nameKey: name.toLowerCase() },
   });
   const dashboard = await prisma.dashboard.create({
-    data: { datasetId: dataset.id, name, nameKey: name.toLowerCase() },
+    data: { datasetId: dataset.id, name, nameKey: name.toLowerCase(), orgShared: role === "ORG" },
   });
-  await prisma.dashboardShare.create({
-    data: { dashboardId: dashboard.id, userId: user.id, role, createdById: owner.id },
-  });
+  if (role !== "ORG")
+    await prisma.dashboardShare.create({
+      data: { dashboardId: dashboard.id, userId: user.id, role, createdById: owner.id },
+    });
   console.log(JSON.stringify({ datasetId: dataset.id, dashboardId: dashboard.id }));
 } finally {
   await prisma.$disconnect();

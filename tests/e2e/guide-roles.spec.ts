@@ -4,7 +4,7 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
 
 /*
  * T-022 panduan per peran. A = admin + pemilik dataset (dev-share-fixture), V = viewer satu dashboard A,
- * N = user baru (tanpa dataset dan share).
+ * N = user baru (tanpa dataset dan share), O = hanya melihat lewat share organisasi.
  *   AC1 V: tab Viewer + Umum saja; artikel Pemilik data tidak tampil dan slug-nya 404;
  *   AC2 N: tab Pemilik data + Umum; kartu "Mulai di sini" di Beranda hilang setelah satu artikel dibaca;
  *   AC3 A di halaman skema: Bantuan → panel samping berisi artikel konteks skema untuk perannya saja;
@@ -15,15 +15,18 @@ test.describe.configure({ mode: "serial" });
 const A = uniqueEmail("roles-admin");
 const V = uniqueEmail("roles-viewer");
 const N = uniqueEmail("roles-new");
+const O = uniqueEmail("roles-org");
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const O1 = `Cara upload data ${TAG}`;
 const V1 = `Membaca dashboard bersama ${TAG}`;
 const S1 = `Memeriksa skema ${TAG}`;
 const S2 = `Skema untuk viewer ${TAG}`;
+const E1 = `Upload widget untuk editor ${TAG}`;
 const slugs: Record<string, string> = {};
 let a: Page;
 let v: Page;
 let n: Page;
+let o: Page;
 let datasetId = "";
 
 async function publish(page: Page, title: string, role: string, body: string, context?: string) {
@@ -59,7 +62,7 @@ test.describe("panduan per peran (T-022)", () => {
     test.setTimeout(180_000);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
     const setup = await browser.newPage();
-    for (const email of [A, V, N]) {
+    for (const email of [A, V, N, O]) {
       await setup.context().clearCookies();
       await registerAndVerify(setup, request, email);
     }
@@ -68,17 +71,20 @@ test.describe("panduan per peran (T-022)", () => {
     datasetId = JSON.parse(
       execFileSync("node", ["scripts/dev-share-fixture.mjs", A, V, "VIEWER"]).toString(),
     ).datasetId;
+    execFileSync("node", ["scripts/dev-share-fixture.mjs", A, O, "ORG"]);
     a = await pageFor(browser, A);
     v = await pageFor(browser, V);
     n = await pageFor(browser, N);
+    o = await pageFor(browser, O);
     await publish(a, O1, "Pemilik data", "Langkah upload file Excel.", "Unggah data");
     await publish(a, V1, "Viewer", "Cara upload? Tidak perlu: Anda cukup melihat dashboard.");
     await publish(a, S1, "Pemilik data", "Periksa tipe kolom.", "Skema dataset");
     await publish(a, S2, "Viewer", "Viewer tidak membuka skema.", "Skema dataset");
+    await publish(a, E1, "Editor", "Editor tidak perlu upload file.");
   });
 
   test.afterAll(async () => {
-    await Promise.all([a, v, n].map((p) => p?.context().close()));
+    await Promise.all([a, v, n, o].map((p) => p?.context().close()));
   });
 
   test("AC1: viewer satu dashboard → tab Viewer + Umum; artikel pemilik tidak tampil, slug-nya 404", async () => {
@@ -93,7 +99,8 @@ test.describe("panduan per peran (T-022)", () => {
 
   test("AC2: user baru → tab Pemilik data + Umum; kartu Mulai di sini hilang setelah satu artikel dibaca", async () => {
     await n.goto("/panduan");
-    expect(await tabs(n)).toEqual(["Pemilik data", "Umum"]);
+    // Share organisasi milik user lain di DB dev bisa menambah tab Viewer; Pemilik data + Umum wajib.
+    expect(await tabs(n)).toEqual(expect.arrayContaining(["Pemilik data", "Umum"]));
     await expect(card(n, O1)).toHaveCount(1);
     await expect(card(n, V1)).toHaveCount(0);
     await n.goto("/");
@@ -129,12 +136,16 @@ test.describe("panduan per peran (T-022)", () => {
     await v.goto("/panduan?q=upload");
     await expect(card(v, V1)).toHaveCount(1);
     await expect(card(v, O1)).toHaveCount(0);
+    await expect(card(v, E1)).toHaveCount(0);
+    // N tidak punya peran Editor (Viewer bisa ada dari share organisasi lain di DB dev).
     await n.goto("/panduan?q=upload");
     await expect(card(n, O1)).toHaveCount(1);
-    await expect(card(n, V1)).toHaveCount(0);
+    await expect(card(n, E1)).toHaveCount(0);
     await n.getByLabel("Cari panduan").fill("%%");
     await n.getByRole("button", { name: "Cari" }).click();
     await expect(n.getByRole("status")).toContainText("0 artikel cocok");
+    // Byte NUL di kata kunci dibersihkan (Postgres menolaknya) → bukan galat 500.
+    expect((await n.goto("/panduan?q=up%00load"))?.status()).toBe(200);
   });
   test("review AC5: kata panjang tidak menggeser halaman di 320 px; judul isi tidak melompat tingkat", async () => {
     const LONG = `Nomor resi ${"A1B2C3D4E5".repeat(8)} ${TAG}`;
@@ -149,5 +160,12 @@ test.describe("panduan per peran (T-022)", () => {
       .evaluateAll((els) => els.map((e) => Number(e.tagName[1])));
     expect(levels).toEqual([1, 2]);
     expect(await n.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  });
+
+  test("review INT-1: hanya melihat lewat share organisasi → mendapat artikel Viewer", async () => {
+    await o.goto("/panduan?peran=viewer");
+    expect(await tabs(o)).toEqual(expect.arrayContaining(["Viewer", "Umum"]));
+    await expect(card(o, V1)).toHaveCount(1);
+    expect((await o.goto(`/panduan/${slugs[V1]}`))?.status()).toBe(200);
   });
 });

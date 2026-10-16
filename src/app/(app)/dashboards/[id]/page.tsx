@@ -136,7 +136,13 @@ export default async function DashboardPage({
           actions={
             hasActions ? (
               <>
-                {canEdit ? <GuideHelp context="BUILDER" page="Penyusun dashboard" /> : null}
+                {canEdit ? (
+                  <GuideHelp
+                    context="BUILDER"
+                    page="Penyusun dashboard"
+                    as={isOwner ? "OWNER" : "EDITOR"}
+                  />
+                ) : null}
                 {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
                 {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
                 {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}
