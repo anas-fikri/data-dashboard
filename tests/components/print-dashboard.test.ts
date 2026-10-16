@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { printTitleClamp } from "@/components/render/print-card";
 import { PrintDashboard } from "@/components/render/print-dashboard";
 import {
   PRINT_MIN_SCALE,
@@ -185,7 +186,15 @@ describe("PrintDashboard", () => {
     expect(html).not.toMatch(/<h1 class="[^"]*truncate/);
     const titles = [...html.matchAll(/<h2 class="[^"]*"><span class="([^"]*)">/g)].map((m) => m[1]);
     expect(titles).toHaveLength(5);
-    for (const cls of titles) expect(cls).toBe("line-clamp-3 min-w-0 [overflow-wrap:anywhere]");
+    for (const cls of titles)
+      expect(cls).toMatch(/^line-clamp-[23] min-w-0 \[overflow-wrap:anywhere\]$/);
+  });
+
+  it("kartu < 3 baris (mis. KPI h=2) judul maks 2 baris agar angka tidak terpotong (R2-INT-1)", () => {
+    expect(printTitleClamp(rowsPx(2))).toBe("line-clamp-2");
+    expect(printTitleClamp(rowsPx(3) - 1)).toBe("line-clamp-2");
+    expect(printTitleClamp(rowsPx(3))).toBe("line-clamp-3");
+    expect(printTitleClamp(rowsPx(10))).toBe("line-clamp-3");
   });
 });
 

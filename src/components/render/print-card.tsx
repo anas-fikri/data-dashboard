@@ -9,7 +9,15 @@ import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { RenderWidget } from "@/features/exports/render-data";
 import { cn } from "@/lib/utils";
-import { tableRowsFitPx } from "./print-layout";
+import { rowsPx, tableRowsFitPx } from "./print-layout";
+
+/**
+ * Batas baris judul kartu cetak: kartu < 3 baris grid (mis. KPI h=2) memakai 2 baris — judul 3 baris
+ * memakan ruang angka KPI sampai terpotong (review T-018 R2-INT-1/R2-DS-1); kartu lain 3 baris.
+ * Kelas utuh agar terbaca Tailwind.
+ */
+export const printTitleClamp = (heightPx: number) =>
+  heightPx < rowsPx(3) ? "line-clamp-2" : "line-clamp-3";
 import { PrintTable } from "./print-table";
 import { useRenderPending } from "./render-ready";
 
@@ -175,7 +183,9 @@ export function PrintCard({
           !widget.title && "text-muted-foreground",
         )}
       >
-        <span className="line-clamp-3 min-w-0 [overflow-wrap:anywhere]">{title}</span>
+        <span className={cn(printTitleClamp(heightPx), "min-w-0 [overflow-wrap:anywhere]")}>
+          {title}
+        </span>
       </h2>
       {content}
     </article>
