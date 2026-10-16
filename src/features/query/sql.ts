@@ -36,6 +36,11 @@ export function filterClauses(filters: PlanFilter[], params: BuiltSql["params"])
   };
   return filters.map((f) => {
     const c = ident(f.col);
+    // Teks dibandingkan tidak peka huruf besar/kecil, seperti filter/SUMIF Excel (T-029).
+    const text = f.type === "text";
+    const k = text ? `lower(${c})` : c;
+    const val = (v: string | number | boolean) =>
+      text ? `lower(${bind(v, f.type)})` : bind(v, f.type);
     switch (f.op) {
       case "is_null":
         return `${c} IS NULL`;
@@ -43,17 +48,17 @@ export function filterClauses(filters: PlanFilter[], params: BuiltSql["params"])
         return `${c} IS NOT NULL`;
       // "Bukan X" menyertakan sel kosong: eq X + neq X = semua baris (review T-009 F7).
       case "in":
-        return `${c} IN (${f.values.map((v) => bind(v, f.type)).join(", ")})`;
+        return `${k} IN (${f.values.map(val).join(", ")})`;
       case "not_in":
-        return `(${c} IS NULL OR ${c} NOT IN (${f.values.map((v) => bind(v, f.type)).join(", ")}))`;
+        return `(${c} IS NULL OR ${k} NOT IN (${f.values.map(val).join(", ")}))`;
       case "neq":
-        return `(${c} IS NULL OR ${c} <> ${bind(f.values[0]!, f.type)})`;
+        return `(${c} IS NULL OR ${k} <> ${val(f.values[0]!)})`;
       case "between":
         return `${c} BETWEEN ${bind(f.values[0]!, f.type)} AND ${bind(f.values[1]!, f.type)}`;
       case "contains":
         return `contains(lower(${c}), lower(${bind(f.values[0]!, f.type)}))`;
       default:
-        return `${c} ${OP_SQL[f.op]} ${bind(f.values[0]!, f.type)}`;
+        return `${k} ${OP_SQL[f.op]} ${val(f.values[0]!)}`;
     }
   });
 }
@@ -153,9 +158,11 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
       const cut = (v: string | number | boolean) => [...String(v)].length === DIM_TEXT_MAX;
       const full = vals.filter((v) => !cut(v));
       const prefix = vals.filter(cut);
-      if (full.length) parts.push(`${c} IN (${full.map(bind).join(", ")})`);
+      // Tidak peka huruf besar/kecil: label kategori mewakili semua variasinya (T-029).
+      const low = (xs: (string | number | boolean)[]) => xs.map((v) => `lower(${bind(v)})`);
+      if (full.length) parts.push(`lower(${c}) IN (${low(full).join(", ")})`);
       if (prefix.length) {
-        parts.push(`left(${c}, ${DIM_TEXT_MAX}) IN (${prefix.map(bind).join(", ")})`);
+        parts.push(`lower(left(${c}, ${DIM_TEXT_MAX})) IN (${low(prefix).join(", ")})`);
       }
     } else if (cl.type === "timestamp") {
       const day = vals.filter((v) => typeof v === "string" && DATE_ONLY.test(v));
@@ -193,6 +200,14 @@ export function whereClauses(plan: Plan, params: BuiltSql["params"]): string[] {
  */
 export const TEXT_COLLATE = `COLLATE "nocase.noaccent"`;
 
+/**
+ * Kunci kelompok dimensi: teks tidak peka huruf besar/kecil seperti PivotTable/UNIQUE Excel ("Bandung",
+ * "BANDUNG", "bandung" = satu kategori; T-029). Label = variasi paling sering (mode; seri → kemunculan
+ * pertama). Aksen dan spasi tetap membedakan, sama dengan Excel.
+ */
+const groupKey = (d: Plan["dimensions"][number]) =>
+  d.type === "text" ? `lower(${dimensionExpr(d)})` : dimensionExpr(d);
+
 /** Ekspresi dimensi: teks dipotong, tanggal dikelompokkan per grain. */
 function dimensionExpr(d: Plan["dimensions"][number]): string {
   const c = ident(d.col);
@@ -208,7 +223,10 @@ function dimensionExpr(d: Plan["dimensions"][number]): string {
 export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
   const select: string[] = [];
-  for (const d of plan.dimensions) select.push(`${dimensionExpr(d)} AS ${ident(d.key)}`);
+  for (const d of plan.dimensions) {
+    const e = dimensionExpr(d);
+    select.push(`${d.type === "text" ? `mode(${e})` : e} AS ${ident(d.key)}`);
+  }
   for (const m of plan.measures) {
     const c = m.col ? ident(m.col) : "*";
     // Total seperti SUMIF Excel: grup yang semua nilainya kosong = 0 (bukan NULL), sehingga
@@ -225,8 +243,10 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   }
 
   const where = whereClauses(plan, params);
-  const group = plan.dimensions.length && plan.measures.length ? "GROUP BY ALL" : "";
-  const distinct = plan.dimensions.length && !plan.measures.length ? "DISTINCT " : "";
+  // Dimensi tanpa ukuran = nilai unik; GROUP BY yang sama menggantikan DISTINCT.
+  const group = plan.dimensions.length
+    ? `GROUP BY ${plan.dimensions.map(groupKey).join(", ")}`
+    : "";
   // Urutan deterministik: urutan pilihan user lalu dimensi naik sebagai pemecah seri, sehingga baris
   // di batas LIMIT selalu sama (review T-009 F8). Hasil tanpa dimensi hanya satu baris.
   const sorted = new Set(plan.sort.map((x) => x.key));
@@ -244,7 +264,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   ];
 
   const sql = [
-    `SELECT ${distinct}${select.join(", ")}`,
+    `SELECT ${select.join(", ")}`,
     `FROM read_parquet($path)`,
     where.length ? `WHERE ${where.join(" AND ")}` : "",
     group,
@@ -268,7 +288,7 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   if (!d || !m) return null;
   const params: BuiltSql["params"] = { path: parquetPath };
   const where = whereClauses(plan, params);
-  const e = dimensionExpr(d);
+  const e = groupKey(d);
   const grand =
     m.agg === "sum"
       ? `coalesce(sum(${ident(m.col!)}), 0)`
@@ -347,10 +367,13 @@ export function buildFilterValuesSql(
   // Waktu per detik: sama dengan nilai yang dikirim balik sebagai filter (tanpa pecahan detik).
   const expr = col.type === "timestamp" ? `date_trunc('second', ${c})` : c;
   const order = text ? `${v} ${TEXT_COLLATE} ASC NULLS FIRST, ${v} ASC` : `${v} ASC NULLS FIRST`;
+  // Teks: satu opsi per kategori tidak peka huruf besar/kecil (label = variasi paling sering, T-029).
+  const pick = text ? `mode(${c})` : `DISTINCT ${expr}`;
   const sql = [
     `SELECT ${v} FROM (`,
-    `  SELECT DISTINCT ${expr} AS ${v} FROM read_parquet($path)`,
+    `  SELECT ${pick} AS ${v} FROM read_parquet($path)`,
     where.length ? `  WHERE ${where.join(" AND ")}` : "",
+    text ? `  GROUP BY lower(${c})` : "",
     `)`,
     `ORDER BY ${order}`,
     `LIMIT ${FILTER_VALUES_LIMIT + 1}`,

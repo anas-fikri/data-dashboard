@@ -245,7 +245,8 @@ describe("AC 1: slicer (in) — nilai terpilih + (Kosong)", () => {
     );
     expect(again).toMatchObject({ ok: true, rows: [[7]], cached: true });
     expect(await count([{ column: "Cabang", op: "in", values: [null] }])).toBe(1);
-    expect(await count([{ column: "Cabang", op: "in", values: ["jakarta"] }])).toBe(0);
+    // Tidak peka huruf besar/kecil seperti filter Excel (T-029): "jakarta" = "Jakarta".
+    expect(await count([{ column: "Cabang", op: "in", values: ["jakarta"] }])).toBe(3);
   });
 
   it("dua filter dalam urutan berbeda = kunci cache sama (kanonik)", async () => {
