@@ -1,0 +1,47 @@
+[
+  {
+    "slug": "unggah-data",
+    "file": "pemilik-unggah.webm",
+    "title": "Membuat dataset dan mengunggah file"
+  },
+  {
+    "slug": "periksa-skema",
+    "file": "pemilik-skema.webm",
+    "title": "Memeriksa dan memperbaiki skema"
+  },
+  {
+    "slug": "susun-dashboard",
+    "file": "pemilik-dashboard.webm",
+    "title": "Menyusun dashboard pertama"
+  },
+  {
+    "slug": "bagikan-dashboard",
+    "file": "pemilik-bagikan.webm",
+    "title": "Membagikan dashboard"
+  },
+  {
+    "slug": "editor-ubah-dashboard",
+    "file": "editor-ubah.webm",
+    "title": "Mengubah dashboard sebagai editor"
+  },
+  {
+    "slug": "viewer-lihat-filter-ekspor",
+    "file": "viewer-filter-ekspor.webm",
+    "title": "Memakai filter dan mengekspor"
+  },
+  {
+    "slug": "admin-kelola-pengguna",
+    "file": "admin-pengguna.webm",
+    "title": "Mengelola pengguna"
+  },
+  {
+    "slug": "admin-tulis-panduan",
+    "file": "admin-panduan.webm",
+    "title": "Menulis artikel panduan"
+  },
+  {
+    "slug": "mengenal-data-dashboard",
+    "file": "umum-mengenal.webm",
+    "title": "Masuk dan mengenal menu"
+  }
+]

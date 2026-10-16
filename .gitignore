@@ -42,3 +42,9 @@ yarn-error.log*
 
 # Worktree aitk / Claude
 .claude/worktrees/
+
+# Rekaman video panduan (T-xfzy): berkas besar, dibuat ulang lewat scripts/record-guide-videos.ts
+/demo/guide-videos/*.webm
+/demo/guide-videos/*.csv
+/demo/guide-videos/.raw/
+/demo/guide-videos/.state-*.json
