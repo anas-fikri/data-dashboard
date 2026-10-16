@@ -30,7 +30,7 @@ type Label = {
 type Opt = {
   animation: boolean;
   grid: { right: number; top: number };
-  series: { label?: Label; labelLayout?: { hideOverlap: boolean } }[];
+  series: { label?: Label; labelLayout?: unknown }[];
 };
 const option = (input: Partial<ChartInput>) =>
   chartOption(
@@ -57,7 +57,14 @@ describe("chartOption cetak (print)", () => {
     expect(label.formatter({ value: 1_250_000, dataIndex: 0 })).toBe("Rp 1.250.000");
     // Data terpilih (filter silang) berbentuk { value }: ECharts tetap memberi `value`.
     expect(label.formatter({ value: 980_000, dataIndex: 1 })).toBe("Rp 980.000");
-    expect(o.series[0]!.labelLayout).toEqual({ hideOverlap: true });
+    type Lay = (p: { dataIndex: number; labelRect: { x: number; width: number } }) => {
+      hideOverlap: boolean;
+      dx?: number;
+    };
+    const lay = o.series[0]!.labelLayout as Lay;
+    expect(lay({ dataIndex: 0, labelRect: { x: 100, width: 60 } })).toEqual({ hideOverlap: true });
+    // Kotak label sebenarnya yang melewati tepi kanan grafik digeser masuk (R10-INT-1/DS-1).
+    expect(lay({ dataIndex: 0, labelRect: { x: 560, width: 60 } }).dx).toBe(-(560 + 60 - 599));
     // Ruang kanan untuk label terpanjang ("Rp 1.250.000"), paling banyak 30 % lebar.
     expect(o.grid.right).toBeGreaterThan(16);
     expect(o.grid.right).toBeLessThanOrEqual(SIZE.width * 0.3);
@@ -106,12 +113,17 @@ describe("chartOption cetak (print)", () => {
   it("garis cetak: label titik pertama digeser lewat labelLayout seperlunya (R1-DS-5), tanpa menutupi label berikutnya yang sebaris (R5-INT-1, R6-INT-1/DS-2)", () => {
     type Layout =
       | { hideOverlap: boolean }
-      | ((p: { dataIndex: number }) => { hideOverlap: boolean; dx?: number });
+      | ((p: { dataIndex: number; labelRect: { x: number; width: number } }) => {
+          hideOverlap: boolean;
+          dx?: number;
+        });
     type Series = { labelLayout?: Layout; data: unknown[] };
     const series = (o: unknown) => (o as { series: Series[] }).series[0]!;
     const dxOf = (o: unknown, k = 0) => {
       const l = series(o).labelLayout;
-      return typeof l === "function" ? (l({ dataIndex: k }).dx ?? 0) : 0;
+      return typeof l === "function"
+        ? (l({ dataIndex: k, labelRect: { x: 100, width: 20 } }).dx ?? 0)
+        : 0;
     };
     const monthly = {
       type: "line" as const,
@@ -120,7 +132,7 @@ describe("chartOption cetak (print)", () => {
       time: { iso: ["2026-01-01", "2026-02-01"], grain: "month" as const, empty: null },
     };
     // Sumbu kategori: titik pertama di tengah pita lebar — label rata tengah sudah muat, tidak digeser.
-    expect(series(option({ ...monthly, print: true })).labelLayout).toEqual({ hideOverlap: true });
+    expect(dxOf(option({ ...monthly, print: true }))).toBe(0);
     // Sumbu waktu (per hari): titik [ms, y] tepat di tepi plot → label pertama digeser setengah lebar
     // "Rp 5" (4 × 6,1 px) + 2 px lewat labelLayout (ECharts mengabaikan label.offset per titik bila ada labelLayout).
     const daily = (n: number, values?: number[]) => ({
@@ -135,10 +147,11 @@ describe("chartOption cetak (print)", () => {
     const two = option({ ...daily(2), print: true });
     expect(dxOf(two)).toBeCloseTo(14.2, 5);
     expect(dxOf(two, 1)).toBe(0);
-    const layout = series(two).labelLayout as (p: { dataIndex: number }) => {
-      hideOverlap: boolean;
-    };
-    expect(layout({ dataIndex: 0 }).hideOverlap).toBe(true);
+    const layout = series(two).labelLayout as (p: {
+      dataIndex: number;
+      labelRect: { x: number; width: number };
+    }) => { hideOverlap: boolean };
+    expect(layout({ dataIndex: 0, labelRect: { x: 100, width: 20 } }).hideOverlap).toBe(true);
     expect(series(two).data[0]).toEqual([Date.UTC(2026, 0, 1), 5]);
     // Titik berikutnya sebaris dan rapat: geseran berhenti sebelum menutupi labelnya.
     const tight = dxOf(option({ ...daily(15), print: true }));
@@ -190,6 +203,29 @@ describe("chartOption cetak (print)", () => {
     expect(sizes[3]! - 6).toBeLessThan(0.01);
     // Layar: ukuran bawaan.
     expect(size(option(line))).toBeUndefined();
+  });
+
+  it("batang cetak di kartu sempit: label ringkas bila label lengkap tidak muat di ruang kanan (R10-INT-1)", () => {
+    const input = {
+      type: "bar" as const,
+      labels: ["Jakarta", "Bandung"],
+      values: [1_701_234_567, 980_000_000],
+      measureLabel: "Omzet",
+      dimensionLabel: "Cabang",
+      format: RP,
+      reducedMotion: false,
+      print: true,
+    };
+    const narrow = chartOption(input, theme, { width: 159, height: 200 }) as unknown as Opt;
+    expect(narrow.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
+      "Rp 1,7\u00a0M",
+    );
+    expect(narrow.grid.right).toBeLessThanOrEqual(Math.ceil(159 * 0.3));
+    // Kartu lebar: nilai lengkap seperti sebelumnya.
+    const wide = chartOption(input, theme, SIZE) as unknown as Opt;
+    expect(wide.series[0]!.label!.formatter({ value: 1_701_234_567, dataIndex: 0 })).toBe(
+      "Rp 1.701.234.567",
+    );
   });
 
   it("pai cetak: tanpa animasi; label grafik tetap mati (nilai di legenda)", () => {

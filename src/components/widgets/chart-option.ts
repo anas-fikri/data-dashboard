@@ -259,9 +259,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // Durasi "Otomatis": sumbu dalam jam/menit (nilai seri dibagi), tooltip kembali ke detik → j:mm:dd.
   const duration = i.valueType === "duration" && i.format.style === "auto";
   const scale = duration ? durationScale(i.values) : { div: 1, unit: "" };
-  const measure = (v: unknown) =>
-    typeof v === "number" ? formatMeasure(v, i.valueType, i.format) : "(kosong)";
-  const value = (v: unknown) => measure(typeof v === "number" ? v * scale.div : v);
+  const measure = (v: unknown, compact = false) =>
+    typeof v === "number" ? formatMeasure(v, i.valueType, i.format, compact) : "(kosong)";
+  const value = (v: unknown, compact = false) =>
+    measure(typeof v === "number" ? v * scale.div : v, compact);
   const scaled = (vs: readonly (number | null)[]) =>
     scale.div === 1 ? [...vs] : vs.map((v) => (v === null ? null : v / scale.div));
   const tooltip = {
@@ -325,12 +326,15 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
    * Label nilai cetak; `skip` = periode tanpa data yang diisi (bukan nilai terukur, tanpa label).
    * Titik sumbu waktu bernilai [ms, y]. Label yang bertumpuk disembunyikan ECharts (hideOverlap).
    * `shifts` = geseran label per titik (labelShifts) — lewat labelLayout: ECharts mengabaikan
-   * label.offset per titik bila seri punya labelLayout (R6-INT-1).
+   * label.offset per titik bila seri punya labelLayout (R6-INT-1). Pengaman terakhir: kotak label yang
+   * SEBENARNYA (labelRect dari ECharts) dijepit ke dalam kotak grafik — label tidak pernah terpotong
+   * tepi kartu (review T-018 R10-DS-1/INT-1). `compact` = bentuk ringkas ("Rp 1,7 M").
    */
   const valueLabel = (
     position: "right" | "top",
     skip: readonly boolean[],
     shifts: readonly number[] = [],
+    compact = false,
   ) =>
     i.print
       ? {
@@ -342,14 +346,17 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
             fontSize: PRINT_LABEL_PX,
             fontFamily: theme.font,
             formatter: (p: { value: unknown; dataIndex: number }) =>
-              skip[p.dataIndex] ? "" : value(Array.isArray(p.value) ? p.value[1] : p.value),
+              skip[p.dataIndex]
+                ? ""
+                : value(Array.isArray(p.value) ? p.value[1] : p.value, compact),
           },
-          labelLayout: shifts.some((s) => s > 0)
-            ? (p: { dataIndex: number }) => ({
-                hideOverlap: true,
-                ...(shifts[p.dataIndex] ? { dx: shifts[p.dataIndex] } : {}),
-              })
-            : { hideOverlap: true },
+          labelLayout: (p: { dataIndex: number; labelRect: { x: number; width: number } }) => {
+            const dx = shifts[p.dataIndex] ?? 0;
+            const left = p.labelRect.x + dx;
+            const over = left + p.labelRect.width - (size.width - 1);
+            const fit = over > 0 ? dx - over : left < 1 ? dx + 1 - left : dx;
+            return { hideOverlap: true, ...(fit ? { dx: fit } : {}) };
+          },
         }
       : {};
 
@@ -686,7 +693,14 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   };
   // Cetak: label nilai di ujung batang (ruang kanan selebar label terpanjang, maks. 30 %) atau di atas
   // titik garis (ruang atas; label titik terakhir rata tengah butuh setengah lebarnya di kanan).
-  const valueTextPx = (v: number | null) => value(v).length * AXIS_CHAR_PX;
+  const valueTextPx = (v: number | null, compact = false) =>
+    value(v, compact).length * AXIS_CHAR_PX;
+  // Batang cetak di kartu sempit: label lengkap terpanjang tidak muat di ruang kanan (maks. 30 %) →
+  // semua label batang memakai bentuk ringkas ("Rp 1,7 M"; review T-018 R10-INT-1).
+  const barCompact =
+    i.print &&
+    horizontal &&
+    Math.max(0, ...values.map((v) => valueTextPx(v))) + 8 > size.width * 0.3;
   const printGrid = !i.print
     ? grid
     : horizontal
@@ -695,7 +709,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           right: Math.round(
             Math.max(
               grid.right,
-              Math.min(Math.max(0, ...values.map(valueTextPx)) + 8, size.width * 0.3),
+              Math.min(
+                Math.max(0, ...values.map((v) => valueTextPx(v, barCompact))) + 8,
+                size.width * 0.3,
+              ),
             ),
           ),
         }
@@ -737,7 +754,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
-        ...valueLabel(horizontal ? "right" : "top", filled, shifts),
+        ...valueLabel(horizontal ? "right" : "top", filled, shifts, barCompact),
       },
     ],
   };
