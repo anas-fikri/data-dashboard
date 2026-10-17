@@ -55,12 +55,12 @@ describe("GuideMarkdown (T-020)", () => {
     expect(guideUrl("relatif/a", "src", ORIGINS)).toBe("");
     expect(guideUrl("https://storage.pcpexpress.com.evil.example/x.png", "src", ORIGINS)).toBe("");
   });
-  it("review AC5: judul isi di bawah judul artikel (h2) — # → h3, #### → h6; blok kode bisa difokus", () => {
+  it("review AC5: judul isi di bawah judul artikel (h2) — # → h3, lompatan #### → h5; blok kode bisa difokus", () => {
     const out = html("# Satu\n\n## Dua\n\n#### Empat\n\n```\nkode panjang\n```");
     expect(out).not.toMatch(/<h[12][\s>]/);
     expect(out).toMatch(/<h3[^>]*>Satu<\/h3>/);
     expect(out).toMatch(/<h4[^>]*>Dua<\/h4>/);
-    expect(out).toMatch(/<h6[^>]*>Empat<\/h6>/);
+    expect(out).toMatch(/<h5[^>]*>Empat<\/h5>/);
     expect(out).toMatch(/<pre[^>]*tabindex="0"/);
   });
   it("review R3: http:host tanpa // (tautan + autolink) tetap dianggap eksternal → rel", () => {
@@ -121,8 +121,22 @@ describe("GuideMarkdown (T-020)", () => {
           createElement(GuideMarkdown, { markdown: md, origins: ORIGINS, headingOffset: offset }),
         ).matchAll(/<h(\d)/g),
       ].map((m) => Number(m[1]));
-    expect(at(1)).toEqual([2, 3, 5]);
-    expect(at(2)).toEqual([3, 4, 6]);
+    expect(at(1)).toEqual([2, 3, 4]);
+    expect(at(2)).toEqual([3, 4, 5]);
     expect(at(3)).toEqual([4, 5, 6]);
+  });
+  it("T-exfc NB2: lompatan di dalam isi dirapatkan; judul setara tetap setara, sarang tetap", () => {
+    const levels = (md: string, headingOffset: 1 | 2 | 3 = 1) =>
+      [
+        ...renderToStaticMarkup(
+          createElement(GuideMarkdown, { markdown: md, origins: ORIGINS, headingOffset }),
+        ).matchAll(/<h(\d)/g),
+      ].map((m) => Number(m[1]));
+    // ## → #### → ### → ## → ######: tiap judul paling banyak satu tingkat di bawah judul sebelumnya.
+    expect(levels("## A\n\n#### B\n\n### C\n\n## D\n\n###### E")).toEqual([2, 3, 3, 2, 3]);
+    // Isi dimulai lebih dalam dari judul berikutnya: keduanya tingkat teratas isi.
+    expect(levels("### A\n\n## B\n\n#### C")).toEqual([2, 2, 3]);
+    // Batas h6 di panel bantuan (offset 3): tingkat dalam berhenti di h6.
+    expect(levels("# A\n\n## B\n\n### C\n\n#### D", 3)).toEqual([4, 5, 6, 6]);
   });
 });

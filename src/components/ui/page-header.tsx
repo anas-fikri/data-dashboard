@@ -44,7 +44,12 @@ export function PageHeader({
         ) : null}
       </div>
       {actions ? (
-        <div className="flex flex-col gap-2 md:flex-row md:items-center [&>*]:w-full md:[&>*]:w-auto">
+        // empty:hidden: aksi berupa komponen server yang bisa merender null (mis. GuideHelp tanpa artikel
+        // bantuan) — wadah kosong tidak boleh menambah celah di bawah judul (T-exfc).
+        <div
+          data-slot="page-actions"
+          className="flex flex-col gap-2 empty:hidden md:flex-row md:items-center [&>*]:w-full md:[&>*]:w-auto"
+        >
           {actions}
         </div>
       ) : null}

@@ -1,14 +1,25 @@
 import { IconBook2 } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { firstGuide, guideRolesFor, hasReadAny } from "@/features/guides/reader";
+import { firstGuide, guideRolesFor, hasReadAny, isNewcomer } from "@/features/guides/reader";
 
 /**
- * Kartu "Mulai di sini" di Beranda (T-022): tampil sampai user menandai satu artikel sudah dibaca;
- * menuju artikel pertama (urutan admin) yang sesuai perannya. Tanpa artikel terbit → tidak tampil.
+ * Kartu "Mulai di sini" di Beranda (T-022): hanya untuk pengguna yang benar-benar baru (aturan di
+ * isNewcomer, T-exfc); menuju artikel pertama (urutan admin) yang sesuai perannya. Tanpa artikel terbit
+ * → tidak tampil. `ownsDataset` dari daftar dataset milik user yang sudah dimuat Beranda.
  */
-export async function StartHereCard({ userId, isAdmin }: { userId: string; isAdmin: boolean }) {
-  if (await hasReadAny(userId)) return null;
+export async function StartHereCard({
+  userId,
+  isAdmin,
+  ownsDataset,
+}: {
+  userId: string;
+  isAdmin: boolean;
+  ownsDataset: boolean;
+}) {
+  // Query baca hanya bila admin/pemilik dataset belum memastikan jawabannya.
+  if (isAdmin || ownsDataset) return null;
+  if (!isNewcomer({ isAdmin, ownsDataset, hasRead: await hasReadAny(userId) })) return null;
   const first = await firstGuide(await guideRolesFor(userId, isAdmin));
   if (!first) return null;
   return (

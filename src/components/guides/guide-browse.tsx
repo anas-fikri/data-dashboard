@@ -1,11 +1,13 @@
 import { IconCircleCheck, IconSearch, IconVideo } from "@tabler/icons-react";
 import type { GuideRole } from "@prisma/client";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SEARCH_MAX, type GuideSummary } from "@/features/guides/reader";
 import { cn } from "@/lib/utils";
+import { TabPending, TabStrip } from "./tab-strip";
 
 /** Nilai ?peran= per peran (URL berbahasa Indonesia, bisa dibagikan). */
 export const ROLE_PARAM: Record<GuideRole, string> = {
@@ -24,9 +26,9 @@ export const TAB_LABEL: Record<GuideRole, string> = {
 };
 
 /** Pindah tab = navigasi (?peran=…), jadi tautan dengan aria-current, bukan tablist (pola SheetTabs). */
-export function RoleTabs({ tabs, current }: { tabs: GuideRole[]; current: GuideRole }) {
+function RoleTabs({ tabs, current }: { tabs: GuideRole[]; current: GuideRole }) {
   return (
-    <nav aria-label="Panduan per peran" className="-mx-1 overflow-x-auto px-1">
+    <TabStrip label="Panduan per peran" active={current}>
       <ul className="flex min-w-max gap-1 border-b">
         {tabs.map((t) => (
           <li key={t}>
@@ -35,18 +37,45 @@ export function RoleTabs({ tabs, current }: { tabs: GuideRole[]; current: GuideR
               aria-current={t === current ? "page" : undefined}
               scroll={false}
               className={cn(
-                "-mb-px inline-flex h-11 items-center border-b-2 px-3 text-sm md:h-10",
+                "relative -mb-px inline-flex h-11 items-center border-b-2 px-3 text-sm md:h-10",
                 t === current
                   ? "border-primary font-medium text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {TAB_LABEL[t]}
+              <TabPending />
             </Link>
           </li>
         ))}
       </ul>
-    </nav>
+    </TabStrip>
+  );
+}
+
+/**
+ * Tab peran (bila > 1) + daftar artikel tab itu. Selama tab baru dimuat (data-pending dari TabPending),
+ * daftar lama diredupkan dan "Memuat artikel…" diumumkan sopan — tanpa state klien di wadah ini.
+ */
+export function RoleTabsView({
+  tabs,
+  current,
+  children,
+}: {
+  tabs: GuideRole[];
+  current: GuideRole;
+  children: ReactNode;
+}) {
+  return (
+    <div className="group/tabs flex flex-col gap-4">
+      {tabs.length > 1 ? <RoleTabs tabs={tabs} current={current} /> : null}
+      <p aria-live="polite" className="sr-only">
+        <span className="hidden group-has-[[data-pending]]/tabs:inline">Memuat artikel…</span>
+      </p>
+      <div className="transition-opacity group-has-[[data-pending]]/tabs:opacity-60 group-has-[[data-pending]]/tabs:delay-100">
+        {children}
+      </div>
+    </div>
   );
 }
 

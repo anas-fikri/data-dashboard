@@ -9,6 +9,11 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  *   AC2 N: tab Pemilik data + Umum; kartu "Mulai di sini" di Beranda hilang setelah satu artikel dibaca;
  *   AC3 A di halaman skema: Bantuan → panel samping berisi artikel konteks skema untuk perannya saja;
  *   AC4 cari "upload": hanya artikel yang boleh dilihat user (wildcard LIKE tidak berlaku).
+ * T-exfc: P = pemilik lain yang membagikan dashboard ke A sebagai editor dan viewer → A punya 5 tab.
+ *   AC1 A di 320 px: tab aktif (Umum, paling kanan) tergulir ke layar; pindah tab memberi tanda memuat;
+ *       jumlah hasil cari diumumkan (wilayah status diisi setelah halaman tampil);
+ *   AC2 N: tombol Tandai sudah dibaca juga di akhir artikel; fokus tetap di tombol selama menunggu;
+ *   AC3 Beranda: admin dan pemilik lama yang belum membaca tidak melihat Mulai di sini; viewer baru ya.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -16,6 +21,7 @@ const A = uniqueEmail("roles-admin");
 const V = uniqueEmail("roles-viewer");
 const N = uniqueEmail("roles-new");
 const O = uniqueEmail("roles-org");
+const P = uniqueEmail("roles-owner");
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const O1 = `Cara upload data ${TAG}`;
 const V1 = `Membaca dashboard bersama ${TAG}`;
@@ -62,7 +68,7 @@ test.describe("panduan per peran (T-022)", () => {
     test.setTimeout(180_000);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
     const setup = await browser.newPage();
-    for (const email of [A, V, N, O]) {
+    for (const email of [A, V, N, O, P]) {
       await setup.context().clearCookies();
       await registerAndVerify(setup, request, email);
     }
@@ -72,6 +78,8 @@ test.describe("panduan per peran (T-022)", () => {
       execFileSync("node", ["scripts/dev-share-fixture.mjs", A, V, "VIEWER"]).toString(),
     ).datasetId;
     execFileSync("node", ["scripts/dev-share-fixture.mjs", A, O, "ORG"]);
+    for (const role of ["EDITOR", "VIEWER"])
+      execFileSync("node", ["scripts/dev-share-fixture.mjs", P, A, role]);
     a = await pageFor(browser, A);
     v = await pageFor(browser, V);
     n = await pageFor(browser, N);
@@ -109,8 +117,32 @@ test.describe("panduan per peran (T-022)", () => {
     await start.getByRole("link", { name: "Baca panduan" }).click();
     await expect(n).toHaveURL(/\/panduan\/[a-z0-9-]+$/);
     const read = (await n.getByRole("heading", { level: 1 }).textContent())!.trim();
-    await n.getByRole("button", { name: "Tandai sudah dibaca" }).click();
-    await expect(n.getByRole("status").filter({ hasText: "Sudah dibaca" })).toBeFocused();
+    // T-exfc AC2: tombol juga di akhir artikel; Server Action ditahan → fokus tetap di tombol yang
+    // menunggu (tombol disabled melepas fokus ke body), lalu pindah ke status "Sudah dibaca"-nya.
+    const article = n.getByRole("article", { name: read });
+    const end = article.locator("footer").getByRole("button", { name: "Tandai sudah dibaca" });
+    await expect(n.getByRole("button", { name: "Tandai sudah dibaca" })).toHaveCount(2);
+    let release = () => {};
+    const gate = new Promise<void>((r) => (release = r));
+    await n.route("**/panduan/**", async (route, req) => {
+      if (req.method() === "POST" && req.headers()["next-action"]) await gate;
+      await route.fallback();
+    });
+    try {
+      await end.click();
+      await expect(end).toHaveAttribute("aria-busy", "true");
+      // Chromium memindahkan fokus dari tombol disabled ke body beberapa saat kemudian (bukan
+      // seketika): periksa sekali (tanpa ulang) setelah jeda, saat aksi masih ditahan.
+      await n.waitForTimeout(500);
+      expect(await end.evaluate((el) => el === document.activeElement)).toBe(true);
+    } finally {
+      release();
+    }
+    await expect(article.locator("footer").getByRole("status")).toBeFocused();
+    // Kedua salinan berganti "Sudah dibaca"; hanya yang diklik berperan status (tanpa pengumuman ganda).
+    await expect(n.getByText("Sudah dibaca", { exact: true })).toHaveCount(2);
+    await expect(n.getByRole("status").filter({ hasText: "Sudah dibaca" })).toHaveCount(1);
+    await n.unrouteAll({ behavior: "ignoreErrors" });
     await n.goto("/");
     await expect(n.getByTestId("start-here")).toHaveCount(0);
     // Artikel pertama bisa di tab mana pun (mis. Umum dari isi seed): cari judulnya.
@@ -169,5 +201,76 @@ test.describe("panduan per peran (T-022)", () => {
     expect(await tabs(o)).toEqual(expect.arrayContaining(["Viewer", "Umum"]));
     await expect(card(o, V1)).toHaveCount(1);
     expect((await o.goto(`/panduan/${slugs[V1]}`))?.status()).toBe(200);
+  });
+
+  test("T-exfc AC1: 5 tab di 320 px → tab aktif terlihat; pindah tab memberi tanda memuat; hasil cari diumumkan", async () => {
+    await a.setViewportSize({ width: 320, height: 800 });
+    const toOwner = (url: URL) =>
+      url.pathname === "/panduan" && url.searchParams.get("peran") === "pemilik";
+    let release = () => {};
+    try {
+      await a.goto("/panduan?peran=umum");
+      expect(await tabs(a)).toEqual(["Pemilik data", "Editor", "Viewer", "Admin", "Umum"]);
+      const nav = a.getByRole("navigation", { name: "Panduan per peran" });
+      const umum = nav.getByRole("link", { name: "Umum", exact: true });
+      await expect(umum).toHaveAttribute("aria-current", "page");
+      await expect(umum).toBeInViewport({ ratio: 1 });
+      expect(await a.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+
+      // Server lambat: tab yang diklik menandai memuat, daftar lama redup, "Memuat artikel…" diumumkan.
+      const gate = new Promise<void>((r) => (release = r));
+      await a.route(toOwner, async (route) => {
+        await gate;
+        await route.fallback();
+      });
+      const owner = nav.getByRole("link", { name: "Pemilik data", exact: true });
+      const loading = a.getByText("Memuat artikel…");
+      await expect(loading).toBeHidden();
+      await owner.click();
+      await expect(owner.locator("[data-pending]")).toBeAttached();
+      await expect(loading).toBeVisible();
+      await expect(a.getByRole("list", { name: "Artikel Umum" }).locator("..")).toHaveCSS(
+        "opacity",
+        "0.6",
+      );
+      release();
+      await expect(owner).toHaveAttribute("aria-current", "page");
+      await expect(nav.locator("[data-pending]")).toHaveCount(0);
+      await expect(loading).toBeHidden();
+      await expect(owner).toBeInViewport({ ratio: 1 });
+
+      // Jumlah hasil diumumkan: wilayah status (tersembunyi) diisi sesudah halaman tampil.
+      await a.goto("/panduan?q=upload");
+      const announce = a.getByRole("status");
+      await expect(announce).toHaveText(/^\d+ artikel cocok dengan “upload”\.$/);
+      await expect(announce).toHaveClass(/\bsr-only\b/);
+      await expect(a.getByText(/artikel cocok dengan “upload”/).first()).toBeVisible();
+      // NB1: ?q=%00%00 dibersihkan → bukan pencarian (tab tampil), bukan “0 artikel … “””.
+      await a.goto("/panduan?q=%00%00");
+      await expect(a.getByText("artikel cocok dengan “”")).toHaveCount(0);
+      await expect(a.getByRole("navigation", { name: "Panduan per peran" })).toBeVisible();
+    } finally {
+      release();
+      await a.unrouteAll({ behavior: "ignoreErrors" });
+      await a.setViewportSize({ width: 1440, height: 900 });
+    }
+  });
+
+  test("T-exfc AC3: Beranda — admin dan pemilik lama yang belum membaca tidak melihat Mulai di sini; viewer baru melihatnya", async ({
+    browser,
+  }) => {
+    await a.goto("/");
+    await expect(a.getByRole("heading", { level: 1, name: "Beranda" })).toBeVisible();
+    await expect(a.getByTestId("start-here")).toHaveCount(0);
+    const p = await pageFor(browser, P);
+    try {
+      await p.goto("/");
+      await expect(p.getByRole("heading", { level: 1, name: "Beranda" })).toBeVisible();
+      await expect(p.getByTestId("start-here")).toHaveCount(0);
+    } finally {
+      await p.context().close();
+    }
+    await v.goto("/");
+    await expect(v.getByTestId("start-here")).toBeVisible();
   });
 });

@@ -37,8 +37,10 @@ interface MdNode {
 }
 
 /**
- * Plugin remark: tingkat judul relatif terhadap judul teratas di isi, lalu + offset — isi yang dimulai
- * dari "##" tidak melompat tingkat (h1 → h3) di bawah judul artikel (review T-022 D2).
+ * Plugin remark: tingkat judul di isi dirapatkan lalu + offset — tidak ada lompatan tingkat, baik di
+ * bawah judul artikel (isi dimulai "##" → h2, bukan h3; review T-022 D2) maupun di dalam isi ("##" lalu
+ * "####" → h2 lalu h3; NB2). Tiap judul = induknya (judul sebelumnya yang lebih dangkal) + 1, jadi
+ * struktur bersarang tetap dan judul yang setara tetap setara. Batas h6.
  */
 function remarkShiftHeadings(offset: number) {
   return (tree: MdNode) => {
@@ -48,8 +50,15 @@ function remarkShiftHeadings(offset: number) {
       n.children?.forEach(walk);
     };
     walk(tree);
-    const top = Math.min(...heads.map((h) => h.depth ?? 1));
-    for (const h of heads) h.depth = Math.min(6, (h.depth ?? 1) - top + 1 + offset);
+    // Tumpukan induk: [kedalaman markdown asli, tingkat hasil (1 = paling atas di isi)].
+    const parents: [number, number][] = [];
+    for (const h of heads) {
+      const depth = h.depth ?? 1;
+      while (parents.length && parents.at(-1)![0] >= depth) parents.pop();
+      const level = (parents.at(-1)?.[1] ?? 0) + 1;
+      parents.push([depth, level]);
+      h.depth = Math.min(6, level + offset);
+    }
   };
 }
 

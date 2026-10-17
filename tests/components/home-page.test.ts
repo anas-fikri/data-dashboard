@@ -25,8 +25,9 @@ const m = vi.hoisted(() => ({
   })),
 }));
 
-// Komponen server async panduan (T-022) di luar cakupan uji halaman ini.
-vi.mock("@/components/guides/start-here-card", () => ({ StartHereCard: () => null }));
+// Komponen server async panduan (T-022): hanya props-nya yang diperiksa di sini.
+const startHere = vi.hoisted(() => vi.fn((_props: Record<string, unknown>) => null));
+vi.mock("@/components/guides/start-here-card", () => ({ StartHereCard: startHere }));
 vi.mock("@/features/auth/session", () => ({ requireUser: m.requireUser }));
 vi.mock("@/features/datasets/service", () => ({ listDatasets: m.listDatasets }));
 vi.mock("@/features/dashboards/service", () => ({
@@ -63,5 +64,17 @@ describe("Beranda: kepala kartu", () => {
     expect(heads).toHaveLength(2);
     for (const h of heads) expect(h).toContain("gap-x-3");
     expect(out).toContain("Dashboard dibagikan ke saya");
+  });
+
+  it("T-exfc: kartu Mulai di sini menerima ownsDataset dari daftar dataset milik user", async () => {
+    await render();
+    expect(startHere.mock.calls.at(-1)?.[0]).toMatchObject({
+      userId: "u1",
+      isAdmin: false,
+      ownsDataset: true,
+    });
+    m.listDatasets.mockResolvedValueOnce([]);
+    await render();
+    expect(startHere.mock.calls.at(-1)?.[0]).toMatchObject({ ownsDataset: false });
   });
 });

@@ -52,7 +52,7 @@ export default async function HomePage({ searchParams }: { searchParams: Search 
        * bila memang bukan admin lagi, jadi tautan buatan tidak bisa menampilkannya ke admin aktif.
        */}
       {params.notice === "admin-dicabut" && !user.isAdmin ? <AdminRevokedNotice /> : null}
-      <StartHereCard userId={user.id} isAdmin={user.isAdmin} />
+      <StartHereCard userId={user.id} isAdmin={user.isAdmin} ownsDataset={datasets.length > 0} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

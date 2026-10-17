@@ -36,9 +36,13 @@ export default defineConfig({
         /pdf\.spec\.ts$/,
         /kpi-fit\.spec\.ts$/,
         /chart-polish\.spec\.ts$/,
+        /guide-roles\.spec\.ts$/,
       ],
     },
-    { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["e2e"] },
+    // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
+    // admin yang diuji guides.spec (review AC5) → dijalankan setelah proyek e2e selesai.
+    { name: "guide-roles", testMatch: /guide-roles\.spec\.ts$/, dependencies: ["e2e"] },
+    { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["guide-roles"] },
     { name: "schema", testMatch: /schema\.spec\.ts$/, dependencies: ["ingest"] },
     // widgets: menyalakan worker sendiri untuk ingest fixture (setelah worker schema berhenti).
     { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },

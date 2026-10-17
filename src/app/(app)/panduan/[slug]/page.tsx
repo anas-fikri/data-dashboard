@@ -45,6 +45,10 @@ export default async function Page({ params }: { params: Params }) {
             ))}
           </div>
         ) : null}
+        {/* Artikel panjang: pembaca yang sampai di akhir tidak perlu menggulir balik ke kepala (T-exfc). */}
+        <footer className="border-t pt-5">
+          <MarkReadButton articleId={g.id} read={read.has(g.id)} />
+        </footer>
       </article>
     </div>
   );

@@ -91,13 +91,26 @@ export async function guidesForTab(
   return rows.map(summary);
 }
 
+/** Kata kunci cari dari ?q=: satu baris bersih (tanpa NUL/karakter kontrol), ≤ SEARCH_MAX. */
+export const searchQuery = (raw: string): string => cleanLine(raw, SEARCH_MAX) ?? "";
+
+/**
+ * Teks status hasil cari (tampil + diumumkan ke pembaca layar). `q` harus sudah searchQuery — kata
+ * kunci yang sama dengan yang dicari, bukan ?q= mentah (review T-022 NB1: ?q=%00%00 → “”).
+ */
+export function searchStatus(q: string, count: number): string {
+  return q.length < SEARCH_MIN
+    ? `Ketik minimal ${SEARCH_MIN} huruf untuk mencari.`
+    : `${count} artikel cocok dengan “${q}”.`;
+}
+
 /** Cari judul/isi (tanpa beda huruf besar-kecil) di artikel yang boleh dilihat user. */
 export async function searchGuides(
   roles: readonly GuideRole[],
   rawQuery: string,
 ): Promise<GuideSummary[]> {
-  // Satu baris bersih (tanpa NUL/karakter kontrol); wildcard LIKE diperlakukan sebagai huruf biasa.
-  const q = cleanLine(rawQuery, SEARCH_MAX) ?? "";
+  // Dibersihkan lagi di sini (pemanggil lain); wildcard LIKE diperlakukan sebagai huruf biasa.
+  const q = searchQuery(rawQuery);
   if (q.length < SEARCH_MIN) return [];
   const term = escapeLike(q);
   const rows = await prisma.guideArticle.findMany({
@@ -145,6 +158,20 @@ export async function readArticleIds(userId: string, articleIds: string[]): Prom
     select: { articleId: true },
   });
   return new Set(rows.map((r) => r.articleId));
+}
+
+/**
+ * Kartu "Mulai di sini" di Beranda hanya untuk pengguna yang benar-benar baru (keputusan produk T-exfc):
+ *   - bukan admin — admin menulis panduan dan mengelola pengguna, bukan sasaran kartu pengenalan;
+ *   - belum memiliki dataset — pemilik yang sudah mengunggah data sudah melewati alur inti (dashboard
+ *     selalu milik pemilik datasetnya, jadi ini juga berarti belum punya dashboard);
+ *   - belum menandai satu artikel pun sudah dibaca — tanda pengenalan sudah dimulai.
+ * Penerima share (viewer/editor) yang belum membaca tetap dianggap baru: mereka tidak membuat apa pun,
+ * dan kartu menuju artikel pertama untuk peran mereka. Umur akun sengaja tidak dipakai: akun seed bisa
+ * dibuat jauh sebelum login pertama, dan login pertama tidak dicatat.
+ */
+export function isNewcomer(user: { isAdmin: boolean; ownsDataset: boolean; hasRead: boolean }) {
+  return !user.isAdmin && !user.ownsDataset && !user.hasRead;
 }
 
 export async function hasReadAny(userId: string): Promise<boolean> {
