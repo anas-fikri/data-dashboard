@@ -8,4 +8,16 @@ export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   const { env } = await import("@/lib/env");
   env();
+  // Cache parquet app dipanaskan saat versi baru aktif (T-pvq8); tidak menunggu Redis. Hanya
+  // pengoptimalan: gagal dipasang tidak boleh menghentikan app (query mengunduh sendiri).
+  try {
+    const { listenVersionActivated } = await import("@/features/query/warm-runtime");
+    listenVersionActivated();
+  } catch (e) {
+    const { logger } = await import("@/lib/logger");
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e) },
+      "pemanasan cache parquet tidak terpasang",
+    );
+  }
 }

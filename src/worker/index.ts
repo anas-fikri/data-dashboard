@@ -45,6 +45,7 @@ import {
   s3IngestStorage,
 } from "@/features/ingest/repo";
 import { prismaQueryRepo } from "@/features/query/runtime";
+import { announceVersionActivated, watchRedis } from "@/features/query/warm";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { prisma } from "@/lib/db";
@@ -184,6 +185,11 @@ async function main() {
     logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "job maintenance gagal"),
   );
 
+  // Versi baru aktif (ingest/pemetaan) diumumkan ke app agar cache parquet-nya dipanaskan (T-pvq8);
+  // tidak ditunggu: Redis lambat/mati tidak menahan job, gagal hanya dicatat.
+  const announceRedis = connection();
+  watchRedis(announceRedis, logger, "redis pengumuman versi aktif");
+
   // --- ingest ---
   const ingestWorker = new Worker<IngestJobData>(
     INGEST_QUEUE,
@@ -196,6 +202,7 @@ async function main() {
         duckThreads: env().INGEST_DUCKDB_THREADS,
       });
       logger.info({ jobId: job.id, versionId, ...r }, "ingest selesai");
+      if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);
       return r;
     },
     {
@@ -280,6 +287,7 @@ async function main() {
     );
     if (r.outcome === "busy") return delayBusy(job, MAPPING_BUSY_MAX_MS, token);
     await recordLast(versionId, r.outcome === "done" ? null : { jobId: job.id ?? "", result: r });
+    if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);
     return r;
   };
   const recastWorker = new Worker<RecastJobData | MappingJobData>(
@@ -443,6 +451,7 @@ async function main() {
     await pdfWorker.close();
     await maintenanceWorker.close();
     lockRedis.disconnect();
+    announceRedis.disconnect();
     await ingestQueue.close();
     await maintenance.close();
     await prisma.$disconnect();

@@ -22,8 +22,12 @@ const activateVersionInTx = vi.fn();
 vi.mock("@/features/versions/activation", () => ({ activateVersionInTx }));
 const forgetLocalParquet = vi.fn();
 vi.mock("@/features/query/local-parquet", () => ({ forgetLocalParquet }));
+// Pengumuman versi aktif untuk pemanasan cache parquet app (T-pvq8).
+const publish = vi.fn(async () => 1);
+vi.mock("@/lib/redis", () => ({ redisReady: async () => ({ publish }) }));
 
 const svc = await import("@/features/versions/service");
+const { logger } = await import("@/lib/logger");
 
 const OWNER = "owner1";
 const DS = "cmv4klj5r0007oczvgiofocpg";
@@ -140,6 +144,8 @@ describe("activateVersion", () => {
       audit: true,
     });
     expect(forgetLocalParquet).toHaveBeenCalledWith(["k1"]);
+    await vi.waitFor(() => expect(publish).toHaveBeenCalledWith("dataset:version-activated", B));
+    expect(publish).toHaveBeenCalledTimes(1);
     // Lock Dataset dengan pemilik di WHERE.
     expect(tx.$queryRaw.mock.calls[0]!.slice(1)).toEqual([DS, OWNER]);
   });
@@ -172,6 +178,20 @@ describe("activateVersion", () => {
     expect(await svc.activateVersion(OWNER, DS, B)).toMatchObject({ code: "INVALID" });
     expect(activateVersionInTx).not.toHaveBeenCalled();
     expect(forgetLocalParquet).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("T-pvq8: pengumuman pemanasan gagal (Redis mati) → aktivasi tetap berhasil, dicatat", async () => {
+    tx.datasetVersion.findFirst.mockResolvedValueOnce({ status: "READY", originalName: "a.xlsx" });
+    activateVersionInTx.mockResolvedValueOnce({ deletedTypedKeys: [] });
+    publish.mockRejectedValueOnce(new Error("redis mati"));
+    expect(await svc.activateVersion(OWNER, DS, B)).toMatchObject({ ok: true });
+    await vi.waitFor(() =>
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ versionId: B, err: "Error: redis mati" }),
+        expect.stringContaining("pengumuman versi aktif gagal"),
+      ),
+    );
   });
 
   it("antrean lock habis waktu (P2028) → DATASET_BUSY, bukan error", async () => {

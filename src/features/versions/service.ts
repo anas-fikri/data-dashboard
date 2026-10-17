@@ -2,8 +2,10 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { isIdShape } from "@/features/datasets/validation";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
+import { announceVersionActivated } from "@/features/query/warm";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { redisReady } from "@/lib/redis";
 import { activateVersionInTx } from "./activation";
 import { versionPrefixes } from "./retention";
 import type { VersionCode, VersionResult, VersionRow, VersionStatus } from "./types";
@@ -140,9 +142,11 @@ export async function activateVersion(
     typedKeys = done.deletedTypedKeys;
     return { ok: true, data: { fileName: v.originalName ?? "" } };
   });
-  // Setelah commit: salinan lokal Parquet versi yang dibuang retensi (objeknya dihapus ≥ 1 jam lagi).
+  // Setelah commit: salinan lokal Parquet versi yang dibuang retensi (objeknya dihapus ≥ 1 jam lagi);
+  // versi target dipanaskan di cache app (T-pvq8) tanpa menunggu Redis.
   if (r.ok) {
     forgetLocalParquet(typedKeys);
+    void announceVersionActivated(redisReady(), versionId, logger);
     logger.info({ datasetId, versionId, dropped: typedKeys.length }, "versi dataset diaktifkan");
   }
   return r;

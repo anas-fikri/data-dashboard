@@ -1,17 +1,14 @@
 import "server-only";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { filterSourcesFor } from "@/features/dashboards/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { canViewWhere, dashboardAccess, roleOf, roleSelect } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
-import { ParquetCache } from "@/lib/duckdb/parquet-cache";
 import { env } from "@/lib/env";
-import { downloadToFile, objectSize } from "@/lib/storage/files";
 import { ResultCache } from "./cache";
 import { HistoryCache } from "./history-cache";
-import { registerLocalParquet } from "./local-parquet";
+import { localParquetCache, queryCacheBase } from "./local-parquet";
 import type { CachedQuery, FilterSource, QueryDeps, QueryRepo } from "./service";
 
 /*
@@ -190,23 +187,11 @@ const globalForQuery = globalThis as unknown as {
 
 async function build(): Promise<Runtime> {
   const e = env();
-  const base = e.QUERY_CACHE_DIR ?? join(tmpdir(), "dd-query");
-  const dataDir = join(base, "parquet");
-  const parquet = new ParquetCache({
-    dir: dataDir,
-    maxBytes: e.MAX_LOCAL_PARQUET_BYTES,
-    sizeOf: (key, signal) => objectSize(key, signal),
-    download: async (key, dest, signal) => {
-      await downloadToFile(key, dest, signal);
-    },
-    // Unduhan dibatasi terpisah dari slot query (review T-009 N2).
-    maxDownloads: 2,
-    perOwnerDownloads: 1,
-  });
-  registerLocalParquet(parquet);
+  // Cache dibagi dengan pemanasan versi aktif (T-pvq8): bisa sudah dibuat sebelum mesin query.
+  const parquet = localParquetCache();
   const engine = await QueryEngine.create({
-    dataDir,
-    tmpDir: join(base, "tmp"),
+    dataDir: parquet.dir,
+    tmpDir: join(queryCacheBase(), "tmp"),
     memoryLimit: e.QUERY_MEMORY_LIMIT,
     threads: 2,
     maxTempSize: "4GB",
