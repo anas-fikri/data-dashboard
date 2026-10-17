@@ -151,6 +151,8 @@ export interface IngestOptions {
   deadline?: number;
   limits?: SaxLimits;
   duckMemory?: string;
+  /** Thread DuckDB (env INGEST_DUCKDB_THREADS; default openDuck = 2). */
+  duckThreads?: number;
   /** Ukuran batch baris (default 50k); uji memakai nilai kecil. */
   batchRows?: number;
   /** Uji: buffer baca CSV DuckDB lebih kecil. */
@@ -307,6 +309,7 @@ export async function runIngest(
       path: join(work, "work.duckdb"),
       tmpDir: work,
       memoryLimit: opts.duckMemory,
+      threads: opts.duckThreads,
       // Tabel raw > WIDE_COLS kolom pindah ke DB ber-blok kecil (review T-006 M3).
       widePath: join(work, "wide.duckdb"),
     });

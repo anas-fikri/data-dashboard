@@ -35,6 +35,17 @@ describe("parseEnv", () => {
     );
   });
 
+  it("INGEST_DUCKDB_THREADS: default 2, 1–16 (T-024)", () => {
+    expect(parseEnv(valid).INGEST_DUCKDB_THREADS).toBe(2);
+    expect(parseEnv({ ...valid, INGEST_DUCKDB_THREADS: "3" }).INGEST_DUCKDB_THREADS).toBe(3);
+    expect(() => parseEnv({ ...valid, INGEST_DUCKDB_THREADS: "0" })).toThrow(
+      /INGEST_DUCKDB_THREADS/,
+    );
+    expect(() => parseEnv({ ...valid, INGEST_DUCKDB_THREADS: "17" })).toThrow(
+      /INGEST_DUCKDB_THREADS/,
+    );
+  });
+
   it("gagal cepat dengan nama variabel yang hilang", () => {
     const { DATABASE_URL: _omit, ...rest } = valid;
     expect(() => parseEnv(rest)).toThrow(/DATABASE_URL/);

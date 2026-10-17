@@ -193,6 +193,7 @@ async function main() {
       const r = await runIngest(versionId, prismaIngestRepo, s3IngestStorage, {
         tmpRoot,
         datasetIdHint: job.data.datasetId,
+        duckThreads: env().INGEST_DUCKDB_THREADS,
       });
       logger.info({ jobId: job.id, versionId, ...r }, "ingest selesai");
       return r;

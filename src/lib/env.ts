@@ -189,6 +189,11 @@ export const envSchema = z.object({
    * lewat COPY (CSV langsung, XLSX lewat parquet kerja) gagal OOM di 512MB tetapi selesai di 768MB
    * (review T-017 INT-R2-1, INT-R3-1); memori gabungan worker (ingest + recast + ekspor) diukur di T-024.
    */
+  /**
+   * Thread DuckDB per job ingest (T-024). Ingest 1 GB di VM 8 vCPU dua pertiga waktunya jenuh CPU pada
+   * 2 thread; worker × thread sebaiknya ≤ vCPU − 2 (app + layanan lain).
+   */
+  INGEST_DUCKDB_THREADS: z.coerce.number().int().min(1).max(16).default(2),
   EXPORT_DUCKDB_MEMORY: z
     .string()
     .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)
