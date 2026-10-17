@@ -4,8 +4,9 @@
 
 Entries live in docs/ai/knowledge/<topic>.md. Search: `aitk knowledge search "<query>"`.
 
-- [_inbox](knowledge/_inbox.md): 20 entries
+- [bug](knowledge/bug.md): 5 entries
+- [deploy](knowledge/deploy.md): 1 entries
 - [docs](knowledge/docs.md): 1 entries
-- [general](knowledge/general.md): 5 entries
-- [security](knowledge/security.md): 14 entries
+- [general](knowledge/general.md): 15 entries
+- [security](knowledge/security.md): 19 entries
 - [ui](knowledge/ui.md): 1 entries
