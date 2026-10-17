@@ -124,17 +124,19 @@ export async function setGuideStatus(
 ): Promise<GuideResult> {
   if (!cuidSchema.safeParse(id).success) return notFound;
   return prisma.$transaction(async (tx) => {
-    const row = await tx.guideArticle.findUnique({
-      where: { id },
-      select: { slug: true, role: true },
-    });
-    if (!row) return notFound;
     // Sudah berstatus ini (terbit ulang, klik ganda, tab basi): tanpa perubahan, tanpa audit ganda.
     // Syarat status di UPDATE (bukan cek terpisah): dua permintaan serentak → hanya satu yang mengubah.
     const r = await tx.guideArticle.updateMany({
       where: { id, status: { not: status } },
       data: { status },
     });
+    // Dibaca SESUDAH UPDATE: baris terkunci sampai transaksi selesai, jadi slug/peran di audit sama dengan
+    // baris yang diubah; baris yang hilang (dihapus bersamaan) → NOT_FOUND, bukan sukses (review T-0vjt).
+    const row = await tx.guideArticle.findUnique({
+      where: { id },
+      select: { slug: true, role: true },
+    });
+    if (!row) return notFound;
     if (!r.count) return { ok: true, data: null } as const;
     await recordAudit(tx, {
       actorId,

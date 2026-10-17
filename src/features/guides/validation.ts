@@ -20,7 +20,7 @@ const LINE_MAX = 2_000;
  * Kolom tabel (T-0vjt): setiap baris tabel diisi sel sebanyak kolom judul, jadi ribuan kolom × ribuan
  * baris = jutaan sel. Kolom × LINE_MAX tetap kecil.
  */
-const TABLE_COLS_MAX = 8;
+export const TABLE_COLS_MAX = 8;
 /** Awalan kontainer satu baris: spasi lalu > atau penanda daftar, berulang. */
 const PREFIX = /^(?:[ \t]*(?:>|[-*+](?=[ \t]|$)|\d{1,9}[.)](?=[ \t]|$)))*/;
 
@@ -34,17 +34,39 @@ export function guideBodyProblem(md: string): string | null {
     if ((para.match(/[*_]/g)?.length ?? 0) > EMPHASIS_MAX)
       return `Terlalu banyak tanda * atau _ dalam satu paragraf (maks. ${EMPHASIS_MAX}); pisahkan dengan baris kosong.`;
   }
-  const lines = md.split(/\r\n?|\n/);
+  // BOM awal dibuang seperti pengurai (pagar sesudah BOM tetap pagar di kolom 0).
+  const lines = md.replace(/^\uFEFF/, "").split(/\r\n?|\n/);
   if (lines.length > LINE_MAX)
     return `Terlalu banyak baris (maks. ${LINE_MAX.toLocaleString("id-ID")}); pecah menjadi beberapa artikel.`;
+  // Baris pemisah tabel di dalam blok kode berpagar tingkat atas (``` / ~~~ di kolom 0) adalah contoh,
+  // bukan tabel (review T-0vjt). Hanya pagar yang dilacak persis: baris mirip pagar lain (menjorok 1–3
+  // spasi, di dalam daftar/kutipan) bisa membuat pelacak terbalik — penutupnya terbaca sebagai pembuka —
+  // jadi pengecualian dimatikan untuk sisa dokumen (gagal tertutup, review T-fesf). Cek kedalaman tetap
+  // berlaku di setiap baris; tabel terlalu lebar juga dicegat saat render (remarkTable).
+  let fence: { char: string; len: number } | null = null;
+  let exempt = true;
   for (const line of lines) {
     const prefix = PREFIX.exec(line)?.[0] ?? "";
     const marks = prefix.replace(/[ \t]/g, "").replace(/\d+/g, "").length;
     const indent = prefix.replace(/\t/g, "    ").replace(/[^ ]/g, "").length;
     if (marks + Math.floor(indent / 2) > DEPTH_MAX)
       return `Kutipan atau daftar bersarang terlalu dalam (maks. ${DEPTH_MAX} tingkat).`;
-    // Baris pemisah tabel (| --- | :-: |): jumlah kolomnya = jumlah kolom tabel.
+    if (fence) {
+      const close = /^ {0,3}(`+|~+)[ \t]*$/.exec(line);
+      if (close && close[1]![0] === fence.char && close[1]!.length >= fence.len) fence = null;
+      continue;
+    }
     const rest = line.slice(prefix.length);
+    if (exempt && /^ {0,3}(?:`{3,}|~{3,})/.test(rest)) {
+      // Info string pagar backtick tidak boleh berisi backtick (CommonMark): selain itu kode sebaris.
+      const open = /^(`{3,}|~{3,})(.*)$/.exec(line);
+      if (open && !(open[1]![0] === "`" && open[2]!.includes("`"))) {
+        fence = { char: open[1]![0]!, len: open[1]!.length };
+        continue;
+      }
+      exempt = false;
+    }
+    // Baris pemisah tabel (| --- | :-: |): jumlah kolomnya = jumlah kolom tabel.
     if (
       rest.includes("|") &&
       /^[ \t|:-]+$/.test(rest) &&

@@ -2,7 +2,7 @@ import { gfmTableFromMarkdown } from "mdast-util-gfm-table";
 import { gfmTable } from "micromark-extension-gfm-table";
 import Markdown, { type Components } from "react-markdown";
 import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from "rehype-sanitize";
-import { GUIDE_BODY_MAX, guideBodyProblem } from "./validation";
+import { GUIDE_BODY_MAX, TABLE_COLS_MAX, guideBodyProblem } from "./validation";
 
 /*
  * Render markdown artikel panduan (T-020), dipakai halaman /panduan dan pratinjau editor admin. Tiga
@@ -35,7 +35,10 @@ function remarkNoHtml(this: { data(): object }) {
 /**
  * Plugin remark: tabel GFM saja (T-0vjt). Bukan remark-gfm penuh — itu juga membawa coret, daftar tugas
  * (<input>), catatan kaki, dan tautan otomatis dari teks biasa; elemen baru di keluaran hanya
- * table/thead/tbody/tr/th/td (sudah ada di skema sanitasi). Batas kolom: guideBodyProblem.
+ * table/thead/tbody/tr/th/td (sudah ada di skema sanitasi). Batas kolom: guideBodyProblem saat simpan,
+ * dan di sini sebagai pertahanan berlapis (review T-fesf): tabel > TABLE_COLS_MAX kolom diganti teks
+ * sebelum toHast — penambalan sel ke lebar penuh baru terjadi di toHast, jadi keluaran tetap terbatas
+ * walau pemeriksaan per baris terkecoh.
  */
 function remarkTable(this: { data(): object }) {
   const data = this.data() as {
@@ -44,11 +47,25 @@ function remarkTable(this: { data(): object }) {
   };
   (data.micromarkExtensions ??= []).push(gfmTable());
   (data.fromMarkdownExtensions ??= []).push(gfmTableFromMarkdown());
+  const cap = (n: MdNode) => {
+    if (!n.children) return;
+    n.children = n.children.map((c) => {
+      if (c.type !== "table" || (c.align?.length ?? 0) <= TABLE_COLS_MAX) {
+        cap(c);
+        return c;
+      }
+      const value = `Tabel terlalu lebar untuk ditampilkan (maks. ${TABLE_COLS_MAX} kolom).`;
+      return { type: "paragraph", children: [{ type: "text", value }] };
+    });
+  };
+  return cap;
 }
 
 interface MdNode {
   type: string;
   depth?: number;
+  align?: unknown[];
+  value?: string;
   children?: MdNode[];
 }
 
@@ -110,6 +127,7 @@ interface HastNode {
   type: string;
   tagName?: string;
   value?: string;
+  properties?: Record<string, unknown>;
   children?: HastNode[];
 }
 const textOf = (n: HastNode): string =>
@@ -125,6 +143,34 @@ function tableLabel(table: HastNode | undefined): string {
   const label = cols.length ? `Tabel: ${cols.join(", ")}` : "Tabel";
   return label.length > 80 ? `${label.slice(0, 79)}…` : label;
 }
+
+/**
+ * Nama wilayah gulir (tabel, blok kode) unik per artikel (review T-0vjt, axe landmark-unique): nama
+ * yang berulang diberi urutan "(2)", "(3)". Dihitung sekali per dokumen (plugin rehype sesudah sanitasi),
+ * bukan saat render komponen yang bisa dipanggil dua kali.
+ */
+function rehypeRegionNames() {
+  return (tree: HastNode) => {
+    const used = new Set<string>();
+    const next = new Map<string, number>(); // urutan berikutnya per nama dasar: tetap linear
+    const visit = (n: HastNode) => {
+      if (n.tagName === "table" || n.tagName === "pre") {
+        const base = n.tagName === "table" ? tableLabel(n) : "Blok kode";
+        let name = base;
+        let k = next.get(base) ?? 2;
+        // Naik terus sampai belum dipakai: judul kolom asli "A (2)" tidak bentrok dengan urutan buatan.
+        while (used.has(name)) name = `${base} (${k++})`;
+        next.set(base, k);
+        used.add(name);
+        n.properties = { ...n.properties, dataRegion: name };
+      }
+      n.children?.forEach(visit);
+    };
+    visit(tree);
+  };
+}
+const regionName = (node: unknown, fallback: string) =>
+  String((node as HastNode | undefined)?.properties?.dataRegion ?? fallback);
 
 const HEADING = [
   "mt-6 text-base font-semibold first:mt-0",
@@ -197,11 +243,11 @@ export function GuideMarkdown({
     code: ({ children }) => (
       <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.875em]">{children}</code>
     ),
-    pre: ({ children }) => (
+    pre: ({ node, children }) => (
       // tabIndex: blok kode yang meluap bisa digulir dengan keyboard (axe scrollable-region-focusable).
       <pre
         role="region"
-        aria-label="Blok kode"
+        aria-label={regionName(node, "Blok kode")}
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         className="mt-3 overflow-x-auto rounded-md bg-muted p-3 text-sm focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -213,7 +259,7 @@ export function GuideMarkdown({
     table: ({ node, children }) => (
       <div
         role="region"
-        aria-label={tableLabel(node)}
+        aria-label={regionName(node, tableLabel(node))}
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
         tabIndex={0}
         className="mt-3 overflow-x-auto rounded-md border first:mt-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -238,7 +284,7 @@ export function GuideMarkdown({
     <div className="min-w-0 text-sm [overflow-wrap:anywhere]" data-testid="guide-markdown">
       <Markdown
         remarkPlugins={[remarkNoHtml, remarkTable, [remarkShiftHeadings, headingOffset]]}
-        rehypePlugins={[[rehypeSanitize, SCHEMA]]}
+        rehypePlugins={[[rehypeSanitize, SCHEMA], rehypeRegionNames]}
         urlTransform={(url, key) => guideUrl(url, key, origins)}
         components={components}
       >

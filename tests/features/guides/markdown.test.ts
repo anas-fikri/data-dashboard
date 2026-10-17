@@ -175,6 +175,27 @@ describe("GuideMarkdown tabel (T-0vjt)", () => {
     expect(labels).toEqual(["Tabel: Peran, Hak akses, Jumlah", "Tabel: A, B", "Tabel"]);
   });
 
+  it("T-fesf: tabel berjudul sama dan beberapa blok kode → nama wilayah unik berurutan", () => {
+    const t = "| A | B |\n|---|---|\n| 1 | 2 |";
+    const out = html(`${t}\n\n\`\`\`\nx\n\`\`\`\n\n${t}\n\n\`\`\`\ny\n\`\`\`\n\n${t}`);
+    const labels = [...out.matchAll(/role="region" aria-label="([^"]+)"/g)].map((m) => m[1]);
+    expect(labels).toEqual([
+      "Tabel: A, B",
+      "Blok kode",
+      "Tabel: A, B (2)",
+      "Blok kode (2)",
+      "Tabel: A, B (3)",
+    ]);
+    // Judul kolom asli "A (2)" tidak bentrok dengan urutan buatan.
+    const one = (h: string) => `| ${h} |\n|---|\n| 1 |`;
+    const clash = html(`${one("A")}\n\n${one("A")}\n\n${one("A (2)")}`);
+    expect([...clash.matchAll(/role="region" aria-label="([^"]+)"/g)].map((m) => m[1])).toEqual([
+      "Tabel: A",
+      "Tabel: A (2)",
+      "Tabel: A (2) (2)",
+    ]);
+  });
+
   it("hanya elemen tabel yang baru: coret, daftar tugas, catatan kaki, tautan teks biasa tetap teks", () => {
     const out = html(
       [
@@ -204,6 +225,23 @@ describe("GuideMarkdown tabel (T-0vjt)", () => {
     const wide = `${row(9, "a")}\n${row(9, "---")}\n${row(9, "1")}`;
     expect(guideBodyProblem(wide)).toMatch(/Tabel terlalu lebar/);
     expect(guideBodyProblem(`> - ${row(9, ":-:")}`)).toMatch(/Tabel terlalu lebar/);
+    // T-fesf: contoh di blok kode berpagar tingkat atas = teks literal, tidak ditolak.
+    expect(guideBodyProblem(`\`\`\`text\n${row(9, "---")}\n\`\`\``)).toBeNull();
+    expect(guideBodyProblem(`~~~~\n${row(9, "---")}\n~~~\n~~~~`)).toBeNull();
+    // Sesudah pagar ditutup, tabel sungguhan tetap ditolak.
+    expect(guideBodyProblem(`\`\`\`\nkode\n\`\`\`\n${wide}`)).toMatch(/Tabel terlalu lebar/);
+    // Bukan pagar menurut CommonMark (info string backtick berisi backtick / menjorok dalam daftar yang
+    // ditutup implisit oleh pengurai) → isi tetap diperiksa, batas tidak bisa diakali.
+    expect(guideBodyProblem(`\`\`\` \`x\n${wide}`)).toMatch(/Tabel terlalu lebar/);
+    expect(guideBodyProblem(`- a\n  \`\`\`\nb\n${wide}`)).toMatch(/Tabel terlalu lebar/);
+    // Review T-fesf: pembuka menjorok 1–3 spasi atau sesudah BOM membuat pelacak terbalik (penutup kolom 0
+    // terbaca pembuka) → gagal tertutup, tabel sesudahnya tetap ditolak.
+    for (const opener of [" ```", "   ```", "\uFEFF```", "- ```", "> ~~~"])
+      expect(guideBodyProblem(`${opener}\nx\n\`\`\`\n\n${wide}`), opener).toMatch(
+        /Tabel terlalu lebar/,
+      );
+    // Kedalaman kutipan tetap diperiksa di dalam blok kode (bukan celah urai lambat).
+    expect(guideBodyProblem(`\`\`\`\n${"> ".repeat(13)}x\n\`\`\``)).toMatch(/bersarang/);
     expect(html(wide)).toContain("Isi artikel tidak dapat ditampilkan");
     // 3.000 kolom × 2.000 baris = 6 juta sel tanpa batas; dengan batas: 8 × 1.990 ≈ 16 ribu sel.
     const bomb = `${row(3000, "a")}\n${row(3000, "-")}\n${"a\n".repeat(1990)}`;

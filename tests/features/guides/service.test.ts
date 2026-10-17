@@ -110,12 +110,31 @@ describe("terbit/tarik tanpa audit ganda (T-0vjt)", () => {
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
   });
 
-  it("tarik draf (sudah draf) → tanpa audit; artikel tidak ada → NOT_FOUND", async () => {
+  it("tarik draf (sudah draf) → tanpa audit; artikel tidak ada / dihapus bersamaan → NOT_FOUND", async () => {
     prisma.guideArticle.updateMany.mockResolvedValueOnce({ count: 0 });
     expect(await setGuideStatus(ADMIN, ART, "DRAFT", IP)).toEqual({ ok: true, data: null });
     expect(prisma.auditLog.create).not.toHaveBeenCalled();
+    // T-fesf: baris hilang di antara permintaan → NOT_FOUND (bukan sukses tanpa perubahan).
+    prisma.guideArticle.updateMany.mockResolvedValueOnce({ count: 0 });
     prisma.guideArticle.findUnique.mockResolvedValueOnce(null as never);
     expect(await setGuideStatus(ADMIN, ART, "DRAFT", IP)).toMatchObject({ code: "NOT_FOUND" });
-    expect(prisma.guideArticle.updateMany).toHaveBeenCalledTimes(1);
+    expect(prisma.auditLog.create).not.toHaveBeenCalled();
+  });
+
+  it("T-fesf: slug/peran audit dibaca SESUDAH UPDATE (baris terkunci) → sama dengan baris yang diubah", async () => {
+    const order: string[] = [];
+    prisma.guideArticle.updateMany.mockImplementationOnce(async () => {
+      order.push("update");
+      return { count: 1 };
+    });
+    prisma.guideArticle.findUnique.mockImplementationOnce(async () => {
+      order.push("baca");
+      return { slug: "slug-baru", role: "ALL" };
+    });
+    expect(await setGuideStatus(ADMIN, ART, "PUBLISHED", IP)).toEqual({ ok: true, data: null });
+    expect(order).toEqual(["update", "baca"]);
+    expect(audits()).toMatchObject([
+      { data: { action: "guide.publish", meta: { slug: "slug-baru", role: "ALL" } } },
+    ]);
   });
 });

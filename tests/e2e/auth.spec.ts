@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { expect, test } from "@playwright/test";
 import {
   activate,
@@ -190,6 +191,27 @@ test.describe("auth", () => {
     expect((await page.request.get("/api/auth/me")).status()).toBe(401);
     await page.goto("/datasets");
     await expect(page).toHaveURL(/\/login\?next=/);
+  });
+
+  test("T-fesf: sesi dicabut → /panduan dan /admin/panduan (gerbang layout (daftar)) dialihkan ke /login", async ({
+    page,
+    request,
+  }) => {
+    const email = uniqueEmail("sv-panduan");
+    await registerAndVerify(page, request, email);
+    execFileSync("node", ["scripts/dev-make-admin.mjs", email]);
+    for (const path of ["/panduan", "/admin/panduan"]) {
+      await apiLogin(page, email);
+      await page.goto(path);
+      await expect(page).toHaveURL(new RegExp(`${path}$`));
+      expect((await page.request.post("/api/auth/dev-bump-session")).status()).toBe(200);
+      // Pengalihan dari server (307, gerbang layout), bukan pengalihan klien sesudah halaman mengalir.
+      const res = await page.request.get(path, { maxRedirects: 0 });
+      expect(res.status(), path).toBe(307);
+      expect(res.headers()["location"], path).toMatch(/\/login\?next=/);
+      await page.goto(path);
+      await expect(page).toHaveURL(/\/login\?next=/);
+    }
   });
 
   test("endpoint uji butuh sesi", async ({ request }) => {
