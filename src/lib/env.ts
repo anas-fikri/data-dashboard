@@ -194,6 +194,13 @@ export const envSchema = z.object({
    * 2 thread; worker × thread sebaiknya ≤ vCPU − 2 (app + layanan lain).
    */
   INGEST_DUCKDB_THREADS: z.coerce.number().int().min(1).max(16).default(2),
+  /**
+   * Worker thread pembaca sheet xlsx per job ingest (T-de1b): file dengan ≥ 2 sheet besar di-parse
+   * paralel, penulisan DuckDB tetap satu koneksi (memory_limit sama). 1 = berurutan seperti sebelumnya.
+   * Anggaran CPU: WORKER_REPLICAS × (1 + nilai ini) sebaiknya ≤ vCPU − 2 (thread utama job + pembaca
+   * sheet). Maksimal 4: di atas itu thread utama (penulis DuckDB) yang membatasi, heap ≤ 4 × 256 MB.
+   */
+  INGEST_XLSX_SHEET_THREADS: z.coerce.number().int().min(1).max(4).default(2),
   EXPORT_DUCKDB_MEMORY: z
     .string()
     .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)

@@ -200,6 +200,7 @@ async function main() {
         tmpRoot,
         datasetIdHint: job.data.datasetId,
         duckThreads: env().INGEST_DUCKDB_THREADS,
+        sheetThreads: env().INGEST_XLSX_SHEET_THREADS,
       });
       logger.info({ jobId: job.id, versionId, ...r }, "ingest selesai");
       if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);

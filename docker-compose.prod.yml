@@ -27,6 +27,9 @@ x-app-env: &app-env
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
   # Thread DuckDB per job ingest; WORKER_REPLICAS × nilai ini sebaiknya ≤ vCPU − 2.
   INGEST_DUCKDB_THREADS: ${INGEST_DUCKDB_THREADS:-2}
+  # Worker thread pembaca sheet xlsx paralel per job ingest (1–4; 1 = berurutan);
+  # WORKER_REPLICAS × (1 + nilai ini) sebaiknya ≤ vCPU − 2.
+  INGEST_XLSX_SHEET_THREADS: ${INGEST_XLSX_SHEET_THREADS:-2}
   LOG_LEVEL: ${LOG_LEVEL:-info}
   DATABASE_URL: ${DATABASE_URL:?}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379

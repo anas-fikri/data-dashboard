@@ -13,13 +13,21 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
-import { createSaxParser, DEFAULT_LIMITS, XlsxLimitError, type SaxLimits } from "@/lib/xlsx/parser";
+import { logger } from "@/lib/logger";
+import { WorkerStartError } from "@/lib/xlsx/parallel";
+import {
+  createSaxParser,
+  DEFAULT_LIMITS,
+  worksheetSizes,
+  XlsxLimitError,
+  type SaxLimits,
+} from "@/lib/xlsx/parser";
 import type { RawValue } from "@/lib/xlsx/types";
 import { csvToParquet } from "./csv";
 import { CsvFormatError } from "./csv-sniff";
-import { columnNames, guessHeaderRow, type ColumnMeta } from "./header";
+import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
-import { previewOf, type SheetPreview } from "./preview";
+import type { SheetPreview } from "./preview";
 import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import {
   carriedAlias,
@@ -36,6 +44,7 @@ import {
   type Verdict,
 } from "./refresh";
 import { headerColumns, writeTyped } from "./typed";
+import { PARALLEL_MIN_SHEET_BYTES, sheetRecord, xlsxSheetsParallel } from "./xlsx-parallel";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
 const PROGRESS_EVERY_MS = 5_000;
@@ -153,6 +162,10 @@ export interface IngestOptions {
   duckMemory?: string;
   /** Thread DuckDB (env INGEST_DUCKDB_THREADS; default openDuck = 2). */
   duckThreads?: number;
+  /** Sheet xlsx dibaca paralel di worker thread (env INGEST_XLSX_SHEET_THREADS); default 1 = berurutan. */
+  sheetThreads?: number;
+  /** Uji: ambang ukuran XML sheet "besar" untuk jalur paralel (default PARALLEL_MIN_SHEET_BYTES). */
+  parallelMinSheetBytes?: number;
   /** Ukuran batch baris (default 50k); uji memakai nilai kecil. */
   batchRows?: number;
   /** Uji: buffer baca CSV DuckDB lebih kecil. */
@@ -176,6 +189,9 @@ const PARQUET = "application/vnd.apache.parquet";
 export const versionParquetPrefix = (datasetId: string, versionId: string) =>
   `parquet/${datasetId}/${versionId}/`;
 
+const TOO_HEAVY =
+  "File terlalu berat untuk diproses: memori pemrosesan tidak cukup (biasanya karena kolom sangat banyak atau sel sangat panjang). Hapus kolom yang tidak dipakai atau pecah file, lalu unggah lagi.";
+
 /** Pesan user untuk kegagalan permanen; null = sementara (diulang BullMQ). */
 export function permanentMessage(e: unknown): string | null {
   if (e instanceof StaleSnapshotError) return null;
@@ -190,6 +206,9 @@ export function permanentMessage(e: unknown): string | null {
   if (e instanceof DeadlineError) {
     return "Pemrosesan file melebihi 60 menit. Pecah file menjadi beberapa bagian lalu unggah lagi.";
   }
+  // Worker thread pembaca sheet melewati batas heap-nya (WORKER_HEAP_MB): deterministik untuk file
+  // yang sama, sama seperti memori DuckDB habis.
+  if ((e as { code?: unknown } | null)?.code === "ERR_WORKER_OUT_OF_MEMORY") return TOO_HEAVY;
   const msg = e instanceof Error ? e.message : String(e);
   // Diperiksa sebelum pola CSV: kegagalan commit appender berawalan "Invalid Input Error".
   // Memori DuckDB habis: deterministik untuk file yang sama (concurrency 1, memory_limit tetap), jadi
@@ -198,7 +217,7 @@ export function permanentMessage(e: unknown): string | null {
     /Out of Memory Error|could not allocate block|failed to pin block/i.test(msg) &&
     !/temp(orary)? directory|No space left/i.test(msg)
   ) {
-    return "File terlalu berat untuk diproses: memori pemrosesan tidak cukup (biasanya karena kolom sangat banyak atau sel sangat panjang). Hapus kolom yang tidak dipakai atau pecah file, lalu unggah lagi.";
+    return TOO_HEAVY;
   }
   // Isi file yang tidak valid menurut DuckDB (CSV rusak, kutip tidak tertutup, baris terlalu panjang).
   if (
@@ -450,7 +469,10 @@ async function refreshHeader(
   return chooseHeader([{ headerRow: active.headerRow, columns }, guessed], active.schema);
 }
 
-/** xlsx: parser memancarkan baris secara sinkron; antrean dikuras di titik `drain` (≤ satu potongan). */
+/**
+ * xlsx: parser memancarkan baris secara sinkron; antrean dikuras di titik `drain` (≤ satu potongan).
+ * sheetThreads > 1 dan ≥ 2 sheet besar → sheet di-parse paralel di worker thread (xlsx-parallel.ts).
+ */
 async function xlsxSheets(
   duck: Duck,
   src: string,
@@ -461,6 +483,30 @@ async function xlsxSheets(
   opts: IngestOptions,
   at: { row: number },
 ): Promise<{ rec: SheetRecord; path: string }[]> {
+  const threads = opts.sheetThreads ?? 1;
+  if (threads > 1) {
+    const min = opts.parallelMinSheetBytes ?? PARALLEL_MIN_SHEET_BYTES;
+    const big = (await worksheetSizes(src, limits)).filter((n) => n >= min).length;
+    if (big >= 2) {
+      try {
+        return await xlsxSheetsParallel(
+          duck,
+          src,
+          work,
+          limits,
+          threads,
+          setProgress,
+          ensureAlive,
+          opts,
+          at,
+        );
+      } catch (e) {
+        // Worker thread tidak bisa dimulai (loader/izin/lingkungan): file ini dibaca berurutan.
+        if (!(e instanceof WorkerStartError)) throw e;
+        logger.warn({ err: e.message }, "sheet xlsx paralel tidak tersedia; dibaca berurutan");
+      }
+    }
+  }
   type Item =
     | { k: "start"; sheet: number; name: string }
     | { k: "row"; row: number; vals: RawValue[] }
@@ -496,21 +542,7 @@ async function xlsxSheets(
         const path = join(work, `sheet-${it.sheet}.parquet`);
         setProgress({ rows: w.rows, fraction: 1 });
         await w.finish(path);
-        const headerRow = guessHeaderRow(w.sample);
-        const cols = Math.max(w.colCount, 1);
-        out.push({
-          path,
-          rec: {
-            index: it.sheet,
-            name,
-            rawRows: w.rows,
-            colCount: cols,
-            headerRow,
-            columns: columnNames(w.sample.find((r) => r.row === headerRow)?.vals ?? [], cols),
-            truncatedCells: 0,
-            preview: previewOf(w.sample, cols),
-          },
-        });
+        out.push({ path, rec: sheetRecord(it.sheet, name, w, 0) });
         writer = null;
         await ensureAlive();
       }

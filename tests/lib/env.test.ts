@@ -46,6 +46,20 @@ describe("parseEnv", () => {
     );
   });
 
+  it("INGEST_XLSX_SHEET_THREADS: default 2, 1–4 (T-de1b)", () => {
+    expect(parseEnv(valid).INGEST_XLSX_SHEET_THREADS).toBe(2);
+    for (const ok of [1, 4]) {
+      expect(
+        parseEnv({ ...valid, INGEST_XLSX_SHEET_THREADS: String(ok) }).INGEST_XLSX_SHEET_THREADS,
+      ).toBe(ok);
+    }
+    for (const bad of ["0", "5", "dua"]) {
+      expect(() => parseEnv({ ...valid, INGEST_XLSX_SHEET_THREADS: bad })).toThrow(
+        /INGEST_XLSX_SHEET_THREADS/,
+      );
+    }
+  });
+
   it("gagal cepat dengan nama variabel yang hilang", () => {
     const { DATABASE_URL: _omit, ...rest } = valid;
     expect(() => parseEnv(rest)).toThrow(/DATABASE_URL/);

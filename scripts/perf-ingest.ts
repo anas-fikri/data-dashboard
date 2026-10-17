@@ -2,8 +2,10 @@
  * Perf ingest tahap raw (T-006, D9): file fixture → runIngest (parser + DuckDB sungguhan) dengan
  * database palsu in-memory dan storage lokal (hard link, tanpa salinan 1 GB). Bukan bagian check.
  *   npx tsx --conditions=react-server scripts/perf-ingest.ts tests/fixtures/perf/teks-berat-1gb.xlsx
- * Keluaran: satu baris JSON (waktu dinding, waktu CPU, puncak RSS kernel, baris/kolom per sheet,
- * ukuran raw.parquet, sisa disk minimum selama proses).
+ * Keluaran: satu baris JSON (waktu dinding, waktu baca, waktu CPU, puncak RSS kernel, baris/kolom per
+ * sheet, ukuran raw.parquet, sisa disk minimum selama proses, digest hasil).
+ * INGEST_XLSX_SHEET_THREADS (bawaan 2 seperti worker) = worker thread pembaca sheet; `digest` (SHA-256
+ * metadata sheet + skema typed + isi raw/typed parquet) harus sama untuk setiap nilai (T-de1b).
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -47,7 +49,11 @@ async function main() {
   const sheets: SheetRecord[] = [];
   const typedStart = new Map<string, number>();
   const types: Record<string, number>[] = [];
+  const schemas: unknown[] = [];
   let typedSeconds = 0;
+  // Tahap baca = selesai unduh (hard link + hash) → createSheet pertama (semua sheet sudah dibaca).
+  let readStart = 0;
+  let readSeconds = 0;
   let minFree = freeGB();
   const disk = setInterval(() => {
     const f = freeGB();
@@ -70,6 +76,7 @@ async function main() {
     progress: async () => {},
     deleteSheets: async () => {},
     createSheet: async (_v, s) => {
+      if (!sheets.length) readSeconds = (performance.now() - readStart) / 1000;
       sheets.push(s);
       typedStart.set(`s${s.index}`, performance.now());
       return `s${s.index}`;
@@ -78,6 +85,7 @@ async function main() {
     // Unggah di sini hanya rename (instan): createSheet → setTyped ≈ waktu tahap typed sheet itu.
     setTyped: async (id, d) => {
       typedSeconds += (performance.now() - typedStart.get(id)!) / 1000;
+      schemas.push(d.schema);
       const counts: Record<string, number> = {};
       for (const c of d.schema) counts[c.type] = (counts[c.type] ?? 0) + 1;
       types.push(counts);
@@ -93,7 +101,9 @@ async function main() {
       linkSync(file!, dest);
       const hash = createHash("sha256");
       for await (const c of createReadStream(dest)) hash.update(c as Buffer);
-      return { sha256: hash.digest("hex"), bytes: statSync(dest).size };
+      const sha256 = hash.digest("hex");
+      readStart = performance.now();
+      return { sha256, bytes: statSync(dest).size };
     },
     upload: async (key, path) => {
       const dest = join(store, key);
@@ -107,8 +117,12 @@ async function main() {
   mkdirSync(tmp);
   const t0 = performance.now();
   const c0 = process.cpuUsage();
-  const r = await runIngest("v", repo, storage, { tmpRoot: tmp });
+  const sheetThreads = Number(process.env.INGEST_XLSX_SHEET_THREADS ?? 2);
+  const r = await runIngest("v", repo, storage, { tmpRoot: tmp, sheetThreads });
   const cpu = process.cpuUsage(c0);
+  const seconds = Math.round((performance.now() - t0) / 100) / 10;
+  // Sebelum digest: membaca parquet untuk hash menambah buffer eksternal yang belum di-GC.
+  const maxRssMB = Math.round(process.resourceUsage().maxRSS / 1024);
   clearInterval(disk);
   const sizeMB = (name: string) =>
     sheets.reduce(
@@ -117,14 +131,24 @@ async function main() {
     ) / 1048576;
   const parquetMB = sizeMB("raw.parquet");
   const typedMB = r.outcome === "done" ? sizeMB("typed-1.parquet") : 0;
+  const digest = createHash("sha256").update(JSON.stringify({ sheets, schemas }));
+  for (const s of sheets) {
+    for (const name of ["raw.parquet", "typed-1.parquet"]) {
+      const path = join(store, `parquet/perf/v/s${s.index}/${name}`);
+      if (r.outcome === "done")
+        for await (const c of createReadStream(path)) digest.update(c as Buffer);
+    }
+  }
   console.log(
     JSON.stringify({
       file: file!.split("/").pop(),
       fileMB: Math.round(statSync(file!).size / 1048576),
       outcome: r,
-      seconds: Math.round((performance.now() - t0) / 100) / 10,
+      sheetThreads,
+      seconds,
+      readSeconds: Math.round(readSeconds * 10) / 10,
       cpuSeconds: Math.round((cpu.user + cpu.system) / 1e5) / 10,
-      maxRssMB: Math.round(process.resourceUsage().maxRSS / 1024),
+      maxRssMB,
       sheets: sheets.map((s) => ({
         name: s.name,
         rawRows: s.rawRows,
@@ -137,6 +161,7 @@ async function main() {
       typedSeconds: Math.round(typedSeconds * 10) / 10,
       types,
       minFreeDiskGB: Math.round(minFree * 10) / 10,
+      digest: digest.digest("hex"),
     }),
   );
   rmSync(root, { recursive: true, force: true });

@@ -272,6 +272,40 @@ const BLOCK = 1024; // string per blok indeks
 const CHUNK = 1 << 20; // entri per chunk Uint32Array
 
 /**
+ * sharedStrings untuk worker thread pembaca sheet (sheet paralel, T-de1b), tanpa salinan per thread:
+ * isi memori dikemas sekali ke SharedArrayBuffer (UTF-8 + offset), atau file spill + indeksnya
+ * (chunk offset sudah di SharedArrayBuffer sejak dibuat).
+ */
+export type SharedSst =
+  | { kind: "mem"; bytes: Uint8Array; offsets: Uint32Array }
+  | { kind: "file"; path: string; count: number; end: number; base: number[]; rel: Uint32Array[] };
+
+const offsetIn = (base: number[], rel: Uint32Array[], i: number) =>
+  base[Math.floor(i / BLOCK)]! + rel[Math.floor(i / CHUNK)]![i % CHUNK]!;
+
+/** Isi `buf` penuh dari file spill mulai `pos`. */
+function readFully(fd: number, buf: Buffer, pos: number): Buffer {
+  for (let r = 0; r < buf.length;) {
+    const n = readSync(fd, buf, r, buf.length - r, pos + r);
+    if (n === 0) throw new Error("file sementara sharedStrings terpotong");
+    r += n;
+  }
+  return buf;
+}
+
+/** Baca [start, end) dari file spill sebagai UTF-8. */
+const readSpill = (fd: number, start: number, end: number): string =>
+  readFully(fd, Buffer.allocUnsafe(end - start), start).toString("utf8");
+
+/** Hanya string pendek (kosakata berulang) yang di-cache: ≤ 50k × 512 karakter ≈ 50 MB. */
+function remember(cache: Map<number, string>, i: number, s: string) {
+  if (s.length <= 512) {
+    if (cache.size >= 50_000) cache.clear();
+    cache.set(i, s);
+  }
+}
+
+/**
  * Shared strings: memori sampai spillBytes, lalu file sementara. Indeks = basis Float64 per 1024
  * string + offset relatif Uint32 per string (± 4 byte/string; 40 juta string ≈ 160 MB).
  */
@@ -320,12 +354,13 @@ class SstStore {
     for (const s of all) this.append(s);
   }
   private offsetOf(i: number): number {
-    return this.base[Math.floor(i / BLOCK)]! + this.rel[Math.floor(i / CHUNK)]![i % CHUNK]!;
+    return offsetIn(this.base, this.rel, i);
   }
   private append(s: string) {
     const i = this.count;
     if (i % BLOCK === 0) this.base.push(this.filePos);
-    if (i % CHUNK === 0) this.rel.push(new Uint32Array(CHUNK));
+    // SharedArrayBuffer: indeks bisa dibagi ke worker thread tanpa disalin (share()).
+    if (i % CHUNK === 0) this.rel.push(new Uint32Array(new SharedArrayBuffer(CHUNK * 4)));
     this.rel[Math.floor(i / CHUNK)]![i % CHUNK] = this.filePos - this.base[Math.floor(i / BLOCK)]!;
     const len = Buffer.byteLength(s, "utf8");
     if (this.filePos + len > this.maxFileBytes) {
@@ -356,25 +391,109 @@ class SstStore {
     if (hit !== undefined) return hit;
     const start = this.offsetOf(i);
     const end = i + 1 < this.count ? this.offsetOf(i + 1) : this.filePos;
-    const buf = Buffer.allocUnsafe(end - start);
-    for (let r = 0; r < buf.length;) {
-      const n = readSync(this.fd, buf, r, buf.length - r, start + r);
-      if (n === 0) throw new Error("file sementara sharedStrings terpotong");
-      r += n;
-    }
-    const s = buf.toString("utf8");
-    // Hanya string pendek (kosakata berulang) yang di-cache: ≤ 50k × 512 karakter ≈ 50 MB.
-    if (s.length <= 512) {
-      if (this.cache.size >= 50_000) this.cache.clear();
-      this.cache.set(i, s);
-    }
+    const s = readSpill(this.fd, start, end);
+    remember(this.cache, i, s);
     return s;
+  }
+  /**
+   * Untuk worker thread (sheet paralel). Setelah dipanggil, store ini tidak dibaca lagi di thread ini
+   * (isi memori dilepas), hanya ditutup setelah semua worker selesai.
+   */
+  share(): SharedSst {
+    if (this.fd === null) {
+      let total = 0;
+      for (const s of this.mem) total += Buffer.byteLength(s, "utf8");
+      if (total < 2 ** 32) {
+        const bytes = new Uint8Array(new SharedArrayBuffer(total));
+        const offsets = new Uint32Array(new SharedArrayBuffer((this.mem.length + 1) * 4));
+        const out = Buffer.from(bytes.buffer, 0, total);
+        let pos = 0;
+        for (let i = 0; i < this.mem.length; i++) {
+          offsets[i] = pos;
+          pos += out.write(this.mem[i]!, pos, "utf8");
+        }
+        offsets[this.mem.length] = pos;
+        this.mem = [];
+        return { kind: "mem", bytes, offsets };
+      }
+      this.spill(); // offset Uint32 tidak cukup (hanya bila SAX_SPILL_MB dinaikkan jauh)
+    }
+    this.flush();
+    return {
+      kind: "file",
+      path: join(this.dir!, "strings.bin"),
+      count: this.count,
+      end: this.filePos,
+      base: this.base.slice(),
+      rel: this.rel,
+    };
   }
   close() {
     if (this.fd !== null) closeSync(this.fd);
     if (this.dir) rmSync(this.dir, { recursive: true, force: true });
     this.fd = null;
     this.dir = null;
+  }
+}
+
+/** Halaman file spill yang ditahan per worker thread: 64 × 64 KiB = 4 MiB. */
+const PAGE = 64 * 1024;
+const PAGES = 64;
+
+/**
+ * Pembaca SharedSst di worker thread: fd dan cache sendiri, isi/indeks dibagi dengan thread utama.
+ * File spill dibaca per halaman 64 KiB, bukan satu pread per sel: string unik tersusun menurut
+ * kemunculan pertama sehingga sel berurutan jatuh di halaman yang sama, dan pread kecil serentak dari
+ * beberapa thread ke satu file saling menunggu (3 thread nyaris tidak lebih cepat dari 1).
+ */
+class SstReader {
+  readonly size: number;
+  private fd: number | null = null;
+  private buf: Buffer | null = null;
+  private cache = new Map<number, string>();
+  private pages = new Map<number, Buffer>();
+  constructor(private readonly s: SharedSst) {
+    if (s.kind === "mem") {
+      this.buf = Buffer.from(s.bytes.buffer, s.bytes.byteOffset, s.bytes.byteLength);
+      this.size = s.offsets.length - 1;
+    } else {
+      this.fd = openSync(s.path, "r");
+      this.size = s.count;
+    }
+  }
+  get(i: number): string {
+    const hit = this.cache.get(i);
+    if (hit !== undefined) return hit;
+    const s = this.s;
+    if (s.kind === "mem") {
+      // Kosakata berulang tidak didekode ulang dari SharedArrayBuffer setiap sel.
+      const v = this.buf!.toString("utf8", s.offsets[i]!, s.offsets[i + 1]!);
+      remember(this.cache, i, v);
+      return v;
+    }
+    const start = offsetIn(s.base, s.rel, i);
+    const end = i + 1 < s.count ? offsetIn(s.base, s.rel, i + 1) : s.end;
+    const n = Math.floor(start / PAGE);
+    // String yang melintasi batas halaman (atau kosong) dibaca langsung.
+    const v =
+      end > start && Math.floor((end - 1) / PAGE) === n
+        ? this.page(n, s.end).toString("utf8", start - n * PAGE, end - n * PAGE)
+        : readSpill(this.fd!, start, end);
+    remember(this.cache, i, v);
+    return v;
+  }
+  private page(n: number, fileEnd: number): Buffer {
+    let p = this.pages.get(n);
+    if (!p) {
+      if (this.pages.size >= PAGES) this.pages.delete(this.pages.keys().next().value!);
+      p = readFully(this.fd!, Buffer.allocUnsafeSlow(Math.min(PAGE, fileEnd - n * PAGE)), n * PAGE);
+      this.pages.set(n, p);
+    }
+    return p;
+  }
+  close() {
+    if (this.fd !== null) closeSync(this.fd);
+    this.fd = null;
   }
 }
 
@@ -421,6 +540,397 @@ function parseIsoNaive(s: string): Date | string {
   return Number.isNaN(d.getTime()) ? s : d;
 }
 
+/** Aturan teks sel (sharedStrings dan sel inline) + guard sax() untuk batas tertentu. */
+function textRules(limits: SaxLimits) {
+  // Teks mentah ditampung sampai 7× batas (escape _xHHHH_ = 7 karakter → 1), lalu didekode dan
+  // dipotong aman (tidak membelah pasangan surrogate). Node > maxBuffer ditolak di sax().
+  const rawMax = limits.maxCellChars * 7;
+  const guard = { maxBuffer: rawMax + 65_536, deadline: limits.deadline };
+  const cap = (cur: string, add: string): string => {
+    if (cur.length >= rawMax) return cur;
+    const next = cur + add;
+    return next.length > rawMax ? next.slice(0, rawMax) : next;
+  };
+  const finish = (raw: string): { v: string; cut: boolean } => {
+    const d = decodeOoxml(raw);
+    if (d.length <= limits.maxCellChars && raw.length < rawMax) return { v: d, cut: false };
+    let v = d.slice(0, limits.maxCellChars);
+    const last = v.charCodeAt(v.length - 1);
+    if (last >= 0xd800 && last <= 0xdbff) v = v.slice(0, -1);
+    return { v, cut: true };
+  };
+  return { guard, cap, finish };
+}
+
+function needEntry(entries: Map<string, Entry>, name: string, what: string): Entry {
+  const e = entries.get(name);
+  if (!e) throw new XlsxLimitError(`file bukan Buku Kerja Excel yang valid (${what} tidak ada)`);
+  return e;
+}
+
+/** Sheet workbook: nama + path entri worksheet dari relasinya (null = relasi tidak ada). */
+export interface BookSheet {
+  name: string;
+  target: string | null;
+}
+
+/** Bagian workbook selain worksheet yang dibutuhkan setiap sheet. */
+interface Book {
+  sheets: BookSheet[];
+  dateXf: Set<number>;
+  date1904: boolean;
+  sst: { readonly size: number; get(i: number): string };
+  truncatedSst: Set<number>;
+}
+
+/** _rels → workbook (sheet, sistem tanggal) → styles (format tanggal) → sharedStrings ke `sst`. */
+async function openBook(
+  zip: ZipFile,
+  entries: Map<string, Entry>,
+  limits: SaxLimits,
+  sst: SstStore,
+): Promise<Book> {
+  const { guard, cap, finish } = textRules(limits);
+  const truncatedSst = new Set<number>();
+  const relsOf = async (part: string) => {
+    const dir = posix.dirname(part);
+    const relPath = posix.join(dir, "_rels", `${posix.basename(part)}.rels`);
+    const out: { id: string; type: string; target: string }[] = [];
+    const e = entries.get(relPath);
+    if (!e) return out;
+    await sax(
+      zip,
+      e,
+      {
+        open: (n, a) => {
+          if (n === "Relationship" && a.Id && a.Target) {
+            if (out.length >= limits.maxEntries) {
+              throw new XlsxLimitError(`relasi berlebihan di ${relPath} (file rusak)`);
+            }
+            out.push({
+              id: own(a.Id),
+              type: own(a.Type ?? ""),
+              target: own(resolvePart(dir, a.Target)),
+            });
+          }
+        },
+      },
+      guard,
+    );
+    return out;
+  };
+
+  // _rels/.rels → workbook (nama part tidak boleh diasumsikan)
+  const rootRels = entries.has("_rels/.rels") ? await relsOf("") : [];
+  const wbPath =
+    rootRels.find((r) => r.type.endsWith("/officeDocument"))?.target.replace(/^\.\//, "") ??
+    "xl/workbook.xml";
+  const sheets: { name: string; rid: string }[] = [];
+  let date1904 = false;
+  await sax(
+    zip,
+    needEntry(entries, wbPath, "workbook"),
+    {
+      open: (n, a) => {
+        if (n === "sheet") {
+          // Diperiksa saat elemen dibaca, bukan setelah workbook selesai.
+          if (sheets.length >= limits.maxSheets) {
+            throw new XlsxLimitError(
+              `file berisi lebih dari ${limits.maxSheets} sheet; maksimal ${limits.maxSheets}`,
+            );
+          }
+          const name = a.name ?? "";
+          if (name.length > MAX_SHEET_NAME) {
+            throw new XlsxLimitError("nama sheet terlalu panjang (file bukan buatan Excel)");
+          }
+          sheets.push({ name: own(name), rid: own(relId(a)) });
+        } else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
+      },
+    },
+    guard,
+  );
+  const wbRels = await relsOf(wbPath);
+  const byId = new Map(wbRels.map((r) => [r.id, r.target]));
+
+  // styles → indeks xf bergaya tanggal
+  const dateXf = new Set<number>();
+  const stylesPath = wbRels.find((r) => r.type.endsWith("/styles"))?.target;
+  const styles = stylesPath ? entries.get(stylesPath) : undefined;
+  if (styles) {
+    const customDate = new Set<number>();
+    let inXfs = false;
+    let xf = 0;
+    let numFmts = 0;
+    await sax(
+      zip,
+      styles,
+      {
+        open: (n, a) => {
+          if (n === "numFmt") {
+            if (++numFmts > limits.maxNumFmts) {
+              throw new XlsxLimitError("format angka berlebihan (file bukan buatan Excel)");
+            }
+            if (isDateFormat(a.formatCode ?? "")) customDate.add(Number(a.numFmtId));
+          } else if (n === "cellXfs") inXfs = true;
+          else if (n === "xf" && inXfs) {
+            if (xf >= limits.maxCellXfs) {
+              throw new XlsxLimitError("format sel berlebihan (file bukan buatan Excel)");
+            }
+            const id = Number(a.numFmtId ?? 0);
+            if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
+            xf++;
+          }
+        },
+        close: (n) => {
+          if (n === "cellXfs") inXfs = false;
+        },
+      },
+      guard,
+    );
+  }
+
+  // sharedStrings (akses acak: boleh berada setelah worksheet)
+  const sstPath = wbRels.find((r) => r.type.endsWith("/sharedStrings"))?.target;
+  const sstEntry = sstPath ? entries.get(sstPath) : undefined;
+  if (sstEntry) {
+    let inSi = false;
+    let inT = false;
+    let inRph = false;
+    let cur = "";
+    await sax(
+      zip,
+      sstEntry,
+      {
+        open: (n) => {
+          if (n === "si") {
+            inSi = true;
+            cur = "";
+          } else if (n === "rPh") inRph = true;
+          else if (n === "t" && inSi && !inRph) inT = true;
+        },
+        close: (n) => {
+          if (n === "t") inT = false;
+          else if (n === "rPh") inRph = false;
+          else if (n === "si") {
+            inSi = false;
+            const { v, cut } = finish(cur);
+            if (cut) truncatedSst.add(sst.size);
+            sst.push(v);
+          }
+        },
+        text: (t) => {
+          if (inT) cur = cap(cur, t);
+        },
+      },
+      guard,
+    );
+  }
+
+  return {
+    // Sheet dicari lewat nama (nama ganda → relasi sheet pertama bernama itu), sama untuk semua jalur.
+    sheets: sheets.map((s) => {
+      const first = sheets.find((x) => x.name === s.name)!;
+      return { name: s.name, target: byId.get(first.rid) ?? null };
+    }),
+    dateXf,
+    date1904,
+    sst,
+    truncatedSst,
+  };
+}
+
+/** Satu worksheet → onRow per baris terisi (jalur berurutan dan worker thread sheet paralel). */
+async function readSheet(
+  zip: ZipFile,
+  entries: Map<string, Entry>,
+  book: Book,
+  limits: SaxLimits,
+  si: number,
+  sheetLabel: string,
+  opts: Pick<ParseOptions, "onSheetStart" | "onSheetEnd" | "onProgress" | "drain">,
+  onRow: OnRow,
+  summary: ParseSummary,
+): Promise<void> {
+  const { guard, cap, finish } = textRules(limits);
+  const { sst, truncatedSst, dateXf, date1904 } = book;
+  const epoch = date1904 ? EPOCH_1904 : EPOCH_1900;
+  const target = book.sheets.find((s) => s.name === sheetLabel)?.target;
+  if (!target) throw new XlsxLimitError(`sheet "${sheetLabel}" tidak ditemukan`);
+  let rowNum = 0;
+  let prevRow = 0;
+  let vals: RawValue[] = [];
+  let any = false;
+  let rowChars = 0;
+  let col = -1;
+  let type = "";
+  let style = 0;
+  let inV = false;
+  let inIsT = false;
+  let text = "";
+  let rowsSeen = 0;
+  const where = () => `sheet "${sheetLabel}" baris ${rowNum}`;
+  const sheetEntry = needEntry(entries, target, `sheet ${sheetLabel}`);
+  opts.onSheetStart?.(si, sheetLabel);
+  let consumerErr: unknown = null;
+  try {
+    await sax(
+      zip,
+      sheetEntry,
+      {
+        open: (n, a) => {
+          if (n === "row") {
+            rowNum = a.r ? Number(a.r) : prevRow + 1;
+            if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
+              throw new XlsxLimitError(
+                `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
+              );
+            }
+            if (rowNum > limits.maxRows) {
+              throw new XlsxLimitError(
+                `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
+              );
+            }
+            vals = [];
+            rowChars = 0;
+            any = false;
+            col = -1;
+          } else if (n === "c") {
+            col = a.r ? colIndex(a.r) : col + 1;
+            if (col < 0 || col >= limits.maxCols) {
+              throw new XlsxLimitError(
+                `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
+              );
+            }
+            type = a.t ?? "n";
+            style = Number(a.s ?? 0);
+            text = "";
+          } else if (n === "v") inV = true;
+          else if (n === "t" && type === "inlineStr") inIsT = true;
+        },
+        text: (t) => {
+          if (inV || inIsT) text = cap(text, t);
+        },
+        close: (n) => {
+          if (n === "v") inV = false;
+          else if (n === "t") inIsT = false;
+          else if (n === "c") {
+            let v: RawValue = null;
+            if (type === "s") {
+              if (text !== "") {
+                const idx = Number(text);
+                if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
+                  throw new XlsxLimitError(`${where()}: referensi teks tidak valid (file rusak)`);
+                }
+                v = sst.get(idx);
+                if (truncatedSst.size && truncatedSst.has(idx)) {
+                  summary.truncatedCells++;
+                  summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
+                }
+              }
+            } else if (type === "inlineStr" || type === "str" || type === "e") {
+              if (text !== "") {
+                const f = finish(text);
+                v = own(f.v);
+                if (f.cut) {
+                  summary.truncatedCells++;
+                  summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
+                }
+              }
+            } else if (type === "b") v = text === "" ? null : text === "1";
+            else if (type === "d") {
+              const d = text === "" ? null : parseIsoNaive(text);
+              v = typeof d === "string" ? own(d) : d;
+            } else if (text !== "") {
+              const num = Number(text);
+              if (Number.isNaN(num)) v = own(text);
+              else if (!dateXf.has(style)) v = num;
+              else {
+                const d = new Date(epoch + Math.round(num * 86_400_000));
+                // Seri < 61 sistem 1900: teks ISO lengkap ber-T (19 karakter) — penanda sel bernomor
+                // seri untuk koreksi kabisat 1900 Excel di cast kolom tanggal (infer.ts excel1900).
+                v = !date1904 && num < 61 ? d.toISOString().slice(0, 19) : d;
+              }
+            }
+            if (v !== null) {
+              if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {
+                throw new XlsxLimitError(
+                  `${where()}: isi satu baris melebihi ${MAX_ROW_CHARS.toLocaleString("id-ID")} karakter`,
+                );
+              }
+              vals[col] = v;
+              any = true;
+            }
+          } else if (n === "row") {
+            prevRow = rowNum;
+            if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
+            if (limits.deadline && ++rowsSeen % 1000 === 0 && Date.now() > limits.deadline) {
+              throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
+            }
+          }
+        },
+      },
+      {
+        ...guard,
+        onChunk: (chars) =>
+          opts.onProgress?.({
+            sheet: si,
+            sheetName: sheetLabel,
+            fraction: Math.min(1, chars / Math.max(1, sheetEntry.uncompressedSize)),
+          }),
+        afterChunk: opts.drain
+          ? async () => {
+              try {
+                await opts.drain!();
+              } catch (e) {
+                consumerErr = e; // error konsumen (DB/storage/dataset dihapus) diteruskan apa adanya
+                throw e;
+              }
+            }
+          : undefined,
+      },
+    );
+  } catch (err) {
+    if (err instanceof XlsxLimitError || err === consumerErr) throw err;
+    // XML/zip rusak di tengah sheet → pesan dengan posisi (sheet/baris) untuk user.
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new XlsxLimitError(
+      `${where()}: file rusak, tidak bisa dibaca lebih lanjut (${msg.slice(0, 120)})`,
+    );
+  }
+  opts.onSheetEnd?.(si);
+  await opts.drain?.();
+}
+
+/** drain yang menandai error konsumen (DB/storage/dataset dihapus) agar diteruskan apa adanya. */
+function markedDrain(
+  drain: (() => Promise<void>) | undefined,
+  consumerErrs: WeakSet<object>,
+): (() => Promise<void>) | undefined {
+  return drain
+    ? async () => {
+        try {
+          await drain();
+        } catch (e) {
+          if (e && typeof e === "object") consumerErrs.add(e);
+          throw e;
+        }
+      }
+    : undefined;
+}
+
+/** Error yang keluar dari parse (sama untuk jalur berurutan dan worker thread). */
+function parseError(e: unknown, consumerErrs: WeakSet<object>): unknown {
+  if (e instanceof XlsxLimitError) return e;
+  if (e && typeof e === "object" && consumerErrs.has(e)) return e;
+  // Error sistem (ENOSPC, EIO, ENOENT, …) = gangguan worker, bukan isi file → diulang.
+  const code = (e as { code?: unknown } | null)?.code;
+  if (typeof code === "string" && /^E[A-Z0-9]+$/.test(code)) return e;
+  // Selain itu: zip/XML rusak di luar sheet (central directory, workbook, styles, sharedStrings).
+  return new XlsxLimitError(
+    "File bukan Buku Kerja Excel yang valid, atau rusak/terpotong. Buka di Excel, simpan ulang sebagai .xlsx, lalu unggah lagi.",
+  );
+}
+
 export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
   const parseBody = async (
     path: string,
@@ -436,318 +946,12 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
       limits.maxSpillBytes,
     );
     const summary: ParseSummary = { truncatedCells: 0, truncatedBySheet: [] };
-    const truncatedSst = new Set<number>();
-    // Teks mentah ditampung sampai 7× batas (escape _xHHHH_ = 7 karakter → 1), lalu didekode dan
-    // dipotong aman (tidak membelah pasangan surrogate). Node > maxBuffer ditolak di sax().
-    const rawMax = limits.maxCellChars * 7;
-    const guard = { maxBuffer: rawMax + 65_536, deadline: limits.deadline };
-    const cap = (cur: string, add: string): string => {
-      if (cur.length >= rawMax) return cur;
-      const next = cur + add;
-      return next.length > rawMax ? next.slice(0, rawMax) : next;
-    };
-    const finish = (raw: string): { v: string; cut: boolean } => {
-      const d = decodeOoxml(raw);
-      if (d.length <= limits.maxCellChars && raw.length < rawMax) return { v: d, cut: false };
-      let v = d.slice(0, limits.maxCellChars);
-      const last = v.charCodeAt(v.length - 1);
-      if (last >= 0xd800 && last <= 0xdbff) v = v.slice(0, -1);
-      return { v, cut: true };
-    };
     try {
       const entries = await listEntries(zip, limits, fileSize);
-      const need = (name: string, what: string) => {
-        const e = entries.get(name);
-        if (!e)
-          throw new XlsxLimitError(`file bukan Buku Kerja Excel yang valid (${what} tidak ada)`);
-        return e;
-      };
-      const relsOf = async (part: string) => {
-        const dir = posix.dirname(part);
-        const relPath = posix.join(dir, "_rels", `${posix.basename(part)}.rels`);
-        const out: { id: string; type: string; target: string }[] = [];
-        const e = entries.get(relPath);
-        if (!e) return out;
-        await sax(
-          zip,
-          e,
-          {
-            open: (n, a) => {
-              if (n === "Relationship" && a.Id && a.Target) {
-                if (out.length >= limits.maxEntries) {
-                  throw new XlsxLimitError(`relasi berlebihan di ${relPath} (file rusak)`);
-                }
-                out.push({
-                  id: own(a.Id),
-                  type: own(a.Type ?? ""),
-                  target: own(resolvePart(dir, a.Target)),
-                });
-              }
-            },
-          },
-          guard,
-        );
-        return out;
-      };
-
-      // _rels/.rels → workbook (nama part tidak boleh diasumsikan)
-      const rootRels = entries.has("_rels/.rels") ? await relsOf("") : [];
-      const wbPath =
-        rootRels.find((r) => r.type.endsWith("/officeDocument"))?.target.replace(/^\.\//, "") ??
-        "xl/workbook.xml";
-      const sheets: { name: string; rid: string }[] = [];
-      let date1904 = false;
-      await sax(
-        zip,
-        need(wbPath, "workbook"),
-        {
-          open: (n, a) => {
-            if (n === "sheet") {
-              // Diperiksa saat elemen dibaca, bukan setelah workbook selesai.
-              if (sheets.length >= limits.maxSheets) {
-                throw new XlsxLimitError(
-                  `file berisi lebih dari ${limits.maxSheets} sheet; maksimal ${limits.maxSheets}`,
-                );
-              }
-              const name = a.name ?? "";
-              if (name.length > MAX_SHEET_NAME) {
-                throw new XlsxLimitError("nama sheet terlalu panjang (file bukan buatan Excel)");
-              }
-              sheets.push({ name: own(name), rid: own(relId(a)) });
-            } else if (n === "workbookPr") date1904 = a.date1904 === "1" || a.date1904 === "true";
-          },
-        },
-        guard,
-      );
-      const wbRels = await relsOf(wbPath);
-      const byId = new Map(wbRels.map((r) => [r.id, r.target]));
-      const epoch = date1904 ? EPOCH_1904 : EPOCH_1900;
-
-      // styles → indeks xf bergaya tanggal
-      const dateXf = new Set<number>();
-      const stylesPath = wbRels.find((r) => r.type.endsWith("/styles"))?.target;
-      const styles = stylesPath ? entries.get(stylesPath) : undefined;
-      if (styles) {
-        const customDate = new Set<number>();
-        let inXfs = false;
-        let xf = 0;
-        let numFmts = 0;
-        await sax(
-          zip,
-          styles,
-          {
-            open: (n, a) => {
-              if (n === "numFmt") {
-                if (++numFmts > limits.maxNumFmts) {
-                  throw new XlsxLimitError("format angka berlebihan (file bukan buatan Excel)");
-                }
-                if (isDateFormat(a.formatCode ?? "")) customDate.add(Number(a.numFmtId));
-              } else if (n === "cellXfs") inXfs = true;
-              else if (n === "xf" && inXfs) {
-                if (xf >= limits.maxCellXfs) {
-                  throw new XlsxLimitError("format sel berlebihan (file bukan buatan Excel)");
-                }
-                const id = Number(a.numFmtId ?? 0);
-                if (BUILTIN_DATE_FMTS.has(id) || customDate.has(id)) dateXf.add(xf);
-                xf++;
-              }
-            },
-            close: (n) => {
-              if (n === "cellXfs") inXfs = false;
-            },
-          },
-          guard,
-        );
-      }
-
-      // sharedStrings (akses acak: boleh berada setelah worksheet)
-      const sstPath = wbRels.find((r) => r.type.endsWith("/sharedStrings"))?.target;
-      const sstEntry = sstPath ? entries.get(sstPath) : undefined;
-      if (sstEntry) {
-        let inSi = false;
-        let inT = false;
-        let inRph = false;
-        let cur = "";
-        await sax(
-          zip,
-          sstEntry,
-          {
-            open: (n) => {
-              if (n === "si") {
-                inSi = true;
-                cur = "";
-              } else if (n === "rPh") inRph = true;
-              else if (n === "t" && inSi && !inRph) inT = true;
-            },
-            close: (n) => {
-              if (n === "t") inT = false;
-              else if (n === "rPh") inRph = false;
-              else if (n === "si") {
-                inSi = false;
-                const { v, cut } = finish(cur);
-                if (cut) truncatedSst.add(sst.size);
-                sst.push(v);
-              }
-            },
-            text: (t) => {
-              if (inT) cur = cap(cur, t);
-            },
-          },
-          guard,
-        );
-      }
-
-      const wanted = opts.sheetNames.length ? opts.sheetNames : sheets.map((s) => s.name);
+      const book = await openBook(zip, entries, limits, sst);
+      const wanted = opts.sheetNames.length ? opts.sheetNames : book.sheets.map((s) => s.name);
       for (let si = 0; si < wanted.length; si++) {
-        const sheetLabel = wanted[si]!;
-        const meta = sheets.find((s) => s.name === sheetLabel);
-        const target = meta ? byId.get(meta.rid) : undefined;
-        if (!target) throw new XlsxLimitError(`sheet "${sheetLabel}" tidak ditemukan`);
-        let rowNum = 0;
-        let prevRow = 0;
-        let vals: RawValue[] = [];
-        let any = false;
-        let rowChars = 0;
-        let col = -1;
-        let type = "";
-        let style = 0;
-        let inV = false;
-        let inIsT = false;
-        let text = "";
-        let rowsSeen = 0;
-        const where = () => `sheet "${sheetLabel}" baris ${rowNum}`;
-        const sheetEntry = need(target, `sheet ${sheetLabel}`);
-        opts.onSheetStart?.(si, sheetLabel);
-        let consumerErr: unknown = null;
-        try {
-          await sax(
-            zip,
-            sheetEntry,
-            {
-              open: (n, a) => {
-                if (n === "row") {
-                  rowNum = a.r ? Number(a.r) : prevRow + 1;
-                  if (!Number.isInteger(rowNum) || rowNum <= prevRow) {
-                    throw new XlsxLimitError(
-                      `nomor baris tidak valid di sheet "${sheetLabel}" (baris ${a.r ?? "?"})`,
-                    );
-                  }
-                  if (rowNum > limits.maxRows) {
-                    throw new XlsxLimitError(
-                      `${where()}: melebihi batas ${limits.maxRows.toLocaleString("id-ID")} baris per sheet`,
-                    );
-                  }
-                  vals = [];
-                  rowChars = 0;
-                  any = false;
-                  col = -1;
-                } else if (n === "c") {
-                  col = a.r ? colIndex(a.r) : col + 1;
-                  if (col < 0 || col >= limits.maxCols) {
-                    throw new XlsxLimitError(
-                      `${where()}: kolom melebihi batas ${limits.maxCols.toLocaleString("id-ID")}`,
-                    );
-                  }
-                  type = a.t ?? "n";
-                  style = Number(a.s ?? 0);
-                  text = "";
-                } else if (n === "v") inV = true;
-                else if (n === "t" && type === "inlineStr") inIsT = true;
-              },
-              text: (t) => {
-                if (inV || inIsT) text = cap(text, t);
-              },
-              close: (n) => {
-                if (n === "v") inV = false;
-                else if (n === "t") inIsT = false;
-                else if (n === "c") {
-                  let v: RawValue = null;
-                  if (type === "s") {
-                    if (text !== "") {
-                      const idx = Number(text);
-                      if (!Number.isInteger(idx) || idx < 0 || idx >= sst.size) {
-                        throw new XlsxLimitError(
-                          `${where()}: referensi teks tidak valid (file rusak)`,
-                        );
-                      }
-                      v = sst.get(idx);
-                      if (truncatedSst.size && truncatedSst.has(idx)) {
-                        summary.truncatedCells++;
-                        summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
-                      }
-                    }
-                  } else if (type === "inlineStr" || type === "str" || type === "e") {
-                    if (text !== "") {
-                      const f = finish(text);
-                      v = own(f.v);
-                      if (f.cut) {
-                        summary.truncatedCells++;
-                        summary.truncatedBySheet[si] = (summary.truncatedBySheet[si] ?? 0) + 1;
-                      }
-                    }
-                  } else if (type === "b") v = text === "" ? null : text === "1";
-                  else if (type === "d") {
-                    const d = text === "" ? null : parseIsoNaive(text);
-                    v = typeof d === "string" ? own(d) : d;
-                  } else if (text !== "") {
-                    const num = Number(text);
-                    if (Number.isNaN(num)) v = own(text);
-                    else if (!dateXf.has(style)) v = num;
-                    else {
-                      const d = new Date(epoch + Math.round(num * 86_400_000));
-                      // Seri < 61 sistem 1900: teks ISO lengkap ber-T (19 karakter) — penanda sel bernomor
-                      // seri untuk koreksi kabisat 1900 Excel di cast kolom tanggal (infer.ts excel1900).
-                      v = !date1904 && num < 61 ? d.toISOString().slice(0, 19) : d;
-                    }
-                  }
-                  if (v !== null) {
-                    if (typeof v === "string" && (rowChars += v.length) > MAX_ROW_CHARS) {
-                      throw new XlsxLimitError(
-                        `${where()}: isi satu baris melebihi ${MAX_ROW_CHARS.toLocaleString("id-ID")} karakter`,
-                      );
-                    }
-                    vals[col] = v;
-                    any = true;
-                  }
-                } else if (n === "row") {
-                  prevRow = rowNum;
-                  if (any) onRow(si, rowNum, vals); // baris tanpa nilai (hanya gaya) tidak dipancarkan
-                  if (limits.deadline && ++rowsSeen % 1000 === 0 && Date.now() > limits.deadline) {
-                    throw new XlsxLimitError("waktu pemrosesan file melebihi batas");
-                  }
-                }
-              },
-            },
-            {
-              ...guard,
-              onChunk: (chars) =>
-                opts.onProgress?.({
-                  sheet: si,
-                  sheetName: sheetLabel,
-                  fraction: Math.min(1, chars / Math.max(1, sheetEntry.uncompressedSize)),
-                }),
-              afterChunk: opts.drain
-                ? async () => {
-                    try {
-                      await opts.drain!();
-                    } catch (e) {
-                      consumerErr = e; // error konsumen (DB/storage/dataset dihapus) diteruskan apa adanya
-                      throw e;
-                    }
-                  }
-                : undefined,
-            },
-          );
-        } catch (err) {
-          if (err instanceof XlsxLimitError || err === consumerErr) throw err;
-          // XML/zip rusak di tengah sheet → pesan dengan posisi (sheet/baris) untuk user.
-          const msg = err instanceof Error ? err.message : String(err);
-          throw new XlsxLimitError(
-            `${where()}: file rusak, tidak bisa dibaca lebih lanjut (${msg.slice(0, 120)})`,
-          );
-        }
-        opts.onSheetEnd?.(si);
-        await opts.drain?.();
+        await readSheet(zip, entries, book, limits, si, wanted[si]!, opts, onRow, summary);
       }
       return summary;
     } finally {
@@ -760,31 +964,139 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
     name: "sax-yauzl",
     physicalRowNumbers: true,
     async parse(path, opts, onRow): Promise<ParseSummary> {
-      // Error konsumen (drain: DB/storage/dataset dihapus) diteruskan apa adanya.
       const consumerErrs = new WeakSet<object>();
-      const drain = opts.drain
-        ? async () => {
-            try {
-              await opts.drain!();
-            } catch (e) {
-              if (e && typeof e === "object") consumerErrs.add(e);
-              throw e;
-            }
-          }
-        : undefined;
       try {
-        return await parseBody(path, { ...opts, drain }, onRow);
-      } catch (e) {
-        if (e instanceof XlsxLimitError) throw e;
-        if (e && typeof e === "object" && consumerErrs.has(e)) throw e;
-        // Error sistem (ENOSPC, EIO, ENOENT, …) = gangguan worker, bukan isi file → diulang.
-        const code = (e as { code?: unknown } | null)?.code;
-        if (typeof code === "string" && /^E[A-Z0-9]+$/.test(code)) throw e;
-        // Selain itu: zip/XML rusak di luar sheet (central directory, workbook, styles, sharedStrings).
-        throw new XlsxLimitError(
-          "File bukan Buku Kerja Excel yang valid, atau rusak/terpotong. Buka di Excel, simpan ulang sebagai .xlsx, lalu unggah lagi.",
+        return await parseBody(
+          path,
+          { ...opts, drain: markedDrain(opts.drain, consumerErrs) },
+          onRow,
         );
+      } catch (e) {
+        throw parseError(e, consumerErrs);
       }
     },
   };
+}
+
+/** Workbook yang sudah dibaca thread utama; dikirim ke worker thread pembaca sheet (structured clone). */
+export interface SharedBook {
+  path: string;
+  limits: SaxLimits;
+  sheets: BookSheet[];
+  dateXf: number[];
+  date1904: boolean;
+  sst: SharedSst;
+  truncatedSst: number[];
+}
+
+/**
+ * Sheet paralel (T-de1b): workbook, styles, dan sharedStrings dibaca sekali di thread ini; tiap
+ * sheet lalu dibaca parseSharedSheet di worker thread. close() (setelah semua worker selesai)
+ * menghapus spill sharedStrings.
+ */
+export async function openSharedBook(
+  path: string,
+  tmpDir: string,
+  limits: SaxLimits = DEFAULT_LIMITS,
+): Promise<{ book: SharedBook; close(): void }> {
+  try {
+    const zip = await openZip(path);
+    const sst = new SstStore(
+      tmpDir,
+      limits.spillBytes,
+      limits.maxSharedStrings,
+      limits.maxSpillBytes,
+    );
+    try {
+      const entries = await listEntries(zip, limits, statSync(path).size);
+      const b = await openBook(zip, entries, limits, sst);
+      const book: SharedBook = {
+        path,
+        limits,
+        sheets: b.sheets,
+        dateXf: [...b.dateXf],
+        date1904: b.date1904,
+        sst: sst.share(),
+        truncatedSst: [...b.truncatedSst],
+      };
+      return { book, close: () => sst.close() };
+    } catch (e) {
+      sst.close();
+      throw e;
+    } finally {
+      zip.close();
+    }
+  } catch (e) {
+    throw parseError(e, new WeakSet());
+  }
+}
+
+/** Satu sheet SharedBook (dipanggil di worker thread). Hasil = jumlah sel terpotong di sheet itu. */
+export async function parseSharedSheet(
+  book: SharedBook,
+  si: number,
+  opts: Pick<ParseOptions, "onProgress" | "drain">,
+  onRow: OnRow,
+): Promise<number> {
+  const consumerErrs = new WeakSet<object>();
+  try {
+    const zip = await openZip(book.path);
+    let sst: SstReader | null = null;
+    try {
+      sst = new SstReader(book.sst);
+      const entries = await listEntries(zip, book.limits, statSync(book.path).size);
+      const summary: ParseSummary = { truncatedCells: 0, truncatedBySheet: [] };
+      const b: Book = {
+        sheets: book.sheets,
+        dateXf: new Set(book.dateXf),
+        date1904: book.date1904,
+        sst,
+        truncatedSst: new Set(book.truncatedSst),
+      };
+      const sheetOpts = {
+        onProgress: opts.onProgress,
+        drain: markedDrain(opts.drain, consumerErrs),
+      };
+      await readSheet(
+        zip,
+        entries,
+        b,
+        book.limits,
+        si,
+        book.sheets[si]!.name,
+        sheetOpts,
+        onRow,
+        summary,
+      );
+      return summary.truncatedBySheet[si] ?? 0;
+    } finally {
+      sst?.close();
+      zip.close();
+    }
+  } catch (e) {
+    throw parseError(e, consumerErrs);
+  }
+}
+
+/**
+ * Ukuran XML tak terkompresi entri worksheet (xl/worksheets/*.xml) dari central directory, tanpa
+ * membaca isi: penentu murah apakah sheet paralel sepadan. Zip tidak valid → [] (jalur berurutan yang
+ * melaporkan galatnya).
+ */
+export async function worksheetSizes(
+  path: string,
+  limits: SaxLimits = DEFAULT_LIMITS,
+): Promise<number[]> {
+  let zip: ZipFile | null = null;
+  try {
+    zip = await openZip(path);
+    const entries = await listEntries(zip, limits, statSync(path).size);
+    return [...entries.values()]
+      .filter((e) => /(^|\/)worksheets\/[^/]+\.xml$/.test(e.fileName))
+      .map((e) => e.uncompressedSize);
+  } catch {
+    return [];
+  } finally {
+    zip?.close();
+  }
 }
