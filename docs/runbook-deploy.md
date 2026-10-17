@@ -48,6 +48,22 @@ deploy/deploy.sh          # build image, migrasi, init storage + service account
 `migrate` dan `storage-init` (bucket, CORS, lifecycle, service account berpolicy prefix) harus selesai
 sukses sebelum `app`/`worker`; `proxy` menunggu `app` dan `rustfs` sehat.
 
+### Deploy tanpa build di VM (image siap pakai, disarankan)
+
+Build Next di VM kecil/HDD lambat (olympus: 16 menit). Image tidak memuat nilai lingkungan, jadi build
+sekali di mesin build (CPU/disk cepat, Docker buildx), lalu muat di VM:
+
+```bash
+# mesin build (folder repo, commit yang akan dirilis)
+bash deploy/images.sh build              # 4 image linux/amd64 bertag commit (mis. ab88b55)
+bash deploy/images.sh save dashboard-images.tar.gz
+scp dashboard-images.tar.gz <server>:/tmp/
+# VM (folder aplikasi, kode commit yang sama)
+bash deploy/images.sh load /tmp/dashboard-images.tar.gz
+echo IMAGE_TAG=ab88b55 >> .env.prod      # atau ubah baris IMAGE_TAG yang ada
+bash deploy/deploy.sh --no-build         # migrasi + up + tunggu sehat, tanpa build
+```
+
 ### Admin pertama
 
 1. Daftar lewat `https://<APP_HOST>/register` dengan email perusahaan, lalu aktifkan dari email.

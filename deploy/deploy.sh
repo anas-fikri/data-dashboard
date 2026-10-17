@@ -4,11 +4,14 @@
 #   1. deploy/deploy.sh          → bila .env.prod belum ada: dibuat dengan semua secret acak, lalu berhenti
 #                                   agar operator mengisi nilai yang ditandai ISI_*.
 #   2. deploy/deploy.sh          → build image, migrasi, init storage + service account, up, tunggu sehat.
+#      deploy/deploy.sh --no-build → sama, tanpa build: image IMAGE_TAG sudah dimuat (deploy/images.sh).
 # Secret tidak pernah dicetak. .env.prod mode 600, jangan di-commit (sudah di .gitignore/.dockerignore).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ENV_FILE=.env.prod
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml)
+NO_BUILD=
+[ "${1:-}" != --no-build ] || NO_BUILD=1
 
 rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
 
@@ -67,8 +70,16 @@ fi
 COMPOSE_PROFILES=$(grep '^COMPOSE_PROFILES=' "$ENV_FILE" | cut -d= -f2- || true)
 export COMPOSE_PROFILES
 start=$(date +%s)
-"${COMPOSE[@]}" build
-"${COMPOSE[@]}" up -d --wait --wait-timeout 600
+if [ -n "$NO_BUILD" ]; then
+  tag=$(grep '^IMAGE_TAG=' "$ENV_FILE" | cut -d= -f2-)
+  for i in app worker renderer backup; do
+    docker image inspect "dashboard-$i:${tag:-latest}" >/dev/null 2>&1 ||
+      { echo "image dashboard-$i:${tag:-latest} belum dimuat (deploy/images.sh load)" >&2; exit 1; }
+  done
+else
+  "${COMPOSE[@]}" build
+fi
+"${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 600
 # Caddyfile dan skrip backup di-mount per file: setelah file diganti (sinkron kode), container lama tetap
 # melihat isi lama dan compose tidak menganggapnya berubah. Buat ulang agar selalu memakai versi terbaru.
 "${COMPOSE[@]}" up -d --no-deps --force-recreate --wait --wait-timeout 300 proxy backup
