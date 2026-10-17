@@ -4,7 +4,6 @@
 
 - T-024 [blocked] Uji performa 1 GB end-to-end dan batas sumber daya — docs/ai/tasks/T-024-uji-performa-1-gb-end-to-end-dan-batas-sumber-da.md
 - T-034 [in_progress] Spike penyimpanan segmen per periode dan tetapkan ADR model data periode — docs/ai/tasks/T-034-spike-penyimpanan-segmen-per-periode-dan-tetapka.md
-- T-035 [in_progress] Spike komponen grid: AG Grid Community vs Glide Data Grid di React 19/Next 16 — docs/ai/tasks/T-035-spike-komponen-grid-ag-grid-community-vs-glide-d.md
 - T-043 [todo] Bangun halaman 'Lihat data' bergaya lembar kerja (baca-saja) — docs/ai/tasks/T-043-bangun-halaman-lihat-data-bergaya-lembar-kerja-b.md
 - T-023 [blocked] Paket deploy on-prem Docker Compose produksi — docs/ai/tasks/T-023-paket-deploy-on-prem-docker-compose-produksi.md
 - T-tqse [todo] Deploy dari image yang di-build di luar VM — docs/ai/tasks/T-tqse-deploy-dari-image-yang-di-build-di-luar-vm.md
