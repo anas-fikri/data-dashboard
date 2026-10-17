@@ -138,6 +138,65 @@ describe("T-028 (review): pencocokan penuh, locale US, kolom teks", () => {
   });
 });
 
+describe("T-t1g0: ribuan gaya US di kolom yang dibaca id-ID ditandai", () => {
+  it("CSV id-ID dengan '1,500' / '12,345' → tetap id-ID tapi ditandai; id-ID bersih tidak", async () => {
+    const { col } = await ingest(
+      t.file(
+        "ambigu-us.csv",
+        csv(
+          ["berat", "harga", "kurs"],
+          [
+            ["1,500", "1.250.000", "12,5"],
+            ["12,345", "2.500.000", "3,25"],
+            ...range(40, (i) => [`${i + 1},${(i % 9) + 1}`, `${i + 1}.${100 + i}.000`, `${i},75`]),
+          ],
+        ),
+      ),
+    );
+    // "1,500" terbaca 1,5 (desimal id-ID): ditandai agar user memeriksa "Penulisan angka".
+    expect(col("berat")).toMatchObject({
+      type: "decimal",
+      numberLocale: "id",
+      localeAmbiguous: true,
+    });
+    expect(col("berat").values.slice(0, 2)).toEqual([1.5, 12.345]);
+    // Ribuan titik dan desimal koma 1–2 digit: id-ID jelas, tidak ditandai.
+    expect(col("harga")).toMatchObject({ type: "integer", numberLocale: "id" });
+    expect(col("harga").localeAmbiguous).toBeUndefined();
+    expect(col("kurs")).toMatchObject({ type: "decimal", numberLocale: "id" });
+    expect(col("kurs").localeAmbiguous).toBeUndefined();
+  });
+
+  it("bilangan bulat id-ID dengan '1,000' ditandai; seri bukti lemah → mayoritas (US) dan ditandai", async () => {
+    const { col } = await ingest(
+      t.file(
+        "ambigu-us-bulat.csv",
+        csv(
+          ["koli", "ongkos"],
+          [
+            ["1,000", "2.500"],
+            ...range(40, (i) => [`${i + 1}.${100 + i}.000`, `${i + 1},${100 + i}`]),
+          ],
+        ),
+      ),
+    );
+    // "1,000" terbaca 1 di id-ID (1000× lebih kecil): cabang bilangan bulat ikut ditandai.
+    expect(col("koli")).toMatchObject({
+      type: "integer",
+      numberLocale: "id",
+      localeAmbiguous: true,
+    });
+    expect(col("koli").values[0]).toBe(1n);
+    // 40 "1,1xx" vs 1 "2.500", tanpa bukti kuat: dibaca US (ribuan), "2.500" ditandai seperti T-030.
+    expect(col("ongkos")).toMatchObject({
+      type: "decimal",
+      numberLocale: "us",
+      localeAmbiguous: true,
+    });
+    expect(col("ongkos").values.slice(0, 2)).toEqual([2.5, 1100]);
+  });
+});
+
 describe("T-030: locale angka ambigu ditandai", () => {
   it("CSV: mayoritas '1.500' + satu '1.5' → dibaca US tapi ditandai ambigu; ribuan id-ID jelas tidak ditandai", async () => {
     const { col } = await ingest(
@@ -527,6 +586,7 @@ describe("decide (unit)", () => {
     idStrong: 0,
     usStrong: 0,
     idWeak: 0,
+    usWeak: 0,
     idText0: 0,
     intUs: 0,
     intId: 0,
@@ -552,6 +612,8 @@ describe("decide (unit)", () => {
     const p = { ...base, n: 10, idWeak: 10, intId: 10, numId: 10, decId: 10, numUs: 10, decUs: 10 };
     expect(decide(p, "csv")).toEqual({ type: "integer", numberLocale: "id" });
     expect(decide(p, "xlsx")).toEqual({ type: "decimal", numberLocale: "us" });
+    // T-t1g0: "1,500" lebih banyak dari "1.234" → US.
+    expect(decide({ ...p, usWeak: 11, intUs: 10 }, "csv").numberLocale).toBe("us");
   });
 
   it("seri tanggal dd/mm vs mm/dd → hari di depan", () => {

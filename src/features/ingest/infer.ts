@@ -41,8 +41,9 @@ export interface ColumnSchema {
   /** Desimal disimpan DOUBLE (ada nilai > 6 digit pecahan atau notasi eksponen); selain itu DECIMAL(38,6). */
   float?: boolean;
   /**
-   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030): total bisa
-   * 1000× lebih kecil tanpa gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
+   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030), atau dibaca
+   * id-ID padahal ada ribuan gaya US ("1,500" terbaca 1,5; T-t1g0): total bisa 1000× lebih kecil tanpa
+   * gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
    */
   localeAmbiguous?: true;
   hidden: boolean;
@@ -115,6 +116,8 @@ const RE = {
   usStrong: String.raw`[+-]?([1-9]\d{0,2}(,\d{3}){2,}(\.\d+)?|[1-9]\d{0,2}(,\d{3})+\.\d+|\d*\.(\d{1,2}|\d{4,})([eE][+-]?\d+)?|0\.\d+|\d+(\.\d+)?[eE][+-]?\d+)`,
   /** Ambigu: 1.234 (ID ribuan / US desimal 3 digit). */
   idWeak: String.raw`[+-]?[1-9]\d{0,2}\.\d{3}`,
+  /** Ambigu kebalikannya: 1,500 (US ribuan / ID desimal 3 digit; T-t1g0). */
+  usWeak: String.raw`[+-]?[1-9]\d{0,2},\d{3}`,
   /** Tidak muat persis di DECIMAL(38,6): > 6 digit pecahan atau eksponen. */
   wideUs: String.raw`\.\d{7}|[eE]`,
   wideId: String.raw`,\d{7}`,
@@ -246,6 +249,7 @@ export interface Profile {
   idStrong: number;
   usStrong: number;
   idWeak: number;
+  usWeak: number;
   idText0: number;
   intUs: number;
   intId: number;
@@ -314,6 +318,7 @@ SELECT col,
     count(*) FILTER (WHERE ids) AS id_strong,
     count(*) FILTER (WHERE uss) AS us_strong,
     count(*) FILTER (WHERE idw) AS id_weak,
+    count(*) FILTER (WHERE usw) AS us_weak,
     count(*) FILTER (WHERE idt) AS id_text0,
     count(ius) AS int_us,
     count(iid) AS int_id,
@@ -330,6 +335,7 @@ FROM (
       ${match("v", RE.idStrong)} AS ids,
       ${match("v", RE.usStrong)} AS uss,
       ${match("v", RE.idWeak)} AS idw,
+      ${match("v", RE.usWeak)} AS usw,
       ${match("v", RE.idText0)} AS idt,
       ${numExpr("v", "us", true)} AS nus,
       ${numExpr("v", "id", true)} AS nid,
@@ -390,6 +396,7 @@ export function toProfile(r: Record<string, unknown>): Profile {
     idStrong: num("id_strong"),
     usStrong: num("us_strong"),
     idWeak: num("id_weak"),
+    usWeak: num("us_weak"),
     idText0: num("id_text0"),
     intUs: num("int_us"),
     intId: num("int_id"),
@@ -409,14 +416,15 @@ export function toProfile(r: Record<string, unknown>): Profile {
 
 /**
  * Locale angka per kolom. Bukti kuat menang mayoritas (xlsx: "15.000" ikut bukti ID, lihat idText0).
- * Bila seri (biasanya keduanya 0): CSV → ID bila ada pola 1.234 (ribuan ID, sesuai ekspor Excel
- * berlocale Indonesia), xlsx → US karena angka asli xlsx selalu berbentuk kanonik (String(1.234) =
+ * Bila seri (biasanya keduanya 0): CSV → ID bila pola 1.234 lebih banyak dari 1,500 (ribuan ID, sesuai
+ * ekspor Excel berlocale Indonesia), xlsx → US karena angka asli xlsx selalu berbentuk kanonik (String(1.234) =
  * "1.234" adalah desimal, bukan ribuan).
  */
 export function pickLocale(p: Profile, source: SourceKind): NumberLocale {
   const id = p.idStrong + (source === "xlsx" ? p.idText0 : 0);
   if (id !== p.usStrong) return id > p.usStrong ? "id" : "us";
-  if (source === "csv" && p.idWeak > 0) return "id";
+  // "1.234" lebih banyak dari "1,500" (T-t1g0): ribuan ID; sebaliknya ribuan US.
+  if (source === "csv" && p.idWeak > p.usWeak) return "id";
   return "us";
 }
 
@@ -454,8 +462,9 @@ export interface Inferred {
   dateFormat?: DateFormat;
   float?: boolean;
   /**
-   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030): total bisa
-   * 1000× lebih kecil tanpa gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
+   * Dibaca US padahal ada angka yang di id-ID berarti ribuan ("1.500" terbaca 1,5; T-030), atau dibaca
+   * id-ID padahal ada ribuan gaya US ("1,500" terbaca 1,5; T-t1g0): total bisa 1000× lebih kecil tanpa
+   * gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
    */
   localeAmbiguous?: true;
 }

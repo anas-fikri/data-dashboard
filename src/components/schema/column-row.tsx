@@ -160,7 +160,9 @@ export function ColumnRow({
             />
             <dt className="sr-only">Peringatan</dt>
             <dd className="text-foreground">
-              Penulisan angka ambigu: “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan.
+              {column.numberLocale === "id"
+                ? "Penulisan angka ambigu: “1,500” dibaca 1,5. Pilih internasional bila maksudnya ribuan."
+                : "Penulisan angka ambigu: “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan."}
             </dd>
           </div>
         ) : null}

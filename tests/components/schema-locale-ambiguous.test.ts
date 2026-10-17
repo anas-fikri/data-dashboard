@@ -37,4 +37,11 @@ describe("T-030: penanda penulisan angka ambigu", () => {
     expect(html).toContain("Pilih Indonesia bila maksudnya ribuan");
     expect(row(column)).not.toContain('data-testid="locale-ambiguous"');
   });
+
+  it("T-t1g0: kolom id-ID yang ditandai menyarankan pilihan internasional", () => {
+    const html = row({ ...column, numberLocale: "id", localeAmbiguous: true });
+    expect(html).toContain("“1,500” dibaca 1,5");
+    expect(html).toContain("Pilih internasional bila maksudnya ribuan");
+    expect(html).not.toContain("Pilih Indonesia");
+  });
 });

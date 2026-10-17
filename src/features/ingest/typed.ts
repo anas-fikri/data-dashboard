@@ -118,11 +118,17 @@ function resolve(p: Profile | undefined, source: SourceKind, o?: ColumnOverride)
     const numberLocale =
       o?.numberLocale ?? inferred.numberLocale ?? (p ? pickLocale(p, source) : "us");
     // Bukti ribuan id-ID di kolom yang dibaca US (CSV "1.234"; xlsx hanya teks berakhiran 0, karena angka
-    // asli xlsx selalu kanonik). Dihitung dari data setiap kali, termasuk pilihan US yang dibawa recast.
-    const flag =
-      numberLocale === "us" && p && (source === "csv" ? p.idWeak : p.idText0) > 0
-        ? { localeAmbiguous: true as const }
-        : {};
+    // asli xlsx selalu kanonik), atau ribuan US "1,500" di kolom yang dibaca id-ID (terbaca 1,5; T-t1g0 —
+    // angka asli xlsx tidak pernah memakai koma, jadi berlaku untuk kedua sumber). Dihitung dari data
+    // setiap kali, termasuk pilihan locale yang dibawa recast.
+    const weak = !p
+      ? 0
+      : numberLocale === "us"
+        ? source === "csv"
+          ? p.idWeak
+          : p.idText0
+        : p.usWeak;
+    const flag = weak > 0 ? { localeAmbiguous: true as const } : {};
     if (t === "integer") return { type: t, numberLocale, ...flag };
     return p && needsFloat(p, numberLocale)
       ? { type: t, numberLocale, float: true, ...flag }

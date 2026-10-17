@@ -1,7 +1,7 @@
 ---
 id: T-024
 title: Uji performa 1 GB end-to-end dan batas sumber daya
-status: todo
+status: in_progress
 profile: standard
 goal: G-5
 depends_on:
@@ -9,8 +9,59 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-15T19:43:25Z"
+updated: "2026-10-17T06:46:08Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 851513b80917a865aed6e6d7fd2f7f7d3b285cfb
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 83455
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792219529331,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792219529354,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792219529356,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792219529363,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  127 passed (127)
+            Tests  1736 passed (1736)
+         Start at  13:45:11
+         Duration  55.87s (tests 73%, import 20%, transform 7%)
+
+          Isolate  127 workers spawned · ~262ms startup each (spawn + environment, per file)
+                   at least ~3.44s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-17T06:46:08Z"
+    tree: eb7415062e995579b062af955421faaaa82b0ee6801b3355ebd509554570936e
 ---
 
 ## Objective
