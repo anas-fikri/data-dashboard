@@ -1,8 +1,7 @@
 "use client";
 
 import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
-import { forwardRef, useCallback, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
+import { forwardRef, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
 import type { ChartBadge } from "@/components/widgets/chart-widget";
@@ -18,12 +17,8 @@ import {
   HeadExport,
   NARROW_VIEW,
 } from "./widget-card-head";
-import { badgeMode, headRoom, type BadgeMode } from "./badge-fit";
+import { HeadBadge } from "./head-badge";
 import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
-
-/** Lencana kategori di kepala kartu (penuh/ringkas): satu gaya. */
-const BADGE =
-  "shrink-0 rounded-sm bg-muted px-1 text-xs leading-5 whitespace-nowrap tabular-nums text-foreground";
 
 /*
  * Satu widget di kanvas. Mode lihat: hanya isi. Mode edit: seluruh kepala kartu jadi pegangan seret
@@ -84,32 +79,10 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
   const stale = !!current?.stale;
-  // Lencana dipilih dari ruang kepala yang terukur (T-7ke3): judul tetap ≥ 4rem.
+  // Lencana dipilih dari ruang kepala yang terukur (T-7ke3, head-badge.tsx): judul tetap ≥ 4rem. Isi
+  // kepala yang berubah (tombol data/pegangan/label basi/mode) memicu ukur ulang lewat layoutKey.
   const headRef = useRef<HTMLDivElement>(null);
-  const fullRef = useRef<HTMLSpanElement>(null);
-  const compactRef = useRef<HTMLSpanElement>(null);
-  const [fit, setFit] = useState<BadgeMode>("none");
-  // Isi kepala berubah (tombol data/pegangan/label basi/mode) → ukur ulang. Primitif saja: config objek
-  // baru tiap render sehingga observer berlangganan ulang terus (review desain T-7ke3).
-  const kind = config?.type;
-  // Diukur dan di-commit sebelum paint (layout effect + flushSync di callback ResizeObserver, T-2jwv):
-  // tanpa frame lencana lama di samping tombol yang baru muncul karena container query.
-  useLayoutEffect(() => {
-    const head = headRef.current;
-    if (!head) return;
-    const measure = () => {
-      if (!badge || showData) return setFit("none");
-      const { room, gap } = headRoom(head);
-      const width = (el: HTMLElement | null) => el?.getBoundingClientRect().width ?? 0;
-      setFit(
-        badgeMode({ room, gap, full: width(fullRef.current), compact: width(compactRef.current) }),
-      );
-    };
-    measure();
-    const ro = new ResizeObserver(() => flushSync(measure));
-    ro.observe(head);
-    return () => ro.disconnect();
-  }, [badge, showData, editing, handle, stale, mode, kind]);
+  const layoutKey = `${editing}|${handle}|${stale}|${mode}|${config?.type}`;
   return (
     <div
       ref={ref}
@@ -151,32 +124,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         <CardTitle title={title} placeholder={!widget.title} editing={editing} chart={!!chart} />
         <StaleLabel stale={stale} title={title} />
         {badge && !showData ? (
-          <>
-            {/* Pengukur lebar lencana (tak terlihat, di luar alur tata letak). */}
-            <span ref={fullRef} aria-hidden data-badge className={cn(BADGE, "invisible absolute")}>
-              {badge.short}
-            </span>
-            <span
-              ref={compactRef}
-              aria-hidden
-              data-badge
-              className={cn(BADGE, "invisible absolute")}
-            >
-              {badge.compact}
-            </span>
-            {fit !== "none" ? (
-              <span
-                className={BADGE}
-                title={badge.full}
-                // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
-                aria-hidden
-                data-badge
-                data-testid={fit === "full" ? "chart-badge" : "chart-badge-compact"}
-              >
-                {fit === "full" ? badge.short : badge.compact}
-              </span>
-            ) : null}
-          </>
+          <HeadBadge headRef={headRef} badge={badge} layoutKey={layoutKey} />
         ) : null}
         {chart && mode ? (
           <DataToggleButton
@@ -206,6 +154,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             title={`Pengaturan ${title}`}
             aria-pressed={selected}
             {...{ [SETTINGS_ATTR]: "" }}
+            data-head-control
             onClick={onSettings}
           >
             <IconAdjustmentsHorizontal aria-hidden />

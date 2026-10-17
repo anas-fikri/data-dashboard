@@ -18,6 +18,15 @@ const OWNER = uniqueEmail("chart-polish");
 const TAG = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const dir = mkdtempSync(join(tmpdir(), "dd-e2e-chart-polish-"));
 const KOTA = Array.from({ length: 12 }, (_, k) => `Kota ${String.fromCharCode(65 + k)}`);
+/** Tombol kepala selebar sentuh (44 px) tanpa mengubah tingginya (T-7ke3, T-qrxf). */
+const WIDE = `[data-testid=widget-data-toggle],[data-testid=widget-export],[data-widget-settings],.widget-grip{width:2.75rem!important;min-width:2.75rem!important}`;
+/** Lencana lebih lebar tanpa kartu berubah ukuran, seperti font web yang selesai dimuat (T-qrxf). */
+const WIDE_FONT = `[data-badge]{letter-spacing:.2em!important}`;
+/** Dua frame: ResizeObserver pasti sudah terpanggil dan hasilnya dipaint. */
+const frames = (page: Page) =>
+  page.evaluate(
+    () => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))),
+  );
 
 let worker: ChildProcess | null = null;
 let owner: Page;
@@ -159,6 +168,7 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-2nkx: pita sempit di bawah ambang lencana → 'N/M' ringkas, tidak ganda, judul ≥ 4rem", async () => {
+    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     let compactSeen = 0;
     const compactModes = new Set<string>();
     for (const mode of ["", "?mode=edit"]) {
@@ -211,6 +221,7 @@ test.describe("polish widget kecil (T-032)", () => {
   test("T-7ke3: pointer sentuh (tombol kepala 44 px) → lencana tidak pernah memeras judul di bawah 4rem", async ({
     browser,
   }) => {
+    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     const ctx = await browser.newContext({
       storageState: await owner.context().storageState(),
       hasTouch: true,
@@ -250,10 +261,10 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-7ke3: tombol kepala selebar sentuh → lencana penuh, ringkas, atau ditahan sesuai ruang; judul ≥ 4rem", async () => {
+    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     // Kepala sentuh sungguhan 12 px lebih tinggi sehingga kartu 2 baris menampilkan daftar peringkat (tanpa
     // lencana). Di sini hanya LEBAR tombol kepala yang dibuat 44 px: ruang horizontal sama dengan sentuh,
     // badan grafik tetap di rentang lencana (review desain T-7ke3 B1).
-    const WIDE = `[data-testid=widget-data-toggle],[data-testid=widget-export],[data-widget-settings],.widget-grip{width:2.75rem!important;min-width:2.75rem!important}`;
     const seen = { full: 0, compact: 0, held: 0 };
     for (const mode of ["", "?mode=edit"]) {
       await owner.goto(`/dashboards/${d}${mode}`);
@@ -294,6 +305,7 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-2jwv: tanpa frame judul < 4rem saat resize; lencana mengalah selama tombol kepala disembunyikan CSS", async () => {
+    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     let hiddenSeen = 0;
     for (const mode of ["", "?mode=edit"]) {
       await owner.goto(`/dashboards/${d}${mode}`);
@@ -365,6 +377,64 @@ test.describe("polish widget kecil (T-032)", () => {
     }
     // Kontrol positif: pita dengan tombol tersembunyi benar-benar dilewati sweep.
     expect(hiddenSeen).toBeGreaterThan(0);
+  });
+
+  test("T-qrxf: tombol kepala berubah lebar tanpa kartu berubah ukuran → lencana diukur ulang; tanpa galat ResizeObserver loop", async () => {
+    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    // Meniru pointer kasar yang baru terpasang (tombol 32 → 44 px) tanpa resize kartu/viewport.
+    const modes = () =>
+      owner.getByTestId("widget").evaluateAll((els) =>
+        els.map((e) => {
+          const badge = e.querySelector<HTMLElement>("[data-testid^=chart-badge]");
+          return {
+            title: e.querySelector("h2")!.textContent,
+            mode: badge?.dataset.testid ?? "none",
+            titleW: e.querySelector("h2")!.getBoundingClientRect().width,
+          };
+        }),
+      );
+    const changed = { tombol: 0, font: 0 };
+    for (const mode of ["", "?mode=edit"]) {
+      await owner.goto(`/dashboards/${d}${mode}`);
+      await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
+      await owner.evaluate(() => {
+        const w = window as unknown as { __roErr: number };
+        w.__roErr = 0;
+        addEventListener("error", (e) => {
+          if (/ResizeObserver loop/.test(e.message)) w.__roErr++;
+        });
+      });
+      for (let width = 1024; width <= 1600; width += 32) {
+        await owner.setViewportSize({ width, height: 1100 });
+        await owner.waitForTimeout(100);
+        const before = await modes();
+        // Dua penyebab tanpa resize kartu: tombol melebar (jenis pointer) dan lencana melebar (font).
+        for (const css of [WIDE, WIDE_FONT]) {
+          await owner.evaluate((text) => {
+            const style = document.createElement("style");
+            style.id = "wide-head";
+            style.textContent = text;
+            document.head.append(style);
+          }, css);
+          await frames(owner);
+          const after = await modes();
+          after.forEach((c, i) => {
+            const at = `${width} px ${mode || "lihat"} ${css === WIDE ? "tombol" : "font"}: ${c.title}`;
+            if (c.mode !== "none") expect(c.titleW, at).toBeGreaterThanOrEqual(64);
+            if (c.mode !== before[i]!.mode) changed[css === WIDE ? "tombol" : "font"]++;
+          });
+          await owner.evaluate(() => document.getElementById("wide-head")?.remove());
+          await frames(owner);
+        }
+      }
+      expect(
+        await owner.evaluate(() => (window as unknown as { __roErr: number }).__roErr),
+        mode || "lihat",
+      ).toBe(0);
+    }
+    // Kontrol positif: lencana benar-benar berganti mode karena ukur ulang, untuk kedua penyebab.
+    expect(changed.tombol, "tombol").toBeGreaterThan(0);
+    expect(changed.font, "font").toBeGreaterThan(0);
   });
 
   test("AC2: legenda pai muat → bukan tab stop; meluap → bisa difokus dan digulir panah", async () => {
