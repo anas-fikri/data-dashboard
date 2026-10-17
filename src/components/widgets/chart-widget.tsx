@@ -38,6 +38,9 @@ import { useBoxSize } from "./use-box-size";
 import { useScrollFocus } from "./use-scroll-focus";
 import type { WidgetData } from "./widget-query";
 
+/** Lencana kategori di kepala kartu: "N dari M", ringkas "N/M" (T-2nkx), teks lengkap untuk title. */
+export type ChartBadge = { short: string; compact: string; full: string };
+
 /*
  * Widget grafik (T-011): grafik + keterangan "Menampilkan N dari M" yang menyesuaikan tinggi kartu
  * (lengkap, ringkas satu baris, atau hanya untuk pembaca layar — grafik tidak pernah lebih pendek dari
@@ -118,7 +121,7 @@ export function ChartWidget({
   /** Isi siap (grafik tergambar/gagal, atau isi bukan grafik). */
   onSettled?: () => void;
   /** Lencana "N dari M" kategori untuk kepala kartu saat keterangan tidak muat (T-032); fungsi stabil. */
-  onBadge?: (badge: { short: string; full: string } | null) => void;
+  onBadge?: (badge: ChartBadge | null) => void;
 }) {
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
@@ -562,10 +565,11 @@ export function ChartWidget({
   // Keterangan tidak muat (kartu pendek): lencana "N dari M" di kepala kartu, tidak di badan grafik (di sana
   // menimpa label sumbu — review desain T-032 r2). Pembaca layar: ringkasan grafik.
   const badge = !print && drawn?.badge ? drawn.badge : "";
+  const badgeCompact = drawn?.badgeCompact ?? "";
   const badgeFull = drawn?.full ?? "";
   useEffect(
-    () => onBadge?.(badge ? { short: badge, full: badgeFull } : null),
-    [onBadge, badge, badgeFull],
+    () => onBadge?.(badge ? { short: badge, compact: badgeCompact, full: badgeFull } : null),
+    [onBadge, badge, badgeCompact, badgeFull],
   );
   useEffect(() => () => onBadge?.(null), [onBadge]);
 

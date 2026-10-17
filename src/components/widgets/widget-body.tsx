@@ -11,7 +11,7 @@ import {
   withChangeCheck,
   type BodyState,
 } from "./body-state";
-import { ChartWidget } from "./chart-widget";
+import { ChartWidget, type ChartBadge } from "./chart-widget";
 import { KpiView } from "./kpi-view";
 import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
@@ -59,8 +59,8 @@ interface Props {
   onState?: (version: string, state: BodyState, stale: boolean) => void;
   /** Body query yang sedang dipakai (berubah bersama filter/urutan/halaman); fungsi harus stabil. */
   onRequest?: (request: WidgetRequest) => void;
-  /** Grafik: lencana "N/M" kategori untuk kepala kartu (T-032); fungsi harus stabil. */
-  onBadge?: (badge: { short: string; full: string } | null) => void;
+  /** Grafik: lencana "N dari M" / "N/M" kategori untuk kepala kartu (T-032, T-2nkx); fungsi stabil. */
+  onBadge?: (badge: ChartBadge | null) => void;
 }
 
 export function WidgetBody(props: Props) {

@@ -657,6 +657,8 @@ export interface Fit {
    * kartu ("N teratas" bila jumlah keseluruhan tidak tersedia), "" = tidak ada (T-032).
    */
   badge: string;
+  /** Bentuk lebih ringkas "N/M" untuk kartu sempit di bawah ambang lencana (T-2nkx); "" = tidak ada. */
+  badgeCompact: string;
 }
 
 /**
@@ -710,6 +712,7 @@ export function chartFit(i: FitInput): Fit {
       full: texts(i.rows).full,
       shown: "",
       badge: "",
+      badgeCompact: "",
     };
   }
   for (const note of ["full", "compact"] as const) {
@@ -725,19 +728,31 @@ export function chartFit(i: FitInput): Fit {
         if (!t.important && height < NOTE_PLAIN_MIN) continue;
         if (lines === 2 && height < NOTE_TWO_LINES_MIN) continue;
       }
-      return { note, visible, ranked: false, full: t.full, shown: text, badge: "" };
+      return {
+        note,
+        visible,
+        ranked: false,
+        full: t.full,
+        shown: text,
+        badge: "",
+        badgeCompact: "",
+      };
     }
   }
   const visible = visibleAt(height);
   const ranked = plot(height) < PLOT_MIN[i.type];
   const t = texts(visible);
-  const cut = i.partial && i.type !== "pie" ? `${visible} teratas` : `${visible} dari ${all}`;
+  const top = i.partial && i.type !== "pie";
+  const cut = top ? `${visible} teratas` : `${visible} dari ${all}`;
+  const badge = !ranked && t.important && i.type !== "pie";
   return {
     note: "none",
     visible,
     ranked,
     full: t.full,
     shown: "",
-    badge: !ranked && t.important && i.type !== "pie" ? cut : "",
+    badge: badge ? cut : "",
+    // "N teratas" (jumlah keseluruhan tidak tersedia) tidak punya bentuk lebih ringkas: dipakai apa adanya.
+    badgeCompact: badge ? (top ? cut : `${visible}/${all}`) : "",
   };
 }

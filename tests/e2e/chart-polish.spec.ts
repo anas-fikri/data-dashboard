@@ -156,6 +156,87 @@ test.describe("polish widget kecil (T-032)", () => {
     }
   });
 
+  test("T-2nkx: pita sempit di bawah ambang lencana → 'N/M' ringkas, tidak ganda, judul ≥ 4rem", async () => {
+    let compactSeen = 0;
+    const compactModes = new Set<string>();
+    for (const mode of ["", "?mode=edit"]) {
+      await owner.setViewportSize({ width: 1440, height: 1100 });
+      await owner.goto(`/dashboards/${d}${mode}`);
+      await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
+      // Sampai 1600 px: kartu w3 melewati pita lihat (14–15,5rem) dan pita edit (18,5–20rem).
+      for (let width = 1024; width <= 1600; width += 16) {
+        await owner.setViewportSize({ width, height: 1100 });
+        await owner.waitForTimeout(150); // grid + ResizeObserver menyesuaikan lebar kartu
+        const cards = await owner.getByTestId("widget").evaluateAll((els) =>
+          els.map((e) => {
+            const shown = (id: string) => {
+              const b = e.querySelector<HTMLElement>(`[data-testid=${id}]`);
+              return b && b.getBoundingClientRect().width > 0 ? b.textContent : null;
+            };
+            const h = e.querySelector("h2")!;
+            return {
+              title: h.textContent,
+              full: shown("chart-badge"),
+              compact: shown("chart-badge-compact"),
+              titleW: h.getBoundingClientRect().width,
+            };
+          }),
+        );
+        for (const c of cards) {
+          const at = `${width} px ${mode || "lihat"}: ${c.title}`;
+          expect(c.full && c.compact, at).toBeFalsy();
+          if (c.full || c.compact) expect(c.titleW, at).toBeGreaterThanOrEqual(64);
+          if (c.compact) {
+            expect(c.compact, at).toMatch(/^\d+(\/\d+| teratas)$/);
+            compactSeen++;
+            // Bukti visual untuk review desain (test-results/, tidak di-commit), sekali per mode.
+            const m = mode ? "edit" : "lihat";
+            if (!compactModes.has(m)) {
+              compactModes.add(m);
+              await widgetTitled(owner, c.title!).screenshot({
+                path: `test-results/t-2nkx-ringkas-${m}.png`,
+              });
+            }
+          }
+        }
+      }
+    }
+    // Pita ringkas benar-benar terpakai di kedua mode (bukan kelas container query yang tidak terkompilasi).
+    expect(compactSeen).toBeGreaterThan(0);
+    expect(compactModes).toEqual(new Set(["lihat", "edit"]));
+  });
+
+  test("T-2nkx review: pointer sentuh (tombol kepala 44 px) → tanpa lencana ringkas", async ({
+    browser,
+  }) => {
+    const ctx = await browser.newContext({
+      storageState: await owner.context().storageState(),
+      hasTouch: true,
+      viewport: { width: 1280, height: 1100 },
+    });
+    try {
+      const touch = await ctx.newPage();
+      await touch.goto(`/dashboards/${d}`);
+      expect(await touch.evaluate(() => matchMedia("(any-pointer: coarse)").matches)).toBe(true);
+      await expect(
+        widgetTitled(touch, "Batang pendek").getByTestId("widget-data-toggle"),
+      ).toBeVisible();
+      for (const mode of ["", "?mode=edit"]) {
+        await touch.goto(`/dashboards/${d}${mode}`);
+        for (let width = 1024; width <= 1600; width += 32) {
+          await touch.setViewportSize({ width, height: 1100 });
+          await touch.waitForTimeout(150);
+          const shown = await touch
+            .getByTestId("chart-badge-compact")
+            .evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().width > 0).length);
+          expect(shown, `${width} px ${mode || "lihat"}`).toBe(0);
+        }
+      }
+    } finally {
+      await ctx.close();
+    }
+  });
+
   test("AC2: legenda pai muat → bukan tab stop; meluap → bisa difokus dan digulir panah", async () => {
     const tall = widgetTitled(owner, "Pai tinggi").getByTestId("pie-legend-region");
     const mid = widgetTitled(owner, "Pai sedang").getByTestId("pie-legend-region");

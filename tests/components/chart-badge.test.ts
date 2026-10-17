@@ -33,3 +33,14 @@ describe("chartFit.badge (T-032)", () => {
     ).toBe("");
   });
 });
+
+describe("chartFit.badgeCompact (T-2nkx)", () => {
+  it("'N dari M' → 'N/M' (ribuan id-ID); 'N teratas' tetap; tanpa lencana → kosong", () => {
+    const f = fit({ type: "bar", room: { width: 300, height: 80 }, categories: 1234 });
+    expect(f.badge).toBe(`${f.visible} dari 1.234`);
+    expect(f.badgeCompact).toBe(`${f.visible}/1.234`);
+    const partial = fit({ type: "bar", room: { width: 300, height: 80 }, partial: true });
+    expect(partial.badgeCompact).toBe(partial.badge);
+    expect(fit({ type: "bar", room: { width: 300, height: 240 } }).badgeCompact).toBe("");
+  });
+});

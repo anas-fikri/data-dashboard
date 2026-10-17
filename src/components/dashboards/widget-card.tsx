@@ -4,6 +4,7 @@ import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabl
 import { forwardRef, useCallback, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
+import type { ChartBadge } from "@/components/widgets/chart-widget";
 import { StaleLabel } from "@/components/widgets/stale-label";
 import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetRequest } from "@/components/widgets/widget-query";
@@ -17,6 +18,10 @@ import {
   NARROW_VIEW,
 } from "./widget-card-head";
 import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
+
+/** Lencana kategori di kepala kartu (penuh/ringkas): satu gaya. */
+const BADGE =
+  "shrink-0 rounded-sm bg-muted px-1 text-xs leading-5 whitespace-nowrap tabular-nums text-foreground";
 
 /*
  * Satu widget di kanvas. Mode lihat: hanya isi. Mode edit: seluruh kepala kartu jadi pegangan seret
@@ -71,8 +76,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   // Body query isi kartu (filter + urutan tabel): ekspor membacanya saat dimulai, tanpa render ulang.
   const request = useRef<WidgetRequest | null>(null);
   const onRequest = useCallback((r: WidgetRequest) => void (request.current = r), []);
-  // Grafik di kartu pendek: "N/M" kategori saat keterangan "Menampilkan N dari M" tidak muat (T-032).
-  const [badge, setBadge] = useState<{ short: string; full: string } | null>(null);
+  // Grafik di kartu pendek: "N dari M" kategori saat keterangan "Menampilkan N dari M" tidak muat (T-032).
+  const [badge, setBadge] = useState<ChartBadge | null>(null);
   const current = config && body?.version === configVersion(config) ? body : null;
   const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
@@ -115,21 +120,42 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
         <CardTitle title={title} placeholder={!widget.title} editing={editing} chart={!!chart} />
         <StaleLabel stale={!!current?.stale} title={title} />
         {badge && !showData ? (
-          <span
-            className={cn(
-              "shrink-0 rounded-sm bg-muted px-1 text-xs leading-5 whitespace-nowrap tabular-nums text-foreground",
-              // Judul didahulukan: kartu sempit tanpa lencana (tabel data tetap tersedia) — di badan grafik
-              // lencana menimpa label sumbu (review desain T-032 r1/r2). Ambang memuat "9.999 dari 9.999"
-              // dengan judul ≥ 4rem (r3).
-              editing ? "@max-[20rem]:hidden" : "@max-[15.5rem]:hidden",
-            )}
-            title={badge.full}
-            // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
-            aria-hidden
-            data-testid="chart-badge"
-          >
-            {badge.short}
-          </span>
+          <>
+            <span
+              className={cn(
+                BADGE,
+                // Judul didahulukan: kartu sempit tanpa lencana (tabel data tetap tersedia) — di badan
+                // grafik lencana menimpa label sumbu (review desain T-032 r1/r2). Ambang memuat
+                // "9.999 dari 9.999" dengan judul ≥ 4rem (r3).
+                editing ? "@max-[20rem]:hidden" : "@max-[15.5rem]:hidden",
+              )}
+              title={badge.full}
+              // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
+              aria-hidden
+              data-testid="chart-badge"
+            >
+              {badge.short}
+            </span>
+            {/* Pita tepat di bawah ambang itu: "9.999/9.999" ± 1,5rem lebih sempit daripada "9.999 dari
+                9.999", jadi ruang judul sama dengan di ambang T-032 (T-2nkx). Lebih sempit lagi: tanpa
+                lencana. */}
+            <span
+              className={cn(
+                BADGE,
+                "hidden",
+                // Hanya bila tombol kepala 32 px (syarat sama dengan HEAD_BUTTON): tombol sentuh 44 px
+                // memakan ruang itu sehingga judul < 4rem — di sana judul didahulukan (review desain).
+                editing
+                  ? "md:not-any-pointer-coarse:@min-[18.5rem]:@max-[20rem]:inline"
+                  : "md:not-any-pointer-coarse:@min-[14rem]:@max-[15.5rem]:inline",
+              )}
+              title={badge.full}
+              aria-hidden
+              data-testid="chart-badge-compact"
+            >
+              {badge.compact}
+            </span>
+          </>
         ) : null}
         {chart && mode ? (
           <DataToggleButton
