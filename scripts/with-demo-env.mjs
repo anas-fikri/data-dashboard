@@ -13,13 +13,21 @@ if (existsSync(".env")) {
     if (m && env[m[1]] === undefined) env[m[1]] = m[2].replace(/^"(.*)"$/, "$1");
   }
 }
-const db = new URL(env.DATABASE_URL);
+// Galat URL bawaan Node mencetak nilainya (termasuk password): ganti dengan pesan tanpa nilai.
+const parse = (key) => {
+  try {
+    return new URL(env[key]);
+  } catch {
+    throw new Error(`${key} tidak bisa diurai (nilai tidak ditampilkan)`);
+  }
+};
+const db = parse("DATABASE_URL");
 const name = db.pathname.replace(/^\//, "");
 if (process.env.NODE_ENV === "production") throw new Error("ditolak: NODE_ENV=production");
 if (!name || name.endsWith("_demo")) throw new Error("DATABASE_URL tidak terduga");
 db.pathname = `/${name}_demo`;
 env.DATABASE_URL = db.toString();
-const redis = new URL(env.REDIS_URL);
+const redis = parse("REDIS_URL");
 redis.pathname = "/9";
 env.REDIS_URL = redis.toString();
 env.DEMO_ENV = "1";
