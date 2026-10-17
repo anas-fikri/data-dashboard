@@ -244,6 +244,7 @@ export async function setVideoPoster(
   user: SessionUser,
   id: unknown,
   bytes: Uint8Array,
+  ip: string,
 ): R<{ posterKey: string }> {
   const v = await ownVideo(user, id);
   if (!v || v.status !== "READY") return notFound;
@@ -253,9 +254,21 @@ export async function setVideoPoster(
   const key = guidePosterKey(v.id);
   await putGuidePoster(key, bytes);
   // Video dihapus selagi poster diunggah: barisnya hilang → poster yang baru tersimpan ikut dibuang.
-  const saved = await prisma.guideVideo.updateMany({
-    where: { id: v.id, status: "READY" },
-    data: { posterKey: key },
+  const saved = await prisma.$transaction(async (tx) => {
+    const r = await tx.guideVideo.updateMany({
+      where: { id: v.id, status: "READY" },
+      data: { posterKey: key },
+    });
+    if (r.count)
+      await recordAudit(tx, {
+        actorId: user.id,
+        action: "guide.video.poster",
+        targetType: "guide",
+        targetId: v.articleId,
+        meta: { videoId: v.id },
+        ip,
+      });
+    return r;
   });
   if (saved.count === 0) {
     await deleteGuideObject(key).catch(() => retryLater([key], "guide-poster"));
@@ -269,6 +282,7 @@ export async function setVideoCaption(
   user: SessionUser,
   id: unknown,
   bytes: Uint8Array,
+  ip: string,
 ): R<{ captionKey: string }> {
   const v = await ownVideo(user, id);
   if (!v || v.status !== "READY") return notFound;
@@ -280,18 +294,101 @@ export async function setVideoCaption(
       code: "INVALID_FORMAT",
       message: "Takarir harus file WebVTT (diawali WEBVTT, teks UTF-8).",
     };
+  // Kunci baru per unggahan (T-qqbc): takarir lama tidak ditimpa — baru terlihat saat captionKey
+  // di-commit — dan hapus/ganti yang bersamaan tidak pernah menghapus file unggahan ini.
   const key = guideCaptionKey(v.id);
+  // Dijadwalkan sebelum ditulis: proses mati sebelum commit tidak meninggalkan file berkunci acak yang
+  // tidak tercatat di mana pun (job menghapusnya; bila sudah di-commit, captionKey menunjuknya → dibiarkan).
+  await scheduleKeys(prisma, [key], "guide-caption-upload");
   await putGuideCaption(key, bytes);
-  // Sama dengan poster: video dihapus selagi takarir diunggah → objek yang baru tersimpan dibuang.
-  const saved = await prisma.guideVideo.updateMany({
-    where: { id: v.id, status: "READY" },
-    data: { captionKey: key },
+  const saved = await prisma.$transaction(async (tx) => {
+    const cur = await lockVideo(tx, v.id);
+    if (!cur || cur.status !== "READY") return null;
+    await tx.guideVideo.update({ where: { id: v.id }, data: { captionKey: key } });
+    if (cur.captionKey) await scheduleKeys(tx, [cur.captionKey], "guide-caption");
+    await recordAudit(tx, {
+      actorId: user.id,
+      action: "guide.video.caption",
+      targetType: "guide",
+      targetId: v.articleId,
+      meta: { videoId: v.id, replaced: cur.captionKey !== null },
+      ip,
+    });
+    return { old: cur.captionKey };
   });
-  if (saved.count === 0) {
+  // Video dihapus selagi takarir diunggah → objek yang baru tersimpan dibuang.
+  if (!saved) {
     await deleteGuideObject(key).catch(() => retryLater([key], "guide-caption"));
     return notFound;
   }
+  await prisma.storageCleanup.deleteMany({ where: { prefix: key } }).catch(() => {});
+  if (saved.old) await removeScheduled(saved.old, v.id);
   return { ok: true, captionKey: key };
+}
+
+/**
+ * Baca status + captionKey sambil mengunci baris video sampai transaksi selesai (SELECT … FOR UPDATE):
+ * unggah/hapus takarir dan hapus video untuk video yang sama berjalan bergiliran.
+ */
+async function lockVideo(
+  tx: Pick<typeof prisma, "$queryRaw">,
+  id: string,
+): Promise<{ status: string; captionKey: string | null } | null> {
+  const rows = await tx.$queryRaw<{ status: string; captionKey: string | null }[]>`
+    SELECT "status"::text AS "status", "captionKey" FROM "GuideVideo" WHERE "id" = ${id} FOR UPDATE`;
+  return rows[0] ?? null;
+}
+
+async function scheduleKeys(
+  tx: Pick<typeof prisma, "storageCleanup">,
+  keys: string[],
+  reason: string,
+): Promise<void> {
+  await tx.storageCleanup.createMany({
+    data: keys.map((prefix) => ({ prefix, reason, notBefore: graceEnd() })),
+  });
+}
+
+/** Hapus objek yang sudah dijadwalkan; berhasil → jadwal dibuang, gagal → diulang job. */
+async function removeScheduled(key: string, videoId: string): Promise<void> {
+  try {
+    await deleteGuideObject(key);
+    await prisma.storageCleanup.deleteMany({ where: { prefix: key } });
+  } catch (e) {
+    logger.error({ videoId, err: String(e) }, "takarir lama gagal dihapus; diulang job");
+  }
+}
+
+/**
+ * Hapus takarir (T-qqbc): baris dikunci, captionKey dikosongkan + kunci lama dijadwalkan + audit dalam
+ * satu transaksi, lalu objek lama dihapus. Unggahan bersamaan memakai kunci lain, jadi tidak terhapus.
+ */
+export async function removeVideoCaption(
+  user: SessionUser,
+  id: unknown,
+  ip: string,
+): R<{ videoId: string }> {
+  const v = await ownVideo(user, id);
+  if (!v || v.status !== "READY") return notFound;
+  const removed = await prisma.$transaction(async (tx) => {
+    const cur = await lockVideo(tx, v.id);
+    if (!cur || cur.status !== "READY") return undefined;
+    if (!cur.captionKey) return null; // sudah tanpa takarir
+    await tx.guideVideo.update({ where: { id: v.id }, data: { captionKey: null } });
+    await scheduleKeys(tx, [cur.captionKey], "guide-caption");
+    await recordAudit(tx, {
+      actorId: user.id,
+      action: "guide.video.caption.delete",
+      targetType: "guide",
+      targetId: v.articleId,
+      meta: { videoId: v.id },
+      ip,
+    });
+    return cur.captionKey;
+  });
+  if (removed === undefined) return notFound;
+  if (removed) await removeScheduled(removed, v.id);
+  return { ok: true, videoId: v.id };
 }
 
 export async function deleteVideo(
@@ -305,6 +402,9 @@ export async function deleteVideo(
   // Baris dulu, objek sesudahnya (seperti deleteGuide); pembersihan ulang dijadwalkan di transaksi yang
   // sama, jadi proses yang mati di antaranya pun tidak meninggalkan objek yatim.
   await prisma.$transaction(async (tx) => {
+    // Dikunci dulu: takarir yang sedang disimpan bersamaan ikut terjadwal (bukan kunci basi dari ownVideo).
+    const cur = await lockVideo(tx, v.id);
+    v.captionKey = cur?.captionKey ?? null;
     await tx.guideVideo.deleteMany({ where: { id: v.id } });
     await scheduleVideoCleanup(tx, [v]);
     if (v.status === "READY")
@@ -335,10 +435,12 @@ async function retryLater(keys: string[], reason: string): Promise<void> {
 
 /** Jeda sebelum job storage-cleanup memproses jadwal yang dibuat bersama penghapusan baris. */
 const CLEANUP_GRACE_MS = 10 * 60 * 1000;
-const videoKeys = (v: { id: string; objectKey: string }) => [
+const graceEnd = () => new Date(Date.now() + CLEANUP_GRACE_MS);
+type VideoObjects = { id: string; objectKey: string; captionKey?: string | null };
+const videoKeys = (v: VideoObjects) => [
   v.objectKey,
   guidePosterKey(v.id),
-  guideCaptionKey(v.id),
+  ...(v.captionKey ? [v.captionKey] : []),
 ];
 
 /**
@@ -347,10 +449,10 @@ const videoKeys = (v: { id: string; objectKey: string }) => [
  */
 export async function scheduleVideoCleanup(
   tx: Pick<typeof prisma, "storageCleanup">,
-  videos: { id: string; objectKey: string }[],
+  videos: VideoObjects[],
 ): Promise<void> {
   if (!videos.length) return;
-  const notBefore = new Date(Date.now() + CLEANUP_GRACE_MS);
+  const notBefore = graceEnd();
   await tx.storageCleanup.createMany({
     data: videos.flatMap((v) =>
       videoKeys(v).map((prefix) => ({ prefix, reason: "guide-video", notBefore })),
@@ -359,11 +461,12 @@ export async function scheduleVideoCleanup(
 }
 
 /**
- * Hapus objek video + poster + takarir yang sudah dijadwalkan (scheduleVideoCleanup). Poster/takarir
- * dihapus walau kolomnya kosong: kuncinya pasti per video dan bisa sedang diunggah bersamaan.
+ * Hapus objek video + poster + takarir yang sudah dijadwalkan (scheduleVideoCleanup). Poster dihapus
+ * walau posterKey kosong (kuncinya pasti per video dan bisa sedang diunggah bersamaan); takarir lewat
+ * captionKey yang tersimpan (kunci per unggahan, T-qqbc).
  */
 export async function removeVideoObjects(
-  videos: { id: string; objectKey: string; uploadId: string | null; posterKey: string | null }[],
+  videos: (VideoObjects & { uploadId: string | null; posterKey: string | null })[],
   storage: MultipartStorage = s3Multipart,
 ): Promise<void> {
   for (const v of videos) {

@@ -156,6 +156,13 @@ describe("parseCleanupPrefix takarir (T-j9j6)", () => {
       videoId: VER,
       video: false,
     });
+    // T-qqbc: kunci baru per unggahan (akhiran hex 12).
+    expect(parseCleanupPrefix(`guides/captions/${VER}-0123456789ab.vtt`)).toEqual({
+      kind: "guide",
+      videoId: VER,
+      video: false,
+    });
+    expect(parseCleanupPrefix(`guides/captions/${VER}-XYZ.vtt`)).toBeNull();
     expect(parseCleanupPrefix(`guides/captions/${VER}.srt`)).toBeNull();
     expect(parseCleanupPrefix(`guides/captions/${VER}.vtt/`)).toBeNull();
     expect(parseCleanupPrefix("guides/captions/")).toBeNull();
@@ -228,6 +235,15 @@ describe("runStorageCleanup", () => {
     expect(s3.deletePrefix).not.toHaveBeenCalled();
     expect(s3.abortMultipartUnder).not.toHaveBeenCalled();
     prisma.guideVideo.count.mockReset();
+  });
+
+  it("T-qqbc: takarir dihapus sementara videonya tetap ada → dipakai = baris masih menunjuk kunci itu", async () => {
+    const key = `guides/captions/${VER}.vtt`;
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("c", key), row("live", key)]);
+    prisma.guideVideo.count.mockResolvedValueOnce(0).mockResolvedValueOnce(1);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 1, skipped: 1, failed: 0 });
+    expect(prisma.guideVideo.count).toHaveBeenCalledWith({ where: { id: VER, captionKey: key } });
+    expect(order).toEqual([`deleteobj:${key}`]);
   });
 
   it("prefix tidak sah atau masih dipakai → baris dibuang tanpa menyentuh storage", async () => {

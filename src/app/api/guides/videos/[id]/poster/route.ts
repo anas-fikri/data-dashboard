@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { RULES, hit } from "@/features/auth/rate-limit";
+import { RULES, clientIp, hit } from "@/features/auth/rate-limit";
 import { AuthError, requireUser } from "@/features/auth/session";
 import { POSTER_MAX_BYTES } from "@/features/guides/media";
 import { setVideoPoster } from "@/features/guides/videos";
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     return json({ ok: false, code: "FILE_TOO_LARGE", message: "Poster melebihi 2 MB." }, 413);
   const { id } = await ctx.params;
   try {
-    const r = await setVideoPoster(user, id, bytes);
+    const r = await setVideoPoster(user, id, bytes, clientIp(req.headers, env().TRUST_PROXY));
     return r.ok ? json(r) : json(r, STATUS[r.code as keyof typeof STATUS] ?? 400);
   } catch (e) {
     logger.error({ userId: user.id, err: String(e) }, "poster video panduan gagal");

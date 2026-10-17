@@ -186,10 +186,14 @@ export async function deleteGuide(actorId: string, id: string, ip: string): Prom
       select: { slug: true, role: true },
     });
     if (!row) return notFound;
-    // Baris video ikut terhapus (cascade); objeknya dihapus setelah transaksi.
+    // Baris video ikut terhapus (cascade); objeknya dihapus setelah transaksi. Dikunci dulu agar takarir
+    // yang sedang disimpan bersamaan ikut terjadwal (T-qqbc) — artikel lebih dulu, lalu videonya: urutan
+    // sama dengan completeVideo, jadi keduanya tidak saling mengunci (deadlock).
+    await tx.$queryRaw`SELECT 1 FROM "GuideArticle" WHERE "id" = ${id} FOR UPDATE`;
+    await tx.$queryRaw`SELECT 1 FROM "GuideVideo" WHERE "articleId" = ${id} FOR UPDATE`;
     videos = await tx.guideVideo.findMany({
       where: { articleId: id },
-      select: { id: true, objectKey: true, uploadId: true, posterKey: true },
+      select: { id: true, objectKey: true, uploadId: true, posterKey: true, captionKey: true },
     });
     await tx.guideArticle.delete({ where: { id } });
     await scheduleVideoCleanup(tx, videos);

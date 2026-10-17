@@ -26,7 +26,7 @@ const ERROR_MAX = 500;
 
 const PREFIX = /^(raw|parquet)\/([a-z0-9]{20,32})\/(?:([a-z0-9]{20,32})\/)?$/;
 const GUIDE_KEY =
-  /^guides\/(?:videos\/([a-z0-9]{20,32})\.(?:mp4|webm)|posters\/([a-z0-9]{20,32})\.png|captions\/([a-z0-9]{20,32})\.vtt)$/;
+  /^guides\/(?:videos\/([a-z0-9]{20,32})\.(?:mp4|webm)|posters\/([a-z0-9]{20,32})\.png|captions\/([a-z0-9]{20,32})(?:-[a-f0-9]{12})?\.vtt)$/;
 
 export type CleanupTarget =
   | {
@@ -91,9 +91,11 @@ const storage: CleanupDeps = {
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
 
-async function stateOf(t: CleanupTarget): Promise<CleanupState> {
+async function stateOf(t: CleanupTarget, prefix: string): Promise<CleanupState> {
   if (t.kind === "guide") {
-    const n = await prisma.guideVideo.count({ where: { id: t.videoId } });
+    // Takarir bisa dihapus sementara videonya tetap ada (T-qqbc): dipakai = baris masih menunjuk kunci ini.
+    const caption = prefix.startsWith("guides/captions/") ? { captionKey: prefix } : {};
+    const n = await prisma.guideVideo.count({ where: { id: t.videoId, ...caption } });
     return { datasetExists: false, versionStatus: null, guideVideoExists: n > 0 };
   }
   if (t.versionId === null) {
@@ -129,7 +131,7 @@ export async function runStorageCleanup(deps: CleanupDeps = storage, now = new D
       out.skipped++;
       continue;
     }
-    if (!isSafeToDelete(t, await stateOf(t))) {
+    if (!isSafeToDelete(t, await stateOf(t, row.prefix))) {
       logger.warn(
         { id: row.id, prefix: row.prefix },
         "prefix pembersihan masih dipakai; dibuang tanpa hapus",

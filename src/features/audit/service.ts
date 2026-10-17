@@ -49,7 +49,11 @@ export type AuditAction =
   | "guide.delete"
   /** Admin menambah (unggah selesai) / menghapus video panduan (T-021), meta { videoId, … }. */
   | "guide.video.add"
-  | "guide.video.delete";
+  | "guide.video.delete"
+  /** Takarir/poster video panduan (T-qqbc), meta { videoId } (+ replaced untuk takarir), tanpa isi file. */
+  | "guide.video.caption"
+  | "guide.video.caption.delete"
+  | "guide.video.poster";
 
 export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */

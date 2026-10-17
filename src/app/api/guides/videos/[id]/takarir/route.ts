@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { RULES, hit } from "@/features/auth/rate-limit";
+import { RULES, clientIp, hit } from "@/features/auth/rate-limit";
 import { AuthError, requireUser } from "@/features/auth/session";
 import { CAPTION_MAX_BYTES } from "@/features/guides/media";
 import { videoCaptionKey } from "@/features/guides/reader";
-import { setVideoCaption } from "@/features/guides/videos";
-import { isSameOrigin } from "@/features/uploads/http";
+import { removeVideoCaption, setVideoCaption } from "@/features/guides/videos";
+import { isSameOrigin, uploadRoute } from "@/features/uploads/http";
 import { env } from "@/lib/env";
 import { readBytesLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
@@ -74,10 +74,18 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string
     );
   const { id } = await ctx.params;
   try {
-    const r = await setVideoCaption(user, id, bytes);
+    const r = await setVideoCaption(user, id, bytes, clientIp(req.headers, env().TRUST_PROXY));
     return r.ok ? json(r) : json(r, STATUS[r.code as keyof typeof STATUS] ?? 400);
   } catch (e) {
     logger.error({ userId: user.id, err: String(e) }, "takarir video panduan gagal disimpan");
     return json({ ok: false, code: "STORAGE_ERROR", message: "Terjadi gangguan." }, 503);
   }
+}
+
+/** Hapus takarir (T-qqbc): admin, Origin sama, batas laju (uploadRoute); selain admin 404. */
+export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
+  const { id } = await ctx.params;
+  return uploadRoute(req, RULES.uploadSign, (user) =>
+    removeVideoCaption(user, id, clientIp(req.headers, env().TRUST_PROXY)),
+  );
 }

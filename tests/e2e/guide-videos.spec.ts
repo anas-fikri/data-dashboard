@@ -358,6 +358,32 @@ test.describe("video panduan (T-021)", () => {
       .toBe("Pilih file Excel");
   });
 
+  test("T-qqbc: hapus takarir lewat dialog → tombol takarir hilang di pemutar, sumbernya 404", async () => {
+    await a.goto(`/admin/panduan/${articleId}`);
+    const item = a.getByRole("list", { name: "Video artikel ini" }).getByRole("listitem").first();
+    const videoId = (await item.getByTestId("guide-video").getAttribute("data-video-id"))!;
+    await expect(item.locator("track")).toHaveCount(1);
+    // Batal → fokus kembali ke tombol pembuka (masih ada).
+    const opener = item.getByRole("button", { name: /^Hapus takarir/ });
+    await opener.click();
+    await a.getByRole("alertdialog").getByRole("button", { name: "Batal" }).click();
+    await expect(opener).toBeFocused();
+    await opener.click();
+    const dialog = a.getByRole("alertdialog");
+    await expect(dialog).toContainText("Hapus takarir?");
+    await dialog.getByRole("button", { name: "Hapus" }).click();
+    await expect(item.getByTestId("caption-status")).toHaveText(/^Takarir video .* dihapus\.$/);
+    await expect(item.locator("track")).toHaveCount(0);
+    // Fokus kembali ke tombol tambah (tombol hapus sudah hilang).
+    await expect(item.getByRole("button", { name: /^Tambah takarir/ })).toBeFocused();
+    await expect(item.getByRole("button", { name: /^Hapus takarir/ })).toHaveCount(0);
+    const gone = await b.evaluate(
+      async (id) => (await fetch(`/api/guides/videos/${id}/takarir`)).status,
+      videoId,
+    );
+    expect(gone).toBe(404);
+  });
+
   test("review AC4: progres diumumkan; selesai tidak merebut fokus; hapus berturut-turut fokus ke pesan", async () => {
     test.setTimeout(120_000);
     await a.goto(`/admin/panduan/${articleId}`);
