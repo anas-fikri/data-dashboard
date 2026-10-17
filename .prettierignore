@@ -4,6 +4,7 @@ out
 coverage
 playwright-report
 test-results
+.cache
 package-lock.json
 prisma/migrations
 # Dikelola aitk / adapter AI tools, bukan kode

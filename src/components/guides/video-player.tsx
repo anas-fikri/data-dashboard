@@ -19,7 +19,10 @@ export function GuideVideoPlayer({
   video,
   preload = "none",
 }: {
-  video: Pick<GuideVideoView, "id" | "issuedAt" | "title" | "durationSec" | "src" | "poster">;
+  video: Pick<
+    GuideVideoView,
+    "id" | "issuedAt" | "title" | "durationSec" | "src" | "poster" | "captionVersion"
+  >;
   /** "none" di halaman Panduan (banyak video), "metadata" di editor. */
   preload?: "none" | "metadata";
 }) {
@@ -67,8 +70,8 @@ export function GuideVideoPlayer({
       data-testid="guide-video"
       data-video-id={video.id}
     >
-      {/* Rekaman layar tanpa suara: alternatif teksnya isi artikel (WCAG 1.2.1); takarir VTT untuk
-          video bernarasi → task lanjutan. */}
+      {/* Video bernarasi: takarir WebVTT (T-j9j6), tombol takarir dari kontrol bawaan. Rekaman layar
+          tanpa suara: alternatif teksnya isi artikel (WCAG 1.2.1). */}
       {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
       <video
         ref={ref}
@@ -106,6 +109,15 @@ export function GuideVideoPlayer({
           if (r.play) void e.currentTarget.play().catch(() => {});
         }}
       >
+        {video.captionVersion !== null ? (
+          <track
+            key={video.captionVersion}
+            kind="captions"
+            src={`/api/guides/videos/${video.id}/takarir?v=${video.captionVersion}`}
+            srcLang="id"
+            label="Bahasa Indonesia"
+          />
+        ) : null}
         Browser ini tidak dapat memutar video ini.
       </video>
       <figcaption className="text-sm [overflow-wrap:anywhere]">

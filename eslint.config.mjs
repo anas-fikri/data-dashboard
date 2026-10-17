@@ -19,6 +19,7 @@ export default tseslint.config(
       "coverage/**",
       "playwright-report/**",
       "test-results/**",
+      ".cache/**",
       "next-env.d.ts",
       ".claude/**",
     ],

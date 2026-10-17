@@ -4,13 +4,16 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { bucket, s3Internal, s3Public } from "@/lib/storage/s3";
 
 /*
- * Objek video panduan (T-021): guides/videos/<videoId>.<mp4|webm> dan guides/posters/<videoId>.png.
+ * Objek video panduan (T-021): guides/videos/<videoId>.<mp4|webm>, guides/posters/<videoId>.png, dan
+ * takarir guides/captions/<videoId>.vtt (T-j9j6; disajikan app same-origin, bukan presigned).
  * Operasi hanya lewat kunci yang lolos pola ketat. Pemutaran lewat presigned GET 1 jam (endpoint
  * publik, D5); storage melayani Range → 206 sehingga melompat ke menit tertentu tanpa unduh penuh.
  */
 
 export const GUIDE_VIDEO_KEY = /^guides\/videos\/[a-z0-9]{20,32}\.(mp4|webm)$/;
 export const GUIDE_POSTER_KEY = /^guides\/posters\/[a-z0-9]{20,32}\.png$/;
+export const GUIDE_CAPTION_KEY = /^guides\/captions\/[a-z0-9]{20,32}\.vtt$/;
+export const CAPTION_CONTENT_TYPE = "text/vtt; charset=utf-8";
 export const GUIDE_MEDIA_TTL_SEC = 60 * 60;
 
 export type GuideVideoExt = "mp4" | "webm";
@@ -19,7 +22,8 @@ export const VIDEO_CONTENT_TYPE: Record<GuideVideoExt, string> = {
   webm: "video/webm",
 };
 
-const valid = (key: string) => GUIDE_VIDEO_KEY.test(key) || GUIDE_POSTER_KEY.test(key);
+const valid = (key: string) =>
+  GUIDE_VIDEO_KEY.test(key) || GUIDE_POSTER_KEY.test(key) || GUIDE_CAPTION_KEY.test(key);
 
 export function guideVideoKey(videoId: string, ext: GuideVideoExt): string {
   const key = `guides/videos/${videoId}.${ext}`;
@@ -31,6 +35,38 @@ export function guidePosterKey(videoId: string): string {
   const key = `guides/posters/${videoId}.png`;
   if (!GUIDE_POSTER_KEY.test(key)) throw new Error("kunci poster panduan tidak valid");
   return key;
+}
+
+export function guideCaptionKey(videoId: string): string {
+  const key = `guides/captions/${videoId}.vtt`;
+  if (!GUIDE_CAPTION_KEY.test(key)) throw new Error("kunci takarir panduan tidak valid");
+  return key;
+}
+
+/** Simpan takarir WebVTT (≤ 200 KB, sudah diperiksa pemanggil) dengan Content-Type dari server. */
+export async function putGuideCaption(key: string, body: Uint8Array): Promise<void> {
+  if (!GUIDE_CAPTION_KEY.test(key)) throw new Error("kunci takarir panduan tidak valid");
+  await s3Internal().send(
+    new PutObjectCommand({
+      Bucket: bucket(),
+      Key: key,
+      Body: body,
+      ContentLength: body.byteLength,
+      ContentType: CAPTION_CONTENT_TYPE,
+    }),
+  );
+}
+
+/** Isi takarir (kecil, ≤ 200 KB) untuk disajikan app; objek tidak ada → null. */
+export async function getGuideCaption(key: string): Promise<Uint8Array | null> {
+  if (!GUIDE_CAPTION_KEY.test(key)) throw new Error("kunci takarir panduan tidak valid");
+  try {
+    const r = await s3Internal().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+    return r.Body ? await r.Body.transformToByteArray() : null;
+  } catch (e) {
+    if ((e as { name?: string }).name === "NoSuchKey") return null;
+    throw e;
+  }
 }
 
 /** Simpan poster PNG (≤ 2 MB, sudah diperiksa pemanggil) dengan Content-Type dari server. */
@@ -47,7 +83,7 @@ export async function putGuidePoster(key: string, body: Uint8Array): Promise<voi
   );
 }
 
-/** Hapus satu objek video/poster panduan. Tidak ada → tetap sukses (S3 idempoten). */
+/** Hapus satu objek video/poster/takarir panduan. Tidak ada → tetap sukses (S3 idempoten). */
 export async function deleteGuideObject(key: string): Promise<void> {
   if (!valid(key)) throw new Error("kunci objek panduan tidak valid");
   await s3Internal().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));

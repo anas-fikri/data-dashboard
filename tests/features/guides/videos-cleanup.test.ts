@@ -25,6 +25,7 @@ const prisma = {
 const storage = {
   deleteGuideObject: vi.fn(async (_key: string) => {}),
   putGuidePoster: vi.fn(async () => {}),
+  putGuideCaption: vi.fn(async () => {}),
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
@@ -33,9 +34,10 @@ vi.mock("@/lib/storage/guides", async (orig) => ({
   ...(await orig<typeof import("@/lib/storage/guides")>()),
   deleteGuideObject: storage.deleteGuideObject,
   putGuidePoster: storage.putGuidePoster,
+  putGuideCaption: storage.putGuideCaption,
 }));
 
-const { deleteVideo, removeVideoObjects, scheduleVideoCleanup, setVideoPoster } =
+const { deleteVideo, removeVideoObjects, scheduleVideoCleanup, setVideoCaption, setVideoPoster } =
   await import("@/features/guides/videos");
 
 const VID = "cmv4kljx40009oczvdmpuvid1";
@@ -55,7 +57,11 @@ const video = (over = {}) => ({
 
 beforeEach(() => vi.clearAllMocks());
 
-const KEYS = [`guides/videos/${VID}.mp4`, `guides/posters/${VID}.png`];
+const KEYS = [
+  `guides/videos/${VID}.mp4`,
+  `guides/posters/${VID}.png`,
+  `guides/captions/${VID}.vtt`,
+];
 
 describe("scheduleVideoCleanup", () => {
   it("video + poster dijadwalkan 10 menit lagi; daftar kosong tidak menulis", async () => {
@@ -103,9 +109,48 @@ describe("deleteVideo", () => {
       ok: true,
       videoId: VID,
     });
-    expect(order).toEqual(["baris", "jadwal", "objek", "objek"]);
+    expect(order).toEqual(["baris", "jadwal", "objek", "objek", "objek"]);
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
     storage.deleteGuideObject.mockImplementation(async () => {});
+  });
+});
+
+describe("setVideoCaption (T-j9j6)", () => {
+  const vtt = new TextEncoder().encode("WEBVTT\n\n00:00.000 --> 00:02.000\nHalo\n");
+
+  it("WebVTT sah → disimpan dengan kunci per video, captionKey diisi hanya untuk video READY", async () => {
+    prisma.guideVideo.findUnique.mockResolvedValueOnce(video());
+    prisma.guideVideo.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await setVideoCaption(admin, VID, vtt)).toEqual({
+      ok: true,
+      captionKey: `guides/captions/${VID}.vtt`,
+    });
+    expect(storage.putGuideCaption).toHaveBeenCalledWith(`guides/captions/${VID}.vtt`, vtt);
+    expect(prisma.guideVideo.updateMany).toHaveBeenCalledWith({
+      where: { id: VID, status: "READY" },
+      data: { captionKey: `guides/captions/${VID}.vtt` },
+    });
+  });
+
+  it("bukan WebVTT → INVALID_FORMAT; > 200 KB → FILE_TOO_LARGE; keduanya tanpa menyentuh storage/DB", async () => {
+    prisma.guideVideo.findUnique.mockResolvedValue(video());
+    const srt = new TextEncoder().encode("1\n00:00:00,000 --> 00:00:02,000\nHalo\n");
+    expect(await setVideoCaption(admin, VID, srt)).toMatchObject({ code: "INVALID_FORMAT" });
+    const big = new Uint8Array(200 * 1024 + 1).fill(0x41);
+    big.set(new TextEncoder().encode("WEBVTT\n"));
+    expect(await setVideoCaption(admin, VID, big)).toMatchObject({ code: "FILE_TOO_LARGE" });
+    expect(storage.putGuideCaption).not.toHaveBeenCalled();
+    expect(prisma.guideVideo.updateMany).not.toHaveBeenCalled();
+    prisma.guideVideo.findUnique.mockReset();
+  });
+
+  it("video belum siap / dihapus selagi takarir diunggah → NOT_FOUND, objek baru dibuang", async () => {
+    prisma.guideVideo.findUnique.mockResolvedValueOnce(video({ status: "UPLOADING" }));
+    expect(await setVideoCaption(admin, VID, vtt)).toMatchObject({ code: "NOT_FOUND" });
+    prisma.guideVideo.findUnique.mockResolvedValueOnce(video());
+    prisma.guideVideo.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await setVideoCaption(admin, VID, vtt)).toMatchObject({ code: "NOT_FOUND" });
+    expect(storage.deleteGuideObject).toHaveBeenCalledWith(`guides/captions/${VID}.vtt`);
   });
 });
 

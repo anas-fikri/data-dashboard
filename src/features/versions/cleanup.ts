@@ -9,9 +9,9 @@ import { rawRetentionWhere, versionPrefixes } from "./retention";
 /*
  * Job pemeliharaan storage di worker (T-013, flow-kerja B1/B5):
  *  - storage-cleanup: memproses StorageCleanup (hapus dataset yang gagal sebagian, versi dibuang
- *    retensi/pemilik, sisa ingest gagal, objek video/poster panduan yang gagal dihapus — T-z5nq).
- *    Prefix hanya boleh berbentuk (raw|parquet)/<cuid>/[<cuid>/] (review T-003) atau kunci persis
- *    guides/videos/<cuid>.(mp4|webm) / guides/posters/<cuid>.png, dan hanya dihapus bila datanya
+ *    retensi/pemilik, sisa ingest gagal, objek video/poster/takarir panduan yang gagal dihapus — T-z5nq,
+ *    T-j9j6). Prefix hanya boleh berbentuk (raw|parquet)/<cuid>/[<cuid>/] (review T-003) atau kunci persis
+ *    guides/videos/<cuid>.(mp4|webm) / guides/posters/<cuid>.png / guides/captions/<cuid>.vtt, dan hanya dihapus bila datanya
  *    memang sudah tidak dipakai; gagal → coba lagi dengan jeda bertingkat, maksimal 8 kali.
  *  - raw-retention: file asli raw/<ds>/<ver>/ dihapus 7 hari setelah ingest selesai; versi ditandai
  *    sourceDeletedAt (sourceKey tetap: recast menurunkan csv/xlsx dari ekstensinya).
@@ -26,7 +26,7 @@ const ERROR_MAX = 500;
 
 const PREFIX = /^(raw|parquet)\/([a-z0-9]{20,32})\/(?:([a-z0-9]{20,32})\/)?$/;
 const GUIDE_KEY =
-  /^guides\/(?:videos\/([a-z0-9]{20,32})\.(?:mp4|webm)|posters\/([a-z0-9]{20,32})\.png)$/;
+  /^guides\/(?:videos\/([a-z0-9]{20,32})\.(?:mp4|webm)|posters\/([a-z0-9]{20,32})\.png|captions\/([a-z0-9]{20,32})\.vtt)$/;
 
 export type CleanupTarget =
   | {
@@ -35,7 +35,7 @@ export type CleanupTarget =
       /** null = prefix seluruh dataset. */
       versionId: string | null;
     }
-  /** Satu objek video/poster panduan (kunci persis); video = multipart-nya ikut di-abort. */
+  /** Satu objek video/poster/takarir panduan (kunci persis); video = multipart-nya ikut di-abort. */
   | { kind: "guide"; videoId: string; video: boolean };
 
 /** Prefix StorageCleanup yang sah, atau null (tidak pernah menyentuh storage). */
@@ -43,7 +43,7 @@ export function parseCleanupPrefix(prefix: string): CleanupTarget | null {
   const m = PREFIX.exec(prefix);
   if (m) return { kind: m[1] as "raw" | "parquet", datasetId: m[2]!, versionId: m[3] ?? null };
   const g = GUIDE_KEY.exec(prefix);
-  if (g) return { kind: "guide", videoId: (g[1] ?? g[2])!, video: g[1] !== undefined };
+  if (g) return { kind: "guide", videoId: (g[1] ?? g[2] ?? g[3])!, video: g[1] !== undefined };
   return null;
 }
 

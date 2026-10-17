@@ -283,6 +283,81 @@ test.describe("video panduan (T-021)", () => {
       .toBe(120);
   });
 
+  test("T-j9j6: takarir .vtt → tombol takarir di /panduan dan teks sinkron; tidak sah / > 200 KB ditolak", async () => {
+    await a.goto(`/admin/panduan/${articleId}`);
+    const item = a.getByRole("list", { name: "Video artikel ini" }).getByRole("listitem").first();
+    const videoId = (await item.getByTestId("guide-video").getAttribute("data-video-id"))!;
+    const input = item.getByTestId("caption-input");
+    const status = item.getByTestId("caption-status");
+    const file = (name: string, text: string) => ({
+      name,
+      mimeType: "text/vtt",
+      buffer: Buffer.from(text),
+    });
+
+    // AC2: isi bukan WebVTT (SRT berekstensi .vtt) → INVALID_FORMAT dari server; > 200 KB → FILE_TOO_LARGE.
+    await input.setInputFiles(file("salah.vtt", "1\n00:00:00,000 --> 00:00:02,000\nHalo\n"));
+    await expect(status).toHaveText(/Takarir harus file WebVTT/);
+    const big = await call(a, `/api/guides/videos/${videoId}/takarir`, {
+      method: "POST",
+      bytes: [...Buffer.from("WEBVTT\n"), ...new Array(200 * 1024).fill(0x41)],
+    });
+    expect(big).toMatchObject({ status: 413, body: { code: "FILE_TOO_LARGE" } });
+    const notAdmin = await call(b, `/api/guides/videos/${videoId}/takarir`, {
+      method: "POST",
+      bytes: [...Buffer.from("WEBVTT\n")],
+    });
+    expect(notAdmin.status).toBe(404);
+    await expect(item.getByRole("button", { name: /^Tambah takarir/ })).toBeVisible();
+
+    // AC1: WebVTT sah → tersimpan; tombol berganti "Ganti takarir" setelah halaman disegarkan.
+    const vtt = (second: string) =>
+      `WEBVTT\n\n00:00.000 --> 00:04.000\nKlik Tambah dataset\n\n00:04.000 --> 00:08.000\n${second}\n`;
+    await input.setInputFiles(file("narasi.vtt", vtt("Pilih file Exel")));
+    await expect(status).toHaveText(/^Takarir video .* tersimpan\.$/);
+    await expect(item.getByRole("button", { name: /^Ganti takarir/ })).toBeVisible();
+    // Ganti takarir (salah ketik diperbaiki): URL <track> pratinjau berganti versi tanpa muat ulang.
+    const track = item.locator("track");
+    const first = await track.getAttribute("src");
+    await input.setInputFiles(file("narasi.vtt", vtt("Pilih file Excel")));
+    await expect(track).not.toHaveAttribute("src", first!);
+
+    // Pembaca: <track> same-origin (text/vtt, nosniff, tidak disimpan cache bersama), cue aktif sinkron.
+    await b.goto(`/panduan/${SLUG}`);
+    const video = b.getByTestId("guide-video").locator("video");
+    await expect(video.locator("track")).toHaveAttribute("srclang", "id");
+    const served = await b.evaluate(async (id) => {
+      const r = await fetch(`/api/guides/videos/${id}/takarir`);
+      const h = (k: string) => r.headers.get(k);
+      return {
+        status: r.status,
+        type: h("content-type"),
+        sniff: h("x-content-type-options"),
+        cache: h("cache-control"),
+        text: await r.text(),
+      };
+    }, videoId);
+    expect(served).toMatchObject({
+      status: 200,
+      type: "text/vtt; charset=utf-8",
+      sniff: "nosniff",
+      cache: "private, no-cache",
+    });
+    expect(served.text.startsWith("WEBVTT")).toBe(true);
+    await video.evaluate((v: HTMLVideoElement) => {
+      v.textTracks[0]!.mode = "showing";
+      v.currentTime = 5;
+    });
+    await expect
+      .poll(() =>
+        video.evaluate((v: HTMLVideoElement) => {
+          const cues = v.textTracks[0]!.activeCues;
+          return cues?.length ? (cues[0] as VTTCue).text : null;
+        }),
+      )
+      .toBe("Pilih file Excel");
+  });
+
   test("review AC4: progres diumumkan; selesai tidak merebut fokus; hapus berturut-turut fokus ke pesan", async () => {
     test.setTimeout(120_000);
     await a.goto(`/admin/panduan/${articleId}`);

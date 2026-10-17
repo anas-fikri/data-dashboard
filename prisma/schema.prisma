@@ -396,7 +396,8 @@ enum GuideVideoStatus {
 }
 
 /// Video panduan (T-021): mp4/webm ≤ 500 MB lewat multipart langsung ke storage; durasi dan poster PNG
-/// diambil di browser. Objek: guides/videos/<id>.<ext>, guides/posters/<id>.png.
+/// diambil di browser. Objek: guides/videos/<id>.<ext>, guides/posters/<id>.png, takarir
+/// guides/captions/<id>.vtt (T-j9j6).
 model GuideVideo {
   id          String           @id @default(cuid())
   articleId   String
@@ -408,6 +409,8 @@ model GuideVideo {
   objectKey   String           @unique
   uploadId    String?
   posterKey   String?
+  /// guides/captions/<id>.vtt (takarir WebVTT, T-j9j6); null = tanpa takarir.
+  captionKey  String?
   durationSec Int?
   status      GuideVideoStatus @default(UPLOADING)
   createdAt   DateTime         @default(now())

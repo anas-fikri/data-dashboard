@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAPTION_MAX_BYTES,
   VIDEO_MAX_BYTES,
+  captionProblem,
   formatDuration,
   isPng,
+  isVtt,
   sniffVideo,
   videoExtOf,
   videoProblem,
@@ -53,5 +56,30 @@ describe("media video panduan (T-021)", () => {
     expect(formatDuration(75)).toBe("1:15");
     expect(formatDuration(360)).toBe("6:00");
     expect(formatDuration(3725)).toBe("1:02:05");
+  });
+});
+
+/* T-j9j6: takarir WebVTT — signature "WEBVTT" di awal teks UTF-8 sah, tanpa NUL; .vtt ≤ 200 KB. */
+describe("takarir WebVTT (T-j9j6)", () => {
+  const enc = (s: string) => new TextEncoder().encode(s);
+  it("WEBVTT + baris baru / spasi / akhir file; BOM UTF-8 boleh", () => {
+    expect(isVtt(enc("WEBVTT\n\n00:00.000 --> 00:02.000\nHalo"))).toBe(true);
+    expect(isVtt(enc("WEBVTT - Panduan unggah\r\n"))).toBe(true);
+    expect(isVtt(enc("WEBVTT"))).toBe(true);
+    expect(isVtt(new Uint8Array([0xef, 0xbb, 0xbf, ...enc("WEBVTT\n")]))).toBe(true);
+  });
+  it("bukan WebVTT: SRT, WEBVTTX, huruf kecil, UTF-8 rusak, NUL → ditolak", () => {
+    expect(isVtt(enc("1\n00:00:00,000 --> 00:00:02,000\nHalo"))).toBe(false);
+    expect(isVtt(enc("WEBVTTX\n"))).toBe(false);
+    expect(isVtt(enc("webvtt\n"))).toBe(false);
+    expect(isVtt(new Uint8Array([...enc("WEBVTT\n"), 0xff, 0xfe]))).toBe(false);
+    expect(isVtt(enc("WEBVTT\n\u0000"))).toBe(false);
+    expect(isVtt(new Uint8Array())).toBe(false);
+  });
+  it("pra-cek browser: ekstensi .vtt dan ukuran ≤ 200 KB", () => {
+    expect(captionProblem("narasi.vtt", 1000)).toBeNull();
+    expect(captionProblem("narasi.VTT", CAPTION_MAX_BYTES)).toBeNull();
+    expect(captionProblem("narasi.srt", 1000)?.code).toBe("INVALID_FORMAT");
+    expect(captionProblem("narasi.vtt", CAPTION_MAX_BYTES + 1)?.code).toBe("FILE_TOO_LARGE");
   });
 });

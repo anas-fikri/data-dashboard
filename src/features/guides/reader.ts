@@ -142,17 +142,34 @@ export function guideBySlug(roles: readonly GuideRole[], slug: string) {
 export async function videoSource(user: { id: string; isAdmin: boolean }, id: unknown) {
   if (!cuidSchema.safeParse(id).success) return null;
   const v = await prisma.guideVideo.findFirst({
-    where: {
-      id: id as string,
-      status: "READY",
-      ...(user.isAdmin ? {} : { article: visible(await guideRolesFor(user.id, false)) }),
-    },
+    where: await visibleVideo(user, id as string),
     select: { objectKey: true, ext: true, posterKey: true },
   });
   if (!v) return null;
   return {
     src: await presignGuideGet(v.objectKey, VIDEO_CONTENT_TYPE[v.ext as GuideVideoExt]),
     poster: v.posterKey ? await presignGuideGet(v.posterKey, "image/png") : null,
+  };
+}
+
+/** Kunci takarir video yang boleh dilihat user (aturan akses = videoSource), atau null (404). */
+export async function videoCaptionKey(
+  user: { id: string; isAdmin: boolean },
+  id: unknown,
+): Promise<string | null> {
+  if (!cuidSchema.safeParse(id).success) return null;
+  const v = await prisma.guideVideo.findFirst({
+    where: await visibleVideo(user, id as string),
+    select: { captionKey: true },
+  });
+  return v?.captionKey ?? null;
+}
+
+async function visibleVideo(user: { id: string; isAdmin: boolean }, id: string) {
+  return {
+    id,
+    status: "READY" as const,
+    ...(user.isAdmin ? {} : { article: visible(await guideRolesFor(user.id, false)) }),
   };
 }
 

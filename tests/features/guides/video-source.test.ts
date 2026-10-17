@@ -17,7 +17,7 @@ vi.mock("@/lib/storage/guides", async (orig) => ({
   presignGuideGet: vi.fn(async (key: string, type: string) => `https://storage/${key}?ct=${type}`),
 }));
 
-const { videoSource } = await import("@/features/guides/reader");
+const { videoCaptionKey, videoSource } = await import("@/features/guides/reader");
 
 const VID = "cmv4kljx40009oczvdmpuvid1";
 const row = {
@@ -55,5 +55,31 @@ describe("videoSource", () => {
     expect(prisma.guideVideo.findFirst).not.toHaveBeenCalled();
     prisma.guideVideo.findFirst.mockResolvedValueOnce(null);
     expect(await videoSource({ id: "u", isAdmin: true }, VID)).toBeNull();
+  });
+});
+
+describe("videoCaptionKey (T-j9j6)", () => {
+  it("akses sama dengan videoSource: bukan admin dibatasi artikel terbit per peran; tanpa takarir → null", async () => {
+    prisma.guideVideo.findFirst.mockResolvedValueOnce({ captionKey: `guides/captions/${VID}.vtt` });
+    expect(await videoCaptionKey({ id: "cmv4kljx40009oczvdmpuusr1", isAdmin: false }, VID)).toBe(
+      `guides/captions/${VID}.vtt`,
+    );
+    expect(prisma.guideVideo.findFirst.mock.calls[0]![0]).toEqual({
+      where: {
+        id: VID,
+        status: "READY",
+        article: { status: "PUBLISHED", role: { in: ["OWNER", "ALL"] } },
+      },
+      select: { captionKey: true },
+    });
+    prisma.guideVideo.findFirst.mockResolvedValueOnce({ captionKey: null });
+    expect(await videoCaptionKey({ id: "u", isAdmin: true }, VID)).toBeNull();
+    prisma.guideVideo.findFirst.mockResolvedValueOnce(null);
+    expect(await videoCaptionKey({ id: "u", isAdmin: true }, VID)).toBeNull();
+  });
+
+  it("id bukan cuid tidak menyentuh DB", async () => {
+    expect(await videoCaptionKey({ id: "u", isAdmin: true }, "../x")).toBeNull();
+    expect(prisma.guideVideo.findFirst).not.toHaveBeenCalled();
   });
 });

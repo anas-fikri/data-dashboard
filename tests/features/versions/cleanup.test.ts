@@ -149,6 +149,19 @@ describe("isSafeToDelete", () => {
   });
 });
 
+describe("parseCleanupPrefix takarir (T-j9j6)", () => {
+  it("guides/captions/<cuid>.vtt → objek panduan tanpa abort multipart; bentuk lain ditolak", () => {
+    expect(parseCleanupPrefix(`guides/captions/${VER}.vtt`)).toEqual({
+      kind: "guide",
+      videoId: VER,
+      video: false,
+    });
+    expect(parseCleanupPrefix(`guides/captions/${VER}.srt`)).toBeNull();
+    expect(parseCleanupPrefix(`guides/captions/${VER}.vtt/`)).toBeNull();
+    expect(parseCleanupPrefix("guides/captions/")).toBeNull();
+  });
+});
+
 describe("nextAttemptAt", () => {
   it("5 menit · 2^attempts, maksimal 24 jam", () => {
     const after = (n: number) => (nextAttemptAt(n, NOW).getTime() - NOW.getTime()) / MIN;

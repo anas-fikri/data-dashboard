@@ -9,13 +9,16 @@ import { logger } from "@/lib/logger";
 import {
   VIDEO_CONTENT_TYPE,
   deleteGuideObject,
+  guideCaptionKey,
   guidePosterKey,
   guideVideoKey,
   presignGuideGet,
+  putGuideCaption,
   putGuidePoster,
 } from "@/lib/storage/guides";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import {
+  CAPTION_MAX_BYTES,
   POSTER_MAX_BYTES,
   VIDEO_DURATION_MAX,
   VIDEO_MAX_BYTES,
@@ -23,6 +26,7 @@ import {
   VIDEO_TITLE_MAX,
   VIDEOS_PER_ARTICLE,
   isPng,
+  isVtt,
   sniffVideo,
   videoExtOf,
   type VideoExt,
@@ -260,6 +264,36 @@ export async function setVideoPoster(
   return { ok: true, posterKey: key };
 }
 
+/** Takarir WebVTT dari browser (≤ 200 KB, signature + UTF-8); unggah ulang menggantinya (T-j9j6). */
+export async function setVideoCaption(
+  user: SessionUser,
+  id: unknown,
+  bytes: Uint8Array,
+): R<{ captionKey: string }> {
+  const v = await ownVideo(user, id);
+  if (!v || v.status !== "READY") return notFound;
+  if (bytes.byteLength > CAPTION_MAX_BYTES)
+    return { ok: false, code: "FILE_TOO_LARGE", message: "Takarir melebihi batas 200 KB." };
+  if (!isVtt(bytes))
+    return {
+      ok: false,
+      code: "INVALID_FORMAT",
+      message: "Takarir harus file WebVTT (diawali WEBVTT, teks UTF-8).",
+    };
+  const key = guideCaptionKey(v.id);
+  await putGuideCaption(key, bytes);
+  // Sama dengan poster: video dihapus selagi takarir diunggah → objek yang baru tersimpan dibuang.
+  const saved = await prisma.guideVideo.updateMany({
+    where: { id: v.id, status: "READY" },
+    data: { captionKey: key },
+  });
+  if (saved.count === 0) {
+    await deleteGuideObject(key).catch(() => retryLater([key], "guide-caption"));
+    return notFound;
+  }
+  return { ok: true, captionKey: key };
+}
+
 export async function deleteVideo(
   user: SessionUser,
   id: unknown,
@@ -301,10 +335,14 @@ async function retryLater(keys: string[], reason: string): Promise<void> {
 
 /** Jeda sebelum job storage-cleanup memproses jadwal yang dibuat bersama penghapusan baris. */
 const CLEANUP_GRACE_MS = 10 * 60 * 1000;
-const videoKeys = (v: { id: string; objectKey: string }) => [v.objectKey, guidePosterKey(v.id)];
+const videoKeys = (v: { id: string; objectKey: string }) => [
+  v.objectKey,
+  guidePosterKey(v.id),
+  guideCaptionKey(v.id),
+];
 
 /**
- * Jadwalkan pembersihan objek video + poster di transaksi yang menghapus barisnya (T-z5nq). Wajib
+ * Jadwalkan pembersihan objek video + poster + takarir di transaksi yang menghapus barisnya (T-z5nq). Wajib
  * sebelum removeVideoObjects: sukses → jadwal dibuang; gagal / proses mati → job mengulang setelah jeda.
  */
 export async function scheduleVideoCleanup(
@@ -321,8 +359,8 @@ export async function scheduleVideoCleanup(
 }
 
 /**
- * Hapus objek video + poster yang sudah dijadwalkan (scheduleVideoCleanup). Poster dihapus walau
- * posterKey kosong: kuncinya pasti per video dan bisa sedang diunggah bersamaan.
+ * Hapus objek video + poster + takarir yang sudah dijadwalkan (scheduleVideoCleanup). Poster/takarir
+ * dihapus walau kolomnya kosong: kuncinya pasti per video dan bisa sedang diunggah bersamaan.
  */
 export async function removeVideoObjects(
   videos: { id: string; objectKey: string; uploadId: string | null; posterKey: string | null }[],
@@ -355,6 +393,11 @@ export interface GuideVideoView {
   sizeBytes: number;
   src: string;
   poster: string | null;
+  /**
+   * Versi takarir (updatedAt ms) di /api/guides/videos/<id>/takarir (same-origin, T-j9j6); null = tanpa
+   * takarir. Dipakai di URL <track>: takarir yang diganti langsung tampil tanpa muat ulang halaman.
+   */
+  captionVersion: number | null;
 }
 
 /** Video siap per artikel, dengan presigned URL 1 jam (src + poster). */
@@ -375,6 +418,7 @@ export async function videosFor(articleIds: string[]): Promise<GuideVideoView[]>
       sizeBytes: Number(v.sizeBytes),
       src: await presignGuideGet(v.objectKey, VIDEO_CONTENT_TYPE[v.ext as VideoExt]),
       poster: v.posterKey ? await presignGuideGet(v.posterKey, "image/png") : null,
+      captionVersion: v.captionKey ? v.updatedAt.getTime() : null,
     })),
   );
 }

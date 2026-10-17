@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 
-/** Batalkan unggahan / hapus video panduan beserta objek dan posternya. */
+/** Batalkan unggahan / hapus video panduan beserta objek, poster, dan takarirnya. */
 export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
   return uploadRoute(req, RULES.uploadSign, (user) =>

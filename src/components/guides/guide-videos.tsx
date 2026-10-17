@@ -10,6 +10,7 @@ import { FocusNotice } from "@/components/ui/focus-notice";
 import { VIDEOS_PER_ARTICLE } from "@/features/guides/media";
 import type { GuideVideoView } from "@/features/guides/videos";
 import { UploadError, api, formatBytes } from "@/features/uploads/client";
+import { CaptionUpload } from "./caption-upload";
 import { GuideVideoPlayer } from "./video-player";
 import { VideoUpload } from "./video-upload";
 
@@ -86,6 +87,7 @@ export function GuideVideos({
                   Hapus<span className="sr-only"> video {v.title}</span>
                 </Button>
               </div>
+              <CaptionUpload video={v} />
             </li>
           ))}
         </ul>
@@ -112,7 +114,7 @@ export function GuideVideos({
         title="Hapus video?"
         description={
           <>
-            Video <strong>{deleting?.title}</strong> dan posternya dihapus permanen.
+            Video <strong>{deleting?.title}</strong> beserta poster dan takarirnya dihapus permanen.
           </>
         }
         busy={busy}

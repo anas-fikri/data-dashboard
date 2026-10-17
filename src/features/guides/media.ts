@@ -7,6 +7,8 @@ export const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
 /** Video siap per artikel (dicek server; form menampilkan batasnya sejak awal, T-z5nq). */
 export const VIDEOS_PER_ARTICLE = 5;
 export const POSTER_MAX_BYTES = 2 * 1024 * 1024;
+/** Takarir WebVTT (T-j9j6): teks, ratusan baris cukup untuk video panduan. */
+export const CAPTION_MAX_BYTES = 200 * 1024;
 /** Byte awal yang cukup untuk header ftyp mp4 dan header EBML webm (DocType). */
 export const VIDEO_SNIFF_BYTES = 64;
 export const VIDEO_TITLE_MAX = 120;
@@ -50,6 +52,32 @@ const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
 export function isPng(bytes: Uint8Array): boolean {
   return bytes.length >= 8 && PNG.every((b, i) => bytes[i] === b);
+}
+
+/**
+ * WebVTT: UTF-8 sah (BOM boleh), diawali "WEBVTT" lalu spasi/tab/baris baru atau akhir file, tanpa NUL
+ * (spesifikasi WebVTT). Isi cue dirender pemutar sebagai teks takarir, bukan HTML halaman.
+ */
+export function isVtt(bytes: Uint8Array): boolean {
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
+  } catch {
+    return false;
+  }
+  return /^WEBVTT(?:[ \t\r\n]|$)/.test(text) && !text.includes("\u0000");
+}
+
+/** Pesan galat pra-cek takarir di browser (null = boleh diunggah); server memeriksa ulang. */
+export function captionProblem(
+  name: string,
+  size: number,
+): { code: "INVALID_FORMAT" | "FILE_TOO_LARGE"; message: string } | null {
+  if (!/\.vtt$/i.test(name.trim()))
+    return { code: "INVALID_FORMAT", message: "Takarir harus file WebVTT (.vtt)." };
+  if (size > CAPTION_MAX_BYTES)
+    return { code: "FILE_TOO_LARGE", message: "Takarir melebihi batas 200 KB." };
+  return null;
 }
 
 /** Pesan galat pra-cek (null = boleh diunggah). Server memeriksa ulang setelah unggah selesai. */
