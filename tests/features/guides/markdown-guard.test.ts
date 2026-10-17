@@ -20,9 +20,11 @@ const html = (md: string) =>
 describe("remarkTable — batas kolom saat render (T-fesf)", () => {
   it("2.500 kolom × 1.990 baris (≈ 5 juta sel bila ditambal) → teks pengganti, cepat", () => {
     const bomb = `${row(2500, "h")}\n${row(2500, "-")}\n${"a\n".repeat(1990)}`;
-    const t0 = performance.now();
+    // Waktu CPU proses (bukan waktu dinding): tidak flaky saat mesin sibuk.
+    const t0 = process.cpuUsage();
     const out = html(bomb);
-    expect(performance.now() - t0).toBeLessThan(1500);
+    const used = process.cpuUsage(t0);
+    expect((used.user + used.system) / 1000).toBeLessThan(1500);
     expect(out).toContain("Tabel terlalu lebar untuk ditampilkan (maks. 8 kolom).");
     expect(out).not.toContain("<table");
   });

@@ -6,10 +6,17 @@ import { guideBodyProblem, guideInputSchema } from "@/features/guides/validation
 
 /* T-020 AC2/AC6: markdown panduan disanitasi — tag/URL berbahaya hilang, tautan luar rel aman. */
 /**
- * Batas waktu render uji DoS: regresi yang dicari 1,4–5 s (kuadratik); suite paralel di bawah beban
- * membuat render normal (≈ 60 ms sendirian) bisa > 200 ms, jadi ambang 1 s agar tidak flaky.
+ * Batas waktu render uji DoS: regresi yang dicari 1,4–5 s (kuadratik); render normal ≈ 60 ms. Diukur
+ * sebagai waktu CPU proses (pool forks = satu proses per file), bukan waktu dinding yang membengkak
+ * > 1 s saat mesin sibuk (load ±30) sehingga uji ini sempat flaky.
  */
 const RENDER_MAX_MS = 1_000;
+const cpuMs = (fn: () => void) => {
+  const t = process.cpuUsage();
+  fn();
+  const d = process.cpuUsage(t);
+  return (d.user + d.system) / 1000;
+};
 const ORIGINS = ["https://dashboard.pcpexpress.com", "https://storage.pcpexpress.com"];
 const html = (md: string) =>
   renderToStaticMarkup(createElement(GuideMarkdown, { markdown: md, origins: ORIGINS }));
@@ -80,9 +87,9 @@ describe("GuideMarkdown (T-020)", () => {
     ];
     for (const md of bombs) {
       expect(guideBodyProblem(md), md.slice(0, 8)).not.toBeNull();
-      const t = performance.now();
-      expect(html(md)).toContain("Isi artikel tidak dapat ditampilkan");
-      expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
+      expect(
+        cpuMs(() => expect(html(md)).toContain("Isi artikel tidak dapat ditampilkan")),
+      ).toBeLessThan(RENDER_MAX_MS);
       const r = guideInputSchema.safeParse({
         title: "A",
         slug: "a",
@@ -100,16 +107,15 @@ describe("GuideMarkdown (T-020)", () => {
     // Tepat di bawah batas baris: pola terburuk R3-1 tetap cepat.
     const edge = "> a\n" + "=\nb\n".repeat(999);
     expect(guideBodyProblem(edge)).toBeNull();
-    const t = performance.now();
-    html(edge);
-    expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
+    expect(cpuMs(() => html(edge))).toBeLessThan(RENDER_MAX_MS);
   });
   it("review R2-1: HTML mentah tidak diurai — pembuka tanpa penutup tidak kuadratik, tampil sebagai teks", () => {
     for (const md of ["a " + "<?".repeat(9999), "<!A".repeat(6666), "<!--".repeat(5000)]) {
       expect(guideBodyProblem(md)).toBeNull();
-      const t = performance.now();
-      html(md);
-      expect(performance.now() - t, md.slice(0, 6)).toBeLessThan(RENDER_MAX_MS);
+      expect(
+        cpuMs(() => html(md)),
+        md.slice(0, 6),
+      ).toBeLessThan(RENDER_MAX_MS);
     }
     expect(html("x <b>tebal</b>")).toContain("&lt;b&gt;tebal&lt;/b&gt;");
   });
@@ -248,9 +254,9 @@ describe("GuideMarkdown tabel (T-0vjt)", () => {
     expect(guideBodyProblem(bomb)).not.toBeNull();
     const edge = `${row(8, "a")}\n${row(8, "-")}\n${"a\n".repeat(1990)}`;
     expect(guideBodyProblem(edge)).toBeNull();
-    const t = performance.now();
-    expect(html(edge).match(/<td>/g)).toHaveLength(8 * 1990);
-    expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
+    expect(cpuMs(() => expect(html(edge).match(/<td>/g)).toHaveLength(8 * 1990))).toBeLessThan(
+      RENDER_MAX_MS,
+    );
     // Garis bukan pemisah tabel tidak terkena batas (pemisah tematik, teks dengan tanda hubung).
     expect(guideBodyProblem(`${"- ".repeat(5)}\n\n${"a - b | ".repeat(20)}`)).toBeNull();
   });
