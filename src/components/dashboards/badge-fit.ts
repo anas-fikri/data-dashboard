@@ -31,7 +31,11 @@ export function badgeMode(m: {
  * Ruang judul + lencana di kepala kartu (px): lebar isi dikurangi elemen lain dan jarak antar-elemen.
  * Judul ditandai data-head-title, lencana data-badge (keduanya tidak dihitung); elemen fleksibel
  * (mis. "Memperbarui…" basis 0) dihitung lebar minimumnya; tersembunyi/absolut tidak dihitung. Semua
- * lebar pecahan (getBoundingClientRect), bukan clientWidth/offsetWidth yang dibulatkan.
+ * lebar pecahan (getBoundingClientRect), bukan clientWidth/offsetWidth yang dibulatkan. Tombol kepala
+ * (data-head-control) yang disembunyikan container query → ruang 0: lencana mengalah, tidak merebut
+ * ruang yang baru dilepas kontrol yang lebih penting (tanpa "pulau" lencana 2 px, T-2jwv). Keputusan
+ * produk: berlaku juga di pointer sentuh, sehingga pita sempit tablet (kartu ±150–165 px lihat,
+ * ±205–280 px edit) tidak berlencana; data lengkap tetap lewat tombol data / kartu yang lebih lebar.
  */
 export function headRoom(head: HTMLElement): { room: number; gap: number } {
   const cs = getComputedStyle(head);
@@ -45,7 +49,11 @@ export function headRoom(head: HTMLElement): { room: number; gap: number } {
   for (const el of Array.from(head.children) as HTMLElement[]) {
     if ("headTitle" in el.dataset || "badge" in el.dataset) continue;
     const s = getComputedStyle(el);
-    if (s.display === "none" || s.position === "absolute" || s.position === "fixed") continue;
+    if (s.display === "none") {
+      if ("headControl" in el.dataset) return { room: 0, gap };
+      continue;
+    }
+    if (s.position === "absolute" || s.position === "fixed") continue;
     room -=
       (parseFloat(s.flexGrow) > 0
         ? parseFloat(s.minWidth) || 0

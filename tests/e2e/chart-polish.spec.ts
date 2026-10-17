@@ -293,6 +293,80 @@ test.describe("polish widget kecil (T-032)", () => {
     expect(seen.held).toBeGreaterThan(0);
   });
 
+  test("T-2jwv: tanpa frame judul < 4rem saat resize; lencana mengalah selama tombol kepala disembunyikan CSS", async () => {
+    let hiddenSeen = 0;
+    for (const mode of ["", "?mode=edit"]) {
+      await owner.goto(`/dashboards/${d}${mode}`);
+      await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
+      // Sampel tiap frame (rAF, sebelum ResizeObserver frame itu). Bila lebar kepala kartu berubah sejak frame
+      // sebelumnya, pengukuran masih tertunda di frame ini → dilewati; bila tidak, yang terbaca adalah
+      // keadaan yang dipaint frame sebelumnya. Pengukuran yang tertunda satu frame (rAF) akan tertangkap.
+      await owner.evaluate(() => {
+        const w = window as unknown as {
+          __minTitle: number;
+          __worst: string;
+          __stop: boolean;
+          __frames: number;
+        };
+        Object.assign(w, { __minTitle: Infinity, __worst: "", __stop: false, __frames: 0 });
+        let last = "";
+        const tick = () => {
+          const cards = [...document.querySelectorAll("[data-testid=widget]")];
+          const widths = cards
+            .map((c) => c.firstElementChild!.getBoundingClientRect().width)
+            .join();
+          if (widths === last) {
+            w.__frames++;
+            for (const card of cards) {
+              const badge = card.querySelector("[data-testid^=chart-badge]");
+              if (!badge) continue;
+              const h = card.querySelector("h2")!;
+              const t = h.getBoundingClientRect().width;
+              if (t < w.__minTitle) {
+                w.__minTitle = t;
+                w.__worst = `${innerWidth} px · ${h.textContent} · ${badge.textContent} · ${t}`;
+              }
+            }
+          }
+          last = widths;
+          if (!w.__stop) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      });
+      for (let width = 1024; width <= 1600; width += 4) {
+        await owner.setViewportSize({ width, height: 1100 });
+        await owner.waitForTimeout(60);
+        const cards = await owner.getByTestId("widget").evaluateAll((els) =>
+          els.map((e) => ({
+            title: e.querySelector("h2")!.textContent,
+            badge: e.querySelector("[data-testid^=chart-badge]") !== null,
+            hidden: [...e.querySelectorAll<HTMLElement>("[data-head-control]")].some(
+              (c) => getComputedStyle(c).display === "none",
+            ),
+          })),
+        );
+        for (const c of cards.filter((c) => c.hidden)) {
+          hiddenSeen++;
+          expect(c.badge, `${width} px ${mode || "lihat"}: ${c.title}`).toBe(false);
+        }
+      }
+      const { min, worst, frames } = await owner.evaluate(() => {
+        const w = window as unknown as {
+          __minTitle: number;
+          __worst: string;
+          __stop: boolean;
+          __frames: number;
+        };
+        w.__stop = true;
+        return { min: w.__minTitle, worst: w.__worst, frames: w.__frames };
+      });
+      expect(frames).toBeGreaterThan(100);
+      expect(min, `${mode || "lihat"}: ${worst}`).toBeGreaterThanOrEqual(64);
+    }
+    // Kontrol positif: pita dengan tombol tersembunyi benar-benar dilewati sweep.
+    expect(hiddenSeen).toBeGreaterThan(0);
+  });
+
   test("AC2: legenda pai muat → bukan tab stop; meluap → bisa difokus dan digulir panah", async () => {
     const tall = widgetTitled(owner, "Pai tinggi").getByTestId("pie-legend-region");
     const mid = widgetTitled(owner, "Pai sedang").getByTestId("pie-legend-region");

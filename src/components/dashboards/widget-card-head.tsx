@@ -114,6 +114,7 @@ export function DataToggleButton(props: {
       // Memuat: tekan diabaikan (pola tombol pager tabel).
       aria-disabled={mode === "wait" || undefined}
       data-testid="widget-data-toggle"
+      data-head-control
       onClick={() => {
         if (mode === "on") onToggle();
       }}

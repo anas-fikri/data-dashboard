@@ -1,7 +1,8 @@
 "use client";
 
 import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { forwardRef, useCallback, useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
 import type { ChartBadge } from "@/components/widgets/chart-widget";
@@ -91,31 +92,23 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   // Isi kepala berubah (tombol data/pegangan/label basi/mode) → ukur ulang. Primitif saja: config objek
   // baru tiap render sehingga observer berlangganan ulang terus (review desain T-7ke3).
   const kind = config?.type;
-  useEffect(() => {
+  // Diukur dan di-commit sebelum paint (layout effect + flushSync di callback ResizeObserver, T-2jwv):
+  // tanpa frame lencana lama di samping tombol yang baru muncul karena container query.
+  useLayoutEffect(() => {
     const head = headRef.current;
     if (!head) return;
-    let frame = 0;
-    const ro = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        if (!badge || showData) return setFit("none");
-        const { room, gap } = headRoom(head);
-        const width = (el: HTMLElement | null) => el?.getBoundingClientRect().width ?? 0;
-        setFit(
-          badgeMode({
-            room,
-            gap,
-            full: width(fullRef.current),
-            compact: width(compactRef.current),
-          }),
-        );
-      });
-    });
-    ro.observe(head);
-    return () => {
-      cancelAnimationFrame(frame);
-      ro.disconnect();
+    const measure = () => {
+      if (!badge || showData) return setFit("none");
+      const { room, gap } = headRoom(head);
+      const width = (el: HTMLElement | null) => el?.getBoundingClientRect().width ?? 0;
+      setFit(
+        badgeMode({ room, gap, full: width(fullRef.current), compact: width(compactRef.current) }),
+      );
     };
+    measure();
+    const ro = new ResizeObserver(() => flushSync(measure));
+    ro.observe(head);
+    return () => ro.disconnect();
   }, [badge, showData, editing, handle, stale, mode, kind]);
   return (
     <div
@@ -150,6 +143,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             )}
             title="Seret kepala kartu untuk memindahkan"
             aria-hidden
+            data-head-control
           >
             <IconGripVertical size={18} stroke={1.5} />
           </span>

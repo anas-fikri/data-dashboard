@@ -102,6 +102,7 @@ export function ExportMenu({ widgetId, title, table, request, className }: Props
           aria-label={`Ekspor ${title}`}
           title={unseenError ? "Ekspor gagal. Buka untuk detail." : "Ekspor CSV atau Excel"}
           data-testid="widget-export"
+          data-head-control
         >
           {busy ? (
             <IconLoader2 className="motion-safe:animate-spin" aria-hidden />
