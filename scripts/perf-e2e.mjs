@@ -6,6 +6,8 @@
  *     unggah → ingest → dashboard 10 widget → buka dashboard (dingin) → buka dengan filter → p95 query
  *   node scripts/perf-e2e.mjs concurrent <file> <n>
  *     n akun mengunggah bersamaan (AC 2): maks job ingest berjalan bersamaan + posisi antrean API/UI
+ *   node scripts/perf-e2e.mjs dashboard <datasetId> [indeks-akun]
+ *     hanya tahap dashboard di atas dataset READY milik akun itu (ulang ukur tanpa unggah ulang)
  * Env: PERF_BASE (mis. https://10.3.3.221:9543), PERF_USERS (users.json dari deploy/perf-stack.sh).
  * Keluaran stdout: satu baris JSON per peristiwa, baris terakhir {"ev":"ringkasan",...}.
  * Bukan bagian `npm run check`; dijalankan lewat scripts/perf-e2e.sh di VM.
@@ -244,27 +246,13 @@ async function openDashboard(page, url, widgets) {
   return { ms: performance.now() - started, queries: seen };
 }
 
-async function single(browser, path, userIndex) {
-  const bytes = statSync(path).size;
-  const context = await login(browser, USERS[userIndex]);
-  const page = await context.newPage();
-  const a = api(context);
-  const t0 = performance.now();
-  const datasetId = await createDataset(page, `Perf ${basename(path)} ${RUN}`);
-  const uploadMs = await upload(page, path);
-  log({
-    ev: "unggah",
-    file: basename(path),
-    bytes,
-    sec: sec(uploadMs),
-    mbps: Math.round((bytes / 1e6 / (uploadMs / 1000)) * 8),
-  });
-  const ing = await waitIngest(a, datasetId);
-  if (ing.status === "FAILED") throw new Error(`ingest gagal: ${ing.error}`);
-  const tReady = performance.now();
-
+/**
+ * Dashboard 10 widget di atas dataset READY: buat → buka dingin → kolom filter → buka dengan filter →
+ * p95 query per widget (nilai filter baru tiap putaran = dingin, lalu ulang = hangat).
+ */
+async function dashboardStage(context, page, a, datasetId, name) {
   await page.goto(`/dashboards/baru?dataset=${datasetId}`);
-  await page.getByLabel("Nama dashboard").fill(`Perf ${basename(path)} ${RUN}`);
+  await page.getByLabel("Nama dashboard").fill(name);
   await page.getByRole("button", { name: "Buat dashboard" }).click();
   await page.waitForURL(/\/dashboards\/[a-z0-9]{20,32}\?mode=edit/, { timeout: 60_000 });
   const dashboardId = new URL(page.url()).pathname.split("/").pop();
@@ -342,6 +330,30 @@ async function single(browser, path, userIndex) {
       }
     }
   }
+  return { widgetsMs, cold, filtered, tDashboard, tTotal, coldMs, warmMs, errors };
+}
+
+async function single(browser, path, userIndex) {
+  const bytes = statSync(path).size;
+  const context = await login(browser, USERS[userIndex]);
+  const page = await context.newPage();
+  const a = api(context);
+  const t0 = performance.now();
+  const datasetId = await createDataset(page, `Perf ${basename(path)} ${RUN}`);
+  const uploadMs = await upload(page, path);
+  log({
+    ev: "unggah",
+    file: basename(path),
+    bytes,
+    sec: sec(uploadMs),
+    mbps: Math.round((bytes / 1e6 / (uploadMs / 1000)) * 8),
+  });
+  const ing = await waitIngest(a, datasetId);
+  if (ing.status === "FAILED") throw new Error(`ingest gagal: ${ing.error}`);
+  const tReady = performance.now();
+
+  const { widgetsMs, cold, filtered, tDashboard, tTotal, coldMs, warmMs, errors } =
+    await dashboardStage(context, page, a, datasetId, `Perf ${basename(path)} ${RUN}`);
   const summary = {
     ev: "ringkasan",
     mode: "single",
@@ -366,6 +378,27 @@ async function single(browser, path, userIndex) {
     queryMs: { dingin: stats(coldMs), hangat: stats(warmMs), gagal: errors },
   };
   log(summary);
+  await context.close();
+}
+
+/** Hanya tahap dashboard di atas dataset READY yang sudah ada (ulang ukur tanpa unggah ulang). */
+async function dashboardOnly(browser, datasetId, userIndex) {
+  const context = await login(browser, USERS[userIndex]);
+  const page = await context.newPage();
+  const t0 = performance.now();
+  const r = await dashboardStage(context, page, api(context), datasetId, `Perf ulang ${RUN}`);
+  log({
+    ev: "ringkasan",
+    mode: "dashboard",
+    datasetId,
+    detik: {
+      buatWidget: sec(r.widgetsMs),
+      bukaDashboardDingin: sec(r.cold.ms),
+      bukaDashboardFilter: sec(r.filtered.ms),
+      total: sec(r.tTotal - t0),
+    },
+    queryMs: { dingin: stats(r.coldMs), hangat: stats(r.warmMs), gagal: r.errors },
+  });
   await context.close();
 }
 
@@ -433,7 +466,11 @@ const browser = await chromium.launch({
 try {
   if (mode === "single" && file) await single(browser, file, Number(arg ?? 0));
   else if (mode === "concurrent" && file) await concurrent(browser, file, Number(arg ?? 5));
-  else throw new Error("pakai: perf-e2e.mjs single <file> [akun] | concurrent <file> <n>");
+  else if (mode === "dashboard" && file) await dashboardOnly(browser, file, Number(arg ?? 0));
+  else
+    throw new Error(
+      "pakai: perf-e2e.mjs single <file> [akun] | concurrent <file> <n> | dashboard <datasetId> [akun]",
+    );
 } finally {
   await browser.close();
 }
