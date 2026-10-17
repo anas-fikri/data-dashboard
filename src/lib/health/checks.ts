@@ -1,4 +1,4 @@
-import { HeadBucketCommand } from "@aws-sdk/client-s3";
+import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { rendererClient, type RendererClient } from "@/features/exports/renderer-client";
 import { prisma } from "@/lib/db";
 import { findPlaceholderVars, parseEnv } from "@/lib/env";
@@ -69,7 +69,10 @@ export function infraChecks(): HealthCheck[] {
     {
       name: "Object storage",
       run: async () => {
-        await s3Internal().send(new HeadBucketCommand({ Bucket: bucket() }));
+        // Bukan HeadBucket: service account produksi hanya boleh list dengan prefix aplikasi (T-023).
+        await s3Internal().send(
+          new ListObjectsV2Command({ Bucket: bucket(), Prefix: "guides/", MaxKeys: 1 }),
+        );
         return `bucket ${bucket()} tersedia`;
       },
     },

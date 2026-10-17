@@ -1,0 +1,286 @@
+# Produksi on-prem (T-023). Runbook: docs/runbook-deploy.md. Semua nilai rahasia dari .env.prod (dibuat
+# deploy/deploy.sh; jangan di-commit). Hanya service "proxy" yang mempublikasikan port (80/443).
+#
+# Jaringan:
+#   edge   — proxy ↔ app (HTTPS app) dan proxy ↔ rustfs (storage.<domain>, presigned dari browser)
+#   data   — app, worker, migrate, storage-init, backup ↔ redis, rustfs, postgres. Tidak "internal":
+#            PostgreSQL host (host.docker.internal), SMTP, dan salinan backup off-VM butuh rute keluar;
+#            redis/rustfs tetap tanpa port terbuka (hanya proxy yang publish).
+#   render — app + worker ↔ renderer PDF (internal, tanpa egress; renderer HANYA di sini)
+# PostgreSQL: bawaan memakai server PostgreSQL host/eksternal (DATABASE_URL). Untuk VM tanpa PostgreSQL,
+# aktifkan profil "db" (COMPOSE_PROFILES=db) dan DATABASE_URL ke host "postgres".
+name: dashboard
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "20m", max-file: "5" }
+
+x-app-env: &app-env
+  NODE_ENV: production
+  # Tanpa home di image (user app): DuckDB/tsx menulis ke /tmp (tmpfs).
+  HOME: /tmp
+  APP_URL: https://${APP_HOST:?isi APP_HOST di .env.prod}
+  APP_HOST: ${APP_HOST}
+  TRUST_PROXY: "true"
+  AUTH_SECRET: ${AUTH_SECRET:?}
+  ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:?}
+  MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  DATABASE_URL: ${DATABASE_URL:?}
+  REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+  S3_ENDPOINT: http://rustfs:9000
+  S3_PUBLIC_ENDPOINT: https://${STORAGE_HOST:?isi STORAGE_HOST di .env.prod}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-dashboard}
+  # Service account berpolicy prefix (deploy/storage-iam.mjs), BUKAN akun root RustFS.
+  S3_ACCESS_KEY: ${S3_APP_ACCESS_KEY:?jalankan deploy/deploy.sh (membuat service account)}
+  S3_SECRET_KEY: ${S3_APP_SECRET_KEY:?}
+  SMTP_URL: ${SMTP_URL:?}
+  MAIL_FROM: ${MAIL_FROM:?}
+  RENDERER_URL: http://renderer:3200
+  RENDERER_SECRET: ${RENDERER_SECRET:?}
+  # Alamat app yang dibuka renderer di jaringan render (bukan TLD HSTS preload, lihat .env.example).
+  APP_INTERNAL_URL: http://dashboard-web:3100
+
+services:
+  proxy:
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    restart: unless-stopped
+    # 443 = app (dan storage bila STORAGE_HOST memakai domain sendiri); 8444 = storage bila STORAGE_HOST
+    # berupa <host>:8444 (LAN/IP). Port 80 tidak dipakai (redirect http dimatikan, ACME lewat TLS-ALPN
+    # di 443) sehingga tidak bentrok dengan web server lain di VM.
+    ports: ["443:443", "8444:8444"]
+    environment:
+      APP_HOST: ${APP_HOST}
+      STORAGE_HOST: ${STORAGE_HOST}
+      S3_BUCKET: ${S3_BUCKET:-dashboard}
+      # "internal" = CA lokal Caddy (on-prem tanpa ACME); email = sertifikat ACME publik;
+      # "/certs/fullchain.pem /certs/privkey.pem" = sertifikat sendiri (mount ./deploy/certs).
+      CADDY_TLS: ${CADDY_TLS:-internal}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/certs:/certs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_healthy }
+      rustfs: { condition: service_healthy }
+    logging: *logging
+    networks: [edge]
+
+  app:
+    image: dashboard-app:${IMAGE_TAG:-latest}
+    build: { context: ., target: app }
+    restart: unless-stopped
+    environment: *app-env
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    mem_limit: ${APP_MEM:-4g}
+    read_only: true
+    # .next/cache: cache data/ISR Next (boleh hilang saat restart).
+    tmpfs: ["/tmp:size=256m", "/app/.next/cache:size=256m,uid=10001,gid=10001"]
+    volumes: [app_cache:/var/cache/dashboard]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      storage-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    logging: *logging
+    networks:
+      edge: {}
+      data: {}
+      render: { aliases: [dashboard-web] }
+
+  worker:
+    image: dashboard-worker:${IMAGE_TAG:-latest}
+    build: { context: ., target: worker }
+    restart: unless-stopped
+    environment: *app-env
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    deploy: { replicas: "${WORKER_REPLICAS:-2}" }
+    mem_limit: ${WORKER_MEM:-3g}
+    read_only: true
+    tmpfs: ["/tmp:size=512m"]
+    # Temp per job (file sumber + spill sharedStrings ≤ 8 GiB) + cache parquet: ≥ upload maks + 8 GiB per
+    # replika (ADR-0005). Nama file per job/versi, jadi replika boleh berbagi volume.
+    volumes: [worker_cache:/var/cache/dashboard]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    stop_grace_period: 60s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      storage-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    logging: *logging
+    networks: [data, render]
+
+  renderer:
+    image: dashboard-renderer:${IMAGE_TAG:-latest}
+    build: { context: ., dockerfile: renderer/Dockerfile }
+    restart: unless-stopped
+    init: true
+    environment:
+      NODE_ENV: production
+      RENDERER_SECRET: ${RENDERER_SECRET:?}
+      APP_INTERNAL_URL: http://dashboard-web:3100
+    security_opt:
+      - seccomp=./renderer/seccomp_profile.json
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    # Satu-satunya capability: sandbox Chromium (lihat docker-compose.dev.yml / renderer/README.md).
+    cap_add: [SYS_CHROOT]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=512m"]
+    mem_limit: ${RENDERER_MEM:-2g}
+    logging: *logging
+    networks: [render]
+
+  # Satu kali per deploy: migrasi Prisma (idempoten).
+  migrate:
+    image: dashboard-worker:${IMAGE_TAG:-latest}
+    build: { context: ., target: worker }
+    command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+    environment: { DATABASE_URL: "${DATABASE_URL:?}" }
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    restart: "no"
+    logging: *logging
+    networks: [data]
+    depends_on:
+      postgres: { condition: service_healthy, required: false }
+      pg-relay: { condition: service_started, required: false }
+
+  # Satu kali per deploy: bucket, CORS, lifecycle (akun root, idempoten) + service account app.
+  storage-init:
+    image: dashboard-worker:${IMAGE_TAG:-latest}
+    build: { context: ., target: worker }
+    command: ["sh", "-c", "node scripts/storage-init.mjs && node deploy/storage-iam.mjs"]
+    environment:
+      APP_URL: https://${APP_HOST}
+      S3_ENDPOINT: http://rustfs:9000
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-dashboard}
+      S3_ACCESS_KEY: ${RUSTFS_ROOT_USER:?}
+      S3_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?}
+      S3_APP_ACCESS_KEY: ${S3_APP_ACCESS_KEY:?}
+      S3_APP_SECRET_KEY: ${S3_APP_SECRET_KEY:?}
+    restart: "no"
+    depends_on:
+      rustfs: { condition: service_healthy }
+    logging: *logging
+    networks: [data]
+
+  redis:
+    image: redis:7-alpine@sha256:6ab0b6e7381779332f97b8ca76193e45b0756f38d4c0dcda72dbb3c32061ab99
+    restart: unless-stopped
+    # noeviction (ADR-0004): Redis juga menampung antrean BullMQ, bukan cache semata.
+    command:
+      - redis-server
+      - --requirepass
+      - ${REDIS_PASSWORD:?}
+      - --protected-mode
+      - "yes"
+      - --maxmemory
+      - ${REDIS_MAXMEMORY:-512mb}
+      - --maxmemory-policy
+      - noeviction
+      - --appendonly
+      - "yes"
+    environment: { REDIS_PASSWORD: "${REDIS_PASSWORD:?}" }
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD-SHELL", 'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep PONG']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+    networks: [data]
+
+  # Object storage S3 (ADR-0002). Console mati (setara MINIO_BROWSER=off); tidak ada port terbuka.
+  rustfs:
+    image: rustfs/rustfs@sha256:1803faef57627e2d9c2e7d89d655d712ddded5389040054987163043fecb6a3c
+    restart: unless-stopped
+    environment:
+      RUSTFS_ACCESS_KEY: ${RUSTFS_ROOT_USER:?}
+      RUSTFS_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?}
+      RUSTFS_CONSOLE_ENABLE: "false"
+    volumes: [s3data:/data]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+    networks: [edge, data]
+
+  # Backup harian 02:00 (deploy/backup.sh): pg_dump + salinan bucket, terenkripsi age, disalin off-VM
+  # (rclone), retensi 30 hari. Kunci privat age TIDAK ada di VM ini.
+  backup:
+    image: dashboard-backup:${IMAGE_TAG:-latest}
+    build: { context: ./deploy/backup }
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?}
+      S3_ENDPOINT: http://rustfs:9000
+      S3_BUCKET: ${S3_BUCKET:-dashboard}
+      S3_ACCESS_KEY: ${RUSTFS_ROOT_USER:?}
+      S3_SECRET_KEY: ${RUSTFS_ROOT_PASSWORD:?}
+      BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?isi kunci publik age (age1…) di .env.prod}
+      BACKUP_REMOTE: ${BACKUP_REMOTE:-}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      RCLONE_CONFIG: /config/rclone.conf
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes:
+      - ./deploy/backup.sh:/usr/local/bin/backup.sh:ro
+      - ./deploy/restore.sh:/usr/local/bin/restore.sh:ro
+      - ./deploy/rclone.conf:/config/rclone.conf:ro
+      - backups:/backups
+    logging: *logging
+    networks: [data]
+
+  # PostgreSQL host yang hanya mendengar di 127.0.0.1 (profil hostdb): relay di network host meneruskan
+  # 172.17.0.1:15432 (gateway bridge Docker = host.docker.internal) → 127.0.0.1:5432, tanpa mengubah
+  # listen_addresses/pg_hba. DATABASE_URL memakai host.docker.internal:15432.
+  pg-relay:
+    profiles: [hostdb]
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    restart: unless-stopped
+    network_mode: host
+    command:
+      ["TCP-LISTEN:15432,bind=${PG_RELAY_BIND:-172.17.0.1},fork,reuseaddr", "TCP:127.0.0.1:5432"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  postgres:
+    profiles: [db]
+    image: postgres:16-alpine@sha256:57c72fd2a128e416c7fcc499958864df5301e940bca0a56f58fddf30ffc07777
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-data_dashboard}
+      POSTGRES_USER: ${POSTGRES_USER:-dashboard}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: *logging
+    networks: [data]
+
+networks:
+  edge: {}
+  data: {}
+  render: { internal: true }
+
+volumes:
+  caddy_data: {}
+  caddy_config: {}
+  app_cache: {}
+  worker_cache: {}
+  redisdata: {}
+  s3data: {}
+  pgdata: {}
+  backups: {}

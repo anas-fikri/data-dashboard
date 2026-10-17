@@ -48,3 +48,9 @@ yarn-error.log*
 /demo/guide-videos/*.csv
 /demo/guide-videos/.raw/
 /demo/guide-videos/.state-*.json
+
+# Deploy produksi (T-023): kredensial off-VM dan sertifikat TLS tidak pernah di-commit
+/deploy/rclone.conf
+/deploy/certs/*
+!/deploy/certs/.gitkeep
+/deploy/ca-root.crt

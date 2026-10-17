@@ -11,3 +11,7 @@ tests/fixtures/perf
 .git
 .claude
 *.log
+# Kredensial off-VM dan sertifikat TLS deploy (T-023)
+deploy/rclone.conf
+deploy/certs
+demo/guide-videos/*.webm

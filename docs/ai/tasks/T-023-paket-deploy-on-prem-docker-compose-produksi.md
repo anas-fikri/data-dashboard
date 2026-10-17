@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: Paket deploy on-prem Docker Compose produksi
-status: todo
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-5
@@ -12,8 +12,58 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-16T21:54:05Z"
+updated: "2026-10-17T00:52:45Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 1bacfb5c33e15b6edf677d19425445a1f3cc6933
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 53539
+    summary: |-
+      > data-dashboard@0.1.0 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@0.1.0 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      All matched files use Prettier code style!
+
+      > data-dashboard@0.1.0 typecheck
+      > tsc --noEmit
+
+
+      > data-dashboard@0.1.0 test
+      > vitest run
+
+
+       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+
+      {"level":40,"time":1792198337497,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792198337522,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792198337529,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  126 passed (126)
+            Tests  1731 passed (1731)
+         Start at  07:52:07
+         Duration  36.67s (tests 76%, import 17%, transform 6%)
+
+          Isolate  126 workers spawned · ~161ms startup each (spawn + environment, per file)
+                   at least ~2.09s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-17T00:52:45Z"
+    tree: 9a8e37d1db2bc4021e7e8906d4de935047a07e316a48930e98172f3968eb690c
 ---
 
 ## Objective

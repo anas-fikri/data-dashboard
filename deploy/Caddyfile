@@ -1,0 +1,89 @@
+# Reverse proxy produksi (T-023). Nilai {$VAR} dari environment service "proxy" (docker-compose.prod.yml).
+{
+	# Tidak ada listener http publik (port 80 milik web server lain di VM); https saja.
+	auto_https disable_redirects
+	# Log akses JSON ke stdout; isi sensitif dibuang di tiap situs (lihat (redact)).
+	servers {
+		# Upload part presigned 16 MiB dan video panduan: tunggu body cukup lama.
+		timeouts {
+			read_body 10m
+			read_header 30s
+			idle 5m
+		}
+	}
+}
+
+(redact) {
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				# Query string berisi signature presigned dan nilai filter dashboard (?f=, review T-012):
+				# tidak pernah disimpan di log. Path token render/verifikasi diredaksi (T-018 D15, T-027).
+				request>uri regexp "\?.*$" ""
+				request>uri regexp "^/(render|verify|reset-password)/?.*$" "/$1/[redaksi]"
+				request>headers>Cookie delete
+				request>headers>Authorization delete
+				resp_headers>Set-Cookie delete
+			}
+		}
+	}
+}
+
+{$APP_HOST} {
+	tls {$CADDY_TLS}
+	import redact
+	encode zstd gzip
+	# Server Action ≤ 1 MB, poster video ≤ 2 MB (proxyClientMaxBodySize 3 MB); unggahan file langsung ke
+	# storage. Batas di sini menolak body besar sebelum sampai Node.
+	request_body {
+		max_size 4MB
+	}
+	header {
+		# HSTS di proxy (T-027): semua subdomain termasuk storage wajib https.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+	reverse_proxy app:3100 {
+		# Ditimpa dari koneksi nyata, tidak pernah diteruskan dari klien (review T-019): Origin Server
+		# Action dicocokkan dengan Host/X-Forwarded-Host; X-Real-IP dipakai rate limit + AuditLog.
+		header_up Host {host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+		header_up -X-Forwarded-Server
+	}
+}
+
+{$STORAGE_HOST} {
+	tls {$CADDY_TLS}
+	import redact
+	# Part multipart 16 MiB (+ ruang); Content-Length diteruskan apa adanya (signed header UploadPart).
+	request_body {
+		max_size 32MB
+	}
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		Content-Security-Policy "sandbox"
+		-Server
+	}
+
+	# Browser hanya butuh: GET/HEAD (unduh ekspor, video/poster panduan, Range 206), PUT (part presigned),
+	# OPTIONS (preflight CORS) di bucket aplikasi pada prefix raw/, guides/, exports/. Create/Complete
+	# multipart, parquet/, API admin (/minio/*, /rustfs/*), daftar bucket: tidak lewat sini → 403.
+	@public {
+		method GET HEAD PUT OPTIONS
+		path_regexp ^/{$S3_BUCKET}/(raw|guides|exports)/[^?]+$
+	}
+	handle @public {
+		reverse_proxy rustfs:9000 {
+			# SigV4 menandatangani host publik: Host asli wajib sampai ke RustFS tanpa diubah.
+			header_up Host {host}
+			flush_interval -1
+		}
+	}
+	handle {
+		respond "Forbidden" 403
+	}
+}
