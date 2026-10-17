@@ -4,6 +4,8 @@
  */
 
 export const VIDEO_MAX_BYTES = 500 * 1024 * 1024;
+/** Video siap per artikel (dicek server; form menampilkan batasnya sejak awal, T-z5nq). */
+export const VIDEOS_PER_ARTICLE = 5;
 export const POSTER_MAX_BYTES = 2 * 1024 * 1024;
 /** Byte awal yang cukup untuk header ftyp mp4 dan header EBML webm (DocType). */
 export const VIDEO_SNIFF_BYTES = 64;

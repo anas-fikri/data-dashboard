@@ -165,6 +165,16 @@ export const s3Multipart: MultipartStorage = {
 /** Abort semua upload multipart yang belum selesai di bawah prefix (dipakai saat hapus dataset). */
 export async function abortMultipartUnder(prefix: string): Promise<number> {
   if (!prefix.endsWith("/")) throw new Error("prefix wajib diakhiri '/'");
+  return abortListed(prefix, () => true);
+}
+
+/** Abort upload multipart untuk satu kunci persis (objek video panduan yang yatim, T-z5nq). */
+export async function abortMultipartFor(key: string): Promise<number> {
+  if (!key || key.endsWith("/")) throw new Error("kunci objek wajib persis, bukan prefix");
+  return abortListed(key, (k) => k === key);
+}
+
+async function abortListed(prefix: string, keep: (key: string) => boolean): Promise<number> {
   const s3 = s3Internal();
   let aborted = 0;
   let keyMarker: string | undefined;
@@ -179,7 +189,7 @@ export async function abortMultipartUnder(prefix: string): Promise<number> {
       }),
     );
     for (const u of res.Uploads ?? []) {
-      if (u.Key && u.UploadId) {
+      if (u.Key && u.UploadId && keep(u.Key)) {
         await s3Multipart.abort(u.Key, u.UploadId);
         aborted++;
       }

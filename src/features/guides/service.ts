@@ -3,7 +3,7 @@ import { Prisma, type GuideArticle, type GuideRole } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import { prisma } from "@/lib/db";
 import { cuidSchema, guideInputSchema, type GuideInput } from "./validation";
-import { removeVideoObjects } from "./videos";
+import { removeVideoObjects, scheduleVideoCleanup } from "./videos";
 
 /*
  * Artikel panduan (T-020). Pemanggil perubahan WAJIB sudah lolos requireAdmin("action") (actions.ts);
@@ -152,6 +152,7 @@ export async function deleteGuide(actorId: string, id: string, ip: string): Prom
       select: { id: true, objectKey: true, uploadId: true, posterKey: true },
     });
     await tx.guideArticle.delete({ where: { id } });
+    await scheduleVideoCleanup(tx, videos);
     await recordAudit(tx, {
       actorId,
       action: "guide.delete",

@@ -21,6 +21,7 @@ import {
   VIDEO_MAX_BYTES,
   VIDEO_SNIFF_BYTES,
   VIDEO_TITLE_MAX,
+  VIDEOS_PER_ARTICLE,
   isPng,
   sniffVideo,
   videoExtOf,
@@ -35,7 +36,7 @@ import { cuidSchema } from "./validation";
  * diambil di browser. Selain admin aktif: NOT_FOUND tanpa menyentuh data.
  */
 
-export const VIDEOS_PER_ARTICLE = 5;
+export { VIDEOS_PER_ARTICLE };
 export const SIGN_BATCH_MAX = 16;
 const STALE_MS = 24 * 60 * 60 * 1000;
 
@@ -140,14 +141,19 @@ export async function signVideoParts(
   return { ok: true, urls };
 }
 
-/** Buang video yang gagal (objek + multipart + baris). */
+/** Buang video yang gagal (objek + multipart + baris); objek yang gagal dihapus diulang job. */
 async function discard(
   v: { id: string; objectKey: string; uploadId: string | null },
   storage: MultipartStorage,
 ) {
-  if (v.uploadId) await storage.abort(v.objectKey, v.uploadId).catch(() => {});
-  await storage.remove(v.objectKey).catch(() => {});
   await prisma.guideVideo.deleteMany({ where: { id: v.id } });
+  try {
+    if (v.uploadId) await storage.abort(v.objectKey, v.uploadId);
+    await storage.remove(v.objectKey);
+  } catch (e) {
+    logger.warn({ videoId: v.id, err: String(e) }, "objek video gagal dibuang; diulang job");
+    await retryLater([v.objectKey], "guide-video");
+  }
 }
 
 export async function completeVideo(
@@ -242,7 +248,15 @@ export async function setVideoPoster(
   if (!isPng(bytes)) return { ok: false, code: "INVALID_FORMAT", message: "Poster harus PNG." };
   const key = guidePosterKey(v.id);
   await putGuidePoster(key, bytes);
-  await prisma.guideVideo.update({ where: { id: v.id }, data: { posterKey: key } });
+  // Video dihapus selagi poster diunggah: barisnya hilang → poster yang baru tersimpan ikut dibuang.
+  const saved = await prisma.guideVideo.updateMany({
+    where: { id: v.id, status: "READY" },
+    data: { posterKey: key },
+  });
+  if (saved.count === 0) {
+    await deleteGuideObject(key).catch(() => retryLater([key], "guide-poster"));
+    return notFound;
+  }
   return { ok: true, posterKey: key };
 }
 
@@ -254,9 +268,11 @@ export async function deleteVideo(
 ): R<{ videoId: string }> {
   const v = await ownVideo(user, id);
   if (!v) return notFound;
-  await removeVideoObjects([v], storage);
+  // Baris dulu, objek sesudahnya (seperti deleteGuide); pembersihan ulang dijadwalkan di transaksi yang
+  // sama, jadi proses yang mati di antaranya pun tidak meninggalkan objek yatim.
   await prisma.$transaction(async (tx) => {
     await tx.guideVideo.deleteMany({ where: { id: v.id } });
+    await scheduleVideoCleanup(tx, [v]);
     if (v.status === "READY")
       await recordAudit(tx, {
         actorId: user.id,
@@ -267,27 +283,72 @@ export async function deleteVideo(
         ip,
       });
   });
+  await removeVideoObjects([v], storage);
   return { ok: true, videoId: v.id };
 }
 
-/** Hapus objek video/poster (dipakai juga saat artikel dihapus). Gagal → dicatat, tidak dilempar. */
+/**
+ * Kunci objek yang gagal dihapus → StorageCleanup (job storage-cleanup mengulang, T-z5nq): tidak ada
+ * objek yatim permanen. Gagal mencatat pun hanya dilog (penghapusan sudah dilakukan sebisanya).
+ */
+async function retryLater(keys: string[], reason: string): Promise<void> {
+  await prisma.storageCleanup
+    .createMany({ data: keys.map((prefix) => ({ prefix, reason })) })
+    .catch((e: unknown) =>
+      logger.error({ keys, err: String(e) }, "pembersihan ulang gagal dicatat"),
+    );
+}
+
+/** Jeda sebelum job storage-cleanup memproses jadwal yang dibuat bersama penghapusan baris. */
+const CLEANUP_GRACE_MS = 10 * 60 * 1000;
+const videoKeys = (v: { id: string; objectKey: string }) => [v.objectKey, guidePosterKey(v.id)];
+
+/**
+ * Jadwalkan pembersihan objek video + poster di transaksi yang menghapus barisnya (T-z5nq). Wajib
+ * sebelum removeVideoObjects: sukses → jadwal dibuang; gagal / proses mati → job mengulang setelah jeda.
+ */
+export async function scheduleVideoCleanup(
+  tx: Pick<typeof prisma, "storageCleanup">,
+  videos: { id: string; objectKey: string }[],
+): Promise<void> {
+  if (!videos.length) return;
+  const notBefore = new Date(Date.now() + CLEANUP_GRACE_MS);
+  await tx.storageCleanup.createMany({
+    data: videos.flatMap((v) =>
+      videoKeys(v).map((prefix) => ({ prefix, reason: "guide-video", notBefore })),
+    ),
+  });
+}
+
+/**
+ * Hapus objek video + poster yang sudah dijadwalkan (scheduleVideoCleanup). Poster dihapus walau
+ * posterKey kosong: kuncinya pasti per video dan bisa sedang diunggah bersamaan.
+ */
 export async function removeVideoObjects(
   videos: { id: string; objectKey: string; uploadId: string | null; posterKey: string | null }[],
   storage: MultipartStorage = s3Multipart,
 ): Promise<void> {
   for (const v of videos) {
+    const keys = videoKeys(v);
     try {
       if (v.uploadId) await storage.abort(v.objectKey, v.uploadId);
-      await deleteGuideObject(v.objectKey);
-      if (v.posterKey) await deleteGuideObject(v.posterKey);
+      for (const key of keys) await deleteGuideObject(key);
     } catch (e) {
-      logger.error({ videoId: v.id, err: String(e) }, "objek video panduan gagal dihapus");
+      logger.error(
+        { videoId: v.id, err: String(e) },
+        "objek video panduan gagal dihapus; diulang job",
+      );
+      continue;
     }
+    // Sisa jadwal hanya membuat job memeriksa ulang objek yang sudah hilang.
+    await prisma.storageCleanup.deleteMany({ where: { prefix: { in: keys } } }).catch(() => {});
   }
 }
 
 export interface GuideVideoView {
   id: string;
+  /** Waktu src/poster ditandatangani (epoch ms): pemutar memperbaruinya sebelum kedaluwarsa. */
+  issuedAt: number;
   articleId: string;
   title: string;
   durationSec: number | null;
@@ -303,9 +364,11 @@ export async function videosFor(articleIds: string[]): Promise<GuideVideoView[]>
     where: { articleId: { in: articleIds }, status: "READY" },
     orderBy: { createdAt: "asc" },
   });
+  const issuedAt = Date.now();
   return Promise.all(
     rows.map(async (v) => ({
       id: v.id,
+      issuedAt,
       articleId: v.articleId,
       title: v.title,
       durationSec: v.durationSec,

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FocusNotice } from "@/components/ui/focus-notice";
+import { VIDEOS_PER_ARTICLE } from "@/features/guides/media";
 import type { GuideVideoView } from "@/features/guides/videos";
 import { UploadError, api, formatBytes } from "@/features/uploads/client";
 import { GuideVideoPlayer } from "./video-player";
@@ -30,6 +31,8 @@ export function GuideVideos({
   const [error, setError] = useState<string | null>(null);
   /** n: kunci agar pesan berikutnya dipasang ulang dan menerima fokus lagi. */
   const [deleted, setDeleted] = useState<{ n: number; text: string } | null>(null);
+  /** Bertambah tiap aksi hapus dimulai: form unggah membuang pesan hasil lamanya (T-z5nq). */
+  const [actions, setActions] = useState(0);
   const trigger = useRef<HTMLButtonElement | null>(null);
 
   async function remove() {
@@ -50,7 +53,7 @@ export function GuideVideos({
   }
 
   return (
-    <section aria-labelledby="guide-videos-title" className="flex flex-col gap-4">
+    <section aria-labelledby="guide-videos-title" className="@container flex flex-col gap-4">
       <h2 id="guide-videos-title" className="text-lg font-semibold">
         Video panduan
       </h2>
@@ -60,7 +63,8 @@ export function GuideVideos({
         </FocusNotice>
       ) : null}
       {videos.length ? (
-        <ul className="grid gap-4 md:grid-cols-2" aria-label="Video artikel ini">
+        // Kolom mengikuti lebar kontainer (editor punya sidebar): dua kolom hanya bila ≥ 38rem.
+        <ul className="grid gap-4 @[38rem]:grid-cols-2" aria-label="Video artikel ini">
           {videos.map((v) => (
             <li key={v.id} className="flex flex-col gap-2 rounded-lg border p-3">
               <GuideVideoPlayer video={v} preload="metadata" />
@@ -74,6 +78,8 @@ export function GuideVideos({
                   onClick={(e) => {
                     trigger.current = e.currentTarget;
                     setError(null);
+                    setDeleted(null);
+                    setActions((n) => n + 1);
                     setDeleting(v);
                   }}
                 >
@@ -85,12 +91,21 @@ export function GuideVideos({
         </ul>
       ) : (
         <EmptyState
+          as="h3"
           icon={<IconVideo />}
           title="Belum ada video"
           description="Rekaman layar singkat membantu pengguna mengikuti langkah di artikel ini."
         />
       )}
-      <VideoUpload articleId={articleId} />
+      <VideoUpload
+        articleId={articleId}
+        full={videos.length >= VIDEOS_PER_ARTICLE}
+        clearKey={actions}
+        onStart={() => {
+          setDeleted(null);
+          setError(null);
+        }}
+      />
       <ConfirmDialog
         open={!!deleting}
         onOpenChange={(o) => !o && !busy && setDeleting(null)}

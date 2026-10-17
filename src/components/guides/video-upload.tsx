@@ -11,6 +11,7 @@ import {
   VIDEO_MAX_BYTES,
   VIDEO_SNIFF_BYTES,
   VIDEO_TITLE_MAX,
+  VIDEOS_PER_ARTICLE,
   videoProblem,
 } from "@/features/guides/media";
 import { UploadError, api, formatBytes, runMultipart } from "@/features/uploads/client";
@@ -30,15 +31,40 @@ const LABEL: Record<Phase, string> = {
  * durasi + poster PNG dari file lokal, unggah multipart langsung ke storage (progres + Batalkan), lalu
  * poster. Progres diumumkan (role=status, per 25%); selama unggah fokus di Batalkan (atau form saat
  * pemeriksaan). Hasil/galat hanya mengambil fokus bila pengguna masih di form ini (atau fokus hilang),
- * tidak merebut fokus dari kolom lain yang sedang diketik; isian dipertahankan saat galat.
+ * tidak merebut fokus dari kolom lain yang sedang diketik (pesan akhir lalu diumumkan lewat wilayah
+ * status, T-z5nq); isian dipertahankan saat galat. Artikel yang sudah berisi batas video: form nonaktif
+ * dengan pesan sejak awal (bukan ditolak setelah file dibaca).
  */
-export function VideoUpload({ articleId }: { articleId: string }) {
+export function VideoUpload({
+  articleId,
+  full = false,
+  clearKey = 0,
+  onStart,
+}: {
+  articleId: string;
+  /** Artikel sudah berisi VIDEOS_PER_ARTICLE video siap. */
+  full?: boolean;
+  /** Berubah saat aksi lain dimulai (mis. hapus video): pesan hasil lama dibuang. */
+  clearKey?: number;
+  /** Unggah dimulai: induk membuang pesan hasilnya sendiri. */
+  onStart?: () => void;
+}) {
   const router = useRouter();
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [run, setRun] = useState<{ phase: Phase; pct: number } | null>(null);
   const [errors, setErrors] = useState<Errors>({});
   const [done, setDone] = useState<string | null>(null);
+  /** Pesan akhir untuk wilayah status bila fokus pengguna di kolom lain (FormAlert tidak difokus). */
+  const [said, setSaid] = useState("");
+  // Aksi lain dimulai (clearKey berubah): pesan hasil/galat lama dibuang (pola state turunan React).
+  const [seenKey, setSeenKey] = useState(clearKey);
+  if (seenKey !== clearKey) {
+    setSeenKey(clearKey);
+    setDone(null);
+    setSaid("");
+    if (errors.form) setErrors({ ...errors, form: undefined });
+  }
   const inputRef = useRef<HTMLInputElement>(null);
   const titleRef = useRef<HTMLInputElement>(null);
   const fileBtnRef = useRef<HTMLButtonElement>(null);
@@ -87,9 +113,17 @@ export function VideoUpload({ articleId }: { articleId: string }) {
     setErrors(e);
   };
 
+  /** Hasil akhir: difokus bila pengguna di form ini, selain itu diumumkan lewat wilayah status. */
+  const finish = (text: string) => {
+    setDone(text);
+    setSaid(here() ? "" : text);
+  };
+
   async function start(e: React.FormEvent) {
     e.preventDefault();
     setDone(null);
+    setSaid("");
+    onStart?.();
     if (!title.trim()) return fail({ title: "Judul video wajib diisi." });
     if (!file) return fail({ file: "Pilih file video .mp4 atau .webm." });
     const head = new Uint8Array(await file.slice(0, VIDEO_SNIFF_BYTES).arrayBuffer());
@@ -129,7 +163,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
             body: meta.poster,
           }).catch(() => null)
         : null;
-      setDone(
+      finish(
         `Video “${title.trim()}” tersimpan${poster?.ok ? "" : " tanpa poster (browser tidak bisa membaca gambarnya)"}.`,
       );
       setRun(null);
@@ -156,7 +190,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
     ctrl.current?.abort();
     void discard();
     setRun(null);
-    setDone("Unggahan dibatalkan.");
+    finish("Unggahan dibatalkan.");
   }
 
   return (
@@ -176,8 +210,14 @@ export function VideoUpload({ articleId }: { articleId: string }) {
           ? run.phase === "uploading"
             ? `Mengunggah ${Math.floor(run.pct / 25) * 25}%`
             : LABEL[run.phase]
-          : ""}
+          : said}
       </p>
+      {full && !run ? (
+        <p className="text-sm text-muted-foreground" data-testid="video-limit">
+          Artikel ini sudah berisi {VIDEOS_PER_ARTICLE} video (batas). Hapus video lama untuk
+          menambah yang baru.
+        </p>
+      ) : null}
       {errors.form ? (
         <FormAlert tone="error" ref={alertRef}>
           {errors.form}
@@ -193,7 +233,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
           ref={titleRef}
           value={title}
           maxLength={VIDEO_TITLE_MAX}
-          disabled={!!run}
+          disabled={!!run || full}
           placeholder="Mis. Mengunggah file Excel pertama"
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -221,7 +261,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
             ref={fileBtnRef}
             type="button"
             variant="outline"
-            disabled={!!run}
+            disabled={!!run || full}
             aria-describedby={`video-file-name ${errors.file ? "video-file-error" : "video-file-hint"}`}
             aria-invalid={errors.file ? true : undefined}
             leadingIcon={<IconVideo aria-hidden />}
@@ -230,7 +270,11 @@ export function VideoUpload({ articleId }: { articleId: string }) {
           >
             Pilih video
           </Button>
-          <span id="video-file-name" className="min-w-0 truncate text-sm text-muted-foreground">
+          {/* Nama panjang dibungkus, bukan dipotong: tetap bisa dibaca utuh (T-z5nq). */}
+          <span
+            id="video-file-name"
+            className="min-w-0 text-sm text-muted-foreground [overflow-wrap:anywhere]"
+          >
             {file ? `${file.name} · ${formatBytes(file.size)}` : "Belum ada file dipilih"}
           </span>
         </div>
@@ -273,6 +317,7 @@ export function VideoUpload({ articleId }: { articleId: string }) {
         <Button
           type="submit"
           pending={!!run}
+          disabled={full}
           leadingIcon={<IconUpload aria-hidden />}
           className="h-(--control-h-lg) w-full sm:h-(--control-h) sm:w-auto"
         >

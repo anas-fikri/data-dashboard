@@ -1,16 +1,18 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { abortMultipartUnder } from "@/lib/storage/multipart";
+import { deleteGuideObject } from "@/lib/storage/guides";
+import { abortMultipartFor, abortMultipartUnder } from "@/lib/storage/multipart";
 import { deletePrefix } from "@/lib/storage/objects";
 import { rawRetentionWhere, versionPrefixes } from "./retention";
 
 /*
  * Job pemeliharaan storage di worker (T-013, flow-kerja B1/B5):
  *  - storage-cleanup: memproses StorageCleanup (hapus dataset yang gagal sebagian, versi dibuang
- *    retensi/pemilik, sisa ingest gagal). Prefix hanya boleh berbentuk (raw|parquet)/<cuid>/[<cuid>/]
- *    (review T-003) dan hanya dihapus bila datanya memang sudah tidak dipakai; gagal → coba lagi
- *    dengan jeda bertingkat, maksimal 8 kali.
+ *    retensi/pemilik, sisa ingest gagal, objek video/poster panduan yang gagal dihapus — T-z5nq).
+ *    Prefix hanya boleh berbentuk (raw|parquet)/<cuid>/[<cuid>/] (review T-003) atau kunci persis
+ *    guides/videos/<cuid>.(mp4|webm) / guides/posters/<cuid>.png, dan hanya dihapus bila datanya
+ *    memang sudah tidak dipakai; gagal → coba lagi dengan jeda bertingkat, maksimal 8 kali.
  *  - raw-retention: file asli raw/<ds>/<ver>/ dihapus 7 hari setelah ingest selesai; versi ditandai
  *    sourceDeletedAt (sourceKey tetap: recast menurunkan csv/xlsx dari ekstensinya).
  */
@@ -23,32 +25,45 @@ const BACKOFF_MAX_MS = 24 * 60 * 60 * 1000;
 const ERROR_MAX = 500;
 
 const PREFIX = /^(raw|parquet)\/([a-z0-9]{20,32})\/(?:([a-z0-9]{20,32})\/)?$/;
+const GUIDE_KEY =
+  /^guides\/(?:videos\/([a-z0-9]{20,32})\.(?:mp4|webm)|posters\/([a-z0-9]{20,32})\.png)$/;
 
-export interface CleanupTarget {
-  kind: "raw" | "parquet";
-  datasetId: string;
-  /** null = prefix seluruh dataset. */
-  versionId: string | null;
-}
+export type CleanupTarget =
+  | {
+      kind: "raw" | "parquet";
+      datasetId: string;
+      /** null = prefix seluruh dataset. */
+      versionId: string | null;
+    }
+  /** Satu objek video/poster panduan (kunci persis); video = multipart-nya ikut di-abort. */
+  | { kind: "guide"; videoId: string; video: boolean };
 
 /** Prefix StorageCleanup yang sah, atau null (tidak pernah menyentuh storage). */
 export function parseCleanupPrefix(prefix: string): CleanupTarget | null {
   const m = PREFIX.exec(prefix);
-  if (!m) return null;
-  return { kind: m[1] as "raw" | "parquet", datasetId: m[2]!, versionId: m[3] ?? null };
+  if (m) return { kind: m[1] as "raw" | "parquet", datasetId: m[2]!, versionId: m[3] ?? null };
+  const g = GUIDE_KEY.exec(prefix);
+  if (g) return { kind: "guide", videoId: (g[1] ?? g[2])!, video: g[1] !== undefined };
+  return null;
 }
 
-/** Keadaan DB pemilik prefix: dataset ada?, status versi (null = barisnya sudah tidak ada). */
+/**
+ * Keadaan DB pemilik prefix: dataset ada?, status versi (null = barisnya sudah tidak ada); untuk objek
+ * panduan: baris GuideVideo masih ada?
+ */
 export interface CleanupState {
   datasetExists: boolean;
   versionStatus: string | null;
+  guideVideoExists?: boolean;
 }
 
 /**
  * Aman dihapus? Prefix dataset hanya bila Dataset sudah tidak ada; raw versi hanya bila versinya
- * sudah tidak ada; Parquet versi bila versinya tidak ada atau FAILED (sisa ingest gagal).
+ * sudah tidak ada; Parquet versi bila versinya tidak ada atau FAILED (sisa ingest gagal); objek
+ * panduan hanya bila baris videonya sudah tidak ada.
  */
 export function isSafeToDelete(t: CleanupTarget, s: CleanupState): boolean {
+  if (t.kind === "guide") return !s.guideVideoExists;
   if (t.versionId === null) return !s.datasetExists;
   if (s.versionStatus === null) return true;
   return t.kind === "parquet" && s.versionStatus === "FAILED";
@@ -62,13 +77,25 @@ export function nextAttemptAt(attempts: number, now: Date): Date {
 export interface CleanupDeps {
   deletePrefix: (prefix: string) => Promise<number>;
   abortMultipartUnder: (prefix: string) => Promise<number>;
+  /** Kunci persis objek panduan (deletePrefix/abortMultipartUnder hanya menerima prefix ber-"/"). */
+  deleteObject: (key: string) => Promise<void>;
+  abortMultipartFor: (key: string) => Promise<number>;
 }
 
-const storage: CleanupDeps = { deletePrefix, abortMultipartUnder };
+const storage: CleanupDeps = {
+  deletePrefix,
+  abortMultipartUnder,
+  deleteObject: deleteGuideObject,
+  abortMultipartFor,
+};
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
 
 async function stateOf(t: CleanupTarget): Promise<CleanupState> {
+  if (t.kind === "guide") {
+    const n = await prisma.guideVideo.count({ where: { id: t.videoId } });
+    return { datasetExists: false, versionStatus: null, guideVideoExists: n > 0 };
+  }
   if (t.versionId === null) {
     return {
       datasetExists: (await prisma.dataset.count({ where: { id: t.datasetId } })) > 0,
@@ -113,8 +140,13 @@ export async function runStorageCleanup(deps: CleanupDeps = storage, now = new D
     }
     try {
       // Upload yang sedang berjalan: abort dulu agar part tidak menunggu lifecycle 1 hari.
-      if (t.kind === "raw") await deps.abortMultipartUnder(row.prefix);
-      await deps.deletePrefix(row.prefix);
+      if (t.kind === "guide") {
+        if (t.video) await deps.abortMultipartFor(row.prefix);
+        await deps.deleteObject(row.prefix);
+      } else {
+        if (t.kind === "raw") await deps.abortMultipartUnder(row.prefix);
+        await deps.deletePrefix(row.prefix);
+      }
       await prisma.storageCleanup.deleteMany({ where: { id: row.id } });
       out.deleted++;
     } catch (e) {

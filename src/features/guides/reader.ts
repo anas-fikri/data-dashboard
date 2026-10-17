@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma, type GuideArticle, type GuideContext, type GuideRole } from "@prisma/client";
 import { cache } from "react";
 import { prisma } from "@/lib/db";
+import { VIDEO_CONTENT_TYPE, presignGuideGet, type GuideVideoExt } from "@/lib/storage/guides";
 import { cleanLine, escapeLike } from "@/lib/text";
 import { cuidSchema } from "./validation";
 
@@ -131,6 +132,28 @@ export async function searchGuides(
 export function guideBySlug(roles: readonly GuideRole[], slug: string) {
   if (!/^[a-z0-9-]{1,80}$/.test(slug)) return Promise.resolve(null);
   return prisma.guideArticle.findFirst({ where: { ...visible(roles), slug } });
+}
+
+/**
+ * Sumber video baru (presigned 1 jam) untuk pemutar yang dibiarkan terbuka > 1 jam (T-z5nq). Akses
+ * sama dengan halaman: admin semua video siap (editor + pratinjau), selain admin hanya video artikel
+ * terbit sesuai perannya. Lainnya null (404).
+ */
+export async function videoSource(user: { id: string; isAdmin: boolean }, id: unknown) {
+  if (!cuidSchema.safeParse(id).success) return null;
+  const v = await prisma.guideVideo.findFirst({
+    where: {
+      id: id as string,
+      status: "READY",
+      ...(user.isAdmin ? {} : { article: visible(await guideRolesFor(user.id, false)) }),
+    },
+    select: { objectKey: true, ext: true, posterKey: true },
+  });
+  if (!v) return null;
+  return {
+    src: await presignGuideGet(v.objectKey, VIDEO_CONTENT_TYPE[v.ext as GuideVideoExt]),
+    poster: v.posterKey ? await presignGuideGet(v.posterKey, "image/png") : null,
+  };
 }
 
 /** Artikel bantuan untuk satu halaman (konteks), sesuai peran user. */

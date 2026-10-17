@@ -12,12 +12,23 @@ const prisma = {
     updateMany: vi.fn(),
   },
   dataset: { count: vi.fn() },
+  guideVideo: { count: vi.fn() },
   datasetVersion: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
-vi.mock("@/lib/storage/objects", () => ({ deletePrefix: vi.fn() }));
-vi.mock("@/lib/storage/multipart", () => ({ abortMultipartUnder: vi.fn() }));
+const s3 = {
+  deletePrefix: vi.fn(async () => 1),
+  abortMultipartUnder: vi.fn(async () => 0),
+  abortMultipartFor: vi.fn(async () => 0),
+  deleteGuideObject: vi.fn(async () => {}),
+};
+vi.mock("@/lib/storage/objects", () => ({ deletePrefix: s3.deletePrefix }));
+vi.mock("@/lib/storage/multipart", () => ({
+  abortMultipartUnder: s3.abortMultipartUnder,
+  abortMultipartFor: s3.abortMultipartFor,
+}));
+vi.mock("@/lib/storage/guides", () => ({ deleteGuideObject: s3.deleteGuideObject }));
 
 const {
   CLEANUP_MAX_ATTEMPTS,
@@ -41,6 +52,13 @@ const deps = {
   }),
   abortMultipartUnder: vi.fn(async (p: string) => {
     order.push(`abort:${p}`);
+    return 0;
+  }),
+  deleteObject: vi.fn(async (k: string) => {
+    order.push(`deleteobj:${k}`);
+  }),
+  abortMultipartFor: vi.fn(async (k: string) => {
+    order.push(`abortfor:${k}`);
     return 0;
   }),
 };
@@ -76,6 +94,31 @@ describe("parseCleanupPrefix", () => {
       expect(parseCleanupPrefix(bad), bad).toBeNull();
     }
   });
+
+  it("T-z5nq: kunci persis video/poster panduan; bentuk lain ditolak", () => {
+    expect(parseCleanupPrefix(`guides/videos/${VER}.mp4`)).toEqual({
+      kind: "guide",
+      videoId: VER,
+      video: true,
+    });
+    expect(parseCleanupPrefix(`guides/videos/${VER}.webm`)).toMatchObject({ video: true });
+    expect(parseCleanupPrefix(`guides/posters/${VER}.png`)).toEqual({
+      kind: "guide",
+      videoId: VER,
+      video: false,
+    });
+    for (const bad of [
+      "guides/",
+      "guides/videos/",
+      `guides/videos/${VER}.mkv`,
+      `guides/posters/${VER}.jpg`,
+      `guides/videos/${VER}.mp4/`,
+      `guides/videos/../${VER}.mp4`,
+      `/guides/videos/${VER}.mp4`,
+    ]) {
+      expect(parseCleanupPrefix(bad), bad).toBeNull();
+    }
+  });
 });
 
 describe("isSafeToDelete", () => {
@@ -97,6 +140,12 @@ describe("isSafeToDelete", () => {
     for (const status of ["READY", "AWAITING_MAPPING", "INGESTING"]) {
       expect(isSafeToDelete(parquet, { datasetExists: true, versionStatus: status })).toBe(false);
     }
+  });
+  it("objek panduan hanya bila baris videonya sudah tidak ada", () => {
+    const guide = { kind: "guide" as const, videoId: VER, video: true };
+    const base = { datasetExists: false, versionStatus: null };
+    expect(isSafeToDelete(guide, { ...base, guideVideoExists: false })).toBe(true);
+    expect(isSafeToDelete(guide, { ...base, guideVideoExists: true })).toBe(false);
   });
 });
 
@@ -130,6 +179,42 @@ describe("runStorageCleanup", () => {
     expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 1, skipped: 0, failed: 0 });
     expect(order).toEqual([`abort:raw/${DS}/${VER}/`, `delete:raw/${DS}/${VER}/`]);
     expect(prisma.storageCleanup.deleteMany).toHaveBeenCalledWith({ where: { id: "c1" } });
+  });
+
+  it("T-z5nq: objek panduan yatim → video abort multipart kunci persis + hapus objek; poster hapus saja; video masih ada → dibuang", async () => {
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([
+      row("v", `guides/videos/${VER}.mp4`),
+      row("p", `guides/posters/${VER}.png`),
+      row("live", `guides/videos/${DS}.webm`),
+    ]);
+    prisma.guideVideo.count
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(0)
+      .mockResolvedValueOnce(1);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 2, skipped: 1, failed: 0 });
+    expect(order).toEqual([
+      `abortfor:guides/videos/${VER}.mp4`,
+      `deleteobj:guides/videos/${VER}.mp4`,
+      `deleteobj:guides/posters/${VER}.png`,
+    ]);
+    expect(prisma.guideVideo.count).toHaveBeenCalledWith({ where: { id: DS } });
+  });
+
+  it("T-z5nq: deps bawaan — kunci panduan memakai hapus objek persis, tidak pernah deletePrefix/abort per prefix", async () => {
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([
+      row("v", `guides/videos/${VER}.webm`),
+      row("p", `guides/posters/${VER}.png`),
+    ]);
+    prisma.guideVideo.count.mockResolvedValue(0);
+    expect(await runStorageCleanup(undefined, NOW)).toEqual({ deleted: 2, skipped: 0, failed: 0 });
+    expect(s3.abortMultipartFor).toHaveBeenCalledExactlyOnceWith(`guides/videos/${VER}.webm`);
+    expect(s3.deleteGuideObject.mock.calls).toEqual([
+      [`guides/videos/${VER}.webm`],
+      [`guides/posters/${VER}.png`],
+    ]);
+    expect(s3.deletePrefix).not.toHaveBeenCalled();
+    expect(s3.abortMultipartUnder).not.toHaveBeenCalled();
+    prisma.guideVideo.count.mockReset();
   });
 
   it("prefix tidak sah atau masih dipakai → baris dibuang tanpa menyentuh storage", async () => {

@@ -262,6 +262,27 @@ test.describe("video panduan (T-021)", () => {
     expect(ranges.every((r) => r.status === 206)).toBe(true);
   });
 
+  test("T-z5nq AC2: halaman terbuka > 1 jam → lompat memakai sumber baru tanpa muat ulang", async () => {
+    await b.clock.install();
+    await b.goto(`/panduan/${SLUG}`);
+    const video = b.getByTestId("guide-video").locator("video");
+    const oldSrc = await video.getAttribute("src");
+    // Nilai awal tercatat saat pemutar terpasang; jam dimajukan melewati umur presigned (1 jam).
+    await b.waitForTimeout(500);
+    await b.clock.fastForward("01:01:00");
+    const fresh = b.waitForResponse((r) => r.url().includes("/sumber") && r.status() === 200);
+    await video.evaluate((v: HTMLVideoElement) => {
+      v.muted = true;
+      v.currentTime = 120;
+    });
+    await fresh;
+    await expect(video).not.toHaveAttribute("src", oldSrc!);
+    // Tanpa muat ulang: navigasi tetap di artikel yang sama, posisi dipulihkan setelah metadata baru.
+    await expect
+      .poll(() => video.evaluate((v: HTMLVideoElement) => Math.round(v.currentTime)))
+      .toBe(120);
+  });
+
   test("review AC4: progres diumumkan; selesai tidak merebut fokus; hapus berturut-turut fokus ke pesan", async () => {
     test.setTimeout(120_000);
     await a.goto(`/admin/panduan/${articleId}`);
@@ -297,7 +318,10 @@ test.describe("video panduan (T-021)", () => {
     await body.click();
     await body.press("End");
     await a.keyboard.type(" lanjut");
-    await expect(a.getByText("Video “Video kedua” tersimpan.")).toBeVisible({ timeout: 60_000 });
+    // Terakhir di DOM = FormAlert yang terlihat (salinan pertama ada di wilayah status sr-only).
+    await expect(a.getByText("Video “Video kedua” tersimpan.").last()).toBeVisible({
+      timeout: 60_000,
+    });
     await expect(body).toBeFocused();
     await expect(body).toHaveValue(/ lanjut$/);
     const seen = await a.evaluate(() => (window as { __vs?: string[] }).__vs ?? []);
@@ -305,11 +329,36 @@ test.describe("video panduan (T-021)", () => {
       seen.some((t) => /Mengunggah \d+%|Memeriksa video di server/.test(t)),
       seen.join("|"),
     ).toBe(true);
+    // T-z5nq: fokus di kolom lain → pesan akhir tetap diumumkan lewat wilayah status.
+    expect(
+      seen.some((t) => t.includes("Video “Video kedua” tersimpan.")),
+      seen.join("|"),
+    ).toBe(true);
     await a.unroute("**/api/guides/videos/*/complete");
 
     await a.reload();
+    // T-z5nq AC3: kolom grid mengikuti lebar kontainer, bukan viewport (editor punya sidebar).
+    const columns = async () =>
+      new Set(
+        await a
+          .getByTestId("guide-video")
+          .evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().x))),
+      ).size;
+    const section = a.locator('section[aria-labelledby="guide-videos-title"]');
+    for (const width of [800, 1024, 1280, 1440]) {
+      await a.setViewportSize({ width, height: 1000 });
+      const w = await section.evaluate((e) => e.getBoundingClientRect().width);
+      // Dua kolom tepat bila kontainer ≥ 38rem (608 px), berapa pun lebar viewport-nya.
+      await expect
+        .poll(columns, `${width} px, kontainer ${Math.round(w)} px`)
+        .toBe(w >= 608 ? 2 : 1);
+    }
+    let previous: string | null = null;
     for (const title of ["Video kedua", "Mengunggah data"]) {
       await a.getByRole("button", { name: `Hapus video ${title}` }).click();
+      // Aksi berikutnya dimulai: pesan hasil lama hilang.
+      if (previous) await expect(a.getByText(`Video “${previous}” dihapus.`)).toHaveCount(0);
+      previous = title;
       await a.getByRole("alertdialog").getByRole("button", { name: "Hapus" }).click();
       await expect(
         a.getByRole("status").filter({ hasText: `Video “${title}” dihapus.` }),
