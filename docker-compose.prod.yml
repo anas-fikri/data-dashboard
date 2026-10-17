@@ -72,7 +72,8 @@ services:
 
   app:
     image: dashboard-app:${IMAGE_TAG:-latest}
-    build: { context: ., target: app }
+    # NEXT_BUILD_CPUS: pekerja build Next (bawaan 2 untuk VM 2 vCPU; naikkan bila CPU/RAM VM lebih).
+    build: { context: ., target: app, args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}" } }
     restart: unless-stopped
     environment: *app-env
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -95,7 +96,7 @@ services:
 
   worker:
     image: dashboard-worker:${IMAGE_TAG:-latest}
-    build: { context: ., target: worker }
+    build: { context: ., target: worker, args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}" } }
     restart: unless-stopped
     environment: *app-env
     extra_hosts: ["host.docker.internal:host-gateway"]
