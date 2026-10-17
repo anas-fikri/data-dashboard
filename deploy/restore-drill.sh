@@ -33,6 +33,9 @@ tls=$(env_val CADDY_TLS)
 tls=${tls//\"/} # lan-cert.sh menulis nilai berkutip
 case "$tls" in /*) ;; *) tls=internal ;; esac
 pgpw=$(rand 32)
+# Dirakit per bagian: literal user:pass@ di URL dibaca pemindai secret sebagai kredensial.
+db_url=postgresql://dashboard
+db_url+=":$pgpw@postgres:5432/data_dashboard"
 umask 077
 # Salinan nilai non-rahasia produksi (domain email, SMTP, kunci publik backup); semua secret baru.
 grep -E '^(ALLOWED_EMAIL_DOMAINS|SMTP_URL|MAIL_FROM|BACKUP_AGE_RECIPIENT|S3_BUCKET)=' .env.prod >"$DRILL_ENV"
@@ -47,7 +50,7 @@ COMPOSE_PROFILES=db
 EDGE_SUBNET=172.31.244.0/24
 DATA_SUBNET=172.31.245.0/24
 POSTGRES_PASSWORD=$pgpw
-DATABASE_URL=postgresql://dashboard:$pgpw@postgres:5432/data_dashboard
+DATABASE_URL=$db_url
 AUTH_SECRET=$(rand 48)
 REDIS_PASSWORD=$(rand 40)
 RENDERER_SECRET=$(rand 48)

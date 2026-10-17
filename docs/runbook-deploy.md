@@ -164,11 +164,19 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 | Tanggal | Arsip | Tujuan | Hasil | Oleh |
 |---|---|---|---|---|
 | 2026-10-17 | dashboard-20261017T033626Z.tar.age (20 MB) | olympus, salinan terpisah `dashboard-restoretest` (`restore-drill.sh`) | LULUS: checksum OK, baris per tabel identik, daftar objek storage identik, `/api/health` 200 | claude-code (T-023) |
+| 2026-10-17 | dashboard-20261017T051529Z.tar.age (20 MB) | olympus, salinan terpisah (PG16 container, UTF8) dari produksi PG14 host (SQL_ASCII) | LULUS: checksum OK, isi per tabel identik (jumlah + md5 tiap baris; produksi tidak berubah selama backup), daftar objek storage identik, `/api/health` 200, ±2 menit | claude-code (T-023) |
 
 ## 6. Operasi
 
 - **Log**: `$C logs -f app worker` (json-file dirotasi 5 × 20 MB per service). Log akses proxy tanpa
   query string, tanpa cookie/Authorization; path `/render`, `/verify`, `/reset-password` diredaksi.
+- **Sinkron kode tanpa deploy penuh**: Caddyfile dan skrip backup di-mount per file; container lama tetap
+  melihat isi lama setelah file diganti. `deploy.sh` selalu membuat ulang `proxy` + `backup`; bila hanya
+  menyalin file, jalankan `$C up -d --no-deps --force-recreate proxy backup`.
+- **Encoding database**: `host-db.sh` membuat database UTF8 (C.UTF-8). Database olympus yang dibuat
+  sebelumnya ber-encoding SQL_ASCII (warisan cluster locale C): data aman dan restore setia, tetapi
+  pencarian tanpa beda huruf besar/kecil hanya untuk huruf ASCII. Konversi = task lanjutan (butuh sudo +
+  jeda singkat).
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
 - **Update**: `git pull && deploy/deploy.sh` (migrasi maju otomatis). **Rollback**: `git checkout <tag
   sebelumnya> && deploy/deploy.sh` — migrasi tidak dibalik otomatis; pulihkan dari backup bila skema
