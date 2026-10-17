@@ -24,7 +24,7 @@ tidak punya akses ke PostgreSQL, Redis, atau object storage.
 | `RENDERER_HOST`           | `127.0.0.1` | `0.0.0.0` di container.                                                                                                                                                                                                        |
 | `RENDERER_PORT`           | `3200`      |                                                                                                                                                                                                                                |
 | `RENDERER_CONCURRENCY`    | `1`         | 1–2 job bersamaan; penuh → 503 `RENDERER_BUSY`.                                                                                                                                                                                |
-| `RENDER_READY_TIMEOUT_MS` | `30000`     | Batas tukar token + navigasi + tunggu `data-render-ready="1"`.                                                                                                                                                                 |
+| `RENDER_READY_TIMEOUT_MS` | `30000`     | Batas tukar token + navigasi + tunggu `data-render-ready="1"`. Query widget di server ikut di dalamnya (tunggu data ≤ 15 s, BUSY_WAIT_MS); jangan di bawah ± 25000.                                                            |
 | `ALLOW_DEV_WEBSOCKET`     | `false`     | Dev saja (ditolak di produksi): WebSocket same-origin (HMR `next dev`) diteruskan dan Local Network Access Chromium dimatikan (`browserArgs`). Tanpa ini WebSocket same-origin ditutup; lintas origin selalu menggagalkan job. |
 
 ## Kontrak HTTP

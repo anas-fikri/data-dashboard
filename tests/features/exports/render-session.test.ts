@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  BUSY_WAIT_MS,
   loadRenderSession,
   RENDER_QUERY_PARALLEL,
   type RenderDashboard,
@@ -81,6 +82,8 @@ const ok = (widgetId: string): WidgetQueryJson => ({
 function setup(over: Partial<RenderSessionDeps> = {}, claims: RenderClaims | null = CLAIMS) {
   let consumed = false;
   const calls: { userId: string; body: unknown; now: Date }[] = [];
+  // Jam palsu: sleep memajukan waktu (jeda ulang QUERY_BUSY tanpa menunggu sungguhan).
+  const time = { ms: 0 };
   const deps: RenderSessionDeps = {
     consumeClaims: vi.fn(async (sid: string) => {
       if (sid !== SID || consumed) return null;
@@ -95,10 +98,13 @@ function setup(over: Partial<RenderSessionDeps> = {}, claims: RenderClaims | nul
       calls.push({ userId, body, now });
       return ok((body as { widgetId: string }).widgetId);
     }),
-    sleep: vi.fn(async () => {}),
+    sleep: vi.fn(async (ms: number) => {
+      time.ms += ms;
+    }),
+    clock: () => time.ms,
     ...over,
   };
-  return { deps, calls };
+  return { deps, calls, time };
 }
 
 describe("loadRenderSession", () => {
@@ -188,10 +194,10 @@ describe("loadRenderSession", () => {
     expect(broken.calls).toEqual([]);
   });
 
-  it("QUERY_BUSY dicoba ulang 2×; galat lain dan lemparan menjadi jawaban galat widget itu saja", async () => {
+  it("QUERY_BUSY dicoba ulang; galat lain dan lemparan menjadi jawaban galat widget itu saja", async () => {
     const busy: WidgetQueryJson = { ok: false, code: "QUERY_BUSY", message: "sibuk" };
     let n = 0;
-    const { deps } = setup({
+    const { deps, time } = setup({
       query: vi.fn(async (_u: string, body: unknown) => {
         const id = (body as { widgetId: string }).widgetId;
         if (id === W(1)) return n++ < 2 ? busy : ok(id);
@@ -206,9 +212,96 @@ describe("loadRenderSession", () => {
       code: "QUERY_FAILED",
       message: "Query gagal diproses. Coba lagi beberapa saat lagi.",
     });
-    // Tetap sibuk setelah 2 ulangan → jawaban QUERY_BUSY apa adanya.
+    // Tetap sibuk sampai batas tunggu bersama → jawaban QUERY_BUSY apa adanya, tidak lewat batas.
     expect(r!.widgets[2]!.result).toEqual(busy);
-    expect(deps.query).toHaveBeenCalledTimes(3 + 1 + 3);
+    expect(time.ms).toBeLessThanOrEqual(BUSY_WAIT_MS);
+  });
+
+  /*
+   * T-rb6x: cache parquet tiruan dengan jam palsu (vi fake timers). Tiap percobaan menunggu unduhan
+   * sheet-nya paling lama waitMs (seperti acquire + prepareWaitMs); unduhan kedua pemilik yang sama saat
+   * unduhan lain belum selesai ditolak langsung (perOwnerDownloads = 1) → QUERY_BUSY.
+   */
+  function fakeCache(downloadMs: Record<string, number>, sheetOf: (id: string) => string) {
+    const started = new Map<string, number>();
+    const readyAt = (sheet: string) => (started.get(sheet) ?? Infinity) + downloadMs[sheet]!;
+    const busy: WidgetQueryJson = { ok: false, code: "QUERY_BUSY", message: "disiapkan" };
+    return vi.fn(async (_u: string, body: unknown, _now: Date, waitMs: number) => {
+      const id = (body as { widgetId: string }).widgetId;
+      const sheet = sheetOf(id);
+      if (!started.has(sheet)) {
+        if ([...started.keys()].some((k) => Date.now() < readyAt(k))) return busy;
+        started.set(sheet, Date.now());
+      }
+      const left = readyAt(sheet) - Date.now();
+      if (left > 0) await new Promise((r) => setTimeout(r, Math.min(waitMs, left)));
+      return Date.now() >= readyAt(sheet) ? ok(id) : busy;
+    });
+  }
+
+  async function renderWithClock(widgets: { id: string }[], query: RenderSessionDeps["query"]) {
+    const { deps } = setup({
+      dashboard: vi.fn(async () =>
+        dashboard({
+          widgets: widgets.map((w, i) => ({ ...w, type: "kpi", title: `K${i}`, spec: {} })),
+        }),
+      ),
+      query,
+      sleep: undefined,
+      clock: undefined,
+    });
+    const start = Date.now();
+    let doneAt = 0;
+    const p = loadRenderSession(SID, deps).then((r) => {
+      doneAt = Date.now();
+      return r;
+    });
+    await vi.advanceTimersByTimeAsync(120_000);
+    return { r: await p, elapsed: doneAt - start };
+  }
+
+  // AC 1: unduhan sheet 1 lima detik (> 1,2 dtk ulangan lama), sheet 2 tiga detik setelahnya.
+  it("cache dingin dua sheet: semua widget tercetak berisi data", async () => {
+    vi.useFakeTimers();
+    try {
+      const ids = [W(1), W(2), W(3), W(4)];
+      const query = fakeCache({ s1: 5_000, s2: 3_000 }, (id) =>
+        id === W(2) || id === W(4) ? "s2" : "s1",
+      );
+      const { r, elapsed } = await renderWithClock(
+        ids.map((id) => ({ id })),
+        query,
+      );
+      expect(r!.widgets.map((w) => w.result.ok)).toEqual([true, true, true, true]);
+      expect(elapsed).toBeLessThan(BUSY_WAIT_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // AC 2: unduhan tak kunjung selesai — tiap widget kartu QUERY_BUSY, data selesai ≤ batas tunggu
+  // (percobaan ikut dibatasi sisa waktu, bukan hanya jeda), jauh di bawah batas siap renderer 30 s.
+  it("unduhan tidak selesai: kartu QUERY_BUSY dan pemuatan data ≤ batas tunggu", async () => {
+    vi.useFakeTimers();
+    try {
+      const ids = Array.from({ length: 10 }, (_, i) => W(i));
+      const query = fakeCache({ s1: Infinity, s2: Infinity }, (id) =>
+        Number(id.at(-1)) % 2 ? "s2" : "s1",
+      );
+      const { r, elapsed } = await renderWithClock(
+        ids.map((id) => ({ id })),
+        query,
+      );
+      expect(r!.widgets.map((w) => (w.result.ok ? "ok" : w.result.code))).toEqual(
+        ids.map(() => "QUERY_BUSY"),
+      );
+      // + toleransi timer 0 ms setelah batas (dihitung 1 ms oleh timer palsu); tanpa batas per
+      // percobaan angka ini ± 10 dtk lebih per widget yang tersisa.
+      expect(elapsed).toBeLessThanOrEqual(BUSY_WAIT_MS + 100);
+      expect(query.mock.calls.length).toBeLessThanOrEqual(ids.length * 12);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it(`paling banyak ${RENDER_QUERY_PARALLEL} query bersamaan`, async () => {

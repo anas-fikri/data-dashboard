@@ -1,7 +1,7 @@
 import "server-only";
 import { getDashboard } from "@/features/dashboards/service";
 import { queryDeps } from "@/features/query/runtime";
-import { runWidgetQuery, type QueryDeps } from "@/features/query/service";
+import { PREPARE_WAIT_MS, runWidgetQuery, type QueryDeps } from "@/features/query/service";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import { renderSubjectLive } from "./repo";
@@ -29,10 +29,15 @@ export async function consumeRenderSession(sessionId: string): Promise<RenderDat
         consumeRenderSessionClaims(redisRenderStore(await redisReady()), sid),
       subjectLive: renderSubjectLive,
       dashboard: (userId, dashboardId) => getDashboard(userId, dashboardId),
-      query: async (userId, body, now) => {
+      query: async (userId, body, now, waitMs) => {
         try {
           deps ??= await queryDeps();
-          const r = await runWidgetQuery(userId, body, { ...deps, now: () => now });
+          // Tunggu unduhan parquet paling lama sisa batas render (T-rb6x); 0 = data belum siap → QUERY_BUSY.
+          const r = await runWidgetQuery(userId, body, {
+            ...deps,
+            now: () => now,
+            prepareWaitMs: Math.min(PREPARE_WAIT_MS, waitMs),
+          });
           // Persis body JSON /api/query (tanpa nilai non-JSON).
           return JSON.parse(JSON.stringify(r)) as typeof r;
         } catch (e) {

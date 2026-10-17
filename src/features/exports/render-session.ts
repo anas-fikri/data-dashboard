@@ -7,7 +7,11 @@
  *  4. status filter token disaring LAGI terhadap kolom filter dashboard sekarang (D9);
  *  5. semua widget di-query di SERVER lewat runWidgetQuery (resolver, D6, cache, dan bentuk jawaban per
  *     peran yang sama dengan /api/query; jam preset = waktu ekspor diminta), paling banyak 2 bersamaan,
- *     QUERY_BUSY dicoba ulang 2× seperti kartu di layar. Browser renderer tidak memanggil /api apa pun.
+ *     QUERY_BUSY (data parquet sedang diunduh — cache dingin, sheet kedua menunggu unduhan sheet
+ *     pertama; slot penuh) dicoba ulang sampai batas tunggu BERSAMA satu render (T-rb6x). Batas itu
+ *     juga membatasi tiap percobaan (waitMs = sisa waktu → lama menunggu unduhan), jadi lewat batas
+ *     widget langsung menjadi kartu galat dan halaman siap jauh sebelum batas siap renderer
+ *     (RENDER_READY_TIMEOUT_MS, bawaan 30 s). Browser renderer tidak memanggil /api apa pun.
  * Gagal di langkah 1–4 → null (halaman menjawab 404 polos). Galat satu widget = jawaban galat widget
  * itu (kartu galat di PDF), bukan kegagalan seluruh halaman.
  */
@@ -57,14 +61,28 @@ export interface RenderSessionDeps {
   subjectLive(claims: RenderClaims): Promise<boolean>;
   /** getDashboard(userId, dashboardId): null = tanpa akses. */
   dashboard(userId: string, dashboardId: string): Promise<RenderDashboard | null>;
-  /** runWidgetQuery dengan jam `now`, hasil berbentuk JSON. Melempar = galat tak terduga. */
-  query(userId: string, body: unknown, now: Date): Promise<WidgetQueryJson>;
+  /**
+   * runWidgetQuery dengan jam `now`, hasil berbentuk JSON. `waitMs` = sisa batas tunggu render (≥ 0):
+   * paling lama menunggu data disiapkan (unduhan parquet) di percobaan ini. Melempar = galat tak terduga.
+   */
+  query(userId: string, body: unknown, now: Date, waitMs: number): Promise<WidgetQueryJson>;
   sleep?(ms: number): Promise<void>;
+  /** Jam (ms), bawaan Date.now; diinjeksi test bersama `sleep`. */
+  clock?(): number;
+  /** Batas tunggu bersama QUERY_BUSY per render (ms), bawaan BUSY_WAIT_MS. */
+  busyWaitMs?: number;
 }
 
 /** Query widget bersamaan per render (sama dengan MAX_ACTIVE kartu di layar). */
 export const RENDER_QUERY_PARALLEL = 2;
-const BUSY_RETRIES = 2;
+/**
+ * Batas tunggu data per render (unduhan parquet + ulang QUERY_BUSY). Halaman /render dimuat di dalam
+ * page.goto renderer, jadi harus jauh di bawah RENDER_READY_TIMEOUT_MS renderer (bawaan 30 s): sisanya
+ * untuk tukar token, query yang sedang berjalan, dan sinyal siap halaman.
+ */
+export const BUSY_WAIT_MS = 15_000;
+/** Jeda ulang QUERY_BUSY: 0,4 s berlipat, paling lama 2 s per jeda. */
+const BUSY_BACKOFF_MAX_MS = 2_000;
 
 /** Jawaban /api/query untuk galat tak terduga (500), dipakai bila query melempar. */
 const QUERY_FAILED: WidgetQueryJson = {
@@ -89,17 +107,22 @@ async function queryWithRetry(
   userId: string,
   body: unknown,
   now: Date,
+  deadline: number,
 ): Promise<WidgetQueryJson> {
   const sleep = deps.sleep ?? defaultSleep;
+  const clock = deps.clock ?? Date.now;
   for (let attempt = 0; ; attempt++) {
     let r: WidgetQueryJson;
     try {
-      r = await deps.query(userId, body, now);
+      r = await deps.query(userId, body, now, Math.max(0, deadline - clock()));
     } catch {
       return QUERY_FAILED;
     }
-    if (r.ok || r.code !== "QUERY_BUSY" || attempt >= BUSY_RETRIES) return r;
-    await sleep(400 * 2 ** attempt);
+    if (r.ok || r.code !== "QUERY_BUSY") return r;
+    const wait = Math.min(400 * 2 ** attempt, BUSY_BACKOFF_MAX_MS);
+    // Batas bersama: unduhan yang tak kunjung selesai tidak menahan render (kartu galat, bukan hang).
+    if (clock() + wait > deadline) return r;
+    await sleep(wait);
   }
 }
 
@@ -131,8 +154,9 @@ export async function loadRenderSession(
   if (!parsed) return null;
   const state = sanitizePdfFilter(parsed, d);
   const now = new Date(claims.requestedAt);
+  const deadline = (deps.clock ?? Date.now)() + (deps.busyWaitMs ?? BUSY_WAIT_MS);
   const results = await mapLimit(d.widgets, RENDER_QUERY_PARALLEL, (w) =>
-    queryWithRetry(deps, claims.userId, renderQueryBody(w, filtersFor(state, w.id)), now),
+    queryWithRetry(deps, claims.userId, renderQueryBody(w, filtersFor(state, w.id)), now, deadline),
   );
   return {
     dashboard: {
