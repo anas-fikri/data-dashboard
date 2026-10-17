@@ -12,6 +12,9 @@ lit=${pw//\'/\'\'}
 sudo -u postgres psql -v ON_ERROR_STOP=1 -q <<SQL
 SELECT 'CREATE ROLE dashboard LOGIN' WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dashboard') \\gexec
 ALTER ROLE dashboard WITH LOGIN PASSWORD '$lit';
-SELECT 'CREATE DATABASE data_dashboard OWNER dashboard' WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'data_dashboard') \\gexec
+SELECT \$\$CREATE DATABASE data_dashboard OWNER dashboard ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0\$\$ WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'data_dashboard') \\gexec
+SELECT 'encoding ' || pg_encoding_to_char(encoding) FROM pg_database WHERE datname = 'data_dashboard';
 SQL
+# UTF8 eksplisit: cluster yang di-init dengan locale C mewariskan SQL_ASCII (tanpa validasi encoding,
+# lower()/ILIKE hanya ASCII). C.UTF-8 = urutan byte seperti C, tapi huruf non-ASCII dikenali.
 echo "PostgreSQL host siap: role dashboard + database data_dashboard"
