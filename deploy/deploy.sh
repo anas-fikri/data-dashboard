@@ -60,6 +60,8 @@ if grep -q '=ISI_' "$ENV_FILE"; then
   exit 1
 fi
 [ -f deploy/rclone.conf ] || { umask 077; : >deploy/rclone.conf; }
+# Sumber bind mount harus ada (kunci off-VM diisi deploy/offsite-key.sh bila dipakai).
+[ -d deploy/offsite ] || { umask 077; mkdir -p deploy/offsite; }
 
 # Profil (db = PostgreSQL container, hostdb = relay ke PostgreSQL host 127.0.0.1) dari .env.prod.
 COMPOSE_PROFILES=$(grep '^COMPOSE_PROFILES=' "$ENV_FILE" | cut -d= -f2- || true)

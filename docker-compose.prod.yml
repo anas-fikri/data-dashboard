@@ -234,6 +234,8 @@ services:
       BACKUP_AGE_RECIPIENT: ${BACKUP_AGE_RECIPIENT:?isi kunci publik age (age1…) di .env.prod}
       BACKUP_REMOTE: ${BACKUP_REMOTE:-}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      # Retensi salinan di VM (bawaan = BACKUP_RETENTION_DAYS); pendekkan bila off-VM aktif agar disk VM hemat.
+      BACKUP_LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
       RCLONE_CONFIG: /config/rclone.conf
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -243,6 +245,8 @@ services:
       - ./deploy/pgenv.sh:/usr/local/bin/pgenv.sh:ro
       - ./deploy/fingerprint.sh:/usr/local/bin/fingerprint.sh:ro
       - ./deploy/rclone.conf:/config/rclone.conf:ro
+      # Kunci SSH + known_hosts salinan off-VM (deploy/offsite-key.sh); folder kosong bila tidak dipakai.
+      - ./deploy/offsite:/config/offsite:ro
       - backups:/backups
     logging: *logging
     networks: [data]

@@ -2,7 +2,8 @@
 # Backup harian (T-023), dijalankan cron di service "backup":
 #   pg_dump (format custom) + salinan seluruh bucket → tar → age (kunci PUBLIK BACKUP_AGE_RECIPIENT) →
 #   /backups/dashboard-<UTC>.tar.age (+ .sha256), disalin ke BACKUP_REMOTE (rclone) bila diisi,
-#   retensi BACKUP_RETENTION_DAYS hari di lokal dan remote. Manual: docker compose exec backup backup.sh
+#   retensi BACKUP_RETENTION_DAYS hari di remote dan BACKUP_LOCAL_RETENTION_DAYS (bawaan sama) di VM.
+#   Manual: docker compose run --rm --no-deps backup backup.sh
 # Kunci privat age tidak pernah ada di VM: backup tidak bisa dibuka dari VM yang dibobol.
 set -euo pipefail
 : "${DATABASE_URL:?}" "${S3_ENDPOINT:?}" "${S3_BUCKET:?}" "${BACKUP_AGE_RECIPIENT:?}"
@@ -11,6 +12,7 @@ set -euo pipefail
 pg_env_from_url "$DATABASE_URL"
 local_s3_env
 days=${BACKUP_RETENTION_DAYS:-30}
+local_days=${BACKUP_LOCAL_RETENTION_DAYS:-$days}
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 out="/backups/dashboard-$stamp.tar.age"
 work=$(mktemp -d /backups/.work-XXXXXX)
@@ -32,5 +34,5 @@ if [ -n "${BACKUP_REMOTE:-}" ]; then
 else
   echo "[$stamp] PERINGATAN: BACKUP_REMOTE kosong — backup hanya di VM ini" >&2
 fi
-find /backups -maxdepth 1 -name 'dashboard-*' -mtime +"$days" -delete
+find /backups -maxdepth 1 -name 'dashboard-*' -mtime +"$local_days" -delete
 echo "[$stamp] backup selesai"

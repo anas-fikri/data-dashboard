@@ -13,5 +13,6 @@ tests/fixtures/perf
 *.log
 # Kredensial off-VM dan sertifikat TLS deploy (T-023)
 deploy/rclone.conf
+deploy/offsite/
 deploy/certs
 demo/guide-videos/*.webm

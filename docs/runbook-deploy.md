@@ -124,9 +124,31 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
 
 1. Di laptop admin (BUKAN di VM): `age-keygen -o kunci-backup-dashboard.txt` → simpan di brankas.
    Kunci publiknya (`age1…`) diisi ke `BACKUP_AGE_RECIPIENT`.
-2. Off-VM: isi `deploy/rclone.conf` (mis. remote sftp/S3 bernama `offsite`) dan
-   `BACKUP_REMOTE=offsite:dashboard-backup`. Tanpa remote, backup hanya di VM (peringatan di log).
-3. Uji sekarang: `$C exec backup backup.sh` → log `backup selesai`, berkas `dashboard-<UTC>.tar.age`.
+2. Off-VM lewat SFTP (server file/NAS kantor). Pakai **akun khusus non-admin** yang hanya punya satu
+   folder backup (mis. di Synology DSM: buat user `dashboard-backup`, shared folder
+   `backup-data-dashboard` baca/tulis hanya untuk user itu, aplikasi SFTP diizinkan). Jangan memakai akun
+   admin/pribadi: kunci ada di VM bersama, dan `internal-sftp` tanpa chroot memberi akses ke semua share
+   akun itu.
+   ```bash
+   bash deploy/offsite-key.sh <host> <port> <user> <folder> [ip-sumber-VM]
+   ```
+   Skrip membuat kunci SSH khusus backup (`deploy/offsite/`, 600, di-gitignore), menyimpan host key
+   target (**cocokkan sidik jari yang dicetak** dengan yang diketahui dari mesin lain), dan menulis remote
+   `offsite` ke `deploy/rclone.conf`. Baris `authorized_keys` yang dicetak dipasang di akun target: hanya
+   SFTP (`internal-sftp`), tanpa shell/forwarding, dan hanya dari IP sumber VM — IP yang dilihat target
+   (olympus → files.pcpexpress.com: IP publik kantor 115.178.128.130 karena lewat NAT). Lalu di `.env.prod`:
+   `BACKUP_REMOTE=offsite:<folder>` dan `BACKUP_LOCAL_RETENTION_DAYS=7` (salinan 30 hari di off-VM,
+   7 hari di VM agar disk VM hemat), lalu `$C up -d --no-deps --force-recreate backup`.
+   Remote S3 juga bisa (isi `deploy/rclone.conf` manual). Tanpa remote, backup hanya di VM (peringatan
+   di log).
+3. Uji sekarang: `$C run --rm --no-deps backup backup.sh` → log `arsip: dashboard-<UTC>.tar.age` dan
+   `tersalin ke offsite:…`.
+4. Verifikasi arsip tanpa memulihkan (dari laptop admin, kunci lewat stdin):
+   ```bash
+   ssh <server> bash /data/docker-data/data-dashboard/deploy/verify-backup.sh < kunci-backup-dashboard.txt
+   ssh <server> bash /data/docker-data/data-dashboard/deploy/verify-backup.sh --remote < kunci-backup-dashboard.txt
+   ```
+   Hasil wajib `checksum: cocok` dan `arsip bisa dipulihkan` (`--remote` = salinan off-VM).
 
 ## 5. Restore (VM lain atau sama)
 

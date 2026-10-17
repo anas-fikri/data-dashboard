@@ -51,6 +51,7 @@ yarn-error.log*
 
 # Deploy produksi (T-023): kredensial off-VM dan sertifikat TLS tidak pernah di-commit
 /deploy/rclone.conf
+/deploy/offsite/
 /deploy/certs/*
 !/deploy/certs/.gitkeep
 /deploy/ca-root.crt
