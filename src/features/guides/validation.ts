@@ -16,6 +16,11 @@ const EMPHASIS_MAX = 200;
 const DEPTH_MAX = 12;
 /** Baris per artikel: paragraf lanjutan malas dalam kutipan/daftar kuadratik per baris (review R3-1). */
 const LINE_MAX = 2_000;
+/**
+ * Kolom tabel (T-0vjt): setiap baris tabel diisi sel sebanyak kolom judul, jadi ribuan kolom × ribuan
+ * baris = jutaan sel. Kolom × LINE_MAX tetap kecil.
+ */
+const TABLE_COLS_MAX = 8;
 /** Awalan kontainer satu baris: spasi lalu > atau penanda daftar, berulang. */
 const PREFIX = /^(?:[ \t]*(?:>|[-*+](?=[ \t]|$)|\d{1,9}[.)](?=[ \t]|$)))*/;
 
@@ -38,6 +43,14 @@ export function guideBodyProblem(md: string): string | null {
     const indent = prefix.replace(/\t/g, "    ").replace(/[^ ]/g, "").length;
     if (marks + Math.floor(indent / 2) > DEPTH_MAX)
       return `Kutipan atau daftar bersarang terlalu dalam (maks. ${DEPTH_MAX} tingkat).`;
+    // Baris pemisah tabel (| --- | :-: |): jumlah kolomnya = jumlah kolom tabel.
+    const rest = line.slice(prefix.length);
+    if (
+      rest.includes("|") &&
+      /^[ \t|:-]+$/.test(rest) &&
+      (rest.match(/-+/g)?.length ?? 0) > TABLE_COLS_MAX
+    )
+      return `Tabel terlalu lebar (maks. ${TABLE_COLS_MAX} kolom); pecah menjadi beberapa tabel.`;
   }
   return null;
 }

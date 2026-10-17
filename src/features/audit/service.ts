@@ -38,7 +38,12 @@ export type AuditAction =
    * { exportId, format: "pdf", role } (tanpa nilai filter).
    */
   | "dashboard.export"
-  /** Admin menerbitkan / menarik / menghapus artikel panduan (T-020), meta { slug, role }. */
+  /**
+   * Admin membuat / mengubah (T-0vjt) / menerbitkan / menarik / menghapus artikel panduan (T-020), meta
+   * { slug, role } tanpa isi artikel. Terbit/tarik hanya bila statusnya benar-benar berubah.
+   */
+  | "guide.create"
+  | "guide.update"
   | "guide.publish"
   | "guide.unpublish"
   | "guide.delete"

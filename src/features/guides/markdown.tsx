@@ -1,3 +1,5 @@
+import { gfmTableFromMarkdown } from "mdast-util-gfm-table";
+import { gfmTable } from "micromark-extension-gfm-table";
 import Markdown, { type Components } from "react-markdown";
 import rehypeSanitize, { defaultSchema, type Options as SanitizeSchema } from "rehype-sanitize";
 import { GUIDE_BODY_MAX, guideBodyProblem } from "./validation";
@@ -8,7 +10,7 @@ import { GUIDE_BODY_MAX, guideBodyProblem } from "./validation";
  * <form>, <style> tidak pernah menjadi elemen; (2) rehype-sanitize skema allowlist (GitHub) dengan
  * protokol href hanya http/https/mailto; (3) guideUrl: href javascript:/data:/lainnya dibuang, gambar
  * hanya dari path relatif aplikasi atau origin yang diizinkan (app + storage). Tautan ke origin lain
- * mendapat rel="noopener noreferrer".
+ * mendapat rel="noopener noreferrer". Dari GFM hanya tabel yang aktif (T-0vjt, remarkTable).
  */
 
 const SCHEMA: SanitizeSchema = {
@@ -28,6 +30,20 @@ const SCHEMA: SanitizeSchema = {
 function remarkNoHtml(this: { data(): object }) {
   const data = this.data() as { micromarkExtensions?: unknown[] };
   (data.micromarkExtensions ??= []).push({ disable: { null: ["htmlFlow", "htmlText"] } });
+}
+
+/**
+ * Plugin remark: tabel GFM saja (T-0vjt). Bukan remark-gfm penuh — itu juga membawa coret, daftar tugas
+ * (<input>), catatan kaki, dan tautan otomatis dari teks biasa; elemen baru di keluaran hanya
+ * table/thead/tbody/tr/th/td (sudah ada di skema sanitasi). Batas kolom: guideBodyProblem.
+ */
+function remarkTable(this: { data(): object }) {
+  const data = this.data() as {
+    micromarkExtensions?: unknown[];
+    fromMarkdownExtensions?: unknown[];
+  };
+  (data.micromarkExtensions ??= []).push(gfmTable());
+  (data.fromMarkdownExtensions ??= []).push(gfmTableFromMarkdown());
 }
 
 interface MdNode {
@@ -88,6 +104,26 @@ function externalHref(href: string | undefined, origins: readonly string[]): boo
   } catch {
     return true;
   }
+}
+
+interface HastNode {
+  type: string;
+  tagName?: string;
+  value?: string;
+  children?: HastNode[];
+}
+const textOf = (n: HastNode): string =>
+  n.type === "text" ? (n.value ?? "") : (n.children ?? []).map(textOf).join("");
+
+/** Nama wilayah gulir tabel dari judul kolomnya, agar beberapa tabel di satu artikel terbedakan. */
+function tableLabel(table: HastNode | undefined): string {
+  const head = table?.children?.find((c) => c.tagName === "thead");
+  const cols = (head?.children?.find((c) => c.tagName === "tr")?.children ?? [])
+    .filter((c) => c.tagName === "th")
+    .map((c) => textOf(c).trim())
+    .filter(Boolean);
+  const label = cols.length ? `Tabel: ${cols.join(", ")}` : "Tabel";
+  return label.length > 80 ? `${label.slice(0, 79)}…` : label;
 }
 
 const HEADING = [
@@ -173,11 +209,35 @@ export function GuideMarkdown({
         {children}
       </pre>
     ),
+    // Tabel lebar digulir di wilayahnya sendiri (bisa difokus keyboard), bukan melebarkan halaman.
+    table: ({ node, children }) => (
+      <div
+        role="region"
+        aria-label={tableLabel(node)}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+        tabIndex={0}
+        className="mt-3 overflow-x-auto rounded-md border first:mt-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+      >
+        {/*
+         * Gaya sel di tabel (sekali, bukan per sel: baris tabel bisa ribuan). Perataan kolom (:-:) tiba
+         * sebagai style text-align per sel dan menang atas rata kiri ini. Kata tidak dipatah per huruf
+         * (induk overflow-wrap:anywhere) — tabel meluap lalu digulir.
+         */}
+        <table className="w-full border-collapse text-sm [overflow-wrap:normal] [&_td]:border-t [&_td]:px-3 [&_td]:py-2 [&_td]:align-top [&_th]:min-w-28 [&_th]:bg-muted [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium">
+          {children}
+        </table>
+      </div>
+    ),
+    th: ({ style, children }) => (
+      <th scope="col" style={style}>
+        {children}
+      </th>
+    ),
   };
   return (
     <div className="min-w-0 text-sm [overflow-wrap:anywhere]" data-testid="guide-markdown">
       <Markdown
-        remarkPlugins={[remarkNoHtml, [remarkShiftHeadings, headingOffset]]}
+        remarkPlugins={[remarkNoHtml, remarkTable, [remarkShiftHeadings, headingOffset]]}
         rehypePlugins={[[rehypeSanitize, SCHEMA]]}
         urlTransform={(url, key) => guideUrl(url, key, origins)}
         components={components}

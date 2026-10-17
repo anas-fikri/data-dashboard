@@ -13,7 +13,7 @@ import * as service from "./service";
 /*
  * Server Action panduan (T-020). Setiap aksi: admin aktif (currentAdmin) lebih dulu — non-admin atau
  * tanpa sesi → NOT_FOUND tanpa menyentuh data (AC3) — lalu rate limit per admin, lalu service
- * (validasi zod + AuditLog terbit/tarik/hapus). Galat tak terduga → BUSY tanpa detail.
+ * (validasi zod + AuditLog buat/ubah/terbit/tarik/hapus). Galat tak terduga → BUSY tanpa detail.
  */
 
 export type GuideActionCode = service.GuideCode | "RATE_LIMITED" | "BUSY";
@@ -53,11 +53,11 @@ async function asGuideAdmin<T>(
 export async function createGuideAction(
   input: unknown,
 ): Promise<GuideActionResult<{ id: string }>> {
-  return asGuideAdmin("createGuide", () => service.createGuide(input));
+  return asGuideAdmin("createGuide", (actor, ip) => service.createGuide(actor.id, input, ip));
 }
 
 export async function updateGuideAction(id: string, input: unknown): Promise<GuideActionResult> {
-  return asGuideAdmin("updateGuide", () => service.updateGuide(id, input));
+  return asGuideAdmin("updateGuide", (actor, ip) => service.updateGuide(actor.id, id, input, ip));
 }
 
 export async function setGuideStatusAction(

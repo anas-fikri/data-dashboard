@@ -66,6 +66,10 @@ describe("Server Action panduan (T-020)", () => {
   it("admin → service dengan id pelaku + ip; halaman di-revalidate", async () => {
     requireAdmin.mockResolvedValue({ id: "admin1", isAdmin: true });
     expect(await actions.createGuideAction(input)).toEqual({ ok: true, data: { id: "g1" } });
+    // T-0vjt AC3: buat/ubah juga menerima pelaku + ip untuk AuditLog guide.create/guide.update.
+    expect(service.createGuide).toHaveBeenCalledWith("admin1", input, "203.0.113.9");
+    expect(await actions.updateGuideAction(ID, input)).toMatchObject({ ok: true });
+    expect(service.updateGuide).toHaveBeenCalledWith("admin1", ID, input, "203.0.113.9");
     expect(await actions.setGuideStatusAction(ID, true)).toMatchObject({ ok: true });
     expect(service.setGuideStatus).toHaveBeenCalledWith("admin1", ID, "PUBLISHED", "203.0.113.9");
     expect(await actions.deleteGuideAction(ID)).toMatchObject({ ok: true });

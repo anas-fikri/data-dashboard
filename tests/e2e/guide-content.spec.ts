@@ -56,9 +56,9 @@ test.describe("isi panduan (T-xfzy)", () => {
 
   test("AC1/AC3: artikel Umum dan Pemilik data terbit, urut sesuai alur kerja", async () => {
     await n.goto("/panduan?peran=umum");
-    expect(await shown(n, "ALL")).toEqual(titles("ALL"));
+    await expect.poll(() => shown(n, "ALL")).toEqual(titles("ALL"));
     await n.goto("/panduan?peran=pemilik");
-    expect(await shown(n, "OWNER")).toEqual(titles("OWNER"));
+    await expect.poll(() => shown(n, "OWNER")).toEqual(titles("OWNER"));
     // Seed dua kali tidak menggandakan artikel.
     for (const t of titles("OWNER"))
       await expect(
@@ -68,8 +68,10 @@ test.describe("isi panduan (T-xfzy)", () => {
 
   test("AC3: viewer melihat artikel viewer; artikel pemilik tidak", async () => {
     await v.goto("/panduan?peran=viewer");
-    expect(await shown(v, "VIEWER")).toEqual(titles("VIEWER"));
+    await expect.poll(() => shown(v, "VIEWER")).toEqual(titles("VIEWER"));
     await v.goto("/panduan?q=dataset");
+    // Daftar dirender bersama judul halaman (satu batas loading.tsx): tunggu tampil, lalu baca.
+    await expect(v.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await shown(v, "OWNER")).toEqual([]);
   });
 });

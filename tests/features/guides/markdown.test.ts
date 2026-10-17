@@ -140,3 +140,80 @@ describe("GuideMarkdown (T-020)", () => {
     expect(levels("# A\n\n## B\n\n### C\n\n#### D", 3)).toEqual([4, 5, 6, 6]);
   });
 });
+
+/* T-0vjt AC1: tabel GFM dirender sebagai tabel dalam wilayah gulir yang bisa difokus; GFM lain tidak. */
+describe("GuideMarkdown tabel (T-0vjt)", () => {
+  const TABLE = [
+    "| Peran | Hak **akses** | Jumlah |",
+    "| :-- | :-: | --: |",
+    "| Pemilik | Semua | 3 |",
+    "| Viewer | Lihat saja |",
+  ].join("\n");
+
+  it("tabel GFM → table/thead/tbody/th/td di wilayah gulir bernama, bukan teks mentah", () => {
+    const out = html(`Ringkasan:\n\n${TABLE}`);
+    expect(out).not.toContain("| :--");
+    expect(out).toMatch(
+      /<div role="region" aria-label="Tabel: Peran, Hak akses, Jumlah" tabindex="0"[^>]*><table/,
+    );
+    expect(out).toMatch(/<thead>.*<\/thead><tbody>.*<\/tbody><\/table><\/div>/);
+    expect(out.match(/<th scope="col"/g)).toHaveLength(3);
+    expect(out).toContain("<strong>akses</strong>");
+    // Perataan kolom → text-align per sel (atribut align usang tidak dipakai); baris pendek diisi sel.
+    expect(out).toContain('<th scope="col" style="text-align:left">Peran</th>');
+    expect(out).toContain('<td style="text-align:center">Semua</td>');
+    expect(out).toContain('<td style="text-align:right">3</td>');
+    expect(out).not.toMatch(/\salign=/);
+    expect(out.match(/<td[\s>]/g)).toHaveLength(6);
+    // Tanpa perataan: sel polos (gaya sel ada sekali di <table>, bukan per sel).
+    expect(html("| A |\n|---|\n| 1 |")).toMatch(/<th scope="col">A<\/th>.*<td>1<\/td>/);
+  });
+
+  it("dua tabel → nama wilayah berbeda; judul kolom kosong → 'Tabel'", () => {
+    const out = html(`${TABLE}\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n| |\n|-|\n| x |`);
+    const labels = [...out.matchAll(/role="region" aria-label="([^"]+)"/g)].map((m) => m[1]);
+    expect(labels).toEqual(["Tabel: Peran, Hak akses, Jumlah", "Tabel: A, B", "Tabel"]);
+  });
+
+  it("hanya elemen tabel yang baru: coret, daftar tugas, catatan kaki, tautan teks biasa tetap teks", () => {
+    const out = html(
+      [
+        TABLE,
+        "~~coret~~ ~satu~ www.example.org https://example.org/x surat@pcpexpress.com",
+        "- [ ] tugas\n- [x] selesai",
+        "Catatan[^1].\n\n[^1]: Isi catatan.",
+        "<table><tr><td>mentah</td></tr></table>",
+      ].join("\n\n"),
+    );
+    const tags = new Set([...out.matchAll(/<([a-z][a-z0-9]*)/g)].map((m) => m[1]));
+    expect([...tags].sort()).toEqual(
+      ["div", "li", "p", "strong", "table", "tbody", "td", "th", "thead", "tr", "ul"].sort(),
+    );
+    expect(out).toContain("~~coret~~");
+    expect(out).toContain("[ ] tugas");
+    expect(out).toContain("&lt;table&gt;");
+  });
+
+  it("tabel di dalam kutipan dan daftar ikut dirender", () => {
+    const out = html(`> ${TABLE.split("\n").join("\n> ")}\n\n- ${TABLE.split("\n").join("\n  ")}`);
+    expect(out.match(/<table/g)).toHaveLength(2);
+  });
+
+  it("kolom > 8 ditolak saat simpan dan tidak dirender; tabel terburuk dalam batas tetap cepat", () => {
+    const row = (n: number, cell: string) => `|${Array(n).fill(cell).join("|")}|`;
+    const wide = `${row(9, "a")}\n${row(9, "---")}\n${row(9, "1")}`;
+    expect(guideBodyProblem(wide)).toMatch(/Tabel terlalu lebar/);
+    expect(guideBodyProblem(`> - ${row(9, ":-:")}`)).toMatch(/Tabel terlalu lebar/);
+    expect(html(wide)).toContain("Isi artikel tidak dapat ditampilkan");
+    // 3.000 kolom × 2.000 baris = 6 juta sel tanpa batas; dengan batas: 8 × 1.990 ≈ 16 ribu sel.
+    const bomb = `${row(3000, "a")}\n${row(3000, "-")}\n${"a\n".repeat(1990)}`;
+    expect(guideBodyProblem(bomb)).not.toBeNull();
+    const edge = `${row(8, "a")}\n${row(8, "-")}\n${"a\n".repeat(1990)}`;
+    expect(guideBodyProblem(edge)).toBeNull();
+    const t = performance.now();
+    expect(html(edge).match(/<td>/g)).toHaveLength(8 * 1990);
+    expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
+    // Garis bukan pemisah tabel tidak terkena batas (pemisah tematik, teks dengan tanda hubung).
+    expect(guideBodyProblem(`${"- ".repeat(5)}\n\n${"a - b | ".repeat(20)}`)).toBeNull();
+  });
+});

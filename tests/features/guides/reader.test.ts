@@ -27,6 +27,11 @@ describe("excerptOf (T-022)", () => {
     expect(out.length).toBeLessThanOrEqual(20);
     expect(out.endsWith("…")).toBe(true);
   });
+  it("review T-0vjt: baris pemisah tabel (perataan :--, :-:, --:) tidak masuk cuplikan", () => {
+    expect(excerptOf("| Peran | Hak |\n| :-- | :-: | --: |\n| Pemilik | penuh |")).toBe(
+      "Peran Hak Pemilik penuh",
+    );
+  });
   it("review T-022: snake_case utuh, penekanan _x_ dibuang", () => {
     expect(excerptOf("Kolom tanggal_kirim _penting_")).toBe("Kolom tanggal_kirim penting");
   });

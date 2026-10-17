@@ -230,7 +230,7 @@ export function excerptOf(md: string, max = 160): string {
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
     .replace(/[#>*`~|]+/g, " ")
     .replace(/(^|\s)_+|_+(?=\s|$)/g, " ")
-    .replace(/(^|\s)-+(?=\s)/g, " ")
+    .replace(/(^|\s):?-+:?(?=\s|$)/g, " ") // penanda daftar/garis + perataan tabel (:--, :-:, --:)
     .replace(/\s+/g, " ")
     .trim();
   return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;

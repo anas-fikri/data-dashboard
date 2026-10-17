@@ -9,6 +9,8 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  *   AC1/AC2/AC6 A menulis artikel viewer + konteks skema berisi <script>, javascript:, gambar luar →
  *     pratinjau tersanitasi (tanpa skrip berjalan), tersimpan draf, diterbitkan → tampil di /panduan;
  *   AC4 dua artikel: tukar urutan → urutan baru tersimpan; draf tidak tampil di /panduan.
+ * T-0vjt AC1: tabel markdown tampil sebagai tabel di pratinjau dan /panduan, wilayah gulirnya bisa
+ *   difokus dan digulir dengan keyboard (desktop + 320 px).
  */
 test.describe.configure({ mode: "serial" });
 
@@ -125,13 +127,13 @@ test.describe("panduan admin (T-020)", () => {
     await a.goto("/admin/panduan");
     const titles = () =>
       a.getByTestId("guide-row").getByRole("link").filter({ hasText: TAG }).allTextContents();
-    expect(await titles()).toEqual([T1, T2]);
+    await expect.poll(titles).toEqual([T1, T2]);
     await row(a, T2)
       .getByRole("button", { name: `Naikkan ${T2}` })
       .click();
     await expect.poll(titles).toEqual([T2, T1]);
     await a.reload();
-    expect(await titles()).toEqual([T2, T1]);
+    await expect.poll(titles).toEqual([T2, T1]);
 
     await b.goto("/panduan");
     await expect(b.getByTestId("guide-card").filter({ hasText: T1 })).toHaveCount(1);
@@ -192,5 +194,53 @@ test.describe("panduan admin (T-020)", () => {
     await expect(card).toHaveCount(1);
     const href = (await card.getByRole("link", { name: T3 }).getAttribute("href"))!;
     expect((await b.goto(href))?.status()).toBe(404);
+  });
+
+  test("T-0vjt AC1: tabel markdown di pratinjau dan /panduan — tabel, wilayah gulir bisa dipakai keyboard", async () => {
+    const cols = ["Kolom", "Tipe", "Contoh", "Keterangan", "Wajib", "Satuan", "Sumber", "Catatan"];
+    const md = [
+      "Ringkasan kolom:",
+      "",
+      `| ${cols.join(" | ")} |`,
+      `|${cols.map(() => " --- ").join("|")}|`,
+      `| ${cols.map((c) => `${c.toLowerCase()}_contoh_panjang`).join(" | ")} |`,
+    ].join("\n");
+    const name = `Tabel: ${cols.join(", ")}`;
+    /** Tabel sungguhan (bukan teks "| --- |"), wilayah gulir bisa difokus dan digulir panah kanan. */
+    async function expectScrollableTable(page: Page) {
+      const scope = page.getByTestId("guide-markdown");
+      await expect(scope).not.toContainText("| --- |");
+      const region = scope.getByRole("region", { name });
+      await expect(region.getByRole("columnheader")).toHaveText(cols);
+      await expect(region.getByRole("cell", { name: "tipe_contoh_panjang" })).toBeVisible();
+      await region.focus();
+      await expect(region).toBeFocused();
+      const scrollLeft = () => region.evaluate((el) => el.scrollLeft);
+      expect(await region.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      await page.keyboard.press("ArrowRight");
+      await expect.poll(scrollLeft).toBeGreaterThan(0);
+      // Tabel meluap di wilayahnya sendiri, halaman tidak ikut melebar.
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      ).toBe(true);
+    }
+
+    await a.goto("/admin/panduan");
+    await row(a, T1).getByRole("link", { name: T1, exact: true }).click();
+    await a.getByLabel("Isi (markdown)").fill(md);
+    await expectScrollableTable(a);
+    await a.getByRole("button", { name: "Simpan perubahan" }).click();
+    await expect(a.getByText("Perubahan tersimpan.")).toBeVisible();
+
+    // T1 sudah terbit (AC1) untuk Viewer: B membaca artikelnya di desktop dan di ponsel 320 px.
+    await b.goto(`/panduan/membaca-skema-dataset-${TAG}`);
+    await expectScrollableTable(b);
+    await b.setViewportSize({ width: 320, height: 720 });
+    try {
+      await b.reload();
+      await expectScrollableTable(b);
+    } finally {
+      await b.setViewportSize({ width: 1280, height: 720 });
+    }
   });
 });

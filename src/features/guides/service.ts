@@ -7,7 +7,8 @@ import { removeVideoObjects, scheduleVideoCleanup } from "./videos";
 
 /*
  * Artikel panduan (T-020). Pemanggil perubahan WAJIB sudah lolos requireAdmin("action") (actions.ts);
- * service memvalidasi isi (zod) dan menulis AuditLog untuk terbit/tarik/hapus. Urutan = kolom `order`
+ * service memvalidasi isi (zod) dan menulis AuditLog {slug, role} (tanpa isi artikel) untuk
+ * buat/ubah/terbit/tarik/hapus di transaksi yang sama (T-0vjt: buat/ubah). Urutan = kolom `order`
  * global (naik); tukar urutan = tukar nilai dengan tetangga dalam satu transaksi. Pembaca (/panduan)
  * hanya mendapat artikel PUBLISHED untuk perannya + ALL.
  */
@@ -53,16 +54,30 @@ export async function getGuide(id: string): Promise<GuideArticle | null> {
   return prisma.guideArticle.findUnique({ where: { id } });
 }
 
-export async function createGuide(input: unknown): Promise<GuideResult<{ id: string }>> {
+export async function createGuide(
+  actorId: string,
+  input: unknown,
+  ip: string,
+): Promise<GuideResult<{ id: string }>> {
   const parsed = guideInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
+  const { slug, role } = parsed.data;
   try {
     const row = await prisma.$transaction(async (tx) => {
       const last = await tx.guideArticle.aggregate({ _max: { order: true } });
-      return tx.guideArticle.create({
+      const created = await tx.guideArticle.create({
         data: { ...parsed.data, order: (last._max.order ?? 0) + 1, status: "DRAFT" },
         select: { id: true },
       });
+      await recordAudit(tx, {
+        actorId,
+        action: "guide.create",
+        targetType: "guide",
+        targetId: created.id,
+        meta: { slug, role },
+        ip,
+      });
+      return created;
     });
     return { ok: true, data: row };
   } catch (e) {
@@ -71,13 +86,30 @@ export async function createGuide(input: unknown): Promise<GuideResult<{ id: str
   }
 }
 
-export async function updateGuide(id: string, input: unknown): Promise<GuideResult> {
+export async function updateGuide(
+  actorId: string,
+  id: string,
+  input: unknown,
+  ip: string,
+): Promise<GuideResult> {
   if (!cuidSchema.safeParse(id).success) return notFound;
   const parsed = guideInputSchema.safeParse(input);
   if (!parsed.success) return invalid(parsed.error);
+  const { slug, role } = parsed.data;
   try {
-    const r = await prisma.guideArticle.updateMany({ where: { id }, data: parsed.data });
-    return r.count ? { ok: true, data: null } : notFound;
+    return await prisma.$transaction(async (tx) => {
+      const r = await tx.guideArticle.updateMany({ where: { id }, data: parsed.data });
+      if (!r.count) return notFound;
+      await recordAudit(tx, {
+        actorId,
+        action: "guide.update",
+        targetType: "guide",
+        targetId: id,
+        meta: { slug, role },
+        ip,
+      });
+      return { ok: true, data: null } as const;
+    });
   } catch (e) {
     if (slugTaken(e)) return SLUG_TAKEN;
     throw e;
@@ -97,7 +129,13 @@ export async function setGuideStatus(
       select: { slug: true, role: true },
     });
     if (!row) return notFound;
-    await tx.guideArticle.update({ where: { id }, data: { status } });
+    // Sudah berstatus ini (terbit ulang, klik ganda, tab basi): tanpa perubahan, tanpa audit ganda.
+    // Syarat status di UPDATE (bukan cek terpisah): dua permintaan serentak → hanya satu yang mengubah.
+    const r = await tx.guideArticle.updateMany({
+      where: { id, status: { not: status } },
+      data: { status },
+    });
+    if (!r.count) return { ok: true, data: null } as const;
     await recordAudit(tx, {
       actorId,
       action: status === "PUBLISHED" ? "guide.publish" : "guide.unpublish",

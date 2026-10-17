@@ -97,7 +97,7 @@ test.describe("panduan per peran (T-022)", () => {
 
   test("AC1: viewer satu dashboard → tab Viewer + Umum; artikel pemilik tidak tampil, slug-nya 404", async () => {
     await v.goto("/panduan");
-    expect(await tabs(v)).toEqual(["Viewer", "Umum"]);
+    await expect.poll(() => tabs(v)).toEqual(["Viewer", "Umum"]);
     await expect(card(v, V1)).toHaveCount(1);
     await expect(card(v, O1)).toHaveCount(0);
     expect((await v.goto(`/panduan/${slugs[O1]}`))?.status()).toBe(404);
@@ -108,7 +108,7 @@ test.describe("panduan per peran (T-022)", () => {
   test("AC2: user baru → tab Pemilik data + Umum; kartu Mulai di sini hilang setelah satu artikel dibaca", async () => {
     await n.goto("/panduan");
     // Share organisasi milik user lain di DB dev bisa menambah tab Viewer; Pemilik data + Umum wajib.
-    expect(await tabs(n)).toEqual(expect.arrayContaining(["Pemilik data", "Umum"]));
+    await expect.poll(() => tabs(n)).toEqual(expect.arrayContaining(["Pemilik data", "Umum"]));
     await expect(card(n, O1)).toHaveCount(1);
     await expect(card(n, V1)).toHaveCount(0);
     await n.goto("/");
@@ -198,7 +198,7 @@ test.describe("panduan per peran (T-022)", () => {
 
   test("review INT-1: hanya melihat lewat share organisasi → mendapat artikel Viewer", async () => {
     await o.goto("/panduan?peran=viewer");
-    expect(await tabs(o)).toEqual(expect.arrayContaining(["Viewer", "Umum"]));
+    await expect.poll(() => tabs(o)).toEqual(expect.arrayContaining(["Viewer", "Umum"]));
     await expect(card(o, V1)).toHaveCount(1);
     expect((await o.goto(`/panduan/${slugs[V1]}`))?.status()).toBe(200);
   });
@@ -210,7 +210,9 @@ test.describe("panduan per peran (T-022)", () => {
     let release = () => {};
     try {
       await a.goto("/panduan?peran=umum");
-      expect(await tabs(a)).toEqual(["Pemilik data", "Editor", "Viewer", "Admin", "Umum"]);
+      await expect
+        .poll(() => tabs(a))
+        .toEqual(["Pemilik data", "Editor", "Viewer", "Admin", "Umum"]);
       const nav = a.getByRole("navigation", { name: "Panduan per peran" });
       const umum = nav.getByRole("link", { name: "Umum", exact: true });
       await expect(umum).toHaveAttribute("aria-current", "page");
