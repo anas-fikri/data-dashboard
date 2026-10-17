@@ -13,7 +13,6 @@
 - T-j9j6 [todo] Takarir (VTT) untuk video panduan bernarasi — docs/ai/tasks/T-j9j6-takarir-vtt-untuk-video-panduan-bernarasi.md
 - T-0vjt [todo] Polish panduan admin: tabel markdown, error/loading route, audit ubah artikel — docs/ai/tasks/T-0vjt-polish-panduan-admin-tabel-markdown-error-loadin.md
 - T-2nkx [todo] Lencana kategori ringkas 'N/M' untuk kartu grafik pendek yang sempit (pita di bawah ambang T-032) — docs/ai/tasks/T-2nkx-lencana-kategori-ringkas-n-m-untuk-kartu-grafik.md
-- T-rb6x [todo] PDF: widget QUERY_BUSY saat cache parquet dingin menunggu unduhan pertama lebih lama (bukan kartu galat) — docs/ai/tasks/T-rb6x-pdf-widget-query-busy-saat-cache-parquet-dingin.md
 - T-034 [todo] Spike penyimpanan segmen per periode dan tetapkan ADR model data periode — docs/ai/tasks/T-034-spike-penyimpanan-segmen-per-periode-dan-tetapka.md
 - T-059 [todo] Unggah banyak file periode sekaligus lewat antrean — docs/ai/tasks/T-059-unggah-banyak-file-periode-sekaligus-lewat-antre.md
 - T-060 [todo] (Opsional) Satu periode dari beberapa file sebagai satu kelompok — docs/ai/tasks/T-060-opsional-satu-periode-dari-beberapa-file-sebagai.md
