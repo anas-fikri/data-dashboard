@@ -67,6 +67,9 @@ export COMPOSE_PROFILES
 start=$(date +%s)
 "${COMPOSE[@]}" build
 "${COMPOSE[@]}" up -d --wait --wait-timeout 600
+# Caddyfile dan skrip backup di-mount per file: setelah file diganti (sinkron kode), container lama tetap
+# melihat isi lama dan compose tidak menganggapnya berubah. Buat ulang agar selalu memakai versi terbaru.
+"${COMPOSE[@]}" up -d --no-deps --force-recreate --wait --wait-timeout 300 proxy backup
 app_host=$(grep '^APP_HOST=' "$ENV_FILE" | cut -d= -f2-)
 # APP_HOST boleh berisi port (mis. 10.3.3.221:8443).
 host=${app_host%:*}

@@ -10,7 +10,7 @@ C=(docker compose --env-file .env.prod -f docker-compose.prod.yml)
 COMPOSE_PROFILES=$(grep '^COMPOSE_PROFILES=' .env.prod | cut -d= -f2- || true)
 export COMPOSE_PROFILES
 # Format dicek SEBELUM ALTER ROLE: password baru yang tidak tersimpan = app terkunci dari DB.
-grep -qE '^DATABASE_URL=postgres(ql)?://[^:/@]+:[^@]*@' .env.prod ||
+[ "$(grep -c '^DATABASE_URL=' .env.prod)" = 1 ] && grep -qE '^DATABASE_URL=postgres(ql)?://[^:/@]+:[^@]*@' .env.prod ||
   { echo "DATABASE_URL tidak berformat postgresql://user:pass@host — ubah manual" >&2; exit 1; }
 new=$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 32)
 printf "ALTER ROLE CURRENT_USER WITH PASSWORD '%s';\n" "$new" |

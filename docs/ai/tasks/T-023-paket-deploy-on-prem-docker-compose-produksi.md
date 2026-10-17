@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-17T05:00:34Z"
+updated: "2026-10-17T05:11:30Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -28,6 +28,10 @@ review:
       by: claude-agent-review
       at: "2026-10-17T04:22:02Z"
       findings: 2
+    - "n": 3
+      by: claude-confirm-review
+      at: "2026-10-17T05:11:30Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
@@ -110,17 +114,17 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
-- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
-- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
-- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
-- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
-- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
-- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
-- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
-- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
-- [ ] V9 Communication: TLS for all external traffic; certificates validated
-- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
-- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
-- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
-- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
-- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — batas kepercayaan di header docker-compose.prod.yml + runbook: proxy satu-satunya ingress (8443/8444), jaringan edge/data bersubnet tetap, render internal tanpa egress, pg-relay hanya menerima subnet aplikasi; data sensitif = PostgreSQL host, bucket RustFS, arsip backup
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — deploy.sh membuat semua secret acak per deploy + menolak placeholder ISI_; configCheck menolak placeholder; app/worker memakai service account RustFS berpolicy prefix (bukan root); password DB dirotasi (rotate-db-password.sh), Redis requirepass
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: logika sesi tidak berubah; produksi HTTPS + HSTS sehingga cookie Secure, rotasi AUTH_SECRET di runbook
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — proxy storage hanya GET/HEAD/PUT/OPTIONS pada /<bucket>/(raw|guides|exports)/*, selain itu 403 (check-public-presign); policy prefix RustFS; /api/health dan /api/health/core publik hanya status, detail khusus admin
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — SQL skrip lewat stdin dengan literal di-escape (host-db.sh) atau password alfanumerik acak (rotate-db-password.sh); tidak ada eval input pengguna; path storage dicocokkan regex di Caddy
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — backup age (X25519) + sha256, kunci privat hanya di laptop admin/brankas; root CA LAN kunci offline; tidak ada kunci di kode/image
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — log akses Caddy tanpa query/Cookie/Authorization/Referer/Location/Set-Cookie, path token diredaksi; ps tanpa kredensial (0 baris); safeMessage di health; latihan restore hanya mencetak nama tabel yang beda
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — backup terenkripsi, retensi 30 hari, log json-file dirotasi 5x20 MB; .env.prod mode 600 dan tidak di-commit; salinan latihan dibongkar down -v + env dihapus
+- [x] V9 Communication: TLS for all external traffic; certificates validated — TLS di proxy dengan sertifikat dari root LAN berpembatasan IP 10.3.3.221/32, rantai diverifikasi (deploy.sh --cacert, curl --cacert); HSTS; trafik antar-container di jaringan Docker privat
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — image caddy/playwright dipin digest; npm audit 0 kerentanan; tidak ada panggilan jaringan tak terjelaskan (renderer tanpa egress)
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — restore satu transaksi (--single-transaction --exit-on-error) + checksum; latihan restore di project terpisah tanpa menyentuh data produksi; cache health 5 dtk per kelompok mencegah amplifikasi
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — unggahan presigned langsung ke storage lewat allowlist proxy; batas body proxy; volume temp worker sesuai ADR-0005; tanpa path dari input pengguna di skrip
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — CORS RustFS header terbatas; /api/health/core JSON {status, checkedAt} saja; rate limit aplikasi tidak berubah
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — NODE_ENV production, console RustFS mati, cap_drop ALL + no-new-privileges + read_only, seccomp renderer, header HSTS/CSP nonce, storage nosniff + CSP sandbox, Redis protected-mode, dependensi terbaru (npm audit 0)

@@ -10,12 +10,13 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 PROD=(docker compose --env-file .env.prod -f docker-compose.prod.yml)
 DRILL_ENV=.env.restoretest
-DRILL=(docker compose -p dashboard-restoretest --env-file "$DRILL_ENV" -f docker-compose.prod.yml)
+# Profil "db" (PostgreSQL container) hanya untuk salinan latihan, tidak ikut ke perintah produksi.
+DRILL=(env COMPOSE_PROFILES=db docker compose -p dashboard-restoretest --env-file "$DRILL_ENV" -f docker-compose.prod.yml)
 key=$(cat) # kunci privat hanya di memori proses ini
 [ -n "$key" ] || { echo "kunci age kosong (stdin)" >&2; exit 1; }
 tmp=
 cleanup() {
-  COMPOSE_PROFILES=db "${DRILL[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  "${DRILL[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
   rm -f "$DRILL_ENV"
   [ -z "$tmp" ] || rm -rf "$tmp"
 }
@@ -29,6 +30,7 @@ host=${host:-${app_host%:*}}
 [ -n "$host" ] || { echo "APP_HOST kosong di .env.prod" >&2; exit 1; }
 # Sertifikat sendiri (path) dipakai ulang; ACME untuk domain produksi tidak bisa di port latihan → internal.
 tls=$(env_val CADDY_TLS)
+tls=${tls//\"/} # lan-cert.sh menulis nilai berkutip
 case "$tls" in /*) ;; *) tls=internal ;; esac
 pgpw=$(rand 32)
 umask 077
@@ -59,17 +61,18 @@ WORKER_REPLICAS=0
 RENDERER_MEM=1g
 REDIS_MAXMEMORY=128mb
 EOF
-export COMPOSE_PROFILES=db
 # Sisa latihan yang terputus (ssh putus/SIGKILL): volume lama memegang password lama.
 "${DRILL[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 
 # Pembanding = sidik produksi tepat sebelum DAN sesudah backup; sama → arsip memuat persis isi itu.
-# Berbeda → produksi sedang dipakai saat backup; ulangi (maks 3 kali).
+# Berbeda → produksi sedang dipakai saat backup; ulangi (maks 3 kali). "run" (container baru), bukan
+# exec: container backup yang sudah lama jalan memegang versi skrip saat ia dibuat (bind mount satu file).
+P_RUN=("${PROD[@]}" run --rm -T --no-deps backup bash)
 for attempt in 1 2 3; do
   echo "backup baru produksi (percobaan $attempt)"
-  before=$("${PROD[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
-  "${PROD[@]}" exec -T backup bash /usr/local/bin/backup.sh >/dev/null
-  prod_fp=$("${PROD[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
+  before=$("${P_RUN[@]}" /usr/local/bin/fingerprint.sh)
+  out=$("${P_RUN[@]}" /usr/local/bin/backup.sh)
+  prod_fp=$("${P_RUN[@]}" /usr/local/bin/fingerprint.sh)
   [ "$before" = "$prod_fp" ] && break
   echo "produksi berubah selama backup" >&2
   if [ "$attempt" = 3 ]; then
@@ -77,10 +80,12 @@ for attempt in 1 2 3; do
     exit 1
   fi
 done
-archive=$("${PROD[@]}" exec -T backup sh -c 'ls -1 /backups/dashboard-*.tar.age | tail -1')
-echo "arsip produksi: $(basename "$archive")"
+# Nama dari output backup.sh (bukan arsip terbaru di folder: cron 02:00 bisa selesai di tengah latihan).
+name=$(sed -n 's/.*arsip: \(dashboard-[^ ]*\.tar\.age\).*/\1/p' <<<"$out") # nama asli: .sha256 merujuknya
+[ -n "$name" ] || { echo "nama arsip tidak ada di output backup.sh" >&2; exit 1; }
+archive=/backups/$name
+echo "arsip produksi: $name"
 tmp=$(mktemp -d)
-name=$(basename "$archive") # nama asli: berkas .sha256 merujuknya
 "${PROD[@]}" cp "backup:$archive" "$tmp/$name" >/dev/null
 "${PROD[@]}" cp "backup:$archive.sha256" "$tmp/$name.sha256" >/dev/null
 
@@ -105,7 +110,7 @@ fi
 # padat). --resolve: VM belum tentu bisa me-resolve domainnya sendiri.
 health=000
 for _ in $(seq 60); do
-  health=$(curl -sk --resolve "$host:9443:127.0.0.1" -o /dev/null -w '%{http_code}' \
+  health=$(curl -sk --max-time 10 --resolve "$host:9443:127.0.0.1" -o /dev/null -w '%{http_code}' \
     "https://$host:9443/api/health" || true)
   [ "$health" = 200 ] && break
   sleep 5
