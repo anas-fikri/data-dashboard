@@ -92,6 +92,7 @@ async function upload(page, path) {
 async function waitIngest(a, datasetId) {
   const marks = {};
   let last = null;
+  let stage = null;
   for (;;) {
     const { body } = await a.get(`/api/datasets/${datasetId}/progress`);
     const s = body?.status;
@@ -99,6 +100,12 @@ async function waitIngest(a, datasetId) {
       marks[s.status] = performance.now();
       last = s.status;
       log({ ev: "status", datasetId, status: s.status, queue: s.queue ?? null });
+    }
+    // Tahap ingest (unduh → baca → simpan → tipe) untuk rincian waktu per tahap.
+    const st = s?.progress ? `${s.progress.stage}:${s.progress.sheet ?? 0}` : null;
+    if (st && st !== stage) {
+      stage = st;
+      log({ ev: "tahap", datasetId, tahap: s.progress.stage, sheet: s.progress.sheetName ?? null });
     }
     if (s && DONE.has(s.status))
       return { status: s.status, marks, error: s.errorMessage, sheets: s.sheets };
