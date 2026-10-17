@@ -8,7 +8,6 @@
 - T-tqse [todo] Deploy dari image yang di-build di luar VM — docs/ai/tasks/T-tqse-deploy-dari-image-yang-di-build-di-luar-vm.md
 - T-y3y1 [todo] Konversi database produksi olympus dari SQL_ASCII ke UTF8 — docs/ai/tasks/T-y3y1-konversi-database-produksi-olympus-dari-sql-asci.md
 - T-h77x [todo] Salin backup harian ke target off-VM — docs/ai/tasks/T-h77x-salin-backup-harian-ke-target-off-vm.md
-- T-exfc [todo] Polish halaman Panduan: tab aktif terlihat, pengumuman hasil, kartu Mulai di sini — docs/ai/tasks/T-exfc-polish-halaman-panduan-tab-aktif-terlihat-pengum.md
 - T-z5nq [todo] Rapikan objek video panduan yatim dan polish bagian Video — docs/ai/tasks/T-z5nq-rapikan-objek-video-panduan-yatim-dan-polish-bag.md
 - T-j9j6 [todo] Takarir (VTT) untuk video panduan bernarasi — docs/ai/tasks/T-j9j6-takarir-vtt-untuk-video-panduan-bernarasi.md
 - T-0vjt [todo] Polish panduan admin: tabel markdown, error/loading route, audit ubah artikel — docs/ai/tasks/T-0vjt-polish-panduan-admin-tabel-markdown-error-loadin.md
