@@ -1,0 +1,102 @@
+{
+  "before": [
+    {
+      "cls": "dvn-scroller",
+      "scrollTop": 0,
+      "scrollHeight": 17895698,
+      "clientHeight": 673
+    }
+  ],
+  "mids": [
+    {
+      "frac": 0.25,
+      "firstFull": 2499995,
+      "lastFull": 2500013,
+      "firstC0": "PCP02499996",
+      "scrollTop": 4473756
+    },
+    {
+      "frac": 0.5,
+      "firstFull": 4999991,
+      "lastFull": 5000009,
+      "firstC0": "PCP04999992",
+      "scrollTop": 8947513
+    },
+    {
+      "frac": 0.75,
+      "firstFull": 7499986,
+      "lastFull": 7500004,
+      "firstC0": "PCP07499987",
+      "scrollTop": 13421269
+    },
+    {
+      "frac": 0.999,
+      "firstFull": 9989981,
+      "lastFull": 9989999,
+      "firstC0": "PCP09989982",
+      "scrollTop": 17877130
+    },
+    {
+      "frac": 1,
+      "firstFull": 9999980,
+      "lastFull": 9999998,
+      "firstC0": "PCP09999981",
+      "scrollTop": 17895024
+    }
+  ],
+  "end": {
+    "firstFull": 9999980,
+    "lastFull": 9999998,
+    "firstRow": {
+      "idx": 9999980,
+      "aria": 9999982,
+      "c0": "PCP09999981",
+      "no": "9.999.981",
+      "full": true,
+      "top": 7
+    },
+    "lastRow": {
+      "idx": 9999998,
+      "aria": 10000000,
+      "c0": "PCP09999999",
+      "no": "9.999.999",
+      "full": true,
+      "top": 583
+    },
+    "target": null,
+    "focused": null,
+    "region": {
+      "x": 1,
+      "y": 9999979,
+      "width": 11,
+      "height": 21,
+      "tx": 0,
+      "ty": -25.117970168590546,
+      "extras": {
+        "freezeRegion": {
+          "x": 0,
+          "y": 9999979,
+          "width": 1,
+          "height": 21
+        },
+        "freezeRegions": [
+          {
+            "x": 0,
+            "y": 9999979,
+            "width": 1,
+            "height": 21
+          }
+        ]
+      }
+    },
+    "scrollers": [
+      {
+        "cls": "dvn-scroller",
+        "scrollTop": 17895024,
+        "scrollHeight": 17895698,
+        "clientHeight": 673
+      }
+    ]
+  },
+  "ok": false
+}

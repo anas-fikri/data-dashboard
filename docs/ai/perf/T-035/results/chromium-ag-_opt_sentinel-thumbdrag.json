@@ -1,0 +1,28 @@
+{
+  "grid": "ag",
+  "qs": "?opt=sentinel",
+  "info": {
+    "x": 1263,
+    "top": 143,
+    "bottom": 754,
+    "sbw": 15,
+    "sh": 31999984,
+    "ch": 611
+  },
+  "res": {
+    "scrollTop": 31999372,
+    "max": 31999373,
+    "last": {
+      "idx": 9999994,
+      "c0": "PCP09999995"
+    }
+  },
+  "afterWheel": {
+    "scrollTop": 31999372,
+    "max": 31999373,
+    "last": {
+      "idx": 9999999,
+      "c0": "PCP10000000"
+    }
+  }
+}

@@ -1,0 +1,90 @@
+{
+  "before": [
+    {
+      "cls": "ag-grid-viewport",
+      "scrollTop": 0,
+      "scrollHeight": 32000044,
+      "clientHeight": 671
+    },
+    {
+      "cls": "ag-body-vertical-scroll-viewport",
+      "scrollTop": 0,
+      "scrollHeight": 31999984,
+      "clientHeight": 610
+    }
+  ],
+  "mids": [
+    {
+      "frac": 0.25,
+      "firstFull": 2499995,
+      "lastFull": 2500013,
+      "firstC0": "PCP02499996",
+      "scrollTop": 7999843
+    },
+    {
+      "frac": 0.5,
+      "firstFull": 4999991,
+      "lastFull": 5000008,
+      "firstC0": "PCP04999992",
+      "scrollTop": 15999687
+    },
+    {
+      "frac": 0.75,
+      "firstFull": 7499986,
+      "lastFull": 7500003,
+      "firstC0": "PCP07499987",
+      "scrollTop": 23999530
+    },
+    {
+      "frac": 0.999,
+      "firstFull": 9989981,
+      "lastFull": 9989998,
+      "firstC0": "PCP09989982",
+      "scrollTop": 31967374
+    },
+    {
+      "frac": 1,
+      "firstFull": 9999980,
+      "lastFull": 9999998,
+      "firstC0": "PCP09999981",
+      "scrollTop": 31999372
+    }
+  ],
+  "end": {
+    "firstFull": 9999980,
+    "lastFull": 9999998,
+    "firstRow": {
+      "idx": 9999980,
+      "aria": 9999982,
+      "c0": "PCP09999981",
+      "no": "9.999.981",
+      "full": true,
+      "top": 8
+    },
+    "lastRow": {
+      "idx": 9999998,
+      "aria": 10000000,
+      "c0": "PCP09999999",
+      "no": "9.999.999",
+      "full": true,
+      "top": 584
+    },
+    "target": null,
+    "focused": null,
+    "scrollers": [
+      {
+        "cls": "ag-grid-viewport",
+        "scrollTop": 31999372,
+        "scrollHeight": 32000064,
+        "clientHeight": 671
+      },
+      {
+        "cls": "ag-body-vertical-scroll-viewport",
+        "scrollTop": 31999372,
+        "scrollHeight": 31999984,
+        "clientHeight": 610
+      }
+    ]
+  },
+  "ok": false
+}

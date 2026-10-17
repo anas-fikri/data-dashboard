@@ -1,0 +1,59 @@
+{
+  "events": 601,
+  "ms": 17534,
+  "end": {
+    "firstFull": 11982,
+    "lastFull": 11999,
+    "firstRow": {
+      "idx": 11982,
+      "aria": 11984,
+      "c0": "PCP00011983",
+      "no": "11.983",
+      "full": true,
+      "top": 24
+    },
+    "lastRow": {
+      "idx": 11999,
+      "aria": 12001,
+      "c0": "PCP00012000",
+      "no": "12.000",
+      "full": true,
+      "top": 568
+    },
+    "target": null,
+    "focused": null,
+    "region": {
+      "x": 1,
+      "y": 11981,
+      "width": 11,
+      "height": 23,
+      "tx": 0,
+      "ty": -8,
+      "extras": {
+        "freezeRegion": {
+          "x": 0,
+          "y": 11981,
+          "width": 1,
+          "height": 23
+        },
+        "freezeRegions": [
+          {
+            "x": 0,
+            "y": 11981,
+            "width": 1,
+            "height": 23
+          }
+        ]
+      }
+    },
+    "scrollers": [
+      {
+        "cls": "dvn-scroller",
+        "scrollTop": 383400,
+        "scrollHeight": 17895698,
+        "clientHeight": 673
+      }
+    ]
+  },
+  "ok": false
+}

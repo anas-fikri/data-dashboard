@@ -1,0 +1,122 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+body {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+  font-size: 14px;
+}
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid hsl(var(--border));
+  flex-wrap: wrap;
+}
+.topbar a,
+.topbar button,
+.toolbar button,
+.toolbar input {
+  height: var(--control-h-sm);
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+}
+.topbar a[aria-current="page"] {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
+}
+:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+.toolbar input {
+  width: 140px;
+}
+.status {
+  padding: 6px 16px;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+}
+.grid-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 0 16px;
+}
+.grid-box {
+  height: 100%;
+  min-height: 300px;
+}
+.hdr {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  width: 100%;
+  min-width: 0;
+}
+.hdr-letter {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+.hdr-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.rownum {
+  color: hsl(var(--muted-foreground));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

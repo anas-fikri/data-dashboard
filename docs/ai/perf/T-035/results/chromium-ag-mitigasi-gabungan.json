@@ -1,0 +1,294 @@
+{
+  "opts": "sentinel,fixbottom,wheelfix,focusguard",
+  "drag": {
+    "full": true,
+    "top": 562,
+    "focused": null
+  },
+  "wheel": {
+    "wheel": [
+      3,
+      3,
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3
+    ],
+    "wheelStats": {
+      "n": 10,
+      "min": 3,
+      "median": 3,
+      "max": 4
+    },
+    "trackpad": [
+      4,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      3,
+      4,
+      3
+    ],
+    "trackpadStats": {
+      "n": 10,
+      "min": 3,
+      "median": 3,
+      "max": 4
+    }
+  },
+  "horizontal": {
+    "before": 0,
+    "after": 120,
+    "moved": true
+  },
+  "focusInGridBeforeKeys": true,
+  "keysAtEnd": {
+    "Meta+ArrowDown": {
+      "full": true,
+      "top": 562,
+      "focused": {
+        "row": 10000000,
+        "col": "c0"
+      }
+    },
+    "End": {
+      "full": true,
+      "top": 562,
+      "focused": {
+        "row": 10000000,
+        "col": "c11"
+      }
+    },
+    "PageDown": {
+      "full": true,
+      "top": 562,
+      "focused": {
+        "row": 10000000,
+        "col": "c11"
+      }
+    }
+  },
+  "gotos": [
+    {
+      "n": 10000000,
+      "exact": true
+    },
+    {
+      "n": 9999999,
+      "exact": true
+    }
+  ],
+  "deepKeyboard": {
+    "steps": [
+      {
+        "key": "ArrowDown",
+        "row": 5000000,
+        "full": true,
+        "top": 328,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000001,
+        "full": true,
+        "top": 360,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000002,
+        "full": true,
+        "top": 392,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000003,
+        "full": true,
+        "top": 424,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000004,
+        "full": true,
+        "top": 456,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000005,
+        "full": true,
+        "top": 488,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000006,
+        "full": true,
+        "top": 520,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000007,
+        "full": true,
+        "top": 552,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000008,
+        "full": true,
+        "top": 584,
+        "scrollTop": 15999684
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000009,
+        "full": true,
+        "top": 295,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000010,
+        "full": true,
+        "top": 327,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000011,
+        "full": true,
+        "top": 359,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000012,
+        "full": true,
+        "top": 391,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000013,
+        "full": true,
+        "top": 423,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000014,
+        "full": true,
+        "top": 455,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000015,
+        "full": true,
+        "top": 487,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000016,
+        "full": true,
+        "top": 519,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000017,
+        "full": true,
+        "top": 551,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000018,
+        "full": true,
+        "top": 583,
+        "scrollTop": 15999716
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000019,
+        "full": true,
+        "top": 595,
+        "scrollTop": 15999718
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000020,
+        "full": true,
+        "top": 587,
+        "scrollTop": 15999722
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000021,
+        "full": true,
+        "top": 559,
+        "scrollTop": 15999728
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000022,
+        "full": true,
+        "top": 591,
+        "scrollTop": 15999728
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000023,
+        "full": true,
+        "top": 583,
+        "scrollTop": 15999732
+      },
+      {
+        "key": "ArrowDown",
+        "row": 5000024,
+        "full": true,
+        "top": 595,
+        "scrollTop": 15999734
+      },
+      {
+        "key": "PageDown",
+        "row": 5000043,
+        "full": true,
+        "top": 583,
+        "scrollTop": 15999796
+      },
+      {
+        "key": "PageDown",
+        "row": 5000062,
+        "full": true,
+        "top": 591,
+        "scrollTop": 15999856
+      },
+      {
+        "key": "PageDown",
+        "row": 5000081,
+        "full": true,
+        "top": 299,
+        "scrollTop": 15999946
+      }
+    ],
+    "allFull": true,
+    "notFull": []
+  },
+  "focusRingDark": {
+    "ringPixels": 318,
+    "primaryDark": "#3c83f6"
+  }
+}

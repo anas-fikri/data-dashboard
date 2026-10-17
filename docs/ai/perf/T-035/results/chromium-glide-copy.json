@@ -1,0 +1,80 @@
+{
+  "results": [
+    {
+      "name": "angka desimal (Berat)",
+      "row": 0,
+      "col": 4,
+      "expected": "178,66",
+      "plain": "178,66",
+      "clipboardReadText": "178,66",
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain",
+        "clipboardData:text/html"
+      ]
+    },
+    {
+      "name": "angka (Ongkir)",
+      "row": 0,
+      "col": 5,
+      "expected": "172500",
+      "plain": "172500",
+      "clipboardReadText": "172500",
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain",
+        "clipboardData:text/html"
+      ]
+    },
+    {
+      "name": "tanggal",
+      "row": 0,
+      "col": 1,
+      "expected": "2025-05-21",
+      "plain": "2025-05-21",
+      "clipboardReadText": "2025-05-21",
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain",
+        "clipboardData:text/html"
+      ]
+    },
+    {
+      "name": "teks formula",
+      "row": 9,
+      "col": 11,
+      "expected": "'=SUM(A1:A9)",
+      "plain": "'=SUM(A1:A9)",
+      "clipboardReadText": "'=SUM(A1:A9)",
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain",
+        "clipboardData:text/html"
+      ]
+    }
+  ],
+  "range": {
+    "expected": "PCP00000001\t2025-05-21\tSemarang\nPCP00000002\t2024-02-28\tJakarta",
+    "plain": "PCP00000001\t2025-05-21\tSemarang\nPCP00000002\t2024-02-28\tJakarta",
+    "html": true,
+    "ok": true
+  },
+  "huge": {
+    "selection": {
+      "cell": [
+        2,
+        1
+      ],
+      "range": {
+        "x": 2,
+        "y": 1,
+        "width": 1,
+        "height": 9999999
+      }
+    },
+    "refused": 9999999,
+    "copies": 2,
+    "ms": 311,
+    "responsive": true
+  }
+}

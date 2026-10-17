@@ -9,6 +9,9 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import prettier from "eslint-config-prettier";
 import globals from "globals";
 
+const AG_ENTERPRISE =
+  "AG Grid Enterprise butuh lisensi berbayar; pakai modul ag-grid-community (ADR-0007).";
+
 export default tseslint.config(
   {
     ignores: [
@@ -49,6 +52,50 @@ export default tseslint.config(
   {
     files: ["**/*.{js,mjs,cjs}"],
     languageOptions: { globals: { ...globals.node } },
+  },
+  {
+    // ADR-0007 (T-035): grid "Lihat data" memakai AG Grid Community (MIT) saja; modul Enterprise (grid
+    // maupun AG Charts) butuh lisensi berbayar. import()/require() — termasuk dengan template literal —
+    // tidak dicakup no-restricted-imports, jadi ditangkap lewat no-restricted-syntax.
+    files: ["**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs}"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            { name: "ag-grid-enterprise", message: AG_ENTERPRISE },
+            { name: "ag-grid-charts-enterprise", message: AG_ENTERPRISE },
+            { name: "ag-charts-enterprise", message: AG_ENTERPRISE },
+          ],
+          patterns: [
+            {
+              group: [
+                "ag-grid-enterprise/*",
+                "ag-grid-charts-enterprise/*",
+                "ag-charts-enterprise/*",
+                "@ag-grid-enterprise/*",
+              ],
+              message: AG_ENTERPRISE,
+            },
+          ],
+        },
+      ],
+      "no-restricted-syntax": [
+        "error",
+        ...[
+          "ImportExpression[source.value=/RE/]",
+          "ImportExpression[source.quasis.0.value.cooked=/RE/]",
+          "CallExpression[callee.name='require'][arguments.0.value=/RE/]",
+          "CallExpression[callee.name='require'][arguments.0.quasis.0.value.cooked=/RE/]",
+        ].map((s) => ({
+          selector: s.replace(
+            "RE",
+            "^(@ag-grid-enterprise\\/|ag-grid-(charts-)?enterprise|ag-charts-enterprise)",
+          ),
+          message: AG_ENTERPRISE,
+        })),
+      ],
+    },
   },
   prettier,
 );

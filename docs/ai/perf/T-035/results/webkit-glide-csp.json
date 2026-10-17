@@ -1,0 +1,45 @@
+{
+  "cspHeader": "default-src 'self'; script-src 'self' 'nonce-Bp2ToobD0CANF15AkTvNhg==' 'strict-dynamic'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; frame-src 'none'; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests",
+  "violations": [],
+  "cspConsole": [],
+  "consoleMsgs": [],
+  "pageErrors": [],
+  "renderMs": 610,
+  "routeAssets": [
+    {
+      "path": "/assets/GlidePage-Czd_WsWo.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-9yhKjZgr.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-wGQZH-xJ.css",
+      "status": 200
+    },
+    {
+      "path": "/assets/GlidePage-Czd_WsWo.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/Toolbar-jNzq0xGA.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/GlidePage-CW5sRTxu.css",
+      "status": 200
+    }
+  ],
+  "initialAssets": [
+    {
+      "path": "/assets/index-9yhKjZgr.js",
+      "status": 200
+    },
+    {
+      "path": "/assets/index-wGQZH-xJ.css",
+      "status": 200
+    }
+  ],
+  "renderedOk": true
+}

@@ -1,0 +1,38 @@
+{
+  "ag-styleNonce": {
+    "total": 0,
+    "byDir": {},
+    "sample": [],
+    "rendered": true
+  },
+  "ag-tanpa-styleNonce": {
+    "total": 16,
+    "byDir": {
+      "style-src-elem": 16
+    },
+    "sample": [
+      {
+        "d": "style-src-elem",
+        "blocked": "inline",
+        "sample": ""
+      },
+      {
+        "d": "style-src-elem",
+        "blocked": "inline",
+        "sample": ""
+      },
+      {
+        "d": "style-src-elem",
+        "blocked": "inline",
+        "sample": ""
+      }
+    ],
+    "rendered": true
+  },
+  "glide": {
+    "total": 0,
+    "byDir": {},
+    "sample": [],
+    "rendered": true
+  }
+}

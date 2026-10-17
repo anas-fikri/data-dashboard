@@ -1,0 +1,18 @@
+{
+  "light": {
+    "cellPx": "#ffffff",
+    "expCell": "#ffffff",
+    "cellDist": 0,
+    "headerPx": "#f4f4f5",
+    "expHeader": "#f4f4f5",
+    "headerDist": 0
+  },
+  "dark": {
+    "cellPx": "#18181b",
+    "expCell": "#18181b",
+    "cellDist": 0,
+    "headerPx": "#27272a",
+    "expHeader": "#27272a",
+    "headerDist": 0
+  }
+}

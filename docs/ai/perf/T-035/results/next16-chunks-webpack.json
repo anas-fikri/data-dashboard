@@ -1,0 +1,91 @@
+{
+ "home": [
+  {
+   "f": "/_next/static/css/a4f9a3f443a8ef85.css",
+   "raw": 4089,
+   "gz": 1275
+  },
+  {
+   "f": "/_next/static/chunks/main-app-f0bf19c93a9468a2.js",
+   "raw": 513,
+   "gz": 224
+  },
+  {
+   "f": "/_next/static/chunks/webpack-02cea107e9a35cc0.js",
+   "raw": 4920,
+   "gz": 2366
+  },
+  {
+   "f": "/_next/static/chunks/4bd1b696-c7408084347438ae.js",
+   "raw": 203721,
+   "gz": 64115
+  },
+  {
+   "f": "/_next/static/chunks/794-0ac5e2f0e81d2e0d.js",
+   "raw": 242379,
+   "gz": 67275
+  }
+ ],
+ "/ag": {
+  "extra": [
+   {
+    "f": "/_next/static/chunks/app/ag/page-855468ffbf3606da.js",
+    "raw": 4213,
+    "gz": 1506
+   },
+   {
+    "f": "/_next/static/chunks/283.6d82d381f71f196a.js",
+    "raw": 14837,
+    "gz": 5096
+   },
+   {
+    "f": "/_next/static/chunks/71e1a1e7.b358e88ca3385080.js",
+    "raw": 66498,
+    "gz": 19091
+   },
+   {
+    "f": "/_next/static/chunks/d2f774aa.043dfe8d04e7c561.js",
+    "raw": 109494,
+    "gz": 33676
+   },
+   {
+    "f": "/_next/static/chunks/32ea55aa.194a60f1ff0d140c.js",
+    "raw": 672902,
+    "gz": 186009
+   }
+  ],
+  "errors": [],
+  "rendered": true,
+  "gzTotal": 245378,
+  "rawTotal": 867944
+ },
+ "/glide": {
+  "extra": [
+   {
+    "f": "/_next/static/chunks/app/glide/page-dfb2583ca274f47b.js",
+    "raw": 4204,
+    "gz": 1506
+   },
+   {
+    "f": "/_next/static/css/d08592c14783428d.css",
+    "raw": 7921,
+    "gz": 1999
+   },
+   {
+    "f": "/_next/static/chunks/194.e13896c52fb73912.js",
+    "raw": 12047,
+    "gz": 4301
+   },
+   {
+    "f": "/_next/static/chunks/829.1285bb6156e25c41.js",
+    "raw": 299116,
+    "gz": 97591
+   }
+  ],
+  "errors": [],
+  "rendered": true,
+  "gzTotal": 105397,
+  "rawTotal": 323288
+ },
+ "homeGz": 135255
+}

@@ -1,0 +1,107 @@
+/*
+ * Token desain project — preset frontend-expert `tokens/zinc-blue.css` (skor 24/24, lihat
+ * docs/ai/design-system.md), disesuaikan: --radius diberi satuan, token spasi/tipografi ditambah.
+ * Nilai HSL disimpan sebagai channel; pakai lewat utilitas Tailwind (bg-background, text-primary, …)
+ * yang dipetakan di globals.css. Jangan menulis hex mentah di komponen.
+ */
+:root {
+  --background: 0 0% 100%;
+  --foreground: 240 6% 10%;
+  --card: 0 0% 100%;
+  --card-foreground: 240 6% 10%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 6% 10%;
+  --primary: 221 83% 53%; /* #2563eb: putih di atasnya 5.2:1 */
+  --primary-hover: 221 83% 46%; /* lebih gelap, bukan transparan: kontras tetap ≥ 4.5:1 */
+  --primary-foreground: 0 0% 100%;
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 6% 10%;
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 4% 46%;
+  --accent: 240 5% 96%;
+  --accent-foreground: 240 6% 10%;
+  --destructive: 0 72% 51%; /* #dc2626: 4.8:1 sebagai teks di putih */
+  --destructive-foreground: 0 0% 100%;
+  --success: 152 69% 31%;
+  --success-foreground: 0 0% 100%;
+  --warning: 38 92% 50%;
+  --warning-foreground: 24 10% 10%;
+  --border: 240 6% 90%;
+  --input: 240 4% 58%; /* batas kontrol ≥ 3:1 (WCAG 1.4.11); --border tetap halus untuk kartu */
+  --ring: 221 83% 53%;
+  --overlay: 240 6% 10%;
+
+  /* Palet kategori grafik (T-011): rona berbeda jelas, tiap warna ≥ 3:1 terhadap --card (1.4.11). */
+  --chart-1: 221 83% 53%;
+  --chart-2: 173 80% 30%;
+  --chart-3: 32 95% 42%;
+  --chart-4: 346 77% 50%;
+  --chart-5: 262 52% 55%;
+  --chart-6: 215 16% 47%;
+
+  --sidebar-background: 240 6% 98%;
+  --sidebar-foreground: 240 6% 10%;
+  --sidebar-primary: 221 83% 53%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 5% 96%;
+  --sidebar-accent-foreground: 240 6% 10%;
+  --sidebar-border: 240 6% 90%;
+  --sidebar-ring: 221 83% 53%;
+
+  /* Geometri kontrol */
+  --radius: 0.5rem;
+  --radius-sm: calc(var(--radius) - 0.25rem);
+  --radius-lg: calc(var(--radius) + 0.25rem);
+  --control-h: 2.25rem; /* 36px: tinggi tombol/input default */
+  --control-h-sm: 2rem;
+  --control-h-lg: 2.75rem; /* 44px: target sentuh utama di ponsel */
+
+  /* Shell */
+  --sidebar-w: 15rem;
+  --sidebar-w-collapsed: 3.5rem;
+  --topbar-h: 3.5rem;
+  --content-max: 90rem;
+}
+
+.dark {
+  --background: 240 6% 10%;
+  --foreground: 0 0% 98%;
+  --card: 240 6% 10%;
+  --card-foreground: 0 0% 98%;
+  --popover: 240 6% 10%;
+  --popover-foreground: 0 0% 98%;
+  --primary: 217 91% 60%;
+  --primary-hover: 217 91% 68%; /* lebih terang di tema gelap (teks gelap di atasnya) */
+  --primary-foreground: 240 6% 10%; /* teks gelap di biru terang 4.9:1 */
+  --secondary: 240 4% 16%;
+  --secondary-foreground: 0 0% 98%;
+  --muted: 240 4% 16%;
+  --muted-foreground: 240 5% 65%;
+  --chart-1: 217 91% 60%;
+  --chart-2: 172 66% 45%;
+  --chart-3: 38 92% 55%;
+  --chart-4: 346 84% 65%;
+  --chart-5: 262 83% 72%;
+  --chart-6: 215 20% 65%;
+  --accent: 240 4% 16%;
+  --accent-foreground: 0 0% 98%;
+  --destructive: 0 84% 68%; /* cukup terang sebagai teks di latar gelap */
+  --destructive-foreground: 240 6% 10%;
+  --success: 152 60% 45%;
+  --success-foreground: 240 6% 10%;
+  --warning: 38 92% 55%;
+  --warning-foreground: 24 10% 10%;
+  --border: 240 4% 22%;
+  --input: 240 5% 42%;
+  --ring: 217 91% 60%;
+  --overlay: 240 6% 2%;
+
+  --sidebar-background: 240 6% 8%;
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-primary: 217 91% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 4% 16%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 240 4% 22%;
+  --sidebar-ring: 217 91% 60%;
+}

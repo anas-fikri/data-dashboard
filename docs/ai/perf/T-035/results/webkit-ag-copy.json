@@ -1,0 +1,54 @@
+{
+  "results": [
+    {
+      "name": "angka desimal (Berat)",
+      "row": 0,
+      "col": 4,
+      "expected": "178,66",
+      "plain": "178,66",
+      "clipboardReadText": null,
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain"
+      ]
+    },
+    {
+      "name": "angka (Ongkir)",
+      "row": 0,
+      "col": 5,
+      "expected": "172500",
+      "plain": "172500",
+      "clipboardReadText": null,
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain"
+      ]
+    },
+    {
+      "name": "tanggal",
+      "row": 0,
+      "col": 1,
+      "expected": "2025-05-21",
+      "plain": "2025-05-21",
+      "clipboardReadText": null,
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain"
+      ]
+    },
+    {
+      "name": "teks formula",
+      "row": 9,
+      "col": 11,
+      "expected": "'=SUM(A1:A9)",
+      "plain": "'=SUM(A1:A9)",
+      "clipboardReadText": null,
+      "ok": true,
+      "via": [
+        "clipboardData:text/plain"
+      ]
+    }
+  ],
+  "range": null,
+  "huge": null
+}

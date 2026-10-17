@@ -1,0 +1,91 @@
+{
+ "home": [
+  {
+   "f": "/_next/static/chunks/2vpqy2ejlfsor.css",
+   "raw": 4173,
+   "gz": 1276
+  },
+  {
+   "f": "/_next/static/chunks/1ko8ge5thqugr.js",
+   "raw": 21780,
+   "gz": 7283
+  },
+  {
+   "f": "/_next/static/chunks/turbopack-3-ry682tkyiqk.js",
+   "raw": 10030,
+   "gz": 3945
+  },
+  {
+   "f": "/_next/static/chunks/1xug9n33105t3.js",
+   "raw": 13830,
+   "gz": 3536
+  },
+  {
+   "f": "/_next/static/chunks/1cdj6_o9xg8o9.js",
+   "raw": 180375,
+   "gz": 48307
+  },
+  {
+   "f": "/_next/static/chunks/1uhxgg9f-7a3d.js",
+   "raw": 229820,
+   "gz": 71977
+  }
+ ],
+ "/ag": {
+  "extra": [
+   {
+    "f": "/_next/static/chunks/1wvmlwly4ljl_.js",
+    "raw": 4983,
+    "gz": 1867
+   },
+   {
+    "f": "/_next/static/chunks/1hksahl-bb89s.js",
+    "raw": 8465,
+    "gz": 2751
+   },
+   {
+    "f": "/_next/static/chunks/1qu_llqlm36j8.js",
+    "raw": 954096,
+    "gz": 264743
+   }
+  ],
+  "errors": [],
+  "rendered": true,
+  "gzTotal": 269361,
+  "rawTotal": 967544
+ },
+ "/glide": {
+  "extra": [
+   {
+    "f": "/_next/static/chunks/14f6todoz_ur8.js",
+    "raw": 5050,
+    "gz": 1894
+   },
+   {
+    "f": "/_next/static/chunks/1syeb0oq9sfy2.css",
+    "raw": 8084,
+    "gz": 2027
+   },
+   {
+    "f": "/_next/static/chunks/2avwbgvoa9o3f.js",
+    "raw": 8646,
+    "gz": 2837
+   },
+   {
+    "f": "/_next/static/chunks/2_2dpvlzgwu6s.js",
+    "raw": 23983,
+    "gz": 9075
+   },
+   {
+    "f": "/_next/static/chunks/1kinbk830f3ys.js",
+    "raw": 280334,
+    "gz": 88891
+   }
+  ],
+  "errors": [],
+  "rendered": true,
+  "gzTotal": 104724,
+  "rawTotal": 326097
+ },
+ "homeGz": 136324
+}

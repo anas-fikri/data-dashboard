@@ -1,0 +1,29 @@
+[
+  {
+    "grid": "ag",
+    "qs": "",
+    "rowsPer300pxSwipe": [
+      92,
+      92,
+      91
+    ]
+  },
+  {
+    "grid": "ag",
+    "qs": "?opt=wheelfix",
+    "rowsPer300pxSwipe": [
+      93,
+      92,
+      93
+    ]
+  },
+  {
+    "grid": "glide",
+    "qs": "",
+    "rowsPer300pxSwipe": [
+      10,
+      9,
+      10
+    ]
+  }
+]

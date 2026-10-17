@@ -1,0 +1,87 @@
+{
+  "dir": "dist-full",
+  "files": [
+    {
+      "file": "AgPage-D2MQVn7V.js",
+      "raw": 889572,
+      "gzip6": 247700,
+      "gzip9": 246630,
+      "br": 199422
+    },
+    {
+      "file": "GlidePage-CW5sRTxu.css",
+      "raw": 8071,
+      "gzip6": 2008,
+      "gzip9": 2001,
+      "br": 1730
+    },
+    {
+      "file": "GlidePage-DijD7dwH.js",
+      "raw": 306400,
+      "gzip6": 98022,
+      "gzip9": 97860,
+      "br": 84872
+    },
+    {
+      "file": "Toolbar-CSehwqtA.js",
+      "raw": 3601,
+      "gzip6": 1782,
+      "gzip9": 1782,
+      "br": 1626
+    },
+    {
+      "file": "data-grid-overlay-editor-gihUlNOW.js",
+      "raw": 3681,
+      "gzip6": 1793,
+      "gzip9": 1793,
+      "br": 1572
+    },
+    {
+      "file": "index-Dp1z5BJu.js",
+      "raw": 224301,
+      "gzip6": 69903,
+      "gzip9": 69737,
+      "br": 60123
+    },
+    {
+      "file": "index-wGQZH-xJ.css",
+      "raw": 4172,
+      "gzip6": 1274,
+      "gzip9": 1276,
+      "br": 1077
+    },
+    {
+      "file": "number-overlay-editor-Ct17ekOG.js",
+      "raw": 16037,
+      "gzip6": 6060,
+      "gzip9": 6059,
+      "br": 5488
+    }
+  ],
+  "groups": {
+    "awal (index js+css)": {
+      "raw": 228473,
+      "gzip6": 71177,
+      "gzip9": 71013,
+      "br": 61200
+    },
+    "rute AG (AgPage + Toolbar)": {
+      "raw": 893173,
+      "gzip6": 249482,
+      "gzip9": 248412,
+      "br": 201048
+    },
+    "rute Glide (GlidePage js+css + Toolbar)": {
+      "raw": 318072,
+      "gzip6": 101812,
+      "gzip9": 101643,
+      "br": 88228
+    },
+    "Glide editor overlay (lazy, saat sel dibuka)": {
+      "raw": 19718,
+      "gzip6": 7853,
+      "gzip9": 7852,
+      "br": 7060
+    }
+  }
+}

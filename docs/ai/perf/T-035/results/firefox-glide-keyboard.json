@@ -1,0 +1,292 @@
+{
+  "lastRowAfterKeyboard": {
+    "full": false,
+    "top": 615,
+    "focused": {
+      "row": 9999999,
+      "col": 0
+    }
+  },
+  "steps": [
+    {
+      "key": "click",
+      "focused": {
+        "row": 0,
+        "col": 1
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-1-0",
+        "colindex": "2",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "ArrowDown",
+      "focused": {
+        "row": 1,
+        "col": 1
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-1-1",
+        "colindex": "2",
+        "rowindex": "3"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "ArrowRight",
+      "focused": {
+        "row": 1,
+        "col": 2
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-2-1",
+        "colindex": "3",
+        "rowindex": "3"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "PageDown",
+      "focused": {
+        "row": 19,
+        "col": 2
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-2-19",
+        "colindex": "3",
+        "rowindex": "21"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "PageUp",
+      "focused": {
+        "row": 0,
+        "col": 2
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-2-0",
+        "colindex": "3",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "End",
+      "focused": {
+        "row": 0,
+        "col": 12
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-12-0",
+        "colindex": "13",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Home",
+      "focused": {
+        "row": 0,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-0",
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Control+End",
+      "focused": {
+        "row": 0,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-0",
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Control+Home",
+      "focused": {
+        "row": 0,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-0",
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+End",
+      "focused": {
+        "row": 9999999,
+        "col": 12
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-12-9999999",
+        "colindex": "13",
+        "rowindex": "10000001"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+Home",
+      "focused": {
+        "row": 0,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-0",
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+ArrowDown",
+      "focused": {
+        "row": 9999999,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-9999999",
+        "colindex": "1",
+        "rowindex": "10000001"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+ArrowUp",
+      "focused": {
+        "row": 0,
+        "col": 0
+      },
+      "active": {
+        "tag": "TD",
+        "role": "gridcell",
+        "id": "glide-cell-0-0",
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "solid 2px rgb(36, 99, 235)",
+        "border": "rgb(24, 24, 27)",
+        "boxShadow": "none"
+      }
+    }
+  ],
+  "ringPixels": 272,
+  "aria": {
+    "rootTag": "TABLE",
+    "role": "grid",
+    "rowcount": "10000001",
+    "colcount": "13",
+    "multiselectable": "true",
+    "label": null,
+    "headerCount": 10,
+    "headerSample": [
+      {
+        "text": "No",
+        "sort": null,
+        "colindex": "1"
+      },
+      {
+        "text": "Kota tujuan",
+        "sort": null,
+        "colindex": "5"
+      },
+      {
+        "text": "Berat (kg)",
+        "sort": null,
+        "colindex": "6"
+      }
+    ],
+    "rowIndexMin": 1,
+    "rowIndexMax": 23,
+    "gridcells": 220
+  },
+  "ariaSortAfterClick": null,
+  "deepAriaRowIndex": 10000000,
+  "snapshot": "- grid:\n  - rowgroup:\n    - row \"No ID resi Tanggal kirim Kota asal Kota tujuan Berat (kg) Ongkir (Rp) COD Kurir Layanan Nilai barang (Rp)\":\n      - columnheader \"No\"\n      - columnheader \"ID resi\"\n      - columnheader \"Tanggal kirim\"\n      - columnheader \"Kota asal\"\n      - columnheader \"Kota tujuan\"\n      - columnheader \"Berat (kg)\"\n      - columnheader \"Ongkir (Rp)\"\n      - columnheader \"COD\"\n      - columnheader \"Kurir\"\n      - columnheader \"Layanan\"\n      - columnheader \"Nilai barang (Rp)\"\n  - rowgroup:\n    - row \"9.999.980 PCP09999980 31 Okt 2025 Medan Makassar 164,66 76.500 Tidak Dewi Kargo 48.082.544,00\":\n      - gridcell \"9.999.980\"\n      - gridcell \"PCP09999980\"\n      - gridcell \"31 Okt 2025\"\n      - gridcell \"Medan\"\n      - gridcell \"Makassar\"\n      - gridcell \"164,66\"\n      - gridcell \"76.500\"\n      - gridcell \"Tidak\"\n      - gridcell \"Dewi\"\n      - gridcell \"Kargo\"\n      - gridcell \"48.082.544,00\"\n    - row \"9.999.981 PCP09999981 5 Nov 2024 Bandung Makassar 360,95 74.500 Tidak Budi Ekonomi 13.820.095,50\":\n      - gridcell \"9.999.981\"\n      - gridcell \"PCP09999981\"\n      - gridcell \"5 Nov 2024\"\n      - gridcell \"Bandung\"\n      - gridcell \"Makassar\"\n      - gridcell \"360,95\"\n      - gridcell \"74.500\"\n      - gridcell \"Tidak\"\n      - gridcell \"Budi\"\n      - gridcell \"Ekonomi\"\n      - gridcell \"13.820.095,50\"\n    - row \"9.999.982 PCP09999982 2 Mar 2024 Yogyakarta Balikpapan 221,15 161.500 Tidak Eko Reguler 42.505.365,50\":"
+}

@@ -1,0 +1,292 @@
+{
+  "lastRowAfterKeyboard": {
+    "full": false,
+    "top": 614,
+    "focused": {
+      "row": 9999999,
+      "col": "n"
+    }
+  },
+  "steps": [
+    {
+      "key": "click",
+      "focused": {
+        "row": 0,
+        "col": "c0"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "2",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "ArrowDown",
+      "focused": {
+        "row": 1,
+        "col": "c0"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "2",
+        "rowindex": "3"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "ArrowRight",
+      "focused": {
+        "row": 1,
+        "col": "c1"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "3",
+        "rowindex": "3"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "PageDown",
+      "focused": {
+        "row": 20,
+        "col": "c1"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "3",
+        "rowindex": "22"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "PageUp",
+      "focused": {
+        "row": 1,
+        "col": "c1"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "3",
+        "rowindex": "3"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "End",
+      "focused": {
+        "row": 9999999,
+        "col": "c11"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "13",
+        "rowindex": "10000001"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(24, 24, 27)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Home",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Control+End",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Control+Home",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+End",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+Home",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+ArrowDown",
+      "focused": {
+        "row": 9999999,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "10000001"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    },
+    {
+      "key": "Meta+ArrowUp",
+      "focused": {
+        "row": 0,
+        "col": "n"
+      },
+      "active": {
+        "tag": "DIV",
+        "role": "gridcell",
+        "id": null,
+        "colindex": "1",
+        "rowindex": "2"
+      },
+      "focusStyle": {
+        "outline": "none 3px rgb(113, 113, 122)",
+        "border": "rgb(36, 99, 235)",
+        "boxShadow": "none"
+      }
+    }
+  ],
+  "ringPixels": 266,
+  "aria": {
+    "rootTag": "DIV",
+    "role": "grid",
+    "rowcount": "10000001",
+    "colcount": "13",
+    "multiselectable": null,
+    "label": null,
+    "headerCount": 12,
+    "headerSample": [
+      {
+        "text": "No",
+        "sort": null,
+        "colindex": "1"
+      },
+      {
+        "text": "BTanggal kirim",
+        "sort": "none",
+        "colindex": "3"
+      },
+      {
+        "text": "CKota asal",
+        "sort": "none",
+        "colindex": "4"
+      }
+    ],
+    "rowIndexMin": 1,
+    "rowIndexMax": 10000001,
+    "gridcells": 372
+  },
+  "ariaSortAfterClick": "ascending",
+  "deepAriaRowIndex": 10000000,
+  "snapshot": "- grid:\n  - rowgroup:\n    - row \"No A ID resi B Tanggal kirim C Kota asal D Kota tujuan E Berat (kg) F Ongkir (Rp) G COD H Kurir I Layanan J Nilai barang (Rp) K Status L Catatan\":\n      - columnheader \"No\"\n      - columnheader \"A ID resi\"\n      - columnheader \"B Tanggal kirim\"\n      - columnheader \"C Kota asal\"\n      - columnheader \"D Kota tujuan\"\n      - columnheader \"E Berat (kg)\"\n      - columnheader \"F Ongkir (Rp)\"\n      - columnheader \"G COD\"\n      - columnheader \"H Kurir\"\n      - columnheader \"I Layanan\"\n      - columnheader \"J Nilai barang (Rp)\"\n      - columnheader \"K Status\"\n      - columnheader \"L Catatan\"\n    - row \"9.999.978 PCP09999978 21 Des 2024 Bandung Makassar 442,00 25.000 Ya Andi Kargo 40.945.970,00 Retur -\":\n      - gridcell \"9.999.978\"\n      - gridcell \"PCP09999978\"\n      - gridcell \"21 Des 2024\"\n      - gridcell \"Bandung\"\n      - gridcell \"Makassar\"\n      - gridcell \"442,00\"\n      - gridcell \"25.000\"\n      - gridcell \"Ya\"\n      - gridcell \"Andi\"\n      - gridcell \"Kargo\"\n      - gridcell \"40.945.970,00\"\n      - gridcell \"Retur\"\n      - gridcell \"-\"\n    - row \"9.999.979 PCP09999979 19 Jun 2024 Bandung Jakarta 396,16 172.500 Tidak Hadi Reguler 82.529.089,50 Retur Titip satpam\":\n      - gridcell \"9.999.979\"\n      - gridcell \"PCP09999979\"\n      - gridcell \"19 Jun 2024\"\n      - gridcell \"Bandung\"\n      - gridcell \"Jakarta\"\n      - gridcell \"396,16\"\n      - gridcell \"172.500\"\n      - gridcell \"Tidak\"\n      - gridcell \"Hadi\""
+}

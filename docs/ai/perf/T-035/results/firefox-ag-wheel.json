@@ -1,0 +1,41 @@
+{
+  "events": 601,
+  "ms": 72655,
+  "end": {
+    "firstFull": 883825,
+    "lastFull": 883842,
+    "firstRow": {
+      "idx": 883825,
+      "aria": 883827,
+      "c0": "PCP00883826",
+      "no": "883.826",
+      "full": true,
+      "top": 30
+    },
+    "lastRow": {
+      "idx": 883842,
+      "aria": 883844,
+      "c0": "PCP00883843",
+      "no": "883.843",
+      "full": true,
+      "top": 574
+    },
+    "target": null,
+    "focused": null,
+    "scrollers": [
+      {
+        "cls": "ag-grid-viewport",
+        "scrollTop": 353475,
+        "scrollHeight": 4000045,
+        "clientHeight": 671
+      },
+      {
+        "cls": "ag-body-vertical-scroll-viewport",
+        "scrollTop": 353475,
+        "scrollHeight": 3999984,
+        "clientHeight": 610
+      }
+    ]
+  },
+  "ok": false
+}

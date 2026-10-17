@@ -1,0 +1,198 @@
+{
+  "native": [
+    {
+      "n": 9999999,
+      "visibleMs": 252,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 565,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999998,
+      "ariaRowIndex": 10000000
+    },
+    {
+      "n": 10000000,
+      "visibleMs": 23,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 597,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999999,
+      "ariaRowIndex": 10000001
+    },
+    {
+      "n": 1,
+      "visibleMs": 234,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 0,
+      "topAligned": true,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 0,
+      "ariaRowIndex": 2
+    },
+    {
+      "n": 5000000,
+      "visibleMs": null,
+      "exact": false,
+      "targetFull": false,
+      "targetTopPx": 159999968,
+      "topAligned": false,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 4999999,
+      "ariaRowIndex": null
+    },
+    {
+      "n": 1234567,
+      "visibleMs": null,
+      "exact": false,
+      "targetFull": false,
+      "targetTopPx": 39506112,
+      "topAligned": false,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 1234566,
+      "ariaRowIndex": null
+    },
+    {
+      "n": 8765432,
+      "visibleMs": null,
+      "exact": false,
+      "targetFull": false,
+      "targetTopPx": 280493792,
+      "topAligned": false,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 8765431,
+      "ariaRowIndex": null
+    },
+    {
+      "n": 5000300,
+      "visibleMs": null,
+      "exact": false,
+      "targetFull": false,
+      "targetTopPx": 160009568,
+      "topAligned": false,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 5000299,
+      "ariaRowIndex": null
+    },
+    {
+      "n": 9999999,
+      "visibleMs": 249,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 565,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999998,
+      "ariaRowIndex": 10000000
+    }
+  ],
+  "fixed": [
+    {
+      "n": 9999999,
+      "visibleMs": 366,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 565,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999998,
+      "ariaRowIndex": 10000000
+    },
+    {
+      "n": 10000000,
+      "visibleMs": 52,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 597,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999999,
+      "ariaRowIndex": 10000001
+    },
+    {
+      "n": 1,
+      "visibleMs": 346,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 0,
+      "topAligned": true,
+      "firstFull": 0,
+      "lastFull": 18,
+      "focusedRow": 0,
+      "ariaRowIndex": 2
+    },
+    {
+      "n": 5000000,
+      "visibleMs": 353,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 297,
+      "topAligned": false,
+      "firstFull": 4999990,
+      "lastFull": 5000008,
+      "focusedRow": 4999999,
+      "ariaRowIndex": 5000001
+    },
+    {
+      "n": 1234567,
+      "visibleMs": 355,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 298,
+      "topAligned": false,
+      "firstFull": 1234557,
+      "lastFull": 1234575,
+      "focusedRow": 1234566,
+      "ariaRowIndex": 1234568
+    },
+    {
+      "n": 8765432,
+      "visibleMs": 366,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 302,
+      "topAligned": false,
+      "firstFull": 8765422,
+      "lastFull": 8765440,
+      "focusedRow": 8765431,
+      "ariaRowIndex": 8765433
+    },
+    {
+      "n": 5000300,
+      "visibleMs": 353,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 303,
+      "topAligned": false,
+      "firstFull": 5000290,
+      "lastFull": 5000308,
+      "focusedRow": 5000299,
+      "ariaRowIndex": 5000301
+    },
+    {
+      "n": 9999999,
+      "visibleMs": 353,
+      "exact": true,
+      "targetFull": true,
+      "targetTopPx": 565,
+      "topAligned": false,
+      "firstFull": 9999981,
+      "lastFull": 9999999,
+      "focusedRow": 9999998,
+      "ariaRowIndex": 10000000
+    }
+  ]
+}

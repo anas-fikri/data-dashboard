@@ -1,0 +1,11 @@
+{
+  "note": "Next 16.4.0 Turbopack (default), next start, chunk tambahan rute vs /, gzip level 6, KiB. Dicatat dari keluaran measure-next.mjs (berkas JSON tertimpa run webpack).",
+  "home_gz_kib": 133.1,
+  "ag_with_env_conditional_AllCommunityModule_gz_kib": 325.1,
+  "ag_selected_modules_gz_kib": 235.9,
+  "ag_selected_modules_raw_kib": 843.1,
+  "glide_gz_kib": 102.3,
+  "glide_raw_kib": 318.5,
+  "rendered": true,
+  "errors": []
+}

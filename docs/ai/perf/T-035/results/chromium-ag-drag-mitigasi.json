@@ -1,0 +1,61 @@
+{
+  "end": {
+    "firstFull": 9999982,
+    "lastFull": 9999999,
+    "firstRow": {
+      "idx": 9999982,
+      "aria": 9999984,
+      "c0": "PCP09999983",
+      "no": "9.999.983",
+      "full": true,
+      "top": 18
+    },
+    "lastRow": {
+      "idx": 9999999,
+      "aria": 10000001,
+      "c0": "PCP10000000",
+      "no": "10.000.000",
+      "full": true,
+      "top": 562
+    },
+    "target": null,
+    "focused": null,
+    "scrollers": [
+      {
+        "cls": "ag-grid-viewport",
+        "scrollTop": 31999374,
+        "scrollHeight": 32000044,
+        "clientHeight": 671
+      },
+      {
+        "cls": "ag-body-vertical-scroll-viewport",
+        "scrollTop": 31999374,
+        "scrollHeight": 31999984,
+        "clientHeight": 610
+      }
+    ]
+  },
+  "ok": true,
+  "gotos": [
+    {
+      "n": 10000000,
+      "exact": true,
+      "top": 562
+    },
+    {
+      "n": 9999999,
+      "exact": true,
+      "top": 530
+    },
+    {
+      "n": 5000000,
+      "exact": true,
+      "top": 296
+    },
+    {
+      "n": 10000000,
+      "exact": true,
+      "top": 562
+    }
+  ]
+}

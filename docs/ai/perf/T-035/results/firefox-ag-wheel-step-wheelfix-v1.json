@@ -1,0 +1,39 @@
+{
+  "steps": [
+    {
+      "from": 4999990,
+      "to": 4999993,
+      "rows": 3,
+      "scrollDelta": 1.125
+    },
+    {
+      "from": 4999993,
+      "to": 4999996,
+      "rows": 3,
+      "scrollDelta": 1.125
+    },
+    {
+      "from": 4999996,
+      "to": 4999998,
+      "rows": 2,
+      "scrollDelta": 0.875
+    },
+    {
+      "from": 4999998,
+      "to": 5000000,
+      "rows": 2,
+      "scrollDelta": 0.875
+    },
+    {
+      "from": 5000000,
+      "to": 5000006,
+      "rows": 6,
+      "scrollDelta": 2.25
+    }
+  ],
+  "trackpad": {
+    "from": 5000006,
+    "to": 5000008,
+    "rows": 2
+  }
+}
