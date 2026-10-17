@@ -20,6 +20,9 @@ COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund && npx prisma generate
 
 FROM deps AS build
+# Pekerja build Next (bawaan: semua CPU host → membebani VM kecil); naikkan lewat --build-arg di VM besar.
+ARG NEXT_BUILD_CPUS=2
+ENV NEXT_BUILD_CPUS=${NEXT_BUILD_CPUS}
 COPY . .
 RUN npm run build \
   # Binding native DuckDB dipilih per platform saat runtime: nft standalone bisa melewatkannya (T-009).

@@ -16,7 +16,12 @@ const nextConfig: NextConfig = {
     "@duckdb/node-bindings",
   ],
   poweredByHeader: false,
+  // Build produksi di VM kecil (T-023): bawaan Next memakai semua CPU host untuk pekerja build (47 di
+  // olympus 2 vCPU) sehingga halaman melewati batas 60 dtk; pekerja dibatasi NEXT_BUILD_CPUS (Dockerfile)
+  // dan batas waktu per halaman dinaikkan.
+  staticPageGenerationTimeout: 180,
   experimental: {
+    ...(process.env.NEXT_BUILD_CPUS ? { cpus: Number(process.env.NEXT_BUILD_CPUS) } : {}),
     // proxy.ts mencakup /api/*: Next menyalin body permintaan ke memori sampai batas ini (default
     // 10 MB) sebelum Route Handler membacanya. Body JSON aplikasi ≤ 65 KB, Server Action ≤ 1 MB
     // (bawaan), poster PNG video panduan ≤ 2 MB (T-021); unggahan file (data, video) langsung ke S3

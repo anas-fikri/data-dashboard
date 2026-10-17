@@ -140,7 +140,8 @@ services:
   # Satu kali per deploy: migrasi Prisma (idempoten).
   migrate:
     image: dashboard-worker:${IMAGE_TAG:-latest}
-    build: { context: ., target: worker }
+    # Image dari service worker (satu build, bukan build paralel kedua).
+    pull_policy: never
     command: ["node_modules/.bin/prisma", "migrate", "deploy"]
     environment: { DATABASE_URL: "${DATABASE_URL:?}" }
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -154,7 +155,8 @@ services:
   # Satu kali per deploy: bucket, CORS, lifecycle (akun root, idempoten) + service account app.
   storage-init:
     image: dashboard-worker:${IMAGE_TAG:-latest}
-    build: { context: ., target: worker }
+    # Image dari service worker (satu build, bukan build paralel kedua).
+    pull_policy: never
     command: ["sh", "-c", "node scripts/storage-init.mjs && node deploy/storage-iam.mjs"]
     environment:
       APP_URL: https://${APP_HOST}
