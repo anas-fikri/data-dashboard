@@ -1,7 +1,7 @@
 ---
 id: T-034
 title: Spike penyimpanan segmen per periode dan tetapkan ADR model data periode
-status: todo
+status: in_progress
 profile: standard
 goal: G-6
 tags:
@@ -25,8 +25,12 @@ depends_on:
   - T-032
   - T-033
 created: "2026-10-15T02:30:54Z"
-updated: "2026-10-15T15:16:21Z"
+updated: "2026-10-17T13:23:37Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 429eb9f7d680a214110cb933a772ad70c4182d90
 ---
 
 ## Objective
@@ -34,13 +38,13 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 
 ## Acceptance criteria
 - [ ] Given 24 segmen typed × 400 rb baris dan satu file gabungan 9,6 jt baris (fixture T-024, profil T-023), when group-by, tabel berhalaman, count, dan filter-values dijalankan lewat read_parquet([daftar]), then hasil identik dan p95 ≤ 1,1× file tunggal, tercatat di docs/ai/perf/<task>.md
-- [ ] Given pemetaan posisi global → (segmen, file_row_number), when jendela 200 baris diminta di 100 posisi acak, then p95 ≤ 50 ms dan baris benar
-- [ ] Given daftar path sebagai parameter di @duckdb/node-api dengan sandbox aktif, serta campuran segmen legacy (_row INTEGER) dan segmen baru (_row BIGINT, kolom tambahan diproyeksikan NULL AS c<pos>), when di-query, then tanpa error dan hasil benar
+- [x] Given pemetaan posisi global → (segmen, file_row_number), when jendela 200 baris diminta di 100 posisi acak, then p95 ≤ 50 ms dan baris benar
+- [x] Given daftar path sebagai parameter di @duckdb/node-api dengan sandbox aktif, serta campuran segmen legacy (_row INTEGER) dan segmen baru (_row BIGINT, kolom tambahan diproyeksikan NULL AS c<pos>), when di-query, then tanpa error dan hasil benar
 - [ ] Given hasil spike, then ADR (aitk adr new) berstatus accepted memuat opsi A–F, tabel biaya ops per unggahan, keputusan, dan kriteria fallback; flow-kerja A4, D4 (diamandemen), D15, dan D16 diperbarui; T-015 ditutup sebagai digantikan lewat aitk dengan rujukan ke task baru
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-10-15T15:16:21Z T-015 sudah dibatalkan sebagai digantikan pada 2026-10-15 (memutus ketergantungan melingkar T-024 → T-015); bagian AC4 'T-015 ditutup sebagai digantikan' tinggal diverifikasi dengan aitk task show T-015.
+- 2026-10-17T13:23:37Z Spike selesai (docs/ai/perf/T-034.md, scripts/perf-segments.ts, ADR-0008 proposed). AC2 lolos (jendela 200 baris p95 14,6–16,3 ms, 0 baris salah); AC3 lolos hanya dengan proyeksi eksplisit per kelompok skema (union_by_name kena bug DuckDB BLOOM_FILTER saat tipe _row berbeda). AC1 TIDAK terpenuhi harfiah: 6/14 kueri kecil +3–13 ms (count tanpa filter ~2×, filter-values tanggal 1,23–1,41×) dan halaman OFFSET terakhir tanpa urut 1,45× (diganti jalur jendela). AC4 menunggu keputusan pemilik: menerima kriteria pengganti (≤ 1,1× untuk kueri ≥ 100 ms, selain itu ≤ +15 ms absolut, diukur ulang di VM T-023/olympus) → ADR-0008 accepted, amandemen flow-kerja diterapkan, T-015 ditutup sebagai digantikan.
