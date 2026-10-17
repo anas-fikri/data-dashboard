@@ -10,6 +10,10 @@ test("tanpa sesi: /health dan /api/health hanya status, tanpa nama layanan", asy
   const api = await request.get("/api/health");
   expect(api.status()).toBe(200);
   expect(Object.keys(await api.json()).sort()).toEqual(["checkedAt", "status"]);
+  // Healthcheck container (Dockerfile): publik, hanya status.
+  const core = await request.get("/api/health/core");
+  expect(core.status()).toBe(200);
+  expect(Object.keys(await core.json()).sort()).toEqual(["checkedAt", "status"]);
 
   await page.goto("/health");
   await expect(page).toHaveTitle("Kesehatan sistem · Data Dashboard");

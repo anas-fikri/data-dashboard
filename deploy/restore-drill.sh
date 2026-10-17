@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Latihan restore (T-023 AC3) tanpa menyentuh produksi: salinan TERPISAH (project compose
-# "dashboard-restoretest", volume sendiri, PostgreSQL container sementara, port 9443/9444, semua secret
-# baru) dipulihkan dari arsip backup produksi terbaru, dibandingkan dengan produksi (jumlah baris per
-# tabel + daftar objek storage + health), lalu dibongkar. Kunci PRIVAT age dibaca dari stdin:
+# Latihan restore (T-023 AC3) tanpa menyentuh data produksi (hanya membuat satu backup baru): salinan
+# TERPISAH (project compose "dashboard-restoretest", volume sendiri, PostgreSQL container sementara, port
+# 9443/9444, semua secret baru) dipulihkan dari backup yang baru dibuat, dibandingkan dengan produksi
+# (jumlah baris + md5 isi per tabel, daftar objek storage, health), lalu dibongkar. Kunci PRIVAT age dari stdin:
 #   ssh <server> bash /data/docker-data/data-dashboard/deploy/restore-drill.sh < kunci-backup.txt
 # Hasil dicatat di tabel "Log uji restore" runbook oleh operator.
 set -euo pipefail
@@ -32,6 +32,8 @@ STORAGE_HOST=$host:9444
 STORAGE_PORT=9444
 TLS_DEFAULT_SNI=$host
 COMPOSE_PROFILES=db
+EDGE_SUBNET=172.31.244.0/24
+DATA_SUBNET=172.31.245.0/24
 POSTGRES_PASSWORD=$pgpw
 DATABASE_URL=postgresql://dashboard:$pgpw@postgres:5432/data_dashboard
 AUTH_SECRET=$(rand 48)
@@ -49,20 +51,31 @@ REDIS_MAXMEMORY=128mb
 EOF
 export COMPOSE_PROFILES=db
 
+# Backup baru dulu: pembanding = produksi saat ini, jadi arsip harus sesegar mungkin.
+echo "backup baru produksi"
+"${PROD[@]}" exec -T backup bash /usr/local/bin/backup.sh | grep -E 'arsip:|PERINGATAN' || true
 archive=$("${PROD[@]}" exec -T backup sh -c 'ls -1 /backups/dashboard-*.tar.age | tail -1')
 echo "arsip produksi: $(basename "$archive")"
 tmp=$(mktemp -d)
-"${PROD[@]}" cp "backup:$archive" "$tmp/backup.tar.age" >/dev/null
-"${PROD[@]}" cp "backup:$archive.sha256" "$tmp/backup.tar.age.sha256" >/dev/null || true
+name=$(basename "$archive") # nama asli: berkas .sha256 merujuknya
+"${PROD[@]}" cp "backup:$archive" "$tmp/$name" >/dev/null
+"${PROD[@]}" cp "backup:$archive.sha256" "$tmp/$name.sha256" >/dev/null
 
 echo "salinan latihan: up (tanpa build, image produksi)"
 "${DRILL[@]}" up -d --wait --wait-timeout 600 postgres redis rustfs
 "${DRILL[@]}" up --no-build migrate storage-init >/dev/null
 echo "restore arsip ke salinan latihan"
 printf '%s\n' "$key" | "${DRILL[@]}" run --rm -T --no-deps -v "$tmp:/run/drill:ro" backup \
-  bash /usr/local/bin/restore.sh /run/drill/backup.tar.age -
+  bash /usr/local/bin/restore.sh "/run/drill/$name" -
 rm -rf "$tmp"
-"${DRILL[@]}" up -d --no-build --wait --wait-timeout 600
+if ! "${DRILL[@]}" up -d --no-build --wait --wait-timeout 600; then
+  # Cleanup membuang container; cetak penyebab dulu (pesan health tanpa secret).
+  echo "salinan latihan tidak sehat; /api/health app:" >&2
+  "${DRILL[@]}" exec -T app node -e \
+    "fetch('http://127.0.0.1:3100/api/health').then(r=>r.text()).then(t=>console.log(t))" >&2 || true
+  "${DRILL[@]}" logs --no-color --tail 30 app >&2 || true
+  exit 1
+fi
 
 prod_fp=$("${PROD[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
 drill_fp=$("${DRILL[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
@@ -70,9 +83,18 @@ prod_rows=$(grep '^rows:' <<<"$prod_fp")
 drill_rows=$(grep '^rows:' <<<"$drill_fp")
 prod_objs=$(grep '^objects:' <<<"$prod_fp")
 drill_objs=$(grep '^objects:' <<<"$drill_fp")
-health=$(curl -sk -o /dev/null -w '%{http_code}' "https://$host:9443/api/health")
+# Health penuh (termasuk renderer PDF): Chromium bisa lambat start di VM yang I/O-nya padat.
+for _ in $(seq 60); do
+  health=$(curl -sk -o /dev/null -w '%{http_code}' "https://$host:9443/api/health")
+  [ "$health" = 200 ] && break
+  sleep 5
+done
+[ "$health" = 200 ] || "${DRILL[@]}" logs --no-color --tail 20 renderer >&2 || true
 
-echo "baris per tabel cocok: $([ "$prod_rows" = "$drill_rows" ] && echo ya || echo TIDAK)"
+echo "isi per tabel (jumlah + md5) cocok: $([ "$prod_rows" = "$drill_rows" ] && echo ya || echo TIDAK)"
+# Hanya nama tabel yang beda (bukan isinya); beda kecil bisa karena produksi dipakai setelah backup.
+[ "$prod_rows" = "$drill_rows" ] || comm -3 <(tr ' ' '\n' <<<"${prod_rows#rows: }" | sort) \
+  <(tr ' ' '\n' <<<"${drill_rows#rows: }" | sort) | cut -d= -f1 | tr -d '\t' | sort -u | sed 's/^/  beda: /'
 echo "daftar objek storage (ukuran+path) cocok: $([ "$prod_objs" = "$drill_objs" ] && echo ya || echo TIDAK)"
 echo "health salinan latihan: $health"
 [ "$prod_rows" = "$drill_rows" ] && [ "$prod_objs" = "$drill_objs" ] && [ "$health" = 200 ] \

@@ -187,6 +187,8 @@ services:
         exec redis-server /tmp/redis-auth.conf --protected-mode yes
         --maxmemory ${REDIS_MAXMEMORY:-512mb} --maxmemory-policy noeviction --appendonly yes
     environment: { REDIS_PASSWORD: "${REDIS_PASSWORD:?}" }
+    # tini sebagai PID 1: anak healthcheck (redis-cli | grep) yang di-kill saat timeout tidak jadi zombie.
+    init: true
     volumes: [redisdata:/data]
     healthcheck:
       test: ["CMD-SHELL", 'REDISCLI_AUTH="$$REDIS_PASSWORD" redis-cli ping | grep PONG']

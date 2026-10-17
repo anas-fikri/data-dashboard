@@ -6,7 +6,13 @@ import {
   runHealthChecks,
   safeMessage,
 } from "@/lib/health";
-import { configCheck, rendererCheck, rendererChecks } from "@/lib/health/checks";
+import {
+  configCheck,
+  coreChecks,
+  infraChecks,
+  rendererCheck,
+  rendererChecks,
+} from "@/lib/health/checks";
 
 describe("runHealthChecks", () => {
   it("semua ok → status ok dengan detail per item", async () => {
@@ -56,6 +62,40 @@ describe("cachedHealthReport", () => {
     expect(a).toBe(b);
     await cachedHealthReport(checks, Date.now() + 10_000);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it("kelompok berbeda (key) tidak berbagi cache", async () => {
+    const fail = await cachedHealthReport(
+      [{ name: "Y", run: async () => Promise.reject(new Error("mati")) }],
+      Date.now() + 20_000,
+      "uji-a",
+    );
+    const ok = await cachedHealthReport(
+      [{ name: "Z", run: async () => "ok" }],
+      Date.now() + 20_000,
+      "uji-b",
+    );
+    expect([fail.status, ok.status]).toEqual(["fail", "ok"]);
+  });
+});
+
+// Healthcheck container (/api/health/core) hanya kebutuhan inti: SMTP/renderer mati tidak boleh
+// membuat app "unhealthy" (proxy depends_on app → seluruh situs mati saat compose up).
+describe("coreChecks", () => {
+  it("tanpa SMTP dan renderer; infraChecks = inti + SMTP", () => {
+    expect(coreChecks().map((c) => c.name)).toEqual([
+      "Konfigurasi",
+      "PostgreSQL",
+      "Redis",
+      "Object storage",
+    ]);
+    expect(infraChecks().map((c) => c.name)).toEqual([
+      "Konfigurasi",
+      "PostgreSQL",
+      "Redis",
+      "Object storage",
+      "SMTP",
+    ]);
   });
 });
 

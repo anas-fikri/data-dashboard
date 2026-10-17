@@ -49,7 +49,7 @@ COPY --from=build /app/scripts/admin-restore.mjs ./scripts/admin-restore.mjs
 USER app
 EXPOSE 3100
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
-  CMD ["node", "-e", "fetch('http://127.0.0.1:3100/api/health').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
+  CMD ["node", "-e", "fetch('http://127.0.0.1:3100/api/health/core').then(r=>process.exit(r.status<500?0:1),()=>process.exit(1))"]
 CMD ["node", "server.js"]
 
 FROM runtime-base AS worker

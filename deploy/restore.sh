@@ -2,8 +2,9 @@
 # Restore dari backup T-023 ke deploy ini (VM baru atau sama). Jalankan di service backup dengan kunci
 # PRIVAT age yang dibawa operator (tidak disimpan di VM):
 #   docker compose -f docker-compose.prod.yml run --rm \
-#     -v /path/kunci-backup.txt:/run/age-key:ro -v /path/dashboard-<UTC>.tar.age:/run/backup.tar.age:ro \
-#     backup bash /usr/local/bin/restore.sh /run/backup.tar.age /run/age-key
+#     -v /path/kunci-backup.txt:/run/age-key:ro -v /path/folder-arsip:/run/arsip:ro \
+#     backup bash /usr/local/bin/restore.sh /run/arsip/dashboard-<UTC>.tar.age /run/age-key
+# Nama arsip jangan diganti: <arsip>.sha256 merujuk nama aslinya. Kunci "-" = dibaca dari stdin.
 # Menimpa isi database dan bucket. App dan worker sebaiknya dihentikan dulu (runbook §Restore).
 set -euo pipefail
 # shellcheck source=deploy/pgenv.sh

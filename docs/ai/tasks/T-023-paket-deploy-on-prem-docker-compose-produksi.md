@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-17T03:32:38Z"
+updated: "2026-10-17T04:09:50Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,7 +22,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 60960
+    duration_ms: 64027
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -44,17 +44,18 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792207926367,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792207926393,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792207926399,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792210158777,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792210158799,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792210158801,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792210158809,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  126 passed (126)
-            Tests  1731 passed (1731)
-         Start at  10:31:54
-         Duration  41.86s (tests 75%, import 18%, transform 6%)
+            Tests  1733 passed (1733)
+         Start at  11:09:08
+         Duration  39.80s (tests 76%, import 18%, transform 6%)
 
-          Isolate  126 workers spawned · ~170ms startup each (spawn + environment, per file)
-                   at least ~2.21s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  126 workers spawned · ~154ms startup each (spawn + environment, per file)
+                   at least ~2.00s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -62,8 +63,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-17T03:32:38Z"
-    tree: f719b12a31bdea5b80856dbe3d74689414176e0c0212e78220245da262cf4edd
+    at: "2026-10-17T04:09:50Z"
+    tree: 13eda711f0033d929a2fc40083c7ca7cefcdfa86edc806a32f67afd17c0f7aee
 ---
 
 ## Objective

@@ -47,8 +47,11 @@ export function rendererChecks(source: NodeJS.ProcessEnv = process.env): HealthC
   ];
 }
 
-/** Pemeriksaan nyata terhadap layanan infrastruktur. Dipakai /health dan /api/health. */
-export function infraChecks(): HealthCheck[] {
+/**
+ * Kebutuhan inti untuk melayani halaman: dipakai healthcheck container app (/api/health/core). SMTP dan
+ * renderer PDF tidak ikut: gangguannya hanya mematikan email/ekspor PDF, bukan seluruh situs.
+ */
+export function coreChecks(): HealthCheck[] {
   return [
     configCheck(),
     {
@@ -76,6 +79,13 @@ export function infraChecks(): HealthCheck[] {
         return `bucket ${bucket()} tersedia`;
       },
     },
+  ];
+}
+
+/** Semua layanan termasuk SMTP + renderer. Dipakai /health, /api/health, dan deploy.sh. */
+export function infraChecks(): HealthCheck[] {
+  return [
+    ...coreChecks(),
     {
       name: "SMTP",
       run: async () => {

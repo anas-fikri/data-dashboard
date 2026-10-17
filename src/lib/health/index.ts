@@ -91,26 +91,28 @@ export async function runHealthChecks(
   };
 }
 
-let cachedReport: { at: number; report: HealthReport } | undefined;
-let inflight: Promise<HealthReport> | undefined;
+const cached = new Map<string, { at: number; report: HealthReport }>();
+const inflight = new Map<string, Promise<HealthReport>>();
 
-/** Laporan dengan cache 5 detik dan de-duplikasi permintaan bersamaan. */
+/** Laporan dengan cache 5 detik per kelompok pemeriksaan (key) dan de-duplikasi permintaan bersamaan. */
 export async function cachedHealthReport(
   checks: HealthCheck[],
   now = Date.now(),
+  key = "infra",
 ): Promise<HealthReport> {
-  if (cachedReport && now - cachedReport.at < CACHE_TTL_MS) return cachedReport.report;
-  if (!inflight) {
-    inflight = runHealthChecks(checks)
+  const hit = cached.get(key);
+  if (hit && now - hit.at < CACHE_TTL_MS) return hit.report;
+  let running = inflight.get(key);
+  if (!running) {
+    running = runHealthChecks(checks)
       .then((report) => {
-        cachedReport = { at: Date.now(), report };
+        cached.set(key, { at: Date.now(), report });
         return report;
       })
-      .finally(() => {
-        inflight = undefined;
-      });
+      .finally(() => inflight.delete(key));
+    inflight.set(key, running);
   }
-  return inflight;
+  return running;
 }
 
 /** Tampilan publik: hanya status keseluruhan, tanpa nama layanan internal (T-027). */

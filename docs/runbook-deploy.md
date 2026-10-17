@@ -104,7 +104,10 @@ memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache; Caddy hanya
 C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
 $C ps                                                        # semua healthy / migrate+storage-init exited 0
 curl -fsS https://<APP_HOST>/api/health                      # {"status":"ok"} termasuk storage + renderer
-$C run --rm --no-deps worker node deploy/check-public-presign.mjs [--insecure]   # --insecure untuk CA internal
+$C run --rm --no-deps worker node deploy/check-public-presign.mjs [--insecure]   # --insecure untuk CA internal Caddy
+# dengan root LAN (deploy/lan-cert.sh): percayakan root ke Node, tanpa --insecure
+$C run --rm --no-deps -v "$PWD/deploy/certs/root.crt:/run/root.crt:ro" -e NODE_EXTRA_CA_CERTS=/run/root.crt \
+  worker node deploy/check-public-presign.mjs
 node scripts/smoke-prod-headers.mjs https://<APP_HOST>       # dari mesin dengan Node + Playwright
 $C exec app node scripts/admin-restore.mjs tidak-ada@<domain> --confirm   # wajib exit 1, tanpa perubahan
 ```
@@ -129,20 +132,36 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
 
 1. Deploy kosong di VM tujuan (§2), dengan `.env.prod` baru.
 2. Hentikan penulis: `$C stop app worker`.
-3. Salin arsip `dashboard-<UTC>.tar.age` (+ `.sha256`) dan kunci privat age ke VM sementara, lalu:
+3. Salin arsip `dashboard-<UTC>.tar.age` + `.sha256` (nama asli, satu folder) dan kunci privat age ke
+   VM sementara, lalu:
    ```bash
-   $C run --rm -v /path/kunci-backup-dashboard.txt:/run/age-key:ro \
-     -v /path/dashboard-<UTC>.tar.age:/run/backup.tar.age:ro \
-     backup bash /usr/local/bin/restore.sh /run/backup.tar.age /run/age-key
+   $C run --rm -v /path/kunci-backup-dashboard.txt:/run/age-key:ro -v /path/folder-arsip:/run/arsip:ro \
+     backup bash /usr/local/bin/restore.sh /run/arsip/dashboard-<UTC>.tar.age /run/age-key
    ```
+   Log harus memuat `dashboard-<UTC>.tar.age: OK` (checksum); `PERINGATAN … .sha256 tidak ada` berarti
+   berkas `.sha256` tertinggal atau arsip diganti namanya.
 4. `$C start worker app`; hapus kunci privat dari VM.
 5. Cek: login, daftar dataset sama, dashboard terbuka dengan angka sama, video panduan bisa diputar.
+
+### Latihan restore (tanpa menyentuh produksi)
+
+Minimal tiap 3 bulan dan setelah upgrade besar. Dari laptop admin (kunci privat lewat stdin, tidak
+ditulis ke VM):
+
+```bash
+ssh <server> bash /data/docker-data/data-dashboard/deploy/restore-drill.sh < kunci-backup-dashboard.txt
+```
+
+Skrip membuat salinan terpisah (project `dashboard-restoretest`, PostgreSQL container sementara, port
+9443/9444, semua secret baru), memulihkan arsip produksi terbaru, membandingkan jumlah baris per tabel +
+daftar objek storage (ukuran+path) dengan produksi + health salinan, lalu membongkar salinan
+(`down -v`). Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 
 ### Log uji restore
 
 | Tanggal | Arsip | Tujuan | Hasil | Oleh |
 |---|---|---|---|---|
-| (isi setiap uji restore) | | | | |
+| 2026-10-17 | dashboard-20261017T033626Z.tar.age (20 MB) | olympus, salinan terpisah `dashboard-restoretest` (`restore-drill.sh`) | LULUS: checksum OK, baris per tabel identik, daftar objek storage identik, `/api/health` 200 | claude-code (T-023) |
 
 ## 6. Operasi
 
