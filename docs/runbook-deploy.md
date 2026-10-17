@@ -152,10 +152,12 @@ ditulis ke VM):
 ssh <server> bash /data/docker-data/data-dashboard/deploy/restore-drill.sh < kunci-backup-dashboard.txt
 ```
 
-Skrip membuat salinan terpisah (project `dashboard-restoretest`, PostgreSQL container sementara, port
-9443/9444, semua secret baru), memulihkan arsip produksi terbaru, membandingkan jumlah baris per tabel +
-daftar objek storage (ukuran+path) dengan produksi + health salinan, lalu membongkar salinan
-(`down -v`). Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
+Skrip membuat backup baru (sidik produksi diambil tepat sebelum dan sesudahnya; berbeda = produksi
+sedang dipakai, diulang maks 3 kali), lalu salinan terpisah (project `dashboard-restoretest`, PostgreSQL
+container sementara, port 9443/9444, semua secret baru, tanpa worker). Arsip dipulihkan, sidik salinan
+diambil sebelum app jalan, lalu dibandingkan dengan produksi: jumlah baris + md5 isi per tabel dan
+daftar objek storage (ukuran+path). Health penuh salinan dicek, lalu salinan dibongkar (`down -v`).
+Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 
 ### Log uji restore
 

@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: Paket deploy on-prem Docker Compose produksi
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 goal: G-5
@@ -12,17 +12,27 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-17T04:09:50Z"
+updated: "2026-10-17T05:00:34Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 1bacfb5c33e15b6edf677d19425445a1f3cc6933
+review:
+  passes:
+    - "n": 1
+      by: claude-verify-workflow
+      at: "2026-10-17T04:13:46Z"
+      findings: 5
+    - "n": 2
+      by: claude-agent-review
+      at: "2026-10-17T04:22:02Z"
+      findings: 2
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 64027
+    duration_ms: 66770
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -44,18 +54,18 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792210158777,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792210158799,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792210158801,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792210158809,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792213201071,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792213201095,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792213201098,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792213201106,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  126 passed (126)
             Tests  1733 passed (1733)
-         Start at  11:09:08
-         Duration  39.80s (tests 76%, import 18%, transform 6%)
+         Start at  11:59:45
+         Duration  46.50s (tests 73%, import 21%, transform 6%)
 
-          Isolate  126 workers spawned · ~154ms startup each (spawn + environment, per file)
-                   at least ~2.00s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  126 workers spawned · ~264ms startup each (spawn + environment, per file)
+                   at least ~3.43s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -63,8 +73,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-17T04:09:50Z"
-    tree: 13eda711f0033d929a2fc40083c7ca7cefcdfa86edc806a32f67afd17c0f7aee
+    at: "2026-10-17T05:00:33Z"
+    tree: f899e81a17502669de59caa740cec0419d5f2b770c0443394ff710ab63402a5e
 ---
 
 ## Objective

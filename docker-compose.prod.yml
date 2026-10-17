@@ -133,6 +133,9 @@ services:
     cap_add: [SYS_CHROOT]
     read_only: true
     tmpfs: ["/tmp:rw,nosuid,nodev,size=512m"]
+    # Perintah tes dari image; start Chromium bisa > 30 dtk di VM yang I/O-nya padat → tanpa masa
+    # mulai, "up --wait" (deploy.sh) gagal padahal renderer akan sehat sendiri.
+    healthcheck: { start_period: 120s }
     mem_limit: ${RENDERER_MEM:-2g}
     logging: *logging
     networks: [render]
