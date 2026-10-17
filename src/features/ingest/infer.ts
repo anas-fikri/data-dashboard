@@ -46,6 +46,12 @@ export interface ColumnSchema {
    * gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
    */
   localeAmbiguous?: true;
+  /**
+   * Kolom US yang ditandai karena "1,250" tanpa bukti US kuat (T-baj2: bisa desimal id-ID 3 digit, mis.
+   * berat kg, terbaca ribuan): "koma"; bersama bukti ribuan id-ID "1.500" (T-030): "titik". Tanpa field =
+   * tanda lama (titik untuk US, koma untuk id-ID).
+   */
+  ambiguousKinds?: ("titik" | "koma")[];
   hidden: boolean;
   /** Proporsi sel kosong di baris data (0–1). */
   nullPct: number;
@@ -118,6 +124,11 @@ const RE = {
   idWeak: String.raw`[+-]?[1-9]\d{0,2}\.\d{3}`,
   /** Ambigu kebalikannya: 1,500 (US ribuan / ID desimal 3 digit; T-t1g0). */
   usWeak: String.raw`[+-]?[1-9]\d{0,2},\d{3}`,
+  /**
+   * Bilangan bulat 1–3 digit tanpa pemisah ("250"): di kolom yang juga memuat "1,500" cocok dengan ribuan
+   * US (nilai < 1.000 tanpa koma), bukan desimal id-ID 3 digit (ekspor seperti itu menulis "250,000").
+   */
+  shortInt: String.raw`[+-]?[1-9]\d{0,2}`,
   /** Tidak muat persis di DECIMAL(38,6): > 6 digit pecahan atau eksponen. */
   wideUs: String.raw`\.\d{7}|[eE]`,
   wideId: String.raw`,\d{7}`,
@@ -250,6 +261,7 @@ export interface Profile {
   usStrong: number;
   idWeak: number;
   usWeak: number;
+  shortInt: number;
   idText0: number;
   intUs: number;
   intId: number;
@@ -319,6 +331,7 @@ SELECT col,
     count(*) FILTER (WHERE uss) AS us_strong,
     count(*) FILTER (WHERE idw) AS id_weak,
     count(*) FILTER (WHERE usw) AS us_weak,
+    count(*) FILTER (WHERE shi) AS short_int,
     count(*) FILTER (WHERE idt) AS id_text0,
     count(ius) AS int_us,
     count(iid) AS int_id,
@@ -336,6 +349,7 @@ FROM (
       ${match("v", RE.usStrong)} AS uss,
       ${match("v", RE.idWeak)} AS idw,
       ${match("v", RE.usWeak)} AS usw,
+      ${match("v", RE.shortInt)} AS shi,
       ${match("v", RE.idText0)} AS idt,
       ${numExpr("v", "us", true)} AS nus,
       ${numExpr("v", "id", true)} AS nid,
@@ -397,6 +411,7 @@ export function toProfile(r: Record<string, unknown>): Profile {
     usStrong: num("us_strong"),
     idWeak: num("id_weak"),
     usWeak: num("us_weak"),
+    shortInt: num("short_int"),
     idText0: num("id_text0"),
     intUs: num("int_us"),
     intId: num("int_id"),
@@ -467,6 +482,12 @@ export interface Inferred {
    * gagal konversi. Ditampilkan di skema agar user memeriksa "Penulisan angka".
    */
   localeAmbiguous?: true;
+  /**
+   * Kolom US yang ditandai karena "1,250" tanpa bukti US kuat (T-baj2: bisa desimal id-ID 3 digit, mis.
+   * berat kg, terbaca ribuan): "koma"; bersama bukti ribuan id-ID "1.500" (T-030): "titik". Tanpa field =
+   * tanda lama (titik untuk US, koma untuk id-ID).
+   */
+  ambiguousKinds?: ("titik" | "koma")[];
 }
 
 /** Keputusan tipe dari profil (urutan kandidat dan ambang 98%, lihat atas). */

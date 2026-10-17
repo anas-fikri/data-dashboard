@@ -37,6 +37,24 @@ export const LOCALE_LABEL: Record<NumberLocale, string> = {
 export const needsDateFormat = (t: ColumnType) => t === "date" || t === "timestamp";
 export const needsLocale = (t: ColumnType) => t === "integer" || t === "decimal";
 
+/**
+ * Pesan penanda penulisan angka ambigu (T-030, T-t1g0, T-baj2): tafsiran yang sedang dipakai dan
+ * pilihan lawannya, sesuai locale kolom dan bentuk nilai yang ambigu.
+ */
+export function ambiguousText(c: Pick<ColumnSchema, "numberLocale" | "ambiguousKinds">): string {
+  const head = "Penulisan angka ambigu:";
+  if (c.numberLocale === "id")
+    return `${head} “1,500” dibaca 1,5. Pilih internasional bila maksudnya ribuan.`;
+  const kinds = c.ambiguousKinds ?? ["titik"];
+  if (kinds.includes("koma") && kinds.includes("titik")) {
+    return `${head} “1.500” dibaca 1,5 dan “1,250” dibaca 1.250 (bukan 1,25). Periksa pilihan penulisan angka.`;
+  }
+  if (kinds.includes("koma")) {
+    return `${head} “1,250” dibaca 1.250 (ribuan). Pilih Indonesia bila maksudnya desimal 1,25.`;
+  }
+  return `${head} “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan.`;
+}
+
 export const fmtInt = (n: number) => n.toLocaleString("id-ID");
 export const fmtPct = (x: number) =>
   `${(x * 100).toLocaleString("id-ID", { maximumFractionDigits: x > 0 && x < 0.01 ? 2 : 0 })}%`;

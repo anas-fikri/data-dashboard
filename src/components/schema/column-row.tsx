@@ -13,7 +13,7 @@ import {
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { cn } from "@/lib/utils";
 import { FormatCell } from "./format-cell";
-import { TYPE_LABEL, fmtInt, fmtPct, typeOptions, type ColumnDraft } from "./labels";
+import { TYPE_LABEL, ambiguousText, fmtInt, fmtPct, typeOptions, type ColumnDraft } from "./labels";
 
 /*
  * Satu kolom di editor skema. Satu DOM untuk semua lebar; tata letak mengikuti lebar kartu (container
@@ -159,11 +159,7 @@ export function ColumnRow({
               className="mt-0.5 shrink-0 text-warning"
             />
             <dt className="sr-only">Peringatan</dt>
-            <dd className="text-foreground">
-              {column.numberLocale === "id"
-                ? "Penulisan angka ambigu: “1,500” dibaca 1,5. Pilih internasional bila maksudnya ribuan."
-                : "Penulisan angka ambigu: “1.500” dibaca 1,5. Pilih Indonesia bila maksudnya ribuan."}
-            </dd>
+            <dd className="text-foreground">{ambiguousText(column)}</dd>
           </div>
         ) : null}
       </dl>

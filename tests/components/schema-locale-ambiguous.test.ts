@@ -44,4 +44,13 @@ describe("T-030: penanda penulisan angka ambigu", () => {
     expect(html).toContain("Pilih internasional bila maksudnya ribuan");
     expect(html).not.toContain("Pilih Indonesia");
   });
+
+  it("T-baj2: kolom US bertanda 'koma' menjelaskan tafsiran ribuan vs desimal; 'titik'+'koma' gabungan", () => {
+    const comma = row({ ...column, localeAmbiguous: true, ambiguousKinds: ["koma"] });
+    expect(comma).toContain(
+      "“1,250” dibaca 1.250 (ribuan). Pilih Indonesia bila maksudnya desimal 1,25.",
+    );
+    const both = row({ ...column, localeAmbiguous: true, ambiguousKinds: ["titik", "koma"] });
+    expect(both).toContain("“1.500” dibaca 1,5 dan “1,250” dibaca 1.250");
+  });
 });

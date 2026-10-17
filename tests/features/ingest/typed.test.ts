@@ -192,8 +192,44 @@ describe("T-t1g0: ribuan gaya US di kolom yang dibaca id-ID ditandai", () => {
       type: "decimal",
       numberLocale: "us",
       localeAmbiguous: true,
+      ambiguousKinds: ["titik", "koma"],
     });
     expect(col("ongkos").values.slice(0, 2)).toEqual([2.5, 1100]);
+  });
+});
+
+describe("T-baj2: '1,250' tanpa bukti US kuat (berat 3 desimal id-ID?) ditandai", () => {
+  it("hanya koma 3 digit → dibaca US (ribuan) tapi ditandai 'koma'; bukti US kuat → tidak ditandai", async () => {
+    const { col } = await ingest(
+      t.file(
+        "berat-koma.csv",
+        csv(
+          ["berat", "jumlah", "harga", "ongkir"],
+          [
+            ["1,250", "1,234,567", "2,500.75", "250"],
+            ...range(30, (i) => [
+              `${(i % 9) + 1},${250 + i}`,
+              `${i + 1},500`,
+              `${i + 1},${100 + i}`,
+              `${i + 1},500`,
+            ]),
+          ],
+        ),
+      ),
+    );
+    expect(col("berat")).toMatchObject({
+      type: "integer",
+      numberLocale: "us",
+      localeAmbiguous: true,
+      ambiguousKinds: ["koma"],
+    });
+    expect(col("berat").values[0]).toBe(1250n);
+    // "1,234,567" / "2,500.75": US jelas → "1,500" konsisten ribuan, tidak ditandai.
+    // "250" tanpa pemisah di samping "1,500": cocok ribuan US (desimal id-ID 3 digit menulis "250,000").
+    for (const name of ["jumlah", "harga", "ongkir"]) {
+      expect(col(name)).toMatchObject({ numberLocale: "us" });
+      expect(col(name).localeAmbiguous).toBeUndefined();
+    }
   });
 });
 
@@ -222,6 +258,8 @@ describe("T-030: locale angka ambigu ditandai", () => {
       numberLocale: "us",
       localeAmbiguous: true,
     });
+    // Hanya bukti titik: tanpa ambiguousKinds (pesan T-030 lama tetap dipakai).
+    expect(col("omzet").ambiguousKinds).toBeUndefined();
     expect(col("bersih")).toMatchObject({ type: "integer", numberLocale: "id" });
     expect(col("bersih").localeAmbiguous).toBeUndefined();
     // Cabang bilangan bulat ("1.000" terbaca 1 di US) dan desimal DOUBLE ikut ditandai.
@@ -587,6 +625,7 @@ describe("decide (unit)", () => {
     usStrong: 0,
     idWeak: 0,
     usWeak: 0,
+    shortInt: 0,
     idText0: 0,
     intUs: 0,
     intId: 0,

@@ -117,18 +117,22 @@ function resolve(p: Profile | undefined, source: SourceKind, o?: ColumnOverride)
   if (t === "integer" || t === "decimal") {
     const numberLocale =
       o?.numberLocale ?? inferred.numberLocale ?? (p ? pickLocale(p, source) : "us");
-    // Bukti ribuan id-ID di kolom yang dibaca US (CSV "1.234"; xlsx hanya teks berakhiran 0, karena angka
-    // asli xlsx selalu kanonik), atau ribuan US "1,500" di kolom yang dibaca id-ID (terbaca 1,5; T-t1g0 —
-    // angka asli xlsx tidak pernah memakai koma, jadi berlaku untuk kedua sumber). Dihitung dari data
-    // setiap kali, termasuk pilihan locale yang dibawa recast.
-    const weak = !p
-      ? 0
-      : numberLocale === "us"
-        ? source === "csv"
-          ? p.idWeak
-          : p.idText0
-        : p.usWeak;
-    const flag = weak > 0 ? { localeAmbiguous: true as const } : {};
+    // Bukti lemah tafsiran lawan, dihitung dari data setiap kali (termasuk pilihan locale yang dibawa
+    // recast). US: ribuan id-ID "1.234" (CSV; xlsx hanya teks berakhiran 0 karena angka asli xlsx kanonik)
+    // terbaca desimal (T-030), dan "1,250" tanpa bukti US kuat yang bisa desimal id-ID 3 digit terbaca
+    // ribuan (T-baj2) — kecuali kolom juga memuat bilangan bulat pendek tanpa pemisah ("250"), yang cocok
+    // dengan ribuan US. id-ID: ribuan US "1,500" terbaca desimal (T-t1g0). Angka asli xlsx tidak pernah
+    // memakai koma, jadi bukti koma berlaku untuk kedua sumber.
+    const us = numberLocale === "us";
+    const dot = p && us ? (source === "csv" ? p.idWeak : p.idText0) : 0;
+    const comma = !p ? 0 : us ? (p.usStrong === 0 && p.shortInt === 0 ? p.usWeak : 0) : p.usWeak;
+    const kinds = [...(dot > 0 ? ["titik" as const] : []), ...(comma > 0 ? ["koma" as const] : [])];
+    const flag =
+      dot + comma === 0
+        ? {}
+        : us && comma > 0
+          ? { localeAmbiguous: true as const, ambiguousKinds: kinds }
+          : { localeAmbiguous: true as const };
     if (t === "integer") return { type: t, numberLocale, ...flag };
     return p && needsFloat(p, numberLocale)
       ? { type: t, numberLocale, float: true, ...flag }
