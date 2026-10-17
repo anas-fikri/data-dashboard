@@ -22,48 +22,12 @@ cleanup() {
 }
 trap cleanup EXIT
 
-env_val() { sed -n "s/^$1=//p" .env.prod | tail -1; }
-rand() { head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c "$1"; }
-host=$(env_val TLS_DEFAULT_SNI)
-app_host=$(env_val APP_HOST)
-host=${host:-${app_host%:*}}
-[ -n "$host" ] || { echo "APP_HOST kosong di .env.prod" >&2; exit 1; }
-# Sertifikat sendiri (path) dipakai ulang; ACME untuk domain produksi tidak bisa di port latihan → internal.
-tls=$(env_val CADDY_TLS)
-tls=${tls//\"/} # lan-cert.sh menulis nilai berkutip
-case "$tls" in /*) ;; *) tls=internal ;; esac
-pgpw=$(rand 32)
-# Dirakit per bagian: literal user:pass@ di URL dibaca pemindai secret sebagai kredensial.
-db_url=postgresql://dashboard
-db_url+=":$pgpw@postgres:5432/data_dashboard"
-umask 077
-# Salinan nilai non-rahasia produksi (domain email, SMTP, kunci publik backup); semua secret baru.
-grep -E '^(ALLOWED_EMAIL_DOMAINS|SMTP_URL|MAIL_FROM|BACKUP_AGE_RECIPIENT|S3_BUCKET)=' .env.prod >"$DRILL_ENV"
-cat >>"$DRILL_ENV" <<EOF
-CADDY_TLS=$tls
-APP_HOST=$host:9443
-APP_PORT=9443
-STORAGE_HOST=$host:9444
-STORAGE_PORT=9444
-TLS_DEFAULT_SNI=$host
-COMPOSE_PROFILES=db
-EDGE_SUBNET=172.31.244.0/24
-DATA_SUBNET=172.31.245.0/24
-POSTGRES_PASSWORD=$pgpw
-DATABASE_URL=$db_url
-AUTH_SECRET=$(rand 48)
-REDIS_PASSWORD=$(rand 40)
-RENDERER_SECRET=$(rand 48)
-RUSTFS_ROOT_USER=root$(rand 12)
-RUSTFS_ROOT_PASSWORD=$(rand 40)
-S3_APP_ACCESS_KEY=app$(rand 17)
-S3_APP_SECRET_KEY=$(rand 40)
-APP_MEM=1g
-WORKER_MEM=1536m
-WORKER_REPLICAS=0
-RENDERER_MEM=1g
-REDIS_MAXMEMORY=128mb
-EOF
+# shellcheck source=deploy/isolated-env.sh
+. deploy/isolated-env.sh
+isolated_env "$DRILL_ENV" 9443 9444 172.31.244.0/24 172.31.245.0/24
+host=$ISO_HOST
+# Latihan tanpa worker (tidak ada yang menulis ke salinan) dan memori kecil.
+printf '%s\n' APP_MEM=1g WORKER_MEM=1536m WORKER_REPLICAS=0 RENDERER_MEM=1g REDIS_MAXMEMORY=128mb >>"$DRILL_ENV"
 # Sisa latihan yang terputus (ssh putus/SIGKILL): volume lama memegang password lama.
 "${DRILL[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
 

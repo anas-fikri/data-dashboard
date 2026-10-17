@@ -23,6 +23,35 @@ export async function enqueueIngest(versionId: string, datasetId?: string): Prom
   logger.info({ versionId }, "job ingest masuk antrean");
 }
 
+/** Batas id job yang dibaca untuk posisi antrean; lebih jauh dari ini ditampilkan tanpa nomor. */
+const QUEUE_POSITION_SCAN = 500;
+
+export interface IngestQueuePosition {
+  /** 1 = diproses berikutnya. */
+  position: number;
+  /** Job ingest yang sedang berjalan (semua user). */
+  active: number;
+}
+
+/**
+ * Posisi versi di antrean ingest (T-024 AC 2). jobId = versionId; daftar menunggu dibaca urut tertua
+ * dulu (asc). null = tidak sedang menunggu (diproses, tertunda retry) atau di luar batas baca.
+ */
+export async function ingestQueuePosition(
+  versionId: string,
+  queue: Pick<ReturnType<typeof ingestQueue>, "getRanges" | "getActiveCount"> = ingestQueue(),
+): Promise<IngestQueuePosition | null> {
+  const [ids, active] = await withQueueTimeout(
+    Promise.all([
+      queue.getRanges(["waiting", "prioritized"], 0, QUEUE_POSITION_SCAN - 1, true),
+      queue.getActiveCount(),
+    ]),
+    "posisi antrean ingest",
+  );
+  const i = ids.indexOf(versionId);
+  return i < 0 ? null : { position: i + 1, active };
+}
+
 /**
  * Masukkan recast sheet ke antrean (T-008: simpan koreksi skema). Recast berurutan per sheet lewat
  * lock di worker; job yang mendapat "busy" diulang dengan backoff.

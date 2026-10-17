@@ -1,6 +1,8 @@
 import "server-only";
 import type { NextRequest, NextResponse } from "next/server";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
+import { logger } from "@/lib/logger";
+import { ingestQueuePosition } from "@/lib/queue/versions";
 import { prismaSchemaRepo, schemaDeps } from "./runtime";
 import { ingestStatus, recastStatus, requestRecast, type SchemaCode } from "./service";
 
@@ -31,7 +33,16 @@ export function progressRoute(datasetId: string): Promise<NextResponse> {
     if (s === null) {
       return json({ ok: false, code: "NOT_FOUND", message: "Dataset tidak ditemukan." }, 404);
     }
-    return json({ ok: true, status: s === "none" ? null : s });
+    if (s === "none") return json({ ok: true, status: null });
+    // Posisi antrean hanya pelengkap: Redis lambat/mati → tampil tanpa nomor, bukan 503.
+    const queue =
+      s.status === "UPLOADED"
+        ? await ingestQueuePosition(s.versionId).catch((e: unknown) => {
+            logger.warn({ err: e, versionId: s.versionId }, "posisi antrean ingest gagal dibaca");
+            return null;
+          })
+        : null;
+    return json({ ok: true, status: { ...s, queue } });
   });
 }
 

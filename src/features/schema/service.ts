@@ -40,6 +40,8 @@ export interface IngestStatus {
   /** Sheet yang sudah tersimpan mentah (raw), urut indeks. */
   sheets: { index: number; name: string; rawRows: number; typed: boolean }[];
   errorMessage: string | null;
+  /** Hanya saat UPLOADED dan terbaca dari antrean (route progres, T-024 AC 2). */
+  queue?: { position: number; active: number } | null;
 }
 
 export interface SheetView {

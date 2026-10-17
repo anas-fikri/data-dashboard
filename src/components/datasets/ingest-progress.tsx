@@ -27,6 +27,14 @@ const fmt = (n: number) => n.toLocaleString("id-ID");
 
 type Response = { ok: boolean; status: IngestStatus | null };
 
+/** Posisi dari route progres (T-024 AC 2); tanpa posisi (Redis lambat, retry tertunda) teks umum. */
+export function waitingText(position: number | undefined): string {
+  if (!position) return "Menunggu giliran diproses. ";
+  return position === 1
+    ? "Menunggu giliran: antrean ke-1, diproses berikutnya. "
+    : `Menunggu giliran: antrean ke-${fmt(position)}. `;
+}
+
 export function IngestProgress({
   datasetId,
   initial,
@@ -71,7 +79,7 @@ export function IngestProgress({
             {s.fileName ? `"${s.fileName}" sedang diproses` : "File sedang diproses"}
           </span>
           <span className="block text-muted-foreground">
-            {s.status === "UPLOADED" ? "Menunggu giliran diproses. " : null}
+            {s.status === "UPLOADED" ? waitingText(s.queue?.position) : null}
             Anda boleh menutup halaman ini. File baru bisa diunggah setelah proses selesai.
           </span>
         </span>
