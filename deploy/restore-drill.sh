@@ -64,12 +64,12 @@ printf '%s\n' "$key" | "${DRILL[@]}" run --rm -T --no-deps -v "$tmp:/run/drill:r
 rm -rf "$tmp"
 "${DRILL[@]}" up -d --no-build --wait --wait-timeout 600
 
-sql='SELECT string_agg(format($$%s=%s$$, table_name, (xpath($$/row/c/text()$$, query_to_xml(format($$select count(*) as c from %I$$, table_name), false, true, $$$$)))[1]::text), $$ $$ ORDER BY table_name) FROM information_schema.tables WHERE table_schema = $$public$$ AND table_name NOT LIKE $$\_prisma%$$'
-prod_rows=$("${PROD[@]}" exec -T backup sh -c "psql \"\$DATABASE_URL\" -tAc '$sql'")
-drill_rows=$("${DRILL[@]}" exec -T backup sh -c "psql \"\$DATABASE_URL\" -tAc '$sql'")
-objs='export RCLONE_S3_PROVIDER=Other RCLONE_S3_ENDPOINT="$S3_ENDPOINT" RCLONE_S3_FORCE_PATH_STYLE=true RCLONE_S3_ACCESS_KEY_ID="$S3_ACCESS_KEY" RCLONE_S3_SECRET_ACCESS_KEY="$S3_SECRET_KEY" RCLONE_S3_REGION=us-east-1; rclone lsf -R --files-only --format sp ":s3:$S3_BUCKET" | sort | sha256sum | cut -c1-16'
-prod_objs=$("${PROD[@]}" exec -T backup sh -c "$objs")
-drill_objs=$("${DRILL[@]}" exec -T backup sh -c "$objs")
+prod_fp=$("${PROD[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
+drill_fp=$("${DRILL[@]}" exec -T backup bash /usr/local/bin/fingerprint.sh)
+prod_rows=$(grep '^rows:' <<<"$prod_fp")
+drill_rows=$(grep '^rows:' <<<"$drill_fp")
+prod_objs=$(grep '^objects:' <<<"$prod_fp")
+drill_objs=$(grep '^objects:' <<<"$drill_fp")
 health=$(curl -sk -o /dev/null -w '%{http_code}' "https://$host:9443/api/health")
 
 echo "baris per tabel cocok: $([ "$prod_rows" = "$drill_rows" ] && echo ya || echo TIDAK)"

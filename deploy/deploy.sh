@@ -75,10 +75,12 @@ port=443
 # Health lewat proxy (TLS); --resolve agar tidak bergantung DNS di VM sendiri. -k hanya untuk CA internal.
 insecure=()
 grep -q '^CADDY_TLS=internal' "$ENV_FILE" && insecure=(-k)
+# Root LAN berpembatasan (deploy/lan-cert.sh): verifikasi rantai sertifikat dengan root publiknya.
+[ -f deploy/certs/root.crt ] && insecure=(--cacert deploy/certs/root.crt)
 for i in $(seq 1 30); do
   if curl -fsS "${insecure[@]}" --resolve "$host:$port:127.0.0.1" "https://$app_host/api/health" >/dev/null; then
     echo "Sehat: https://$app_host/api/health ($(($(date +%s) - start)) dtk)"
-    if [ ${#insecure[@]} -gt 0 ]; then
+    if grep -q '^CADDY_TLS=internal' "$ENV_FILE"; then
       # CA internal Caddy: sertifikat root untuk dipasang di komputer pengguna (runbook §TLS internal).
       "${COMPOSE[@]}" cp proxy:/data/caddy/pki/authorities/local/root.crt deploy/ca-root.crt >/dev/null
       echo "Sertifikat root CA internal: deploy/ca-root.crt (pasang di komputer pengguna)"

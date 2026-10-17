@@ -6,6 +6,10 @@
 # Kunci privat age tidak pernah ada di VM: backup tidak bisa dibuka dari VM yang dibobol.
 set -euo pipefail
 : "${DATABASE_URL:?}" "${S3_ENDPOINT:?}" "${S3_BUCKET:?}" "${BACKUP_AGE_RECIPIENT:?}"
+# shellcheck source=deploy/pgenv.sh
+. /usr/local/bin/pgenv.sh
+pg_env_from_url "$DATABASE_URL"
+local_s3_env
 days=${BACKUP_RETENTION_DAYS:-30}
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 out="/backups/dashboard-$stamp.tar.age"
@@ -13,12 +17,8 @@ work=$(mktemp -d /backups/.work-XXXXXX)
 trap 'rm -rf "$work"' EXIT
 
 echo "[$stamp] backup mulai"
-pg_dump --format=custom --no-owner --no-privileges --file "$work/db.dump" "$DATABASE_URL"
-
-export RCLONE_S3_PROVIDER=Other RCLONE_S3_ENDPOINT="$S3_ENDPOINT" RCLONE_S3_FORCE_PATH_STYLE=true \
-  RCLONE_S3_ACCESS_KEY_ID="$S3_ACCESS_KEY" RCLONE_S3_SECRET_ACCESS_KEY="$S3_SECRET_KEY" \
-  RCLONE_S3_REGION=us-east-1
-rclone copy ":s3:$S3_BUCKET" "$work/s3" --transfers 4 --checkers 8 --stats-one-line --stats 0
+pg_dump --format=custom --no-owner --no-privileges --file "$work/db.dump"
+rclone copy "locals3:$S3_BUCKET" "$work/s3" --transfers 4 --checkers 8 --stats-one-line --stats 0
 
 tar -C "$work" -cf - db.dump s3 | age -r "$BACKUP_AGE_RECIPIENT" -o "$out.part"
 mv "$out.part" "$out"

@@ -63,25 +63,36 @@ docker compose -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/a
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
 
-### TLS internal (LAN, `CADDY_TLS=internal`)
+### TLS untuk akses LAN lewat IP (root CA berpembatasan, `deploy/lan-cert.sh`)
 
-Tanpa domain publik, Caddy memakai CA lokalnya sendiri (root berlaku 10 tahun). `deploy.sh` menyalin
-sertifikat root ke `deploy/ca-root.crt`; pasang **sekali** di setiap komputer pengguna:
+Tanpa domain publik, sertifikat dibuat dari **root CA milik perusahaan dengan name constraints**: root
+hanya sah untuk IP server ini, dan kunci root disimpan **offline** di mesin admin (bersama kunci backup).
+Server hanya memegang kunci leaf, sehingga server yang dibobol tetap tidak bisa dipakai memalsukan situs
+lain bagi komputer pengguna. Jangan sebar CA internal Caddy (`CADDY_TLS=internal`) ke komputer pengguna:
+root itu tanpa pembatasan dan kuncinya ada di VM (review T-023 F5); hanya untuk uji singkat.
 
-- **Windows**: klik dua kali `ca-root.crt` → *Install Certificate* → *Local Machine* → *Place all
-  certificates in the following store* → **Trusted Root Certification Authorities** → selesai. Atau
-  massal lewat GPO (Computer Configuration → Policies → Windows Settings → Security Settings → Public Key
-  Policies → Trusted Root Certification Authorities). Chrome/Edge memakai store Windows.
-- **macOS**: buka `ca-root.crt` di Keychain Access → keychain **System** → klik dua kali sertifikat →
-  *Trust* → *Always Trust*.
+1. Mesin admin (sekali, 10 tahun): `deploy/lan-cert.sh root <folder-kunci> <ip>`.
+2. Server: `bash deploy/lan-cert.sh csr <ip> > /tmp/leaf.csr` (kunci leaf → `deploy/certs/privkey.pem`).
+3. Mesin admin: `deploy/lan-cert.sh sign <folder-kunci> leaf.csr <ip> > fullchain.pem` (825 hari) → salin
+   ke server `deploy/certs/fullchain.pem`; `.env.prod`: `CADDY_TLS=/certs/fullchain.pem /certs/privkey.pem`.
+4. Perpanjang sebelum kedaluwarsa: ulangi 2–3 lalu `$C up -d --force-recreate --no-deps proxy`.
+
+Pasang root (`dashboard-lan-root.crt`) **sekali** di setiap komputer pengguna:
+
+- **Windows**: massal lewat GPO (Computer Configuration → Policies → Windows Settings → Security Settings →
+  Public Key Policies → Trusted Root Certification Authorities), atau klik dua kali → *Install
+  Certificate* → *Local Machine* → **Trusted Root Certification Authorities**. Chrome/Edge memakai store Windows.
+- **macOS**: `security add-trusted-cert -r trustRoot -k ~/Library/Keychains/login.keychain-db dashboard-lan-root.crt`
+  (atau Keychain Access → System → *Always Trust*).
 - **Firefox**: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.
 
-Cocokkan sidik jari SHA-256 sebelum memasang: `openssl x509 -in ca-root.crt -noout -fingerprint -sha256`.
+Bagikan lewat jalur tepercaya (GPO/shared drive kantor, bukan unduhan http) dan cocokkan sidik jari:
+`openssl x509 -in dashboard-lan-root.crt -noout -fingerprint -sha256`.
 
 ### Contoh: server olympus (LAN 10.3.3.221)
 
 `APP_HOST=10.3.3.221:8443`, `APP_PORT=8443`, `STORAGE_HOST=10.3.3.221:8444`, `TLS_DEFAULT_SNI=10.3.3.221`,
-`CADDY_TLS=internal`, `COMPOSE_PROFILES=hostdb`
+`CADDY_TLS=/certs/fullchain.pem /certs/privkey.pem` (root LAN berpembatasan IP), `COMPOSE_PROFILES=hostdb`
 (PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), satu worker (`WORKER_REPLICAS=1`) dan batas
 memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache; Caddy hanya mendengar di 8443
 (app) dan 8444 (storage), port 443 dibiarkan untuk aplikasi lain. Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`

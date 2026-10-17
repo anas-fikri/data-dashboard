@@ -28,6 +28,10 @@
 				request>uri regexp "^/(render|verify|reset-password)/?.*$" "/$1/[redaksi]"
 				request>headers>Cookie delete
 				request>headers>Authorization delete
+				# URL lengkap (token verifikasi/reset, ?f= filter, presigned ekspor) juga lewat header ini.
+				request>headers>Referer delete
+				resp_headers>Location delete
+				resp_headers>X-Action-Redirect delete
 				resp_headers>Set-Cookie delete
 			}
 		}
