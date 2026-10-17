@@ -3,6 +3,7 @@
 # up) dari image renderer (Chromium + playwright-core), sambil mencatat memori/CPU container stack uji
 # tiap ± 2 dtk; lalu waktu presisi versi dari database stack uji.
 #   bash scripts/perf-e2e.sh <folder-hasil> single <fixture> [akun] | concurrent <fixture> <n>
+#                            | dashboard <datasetId> [akun]
 # <fixture> = nama file di $PERF_DIR/fixtures. Hasil: client.jsonl, stats.log, puncak.txt, versi.txt.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -12,6 +13,9 @@ PERF_DIR=${PERF_DIR:-/data/docker-data/dashboard-perf}
 PERF=(env COMPOSE_PROFILES=db docker compose -p dashboard-perftest --env-file .env.perftest -f docker-compose.prod.yml)
 app=$(sed -n 's/^APP_HOST=//p' .env.perftest)
 mkdir -p "$out"
+# Mode dashboard: argumen kedua id dataset, bukan file fixture.
+target=/fixtures/$fixture
+[ "$mode" != dashboard ] || target=$fixture
 
 (
   while :; do
@@ -25,10 +29,11 @@ sampler=$!
 trap 'kill $sampler 2>/dev/null || true' EXIT
 
 docker run --rm --network host --user "$(id -u):$(id -g)" --shm-size 1g \
-  -e HOME=/tmp -e PERF_BASE="https://$app" -e PERF_USERS=/perf/users.json \
+  -e HOME=/tmp -e PERF_BASE="https://$app" -e PERF_USERS=/perf/users.json -e PERF_OUT=/out \
+  -v "$(realpath "$out"):/out" \
   -v "$PERF_DIR/users.json:/perf/users.json:ro" -v "$PERF_DIR/fixtures:/fixtures:ro" \
   -v "$PWD/scripts/perf-e2e.mjs:/app/perf-e2e.mjs:ro" \
-  --entrypoint node dashboard-renderer:latest /app/perf-e2e.mjs "$mode" "/fixtures/$fixture" "$@" |
+  --entrypoint node dashboard-renderer:latest /app/perf-e2e.mjs "$mode" "$target" "$@" |
   tee "$out/client.jsonl"
 
 kill "$sampler" 2>/dev/null || true

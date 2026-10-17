@@ -25,6 +25,30 @@ const DATE = new Set(["date", "timestamp"]);
 const FMT = { style: "auto", decimals: 0 };
 const QUERY_ROUNDS = 5;
 const LONG = 60 * 60_000;
+/** Folder hasil (PERF_OUT) untuk tangkapan layar saat gagal; kosong = tanpa tangkapan. */
+const OUT = process.env.PERF_OUT ?? "";
+
+/** Tunggu navigasi; gagal → catat alert/galat di halaman + tangkapan layar, lalu lempar lagi. */
+async function waitNav(page, re, label) {
+  try {
+    await page.waitForURL(re, { timeout: 120_000 });
+  } catch (e) {
+    const alerts = await page
+      .locator('[role="alert"], [aria-live="assertive"]')
+      .allInnerTexts()
+      .catch(() => []);
+    log({
+      ev: "gagal-navigasi",
+      label,
+      url: page.url(),
+      alerts: alerts.filter(Boolean).slice(0, 5),
+    });
+    if (OUT)
+      await page.screenshot({ path: `${OUT}/gagal-${label}.png`, fullPage: true }).catch(() => {});
+    throw e;
+  }
+}
+
 /** Nama dataset/dashboard unik per pemilik: akhiran jam agar run ulang tidak bentrok. */
 const RUN = new Date().toISOString().slice(11, 19);
 
@@ -77,7 +101,7 @@ async function createDataset(page, name) {
   await page.goto("/datasets/baru");
   await page.getByLabel("Nama dataset").fill(name);
   await page.getByRole("button", { name: "Buat dataset" }).click();
-  await page.waitForURL(/\/datasets\/[a-z0-9]{20,32}/, { timeout: 60_000 });
+  await waitNav(page, /\/datasets\/[a-z0-9]{20,32}/, "buat-dataset");
   return new URL(page.url()).pathname.split("/").pop();
 }
 
@@ -261,7 +285,7 @@ async function dashboardStage(context, page, a, datasetId, name) {
   await page.goto(`/dashboards/baru?dataset=${datasetId}`);
   await page.getByLabel("Nama dashboard").fill(name);
   await page.getByRole("button", { name: "Buat dashboard" }).click();
-  await page.waitForURL(/\/dashboards\/[a-z0-9]{20,32}\?mode=edit/, { timeout: 60_000 });
+  await waitNav(page, /\/dashboards\/[a-z0-9]{20,32}\?mode=edit/, "buat-dashboard");
   const dashboardId = new URL(page.url()).pathname.split("/").pop();
   const sheets = await dashboardSources(context, dashboardId);
   if (!sheets.length) throw new Error("sumber sheet tidak terbaca dari halaman edit");
