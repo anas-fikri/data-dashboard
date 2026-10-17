@@ -526,8 +526,11 @@ async function main() {
     for (const who of Object.keys(ACCOUNTS))
       rmSync(join(OUT, `.state-${who}.json`), { force: true });
   }
-  if (!ONLY) writeFileSync(join(OUT, "videos.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-  else console.log(JSON.stringify(manifest, null, 2));
+  if (!ONLY) {
+    writeFileSync(join(OUT, "videos.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    // Durasi + poster dihitung di sini (ffmpeg lokal), bukan di image produksi.
+    execFileSync("node", ["scripts/guide-video-meta.mjs", OUT], { stdio: "inherit" });
+  } else console.log(JSON.stringify(manifest, null, 2));
 }
 
 void main().catch((e) => {

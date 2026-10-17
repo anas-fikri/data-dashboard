@@ -103,17 +103,46 @@ function probe(path: string): { durationSec: number | null; poster: Buffer | nul
   }
 }
 
+interface ManifestEntry {
+  slug: string;
+  file: string;
+  title: string;
+  /** Dari scripts/guide-video-meta.mjs (mesin perekam punya ffmpeg; image produksi tidak). */
+  durationSec?: number;
+  poster?: string;
+}
+
+/** Metadata dari manifest; bila tidak ada, coba ffprobe/ffmpeg lokal. */
+function metaOf(dir: string, v: ManifestEntry) {
+  const fallback = v.durationSec && v.poster ? null : probe(join(dir, v.file));
+  const png = v.poster ? readFileSync(join(dir, v.poster)) : fallback?.poster;
+  return {
+    durationSec: v.durationSec ?? fallback?.durationSec ?? null,
+    poster: png && isPng(png) && png.byteLength <= POSTER_MAX_BYTES ? png : null,
+  };
+}
+
 async function seedVideos(dir: string, ids: Map<string, string>) {
-  const list = JSON.parse(readFileSync(join(dir, "videos.json"), "utf8")) as {
-    slug: string;
-    file: string;
-    title: string;
-  }[];
+  const list = JSON.parse(readFileSync(join(dir, "videos.json"), "utf8")) as ManifestEntry[];
   for (const v of list) {
     const articleId = ids.get(v.slug);
     if (!articleId) throw new Error(`videos.json: artikel ${v.slug} tidak ada di content/panduan`);
-    if (await prisma.guideVideo.findFirst({ where: { articleId, title: v.title } })) {
-      console.log(`lewati video (sudah ada): ${v.slug} · ${v.title}`);
+    const found = await prisma.guideVideo.findFirst({ where: { articleId, title: v.title } });
+    if (found) {
+      // Lengkapi durasi/poster yang dulu kosong (seed tanpa metadata); selain itu lewati.
+      const meta = found.durationSec && found.posterKey ? null : metaOf(dir, v);
+      if (meta && (meta.durationSec || meta.poster)) {
+        let posterKey = found.posterKey;
+        if (!posterKey && meta.poster) {
+          posterKey = guidePosterKey(found.id);
+          await putGuidePoster(posterKey, meta.poster);
+        }
+        await prisma.guideVideo.update({
+          where: { id: found.id },
+          data: { posterKey, durationSec: found.durationSec ?? meta.durationSec },
+        });
+        console.log(`lengkapi video: ${v.slug} · ${v.title}`);
+      } else console.log(`lewati video (sudah ada): ${v.slug} · ${v.title}`);
       continue;
     }
     const path = join(dir, v.file);
@@ -133,7 +162,7 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
         ContentType: VIDEO_CONTENT_TYPE[ext],
       }),
     );
-    const meta = probe(path);
+    const meta = metaOf(dir, v);
     let posterKey: string | null = null;
     if (meta.poster) {
       posterKey = guidePosterKey(id);

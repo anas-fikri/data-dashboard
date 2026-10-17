@@ -32,6 +32,15 @@
   ],
   "syscalls": [
     {
+      "comment": "Tambahan proyek (T-023): clone3 → ENOSYS seperti profil default Docker, agar glibc baru jatuh ke clone (diizinkan di bawah). Tanpa ini default ERRNO=EPERM membuat pthread_create gagal di kernel x86-64 (node: uv_thread_create assertion).",
+      "names": ["clone3"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 38,
+      "args": [],
+      "includes": {},
+      "excludes": {}
+    },
+    {
       "comment": "Allow create user namespaces",
       "names": ["clone", "setns", "unshare"],
       "action": "SCMP_ACT_ALLOW",

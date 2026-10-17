@@ -2,46 +2,64 @@
   {
     "slug": "unggah-data",
     "file": "pemilik-unggah.webm",
-    "title": "Membuat dataset dan mengunggah file"
+    "title": "Membuat dataset dan mengunggah file",
+    "durationSec": 27,
+    "poster": "pemilik-unggah.poster.png"
   },
   {
     "slug": "periksa-skema",
     "file": "pemilik-skema.webm",
-    "title": "Memeriksa dan memperbaiki skema"
+    "title": "Memeriksa dan memperbaiki skema",
+    "durationSec": 18,
+    "poster": "pemilik-skema.poster.png"
   },
   {
     "slug": "susun-dashboard",
     "file": "pemilik-dashboard.webm",
-    "title": "Menyusun dashboard pertama"
+    "title": "Menyusun dashboard pertama",
+    "durationSec": 72,
+    "poster": "pemilik-dashboard.poster.png"
   },
   {
     "slug": "bagikan-dashboard",
     "file": "pemilik-bagikan.webm",
-    "title": "Membagikan dashboard"
+    "title": "Membagikan dashboard",
+    "durationSec": 29,
+    "poster": "pemilik-bagikan.poster.png"
   },
   {
     "slug": "editor-ubah-dashboard",
     "file": "editor-ubah.webm",
-    "title": "Mengubah dashboard sebagai editor"
+    "title": "Mengubah dashboard sebagai editor",
+    "durationSec": 21,
+    "poster": "editor-ubah.poster.png"
   },
   {
     "slug": "viewer-lihat-filter-ekspor",
     "file": "viewer-filter-ekspor.webm",
-    "title": "Memakai filter dan mengekspor"
+    "title": "Memakai filter dan mengekspor",
+    "durationSec": 25,
+    "poster": "viewer-filter-ekspor.poster.png"
   },
   {
     "slug": "admin-kelola-pengguna",
     "file": "admin-pengguna.webm",
-    "title": "Mengelola pengguna"
+    "title": "Mengelola pengguna",
+    "durationSec": 17,
+    "poster": "admin-pengguna.poster.png"
   },
   {
     "slug": "admin-tulis-panduan",
     "file": "admin-panduan.webm",
-    "title": "Menulis artikel panduan"
+    "title": "Menulis artikel panduan",
+    "durationSec": 21,
+    "poster": "admin-panduan.poster.png"
   },
   {
     "slug": "mengenal-data-dashboard",
     "file": "umum-mengenal.webm",
-    "title": "Masuk dan mengenal menu"
+    "title": "Masuk dan mengenal menu",
+    "durationSec": 32,
+    "poster": "umum-mengenal.poster.png"
   }
 ]

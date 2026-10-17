@@ -119,7 +119,7 @@ terhadap app tiruan; semua proses Chromium uid 1001, `Seccomp: 2`, `NoNewPrivs: 
 
 ## Provenance
 
-- `seccomp_profile.json`: <https://github.com/microsoft/playwright/blob/v1.64.0/utils/docker/seccomp_profile.json>
+- `seccomp_profile.json`: <https://github.com/microsoft/playwright/blob/v1.64.0/utils/docker/seccomp_profile.json> — satu tambahan proyek (T-023): aturan `clone3` → ENOSYS (errno 38) seperti profil default Docker; tanpa itu default EPERM membuat pembuatan thread Node/Chromium gagal di kernel x86-64 (Ubuntu 22.04).
   (tag `v1.64.0` = commit `606ecd8b34bac100db32561b6278ffd76e5eb3cd`; berkas terakhir diubah di commit
   `ae935a43d9e376e4759548f6b3c6905c7b282333`, 2021-01-03). Diunduh 2026-10-16 dari
   `raw.githubusercontent.com`; sha256 upstream `cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849`.

@@ -63,13 +63,36 @@ docker compose -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/a
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
 
+### TLS internal (LAN, `CADDY_TLS=internal`)
+
+Tanpa domain publik, Caddy memakai CA lokalnya sendiri (root berlaku 10 tahun). `deploy.sh` menyalin
+sertifikat root ke `deploy/ca-root.crt`; pasang **sekali** di setiap komputer pengguna:
+
+- **Windows**: klik dua kali `ca-root.crt` → *Install Certificate* → *Local Machine* → *Place all
+  certificates in the following store* → **Trusted Root Certification Authorities** → selesai. Atau
+  massal lewat GPO (Computer Configuration → Policies → Windows Settings → Security Settings → Public Key
+  Policies → Trusted Root Certification Authorities). Chrome/Edge memakai store Windows.
+- **macOS**: buka `ca-root.crt` di Keychain Access → keychain **System** → klik dua kali sertifikat →
+  *Trust* → *Always Trust*.
+- **Firefox**: Settings → Privacy & Security → Certificates → View Certificates → Authorities → Import.
+
+Cocokkan sidik jari SHA-256 sebelum memasang: `openssl x509 -in ca-root.crt -noout -fingerprint -sha256`.
+
+### Contoh: server olympus (LAN 10.3.3.221)
+
+`APP_HOST=10.3.3.221`, `STORAGE_HOST=10.3.3.221:8444`, `CADDY_TLS=internal`, `COMPOSE_PROFILES=hostdb`
+(PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), satu worker (`WORKER_REPLICAS=1`) dan batas
+memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache (tidak bentrok: Caddy hanya 443 dan
+8444). Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`
+(jalankan dari terminal interaktif, bukan lewat skrip non-TTY).
+
 ## 3. Verifikasi pasca-deploy
 
 ```bash
 C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
 $C ps                                                        # semua healthy / migrate+storage-init exited 0
 curl -fsS https://<APP_HOST>/api/health                      # {"status":"ok"} termasuk storage + renderer
-$C run --rm --add-host <STORAGE_HOST>:host-gateway worker node deploy/check-public-presign.mjs
+$C run --rm --no-deps worker node deploy/check-public-presign.mjs [--insecure]   # --insecure untuk CA internal
 node scripts/smoke-prod-headers.mjs https://<APP_HOST>       # dari mesin dengan Node + Playwright
 $C exec app node scripts/admin-restore.mjs tidak-ada@<domain> --confirm   # wajib exit 1, tanpa perubahan
 ```

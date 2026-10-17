@@ -54,3 +54,4 @@ yarn-error.log*
 /deploy/certs/*
 !/deploy/certs/.gitkeep
 /deploy/ca-root.crt
+/demo/guide-videos/*.poster.png
