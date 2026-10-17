@@ -111,6 +111,8 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test.beforeEach(async () => {
+    // Grid menganimasikan lebar kartu 200 ms: sweep harus membaca tata letak akhir (review desain T-7ke3).
+    await owner.emulateMedia({ reducedMotion: "reduce" });
     await owner.setViewportSize({ width: 1440, height: 1100 });
     await owner.goto(`/dashboards/${d}`);
   });
@@ -206,12 +208,13 @@ test.describe("polish widget kecil (T-032)", () => {
     expect(compactModes).toEqual(new Set(["lihat", "edit"]));
   });
 
-  test("T-2nkx review: pointer sentuh (tombol kepala 44 px) → tanpa lencana ringkas", async ({
+  test("T-7ke3: pointer sentuh (tombol kepala 44 px) → lencana tidak pernah memeras judul di bawah 4rem", async ({
     browser,
   }) => {
     const ctx = await browser.newContext({
       storageState: await owner.context().storageState(),
       hasTouch: true,
+      reducedMotion: "reduce",
       viewport: { width: 1280, height: 1100 },
     });
     try {
@@ -226,15 +229,68 @@ test.describe("polish widget kecil (T-032)", () => {
         for (let width = 1024; width <= 1600; width += 32) {
           await touch.setViewportSize({ width, height: 1100 });
           await touch.waitForTimeout(150);
-          const shown = await touch
-            .getByTestId("chart-badge-compact")
-            .evaluateAll((els) => els.filter((e) => e.getBoundingClientRect().width > 0).length);
-          expect(shown, `${width} px ${mode || "lihat"}`).toBe(0);
+          const cards = await touch.getByTestId("widget").evaluateAll((els) =>
+            els.map((e) => ({
+              title: e.querySelector("h2")!.textContent,
+              badges: e.querySelectorAll("[data-testid^=chart-badge]").length,
+              titleW: e.querySelector("h2")!.getBoundingClientRect().width,
+            })),
+          );
+          for (const c of cards.filter((c) => c.badges > 0)) {
+            expect(c.badges, `${width} px ${mode || "lihat"}: ${c.title}`).toBe(1);
+            expect(c.titleW, `${width} px ${mode || "lihat"}: ${c.title}`).toBeGreaterThanOrEqual(
+              64,
+            );
+          }
         }
       }
     } finally {
       await ctx.close();
     }
+  });
+
+  test("T-7ke3: tombol kepala selebar sentuh → lencana penuh, ringkas, atau ditahan sesuai ruang; judul ≥ 4rem", async () => {
+    // Kepala sentuh sungguhan 12 px lebih tinggi sehingga kartu 2 baris menampilkan daftar peringkat (tanpa
+    // lencana). Di sini hanya LEBAR tombol kepala yang dibuat 44 px: ruang horizontal sama dengan sentuh,
+    // badan grafik tetap di rentang lencana (review desain T-7ke3 B1).
+    const WIDE = `[data-testid=widget-data-toggle],[data-testid=widget-export],[data-widget-settings],.widget-grip{width:2.75rem!important;min-width:2.75rem!important}`;
+    const seen = { full: 0, compact: 0, held: 0 };
+    for (const mode of ["", "?mode=edit"]) {
+      await owner.goto(`/dashboards/${d}${mode}`);
+      await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
+      await owner.addStyleTag({ content: WIDE });
+      for (let width = 1024; width <= 1600; width += 8) {
+        await owner.setViewportSize({ width, height: 1100 });
+        await owner.waitForTimeout(150);
+        const cards = await owner.getByTestId("widget").evaluateAll((els) =>
+          els.map((e) => {
+            const h = e.querySelector("h2")!;
+            const badge = e.querySelector<HTMLElement>("[data-testid^=chart-badge]");
+            const toggle = e.querySelector<HTMLElement>("[data-testid=widget-data-toggle]");
+            return {
+              title: h.textContent,
+              // Grafik melapor lencana (span ukur ada) tetapi tidak ada yang tampil = ditahan.
+              reported: e.querySelector("[data-badge].invisible") !== null,
+              shown: badge?.dataset.testid ?? null,
+              titleW: h.getBoundingClientRect().width,
+              toggleW: toggle?.getBoundingClientRect().width ?? 0,
+            };
+          }),
+        );
+        for (const c of cards) {
+          const at = `${width} px ${mode || "lihat"}: ${c.title}`;
+          if (c.toggleW > 0) expect(c.toggleW, at).toBeCloseTo(44, 0);
+          if (c.shown) {
+            expect(c.titleW, at).toBeGreaterThanOrEqual(64);
+            seen[c.shown === "chart-badge" ? "full" : "compact"]++;
+          } else if (c.reported) seen.held++;
+        }
+      }
+    }
+    // Kontrol positif: ketiga keputusan benar-benar terjadi (bukan lencana yang selalu disembunyikan).
+    expect(seen.full).toBeGreaterThan(0);
+    expect(seen.compact).toBeGreaterThan(0);
+    expect(seen.held).toBeGreaterThan(0);
   });
 
   test("AC2: legenda pai muat → bukan tab stop; meluap → bisa difokus dan digulir panah", async () => {

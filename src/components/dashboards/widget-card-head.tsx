@@ -62,6 +62,8 @@ export function CardTitle(props: {
   const { title, placeholder, editing, chart } = props;
   return (
     <h2
+      // Penanda bagi pengukur ruang lencana (badge-fit.ts): judul tidak dihitung sebagai elemen lain.
+      data-head-title=""
       className={cn(
         // Basis = lebar judul; penanda "Memperbarui…" (basis 0) hanya mengisi sisa ruang.
         "min-w-0 flex-auto truncate px-1 text-sm font-medium",

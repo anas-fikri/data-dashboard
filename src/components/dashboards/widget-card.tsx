@@ -1,7 +1,7 @@
 "use client";
 
 import { IconAdjustmentsHorizontal, IconChartBar, IconGripVertical } from "@tabler/icons-react";
-import { forwardRef, useCallback, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
 import type { ChartBadge } from "@/components/widgets/chart-widget";
@@ -17,6 +17,7 @@ import {
   HeadExport,
   NARROW_VIEW,
 } from "./widget-card-head";
+import { badgeMode, headRoom, type BadgeMode } from "./badge-fit";
 import { cardConfig, chartOf, toggleMode } from "./widget-card-model";
 
 /** Lencana kategori di kepala kartu (penuh/ringkas): satu gaya. */
@@ -81,6 +82,41 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
   const current = config && body?.version === configVersion(config) ? body : null;
   const status = current?.state ?? "loading";
   const mode = chart ? toggleMode(status) : null;
+  const stale = !!current?.stale;
+  // Lencana dipilih dari ruang kepala yang terukur (T-7ke3): judul tetap ≥ 4rem.
+  const headRef = useRef<HTMLDivElement>(null);
+  const fullRef = useRef<HTMLSpanElement>(null);
+  const compactRef = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState<BadgeMode>("none");
+  // Isi kepala berubah (tombol data/pegangan/label basi/mode) → ukur ulang. Primitif saja: config objek
+  // baru tiap render sehingga observer berlangganan ulang terus (review desain T-7ke3).
+  const kind = config?.type;
+  useEffect(() => {
+    const head = headRef.current;
+    if (!head) return;
+    let frame = 0;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!badge || showData) return setFit("none");
+        const { room, gap } = headRoom(head);
+        const width = (el: HTMLElement | null) => el?.getBoundingClientRect().width ?? 0;
+        setFit(
+          badgeMode({
+            room,
+            gap,
+            full: width(fullRef.current),
+            compact: width(compactRef.current),
+          }),
+        );
+      });
+    });
+    ro.observe(head);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, [badge, showData, editing, handle, stale, mode, kind]);
   return (
     <div
       ref={ref}
@@ -94,6 +130,7 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
       {...rest}
     >
       <div
+        ref={headRef}
         className={cn(
           "flex items-center gap-1 border-b px-2 py-1.5",
           !editing && NARROW_VIEW.head[chart ? "chart" : "plain"],
@@ -118,43 +155,33 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           </span>
         ) : null}
         <CardTitle title={title} placeholder={!widget.title} editing={editing} chart={!!chart} />
-        <StaleLabel stale={!!current?.stale} title={title} />
+        <StaleLabel stale={stale} title={title} />
         {badge && !showData ? (
           <>
-            <span
-              className={cn(
-                BADGE,
-                // Judul didahulukan: kartu sempit tanpa lencana (tabel data tetap tersedia) — di badan
-                // grafik lencana menimpa label sumbu (review desain T-032 r1/r2). Ambang memuat
-                // "9.999 dari 9.999" dengan judul ≥ 4rem (r3).
-                editing ? "@max-[20rem]:hidden" : "@max-[15.5rem]:hidden",
-              )}
-              title={badge.full}
-              // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
-              aria-hidden
-              data-testid="chart-badge"
-            >
+            {/* Pengukur lebar lencana (tak terlihat, di luar alur tata letak). */}
+            <span ref={fullRef} aria-hidden data-badge className={cn(BADGE, "invisible absolute")}>
               {badge.short}
             </span>
-            {/* Pita tepat di bawah ambang itu: "9.999/9.999" ± 1,5rem lebih sempit daripada "9.999 dari
-                9.999", jadi ruang judul sama dengan di ambang T-032 (T-2nkx). Lebih sempit lagi: tanpa
-                lencana. */}
             <span
-              className={cn(
-                BADGE,
-                "hidden",
-                // Hanya bila tombol kepala 32 px (syarat sama dengan HEAD_BUTTON): tombol sentuh 44 px
-                // memakan ruang itu sehingga judul < 4rem — di sana judul didahulukan (review desain).
-                editing
-                  ? "md:not-any-pointer-coarse:@min-[18.5rem]:@max-[20rem]:inline"
-                  : "md:not-any-pointer-coarse:@min-[14rem]:@max-[15.5rem]:inline",
-              )}
-              title={badge.full}
+              ref={compactRef}
               aria-hidden
-              data-testid="chart-badge-compact"
+              data-badge
+              className={cn(BADGE, "invisible absolute")}
             >
               {badge.compact}
             </span>
+            {fit !== "none" ? (
+              <span
+                className={BADGE}
+                title={badge.full}
+                // Pembaca layar mendapat ringkasan lengkap dari grafiknya sendiri.
+                aria-hidden
+                data-badge
+                data-testid={fit === "full" ? "chart-badge" : "chart-badge-compact"}
+              >
+                {fit === "full" ? badge.short : badge.compact}
+              </span>
+            ) : null}
           </>
         ) : null}
         {chart && mode ? (
