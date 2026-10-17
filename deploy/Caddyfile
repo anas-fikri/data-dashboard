@@ -52,7 +52,16 @@
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
 		-Server
 	}
-	reverse_proxy app:3100 {
+	reverse_proxy {
+		# Alamat app di-cache (refresh 1 menit) dan dial yang gagal dicoba ulang ≤ 30 dtk: DNS bawaan
+		# Docker (dockerd) bisa timeout saat VM berat → "lookup app: i/o timeout" → 502 (T-024).
+		dynamic a {
+			name app
+			port 3100
+			refresh 1m
+		}
+		lb_try_duration 30s
+		lb_try_interval 500ms
 		# Ditimpa dari koneksi nyata, tidak pernah diteruskan dari klien (review T-019): Origin Server
 		# Action dicocokkan dengan Host/X-Forwarded-Host; X-Real-IP dipakai rate limit + AuditLog.
 		header_up Host {hostport}
@@ -84,7 +93,15 @@
 		path_regexp ^/{$S3_BUCKET}/(raw|guides|exports)/[^?]+$
 	}
 	handle @public {
-		reverse_proxy rustfs:9000 {
+		reverse_proxy {
+			# Sama dengan app: alamat di-cache, dial gagal dicoba ulang (T-024).
+			dynamic a {
+				name rustfs
+				port 9000
+				refresh 1m
+			}
+			lb_try_duration 30s
+			lb_try_interval 500ms
 			# SigV4 menandatangani host publik termasuk port non-standar (mis. :8444): Host asli + port wajib
 			# sampai ke RustFS tanpa diubah ({host} membuang port → SignatureDoesNotMatch).
 			header_up Host {hostport}
