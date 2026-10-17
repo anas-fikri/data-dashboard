@@ -18,6 +18,9 @@ if [ ! -f "$ENV_FILE" ]; then
 # Dibuat deploy/deploy.sh $(date -u +%Y-%m-%dT%H:%M:%SZ). Isi semua ISI_* lalu jalankan deploy lagi.
 APP_HOST=ISI_dashboard.perusahaan.co.id
 STORAGE_HOST=ISI_storage.dashboard.perusahaan.co.id
+# VM bersama tanpa domain: APP_HOST=<ip>:8443, APP_PORT=8443, STORAGE_HOST=<ip>:8444, TLS_DEFAULT_SNI=<ip>
+APP_PORT=443
+STORAGE_PORT=8444
 # internal (CA lokal Caddy) | email untuk ACME publik | "/certs/fullchain.pem /certs/privkey.pem"
 CADDY_TLS=internal
 ALLOWED_EMAIL_DOMAINS=ISI_perusahaan.co.id
@@ -65,11 +68,15 @@ start=$(date +%s)
 "${COMPOSE[@]}" build
 "${COMPOSE[@]}" up -d --wait --wait-timeout 600
 app_host=$(grep '^APP_HOST=' "$ENV_FILE" | cut -d= -f2-)
+# APP_HOST boleh berisi port (mis. 10.3.3.221:8443).
+host=${app_host%:*}
+port=443
+[ "$host" != "$app_host" ] && port=${app_host##*:}
 # Health lewat proxy (TLS); --resolve agar tidak bergantung DNS di VM sendiri. -k hanya untuk CA internal.
 insecure=()
 grep -q '^CADDY_TLS=internal' "$ENV_FILE" && insecure=(-k)
 for i in $(seq 1 30); do
-  if curl -fsS "${insecure[@]}" --resolve "$app_host:443:127.0.0.1" "https://$app_host/api/health" >/dev/null; then
+  if curl -fsS "${insecure[@]}" --resolve "$host:$port:127.0.0.1" "https://$app_host/api/health" >/dev/null; then
     echo "Sehat: https://$app_host/api/health ($(($(date +%s) - start)) dtk)"
     if [ ${#insecure[@]} -gt 0 ]; then
       # CA internal Caddy: sertifikat root untuk dipasang di komputer pengguna (runbook §TLS internal).

@@ -4,7 +4,7 @@
 	auto_https disable_redirects
 	# Klien tidak mengirim SNI untuk alamat IP (mode LAN, mis. https://10.3.3.221): pakai sertifikat host
 	# app. Untuk domain, SNI selalu dikirim sehingga opsi ini tidak berpengaruh.
-	default_sni {$APP_HOST}
+	default_sni {$TLS_DEFAULT_SNI}
 	# Log akses JSON ke stdout; isi sensitif dibuang di tiap situs (lihat (redact)).
 	servers {
 		# Upload part presigned 16 MiB dan video panduan: tunggu body cukup lama.

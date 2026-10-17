@@ -80,10 +80,11 @@ Cocokkan sidik jari SHA-256 sebelum memasang: `openssl x509 -in ca-root.crt -noo
 
 ### Contoh: server olympus (LAN 10.3.3.221)
 
-`APP_HOST=10.3.3.221`, `STORAGE_HOST=10.3.3.221:8444`, `CADDY_TLS=internal`, `COMPOSE_PROFILES=hostdb`
+`APP_HOST=10.3.3.221:8443`, `APP_PORT=8443`, `STORAGE_HOST=10.3.3.221:8444`, `TLS_DEFAULT_SNI=10.3.3.221`,
+`CADDY_TLS=internal`, `COMPOSE_PROFILES=hostdb`
 (PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), satu worker (`WORKER_REPLICAS=1`) dan batas
-memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache (tidak bentrok: Caddy hanya 443 dan
-8444). Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`
+memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache; Caddy hanya mendengar di 8443
+(app) dan 8444 (storage), port 443 dibiarkan untuk aplikasi lain. Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`
 (jalankan dari terminal interaktif, bukan lewat skrip non-TTY).
 
 ## 3. Verifikasi pasca-deploy

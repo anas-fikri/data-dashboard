@@ -46,13 +46,15 @@ services:
   proxy:
     image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
     restart: unless-stopped
-    # 443 = app (dan storage bila STORAGE_HOST memakai domain sendiri); 8444 = storage bila STORAGE_HOST
-    # berupa <host>:8444 (LAN/IP). Port 80 tidak dipakai (redirect http dimatikan, ACME lewat TLS-ALPN
-    # di 443) sehingga tidak bentrok dengan web server lain di VM.
-    ports: ["443:443", "8444:8444"]
+    # APP_PORT = port https app (443 untuk domain; port khusus di VM bersama, mis. 8443), STORAGE_PORT =
+    # port storage bila STORAGE_HOST berupa <host>:<port> (LAN/IP). Port 80 tidak dipakai (redirect http
+    # dimatikan, ACME lewat TLS-ALPN) sehingga tidak bentrok dengan web server lain di VM.
+    ports: ["${APP_PORT:-443}:${APP_PORT:-443}", "${STORAGE_PORT:-8444}:${STORAGE_PORT:-8444}"]
     environment:
       APP_HOST: ${APP_HOST}
       STORAGE_HOST: ${STORAGE_HOST}
+      # Nama host tanpa port untuk klien tanpa SNI (akses lewat IP).
+      TLS_DEFAULT_SNI: ${TLS_DEFAULT_SNI:-${APP_HOST}}
       S3_BUCKET: ${S3_BUCKET:-dashboard}
       # "internal" = CA lokal Caddy (on-prem tanpa ACME); email = sertifikat ACME publik;
       # "/certs/fullchain.pem /certs/privkey.pem" = sertifikat sendiri (mount ./deploy/certs).
