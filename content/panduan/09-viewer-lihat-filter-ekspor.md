@@ -25,5 +25,5 @@ Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyari
 
 ## Mengekspor
 
-- **Satu widget** — tekan ikon ekspor di kepala widget, pilih **CSV** atau **Excel (XLSX)**, tunggu **Siap diunduh**, lalu unduh. Ekspor mengikuti filter yang sedang aktif.
+- **Satu widget** — tekan ikon ekspor di kepala widget, pilih **CSV** atau **Excel (XLSX)**, lalu tunggu sebentar — file terunduh otomatis (tekan **Unduh lagi** bila perlu). Ekspor mengikuti filter yang sedang aktif.
 - **Seluruh dashboard** — tekan **Ekspor PDF** → **Buat PDF**.

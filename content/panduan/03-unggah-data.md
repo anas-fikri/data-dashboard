@@ -24,9 +24,9 @@ Dataset adalah wadah data Anda. Satu dataset bisa berisi satu file Excel (semua 
 
 Aplikasi memproses file dalam empat langkah: _Menyiapkan file_, _Membaca isi file_, _Menyimpan data_, _Mendeteksi tipe kolom_. File besar butuh beberapa menit; Anda boleh meninggalkan halaman.
 
-Setelah selesai, kartu **Data aktif** menampilkan nama file dan jumlah baris. Lanjutkan ke **Tinjau & koreksi skema** untuk memastikan setiap kolom terbaca benar.
+Setelah selesai, kartu **Data aktif** menampilkan nama file dan waktu pembaruannya. Lanjutkan ke **Tinjau & koreksi skema** untuk memastikan setiap kolom terbaca benar.
 
 ## Tips
 
 - Baris pertama sebaiknya berisi judul kolom. Bila judul ada di baris lain (mis. ada judul laporan di atasnya), Anda bisa memilih baris judul di halaman skema.
-- **Riwayat versi** menyimpan file-file sebelumnya; versi lama bisa diaktifkan lagi.
+- **Riwayat versi** menyimpan versi aktif dan 3 versi siap terbaru; versi itu bisa diaktifkan lagi. File asli yang diunggah dihapus otomatis setelah 7 hari (datanya tetap tersimpan).

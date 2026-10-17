@@ -26,5 +26,5 @@ Satu orang bisa punya beberapa peran sekaligus. Halaman **Panduan** menampilkan 
 ## Navigasi
 
 - Menu kiri: **Beranda**, **Dataset**, **Dashboard**, **Panduan** (dan **Admin** untuk admin). Di ponsel, buka lewat tombol menu di kiri atas.
-- Tombol **Bantuan** di kepala halaman dataset, skema, dan dashboard membuka panduan untuk halaman itu tanpa meninggalkan pekerjaan Anda.
+- Tombol **Bantuan** di kepala halaman dataset, skema, dan dashboard (bagi yang bisa mengeditnya) membuka panduan untuk halaman itu tanpa meninggalkan pekerjaan Anda.
 - Menu akun (inisial nama di kanan atas): **Keamanan** untuk mengganti password, dan **Keluar**.

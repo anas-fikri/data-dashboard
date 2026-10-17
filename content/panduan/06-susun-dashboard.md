@@ -11,7 +11,7 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 
 1. Buka **Dashboard** → **Buat dashboard**.
 2. Pilih **Dataset**, isi **Nama dashboard**, lalu tekan **Buat dashboard**.
-3. Tekan **Ubah tata letak** untuk masuk mode edit.
+3. Dashboard baru langsung terbuka dalam mode edit. Untuk dashboard yang sudah ada, tekan **Ubah tata letak**.
 
 ## Menambah widget
 
@@ -21,7 +21,7 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 4. Pilih **Nilai** (_Total_, _Rata-rata_, _Jumlah baris_, _Jumlah nilai unik_, _Terkecil_, _Terbesar_) **dari kolom** angka yang dihitung.
 5. Atur **Format angka** (_Rupiah_, _Persen_, …) dan **Desimal** bila perlu.
 
-Nyalakan **Klik grafik menyaring widget lain** agar klik pada batang/irisan pai menyaring widget lain di dashboard.
+Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada batang/irisan pai menyaring widget lain di dashboard. Matikan bila tidak diperlukan.
 
 ## Mengatur tata letak
 

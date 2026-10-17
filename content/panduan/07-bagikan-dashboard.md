@@ -24,4 +24,4 @@ Nyalakan **Bagikan ke seluruh organisasi** agar semua pengguna bisa **melihat** 
 
 Di daftar **Orang dengan akses**, ganti perannya atau tekan **Cabut** → **Cabut akses**. Tekan **Selesai** untuk menutup.
 
-Dataset dan file Anda tidak ikut dibagikan — penerima hanya melihat isi dashboard.
+Penerima tidak bisa membuka halaman dataset, file asli, atau skema Anda. **Viewer** hanya melihat data yang tampil di widget (dan bisa mengekspornya). **Editor** dapat memilih kolom apa pun yang tidak disembunyikan di dataset ini saat menyusun widget — sembunyikan kolom sensitif di halaman **skema** sebelum membagikan sebagai editor.

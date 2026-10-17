@@ -2,8 +2,10 @@
  * Dev saja (T-xfzy): rekam video panduan per peran dengan Playwright terhadap app yang berjalan, lalu
  * tulis manifest untuk seed-guides.ts. Video = webm 1280×720 tanpa suara; takarir langkah tampil di
  * layar dan titik biru mengikuti kursor (klik terlihat). Akun dan data demo fiktif (tanpa data pribadi).
- *   npx tsx --env-file-if-exists=.env scripts/record-guide-videos.ts [--only adegan1,adegan2]
- * Butuh: dev server (APP_URL), worker ingest/ekspor berjalan. Keluaran: demo/guide-videos/*.webm +
+ *   node scripts/with-demo-env.mjs npx tsx --env-file-if-exists=.env scripts/record-guide-videos.ts \
+ *     [--only adegan1,adegan2]
+ * Butuh: dev server + worker yang juga dijalankan lewat with-demo-env.mjs (DB demo bersih, tanpa user
+ * nyata) dan isi panduan sudah di-seed ke DB demo. Keluaran: demo/guide-videos/*.webm +
  * videos.json, lalu: npx tsx --conditions=react-server --env-file-if-exists=.env scripts/seed-guides.ts
  *   --videos demo/guide-videos
  */
@@ -15,6 +17,11 @@ import { PrismaClient } from "@prisma/client";
 import { chromium, expect, type Browser, type Locator, type Page } from "@playwright/test";
 
 if (process.env.NODE_ENV === "production") throw new Error("ditolak: NODE_ENV=production");
+// DB dev bersama berisi user nyata dan fixture uji yang tidak boleh ikut terekam (review T-xfzy F1/F2).
+if (process.env.DEMO_ENV !== "1")
+  throw new Error(
+    "jalankan lewat scripts/with-demo-env.mjs (DB demo bersih), lihat komentar di atas",
+  );
 const BASE = process.env.APP_URL ?? "http://localhost:3100";
 const OUT = join(process.cwd(), "demo/guide-videos");
 const DATA = join(OUT, "pengiriman-cabang-2026.csv");
@@ -34,6 +41,8 @@ const ACCOUNTS = {
 type Who = keyof typeof ACCOUNTS;
 const passwords = {} as Record<Who, string>;
 const prisma = new PrismaClient();
+/** Data demo selalu dicari lewat pemiliknya (nama dashboard/dataset bisa dipakai user lain). */
+const demoOwned = { owner: { email: "demo.pemilik@pcpexpress.com" } } as const;
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -271,7 +280,7 @@ async function main() {
           1500,
         );
         await expect(p.getByTestId("dataset-active")).toBeVisible({ timeout: 120_000 });
-        await s.say("Selesai: Data aktif menampilkan nama file dan jumlah baris.", 3000);
+        await s.say("Selesai: Data aktif menampilkan nama file dan waktu pembaruannya.", 3000);
         await s.click(p.getByTestId("dataset-schema-link"), 1500);
         await s.say("Lanjutkan ke skema untuk memastikan setiap kolom terbaca benar.", 3000);
       },
@@ -284,7 +293,7 @@ async function main() {
       "owner",
       async (s) => {
         const p = s.page;
-        const d = await prisma.dataset.findFirstOrThrow({ where: { name: DATASET } });
+        const d = await prisma.dataset.findFirstOrThrow({ where: { name: DATASET, ...demoOwned } });
         await p.goto(`/datasets/${d.id}/skema`);
         await s.say("Halaman skema: nama dan tipe tiap kolom hasil deteksi otomatis.", 3200);
         // Nama kolom ada di nilai <input> (bukan teks): kolom ke-5 file demo = Omzet.
@@ -315,7 +324,8 @@ async function main() {
       "owner",
       async (s) => {
         const p = s.page;
-        await prisma.dashboard.deleteMany({ where: { name: DASHBOARD } }); // rekaman bisa diulang
+        // rekaman bisa diulang
+        await prisma.dashboard.deleteMany({ where: { name: DASHBOARD, dataset: demoOwned } });
         await p.goto("/dashboards");
         await s.say("Buat dashboard dari dataset Anda.");
         await s.click(p.getByRole("link", { name: "Buat dashboard" }).first(), 1200);
@@ -360,7 +370,9 @@ async function main() {
       "owner",
       async (s) => {
         const p = s.page;
-        const dash = await prisma.dashboard.findFirstOrThrow({ where: { name: DASHBOARD } });
+        const dash = await prisma.dashboard.findFirstOrThrow({
+          where: { name: DASHBOARD, dataset: demoOwned },
+        });
         await p.goto(`/dashboards/${dash.id}`);
         await s.say("Bagikan dashboard ke rekan lewat tombol Bagikan.");
         await s.click(p.getByTestId("share-open"), 1200);

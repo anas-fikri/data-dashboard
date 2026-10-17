@@ -19,7 +19,7 @@ Buka **Dashboard** → bagian **Dibagikan ke saya**. Di kepala dashboard tertuli
 4. Seret dan ubah ukuran kartu di layar lebar, atau pakai **Posisi** dan **Ukuran** di layar kecil.
 5. Perubahan tersimpan otomatis; tekan **Selesai** bila sudah.
 
-Salah ubah? Tekan **Urungkan** di bilah atas mode edit.
+Salah pindah, ubah ukuran, tambah, atau hapus widget? Tekan **Urungkan** di bilah atas mode edit untuk membatalkan perubahan tata letak terakhir. Perubahan di panel pengaturan widget (judul, jenis, nilai) tidak ikut diurungkan — kembalikan secara manual.
 
 ## Yang tidak bisa dilakukan editor
 

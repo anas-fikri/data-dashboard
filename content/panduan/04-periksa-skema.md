@@ -21,7 +21,7 @@ Untuk setiap kolom Anda bisa:
 
 - **Nama kolom** — ganti nama agar mudah dibaca di dashboard.
 - **Tipe** — _Teks_, _Bilangan bulat_, _Angka desimal_, _Tanggal_, _Tanggal & jam_, atau _Ya / Tidak_.
-- **Format tanggal** / **Penulisan angka** — mis. tanggal _hari/bulan/tahun_ atau angka gaya Indonesia (`1.234,5`) vs gaya AS (`1,234.5`).
+- **Format tanggal** / **Penulisan angka** — mis. tanggal _hari/bulan/tahun_ atau angka **Indonesia** (`1.234,56`) vs **internasional** (`1,234.56`).
 - **Sembunyikan** — kolom tidak tampil di dashboard (data tetap tersimpan).
 
 Centang **Hanya kolom yang perlu diperiksa** untuk melihat kolom yang punya nilai **gagal konversi** atau **penulisan angka ambigu**.

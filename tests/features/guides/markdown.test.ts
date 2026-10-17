@@ -5,6 +5,11 @@ import { GuideMarkdown, guideUrl } from "@/features/guides/markdown";
 import { guideBodyProblem, guideInputSchema } from "@/features/guides/validation";
 
 /* T-020 AC2/AC6: markdown panduan disanitasi — tag/URL berbahaya hilang, tautan luar rel aman. */
+/**
+ * Batas waktu render uji DoS: regresi yang dicari 1,4–5 s (kuadratik); suite paralel di bawah beban
+ * membuat render normal (≈ 60 ms sendirian) bisa > 200 ms, jadi ambang 1 s agar tidak flaky.
+ */
+const RENDER_MAX_MS = 1_000;
 const ORIGINS = ["https://dashboard.pcpexpress.com", "https://storage.pcpexpress.com"];
 const html = (md: string) =>
   renderToStaticMarkup(createElement(GuideMarkdown, { markdown: md, origins: ORIGINS }));
@@ -77,7 +82,7 @@ describe("GuideMarkdown (T-020)", () => {
       expect(guideBodyProblem(md), md.slice(0, 8)).not.toBeNull();
       const t = performance.now();
       expect(html(md)).toContain("Isi artikel tidak dapat ditampilkan");
-      expect(performance.now() - t).toBeLessThan(200);
+      expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
       const r = guideInputSchema.safeParse({
         title: "A",
         slug: "a",
@@ -97,14 +102,14 @@ describe("GuideMarkdown (T-020)", () => {
     expect(guideBodyProblem(edge)).toBeNull();
     const t = performance.now();
     html(edge);
-    expect(performance.now() - t).toBeLessThan(200);
+    expect(performance.now() - t).toBeLessThan(RENDER_MAX_MS);
   });
   it("review R2-1: HTML mentah tidak diurai — pembuka tanpa penutup tidak kuadratik, tampil sebagai teks", () => {
     for (const md of ["a " + "<?".repeat(9999), "<!A".repeat(6666), "<!--".repeat(5000)]) {
       expect(guideBodyProblem(md)).toBeNull();
       const t = performance.now();
       html(md);
-      expect(performance.now() - t, md.slice(0, 6)).toBeLessThan(300);
+      expect(performance.now() - t, md.slice(0, 6)).toBeLessThan(RENDER_MAX_MS);
     }
     expect(html("x <b>tebal</b>")).toContain("&lt;b&gt;tebal&lt;/b&gt;");
   });
