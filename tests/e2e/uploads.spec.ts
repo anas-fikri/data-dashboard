@@ -303,7 +303,8 @@ test.describe("unggah", () => {
     const over = await init(qp, d2, "dua.xlsx", MAX);
     expect(over.status).toBe(409);
     expect(over.body.code).toBe("QUOTA_EXCEEDED");
-    expect(String(over.body.message)).toContain("terpakai");
+    // T-024 AC 3: angka terpakai (18,6 READY + 1 UPLOADING) / limit / ukuran file, tanpa pembulatan menyesatkan.
+    expect(String(over.body.message)).toContain("terpakai 19,6 GB dari 20 GB, file ini 1 GB");
     await ctx.close();
   });
 

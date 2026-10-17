@@ -70,7 +70,8 @@ const notFound = () => fail("NOT_FOUND", "Dataset atau unggahan tidak ditemukan.
 
 function formatGiB(bytes: number): string {
   const gib = bytes / 1024 ** 3;
-  return `${gib.toLocaleString("id-ID", { maximumFractionDigits: gib < 10 ? 1 : 0 })} GB`;
+  // 1 desimal di bawah 100 GB: kuota 20 GB terpakai 19,6 tidak tampil "20 GB dari 20 GB" (T-024 AC 3).
+  return `${gib.toLocaleString("id-ID", { maximumFractionDigits: gib < 100 ? 1 : 0 })} GB`;
 }
 
 /** Nama file tampilan: tanpa path, tanpa karakter kontrol/format, ≤ 255 karakter. */
