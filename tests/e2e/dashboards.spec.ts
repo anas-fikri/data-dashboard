@@ -297,6 +297,8 @@ test.describe("dashboard", () => {
   test("AC 4: dashboard ke-11 untuk dataset yang sama ditolak (LIMIT_REACHED)", async ({
     page,
   }) => {
+    // 10 kali buat dashboard lewat UI: di suite paralel bisa > 30 dtk bawaan.
+    test.setTimeout(90_000);
     for (let n = 2; n <= 10; n++) {
       await createDashboard(page, `Dashboard ${n}`);
       await expect(page).toHaveURL(/\?mode=edit$/);

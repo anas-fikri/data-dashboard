@@ -108,12 +108,14 @@ test.describe("panduan per peran (T-022)", () => {
     await expect(start).toBeVisible();
     await start.getByRole("link", { name: "Baca panduan" }).click();
     await expect(n).toHaveURL(/\/panduan\/[a-z0-9-]+$/);
+    const read = (await n.getByRole("heading", { level: 1 }).textContent())!.trim();
     await n.getByRole("button", { name: "Tandai sudah dibaca" }).click();
     await expect(n.getByRole("status").filter({ hasText: "Sudah dibaca" })).toBeFocused();
     await n.goto("/");
     await expect(n.getByTestId("start-here")).toHaveCount(0);
-    await n.goto("/panduan");
-    await expect(n.getByTestId("guide-card").getByText("Sudah dibaca").first()).toBeVisible();
+    // Artikel pertama bisa di tab mana pun (mis. Umum dari isi seed): cari judulnya.
+    await n.goto(`/panduan?q=${encodeURIComponent(read)}`);
+    await expect(card(n, read).getByText("Sudah dibaca")).toBeVisible();
   });
 
   test("AC3: halaman skema → Bantuan membuka panel artikel konteks skema sesuai peran, tanpa pindah halaman", async () => {
