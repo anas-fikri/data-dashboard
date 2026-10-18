@@ -111,8 +111,9 @@ describe("saveSmtp / testSmtp", () => {
     });
   });
 
-  it("password dikosongkan → password yang berlaku dipakai (.env lalu file)", async () => {
-    await service.saveSmtp(ACTOR, input({ password: "" }), "ip");
+  it("password dikosongkan → password yang berlaku dipakai (.env lalu file), server yang sama", async () => {
+    const sameAsEnv = { host: "mail.contoh.co.id", username: "noreply-dashboard@contoh.co.id" };
+    await service.saveSmtp(ACTOR, input({ ...sameAsEnv, password: "" }), "ip");
     expect(JSON.parse(readFileSync(file(), "utf8")).password).toBe("dummy@pw");
     await service.saveSmtp(ACTOR, input({ password: PW }), "ip");
     await service.saveSmtp(ACTOR, input({ password: "", fromName: "Dasbor" }), "ip");
@@ -134,8 +135,8 @@ describe("saveSmtp / testSmtp", () => {
     });
   });
 
-  it("email uji: terkirim ke tujuan; galat SMTP → pesan yang bisa ditindak", async () => {
-    expect(await service.testSmtp(input(), "Anas.Fikri@pcpexpress.com")).toEqual({
+  it("email uji: terkirim + diaudit tanpa password; galat SMTP → pesan yang bisa ditindak", async () => {
+    expect(await service.testSmtp(ACTOR, input(), "Anas.Fikri@pcpexpress.com", "ip")).toEqual({
       ok: true,
       data: { to: "anas.fikri@pcpexpress.com" },
     });
@@ -145,14 +146,23 @@ describe("saveSmtp / testSmtp", () => {
         from: { name: "Data Dashboard", address: "noreply-dashboard@pcpexpress.co.id" },
       }),
     );
+    const entry = (audit.recordAudit.mock.calls[0] as unknown[])[1];
+    expect(entry).toMatchObject({
+      action: "smtp.settings.test",
+      meta: { host: "mail.pcpexpress.com", to: "anas.fikri@pcpexpress.com" },
+    });
+    expect(JSON.stringify(entry)).not.toContain(PW);
     mail.sendMail.mockRejectedValueOnce(
       Object.assign(new Error("Invalid login"), { code: "EAUTH" }),
     );
-    expect(await service.testSmtp(input(), "a@pcpexpress.com")).toMatchObject({
+    expect(await service.testSmtp(ACTOR, input(), "a@pcpexpress.com", "ip")).toMatchObject({
       ok: false,
       message: "Username atau password ditolak server SMTP.",
     });
-    expect(await service.testSmtp(input(), "bukan")).toMatchObject({ ok: false, field: "testTo" });
+    expect(await service.testSmtp(ACTOR, input(), "bukan", "ip")).toMatchObject({
+      ok: false,
+      field: "testTo",
+    });
   });
 });
 
@@ -182,5 +192,42 @@ describe("mailer() tanpa pengaturan aplikasi", () => {
       expect.objectContaining({ port: 587, requireTLS: true }),
     );
     expect(mail.close).toHaveBeenCalled();
+  });
+});
+
+describe("password yang berlaku tidak bisa dibawa ke server lain (review T-byys #1)", () => {
+  it("host/port/username berubah atau turun ke teks polos dengan password kosong → INVALID", async () => {
+    // .env: mail.contoh.co.id:465 ssl, username noreply-dashboard@contoh.co.id
+    const env = {
+      host: "mail.contoh.co.id",
+      username: "noreply-dashboard@contoh.co.id",
+      password: "",
+    };
+    for (const over of [
+      { host: "evil.contoh" },
+      { port: "25" },
+      { username: "lain@contoh.co.id" },
+      { security: "none" },
+    ]) {
+      expect(
+        await service.testSmtp(ACTOR, input({ ...env, ...over }), "a@pcpexpress.com", "ip"),
+      ).toMatchObject({ ok: false, field: "password" });
+    }
+    expect(mail.sendMail).not.toHaveBeenCalled();
+    expect(await service.testSmtp(ACTOR, input(env), "a@pcpexpress.com", "ip")).toMatchObject({
+      ok: true,
+    });
+    expect(mail.createTransport).toHaveBeenLastCalledWith(
+      expect.objectContaining({ auth: { user: env.username, pass: "dummy@pw" } }),
+    );
+  });
+
+  it("smtp:// di .env: server sungguhan → STARTTLS, relay lokal → tanpa enkripsi", () => {
+    const keep = ctx.SMTP_URL;
+    ctx.SMTP_URL = "smtp://u%40x.id:pw@mail.contoh.co.id:25";
+    expect(settings.envSmtp()).toMatchObject({ security: "starttls", port: 25 });
+    ctx.SMTP_URL = "smtp://127.0.0.1:2526";
+    expect(settings.envSmtp()).toMatchObject({ security: "none" });
+    ctx.SMTP_URL = keep;
   });
 });

@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import nodemailer from "nodemailer";
@@ -73,6 +74,21 @@ function parse(raw: unknown): SmtpResult<Parsed> {
   }
   const typed = r.data.password;
   const current = readSmtpFile() ?? envSmtp();
+  // Password yang berlaku hanya dipakai ulang untuk server + akun yang sama dan tanpa turun ke teks polos:
+  // admin (atau sesi yang dibajak) tidak bisa mengarahkannya ke server lain lewat "Kirim email uji".
+  const sameServer =
+    r.data.host.toLowerCase() === current.host.toLowerCase() &&
+    r.data.port === current.port &&
+    r.data.username === current.username &&
+    (r.data.security !== "none" || current.security === "none");
+  if (!typed && current.password && !sameServer) {
+    return {
+      ok: false,
+      code: "INVALID",
+      message: "Server, port, keamanan, atau username berubah — isi password lagi.",
+      field: "password",
+    };
+  }
   return {
     ok: true,
     data: {
@@ -118,13 +134,26 @@ export function smtpMessage(e: unknown): string {
 }
 
 /** Kirim email uji dengan isian saat ini (belum perlu disimpan). */
-export async function testSmtp(raw: unknown, toRaw: unknown): Promise<SmtpResult<{ to: string }>> {
+export async function testSmtp(
+  actor: { id: string },
+  raw: unknown,
+  toRaw: unknown,
+  ip: string,
+): Promise<SmtpResult<{ to: string }>> {
   const p = parse(raw);
   if (!p.ok) return p;
   const to = normalizeEmail(toRaw);
   if (!to)
     return { ok: false, code: "INVALID", message: "Isi email tujuan yang valid.", field: "testTo" };
   const s = p.data.settings;
+  await recordAudit(prisma, {
+    actorId: actor.id,
+    action: "smtp.settings.test",
+    targetType: "system",
+    targetId: "smtp",
+    meta: { host: s.host, port: s.port, security: s.security, to },
+    ip,
+  });
   const t = nodemailer.createTransport(transportOptions(s));
   try {
     await t.sendMail({
@@ -157,7 +186,7 @@ export async function saveSmtp(
   try {
     const file = smtpFile();
     await mkdir(dirname(file), { recursive: true });
-    const tmp = join(dirname(file), `.smtp.${process.pid}.${Date.now()}.tmp`);
+    const tmp = join(dirname(file), `.smtp.${randomUUID()}.tmp`);
     await writeFile(tmp, `${JSON.stringify(stored)}\n`, { mode: 0o600 });
     await rename(tmp, file);
   } catch (e) {

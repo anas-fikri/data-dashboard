@@ -19,6 +19,8 @@ export type AuditAction =
   | "backup.target.update"
   /** Admin mengubah pengaturan SMTP (Admin › Email); meta tanpa password (T-byys). */
   | "smtp.settings.update"
+  /** Admin mengirim email uji dengan isian SMTP (tujuan + server, tanpa password) (T-byys). */
+  | "smtp.settings.test"
   | "datasets.transfer"
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
   | "dataset.version.activate"

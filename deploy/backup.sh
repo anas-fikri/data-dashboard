@@ -147,44 +147,77 @@ admin_emails() {
   fi
 }
 
-# Nilai untuk file konfigurasi curl (-K): kutip ganda dengan \ dan " di-escape.
+# Nilai untuk file konfigurasi curl (-K): kutip ganda dengan \ dan " di-escape; karakter kontrol (baris baru
+# → baris konfigurasi tambahan) ditolak.
 curl_q() {
   local v=$1
+  [[ $v != *[[:cntrl:]]* ]] || return 1
   v=${v//\\/\\\\}
   v=${v//\"/\\\"}
   printf '"%s"' "$v"
 }
 
+# smtp.json dari user app yang lolos validasi ketat (aturan sama dengan form Admin › Email); selain itu kosong.
+smtp_app_json() {
+  local j
+  j=$(app_json smtp.json) || { echo "[$stamp] peringatan: smtp.json tidak terbaca, memakai SMTP_URL" >&2; return 0; }
+  [ -n "$j" ] || return 0
+  if ! jq -e '(.host | type == "string" and test("^[A-Za-z0-9.-]{1,253}$"))
+      and (.port | type == "number" and . == floor and . >= 1 and . <= 65535)
+      and (.security | IN("ssl", "starttls", "none"))
+      and ((.username // "") | type == "string" and test("^[!-~]{0,254}$"))
+      and ((.password // "") | type == "string" and test("^[ -~]{0,256}$"))
+      and (.fromAddress | type == "string" and test("^[a-z0-9._%+-]+@[a-z0-9-]+(\\.[a-z0-9-]+)+$"))
+      and ((.fromName // "") | type == "string" and (explode | all(. >= 32 and . != 127)))' \
+    <<<"$j" >/dev/null 2>&1; then
+    echo "[$stamp] peringatan: smtp.json tidak valid, memakai SMTP_URL" >&2
+    return 0
+  fi
+  printf '%s' "$j"
+}
+
 # Konfigurasi curl SMTP: Admin › Email (app/smtp.json) bila ada, selain itu SMTP_URL (.env). Gagal → kode 1.
 smtp_config() {
-  local j host port sec user pass
-  if j=$(app_json smtp.json) && [ -n "$j" ]; then
+  local j host port sec user pass q
+  j=$(smtp_app_json)
+  if [ -n "$j" ]; then
     host=$(jq -r .host <<<"$j")
     port=$(jq -r .port <<<"$j")
     sec=$(jq -r .security <<<"$j")
     user=$(jq -r '.username // ""' <<<"$j")
     pass=$(jq -r '.password // ""' <<<"$j")
     case $sec in
-      ssl) printf 'url = %s\n' "$(curl_q "smtps://$host:$port")" ;;
-      starttls) printf 'url = %s\nssl-reqd\n' "$(curl_q "smtp://$host:$port")" ;;
-      *) printf 'url = %s\n' "$(curl_q "smtp://$host:$port")" ;;
-    esac
-    [ -z "$user" ] || printf 'user = %s\n' "$(curl_q "$user:$pass")"
+      ssl) q=$(curl_q "smtps://$host:$port") && printf 'url = %s\n' "$q" ;;
+      starttls) q=$(curl_q "smtp://$host:$port") && printf 'url = %s\nssl-reqd\n' "$q" ;;
+      *) q=$(curl_q "smtp://$host:$port") && printf 'url = %s\n' "$q" ;;
+    esac || return 1
+    if [ -n "$user" ]; then
+      q=$(curl_q "$user:$pass") || return 1
+      printf 'user = %s\n' "$q"
+    fi
     return 0
   fi
   [ -n "${SMTP_URL:-}" ] || return 1
   # Perilaku lama: STARTTLS bila ditawarkan server.
-  printf 'url = %s\nssl\n' "$(curl_q "$SMTP_URL")"
+  q=$(curl_q "$SMTP_URL") || return 1
+  printf 'url = %s\nssl\n' "$q"
 }
 
 # Pengirim (variabel from = header, addr = amplop): Admin › Email bila ada, selain itu MAIL_FROM.
 smtp_from() {
   local j name
-  if j=$(app_json smtp.json) && [ -n "$j" ]; then
+  j=$(smtp_app_json)
+  if [ -n "$j" ]; then
     addr=$(jq -r .fromAddress <<<"$j")
     name=$(jq -r '.fromName // ""' <<<"$j")
-    from=${name:+$name <$addr>}
-    from=${from:-$addr}
+    # Nama aman → di-quote; selain itu (koma, kutip, non-ASCII) encoded-word RFC 2047.
+    if [ -z "$name" ]; then
+      from=$addr
+    elif [[ $name =~ ^[A-Za-z0-9\ ._-]+$ ]]; then
+      from="\"$name\" <$addr>"
+    else
+      from="=?UTF-8?B?$(printf '%s' "$name" | base64 | tr -d '\n')?= <$addr>"
+    fi
     return 0
   fi
   from=${MAIL_FROM:-}

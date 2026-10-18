@@ -39,7 +39,7 @@ export async function testSmtpAction(
   input: SmtpInput,
   to: string,
 ): Promise<SmtpResult<{ to: string }>> {
-  return asAdmin("testSmtp", () => service.testSmtp(input, to));
+  return asAdmin("testSmtp", (actor, ip) => service.testSmtp(actor, input, to, ip));
 }
 
 export async function saveSmtpAction(input: SmtpInput): Promise<SmtpResult<SmtpView>> {

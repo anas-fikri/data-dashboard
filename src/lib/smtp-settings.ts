@@ -65,7 +65,8 @@ export function envSmtp(): SmtpSettings {
   return {
     host: u.hostname,
     port,
-    security: ssl ? "ssl" : port === 587 || port === 1587 ? "starttls" : "none",
+    // smtp:// ke server sungguhan = STARTTLS; teks polos hanya untuk relay lokal (Mailpit dev).
+    security: ssl ? "ssl" : /^(localhost|127\.0\.0\.1|::1)$/.test(u.hostname) ? "none" : "starttls",
     username: decodeURIComponent(u.username),
     password: decodeURIComponent(u.password),
     ...parseFrom(env().MAIL_FROM),
