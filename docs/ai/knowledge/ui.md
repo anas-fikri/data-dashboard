@@ -1,3 +1,4 @@
 # Knowledge: ui
 
 - UI: wajib pakai plugin frontend-expert (/frontend-expert:ui|design|polish|audit|test-ui) untuk semua komponen/halaman; icon hanya @tabler/icons-react (cek registry tabler-icons skill dulu), Lucide hanya fallback bila Tabler tidak punya. Keputusan user 2026-10-11. <!-- aitk:k date=2026-10-11 tags=ui,conventions source=manual pin -->
+- Grid virtual dengan jutaan baris di browser terbentur batas tinggi elemen (Chromium/WebKit 33.554.428 px, Firefox ± 17,9 jt px; AG Grid memakai 32 jt / 4 jt px) sehingga gulir 'diregangkan' 10×/80×: wheel, seret ke akhir, ke-baris, dan fokus keyboard dalam perlu koreksi sendiri dan diuji di ketiga engine; di sentuh lebih aman paging blok ≤ floor((4.000.000 − viewport)/tinggi baris). <!-- aitk:k date=2026-10-17 task=T-035 tags=ui,spike,adr -->
