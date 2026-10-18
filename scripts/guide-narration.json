@@ -1,0 +1,203 @@
+{
+  "$comment": "Naskah video panduan (T-3k08). caption = takarir singkat di layar; voice = kalimat yang diucapkan narator (bahasa lisan, ramah) dan sekaligus isi takarir VTT. Urutan = urutan s.step() di scripts/record-guide-videos.ts. Ubah voiceId/model lewat scripts/guide-tts.mjs --samples.",
+  "voice": {
+    "voiceId": null,
+    "model": "eleven_multilingual_v2",
+    "settings": {
+      "stability": 0.45,
+      "similarity_boost": 0.8,
+      "style": 0.15,
+      "use_speaker_boost": true,
+      "speed": 1.0
+    }
+  },
+  "scenes": {
+    "pemilik-unggah": [
+      {
+        "caption": "Dataset adalah wadah data Anda. Mulai dengan Buat dataset.",
+        "voice": "Dataset adalah tempat menyimpan data Anda. Kita mulai dengan menekan tombol Buat dataset."
+      },
+      {
+        "caption": "Isi nama dataset, lalu tekan Buat dataset.",
+        "voice": "Beri nama yang mudah dikenali, lalu tekan Buat dataset."
+      },
+      {
+        "caption": "Pilih atau seret file Excel / CSV, maksimal 1 GB.",
+        "voice": "Sekarang pilih file Excel atau CSV, atau cukup seret ke kotak ini. Ukurannya bisa sampai satu gigabyte."
+      },
+      {
+        "caption": "File diunggah lalu diproses otomatis. Unggahan yang terputus bisa dilanjutkan.",
+        "voice": "File langsung diunggah dan diproses otomatis. Kalau koneksi sempat terputus, unggahan bisa dilanjutkan dari bagian terakhir."
+      },
+      {
+        "caption": "Selesai: Data aktif menampilkan nama file dan waktu pembaruannya.",
+        "voice": "Selesai. Bagian Data aktif sekarang menampilkan nama file dan kapan terakhir diperbarui."
+      },
+      {
+        "caption": "Lanjutkan ke skema untuk memastikan setiap kolom terbaca benar.",
+        "voice": "Langkah berikutnya, buka skema untuk memastikan setiap kolom terbaca dengan benar."
+      }
+    ],
+    "pemilik-skema": [
+      {
+        "caption": "Halaman skema: nama dan tipe tiap kolom hasil deteksi otomatis.",
+        "voice": "Di halaman skema, Anda bisa melihat nama dan tipe setiap kolom yang terdeteksi otomatis."
+      },
+      {
+        "caption": "Ganti nama kolom agar mudah dibaca di dashboard.",
+        "voice": "Nama kolom bisa diganti supaya lebih mudah dibaca di dashboard. Misalnya, Omzet kita ubah menjadi Omzet dalam rupiah."
+      },
+      {
+        "caption": "Tipe kolom bisa diubah: teks, angka, tanggal, atau ya/tidak.",
+        "voice": "Tipe kolom juga bisa disesuaikan: teks, angka, tanggal, atau ya dan tidak."
+      },
+      {
+        "caption": "Perubahan berlaku setelah Simpan perubahan — tanpa unggah ulang.",
+        "voice": "Perubahan baru berlaku setelah Anda menekan Simpan perubahan, dan file tidak perlu diunggah ulang."
+      },
+      {
+        "caption": "Selesai diterapkan. Contoh data menampilkan 50 baris pertama.",
+        "voice": "Perubahan sudah diterapkan. Di bagian bawah, Contoh data menampilkan lima puluh baris pertama."
+      }
+    ],
+    "pemilik-dashboard": [
+      {
+        "caption": "Buat dashboard dari dataset Anda.",
+        "voice": "Sekarang kita buat dashboard dari dataset tadi."
+      },
+      {
+        "caption": "Mode edit: tambah widget, perubahan tersimpan otomatis.",
+        "voice": "Dashboard baru langsung terbuka dalam mode edit. Tambahkan widget, dan setiap perubahan tersimpan otomatis."
+      },
+      {
+        "caption": "Widget Angka menampilkan satu nilai ringkas.",
+        "voice": "Widget Angka cocok untuk satu nilai ringkas, seperti total omzet."
+      },
+      {
+        "caption": "Grafik batang: kelompokkan menurut Cabang, nilai Total jumlah paket.",
+        "voice": "Untuk grafik batang, kita kelompokkan per cabang dengan nilai total jumlah paket."
+      },
+      {
+        "caption": "Tambahkan kolom filter agar pembaca bisa menyaring data.",
+        "voice": "Lalu tambahkan kolom filter, supaya pembaca bisa menyaring datanya sendiri."
+      },
+      {
+        "caption": "Dashboard siap dilihat.",
+        "voice": "Tekan Selesai, dan dashboard Anda sudah siap dilihat."
+      }
+    ],
+    "pemilik-bagikan": [
+      {
+        "caption": "Bagikan dashboard ke rekan lewat tombol Bagikan.",
+        "voice": "Untuk berbagi dengan rekan kerja, tekan tombol Bagikan."
+      },
+      {
+        "caption": "Peran: Hanya lihat.",
+        "voice": "Pilih rekannya, lalu tentukan perannya. Untuk yang cukup melihat, pilih Hanya lihat."
+      },
+      {
+        "caption": "Peran: Bisa mengedit widget.",
+        "voice": "Untuk rekan yang ikut menyusun dashboard, pilih Bisa mengedit widget."
+      },
+      {
+        "caption": "Atau bagikan ke seluruh organisasi (hanya lihat).",
+        "voice": "Anda juga bisa membagikannya ke seluruh organisasi, dengan akses hanya lihat."
+      }
+    ],
+    "editor-ubah": [
+      {
+        "caption": "Dashboard yang dibagikan kepada Anda ada di Dibagikan ke saya.",
+        "voice": "Dashboard yang dibagikan kepada Anda muncul di bagian Dibagikan ke saya."
+      },
+      {
+        "caption": "Sebagai editor, tekan Ubah tata letak untuk mengubah widget.",
+        "voice": "Sebagai editor, tekan Ubah tata letak untuk mulai mengubah widget."
+      },
+      {
+        "caption": "Ganti jenis tampilan, mis. menjadi grafik Pai.",
+        "voice": "Buka pengaturan widget, lalu ganti jenis tampilannya. Misalnya, menjadi grafik pai."
+      },
+      {
+        "caption": "Tersimpan otomatis. Tekan Selesai untuk kembali ke mode lihat.",
+        "voice": "Perubahan tersimpan otomatis. Tekan Selesai untuk kembali ke mode lihat."
+      }
+    ],
+    "viewer-filter-ekspor": [
+      {
+        "caption": "Saring data lewat bilah Filter, mis. pilih cabang.",
+        "voice": "Gunakan bilah filter untuk menyaring data. Misalnya, kita pilih cabang Jakarta dan Bandung."
+      },
+      {
+        "caption": "Semua widget mengikuti filter yang aktif.",
+        "voice": "Semua widget langsung mengikuti filter yang aktif."
+      },
+      {
+        "caption": "Ekspor data widget ke CSV atau Excel lewat ikon unduh.",
+        "voice": "Data setiap widget bisa diekspor ke CSV atau Excel lewat ikon unduh di pojok kartu."
+      },
+      { "caption": "File siap diunduh.", "voice": "Setelah selesai diproses, file siap diunduh." },
+      {
+        "caption": "Hapus semua filter untuk kembali ke seluruh data.",
+        "voice": "Untuk kembali melihat seluruh data, tekan Hapus semua filter."
+      }
+    ],
+    "admin-pengguna": [
+      {
+        "caption": "Admin mengelola pengguna lewat menu Admin.",
+        "voice": "Sebagai admin, Anda mengelola pengguna lewat menu Admin."
+      },
+      {
+        "caption": "Menu Aksi: jadikan admin, nonaktifkan, aktifkan, atau alihkan dataset.",
+        "voice": "Cari penggunanya, lalu buka menu Aksi. Di sini Anda bisa menjadikannya admin, menonaktifkan, mengaktifkan kembali, atau mengalihkan datasetnya."
+      },
+      {
+        "caption": "Setiap aksi dicatat di log audit.",
+        "voice": "Setiap tindakan admin tercatat di log audit."
+      }
+    ],
+    "admin-panduan": [
+      {
+        "caption": "Artikel panduan ditulis admin di Admin → Panduan.",
+        "voice": "Artikel panduan ditulis oleh admin, lewat menu Admin, bagian Panduan."
+      },
+      {
+        "caption": "Pilih peran pembaca dan, bila perlu, halaman bantuannya.",
+        "voice": "Isi judulnya, pilih peran pembaca, dan bila perlu, halaman tempat artikel ini muncul sebagai bantuan."
+      },
+      {
+        "caption": "Tulis isi dengan markdown; pratinjau tampil di samping. Simpan sebagai draf.",
+        "voice": "Isinya ditulis dengan format markdown, dan pratinjaunya langsung tampil di samping. Simpan dulu sebagai draf."
+      },
+      {
+        "caption": "Video panduan: unggah rekaman layar, lalu tambahkan takarir.",
+        "voice": "Setelah disimpan, muncul bagian Video panduan. Unggah rekaman layar di sini, lalu tambahkan takarir supaya tetap bisa diikuti tanpa suara."
+      },
+      {
+        "caption": "Terbitkan artikel dari daftar Panduan agar tampil bagi pembaca.",
+        "voice": "Terakhir, terbitkan artikelnya dari daftar panduan agar tampil bagi pembaca."
+      }
+    ],
+    "umum-mengenal": [
+      {
+        "caption": "Masuk dengan email perusahaan Anda.",
+        "voice": "Masuk dengan email perusahaan dan kata sandi Anda."
+      },
+      {
+        "caption": "Beranda menampilkan dataset dan dashboard yang bisa Anda akses.",
+        "voice": "Beranda menampilkan dataset dan dashboard yang bisa Anda akses."
+      },
+      {
+        "caption": "Baru pertama kali? Kartu Mulai di sini mengarahkan ke panduan dasar.",
+        "voice": "Kalau baru pertama kali memakai aplikasi ini, kartu Mulai di sini akan mengarahkan Anda ke panduan dasar."
+      },
+      {
+        "caption": "Menu kiri: Beranda, Dataset, Dashboard, dan Panduan.",
+        "voice": "Lewat menu di sebelah kiri, Anda bisa berpindah ke Dataset, Dashboard, dan Panduan."
+      },
+      {
+        "caption": "Panduan dikelompokkan per peran. Cari topik lewat kolom pencarian.",
+        "voice": "Halaman Panduan dikelompokkan dalam tab sesuai peran Anda. Topik tertentu bisa dicari lewat kolom pencarian."
+      }
+    ]
+  }
+}

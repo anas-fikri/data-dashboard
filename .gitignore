@@ -56,3 +56,7 @@ yarn-error.log*
 !/deploy/certs/.gitkeep
 /deploy/ca-root.crt
 /demo/guide-videos/*.poster.png
+# T-3k08: takarir hasil rekaman, cache suara narasi, dan contoh suara (dibuat ulang dari naskah)
+/demo/guide-videos/*.vtt
+/demo/guide-videos/audio/
+/demo/guide-videos/voice-samples/

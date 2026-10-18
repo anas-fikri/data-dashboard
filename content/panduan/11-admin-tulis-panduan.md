@@ -27,3 +27,11 @@ Di halaman ubah artikel, bagian **Video panduan**:
 1. Isi **Judul video**, tekan **Pilih video** (.mp4 atau .webm, maks. **500 MB**).
 2. Tekan **Unggah video**. Durasi dan poster diambil otomatis; tekan **Batalkan** bila perlu.
 3. Maksimal 5 video per artikel. Video rekaman layar sebaiknya pendek (1–3 menit) dan tanpa data pribadi.
+
+### Takarir
+
+Video bernarasi sebaiknya diberi takarir agar tetap bisa diikuti tanpa suara:
+
+1. Di bawah video, tekan **Tambah takarir** lalu pilih file **WebVTT (.vtt)**, maks. **200 KB**.
+2. Pembaca menyalakannya lewat tombol takarir (CC) di pemutar.
+3. **Ganti takarir** untuk memperbaiki teks; **Hapus takarir** bila tidak diperlukan lagi.

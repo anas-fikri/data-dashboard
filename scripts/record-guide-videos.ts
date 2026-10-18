@@ -1,20 +1,25 @@
 /*
- * Dev saja (T-xfzy): rekam video panduan per peran dengan Playwright terhadap app yang berjalan, lalu
- * tulis manifest untuk seed-guides.ts. Video = webm 1280×720 tanpa suara; takarir langkah tampil di
- * layar dan titik biru mengikuti kursor (klik terlihat). Akun dan data demo fiktif (tanpa data pribadi).
+ * Dev saja (T-xfzy, T-3k08): rekam video panduan per peran dengan Playwright terhadap app yang berjalan,
+ * lalu tulis manifest untuk seed-guides.ts. Video = webm 1280×720 bernarasi suara bahasa Indonesia:
+ * naskah di scripts/guide-narration.json, audio dibuat dulu oleh scripts/guide-tts.mjs, dan setiap
+ * langkah (s.step) menunggu kalimatnya selesai diucapkan — tempo video mengikuti suara. Takarir singkat
+ * tampil di layar, takarir lengkap (.vtt) dari naskah, titik biru mengikuti kursor. Akun dan data demo
+ * fiktif (tanpa data pribadi).
  *   node scripts/with-demo-env.mjs npx tsx --env-file-if-exists=.env scripts/record-guide-videos.ts \
- *     [--only adegan1,adegan2]
+ *     [--only adegan1,adegan2] [--silent]   (--silent: tanpa audio, durasi kalimat diperkirakan)
  * Butuh: dev server + worker yang juga dijalankan lewat with-demo-env.mjs (DB demo bersih, tanpa user
  * nyata) dan isi panduan sudah di-seed ke DB demo. Keluaran: demo/guide-videos/*.webm +
  * videos.json, lalu: npx tsx --conditions=react-server --env-file-if-exists=.env scripts/seed-guides.ts
  *   --videos demo/guide-videos
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { PrismaClient } from "@prisma/client";
 import { chromium, expect, type Browser, type Locator, type Page } from "@playwright/test";
+import { AUDIO_DIR, audioName } from "./guide-audio.mjs";
+import { assemble, toVtt } from "./guide-assemble.mjs";
 
 if (process.env.NODE_ENV === "production") throw new Error("ditolak: NODE_ENV=production");
 // DB dev bersama berisi user nyata dan fixture uji yang tidak boleh ikut terekam (review T-xfzy F1/F2).
@@ -45,6 +50,28 @@ const prisma = new PrismaClient();
 const demoOwned = { owner: { email: "demo.pemilik@pcpexpress.com" } } as const;
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+type Line = { caption: string; voice: string };
+type Cue = { t: number; dur: number; text: string; file: string | null };
+const NARRATION = JSON.parse(readFileSync("scripts/guide-narration.json", "utf8")) as {
+  voice: Record<string, unknown>;
+  scenes: Record<string, Line[]>;
+};
+const SILENT = process.argv.includes("--silent");
+const audioSec = (file: string) =>
+  Number(
+    execFileSync("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      file,
+    ])
+      .toString()
+      .trim(),
+  );
 
 /** Data demo deterministik: 1.200 baris pengiriman Jan–Jun 2026, 6 cabang, 3 layanan. */
 function writeDemoCsv() {
@@ -145,7 +172,13 @@ const OVERLAY = `(() => {
 
 class Scene {
   caption = "";
-  constructor(readonly page: Page) {
+  readonly timeline: Cue[] = [];
+  private next = 0;
+  private readonly t0 = Date.now();
+  constructor(
+    readonly page: Page,
+    readonly lines: Line[],
+  ) {
     page.on("load", () => void this.apply());
   }
   private apply() {
@@ -153,8 +186,39 @@ class Scene {
       .evaluate(`window.__cap && window.__cap(${JSON.stringify(this.caption)})`)
       .catch(() => {});
   }
-  async say(text: string, ms = 2600) {
-    this.caption = text;
+  /**
+   * Langkah berikutnya di naskah: takarir layar tampil, kalimat narasi diucapkan mulai detik ini, dan
+   * langkah menunggu sampai kalimat selesai (+ jeda napas) atau minimal `minMs`.
+   */
+  async step(minMs = 600) {
+    const line = this.lines[this.next++];
+    if (!line)
+      throw new Error(
+        `naskah habis di langkah ${this.next} — tambah kalimat di guide-narration.json`,
+      );
+    this.caption = line.caption;
+    await this.apply();
+    const file = join(AUDIO_DIR, audioName(NARRATION.voice, line.voice));
+    const voiced = existsSync(file);
+    if (!voiced && !SILENT)
+      throw new Error(`audio belum ada untuk "${line.voice}" — jalankan scripts/guide-tts.mjs`);
+    // Tanpa audio: perkiraan ± 2,6 kata per detik (tempo narasi santai).
+    const dur = voiced ? audioSec(file) : line.voice.split(/\s+/).length / 2.6;
+    this.timeline.push({
+      t: Date.now() - this.t0,
+      dur,
+      text: line.voice,
+      file: voiced ? file : null,
+    });
+    await wait(Math.max(minMs, dur * 1000 + 450));
+  }
+  /** Semua kalimat naskah adegan ini sudah dipakai (urutan naskah = urutan langkah). */
+  done() {
+    if (this.next !== this.lines.length)
+      throw new Error(`naskah ${this.lines.length} kalimat, terpakai ${this.next}`);
+  }
+  async clear(ms: number) {
+    this.caption = "";
     await this.apply();
     await wait(ms);
   }
@@ -196,7 +260,7 @@ async function login(browser: Browser, who: Who): Promise<string> {
 }
 
 type SceneFn = (s: Scene) => Promise<void>;
-const manifest: { slug: string; file: string; title: string }[] = [];
+const manifest: { slug: string; file: string; title: string; captions: string }[] = [];
 
 async function record(
   browser: Browser,
@@ -215,18 +279,28 @@ async function record(
     ...(who ? { storageState: await login(browser, who) } : {}),
   });
   await ctx.addInitScript({ content: OVERLAY });
+  const lines = NARRATION.scenes[name];
+  if (!lines) throw new Error(`adegan ${name} tidak ada di guide-narration.json`);
   const page = await ctx.newPage();
-  const scene = new Scene(page);
+  const scene = new Scene(page, lines);
   try {
     await fn(scene);
-    await scene.say("", 600);
+    scene.done();
+    await scene.clear(900);
   } finally {
     const video = page.video();
     await ctx.close();
-    if (video) renameSync(await video.path(), join(OUT, `${name}.webm`));
+    // Linimasa diukur dari halaman dibuat (= awal rekaman); audio ditempatkan pada detik yang sama.
+    if (video) assemble(await video.path(), join(OUT, `${name}.webm`), scene.timeline);
   }
-  manifest.push({ slug: meta.slug, file: `${name}.webm`, title: meta.title });
-  console.log(`terekam: ${name}`);
+  writeFileSync(join(OUT, `${name}.vtt`), toVtt(scene.timeline));
+  manifest.push({
+    slug: meta.slug,
+    file: `${name}.webm`,
+    title: meta.title,
+    captions: `${name}.vtt`,
+  });
+  console.log(`terekam: ${name} (${scene.timeline.filter((c) => c.file).length} kalimat bersuara)`);
 }
 
 const sidebar = (p: Page, label: string) =>
@@ -266,23 +340,20 @@ async function main() {
       async (s) => {
         const p = s.page;
         await p.goto("/datasets");
-        await s.say("Dataset adalah wadah data Anda. Mulai dengan Buat dataset.");
+        await s.step();
         await s.click(p.getByRole("link", { name: "Buat dataset" }).first(), 600);
-        await s.say("Isi nama dataset, lalu tekan Buat dataset.", 600);
+        await s.step(600);
         await s.type(p.getByLabel("Nama dataset"), DATASET);
         await s.click(p.getByRole("button", { name: "Buat dataset" }), 300);
-        await s.say("Pilih atau seret file .xlsx / .csv, maksimal 1 GB.", 2400);
+        await s.step(2400);
         await s.page.hover('[data-testid="upload-dropzone"] button');
         await wait(600);
         await p.getByTestId("upload-input").setInputFiles(DATA);
-        await s.say(
-          "File diunggah lalu diproses otomatis. Unggahan yang terputus bisa dilanjutkan.",
-          1500,
-        );
+        await s.step(1500);
         await expect(p.getByTestId("dataset-active")).toBeVisible({ timeout: 120_000 });
-        await s.say("Selesai: Data aktif menampilkan nama file dan waktu pembaruannya.", 3000);
+        await s.step(3000);
         await s.click(p.getByTestId("dataset-schema-link"), 1500);
-        await s.say("Lanjutkan ke skema untuk memastikan setiap kolom terbaca benar.", 3000);
+        await s.step(3000);
       },
     );
 
@@ -295,23 +366,23 @@ async function main() {
         const p = s.page;
         const d = await prisma.dataset.findFirstOrThrow({ where: { name: DATASET, ...demoOwned } });
         await p.goto(`/datasets/${d.id}/skema`);
-        await s.say("Halaman skema: nama dan tipe tiap kolom hasil deteksi otomatis.", 3200);
+        await s.step(3200);
         // Nama kolom ada di nilai <input> (bukan teks): kolom ke-5 file demo = Omzet.
         const col = p.getByTestId("schema-column").nth(4);
         await expect(col.getByLabel("Nama kolom")).toHaveValue("Omzet");
         await col.scrollIntoViewIfNeeded();
-        await s.say("Ganti nama kolom agar mudah dibaca di dashboard.", 1200);
+        await s.step(1200);
         const nama = col.getByLabel("Nama kolom");
         await nama.fill("");
         await s.type(nama, "Omzet (Rp)");
-        await s.say("Tipe kolom bisa diubah: teks, angka, tanggal, atau ya/tidak.", 2600);
-        await s.say("Perubahan berlaku setelah Simpan perubahan — tanpa unggah ulang.", 1200);
+        await s.step(2600);
+        await s.step(1200);
         await s.click(
           p.getByTestId("schema-save-bar").getByRole("button", { name: "Simpan perubahan" }),
           1500,
         );
         await expect(p.getByTestId("recast-done")).toBeVisible({ timeout: 120_000 });
-        await s.say("Selesai diterapkan. Contoh data menampilkan 50 baris pertama.", 1500);
+        await s.step(1500);
         await p.getByRole("heading", { name: "Contoh data" }).scrollIntoViewIfNeeded();
         await wait(2500);
       },
@@ -327,31 +398,31 @@ async function main() {
         // rekaman bisa diulang
         await prisma.dashboard.deleteMany({ where: { name: DASHBOARD, dataset: demoOwned } });
         await p.goto("/dashboards");
-        await s.say("Buat dashboard dari dataset Anda.");
+        await s.step();
         await s.click(p.getByRole("link", { name: "Buat dashboard" }).first(), 1200);
         // Opsi berlabel "<nama> (n/maks dashboard)".
         await s.click(p.getByLabel("Dataset"), 400);
         await s.click(p.getByRole("option", { name: new RegExp(`^${DATASET}`) }), 600);
         await s.type(p.getByLabel("Nama dashboard"), DASHBOARD);
         await s.click(p.getByRole("button", { name: "Buat dashboard" }), 1800);
-        await s.say("Mode edit: tambah widget, perubahan tersimpan otomatis.", 1500);
+        await s.step(1500);
         let panel = await addWidget(s, "Total omzet", "Angka");
         await s.choose(panel.getByLabel("Nilai", { exact: true }), "Total");
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Omzet (Rp)");
         await s.choose(panel.getByLabel("Format angka", { exact: true }), "Rupiah (Rp 1.234)");
-        await s.say("Widget Angka (KPI) menampilkan satu nilai ringkas.", 2200);
+        await s.step(2200);
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
         panel = await addWidget(s, "Paket per cabang", "Batang");
         await s.choose(panel.getByLabel("Nilai", { exact: true }), "Total");
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Jumlah paket");
-        await s.say("Grafik batang: kelompokkan menurut Cabang, nilai Total jumlah paket.", 2800);
+        await s.step(2800);
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
         panel = await addWidget(s, "Omzet per bulan", "Garis");
         await s.choose(panel.getByLabel("Kelompokkan menurut", { exact: true }), "Tanggal kirim");
         await s.choose(panel.getByLabel("Rentang waktu", { exact: true }), "Per bulan");
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Omzet (Rp)");
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
-        await s.say("Tambahkan kolom filter agar pembaca bisa menyaring data.", 1200);
+        await s.step(1200);
         const filters = p.getByTestId("dashboard-filter-columns");
         await s.click(filters.getByRole("button", { name: "Tambah kolom filter" }), 600);
         await s.click(p.getByRole("menuitem", { name: /^Cabang/ }), 1200);
@@ -359,7 +430,11 @@ async function main() {
           p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
           1500,
         );
-        await s.say("Dashboard siap dilihat.", 3000);
+        // Kalimat penutup baru diucapkan setelah isi widget tampil (bukan kerangka memuat).
+        await expect(widgetTitled(p, "Total omzet").getByText(/Rp\s?[\d.]+/)).toBeVisible({
+          timeout: 60_000,
+        });
+        await s.step(3000);
       },
     );
 
@@ -374,7 +449,7 @@ async function main() {
           where: { name: DASHBOARD, dataset: demoOwned },
         });
         await p.goto(`/dashboards/${dash.id}`);
-        await s.say("Bagikan dashboard ke rekan lewat tombol Bagikan.");
+        await s.step();
         await s.click(p.getByTestId("share-open"), 1200);
         const dialog = p.getByTestId("share-dialog");
         for (const [who, role] of [
@@ -386,11 +461,11 @@ async function main() {
             dialog.locator(`[data-testid=share-option][data-email="${ACCOUNTS[who].email}"]`),
             600,
           );
-          await s.say(`Peran: ${role}.`, 600);
+          await s.step(600);
           await s.choose(dialog.getByTestId("share-role"), role);
           await s.click(dialog.getByTestId("share-add"), 1500);
         }
-        await s.say("Atau bagikan ke seluruh organisasi (hanya lihat).", 2400);
+        await s.step(2400);
         await s.click(dialog.getByRole("button", { name: "Selesai" }), 1500);
       },
     );
@@ -403,18 +478,18 @@ async function main() {
       async (s) => {
         const p = s.page;
         await p.goto("/dashboards");
-        await s.say("Dashboard yang dibagikan kepada Anda ada di Dibagikan ke saya.");
+        await s.step();
         await s.click(p.getByRole("link", { name: DASHBOARD }).first(), 1500);
-        await s.say("Sebagai editor, tekan Ubah tata letak untuk mengubah widget.", 1200);
+        await s.step(1200);
         await s.click(p.getByTestId("edit-dashboard"), 1500);
         const w = widgetTitled(p, "Paket per cabang");
         await s.click(w.getByRole("button", { name: "Pengaturan Paket per cabang" }), 900);
         const panel = p.getByTestId("widget-panel");
-        await s.say("Ganti jenis tampilan, mis. menjadi grafik Pai.", 900);
+        await s.step(900);
         await s.click(panel.getByText("Pai", { exact: true }), 1500);
         await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
-        await s.say("Tersimpan otomatis. Tekan Selesai untuk kembali ke mode lihat.", 1200);
+        await s.step(1200);
         await s.click(
           p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
           2500,
@@ -431,21 +506,21 @@ async function main() {
         const p = s.page;
         await p.goto("/dashboards");
         await s.click(p.getByRole("link", { name: DASHBOARD }).first(), 1800);
-        await s.say("Saring data lewat bilah Filter, mis. pilih cabang.", 1000);
+        await s.step(1000);
         await s.click(p.locator('[data-testid=filter-slicer][data-column="Cabang"]'), 900);
         for (const v of ["Jakarta", "Bandung"])
           await s.click(p.locator(`[data-testid=filter-slicer-option][data-value="${v}"]`), 500);
         await p.keyboard.press("Escape");
-        await s.say("Semua widget mengikuti filter yang aktif.", 3000);
-        await s.say("Ekspor data widget ke CSV atau Excel lewat ikon ekspor.", 900);
+        await s.step(3000);
+        await s.step(900);
         const w = widgetTitled(p, "Paket per cabang");
         await s.click(w.getByTestId("widget-export"), 900);
         await s.click(p.getByTestId("export-xlsx"), 600);
         await expect(p.getByTestId("export-download").first()).toBeVisible({ timeout: 60_000 });
-        await s.say("File siap diunduh.", 2600);
+        await s.step(2600);
         await p.keyboard.press("Escape");
         await s.click(p.getByTestId("filter-clear-all"), 1500);
-        await s.say("Hapus semua filter untuk kembali ke seluruh data.", 2500);
+        await s.step(2500);
       },
     );
 
@@ -457,15 +532,15 @@ async function main() {
       async (s) => {
         const p = s.page;
         await p.goto("/");
-        await s.say("Admin mengelola pengguna lewat menu Admin.", 1000);
+        await s.step(1000);
         await s.click(sidebar(p, "Admin"), 1200);
         await s.click(p.getByRole("link", { name: /Pengguna/ }).first(), 1500);
         await s.type(p.getByPlaceholder("Cari email atau nama"), "demo");
         await s.click(p.getByRole("button", { name: "Cari" }), 1500);
-        await s.say("Menu Aksi: jadikan admin, nonaktifkan, aktifkan, atau alihkan dataset.", 900);
+        await s.step(900);
         await s.click(p.getByRole("button", { name: `Aksi untuk ${ACCOUNTS.viewer.email}` }), 2600);
         await p.keyboard.press("Escape");
-        await s.say("Setiap aksi dicatat di log audit.", 2400);
+        await s.step(2400);
       },
     );
 
@@ -476,20 +551,35 @@ async function main() {
       "admin",
       async (s) => {
         const p = s.page;
+        // rekaman bisa diulang (slug unik)
+        await prisma.guideArticle.deleteMany({ where: { slug: "contoh-artikel-panduan" } });
         await p.goto("/admin/panduan");
-        await s.say("Artikel panduan ditulis admin di Admin → Panduan.");
+        await s.step();
         await s.click(p.getByRole("link", { name: "Artikel baru" }), 1200);
         await s.type(p.getByLabel("Judul"), "Contoh artikel panduan");
-        await s.say("Pilih peran pembaca dan, bila perlu, halaman bantuannya.", 900);
+        await s.step(900);
         await s.choose(p.getByLabel("Peran"), "Viewer");
         await s.type(
           p.getByLabel("Isi (markdown)"),
           "## Langkah\n\n- Buka **Dashboard**\n- Pilih filter\n",
         );
-        await s.say(
-          "Pratinjau tampil di samping. Simpan sebagai draf, lalu terbitkan dari daftar.",
-          3600,
-        );
+        await s.step(1200);
+        await s.click(p.getByRole("button", { name: "Simpan sebagai draf" }), 1200);
+        await p.waitForURL(/\/admin\/panduan\/[a-z0-9]{20,32}/);
+        await p.getByRole("heading", { name: "Video panduan" }).scrollIntoViewIfNeeded();
+        await wait(600);
+        await s.step(1500);
+        await s.click(sidebar(p, "Admin"), 800);
+        await p.goto("/admin/panduan");
+        // Draf baru ada di akhir daftar: tunjukkan tombol Terbitkan-nya (tidak ditekan).
+        const row = p.getByTestId("guide-row").filter({ hasText: "Contoh artikel panduan" });
+        await row.scrollIntoViewIfNeeded();
+        const publish = await row.getByRole("button", { name: /^Terbitkan/ }).boundingBox();
+        if (publish)
+          await p.mouse.move(publish.x + publish.width / 2, publish.y + publish.height / 2, {
+            steps: 28,
+          });
+        await s.step(1800);
       },
     );
 
@@ -500,21 +590,25 @@ async function main() {
       null,
       async (s) => {
         const p = s.page;
+        // Kartu "Mulai di sini" hanya untuk pengguna yang belum membaca panduan apa pun.
+        await prisma.guideRead.deleteMany({ where: { user: { email: ACCOUNTS.viewer.email } } });
         await p.goto("/login");
-        await s.say("Masuk dengan email perusahaan Anda.");
+        await s.step();
         await s.type(p.getByLabel("Email perusahaan"), ACCOUNTS.viewer.email);
         await s.type(p.locator("input[name=password]"), passwords.viewer);
         await s.click(p.getByRole("button", { name: "Masuk" }), 1500);
-        await s.say("Beranda menampilkan dataset dan dashboard yang bisa Anda akses.", 3200);
-        await s.say("Menu kiri: Beranda, Dataset, Dashboard, dan Panduan.", 1200);
+        await s.step(2400);
+        const start = p.getByText("Mulai di sini", { exact: true });
+        await start.scrollIntoViewIfNeeded();
+        const box = await start.boundingBox();
+        if (box) await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 24 });
+        await s.step(1500);
+        await s.step(1200);
         for (const item of ["Dataset", "Dashboard"]) {
           await s.click(sidebar(p, item), 1600);
         }
         await s.click(sidebar(p, "Panduan"), 1500);
-        await s.say(
-          "Panduan menampilkan tab sesuai peran Anda. Cari topik lewat kolom pencarian.",
-          3500,
-        );
+        await s.step(3500);
         await s.type(p.getByLabel("Cari panduan"), "filter");
         await s.click(p.getByRole("button", { name: "Cari" }), 2500);
       },

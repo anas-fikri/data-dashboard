@@ -1,11 +1,14 @@
 /*
  * Isi awal panduan (T-xfzy): artikel terbit dari content/panduan/NN-<slug>.md dan (opsional) video
- * rekaman layar dari folder berisi videos.json [{ slug, file, title }].
+ * rekaman layar dari folder berisi videos.json [{ slug, file, title, captions? }].
  *   npx tsx --conditions=react-server --env-file-if-exists=.env scripts/seed-guides.ts \
- *     [--videos demo/guide-videos] [--update]
+ *     [--videos demo/guide-videos] [--update] [--replace-videos]
  * Idempoten per slug: artikel yang sudah ada dilewati (suntingan admin aman) kecuali --update (isi,
  * judul, peran, konteks ditimpa; urutan dan status tetap). Video dilewati bila artikel sudah punya
- * video dengan judul sama. Durasi (ffprobe) dan poster PNG (ffmpeg detik 1) bila ffmpeg tersedia.
+ * video dengan judul sama, kecuali --replace-videos (video lama + poster + takarir dihapus lewat jadwal
+ * pembersihan yang sama dengan aplikasi, lalu diganti rekaman baru — T-3k08). Takarir WebVTT (`captions`)
+ * ikut diunggah; video lama tanpa takarir dilengkapi. Durasi (ffprobe) dan poster PNG (ffmpeg detik 1)
+ * bila ffmpeg tersedia.
  */
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -14,17 +17,22 @@ import { join } from "node:path";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { parseGuideFile } from "../src/features/guides/content";
 import {
+  CAPTION_MAX_BYTES,
   POSTER_MAX_BYTES,
   VIDEO_MAX_BYTES,
   isPng,
+  isVtt,
   sniffVideo,
   videoExtOf,
 } from "../src/features/guides/media";
+import { removeVideoObjects, scheduleVideoCleanup } from "../src/features/guides/videos";
 import { prisma } from "../src/lib/db";
 import {
   VIDEO_CONTENT_TYPE,
+  guideCaptionKey,
   guidePosterKey,
   guideVideoKey,
+  putGuideCaption,
   putGuidePoster,
 } from "../src/lib/storage/guides";
 import { bucket, s3Internal } from "../src/lib/storage/s3";
@@ -34,6 +42,7 @@ const arg = (name: string) => {
   return i > 0 ? process.argv[i + 1] : undefined;
 };
 const UPDATE = process.argv.includes("--update");
+const REPLACE = process.argv.includes("--replace-videos");
 const VIDEOS = arg("--videos");
 const DIR = join(process.cwd(), "content/panduan");
 
@@ -110,6 +119,17 @@ interface ManifestEntry {
   /** Dari scripts/guide-video-meta.mjs (mesin perekam punya ffmpeg; image produksi tidak). */
   durationSec?: number;
   poster?: string;
+  /** Takarir WebVTT dari naskah narasi (scripts/record-guide-videos.ts, T-3k08). */
+  captions?: string;
+}
+
+/** Isi takarir dari manifest, divalidasi sama seperti unggahan admin (WEBVTT, UTF-8, ≤ 200 KB). */
+function captionOf(dir: string, v: ManifestEntry): Uint8Array | null {
+  if (!v.captions) return null;
+  const bytes = new Uint8Array(readFileSync(join(dir, v.captions)));
+  if (bytes.byteLength > CAPTION_MAX_BYTES || !isVtt(bytes))
+    throw new Error(`${v.captions}: bukan WebVTT ≤ 200 KB`);
+  return bytes;
 }
 
 /** Metadata dari manifest; bila tidak ada, coba ffprobe/ffmpeg lokal. */
@@ -128,7 +148,21 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
     const articleId = ids.get(v.slug);
     if (!articleId) throw new Error(`videos.json: artikel ${v.slug} tidak ada di content/panduan`);
     const found = await prisma.guideVideo.findFirst({ where: { articleId, title: v.title } });
-    if (found) {
+    if (found && REPLACE) {
+      await prisma.$transaction(async (tx) => {
+        await tx.guideVideo.deleteMany({ where: { id: found.id } });
+        await scheduleVideoCleanup(tx, [found]);
+      });
+      await removeVideoObjects([found]);
+      console.log(`ganti video: ${v.slug} · ${v.title}`);
+    } else if (found) {
+      const caption = found.captionKey ? null : captionOf(dir, v);
+      if (caption) {
+        const key = guideCaptionKey(found.id);
+        await putGuideCaption(key, caption);
+        await prisma.guideVideo.update({ where: { id: found.id }, data: { captionKey: key } });
+        console.log(`lengkapi takarir: ${v.slug} · ${v.title}`);
+      }
       // Lengkapi durasi/poster yang dulu kosong (seed tanpa metadata); selain itu lewati.
       const meta = found.durationSec && found.posterKey ? null : metaOf(dir, v);
       if (meta && (meta.durationSec || meta.poster)) {
@@ -168,6 +202,12 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
       posterKey = guidePosterKey(id);
       await putGuidePoster(posterKey, meta.poster);
     }
+    const caption = captionOf(dir, v);
+    let captionKey: string | null = null;
+    if (caption) {
+      captionKey = guideCaptionKey(id);
+      await putGuideCaption(captionKey, caption);
+    }
     await prisma.guideVideo.create({
       data: {
         id,
@@ -177,11 +217,14 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
         sizeBytes: size,
         objectKey,
         posterKey,
+        captionKey,
         durationSec: meta.durationSec,
         status: "READY",
       },
     });
-    console.log(`video: ${v.slug} · ${v.title} (${meta.durationSec ?? "?"} dtk)`);
+    console.log(
+      `video: ${v.slug} · ${v.title} (${meta.durationSec ?? "?"} dtk${captionKey ? ", bertakarir" : ""})`,
+    );
   }
 }
 
