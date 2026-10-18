@@ -155,8 +155,16 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    (olympus → files.pcpexpress.com: IP publik kantor 115.178.128.130 karena lewat NAT). Lalu di `.env.prod`:
    `BACKUP_REMOTE=offsite:<folder>` dan `BACKUP_LOCAL_RETENTION_DAYS=7` (salinan 30 hari di off-VM,
    7 hari di VM agar disk VM hemat), lalu `$C up -d --no-deps --force-recreate backup`.
-   Remote S3 juga bisa (isi `deploy/rclone.conf` manual). Tanpa remote, backup hanya di VM (peringatan
-   di log).
+   **Alternatif S3** (server S3 di NAS, mis. Synology dengan paket object storage, MinIO, RustFS):
+   buat bucket + access key khusus backup yang hanya berhak di bucket itu, lalu
+   ```bash
+   bash deploy/offsite-s3.sh <endpoint> <bucket>[/folder]
+   ```
+   Access key + secret diketik di prompt (tidak tampil); skrip menulis remote `offsite` (S3) ke
+   `deploy/rclone.conf` lalu menguji tulis/baca/hapus satu berkas. `BACKUP_REMOTE=offsite:<bucket>[/folder]`.
+   Paling tahan ransomware: NAS yang **menarik** dari VM (Hyper Backup/rsync terjadwal dari NAS, akun VM
+   tidak bisa menghapus salinan di NAS) atau snapshot Btrfs tak-terhapus di shared folder tujuan.
+   Tanpa remote, backup hanya di VM (peringatan di log).
 3. Uji sekarang: `$C run --rm --no-deps backup backup.sh` → log `arsip: dashboard-<UTC>.tar.age` dan
    `tersalin ke offsite:…`.
 4. Verifikasi arsip tanpa memulihkan (dari laptop admin, kunci lewat stdin):
