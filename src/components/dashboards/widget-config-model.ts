@@ -42,6 +42,46 @@ export const AGG_LABEL: Record<Agg, string> = {
 };
 export const AGG_ORDER: Agg[] = ["sum", "avg", "count", "count_distinct", "min", "max"];
 
+/**
+ * Pilihan "Nilai" di panel (T-3z0y). Spec tetap memakai agg "count": tanpa kolom = Jumlah baris (semua baris),
+ * dengan kolom = Jumlah terisi (baris yang kolom itu berisi; sel kosong/hanya spasi sudah NULL sejak ingest),
+ * setara COUNTA di Excel.
+ */
+export type AggChoice = Agg | "count_filled";
+export const COUNT_FILLED_LABEL = "Jumlah terisi";
+
+export const aggChoiceOf = (m: { agg: Agg; column?: number }): AggChoice =>
+  m.agg === "count" && m.column !== undefined ? "count_filled" : m.agg;
+
+/** Opsi "Nilai": "Jumlah terisi" tepat di bawah "Jumlah baris" bila sheet punya kolom. */
+export function aggChoiceOptions(
+  type: WidgetType,
+  columns: SourceColumn[],
+): { value: AggChoice; label: string }[] {
+  return aggOptions(type, columns).flatMap((a): { value: AggChoice; label: string }[] =>
+    a === "count" && columns.length > 0
+      ? [
+          { value: "count", label: AGG_LABEL.count },
+          { value: "count_filled", label: COUNT_FILLED_LABEL },
+        ]
+      : [{ value: a, label: AGG_LABEL[a] }],
+  );
+}
+
+/** Ukuran setelah pilihan "Nilai" berganti: kolom lama dipertahankan bila masih boleh dipakai. */
+export function measureForChoice(
+  choice: AggChoice,
+  prev: { agg: Agg; column?: number },
+  columns: SourceColumn[],
+  type: WidgetType,
+): { agg: Agg; column?: number } {
+  if (choice === "count") return { agg: "count" };
+  const agg: Agg = choice === "count_filled" ? "count" : choice;
+  const allowed = columnsForAgg(agg, columns, type);
+  const keep = allowed.some((c) => c.pos === prev.column);
+  return { agg, column: keep ? prev.column! : allowed[0]!.pos };
+}
+
 export const GRAIN_LABEL = {
   day: "Per hari",
   week: "Per minggu",
@@ -140,13 +180,14 @@ function defaultMeasure(
   allowed: readonly Agg[] = AGG_ORDER,
   type: WidgetType = "kpi",
 ): Measure {
-  if (
-    prev &&
-    allowed.includes(prev.agg) &&
-    (prev.agg === "count" ||
-      columnsForAgg(prev.agg, columns, type).some((c) => c.pos === prev.column))
-  ) {
-    return prev.agg === "count" ? { agg: "count" } : prev;
+  if (prev && allowed.includes(prev.agg)) {
+    // Jumlah terisi tetap memakai kolomnya bila kolom itu ada di sheet ini; selain itu Jumlah baris.
+    if (prev.agg === "count") {
+      return prev.column !== undefined && columns.some((c) => c.pos === prev.column)
+        ? prev
+        : { agg: "count" };
+    }
+    if (columnsForAgg(prev.agg, columns, type).some((c) => c.pos === prev.column)) return prev;
   }
   const num = columns.find((c) => isNumeric(c.type));
   return num ? { agg: "sum", column: num.pos } : { agg: "count" };

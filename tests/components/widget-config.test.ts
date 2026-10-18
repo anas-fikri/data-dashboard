@@ -9,9 +9,12 @@ import {
   type ChartTheme,
 } from "@/components/widgets/chart-option";
 import {
+  aggChoiceOf,
+  aggChoiceOptions,
   aggOptions,
   columnsForAgg,
   defaultConfig,
+  measureForChoice,
   missingColumns,
   sortLabel,
   type Source,
@@ -799,5 +802,65 @@ describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak shee
     expect(ok).not.toContain("pilih sheet");
     expect(ok).not.toContain('aria-invalid="true"');
     expect(status(ok)).toBe("Perubahan tersimpan otomatis.");
+  });
+});
+
+/* T-3z0y: "Jumlah terisi" (COUNTA) = count dengan kolom; "Jumlah baris" = count tanpa kolom. */
+describe("Jumlah terisi", () => {
+  const cols = sources[0]!.columns;
+
+  it("ditawarkan tepat di bawah Jumlah baris, juga untuk pai", () => {
+    expect(aggChoiceOptions("bar", cols).map((o) => o.value)).toEqual([
+      "sum",
+      "avg",
+      "count",
+      "count_filled",
+      "count_distinct",
+      "min",
+      "max",
+    ]);
+    expect(aggChoiceOptions("pie", cols).map((o) => o.label)).toEqual([
+      "Total",
+      "Jumlah baris",
+      "Jumlah terisi",
+    ]);
+  });
+
+  it("count tanpa kolom = Jumlah baris, count dengan kolom = Jumlah terisi (spec lama tetap bermakna sama)", () => {
+    expect(aggChoiceOf({ agg: "count" })).toBe("count");
+    expect(aggChoiceOf({ agg: "count", column: 1 })).toBe("count_filled");
+    expect(aggChoiceOf({ agg: "sum", column: 3 })).toBe("sum");
+  });
+
+  it("memilih Jumlah terisi memakai kolom teks (kolom lama dipertahankan bila ada)", () => {
+    expect(measureForChoice("count_filled", { agg: "count" }, cols, "kpi")).toEqual({
+      agg: "count",
+      column: 1,
+    });
+    expect(measureForChoice("count_filled", { agg: "sum", column: 3 }, cols, "bar")).toEqual({
+      agg: "count",
+      column: 3,
+    });
+    expect(measureForChoice("count", { agg: "count", column: 1 }, cols, "bar")).toEqual({
+      agg: "count",
+    });
+  });
+
+  it("ganti jenis widget tidak menghapus kolom Jumlah terisi", () => {
+    const kpi = {
+      type: "kpi",
+      spec: {
+        sheetId: S1,
+        measure: { agg: "count", column: 1 },
+        format: { style: "auto", decimals: 0 },
+      },
+    } as WidgetConfig;
+    expect(defaultConfig("bar", sources, kpi)).toMatchObject({
+      spec: { measure: { agg: "count", column: 1 } },
+    });
+    // Sheet lain tanpa kolom itu: kembali ke Jumlah baris.
+    expect(defaultConfig("kpi", sources, kpi, S2)).toMatchObject({
+      spec: { measure: { agg: "count" } },
+    });
   });
 });

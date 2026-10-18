@@ -141,8 +141,9 @@ const AGG_TYPES: Record<Agg, ColumnType[] | "any"> = {
   max: ORDERED,
 };
 
+// count dengan kolom = baris yang kolom itu berisi (COUNTA); count tanpa kolom berlabel "Jumlah baris" di bawah.
 const AGG_LABEL: Record<Agg, string> = {
-  count: "Jumlah",
+  count: "Jumlah terisi",
   count_distinct: "Jumlah unik",
   sum: "Total",
   avg: "Rata-rata",

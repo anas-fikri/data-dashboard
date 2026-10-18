@@ -21,11 +21,12 @@ import { Choice, ColumnChoice } from "./config-fields";
 import { CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { deferredTask } from "./config-focus";
 import {
-  AGG_LABEL,
   TYPE_OPTIONS,
-  aggOptions,
+  aggChoiceOf,
+  aggChoiceOptions,
   columnsForAgg,
   measureColumnText,
+  measureForChoice,
   missingNotice,
   type SourceColumn,
 } from "./widget-config-model";
@@ -194,7 +195,7 @@ export function TableColumns({
   );
 }
 
-/** Agregasi + kolomnya. Pai hanya Total/Jumlah baris (bagian dari keseluruhan). */
+/** Agregasi + kolomnya. Pai hanya Total/Jumlah baris/Jumlah terisi (bagian dari keseluruhan). */
 export function MeasureFields({
   type,
   columns,
@@ -211,16 +212,11 @@ export function MeasureFields({
       <Choice
         label="Nilai"
         testId="config-agg"
-        value={measure.agg}
-        options={aggOptions(type, columns).map((a) => ({ value: a, label: AGG_LABEL[a] }))}
-        onChange={(agg) => {
-          if (agg === "count") return onChange({ agg });
-          const allowed = columnsForAgg(agg, columns, type);
-          const keep = allowed.some((c) => c.pos === measure.column);
-          onChange({ agg, column: keep ? measure.column! : allowed[0]!.pos });
-        }}
+        value={aggChoiceOf(measure)}
+        options={aggChoiceOptions(type, columns)}
+        onChange={(choice) => onChange(measureForChoice(choice, measure, columns, type))}
       />
-      {/* count(kolom) hanya dari API/spec lama — tetap ditampilkan agar kolom yang hilang bisa diganti. */}
+      {/* Jumlah baris = semua baris (tanpa kolom); agregasi lain termasuk Jumlah terisi memakai kolom. */}
       {measure.agg !== "count" || measure.column !== undefined ? (
         <ColumnChoice
           label="dari kolom"
@@ -233,7 +229,8 @@ export function MeasureFields({
       ) : null}
       {type === "pie" ? (
         <p className="text-xs text-muted-foreground">
-          Pai menampilkan bagian dari keseluruhan, jadi hanya untuk Total atau Jumlah baris.
+          Pai menampilkan bagian dari keseluruhan, jadi hanya untuk Total, Jumlah baris, atau Jumlah
+          terisi.
         </p>
       ) : null}
     </div>
