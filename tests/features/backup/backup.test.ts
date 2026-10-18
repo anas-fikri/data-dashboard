@@ -61,6 +61,7 @@ describe("parseOffsite", () => {
     ["endpoint", "ftp://nas:21"],
     ["endpoint", "https://admin:pw@nas:9000"],
     ["endpoint", "https://nas:9000/bucket"],
+    ["endpoint", "http://exa\nmple.com"],
     ["bucket", "Backup_Data"],
     ["prefix", "data/../lain"],
     ["prefix", "data dashboard"],
@@ -138,7 +139,7 @@ describe("saveOffsite / testOffsite", () => {
       data: { hasSecret: true, bucket: "backup-data-dashboard" },
     });
     expect(JSON.stringify(r)).not.toContain(SECRET);
-    const file = join(ctx.dir, "offsite.json");
+    const file = join(ctx.dir, "app/offsite.json");
     expect(statSync(file).mode & 0o777).toBe(0o600);
     expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({
       enabled: true,
@@ -170,9 +171,9 @@ describe("saveOffsite / testOffsite", () => {
       "ip",
     );
     expect(r).toMatchObject({ ok: true, data: { bucket: "lain-bucket", hasSecret: true } });
-    expect(JSON.parse(readFileSync(join(ctx.dir, "offsite.json"), "utf8")).secretAccessKey).toBe(
-      SECRET,
-    );
+    expect(
+      JSON.parse(readFileSync(join(ctx.dir, "app/offsite.json"), "utf8")).secretAccessKey,
+    ).toBe(SECRET);
     expect((audit.recordAudit.mock.calls[1] as unknown[])[1]).toMatchObject({
       meta: { secretChanged: false },
     });

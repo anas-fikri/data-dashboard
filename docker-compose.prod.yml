@@ -258,7 +258,7 @@ services:
       # Kunci SSH + known_hosts salinan off-VM (deploy/offsite-key.sh); folder kosong bila tidak dipakai.
       - ./deploy/offsite:/config/offsite:ro
       - backups:/backups
-      # Target off-VM dari Admin › Backup (offsite.json, dibaca) + status.json (ditulis) — T-7psf.
+      # Target off-VM dari Admin › Backup (app/offsite.json, dibaca) + status.json (ditulis) — T-7psf.
       - backup-config:/backup-config
     logging: *logging
     networks: [data]

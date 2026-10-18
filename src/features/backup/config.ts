@@ -7,12 +7,13 @@ import type { BackupAlert, BackupStatus, OffsiteField } from "./types";
 
 /*
  * Target backup off-VM yang diisi admin (T-7psf) dan status dari service backup, di volume bersama
- * backup-config: offsite.json (600, ditulis app, dibaca deploy/backup.sh) dan status.json (ditulis
- * backup.sh). Secret hanya ada di offsite.json — tidak di DB (tidak ikut arsip backup) dan tidak di log.
+ * backup-config: app/offsite.json (600, ditulis app, dibaca deploy/backup.sh) dan status.json (ditulis
+ * backup.sh; folder induk milik root sehingga app hanya bisa menulis di app/). Secret hanya ada di
+ * offsite.json — tidak di DB (tidak ikut arsip backup) dan tidak di log.
  */
 
 const configDir = () => env().BACKUP_CONFIG_DIR ?? join(process.cwd(), ".cache", "backup-config");
-const OFFSITE = "offsite.json";
+const OFFSITE = join("app", "offsite.json");
 const STATUS = "status.json";
 /** Backup harian yang lebih tua dari ini dianggap tidak berjalan (jadwal 24 jam + jeda durasi). */
 export const STALE_MS = 26 * 60 * 60 * 1000;
@@ -40,11 +41,12 @@ export const offsiteSchema = z.object({
     .string()
     .trim()
     .max(200)
+    .regex(/^[\x21-\x7e]+$/, "Endpoint tidak boleh berisi spasi atau karakter khusus.")
     .refine(
       isEndpoint,
       "Endpoint harus alamat http:// atau https:// tanpa folder, mis. https://s3.contoh.lan:9000.",
     )
-    .transform((v) => v.replace(/\/$/, "")),
+    .transform((v) => new URL(v).origin),
   bucket: z
     .string()
     .trim()
@@ -121,11 +123,11 @@ export async function readOffsite(): Promise<StoredOffsite | null> {
 
 /** Tulis atomik (file sementara + rename), hanya bisa dibaca pemilik (user app) dan root (service backup). */
 export async function writeOffsite(value: StoredOffsite): Promise<void> {
-  const dir = configDir();
+  const dir = join(configDir(), "app");
   await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.${OFFSITE}.${process.pid}.tmp`);
+  const tmp = join(dir, `.offsite.${process.pid}.${Date.now()}.tmp`);
   await writeFile(tmp, `${JSON.stringify(value)}\n`, { mode: 0o600 });
-  await rename(tmp, join(dir, OFFSITE));
+  await rename(tmp, join(configDir(), OFFSITE));
 }
 
 const statusSchema = z.object({

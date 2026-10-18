@@ -16,7 +16,7 @@ const A = uniqueEmail("backup-admin");
 const U = uniqueEmail("backup-user");
 const DIR = join(process.cwd(), ".cache/backup-config");
 const STATUS = join(DIR, "status.json");
-const OFFSITE = join(DIR, "offsite.json");
+const OFFSITE = join(DIR, "app/offsite.json");
 const S3 = {
   endpoint: envFileValue("S3_ENDPOINT")!,
   bucket: envFileValue("S3_BUCKET")!,

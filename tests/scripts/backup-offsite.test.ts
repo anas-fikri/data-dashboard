@@ -7,6 +7,7 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   utimesSync,
   writeFileSync,
 } from "node:fs";
@@ -35,7 +36,10 @@ env | grep '^RCLONE_CONFIG_APPOFFSITE_' | sort >"$FAKE/rclone-env.txt"
 map() { case $1 in locals3:*) echo "$FAKE/locals3" ;; *:*) echo "$FAKE/remote/\${1#*:}" ;; *) echo "$1" ;; esac; }
 case $cmd in
   copy)
-    case $2 in *:*) [ -f "$FAKE/down" ] && { echo "ERROR : dial tcp 10.0.0.9:9000: i/o timeout" >&2; exit 1; } ;; esac
+    case $2 in *:*)
+      [ -f "$FAKE/down" ] && { echo "ERROR : dial tcp 10.0.0.9:9000: i/o timeout" >&2; exit 1; }
+      [ -f "$FAKE/down-silent" ] && exit 1 ;;
+    esac
     d=$(map "$2"); mkdir -p "$d"
     case $1 in locals3:*) echo obj >"$d/obj" ;; *) cp -p "$1"/dashboard-* "$d/" ;; esac ;;
   delete) [ -f "$FAKE/down" ] && exit 1 ;;
@@ -45,6 +49,7 @@ exit 0`,
   curl: `[ -f "$FAKE/smtp-down" ] && exit 7
 n=$(ls "$FAKE" | grep -c '^mail-')
 cat >"$FAKE/smtp-config-$n.txt"
+echo "$*" >"$FAKE/curl-args-$n.txt"
 rcpt=""; file=""
 while [ $# -gt 0 ]; do
   case $1 in --mail-rcpt) rcpt="$rcpt $2"; shift ;; -T) file=$2; shift ;; esac; shift
@@ -57,6 +62,10 @@ const backups = () => join(root, "backups");
 const cfg = () => join(root, "cfg");
 
 function run(...args: string[]) {
+  return runWith({}, ...args);
+}
+
+function runWith(extra: Record<string, string>, ...args: string[]) {
   const r = spawnSync("bash", [SCRIPT, ...args], {
     encoding: "utf8",
     env: {
@@ -76,6 +85,7 @@ function run(...args: string[]) {
       MAIL_FROM: "Data Dashboard <bot@pcpexpress.com>",
       APP_URL: "https://dash.contoh",
       BACKUP_REMOTE: "",
+      ...extra,
     },
   });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -103,8 +113,9 @@ function oldArchive(name: string, ageDays: number) {
 }
 
 function enableTarget() {
+  mkdirSync(join(cfg(), "app"), { recursive: true });
   writeFileSync(
-    join(cfg(), "offsite.json"),
+    join(cfg(), "app/offsite.json"),
     JSON.stringify({
       enabled: true,
       endpoint: "http://10.0.0.9:9000",
@@ -221,7 +232,7 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
   });
 
   it("backup gagal (DB tidak terjangkau) → exit ≠ 0, status failed, email ke daftar admin terakhir", () => {
-    writeFileSync(join(cfg(), ".admins"), "a@pcpexpress.com\n");
+    writeFileSync(join(backups(), ".admins"), "a@pcpexpress.com\n");
     writeFileSync(join(root, "pgdown"), "");
     const r = run();
     expect(r.code).not.toBe(0);
@@ -235,5 +246,63 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
     expect(mails()[0]).toContain("RCPT: a@pcpexpress.com");
     expect(mails()[0]).toContain("Subject: Backup Data Dashboard GAGAL");
     expect(readdirSync(backups()).filter((f) => f.startsWith(".work-"))).toEqual([]);
+  });
+});
+
+describe("backup.sh: kasus tepi (review T-7psf)", () => {
+  it("email: --mail-rcpt-allowfails, Message-ID, badan CRLF", () => {
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    expect(readFileSync(join(root, "curl-args-0.txt"), "utf8")).toContain("--mail-rcpt-allowfails");
+    const mail = mails()[0]!;
+    expect(mail).toMatch(/Message-ID: <[^>]+@pcpexpress\.com>\r\n/);
+    const body = mail.split("\r\n\r\n")[1]!;
+    expect(body).toContain("\r\n");
+    expect(body.replace(/\r\n/g, "")).not.toContain("\n");
+  });
+
+  it("rclone gagal tanpa pesan (mis. OOM) → arsip tetap tercatat berhasil, status tertunda", () => {
+    enableTarget();
+    writeFileSync(join(root, "down-silent"), "");
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(status()).toMatchObject({ state: "pending", lastBackupOk: true, pending: 1 });
+    const s = run("--sync");
+    expect(s.code, s.out).toBe(0);
+    expect(status()).toMatchObject({ state: "pending" });
+  });
+
+  it("retensi lokal lebih panjang dari retensi penuh → arsip 40 hari tetap ada", () => {
+    oldArchive("dashboard-20251101T000000Z.tar.age", 40);
+    expect(runWith({ BACKUP_LOCAL_RETENTION_DAYS: "60" }).code).toBe(0);
+    expect(local()).toContain("dashboard-20251101T000000Z.tar.age");
+  });
+
+  it("offsite.json berupa symlink → ditolak, arsip lama tidak dibuang, galat tampil", () => {
+    mkdirSync(join(cfg(), "app"), { recursive: true });
+    writeFileSync(
+      join(root, "lain.json"),
+      JSON.stringify({ enabled: true, endpoint: "http://x", bucket: "b" }),
+    );
+    symlinkSync(join(root, "lain.json"), join(cfg(), "app/offsite.json"));
+    oldArchive("dashboard-20260101T000000Z.tar.age", 10);
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(local()).toContain("dashboard-20260101T000000Z.tar.age");
+    expect(status()).toMatchObject({
+      state: "off",
+      error: expect.stringContaining("tidak terbaca"),
+    });
+    expect(readFileSync(join(root, "rclone.log"), "utf8")).not.toContain("appoffsite:");
+  });
+
+  it("cadangan daftar admin di folder backup (khusus root), bukan di folder yang bisa ditulis app", () => {
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    expect(existsSync(join(backups(), ".admins"))).toBe(true);
+    expect(existsSync(join(cfg(), ".admins"))).toBe(false);
+    expect(readdirSync(cfg()).filter((f) => f.startsWith(".status."))).toEqual([]);
   });
 });

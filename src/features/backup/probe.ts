@@ -2,14 +2,15 @@ import "server-only";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
+  ListObjectsV2Command,
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
 import type { ParsedOffsite } from "./config";
 
 /*
- * Tes koneksi target off-VM dari server aplikasi (T-7psf): tulis → baca → hapus satu objek kecil, sama
- * dengan hak yang dipakai backup.sh (salin + retensi). Hanya kelas galat yang dikembalikan ke admin,
+ * Tes koneksi target off-VM dari server aplikasi (T-7psf): daftar → tulis → baca → hapus satu objek
+ * kecil — hak yang dipakai backup.sh (rclone copy/delete mendaftar isi bucket, lalu salin + retensi). Hanya kelas galat yang dikembalikan ke admin,
  * bukan isi respons, agar fitur ini tidak jadi alat membaca layanan internal lain.
  */
 
@@ -25,7 +26,7 @@ export function probeMessage(e: unknown): string {
     return "Access key atau secret ditolak.";
   }
   if (code === "AccessDenied" || code === "Forbidden") {
-    return "Kunci ini tidak punya hak menulis, membaca, dan menghapus di bucket tersebut.";
+    return "Kunci ini tidak punya hak mendaftar, menulis, membaca, dan menghapus di bucket tersebut.";
   }
   if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|ALTNAME/.test(net)) {
     return "Sertifikat TLS endpoint tidak dipercaya (mis. self-signed). Pakai sertifikat yang valid atau endpoint http:// di jaringan internal.";
@@ -62,6 +63,10 @@ export async function probeOffsite(c: ParsedOffsite): Promise<string | null> {
   const Key = `${c.prefix ? `${c.prefix}/` : ""}.uji-koneksi-${Date.now()}`;
   const opts = () => ({ abortSignal: AbortSignal.timeout(TIMEOUT_MS) });
   try {
+    await client.send(
+      new ListObjectsV2Command({ Bucket: c.bucket, Prefix: c.prefix || undefined, MaxKeys: 1 }),
+      opts(),
+    );
     await client.send(
       new PutObjectCommand({ Bucket: c.bucket, Key, Body: "ok", ContentType: "text/plain" }),
       opts(),

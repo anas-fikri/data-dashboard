@@ -39,10 +39,10 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/* \
   && groupadd -g 10001 app && useradd -u 10001 -g app -M -s /usr/sbin/nologin app \
-  && mkdir -p /var/cache/dashboard /backup-config && chown app:app /var/cache/dashboard /backup-config
+  && mkdir -p /var/cache/dashboard /backup-config/app && chown app:app /var/cache/dashboard /backup-config/app
 
 FROM runtime-base AS app
-# BACKUP_CONFIG_DIR: volume bersama service backup (T-7psf); milik user app agar volume baru mewarisinya.
+# BACKUP_CONFIG_DIR: volume bersama service backup (T-7psf): app menulis app/offsite.json, membaca status.json.
 ENV HOSTNAME=0.0.0.0 PORT=3100 QUERY_CACHE_DIR=/var/cache/dashboard/query BACKUP_CONFIG_DIR=/backup-config
 COPY --from=build /app/.next/standalone ./
 # Pemulihan admin darurat (T-019): docker compose exec app node scripts/admin-restore.mjs <email>.

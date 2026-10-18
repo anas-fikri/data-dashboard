@@ -149,6 +149,8 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    `backup.sh --sync` tiap 30 menit, dan admin aktif diberi email sekali per perubahan status (tertunda,
    gagal, pulih) + banner di aplikasi. Status: `status.json` di volume yang sama (tampil di Admin › Backup).
    Konfigurasi dari aplikasi aktif → mengalahkan `BACKUP_REMOTE`.
+   Kunci backup perlu hak daftar/tulis/baca/hapus (salin + retensi 30 hari); aktifkan **versioning atau
+   object-lock** di bucket target agar salinan tidak bisa dihapus permanen oleh VM yang dibobol.
    Off-VM lewat SFTP (server file/NAS kantor, tanpa aplikasi). Pakai **akun khusus non-admin** yang hanya punya satu
    folder backup (mis. di Synology DSM: buat user `dashboard-backup`, shared folder
    `backup-data-dashboard` baca/tulis hanya untuk user itu, aplikasi SFTP diizinkan). Jangan memakai akun
