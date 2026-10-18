@@ -14,7 +14,8 @@ import type { BackupAlert, BackupStatus, OffsiteField } from "./types";
 
 // turbopackIgnore: jalur runtime (dev), bukan aset build — tanpa ini seluruh proyek ikut di-trace ke standalone.
 const configDir = () =>
-  env().BACKUP_CONFIG_DIR ?? join(/* turbopackIgnore: true */ process.cwd(), ".cache", "backup-config");
+  env().BACKUP_CONFIG_DIR ??
+  join(/* turbopackIgnore: true */ process.cwd(), ".cache", "backup-config");
 const OFFSITE = join("app", "offsite.json");
 const STATUS = "status.json";
 /** Backup harian yang lebih tua dari ini dianggap tidak berjalan (jadwal 24 jam + jeda durasi). */
