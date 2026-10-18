@@ -1,26 +1,32 @@
 ---
 id: T-c7wf
 title: Admin menambah dan menghapus akun pengguna (undangan email), panduan dan video diperbarui
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - security
 created: "2026-10-18T11:20:21Z"
-updated: "2026-10-18T12:38:40Z"
+updated: "2026-10-18T13:00:35Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: aca91c95735c6685cebdde2fb5334114d7977a95
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-18T12:50:52Z"
+      findings: 0
 ---
 
 ## Objective
 (describe the outcome in one paragraph)
 
 ## Acceptance criteria
-- [ ] Given admin di Admin › Pengguna, when menambah pengguna dengan email domain perusahaan, nama, dan peran, then akun terbuat terverifikasi tanpa password, email undangan berisi tautan buat password sekali pakai berlaku 72 jam terkirim, dan audit user.create tercatat; email di luar domain atau sudah terdaftar ditolak dengan pesan yang jelas
-- [ ] Given pengguna terundang membuka tautan undangan, when menetapkan password, then ia bisa masuk; tautan kedaluwarsa atau terpakai ditolak dan pengguna bisa meminta tautan baru lewat Lupa password
-- [ ] Given admin menghapus akun dengan konfirmasi mengetik email, then akun beserta sesi dan akses berbaginya terhapus dan audit user.delete (email di meta) tercatat; menghapus diri sendiri, admin aktif terakhir, atau akun yang masih punya dataset ditolak dengan pesan yang menunjuk langkah berikutnya
+- [x] Given admin di Admin › Pengguna, when menambah pengguna dengan email domain perusahaan, nama, dan peran, then akun terbuat terverifikasi tanpa password, email undangan berisi tautan buat password sekali pakai berlaku 72 jam terkirim, dan audit user.create tercatat; email di luar domain atau sudah terdaftar ditolak dengan pesan yang jelas
+- [x] Given pengguna terundang membuka tautan undangan, when menetapkan password, then ia bisa masuk; tautan kedaluwarsa atau terpakai ditolak dan pengguna bisa meminta tautan baru lewat Lupa password
+- [x] Given admin menghapus akun dengan konfirmasi mengetik email, then akun beserta sesi dan akses berbaginya terhapus dan audit user.delete (email di meta) tercatat; menghapus diri sendiri, admin aktif terakhir, atau akun yang masih punya dataset ditolak dengan pesan yang menunjuk langkah berikutnya
 - [ ] Given panduan admin, then artikel dan video Mengelola pengguna memuat tambah dan hapus akun, dan terpasang di produksi
 
 ## Risk
