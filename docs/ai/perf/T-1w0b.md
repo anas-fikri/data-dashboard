@@ -40,10 +40,11 @@ bisa tidak tampil). Antre tidak teramati di semua jenjang (status UPLOADED → I
 polling 1 dtk; satu unggahan sekaligus, worker kosong). Puncak worker = maksimum dari 2 replika (termasuk
 yang sedang menganggur, mis. csv 50 MB: worker yang memproses 177 MiB).
 
-- **Selama seluruh run (31 menit):** load maks 5,8 (dari 8 vCPU), tekanan I/O avg60 maks **14 %**, RAM
+- **Selama seluruh run (32 menit):** load maks 5,8 (dari 8 vCPU), tekanan I/O avg60 maks **14 %**, RAM
   tersedia min 8,6 GB, swap tersisa min 835 MB — **pengaman tidak pernah terpicu**; produksi sehat.
 - Puncak container lain: app 199 MiB, RustFS 624 MiB, proxy 39 % CPU (`T-1w0b/puncak.txt`).
-- Bukti mentah: `docs/ai/perf/T-1w0b/` (client.jsonl per peristiwa, host.log, stats.log, puncak.txt).
+- Bukti mentah: `docs/ai/perf/T-1w0b/` (client.jsonl per peristiwa, host.txt = sampel pemantau host, stats.txt = sampel
+  memori/CPU container, puncak.txt, vpn-scp.txt).
 
 ## Analisis
 
@@ -52,8 +53,8 @@ yang sedang menganggur, mis. csv 50 MB: worker yang memproses 177 MiB).
 2. **XLSX ditentukan baris per sheet, bukan MB:** satu sheet besar dibaca ± 2.700 baris/dtk (30 kolom),
    ± 1,5 dtk per MB untuk sheet ≥ 100 MB. Sheet dibaca paralel `min(INGEST_DUCKDB_THREADS, jumlah sheet)`
    jalur: xlsx 505 MB 2 sheet (8 mnt) hampir secepat 252 MB 1 sheet (6,4 mnt). XLSX lebih lambat daripada CSV
-   ukuran sama (XML terkompresi + shared strings): terukur 1,6× (50 MB; 500 MB 2 sheet) sampai 2,6× (100–250 MB
-   satu sheet), sampai siap.
+   ukuran sama (XML terkompresi + shared strings): waktu sampai siap terukur 1,5× (50 MB), 1,6× (500 MB 2
+   sheet), sampai 2,4–2,6× (100–250 MB satu sheet).
 3. **Ada biaya tetap ± 10 dtk** (unduh dari storage, finalisasi, polling) — file kecil selalu ± 11 dtk.
 4. **Unggah bukan hambatan di sisi server:** plafon proxy + storage 140–310 Mbps (T-024 dulu 39–89 Mbps saat
    VM sesak). Bagi pengguna, waktu transfer ditentukan jaringan mereka sendiri (tabel di bawah).
