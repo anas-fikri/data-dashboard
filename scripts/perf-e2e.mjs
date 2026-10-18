@@ -8,11 +8,15 @@
  *     n akun mengunggah bersamaan (AC 2): maks job ingest berjalan bersamaan + posisi antrean API/UI
  *   node scripts/perf-e2e.mjs dashboard <datasetId> [indeks-akun]
  *     hanya tahap dashboard di atas dataset READY milik akun itu (ulang ukur tanpa unggah ulang)
+ *   node scripts/perf-e2e.mjs tiers <file>...
+ *     jenjang ukuran (T-1w0b), urut sesuai argumen: per file buat dataset → unggah → tunggu siap →
+ *     hapus dataset lewat UI; berhenti sebelum jenjang berikutnya bila PERF_OUT/STOP ada (pemantau
+ *     beban host scripts/perf-tiers.sh) atau ingest gagal
  * Env: PERF_BASE (mis. https://10.3.3.221:9543), PERF_USERS (users.json dari deploy/perf-stack.sh).
  * Keluaran stdout: satu baris JSON per peristiwa, baris terakhir {"ev":"ringkasan",...}.
  * Bukan bagian `npm run check`; dijalankan lewat scripts/perf-e2e.sh di VM.
  */
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename } from "node:path";
 import { chromium } from "playwright-core";
 
@@ -115,6 +119,7 @@ async function upload(page, path) {
 
 async function waitIngest(a, datasetId) {
   const marks = {};
+  const stages = [];
   let last = null;
   let stage = null;
   for (;;) {
@@ -129,10 +134,11 @@ async function waitIngest(a, datasetId) {
     const st = s?.progress ? `${s.progress.stage}:${s.progress.sheet ?? 0}` : null;
     if (st && st !== stage) {
       stage = st;
+      stages.push({ tahap: s.progress.stage, at: performance.now() });
       log({ ev: "tahap", datasetId, tahap: s.progress.stage, sheet: s.progress.sheetName ?? null });
     }
     if (s && DONE.has(s.status))
-      return { status: s.status, marks, error: s.errorMessage, sheets: s.sheets };
+      return { status: s.status, marks, stages, error: s.errorMessage, sheets: s.sheets };
     await sleep(1000);
   }
 }
@@ -488,6 +494,77 @@ async function concurrent(browser, path, n) {
   await Promise.all(contexts.map((c) => c.close()));
 }
 
+/** Hapus dataset lewat dialog UI (ketik nama), seperti pengguna; storage dibersihkan job aplikasi. */
+async function deleteDataset(page, datasetId, name) {
+  await page.goto(`/datasets/${datasetId}`);
+  await page.getByRole("button", { name: "Hapus dataset" }).click();
+  await page.getByLabel(`Ketik “${name}” untuk mengonfirmasi`).fill(name);
+  await page.getByRole("button", { name: "Hapus permanen" }).click();
+  await waitNav(page, /\/datasets\?deleted=1/, "hapus-dataset");
+}
+
+/** Detik per tahap ingest (jumlah per nama tahap; tahap baca berulang per sheet). */
+function stageSeconds(stages, end) {
+  const out = {};
+  stages.forEach((s, i) => {
+    out[s.tahap] = (out[s.tahap] ?? 0) + ((stages[i + 1]?.at ?? end) - s.at);
+  });
+  return Object.fromEntries(Object.entries(out).map(([k, ms]) => [k, sec(ms)]));
+}
+
+async function tiers(browser, paths) {
+  const context = await login(browser, USERS[0]);
+  const page = await context.newPage();
+  const a = api(context);
+  const rows = [];
+  for (const path of paths) {
+    const stop = OUT && existsSync(`${OUT}/STOP`);
+    if (stop) {
+      log({
+        ev: "berhenti",
+        sebelum: basename(path),
+        alasan: readFileSync(`${OUT}/STOP`, "utf8").trim(),
+      });
+      break;
+    }
+    const bytes = statSync(path).size;
+    const name = `Uji ${basename(path)} ${RUN}`;
+    const t0 = performance.now();
+    const datasetId = await createDataset(page, name);
+    const uploadMs = await upload(page, path);
+    const ing = await waitIngest(a, datasetId);
+    const tReady = performance.now();
+    const row = {
+      file: basename(path),
+      bytes,
+      status: ing.status,
+      baris: ing.sheets?.reduce((n, s) => n + (s.rawRows ?? 0), 0) ?? null,
+      sheet: ing.sheets?.length ?? null,
+      mbps: Math.round((bytes / 1e6 / (uploadMs / 1000)) * 8),
+      detik: {
+        unggah: sec(uploadMs),
+        antre:
+          ing.marks.INGESTING && ing.marks.UPLOADED
+            ? sec(ing.marks.INGESTING - ing.marks.UPLOADED)
+            : null,
+        proses: ing.marks.INGESTING ? sec(tReady - ing.marks.INGESTING) : null,
+        sampaiSiap: sec(tReady - t0),
+      },
+      tahap: stageSeconds(ing.stages, tReady),
+      error: ing.error ?? null,
+    };
+    log({ ev: "jenjang", datasetId, ...row });
+    rows.push(row);
+    await deleteDataset(page, datasetId, name);
+    log({ ev: "hapus", datasetId });
+    if (ing.status === "FAILED") break;
+    // Jeda antar jenjang: pembersihan storage dan pemanasan cache selesai dulu.
+    await sleep(Number(process.env.PERF_PAUSE_S ?? 30) * 1000);
+  }
+  log({ ev: "ringkasan", mode: "tiers", jenjang: rows });
+  await context.close();
+}
+
 const browser = await chromium.launch({
   headless: true,
   // Klien uji sekali pakai terhadap app sendiri; sandbox Chromium butuh profil seccomp renderer.
@@ -498,9 +575,10 @@ try {
   if (mode === "single" && file) await single(browser, file, Number(arg ?? 0));
   else if (mode === "concurrent" && file) await concurrent(browser, file, Number(arg ?? 5));
   else if (mode === "dashboard" && file) await dashboardOnly(browser, file, Number(arg ?? 0));
+  else if (mode === "tiers" && file) await tiers(browser, process.argv.slice(3));
   else
     throw new Error(
-      "pakai: perf-e2e.mjs single <file> [akun] | concurrent <file> <n> | dashboard <datasetId> [akun]",
+      "pakai: perf-e2e.mjs single <file> [akun] | concurrent <file> <n> | dashboard <datasetId> [akun] | tiers <file>...",
     );
 } finally {
   await browser.close();
