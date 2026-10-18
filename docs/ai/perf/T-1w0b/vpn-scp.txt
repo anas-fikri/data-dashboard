@@ -1,0 +1,3 @@
+2026-10-18 ~10.40 WIB, laptop pengembang (macOS) → olympus lewat VPN (interface utun4, RTT rata-rata 8,7 ms)
+scp csv-050mb.csv (49.986.651 byte, fixture sintetis seed 42) ke /tmp olympus lalu dihapus
+scp 50 MB Mac→olympus via VPN: 14.7 s = 27 Mbps

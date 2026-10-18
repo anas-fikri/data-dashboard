@@ -1,0 +1,76 @@
+{"t":"2026-10-18T03:35:19.915Z","ev":"status","datasetId":"cmvd9vp1w0001lc0176oa2ty2","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:35:19.915Z","ev":"tahap","datasetId":"cmvd9vp1w0001lc0176oa2ty2","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:35:24.979Z","ev":"tahap","datasetId":"cmvd9vp1w0001lc0176oa2ty2","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T03:35:29.032Z","ev":"status","datasetId":"cmvd9vp1w0001lc0176oa2ty2","status":"READY","queue":null}
+{"t":"2026-10-18T03:35:29.033Z","ev":"jenjang","datasetId":"cmvd9vp1w0001lc0176oa2ty2","file":"csv-010mb.csv","bytes":9999621,"status":"READY","baris":83101,"sheet":1,"mbps":58,"detik":{"unggah":1.4,"antre":null,"proses":9.1,"sampaiSiap":11.6},"tahap":{"unduh":5.1,"tipe":4.1},"error":null}
+{"t":"2026-10-18T03:35:29.774Z","ev":"hapus","datasetId":"cmvd9vp1w0001lc0176oa2ty2"}
+{"t":"2026-10-18T03:36:00.910Z","ev":"status","datasetId":"cmvd9wla90007lc01tazleiun","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:36:00.910Z","ev":"tahap","datasetId":"cmvd9wla90007lc01tazleiun","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:36:05.972Z","ev":"tahap","datasetId":"cmvd9wla90007lc01tazleiun","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:36:11.033Z","ev":"status","datasetId":"cmvd9wla90007lc01tazleiun","status":"READY","queue":null}
+{"t":"2026-10-18T03:36:11.033Z","ev":"jenjang","datasetId":"cmvd9wla90007lc01tazleiun","file":"xlsx-010mb.xlsx","bytes":10002462,"status":"READY","baris":32402,"sheet":1,"mbps":87,"detik":{"unggah":0.9,"antre":null,"proses":10.1,"sampaiSiap":11.3},"tahap":{"unduh":5.1,"tipe":5.1},"error":null}
+{"t":"2026-10-18T03:36:11.325Z","ev":"hapus","datasetId":"cmvd9wla90007lc01tazleiun"}
+{"t":"2026-10-18T03:36:44.005Z","ev":"status","datasetId":"cmvd9xhc4000dlc01ki97f1nf","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:36:44.005Z","ev":"tahap","datasetId":"cmvd9xhc4000dlc01ki97f1nf","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:36:49.063Z","ev":"tahap","datasetId":"cmvd9xhc4000dlc01ki97f1nf","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T03:37:13.346Z","ev":"status","datasetId":"cmvd9xhc4000dlc01ki97f1nf","status":"READY","queue":null}
+{"t":"2026-10-18T03:37:13.347Z","ev":"jenjang","datasetId":"cmvd9xhc4000dlc01ki97f1nf","file":"csv-050mb.csv","bytes":49986651,"status":"READY","baris":415601,"sheet":1,"mbps":173,"detik":{"unggah":2.3,"antre":null,"proses":29.3,"sampaiSiap":32},"tahap":{"unduh":5.1,"tipe":24.3},"error":null}
+{"t":"2026-10-18T03:37:13.692Z","ev":"hapus","datasetId":"cmvd9xhc4000dlc01ki97f1nf"}
+{"t":"2026-10-18T03:37:45.235Z","ev":"status","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:37:45.235Z","ev":"tahap","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:37:50.299Z","ev":"tahap","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","tahap":"baca","sheet":null}
+{"t":"2026-10-18T03:38:16.585Z","ev":"tahap","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:38:31.759Z","ev":"status","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","status":"READY","queue":null}
+{"t":"2026-10-18T03:38:31.759Z","ev":"tahap","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","tahap":"simpan","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:38:31.760Z","ev":"jenjang","datasetId":"cmvd9ytgm000jlc01rhxe8zq2","file":"xlsx-050mb.xlsx","bytes":50243107,"status":"READY","baris":162002,"sheet":1,"mbps":308,"detik":{"unggah":1.3,"antre":null,"proses":46.5,"sampaiSiap":48.1},"tahap":{"unduh":5.1,"baca":26.3,"tipe":15.2,"simpan":0},"error":null}
+{"t":"2026-10-18T03:38:32.092Z","ev":"hapus","datasetId":"cmvd9ytgm000jlc01rhxe8zq2"}
+{"t":"2026-10-18T03:39:08.143Z","ev":"status","datasetId":"cmvda0hyr000plc019wcsg7wo","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:39:08.143Z","ev":"tahap","datasetId":"cmvda0hyr000plc019wcsg7wo","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:39:13.200Z","ev":"tahap","datasetId":"cmvda0hyr000plc019wcsg7wo","tahap":"baca","sheet":"CSV"}
+{"t":"2026-10-18T03:39:18.257Z","ev":"tahap","datasetId":"cmvda0hyr000plc019wcsg7wo","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T03:40:05.803Z","ev":"status","datasetId":"cmvda0hyr000plc019wcsg7wo","status":"READY","queue":null}
+{"t":"2026-10-18T03:40:05.803Z","ev":"jenjang","datasetId":"cmvda0hyr000plc019wcsg7wo","file":"csv-100mb.csv","bytes":99960239,"status":"READY","baris":831201,"sheet":1,"mbps":137,"detik":{"unggah":5.8,"antre":null,"proses":57.7,"sampaiSiap":63.7},"tahap":{"unduh":5.1,"baca":5.1,"tipe":47.5},"error":null}
+{"t":"2026-10-18T03:40:06.119Z","ev":"hapus","datasetId":"cmvda0hyr000plc019wcsg7wo"}
+{"t":"2026-10-18T03:40:40.643Z","ev":"status","datasetId":"cmvda2iii000vlc0175n4xzm1","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:40:40.643Z","ev":"tahap","datasetId":"cmvda2iii000vlc0175n4xzm1","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:40:45.700Z","ev":"tahap","datasetId":"cmvda2iii000vlc0175n4xzm1","tahap":"baca","sheet":null}
+{"t":"2026-10-18T03:42:41.013Z","ev":"tahap","datasetId":"cmvda2iii000vlc0175n4xzm1","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:43:06.296Z","ev":"tahap","datasetId":"cmvda2iii000vlc0175n4xzm1","tahap":"simpan","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:43:09.336Z","ev":"status","datasetId":"cmvda2iii000vlc0175n4xzm1","status":"READY","queue":null}
+{"t":"2026-10-18T03:43:09.336Z","ev":"jenjang","datasetId":"cmvda2iii000vlc0175n4xzm1","file":"xlsx-100mb.xlsx","bytes":100749443,"status":"READY","baris":324002,"sheet":1,"mbps":187,"detik":{"unggah":4.3,"antre":null,"proses":148.7,"sampaiSiap":153.2},"tahap":{"unduh":5.1,"baca":115.3,"tipe":25.3,"simpan":3},"error":null}
+{"t":"2026-10-18T03:43:09.703Z","ev":"hapus","datasetId":"cmvda2iii000vlc0175n4xzm1"}
+{"t":"2026-10-18T03:43:48.253Z","ev":"status","datasetId":"cmvda6g5z0011lc01t0sohf3y","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:43:48.254Z","ev":"tahap","datasetId":"cmvda6g5z0011lc01t0sohf3y","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:43:53.311Z","ev":"tahap","datasetId":"cmvda6g5z0011lc01t0sohf3y","tahap":"baca","sheet":"CSV"}
+{"t":"2026-10-18T03:44:03.429Z","ev":"tahap","datasetId":"cmvda6g5z0011lc01t0sohf3y","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T03:46:07.913Z","ev":"status","datasetId":"cmvda6g5z0011lc01t0sohf3y","status":"READY","queue":null}
+{"t":"2026-10-18T03:46:07.913Z","ev":"jenjang","datasetId":"cmvda6g5z0011lc01t0sohf3y","file":"csv-250mb.csv","bytes":249920336,"status":"READY","baris":2078001,"sheet":1,"mbps":240,"detik":{"unggah":8.3,"antre":null,"proses":139.7,"sampaiSiap":148.2},"tahap":{"unduh":5.1,"baca":10.1,"tipe":124.5},"error":null}
+{"t":"2026-10-18T03:46:08.364Z","ev":"hapus","datasetId":"cmvda6g5z0011lc01t0sohf3y"}
+{"t":"2026-10-18T03:46:46.932Z","ev":"status","datasetId":"cmvdaaa0q0017lc015zof448k","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:46:46.932Z","ev":"tahap","datasetId":"cmvdaaa0q0017lc015zof448k","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:46:51.986Z","ev":"tahap","datasetId":"cmvdaaa0q0017lc015zof448k","tahap":"baca","sheet":null}
+{"t":"2026-10-18T03:51:49.282Z","ev":"tahap","datasetId":"cmvdaaa0q0017lc015zof448k","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:53:00.087Z","ev":"tahap","datasetId":"cmvdaaa0q0017lc015zof448k","tahap":"simpan","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T03:53:04.129Z","ev":"status","datasetId":"cmvdaaa0q0017lc015zof448k","status":"READY","queue":null}
+{"t":"2026-10-18T03:53:04.129Z","ev":"jenjang","datasetId":"cmvdaaa0q0017lc015zof448k","file":"xlsx-250mb.xlsx","bytes":252298728,"status":"READY","baris":810002,"sheet":1,"mbps":242,"detik":{"unggah":8.3,"antre":null,"proses":377.2,"sampaiSiap":385.7},"tahap":{"unduh":5.1,"baca":297.3,"tipe":70.8,"simpan":4},"error":null}
+{"t":"2026-10-18T03:53:04.700Z","ev":"hapus","datasetId":"cmvdaaa0q0017lc015zof448k"}
+{"t":"2026-10-18T03:53:56.871Z","ev":"status","datasetId":"cmvdaj7bf001dlc0107e47ii6","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:53:56.871Z","ev":"tahap","datasetId":"cmvdaj7bf001dlc0107e47ii6","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:54:01.934Z","ev":"tahap","datasetId":"cmvdaj7bf001dlc0107e47ii6","tahap":"baca","sheet":null}
+{"t":"2026-10-18T03:54:32.281Z","ev":"tahap","datasetId":"cmvdaj7bf001dlc0107e47ii6","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T03:58:26.880Z","ev":"tahap","datasetId":"cmvdaj7bf001dlc0107e47ii6","tahap":"simpan","sheet":"CSV"}
+{"t":"2026-10-18T03:58:28.909Z","ev":"status","datasetId":"cmvdaj7bf001dlc0107e47ii6","status":"READY","queue":null}
+{"t":"2026-10-18T03:58:28.910Z","ev":"jenjang","datasetId":"cmvdaj7bf001dlc0107e47ii6","file":"csv-500mb.csv","bytes":499843699,"status":"READY","baris":4156001,"sheet":1,"mbps":183,"detik":{"unggah":21.9,"antre":null,"proses":272,"sampaiSiap":294.2},"tahap":{"unduh":5.1,"baca":30.3,"tipe":234.6,"simpan":2},"error":null}
+{"t":"2026-10-18T03:58:29.370Z","ev":"hapus","datasetId":"cmvdaj7bf001dlc0107e47ii6"}
+{"t":"2026-10-18T03:59:18.982Z","ev":"status","datasetId":"cmvdaq5sk001jlc01wrln5pio","status":"INGESTING","queue":null}
+{"t":"2026-10-18T03:59:18.982Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T03:59:25.053Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"baca","sheet":null}
+{"t":"2026-10-18T04:04:18.378Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"baca","sheet":"Pengiriman 2"}
+{"t":"2026-10-18T04:04:28.482Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T04:05:38.282Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"simpan","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T04:05:43.339Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"tipe","sheet":"Pengiriman 2"}
+{"t":"2026-10-18T04:06:58.125Z","ev":"tahap","datasetId":"cmvdaq5sk001jlc01wrln5pio","tahap":"simpan","sheet":"Pengiriman 2"}
+{"t":"2026-10-18T04:07:02.170Z","ev":"status","datasetId":"cmvdaq5sk001jlc01wrln5pio","status":"READY","queue":null}
+{"t":"2026-10-18T04:07:02.170Z","ev":"jenjang","datasetId":"cmvdaq5sk001jlc01wrln5pio","file":"xlsx-500mb.xlsx","bytes":504846475,"status":"READY","baris":1620004,"sheet":2,"mbps":208,"detik":{"unggah":19.4,"antre":null,"proses":463.2,"sampaiSiap":482.8},"tahap":{"unduh":6.1,"baca":303.4,"tipe":144.6,"simpan":9.1},"error":null}
+{"t":"2026-10-18T04:07:02.835Z","ev":"hapus","datasetId":"cmvdaq5sk001jlc01wrln5pio"}
+{"t":"2026-10-18T04:07:32.860Z","ev":"ringkasan","mode":"tiers","jenjang":[{"file":"csv-010mb.csv","bytes":9999621,"status":"READY","baris":83101,"sheet":1,"mbps":58,"detik":{"unggah":1.4,"antre":null,"proses":9.1,"sampaiSiap":11.6},"tahap":{"unduh":5.1,"tipe":4.1},"error":null},{"file":"xlsx-010mb.xlsx","bytes":10002462,"status":"READY","baris":32402,"sheet":1,"mbps":87,"detik":{"unggah":0.9,"antre":null,"proses":10.1,"sampaiSiap":11.3},"tahap":{"unduh":5.1,"tipe":5.1},"error":null},{"file":"csv-050mb.csv","bytes":49986651,"status":"READY","baris":415601,"sheet":1,"mbps":173,"detik":{"unggah":2.3,"antre":null,"proses":29.3,"sampaiSiap":32},"tahap":{"unduh":5.1,"tipe":24.3},"error":null},{"file":"xlsx-050mb.xlsx","bytes":50243107,"status":"READY","baris":162002,"sheet":1,"mbps":308,"detik":{"unggah":1.3,"antre":null,"proses":46.5,"sampaiSiap":48.1},"tahap":{"unduh":5.1,"baca":26.3,"tipe":15.2,"simpan":0},"error":null},{"file":"csv-100mb.csv","bytes":99960239,"status":"READY","baris":831201,"sheet":1,"mbps":137,"detik":{"unggah":5.8,"antre":null,"proses":57.7,"sampaiSiap":63.7},"tahap":{"unduh":5.1,"baca":5.1,"tipe":47.5},"error":null},{"file":"xlsx-100mb.xlsx","bytes":100749443,"status":"READY","baris":324002,"sheet":1,"mbps":187,"detik":{"unggah":4.3,"antre":null,"proses":148.7,"sampaiSiap":153.2},"tahap":{"unduh":5.1,"baca":115.3,"tipe":25.3,"simpan":3},"error":null},{"file":"csv-250mb.csv","bytes":249920336,"status":"READY","baris":2078001,"sheet":1,"mbps":240,"detik":{"unggah":8.3,"antre":null,"proses":139.7,"sampaiSiap":148.2},"tahap":{"unduh":5.1,"baca":10.1,"tipe":124.5},"error":null},{"file":"xlsx-250mb.xlsx","bytes":252298728,"status":"READY","baris":810002,"sheet":1,"mbps":242,"detik":{"unggah":8.3,"antre":null,"proses":377.2,"sampaiSiap":385.7},"tahap":{"unduh":5.1,"baca":297.3,"tipe":70.8,"simpan":4},"error":null},{"file":"csv-500mb.csv","bytes":499843699,"status":"READY","baris":4156001,"sheet":1,"mbps":183,"detik":{"unggah":21.9,"antre":null,"proses":272,"sampaiSiap":294.2},"tahap":{"unduh":5.1,"baca":30.3,"tipe":234.6,"simpan":2},"error":null},{"file":"xlsx-500mb.xlsx","bytes":504846475,"status":"READY","baris":1620004,"sheet":2,"mbps":208,"detik":{"unggah":19.4,"antre":null,"proses":463.2,"sampaiSiap":482.8},"tahap":{"unduh":6.1,"baca":303.4,"tipe":144.6,"simpan":9.1},"error":null}]}

@@ -519,11 +519,16 @@ async function tiers(browser, paths) {
   const rows = [];
   for (const path of paths) {
     const stop = OUT && existsSync(`${OUT}/STOP`);
-    if (stop) {
+    // Pemantau host (perf-tiers.sh) menulis host.log tiap ± 5 dtk; basi = pemantau mati → anggap STOP.
+    const beat = OUT ? statSync(`${OUT}/host.log`, { throwIfNoEntry: false }) : null;
+    const stale = beat && Date.now() - beat.mtimeMs > 30_000;
+    if (stop || stale) {
       log({
         ev: "berhenti",
         sebelum: basename(path),
-        alasan: readFileSync(`${OUT}/STOP`, "utf8").trim(),
+        alasan: stop
+          ? readFileSync(`${OUT}/STOP`, "utf8").trim()
+          : "pemantau host tidak menulis host.log > 30 dtk",
       });
       break;
     }

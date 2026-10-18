@@ -20,27 +20,38 @@ project=dashboard
 mkdir -p "$out"
 rm -f "$out/STOP"
 
+# Pemantau host: hanya /proc, tanpa docker (dockerd bisa macet justru saat beban tinggi); set +e agar satu
+# perintah gagal tidak mematikan pemantau. Klien menganggap host.log basi (> 30 dtk) sebagai STOP.
 (
+  set +e
   while :; do
     io=$(awk '/^some/ { split($3, a, "="); print a[2] }' /proc/pressure/io)
     mem=$(awk '/^MemAvailable/ { print int($2 / 1024) }' /proc/meminfo)
     swap=$(awk '/^SwapFree/ { print int($2 / 1024) }' /proc/meminfo)
     load=$(cut -d' ' -f1 /proc/loadavg)
-    now=$(date +%s)
-    echo "$now load=$load io60=$io mem_mb=$mem swap_mb=$swap" >>"$out/host.log"
+    echo "$(date +%s) load=$load io60=$io mem_mb=$mem swap_mb=$swap" >>"$out/host.log"
     reason=
     awk -v v="$io" -v m="$IO_MAX" 'BEGIN { exit !(v > m) }' && reason="tekanan I/O avg60 $io% > $IO_MAX%"
     [ "$mem" -ge "$MEM_MIN_MB" ] || reason="RAM tersedia $mem MB < $MEM_MIN_MB MB"
     [ "$swap" -ge "$SWAP_MIN_MB" ] || reason="swap tersisa $swap MB < $SWAP_MIN_MB MB"
     [ -z "$reason" ] || [ -f "$out/STOP" ] || echo "$(date -u +%FT%TZ) $reason" >"$out/STOP"
-    ids=$(docker ps -q --filter "label=com.docker.compose.project=$project")
-    [ -z "$ids" ] || docker stats --no-stream --format '{{.Name}} {{.MemUsage}} {{.CPUPerc}}' $ids |
-      sed "s/^/$now /" >>"$out/stats.log"
     sleep 5
   done
 ) 2>/dev/null &
 monitor=$!
-trap 'kill $monitor 2>/dev/null || true' EXIT
+# Memori/CPU container: loop terpisah, tiap panggilan docker dibatasi waktu.
+(
+  set +e
+  while :; do
+    now=$(date +%s)
+    ids=$(timeout 10 docker ps -q --filter "label=com.docker.compose.project=$project")
+    [ -z "$ids" ] || timeout 10 docker stats --no-stream \
+      --format '{{.Name}} {{.MemUsage}} {{.CPUPerc}}' $ids | sed "s/^/$now /" >>"$out/stats.log"
+    sleep 5
+  done
+) 2>/dev/null &
+sampler=$!
+trap 'kill $monitor $sampler 2>/dev/null || true' EXIT
 
 files=()
 for f in "$@"; do files+=("/fixtures/$f"); done
@@ -53,7 +64,7 @@ docker run --rm --network host --user "$(id -u):$(id -g)" --shm-size 1g \
   --entrypoint node dashboard-renderer:latest /app/perf-e2e.mjs tiers "${files[@]}" |
   tee "$out/client.jsonl"
 
-kill "$monitor" 2>/dev/null || true
+kill "$monitor" "$sampler" 2>/dev/null || true
 # Puncak memori (MiB) dan CPU (%) per container selama run (format sama dengan perf-e2e.sh).
 awk '{
   split($3, v, /[A-Za-z]+/); u = $3; sub(/^[0-9.]+/, "", u)

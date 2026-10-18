@@ -1,0 +1,10 @@
+dashboard-app-1 puncak_mem=199MiB puncak_cpu=53%
+dashboard-backup-1 puncak_mem=0MiB puncak_cpu=0%
+dashboard-pg-relay-1 puncak_mem=4MiB puncak_cpu=1%
+dashboard-proxy-1 puncak_mem=49MiB puncak_cpu=39%
+dashboard-redis-1 puncak_mem=9MiB puncak_cpu=2%
+dashboard-renderer-1 puncak_mem=157MiB puncak_cpu=11%
+dashboard-rustfs-1 puncak_mem=624MiB puncak_cpu=47%
+dashboard-worker-1 puncak_mem=1298MiB puncak_cpu=311%
+dashboard-worker-2 puncak_mem=971MiB puncak_cpu=202%
+sharp_brattain puncak_mem=242MiB puncak_cpu=72%
