@@ -190,3 +190,35 @@ describe("renderer PDF di /health", () => {
     expect(down.items[0]?.detail).toBe("renderer tidak menjawab /healthz");
   });
 });
+
+describe("verifikasi SMTP di-cache (T-byys)", () => {
+  it("login SMTP sekali per 5 menit per pengaturan; gagal ikut di-cache; pengaturan baru → verifikasi ulang", async () => {
+    const verify = vi.fn(async () => true);
+    const key = { value: "smtps://a@mail.contoh:465" };
+    vi.doMock("@/lib/mail", () => ({ mailer: () => ({ verify }), mailerKey: () => key.value }));
+    vi.resetModules();
+    const { verifySmtpCached, SMTP_VERIFY_TTL_MS } = await import("@/lib/health/checks");
+    const t0 = Date.now();
+    await Promise.all([
+      verifySmtpCached(t0),
+      verifySmtpCached(t0 + 1),
+      verifySmtpCached(t0 + 3_000),
+    ]);
+    expect(verify).toHaveBeenCalledTimes(1);
+    await verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS);
+    expect(verify).toHaveBeenCalledTimes(2);
+
+    verify.mockRejectedValueOnce(new Error("Invalid login: 535"));
+    key.value = "smtps://b@mail.contoh:465";
+    await expect(verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS + 1)).rejects.toThrow("535");
+    await expect(verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS + 60_000)).rejects.toThrow("535");
+    expect(verify).toHaveBeenCalledTimes(3);
+    key.value = "smtps://c@mail.contoh:465";
+    await expect(verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS + 60_001)).resolves.toBe(
+      "koneksi SMTP terverifikasi",
+    );
+    expect(verify).toHaveBeenCalledTimes(4);
+    vi.doUnmock("@/lib/mail");
+    vi.resetModules();
+  });
+});

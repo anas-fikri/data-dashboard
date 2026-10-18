@@ -9,6 +9,12 @@ const globalForMail = globalThis as unknown as { mailer?: Transporter; mailerKey
  * (T-byys), selain itu SMTP_URL. Dibuat ulang saat pengaturan berubah — tanpa restart. Timeout pendek agar
  * SMTP lambat tidak menggantung tugas latar (default nodemailer: socket 10 menit).
  */
+/** Kunci pengaturan yang berlaku (berisi kredensial: hanya untuk perbandingan di memori, jangan dicatat). */
+export function mailerKey(): string {
+  const file = readSmtpFile();
+  return file ? JSON.stringify(file) : env().SMTP_URL;
+}
+
 export function mailer(): Transporter {
   const file = readSmtpFile();
   const key = file ? JSON.stringify(file) : env().SMTP_URL;

@@ -2,7 +2,7 @@ import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { rendererClient, type RendererClient } from "@/features/exports/renderer-client";
 import { prisma } from "@/lib/db";
 import { findPlaceholderVars, parseEnv } from "@/lib/env";
-import { mailer } from "@/lib/mail";
+import { mailer, mailerKey } from "@/lib/mail";
 import { redisReady } from "@/lib/redis";
 import { bucket, s3Internal } from "@/lib/storage/s3";
 import type { HealthCheck } from "@/lib/health";
@@ -82,16 +82,44 @@ export function coreChecks(): HealthCheck[] {
   ];
 }
 
+/**
+ * Verifikasi SMTP = login ke server email. Hasil (berhasil atau gagal) disimpan 5 menit per pengaturan:
+ * /api/health yang sering dipanggil (deploy.sh tiap 3 dtk) tidak membanjiri server dengan login — login gagal
+ * berulang bisa membuat akun/IP dikunci. Pengaturan berubah (Admin › Email) → diverifikasi ulang seketika.
+ */
+export const SMTP_VERIFY_TTL_MS = 5 * 60_000;
+const smtpVerify = globalThis as unknown as {
+  smtpVerify?: { key: string; at: number; result: Promise<string | null> };
+};
+
+export function verifySmtpCached(now = Date.now()): Promise<string> {
+  const key = mailerKey();
+  const hit = smtpVerify.smtpVerify;
+  if (!hit || hit.key !== key || now - hit.at >= SMTP_VERIFY_TTL_MS) {
+    smtpVerify.smtpVerify = {
+      key,
+      at: now,
+      result: mailer()
+        .verify()
+        .then(
+          () => null,
+          (e: unknown) => (e instanceof Error ? e.message : String(e)),
+        ),
+    };
+  }
+  return smtpVerify.smtpVerify!.result.then((err) => {
+    if (err) throw new Error(err);
+    return "koneksi SMTP terverifikasi";
+  });
+}
+
 /** Semua layanan termasuk SMTP + renderer. Dipakai /health, /api/health, dan deploy.sh. */
 export function infraChecks(): HealthCheck[] {
   return [
     ...coreChecks(),
     {
       name: "SMTP",
-      run: async () => {
-        await mailer().verify();
-        return "koneksi SMTP terverifikasi";
-      },
+      run: () => verifySmtpCached(),
     },
     ...rendererChecks(),
   ];
