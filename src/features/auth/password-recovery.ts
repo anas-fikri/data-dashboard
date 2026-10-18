@@ -62,7 +62,7 @@ async function findResetToken(tokenRaw: unknown) {
   if (!isTokenShape(tokenRaw)) return null;
   const record = await prisma.verificationToken.findUnique({
     where: { tokenHash: hashToken(tokenRaw) },
-    include: { user: { select: { id: true, email: true, isActive: true } } },
+    include: { user: { select: { id: true, email: true, isActive: true, passwordHash: true } } },
   });
   if (
     !record ||
@@ -76,11 +76,19 @@ async function findResetToken(tokenRaw: unknown) {
   return record;
 }
 
-/** Untuk halaman form (GET): validasi token tanpa memakainya (pemindai email aman). */
-export async function previewPasswordReset(tokenRaw: unknown): Promise<Result<{ email: string }>> {
+/**
+ * Untuk halaman form (GET): validasi token tanpa memakainya (pemindai email aman). firstTime = akun
+ * undangan admin yang belum punya password (halaman berjudul "Buat password").
+ */
+export async function previewPasswordReset(
+  tokenRaw: unknown,
+): Promise<Result<{ email: string; firstTime: boolean }>> {
   const record = await findResetToken(tokenRaw);
   if (!record) return fail("TOKEN_INVALID");
-  return { ok: true, data: { email: record.user.email } };
+  return {
+    ok: true,
+    data: { email: record.user.email, firstTime: record.user.passwordHash === null },
+  };
 }
 
 /**

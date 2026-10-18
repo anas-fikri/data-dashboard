@@ -60,10 +60,14 @@ export async function mailsFor(
     .sort((a, b) => b.Created.localeCompare(a.Created));
 }
 
-/** Tautan atur ulang password terbaru untuk email ini. */
-export async function resetLinkFor(request: APIRequestContext, email: string): Promise<string> {
+/** Tautan /reset-password terbaru untuk email ini (atur ulang, atau undangan admin lewat `subject`). */
+export async function resetLinkFor(
+  request: APIRequestContext,
+  email: string,
+  subject = "Atur ulang password",
+): Promise<string> {
   for (let i = 0; i < 40; i++) {
-    const [latest] = await mailsFor(request, email, "Atur ulang password");
+    const [latest] = await mailsFor(request, email, subject);
     if (latest) {
       const detail = (await (
         await request.get(`${MAILPIT}/api/v1/message/${latest.ID}`)

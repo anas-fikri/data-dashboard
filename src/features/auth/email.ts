@@ -75,3 +75,12 @@ export async function sendPasswordResetEmail(to: string, token: string): Promise
   const html = `<p>Halo,</p><p>Ada permintaan atur ulang password akun Data Dashboard Anda. Buka tautan berikut dalam 30 menit:</p><p><a href="${escapeHtml(link)}">Atur ulang password</a></p><p>Jika bukan Anda, abaikan email ini; password Anda tidak berubah.</p>`;
   return send(to, "Atur ulang password Data Dashboard", text, html);
 }
+
+/** Undangan akun dari admin (T-c7wf): tautan buat password memakai alur reset, 72 jam, sekali pakai. */
+export async function sendInvitationEmail(to: string, token: string): Promise<boolean> {
+  const link = resetLink(token);
+  const recover = `${env().APP_URL}/lupa-password`;
+  const text = `Halo,\n\nAdmin membuatkan akun Data Dashboard untuk Anda. Buat password lewat tautan berikut (berlaku 72 jam, sekali pakai):\n${link}\n\nTautan sudah kedaluwarsa? Minta tautan baru di ${recover}.`;
+  const html = `<p>Halo,</p><p>Admin membuatkan akun Data Dashboard untuk Anda. Buat password lewat tautan berikut (berlaku 72 jam, sekali pakai):</p><p><a href="${escapeHtml(link)}">Buat password</a></p><p>Tautan sudah kedaluwarsa? <a href="${escapeHtml(recover)}">Minta tautan baru</a>.</p>`;
+  return send(to, "Undangan akun Data Dashboard", text, html);
+}

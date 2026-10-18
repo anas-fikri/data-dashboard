@@ -109,6 +109,7 @@ export const SUCCESS = {
   revoke: (email: string) => `${email} bukan admin lagi. Ia otomatis keluar dari semua perangkat.`,
   deactivate: (email: string) => `${email} dinonaktifkan. Ia otomatis keluar dari semua perangkat.`,
   activate: (email: string) => `${email} aktif kembali dan bisa masuk lagi.`,
+  delete: (email: string) => `Akun ${email} dihapus permanen.`,
 };
 
 /** Daftar nama yang diganti dibatasi agar pemberitahuan tidak memanjang tanpa batas. */

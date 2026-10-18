@@ -1,6 +1,7 @@
 import { IconFileSearch, IconUserSearch, IconUsers } from "@tabler/icons-react";
 import Link from "next/link";
 import { Suspense } from "react";
+import { AddUserDialog } from "@/components/admin/add-user-dialog";
 import { AdminFeedback } from "@/components/admin/admin-feedback";
 import { AdminCrumb } from "@/components/admin/admin-crumb";
 import { UsersPagination } from "@/components/admin/users-pagination";
@@ -48,7 +49,8 @@ export default async function AdminUsersPage({ searchParams }: { searchParams: S
       <PageHeader
         eyebrow={<AdminCrumb />}
         title="Pengguna"
-        description="Atur peran admin, status akun, dan pemilik dataset pengguna nonaktif."
+        description="Tambah atau hapus akun, atur peran admin dan status akun, serta alihkan dataset pengguna nonaktif."
+        actions={<AddUserDialog />}
       />
       <div className="flex flex-col gap-4">
         <UsersSearch q={q} status={status} />
@@ -146,7 +148,7 @@ function UsersEmpty({ q, status, total }: { q: string; status: UserStatusFilter;
     <EmptyState
       icon={<IconUsers />}
       title="Belum ada pengguna"
-      description="Pengguna muncul di sini setelah mendaftar dengan email perusahaan."
+      description="Pengguna muncul di sini setelah mendaftar dengan email perusahaan atau ditambahkan admin."
     />
   );
 }

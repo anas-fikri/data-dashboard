@@ -176,12 +176,24 @@
         "voice": "Sebagai admin, Anda mengelola pengguna lewat menu Admin."
       },
       {
+        "caption": "Tambah pengguna: isi email perusahaan dan nama, lalu kirim undangan.",
+        "voice": "Untuk menambah akun, klik Tambah pengguna, isi email perusahaan dan namanya, lalu kirim undangannya."
+      },
+      {
+        "caption": "Pengguna menerima tautan buat password, berlaku 72 jam.",
+        "voice": "Pengguna akan menerima email berisi tautan untuk membuat password. Tautannya berlaku tiga hari."
+      },
+      {
         "caption": "Cari pengguna lewat email atau nama.",
         "voice": "Pengguna bisa dicari berdasarkan email atau nama."
       },
       {
-        "caption": "Menu Aksi: jadikan admin atau nonaktifkan. Akun nonaktif bisa diaktifkan lagi dan datasetnya dialihkan.",
-        "voice": "Lewat menu Aksi, Anda bisa menjadikannya admin atau menonaktifkan akunnya. Akun yang nonaktif bisa diaktifkan kembali, dan datasetnya bisa dialihkan ke pengguna lain."
+        "caption": "Menu Aksi: jadikan admin, nonaktifkan, alihkan dataset, atau hapus akun.",
+        "voice": "Lewat menu Aksi, Anda bisa menjadikannya admin, menonaktifkan, atau menghapus akunnya. Akun yang masih punya dataset dinonaktifkan dulu, lalu datasetnya dialihkan ke pengguna lain."
+      },
+      {
+        "caption": "Hapus akun: ketik ulang emailnya. Penghapusan permanen.",
+        "voice": "Untuk menghapus, ketik ulang emailnya sebagai konfirmasi. Ingat, penghapusan tidak bisa dibatalkan."
       },
       {
         "caption": "Setiap aksi dicatat di log audit.",

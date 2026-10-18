@@ -41,8 +41,16 @@ export interface FakeShare {
   role: "VIEWER" | "EDITOR";
 }
 
+export interface FakeToken {
+  userId: string;
+  purpose: string;
+  tokenHash: string;
+  expiresAt: Date;
+}
+
 interface State {
   users: Map<string, FakeUser>;
+  tokens: FakeToken[];
   datasets: FakeDataset[];
   versions: FakeVersion[];
   shares: FakeShare[];
@@ -53,7 +61,14 @@ type IdFilter = string | { in: string[] };
 const idsOf = (f: IdFilter) => (typeof f === "string" ? [f] : f.in);
 
 export function fakeDb() {
-  const state: State = { users: new Map(), datasets: [], versions: [], shares: [], audits: [] };
+  const state: State = {
+    users: new Map(),
+    tokens: [],
+    datasets: [],
+    versions: [],
+    shares: [],
+    audits: [],
+  };
   const locks: string[] = [];
 
   const tx = {
@@ -62,9 +77,32 @@ export function fakeDb() {
       return 1;
     }),
     user: {
-      findUnique: vi.fn(async ({ where }: { where: { id: string } }) => {
-        const u = state.users.get(where.id);
+      findUnique: vi.fn(async ({ where }: { where: { id?: string; email?: string } }) => {
+        const u = where.id
+          ? state.users.get(where.id)
+          : [...state.users.values()].find((x) => x.email === where.email);
         return u ? { ...u } : null;
+      }),
+      create: vi.fn(
+        async ({
+          data,
+        }: {
+          data: Pick<FakeUser, "email" | "name" | "isAdmin" | "emailVerifiedAt">;
+        }) => {
+          const id = cuid(`new${state.users.size}`);
+          const u: FakeUser = { id, isActive: true, sessionVersion: 1, ...data };
+          state.users.set(id, u);
+          return { ...u };
+        },
+      ),
+      /** Cascade yang relevan untuk service: token dan share yang diterima ikut hilang. */
+      delete: vi.fn(async ({ where }: { where: { id: string } }) => {
+        const u = state.users.get(where.id);
+        if (!u) throw new Error("P2025");
+        state.users.delete(where.id);
+        state.tokens = state.tokens.filter((t) => t.userId !== where.id);
+        state.shares = state.shares.filter((s) => s.userId !== where.id);
+        return { ...u };
       }),
       count: vi.fn(async ({ where }: { where: { isActive?: boolean; isAdmin?: boolean } }) => {
         return [...state.users.values()].filter(
@@ -90,7 +128,17 @@ export function fakeDb() {
         },
       ),
     },
+    verificationToken: {
+      create: vi.fn(async ({ data }: { data: FakeToken }) => {
+        state.tokens.push(data);
+        return { id: `tok${state.tokens.length}` };
+      }),
+    },
     dataset: {
+      count: vi.fn(
+        async ({ where }: { where: { ownerId: string } }) =>
+          state.datasets.filter((d) => d.ownerId === where.ownerId).length,
+      ),
       findMany: vi.fn(async ({ where }: { where: { ownerId: string } }) =>
         state.datasets
           .filter((d) => d.ownerId === where.ownerId)
@@ -179,6 +227,7 @@ export function fakeDb() {
   const transaction = async (fn: (t: typeof tx) => unknown) => {
     const snapshot = structuredClone({
       users: state.users,
+      tokens: state.tokens,
       datasets: state.datasets,
       versions: state.versions,
       shares: state.shares,
@@ -201,6 +250,7 @@ export function fakeDb() {
   function reset() {
     vi.clearAllMocks();
     state.users = new Map();
+    state.tokens = [];
     state.datasets = [];
     state.versions = [];
     state.shares = [];

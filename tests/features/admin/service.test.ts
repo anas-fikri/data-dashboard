@@ -12,10 +12,17 @@ vi.mock("@/lib/db", () => ({ prisma: db.prisma }));
 const logger = vi.hoisted(() => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }));
 vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/storage/multipart", () => ({ s3Multipart: {} }));
-vi.mock("@/lib/env", () => ({ env: () => ({ USER_STORAGE_QUOTA_BYTES: 1000 }) }));
+vi.mock("@/lib/env", () => ({
+  env: () => ({ USER_STORAGE_QUOTA_BYTES: 1000, ALLOWED_EMAIL_DOMAINS: ["pcpexpress.com"] }),
+}));
+const mail = vi.hoisted(() => ({
+  sendInvitationEmail: vi.fn(async (_to: string, _token: string) => true),
+}));
+vi.mock("@/features/auth/email", () => mail);
 
 const svc = await import("@/features/admin/service");
 const { planNames, suffixedName } = await import("@/features/admin/transfer-names");
+const { hashToken } = await import("@/features/auth/tokens");
 
 const A = cuid("admina");
 const B = cuid("userb");
@@ -750,5 +757,190 @@ describe("log penolakan akses", () => {
       "aksi admin ditolak",
     );
     noWrites();
+  });
+});
+
+describe("createUser (T-c7wf)", () => {
+  const HOUR = 3_600_000;
+
+  it("akun terverifikasi tanpa password + token undangan 72 jam (hash saja) + audit; email setelah commit", async () => {
+    seed(user(A, { isAdmin: true }));
+    const before = Date.now();
+    const r = await svc.createUser(
+      { id: A },
+      "  Baru@PCPExpress.com ",
+      "  Budi  Santoso ",
+      false,
+      IP,
+    );
+    expect(r).toMatchObject({ ok: true, data: { email: "baru@pcpexpress.com", inviteSent: true } });
+    if (!r.ok) return;
+    const u = db.state.users.get(r.data.id)!;
+    expect(u).toMatchObject({ email: "baru@pcpexpress.com", name: "Budi Santoso", isAdmin: false });
+    expect(u.emailVerifiedAt).toBeInstanceOf(Date);
+    expect(db.locks).toEqual(["admins"]);
+    expect(db.state.tokens).toHaveLength(1);
+    const tok = db.state.tokens[0]!;
+    expect(tok).toMatchObject({ userId: r.data.id, purpose: "RESET_PASSWORD" });
+    const ttl = tok.expiresAt.getTime() - before;
+    expect(ttl).toBeGreaterThanOrEqual(72 * HOUR - 1_000);
+    expect(ttl).toBeLessThanOrEqual(72 * HOUR + 5_000);
+    // Token mentah hanya ke kotak surat pengguna; DB menyimpan hash-nya, admin tidak menerimanya.
+    expect(mail.sendInvitationEmail).toHaveBeenCalledTimes(1);
+    const [to, raw] = mail.sendInvitationEmail.mock.calls[0]!;
+    expect(to).toBe("baru@pcpexpress.com");
+    expect(tok.tokenHash).toBe(hashToken(raw));
+    expect(JSON.stringify(r)).not.toContain(raw);
+    expect(db.state.audits).toEqual([
+      expect.objectContaining({
+        actorId: A,
+        action: "user.create",
+        targetType: "user",
+        targetId: r.data.id,
+        meta: { isAdmin: false },
+        ip: IP,
+      }),
+    ]);
+  });
+
+  it("jadikan admin sejak dibuat → isAdmin true, tercatat di meta audit", async () => {
+    seed(user(A, { isAdmin: true }));
+    const r = await svc.createUser({ id: A }, "kepala@pcpexpress.com", "", true, IP);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(db.state.users.get(r.data.id)).toMatchObject({ isAdmin: true, name: null });
+    expect(db.state.audits[0]).toMatchObject({ meta: { isAdmin: true } });
+  });
+
+  it.each([
+    ["bukan-email", "", false, "Masukkan alamat email yang valid."],
+    ["orang@gmail.com", "", false, "Gunakan email perusahaan (@pcpexpress.com)."],
+    ["orang@pcpexpress.com.evil.id", "", false, "Gunakan email perusahaan (@pcpexpress.com)."],
+    ["orang@pcpexpress.com", "admin@pcpexpress.com", false, "Nama tidak boleh memuat tanda @."],
+    ["orang@pcpexpress.com", "", "ya", "Permintaan tidak valid."],
+  ])("masukan %s / %s / %s ditolak tanpa transaksi", async (email, name, isAdmin, message) => {
+    seed(user(A, { isAdmin: true }));
+    const r = await svc.createUser({ id: A }, email, name, isAdmin, IP);
+    expect(r).toEqual({ ok: false, code: "INVALID", message });
+    expect(db.prisma.$transaction).not.toHaveBeenCalled();
+    expect(mail.sendInvitationEmail).not.toHaveBeenCalled();
+  });
+
+  it("email sudah terdaftar (beda kapital) → INVALID, tidak ada akun/token/audit/email baru", async () => {
+    seed(user(A, { isAdmin: true }), user(B));
+    const taken = db.state.users.get(B)!.email.toUpperCase();
+    const r = await svc.createUser({ id: A }, taken, "", false, IP);
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(db.state.users.size).toBe(2);
+    expect(db.state.tokens).toHaveLength(0);
+    expect(db.state.audits).toHaveLength(0);
+    expect(mail.sendInvitationEmail).not.toHaveBeenCalled();
+  });
+
+  it("email undangan gagal terkirim → akun tetap dibuat, inviteSent false", async () => {
+    seed(user(A, { isAdmin: true }));
+    mail.sendInvitationEmail.mockResolvedValueOnce(false);
+    const r = await svc.createUser({ id: A }, "baru@pcpexpress.com", "", false, IP);
+    expect(r).toMatchObject({ ok: true, data: { inviteSent: false } });
+    expect(db.state.users.size).toBe(2);
+    expect(db.state.tokens).toHaveLength(1);
+  });
+
+  it("pelaku sudah bukan admin aktif → NOT_FOUND tanpa tulis dan tanpa email", async () => {
+    seed(user(A, { isAdmin: true, isActive: false }));
+    const r = await svc.createUser({ id: A }, "baru@pcpexpress.com", "", false, IP);
+    expect(r).toEqual({ ok: false, code: "NOT_FOUND", message: "Halaman tidak ditemukan." });
+    expect(db.tx.user.create).not.toHaveBeenCalled();
+    expect(mail.sendInvitationEmail).not.toHaveBeenCalled();
+  });
+});
+
+describe("deleteUser (T-c7wf)", () => {
+  const emailOf = (id: string) => db.state.users.get(id)!.email;
+
+  it("akun tanpa dataset: baris, token, dan share yang diterima hilang; audit menyimpan email", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isAdmin: true }));
+    const email = emailOf(B);
+    db.state.tokens.push({
+      userId: B,
+      purpose: "RESET_PASSWORD",
+      tokenHash: "h",
+      expiresAt: new Date(),
+    });
+    db.state.shares.push({ dashboardId: "d1", datasetId: "x1", userId: B, role: "VIEWER" });
+    const r = await svc.deleteUser({ id: A }, B, `  ${email.toUpperCase()} `, IP);
+    expect(r).toEqual({ ok: true, data: { email } });
+    expect(db.state.users.has(B)).toBe(false);
+    expect(db.state.tokens).toHaveLength(0);
+    expect(db.state.shares).toHaveLength(0);
+    expect(db.locks).toEqual(["admins", `datasets:${B}`]);
+    expect(db.state.audits).toEqual([
+      expect.objectContaining({
+        actorId: A,
+        action: "user.delete",
+        targetType: "user",
+        targetId: B,
+        meta: { email, wasAdmin: true, wasActive: true },
+        ip: IP,
+      }),
+    ]);
+  });
+
+  it("menghapus diri sendiri → FORBIDDEN", async () => {
+    seed(user(A, { isAdmin: true }), user(D, { isAdmin: true }));
+    const r = await svc.deleteUser({ id: A }, A, emailOf(A), IP);
+    expect(r).toEqual({
+      ok: false,
+      code: "FORBIDDEN",
+      message: "Anda tidak bisa menghapus akun sendiri.",
+    });
+    expect(db.tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it.each([["salah@pcpexpress.com"], [""], [null]])(
+    "email konfirmasi %s tidak cocok → INVALID, akun tetap",
+    async (confirm) => {
+      seed(user(A, { isAdmin: true }), user(B));
+      const r = await svc.deleteUser({ id: A }, B, confirm, IP);
+      expect(r).toEqual({ ok: false, code: "INVALID", message: "Email konfirmasi tidak cocok." });
+      expect(db.state.users.has(B)).toBe(true);
+      expect(db.tx.user.delete).not.toHaveBeenCalled();
+    },
+  );
+
+  it("masih memiliki dataset → INVALID dengan jumlah dan langkah alih, akun tetap", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { isActive: false }));
+    for (const i of [1, 2]) {
+      db.state.datasets.push({
+        id: cuid(`dsdel${i}`),
+        ownerId: B,
+        name: `Data ${i}`,
+        nameKey: `data ${i}`,
+        createdAt: new Date(),
+      });
+    }
+    const r = await svc.deleteUser({ id: A }, B, emailOf(B), IP);
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(!r.ok && r.message).toContain("masih memiliki 2 dataset");
+    expect(db.state.users.has(B)).toBe(true);
+    expect(db.state.audits).toHaveLength(0);
+  });
+
+  it("id rusak atau pengguna tidak ada → NOT_FOUND", async () => {
+    seed(user(A, { isAdmin: true }));
+    expect(await svc.deleteUser({ id: A }, "../x", "a@pcpexpress.com", IP)).toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(await svc.deleteUser({ id: A }, B, "a@pcpexpress.com", IP)).toMatchObject({
+      code: "NOT_FOUND",
+    });
+    expect(db.tx.user.delete).not.toHaveBeenCalled();
+  });
+
+  it("pelaku sudah bukan admin aktif → NOT_FOUND tanpa hapus", async () => {
+    seed(user(A, { isAdmin: false }), user(B));
+    const r = await svc.deleteUser({ id: A }, B, emailOf(B), IP);
+    expect(r).toEqual({ ok: false, code: "NOT_FOUND", message: "Halaman tidak ditemukan." });
+    expect(db.state.users.has(B)).toBe(true);
   });
 });

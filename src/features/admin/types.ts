@@ -16,6 +16,13 @@ export interface TransferSummary {
   quotaExceeded: boolean;
 }
 
+/** Akun baru dari admin (T-c7wf); inviteSent false = email undangan gagal, akun tetap dibuat. */
+export interface CreatedUser {
+  id: string;
+  email: string;
+  inviteSent: boolean;
+}
+
 /** Status yang bisa disaring di /admin/pengguna (sama dengan badge status di daftar). */
 export const USER_STATUSES = ["all", "active", "inactive", "unverified"] as const;
 export type UserStatusFilter = (typeof USER_STATUSES)[number];

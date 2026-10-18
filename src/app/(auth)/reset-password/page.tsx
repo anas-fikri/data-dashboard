@@ -10,7 +10,8 @@ type Search = Promise<{ token?: string }>;
 export async function generateMetadata({ searchParams }: { searchParams: Search }) {
   const { token } = await searchParams;
   const preview = await previewPasswordReset(token);
-  return { title: preview.ok ? "Atur ulang password" : "Tautan tidak berlaku" };
+  if (!preview.ok) return { title: "Tautan tidak berlaku" };
+  return { title: preview.data.firstTime ? "Buat password" : "Atur ulang password" };
 }
 
 /** Tautan dari email: GET hanya menampilkan form, token dipakai saat POST. */
@@ -22,7 +23,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
     return (
       <AuthCard
         title="Tautan tidak berlaku"
-        description="Tautan atur ulang sudah dipakai atau kedaluwarsa (berlaku 30 menit)."
+        description="Tautan sudah dipakai atau kedaluwarsa (atur ulang berlaku 30 menit, undangan 72 jam)."
       >
         <div className="flex flex-col items-center gap-4 text-center">
           <span
@@ -40,7 +41,14 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
   }
 
   return (
-    <AuthCard title="Atur ulang password" description={`Akun ${preview.data.email}.`}>
+    <AuthCard
+      title={preview.data.firstTime ? "Buat password" : "Atur ulang password"}
+      description={
+        preview.data.firstTime
+          ? `Akun ${preview.data.email} dibuat oleh admin. Buat password untuk masuk.`
+          : `Akun ${preview.data.email}.`
+      }
+    >
       <ResetPasswordForm token={token} />
     </AuthCard>
   );

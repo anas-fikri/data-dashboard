@@ -8,6 +8,7 @@ import {
   login,
   pageFor,
   registerAndVerify,
+  resetLinkFor,
   startWorker,
   stopWorker,
   uniqueEmail,
@@ -273,5 +274,57 @@ test.describe("admin pengguna", () => {
     });
     // C tidak disentuh tindakan admin langsung (hanya penerima alih).
     expect(auditFor(C)).toEqual([]);
+  });
+
+  test("T-c7wf: admin menambah pengguna → undangan → buat password → masuk; lalu menghapus akunnya", async ({
+    browser,
+    request,
+  }) => {
+    const E = uniqueEmail("admin-undang").toLowerCase();
+    await a.goto(USERS);
+    await a.getByRole("button", { name: "Tambah pengguna", exact: true }).click();
+    const dialog = a.getByTestId("add-user-dialog");
+    const submit = dialog.getByRole("button", { name: "Tambah & kirim undangan" });
+    await dialog.getByRole("textbox", { name: "Email", exact: true }).fill(E);
+    await dialog.getByLabel("Nama", { exact: true }).fill("Pengguna Undangan");
+    await submit.click();
+    await expect(dialog.getByRole("heading", { name: "Pengguna ditambahkan" })).toBeVisible();
+    await expect(dialog).toContainText(`Undangan terkirim ke ${E}.`);
+    // Email yang sama kedua kali ditolak dengan pesan yang bisa ditindak.
+    await dialog.getByRole("button", { name: "Tambah lagi" }).click();
+    await dialog.getByRole("textbox", { name: "Email", exact: true }).fill(E.toUpperCase());
+    await submit.click();
+    await expect(dialog).toContainText("Email ini sudah terdaftar.");
+    await dialog.getByRole("button", { name: "Batal" }).click();
+    await expect(dialog).toBeHidden();
+
+    const link = await resetLinkFor(request, E, "Undangan akun");
+    const e = await browser.newPage();
+    await e.goto(link);
+    await expect(e.getByRole("heading", { level: 1 })).toHaveText("Buat password");
+    await e.locator("input[name=password]").fill(PASSWORD);
+    await e.getByRole("button", { name: "Simpan password baru" }).click();
+    await expect(e).toHaveURL(/\/login\?reason=password-reset/);
+    await login(e, E);
+    await expect(e).toHaveURL(/\/$/);
+    // Tautan undangan sekali pakai.
+    await e.goto(link);
+    await expect(e.getByRole("heading", { level: 1 })).toHaveText("Tautan tidak berlaku");
+
+    // Hapus: tombol terkunci sampai email diketik persis (kapital bebas); sesi E langsung berakhir.
+    const row = await openRow(a, E);
+    await row.getByTestId("admin-row-actions").click();
+    await a.getByRole("menuitem", { name: "Hapus akun…", exact: true }).click();
+    const confirm = a.getByTestId("admin-confirm");
+    const del = confirm.getByRole("button", { name: "Hapus permanen" });
+    await expect(del).toBeDisabled();
+    await confirm.getByLabel(/^Ketik/).fill(E.toUpperCase());
+    await del.click();
+    await expect(confirm).toBeHidden();
+    await expect(a.getByTestId("admin-result")).toHaveAttribute("data-tone", "success");
+    await expect(a.locator(`[data-testid="admin-user-row"][data-email="${E}"]`)).toHaveCount(0);
+    await e.goto("/");
+    await expect(e).toHaveURL(/\/login/);
+    await e.context().close();
   });
 });

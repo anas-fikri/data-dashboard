@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import {
+  deleteUserAction,
   setUserActiveAction,
   setUserAdminAction,
   transferDatasetsAction,
@@ -20,6 +21,7 @@ import {
   transferResult,
   type ConfirmKind,
 } from "./admin-messages";
+import { DeleteUserDialog } from "./delete-user-dialog";
 import { TransferDialog } from "./transfer-dialog";
 import { UserRowMenu, type RowChoice, type RowUser } from "./user-row-menu";
 
@@ -39,7 +41,7 @@ export function UserRowActions({ user, isSelf }: UserRowActionsProps) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** Aksi berhasil: fokus pindah ke pemberitahuan hasil, bukan kembali ke pemicu menu. */
   const succeeded = useRef(false);
-  const [dialog, setDialog] = useState<ConfirmKind | "transfer" | null>(null);
+  const [dialog, setDialog] = useState<ConfirmKind | "transfer" | "delete" | null>(null);
   /** Direset di awal setiap aksi: FocusNotice galat dipasang ulang (dan menerima fokus) tiap kali gagal. */
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -108,7 +110,8 @@ export function UserRowActions({ user, isSelf }: UserRowActionsProps) {
     if (!succeeded.current) triggerRef.current?.focus();
   }
 
-  const kind: ConfirmKind = dialog && dialog !== "transfer" ? dialog : "deactivate";
+  const kind: ConfirmKind =
+    dialog && dialog !== "transfer" && dialog !== "delete" ? dialog : "deactivate";
   const copy = confirmCopy(kind, user.email, isSelf);
   const alert = error ? <FocusNotice tone="error">{error}</FocusNotice> : null;
 
@@ -122,7 +125,7 @@ export function UserRowActions({ user, isSelf }: UserRowActionsProps) {
         onChoose={choose}
       />
       <ConfirmDialog
-        open={dialog !== null && dialog !== "transfer"}
+        open={dialog === kind}
         onOpenChange={closeDialog}
         title={copy.title}
         description={copy.body}
@@ -159,6 +162,23 @@ export function UserRowActions({ user, isSelf }: UserRowActionsProps) {
         >
           {alert}
         </TransferDialog>
+      ) : null}
+      {!isSelf && user.datasetCount === 0 ? (
+        <DeleteUserDialog
+          open={dialog === "delete"}
+          onOpenChange={closeDialog}
+          email={user.email}
+          pending={pending}
+          onCloseAutoFocus={restoreFocus}
+          onConfirm={(typed) =>
+            run(
+              () => deleteUserAction(user.id, typed),
+              () => done(SUCCESS.delete(user.email)),
+            )
+          }
+        >
+          {alert}
+        </DeleteUserDialog>
       ) : null}
     </>
   );

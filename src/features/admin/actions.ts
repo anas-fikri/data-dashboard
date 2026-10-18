@@ -12,6 +12,7 @@ import * as service from "./service";
 import type {
   AdminErrorCode as Code,
   AdminResult as Result,
+  CreatedUser,
   TransferSummary,
   TransferTarget,
 } from "./types";
@@ -85,6 +86,29 @@ export async function setUserActiveAction(userId: string, isActive: boolean): Pr
     const r = await service.setUserActive(actor, userId, isActive, ip);
     if (!r.ok) return r;
     if (r.data.changed) revalidatePath(PATH);
+    return { ok: true, data: null };
+  });
+}
+
+/** Tambah pengguna + kirim undangan buat password (tautan 72 jam ke email pengguna, bukan ke admin). */
+export async function createUserAction(
+  email: string,
+  name: string,
+  isAdmin: boolean,
+): Promise<AdminResult<CreatedUser>> {
+  return asAdmin("createUser", async (actor, ip) => {
+    const r = await service.createUser(actor, email, name, isAdmin, ip);
+    if (r.ok) revalidatePath(PATH);
+    return r;
+  });
+}
+
+/** Hapus akun tanpa dataset; admin mengetik ulang email sasaran sebagai konfirmasi. */
+export async function deleteUserAction(userId: string, confirmEmail: string): Promise<AdminResult> {
+  return asAdmin("deleteUser", async (actor, ip) => {
+    const r = await service.deleteUser(actor, userId, confirmEmail, ip);
+    if (!r.ok) return r;
+    revalidatePath(PATH);
     return { ok: true, data: null };
   });
 }

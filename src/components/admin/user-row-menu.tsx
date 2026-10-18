@@ -6,6 +6,7 @@ import {
   IconLoader2,
   IconShieldOff,
   IconShieldPlus,
+  IconTrash,
   IconUserCheck,
   IconUserOff,
 } from "@tabler/icons-react";
@@ -31,7 +32,7 @@ export interface RowUser {
   datasetCount: number;
 }
 
-export type RowChoice = ConfirmKind | "activate" | "transfer";
+export type RowChoice = ConfirmKind | "activate" | "transfer" | "delete";
 
 interface UserRowMenuProps {
   user: RowUser;
@@ -47,7 +48,7 @@ const ITEM = "h-11 md:h-9";
 /*
  * Hanya aksi yang bisa berhasil yang ditampilkan (server tetap memeriksa ulang): jadikan admin butuh
  * akun aktif + email terverifikasi; nonaktifkan diri sendiri tidak ada; alihkan dataset hanya untuk
- * pengguna nonaktif yang punya dataset.
+ * pengguna nonaktif yang punya dataset; hapus akun hanya untuk akun lain tanpa dataset.
  */
 export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: UserRowMenuProps) {
   /** Pilihan membuka dialog: fokus jangan dikembalikan ke pemicu (dialog yang memegang fokus). */
@@ -55,11 +56,14 @@ export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: Use
   const [open, setOpen] = useState(false);
   const canGrant = !user.isAdmin && user.isActive && user.emailVerified;
   const canTransfer = !user.isActive && user.datasetCount > 0;
+  const canDelete = !isSelf && user.datasetCount === 0;
   const hint = isSelf
-    ? "Akun Anda sendiri tidak bisa dinonaktifkan."
+    ? "Akun Anda sendiri tidak bisa dinonaktifkan atau dihapus."
     : user.isActive && !user.emailVerified && !user.isAdmin
       ? "Bisa dijadikan admin setelah emailnya terverifikasi."
-      : null;
+      : user.datasetCount > 0
+        ? "Untuk menghapus akun, nonaktifkan lalu alihkan datasetnya dulu."
+        : null;
 
   function choose(choice: RowChoice) {
     toDialog.current = choice !== "activate";
@@ -131,6 +135,12 @@ export function UserRowMenu({ user, isSelf, pending, triggerRef, onChoose }: Use
           <DropdownMenuItem className={ITEM} onSelect={() => choose("transfer")}>
             <IconArrowsExchange aria-hidden />
             Alihkan dataset…
+          </DropdownMenuItem>
+        ) : null}
+        {canDelete ? (
+          <DropdownMenuItem destructive className={ITEM} onSelect={() => choose("delete")}>
+            <IconTrash aria-hidden />
+            Hapus akun…
           </DropdownMenuItem>
         ) : null}
         {hint ? <DropdownMenuLabel className="font-normal">{hint}</DropdownMenuLabel> : null}

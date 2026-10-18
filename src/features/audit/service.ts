@@ -11,6 +11,10 @@ export type AuditAction =
   | "user.admin.revoke"
   | "user.deactivate"
   | "user.activate"
+  /** Admin menambah akun + mengirim undangan buat password, meta { isAdmin } (T-c7wf). */
+  | "user.create"
+  /** Admin menghapus akun tanpa dataset; meta { email, wasAdmin, wasActive } (T-c7wf). */
+  | "user.delete"
   | "datasets.transfer"
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
   | "dataset.version.activate"

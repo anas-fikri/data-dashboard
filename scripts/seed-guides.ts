@@ -2,7 +2,9 @@
  * Isi awal panduan (T-xfzy): artikel terbit dari content/panduan/NN-<slug>.md dan (opsional) video
  * rekaman layar dari folder berisi videos.json [{ slug, file, title, captions? }].
  *   npx tsx --conditions=react-server --env-file-if-exists=.env scripts/seed-guides.ts \
- *     [--videos demo/guide-videos] [--update] [--replace-videos]
+ *     [--videos demo/guide-videos] [--update] [--replace-videos] [--only slug1,slug2]
+ * --only: hanya artikel/video dengan slug itu yang disentuh (mis. satu artikel diperbarui di produksi
+ * tanpa menimpa suntingan admin di artikel lain).
  * Idempoten per slug: artikel yang sudah ada dilewati (suntingan admin aman) kecuali --update (isi,
  * judul, peran, konteks ditimpa; urutan dan status tetap). Video dilewati bila artikel sudah punya
  * video dengan judul sama, kecuali --replace-videos (video lama + poster + takarir dihapus lewat jadwal
@@ -44,6 +46,8 @@ const arg = (name: string) => {
 const UPDATE = process.argv.includes("--update");
 const REPLACE = process.argv.includes("--replace-videos");
 const VIDEOS = arg("--videos");
+const ONLY = arg("--only")?.split(",").filter(Boolean);
+const picked = (slug: string) => !ONLY || ONLY.includes(slug);
 const DIR = join(process.cwd(), "content/panduan");
 
 async function seedArticles(): Promise<Map<string, string>> {
@@ -53,6 +57,7 @@ async function seedArticles(): Promise<Map<string, string>> {
     .sort();
   for (const file of files) {
     const g = parseGuideFile(readFileSync(join(DIR, file), "utf8"), file);
+    if (!picked(g.slug)) continue;
     const found = await prisma.guideArticle.findUnique({ where: { slug: g.slug } });
     if (found) {
       ids.set(g.slug, found.id);
@@ -145,6 +150,7 @@ function metaOf(dir: string, v: ManifestEntry) {
 async function seedVideos(dir: string, ids: Map<string, string>) {
   const list = JSON.parse(readFileSync(join(dir, "videos.json"), "utf8")) as ManifestEntry[];
   for (const v of list) {
+    if (!picked(v.slug)) continue;
     const articleId = ids.get(v.slug);
     if (!articleId) throw new Error(`videos.json: artikel ${v.slug} tidak ada di content/panduan`);
     const found = await prisma.guideVideo.findFirst({ where: { articleId, title: v.title } });

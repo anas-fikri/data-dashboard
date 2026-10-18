@@ -1,17 +1,21 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
+import { sendInvitationEmail } from "@/features/auth/email";
+import { isAllowedDomain, normalizeEmail } from "@/features/auth/email-domain";
+import { generateToken, hashToken, INVITE_TTL_MS } from "@/features/auth/tokens";
 import { DATASETS_PER_USER, isIdShape } from "@/features/datasets/validation";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
-import { cleanLine, cleanName, escapeLike } from "@/lib/text";
+import { cleanLine, cleanName, escapeLike, looksLikeEmail } from "@/lib/text";
 import { planNames } from "./transfer-names";
 import {
   USER_STATUSES,
   type AdminErrorCode,
   type AdminResult,
+  type CreatedUser,
   type TransferSummary,
   type TransferTarget,
   type UserStatusFilter,
@@ -355,6 +359,127 @@ export async function setUserActive(
       });
       logger.info({ actorId: actor.id, userId: target.id, isActive }, "status pengguna diubah");
       return { ok: true, data: { changed: true } };
+    }),
+  );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tambah / hapus akun (T-c7wf)
+
+/**
+ * Tambah akun: email domain perusahaan yang belum terdaftar. Akun langsung terverifikasi (admin
+ * menjamin alamatnya) dan tanpa password; pengguna membuat password lewat tautan undangan 72 jam
+ * (token RESET_PASSWORD → /reset-password, sekali pakai). Email dikirim setelah commit: gagal kirim
+ * tidak membatalkan akun, pengguna bisa memakai "Lupa password". Tautan tidak pernah dikembalikan ke
+ * admin (hanya pemilik kotak surat yang bisa memakainya).
+ */
+export async function createUser(
+  actor: Actor,
+  emailRaw: unknown,
+  nameRaw: unknown,
+  isAdmin: unknown,
+  ip: string,
+): Promise<AdminResult<CreatedUser>> {
+  const email = normalizeEmail(emailRaw);
+  if (!email) return fail("INVALID", "Masukkan alamat email yang valid.");
+  const domains = env().ALLOWED_EMAIL_DOMAINS;
+  if (!isAllowedDomain(email, domains)) {
+    return fail("INVALID", `Gunakan email perusahaan (${domains.map((d) => `@${d}`).join(", ")}).`);
+  }
+  const name = cleanName(nameRaw);
+  if (name && looksLikeEmail(name)) return fail("INVALID", "Nama tidak boleh memuat tanda @.");
+  if (typeof isAdmin !== "boolean") return invalid();
+  const token = generateToken();
+
+  const result = await guarded(() =>
+    prisma.$transaction(async (tx): Promise<AdminResult<CreatedUser>> => {
+      await lock(tx, "admins");
+      if (!(await actorIsActiveAdmin(tx, actor.id))) return actorDenied(actor, "createUser");
+      const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      if (existing) {
+        return fail("INVALID", "Email ini sudah terdaftar. Cari di daftar untuk mengatur akunnya.");
+      }
+      const now = new Date();
+      const created = await tx.user.create({
+        data: { email, name, isAdmin, emailVerifiedAt: now },
+        select: { id: true },
+      });
+      await tx.verificationToken.create({
+        data: {
+          userId: created.id,
+          purpose: "RESET_PASSWORD",
+          tokenHash: hashToken(token),
+          expiresAt: new Date(now.getTime() + INVITE_TTL_MS),
+        },
+      });
+      await recordAudit(tx, {
+        actorId: actor.id,
+        action: "user.create",
+        targetType: "user",
+        targetId: created.id,
+        meta: { isAdmin },
+        ip,
+      });
+      return { ok: true, data: { id: created.id, email, inviteSent: false } };
+    }),
+  );
+  if (!result.ok) return result;
+  const inviteSent = await sendInvitationEmail(email, token);
+  logger.info(
+    { actorId: actor.id, userId: result.data.id, isAdmin, inviteSent },
+    "pengguna ditambahkan",
+  );
+  return { ok: true, data: { ...result.data, inviteSent } };
+}
+
+/**
+ * Hapus akun permanen: bukan diri sendiri (jadi selalu tersisa admin aktif: pelaku), admin mengetik
+ * ulang email sasaran (dicek di sini), dan tanpa dataset — dataset dialihkan dulu (nonaktifkan →
+ * Alihkan dataset). Token, share yang diterima, ekspor, dan catatan baca panduan ikut terhapus
+ * (cascade); audit yang ia buat tetap dengan pelaku kosong, jadi emailnya disimpan di meta audit.
+ */
+export async function deleteUser(
+  actor: Actor,
+  userId: unknown,
+  confirmEmail: unknown,
+  ip: string,
+): Promise<AdminResult<{ email: string }>> {
+  if (!isIdShape(userId)) return userNotFound();
+  const confirm = normalizeEmail(confirmEmail);
+  return guarded(() =>
+    prisma.$transaction(async (tx): Promise<AdminResult<{ email: string }>> => {
+      await lock(tx, "admins");
+      if (!(await actorIsActiveAdmin(tx, actor.id))) return actorDenied(actor, "deleteUser");
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, email: true, isAdmin: true, isActive: true },
+      });
+      if (!target) return userNotFound();
+      if (target.id === actor.id) {
+        return fail("FORBIDDEN", "Anda tidak bisa menghapus akun sendiri.");
+      }
+      if (confirm !== target.email) return fail("INVALID", "Email konfirmasi tidak cocok.");
+      // Lock yang sama dengan createDataset: tidak ada dataset baru di antara hitung dan hapus.
+      await lock(tx, `datasets:${target.id}`);
+      const datasets = await tx.dataset.count({ where: { ownerId: target.id } });
+      if (datasets > 0) {
+        return fail(
+          "INVALID",
+          `Pengguna ini masih memiliki ${datasets} dataset. Nonaktifkan akunnya, lalu alihkan ` +
+            "datasetnya ke pengguna lain sebelum menghapus.",
+        );
+      }
+      await tx.user.delete({ where: { id: target.id } });
+      await recordAudit(tx, {
+        actorId: actor.id,
+        action: "user.delete",
+        targetType: "user",
+        targetId: target.id,
+        meta: { email: target.email, wasAdmin: target.isAdmin, wasActive: target.isActive },
+        ip,
+      });
+      logger.info({ actorId: actor.id, userId: target.id }, "pengguna dihapus");
+      return { ok: true, data: { email: target.email } };
     }),
   );
 }

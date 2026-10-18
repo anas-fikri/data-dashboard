@@ -18,6 +18,8 @@ export function tokensEqual(hashA: string, hashB: string): boolean {
 
 export const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;
 export const RESET_PASSWORD_TTL_MS = 30 * 60 * 1000;
+/** Undangan akun dari admin (T-c7wf): token RESET_PASSWORD yang lebih panjang umurnya. */
+export const INVITE_TTL_MS = 72 * 60 * 60 * 1000;
 
 /** Format token yang diterima dari URL: base64url 43 karakter persis. */
 export function isTokenShape(value: unknown): value is string {

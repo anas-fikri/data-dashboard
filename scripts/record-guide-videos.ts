@@ -565,17 +565,32 @@ async function main() {
       "admin",
       async (s) => {
         const p = s.page;
+        // Akun contoh fiktif (undangan ke Mailpit lokal); sisa rekaman sebelumnya dihapus dulu.
+        const invite = "demo.rina@pcpexpress.com";
+        await prisma.user.deleteMany({ where: { email: invite } });
         await p.goto("/");
         await s.talk();
         await s.click(sidebar(p, "Admin"), 1200);
         await s.click(p.getByRole("link", { name: /Pengguna/ }).first(), 1500);
+        await s.click(p.getByRole("button", { name: "Tambah pengguna", exact: true }), 800);
         await s.talk();
-        await s.type(p.getByPlaceholder("Cari email atau nama"), "demo");
+        const add = p.getByTestId("add-user-dialog");
+        await s.type(add.getByRole("textbox", { name: "Email", exact: true }), invite);
+        await s.type(add.getByRole("textbox", { name: "Nama", exact: true }), "Rina Wijaya");
+        await s.click(add.getByRole("button", { name: "Tambah & kirim undangan" }), 1500);
+        await s.step(1500);
+        await s.click(add.getByRole("button", { name: "Selesai" }), 1000);
+        await s.talk();
+        await s.type(p.getByPlaceholder("Cari email atau nama"), "rina");
         await s.click(p.getByRole("button", { name: "Cari" }), 1500);
         // Kalimat tentang isi menu diucapkan selagi menunya terbuka.
-        await s.click(p.getByRole("button", { name: `Aksi untuk ${ACCOUNTS.viewer.email}` }), 600);
+        await s.click(p.getByRole("button", { name: `Aksi untuk ${invite}` }), 600);
         await s.step(1500);
-        await p.keyboard.press("Escape");
+        await s.click(p.getByRole("menuitem", { name: "Hapus akun…", exact: true }), 900);
+        await s.talk();
+        const confirm = p.getByTestId("admin-confirm");
+        await s.type(confirm.getByRole("textbox"), invite);
+        await s.click(confirm.getByRole("button", { name: "Hapus permanen" }), 1500);
         await s.step(2400);
       },
     );
