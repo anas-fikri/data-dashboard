@@ -327,3 +327,56 @@ describe("backup.sh: kasus tepi (review T-7psf)", () => {
     expect(readdirSync(cfg()).filter((f) => f.startsWith(".status."))).toEqual([]);
   });
 });
+
+describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
+  const PW = 'dummy:pa"ss\\word#@1';
+  function smtpJson(security: string) {
+    mkdirSync(join(cfg(), "app"), { recursive: true });
+    writeFileSync(
+      join(cfg(), "app/smtp.json"),
+      JSON.stringify({
+        host: "mail.contoh.id",
+        port: security === "ssl" ? 465 : 587,
+        security,
+        username: "noreply@contoh.id",
+        password: PW,
+        fromAddress: "noreply@contoh.id",
+        fromName: "Data Dashboard",
+      }),
+    );
+  }
+
+  it("SSL/TLS: url smtps + user di konfigurasi curl (stdin, escape), pengirim dari aplikasi", () => {
+    smtpJson("ssl");
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    const r = runWith({ SMTP_URL: "", MAIL_FROM: "" });
+    expect(r.code, r.out).toBe(0);
+    const conf = readFileSync(join(root, "smtp-config-0.txt"), "utf8");
+    expect(conf).toContain('url = "smtps://mail.contoh.id:465"');
+    expect(conf).toContain('user = "noreply@contoh.id:dummy:pa\\"ss\\\\word#@1"');
+    expect(conf).not.toContain("ssl-reqd");
+    const args = readFileSync(join(root, "curl-args-0.txt"), "utf8");
+    expect(args).toContain("--mail-from noreply@contoh.id");
+    expect(args).not.toContain("dummy:pa");
+    expect(mails()[0]).toContain("From: Data Dashboard <noreply@contoh.id>");
+  });
+
+  it("STARTTLS → ssl-reqd; tanpa smtp.json → SMTP_URL lama dengan STARTTLS oportunistik", () => {
+    smtpJson("starttls");
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    const conf = readFileSync(join(root, "smtp-config-0.txt"), "utf8");
+    expect(conf).toContain('url = "smtp://mail.contoh.id:587"');
+    expect(conf).toContain("ssl-reqd");
+
+    rmSync(join(cfg(), "app/smtp.json"));
+    rmSync(join(root, "down"));
+    expect(run("--sync").code).toBe(0); // pulih → email kedua lewat SMTP_URL
+    const conf2 = readFileSync(join(root, "smtp-config-1.txt"), "utf8");
+    expect(conf2).toContain('url = "smtps://bot%40pcpexpress.com:smtp-pw@mail.pcpexpress.com:465"');
+    expect(conf2).toMatch(/^ssl$/m);
+    expect(mails()[1]).toContain("From: Data Dashboard <bot@pcpexpress.com>");
+  });
+});

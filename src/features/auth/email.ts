@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { mailer } from "@/lib/mail";
+import { mailer, mailFrom } from "@/lib/mail";
 
 function escapeHtml(s: string): string {
   return s.replace(
@@ -13,7 +13,7 @@ function escapeHtml(s: string): string {
 
 async function send(to: string, subject: string, text: string, html: string): Promise<boolean> {
   try {
-    await mailer().sendMail({ from: env().MAIL_FROM, to, subject, text, html });
+    await mailer().sendMail({ from: mailFrom(), to, subject, text, html });
     return true;
   } catch (e) {
     // Tanpa alamat email di log (PII): cukup hash pendek untuk korelasi.

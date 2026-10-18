@@ -29,6 +29,7 @@ export default defineConfig({
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
+        /smtp\.spec\.ts$/,
         /filters\.spec\.ts$/,
         /versions\.spec\.ts$/,
         /mapping\.spec\.ts$/,
@@ -49,9 +50,9 @@ export default defineConfig({
     { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },
     // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
-    // backup (T-7psf): status.json di folder dev bersama memunculkan banner untuk SEMUA admin → tidak
-    // bersamaan dengan spec lain yang memakai admin.
-    { name: "backup", testMatch: /backup\.spec\.ts$/, dependencies: ["admin"] },
+    // backup (T-7psf) + smtp (T-byys): status.json / smtp.json di folder dev bersama berlaku untuk semua
+    // admin / semua email dev → tidak bersamaan dengan spec lain.
+    { name: "backup", testMatch: /(backup|smtp)\.spec\.ts$/, dependencies: ["admin"] },
     // filters (T-012): worker sendiri untuk fixture 5.000 baris (slicer, preset tanggal, filter silang).
     { name: "filters", testMatch: /filters\.spec\.ts$/, dependencies: ["backup"] },
     // versions (T-013): worker sendiri; ganti data, retensi, rollback, dan job maintenance sungguhan.

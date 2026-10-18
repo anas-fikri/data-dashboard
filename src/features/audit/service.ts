@@ -17,6 +17,8 @@ export type AuditAction =
   | "user.delete"
   /** Admin mengubah target backup off-VM (Admin › Backup); meta tanpa secret (T-7psf). */
   | "backup.target.update"
+  /** Admin mengubah pengaturan SMTP (Admin › Email); meta tanpa password (T-byys). */
+  | "smtp.settings.update"
   | "datasets.transfer"
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
   | "dataset.version.activate"

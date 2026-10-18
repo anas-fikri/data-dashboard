@@ -49,14 +49,23 @@ if [ "$(id -u)" = 0 ]; then
   chown 0:0 "$cfg" && chmod 755 "$cfg"
 fi
 
+# JSON objek dari file yang ditulis user app (app/<nama>): hanya file biasa, dibaca SEKALI dengan batas waktu
+# dan ukuran (symlink/FIFO/tukar file di tengah jalan tidak bisa membuat root membaca tempat lain atau
+# menggantung sambil memegang kunci). Tidak ada → kosong; tidak terbaca → kode 1.
+app_json() {
+  local f="$cfg/app/$1" j
+  [ -L "$f" ] && return 1
+  [ -e "$f" ] || return 0
+  [ -f "$f" ] && j=$(timeout 5 head -c 65536 -- "$f") && jq -e 'type == "object"' <<<"$j" >/dev/null 2>&1 ||
+    return 1
+  printf '%s' "$j"
+}
+
 remote="" target="" cfg_broken=""
 offsite_target() {
-  local f="$cfg/app/offsite.json" path endpoint json=""
+  local path endpoint json=""
   remote="" target="" cfg_broken=""
-  # Ditulis user app: hanya file biasa, dibaca SEKALI dengan batas waktu (symlink/FIFO/tukar file di tengah
-  # jalan tidak bisa membuat root membaca tempat lain atau menggantung sambil memegang kunci).
-  if [ -L "$f" ] || { [ -e "$f" ] && ! { [ -f "$f" ] && json=$(timeout 5 head -c 65536 -- "$f") &&
-    jq -e 'type == "object"' <<<"$json" >/dev/null 2>&1; }; }; then
+  if ! json=$(app_json offsite.json); then
     # Tidak terbaca: tanpa salinan (juga tanpa BACKUP_REMOTE, agar run harian dan --sync sama), arsip lokal
     # tidak dibuang retensi lokal, status "failed" sampai admin menyimpan ulang konfigurasinya.
     cfg_broken=1
@@ -138,9 +147,54 @@ admin_emails() {
   fi
 }
 
+# Nilai untuk file konfigurasi curl (-K): kutip ganda dengan \ dan " di-escape.
+curl_q() {
+  local v=$1
+  v=${v//\\/\\\\}
+  v=${v//\"/\\\"}
+  printf '"%s"' "$v"
+}
+
+# Konfigurasi curl SMTP: Admin › Email (app/smtp.json) bila ada, selain itu SMTP_URL (.env). Gagal → kode 1.
+smtp_config() {
+  local j host port sec user pass
+  if j=$(app_json smtp.json) && [ -n "$j" ]; then
+    host=$(jq -r .host <<<"$j")
+    port=$(jq -r .port <<<"$j")
+    sec=$(jq -r .security <<<"$j")
+    user=$(jq -r '.username // ""' <<<"$j")
+    pass=$(jq -r '.password // ""' <<<"$j")
+    case $sec in
+      ssl) printf 'url = %s\n' "$(curl_q "smtps://$host:$port")" ;;
+      starttls) printf 'url = %s\nssl-reqd\n' "$(curl_q "smtp://$host:$port")" ;;
+      *) printf 'url = %s\n' "$(curl_q "smtp://$host:$port")" ;;
+    esac
+    [ -z "$user" ] || printf 'user = %s\n' "$(curl_q "$user:$pass")"
+    return 0
+  fi
+  [ -n "${SMTP_URL:-}" ] || return 1
+  # Perilaku lama: STARTTLS bila ditawarkan server.
+  printf 'url = %s\nssl\n' "$(curl_q "$SMTP_URL")"
+}
+
+# Pengirim (variabel from = header, addr = amplop): Admin › Email bila ada, selain itu MAIL_FROM.
+smtp_from() {
+  local j name
+  if j=$(app_json smtp.json) && [ -n "$j" ]; then
+    addr=$(jq -r .fromAddress <<<"$j")
+    name=$(jq -r '.fromName // ""' <<<"$j")
+    from=${name:+$name <$addr>}
+    from=${from:-$addr}
+    return 0
+  fi
+  from=${MAIL_FROM:-}
+  addr=$(printf '%s' "$from" | sed -n 's/.*<\(.*\)>.*/\1/p')
+  addr=${addr:-$from}
+}
+
 notify() { # state pending since
   local state=$1 pending=$2 since=$3 to subject body from addr mail a link
-  [ -n "${SMTP_URL:-}" ] || { echo "[$stamp] peringatan: SMTP_URL kosong, admin tidak diberi tahu" >&2; return 1; }
+  smtp_config >/dev/null || { echo "[$stamp] peringatan: SMTP belum diatur, admin tidak diberi tahu" >&2; return 1; }
   to=$(admin_emails)
   [ -n "$to" ] || { echo "[$stamp] peringatan: tidak ada email admin aktif" >&2; return 1; }
   link="${APP_URL:-}/admin/backup"
@@ -160,9 +214,8 @@ Periksa jaringan/target atau ubah pengaturan di $link" ;;
       body="Backup Data Dashboard berjalan normal lagi ($now UTC). Target off-VM: ${target:-tidak aktif (backup hanya di VM)}.
 Status: $link" ;;
   esac
-  from=${MAIL_FROM:-}
-  addr=$(printf '%s' "$from" | sed -n 's/.*<\(.*\)>.*/\1/p')
-  addr=${addr:-$from}
+  smtp_from
+  from=${from//[$'\r\n']/}
   mail=$(mktemp)
   {
     printf 'From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%s.%s.%s@%s>\r\n' "$from" \
@@ -173,9 +226,9 @@ Status: $link" ;;
   } >"$mail"
   local rcpt=()
   for a in $to; do rcpt+=(--mail-rcpt "$a"); done
-  # URL (dengan password) lewat stdin -K, bukan argumen proses.
-  if printf 'url = "%s"\n' "$SMTP_URL" |
-    curl -sS --ssl --max-time 30 -K - --mail-from "$addr" --mail-rcpt-allowfails "${rcpt[@]}" -T "$mail"; then
+  # URL + kredensial lewat stdin -K, bukan argumen proses.
+  if smtp_config |
+    curl -sS --max-time 30 -K - --mail-from "$addr" --mail-rcpt-allowfails "${rcpt[@]}" -T "$mail"; then
     rm -f "$mail"
     echo "[$stamp] admin diberi tahu: $subject"
   else

@@ -2,6 +2,7 @@ import {
   IconBook2,
   IconChevronRight,
   IconCloudUpload,
+  IconMail,
   IconUsers,
   type Icon,
 } from "@tabler/icons-react";
@@ -38,6 +39,12 @@ const SECTIONS: AdminSection[] = [
     title: "Backup",
     description: "Lihat status backup harian dan atur target salinan off-VM (S3).",
     icon: IconCloudUpload,
+  },
+  {
+    href: "/admin/email",
+    title: "Email (SMTP)",
+    description: "Atur server pengirim email aplikasi dan kirim email uji.",
+    icon: IconMail,
   },
 ];
 
