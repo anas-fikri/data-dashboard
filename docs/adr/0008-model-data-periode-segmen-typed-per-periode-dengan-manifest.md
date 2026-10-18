@@ -1,13 +1,16 @@
 ---
-status: proposed
-date: 2026-10-17
+status: accepted
+date: 2026-10-18
 ---
 
 # ADR-0008: Model data periode: segmen typed per periode + manifest versi, dibaca sebagai daftar parquet dengan proyeksi eksplisit
 
-> Status **proposed**: AC 1 T-034 (p95 segmen ≤ 1,1× file tunggal) tidak terpenuhi secara harfiah untuk
-> kueri kecil (+3–13 ms absolut) dan halaman OFFSET terakhir tanpa urut; kriteria pengganti di bawah perlu
-> disetujui pemilik produk (UAT) dan diukur ulang di VM T-023/olympus sebelum ADR ini diterima.
+> Status **accepted** 2026-10-18 (diusulkan 2026-10-17). Pemilik produk menyetujui kriteria pengganti di bawah
+> (p95 ≤ 1,1× untuk query ≥ 100 ms, selain itu selisih ≤ 15 ms; halaman OFFSET tanpa urut dikecualikan) karena AC 1
+> T-034 tidak lolos secara harfiah di M4. Ulang ukur di olympus (VM produksi, HDD, container worker produksi,
+> `scripts/perf-segments.ts --reps 30`): 13/13 query yang dinilai lolos, 14/14 hasil identik, jendela 200 baris p95
+> 22,3 ms, `union_by_name` tetap gagal (`docs/ai/perf/T-034.md` § Ulang ukur di olympus). Amandemen flow-kerja di
+> akhir dokumen ini sudah diterapkan ke `docs/flow-kerja.md`.
 
 ## Context and Problem Statement
 
@@ -195,7 +198,7 @@ T-034 untuk query kecil adalah +13 ms p95 (filter-values tanggal, run 2).
 
 # Usulan amandemen docs/flow-kerja.md (T-034 / P-1)
 
-Status: **usulan**, diterapkan bersama ADR-0008 (model data periode) saat ADR berstatus accepted.
+Status: **diterapkan** ke `docs/flow-kerja.md` pada 2026-10-18 bersama penerimaan ADR-0008 (model data periode).
 Sumber: rencana `docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md` §1.2, §3.4, §4, §5 dan
 bukti spike `docs/ai/perf/T-034.md`. Pemetaan kode P → task: P-4 T-036, P-5 T-037, P-6 T-038, P-7 T-039,
 P-8 T-040, P-9–P-16 T-041–T-048, P-17–P-28 T-049–T-060, P-29 T-061, P-31 T-063.

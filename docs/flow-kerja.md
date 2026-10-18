@@ -83,28 +83,38 @@ flowchart LR
 ```
 Filter aktif tersimpan di URL.
 
-### A4. Refresh data — T-013 (ganti + rollback), T-014 (pemetaan), T-015 (tambah baris)
+### A4. Refresh data — T-013 (ganti + rollback), T-014 (pemetaan), data per periode T-049–T-060 (menggantikan T-015)
 ```mermaid
 flowchart TD
-  P["Buka profil dataset"] --> B{"Ada versi yang belum selesai?"}
+  P["Buka profil dataset"] --> B{"Ada versi yang belum selesai?<br/>(termasuk AWAITING_MAPPING / AWAITING_CONFIRM)"}
   B -->|ya| BUSY["Ditolak: 'ingest sedang berjalan' (DATASET_BUSY)"]
-  B -->|tidak| U2["Upload file baru"]
-  U2 --> M{"Mode?"}
-  M -->|Ganti semua| I["Ingest ke versi baru (status versi: INGESTING; versi aktif tidak berubah)"]
-  M -->|Tambah baris| I
+  B -->|tidak| PM{"Dataset mode periode?"}
+  PM -->|tidak| G["Panel biasa: 'Ganti semua data' (+ tautan 'Atur periode')"]
+  PM -->|ya| TP["Dropzone utama: 'Tambah atau perbarui periode'<br/>(+ tautan sekunder 'Ganti semua data…')"]
+  G --> I["Ingest ke versi baru (INGESTING; versi aktif tidak berubah)"]
+  TP --> I
   I -->|gagal| OLD["Versi aktif tetap tampil; versi baru FAILED + pesan"]
-  I -->|selesai cast dengan skema aktif| K{"Semua kolom skema aktif ditemukan dan cast ≥ 98%?"}
-  K -->|ya| AK["Versi baru READY dan jadi aktif; dashboard otomatis pakai data baru"]
-  K -->|tidak| MP["Versi AWAITING_MAPPING: petakan kolom baru → kolom lama, konfirmasi NULL untuk kolom hilang, kolom baru masuk tersembunyi"]
-  MP --> RC["Re-cast typed dari raw versi baru dengan skema hasil pemetaan"]
-  RC --> AK
-  AK --> RB["Rollback: pemilik mengaktifkan kembali salah satu dari 2 versi READY sebelumnya"]
+  I -->|cast segmen baru dengan skema aktif| K{"Semua kolom skema aktif ditemukan dan cast ≥ 98%<br/>(dihitung atas baris baru saja)?"}
+  K -->|tidak| MP["AWAITING_MAPPING: petakan kolom (hanya segmen baru), 'Kosongkan' = NULL untuk periode baru, kolom tambahan masuk tersembunyi"]
+  MP --> RC["Re-cast segmen baru dengan skema hasil pemetaan"]
+  RC --> PL
+  K -->|ya| PL["Rencana periode (computePeriodPlan): Baru / Diganti / Dilepas karena batas / Dikecualikan / Ditolak"]
+  PL -->|melewati batas, onLimit=REJECT, atau satu periode > batas| REJ["Ditolak sebelum aktivasi; data aktif tidak berubah"]
+  PL -->|murni menambah periode baru, mode kolom, dalam batas, tanpa peringatan| AK
+  PL -->|penggantian, pelepasan, susut > 50 %, periode nyasar, baris tanpa tanggal, label, file identik| CF["AWAITING_CONFIRM: tinjauan Periode | Sekarang | Setelah | Keterangan"]
+  CF -->|Terapkan; basis/skema berubah → PLAN_STALE, rencana dihitung ulang| AK["verifyVersionIntegrity → versi READY dan aktif (dengan sheetMap); dashboard otomatis memakai data baru"]
+  CF -->|Batalkan / 7 hari tanpa keputusan| OLD
+  AK --> RB["Rollback: pemilik mengaktifkan kembali salah satu versi READY tersimpan"]
+  AK --> PR["Kartu Periode: Unggah ulang · Hapus (PERIOD_REMOVE) · Pulihkan (PERIOD_RESTORE)"]
 ```
-- **Versi refresh tidak menjalankan inferensi tipe.** Raw versi baru di-cast memakai **skema aktif** (dipetakan per nama asli kolom setelah normalisasi spasi/kapital). Dengan itu koreksi user (tipe dipaksa, format tanggal, rename) ikut terbawa.
-- **Ganti semua**: raw versi baru = isi file baru.
-- **Tambah baris**: raw versi baru = raw versi aktif ∪ raw file baru, ditulis worker dalam satu `COPY` DuckDB. Setiap versi **self-contained**; menghapus versi lama tidak pernah merusak versi lain.
-- Satu dataset hanya punya **satu versi non-terminal** pada satu waktu.
-- Disimpan 3 versi READY terakhir; yang lebih lama dihapus (metadata + Parquet) oleh job pembersihan.
+- **Versi refresh tidak menjalankan inferensi tipe.** File baru di-cast memakai **skema aktif** (dipetakan per nama asli kolom setelah normalisasi spasi/kapital), per segmen baru dengan jenis sumber dan locale file itu sendiri. Koreksi user (tipe dipaksa, format tanggal, rename) ikut terbawa; rename yang dikonfirmasi diingat sebagai alias.
+- **Ganti semua data**: versi baru berisi segmen dari file baru saja (dataset periode: semua periode diganti, dikonfirmasi "Semua N periode akan diganti").
+- **Tambah atau perbarui periode** (dataset periode, D15): periode baru **ditambahkan**, periode yang sudah ada **diganti utuh**, tidak digandakan; mengunggah file yang sama dua kali = sekali. Segmen periode yang tidak berubah dirujuk ulang oleh versi baru tanpa ditulis ulang (biaya unggah sebanding dengan periode baru). Sumber periode per sheet: kolom tanggal (`date_trunc(satuan, tanggal)`; satu file boleh berisi banyak periode) atau label (selalu berhenti di konfirmasi).
+- **Versi = manifest segmen imutabel** (D4): rollback hanya mengaktifkan manifest lama; menghapus versi lama tidak pernah merusak versi lain karena objek hanya dihapus GC bila tidak dirujuk versi hidup mana pun.
+- **Hapus periode** = versi `PERIOD_REMOVE` (hanya manifest, aktif dalam hitungan detik, tercatat di AuditLog, bisa di-rollback); periode terakhir tidak bisa dihapus. **Pulihkan periode** menyalin referensi segmen dari versi lama yang masih tersimpan.
+- **Mengaktifkan mode periode** ("Atur periode"): tinjauan sebaran baris per periode + baris tanpa tanggal + proyeksi kapasitas, lalu job sekali (O(total)) yang memecah data aktif menjadi segmen per periode sebagai versi `PERIOD_SETUP` (bisa di-rollback ke mode biasa).
+- Satu dataset hanya punya **satu versi non-terminal** pada satu waktu (`AWAITING_CONFIRM` termasuk); banyak file periode diantre berurutan.
+- Disimpan 3 versi READY terakhir + versi aktif; versi yang lebih tua dihapus metadatanya, objek parquet dibersihkan GC mark-and-sweep setelah tidak dirujuk ≥ 24 jam (T-038).
 
 ### A5. Panduan penggunaan per peran — T-020, T-021, T-022
 ```mermaid
@@ -331,7 +341,7 @@ Memungkinkan, dan slicer akan jauh lebih ringan dari Excel karena pekerjaan bera
 | D1 | Auth: Credentials (email + password, argon2id) + JWT session; klaim `sessionVersion`; setiap permintaan middleware mencocokkan `isActive` dan `sessionVersion` dengan DB | Auth.js Credentials memaksa JWT, tidak ada sesi DB yang bisa dicabut; cek per permintaan memberi pencabutan seketika (T-002, T-019) |
 | D2 | Server Action mengembalikan `{ ok:false, code }` dengan `NOT_FOUND`/`FORBIDDEN`/`RATE_LIMITED`/`DATASET_BUSY`/`INVALID_FORMAT`; HTTP status hanya di Route Handler | Server Action tidak punya status HTTP (conventions) |
 | D3 | Parquet dua lapis per sheet; raw posisional semua baris; typed per `schemaRevision`; header = metadata | Re-cast tanpa file asli, tanpa parse ulang, tanpa korupsi baca |
-| D4 | Versi self-contained; refresh di-cast dengan skema aktif, tanpa inferensi; satu versi non-terminal per dataset | Append + retensi aman; koreksi user terbawa; tidak ada balapan upload |
+| D4 | Versi = **manifest segmen imutabel** (daftar segmen typed per sheet); self-contained secara logis: setiap versi hidup merujuk semua segmen yang dibutuhkannya dan objek hanya dihapus GC mark-and-sweep bila tidak dirujuk versi hidup mana pun ≥ `SEGMENT_GC_GRACE_HOURS` (24 jam), dengan `verifyVersionIntegrity` fail-closed sebelum setiap aktivasi; refresh di-cast dengan skema aktif tanpa inferensi (hanya segmen baru); satu versi non-terminal per dataset. Query membaca daftar segmen lewat `read_parquet($daftar)` (`listValue`), dengan proyeksi eksplisit per kelompok skema (`CAST(_row AS BIGINT)`, `NULL AS c<pos>`) bila set kolom berbeda — bukan `union_by_name` (ADR-0008) | Biaya unggah O(periode baru), rollback/hapus/pulihkan periode hanya mengganti manifest, tidak ada balapan upload; spike T-034: hasil identik, query ≥ 100 ms 0,92–1,10× file tunggal (overhead tetap ± 0,1 ms per file), `union_by_name` gagal di DuckDB 1.5.6 untuk query tabel |
 | D5 | MinIO di subdomain sendiri; S3 client menandatangani dengan endpoint publik | SigV4 menyertakan host + path |
 | D6 | Viewer hanya `{widgetId, dashboardFilters}` (filter lewat nama, hanya kolom yang dipilih pemilik + dimensi cross-filter, berlaku pada kolom bernama sama dengan kelompok tipe sama); editor `{dashboardId, spec}`; pemilik `{datasetId, spec}`; sheet selalu di-resolve dalam dataset dashboard | Viewer tidak boleh membaca kolom di luar widget; tidak ada baca lintas dataset |
 | D7 | Worker 1 job/proses × 2 replika @ 3 GB; DuckDB `memory_limit` eksplisit di setiap proses | Hindari OOM-kill |
@@ -342,3 +352,5 @@ Memungkinkan, dan slicer akan jauh lebih ringan dari Excel karena pekerjaan bera
 | D12 | Poster/durasi video diambil di browser; tidak ada ffmpeg di stack | Jaga image kecil |
 | D14 | Keamanan dasar: CSP nonce + header (T-027), requireUser()/requireAdmin() Node-side di setiap Server Action/Route Handler dengan `isAdmin` dari DB, lupa/ganti password dengan token hash sekali pakai (T-026), AuditLog untuk share/admin/ekspor/hapus, batas parser (baris/kolom/sheet/sel/rasio dekompresi/timeout), CSV formula-injection dinetralkan, markdown allowlist, task security berprofil strict dengan checklist ASVS | Hasil review ASVS/STRIDE 2026-10-11 |
 | D13 | UI hanya lewat rantai plugin frontend-expert; fondasi (arah, token preset, shell) ditetapkan sekali di T-025; setiap task UI lolos `/frontend-expert:audit` tanpa Critical/High dan mencatat Conventions check dengan waiver Icons = @tabler/icons-react | Konsistensi visual, anti "AI aesthetic", kebijakan ikon user |
+| D15 | Data per periode: satuan Bulan/Kuartal/Tahun (tanpa minggu/hari di v1); setiap periode = satu segmen per sheet; periode baru ditambahkan, periode yang ada diganti utuh (idempoten), tidak pernah dipecah atau dipotong; setiap operasi periode = tepat satu versi (`PERIOD`, `PERIOD_SETUP`, `PERIOD_REMOVE`, `PERIOD_RESTORE`); batas dievaluasi per periode utuh sebelum aktivasi — default 24 periode (maks 60), ≤ 10 jt baris/sheet, ≤ 16 GiB/dataset, ≤ 120 segmen/sheet, kuota 20 GiB dari byte nyata; saat penuh default **tolak** (`onLimit=REJECT`), "lepas periode terlama" hanya pilihan pemilik dan selalu lewat tinjauan; baris tanpa tanggal valid default ditolak (buang hanya eksplisit); `_period` dibekukan saat unggah; mode periode disimpan di versi/sheet, bukan dataset | Dashboard antarbulan tetap satu `datasetId`/`sheetId`; batas tidak pernah memotong periode; unggah ulang tidak menggandakan baris; rollback ke versi pra-periode tetap rapi (rencana §4–§5, ADR-0008) |
+| D16 | "Lihat data": penampil baca-saja gaya Excel untuk **pemilik dan editor** di `/datasets/[id]/data` lewat endpoint sheet sendiri (`POST /api/sheets/:sheetId/rows`, bukan `/api/query`); server yang mengurutkan, menyaring, dan memotong blok 200 baris (tanpa urut/saring: posisi global → (segmen, `file_row_number`) hanya pada segmen yang beririsan; dengan urut/saring: late materialization + pemutus seri `_row`); identifier hanya `c<pos>`/`_row`/`_period`, nilai lewat parameter; `versionId` ≠ aktif → 409 `VERSION_CHANGED`; rate 300/menit dan maks 2 dari 4 slot query terpisah dari widget, blok tidak masuk cache hasil; viewer hanya "Perbesar" widget tabel lewat `/api/query` (D6); grid AG Grid Community 36.2.0 dipin (ADR-0007) | File besar tidak pernah dikirim ke browser; jendela segmen terukur p95 15–16 ms di kedalaman mana pun, target ≤ 50 ms (T-034); grid tidak membuat dashboard kehabisan slot; tidak ada kebocoran kolom ke viewer |
