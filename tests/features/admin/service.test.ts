@@ -837,6 +837,14 @@ describe("createUser (T-c7wf)", () => {
     expect(mail.sendInvitationEmail).not.toHaveBeenCalled();
   });
 
+  it("email terdaftar belum verifikasi → pesan menunjuk Hapus lalu tambah lagi", async () => {
+    seed(user(A, { isAdmin: true }), user(B, { emailVerifiedAt: null }));
+    const r = await svc.createUser({ id: A }, db.state.users.get(B)!.email, "", false, IP);
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(!r.ok && r.message).toContain("belum verifikasi");
+    expect(db.state.users.size).toBe(2);
+  });
+
   it("email undangan gagal terkirim → akun tetap dibuat, inviteSent false", async () => {
     seed(user(A, { isAdmin: true }));
     mail.sendInvitationEmail.mockResolvedValueOnce(false);

@@ -395,9 +395,17 @@ export async function createUser(
     prisma.$transaction(async (tx): Promise<AdminResult<CreatedUser>> => {
       await lock(tx, "admins");
       if (!(await actorIsActiveAdmin(tx, actor.id))) return actorDenied(actor, "createUser");
-      const existing = await tx.user.findUnique({ where: { email }, select: { id: true } });
+      const existing = await tx.user.findUnique({
+        where: { email },
+        select: { emailVerifiedAt: true },
+      });
       if (existing) {
-        return fail("INVALID", "Email ini sudah terdaftar. Cari di daftar untuk mengatur akunnya.");
+        return fail(
+          "INVALID",
+          existing.emailVerifiedAt
+            ? "Email ini sudah terdaftar. Cari di daftar untuk mengatur akunnya."
+            : "Email ini sudah mendaftar tetapi belum verifikasi. Hapus akunnya di daftar, lalu tambahkan lagi untuk mengirim undangan.",
+        );
       }
       const now = new Date();
       const created = await tx.user.create({

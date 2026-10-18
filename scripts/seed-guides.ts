@@ -47,16 +47,24 @@ const UPDATE = process.argv.includes("--update");
 const REPLACE = process.argv.includes("--replace-videos");
 const VIDEOS = arg("--videos");
 const ONLY = arg("--only")?.split(",").filter(Boolean);
+// Salah ketik --only tidak boleh diam-diam jadi "semua artikel" (bersama --update menimpa suntingan admin).
+if (
+  process.argv.some((a) => a.startsWith("--only=")) ||
+  (process.argv.includes("--only") && (!ONLY?.length || ONLY.some((s) => s.startsWith("--"))))
+)
+  throw new Error("pakai: --only slug1,slug2");
 const picked = (slug: string) => !ONLY || ONLY.includes(slug);
 const DIR = join(process.cwd(), "content/panduan");
 
 async function seedArticles(): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
-  const files = readdirSync(DIR)
+  const guides = readdirSync(DIR)
     .filter((f) => f.endsWith(".md"))
-    .sort();
-  for (const file of files) {
-    const g = parseGuideFile(readFileSync(join(DIR, file), "utf8"), file);
+    .sort()
+    .map((file) => parseGuideFile(readFileSync(join(DIR, file), "utf8"), file));
+  const unknown = ONLY?.filter((s) => !guides.some((g) => g.slug === s)) ?? [];
+  if (unknown.length > 0) throw new Error(`--only: slug tidak dikenal: ${unknown.join(", ")}`);
+  for (const g of guides) {
     if (!picked(g.slug)) continue;
     const found = await prisma.guideArticle.findUnique({ where: { slug: g.slug } });
     if (found) {
