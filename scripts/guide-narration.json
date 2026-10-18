@@ -1,16 +1,6 @@
 {
-  "$comment": "Naskah video panduan (T-3k08). caption = takarir singkat di layar; voice = kalimat yang diucapkan narator (bahasa lisan, ramah) dan sekaligus isi takarir VTT. Urutan = urutan s.step() di scripts/record-guide-videos.ts. Ubah voiceId/model lewat scripts/guide-tts.mjs --samples.",
-  "voice": {
-    "voiceId": null,
-    "model": "eleven_multilingual_v2",
-    "settings": {
-      "stability": 0.45,
-      "similarity_boost": 0.8,
-      "style": 0.15,
-      "use_speaker_boost": true,
-      "speed": 1.0
-    }
-  },
+  "$comment": "Naskah video panduan (T-3k08). caption = takarir singkat di layar; voice = kalimat yang diucapkan narator (bahasa lisan, ramah) dan sekaligus isi takarir VTT. Urutan = urutan s.step() di scripts/record-guide-videos.ts. Suara: Microsoft id-ID-ArdiNeural tempo normal (dipilih user, contoh edge-Ardi-p0); penyedia lain lihat scripts/guide-tts.mjs.",
+  "voice": { "provider": "edge", "voiceName": "id-ID-ArdiNeural", "rate": "+0%" },
   "scenes": {
     "pemilik-unggah": [
       {
