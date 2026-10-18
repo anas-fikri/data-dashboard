@@ -59,6 +59,8 @@ stopped=0
 renamed=0
 restore_old() {
   [ "$ok" = 1 ] && return
+  # Ctrl-C/SSH putus kedua tidak boleh memotong pemulihan di tengah (DB baru sudah dibuang, nama belum kembali).
+  trap '' INT TERM HUP
   set +e
   echo "GAGAL — mengembalikan database lama ($old → $DB)" >&2
   if [ "$renamed" = 1 ]; then
