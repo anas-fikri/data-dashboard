@@ -9,7 +9,7 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-17T19:31:25Z"
+updated: "2026-10-18T10:25:58Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -759,11 +759,21 @@ paths:
   - tests/stubs/server-only.ts
   - tsconfig.json
   - vitest.config.mts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-18T10:24:57Z"
+      findings: 2
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-10-18T10:25:57Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 83455
+    duration_ms: 70040
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -785,18 +795,19 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792219529331,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792219529354,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792219529356,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792219529363,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792318667621,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792318667643,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792318667645,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792318667650,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792318672203,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
 
-       Test Files  127 passed (127)
-            Tests  1736 passed (1736)
-         Start at  13:45:11
-         Duration  55.87s (tests 73%, import 20%, transform 7%)
+       Test Files  145 passed (145)
+            Tests  1856 passed (1856)
+         Start at  17:17:33
+         Duration  46.42s (tests 75%, import 21%, transform 4%)
 
-          Isolate  127 workers spawned · ~262ms startup each (spawn + environment, per file)
-                   at least ~3.44s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  145 workers spawned · ~180ms startup each (spawn + environment, per file)
+                   at least ~2.72s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -804,8 +815,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-17T06:46:08Z"
-    tree: eb7415062e995579b062af955421faaaa82b0ee6801b3355ebd509554570936e
+    at: "2026-10-18T10:18:25Z"
+    tree: 0053c08b5e49ddeea99367ae6c9c76f483ba81bcef18e1c935f9f33f2faac49d
   commits:
     - 00400de
     - 0177afd
@@ -1142,7 +1153,10 @@ npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 j
 - [x] Given user mencapai kuota storage, when initUpload, then code QUOTA_EXCEEDED dengan angka terpakai/limit
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: pengukuran di produksi sungguhan olympus (VM bersama) dengan akun uji non-admin; kode yang berubah hanya alat perf (perf-e2e.mjs mode single + PERF_DELETE dan cek STOP sebelum tahap dashboard; perf-tiers.sh PERF_MODE) dan laporan — image/kode aplikasi produksi tidak berubah. Selama uji satu worker sibuk (worker kedua tetap untuk pengguna); dataset produksi sebelum = sesudah = 0.
+Security (STRIDE): S — akun uji uji.performa@pcpexpress.com diaktifkan ulang dengan password acak baru (berkas 600 di VM, tidak pernah dicetak/keluar VM) lalu dinonaktifkan lagi sesudah uji (sessionVersion naik, hash acak). T — hanya dataset milik akun uji yang dibuat/dihapus (lewat UI). R — aksi tercatat di AuditLog dengan pelaku akun uji (akun tidak dihapus). I — fixture sintetis (tanpa data pelanggan); bukti di repo hanya id dataset uji, waktu, metrik. D — risiko utama VM bersama macet (T-024 catatan 7): run bertahap (csv ingest saja lebih dulu), satu unggahan sekaligus, pemantau host STOP (I/O avg60 > 50 %, RAM < 1,5 GB, swap < 256 MB), tahap dashboard dilewati bila STOP terpicu saat ingest, dashboard csv 8,1 jt baris (pemicu macet) tidak dijalankan; puncak terukur I/O 29 %, load 10,3, RAM tersedia ≥ 8,3 GB. E — akun uji non-admin.
+Rollback: tidak ada perubahan produksi; folder uji di VM dihapus; akun uji nonaktif; alat perf → git revert.
+Validation: run A csv 974 MB READY 9,4 mnt, run B xlsx 935 MB alur penuh 15,9 mnt (< 20 mnt) dengan p95 query 110 ms dan 0 gagal; pemantau tidak terpicu; /api/health produksi 200 sesudah uji; pembersihan terverifikasi (dataset 0 baris/0 objek); review independen; aitk check + audit.
 
 ## Notes
 - 2026-10-17 Dari T-029: dimensi teks kini GROUP BY lower(...) + label histogram() (variasi paling sering). Terukur 5 juta baris/4 juta kategori: 0,30 → 1,17 s (2 thread). Ukur di 1 GB/10 juta baris; bila p95 > 3 s, hitung label hanya untuk N kategori teratas (CTE LIMIT lalu semi-join label) — src/features/query/sql.ts textLabel.
@@ -1151,9 +1165,29 @@ npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 j
 - 2026-10-14T11:12:14Z Update dari T-013: akar flake schema AC1 ditemukan & diperbaiki — bukan worker, tetapi balapan di halaman profil dataset: status versi dibaca 3x dalam satu render; bila ingest selesai di antaranya, IngestProgress menerima status awal yang sudah final dan usePolling tidak pernah memanggil onDone/router.refresh (panel 'diproses' basi). Kini usePolling memanggil onDone sekali saat data awal sudah final (finalInitial). Worker e2e kini lewat startWorker/stopWorker bersama di tests/e2e/helpers.ts (grup proses + log di tmpdir dd-e2e-worker-<nama>.log).
 - 2026-10-15T17:49:12Z Dari review T-017 INT-R2-1: DuckDB job ekspor kini EXPORT_DUCKDB_MEMORY=768MB (512MB OOM pada sort penuh tabel lebar 1 juta baris ±16 kolom teks unik). Ukur memori gabungan proses worker saat ingest (1GB) + recast + ekspor berjalan bersamaan di profil VM T-023; bila melewati batas container, turunkan ke 512MB dan ganti ekspor tabel ke materialisasi bertahap (sort hanya kunci + _row, tulis per potongan).
 - 2026-10-15T19:43:25Z Dari review T-017 putaran 5: ekspor CSV terurut tabel teks sangat panjang (±200 rb baris × 20 kolom × 250 karakter ≈ 1 GB teks) masih OOM di EXPORT_DUCKDB_MEMORY=768MB; XLSX lewat parquet kerja dengan row group sumber sudah lolos 150 rb baris. Ukur batas praktis di profil VM T-023 dan putuskan: naikkan memori ekspor, atau batas byte ekspor (EXPORT_TOO_LARGE berbasis ukuran).
+- 2026-10-18T06:49:50Z 2026-10-18: user menyetujui uji 1 GB di olympus produksi ("gas gue setuju") setelah jenjang 10–500 MB T-1w0b aman (I/O avg60 maks 14 %). Rencana: csv 1 GB ingest saja, lalu xlsx 1 GB alur penuh (dashboard 10 widget) dengan pemantau STOP; dashboard csv 8,1 jt baris tidak dijalankan (pemicu macet T-024 catatan 7, APP_MEM 2 GB).
+- 2026-10-18T10:24:39Z Review independen 2026-10-18: klaim AC1 dibatasi — xlsx 1 GB alur penuh 15,9 mnt (terpenuhi untuk fixture itu); csv 1 GB (D10 juga) baru sampai READY 9,4 mnt, dashboard csv 8,1 jt baris belum diukur (APP_MEM 2 GB = pemicu macet T-024 catatan 7). AC1 tetap terbuka sampai pemilik memutuskan: naikkan APP_MEM ke 3 GB lalu ukur dashboard csv, atau ukur di VM spek minimum. Skrip perf: cleanup try/finally + stopReason heartbeat di mode single.
+- 2026-10-18T10:25:58Z Diblokir menunggu keputusan pemilik: AC1 xlsx 1 GB terpenuhi (15,9 mnt, 2026-10-18); dashboard csv 8,1 jt baris (fixture D10 kedua) belum diukur. Pilihan: naikkan APP_MEM produksi ke 3 GB (restart app) lalu jalankan PERF_MODE=single PERF_DELETE=1 scripts/perf-tiers.sh untuk csv-1gb, atau ukur di VM spek minimum. Review: pass 1 (2 temuan, diperbaiki b776eb7), pass 2 (0).
 
 ## Evidence
 <!-- Generated by aitk close. -->
 - Check: `npm run check` → exit 0 at 2026-10-17T06:46:08Z (83455 ms)
 - Acceptance criteria: 2/3 satisfied
 - Commits: 00400de, 0177afd, 03b1d73, 03d94b3, 03f863a, 0423efd, 0458545, 0469447, 04e47a2, 0568901, 0712a9c, 0727a63, 0796bbf, 098fc77, 0a23305, 0a542eb, 0ad2dbe, 0b3dbca, 0d4c16b, 0d77bf5, 0f862c9, 104dc4c, 10ed698, 12eb0a4, 13b3d0b, 15536b5, 16375df, 1663077, 16ed998, 17c1240, 183aee3, 19714b5, 1977286, 1add773, 1b6e65d, 1bacfb5, 1c4ecfb, 1cee571, 1d787d4, 2170640, 2291c8a, 22b384e, 2361fa1, 2496574, 24af891, 24d5af2, 24e2978, 254f209, 2653b85, 2687b77, 26ac601, 2725e19, 27bf134, 29f1080, 2a7eff2, 2b17384, 2b68a94, 2b68d11, 2ba4512, 2c2e6a4, 2c5ffeb, 2ca934f, 30baa8d, 3107c1b, 316fa62, 327dde2, 33352bb, 3586aab, 37af03d, 38adbac, 3a7b69d, 3bf60b5, 3c5143a, 3d486ab, 3e91002, 3fd726f, 401b86a, 40c4360, 41a5b3a, 42238e1, 42382d6, 429eb9f, 42f5428, 43acc6d, 4508626, 457220a, 45f4cff, 460d650, 4647639, 467b44d, 471d15b, 474aa11, 4874549, 4a2154f, 4bff118, 4c397a1, 4d32f9e, 4d5aa50, 4f5f3fc, 4f751b8, 506e66d, 520fafb, 5219784, 544d726, 54909aa, 54d4ddc, 561dfa3, 561f910, 56b7176, 5770618, 58fa92d, 592bae9, 59fa9e0, 5a7d2eb, 5aeb313, 5b7e0dd, 5b9686c, 5d46f4b, 5dcfd88, 5def94f, 5f13bde, 5fee32e, 608c247, 60938f4, 60d050b, 60ea826, 613ea9e, 61d6e8b, 6242a82, 6248130, 626d6d6, 62f258a, 642bb4e, 644c4db, 64a8e95, 6507eda, 657762f, 66ba1d5, 67ad81e, 6bb6067, 6bd1f66, 6c02829, 6c7cef8, 701a3aa, 70b7906, 724603c, 72bfd90, 73a9487, 75c431f, 76c40e2, 76e3600, 798158f, 799df98, 7b59767, 7c5267b, 7d27e01, 7dddfc4, 7e55cbd, 7e58646, 7f8b180, 7fa3c87, 809696e, 81eb135, 828d007, 82de1b6, 841d6c1, 846c6be, 8492031, 851513b, 87afa6c, 88776ae, 8940158, 8963fe4, 8a5c605, 8aff0f1, 8b18ca6, 8c59cdc, 8e072af, 8e4a34f, 8ec9de3, 8f33907, 8fe24a0, 905fc9a, 915c9f1, 92418db, 930d1c4, 94df0a4, 9558d66, 95bc294, 978656b, 97b3218, 9835114, 9b2bfc6, 9b8693d, 9cd6ff0, 9cee0e6, 9d1ed34, 9dbbba2, a01a9ef, a02a7c0, a1ea496, a384931, a405b2f, a45de8e, a54a31a, a5bd0e9, a7d7de9, a87c52d, a94e552, a9cc976, aab1818, ab88b55, ab9e083, ae491a6, af017d5, afc158d, b189cbc, b293f29, b2a1115, b2b3932, b2d4c94, b2f77ed, b330d22, b41c5ae, b4ba6df, b61a116, b6b0242, b6cbc3a, b6d2610, b7217d9, b96c635, bb18e9b, bdc0360, bdd24f1, be956d7, bec0af8, bf6e4c5, bfca04b, c03b05f, c0a7685, c1db097, c291f06, c29fdcb, c47d177, c4eef6a, c51c2b5, c540736, c665ce6, c67c26b, c6a3037, c6e50a2, c71c4d4, c89ccc2, c93bb8b, c940620, ca648f6, ccb287e, ccfc959, cd5c936, ce5e4d0, ce6ecb7, ce7bfe0, ced0728, cfc55cb, d015a22, d03c1fa, d0e8dd2, d1fa24d, d363c9a, d36b404, d372b77, d4f31ce, d6d03db, d6e2a2e, d718d43, d85299c, d8c6887, d9f240b, dbe1056, dbf8525, dc092a3, dc23b05, dd15a67, dd4b27f, ddf64a3, de87d25, e032459, e1ff563, e28eb08, e39d424, e3d5ef8, e3da62b, e4ef7a6, e541eb1, e547f3f, e56694e, e594327, e5a4396, e5ac78f, e8127fd, ea6d42e, eab780e, eb9f47b, ec8018f, ed0fdcd, efc6950, f08df61, f0a7905, f14041f, f3b0946, f423ad5, f511b61, f6be096, f7101ee, f7efe9a, f86bdb7, f8b7660, f9bd074, fb26036, fbf5494, fe5861e
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — uji memakai jalur pengguna sungguhan (UI → proxy TLS → presigned storage → antrean → worker → query app); klien di VM yang sama (image renderer); tidak ada komponen atau port baru
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — akun uji non-admin diaktifkan ulang dengan password acak 16 karakter (berkas 600 di VM saja) dan dinonaktifkan lagi sesudah uji; login lama ditolak
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — penonaktifan menaikkan sessionVersion → sesi akun uji dicabut
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — dataset dan dashboard uji milik akun uji; query widget lewat /api/query dengan resolusi akses biasa; dihapus lewat Server Action berkonfirmasi nama
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — N/A: tidak ada input baru; fixture melewati validasi unggah normal
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada rahasia baru; hash password akun uji lewat hashPassword aplikasi
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — log klien hanya peristiwa/waktu/id dataset uji, tanpa kredensial
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — fixture sintetis deterministik; folder uji, users.json, dan fixture 1,9 GB di VM dihapus sesudah uji
+- [x] V9 Communication: TLS for all external traffic; certificates validated — klien → produksi lewat HTTPS proxy di VM yang sama; storage internal lewat jaringan compose
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — tidak ada dependensi baru; npm audit + osv-scanner + secret scan bersih
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — pengaman beban: run bertahap, STOP host (I/O/RAM/swap), heartbeat host.log, tahap dashboard dilewati bila STOP, dashboard csv 8,1 jt baris tidak dijalankan; rate limit dan kuota aplikasi tidak dilewati
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — fixture ≤ 974 MB lewat jalur unggah normal (batas 1 GiB, kuota 20 GiB); dataset dihapus sesudah uji, objek storage terverifikasi 0
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — memakai API publik yang ada (login, progres, widget, filter-columns, filter-values, query) dengan header Origin; tidak ada endpoint baru
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — konfigurasi produksi tidak diubah (APP_MEM 3 GB untuk dataset ≥ 8 jt baris hanya direkomendasikan)

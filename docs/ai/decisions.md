@@ -11,4 +11,4 @@ Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 - ADR-0005 [accepted] Parser xlsx streaming sendiri (yauzl + saxes) dengan spill sharedStrings; CSV lewat DuckDB read_csv — ../../docs/adr/0005-parser-xlsx-streaming-sendiri-yauzl-saxes-dengan-spill-share.md
 - ADR-0006 [accepted] Renderer PDF: dipanggil worker, jaringan render, token → cookie — ../../docs/adr/0006-renderer-pdf-dipanggil-worker-jaringan-render-token-cookie.md
 - ADR-0007 [proposed] Komponen grid "Lihat data": AG Grid Community 36.2.0 (dipin) dengan mitigasi stretching — ../../docs/adr/0007-komponen-grid-lihat-data-ag-grid-community-36-2-0-dipin-deng.md
-- ADR-0008 [proposed] Model data periode: segmen typed per periode + manifest versi, dibaca sebagai daftar parquet dengan proyeksi eksplisit — ../../docs/adr/0008-model-data-periode-segmen-typed-per-periode-dengan-manifest.md
+- ADR-0008 [accepted] Model data periode: segmen typed per periode + manifest versi, dibaca sebagai daftar parquet dengan proyeksi eksplisit — ../../docs/adr/0008-model-data-periode-segmen-typed-per-periode-dengan-manifest.md
