@@ -4,7 +4,7 @@
     "file": "pemilik-unggah.webm",
     "title": "Membuat dataset dan mengunggah file",
     "captions": "pemilik-unggah.vtt",
-    "durationSec": 45,
+    "durationSec": 51,
     "poster": "pemilik-unggah.poster.png"
   },
   {
@@ -12,7 +12,7 @@
     "file": "pemilik-skema.webm",
     "title": "Memeriksa dan memperbaiki skema",
     "captions": "pemilik-skema.vtt",
-    "durationSec": 41,
+    "durationSec": 47,
     "poster": "pemilik-skema.poster.png"
   },
   {
@@ -20,7 +20,7 @@
     "file": "pemilik-dashboard.webm",
     "title": "Menyusun dashboard pertama",
     "captions": "pemilik-dashboard.vtt",
-    "durationSec": 86,
+    "durationSec": 74,
     "poster": "pemilik-dashboard.poster.png"
   },
   {
@@ -28,7 +28,7 @@
     "file": "pemilik-bagikan.webm",
     "title": "Membagikan dashboard",
     "captions": "pemilik-bagikan.vtt",
-    "durationSec": 41,
+    "durationSec": 35,
     "poster": "pemilik-bagikan.poster.png"
   },
   {
@@ -36,7 +36,7 @@
     "file": "editor-ubah.webm",
     "title": "Mengubah dashboard sebagai editor",
     "captions": "editor-ubah.vtt",
-    "durationSec": 33,
+    "durationSec": 28,
     "poster": "editor-ubah.poster.png"
   },
   {
@@ -44,7 +44,7 @@
     "file": "viewer-filter-ekspor.webm",
     "title": "Memakai filter dan mengekspor",
     "captions": "viewer-filter-ekspor.vtt",
-    "durationSec": 38,
+    "durationSec": 35,
     "poster": "viewer-filter-ekspor.poster.png"
   },
   {
@@ -60,7 +60,7 @@
     "file": "admin-panduan.webm",
     "title": "Menulis artikel panduan",
     "captions": "admin-panduan.vtt",
-    "durationSec": 48,
+    "durationSec": 43,
     "poster": "admin-panduan.poster.png"
   },
   {
@@ -68,7 +68,7 @@
     "file": "umum-mengenal.webm",
     "title": "Masuk dan mengenal menu",
     "captions": "umum-mengenal.vtt",
-    "durationSec": 48,
+    "durationSec": 38,
     "poster": "umum-mengenal.poster.png"
   }
 ]

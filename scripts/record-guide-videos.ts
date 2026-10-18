@@ -191,6 +191,21 @@ class Scene {
    * langkah menunggu sampai kalimat selesai (+ jeda napas) atau minimal `minMs`.
    */
   async step(minMs = 600) {
+    await this.speak();
+    await this.idle(minMs);
+  }
+  /** Seperti step, tetapi aksi berikutnya berjalan selagi kalimat diucapkan (tanpa jeda hening). */
+  async talk() {
+    await this.speak();
+  }
+  /** Tunggu kalimat yang sedang diucapkan selesai (+ jeda napas), minimal `minMs`. */
+  async idle(minMs = 0) {
+    await wait(Math.max(minMs, this.busyUntil - Date.now()));
+  }
+  private busyUntil = 0;
+  private async speak() {
+    // Dua kalimat tidak pernah tumpang-tindih: kalimat baru menunggu yang sebelumnya selesai.
+    await this.idle();
     const line = this.lines[this.next++];
     if (!line)
       throw new Error(
@@ -210,7 +225,7 @@ class Scene {
       text: line.voice,
       file: voiced ? file : null,
     });
-    await wait(Math.max(minMs, dur * 1000 + 450));
+    this.busyUntil = Date.now() + dur * 1000 + 450;
   }
   /** Semua kalimat naskah adegan ini sudah dipakai (urutan naskah = urutan langkah). */
   done() {
@@ -218,6 +233,7 @@ class Scene {
       throw new Error(`naskah ${this.lines.length} kalimat, terpakai ${this.next}`);
   }
   async clear(ms: number) {
+    await this.idle();
     this.caption = "";
     await this.apply();
     await wait(ms);
@@ -398,43 +414,56 @@ async function main() {
         // rekaman bisa diulang
         await prisma.dashboard.deleteMany({ where: { name: DASHBOARD, dataset: demoOwned } });
         await p.goto("/dashboards");
-        await s.step();
+        await s.talk();
         await s.click(p.getByRole("link", { name: "Buat dashboard" }).first(), 1200);
+        await s.talk();
         // Opsi berlabel "<nama> (n/maks dashboard)".
         await s.click(p.getByLabel("Dataset"), 400);
         await s.click(p.getByRole("option", { name: new RegExp(`^${DATASET}`) }), 600);
         await s.type(p.getByLabel("Nama dashboard"), DASHBOARD);
         await s.click(p.getByRole("button", { name: "Buat dashboard" }), 1800);
-        await s.step(1500);
+        await s.talk();
         let panel = await addWidget(s, "Total omzet", "Angka");
+        await s.talk();
         await s.choose(panel.getByLabel("Nilai", { exact: true }), "Total");
+        await s.talk();
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Omzet (Rp)");
         await s.choose(panel.getByLabel("Format angka", { exact: true }), "Rupiah (Rp 1.234)");
-        await s.step(2200);
+        await s.idle(1500);
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
+        await s.talk();
         panel = await addWidget(s, "Paket per cabang", "Batang");
+        await s.talk();
         await s.choose(panel.getByLabel("Nilai", { exact: true }), "Total");
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Jumlah paket");
-        await s.step(2800);
+        await s.idle(1500);
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
+        await s.talk();
         panel = await addWidget(s, "Omzet per bulan", "Garis");
+        await s.talk();
         await s.choose(panel.getByLabel("Kelompokkan menurut", { exact: true }), "Tanggal kirim");
         await s.choose(panel.getByLabel("Rentang waktu", { exact: true }), "Per bulan");
         await s.choose(panel.getByLabel("dari kolom", { exact: true }), "Omzet (Rp)");
+        await s.idle(800);
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
-        await s.step(1200);
+        await s.talk();
         const filters = p.getByTestId("dashboard-filter-columns");
         await s.click(filters.getByRole("button", { name: "Tambah kolom filter" }), 600);
         await s.click(p.getByRole("menuitem", { name: /^Cabang/ }), 1200);
+        await s.talk();
         await s.click(
           p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
           1500,
         );
-        // Kalimat penutup baru diucapkan setelah isi widget tampil (bukan kerangka memuat).
-        await expect(widgetTitled(p, "Total omzet").getByText(/Rp\s?[\d.]+/)).toBeVisible({
+        // Adegan ditutup setelah isi widget tampil (bukan kerangka memuat).
+        await expect(
+          widgetTitled(p, "Total omzet")
+            .getByText(/Rp\s?[\d.,]+/)
+            .first(),
+        ).toBeVisible({
           timeout: 60_000,
         });
-        await s.step(3000);
+        await s.idle(2500);
       },
     );
 
@@ -449,23 +478,26 @@ async function main() {
           where: { name: DASHBOARD, dataset: demoOwned },
         });
         await p.goto(`/dashboards/${dash.id}`);
-        await s.step();
+        await s.talk();
         await s.click(p.getByTestId("share-open"), 1200);
         const dialog = p.getByTestId("share-dialog");
         for (const [who, role] of [
           ["viewer", "Hanya lihat"],
           ["editor", "Bisa mengedit widget"],
         ] as const) {
+          await s.talk();
           await s.type(dialog.getByTestId("share-search"), ACCOUNTS[who].email.split("@")[0]!);
           await s.click(
             dialog.locator(`[data-testid=share-option][data-email="${ACCOUNTS[who].email}"]`),
             600,
           );
-          await s.step(600);
+          await s.talk();
           await s.choose(dialog.getByTestId("share-role"), role);
           await s.click(dialog.getByTestId("share-add"), 1500);
         }
         await s.step(2400);
+        // Takarir tentang dialog tidak tertinggal setelah dialognya ditutup.
+        await s.clear(0);
         await s.click(dialog.getByRole("button", { name: "Selesai" }), 1500);
       },
     );
@@ -480,19 +512,19 @@ async function main() {
         await p.goto("/dashboards");
         await s.step();
         await s.click(p.getByRole("link", { name: DASHBOARD }).first(), 1500);
-        await s.step(1200);
+        await s.talk();
         await s.click(p.getByTestId("edit-dashboard"), 1500);
         const w = widgetTitled(p, "Paket per cabang");
+        await s.talk();
         await s.click(w.getByRole("button", { name: "Pengaturan Paket per cabang" }), 900);
         const panel = p.getByTestId("widget-panel");
-        await s.step(900);
         await s.click(panel.getByText("Pai", { exact: true }), 1500);
         await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
         await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
-        await s.step(1200);
+        await s.talk();
         await s.click(
           p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
-          2500,
+          2000,
         );
       },
     );
@@ -506,21 +538,23 @@ async function main() {
         const p = s.page;
         await p.goto("/dashboards");
         await s.click(p.getByRole("link", { name: DASHBOARD }).first(), 1800);
-        await s.step(1000);
+        await s.talk();
         await s.click(p.locator('[data-testid=filter-slicer][data-column="Cabang"]'), 900);
         for (const v of ["Jakarta", "Bandung"])
           await s.click(p.locator(`[data-testid=filter-slicer-option][data-value="${v}"]`), 500);
         await p.keyboard.press("Escape");
         await s.step(3000);
-        await s.step(900);
+        await s.talk();
         const w = widgetTitled(p, "Paket per cabang");
         await s.click(w.getByTestId("widget-export"), 900);
+        await s.talk();
         await s.click(p.getByTestId("export-xlsx"), 600);
         await expect(p.getByTestId("export-download").first()).toBeVisible({ timeout: 60_000 });
         await s.step(2600);
+        await s.talk();
         await p.keyboard.press("Escape");
         await s.click(p.getByTestId("filter-clear-all"), 1500);
-        await s.step(2500);
+        await s.idle(2000);
       },
     );
 
@@ -532,13 +566,15 @@ async function main() {
       async (s) => {
         const p = s.page;
         await p.goto("/");
-        await s.step(1000);
+        await s.talk();
         await s.click(sidebar(p, "Admin"), 1200);
         await s.click(p.getByRole("link", { name: /Pengguna/ }).first(), 1500);
+        await s.talk();
         await s.type(p.getByPlaceholder("Cari email atau nama"), "demo");
         await s.click(p.getByRole("button", { name: "Cari" }), 1500);
-        await s.step(900);
-        await s.click(p.getByRole("button", { name: `Aksi untuk ${ACCOUNTS.viewer.email}` }), 2600);
+        // Kalimat tentang isi menu diucapkan selagi menunya terbuka.
+        await s.click(p.getByRole("button", { name: `Aksi untuk ${ACCOUNTS.viewer.email}` }), 600);
+        await s.step(1500);
         await p.keyboard.press("Escape");
         await s.step(2400);
       },
@@ -554,16 +590,17 @@ async function main() {
         // rekaman bisa diulang (slug unik)
         await prisma.guideArticle.deleteMany({ where: { slug: "contoh-artikel-panduan" } });
         await p.goto("/admin/panduan");
-        await s.step();
+        await s.talk();
         await s.click(p.getByRole("link", { name: "Artikel baru" }), 1200);
+        await s.talk();
         await s.type(p.getByLabel("Judul"), "Contoh artikel panduan");
-        await s.step(900);
         await s.choose(p.getByLabel("Peran"), "Viewer");
+        await s.talk();
         await s.type(
           p.getByLabel("Isi (markdown)"),
           "## Langkah\n\n- Buka **Dashboard**\n- Pilih filter\n",
         );
-        await s.step(1200);
+        await s.talk();
         await s.click(p.getByRole("button", { name: "Simpan sebagai draf" }), 1200);
         await p.waitForURL(/\/admin\/panduan\/[a-z0-9]{20,32}/);
         await p.getByRole("heading", { name: "Video panduan" }).scrollIntoViewIfNeeded();
@@ -593,9 +630,10 @@ async function main() {
         // Kartu "Mulai di sini" hanya untuk pengguna yang belum membaca panduan apa pun.
         await prisma.guideRead.deleteMany({ where: { user: { email: ACCOUNTS.viewer.email } } });
         await p.goto("/login");
-        await s.step();
+        await s.talk();
         await s.type(p.getByLabel("Email perusahaan"), ACCOUNTS.viewer.email);
         await s.type(p.locator("input[name=password]"), passwords.viewer);
+        await s.talk();
         await s.click(p.getByRole("button", { name: "Masuk" }), 1500);
         await s.step(2400);
         const start = p.getByText("Mulai di sini", { exact: true });
@@ -603,14 +641,16 @@ async function main() {
         const box = await start.boundingBox();
         if (box) await p.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 24 });
         await s.step(1500);
-        await s.step(1200);
+        await s.talk();
         for (const item of ["Dataset", "Dashboard"]) {
           await s.click(sidebar(p, item), 1600);
         }
         await s.click(sidebar(p, "Panduan"), 1500);
-        await s.step(3500);
+        await s.step(1500);
+        await s.talk();
         await s.type(p.getByLabel("Cari panduan"), "filter");
-        await s.click(p.getByRole("button", { name: "Cari" }), 2500);
+        await s.click(p.getByRole("button", { name: "Cari" }), 1500);
+        await s.idle(1500);
       },
     );
   } finally {

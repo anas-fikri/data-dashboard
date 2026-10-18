@@ -5,6 +5,7 @@ import { createHash } from "node:crypto";
 export const AUDIO_DIR = "demo/guide-videos/audio";
 
 export function audioName(voice, text) {
-  const key = JSON.stringify([voice.voiceId, voice.model, voice.settings, text]);
+  // Seluruh objek suara (penyedia, nama suara, tempo, model, setelan): ganti penyedia = audio baru.
+  const key = JSON.stringify([voice, text]);
   return `${createHash("sha256").update(key).digest("hex").slice(0, 16)}.mp3`;
 }

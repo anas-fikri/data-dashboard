@@ -1,6 +1,10 @@
 {
   "$comment": "Naskah video panduan (T-3k08). caption = takarir singkat di layar; voice = kalimat yang diucapkan narator (bahasa lisan, ramah) dan sekaligus isi takarir VTT. Urutan = urutan s.step() di scripts/record-guide-videos.ts. Suara: Microsoft id-ID-ArdiNeural tempo normal (dipilih user, contoh edge-Ardi-p0); penyedia lain lihat scripts/guide-tts.mjs.",
-  "voice": { "provider": "edge", "voiceName": "id-ID-ArdiNeural", "rate": "+0%" },
+  "voice": {
+    "provider": "edge",
+    "voiceName": "id-ID-ArdiNeural",
+    "rate": "+0%"
+  },
   "scenes": {
     "pemilik-unggah": [
       {
@@ -56,6 +60,10 @@
         "voice": "Sekarang kita buat dashboard dari dataset tadi."
       },
       {
+        "caption": "Pilih dataset, isi nama dashboard, lalu tekan Buat dashboard.",
+        "voice": "Pilih datasetnya, beri nama dashboard, lalu tekan Buat dashboard."
+      },
+      {
         "caption": "Mode edit: tambah widget, perubahan tersimpan otomatis.",
         "voice": "Dashboard baru langsung terbuka dalam mode edit. Tambahkan widget, dan setiap perubahan tersimpan otomatis."
       },
@@ -64,12 +72,28 @@
         "voice": "Widget Angka cocok untuk satu nilai ringkas, seperti total omzet."
       },
       {
-        "caption": "Grafik batang: kelompokkan menurut Cabang, nilai Total jumlah paket.",
-        "voice": "Untuk grafik batang, kita kelompokkan per cabang dengan nilai total jumlah paket."
+        "caption": "Nilai diambil dari kolom Omzet, format Rupiah.",
+        "voice": "Nilainya diambil dari kolom omzet, dengan format rupiah."
+      },
+      {
+        "caption": "Widget kedua: grafik Batang.",
+        "voice": "Berikutnya, tambahkan widget kedua berupa grafik batang."
+      },
+      {
+        "caption": "Kelompokkan menurut Cabang, nilai Total jumlah paket.",
+        "voice": "Kita kelompokkan per cabang, dengan nilai total jumlah paket."
+      },
+      {
+        "caption": "Widget ketiga: grafik Garis untuk tren per bulan.",
+        "voice": "Satu lagi, grafik garis untuk melihat tren omzet dari bulan ke bulan."
+      },
+      {
+        "caption": "Kelompokkan menurut Tanggal kirim, per bulan, nilai dari kolom Omzet.",
+        "voice": "Kelompokkan menurut tanggal kirim, per bulan, dengan nilai dari kolom omzet."
       },
       {
         "caption": "Tambahkan kolom filter agar pembaca bisa menyaring data.",
-        "voice": "Lalu tambahkan kolom filter, supaya pembaca bisa menyaring datanya sendiri."
+        "voice": "Sekarang tambahkan kolom filter, supaya pembaca bisa menyaring datanya sendiri."
       },
       {
         "caption": "Dashboard siap dilihat.",
@@ -82,8 +106,16 @@
         "voice": "Untuk berbagi dengan rekan kerja, tekan tombol Bagikan."
       },
       {
+        "caption": "Cari rekan lewat nama atau email.",
+        "voice": "Ketik nama atau email rekan Anda, lalu pilih dari daftar."
+      },
+      {
         "caption": "Peran: Hanya lihat.",
-        "voice": "Pilih rekannya, lalu tentukan perannya. Untuk yang cukup melihat, pilih Hanya lihat."
+        "voice": "Tentukan perannya. Untuk yang cukup melihat, pilih Hanya lihat."
+      },
+      {
+        "caption": "Tambahkan rekan berikutnya.",
+        "voice": "Rekan pertama sudah masuk daftar. Sekarang kita tambahkan satu lagi."
       },
       {
         "caption": "Peran: Bisa mengedit widget.",
@@ -125,7 +157,14 @@
         "caption": "Ekspor data widget ke CSV atau Excel lewat ikon unduh.",
         "voice": "Data setiap widget bisa diekspor ke CSV atau Excel lewat ikon unduh di pojok kartu."
       },
-      { "caption": "File siap diunduh.", "voice": "Setelah selesai diproses, file siap diunduh." },
+      {
+        "caption": "Pilih format, mis. Excel. File disiapkan sebentar.",
+        "voice": "Kita pilih Excel, lalu tunggu sebentar selagi filenya disiapkan."
+      },
+      {
+        "caption": "File siap diunduh.",
+        "voice": "Setelah selesai diproses, file siap diunduh."
+      },
       {
         "caption": "Hapus semua filter untuk kembali ke seluruh data.",
         "voice": "Untuk kembali melihat seluruh data, tekan Hapus semua filter."
@@ -137,8 +176,12 @@
         "voice": "Sebagai admin, Anda mengelola pengguna lewat menu Admin."
       },
       {
-        "caption": "Menu Aksi: jadikan admin, nonaktifkan, aktifkan, atau alihkan dataset.",
-        "voice": "Cari penggunanya, lalu buka menu Aksi. Di sini Anda bisa menjadikannya admin, menonaktifkan, mengaktifkan kembali, atau mengalihkan datasetnya."
+        "caption": "Cari pengguna lewat email atau nama.",
+        "voice": "Pengguna bisa dicari berdasarkan email atau nama."
+      },
+      {
+        "caption": "Menu Aksi: jadikan admin atau nonaktifkan. Akun nonaktif bisa diaktifkan lagi dan datasetnya dialihkan.",
+        "voice": "Lewat menu Aksi, Anda bisa menjadikannya admin atau menonaktifkan akunnya. Akun yang nonaktif bisa diaktifkan kembali, dan datasetnya bisa dialihkan ke pengguna lain."
       },
       {
         "caption": "Setiap aksi dicatat di log audit.",
@@ -155,8 +198,12 @@
         "voice": "Isi judulnya, pilih peran pembaca, dan bila perlu, halaman tempat artikel ini muncul sebagai bantuan."
       },
       {
-        "caption": "Tulis isi dengan markdown; pratinjau tampil di samping. Simpan sebagai draf.",
-        "voice": "Isinya ditulis dengan format markdown, dan pratinjaunya langsung tampil di samping. Simpan dulu sebagai draf."
+        "caption": "Tulis isi dengan markdown; pratinjau tampil di samping.",
+        "voice": "Isinya ditulis dengan format markdown, dan pratinjaunya langsung tampil di samping."
+      },
+      {
+        "caption": "Simpan sebagai draf.",
+        "voice": "Lalu simpan dulu sebagai draf."
       },
       {
         "caption": "Video panduan: unggah rekaman layar, lalu tambahkan takarir.",
@@ -173,6 +220,10 @@
         "voice": "Masuk dengan email perusahaan dan kata sandi Anda."
       },
       {
+        "caption": "Tekan Masuk.",
+        "voice": "Lalu tekan Masuk."
+      },
+      {
         "caption": "Beranda menampilkan dataset dan dashboard yang bisa Anda akses.",
         "voice": "Beranda menampilkan dataset dan dashboard yang bisa Anda akses."
       },
@@ -185,8 +236,12 @@
         "voice": "Lewat menu di sebelah kiri, Anda bisa berpindah ke Dataset, Dashboard, dan Panduan."
       },
       {
-        "caption": "Panduan dikelompokkan per peran. Cari topik lewat kolom pencarian.",
-        "voice": "Halaman Panduan dikelompokkan dalam tab sesuai peran Anda. Topik tertentu bisa dicari lewat kolom pencarian."
+        "caption": "Panduan dikelompokkan dalam tab sesuai peran.",
+        "voice": "Halaman Panduan dikelompokkan dalam tab sesuai peran Anda."
+      },
+      {
+        "caption": "Cari topik lewat kolom pencarian.",
+        "voice": "Topik tertentu bisa dicari lewat kolom pencarian."
       }
     ]
   }
