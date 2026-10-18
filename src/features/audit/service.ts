@@ -15,6 +15,8 @@ export type AuditAction =
   | "user.create"
   /** Admin menghapus akun tanpa dataset; meta { email, wasAdmin, wasActive } (T-c7wf). */
   | "user.delete"
+  /** Admin mengubah target backup off-VM (Admin › Backup); meta tanpa secret (T-7psf). */
+  | "backup.target.update"
   | "datasets.transfer"
   /** Pemilik mengaktifkan versi lama dataset (rollback, T-013). */
   | "dataset.version.activate"
@@ -63,7 +65,7 @@ export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */
   actorId: string | null;
   action: AuditAction;
-  targetType: "user" | "dataset" | "dashboard" | "guide";
+  targetType: "user" | "dataset" | "dashboard" | "guide" | "system";
   targetId: string;
   /** Detail tanpa rahasia (tanpa password/token/cookie). */
   meta?: Prisma.InputJsonValue;

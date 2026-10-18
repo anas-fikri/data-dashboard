@@ -1,4 +1,10 @@
-import { IconBook2, IconChevronRight, IconUsers, type Icon } from "@tabler/icons-react";
+import {
+  IconBook2,
+  IconChevronRight,
+  IconCloudUpload,
+  IconUsers,
+  type Icon,
+} from "@tabler/icons-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireAdmin } from "@/features/auth/session";
@@ -18,7 +24,7 @@ const SECTIONS: AdminSection[] = [
     href: "/admin/pengguna",
     title: "Pengguna",
     description:
-      "Jadikan atau cabut admin, nonaktifkan akun, dan alihkan dataset milik pengguna nonaktif.",
+      "Tambah atau hapus akun, jadikan atau cabut admin, nonaktifkan akun, dan alihkan dataset milik pengguna nonaktif.",
     icon: IconUsers,
   },
   {
@@ -26,6 +32,12 @@ const SECTIONS: AdminSection[] = [
     title: "Panduan",
     description: "Tulis, urutkan, dan terbitkan artikel panduan untuk tiap peran.",
     icon: IconBook2,
+  },
+  {
+    href: "/admin/backup",
+    title: "Backup",
+    description: "Lihat status backup harian dan atur target salinan off-VM (S3).",
+    icon: IconCloudUpload,
   },
 ];
 

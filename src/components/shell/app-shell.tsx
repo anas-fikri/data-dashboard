@@ -24,6 +24,8 @@ const COLLAPSE_KEY = "dd.sidebar.collapsed";
 
 interface AppShellProps {
   user: SessionUser | null;
+  /** Pemberitahuan di atas konten setiap halaman (mis. backup bermasalah untuk admin, T-7psf). */
+  notice?: ReactNode;
   children: ReactNode;
 }
 
@@ -31,7 +33,7 @@ interface AppShellProps {
  * Kromo aplikasi: topbar (burger <768, brand, utilities: bantuan + tema + akun) dan sidebar
  * (rail persisten ≥768 yang bisa diciutkan ke ikon; drawer + backdrop <768). Konten di <main>.
  */
-export function AppShell({ user, children }: AppShellProps) {
+export function AppShell({ user, notice, children }: AppShellProps) {
   const [collapsed, setCollapsed] = usePersistedBoolean(COLLAPSE_KEY);
   const pathname = usePathname();
   // Drawer terbuka hanya untuk path tempat ia dibuka: berpindah halaman otomatis menutupnya
@@ -166,6 +168,7 @@ export function AppShell({ user, children }: AppShellProps) {
           tabIndex={-1}
           className="mx-auto w-full max-w-(--content-max) flex-1 px-4 py-6 outline-none sm:px-6"
         >
+          {notice}
           {children}
         </main>
       </div>

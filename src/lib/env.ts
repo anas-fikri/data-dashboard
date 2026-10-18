@@ -149,6 +149,8 @@ export const envSchema = z.object({
   // --- Query (T-009) ---
   /** Direktori cache typed.parquet lokal + temp DuckDB aplikasi (per replika). */
   QUERY_CACHE_DIR: z.string().optional(),
+  /** Volume bersama service backup: offsite.json (Admin › Backup) + status.json (T-7psf). */
+  BACKUP_CONFIG_DIR: z.string().optional(),
   /** Batas total cache typed.parquet lokal (LRU). */
   MAX_LOCAL_PARQUET_BYTES: z.coerce
     .number()

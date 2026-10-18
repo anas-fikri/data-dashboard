@@ -28,6 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
+        /backup\.spec\.ts$/,
         /filters\.spec\.ts$/,
         /versions\.spec\.ts$/,
         /mapping\.spec\.ts$/,
@@ -48,8 +49,11 @@ export default defineConfig({
     { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },
     // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
+    // backup (T-7psf): status.json di folder dev bersama memunculkan banner untuk SEMUA admin → tidak
+    // bersamaan dengan spec lain yang memakai admin.
+    { name: "backup", testMatch: /backup\.spec\.ts$/, dependencies: ["admin"] },
     // filters (T-012): worker sendiri untuk fixture 5.000 baris (slicer, preset tanggal, filter silang).
-    { name: "filters", testMatch: /filters\.spec\.ts$/, dependencies: ["admin"] },
+    { name: "filters", testMatch: /filters\.spec\.ts$/, dependencies: ["backup"] },
     // versions (T-013): worker sendiri; ganti data, retensi, rollback, dan job maintenance sungguhan.
     { name: "versions", testMatch: /versions\.spec\.ts$/, dependencies: ["filters"] },
     // mapping (T-014): worker sendiri; ganti nama/hilang/tambah kolom → pemetaan → versi aktif.

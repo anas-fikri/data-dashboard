@@ -140,7 +140,16 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
 
 1. Di laptop admin (BUKAN di VM): `age-keygen -o kunci-backup-dashboard.txt` → simpan di brankas.
    Kunci publiknya (`age1…`) diisi ke `BACKUP_AGE_RECIPIENT`.
-2. Off-VM lewat SFTP (server file/NAS kantor). Pakai **akun khusus non-admin** yang hanya punya satu
+2. **Off-VM dari aplikasi (S3, disarankan):** admin membuka **Admin › Backup**, mengisi endpoint S3 yang
+   bisa dijangkau VM (mis. `http://<ip-nas>:9000`), bucket khusus backup, folder, access key + secret
+   **khusus backup** (hanya berhak di bucket itu), lalu **Tes koneksi** → **Simpan**. Konfigurasi masuk ke
+   volume `backup-config` (`offsite.json`, 600; secret tidak di DB/log) dan dipakai backup berikutnya tanpa
+   restart/SSH. Bila target tidak terjangkau (down, jaringan, kunci salah): arsip **ditahan di VM** (retensi
+   lokal tidak membuangnya sebelum tersalin; dibuang setelah `BACKUP_RETENTION_DAYS`), dikirim ulang
+   `backup.sh --sync` tiap 30 menit, dan admin aktif diberi email sekali per perubahan status (tertunda,
+   gagal, pulih) + banner di aplikasi. Status: `status.json` di volume yang sama (tampil di Admin › Backup).
+   Konfigurasi dari aplikasi aktif → mengalahkan `BACKUP_REMOTE`.
+   Off-VM lewat SFTP (server file/NAS kantor, tanpa aplikasi). Pakai **akun khusus non-admin** yang hanya punya satu
    folder backup (mis. di Synology DSM: buat user `dashboard-backup`, shared folder
    `backup-data-dashboard` baca/tulis hanya untuk user itu, aplikasi SFTP diizinkan). Jangan memakai akun
    admin/pribadi: kunci ada di VM bersama, dan `internal-sftp` tanpa chroot memberi akses ke semua share
@@ -166,7 +175,8 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    tidak bisa menghapus salinan di NAS) atau snapshot Btrfs tak-terhapus di shared folder tujuan.
    Tanpa remote, backup hanya di VM (peringatan di log).
 3. Uji sekarang: `$C run --rm --no-deps backup backup.sh` → log `arsip: dashboard-<UTC>.tar.age` dan
-   `tersalin ke offsite:…`.
+   `tersalin ke …` (atau `PERINGATAN: salinan ke … gagal … arsip ditahan di VM`). Kirim ulang manual arsip
+   tertunda: `$C run --rm --no-deps backup backup.sh --sync`.
 4. Verifikasi arsip tanpa memulihkan (dari laptop admin, kunci lewat stdin):
    ```bash
    ssh <server> bash /data/docker-data/data-dashboard/deploy/verify-backup.sh < kunci-backup-dashboard.txt

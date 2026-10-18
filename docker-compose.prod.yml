@@ -86,7 +86,8 @@ services:
     read_only: true
     # .next/cache: cache data/ISR Next (boleh hilang saat restart).
     tmpfs: ["/tmp:size=256m", "/app/.next/cache:size=256m,uid=10001,gid=10001"]
-    volumes: [app_cache:/var/cache/dashboard]
+    # backup-config: target off-VM yang diisi admin di Admin › Backup + status dari service backup (T-7psf).
+    volumes: [app_cache:/var/cache/dashboard, backup-config:/backup-config]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     depends_on:
@@ -243,6 +244,10 @@ services:
       BACKUP_LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
       RCLONE_CONFIG: /config/rclone.conf
+      # Email admin saat backup gagal / salinan off-VM tertunda / pulih (T-7psf).
+      SMTP_URL: ${SMTP_URL:?}
+      MAIL_FROM: ${MAIL_FROM:?}
+      APP_URL: https://${APP_HOST}
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ./deploy/backup.sh:/usr/local/bin/backup.sh:ro
@@ -253,6 +258,8 @@ services:
       # Kunci SSH + known_hosts salinan off-VM (deploy/offsite-key.sh); folder kosong bila tidak dipakai.
       - ./deploy/offsite:/config/offsite:ro
       - backups:/backups
+      # Target off-VM dari Admin › Backup (offsite.json, dibaca) + status.json (ditulis) — T-7psf.
+      - backup-config:/backup-config
     logging: *logging
     networks: [data]
 
@@ -305,3 +312,4 @@ volumes:
   s3data: {}
   pgdata: {}
   backups: {}
+  backup-config: {}

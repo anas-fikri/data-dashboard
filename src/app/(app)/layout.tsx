@@ -1,7 +1,9 @@
 import { unstable_rethrow } from "next/navigation";
 import type { ReactNode } from "react";
+import { BackupBanner } from "@/components/admin/backup-banner";
 import { AppShell } from "@/components/shell/app-shell";
 import { getSessionUser } from "@/features/auth/session";
+import { currentBackupAlert } from "@/features/backup/service";
 import { logger } from "@/lib/logger";
 
 /** Semua halaman produk memakai shell. Halaman auth (login/register) berada di luar grup ini. */
@@ -17,5 +19,11 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     logger.warn({ err: e instanceof Error ? e.message : String(e) }, "sesi shell gagal dibaca");
     return null;
   });
-  return <AppShell user={user}>{children}</AppShell>;
+  // Backup bermasalah (gagal, > 26 jam, salinan off-VM tertunda) tampil untuk admin di setiap halaman.
+  const alert = user?.isAdmin ? await currentBackupAlert() : null;
+  return (
+    <AppShell user={user} notice={alert ? <BackupBanner alert={alert} /> : null}>
+      {children}
+    </AppShell>
+  );
 }
