@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alur Data Dashboard</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;600&family=IBM+Plex+Sans:wght@400;600&display=swap">
+<style>
+  /* Layout: satu kolom dokumen teknis, diagram dalam kartu yang bisa digulir menyamping di layar sempit. */
+  :root {
+    --bg: #F7F6F2;
+    --surface: #FDFCFA;
+    --fg: #16202E;
+    --muted: #4A5568;
+    --line: #D5DCE8;
+    --accent: #2457C5;
+    --accent-2: #B4471F;
+    --chip: #EEF1F6;
+    --display: "Rubik", "Trebuchet MS", Arial, sans-serif;
+    --body: "IBM Plex Sans", "Segoe UI", Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121A26; --surface: #1A2433; --fg: #E8ECF2; --muted: #A9B4C4; --line: #2C3A4F;
+      --accent: #8FB0F2; --accent-2: #F2A27C; --chip: #223047; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #121A26; --surface: #1A2433; --fg: #E8ECF2; --muted: #A9B4C4; --line: #2C3A4F;
+    --accent: #8FB0F2; --accent-2: #F2A27C; --chip: #223047; color-scheme: dark;
+  }
+  body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.6; }
+  .wrap {
+    max-width: 1080px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 48px 72px;
+    display: flex; flex-direction: column; gap: 56px;
+  }
+  header { display: flex; flex-direction: column; gap: 14px; }
+  .eyebrow { font-size: 13px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent-2); margin: 0; }
+  h1 { font-family: var(--display); font-weight: 600; font-size: clamp(32px, 6vw, 48px); line-height: 1.1; margin: 0; text-wrap: balance; }
+  h2 { font-family: var(--display); font-weight: 600; font-size: clamp(22px, 3.6vw, 28px); line-height: 1.2; margin: 0; text-wrap: balance; }
+  .lead { font-size: 18px; color: var(--muted); max-width: 65ch; margin: 0; }
+  nav { display: flex; flex-wrap: wrap; gap: 8px; }
+  nav a {
+    font-size: 14px; color: var(--fg); text-decoration: none; background: var(--chip);
+    border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+  }
+  nav a:hover { border-color: var(--accent); color: var(--accent); }
+  nav a:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  section { display: flex; flex-direction: column; gap: 16px; scroll-margin-top: 24px; }
+  section > p { margin: 0; max-width: 65ch; color: var(--muted); }
+  figure { margin: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; overflow-x: auto; }
+  figure pre.mermaid { margin: 0; min-width: 640px; background: transparent; }
+  ul.notes { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+  ul.notes li::marker { color: var(--accent); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: 15px; }
+  th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { font-weight: 600; white-space: nowrap; }
+  code { font-size: 0.92em; background: var(--chip); padding: 1px 6px; border-radius: 6px; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); padding-top: 20px; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+  body { margin: 0; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">PCP Express · Data Dashboard</p>
+    <h1>Alur Data Dashboard</h1>
+    <p class="lead">Dari email perusahaan sampai dashboard yang dibagikan: bagaimana pengguna bekerja, apa yang terjadi pada file di belakang layar, dan komponen yang menjalankannya. Disarikan dari dokumen acuan <code>docs/flow-kerja.md</code>, keadaan 18 Oktober 2026.</p>
+    <nav aria-label="Bagian halaman">
+      <a href="#gambaran">Gambaran besar</a>
+      <a href="#unggah">Unggah dan proses</a>
+      <a href="#dashboard">Pakai dashboard</a>
+      <a href="#perbarui">Perbarui data</a>
+      <a href="#status">Status versi</a>
+      <a href="#komponen">Komponen</a>
+      <a href="#peran">Peran</a>
+    </nav>
+  </header>
+
+  <section id="gambaran">
+    <p class="eyebrow">Pengguna</p>
+    <h2>Gambaran besar</h2>
+    <p>Satu putaran kerja pemilik data, dari daftar akun sampai rekan memakai dashboard. Data baru cukup diunggah ulang ke dataset yang sama; dashboard tetap jalan.</p>
+    <figure aria-label="Diagram alur besar pengguna">
+<pre class="mermaid">
+flowchart TD
+  A["Daftar dengan email domain perusahaan"] --> B{"Email sudah diverifikasi?"}
+  B -->|belum| A2["Klik tautan verifikasi di inbox"] --> B
+  B -->|sudah| C["Masuk ke Beranda; pengguna baru melihat kartu Mulai di sini"]
+  C --> D["Buat dataset"]
+  D --> E["Unggah Excel atau CSV, maksimal 1 GB"]
+  E --> F["Diproses otomatis di latar belakang; halaman boleh ditutup"]
+  F -->|gagal| G["Pesan menunjuk sheet atau baris penyebab"] --> E
+  F -->|siap| H["Periksa skema: baris judul, nama, dan tipe kolom"]
+  H --> I["Susun dashboard: widget, filter, tata letak; tersimpan otomatis"]
+  I --> J["Bagikan: hanya lihat, bisa mengedit widget, atau seluruh organisasi"]
+  J --> K["Rekan melihat, memfilter, dan mengekspor"]
+  K --> L["Ada data baru: unggah ulang, ganti semua atau tambah baris"]
+  L --> F
+</pre>
+    </figure>
+  </section>
+
+  <section id="unggah">
+    <p class="eyebrow">Di belakang layar</p>
+    <h2>Unggah dan proses file</h2>
+    <p>File 1 GB tidak pernah dimuat utuh di browser atau di memori server. Browser mengirim potongan langsung ke penyimpanan; worker membacanya secara streaming dan menulis Parquet per sheet.</p>
+    <figure aria-label="Diagram alur unggah dan proses file">
+<pre class="mermaid">
+flowchart TD
+  U1["Pilih file di browser"] --> U1b["Pra-cek: .xlsx atau .csv, maksimal 1 GB, kuota cukup, dataset tidak sedang memproses"]
+  U1b --> U2{"Lolos pra-cek?"}
+  U2 -->|tidak| X1["Ditolak dengan pesan yang jelas"]
+  U2 -->|ya| U3["Kirim per bagian 16 MB langsung ke penyimpanan; bisa dilanjutkan bila putus"]
+  U3 --> U3b["Server cek ulang ukuran dan isi file"]
+  U3b --> U4{"File valid?"}
+  U4 -->|tidak valid| X2["Versi GAGAL, file dihapus"]
+  U4 -->|valid| Q["Masuk antrean; maksimal 2 file diproses bersamaan"]
+  Q --> W1["Worker membaca streaming; sheet Excel dibaca paralel"]
+  W1 --> W2["raw.parquet: semua baris apa adanya, termasuk di atas judul"]
+  W2 --> W3{"Unggahan pertama?"}
+  W3 -->|ya| W4["Deteksi tipe kolom atas seluruh baris"]
+  W3 -->|tidak| W5["Pakai skema aktif, koreksi pengguna ikut terbawa"]
+  W4 --> W6["typed.parquet dan skema disimpan"]
+  W5 --> W7{"Kolom cocok, minimal 98 % terbaca?"}
+  W7 -->|ya| W6
+  W7 -->|tidak| M["Menunggu pemetaan kolom oleh pemilik"] --> W6
+  W6 --> R["SIAP dan aktif; cache aplikasi langsung dipanaskan"]
+  W1 -->|galat| X3["GAGAL dengan pesan; versi aktif lama tetap tampil"]
+</pre>
+    </figure>
+    <ul class="notes">
+      <li>Diukur di produksi 18 Oktober 2026: CSV 100 MB siap ± 1 menit, 500 MB ± 5 menit; Excel 100 MB ± 2,5 menit, 500 MB dua sheet ± 8,5 menit.</li>
+      <li>Pekerjaan bisa diulang dengan aman: worker yang mati di tengah proses mengulang dari awal tanpa meninggalkan file setengah jadi.</li>
+      <li>Memilih ulang baris judul atau mengubah tipe kolom cukup membaca ulang raw.parquet, tanpa mengunggah file lagi.</li>
+    </ul>
+  </section>
+
+  <section id="dashboard">
+    <p class="eyebrow">Pengguna</p>
+    <h2>Pakai dashboard</h2>
+    <p>Widget tidak pernah mengirim SQL bebas. Aplikasi menerima spesifikasi widget yang tersimpan plus filter yang diizinkan, mengecek hak akses, lalu menjalankan query hanya pada kolom yang dibutuhkan.</p>
+    <figure aria-label="Diagram alur memakai dashboard">
+<pre class="mermaid">
+flowchart TD
+  O["Buka tautan dashboard"] --> A{"Punya akses?"}
+  A -->|tidak| N["Tampil tidak ditemukan; keberadaannya tidak bocor"]
+  A -->|viewer| V0["Lihat dashboard"]
+  A -->|editor atau pemilik| E0["Lihat dashboard dan tombol Ubah tata letak"]
+  E0 --> V0
+  V0 --> W["Setiap widget meminta data: spesifikasi tersimpan dan filter"]
+  W --> C{"Ada di cache?"}
+  C -->|ya| V["Chart atau tabel tampil"]
+  C -->|tidak| D["DuckDB membaca kolom yang perlu dari Parquet, batas waktu 30 detik"] --> V
+  V --> F["Ubah filter atau klik chart"] --> W
+  V --> X["Ekspor: CSV atau Excel sampai 1 juta baris, dashboard ke PDF"]
+  X --> J["Diproses di antrean, lalu tautan unduh muncul"]
+</pre>
+    </figure>
+    <ul class="notes">
+      <li>Pada data 1 GB, 95 persen query widget selesai di bawah 261 milidetik; hasil yang sama berikutnya diambil dari cache.</li>
+      <li>Filter aktif tersimpan di alamat halaman, jadi tampilan terfilter bisa dibagikan sebagai tautan.</li>
+    </ul>
+  </section>
+
+  <section id="perbarui">
+    <p class="eyebrow">Pemilik data</p>
+    <h2>Perbarui data</h2>
+    <p>Pengganti "buka file Excel, tempel data baru, perbaiki formula yang rusak". Setiap unggahan menjadi versi baru yang berdiri sendiri; versi lama tetap tampil sampai versi baru siap.</p>
+    <figure aria-label="Diagram alur memperbarui data">
+<pre class="mermaid">
+flowchart TD
+  P["Buka halaman dataset"] --> B{"Masih ada proses?"}
+  B -->|ya| BUSY["Ditolak: tunggu proses yang berjalan selesai"]
+  B -->|tidak| U["Unggah file baru"]
+  U --> M{"Mode"}
+  M -->|ganti semua| I["Proses ke versi baru; versi aktif belum berubah"]
+  M -->|tambah baris| I
+  I -->|gagal| OLD["Versi aktif tetap tampil; versi baru GAGAL dengan pesan"]
+  I -->|kolom cocok| AK["Versi baru SIAP dan aktif; dashboard otomatis memakai data baru"]
+  I -->|kolom berubah| MP["Petakan kolom baru ke kolom lama; kolom baru masuk tersembunyi"]
+  MP --> AK
+  AK --> RB["Bila perlu: aktifkan kembali salah satu dari 2 versi sebelumnya"]
+</pre>
+    </figure>
+  </section>
+
+  <section id="status">
+    <p class="eyebrow">Sistem</p>
+    <h2>Status versi data</h2>
+    <p>Satu dataset hanya punya satu versi yang sedang diproses pada satu waktu. Tiga versi SIAP terakhir disimpan; yang lebih lama dibersihkan otomatis.</p>
+    <figure aria-label="Diagram status versi data">
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> UPLOADING: mulai unggah
+  UPLOADING --> UPLOADED: semua bagian terkirim dan valid
+  UPLOADING --> FAILED: file tidak valid atau tidak selesai 24 jam
+  UPLOADED --> INGESTING: giliran worker
+  INGESTING --> READY: berhasil
+  INGESTING --> AWAITING_MAPPING: kolom berubah saat unggah ulang
+  AWAITING_MAPPING --> READY: pemetaan disimpan
+  INGESTING --> FAILED: galat saat membaca
+  READY --> [*]
+  FAILED --> [*]
+</pre>
+    </figure>
+  </section>
+
+  <section id="komponen">
+    <p class="eyebrow">Infrastruktur</p>
+    <h2>Komponen di server olympus</h2>
+    <p>Delapan layanan Docker Compose di satu VM. Hanya proxy yang membuka port ke jaringan; renderer PDF tidak bisa menjangkau penyimpanan, Redis, atau database.</p>
+    <figure aria-label="Diagram komponen aplikasi">
+<pre class="mermaid">
+flowchart TB
+  B["Browser"] --> P["Proxy TLS, Caddy"]
+  P --> A["Aplikasi Next.js dan DuckDB"]
+  P -.->|unggah dan unduh bertanda tangan| S[("RustFS S3: file asli, Parquet, video, ekspor")]
+  A --> PG[("PostgreSQL: metadata")]
+  A --> R[("Redis: antrean, cache hasil, kunci")]
+  A --> LC[("Cache Parquet lokal")]
+  A --> S
+  R --> W["Worker x2: ingest, ekspor, PDF"]
+  W --> S
+  W --> PG
+  W -->|antrean PDF| RN["Renderer PDF, Chromium tanpa internet"]
+  RN -->|halaman render bertoken| A
+  BK["Backup harian terenkripsi"] -.-> PG
+  BK -.-> S
+</pre>
+    </figure>
+  </section>
+
+  <section id="peran">
+    <p class="eyebrow">Akses</p>
+    <h2>Siapa bisa apa</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Peran</th><th>Bisa</th><th>Panduan</th></tr></thead>
+        <tbody>
+          <tr><td>Pemilik data</td><td>Membuat dataset, mengunggah dan memperbarui data, mengoreksi skema, menyusun dan membagikan dashboard, mengembalikan versi lama.</td><td>4 video: unggah, skema, dashboard, bagikan</td></tr>
+          <tr><td>Editor</td><td>Mengubah widget dan tata letak dashboard yang dibagikan kepadanya; bisa membaca semua kolom yang tidak disembunyikan di dataset itu.</td><td>1 video: mengubah dashboard</td></tr>
+          <tr><td>Viewer</td><td>Melihat dashboard, memakai filter, mengekspor data widget dan PDF.</td><td>1 video: filter dan ekspor</td></tr>
+          <tr><td>Admin</td><td>Mengelola pengguna (jadikan admin, nonaktifkan, alihkan dataset pengguna nonaktif), menulis panduan, melihat log audit.</td><td>2 video: kelola pengguna, tulis panduan</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>Sumber: docs/flow-kerja.md (keputusan mengikat D1–D14), laporan uji docs/ai/perf/T-024.md dan T-1w0b.md. Aplikasi: https://10.3.3.221:8443 dari jaringan kantor.</footer>
+</div>
+<!-- Salinan lokal: diagram digambar Mermaid dari CDN (butuh internet); di artifact claude.ai digambar bawaan. -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default",
+    flowchart: { useMaxWidth: true, htmlLabels: true },
+  });
+</script>
+</body>
+</html>
