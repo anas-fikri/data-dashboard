@@ -1,7 +1,7 @@
 ---
 id: T-024
 title: Uji performa 1 GB end-to-end dan batas sumber daya
-status: in_progress
+status: done
 profile: strict
 goal: G-5
 depends_on:
@@ -9,7 +9,8 @@ depends_on:
   - T-015
   - T-017
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-18T11:17:47Z"
+updated: "2026-10-18T12:08:12Z"
+closed: "2026-10-18T12:08:12Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -42,6 +43,7 @@ paths:
   - deploy/backup/Dockerfile
   - deploy/certs/.gitkeep
   - deploy/check-public-presign.mjs
+  - deploy/convert-db-utf8.sh
   - deploy/deploy.sh
   - deploy/fingerprint.sh
   - deploy/host-db.sh
@@ -60,6 +62,8 @@ paths:
   - docker-compose.dev.yml
   - docker-compose.prod.yml
   - docs/flow-kerja.md
+  - docs/presentasi/Data-Dashboard-PCP-Express-Ringkasan.pptx
+  - docs/presentasi/alur-data-dashboard.html
   - docs/runbook-deploy.md
   - eslint.config.mjs
   - next.config.ts
@@ -127,6 +131,10 @@ paths:
   - scripts/fixtures/make-hostile.ts
   - scripts/fixtures/model.ts
   - scripts/gen-dev-env.mjs
+  - scripts/guide-assemble.mjs
+  - scripts/guide-audio.mjs
+  - scripts/guide-narration.json
+  - scripts/guide-tts.mjs
   - scripts/guide-video-meta.mjs
   - scripts/make-fixture.ts
   - scripts/perf-e2e.mjs
@@ -136,6 +144,7 @@ paths:
   - scripts/perf-query.ts
   - scripts/perf-segments.ts
   - scripts/perf-table-wide.ts
+  - scripts/perf-tiers.sh
   - scripts/perf-widget-table.ts
   - scripts/perf.mjs
   - scripts/record-guide-videos.ts
@@ -213,10 +222,12 @@ paths:
   - src/app/render/layout.tsx
   - src/app/render/page.tsx
   - src/app/render/print.css
+  - src/components/admin/add-user-dialog.tsx
   - src/components/admin/admin-crumb.tsx
   - src/components/admin/admin-feedback.tsx
   - src/components/admin/admin-messages.tsx
   - src/components/admin/admin-revoked-notice.tsx
+  - src/components/admin/delete-user-dialog.tsx
   - src/components/admin/email-text.tsx
   - src/components/admin/transfer-dialog.tsx
   - src/components/admin/transfer-picker.tsx
@@ -755,6 +766,8 @@ paths:
   - tests/renderer/render.test.ts
   - tests/renderer/server.test.ts
   - tests/scripts/fixtures.test.ts
+  - tests/scripts/guide-assemble.test.ts
+  - tests/scripts/guide-audio.test.ts
   - tests/scripts/parser-sax-edge.test.ts
   - tests/stubs/server-only.ts
   - tsconfig.json
@@ -769,11 +782,19 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-18T10:25:57Z"
       findings: 0
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-10-18T11:55:26Z"
+      findings: 3
+    - "n": 4
+      by: claude-reviewer-subagent
+      at: "2026-10-18T12:06:00Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 70040
+    duration_ms: 91306
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -795,19 +816,19 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792318667621,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792318667643,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792318667645,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792318667650,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792318672203,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792325215138,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792325215161,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792325215164,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792325215171,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792325217067,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
 
        Test Files  145 passed (145)
-            Tests  1856 passed (1856)
-         Start at  17:17:33
-         Duration  46.42s (tests 75%, import 21%, transform 4%)
+            Tests  1878 passed (1878)
+         Start at  19:06:34
+         Duration  63.05s (tests 74%, import 21%, transform 5%)
 
-          Isolate  145 workers spawned · ~180ms startup each (spawn + environment, per file)
-                   at least ~2.72s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  145 workers spawned · ~282ms startup each (spawn + environment, per file)
+                   at least ~4.27s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -815,11 +836,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-18T10:18:25Z"
-    tree: 0053c08b5e49ddeea99367ae6c9c76f483ba81bcef18e1c935f9f33f2faac49d
+    at: "2026-10-18T12:07:39Z"
+    tree: fe7715ecbb5d480046cd265ca056f690748ce83745c18a78b31bd935eb19279a
   commits:
     - 00400de
     - 0177afd
+    - 02f7c9e
     - 03b1d73
     - 03d94b3
     - 03f863a
@@ -866,6 +888,7 @@ evidence:
     - 24d5af2
     - 24e2978
     - 254f209
+    - 265377d
     - 2653b85
     - 2687b77
     - 26ac601
@@ -891,17 +914,22 @@ evidence:
     - 3a7b69d
     - 3bf60b5
     - 3c5143a
+    - 3d12550
     - 3d486ab
     - 3e91002
+    - 3f73afa
     - 3fd726f
     - 401b86a
+    - 40a4e59
     - 40c4360
+    - 41511d7
     - 41a5b3a
     - "42238e1"
     - 42382d6
     - 429eb9f
     - 42f5428
     - 43acc6d
+    - 449e66f
     - "4508626"
     - 457220a
     - 45f4cff
@@ -914,6 +942,7 @@ evidence:
     - 4a2154f
     - 4bff118
     - 4c397a1
+    - 4c61156
     - 4d32f9e
     - 4d5aa50
     - 4f5f3fc
@@ -921,6 +950,8 @@ evidence:
     - 506e66d
     - 520fafb
     - "5219784"
+    - 53aa107
+    - 53f43b3
     - 544d726
     - 54909aa
     - 54d4ddc
@@ -928,6 +959,7 @@ evidence:
     - 561f910
     - 56b7176
     - "5770618"
+    - 5848a06
     - 58fa92d
     - 592bae9
     - 59fa9e0
@@ -961,6 +993,7 @@ evidence:
     - 6bd1f66
     - 6c02829
     - 6c7cef8
+    - 6e7b5d2
     - 701a3aa
     - 70b7906
     - 724603c
@@ -969,6 +1002,7 @@ evidence:
     - 75c431f
     - 76c40e2
     - 76e3600
+    - 78a4f4a
     - 798158f
     - 799df98
     - 7b59767
@@ -980,6 +1014,7 @@ evidence:
     - 7f8b180
     - 7fa3c87
     - 809696e
+    - 80bfdac
     - 81eb135
     - 828d007
     - 82de1b6
@@ -999,14 +1034,17 @@ evidence:
     - 8e4a34f
     - 8ec9de3
     - 8f33907
+    - 8fa7f5a
     - 8fe24a0
     - 905fc9a
     - 915c9f1
+    - 91ba5a3
     - 92418db
     - 930d1c4
     - 94df0a4
     - 9558d66
     - 95bc294
+    - 9762b62
     - 978656b
     - 97b3218
     - "9835114"
@@ -1016,6 +1054,7 @@ evidence:
     - 9cee0e6
     - 9d1ed34
     - 9dbbba2
+    - 9f08dbc
     - a01a9ef
     - a02a7c0
     - a1ea496
@@ -1048,8 +1087,10 @@ evidence:
     - b6cbc3a
     - b6d2610
     - b7217d9
+    - b776eb7
     - b96c635
     - bb18e9b
+    - bcfa828
     - bdc0360
     - bdd24f1
     - be956d7
@@ -1058,6 +1099,7 @@ evidence:
     - bfca04b
     - c03b05f
     - c0a7685
+    - c0fe6bd
     - c1db097
     - c291f06
     - c29fdcb
@@ -1118,6 +1160,7 @@ evidence:
     - e5a4396
     - e5ac78f
     - e8127fd
+    - e92ef5a
     - ea6d42e
     - eab780e
     - eb9f47b
@@ -1141,14 +1184,39 @@ evidence:
     - fe5861e
   acceptance:
     total: 3
-    done: 2
+    done: 3
+  audit:
+    at: "2026-10-18T12:07:44Z"
+    passed: true
+    tree: fe7715ecbb5d480046cd265ca056f690748ce83745c18a78b31bd935eb19279a
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 821 packages
+          End status: 205 dirs visited, 1337 inodes visited, 1 Extract calls, 101.028041ms elapsed, 101.03ms wall time
+          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
 npm run perf: fixture T-005 (xlsx 1 GB 3 sheet × 1 juta baris; csv 1 GB ≈ 8 juta baris) → upload → ingest → 10 widget → filter; ukur waktu, RSS, p95 query. Batas: kuota storage per user (USER_STORAGE_QUOTA_BYTES, dihitung dari ukuran versi di PostgreSQL), posisi antrean ingest di UI. Laporan docs/ai/perf/T-024.md.
 
 ## Acceptance criteria
-- [ ] Given fixture 1 GB, when alur upload sampai dashboard 10 widget selesai di VM spek minimum, then total < 20 menit dan laporan waktu/RSS/p95 tersimpan di docs/ai/perf/T-024.md
+- [x] Given fixture 1 GB, when alur upload sampai dashboard 10 widget selesai di VM spek minimum, then total < 20 menit dan laporan waktu/RSS/p95 tersimpan di docs/ai/perf/T-024.md
 - [x] Given 5 upload bersamaan dari 5 user, when ingest berjalan, then maksimal 2 job aktif (2 worker × 1) dan sisanya menampilkan posisi antrean di UI
 - [x] Given user mencapai kuota storage, when initUpload, then code QUOTA_EXCEEDED dengan angka terpakai/limit
 
@@ -1172,9 +1240,13 @@ Validation: run A csv 974 MB READY 9,4 mnt, run B xlsx 935 MB alur penuh 15,9 mn
 
 ## Evidence
 <!-- Generated by aitk close. -->
-- Check: `npm run check` → exit 0 at 2026-10-17T06:46:08Z (83455 ms)
-- Acceptance criteria: 2/3 satisfied
-- Commits: 00400de, 0177afd, 03b1d73, 03d94b3, 03f863a, 0423efd, 0458545, 0469447, 04e47a2, 0568901, 0712a9c, 0727a63, 0796bbf, 098fc77, 0a23305, 0a542eb, 0ad2dbe, 0b3dbca, 0d4c16b, 0d77bf5, 0f862c9, 104dc4c, 10ed698, 12eb0a4, 13b3d0b, 15536b5, 16375df, 1663077, 16ed998, 17c1240, 183aee3, 19714b5, 1977286, 1add773, 1b6e65d, 1bacfb5, 1c4ecfb, 1cee571, 1d787d4, 2170640, 2291c8a, 22b384e, 2361fa1, 2496574, 24af891, 24d5af2, 24e2978, 254f209, 2653b85, 2687b77, 26ac601, 2725e19, 27bf134, 29f1080, 2a7eff2, 2b17384, 2b68a94, 2b68d11, 2ba4512, 2c2e6a4, 2c5ffeb, 2ca934f, 30baa8d, 3107c1b, 316fa62, 327dde2, 33352bb, 3586aab, 37af03d, 38adbac, 3a7b69d, 3bf60b5, 3c5143a, 3d486ab, 3e91002, 3fd726f, 401b86a, 40c4360, 41a5b3a, 42238e1, 42382d6, 429eb9f, 42f5428, 43acc6d, 4508626, 457220a, 45f4cff, 460d650, 4647639, 467b44d, 471d15b, 474aa11, 4874549, 4a2154f, 4bff118, 4c397a1, 4d32f9e, 4d5aa50, 4f5f3fc, 4f751b8, 506e66d, 520fafb, 5219784, 544d726, 54909aa, 54d4ddc, 561dfa3, 561f910, 56b7176, 5770618, 58fa92d, 592bae9, 59fa9e0, 5a7d2eb, 5aeb313, 5b7e0dd, 5b9686c, 5d46f4b, 5dcfd88, 5def94f, 5f13bde, 5fee32e, 608c247, 60938f4, 60d050b, 60ea826, 613ea9e, 61d6e8b, 6242a82, 6248130, 626d6d6, 62f258a, 642bb4e, 644c4db, 64a8e95, 6507eda, 657762f, 66ba1d5, 67ad81e, 6bb6067, 6bd1f66, 6c02829, 6c7cef8, 701a3aa, 70b7906, 724603c, 72bfd90, 73a9487, 75c431f, 76c40e2, 76e3600, 798158f, 799df98, 7b59767, 7c5267b, 7d27e01, 7dddfc4, 7e55cbd, 7e58646, 7f8b180, 7fa3c87, 809696e, 81eb135, 828d007, 82de1b6, 841d6c1, 846c6be, 8492031, 851513b, 87afa6c, 88776ae, 8940158, 8963fe4, 8a5c605, 8aff0f1, 8b18ca6, 8c59cdc, 8e072af, 8e4a34f, 8ec9de3, 8f33907, 8fe24a0, 905fc9a, 915c9f1, 92418db, 930d1c4, 94df0a4, 9558d66, 95bc294, 978656b, 97b3218, 9835114, 9b2bfc6, 9b8693d, 9cd6ff0, 9cee0e6, 9d1ed34, 9dbbba2, a01a9ef, a02a7c0, a1ea496, a384931, a405b2f, a45de8e, a54a31a, a5bd0e9, a7d7de9, a87c52d, a94e552, a9cc976, aab1818, ab88b55, ab9e083, ae491a6, af017d5, afc158d, b189cbc, b293f29, b2a1115, b2b3932, b2d4c94, b2f77ed, b330d22, b41c5ae, b4ba6df, b61a116, b6b0242, b6cbc3a, b6d2610, b7217d9, b96c635, bb18e9b, bdc0360, bdd24f1, be956d7, bec0af8, bf6e4c5, bfca04b, c03b05f, c0a7685, c1db097, c291f06, c29fdcb, c47d177, c4eef6a, c51c2b5, c540736, c665ce6, c67c26b, c6a3037, c6e50a2, c71c4d4, c89ccc2, c93bb8b, c940620, ca648f6, ccb287e, ccfc959, cd5c936, ce5e4d0, ce6ecb7, ce7bfe0, ced0728, cfc55cb, d015a22, d03c1fa, d0e8dd2, d1fa24d, d363c9a, d36b404, d372b77, d4f31ce, d6d03db, d6e2a2e, d718d43, d85299c, d8c6887, d9f240b, dbe1056, dbf8525, dc092a3, dc23b05, dd15a67, dd4b27f, ddf64a3, de87d25, e032459, e1ff563, e28eb08, e39d424, e3d5ef8, e3da62b, e4ef7a6, e541eb1, e547f3f, e56694e, e594327, e5a4396, e5ac78f, e8127fd, ea6d42e, eab780e, eb9f47b, ec8018f, ed0fdcd, efc6950, f08df61, f0a7905, f14041f, f3b0946, f423ad5, f511b61, f6be096, f7101ee, f7efe9a, f86bdb7, f8b7660, f9bd074, fb26036, fbf5494, fe5861e
+- Check: `npm run check` → exit 0 at 2026-10-18T12:07:39Z (91306 ms)
+- Acceptance criteria: 3/3 satisfied
+- Commits: 00400de, 0177afd, 02f7c9e, 03b1d73, 03d94b3, 03f863a, 0423efd, 0458545, 0469447, 04e47a2, 0568901, 0712a9c, 0727a63, 0796bbf, 098fc77, 0a23305, 0a542eb, 0ad2dbe, 0b3dbca, 0d4c16b, 0d77bf5, 0f862c9, 104dc4c, 10ed698, 12eb0a4, 13b3d0b, 15536b5, 16375df, 1663077, 16ed998, 17c1240, 183aee3, 19714b5, 1977286, 1add773, 1b6e65d, 1bacfb5, 1c4ecfb, 1cee571, 1d787d4, 2170640, 2291c8a, 22b384e, 2361fa1, 2496574, 24af891, 24d5af2, 24e2978, 254f209, 265377d, 2653b85, 2687b77, 26ac601, 2725e19, 27bf134, 29f1080, 2a7eff2, 2b17384, 2b68a94, 2b68d11, 2ba4512, 2c2e6a4, 2c5ffeb, 2ca934f, 30baa8d, 3107c1b, 316fa62, 327dde2, 33352bb, 3586aab, 37af03d, 38adbac, 3a7b69d, 3bf60b5, 3c5143a, 3d12550, 3d486ab, 3e91002, 3f73afa, 3fd726f, 401b86a, 40a4e59, 40c4360, 41511d7, 41a5b3a, 42238e1, 42382d6, 429eb9f, 42f5428, 43acc6d, 449e66f, 4508626, 457220a, 45f4cff, 460d650, 4647639, 467b44d, 471d15b, 474aa11, 4874549, 4a2154f, 4bff118, 4c397a1, 4c61156, 4d32f9e, 4d5aa50, 4f5f3fc, 4f751b8, 506e66d, 520fafb, 5219784, 53aa107, 53f43b3, 544d726, 54909aa, 54d4ddc, 561dfa3, 561f910, 56b7176, 5770618, 5848a06, 58fa92d, 592bae9, 59fa9e0, 5a7d2eb, 5aeb313, 5b7e0dd, 5b9686c, 5d46f4b, 5dcfd88, 5def94f, 5f13bde, 5fee32e, 608c247, 60938f4, 60d050b, 60ea826, 613ea9e, 61d6e8b, 6242a82, 6248130, 626d6d6, 62f258a, 642bb4e, 644c4db, 64a8e95, 6507eda, 657762f, 66ba1d5, 67ad81e, 6bb6067, 6bd1f66, 6c02829, 6c7cef8, 6e7b5d2, 701a3aa, 70b7906, 724603c, 72bfd90, 73a9487, 75c431f, 76c40e2, 76e3600, 78a4f4a, 798158f, 799df98, 7b59767, 7c5267b, 7d27e01, 7dddfc4, 7e55cbd, 7e58646, 7f8b180, 7fa3c87, 809696e, 80bfdac, 81eb135, 828d007, 82de1b6, 841d6c1, 846c6be, 8492031, 851513b, 87afa6c, 88776ae, 8940158, 8963fe4, 8a5c605, 8aff0f1, 8b18ca6, 8c59cdc, 8e072af, 8e4a34f, 8ec9de3, 8f33907, 8fa7f5a, 8fe24a0, 905fc9a, 915c9f1, 91ba5a3, 92418db, 930d1c4, 94df0a4, 9558d66, 95bc294, 9762b62, 978656b, 97b3218, 9835114, 9b2bfc6, 9b8693d, 9cd6ff0, 9cee0e6, 9d1ed34, 9dbbba2, 9f08dbc, a01a9ef, a02a7c0, a1ea496, a384931, a405b2f, a45de8e, a54a31a, a5bd0e9, a7d7de9, a87c52d, a94e552, a9cc976, aab1818, ab88b55, ab9e083, ae491a6, af017d5, afc158d, b189cbc, b293f29, b2a1115, b2b3932, b2d4c94, b2f77ed, b330d22, b41c5ae, b4ba6df, b61a116, b6b0242, b6cbc3a, b6d2610, b7217d9, b776eb7, b96c635, bb18e9b, bcfa828, bdc0360, bdd24f1, be956d7, bec0af8, bf6e4c5, bfca04b, c03b05f, c0a7685, c0fe6bd, c1db097, c291f06, c29fdcb, c47d177, c4eef6a, c51c2b5, c540736, c665ce6, c67c26b, c6a3037, c6e50a2, c71c4d4, c89ccc2, c93bb8b, c940620, ca648f6, ccb287e, ccfc959, cd5c936, ce5e4d0, ce6ecb7, ce7bfe0, ced0728, cfc55cb, d015a22, d03c1fa, d0e8dd2, d1fa24d, d363c9a, d36b404, d372b77, d4f31ce, d6d03db, d6e2a2e, d718d43, d85299c, d8c6887, d9f240b, dbe1056, dbf8525, dc092a3, dc23b05, dd15a67, dd4b27f, ddf64a3, de87d25, e032459, e1ff563, e28eb08, e39d424, e3d5ef8, e3da62b, e4ef7a6, e541eb1, e547f3f, e56694e, e594327, e5a4396, e5ac78f, e8127fd, e92ef5a, ea6d42e, eab780e, eb9f47b, ec8018f, ed0fdcd, efc6950, f08df61, f0a7905, f14041f, f3b0946, f423ad5, f511b61, f6be096, f7101ee, f7efe9a, f86bdb7, f8b7660, f9bd074, fb26036, fbf5494, fe5861e
+- Review pass 1 by claude-reviewer-subagent: 2 findings
+- Review pass 2 by claude-reviewer-subagent: 0 findings
+- Review pass 3 by claude-reviewer-subagent: 3 findings
+- Review pass 4 by claude-reviewer-subagent: 0 findings
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
