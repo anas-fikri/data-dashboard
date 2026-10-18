@@ -19,14 +19,28 @@ import { buildXlsx, readParquet, testRoot, VID } from "./fakes";
  */
 // Hitung sheet yang dibaca di worker thread (bukti jalur paralel benar-benar dipakai); `entry`
 // mengganti skrip worker (uji worker yang gagal dimuat).
-const inWorker = vi.hoisted(() => ({ sheets: 0, entry: undefined as URL | undefined }));
+// `holdSheet0`: job.done sheet 0 baru selesai setelah janji ini (paksa sheet kecil selesai lebih dulu, T-pbz0).
+const inWorker = vi.hoisted(() => ({
+  sheets: 0,
+  entry: undefined as URL | undefined,
+  holdSheet0: undefined as Promise<void> | undefined,
+}));
 vi.mock("@/lib/xlsx/parallel", async (orig) => {
   const m = await orig<typeof import("@/lib/xlsx/parallel")>();
   return {
     ...m,
     readSheetInWorker: (...a: Parameters<typeof m.readSheetInWorker>) => {
       inWorker.sheets++;
-      return m.readSheetInWorker(a[0], a[1], a[2], a[3] ?? inWorker.entry);
+      const job = m.readSheetInWorker(a[0], a[1], a[2], a[3] ?? inWorker.entry);
+      const hold = inWorker.holdSheet0;
+      if (hold && a[1] === 0) {
+        // Batas 20 dtk: tidak pernah menggantung bila implementasi berubah jadi berurutan.
+        job.done = job.done.then(async (v) => {
+          await Promise.race([hold, new Promise((r) => setTimeout(r, 20_000))]);
+          return v;
+        });
+      }
+      return job;
     },
   };
 });
@@ -36,6 +50,7 @@ afterAll(t.cleanup);
 beforeEach(t.resetTmp);
 afterEach(() => {
   inWorker.entry = undefined;
+  inWorker.holdSheet0 = undefined;
   vi.restoreAllMocks();
 });
 
@@ -238,7 +253,21 @@ describe("sheet paralel: urutan, progres, galat", () => {
       tmpDir: work,
       memoryLimit: "256MB",
     });
-    const finish = vi.spyOn(RawSheetWriter.prototype, "finish");
+    // Skenario "sheet kecil selesai lebih dulu" dipaksa, bukan ditebak dari waktu (T-pbz0: di mesin sibuk
+    // worker sheet kecil bisa telat mulai): pembacaan sheet besar dianggap selesai baru setelah kedua sheet
+    // kecil selesai ditulis. Ditahan di job.done (di luar antrean DuckDB), bukan di finish (di dalamnya).
+    const realFinish = RawSheetWriter.prototype.finish;
+    let smallDone = 0;
+    let releaseBig = () => {};
+    inWorker.holdSheet0 = new Promise<void>((r) => (releaseBig = r));
+    const finish = vi.spyOn(RawSheetWriter.prototype, "finish").mockImplementation(async function (
+      this: RawSheetWriter,
+      path: string,
+    ) {
+      await realFinish.call(this, path);
+      const table = (this as unknown as { table: string }).table;
+      if (table !== "s0" && ++smallDone === 2) releaseBig();
+    });
     const seen: Partial<IngestProgress>[] = [];
     try {
       const out = await xlsxSheetsParallel(
