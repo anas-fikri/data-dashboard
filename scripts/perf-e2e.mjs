@@ -378,12 +378,21 @@ async function single(browser, path, userIndex) {
   const t0 = performance.now();
   const name = `Perf ${basename(path)} ${RUN}`;
   const datasetId = await createDataset(page, name);
-  // PERF_DELETE=1 (uji di produksi, T-1w0b): dataset uji dihapus lewat UI di akhir, juga saat berhenti.
-  const cleanup = async () => {
-    if (process.env.PERF_DELETE !== "1") return;
-    await deleteDataset(page, datasetId, name);
-    log({ ev: "hapus", datasetId });
-  };
+  try {
+    await singleRun(context, page, a, path, bytes, datasetId, name, t0);
+  } finally {
+    // PERF_DELETE=1 (uji di produksi, T-1w0b): dataset uji dihapus lewat UI di akhir, juga saat galat atau
+    // berhenti; hapus yang gagal dicatat tanpa menutupi galat aslinya.
+    if (process.env.PERF_DELETE === "1")
+      await deleteDataset(page, datasetId, name).then(
+        () => log({ ev: "hapus", datasetId }),
+        (e) => log({ ev: "hapus-gagal", datasetId, error: String(e) }),
+      );
+    await context.close();
+  }
+}
+
+async function singleRun(context, page, a, path, bytes, datasetId, name, t0) {
   const uploadMs = await upload(page, path);
   log({
     ev: "unggah",
@@ -393,21 +402,13 @@ async function single(browser, path, userIndex) {
     mbps: Math.round((bytes / 1e6 / (uploadMs / 1000)) * 8),
   });
   const ing = await waitIngest(a, datasetId);
-  if (ing.status === "FAILED") {
-    await cleanup();
-    throw new Error(`ingest gagal: ${ing.error}`);
-  }
+  if (ing.status === "FAILED") throw new Error(`ingest gagal: ${ing.error}`);
   const tReady = performance.now();
   log({ ev: "siap", datasetId, detik: sec(tReady - t0), tahap: stageSeconds(ing.stages, tReady) });
-  // Pemantau host (perf-tiers.sh) sudah menulis STOP selama ingest → tahap dashboard tidak dijalankan.
-  if (OUT && existsSync(`${OUT}/STOP`)) {
-    log({
-      ev: "berhenti",
-      sebelum: "dashboard",
-      alasan: readFileSync(`${OUT}/STOP`, "utf8").trim(),
-    });
-    await cleanup();
-    await context.close();
+  // Pemantau host (perf-tiers.sh) memicu STOP atau mati selama ingest → tahap dashboard tidak dijalankan.
+  const stop = stopReason();
+  if (stop) {
+    log({ ev: "berhenti", sebelum: "dashboard", alasan: stop });
     return;
   }
 
@@ -437,8 +438,6 @@ async function single(browser, path, userIndex) {
     queryMs: { dingin: stats(coldMs), hangat: stats(warmMs), gagal: errors },
   };
   log(summary);
-  await cleanup();
-  await context.close();
 }
 
 /** Hanya tahap dashboard di atas dataset READY yang sudah ada (ulang ukur tanpa unggah ulang). */
@@ -526,6 +525,19 @@ async function deleteDataset(page, datasetId, name) {
   await waitNav(page, /\/datasets\?deleted=1/, "hapus-dataset");
 }
 
+/**
+ * Alasan berhenti dari pemantau host perf-tiers.sh: isi PERF_OUT/STOP, atau host.log yang tidak ditulis > 30 dtk
+ * (pemantau mati); null = boleh lanjut. Tanpa PERF_OUT (dijalankan tanpa runner) selalu null.
+ */
+function stopReason() {
+  if (!OUT) return null;
+  if (existsSync(`${OUT}/STOP`)) return readFileSync(`${OUT}/STOP`, "utf8").trim();
+  const beat = statSync(`${OUT}/host.log`, { throwIfNoEntry: false });
+  return beat && Date.now() - beat.mtimeMs > 30_000
+    ? "pemantau host tidak menulis host.log > 30 dtk"
+    : null;
+}
+
 /** Detik per tahap ingest (jumlah per nama tahap; tahap baca berulang per sheet). */
 function stageSeconds(stages, end) {
   const out = {};
@@ -541,18 +553,9 @@ async function tiers(browser, paths) {
   const a = api(context);
   const rows = [];
   for (const path of paths) {
-    const stop = OUT && existsSync(`${OUT}/STOP`);
-    // Pemantau host (perf-tiers.sh) menulis host.log tiap ± 5 dtk; basi = pemantau mati → anggap STOP.
-    const beat = OUT ? statSync(`${OUT}/host.log`, { throwIfNoEntry: false }) : null;
-    const stale = beat && Date.now() - beat.mtimeMs > 30_000;
-    if (stop || stale) {
-      log({
-        ev: "berhenti",
-        sebelum: basename(path),
-        alasan: stop
-          ? readFileSync(`${OUT}/STOP`, "utf8").trim()
-          : "pemantau host tidak menulis host.log > 30 dtk",
-      });
+    const stop = stopReason();
+    if (stop) {
+      log({ ev: "berhenti", sebelum: basename(path), alasan: stop });
       break;
     }
     const bytes = statSync(path).size;
