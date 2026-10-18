@@ -231,3 +231,15 @@ describe("password yang berlaku tidak bisa dibawa ke server lain (review T-byys 
     ctx.SMTP_URL = keep;
   });
 });
+
+describe("relay tanpa login (review T-byys R2)", () => {
+  it("username dikosongkan → tidak minta password, password lama tidak ikut disimpan", async () => {
+    const r = await service.saveSmtp(
+      ACTOR,
+      input({ host: "relay.internal", port: "25", security: "none", username: "", password: "" }),
+      "ip",
+    );
+    expect(r).toMatchObject({ ok: true, data: { hasPassword: false } });
+    expect(JSON.parse(readFileSync(file(), "utf8"))).toMatchObject({ username: "", password: "" });
+  });
+});

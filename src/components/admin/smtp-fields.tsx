@@ -93,7 +93,9 @@ export function SmtpFields({ values, onChange, errorFor, hasPassword }: SmtpFiel
         id={smtpFieldId("password")}
         label="Password"
         hint={
-          hasPassword ? "Tersimpan. Kosongkan untuk tetap memakai password yang ada." : undefined
+          hasPassword
+            ? "Tersimpan. Kosongkan untuk tetap memakai password yang ada (selama server dan akun sama)."
+            : undefined
         }
         error={errorFor("password")}
       >

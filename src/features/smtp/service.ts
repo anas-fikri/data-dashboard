@@ -81,7 +81,9 @@ function parse(raw: unknown): SmtpResult<Parsed> {
     r.data.port === current.port &&
     r.data.username === current.username &&
     (r.data.security !== "none" || current.security === "none");
-  if (!typed && current.password && !sameServer) {
+  // Tanpa username (relay tanpa login) password tidak dipakai dan tidak disimpan.
+  const needsPassword = r.data.username !== "";
+  if (!typed && needsPassword && current.password && !sameServer) {
     return {
       ok: false,
       code: "INVALID",
@@ -92,7 +94,10 @@ function parse(raw: unknown): SmtpResult<Parsed> {
   return {
     ok: true,
     data: {
-      settings: { ...r.data, password: typed || current.password },
+      settings: {
+        ...r.data,
+        password: needsPassword ? typed || (sameServer ? current.password : "") : "",
+      },
       passwordChanged: !!typed,
     },
   };
