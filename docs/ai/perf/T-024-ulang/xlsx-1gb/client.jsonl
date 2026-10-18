@@ -1,0 +1,18 @@
+{"t":"2026-10-18T07:36:22.396Z","ev":"unggah","file":"xlsx-1gb.xlsx","bytes":935400508,"sec":36,"mbps":208}
+{"t":"2026-10-18T07:36:22.414Z","ev":"status","datasetId":"cmvdigxup0027lc01radtqf67","status":"INGESTING","queue":null}
+{"t":"2026-10-18T07:36:22.414Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T07:36:28.487Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"baca","sheet":null}
+{"t":"2026-10-18T07:44:43.915Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"baca","sheet":"Pengiriman 3"}
+{"t":"2026-10-18T07:46:36.109Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"tipe","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T07:48:06.039Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"simpan","sheet":"Pengiriman 1"}
+{"t":"2026-10-18T07:48:11.090Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"tipe","sheet":"Pengiriman 2"}
+{"t":"2026-10-18T07:49:42.013Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"simpan","sheet":"Pengiriman 2"}
+{"t":"2026-10-18T07:49:46.055Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"tipe","sheet":"Pengiriman 3"}
+{"t":"2026-10-18T07:51:17.520Z","ev":"tahap","datasetId":"cmvdigxup0027lc01radtqf67","tahap":"simpan","sheet":"Pengiriman 3"}
+{"t":"2026-10-18T07:51:20.563Z","ev":"status","datasetId":"cmvdigxup0027lc01radtqf67","status":"READY","queue":null}
+{"t":"2026-10-18T07:51:20.563Z","ev":"siap","datasetId":"cmvdigxup0027lc01radtqf67","detik":934.6,"tahap":{"unduh":6.1,"baca":607.6,"tipe":272.3,"simpan":12.1}}
+{"t":"2026-10-18T07:51:31.890Z","ev":"sumber","sheets":[{"name":"Pengiriman 1","cols":30,"types":["text","date","decimal","integer","boolean"]},{"name":"Pengiriman 2","cols":30,"types":["text","date","decimal","integer","boolean"]},{"name":"Pengiriman 3","cols":30,"types":["text","date","decimal","integer","boolean"]}]}
+{"t":"2026-10-18T07:51:35.583Z","ev":"buka-dashboard","kondisi":"dingin","sec":3.5,"queries":10}
+{"t":"2026-10-18T07:51:37.181Z","ev":"buka-dashboard","kondisi":"filter","sec":0.9,"queries":10}
+{"t":"2026-10-18T07:51:41.936Z","ev":"ringkasan","mode":"single","file":"xlsx-1gb.xlsx","bytes":935400508,"status":"READY","sheets":[{"name":"Pengiriman 1","rawRows":1000002},{"name":"Pengiriman 2","rawRows":1000002},{"name":"Pengiriman 3","rawRows":1000002}],"detik":{"unggah":36,"antre":null,"ingest":898.1,"sampaiSiap":934.6,"buatWidget":0.2,"bukaDashboardDingin":3.5,"sampaiDashboard10Widget":949.7,"bukaDashboardFilter":0.9,"total":951.2},"queryMs":{"dingin":{"n":50,"p50":95,"p95":110,"max":125},"hangat":{"n":50,"p50":9,"p95":12,"max":13},"gagal":[]}}
+{"t":"2026-10-18T07:51:42.959Z","ev":"hapus","datasetId":"cmvdigxup0027lc01radtqf67"}

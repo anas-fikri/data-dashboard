@@ -1,0 +1,9 @@
+{"t":"2026-10-18T06:55:51.006Z","ev":"status","datasetId":"cmvdh0uox0021lc0107bokzwv","status":"INGESTING","queue":null}
+{"t":"2026-10-18T06:55:51.007Z","ev":"tahap","datasetId":"cmvdh0uox0021lc0107bokzwv","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T06:56:02.147Z","ev":"tahap","datasetId":"cmvdh0uox0021lc0107bokzwv","tahap":"baca","sheet":null}
+{"t":"2026-10-18T06:56:46.428Z","ev":"tahap","datasetId":"cmvdh0uox0021lc0107bokzwv","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T07:04:31.612Z","ev":"tahap","datasetId":"cmvdh0uox0021lc0107bokzwv","tahap":"simpan","sheet":"CSV"}
+{"t":"2026-10-18T07:04:39.697Z","ev":"status","datasetId":"cmvdh0uox0021lc0107bokzwv","status":"READY","queue":null}
+{"t":"2026-10-18T07:04:39.697Z","ev":"jenjang","datasetId":"cmvdh0uox0021lc0107bokzwv","file":"csv-1gb.csv","bytes":974202906,"status":"READY","baris":8100001,"sheet":1,"mbps":225,"detik":{"unggah":34.6,"antre":null,"proses":528.7,"sampaiSiap":564.6},"tahap":{"unduh":11.1,"baca":44.3,"tipe":465.2,"simpan":8.1},"error":null}
+{"t":"2026-10-18T07:04:40.565Z","ev":"hapus","datasetId":"cmvdh0uox0021lc0107bokzwv"}
+{"t":"2026-10-18T07:05:10.576Z","ev":"ringkasan","mode":"tiers","jenjang":[{"file":"csv-1gb.csv","bytes":974202906,"status":"READY","baris":8100001,"sheet":1,"mbps":225,"detik":{"unggah":34.6,"antre":null,"proses":528.7,"sampaiSiap":564.6},"tahap":{"unduh":11.1,"baca":44.3,"tipe":465.2,"simpan":8.1},"error":null}]}

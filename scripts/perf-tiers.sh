@@ -5,6 +5,9 @@
 # Uji 1 GB di VM bersama pernah membuatnya macet (docs/ai/perf/T-024.md catatan 7) — jangan matikan
 # pemantau ini dan mulai dari jenjang kecil.
 #   bash scripts/perf-tiers.sh <folder-hasil> <fixture>...    (nama file di $PERF_DIR/fixtures)
+#   PERF_MODE=single PERF_DELETE=1 bash scripts/perf-tiers.sh <folder-hasil> <fixture>
+#     alur penuh satu file (unggah → ingest → dashboard 10 widget → filter → p95), dataset dihapus di akhir;
+#     tahap dashboard dilewati bila STOP sudah tertulis saat ingest
 # Env: PERF_DIR (berisi users.json akun uji + fixtures/), IO_MAX (tekanan I/O avg60 %, bawaan 50),
 #      MEM_MIN_MB (RAM tersedia, 1536), SWAP_MIN_MB (swap tersisa, 256), PERF_PAUSE_S (jeda, 30).
 # Hasil: client.jsonl, host.log, stats.log, puncak.txt, STOP (bila berhenti).
@@ -57,11 +60,11 @@ files=()
 for f in "$@"; do files+=("/fixtures/$f"); done
 docker run --rm --network host --user "$(id -u):$(id -g)" --shm-size 1g \
   -e HOME=/tmp -e PERF_BASE="https://$app" -e PERF_USERS=/perf/users.json -e PERF_OUT=/out \
-  -e PERF_PAUSE_S="${PERF_PAUSE_S:-30}" \
+  -e PERF_PAUSE_S="${PERF_PAUSE_S:-30}" -e PERF_DELETE="${PERF_DELETE:-}" \
   -v "$(realpath "$out"):/out" \
   -v "$PERF_DIR/users.json:/perf/users.json:ro" -v "$PERF_DIR/fixtures:/fixtures:ro" \
   -v "$PWD/scripts/perf-e2e.mjs:/app/perf-e2e.mjs:ro" \
-  --entrypoint node dashboard-renderer:latest /app/perf-e2e.mjs tiers "${files[@]}" |
+  --entrypoint node dashboard-renderer:latest /app/perf-e2e.mjs "${PERF_MODE:-tiers}" "${files[@]}" |
   tee "$out/client.jsonl"
 
 kill "$monitor" "$sampler" 2>/dev/null || true

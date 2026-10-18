@@ -376,7 +376,14 @@ async function single(browser, path, userIndex) {
   const page = await context.newPage();
   const a = api(context);
   const t0 = performance.now();
-  const datasetId = await createDataset(page, `Perf ${basename(path)} ${RUN}`);
+  const name = `Perf ${basename(path)} ${RUN}`;
+  const datasetId = await createDataset(page, name);
+  // PERF_DELETE=1 (uji di produksi, T-1w0b): dataset uji dihapus lewat UI di akhir, juga saat berhenti.
+  const cleanup = async () => {
+    if (process.env.PERF_DELETE !== "1") return;
+    await deleteDataset(page, datasetId, name);
+    log({ ev: "hapus", datasetId });
+  };
   const uploadMs = await upload(page, path);
   log({
     ev: "unggah",
@@ -386,11 +393,26 @@ async function single(browser, path, userIndex) {
     mbps: Math.round((bytes / 1e6 / (uploadMs / 1000)) * 8),
   });
   const ing = await waitIngest(a, datasetId);
-  if (ing.status === "FAILED") throw new Error(`ingest gagal: ${ing.error}`);
+  if (ing.status === "FAILED") {
+    await cleanup();
+    throw new Error(`ingest gagal: ${ing.error}`);
+  }
   const tReady = performance.now();
+  log({ ev: "siap", datasetId, detik: sec(tReady - t0), tahap: stageSeconds(ing.stages, tReady) });
+  // Pemantau host (perf-tiers.sh) sudah menulis STOP selama ingest → tahap dashboard tidak dijalankan.
+  if (OUT && existsSync(`${OUT}/STOP`)) {
+    log({
+      ev: "berhenti",
+      sebelum: "dashboard",
+      alasan: readFileSync(`${OUT}/STOP`, "utf8").trim(),
+    });
+    await cleanup();
+    await context.close();
+    return;
+  }
 
   const { widgetsMs, cold, filtered, tDashboard, tTotal, coldMs, warmMs, errors } =
-    await dashboardStage(context, page, a, datasetId, `Perf ${basename(path)} ${RUN}`);
+    await dashboardStage(context, page, a, datasetId, name);
   const summary = {
     ev: "ringkasan",
     mode: "single",
@@ -415,6 +437,7 @@ async function single(browser, path, userIndex) {
     queryMs: { dingin: stats(coldMs), hangat: stats(warmMs), gagal: errors },
   };
   log(summary);
+  await cleanup();
   await context.close();
 }
 
