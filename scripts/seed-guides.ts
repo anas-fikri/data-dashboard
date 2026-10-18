@@ -148,14 +148,7 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
     const articleId = ids.get(v.slug);
     if (!articleId) throw new Error(`videos.json: artikel ${v.slug} tidak ada di content/panduan`);
     const found = await prisma.guideVideo.findFirst({ where: { articleId, title: v.title } });
-    if (found && REPLACE) {
-      await prisma.$transaction(async (tx) => {
-        await tx.guideVideo.deleteMany({ where: { id: found.id } });
-        await scheduleVideoCleanup(tx, [found]);
-      });
-      await removeVideoObjects([found]);
-      console.log(`ganti video: ${v.slug} · ${v.title}`);
-    } else if (found) {
+    if (found && !REPLACE) {
       const caption = found.captionKey ? null : captionOf(dir, v);
       if (caption) {
         const key = guideCaptionKey(found.id);
@@ -179,51 +172,71 @@ async function seedVideos(dir: string, ids: Map<string, string>) {
       } else console.log(`lewati video (sudah ada): ${v.slug} · ${v.title}`);
       continue;
     }
+    // Semua masukan divalidasi dulu: file rusak/takarir salah tidak menyentuh video lama.
     const path = join(dir, v.file);
     const ext = videoExtOf(v.file);
     const size = statSync(path).size;
     const body = readFileSync(path);
     if (!ext || size > VIDEO_MAX_BYTES || !sniffVideo(ext, body.subarray(0, 64)))
       throw new Error(`${v.file}: bukan video mp4/webm ≤ 500 MB`);
-    const id = `v${randomBytes(12).toString("hex")}`;
-    const objectKey = guideVideoKey(id, ext);
-    await s3Internal().send(
-      new PutObjectCommand({
-        Bucket: bucket(),
-        Key: objectKey,
-        Body: body,
-        ContentLength: size,
-        ContentType: VIDEO_CONTENT_TYPE[ext],
-      }),
-    );
     const meta = metaOf(dir, v);
-    let posterKey: string | null = null;
-    if (meta.poster) {
-      posterKey = guidePosterKey(id);
-      await putGuidePoster(posterKey, meta.poster);
-    }
     const caption = captionOf(dir, v);
-    let captionKey: string | null = null;
-    if (caption) {
-      captionKey = guideCaptionKey(id);
-      await putGuideCaption(captionKey, caption);
+    const id = `v${randomBytes(12).toString("hex")}`;
+    const next = {
+      id,
+      objectKey: guideVideoKey(id, ext),
+      posterKey: meta.poster ? guidePosterKey(id) : null,
+      captionKey: caption ? guideCaptionKey(id) : null,
+      uploadId: null,
+    };
+    // Kunci baru dijadwalkan sebelum diunggah: gagal di tengah → job menyapunya setelah masa
+    // tenggang; berhasil → baris video merujuknya sehingga job melewatinya.
+    await scheduleVideoCleanup(prisma, [next]);
+    try {
+      await s3Internal().send(
+        new PutObjectCommand({
+          Bucket: bucket(),
+          Key: next.objectKey,
+          Body: body,
+          ContentLength: size,
+          ContentType: VIDEO_CONTENT_TYPE[ext],
+        }),
+      );
+      if (next.posterKey && meta.poster) await putGuidePoster(next.posterKey, meta.poster);
+      if (next.captionKey && caption) await putGuideCaption(next.captionKey, caption);
+      // Video baru tersimpan dulu, baru video lama (bila --replace-videos) dihapus + dijadwalkan.
+      await prisma.$transaction(async (tx) => {
+        await tx.guideVideo.create({
+          data: {
+            id,
+            articleId,
+            title: v.title,
+            ext,
+            sizeBytes: size,
+            objectKey: next.objectKey,
+            posterKey: next.posterKey,
+            captionKey: next.captionKey,
+            durationSec: meta.durationSec,
+            status: "READY",
+          },
+        });
+        await tx.storageCleanup.deleteMany({
+          where: {
+            prefix: { in: [next.objectKey, guidePosterKey(id), next.captionKey ?? ""] },
+          },
+        });
+        if (found) {
+          await tx.guideVideo.deleteMany({ where: { id: found.id } });
+          await scheduleVideoCleanup(tx, [found]);
+        }
+      });
+    } catch (e) {
+      await removeVideoObjects([next]);
+      throw e;
     }
-    await prisma.guideVideo.create({
-      data: {
-        id,
-        articleId,
-        title: v.title,
-        ext,
-        sizeBytes: size,
-        objectKey,
-        posterKey,
-        captionKey,
-        durationSec: meta.durationSec,
-        status: "READY",
-      },
-    });
+    if (found) await removeVideoObjects([found]);
     console.log(
-      `video: ${v.slug} · ${v.title} (${meta.durationSec ?? "?"} dtk${captionKey ? ", bertakarir" : ""})`,
+      `${found ? "ganti video" : "video"}: ${v.slug} · ${v.title} (${meta.durationSec ?? "?"} dtk${next.captionKey ? ", bertakarir" : ""})`,
     );
   }
 }
