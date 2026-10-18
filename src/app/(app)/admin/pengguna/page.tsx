@@ -78,7 +78,18 @@ async function UsersSection({
   const { users, total, pageSize } = result;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  if (users.length === 0) return <UsersEmpty q={q} status={status} total={total} />;
+  // key: pemberitahuan hasil aksi tidak terbawa ke halaman/pencarian/saringan lain. Elemen ber-key yang
+  // sama di kedua cabang: hasil aksi (mis. hapus baris terakhir hasil cari) tetap tampil saat daftar kosong.
+  const feedbackKey = `${q}:${status}:${result.page}`;
+  if (users.length === 0) {
+    return (
+      <>
+        <AdminFeedback key={feedbackKey}>
+          <UsersEmpty q={q} status={status} total={total} />
+        </AdminFeedback>
+      </>
+    );
+  }
 
   const from = (result.page - 1) * pageSize + 1;
   const to = from + users.length - 1;
@@ -92,8 +103,7 @@ async function UsersSection({
       <p role="status" className="text-sm text-muted-foreground">
         {summary}
       </p>
-      {/* key: pemberitahuan hasil aksi tidak terbawa ke halaman/pencarian/saringan lain. */}
-      <AdminFeedback key={`${q}:${status}:${result.page}`}>
+      <AdminFeedback key={feedbackKey}>
         <UsersTable
           users={users}
           currentUserId={currentUserId}

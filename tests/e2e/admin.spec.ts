@@ -323,6 +323,8 @@ test.describe("admin pengguna", () => {
     await expect(confirm).toBeHidden();
     await expect(a.getByTestId("admin-result")).toHaveAttribute("data-tone", "success");
     await expect(a.locator(`[data-testid="admin-user-row"][data-email="${E}"]`)).toHaveCount(0);
+    // Daftar hasil cari kini kosong: pemberitahuan sukses tetap tampil (tidak hilang bersama tabel).
+    await expect(a.getByTestId("admin-result")).toContainText(`Akun ${E} dihapus permanen.`);
     await e.goto("/");
     await expect(e).toHaveURL(/\/login/);
     await e.context().close();
