@@ -159,7 +159,7 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
         return {
           ok: false,
           message:
-            "Grafik pai hanya untuk Total atau Jumlah baris. Untuk rata-rata, terkecil, terbesar, atau jumlah unik pakai grafik batang.",
+            "Grafik pai hanya untuk Total, Jumlah baris, atau Jumlah terisi. Untuk rata-rata, terkecil, terbesar, atau jumlah unik pakai grafik batang.",
         };
       }
       return { ok: true, config: { type, spec: p.data } };

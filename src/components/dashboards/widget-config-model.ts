@@ -166,7 +166,7 @@ export function columnsForAgg(
 
 type Measure = { agg: Agg; column?: number };
 
-/** Agregasi yang ditawarkan: cocok dengan kolom sheet; pai hanya Total/Jumlah baris. */
+/** Agregasi yang ditawarkan: cocok dengan kolom sheet; pai hanya Total/Jumlah baris/Jumlah terisi. */
 export function aggOptions(type: WidgetType, columns: SourceColumn[]): Agg[] {
   const allowed: readonly Agg[] = type === "pie" ? PIE_AGGS : AGG_ORDER;
   return AGG_ORDER.filter(
