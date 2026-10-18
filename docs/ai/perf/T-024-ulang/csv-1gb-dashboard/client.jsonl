@@ -1,0 +1,14 @@
+{"t":"2026-10-18T11:20:06.837Z","ev":"unggah","file":"csv-1gb.csv","bytes":974202906,"sec":37.5,"mbps":208}
+{"t":"2026-10-18T11:20:07.153Z","ev":"status","datasetId":"cmvdqgmm30001n201r2sm5u0d","status":"UPLOADED","queue":null}
+{"t":"2026-10-18T11:20:08.167Z","ev":"status","datasetId":"cmvdqgmm30001n201r2sm5u0d","status":"INGESTING","queue":null}
+{"t":"2026-10-18T11:20:08.167Z","ev":"tahap","datasetId":"cmvdqgmm30001n201r2sm5u0d","tahap":"unduh","sheet":null}
+{"t":"2026-10-18T11:20:33.488Z","ev":"tahap","datasetId":"cmvdqgmm30001n201r2sm5u0d","tahap":"baca","sheet":null}
+{"t":"2026-10-18T11:21:28.155Z","ev":"tahap","datasetId":"cmvdqgmm30001n201r2sm5u0d","tahap":"tipe","sheet":"CSV"}
+{"t":"2026-10-18T11:29:08.505Z","ev":"tahap","datasetId":"cmvdqgmm30001n201r2sm5u0d","tahap":"simpan","sheet":"CSV"}
+{"t":"2026-10-18T11:29:15.590Z","ev":"status","datasetId":"cmvdqgmm30001n201r2sm5u0d","status":"READY","queue":null}
+{"t":"2026-10-18T11:29:15.590Z","ev":"siap","datasetId":"cmvdqgmm30001n201r2sm5u0d","detik":590.4,"tahap":{"unduh":25.3,"baca":54.7,"tipe":460.3,"simpan":7.1}}
+{"t":"2026-10-18T11:29:16.615Z","ev":"sumber","sheets":[{"name":"CSV","cols":10,"types":["text","date","decimal","integer","boolean"]}]}
+{"t":"2026-10-18T11:29:55.132Z","ev":"buka-dashboard","kondisi":"dingin","sec":38.2,"queries":10}
+{"t":"2026-10-18T11:30:13.990Z","ev":"buka-dashboard","kondisi":"filter","sec":9.4,"queries":10}
+{"t":"2026-10-18T11:30:42.356Z","ev":"ringkasan","mode":"single","file":"csv-1gb.csv","bytes":974202906,"status":"READY","sheets":[{"name":"CSV","rawRows":8100001}],"detik":{"unggah":37.5,"antre":1,"ingest":547.4,"sampaiSiap":590.4,"buatWidget":0.3,"bukaDashboardDingin":38.2,"sampaiDashboard10Widget":629.9,"bukaDashboardFilter":9.4,"total":648.8},"queryMs":{"dingin":{"n":50,"p50":621,"p95":666,"max":876},"hangat":{"n":50,"p50":10,"p95":37,"max":80},"gagal":[]}}
+{"t":"2026-10-18T11:30:43.663Z","ev":"hapus","datasetId":"cmvdqgmm30001n201r2sm5u0d"}

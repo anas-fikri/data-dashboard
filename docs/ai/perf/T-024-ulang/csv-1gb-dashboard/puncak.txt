@@ -1,0 +1,10 @@
+amazing_roentgen puncak_mem=444MiB puncak_cpu=45%
+dashboard-app-1 puncak_mem=2907MiB puncak_cpu=288%
+dashboard-backup-1 puncak_mem=1MiB puncak_cpu=0%
+dashboard-pg-relay-1 puncak_mem=3MiB puncak_cpu=0%
+dashboard-proxy-1 puncak_mem=49MiB puncak_cpu=28%
+dashboard-redis-1 puncak_mem=6MiB puncak_cpu=1%
+dashboard-renderer-1 puncak_mem=76MiB puncak_cpu=9%
+dashboard-rustfs-1 puncak_mem=370MiB puncak_cpu=41%
+dashboard-worker-1 puncak_mem=180MiB puncak_cpu=1%
+dashboard-worker-2 puncak_mem=1258MiB puncak_cpu=202%
