@@ -1,17 +1,23 @@
 #!/usr/bin/env bash
 # T-y3y1: konversi database produksi data_dashboard di PostgreSQL host dari SQL_ASCII ke UTF8 (C.UTF-8).
-# Sekali, oleh operator dengan sudo, dari folder aplikasi (downtime ± 1–3 menit):
-#   sudo bash deploy/convert-db-utf8.sh
-# Langkah: sidik isi (fingerprint.sh) → hentikan app/worker/backup → pg_dump format custom → ganti nama DB lama
+# Sekali, oleh operator dengan sudo, dari folder aplikasi, di dalam tmux (SSH putus tidak memotong langkah tengah;
+# downtime ± 1–3 menit):
+#   tmux new -s utf8 'sudo bash deploy/convert-db-utf8.sh; read -p "Enter untuk menutup"'
+# Langkah: hentikan app/worker/backup → sidik isi (fingerprint.sh) → pg_dump format custom → ganti nama DB lama
 # menjadi data_dashboard_sqlascii_<UTC> (DISIMPAN, tidak dihapus) → CREATE DATABASE UTF8 C.UTF-8 template0 →
 # pg_restore (pemilik objek tetap) → sidik ulang wajib sama → layanan dinyalakan → /api/health.
-# Gagal sebelum sidik cocok → DB baru dibuang, nama DB lama dikembalikan, layanan dinyalakan lagi.
+# Gagal/dihentikan (Ctrl-C, SSH putus) sebelum sidik cocok → DB baru dibuang hanya bila DB lama masih ada di
+# nama cadangannya, nama DB lama dikembalikan, layanan dinyalakan lagi hanya bila $DB kembali SQL_ASCII; selain
+# itu layanan dibiarkan mati dan langkah pulih manual dicetak.
 # DB lama dan dump dihapus manual oleh operator setelah beberapa hari normal:
 #   sudo -u postgres dropdb <nama-lama>; sudo rm /var/tmp/data_dashboard-<UTC>.dump
 # Kait uji (hanya untuk latihan di cluster tiruan): PGRUN (awalan perintah postgres, bawaan "sudo -u postgres"),
 # COMPOSE_CMD (bawaan docker compose produksi), FP_CMD (bawaan fingerprint.sh di service backup),
 # HEALTH_URL (kosong = lewati cek health), DUMP_DIR (bawaan /var/tmp).
 set -euo pipefail
+# Dump berisi email, hash password/token, dan audit: hanya pemilik (postgres) yang boleh membaca (sudo memakai
+# umask yang lebih ketat dari dua sisi).
+umask 077
 cd "$(dirname "$0")/.."
 read -r -a PG <<<"${PGRUN:-sudo -u postgres}"
 read -r -a C <<<"${COMPOSE_CMD:-docker compose --env-file .env.prod -f docker-compose.prod.yml}"
@@ -48,22 +54,37 @@ if [ -n "$bad" ]; then
   exit 1
 fi
 
-echo "1/7 sidik isi sebelum konversi"
-before=$(fingerprint)
-echo "2/7 hentikan app, worker, backup (downtime mulai $(date -u +%T) UTC)"
-"${C[@]}" stop app worker backup
-
+ok=0
+stopped=0
 renamed=0
 restore_old() {
-  echo "GAGAL — mengembalikan database lama ($old → $DB) dan menyalakan layanan" >&2
+  [ "$ok" = 1 ] && return
+  set +e
+  echo "GAGAL — mengembalikan database lama ($old → $DB)" >&2
   if [ "$renamed" = 1 ]; then
-    q -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND pid <> pg_backend_pid()" >/dev/null || true
-    q -c "DROP DATABASE IF EXISTS $DB" || true
-    q -c "ALTER DATABASE $old RENAME TO $DB" || true
+    # DB baru hanya dibuang bila DB asli masih utuh di nama cadangannya (pemanggilan ganda tidak menghapusnya).
+    if [ "$(q -c "SELECT 1 FROM pg_database WHERE datname = '$old'")" = 1 ] &&
+      q -c "DROP DATABASE IF EXISTS $DB WITH (FORCE)" && q -c "ALTER DATABASE $old RENAME TO $DB"; then
+      renamed=0
+    fi
   fi
-  "${C[@]}" up -d app worker backup || true
+  if [ "$renamed" = 1 ] || [ "$(q -c "SELECT pg_encoding_to_char(encoding) FROM pg_database WHERE datname = '$DB'")" != SQL_ASCII ]; then
+    echo "PULIH MANUAL: layanan TIDAK dinyalakan. Pastikan $DB = database asli (SQL_ASCII; cadangan $old," >&2
+    echo "  dump $dump), lalu: ${C[*]} up -d app worker backup" >&2
+    return
+  fi
+  [ "$stopped" = 1 ] && "${C[@]}" up -d app worker backup
+  echo "database lama dipulihkan, layanan dinyalakan; tidak ada yang berubah" >&2
 }
-trap restore_old ERR
+trap restore_old EXIT
+trap 'exit 130' INT TERM HUP
+
+echo "1/7 hentikan app, worker, backup (downtime mulai $(date -u +%T) UTC)"
+stopped=1
+"${C[@]}" stop app worker backup
+# Sidik sesudah berhenti: tulisan pengguna/worker di masa tenggang stop tidak membuat sidik palsu berbeda.
+echo "2/7 sidik isi sebelum konversi"
+before=$(fingerprint)
 
 echo "3/7 pg_dump → $dump"
 "${PG[@]}" pg_dump -Fc -d "$DB" -f "$dump"
@@ -74,8 +95,10 @@ SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND
 ALTER DATABASE $DB RENAME TO $old;
 SQL
 renamed=1
-q -c "CREATE DATABASE $DB OWNER $owner ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0"
-echo "5/7 pg_restore (validasi UTF-8 oleh server; byte tidak valid = gagal + rollback)"
+q -v owner="$owner" <<SQL
+CREATE DATABASE $DB OWNER :"owner" ENCODING 'UTF8' LC_COLLATE 'C.UTF-8' LC_CTYPE 'C.UTF-8' TEMPLATE template0;
+SQL
+echo "5/7 pg_restore (gagal = rollback)"
 "${PG[@]}" pg_restore --exit-on-error -d "$DB" "$dump"
 q -d "$DB" -c "ANALYZE" >/dev/null
 
@@ -86,12 +109,12 @@ if [ "$before" != "$after" ]; then
   diff <(echo "$before") <(echo "$after") >&2 || true
   false
 fi
-trap - ERR
-check=$(q -d "$DB" -c "SELECT pg_encoding_to_char(encoding) || ' ' || datcollate || ' ' || ((upper('ádí') = 'ÁDÍ') AND ('ÉLISE' ILIKE 'élise'))::text FROM pg_database WHERE datname = current_database()")
-echo "   $check (encoding, collate, huruf non-ASCII sadar kapital)"
+ok=1
 
 echo "7/7 nyalakan layanan"
 "${C[@]}" up -d app worker backup
+check=$(q -d "$DB" -c "SELECT pg_encoding_to_char(encoding) || ' ' || datcollate || ' ' || ((upper('ádí') = 'ÁDÍ') AND ('ÉLISE' ILIKE 'élise'))::text FROM pg_database WHERE datname = current_database()" || true)
+echo "   $check (encoding, collate, huruf non-ASCII sadar kapital)"
 url=${HEALTH_URL-https://$(sed -n 's/^APP_HOST=//p' .env.prod 2>/dev/null)/api/health}
 if [ -n "$url" ]; then
   for _ in $(seq 1 40); do
