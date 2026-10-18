@@ -208,7 +208,7 @@ describe("verifikasi SMTP di-cache (T-byys)", () => {
     await verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS);
     expect(verify).toHaveBeenCalledTimes(2);
 
-    verify.mockRejectedValueOnce(new Error("Invalid login: 535"));
+    verify.mockRejectedValueOnce(Object.assign(new Error("Invalid login: 535"), { code: "EAUTH" }));
     key.value = "smtps://b@mail.contoh:465";
     await expect(verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS + 1)).rejects.toThrow("535");
     await expect(verifySmtpCached(t0 + SMTP_VERIFY_TTL_MS + 60_000)).rejects.toThrow("535");
@@ -218,6 +218,15 @@ describe("verifikasi SMTP di-cache (T-byys)", () => {
       "koneksi SMTP terverifikasi",
     );
     expect(verify).toHaveBeenCalledTimes(4);
+    // Galat jaringan sesaat: dicoba lagi setelah 30 dtk, bukan 5 menit (deploy.sh menunggu 150 dtk).
+    const t1 = t0 + 10 * SMTP_VERIFY_TTL_MS;
+    verify.mockRejectedValueOnce(
+      Object.assign(new Error("Connection timeout"), { code: "ETIMEDOUT" }),
+    );
+    await expect(verifySmtpCached(t1)).rejects.toThrow("timeout");
+    await expect(verifySmtpCached(t1 + 29_000)).rejects.toThrow("timeout");
+    await expect(verifySmtpCached(t1 + 30_000)).resolves.toBe("koneksi SMTP terverifikasi");
+    expect(verify).toHaveBeenCalledTimes(6);
     vi.doUnmock("@/lib/mail");
     vi.resetModules();
   });

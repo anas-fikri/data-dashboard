@@ -88,24 +88,32 @@ export function coreChecks(): HealthCheck[] {
  * berulang bisa membuat akun/IP dikunci. Pengaturan berubah (Admin › Email) → diverifikasi ulang seketika.
  */
 export const SMTP_VERIFY_TTL_MS = 5 * 60_000;
+/** Galat selain login ditolak (jaringan, timeout, 421) tidak menambah login gagal: dicoba lagi lebih cepat. */
+export const SMTP_RETRY_MS = 30_000;
 const smtpVerify = globalThis as unknown as {
-  smtpVerify?: { key: string; at: number; result: Promise<string | null> };
+  smtpVerify?: { key: string; at: number; ttl: number; result: Promise<string | null> };
 };
 
 export function verifySmtpCached(now = Date.now()): Promise<string> {
   const key = mailerKey();
   const hit = smtpVerify.smtpVerify;
-  if (!hit || hit.key !== key || now - hit.at >= SMTP_VERIFY_TTL_MS) {
-    smtpVerify.smtpVerify = {
+  if (!hit || hit.key !== key || now - hit.at >= hit.ttl) {
+    const entry = {
       key,
       at: now,
-      result: mailer()
-        .verify()
-        .then(
-          () => null,
-          (e: unknown) => (e instanceof Error ? e.message : String(e)),
-        ),
+      ttl: SMTP_VERIFY_TTL_MS,
+      result: Promise.resolve<string | null>(null),
     };
+    entry.result = mailer()
+      .verify()
+      .then(
+        () => null,
+        (e: unknown) => {
+          if ((e as { code?: string }).code !== "EAUTH") entry.ttl = SMTP_RETRY_MS;
+          return e instanceof Error ? e.message : String(e);
+        },
+      );
+    smtpVerify.smtpVerify = entry;
   }
   return smtpVerify.smtpVerify!.result.then((err) => {
     if (err) throw new Error(err);
