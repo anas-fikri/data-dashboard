@@ -64,7 +64,12 @@ export async function probeOffsite(c: ParsedOffsite): Promise<string | null> {
   const opts = () => ({ abortSignal: AbortSignal.timeout(TIMEOUT_MS) });
   try {
     await client.send(
-      new ListObjectsV2Command({ Bucket: c.bucket, Prefix: c.prefix || undefined, MaxKeys: 1 }),
+      // Prefix berakhiran "/" seperti rclone (kunci yang dibatasi ke "folder/*" tetap lolos).
+      new ListObjectsV2Command({
+        Bucket: c.bucket,
+        Prefix: c.prefix ? `${c.prefix}/` : undefined,
+        MaxKeys: 1,
+      }),
       opts(),
     );
     await client.send(

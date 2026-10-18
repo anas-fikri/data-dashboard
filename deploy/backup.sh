@@ -45,28 +45,33 @@ fi
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 if [ "$(id -u)" = 0 ]; then
-  [ -d "$cfg/app" ] || { mkdir -p "$cfg/app" && chown 10001:10001 "$cfg/app"; }
+  [ -d "$cfg/app" ] || { mkdir -p "$cfg/app" && chown -h 10001:10001 "$cfg/app"; }
   chown 0:0 "$cfg" && chmod 755 "$cfg"
 fi
 
 remote="" target="" cfg_broken=""
 offsite_target() {
-  local f="$cfg/app/offsite.json" path endpoint
+  local f="$cfg/app/offsite.json" path endpoint json=""
   remote="" target="" cfg_broken=""
-  # Ditulis user app: symlink ditolak; tidak terbaca → arsip lokal tidak dibuang retensi lokal.
-  if [ -L "$f" ] || { [ -e "$f" ] && ! jq -e 'type == "object"' "$f" >/dev/null 2>&1; }; then
+  # Ditulis user app: hanya file biasa, dibaca SEKALI dengan batas waktu (symlink/FIFO/tukar file di tengah
+  # jalan tidak bisa membuat root membaca tempat lain atau menggantung sambil memegang kunci).
+  if [ -L "$f" ] || { [ -e "$f" ] && ! { [ -f "$f" ] && json=$(timeout 5 head -c 65536 -- "$f") &&
+    jq -e 'type == "object"' <<<"$json" >/dev/null 2>&1; }; }; then
+    # Tidak terbaca: tanpa salinan (juga tanpa BACKUP_REMOTE, agar run harian dan --sync sama), arsip lokal
+    # tidak dibuang retensi lokal, status "failed" sampai admin menyimpan ulang konfigurasinya.
     cfg_broken=1
     echo "[$stamp] PERINGATAN: konfigurasi off-VM dari aplikasi tidak terbaca" >&2
+    return 0
   fi
-  if [ -z "$cfg_broken" ] && [ -s "$f" ] && [ "$(jq -r '.enabled == true' "$f")" = true ]; then
-    endpoint=$(jq -r .endpoint "$f")
-    path=$(jq -r '[.bucket, (.prefix // "")] | map(select(. != "")) | join("/")' "$f")
+  if [ -n "$json" ] && [ "$(jq -r '.enabled == true' <<<"$json")" = true ]; then
+    endpoint=$(jq -r .endpoint <<<"$json")
+    path=$(jq -r '[.bucket, (.prefix // "")] | map(select(. != "")) | join("/")' <<<"$json")
     export RCLONE_CONFIG_APPOFFSITE_TYPE=s3 RCLONE_CONFIG_APPOFFSITE_PROVIDER=Other \
       RCLONE_CONFIG_APPOFFSITE_FORCE_PATH_STYLE=true RCLONE_CONFIG_APPOFFSITE_NO_CHECK_BUCKET=true \
       RCLONE_CONFIG_APPOFFSITE_ENDPOINT="$endpoint"
-    RCLONE_CONFIG_APPOFFSITE_REGION=$(jq -r '.region // "us-east-1"' "$f")
-    RCLONE_CONFIG_APPOFFSITE_ACCESS_KEY_ID=$(jq -r .accessKeyId "$f")
-    RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY=$(jq -r .secretAccessKey "$f")
+    RCLONE_CONFIG_APPOFFSITE_REGION=$(jq -r '.region // "us-east-1"' <<<"$json")
+    RCLONE_CONFIG_APPOFFSITE_ACCESS_KEY_ID=$(jq -r .accessKeyId <<<"$json")
+    RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY=$(jq -r .secretAccessKey <<<"$json")
     export RCLONE_CONFIG_APPOFFSITE_REGION RCLONE_CONFIG_APPOFFSITE_ACCESS_KEY_ID \
       RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY
     remote="appoffsite:$path"
@@ -106,6 +111,8 @@ local_retention() {
   local m f b
   m=$(confirmed)
   find "$dir" -maxdepth 1 -name 'dashboard-*' -mtime +"$full_days" -delete
+  # Sisa run yang dimatikan paksa (SIGKILL/OOM): arsip setengah jadi dan folder kerja > 1 hari.
+  find "$dir" -maxdepth 1 \( -name '.dashboard-*.part' -o -name '.work-*' \) -mmin +1440 -exec rm -rf {} +
   # Konfigurasi tidak terbaca: target mungkin masih aktif, arsip tertunda jangan dibuang.
   [ -z "$cfg_broken" ] || return 0
   find "$dir" -maxdepth 1 -name 'dashboard-*' -mtime +"$local_days" | while read -r f; do
@@ -140,7 +147,7 @@ notify() { # state pending since
   case $state in
     failed)
       subject="Backup Data Dashboard GAGAL"
-      body="Backup harian Data Dashboard gagal pada $now (UTC): ${err:-lihat log service backup}.
+      body="Backup Data Dashboard bermasalah pada $now (UTC): ${err:-lihat log service backup}.
 Arsip terakhir yang berhasil: ${last_archive:-belum ada}.
 Periksa log: docker compose logs backup. Status: $link" ;;
     pending)
@@ -184,7 +191,7 @@ save_status() {
   pending=$(pending_count)
   since=$(prev .pendingSince)
   if [ "$pending" -eq 0 ]; then since=""; elif [ -z "$since" ]; then since=$now; fi
-  if [ "$last_ok" = false ]; then
+  if [ "$last_ok" = false ] || [ -n "$cfg_broken" ]; then
     state=failed
   elif [ -z "$remote" ]; then
     state=off

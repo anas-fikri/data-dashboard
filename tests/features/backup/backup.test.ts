@@ -95,7 +95,14 @@ describe("backupAlert", () => {
   });
 
   it("gagal, > 26 jam, dan tertunda → peringatan dengan nada yang sesuai", () => {
-    expect(config.backupAlert({ ...base, state: "failed" })).toMatchObject({ tone: "error" });
+    expect(config.backupAlert({ ...base, state: "failed", lastBackupOk: false })).toMatchObject({
+      tone: "error",
+      text: "Backup terakhir gagal.",
+    });
+    expect(config.backupAlert({ ...base, state: "failed" })).toMatchObject({
+      tone: "error",
+      text: expect.stringContaining("off-VM tidak bisa dijalankan"),
+    });
     const old = new Date(Date.now() - 27 * 3600_000).toISOString();
     expect(config.backupAlert({ ...base, lastBackupAt: old })).toMatchObject({
       tone: "error",

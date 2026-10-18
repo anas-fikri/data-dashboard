@@ -143,7 +143,7 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
 2. **Off-VM dari aplikasi (S3, disarankan):** admin membuka **Admin › Backup**, mengisi endpoint S3 yang
    bisa dijangkau VM (mis. `http://<ip-nas>:9000`), bucket khusus backup, folder, access key + secret
    **khusus backup** (hanya berhak di bucket itu), lalu **Tes koneksi** → **Simpan**. Konfigurasi masuk ke
-   volume `backup-config` (`offsite.json`, 600; secret tidak di DB/log) dan dipakai backup berikutnya tanpa
+   volume `backup-config` (`app/offsite.json`, 600; secret tidak di DB/log) dan dipakai backup berikutnya tanpa
    restart/SSH. Bila target tidak terjangkau (down, jaringan, kunci salah): arsip **ditahan di VM** (retensi
    lokal tidak membuangnya sebelum tersalin; dibuang setelah `BACKUP_RETENTION_DAYS`), dikirim ulang
    `backup.sh --sync` tiap 30 menit, dan admin aktif diberi email sekali per perubahan status (tertunda,

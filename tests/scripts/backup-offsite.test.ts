@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -279,6 +279,27 @@ describe("backup.sh: kasus tepi (review T-7psf)", () => {
     expect(local()).toContain("dashboard-20251101T000000Z.tar.age");
   });
 
+  it("offsite.json berupa FIFO → tidak menggantung; status failed + email sekali, tanpa pulih palsu", () => {
+    mkdirSync(join(cfg(), "app"), { recursive: true });
+    execFileSync("mkfifo", [join(cfg(), "app/offsite.json")]);
+    writeFileSync(
+      join(cfg(), "status.json"),
+      JSON.stringify({ state: "pending", notified: "pending", updatedAt: "x" }),
+    );
+    const t0 = Date.now();
+    const r = runWith({ BACKUP_REMOTE: "offsite:folder" });
+    expect(Date.now() - t0).toBeLessThan(15_000);
+    expect(r.code, r.out).toBe(0);
+    expect(status()).toMatchObject({ state: "failed", lastBackupOk: true, notified: "failed" });
+    expect(mails()).toHaveLength(1);
+    expect(mails()[0]).toContain("Subject: Backup Data Dashboard GAGAL");
+    // BACKUP_REMOTE tidak dipakai selama konfigurasi aplikasi rusak (run harian dan --sync sama).
+    expect(runWith({ BACKUP_REMOTE: "offsite:folder" }, "--sync").code).toBe(0);
+    expect(status()).toMatchObject({ state: "failed" });
+    expect(mails()).toHaveLength(1);
+    expect(existsSync(join(root, "remote/folder"))).toBe(false);
+  });
+
   it("offsite.json berupa symlink → ditolak, arsip lama tidak dibuang, galat tampil", () => {
     mkdirSync(join(cfg(), "app"), { recursive: true });
     writeFileSync(
@@ -291,7 +312,7 @@ describe("backup.sh: kasus tepi (review T-7psf)", () => {
     expect(r.code, r.out).toBe(0);
     expect(local()).toContain("dashboard-20260101T000000Z.tar.age");
     expect(status()).toMatchObject({
-      state: "off",
+      state: "failed",
       error: expect.stringContaining("tidak terbaca"),
     });
     expect(readFileSync(join(root, "rclone.log"), "utf8")).not.toContain("appoffsite:");

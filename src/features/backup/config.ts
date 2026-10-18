@@ -152,7 +152,15 @@ export async function readStatus(): Promise<BackupStatus | null> {
 /** Yang perlu diketahui admin sekarang; status belum ada (belum pernah backup sejak fitur ini) → null. */
 export function backupAlert(s: BackupStatus | null, now = Date.now()): BackupAlert | null {
   if (!s) return null;
-  if (s.state === "failed") return { tone: "error", text: "Backup terakhir gagal." };
+  if (s.state === "failed") {
+    return {
+      tone: "error",
+      text:
+        s.lastBackupOk === false
+          ? "Backup terakhir gagal."
+          : "Salinan backup off-VM tidak bisa dijalankan. Periksa pengaturan backup.",
+    };
+  }
   if (s.lastBackupAt && now - Date.parse(s.lastBackupAt) > STALE_MS) {
     return { tone: "error", text: "Tidak ada backup baru lebih dari 26 jam." };
   }
