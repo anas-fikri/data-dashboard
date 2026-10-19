@@ -31,6 +31,9 @@ if [ ! -f "$ENV_FILE" ]; then
 APP_HOST=ISI_dashboard.perusahaan.co.id
 STORAGE_HOST=ISI_storage.dashboard.perusahaan.co.id
 # VM bersama tanpa domain: APP_HOST=<ip>:8443, APP_PORT=8443, STORAGE_HOST=<ip>:8444, TLS_DEFAULT_SNI=<ip>
+# Domain publik lewat reverse proxy di depan (mis. Nginx Proxy Manager → https://<ip>:8443/8444):
+# APP_PUBLIC_HOST=dashboard.perusahaan.co.id, STORAGE_PUBLIC_HOST=storage.perusahaan.co.id (APP_URL dan
+# URL unggah memakai domain; akses lewat APP_HOST tetap jalan), TRUSTED_PROXIES=<ip reverse proxy>.
 APP_PORT=443
 STORAGE_PORT=8444
 # internal (CA lokal Caddy) | email untuk ACME publik | "/certs/fullchain.pem /certs/privkey.pem"

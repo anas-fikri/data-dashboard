@@ -19,7 +19,9 @@ x-app-env: &app-env
   NODE_ENV: production
   # Tanpa home di image (user app): DuckDB/tsx menulis ke /tmp (tmpfs).
   HOME: /tmp
-  APP_URL: https://${APP_HOST:?isi APP_HOST di .env.prod}
+  # Alamat resmi (link email, cookie, HSTS): domain publik bila ada (APP_PUBLIC_HOST, di belakang reverse
+  # proxy mis. Nginx Proxy Manager), selain itu APP_HOST. Akses lewat APP_HOST tetap jalan.
+  APP_URL: https://${APP_PUBLIC_HOST:-${APP_HOST:?isi APP_HOST di .env.prod}}
   APP_HOST: ${APP_HOST}
   TRUST_PROXY: "true"
   AUTH_SECRET: ${AUTH_SECRET:?}
@@ -34,7 +36,7 @@ x-app-env: &app-env
   DATABASE_URL: ${DATABASE_URL:?}
   REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
   S3_ENDPOINT: http://rustfs:9000
-  S3_PUBLIC_ENDPOINT: https://${STORAGE_HOST:?isi STORAGE_HOST di .env.prod}
+  S3_PUBLIC_ENDPOINT: https://${STORAGE_PUBLIC_HOST:-${STORAGE_HOST:?isi STORAGE_HOST di .env.prod}}
   S3_REGION: ${S3_REGION:-us-east-1}
   S3_BUCKET: ${S3_BUCKET:-dashboard}
   # Service account berpolicy prefix (deploy/storage-iam.mjs), BUKAN akun root RustFS.
@@ -56,8 +58,11 @@ services:
     # dimatikan, ACME lewat TLS-ALPN) sehingga tidak bentrok dengan web server lain di VM.
     ports: ["${APP_PORT:-443}:${APP_PORT:-443}", "${STORAGE_PORT:-8444}:${STORAGE_PORT:-8444}"]
     environment:
-      APP_HOST: ${APP_HOST}
-      STORAGE_HOST: ${STORAGE_HOST}
+      # Alamat situs Caddy: host LAN/IP + domain publik (port = port yang dituju reverse proxy di depan).
+      APP_SITES: ${APP_HOST}${APP_PUBLIC_HOST:+, ${APP_PUBLIC_HOST}:${APP_PORT:-443}}
+      STORAGE_SITES: ${STORAGE_HOST}${STORAGE_PUBLIC_HOST:+, ${STORAGE_PUBLIC_HOST}:${STORAGE_PORT:-8444}}
+      # IP reverse proxy di depan Caddy (X-Forwarded-For darinya dipercaya); bawaan: tidak ada.
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
       # Nama host tanpa port untuk klien tanpa SNI (akses lewat IP).
       TLS_DEFAULT_SNI: ${TLS_DEFAULT_SNI:-${APP_HOST}}
       S3_BUCKET: ${S3_BUCKET:-dashboard}
@@ -169,7 +174,9 @@ services:
     pull_policy: never
     command: ["sh", "-c", "node scripts/storage-init.mjs && node deploy/storage-iam.mjs"]
     environment:
-      APP_URL: https://${APP_HOST}
+      APP_URL: https://${APP_PUBLIC_HOST:-${APP_HOST}}
+      # Origin kedua untuk CORS (akses langsung lewat APP_HOST tetap bisa unggah).
+      APP_LAN_URL: https://${APP_HOST}
       S3_ENDPOINT: http://rustfs:9000
       S3_REGION: ${S3_REGION:-us-east-1}
       S3_BUCKET: ${S3_BUCKET:-dashboard}
@@ -247,7 +254,7 @@ services:
       # Email admin saat backup gagal / salinan off-VM tertunda / pulih (T-7psf).
       SMTP_URL: ${SMTP_URL:?}
       MAIL_FROM: ${MAIL_FROM:?}
-      APP_URL: https://${APP_HOST}
+      APP_URL: https://${APP_PUBLIC_HOST:-${APP_HOST}}
     extra_hosts: ["host.docker.internal:host-gateway"]
     volumes:
       - ./deploy/backup.sh:/usr/local/bin/backup.sh:ro

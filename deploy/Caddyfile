@@ -7,6 +7,11 @@
 	default_sni {$TLS_DEFAULT_SNI}
 	# Log akses JSON ke stdout; isi sensitif dibuang di tiap situs (lihat (redact)).
 	servers {
+		# Reverse proxy di depan (mis. Nginx Proxy Manager untuk domain publik): X-Forwarded-For darinya
+		# dipercaya — dibaca dari kanan, hanya sampai alamat pertama yang bukan proxy tepercaya — sehingga
+		# {client_ip} = IP pengguna sebenarnya (rate limit, AuditLog). Klien lain tidak bisa memalsukannya.
+		trusted_proxies static {$TRUSTED_PROXIES}
+		trusted_proxies_strict
 		# Upload part presigned 16 MiB dan video panduan: tunggu body cukup lama.
 		timeouts {
 			read_body 10m
@@ -38,7 +43,9 @@
 	}
 }
 
-{$APP_HOST} {
+# APP_SITES = APP_HOST (+ domain publik di belakang reverse proxy, mis. data-slicer.pcpexpress.com:8443):
+# Host yang tidak terdaftar di sini dijawab 200 kosong oleh Caddy — layar putih.
+{$APP_SITES} {
 	tls {$CADDY_TLS}
 	import redact
 	encode zstd gzip
@@ -66,12 +73,12 @@
 		# Action dicocokkan dengan Host/X-Forwarded-Host; X-Real-IP dipakai rate limit + AuditLog.
 		header_up Host {hostport}
 		header_up X-Forwarded-Host {hostport}
-		header_up X-Real-IP {remote_host}
+		header_up X-Real-IP {client_ip}
 		header_up -X-Forwarded-Server
 	}
 }
 
-{$STORAGE_HOST} {
+{$STORAGE_SITES} {
 	tls {$CADDY_TLS}
 	import redact
 	# Part multipart 16 MiB (+ ruang); Content-Length diteruskan apa adanya (signed header UploadPart).

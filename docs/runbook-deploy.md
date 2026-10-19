@@ -125,6 +125,26 @@ Pasang root (`dashboard-lan-root.crt`) **sekali** di setiap komputer pengguna:
 Bagikan lewat jalur tepercaya (GPO/shared drive kantor, bukan unduhan http) dan cocokkan sidik jari:
 `openssl x509 -in dashboard-lan-root.crt -noout -fingerprint -sha256`.
 
+### Domain publik lewat reverse proxy (Nginx Proxy Manager)
+
+Domain (mis. `data-slicer.pcpexpress.com`) diterbitkan reverse proxy di depan yang memegang sertifikat
+publik dan meneruskan ke Caddy di VM (`https://<ip-vm>:8443` untuk app, `:8444` untuk storage; sertifikat
+LAN Caddy tidak perlu diverifikasi proxy). Di `.env.prod`:
+
+- `APP_PUBLIC_HOST=data-slicer.pcpexpress.com` — Caddy ikut melayani host ini di port `APP_PORT`
+  (tanpa ini Caddy menjawab **200 kosong** untuk host yang tidak dikenal → layar putih), dan `APP_URL`
+  (link email, cookie) memakai domain. Akses lewat `APP_HOST` (IP) tetap jalan.
+- `TRUSTED_PROXIES=<ip proxy>/32` (olympus: Nginx Proxy Manager 10.3.3.56) — `X-Forwarded-For` dari proxy
+  dipercaya sehingga rate limit dan AuditLog melihat IP pengguna, bukan IP proxy.
+- `STORAGE_PUBLIC_HOST=<domain storage>` — perlu proxy host kedua ke `:8444` (Host diteruskan apa adanya,
+  body ≥ 32 MB) agar unggah/unduh dari luar LAN dan tanpa CA LAN berjalan; tanpa ini URL unggah tetap
+  `STORAGE_HOST` (IP).
+
+Setelah mengubahnya: `$C run --rm --no-deps storage-init` (CORS mengizinkan domain + IP) lalu
+`$C up -d --no-deps --force-recreate proxy app worker`. Pengguna di kantor yang membuka domain lewat IP
+publik kantor (hairpin NAT) terlihat sebagai satu IP publik — sebaiknya DNS internal mengarahkan domain ke
+proxy di LAN agar IP pengguna asli terbaca.
+
 ### Contoh: server olympus (LAN 10.3.3.221)
 
 `APP_HOST=10.3.3.221:8443`, `APP_PORT=8443`, `STORAGE_HOST=10.3.3.221:8444`, `TLS_DEFAULT_SNI=10.3.3.221`,

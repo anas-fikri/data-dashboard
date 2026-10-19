@@ -32,7 +32,9 @@ const need = (k) => {
 
 const endpoint = need("S3_ENDPOINT");
 const Bucket = need("S3_BUCKET");
-const appOrigin = need("APP_URL"); // origin presigned PUT/GET dari browser; salah → CORS menolak
+// Origin presigned PUT/GET dari browser; salah → CORS menolak. APP_LAN_URL (opsional): alamat kedua aplikasi
+// (akses langsung lewat IP saat APP_URL = domain publik di belakang reverse proxy).
+const origins = [...new Set([need("APP_URL"), process.env.APP_LAN_URL].filter(Boolean))];
 
 const s3 = new S3Client({
   endpoint,
@@ -75,7 +77,7 @@ await s3.send(
     CORSConfiguration: {
       CORSRules: [
         {
-          AllowedOrigins: [appOrigin],
+          AllowedOrigins: origins,
           AllowedMethods: ["GET", "PUT", "HEAD"],
           AllowedHeaders: ["Content-Type", "Content-Length", "x-amz-*"],
           ExposeHeaders: ["ETag"],
@@ -110,5 +112,5 @@ await s3.send(
 );
 
 console.log(
-  `object storage siap: bucket=${Bucket}, CORS origin=${appOrigin}, lifecycle abort-mpu=1 hari, exports/=1 hari`,
+  `object storage siap: bucket=${Bucket}, CORS origin=${origins.join(" ")}, lifecycle abort-mpu=1 hari, exports/=1 hari`,
 );
