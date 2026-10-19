@@ -29,3 +29,6 @@ base: ba2efef8d86bde8926f0507acddd0cb88c013130
   (arsip dibuat dari image yang sudah ada di VM). images.sh build di Mac selesai (± 23 mnt) tetapi image app/worker/
   renderer hilang dari image store saat disk Mac ±99% penuh — putaran utuh "build di luar VM → deploy VM kosong"
   belum dijalankan; butuh mesin build dengan ruang disk ≥ 15 GB.
+- 2026-10-19 (putaran utuh): disk Mac dikosongkan (media WhatsApp, izin pemilik) → 4 image linux/amd64 di-build
+  di Mac satu per satu dan dialirkan ke olympus (14,5 mnt), empty-vm-drill.sh memuat arsip itu dan deploy salinan
+  terpisah dari nol sampai /api/health hijau dalam 88 dtk (muat 54 + deploy 34); produksi tidak tersentuh.

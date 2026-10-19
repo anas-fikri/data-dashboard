@@ -73,7 +73,9 @@ volume dan secret baru, PostgreSQL container), menjalankan `deploy.sh --no-build
 mencetak total waktu, lalu membongkar salinan itu. Hasil di olympus 2026-10-19: muat arsip 1,5 GB (4,0 GB tar) 61 dtk + deploy
 sampai `/api/health` hijau 58 dtk = **120 dtk** (lapisan image sudah ada di VM itu; di VM kosong tambahkan
 waktu tulis ± 4 GB lapisan, dekompresinya sendiri 36 dtk). Build 4 image linux/amd64 di Mac (buildx, emulasi)
-± 23 menit dan butuh ruang disk lega (± 10 GB sementara). `deploy.sh` menolak `DEPLOY_ENV_FILE` tanpa
+± 23 menit dan butuh ruang disk lega (± 10 GB sementara). Putaran utuh 2026-10-19: build di Mac satu
+per satu + dialirkan ke VM (`save -` / per image) 14,5 menit (disk Mac tetap ≥ 10 GB), lalu di olympus muat 4
+arsip (1,5 GB) 54 dtk + deploy sampai hijau 34 dtk = **88 dtk**. `deploy.sh` menolak `DEPLOY_ENV_FILE` tanpa
 `DEPLOY_PROJECT` selain `dashboard` (file compose bernama `dashboard`: tanpa project lain, produksi tertimpa).
 
 ### Admin pertama
