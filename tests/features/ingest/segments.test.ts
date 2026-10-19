@@ -1,9 +1,10 @@
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { runIngest } from "@/features/ingest/ingest";
-import { recastSheet, type RecastRepo } from "@/features/ingest/recast";
+import { recastSheet } from "@/features/ingest/recast";
 import type { ActiveSnapshot } from "@/features/ingest/refresh";
 import { fakeLock, rowColumns, testRoot, VID, type FakeRepo } from "./fakes";
+import { FakeRecastRepo } from "./recast-fakes";
 
 /*
  * T-036 (ADR-0008): segmen + manifest. Typed baru memuat `_row BIGINT = rowBase + baris fisik` dan
@@ -94,26 +95,7 @@ describe("T-036 segmen", () => {
     });
     // rowBase bukan 0: segmen lineage yang sudah pernah membagikan `_row`.
     r.segment.rowBase = 1000n;
-    const repo: RecastRepo = {
-      loadSheet: async () => ({
-        versionId: VID,
-        versionStatus: "READY",
-        rawKey: r.sheet.rawKey!,
-        typedKey: r.sheet.typedKey ?? null,
-        schemaRevision: r.sheet.schemaRevision ?? 0,
-        headerRow: r.sheet.headerRow,
-        colCount: r.sheet.colCount,
-        columns: r.sheet.columns,
-        schema: r.sheet.schema ?? null,
-        source: "csv",
-        rowBase: r.segment.rowBase,
-      }),
-      swapTyped: async (_id, expected, next) => {
-        if ((r.sheet.schemaRevision ?? 0) !== expected) return false;
-        Object.assign(r.sheet, next);
-        return true;
-      },
-    };
+    const repo = FakeRecastRepo.fromIngest(r.repo, r.sheetId);
     const deps = {
       repo,
       storage: r.storage,

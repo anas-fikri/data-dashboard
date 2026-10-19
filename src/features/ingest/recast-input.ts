@@ -7,6 +7,23 @@ import { z } from "zod";
 import type { ColumnSchema } from "./infer";
 import type { ColumnOverride } from "./typed";
 
+/** Progres job recast per segmen (T-040, BullMQ job.progress): read = membaca profil, write = menulis typed. */
+export interface RecastProgress {
+  phase: "read" | "write";
+  current: number;
+  total: number;
+}
+
+/** Progres tersimpan di job (data Redis) → bentuk yang sah, atau null. */
+export function recastProgressOf(v: unknown): RecastProgress | null {
+  const p = v as Partial<RecastProgress> | null;
+  if (!p || typeof p !== "object" || (p.phase !== "read" && p.phase !== "write")) return null;
+  const { current, total } = p;
+  if (!Number.isSafeInteger(current) || !Number.isSafeInteger(total)) return null;
+  if (current! < 1 || total! < current!) return null;
+  return { phase: p.phase, current: current!, total: total! };
+}
+
 export interface RecastInput {
   /**
    * schemaRevision yang dilihat user saat mengedit (T-008). Berbeda dari sekarang → "stale" tanpa

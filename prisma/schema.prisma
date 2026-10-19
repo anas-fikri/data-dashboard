@@ -260,6 +260,9 @@ model SegmentTyped {
   dataRows       Int?
   /// Ukuran file typed di storage (T-039 kuota); null = file lama yang belum diukur.
   typedBytes     BigInt?
+  /// Profil raw segmen untuk baris judul file ini (T-040, src/features/ingest/profile.ts): recast per
+  /// segmen memutuskan tipe dari gabungan profil tanpa memindai ulang raw; null = file lama.
+  profile        Json?
   /// Tanda GC (T-038): sejak kapan revisi ini tidak dirujuk manifest versi hidup; null = dirujuk.
   unreferencedAt DateTime?
   sheets         SheetSegment[]

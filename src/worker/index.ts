@@ -313,6 +313,11 @@ async function main() {
             throw new DatasetGoneError();
           }
         },
+        // T-040: kunci file per job (percobaan ulang melanjutkan segmen yang selesai), progres per
+        // segmen untuk UI, dan menunggu selama ingest berjalan (prioritas di bawah ingest).
+        jobId: job.id,
+        progress: (p) => job.updateProgress({ ...p }),
+        ingestActive: async () => (await ingestQueue.getActiveCount()) > 0,
       });
       logger.info({ jobId: job.id, sheetId, ...r, schema: undefined }, "recast selesai");
       // Recast lain sedang memegang lock sheet ini (bisa sampai deadline 20 menit) → tunda tanpa
@@ -320,7 +325,8 @@ async function main() {
       if (r.outcome === "busy") return delayBusy(job, RECAST_BUSY_MAX_MS, token);
       return r.outcome === "done" ? { outcome: r.outcome, revision: r.revision } : r;
     },
-    { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS },
+    // Worker mati dua kali di tengah recast panjang tetap dilanjutkan (titik lanjut per segmen).
+    { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS, maxStalledCount: 2 },
   );
   recastWorker.on("failed", (job, err) => {
     logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "recast gagal");

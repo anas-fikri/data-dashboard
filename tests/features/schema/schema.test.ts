@@ -626,6 +626,7 @@ describe("status koreksi skema (polling)", () => {
     sheetId: SHEET,
     state: "completed",
     result: null,
+    progress: null,
     ...v,
   });
   const status = (j: RecastJobView | null, jobId = "17") => {
@@ -638,6 +639,12 @@ describe("status koreksi skema (polling)", () => {
     expect(await st(job({ state: "waiting" }))).toEqual({ ok: true, status: { state: "queued" } });
     expect(await st(job({ state: "delayed" }))).toEqual({ ok: true, status: { state: "queued" } });
     expect(await st(job({ state: "active" }))).toEqual({ ok: true, status: { state: "running" } });
+    // T-040: segmen yang sedang dikerjakan ikut dikirim selama berjalan.
+    const progress = { phase: "write" as const, current: 7, total: 24 };
+    expect(await st(job({ state: "active", progress }))).toEqual({
+      ok: true,
+      status: { state: "running", progress },
+    });
     expect(await st(job({ result: { outcome: "done", revision: 3 } }))).toEqual({
       ok: true,
       status: { state: "done", revision: 3 },

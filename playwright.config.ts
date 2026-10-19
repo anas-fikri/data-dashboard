@@ -26,6 +26,7 @@ export default defineConfig({
         /zz-rate-limit\.spec\.ts$/,
         /ingest\.spec\.ts$/,
         /schema\.spec\.ts$/,
+        /recast-segments\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -48,7 +49,13 @@ export default defineConfig({
     { name: "ingest", testMatch: /ingest\.spec\.ts$/, dependencies: ["guide-roles"] },
     { name: "schema", testMatch: /schema\.spec\.ts$/, dependencies: ["ingest"] },
     // widgets: menyalakan worker sendiri untuk ingest fixture (setelah worker schema berhenti).
-    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["schema"] },
+    // T-040: worker sendiri + ingest besar → sendirian, setelah schema.
+    {
+      name: "recast-segments",
+      testMatch: /recast-segments\.spec\.ts$/,
+      dependencies: ["schema"],
+    },
+    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["recast-segments"] },
     // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
     // backup (T-7psf) + smtp (T-byys): status.json / smtp.json di folder dev bersama berlaku untuk semua

@@ -27,6 +27,7 @@ import {
   DATE_FORMATS,
 } from "./infer";
 import { copyParquet, rowGroupFor } from "./raw-writer";
+import { packProfile, type RawProfile, type StoredProfile } from "./profile";
 
 /**
  * Kolom per query profil/unik: memori agregasi (terutama count DISTINCT) tumbuh per kolom; sheet
@@ -96,6 +97,8 @@ export interface TypedResult {
    * (T-013); juga disimpan per kolom di skema (T-014).
    */
   nonEmpty: number[];
+  /** Profil raw file ini (T-040), disimpan di SegmentTyped.profile. */
+  profile: StoredProfile;
 }
 
 /** Baris fisik terbesar di raw.parquet (0 bila kosong): rentang `_row` yang dipakai segmen (T-036). */
@@ -183,7 +186,11 @@ function resolve(p: Profile | undefined, source: SourceKind, o?: ColumnOverride)
   return { type: t };
 }
 
-export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedResult> {
+/** Profil raw (baris data = _row > headerRow) kolom c1..c<colCount>: tahap mahal penentuan tipe. */
+export async function profileRaw(
+  duck: Duck,
+  input: Pick<TypedInput, "rawPath" | "headerRow" | "colCount" | "watch">,
+): Promise<RawProfile> {
   const cols = Array.from({ length: input.colCount }, (_, i) => `c${i + 1}`);
   const where = `_row > ${Math.trunc(input.headerRow)}`;
   const dataRows = Number(
@@ -229,12 +236,24 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
       }
     }
   }
+  return { dataRows, profiles };
+}
 
+/**
+ * Skema kolom dari profil (satu file, atau gabungan semua segmen sheet saat recast T-040) + pilihan
+ * user: tipe/locale/format hasil inferensi atau pilihan, statistik kosong/unik/gagal cast, lalu kolom
+ * kosong (absent) setelah kolom nyata.
+ */
+export function typedSchema(
+  raw: RawProfile,
+  input: Pick<TypedInput, "source" | "colCount" | "columns" | "overrides" | "absent">,
+): ColumnSchema[] {
+  const { dataRows, profiles } = raw;
   const overrides = new Map((input.overrides ?? []).map((o) => [o.pos, o]));
   const names = new Map(input.columns.map((c) => [c.pos, c]));
-  const schema: ColumnSchema[] = cols.map((col, i) => {
+  const schema: ColumnSchema[] = Array.from({ length: input.colCount }, (_, i) => {
     const pos = i + 1;
-    const p = profiles.get(col);
+    const p = profiles.get(`c${pos}`);
     const o = overrides.get(pos);
     const s = resolve(p, input.source, o);
     const n = p?.n ?? 0;
@@ -269,30 +288,76 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
       absent: true,
     };
   });
+  return [...schema, ...absent];
+}
 
-  // Tanpa ORDER BY: raw sudah urut _row dan urutan sisip dipertahankan (1 thread) → deterministik
-  // tanpa sort atas data lebar. Row group dibatasi juga oleh rata-rata karakter per baris.
-  const chars = [...profiles.values()].reduce((sum, p) => sum + p.chars, 0);
+/** SQL cast satu kolom di file typed: sama → isi kolom di file sama (recast boleh memakai file lama). */
+export function castSignature(c: ColumnSchema, source: SourceKind): string {
+  if (c.absent) return `null:${sqlType(c)}`;
+  const p = typedParts("v", c, source);
+  return `${p.inner}|${p.outer("a")}`;
+}
+
+/**
+ * Tulis typed.parquet berisi kolom `schema` (urut pos): kolom nyata pos ≤ rawCols dari raw `c<pos>`,
+ * kolom kosong (absent) sebagai NULL bertipe.
+ */
+export async function copyTyped(
+  duck: Duck,
+  input: Pick<TypedInput, "rawPath" | "outPath" | "source" | "headerRow" | "watch" | "rowBase"> & {
+    /** Kolom raw file ini (c1..c<rawCols>). */
+    rawCols: number;
+    schema: ColumnSchema[];
+    /** Rata-rata karakter per baris data (ukuran row group). */
+    charsPerRow: number;
+  },
+): Promise<void> {
+  const where = `_row > ${Math.trunc(input.headerRow)}`;
+  const fromRaw = (s: ColumnSchema) => !s.absent && s.pos <= input.rawCols;
   // Dua tahap: parse sekali di subquery (a<pos>), penjaga diterapkan pada hasilnya di luar.
-  const parts = schema.map((s, i) => typedParts(cols[i]!, s, input.source));
-  const outer = [
-    ...parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`),
-    ...absent.map((a) => `CAST(NULL AS ${sqlType(a)}) AS c${a.pos}`),
-  ];
+  const parts = new Map(
+    input.schema
+      .filter(fromRaw)
+      .map((s) => [s.pos, typedParts(`c${Math.trunc(s.pos)}`, s, input.source)] as const),
+  );
+  const outer = input.schema.map((s) => {
+    const id = Math.trunc(s.pos);
+    const p = parts.get(s.pos);
+    return p ? `${p.outer(`a${id}`)} AS c${id}` : `CAST(NULL AS ${sqlType(s)}) AS c${id}`;
+  });
+  const inner = [...parts].map(([pos, p]) => `${p.inner} AS a${Math.trunc(pos)}`);
   const width = outer.length + 2;
   const rowBase = input.rowBase ?? 0n;
   if (rowBase < 0n) throw new Error("rowBase negatif");
+  // Tanpa ORDER BY: raw sudah urut _row dan urutan sisip dipertahankan (1 thread) → deterministik
+  // tanpa sort atas data lebar. Row group dibatasi juga oleh rata-rata karakter per baris.
   await watched(duck, input.watch, () =>
     copyParquet(
       duck,
       `SELECT CAST(_row AS BIGINT) + ${rowBase.toString()}::BIGINT AS _row, _row AS _src_row, ${outer.join(", ")}
-       FROM (SELECT _row, ${parts.map((p, i) => `${p.inner} AS a${i + 1}`).join(", ")}
+       FROM (SELECT ${["_row", ...inner].join(", ")}
              FROM read_parquet(${lit(input.rawPath)}) WHERE ${where})`,
       input.outPath,
       width,
-      rowGroupFor(width, dataRows > 0 ? chars / dataRows : 0),
+      rowGroupFor(width, input.charsPerRow),
     ),
   );
-  const all = [...schema, ...absent];
-  return { schema: all, dataRows, nonEmpty: all.map((c) => c.nonEmpty ?? 0) };
+}
+
+export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedResult> {
+  const raw = await profileRaw(duck, input);
+  const schema = typedSchema(raw, input);
+  const chars = [...raw.profiles.values()].reduce((sum, p) => sum + p.chars, 0);
+  await copyTyped(duck, {
+    ...input,
+    rawCols: input.colCount,
+    schema,
+    charsPerRow: raw.dataRows > 0 ? chars / raw.dataRows : 0,
+  });
+  return {
+    schema,
+    dataRows: raw.dataRows,
+    nonEmpty: schema.map((c) => c.nonEmpty ?? 0),
+    profile: packProfile(input.headerRow, raw),
+  };
 }

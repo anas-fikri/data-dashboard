@@ -6,8 +6,15 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import type { RecastProgress } from "@/features/ingest/recast-input";
 import { fmtInt } from "./labels";
 import { useRecast } from "./use-recast";
+
+/** "Segmen 7 dari 24" (menulis) / "Membaca segmen 3 dari 24" (profil data lama, T-040). */
+export function segmentProgressText(p: RecastProgress): string {
+  const n = `${fmtInt(p.current)} dari ${fmtInt(p.total)}`;
+  return p.phase === "read" ? `Membaca segmen ${n}` : `Segmen ${n}`;
+}
 
 /*
  * Status koreksi skema untuk sheet ini: antre/diproses (diumumkan sopan), gagal (dengan langkah
@@ -15,7 +22,8 @@ import { useRecast } from "./use-recast";
  */
 export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
   const router = useRouter();
-  const { local, jobState, pollError, retryPoll, done, dismissDone, dismissError } = useRecast();
+  const { local, jobState, progress, pollError, retryPoll, done, dismissDone, dismissError } =
+    useRecast();
 
   if (jobState) {
     return (
@@ -35,6 +43,11 @@ export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
           <span className="block font-medium">
             {jobState === "running" ? "Menerapkan perubahan ke data…" : "Perubahan masuk antrean…"}
           </span>
+          {progress && progress.total > 1 ? (
+            <span className="block tabular-nums" data-testid="recast-progress">
+              {segmentProgressText(progress)}
+            </span>
+          ) : null}
           <span className="block text-muted-foreground">
             Untuk file besar bisa beberapa menit. Halaman ini diperbarui otomatis setelah selesai.
           </span>

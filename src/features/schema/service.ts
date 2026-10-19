@@ -20,6 +20,7 @@ import {
   parseRecastInput,
   type RecastInput,
   type RecastOutcome,
+  type RecastProgress,
 } from "@/features/ingest/recast-input";
 import {
   execOnParquet,
@@ -113,6 +114,8 @@ export interface RecastJobView {
   sheetId: string;
   state: "waiting" | "delayed" | "active" | "completed" | "failed" | "unknown";
   result: RecastOutcome | { outcome: "done"; revision: number } | null;
+  /** Segmen yang sedang dikerjakan (T-040); null = belum mulai / job lama. */
+  progress: RecastProgress | null;
 }
 
 export type EditKind = "recast" | "metadata";
@@ -411,7 +414,8 @@ export async function requestRecast(
 }
 
 export type RecastStatus =
-  | { state: "queued" | "running" }
+  | { state: "queued" }
+  | { state: "running"; progress?: RecastProgress }
   | { state: "done"; revision: number }
   | { state: "stale" | "gone" | "unknown" }
   | { state: "invalid" | "failed"; message: string };
@@ -445,7 +449,12 @@ export async function recastStatus(
   if (job.state === "waiting" || job.state === "delayed") {
     return { ok: true, status: { state: "queued" } };
   }
-  if (job.state === "active") return { ok: true, status: { state: "running" } };
+  if (job.state === "active") {
+    return {
+      ok: true,
+      status: { state: "running", ...(job.progress ? { progress: job.progress } : {}) },
+    };
+  }
   if (job.state === "completed" && !job.result) return { ok: true, status: { state: "unknown" } };
   if (job.state === "failed" || !job.result) {
     return {

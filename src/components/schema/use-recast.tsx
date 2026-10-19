@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import type { RecastInput } from "@/features/ingest/recast-input";
+import type { RecastInput, RecastProgress } from "@/features/ingest/recast-input";
 import type { RecastStatus } from "@/features/schema/service";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { useSessionJson, writeSessionJson } from "@/lib/hooks/use-session-json";
@@ -35,6 +35,8 @@ interface RecastContextValue {
   local: Local;
   /** Job yang sedang ditunggu (antre/diproses), atau null. */
   jobState: "queued" | "running" | null;
+  /** Segmen yang sedang dikerjakan (T-040), atau null. */
+  progress: RecastProgress | null;
   /** Status job belum bisa dibaca (jaringan); polling tetap mencoba. */
   pollError: boolean;
   retryPoll(): void;
@@ -145,12 +147,15 @@ export function RecastProvider({
     [sheetId, revision, router],
   );
 
-  const polled = poll.data?.ok ? poll.data.status.state : null;
-  const jobState = job ? (polled === "running" ? "running" : "queued") : null;
+  const status = poll.data?.ok ? poll.data.status : null;
+  const jobState = job ? (status?.state === "running" ? "running" : "queued") : null;
+  const progress =
+    jobState === "running" && status?.state === "running" ? (status.progress ?? null) : null;
   const value = useMemo<RecastContextValue>(
     () => ({
       local,
       jobState,
+      progress,
       pollError: poll.error,
       retryPoll: poll.retry,
       busy: local.phase === "submitting" || job !== null,
@@ -159,7 +164,7 @@ export function RecastProvider({
       submit,
       dismissError: () => setLocal({ phase: "idle" }),
     }),
-    [local, jobState, poll.error, poll.retry, job, done, sheetId, submit],
+    [local, jobState, progress, poll.error, poll.retry, job, done, sheetId, submit],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

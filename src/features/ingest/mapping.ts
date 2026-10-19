@@ -38,6 +38,7 @@ import {
 } from "@/features/versions/integrity-check";
 import { RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
 import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
+import type { StoredProfile } from "./profile";
 import { maxSourceRow, typedFileProblems, writeTyped } from "./typed";
 
 export const MAPPING_DEADLINE_MS = 60 * 60 * 1000;
@@ -91,6 +92,8 @@ export interface MappingSheetUpdate {
   dataRows: number;
   /** Ukuran file typed baru (T-039). */
   typedBytes: number;
+  /** Profil raw file typed baru (T-040). */
+  profile: StoredProfile;
 }
 
 export interface MappingCommit {
@@ -268,6 +271,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         ...(lineage ? { lineage } : {}),
         dataRows: typed.dataRows,
         typedBytes,
+        profile: typed.profile,
       });
       await watch();
     }

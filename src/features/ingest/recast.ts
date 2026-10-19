@@ -1,15 +1,24 @@
 /*
- * Recast (T-007; dipicu koreksi skema T-008): raw.parquet → typed-<rev+1>-<token>.parquet dengan
- * pilihan user, tanpa membaca file asli.
+ * Recast (T-007; dipicu koreksi skema T-008; per segmen T-040): raw.parquet setiap segmen manifest →
+ * typed-<rev+1>-<tag>.parquet dengan pilihan user, tanpa membaca file asli.
  *  - Satu recast per sheet: lock Redis recast:<sheetId> berumur pendek yang diperpanjang selama
  *    berjalan (worker mati → lock lepas ≤ 3 menit); lock hilang → recast berhenti tanpa mengganti apa
- *    pun. Deadline 20 menit < umur lock yang terus diperpanjang.
- *  - Kunci file unik per percobaan: percobaan yang kalah hanya menghapus file miliknya sendiri.
- *  - Pointer typedKey diganti hanya setelah file baru lengkap dan revisi belum berubah; file lama
- *    dihapus 1 jam kemudian (job) agar query yang sedang membaca revisi lama tetap selesai.
+ *    pun. Deadline 20 menit per segmen (dimulai ulang setiap segmen).
+ *  - Tipe/locale/format diputuskan sekali dari gabungan profil raw semua segmen (disimpan per file
+ *    typed, SegmentTyped.profile): satu skema, tipe fisik `c<pos>` sama di semua segmen. Segmen yang
+ *    file-nya tidak memuat kolom dengan cast berubah memakai file lamanya (kolom yang tidak ada di file
+ *    diproyeksikan NULL saat query, T-037).
+ *  - Titik lanjut: profil disimpan begitu dibaca, file typed segmen dicatat begitu diunggah (baris
+ *    SegmentTyped tertunda, kunci deterministik per job). Percobaan ulang job yang sama (worker mati,
+ *    koneksi putus) tidak mengulang segmen yang selesai; hasilnya identik.
+ *  - Manifest + pointer diganti dalam satu transaksi hanya setelah semua segmen selesai, file ada, dan
+ *    revisi belum berubah. Revisi lama tidak dihapus di sini (manifest versi lain dan rollback tetap
+ *    merujuknya; yang tidak dirujuk disapu GC segmen, T-038).
+ *  - Prioritas di bawah ingest: sebelum tiap segmen menunggu selama ingest berjalan (≤ 15 menit).
  *  - Kolom kosong (absent, T-014) selalu dibawa, juga saat baris header diganti: edit nama/tipe/format/
  *    sembunyi berlaku; ganti tipe hanya mengganti tipe CAST NULL-nya.
  */
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
@@ -18,33 +27,64 @@ import type { ColumnMeta } from "./header";
 import type { ColumnSchema, SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, type TypedStorage } from "./ingest";
 import {
+  mergeProfiles,
+  packProfile,
+  unpackProfile,
+  type RawProfile,
+  type StoredProfile,
+} from "./profile";
+import {
   maxSchemaPos,
   parseRecastInput,
   type RecastInput,
   type RecastOutcome,
+  type RecastProgress,
 } from "./recast-input";
-import { IntegrityError } from "@/features/versions/integrity-check";
+import { IntegrityError, verifyVersionIntegrity } from "@/features/versions/integrity-check";
 import {
+  castSignature,
   choiceOf,
+  copyTyped,
   headerColumns,
+  profileRaw,
   typedFileProblems,
-  writeTyped,
+  typedSchema,
   type AbsentColumn,
   type ColumnOverride,
 } from "./typed";
 
-export { parseRecastInput, type RecastInput, type RecastOutcome };
+export { parseRecastInput, type RecastInput, type RecastOutcome, type RecastProgress };
 
 export const RECAST_LOCK_MS = 3 * 60 * 1000;
 export const RECAST_RENEW_MS = 60 * 1000;
+/** Batas waktu satu segmen (T-040: per segmen, bukan per job). */
 export const RECAST_DEADLINE_MS = 20 * 60 * 1000;
+/** Lama menunggu ingest yang sedang berjalan sebelum satu segmen; setelah itu tetap jalan. */
+export const RECAST_YIELD_MAX_MS = 15 * 60 * 1000;
+const RECAST_YIELD_POLL_MS = 5_000;
 const PARQUET = "application/vnd.apache.parquet";
+export const MULTI_HEADER_MESSAGE =
+  "Baris judul tidak bisa diganti karena data sheet ini digabung dari beberapa unggahan.";
+
+/** Satu segmen manifest sheet (ADR-0008) beserta file typed yang dirujuk manifest sekarang. */
+export interface RecastSegment {
+  ordinal: number;
+  segmentId: string;
+  rawKey: string;
+  /** Awal `_row` segmen: sama di setiap recast. 0 = segmen legacy. */
+  rowBase: bigint;
+  /** null = segmen legacy (rentang belum diukur). */
+  maxSrcRow: number | null;
+  headerRow: number;
+  colCount: number;
+  typed: { id: string; typedKey: string; columns: number[]; profile: unknown };
+}
 
 export interface RecastSheet {
   versionId: string;
   /** Status versi: hanya READY yang boleh di-recast (ingest masih menulis typed-1 → "busy"). */
   versionStatus: string;
-  rawKey: string;
+  name: string;
   typedKey: string | null;
   schemaRevision: number;
   headerRow: number;
@@ -52,37 +92,55 @@ export interface RecastSheet {
   columns: ColumnMeta[];
   schema: ColumnSchema[] | null;
   source: SourceKind;
-  /** Awal `_row` segmen manifest sheet (ADR-0008): sama di setiap recast. 0 = segmen legacy. */
-  rowBase?: bigint;
+  /** Manifest sheet urut ordinal. */
+  segments: RecastSegment[];
+}
+
+/** File typed segmen yang selesai ditulis (titik lanjut), belum dirujuk manifest. */
+export interface NewTyped {
+  typedKey: string;
+  schemaRevision: number;
+  columns: number[];
+  /** Baris data file (T-038). */
+  dataRows: number;
+  /** Ukuran file (T-039). */
+  typedBytes: number;
+  profile: StoredProfile;
 }
 
 export interface RecastRepo {
   loadSheet(sheetId: string): Promise<RecastSheet | null>;
+  /** Profil raw untuk file typed segmen yang sudah ada (raw imutabel: berlaku selama judulnya sama). */
+  saveProfile(typedId: string, profile: StoredProfile): Promise<void>;
+  /** File typed tertunda dengan kunci ini (percobaan sebelumnya job yang sama). */
+  pendingTyped(typedKeys: string[]): Promise<{ id: string; typedKey: string }[]>;
+  /** Catat file typed segmen yang selesai diunggah; idempoten per kunci. */
+  addTyped(segmentId: string, t: NewTyped): Promise<string>;
+  /** Hapus baris tertunda yang tidak dirujuk manifest mana pun; kembalikan kunci yang terhapus. */
+  dropTyped(ids: string[]): Promise<string[]>;
   /**
-   * Ganti pointer typed bila schemaRevision masih `expectedRevision` (optimistic) dan versi sheet masih
-   * versi aktif dataset (T-013: versi refresh tidak boleh aktif tanpa koreksi ini). false = revisi
-   * sudah berubah, versi tidak lagi aktif, atau sheet hilang.
+   * Ganti skema + manifest (file typed per ordinal) + pointer typed (ordinal 0) dalam satu transaksi,
+   * bila schemaRevision masih `expectedRevision` (optimistic), manifest belum berubah, dan versi sheet
+   * masih versi aktif dataset (T-013). false = revisi/manifest berubah, versi tidak aktif, atau sheet
+   * hilang.
    */
   swapTyped(
     sheetId: string,
     expectedRevision: number,
     next: {
-      typedKey: string;
       schema: ColumnSchema[];
       schemaRevision: number;
       headerRow: number;
       columns: ColumnMeta[];
-      /** Baris data file (T-038). */
-      dataRows: number;
-      /** Ukuran file (T-039). */
-      typedBytes: number;
+      /** `from` = file typed manifest sekarang (diperiksa ulang di transaksi). */
+      manifest: { ordinal: number; from: string; typedId: string; typedKey: string }[];
     },
   ): Promise<boolean>;
 }
 
 export interface RecastDeps {
   repo: RecastRepo;
-  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject">;
+  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject" | "exists">;
   lock: LockStore;
   tmpRoot: string;
   duckMemory?: string;
@@ -90,6 +148,14 @@ export interface RecastDeps {
   renewMs?: number;
   /** Dipanggil berkala selama query panjang (mis. cek sheet masih ada); melempar → berhenti. */
   watch?: () => Promise<void>;
+  /** Id job antrean: kunci file per job tetap → percobaan ulang melanjutkan segmen yang selesai. */
+  jobId?: string;
+  /** Progres per segmen; gagal melapor tidak menghentikan recast. */
+  progress?: (p: RecastProgress) => Promise<unknown> | void;
+  /** Ingest sedang berjalan → tunggu sebelum segmen berikutnya (prioritas di bawah ingest). */
+  ingestActive?: () => Promise<boolean>;
+  /** Jeda cek ingest (default 5 detik; uji memakai jeda pendek). */
+  yieldPollMs?: number;
 }
 
 /** Pilihan yang sudah berlaku di skema sekarang, sebagai dasar override recast berikutnya. */
@@ -144,6 +210,10 @@ function duplicateName(columns: ColumnMeta[], overrides: ColumnOverride[]): stri
   return null;
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const charsPerRow = (p: RawProfile) =>
+  p.dataRows > 0 ? [...p.profiles.values()].reduce((n, x) => n + x.chars, 0) / p.dataRows : 0;
+
 export async function recastSheet(
   sheetId: string,
   rawInput: unknown,
@@ -160,7 +230,7 @@ export async function recastSheet(
       })
       .catch(() => {});
   }, deps.renewMs ?? RECAST_RENEW_MS);
-  const deadline = Date.now() + RECAST_DEADLINE_MS;
+  let deadline = Date.now() + RECAST_DEADLINE_MS;
   const watch = async () => {
     if (lockLost) throw new LockLostError();
     if (Date.now() > deadline) throw new DeadlineError("recast");
@@ -168,7 +238,10 @@ export async function recastSheet(
   };
   let work: string | null = null;
   let duck: Duck | null = null;
-  let uploaded: string | null = null;
+  /** File typed job ini yang belum aktif: kunci → id baris tertunda (null = belum tercatat). */
+  const mine = new Map<string, string | null>();
+  /** false = job berakhir tanpa mengaktifkan → milik job ini dihapus; true = boleh dilanjutkan. */
+  let keep = true;
   try {
     const s = await deps.repo.loadSheet(sheetId);
     if (!s) return { outcome: "gone" };
@@ -186,21 +259,37 @@ export async function recastSheet(
     if (input.baseRevision !== undefined && input.baseRevision !== s.schemaRevision) {
       return { outcome: "stale" };
     }
+    if (!s.segments.length) throw new Error(`sheet ${sheetId} tanpa segmen (migrasi T-036?)`);
+    const multi = s.segments.length > 1;
+    const headerRow = input.headerRow ?? s.headerRow;
+    const newHeader = headerRow !== s.headerRow;
+    // Tiap unggahan punya baris judulnya sendiri; satu nomor baris tidak berlaku untuk semua.
+    if (newHeader && multi) return { outcome: "invalid", message: MULTI_HEADER_MESSAGE };
     work = mkdtempSync(join(deps.tmpRoot, "recast-"));
-    const rawPath = join(work, "raw.parquet");
-    await deps.storage.download(s.rawKey, rawPath);
-    duck = await openDuck({
+    const dir = work;
+    const d = (duck = await openDuck({
       path: join(work, "work.duckdb"),
       tmpDir: work,
       memoryLimit: deps.duckMemory,
-    });
+    }));
+    // Satu raw lokal sekaligus (segmen bisa ratusan MB); satu segmen: profil + tulis memakai unduhan sama.
+    let cached: { id: string; path: string } | null = null;
+    const rawOf = async (g: RecastSegment) => {
+      if (cached?.id === g.segmentId) return cached.path;
+      if (cached) rmSync(cached.path, { force: true });
+      const path = join(dir, `raw-${g.ordinal}.parquet`);
+      await deps.storage.download(g.rawKey, path);
+      cached = { id: g.segmentId, path };
+      return path;
+    };
+    // Satu segmen: ukuran dan judul sheet (perilaku sebelum T-040); beberapa: milik tiap segmen.
+    const hdr = (g: RecastSegment) => (multi ? g.headerRow : headerRow);
+    const rawCols = (g: RecastSegment) => (multi ? g.colCount : s.colCount);
 
-    const headerRow = input.headerRow ?? s.headerRow;
-    const newHeader = headerRow !== s.headerRow;
     // Header baru: rentang data berubah → nama dari baris itu dan inferensi ulang (pilihan lama
     // tidak dibawa); selain itu pilihan yang sudah berlaku tetap dipakai.
     const columns = newHeader
-      ? await headerColumns(duck, rawPath, headerRow, s.colCount)
+      ? await headerColumns(d, await rawOf(s.segments[0]!), headerRow, s.colCount)
       : s.columns;
     const base = newHeader || !s.schema ? [] : currentChoices(s.schema);
     const overrides = merge(base, input.columns);
@@ -210,60 +299,167 @@ export async function recastSheet(
     if (dup)
       return { outcome: "invalid", message: `Nama kolom "${dup}" dipakai lebih dari sekali.` };
     const revision = s.schemaRevision + 1;
-    const outPath = join(work, `typed-${revision}.parquet`);
-    const typed = await writeTyped(duck, {
-      rawPath,
-      outPath,
+
+    /** Sebelum tiap segmen: progres, beri jalan ingest yang sedang berjalan, tenggat baru. */
+    const step = async (p: RecastProgress) => {
+      await Promise.resolve(deps.progress?.(p)).catch(() => {});
+      const until = Date.now() + RECAST_YIELD_MAX_MS;
+      while (deps.ingestActive && Date.now() < until) {
+        if (!(await deps.ingestActive().catch(() => false))) break;
+        if (lockLost) throw new LockLostError();
+        await deps.watch?.();
+        await sleep(deps.yieldPollMs ?? RECAST_YIELD_POLL_MS);
+      }
+      deadline = Date.now() + RECAST_DEADLINE_MS;
+    };
+
+    // Tahap 1: profil raw segmen yang belum punya (file sebelum T-040), disimpan begitu dibaca.
+    const profiles = s.segments.map((g) => unpackProfile(g.typed.profile, hdr(g)));
+    const toRead = profiles.filter((p) => !p).length;
+    let read = 0;
+    for (const [i, g] of s.segments.entries()) {
+      if (profiles[i]) continue;
+      await step({ phase: "read", current: ++read, total: toRead });
+      const p = await profileRaw(d, {
+        rawPath: await rawOf(g),
+        headerRow: hdr(g),
+        colCount: rawCols(g),
+        watch,
+      });
+      profiles[i] = p;
+      // Judul baru: profil milik file revisi baru (disimpan bersamanya), bukan file yang ada.
+      if (!newHeader) await deps.repo.saveProfile(g.typed.id, packProfile(hdr(g), p));
+    }
+    const segProfile = profiles as RawProfile[];
+    const schema = typedSchema(mergeProfiles(segProfile), {
       source: s.source,
-      headerRow,
       colCount: s.colCount,
       columns,
       overrides,
       absent,
-      watch,
-      rowBase: s.rowBase ?? 0n,
     });
-    const bad = await typedFileProblems(duck, outPath, typed.dataRows, "file hasil koreksi");
-    if (bad.length) throw new IntegrityError(bad);
 
-    const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
-    const typedKey = `${dir}typed-${revision}-${token.slice(0, 12)}.parquet`;
-    await deps.storage.upload(typedKey, outPath, PARQUET);
-    uploaded = typedKey;
-    await watch(); // lock masih milik kita tepat sebelum mengganti pointer
-    let swapped: boolean;
-    try {
-      swapped = await deps.repo.swapTyped(sheetId, s.schemaRevision, {
-        typedKey,
-        schema: typed.schema,
-        schemaRevision: revision,
-        headerRow,
-        columns,
-        dataRows: typed.dataRows,
-        typedBytes: statSync(outPath).size,
+    // Tahap 2: tulis ulang hanya segmen yang file-nya memuat kolom dengan cast berubah (AC 4).
+    const before = new Map((s.schema ?? []).map((c) => [c.pos, castSignature(c, s.source)]));
+    const changed = new Set(
+      schema.filter((c) => before.get(c.pos) !== castSignature(c, s.source)).map((c) => c.pos),
+    );
+    const fileCols = (g: RecastSegment) => {
+      const has = new Set(g.typed.columns);
+      return schema.filter((c) => !has.size || has.has(c.pos));
+    };
+    const rewrite = s.segments.filter(
+      (g) => newHeader || fileCols(g).some((c) => changed.has(c.pos)),
+    );
+    const tag = (deps.jobId ? createHash("sha256").update(deps.jobId).digest("hex") : token).slice(
+      0,
+      12,
+    );
+    const keyOf = (g: RecastSegment) =>
+      `${g.rawKey.slice(0, g.rawKey.lastIndexOf("/") + 1)}typed-${revision}-${tag}.parquet`;
+    const pending = new Map(
+      (await deps.repo.pendingTyped(rewrite.map(keyOf))).map((t) => [t.typedKey, t.id]),
+    );
+    for (const [key, id] of pending) mine.set(key, id);
+    const next = new Map<number, { typedId: string; typedKey: string }>();
+    for (const [i, g] of rewrite.entries()) {
+      const key = keyOf(g);
+      const id = pending.get(key);
+      // Selesai di percobaan sebelumnya (worker mati, koneksi putus): tidak diulang (AC 2).
+      if (id && (await deps.storage.exists(key))) {
+        next.set(g.ordinal, { typedId: id, typedKey: key });
+        continue;
+      }
+      await step({ phase: "write", current: i + 1, total: rewrite.length });
+      const p = segProfile[s.segments.indexOf(g)]!;
+      const cols = fileCols(g);
+      const out = join(dir, `typed-${g.ordinal}.parquet`);
+      await copyTyped(d, {
+        rawPath: await rawOf(g),
+        outPath: out,
+        source: s.source,
+        headerRow: hdr(g),
+        rowBase: g.rowBase,
+        watch,
+        rawCols: rawCols(g),
+        schema: cols,
+        charsPerRow: charsPerRow(p),
       });
-    } catch (e) {
-      // UPDATE bisa sudah commit sebelum koneksi putus: jangan hapus file yang mungkin sudah aktif.
-      // Bila tidak bisa dipastikan, biarkan (paling buruk objek yatim di prefix versi, ikut terhapus
-      // bersama versi/dataset).
-      const now = await deps.repo.loadSheet(sheetId).catch(() => undefined);
-      if (now === undefined || now?.typedKey === typedKey) uploaded = null;
-      throw e;
+      const bad = await typedFileProblems(d, out, p.dataRows, "file hasil koreksi");
+      if (bad.length) throw new IntegrityError(bad);
+      if (!mine.has(key)) mine.set(key, null);
+      await deps.storage.upload(key, out, PARQUET);
+      const typedId =
+        id ??
+        (await deps.repo.addTyped(g.segmentId, {
+          typedKey: key,
+          schemaRevision: revision,
+          columns: cols.map((c) => c.pos),
+          dataRows: p.dataRows,
+          typedBytes: statSync(out).size,
+          profile: packProfile(hdr(g), p),
+        }));
+      mine.set(key, typedId);
+      next.set(g.ordinal, { typedId, typedKey: key });
+      rmSync(out, { force: true });
     }
+
+    // Tahap 3: aktif atomik. Gerbang integritas manifest rencana (fail-closed, T-038) lebih dulu.
+    const manifest = s.segments.map((g) => ({
+      ordinal: g.ordinal,
+      from: g.typed.id,
+      ...(next.get(g.ordinal) ?? { typedId: g.typed.id, typedKey: g.typed.typedKey }),
+    }));
+    const problems = await verifyVersionIntegrity(s.versionId, {
+      manifest: async () => [
+        {
+          id: sheetId,
+          name: s.name,
+          typedKey: manifest[0]!.typedKey,
+          segments: s.segments.map((g, i) => ({
+            ordinal: g.ordinal,
+            rawKey: g.rawKey,
+            typedKey: manifest[i]!.typedKey,
+            rowBase: g.rowBase,
+            maxSrcRow: g.maxSrcRow,
+          })),
+        },
+      ],
+      exists: (k) => deps.storage.exists(k),
+    });
+    if (problems.length) throw new IntegrityError(problems);
+    await watch(); // lock masih milik kita tepat sebelum mengganti pointer
+    // Galat di sini (mis. koneksi putus setelah commit) dilempar dengan file tetap ada: percobaan
+    // ulang menemukan revisi sudah naik, atau melanjutkan dari file yang sama.
+    const swapped = await deps.repo.swapTyped(sheetId, s.schemaRevision, {
+      schema,
+      schemaRevision: revision,
+      headerRow,
+      columns,
+      manifest,
+    });
     if (!swapped) {
+      keep = false;
       return (await deps.repo.loadSheet(sheetId)) ? { outcome: "stale" } : { outcome: "gone" };
     }
-    uploaded = null; // sudah menjadi typed aktif
-    // Revisi lama tidak dihapus di sini: tidak lagi dirujuk manifest → disapu GC segmen setelah masa
-    // tenggang (T-038), jadi query yang masih membacanya selesai dan rollback tidak kehilangan data.
-    return { outcome: "done", revision, schema: typed.schema };
+    mine.clear(); // sudah dirujuk manifest aktif
+    return { outcome: "done", revision, schema };
   } catch (e) {
-    if (e instanceof DatasetGoneError) return { outcome: "gone" };
+    if (e instanceof DatasetGoneError) {
+      keep = false;
+      return { outcome: "gone" };
+    }
+    // Lock hilang: job ditunda lalu diulang → melanjutkan dari file yang sudah tercatat.
     if (e instanceof LockLostError) return { outcome: "busy" };
     if (e instanceof DeadlineError) {
-      return { outcome: "failed", message: "Koreksi skema melebihi 20 menit. Coba lagi nanti." };
+      keep = false;
+      return {
+        outcome: "failed",
+        message: "Koreksi skema melebihi 20 menit untuk satu bagian data. Coba lagi nanti.",
+      };
     }
     if (e instanceof IntegrityError) {
+      keep = false;
       return {
         outcome: "failed",
         message: `${e.message} Skema tidak diubah. Coba lagi; bila terulang, hubungi admin.`,
@@ -272,10 +468,23 @@ export async function recastSheet(
     throw e;
   } finally {
     clearInterval(renew);
-    // File percobaan ini yang tidak menjadi typed aktif (kunci unik: tidak pernah milik recast lain).
-    if (uploaded) await deps.storage.deleteObject(uploaded).catch(() => {});
+    if (!keep && mine.size) await dropMine(deps, mine);
     duck?.close();
     if (work) rmSync(work, { recursive: true, force: true });
     await releaseLock(deps.lock, lockKey, token).catch(() => false);
+  }
+}
+
+/**
+ * Job berakhir tanpa mengaktifkan: hapus baris tertunda job ini lalu file-nya. File hanya dihapus
+ * bila barisnya benar terhapus (tidak dirujuk manifest) atau tidak pernah tercatat; gagal → disapu
+ * GC/pemeriksaan malam (kunci unik per job, tidak pernah milik recast lain).
+ */
+async function dropMine(deps: RecastDeps, mine: Map<string, string | null>): Promise<void> {
+  const ids = [...mine.values()].filter((id): id is string => id !== null);
+  const dropped = ids.length ? await deps.repo.dropTyped(ids).catch(() => [] as string[]) : [];
+  const unrecorded = [...mine].filter(([, id]) => id === null).map(([k]) => k);
+  for (const key of [...dropped, ...unrecorded]) {
+    await deps.storage.deleteObject(key).catch(() => {});
   }
 }

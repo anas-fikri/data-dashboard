@@ -53,6 +53,12 @@ export async function ingestQueuePosition(
 }
 
 /**
+ * Prioritas recast di antrean bersama pemetaan (T-040): job tanpa priority (pemetaan versi, bagian dari
+ * menyelesaikan unggahan) diambil lebih dulu dari job berprioritas di BullMQ.
+ */
+const RECAST_PRIORITY = 10;
+
+/**
  * Masukkan recast sheet ke antrean (T-008: simpan koreksi skema). Recast berurutan per sheet lewat
  * lock di worker; job yang mendapat "busy" diulang dengan backoff.
  */
@@ -64,7 +70,11 @@ export async function enqueueRecast(
   jobId?: string,
 ): Promise<string> {
   const job = await withQueueTimeout(
-    recastQueue().add("recast", { sheetId, input, userId }, jobId ? { jobId } : undefined),
+    recastQueue().add(
+      "recast",
+      { sheetId, input, userId },
+      { ...(jobId ? { jobId } : {}), priority: RECAST_PRIORITY },
+    ),
     "enqueue recast",
   );
   logger.info({ sheetId, jobId: job.id }, "job recast masuk antrean");

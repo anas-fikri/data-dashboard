@@ -152,6 +152,10 @@ Per fitur: `admin`, `auth`, `dashboards` (+ `filters/`), `datasets`, `guides`, `
 4. `versions/activation.ts`: aktifkan versi, remap widget, retensi → `READY` (atau `AWAITING_MAPPING` bila kolom
    berubah → halaman `/pemetaan`). UI memantau `/api/datasets/[id]/progress`.
 5. Koreksi skema: nama/sembunyi langsung; tipe/format/baris judul lewat job `recast` (`typed-<rev>-…parquet`).
+   Recast per segmen manifest (T-040): profil raw tersimpan (`ingest/profile.ts`), hanya segmen yang cast-nya
+   berubah ditulis ulang, titik lanjut per segmen, swap manifest atomik, progres `job.progress` → banner.
+   Uji sheet banyak segmen di dev: `npx tsx --conditions=react-server --env-file-if-exists=.env
+   scripts/dev-segments.ts split <sheetId> <n>`.
 
 **Query widget**
 `widget-query.ts` → `POST /api/query` → `requireUser` + same-origin + `RULES.query` → `runWidgetQuery` →

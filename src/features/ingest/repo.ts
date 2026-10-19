@@ -12,6 +12,7 @@ import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
 import { DatasetGoneError, type FinishOutcome, type IngestRepo, type TypedStorage } from "./ingest";
 import type { MappingRepo } from "./mapping";
+import type { StoredProfile } from "./profile";
 import type { RecastRepo } from "./recast";
 import { sameSnapshot, type ActiveSnapshot } from "./refresh";
 
@@ -63,7 +64,7 @@ type ActiveRow = {
 const MANIFEST_ORDINAL = 0;
 
 /**
- * File typed baru sheet (ingest, recast, pemetaan) → SegmentTyped baru untuk segmen sheet itu, dan
+ * File typed baru sheet (ingest, pemetaan) → SegmentTyped baru untuk segmen sheet itu, dan
  * manifest ordinal 0 diarahkan ke sana, di transaksi yang sama dengan pointer typedKey. Sheet tanpa
  * segmen (migrasi T-036 tidak jalan) → galat, tidak diam-diam tanpa manifest.
  */
@@ -79,6 +80,8 @@ async function linkTyped(
     dataRows?: number;
     /** Ukuran file di storage (T-039). */
     typedBytes?: number;
+    /** Profil raw file ini (T-040): recast berikutnya tidak memindai ulang raw. */
+    profile?: StoredProfile;
   },
   segmentId?: string,
 ): Promise<void> {
@@ -105,6 +108,7 @@ async function linkTyped(
       columns: [...new Set(typed.schema.map((c) => c.pos))].sort((a, b) => a - b),
       ...(typed.dataRows !== undefined ? { dataRows: typed.dataRows } : {}),
       ...(typed.typedBytes !== undefined ? { typedBytes: BigInt(typed.typedBytes) } : {}),
+      ...(typed.profile ? { profile: typed.profile as unknown as Prisma.InputJsonValue } : {}),
     },
     select: { id: true },
   });
@@ -369,12 +373,16 @@ export const s3IngestStorage: TypedStorage = {
   exists: (key) => objectExists(key),
 };
 
+/** Manifest berubah di tengah swap (rollback transaksi, recast "stale"). */
+class ManifestChanged extends Error {}
+
 export const prismaRecastRepo: RecastRepo = {
   async loadSheet(sheetId) {
     const s = await prisma.sheet.findUnique({
       where: { id: sheetId },
       select: {
         versionId: true,
+        name: true,
         rawKey: true,
         typedKey: true,
         schemaRevision: true,
@@ -383,15 +391,37 @@ export const prismaRecastRepo: RecastRepo = {
         columns: true,
         schema: true,
         version: { select: { sourceKey: true, status: true } },
-        segments: manifestSelect,
+        segments: {
+          orderBy: { ordinal: "asc" },
+          select: {
+            ordinal: true,
+            segmentTyped: {
+              select: {
+                id: true,
+                typedKey: true,
+                columns: true,
+                profile: true,
+                segment: {
+                  select: {
+                    id: true,
+                    rawKey: true,
+                    rowBase: true,
+                    maxSrcRow: true,
+                    headerRow: true,
+                    colCount: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     });
     if (!s?.rawKey) return null;
     return {
-      rowBase: s.segments[0]?.segmentTyped.segment.rowBase ?? 0n,
       versionId: s.versionId,
       versionStatus: s.version.status,
-      rawKey: s.rawKey,
+      name: s.name,
       typedKey: s.typedKey,
       schemaRevision: s.schemaRevision,
       headerRow: s.headerRow,
@@ -399,26 +429,121 @@ export const prismaRecastRepo: RecastRepo = {
       columns: s.columns as unknown as ColumnMeta[],
       schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
       source: s.version.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
+      segments: s.segments.map(({ ordinal, segmentTyped: t }) => ({
+        ordinal,
+        segmentId: t.segment.id,
+        rawKey: t.segment.rawKey,
+        rowBase: t.segment.rowBase,
+        maxSrcRow: t.segment.maxSrcRow,
+        headerRow: t.segment.headerRow,
+        colCount: t.segment.colCount,
+        typed: { id: t.id, typedKey: t.typedKey, columns: t.columns, profile: t.profile },
+      })),
     };
   },
 
-  async swapTyped(sheetId, expectedRevision, next) {
-    return prisma.$transaction(async (tx) => {
-      if (!(await lockActiveSheet(tx, sheetId))) return false;
-      const r = await tx.sheet.updateMany({
-        where: { id: sheetId, schemaRevision: expectedRevision },
-        data: {
-          typedKey: next.typedKey,
-          schema: next.schema as unknown as Prisma.InputJsonValue,
-          schemaRevision: next.schemaRevision,
-          headerRow: next.headerRow,
-          columns: next.columns as unknown as Prisma.InputJsonValue,
-        },
-      });
-      if (r.count === 0) return false;
-      await linkTyped(tx, sheetId, next);
-      return true;
+  async saveProfile(typedId, profile) {
+    await prisma.segmentTyped.updateMany({
+      where: { id: typedId },
+      data: { profile: profile as unknown as Prisma.InputJsonValue },
     });
+  },
+
+  async pendingTyped(typedKeys) {
+    if (!typedKeys.length) return [];
+    return prisma.segmentTyped.findMany({
+      where: { typedKey: { in: typedKeys } },
+      select: { id: true, typedKey: true },
+    });
+  },
+
+  async addTyped(segmentId, t) {
+    // Idempoten per kunci: create yang commit lalu koneksinya putus tidak menggandakan baris.
+    const found = await prisma.segmentTyped.findFirst({
+      where: { segmentId, typedKey: t.typedKey },
+      select: { id: true },
+    });
+    if (found) return found.id;
+    try {
+      const r = await prisma.segmentTyped.create({
+        data: {
+          segmentId,
+          typedKey: t.typedKey,
+          schemaRevision: t.schemaRevision,
+          columns: t.columns,
+          dataRows: t.dataRows,
+          typedBytes: BigInt(t.typedBytes),
+          profile: t.profile as unknown as Prisma.InputJsonValue,
+        },
+        select: { id: true },
+      });
+      return r.id;
+    } catch (e) {
+      if (gone(e)) throw new DatasetGoneError();
+      throw e;
+    }
+  },
+
+  async dropTyped(ids) {
+    return prisma.$transaction(async (tx) => {
+      // Hanya yang tidak dirujuk manifest mana pun (SheetSegment NoAction).
+      const where = { id: { in: ids }, sheets: { none: {} } };
+      const rows = await tx.segmentTyped.findMany({ where, select: { typedKey: true } });
+      await tx.segmentTyped.deleteMany({ where });
+      return rows.map((r) => r.typedKey);
+    });
+  },
+
+  async swapTyped(sheetId, expectedRevision, next) {
+    const first = [...next.manifest].sort((a, b) => a.ordinal - b.ordinal)[0];
+    if (!first) return false;
+    return prisma
+      .$transaction(async (tx) => {
+        if (!(await lockActiveSheet(tx, sheetId))) return false;
+        const r = await tx.sheet.updateMany({
+          where: { id: sheetId, schemaRevision: expectedRevision },
+          data: {
+            typedKey: first.typedKey,
+            schema: next.schema as unknown as Prisma.InputJsonValue,
+            schemaRevision: next.schemaRevision,
+            headerRow: next.headerRow,
+            columns: next.columns as unknown as Prisma.InputJsonValue,
+          },
+        });
+        if (r.count === 0) return false;
+        // Semua ordinal sekaligus, masing-masing hanya bila masih menunjuk file yang dibaca recast.
+        for (const m of next.manifest) {
+          if (m.typedId === m.from) continue;
+          const u = await tx.sheetSegment.updateMany({
+            where: { sheetId, ordinal: m.ordinal, segmentTypedId: m.from },
+            data: { segmentTypedId: m.typedId },
+          });
+          if (u.count !== 1) throw new ManifestChanged();
+        }
+        // Dirujuk lagi (bisa sudah ditandai GC sebagai tertunda): tanda dibuang sekarang.
+        await tx.segmentTyped.updateMany({
+          where: { id: { in: next.manifest.map((m) => m.typedId) }, unreferencedAt: { not: null } },
+          data: { unreferencedAt: null },
+        });
+        // Baris header dipilih ulang (hanya sheet satu segmen): metadata segmen ikut.
+        if (next.manifest.length === 1) {
+          const t = await tx.segmentTyped.findUnique({
+            where: { id: first.typedId },
+            select: { segmentId: true },
+          });
+          if (t) {
+            await tx.segment.update({
+              where: { id: t.segmentId },
+              data: { headerRow: next.headerRow },
+            });
+          }
+        }
+        return true;
+      })
+      .catch((e: unknown) => {
+        if (e instanceof ManifestChanged) return false;
+        throw e;
+      });
   },
 };
 

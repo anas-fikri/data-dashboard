@@ -5,7 +5,11 @@ import { hit, release, RULES } from "@/features/auth/rate-limit";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import { parsePreview } from "@/features/ingest/preview";
-import type { RecastInput, RecastOutcome } from "@/features/ingest/recast-input";
+import {
+  recastProgressOf,
+  type RecastInput,
+  type RecastOutcome,
+} from "@/features/ingest/recast-input";
 import { lockActiveSheet } from "@/features/ingest/active-lock";
 import { prisma } from "@/lib/db";
 import { acquireLock, redisLockStore, releaseLock } from "@/lib/lock";
@@ -174,6 +178,7 @@ async function recastJob(jobId: string): Promise<RecastJobView | null> {
     sheetId: job.data.sheetId,
     state: mapped,
     result: (job.returnvalue as RecastOutcome | null | undefined) ?? null,
+    progress: recastProgressOf(job.progress),
   };
 }
 

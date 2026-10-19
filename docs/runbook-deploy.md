@@ -279,6 +279,9 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
   terverifikasi (`sudo -u postgres dropdb data_dashboard_sqlascii_20261019045827`). Skrip aman dijalankan
   ulang: database yang sudah UTF8 dilewati.
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
+- **Worker mati saat koreksi skema (T-040)**: job recast dilanjutkan otomatis setelah lock job BullMQ
+  kedaluwarsa (≤ 5 menit, maks. 2 kali); segmen yang sudah selesai tidak diulang. Migrasi T-040 hanya
+  menambah kolom `SegmentTyped.profile` (nullable): file lama dibaca profilnya sekali pada recast pertama.
 - **Kuota penyimpanan (T-039)**: `USER_STORAGE_QUOTA_BYTES` (bawaan 20 GiB) kini dihitung dari byte yang
   benar-benar tersimpan — segmen data yang dirujuk versi hidup + file sumber yang belum dihapus retensi
   7 hari + ukuran unggahan yang sedang berjalan; init unggah memproyeksikan file + ±1,2× parquet.

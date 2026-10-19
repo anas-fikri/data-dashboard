@@ -49,6 +49,7 @@ import {
   type ManifestSheet,
 } from "@/features/versions/integrity-check";
 import { newSegmentId, segmentPrefix } from "@/features/versions/segment-keys";
+import type { StoredProfile } from "./profile";
 import { headerColumns, maxSourceRow, typedFileProblems, writeTyped } from "./typed";
 import { PARALLEL_MIN_SHEET_BYTES, sheetRecord, xlsxSheetsParallel } from "./xlsx-parallel";
 
@@ -162,6 +163,8 @@ export interface IngestRepo {
       dataRows: number;
       /** Ukuran file typed (T-039 kuota). */
       typedBytes: number;
+      /** Profil raw (T-040): recast tidak memindai ulang raw. */
+      profile: StoredProfile;
     },
   ): Promise<void>;
   /** Manifest versi untuk gerbang integritas (T-038); null = versi tidak ada. */
@@ -501,6 +504,7 @@ export async function runIngest(
         segmentId,
         dataRows: typed.dataRows,
         typedBytes: statSync(typedPath).size,
+        profile: typed.profile,
       });
       rmSync(typedPath, { force: true });
       await ensureAlive();

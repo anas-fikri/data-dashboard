@@ -242,6 +242,13 @@ flowchart TD
 - **Locale angka** per kolom: bila ada `,` sebagai desimal atau pola `\.\d{3}(\.|$)` → Indonesia (`1.234.567,89`), selain itu US; disimpan `numberLocale` di skema. Tipe desimal = `DECIMAL(38,6)`.
 - **Tanggal naive**: nilai tanggal dataset disimpan `DATE`/`TIMESTAMP` tanpa zona dan **tidak pernah digeser**. Aturan "UTC di DB" di conventions hanya untuk kolom metadata PostgreSQL.
 - `typed` selalu ditulis sebagai `typed-<rev>.parquet` baru; pointer `schemaRevision` di PostgreSQL diganti setelah file lengkap (atomik). Re-cast dilindungi lock Redis `SET NX recast:<sheetId>`.
+- **Recast per segmen (T-040).** Sheet bisa terdiri dari beberapa segmen (manifest, ADR-0008). Satu job recast mengerjakan segmen satu per satu, dengan tenggat 20 menit per segmen:
+  - Tipe/locale/format diputuskan sekali dari gabungan profil raw semua segmen. Profil disimpan per file typed (`SegmentTyped.profile`) oleh ingest, pemetaan, dan recast, jadi raw tidak dipindai ulang dan tipe fisik `c<pos>` sama di semua segmen.
+  - Hanya segmen yang file-nya memuat kolom dengan cast berubah yang ditulis ulang. Kolom yang tidak ada di file (mis. kolom tersembunyi baru dari unggahan berikutnya) diproyeksikan NULL saat query.
+  - Titik lanjut: tiap file yang selesai dicatat sebagai `SegmentTyped` tertunda dengan kunci deterministik per job (`typed-<rev>-<hash jobId>`). Percobaan ulang setelah worker mati melewati segmen yang sudah selesai.
+  - Aktif atomik: gerbang integritas manifest rencana, lalu satu transaksi mengganti skema + semua ordinal manifest. Revisi lama tetap utuh untuk versi lain/rollback; yang tidak dirujuk disapu GC (T-038).
+  - Prioritas di bawah ingest: sebelum tiap segmen, recast menunggu selama ada job ingest aktif (≤ 15 menit), dan job pemetaan yang antre diambil sebelum recast (priority BullMQ). UI menampilkan "Segmen 7 dari 24".
+  - Sheet beberapa segmen tidak bisa memilih ulang baris judul.
 - Memori worker terikat batch + `memory_limit` DuckDB. Risiko diketahui: tabel shared strings xlsx dimuat utuh oleh sebagian parser; T-005 mengukur ini dengan fixture teks-berat dan menetapkan mitigasi (spill ke tabel DuckDB sementara) bila perlu.
 
 ### B4. Query widget — T-009 (API), T-011 (widget), T-012 (filter), T-016 (akses)
