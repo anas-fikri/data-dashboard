@@ -38,7 +38,7 @@ export const needsReload = (r: { ok: boolean; status?: number; code?: string }) 
 
 export async function fetchValues(
   dashboardId: string,
-  body: { column: string; sheet: string; q?: string },
+  body: { column: string; sheet: string; q?: string; months?: true },
   signal: AbortSignal,
 ): Promise<Result> {
   let res: Response;
@@ -136,4 +136,36 @@ export function useFilterValues(
     full: res.full,
     retry: () => setAttempt((n) => n + 1),
   };
+}
+
+/**
+ * Bulan yang ada di kolom tanggal filter (T-9gs1: pilihan "Pilih periode"): POST filter-values
+ * { months: true } sekali per kolom; null = memuat, { error } = gagal (bagian periode disembunyikan,
+ * preset dan rentang sendiri tetap bisa dipakai).
+ */
+export function usePeriodMonths(
+  dashboardId: string,
+  column: string,
+  sheet: string,
+): { months: string[] } | { error: string } | null {
+  type Months = { months: string[] } | { error: string };
+  // Jawaban dikunci per kolom: kolom lain → null (memuat) tanpa reset state di dalam effect.
+  const key = `${dashboardId}\u0000${sheet}\u0000${column}`;
+  const [state, setState] = useState<{ key: string; value: Months } | null>(null);
+  useEffect(() => {
+    const ctl = new AbortController();
+    fetchValues(dashboardId, { column, sheet, months: true }, ctl.signal).then(
+      (r) =>
+        !ctl.signal.aborted &&
+        setState({
+          key,
+          value: r.ok
+            ? { months: r.values.filter((v): v is string => typeof v === "string") }
+            : { error: r.message },
+        }),
+      () => {},
+    );
+    return () => ctl.abort();
+  }, [key, dashboardId, column, sheet]);
+  return state?.key === key ? state.value : null;
 }

@@ -423,6 +423,34 @@ describe("AC 3: preset tanggal dihitung Asia/Jakarta, dibandingkan naive (D8)", 
     expect(addDays("2028-02-28", 1)).toBe("2028-02-29");
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });
+
+  it("T-9gs1: periode sebelumnya utuh dan N hari terakhir (lintas tahun, kabisat)", () => {
+    expect(presetRange("last_month", "2026-03-15")).toEqual({
+      start: "2026-02-01",
+      end: "2026-02-28",
+    });
+    expect(presetRange("last_month", "2026-01-10")).toEqual({
+      start: "2025-12-01",
+      end: "2025-12-31",
+    });
+    expect(presetRange("last_quarter", "2026-02-15")).toEqual({
+      start: "2025-10-01",
+      end: "2025-12-31",
+    });
+    expect(presetRange("last_quarter", "2026-08-15")).toEqual({
+      start: "2026-04-01",
+      end: "2026-06-30",
+    });
+    expect(presetRange("last_year", "2026-08-15")).toEqual({
+      start: "2025-01-01",
+      end: "2025-12-31",
+    });
+    expect(presetRange("last_30_days", "2028-03-01")).toEqual({
+      start: "2028-02-01",
+      end: "2028-03-01",
+    });
+    expect(presetRange("last_90_days", "2026-03-31").start).toBe("2026-01-01");
+  });
 });
 
 describe("filter yang dilewati, kolom tidak diizinkan", () => {
@@ -577,7 +605,7 @@ describe("filter yang dilewati, kolom tidak diizinkan", () => {
       [{ column: "Cabang", op: "in", values: Array.from({ length: 501 }, (_, i) => `v${i}`) }],
       [{ column: "Cabang", op: "in", values: [] }],
       [{ column: "Cabang", op: "eq", value: "x" }],
-      [{ column: "Tanggal", op: "preset", preset: "last_year" }],
+      [{ column: "Tanggal", op: "preset", preset: "next_year" }],
       Array.from({ length: 21 }, () => ({ column: "Cabang", op: "in", values: ["x"] })),
     ]) {
       expect(

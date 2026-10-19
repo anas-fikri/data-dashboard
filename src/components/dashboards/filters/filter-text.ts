@@ -5,6 +5,7 @@
  */
 import type { ColumnType } from "@/features/ingest/infer";
 import { formatDate, formatDuration } from "@/features/widgets/format";
+import { calendarPeriod } from "./period";
 import {
   addDays,
   type Bound,
@@ -17,6 +18,11 @@ export const PRESET_LABEL: Record<Preset, string> = {
   this_month: "Bulan ini",
   this_quarter: "Kuartal ini",
   ytd: "Sejak awal tahun",
+  last_month: "Bulan lalu",
+  last_quarter: "Kuartal lalu",
+  last_year: "Tahun lalu",
+  last_30_days: "30 hari terakhir",
+  last_90_days: "90 hari terakhir",
 };
 /** Sama dengan sumbu grafik dan sel tabel (features/widgets/format.ts). */
 export const EMPTY_LABEL = "(kosong)";
@@ -108,6 +114,9 @@ export function filterText(f: DashFilter, type?: ColumnType, grain?: string): st
   }
   // Periode grafik (awal periode s.d. sebelum periode berikutnya) → nama periode ("Jan 2026").
   if (grain && typeof f.gte === "string" && f.lt !== undefined) return formatDate(f.gte, grain);
+  // Filter per periode dari bilah filter (T-9gs1): rentang kalender utuh → "Maret 2026".
+  const period = grain ? null : calendarPeriod(f);
+  if (period) return period.label;
   const { from, to } = dateBounds(f);
   const day = (s: string) => formatDate(s);
   if (from && to) return from === to ? day(from) : `${day(from)} – ${day(to)}`;

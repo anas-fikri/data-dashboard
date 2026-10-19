@@ -180,6 +180,19 @@ describe("AC 4: slicer dengan 5.000 nilai unik", () => {
     expect(escapeLikePattern("50%_\\x")).toBe("50\\%\\_\\\\x");
   });
 
+  it("T-9gs1: months → bulan yang ada di data (YYYY-MM, terbaru dulu); kolom bukan tanggal → INVALID", async () => {
+    const m = await runFilterValues(USER, DASH, { column: "Tanggal", months: true }, deps());
+    expect(m).toEqual({
+      ok: true,
+      type: "date",
+      values: Array.from({ length: 10 }, (_, i) => `2026-${String(10 - i).padStart(2, "0")}`),
+      truncated: false,
+    });
+    expect(
+      await runFilterValues(USER, DASH, { column: "Kota", months: true }, deps()),
+    ).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
   it("kolom angka/tanggal: urutan alami, cari pada teks baku", async () => {
     const n = await runFilterValues(USER, DASH, { column: "Jumlah", q: "4999" }, deps());
     expect(n).toEqual({ ok: true, type: "integer", values: [4999], truncated: false });

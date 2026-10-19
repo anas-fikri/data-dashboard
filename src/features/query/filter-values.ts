@@ -27,7 +27,12 @@ import {
   type QueryDeps,
   type QueryFailure,
 } from "./service";
-import { FILTER_VALUES_LIMIT, buildFilterValuesSql } from "./sql";
+import {
+  FILTER_MONTHS_LIMIT,
+  FILTER_VALUES_LIMIT,
+  buildFilterMonthsSql,
+  buildFilterValuesSql,
+} from "./sql";
 
 export const filterValuesBodySchema = z
   .object({
@@ -37,6 +42,8 @@ export const filterValuesBodySchema = z
     q: z.string().max(100).optional(),
     /** Sheet kolom filter, bila nama kolom yang sama dipilih dari lebih dari satu sheet. */
     sheet: z.string().min(1).max(200).optional(),
+    /** Kolom tanggal: bulan yang ada di data ("YYYY-MM", terbaru dulu) untuk pilihan periode (T-9gs1). */
+    months: z.literal(true).optional(),
   })
   .strict();
 
@@ -114,7 +121,11 @@ export async function runFilterValues(
       : fail("COLUMN_UNAVAILABLE", "Kolom filter ini tidak ada atau disembunyikan di data aktif.");
   }
 
-  const q = normalizeSearch(parsed.data.q);
+  const months = parsed.data.months === true;
+  if (months && col.type !== "date" && col.type !== "timestamp") {
+    return fail("INVALID", "Pilihan periode hanya untuk kolom tanggal.");
+  }
+  const q = months ? null : normalizeSearch(parsed.data.q);
   // Batas waktu lebih pendek dari query widget (pesan timeout ikut menyebut batas ini).
   const limited = { ...deps, timeoutMs: Math.min(deps.timeoutMs, FILTER_VALUES_MAX_MS), signal };
   const key = resultKey({
@@ -122,7 +133,7 @@ export async function runFilterValues(
     versionId: src.activeVersionId,
     sheetId: target.id,
     schemaRevision: sheet.schemaRevision,
-    spec: { filterValues: `c${col.pos}`, q },
+    spec: { filterValues: `c${col.pos}`, q, ...(months ? { months } : {}) },
   });
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(limited.timeoutMs));
@@ -137,15 +148,20 @@ export async function runFilterValues(
     segments: sheet.segments,
   });
   const r = await runOnParquet(userId, source, limited, (path, exec) =>
-    exec(buildFilterValuesSql({ col: `c${col.pos}`, type: col.type, float: col.float }, q, path)),
+    exec(
+      months
+        ? buildFilterMonthsSql(`c${col.pos}`, path)
+        : buildFilterValuesSql({ col: `c${col.pos}`, type: col.type, float: col.float }, q, path),
+    ),
   );
   if (!r.ok) {
     if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
     return r;
   }
   const all = r.value.rows.map((row) => toJson(row[0], col.type) as DashValue);
-  const truncated = all.length > FILTER_VALUES_LIMIT;
-  const values = all.slice(0, FILTER_VALUES_LIMIT);
+  const limit = months ? FILTER_MONTHS_LIMIT : FILTER_VALUES_LIMIT;
+  const truncated = all.length > limit;
+  const values = all.slice(0, limit);
   const bytes = values.reduce<number>((n, v) => n + rowBytes([v]), 64);
   if (bytes <= SLICER_CACHE_MAX_BYTES)
     deps.cache?.set(key, { filterValues: values, truncated }, bytes);

@@ -19,7 +19,16 @@ export { normName };
 export const SELECTED_MAX = 500;
 /** Panjang ?f= maksimum yang ditulis ke URL — lebih dari itu URL berisiko ditolak server (431). */
 export const URL_PARAM_MAX = 6000;
-export const PRESETS = ["this_month", "this_quarter", "ytd"] as const;
+export const PRESETS = [
+  "this_month",
+  "this_quarter",
+  "ytd",
+  "last_month",
+  "last_quarter",
+  "last_year",
+  "last_30_days",
+  "last_90_days",
+] as const;
 export type Preset = (typeof PRESETS)[number];
 export type FilterValue = string | number | boolean | null;
 export type Bound = string | number;

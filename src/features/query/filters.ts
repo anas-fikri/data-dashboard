@@ -16,7 +16,16 @@ import { isCalendarDate } from "./spec";
 
 export const DASH_FILTERS_MAX = 20;
 export const DASH_VALUES_MAX = 500;
-export const PRESETS = ["this_month", "this_quarter", "ytd"] as const;
+export const PRESETS = [
+  "this_month",
+  "this_quarter",
+  "ytd",
+  "last_month",
+  "last_quarter",
+  "last_year",
+  "last_30_days",
+  "last_90_days",
+] as const;
 export type Preset = (typeof PRESETS)[number];
 export const JAKARTA_TZ = "Asia/Jakarta";
 
@@ -123,17 +132,36 @@ export function addDays(day: string, n: number): string {
   return `${pad(t.getUTCFullYear(), 4)}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
 }
 
-/** Rentang preset sampai hari ini (inklusif): awal bulan / awal kuartal / 1 Januari. */
+/**
+ * Rentang preset (inklusif) dari hari ini: berjalan (awal bulan / awal kuartal / 1 Januari s.d. hari
+ * ini), periode sebelumnya utuh (bulan / kuartal / tahun lalu, T-9gs1), dan N hari terakhir termasuk
+ * hari ini.
+ */
 export function presetRange(preset: Preset, today: string): { start: string; end: string } {
-  const [y = "", m = ""] = today.split("-");
-  const month = Number(m);
-  const start =
-    preset === "ytd"
-      ? `${y}-01-01`
-      : preset === "this_month"
-        ? `${y}-${m}-01`
-        : `${y}-${pad(Math.floor((month - 1) / 3) * 3 + 1)}-01`;
-  return { start, end: today };
+  const [y = 0, m = 1] = today.split("-").map(Number);
+  const first = (yy: number, mm: number) => {
+    const t = new Date(Date.UTC(yy, mm - 1, 1));
+    return `${pad(t.getUTCFullYear(), 4)}-${pad(t.getUTCMonth() + 1)}-01`;
+  };
+  const quarter = Math.floor((m - 1) / 3) * 3 + 1;
+  switch (preset) {
+    case "ytd":
+      return { start: `${pad(y, 4)}-01-01`, end: today };
+    case "this_month":
+      return { start: first(y, m), end: today };
+    case "this_quarter":
+      return { start: first(y, quarter), end: today };
+    case "last_month":
+      return { start: first(y, m - 1), end: addDays(first(y, m), -1) };
+    case "last_quarter":
+      return { start: first(y, quarter - 3), end: addDays(first(y, quarter), -1) };
+    case "last_year":
+      return { start: `${pad(y - 1, 4)}-01-01`, end: `${pad(y - 1, 4)}-12-31` };
+    case "last_30_days":
+      return { start: addDays(today, -29), end: today };
+    case "last_90_days":
+      return { start: addDays(today, -89), end: today };
+  }
 }
 
 type Bound = string | number;

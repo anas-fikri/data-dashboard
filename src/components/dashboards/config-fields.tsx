@@ -30,6 +30,7 @@ export function Choice<T extends string>({
   testId,
   placeholder,
   invalidText,
+  blankOk,
 }: {
   label: string;
   /** Kosong = belum dipilih / tidak lagi tersedia → placeholder + aria-invalid. */
@@ -40,9 +41,12 @@ export function Choice<T extends string>({
   placeholder?: string;
   /** Pesan saat nilai tersimpan tidak ada di pilihan. */
   invalidText?: string;
+  /** Belum dipilih itu wajar (mis. filter periode): placeholder tanpa tanda tidak sah. */
+  blankOk?: boolean;
 }) {
   const id = useId();
   const missing = value === "" || !options.some((o) => o.value === value);
+  const flagged = missing && !!placeholder && !blankOk;
   const error = missing && invalidText ? invalidText : null;
   return (
     <div className="flex min-w-0 flex-col gap-1.5">
@@ -60,7 +64,7 @@ export function Choice<T extends string>({
           placeholder={placeholder}
           className={control}
           data-testid={testId}
-          aria-invalid={missing && placeholder ? true : undefined}
+          aria-invalid={flagged || undefined}
           aria-describedby={error ? `${id}-error` : undefined}
         />
       ) : (
@@ -69,7 +73,7 @@ export function Choice<T extends string>({
             id={id}
             className={control}
             data-testid={testId}
-            aria-invalid={missing && placeholder ? true : undefined}
+            aria-invalid={flagged || undefined}
             aria-describedby={error ? `${id}-error` : undefined}
           >
             <SelectValue placeholder={placeholder} />

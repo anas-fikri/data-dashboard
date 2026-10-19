@@ -342,6 +342,26 @@ export function numberNeedle(q: string): string {
 /** Wildcard LIKE (% _) dan karakter escape-nya diperlakukan sebagai huruf biasa. */
 export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
+/** Bulan paling banyak di pilihan periode (100 tahun). */
+export const FILTER_MONTHS_LIMIT = 1200;
+
+/** Bulan yang ada di kolom tanggal/cap waktu `col` ("YYYY-MM", terbaru dulu), T-9gs1. */
+export function buildFilterMonthsSql(col: string, parquetPath: string): BuiltSql {
+  const c = ident(col);
+  const v = ident("v");
+  return {
+    sql: [
+      `SELECT ${v} FROM (`,
+      `  SELECT DISTINCT strftime(date_trunc('month', ${c}), '%Y-%m') AS ${v}`,
+      `  FROM read_parquet($path) WHERE ${c} IS NOT NULL`,
+      `)`,
+      `ORDER BY ${v} DESC`,
+      `LIMIT ${FILTER_MONTHS_LIMIT + 1}`,
+    ].join("\n"),
+    params: { path: parquetPath },
+  };
+}
+
 /**
  * Nilai unik satu kolom untuk slicer (T-012): kosong (NULL) dulu, lalu teks urut seperti Excel
  * (nocase.noaccent, byte-exact sebagai pemecah seri) atau urutan alami untuk tipe lain; LIMIT 1001.

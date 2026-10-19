@@ -4,6 +4,7 @@ import { useId, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { PRESETS, type DashFilter, type FilterColumnView, type Preset } from "./filter-model";
+import { PeriodPicker } from "./period-picker";
 import {
   DATE_MAX,
   DATE_MIN,
@@ -15,8 +16,9 @@ import {
 } from "./filter-text";
 
 /*
- * Rentang tanggal (T-012): preset (bulan ini, kuartal ini, sejak awal tahun — dihitung server menurut
- * tanggal hari ini di Jakarta, dibandingkan apa adanya tanpa geser zona, D8) atau rentang sendiri
+ * Rentang tanggal (T-012): preset (bulan/kuartal/tahun berjalan dan sebelumnya, 30/90 hari terakhir —
+ * dihitung server menurut tanggal hari ini di Jakarta, dibandingkan apa adanya tanpa geser zona, D8),
+ * satu periode tertentu dari data (PeriodPicker, T-9gs1), atau rentang sendiri
  * lewat dua isian tanggal (bertumpuk: ikon kalender tidak terpotong). Isian hanya diterapkan saat
  * tanggalnya lengkap dan sah, tahun 1900–2100 (min/max) — tahun yang sedang diketik (0002, 0020,
  * 0202) tidak dikirim sebagai filter. Kolom cap waktu: hari "Sampai" ikut utuh (server menerima
@@ -29,10 +31,12 @@ const OPTIONS: { value: Preset | "all"; label: string }[] = [
 ];
 
 export function DatePanel({
+  dashboardId,
   column,
   value,
   onChange,
 }: {
+  dashboardId: string;
   column: FilterColumnView;
   value: DashFilter | undefined;
   onChange: (f: DashFilter | null) => void;
@@ -81,7 +85,7 @@ export function DatePanel({
     <div className="flex min-w-0 flex-col gap-3">
       <div role="group" aria-labelledby={`${id}-p`} className="flex flex-col gap-1.5">
         <p id={`${id}-p`} className="text-sm font-medium">
-          Periode
+          Pilihan cepat
         </p>
         <div className="grid grid-cols-2 gap-1.5">
           {OPTIONS.map((o) => (
@@ -111,6 +115,7 @@ export function DatePanel({
         </div>
         <p className="text-xs text-muted-foreground">Menurut tanggal hari ini di Jakarta (WIB).</p>
       </div>
+      <PeriodPicker dashboardId={dashboardId} column={column} value={value} onChange={onChange} />
       <fieldset className="flex min-w-0 flex-col gap-1.5">
         <legend className="mb-1.5 text-sm font-medium">Rentang sendiri</legend>
         <div className="flex flex-col gap-2">

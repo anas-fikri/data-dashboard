@@ -117,7 +117,7 @@ export function FilterControl({ column }: { column: FilterColumnView }) {
             onAllMode={setAllMode}
           />
         ) : kind === "date" ? (
-          <DatePanel column={column} value={value} onChange={set} />
+          <DatePanel dashboardId={dashboardId} column={column} value={value} onChange={set} />
         ) : (
           <NumberPanel column={column} value={value} onChange={set} onDone={() => setOpen(false)} />
         )}

@@ -16,7 +16,10 @@ Buka **Dashboard** → **Dibagikan ke saya**, atau dari **Beranda**. Dashboard y
 Di bilah **Filter** di atas dashboard:
 
 - **Nilai** — ketik di **Cari nilai…**, centang satu atau beberapa nilai, atau **Pilih semua**.
-- **Tanggal** — pilih periode (_Bulan ini_, _Kuartal ini_, _Sejak awal tahun_) atau **Rentang sendiri** dengan tanggal _Dari_ dan _Sampai_.
+- **Tanggal** — tiga cara:
+  - **Pilihan cepat**: _Bulan ini_, _Kuartal ini_, _Sejak awal tahun_, _Bulan lalu_, _Kuartal lalu_, _Tahun lalu_, _30 hari terakhir_, _90 hari terakhir_ (dihitung dari tanggal hari ini).
+  - **Pilih periode**: pilih **Bulan**, **Kuartal**, atau **Tahun**, lalu satu periode yang ada di data (mis. _Maret 2026_, _Kuartal 1 2026_). Daftar panjang bisa dicari dengan mengetik.
+  - **Rentang sendiri** dengan tanggal _Dari_ dan _Sampai_.
 - **Angka** — isi _Paling kecil_ / _Paling besar_, lalu **Terapkan**.
 
 Filter aktif tampil sebagai label; tekan **Hapus semua filter** untuk kembali ke semua data. Di ponsel, buka filter lewat tombol **Filter**.

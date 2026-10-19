@@ -403,6 +403,48 @@ test.describe("filter dashboard", () => {
     });
   });
 
+  test("T-9gs1: Pilih periode (bulan, kuartal) dari data → widget tersaring, chip bernama periode, bertahan setelah muat ulang", async ({
+    page,
+  }) => {
+    const last = YEAR - 1;
+    const dec = countWhere((r) => r.tanggal.startsWith(`${last}-12`));
+    const q4 = countWhere((r) => r.tanggal >= `${last}-10-01` && r.tanggal < `${YEAR}-01-01`);
+    expect(dec).toBeGreaterThan(0);
+
+    await page.goto(dashboardUrl);
+    await expectKpi(page, ROWS);
+    const control = page.locator('[data-testid=filter-date][data-column="Tanggal"]');
+    await control.click();
+    await expect(page.getByText("Pilih periode")).toBeVisible();
+    if (process.env.E2E_SHOTS) {
+      await page.screenshot({ path: join(process.env.E2E_SHOTS, "period-1440.png") });
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.screenshot({ path: join(process.env.E2E_SHOTS, "period-390.png") });
+      await page.setViewportSize({ width: 1440, height: 900 });
+    }
+    await page.getByLabel("Bulan", { exact: true }).click();
+    await page.getByRole("option", { name: `Desember ${last}`, exact: true }).click();
+    await page.keyboard.press("Escape");
+    const chip = page.locator('[data-testid=filter-chip][data-column="Tanggal"]');
+    await expect(chip).toContainText(`Desember ${last}`);
+    await expectKpi(page, dec);
+    expect(urlFilters(page)).toEqual({
+      filters: [{ column: "Tanggal", op: "range", gte: `${last}-12-01`, lt: `${YEAR}-01-01` }],
+    });
+    await page.reload();
+    await expect(chip).toContainText(`Desember ${last}`);
+    await expectKpi(page, dec);
+
+    // Kuartal: jenis periode diganti lalu dipilih dari daftar kuartal.
+    await control.click();
+    await page.locator("[data-testid=filter-period-grain][data-grain=quarter]").click();
+    await page.getByLabel("Kuartal", { exact: true }).click();
+    await page.getByRole("option", { name: `Kuartal 4 ${last}`, exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(chip).toContainText(`Kuartal 4 ${last}`);
+    await expectKpi(page, q4);
+  });
+
   test("AC4: slicer Kode (5.000 nilai unik) → 1.000 opsi + peringatan; ketik 3 huruf → disaring di server", async ({
     page,
   }) => {
