@@ -40,7 +40,8 @@ describe("ingest raw: xlsx", () => {
       // raw = semua baris terisi: baris data + judul/keterangan di atas header + header itu sendiri
       expect(s.rawRows).toBe(m.sheets[i]!.nonEmptyRows);
       expect(s.colCount).toBe(12);
-      expect(s.rawKey).toBe(`parquet/${DS}/${VID}/${[...repo.sheets.keys()][i]}/raw.parquet`);
+      // T-038: segmen imutabel di parquet/<ds>/seg/<segmentId>/.
+      expect(s.rawKey).toBe(`parquet/${DS}/seg/${s.segmentId}/raw.parquet`);
       const rows = await readParquet(join(storage.dir, s.rawKey!));
       expect(rows).toHaveLength(s.rawRows);
       expect(rows.slice(0, 3).map((r) => r[0])).toEqual([1, 3, 4]); // _row fisik, baris 2 kosong
@@ -342,5 +343,26 @@ describe("ingest raw: ketahanan", () => {
     const c = setup("tests/fixtures/kecil.xlsx");
     c.repo.status = "READY";
     expect(await runIngest(VID, c.repo, c.storage, c.opts)).toEqual({ outcome: "skipped" });
+  });
+});
+
+describe("T-038: gerbang integritas sebelum aktivasi", () => {
+  it("file typed tidak ada di storage saat diperiksa → FAILED, versi tidak diaktifkan, objek seg/ dibersihkan", async () => {
+    const s = setup("tests/fixtures/tiga-sheet.xlsx");
+    const upload = s.storage.upload.bind(s.storage);
+    s.storage.upload = async (key, path, ct) => {
+      await upload(key, path, ct);
+      if (key.endsWith("typed-1.parquet") && s.storage.missing.size === 0)
+        s.storage.missing.add(key);
+    };
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r.outcome).toBe("failed");
+    expect(r.outcome === "failed" && r.message).toMatch(
+      /^Pemeriksaan integritas data gagal \(file data tidak ada: parquet\/[a-z0-9]+\/seg\/[a-z0-9]+\/typed-1\.parquet\)\. Versi ini tidak diaktifkan/,
+    );
+    expect(s.repo.status).toBe("FAILED");
+    expect(s.repo.activated).toBe(false);
+    expect(s.storage.parquetKeys()).toEqual([]);
+    expect(s.repo.segments.size).toBe(0);
   });
 });

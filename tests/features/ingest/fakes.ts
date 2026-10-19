@@ -27,6 +27,7 @@ import {
   type TypedStorage,
 } from "@/features/ingest/ingest";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import type { ManifestSheet } from "@/features/versions/integrity-check";
 import type { LockStore } from "@/lib/lock";
 import {
   sameSnapshot,
@@ -75,6 +76,11 @@ export class FakeStorage implements TypedStorage {
   }
   async deleteObject(key: string) {
     rmSync(join(this.dir, key), { force: true });
+  }
+  /** Kunci yang dianggap hilang (uji gerbang integritas T-038). */
+  missing = new Set<string>();
+  async exists(key: string) {
+    return !this.missing.has(key) && existsSync(join(this.dir, key));
   }
   keys(): string[] {
     const out: string[] = [];
@@ -133,8 +139,10 @@ export class FakeRepo implements IngestRepo {
     this.progressLog.push(p);
   }
   async deleteSheets() {
+    const ids = [...this.segments.keys()];
     this.sheets.clear();
     this.segments.clear();
+    return ids;
   }
   /** Lineage (ADR-0008): rowHighWater per sheet logis; segmen yang ditulis versi ini. */
   lineages = new Map<string, bigint>();
@@ -152,9 +160,8 @@ export class FakeRepo implements IngestRepo {
   }
   async createSegment(_v: string, d: SegmentRecord) {
     if (!this.alive()) throw new DatasetGoneError();
-    const id = `segment${++this.n}`;
-    this.segments.set(id, d);
-    return id;
+    this.segments.set(d.id, d);
+    return d.id;
   }
   async createSheet(_v: string, s: SheetRecord, lineageId: string) {
     if (!this.alive()) throw new DatasetGoneError();
@@ -174,13 +181,42 @@ export class FakeRepo implements IngestRepo {
   }
   async setTyped(
     id: string,
-    d: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number; segmentId?: string },
+    d: {
+      typedKey: string;
+      schema: ColumnSchema[];
+      schemaRevision: number;
+      segmentId?: string;
+      dataRows?: number;
+    },
   ) {
     if (!this.alive()) {
       this.sheets.clear();
       throw new DatasetGoneError();
     }
     Object.assign(this.sheets.get(id)!, d);
+  }
+  /** Manifest sheet versi ini (REPLACE: segmen ordinal 0), seperti prismaManifest. */
+  async manifest(): Promise<ManifestSheet[] | null> {
+    if (!this.alive()) return null;
+    return this.byIndex().map((sh) => {
+      const g = sh.segmentId ? this.segments.get(sh.segmentId) : undefined;
+      return {
+        name: sh.name,
+        typedKey: sh.typedKey ?? null,
+        segments:
+          g && sh.typedKey
+            ? [
+                {
+                  ordinal: 0,
+                  rawKey: g.rawKey,
+                  typedKey: sh.typedKey,
+                  rowBase: g.rowBase,
+                  maxSrcRow: g.maxSrcRow,
+                },
+              ]
+            : [],
+      };
+    });
   }
   /** sheetMap terakhir yang diteruskan finish (T-033). */
   sheetMap: Record<string, string> | null = null;

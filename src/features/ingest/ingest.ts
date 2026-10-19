@@ -43,7 +43,13 @@ import {
   type SnapshotRef,
   type Verdict,
 } from "./refresh";
-import { headerColumns, maxSourceRow, writeTyped } from "./typed";
+import {
+  IntegrityError,
+  verifyVersionIntegrity,
+  type ManifestSheet,
+} from "@/features/versions/integrity-check";
+import { newSegmentId, segmentPrefix } from "@/features/versions/segment-keys";
+import { headerColumns, maxSourceRow, typedFileProblems, writeTyped } from "./typed";
 import { PARALLEL_MIN_SHEET_BYTES, sheetRecord, xlsxSheetsParallel } from "./xlsx-parallel";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
@@ -101,6 +107,8 @@ export type FinishOutcome = "activated" | "awaiting" | "stale" | "gone";
 /** Akses database yang dibutuhkan ingest (implementasi Prisma di worker; palsu di unit test). */
 /** Segmen raw hasil ingest (ADR-0008): kunci + bentuk raw, awal `_row`, baris fisik terbesar. */
 export interface SegmentRecord {
+  /** Id dibuat sebelum unggah (kunci seg/<id>/ memuatnya, T-038). */
+  id: string;
   lineageId: string;
   rawKey: string;
   rawRows: number;
@@ -120,8 +128,11 @@ export interface IngestRepo {
   /** Versi dan datasetnya masih ada. */
   exists(versionId: string): Promise<boolean>;
   progress(versionId: string, p: IngestProgress): Promise<void>;
-  /** Sheet dan segmen percobaan sebelumnya versi ini (idempoten saat ingest diulang). */
-  deleteSheets(versionId: string): Promise<void>;
+  /**
+   * Sheet dan segmen percobaan sebelumnya versi ini (idempoten saat ingest diulang). Mengembalikan id
+   * segmen yang dihapus: objek seg/<id>/-nya dibersihkan pemanggil.
+   */
+  deleteSheets(versionId: string): Promise<string[]>;
   /** Sheet logis baru (ADR-0008) untuk sheet tanpa pasangan aktif; DatasetGoneError bila versi hilang. */
   createLineage(versionId: string): Promise<string>;
   /**
@@ -141,8 +152,16 @@ export interface IngestRepo {
    */
   setTyped(
     sheetId: string,
-    data: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number; segmentId: string },
+    data: {
+      typedKey: string;
+      schema: ColumnSchema[];
+      schemaRevision: number;
+      segmentId: string;
+      dataRows: number;
+    },
   ): Promise<void>;
+  /** Manifest versi untuk gerbang integritas (T-038); null = versi tidak ada. */
+  manifest(versionId: string): Promise<ManifestSheet[] | null>;
   /**
    * Semua sheet raw + typed tertulis. Di bawah lock baris Dataset: acuan cast (`snapshot`) basi →
    * "stale"; verdict cocok → READY + aktif (activateVersionInTx); tidak cocok → AWAITING_MAPPING
@@ -168,6 +187,8 @@ export interface IngestStorage {
   upload(key: string, path: string, contentType: string): Promise<void>;
   /** Prefix wajib diakhiri '/' (S3 storage menolak selainnya). */
   deletePrefix(prefix: string): Promise<number>;
+  /** Objek ada (HEAD; 404 → false, galat lain dilempar) — gerbang integritas T-038. */
+  exists(key: string): Promise<boolean>;
 }
 
 /** Storage recast/pemetaan: plus hapus satu objek (file percobaan yang tidak menjadi typed aktif). */
@@ -229,6 +250,9 @@ export function permanentMessage(e: unknown): string | null {
   }
   if (e instanceof DeadlineError) {
     return "Pemrosesan file melebihi 60 menit. Pecah file menjadi beberapa bagian lalu unggah lagi.";
+  }
+  if (e instanceof IntegrityError) {
+    return `${e.message} Versi ini tidak diaktifkan dan data aktif tidak berubah. Unggah ulang file; bila terulang, hubungi admin.`;
   }
   // Worker thread pembaca sheet melewati batas heap-nya (WORKER_HEAP_MB): deterministik untuk file
   // yang sama, sama seperti memori DuckDB habis.
@@ -309,6 +333,13 @@ export async function runIngest(
   if (!(await repo.begin(versionId))) return { outcome: "skipped" };
 
   const prefix = versionParquetPrefix(v.datasetId, versionId);
+  // Segmen yang dibuat percobaan ini (objek di seg/<id>/, T-038): dibersihkan bila gagal/dataset hilang.
+  const created: string[] = [];
+  const cleanupSegments = async (ids: string[], reason: string) => {
+    for (const id of new Set(ids)) {
+      await cleanupPrefix(repo, storage, segmentPrefix(v.datasetId, id), reason);
+    }
+  };
   const deadline = opts.deadline ?? Date.now() + INGEST_DEADLINE_MS;
   const work = mkdtempSync(join(opts.tmpRoot, "ingest-"));
   let duck: Duck | null = null;
@@ -339,7 +370,9 @@ export async function runIngest(
   try {
     // Idempoten: sisa percobaan sebelumnya (worker mati/diulang) dibuang lebih dulu.
     await storage.deletePrefix(prefix);
-    await repo.deleteSheets(versionId);
+    for (const id of await repo.deleteSheets(versionId)) {
+      await storage.deletePrefix(segmentPrefix(v.datasetId, id));
+    }
     await repo.progress(versionId, current);
 
     const ext = v.sourceKey.endsWith(".csv") ? "csv" : "xlsx";
@@ -428,11 +461,16 @@ export async function runIngest(
         const label = v.active!.sheets.length > 1 ? active.name : null;
         issues.push(...sheetIssues(label, cols, typed.schema, typed.nonEmpty));
       }
+      const bad = await typedFileProblems(duck, typedPath, typed.dataRows, `sheet "${s.rec.name}"`);
+      if (bad.length) throw new IntegrityError(bad);
       setProgress({ stage: "simpan", ...at });
-      const key = `${prefix}${sheetId}/raw.parquet`;
-      await storage.upload(key, s.path, PARQUET);
-      await repo.setSheetKey(sheetId, key);
-      const segmentId = await repo.createSegment(versionId, {
+      // Segmen imutabel di seg/<id>/ (T-038). Barisnya ditulis SEBELUM objek diunggah: percobaan
+      // ulang/kegagalan selalu tahu objek mana miliknya (tidak ada objek tanpa pemilik tercatat).
+      const segmentId = newSegmentId();
+      const seg = segmentPrefix(v.datasetId, segmentId);
+      const key = `${seg}raw.parquet`;
+      await repo.createSegment(versionId, {
+        id: segmentId,
         lineageId,
         rawKey: key,
         rawRows: s.rec.rawRows,
@@ -441,18 +479,28 @@ export async function runIngest(
         rowBase,
         maxSrcRow,
       });
+      created.push(segmentId);
+      await storage.upload(key, s.path, PARQUET);
+      await repo.setSheetKey(sheetId, key);
       await ensureAlive();
-      const typedKey = `${prefix}${sheetId}/typed-1.parquet`;
+      const typedKey = `${seg}typed-1.parquet`;
       await storage.upload(typedKey, typedPath, PARQUET);
       await repo.setTyped(sheetId, {
         typedKey,
         schema: typed.schema,
         schemaRevision: 1,
         segmentId,
+        dataRows: typed.dataRows,
       });
       rmSync(typedPath, { force: true });
       await ensureAlive();
     }
+    // Gerbang integritas (fail-closed) sebelum aktivasi: manifest + semua kunci ada di storage.
+    const problems = await verifyVersionIntegrity(versionId, {
+      manifest: (id) => repo.manifest(id),
+      exists: (k) => storage.exists(k),
+    });
+    if (problems.length) throw new IntegrityError(problems);
     const verdict = verdictOf(issues);
     const done = await repo.finish(versionId, {
       sha256: dl.sha256,
@@ -469,6 +517,7 @@ export async function runIngest(
   } catch (e) {
     if (e instanceof DatasetGoneError) {
       await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
+      await cleanupSegments(created, "dataset dihapus saat ingest");
       return { outcome: "gone" };
     }
     const message = permanentMessage(e);
@@ -477,17 +526,23 @@ export async function runIngest(
       // percobaan berikutnya tidak lagi tahu datasetId-nya.
       if (!(await repo.exists(versionId).catch(() => true))) {
         await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
+        await cleanupSegments(created, "dataset dihapus saat ingest");
         return { outcome: "gone" };
       }
       throw e; // BullMQ mengulang dari awal (mulai bersih)
     }
     await cleanupPrefix(repo, storage, prefix, "ingest gagal");
-    await repo.deleteSheets(versionId).catch(() => {});
-    const located = failureMessage(message, current, {
-      row: at.row,
-      csv: v.sourceKey.endsWith(".csv"),
-      deadline: e instanceof DeadlineError,
-    });
+    const removed = await repo.deleteSheets(versionId).catch(() => [] as string[]);
+    await cleanupSegments([...created, ...removed], "ingest gagal");
+    // Gerbang integritas menyebut sheet/kunci sendiri: bukan "Sheet <terakhir diproses>".
+    const located =
+      e instanceof IntegrityError
+        ? message
+        : failureMessage(message, current, {
+            row: at.row,
+            csv: v.sourceKey.endsWith(".csv"),
+            deadline: e instanceof DeadlineError,
+          });
     await repo.fail(versionId, located);
     return { outcome: "failed", message: located };
   } finally {

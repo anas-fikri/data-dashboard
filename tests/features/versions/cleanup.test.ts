@@ -13,6 +13,10 @@ const prisma = {
   },
   dataset: { count: vi.fn() },
   guideVideo: { count: vi.fn() },
+  // Rujukan kunci (T-038): bawaan tidak dirujuk.
+  segment: { count: vi.fn(async () => 0) },
+  segmentTyped: { count: vi.fn(async () => 0) },
+  sheet: { count: vi.fn(async () => 0) },
   datasetVersion: { findUnique: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
@@ -32,6 +36,7 @@ vi.mock("@/lib/storage/guides", () => ({ deleteGuideObject: s3.deleteGuideObject
 
 const {
   CLEANUP_MAX_ATTEMPTS,
+  isPostponed,
   isSafeToDelete,
   nextAttemptAt,
   parseCleanupPrefix,
@@ -56,6 +61,9 @@ const deps = {
   }),
   deleteObject: vi.fn(async (k: string) => {
     order.push(`deleteobj:${k}`);
+  }),
+  deleteDataObject: vi.fn(async (k: string) => {
+    order.push(`deletedata:${k}`);
   }),
   abortMultipartFor: vi.fn(async (k: string) => {
     order.push(`abortfor:${k}`);
@@ -297,5 +305,84 @@ describe("runRawRetention", () => {
     prisma.datasetVersion.findMany.mockResolvedValueOnce([{ id: "../x", datasetId: DS }]);
     expect(await runRawRetention(deps, NOW)).toEqual({ deleted: 0, failed: 1 });
     expect(deps.deletePrefix).not.toHaveBeenCalled();
+  });
+});
+
+describe("T-038: segmen seg/, kunci data persis, prefix versi yang masih memuat segmen", () => {
+  const SEG = "cmv4kljx40009oczvdmpurseg";
+  const SHEET = "cmv4kljx40009oczvdmpursht";
+  const row = (id: string, prefix: string) => ({ id, prefix, attempts: 0 });
+
+  it("parseCleanupPrefix: prefix segmen dan file data (raw/typed, legacy dan seg/); bentuk lain ditolak", () => {
+    expect(parseCleanupPrefix(`parquet/${DS}/seg/${SEG}/`)).toEqual({
+      kind: "segment",
+      datasetId: DS,
+      segmentId: SEG,
+    });
+    for (const k of [
+      `parquet/${DS}/${VER}/${SHEET}/raw.parquet`,
+      `parquet/${DS}/${VER}/${SHEET}/typed-3-0123456789ab.parquet`,
+      `parquet/${DS}/seg/${SEG}/raw.parquet`,
+      `parquet/${DS}/seg/${SEG}/typed-1.parquet`,
+    ]) {
+      expect(parseCleanupPrefix(k)).toEqual({ kind: "object", datasetId: DS });
+    }
+    expect(parseCleanupPrefix(`parquet/${DS}/seg/${SEG}/catatan.txt`)).toBeNull();
+    expect(parseCleanupPrefix(`parquet/${DS}/seg/`)).toBeNull();
+    expect(parseCleanupPrefix(`parquet/${DS}/seg/${SEG}`)).toBeNull();
+  });
+
+  it("isSafeToDelete/isPostponed: dirujuk → tidak dihapus; prefix versi bersegmen → ditunda", () => {
+    const seg = { kind: "segment", datasetId: DS, segmentId: SEG } as const;
+    const obj = { kind: "object", datasetId: DS } as const;
+    const ver = { kind: "parquet", datasetId: DS, versionId: VER } as const;
+    const base = { datasetExists: true, versionStatus: null };
+    expect(isSafeToDelete(seg, { ...base, referenced: true })).toBe(false);
+    expect(isSafeToDelete(seg, { ...base, referenced: false })).toBe(true);
+    expect(isSafeToDelete(obj, { ...base, referenced: true })).toBe(false);
+    expect(isSafeToDelete(obj, { ...base, referenced: false })).toBe(true);
+    expect(isSafeToDelete(ver, { ...base, referenced: true })).toBe(false);
+    expect(isPostponed(ver, { ...base, referenced: true })).toBe(true);
+    expect(isSafeToDelete(ver, { ...base, referenced: false })).toBe(true);
+    expect(isPostponed(ver, { ...base, referenced: false })).toBe(false);
+  });
+
+  it("file data tak terujuk dihapus satu kunci; masih dirujuk → dibuang tanpa hapus", async () => {
+    const key = `parquet/${DS}/${VER}/${SHEET}/raw.parquet`;
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("o1", key)]);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 1, skipped: 0, failed: 0 });
+    expect(order).toEqual([`deletedata:${key}`]);
+    expect(prisma.segment.count).toHaveBeenCalledWith({ where: { rawKey: { equals: key } } });
+
+    order.length = 0;
+    prisma.segmentTyped.count.mockResolvedValueOnce(1);
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("o2", key)]);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 0, skipped: 1, failed: 0 });
+    expect(order).toEqual([]);
+  });
+
+  it("prefix segmen: baris Segment masih ada → tidak dihapus; sudah tidak ada → hapus prefix", async () => {
+    const prefix = `parquet/${DS}/seg/${SEG}/`;
+    prisma.segment.count.mockResolvedValueOnce(1);
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("s1", prefix)]);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 0, skipped: 1, failed: 0 });
+    expect(order).toEqual([]);
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("s2", prefix)]);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 1, skipped: 0, failed: 0 });
+    expect(order).toEqual([`delete:${prefix}`]);
+  });
+
+  it("prefix Parquet versi terbuang yang masih memuat segmen legacy → ditunda 24 jam, tidak dihapus", async () => {
+    const prefix = `parquet/${DS}/${VER}/`;
+    prisma.datasetVersion.findUnique.mockResolvedValueOnce(null);
+    prisma.segment.count.mockResolvedValueOnce(1);
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([row("v1", prefix)]);
+    expect(await runStorageCleanup(deps, NOW)).toEqual({ deleted: 0, skipped: 1, failed: 0 });
+    expect(order).toEqual([]);
+    expect(prisma.storageCleanup.updateMany).toHaveBeenCalledWith({
+      where: { id: "v1" },
+      data: { notBefore: new Date(NOW.getTime() + 24 * 60 * MIN) },
+    });
+    expect(prisma.storageCleanup.deleteMany).not.toHaveBeenCalledWith({ where: { id: "v1" } });
   });
 });

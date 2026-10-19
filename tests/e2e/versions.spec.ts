@@ -30,12 +30,14 @@ const SLOW = { timeout: 30_000 };
 let worker: ChildProcess | null = null;
 let datasetId = "";
 let dashboardUrl = "";
-const v: Record<"v1" | "v2" | "v3" | "v4" | "v5", string> = {
+/** Id versi + prefix segmen V1 setelah dibuang retensi (T-038). */
+const v: Record<"v1" | "v2" | "v3" | "v4" | "v5" | "v1Seg", string> = {
   v1: "",
   v2: "",
   v3: "",
   v4: "",
   v5: "",
+  v1Seg: "",
 };
 
 type Version = {
@@ -46,6 +48,13 @@ type Version = {
   errorMessage: string | null;
 };
 type CleanupRow = { prefix: string; reason: string; notBefore: string; attempts: number };
+type SegmentRow = {
+  id: string;
+  prefix: string;
+  createdByVersionId: string | null;
+  unreferencedAt: string | null;
+  versions: string[];
+};
 
 function fx<T = Record<string, unknown>>(...args: string[]): T {
   return JSON.parse(
@@ -56,7 +65,10 @@ function fx<T = Record<string, unknown>>(...args: string[]): T {
 }
 const versions = () => fx<Version[]>("versions", datasetId);
 const prefixCount = (prefix: string) => fx<{ count: number }>("prefix-count", prefix).count;
-const runJob = (name: "storage-cleanup" | "raw-retention") => fx("run-job", name);
+const runJob = (name: "storage-cleanup" | "raw-retention" | "segment-gc") => fx("run-job", name);
+/** Segmen dataset (T-038): objeknya di parquet/<ds>/seg/<id>/, `versions` = versi yang merujuknya. */
+const segments = () => fx<SegmentRow[]>("segments", datasetId);
+const segmentOf = (versionId: string) => segments().find((g) => g.versions.includes(versionId))!;
 
 function csv(name: string, header: string, rows: string[]): string {
   const path = join(dir, name);
@@ -314,7 +326,13 @@ test.describe("versi dataset", () => {
     expect(list.every((x) => x.status === "READY")).toBe(true);
     expect(list[0]).toMatchObject({ active: true });
 
-    // Objek V1 belum dihapus (masa tenggang 1 jam untuk query yang sedang berjalan) tetapi diantrekan.
+    // Objek V1 belum dihapus: segmennya tidak lagi dirujuk versi hidup, menunggu GC mark-and-sweep
+    // (tenggang 24 jam, T-038); prefix versi (file asli + sisa legacy) diantrekan seperti sebelumnya.
+    const orphans = segments().filter((g) => g.versions.length === 0);
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]).toMatchObject({ createdByVersionId: null, unreferencedAt: null });
+    expect(prefixCount(orphans[0]!.prefix)).toBeGreaterThan(0);
+    v.v1Seg = orphans[0]!.prefix;
     const rows = fx<CleanupRow[]>("cleanup-rows", datasetId);
     const forV1 = rows.filter((r) => r.prefix.includes(v.v1));
     expect(forV1.map((r) => r.prefix).sort()).toEqual([
@@ -326,7 +344,6 @@ test.describe("versi dataset", () => {
       expect(new Date(r.notBefore).getTime()).toBeGreaterThan(Date.now() + 50 * 60 * 1000);
     }
     expect(rows.some((r) => r.prefix === `raw/${datasetId}/${v.v3}/`)).toBe(true);
-    expect(prefixCount(`parquet/${datasetId}/${v.v1}/`)).toBeGreaterThan(0);
 
     await page.goto(dashboardUrl);
     await expect(kpiValue(page)).toHaveText("460", SLOW);
@@ -336,17 +353,30 @@ test.describe("versi dataset", () => {
     await expect(versionRow(page, v.v1)).toHaveCount(0);
   });
 
-  test("AC 3b: job pembersihan menghapus Parquet + file asli versi tertua, versi aktif utuh", async () => {
-    test.setTimeout(180_000);
-    expect(fx<{ updated: number }>("cleanup-due", datasetId).updated).toBeGreaterThanOrEqual(2);
+  test("AC 3b: GC segmen + pembersihan menghapus Parquet + file asli versi tertua, versi hidup utuh", async () => {
+    test.setTimeout(240_000);
+    // Putaran 1 menandai segmen V1 (tidak dirujuk); belum dihapus selama tenggang.
+    runJob("segment-gc");
+    const marked = segments().find((g) => g.prefix === v.v1Seg)!;
+    expect(marked.unreferencedAt).not.toBeNull();
+    expect(prefixCount(v.v1Seg)).toBeGreaterThan(0);
+    // Tenggang lewat → putaran 2 menyapu baris segmennya dan mengantrekan objeknya.
+    expect(fx<{ segments: number }>("gc-due", datasetId).segments).toBe(1);
+    runJob("segment-gc");
+    expect(segments().some((g) => g.prefix === v.v1Seg)).toBe(false);
+    expect(fx<CleanupRow[]>("cleanup-rows", datasetId).map((r) => r.prefix)).toContain(v.v1Seg);
+    expect(fx<{ updated: number }>("cleanup-due", datasetId).updated).toBeGreaterThanOrEqual(3);
     runJob("storage-cleanup");
+    expect(prefixCount(v.v1Seg)).toBe(0);
     expect(prefixCount(`parquet/${datasetId}/${v.v1}/`)).toBe(0);
     expect(prefixCount(`raw/${datasetId}/${v.v1}/`)).toBe(0);
     expect(prefixCount(`raw/${datasetId}/${v.v3}/`)).toBe(0);
     expect(fx<CleanupRow[]>("cleanup-rows", datasetId)).toEqual([]);
-    expect(prefixCount(`parquet/${datasetId}/${v.v5}/`)).toBeGreaterThan(0);
+    // Versi hidup (aktif V5 + READY tersimpan V4, V2) tetap punya objeknya.
+    for (const id of [v.v5, v.v4, v.v2]) {
+      expect(prefixCount(segmentOf(id).prefix), id).toBeGreaterThan(0);
+    }
     expect(prefixCount(`raw/${datasetId}/${v.v5}/`)).toBeGreaterThan(0);
-    expect(prefixCount(`parquet/${datasetId}/${v.v4}/`)).toBeGreaterThan(0);
   });
 
   test("AC 3c: pemilik mengaktifkan versi sebelumnya lewat UI → versi aktif pindah, KPI berganti angka", async ({
@@ -384,7 +414,7 @@ test.describe("versi dataset", () => {
     runJob("raw-retention");
     expect(fx<{ exists: boolean }>("object", v.v4).exists).toBe(false);
     expect(prefixCount(`raw/${datasetId}/${v.v4}/`)).toBe(0);
-    expect(prefixCount(`parquet/${datasetId}/${v.v4}/`)).toBeGreaterThan(0);
+    expect(prefixCount(segmentOf(v.v4).prefix)).toBeGreaterThan(0);
     const list = versions();
     expect(list.find((x) => x.id === v.v4)?.sourceDeletedAt).not.toBeNull();
     // Versi lain (< 7 hari) tidak tersentuh.

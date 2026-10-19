@@ -67,14 +67,16 @@ async function main() {
 
   const repo: IngestRepo = {
     load: async () => ({
-      datasetId: "perf",
+      datasetId: "cperfdataset0000000000000",
       sourceKey: `raw/perf/v/source.${file!.endsWith(".csv") ? "csv" : "xlsx"}`,
       active: null,
     }),
     begin: async () => true,
     exists: async () => true,
     progress: async () => {},
-    deleteSheets: async () => {},
+    deleteSheets: async () => [],
+    // Gerbang integritas T-038: tanpa manifest (sheet palsu) → tidak ada yang diperiksa.
+    manifest: async () => [],
     createLineage: async () => "lineage",
     allocateRows: async () => 0n,
     createSegment: async () => "segment",
@@ -100,6 +102,7 @@ async function main() {
     },
   };
   const storage: IngestStorage = {
+    exists: async () => true,
     download: async (_k, dest) => {
       linkSync(file!, dest);
       const hash = createHash("sha256");

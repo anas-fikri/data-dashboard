@@ -32,7 +32,7 @@ Browser ──HTTPS──► Caddy (proxy, TLS) ──► app (Next.js 16, port 
  backup (cron 02.00 WIB): pg_dump + bucket → age → /backups → rclone SFTP ke NAS Synology
 ```
 
-- **Data tabular tidak disimpan di PostgreSQL.** File asli → Parquet di S3 (`parquet/<dataset>/<versi>/<sheet>/`),
+- **Data tabular tidak disimpan di PostgreSQL.** File asli → Parquet di S3 (segmen imutabel `parquet/<dataset>/seg/<segmen>/`, T-038; data lama di `parquet/<dataset>/<versi>/<sheet>/`),
   di-query dengan **DuckDB** (cache Parquet lokal + cache hasil di memori). PostgreSQL hanya metadata.
 - **Stack:** Next.js 16 App Router (Turbopack) + React 19 + TypeScript strict, Prisma **6.12.0 (dipin)**, BullMQ +
   Redis 7, `@duckdb/node-api`, ECharts, Tailwind 4, ikon `@tabler/icons-react`, Playwright (e2e + renderer).

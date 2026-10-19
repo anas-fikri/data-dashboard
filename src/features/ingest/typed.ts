@@ -106,6 +106,26 @@ export async function maxSourceRow(duck: Duck, rawPath: string): Promise<number>
   return Number(r.getRows()[0]?.[0] ?? 0);
 }
 
+/**
+ * Gerbang integritas file typed lokal sebelum diunggah/ditautkan (T-038): jumlah barisnya = baris data
+ * raw yang dihitung writeTyped, dan `_row` unik. [] = lolos.
+ */
+export async function typedFileProblems(
+  duck: Duck,
+  path: string,
+  dataRows: number,
+  label: string,
+): Promise<string[]> {
+  const r = await duck.conn.runAndReadAll(
+    `SELECT count(*), count(DISTINCT _row) FROM read_parquet(${lit(path)})`,
+  );
+  const [n, d] = (r.getRows()[0] ?? [0, 0]).map(Number) as [number, number];
+  const out: string[] = [];
+  if (n !== dataRows) out.push(`${label}: ${n} baris di file, ${dataRows} baris data di sumber`);
+  if (d !== n) out.push(`${label}: ${n - d} nomor baris ganda`);
+  return out;
+}
+
 /** Nama kolom dari baris fisik `row` di raw.parquet (header dipilih ulang: recast, versi refresh). */
 export async function headerColumns(
   duck: Duck,

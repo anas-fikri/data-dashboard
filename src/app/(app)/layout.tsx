@@ -1,9 +1,11 @@
 import { unstable_rethrow } from "next/navigation";
 import type { ReactNode } from "react";
 import { BackupBanner } from "@/components/admin/backup-banner";
+import { StorageBanner } from "@/components/admin/storage-banner";
 import { AppShell } from "@/components/shell/app-shell";
 import { getSessionUser } from "@/features/auth/session";
 import { currentBackupAlert } from "@/features/backup/service";
+import { currentIntegrityAlert } from "@/features/versions/integrity-status";
 import { logger } from "@/lib/logger";
 
 /** Semua halaman produk memakai shell. Halaman auth (login/register) berada di luar grup ini. */
@@ -20,9 +22,19 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     return null;
   });
   // Backup bermasalah (gagal, > 26 jam, salinan off-VM tertunda) tampil untuk admin di setiap halaman.
-  const alert = user?.isAdmin ? await currentBackupAlert() : null;
+  const [alert, storage] = user?.isAdmin
+    ? await Promise.all([currentBackupAlert(), currentIntegrityAlert()])
+    : [null, null];
+  // File data terujuk hilang (pemeriksaan malam T-038) lebih mendesak daripada backup → di atas.
+  const notice =
+    alert || storage ? (
+      <>
+        {storage ? <StorageBanner alert={storage} /> : null}
+        {alert ? <BackupBanner alert={alert} /> : null}
+      </>
+    ) : null;
   return (
-    <AppShell user={user} notice={alert ? <BackupBanner alert={alert} /> : null}>
+    <AppShell user={user} notice={notice}>
       {children}
     </AppShell>
   );

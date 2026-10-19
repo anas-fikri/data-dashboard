@@ -15,6 +15,8 @@ const tx = {
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dataset: { findFirst: vi.fn() },
+  // Gerbang integritas rollback (T-038) di luar transaksi: bawaan target tidak ditemukan → dilewati.
+  datasetVersion: { findFirst: vi.fn(), updateMany: vi.fn() },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
@@ -25,6 +27,8 @@ vi.mock("@/features/query/local-parquet", () => ({ forgetLocalParquet }));
 // Pengumuman versi aktif untuk pemanasan cache parquet app (T-pvq8).
 const publish = vi.fn(async () => 1);
 vi.mock("@/lib/redis", () => ({ redisReady: async () => ({ publish }) }));
+const integrity = { manifest: vi.fn(), exists: vi.fn() };
+vi.mock("@/features/versions/integrity", () => ({ prismaIntegrityDeps: integrity }));
 
 const svc = await import("@/features/versions/service");
 const { logger } = await import("@/lib/logger");
@@ -53,6 +57,7 @@ beforeEach(() => {
   prisma.$transaction.mockImplementation(async (fn) => fn(tx));
   tx.$queryRaw.mockResolvedValue([{ activeVersionId: A }]);
   tx.datasetVersion.count.mockResolvedValue(0);
+  prisma.datasetVersion.findFirst.mockResolvedValue(null);
 });
 
 describe("toVersionRow", () => {
@@ -148,6 +153,52 @@ describe("activateVersion", () => {
     expect(publish).toHaveBeenCalledTimes(1);
     // Lock Dataset dengan pemilik di WHERE.
     expect(tx.$queryRaw.mock.calls[0]!.slice(1)).toEqual([DS, OWNER]);
+  });
+
+  it("T-038: kunci versi target hilang → FAILED + INVALID, tanpa transaksi aktivasi", async () => {
+    prisma.datasetVersion.findFirst.mockResolvedValueOnce({ id: B });
+    integrity.manifest.mockResolvedValueOnce([
+      {
+        name: "Data",
+        typedKey: "t",
+        segments: [{ ordinal: 0, rawKey: "r", typedKey: "t", rowBase: 0n, maxSrcRow: 3 }],
+      },
+    ]);
+    integrity.exists.mockImplementation(async (k: string) => k !== "t");
+    const r = await svc.activateVersion(OWNER, DS, B);
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(!r.ok && r.message).toMatch(
+      /file data tidak ada: t.*ditandai gagal; data aktif tidak berubah/,
+    );
+    expect(prisma.datasetVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: B, status: "READY", activeFor: { is: null } },
+      data: { status: "FAILED", errorMessage: expect.stringContaining("integritas") },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(activateVersionInTx).not.toHaveBeenCalled();
+  });
+
+  it("T-038: storage tidak menjawab saat diperiksa → DATASET_BUSY, versi TIDAK ditandai gagal", async () => {
+    prisma.datasetVersion.findFirst.mockResolvedValueOnce({ id: B });
+    integrity.manifest.mockRejectedValueOnce(new Error("ECONNRESET"));
+    expect(await svc.activateVersion(OWNER, DS, B)).toMatchObject({ code: "DATASET_BUSY" });
+    expect(prisma.datasetVersion.updateMany).not.toHaveBeenCalled();
+    expect(activateVersionInTx).not.toHaveBeenCalled();
+  });
+
+  it("T-038: versi target utuh → aktivasi berjalan seperti biasa", async () => {
+    prisma.datasetVersion.findFirst.mockResolvedValueOnce({ id: B });
+    integrity.manifest.mockResolvedValueOnce([]);
+    tx.datasetVersion.findFirst.mockResolvedValueOnce({ status: "READY", originalName: "a.xlsx" });
+    activateVersionInTx.mockResolvedValueOnce({ deletedTypedKeys: [] });
+    expect(await svc.activateVersion(OWNER, DS, B)).toEqual({
+      ok: true,
+      data: { fileName: "a.xlsx" },
+    });
+    expect(prisma.datasetVersion.findFirst).toHaveBeenCalledWith({
+      where: { id: B, datasetId: DS, status: "READY", dataset: { ownerId: OWNER } },
+      select: { id: true },
+    });
   });
 
   it("bukan pemilik / versi tidak ada / id rusak → NOT_FOUND tanpa aktivasi", async () => {

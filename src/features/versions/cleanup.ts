@@ -3,8 +3,10 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { deleteGuideObject } from "@/lib/storage/guides";
 import { abortMultipartFor, abortMultipartUnder } from "@/lib/storage/multipart";
-import { deletePrefix } from "@/lib/storage/objects";
+import { deleteObject, deletePrefix } from "@/lib/storage/objects";
+import { SEGMENT_GC_GRACE_MS } from "./gc";
 import { rawRetentionWhere, versionPrefixes } from "./retention";
+import { DATA_KEY, SEGMENT_PREFIX } from "./segment-keys";
 
 /*
  * Job pemeliharaan storage di worker (T-013, flow-kerja B1/B5):
@@ -15,6 +17,10 @@ import { rawRetentionWhere, versionPrefixes } from "./retention";
  *    memang sudah tidak dipakai; gagal → coba lagi dengan jeda bertingkat, maksimal 8 kali.
  *  - raw-retention: file asli raw/<ds>/<ver>/ dihapus 7 hari setelah ingest selesai; versi ditandai
  *    sourceDeletedAt (sourceKey tetap: recast menurunkan csv/xlsx dari ekstensinya).
+ * T-038: juga prefix segmen parquet/<ds>/seg/<seg>/ (hanya bila baris Segment-nya sudah tidak ada) dan
+ * kunci file data persis (GC segmen legacy, sapuan yatim — hanya bila tidak ada Segment/SegmentTyped/
+ * sheet versi hidup yang merujuknya). Prefix Parquet versi yang masih memuat kunci segmen terujuk
+ * (segmen legacy yang belum disapu GC) DITUNDA satu masa tenggang, bukan dibuang.
  */
 
 export const CLEANUP_BATCH = 50;
@@ -36,7 +42,11 @@ export type CleanupTarget =
       versionId: string | null;
     }
   /** Satu objek video/poster/takarir panduan (kunci persis); video = multipart-nya ikut di-abort. */
-  | { kind: "guide"; videoId: string; video: boolean };
+  | { kind: "guide"; videoId: string; video: boolean }
+  /** Prefix satu segmen parquet/<ds>/seg/<seg>/ (T-038). */
+  | { kind: "segment"; datasetId: string; segmentId: string }
+  /** Satu file data persis (raw/typed segmen, DATA_KEY). */
+  | { kind: "object"; datasetId: string };
 
 /** Prefix StorageCleanup yang sah, atau null (tidak pernah menyentuh storage). */
 export function parseCleanupPrefix(prefix: string): CleanupTarget | null {
@@ -44,6 +54,10 @@ export function parseCleanupPrefix(prefix: string): CleanupTarget | null {
   if (m) return { kind: m[1] as "raw" | "parquet", datasetId: m[2]!, versionId: m[3] ?? null };
   const g = GUIDE_KEY.exec(prefix);
   if (g) return { kind: "guide", videoId: (g[1] ?? g[2] ?? g[3])!, video: g[1] !== undefined };
+  const sg = SEGMENT_PREFIX.exec(prefix);
+  if (sg) return { kind: "segment", datasetId: sg[1]!, segmentId: sg[2]! };
+  const k = DATA_KEY.exec(prefix);
+  if (k) return { kind: "object", datasetId: k[1]! };
   return null;
 }
 
@@ -55,6 +69,8 @@ export interface CleanupState {
   datasetExists: boolean;
   versionStatus: string | null;
   guideVideoExists?: boolean;
+  /** Segmen/kunci masih dirujuk baris DB (Segment, SegmentTyped, atau sheet versi hidup). */
+  referenced?: boolean;
 }
 
 /**
@@ -64,10 +80,17 @@ export interface CleanupState {
  */
 export function isSafeToDelete(t: CleanupTarget, s: CleanupState): boolean {
   if (t.kind === "guide") return !s.guideVideoExists;
+  if (t.kind === "segment" || t.kind === "object") return !s.referenced;
   if (t.versionId === null) return !s.datasetExists;
+  // Parquet versi: kunci segmen legacy di bawahnya yang masih tercatat menunda penghapusan (T-038).
+  if (t.kind === "parquet" && s.referenced) return false;
   if (s.versionStatus === null) return true;
   return t.kind === "parquet" && s.versionStatus === "FAILED";
 }
+
+/** Tidak aman sekarang tetapi akan aman setelah GC menyapu segmen legacy-nya → tunda, jangan buang. */
+export const isPostponed = (t: CleanupTarget, s: CleanupState) =>
+  t.kind === "parquet" && t.versionId !== null && !!s.referenced;
 
 /** Percobaan berikutnya setelah gagal ke-(attempts+1): 5 menit · 2^attempts, maksimal 24 jam. */
 export function nextAttemptAt(attempts: number, now: Date): Date {
@@ -80,6 +103,8 @@ export interface CleanupDeps {
   /** Kunci persis objek panduan (deletePrefix/abortMultipartUnder hanya menerima prefix ber-"/"). */
   deleteObject: (key: string) => Promise<void>;
   abortMultipartFor: (key: string) => Promise<number>;
+  /** Kunci persis file data (DATA_KEY, T-038). */
+  deleteDataObject: (key: string) => Promise<void>;
 }
 
 const storage: CleanupDeps = {
@@ -87,11 +112,38 @@ const storage: CleanupDeps = {
   abortMultipartUnder,
   deleteObject: deleteGuideObject,
   abortMultipartFor,
+  deleteDataObject: (key) => deleteObject(key),
 };
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e)).slice(0, ERROR_MAX);
 
+/**
+ * Kunci (persis, atau semua di bawah prefix) masih dirujuk: segmen/revisi tercatat, atau sheet versi
+ * hidup (jaring pengaman bila manifest tidak lengkap).
+ */
+export async function keyReferenced(key: string, prefix = false): Promise<boolean> {
+  const match = prefix ? { startsWith: key } : { equals: key };
+  const live = { version: { status: { not: "FAILED" as const } } };
+  const [seg, typed, sheet] = await Promise.all([
+    prisma.segment.count({ where: { rawKey: match } }),
+    prisma.segmentTyped.count({ where: { typedKey: match } }),
+    prisma.sheet.count({ where: { ...live, OR: [{ rawKey: match }, { typedKey: match }] } }),
+  ]);
+  return seg + typed + sheet > 0;
+}
+
 async function stateOf(t: CleanupTarget, prefix: string): Promise<CleanupState> {
+  if (t.kind === "segment") {
+    const segment = await prisma.segment.count({ where: { id: t.segmentId } });
+    return {
+      datasetExists: true,
+      versionStatus: null,
+      referenced: segment > 0 || (await keyReferenced(prefix, true)),
+    };
+  }
+  if (t.kind === "object") {
+    return { datasetExists: true, versionStatus: null, referenced: await keyReferenced(prefix) };
+  }
   if (t.kind === "guide") {
     // Takarir bisa dihapus sementara videonya tetap ada (T-qqbc): dipakai = baris masih menunjuk kunci ini.
     const caption = prefix.startsWith("guides/captions/") ? { captionKey: prefix } : {};
@@ -108,7 +160,11 @@ async function stateOf(t: CleanupTarget, prefix: string): Promise<CleanupState> 
     where: { id: t.versionId },
     select: { status: true },
   });
-  return { datasetExists: true, versionStatus: v?.status ?? null };
+  return {
+    datasetExists: true,
+    versionStatus: v?.status ?? null,
+    ...(t.kind === "parquet" ? { referenced: await keyReferenced(prefix, true) } : {}),
+  };
 }
 
 /** Satu putaran storage-cleanup (≤ 50 baris jatuh tempo, terlama dulu). */
@@ -131,7 +187,16 @@ export async function runStorageCleanup(deps: CleanupDeps = storage, now = new D
       out.skipped++;
       continue;
     }
-    if (!isSafeToDelete(t, await stateOf(t, row.prefix))) {
+    const state = await stateOf(t, row.prefix);
+    if (isPostponed(t, state)) {
+      await prisma.storageCleanup.updateMany({
+        where: { id: row.id },
+        data: { notBefore: new Date(now.getTime() + SEGMENT_GC_GRACE_MS) },
+      });
+      out.skipped++;
+      continue;
+    }
+    if (!isSafeToDelete(t, state)) {
       logger.warn(
         { id: row.id, prefix: row.prefix },
         "prefix pembersihan masih dipakai; dibuang tanpa hapus",
@@ -145,6 +210,8 @@ export async function runStorageCleanup(deps: CleanupDeps = storage, now = new D
       if (t.kind === "guide") {
         if (t.video) await deps.abortMultipartFor(row.prefix);
         await deps.deleteObject(row.prefix);
+      } else if (t.kind === "object") {
+        await deps.deleteDataObject(row.prefix);
       } else {
         if (t.kind === "raw") await deps.abortMultipartUnder(row.prefix);
         await deps.deletePrefix(row.prefix);

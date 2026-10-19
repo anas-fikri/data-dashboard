@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import { activateVersionInTx } from "@/features/versions/activation";
 import { prisma } from "@/lib/db";
-import { deleteObject, deletePrefix } from "@/lib/storage/objects";
+import { prismaManifest } from "@/features/versions/integrity";
+import { deleteObject, deletePrefix, objectExists } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
 import { lockActiveSheet } from "./active-lock";
 import { parsePreview } from "./preview";
@@ -74,6 +75,8 @@ async function linkTyped(
     schemaRevision: number;
     schema: Pick<ColumnSchema, "pos">[];
     headerRow?: number;
+    /** Baris data file (dihitung dari raw saat ditulis, T-038). */
+    dataRows?: number;
   },
   segmentId?: string,
 ): Promise<void> {
@@ -98,6 +101,7 @@ async function linkTyped(
       schemaRevision: typed.schemaRevision,
       // Posisi c<pos> di file (T-037): typed memuat semua kolom skema, termasuk kolom kosong.
       columns: [...new Set(typed.schema.map((c) => c.pos))].sort((a, b) => a - b),
+      ...(typed.dataRows !== undefined ? { dataRows: typed.dataRows } : {}),
     },
     select: { id: true },
   });
@@ -170,9 +174,14 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async deleteSheets(versionId) {
+    const segments = await prisma.segment.findMany({
+      where: { createdByVersionId: versionId },
+      select: { id: true },
+    });
     // Sheet dulu (manifest ikut terhapus), lalu segmen percobaan ini (file typed-nya ikut cascade).
     await prisma.sheet.deleteMany({ where: { versionId } });
-    await prisma.segment.deleteMany({ where: { createdByVersionId: versionId } });
+    await prisma.segment.deleteMany({ where: { id: { in: segments.map((s) => s.id) } } });
+    return segments.map((s) => s.id);
   },
 
   async createLineage(versionId) {
@@ -218,6 +227,7 @@ export const prismaIngestRepo: IngestRepo = {
     try {
       const g = await prisma.segment.create({
         data: {
+          id: d.id,
           datasetId: v.datasetId,
           lineageId: d.lineageId,
           rowBase: d.rowBase,
@@ -291,6 +301,8 @@ export const prismaIngestRepo: IngestRepo = {
     }
   },
 
+  manifest: (versionId) => prismaManifest(versionId),
+
   async finish(versionId, d) {
     return prisma.$transaction(
       async (tx): Promise<FinishOutcome> => {
@@ -349,6 +361,7 @@ export const s3IngestStorage: TypedStorage = {
   upload: uploadFile,
   deletePrefix,
   deleteObject,
+  exists: (key) => objectExists(key),
 };
 
 export const prismaRecastRepo: RecastRepo = {
@@ -430,6 +443,13 @@ class MappingAbort extends Error {
 
 export const prismaMappingRepo: MappingRepo = {
   allocateRows: (lineageId, span) => prismaIngestRepo.allocateRows(lineageId, span),
+
+  async fail(versionId, message) {
+    await prisma.datasetVersion.updateMany({
+      where: { id: versionId, status: "AWAITING_MAPPING" },
+      data: { status: "FAILED", errorMessage: message },
+    });
+  },
 
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({

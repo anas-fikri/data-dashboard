@@ -23,9 +23,11 @@ import {
   type RecastInput,
   type RecastOutcome,
 } from "./recast-input";
+import { IntegrityError } from "@/features/versions/integrity-check";
 import {
   choiceOf,
   headerColumns,
+  typedFileProblems,
   writeTyped,
   type AbsentColumn,
   type ColumnOverride,
@@ -36,7 +38,6 @@ export { parseRecastInput, type RecastInput, type RecastOutcome };
 export const RECAST_LOCK_MS = 3 * 60 * 1000;
 export const RECAST_RENEW_MS = 60 * 1000;
 export const RECAST_DEADLINE_MS = 20 * 60 * 1000;
-export const OLD_TYPED_TTL_MS = 60 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
 
 export interface RecastSheet {
@@ -71,6 +72,8 @@ export interface RecastRepo {
       schemaRevision: number;
       headerRow: number;
       columns: ColumnMeta[];
+      /** Baris data file (T-038). */
+      dataRows: number;
     },
   ): Promise<boolean>;
 }
@@ -79,8 +82,6 @@ export interface RecastDeps {
   repo: RecastRepo;
   storage: Pick<TypedStorage, "download" | "upload" | "deleteObject">;
   lock: LockStore;
-  /** Jadwalkan penghapusan objek (job tertunda). */
-  scheduleDelete(key: string, delayMs: number): Promise<void>;
   tmpRoot: string;
   duckMemory?: string;
   /** Interval perpanjangan lock (default RECAST_RENEW_MS; uji memakai interval pendek). */
@@ -220,6 +221,8 @@ export async function recastSheet(
       watch,
       rowBase: s.rowBase ?? 0n,
     });
+    const bad = await typedFileProblems(duck, outPath, typed.dataRows, "file hasil koreksi");
+    if (bad.length) throw new IntegrityError(bad);
 
     const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
     const typedKey = `${dir}typed-${revision}-${token.slice(0, 12)}.parquet`;
@@ -234,6 +237,7 @@ export async function recastSheet(
         schemaRevision: revision,
         headerRow,
         columns,
+        dataRows: typed.dataRows,
       });
     } catch (e) {
       // UPDATE bisa sudah commit sebelum koneksi putus: jangan hapus file yang mungkin sudah aktif.
@@ -247,13 +251,20 @@ export async function recastSheet(
       return (await deps.repo.loadSheet(sheetId)) ? { outcome: "stale" } : { outcome: "gone" };
     }
     uploaded = null; // sudah menjadi typed aktif
-    if (s.typedKey) await deps.scheduleDelete(s.typedKey, OLD_TYPED_TTL_MS);
+    // Revisi lama tidak dihapus di sini: tidak lagi dirujuk manifest → disapu GC segmen setelah masa
+    // tenggang (T-038), jadi query yang masih membacanya selesai dan rollback tidak kehilangan data.
     return { outcome: "done", revision, schema: typed.schema };
   } catch (e) {
     if (e instanceof DatasetGoneError) return { outcome: "gone" };
     if (e instanceof LockLostError) return { outcome: "busy" };
     if (e instanceof DeadlineError) {
       return { outcome: "failed", message: "Koreksi skema melebihi 20 menit. Coba lagi nanti." };
+    }
+    if (e instanceof IntegrityError) {
+      return {
+        outcome: "failed",
+        message: `${e.message} Skema tidak diubah. Coba lagi; bila terulang, hubungi admin.`,
+      };
     }
     throw e;
   } finally {

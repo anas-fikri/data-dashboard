@@ -5,6 +5,7 @@ import type { Queue } from "bullmq";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { IngestJobData } from "@/lib/queue/connection";
+import { segmentPrefix } from "@/features/versions/segment-keys";
 import { INGEST_DEADLINE_MS, cleanupPrefix, versionParquetPrefix } from "./ingest";
 import { prismaIngestRepo, s3IngestStorage } from "./repo";
 
@@ -23,7 +24,8 @@ const STUCK_AFTER_MS = INGEST_DEADLINE_MS + 30 * 60 * 1000;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
- * Akhiri versi sebagai FAILED: hapus prefix Parquet (gagal → StorageCleanup) dan metadata Sheet.
+ * Akhiri versi sebagai FAILED: hapus prefix Parquet versi + prefix segmen seg/ miliknya (gagal →
+ * StorageCleanup; yang terlewat disapu GC segmen) dan metadata Sheet.
  * Dicoba ulang (DB bisa sedang tidak tersedia); bila tetap gagal, penyapu INGESTING mengulang nanti.
  */
 export async function finalizeFailed(
@@ -47,7 +49,14 @@ export async function finalizeFailed(
         );
       }
       if (v) {
-        await prismaIngestRepo.deleteSheets(versionId);
+        for (const id of await prismaIngestRepo.deleteSheets(versionId)) {
+          await cleanupPrefix(
+            prismaIngestRepo,
+            s3IngestStorage,
+            segmentPrefix(v.datasetId, id),
+            "ingest gagal final",
+          );
+        }
         await prismaIngestRepo.fail(versionId, message);
       }
       return true;
@@ -92,15 +101,17 @@ export async function recoverStuckIngests(queue: Queue<IngestJobData>): Promise<
   return n;
 }
 
+/** ingest-* (runIngest), recast-* (recastSheet), mapping-* (applyMapping, T-038): raw/typed/temp GB. */
+const WORK_DIRS = ["ingest-", "recast-", "mapping-"];
+
 /**
- * Hapus direktori kerja ingest yang tertinggal (worker mati di tengah job). Aman dipanggil saat
- * start: concurrency 1 dan WORKER_TMP_DIR wajib per replika, jadi tidak ada job lain yang memakainya.
+ * Hapus direktori kerja ingest/recast/pemetaan yang tertinggal (worker mati di tengah job). Aman
+ * dipanggil saat start: WORKER_TMP_DIR wajib per replika dan job baru belum berjalan.
  */
 export function removeStaleWorkDirs(tmpRoot: string): number {
   let n = 0;
   for (const name of readdirSync(tmpRoot)) {
-    // ingest-* (runIngest) dan recast-* (recastSheet): keduanya bisa berisi raw/typed/temp DuckDB GB.
-    if (!name.startsWith("ingest-") && !name.startsWith("recast-")) continue;
+    if (!WORK_DIRS.some((p) => name.startsWith(p))) continue;
     rmSync(join(tmpRoot, name), { recursive: true, force: true });
     n++;
   }

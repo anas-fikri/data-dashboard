@@ -118,7 +118,6 @@ describe("T-036 segmen", () => {
       repo,
       storage: r.storage,
       lock: fakeLock(),
-      scheduleDelete: async () => {},
       tmpRoot: join(t.root, "tmp"),
       duckMemory: "256MB",
     };

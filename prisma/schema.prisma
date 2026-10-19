@@ -228,8 +228,12 @@ model Segment {
   rawRows            Int
   headerRow          Int
   colCount           Int
+  /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
+  /// objeknya dihapus GC mark-and-sweep setelah tidak dirujuk versi hidup ≥ SEGMENT_GC_GRACE_HOURS.
   createdByVersionId String?
-  createdByVersion   DatasetVersion? @relation(fields: [createdByVersionId], references: [id], onDelete: Cascade)
+  createdByVersion   DatasetVersion? @relation(fields: [createdByVersionId], references: [id], onDelete: SetNull)
+  /// Tanda GC (T-038): sejak kapan segmen ini tidak dirujuk versi hidup; null = dirujuk.
+  unreferencedAt     DateTime?
   typed              SegmentTyped[]
   createdAt          DateTime        @default(now())
 
@@ -250,6 +254,10 @@ model SegmentTyped {
   /// Posisi c<pos> yang ada di file (T-037): kelompok skema untuk proyeksi eksplisit saat segmen satu
   /// sheet berbeda kolom (NULL AS c<pos> untuk yang tidak punya).
   columns        Int[]          @default([])
+  /// Baris data di file (dihitung dari raw saat ditulis, T-038); null = file lama (belum diukur).
+  dataRows       Int?
+  /// Tanda GC (T-038): sejak kapan revisi ini tidak dirujuk manifest versi hidup; null = dirujuk.
+  unreferencedAt DateTime?
   sheets         SheetSegment[]
   createdAt      DateTime       @default(now())
 

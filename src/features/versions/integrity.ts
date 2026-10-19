@@ -1,0 +1,163 @@
+import "server-only";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { listChildPrefixes, listObjects, objectExists } from "@/lib/storage/objects";
+import { SEGMENT_GC_GRACE_MS } from "./gc";
+import { missingKeys, type IntegrityDeps, type ManifestSheet } from "./integrity-check";
+import { saveIntegrityStatus, type IntegrityStatus } from "./integrity-status";
+import { DATA_KEY, datasetSegmentsPrefix } from "./segment-keys";
+
+/*
+ * Integritas data versi (T-038, ADR-0008), bagian DB/storage (gerbang murni: integrity-check.ts).
+ *  - prismaManifest/prismaIntegrityDeps: manifest versi dari DB + HEAD storage untuk
+ *    verifyVersionIntegrity.
+ *  - runStorageAudit (job malam): HEAD semua kunci yang dirujuk versi hidup → alert di log + status
+ *    admin; objek yatim di seg/ (unggahan/pemetaan yang mati di tengah) dan prefix dataset yang sudah
+ *    tidak ada diserahkan ke StorageCleanup (yang memeriksa ulang sebelum menghapus).
+ */
+
+/** Manifest versi dari DB (Prisma). */
+export async function prismaManifest(versionId: string): Promise<ManifestSheet[] | null> {
+  const v = await prisma.datasetVersion.findUnique({
+    where: { id: versionId },
+    select: {
+      sheets: {
+        orderBy: { index: "asc" },
+        select: {
+          name: true,
+          typedKey: true,
+          segments: {
+            select: {
+              ordinal: true,
+              segmentTyped: {
+                select: {
+                  typedKey: true,
+                  segment: { select: { rawKey: true, rowBase: true, maxSrcRow: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!v) return null;
+  return v.sheets.map((s) => ({
+    name: s.name,
+    typedKey: s.typedKey,
+    segments: s.segments.map((m) => ({
+      ordinal: m.ordinal,
+      typedKey: m.segmentTyped.typedKey,
+      rawKey: m.segmentTyped.segment.rawKey,
+      rowBase: m.segmentTyped.segment.rowBase,
+      maxSrcRow: m.segmentTyped.segment.maxSrcRow,
+    })),
+  }));
+}
+
+export const prismaIntegrityDeps: IntegrityDeps = {
+  manifest: prismaManifest,
+  exists: (key) => objectExists(key),
+};
+
+export interface AuditDeps {
+  exists(key: string): Promise<boolean>;
+  listObjects(prefix: string): Promise<{ key: string; modified: Date }[]>;
+  listChildPrefixes(prefix: string): Promise<string[]>;
+  saveStatus(s: IntegrityStatus): Promise<void>;
+}
+
+const s3AuditDeps: AuditDeps = {
+  exists: (key) => objectExists(key),
+  listObjects: (prefix) => listObjects(prefix),
+  listChildPrefixes: (prefix) => listChildPrefixes(prefix),
+  saveStatus: (s) => saveIntegrityStatus(s),
+};
+
+const SAMPLE = 20;
+const ID = /^[a-z0-9]{20,32}$/;
+
+/** Isian StorageCleanup baru (yang sudah antre tidak digandakan). */
+async function enqueue(prefixes: string[], reason: string, now: Date): Promise<number> {
+  if (!prefixes.length) return 0;
+  const queued = await prisma.storageCleanup.findMany({
+    where: { prefix: { in: prefixes } },
+    select: { prefix: true },
+  });
+  const fresh = prefixes.filter((p) => !queued.some((q) => q.prefix === p));
+  if (fresh.length) {
+    await prisma.storageCleanup.createMany({
+      data: fresh.map((prefix) => ({ prefix, reason, notBefore: now })),
+    });
+  }
+  return fresh.length;
+}
+
+/** Satu putaran segment-audit (malam). */
+export async function runStorageAudit(
+  deps: AuditDeps = s3AuditDeps,
+  now = new Date(),
+  graceMs = SEGMENT_GC_GRACE_MS,
+): Promise<IntegrityStatus> {
+  // 1. Semua kunci yang dirujuk manifest versi hidup harus ada.
+  const rows = await prisma.sheetSegment.findMany({
+    where: { sheet: { version: { status: { not: "FAILED" } } } },
+    select: { segmentTyped: { select: { typedKey: true, segment: { select: { rawKey: true } } } } },
+  });
+  const keys = [
+    ...new Set(rows.flatMap((r) => [r.segmentTyped.typedKey, r.segmentTyped.segment.rawKey])),
+  ];
+  const missing = await missingKeys(keys, deps.exists);
+  if (missing.length) {
+    logger.error(
+      { missing: missing.length, keys: missing.slice(0, SAMPLE) },
+      "kunci data terujuk hilang dari storage",
+    );
+  }
+
+  // 2. Objek yatim di seg/: tidak tercatat di Segment/SegmentTyped dan lebih tua dari masa tenggang
+  //    (file unggahan/recast/pemetaan yang sedang berjalan masih muda dan belum tercatat).
+  const old = now.getTime() - graceMs;
+  const datasets = await prisma.dataset.findMany({ select: { id: true } });
+  const orphanKeys: string[] = [];
+  for (const { id } of datasets) {
+    const objects = await deps.listObjects(datasetSegmentsPrefix(id));
+    if (!objects.length) continue;
+    const [segs, typed] = await Promise.all([
+      prisma.segment.findMany({ where: { datasetId: id }, select: { rawKey: true } }),
+      prisma.segmentTyped.findMany({
+        where: { segment: { datasetId: id } },
+        select: { typedKey: true },
+      }),
+    ]);
+    const refs = new Set([...segs.map((s) => s.rawKey), ...typed.map((t) => t.typedKey)]);
+    for (const o of objects) {
+      if (DATA_KEY.test(o.key) && !refs.has(o.key) && o.modified.getTime() <= old) {
+        orphanKeys.push(o.key);
+      }
+    }
+  }
+  // 3. Prefix dataset yang barisnya sudah tidak ada (unggahan yang selesai setelah dataset dihapus).
+  const known = new Set(datasets.map((d) => d.id));
+  const goneDatasets: string[] = [];
+  for (const top of ["parquet/", "raw/"]) {
+    for (const p of await deps.listChildPrefixes(top)) {
+      const id = p.slice(top.length, -1);
+      if (ID.test(id) && !known.has(id)) goneDatasets.push(p);
+    }
+  }
+  const orphans =
+    (await enqueue(orphanKeys, "objek segmen yatim", now)) +
+    (await enqueue(goneDatasets, "prefix dataset yatim", now));
+
+  const status: IntegrityStatus = {
+    checkedAt: now.toISOString(),
+    keys: keys.length,
+    missing: missing.length,
+    sample: missing.slice(0, SAMPLE),
+    orphans,
+  };
+  await deps.saveStatus(status);
+  logger.info({ ...status, sample: undefined }, "pemeriksaan storage malam selesai");
+  return status;
+}

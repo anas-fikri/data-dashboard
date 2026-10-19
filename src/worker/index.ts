@@ -47,7 +47,9 @@ import {
 import { prismaQueryRepo } from "@/features/query/runtime";
 import { announceVersionActivated, watchRedis } from "@/features/query/warm";
 import { expireStaleUploads } from "@/features/uploads/service";
-import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
+import { keyReferenced, runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
+import { runSegmentGc } from "@/features/versions/gc";
+import { runStorageAudit } from "@/features/versions/integrity";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -71,7 +73,15 @@ import { deleteObject } from "@/lib/storage/objects";
 const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
 const RECOVER_INGESTS = "recover-stuck-ingests";
+/**
+ * Hapus satu typed revisi lama (dijadwalkan recast/pemetaan sebelum T-038). Tidak dijadwalkan lagi —
+ * GC segmen yang memutuskan — tetapi job yang masih antre saat deploy tetap diproses dengan penjaga.
+ */
 const DELETE_OBJECT = "delete-object";
+/** GC segmen mark-and-sweep (T-038): tandai/sapu segmen dan revisi typed tak terujuk. */
+const SEGMENT_GC = "segment-gc";
+/** Pemeriksaan malam (T-038): HEAD kunci terujuk (alert) + sapuan objek yatim. */
+const SEGMENT_AUDIT = "segment-audit";
 /** Proses StorageCleanup (T-013): prefix versi yang dibuang retensi/pemilik + hapus yang gagal. */
 const STORAGE_CLEANUP = "storage-cleanup";
 /** Hapus file asli 7 hari setelah ingest selesai (T-013, B1). */
@@ -151,9 +161,15 @@ async function main() {
     [RAW_RETENTION, 60 * 60 * 1000],
     [EXPORT_CLEANUP, 5 * 60 * 1000],
   ];
+  schedules.push([SEGMENT_GC, 60 * 60 * 1000]);
   for (const [name, every] of schedules) {
     await maintenance.upsertJobScheduler(name, { every }, { name, opts: SCHEDULED_OPTS });
   }
+  await maintenance.upsertJobScheduler(
+    SEGMENT_AUDIT,
+    { pattern: "0 3 * * *", tz: "Asia/Jakarta" },
+    { name: SEGMENT_AUDIT, opts: SCHEDULED_OPTS },
+  );
   const exportCleanupDeps = {
     repo: prismaExportCleanupRepo,
     storage: s3ExportStorage,
@@ -172,8 +188,13 @@ async function main() {
         const { exportId, key } = job.data as { exportId: string; key: string };
         return { result: await expireExport(String(exportId), String(key), exportCleanupDeps) };
       }
+      if (job.name === SEGMENT_GC) return await runSegmentGc();
+      if (job.name === SEGMENT_AUDIT) return await runStorageAudit();
       if (job.name === DELETE_OBJECT) {
-        await deleteObject(String((job.data as { key: string }).key));
+        const key = String((job.data as { key: string }).key);
+        // Masih tercatat (revisi typed menunggu GC, atau sudah dipakai lagi) → GC yang menghapusnya.
+        if (await keyReferenced(key)) return { skipped: key };
+        await deleteObject(key);
         return null;
       }
       logger.warn({ jobName: job.name }, "job maintenance tidak dikenal");
@@ -237,19 +258,6 @@ async function main() {
 
   // --- recast (+ pemetaan versi) ---
   const lockRedis = connection();
-  const scheduleDelete = async (key: string, delay: number) => {
-    await maintenance.add(
-      DELETE_OBJECT,
-      { key },
-      {
-        delay,
-        removeOnComplete: 100,
-        removeOnFail: 1000,
-        attempts: 5,
-        backoff: { type: "exponential", delay: 60_000 },
-      },
-    );
-  };
   /** Job lain sedang memegang lock → tunda tanpa memakai jatah percobaan sampai batas tunggu. */
   const delayBusy = async (job: Job, maxMs: number, token?: string): Promise<never> => {
     if (Date.now() - job.timestamp > maxMs) throw new Error("job lain berjalan terlalu lama");
@@ -273,7 +281,6 @@ async function main() {
         repo: prismaMappingRepo,
         storage: s3IngestStorage,
         lock: redisLockStore(lockRedis),
-        scheduleDelete,
         tmpRoot,
       },
     );
@@ -300,7 +307,6 @@ async function main() {
         repo: prismaRecastRepo,
         storage: s3IngestStorage,
         lock: redisLockStore(lockRedis),
-        scheduleDelete,
         tmpRoot,
         watch: async () => {
           if ((await prisma.sheet.count({ where: { id: sheetId } })) === 0) {

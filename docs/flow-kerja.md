@@ -154,8 +154,9 @@ flowchart LR
 - **PostgreSQL** hanya metadata. Tidak pernah menyimpan baris data Excel.
 - **MinIO** (S3 API) di **subdomain sendiri** (`storage.<domain>`), bukan path prefix: SigV4 menandatangani host + path, jadi S3 client app menandatangani dengan `S3_PUBLIC_ENDPOINT` yang persis dilihat browser. Bucket lifecycle: `AbortIncompleteMultipartUpload` 1 hari. CORS: origin app, metode PUT/GET, `ExposeHeaders: ETag`. Tata letak objek:
   - `raw/<datasetId>/<versionId>/source.<xlsx|csv>` — file asli; dihapus 7 hari sejak `ingestFinishedAt` (sukses maupun gagal).
-  - `parquet/<datasetId>/<versionId>/<sheetId>/raw.parquet` — kolom posisional `c1..cN` VARCHAR + `_row`; **semua baris termasuk di atas header**; dipertahankan selama versi ada.
-  - `parquet/<datasetId>/<versionId>/<sheetId>/typed-<schemaRevision>.parquet` — bertipe; dibaca widget. Revisi baru = file baru; file lama dihapus 1 jam setelah pointer berpindah.
+  - `parquet/<datasetId>/seg/<segmentId>/raw.parquet` — kolom posisional `c1..cN` VARCHAR + `_row`; **semua baris termasuk di atas header**; segmen imutabel (ADR-0008, T-038).
+  - `parquet/<datasetId>/seg/<segmentId>/typed-<schemaRevision>[-<token>].parquet` — bertipe; dibaca widget. Revisi baru = file baru; file lama dihapus GC segmen setelah tidak dirujuk versi hidup ≥ 24 jam (T-038).
+  - Data sebelum T-038 (segmen legacy) tetap di `parquet/<datasetId>/<versionId>/<sheetId>/` dan dihapus GC yang sama saat tidak dirujuk lagi.
   - `guides/<articleId>/<videoId>.<mp4|webm>` dan `guides/<articleId>/<videoId>-poster.png`.
   - `exports/<userId>/<jobId>.<csv|xlsx|pdf>` — dihapus job pembersihan setelah 1 jam (lifecycle MinIO hanya granularitas hari); unduh lewat `GET /api/exports/<id>/download` yang mengecek pemilik lalu 302 ke presigned 5 menit `attachment`.
 - **Worker**: proses Node terpisah, **concurrency BullMQ = 1 per proses**, 2 replika @ 3 GB. DuckDB di worker: `memory_limit='1GB'`, `threads=2`, `temp_directory` di disk.
@@ -289,7 +290,7 @@ Refresh       : UPLOADING → UPLOADED → INGESTING → READY (cocok → aktif)
                                            └────→ FAILED (versi aktif lama tidak berubah)
 ```
 - Dashboard dan widget merujuk `datasetId` + `sheetId`; app menerjemahkan ke `activeVersionId` + `schemaRevision` saat query. Query yang sudah berjalan memakai nilai yang dibacanya di awal; file lama masih ada ≥ 1 jam setelah pointer berpindah, jadi tidak ada baca-korup.
-- Rollback: pemilik mengaktifkan kembali salah satu dari 2 versi READY sebelumnya (T-013). Retensi 3 versi READY; sisanya dihapus beserta Parquet oleh job pembersihan.
+- Rollback: pemilik mengaktifkan kembali salah satu dari 2 versi READY sebelumnya (T-013); sebelum aktivasi `verifyVersionIntegrity` memeriksa semua file yang dirujuk masih ada (T-038). Retensi 3 versi READY + aktif; metadata sisanya dihapus, file asli diantrekan pembersihan, objek Parquet-nya dihapus GC segmen mark-and-sweep setelah tidak dirujuk ≥ 24 jam (T-038). Job malam `segment-audit` (03.00 WIB) memeriksa semua kunci terujuk dan memberi alert admin bila ada yang hilang.
 - Hapus profil dataset: batalkan job BullMQ versi non-terminal, hapus semua versi, Parquet, file asli, dashboard, share (konfirmasi dua langkah).
 
 ### B6. Panduan — T-020, T-021, T-022

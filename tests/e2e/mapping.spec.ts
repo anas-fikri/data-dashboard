@@ -340,7 +340,8 @@ test.describe("pemetaan kolom", () => {
     expect(prefixCount(`raw/${datasetId}/${v.v2}/`)).toBe(0);
     expect(versionOf(v.v2)).toMatchObject({ status: "AWAITING_MAPPING", active: false });
     expect(versionOf(v.v2)?.sourceDeletedAt).not.toBeNull();
-    expect(prefixCount(`parquet/${datasetId}/${v.v2}/`)).toBeGreaterThan(0);
+    // Raw/typed yang sudah diproses tetap ada (segmen seg/<id>/ versi ini, T-038).
+    expect(fx<{ objects: string[] }>("ingest", v.v2).objects.length).toBeGreaterThan(0);
 
     await page.goto(`/datasets/${datasetId}/pemetaan`);
     await expect(page.getByTestId("mapping-page")).toBeVisible(SLOW);

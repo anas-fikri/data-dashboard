@@ -31,9 +31,10 @@ import {
   type PairPlan,
   type VersionSheet,
 } from "./mapping-input";
-import { OLD_TYPED_TTL_MS, RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
+import { IntegrityError, missingKeys } from "@/features/versions/integrity-check";
+import { RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
 import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
-import { maxSourceRow, writeTyped } from "./typed";
+import { maxSourceRow, typedFileProblems, writeTyped } from "./typed";
 
 export const MAPPING_DEADLINE_MS = 60 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
@@ -82,6 +83,8 @@ export interface MappingSheetUpdate {
    * segmen sheet ini mendapat awal `_row` baru dari lineage itu (typed ditulis ulang dengannya).
    */
   lineage?: { lineageId: string; segmentId: string; rowBase: bigint; maxSrcRow: number };
+  /** Baris data file typed baru (T-038). */
+  dataRows: number;
 }
 
 export interface MappingCommit {
@@ -102,15 +105,16 @@ export interface MappingRepo {
    * → "gone"; selain itu sheet diganti, READY + aktif (sheetMap), AuditLog.
    */
   commit(versionId: string, d: MappingCommit): Promise<"done" | "stale" | "gone">;
+  /** Gerbang integritas gagal (T-038): AWAITING_MAPPING → FAILED dengan pesan; versi aktif tetap. */
+  fail(versionId: string, message: string): Promise<void>;
   /** Sama dengan IngestRepo.allocateRows: awal `_row` baru dari lineage (naik atomik). */
   allocateRows(lineageId: string, span: number): Promise<bigint>;
 }
 
 export interface MappingDeps {
   repo: MappingRepo;
-  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject">;
+  storage: Pick<TypedStorage, "download" | "upload" | "deleteObject" | "exists">;
   lock: LockStore;
-  scheduleDelete(key: string, delayMs: number): Promise<void>;
   tmpRoot: string;
   duckMemory?: string;
   renewMs?: number;
@@ -205,7 +209,6 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
       memoryLimit: deps.duckMemory,
     });
     const updates: MappingSheetUpdate[] = [];
-    const old: string[] = [];
     const issues: MappingReviewIssue[] = [];
     for (const p of plan.pairs) {
       const s = v.sheets.find((x) => x.id === p.target.id)!;
@@ -236,13 +239,14 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         rowBase,
       });
       issues.push(...reviewIssues(p, typed.schema));
+      const bad = await typedFileProblems(duck, outPath, typed.dataRows, `sheet "${s.name}"`);
+      if (bad.length) throw new IntegrityError(bad);
       const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
       const typedKey = `${dir}typed-${revision}-${token.slice(0, 12)}.parquet`;
       await deps.storage.upload(typedKey, outPath, PARQUET);
       uploaded.push(typedKey);
       rmSync(rawPath, { force: true });
       rmSync(outPath, { force: true });
-      if (s.typedKey) old.push(s.typedKey);
       updates.push({
         id: s.id,
         expectedRevision: s.schemaRevision,
@@ -253,6 +257,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         columns: p.columns,
         ...(p.userPaired ? { aliasName: lineageRoot(p.active) } : {}),
         ...(lineage ? { lineage } : {}),
+        dataRows: typed.dataRows,
       });
       await watch();
     }
@@ -263,6 +268,10 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
       return { outcome: "review", issues: issues.slice(0, REVIEW_MAX) };
     }
 
+    // Gerbang integritas sebelum aktivasi (T-038): raw + typed baru setiap sheet ada di storage.
+    const keys = updates.flatMap((u) => [v.sheets.find((x) => x.id === u.id)!.rawKey, u.typedKey]);
+    const missing = await missingKeys(keys, (k) => deps.storage.exists(k));
+    if (missing.length) throw new IntegrityError(missing.map((k) => `file data tidak ada: ${k}`));
     await watch(); // lock masih milik kita tepat sebelum commit
     let r: "done" | "stale" | "gone";
     try {
@@ -287,7 +296,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
     }
     if (r !== "done") return { outcome: r };
     uploaded = [];
-    for (const key of old) await deps.scheduleDelete(key, OLD_TYPED_TTL_MS);
+    // Typed lama tidak lagi dirujuk manifest → disapu GC segmen setelah masa tenggang (T-038).
     return { outcome: "done" };
   } catch (e) {
     if (e instanceof DatasetGoneError) return { outcome: "gone" };
@@ -297,6 +306,11 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         outcome: "failed",
         message: "Penerapan pemetaan melebihi 60 menit. Coba simpan lagi nanti.",
       };
+    }
+    if (e instanceof IntegrityError) {
+      const message = `${e.message} Pemetaan tidak diterapkan dan data aktif tidak berubah; versi ini ditandai gagal. Unggah ulang file; bila terulang, hubungi admin.`;
+      await deps.repo.fail(job.versionId, message);
+      return { outcome: "failed", message };
     }
     const message = permanentMessage(e);
     if (message !== null) return { outcome: "failed", message };

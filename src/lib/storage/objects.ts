@@ -2,8 +2,10 @@ import "server-only";
 import {
   DeleteObjectCommand,
   DeleteObjectsCommand,
+  HeadObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
+import { DATA_KEY } from "@/features/versions/segment-keys";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { abortMultipartUnder } from "@/lib/storage/multipart";
@@ -44,14 +46,63 @@ export async function deletePrefix(prefix: string): Promise<number> {
   return deleted;
 }
 
-/** typed-<rev>[-<token>].parquet di prefix sheet sebuah versi (raw.parquet tidak pernah cocok). */
-const TYPED_KEY =
-  /^parquet\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\/[a-z0-9]{20,32}\/typed-\d+(-[0-9a-f]{12})?\.parquet$/;
-
-/** Hapus satu typed.parquet revisi lama (T-007). Tidak ada → tetap sukses (S3 idempoten). */
+/**
+ * Hapus satu file data (raw/typed segmen, DATA_KEY — T-038; dulu hanya typed revisi lama T-007).
+ * Pemanggil memastikan kunci tidak dirujuk (GC, StorageCleanup, file percobaan yang belum ditautkan).
+ * Tidak ada → tetap sukses (S3 idempoten).
+ */
 export async function deleteObject(key: string): Promise<void> {
-  if (!TYPED_KEY.test(key)) throw new Error("kunci objek tidak valid");
+  if (!DATA_KEY.test(key)) throw new Error("kunci objek tidak valid");
   await s3Internal().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
+}
+
+/** Objek ada? 404 → false; galat lain (jaringan, izin) dilempar — bukan "hilang". */
+export async function objectExists(key: string): Promise<boolean> {
+  try {
+    await s3Internal().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
+    return true;
+  } catch (e) {
+    const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
+    if (status === 404 || (e as { name?: string }).name === "NotFound") return false;
+    throw e;
+  }
+}
+
+/** Objek di bawah prefix (kunci + waktu ubah), per halaman 1000. */
+export async function listObjects(prefix: string): Promise<{ key: string; modified: Date }[]> {
+  const s3 = s3Internal();
+  const out: { key: string; modified: Date }[] = [];
+  let token: string | undefined;
+  do {
+    const page = await s3.send(
+      new ListObjectsV2Command({ Bucket: bucket(), Prefix: prefix, ContinuationToken: token }),
+    );
+    for (const o of page.Contents ?? []) {
+      if (o.Key) out.push({ key: o.Key, modified: o.LastModified ?? new Date(0) });
+    }
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+}
+
+/** "Folder" langsung di bawah prefix (Delimiter "/"), mis. parquet/<ds>/ untuk prefix "parquet/". */
+export async function listChildPrefixes(prefix: string): Promise<string[]> {
+  const s3 = s3Internal();
+  const out: string[] = [];
+  let token: string | undefined;
+  do {
+    const page = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: bucket(),
+        Prefix: prefix,
+        Delimiter: "/",
+        ContinuationToken: token,
+      }),
+    );
+    for (const p of page.CommonPrefixes ?? []) if (p.Prefix) out.push(p.Prefix);
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return out;
 }
 
 /**

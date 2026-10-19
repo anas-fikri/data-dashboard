@@ -2,12 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { runIngest } from "@/features/ingest/ingest";
-import {
-  OLD_TYPED_TTL_MS,
-  recastSheet,
-  type RecastDeps,
-  type RecastRepo,
-} from "@/features/ingest/recast";
+import { recastSheet, type RecastDeps, type RecastRepo } from "@/features/ingest/recast";
 import {
   fakeLock,
   parquetTypes,
@@ -54,15 +49,11 @@ async function setup(content: string) {
   const s = t.setup(t.file(`r-${Math.random().toString(36).slice(2)}.csv`, content));
   expect(await runIngest(VID, s.repo, s.storage, s.opts)).toEqual({ outcome: "done", sheets: 1 });
   const [sheetId] = [...s.repo.sheets.keys()];
-  const deletes: [string, number][] = [];
   const lock = fakeLock();
   const deps: RecastDeps = {
     repo: recastRepo(s.repo),
     storage: s.storage,
     lock,
-    scheduleDelete: async (key, ms) => {
-      deletes.push([key, ms]);
-    },
     tmpRoot: join(t.root, "tmp"),
     duckMemory: "256MB",
   };
@@ -70,7 +61,6 @@ async function setup(content: string) {
     ...s,
     sheetId: sheetId!,
     deps,
-    deletes,
     lock,
     sheet: () => s.repo.sheets.get(sheetId!)!,
   };
@@ -80,7 +70,7 @@ const has = (storage: FakeStorage, key: string) => existsSync(join(storage.dir, 
 const DATA = `kode;nilai\nA;1\nB;2\nC;x\n`;
 
 describe("recast", () => {
-  it("dua recast bersamaan → hanya satu dieksekusi; typed-2 dibuat, typed-1 masih ada sampai 1 jam", async () => {
+  it("dua recast bersamaan → hanya satu dieksekusi; typed-2 dibuat, typed-1 tetap (disapu GC segmen)", async () => {
     const r = await setup(DATA);
     const typed1 = r.sheet().typedKey!;
     expect(typed1).toMatch(/typed-1\.parquet$/);
@@ -93,8 +83,8 @@ describe("recast", () => {
     expect(r.sheet().typedKey).toMatch(/typed-2-[0-9a-f]{12}\.parquet$/);
     expect(has(r.storage, r.sheet().typedKey!)).toBe(true);
     expect(has(r.storage, typed1)).toBe(true);
-    expect(r.deletes).toEqual([[typed1, OLD_TYPED_TTL_MS]]);
-    expect(OLD_TYPED_TTL_MS).toBe(60 * 60 * 1000);
+    // T-038: revisi lama tidak lagi dijadwalkan hapus; GC menyapunya setelah tidak dirujuk ≥ 24 jam.
+    expect(typed1).toMatch(/^parquet\/[a-z0-9]+\/seg\/[a-z0-9]+\/typed-1\.parquet$/);
     expect(r.lock.held.size).toBe(0);
   });
 

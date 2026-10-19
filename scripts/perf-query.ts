@@ -63,7 +63,9 @@ async function main() {
     begin: async () => true,
     exists: async () => true,
     progress: async () => {},
-    deleteSheets: async () => {},
+    deleteSheets: async () => [],
+    // Gerbang integritas T-038: tanpa manifest (sheet palsu) → tidak ada yang diperiksa.
+    manifest: async () => [],
     createLineage: async () => "lineage",
     allocateRows: async () => 0n,
     createSegment: async () => "segment",
@@ -80,6 +82,7 @@ async function main() {
     },
   };
   const storage: IngestStorage = {
+    exists: async () => true,
     // Hard link dan rename: tanpa salinan (disk mesin uji terbatas).
     download: async (_k, dest) => {
       linkSync(file!, dest);

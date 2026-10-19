@@ -13,10 +13,15 @@
 //   backdate <versionId> <days>         → ingestFinishedAt = sekarang − <days> hari
 //   cleanup-rows <datasetId>            → baris StorageCleanup yang prefix-nya memuat id itu
 //   cleanup-due <datasetId>             → baris di atas jatuh tempo sekarang (notBefore = now)
-//   run-job <storage-cleanup|raw-retention|export-cleanup> → jalankan job maintenance di worker,
-//                                         tunggu ≤ 60 s
+//   run-job <storage-cleanup|raw-retention|export-cleanup|segment-gc|segment-audit> → jalankan job
+//                                         maintenance di worker, tunggu ≤ 60 s
 //   prefix-count <prefix>               → jumlah objek di bawah prefix (raw|parquet)/<cuid>/[<cuid>/],
-//                                         exports/, exports/<userId>/, atau exports/<userId>/<exportId>.
+//                                         parquet/<cuid>/seg/<cuid>/, exports/, exports/<userId>/, atau
+//                                         exports/<userId>/<exportId>.
+// GC segmen (T-038):
+//   segments <datasetId>                → [{id,prefix,createdByVersionId,unreferencedAt,versions}]
+//                                         (versions = versi yang manifest-nya merujuk segmen itu)
+//   gc-due <datasetId>                  → tanda GC segmen/revisi dataset dimundurkan 25 jam (lewat tenggang)
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import {
@@ -54,10 +59,31 @@ const s3 = new S3Client({
   },
 });
 const Bucket = process.env.S3_BUCKET;
-const CLEANUP_PREFIX = /^(raw|parquet)\/[a-z0-9]{20,32}\/([a-z0-9]{20,32}\/)?$/;
+const CLEANUP_PREFIX =
+  /^(raw|parquet)\/[a-z0-9]{20,32}\/(([a-z0-9]{20,32}|seg\/[a-z0-9]{20,32})\/)?$/;
 /** Ekspor (T-017): seluruh exports/, per user, atau satu objek ekspor (prefix "<exportId>."). */
 const EXPORT_PREFIX = /^exports\/([a-z0-9]{20,32}\/([a-z0-9]{20,32}\.)?)?$/;
-const MAINTENANCE_JOBS = ["storage-cleanup", "raw-retention", "export-cleanup"];
+const MAINTENANCE_JOBS = [
+  "storage-cleanup",
+  "raw-retention",
+  "export-cleanup",
+  "segment-gc",
+  "segment-audit",
+];
+
+/** Kunci di bawah prefix (semua halaman). */
+async function listKeys(Prefix) {
+  const out = [];
+  let token;
+  do {
+    const page = await s3.send(
+      new ListObjectsV2Command({ Bucket, Prefix, ContinuationToken: token }),
+    );
+    for (const o of page.Contents ?? []) if (o.Key) out.push(o.Key);
+    token = page.IsTruncated ? page.NextContinuationToken : undefined;
+  } while (token);
+  return out;
+}
 
 async function describe(v) {
   if (!v) return { exists: false };
@@ -149,9 +175,17 @@ try {
     if (!v) {
       console.log(JSON.stringify({ exists: false }));
     } else {
-      const listed = await s3.send(
-        new ListObjectsV2Command({ Bucket, Prefix: `parquet/${v.datasetId}/${v.id}/` }),
-      );
+      // Objek versi: prefix versi (legacy) + prefix seg/ segmen yang ditulis versi ini (T-038).
+      const segments = await prisma.segment.findMany({
+        where: { createdByVersionId: v.id },
+        select: { id: true },
+      });
+      const objects = [
+        ...(await listKeys(`parquet/${v.datasetId}/${v.id}/`)),
+        ...(
+          await Promise.all(segments.map((g) => listKeys(`parquet/${v.datasetId}/seg/${g.id}/`)))
+        ).flat(),
+      ];
       console.log(
         JSON.stringify({
           exists: true,
@@ -172,7 +206,7 @@ try {
             schemaRevision: s.schemaRevision,
             types: Array.isArray(s.schema) ? s.schema.map((c) => `${c.name}:${c.type}`) : [],
           })),
-          objects: (listed.Contents ?? []).map((o) => o.Key),
+          objects,
         }),
       );
     }
@@ -220,6 +254,42 @@ try {
       const rows = await prisma.storageCleanup.findMany({ where, orderBy: { createdAt: "asc" } });
       console.log(JSON.stringify(rows));
     }
+  } else if (cmd === "segments") {
+    if (!/^[a-z0-9]{20,32}$/.test(a ?? "")) throw new Error("datasetId tidak valid");
+    const segs = await prisma.segment.findMany({
+      where: { datasetId: a },
+      orderBy: { createdAt: "asc" },
+      select: {
+        id: true,
+        createdByVersionId: true,
+        unreferencedAt: true,
+        typed: { select: { sheets: { select: { sheet: { select: { versionId: true } } } } } },
+      },
+    });
+    console.log(
+      JSON.stringify(
+        segs.map((g) => ({
+          id: g.id,
+          prefix: `parquet/${a}/seg/${g.id}/`,
+          createdByVersionId: g.createdByVersionId,
+          unreferencedAt: g.unreferencedAt,
+          versions: [...new Set(g.typed.flatMap((t) => t.sheets.map((m) => m.sheet.versionId)))],
+        })),
+      ),
+    );
+  } else if (cmd === "gc-due") {
+    if (!/^[a-z0-9]{20,32}$/.test(a ?? "")) throw new Error("datasetId tidak valid");
+    const past = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    const marked = { unreferencedAt: { not: null } };
+    const g = await prisma.segment.updateMany({
+      where: { datasetId: a, ...marked },
+      data: { unreferencedAt: past },
+    });
+    const t = await prisma.segmentTyped.updateMany({
+      where: { segment: { datasetId: a }, ...marked },
+      data: { unreferencedAt: past },
+    });
+    console.log(JSON.stringify({ segments: g.count, typed: t.count }));
   } else if (cmd === "run-job") {
     if (!MAINTENANCE_JOBS.includes(a)) throw new Error(`job tidak dikenal: ${a}`);
     const connection = new Redis(process.env.REDIS_URL, { maxRetriesPerRequest: null });

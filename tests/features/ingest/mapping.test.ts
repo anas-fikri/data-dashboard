@@ -15,7 +15,6 @@ import {
   type MappingContext,
   type MappingInput,
 } from "@/features/ingest/mapping-input";
-import { OLD_TYPED_TTL_MS } from "@/features/ingest/recast";
 import {
   sameSnapshot,
   snapshotRef,
@@ -393,15 +392,11 @@ describe("applyMapping (job map-version)", () => {
       return download(key, dest);
     };
     const commits: MappingCommit[] = [];
-    const deletes: [string, number][] = [];
     const lock = fakeLock();
     const deps: MappingDeps = {
       repo: mappingRepo(s.repo, commits),
       storage: s.storage,
       lock,
-      scheduleDelete: async (key, ms) => {
-        deletes.push([key, ms]);
-      },
       tmpRoot: join(t.root, "tmp"),
       duckMemory: "256MB",
     };
@@ -426,7 +421,6 @@ describe("applyMapping (job map-version)", () => {
       deps,
       job,
       commits,
-      deletes,
       downloads,
       lock,
       typedKeys: () => s.storage.parquetKeys().filter((k) => k.includes("typed-")),
@@ -464,6 +458,9 @@ describe("applyMapping (job map-version)", () => {
             }
           : null,
       alive: async () => r.alive() && r.status === "AWAITING_MAPPING",
+      fail: async (_v, message) => {
+        if (r.status === "AWAITING_MAPPING") await r.fail(_v, message);
+      },
       commit: async (_v, d) => {
         if (!r.alive()) return "gone";
         if (!sameSnapshot(d.base, snapshotRef(r.active))) return "stale";
@@ -496,7 +493,7 @@ describe("applyMapping (job map-version)", () => {
     };
   }
 
-  it("petakan + kosongkan → typed-2 dari raw.parquet saja, READY + aktif, typed-1 dihapus 1 jam kemudian", async () => {
+  it("petakan + kosongkan → typed-2 dari raw.parquet saja, READY + aktif, typed-1 tetap (GC segmen)", async () => {
     const m = await awaiting();
     const typed1 = m.sheet().typedKey!;
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "done" });
@@ -530,8 +527,28 @@ describe("applyMapping (job map-version)", () => {
       ["Kt0", 0n, null],
       ["Kt1", 10n, null],
     ]);
-    expect(m.deletes).toEqual([[typed1, OLD_TYPED_TTL_MS]]);
+    // T-038: typed-1 tidak dijadwalkan hapus; disapu GC setelah tidak dirujuk ≥ 24 jam.
     expect(existsSync(join(m.storage.dir, typed1))).toBe(true); // query lama tetap selesai
+    expect(m.lock.held.size).toBe(0);
+  });
+
+  it("T-038: file typed baru tidak ada di storage sebelum commit → FAILED, tidak di-commit, file dibuang", async () => {
+    const m = await awaiting();
+    const real = m.storage;
+    m.deps.storage = {
+      download: real.download.bind(real),
+      upload: real.upload.bind(real),
+      deleteObject: real.deleteObject.bind(real),
+      exists: async (k) => !/typed-2-/.test(k) && real.exists(k),
+    };
+    const r = await applyMapping(m.job, m.deps);
+    expect(r.outcome).toBe("failed");
+    expect(r.outcome === "failed" && r.message).toMatch(
+      /^Pemeriksaan integritas data gagal \(file data tidak ada: .*typed-2-[0-9a-f]{12}\.parquet\)\. Pemetaan tidak diterapkan.*ditandai gagal/,
+    );
+    expect(m.repo.status).toBe("FAILED");
+    expect(m.commits).toEqual([]);
+    expect(m.typedKeys().some((k) => /typed-2-/.test(k))).toBe(false);
     expect(m.lock.held.size).toBe(0);
   });
 
@@ -546,7 +563,6 @@ describe("applyMapping (job map-version)", () => {
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "stale" });
     expect(m.repo.status).toBe("AWAITING_MAPPING");
     expect(m.typedKeys()).toEqual(before);
-    expect(m.deletes).toEqual([]);
     // Acuan basi sejak awal → stale tanpa kerja.
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "stale" });
   });
@@ -646,7 +662,6 @@ describe("applyMapping (job map-version)", () => {
       repo: mappingRepo(s.repo, commits),
       storage: s.storage,
       lock: fakeLock(),
-      scheduleDelete: async () => {},
       tmpRoot: join(t.root, "tmp"),
       duckMemory: "256MB",
     };

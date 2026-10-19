@@ -187,7 +187,12 @@ export function startFakeSftp(opts: {
   /** Batas ukuran file yang bisa ditulis (meniru ruang/kuota NAS habis). */
   maxBytes?: number;
 }): Promise<FakeSftp> {
-  const keys = utils.generateKeyPairSync("ed25519");
+  // ssh2 sesekali membuat kunci ed25519 yang ditolak parser-nya sendiri ("Malformed OpenSSH private
+  // key") — uji jadi gagal acak; buat ulang sampai kuncinya bisa dibaca.
+  let keys = utils.generateKeyPairSync("ed25519");
+  for (let i = 0; i < 5 && utils.parseKey(keys.private) instanceof Error; i++) {
+    keys = utils.generateKeyPairSync("ed25519");
+  }
   const clients = new Set<Connection>();
   const stats = { passwordAttempts: 0 };
   const server = new Server({ hostKeys: [keys.private] }, (client) => {

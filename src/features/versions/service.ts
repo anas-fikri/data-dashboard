@@ -7,6 +7,8 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import { activateVersionInTx } from "./activation";
+import { prismaIntegrityDeps } from "./integrity";
+import { integrityMessage, verifyVersionIntegrity } from "./integrity-check";
 import { versionPrefixes } from "./retention";
 import type { VersionCode, VersionResult, VersionRow, VersionStatus } from "./types";
 
@@ -118,6 +120,40 @@ export async function activateVersion(
   ip = "unknown",
 ): Promise<VersionResult<{ fileName: string }>> {
   if (!isIdShape(datasetId) || !isIdShape(versionId)) return notFound();
+  // Gerbang integritas (T-038, fail-closed) sebelum transaksi: HEAD storage tidak menahan lock. Versi
+  // READY tidak pernah disapu GC (versi hidup), jadi hasilnya tetap berlaku saat aktivasi di bawah.
+  const target = await prisma.datasetVersion.findFirst({
+    where: { id: versionId, datasetId, status: "READY", dataset: { ownerId: userId } },
+    select: { id: true },
+  });
+  if (target) {
+    let problems: string[];
+    try {
+      problems = await verifyVersionIntegrity(versionId, prismaIntegrityDeps);
+    } catch (e) {
+      // Storage tidak menjawab: belum terbukti rusak — jangan tandai gagal, minta coba lagi.
+      logger.warn(
+        { datasetId, versionId, err: e instanceof Error ? e.message : String(e) },
+        "pemeriksaan integritas versi gagal dijalankan",
+      );
+      return fail(
+        "DATASET_BUSY",
+        "Penyimpanan data belum bisa diperiksa. Coba aktifkan lagi beberapa saat lagi.",
+      );
+    }
+    if (problems.length) {
+      const message = `${integrityMessage(problems)} Versi ini tidak bisa diaktifkan dan ditandai gagal; data aktif tidak berubah.`;
+      await prisma.datasetVersion.updateMany({
+        where: { id: versionId, status: "READY", activeFor: { is: null } },
+        data: { status: "FAILED", errorMessage: message },
+      });
+      logger.error(
+        { datasetId, versionId, problems },
+        "versi gagal pemeriksaan integritas saat diaktifkan",
+      );
+      return fail("INVALID", message);
+    }
+  }
   let typedKeys: string[] = [];
   const r = await inTx<{ fileName: string }>(async (tx) => {
     const ds = await lockOwned(tx, userId, datasetId);

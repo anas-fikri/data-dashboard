@@ -64,7 +64,8 @@ async function ingest(fx: string, extra: Partial<IngestOptions> = {}) {
     r,
     repo: s.repo,
     storage: s.storage,
-    meta: sheets.map(({ rawKey: _r, typedKey: _t, ...rest }) => rest),
+    // Id segmen acak per ingest (kunci seg/<id>/, T-038): bukan bagian hasil yang dibandingkan.
+    meta: sheets.map(({ rawKey: _r, typedKey: _t, segmentId: _g, ...rest }) => rest),
     raw: sheets.map((x) => readFileSync(join(s.storage.dir, x.rawKey!))),
     typed: sheets.map((x) => readFileSync(join(s.storage.dir, x.typedKey!))),
   };
