@@ -142,8 +142,11 @@ LAN Caddy tidak perlu diverifikasi proxy). Di `.env.prod`:
 
 Setelah mengubahnya: `$C run --rm --no-deps storage-init` (CORS mengizinkan domain + IP) lalu
 `$C up -d --no-deps --force-recreate proxy app worker`. Pengguna di kantor yang membuka domain lewat IP
-publik kantor (hairpin NAT) terlihat sebagai satu IP publik — sebaiknya DNS internal mengarahkan domain ke
-proxy di LAN agar IP pengguna asli terbaca.
+publik kantor (hairpin NAT) terlihat sebagai satu IP publik — batas per IP (login gagal 10 per 10 menit,
+daftar 20 per jam) jadi dibagi seluruh kantor. Sebaiknya DNS internal mengarahkan domain ke proxy di LAN
+(olympus: `data-slicer.pcpexpress.com → 10.3.3.56`) agar IP pengguna asli terbaca. Dicek 2026-10-19: NPM
+menimpa `X-Real-IP` dan menambah `X-Forwarded-For`; header palsu dari klien diabaikan (`client_ip` di log
+Caddy = IP asli), jadi IP untuk rate limit/AuditLog tidak bisa dipalsukan.
 
 ### Contoh: server olympus (LAN 10.3.3.221)
 

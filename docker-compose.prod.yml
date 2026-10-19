@@ -63,7 +63,8 @@ services:
       # Alamat situs Caddy: host LAN/IP + domain publik (port = port yang dituju reverse proxy di depan).
       APP_SITES: ${APP_HOST}${APP_PUBLIC_HOST:+, ${APP_PUBLIC_HOST}:${APP_PORT:-443}}
       STORAGE_SITES: ${STORAGE_HOST}${STORAGE_PUBLIC_HOST:+, ${STORAGE_PUBLIC_HOST}:${STORAGE_PORT:-8444}}
-      # IP reverse proxy di depan Caddy (X-Forwarded-For darinya dipercaya); bawaan: tidak ada.
+      # IP reverse proxy di depan Caddy (X-Forwarded-For darinya dipercaya), WAJIB /32 persis — rentang
+      # lebar membuat klien LAN bisa memalsukan IP; bawaan 127.0.0.1/32 = tidak ada proxy luar.
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1/32}
       # Nama host tanpa port untuk klien tanpa SNI (akses lewat IP).
       TLS_DEFAULT_SNI: ${TLS_DEFAULT_SNI:-${APP_HOST}}
