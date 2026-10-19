@@ -34,8 +34,8 @@ Lalu di aplikasi:
 2. Tekan **Tes koneksi**. Aplikasi menulis, membaca, lalu menghapus file uji di folder itu, dan mencatat **Kunci host NAS** (sidik jari _SHA256:…_).
 3. Tekan **Simpan**. Pengaturan langsung dipakai tanpa restart.
 
-Kunci host mencegah server lain menyamar sebagai NAS: setelah disimpan, koneksi ke server dengan kunci berbeda ditolak. Bila NAS memang diinstal ulang atau diganti, tekan **Lupakan kunci host**, lalu **Tes koneksi** dan **Simpan** lagi.
+Kunci host mencegah server lain menyamar sebagai NAS: setelah disimpan, koneksi ke server dengan kunci berbeda ditolak. Bila NAS memang diinstal ulang atau diganti, tekan **Lupakan kunci host**, isi **Password** lagi, lalu **Tes koneksi** dan **Simpan**.
 
-Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap memakai password yang tersimpan — hanya berlaku bila alamat NAS, port, dan username tidak diubah.
+Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap memakai password yang tersimpan — hanya berlaku bila alamat NAS, port, username, dan kunci host tidak berubah.
 
 Bila NAS tidak terjangkau, backup tetap dibuat dan disimpan sementara di server, dikirim ulang otomatis tiap 30 menit, dan admin menerima email serta pemberitahuan di aplikasi. Pemberitahuan juga muncul bila tidak ada backup baru lebih dari 26 jam.

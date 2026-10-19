@@ -220,13 +220,27 @@ describe("saveOffsite / testOffsite", () => {
       meta: { passwordChanged: false },
     });
 
-    for (const over of [{ host: "nas-lain.lan" }, { port: "2222" }, { username: "akun-lain" }]) {
+    // Kunci host dilupakan (TOFU) atau diganti klien → password tersimpan tidak ikut (review T-y8qq #1).
+    const other = HOST_KEY.replace("GR1bW15", "GxhaW5u");
+    for (const over of [
+      { host: "nas-lain.lan" },
+      { port: "2222" },
+      { username: "akun-lain" },
+      { hostKey: "" },
+      { hostKey: other },
+    ]) {
       expect(await service.testOffsite(input({ ...over, password: "" }))).toMatchObject({
         ok: false,
         field: "password",
         message: expect.stringContaining("isi password lagi"),
       });
     }
+    expect(
+      await service.saveOffsite(ACTOR, input({ password: "", hostKey: other }), "ip"),
+    ).toMatchObject({
+      ok: false,
+      field: "password",
+    });
     expect(probe.probeOffsite).not.toHaveBeenCalled();
 
     probe.probeOffsite.mockResolvedValueOnce({

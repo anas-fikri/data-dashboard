@@ -48,7 +48,7 @@ export function probeMessage(
   if (e instanceof ProbeError) return e.message;
   const err = e as { code?: string | number; level?: string; message?: string };
   if (c.hostKey && seen && seen !== c.hostKey) {
-    return `Kunci host NAS berbeda dari yang tersimpan (sekarang ${fingerprint(seen)}). Bila NAS memang diinstal ulang atau diganti, tekan "Lupakan kunci host" lalu tes lagi; bila tidak, jangan lanjutkan — koneksi bisa disadap.`;
+    return `Kunci host NAS berbeda dari yang tersimpan (sekarang ${fingerprint(seen)}). Bila NAS memang diinstal ulang atau diganti, tekan "Lupakan kunci host", isi password, lalu tes lagi; bila tidak, jangan lanjutkan — koneksi bisa disadap.`;
   }
   if (err.level === "client-authentication") return "Username atau password ditolak NAS.";
   if (
@@ -59,7 +59,7 @@ export function probeMessage(
     return "Tidak bisa terhubung ke NAS dari server aplikasi. Pastikan alamat dan port benar, SFTP aktif di DSM (Panel Kontrol › Layanan File › FTP › SFTP), dan firewall mengizinkan server ini.";
   }
   if (err.level === "handshake" && c.hostKey) {
-    return 'Jabat tangan SSH gagal: kunci host NAS tidak cocok dengan yang tersimpan. Bila NAS diinstal ulang, tekan "Lupakan kunci host" lalu tes lagi.';
+    return 'Jabat tangan SSH gagal: kunci host NAS tidak cocok dengan yang tersimpan. Bila NAS diinstal ulang, tekan "Lupakan kunci host", isi password, lalu tes lagi.';
   }
   if (err.code === NO_SUCH_FILE) {
     return `Folder ${c.folder} tidak ditemukan di NAS. Buat dulu lewat File Station; folder diawali nama shared folder, mis. /backup-data-dashboard.`;
@@ -87,7 +87,8 @@ function connect(
           : resolve(sftp),
       ),
     );
-    conn.once("error", reject);
+    // ssh2 bisa memancarkan "error" dua kali (reset sebelum banner lalu koneksi hilang): selalu didengar.
+    conn.on("error", reject);
     conn.once("close", () => reject(new Error("closed")));
     // DSM bisa meminta password lewat keyboard-interactive, bukan metode password.
     conn.on("keyboard-interactive", (_n, _i, _l, prompts, finish) =>

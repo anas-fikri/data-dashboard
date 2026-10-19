@@ -61,19 +61,23 @@ async function withPassword(
   if (!p.ok) return { ok: false, code: "INVALID", message: p.message, field: p.field };
   const typed = p.data.password;
   const stored = typed ? null : await readOffsite();
-  // Password tersimpan hanya dipakai ulang untuk NAS + akun yang sama: admin (atau sesi yang dibajak) tidak
-  // bisa mengarahkannya ke server lain lewat "Tes koneksi".
+  // Password tersimpan hanya dipakai ulang untuk NAS + akun + kunci host yang dipin: admin (atau sesi yang
+  // dibajak) tidak bisa mengarahkannya ke server lain lewat "Tes koneksi", termasuk dengan melupakan kunci
+  // host (kunci baru diterima apa adanya) atau menyimpan kunci pilihannya sendiri.
   const same =
     stored !== null &&
     stored.host === p.data.host &&
     stored.port === p.data.port &&
-    stored.username === p.data.username;
+    stored.username === p.data.username &&
+    p.data.hostKey === stored.hostKey;
   const password = typed || (same ? stored.password : "");
   if (!password) {
     return {
       ok: false,
       code: "INVALID",
-      message: stored ? "NAS, port, atau username berubah — isi password lagi." : "Isi password.",
+      message: stored
+        ? "NAS, port, username, atau kunci host berubah — isi password lagi."
+        : "Isi password.",
       field: "password",
     };
   }

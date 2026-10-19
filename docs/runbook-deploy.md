@@ -174,7 +174,7 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    `backup-config` (`app/offsite.json`, 600; password tidak di DB/log) dan dipakai backup berikutnya tanpa
    restart/SSH. `backup.sh` memvalidasi ulang isinya, menyalin lewat rclone sftp dengan password di-obscure
    lewat stdin dan known_hosts berisi **hanya kunci host yang dipin** (NAS lain/diinstal ulang → ditolak
-   sampai admin menekan **Lupakan kunci host** lalu tes ulang). Bila NAS tidak terjangkau (down, jaringan,
+   sampai admin menekan **Lupakan kunci host**, mengisi password lagi (password tersimpan hanya dipakai ulang untuk kunci host yang sama), lalu tes ulang). Bila NAS tidak terjangkau (down, jaringan,
    password salah): arsip **ditahan di VM** (retensi lokal tidak membuangnya sebelum tersalin; dibuang
    setelah `BACKUP_RETENTION_DAYS`), dikirim ulang `backup.sh --sync` tiap 30 menit, dan admin aktif diberi
    email sekali per perubahan status (tertunda, gagal, pulih) + banner di aplikasi. Status: `status.json` di

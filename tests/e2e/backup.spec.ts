@@ -151,8 +151,14 @@ test("NAS diinstal ulang (kunci host berubah) → tes ditolak sampai kunci host 
   await expect(error).toContainText(fingerprint(nas.hostKey));
   expect(nas.stats.passwordAttempts).toBe(0);
 
+  // Kunci dilupakan: password tersimpan tidak dipakai ulang untuk kunci host baru (review T-y8qq #1).
   await form.getByRole("button", { name: "Lupakan kunci host" }).click();
   await expect(form.getByTestId("offsite-fingerprint")).toHaveCount(0);
+  await form.getByRole("button", { name: "Tes koneksi" }).click();
+  await expect(form.getByText("kunci host berubah — isi password lagi")).toBeVisible();
+  await expect(form.locator("#offsite-password")).toBeFocused();
+  expect(nas.stats.passwordAttempts).toBe(0);
+  await form.locator("#offsite-password").fill(NAS_PASSWORD);
   await form.getByRole("button", { name: "Tes koneksi" }).click();
   await expect(form.getByTestId("offsite-fingerprint")).toHaveText(fingerprint(nas.hostKey));
   await form.getByRole("button", { name: "Simpan" }).click();

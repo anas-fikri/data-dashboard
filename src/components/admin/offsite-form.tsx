@@ -34,6 +34,8 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
   });
   const [fingerprint, setFingerprint] = useState(initial?.fingerprint ?? "");
   const [hasPassword, setHasPassword] = useState(initial?.hasPassword ?? false);
+  // Kunci host yang tersimpan: password tersimpan hanya dipakai ulang selama kunci di form masih ini.
+  const [savedKey, setSavedKey] = useState(initial?.hostKey ?? "");
   const [fieldError, setFieldError] = useState<{ field: OffsiteField; message: string } | null>(
     null,
   );
@@ -86,6 +88,7 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
       const res = await saveOffsiteAction(input).catch(() => null);
       finish(res, (data) => {
         setHasPassword(data.hasPassword);
+        setSavedKey(data.hostKey);
         set("password", "");
         return data.enabled
           ? "Tersimpan. Backup berikutnya dan kirim ulang tiap 30 menit memakai NAS ini."
@@ -106,14 +109,22 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
           {notice.text}
         </FocusNotice>
       ) : null}
-      <OffsiteFields values={values} onChange={set} errorFor={errorFor} hasPassword={hasPassword} />
+      <OffsiteFields
+        values={values}
+        onChange={set}
+        errorFor={errorFor}
+        hasPassword={hasPassword && values.hostKey !== "" && values.hostKey === savedKey}
+      />
       <OffsiteHostKey
         fingerprint={fingerprint}
         disabled={busy !== null}
         onForget={() => {
           setValues((s) => ({ ...s, hostKey: "" }));
           setFingerprint("");
-          say("success", "Kunci host dilupakan. Tekan Tes koneksi untuk mengambil kunci baru.");
+          say(
+            "success",
+            "Kunci host dilupakan. Isi password, lalu tekan Tes koneksi untuk mengambil kunci baru.",
+          );
         }}
       />
       <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
