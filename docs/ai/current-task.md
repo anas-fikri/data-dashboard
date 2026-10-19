@@ -4,7 +4,6 @@
 
 - T-023 [blocked] Paket deploy on-prem Docker Compose produksi — docs/ai/tasks/T-023-paket-deploy-on-prem-docker-compose-produksi.md
 - T-043 [todo] Bangun halaman 'Lihat data' bergaya lembar kerja (baca-saja) — docs/ai/tasks/T-043-bangun-halaman-lihat-data-bergaya-lembar-kerja-b.md
-- T-y3y1 [todo] Konversi database produksi olympus dari SQL_ASCII ke UTF8 — docs/ai/tasks/T-y3y1-konversi-database-produksi-olympus-dari-sql-asci.md
 - T-h77x [todo] Salin backup harian ke target off-VM — docs/ai/tasks/T-h77x-salin-backup-harian-ke-target-off-vm.md
 - T-059 [todo] Unggah banyak file periode sekaligus lewat antrean — docs/ai/tasks/T-059-unggah-banyak-file-periode-sekaligus-lewat-antre.md
 - T-060 [todo] (Opsional) Satu periode dari beberapa file sebagai satu kelompok — docs/ai/tasks/T-060-opsional-satu-periode-dari-beberapa-file-sebagai.md

@@ -249,10 +249,12 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 - **Sinkron kode tanpa deploy penuh**: Caddyfile dan skrip backup di-mount per file; container lama tetap
   melihat isi lama setelah file diganti. `deploy.sh` selalu membuat ulang `proxy` + `backup`; bila hanya
   menyalin file, jalankan `$C up -d --no-deps --force-recreate proxy backup`.
-- **Encoding database**: `host-db.sh` membuat database UTF8 (C.UTF-8). Database olympus yang dibuat
-  sebelumnya ber-encoding SQL_ASCII (warisan cluster locale C): data aman dan restore setia, tetapi
-  pencarian tanpa beda huruf besar/kecil hanya untuk huruf ASCII. Konversi = task lanjutan (butuh sudo +
-  jeda singkat).
+- **Encoding database**: `host-db.sh` membuat database UTF8 (C.UTF-8). Database olympus (dulu SQL_ASCII,
+  warisan cluster locale C) sudah dikonversi 2026-10-19 dengan `deploy/convert-db-utf8.sh` (T-y3y1; sudo,
+  downtime ±20 dtk, sidik isi identik). Cadangan konversi: database `data_dashboard_sqlascii_20261019045827`
+  + dump `/var/tmp/data_dashboard-20261019T045827Z.dump` — hapus setelah backup harian berikutnya
+  terverifikasi (`sudo -u postgres dropdb data_dashboard_sqlascii_20261019045827`). Skrip aman dijalankan
+  ulang: database yang sudah UTF8 dilewati.
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
 - **Update**: `git pull && deploy/deploy.sh` (migrasi maju otomatis). **Rollback**: `git checkout <tag
   sebelumnya> && deploy/deploy.sh` — migrasi tidak dibalik otomatis; pulihkan dari backup bila skema
