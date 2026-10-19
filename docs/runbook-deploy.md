@@ -70,7 +70,10 @@ Disk mesin build sempit: alirkan langsung ke server tanpa berkas lokal —
 **Latihan VM kosong** (tanpa menyentuh produksi): `bash deploy/empty-vm-drill.sh /tmp/dashboard-images.tar.gz`
 di folder aplikasi — memuat image, membuat salinan terpisah (project `dashboard-vmkosong`, port 9543/9544,
 volume dan secret baru, PostgreSQL container), menjalankan `deploy.sh --no-build` sampai `/api/health` hijau,
-mencetak total waktu, lalu membongkar salinan itu. `deploy.sh` menolak `DEPLOY_ENV_FILE` tanpa
+mencetak total waktu, lalu membongkar salinan itu. Hasil di olympus 2026-10-19: muat arsip 1,5 GB (4,0 GB tar) 61 dtk + deploy
+sampai `/api/health` hijau 58 dtk = **120 dtk** (lapisan image sudah ada di VM itu; di VM kosong tambahkan
+waktu tulis ± 4 GB lapisan, dekompresinya sendiri 36 dtk). Build 4 image linux/amd64 di Mac (buildx, emulasi)
+± 23 menit dan butuh ruang disk lega (± 10 GB sementara). `deploy.sh` menolak `DEPLOY_ENV_FILE` tanpa
 `DEPLOY_PROJECT` selain `dashboard` (file compose bernama `dashboard`: tanpa project lain, produksi tertimpa).
 
 ### Admin pertama
