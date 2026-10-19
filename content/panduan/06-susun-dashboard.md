@@ -16,7 +16,7 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 ## Menambah widget
 
 1. Tekan **Tambah widget**, lalu buka pengaturannya (ikon pengaturan di kepala kartu).
-2. Isi **Judul**, lalu pilih **Jenis tampilan**: **Angka** (KPI), **Batang**, **Garis**, **Pai**, atau **Tabel**.
+2. Isi **Judul**, lalu pilih **Jenis tampilan**: **Angka** (KPI), **Batang**, **Garis**, **Pai**, **Tabel**, atau **Pivot** (ringkasan seperti _PivotTable_ Excel — lihat panduan _Tabel pivot seperti di Excel_).
 3. Untuk grafik, pilih **Kelompokkan menurut** (mis. _Cabang_) dan, untuk kolom tanggal, **Rentang waktu** (per hari, minggu, bulan, kuartal, tahun).
 4. Pilih **Nilai** (_Total_, _Rata-rata_, _Jumlah baris_, _Jumlah terisi_, _Jumlah nilai unik_, _Terkecil_, _Terbesar_) **dari kolom** yang dihitung. _Jumlah baris_ menghitung semua baris; _Jumlah terisi_ hanya baris yang kolomnya berisi (sel kosong tidak dihitung, seperti COUNTA di Excel) — cocok untuk kolom teks.
 5. Atur **Format angka** (_Rupiah_, _Persen_, …) dan **Desimal** bila perlu.

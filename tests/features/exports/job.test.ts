@@ -204,6 +204,62 @@ describe("runExportJob", () => {
     expect(rows[1]![6]).toBe("=1+1");
   });
 
+  describe("pivot (T-9bc2)", () => {
+    // Fixture: Cabang (baris) × bulan Tanggal (pemisah), nilai = Total Omzet.
+    const months = ["Jan 2026", "Feb 2026", "Mar 2026"];
+    const sums = new Map<string, number[]>();
+    for (let i = 0; i < ROWS; i++) {
+      const cells = sums.get(cabangOf(i)) ?? [0, 0, 0];
+      cells[tanggalOf(i).getUTCMonth()]! += omzetOf(i);
+      sums.set(cabangOf(i), cells);
+    }
+    const total = (c: number[]) => c.reduce((a, b) => a + b, 0);
+    const expected = [...sums].sort((a, b) => total(b[1]) - total(a[1]));
+
+    it("CSV: header Cabang + bulan + Total, baris urut nilai terbesar, baris Total = jumlah semua", async () => {
+      const t = setup({ widget: "pivot" });
+      const r = await runExportJob(EXPORT_ID, t.deps);
+      expect(r).toMatchObject({ outcome: "done", rows: expected.length + 1 });
+      const lines = parseCsv(
+        readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
+      );
+      expect(lines[0]!.slice(0, 4)).toEqual(["Cabang", ...months]);
+      expect(lines[0]![4]).toMatch(/Omzet/);
+      expected.forEach(([cabang, cells], i) => {
+        const row = lines[i + 1]!;
+        expect(row[0]).toBe(cabang);
+        cells.forEach((v, m) => expect(Number(row[m + 1])).toBeCloseTo(v, 4));
+        expect(Number(row[4])).toBeCloseTo(total(cells), 4);
+      });
+      const last = lines[expected.length + 1]!;
+      expect(last[0]).toBe("Total");
+      expect(Number(last[4])).toBeCloseTo(total(expected.flatMap(([, c]) => c)), 3);
+      expect(readdirSync(t.tmpRoot)).toEqual([]);
+    });
+
+    it("XLSX: sel angka bertipe angka, sheet bernama judul widget, filter dashboard berlaku", async () => {
+      const t = setup({
+        widget: "pivot",
+        format: "XLSX",
+        params: { dashboardFilters: [{ column: "Cabang", op: "in", values: ["Cabang 3"] }] },
+      });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 2 });
+      const rows: RawValue[][] = [];
+      await createSaxParser().parse(
+        t.objects.get(`exports/${OWNER}/${EXPORT_ID}.xlsx`)!,
+        { sheetNames: [WIDGETS.pivot!.title], tmpDir: root },
+        (_s, _n, v) => rows.push([...v]),
+      );
+      const cells = sums.get("Cabang 3")!;
+      expect(rows[0]!.slice(0, 4)).toEqual(["Cabang", ...months]);
+      expect(rows[1]![0]).toBe("Cabang 3");
+      expect(typeof rows[1]![1]).toBe("number");
+      expect(rows[1]![4] as number).toBeCloseTo(total(cells), 4);
+      expect(rows[2]![0]).toBe("Total");
+      expect(rows[2]![4] as number).toBeCloseTo(total(cells), 4);
+    });
+  });
+
   it("review INT-R3-1: XLSX terurut lewat parquet kerja → urutan layar (Omzet turun, seri: _row) utuh", async () => {
     const t = setup({ format: "XLSX", params: { sort: { column: 2, dir: "desc" } } });
     expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: ROWS });

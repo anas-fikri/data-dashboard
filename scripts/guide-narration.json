@@ -255,6 +255,48 @@
         "caption": "Cari topik lewat kolom pencarian.",
         "voice": "Topik tertentu bisa dicari lewat kolom pencarian."
       }
+    ],
+    "pemilik-pivot": [
+      {
+        "caption": "Widget Pivot meringkas data seperti PivotTable di Excel.",
+        "voice": "Widget [en:pivot] meringkas data seperti [en:PivotTable] di [en:Excel]. Kita tambahkan satu di [en:dashboard] ini."
+      },
+      {
+        "caption": "Kalimat di atas panel menjelaskan bentuk tabelnya.",
+        "voice": "Begitu jenis [en:pivot] dipilih, isinya langsung terisi. Kalimat di atas panel menjelaskan bentuk tabelnya dengan bahasa sehari-hari."
+      },
+      {
+        "caption": "Baris: satu baris per Cabang (Rows di Excel).",
+        "voice": "Bagian Baris menentukan isi kolom paling kiri. Di sini satu baris untuk setiap cabang, sama dengan [en:Rows] di [en:Excel]."
+      },
+      {
+        "caption": "Rinci baris per Layanan, lengkap dengan subtotal.",
+        "voice": "Tekan Rinci baris untuk memecah setiap cabang per layanan. Baris subtotal muncul di atas setiap kelompok."
+      },
+      {
+        "caption": "Pisahkan per Tanggal kirim, per bulan: satu kolom per bulan, di kiri kolom Total.",
+        "voice": "Bagian Pisahkan per membuat satu kolom untuk setiap bulan, tepat di kiri kolom total. Ini sama dengan [en:Columns] di [en:PivotTable]."
+      },
+      {
+        "caption": "Nilai: angka yang dihitung, mis. Total Jumlah paket (Values di Excel).",
+        "voice": "Bagian Nilai berisi angka yang dihitung, misalnya total jumlah paket. Sama dengan [en:Values] di [en:Excel]."
+      },
+      {
+        "caption": "Perlebar kartu agar semua bulan terlihat.",
+        "voice": "Perlebar kartunya supaya semua bulan muat, lalu tekan Selesai."
+      },
+      {
+        "caption": "Kepala kolom, nama baris, dan baris Total tetap terlihat saat digulir.",
+        "voice": "Saat tabel digulir, kepala kolom, nama baris, dan baris total tetap terlihat."
+      },
+      {
+        "caption": "Ekspor ke Excel atau CSV, lengkap dengan subtotal dan total.",
+        "voice": "Tabel [en:pivot] juga bisa diekspor ke [en:Excel] atau [en:CSV], lengkap dengan subtotal dan totalnya."
+      },
+      {
+        "caption": "File siap diunduh dalam beberapa detik.",
+        "voice": "File siap diunduh dalam beberapa detik."
+      }
     ]
   }
 }

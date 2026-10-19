@@ -22,6 +22,7 @@ import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
 import { exportKey } from "@/lib/storage/exports";
 import { writeCsv } from "./csv";
 import { contentDisposition, sheetName } from "./filename";
+import { writePivotExport } from "./pivot";
 import { exportParamsSchema } from "./schema";
 import { exportCodeOf, MIME, type ExportFormat, type ExportStatus } from "./service";
 import { buildExportCount, buildExportSql, exportColumns } from "./sql";
@@ -243,35 +244,44 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
       if (!(await repo.exists(row.id))) throw new ExportGoneError();
     };
 
-    const count = buildExportCount(resolved, src);
-    if (count) {
-      const n = await watched(d, watch, () => countRows(d.conn, count.sql, count.params));
-      if (n > deps.maxRows) {
-        return await failWith(EXPORT_CODES.EXPORT_TOO_LARGE, tooLargeMessage(n, deps.maxRows));
-      }
-    }
-    const built = buildExportSql(resolved, src, ext, deps.maxRows);
-    const cols = exportColumns(resolved);
     const out = join(work, `ekspor.${ext}`);
-    const rows = await watched(d, watch, async () => {
-      if (ext === "csv") {
-        return writeCsv(d.conn, built, cols, join(work, "body.csv"), out);
+    let rows: number;
+    if (resolved.planned.kind === "pivot") {
+      // Pivot (T-9bc2): tabel tersusun seperti layar (batas tampil 200 × 40), bukan SELECT datar.
+      rows = await watched(d, watch, () =>
+        writePivotExport(d.conn, resolved, src, ext, out, sheetName(row.title ?? "")),
+      );
+    } else {
+      const count = buildExportCount(resolved, src);
+      if (count) {
+        const n = await watched(d, watch, () => countRows(d.conn, count.sql, count.params));
+        if (n > deps.maxRows) {
+          return await failWith(EXPORT_CODES.EXPORT_TOO_LARGE, tooLargeMessage(n, deps.maxRows));
+        }
       }
-      // Sort penuh lewat COPY ke parquet kerja dulu, lalu dibaca berurutan: stream() langsung atas SELECT
-      // terurut kehabisan memori pada tabel lebar 1 juta baris di 768MB, COPY tidak (review T-017 INT-R3-1).
-      const sorted = join(work, "sorted.parquet");
-      const groupRows = await rowGroupOf(d.conn, src);
-      await d.conn.run(
-        `COPY (${built.sql}) TO ${lit(sorted)} (FORMAT parquet, ROW_GROUP_SIZE ${groupRows})`,
-        built.params,
-      );
-      const result = await d.conn.stream(`SELECT * FROM read_parquet(${lit(sorted)})`);
-      return writeXlsx(
-        out,
-        { sheetName: sheetName(row.title ?? ""), columns: cols.map(xlsxColumn) },
-        result.yieldRowsJs() as AsyncIterable<unknown[][]>,
-      );
-    });
+      const built = buildExportSql(resolved, src, ext, deps.maxRows);
+      const cols = exportColumns(resolved);
+      rows = await watched(d, watch, async () => {
+        if (ext === "csv") {
+          return writeCsv(d.conn, built, cols, join(work, "body.csv"), out);
+        }
+        // Sort penuh lewat COPY ke parquet kerja dulu, lalu dibaca berurutan: stream() langsung atas
+        // SELECT terurut kehabisan memori pada tabel lebar 1 juta baris di 768MB, COPY tidak (review
+        // T-017 INT-R3-1).
+        const sorted = join(work, "sorted.parquet");
+        const groupRows = await rowGroupOf(d.conn, src);
+        await d.conn.run(
+          `COPY (${built.sql}) TO ${lit(sorted)} (FORMAT parquet, ROW_GROUP_SIZE ${groupRows})`,
+          built.params,
+        );
+        const result = await d.conn.stream(`SELECT * FROM read_parquet(${lit(sorted)})`);
+        return writeXlsx(
+          out,
+          { sheetName: sheetName(row.title ?? ""), columns: cols.map(xlsxColumn) },
+          result.yieldRowsJs() as AsyncIterable<unknown[][]>,
+        );
+      });
+    }
     await watch();
     const bytes = (await stat(out)).size;
     const fileName = row.fileName ?? `ekspor.${ext}`;

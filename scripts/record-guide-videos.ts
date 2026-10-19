@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { DeleteObjectsCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { PrismaClient } from "@prisma/client";
 import { chromium, expect, type Browser, type Locator, type Page } from "@playwright/test";
-import { AUDIO_DIR, audioName } from "./guide-audio.mjs";
+import { AUDIO_DIR, audioName, captionText } from "./guide-audio.mjs";
 import { assemble, toVtt } from "./guide-assemble.mjs";
 
 if (process.env.NODE_ENV === "production") throw new Error("ditolak: NODE_ENV=production");
@@ -32,6 +32,7 @@ const OUT = join(process.cwd(), "demo/guide-videos");
 const DATA = join(OUT, "pengiriman-cabang-2026.csv");
 const DATASET = "Pengiriman cabang 2026";
 const DASHBOARD = "Kinerja pengiriman";
+const PIVOT = "Paket per cabang per bulan";
 const ONLY = (() => {
   const i = process.argv.indexOf("--only");
   return i > 0 ? new Set(process.argv[i + 1]!.split(",")) : null;
@@ -218,11 +219,11 @@ class Scene {
     if (!voiced && !SILENT)
       throw new Error(`audio belum ada untuk "${line.voice}" — jalankan scripts/guide-tts.mjs`);
     // Tanpa audio: perkiraan ± 2,6 kata per detik (tempo narasi santai).
-    const dur = voiced ? audioSec(file) : line.voice.split(/\s+/).length / 2.6;
+    const dur = voiced ? audioSec(file) : captionText(line.voice).split(/\s+/).length / 2.6;
     this.timeline.push({
       t: Date.now() - this.t0,
       dur,
-      text: line.voice,
+      text: captionText(line.voice),
       file: voiced ? file : null,
     });
     this.busyUntil = Date.now() + dur * 1000 + 450;
@@ -464,6 +465,81 @@ async function main() {
           timeout: 60_000,
         });
         await s.idle(2500);
+      },
+    );
+
+    await record(
+      browser,
+      "pemilik-pivot",
+      { slug: "widget-pivot", title: "Tabel pivot seperti di Excel" },
+      "owner",
+      async (s) => {
+        const p = s.page;
+        const dash = await prisma.dashboard.findFirstOrThrow({
+          where: { name: DASHBOARD, dataset: demoOwned },
+        });
+        // Rekaman bisa diulang: widget pivot lama dan item tata letaknya dibuang.
+        const old = await prisma.widget.findMany({ where: { dashboardId: dash.id, title: PIVOT } });
+        if (old.length) {
+          const gone = new Set(old.map((w) => w.id));
+          await prisma.$transaction([
+            prisma.widget.deleteMany({ where: { id: { in: [...gone] } } }),
+            prisma.dashboard.update({
+              where: { id: dash.id },
+              data: {
+                layout: (dash.layout as { i: string }[]).filter((it) => !gone.has(it.i)),
+                layoutRevision: { increment: 1 },
+              },
+            }),
+          ]);
+        }
+        await p.goto(`/dashboards/${dash.id}?mode=edit`);
+        await s.talk();
+        const panel = await addWidget(s, PIVOT, "Pivot");
+        await expect(panel.getByTestId("pivot-summary")).toBeVisible();
+        await s.step(1200);
+        await panel.getByTestId("pivot-row-0").scrollIntoViewIfNeeded();
+        await s.step(800);
+        await s.talk();
+        await s.click(panel.getByRole("button", { name: "Rinci baris (mis. per layanan)" }), 1200);
+        await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+        await s.idle(600);
+        await panel.getByTestId("pivot-column").scrollIntoViewIfNeeded();
+        await s.step(800);
+        await panel.getByText("Nilai 1", { exact: true }).scrollIntoViewIfNeeded();
+        await s.step(800);
+        await s.talk();
+        // Lebar penuh (12 kolom): 6 bulan + kolom Total muat tanpa digeser.
+        for (let i = 0; i < 8; i++)
+          await s.click(panel.getByRole("button", { name: `Perlebar ${PIVOT}` }), 300);
+        for (let i = 0; i < 2; i++)
+          await s.click(panel.getByRole("button", { name: `Pertinggi ${PIVOT}` }), 300);
+        await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }), 800);
+        await s.click(
+          p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
+          1500,
+        );
+        const w = widgetTitled(p, PIVOT);
+        await expect(w.getByTestId("widget-pivot")).toBeVisible({ timeout: 60_000 });
+        // Kartu di atas layar (di bawah kepala aplikasi), tidak tertutup takarir di bawah.
+        await w.evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -72);
+        });
+        await wait(600);
+        await s.talk();
+        await w.getByRole("region").hover();
+        for (let i = 0; i < 3; i++) {
+          await p.mouse.wheel(0, 260);
+          await wait(900);
+        }
+        await s.idle(800);
+        await s.talk();
+        await s.click(w.getByTestId("widget-export"), 900);
+        await s.click(p.getByTestId("export-xlsx"), 600);
+        await expect(p.getByTestId("export-download").first()).toBeVisible({ timeout: 60_000 });
+        await s.step(2000);
+        await p.keyboard.press("Escape");
       },
     );
 

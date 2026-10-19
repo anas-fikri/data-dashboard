@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * --sync menyalin semua arsip tertunda, status "ok", email pulih; retensi lokal hanya membuang arsip yang
  * sudah tersalin. Rahasia target tidak pernah masuk status atau log. T-y8qq: target = NAS Synology lewat
  * SFTP (password di-obscure lewat stdin, known_hosts dari kunci host yang dipin, isian divalidasi ulang).
+ * Batas waktu 60 dtk per tes: setiap tes menjalankan bash sungguhan, dan di mesin sibuk melewati 10 dtk.
  */
 const SCRIPT = join(process.cwd(), "deploy/backup.sh");
 const SECRET = "dummy-target-secret-uji";
@@ -152,7 +153,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
-describe("backup.sh tanpa target off-VM", () => {
+describe("backup.sh tanpa target off-VM", { timeout: 60_000 }, () => {
   it("arsip dibuat, status off tanpa email, retensi lokal biasa membuang arsip > 7 hari", () => {
     oldArchive("dashboard-20260101T000000Z.tar.age", 10);
     const r = run();
@@ -169,7 +170,7 @@ describe("backup.sh tanpa target off-VM", () => {
   });
 });
 
-describe("backup.sh dengan target dari Admin › Backup", () => {
+describe("backup.sh dengan target dari Admin › Backup", { timeout: 60_000 }, () => {
   beforeEach(() => enableTarget());
 
   it("target mati → arsip ditahan, pending + email sekali; pulih → --sync menyalin semua + email normal", () => {
@@ -277,7 +278,7 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
   });
 });
 
-describe("backup.sh: kasus tepi (review T-7psf)", () => {
+describe("backup.sh: kasus tepi (review T-7psf)", { timeout: 60_000 }, () => {
   it("email: --mail-rcpt-allowfails, Message-ID, badan CRLF", () => {
     enableTarget();
     writeFileSync(join(root, "down"), "");
@@ -356,7 +357,7 @@ describe("backup.sh: kasus tepi (review T-7psf)", () => {
   });
 });
 
-describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
+describe("backup.sh: SMTP dari Admin › Email (T-byys)", { timeout: 60_000 }, () => {
   const PW = 'dummy:pa"ss\\word#@1';
   function smtpJson(security: string, over: Record<string, unknown> = {}) {
     mkdirSync(join(cfg(), "app"), { recursive: true });
@@ -432,7 +433,7 @@ describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
   });
 });
 
-describe("backup.sh: NAS Synology lewat SFTP (T-y8qq)", () => {
+describe("backup.sh: NAS Synology lewat SFTP (T-y8qq)", { timeout: 60_000 }, () => {
   it("port 22 → known_hosts tanpa kurung; kunci RSA → algoritme rsa-sha2 lalu ssh-rsa", () => {
     const rsa = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDdummyRsaKeyUntukTes0000000000";
     enableTarget({ port: 22, hostKey: rsa, folder: "/Backup Server/data dashboard" });

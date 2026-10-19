@@ -225,10 +225,6 @@ export async function createExport(
     const f = forRole(w.role, resolved);
     return failure(exportCodeOf(f.code), f.message);
   }
-  // shortcut: ekspor CSV/XLSX pivot belum ada (T-9bc2); ditolak di depan, bukan job yang gagal.
-  if (resolved.planned.kind === "pivot") {
-    return failure("INVALID", "Ekspor CSV/XLSX untuk widget pivot belum tersedia.");
-  }
   const title = (await deps.repo.widgetTitle(widgetId)) ?? "";
   const params: ExportParams = {
     ...(dashboardFilters?.length ? { dashboardFilters } : {}),

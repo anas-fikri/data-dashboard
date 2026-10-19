@@ -1,5 +1,5 @@
 import { execFileSync, type ChildProcess } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
@@ -266,9 +266,34 @@ test.describe("widget pivot (T-tcjp)", () => {
     });
   }
 
+  test("T-9bc2: ekspor CSV dari kepala kartu — kolom label, Subtotal, Total, angka mentah", async () => {
+    test.setTimeout(120_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    await owner.goto(`/dashboards/${d}`);
+    const c = card(owner);
+    await expect(c.getByTestId("widget-pivot")).toBeVisible();
+    await c.getByTestId("widget-export").click();
+    const download = owner.waitForEvent("download", { timeout: 90_000 });
+    await owner.getByTestId("export-menu").getByTestId("export-csv").click();
+    const dl = await download;
+    expect(await dl.failure()).toBeNull();
+    const path = join(dir, "pivot.csv");
+    await dl.saveAs(path);
+    const text = readFileSync(path, "utf8");
+    expect(text.startsWith("\uFEFF")).toBe(true);
+    const lines = text.slice(1).trimEnd().split("\n");
+    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Feb 2026","Mar 2026","Total No."');
+    expect(lines[1]).toBe('"Customer 24","Subtotal",4810,4812,4814,14436');
+    expect(lines[2]).toBe('"Customer 24","Udara",2410,2411,2412,7233');
+    expect(lines.at(-1)).toBe('"Total",,60240,60288,60336,180864');
+    expect(lines).toHaveLength(1 + 24 + 48 + 1);
+  });
+
   test("T-jwhc: ponsel 390 px — kotak cari di lembar pengaturan, daftar bisa digulir roda/sentuh", async () => {
     await owner.setViewportSize({ width: 390, height: 844 });
     await owner.goto(`/dashboards/${d}?mode=edit`);
+    // Tumpukan ponsel baru ada setelah hidrasi (server merender grid): klik sebelum itu hilang.
+    await expect(owner.locator("[data-testid=canvas][data-layout=stack]")).toBeVisible();
     await owner.getByRole("button", { name: `Pengaturan ${TITLE}` }).click();
     const sheet = owner.getByRole("dialog");
     await expect(sheet.getByTestId("pivot-config")).toBeVisible();

@@ -2,7 +2,8 @@
 /*
  * Dev saja (T-3k08): suara narasi video panduan. Penyedia di "voice.provider" scripts/guide-narration.json:
  *   - "edge" (bawaan): suara neural Microsoft id-ID lewat CLI edge-tts (pip install edge-tts; path lewat env
- *     EDGE_TTS_BIN), tanpa kunci/biaya — voiceName mis. id-ID-ArdiNeural, rate mis. "+0%".
+ *     EDGE_TTS_BIN), tanpa kunci/biaya — voiceName mis. id-ID-ArdiNeural, rate mis. "+0%". Istilah bahasa
+ *     Inggris ditandai "[en:pivot]" di naskah → diucapkan suara en-GB (aksen Inggris, T-9bc2).
  *   - "gemini": Google Gemini TTS, kunci gratis dari aistudio.google.com (GEMINI_API_KEY di env atau
  *     Keychain service "demoday"); voiceName mis. Kore, model preview (cadangan otomatis), style = arahan
  *     gaya bicara. Kuota gratis per menit: 429 ditunggu lalu diulang.
@@ -16,9 +17,9 @@
  * Yang dikirim ke penyedia hanya teks narasi.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { AUDIO_DIR, audioName } from "./guide-audio.mjs";
+import { AUDIO_DIR, EN_TERM, audioName, captionText } from "./guide-audio.mjs";
 
 const NARRATION = "scripts/guide-narration.json";
 const OUT = "demo/guide-videos";
@@ -213,21 +214,75 @@ async function samples() {
   );
 }
 
-/** Suara neural Microsoft lewat CLI edge-tts (mp3 24 kHz); teks lewat argumen, bukan shell. */
-function speakEdge(voice, text, file) {
+/** Suara istilah bahasa Inggris (T-9bc2): aksen Inggris, pria seperti suara narator. */
+const EN_VOICE = "en-GB-RyanNeural";
+
+function edgeClip(voiceName, rate, text, file) {
   execFileSync(
     process.env.EDGE_TTS_BIN ?? "edge-tts",
-    [
-      "--voice",
-      voice.voiceName,
-      `--rate=${voice.rate ?? "+0%"}`,
-      "--text",
-      text,
-      "--write-media",
-      file,
-    ],
-    { stdio: ["ignore", "ignore", "pipe"] },
+    ["--voice", voiceName, `--rate=${rate}`, "--text", text, "--write-media", file],
+    // Layanan kadang menggantung tanpa galat: gagal cepat lalu ulangi (cache melanjutkan).
+    { stdio: ["ignore", "ignore", "pipe"], timeout: 60_000 },
   );
+}
+
+/**
+ * Suara neural Microsoft lewat CLI edge-tts (mp3 24 kHz); teks lewat argumen, bukan shell. Kalimat
+ * berpenanda [en:…] dipotong: bagian Indonesia memakai suara naskah, istilah memakai EN_VOICE; hening di
+ * ujung tiap potongan dipangkas lalu disambung (jeda 80 ms) dengan ffmpeg.
+ * shortcut: EN_VOICE tidak masuk kunci cache audio (audioName); ganti suaranya → hapus mp3 berpenanda.
+ */
+function speakEdge(voice, text, out) {
+  // Ditulis ke berkas sementara lalu di-rename: proses yang mati tidak meninggalkan mp3 rusak di cache.
+  const file = `${out}.part.mp3`;
+  speakEdgeTo(voice, text, file);
+  renameSync(file, out);
+}
+
+function speakEdgeTo(voice, text, file) {
+  const rate = voice.rate ?? "+0%";
+  const parts = [];
+  let last = 0;
+  for (const m of text.matchAll(EN_TERM)) {
+    parts.push({ voice: voice.voiceName, text: text.slice(last, m.index) });
+    parts.push({ voice: EN_VOICE, text: m[1] });
+    last = m.index + m[0].length;
+  }
+  parts.push({ voice: voice.voiceName, text: text.slice(last) });
+  const spoken = parts.filter((p) => /[\p{L}\p{N}]/u.test(p.text));
+  if (spoken.length === 1) return edgeClip(spoken[0].voice, rate, spoken[0].text.trim(), file);
+  const clips = spoken.map((_, i) => `${file}.${i}.mp3`);
+  const trim =
+    "silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,apad=pad_dur=0.08";
+  const graph =
+    clips.map((_, i) => `[${i}:a]${trim}[a${i}]`).join(";") +
+    `;${clips.map((_, i) => `[a${i}]`).join("")}concat=n=${clips.length}:v=0:a=1[out]`;
+  try {
+    spoken.forEach((p, i) => edgeClip(p.voice, rate, p.text.trim(), clips[i]));
+    execFileSync(
+      "ffmpeg",
+      [
+        "-y",
+        "-loglevel",
+        "error",
+        ...clips.flatMap((c) => ["-i", c]),
+        "-filter_complex",
+        graph,
+        "-map",
+        "[out]",
+        "-ar",
+        "24000",
+        "-ac",
+        "1",
+        "-b:a",
+        "48k",
+        file,
+      ],
+      { stdio: ["ignore", "ignore", "pipe"] },
+    );
+  } finally {
+    for (const c of clips) rmSync(c, { force: true });
+  }
 }
 
 async function generate(check) {
@@ -247,8 +302,9 @@ async function generate(check) {
   for (const [i, l] of missing.entries()) {
     const file = join(AUDIO, audioName(voice, l.voice));
     if (edge) speakEdge(voice, l.voice, file);
-    else if (gemini) await speakGemini(key, voice, l.voice, file);
-    else await speak(key, voice, l.voice, file);
+    // Penyedia lain tidak memecah suara: penanda [en:…] dibuang agar tidak ikut dibaca.
+    else if (gemini) await speakGemini(key, voice, captionText(l.voice), file);
+    else await speak(key, voice, captionText(l.voice), file);
     console.log(
       `${i + 1}/${missing.length} ${duration(file).toFixed(1)} s — ${l.voice.slice(0, 60)}`,
     );

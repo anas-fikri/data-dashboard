@@ -24,6 +24,14 @@
     "poster": "pemilik-dashboard.poster.png"
   },
   {
+    "slug": "widget-pivot",
+    "file": "pemilik-pivot.webm",
+    "title": "Tabel pivot seperti di Excel",
+    "captions": "pemilik-pivot.vtt",
+    "durationSec": 82,
+    "poster": "pemilik-pivot.poster.png"
+  },
+  {
     "slug": "bagikan-dashboard",
     "file": "pemilik-bagikan.webm",
     "title": "Membagikan dashboard",
