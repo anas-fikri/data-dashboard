@@ -2,13 +2,14 @@
 # Latihan "VM kosong" (T-tqse, T-023) di VM produksi tanpa menyentuh produksi: project compose terpisah
 # (dashboard-vmkosong), port 9543/9544, subnet sendiri, volume kosong, PostgreSQL container, semua secret
 # baru, dan image yang di-build di luar VM (deploy/images.sh build + save):
-#   bash deploy/empty-vm-drill.sh <images.tar.gz>        (cwd = folder aplikasi; KEEP=1 = jangan dibongkar)
+#   bash deploy/empty-vm-drill.sh <images.tar.gz>...     (cwd = folder aplikasi; KEEP=1 = jangan dibongkar)
+#   (satu arsip berisi 4 image dari images.sh save, atau satu arsip per image)
 # Mengukur muat image + deploy.sh --no-build sampai /api/health hijau (target < 10 menit), lalu membongkar
 # stack latihan beserta volumenya. SMTP latihan = mail.pcpexpress.com:587 tanpa kredensial (health hanya
 # memverifikasi koneksi) agar kredensial produksi tidak ikut dipakai.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-archive=${1:?pakai: empty-vm-drill.sh <images.tar.gz>}
+[ $# -gt 0 ] || { echo "pakai: empty-vm-drill.sh <images.tar.gz>..." >&2; exit 1; }
 PROJECT=dashboard-vmkosong
 envf=$(mktemp /tmp/vmkosong-XXXXXX)
 D=(docker compose -p "$PROJECT" --env-file "$envf" -f docker-compose.prod.yml)
@@ -21,8 +22,12 @@ cleanup() {
 trap cleanup EXIT
 
 t0=$(date +%s)
-echo "1/2 muat image dari $archive"
-tag=$(bash deploy/images.sh load "$archive" | sed -n 's/^Loaded image: dashboard-app://p' | tail -1)
+echo "1/2 muat image dari $*"
+tag=""
+for a in "$@"; do
+  t=$(bash deploy/images.sh load "$a" | sed -n 's/^Loaded image: dashboard-app://p' | tail -1)
+  tag=${t:-$tag}
+done
 [ -n "$tag" ] || { echo "arsip tidak memuat dashboard-app" >&2; exit 1; }
 echo "   tag $tag ($(($(date +%s) - t0)) dtk)"
 
