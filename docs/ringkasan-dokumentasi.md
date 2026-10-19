@@ -87,8 +87,9 @@ Semua berjalan sebagai Docker Compose (project `dashboard`) di server **olympus*
 - **62 task selesai**, 1 dibatalkan. Aplikasi inti **lengkap dan berjalan di produksi**; UAT berjalan dari akun
   anas.fikri (2 dataset READY, 2 dashboard, 0 galat).
 - **Menunggu NAS:** salinan backup ke NAS Synology (T-h77x) — konfigurasi sudah tersimpan dan tersambung,
-  tetapi **penyimpanan NAS penuh/kuota habis** sehingga file ≥ 4 KB ditolak (lihat §8). Arsip aman di server dan
-  dikirim ulang otomatis begitu ada ruang. T-023 (paket deploy) tinggal menunggu ini.
+  tetapi **volume NAS penuh total** (NAS melaporkan 10,47 TiB terpakai dari 10,47 TiB, sisa 0 B) sehingga file
+  ≥ 4 KB ditolak (lihat §8). Arsip aman di server dan dikirim ulang otomatis begitu ada ruang. T-023 (paket
+  deploy) tinggal menunggu ini.
 - **Roadmap G-6 (ditahan sampai UAT selesai, 29 task tersisa):**
   - **Lihat data** — halaman bergaya lembar kerja (baca-saja): gulir jutaan baris, urut, saring per kolom, cari,
     salin ke Excel, unduh tampilan.
@@ -101,7 +102,7 @@ Semua berjalan sebagai Docker Compose (project `dashboard`) di server **olympus*
 
 | # | Tindakan | Pemilik |
 |---|---|---|
-| 1 | **Kosongkan ruang / naikkan kuota NAS** untuk akun `backupserver` atau shared folder `sharedvol1` (DSM › Storage Manager, › Panel Kontrol › Pengguna › Kuota, › Folder Bersama › Edit › Kuota). Setelah itu kirim ulang berjalan otomatis | Pengelola NAS |
+| 1 | **Kosongkan ruang volume NAS** `nas1.pcpexpress.com` (10,47 TiB, sisa 0 B per 19 Okt 2026 — semua penulisan ke volume itu gagal, bukan hanya aplikasi ini). Cek DSM › Storage Manager (termasuk snapshot/recycle bin). Butuh ±5 GB untuk arsip tertunda + ±16–35 GB untuk retensi. Setelah itu kirim ulang berjalan otomatis | Pengelola NAS |
 | 2 | Uji pemulihan dari NAS: `ssh olympus bash …/deploy/verify-backup.sh --remote < kunci-backup-dashboard.txt` | Admin |
 | 3 | Pilih retensi backup di NAS (perkiraan dari arsip harian ±1,1 GB: 30 hari ≈ 35 GB; 14 hari ≈ 16 GB) | Admin |
 | 4 | Ganti password admin S3/silo yang pernah terkirim lewat chat | Pengelola silo |
