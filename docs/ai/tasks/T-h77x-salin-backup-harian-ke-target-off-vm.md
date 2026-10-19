@@ -8,7 +8,7 @@ tags:
 depends_on:
   - T-023
 created: "2026-10-17T05:18:25Z"
-updated: "2026-10-19T05:45:52Z"
+updated: "2026-10-19T06:14:00Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -18,7 +18,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 52522
+    duration_ms: 57062
     summary: |-
       > data-dashboard@0.1.0 check
       > npm run lint && npm run typecheck && npm run test && npm run audit
@@ -40,19 +40,20 @@ evidence:
 
        RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792388725248,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792388725269,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792388725271,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792388725276,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792388728828,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792390411807,"service":"data-dashboard","host":"127.0.0.1","port":61077,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792390411871,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792390411897,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792390411899,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792390411906,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792390415204,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
 
        Test Files  149 passed (149)
             Tests  1962 passed (1962)
-         Start at  12:45:14
-         Duration  35.49s (tests 81%, import 14%, transform 4%)
+         Start at  13:13:18
+         Duration  39.84s (tests 81%, import 14%, transform 5%)
 
-          Isolate  149 workers spawned · ~142ms startup each (spawn + environment, per file)
-                   at least ~2.21s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  149 workers spawned · ~153ms startup each (spawn + environment, per file)
+                   at least ~2.38s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -60,8 +61,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-19T05:45:52Z"
-    tree: 4ac0313eafbce008f84cdad58a330938311c14e0775373cdb599a172d1afe21e
+    at: "2026-10-19T06:14:00Z"
+    tree: 072461f7eb02ec8dab39eb26cab60290fa80b0e4306eae0d937b7e8d0244c328
 ---
 
 ## Objective

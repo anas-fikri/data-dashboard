@@ -1,5 +1,6 @@
 import "server-only";
 import { Client, type ConnectConfig, type SFTPWrapper, type Stats } from "ssh2";
+import { logger } from "@/lib/logger";
 import { fingerprint, type ParsedOffsite } from "./config";
 
 /*
@@ -77,15 +78,16 @@ function connect(
 ): Promise<SFTPWrapper> {
   return new Promise((resolve, reject) => {
     conn.once("ready", () =>
-      conn.sftp((err, sftp) =>
-        err
-          ? reject(
-              new ProbeError(
-                "Login berhasil, tetapi NAS menolak SFTP untuk akun atau port ini. Periksa di DSM: SFTP aktif dengan nomor port yang sama dengan Port SFTP di sini (Panel Kontrol › Layanan File › FTP › SFTP), dan akun ini diizinkan memakai SFTP (Panel Kontrol › Hak Istimewa Aplikasi › SFTP).",
-              ),
-            )
-          : resolve(sftp),
-      ),
+      conn.sftp((err, sftp) => {
+        if (!err) return resolve(sftp);
+        // Alasan dari server (mis. "Unable to start subsystem: sftp") hanya ke log operator, bukan ke admin.
+        logger.warn({ host: c.host, port: c.port, err: err.message }, "subsistem SFTP ditolak NAS");
+        reject(
+          new ProbeError(
+            "Login berhasil, tetapi NAS menolak SFTP untuk akun atau port ini. Periksa di DSM: SFTP aktif dengan nomor port yang sama dengan Port SFTP di sini (Panel Kontrol › Layanan File › FTP › SFTP), dan akun ini diizinkan memakai SFTP (Panel Kontrol › Hak Istimewa Aplikasi › SFTP).",
+          ),
+        );
+      }),
     );
     // ssh2 bisa memancarkan "error" dua kali (reset sebelum banner lalu koneksi hilang): selalu didengar.
     conn.on("error", reject);
