@@ -8,7 +8,7 @@ tags:
 depends_on:
   - T-023
 created: "2026-10-17T05:18:25Z"
-updated: "2026-10-19T06:44:15Z"
+updated: "2026-10-19T07:08:56Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -18,27 +18,27 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 53379
+    duration_ms: 112874
     summary: |-
       …nts/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-      {"level":40,"time":1792392229055,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792392229079,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792392229081,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792392229085,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792392229945,"service":"data-dashboard","host":"127.0.0.1","port":49621,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792392229963,"service":"data-dashboard","host":"127.0.0.1","port":49621,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792392229969,"service":"data-dashboard","host":"127.0.0.1","port":49630,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792392229979,"service":"data-dashboard","host":"127.0.0.1","port":49632,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792392232542,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792393681247,"service":"data-dashboard","host":"127.0.0.1","port":54684,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792393681259,"service":"data-dashboard","host":"127.0.0.1","port":54684,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792393681267,"service":"data-dashboard","host":"127.0.0.1","port":54694,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792393681305,"service":"data-dashboard","host":"127.0.0.1","port":54696,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792393683214,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792393683254,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792393683268,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792393683285,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792393691089,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
 
        Test Files  149 passed (149)
-            Tests  1963 passed (1963)
-         Start at  13:43:37
-         Duration  36.10s (tests 80%, import 15%, transform 5%)
+            Tests  1964 passed (1964)
+         Start at  14:07:36
+         Duration  77.36s (tests 79%, import 17%, transform 4%)
 
-          Isolate  149 workers spawned · ~145ms startup each (spawn + environment, per file)
-                   at least ~2.25s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  149 workers spawned · ~361ms startup each (spawn + environment, per file)
+                   at least ~5.61s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -46,8 +46,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-19T06:44:15Z"
-    tree: 8f108246d6bc35bff601f0b4b281717769adcd157f1d4046eacc2b9f37821dc3
+    at: "2026-10-19T07:08:56Z"
+    tree: bcb9b445425e6e2eefd86de7654f38b1d49be2b805b5d589abb9196e760f3aa3
 ---
 
 ## Objective

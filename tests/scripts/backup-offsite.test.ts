@@ -205,6 +205,9 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
     );
     expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_HOST_KEY_ALGORITHMS=ssh-ed25519");
     expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_SHELL_TYPE=none");
+    // DSM menolak mengatur waktu/izin file lewat SFTP: tanpa set_modtime, arsip yang sudah ada dilewati per nama.
+    expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_SET_MODTIME=false");
+    expect(readFileSync(join(root, "rclone.log"), "utf8")).toContain("--ignore-existing");
     expect(env).not.toContain(SECRET);
     expect(readFileSync(join(root, "known_hosts.txt"), "utf8")).toBe(
       `[10.0.0.9]:2222 ${HOST_KEY}\n`,

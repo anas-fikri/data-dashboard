@@ -114,7 +114,8 @@ offsite_target() {
       RCLONE_CONFIG_APPOFFSITE_PORT="$port" RCLONE_CONFIG_APPOFFSITE_USER="$user" \
       RCLONE_CONFIG_APPOFFSITE_PASS="$pass" RCLONE_CONFIG_APPOFFSITE_KNOWN_HOSTS_FILE="$khf" \
       RCLONE_CONFIG_APPOFFSITE_HOST_KEY_ALGORITHMS="$algos" RCLONE_CONFIG_APPOFFSITE_SHELL_TYPE=none \
-      RCLONE_CONFIG_APPOFFSITE_MD5SUM_COMMAND=none RCLONE_CONFIG_APPOFFSITE_SHA1SUM_COMMAND=none
+      RCLONE_CONFIG_APPOFFSITE_MD5SUM_COMMAND=none RCLONE_CONFIG_APPOFFSITE_SHA1SUM_COMMAND=none \
+      RCLONE_CONFIG_APPOFFSITE_SET_MODTIME=false
     remote="appoffsite:$folder"
     target="$user@$host:$port$folder"
   elif [ -n "${BACKUP_REMOTE:-}" ]; then
@@ -141,7 +142,10 @@ sync_offsite() {
   local newest
   newest=$(archives | tail -n 1)
   [ -n "$newest" ] || return 0
-  rclone copy "$dir" "$remote" --max-depth 1 --include '/dashboard-*' "${rflags[@]}" 2>"$errf" || return 1
+  # Arsip tidak pernah berubah setelah dibuat: yang sudah ada di target dilewati berdasarkan nama (tanpa
+  # perbandingan waktu — DSM menolak mengatur waktu/izin file lewat SFTP di folder ber-ACL, set_modtime=false).
+  rclone copy "$dir" "$remote" --max-depth 1 --include '/dashboard-*' --ignore-existing "${rflags[@]}" \
+    2>"$errf" || return 1
   printf '%s\n%s\n' "$target" "$newest" >"$mark"
   # Retensi di target: gagal tidak membuat salinan dianggap gagal (diulang run berikutnya).
   rclone delete "$remote" --min-age "${days}d" --include '/dashboard-*' "${rflags[@]}" 2>/dev/null ||

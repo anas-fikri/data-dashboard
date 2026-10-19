@@ -4,6 +4,7 @@ import {
   openSync,
   readdirSync,
   readSync,
+  renameSync,
   statSync,
   unlinkSync,
   writeSync,
@@ -39,7 +40,7 @@ const attrs = (st: Stats) => ({
   mtime: Math.floor(st.mtimeMs / 1000),
 });
 
-function serve(sftp: SFTPWrapper, root: string, failOp?: string) {
+function serve(sftp: SFTPWrapper, root: string, failOp?: string, strictAttrs?: boolean) {
   if (failOp) {
     // Seperti DSM yang menolak satu operasi dengan status umum FAILURE (kode 4).
     const emit = sftp.emit.bind(sftp);
@@ -95,12 +96,17 @@ function serve(sftp: SFTPWrapper, root: string, failOp?: string) {
     }));
     sftp.name(id, names);
   });
-  sftp.on("OPEN", (id, p, flags) =>
+  sftp.on("OPEN", (id, p, flags, attrs) =>
     tryDo(id, () =>
-      sftp.handle(
-        id,
-        handle({ fd: openSync(real(p), utils.sftp.flagsToString(flags) ?? "r"), path: real(p) }),
-      ),
+      strictAttrs && attrs.mode !== undefined
+        ? sftp.status(id, STATUS_CODE.FAILURE, "Failure")
+        : sftp.handle(
+            id,
+            handle({
+              fd: openSync(real(p), utils.sftp.flagsToString(flags) ?? "r"),
+              path: real(p),
+            }),
+          ),
     ),
   );
   sftp.on("WRITE", (id, h, offset, data) =>
@@ -131,8 +137,21 @@ function serve(sftp: SFTPWrapper, root: string, failOp?: string) {
       sftp.status(id, STATUS_CODE.OK);
     }),
   );
-  sftp.on("SETSTAT", (id) => sftp.status(id, STATUS_CODE.OK));
-  sftp.on("FSETSTAT", (id) => sftp.status(id, STATUS_CODE.OK));
+  // DSM pada folder ber-ACL menolak mengatur izin/waktu file lewat SFTP (strictAttrs).
+  const setstat = (id: number) =>
+    sftp.status(
+      id,
+      strictAttrs ? STATUS_CODE.FAILURE : STATUS_CODE.OK,
+      strictAttrs ? "Failure" : undefined,
+    );
+  sftp.on("SETSTAT", setstat);
+  sftp.on("FSETSTAT", setstat);
+  sftp.on("RENAME", (id, from, to) =>
+    tryDo(id, () => {
+      renameSync(real(from), real(to));
+      sftp.status(id, STATUS_CODE.OK);
+    }),
+  );
   sftp.on("REALPATH", (id, p) =>
     sftp.name(id, [
       { filename: posix.normalize(`/${p}`), longname: "", attrs: attrs(statSync(root)) },
@@ -153,6 +172,8 @@ export function startFakeSftp(opts: {
   denySftp?: boolean;
   /** Nama permintaan SFTP (mis. "REMOVE") yang selalu dijawab FAILURE. */
   fail?: string;
+  /** Seperti DSM pada folder ber-ACL: OPEN dengan atribut izin dan SETSTAT dijawab FAILURE. */
+  strictAttrs?: boolean;
 }): Promise<FakeSftp> {
   const keys = utils.generateKeyPairSync("ed25519");
   const clients = new Set<Connection>();
@@ -181,7 +202,7 @@ export function startFakeSftp(opts: {
           const sftp = acceptSftp();
           // Seperti OpenSSH: EOF dari klien → kanal ditutup (rclone menunggu ini saat menutup koneksi).
           sftp.on("end", () => sftp.end());
-          serve(sftp, opts.root, opts.fail);
+          serve(sftp, opts.root, opts.fail, opts.strictAttrs);
         });
       });
     });

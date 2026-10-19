@@ -30,6 +30,7 @@ const STEPS = {
   stat: "membuka folder",
   readdir: "mendaftar isi folder",
   write: "menulis file uji",
+  rename: "mengganti nama file uji",
   read: "membaca file uji",
   unlink: "menghapus file uji",
 } as const;
@@ -145,25 +146,52 @@ export async function probeOffsite(
   const conn = new Client();
   let seen = "";
   let step = "";
+  let sftp: SFTPWrapper | undefined;
+  const made: string[] = [];
   // Operasi SFTP tidak punya batas waktu sendiri: NAS yang macet setelah login tidak boleh menggantung aksi.
   const timer = setTimeout(() => conn.destroy(), TIMEOUT_MS * 2);
   try {
-    const sftp = await connect(conn, c, (line) => (seen = line));
+    const s = (sftp = await connect(conn, c, (line) => (seen = line)));
     step = STEPS.stat;
-    const st = await call<Stats>((cb) => sftp.stat(c.folder, cb));
+    const st = await call<Stats>((cb) => s.stat(c.folder, cb));
     if (!st.isDirectory()) throw new ProbeError(`${c.folder} di NAS bukan folder.`);
     step = STEPS.readdir;
-    await call((cb) => sftp.readdir(c.folder, cb));
+    await call((cb) => s.readdir(c.folder, cb));
+    // Seperti rclone sftp (set_modtime=false): buka TANPA atribut izin (DSM menolak chmod di folder ber-ACL),
+    // tulis ke .partial, lalu ganti nama.
     const file = `${c.folder}/.uji-koneksi-${Date.now()}`;
+    const partial = `${file}.partial`;
     step = STEPS.write;
-    await call((cb) => sftp.writeFile(file, "ok", cb));
+    made.push(partial);
+    const handle = await call<Buffer>((cb) => s.open(partial, "w", cb));
+    await call((cb) => s.write(handle, Buffer.from("ok"), 0, 2, 0, cb));
+    await call((cb) => s.close(handle, cb));
+    step = STEPS.rename;
+    await call((cb) => s.rename(partial, file, cb));
+    made.splice(0, 1, file);
     step = STEPS.read;
-    const got = await call<Buffer>((cb) => sftp.readFile(file, cb));
-    if (got.toString() !== "ok") throw new ProbeError("File uji terbaca tetapi isinya berbeda.");
+    // readFile ssh2 juga membuka dengan atribut mode → baca manual tanpa atribut.
+    const rh = await call<Buffer>((cb) => s.open(file, "r", cb));
+    const got = Buffer.alloc(16);
+    const n = await call<number>((cb) =>
+      s.read(rh, got, 0, got.length, 0, (err, bytes) => cb(err, bytes)),
+    );
+    await call((cb) => s.close(rh, cb));
+    if (got.subarray(0, n).toString() !== "ok")
+      throw new ProbeError("File uji terbaca tetapi isinya berbeda.");
     step = STEPS.unlink;
-    await call((cb) => sftp.unlink(file, cb));
+    await call((cb) => s.unlink(file, cb));
+    made.length = 0;
     return { ok: true, hostKey: seen };
   } catch (e) {
+    // File uji yang sempat dibuat jangan tertinggal di NAS (abaikan galat; batas waktu tetap berlaku).
+    for (const f of made) {
+      await new Promise<void>((done) => {
+        setTimeout(done, 3_000);
+        if (sftp) sftp.unlink(f, () => done());
+        else done();
+      });
+    }
     const err = e as { code?: unknown; message?: string };
     if (step && typeof err.code === "number") {
       logger.warn(

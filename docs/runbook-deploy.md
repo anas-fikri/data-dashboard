@@ -173,7 +173,7 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    kunci host NAS dicatat dan sidik jarinya tampil), lalu **Simpan**. Konfigurasi masuk ke volume
    `backup-config` (`app/offsite.json`, 600; password tidak di DB/log) dan dipakai backup berikutnya tanpa
    restart/SSH. `backup.sh` memvalidasi ulang isinya, menyalin lewat rclone sftp dengan password di-obscure
-   lewat stdin dan known_hosts berisi **hanya kunci host yang dipin** (NAS lain/diinstal ulang → ditolak
+   lewat stdin dan known_hosts berisi **hanya kunci host yang dipin** (tanpa set_modtime + `--ignore-existing`: DSM menolak mengatur izin/waktu file lewat SFTP di folder ber-ACL, jadi arsip yang sudah ada dilewati per nama) (NAS lain/diinstal ulang → ditolak
    sampai admin menekan **Lupakan kunci host**, mengisi password lagi (password tersimpan hanya dipakai ulang untuk kunci host yang sama), lalu tes ulang). Bila NAS tidak terjangkau (down, jaringan,
    password salah): arsip **ditahan di VM** (retensi lokal tidak membuangnya sebelum tersalin; dibuang
    setelah `BACKUP_RETENTION_DAYS`), dikirim ulang `backup.sh --sync` tiap 30 menit, dan admin aktif diberi

@@ -118,6 +118,24 @@ describe("probeOffsite", () => {
     }
   });
 
+  it("DSM ketat (folder ber-ACL: atribut izin & waktu ditolak) → tes tetap berhasil, tanpa file sisa", async () => {
+    const dsm = await startFakeSftp({
+      root,
+      username: "dashboard-backup",
+      password: PASSWORD,
+      strictAttrs: true,
+    });
+    try {
+      expect(await probeOffsite(cfg({ port: dsm.port }))).toEqual({
+        ok: true,
+        hostKey: dsm.hostKey,
+      });
+      expect(readdirSync(join(root, "backup-data-dashboard"))).toEqual([]);
+    } finally {
+      await dsm.close();
+    }
+  });
+
   it("file uji tidak tertinggal di folder tanpa izin tulis", () => {
     expect(existsSync(join(root, "hanya-baca"))).toBe(true);
     expect(readdirSync(join(root, "hanya-baca"))).toEqual([]);
