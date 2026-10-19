@@ -6,6 +6,7 @@
  * dibuang, persis seperti di layar. Dipakai saat buat ekspor dan lagi saat render. Murni.
  */
 import {
+  encodeFilterParam,
   normName,
   oneControlPerName,
   sanitize,
@@ -52,8 +53,7 @@ export function sanitizePdfFilter(state: FilterState, d: FilterTarget): FilterSt
 
 /** Status → nilai yang disimpan (Export.params / token render); undefined = tanpa filter. */
 export function encodePdfFilter(state: FilterState): string | undefined {
-  if (!state.filters.length && !state.cross) return undefined;
-  return JSON.stringify(state.cross ? state : { filters: state.filters });
+  return encodeFilterParam(state) ?? undefined;
 }
 
 /** Periode kategori tanggal grafik sumber filter silang (teks "Jan 2026", sama dengan chip). */

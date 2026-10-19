@@ -4,7 +4,7 @@
  * GET /api/exports/[id]/download (302 ke presigned 5 menit; 404 bukan pemilik/tanpa akses; 410
  * kedaluwarsa).
  */
-import type { DashFilter } from "@/features/query/filters";
+import type { DashFilter, PivotFilter } from "@/features/query/filters";
 
 /** Format ekspor widget (tabular). PDF hanya untuk dashboard utuh (PdfExportCreateBody). */
 export const EXPORT_FORMATS = ["csv", "xlsx"] as const;
@@ -19,6 +19,8 @@ export interface ExportCreateBody {
   widgetId: string;
   format: ExportFormatInput;
   dashboardFilters?: DashFilter[];
+  /** Saringan pivot dari pembaca (T-f4a7), sama dengan permintaan /api/query kartu pivot. */
+  pivotFilters?: PivotFilter[];
   /** Urutan tabel (posisi kolom), sama dengan permintaan /api/query kartu tabel. */
   sort?: { column: number; dir: "asc" | "desc" };
 }

@@ -13,6 +13,7 @@ import { valueText } from "./filter-text";
 export function SlicerOption({
   value,
   type,
+  text = valueText(value, type),
   on,
   locked,
   last,
@@ -21,13 +22,14 @@ export function SlicerOption({
 }: {
   value: FilterValue;
   type: ColumnType;
+  /** Teks tampil (bawaan: menurut tipe kolom). */
+  text?: string;
   on: boolean;
   locked: boolean;
   last: boolean;
   reasonId: string;
   onToggle: () => void;
 }) {
-  const text = valueText(value, type);
   return (
     <label
       data-testid="filter-slicer-option"

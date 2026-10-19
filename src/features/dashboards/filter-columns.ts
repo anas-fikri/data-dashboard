@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
 import { typeFamily } from "@/features/query/filters";
 import { normName } from "@/features/widgets/remap";
-import { CHART_TYPES, parseWidgetConfig } from "@/features/widgets/spec";
+import { crossFilterPositions, parseWidgetConfig } from "@/features/widgets/spec";
 
 export const FILTER_COLUMNS_MAX = 8;
 
@@ -101,8 +101,8 @@ export function filterColumnViews(
 }
 
 /**
- * Kolom dimensi grafik (batang/garis/pai) yang cross-filter-nya aktif, dari widget yang SUDAH
- * dipetakan ke versi aktif; kolom yang hilang/disembunyikan tidak ikut.
+ * Kolom dimensi grafik (batang/garis/pai) dan field baris/kolom pivot (T-f4a7) yang cross-filter-nya
+ * aktif, dari widget yang SUDAH dipetakan ke versi aktif; kolom yang hilang/disembunyikan tidak ikut.
  */
 function crossFilterDims(
   widgets: { type: string; spec: unknown }[],
@@ -111,21 +111,13 @@ function crossFilterDims(
   const byId = new Map(sheets.map((s) => [s.id, s.schema ?? []]));
   const out: ColumnSchema[] = [];
   for (const w of widgets) {
-    if (!(CHART_TYPES as readonly string[]).includes(w.type)) continue;
     const c = parseWidgetConfig(w.type, w.spec);
-    if (
-      !c.ok ||
-      c.config.type === "empty" ||
-      c.config.type === "kpi" ||
-      c.config.type === "table" ||
-      c.config.type === "pivot"
-    ) {
-      continue;
+    if (!c.ok || c.config.type === "empty") continue;
+    const schema = byId.get(c.config.spec.sheetId);
+    for (const pos of crossFilterPositions(c.config)) {
+      const col = schema?.find((x) => x.pos === pos);
+      if (col && !col.hidden) out.push(col);
     }
-    if (c.config.spec.crossFilter === false) continue;
-    const pos = c.config.spec.dimension.column;
-    const col = byId.get(c.config.spec.sheetId)?.find((x) => x.pos === pos);
-    if (col && !col.hidden) out.push(col);
   }
   return out;
 }

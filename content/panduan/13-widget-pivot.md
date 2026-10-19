@@ -9,14 +9,16 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 
 ## Dari PivotTable Excel ke widget Pivot
 
-| Di Excel (PivotTable) | Di Data Dashboard                                                          |
-| --------------------- | -------------------------------------------------------------------------- |
-| _Rows_                | **Baris** — **Satu baris per**, dan **Dirinci per** bila perlu dua tingkat |
-| _Columns_             | **Pisahkan per** (opsional)                                                |
-| _Values_              | **Nilai** (1–3), mis. _Total_, _Rata-rata_, _Jumlah baris_                 |
-| _Subtotals_           | Sakelar **Subtotal per …**                                                 |
-| _Grand Total_         | Sakelar **Tampilkan total**                                                |
-| _Filters_ / _Slicer_  | Bilah **Filter** dashboard                                                 |
+| Di Excel (PivotTable)                  | Di Data Dashboard                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------- |
+| _Rows_                                 | **Baris** — **Satu baris per**, dan **Dirinci per** bila perlu dua tingkat |
+| _Columns_                              | **Pisahkan per** (opsional)                                                |
+| _Values_                               | **Nilai** (1–3), mis. _Total_, _Rata-rata_, _Jumlah baris_                 |
+| _Subtotals_                            | Sakelar **Subtotal per …**                                                 |
+| _Grand Total_                          | Sakelar **Tampilkan total**                                                |
+| _Filters_                              | Bagian **Saring** di pengaturan pivot                                      |
+| Tombol filter ▾ di _Row/Column Labels_ | Ikon saring di kepala tabel pivot                                          |
+| _Slicer_                               | Bilah **Filter** dashboard                                                 |
 
 ## Membuat widget Pivot
 
@@ -29,6 +31,9 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 7. **Nilai**: pilih cara menghitung (**Hitung**) dan kolomnya. Tekan **Tambah nilai** untuk sampai tiga nilai berdampingan, mis. total paket dan total omzet.
 8. Atur **Urutan baris** (nilai terbesar dulu, A–Z, …), **Tampilkan total**, dan **Format angka**. Perlebar kartu lewat **Ukuran** atau dengan menarik sudutnya agar semua kolom terlihat.
 
+9. **Saring** (opsional), seperti area _Filters_ di PivotTable: tekan **Tambah saringan**, pilih **Kolom** (mis. _Layanan_), lalu centang nilai yang dihitung (mis. _Darat_). Untuk "semua kecuali", tekan **Pilih semua** lalu lepas centang nilai yang tidak dihitung. Maksimal tiga kolom; pivot hanya menghitung baris yang cocok dengan semuanya. Selama belum ada nilai yang dicentang, saringan itu belum berlaku.
+10. Sakelar **Klik label menyaring widget lain** (aktif sejak awal): label baris atau kolom pivot yang dipilih pembaca menjadi filter untuk widget lain di dashboard. Matikan bila pivot ini hanya untuk dibaca.
+
 Kalau muncul pesan **Kolom ini sudah dipakai di atas dengan rentang waktu yang sama**, Anda memilih kolom yang sama dua kali (mis. _Customer_ sebagai baris dan sebagai rincian). Pilih kolom lain, atau untuk kolom tanggal pilih rentang waktu yang berbeda. Selama pesan ini ada, perubahan belum disimpan.
 
 ## Membaca tabel pivot
@@ -38,8 +43,22 @@ Kalau muncul pesan **Kolom ini sudah dipakai di atas dengan rentang waktu yang s
 - Tabel menampilkan paling banyak **200 baris** dan **40 kolom**. Bila lebih, catatan di bawah tabel menyebut berapa yang tampil; total tetap menghitung semua data. Persempit dengan filter dashboard.
 - Filter dashboard dan klik pada grafik lain (filter silang) ikut menyaring pivot.
 
+## Menyaring dari tabel pivot
+
+Seperti tombol filter ▾ di _Row Labels_ dan _Column Labels_ PivotTable Excel, sel kiri atas tabel berisi nama setiap bagian pivot dengan ikon saring: kolom pemisah (mis. _Tanggal_) di atas, lalu baris (mis. _Customer › Layanan_).
+
+1. Tekan nama bagian yang ingin disaring, mis. **Layanan**. Semua nilai tercentang di awal.
+2. Lepas centang nilai yang tidak ingin dihitung (mis. _Udara_), atau tekan **Hapus pilihan** lalu centang hanya yang perlu. Ketik di kotak cari untuk daftar panjang.
+3. Subtotal, kolom Total, dan baris Total langsung mengikuti. Ikon saring yang terisi menandai bagian yang sedang disaring, dan catatan **Disaring — …** di bawah tabel menyebut semua saringan yang berlaku (termasuk bagian **Saring** dari pengaturan widget).
+4. Tekan **Hapus saringan** di catatan itu untuk kembali ke semua data.
+
+Saringan ini tidak mengubah pengaturan widget dan hanya berlaku untuk pivot itu. Saringan ikut tautan halaman (bisa dibagikan atau dimuat ulang), ekspor CSV/Excel, dan **Ekspor PDF**.
+
+Pilih label baris atau kolom (mis. _Customer 24_ atau _Jan 2026_) untuk menyaring **widget lain** ke nilai itu, sama seperti mengklik batang grafik. Filternya tampil di bilah filter (_Disaring dari …_) dan bisa dihapus dari sana; pilih label yang sama lagi untuk melepasnya. Pivot sumbernya sendiri tidak ikut tersaring.
+
 ## Ekspor dan cetak
 
 - Tombol unduh di kepala kartu mengekspor pivot ke **CSV** atau **Excel (XLSX)**: satu kolom per kolom baris (nama kelompok diulang di setiap baris rincian), baris berlabel _Subtotal_, baris _Total_, dan angka bertipe angka sehingga bisa langsung dijumlah atau dibuat grafik di Excel.
+- Ekspor dan PDF mengikuti saringan pivot yang sedang aktif; di PDF, saringan itu disebut di bawah tabel.
 - **Ekspor PDF** dashboard mencetak baris dan kolom yang muat di kartu, beserta baris Total. Yang tidak muat disebut di catatan bawah — pakai ekspor Excel untuk semua baris dan kolom yang tampil di layar.
 - Ekspor juga mengikuti batas tampil **200 baris × 40 kolom**; bila lebih, baris terakhir file berisi catatannya. Persempit dengan filter (mis. per periode) lalu ekspor per bagian.

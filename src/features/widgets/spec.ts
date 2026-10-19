@@ -124,6 +124,20 @@ export const PIVOT_COLUMNS_SHOWN = 40;
 
 const dimKey = (d: { column: number; timeGrain?: string }) => `${d.column}:${d.timeGrain ?? ""}`;
 
+/** Bagian Saring pivot (T-f4a7, seperti Filters di PivotTable): batas kolom dan nilai per kolom. */
+export const PIVOT_FILTERS_MAX = 3;
+export const PIVOT_FILTER_VALUES_MAX = 500;
+const filterValue = z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]);
+/** Nilai mentah kolom (teks, angka, boolean, tanggal ISO); null = (kosong). */
+const pivotSavedFilter = z
+  .object({
+    column,
+    op: z.enum(["in", "not_in"]),
+    values: z.array(filterValue).min(1).max(PIVOT_FILTER_VALUES_MAX),
+  })
+  .strict();
+export type PivotSavedFilter = z.infer<typeof pivotSavedFilter>;
+
 export const pivotSpecSchema = z
   .object({
     sheetId,
@@ -139,8 +153,19 @@ export const pivotSpecSchema = z
     totals: z.boolean(),
     /** Baris subtotal per kelompok baris pertama (hanya bila baris 2 kolom). */
     subtotals: z.boolean(),
+    /** Saring (opsional): pivot hanya menghitung baris yang cocok semua kolom ini. */
+    filters: z.array(pivotSavedFilter).max(PIVOT_FILTERS_MAX).optional(),
+    /** Klik label baris/kolom menyaring widget lain (seperti grafik); tidak ada = aktif. */
+    crossFilter: z.boolean().optional(),
   })
   .strict()
+  .refine(
+    (p) => {
+      const cols = (p.filters ?? []).map((f) => f.column).filter((c) => c !== MISSING_COLUMN);
+      return new Set(cols).size === cols.length;
+    },
+    { message: "Satu kolom hanya boleh sekali di bagian Saring", path: ["filters"] },
+  )
   .refine(
     (p) => {
       // Penanda kolom hilang (hasil pemetaan/versi baru) boleh berulang: widgetPlan melaporkannya
@@ -218,6 +243,19 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
 export const sheetOf = (c: WidgetConfig): string | null =>
   c.type === "empty" ? null : c.spec.sheetId;
 
+/**
+ * Kolom yang bila diklik menyaring widget lain (filter silang): dimensi grafik, atau baris + kolom
+ * pemisah pivot (T-f4a7); [] bila jenisnya tidak bisa atau sakelarnya dimatikan.
+ */
+export function crossFilterPositions(c: WidgetConfig): number[] {
+  if (c.type === "empty" || c.type === "kpi" || c.type === "table") return [];
+  if (c.spec.crossFilter === false) return [];
+  if (c.type === "pivot") {
+    return [...c.spec.rows, ...(c.spec.column ? [c.spec.column] : [])].map((d) => d.column);
+  }
+  return [c.spec.dimension.column];
+}
+
 /** Semua posisi kolom yang dirujuk (untuk validasi terhadap skema). */
 export function columnsOf(c: WidgetConfig): number[] {
   switch (c.type) {
@@ -232,6 +270,7 @@ export function columnsOf(c: WidgetConfig): number[] {
         ...c.spec.rows.map((d) => d.column),
         ...(c.spec.column ? [c.spec.column.column] : []),
         ...c.spec.values.flatMap((m) => (m.column ? [m.column] : [])),
+        ...(c.spec.filters ?? []).map((f) => f.column),
       ];
     default:
       return [c.spec.dimension.column, ...(c.spec.measure.column ? [c.spec.measure.column] : [])];

@@ -433,6 +433,7 @@ function Canvas(props: CanvasProps) {
                     onDelete={() => void remove(panelItem.i)}
                   >
                     <WidgetConfigForm
+                      dashboardId={dashboardId}
                       // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
                       // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
                       widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}

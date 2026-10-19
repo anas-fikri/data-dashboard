@@ -15,7 +15,7 @@
  * Gagal di langkah 1–4 → null (halaman menjawab 404 polos). Galat satu widget = jawaban galat widget
  * itu (kartu galat di PDF), bukan kegagalan seluruh halaman.
  */
-import { filtersFor } from "@/components/dashboards/filters/filter-model";
+import { filtersFor, type PivotFilter } from "@/components/dashboards/filters/filter-model";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import type { WidgetModeResult } from "@/features/query/service";
 import { filterSummary, parsePdfFilter, sanitizePdfFilter, type FilterTarget } from "./pdf-filter";
@@ -97,9 +97,13 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export function renderQueryBody(
   w: { id: string; type: string },
   filters: ReturnType<typeof filtersFor>,
+  pivot: PivotFilter[] = [],
 ): Record<string, unknown> {
   const dash = filters.length ? { dashboardFilters: filters } : {};
-  return w.type === "table" ? { widgetId: w.id, page: 0, ...dash } : { widgetId: w.id, ...dash };
+  if (w.type === "table") return { widgetId: w.id, page: 0, ...dash };
+  return w.type === "pivot" && pivot.length
+    ? { widgetId: w.id, ...dash, pivotFilters: pivot }
+    : { widgetId: w.id, ...dash };
 }
 
 async function queryWithRetry(
@@ -156,7 +160,13 @@ export async function loadRenderSession(
   const now = new Date(claims.requestedAt);
   const deadline = (deps.clock ?? Date.now)() + (deps.busyWaitMs ?? BUSY_WAIT_MS);
   const results = await mapLimit(d.widgets, RENDER_QUERY_PARALLEL, (w) =>
-    queryWithRetry(deps, claims.userId, renderQueryBody(w, filtersFor(state, w.id)), now, deadline),
+    queryWithRetry(
+      deps,
+      claims.userId,
+      renderQueryBody(w, filtersFor(state, w.id), state.pivot?.[w.id]),
+      now,
+      deadline,
+    ),
   );
   return {
     dashboard: {

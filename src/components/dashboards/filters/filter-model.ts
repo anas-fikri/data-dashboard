@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { FilterColumnView } from "@/features/dashboards/filter-columns";
 import type { ColumnType } from "@/features/ingest/infer";
 import { normName } from "@/features/widgets/remap";
-import { parseWidgetConfig } from "@/features/widgets/spec";
+import { crossFilterPositions, parseWidgetConfig } from "@/features/widgets/spec";
 
 export type { FilterColumnView } from "@/features/dashboards/filter-columns";
 export { normName };
@@ -44,9 +44,18 @@ export interface CrossFilter {
   widgetId: string;
   filter: DashFilter;
 }
+/** Field pivot yang disaring pembaca (T-f4a7): baris 1, baris 2, atau kolom pemisah. */
+export type PivotFieldRole = "row0" | "row1" | "column";
+export interface PivotFilter {
+  field: PivotFieldRole;
+  op: "in" | "not_in";
+  values: FilterValue[];
+}
 export interface FilterState {
   filters: DashFilter[];
   cross?: CrossFilter;
+  /** Saringan pivot per id widget (T-f4a7); hanya berlaku untuk widget itu. */
+  pivot?: Record<string, PivotFilter[]>;
 }
 export const EMPTY_STATE: FilterState = { filters: [] };
 
@@ -69,13 +78,15 @@ const filterSchema = z.union([
     .refine((f) => f.gte !== undefined || f.lte !== undefined || f.lt !== undefined),
   z.object({ column: name, op: z.literal("preset"), preset: z.enum(PRESETS) }).strict(),
 ]);
+const widgetId = z.string().regex(/^[a-z0-9]{20,32}$/);
+const pivotFilterSchema = z
+  .object({ field: z.enum(["row0", "row1", "column"]), op: z.enum(["in", "not_in"]), values })
+  .strict();
 const stateSchema = z
   .object({
     filters: z.array(filterSchema).max(20).default([]),
-    cross: z
-      .object({ widgetId: z.string().regex(/^[a-z0-9]{20,32}$/), filter: filterSchema })
-      .strict()
-      .optional(),
+    cross: z.object({ widgetId, filter: filterSchema }).strict().optional(),
+    pivot: z.record(widgetId, z.array(pivotFilterSchema).max(3)).optional(),
   })
   .strict();
 
@@ -93,8 +104,13 @@ export function parseFilterParam(raw: string | string[] | undefined): FilterStat
 
 /** Status → nilai ?f= (null bila tidak ada filter). */
 export function encodeFilterParam(state: FilterState): string | null {
-  if (!state.filters.length && !state.cross) return null;
-  return JSON.stringify(state.cross ? state : { filters: state.filters });
+  const pivot = state.pivot && Object.keys(state.pivot).length ? state.pivot : undefined;
+  if (!state.filters.length && !state.cross && !pivot) return null;
+  return JSON.stringify({
+    filters: state.filters,
+    ...(state.cross ? { cross: state.cross } : {}),
+    ...(pivot ? { pivot } : {}),
+  });
 }
 
 const sameValue = (a: FilterValue, b: FilterValue) => a === b;
@@ -160,7 +176,20 @@ export function sanitize(
     !!c &&
     opts.widgetIds.includes(c.widgetId) &&
     opts.crossColumns.some((n) => normName(n) === normName(c.filter.column));
-  return crossOk ? { filters, cross: c } : { filters };
+  // Saringan pivot: hanya widget yang ada, satu saringan per field, nilai tanpa ganda.
+  const pivot: Record<string, PivotFilter[]> = {};
+  for (const [id, list] of Object.entries(state.pivot ?? {})) {
+    if (!opts.widgetIds.includes(id)) continue;
+    const kept = list
+      .filter((f, i) => list.findIndex((g) => g.field === f.field) === i)
+      .map((f) => ({ ...f, values: uniqueValues(f.values).slice(0, SELECTED_MAX) }));
+    if (kept.length) pivot[id] = kept;
+  }
+  return {
+    filters,
+    ...(crossOk ? { cross: c } : {}),
+    ...(Object.keys(pivot).length ? { pivot } : {}),
+  };
 }
 
 /**
@@ -201,11 +230,13 @@ export function isIsoDate(s: string): boolean {
  * menghapus kolom kategori dari daftar kolom lintas sheet (review T-016 R2-UI-3), jadi satu sumber.
  */
 export const CROSS_FILTER_LABEL = "Klik grafik menyaring widget lain";
+/** Sakelar yang sama untuk widget pivot (T-f4a7): label baris/kolom yang diklik menjadi filter. */
+export const PIVOT_CROSS_FILTER_LABEL = "Klik label menyaring widget lain";
 
 /**
  * Kolom kategori grafik yang boleh menyaring widget lain, dihitung di klien dari widget + sumber data
  * mode edit (spec yang baru disimpan langsung berlaku tanpa memuat ulang halaman). Aturannya sama
- * dengan server (crossFilterColumnsOf): grafik dengan crossFilter ≠ false, kolom tampil di sheetnya.
+ * dengan server (crossFilterColumnsOf): grafik/pivot dengan crossFilter ≠ false, kolom tampil di sheetnya.
  */
 export function crossColumnsOf(
   widgets: { type: string; spec: unknown }[],
@@ -214,12 +245,12 @@ export function crossColumnsOf(
   const out = new Map<string, string>();
   for (const w of widgets) {
     const p = parseWidgetConfig(w.type, w.spec);
-    if (!p.ok || !("dimension" in p.config.spec) || p.config.spec.crossFilter === false) continue;
-    const { sheetId, dimension } = p.config.spec;
-    const col = sources
-      .find((s) => s.id === sheetId)
-      ?.columns.find((c) => c.pos === dimension.column);
-    if (col && !out.has(normName(col.name))) out.set(normName(col.name), col.name);
+    if (!p.ok || p.config.type === "empty") continue;
+    const sheet = sources.find((s) => s.id === p.config.spec.sheetId);
+    for (const pos of crossFilterPositions(p.config)) {
+      const col = sheet?.columns.find((c) => c.pos === pos);
+      if (col && !out.has(normName(col.name))) out.set(normName(col.name), col.name);
+    }
   }
   return [...out.values()];
 }

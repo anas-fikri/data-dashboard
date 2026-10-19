@@ -40,6 +40,7 @@ export function exportBody(request: WidgetRequest, format: ExportFormatInput): E
     widgetId: request.widgetId,
     format,
     ...(request.dashboardFilters ? { dashboardFilters: request.dashboardFilters } : {}),
+    ...(request.pivotFilters ? { pivotFilters: request.pivotFilters } : {}),
     ...(request.sort ? { sort: request.sort } : {}),
   };
 }

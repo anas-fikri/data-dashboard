@@ -14,8 +14,14 @@ import {
   type ChartSort,
   type WidgetConfig,
 } from "@/features/widgets/spec";
-import { dashFiltersSchema } from "./filters";
-import { resolveSpec, type Plan, type QuerySpec } from "./spec";
+import {
+  PIVOT_FIELDS,
+  dashFiltersSchema,
+  pivotFiltersSchema,
+  valuesClause,
+  type DashClause,
+} from "./filters";
+import { resolveSpec, type Grain, type Plan, type QuerySpec } from "./spec";
 
 /** Halaman tabel maksimum (100 baris/halaman → 10 juta baris). */
 export const TABLE_PAGE_MAX = 100_000;
@@ -32,6 +38,13 @@ export const widgetBodySchema = z
      * sheet widget ini, disembunyikan, atau beda kelompok tipe dengan sumbernya dilewati.
      */
     dashboardFilters: dashFiltersSchema.optional(),
+    /** Widget pivot: saringan field pivot dari pembaca (T-f4a7); jenis lain mengabaikannya. */
+    pivotFilters: pivotFiltersSchema.optional(),
+    /**
+     * Widget pivot: minta daftar nilai satu field (menu saring, T-f4a7) alih-alih tabel — dengan filter
+     * dashboard, Saring tersimpan, dan saringan field LAIN (saringan field itu sendiri diabaikan).
+     */
+    pivotValues: z.enum(PIVOT_FIELDS).optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
     sort: z
       .object({ column: pos, dir: z.enum(["asc", "desc"]) })
@@ -48,6 +61,44 @@ export interface PivotShape {
   sort: ChartSort;
   totals: boolean;
   subtotals: boolean;
+  /** Saringan pembaca per dimensi pivot (indeks plan.dimensions), T-f4a7. */
+  local?: PivotLocal[];
+  /** Bagian Saring tersimpan (T-f4a7): klausa nilai kolom, di-AND dengan filter dashboard. */
+  saved?: DashClause[];
+  /** Mode daftar nilai (pivotValues): indeks dimensi yang didaftar. */
+  list?: number;
+  /** Saringan yang berlaku (Saring tersimpan lalu saringan pembaca) untuk catatan di tabel/PDF. */
+  notes?: PivotNote[];
+}
+
+/** Satu saringan untuk catatan pivot: nama kolom + nilai mentah (diformat pemakai sesuai tipe). */
+export interface PivotNote {
+  label: string;
+  type: ColumnSchema["type"];
+  grain?: Grain;
+  op: "in" | "not_in";
+  values: (string | number | boolean | null)[];
+  /** Bagian Saring tersimpan (bukan saringan pembaca). */
+  saved?: true;
+}
+
+/** Saringan satu dimensi pivot: kunci kelompok IN/NOT IN nilai (null = (kosong)). */
+export interface PivotLocal {
+  dim: number;
+  op: "in" | "not_in";
+  values: (string | number | boolean | null)[];
+}
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$/;
+
+/** Nilai cocok dengan tipe dimensi (label mentah pivot); null selalu boleh. */
+function localValueOk(type: ColumnSchema["type"], grained: boolean, v: unknown): boolean {
+  if (v === null) return true;
+  if (type === "text") return typeof v === "string";
+  if (type === "boolean") return typeof v === "boolean";
+  if (type === "date" || type === "timestamp") return typeof v === "string" && ISO_DAY.test(v);
+  if (grained) return false;
+  return typeof v === "number" && Number.isFinite(v);
 }
 
 export type WidgetPlan =
@@ -77,7 +128,8 @@ const SORT: Record<ChartSort, { by: string; dir: "asc" | "desc" }> = {
 export function widgetPlan(
   config: Exclude<WidgetConfig, { type: "empty" }>,
   schema: ColumnSchema[],
-  body: Pick<WidgetQueryBody, "page" | "sort">,
+  body: Pick<WidgetQueryBody, "page" | "sort"> &
+    Partial<Pick<WidgetQueryBody, "pivotFilters" | "pivotValues">>,
 ): WidgetPlan {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   let unavailable: string | null = null;
@@ -121,12 +173,58 @@ export function widgetPlan(
         sort: [],
         limit: 1,
       };
+      // Saringan pembaca: field yang tidak ada di pivot ini (URL lama) atau nilainya tidak cocok tipe
+      // dilewati, bukan gagal.
+      const at = {
+        row0: 0,
+        row1: p.rows.length === 2 ? 1 : -1,
+        column: p.column ? p.rows.length : -1,
+      };
+      const notes: PivotNote[] = [];
+      const saved = (p.filters ?? []).flatMap((f): DashClause[] => {
+        if (!name(f.column)) return [];
+        const c = byPos.get(f.column)!;
+        const cl = valuesClause(f.op, f.values, c);
+        unavailable ??= cl
+          ? null
+          : `Nilai di bagian Saring tidak cocok lagi dengan kolom "${c.name}". Atur ulang bagian Saring widget ini.`;
+        if (cl)
+          notes.push({ label: c.name, type: c.type, op: f.op, values: f.values, saved: true });
+        return cl ? [cl] : [];
+      });
+      const list = body.pivotValues ? at[body.pivotValues] : undefined;
+      if (list !== undefined && !dims[list]) {
+        return {
+          ok: false,
+          code: "INVALID",
+          message: "Bagian pivot ini sudah tidak ada. Muat ulang halaman.",
+        };
+      }
+      const local = (body.pivotFilters ?? []).flatMap((f): PivotLocal[] => {
+        if (f.field === body.pivotValues) return [];
+        const dim = at[f.field];
+        const d = dims[dim];
+        const c = d ? byPos.get(d.column) : undefined;
+        if (!d || !c || !f.values.every((v) => localValueOk(c.type, !!d.timeGrain, v))) return [];
+        notes.push({
+          label: c.name,
+          type: c.type,
+          ...(d.timeGrain ? { grain: d.timeGrain } : {}),
+          op: f.op,
+          values: f.values,
+        });
+        return [{ dim, op: f.op, values: f.values }];
+      });
       pivot = {
         rowFields: p.rows.length === 2 ? 2 : 1,
         column: !!p.column,
         sort: p.sort,
         totals: p.totals,
         subtotals: p.subtotals && p.rows.length === 2,
+        ...(local.length ? { local } : {}),
+        ...(saved.length ? { saved } : {}),
+        ...(list !== undefined ? { list } : {}),
+        ...(notes.length ? { notes } : {}),
       };
       break;
     }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { PivotTableMarkup } from "@/components/widgets/pivot-view";
+import { PivotTableMarkup } from "@/components/widgets/pivot-markup";
 import type { PivotData } from "@/features/query/pivot";
 import { formatNumber } from "@/features/widgets/format";
 import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-table";
@@ -88,6 +88,15 @@ export function PrintPivot({ data, format }: { data: PivotData; format: NumberFo
           </p>
         ) : null}
       </div>
+      {/* Saringan pivot (T-f4a7) disebut di kertas: angka tersaring tidak terbaca seolah semua data. */}
+      {full.filterNote ? (
+        <p
+          className="flex min-h-6 shrink-0 items-center border-t px-3 py-1 text-xs text-muted-foreground"
+          data-testid="print-pivot-filter"
+        >
+          <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]">{full.filterNote}</span>
+        </p>
+      ) : null}
       {note ? (
         <p
           className="flex min-h-6 shrink-0 items-center border-t px-3 py-1 text-xs text-muted-foreground"

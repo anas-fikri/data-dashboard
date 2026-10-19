@@ -686,6 +686,7 @@ describe("R3-CC-2: panel widget retargeted", () => {
   const form = (widget: Omit<WidgetView, "version">) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
         widget: { ...widget, version: "v1" },
         sources: one,
         datasetId: "ds",
@@ -725,6 +726,7 @@ describe("R4-CC-2 / R5-CC-1/2: sheet widget tidak ada di data aktif (banyak shee
   const form = (type: string, spec: unknown, src: Source[] = sources) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
         widget: { id: "w", type, title: "", spec, version: "v1" },
         sources: src,
         datasetId: "ds",

@@ -471,9 +471,9 @@ export const getDashboard = cache(async function getDashboard(
   const { activeVersionId } = d.dataset;
   const widgets = await remapToActive(d.dataset.id, activeVersionId, d.widgets);
   const stored = storedFilterColumns(d.filterColumns);
-  // Skema versi aktif hanya dibaca bila ada kolom filter atau grafik (sumber cross-filter).
+  // Skema versi aktif hanya dibaca bila ada kolom filter atau sumber cross-filter (grafik/pivot).
   const sheets =
-    activeVersionId && (stored.length || widgets.some((w) => isChart(w.type)))
+    activeVersionId && (stored.length || widgets.some((w) => isCrossSource(w.type)))
       ? await activeSheets(activeVersionId)
       : [];
   const filterColumns = filterColumnViews(stored, sheets);
@@ -501,7 +501,9 @@ export const getDashboard = cache(async function getDashboard(
   };
 });
 
-const isChart = (type: string) => (CHART_TYPES as readonly string[]).includes(type);
+/** Jenis widget yang bisa menjadi sumber filter silang: grafik dan pivot (T-f4a7). */
+const CROSS_SOURCES: readonly string[] = [...CHART_TYPES, "pivot"];
+const isCrossSource = (type: string) => CROSS_SOURCES.includes(type);
 
 /** Sheet siap query di versi aktif (nama + skema), opsional hanya id tertentu. */
 async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSheet[]> {
@@ -530,7 +532,7 @@ export async function filterSourcesFor(dashboardId: string): Promise<FilterSourc
       datasetId: true,
       filterColumns: true,
       dataset: { select: { activeVersionId: true } },
-      widgets: { where: { type: { in: [...CHART_TYPES] } }, select: STORED_WIDGET_SELECT },
+      widgets: { where: { type: { in: [...CROSS_SOURCES] } }, select: STORED_WIDGET_SELECT },
     },
   });
   if (!d) return [];
@@ -540,7 +542,7 @@ export async function filterSourcesFor(dashboardId: string): Promise<FilterSourc
     return stored.map((f) => ({ name: f.column, type: null }));
   }
   const widgets = await remapToActive(d.datasetId, versionId, d.widgets);
-  // Kolom filter dicocokkan lewat nama sheet → semua sheet aktif; tanpa kolom filter cukup sheet grafik.
+  // Kolom filter dicocokkan lewat nama sheet → semua sheet aktif; tanpa kolom filter cukup sheet sumber.
   const ids = stored.length
     ? undefined
     : [

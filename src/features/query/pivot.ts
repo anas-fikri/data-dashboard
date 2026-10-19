@@ -18,7 +18,7 @@ import {
   type BuiltSql,
 } from "./sql";
 import type { Grain, OutColumn, Plan } from "./spec";
-import type { PivotShape } from "./widget";
+import type { PivotLocal, PivotNote, PivotShape } from "./widget";
 
 type Dim = Plan["dimensions"][number];
 
@@ -45,9 +45,81 @@ function rowOrder(sort: PivotShape["sort"], v: string, k: string, d: Dim): strin
   }
 }
 
+/**
+ * Saringan pembaca (T-f4a7) pada kunci kelompok dimensi; nilai = label mentah hasil pivot ini (teks
+ * dicocokkan tanpa peka huruf besar/kecil seperti kuncinya, tanggal/waktu per detik seperti toJson,
+ * angka lewat DOUBLE seperti nilai yang dikirim ke klien). null = (kosong); aturan sel kosong pada
+ * not_in sama dengan filter dashboard.
+ */
+function localClauses(plan: Plan, local: PivotLocal[], params: BuiltSql["params"]): string[] {
+  let n = 0;
+  const bind = (v: string | number | boolean) => {
+    const name = `l${++n}`;
+    params[name] = v;
+    return `$${name}`;
+  };
+  return local.flatMap((f) => {
+    const d = plan.dimensions[f.dim];
+    if (!d) return [];
+    const key = groupKey(d);
+    const vals = f.values.filter((v): v is string | number | boolean => v !== null);
+    const hasNull = vals.length !== f.values.length;
+    let k = key;
+    let val = bind;
+    if (d.type === "text") val = (v) => `lower(${bind(v)})`;
+    else if (d.type === "date" || d.type === "timestamp") {
+      k = `date_trunc('second', CAST(${key} AS TIMESTAMP))`;
+      val = (v) => `CAST(${bind(v)} AS TIMESTAMP)`;
+    } else if (d.type !== "boolean") {
+      k = `CAST(${key} AS DOUBLE)`;
+      val = (v) => `CAST(${bind(v)} AS DOUBLE)`;
+    }
+    const match = vals.length ? `${k} IN (${vals.map(val).join(", ")})` : null;
+    if (f.op === "not_in") {
+      if (!match) return [`${key} IS NOT NULL`];
+      return [
+        hasNull ? `(${key} IS NOT NULL AND NOT (${match}))` : `(${key} IS NULL OR NOT (${match}))`,
+      ];
+    }
+    if (!match) return [`${key} IS NULL`];
+    return [hasNull ? `(${match} OR ${key} IS NULL)` : `(${match})`];
+  });
+}
+
+/** WHERE pivot: filter rencana + dashboard, Saring tersimpan (satu deret $f), lalu saringan pembaca. */
+function pivotWhere(plan: Plan, shape: PivotShape, params: BuiltSql["params"]): string {
+  const where = [
+    ...whereClauses({ ...plan, dash: [...(shape.saved ?? []), ...(plan.dash ?? [])] }, params),
+    ...localClauses(plan, shape.local ?? [], params),
+  ];
+  return where.length ? ` WHERE ${where.join(" AND ")}` : "";
+}
+
+/**
+ * Daftar nilai satu field pivot untuk menu saring (T-f4a7): label tampil per kunci kelompok (aturan
+ * sama dengan tabel pivot), urut naik, maks. `limit` + 1 baris (baris lebih = terpotong).
+ */
+export function buildPivotValuesSql(
+  plan: Plan,
+  shape: PivotShape,
+  dim: number,
+  limit: number,
+  parquetPath: string,
+): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const where = pivotWhere(plan, shape, params);
+  const d = plan.dimensions[dim]!;
+  const key = groupKey(d);
+  const label = d.type === "text" ? textLabel(dimensionExpr(d)) : key;
+  return {
+    sql: `SELECT ${label} AS v FROM read_parquet($path)${where} GROUP BY ${key} ORDER BY ${keyOrder(key, d, "ASC")} LIMIT ${limit + 1}`,
+    params,
+  };
+}
+
 export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
-  const where = whereClauses(plan, params);
+  const where = pivotWhere(plan, shape, params);
   const rows = plan.dimensions.slice(0, shape.rowFields);
   const col = shape.column ? plan.dimensions[shape.rowFields] : undefined;
   const two = shape.rowFields === 2;
@@ -70,9 +142,7 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   const m0 = measureExpr(plan.measures[0]!);
   const ctes = [
     // Inline (bukan materialized): data mentah tidak ditahan di memori; parquet dibaca per cabang.
-    `${k("src")} AS NOT MATERIALIZED (SELECT ${src.join(", ")} FROM read_parquet($path)${
-      where.length ? ` WHERE ${where.join(" AND ")}` : ""
-    })`,
+    `${k("src")} AS NOT MATERIALIZED (SELECT ${src.join(", ")} FROM read_parquet($path)${where})`,
   ];
   const r0 = rows[0]!;
   if (two) {
@@ -198,6 +268,8 @@ export interface PivotData {
   /** Jumlah baris terdalam / nilai kolom sebelum batas tampilan. */
   rowCount: number;
   columnCount: number;
+  /** Saringan yang berlaku (Saring tersimpan + saringan pembaca, T-f4a7); hasil cache lama: tidak ada. */
+  filters?: PivotNote[];
 }
 
 /** Baris hasil (sudah toJson, urut kolom META + ukuran) → tabel pivot. */
@@ -286,5 +358,6 @@ export function shapePivot(raw: unknown[][], plan: Plan, shape: PivotShape): Piv
     grandTotal,
     rowCount: count(rowList),
     columnCount: shape.column ? count(colList) : 0,
+    filters: shape.notes ?? [],
   };
 }

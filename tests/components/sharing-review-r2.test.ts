@@ -8,7 +8,10 @@ import {
   focusIfTargeted,
 } from "@/components/dashboards/filter-columns-settings";
 import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
-import { CROSS_FILTER_LABEL } from "@/components/dashboards/filters/filter-model";
+import {
+  CROSS_FILTER_LABEL,
+  PIVOT_CROSS_FILTER_LABEL,
+} from "@/components/dashboards/filters/filter-model";
 import { PHONE_HEIGHT, phoneCardStyle } from "@/components/dashboards/layout-ops";
 import {
   historyReady,
@@ -203,7 +206,10 @@ describe("R2-UI-3: saran peringatan kolom lintas sheet", () => {
   it("menyebut sakelar filter silang dengan label aslinya di pengaturan grafik", () => {
     const out = warnings(["Kota Tujuan", "No Resi"]);
     expect(CROSS_FILTER_LABEL).toBe("Klik grafik menyaring widget lain");
-    expect(out).toContain(`matikan “${CROSS_FILTER_LABEL}” di pengaturan grafik`);
+    // T-f4a7: pivot juga sumber filter silang, sakelarnya disebut dengan labelnya sendiri.
+    expect(out).toContain(
+      `matikan “${CROSS_FILTER_LABEL}” (grafik) / “${PIVOT_CROSS_FILTER_LABEL}” (pivot) di pengaturan widget`,
+    );
     expect(out).toContain("ganti nama kolomnya di skema");
     expect(out).toContain("hapus kolom filternya di");
     // Label sakelar di panel pengaturan grafik = teks yang dirujuk peringatan.

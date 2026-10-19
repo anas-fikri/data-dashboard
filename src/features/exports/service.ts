@@ -209,7 +209,7 @@ export async function createExport(
       `Permintaan ekspor tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
     );
   }
-  const { widgetId, format, dashboardFilters, sort } = parsed.data;
+  const { widgetId, format, dashboardFilters, pivotFilters, sort } = parsed.data;
   const now = deps.now?.() ?? new Date();
   // Otorisasi + peran dibaca tanpa cache (sama dengan query widget); orang lain → 404.
   const w = await deps.query.repo.widget(userId, widgetId);
@@ -218,7 +218,7 @@ export async function createExport(
   // langsung dijawab — pesan per peran seperti /api/query.
   const resolved = await resolveWidget(
     w,
-    { dashboardFilters, sort, page: 0 },
+    { dashboardFilters, pivotFilters, sort, page: 0 },
     { repo: deps.query.repo, now: () => now },
   );
   if (!resolved.ok) {
@@ -228,6 +228,7 @@ export async function createExport(
   const title = (await deps.repo.widgetTitle(widgetId)) ?? "";
   const params: ExportParams = {
     ...(dashboardFilters?.length ? { dashboardFilters } : {}),
+    ...(pivotFilters?.length ? { pivotFilters } : {}),
     ...(sort ? { sort } : {}),
     requestedAt: now.toISOString(),
   };

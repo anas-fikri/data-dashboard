@@ -6,7 +6,8 @@ import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import type { DashFilter, FilterColumnView } from "./filter-model";
+import type { ColumnType } from "@/features/ingest/infer";
+import type { DashFilter, FilterColumnView, FilterValue } from "./filter-model";
 import { slicerModel } from "./slicer-model";
 import { SlicerOption } from "./slicer-option";
 import { useFilterValues, VALUES_MAX } from "./use-filter-values";
@@ -23,29 +24,79 @@ const num = (n: number) => n.toLocaleString("id-ID");
 const LINK =
   "h-(--control-h-lg) px-0 md:h-(--control-h-sm) aria-disabled:cursor-not-allowed aria-disabled:no-underline aria-disabled:opacity-50";
 
-export function SlicerPanel({
-  dashboardId,
-  column,
-  value,
-  onChange,
-  allMode,
-  onAllMode,
-}: {
-  dashboardId: string;
-  column: FilterColumnView;
+interface Selection {
   value: DashFilter | undefined;
   onChange: (f: DashFilter | null) => void;
   /** "Pilih semua" tanpa filter (semua tercentang) — disimpan di luar panel agar bertahan. */
   allMode: boolean;
   onAllMode: (on: boolean) => void;
-}) {
+}
+
+export function SlicerPanel({
+  dashboardId,
+  column,
+  ...selection
+}: { dashboardId: string; column: FilterColumnView } & Selection) {
+  const [query, setQuery] = useState("");
+  const values = useFilterValues(dashboardId, column, query);
+  return (
+    <SlicerBody
+      name={column.column}
+      type={column.type}
+      query={query}
+      onQuery={setQuery}
+      values={values}
+      truncatedNote={
+        values.data?.q
+          ? `Menampilkan ${num(VALUES_MAX)} nilai pertama yang cocok — ketik lebih lengkap untuk mempersempit.`
+          : `Menampilkan ${num(VALUES_MAX)} nilai pertama — ketik untuk mencari.`
+      }
+      {...selection}
+    />
+  );
+}
+
+/** Nilai yang termuat untuk satu kata cari; sumbernya pemanggil (server, atau daftar lokal pivot). */
+export interface SlicerValues {
+  loading: boolean;
+  data: { values: FilterValue[]; truncated: boolean; q: string } | null;
+  error: string | null;
+  /** Galat ini butuh muat ulang halaman, bukan coba lagi. */
+  reload: boolean;
+  /** Daftar lengkap terakhir (tanpa kata cari, tidak terpotong); null = tidak diketahui. */
+  full: FilterValue[] | null;
+  retry: () => void;
+}
+
+/** Isi slicer tanpa sumber data: cari, status, Pilih semua / Hapus pilihan, daftar centang. */
+export function SlicerBody({
+  name,
+  type,
+  text,
+  query,
+  onQuery,
+  values,
+  truncatedNote,
+  value,
+  onChange,
+  allMode,
+  onAllMode,
+}: {
+  name: string;
+  type: ColumnType;
+  /** Teks tampil nilai (bawaan: menurut tipe kolom), mis. "Mar 2026" untuk awal periode pivot. */
+  text?: (v: FilterValue) => string;
+  query: string;
+  onQuery: (q: string) => void;
+  values: SlicerValues;
+  truncatedNote: string;
+} & Selection) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
-  const [query, setQuery] = useState("");
-  const { loading, data, error, reload, full, retry } = useFilterValues(dashboardId, column, query);
+  const { loading, data, error, reload, full, retry } = values;
   const results = data?.values ?? [];
   const m = slicerModel({
-    column: column.column,
+    column: name,
     value,
     allMode,
     results,
@@ -83,11 +134,11 @@ export function SlicerPanel({
           ref={input}
           type="search"
           value={query}
-          onChange={(e) => setQuery(e.target.value)}
+          onChange={(e) => onQuery(e.target.value)}
           maxLength={100}
           autoComplete="off"
           placeholder="Cari nilai…"
-          aria-label={`Cari nilai ${column.column}`}
+          aria-label={`Cari nilai ${name}`}
           aria-describedby={`${id}-status`}
           data-testid="filter-slicer-search"
           className="h-(--control-h-lg) pl-10 md:h-(--control-h)"
@@ -106,9 +157,7 @@ export function SlicerPanel({
           data-testid="filter-slicer-warning"
         >
           <IconAlertTriangle size={16} stroke={1.5} aria-hidden className="mt-px shrink-0" />
-          {data.q
-            ? `Menampilkan ${num(VALUES_MAX)} nilai pertama yang cocok — ketik lebih lengkap untuk mempersempit.`
-            : `Menampilkan ${num(VALUES_MAX)} nilai pertama — ketik untuk mencari.`}
+          {truncatedNote}
         </p>
       ) : null}
       {error ? (
@@ -175,7 +224,7 @@ export function SlicerPanel({
           ) : null}
           <div
             role="group"
-            aria-label={`Nilai ${column.column}`}
+            aria-label={`Nilai ${name}`}
             aria-busy={loading || undefined}
             className="max-h-64 min-h-0 overflow-y-auto rounded-md border p-1"
           >
@@ -183,7 +232,8 @@ export function SlicerPanel({
               <SlicerOption
                 key={`${i < m.pinned.length ? "p" : "r"}:${JSON.stringify(v)}`}
                 value={v}
-                type={column.type}
+                type={type}
+                {...(text ? { text: text(v) } : {})}
                 on={m.isOn(v)}
                 locked={m.locked(v)}
                 last={m.lastKept(v)}

@@ -13,9 +13,12 @@ import {
   parseFilterParam,
   sanitize,
   URL_PARAM_MAX,
+  type CrossFilter,
   type DashFilter,
   type FilterColumnView,
   type FilterState,
+  type PivotFieldRole,
+  type PivotFilter,
 } from "./filter-model";
 import { createStaleStore, type StaleStore } from "./stale-store";
 
@@ -48,7 +51,10 @@ interface FiltersApi {
   setAllMode: (column: string, on: boolean) => void;
   toggleCross: (widgetId: string, f: DashFilter) => void;
   clearCross: () => void;
+  /** Hapus filter dashboard + filter silang; saringan pivot (milik tiap pivot) tetap. */
   clearAll: () => void;
+  /** Ganti seluruh saringan satu pivot (T-f4a7); [] = lepas semua. */
+  setPivot: (widgetId: string, list: PivotFilter[]) => void;
   /** Kartu yang menampilkan angka basi ("Memperbarui…"): satu pengumuman di bilah filter. */
   stale: StaleStore;
 }
@@ -113,6 +119,13 @@ export function DashboardFiltersProvider({
     if (url.href !== window.location.href) window.history.replaceState(null, "", url.href);
   };
 
+  // Ganti filter dashboard/silang tanpa menyentuh saringan pivot.
+  const keep = (filters: DashFilter[], cross?: CrossFilter): FilterState => ({
+    filters,
+    ...(cross ? { cross } : {}),
+    ...(state.pivot ? { pivot: state.pivot } : {}),
+  });
+
   const api: FiltersApi = {
     dashboardId,
     columns,
@@ -147,11 +160,12 @@ export function DashboardFiltersProvider({
     toggleCross: (widgetId, f) =>
       update(
         state.cross?.widgetId === widgetId && filterKey(state.cross.filter) === filterKey(f)
-          ? { filters: state.filters }
-          : { filters: state.filters, cross: { widgetId, filter: f } },
+          ? keep(state.filters)
+          : keep(state.filters, { widgetId, filter: f }),
       ),
-    clearCross: () => update({ filters: state.filters }),
-    clearAll: () => update({ filters: [] }),
+    clearCross: () => update(keep(state.filters)),
+    clearAll: () => update(keep([])),
+    setPivot: (widgetId, list) => update({ ...state, pivot: { ...state.pivot, [widgetId]: list } }),
     stale,
   };
   return <FiltersContext.Provider value={api}>{children}</FiltersContext.Provider>;
@@ -172,9 +186,25 @@ export interface WidgetFilters {
   /** Kategori kolom ini boleh menyaring widget lain (null = tidak bisa sama sekali). */
   pick: ((f: DashFilter) => void) | null;
   canPick: (column: string) => boolean;
+  /** Pivot (T-f4a7): saringan yang dikirim (sudah diterapkan). */
+  pivot: PivotFilter[];
+  /** Pivot: saringan terkini (menu saring) + pengubahnya; null di luar dashboard. */
+  pivotEdit: {
+    current: PivotFilter[];
+    /** Saringan satu field; null = lepas. */
+    set: (field: PivotFieldRole, f: PivotFilter | null) => void;
+    clear: () => void;
+  } | null;
 }
 
-const NONE: WidgetFilters = { filters: [], selected: null, pick: null, canPick: () => false };
+const NONE: WidgetFilters = {
+  filters: [],
+  selected: null,
+  pick: null,
+  canPick: () => false,
+  pivot: [],
+  pivotEdit: null,
+};
 
 /** Kartu melaporkan angka basi ke bilah filter (satu pengumuman untuk semua kartu, bukan per kartu). */
 export function useReportStale(widgetId: string, stale: boolean) {
@@ -190,10 +220,18 @@ export function useReportStale(widgetId: string, stale: boolean) {
 export function useWidgetFilters(widgetId: string): WidgetFilters {
   const ctx = useContext(FiltersContext);
   if (!ctx) return NONE;
+  const current = ctx.state.pivot?.[widgetId] ?? [];
   return {
     filters: filtersFor(ctx.applied, widgetId),
     selected: ctx.state.cross?.widgetId === widgetId ? ctx.state.cross.filter : null,
     pick: (f) => ctx.toggleCross(widgetId, f),
     canPick: (column) => ctx.crossColumns.some((n) => normName(n) === normName(column)),
+    pivot: ctx.applied.pivot?.[widgetId] ?? [],
+    pivotEdit: {
+      current,
+      set: (field, f) =>
+        ctx.setPivot(widgetId, [...current.filter((x) => x.field !== field), ...(f ? [f] : [])]),
+      clear: () => ctx.setPivot(widgetId, []),
+    },
   };
 }

@@ -126,6 +126,7 @@ describe("R10-1: baris status saat gagal simpan terlihat dan terbaca sebagai kes
   const statusOf = (spec: unknown, saveError?: string) => {
     const html = renderToStaticMarkup(
       createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
         widget: { id: "w", type: "kpi", title: "", spec, version: "v1" },
         sources,
         datasetId: "ds",

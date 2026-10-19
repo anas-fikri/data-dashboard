@@ -4,7 +4,7 @@
  * worker dengan skema yang sama (baris lama/rusak → gagal bersih, bukan galat DuckDB).
  */
 import { z } from "zod";
-import { dashFiltersSchema } from "@/features/query/filters";
+import { dashFiltersSchema, pivotFiltersSchema } from "@/features/query/filters";
 import { EXPORT_FORMATS } from "./types";
 
 const cuid = z.string().regex(/^[a-z0-9]{20,32}$/);
@@ -17,6 +17,7 @@ export const exportBodySchema = z
     widgetId: cuid,
     format: z.enum(EXPORT_FORMATS),
     dashboardFilters: dashFiltersSchema.optional(),
+    pivotFilters: pivotFiltersSchema.optional(),
     sort: sortSchema.optional(),
   })
   .strict();
@@ -26,6 +27,7 @@ export type ExportBody = z.infer<typeof exportBodySchema>;
 export const exportParamsSchema = z
   .object({
     dashboardFilters: dashFiltersSchema.optional(),
+    pivotFilters: pivotFiltersSchema.optional(),
     sort: sortSchema.optional(),
     requestedAt: z.string().datetime(),
   })

@@ -141,6 +141,19 @@ const WIDGETS: Record<string, Omit<PivotSpec, "sheetId" | "format"> & Partial<Pi
     values: [{ agg: "avg", column: 4 }],
   },
   rahasia: { ...base, rows: [{ column: 1 }], values: [{ agg: "sum", column: 7 }] },
+  // T-f4a7: bagian Saring tersimpan (huruf besar/kecil diabaikan seperti filter dashboard).
+  srng: {
+    ...base,
+    rows: [{ column: 1 }],
+    values: [{ agg: "sum", column: 4 }],
+    filters: [{ column: 2, op: "in", values: ["EXPRESS"] }],
+  },
+  slah: {
+    ...base,
+    rows: [{ column: 1 }],
+    values: [{ agg: "count" }],
+    filters: [{ column: 3, op: "in", values: [5] }],
+  },
 };
 const WID = (name: string) => `cmv4kljx40009oczvdmpu${name.padEnd(4, "x").slice(0, 4)}0`;
 
@@ -342,6 +355,115 @@ describe("AC 3: filter dashboard, kolom tersembunyi, dan ganti data", () => {
         values: [{ agg: "sum", column: 14 }, { agg: "count" }],
       },
     });
+  });
+});
+
+const total = (pick: (i: number) => boolean) => {
+  let all = 0;
+  for (let i = 0; i < ROWS; i++) if (pick(i)) all += omzetOf(i);
+  return all;
+};
+
+describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring", () => {
+  it("baris 1 = Cabang 1 (semua variasi huruf): baris, total kolom, dan total ikut", async () => {
+    const p = await pivotOf("bulan", {
+      pivotFilters: [{ field: "row0", op: "in", values: ["Cabang 1"] }],
+    });
+    expect(p.rows.map((r) => r.labels[0])).toEqual(["Cabang 1"]);
+    const pick = (i: number) => keyOf(cabangOf(i)) === "cabang 1";
+    expect(p.grandTotal![0]).toBeCloseTo(total(pick), 6);
+    const perBulan = sumBy(bulanOf, pick);
+    p.columns.forEach((b, ci) =>
+      expect(p.columnTotals![ci]![0]).toBeCloseTo(perBulan.get(b as string)!, 6),
+    );
+    expect(p.filters).toEqual([{ label: "Cabang", type: "text", op: "in", values: ["Cabang 1"] }]);
+  });
+
+  it("kolom pemisah bukan Januari (awal periode): kolom dan total tanpa Januari", async () => {
+    const p = await pivotOf("bulan", {
+      pivotFilters: [{ field: "column", op: "not_in", values: ["2026-01-01"] }],
+    });
+    expect(p.columns).toEqual(["2026-02-01", "2026-03-01"]);
+    expect(p.grandTotal![0]).toBeCloseTo(
+      total((i) => bulanOf(i) !== "2026-01-01"),
+      6,
+    );
+    expect(p.filters?.[0]).toMatchObject({ label: "Tanggal", grain: "month", op: "not_in" });
+  });
+
+  it("baris 2 = (Kosong): hanya baris tanpa layanan, subtotal ikut", async () => {
+    const p = await pivotOf("dua", { pivotFilters: [{ field: "row1", op: "in", values: [null] }] });
+    expect(p.rows.every((r) => r.labels[1] === null)).toBe(true);
+    const perCabang = sumBy(
+      (i) => keyOf(cabangOf(i)),
+      (i) => layananOf(i) === null,
+    );
+    p.groups.forEach((g, gi) =>
+      expect(p.subtotals![gi]![0]![0]).toBeCloseTo(perCabang.get(keyOf(g as string))!, 6),
+    );
+  });
+
+  it("field yang tidak ada di pivot / nilai salah tipe dilewati (hasil = tanpa saringan)", async () => {
+    const plain = await pivotOf("bulan");
+    const p = await pivotOf("bulan", {
+      pivotFilters: [
+        { field: "row1", op: "in", values: ["Express"] },
+        { field: "row0", op: "in", values: [5] },
+      ],
+    });
+    expect(p.grandTotal).toEqual(plain.grandTotal);
+    expect(p.filters).toEqual([]);
+  });
+
+  it("daftar nilai field: urut naik, saringan field itu sendiri diabaikan, field lain berlaku", async () => {
+    const run = (body: Record<string, unknown>) =>
+      runWidgetQuery(USER, { widgetId: WID("bulan"), ...body }, deps());
+    const own = await run({
+      pivotValues: "row0",
+      pivotFilters: [{ field: "row0", op: "in", values: ["Cabang 1"] }],
+    });
+    expect(own).toMatchObject({
+      ok: true,
+      pivotValues: { values: ["Cabang 0", "Cabang 1", "Cabang 2", "Cabang 3"], truncated: false },
+    });
+    const months = await run({ pivotValues: "column" });
+    expect(months).toMatchObject({
+      pivotValues: { values: ["2026-01-01", "2026-02-01", "2026-03-01"] },
+    });
+    // Saringan field lain berlaku pada daftar: periode tanpa data → daftar kosong.
+    const other = await run({
+      pivotValues: "row0",
+      pivotFilters: [{ field: "column", op: "in", values: ["2099-01-01"] }],
+    });
+    expect(other).toMatchObject({ ok: true, pivotValues: { values: [] } });
+    expect(await run({ pivotValues: "row1" })).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
+  it("bagian Saring tersimpan: hanya baris Express yang dihitung, tercatat di catatan", async () => {
+    const p = await pivotOf("srng");
+    expect(p.grandTotal![0]).toBeCloseTo(
+      total((i) => layananOf(i) === "Express"),
+      6,
+    );
+    expect(p.filters).toEqual([
+      { label: "Layanan", type: "text", op: "in", values: ["EXPRESS"], saved: true },
+    ]);
+  });
+
+  it("Saring dengan nilai yang tidak cocok tipe kolom → COLUMN_UNAVAILABLE, bukan diam-diam dilewati", async () => {
+    const r = await runWidgetQuery(USER, { widgetId: WID("slah") }, deps());
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+  });
+
+  it("ganti data: kolom Saring ikut dipetakan; kolom Saring ganda ditolak", () => {
+    const cfg = parseWidgetConfig("pivot", { ...WIDGETS.srng, sheetId: SHEET });
+    if (!cfg.ok || cfg.config.type === "empty") throw new Error("spec");
+    const old = { id: SHEET, name: "Data", aliasName: null, index: 0, schema: SCHEMA };
+    const moved = SCHEMA.map((c) => ({ ...c, pos: c.pos + 10 }));
+    const out = remapConfig(cfg.config, old, { ...old, id: "baru", schema: moved }, []);
+    expect(out.config).toMatchObject({ spec: { filters: [{ column: 12, values: ["EXPRESS"] }] } });
+    const dup = { column: 2, op: "in", values: ["a"] };
+    expect(parseWidgetConfig("pivot", { ...WIDGETS.srng, filters: [dup, dup] }).ok).toBe(false);
   });
 });
 

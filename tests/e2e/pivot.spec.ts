@@ -140,8 +140,9 @@ test.describe("widget pivot (T-tcjp)", () => {
       "Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total.",
     );
     const table = card(owner).getByTestId("widget-pivot");
+    // Sel pojok juga berisi menu saring (T-f4a7): teksnya diawali tombol kolom pemisah.
     await expect(table.locator("thead th")).toHaveText([
-      "Customer",
+      /Customer$/,
       "Jan 2026",
       "Feb 2026",
       "Mar 2026",
@@ -215,6 +216,7 @@ test.describe("widget pivot (T-tcjp)", () => {
       data: { baseRevision: revision, items: [{ i: widgetId, x: 0, y: 0, w: 8, h: 8 }] },
     });
     expect(lr.status(), await lr.text()).toBe(200);
+    revision = ((await lr.json()) as { data: { layoutRevision: number } }).data.layoutRevision;
   });
 
   for (const width of [1440, 390]) {
@@ -259,7 +261,9 @@ test.describe("widget pivot (T-tcjp)", () => {
       ).toBeGreaterThanOrEqual(600);
       expect(await weight(region.locator("tfoot th"))).toBeGreaterThanOrEqual(600);
       expect(await weight(region.locator("tbody tr[data-kind=leaf] th").first())).toBeLessThan(600);
-      await expect(region.locator('thead th[scope="col"]').first()).toHaveText(
+      // Nama kepala kolom baris tetap "Customer › Layanan" walau berisi menu saring (T-f4a7).
+      await expect(region.locator('thead th[scope="col"]').first()).toHaveAttribute(
+        "aria-label",
         "Customer › Layanan",
       );
       await expect(region.locator('tbody th[scope="row"]')).toHaveCount(72);
@@ -355,5 +359,209 @@ test.describe("widget pivot (T-tcjp)", () => {
       await ctx.close();
       execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);
     }
+  });
+
+  /** Klik sebelum hidrasi hilang: ulangi sampai panel pengaturan pivot terbuka. */
+  async function openPanel(page: Page, panel: Locator) {
+    await expect(async () => {
+      await page.getByRole("button", { name: `Pengaturan ${TITLE}` }).click();
+      await expect(panel.getByTestId("pivot-saved-filters")).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 60_000 });
+  }
+
+  const total = (page: Page) => card(page).getByTestId("widget-pivot").locator("tfoot td").last();
+  const fieldMenu = (page: Page, field: string) =>
+    card(page).locator(`[data-testid=pivot-filter][data-field=${field}]`);
+
+  async function exportCsv(page: Page, name: string): Promise<string[]> {
+    await card(page).getByTestId("widget-export").click();
+    const download = page.waitForEvent("download", { timeout: 90_000 });
+    await page.getByTestId("export-menu").getByTestId("export-csv").click();
+    const dl = await download;
+    expect(await dl.failure()).toBeNull();
+    const path = join(dir, name);
+    await dl.saveAs(path);
+    return readFileSync(path, "utf8").slice(1).trimEnd().split("\n");
+  }
+
+  test("T-f4a7 AC1+AC4: menu saring di kepala pivot — cari/centang, total ikut, URL, ekspor, PDF", async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    await owner.goto(`/dashboards/${d}`);
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+
+    // Layanan: semua tercentang di awal (seperti Excel); lepas Udara = semua kecuali Udara.
+    await fieldMenu(owner, "row1").click();
+    const layanan = owner.getByRole("dialog", { name: "Saring Layanan" });
+    await expect(layanan.getByTestId("filter-slicer-option")).toHaveText(["Darat", "Udara"]);
+    await expect(layanan.getByRole("checkbox", { name: "Udara" })).toBeChecked();
+    await layanan.getByRole("checkbox", { name: "Udara" }).uncheck();
+    await expect(total(owner)).toHaveText(/^Rp\s?90\.072$/);
+    const table = card(owner).getByTestId("widget-pivot");
+    await expect(table.locator("tbody tr[data-kind=leaf]")).toHaveCount(24);
+    await expect(card(owner).getByTestId("pivot-filter-note")).toContainText(
+      "Layanan: kecuali Udara",
+    );
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-filter-menu-1440.png") });
+    await owner.keyboard.press("Escape");
+    await expect(fieldMenu(owner, "row1")).toBeFocused();
+
+    // Ikut URL: muat ulang tetap tersaring.
+    await expect.poll(() => new URL(owner.url()).searchParams.get("f") ?? "").toContain('"pivot"');
+    await owner.reload();
+    await expect(total(owner)).toHaveText(/^Rp\s?90\.072$/);
+    await expect(fieldMenu(owner, "row1")).toHaveAttribute("data-active", "");
+
+    // Kolom pemisah: Hapus pilihan lalu cari + centang Januari saja.
+    await fieldMenu(owner, "column").click();
+    const bulan = owner.getByRole("dialog", { name: "Saring Tanggal" });
+    await expect(bulan.getByTestId("filter-slicer-option")).toHaveText([
+      "Jan 2026",
+      "Feb 2026",
+      "Mar 2026",
+    ]);
+    await bulan.getByTestId("filter-slicer-clear").click();
+    await bulan.getByRole("searchbox", { name: "Cari nilai Tanggal" }).fill("jan");
+    await expect(bulan.getByTestId("filter-slicer-option")).toHaveText(["Jan 2026"]);
+    await bulan.getByRole("checkbox", { name: "Jan 2026" }).check();
+    await owner.keyboard.press("Escape");
+    await expect(table.locator("thead th")).toHaveText([/Customer/, "Jan 2026", "Total No."]);
+    await expect(total(owner)).toHaveText(/^Rp\s?30\.000$/);
+
+    // AC4: ekspor CSV mengikuti saringan yang sama (subtotal dan total ikut).
+    const lines = await exportCsv(owner, "pivot-saring.csv");
+    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Total No."');
+    expect(lines[1]).toBe('"Customer 24","Subtotal",2400,2400');
+    expect(lines.at(-1)).toBe('"Total",,30000,30000');
+    expect(lines).toHaveLength(1 + 24 + 24 + 1);
+
+    // AC4: PDF dengan status filter layar (?f=) — angka dan catatan saringan sama.
+    const f = new URL(owner.url()).searchParams.get("f")!;
+    const { token, exportId } = JSON.parse(
+      execFileSync("node", ["scripts/dev-render-token.mjs", "mint", OWNER, d, "--f", f]).toString(),
+    ) as { token: string; exportId: string };
+    const ctx = await browser.newContext({
+      viewport: { width: 1047, height: 740 },
+      locale: "id-ID",
+    });
+    try {
+      const page = await ctx.newPage();
+      await page.emulateMedia({ media: "print" });
+      expect((await page.goto(`/render/${token}`))?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("data-render-ready", "1", {
+        timeout: 120_000,
+      });
+      const printed = page.getByTestId("print-widget").getByTestId("widget-pivot");
+      await expect(printed.locator("tfoot tr")).toContainText(/Rp\s?30\.000/);
+      await expect(page.getByTestId("print-pivot-filter")).toContainText(
+        "Layanan: kecuali Udara; Tanggal: Jan 2026",
+      );
+    } finally {
+      await ctx.close();
+      execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);
+    }
+
+    // Hapus saringan: kembali ke semua data.
+    await card(owner).getByTestId("pivot-filter-clear").click();
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+    await expect(card(owner).getByTestId("pivot-filter-note")).toHaveCount(0);
+  });
+
+  test("T-f4a7 AC2+AC3: bagian Saring tersimpan; klik label pivot menyaring widget lain", async () => {
+    test.setTimeout(180_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    const panel = owner.getByTestId("widget-panel");
+    await openPanel(owner, panel);
+
+    // AC2: Saring Layanan = Darat → pivot hanya menghitung Darat, tersimpan di pengaturan.
+    const patched = owner.waitForRequest(
+      (r) =>
+        r.method() === "PATCH" &&
+        r.url().includes(`/widgets/${widgetId}`) &&
+        !!(r.postDataJSON() as { spec?: { filters?: unknown } } | null)?.spec?.filters,
+    );
+    await panel.getByRole("button", { name: "Tambah saringan" }).click();
+    await pick(owner, panel, "Kolom", "Layanan · Teks");
+    const row = panel.getByTestId("pivot-saved-filter");
+    await row.getByRole("checkbox", { name: "Darat" }).check();
+    await saved(panel);
+    const body = (await patched).postDataJSON() as {
+      spec: { sheetId: string; filters?: unknown };
+    };
+    expect(body.spec.filters).toEqual([{ column: 4, op: "in", values: ["Darat"] }]);
+    await expect(total(owner)).toHaveText(/^Rp\s?90\.072$/);
+    await expect(card(owner).getByTestId("pivot-filter-note")).toContainText(
+      "Layanan: Darat (pengaturan widget)",
+    );
+    await owner.reload();
+    await openPanel(owner, panel);
+    await expect(row.getByRole("checkbox", { name: "Darat" })).toBeChecked();
+    await expect(total(owner)).toHaveText(/^Rp\s?90\.072$/);
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-saring-panel-1440.png") });
+    await panel.getByRole("button", { name: "Hapus saringan 1" }).click();
+    await saved(panel);
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+
+    // Sakelar filter silang: mati → label biasa; nyala lagi → label bisa diklik.
+    // Simpanan berjeda: tunggu jawaban PATCH sakelar itu sendiri (bukan status yang sudah "tersimpan").
+    const toggled = (on: boolean) =>
+      owner.waitForResponse(
+        (res) =>
+          res.request().method() === "PATCH" &&
+          res.url().includes(`/widgets/${widgetId}`) &&
+          ((res.request().postDataJSON() as { spec?: { crossFilter?: boolean } } | null)?.spec
+            ?.crossFilter !==
+            false) ===
+            on,
+      );
+    const sw = panel.getByTestId("widget-crossfilter-switch");
+    await expect(sw).toBeChecked();
+    const off = toggled(false);
+    await sw.click();
+    expect((await off).status()).toBe(200);
+    await expect(card(owner).getByTestId("crossfilter-item")).toHaveCount(0);
+    const on = toggled(true);
+    await sw.click();
+    expect((await on).status()).toBe(200);
+    await expect(card(owner).getByTestId("crossfilter-item").first()).toBeVisible();
+
+    // AC3: KPI kedua; klik label "Customer 24" di pivot → KPI tersaring, chip bisa dihapus.
+    const r = await owner.request.post(`/api/dashboards/${d}/widgets`, {
+      headers,
+      data: {
+        baseRevision: revision,
+        title: "Total kiriman",
+        type: "kpi",
+        spec: {
+          sheetId: body.spec.sheetId,
+          measure: { agg: "sum", column: 3 },
+          format: { style: "number", decimals: 0 },
+        },
+      },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    await owner.goto(`/dashboards/${d}`);
+    const kpi = owner
+      .getByTestId("widget")
+      .filter({ has: owner.getByRole("heading", { name: "Total kiriman" }) })
+      .getByTestId("kpi-value");
+    await expect(kpi).toHaveAttribute("title", "180.864");
+    const label = card(owner)
+      .getByTestId("crossfilter-item")
+      .filter({ hasText: /^Customer 24$/ });
+    await label.click();
+    await expect(label).toHaveAttribute("aria-pressed", "true");
+    await expect(kpi).toHaveAttribute("title", "14.436");
+    // Pivot sumber tidak menyaring dirinya sendiri.
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+    const chip = owner.getByTestId("cross-filter-chip");
+    await expect(chip).toContainText("Customer 24");
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-cross-1440.png") });
+    await owner.getByTestId("cross-filter-clear").click();
+    await expect(kpi).toHaveAttribute("title", "180.864");
+    await expect(chip).toHaveCount(0);
   });
 });

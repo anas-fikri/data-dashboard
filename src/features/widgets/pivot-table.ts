@@ -4,14 +4,22 @@
  * Total, dan catatan bila baris/kolom melewati batas tampilan. Nilai tetap mentah (angka) + tipenya;
  * teks dibentuk pemakai (formatCell / XLSX angka). Murni.
  */
+import type { PivotFieldRole } from "@/features/query/filters";
 import type { PivotCell, PivotData } from "@/features/query/pivot";
 import { AUTO_FORMAT, formatCell, formatNumber, type ValueType } from "./format";
+
+/** Nilai mentah sebuah label + field-nya (filter silang dari label, T-f4a7). */
+export interface PivotPick {
+  field: PivotFieldRole;
+  raw: unknown;
+}
 
 export interface PivotHeadCell {
   label: string;
   /** Lebar dalam kolom data (banyak nilai per periode). */
   span: number;
   total?: boolean;
+  pick?: PivotPick;
 }
 
 export interface PivotBodyRow {
@@ -21,30 +29,58 @@ export interface PivotBodyRow {
   depth: 0 | 1;
   /** Satu nilai per kolom data, urut header; null = tidak ada data. Kelompok tanpa subtotal: []. */
   values: unknown[];
+  /** Label baris/kelompok (bukan Total). */
+  pick?: PivotPick;
+}
+
+export interface PivotField {
+  role: PivotFieldRole;
+  label: string;
+  type: ValueType;
+  grain?: string;
 }
 
 export interface PivotTableModel {
   /** Judul kolom baris, mis. "Cabang › Layanan". */
   rowHeader: string;
+  /** Field pivot (baris 1, baris 2, kolom pemisah) untuk menu saring dan filter silang. */
+  fields: PivotField[];
   /** Baris header pertama bila ada pemisah kolom; null bila tanpa pemisah. */
   columnHeads: PivotHeadCell[] | null;
   /** Header kolom data terdalam (label nilai, atau label periode bila hanya satu nilai). */
-  valueHeads: { label: string; type: ValueType; total: boolean }[];
+  valueHeads: { label: string; type: ValueType; total: boolean; pick?: PivotPick }[];
   rows: PivotBodyRow[];
   total: PivotBodyRow | null;
   /** "Menampilkan 200 dari 1.000 baris …" bila ada yang tidak tampil; null bila semua tampil. */
   note: string | null;
+  /** "Disaring — Cabang: Bandung, Jakarta; …" bila ada saringan pivot; null bila tidak ada. */
+  filterNote: string | null;
 }
 
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
 const label = (v: unknown, f: { type: ValueType; grain?: string }) =>
   formatCell(v, f.type, AUTO_FORMAT, f.grain);
+/** Nilai saringan yang disebut di catatan; sisanya "+N lainnya". */
+const NOTE_VALUES = 3;
+
+/** Catatan saringan pivot (Saring tersimpan + saringan pembaca), teks sama di layar dan PDF. */
+export function pivotFilterNote(p: Pick<PivotData, "filters">): string | null {
+  const parts = (p.filters ?? []).map((f) => {
+    const vs = f.values.slice(0, NOTE_VALUES).map((v) => label(v, f));
+    const more =
+      f.values.length > NOTE_VALUES ? ` +${count(f.values.length - NOTE_VALUES)} lainnya` : "";
+    const how = f.op === "not_in" ? "kecuali " : "";
+    return `${f.label}: ${how}${vs.join(", ")}${more}${f.saved ? " (pengaturan widget)" : ""}`;
+  });
+  return parts.length ? `Disaring — ${parts.join("; ")}.` : null;
+}
 
 export function pivotTable(p: PivotData): PivotTableModel {
   const nv = p.values.length;
   const split = !!p.columnField;
   const withTotal = !!p.rowTotals;
   const colLabels = split ? p.columns.map((c) => label(c, p.columnField!)) : [];
+  const colPick = (i: number): PivotPick => ({ field: "column", raw: p.columns[i] });
 
   let columnHeads: PivotHeadCell[] | null = null;
   let valueHeads: PivotTableModel["valueHeads"];
@@ -54,12 +90,12 @@ export function pivotTable(p: PivotData): PivotTableModel {
     // Satu nilai: header langsung periode, kolom kanan = nama nilai (mis. "Total No.").
     const v = p.values[0]!;
     valueHeads = [
-      ...colLabels.map((l) => ({ label: l, type: v.type, total: false })),
+      ...colLabels.map((l, i) => ({ label: l, type: v.type, total: false, pick: colPick(i) })),
       ...(withTotal ? [{ label: v.label, type: v.type, total: true }] : []),
     ];
   } else {
     columnHeads = [
-      ...colLabels.map((l) => ({ label: l, span: nv })),
+      ...colLabels.map((l, i) => ({ label: l, span: nv, pick: colPick(i) })),
       ...(withTotal ? [{ label: "Total", span: nv, total: true }] : []),
     ];
     valueHeads = [...colLabels, ...(withTotal ? ["Total"] : [])].flatMap((_, i, all) =>
@@ -90,6 +126,7 @@ export function pivotTable(p: PivotData): PivotTableModel {
         values: p.subtotals
           ? flat(p.subtotals[g] ?? [], p.subtotalTotals?.[g], !!p.subtotalTotals)
           : [],
+        pick: { field: "row0", raw: p.groups[g] },
       });
     }
     rows.push({
@@ -97,6 +134,7 @@ export function pivotTable(p: PivotData): PivotTableModel {
       label: label(r.labels[two ? 1 : 0], p.rowFields[two ? 1 : 0]!),
       depth: two ? 1 : 0,
       values: flat(p.cells[ri] ?? [], p.rowTotals?.[ri], withTotal),
+      pick: { field: two ? "row1" : "row0", raw: r.labels[two ? 1 : 0] },
     });
   });
 
@@ -122,13 +160,19 @@ export function pivotTable(p: PivotData): PivotTableModel {
     ? `Menampilkan ${parts.join(" dan ")}. Persempit dengan filter; total tetap mencakup semua data.`
     : null;
 
+  const fields: PivotField[] = [
+    ...p.rowFields.map((f, i) => ({ role: i ? "row1" : "row0", ...f }) as PivotField),
+    ...(p.columnField ? [{ role: "column" as const, ...p.columnField }] : []),
+  ];
   return {
     rowHeader: p.rowFields.map((f) => f.label).join(" › "),
+    fields,
     columnHeads,
     valueHeads,
     rows,
     total,
     note,
+    filterNote: pivotFilterNote(p),
   };
 }
 

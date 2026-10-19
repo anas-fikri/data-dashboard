@@ -171,6 +171,9 @@ export function remapConfig(
             rows: config.spec.rows.map(dim),
             ...(config.spec.column ? { column: dim(config.spec.column) } : {}),
             values: config.spec.values.map(mapMeasure),
+            ...(config.spec.filters
+              ? { filters: config.spec.filters.map((f) => ({ ...f, column: pos(f.column) })) }
+              : {}),
           },
         },
         missing,

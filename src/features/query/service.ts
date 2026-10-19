@@ -51,7 +51,13 @@ import {
   type Plan,
   type QuerySpec,
 } from "./spec";
-import { buildPivotSql, pivotOutTypes, shapePivot, type PivotData } from "./pivot";
+import {
+  buildPivotSql,
+  buildPivotValuesSql,
+  pivotOutTypes,
+  shapePivot,
+  type PivotData,
+} from "./pivot";
 import {
   sheetSource,
   sourceKeys,
@@ -104,6 +110,8 @@ export interface QueryData {
   absent?: string[];
   /** Widget pivot (T-686n): tabel tersusun; `rows` kosong. */
   pivot?: PivotData;
+  /** Widget pivot mode pivotValues (T-f4a7): nilai unik satu field (maks. 500); `rows` kosong. */
+  pivotValues?: { values: DashValue[]; truncated: boolean };
 }
 
 /** Halaman widget tabel: total baris (dengan filter) + nomor halaman. */
@@ -662,6 +670,49 @@ async function runPivotPlan(
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
 
+/** Nilai paling banyak di menu saring pivot (sama dengan batas nilai per saringan). */
+export const PIVOT_VALUES_MAX = 500;
+
+/** Menu saring pivot (T-f4a7): cache → nilai unik satu field → cache (bentuk cache nilai slicer). */
+async function runPivotValues(
+  userId: string,
+  key: string,
+  typedKey: ParquetSource,
+  plan: Plan,
+  shape: PivotShape,
+  deps: QueryDeps,
+  t0: number,
+): Promise<QueryResult> {
+  const dim = shape.list!;
+  const d = plan.dimensions[dim]!;
+  const done = (v: { values: DashValue[]; truncated: boolean }, cached: boolean): QueryResult => ({
+    ok: true,
+    columns: [plan.columns[dim]!],
+    rows: [],
+    pivotValues: v,
+    cached,
+    ms: Date.now() - t0,
+  });
+  const hit = deps.cache?.get(key);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+  if (hit && "filterValues" in hit) {
+    return done({ values: hit.filterValues, truncated: hit.truncated }, true);
+  }
+  const r = await runOnParquet(userId, typedKey, deps, (path, exec) =>
+    exec(buildPivotValuesSql(plan, shape, dim, PIVOT_VALUES_MAX, path)),
+  );
+  if (!r.ok) {
+    if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+    return r;
+  }
+  // Tipe sama dengan label tabel pivot (pivotOutTypes): tanggal per grain tetap tanggal/waktu.
+  const type = d.type === "text" ? "text" : d.type;
+  const all = r.value.rows.map((row) => toJson(row[0], type) as DashValue);
+  const v = { values: all.slice(0, PIVOT_VALUES_MAX), truncated: all.length > PIVOT_VALUES_MAX };
+  deps.cache?.set(key, { filterValues: v.values, truncated: v.truncated }, rowBytes(v.values));
+  return done(v, false);
+}
+
 /** Batas waktu query total grafik (opsional) — query kategori sangat banyak tidak menahan slot lama. */
 export const TOTALS_MAX_MS = 5_000;
 /** Umur cache hasil grafik yang totalnya gagal (dicoba lagi setelahnya). */
@@ -759,7 +810,10 @@ export interface ResolvedWidget {
  */
 export async function resolveWidget(
   w: AuthorizedWidget,
-  body: Pick<WidgetQueryBody, "dashboardFilters" | "page" | "sort">,
+  body: Pick<
+    WidgetQueryBody,
+    "dashboardFilters" | "page" | "sort" | "pivotFilters" | "pivotValues"
+  >,
   deps: Pick<QueryDeps, "repo" | "now">,
 ): Promise<ResolvedWidget | QueryFailure> {
   const dashFilters = body.dashboardFilters ?? [];
@@ -869,6 +923,22 @@ async function widgetResult(
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
+  if (planned.kind === "pivot" && planned.pivot.list !== undefined) {
+    return withNotes(
+      await runPivotValues(
+        userId,
+        resultKey({
+          ...keyParts,
+          spec: { pivotValues: planned.spec, shape: planned.pivot, dash: dashKey },
+        }),
+        sourceOf(sheet),
+        { ...planned.plan, dash: dash.clauses },
+        planned.pivot,
+        deps,
+        t0,
+      ),
+    );
+  }
   if (planned.kind === "pivot") {
     return withNotes(
       await runPivotPlan(

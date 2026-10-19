@@ -1,189 +1,55 @@
 "use client";
 
+import { IconFilter } from "@tabler/icons-react";
+import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
+import { filterKey } from "@/components/dashboards/filters/filter-model";
+import { crossFilterFor } from "@/components/dashboards/filters/filter-text";
+import { Button } from "@/components/ui/button";
 import type { PivotData } from "@/features/query/pivot";
-import { formatCell } from "@/features/widgets/format";
-import {
-  pivotTable,
-  type PivotBodyRow,
-  type PivotTableModel,
-} from "@/features/widgets/pivot-table";
+import { pivotTable } from "@/features/widgets/pivot-table";
 import type { NumberFormat } from "@/features/widgets/spec";
-import { cn } from "@/lib/utils";
+import { PivotFieldFilters } from "./pivot-filter-menu";
+import { PivotTableMarkup, type PivotPicker } from "./pivot-markup";
+import type { WidgetRequest } from "./widget-query";
 
 /*
- * Widget pivot (T-tcjp), seperti PivotTable Excel: kolom baris (kiri) dan kepala kolom menempel saat
- * digulir, baris Total menempel di bawah; kelompok/subtotal berlatar abu dan tebal, kolom/baris Total
- * tebal dengan garis pemisah. Angka rata kanan tabular; sel tanpa data "–" (dibacakan "tidak ada data").
- * Wilayah gulir bisa difokus (keyboard). Baris/kolom di luar batas tampilan disebut di catatan bawah.
- * `variant="print"`: tanpa gulir/menempel, untuk PDF (baris dibatasi pemanggil).
+ * Widget pivot di kartu (T-tcjp): tabel pivot-markup.tsx dalam wilayah gulir yang bisa difokus
+ * (keyboard); baris/kolom di luar batas tampilan disebut di catatan bawah. Di dashboard (T-f4a7):
+ * menu saring per field di sel pojok, label baris/kolom menyaring widget lain (bila sakelarnya aktif
+ * dan kolomnya termasuk kolom filter silang dashboard), dan catatan saringan yang berlaku + "Hapus
+ * saringan".
  */
-const NUM = "whitespace-nowrap px-3 py-1.5 text-right tabular-nums";
-// Garis kepala/kaki/kolom baris yang menempel: border (border-collapse) ikut tergulir, bayangan inset
-// menempel. Sel pojok dan label Total menimpa bayangan kepala/kaki (!) agar garis kanannya tetap ada.
-const SIDE_LINE = "shadow-[inset_-1px_0_0_var(--color-border)]";
-const CORNER_LINE =
-  "shadow-[inset_0_-1px_0_var(--color-border),inset_-1px_0_0_var(--color-border)]!";
-const TOTAL_LINE = "shadow-[inset_0_2px_0_var(--color-border),inset_-1px_0_0_var(--color-border)]!";
-const HEAD_LINE = "[&_th]:shadow-[inset_0_-1px_0_var(--color-border)]";
-const FOOT_LINE =
-  "[&_td]:shadow-[inset_0_2px_0_var(--color-border)] [&_th]:shadow-[inset_0_2px_0_var(--color-border)]";
-
-export function PivotCells({
-  row,
-  model,
-  format,
-}: {
-  row: PivotBodyRow;
-  model: PivotTableModel;
-  format: NumberFormat;
-}) {
-  if (row.kind === "group" && row.values.length === 0) {
-    return <td colSpan={model.valueHeads.length} />;
-  }
-  return row.values.map((v, i) => {
-    const head = model.valueHeads[i]!;
-    const empty = v === null || v === undefined;
-    return (
-      <td key={i} className={cn(NUM, head.total && "border-l font-semibold")}>
-        {empty ? (
-          <>
-            <span aria-hidden className="text-muted-foreground">
-              –
-            </span>
-            <span className="sr-only">tidak ada data</span>
-          </>
-        ) : (
-          formatCell(v, head.type, format)
-        )}
-      </td>
-    );
-  });
-}
-
-export function PivotTableMarkup({
-  model,
-  format,
-  rows = model.rows,
-  variant,
-}: {
-  model: PivotTableModel;
-  format: NumberFormat;
-  /** Baris yang dicetak (PDF memotong yang tidak muat); bawaan semua. */
-  rows?: PivotBodyRow[];
-  variant: "screen" | "print";
-}) {
-  const screen = variant === "screen";
-  // Sel menempel harus berlatar padat agar isi yang tergulir tidak tembus.
-  const stickLeft = screen ? "sticky left-0 z-[5]" : "";
-  const twoHead = !!model.columnHeads;
-  const head = (
-    <thead className={cn(screen ? `sticky top-0 z-10 ${HEAD_LINE}` : "[&_th]:border-b", "bg-card")}>
-      <tr>
-        <th
-          scope="col"
-          rowSpan={twoHead ? 2 : 1}
-          className={cn(
-            stickLeft,
-            screen && `z-20 ${CORNER_LINE}`,
-            "bg-card px-3 py-1.5 text-left align-bottom font-medium",
-          )}
-        >
-          {model.rowHeader}
-        </th>
-        {(model.columnHeads ?? model.valueHeads).map((h, i) => (
-          <th
-            key={i}
-            scope={twoHead ? "colgroup" : "col"}
-            colSpan={"span" in h ? h.span : 1}
-            className={cn(
-              "whitespace-nowrap px-3 py-1.5 font-medium",
-              twoHead ? "text-center" : "text-right",
-              h.total && "border-l font-semibold",
-            )}
-          >
-            {h.label}
-          </th>
-        ))}
-      </tr>
-      {twoHead ? (
-        <tr>
-          {model.valueHeads.map((h, i) => (
-            <th
-              key={i}
-              scope="col"
-              className={cn(
-                "whitespace-nowrap px-3 py-1 text-right text-xs font-medium text-muted-foreground",
-                h.total && "border-l",
-              )}
-            >
-              {h.label}
-            </th>
-          ))}
-        </tr>
-      ) : null}
-    </thead>
-  );
-  const rowHead = (r: PivotBodyRow, bg: string) => (
-    <th
-      scope="row"
-      className={cn(
-        stickLeft,
-        screen && (r.kind === "total" ? TOTAL_LINE : SIDE_LINE),
-        bg,
-        "min-w-[8rem] max-w-[18rem] px-3 py-1.5 text-left font-normal [overflow-wrap:anywhere]",
-        r.depth === 1 && "pl-7",
-        r.kind !== "leaf" && "font-semibold",
-      )}
-    >
-      {r.label}
-    </th>
-  );
-  return (
-    <table
-      className={cn("w-max min-w-full border-collapse", screen ? "text-sm" : "text-xs")}
-      data-testid="widget-pivot"
-    >
-      {head}
-      <tbody>
-        {rows.map((r, i) => {
-          const bg = r.kind === "group" ? "bg-muted" : "bg-card";
-          return (
-            <tr
-              key={i}
-              data-kind={r.kind}
-              className={cn(
-                "border-b last:border-b-0",
-                r.kind === "group" && "bg-muted font-semibold",
-              )}
-            >
-              {rowHead(r, bg)}
-              <PivotCells row={r} model={model} format={format} />
-            </tr>
-          );
-        })}
-      </tbody>
-      {model.total ? (
-        <tfoot className={cn(screen && `sticky bottom-0 z-10 ${FOOT_LINE}`, "bg-card")}>
-          <tr data-kind="total" className={cn("font-semibold", !screen && "border-t-2")}>
-            {rowHead(model.total, "bg-card")}
-            <PivotCells row={model.total} model={model} format={format} />
-          </tr>
-        </tfoot>
-      ) : null}
-    </table>
-  );
-}
-
 export function PivotView({
   data,
   format,
   label,
+  request,
+  cross,
+  crossFilter = true,
 }: {
   data: PivotData;
   format: NumberFormat;
   label: string;
+  /** Permintaan kartu ini (menu saring memakai filter yang sama); tanpa ini tidak ada menu saring. */
+  request?: WidgetRequest;
+  cross?: WidgetFilters;
+  /** Sakelar "Klik label menyaring widget lain" di pengaturan widget. */
+  crossFilter?: boolean;
 }) {
   const model = pivotTable(data);
+  const edit = cross?.pivotEdit ?? null;
+  const pick = cross?.pick;
+  const picker: PivotPicker | undefined =
+    pick && crossFilter
+      ? (p) => {
+          const f = model.fields.find((x) => x.role === p.field);
+          if (!f || !cross.canPick(f.label)) return null;
+          const filter = crossFilterFor(f.label, f.type, f.grain, p.raw);
+          if (!filter) return null;
+          const pressed = !!cross.selected && filterKey(cross.selected) === filterKey(filter);
+          return { pressed, onPick: () => pick(filter) };
+        }
+      : undefined;
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* Cincin fokus di pembungkus (di atas kepala yang menempel), pola tabel widget. */}
@@ -197,7 +63,17 @@ export function PivotView({
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
           tabIndex={0}
         >
-          <PivotTableMarkup model={model} format={format} variant="screen" />
+          <PivotTableMarkup
+            model={model}
+            format={format}
+            variant="screen"
+            picker={picker}
+            corner={
+              edit && request ? (
+                <PivotFieldFilters fields={model.fields} request={request} edit={edit} />
+              ) : undefined
+            }
+          />
           {model.rows.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
               Tidak ada data untuk ditampilkan.
@@ -205,6 +81,26 @@ export function PivotView({
           ) : null}
         </div>
       </div>
+      {model.filterNote ? (
+        <p
+          className="flex flex-wrap items-center gap-x-2 border-t px-3 py-1 text-xs text-muted-foreground"
+          data-testid="pivot-filter-note"
+        >
+          <IconFilter size={14} stroke={1.5} aria-hidden className="shrink-0" />
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">{model.filterNote}</span>
+          {edit?.current.length ? (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto min-h-6 px-0 text-xs"
+              data-testid="pivot-filter-clear"
+              onClick={edit.clear}
+            >
+              Hapus saringan
+            </Button>
+          ) : null}
+        </p>
+      ) : null}
       {model.note ? (
         <p className="border-t px-3 py-1 text-xs text-muted-foreground" data-testid="pivot-note">
           {model.note}

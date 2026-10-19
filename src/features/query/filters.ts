@@ -84,6 +84,23 @@ export type DashValue = string | number | boolean | null;
 export const dashFiltersSchema = z.array(dashFilterSchema).max(DASH_FILTERS_MAX);
 
 /**
+ * Saringan pivot dinamis (T-f4a7): pembaca memilih nilai field yang SUDAH dipakai pivot itu (baris 1,
+ * baris 2, kolom pemisah) — dirujuk lewat perannya, bukan kolom bebas, jadi tidak membuka kolom lain
+ * (D6). Berlaku hanya untuk widget itu; nilai = label mentah pivot (teks, angka, boolean, awal periode).
+ */
+export const PIVOT_FIELDS = ["row0", "row1", "column"] as const;
+export type PivotFieldRole = (typeof PIVOT_FIELDS)[number];
+export const pivotFilterSchema = z
+  .object({
+    field: z.enum(PIVOT_FIELDS),
+    op: z.enum(["in", "not_in"]),
+    values: z.array(inValue).min(1).max(DASH_VALUES_MAX),
+  })
+  .strict();
+export const pivotFiltersSchema = z.array(pivotFilterSchema).max(PIVOT_FIELDS.length);
+export type PivotFilter = z.infer<typeof pivotFilterSchema>;
+
+/**
  * Status filter di URL (?f=, JSON): filter bar + satu cross-filter aktif beserta widget sumbernya.
  * Tidak valid → diabaikan (lihat parseFilterState).
  */
@@ -94,6 +111,8 @@ export const filterStateSchema = z
       .object({ widgetId: z.string().regex(/^[a-z0-9]{20,32}$/), filter: dashFilterSchema })
       .strict()
       .optional(),
+    /** Saringan pivot per widget (T-f4a7): ikut URL, muat ulang, ekspor, dan PDF. */
+    pivot: z.record(z.string().regex(/^[a-z0-9]{20,32}$/), pivotFiltersSchema).optional(),
   })
   .strict();
 export type FilterState = z.infer<typeof filterStateSchema>;
@@ -311,6 +330,17 @@ export function sourceFamilies(
  * sumber filter — "Tanggal" bertipe tanggal tidak dipakai untuk kolom teks "Tanggal" di sheet lain.
  * Hasil: klausa kanonik (unik, terurut — untuk kunci cache) + nama kolom filter yang dilewati.
  */
+/**
+ * Klausa nilai satu kolom skema untuk bagian Saring pivot (T-f4a7): aturan cocok sama dengan filter
+ * dashboard (teks tanpa peka huruf besar/kecil, tanggal saja = sehari penuh, null = (kosong)). null bila
+ * nilainya tidak cocok tipe kolom (mis. tipe kolom berubah di versi data baru).
+ */
+export const valuesClause = (
+  op: "in" | "not_in",
+  values: DashValue[],
+  c: ColumnSchema,
+): DashClause | null => toClause({ column: c.name, op, values }, c, "");
+
 export function applyDashFilters(
   filters: DashFilter[],
   schema: ColumnSchema[],

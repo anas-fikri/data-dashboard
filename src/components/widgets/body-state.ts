@@ -3,7 +3,7 @@
  * grafik punya baris. Dipakai WidgetBody (memilih tampilan) dan kartu (tombol), jadi keduanya selalu
  * sepakat. Plus teks catatan kolom kosong (T-014). Murni.
  */
-import type { DashFilter } from "@/components/dashboards/filters/filter-model";
+import type { DashFilter, PivotFilter } from "@/components/dashboards/filters/filter-model";
 import type { WidgetData, WidgetQueryState, WidgetRequest } from "./widget-query";
 
 /** memuat = kerangka; rows = data berbaris tampil; none = pesan galat atau "tidak ada data". */
@@ -20,12 +20,25 @@ export function widgetRequest(
   page: number,
   sort: WidgetRequest["sort"] | null,
   filters: DashFilter[],
+  pivot: PivotFilter[] = [],
 ): WidgetRequest {
   const dash = filters.length ? { dashboardFilters: filters } : {};
-  return type === "table"
-    ? { widgetId, page, ...(sort ? { sort } : {}), ...dash }
+  if (type === "table") return { widgetId, page, ...(sort ? { sort } : {}), ...dash };
+  return type === "pivot" && pivot.length
+    ? { widgetId, ...dash, pivotFilters: pivot }
     : { widgetId, ...dash };
 }
+
+/**
+ * Kunci filter sebuah permintaan (filter dashboard, + saringan pivot bila ada): data dari kunci lain
+ * tidak boleh tampil seolah sudah tersaring. Tanpa saringan pivot sama dengan sebelum T-f4a7.
+ */
+export const requestFilters = (r: Pick<WidgetRequest, "dashboardFilters" | "pivotFilters">) =>
+  JSON.stringify(
+    r.pivotFilters?.length
+      ? [r.dashboardFilters ?? [], r.pivotFilters]
+      : (r.dashboardFilters ?? []),
+  );
 
 /**
  * Tabel tetap menampilkan data lama di bawah pesan galat bila `keepOnError` — pindah halaman/urutan

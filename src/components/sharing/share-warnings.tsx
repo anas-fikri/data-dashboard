@@ -7,7 +7,10 @@ import { Dialog } from "radix-ui";
 import { Fragment, type ReactNode } from "react";
 import { editModeHref } from "@/components/dashboards/edit-dashboard-link";
 import { FILTER_SETTINGS_ID } from "@/components/dashboards/filters/filter-bar";
-import { CROSS_FILTER_LABEL } from "@/components/dashboards/filters/filter-model";
+import {
+  CROSS_FILTER_LABEL,
+  PIVOT_CROSS_FILTER_LABEL,
+} from "@/components/dashboards/filters/filter-model";
 import { EDITOR_WARNING, FILTER_WARNING } from "./share-model";
 
 /*
@@ -88,8 +91,8 @@ export function ShareWarnings({
                 pengaturan dashboard (mode edit)
               </Link>
             </Dialog.Close>
-            , atau matikan “{CROSS_FILTER_LABEL}” di pengaturan grafik yang kategorinya memakai
-            kolom itu.
+            , atau matikan “{CROSS_FILTER_LABEL}” (grafik) / “{PIVOT_CROSS_FILTER_LABEL}” (pivot) di
+            pengaturan widget yang memakai kolom itu.
           </p>
         </Warning>
       ) : null}

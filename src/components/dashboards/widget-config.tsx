@@ -50,12 +50,15 @@ const SAVE_DELAY_MS = 350;
 const EMPTY: WidgetConfig = { type: "empty", spec: {} };
 
 export function WidgetConfigForm({
+  dashboardId,
   widget,
   sources,
   datasetId,
   saveError,
   onSave,
 }: {
+  /** Dashboard widget ini (query pratinjau editor untuk nilai bagian Saring pivot). */
+  dashboardId: string;
   widget: WidgetView;
   sources: Source[];
   /** null = bukan pemilik (editor, T-016): halaman dataset bukan miliknya, jadi tanpa tautan ke sana. */
@@ -274,6 +277,7 @@ export function WidgetConfigForm({
             />
           ) : draft.type === "pivot" ? (
             <PivotFields
+              dashboardId={dashboardId}
               spec={draft.spec}
               columns={cols}
               onChange={(spec) => commit({ type: "pivot", spec })}

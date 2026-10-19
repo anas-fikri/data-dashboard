@@ -1,10 +1,12 @@
 "use client";
 
 import { IconTableOptions } from "@tabler/icons-react";
+import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { PIVOT_COLUMNS_SHOWN, PIVOT_ROWS_SHOWN, type PivotSpec } from "@/features/widgets/spec";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
+import { PivotSavedFilters } from "./pivot-saved-filters";
 import {
   DUPLICATE_TEXT,
   canAddRow,
@@ -31,10 +33,12 @@ import {
  * Perubahan langsung tersimpan dan widget di kanvas memuat ulang (pratinjau sungguhan).
  */
 export function PivotFields({
+  dashboardId,
   spec,
   columns,
   onChange,
 }: {
+  dashboardId: string;
   spec: PivotSpec;
   columns: SourceColumn[];
   onChange: (spec: PivotSpec) => void;
@@ -51,6 +55,8 @@ export function PivotFields({
   const [row0, row1] = spec.rows;
   const rowType = columns.find((c) => c.pos === row0?.column)?.type;
   const { column: split, ...withoutSplit } = spec;
+  const { filters: _f, ...withoutFilters } = spec;
+  const { crossFilter: _c, ...withoutCross } = spec;
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="pivot-config">
@@ -148,6 +154,13 @@ export function PivotFields({
         ) : null}
       </fieldset>
 
+      <PivotSavedFilters
+        dashboardId={dashboardId}
+        spec={spec}
+        columns={columns}
+        onChange={(filters) => onChange(filters ? { ...spec, filters } : withoutFilters)}
+      />
+
       <Choice
         label="Urutan baris"
         testId="pivot-sort"
@@ -179,6 +192,13 @@ export function PivotFields({
           testId="pivot-subtotals"
         />
       ) : null}
+      <ToggleField
+        label={PIVOT_CROSS_FILTER_LABEL}
+        hint="Label baris atau kolom yang dipilih jadi filter untuk semua widget lain di dashboard ini."
+        checked={spec.crossFilter !== false}
+        onChange={(on) => onChange(on ? withoutCross : { ...withoutCross, crossFilter: false })}
+        testId="widget-crossfilter-switch"
+      />
     </div>
   );
 }

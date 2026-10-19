@@ -7,6 +7,7 @@ import { AbsentNote } from "./absent-note";
 import {
   bodyState,
   configVersion,
+  requestFilters,
   widgetRequest,
   withChangeCheck,
   type BodyState,
@@ -88,13 +89,13 @@ function Loaded({
   const [sort, setSort] = useState<TableSort>(null);
   const cross = useWidgetFilters(widgetId);
   // Filter berubah → halaman pertama (bukan halaman 7 dari hasil yang kini 2 halaman).
-  const filterKey = JSON.stringify(cross.filters);
+  const request = widgetRequest(widgetId, config.type, page, sort, cross.filters, cross.pivot);
+  const filterKey = requestFilters(request);
   const [seenFilters, setSeenFilters] = useState(filterKey);
   if (seenFilters !== filterKey) {
     setSeenFilters(filterKey);
     setPage(0);
   }
-  const request = widgetRequest(widgetId, config.type, page, sort, cross.filters);
   // Ekspor di kepala kartu (T-017) memakai body yang sama persis (filter + urutan tabel).
   const requestKey = JSON.stringify(request);
   useEffect(() => onRequest?.(JSON.parse(requestKey) as WidgetRequest), [onRequest, requestKey]);
@@ -108,11 +109,11 @@ function Loaded({
   const data = state.data;
   const refetching = state.status === "loading" && !!data;
   // Tabel: data lama tetap di bawah pesan galat hanya bila filternya sama (halaman/urutan gagal).
-  const keepOnError = config.type === "table" && state.filters === JSON.stringify(cross.filters);
+  const keepOnError = config.type === "table" && state.filters === filterKey;
   const shown = bodyState(state, keepOnError, config.type !== "kpi" && config.type !== "table");
   // Data yang tampil milik filter lain dan belum terganti setelah jeda singkat → label "Memperbarui…"
   // di kepala kartu (bukan untuk ganti halaman/urutan tabel atau coba lagi dengan filter yang sama).
-  const otherFilters = refetching && state.filters !== JSON.stringify(cross.filters);
+  const otherFilters = refetching && state.filters !== filterKey;
   const [stale, setStale] = useState(false);
   useEffect(() => {
     if (!otherFilters) return;
@@ -192,6 +193,9 @@ function Loaded({
           data={data.pivot}
           format={config.spec.format}
           label={/^pivot\b/i.test(title) ? title : `Pivot ${title || "widget"}`}
+          request={request}
+          cross={cross}
+          crossFilter={config.spec.crossFilter !== false}
         />
       ) : null;
       break;

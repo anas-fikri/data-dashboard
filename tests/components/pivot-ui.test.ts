@@ -10,7 +10,7 @@ import {
 import { WidgetConfigForm } from "@/components/dashboards/widget-config";
 import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
 import { fittingPivotRows, printPivotNote } from "@/components/render/print-pivot";
-import { PivotTableMarkup } from "@/components/widgets/pivot-view";
+import { PivotTableMarkup } from "@/components/widgets/pivot-markup";
 import type { PivotData } from "@/features/query/pivot";
 import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-table";
 import {
@@ -93,6 +93,7 @@ describe("panel pivot", () => {
   const form = (spec: PivotSpec) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
         widget: { id: "w", type: "pivot", title: "", spec, version: "v1" },
         sources,
         datasetId: "ds",

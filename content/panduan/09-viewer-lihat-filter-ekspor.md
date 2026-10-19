@@ -24,7 +24,9 @@ Di bilah **Filter** di atas dashboard:
 
 Filter aktif tampil sebagai label; tekan **Hapus semua filter** untuk kembali ke semua data. Di ponsel, buka filter lewat tombol **Filter**.
 
-Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyaring widget lain.
+Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyaring widget lain. Di widget pivot, label baris atau kolom juga bisa dipilih untuk menyaring widget lain.
+
+Di widget **pivot**, sel kiri atas tabel berisi nama setiap bagian pivot dengan ikon saring (seperti tombol filter PivotTable Excel). Tekan namanya, lalu centang atau lepas centang nilai — total ikut berubah, pengaturan widget tidak. Catatan **Disaring — …** di bawah tabel menyebut saringan yang berlaku; tekan **Hapus saringan** untuk kembali ke semua data.
 
 ## Mengekspor
 

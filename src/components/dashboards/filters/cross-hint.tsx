@@ -26,7 +26,10 @@ export function CrossFilterHint({ editing, className }: { editing: boolean; clas
       )}
     >
       <IconClick size={16} stroke={1.5} aria-hidden className="shrink-0" />
-      <span>Pilih kategori di grafik untuk menyaring widget lain; pilih lagi untuk melepas.</span>
+      <span>
+        Pilih kategori di grafik untuk menyaring widget lain (juga label baris/kolom pivot); pilih
+        lagi untuk melepas.
+      </span>
     </p>
   );
 }

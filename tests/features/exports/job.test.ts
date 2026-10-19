@@ -291,6 +291,28 @@ describe("runExportJob", () => {
       expect(rows[2]![0]).toBe("Total");
       expect(rows[2]![4] as number).toBeCloseTo(total(cells), 4);
     });
+
+    it("T-f4a7: saringan pivot pembaca (baris + kolom pemisah) ikut ekspor, total mengikuti", async () => {
+      const t = setup({
+        widget: "pivot",
+        params: {
+          pivotFilters: [
+            { field: "row0", op: "in", values: ["Cabang 3"] },
+            { field: "column", op: "not_in", values: ["2026-01-01"] },
+          ],
+        },
+      });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 2 });
+      const lines = parseCsv(
+        readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
+      );
+      const [, feb, mar] = sums.get("Cabang 3")!;
+      expect(lines[0]!.slice(0, 3)).toEqual(["Cabang", "Feb 2026", "Mar 2026"]);
+      expect(lines[1]![0]).toBe("Cabang 3");
+      expect(Number(lines[1]![3])).toBeCloseTo(feb! + mar!, 4);
+      expect(lines[2]![0]).toBe("Total");
+      expect(Number(lines[2]![3])).toBeCloseTo(feb! + mar!, 4);
+    });
   });
 
   it("review INT-R3-1: XLSX terurut lewat parquet kerja → urutan layar (Omzet turun, seri: _row) utuh", async () => {

@@ -1,10 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DashFilter } from "@/components/dashboards/filters/filter-model";
+import type {
+  DashFilter,
+  FilterValue,
+  PivotFieldRole,
+  PivotFilter,
+} from "@/components/dashboards/filters/filter-model";
 import type { PivotData } from "@/features/query/pivot";
 import type { ValueType } from "@/features/widgets/format";
 import { isAccessLost, useAccessLost } from "./access-refresh";
+import { requestFilters } from "./body-state";
 
 /*
  * Query widget dari browser (T-011). Mesin query mengantrekan query per user (antrean terbatas);
@@ -41,6 +47,8 @@ export interface WidgetData {
   widgetVersion?: string;
   /** Hanya pivot (T-tcjp): tabel tersusun dari server. */
   pivot?: PivotData;
+  /** Hanya pivot mode pivotValues (T-f4a7): nilai unik satu field. */
+  pivotValues?: { values: FilterValue[]; truncated: boolean };
 }
 /**
  * `filters`: filter dashboard (JSON) milik `data` — data lama dari filter lain tidak boleh tampil
@@ -109,6 +117,10 @@ export interface WidgetRequest {
   sort?: { column: number; dir: "asc" | "desc" };
   /** Filter dashboard + filter silang (T-012); kolom lewat nama tampil. */
   dashboardFilters?: DashFilter[];
+  /** Pivot: saringan field dari pembaca (T-f4a7). */
+  pivotFilters?: PivotFilter[];
+  /** Pivot: minta daftar nilai satu field (menu saring) alih-alih tabel. */
+  pivotValues?: PivotFieldRole;
 }
 
 type WidgetResult =
@@ -174,7 +186,7 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
     if (!key) return;
     // Request diturunkan dari key (string stabil), bukan objek baru tiap render.
     const req = JSON.parse(key) as WidgetRequest;
-    const filters = JSON.stringify(req.dashboardFilters ?? []);
+    const filters = requestFilters(req);
     const ctl = new AbortController();
     // Penanda memuat diset di callback async (bukan langsung di effect) — data lama tetap tampil.
     void Promise.resolve().then(() => {

@@ -215,7 +215,12 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
   const requestedAt = new Date(params.data.requestedAt);
   const resolved = await resolveWidget(
     w,
-    { dashboardFilters: params.data.dashboardFilters, sort: params.data.sort, page: 0 },
+    {
+      dashboardFilters: params.data.dashboardFilters,
+      pivotFilters: params.data.pivotFilters,
+      sort: params.data.sort,
+      page: 0,
+    },
     { repo: deps.query.repo, now: () => requestedAt },
   );
   if (!resolved.ok) {
