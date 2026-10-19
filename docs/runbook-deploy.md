@@ -282,8 +282,11 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 - **Kuota penyimpanan (T-039)**: `USER_STORAGE_QUOTA_BYTES` (bawaan 20 GiB) kini dihitung dari byte yang
   benar-benar tersimpan — segmen data yang dirujuk versi hidup + file sumber yang belum dihapus retensi
   7 hari + ukuran unggahan yang sedang berjalan; init unggah memproyeksikan file + ±1,2× parquet.
-  - Sebelum dan sesudah deploy T-039 cetak laporan per pengguna (hitungan lama vs baru, persen, file lama
-    yang belum terukur): `$C exec app node scripts/quota-report.mjs`.
+  - Sebelum deploy T-039 (hitungan lama, langsung di PostgreSQL host):
+    `sudo -u postgres psql -d data_dashboard -c 'SELECT u.email, round(sum(v."sizeBytes")/1024.0^3, 2) AS gb FROM "DatasetVersion" v JOIN "Dataset" d ON d.id = v."datasetId" JOIN "User" u ON u.id = d."ownerId" WHERE v.status <> '"'"'FAILED'"'"' GROUP BY u.email ORDER BY gb DESC'`.
+  - Tepat setelah deploy (migrasi T-039 diterapkan) dan lagi setelah pemeriksaan malam pertama, cetak laporan
+    per pengguna (hitungan lama vs baru, persen, file lama yang belum terukur):
+    `$C exec app node scripts/quota-report.mjs`.
   - Ukuran file segmen lama diisi pemeriksaan malam `segment-audit` (03.00 WIB); untuk segera:
     tunggu satu malam atau jalankan ulang worker lalu cetak laporan lagi.
   - Masa transisi `QUOTA_GRACE_DAYS` (bawaan 14 hari sejak migrasi T-039 diterapkan): pengguna yang masih

@@ -19,7 +19,7 @@ const version = (over: Partial<Parameters<typeof q.usageOf>[0][number]> = {}) =>
   sizeBytes: 10n,
   sourceKey: "raw/ds/v/source.csv",
   sourceDeletedAt: null,
-  ingestFinishedAt: at,
+  etag: "etag-1",
   ...over,
 });
 
@@ -29,9 +29,11 @@ describe("usageOf", () => {
       [
         version(), // READY, sumber masih ada → 10
         version({ sourceDeletedAt: at }), // sumber dihapus retensi → 0
-        version({ status: "UPLOADING", sourceKey: "raw/x", ingestFinishedAt: null, sizeBytes: 7n }), // → 7
-        version({ status: "FAILED", ingestFinishedAt: at, sizeBytes: 3n }), // gagal saat ingest: sumber masih ada → 3
-        version({ status: "FAILED", ingestFinishedAt: null, sizeBytes: 1000n }), // unggahan gagal: sudah dihapus → 0
+        version({ status: "UPLOADING", sourceKey: "raw/x", etag: null, sizeBytes: 7n }), // → 7
+        version({ status: "FAILED", sizeBytes: 3n }), // gagal saat ingest (pernah UPLOADED): sumber masih ada → 3
+        // Review T-039: ditolak saat complete/kedaluwarsa (belum pernah UPLOADED, objek sudah dihapus) → 0,
+        // walau markFailed mengisi ingestFinishedAt.
+        version({ status: "FAILED", etag: null, sizeBytes: 1000n }),
         version({ sourceKey: null, sizeBytes: 50n }), // tanpa objek sumber → 0
       ],
       [

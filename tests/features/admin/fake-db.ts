@@ -184,7 +184,7 @@ export function fakeDb() {
                 sizeBytes: v.sizeBytes,
                 sourceKey: v.sourceKey,
                 sourceDeletedAt: null,
-                ingestFinishedAt: null,
+                etag: null,
               }));
           }
           return state.versions

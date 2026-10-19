@@ -3,7 +3,9 @@
 // non-FAILED) dan hitungan baru (byte tersimpan: segmen unik terujuk versi hidup + file sumber yang belum
 // dihapus + ukuran terdeklarasi UPLOADING — sama dengan src/features/uploads/quota.ts usageOf), persen
 // kuota, dan jumlah file segmen lama yang belum terukur (diisi pemeriksaan malam segment-audit; jalankan
-// "run-job segment-audit" bila perlu segera). Cetak sebelum dan sesudah deploy T-039 (masa transisi).
+// "run-job segment-audit" bila perlu segera). Cetak tepat setelah migrasi T-039 dan lagi setelah
+// pemeriksaan malam pertama (ukuran file lama terisi); butuh kolom T-039 — sebelum deploy pakai SQL
+// hitungan lama di runbook §kuota.
 // Pakai: node --env-file=.env scripts/quota-report.mjs   (app: docker compose exec app node scripts/quota-report.mjs)
 import { PrismaClient } from "@prisma/client";
 
@@ -27,7 +29,7 @@ try {
         sizeBytes: true,
         sourceKey: true,
         sourceDeletedAt: true,
-        ingestFinishedAt: true,
+        etag: true,
       },
     });
     const refs = await prisma.sheetSegment.findMany({
@@ -47,7 +49,7 @@ try {
         v.sourceKey &&
         !v.sourceDeletedAt &&
         v.status !== "UPLOADING" &&
-        (v.status !== "FAILED" || v.ingestFinishedAt !== null);
+        (v.status !== "FAILED" || v.etag !== null);
       if (v.status === "UPLOADING" || stored) bytes += size;
     }
     const typed = new Map();

@@ -28,7 +28,8 @@ export interface UsageVersion {
   sizeBytes: bigint | null;
   sourceKey: string | null;
   sourceDeletedAt: Date | null;
-  ingestFinishedAt: Date | null;
+  /** Diisi saat peralihan UPLOADING → UPLOADED (objek sumber lengkap di storage). */
+  etag: string | null;
 }
 export interface UsageRef {
   typedId: string;
@@ -49,9 +50,10 @@ export interface Usage {
 /** File sumber masih di storage: versi selesai diunggah yang sumbernya belum dihapus retensi. */
 function sourceStored(v: UsageVersion): boolean {
   if (!v.sourceKey || v.sourceDeletedAt || v.status === "UPLOADING") return false;
-  // FAILED: sumber tetap ada bila gagalnya setelah diunggah (ingest/pemetaan, sampai retensi 7 hari);
-  // unggahan yang gagal/kedaluwarsa sudah menghapus objeknya.
-  return v.status !== "FAILED" || v.ingestFinishedAt !== null;
+  // FAILED: sumber tetap ada bila versinya pernah lengkap diunggah (etag tercatat saat UPLOADED; gagal
+  // ingest/pemetaan, sampai retensi 7 hari). Unggahan yang ditolak/kedaluwarsa/dibatalkan sebelum
+  // UPLOADED sudah menghapus objeknya atau tidak pernah punya (review T-039).
+  return v.status !== "FAILED" || v.etag !== null;
 }
 
 /** Pemakaian dari baris versi + rujukan manifest versi hidup. Murni. */
@@ -88,7 +90,7 @@ export async function userUsage(db: Db, userId: string): Promise<Usage> {
         sizeBytes: true,
         sourceKey: true,
         sourceDeletedAt: true,
-        ingestFinishedAt: true,
+        etag: true,
       },
     }),
     db.sheetSegment.findMany({
