@@ -1,15 +1,21 @@
 ---
 id: T-sew3
 title: 'Panduan developer: peta kode, resep modifikasi, tes, dan rilis'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-10-19T07:19:36Z"
-updated: "2026-10-19T07:49:36Z"
+updated: "2026-10-19T07:49:41Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: 3602b55aed18e0117c9d61283077ebf9cce03a81
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-19T07:49:41Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
@@ -54,6 +60,9 @@ evidence:
 - [ ] Given rilis ke produksi, when mengikuti panduan, then langkah tes, review, deploy, dan rollback merujuk runbook dan alur aitk yang berlaku
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: hanya dokumentasi + satu skrip bantu: docs/panduan-developer.md (baru), docs/ringkasan-dokumentasi.md + .pdf (baru), docs/runbook-deploy.md (ukuran VM olympus terkini; langkah pra-deploy dan rollback cepat yang sebelumnya hanya praktik manual), README.md (tautan), scripts/md-to-pdf.mjs (Markdown → PDF via Chromium Playwright), micromark sebagai devDependency eksplisit. Tidak ada perubahan kode aplikasi, skema, atau image produksi.
+Security (STRIDE): Information disclosure — dokumen tidak memuat rahasia (nama variabel env saja, tanpa nilai; password/kunci tidak dicantumkan; alamat server internal sudah ada di runbook). Tampering — skrip md-to-pdf hanya membaca file lokal yang diberikan dan menulis PDF; HTML dirender di Chromium tanpa jaringan (setContent). Tidak ada endpoint baru.
+Rollback: revert commit dokumentasi; tidak ada efek runtime.
+Validation: peta kode dibuat dari pembacaan kode (subagen Explore), review akurasi independen 2 putaran (putaran 1: 5 temuan — vCPU, langkah pra-deploy/rollback tidak terdokumentasi + rollback tanpa kode/IMAGE_TAG, jumlah task G-6, file schema, daftar duration — semua diperbaiki), PDF dirender ulang dan diperiksa visual (4 halaman), aitk check hijau (1965 tes).
 
 ## Notes

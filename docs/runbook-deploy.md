@@ -258,18 +258,21 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
 - **Update** (migrasi maju otomatis). Pra-deploy dulu — langkah manual, `deploy.sh` tidak mengerjakannya:
   ```bash
-  stamp=$(date +%Y%m%d%H%M); tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod); tag=${tag:-latest}
+  stamp=$(date +%Y%m%d%H%M); tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod | tail -1); tag=${tag:-latest}
   for i in app worker renderer backup; do docker tag "dashboard-$i:$tag" "dashboard-$i:prev-$stamp"; done
-  tar -czf "../data-dashboard-prev-$stamp.tar.gz" --exclude=./.env.prod --exclude=./deploy/offsite \
-    --exclude=./deploy/certs --exclude=./deploy/rclone.conf .          # kode lama (compose, Caddyfile, skrip)
+  # Kode lama (compose, Caddyfile, skrip) TANPA rahasia: semua .env.prod* (termasuk cadangan .env.prod.bak-*)
+  # dikecualikan, arsip hanya bisa dibaca pemilik.
+  (umask 077; tar -czf "../data-dashboard-prev-$stamp.tar.gz" --exclude='./.env.prod*' \
+    --exclude=./deploy/offsite --exclude=./deploy/certs --exclude=./deploy/rclone.conf .)
   $C run --rm --no-deps backup backup.sh                               # backup sebelum migrasi
   ```
-  Lalu sinkron kode (`git pull`, atau `git archive` dari mesin dev → ekstrak di folder ini) dan
-  `bash deploy/deploy.sh`.
+  Jalankan pra-deploy **sebelum** `.env.prod` diberi `IMAGE_TAG` baru (alur `deploy/images.sh` /
+  `--no-build`), supaya `prev-<stamp>` menunjuk image lama. Lalu sinkron kode (`git pull`, atau `git archive`
+  dari mesin dev → ekstrak di folder ini) dan `bash deploy/deploy.sh`.
 - **Rollback cepat** ke kondisi sebelum deploy (kode + image; `<stamp>` dari pra-deploy):
   ```bash
   tar -xzf "../data-dashboard-prev-<stamp>.tar.gz"                     # kode lama
-  tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod); tag=${tag:-latest}
+  tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod | tail -1); tag=${tag:-latest}
   for i in app worker renderer backup; do docker tag "dashboard-$i:prev-<stamp>" "dashboard-$i:$tag"; done
   $C up -d --no-build --wait && $C up -d --no-deps --force-recreate proxy backup
   ```
