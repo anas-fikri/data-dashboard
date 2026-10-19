@@ -40,7 +40,13 @@ const attrs = (st: Stats) => ({
   mtime: Math.floor(st.mtimeMs / 1000),
 });
 
-function serve(sftp: SFTPWrapper, root: string, failOp?: string, strictAttrs?: boolean) {
+function serve(
+  sftp: SFTPWrapper,
+  root: string,
+  failOp?: string,
+  strictAttrs?: boolean,
+  maxBytes?: number,
+) {
   if (failOp) {
     // Seperti DSM yang menolak satu operasi dengan status umum FAILURE (kode 4).
     const emit = sftp.emit.bind(sftp);
@@ -111,6 +117,10 @@ function serve(sftp: SFTPWrapper, root: string, failOp?: string, strictAttrs?: b
   );
   sftp.on("WRITE", (id, h, offset, data) =>
     tryDo(id, () => {
+      // Seperti volume/kuota NAS yang habis: tulisan melewati batas ditolak FAILURE.
+      if (maxBytes !== undefined && offset + data.length > maxBytes) {
+        return sftp.status(id, STATUS_CODE.FAILURE, "Failure");
+      }
       writeSync(get(h)!.fd!, data, 0, data.length, offset);
       sftp.status(id, STATUS_CODE.OK);
     }),
@@ -174,6 +184,8 @@ export function startFakeSftp(opts: {
   fail?: string;
   /** Seperti DSM pada folder ber-ACL: OPEN dengan atribut izin dan SETSTAT dijawab FAILURE. */
   strictAttrs?: boolean;
+  /** Batas ukuran file yang bisa ditulis (meniru ruang/kuota NAS habis). */
+  maxBytes?: number;
 }): Promise<FakeSftp> {
   const keys = utils.generateKeyPairSync("ed25519");
   const clients = new Set<Connection>();
@@ -202,7 +214,7 @@ export function startFakeSftp(opts: {
           const sftp = acceptSftp();
           // Seperti OpenSSH: EOF dari klien → kanal ditutup (rclone menunggu ini saat menutup koneksi).
           sftp.on("end", () => sftp.end());
-          serve(sftp, opts.root, opts.fail, opts.strictAttrs);
+          serve(sftp, opts.root, opts.fail, opts.strictAttrs, opts.maxBytes);
         });
       });
     });

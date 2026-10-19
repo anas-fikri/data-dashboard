@@ -24,6 +24,12 @@ const NET = [
 // Kode status SFTP (draft-ietf-secsh-filexfer).
 const NO_SUCH_FILE = 2;
 const PERMISSION_DENIED = 3;
+const FAILURE = 4;
+
+// File uji 64 KB, bukan beberapa byte: Btrfs menyimpan file ≤ ±2 KB inline di metadata, jadi file kecil tetap
+// masuk walau ruang/kuota NAS habis — tes harus gagal seperti backup sungguhan (T-h77x).
+const PROBE_DATA = Buffer.alloc(64 * 1024, "uji koneksi data-dashboard\n");
+const CHUNK = 32 * 1024;
 
 /** Langkah tes koneksi, disebut di pesan galat SFTP. */
 const STEPS = {
@@ -82,6 +88,9 @@ export function probeMessage(
   if (typeof err.code === "number" && step) {
     // Status SFTP lain (mis. 4 = FAILURE): sebut langkahnya + pesan singkat dari NAS agar bisa ditindak.
     const said = (err.message ?? "").replace(/[^\x20-\x7e]/g, "").slice(0, 120);
+    if (step === STEPS.write && err.code === FAILURE) {
+      return `NAS menolak saat ${step} (kode SFTP ${err.code}${said ? `: ${said}` : ""}). Biasanya ruang penyimpanan NAS penuh atau kuota akun/folder habis — periksa DSM: Storage Manager, Panel Kontrol › Pengguna › Kuota, dan Folder Bersama › Edit › Kuota; juga izin tulis akun di folder ini.`;
+    }
     return `NAS menolak saat ${step} (kode SFTP ${err.code}${said ? `: ${said}` : ""}). Periksa izin akun di folder ini (baca, tulis, dan hapus) di DSM: Panel Kontrol › Folder Bersama › Edit › Izin.`;
   }
   return `Tes gagal (${err.level ?? err.code ?? "galat tidak dikenal"}).`;
@@ -164,7 +173,10 @@ export async function probeOffsite(
     step = STEPS.write;
     made.push(partial);
     const handle = await call<Buffer>((cb) => s.open(partial, "w", cb));
-    await call((cb) => s.write(handle, Buffer.from("ok"), 0, 2, 0, cb));
+    for (let off = 0; off < PROBE_DATA.length; off += CHUNK) {
+      const len = Math.min(CHUNK, PROBE_DATA.length - off);
+      await call((cb) => s.write(handle, PROBE_DATA, off, len, off, cb));
+    }
     await call((cb) => s.close(handle, cb));
     step = STEPS.rename;
     await call((cb) => s.rename(partial, file, cb));
@@ -172,12 +184,18 @@ export async function probeOffsite(
     step = STEPS.read;
     // readFile ssh2 juga membuka dengan atribut mode → baca manual tanpa atribut.
     const rh = await call<Buffer>((cb) => s.open(file, "r", cb));
-    const got = Buffer.alloc(16);
-    const n = await call<number>((cb) =>
-      s.read(rh, got, 0, got.length, 0, (err, bytes) => cb(err, bytes)),
-    );
+    const got = Buffer.alloc(PROBE_DATA.length);
+    let pos = 0;
+    while (pos < got.length) {
+      const at = pos;
+      const n = await call<number>((cb) =>
+        s.read(rh, got, at, Math.min(CHUNK, got.length - at), at, (err, bytes) => cb(err, bytes)),
+      );
+      if (!n) break;
+      pos += n;
+    }
     await call((cb) => s.close(rh, cb));
-    if (got.subarray(0, n).toString() !== "ok")
+    if (pos !== PROBE_DATA.length || !got.equals(PROBE_DATA))
       throw new ProbeError("File uji terbaca tetapi isinya berbeda.");
     step = STEPS.unlink;
     await call((cb) => s.unlink(file, cb));

@@ -136,6 +136,25 @@ describe("probeOffsite", () => {
     }
   });
 
+  it("NAS penuh/kuota habis (file kecil masuk, besar ditolak) → tes gagal dengan petunjuk ruang/kuota", async () => {
+    const dsm = await startFakeSftp({
+      root,
+      username: "dashboard-backup",
+      password: PASSWORD,
+      maxBytes: 2048,
+    });
+    try {
+      const r = await probeOffsite(cfg({ port: dsm.port }));
+      expect(r).toMatchObject({
+        ok: false,
+        message: expect.stringContaining("ruang penyimpanan NAS penuh atau kuota"),
+      });
+      expect(readdirSync(join(root, "backup-data-dashboard"))).toEqual([]);
+    } finally {
+      await dsm.close();
+    }
+  });
+
   it("file uji tidak tertinggal di folder tanpa izin tulis", () => {
     expect(existsSync(join(root, "hanya-baca"))).toBe(true);
     expect(readdirSync(join(root, "hanya-baca"))).toEqual([]);
