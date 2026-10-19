@@ -195,7 +195,7 @@ function Loaded({
           label={/^pivot\b/i.test(title) ? title : `Pivot ${title || "widget"}`}
           request={request}
           cross={cross}
-          crossFilter={config.spec.crossFilter !== false}
+          crossFilter={config.spec.crossFilter === true}
         />
       ) : null;
       break;

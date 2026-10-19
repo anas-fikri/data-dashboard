@@ -21,7 +21,8 @@ import {
   valuesClause,
   type DashClause,
 } from "./filters";
-import { resolveSpec, type Grain, type Plan, type QuerySpec } from "./spec";
+import { normName } from "@/features/widgets/remap";
+import { isCalendarDate, resolveSpec, type Grain, type Plan, type QuerySpec } from "./spec";
 
 /** Halaman tabel maksimum (100 baris/halaman → 10 juta baris). */
 export const TABLE_PAGE_MAX = 100_000;
@@ -89,14 +90,13 @@ export interface PivotLocal {
   values: (string | number | boolean | null)[];
 }
 
-const ISO_DAY = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2})?$/;
-
 /** Nilai cocok dengan tipe dimensi (label mentah pivot); null selalu boleh. */
 function localValueOk(type: ColumnSchema["type"], grained: boolean, v: unknown): boolean {
   if (v === null) return true;
   if (type === "text") return typeof v === "string";
   if (type === "boolean") return typeof v === "boolean";
-  if (type === "date" || type === "timestamp") return typeof v === "string" && ISO_DAY.test(v);
+  // Tanggal yang tidak ada (2026-02-30, 25:00) ditolak sebelum DuckDB (review T-f4a7 M1).
+  if (type === "date" || type === "timestamp") return typeof v === "string" && isCalendarDate(v);
   if (grained) return false;
   return typeof v === "number" && Number.isFinite(v);
 }
@@ -205,7 +205,9 @@ export function widgetPlan(
         const dim = at[f.field];
         const d = dims[dim];
         const c = d ? byPos.get(d.column) : undefined;
-        if (!d || !c || !f.values.every((v) => localValueOk(c.type, !!d.timeGrain, v))) return [];
+        if (!d || !c || normName(c.name) !== normName(f.column) || d.timeGrain !== f.grain)
+          return [];
+        if (!f.values.every((v) => localValueOk(c.type, !!d.timeGrain, v))) return [];
         notes.push({
           label: c.name,
           type: c.type,

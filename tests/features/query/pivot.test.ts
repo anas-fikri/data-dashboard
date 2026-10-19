@@ -367,7 +367,7 @@ const total = (pick: (i: number) => boolean) => {
 describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring", () => {
   it("baris 1 = Cabang 1 (semua variasi huruf): baris, total kolom, dan total ikut", async () => {
     const p = await pivotOf("bulan", {
-      pivotFilters: [{ field: "row0", op: "in", values: ["Cabang 1"] }],
+      pivotFilters: [{ field: "row0", column: "Cabang", op: "in", values: ["Cabang 1"] }],
     });
     expect(p.rows.map((r) => r.labels[0])).toEqual(["Cabang 1"]);
     const pick = (i: number) => keyOf(cabangOf(i)) === "cabang 1";
@@ -381,7 +381,15 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
 
   it("kolom pemisah bukan Januari (awal periode): kolom dan total tanpa Januari", async () => {
     const p = await pivotOf("bulan", {
-      pivotFilters: [{ field: "column", op: "not_in", values: ["2026-01-01"] }],
+      pivotFilters: [
+        {
+          field: "column",
+          column: "Tanggal",
+          grain: "month",
+          op: "not_in",
+          values: ["2026-01-01"],
+        },
+      ],
     });
     expect(p.columns).toEqual(["2026-02-01", "2026-03-01"]);
     expect(p.grandTotal![0]).toBeCloseTo(
@@ -392,7 +400,9 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
   });
 
   it("baris 2 = (Kosong): hanya baris tanpa layanan, subtotal ikut", async () => {
-    const p = await pivotOf("dua", { pivotFilters: [{ field: "row1", op: "in", values: [null] }] });
+    const p = await pivotOf("dua", {
+      pivotFilters: [{ field: "row1", column: "Layanan", op: "in", values: [null] }],
+    });
     expect(p.rows.every((r) => r.labels[1] === null)).toBe(true);
     const perCabang = sumBy(
       (i) => keyOf(cabangOf(i)),
@@ -407,12 +417,31 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
     const plain = await pivotOf("bulan");
     const p = await pivotOf("bulan", {
       pivotFilters: [
-        { field: "row1", op: "in", values: ["Express"] },
-        { field: "row0", op: "in", values: [5] },
+        { field: "row1", column: "Layanan", op: "in", values: ["Express"] },
+        { field: "row0", column: "Cabang", op: "in", values: [5] },
       ],
     });
     expect(p.grandTotal).toEqual(plain.grandTotal);
     expect(p.filters).toEqual([]);
+  });
+
+  it("review M1/M2: tanggal yang tidak ada atau field yang sudah diganti dilewati (bukan galat)", async () => {
+    const plain = await pivotOf("bulan");
+    const bad = await pivotOf("bulan", {
+      pivotFilters: [
+        { field: "column", column: "Tanggal", grain: "month", op: "in", values: ["2026-02-30"] },
+      ],
+    });
+    expect(bad.grandTotal).toEqual(plain.grandTotal);
+    // Saringan dibuat untuk "Layanan" di baris 1, kini baris 1 = Cabang; atau grain lain.
+    const moved = await pivotOf("bulan", {
+      pivotFilters: [
+        { field: "row0", column: "Layanan", op: "in", values: ["Express"] },
+        { field: "column", column: "Tanggal", grain: "year", op: "in", values: ["2026-01-01"] },
+      ],
+    });
+    expect(moved.grandTotal).toEqual(plain.grandTotal);
+    expect(moved.filters).toEqual([]);
   });
 
   it("daftar nilai field: urut naik, saringan field itu sendiri diabaikan, field lain berlaku", async () => {
@@ -420,7 +449,7 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
       runWidgetQuery(USER, { widgetId: WID("bulan"), ...body }, deps());
     const own = await run({
       pivotValues: "row0",
-      pivotFilters: [{ field: "row0", op: "in", values: ["Cabang 1"] }],
+      pivotFilters: [{ field: "row0", column: "Cabang", op: "in", values: ["Cabang 1"] }],
     });
     expect(own).toMatchObject({
       ok: true,
@@ -433,7 +462,9 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
     // Saringan field lain berlaku pada daftar: periode tanpa data → daftar kosong.
     const other = await run({
       pivotValues: "row0",
-      pivotFilters: [{ field: "column", op: "in", values: ["2099-01-01"] }],
+      pivotFilters: [
+        { field: "column", column: "Tanggal", grain: "month", op: "in", values: ["2099-01-01"] },
+      ],
     });
     expect(other).toMatchObject({ ok: true, pivotValues: { values: [] } });
     expect(await run({ pivotValues: "row1" })).toMatchObject({ ok: false, code: "INVALID" });

@@ -31,7 +31,12 @@ import type { PivotSpec } from "@/features/widgets/spec";
 const W = "cmv4kljx40009oczvdmpupvt01";
 const OTHER = "cmv4kljx40009oczvdmpupvt02";
 const SHEET = "cmv4kljx40009oczvdmpurrs1";
-const cabang = { field: "row0" as const, op: "in" as const, values: ["Bandung", null] };
+const cabang = {
+  field: "row0" as const,
+  column: "Cabang",
+  op: "in" as const,
+  values: ["Bandung", null],
+};
 
 const data = (over: Partial<PivotData> = {}): PivotData => ({
   rowFields: [{ label: "Cabang", type: "text" }],
@@ -78,7 +83,13 @@ describe("status filter: saringan pivot di URL", () => {
           [W]: [
             cabang,
             { ...cabang, values: ["X"] },
-            { field: "column", op: "not_in", values: ["2026-01-01", "2026-01-01"] },
+            {
+              field: "column",
+              column: "Tanggal",
+              grain: "month",
+              op: "not_in",
+              values: ["2026-01-01", "2026-01-01"],
+            },
           ],
           [OTHER]: [cabang],
         },
@@ -86,7 +97,16 @@ describe("status filter: saringan pivot di URL", () => {
       { columns: [], crossColumns: [], widgetIds: [W] },
     );
     expect(out.pivot).toEqual({
-      [W]: [cabang, { field: "column", op: "not_in", values: ["2026-01-01"] }],
+      [W]: [
+        cabang,
+        {
+          field: "column",
+          column: "Tanggal",
+          grain: "month",
+          op: "not_in",
+          values: ["2026-01-01"],
+        },
+      ],
     });
     expect(
       sanitize(
@@ -178,6 +198,7 @@ describe("model tabel dan tampilan pivot", () => {
         label: "Pivot omzet",
         request: { widgetId: W, pivotFilters: [cabang] },
         cross,
+        crossFilter: true,
       }),
     );
     expect(html.match(/data-testid="pivot-filter"/g)).toHaveLength(2);
@@ -237,14 +258,17 @@ describe("filter silang dari pivot", () => {
   };
   const sheets = [{ id: SHEET, schema }];
 
-  it("baris + kolom pemisah jadi kolom filter silang (server = klien); sakelar mati → tidak", () => {
-    const on = [{ type: "pivot", spec }];
+  it("baris + kolom pemisah jadi kolom filter silang (server = klien) hanya bila sakelar = true", () => {
+    const on = [{ type: "pivot", spec: { ...spec, crossFilter: true } }];
     expect(crossFilterColumnsOf(on, sheets)).toEqual(["Cabang", "Layanan", "Tanggal"]);
     const sources = [{ id: SHEET, columns: schema.map((c) => ({ pos: c.pos, name: c.name })) }];
     expect(crossColumnsOf(on, sources)).toEqual(["Cabang", "Layanan", "Tanggal"]);
-    const off = [{ type: "pivot", spec: { ...spec, crossFilter: false } }];
-    expect(crossFilterColumnsOf(off, sheets)).toEqual([]);
-    expect(crossColumnsOf(off, sources)).toEqual([]);
+    // Review M3: pivot tersimpan sebelum T-f4a7 (tanpa crossFilter) tidak menambah kolom silang (D6).
+    for (const s of [spec, { ...spec, crossFilter: false }]) {
+      const off = [{ type: "pivot", spec: s }];
+      expect(crossFilterColumnsOf(off, sheets)).toEqual([]);
+      expect(crossColumnsOf(off, sources)).toEqual([]);
+    }
   });
 });
 

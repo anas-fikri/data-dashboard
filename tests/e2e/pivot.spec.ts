@@ -512,9 +512,10 @@ test.describe("widget pivot (T-tcjp)", () => {
         (res) =>
           res.request().method() === "PATCH" &&
           res.url().includes(`/widgets/${widgetId}`) &&
+          // Pivot: hanya crossFilter === true yang aktif (dimatikan = field dihapus, review M3).
           ((res.request().postDataJSON() as { spec?: { crossFilter?: boolean } } | null)?.spec
-            ?.crossFilter !==
-            false) ===
+            ?.crossFilter ===
+            true) ===
             on,
       );
     const sw = panel.getByTestId("widget-crossfilter-switch");

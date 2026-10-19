@@ -297,8 +297,14 @@ describe("runExportJob", () => {
         widget: "pivot",
         params: {
           pivotFilters: [
-            { field: "row0", op: "in", values: ["Cabang 3"] },
-            { field: "column", op: "not_in", values: ["2026-01-01"] },
+            { field: "row0", column: "Cabang", op: "in", values: ["Cabang 3"] },
+            {
+              field: "column",
+              column: "Tanggal",
+              grain: "month",
+              op: "not_in",
+              values: ["2026-01-01"],
+            },
           ],
         },
       });

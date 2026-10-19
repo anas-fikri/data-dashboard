@@ -195,8 +195,8 @@ export function PivotFields({
       <ToggleField
         label={PIVOT_CROSS_FILTER_LABEL}
         hint="Label baris atau kolom yang dipilih jadi filter untuk semua widget lain di dashboard ini."
-        checked={spec.crossFilter !== false}
-        onChange={(on) => onChange(on ? withoutCross : { ...withoutCross, crossFilter: false })}
+        checked={spec.crossFilter === true}
+        onChange={(on) => onChange(on ? { ...withoutCross, crossFilter: true } : withoutCross)}
         testId="widget-crossfilter-switch"
       />
     </div>

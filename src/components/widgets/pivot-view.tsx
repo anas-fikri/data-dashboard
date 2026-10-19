@@ -25,7 +25,7 @@ export function PivotView({
   label,
   request,
   cross,
-  crossFilter = true,
+  crossFilter = false,
 }: {
   data: PivotData;
   format: NumberFormat;
@@ -33,7 +33,7 @@ export function PivotView({
   /** Permintaan kartu ini (menu saring memakai filter yang sama); tanpa ini tidak ada menu saring. */
   request?: WidgetRequest;
   cross?: WidgetFilters;
-  /** Sakelar "Klik label menyaring widget lain" di pengaturan widget. */
+  /** Sakelar "Klik label menyaring widget lain" di pengaturan widget (pivot: hanya true = aktif). */
   crossFilter?: boolean;
 }) {
   const model = pivotTable(data);

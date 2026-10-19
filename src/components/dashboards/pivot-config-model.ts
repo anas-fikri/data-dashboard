@@ -65,6 +65,10 @@ export function defaultPivot(
   const row = fromChart ?? rowCandidates(cols)[0];
   if (!row) return null;
   const date = cols.find((c) => TEMPORAL.includes(c.type) && c.pos !== row.pos);
+  // Pivot baru: label menyaring widget lain (seperti grafik), kecuali grafik asalnya mematikannya.
+  const chartOff =
+    (prev.type === "bar" || prev.type === "line" || prev.type === "pie") &&
+    prev.spec.crossFilter === false;
   return {
     sheetId,
     rows: [dimensionFor(row)],
@@ -74,6 +78,7 @@ export function defaultPivot(
     format,
     totals: true,
     subtotals: true,
+    ...(chartOff ? {} : { crossFilter: true }),
   };
 }
 

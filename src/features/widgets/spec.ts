@@ -155,7 +155,11 @@ export const pivotSpecSchema = z
     subtotals: z.boolean(),
     /** Saring (opsional): pivot hanya menghitung baris yang cocok semua kolom ini. */
     filters: z.array(pivotSavedFilter).max(PIVOT_FILTERS_MAX).optional(),
-    /** Klik label baris/kolom menyaring widget lain (seperti grafik); tidak ada = aktif. */
+    /**
+     * Klik label baris/kolom menyaring widget lain (T-f4a7). Hanya `true` = aktif (pivot baru diisi
+     * true): pivot yang tersimpan sebelum T-f4a7 tidak diam-diam menambah kolom filter silang yang
+     * boleh dikirim viewer di dashboard yang sudah dibagikan (D6, review M3).
+     */
     crossFilter: z.boolean().optional(),
   })
   .strict()
@@ -249,10 +253,11 @@ export const sheetOf = (c: WidgetConfig): string | null =>
  */
 export function crossFilterPositions(c: WidgetConfig): number[] {
   if (c.type === "empty" || c.type === "kpi" || c.type === "table") return [];
-  if (c.spec.crossFilter === false) return [];
   if (c.type === "pivot") {
+    if (c.spec.crossFilter !== true) return [];
     return [...c.spec.rows, ...(c.spec.column ? [c.spec.column] : [])].map((d) => d.column);
   }
+  if (c.spec.crossFilter === false) return [];
   return [c.spec.dimension.column];
 }
 

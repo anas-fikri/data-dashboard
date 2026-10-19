@@ -32,7 +32,7 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 8. Atur **Urutan baris** (nilai terbesar dulu, A–Z, …), **Tampilkan total**, dan **Format angka**. Perlebar kartu lewat **Ukuran** atau dengan menarik sudutnya agar semua kolom terlihat.
 
 9. **Saring** (opsional), seperti area _Filters_ di PivotTable: tekan **Tambah saringan**, pilih **Kolom** (mis. _Layanan_), lalu centang nilai yang dihitung (mis. _Darat_). Untuk "semua kecuali", tekan **Pilih semua** lalu lepas centang nilai yang tidak dihitung. Maksimal tiga kolom; pivot hanya menghitung baris yang cocok dengan semuanya. Selama belum ada nilai yang dicentang, saringan itu belum berlaku.
-10. Sakelar **Klik label menyaring widget lain** (aktif sejak awal): label baris atau kolom pivot yang dipilih pembaca menjadi filter untuk widget lain di dashboard. Matikan bila pivot ini hanya untuk dibaca.
+10. Sakelar **Klik label menyaring widget lain** (aktif untuk pivot baru): label baris atau kolom pivot yang dipilih pembaca menjadi filter untuk widget lain di dashboard. Matikan bila pivot ini hanya untuk dibaca. Pivot yang dibuat sebelum fitur ini ada belum menyaring widget lain sampai sakelarnya dinyalakan.
 
 Kalau muncul pesan **Kolom ini sudah dipakai di atas dengan rentang waktu yang sama**, Anda memilih kolom yang sama dua kali (mis. _Customer_ sebagai baris dan sebagai rincian). Pilih kolom lain, atau untuk kolom tanggal pilih rentang waktu yang berbeda. Selama pesan ini ada, perubahan belum disimpan.
 

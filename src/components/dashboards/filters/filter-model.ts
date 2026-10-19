@@ -10,7 +10,8 @@ import { z } from "zod";
 import type { FilterColumnView } from "@/features/dashboards/filter-columns";
 import type { ColumnType } from "@/features/ingest/infer";
 import { normName } from "@/features/widgets/remap";
-import { crossFilterPositions, parseWidgetConfig } from "@/features/widgets/spec";
+import type { Grain } from "@/features/query/spec";
+import { GRAINS, crossFilterPositions, parseWidgetConfig } from "@/features/widgets/spec";
 
 export type { FilterColumnView } from "@/features/dashboards/filter-columns";
 export { normName };
@@ -48,6 +49,9 @@ export interface CrossFilter {
 export type PivotFieldRole = "row0" | "row1" | "column";
 export interface PivotFilter {
   field: PivotFieldRole;
+  /** Nama kolom + grain field saat saringan dibuat (field yang sudah diganti → dilewati server). */
+  column: string;
+  grain?: Grain;
   op: "in" | "not_in";
   values: FilterValue[];
 }
@@ -80,7 +84,13 @@ const filterSchema = z.union([
 ]);
 const widgetId = z.string().regex(/^[a-z0-9]{20,32}$/);
 const pivotFilterSchema = z
-  .object({ field: z.enum(["row0", "row1", "column"]), op: z.enum(["in", "not_in"]), values })
+  .object({
+    field: z.enum(["row0", "row1", "column"]),
+    column: name,
+    grain: z.enum(GRAINS).optional(),
+    op: z.enum(["in", "not_in"]),
+    values,
+  })
   .strict();
 const stateSchema = z
   .object({
@@ -236,7 +246,8 @@ export const PIVOT_CROSS_FILTER_LABEL = "Klik label menyaring widget lain";
 /**
  * Kolom kategori grafik yang boleh menyaring widget lain, dihitung di klien dari widget + sumber data
  * mode edit (spec yang baru disimpan langsung berlaku tanpa memuat ulang halaman). Aturannya sama
- * dengan server (crossFilterColumnsOf): grafik/pivot dengan crossFilter ≠ false, kolom tampil di sheetnya.
+ * dengan server (crossFilterColumnsOf): grafik dengan crossFilter ≠ false, pivot dengan crossFilter =
+ * true (crossFilterPositions), kolom tampil di sheetnya.
  */
 export function crossColumnsOf(
   widgets: { type: string; spec: unknown }[],

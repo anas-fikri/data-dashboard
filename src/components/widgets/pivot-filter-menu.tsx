@@ -3,11 +3,17 @@
 import { IconFilter, IconFilterFilled } from "@tabler/icons-react";
 import { Fragment, useEffect, useState } from "react";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
-import type { FilterValue, PivotFieldRole } from "@/components/dashboards/filters/filter-model";
+import {
+  normName,
+  type FilterValue,
+  type PivotFieldRole,
+  type PivotFilter,
+} from "@/components/dashboards/filters/filter-model";
 import { SlicerBody, type SlicerValues } from "@/components/dashboards/filters/slicer-panel";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ColumnType } from "@/features/ingest/infer";
+import type { Grain } from "@/features/query/spec";
 import { AUTO_FORMAT, formatCell } from "@/features/widgets/format";
 import type { PivotField } from "@/features/widgets/pivot-table";
 import { searchOptions } from "@/lib/search";
@@ -26,6 +32,10 @@ const num = (n: number) => n.toLocaleString("id-ID");
 const ROLE_TEXT: Record<PivotFieldRole, string> = { row0: "baris", row1: "baris", column: "kolom" };
 
 type Edit = NonNullable<WidgetFilters["pivotEdit"]>;
+
+/** Saringan milik field ini (peran + kolom + grain sama); saringan field yang sudah diganti bukan. */
+const mine = (f: PivotFilter, field: PivotField) =>
+  f.field === field.role && normName(f.column) === normName(field.label) && f.grain === field.grain;
 type Loaded = { values: FilterValue[]; truncated: boolean };
 
 export function PivotFieldFilters({
@@ -82,7 +92,7 @@ interface MenuProps {
 function FieldMenu(props: MenuProps) {
   const { field, edit } = props;
   const [open, setOpen] = useState(false);
-  const own = edit.current.find((f) => f.field === field.role);
+  const own = edit.current.find((f) => mine(f, field));
   const summary = !own
     ? "semua"
     : own.op === "in"
@@ -118,7 +128,7 @@ function FieldMenu(props: MenuProps) {
 }
 
 function FieldPanel({ field, request, edit, allMode, onAllMode }: MenuProps) {
-  const own = edit.current.find((f) => f.field === field.role);
+  const own = edit.current.find((f) => mine(f, field));
   const others = edit.current.filter((f) => f.field !== field.role);
   const loaded = usePivotValues({
     widgetId: request.widgetId,
@@ -159,7 +169,13 @@ function FieldPanel({ field, request, edit, allMode, onAllMode }: MenuProps) {
         edit.set(
           field.role,
           f && (f.op === "in" || f.op === "not_in")
-            ? { field: field.role, op: f.op, values: f.values }
+            ? {
+                field: field.role,
+                column: field.label,
+                ...(field.grain ? { grain: field.grain as Grain } : {}),
+                op: f.op,
+                values: f.values,
+              }
             : null,
         )
       }
