@@ -57,7 +57,8 @@ npm run worker             # terminal kedua — WAJIB untuk ingest, recast, eksp
 PDF lokal: `npx playwright install chromium`, set `APP_INTERNAL_URL=http://localhost:3100` dan
 `ALLOW_DEV_WEBSOCKET=true`, lalu `npm run renderer`.
 
-User dev cepat: `npx tsx --conditions=react-server scripts/dev-create-user.ts nama@pcpexpress.com --admin`.
+User dev cepat: `npx tsx --conditions=react-server --env-file-if-exists=.env scripts/dev-create-user.ts
+nama@pcpexpress.com --admin`.
 Email (verifikasi, reset password) terlihat di Mailpit `http://localhost:8026`.
 
 **Masalah umum di dev**
@@ -91,7 +92,8 @@ Email (verifikasi, reset password) terlihat di Mailpit `http://localhost:8026`.
 | `uploads` | unggah multipart langsung ke S3 | `service.ts` (`initUpload`, `signParts`, `completeUpload`), `client.ts` (mesin browser) |
 | `ingest` | file → Parquet raw → tipe kolom → Parquet typed | `ingest.ts` (`runIngest`), `csv.ts`, `raw-writer.ts`, `infer.ts`, `typed.ts`, `recast.ts`, `mapping.ts`, `refresh.ts` |
 | `versions` | riwayat versi, aktivasi, rollback, retensi | `service.ts`, `activation.ts`, `retention.ts`, `cleanup.ts` |
-| `datasets`, `schema` | profil dataset; tinjau/koreksi skema | `service.ts`, `actions.ts` |
+| `datasets` | profil dataset (pemilik) | `service.ts`, `actions.ts`, `validation.ts` |
+| `schema` | tinjau/koreksi skema (lewat Route Handler, bukan Server Action) | `service.ts`, `http.ts`, `runtime.ts` |
 | `query` | spesifikasi query widget → SQL DuckDB, cache | `spec.ts`, `sql.ts`, `filters.ts`, `widget.ts` (`widgetPlan`), `service.ts` (`runWidgetQuery`), `cache.ts`, `local-parquet.ts` |
 | `dashboards`, `widgets` | CRUD dashboard/widget, layout grid 12 kolom | `dashboards/service.ts`, `dashboards/validation.ts`, `widgets/spec.ts`, `widgets/remap.ts` |
 | `sharing` | akses OWNER/EDITOR/VIEWER, berbagi ke organisasi | `access.ts` (satu-satunya aturan akses), `service.ts`, `actions.ts` |
@@ -212,7 +214,7 @@ disesuaikan; jalankan `npm run check` dan e2e terkait.
 - Format tanggal baru: `features/ingest/infer.ts` (`DATE_FORMATS`), `features/ingest/recast-input.ts`,
   `components/schema/labels.ts`.
 - Tipe kolom baru: ikuti semua tempat yang menangani `"duration"` — `ingest/infer.ts`, `ingest/recast-input.ts`,
-  `schema/labels.ts`, `schema/sample-table.tsx`, `query/{spec,sql,filters,service}.ts`,
+  `schema/labels.ts`, `schema/sample-table.tsx`, `query/{spec,sql,filters}.ts`,
   `exports/{sql,xlsx,job}.ts`, `widgets/format.ts`, `dashboards/widget-config-model.ts`,
   `filters/{filter-model,filter-text}.ts`, `filters/number-panel.tsx`,
   `widgets/{chart-option.ts,kpi-fit.ts,table-view.tsx}`.
@@ -298,7 +300,9 @@ disesuaikan; jalankan `npm run check` dan e2e terkait.
 - **Aturan klien = salinan aturan server** (filter, agregasi) — ubah keduanya bersamaan.
 - **AG Grid Enterprise dilarang** (ADR-0007, dicek tes).
 - **NAS Synology lewat SFTP**: DSM menolak mengatur izin/waktu file di folder ber-ACL; tes koneksi dan
-  `backup.sh` sengaja menulis tanpa atribut (`set_modtime=false`, `--ignore-existing`).
+  `backup.sh` sengaja menulis tanpa atribut (`set_modtime=false`, `--ignore-existing`). File ≤ ±2 KB tetap masuk
+  walau ruang/kuota NAS habis (Btrfs inline), karena itu file uji tes koneksi 64 KB. `FAILURE` saat menulis file
+  besar = ruang/kuota NAS habis.
 
 ---
 
@@ -322,14 +326,16 @@ Letak tes mengikuti `src/`: `tests/features/<domain>/`, `tests/components/`, `te
    (+ checklist ASVS untuk task strict) → `aitk audit` → `aitk close --summary "…" --knowledge "…|none"`.
    Tanpa aitk: baca `docs/ai/project-context.md` dan handoff terbaru di `docs/ai/handoff/`.
 2. **Git**: kerja di branch, commit kecil per task, remote privat (lihat tim).
-3. **Deploy produksi** (server olympus, `docs/runbook-deploy.md`):
-   - pra-deploy: tag image lama `prev-<stamp>`, arsipkan kode lama, jalankan backup sekali;
-   - sinkron kode (`git archive` → server) lalu `bash deploy/deploy.sh` (build di VM, migrasi, `up --wait`,
-     health hijau) — atau build image di luar VM (`deploy/images.sh`, IMAGE_TAG);
+3. **Deploy produksi** (server olympus) — ikuti `docs/runbook-deploy.md` §6 "Update" persis:
+   - pra-deploy **manual** (`deploy.sh` tidak mengerjakannya): tag keempat image `prev-<stamp>`, arsipkan kode
+     lama ke `../data-dashboard-prev-<stamp>.tar.gz`, jalankan backup sekali;
+   - sinkron kode (`git pull` atau `git archive` → ekstrak di server) lalu `bash deploy/deploy.sh` (build di
+     VM, migrasi, `up --wait`, health hijau) — atau build image di luar VM (`deploy/images.sh`, `IMAGE_TAG`);
    - artikel panduan berubah → `seed-guides.ts --update --only <slug>` di container worker.
-4. **Rollback**: `docker tag dashboard-<svc>:prev-<stamp> dashboard-<svc>:latest` untuk keempat image lalu
-   `docker compose … up -d`; migrasi DB tidak dibalik otomatis — pulihkan dari backup bila skema baru tidak
-   kompatibel (runbook §Restore).
+4. **Rollback cepat** (runbook §6 "Rollback cepat"): ekstrak arsip kode lama, kembalikan tag image
+   `prev-<stamp>` ke tag yang dipakai compose (`IMAGE_TAG` di `.env.prod`, bawaan `latest`), `up -d`, lalu
+   buat ulang `proxy` + `backup`. Migrasi DB tidak dibalik otomatis — pulihkan dari backup (runbook §5) bila
+   skema baru tidak kompatibel.
 
 ## 10. Operasional singkat (detail di runbook)
 

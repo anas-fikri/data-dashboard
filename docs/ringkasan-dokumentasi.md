@@ -57,8 +57,9 @@ Semua berjalan sebagai Docker Compose (project `dashboard`) di server **olympus*
 | Backup | Harian 02.00 WIB: database + seluruh file → terenkripsi **age** (kunci privat **tidak** disimpan di server) → retensi 30 hari → salinan ke **NAS Synology** `nas1.pcpexpress.com:222` folder `/sharedvol1/Backup-Server/data-dashboard` (SFTP, kunci host dipin) |
 | Bila NAS gagal | Arsip ditahan di server, dikirim ulang otomatis tiap 30 menit, admin diberi tahu lewat email + banner aplikasi |
 | Pemantauan | `/api/health` (rincian untuk admin), banner backup untuk admin, email admin saat backup gagal/tertunda/pulih |
-| Deploy | `deploy/deploy.sh` (build di server, migrasi otomatis, cek health); sebelum deploy image lama ditag `prev-<tanggal>` + backup |
-| Rollback | Kembalikan tag image `prev-<tanggal>`, atau pulihkan dari backup (runbook §Restore) |
+| Deploy | Pra-deploy manual (tag image lama `prev-<tanggal>`, arsip kode lama, backup sekali), lalu `deploy/deploy.sh` (build di server, migrasi otomatis, cek health) — runbook §6 |
+| Rollback | Ekstrak arsip kode lama + kembalikan tag image `prev-<tanggal>` lalu nyalakan ulang (runbook §6 "Rollback cepat"), atau pulihkan dari backup (runbook §5) |
+| Kapasitas server | 8 vCPU, 11 GB RAM; app 3 GB, 2 worker × 3 GB |
 
 ## 5. Keamanan
 
@@ -77,18 +78,18 @@ Semua berjalan sebagai Docker Compose (project `dashboard`) di server **olympus*
 
 | Uji | Hasil |
 |---|---|
-| CSV 1 GB: unggah → siap → dashboard | ±10,8 menit alur penuh (server 2 vCPU) |
-| XLSX 307 MB (UAT nyata) | siap dalam 5,8–7,6 menit |
+| CSV 1 GB: unggah → siap → dashboard | ±10,8 menit alur penuh (olympus 8 vCPU; `docs/ai/perf/T-024.md`) |
+| XLSX 307 MB (UAT nyata, data produksi 19 Okt 2026) | siap dalam 5,8–7,6 menit |
 | Deploy dari image siap | layanan sehat < 2 menit (latihan VM kosong 88 detik) |
 
 ## 7. Status proyek (19 Oktober 2026)
 
 - **62 task selesai**, 1 dibatalkan. Aplikasi inti **lengkap dan berjalan di produksi**; UAT berjalan dari akun
   anas.fikri (2 dataset READY, 2 dashboard, 0 galat).
-- **Sedang berjalan:** salinan backup ke NAS Synology (T-h77x) — konfigurasi sudah tersimpan dan tersambung,
-  tetapi **penyimpanan NAS penuh/kuota habis** sehingga file > ±2 KB ditolak (lihat §8). T-023 (paket deploy)
-  tinggal menunggu ini.
-- **Roadmap G-6 (ditahan sampai UAT selesai, 28 task):**
+- **Menunggu NAS:** salinan backup ke NAS Synology (T-h77x) — konfigurasi sudah tersimpan dan tersambung,
+  tetapi **penyimpanan NAS penuh/kuota habis** sehingga file ≥ 4 KB ditolak (lihat §8). Arsip aman di server dan
+  dikirim ulang otomatis begitu ada ruang. T-023 (paket deploy) tinggal menunggu ini.
+- **Roadmap G-6 (ditahan sampai UAT selesai, 29 task tersisa):**
   - **Lihat data** — halaman bergaya lembar kerja (baca-saja): gulir jutaan baris, urut, saring per kolom, cari,
     salin ke Excel, unduh tampilan.
   - **Data per periode** — unggah per bulan tanpa mengganti periode lain; ganti/hapus/pulihkan periode; pemilih
@@ -102,7 +103,7 @@ Semua berjalan sebagai Docker Compose (project `dashboard`) di server **olympus*
 |---|---|---|
 | 1 | **Kosongkan ruang / naikkan kuota NAS** untuk akun `backupserver` atau shared folder `sharedvol1` (DSM › Storage Manager, › Panel Kontrol › Pengguna › Kuota, › Folder Bersama › Edit › Kuota). Setelah itu kirim ulang berjalan otomatis | Pengelola NAS |
 | 2 | Uji pemulihan dari NAS: `ssh olympus bash …/deploy/verify-backup.sh --remote < kunci-backup-dashboard.txt` | Admin |
-| 3 | Pilih retensi backup di NAS (30 hari ≈ 35 GB; 14 hari ≈ 16 GB) | Admin |
+| 3 | Pilih retensi backup di NAS (perkiraan dari arsip harian ±1,1 GB: 30 hari ≈ 35 GB; 14 hari ≈ 16 GB) | Admin |
 | 4 | Ganti password admin S3/silo yang pernah terkirim lewat chat | Pengelola silo |
 | 5 | Pasang sertifikat root CA di komputer pengguna (menghilangkan "Not Secure") | IT |
 | 6 | Backup aplikasi lain di server **pandora** gagal ke NAS sejak 22 Jan 2026 (SMB port 445 tertutup) — di luar aplikasi ini, bisa dipindah ke SFTP port 222 | ICT |

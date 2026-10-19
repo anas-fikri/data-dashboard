@@ -1,11 +1,48 @@
 ---
 id: T-sew3
 title: 'Panduan developer: peta kode, resep modifikasi, tes, dan rilis'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-10-19T07:19:36Z"
-updated: "2026-10-19T07:19:36Z"
+updated: "2026-10-19T07:49:36Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: worktree-t-001-scaffold
+base: 3602b55aed18e0117c9d61283077ebf9cce03a81
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 51409
+    summary: |-
+      …"code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792396148630,"service":"data-dashboard","host":"127.0.0.1","port":64277,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792396148638,"service":"data-dashboard","host":"127.0.0.1","port":64286,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792396148678,"service":"data-dashboard","host":"127.0.0.1","port":64288,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792396148715,"service":"data-dashboard","host":"127.0.0.1","port":64292,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792396151079,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792396151101,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792396151103,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792396151108,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792396154664,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+
+       Test Files  149 passed (149)
+            Tests  1965 passed (1965)
+         Start at  14:48:59
+         Duration  35.02s (tests 81%, import 14%, transform 4%)
+
+          Isolate  149 workers spawned · ~141ms startup each (spawn + environment, per file)
+                   at least ~2.20s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-19T07:49:36Z"
+    tree: 168ff55817f85df37c058e1cba36b68bdc40fbcf89eb86c243e93b0a8fd5773a
 ---
 
 ## Objective

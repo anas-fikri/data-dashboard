@@ -129,8 +129,8 @@ Bagikan lewat jalur tepercaya (GPO/shared drive kantor, bukan unduhan http) dan 
 
 `APP_HOST=10.3.3.221:8443`, `APP_PORT=8443`, `STORAGE_HOST=10.3.3.221:8444`, `TLS_DEFAULT_SNI=10.3.3.221`,
 `CADDY_TLS=/certs/fullchain.pem /certs/privkey.pem` (root LAN berpembatasan IP), `COMPOSE_PROFILES=hostdb`
-(PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), satu worker (`WORKER_REPLICAS=1`) dan batas
-memori dikecilkan karena VM 2 vCPU / 7,8 GB. Port 80 dipakai Apache; Caddy hanya mendengar di 8443
+(PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), dua worker (`WORKER_REPLICAS=2`, `WORKER_MEM=3g`)
+dan `APP_MEM=3g` — VM 8 vCPU / 11 GB (Okt 2026; awalnya 2 vCPU / 7,8 GB dengan satu worker). Port 80 dipakai Apache; Caddy hanya mendengar di 8443
 (app) dan 8444 (storage), port 443 dibiarkan untuk aplikasi lain. Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`
 (jalankan dari terminal interaktif, bukan lewat skrip non-TTY).
 
@@ -256,9 +256,26 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
   terverifikasi (`sudo -u postgres dropdb data_dashboard_sqlascii_20261019045827`). Skrip aman dijalankan
   ulang: database yang sudah UTF8 dilewati.
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
-- **Update**: `git pull && deploy/deploy.sh` (migrasi maju otomatis). **Rollback**: `git checkout <tag
-  sebelumnya> && deploy/deploy.sh` — migrasi tidak dibalik otomatis; pulihkan dari backup bila skema
-  baru tidak kompatibel.
+- **Update** (migrasi maju otomatis). Pra-deploy dulu — langkah manual, `deploy.sh` tidak mengerjakannya:
+  ```bash
+  stamp=$(date +%Y%m%d%H%M); tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod); tag=${tag:-latest}
+  for i in app worker renderer backup; do docker tag "dashboard-$i:$tag" "dashboard-$i:prev-$stamp"; done
+  tar -czf "../data-dashboard-prev-$stamp.tar.gz" --exclude=./.env.prod --exclude=./deploy/offsite \
+    --exclude=./deploy/certs --exclude=./deploy/rclone.conf .          # kode lama (compose, Caddyfile, skrip)
+  $C run --rm --no-deps backup backup.sh                               # backup sebelum migrasi
+  ```
+  Lalu sinkron kode (`git pull`, atau `git archive` dari mesin dev → ekstrak di folder ini) dan
+  `bash deploy/deploy.sh`.
+- **Rollback cepat** ke kondisi sebelum deploy (kode + image; `<stamp>` dari pra-deploy):
+  ```bash
+  tar -xzf "../data-dashboard-prev-<stamp>.tar.gz"                     # kode lama
+  tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod); tag=${tag:-latest}
+  for i in app worker renderer backup; do docker tag "dashboard-$i:prev-<stamp>" "dashboard-$i:$tag"; done
+  $C up -d --no-build --wait && $C up -d --no-deps --force-recreate proxy backup
+  ```
+  Bila `IMAGE_TAG` diubah oleh deploy (alur `deploy/images.sh`), kembalikan juga nilainya di `.env.prod`.
+  Alternatif: `git checkout <tag sebelumnya> && deploy/deploy.sh`. Migrasi DB tidak dibalik otomatis —
+  pulihkan dari backup (§5) bila skema baru tidak kompatibel dengan kode lama.
 - **Rotasi AUTH_SECRET**: tambahkan secret baru di DEPAN (`AUTH_SECRET=baru,lama`), deploy; setelah
   masa sesi lewat (12 jam), hapus yang lama dan deploy lagi.
 - **Kredensial storage**: app/worker memakai `S3_APP_*` (service account berpolicy prefix raw/,
