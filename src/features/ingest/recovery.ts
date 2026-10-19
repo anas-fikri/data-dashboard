@@ -37,8 +37,13 @@ export async function finalizeFailed(
     try {
       const v = await prisma.datasetVersion.findUnique({
         where: { id: versionId },
-        select: { datasetId: true },
+        select: { datasetId: true, status: true },
       });
+      // Status lebih dulu (review T-038): job yang dinyatakan gagal padahal commit-nya sempat masuk
+      // (COMMIT terputus, stalled) → versi READY/menunggu pemetaan, datanya tidak boleh dihapus.
+      if (v && !(await prismaIngestRepo.fail(versionId, message)) && v.status !== "FAILED") {
+        return true;
+      }
       const datasetId = v?.datasetId ?? datasetIdHint;
       if (datasetId) {
         await cleanupPrefix(
@@ -57,7 +62,6 @@ export async function finalizeFailed(
             "ingest gagal final",
           );
         }
-        await prismaIngestRepo.fail(versionId, message);
       }
       return true;
     } catch (e) {

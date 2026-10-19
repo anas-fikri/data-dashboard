@@ -21,9 +21,6 @@ export function segmentPrefix(datasetId: string, segmentId: string): string {
   return `parquet/${datasetId}/seg/${segmentId}/`;
 }
 
-/** Prefix semua segmen satu dataset (sapuan objek yatim). */
-export const datasetSegmentsPrefix = (datasetId: string) => `parquet/${datasetId}/seg/`;
-
 /**
  * Id segmen baru, dibuat SEBELUM objeknya diunggah agar kuncinya bisa memuat id (baris Segment ditulis
  * lebih dulu → percobaan ulang/kegagalan selalu tahu objek mana miliknya). Bentuk sama dengan cuid

@@ -177,7 +177,11 @@ export interface IngestRepo {
       sheetMap: Record<string, string>;
     },
   ): Promise<FinishOutcome>;
-  fail(versionId: string, message: string): Promise<void>;
+  /**
+   * UPLOADED|INGESTING → FAILED. false = versi sudah di status lain (mis. percobaan lain sudah commit
+   * READY/AWAITING_MAPPING): datanya milik versi hidup, jangan dihapus (review T-038).
+   */
+  fail(versionId: string, message: string): Promise<boolean>;
   /** Prefix storage yang gagal dibersihkan → diproses ulang job pembersihan (StorageCleanup). */
   recordCleanup(prefix: string, reason: string): Promise<void>;
 }
@@ -531,9 +535,6 @@ export async function runIngest(
       }
       throw e; // BullMQ mengulang dari awal (mulai bersih)
     }
-    await cleanupPrefix(repo, storage, prefix, "ingest gagal");
-    const removed = await repo.deleteSheets(versionId).catch(() => [] as string[]);
-    await cleanupSegments([...created, ...removed], "ingest gagal");
     // Gerbang integritas menyebut sheet/kunci sendiri: bukan "Sheet <terakhir diproses>".
     const located =
       e instanceof IntegrityError
@@ -543,7 +544,12 @@ export async function runIngest(
             csv: v.sourceKey.endsWith(".csv"),
             deadline: e instanceof DeadlineError,
           });
-    await repo.fail(versionId, located);
+    // Status lebih dulu, baru hapus: percobaan lain yang sudah commit (versi READY/menunggu pemetaan)
+    // tidak kehilangan sheet/segmen/objeknya karena kegagalan percobaan ini.
+    if (!(await repo.fail(versionId, located))) return { outcome: "skipped" };
+    await cleanupPrefix(repo, storage, prefix, "ingest gagal");
+    const removed = await repo.deleteSheets(versionId).catch(() => [] as string[]);
+    await cleanupSegments([...created, ...removed], "ingest gagal");
     return { outcome: "failed", message: located };
   } finally {
     clearInterval(heartbeat);

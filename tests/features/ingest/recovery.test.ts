@@ -14,7 +14,7 @@ vi.mock("@/lib/db", () => ({ prisma: { datasetVersion: { findMany, findUnique } 
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 const deletePrefix = vi.fn(async (_prefix: string) => 0);
 const deleteSheets = vi.fn(async (_versionId: string): Promise<string[]> => []);
-const fail = vi.fn(async (_versionId: string, _message: string) => {});
+const fail = vi.fn(async (_versionId: string, _message: string) => true);
 vi.mock("@/features/ingest/repo", () => ({
   prismaIngestRepo: { deleteSheets, fail, recordCleanup: vi.fn() },
   s3IngestStorage: { deletePrefix },
@@ -99,5 +99,23 @@ describe("T-038: kegagalan final + direktori kerja yatim", () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe("review T-038: status lebih dulu, baru hapus", () => {
+  it("job dinyatakan gagal padahal versi sudah READY (commit sempat masuk) → tidak ada yang dihapus", async () => {
+    findUnique.mockResolvedValue({ datasetId: "cmv4klj5r0007oczvgiofocpg", status: "READY" });
+    fail.mockResolvedValueOnce(false);
+    expect(await finalizeFailed("cmv4kljx40009oczvdmpurrve", undefined)).toBe(true);
+    expect(deletePrefix).not.toHaveBeenCalled();
+    expect(deleteSheets).not.toHaveBeenCalled();
+  });
+
+  it("versi sudah FAILED (finalisasi diulang) → tetap dibersihkan", async () => {
+    findUnique.mockResolvedValue({ datasetId: "cmv4klj5r0007oczvgiofocpg", status: "FAILED" });
+    fail.mockResolvedValueOnce(false);
+    expect(await finalizeFailed("cmv4kljx40009oczvdmpurrve", undefined)).toBe(true);
+    expect(deletePrefix).toHaveBeenCalledTimes(1);
+    expect(deleteSheets).toHaveBeenCalledTimes(1);
   });
 });

@@ -198,25 +198,28 @@ export class FakeRepo implements IngestRepo {
   /** Manifest sheet versi ini (REPLACE: segmen ordinal 0), seperti prismaManifest. */
   async manifest(): Promise<ManifestSheet[] | null> {
     if (!this.alive()) return null;
-    return this.byIndex().map((sh) => {
-      const g = sh.segmentId ? this.segments.get(sh.segmentId) : undefined;
-      return {
-        name: sh.name,
-        typedKey: sh.typedKey ?? null,
-        segments:
-          g && sh.typedKey
-            ? [
-                {
-                  ordinal: 0,
-                  rawKey: g.rawKey,
-                  typedKey: sh.typedKey,
-                  rowBase: g.rowBase,
-                  maxSrcRow: g.maxSrcRow,
-                },
-              ]
-            : [],
-      };
-    });
+    return [...this.sheets.entries()]
+      .sort((a, b) => a[1].index - b[1].index)
+      .map(([id, sh]) => {
+        const g = sh.segmentId ? this.segments.get(sh.segmentId) : undefined;
+        return {
+          id,
+          name: sh.name,
+          typedKey: sh.typedKey ?? null,
+          segments:
+            g && sh.typedKey
+              ? [
+                  {
+                    ordinal: 0,
+                    rawKey: g.rawKey,
+                    typedKey: sh.typedKey,
+                    rowBase: g.rowBase,
+                    maxSrcRow: g.maxSrcRow,
+                  },
+                ]
+              : [],
+        };
+      });
   }
   /** sheetMap terakhir yang diteruskan finish (T-033). */
   sheetMap: Record<string, string> | null = null;
@@ -247,8 +250,10 @@ export class FakeRepo implements IngestRepo {
     return "activated";
   }
   async fail(_v: string, message: string) {
+    if (!["UPLOADED", "INGESTING"].includes(this.status)) return false;
     this.status = "FAILED";
     this.error = message;
+    return true;
   }
   byIndex(): FakeSheet[] {
     return [...this.sheets.values()].sort((a, b) => a.index - b.index);

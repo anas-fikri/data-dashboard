@@ -30,6 +30,7 @@ export interface ManifestSegment {
   maxSrcRow: number | null;
 }
 export interface ManifestSheet {
+  id: string;
   name: string;
   /** Pointer typed sheet (null = sheet tanpa data typed). */
   typedKey: string | null;

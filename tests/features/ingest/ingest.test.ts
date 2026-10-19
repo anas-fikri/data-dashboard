@@ -366,3 +366,29 @@ describe("T-038: gerbang integritas sebelum aktivasi", () => {
     expect(s.repo.segments.size).toBe(0);
   });
 });
+
+describe("review T-038: kegagalan permanen tidak menghapus versi yang sudah di-commit percobaan lain", () => {
+  it("versi berubah READY (percobaan lain commit) lalu percobaan ini gagal permanen → skipped, tanpa hapus", async () => {
+    const s = setup("tests/fixtures/tiga-sheet.xlsx");
+    const progress = s.repo.progress.bind(s.repo);
+    s.repo.progress = async (v, p) => {
+      await progress(v, p);
+      s.repo.status = "READY";
+    };
+    let deletes = 0;
+    const deleteSheets = s.repo.deleteSheets.bind(s.repo);
+    s.repo.deleteSheets = async () => {
+      deletes++;
+      return deleteSheets();
+    };
+    const { XlsxLimitError } = await import("@/lib/xlsx/parser");
+    s.storage.upload = async () => {
+      throw new XlsxLimitError("terlalu besar");
+    };
+    expect(await runIngest(VID, s.repo, s.storage, s.opts)).toEqual({ outcome: "skipped" });
+    expect(s.repo.status).toBe("READY");
+    // Hanya pembersihan awal percobaan; tidak ada hapus setelah gagal (baris segmen tetap).
+    expect(deletes).toBe(1);
+    expect(s.repo.segments.size).toBe(1);
+  });
+});

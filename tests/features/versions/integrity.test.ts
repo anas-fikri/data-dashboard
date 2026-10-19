@@ -17,6 +17,7 @@ const prisma = {
   datasetVersion: { findMany: vi.fn() },
   storageCleanup: { findMany: vi.fn(), createMany: vi.fn() },
   sheetLineage: { deleteMany: vi.fn(async () => ({ count: 0 })) },
+  sheet: { findMany: vi.fn(async (): Promise<unknown[]> => []) },
   $queryRaw: vi.fn(),
   $transaction: vi.fn(),
 };
@@ -38,6 +39,7 @@ const GONE = "cmv4kljx40009oczvdmpugone0";
 const SEG = "cmv4kljx40009oczvdmpursg01";
 const NOW = new Date("2026-10-20T03:00:00Z");
 const sheet = (over: Partial<Parameters<typeof check.manifestProblems>[0][number]> = {}) => ({
+  id: "s1",
   name: "Data",
   typedKey: "t1",
   segments: [{ ordinal: 0, rawKey: "r1", typedKey: "t1", rowBase: 0n, maxSrcRow: 10 }],
@@ -127,7 +129,14 @@ describe("typedFileProblems (DuckDB)", () => {
 
 describe("status admin pemeriksaan malam", () => {
   it("tanpa temuan → tanpa banner; ada file hilang → teks dengan jumlah + petunjuk log", () => {
-    const base = { checkedAt: NOW.toISOString(), keys: 10, missing: 0, sample: [], orphans: 0 };
+    const base = {
+      checkedAt: NOW.toISOString(),
+      keys: 10,
+      missing: 0,
+      unchecked: 0,
+      sample: [],
+      orphans: 0,
+    };
     expect(integrityAlert(null)).toBeNull();
     expect(integrityAlert(base)).toBeNull();
     const a = integrityAlert({ ...base, missing: 2, sample: ["k1", "k2"] });
@@ -176,6 +185,7 @@ describe("runStorageAudit", () => {
     expect(status).toMatchObject({
       keys: 2,
       missing: 1,
+      unchecked: 0,
       sample: [`${seg}typed-1.parquet`],
       orphans: 3,
     });
@@ -263,5 +273,66 @@ describe("runSegmentGc (Prisma)", () => {
     prisma.dataset.findMany.mockResolvedValueOnce([{ id: DS }]);
     expect((await runSegmentGc(NOW)).datasets).toBe(0);
     expect(tx.segment.deleteMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("review T-038: audit tahan galat sementara + sapuan prefix versi legacy", () => {
+  it("HEAD gagal sementara → dihitung belum diperiksa, status tetap disimpan; yatim legacy ikut disapu", async () => {
+    const VER = "cmv4kljx40009oczvdmpurrve";
+    const SHEET = "cmv4kljx40009oczvdmpursht";
+    const legacy = `parquet/${DS}/${VER}/${SHEET}/`;
+    prisma.sheetSegment.findMany.mockResolvedValueOnce([
+      {
+        segmentTyped: {
+          typedKey: `${legacy}typed-1.parquet`,
+          segment: { rawKey: `${legacy}raw.parquet` },
+        },
+      },
+    ]);
+    prisma.dataset.findMany.mockResolvedValueOnce([{ id: DS }]);
+    prisma.segment.findMany.mockResolvedValueOnce([{ rawKey: `${legacy}raw.parquet` }]);
+    prisma.segmentTyped.findMany.mockResolvedValueOnce([{ typedKey: `${legacy}typed-1.parquet` }]);
+    prisma.sheet.findMany.mockResolvedValueOnce([
+      { rawKey: `${legacy}raw.parquet`, typedKey: `${legacy}typed-1.parquet` },
+    ]);
+    prisma.storageCleanup.findMany.mockResolvedValue([]);
+    const old = new Date(NOW.getTime() - SEGMENT_GC_GRACE_MS - 1);
+    const listed: string[] = [];
+    const saved: unknown[] = [];
+    const status = await runStorageAudit(
+      {
+        exists: async (k) => {
+          if (k.endsWith("raw.parquet")) throw new Error("503 SlowDown");
+          return true;
+        },
+        listObjects: async (prefix) => {
+          listed.push(prefix);
+          return [
+            { key: `${legacy}raw.parquet`, modified: old },
+            { key: `${legacy}typed-1.parquet`, modified: old },
+            // Sisa recast yang mati pada segmen legacy (di prefix versi).
+            { key: `${legacy}typed-2-0123456789ab.parquet`, modified: old },
+          ];
+        },
+        listChildPrefixes: async () => [],
+        saveStatus: async (s) => {
+          saved.push(s);
+        },
+      },
+      NOW,
+    );
+    expect(listed).toEqual([`parquet/${DS}/`]);
+    expect(status).toMatchObject({ keys: 2, missing: 0, unchecked: 1, orphans: 1 });
+    expect(saved).toEqual([status]);
+    expect(logger.warn).toHaveBeenCalledWith({ unchecked: 1 }, expect.any(String));
+    expect(prisma.storageCleanup.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          prefix: `${legacy}typed-2-0123456789ab.parquet`,
+          reason: "objek segmen yatim",
+          notBefore: NOW,
+        },
+      ],
+    });
   });
 });

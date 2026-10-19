@@ -5,7 +5,7 @@ import { listChildPrefixes, listObjects, objectExists } from "@/lib/storage/obje
 import { SEGMENT_GC_GRACE_MS } from "./gc";
 import { missingKeys, type IntegrityDeps, type ManifestSheet } from "./integrity-check";
 import { saveIntegrityStatus, type IntegrityStatus } from "./integrity-status";
-import { DATA_KEY, datasetSegmentsPrefix } from "./segment-keys";
+import { DATA_KEY } from "./segment-keys";
 
 /*
  * Integritas data versi (T-038, ADR-0008), bagian DB/storage (gerbang murni: integrity-check.ts).
@@ -24,6 +24,7 @@ export async function prismaManifest(versionId: string): Promise<ManifestSheet[]
       sheets: {
         orderBy: { index: "asc" },
         select: {
+          id: true,
           name: true,
           typedKey: true,
           segments: {
@@ -43,6 +44,7 @@ export async function prismaManifest(versionId: string): Promise<ManifestSheet[]
   });
   if (!v) return null;
   return v.sheets.map((s) => ({
+    id: s.id,
     name: s.name,
     typedKey: s.typedKey,
     segments: s.segments.map((m) => ({
@@ -107,7 +109,15 @@ export async function runStorageAudit(
   const keys = [
     ...new Set(rows.flatMap((r) => [r.segmentTyped.typedKey, r.segmentTyped.segment.rawKey])),
   ];
-  const missing = await missingKeys(keys, deps.exists);
+  // Satu galat storage sementara tidak menggagalkan seluruh pemeriksaan: kunci itu "belum diperiksa".
+  let unchecked = 0;
+  const missing = await missingKeys(keys, (k) =>
+    deps.exists(k).catch(() => {
+      unchecked++;
+      return true;
+    }),
+  );
+  if (unchecked) logger.warn({ unchecked }, "sebagian kunci data tidak bisa diperiksa malam ini");
   if (missing.length) {
     logger.error(
       { missing: missing.length, keys: missing.slice(0, SAMPLE) },
@@ -115,22 +125,31 @@ export async function runStorageAudit(
     );
   }
 
-  // 2. Objek yatim di seg/: tidak tercatat di Segment/SegmentTyped dan lebih tua dari masa tenggang
-  //    (file unggahan/recast/pemetaan yang sedang berjalan masih muda dan belum tercatat).
+  // 2. Objek yatim di parquet/<ds>/ (segmen seg/ maupun prefix versi legacy): tidak tercatat di
+  //    Segment/SegmentTyped/Sheet dan lebih tua dari masa tenggang (file unggahan/recast/pemetaan yang
+  //    sedang berjalan masih muda dan belum tercatat).
   const old = now.getTime() - graceMs;
   const datasets = await prisma.dataset.findMany({ select: { id: true } });
   const orphanKeys: string[] = [];
   for (const { id } of datasets) {
-    const objects = await deps.listObjects(datasetSegmentsPrefix(id));
+    const objects = await deps.listObjects(`parquet/${id}/`);
     if (!objects.length) continue;
-    const [segs, typed] = await Promise.all([
+    const [segs, typed, sheets] = await Promise.all([
       prisma.segment.findMany({ where: { datasetId: id }, select: { rawKey: true } }),
       prisma.segmentTyped.findMany({
         where: { segment: { datasetId: id } },
         select: { typedKey: true },
       }),
+      prisma.sheet.findMany({
+        where: { version: { datasetId: id } },
+        select: { rawKey: true, typedKey: true },
+      }),
     ]);
-    const refs = new Set([...segs.map((s) => s.rawKey), ...typed.map((t) => t.typedKey)]);
+    const refs = new Set<string>([
+      ...segs.map((s) => s.rawKey),
+      ...typed.map((t) => t.typedKey),
+      ...sheets.flatMap((s) => [s.rawKey, ...(s.typedKey ? [s.typedKey] : [])]),
+    ]);
     for (const o of objects) {
       if (DATA_KEY.test(o.key) && !refs.has(o.key) && o.modified.getTime() <= old) {
         orphanKeys.push(o.key);
@@ -154,6 +173,7 @@ export async function runStorageAudit(
     checkedAt: now.toISOString(),
     keys: keys.length,
     missing: missing.length,
+    unchecked,
     sample: missing.slice(0, SAMPLE),
     orphans,
   };

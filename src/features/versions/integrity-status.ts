@@ -13,6 +13,8 @@ export interface IntegrityStatus {
   /** Kunci terujuk versi hidup yang diperiksa (HEAD). */
   keys: number;
   missing: number;
+  /** Kunci yang tidak bisa diperiksa (galat storage sementara, bukan 404) — diperiksa lagi malam berikutnya. */
+  unchecked: number;
   /** Contoh kunci yang hilang (maks. 20) untuk log/penelusuran admin. */
   sample: string[];
   /** Objek yatim yang diserahkan ke pembersihan. */

@@ -31,7 +31,11 @@ import {
   type PairPlan,
   type VersionSheet,
 } from "./mapping-input";
-import { IntegrityError, missingKeys } from "@/features/versions/integrity-check";
+import {
+  IntegrityError,
+  verifyVersionIntegrity,
+  type ManifestSheet,
+} from "@/features/versions/integrity-check";
 import { RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
 import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
 import { maxSourceRow, typedFileProblems, writeTyped } from "./typed";
@@ -107,6 +111,8 @@ export interface MappingRepo {
   commit(versionId: string, d: MappingCommit): Promise<"done" | "stale" | "gone">;
   /** Gerbang integritas gagal (T-038): AWAITING_MAPPING → FAILED dengan pesan; versi aktif tetap. */
   fail(versionId: string, message: string): Promise<void>;
+  /** Manifest versi saat ini (T-038); null = versi tidak ada. */
+  manifest(versionId: string): Promise<ManifestSheet[] | null>;
   /** Sama dengan IngestRepo.allocateRows: awal `_row` baru dari lineage (naik atomik). */
   allocateRows(lineageId: string, span: number): Promise<bigint>;
 }
@@ -268,10 +274,34 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
       return { outcome: "review", issues: issues.slice(0, REVIEW_MAX) };
     }
 
-    // Gerbang integritas sebelum aktivasi (T-038): raw + typed baru setiap sheet ada di storage.
-    const keys = updates.flatMap((u) => [v.sheets.find((x) => x.id === u.id)!.rawKey, u.typedKey]);
-    const missing = await missingKeys(keys, (k) => deps.storage.exists(k));
-    if (missing.length) throw new IntegrityError(missing.map((k) => `file data tidak ada: ${k}`));
+    // Gerbang integritas sebelum aktivasi (T-038), atas manifest yang AKAN aktif: manifest sekarang
+    // dengan file typed baru setiap sheet yang dipetakan (sheet lain versi ini ikut diperiksa).
+    const current = await deps.repo.manifest(job.versionId);
+    if (!current) return { outcome: "gone" };
+    const planned = current.map((sh): ManifestSheet => {
+      const u = updates.find((x) => x.id === sh.id);
+      if (!u) return sh;
+      return {
+        ...sh,
+        typedKey: u.typedKey,
+        segments: sh.segments.map((g, i) =>
+          i === 0
+            ? {
+                ...g,
+                typedKey: u.typedKey,
+                ...(u.lineage
+                  ? { rowBase: u.lineage.rowBase, maxSrcRow: u.lineage.maxSrcRow }
+                  : {}),
+              }
+            : g,
+        ),
+      };
+    });
+    const problems = await verifyVersionIntegrity(job.versionId, {
+      manifest: async () => planned,
+      exists: (k) => deps.storage.exists(k),
+    });
+    if (problems.length) throw new IntegrityError(problems);
     await watch(); // lock masih milik kita tepat sebelum commit
     let r: "done" | "stale" | "gone";
     try {

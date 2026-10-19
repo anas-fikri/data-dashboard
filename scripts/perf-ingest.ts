@@ -99,6 +99,7 @@ async function main() {
     recordCleanup: async () => {},
     fail: async (_v, m) => {
       console.error("FAILED:", m);
+      return true;
     },
   };
   const storage: IngestStorage = {

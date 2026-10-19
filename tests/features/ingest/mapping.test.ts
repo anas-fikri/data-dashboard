@@ -459,8 +459,11 @@ describe("applyMapping (job map-version)", () => {
           : null,
       alive: async () => r.alive() && r.status === "AWAITING_MAPPING",
       fail: async (_v, message) => {
-        if (r.status === "AWAITING_MAPPING") await r.fail(_v, message);
+        if (r.status !== "AWAITING_MAPPING") return;
+        r.status = "FAILED";
+        r.error = message;
       },
+      manifest: () => r.manifest(),
       commit: async (_v, d) => {
         if (!r.alive()) return "gone";
         if (!sameSnapshot(d.base, snapshotRef(r.active))) return "stale";

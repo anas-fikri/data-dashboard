@@ -349,10 +349,11 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async fail(versionId, message) {
-    await prisma.datasetVersion.updateMany({
+    const r = await prisma.datasetVersion.updateMany({
       where: { id: versionId, status: { in: ["UPLOADED", "INGESTING"] } },
       data: { status: "FAILED", errorMessage: message, ingestFinishedAt: new Date() },
     });
+    return r.count > 0;
   },
 };
 
@@ -443,6 +444,7 @@ class MappingAbort extends Error {
 
 export const prismaMappingRepo: MappingRepo = {
   allocateRows: (lineageId, span) => prismaIngestRepo.allocateRows(lineageId, span),
+  manifest: (versionId) => prismaManifest(versionId),
 
   async fail(versionId, message) {
     await prisma.datasetVersion.updateMany({
