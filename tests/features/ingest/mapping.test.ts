@@ -22,7 +22,15 @@ import {
   type ActiveSheet,
   type ActiveSnapshot,
 } from "@/features/ingest/refresh";
-import { fakeLock, parquetTypes, readParquet, testRoot, VID, type FakeRepo } from "./fakes";
+import {
+  fakeLock,
+  parquetTypes,
+  readParquet,
+  rowColumns,
+  testRoot,
+  VID,
+  type FakeRepo,
+} from "./fakes";
 
 /*
  * Pemetaan kolom (T-014): validasi keputusan (murni, dipakai app + worker) dan job map-version dengan
@@ -428,6 +436,7 @@ describe("applyMapping (job map-version)", () => {
   /** MappingRepo palsu di atas FakeRepo (meniru commit Prisma: acuan, status, sheet, aktivasi). */
   function mappingRepo(r: FakeRepo, commits: MappingCommit[]): MappingRepo {
     return {
+      allocateRows: (lineageId, span) => r.allocateRows(lineageId, span),
       load: async () =>
         r.alive()
           ? {
@@ -445,6 +454,10 @@ describe("applyMapping (job map-version)", () => {
                 rawKey: s.rawKey!,
                 typedKey: s.typedKey ?? null,
                 schemaRevision: s.schemaRevision ?? 1,
+                lineageId: s.lineageId,
+                segment: s.segmentId
+                  ? { id: s.segmentId, rowBase: r.segments.get(s.segmentId)!.rowBase }
+                  : null,
               })),
               active: structuredClone(r.active),
               mappedBy: r.status === "READY" ? (commits.at(-1)?.meta.jobId ?? null) : null,
@@ -464,7 +477,16 @@ describe("applyMapping (job map-version)", () => {
             headerRow: u.headerRow,
             columns: u.columns,
             ...(u.aliasName !== undefined ? { aliasName: u.aliasName } : {}),
+            ...(u.lineage ? { lineageId: u.lineage.lineageId } : {}),
           });
+          if (u.lineage) {
+            const g = r.segments.get(u.lineage.segmentId)!;
+            Object.assign(g, {
+              lineageId: u.lineage.lineageId,
+              rowBase: u.lineage.rowBase,
+              maxSrcRow: u.lineage.maxSrcRow,
+            });
+          }
         }
         r.status = "READY";
         r.activated = true;
@@ -665,6 +687,28 @@ describe("applyMapping (job map-version)", () => {
     const rows = await readParquet(join(m.storage.dir, s.typedKey!));
     expect(rows).toHaveLength(10);
     expect(rows[0]!.slice(1)).toEqual(["T0", "C0", 0n]);
+  });
+
+  it("T-036 AC3: dipasangkan user dari sheet logis lain → lineage sheet aktif dibawa, `_row` baru dari high-water-nya", async () => {
+    const m = await renamed((i) => String(i * 5));
+    m.repo.active!.sheets[0]!.lineageId = "lineageaktif0000000001";
+    m.repo.lineages.set("lineageaktif0000000001", 2_147_483_647n);
+    const own = m.sheet().lineageId!;
+    expect(own).not.toBe("lineageaktif0000000001");
+    expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "done" });
+    const u = m.commits[0]!.sheets[0]!;
+    expect(u.lineage).toMatchObject({
+      lineageId: "lineageaktif0000000001",
+      segmentId: m.sheet().segmentId,
+      rowBase: 2_147_483_647n,
+    });
+    expect(m.sheet().lineageId).toBe("lineageaktif0000000001");
+    // High-water naik sebesar baris fisik terbesar; typed: _row = rowBase + _src_row.
+    expect(m.repo.lineages.get("lineageaktif0000000001")).toBe(
+      2_147_483_647n + BigInt(u.lineage!.maxSrcRow),
+    );
+    const rows = await rowColumns(join(m.storage.dir, m.sheet().typedKey!));
+    expect(rows.every((x) => x.row === 2_147_483_647n + BigInt(x.src))).toBe(true);
   });
 
   it("rasio cast < 98 % dengan tipe yang diterapkan → review (tanpa commit, file dibuang); acknowledge → diterapkan", async () => {

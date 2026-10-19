@@ -36,6 +36,7 @@ const activeSelect = {
             headerRow: true,
             schemaRevision: true,
             schema: true,
+            lineageId: true,
           },
         },
       },
@@ -53,8 +54,57 @@ type ActiveRow = {
     headerRow: number;
     schemaRevision: number;
     schema: unknown;
+    lineageId: string;
   }[];
 } | null;
+
+/** Manifest REPLACE (ADR-0008): satu segmen per sheet di ordinal 0. */
+const MANIFEST_ORDINAL = 0;
+
+/**
+ * File typed baru sheet (ingest, recast, pemetaan) → SegmentTyped baru untuk segmen sheet itu, dan
+ * manifest ordinal 0 diarahkan ke sana, di transaksi yang sama dengan pointer typedKey. Sheet tanpa
+ * segmen (migrasi T-036 tidak jalan) → galat, tidak diam-diam tanpa manifest.
+ */
+async function linkTyped(
+  tx: Prisma.TransactionClient,
+  sheetId: string,
+  typed: { typedKey: string; schemaRevision: number; headerRow?: number },
+  segmentId?: string,
+): Promise<void> {
+  const where = { sheetId_ordinal: { sheetId, ordinal: MANIFEST_ORDINAL } };
+  const seg =
+    segmentId ??
+    (
+      await tx.sheetSegment.findUnique({
+        where,
+        select: { segmentTyped: { select: { segmentId: true } } },
+      })
+    )?.segmentTyped.segmentId;
+  if (!seg) throw new Error(`sheet ${sheetId} tanpa segmen (migrasi T-036?)`);
+  // Baris header dipilih ulang (recast/pemetaan): metadata segmen ikut, seperti Sheet.headerRow.
+  if (typed.headerRow !== undefined) {
+    await tx.segment.update({ where: { id: seg }, data: { headerRow: typed.headerRow } });
+  }
+  const t = await tx.segmentTyped.create({
+    data: { segmentId: seg, typedKey: typed.typedKey, schemaRevision: typed.schemaRevision },
+    select: { id: true },
+  });
+  await tx.sheetSegment.upsert({
+    where,
+    create: { sheetId, segmentTypedId: t.id, ordinal: MANIFEST_ORDINAL },
+    update: { segmentTypedId: t.id },
+  });
+}
+
+/** Segmen manifest sheet (ordinal 0): id + awal `_row`; null = sheet tanpa segmen. */
+const manifestSelect = {
+  where: { ordinal: MANIFEST_ORDINAL },
+  select: { segmentTyped: { select: { segment: { select: { id: true, rowBase: true } } } } },
+} as const;
+
+const gone = (e: unknown) =>
+  e instanceof Prisma.PrismaClientKnownRequestError && (e.code === "P2003" || e.code === "P2025");
 
 /** Snapshot versi aktif selain `versionId` (versi itu sendiri bukan acuan). */
 const snapshotOf = (a: ActiveRow, versionId: string): ActiveSnapshot | null =>
@@ -109,14 +159,79 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async deleteSheets(versionId) {
+    // Sheet dulu (manifest ikut terhapus), lalu segmen percobaan ini (file typed-nya ikut cascade).
     await prisma.sheet.deleteMany({ where: { versionId } });
+    await prisma.segment.deleteMany({ where: { createdByVersionId: versionId } });
   },
 
-  async createSheet(versionId, s) {
+  async createLineage(versionId) {
+    const v = await prisma.datasetVersion.findUnique({
+      where: { id: versionId },
+      select: { datasetId: true },
+    });
+    if (!v) throw new DatasetGoneError();
+    try {
+      const l = await prisma.sheetLineage.create({
+        data: { datasetId: v.datasetId },
+        select: { id: true },
+      });
+      return l.id;
+    } catch (e) {
+      if (gone(e)) throw new DatasetGoneError();
+      throw e;
+    }
+  },
+
+  async allocateRows(lineageId, span) {
+    const n = BigInt(Math.max(0, Math.trunc(span)));
+    try {
+      // UPDATE … SET rowHighWater = rowHighWater + n RETURNING: atomik terhadap ingest lain.
+      const l = await prisma.sheetLineage.update({
+        where: { id: lineageId },
+        data: { rowHighWater: { increment: n } },
+        select: { rowHighWater: true },
+      });
+      return l.rowHighWater - n;
+    } catch (e) {
+      if (gone(e)) throw new DatasetGoneError();
+      throw e;
+    }
+  },
+
+  async createSegment(versionId, d) {
+    const v = await prisma.datasetVersion.findUnique({
+      where: { id: versionId },
+      select: { datasetId: true },
+    });
+    if (!v) throw new DatasetGoneError();
+    try {
+      const g = await prisma.segment.create({
+        data: {
+          datasetId: v.datasetId,
+          lineageId: d.lineageId,
+          rowBase: d.rowBase,
+          maxSrcRow: d.maxSrcRow,
+          rawKey: d.rawKey,
+          rawRows: d.rawRows,
+          headerRow: d.headerRow,
+          colCount: d.colCount,
+          createdByVersionId: versionId,
+        },
+        select: { id: true },
+      });
+      return g.id;
+    } catch (e) {
+      if (gone(e)) throw new DatasetGoneError();
+      throw e;
+    }
+  },
+
+  async createSheet(versionId, s, lineageId) {
     try {
       const row = await prisma.sheet.create({
         data: {
           versionId,
+          lineageId,
           index: s.index,
           name: s.name,
           rawKey: "",
@@ -146,15 +261,23 @@ export const prismaIngestRepo: IngestRepo = {
   },
 
   async setTyped(sheetId, d) {
-    const r = await prisma.sheet.updateMany({
-      where: { id: sheetId },
-      data: {
-        typedKey: d.typedKey,
-        schema: d.schema as unknown as Prisma.InputJsonValue,
-        schemaRevision: d.schemaRevision,
-      },
-    });
-    if (r.count === 0) throw new DatasetGoneError();
+    try {
+      await prisma.$transaction(async (tx) => {
+        const r = await tx.sheet.updateMany({
+          where: { id: sheetId },
+          data: {
+            typedKey: d.typedKey,
+            schema: d.schema as unknown as Prisma.InputJsonValue,
+            schemaRevision: d.schemaRevision,
+          },
+        });
+        if (r.count === 0) throw new DatasetGoneError();
+        await linkTyped(tx, sheetId, d, d.segmentId);
+      });
+    } catch (e) {
+      if (gone(e)) throw new DatasetGoneError();
+      throw e;
+    }
   },
 
   async finish(versionId, d) {
@@ -231,10 +354,12 @@ export const prismaRecastRepo: RecastRepo = {
         columns: true,
         schema: true,
         version: { select: { sourceKey: true, status: true } },
+        segments: manifestSelect,
       },
     });
     if (!s?.rawKey) return null;
     return {
+      rowBase: s.segments[0]?.segmentTyped.segment.rowBase ?? 0n,
       versionId: s.versionId,
       versionStatus: s.version.status,
       rawKey: s.rawKey,
@@ -261,7 +386,9 @@ export const prismaRecastRepo: RecastRepo = {
           columns: next.columns as unknown as Prisma.InputJsonValue,
         },
       });
-      return r.count > 0;
+      if (r.count === 0) return false;
+      await linkTyped(tx, sheetId, next);
+      return true;
     });
   },
 };
@@ -291,6 +418,8 @@ class MappingAbort extends Error {
 }
 
 export const prismaMappingRepo: MappingRepo = {
+  allocateRows: (lineageId, span) => prismaIngestRepo.allocateRows(lineageId, span),
+
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
@@ -311,6 +440,8 @@ export const prismaMappingRepo: MappingRepo = {
             rawKey: true,
             typedKey: true,
             schemaRevision: true,
+            lineageId: true,
+            segments: manifestSelect,
           },
         },
         dataset: activeSelect,
@@ -321,10 +452,11 @@ export const prismaMappingRepo: MappingRepo = {
       datasetId: v.datasetId,
       status: v.status,
       source: v.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
-      sheets: v.sheets.map((s) => ({
+      sheets: v.sheets.map(({ segments, ...s }) => ({
         ...s,
         columns: s.columns as unknown as ColumnMeta[],
         preview: parsePreview(s.preview),
+        segment: segments[0]?.segmentTyped.segment ?? null,
       })),
       active: snapshotOf(v.dataset.activeVersion, versionId),
       mappedBy: v.status === "READY" ? await mappedBy(v.datasetId, versionId) : null,
@@ -376,9 +508,22 @@ export const prismaMappingRepo: MappingRepo = {
                 columns: s.columns as unknown as Prisma.InputJsonValue,
                 // Sheet ganti nama yang dipasangkan user: widget/rollback/refresh tetap menemukannya.
                 ...(s.aliasName !== undefined ? { aliasName: s.aliasName } : {}),
+                // Sheet logis aktif yang dipasangkan (ADR-0008): lineage-nya dibawa.
+                ...(s.lineage ? { lineageId: s.lineage.lineageId } : {}),
               },
             });
             if (u.count === 0) throw new MappingAbort();
+            if (s.lineage) {
+              await tx.segment.update({
+                where: { id: s.lineage.segmentId },
+                data: {
+                  lineageId: s.lineage.lineageId,
+                  rowBase: s.lineage.rowBase,
+                  maxSrcRow: s.lineage.maxSrcRow,
+                },
+              });
+            }
+            await linkTyped(tx, s.id, s);
           }
           // Worker: tidak ada cache Parquet lokal yang perlu dilupakan (deletedTypedKeys diabaikan).
           await activateVersionInTx(tx, v.datasetId, versionId, { sheetMap: d.sheetMap });

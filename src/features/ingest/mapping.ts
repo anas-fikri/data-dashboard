@@ -33,7 +33,7 @@ import {
 } from "./mapping-input";
 import { OLD_TYPED_TTL_MS, RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
 import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
-import { writeTyped } from "./typed";
+import { maxSourceRow, writeTyped } from "./typed";
 
 export const MAPPING_DEADLINE_MS = 60 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
@@ -48,6 +48,9 @@ export interface MappingVersionSheet extends VersionSheet {
   rawKey: string;
   typedKey: string | null;
   schemaRevision: number;
+  /** Sheet logis saat ingest (ADR-0008) dan segmen manifest-nya (awal `_row`). */
+  lineageId?: string;
+  segment?: { id: string; rowBase: bigint } | null;
 }
 
 export interface MappingVersion {
@@ -74,6 +77,11 @@ export interface MappingSheetUpdate {
    * ada, selain itu namanya; Sheet.aliasName, T-014), lihat lineageRoot.
    */
   aliasName?: string;
+  /**
+   * Dipasangkan dengan sheet aktif dari sheet logis lain (ADR-0008, T-036): lineage sheet aktif dibawa,
+   * segmen sheet ini mendapat awal `_row` baru dari lineage itu (typed ditulis ulang dengannya).
+   */
+  lineage?: { lineageId: string; segmentId: string; rowBase: bigint; maxSrcRow: number };
 }
 
 export interface MappingCommit {
@@ -94,6 +102,8 @@ export interface MappingRepo {
    * → "gone"; selain itu sheet diganti, READY + aktif (sheetMap), AuditLog.
    */
   commit(versionId: string, d: MappingCommit): Promise<"done" | "stale" | "gone">;
+  /** Sama dengan IngestRepo.allocateRows: awal `_row` baru dari lineage (naik atomik). */
+  allocateRows(lineageId: string, span: number): Promise<bigint>;
 }
 
 export interface MappingDeps {
@@ -204,6 +214,15 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
       await deps.storage.download(s.rawKey, rawPath);
       await watch();
       const revision = s.schemaRevision + 1;
+      // Pasangan dari sheet logis lain (dipasangkan user): `_row` baru dari lineage sheet aktif.
+      let rowBase = s.segment?.rowBase ?? 0n;
+      let lineage: MappingSheetUpdate["lineage"];
+      const carried = p.active.lineageId;
+      if (carried && s.segment && s.lineageId !== carried) {
+        const maxSrcRow = await maxSourceRow(duck, rawPath);
+        rowBase = await deps.repo.allocateRows(carried, maxSrcRow);
+        lineage = { lineageId: carried, segmentId: s.segment.id, rowBase, maxSrcRow };
+      }
       const typed = await writeTyped(duck, {
         rawPath,
         outPath,
@@ -214,6 +233,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         overrides: p.overrides,
         absent: p.absent,
         watch,
+        rowBase,
       });
       issues.push(...reviewIssues(p, typed.schema));
       const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
@@ -232,6 +252,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         headerRow: p.headerRow,
         columns: p.columns,
         ...(p.userPaired ? { aliasName: lineageRoot(p.active) } : {}),
+        ...(lineage ? { lineage } : {}),
       });
       await watch();
     }

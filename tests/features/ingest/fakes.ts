@@ -22,6 +22,7 @@ import {
   type FinishOutcome,
   type IngestProgress,
   type IngestRepo,
+  type SegmentRecord,
   type SheetRecord,
   type TypedStorage,
 } from "@/features/ingest/ingest";
@@ -95,6 +96,8 @@ export class FakeStorage implements TypedStorage {
 
 export type FakeSheet = SheetRecord & {
   rawKey: string | null;
+  lineageId?: string;
+  segmentId?: string;
   typedKey?: string;
   schema?: ColumnSchema[];
   schemaRevision?: number;
@@ -131,11 +134,32 @@ export class FakeRepo implements IngestRepo {
   }
   async deleteSheets() {
     this.sheets.clear();
+    this.segments.clear();
   }
-  async createSheet(_v: string, s: SheetRecord) {
+  /** Lineage (ADR-0008): rowHighWater per sheet logis; segmen yang ditulis versi ini. */
+  lineages = new Map<string, bigint>();
+  segments = new Map<string, SegmentRecord>();
+  async createLineage() {
+    if (!this.alive()) throw new DatasetGoneError();
+    const id = `lineage${++this.n}`;
+    this.lineages.set(id, 0n);
+    return id;
+  }
+  async allocateRows(lineageId: string, span: number) {
+    const base = this.lineages.get(lineageId) ?? 0n;
+    this.lineages.set(lineageId, base + BigInt(span));
+    return base;
+  }
+  async createSegment(_v: string, d: SegmentRecord) {
+    if (!this.alive()) throw new DatasetGoneError();
+    const id = `segment${++this.n}`;
+    this.segments.set(id, d);
+    return id;
+  }
+  async createSheet(_v: string, s: SheetRecord, lineageId: string) {
     if (!this.alive()) throw new DatasetGoneError();
     const id = `sheet${++this.n}`;
-    this.sheets.set(id, { ...s, rawKey: null });
+    this.sheets.set(id, { ...s, rawKey: null, lineageId });
     return id;
   }
   async setSheetKey(id: string, key: string) {
@@ -150,7 +174,7 @@ export class FakeRepo implements IngestRepo {
   }
   async setTyped(
     id: string,
-    d: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number },
+    d: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number; segmentId?: string },
   ) {
     if (!this.alive()) {
       this.sheets.clear();
@@ -245,10 +269,35 @@ export async function readParquet(path: string): Promise<unknown[][]> {
   const db = await DuckDBInstance.create(":memory:");
   const c = await db.connect();
   try {
+    // Uji nilai: typed segmen (T-036) membawa _src_row (diuji tersendiri) dan _row BIGINT → number.
     const r = await c.runAndReadAll(
-      `SELECT * FROM read_parquet('${path.replace(/'/g, "''")}') ORDER BY _row`,
+      `SELECT COLUMNS(c -> c <> '_src_row') FROM read_parquet('${path.replace(/'/g, "''")}') ORDER BY _row`,
     );
-    return r.getRowsJS() as unknown[][];
+    return (r.getRowsJS() as unknown[][]).map(([row, ...rest]) => [
+      typeof row === "bigint" ? Number(row) : row,
+      ...rest,
+    ]);
+  } finally {
+    c.closeSync();
+    db.closeSync();
+  }
+}
+
+/** Kolom baris typed segmen (T-036): tipe `_row`, nilainya, dan `_src_row` (baris fisik). */
+export async function rowColumns(
+  path: string,
+): Promise<{ type: string; row: bigint; src: number }[]> {
+  const db = await DuckDBInstance.create(":memory:");
+  const c = await db.connect();
+  try {
+    const r = await c.runAndReadAll(
+      `SELECT typeof(_row), _row, _src_row FROM read_parquet('${path.replace(/'/g, "''")}') ORDER BY _row`,
+    );
+    return (r.getRowsJS() as [string, bigint, number][]).map(([type, row, src]) => ({
+      type,
+      row,
+      src,
+    }));
   } finally {
     c.closeSync();
     db.closeSync();

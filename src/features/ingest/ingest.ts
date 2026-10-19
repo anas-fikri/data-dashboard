@@ -43,7 +43,7 @@ import {
   type SnapshotRef,
   type Verdict,
 } from "./refresh";
-import { headerColumns, writeTyped } from "./typed";
+import { headerColumns, maxSourceRow, writeTyped } from "./typed";
 import { PARALLEL_MIN_SHEET_BYTES, sheetRecord, xlsxSheetsParallel } from "./xlsx-parallel";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
@@ -99,6 +99,17 @@ export class StaleSnapshotError extends Error {
 export type FinishOutcome = "activated" | "awaiting" | "stale" | "gone";
 
 /** Akses database yang dibutuhkan ingest (implementasi Prisma di worker; palsu di unit test). */
+/** Segmen raw hasil ingest (ADR-0008): kunci + bentuk raw, awal `_row`, baris fisik terbesar. */
+export interface SegmentRecord {
+  lineageId: string;
+  rawKey: string;
+  rawRows: number;
+  headerRow: number;
+  colCount: number;
+  rowBase: bigint;
+  maxSrcRow: number;
+}
+
 export interface IngestRepo {
   /** `active` = versi aktif dataset (selain versi ini) beserta skema sheet-nya; null = versi pertama. */
   load(
@@ -109,15 +120,28 @@ export interface IngestRepo {
   /** Versi dan datasetnya masih ada. */
   exists(versionId: string): Promise<boolean>;
   progress(versionId: string, p: IngestProgress): Promise<void>;
+  /** Sheet dan segmen percobaan sebelumnya versi ini (idempoten saat ingest diulang). */
   deleteSheets(versionId: string): Promise<void>;
+  /** Sheet logis baru (ADR-0008) untuk sheet tanpa pasangan aktif; DatasetGoneError bila versi hilang. */
+  createLineage(versionId: string): Promise<string>;
+  /**
+   * Awal `_row` segmen baru: rowHighWater lineage naik atomik sebesar `span` (baris fisik terbesar
+   * raw), nilai lamanya dikembalikan — `_row` unik per sheet logis, tidak pernah dipakai ulang.
+   */
+  allocateRows(lineageId: string, span: number): Promise<bigint>;
   /** Melempar DatasetGoneError bila versi sudah hilang. */
-  createSheet(versionId: string, s: SheetRecord): Promise<string>;
+  createSheet(versionId: string, s: SheetRecord, lineageId: string): Promise<string>;
+  /** Segmen raw sheet versi ini (REPLACE: satu per sheet); DatasetGoneError bila versi hilang. */
+  createSegment(versionId: string, d: SegmentRecord): Promise<string>;
   /** Melempar DatasetGoneError bila baris sheet sudah hilang (dataset dihapus). */
   setSheetKey(sheetId: string, rawKey: string): Promise<void>;
-  /** Typed-1 + skema hasil inferensi; melempar DatasetGoneError bila baris sheet sudah hilang. */
+  /**
+   * Typed-1 + skema hasil inferensi, dicatat sebagai file typed segmen `segmentId` dan manifest sheet
+   * (ordinal 0); melempar DatasetGoneError bila baris sheet sudah hilang.
+   */
   setTyped(
     sheetId: string,
-    data: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number },
+    data: { typedKey: string; schema: ColumnSchema[]; schemaRevision: number; segmentId: string },
   ): Promise<void>;
   /**
    * Semua sheet raw + typed tertulis. Di bawah lock baris Dataset: acuan cast (`snapshot`) basi →
@@ -376,8 +400,12 @@ export async function runIngest(
       }
       const cols = active ? planColumns(s.rec.columns, active.schema) : null;
       const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
-      const sheetId = await repo.createSheet(versionId, s.rec);
+      // Sheet logis dibawa dari pasangan aktif (ADR-0008); `_row` segmen ini diambil dari lineage-nya.
+      const lineageId = active?.lineageId ?? (await repo.createLineage(versionId));
+      const sheetId = await repo.createSheet(versionId, s.rec, lineageId);
       if (active) sheetMap[active.id] = sheetId;
+      const maxSrcRow = await maxSourceRow(duck, s.path);
+      const rowBase = await repo.allocateRows(lineageId, maxSrcRow);
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
       // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang
@@ -394,6 +422,7 @@ export async function runIngest(
         overrides: cols?.overrides,
         absent: cols?.absent,
         watch: ensureAlive,
+        rowBase,
       });
       if (active && cols) {
         const label = v.active!.sheets.length > 1 ? active.name : null;
@@ -403,10 +432,24 @@ export async function runIngest(
       const key = `${prefix}${sheetId}/raw.parquet`;
       await storage.upload(key, s.path, PARQUET);
       await repo.setSheetKey(sheetId, key);
+      const segmentId = await repo.createSegment(versionId, {
+        lineageId,
+        rawKey: key,
+        rawRows: s.rec.rawRows,
+        headerRow: s.rec.headerRow,
+        colCount: s.rec.colCount,
+        rowBase,
+        maxSrcRow,
+      });
       await ensureAlive();
       const typedKey = `${prefix}${sheetId}/typed-1.parquet`;
       await storage.upload(typedKey, typedPath, PARQUET);
-      await repo.setTyped(sheetId, { typedKey, schema: typed.schema, schemaRevision: 1 });
+      await repo.setTyped(sheetId, {
+        typedKey,
+        schema: typed.schema,
+        schemaRevision: 1,
+        segmentId,
+      });
       rmSync(typedPath, { force: true });
       await ensureAlive();
     }

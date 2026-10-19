@@ -293,10 +293,10 @@ describe("skema aktif berubah selama cast", () => {
     const r = await refresh(v1Rows, active);
     const create = r.repo.createSheet.bind(r.repo);
     // User menyimpan koreksi (revisi naik) saat ingest berjalan.
-    r.repo.createSheet = async (v: string, rec: SheetRecord) => {
+    r.repo.createSheet = async (v: string, rec: SheetRecord, lineageId: string) => {
       r.repo.active!.sheets[0]!.schemaRevision += 1;
       r.repo.active!.sheets[0]!.schema.find((c) => c.original === "Tanggal")!.name = "Tgl";
-      return create(v, rec);
+      return create(v, rec, lineageId);
     };
     await expect(r.run()).rejects.toBeInstanceOf(StaleSnapshotError);
     expect(r.repo.status).toBe("INGESTING");

@@ -33,6 +33,8 @@ const DS = "cmv4klj5r0007oczvgiofocpg";
 const VER = "cmv4kljx40009oczvdmpurrxf";
 const SHEET = "cmv4kljx40009oczvdmpurrxa";
 const WIDE = "cmv4kljx40009oczvdmpurrxw";
+/** Typed segmen (T-036): _row = rowBase (2^31 − 1) + baris fisik, _src_row = baris fisik. */
+const SEG = "cmv4kljx40009oczvdmpurrxs";
 
 const col = (
   pos: number,
@@ -66,6 +68,12 @@ beforeAll(async () => {
                   DATE '2025-12-31' + CAST(i AS INTEGER) AS c2,
                   CAST(i * 1.5 AS DECIMAL(38,6)) AS c3
            FROM range(500) t(i)) TO '${join(root, "typed.parquet")}' (FORMAT parquet)`,
+  );
+  await c.run(
+    `COPY (SELECT (2147483647 + i + 4)::BIGINT AS _row, (i + 4)::INTEGER AS _src_row,
+                  'kota' || i AS c1, DATE '2025-12-31' + CAST(i AS INTEGER) AS c2,
+                  CAST(i AS DECIMAL(38,6)) AS c3
+           FROM range(60) t(i)) TO '${join(root, "segment.parquet")}' (FORMAT parquet)`,
   );
   const wideCols = Array.from({ length: 70 }, (_, i) => `i + ${i} AS c${i + 1}`).join(", ");
   await c.run(
@@ -109,6 +117,8 @@ function queryDeps(): QueryDeps {
         return { typedKey: "typed.parquet", schemaRevision: 1, schema: SCHEMA };
       if (sheetId === WIDE)
         return { typedKey: "wide.parquet", schemaRevision: 1, schema: WIDE_SCHEMA };
+      if (sheetId === SEG)
+        return { typedKey: "segment.parquet", schemaRevision: 1, schema: SCHEMA };
       return null;
     },
   };
@@ -154,8 +164,16 @@ describe("AC 2: sampel 50 baris typed", () => {
         { pos: 3, type: "decimal" },
       ]),
     ).toBe(
-      `SELECT _row, left(c1, ${SAMPLE_TEXT_CHARS}) AS c1, c3 FROM read_parquet($path) LIMIT ${SAMPLE_ROWS}`,
+      `SELECT COLUMNS('^_(src_)?row$'), left(c1, ${SAMPLE_TEXT_CHARS}) AS c1, c3 FROM read_parquet($path) LIMIT ${SAMPLE_ROWS}`,
     );
+  });
+
+  it("T-036: typed segmen → nomor baris = _src_row (baris fisik), bukan rowBase + baris", async () => {
+    const r = await sampleRows(USER, DS, SEG, queryDeps());
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.rows.map((x) => x[0])).toEqual(Array.from({ length: 50 }, (_, i) => i + 4));
+    expect(r.rows[0]).toEqual([4, "kota0", "2025-12-31", 0]);
   });
 
   it("50 baris pertama urut nomor baris, nilai siap tampil (tanggal ISO, teks ≤ 200)", async () => {

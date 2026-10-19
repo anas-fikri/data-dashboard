@@ -51,6 +51,8 @@ export interface RecastSheet {
   columns: ColumnMeta[];
   schema: ColumnSchema[] | null;
   source: SourceKind;
+  /** Awal `_row` segmen manifest sheet (ADR-0008): sama di setiap recast. 0 = segmen legacy. */
+  rowBase?: bigint;
 }
 
 export interface RecastRepo {
@@ -216,6 +218,7 @@ export async function recastSheet(
       overrides,
       absent,
       watch,
+      rowBase: s.rowBase ?? 0n,
     });
 
     const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);

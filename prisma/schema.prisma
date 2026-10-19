@@ -94,6 +94,8 @@ model Dataset {
   activeVersion   DatasetVersion?  @relation("ActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
   versions        DatasetVersion[] @relation("DatasetVersions")
   dashboards      Dashboard[]
+  lineages        SheetLineage[]
+  segments        Segment[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -140,6 +142,9 @@ model DatasetVersion {
   /// Progres untuk UI: { sheet, sheetCount, sheetName, rows, fraction, at } (ditulis tiap ≤ 5 detik).
   progress        Json?
   sheets          Sheet[]
+  /// Segmen yang ditulis versi ini (ADR-0008); ikut terhapus bersama versinya selama segmen hanya
+  /// dirujuk versi pembuatnya (REPLACE). GC berbasis referensi menggantikannya di T-038.
+  segments        Segment[]
 
   @@index([datasetId, createdAt])
   @@index([status])
@@ -179,9 +184,87 @@ model Sheet {
   schemaRevision Int            @default(0)
   /// ColumnSchema[] (src/features/ingest/infer.ts): nama tampil/asli, tipe, locale, format, statistik.
   schema         Json?
+  /// Identitas sheet logis lintas versi (ADR-0008, T-036): dibawa dari sheet aktif yang berpasangan
+  /// (ingest refresh, pemetaan user); sumber rowBase segmen.
+  lineageId      String
+  lineage        SheetLineage   @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  /// Manifest data sheet ini: daftar segmen typed berurutan (REPLACE: tepat satu, ordinal 0).
+  segments       SheetSegment[]
   createdAt      DateTime       @default(now())
 
   @@unique([versionId, index])
+  @@index([lineageId])
+}
+
+/// Sheet logis lintas versi (ADR-0008). `rowHighWater` = batas atas `_row` yang pernah dibagikan ke
+/// segmen sheet ini: segmen baru mendapat rowBase = nilai lama, lalu nilainya naik atomik sebesar baris
+/// fisik terbesar segmen — `_row` unik per sheet logis dan tidak pernah dipakai ulang. Lineage hasil
+/// migrasi T-036 mulai dari 2^31 − 1 (typed lama ber-`_row INTEGER` = baris fisik).
+model SheetLineage {
+  id           String    @id @default(cuid())
+  datasetId    String
+  dataset      Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  rowHighWater BigInt    @default(0)
+  sheets       Sheet[]
+  segments     Segment[]
+  createdAt    DateTime  @default(now())
+
+  @@index([datasetId])
+}
+
+/// Segmen data imutabel satu sheet logis (ADR-0008): raw.parquet + typed per revisi skema
+/// (SegmentTyped). Typed baru: `_row BIGINT = rowBase + baris fisik`, `_src_row` = baris fisik,
+/// c<pos> kanonik. Segmen legacy (migrasi T-036) merujuk kunci lama di prefix versi tanpa disalin.
+model Segment {
+  id                 String          @id @default(cuid())
+  datasetId          String
+  dataset            Dataset         @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  lineageId          String
+  lineage            SheetLineage    @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  rowBase            BigInt          @default(0)
+  /// Baris fisik terbesar di raw (null = segmen legacy yang belum diukur).
+  maxSrcRow          Int?
+  rawKey             String
+  rawRows            Int
+  headerRow          Int
+  colCount           Int
+  createdByVersionId String?
+  createdByVersion   DatasetVersion? @relation(fields: [createdByVersionId], references: [id], onDelete: Cascade)
+  typed              SegmentTyped[]
+  createdAt          DateTime        @default(now())
+
+  @@index([datasetId])
+  @@index([lineageId])
+  @@index([createdByVersionId])
+}
+
+/// Satu file typed segmen untuk satu revisi skema (recast menulis file baru → baris baru).
+model SegmentTyped {
+  id             String         @id @default(cuid())
+  segmentId      String
+  segment        Segment        @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  schemaRevision Int
+  typedKey       String
+  /// File typed lama (sebelum T-036): `_row INTEGER` = baris fisik, tanpa `_src_row`.
+  legacyRow      Boolean        @default(false)
+  sheets         SheetSegment[]
+  createdAt      DateTime       @default(now())
+
+  @@index([segmentId])
+}
+
+/// Manifest versi (ADR-0008): segmen typed yang membentuk data sheet, urut `ordinal`.
+model SheetSegment {
+  sheetId        String
+  sheet          Sheet        @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  segmentTypedId String
+  /// NoAction: diperiksa di akhir statement, jadi hapus dataset (cascade ke sheet dan segmen) tetap
+  /// jalan, tetapi menghapus file typed yang masih dirujuk manifest gagal (bukan diam-diam rusak).
+  segmentTyped   SegmentTyped @relation(fields: [segmentTypedId], references: [id], onDelete: NoAction)
+  ordinal        Int
+
+  @@id([sheetId, ordinal])
+  @@index([segmentTypedId])
 }
 
 /// Prefix storage yang menunggu dihapus: gagal dihapus (review T-003 #2) atau milik versi yang

@@ -170,14 +170,18 @@ export type SampleResult =
   | QueryFailure;
 
 /** SQL sampel: posisi kolom berasal dari skema di DB (bilangan bulat), bukan dari input user. */
+/** `_row` dan, bila ada, `_src_row` (urutan file: _row lebih dulu). */
+const ROW_COLUMNS = "COLUMNS('^_(src_)?row$')";
+
 export function sampleSql(columns: Pick<ColumnSchema, "pos" | "type">[]): string {
   const cols = columns.map((c) => {
     const id = `c${Math.trunc(c.pos)}`;
     return c.type === "text" ? `left(${id}, ${SAMPLE_TEXT_CHARS}) AS ${id}` : id;
   });
   // Tanpa ORDER BY: typed.parquet ditulis urut _row dan urutan sisip dipertahankan, jadi LIMIT membaca
-  // row group pertama saja (top-N atas semua kolom kehabisan memori di tabel lebar).
-  return `SELECT ${["_row", ...cols].join(", ")} FROM read_parquet($path) LIMIT ${SAMPLE_ROWS}`;
+  // row group pertama saja (top-N atas semua kolom kehabisan memori di tabel lebar). Nomor baris: typed
+  // segmen (T-036) punya _src_row (baris fisik; _row = rowBase + baris fisik), typed lama hanya _row.
+  return `SELECT ${[ROW_COLUMNS, ...cols].join(", ")} FROM read_parquet($path) LIMIT ${SAMPLE_ROWS}`;
 }
 
 export async function sampleRows(
@@ -206,11 +210,15 @@ export async function sampleRows(
     params: { path },
   }));
   if (!r.ok) return r;
+  // Satu kolom nomor baris di depan: baris fisik (_src_row bila ada, selain itu _row typed lama).
+  const lead = r.out.columns.indexOf("_src_row") === 1 ? 2 : 1;
   const types = ["integer" as const, ...shown.map((c) => c.type)];
   return {
     ok: true,
     columns: shown.map((c) => ({ pos: c.pos, name: c.name, type: c.type, hidden: c.hidden })),
-    rows: r.out.rows.map((row) => row.map((v, i) => toJson(v, types[i]!))),
+    rows: r.out.rows.map((row) =>
+      [row[lead - 1], ...row.slice(lead)].map((v, i) => toJson(v, types[i]!)),
+    ),
     totalColumns: sheet.schema.length,
   };
 }

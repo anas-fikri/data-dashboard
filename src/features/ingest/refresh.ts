@@ -33,6 +33,8 @@ export interface ActiveSheet {
   headerRow: number;
   schemaRevision: number;
   schema: ColumnSchema[];
+  /** Sheet logis (ADR-0008) yang dibawa sheet versi baru yang berpasangan dengannya. */
+  lineageId?: string;
 }
 
 export interface ActiveSnapshot {

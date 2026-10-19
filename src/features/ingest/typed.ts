@@ -80,6 +80,11 @@ export interface TypedInput {
   absent?: AbsentColumn[];
   /** Dipanggil berkala selama query panjang; melempar → query diinterupsi. */
   watch: () => Promise<void>;
+  /**
+   * Awal `_row` segmen (ADR-0008, T-036): typed `_row BIGINT = rowBase + baris fisik` (unik per sheet
+   * logis, sama di setiap recast) dan `_src_row` = baris fisik. Bawaan 0.
+   */
+  rowBase?: bigint;
 }
 
 export interface TypedResult {
@@ -91,6 +96,14 @@ export interface TypedResult {
    * (T-013); juga disimpan per kolom di skema (T-014).
    */
   nonEmpty: number[];
+}
+
+/** Baris fisik terbesar di raw.parquet (0 bila kosong): rentang `_row` yang dipakai segmen (T-036). */
+export async function maxSourceRow(duck: Duck, rawPath: string): Promise<number> {
+  const r = await duck.conn.runAndReadAll(
+    `SELECT coalesce(max(_row), 0) FROM read_parquet(${lit(rawPath)})`,
+  );
+  return Number(r.getRows()[0]?.[0] ?? 0);
 }
 
 /** Nama kolom dari baris fisik `row` di raw.parquet (header dipilih ulang: recast, versi refresh). */
@@ -246,11 +259,13 @@ export async function writeTyped(duck: Duck, input: TypedInput): Promise<TypedRe
     ...parts.map((p, i) => `${p.outer(`a${i + 1}`)} AS c${i + 1}`),
     ...absent.map((a) => `CAST(NULL AS ${sqlType(a)}) AS c${a.pos}`),
   ];
-  const width = outer.length + 1;
+  const width = outer.length + 2;
+  const rowBase = input.rowBase ?? 0n;
+  if (rowBase < 0n) throw new Error("rowBase negatif");
   await watched(duck, input.watch, () =>
     copyParquet(
       duck,
-      `SELECT _row, ${outer.join(", ")}
+      `SELECT CAST(_row AS BIGINT) + ${rowBase.toString()}::BIGINT AS _row, _row AS _src_row, ${outer.join(", ")}
        FROM (SELECT _row, ${parts.map((p, i) => `${p.inner} AS a${i + 1}`).join(", ")}
              FROM read_parquet(${lit(input.rawPath)}) WHERE ${where})`,
       input.outPath,

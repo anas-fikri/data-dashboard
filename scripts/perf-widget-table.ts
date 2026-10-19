@@ -50,6 +50,9 @@ async function main() {
     exists: async () => true,
     progress: async () => {},
     deleteSheets: async () => {},
+    createLineage: async () => "lineage",
+    allocateRows: async () => 0n,
+    createSegment: async () => "segment",
     createSheet: async (_v, _s: SheetRecord) => SHEET,
     setSheetKey: async () => {},
     setTyped: async (_id, d) => {
