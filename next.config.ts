@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
     "ioredis",
     "nodemailer",
     "@node-rs/argon2",
+    // Klien SFTP tes koneksi NAS (T-y8qq); binding native opsional dimuat saat runtime bila ada.
+    "ssh2",
     // Binding native DuckDB (mesin query T-009) dipilih per platform saat runtime.
     "@duckdb/node-api",
     "@duckdb/node-bindings",

@@ -3,7 +3,7 @@ export type BackupState = "ok" | "pending" | "failed" | "off";
 
 export interface BackupStatus {
   state: BackupState;
-  /** Target off-VM tanpa rahasia, mis. "s3.contoh.lan:9000/backup-data-dashboard/data-dashboard". */
+  /** Target off-VM tanpa rahasia, mis. "dashboard-backup@10.3.3.50:22/backup-data-dashboard". */
   target: string | null;
   /** Arsip di VM yang belum tersalin ke target. */
   pending: number;
@@ -17,30 +17,39 @@ export interface BackupStatus {
   updatedAt: string;
 }
 
-/** Target off-VM untuk form Admin › Backup: secret tidak pernah dikirim balik ke browser. */
+/** Target NAS Synology (SFTP) untuk form Admin › Backup: password tidak pernah dikirim balik ke browser. */
 export interface OffsiteView {
   enabled: boolean;
-  endpoint: string;
-  bucket: string;
-  prefix: string;
-  region: string;
-  accessKeyId: string;
-  hasSecret: boolean;
+  host: string;
+  port: number;
+  username: string;
+  folder: string;
+  /** Kunci publik host NAS yang dipin ("ssh-ed25519 AAAA…"), bukan rahasia. */
+  hostKey: string;
+  fingerprint: string;
+  hasPassword: boolean;
   updatedAt: string | null;
 }
 
-/** Isian form (secret kosong = pakai secret yang sudah tersimpan). */
+/** Isian form (password kosong = pakai password tersimpan untuk NAS + akun yang sama). */
 export interface OffsiteInput {
   enabled: boolean;
-  endpoint: string;
-  bucket: string;
-  prefix: string;
-  region: string;
-  accessKeyId: string;
-  secretAccessKey: string;
+  host: string;
+  port: string;
+  username: string;
+  password: string;
+  folder: string;
+  /** Diisi dari hasil "Tes koneksi" (kosong = terima kunci host baru pada tes berikutnya). */
+  hostKey: string;
 }
 
 export type OffsiteField = keyof OffsiteInput;
+
+/** Hasil tes koneksi: kunci host yang dilihat (dipin saat disimpan) + sidik jarinya untuk dicocokkan. */
+export interface OffsiteProbe {
+  hostKey: string;
+  fingerprint: string;
+}
 
 export type BackupErrorCode = "NOT_FOUND" | "INVALID" | "RATE_LIMITED" | "UNAVAILABLE" | "BUSY";
 

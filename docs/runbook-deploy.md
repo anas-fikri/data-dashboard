@@ -160,22 +160,27 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
 
 1. Di laptop admin (BUKAN di VM): `age-keygen -o kunci-backup-dashboard.txt` → simpan di brankas.
    Kunci publiknya (`age1…`) diisi ke `BACKUP_AGE_RECIPIENT`.
-2. **Off-VM dari aplikasi (S3, disarankan):** admin membuka **Admin › Backup**, mengisi endpoint S3 yang
-   bisa dijangkau VM (mis. `http://<ip-nas>:9000`), bucket khusus backup, folder, access key + secret
-   **khusus backup** (hanya berhak di bucket itu), lalu **Tes koneksi** → **Simpan**. Konfigurasi masuk ke
-   volume `backup-config` (`app/offsite.json`, 600; secret tidak di DB/log) dan dipakai backup berikutnya tanpa
-   restart/SSH. Bila target tidak terjangkau (down, jaringan, kunci salah): arsip **ditahan di VM** (retensi
-   lokal tidak membuangnya sebelum tersalin; dibuang setelah `BACKUP_RETENTION_DAYS`), dikirim ulang
-   `backup.sh --sync` tiap 30 menit, dan admin aktif diberi email sekali per perubahan status (tertunda,
-   gagal, pulih) + banner di aplikasi. Status: `status.json` di volume yang sama (tampil di Admin › Backup).
-   Konfigurasi dari aplikasi aktif → mengalahkan `BACKUP_REMOTE`.
-   Kunci backup perlu hak daftar/tulis/baca/hapus (salin + retensi 30 hari); aktifkan **versioning atau
-   object-lock** di bucket target agar salinan tidak bisa dihapus permanen oleh VM yang dibobol.
-   Off-VM lewat SFTP (server file/NAS kantor, tanpa aplikasi). Pakai **akun khusus non-admin** yang hanya punya satu
-   folder backup (mis. di Synology DSM: buat user `dashboard-backup`, shared folder
-   `backup-data-dashboard` baca/tulis hanya untuk user itu, aplikasi SFTP diizinkan). Jangan memakai akun
-   admin/pribadi: kunci ada di VM bersama, dan `internal-sftp` tanpa chroot memberi akses ke semua share
-   akun itu.
+2. **Off-VM ke NAS Synology dari aplikasi (SFTP, disarankan):** siapkan di DSM sekali:
+   - **Panel Kontrol › Layanan File › FTP › SFTP**: aktifkan (port bawaan 22).
+   - Buat user khusus, mis. `dashboard-backup`, **tanpa hak admin**, dengan shared folder sendiri
+     (mis. `backup-data-dashboard`) yang hanya bisa dibaca/ditulis user itu; izin aplikasi SFTP diberikan.
+     Jangan memakai akun admin/pribadi: password tersimpan di VM bersama.
+   - Disarankan: snapshot Btrfs (Snapshot Replication) pada shared folder itu agar salinan tidak bisa
+     dihapus permanen dari VM yang dibobol.
+
+   Lalu admin membuka **Admin › Backup**, mengisi alamat NAS (harus bisa dijangkau VM), port, username,
+   password, dan folder (`/backup-data-dashboard`), menekan **Tes koneksi** (tulis/baca/hapus file uji;
+   kunci host NAS dicatat dan sidik jarinya tampil), lalu **Simpan**. Konfigurasi masuk ke volume
+   `backup-config` (`app/offsite.json`, 600; password tidak di DB/log) dan dipakai backup berikutnya tanpa
+   restart/SSH. `backup.sh` memvalidasi ulang isinya, menyalin lewat rclone sftp dengan password di-obscure
+   lewat stdin dan known_hosts berisi **hanya kunci host yang dipin** (NAS lain/diinstal ulang → ditolak
+   sampai admin menekan **Lupakan kunci host** lalu tes ulang). Bila NAS tidak terjangkau (down, jaringan,
+   password salah): arsip **ditahan di VM** (retensi lokal tidak membuangnya sebelum tersalin; dibuang
+   setelah `BACKUP_RETENTION_DAYS`), dikirim ulang `backup.sh --sync` tiap 30 menit, dan admin aktif diberi
+   email sekali per perubahan status (tertunda, gagal, pulih) + banner di aplikasi. Status: `status.json` di
+   volume yang sama (tampil di Admin › Backup). Konfigurasi dari aplikasi aktif → mengalahkan
+   `BACKUP_REMOTE`. Format lama (S3, sebelum T-y8qq) dianggap tidak valid: status gagal sampai disimpan ulang.
+   **Alternatif tanpa aplikasi** (server SFTP lain, autentikasi kunci SSH, `authorized_keys` terbatas):
    ```bash
    bash deploy/offsite-key.sh <host> <port> <user> <folder> [ip-sumber-VM]
    ```
@@ -186,13 +191,6 @@ tar → **age** dengan kunci publik → `/backups` (volume) + salinan off-VM lew
    (olympus → files.pcpexpress.com: IP publik kantor 115.178.128.130 karena lewat NAT). Lalu di `.env.prod`:
    `BACKUP_REMOTE=offsite:<folder>` dan `BACKUP_LOCAL_RETENTION_DAYS=7` (salinan 30 hari di off-VM,
    7 hari di VM agar disk VM hemat), lalu `$C up -d --no-deps --force-recreate backup`.
-   **Alternatif S3** (server S3 di NAS, mis. Synology dengan paket object storage, MinIO, RustFS):
-   buat bucket + access key khusus backup yang hanya berhak di bucket itu, lalu
-   ```bash
-   bash deploy/offsite-s3.sh <endpoint> <bucket>[/folder]
-   ```
-   Access key + secret diketik di prompt (tidak tampil); skrip menulis remote `offsite` (S3) ke
-   `deploy/rclone.conf` lalu menguji tulis/baca/hapus satu berkas. `BACKUP_REMOTE=offsite:<bucket>[/folder]`.
    Paling tahan ransomware: NAS yang **menarik** dari VM (Hyper Backup/rsync terjadwal dari NAS, akun VM
    tidak bisa menghapus salinan di NAS) atau snapshot Btrfs tak-terhapus di shared folder tujuan.
    Tanpa remote, backup hanya di VM (peringatan di log).

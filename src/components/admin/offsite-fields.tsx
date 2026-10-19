@@ -8,55 +8,44 @@ import type { OffsiteField, OffsiteInput } from "@/features/backup/types";
 
 export const offsiteFieldId = (f: OffsiteField) => `offsite-${f}`;
 
-type TextField = Exclude<OffsiteField, "enabled">;
+type TextField = Exclude<OffsiteField, "enabled" | "hostKey">;
 
-const FIELDS: {
-  f: TextField;
-  label: string;
-  hint?: string;
-  required?: boolean;
-  wide?: boolean;
-  placeholder?: string;
-}[] = [
+const FIELDS: { f: TextField; label: string; hint?: string; wide?: boolean }[] = [
   {
-    f: "endpoint",
-    label: "Endpoint",
-    required: true,
+    f: "host",
+    label: "Alamat NAS",
+    hint: "Alamat IP atau nama NAS Synology yang bisa dijangkau server aplikasi, mis. 10.3.3.50.",
+  },
+  { f: "port", label: "Port SFTP", hint: "Bawaan 22." },
+  {
+    f: "username",
+    label: "Username",
+    hint: "Akun DSM khusus backup (bukan admin) yang hanya punya akses ke folder backup.",
+  },
+  { f: "password", label: "Password" },
+  {
+    f: "folder",
+    label: "Folder tujuan",
     wide: true,
-    hint: "Alamat server S3 yang bisa dijangkau server aplikasi, mis. http://10.3.3.50:9000.",
+    hint: "Diawali nama shared folder, mis. /backup-data-dashboard. Buat dulu lewat File Station.",
   },
-  {
-    f: "bucket",
-    label: "Bucket",
-    required: true,
-    hint: "Bucket khusus backup, bukan bucket aplikasi lain.",
-  },
-  { f: "prefix", label: "Folder", hint: "Opsional, mis. data-dashboard." },
-  {
-    f: "accessKeyId",
-    label: "Access key",
-    required: true,
-    hint: "Kunci khusus backup yang hanya berhak di bucket ini — jangan kunci admin.",
-  },
-  { f: "secretAccessKey", label: "Secret key", required: true },
-  { f: "region", label: "Region", hint: "Opsional, bawaan us-east-1.", placeholder: "us-east-1" },
 ];
 
 interface OffsiteFieldsProps {
   values: OffsiteInput;
   onChange: <K extends OffsiteField>(field: K, value: OffsiteInput[K]) => void;
   errorFor: (field: OffsiteField) => string | undefined;
-  /** Secret sudah tersimpan: kolom secret boleh kosong (= tetap). */
-  hasSecret: boolean;
+  /** Password sudah tersimpan: kolom password boleh kosong (= tetap). */
+  hasPassword: boolean;
 }
 
-/** Kolom target off-VM (Admin › Backup, T-7psf); state dan kirim di OffsiteForm. */
-export function OffsiteFields({ values, onChange, errorFor, hasSecret }: OffsiteFieldsProps) {
+/** Kolom target NAS Synology (Admin › Backup, T-y8qq); state dan kirim di OffsiteForm. */
+export function OffsiteFields({ values, onChange, errorFor, hasPassword }: OffsiteFieldsProps) {
   return (
     <>
       <div className="flex items-center justify-between gap-4 rounded-lg border p-4">
         <label htmlFor={offsiteFieldId("enabled")} className="text-sm">
-          <span className="block font-medium">Aktifkan salinan off-VM</span>
+          <span className="block font-medium">Aktifkan salinan ke NAS</span>
           <span className="block text-muted-foreground">
             Mati = backup hanya tersimpan di server aplikasi.
           </span>
@@ -68,12 +57,11 @@ export function OffsiteFields({ values, onChange, errorFor, hasSecret }: Offsite
         />
       </div>
       <div className="grid gap-4 md:grid-cols-2">
-        {FIELDS.map(({ f, label, hint, required, wide, placeholder }) => {
-          const secret = f === "secretAccessKey";
+        {FIELDS.map(({ f, label, hint, wide }) => {
+          const secret = f === "password";
           const props = {
             autoComplete: secret ? "new-password" : "off",
             value: values[f],
-            placeholder,
             onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange(f, e.target.value),
           };
           return (
@@ -81,10 +69,10 @@ export function OffsiteFields({ values, onChange, errorFor, hasSecret }: Offsite
               key={f}
               id={offsiteFieldId(f)}
               label={label}
-              required={secret ? !hasSecret : required}
+              required={secret ? !hasPassword : true}
               hint={
-                secret && hasSecret
-                  ? "Tersimpan. Kosongkan untuk tetap memakai secret yang ada."
+                secret && hasPassword
+                  ? "Tersimpan. Kosongkan untuk tetap memakai password yang ada (NAS dan username sama)."
                   : hint
               }
               error={errorFor(f)}
@@ -93,7 +81,7 @@ export function OffsiteFields({ values, onChange, errorFor, hasSecret }: Offsite
               {secret ? (
                 <PasswordInput {...props} />
               ) : (
-                <Input {...props} inputMode={f === "endpoint" ? "url" : undefined} />
+                <Input {...props} inputMode={f === "port" ? "numeric" : undefined} />
               )}
             </Field>
           );

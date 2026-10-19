@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /*
- * T-7psf: Admin › Backup — validasi isian target off-VM, file konfigurasi (600, secret tidak pernah keluar),
- * status dari service backup → peringatan admin, dan pemetaan galat tes koneksi.
+ * T-7psf / T-y8qq: Admin › Backup — validasi isian NAS Synology (SFTP), file konfigurasi (600, password
+ * tidak pernah keluar), password tersimpan hanya untuk NAS + akun yang sama, kunci host wajib dari tes
+ * koneksi, dan status dari service backup → peringatan admin.
  */
 const ctx = vi.hoisted(() => ({ dir: "" }));
 vi.mock("@/lib/env", () => ({ env: () => ({ BACKUP_CONFIG_DIR: ctx.dir }) }));
@@ -13,7 +14,15 @@ vi.mock("@/lib/db", () => ({ prisma: {} }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 const audit = vi.hoisted(() => ({ recordAudit: vi.fn(async () => {}) }));
 vi.mock("@/features/audit/service", () => audit);
-const probe = vi.hoisted(() => ({ probeOffsite: vi.fn(async (): Promise<string | null> => null) }));
+const HOST_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGR1bW15LWhvc3Qta2V5LXVudHVrLXRlcy0wMDAwMDAw";
+const probe = vi.hoisted(() => ({
+  probeOffsite: vi.fn(
+    async (): Promise<{ ok: true; hostKey: string } | { ok: false; message: string }> => ({
+      ok: true,
+      hostKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGR1bW15LWhvc3Qta2V5LXVudHVrLXRlcy0wMDAwMDAw",
+    }),
+  ),
+}));
 vi.mock("@/features/backup/probe", () => probe);
 
 const config = await import("@/features/backup/config");
@@ -21,18 +30,19 @@ const service = await import("@/features/backup/service");
 const { probeMessage } =
   await vi.importActual<typeof import("@/features/backup/probe")>("@/features/backup/probe");
 
-const SECRET = "dummy-target-secret-uji";
+const SECRET = "dummy-nas-password-uji";
 const ACTOR = { id: "admin1", email: "admin@pcpexpress.com" };
 const input = (over: Record<string, unknown> = {}) => ({
   enabled: true,
-  endpoint: "http://10.3.3.50:9000/",
-  bucket: "backup-data-dashboard",
-  prefix: "/data-dashboard/",
-  region: "",
-  accessKeyId: "dashboard-backup",
-  secretAccessKey: SECRET,
+  host: " NAS.PCPEXPRESS.LAN ",
+  port: "22",
+  username: "dashboard-backup",
+  password: SECRET,
+  folder: "backup-data-dashboard/",
+  hostKey: HOST_KEY,
   ...over,
 });
+const stored = () => JSON.parse(readFileSync(join(ctx.dir, "app/offsite.json"), "utf8"));
 
 beforeEach(() => {
   ctx.dir = mkdtempSync(join(tmpdir(), "dd-backup-cfg-"));
@@ -41,33 +51,37 @@ beforeEach(() => {
 afterEach(() => rmSync(ctx.dir, { recursive: true, force: true }));
 
 describe("parseOffsite", () => {
-  it("menormalkan endpoint, folder, dan region bawaan", () => {
-    const r = config.parseOffsite(input());
-    expect(r).toEqual({
+  it("menormalkan host, port, dan folder", () => {
+    expect(config.parseOffsite(input())).toEqual({
       ok: true,
       data: expect.objectContaining({
-        endpoint: "http://10.3.3.50:9000",
-        prefix: "data-dashboard",
-        region: "us-east-1",
+        host: "nas.pcpexpress.lan",
+        port: 22,
+        folder: "/backup-data-dashboard",
       }),
     });
-    expect(config.parseOffsite(input({ prefix: " / " }))).toMatchObject({
+    expect(config.parseOffsite(input({ folder: "/Backup Server/data dashboard" }))).toMatchObject({
       ok: true,
-      data: { prefix: "" },
+      data: { folder: "/Backup Server/data dashboard" },
     });
+    expect(config.parseOffsite(input({ hostKey: "" }))).toMatchObject({ ok: true });
   });
 
   it.each([
-    ["endpoint", "ftp://nas:21"],
-    ["endpoint", "https://admin:pw@nas:9000"],
-    ["endpoint", "https://nas:9000/bucket"],
-    ["endpoint", "http://exa\nmple.com"],
-    ["bucket", "Backup_Data"],
-    ["prefix", "data/../lain"],
-    ["prefix", "data dashboard"],
-    ["region", "US EAST"],
-    ["accessKeyId", "kunci dengan spasi"],
-    ["secretAccessKey", "baris\nbaru"],
+    ["host", "nas pcp"],
+    ["host", "-oProxyCommand=x"],
+    ["host", "nas\nlain"],
+    ["port", "0"],
+    ["port", "ssh"],
+    ["username", "akun spasi"],
+    ["username", ""],
+    ["password", "baris\nbaru"],
+    ["folder", "/"],
+    ["folder", "/data/../lain"],
+    ["folder", "/data//lain"],
+    ["folder", "/data\n--config"],
+    ["hostKey", "ssh-dss AAAAB3NzaC1kc3MAAACBAP"],
+    ["hostKey", `${HOST_KEY}\nlain`],
   ])("menolak %s = %j dengan nama kolomnya", (field, value) => {
     expect(config.parseOffsite(input({ [field]: value }))).toMatchObject({ ok: false, field });
   });
@@ -139,19 +153,27 @@ describe("status.json dari service backup", () => {
 });
 
 describe("saveOffsite / testOffsite", () => {
-  it("menyimpan offsite.json 600 untuk backup.sh; secret tidak kembali ke browser, log, atau audit", async () => {
+  it("menyimpan offsite.json 600 untuk backup.sh; password tidak kembali ke browser, log, atau audit", async () => {
     const r = await service.saveOffsite(ACTOR, input(), "10.0.0.1");
     expect(r).toMatchObject({
       ok: true,
-      data: { hasSecret: true, bucket: "backup-data-dashboard" },
+      data: {
+        hasPassword: true,
+        host: "nas.pcpexpress.lan",
+        hostKey: HOST_KEY,
+        fingerprint: config.fingerprint(HOST_KEY),
+      },
     });
     expect(JSON.stringify(r)).not.toContain(SECRET);
     const file = join(ctx.dir, "app/offsite.json");
     expect(statSync(file).mode & 0o777).toBe(0o600);
-    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({
+    expect(stored()).toMatchObject({
       enabled: true,
-      endpoint: "http://10.3.3.50:9000",
-      secretAccessKey: SECRET,
+      host: "nas.pcpexpress.lan",
+      port: 22,
+      folder: "/backup-data-dashboard",
+      password: SECRET,
+      hostKey: HOST_KEY,
       updatedBy: ACTOR.email,
     });
     expect(audit.recordAudit).toHaveBeenCalledTimes(1);
@@ -160,41 +182,83 @@ describe("saveOffsite / testOffsite", () => {
       actorId: ACTOR.id,
       action: "backup.target.update",
       targetType: "system",
-      meta: { enabled: true, secretChanged: true },
+      meta: { enabled: true, hostKey: config.fingerprint(HOST_KEY), passwordChanged: true },
       ip: "10.0.0.1",
     });
     expect(JSON.stringify(entry)).not.toContain(SECRET);
+    expect(await config.readOffsite()).toMatchObject({ host: "nas.pcpexpress.lan" });
   });
 
-  it("secret dikosongkan → secret tersimpan dipakai (simpan dan tes); belum ada secret → ditolak", async () => {
-    expect(await service.saveOffsite(ACTOR, input({ secretAccessKey: "" }), "ip")).toMatchObject({
+  it("tanpa kunci host (belum dites) → tidak disimpan", async () => {
+    const r = await service.saveOffsite(ACTOR, input({ hostKey: "" }), "ip");
+    expect(r).toMatchObject({
       ok: false,
-      field: "secretAccessKey",
+      code: "INVALID",
+      message: expect.stringContaining("Tes koneksi"),
+    });
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("password kosong → dipakai ulang hanya untuk NAS, port, dan username yang sama", async () => {
+    expect(await service.saveOffsite(ACTOR, input({ password: "" }), "ip")).toMatchObject({
+      ok: false,
+      field: "password",
+      message: "Isi password.",
     });
     await service.saveOffsite(ACTOR, input(), "ip");
     const r = await service.saveOffsite(
       ACTOR,
-      input({ secretAccessKey: "", bucket: "lain-bucket" }),
+      input({ password: "", folder: "/lain", enabled: false }),
       "ip",
     );
-    expect(r).toMatchObject({ ok: true, data: { bucket: "lain-bucket", hasSecret: true } });
-    expect(
-      JSON.parse(readFileSync(join(ctx.dir, "app/offsite.json"), "utf8")).secretAccessKey,
-    ).toBe(SECRET);
+    expect(r).toMatchObject({
+      ok: true,
+      data: { folder: "/lain", hasPassword: true, enabled: false },
+    });
+    expect(stored().password).toBe(SECRET);
     expect((audit.recordAudit.mock.calls[1] as unknown[])[1]).toMatchObject({
-      meta: { secretChanged: false },
+      meta: { passwordChanged: false },
     });
 
-    probe.probeOffsite.mockResolvedValueOnce("Bucket tidak ditemukan.");
-    expect(await service.testOffsite(input({ secretAccessKey: "" }))).toEqual({
+    for (const over of [{ host: "nas-lain.lan" }, { port: "2222" }, { username: "akun-lain" }]) {
+      expect(await service.testOffsite(input({ ...over, password: "" }))).toMatchObject({
+        ok: false,
+        field: "password",
+        message: expect.stringContaining("isi password lagi"),
+      });
+    }
+    expect(probe.probeOffsite).not.toHaveBeenCalled();
+
+    probe.probeOffsite.mockResolvedValueOnce({
+      ok: false,
+      message: "Folder /lain tidak ditemukan.",
+    });
+    expect(await service.testOffsite(input({ password: "" }))).toEqual({
       ok: false,
       code: "UNAVAILABLE",
-      message: "Bucket tidak ditemukan.",
+      message: "Folder /lain tidak ditemukan.",
     });
-    expect(probe.probeOffsite).toHaveBeenCalledWith(
-      expect.objectContaining({ secretAccessKey: SECRET }),
+    expect(probe.probeOffsite).toHaveBeenCalledWith(expect.objectContaining({ password: SECRET }));
+    expect(await service.testOffsite(input({ hostKey: "" }))).toEqual({
+      ok: true,
+      data: { hostKey: HOST_KEY, fingerprint: config.fingerprint(HOST_KEY) },
+    });
+  });
+
+  it("file lama format S3 → dianggap belum diatur", async () => {
+    const dir = join(ctx.dir, "app");
+    await import("node:fs").then((fs) => fs.mkdirSync(dir, { recursive: true }));
+    writeFileSync(
+      join(dir, "offsite.json"),
+      JSON.stringify({
+        enabled: true,
+        endpoint: "http://x:9000",
+        bucket: "b",
+        secretAccessKey: "s",
+      }),
     );
-    expect(await service.testOffsite(input())).toEqual({ ok: true, data: null });
+    expect(await config.readOffsite()).toBeNull();
+    expect((await service.getBackupPage()).offsite).toBeNull();
   });
 
   it("folder konfigurasi tidak bisa ditulis → pesan untuk pengelola server, tanpa audit", async () => {
@@ -208,16 +272,17 @@ describe("saveOffsite / testOffsite", () => {
 });
 
 describe("probeMessage", () => {
+  const c = { folder: "/backup", hostKey: "" };
   it.each([
-    [{ name: "NoSuchBucket" }, "Bucket tidak ditemukan"],
-    [{ name: "InvalidAccessKeyId" }, "Access key atau secret ditolak"],
-    [{ Code: "SignatureDoesNotMatch" }, "Access key atau secret ditolak"],
-    [{ name: "AccessDenied" }, "tidak punya hak"],
-    [{ name: "Error", cause: { code: "ECONNREFUSED" } }, "Tidak bisa terhubung"],
-    [{ name: "TimeoutError" }, "Tidak bisa terhubung"],
-    [{ name: "Error", code: "DEPTH_ZERO_SELF_SIGNED_CERT" }, "Sertifikat TLS"],
-    [{ name: "Aneh" }, "Tes gagal (Aneh)"],
-  ])("%j → %s", (err, text) => {
-    expect(probeMessage(err)).toContain(text);
+    [{ level: "client-authentication" }, c, "", "Username atau password ditolak"],
+    [{ level: "client-timeout" }, c, "", "Tidak bisa terhubung"],
+    [{ code: "ENOTFOUND" }, c, "", "Tidak bisa terhubung"],
+    [{ message: "closed" }, c, "", "Tidak bisa terhubung"],
+    [{ level: "handshake" }, { ...c, hostKey: HOST_KEY }, "", "kunci host NAS tidak cocok"],
+    [{ code: 2 }, c, "", "Folder /backup tidak ditemukan"],
+    [{ code: 3 }, c, "", "tidak punya izin"],
+    [{ level: "aneh" }, c, "", "Tes gagal (aneh)"],
+  ])("%j → %s", (err, conf, seen, text) => {
+    expect(probeMessage(err, conf, seen)).toContain(text);
   });
 });

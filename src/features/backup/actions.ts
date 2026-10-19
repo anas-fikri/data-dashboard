@@ -8,7 +8,7 @@ import { clientIp } from "@/features/auth/rate-limit";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import * as service from "./service";
-import type { BackupResult, OffsiteInput, OffsiteView } from "./types";
+import type { BackupResult, OffsiteInput, OffsiteProbe, OffsiteView } from "./types";
 
 /*
  * Server Action Admin › Backup (T-7psf): admin aktif dari DB (selain itu NOT_FOUND, D2), rate limit per
@@ -35,7 +35,7 @@ async function asAdmin<T>(
   }
 }
 
-export async function testOffsiteAction(input: OffsiteInput): Promise<BackupResult> {
+export async function testOffsiteAction(input: OffsiteInput): Promise<BackupResult<OffsiteProbe>> {
   return asAdmin("testBackupTarget", () => service.testOffsite(input));
 }
 

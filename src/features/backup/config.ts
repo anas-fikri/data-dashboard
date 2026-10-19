@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
@@ -6,10 +7,11 @@ import { sharedConfigDir } from "@/lib/config-dir";
 import type { BackupAlert, BackupStatus, OffsiteField } from "./types";
 
 /*
- * Target backup off-VM yang diisi admin (T-7psf) dan status dari service backup, di volume bersama
- * backup-config: app/offsite.json (600, ditulis app, dibaca deploy/backup.sh) dan status.json (ditulis
- * backup.sh; folder induk milik root sehingga app hanya bisa menulis di app/). Secret hanya ada di
- * offsite.json — tidak di DB (tidak ikut arsip backup) dan tidak di log.
+ * Target backup off-VM yang diisi admin (T-7psf; NAS Synology lewat SFTP sejak T-y8qq) dan status dari
+ * service backup, di volume bersama backup-config: app/offsite.json (600, ditulis app, dibaca
+ * deploy/backup.sh) dan status.json (ditulis backup.sh; folder induk milik root sehingga app hanya bisa
+ * menulis di app/). Password hanya ada di offsite.json — tidak di DB (tidak ikut arsip backup) dan tidak
+ * di log.
  */
 
 const configDir = sharedConfigDir;
@@ -18,68 +20,66 @@ const STATUS = "status.json";
 /** Backup harian yang lebih tua dari ini dianggap tidak berjalan (jadwal 24 jam + jeda durasi). */
 export const STALE_MS = 26 * 60 * 60 * 1000;
 
-function isEndpoint(v: string): boolean {
-  try {
-    const u = new URL(v);
-    return (
-      (u.protocol === "https:" || u.protocol === "http:") &&
-      !u.username &&
-      !u.password &&
-      (u.pathname === "/" || u.pathname === "") &&
-      !u.search &&
-      !u.hash
-    );
-  } catch {
-    return false;
-  }
+/** Kunci publik host SSH satu baris ("<tipe> <base64>"), seperti baris known_hosts tanpa nama host. */
+export const HOST_KEY_RE =
+  /^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]{16,2048}={0,2}$/;
+
+/** Sidik jari OpenSSH (SHA256:…) untuk dicocokkan admin dengan NAS. */
+export function fingerprint(hostKey: string): string {
+  const blob = Buffer.from(hostKey.split(" ")[1] ?? "", "base64");
+  return `SHA256:${createHash("sha256").update(blob).digest("base64").replace(/=+$/, "")}`;
 }
 
-/** Isian form; nilai dibatasi ASCII tercetak tanpa baris baru (dibaca jq lalu env rclone di backup.sh). */
+const SEGMENT = /^[A-Za-z0-9._-]+( [A-Za-z0-9._-]+)*$/;
+
+/**
+ * Isian form NAS Synology (SFTP); nilai dibatasi ASCII tercetak tanpa baris baru (dibaca jq lalu env rclone
+ * di backup.sh, yang memvalidasi ulang dengan aturan yang sama).
+ */
 export const offsiteSchema = z.object({
   enabled: z.boolean(),
-  endpoint: z
+  host: z
     .string()
     .trim()
-    .max(200)
-    .regex(/^[\x21-\x7e]+$/, "Endpoint tidak boleh berisi spasi atau karakter khusus.")
-    .refine(
-      isEndpoint,
-      "Endpoint harus alamat http:// atau https:// tanpa folder, mis. https://s3.contoh.lan:9000.",
-    )
-    .transform((v) => new URL(v).origin),
-  bucket: z
-    .string()
-    .trim()
+    .toLowerCase()
     .regex(
-      /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/,
-      "Nama bucket 3–63 karakter: huruf kecil, angka, titik, atau tanda hubung.",
+      /^(?=.{1,253}$)[a-z0-9][a-z0-9-]{0,62}(\.[a-z0-9-]{1,63})*$/,
+      "Isi nama atau alamat IP NAS, mis. 10.3.3.50 atau nas.pcpexpress.lan.",
     ),
-  prefix: z
+  port: z.coerce
+    .number({ message: "Port harus angka." })
+    .int("Port harus angka.")
+    .min(1, "Port 1–65535 (SFTP bawaan 22).")
+    .max(65535, "Port 1–65535 (SFTP bawaan 22)."),
+  username: z
     .string()
     .trim()
-    .max(200)
-    .transform((v) => v.replace(/^\/+|\/+$/g, ""))
+    .regex(/^[\x21-\x7e]{1,128}$/, "Isi username akun NAS (tanpa spasi)."),
+  password: z
+    .string()
+    .max(256, "Password maksimal 256 karakter.")
+    .regex(/^[\x20-\x7e]*$/, "Password hanya karakter ASCII tanpa baris baru."),
+  folder: z
+    .string()
+    .trim()
+    .max(200, "Folder maksimal 200 karakter.")
+    .transform((v) => `/${v.replace(/^\/+|\/+$/g, "")}`)
     .refine(
       (v) =>
-        v === "" ||
-        (/^[A-Za-z0-9._/-]+$/.test(v) &&
-          !v.split("/").some((p) => p === "" || p === "." || p === "..")),
-      "Folder hanya boleh huruf, angka, titik, garis bawah, tanda hubung, dan /.",
+        v !== "/" &&
+        v
+          .slice(1)
+          .split("/")
+          .every((p) => SEGMENT.test(p) && p !== "." && p !== ".."),
+      "Isi folder tujuan di NAS, mis. /backup-data-dashboard — huruf, angka, spasi, titik, garis bawah, tanda hubung, dan /.",
     ),
-  region: z
+  hostKey: z
     .string()
     .trim()
-    .max(32)
-    .regex(/^[a-z0-9-]*$/, "Region hanya huruf kecil, angka, dan tanda hubung.")
-    .transform((v) => v || "us-east-1"),
-  accessKeyId: z
-    .string()
-    .trim()
-    .regex(/^[\x21-\x7e]{1,128}$/, "Access key 1–128 karakter tanpa spasi."),
-  secretAccessKey: z
-    .string()
-    .max(256, "Secret key maksimal 256 karakter.")
-    .regex(/^[\x20-\x7e]*$/, "Secret key hanya karakter ASCII tanpa baris baru."),
+    .refine(
+      (v) => v === "" || HOST_KEY_RE.test(v),
+      "Kunci host tidak valid. Jalankan Tes koneksi lagi.",
+    ),
 });
 
 export type ParsedOffsite = z.infer<typeof offsiteSchema>;
@@ -100,7 +100,8 @@ export function parseOffsite(
 }
 
 const storedSchema = offsiteSchema.extend({
-  secretAccessKey: z.string().min(1),
+  password: z.string().min(1),
+  hostKey: z.string().regex(HOST_KEY_RE),
   updatedAt: z.string(),
   updatedBy: z.string(),
 });

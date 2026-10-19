@@ -19,14 +19,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm -T --no-
   work=$(mktemp -d /backups/.verify-XXXXXX)
   trap "rm -rf $work" EXIT
   if [ -n "$REMOTE" ]; then
-    : "${BACKUP_REMOTE:?BACKUP_REMOTE kosong di .env.prod}"
-    name=${ARCHIVE:-$(rclone lsf "$BACKUP_REMOTE" --include "dashboard-*.tar.age" | sort | tail -1)}
-    [ -n "$name" ] || { echo "tidak ada arsip di $BACKUP_REMOTE" >&2; exit 1; }
+    # Target yang sama dengan backup harian (NAS dari Admin › Backup, atau BACKUP_REMOTE).
     mkdir "$work/arsip"
-    rclone copy "$BACKUP_REMOTE/$name" "$work/arsip"
-    rclone copy "$BACKUP_REMOTE/$name.sha256" "$work/arsip"
+    name=$(backup.sh --fetch "$work/arsip" "$ARCHIVE")
     f=$work/arsip/$name
-    echo "sumber: $BACKUP_REMOTE (off-VM)"
   else
     f=${ARCHIVE:-$(ls -1 /backups/dashboard-*.tar.age | tail -1)}
   fi

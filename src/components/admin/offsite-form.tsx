@@ -12,25 +12,28 @@ import type {
   OffsiteView,
 } from "@/features/backup/types";
 import { OffsiteFields, offsiteFieldId as id } from "./offsite-fields";
+import { OffsiteHostKey } from "./offsite-host-key";
 
 const NETWORK = "Tidak bisa menghubungi server aplikasi. Periksa koneksi, lalu coba lagi.";
 const CTA = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
 
 /**
- * Target salinan backup off-VM (S3) untuk Admin › Backup (T-7psf). "Tes koneksi" memakai isian saat ini
- * (belum perlu disimpan); secret tersimpan tidak pernah dikirim ke browser — kolom kosong = tetap.
+ * Target salinan backup ke NAS Synology lewat SFTP (Admin › Backup, T-y8qq). "Tes koneksi" memakai isian
+ * saat ini (belum perlu disimpan) dan mengambil kunci host NAS; password tersimpan tidak pernah dikirim ke
+ * browser — kolom kosong = tetap.
  */
 export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
   const [values, setValues] = useState<OffsiteInput>({
     enabled: initial?.enabled ?? true,
-    endpoint: initial?.endpoint ?? "",
-    bucket: initial?.bucket ?? "",
-    prefix: initial?.prefix ?? "data-dashboard",
-    region: initial?.region ?? "",
-    accessKeyId: initial?.accessKeyId ?? "",
-    secretAccessKey: "",
+    host: initial?.host ?? "",
+    port: String(initial?.port ?? 22),
+    username: initial?.username ?? "",
+    password: "",
+    folder: initial?.folder ?? "",
+    hostKey: initial?.hostKey ?? "",
   });
-  const [hasSecret, setHasSecret] = useState(initial?.hasSecret ?? false);
+  const [fingerprint, setFingerprint] = useState(initial?.fingerprint ?? "");
+  const [hasPassword, setHasPassword] = useState(initial?.hasPassword ?? false);
   const [fieldError, setFieldError] = useState<{ field: OffsiteField; message: string } | null>(
     null,
   );
@@ -42,8 +45,11 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
   const [busy, setBusy] = useState<"test" | "save" | null>(null);
   const [, start] = useTransition();
 
-  const set = <K extends OffsiteField>(k: K, v: OffsiteInput[K]) =>
-    setValues((s) => ({ ...s, [k]: v }));
+  const set = <K extends OffsiteField>(k: K, v: OffsiteInput[K]) => {
+    setValues((s) => ({ ...s, [k]: v, ...(k === "host" || k === "port" ? { hostKey: "" } : {}) }));
+    // Kunci host terikat pada alamat + port: NAS lain harus dites (dan dicocokkan) ulang.
+    if (k === "host" || k === "port") setFingerprint("");
+  };
   const errorFor = (f: OffsiteField) => (fieldError?.field === f ? fieldError.message : undefined);
   const say = (tone: "success" | "error", text: string) =>
     setNotice((p) => ({ tone, text, n: (p?.n ?? 0) + 1 }));
@@ -68,20 +74,22 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
     start(async () => {
       if (kind === "test") {
         const res = await testOffsiteAction(input).catch(() => null);
-        finish(
-          res,
-          () =>
-            "Koneksi berhasil: server aplikasi bisa menulis, membaca, dan menghapus di target ini.",
-        );
+        finish(res, (data) => {
+          setValues((s) => ({ ...s, hostKey: data.hostKey }));
+          setFingerprint(data.fingerprint);
+          return input.hostKey
+            ? "Koneksi berhasil: server aplikasi bisa menulis, membaca, dan menghapus di folder NAS ini."
+            : `Koneksi berhasil. Kunci host NAS dicatat (${data.fingerprint}) — tekan Simpan untuk memakainya.`;
+        });
         return;
       }
       const res = await saveOffsiteAction(input).catch(() => null);
       finish(res, (data) => {
-        setHasSecret(data.hasSecret);
-        set("secretAccessKey", "");
+        setHasPassword(data.hasPassword);
+        set("password", "");
         return data.enabled
-          ? "Tersimpan. Backup berikutnya dan kirim ulang tiap 30 menit memakai target ini."
-          : "Tersimpan. Salinan off-VM nonaktif: backup hanya tersimpan di server aplikasi.";
+          ? "Tersimpan. Backup berikutnya dan kirim ulang tiap 30 menit memakai NAS ini."
+          : "Tersimpan. Salinan ke NAS nonaktif: backup hanya tersimpan di server aplikasi.";
       });
     });
   }
@@ -98,7 +106,16 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
           {notice.text}
         </FocusNotice>
       ) : null}
-      <OffsiteFields values={values} onChange={set} errorFor={errorFor} hasSecret={hasSecret} />
+      <OffsiteFields values={values} onChange={set} errorFor={errorFor} hasPassword={hasPassword} />
+      <OffsiteHostKey
+        fingerprint={fingerprint}
+        disabled={busy !== null}
+        onForget={() => {
+          setValues((s) => ({ ...s, hostKey: "" }));
+          setFingerprint("");
+          say("success", "Kunci host dilupakan. Tekan Tes koneksi untuk mengambil kunci baru.");
+        }}
+      />
       <div className="flex flex-col-reverse gap-2 md:flex-row md:justify-end">
         <Button
           type="button"

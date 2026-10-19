@@ -1,14 +1,26 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
-import { envFileValue, pageFor, registerAndVerify, uniqueEmail } from "./helpers";
+import { startFakeSftp, type FakeSftp } from "../stubs/sftp-server";
+import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
 
 /*
- * T-7psf: Admin › Backup — admin mengisi target S3 (RustFS dev sebagai "NAS"), tes koneksi gagal/berhasil,
- * simpan ke offsite.json (600) tanpa secret kembali ke halaman; status dari service backup (status.json)
- * tampil di halaman dan sebagai banner untuk admin saja. Proyek sendiri (setelah admin): status.json di
- * folder dev bersama memunculkan banner untuk semua admin.
+ * T-7psf / T-y8qq: Admin › Backup — admin mengisi NAS Synology (server SFTP tiruan di proses tes), tes
+ * koneksi gagal/berhasil + kunci host dipin, simpan ke offsite.json (600) tanpa password kembali ke halaman,
+ * NAS diinstal ulang (kunci host berubah) → ditolak sampai kunci dilupakan; status dari service backup
+ * (status.json) tampil di halaman dan sebagai banner untuk admin saja. Proyek sendiri (setelah admin):
+ * status.json di folder dev bersama memunculkan banner untuk semua admin.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -17,15 +29,20 @@ const U = uniqueEmail("backup-user");
 const DIR = join(process.cwd(), ".cache/backup-config");
 const STATUS = join(DIR, "status.json");
 const OFFSITE = join(DIR, "app/offsite.json");
-const S3 = {
-  endpoint: envFileValue("S3_ENDPOINT")!,
-  bucket: envFileValue("S3_BUCKET")!,
-  key: envFileValue("S3_ACCESS_KEY")!,
-  secret: envFileValue("S3_SECRET_KEY")!,
-};
+const NAS_USER = "dashboard-backup";
+const NAS_PASSWORD = "dummy-nas-password-e2e";
+const FOLDER = "/backup-data-dashboard";
 
 let a: Page;
 let u: Page;
+let nasRoot = "";
+let nas: FakeSftp;
+
+const fingerprint = (hostKey: string) =>
+  `SHA256:${createHash("sha256")
+    .update(Buffer.from(hostKey.split(" ")[1]!, "base64"))
+    .digest("base64")
+    .replace(/=+$/, "")}`;
 
 function clean() {
   rmSync(STATUS, { force: true });
@@ -35,6 +52,9 @@ function clean() {
 test.beforeAll(async ({ browser, request }) => {
   test.setTimeout(120_000);
   clean();
+  nasRoot = mkdtempSync(join(tmpdir(), "dd-e2e-nas-"));
+  mkdirSync(join(nasRoot, FOLDER));
+  nas = await startFakeSftp({ root: nasRoot, username: NAS_USER, password: NAS_PASSWORD });
   execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
   const setup = await browser.newPage();
   for (const email of [A, U]) {
@@ -49,6 +69,8 @@ test.beforeAll(async ({ browser, request }) => {
 
 test.afterAll(async () => {
   clean();
+  await nas?.close();
+  rmSync(nasRoot, { recursive: true, force: true });
   await Promise.all([a, u].map((p) => p?.context().close()));
 });
 
@@ -57,44 +79,89 @@ test("non-admin membuka /admin/backup → 404", async () => {
   expect(res?.status()).toBe(404);
 });
 
-test("admin mengisi target S3: tes koneksi gagal lalu berhasil, simpan tanpa secret kembali ke halaman", async () => {
-  await a.goto("/admin/backup");
+test("admin mengisi NAS Synology: tes koneksi gagal lalu berhasil, kunci host dipin, simpan tanpa password kembali", async () => {
+  await a.goto("/admin");
+  const integrasi = a.getByRole("region", { name: "Integrasi" });
+  await expect(integrasi.getByRole("link", { name: /Email \(SMTP\)/ })).toBeVisible();
+  await integrasi.getByRole("link", { name: /Backup ke NAS Synology/ }).click();
+  await expect(a).toHaveURL(/\/admin\/backup$/);
+
   await expect(a.getByTestId("backup-status")).toContainText("Belum ada catatan backup");
   const form = a.getByTestId("offsite-form");
-  await form.getByRole("textbox", { name: "Endpoint" }).fill(S3.endpoint);
-  await form.getByRole("textbox", { name: "Bucket" }).fill(S3.bucket);
-  await form.getByRole("textbox", { name: "Folder" }).fill("uji-e2e-backup");
-  await form.getByRole("textbox", { name: "Access key" }).fill(S3.key);
-  const secret = form.getByLabel("Secret key");
-  await secret.fill("secret-yang-salah");
+  await form.getByRole("textbox", { name: "Alamat NAS" }).fill("127.0.0.1");
+  await form.getByRole("textbox", { name: "Port SFTP" }).fill(String(nas.port));
+  await form.getByRole("textbox", { name: "Username" }).fill(NAS_USER);
+  await form.getByRole("textbox", { name: "Folder tujuan" }).fill(FOLDER);
+  const password = form.locator("#offsite-password");
+  await password.fill("password-yang-salah");
   await form.getByRole("button", { name: "Tes koneksi" }).click();
   await expect(form.locator("[data-testid=form-alert][data-tone=error]")).toContainText(
-    "Access key atau secret ditolak.",
+    "Username atau password ditolak NAS.",
   );
 
-  await secret.fill(S3.secret);
+  // Belum dites: simpan ditolak karena kunci host belum ada.
+  await form.getByRole("button", { name: "Simpan" }).click();
+  await expect(form.locator("[data-testid=form-alert][data-tone=error]")).toContainText(
+    "Tekan Tes koneksi dulu",
+  );
+
+  await password.fill(NAS_PASSWORD);
   await form.getByRole("button", { name: "Tes koneksi" }).click();
   await expect(form.locator("[data-testid=form-alert][data-tone=success]")).toContainText(
-    "Koneksi berhasil",
+    "Kunci host NAS dicatat",
   );
+  await expect(form.getByTestId("offsite-fingerprint")).toHaveText(fingerprint(nas.hostKey));
   await form.getByRole("button", { name: "Simpan" }).click();
   await expect(form.locator("[data-testid=form-alert][data-tone=success]")).toContainText(
     "Tersimpan.",
   );
-  await expect(secret).toHaveValue("");
+  await expect(password).toHaveValue("");
 
   expect(statSync(OFFSITE).mode & 0o777).toBe(0o600);
   expect(JSON.parse(readFileSync(OFFSITE, "utf8"))).toMatchObject({
     enabled: true,
-    bucket: S3.bucket,
-    prefix: "uji-e2e-backup",
+    host: "127.0.0.1",
+    port: nas.port,
+    username: NAS_USER,
+    password: NAS_PASSWORD,
+    folder: FOLDER,
+    hostKey: nas.hostKey,
     updatedBy: A.toLowerCase(),
   });
   await a.reload();
   await expect(
-    form.getByText("Tersimpan. Kosongkan untuk tetap memakai secret yang ada."),
+    form.getByText("Tersimpan. Kosongkan untuk tetap memakai password yang ada", { exact: false }),
   ).toBeVisible();
-  expect(await a.content()).not.toContain(S3.secret);
+  await expect(form.getByTestId("offsite-fingerprint")).toHaveText(fingerprint(nas.hostKey));
+  expect(await a.content()).not.toContain(NAS_PASSWORD);
+});
+
+test("NAS diinstal ulang (kunci host berubah) → tes ditolak sampai kunci host dilupakan", async () => {
+  const port = nas.port;
+  const oldKey = nas.hostKey;
+  await nas.close();
+  nas = await startFakeSftp({ root: nasRoot, username: NAS_USER, password: NAS_PASSWORD, port });
+
+  await a.goto("/admin/backup");
+  const form = a.getByTestId("offsite-form");
+  // Password kosong = password tersimpan (NAS + akun sama), tetapi kunci host lain ditolak.
+  await form.getByRole("button", { name: "Tes koneksi" }).click();
+  const error = form.locator("[data-testid=form-alert][data-tone=error]");
+  await expect(error).toContainText("Kunci host NAS berbeda");
+  await expect(error).toContainText(fingerprint(nas.hostKey));
+  expect(nas.stats.passwordAttempts).toBe(0);
+
+  await form.getByRole("button", { name: "Lupakan kunci host" }).click();
+  await expect(form.getByTestId("offsite-fingerprint")).toHaveCount(0);
+  await form.getByRole("button", { name: "Tes koneksi" }).click();
+  await expect(form.getByTestId("offsite-fingerprint")).toHaveText(fingerprint(nas.hostKey));
+  await form.getByRole("button", { name: "Simpan" }).click();
+  await expect(form.locator("[data-testid=form-alert][data-tone=success]")).toContainText(
+    "Tersimpan.",
+  );
+  const saved = JSON.parse(readFileSync(OFFSITE, "utf8"));
+  expect(saved.hostKey).toBe(nas.hostKey);
+  expect(saved.hostKey).not.toBe(oldKey);
 });
 
 test("status tertunda dari service backup → status di Admin › Backup + banner untuk admin saja", async () => {
@@ -104,7 +171,7 @@ test("status tertunda dari service backup → status di Admin › Backup + banne
     STATUS,
     JSON.stringify({
       state: "pending",
-      target: "10.3.3.50:9000/backup-data-dashboard/data-dashboard",
+      target: "dashboard-backup@10.3.3.50:22/backup-data-dashboard",
       pending: 2,
       pendingSince: since,
       lastBackupAt: new Date().toISOString(),
@@ -112,7 +179,7 @@ test("status tertunda dari service backup → status di Admin › Backup + banne
       lastArchive: "dashboard-20261018T190000Z.tar.age",
       lastSizeBytes: 404 * 1024 * 1024,
       lastOffsiteOkAt: null,
-      error: "dial tcp 10.3.3.50:9000: i/o timeout",
+      error: "dial tcp 10.3.3.50:22: i/o timeout",
       notified: "pending",
       updatedAt: new Date().toISOString(),
     }),

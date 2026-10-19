@@ -2,7 +2,8 @@
 # Backup harian (T-023, T-7psf), dijalankan cron di service "backup":
 #   pg_dump (format custom) + salinan seluruh bucket → tar → age (kunci PUBLIK BACKUP_AGE_RECIPIENT) →
 #   /backups/dashboard-<UTC>.tar.age (+ .sha256), lalu disalin ke target off-VM:
-#   - konfigurasi dari aplikasi (Admin › Backup → /backup-config/app/offsite.json, S3) bila aktif, selain itu
+#   - konfigurasi dari aplikasi (Admin › Backup → /backup-config/app/offsite.json, NAS Synology lewat SFTP
+#     dengan kunci host yang dipin) bila aktif, selain itu
 #   - BACKUP_REMOTE (remote rclone di deploy/rclone.conf, mis. SFTP dari deploy/offsite-key.sh).
 #   Target tidak terjangkau (down, jaringan, kunci salah) → arsip DITAHAN di VM: retensi lokal
 #   (BACKUP_LOCAL_RETENTION_DAYS, bawaan = BACKUP_RETENTION_DAYS) hanya membuang arsip yang sudah tersalin;
@@ -34,7 +35,9 @@ full_days=$((days > local_days ? days : local_days))
 # Target yang tidak terjangkau harus ketahuan dalam ± 1–2 menit, bukan menggantung berjam-jam.
 rflags=(--contimeout 15s --timeout 60s --retries 2 --low-level-retries 3)
 errf=$(mktemp)
-trap 'rm -f "$errf"' EXIT
+# known_hosts target NAS dari Admin › Backup (di /tmp container, khusus root; dihapus saat selesai).
+khf=$(mktemp)
+trap 'rm -f "$errf" "$khf"' EXIT
 
 # Satu run sekaligus: backup harian menunggu, kirim ulang yang bentrok cukup dilewati.
 exec 9>"$dir/.lock"
@@ -63,7 +66,7 @@ app_json() {
 
 remote="" target="" cfg_broken=""
 offsite_target() {
-  local path endpoint json=""
+  local host port user folder key hp algos pass json=""
   remote="" target="" cfg_broken=""
   if ! json=$(app_json offsite.json); then
     # Tidak terbaca: tanpa salinan (juga tanpa BACKUP_REMOTE, agar run harian dan --sync sama), arsip lokal
@@ -73,18 +76,47 @@ offsite_target() {
     return 0
   fi
   if [ -n "$json" ] && [ "$(jq -r '.enabled == true' <<<"$json")" = true ]; then
-    endpoint=$(jq -r .endpoint <<<"$json")
-    path=$(jq -r '[.bucket, (.prefix // "")] | map(select(. != "")) | join("/")' <<<"$json")
-    export RCLONE_CONFIG_APPOFFSITE_TYPE=s3 RCLONE_CONFIG_APPOFFSITE_PROVIDER=Other \
-      RCLONE_CONFIG_APPOFFSITE_FORCE_PATH_STYLE=true RCLONE_CONFIG_APPOFFSITE_NO_CHECK_BUCKET=true \
-      RCLONE_CONFIG_APPOFFSITE_ENDPOINT="$endpoint"
-    RCLONE_CONFIG_APPOFFSITE_REGION=$(jq -r '.region // "us-east-1"' <<<"$json")
-    RCLONE_CONFIG_APPOFFSITE_ACCESS_KEY_ID=$(jq -r .accessKeyId <<<"$json")
-    RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY=$(jq -r .secretAccessKey <<<"$json")
-    export RCLONE_CONFIG_APPOFFSITE_REGION RCLONE_CONFIG_APPOFFSITE_ACCESS_KEY_ID \
-      RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY
-    remote="appoffsite:$path"
-    target="${endpoint#*://}/$path"
+    # NAS Synology lewat SFTP (T-y8qq). Aturan sama dengan form Admin › Backup: file yang tidak lolos (app
+    # dibobol, format lama S3) → tanpa salinan dan status failed, bukan nilai mentah ke rclone.
+    if ! jq -e '(.host | type == "string" and test("^[a-z0-9][a-z0-9.-]{0,252}$"))
+        and (.port | type == "number" and . == floor and . >= 1 and . <= 65535)
+        and (.username | type == "string" and test("^[!-~]{1,128}$"))
+        and (.password | type == "string" and test("^[ -~]{1,256}$"))
+        and (.folder | type == "string" and length <= 201
+          and test("^(/[A-Za-z0-9._-]+( [A-Za-z0-9._-]+)*)+$")
+          and (split("/") | all(. != "." and . != "..")))
+        and (.hostKey | type == "string"
+          and test("^(ssh-ed25519|ecdsa-sha2-nistp(256|384|521)|ssh-rsa) [A-Za-z0-9+/]{16,2048}={0,2}$"))' \
+      <<<"$json" >/dev/null 2>&1; then
+      cfg_broken=1
+      echo "[$stamp] PERINGATAN: konfigurasi NAS dari aplikasi tidak valid" >&2
+      return 0
+    fi
+    host=$(jq -r .host <<<"$json")
+    port=$(jq -r .port <<<"$json")
+    user=$(jq -r .username <<<"$json")
+    folder=$(jq -r .folder <<<"$json")
+    key=$(jq -r .hostKey <<<"$json")
+    # Hanya kunci host yang dipin dari "Tes koneksi" yang diterima (known_hosts + algoritme tipe kunci itu).
+    if [ "$port" = 22 ]; then hp=$host; else hp="[$host]:$port"; fi
+    printf '%s %s\n' "$hp" "$key" >"$khf"
+    case ${key%% *} in
+      ssh-rsa) algos="rsa-sha2-512 rsa-sha2-256 ssh-rsa" ;;
+      *) algos=${key%% *} ;;
+    esac
+    # Password ke rclone obscure lewat stdin, bukan argumen proses.
+    if ! pass=$(jq -r .password <<<"$json" | rclone obscure -); then
+      cfg_broken=1
+      echo "[$stamp] PERINGATAN: password NAS tidak bisa disiapkan" >&2
+      return 0
+    fi
+    export RCLONE_CONFIG_APPOFFSITE_TYPE=sftp RCLONE_CONFIG_APPOFFSITE_HOST="$host" \
+      RCLONE_CONFIG_APPOFFSITE_PORT="$port" RCLONE_CONFIG_APPOFFSITE_USER="$user" \
+      RCLONE_CONFIG_APPOFFSITE_PASS="$pass" RCLONE_CONFIG_APPOFFSITE_KNOWN_HOSTS_FILE="$khf" \
+      RCLONE_CONFIG_APPOFFSITE_HOST_KEY_ALGORITHMS="$algos" RCLONE_CONFIG_APPOFFSITE_SHELL_TYPE=none \
+      RCLONE_CONFIG_APPOFFSITE_MD5SUM_COMMAND=none RCLONE_CONFIG_APPOFFSITE_SHA1SUM_COMMAND=none
+    remote="appoffsite:$folder"
+    target="$user@$host:$port$folder"
   elif [ -n "${BACKUP_REMOTE:-}" ]; then
     remote=$BACKUP_REMOTE
     target=$BACKUP_REMOTE
@@ -317,10 +349,24 @@ load_prev() {
   err=$(prev .error)
 }
 
+# Ambil arsip terbaru (atau $3) + .sha256 dari target off-VM yang berlaku ke folder $2; nama arsip ke stdout.
+# Dipakai verify-backup.sh --remote (target dari Admin › Backup atau BACKUP_REMOTE).
+if [ "$mode" = --fetch ]; then
+  offsite_target
+  [ -n "$remote" ] || { echo "target off-VM belum diatur atau konfigurasinya tidak valid" >&2; exit 1; }
+  name=${3:-$(rclone lsf "$remote" --max-depth 1 --include 'dashboard-*.tar.age' "${rflags[@]}" | sort | tail -n 1)}
+  [ -n "$name" ] || { echo "tidak ada arsip di $target" >&2; exit 1; }
+  rclone copy "$remote/$name" "$2" "${rflags[@]}"
+  rclone copy "$remote/$name.sha256" "$2" "${rflags[@]}"
+  echo "sumber: $target (off-VM)" >&2
+  printf '%s\n' "$name"
+  exit 0
+fi
+
 if [ "$mode" = --sync ]; then
   load_prev
   offsite_target
-  [ -z "$cfg_broken" ] || err="konfigurasi off-VM dari aplikasi tidak terbaca — simpan ulang di Admin › Backup"
+  [ -z "$cfg_broken" ] || err="konfigurasi NAS dari aplikasi tidak terbaca atau tidak valid — simpan ulang di Admin › Backup"
   n=$(pending_count)
   if [ "$n" -gt 0 ]; then
     if sync_offsite; then
@@ -348,12 +394,14 @@ saved=""
 finish() {
   local rc=$?
   set +e
-  rm -rf "$work" "$errf" "${part:-}"
+  rm -rf "$work" "${part:-}"
   if [ "$rc" -ne 0 ] && [ -z "$saved" ]; then
     last_at=$now last_ok=false err="backup gagal di langkah: $step"
     offsite_target
     save_status
   fi
+  # Terakhir: offsite_target di atas menulis ulang known_hosts.
+  rm -f "$errf" "$khf"
 }
 trap finish EXIT
 
@@ -378,7 +426,7 @@ step="salinan off-VM"
 offsite_target
 err=""
 if [ -n "$cfg_broken" ]; then
-  err="konfigurasi off-VM dari aplikasi tidak terbaca — simpan ulang di Admin › Backup"
+  err="konfigurasi NAS dari aplikasi tidak terbaca atau tidak valid — simpan ulang di Admin › Backup"
 elif [ -z "$remote" ]; then
   echo "[$stamp] PERINGATAN: target off-VM belum diatur — backup hanya di VM ini" >&2
 elif sync_offsite; then

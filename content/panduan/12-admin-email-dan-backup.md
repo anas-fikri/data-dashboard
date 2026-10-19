@@ -5,7 +5,7 @@ role: ADMIN
 context:
 ---
 
-Dua pengaturan sistem ada di menu **Admin**: server pengirim email dan salinan backup di luar server.
+Dua integrasi ada di menu **Admin** bagian **Integrasi**: server pengirim email dan salinan backup ke NAS Synology.
 
 ## Email (SMTP)
 
@@ -18,13 +18,24 @@ Buka **Admin → Email (SMTP)**. Email aplikasi (verifikasi akun, undangan, atur
 
 Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap memakai password yang tersimpan — hanya berlaku bila server, port, dan username tidak diubah.
 
-## Backup
+## Backup ke NAS Synology
 
-Buka **Admin → Backup**. **Status backup** menampilkan backup harian terakhir (02.00 WIB), ukurannya, dan salinan di luar server.
+Buka **Admin → Backup ke NAS Synology**. **Status backup** menampilkan backup harian terakhir (02.00 WIB), ukurannya, dan salinan di NAS.
 
-Untuk menyalin backup ke penyimpanan S3 di luar server (mis. NAS kantor):
+Siapkan dulu di DSM (sekali saja, oleh pengelola NAS):
 
-1. Isi **Endpoint** (alamat yang bisa dijangkau server aplikasi), **Bucket** khusus backup, **Folder**, **Access key**, dan **Secret key**. Pakai kunci khusus backup, bukan kunci admin.
-2. Tekan **Tes koneksi**, lalu **Simpan**.
+1. **Panel Kontrol → Layanan File → FTP → SFTP**: aktifkan.
+2. Buat akun khusus, mis. _dashboard-backup_, **tanpa hak admin**.
+3. Buat shared folder, mis. _backup-data-dashboard_, dan beri akun tadi izin baca/tulis hanya ke folder ini.
 
-Bila penyimpanan tujuan tidak terjangkau, backup tetap dibuat dan disimpan sementara di server, dikirim ulang otomatis tiap 30 menit, dan admin menerima email serta pemberitahuan di aplikasi. Pemberitahuan juga muncul bila tidak ada backup baru lebih dari 26 jam.
+Lalu di aplikasi:
+
+1. Isi **Alamat NAS** (alamat IP atau nama yang bisa dijangkau server aplikasi), **Port SFTP** (bawaan 22), **Username**, **Password**, dan **Folder tujuan** (diawali nama shared folder, mis. _/backup-data-dashboard_).
+2. Tekan **Tes koneksi**. Aplikasi menulis, membaca, lalu menghapus file uji di folder itu, dan mencatat **Kunci host NAS** (sidik jari _SHA256:…_).
+3. Tekan **Simpan**. Pengaturan langsung dipakai tanpa restart.
+
+Kunci host mencegah server lain menyamar sebagai NAS: setelah disimpan, koneksi ke server dengan kunci berbeda ditolak. Bila NAS memang diinstal ulang atau diganti, tekan **Lupakan kunci host**, lalu **Tes koneksi** dan **Simpan** lagi.
+
+Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap memakai password yang tersimpan — hanya berlaku bila alamat NAS, port, dan username tidak diubah.
+
+Bila NAS tidak terjangkau, backup tetap dibuat dan disimpan sementara di server, dikirim ulang otomatis tiap 30 menit, dan admin menerima email serta pemberitahuan di aplikasi. Pemberitahuan juga muncul bila tidak ada backup baru lebih dari 26 jam.

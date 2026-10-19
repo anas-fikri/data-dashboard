@@ -19,10 +19,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * T-7psf: deploy/backup.sh sungguhan dengan perintah tiruan di PATH (pg_dump, rclone, age, psql, curl,
  * flock). Target off-VM mati → arsip ditahan di VM, status "pending", email sekali; target hidup lagi →
  * --sync menyalin semua arsip tertunda, status "ok", email pulih; retensi lokal hanya membuang arsip yang
- * sudah tersalin. Rahasia target tidak pernah masuk status atau log.
+ * sudah tersalin. Rahasia target tidak pernah masuk status atau log. T-y8qq: target = NAS Synology lewat
+ * SFTP (password di-obscure lewat stdin, known_hosts dari kunci host yang dipin, isian divalidasi ulang).
  */
 const SCRIPT = join(process.cwd(), "deploy/backup.sh");
 const SECRET = "dummy-target-secret-uji";
+const HOST_KEY = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGR1bW15LWhvc3Qta2V5LXVudHVrLXRlcy0wMDAwMDAw";
 const DAY = 24 * 60 * 60 * 1000;
 
 const STUBS: Record<string, string> = {
@@ -32,6 +34,11 @@ while [ $# -gt 0 ]; do [ "$1" = --file ] && echo dump >"$2"; shift; done`,
   flock: "exit 0",
   rclone: `cmd=$1; shift
 echo "$cmd $*" >>"$FAKE/rclone.log"
+if [ "$cmd" = obscure ]; then
+  [ -f "$FAKE/obscure-fail" ] && exit 1
+  IFS= read -r p; printf 'obs:%s\n' "$(printf '%s' "$p" | base64)"; exit 0
+fi
+[ -n "\${RCLONE_CONFIG_APPOFFSITE_KNOWN_HOSTS_FILE:-}" ] && cp "$RCLONE_CONFIG_APPOFFSITE_KNOWN_HOSTS_FILE" "$FAKE/known_hosts.txt"
 env | grep '^RCLONE_CONFIG_APPOFFSITE_' | sort >"$FAKE/rclone-env.txt"
 map() { case $1 in locals3:*) echo "$FAKE/locals3" ;; *:*) echo "$FAKE/remote/\${1#*:}" ;; *) echo "$1" ;; esac; }
 case $cmd in
@@ -41,7 +48,8 @@ case $cmd in
       [ -f "$FAKE/down-silent" ] && exit 1 ;;
     esac
     d=$(map "$2"); mkdir -p "$d"
-    case $1 in locals3:*) echo obj >"$d/obj" ;; *) cp -p "$1"/dashboard-* "$d/" ;; esac ;;
+    case $1 in locals3:*) echo obj >"$d/obj" ;; *:*) cp -p "$(map "$1")" "$d/" ;; *) cp -p "$1"/dashboard-* "$d/" ;; esac ;;
+  lsf) ls "$(map "$1")" | grep '\\.tar\\.age$' ;;
   delete) [ -f "$FAKE/down" ] && exit 1 ;;
 esac
 exit 0`,
@@ -88,7 +96,7 @@ function runWith(extra: Record<string, string>, ...args: string[]) {
       ...extra,
     },
   });
-  return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, stdout: r.stdout };
 }
 
 const status = () => JSON.parse(readFileSync(join(cfg(), "status.json"), "utf8"));
@@ -112,18 +120,21 @@ function oldArchive(name: string, ageDays: number) {
   }
 }
 
-function enableTarget() {
+function enableTarget(over: Record<string, unknown> = {}) {
   mkdirSync(join(cfg(), "app"), { recursive: true });
   writeFileSync(
     join(cfg(), "app/offsite.json"),
     JSON.stringify({
       enabled: true,
-      endpoint: "http://10.0.0.9:9000",
-      bucket: "cadangan-dashboard",
-      prefix: "data-dashboard",
-      region: "us-east-1",
-      accessKeyId: "dashboard-backup",
-      secretAccessKey: SECRET,
+      host: "10.0.0.9",
+      port: 2222,
+      username: "dashboard-backup",
+      password: SECRET,
+      folder: "/cadangan-dashboard/data-dashboard",
+      hostKey: HOST_KEY,
+      updatedAt: "2026-10-19T00:00:00Z",
+      updatedBy: "admin@pcpexpress.com",
+      ...over,
     }),
   );
 }
@@ -159,7 +170,7 @@ describe("backup.sh tanpa target off-VM", () => {
 });
 
 describe("backup.sh dengan target dari Admin › Backup", () => {
-  beforeEach(enableTarget);
+  beforeEach(() => enableTarget());
 
   it("target mati → arsip ditahan, pending + email sekali; pulih → --sync menyalin semua + email normal", () => {
     oldArchive("dashboard-20260101T000000Z.tar.age", 10); // belum tersalin: harus bertahan
@@ -176,7 +187,7 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
       state: "pending",
       pending: 2,
       lastBackupOk: true,
-      target: "10.0.0.9:9000/cadangan-dashboard/data-dashboard",
+      target: "dashboard-backup@10.0.0.9:2222/cadangan-dashboard/data-dashboard",
       notified: "pending",
     });
     expect(s1.error).toContain("i/o timeout");
@@ -185,10 +196,20 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
     expect(mails()[0]).toContain("RCPT: a@pcpexpress.com b@pcpexpress.com");
     expect(mails()[0]).toContain("Subject: Backup Data Dashboard: salinan off-VM tertunda");
     expect(mails()[0]).toContain("https://dash.contoh/admin/backup");
-    // Kredensial target lewat env rclone, URL SMTP (berisi password) lewat stdin curl.
-    expect(readFileSync(join(root, "rclone-env.txt"), "utf8")).toContain(
-      `RCLONE_CONFIG_APPOFFSITE_SECRET_ACCESS_KEY=${SECRET}`,
+    // Password NAS di-obscure lewat stdin (tidak di argumen), hanya kunci host yang dipin yang diterima;
+    // URL SMTP (berisi password) lewat stdin curl.
+    const env = readFileSync(join(root, "rclone-env.txt"), "utf8");
+    expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_TYPE=sftp");
+    expect(env).toContain(
+      `RCLONE_CONFIG_APPOFFSITE_PASS=obs:${Buffer.from(SECRET).toString("base64")}`,
     );
+    expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_HOST_KEY_ALGORITHMS=ssh-ed25519");
+    expect(env).toContain("RCLONE_CONFIG_APPOFFSITE_SHELL_TYPE=none");
+    expect(env).not.toContain(SECRET);
+    expect(readFileSync(join(root, "known_hosts.txt"), "utf8")).toBe(
+      `[10.0.0.9]:2222 ${HOST_KEY}\n`,
+    );
+    expect(readFileSync(join(root, "rclone.log"), "utf8")).not.toContain(SECRET);
     expect(readFileSync(join(root, "smtp-config-0.txt"), "utf8")).toContain("smtp-pw");
 
     // Masih mati: kirim ulang gagal, tidak ada email kedua.
@@ -211,10 +232,14 @@ describe("backup.sh dengan target dari Admin › Backup", () => {
     expect(mails()).toHaveLength(2);
     expect(mails()[1]).toContain("Subject: Backup Data Dashboard kembali normal");
 
-    // Tanpa yang tertunda: --sync tidak menyentuh jaringan.
-    const calls = readFileSync(join(root, "rclone.log"), "utf8").split("\n").length;
+    // Tanpa yang tertunda: --sync tidak menyentuh jaringan (rclone obscure lokal saja).
+    const net = () =>
+      readFileSync(join(root, "rclone.log"), "utf8")
+        .split("\n")
+        .filter((l) => l && !l.startsWith("obscure")).length;
+    const calls = net();
     expect(run("--sync").code).toBe(0);
-    expect(readFileSync(join(root, "rclone.log"), "utf8").split("\n").length).toBe(calls);
+    expect(net()).toBe(calls);
 
     for (const out of [r1.out, r2.out, r3.out]) expect(out).not.toContain(SECRET);
     expect(readFileSync(join(cfg(), "status.json"), "utf8")).not.toContain(SECRET);
@@ -401,5 +426,86 @@ describe("backup.sh: SMTP dari Admin › Email (T-byys)", () => {
     expect(run().code).toBe(0);
     const b64 = Buffer.from("PCP Express, Dasbor — Data").toString("base64");
     expect(mails()[0]).toContain(`From: =?UTF-8?B?${b64}?= <noreply@contoh.id>`);
+  });
+});
+
+describe("backup.sh: NAS Synology lewat SFTP (T-y8qq)", () => {
+  it("port 22 → known_hosts tanpa kurung; kunci RSA → algoritme rsa-sha2 lalu ssh-rsa", () => {
+    const rsa = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDdummyRsaKeyUntukTes0000000000";
+    enableTarget({ port: 22, hostKey: rsa, folder: "/Backup Server/data dashboard" });
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(readFileSync(join(root, "known_hosts.txt"), "utf8")).toBe(`10.0.0.9 ${rsa}\n`);
+    expect(readFileSync(join(root, "rclone-env.txt"), "utf8")).toContain(
+      "RCLONE_CONFIG_APPOFFSITE_HOST_KEY_ALGORITHMS=rsa-sha2-512 rsa-sha2-256 ssh-rsa",
+    );
+    expect(status()).toMatchObject({
+      state: "ok",
+      target: "dashboard-backup@10.0.0.9:22/Backup Server/data dashboard",
+    });
+    expect(existsSync(join(root, "remote/Backup Server/data dashboard"))).toBe(true);
+  });
+
+  it.each([
+    ["format lama S3", { host: undefined, endpoint: "http://10.0.0.9:9000", bucket: "b" }],
+    ["baris baru di folder", { folder: "/cadangan\n--config=/etc/passwd" }],
+    ["folder naik ke induk", { folder: "/cadangan/../lain" }],
+    ["kunci host kosong", { hostKey: "" }],
+    ["host diawali tanda hubung", { host: "-oProxyCommand=x" }],
+    ["password dengan baris baru", { password: "a\nb" }],
+  ])(
+    "offsite.json tidak valid (%s) → tanpa salinan, status failed, arsip lama tidak dibuang",
+    (_n, over) => {
+      enableTarget(over);
+      oldArchive("dashboard-20260101T000000Z.tar.age", 10);
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("konfigurasi NAS dari aplikasi tidak valid");
+      expect(local()).toContain("dashboard-20260101T000000Z.tar.age");
+      expect(status()).toMatchObject({
+        state: "failed",
+        error: expect.stringContaining("tidak valid"),
+      });
+      expect(readFileSync(join(root, "rclone.log"), "utf8")).not.toContain("appoffsite:");
+    },
+  );
+
+  it("password tidak bisa di-obscure → status failed tanpa salinan", () => {
+    enableTarget();
+    writeFileSync(join(root, "obscure-fail"), "");
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(status()).toMatchObject({ state: "failed" });
+    expect(readFileSync(join(root, "rclone.log"), "utf8")).not.toContain("appoffsite:");
+    expect(r.out).not.toContain(SECRET);
+  });
+
+  it("--fetch (verify-backup.sh --remote) → arsip terbaru + .sha256 dari NAS ke folder, nama di stdout", () => {
+    enableTarget();
+    oldArchive("dashboard-20260101T000000Z.tar.age", 1);
+    expect(run().code).toBe(0);
+    const newest = local()
+      .filter((f) => f.endsWith(".tar.age"))
+      .sort()
+      .at(-1)!;
+    const dest = join(root, "verify");
+    mkdirSync(dest);
+    const r = run("--fetch", dest);
+    expect(r.code, r.out).toBe(0);
+    expect(r.stdout.trim()).toBe(newest);
+    expect(readdirSync(dest).sort()).toEqual([newest, `${newest}.sha256`]);
+    expect(r.out).toContain(
+      "sumber: dashboard-backup@10.0.0.9:2222/cadangan-dashboard/data-dashboard",
+    );
+
+    enableTarget({ hostKey: "" });
+    expect(run("--fetch", dest).code).not.toBe(0);
+  });
+
+  it("nonaktif di Admin › Backup → BACKUP_REMOTE lama tetap dipakai", () => {
+    enableTarget({ enabled: false });
+    const r = runWith({ BACKUP_REMOTE: "offsite:folder" });
+    expect(r.code, r.out).toBe(0);
+    expect(status()).toMatchObject({ state: "ok", target: "offsite:folder" });
   });
 });
