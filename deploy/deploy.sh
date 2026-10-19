@@ -8,8 +8,17 @@
 # Secret tidak pernah dicetak. .env.prod mode 600, jangan di-commit (sudah di .gitignore/.dockerignore).
 set -euo pipefail
 cd "$(dirname "$0")/.."
-ENV_FILE=.env.prod
-COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml)
+ENV_FILE=${DEPLOY_ENV_FILE:-.env.prod}
+# Salinan terpisah di VM yang sama (latihan VM kosong T-tqse, deploy/empty-vm-drill.sh): file compose bernama
+# "dashboard", jadi project lain WAJIB disebut — tanpa itu container produksi ikut ditimpa.
+project=()
+if [ "$ENV_FILE" != .env.prod ]; then
+  case "${DEPLOY_PROJECT:-}" in
+    "" | dashboard) echo "DEPLOY_ENV_FILE butuh DEPLOY_PROJECT selain 'dashboard' (produksi)" >&2; exit 1 ;;
+  esac
+  project=(-p "$DEPLOY_PROJECT")
+fi
+COMPOSE=(docker compose "${project[@]}" --env-file "$ENV_FILE" -f docker-compose.prod.yml)
 NO_BUILD=
 [ "${1:-}" != --no-build ] || NO_BUILD=1
 
@@ -96,7 +105,7 @@ grep -q '^CADDY_TLS=internal' "$ENV_FILE" && insecure=(-k)
 for i in $(seq 1 30); do
   if curl -fsS "${insecure[@]}" --resolve "$host:$port:127.0.0.1" "https://$app_host/api/health" >/dev/null; then
     echo "Sehat: https://$app_host/api/health ($(($(date +%s) - start)) dtk)"
-    if grep -q '^CADDY_TLS=internal' "$ENV_FILE"; then
+    if [ ${#project[@]} -eq 0 ] && grep -q '^CADDY_TLS=internal' "$ENV_FILE"; then
       # CA internal Caddy: sertifikat root untuk dipasang di komputer pengguna (runbook §TLS internal).
       "${COMPOSE[@]}" cp proxy:/data/caddy/pki/authorities/local/root.crt deploy/ca-root.crt >/dev/null
       echo "Sertifikat root CA internal: deploy/ca-root.crt (pasang di komputer pengguna)"
