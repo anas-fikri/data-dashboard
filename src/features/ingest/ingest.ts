@@ -10,7 +10,7 @@
  * (refresh.ts) lalu finish memutuskan aktif atau menunggu pemetaan; skema aktif yang berubah selama
  * cast → ingest diulang dengan acuan baru.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
 import { logger } from "@/lib/logger";
@@ -111,6 +111,8 @@ export interface SegmentRecord {
   id: string;
   lineageId: string;
   rawKey: string;
+  /** Ukuran raw.parquet (T-039 kuota). */
+  rawBytes: number;
   rawRows: number;
   headerRow: number;
   colCount: number;
@@ -158,6 +160,8 @@ export interface IngestRepo {
       schemaRevision: number;
       segmentId: string;
       dataRows: number;
+      /** Ukuran file typed (T-039 kuota). */
+      typedBytes: number;
     },
   ): Promise<void>;
   /** Manifest versi untuk gerbang integritas (T-038); null = versi tidak ada. */
@@ -477,6 +481,7 @@ export async function runIngest(
         id: segmentId,
         lineageId,
         rawKey: key,
+        rawBytes: statSync(s.path).size,
         rawRows: s.rec.rawRows,
         headerRow: s.rec.headerRow,
         colCount: s.rec.colCount,
@@ -495,6 +500,7 @@ export async function runIngest(
         schemaRevision: 1,
         segmentId,
         dataRows: typed.dataRows,
+        typedBytes: statSync(typedPath).size,
       });
       rmSync(typedPath, { force: true });
       await ensureAlive();

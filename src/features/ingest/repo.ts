@@ -77,6 +77,8 @@ async function linkTyped(
     headerRow?: number;
     /** Baris data file (dihitung dari raw saat ditulis, T-038). */
     dataRows?: number;
+    /** Ukuran file di storage (T-039). */
+    typedBytes?: number;
   },
   segmentId?: string,
 ): Promise<void> {
@@ -102,6 +104,7 @@ async function linkTyped(
       // Posisi c<pos> di file (T-037): typed memuat semua kolom skema, termasuk kolom kosong.
       columns: [...new Set(typed.schema.map((c) => c.pos))].sort((a, b) => a - b),
       ...(typed.dataRows !== undefined ? { dataRows: typed.dataRows } : {}),
+      ...(typed.typedBytes !== undefined ? { typedBytes: BigInt(typed.typedBytes) } : {}),
     },
     select: { id: true },
   });
@@ -233,6 +236,7 @@ export const prismaIngestRepo: IngestRepo = {
           rowBase: d.rowBase,
           maxSrcRow: d.maxSrcRow,
           rawKey: d.rawKey,
+          rawBytes: BigInt(d.rawBytes),
           rawRows: d.rawRows,
           headerRow: d.headerRow,
           colCount: d.colCount,

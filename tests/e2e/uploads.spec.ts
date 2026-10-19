@@ -271,7 +271,7 @@ test.describe("unggah", () => {
     expect(fx("object", versionId)).toMatchObject({ contentType: "application/octet-stream" });
   });
 
-  test("2 unggahan berjalan → LIMIT_REACHED; kuota menghitung ukuran terdeklarasi UPLOADING", async ({
+  test("2 unggahan berjalan → LIMIT_REACHED; kuota dari byte tersimpan + UPLOADING + proyeksi parquet", async ({
     page,
     browser,
     request,
@@ -290,21 +290,30 @@ test.describe("unggah", () => {
     expect(third.status).toBe(409);
     expect(third.body.code).toBe("LIMIT_REACHED");
 
-    // Kuota 20 GB: terpakai 18,6 GB (READY) + 1 GB UPLOADING terdeklarasi + 1 GB baru > 20 GB
+    // Kuota 20 GB dari byte tersimpan (T-039): file sumber 18,7 GB yang masih tersimpan. Unggahan
+    // 0,5 GB diproyeksikan 0,5 + 0,6 parquet = 19,8 GB → muat. Unggahan 1 GB berikutnya: 19,2 GB
+    // terpakai (+ 0,5 UPLOADING) + 2,2 GB proyeksi > 20 GB — juga menurut hitungan lama (19,2 + 1),
+    // jadi ditolak di dalam maupun di luar masa transisi.
     const q = uniqueEmail("up-quota");
     await createUser(browser, request, q);
     const ctx = await browser.newContext();
     const qp = await ctx.newPage();
     await apiLogin(qp, q);
-    fx("usage", q, String(Math.round(18.6 * 1024 * MiB)));
+    fx("usage", q, String(Math.round(18.7 * 1024 * MiB)));
     const d1 = await createDataset(qp, "Kuota Satu");
     const d2 = await createDataset(qp, "Kuota Dua");
-    expect((await init(qp, d1, "satu.xlsx", MAX)).status).toBe(200);
+    expect((await init(qp, d1, "satu.xlsx", 512 * MiB)).status).toBe(200);
     const over = await init(qp, d2, "dua.xlsx", MAX);
     expect(over.status).toBe(409);
     expect(over.body.code).toBe("QUOTA_EXCEEDED");
-    // T-024 AC 3: angka terpakai (18,6 READY + 1 UPLOADING) / limit / ukuran file, tanpa pembulatan menyesatkan.
-    expect(String(over.body.message)).toContain("terpakai 19,6 GB dari 20 GB, file ini 1 GB");
+    // T-024 AC 3: angka terpakai / limit / ukuran file, tanpa pembulatan menyesatkan; + proyeksi T-039.
+    expect(String(over.body.message)).toContain(
+      "terpakai 19,2 GB dari 20 GB, file ini 1 GB (±2,2 GB setelah diproses)",
+    );
+    // Banner ≥ 80% di setiap halaman (hasil di-cache 60 detik, sudah ≥ 80% sejak fixture).
+    await qp.goto("/datasets");
+    await expect(qp.getByTestId("quota-alert")).toHaveAttribute("data-tone", "warning");
+    await expect(qp.getByTestId("quota-alert")).toContainText("Penyimpanan Anda terpakai");
     await ctx.close();
   });
 

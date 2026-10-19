@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import yazl from "yazl";
@@ -390,5 +390,19 @@ describe("review T-038: kegagalan permanen tidak menghapus versi yang sudah di-c
     // Hanya pembersihan awal percobaan; tidak ada hapus setelah gagal (baris segmen tetap).
     expect(deletes).toBe(1);
     expect(s.repo.segments.size).toBe(1);
+  });
+});
+
+describe("T-039: ukuran file segmen dicatat untuk kuota", () => {
+  it("rawBytes segmen dan typedBytes revisi = ukuran objek yang tersimpan", async () => {
+    const s = setup("tests/fixtures/tiga-sheet.xlsx");
+    expect(await runIngest(VID, s.repo, s.storage, s.opts)).toMatchObject({ outcome: "done" });
+    for (const sh of s.repo.byIndex()) {
+      const seg = s.repo.segments.get(sh.segmentId!)!;
+      expect(seg.rawBytes).toBe(statSync(join(s.storage.dir, sh.rawKey!)).size);
+      expect((sh as { typedBytes?: number }).typedBytes).toBe(
+        statSync(join(s.storage.dir, sh.typedKey!)).size,
+      );
+    }
   });
 });

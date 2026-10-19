@@ -226,6 +226,8 @@ model Segment {
   maxSrcRow          Int?
   rawKey             String
   rawRows            Int
+  /// Ukuran raw.parquet di storage (T-039 kuota); null = segmen lama yang belum diukur.
+  rawBytes           BigInt?
   headerRow          Int
   colCount           Int
   /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
@@ -256,6 +258,8 @@ model SegmentTyped {
   columns        Int[]          @default([])
   /// Baris data di file (dihitung dari raw saat ditulis, T-038); null = file lama (belum diukur).
   dataRows       Int?
+  /// Ukuran file typed di storage (T-039 kuota); null = file lama yang belum diukur.
+  typedBytes     BigInt?
   /// Tanda GC (T-038): sejak kapan revisi ini tidak dirujuk manifest versi hidup; null = dirujuk.
   unreferencedAt DateTime?
   sheets         SheetSegment[]

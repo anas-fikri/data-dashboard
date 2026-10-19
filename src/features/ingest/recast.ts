@@ -10,7 +10,7 @@
  *  - Kolom kosong (absent, T-014) selalu dibawa, juga saat baris header diganti: edit nama/tipe/format/
  *    sembunyi berlaku; ganti tipe hanya mengganti tipe CAST NULL-nya.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
@@ -74,6 +74,8 @@ export interface RecastRepo {
       columns: ColumnMeta[];
       /** Baris data file (T-038). */
       dataRows: number;
+      /** Ukuran file (T-039). */
+      typedBytes: number;
     },
   ): Promise<boolean>;
 }
@@ -238,6 +240,7 @@ export async function recastSheet(
         headerRow,
         columns,
         dataRows: typed.dataRows,
+        typedBytes: statSync(outPath).size,
       });
     } catch (e) {
       // UPDATE bisa sudah commit sebelum koneksi putus: jangan hapus file yang mungkin sudah aktif.

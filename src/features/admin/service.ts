@@ -10,6 +10,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import { cleanLine, cleanName, escapeLike, looksLikeEmail } from "@/lib/text";
+import { userUsage } from "@/features/uploads/quota";
 import { planNames } from "./transfer-names";
 import {
   USER_STATUSES,
@@ -630,13 +631,9 @@ export async function transferDatasets(
         })
       ).count;
 
-      // Sama dengan hitungan kuota initUpload (uploads/service.ts): versi non-FAILED milik pemilik.
-      const used = await tx.datasetVersion.aggregate({
-        where: { dataset: { ownerId: to.id }, status: { not: "FAILED" } },
-        _sum: { sizeBytes: true },
-      });
-      // Tepat sama dengan kuota juga "penuh": initUpload menolak used + size > quota untuk size ≥ 1.
-      const quotaExceeded = Number(used._sum.sizeBytes ?? 0n) >= quota;
+      // Hitungan kuota yang sama dengan initUpload (byte tersimpan, T-039). Tepat sama dengan kuota juga
+      // "penuh": initUpload menolak proyeksi > kuota untuk file ≥ 1 byte.
+      const quotaExceeded = (await userUsage(tx, to.id)).bytes >= quota;
 
       await recordAudit(tx, {
         actorId: actor.id,

@@ -289,7 +289,8 @@ describe("transferDatasets", () => {
       id: cuid("vq"),
       datasetId: d.id,
       status: "READY",
-      sourceKey: null,
+      // T-039: kuota menghitung file sumber yang masih tersimpan (+ segmen; fake tanpa segmen).
+      sourceKey: `raw/${d.id}/vq/source.csv`,
       uploadId: null,
       sizeBytes: 800n,
     });

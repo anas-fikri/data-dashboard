@@ -56,16 +56,21 @@ export async function deleteObject(key: string): Promise<void> {
   await s3Internal().send(new DeleteObjectCommand({ Bucket: bucket(), Key: key }));
 }
 
-/** Objek ada? 404 → false; galat lain (jaringan, izin) dilempar — bukan "hilang". */
-export async function objectExists(key: string): Promise<boolean> {
+/** Ukuran objek (HEAD); 404 → null; galat lain (jaringan, izin) dilempar — bukan "hilang". */
+export async function objectBytes(key: string): Promise<number | null> {
   try {
-    await s3Internal().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
-    return true;
+    const r = await s3Internal().send(new HeadObjectCommand({ Bucket: bucket(), Key: key }));
+    return Number(r.ContentLength ?? 0);
   } catch (e) {
     const status = (e as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
-    if (status === 404 || (e as { name?: string }).name === "NotFound") return false;
+    if (status === 404 || (e as { name?: string }).name === "NotFound") return null;
     throw e;
   }
+}
+
+/** Objek ada? 404 → false; galat lain dilempar. */
+export async function objectExists(key: string): Promise<boolean> {
+  return (await objectBytes(key)) !== null;
 }
 
 /** Objek di bawah prefix (kunci + waktu ubah), per halaman 1000. */

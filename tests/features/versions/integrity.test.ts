@@ -165,7 +165,7 @@ describe("runStorageAudit", () => {
     const saved: unknown[] = [];
     const status = await runStorageAudit(
       {
-        exists: async (k) => !k.endsWith("typed-1.parquet"),
+        size: async (k) => (k.endsWith("typed-1.parquet") ? null : 100),
         listObjects: async () => [
           { key: `${seg}raw.parquet`, modified: old },
           { key: `${seg}typed-1.parquet`, modified: old },
@@ -301,9 +301,9 @@ describe("review T-038: audit tahan galat sementara + sapuan prefix versi legacy
     const saved: unknown[] = [];
     const status = await runStorageAudit(
       {
-        exists: async (k) => {
+        size: async (k) => {
           if (k.endsWith("raw.parquet")) throw new Error("503 SlowDown");
-          return true;
+          return 100;
         },
         listObjects: async (prefix) => {
           listed.push(prefix);
@@ -334,5 +334,38 @@ describe("review T-038: audit tahan galat sementara + sapuan prefix versi legacy
         },
       ],
     });
+  });
+});
+
+describe("T-039: pemeriksaan malam mengukur file lama untuk kuota", () => {
+  it("ukuran raw/typed yang belum tercatat diisi dari HEAD; yang sudah tercatat tidak disentuh", async () => {
+    const seg = `parquet/${DS}/seg/${SEG}/`;
+    prisma.sheetSegment.findMany.mockResolvedValueOnce([
+      {
+        segmentTyped: {
+          id: "t1",
+          typedKey: `${seg}typed-1.parquet`,
+          typedBytes: null,
+          segment: { id: SEG, rawKey: `${seg}raw.parquet`, rawBytes: 5n },
+        },
+      },
+    ]);
+    prisma.dataset.findMany.mockResolvedValueOnce([]);
+    prisma.segment.updateMany.mockResolvedValue({ count: 1 } as never);
+    prisma.segmentTyped.updateMany.mockResolvedValue({ count: 1 } as never);
+    await runStorageAudit(
+      {
+        size: async (k) => (k.endsWith("typed-1.parquet") ? 1234 : 99),
+        listObjects: async () => [],
+        listChildPrefixes: async () => [],
+        saveStatus: async () => {},
+      },
+      NOW,
+    );
+    expect(prisma.segmentTyped.updateMany).toHaveBeenCalledWith({
+      where: { id: "t1", typedBytes: null },
+      data: { typedBytes: 1234n },
+    });
+    expect(prisma.segment.updateMany).not.toHaveBeenCalled();
   });
 });

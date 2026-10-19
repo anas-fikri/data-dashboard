@@ -29,6 +29,9 @@ x-app-env: &app-env
   AUTH_SECRET: ${AUTH_SECRET:?}
   ALLOWED_EMAIL_DOMAINS: ${ALLOWED_EMAIL_DOMAINS:?}
   MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
+  # Kuota per pengguna dari byte tersimpan (T-039; admin menaikkan sesuai disk, runbook §kuota).
+  USER_STORAGE_QUOTA_BYTES: ${USER_STORAGE_QUOTA_BYTES:-21474836480}
+  QUOTA_GRACE_DAYS: ${QUOTA_GRACE_DAYS:-14}
   # Thread DuckDB per job ingest; WORKER_REPLICAS × nilai ini sebaiknya ≤ vCPU − 2.
   INGEST_DUCKDB_THREADS: ${INGEST_DUCKDB_THREADS:-2}
   # Worker thread pembaca sheet xlsx paralel per job ingest (1–4; 1 = berurutan);

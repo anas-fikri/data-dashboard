@@ -167,10 +167,30 @@ export function fakeDb() {
     },
     datasetVersion: {
       findMany: vi.fn(
-        async ({ where }: { where: { datasetId: { in: string[] }; status: string } }) =>
-          state.versions
+        async ({
+          where,
+        }: {
+          where: { datasetId: { in: string[] }; status: string } | { dataset: { ownerId: string } };
+        }) => {
+          // Hitungan kuota (T-039): semua versi dataset milik pengguna.
+          if ("dataset" in where) {
+            const owned = new Set(
+              state.datasets.filter((d) => d.ownerId === where.dataset.ownerId).map((d) => d.id),
+            );
+            return state.versions
+              .filter((v) => owned.has(v.datasetId))
+              .map((v) => ({
+                status: v.status,
+                sizeBytes: v.sizeBytes,
+                sourceKey: v.sourceKey,
+                sourceDeletedAt: null,
+                ingestFinishedAt: null,
+              }));
+          }
+          return state.versions
             .filter((v) => where.datasetId.in.includes(v.datasetId) && v.status === where.status)
-            .map((v) => ({ id: v.id, sourceKey: v.sourceKey, uploadId: v.uploadId })),
+            .map((v) => ({ id: v.id, sourceKey: v.sourceKey, uploadId: v.uploadId }));
+        },
       ),
       updateMany: vi.fn(
         async ({
@@ -201,6 +221,8 @@ export function fakeDb() {
         return { _sum: { sizeBytes: sum } };
       }),
     },
+    // Manifest segmen (T-039 kuota): fake ini tanpa segmen.
+    sheetSegment: { findMany: vi.fn(async () => []) },
     dashboardShare: {
       deleteMany: vi.fn(
         async ({

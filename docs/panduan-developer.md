@@ -142,7 +142,8 @@ Per fitur: `admin`, `auth`, `dashboards` (+ `filters/`), `datasets`, `guides`, `
 
 **Unggah → dataset siap**
 1. Browser (`upload-panel.tsx` + `uploads/client.ts`) → `POST /api/uploads` (`initUpload`: kepemilikan, batas
-   ukuran, kuota, maks 2 unggahan aktif) → versi `UPLOADING` + multipart S3 `raw/<ds>/<ver>/source.<ext>`.
+   ukuran, kuota dari byte tersimpan + proyeksi parquet (T-039, `src/features/uploads/quota.ts`), maks 2 unggahan
+   aktif) → versi `UPLOADING` + multipart S3 `raw/<ds>/<ver>/source.<ext>`.
 2. `POST …/parts` → URL presigned; browser PUT potongan **langsung ke S3** (4 paralel) → `POST …/complete` →
    `UPLOADED` → `enqueueIngest`.
 3. Worker `runIngest`: unduh ke `WORKER_TMP_DIR` → xlsx (parser streaming, sheet paralel) / csv (DuckDB

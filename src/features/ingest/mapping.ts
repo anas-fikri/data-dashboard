@@ -16,7 +16,7 @@
  *  - Versi sudah READY saat dimuat: "done" hanya bila commit-nya oleh job ini; selain itu "gone".
  *  - Hasil selain done → file yang diunggah job ini dihapus.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { openDuck, type Duck } from "@/lib/duckdb";
 import { acquireLock, extendLock, releaseLock, type LockStore } from "@/lib/lock";
@@ -89,6 +89,8 @@ export interface MappingSheetUpdate {
   lineage?: { lineageId: string; segmentId: string; rowBase: bigint; maxSrcRow: number };
   /** Baris data file typed baru (T-038). */
   dataRows: number;
+  /** Ukuran file typed baru (T-039). */
+  typedBytes: number;
 }
 
 export interface MappingCommit {
@@ -249,6 +251,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
       if (bad.length) throw new IntegrityError(bad);
       const dir = s.rawKey.slice(0, s.rawKey.lastIndexOf("/") + 1);
       const typedKey = `${dir}typed-${revision}-${token.slice(0, 12)}.parquet`;
+      const typedBytes = statSync(outPath).size;
       await deps.storage.upload(typedKey, outPath, PARQUET);
       uploaded.push(typedKey);
       rmSync(rawPath, { force: true });
@@ -264,6 +267,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         ...(p.userPaired ? { aliasName: lineageRoot(p.active) } : {}),
         ...(lineage ? { lineage } : {}),
         dataRows: typed.dataRows,
+        typedBytes,
       });
       await watch();
     }

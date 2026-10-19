@@ -6,7 +6,8 @@
 //   put-part <versionId> <n> <bytes>    → unggah part langsung ke storage (lewati presigned URL)
 //   object <versionId>                  → {"exists":bool,"contentType":...} objek sumber
 //   multipart <versionId> [uploadId]    → {"alive":bool,"parts":n} upload multipart masih ada?
-//   usage <email> <bytes>               → buat dataset + versi READY berukuran <bytes> (kuota)
+//   usage <email> <bytes>               → buat dataset + versi READY berukuran <bytes> yang file
+//                                         sumbernya masih tersimpan (kuota T-039: byte tersimpan)
 //   ingest <versionId>                  → status ingest, metadata sheet, objek parquet versi
 // Versi + pemeliharaan (T-013):
 //   versions <datasetId>                → [{id,status,createdAt,active,sourceDeletedAt,errorMessage}]
@@ -215,8 +216,19 @@ try {
     const ds = await prisma.dataset.create({
       data: { ownerId: owner.id, name: `Kuota ${Date.now()}`, nameKey: `kuota ${Date.now()}` },
     });
-    await prisma.datasetVersion.create({
-      data: { datasetId: ds.id, status: "READY", originalName: "besar.xlsx", sizeBytes: BigInt(b) },
+    const v = await prisma.datasetVersion.create({
+      data: {
+        datasetId: ds.id,
+        status: "READY",
+        originalName: "besar.xlsx",
+        sizeBytes: BigInt(b),
+        ingestFinishedAt: new Date(),
+      },
+    });
+    // File sumber dianggap masih tersimpan (belum dihapus retensi 7 hari) → dihitung kuota.
+    await prisma.datasetVersion.update({
+      where: { id: v.id },
+      data: { sourceKey: `raw/${ds.id}/${v.id}/source.xlsx` },
     });
     console.log(JSON.stringify({ datasetId: ds.id }));
   } else if (cmd === "versions") {

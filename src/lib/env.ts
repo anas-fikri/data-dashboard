@@ -140,12 +140,17 @@ export const envSchema = z.object({
     .int()
     .positive()
     .default(1024 * 1024 * 1024),
-  /** Kuota storage per pengguna (ukuran versi non-FAILED, termasuk ukuran terdeklarasi UPLOADING). */
+  /**
+   * Kuota storage per pengguna dari byte yang benar-benar tersimpan (T-039): segmen terujuk versi hidup
+   * + file sumber yang belum dihapus + ukuran terdeklarasi UPLOADING.
+   */
   USER_STORAGE_QUOTA_BYTES: z.coerce
     .number()
     .int()
     .positive()
     .default(20 * 1024 * 1024 * 1024),
+  /** Masa transisi makna kuota (hari sejak migrasi T-039): pelanggaran hanya diberi peringatan. */
+  QUOTA_GRACE_DAYS: z.coerce.number().int().min(0).max(90).default(14),
 
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   /** Direktori kerja worker ingest (unduhan sumber + spill + DuckDB); butuh ± ukuran upload + 8 GiB. */

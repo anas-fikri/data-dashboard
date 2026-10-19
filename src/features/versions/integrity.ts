@@ -1,7 +1,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { listChildPrefixes, listObjects, objectExists } from "@/lib/storage/objects";
+import { listChildPrefixes, listObjects, objectBytes, objectExists } from "@/lib/storage/objects";
 import { SEGMENT_GC_GRACE_MS } from "./gc";
 import { missingKeys, type IntegrityDeps, type ManifestSheet } from "./integrity-check";
 import { saveIntegrityStatus, type IntegrityStatus } from "./integrity-status";
@@ -63,14 +63,15 @@ export const prismaIntegrityDeps: IntegrityDeps = {
 };
 
 export interface AuditDeps {
-  exists(key: string): Promise<boolean>;
+  /** Ukuran objek (HEAD); null = tidak ada (404); galat lain dilempar. */
+  size(key: string): Promise<number | null>;
   listObjects(prefix: string): Promise<{ key: string; modified: Date }[]>;
   listChildPrefixes(prefix: string): Promise<string[]>;
   saveStatus(s: IntegrityStatus): Promise<void>;
 }
 
 const s3AuditDeps: AuditDeps = {
-  exists: (key) => objectExists(key),
+  size: (key) => objectBytes(key),
   listObjects: (prefix) => listObjects(prefix),
   listChildPrefixes: (prefix) => listChildPrefixes(prefix),
   saveStatus: (s) => saveIntegrityStatus(s),
@@ -104,19 +105,57 @@ export async function runStorageAudit(
   // 1. Semua kunci yang dirujuk manifest versi hidup harus ada.
   const rows = await prisma.sheetSegment.findMany({
     where: { sheet: { version: { status: { not: "FAILED" } } } },
-    select: { segmentTyped: { select: { typedKey: true, segment: { select: { rawKey: true } } } } },
+    select: {
+      segmentTyped: {
+        select: {
+          id: true,
+          typedKey: true,
+          typedBytes: true,
+          segment: { select: { id: true, rawKey: true, rawBytes: true } },
+        },
+      },
+    },
   });
   const keys = [
     ...new Set(rows.flatMap((r) => [r.segmentTyped.typedKey, r.segmentTyped.segment.rawKey])),
   ];
   // Satu galat storage sementara tidak menggagalkan seluruh pemeriksaan: kunci itu "belum diperiksa".
   let unchecked = 0;
-  const missing = await missingKeys(keys, (k) =>
-    deps.exists(k).catch(() => {
+  const sizes = new Map<string, number>();
+  const missing = await missingKeys(keys, async (k) => {
+    try {
+      const n = await deps.size(k);
+      if (n !== null) sizes.set(k, n);
+      return n !== null;
+    } catch {
       unchecked++;
       return true;
-    }),
-  );
+    }
+  });
+  // Ukuran file lama (sebelum T-039) yang belum tercatat: diisi dari HEAD yang sama (kuota).
+  let measured = 0;
+  const seenSeg = new Set<string>();
+  for (const { segmentTyped: t } of rows) {
+    if (t.typedBytes === null && sizes.has(t.typedKey)) {
+      measured += (
+        await prisma.segmentTyped.updateMany({
+          where: { id: t.id, typedBytes: null },
+          data: { typedBytes: BigInt(sizes.get(t.typedKey)!) },
+        })
+      ).count;
+    }
+    const g = t.segment;
+    if (g.rawBytes === null && sizes.has(g.rawKey) && !seenSeg.has(g.id)) {
+      seenSeg.add(g.id);
+      measured += (
+        await prisma.segment.updateMany({
+          where: { id: g.id, rawBytes: null },
+          data: { rawBytes: BigInt(sizes.get(g.rawKey)!) },
+        })
+      ).count;
+    }
+  }
+  if (measured) logger.info({ measured }, "ukuran file data lama dicatat (kuota)");
   if (unchecked) logger.warn({ unchecked }, "sebagian kunci data tidak bisa diperiksa malam ini");
   if (missing.length) {
     logger.error(

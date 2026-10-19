@@ -279,6 +279,17 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
   terverifikasi (`sudo -u postgres dropdb data_dashboard_sqlascii_20261019045827`). Skrip aman dijalankan
   ulang: database yang sudah UTF8 dilewati.
 - **Worker mati saat ingest**: `$C restart worker` — job diulang (idempoten T-006), versi berakhir READY.
+- **Kuota penyimpanan (T-039)**: `USER_STORAGE_QUOTA_BYTES` (bawaan 20 GiB) kini dihitung dari byte yang
+  benar-benar tersimpan — segmen data yang dirujuk versi hidup + file sumber yang belum dihapus retensi
+  7 hari + ukuran unggahan yang sedang berjalan; init unggah memproyeksikan file + ±1,2× parquet.
+  - Sebelum dan sesudah deploy T-039 cetak laporan per pengguna (hitungan lama vs baru, persen, file lama
+    yang belum terukur): `$C exec app node scripts/quota-report.mjs`.
+  - Ukuran file segmen lama diisi pemeriksaan malam `segment-audit` (03.00 WIB); untuk segera:
+    tunggu satu malam atau jalankan ulang worker lalu cetak laporan lagi.
+  - Masa transisi `QUOTA_GRACE_DAYS` (bawaan 14 hari sejak migrasi T-039 diterapkan): pengguna yang masih
+    muat menurut hitungan lama hanya diberi peringatan (banner), tidak ditolak.
+  - Pengguna ≥ 80% kuota melihat banner di setiap halaman. Menaikkan kuota: set `USER_STORAGE_QUOTA_BYTES`
+    di `.env.prod` lalu `$C up -d app worker`. Syarat disk: volume RustFS ≥ Σ kuota pengguna aktif + 20%.
 - **Update** (migrasi maju otomatis). Pra-deploy dulu — langkah manual, `deploy.sh` tidak mengerjakannya:
   ```bash
   stamp=$(date +%Y%m%d%H%M); tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod | tail -1); tag=${tag:-latest}

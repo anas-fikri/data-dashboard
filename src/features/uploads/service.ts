@@ -7,6 +7,7 @@ import { logger } from "@/lib/logger";
 import { enqueueIngest } from "@/lib/queue/versions";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import { isIdShape } from "@/features/datasets/validation";
+import { formatGiB, quotaDecision, quotaGraceUntil, userUsage } from "./quota";
 import { PART_SIZE, expectedPartSize, partCountOf, verifyParts } from "./parts";
 import { SNIFF_BYTES, kindOf, sniff } from "./sniff";
 
@@ -67,12 +68,6 @@ const fail = (
 });
 
 const notFound = () => fail("NOT_FOUND", "Dataset atau unggahan tidak ditemukan.");
-
-function formatGiB(bytes: number): string {
-  const gib = bytes / 1024 ** 3;
-  // 1 desimal di bawah 100 GB: kuota 20 GB terpakai 19,6 tidak tampil "20 GB dari 20 GB" (T-024 AC 3).
-  return `${gib.toLocaleString("id-ID", { maximumFractionDigits: gib < 100 ? 1 : 0 })} GB`;
-}
 
 /** Nama file tampilan: tanpa path, tanpa karakter kontrol/format, ≤ 255 karakter. */
 export function cleanFileName(raw: unknown): string | null {
@@ -286,18 +281,24 @@ export async function initUpload(
         };
       }
 
-      // Kuota: semua versi non-FAILED di dataset milik user, termasuk ukuran terdeklarasi UPLOADING.
-      const used = await tx.datasetVersion.aggregate({
-        where: { dataset: { ownerId: userId }, status: { not: "FAILED" } },
-        _sum: { sizeBytes: true },
-      });
-      const usedBytes = Number(used._sum.sizeBytes ?? 0n);
-      if (usedBytes + v.size > e.USER_STORAGE_QUOTA_BYTES) {
+      // Kuota dari byte tersimpan (T-039) + proyeksi file ini (sumber + perkiraan parquet), sebelum byte
+      // pertama terunggah; masa transisi: yang masih muat menurut hitungan lama hanya diperingatkan.
+      const usage = await userUsage(tx, userId);
+      const graceUntil = await quotaGraceUntil(tx);
+      const inGrace = !!graceUntil && new Date() < graceUntil;
+      const q = quotaDecision(usage, v.size, e.USER_STORAGE_QUOTA_BYTES, inGrace);
+      if (!q.ok) {
         return {
           kind: "reject",
           code: "QUOTA_EXCEEDED",
-          message: `Kuota penyimpanan tidak cukup: terpakai ${formatGiB(usedBytes)} dari ${formatGiB(e.USER_STORAGE_QUOTA_BYTES)}, file ini ${formatGiB(v.size)}. Hapus dataset atau versi yang tidak dipakai.`,
+          message: `Kuota penyimpanan tidak cukup: terpakai ${formatGiB(q.usedBytes)} dari ${formatGiB(e.USER_STORAGE_QUOTA_BYTES)}, file ini ${formatGiB(v.size)} (±${formatGiB(q.projected)} setelah diproses). Hapus dataset atau versi yang tidak dipakai.`,
         };
+      }
+      if (q.warn) {
+        logger.warn(
+          { userId, used: usage.bytes, size: v.size },
+          "kuota terlampaui (masa transisi)",
+        );
       }
 
       const partCount = partCountOf(v.size);
