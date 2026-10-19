@@ -2,6 +2,9 @@
 
 Pengganti dashboard Excel untuk PCP Express: upload xlsx/csv sampai 1 GB, rakit dashboard sendiri.
 Acuan arsitektur dan alur: `docs/flow-kerja.md`. Task dan konvensi: `aitk brief`.
+Programmer baru: mulai dari `docs/panduan-developer.md` (peta kode, resep modifikasi, tes, rilis). Ringkasan
+proyek untuk manajemen/operator: `docs/ringkasan-dokumentasi.md` (PDF: `docs/ringkasan-dokumentasi.pdf`, buat ulang
+dengan `node scripts/md-to-pdf.mjs docs/ringkasan-dokumentasi.md`).
 
 ## Menjalankan lokal
 
