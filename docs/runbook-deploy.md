@@ -64,6 +64,15 @@ echo IMAGE_TAG=ab88b55 >> .env.prod      # atau ubah baris IMAGE_TAG yang ada
 bash deploy/deploy.sh --no-build         # migrasi + up + tunggu sehat, tanpa build
 ```
 
+Disk mesin build sempit: alirkan langsung ke server tanpa berkas lokal —
+`bash deploy/images.sh save - <tag> | ssh <server> 'cat > /tmp/dashboard-images.tar.gz'`.
+
+**Latihan VM kosong** (tanpa menyentuh produksi): `bash deploy/empty-vm-drill.sh /tmp/dashboard-images.tar.gz`
+di folder aplikasi — memuat image, membuat salinan terpisah (project `dashboard-vmkosong`, port 9543/9544,
+volume dan secret baru, PostgreSQL container), menjalankan `deploy.sh --no-build` sampai `/api/health` hijau,
+mencetak total waktu, lalu membongkar salinan itu. `deploy.sh` menolak `DEPLOY_ENV_FILE` tanpa
+`DEPLOY_PROJECT` selain `dashboard` (file compose bernama `dashboard`: tanpa project lain, produksi tertimpa).
+
 ### Admin pertama
 
 1. Daftar lewat `https://<APP_HOST>/register` dengan email perusahaan, lalu aktifkan dari email.

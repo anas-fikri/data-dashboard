@@ -3,6 +3,7 @@
 # secret dibaca saat runtime), jadi boleh di-build di mesin mana pun dengan Docker buildx:
 #   bash deploy/images.sh build [tag]            → 4 image linux/amd64 bertag <tag> (bawaan: commit git)
 #   bash deploy/images.sh save <berkas.tar.gz> [tag]
+#   bash deploy/images.sh save - [tag] | ssh <server> 'cat > /tmp/dashboard-images.tar.gz'   (disk build sempit)
 #   scp <berkas.tar.gz> <server>:/tmp/           (± ukuran image terkompresi)
 #   bash deploy/images.sh load <berkas.tar.gz>   (di VM, folder aplikasi) → set IMAGE_TAG di .env.prod
 #   bash deploy/deploy.sh --no-build             → migrasi + up + tunggu sehat, tanpa build
@@ -26,8 +27,13 @@ case "$cmd" in
   save)
     out=${2:?pakai: images.sh save <berkas.tar.gz> [tag]}
     tag=$(tag_of "${3:-}")
-    docker save $(printf "dashboard-%s:$tag " "${IMAGES[@]}") | gzip -1 >"$out"
-    echo "$out ($(du -h "$out" | cut -f1)), tag $tag"
+    if [ "$out" = - ]; then
+      docker save $(printf "dashboard-%s:$tag " "${IMAGES[@]}") | gzip -1
+      echo "arsip tag $tag dialirkan ke stdout" >&2
+    else
+      docker save $(printf "dashboard-%s:$tag " "${IMAGES[@]}") | gzip -1 >"$out"
+      echo "$out ($(du -h "$out" | cut -f1)), tag $tag"
+    fi
     ;;
   load)
     in=${2:?pakai: images.sh load <berkas.tar.gz>}
