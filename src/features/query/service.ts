@@ -46,12 +46,14 @@ import {
   type Plan,
   type QuerySpec,
 } from "./spec";
+import { buildPivotSql, pivotOutTypes, shapePivot, type PivotData } from "./pivot";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
 import {
   absentNames,
   widgetBodySchema,
   widgetPlan,
+  type PivotShape,
   type WidgetPlan,
   type WidgetQueryBody,
 } from "./widget";
@@ -88,6 +90,8 @@ export interface QueryData {
    * pemetaan T-014). Hanya ada bila tidak kosong; tidak ikut cache hasil.
    */
   absent?: string[];
+  /** Widget pivot (T-686n): tabel tersusun; `rows` kosong. */
+  pivot?: PivotData;
 }
 
 /** Halaman widget tabel: total baris (dengan filter) + nomor halaman. */
@@ -501,7 +505,16 @@ const tooLarge = () =>
 
 /** Baris DuckDB → JSON dengan batas byte hasil (null bila terlalu besar). */
 function toRows(raw: unknown[][], plan: Plan): { rows: unknown[][]; bytes: number } | null {
-  const types = plan.columns.map((c) => c.type);
+  return toTypedRows(
+    raw,
+    plan.columns.map((c) => c.type),
+  );
+}
+
+function toTypedRows(
+  raw: unknown[][],
+  types: OutColumn["type"][],
+): { rows: unknown[][]; bytes: number } | null {
   let bytes = 0;
   const rows: unknown[][] = [];
   for (const row of raw) {
@@ -559,6 +572,38 @@ async function runAggPlan(
     out.bytes + (plan.totals ? 64 : 0),
     r.value.totalsFailed ? TOTALS_RETRY_MS : undefined,
   );
+  return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
+}
+
+/** Widget pivot (T-686n): cache hasil → satu query DuckDB (UNION ALL) → tabel tersusun → cache. */
+async function runPivotPlan(
+  userId: string,
+  key: string,
+  typedKey: string,
+  plan: Plan,
+  shape: PivotShape,
+  deps: QueryDeps,
+  t0: number,
+): Promise<QueryResult> {
+  const hit = deps.cache?.get(key);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+  if (hit && "pivot" in hit) return { ok: true, ...hit, cached: true, ms: Date.now() - t0 };
+
+  const r = await runOnParquet(userId, typedKey, deps, (path, exec) =>
+    exec(buildPivotSql(plan, shape, path)),
+  );
+  if (!r.ok) {
+    if (r.code === "QUERY_TIMEOUT") deps.cache?.set(key, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+    return r;
+  }
+  const out = toTypedRows(r.value.rows, pivotOutTypes(plan, shape));
+  if (!out) return tooLarge();
+  const data: QueryData = {
+    columns: plan.columns,
+    rows: [],
+    pivot: shapePivot(out.rows, plan, shape),
+  };
+  deps.cache?.set(key, data, out.bytes);
   return { ok: true, ...data, cached: false, ms: Date.now() - t0 };
 }
 
@@ -758,6 +803,22 @@ async function widgetResult(
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
+  if (planned.kind === "pivot") {
+    return withNotes(
+      await runPivotPlan(
+        userId,
+        resultKey({
+          ...keyParts,
+          spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey },
+        }),
+        sheet.typedKey,
+        { ...planned.plan, dash: dash.clauses },
+        planned.pivot,
+        deps,
+        t0,
+      ),
+    );
+  }
   if (planned.kind === "agg") {
     return withNotes(
       await runAggPlan(

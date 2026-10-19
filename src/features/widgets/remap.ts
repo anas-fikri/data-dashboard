@@ -10,7 +10,7 @@
  * menyimpan pengaturan widget; T-013/T-014 memindahkannya ke saat aktivasi versi. Murni.
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { MISSING_COLUMN, type WidgetConfig } from "./spec";
+import { MISSING_COLUMN, columnsOf, type WidgetConfig } from "./spec";
 
 export { MISSING_COLUMN };
 
@@ -160,6 +160,22 @@ export function remapConfig(
         missing,
       };
     }
+    case "pivot": {
+      const dim = <D extends { column: number }>(d: D): D => ({ ...d, column: pos(d.column) });
+      return {
+        config: {
+          ...config,
+          spec: {
+            ...config.spec,
+            sheetId: target.id,
+            rows: config.spec.rows.map(dim),
+            ...(config.spec.column ? { column: dim(config.spec.column) } : {}),
+            values: config.spec.values.map(mapMeasure),
+          },
+        },
+        missing,
+      };
+    }
     default:
       return {
         config: {
@@ -178,7 +194,7 @@ export function remapConfig(
 
 /** Posisi kolom yang dipakai spec (dimensi, ukuran, kolom tabel). */
 function usedColumns(config: Configured): number[] {
-  if (config.type === "table") return config.spec.columns;
+  if (config.type === "table" || config.type === "pivot") return columnsOf(config);
   const m = config.spec.measure.column;
   const measure = m === undefined ? [] : [m];
   return config.type === "kpi" ? measure : [config.spec.dimension.column, ...measure];

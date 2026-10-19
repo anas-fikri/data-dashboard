@@ -1,11 +1,12 @@
 "use client";
 
 import { IconPlus } from "@tabler/icons-react";
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useEffect, useRef, useState } from "react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SEARCH_MIN, SearchSelect } from "@/components/ui/search-select";
 import {
   Select,
   SelectContent,
@@ -42,6 +43,13 @@ export function DashboardForm({
 
   const datasetError = error?.field === "datasetId" ? error.message : undefined;
   const datasetId = error?.values.datasetId || defaultDatasetId || undefined;
+  const [picked, setPicked] = useState(datasetId ?? "");
+  const datasetLabel = (d: (typeof datasets)[number]) =>
+    `${d.name} (${d.dashboardCount}/${DASHBOARDS_PER_DATASET} dashboard)`;
+  const datasetAria = {
+    "aria-invalid": datasetError ? true : undefined,
+    "aria-describedby": datasetError ? "datasetId-error" : "datasetId-hint",
+  };
 
   return (
     <form action={action} className="flex max-w-xl flex-col gap-4" noValidate>
@@ -58,24 +66,40 @@ export function DashboardForm({
             *
           </span>
         </label>
-        <Select name="datasetId" defaultValue={datasetId} required>
-          <SelectTrigger
+        {/* Banyak dataset: kotak cari pintar (T-jwhc). */}
+        {datasets.length >= SEARCH_MIN ? (
+          <SearchSelect
             ref={datasetRef}
             id="datasetId"
-            aria-invalid={datasetError ? true : undefined}
-            aria-describedby={datasetError ? "datasetId-error" : "datasetId-hint"}
-            className="h-(--control-h-lg) aria-invalid:border-destructive md:h-(--control-h)"
-          >
-            <SelectValue placeholder="Pilih dataset" />
-          </SelectTrigger>
-          <SelectContent>
-            {datasets.map((d) => (
-              <SelectItem key={d.id} value={d.id}>
-                {d.name} ({d.dashboardCount}/{DASHBOARDS_PER_DATASET} dashboard)
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+            name="datasetId"
+            label="Dataset"
+            value={picked}
+            onChange={setPicked}
+            placeholder="Pilih dataset"
+            options={datasets.map((d) => ({ value: d.id, label: datasetLabel(d) }))}
+            className="h-(--control-h-lg) md:h-(--control-h)"
+            aria-required
+            {...datasetAria}
+          />
+        ) : (
+          <Select name="datasetId" defaultValue={datasetId} required>
+            <SelectTrigger
+              ref={datasetRef}
+              id="datasetId"
+              {...datasetAria}
+              className="h-(--control-h-lg) aria-invalid:border-destructive md:h-(--control-h)"
+            >
+              <SelectValue placeholder="Pilih dataset" />
+            </SelectTrigger>
+            <SelectContent>
+              {datasets.map((d) => (
+                <SelectItem key={d.id} value={d.id}>
+                  {datasetLabel(d)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {datasetError ? (
           <p id="datasetId-error" role="alert" className="text-sm text-destructive">
             {datasetError}

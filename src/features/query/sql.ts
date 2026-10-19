@@ -204,7 +204,7 @@ export const TEXT_COLLATE = `COLLATE "nocase.noaccent"`;
  * Kunci kelompok dimensi: teks tidak peka huruf besar/kecil seperti PivotTable/UNIQUE Excel ("Bandung",
  * "BANDUNG", "bandung" = satu kategori; T-029). Aksen dan spasi tetap membedakan, sama dengan Excel.
  */
-const groupKey = (d: Plan["dimensions"][number]) =>
+export const groupKey = (d: Plan["dimensions"][number]) =>
   d.type === "text" ? `lower(${dimensionExpr(d)})` : dimensionExpr(d);
 
 /**
@@ -212,11 +212,11 @@ const groupKey = (d: Plan["dimensions"][number]) =>
  * "bandung"). Deterministik lintas thread/row group, jadi grafik, ekspor, dan slicer memberi label sama
  * (mode() DuckDB tidak: seri bergantung urutan thread — review T-029 TF3).
  */
-const textLabel = (e: string) =>
+export const textLabel = (e: string) =>
   `list_sort(list_transform(map_entries(histogram(${e})), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k`;
 
 /** Ekspresi dimensi: teks dipotong, tanggal dikelompokkan per grain. */
-function dimensionExpr(d: Plan["dimensions"][number]): string {
+export function dimensionExpr(d: Plan["dimensions"][number]): string {
   const c = ident(d.col);
   // Teks dimensi dipotong: label grafik tidak butuh 32 ribu karakter, dan hasil 10k baris × sel
   // panjang membengkakkan memori aplikasi (review T-009 F4).
@@ -227,6 +227,21 @@ function dimensionExpr(d: Plan["dimensions"][number]): string {
       : c;
 }
 
+/**
+ * Ekspresi agregat satu ukuran. Total seperti SUMIF Excel: grup yang semua nilainya kosong = 0 (bukan
+ * NULL), sehingga urutan/top-N ("Terkecil") sama dengan yang digambar grafik (verifikasi T-011 putaran 4).
+ */
+export function measureExpr(m: Plan["measures"][number]): string {
+  const c = m.col ? ident(m.col) : "*";
+  return m.agg === "count"
+    ? `count(${c})`
+    : m.agg === "count_distinct"
+      ? `count(DISTINCT ${c})`
+      : m.agg === "sum"
+        ? `coalesce(sum(${c}), 0)`
+        : `${m.agg}(${c})`;
+}
+
 export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
   const select: string[] = [];
@@ -234,20 +249,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     const e = dimensionExpr(d);
     select.push(`${d.type === "text" ? textLabel(e) : e} AS ${ident(d.key)}`);
   }
-  for (const m of plan.measures) {
-    const c = m.col ? ident(m.col) : "*";
-    // Total seperti SUMIF Excel: grup yang semua nilainya kosong = 0 (bukan NULL), sehingga
-    // urutan/top-N ("Terkecil") sama dengan yang digambar grafik (verifikasi T-011 putaran 4).
-    const e =
-      m.agg === "count"
-        ? `count(${c})`
-        : m.agg === "count_distinct"
-          ? `count(DISTINCT ${c})`
-          : m.agg === "sum"
-            ? `coalesce(sum(${c}), 0)`
-            : `${m.agg}(${c})`;
-    select.push(`${e} AS ${ident(m.key)}`);
-  }
+  for (const m of plan.measures) select.push(`${measureExpr(m)} AS ${ident(m.key)}`);
 
   const where = whereClauses(plan, params);
   // Dimensi tanpa ukuran = nilai unik; GROUP BY yang sama menggantikan DISTINCT.

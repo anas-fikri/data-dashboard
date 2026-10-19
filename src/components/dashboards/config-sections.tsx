@@ -6,6 +6,7 @@ import {
   IconChartPie,
   IconNumber123,
   IconTable,
+  IconTableOptions,
 } from "@tabler/icons-react";
 import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
@@ -42,6 +43,7 @@ const ICONS = {
   line: IconChartLine,
   pie: IconChartPie,
   table: IconTable,
+  pivot: IconTableOptions,
 };
 
 export function TypeTiles({
@@ -201,16 +203,19 @@ export function MeasureFields({
   columns,
   measure,
   onChange,
+  label = "Nilai",
 }: {
   type: WidgetType;
   columns: SourceColumn[];
   measure: { agg: Agg; column?: number };
   onChange: (m: { agg: Agg; column?: number }) => void;
+  /** Label pilihan agregasi (pivot: "Hitung" di dalam kelompok "Nilai 1"). */
+  label?: string;
 }) {
   return (
     <div className="grid min-w-0 grid-cols-1 gap-2">
       <Choice
-        label="Nilai"
+        label={label}
         testId="config-agg"
         value={aggChoiceOf(measure)}
         options={aggChoiceOptions(type, columns)}

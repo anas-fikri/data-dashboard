@@ -83,6 +83,8 @@ export function buildExportSql(
 ): BuiltSql {
   const plan = planOf(r);
   const cols = plan.columns;
+  // Pivot diekspor dari tabel tersusun (exports/pivot.ts), bukan SELECT datar.
+  if (r.planned.kind === "pivot") throw new Error("pivot memakai ekspor tabel pivot");
   if (r.planned.kind === "agg") {
     const inner = buildSql(plan, parquetPath);
     const select = cols.map(

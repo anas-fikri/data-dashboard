@@ -8,7 +8,7 @@
 import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
 
-export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie"] as const;
+export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 export const CHART_TYPES = ["bar", "line", "pie"] as const;
 export type ChartType = (typeof CHART_TYPES)[number];
@@ -112,15 +112,58 @@ export const tableSpecSchema = z
     path: ["formatColumns"],
   });
 
+/**
+ * Pivot (seperti PivotTable Excel): baris 1–2 kolom, kolom pemisah opsional (mis. periode per bulan),
+ * nilai 1–3. Batas tampilan: PIVOT_ROWS_SHOWN baris terdalam × PIVOT_COLUMNS_SHOWN nilai kolom; total
+ * dan subtotal tetap dihitung dari seluruh data (termasuk yang tidak tampil).
+ */
+export const PIVOT_ROWS_MAX = 2;
+export const PIVOT_VALUES_MAX = 3;
+export const PIVOT_ROWS_SHOWN = 200;
+export const PIVOT_COLUMNS_SHOWN = 40;
+
+const dimKey = (d: { column: number; timeGrain?: string }) => `${d.column}:${d.timeGrain ?? ""}`;
+
+export const pivotSpecSchema = z
+  .object({
+    sheetId,
+    rows: z.array(dimension).min(1).max(PIVOT_ROWS_MAX),
+    /** Pisahkan per (opsional): satu kolom, mis. tanggal per bulan → satu kolom tabel per periode. */
+    column: dimension.optional(),
+    values: z.array(measure).min(1).max(PIVOT_VALUES_MAX),
+    /** Urutan baris: nilai pertama (value_*) atau label (label_*); kolom selalu urut naik. */
+    sort: z.enum(CHART_SORTS),
+    /** Format untuk nilai berupa angka (Total/Rata-rata/Terkecil/Terbesar); jumlah selalu angka biasa. */
+    format: formatSchema,
+    /** Kolom "Total" di kanan dan baris "Total" di bawah. */
+    totals: z.boolean(),
+    /** Baris subtotal per kelompok baris pertama (hanya bila baris 2 kolom). */
+    subtotals: z.boolean(),
+  })
+  .strict()
+  .refine(
+    (p) => {
+      // Penanda kolom hilang (hasil pemetaan/versi baru) boleh berulang: widgetPlan melaporkannya
+      // sebagai COLUMN_UNAVAILABLE dan panel meminta kolom pengganti, spec tetap utuh.
+      const keys = [...p.rows, ...(p.column ? [p.column] : [])]
+        .filter((d) => d.column !== MISSING_COLUMN)
+        .map(dimKey);
+      return new Set(keys).size === keys.length;
+    },
+    { message: "Kolom yang sama tidak boleh dipakai dua kali dengan pengelompokan yang sama" },
+  );
+
 export type KpiSpec = z.infer<typeof kpiSpecSchema>;
 export type ChartSpec = z.infer<typeof chartSpecSchema>;
 export type TableSpec = z.infer<typeof tableSpecSchema>;
+export type PivotSpec = z.infer<typeof pivotSpecSchema>;
 
 export type WidgetConfig =
   | { type: "empty"; spec: Record<string, never> }
   | { type: "kpi"; spec: KpiSpec }
   | { type: ChartType; spec: ChartSpec }
-  | { type: "table"; spec: TableSpec };
+  | { type: "table"; spec: TableSpec }
+  | { type: "pivot"; spec: PivotSpec };
 
 export type ParsedConfig = { ok: true; config: WidgetConfig } | { ok: false; message: string };
 
@@ -147,6 +190,10 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
     case "table": {
       const p = tableSpecSchema.safeParse(spec);
       return p.success ? { ok: true, config: { type: "table", spec: p.data } } : bad(p.error);
+    }
+    case "pivot": {
+      const p = pivotSpecSchema.safeParse(spec);
+      return p.success ? { ok: true, config: { type: "pivot", spec: p.data } } : bad(p.error);
     }
     default: {
       const type = t.data;
@@ -180,6 +227,12 @@ export function columnsOf(c: WidgetConfig): number[] {
       return c.spec.measure.column ? [c.spec.measure.column] : [];
     case "table":
       return c.spec.columns;
+    case "pivot":
+      return [
+        ...c.spec.rows.map((d) => d.column),
+        ...(c.spec.column ? [c.spec.column.column] : []),
+        ...c.spec.values.flatMap((m) => (m.column ? [m.column] : [])),
+      ];
     default:
       return [c.spec.dimension.column, ...(c.spec.measure.column ? [c.spec.measure.column] : [])];
   }

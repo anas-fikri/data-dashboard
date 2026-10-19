@@ -144,6 +144,7 @@ export function readingOrder(layout: LayoutItem[]): LayoutItem[] {
 /** Tinggi kartu di tumpukan ponsel (< 768 px) per jenis widget (px). */
 export const PHONE_HEIGHT: Record<string, number> = {
   table: 440,
+  pivot: 440,
   bar: 320,
   line: 280,
   pie: 320,

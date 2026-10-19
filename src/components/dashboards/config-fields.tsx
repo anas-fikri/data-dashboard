@@ -9,6 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SEARCH_MIN, SearchSelect } from "@/components/ui/search-select";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { missingColumnText, type SourceColumn } from "./widget-config-model";
 
@@ -48,24 +49,40 @@ export function Choice<T extends string>({
       <label htmlFor={id} className="text-sm font-medium">
         {label}
       </label>
-      <Select value={missing ? "" : value} onValueChange={(v) => onChange(v as T)}>
-        <SelectTrigger
+      {/* Daftar panjang (mis. kolom dataset) berkotak cari pintar (T-jwhc); daftar pendek tetap Select. */}
+      {options.length >= SEARCH_MIN ? (
+        <SearchSelect
           id={id}
+          label={label}
+          value={missing ? "" : value}
+          options={options}
+          onChange={(v) => onChange(v as T)}
+          placeholder={placeholder}
           className={control}
           data-testid={testId}
           aria-invalid={missing && placeholder ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
-        >
-          <SelectValue placeholder={placeholder} />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value}>
-              {o.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+        />
+      ) : (
+        <Select value={missing ? "" : value} onValueChange={(v) => onChange(v as T)}>
+          <SelectTrigger
+            id={id}
+            className={control}
+            data-testid={testId}
+            aria-invalid={missing && placeholder ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
+          >
+            <SelectValue placeholder={placeholder} />
+          </SelectTrigger>
+          <SelectContent>
+            {options.map((o) => (
+              <SelectItem key={o.value} value={o.value}>
+                {o.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
       {error ? (
         <p id={`${id}-error`} className="text-xs text-destructive">
           {error}

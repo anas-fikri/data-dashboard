@@ -13,6 +13,7 @@ import {
 } from "./body-state";
 import { ChartWidget, type ChartBadge } from "./chart-widget";
 import { KpiView } from "./kpi-view";
+import { PivotView } from "./pivot-view";
 import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
 import { WidgetError } from "./widget-error";
@@ -184,6 +185,15 @@ function Loaded({
           />
         </>
       );
+      break;
+    case "pivot":
+      content = data.pivot ? (
+        <PivotView
+          data={data.pivot}
+          format={config.spec.format}
+          label={/^pivot\b/i.test(title) ? title : `Pivot ${title || "widget"}`}
+        />
+      ) : null;
       break;
     default:
       content = (

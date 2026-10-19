@@ -136,7 +136,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             onToggle={() => setShowData((s) => !s)}
           />
         ) : null}
-        {config ? (
+        {/* shortcut: pivot belum punya ekspor CSV/XLSX (POST /api/exports menolak INVALID), aktifkan di T-9bc2. */}
+        {config && config.type !== "pivot" ? (
           <HeadExport
             widgetId={widget.id}
             type={config.type}

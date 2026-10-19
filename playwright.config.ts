@@ -38,6 +38,7 @@ export default defineConfig({
         /pdf\.spec\.ts$/,
         /kpi-fit\.spec\.ts$/,
         /chart-polish\.spec\.ts$/,
+        /pivot\.spec\.ts$/,
         /guide-roles\.spec\.ts$/,
       ],
     },
@@ -72,7 +73,9 @@ export default defineConfig({
     { name: "kpi-fit", testMatch: /kpi-fit\.spec\.ts$/, dependencies: ["pdf"] },
     // chart-polish (T-032): worker sendiri (12 kota); lencana N/M, tab stop legenda, forced-colors.
     { name: "chart-polish", testMatch: /chart-polish\.spec\.ts$/, dependencies: ["kpi-fit"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["chart-polish"] },
+    // pivot (T-tcjp, T-jwhc): worker sendiri (24 customer × 2 layanan × 3 bulan); panel, gulir, cetak.
+    { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["pivot"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

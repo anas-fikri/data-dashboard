@@ -25,6 +25,7 @@ export const WIDGET_MIN_SIZE = { w: 2, h: 2 } as const;
  */
 const MIN_BY_TYPE: ReadonlyMap<string, { w: number; h: number }> = new Map([
   ["table", { w: 3, h: 4 }],
+  ["pivot", { w: 3, h: 4 }],
 ]);
 
 export interface LayoutItem {

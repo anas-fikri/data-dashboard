@@ -9,12 +9,14 @@ import {
   TABLE_COLUMNS_MAX,
   TOP_N_DEFAULT,
   TOP_N_MAX,
+  columnsOf,
   type ChartSort,
   type ChartSpec,
   type ChartType,
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
+import { defaultPivot } from "./pivot-config-model";
 
 /*
  * Model panel konfigurasi widget (T-011): pilihan yang ditawarkan dan nilai awal yang masuk akal
@@ -30,6 +32,7 @@ export const TYPE_OPTIONS: { type: Exclude<WidgetType, "empty">; label: string }
   { type: "line", label: "Garis" },
   { type: "pie", label: "Pai" },
   { type: "table", label: "Tabel" },
+  { type: "pivot", label: "Pivot" },
 ];
 
 export const AGG_LABEL: Record<Agg, string> = {
@@ -158,7 +161,8 @@ export function columnsForAgg(
 ): SourceColumn[] {
   if (agg === "sum" || agg === "avg") return columns.filter((c) => isNumeric(c.type));
   if (agg === "min" || agg === "max") {
-    const dates = type === "kpi";
+    // KPI dan pivot bisa menampilkan tanggal terkecil/terbesar; grafik hanya angka.
+    const dates = type === "kpi" || type === "pivot";
     return columns.filter((c) => isNumeric(c.type) || (dates && isTemporal(c.type)));
   }
   return columns;
@@ -174,7 +178,7 @@ export function aggOptions(type: WidgetType, columns: SourceColumn[]): Agg[] {
   );
 }
 
-function defaultMeasure(
+export function defaultMeasure(
   columns: SourceColumn[],
   prev?: Measure,
   allowed: readonly Agg[] = AGG_ORDER,
@@ -228,9 +232,11 @@ export function defaultConfig(
   const cols = sheet.columns;
   const format = prev.type === "empty" ? DEFAULT_FORMAT : prev.spec.format;
   const prevMeasure =
-    prev.type === "kpi" || (prev.type !== "empty" && prev.type !== "table")
-      ? (prev.spec as { measure: Measure }).measure
-      : undefined;
+    prev.type === "pivot"
+      ? prev.spec.values[0]
+      : prev.type === "kpi" || (prev.type !== "empty" && prev.type !== "table")
+        ? (prev.spec as { measure: Measure }).measure
+        : undefined;
 
   if (type === "table") {
     const keep =
@@ -242,6 +248,10 @@ export function defaultConfig(
   }
   const measure = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
   if (type === "kpi") return { type, spec: { sheetId: sheet.id, measure, format } };
+  if (type === "pivot") {
+    const spec = defaultPivot(sheet.id, cols, prev, measure, format);
+    return spec ? { type, spec } : null;
+  }
 
   const prevChart =
     prev.type === "bar" || prev.type === "line" || prev.type === "pie" ? prev.spec : undefined;
@@ -270,13 +280,7 @@ export function missingColumns(config: WidgetConfig, sources: Source[]): number[
   if (config.type === "empty") return [];
   const sheet = sources.find((s) => s.id === config.spec.sheetId);
   const has = new Set((sheet?.columns ?? []).map((c) => c.pos));
-  const used =
-    config.type === "table"
-      ? config.spec.columns
-      : config.type === "kpi"
-        ? [config.spec.measure.column]
-        : [config.spec.dimension.column, config.spec.measure.column];
-  return used.filter((p): p is number => p !== undefined && !has.has(p));
+  return columnsOf(config).filter((p) => !has.has(p));
 }
 
 /** Penjelasan di atas panel: data diganti (MISSING_COLUMN) atau kolom disembunyikan/dihapus. */
@@ -323,10 +327,12 @@ export function measureColumnText(
  */
 export function measureMismatch(config: WidgetConfig, sources: Source[]): boolean {
   if (config.type === "empty" || config.type === "table") return false;
-  const { column } = config.spec.measure;
   const cols = sources.find((s) => s.id === config.spec.sheetId)?.columns ?? [];
-  if (!cols.some((c) => c.pos === column)) return false;
-  return measureColumnText(config.spec.measure, cols, config.type) !== undefined;
+  const measures = config.type === "pivot" ? config.spec.values : [config.spec.measure];
+  return measures.some(
+    (m) =>
+      cols.some((c) => c.pos === m.column) && measureColumnText(m, cols, config.type) !== undefined,
+  );
 }
 
 type TableConfig = Extract<WidgetConfig, { type: "table" }>;

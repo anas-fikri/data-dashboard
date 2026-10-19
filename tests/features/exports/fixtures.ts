@@ -121,6 +121,20 @@ export const WIDGETS: Record<string, { type: string; spec: unknown; title: strin
       format: fmt,
     },
   },
+  pivot: {
+    type: "pivot",
+    title: "Omzet per cabang per bulan",
+    spec: {
+      sheetId: SHEET,
+      rows: [{ column: 1 }],
+      column: { column: 3, timeGrain: "month" },
+      values: [{ agg: "sum", column: 2 }],
+      sort: "value_desc",
+      format: fmt,
+      totals: true,
+      subtotals: false,
+    },
+  },
   hidden: {
     type: "table",
     title: "Rahasia",

@@ -6,6 +6,7 @@ import {
   type QueryDeps,
   type QueryRepo,
 } from "@/features/query/service";
+import { buildPivotSql } from "@/features/query/pivot";
 import { buildSql, buildTotalsSql } from "@/features/query/sql";
 import { buildTableCount, buildTablePage } from "@/features/query/table";
 import {
@@ -80,10 +81,12 @@ describe("resolveWidget = rencana yang dijalankan /api/query", () => {
     const expected =
       resolved.planned.kind === "agg"
         ? [buildSql(plan, PATH), ...(plan.totals ? [buildTotalsSql(plan, PATH)!] : [])]
-        : [
-            buildTableCount(plan, PATH),
-            buildTablePage(plan, resolved.planned.sort, resolved.planned.page, PATH),
-          ];
+        : resolved.planned.kind === "table"
+          ? [
+              buildTableCount(plan, PATH),
+              buildTablePage(plan, resolved.planned.sort, resolved.planned.page, PATH),
+            ]
+          : [buildPivotSql(plan, resolved.planned.pivot, PATH)];
     expect(ran).toEqual(expected);
   });
 

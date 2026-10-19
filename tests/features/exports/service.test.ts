@@ -124,6 +124,18 @@ describe("createExport", () => {
     expect(t.enqueue).not.toHaveBeenCalled();
   });
 
+  it("pivot: CSV/XLSX belum tersedia → INVALID di depan, tanpa baris/job (review T-tcjp)", async () => {
+    const t = makeDeps();
+    const r = await createExport(OWNER, { widgetId: WID("pivot"), format: "xlsx" }, t.deps);
+    expect(r).toEqual({
+      ok: false,
+      code: "INVALID",
+      message: "Ekspor CSV/XLSX untuk widget pivot belum tersedia.",
+    });
+    expect(t.created).toEqual([]);
+    expect(t.enqueue).not.toHaveBeenCalled();
+  });
+
   it("filter + urutan disimpan di params (dibaca ulang worker)", async () => {
     const t = makeDeps();
     const dashboardFilters = [{ column: "Cabang", op: "in" as const, values: ["Cabang 1", null] }];

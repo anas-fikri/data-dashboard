@@ -117,7 +117,8 @@ function crossFilterDims(
       !c.ok ||
       c.config.type === "empty" ||
       c.config.type === "kpi" ||
-      c.config.type === "table"
+      c.config.type === "table" ||
+      c.config.type === "pivot"
     ) {
       continue;
     }

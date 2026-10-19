@@ -11,6 +11,7 @@ import type { RenderWidget } from "@/features/exports/render-data";
 import { cn } from "@/lib/utils";
 import { rowsPx, tableRowsFitPx } from "./print-layout";
 
+import { PrintPivot } from "./print-pivot";
 import { PrintTable } from "./print-table";
 import { useRenderPending } from "./render-ready";
 
@@ -55,7 +56,7 @@ function Message({ icon, children }: { icon: ReactNode; children: ReactNode }) {
   );
 }
 
-type ChartConfig = Exclude<CardConfig, { type: "kpi" | "table" }>;
+type ChartConfig = Exclude<CardConfig, { type: "kpi" | "table" | "pivot" }>;
 
 function PrintChart({
   config,
@@ -113,6 +114,15 @@ function Body({
         formatColumns={config.spec.formatColumns}
         fit={tableRowsFitPx(heightPx, notes)}
       />
+    );
+  }
+  if (config.type === "pivot") {
+    return data.pivot ? (
+      <PrintPivot data={data.pivot} format={config.spec.format} />
+    ) : (
+      <Message icon={null}>
+        <p className="text-muted-foreground">Tidak ada data untuk ditampilkan.</p>
+      </Message>
     );
   }
   return <PrintChart config={config} data={data} title={title} />;

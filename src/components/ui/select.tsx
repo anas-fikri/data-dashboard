@@ -9,6 +9,20 @@ import { cn } from "@/lib/utils";
  * Select kustom (bukan <select> native) untuk filter/status: aksesibel via Radix,
  * caret tidak menempel ke tepi, tinggi dari token. Dipakai filter dashboard (T-012).
  */
+/** Kelas pemicu dan item, dipakai juga SearchSelect (daftar panjang berkotak cari, T-jwhc). */
+export const SELECT_TRIGGER = cn(
+  "flex h-(--control-h) w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-base md:text-sm",
+  "data-[placeholder]:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
+  "aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive",
+  "[&>span]:truncate",
+);
+// Teks panjang membungkus; target sentuh 44 px di ponsel.
+export const SELECT_ITEM = cn(
+  "relative flex min-h-11 w-full cursor-default select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm break-words whitespace-normal outline-none md:min-h-9",
+  "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+  "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+);
+
 export const Select = SelectPrimitive.Root;
 export const SelectGroup = SelectPrimitive.Group;
 export const SelectValue = SelectPrimitive.Value;
@@ -18,17 +32,7 @@ export const SelectTrigger = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
 >(function SelectTrigger({ className, children, ...props }, ref) {
   return (
-    <SelectPrimitive.Trigger
-      ref={ref}
-      className={cn(
-        "flex h-(--control-h) w-full items-center justify-between gap-2 rounded-md border border-input bg-background px-3 text-base md:text-sm",
-        "data-[placeholder]:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50",
-        "aria-invalid:border-destructive aria-invalid:ring-1 aria-invalid:ring-destructive",
-        "[&>span]:truncate",
-        className,
-      )}
-      {...props}
-    >
+    <SelectPrimitive.Trigger ref={ref} className={cn(SELECT_TRIGGER, className)} {...props}>
       {children}
       <SelectPrimitive.Icon asChild>
         <IconChevronDown size={20} stroke={1.5} className="shrink-0 opacity-60" aria-hidden />
@@ -64,17 +68,7 @@ export const SelectItem = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item>
 >(function SelectItem({ className, children, ...props }, ref) {
   return (
-    <SelectPrimitive.Item
-      ref={ref}
-      className={cn(
-        // Teks panjang membungkus; target sentuh 44 px di ponsel.
-        "relative flex min-h-11 w-full cursor-default select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm break-words whitespace-normal outline-none md:min-h-9",
-        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-        className,
-      )}
-      {...props}
-    >
+    <SelectPrimitive.Item ref={ref} className={cn(SELECT_ITEM, className)} {...props}>
       <span className="absolute left-2 flex size-5 items-center justify-center">
         <SelectPrimitive.ItemIndicator>
           <IconCheck size={16} stroke={2} aria-hidden />

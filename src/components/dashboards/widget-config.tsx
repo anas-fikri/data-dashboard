@@ -8,6 +8,8 @@ import type { WidgetView } from "@/features/dashboards/service";
 import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/features/widgets/spec";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
+import { PivotFields } from "./pivot-config";
+import { duplicateField } from "./pivot-config-model";
 import {
   CrossFilterField,
   FormatColumnsField,
@@ -185,7 +187,9 @@ export function WidgetConfigForm({
   // Tanpa sheet atau sheet tanpa kolom terlihat: tidak ada kolom pengganti yang bisa dipilih.
   const noColumns = noSheet || (!!sheet && !sheet.columns.length);
   const missing = noColumns ? [] : missingColumns(draft, sources);
-  const unsaved = noColumns || missing.length > 0 || measureMismatch(draft, sources);
+  // Pivot dengan isian dobel ditolak server: isian itu sendiri memberi tahu alasannya.
+  const pivotDup = draft.type === "pivot" && duplicateField(draft.spec) !== null;
+  const unsaved = noColumns || missing.length > 0 || measureMismatch(draft, sources) || pivotDup;
   // Baris status berisi alasan gagal simpan (draf yang belum bisa disimpan didahulukan).
   const saveFailed = status === "error" && !unsaved;
   // Kolom yang perlu diganti punya peringatannya sendiri (MissingNotice); simpanan pengganti juga
@@ -267,6 +271,12 @@ export function WidgetConfigForm({
                   },
                 })
               }
+            />
+          ) : draft.type === "pivot" ? (
+            <PivotFields
+              spec={draft.spec}
+              columns={cols}
+              onChange={(spec) => commit({ type: "pivot", spec })}
             />
           ) : (
             <>
@@ -410,17 +420,19 @@ export function WidgetConfigForm({
                 ? noSheet
                   ? "Belum tersimpan — pilih sheet."
                   : "Belum tersimpan — pilih sheet lain."
-                : unsaved
-                  ? "Belum tersimpan — pilih kolom pengganti."
-                  : saveFailed
-                    ? `Belum tersimpan — ${saveError || "coba ubah lagi."}`
-                    : status === "saved"
-                      ? reloads
-                        ? "Tersimpan. Widget memuat data terbaru."
-                        : "Tersimpan."
-                      : retargetedOnly
-                        ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
-                        : "Perubahan tersimpan otomatis."}
+                : pivotDup
+                  ? "Belum tersimpan — perbaiki isian yang ditandai."
+                  : unsaved
+                    ? "Belum tersimpan — pilih kolom pengganti."
+                    : saveFailed
+                      ? `Belum tersimpan — ${saveError || "coba ubah lagi."}`
+                      : status === "saved"
+                        ? reloads
+                          ? "Tersimpan. Widget memuat data terbaru."
+                          : "Tersimpan."
+                        : retargetedOnly
+                          ? "Belum tersimpan — pilih “Pakai sheet ini” di atas."
+                          : "Perubahan tersimpan otomatis."}
           </p>
         </>
       )}

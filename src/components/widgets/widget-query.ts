@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { DashFilter } from "@/components/dashboards/filters/filter-model";
+import type { PivotData } from "@/features/query/pivot";
 import type { ValueType } from "@/features/widgets/format";
 import { isAccessLost, useAccessLost } from "./access-refresh";
 
@@ -38,6 +39,8 @@ export interface WidgetData {
   pageSize?: number;
   /** Versi pengaturan widget yang dibaca server untuk data ini (T-016); dibandingkan dengan kartu. */
   widgetVersion?: string;
+  /** Hanya pivot (T-tcjp): tabel tersusun dari server. */
+  pivot?: PivotData;
 }
 /**
  * `filters`: filter dashboard (JSON) milik `data` — data lama dari filter lain tidak boleh tampil

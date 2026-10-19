@@ -41,8 +41,18 @@ export const widgetBodySchema = z
   .strict();
 export type WidgetQueryBody = z.infer<typeof widgetBodySchema>;
 
+/** Bentuk pivot di atas rencana: dimensi = baris (1–2) lalu kolom pemisah (opsional), ukuran = nilai. */
+export interface PivotShape {
+  rowFields: 1 | 2;
+  column: boolean;
+  sort: ChartSort;
+  totals: boolean;
+  subtotals: boolean;
+}
+
 export type WidgetPlan =
   | { ok: true; kind: "agg"; spec: QuerySpec; plan: Plan }
+  | { ok: true; kind: "pivot"; spec: QuerySpec; plan: Plan; pivot: PivotShape }
   | {
       ok: true;
       kind: "table";
@@ -92,7 +102,34 @@ export function widgetPlan(
   const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
   let table: { sort: { index: number; dir: "asc" | "desc" } | null } | null = null;
+  let pivot: PivotShape | null = null;
   switch (config.type) {
+    case "pivot": {
+      const p = config.spec;
+      const dims = [...p.rows, ...(p.column ? [p.column] : [])];
+      spec = {
+        ...base,
+        dimensions: dims.map((d) => ({
+          column: name(d.column),
+          ...(d.timeGrain ? { timeGrain: d.timeGrain } : {}),
+        })),
+        measures: p.values.map((m) => ({
+          agg: m.agg,
+          ...(m.column ? { column: name(m.column) } : {}),
+        })),
+        filters,
+        sort: [],
+        limit: 1,
+      };
+      pivot = {
+        rowFields: p.rows.length === 2 ? 2 : 1,
+        column: !!p.column,
+        sort: p.sort,
+        totals: p.totals,
+        subtotals: p.subtotals && p.rows.length === 2,
+      };
+      break;
+    }
     case "kpi": {
       const m = config.spec.measure;
       spec = {
@@ -158,6 +195,7 @@ export function widgetPlan(
   if (unavailable) return { ok: false, code: "COLUMN_UNAVAILABLE", message: unavailable };
   const resolved = resolveSpec(spec, schema);
   if (!resolved.ok) return { ok: false, code: "INVALID", message: resolved.message };
+  if (pivot) return { ok: true, kind: "pivot", spec, plan: resolved.plan, pivot };
   if (table) {
     return {
       ok: true,

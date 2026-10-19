@@ -34,6 +34,7 @@ export function widgetRequest(
 export function bodyState(state: WidgetQueryState, keepOnError: boolean, chart = false): BodyState {
   if (state.status === "error" && !(state.data && keepOnError)) return "none";
   if (!state.data) return "loading";
+  if (state.data.pivot) return state.data.pivot.rows.length > 0 ? "rows" : "none";
   return (chart ? !chartEmpty(state.data) : state.data.rows.length > 0) ? "rows" : "none";
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { parseWidgetConfig } from "@/features/widgets/spec";
 import {
   MISSING_COLUMN,
   markerNames,
@@ -80,6 +81,33 @@ describe("remapConfig: kolom lewat judul asli + urutan", () => {
       missing: ["Total"],
     });
     expect(measureOf(old, next, 2)).toMatchObject({ column: 1, missing: [] });
+  });
+
+  it("pivot: baris + pemisah yang sama-sama hilang tetap spec sah (review T-686n)", () => {
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Layanan"), col(3, "Omzet")]);
+    const next = sheet(NEW, [col(1, "Omzet")]);
+    const pivot = {
+      sheetId: OLD,
+      rows: [{ column: 1 }, { column: 2 }],
+      column: { column: 2, timeGrain: "month" as const },
+      values: [{ agg: "sum" as const, column: 3 }],
+      sort: "value_desc" as const,
+      format: fmt,
+      totals: true,
+      subtotals: true,
+    };
+    const r = remapConfig({ type: "pivot", spec: pivot }, old, next);
+    expect(r.config.spec).toMatchObject({
+      rows: [{ column: MISSING_COLUMN }, { column: MISSING_COLUMN }],
+      column: { column: MISSING_COLUMN },
+      values: [{ agg: "sum", column: 1 }],
+    });
+    expect(r.missing).toEqual(["Cabang", "Layanan"]);
+    expect(parseWidgetConfig("pivot", r.config.spec).ok).toBe(true);
+    // Kolom yang benar-benar dobel tetap ditolak.
+    expect(parseWidgetConfig("pivot", { ...pivot, rows: [{ column: 1 }, { column: 1 }] }).ok).toBe(
+      false,
+    );
   });
 
   it("tabel: kolom yang hilang tetap satu penanda dengan nama tampil lama", () => {
