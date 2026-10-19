@@ -25,6 +25,15 @@ const NET = [
 const NO_SUCH_FILE = 2;
 const PERMISSION_DENIED = 3;
 
+/** Langkah tes koneksi, disebut di pesan galat SFTP. */
+const STEPS = {
+  stat: "membuka folder",
+  readdir: "mendaftar isi folder",
+  write: "menulis file uji",
+  read: "membaca file uji",
+  unlink: "menghapus file uji",
+} as const;
+
 /** Galat yang pesannya sudah untuk admin. */
 class ProbeError extends Error {}
 
@@ -45,6 +54,7 @@ export function probeMessage(
   e: unknown,
   c: { folder: string; hostKey: string },
   seen: string,
+  step = "",
 ): string {
   if (e instanceof ProbeError) return e.message;
   const err = e as { code?: string | number; level?: string; message?: string };
@@ -62,11 +72,16 @@ export function probeMessage(
   if (err.level === "handshake" && c.hostKey) {
     return 'Jabat tangan SSH gagal: kunci host NAS tidak cocok dengan yang tersimpan. Bila NAS diinstal ulang, tekan "Lupakan kunci host", isi password, lalu tes lagi.';
   }
-  if (err.code === NO_SUCH_FILE) {
+  if (err.code === NO_SUCH_FILE && (!step || step === STEPS.stat)) {
     return `Folder ${c.folder} tidak ditemukan di NAS. Buat dulu lewat File Station; folder diawali nama shared folder, mis. /backup-data-dashboard.`;
   }
   if (err.code === PERMISSION_DENIED) {
-    return "Akun ini tidak punya izin baca/tulis di folder tersebut. Atur di DSM: Panel Kontrol › Folder Bersama › Edit › Izin.";
+    return `Akun ini tidak punya izin ${step || "baca/tulis"} di folder tersebut. Atur di DSM: Panel Kontrol › Folder Bersama › Edit › Izin (baca, tulis, dan hapus).`;
+  }
+  if (typeof err.code === "number" && step) {
+    // Status SFTP lain (mis. 4 = FAILURE): sebut langkahnya + pesan singkat dari NAS agar bisa ditindak.
+    const said = (err.message ?? "").replace(/[^\x20-\x7e]/g, "").slice(0, 120);
+    return `NAS menolak saat ${step} (kode SFTP ${err.code}${said ? `: ${said}` : ""}). Periksa izin akun di folder ini (baca, tulis, dan hapus) di DSM: Panel Kontrol › Folder Bersama › Edit › Izin.`;
   }
   return `Tes gagal (${err.level ?? err.code ?? "galat tidak dikenal"}).`;
 }
@@ -129,21 +144,34 @@ export async function probeOffsite(
 ): Promise<{ ok: true; hostKey: string } | { ok: false; message: string }> {
   const conn = new Client();
   let seen = "";
+  let step = "";
   // Operasi SFTP tidak punya batas waktu sendiri: NAS yang macet setelah login tidak boleh menggantung aksi.
   const timer = setTimeout(() => conn.destroy(), TIMEOUT_MS * 2);
   try {
     const sftp = await connect(conn, c, (line) => (seen = line));
+    step = STEPS.stat;
     const st = await call<Stats>((cb) => sftp.stat(c.folder, cb));
     if (!st.isDirectory()) throw new ProbeError(`${c.folder} di NAS bukan folder.`);
+    step = STEPS.readdir;
     await call((cb) => sftp.readdir(c.folder, cb));
     const file = `${c.folder}/.uji-koneksi-${Date.now()}`;
+    step = STEPS.write;
     await call((cb) => sftp.writeFile(file, "ok", cb));
+    step = STEPS.read;
     const got = await call<Buffer>((cb) => sftp.readFile(file, cb));
     if (got.toString() !== "ok") throw new ProbeError("File uji terbaca tetapi isinya berbeda.");
+    step = STEPS.unlink;
     await call((cb) => sftp.unlink(file, cb));
     return { ok: true, hostKey: seen };
   } catch (e) {
-    return { ok: false, message: probeMessage(e, c, seen) };
+    const err = e as { code?: unknown; message?: string };
+    if (step && typeof err.code === "number") {
+      logger.warn(
+        { host: c.host, port: c.port, step, code: err.code, err: err.message },
+        "operasi SFTP tes koneksi ditolak NAS",
+      );
+    }
+    return { ok: false, message: probeMessage(e, c, seen, step) };
   } finally {
     clearTimeout(timer);
     conn.end();

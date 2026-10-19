@@ -39,7 +39,15 @@ const attrs = (st: Stats) => ({
   mtime: Math.floor(st.mtimeMs / 1000),
 });
 
-function serve(sftp: SFTPWrapper, root: string) {
+function serve(sftp: SFTPWrapper, root: string, failOp?: string) {
+  if (failOp) {
+    // Seperti DSM yang menolak satu operasi dengan status umum FAILURE (kode 4).
+    const emit = sftp.emit.bind(sftp);
+    sftp.emit = ((ev: string, id: number, ...rest: unknown[]) =>
+      ev === failOp
+        ? sftp.status(id, STATUS_CODE.FAILURE, "Failure")
+        : emit(ev, id, ...rest)) as typeof sftp.emit;
+  }
   const real = (p: string) => join(root, posix.normalize(`/${p}`));
   const open = new Map<number, { fd?: number; dir?: string[]; path: string }>();
   let next = 0;
@@ -143,6 +151,8 @@ export function startFakeSftp(opts: {
   port?: number;
   listen?: string;
   denySftp?: boolean;
+  /** Nama permintaan SFTP (mis. "REMOVE") yang selalu dijawab FAILURE. */
+  fail?: string;
 }): Promise<FakeSftp> {
   const keys = utils.generateKeyPairSync("ed25519");
   const clients = new Set<Connection>();
@@ -171,7 +181,7 @@ export function startFakeSftp(opts: {
           const sftp = acceptSftp();
           // Seperti OpenSSH: EOF dari klien → kanal ditutup (rclone menunggu ini saat menutup koneksi).
           sftp.on("end", () => sftp.end());
-          serve(sftp, opts.root);
+          serve(sftp, opts.root, opts.fail);
         });
       });
     });

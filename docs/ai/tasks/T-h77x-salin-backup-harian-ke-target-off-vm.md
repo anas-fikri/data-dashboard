@@ -8,7 +8,7 @@ tags:
 depends_on:
   - T-023
 created: "2026-10-17T05:18:25Z"
-updated: "2026-10-19T06:14:00Z"
+updated: "2026-10-19T06:44:15Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -18,42 +18,27 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 57062
+    duration_ms: 53379
     summary: |-
-      > data-dashboard@0.1.0 check
-      > npm run lint && npm run typecheck && npm run test && npm run audit
+      …nts/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
 
-
-      > data-dashboard@0.1.0 lint
-      > eslint . && prettier --check .
-
-      Checking formatting...
-      All matched files use Prettier code style!
-
-      > data-dashboard@0.1.0 typecheck
-      > tsc --noEmit
-
-
-      > data-dashboard@0.1.0 test
-      > vitest run
-
-
-       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
-
-      {"level":40,"time":1792390411807,"service":"data-dashboard","host":"127.0.0.1","port":61077,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792390411871,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792390411897,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792390411899,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792390411906,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792390415204,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792392229055,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792392229079,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792392229081,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792392229085,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792392229945,"service":"data-dashboard","host":"127.0.0.1","port":49621,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792392229963,"service":"data-dashboard","host":"127.0.0.1","port":49621,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792392229969,"service":"data-dashboard","host":"127.0.0.1","port":49630,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792392229979,"service":"data-dashboard","host":"127.0.0.1","port":49632,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792392232542,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
 
        Test Files  149 passed (149)
-            Tests  1962 passed (1962)
-         Start at  13:13:18
-         Duration  39.84s (tests 81%, import 14%, transform 5%)
+            Tests  1963 passed (1963)
+         Start at  13:43:37
+         Duration  36.10s (tests 80%, import 15%, transform 5%)
 
-          Isolate  149 workers spawned · ~153ms startup each (spawn + environment, per file)
-                   at least ~2.38s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  149 workers spawned · ~145ms startup each (spawn + environment, per file)
+                   at least ~2.25s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -61,8 +46,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-19T06:14:00Z"
-    tree: 072461f7eb02ec8dab39eb26cab60290fa80b0e4306eae0d937b7e8d0244c328
+    at: "2026-10-19T06:44:15Z"
+    tree: 8f108246d6bc35bff601f0b4b281717769adcd157f1d4046eacc2b9f37821dc3
 ---
 
 ## Objective

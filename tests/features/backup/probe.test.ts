@@ -69,7 +69,7 @@ describe("probeOffsite", () => {
   it.each([
     ["password salah", { password: "salah" }, "Username atau password ditolak"],
     ["folder tidak ada", { folder: "/tidak-ada" }, "Folder /tidak-ada tidak ditemukan"],
-    ["folder tanpa izin tulis", { folder: "/hanya-baca" }, "tidak punya izin baca/tulis"],
+    ["folder tanpa izin tulis", { folder: "/hanya-baca" }, "tidak punya izin menulis file uji"],
     ["port tertutup", { port: 1 }, "Tidak bisa terhubung ke NAS"],
   ])("%s → pesan yang bisa ditindak", async (_n, over, text) => {
     const r = await probeOffsite(cfg(over));
@@ -93,6 +93,28 @@ describe("probeOffsite", () => {
       expect((r as { message: string }).message).toContain("Hak Istimewa Aplikasi");
     } finally {
       await dsm.close();
+    }
+  });
+
+  it("NAS menjawab FAILURE (kode 4) saat menghapus → langkah + pesan NAS disebut", async () => {
+    const dsm = await startFakeSftp({
+      root,
+      username: "dashboard-backup",
+      password: PASSWORD,
+      fail: "REMOVE",
+    });
+    try {
+      const r = await probeOffsite(cfg({ port: dsm.port }));
+      expect(r).toMatchObject({
+        ok: false,
+        message: expect.stringContaining(
+          "NAS menolak saat menghapus file uji (kode SFTP 4: Failure)",
+        ),
+      });
+    } finally {
+      await dsm.close();
+      for (const f of readdirSync(join(root, "backup-data-dashboard")))
+        rmSync(join(root, "backup-data-dashboard", f));
     }
   });
 
