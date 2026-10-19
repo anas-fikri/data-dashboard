@@ -12,13 +12,13 @@ ENV_FILE=${DEPLOY_ENV_FILE:-.env.prod}
 # Salinan terpisah di VM yang sama (latihan VM kosong T-tqse, deploy/empty-vm-drill.sh): file compose bernama
 # "dashboard", jadi project lain WAJIB disebut — tanpa itu container produksi ikut ditimpa.
 project=()
-if [ "$ENV_FILE" != .env.prod ]; then
+if [ "$(realpath -m "$ENV_FILE")" != "$(realpath -m .env.prod)" ]; then
   case "${DEPLOY_PROJECT:-}" in
     "" | dashboard) echo "DEPLOY_ENV_FILE butuh DEPLOY_PROJECT selain 'dashboard' (produksi)" >&2; exit 1 ;;
   esac
   project=(-p "$DEPLOY_PROJECT")
 fi
-COMPOSE=(docker compose "${project[@]}" --env-file "$ENV_FILE" -f docker-compose.prod.yml)
+COMPOSE=(docker compose ${project[@]+"${project[@]}"} --env-file "$ENV_FILE" -f docker-compose.prod.yml)
 NO_BUILD=
 [ "${1:-}" != --no-build ] || NO_BUILD=1
 
@@ -80,7 +80,7 @@ COMPOSE_PROFILES=$(grep '^COMPOSE_PROFILES=' "$ENV_FILE" | cut -d= -f2- || true)
 export COMPOSE_PROFILES
 start=$(date +%s)
 if [ -n "$NO_BUILD" ]; then
-  tag=$(grep '^IMAGE_TAG=' "$ENV_FILE" | cut -d= -f2-)
+  tag=$(sed -n 's/^IMAGE_TAG=//p' "$ENV_FILE" | tail -1)
   for i in app worker renderer backup; do
     docker image inspect "dashboard-$i:${tag:-latest}" >/dev/null 2>&1 ||
       { echo "image dashboard-$i:${tag:-latest} belum dimuat (deploy/images.sh load)" >&2; exit 1; }
@@ -114,5 +114,5 @@ for i in $(seq 1 30); do
   fi
   sleep 5
 done
-echo "Health belum hijau setelah 150 dtk — periksa: docker compose -f docker-compose.prod.yml ps / logs" >&2
+echo "Health belum hijau setelah 150 dtk — periksa: ${COMPOSE[*]} ps / logs" >&2
 exit 1

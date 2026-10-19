@@ -68,9 +68,15 @@ Disk mesin build sempit: alirkan langsung ke server tanpa berkas lokal —
 `bash deploy/images.sh save - <tag> | ssh <server> 'cat > /tmp/dashboard-images.tar.gz'`.
 
 **Latihan VM kosong** (tanpa menyentuh produksi): `bash deploy/empty-vm-drill.sh /tmp/dashboard-images.tar.gz`
-di folder aplikasi — memuat image, membuat salinan terpisah (project `dashboard-vmkosong`, port 9543/9544,
+di folder aplikasi — memuat image, membuat salinan terpisah (project `dashboard-vmkosong`, port 9643/9644,
 volume dan secret baru, PostgreSQL container), menjalankan `deploy.sh --no-build` sampai `/api/health` hijau,
-mencetak total waktu, lalu membongkar salinan itu. Hasil di olympus 2026-10-19: muat arsip 1,5 GB (4,0 GB tar) 61 dtk + deploy
+mencetak total waktu, lalu membongkar salinan itu. Penjaga: arsip bertag sama dengan produksi (mis. `latest`)
+→ tag produksi dikembalikan + latihan batal; keempat image wajib ada di arsip dengan satu tag. Image hasil
+muat tetap tersimpan (boleh dipakai untuk deploy produksi berikutnya, atau `docker rmi dashboard-*:<tag>`).
+VM yang benar-benar kosong juga menarik image caddy/redis/rustfs/postgres dari Docker Hub (waktu di bawah
+belum termasuk itu). Disk build sempit: build per image lalu `docker save dashboard-<image>:<tag> | gzip -1 |
+ssh <server> 'cat > /tmp/dashboard-<image>-<tag>.tar.gz'`, hapus image lokal, ulangi; latihan menerima
+beberapa arsip. Hasil di olympus 2026-10-19: muat arsip 1,5 GB (4,0 GB tar) 61 dtk + deploy
 sampai `/api/health` hijau 58 dtk = **120 dtk** (lapisan image sudah ada di VM itu; di VM kosong tambahkan
 waktu tulis ± 4 GB lapisan, dekompresinya sendiri 36 dtk). Build 4 image linux/amd64 di Mac (buildx, emulasi)
 ± 23 menit dan butuh ruang disk lega (± 10 GB sementara). Putaran utuh 2026-10-19: build di Mac satu
