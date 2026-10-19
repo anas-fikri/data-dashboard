@@ -38,10 +38,15 @@ describe("listenVersionActivated", () => {
     expect(RedisCtor).toHaveBeenCalledTimes(1);
     expect(subscribe).toHaveBeenCalledWith("dataset:version-activated");
 
+    // Bentuk baris Prisma (T-037): manifest segmen berisi file typed yang sama dengan Sheet.typedKey.
+    const sheet = (typedKey: string) => ({
+      typedKey,
+      segments: [{ segmentTyped: { typedKey } }],
+    });
     findFirst.mockResolvedValue({
       sheets: [
-        { typedKey: "parquet/ds/v1/s1/typed-1.parquet" },
-        { typedKey: "parquet/ds/v1/s2/typed-3.parquet" },
+        sheet("parquet/ds/v1/s1/typed-1.parquet"),
+        sheet("parquet/ds/v1/s2/typed-3.parquet"),
       ],
     });
     handlers.message!("dataset:version-activated", "bukan-id ; DROP");

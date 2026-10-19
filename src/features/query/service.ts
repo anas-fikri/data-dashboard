@@ -15,9 +15,14 @@
  *    juga dipakai anggaran cache hasil (N1);
  *  - timeout di-cache negatif sebentar agar spec mahal yang sama tidak bisa diulang gratis (F2).
  */
+import type { DuckDBValue } from "@duckdb/node-api";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { QueryTimeoutError, type EngineResult } from "@/lib/duckdb/engine";
-import { type AcquireOptions, type ParquetLease } from "@/lib/duckdb/parquet-cache";
+import {
+  type AcquireOptions,
+  type ParquetLease,
+  type ParquetLeases,
+} from "@/lib/duckdb/parquet-cache";
 import { storedFilterColumns, type FilterSourceColumn } from "@/features/dashboards/filter-columns";
 // Tipe saja: access.ts server-only + prisma, service ini juga dipakai test tanpa DB.
 import type { DashboardAccess, DashboardAccessRole } from "@/features/sharing/access";
@@ -47,6 +52,13 @@ import {
   type QuerySpec,
 } from "./spec";
 import { buildPivotSql, pivotOutTypes, shapePivot, type PivotData } from "./pivot";
+import {
+  sheetSource,
+  sourceKeys,
+  withSegments,
+  type ParquetSource,
+  type SegmentFile,
+} from "./source";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
 import {
@@ -142,6 +154,8 @@ export interface QueryRepo {
     typedKey: string | null;
     schemaRevision: number;
     schema: ColumnSchema[] | null;
+    /** Manifest segmen sheet urut ordinal (T-037); tidak ada/≤ 1 → typedKey saja. */
+    segments?: SegmentFile[];
   } | null>;
   /**
    * Sheet lama (versi mana pun dari dataset yang sama) + sheet versi aktif, untuk memetakan widget
@@ -238,7 +252,11 @@ export type FilterSource = FilterSourceColumn;
 
 export interface QueryDeps {
   repo: QueryRepo;
-  parquet: { acquire(key: string, opts?: AcquireOptions): Promise<ParquetLease> };
+  parquet: {
+    acquire(key: string, opts?: AcquireOptions): Promise<ParquetLease>;
+    /** Sewa semua segmen dalam satu admission (T-037); tidak ada → acquire satu per satu. */
+    acquireMany?(keys: string[], opts?: AcquireOptions): Promise<ParquetLeases>;
+  };
   engine: {
     withSlot<T>(userId: string, fn: () => Promise<T>): Promise<T>;
     /** Jatah user terpisah dari slot global (mesin sungguhan); lihat runOnParquet. */
@@ -246,7 +264,7 @@ export interface QueryDeps {
     withGlobal?<T>(fn: () => Promise<T>, waitMs?: number): Promise<T>;
     exec(
       sql: string,
-      params: Record<string, string | number | boolean>,
+      params: Record<string, DuckDBValue>,
       timeoutMs: number,
       signal?: AbortSignal,
     ): Promise<EngineResult>;
@@ -322,12 +340,34 @@ export const timeoutMessage = (ms: number) =>
  */
 export async function execOnParquet(
   userId: string,
-  key: string,
+  key: ParquetSource,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
   build: (path: string) => BuiltSql,
 ): Promise<{ ok: true; out: EngineResult } | QueryFailure> {
   const r = await runOnParquet(userId, key, deps, (path, exec) => exec(build(path)));
   return r.ok ? { ok: true, out: r.value } : r;
+}
+
+/** Sewa file sumber: satu kunci (perilaku lama) atau semua segmen dalam satu admission. */
+async function leaseSource(
+  parquet: QueryDeps["parquet"],
+  source: ParquetSource,
+  opts: AcquireOptions,
+): Promise<ParquetLeases> {
+  if (typeof source === "string") {
+    const l = await parquet.acquire(source, opts);
+    return { paths: [l.path], release: () => l.release() };
+  }
+  const keys = sourceKeys(source);
+  if (parquet.acquireMany) return parquet.acquireMany(keys, opts);
+  const leases: ParquetLease[] = [];
+  try {
+    for (const k of keys) leases.push(await parquet.acquire(k, opts));
+  } catch (e) {
+    for (const l of leases) l.release();
+    throw e;
+  }
+  return { paths: leases.map((l) => l.path), release: () => leases.forEach((l) => l.release()) };
 }
 
 /**
@@ -338,7 +378,7 @@ export async function execOnParquet(
  */
 export async function runOnParquet<T>(
   userId: string,
-  key: string,
+  key: ParquetSource,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
   work: (path: string, exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>) => Promise<T>,
 ): Promise<{ ok: true; value: T } | QueryFailure> {
@@ -351,7 +391,7 @@ export async function runOnParquet<T>(
   try {
     const value = await userGate(async (waitLeftMs) => {
       signal?.throwIfAborted();
-      const lease = await deps.parquet.acquire(key, {
+      const lease = await leaseSource(deps.parquet, key, {
         owner: userId,
         waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
       });
@@ -362,9 +402,12 @@ export async function runOnParquet<T>(
             signal?.throwIfAborted();
             const left = deadline - Date.now();
             if (left <= 0) throw new QueryTimeoutError();
-            return engine.exec(s.sql, s.params, Math.min(left, maxMs), signal);
+            // Banyak segmen: read_parquet($path) diganti daftar/proyeksi (source.ts).
+            const q =
+              typeof key === "string" ? s : withSegments(s, key.files, lease.paths, key.schema);
+            return engine.exec(q.sql, q.params, Math.min(left, maxMs), signal);
           };
-          return work(lease.path, exec);
+          return work(lease.paths[0]!, exec);
         }, waitLeftMs);
       } finally {
         lease.release();
@@ -472,8 +515,20 @@ async function runSpec(
     schemaRevision: sheet.schemaRevision,
     spec,
   });
-  return runAggPlan(userId, key, sheet.typedKey, resolved.plan, deps, t0);
+  const source = sourceOf({
+    typedKey: sheet.typedKey,
+    schema: sheet.schema,
+    segments: sheet.segments,
+  });
+  return runAggPlan(userId, key, source, resolved.plan, deps, t0);
 }
+
+/** Sumber query sheet yang sudah siap (typedKey + skema ada): satu file atau daftar segmen. */
+export const sourceOf = (sheet: {
+  typedKey: string;
+  schema: ColumnSchema[];
+  segments?: SegmentFile[];
+}): ParquetSource => sheetSource(sheet);
 
 /** Pesan umum COLUMN_UNAVAILABLE untuk viewer (catatan T-011): tanpa nama kolom lama/tersembunyi. */
 export const COLUMN_UNAVAILABLE_VIEWER = "Kolom yang dipakai widget ini tidak tersedia.";
@@ -530,7 +585,7 @@ function toTypedRows(
 async function runAggPlan(
   userId: string,
   key: string,
-  typedKey: string,
+  typedKey: ParquetSource,
   plan: Plan,
   deps: QueryDeps,
   t0: number,
@@ -579,7 +634,7 @@ async function runAggPlan(
 async function runPivotPlan(
   userId: string,
   key: string,
-  typedKey: string,
+  typedKey: ParquetSource,
   plan: Plan,
   shape: PivotShape,
   deps: QueryDeps,
@@ -682,7 +737,13 @@ export interface ResolvedWidget {
   /** Versi aktif dataset yang dipakai (kunci cache hasil). */
   versionId: string;
   config: Exclude<WidgetConfig, { type: "empty" }>;
-  sheet: { typedKey: string; schemaRevision: number; schema: ColumnSchema[] };
+  sheet: {
+    typedKey: string;
+    schemaRevision: number;
+    schema: ColumnSchema[];
+    /** Manifest segmen (T-037): ekspor mengunduh semua file sumber. */
+    segments?: SegmentFile[];
+  };
   planned: Extract<WidgetPlan, { ok: true }>;
   /** Filter dashboard yang berlaku (klausa kanonik) + nama yang dilewati. */
   dash: { clauses: DashClause[]; skipped: string[] };
@@ -766,7 +827,12 @@ export async function resolveWidget(
     ok: true,
     versionId: w.activeVersionId,
     config,
-    sheet: { typedKey: sheet.typedKey, schemaRevision: sheet.schemaRevision, schema: sheet.schema },
+    sheet: {
+      typedKey: sheet.typedKey,
+      schemaRevision: sheet.schemaRevision,
+      schema: sheet.schema,
+      ...(sheet.segments ? { segments: sheet.segments } : {}),
+    },
     planned,
     dash,
     absent: absentNames(config, sheet.schema),
@@ -811,7 +877,7 @@ async function widgetResult(
           ...keyParts,
           spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey },
         }),
-        sheet.typedKey,
+        sourceOf(sheet),
         { ...planned.plan, dash: dash.clauses },
         planned.pivot,
         deps,
@@ -830,7 +896,7 @@ async function widgetResult(
             ? { chart: planned.spec, dash: dashKey }
             : { ...planned.spec, dash: dashKey },
         }),
-        sheet.typedKey,
+        sourceOf(sheet),
         { ...planned.plan, dash: dash.clauses },
         deps,
         t0,
@@ -856,7 +922,7 @@ async function widgetResult(
   const knownTotal =
     countHit && "rows" in countHit ? Number(countHit.rows[0]?.[0] ?? 0) : undefined;
 
-  const r = await runOnParquet(userId, sheet.typedKey, deps, async (path, exec) => {
+  const r = await runOnParquet(userId, sourceOf(sheet), deps, async (path, exec) => {
     const total = knownTotal ?? Number((await exec(buildTableCount(plan, path))).rows[0]?.[0] ?? 0);
     // Halaman di luar data dijepit ke halaman terakhir — tidak ada OFFSET mahal tanpa hasil (M1).
     const at = Math.min(page, Math.max(0, Math.ceil(total / TABLE_PAGE_SIZE) - 1));

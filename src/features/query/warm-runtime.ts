@@ -23,11 +23,27 @@ async function activeKeys(versionId: string): Promise<string[] | null> {
       sheets: {
         where: { typedKey: { not: null } },
         orderBy: { index: "asc" },
-        select: { typedKey: true },
+        select: {
+          typedKey: true,
+          // Semua file typed manifest (T-037): kunci sama dengan sumber query.
+          segments: {
+            orderBy: { ordinal: "asc" },
+            select: { segmentTyped: { select: { typedKey: true } } },
+          },
+        },
       },
     },
   });
-  return v && v.sheets.flatMap((s) => (s.typedKey ? [s.typedKey] : []));
+  return (
+    v &&
+    v.sheets.flatMap((s) =>
+      s.segments.length
+        ? s.segments.map((m) => m.segmentTyped.typedKey)
+        : s.typedKey
+          ? [s.typedKey]
+          : [],
+    )
+  );
 }
 
 export function parquetWarmer(): Warmer {

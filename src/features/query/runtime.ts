@@ -75,9 +75,25 @@ export const prismaQueryRepo: QueryRepo = {
   async sheet(versionId, sheetId) {
     const s = await prisma.sheet.findFirst({
       where: { id: sheetId, versionId },
-      select: { typedKey: true, schemaRevision: true, schema: true },
+      select: {
+        typedKey: true,
+        schemaRevision: true,
+        schema: true,
+        // Manifest segmen (ADR-0008, T-037): sumber query = daftar file typed urut ordinal.
+        segments: {
+          orderBy: { ordinal: "asc" },
+          select: { segmentTyped: { select: { typedKey: true, legacyRow: true, columns: true } } },
+        },
+      },
     });
-    return s && { ...s, schema: (s.schema as unknown as ColumnSchema[] | null) ?? null };
+    return (
+      s && {
+        typedKey: s.typedKey,
+        schemaRevision: s.schemaRevision,
+        schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
+        segments: s.segments.map((m) => m.segmentTyped),
+      }
+    );
   },
   sheetHistory(datasetId, activeVersionId, sheetId) {
     // Widget lama dibaca berulang (tiap muat dashboard): skema lama + daftar sheet aktif di-cache sebentar.

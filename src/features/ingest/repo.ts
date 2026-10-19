@@ -69,7 +69,12 @@ const MANIFEST_ORDINAL = 0;
 async function linkTyped(
   tx: Prisma.TransactionClient,
   sheetId: string,
-  typed: { typedKey: string; schemaRevision: number; headerRow?: number },
+  typed: {
+    typedKey: string;
+    schemaRevision: number;
+    schema: Pick<ColumnSchema, "pos">[];
+    headerRow?: number;
+  },
   segmentId?: string,
 ): Promise<void> {
   const where = { sheetId_ordinal: { sheetId, ordinal: MANIFEST_ORDINAL } };
@@ -87,7 +92,13 @@ async function linkTyped(
     await tx.segment.update({ where: { id: seg }, data: { headerRow: typed.headerRow } });
   }
   const t = await tx.segmentTyped.create({
-    data: { segmentId: seg, typedKey: typed.typedKey, schemaRevision: typed.schemaRevision },
+    data: {
+      segmentId: seg,
+      typedKey: typed.typedKey,
+      schemaRevision: typed.schemaRevision,
+      // Posisi c<pos> di file (T-037): typed memuat semua kolom skema, termasuk kolom kosong.
+      columns: [...new Set(typed.schema.map((c) => c.pos))].sort((a, b) => a - b),
+    },
     select: { id: true },
   });
   await tx.sheetSegment.upsert({

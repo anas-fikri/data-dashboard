@@ -81,6 +81,24 @@ describe("createWarmer", () => {
     expect(log.warn).not.toHaveBeenCalled();
   });
 
+  it("T-037 AC4: versi baru dengan satu segmen tambahan → hanya segmen baru diunduh (tanpa HEAD/anggaran untuk yang sudah ada)", async () => {
+    // Anggaran versi 15 (separuh 30): 23 segmen lama × 10 akan menghabiskannya bila ikut dihitung.
+    const f = fakeCache(30);
+    const cached = new Set(Array.from({ length: 23 }, (_, k) => `seg/${k}/typed-1.parquet`));
+    const cache: WarmCache = { ...f.cache, has: (key) => cached.has(key) };
+    const keys = [...cached, "seg/23/typed-1.parquet"];
+    const { d, log } = deps({ activeKeys: vi.fn(async () => keys) }, cache);
+    await createWarmer(d).warm(V1);
+    // Semua disewa (yang lama hanya disentuh untuk LRU), tetapi HEAD + unduhan hanya segmen baru.
+    expect(f.acquired).toEqual(keys);
+    expect(d.sizeOf).toHaveBeenCalledTimes(1);
+    expect(d.sizeOf).toHaveBeenCalledWith("seg/23/typed-1.parquet", expect.anything());
+    expect(log.info).toHaveBeenCalledWith(
+      expect.objectContaining({ cached: 23 }),
+      "cache parquet versi aktif dipanaskan",
+    );
+  });
+
   it("pemicu bersamaan untuk versi yang sama digabung: satu putaran, satu sewa per kunci", async () => {
     const f = fakeCache();
     const { d } = deps({}, f.cache);

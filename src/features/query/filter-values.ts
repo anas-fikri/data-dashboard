@@ -20,6 +20,7 @@ import {
   fail,
   rowBytes,
   runOnParquet,
+  sourceOf,
   timeoutMessage,
   TIMEOUT_CACHE_MS,
   toJson,
@@ -129,7 +130,13 @@ export async function runFilterValues(
     return { ok: true, type: col.type, values: hit.filterValues, truncated: hit.truncated };
   }
 
-  const r = await runOnParquet(userId, sheet.typedKey, limited, (path, exec) =>
+  const source = sourceOf({
+    typedKey: sheet.typedKey,
+    // col ditemukan di skema → skema ada.
+    schema: sheet.schema ?? [],
+    segments: sheet.segments,
+  });
+  const r = await runOnParquet(userId, source, limited, (path, exec) =>
     exec(buildFilterValuesSql({ col: `c${col.pos}`, type: col.type, float: col.float }, q, path)),
   );
   if (!r.ok) {

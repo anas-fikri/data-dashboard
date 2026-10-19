@@ -21,7 +21,13 @@ import {
   type RecastInput,
   type RecastOutcome,
 } from "@/features/ingest/recast-input";
-import { execOnParquet, toJson, type QueryDeps, type QueryFailure } from "@/features/query/service";
+import {
+  execOnParquet,
+  sourceOf,
+  toJson,
+  type QueryDeps,
+  type QueryFailure,
+} from "@/features/query/service";
 
 /** Baris sampel typed per sheet (AC 2) dan batas lebar/panjang sel yang dikirim ke browser. */
 export const SAMPLE_ROWS = 50;
@@ -205,7 +211,12 @@ export async function sampleRows(
     return { ok: false, code: "NOT_READY", message: "Sheet ini belum siap." };
   }
   const shown = [...sheet.schema].sort((a, b) => a.pos - b.pos).slice(0, SAMPLE_COLS);
-  const r = await execOnParquet(userId, sheet.typedKey, deps, (path) => ({
+  const source = sourceOf({
+    typedKey: sheet.typedKey,
+    schema: sheet.schema,
+    segments: sheet.segments,
+  });
+  const r = await execOnParquet(userId, source, deps, (path) => ({
     sql: sampleSql(shown),
     params: { path },
   }));

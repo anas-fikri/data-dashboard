@@ -3,6 +3,7 @@
  * arah urut dari enum tertutup, semua nilai user lewat parameter binding ($p1, $p2, …). Path parquet
  * juga parameter. Murni (tanpa I/O).
  */
+import type { DuckDBValue } from "@duckdb/node-api";
 import type { ColumnType } from "@/features/ingest/infer";
 import { ident } from "@/lib/duckdb";
 import type { DashClause } from "./filters";
@@ -10,7 +11,8 @@ import type { Plan, PlanFilter } from "./spec";
 
 export interface BuiltSql {
   sql: string;
-  params: Record<string, string | number | boolean>;
+  /** DuckDBValue: daftar path segmen dikirim sebagai listValue (T-037). */
+  params: Record<string, DuckDBValue>;
 }
 
 const OP_SQL = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;

@@ -37,6 +37,8 @@ export interface WarmLog {
 export interface WarmCache {
   readonly maxBytes: number;
   acquire(key: string): Promise<{ release(): void }>;
+  /** File sudah ada di cache (T-037): dilewati tanpa HEAD dan tanpa memakai anggaran versi. */
+  has?(key: string): boolean;
 }
 
 export interface WarmDeps {
@@ -86,6 +88,7 @@ export function createWarmer(deps: WarmDeps, opts: WarmOptions = {}): Warmer {
     let files = 0;
     let bytes = 0;
     let skipped = 0;
+    let cached = 0;
     try {
       const keys = await step(() => deps.activeKeys(versionId));
       if (!keys) {
@@ -95,6 +98,14 @@ export function createWarmer(deps: WarmDeps, opts: WarmOptions = {}): Warmer {
       const cache = deps.cache();
       let budget = Math.floor(cache.maxBytes / 2);
       for (const key of keys) {
+        // Segmen lama sheet periode sudah di cache: hanya segmen baru yang diunduh (T-037 AC 4). File
+        // yang ada tetap disentuh (sewa + lepas, tanpa unduh/HEAD/anggaran) agar tidak paling dulu
+        // tergusur LRU oleh unduhan segmen barunya.
+        if (cache.has?.(key)) {
+          (await cache.acquire(key)).release();
+          cached++;
+          continue;
+        }
         const size = await step((signal) => deps.sizeOf(key, signal));
         if (size > budget) {
           skipped++;
@@ -129,7 +140,7 @@ export function createWarmer(deps: WarmDeps, opts: WarmOptions = {}): Warmer {
         bytes += size;
       }
       deps.log.info(
-        { versionId, files, bytes, skipped, ms: Date.now() - t0 },
+        { versionId, files, bytes, skipped, cached, ms: Date.now() - t0 },
         "cache parquet versi aktif dipanaskan",
       );
     } catch (e) {

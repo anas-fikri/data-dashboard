@@ -23,6 +23,13 @@ try {
     "lineage lintas dataset": await one(`
       SELECT count(*) AS n FROM "Sheet" s JOIN "DatasetVersion" v ON v.id = s."versionId"
       JOIN "SheetLineage" l ON l.id = s."lineageId" WHERE l."datasetId" <> v."datasetId"`),
+    // T-037: posisi kolom file typed di manifest = posisi skema sheet.
+    "file typed manifest dengan kolom beda dari skema": await one(`
+      SELECT count(*) AS n FROM "SheetSegment" m JOIN "SegmentTyped" t ON t.id = m."segmentTypedId"
+      JOIN "Sheet" s ON s.id = m."sheetId"
+      WHERE jsonb_typeof(s."schema") = 'array' AND t."columns" IS DISTINCT FROM (
+        SELECT array_agg(DISTINCT (e->>'pos')::int ORDER BY (e->>'pos')::int)
+        FROM jsonb_array_elements(s."schema") e)`),
     // Hanya file typed yang dirujuk manifest: pemetaan bisa memberi segmen legacy rowBase baru
     // (typed ditulis ulang, baris SegmentTyped legacy lama tidak lagi dirujuk).
     "segmen legacy dengan rowBase bukan 0": await one(`

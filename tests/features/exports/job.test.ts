@@ -204,6 +204,39 @@ describe("runExportJob", () => {
     expect(rows[1]![6]).toBe("=1+1");
   });
 
+  it("T-037: sheet bermanifest 2 segmen → kedua file diunduh ke direktori kerja dan dibaca sebagai satu sheet", async () => {
+    const SECOND = "parquet/ds/v/s2/typed-1.parquet";
+    const repo = fakeQueryRepo();
+    const base = repo.sheet.bind(repo);
+    const sheet: typeof repo.sheet = async (v, s) => {
+      const r = await base(v, s);
+      return (
+        r && {
+          ...r,
+          segments: [
+            { typedKey: TYPED_KEY, legacyRow: false, columns: [] },
+            { typedKey: SECOND, legacyRow: false, columns: [] },
+          ],
+        }
+      );
+    };
+    const downloaded: string[] = [];
+    const t = setup({ deps: { query: { repo: { ...repo, sheet } } } });
+    t.deps.storage = {
+      ...t.storage,
+      download: async (key: string, dest: string) => {
+        downloaded.push(key);
+        copyFileSync(fixture, dest);
+      },
+    };
+    expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({
+      outcome: "done",
+      rows: 2 * ROWS,
+    });
+    expect(downloaded).toEqual([TYPED_KEY, SECOND]);
+    expect(readdirSync(t.tmpRoot)).toEqual([]);
+  });
+
   describe("pivot (T-9bc2)", () => {
     // Fixture: Cabang (baris) × bulan Tanggal (pemisah), nilai = Total Omzet.
     const months = ["Jan 2026", "Feb 2026", "Mar 2026"];

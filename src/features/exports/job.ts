@@ -15,8 +15,10 @@
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { DuckDBConnection } from "@duckdb/node-api";
-import { forRole, resolveWidget, type QueryDeps } from "@/features/query/service";
+import type { DuckDBConnection, DuckDBValue } from "@duckdb/node-api";
+import { forRole, resolveWidget, sourceOf, type QueryDeps } from "@/features/query/service";
+import { sourceKeys, withSegments } from "@/features/query/source";
+import type { BuiltSql } from "@/features/query/sql";
 import type { OutColumn } from "@/features/query/spec";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
 import { exportKey } from "@/lib/storage/exports";
@@ -184,11 +186,7 @@ export async function rowGroupOf(conn: DuckDBConnection, src: string): Promise<n
   return Number.isFinite(n) && n > 0 ? Math.min(n, 122_880) : 122_880;
 }
 
-async function countRows(
-  conn: DuckDBConnection,
-  sql: string,
-  params: Record<string, string | number | boolean>,
-) {
+async function countRows(conn: DuckDBConnection, sql: string, params: Record<string, DuckDBValue>) {
   const r = await conn.runAndReadAll(sql, params);
   return Number(r.getRows()[0]?.[0] ?? 0);
 }
@@ -231,13 +229,23 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
   let duck: Duck | null = null;
   let uploaded = false;
   try {
-    const src = join(work, "typed.parquet");
-    await deps.storage.download(
-      resolved.sheet.typedKey,
-      src,
-      AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+    // Semua segmen manifest sheet (T-037) diunduh ke direktori kerja; satu segmen = typed.parquet.
+    const source = sourceOf(resolved.sheet);
+    const keys = sourceKeys(source);
+    const paths = keys.map((_, i) =>
+      join(work, keys.length === 1 ? "typed.parquet" : `typed-${i}.parquet`),
     );
-    if (Date.now() > deadline) throw new ExportDeadlineError();
+    for (const [i, k] of keys.entries()) {
+      await deps.storage.download(
+        k,
+        paths[i]!,
+        AbortSignal.timeout(Math.max(1, deadline - Date.now())),
+      );
+      if (Date.now() > deadline) throw new ExportDeadlineError();
+    }
+    const src = paths[0]!;
+    const seg = (b: BuiltSql): BuiltSql =>
+      typeof source === "string" ? b : withSegments(b, source.files, paths, source.schema);
     const d = (duck = await openExportDuck(work, deps.duckMemory));
     const watch = async () => {
       if (Date.now() > deadline) throw new ExportDeadlineError();
@@ -249,17 +257,18 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
     if (resolved.planned.kind === "pivot") {
       // Pivot (T-9bc2): tabel tersusun seperti layar (batas tampil 200 × 40), bukan SELECT datar.
       rows = await watched(d, watch, () =>
-        writePivotExport(d.conn, resolved, src, ext, out, sheetName(row.title ?? "")),
+        writePivotExport(d.conn, resolved, src, ext, out, sheetName(row.title ?? ""), seg),
       );
     } else {
-      const count = buildExportCount(resolved, src);
+      const counted = buildExportCount(resolved, src);
+      const count = counted && seg(counted);
       if (count) {
         const n = await watched(d, watch, () => countRows(d.conn, count.sql, count.params));
         if (n > deps.maxRows) {
           return await failWith(EXPORT_CODES.EXPORT_TOO_LARGE, tooLargeMessage(n, deps.maxRows));
         }
       }
-      const built = buildExportSql(resolved, src, ext, deps.maxRows);
+      const built = seg(buildExportSql(resolved, src, ext, deps.maxRows));
       const cols = exportColumns(resolved);
       rows = await watched(d, watch, async () => {
         if (ext === "csv") {

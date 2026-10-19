@@ -4,6 +4,7 @@
  * (enable_external_access=false + allowed_directories), lalu lock_configuration sehingga query tidak
  * bisa mengubahnya. Satu koneksi per query; slot global dan per user; timeout → interrupt.
  */
+import type { DuckDBValue } from "@duckdb/node-api";
 import { mkdirSync } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { lit } from "./index";
@@ -188,7 +189,7 @@ export class QueryEngine {
    */
   async exec(
     sql: string,
-    params: Record<string, string | number | boolean>,
+    params: Record<string, DuckDBValue>,
     timeoutMs: number,
     signal?: AbortSignal,
   ): Promise<EngineResult> {
@@ -224,7 +225,7 @@ export class QueryEngine {
   run(
     userId: string,
     sql: string,
-    params: Record<string, string | number | boolean>,
+    params: Record<string, DuckDBValue>,
     timeoutMs: number,
   ): Promise<EngineResult> {
     return this.withSlot(userId, () => this.exec(sql, params, timeoutMs));

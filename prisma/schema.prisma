@@ -247,6 +247,9 @@ model SegmentTyped {
   typedKey       String
   /// File typed lama (sebelum T-036): `_row INTEGER` = baris fisik, tanpa `_src_row`.
   legacyRow      Boolean        @default(false)
+  /// Posisi c<pos> yang ada di file (T-037): kelompok skema untuk proyeksi eksplisit saat segmen satu
+  /// sheet berbeda kolom (NULL AS c<pos> untuk yang tidak punya).
+  columns        Int[]          @default([])
   sheets         SheetSegment[]
   createdAt      DateTime       @default(now())
 

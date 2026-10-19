@@ -13,6 +13,7 @@ import { writeFile } from "node:fs/promises";
 import type { DuckDBConnection } from "@duckdb/node-api";
 import { buildPivotSql, pivotOutTypes, shapePivot } from "@/features/query/pivot";
 import { toJson, type ResolvedWidget } from "@/features/query/service";
+import type { BuiltSql } from "@/features/query/sql";
 import { columnNames, pivotTable, type PivotTableModel } from "@/features/widgets/pivot-table";
 import { csvHeader, neutraliseCsv, quoteCsv } from "./csv";
 import { writeXlsx, type XlsxColumn, type XlsxKind } from "./xlsx";
@@ -100,11 +101,13 @@ export async function writePivotExport(
   ext: "csv" | "xlsx",
   outPath: string,
   sheetName: string,
+  /** Sumber banyak segmen (T-037): read_parquet($path) diganti daftar/proyeksi. */
+  rewrite: (b: BuiltSql) => BuiltSql = (b) => b,
 ): Promise<number> {
   if (resolved.planned.kind !== "pivot") throw new Error("bukan widget pivot");
   const shape = resolved.planned.pivot;
   const plan = { ...resolved.planned.plan, dash: resolved.dash.clauses };
-  const built = buildPivotSql(plan, shape, parquetPath);
+  const built = rewrite(buildPivotSql(plan, shape, parquetPath));
   const raw = (await conn.runAndReadAll(built.sql, built.params)).getRowsJS() as unknown[][];
   const types = pivotOutTypes(plan, shape);
   const data = shapePivot(

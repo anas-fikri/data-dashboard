@@ -41,6 +41,12 @@ export interface ParquetLease {
   release(): void;
 }
 
+/** Sewa beberapa file (acquireMany): path urut kunci yang diminta. */
+export interface ParquetLeases {
+  paths: string[];
+  release(): void;
+}
+
 export interface AcquireOptions {
   /** User yang meminta: membatasi unduhan yang ia mulai (perOwnerDownloads). */
   owner?: string;
@@ -128,6 +134,11 @@ export class ParquetCache {
     return n;
   }
 
+  /** File `key` sudah ada di disk lokal (pemanasan melewatinya, T-037). */
+  has(key: string): boolean {
+    return this.entries.has(this.nameOf(key));
+  }
+
   /** Unduhan yang sedang berjalan (bukan yang antre). */
   get activeDownloads(): number {
     return this.downloading;
@@ -151,20 +162,81 @@ export class ParquetCache {
       const job = this.pending.get(name) ?? this.start(name, key, opts.owner);
       e = await this.wait(job.done, opts.waitMs);
     }
+    return this.lease(name, e);
+  }
+
+  /** Naikkan refs entri (tidak bisa dibuang LRU) dan kembalikan sewanya. Sinkron. */
+  private lease(name: string, e: Entry): ParquetLease {
     e.refs++;
     this.touch(e);
     let released = false;
-    const entry = e;
     return {
-      path: entry.file,
+      path: e.file,
       release: () => {
         if (released) return;
         released = true;
-        entry.refs--;
-        if (entry.refs === 0 && entry.transient) this.drop(name, entry);
+        e.refs--;
+        if (e.refs === 0 && e.transient) this.drop(name, e);
         this.evict(0);
       },
     };
+  }
+
+  /**
+   * Sewa beberapa file sekaligus (segmen satu sheet, T-037) dalam SATU admission: file yang sudah ada
+   * langsung disewa (tidak bisa tergusur selama menunggu yang lain), unduhan yang kurang dimulai
+   * bersama dan dihitung satu jatah unduhan owner (perOwnerDownloads) — bukan satu per file, yang
+   * membuat sheet 24 segmen dingin QUERY_BUSY berulang. maxDownloads tetap membatasi unduhan yang
+   * berjalan (sisanya antre). Lewat waitMs → DownloadPendingError, unduhan berlanjut di background.
+   */
+  async acquireMany(keys: string[], opts: AcquireOptions = {}): Promise<ParquetLeases> {
+    const leases: (ParquetLease | undefined)[] = Array.from({ length: keys.length });
+    // Sewa yang datang setelah batch menyerah (waitMs/galat) langsung dilepas, tidak pernah tertahan.
+    let abandoned = false;
+    const releaseAll = () => {
+      for (const l of leases) l?.release();
+    };
+    const names = keys.map((k) => this.nameOf(k));
+    // Yang sudah ada disewa SINKRON (tanpa await): status tidak bisa berubah antara cek dan sewa, dan
+    // refs > 0 mencegahnya dibuang LRU selama yang lain diunduh.
+    names.forEach((name, i) => {
+      const e = this.entries.get(name);
+      if (e) leases[i] = this.lease(name, e);
+    });
+    const missing = keys.flatMap((key, i) => (leases[i] ? [] : [{ i, key, name: names[i]! }]));
+    const owner = opts.owner;
+    try {
+      const starts = missing.filter((m) => !this.pending.has(m.name));
+      if (starts.length && owner !== undefined) {
+        const n = this.owners.get(owner) ?? 0;
+        if (n >= (this.o.perOwnerDownloads ?? 1)) throw new DownloadPendingError();
+        this.owners.set(owner, n + 1);
+      }
+      const jobs = missing.map((m) => this.pending.get(m.name) ?? this.start(m.name, m.key));
+      if (starts.length && owner !== undefined) {
+        void Promise.allSettled(jobs.map((j) => j.done)).then(() => {
+          const n = (this.owners.get(owner) ?? 1) - 1;
+          if (n <= 0) this.owners.delete(owner);
+          else this.owners.set(owner, n);
+        });
+      }
+      // Setiap file disewa begitu unduhannya selesai: tidak tergusur unduhan lain dalam batch ini,
+      // dan file > maxBytes (transient) tidak dibuang sebelum dipakai.
+      const ready = Promise.all(
+        missing.map((m, j) =>
+          jobs[j]!.done.then((e) => {
+            if (abandoned) return;
+            leases[m.i] = this.lease(m.name, e);
+          }),
+        ),
+      );
+      if (missing.length) await this.wait(ready, opts.waitMs);
+    } catch (e) {
+      abandoned = true;
+      releaseAll();
+      throw e;
+    }
+    return { paths: leases.map((l) => l!.path), release: releaseAll };
   }
 
   /** Hapus file `key` (data dihapus): segera bila tidak dipakai, selain itu setelah query selesai. */
@@ -212,7 +284,7 @@ export class ParquetCache {
     return job;
   }
 
-  private async wait(done: Promise<Entry>, waitMs?: number): Promise<Entry> {
+  private async wait<T>(done: Promise<T>, waitMs?: number): Promise<T> {
     if (waitMs === undefined) return done;
     let timer: NodeJS.Timeout | undefined;
     try {
