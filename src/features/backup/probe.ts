@@ -81,7 +81,7 @@ function connect(
         err
           ? reject(
               new ProbeError(
-                "Login berhasil, tetapi layanan SFTP ditolak. Aktifkan SFTP di DSM: Panel Kontrol › Layanan File › FTP › SFTP.",
+                "Login berhasil, tetapi NAS menolak SFTP untuk akun atau port ini. Periksa di DSM: SFTP aktif dengan nomor port yang sama dengan Port SFTP di sini (Panel Kontrol › Layanan File › FTP › SFTP), dan akun ini diizinkan memakai SFTP (Panel Kontrol › Hak Istimewa Aplikasi › SFTP).",
               ),
             )
           : resolve(sftp),

@@ -142,6 +142,7 @@ export function startFakeSftp(opts: {
   password: string;
   port?: number;
   listen?: string;
+  denySftp?: boolean;
 }): Promise<FakeSftp> {
   const keys = utils.generateKeyPairSync("ed25519");
   const clients = new Set<Connection>();
@@ -164,7 +165,9 @@ export function startFakeSftp(opts: {
     });
     client.on("ready", () => {
       client.on("session", (accept) => {
-        accept().on("sftp", (acceptSftp) => {
+        accept().on("sftp", (acceptSftp, rejectSftp) => {
+          // Seperti DSM dengan SFTP mati / akun tanpa hak SFTP: login diterima, subsistem ditolak.
+          if (opts.denySftp) return rejectSftp();
           const sftp = acceptSftp();
           // Seperti OpenSSH: EOF dari klien → kanal ditutup (rclone menunggu ini saat menutup koneksi).
           sftp.on("end", () => sftp.end());

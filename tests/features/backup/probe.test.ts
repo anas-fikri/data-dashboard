@@ -77,6 +77,25 @@ describe("probeOffsite", () => {
     expect(JSON.stringify(r)).not.toContain(PASSWORD);
   });
 
+  it("login diterima tetapi subsistem SFTP ditolak (SFTP mati / akun tanpa hak) → sebut port + hak akun", async () => {
+    const dsm = await startFakeSftp({
+      root,
+      username: "dashboard-backup",
+      password: PASSWORD,
+      denySftp: true,
+    });
+    try {
+      const r = await probeOffsite(cfg({ port: dsm.port }));
+      expect(r).toMatchObject({
+        ok: false,
+        message: expect.stringContaining("menolak SFTP untuk akun atau port ini"),
+      });
+      expect((r as { message: string }).message).toContain("Hak Istimewa Aplikasi");
+    } finally {
+      await dsm.close();
+    }
+  });
+
   it("file uji tidak tertinggal di folder tanpa izin tulis", () => {
     expect(existsSync(join(root, "hanya-baca"))).toBe(true);
     expect(readdirSync(join(root, "hanya-baca"))).toEqual([]);
