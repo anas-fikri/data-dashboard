@@ -22,6 +22,8 @@ x-app-env: &app-env
   # Alamat resmi (link email, cookie, HSTS): domain publik bila ada (APP_PUBLIC_HOST, di belakang reverse
   # proxy mis. Nginx Proxy Manager), selain itu APP_HOST. Akses lewat APP_HOST tetap jalan.
   APP_URL: https://${APP_PUBLIC_HOST:-${APP_HOST:?isi APP_HOST di .env.prod}}
+  # Origin kedua yang sah (cek same-origin API/login): akses langsung lewat APP_HOST.
+  APP_LAN_URL: https://${APP_HOST}
   APP_HOST: ${APP_HOST}
   TRUST_PROXY: "true"
   AUTH_SECRET: ${AUTH_SECRET:?}

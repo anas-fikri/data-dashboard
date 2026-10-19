@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { hit, type RateLimitRule } from "@/features/auth/rate-limit";
 import { AuthError, requireUser, type SessionUser } from "@/features/auth/session";
-import { env } from "@/lib/env";
+import { appOrigins } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
@@ -37,11 +37,15 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
   return NextResponse.json(body, { status, headers: { ...noStore, ...headers } });
 }
 
-export function isSameOrigin(req: NextRequest, appUrl: string): boolean {
+/** Origin permintaan termasuk origin sah aplikasi (`appOrigins()`: domain publik + akses LAN, T-9t9b). */
+export function isSameOrigin(req: NextRequest, allowed: string | readonly string[]): boolean {
   const origin = req.headers.get("origin");
   if (!origin) return false;
   try {
-    return new URL(origin).origin === new URL(appUrl).origin;
+    const own = new URL(origin).origin;
+    return (typeof allowed === "string" ? [allowed] : allowed).some(
+      (u) => new URL(u).origin === own,
+    );
   } catch {
     return false;
   }
@@ -64,7 +68,7 @@ export async function uploadRoute<T>(
   rule: RateLimitRule | null,
   handler: (user: SessionUser, body: Record<string, unknown>) => Promise<UploadResult<T>>,
 ): Promise<NextResponse> {
-  if (!isSameOrigin(req, env().APP_URL)) {
+  if (!isSameOrigin(req, appOrigins())) {
     return json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
   }
   let user: SessionUser;

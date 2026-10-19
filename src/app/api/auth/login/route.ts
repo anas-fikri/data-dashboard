@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { clientIp } from "@/features/auth/rate-limit";
 import * as service from "@/features/auth/service";
 import { createSession, knownDeviceUserId } from "@/features/auth/session";
-import { env } from "@/lib/env";
+import { appOrigins, env } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ function isSameOriginJson(request: Request): boolean {
   const type = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (type !== "application/json") return false;
   const origin = request.headers.get("origin");
-  return !origin || origin === new URL(env().APP_URL).origin;
+  return !origin || appOrigins().includes(origin);
 }
 
 /** Login JSON untuk klien non-form (dan bukti AC: 429 saat rate limit). Menulis cookie sesi yang sama. */

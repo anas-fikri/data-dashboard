@@ -4,7 +4,7 @@ import { hit, RULES } from "@/features/auth/rate-limit";
 import { isSameOrigin } from "@/features/uploads/http";
 import { json as routeJson, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { redisReady } from "@/lib/redis";
-import { env } from "@/lib/env";
+import { appOrigins } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { runFilterValues } from "./filter-values";
@@ -38,7 +38,7 @@ const noStore = { "Cache-Control": "no-store" };
 const json = (body: unknown, status = 200) => NextResponse.json(body, { status, headers: noStore });
 
 export async function runtimeQuery(req: NextRequest, userId: string): Promise<NextResponse> {
-  if (!isSameOrigin(req, env().APP_URL)) {
+  if (!isSameOrigin(req, appOrigins())) {
     return json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
   }
   const rl = await hit(await redisReady(), RULES.query, userId);

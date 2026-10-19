@@ -5,7 +5,7 @@ import { CAPTION_MAX_BYTES } from "@/features/guides/media";
 import { videoCaptionKey } from "@/features/guides/reader";
 import { removeVideoCaption, setVideoCaption } from "@/features/guides/videos";
 import { isSameOrigin, uploadRoute } from "@/features/uploads/http";
-import { env } from "@/lib/env";
+import { appOrigins, env } from "@/lib/env";
 import { readBytesLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
@@ -53,7 +53,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ id: string
  * signature WEBVTT + UTF-8 diperiksa di service, Content-Type objek ditetapkan server.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (!isSameOrigin(req, env().APP_URL))
+  if (!isSameOrigin(req, appOrigins()))
     return json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
   let user;
   try {

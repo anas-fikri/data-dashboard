@@ -90,7 +90,8 @@ describe("validasi init", () => {
     expect(cleanFileName("a".repeat(300))).toBeNull();
   });
 
-  it("Origin harus sama persis dengan APP_URL", () => {
+  it("Origin harus sama persis dengan APP_URL", async () => {
+    const { appOrigins } = await vi.importActual<typeof import("@/lib/env")>("@/lib/env");
     const req = (origin: string | null) =>
       ({ headers: new Headers(origin ? { origin } : {}) }) as unknown as Parameters<
         typeof isSameOrigin
@@ -98,6 +99,16 @@ describe("validasi init", () => {
     expect(isSameOrigin(req("https://app.pcp.co"), "https://app.pcp.co")).toBe(true);
     expect(isSameOrigin(req("https://app.pcp.co.evil.io"), "https://app.pcp.co")).toBe(false);
     expect(isSameOrigin(req(null), "https://app.pcp.co")).toBe(false);
+    // Domain publik + akses LAN lewat IP (T-9t9b): keduanya sah, origin lain tetap ditolak.
+    const both = appOrigins({
+      APP_URL: "https://data-slicer.pcpexpress.com",
+      APP_LAN_URL: "https://10.3.3.221:8443",
+    });
+    expect(both).toEqual(["https://data-slicer.pcpexpress.com", "https://10.3.3.221:8443"]);
+    expect(isSameOrigin(req("https://10.3.3.221:8443"), both)).toBe(true);
+    expect(isSameOrigin(req("https://data-slicer.pcpexpress.com"), both)).toBe(true);
+    expect(isSameOrigin(req("https://10.3.3.221:8444"), both)).toBe(false);
+    expect(appOrigins({ APP_URL: "https://x.pcp.co/" })).toEqual(["https://x.pcp.co"]);
   });
 });
 

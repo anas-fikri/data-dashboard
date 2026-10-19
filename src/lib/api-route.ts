@@ -2,7 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { AuthError, requireUser } from "@/features/auth/session";
 import { isSameOrigin } from "@/features/uploads/http";
-import { env } from "@/lib/env";
+import { appOrigins } from "@/lib/env";
 import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 
@@ -45,7 +45,7 @@ export async function withUser(
 
 /** Origin lain → respons 403 siap kirim; null = boleh lanjut. */
 export function rejectCrossOrigin(req: NextRequest): NextResponse | null {
-  return isSameOrigin(req, env().APP_URL)
+  return isSameOrigin(req, appOrigins())
     ? null
     : json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
 }

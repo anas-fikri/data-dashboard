@@ -91,6 +91,11 @@ export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).optional(),
   APP_URL: z.string().url(),
+  /**
+   * Alamat kedua aplikasi (akses langsung lewat IP/LAN) saat APP_URL = domain publik di belakang reverse
+   * proxy (T-9t9b). Permintaan dari origin ini juga sah (cek same-origin API, login JSON).
+   */
+  APP_LAN_URL: z.string().url().optional(),
   APP_HOST: z.string().min(1),
   TRUST_PROXY: booleanFromString,
 
@@ -292,4 +297,13 @@ let cached: Env | undefined;
 export function env(): Env {
   if (!cached) cached = parseEnv(process.env);
   return cached;
+}
+
+/** Origin sah aplikasi: APP_URL + APP_LAN_URL (bila ada) — untuk cek same-origin API dan login JSON. */
+export function appOrigins(e: Pick<Env, "APP_URL" | "APP_LAN_URL"> = env()): string[] {
+  return [
+    ...new Set(
+      [e.APP_URL, e.APP_LAN_URL].filter((u): u is string => !!u).map((u) => new URL(u).origin),
+    ),
+  ];
 }

@@ -15,7 +15,10 @@ const logError = vi.fn();
 vi.mock("@/features/auth/session", () => ({ AuthError, requireUser }));
 vi.mock("@/features/auth/rate-limit", () => ({ hit: vi.fn() }));
 vi.mock("@/lib/redis", () => ({ redisReady: vi.fn() }));
-vi.mock("@/lib/env", () => ({ env: () => ({ APP_URL: "http://localhost:3100" }) }));
+vi.mock("@/lib/env", () => ({
+  env: () => ({ APP_URL: "http://localhost:3100" }),
+  appOrigins: () => ["http://localhost:3100"],
+}));
 vi.mock("@/lib/logger", () => ({ logger: { error: logError, info: vi.fn(), warn: vi.fn() } }));
 
 const { json, readJson, rejectCrossOrigin, withUser } = await import("@/lib/api-route");

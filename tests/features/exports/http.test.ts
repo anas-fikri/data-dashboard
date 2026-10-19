@@ -25,6 +25,7 @@ vi.mock("@/features/auth/rate-limit", async (orig) => ({
 vi.mock("@/lib/redis", () => ({ redisReady: vi.fn(async () => ({})) }));
 vi.mock("@/lib/env", () => ({
   env: () => ({ APP_URL: "http://localhost:3100", TRUST_PROXY: true }),
+  appOrigins: () => ["http://localhost:3100"],
 }));
 vi.mock("@/lib/logger", () => ({ logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/features/query/runtime", () => ({ prismaQueryRepo: {} }));

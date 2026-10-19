@@ -32,7 +32,10 @@ vi.mock("@/features/auth/rate-limit", async (orig) => ({
   hit,
 }));
 vi.mock("@/lib/redis", () => ({ redisReady: vi.fn(async () => ({})) }));
-vi.mock("@/lib/env", () => ({ env: () => ({ APP_URL: "http://localhost:3100" }) }));
+vi.mock("@/lib/env", () => ({
+  env: () => ({ APP_URL: "http://localhost:3100" }),
+  appOrigins: () => ["http://localhost:3100"],
+}));
 vi.mock("@/lib/logger", () => ({ logger: { error: logError, info: vi.fn(), warn: vi.fn() } }));
 let current = makeDeps();
 vi.mock("@/features/query/runtime", () => ({ queryDeps: vi.fn(async () => current.deps) }));

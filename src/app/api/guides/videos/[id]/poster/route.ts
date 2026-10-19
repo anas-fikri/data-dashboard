@@ -4,7 +4,7 @@ import { AuthError, requireUser } from "@/features/auth/session";
 import { POSTER_MAX_BYTES } from "@/features/guides/media";
 import { setVideoPoster } from "@/features/guides/videos";
 import { isSameOrigin } from "@/features/uploads/http";
-import { env } from "@/lib/env";
+import { appOrigins, env } from "@/lib/env";
 import { readBytesLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
@@ -20,7 +20,7 @@ const json = (body: unknown, status = 200) =>
  * (selain itu 404), signature PNG diperiksa di service, Content-Type objek ditetapkan server.
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
-  if (!isSameOrigin(req, env().APP_URL))
+  if (!isSameOrigin(req, appOrigins()))
     return json({ ok: false, code: "FORBIDDEN", message: "Permintaan ditolak." }, 403);
   let user;
   try {
