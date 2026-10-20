@@ -25,10 +25,11 @@ terakhir. Tanpa rahasia — nilai `.env`/`.env.prod`, password, dan kunci tidak 
 
 - Jangan mencetak isi `.env`/`.env.prod` dan jangan menyimpan rahasia di memori/repo/tes (tanpa password
   asli di tes).
-- Push hanya ke branch `worktree-t-001-scaffold` (bukan main/master, tanpa force-push, tanpa merge), lewat
-  SSH `git@github-personal:anas-fikri/data-dashboard.git` (bukan `gh`), dan hanya setelah
-  `curl -s -o /dev/null -w "%{http_code}" https://api.github.com/repos/anas-fikri/data-dashboard`
-  menjawab 404 (repo masih privat).
+- Push (keputusan pemilik 2026-10-20): pengembangan dilanjutkan dari sesi Claude Code cloud; push ke
+  branch sesi `claude/intelligent-albattani-fd1va8` lewat remote `origin` sesi (bukan main/master, tanpa
+  force-push, tanpa merge). Dari Mac tetap `worktree-t-001-scaffold` lewat SSH. Repo dibuat publik oleh
+  pemilik 2026-10-20, jadi syarat cek 404 tidak berlaku lagi — tetap jangan commit rahasia (`aitk audit`
+  memindai file terlacak).
 - Deploy produksi dijalankan pemilik: siapkan skrip/perintah, minta pemilik menjalankannya. Selalu backup
   DB dulu.
 - Server `ssh olympus`: aplikasi di `/data/docker-data/<folder>`; database PostgreSQL 14 di host (bukan
