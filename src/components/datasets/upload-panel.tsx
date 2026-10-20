@@ -20,7 +20,9 @@ import {
   REPLACE_CHOICE,
   RETRYABLE,
   cancelFailedState,
-  choiceForFile,
+  actionForFile,
+  periodRequest,
+  replaceAllText,
   holdsActivation,
   isIdleLike,
   ownVersionAfterError,
@@ -135,7 +137,19 @@ export function UploadPanel({
   const replaceLinkRef = useRef<HTMLButtonElement>(null);
   // File yang menunggu periode dipilih (sheet berlabel); belum ada yang dikirim ke server.
   const [picking, setPicking] = useState<{ file: File; guess: string | null } | null>(null);
-  const [confirmReplace, setConfirmReplace] = useState(false);
+  /**
+   * Dialog "Ganti semua data…": "pick" = dari tautan (lanjut membuka pemilih file); { file } = file sama
+   * dengan unggahan "ganti semua" tertunda yang dipilih di dropzone periode (review M2).
+   */
+  const [confirmReplace, setConfirmReplace] = useState<false | "pick" | { file: File }>(false);
+  const pickButtonRef = useRef<HTMLButtonElement>(null);
+  // Batal di pemilih periode → fokus kembali ke "Pilih file" setelah dropzone tampil lagi (review L1).
+  const refocusPick = useRef(false);
+  useEffect(() => {
+    if (picking || !refocusPick.current) return;
+    refocusPick.current = false;
+    pickButtonRef.current?.focus();
+  }, [picking]);
   const abortRef = useRef<AbortController | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<UploadPanelState>({ kind: "idle" });
@@ -178,6 +192,14 @@ export function UploadPanel({
    */
   const start = useCallback(
     async (file: File, versionId: string | undefined, choice: UploadChoice) => {
+      // Pilihan periode tanpa konteks periode (data aktif berganti): jangan pernah diturunkan menjadi
+      // ganti semua data — tidak ada yang dikirim; pemilik memuat ulang lalu memilih lagi (review M1).
+      const req = periodRequest(choice, period);
+      if (!req.ok) {
+        setPicking(null);
+        setState({ kind: "error", file, message: req.message, retryable: false, stale: true });
+        return;
+      }
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -197,9 +219,7 @@ export function UploadPanel({
           datasetId,
           maxBytes,
           signal: controller.signal,
-          ...(choice.mode === "PERIOD" && period
-            ? { period: { baseVersionId: period.baseVersionId, label: choice.label } }
-            : {}),
+          ...(req.period ? { period: req.period } : {}),
           onProgress: (p) => {
             if (controller.signal.aborted) return;
             // Tanda tangan part bisa gagal tanpa membawa versionId: versi diingat sejak diketahui.
@@ -263,16 +283,20 @@ export function UploadPanel({
     const file = files?.[0];
     if (inputRef.current) inputRef.current.value = "";
     if (!file) return;
-    const choice = choiceForFile(file, { period, pending: pendingInfo });
+    const action = actionForFile(file, { period, pending: pendingInfo });
     // Sheet berlabel: periode dipilih dulu (terisi dari nama file bila jelas), baru diunggah.
-    if (!choice && period) {
+    if (action.kind === "pick" && period) {
       setState({ kind: "idle" });
       setPicking({ file, guess: guessPeriodFromName(file.name, period.grain) });
       return;
     }
+    if (action.kind === "confirm-replace") {
+      setConfirmReplace({ file });
+      return;
+    }
     // Versi milik tab ini ikut dibawa: file yang sama melanjutkannya; file lain → DATASET_BUSY dan
     // galat tetap menawarkan "Batalkan unggahan" untuk versi itu.
-    void start(file, ownVersion, choice ?? REPLACE_CHOICE);
+    void start(file, ownVersion, action.kind === "start" ? action.choice : REPLACE_CHOICE);
   };
 
   /** "Ganti semua data…" (dataset periode): file dari input terpisah, selalu REPLACE. */
@@ -572,6 +596,7 @@ export function UploadPanel({
           guess={picking.guess}
           onSubmit={(label) => void start(picking.file, ownVersion, { mode: "PERIOD", label })}
           onCancel={() => {
+            refocusPick.current = true;
             setPicking(null);
             setAnnounce("Pemilihan file dibatalkan.");
           }}
@@ -635,6 +660,7 @@ export function UploadPanel({
           />
           {/* Saat ada unggahan tertunda, CTA primer satu-satunya = "Lanjutkan unggahan". */}
           <Button
+            ref={pickButtonRef}
             type="button"
             variant={showPending ? "outline" : "primary"}
             className="h-11 w-full sm:h-(--control-h) sm:w-auto"
@@ -662,7 +688,7 @@ export function UploadPanel({
                 variant="link"
                 className="h-11 px-2 sm:h-(--control-h-sm)"
                 data-testid="upload-replace-all"
-                onClick={() => setConfirmReplace(true)}
+                onClick={() => setConfirmReplace("pick")}
               >
                 Ganti semua data…
               </Button>
@@ -684,15 +710,23 @@ export function UploadPanel({
 
       {period ? (
         <ConfirmDialog
-          open={confirmReplace}
-          onOpenChange={setConfirmReplace}
+          open={confirmReplace !== false}
+          onOpenChange={(open) => {
+            if (!open) setConfirmReplace(false);
+          }}
           title="Ganti semua data?"
           data-testid="upload-replace-confirm"
           description={
             <>
-              <span data-testid="upload-replace-count">
-                {`Semua ${period.periodCount.toLocaleString("id-ID")} periode akan diganti`}
-              </span>{" "}
+              {typeof confirmReplace === "object" ? (
+                <span
+                  className="block [overflow-wrap:anywhere]"
+                  data-testid="upload-replace-pending"
+                >
+                  {`“${confirmReplace.file.name}” adalah unggahan “Ganti semua data” yang belum selesai. Untuk menambah periode dengan file ini, batalkan dulu unggahan tertunda itu.`}
+                </span>
+              ) : null}
+              <span data-testid="upload-replace-count">{replaceAllText(period.periodCount)}</span>{" "}
               dengan isi file baru, dan data tidak lagi disimpan per periode. Atur periode lagi
               setelahnya bila perlu. Versi sekarang tetap ada di riwayat dan bisa diaktifkan
               kembali.
@@ -707,13 +741,21 @@ export function UploadPanel({
             <Button
               className={DIALOG_CTA}
               leadingIcon={<IconReplace aria-hidden />}
+              data-testid="upload-replace-go"
               onClick={() => {
+                const held = confirmReplace;
                 setConfirmReplace(false);
+                if (typeof held === "object") {
+                  void start(held.file, ownVersion, REPLACE_CHOICE);
+                  return;
+                }
                 // Masih dalam gestur klik pengguna: peramban mengizinkan membuka pemilih file.
                 replaceRef.current?.click();
               }}
             >
-              Pilih file pengganti
+              {typeof confirmReplace === "object"
+                ? "Lanjutkan ganti semua data"
+                : "Pilih file pengganti"}
             </Button>
           }
         />

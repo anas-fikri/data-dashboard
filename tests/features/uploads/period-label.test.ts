@@ -49,6 +49,37 @@ describe("guessPeriodFromName", () => {
   });
 });
 
+describe("review M3: spasi, semester, rentang, angka lain", () => {
+  it("spasi setelah q/tw/kuartal/triwulan → kuartal, bukan Januari", () => {
+    expect(guessPeriodFromName("tw 1 2026.xlsx", "QUARTER")).toBe("2026-01-01");
+    expect(guessPeriodFromName("q 3 2026.xlsx", "QUARTER")).toBe("2026-07-01");
+    expect(guessPeriodFromName("triwulan 2 2026.xlsx", "QUARTER")).toBe("2026-04-01");
+    expect(guessPeriodFromName("tw 1 2026.xlsx", "MONTH")).toBeNull();
+    expect(guessPeriodFromName("q 1 2026.xlsx", "MONTH")).toBeNull();
+  });
+
+  it("semester / S1 / S2 / H1 → tanpa tebakan", () => {
+    for (const g of ["MONTH", "QUARTER", "YEAR"] as const) {
+      expect(guessPeriodFromName("semester-1-2026.xlsx", g)).toBeNull();
+      expect(guessPeriodFromName("laporan S2 2026.xlsx", g)).toBeNull();
+      expect(guessPeriodFromName("laporan_h1_2026.xlsx", g)).toBeNull();
+      expect(guessPeriodFromName("smt2 2026.xlsx", g)).toBeNull();
+    }
+  });
+
+  it("rentang bulan → tanpa tebakan", () => {
+    expect(guessPeriodFromName("jan-mar 2026.xlsx", "MONTH")).toBeNull();
+    expect(guessPeriodFromName("Januari - Maret 2026.xlsx", "QUARTER")).toBeNull();
+  });
+
+  it("angka atau tahun lain yang tersisa → tanpa tebakan", () => {
+    expect(guessPeriodFromName("sales 12 2026 rev 3.xlsx", "MONTH")).toBeNull();
+    expect(guessPeriodFromName("laporan 2025 maret 2026.xlsx", "MONTH")).toBeNull();
+    // Kata yang mengandung angka (v2, rev3) bukan angka periode.
+    expect(guessPeriodFromName("sales 12 2026 v2.xlsx", "MONTH")).toBe("2026-12-01");
+  });
+});
+
 describe("partsOf / startFromParts", () => {
   it("bolak-balik untuk setiap satuan", () => {
     expect(partsOf("MONTH", "2026-03-01")).toEqual({ year: 2026, sub: 3 });

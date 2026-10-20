@@ -65,45 +65,61 @@ function tokensOf(name: string): string {
   return ` ${base.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
 }
 
-function hitsOf(name: string): Hit[] {
+/** Penanda periode setengah tahun (semester, S1/S2, H1/H2): bukan satuan dataset → tanpa tebakan. */
+const HALF_YEAR = /(?<= )(?:semester|smt|sem)(?= |[12] )|(?<= )[sh] ?[12](?= )/;
+const QUARTER_WORD = "triwulan|kuartal|tw|q";
+
+/**
+ * Petunjuk periode di nama file; null = ambigu (penanda semester, rentang bulan, atau angka/bulan/
+ * tahun lain yang tersisa setelah petunjuk dibaca — mis. "sales 12 2026 rev 3").
+ */
+function hitsOf(name: string): Hit[] | null {
   let t = tokensOf(name);
+  if (HALF_YEAR.test(t)) return null;
   const hits: Hit[] = [];
   const add = (year: number, month: number | null, quarter: number | null) => {
     if (!okYear(year)) return;
     if (month !== null && !okMonth(month)) return;
     hits.push({ year, month, quarter });
   };
+  /** Baca semua kecocokan lalu kosongkan teksnya, agar pola berikutnya tidak membacanya ulang. */
+  const scan = (re: RegExp, on: (m: RegExpExecArray) => void) => {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(t))) on(m);
+    t = t.replace(re, " ");
+  };
   const monthName = Object.keys(MONTHS)
     .sort((a, b) => b.length - a.length)
     .join("|");
-  let m: RegExpExecArray | null;
-  // Q1 2026, 2026 Q1, 2026Q1, kuartal 1 2026, tw1 2026 (triwulan) — dibaca dulu lalu dikosongkan,
-  // agar "kuartal 4 2025" tidak juga terbaca sebagai bulan 4.
-  const qy = /(?<= )(?:q|tw|kuartal |triwulan )([1-4]) ?(\d{4})(?= )/g;
-  while ((m = qy.exec(t))) add(Number(m[2]), null, Number(m[1]));
-  const yq = /(?<= )(\d{4}) ?(?:q|tw|kuartal |triwulan )([1-4])(?= )/g;
-  while ((m = yq.exec(t))) add(Number(m[1]), null, Number(m[2]));
-  t = t.replace(qy, " ").replace(yq, " ");
-  // 2026 03, 2026 3 (setelah pemisah dinormalkan): tahun lalu bulan.
-  const ym = /(?<= )(\d{4}) (\d{1,2})(?= )/g;
-  while ((m = ym.exec(t))) add(Number(m[1]), Number(m[2]), null);
-  // 03 2026: bulan lalu tahun.
-  const my = /(?<= )(\d{1,2}) (\d{4})(?= )/g;
-  while ((m = my.exec(t))) add(Number(m[2]), Number(m[1]), null);
-  // 202603 (YYYYMM rapat).
-  const compact = /(?<= )(\d{4})(\d{2})(?= )/g;
-  while ((m = compact.exec(t))) add(Number(m[1]), Number(m[2]), null);
-  // maret 2026, mar26 tidak didukung (tahun dua digit ambigu); 2026 maret.
-  const nameYear = new RegExp(`(?<= )(${monthName}) ?(\\d{4})(?= )`, "g");
-  while ((m = nameYear.exec(t))) add(Number(m[2]), MONTHS[m[1]!]!, null);
-  const yearName = new RegExp(`(?<= )(\\d{4}) ?(${monthName})(?= )`, "g");
-  while ((m = yearName.exec(t))) add(Number(m[1]), MONTHS[m[2]!]!, null);
+  // Q1 2026, q 1 2026, 2026 Q1, kuartal 1 2026, tw 1 2026 (triwulan) — dibaca dulu, agar
+  // "kuartal 4 2025" tidak juga terbaca sebagai bulan 4.
+  scan(new RegExp(`(?<= )(?:${QUARTER_WORD}) ?([1-4]) (\\d{4})(?= )`, "g"), (m) =>
+    add(Number(m[2]), null, Number(m[1])),
+  );
+  scan(new RegExp(`(?<= )(\\d{4}) ?(?:${QUARTER_WORD}) ?([1-4])(?= )`, "g"), (m) =>
+    add(Number(m[1]), null, Number(m[2])),
+  );
+  // Tanggal lengkap: 2026 03 15 dan 15 03 2026 → bulannya.
+  scan(/(?<= )(\d{4}) (\d{1,2}) (\d{1,2})(?= )/g, (m) => add(Number(m[1]), Number(m[2]), null));
+  scan(/(?<= )(\d{1,2}) (\d{1,2}) (\d{4})(?= )/g, (m) => add(Number(m[3]), Number(m[2]), null));
+  // 2026 03 / 03 2026 (setelah pemisah dinormalkan), 202603 (YYYYMM rapat).
+  scan(/(?<= )(\d{4}) (\d{1,2})(?= )/g, (m) => add(Number(m[1]), Number(m[2]), null));
+  scan(/(?<= )(\d{1,2}) (\d{4})(?= )/g, (m) => add(Number(m[2]), Number(m[1]), null));
+  scan(/(?<= )(\d{4})(\d{2})(?= )/g, (m) => add(Number(m[1]), Number(m[2]), null));
+  // maret 2026 / 2026 maret (tahun dua digit seperti mar26 tidak didukung: ambigu).
+  scan(new RegExp(`(?<= )(${monthName}) ?(\\d{4})(?= )`, "g"), (m) =>
+    add(Number(m[2]), MONTHS[m[1]!]!, null),
+  );
+  scan(new RegExp(`(?<= )(\\d{4}) ?(${monthName})(?= )`, "g"), (m) =>
+    add(Number(m[1]), MONTHS[m[2]!]!, null),
+  );
   // Tahun saja: hanya bila tidak ada petunjuk yang lebih rinci.
-  if (!hits.length) {
-    const y = /(?<= )(\d{4})(?= )/g;
-    while ((m = y.exec(t))) add(Number(m[1]), null, null);
-  }
-  return hits;
+  if (!hits.length) scan(/(?<= )(\d{4})(?= )/g, (m) => add(Number(m[1]), null, null));
+  // Sisa yang masih tampak seperti periode → ambigu (rentang "jan mar 2026", "rev 3", tahun lain).
+  const leftover = new RegExp(
+    `(?<= )(?:\\d{1,2}|\\d{4}|${monthName}|(?:${QUARTER_WORD}) ?[1-4]?)(?= )`,
+  );
+  return leftover.test(t) ? null : hits;
 }
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -124,8 +140,10 @@ function startOf(grain: PeriodGrain, h: Hit): string | null {
  * "2026-03-01" (bulan). null bila tidak ada petunjuk, petunjuknya kurang rinci, atau ambigu.
  */
 export function guessPeriodFromName(name: string, grain: PeriodGrain): string | null {
+  const hits = hitsOf(name);
+  if (!hits) return null;
   const starts = new Set<string>();
-  for (const h of hitsOf(name)) {
+  for (const h of hits) {
     const s = startOf(grain, h);
     if (s === null) return null; // petunjuk kurang rinci: jangan tebak dari sebagian nama
     starts.add(s);

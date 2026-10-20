@@ -130,11 +130,19 @@ export function showsPendingCard(
 }
 
 /**
- * Pilihan untuk file yang dipilih di dropzone utama. File sama dengan unggahan tertunda (nama + ukuran)
- * → pilihan unggahan itu (melanjutkan, R20); dataset non-periode → REPLACE; dataset periode tanpa
- * sheet berlabel → PERIOD tanpa label; dengan sheet berlabel → null (pemilih periode harus diisi dulu).
+ * Tindakan untuk file yang dipilih di dropzone utama:
+ *  - "start": langsung diunggah dengan pilihan itu;
+ *  - "pick": pemilih periode diisi dulu (sheet berlabel, termasuk unggahan periode tertunda tanpa label
+ *    padahal data aktif kini berlabel — review L2);
+ *  - "confirm-replace": file sama dengan unggahan "ganti semua data" yang tertunda, dipilih di dropzone
+ *    "Tambah atau perbarui periode" → konfirmasi "Ganti semua data" dulu (review M2).
+ * File sama dengan unggahan tertunda (nama + ukuran) melanjutkan pilihannya (server: mode + label sama,
+ * R20). Dataset non-periode: panel biasa = ganti data.
  */
-export function choiceForFile(
+export type FileAction =
+  { kind: "start"; choice: UploadChoice } | { kind: "pick" } | { kind: "confirm-replace" };
+
+export function actionForFile(
   file: Pick<File, "name" | "size">,
   ctx: {
     period: { needsLabel: boolean } | null;
@@ -145,17 +153,40 @@ export function choiceForFile(
       label: string | null;
     } | null;
   },
-): UploadChoice | null {
+): FileAction {
   const p = ctx.pending;
-  // Unggahan periode tertunda hanya dilanjutkan selama dataset masih per periode (ada versi dasar).
-  if (
-    p &&
-    p.originalName === file.name &&
-    p.sizeBytes === file.size &&
-    (p.mode === "REPLACE" || ctx.period)
-  ) {
-    return p.mode === "PERIOD" ? { mode: "PERIOD", label: p.label } : REPLACE_CHOICE;
+  const same = p !== null && p.originalName === file.name && p.sizeBytes === file.size;
+  if (!ctx.period) return { kind: "start", choice: REPLACE_CHOICE };
+  if (same && p.mode === "REPLACE") return { kind: "confirm-replace" };
+  if (same && p.mode === "PERIOD" && (p.label || !ctx.period.needsLabel)) {
+    return { kind: "start", choice: { mode: "PERIOD", label: p.label } };
   }
-  if (!ctx.period) return REPLACE_CHOICE;
-  return ctx.period.needsLabel ? null : { mode: "PERIOD", label: null };
+  return ctx.period.needsLabel
+    ? { kind: "pick" }
+    : { kind: "start", choice: { mode: "PERIOD", label: null } };
+}
+
+export const PERIOD_GONE =
+  "Dataset ini tidak lagi menyimpan data per periode, jadi file tidak dikirim. Muat ulang data, lalu pilih lagi cara mengunggahnya.";
+
+/**
+ * Isian init untuk pilihan unggahan. PERIOD tanpa konteks periode (data aktif berganti ke mode biasa)
+ * TIDAK pernah diturunkan menjadi ganti semua data (review M1): `ok: false` → tidak ada yang dikirim.
+ */
+export function periodRequest(
+  choice: UploadChoice,
+  period: { baseVersionId: string } | null,
+):
+  | { ok: true; period?: { baseVersionId: string; label: string | null } }
+  | { ok: false; message: string } {
+  if (choice.mode === "REPLACE") return { ok: true };
+  if (!period) return { ok: false, message: PERIOD_GONE };
+  return { ok: true, period: { baseVersionId: period.baseVersionId, label: choice.label } };
+}
+
+/** Kalimat konfirmasi "Ganti semua data…" (tanpa "Semua 0 periode", review L3). */
+export function replaceAllText(periodCount: number): string {
+  return periodCount > 0
+    ? `Semua ${periodCount.toLocaleString("id-ID")} periode akan diganti`
+    : "Semua data akan diganti";
 }

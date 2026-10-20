@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-052
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T14:15:22Z"
+updated: "2026-10-20T14:28:05Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,31 +20,31 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 193100
+    duration_ms: 203513
     summary: |-
-      …t
+      …
       > vitest run
 
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792505670055,"service":"data-dashboard","host":"127.0.0.1","port":39079,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792505670111,"service":"data-dashboard","host":"127.0.0.1","port":43057,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792505670210,"service":"data-dashboard","host":"127.0.0.1","port":37157,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792505670338,"service":"data-dashboard","host":"127.0.0.1","port":34595,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792505679937,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792505689475,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792505689496,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792505689501,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792505689520,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792506393901,"service":"data-dashboard","host":"127.0.0.1","port":34321,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792506393959,"service":"data-dashboard","host":"127.0.0.1","port":43651,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792506394058,"service":"data-dashboard","host":"127.0.0.1","port":43921,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792506394173,"service":"data-dashboard","host":"127.0.0.1","port":41945,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792506404792,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792506414757,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792506414781,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792506414785,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792506414801,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  185 passed | 1 skipped (186)
-            Tests  2399 passed | 10 skipped (2409)
-         Start at  14:13:06
-         Duration  133.92s (tests 84%, import 13%, transform 3%)
+            Tests  2408 passed | 10 skipped (2418)
+         Start at  14:25:07
+         Duration  143.07s (tests 84%, import 14%, transform 3%)
 
-          Isolate  186 workers spawned · ~156ms startup each (spawn + environment, per file)
-                   at least ~9.51s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  186 workers spawned · ~166ms startup each (spawn + environment, per file)
+                   at least ~10.11s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -52,12 +52,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T14:15:22Z"
-    tree: 17b868afbadcfac21eecd6cc1efb9647235d949b529579c7f0fc208ce9c4457b
+    at: "2026-10-20T14:27:32Z"
+    tree: a25aced33587d7d86bfceb8a907b319ca861232bacf108172e30ba733d463254
   audit:
-    at: "2026-10-20T14:11:40Z"
+    at: "2026-10-20T14:27:39Z"
     passed: true
-    tree: 17b868afbadcfac21eecd6cc1efb9647235d949b529579c7f0fc208ce9c4457b
+    tree: a25aced33587d7d86bfceb8a907b319ca861232bacf108172e30ba733d463254
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -65,7 +65,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 495 dirs visited, 2866 inodes visited, 1 Extract calls, 229.837537ms elapsed, 229.837827ms wall time
+          End status: 497 dirs visited, 2908 inodes visited, 1 Extract calls, 235.010898ms elapsed, 235.011582ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -101,6 +101,7 @@ Validation: unit period-label + upload-panel-period; e2e period-upload-panel 2/2
 - Tebakan nama file: bulan/kuartal/tahun (angka, nama bulan id/en, Q/kuartal/triwulan); ambigu atau kurang rinci → kosong dan wajib diisi.
 - STALE saat init → tombol "Muat ulang data" (router.refresh) agar versi dasar baru dipakai.
 - Asumsi: "Ganti semua data" menghasilkan versi biasa (bukan per periode) — dialog menjelaskannya dan bahwa versi sekarang tetap di riwayat.
+- Review putaran 1 (orkestrator): M1 PERIOD tanpa konteks periode tidak pernah diturunkan ke REPLACE (periodRequest → galat + "Muat ulang data", tanpa init); M2 unggahan "ganti semua" tertunda dipilih di dropzone periode → dialog konfirmasi dulu; M3 tebakan nama file: spasi setelah q/tw/kuartal/triwulan, semester/S1/S2/H1 → kosong, rentang bulan dan angka/tahun sisa → kosong; L1 Batal pemilih → fokus "Pilih file"; L2 tertunda PERIOD tanpa label pada data berlabel → pemilih; L3 tanpa "Semua 0 periode". Tes: unit upload-panel-period + period-label, e2e period-upload-panel 2/2 (M2, L1).
 - Plugin frontend-expert tidak tersedia di sesi cloud ini; pola UI mengikuti komponen yang ada (token, Tabler, ConfirmDialog, Select Radix, target 44 px di ponsel).
 
 ## Security checklist (OWASP ASVS 4.0.3)

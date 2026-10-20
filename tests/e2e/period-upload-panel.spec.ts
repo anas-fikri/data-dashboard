@@ -74,6 +74,7 @@ test.describe("panel unggah periode", () => {
 
   test("AC3 + AC1 + AC4: panel biasa → atur periode → tambah periode lewat panel", async ({
     page,
+    baseURL,
   }) => {
     test.setTimeout(300_000);
     const datasetId = await newDataset(page, "Panel periode");
@@ -139,6 +140,40 @@ test.describe("panel unggah periode", () => {
     await expect(versionRow(page, april.id).getByTestId("version-note")).toHaveText(
       "April 2026 ditambahkan (1 baris)",
     );
+
+    // Review M2: unggahan "ganti semua" tertunda, file yang sama dipilih di dropzone periode →
+    // konfirmasi dulu (tidak dilanjutkan diam-diam); Batal → unggahan tertunda tetap, data tetap.
+    const lines = ["kode;Tanggal Kirim;nilai", "Z;2026-05-01;1"];
+    const pendingFile = file("ganti.csv", lines);
+    const init = await page.request.post("/api/uploads", {
+      data: JSON.stringify({
+        datasetId,
+        name: "ganti.csv",
+        size: Buffer.byteLength(`${lines.join("\n")}\n`),
+        lastModified: 1,
+      }),
+      headers: { origin: baseURL!, "content-type": "application/json" },
+    });
+    expect(init.status(), await init.text()).toBe(200);
+    await page.goto(`/datasets/${datasetId}`);
+    await expect(page.getByTestId("upload-pending")).toBeVisible();
+    const before = versions(datasetId).map((v) => [v.id, v.status, v.active]);
+    await page.getByTestId("upload-input").setInputFiles(pendingFile);
+    const confirm = page.getByTestId("upload-replace-confirm");
+    await expect(confirm.getByTestId("upload-replace-pending")).toContainText("ganti.csv");
+    await expect(confirm.getByTestId("upload-replace-count")).toHaveText(
+      "Semua 4 periode akan diganti",
+    );
+    await confirm.getByRole("button", { name: "Batal" }).click();
+    await expect(confirm).toHaveCount(0);
+    await expect(page.getByTestId("upload-progress")).toHaveCount(0);
+    expect(versions(datasetId).map((v) => [v.id, v.status, v.active])).toEqual(before);
+    // Bersihkan unggahan tertunda.
+    await page
+      .getByTestId("upload-pending")
+      .getByRole("button", { name: "Batalkan unggahan" })
+      .click();
+    await expect(page.getByTestId("upload-pending")).toHaveCount(0, SLOW);
   });
 
   test("AC2: sheet berlabel — pemilih periode dari nama file, bisa diubah, wajib diisi", async ({
@@ -167,6 +202,10 @@ test.describe("panel unggah periode", () => {
     await picker.getByRole("button", { name: "Batal" }).click();
     await expect(picker).toHaveCount(0);
     await expect(page.getByTestId("upload-dropzone")).toBeVisible();
+    // Review L1: fokus kembali ke "Pilih file".
+    await expect(
+      page.getByTestId("upload-dropzone").getByRole("button", { name: "Pilih file" }),
+    ).toBeFocused();
 
     // Dengan tebakan dari nama file → terisi; diubah ke Agustus lewat keyboard-friendly select.
     await page
