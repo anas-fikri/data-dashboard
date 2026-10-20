@@ -1,8 +1,8 @@
 ---
 id: T-046
 title: Unduh tampilan Lihat data lewat job ekspor
-status: in_review
-profile: standard
+status: done
+profile: strict
 goal: G-6
 tags:
   - api
@@ -12,12 +12,40 @@ depends_on:
   - T-044
   - T-017
 created: "2026-10-15T02:30:56Z"
-updated: "2026-10-20T09:29:40Z"
+updated: "2026-10-20T09:36:40Z"
+closed: "2026-10-20T09:36:40Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: e51fcb41e894cee77d4e5c2e033084b2436e1b02
+paths:
+  - playwright.config.ts
+  - prisma/migrations/20261020150000_t046_export_sheet/migration.sql
+  - prisma/schema.prisma
+  - src/app/(app)/datasets/[id]/data/page.tsx
+  - src/components/grid/grid-export.tsx
+  - src/components/grid/sheet-grid.tsx
+  - src/components/widgets/export-model.ts
+  - src/features/audit/service.ts
+  - src/features/exports/http.ts
+  - src/features/exports/job.ts
+  - src/features/exports/repo.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/exports/sheet-sql.ts
+  - src/features/exports/sql.ts
+  - src/features/exports/types.ts
+  - src/features/query/grid-http.ts
+  - src/features/query/grid-repo.ts
+  - src/features/query/grid-service.ts
+  - src/features/query/grid.ts
+  - src/worker/index.ts
+  - tests/e2e/data-view-export.spec.ts
+  - tests/features/exports/service-pdf.test.ts
+  - tests/features/exports/service-sheet.test.ts
+  - tests/features/exports/service.test.ts
+  - tests/features/exports/sheet-job.test.ts
 review:
   passes:
     - "n": 1
@@ -31,44 +59,124 @@ review:
 evidence:
   check:
     cmd: npm run check
-    exit_code: 1
-    duration_ms: 187067
+    exit_code: 0
+    duration_ms: 188102
     summary: |-
-      …"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792488503137,"service":"data-dashboard","host":"127.0.0.1","port":42125,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792488509562,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792488523060,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792488523083,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792488523089,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792488523098,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-
-      ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
-
-       FAIL  tests/features/guides/markdown.test.ts > GuideMarkdown tabel (T-0vjt) > kolom > 8 ditolak saat simpan dan tidak dirender; tabel terburuk dalam batas tetap cepat
-      AssertionError: expected 1037.206 to be less than 1000
-       ❯ tests/features/guides/markdown.test.ts:257:83
-          255|     const edge = `${row(8, "a")}\n${row(8, "-")}\n${"a\n".repeat(1990)…
-          256|     expect(guideBodyProblem(edge)).toBeNull();
-          257|     expect(cpuMs(() => expect(html(edge).match(/<td>/g)).toHaveLength(…
-             |                                                                                   ^
-          258|       RENDER_MAX_MS,
-          259|     );
-
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+      …t
+      > vitest run
 
 
-       Test Files  1 failed | 170 passed | 1 skipped (172)
-            Tests  1 failed | 2219 passed | 10 skipped (2230)
-         Start at  09:27:01
-         Duration  133.31s (tests 84%, import 13%, transform 3%)
+       RUN  v5.0.3 /home/user/data-dashboard
 
-          Isolate  172 workers spawned · ~157ms startup each (spawn + environment, per file)
-                   at least ~8.87s faster with isolate: false — reuses workers across files instead of one per file
-    at: "2026-10-20T09:29:15Z"
+      {"level":40,"time":1792488910276,"service":"data-dashboard","host":"127.0.0.1","port":38619,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792488910344,"service":"data-dashboard","host":"127.0.0.1","port":34671,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792488910442,"service":"data-dashboard","host":"127.0.0.1","port":36621,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792488910552,"service":"data-dashboard","host":"127.0.0.1","port":39749,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792488922540,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792488929966,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792488929990,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792488929994,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792488930006,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  171 passed | 1 skipped (172)
+            Tests  2220 passed | 10 skipped (2230)
+         Start at  09:33:51
+         Duration  133.07s (tests 84%, import 13%, transform 3%)
+
+          Isolate  172 workers spawned · ~154ms startup each (spawn + environment, per file)
+                   at least ~8.70s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-20T09:36:06Z"
     tree: cd0a8fd3fb1526bbde3b3ae9d24dacc1c7c300e30f3f6ca686ab1404d15101d3
-  check_failures: 1
+  commits:
+    - 0cb153a
+    - "1220871"
+    - 17d81a7
+    - 18b74cc
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 27924c4
+    - 27986dc
+    - 29fe0f3
+    - 2d7b316
+    - 3602b55
+    - 36afc9f
+    - 3bb3baa
+    - 49f49a5
+    - 4bd9881
+    - 4eea84c
+    - 5101f51
+    - 5603fc7
+    - 56a8447
+    - 56e4d6d
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 69b8953
+    - 6b3ee3f
+    - 70136f5
+    - "7187327"
+    - 75cf456
+    - 76e3ce7
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - 7f238c4
+    - 7f9a7c7
+    - "8570e80"
+    - 8f8df38
+    - 8fc3abc
+    - 90e4e63
+    - "9298e14"
+    - 930dd6d
+    - 94bea50
+    - 94d85a4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - acb27a6
+    - ae4e5a2
+    - af1994a
+    - b0b99d8
+    - b30aea5
+    - b32d50d
+    - b8e59ee
+    - ba2efef
+    - c15362c
+    - c1c8b0a
+    - c2fd95c
+    - c76c343
+    - ccd0a9a
+    - ce26ca5
+    - ce5d6a7
+    - ce649d0
+    - cf28ad3
+    - d32a8ea
+    - d557c9e
+    - da46e35
+    - dff9b8c
+    - e24e070
+    - e51fcb4
+    - f197114
+    - f3ea697
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
+    - f87b0a1
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 3
+    done: 3
   audit:
-    at: "2026-10-20T09:29:16Z"
+    at: "2026-10-20T09:36:15Z"
     passed: true
     tree: cd0a8fd3fb1526bbde3b3ae9d24dacc1c7c300e30f3f6ca686ab1404d15101d3
     results:
@@ -78,7 +186,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 462 dirs visited, 2323 inodes visited, 1 Extract calls, 236.384563ms elapsed, 236.384953ms wall time
+          End status: 462 dirs visited, 2329 inodes visited, 1 Extract calls, 230.560257ms elapsed, 230.560605ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -130,3 +238,11 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — terverifikasi: kunci objek exports/<userId>/<id>.<ext> divalidasi regex, Content-Type/Disposition ditetapkan server, DuckDB ekspor allowed_directories = direktori kerja; tanpa path dari klien
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — terverifikasi: body ≤ 64 KB, Origin wajib (rejectCrossOrigin), zod strict, kode HTTP per kode (FORBIDDEN 403, VERSION_CHANGED 409) — unit service-sheet.test, e2e AC3
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — terverifikasi: tanpa header/CSP baru, tanpa debug; chunk AG tetap hanya rute Lihat data (measure-grid-chunk 290,6/293 KiB, leakedToDashboard [])
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T09:36:06Z (188102 ms)
+- Acceptance criteria: 3/3 satisfied
+- Commits: 0cb153a, 1220871, 17d81a7, 18b74cc, 1b2b9ab, 23e5ae9, 258a139, 27924c4, 27986dc, 29fe0f3, 2d7b316, 3602b55, 36afc9f, 3bb3baa, 49f49a5, 4bd9881, 4eea84c, 5101f51, 5603fc7, 56a8447, 56e4d6d, 59ec9a3, 6123427, 62ec216, 69b8953, 6b3ee3f, 70136f5, 7187327, 75cf456, 76e3ce7, 7824e56, 7ae2840, 7af4484, 7f238c4, 7f9a7c7, 8570e80, 8f8df38, 8fc3abc, 90e4e63, 9298e14, 930dd6d, 94bea50, 94d85a4, a019f8f, a03481c, a0e1646, acb27a6, ae4e5a2, af1994a, b0b99d8, b30aea5, b32d50d, b8e59ee, ba2efef, c15362c, c1c8b0a, c2fd95c, c76c343, ccd0a9a, ce26ca5, ce5d6a7, ce649d0, cf28ad3, d32a8ea, d557c9e, da46e35, dff9b8c, e24e070, e51fcb4, f197114, f3ea697, f54828c, f55d8d2, f5b2aa6, f87b0a1, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 2 findings
+- Review pass 2 by claude-code: 0 findings
