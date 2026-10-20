@@ -4,6 +4,7 @@
 
 Entries live in docs/ai/knowledge/<topic>.md. Search: `aitk knowledge search "<query>"`.
 
+- [_inbox](knowledge/_inbox.md): 1 entries
 - [architecture](knowledge/architecture.md): 1 entries
 - [bug](knowledge/bug.md): 6 entries
 - [data-model](knowledge/data-model.md): 1 entries
