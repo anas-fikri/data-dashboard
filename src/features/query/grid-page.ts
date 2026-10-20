@@ -40,10 +40,14 @@ export function visibleColumns(schema: unknown): GridPageColumn[] | null {
     .map((c) => ({ pos: c.pos, name: c.name, original: c.original, type: c.type }));
 }
 
+/**
+ * `sheet`: indeks tab (?sheet=) atau id sheet versi aktif (?sheetId=, tautan "Buka di Lihat data" dari
+ * widget tabel, T-047); tidak dikenal → sheet pertama.
+ */
 export async function gridPageView(
   userId: string,
   datasetId: string,
-  sheetIndex: number | null,
+  sheet: number | string | null,
 ): Promise<GridPageView | null> {
   const ds = await prisma.dataset.findUnique({
     where: { id: datasetId },
@@ -72,7 +76,8 @@ export async function gridPageView(
   if (!role) return null;
   const v = ds.activeVersion;
   const tabs = v?.sheets ?? [];
-  const chosen = tabs.find((t) => t.index === sheetIndex) ?? tabs[0];
+  const chosen =
+    tabs.find((t) => (typeof sheet === "string" ? t.id === sheet : t.index === sheet)) ?? tabs[0];
   const s = chosen
     ? await prisma.sheet.findFirst({
         where: { id: chosen.id, versionId: v!.id },

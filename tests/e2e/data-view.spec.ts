@@ -22,6 +22,7 @@ const dir = mkdtempSync(join(tmpdir(), "dd-e2e-lihat-"));
 let worker: ChildProcess | null = null;
 let datasetId = "";
 let editorDashboard = "";
+let viewerDashboard = "";
 
 const node = (script: string, ...args: string[]) =>
   JSON.parse(execFileSync("node", [script, ...args]).toString()) as Record<string, unknown>;
@@ -92,7 +93,9 @@ test.describe("Lihat data: halaman lembar kerja", () => {
     editorDashboard = String(
       node("scripts/dev-share-fixture.mjs", OWNER, EDITOR, "EDITOR", datasetId).dashboardId,
     );
-    node("scripts/dev-share-fixture.mjs", OWNER, VIEWER, "VIEWER", datasetId);
+    viewerDashboard = String(
+      node("scripts/dev-share-fixture.mjs", OWNER, VIEWER, "VIEWER", datasetId).dashboardId,
+    );
   });
 
   test.afterAll(async () => {
@@ -270,6 +273,166 @@ test.describe("Lihat data: halaman lembar kerja", () => {
     expect(res?.status()).toBe(404);
     await expect(viewer.getByTestId("sheet-grid")).toHaveCount(0);
     await viewer.close();
+  });
+
+  test.describe("Perbesar widget tabel (T-047)", () => {
+    /** Kolom sheet di luar widget: tidak boleh pernah sampai ke viewer. */
+    const OTHER = /Harga|Tanggal|Aktif|Catatan/;
+    let sheetId = "";
+    let versionId = "";
+
+    /** Pemilik menambah widget tabel Kode + Jumlah ke dashboard lewat API (T-010/T-011). */
+    async function addTable(browser: Browser, dashboardId: string) {
+      const page = await pageFor(browser, OWNER);
+      await page.goto(`/dashboards/${dashboardId}`);
+      const origin = { Origin: new URL(page.url()).origin };
+      const base = `/api/dashboards/${dashboardId}/widgets`;
+      const add = await page.request.post(base, { headers: origin, data: { baseRevision: 0 } });
+      expect(add.status(), await add.text()).toBe(200);
+      const id = ((await add.json()) as { data: { widget: { id: string } } }).data.widget.id;
+      const set = await page.request.patch(`${base}/${id}`, {
+        headers: origin,
+        data: {
+          type: "table",
+          title: "Tabel kode",
+          spec: { sheetId, columns: [1, 2], format: { style: "auto", decimals: 0 } },
+        },
+      });
+      expect(set.status(), await set.text()).toBe(200);
+      await page.close();
+    }
+
+    test.beforeAll(async ({ browser }) => {
+      const v = node("scripts/dev-upload-fixture.mjs", "latest", datasetId) as { id: string };
+      versionId = v.id;
+      const info = node("scripts/dev-upload-fixture.mjs", "ingest", v.id) as {
+        sheets: { id: string }[];
+      };
+      sheetId = info.sheets[0]!.id;
+      await addTable(browser, viewerDashboard);
+      await addTable(browser, editorDashboard);
+    });
+
+    test("AC1: viewer → tabel layar penuh lewat /api/query {widgetId, page, sort}, hanya kolom widget, tanpa Lihat data", async ({
+      browser,
+    }) => {
+      const viewer = await pageFor(browser, VIEWER);
+      const bodies: Record<string, unknown>[] = [];
+      const sheetCalls: string[] = [];
+      const texts: Promise<string>[] = [];
+      viewer.on("request", (r) => {
+        if (r.url().includes("/api/sheets/")) sheetCalls.push(r.url());
+        if (r.url().endsWith("/api/query"))
+          bodies.push(r.postDataJSON() as Record<string, unknown>);
+      });
+      viewer.on("response", (r) => {
+        if (r.url().endsWith("/api/query")) texts.push(r.text().catch(() => ""));
+      });
+      await viewer.goto(`/dashboards/${viewerDashboard}`);
+      const card = viewer.getByTestId("widget").filter({ hasText: "Tabel kode" });
+      await expect(card.getByTestId("widget-table")).toBeVisible();
+      await card.getByRole("button", { name: "Perbesar Tabel kode" }).click();
+      const big = viewer.getByTestId("widget-expanded");
+      await expect(big.getByRole("heading", { name: "Tabel kode" })).toBeVisible();
+      const table = big.getByTestId("widget-table");
+      await expect(table.locator("thead th")).toHaveText(["Nomor baris", "Kode", "Jumlah"]);
+      await expect(table.locator("tbody tr").first().locator("th, td")).toHaveText([
+        "1",
+        "K1",
+        "1.000",
+      ]);
+      await expect(big.getByTestId("table-range")).toHaveText("Baris 1–100 dari 450");
+      await expect(big.getByTestId("widget-expand-data-link")).toHaveCount(0);
+      await expect(big.getByText("Buka di Lihat data")).toHaveCount(0);
+
+      await big.getByRole("button", { name: "Halaman berikutnya" }).click();
+      await expect(big.getByTestId("table-range")).toHaveText("Baris 101–200 dari 450");
+      await expect(table.locator("tbody tr").first().locator("th, td")).toHaveText([
+        "101",
+        "K101",
+        "101.000",
+      ]);
+      await table.getByRole("button", { name: "Jumlah" }).click();
+      await table.getByRole("button", { name: "Jumlah" }).click();
+      await expect(table.locator("thead th").nth(2)).toHaveAttribute("aria-sort", "descending");
+      await expect(table.locator("tbody tr").first().locator("td").first()).toHaveText("K450");
+      await expect(big.getByTestId("table-range")).toHaveText("Baris 1–100 dari 450");
+
+      // Jalur widget saja: kunci body ⊆ {widgetId, dashboardFilters, page, sort}; tanpa endpoint sheet.
+      expect(bodies.some((b) => b.page === 1)).toBe(true);
+      expect(bodies.some((b) => JSON.stringify(b.sort) === '{"column":2,"dir":"desc"}')).toBe(true);
+      for (const b of bodies) {
+        expect(
+          Object.keys(b).every((k) => ["widgetId", "dashboardFilters", "page", "sort"].includes(k)),
+        ).toBe(true);
+      }
+      expect(sheetCalls).toEqual([]);
+      for (const t of await Promise.all(texts)) expect(t).not.toMatch(OTHER);
+
+      await viewer.keyboard.press("Escape");
+      await expect(big).toHaveCount(0);
+      await expect(card.getByRole("button", { name: "Perbesar Tabel kode" })).toBeFocused();
+      await viewer.close();
+    });
+
+    test("AC2: viewer membuka URL Lihat data atau endpoint sheet langsung → ditolak tanpa nama kolom", async ({
+      browser,
+    }) => {
+      const viewer = await pageFor(browser, VIEWER);
+      const res = await viewer.goto(`/datasets/${datasetId}/data?sheetId=${sheetId}`);
+      expect(res?.status()).toBe(404);
+      expect(await viewer.content()).not.toMatch(OTHER);
+      const origin = { Origin: new URL(viewer.url()).origin };
+      const calls = [
+        viewer.request.post(`/api/sheets/${sheetId}/rows`, {
+          headers: origin,
+          data: { versionId, rowStart: 0, rowCount: 10, cols: [1, 2, 3, 6] },
+        }),
+        viewer.request.post(`/api/sheets/${sheetId}/values`, {
+          headers: origin,
+          data: { versionId, pos: 6 },
+        }),
+        viewer.request.post(`/api/sheets/${sheetId}/stats`, {
+          headers: origin,
+          data: { versionId, pos: 3 },
+        }),
+        viewer.request.get(`/api/sheets/${sheetId}/cell?versionId=${versionId}&row=1&pos=6`),
+      ];
+      for (const r of await Promise.all(calls)) {
+        expect(r.status()).toBe(403);
+        expect(await r.text()).not.toMatch(/Harga|Tanggal|Aktif|Catatan|Kode|Jumlah|catatan \d/);
+      }
+      await viewer.close();
+    });
+
+    test("AC3: editor dan pemilik → Perbesar punya 'Buka di Lihat data' ke sheet widget", async ({
+      browser,
+    }) => {
+      const editor = await pageFor(browser, EDITOR);
+      await editor.goto(`/dashboards/${editorDashboard}`);
+      const card = editor.getByTestId("widget").filter({ hasText: "Tabel kode" });
+      await expect(card.getByTestId("widget-table")).toBeVisible();
+      await card.getByRole("button", { name: "Perbesar Tabel kode" }).click();
+      const big = editor.getByTestId("widget-expanded");
+      await expect(big.getByTestId("widget-table").locator("tbody tr")).toHaveCount(100);
+      const link = big.getByRole("link", { name: "Buka di Lihat data" });
+      await expect(link).toHaveAttribute("href", `/datasets/${datasetId}/data?sheetId=${sheetId}`);
+      await link.click();
+      await expect(editor).toHaveURL(new RegExp(`/datasets/${datasetId}/data\\?sheetId=`));
+      await expect(cell(editor, 0, "c1")).toHaveText("K1");
+      await editor.close();
+
+      // Pemilik juga (dashboard yang sama dengan viewer AC1).
+      const owner = await pageFor(browser, OWNER);
+      await owner.goto(`/dashboards/${viewerDashboard}`);
+      const own = owner.getByTestId("widget").filter({ hasText: "Tabel kode" });
+      await expect(own.getByTestId("widget-table")).toBeVisible();
+      await own.getByRole("button", { name: "Perbesar Tabel kode" }).click();
+      await expect(
+        owner.getByTestId("widget-expanded").getByRole("link", { name: "Buka di Lihat data" }),
+      ).toBeVisible();
+      await owner.close();
+    });
   });
 
   test("Sheet lebar 140 kolom (> 2 potongan × 64): blok dimuat tanpa 429/galat (review H1)", async ({

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { configVersion, type BodyState } from "@/components/widgets/body-state";
 import type { ChartBadge } from "@/components/widgets/chart-widget";
 import { StaleLabel } from "@/components/widgets/stale-label";
+import { TableExpand } from "@/components/widgets/table-expand";
 import { WidgetBody } from "@/components/widgets/widget-body";
 import type { WidgetRequest } from "@/components/widgets/widget-query";
 import type { WidgetView } from "@/features/dashboards/service";
@@ -51,11 +52,27 @@ type Props = React.HTMLAttributes<HTMLDivElement> & {
   /** Kotak bertinggi tetap (grid, termasuk tampilan 768–1023 px); tumpukan ponsel tumbuh mengikuti isi. */
   fixedHeight: boolean;
   selected: boolean;
+  /**
+   * Dataset untuk tautan "Buka di Lihat data" di tampilan Perbesar tabel (T-047): hanya pemilik/editor;
+   * viewer null (Lihat data menolaknya, D6).
+   */
+  dataDatasetId?: string | null;
   onSettings?: () => void;
 };
 
 export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
-  { widget, editing, draggable, fixedHeight, selected, onSettings, className, children, ...rest },
+  {
+    widget,
+    editing,
+    draggable,
+    fixedHeight,
+    selected,
+    dataDatasetId = null,
+    onSettings,
+    className,
+    children,
+    ...rest
+  },
   ref,
 ) {
   const title = widget.title || "Widget tanpa judul";
@@ -134,6 +151,22 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
             title={title}
             editing={editing}
             onToggle={() => setShowData((s) => !s)}
+          />
+        ) : null}
+        {config?.type === "table" && !editing ? (
+          <TableExpand
+            widgetId={widget.id}
+            widgetVersion={widget.version}
+            config={config}
+            title={title}
+            dataHref={
+              dataDatasetId
+                ? `/datasets/${dataDatasetId}/data?sheetId=${encodeURIComponent(config.spec.sheetId)}`
+                : null
+            }
+            request={request}
+            // Mengalah sebelum ekspor di kartu sempit (pola tombol data grafik, widget-card-head.tsx).
+            className={cn(HEAD_BUTTON, NARROW_VIEW.expandHide)}
           />
         ) : null}
         {config ? (

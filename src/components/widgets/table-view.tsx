@@ -70,6 +70,7 @@ export function TableView({
   busy,
   label,
   reserveCorner = false,
+  sheet = false,
   onSort,
   onPage,
 }: {
@@ -84,6 +85,11 @@ export function TableView({
   label: string;
   /** Mode edit di grid: pegangan resize (24 px) ada di pojok kanan bawah — jangan tutupi tombol halaman. */
   reserveCorner?: boolean;
+  /**
+   * Rupa lembar kerja ("Perbesar", T-047): garis sel, kepala berlatar, dan kolom nomor baris beku di
+   * kiri (nomor global = halaman × ukuran + baris). Data tetap dari jalur widget yang sama.
+   */
+  sheet?: boolean;
   onSort: (sort: TableSort) => void;
   onPage: (page: number) => void;
 }) {
@@ -127,8 +133,16 @@ export function TableView({
           tabIndex={0}
         >
           <table className="w-full border-collapse text-sm" data-testid="widget-table">
-            <thead className="sticky top-0 z-10 bg-card">
+            <thead className={cn("sticky top-0 z-10", sheet ? "bg-muted" : "bg-card")}>
               <tr>
+                {sheet ? (
+                  <th
+                    scope="col"
+                    className="sticky left-0 z-20 w-px min-w-12 border-r border-b bg-muted px-2 py-1"
+                  >
+                    <span className="sr-only">Nomor baris</span>
+                  </th>
+                ) : null}
                 {data.columns.map((c, i) => {
                   const pos = positions[i]!;
                   const dir = sort?.column === pos ? sort.dir : null;
@@ -148,6 +162,7 @@ export function TableView({
                       }
                       className={cn(
                         "whitespace-nowrap border-b px-2 py-1 font-medium",
+                        sheet && "border-r",
                         numeric ? "text-right" : "text-left",
                       )}
                     >
@@ -178,6 +193,14 @@ export function TableView({
             <tbody>
               {data.rows.map((row, r) => (
                 <tr key={page * size + r} className="border-b last:border-b-0">
+                  {sheet ? (
+                    <th
+                      scope="row"
+                      className="sticky left-0 z-[1] w-px whitespace-nowrap border-r bg-muted px-2 py-1.5 text-right font-normal tabular-nums text-muted-foreground"
+                    >
+                      {count(page * size + r + 1)}
+                    </th>
+                  ) : null}
                   {row.map((v, i) => {
                     const type = data.columns[i]!.type;
                     const text = cellText(v, i);
@@ -186,6 +209,7 @@ export function TableView({
                         key={i}
                         className={cn(
                           "max-w-[24rem] truncate px-3 py-1.5",
+                          sheet && "border-r",
                           NUMERIC.has(type) && "text-right tabular-nums",
                           (v === null || v === "") && "text-muted-foreground",
                         )}

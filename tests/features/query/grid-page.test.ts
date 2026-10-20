@@ -94,6 +94,17 @@ describe("gridPageView", () => {
     expect(v!.sheet!.columns).toBeNull();
   });
 
+  it("T-047: id sheet versi aktif memilih tab itu; id asing → sheet pertama", async () => {
+    await gridPageView("owner", "d1", "s1");
+    expect(db.sheet.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: "s1", versionId: "v1" } }),
+    );
+    await gridPageView("owner", "d1", "lama");
+    expect(db.sheet.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: "s0", versionId: "v1" } }),
+    );
+  });
+
   it("visibleColumns menolak skema bukan larik", () => {
     expect(visibleColumns(null)).toBeNull();
     expect(visibleColumns({})).toBeNull();

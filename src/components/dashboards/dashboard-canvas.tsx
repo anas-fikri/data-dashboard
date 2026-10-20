@@ -287,6 +287,7 @@ function Canvas(props: CanvasProps) {
       draggable={!phone && !tablet}
       fixedHeight={!phone}
       selected={canEdit && selected === w.id}
+      dataDatasetId={props.role === "VIEWER" ? null : props.datasetId}
       onSettings={() => {
         if (selected !== w.id) reveal.current = w.id;
         setSelected(selected === w.id ? null : w.id);

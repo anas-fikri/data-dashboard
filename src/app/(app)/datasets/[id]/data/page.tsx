@@ -13,7 +13,7 @@ import { gridPageView } from "@/features/query/grid-page";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ sheet?: string }>;
+type Search = Promise<{ sheet?: string; sheetId?: string }>;
 
 export const metadata = { title: "Lihat data" };
 
@@ -31,7 +31,12 @@ export default async function DataViewPage({
 }) {
   const [{ id }, search] = await Promise.all([params, searchParams]);
   const user = await requireUser();
-  const wanted = /^\d{1,4}$/.test(search.sheet ?? "") ? Number(search.sheet) : null;
+  // ?sheetId= (tautan dari widget tabel, T-047) didahulukan dari ?sheet= (indeks tab).
+  const wanted = isIdShape(search.sheetId)
+    ? search.sheetId
+    : /^\d{1,4}$/.test(search.sheet ?? "")
+      ? Number(search.sheet)
+      : null;
   const view = isIdShape(id) ? await gridPageView(user.id, id, wanted) : null;
   if (!view) notFound();
   const nonce = (await headers()).get("x-nonce") ?? undefined;

@@ -49,6 +49,11 @@ export const NARROW_VIEW = {
       "@max-[11rem]:any-pointer-coarse:min-h-(--control-h-sm) @max-[11rem]:any-pointer-coarse:my-1.5",
     ],
   },
+  /**
+   * Tombol Perbesar tabel (T-047): tampil hanya bila kepala muat judul ≥ 4rem + dua tombol (batas
+   * grafik bertombol data + ekspor); di kartu lebih sempit hanya ekspor yang tersisa.
+   */
+  expandHide: "@max-[9.5rem]:hidden @max-[11rem]:any-pointer-coarse:hidden",
 } as const;
 
 /** Judul kartu setinggi tombol kepala (kepala KPI/tabel sama tinggi dengan kepala grafik bertombol). */
