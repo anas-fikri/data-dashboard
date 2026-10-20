@@ -1,3 +1,4 @@
+import type { SheetPeriod } from "@/features/ingest/period";
 import type { NewTyped, RecastRepo, RecastSheet } from "@/features/ingest/recast";
 import { DS, VID, type FakeRepo } from "./fakes";
 
@@ -13,6 +14,9 @@ export interface FakeSegment {
   colCount: number;
   /** Peta kolom raw → posisi kanonik (T-gcn8); kosong = identitas. */
   colMap?: number[];
+  /** Periode segmen (T-049). */
+  periodKey?: string | null;
+  periodStart?: string | null;
 }
 
 export interface FakeTyped extends Omit<
@@ -36,6 +40,8 @@ export class FakeRecastRepo implements RecastRepo {
   /** Manifest versi lain yang berbagi segmen (rollback, AC 3): tidak pernah diubah recast. */
   others: string[][] = [];
   versionStatus = "READY";
+  /** Mode periode sheet (T-049); null = non-periode. */
+  period: SheetPeriod | null = null;
   source: "csv" | "xlsx" = "csv";
   calls = { saveProfile: [] as string[], addTyped: [] as string[], swap: 0 };
   private n = 0;
@@ -102,6 +108,7 @@ export class FakeRecastRepo implements RecastRepo {
       columns: s.columns,
       schema: s.schema ?? null,
       source: this.source,
+      period: this.period,
       segments: this.manifestTyped().map((t, ordinal) => {
         const g = this.segments.get(t.segmentId)!;
         return {
@@ -113,7 +120,15 @@ export class FakeRecastRepo implements RecastRepo {
           headerRow: t.headerRow ?? g.headerRow,
           colCount: g.colCount,
           colMap: g.colMap ?? [],
-          typed: { id: t.id, typedKey: t.typedKey, columns: t.columns, profile: t.profile },
+          periodKey: g.periodKey ?? null,
+          periodStart: g.periodStart ?? null,
+          typed: {
+            id: t.id,
+            typedKey: t.typedKey,
+            columns: t.columns,
+            profile: t.profile,
+            dataRows: t.dataRows,
+          },
         };
       }),
     };

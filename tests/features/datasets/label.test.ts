@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deriveLabel, type VersionStatus } from "@/features/datasets/label";
+import { deriveLabel, NON_TERMINAL_STATUSES, type VersionStatus } from "@/features/datasets/label";
 import { isIdShape, nameKeyOf, validateDatasetInput } from "@/features/datasets/validation";
 
 const v = (id: string, status: VersionStatus, errorMessage: string | null = null) => ({
@@ -22,6 +22,16 @@ describe("deriveLabel", () => {
       state: "siap",
       badge: { kind: "failed", text: "Gagal", message: "Sheet 2 baris 18: format rusak" },
     });
+  });
+
+  it("T-049: terbaru menunggu konfirmasi → badge sendiri; termasuk status non-terminal", () => {
+    expect(deriveLabel("a", v("b", "AWAITING_CONFIRM"))).toEqual({
+      state: "siap",
+      badge: { kind: "awaiting_confirm", text: "Menunggu konfirmasi" },
+    });
+    expect(NON_TERMINAL_STATUSES).toContain("AWAITING_CONFIRM");
+    expect(NON_TERMINAL_STATUSES).toContain("AWAITING_MAPPING");
+    expect(NON_TERMINAL_STATUSES).not.toContain("READY");
   });
 
   it("belum ada versi aktif + terbaru memproses → kosong + badge memproses", () => {

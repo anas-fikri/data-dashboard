@@ -12,8 +12,10 @@
  *    tidak memonopoli worker (concurrency 1).
  * baseRevision wajib: edit dari tampilan lama ditolak (STALE) alih-alih menimpa edit yang lebih baru.
  */
+import type { VersionStatus } from "@/features/datasets/label";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
+import { periodFreezeViolation, type SheetPeriod } from "@/features/ingest/period";
 import type { SheetPreview } from "@/features/ingest/preview";
 import {
   maxSchemaPos,
@@ -35,8 +37,7 @@ export const SAMPLE_ROWS = 50;
 export const SAMPLE_COLS = 60;
 export const SAMPLE_TEXT_CHARS = 200;
 
-export type VersionStatus =
-  "UPLOADING" | "UPLOADED" | "INGESTING" | "AWAITING_MAPPING" | "READY" | "FAILED";
+export type { VersionStatus } from "@/features/datasets/label";
 
 export interface IngestStatus {
   versionId: string;
@@ -96,6 +97,8 @@ export interface SchemaRepo {
     headerRow: number;
     schema: ColumnSchema[] | null;
     versionStatus: VersionStatus;
+    /** Mode periode sheet di versi aktif (T-049); null/tidak ada = non-periode. */
+    period?: SheetPeriod | null;
   } | null>;
   /** Cek kepemilikan ringan (polling status tiap 1,5 s tidak membaca skema, review T-008 L3). */
   ownsActiveSheet(userId: string, sheetId: string): Promise<boolean>;
@@ -347,6 +350,14 @@ export async function requestRecast(
       "Skema sheet ini sudah diubah sejak halaman dibuka. Muat ulang halaman lalu ulangi perubahan.",
     );
   if (input.baseRevision !== sheet.schemaRevision) return stale();
+  // Aturan beku periode (T-049): ditolak sebelum antre; worker menjaganya lagi.
+  const frozen = periodFreezeViolation(sheet.period ?? null, {
+    headerRow: input.headerRow,
+    currentHeaderRow: sheet.headerRow,
+    columns: input.columns,
+    schema: sheet.schema,
+  });
+  if (frozen) return fail("INVALID", frozen);
   const headerRow =
     input.headerRow !== undefined && input.headerRow !== sheet.headerRow
       ? input.headerRow

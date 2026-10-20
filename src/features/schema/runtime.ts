@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { hit, release, RULES } from "@/features/auth/rate-limit";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { IngestProgress } from "@/features/ingest/ingest";
+import { sheetPeriod } from "@/features/ingest/period";
 import { parsePreview } from "@/features/ingest/preview";
 import {
   recastProgressOf,
@@ -131,7 +132,9 @@ export const prismaSchemaRepo: SchemaRepo = {
         schemaRevision: true,
         headerRow: true,
         schema: true,
-        version: { select: { status: true } },
+        periodSource: true,
+        periodColumn: true,
+        version: { select: { status: true, periodGrain: true } },
       },
     });
     if (!s) return null;
@@ -141,6 +144,7 @@ export const prismaSchemaRepo: SchemaRepo = {
       headerRow: s.headerRow,
       schema: schemaOf(s.schema),
       versionStatus: s.version.status,
+      period: sheetPeriod(s.version.periodGrain, s.periodSource, s.periodColumn),
     };
   },
 

@@ -7,6 +7,7 @@ import { prismaManifest } from "@/features/versions/integrity";
 import { deleteObject, deletePrefix, objectExists } from "@/lib/storage/objects";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
 import { lockActiveSheet } from "./active-lock";
+import { isoDay, sheetPeriod } from "./period";
 import { parsePreview } from "./preview";
 import type { ColumnMeta } from "./header";
 import type { ColumnSchema } from "./infer";
@@ -226,7 +227,7 @@ export const prismaIngestRepo: IngestRepo = {
   async createSegment(versionId, d) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: { datasetId: true },
+      select: { datasetId: true, originalName: true },
     });
     if (!v) throw new DatasetGoneError();
     try {
@@ -243,6 +244,10 @@ export const prismaIngestRepo: IngestRepo = {
           headerRow: d.headerRow,
           colCount: d.colCount,
           ...(d.colMap?.length ? { colMap: d.colMap } : {}),
+          // Asal segmen (T-049): file identik, kartu Periode, cast per jenis sumber.
+          sha256: d.sha256 ?? null,
+          sourceKind: d.sourceKind ?? null,
+          originalName: v.originalName,
           createdByVersionId: versionId,
         },
         select: { id: true },
@@ -389,7 +394,11 @@ export const prismaRecastRepo: RecastRepo = {
         colCount: true,
         columns: true,
         schema: true,
-        version: { select: { sourceKey: true, status: true, datasetId: true } },
+        periodSource: true,
+        periodColumn: true,
+        version: {
+          select: { sourceKey: true, status: true, datasetId: true, periodGrain: true },
+        },
         segments: {
           orderBy: { ordinal: "asc" },
           select: {
@@ -401,6 +410,7 @@ export const prismaRecastRepo: RecastRepo = {
                 columns: true,
                 profile: true,
                 headerRow: true,
+                dataRows: true,
                 segment: {
                   select: {
                     id: true,
@@ -410,6 +420,8 @@ export const prismaRecastRepo: RecastRepo = {
                     headerRow: true,
                     colCount: true,
                     colMap: true,
+                    periodKey: true,
+                    periodStart: true,
                   },
                 },
               },
@@ -431,6 +443,7 @@ export const prismaRecastRepo: RecastRepo = {
       columns: s.columns as unknown as ColumnMeta[],
       schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
       source: s.version.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
+      period: sheetPeriod(s.version.periodGrain, s.periodSource, s.periodColumn),
       segments: s.segments.map(({ ordinal, segmentTyped: t }) => ({
         ordinal,
         segmentId: t.segment.id,
@@ -440,7 +453,15 @@ export const prismaRecastRepo: RecastRepo = {
         headerRow: t.headerRow ?? t.segment.headerRow,
         colCount: t.segment.colCount,
         colMap: t.segment.colMap,
-        typed: { id: t.id, typedKey: t.typedKey, columns: t.columns, profile: t.profile },
+        periodKey: t.segment.periodKey,
+        periodStart: isoDay(t.segment.periodStart),
+        typed: {
+          id: t.id,
+          typedKey: t.typedKey,
+          columns: t.columns,
+          profile: t.profile,
+          dataRows: t.dataRows,
+        },
       })),
     };
   },

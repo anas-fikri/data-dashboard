@@ -3,6 +3,7 @@
    tampilan kartu; Safari/VoiceOver membuang semantik tabel tanpa ini (pola users-table.tsx). */
 import {
   IconAlertTriangle,
+  IconChecklist,
   IconCircleCheck,
   IconCircleCheckFilled,
   IconFileOff,
@@ -31,6 +32,7 @@ const ICONS: Record<VersionKind, ReactNode> = {
   ready: <IconCircleCheck />,
   failed: <IconAlertTriangle />,
   mapping: <IconRoute />,
+  confirm: <IconChecklist />,
   processing: <IconLoader2 className="motion-safe:animate-spin" />,
   uploading: <IconPlayerPause />,
 };

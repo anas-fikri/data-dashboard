@@ -47,7 +47,10 @@ export default async function DatasetDetailPage({
   const badge = dataset.label.badge;
   const active = dataset.active;
   // Versi terbaru sudah terunggah dan menunggu/sedang ingest atau pemetaan → unggah baru ditahan (D4).
-  const processing = badge?.kind === "processing" || badge?.kind === "awaiting_mapping";
+  const processing =
+    badge?.kind === "processing" ||
+    badge?.kind === "awaiting_mapping" ||
+    badge?.kind === "awaiting_confirm";
   // Ada versi non-terminal (termasuk unggahan belum selesai) → "Aktifkan" pasti DATASET_BUSY. Unggahan
   // yang sedang ditransfer di tab ini dikabarkan UploadPanel lewat DatasetActivityProvider (tanpa refresh).
   const busy = activationBusy(badge);

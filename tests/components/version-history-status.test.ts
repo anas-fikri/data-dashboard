@@ -30,6 +30,11 @@ describe("versionStatusView", () => {
     expect(label("READY")).toBe("Siap");
     expect(label("FAILED")).toBe("Gagal");
     expect(label("AWAITING_MAPPING")).toBe("Menunggu pemetaan");
+    expect(versionStatusView({ status: "AWAITING_CONFIRM", active: false })).toEqual({
+      kind: "confirm",
+      label: "Menunggu konfirmasi",
+      tone: "warning",
+    });
     expect(label("INGESTING")).toBe("Memproses");
     expect(label("UPLOADED")).toBe("Menunggu diproses");
   });
@@ -115,5 +120,55 @@ describe("keepNotice", () => {
     expect(keepNotice(notice, "v3")).toBeNull();
     expect(keepNotice(notice, null)).toBeNull();
     expect(keepNotice(null, "v2")).toBeNull();
+  });
+});
+
+describe("T-049: AWAITING_CONFIRM dirender (badge dataset + baris riwayat)", () => {
+  it("badge 'Menunggu konfirmasi' dengan ikon, dan baris riwayat tanpa tombol aktifkan", async () => {
+    const { createElement } = await import("react");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { StatusBadge } = await import("@/components/datasets/status-badge");
+    const { VersionHistoryRow } = await import("@/components/datasets/version-history-row");
+    const badge = renderToStaticMarkup(
+      createElement(StatusBadge, {
+        label: { state: "siap", badge: { kind: "awaiting_confirm", text: "Menunggu konfirmasi" } },
+      }),
+    );
+    expect(badge).toContain('data-badge="awaiting_confirm"');
+    expect(badge).toContain("bg-warning/20");
+    expect(badge).toContain("Menunggu konfirmasi");
+    expect(badge).toContain("tabler-icon-checklist");
+    const row = renderToStaticMarkup(
+      createElement(
+        "table",
+        null,
+        createElement(
+          "tbody",
+          null,
+          createElement(VersionHistoryRow, {
+            datasetId: "ds1",
+            busy: true,
+            mappingApplying: false,
+            v: {
+              id: "v1",
+              fileName: "maret.xlsx",
+              status: "AWAITING_CONFIRM",
+              sizeBytes: 10,
+              createdAt: "2026-10-20T01:00:00.000Z",
+              finishedAt: null,
+              active: false,
+              canActivate: false,
+              canDiscard: false,
+              message: null,
+              uploadedBy: null,
+              sourceDeleted: false,
+            },
+          }),
+        ),
+      ),
+    );
+    expect(row).toContain('data-status="AWAITING_CONFIRM"');
+    expect(row).toContain("Menunggu konfirmasi");
+    expect(row).toContain("tabler-icon-checklist");
   });
 });

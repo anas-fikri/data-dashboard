@@ -23,7 +23,7 @@ import { chromium } from "playwright-core";
 const BASE = process.env.PERF_BASE;
 const USERS = JSON.parse(readFileSync(process.env.PERF_USERS ?? "users.json", "utf8"));
 const [mode, file, arg] = process.argv.slice(2);
-const DONE = new Set(["READY", "AWAITING_MAPPING", "FAILED"]);
+const DONE = new Set(["READY", "AWAITING_MAPPING", "AWAITING_CONFIRM", "FAILED"]);
 const NUM = new Set(["integer", "decimal"]);
 const DATE = new Set(["date", "timestamp"]);
 const FMT = { style: "auto", decimals: 0 };

@@ -27,6 +27,7 @@ import {
   DATE_FORMATS,
 } from "./infer";
 import { copyParquet, rowGroupFor } from "./raw-writer";
+import { isIsoDate } from "./period";
 import { packProfile, type RawProfile, type StoredProfile } from "./profile";
 
 /**
@@ -109,23 +110,51 @@ export async function maxSourceRow(duck: Duck, rawPath: string): Promise<number>
   return Number(r.getRows()[0]?.[0] ?? 0);
 }
 
+/** `DATE '<iso>'` untuk awal periode yang sudah divalidasi (bukan input bebas). */
+function periodLit(period: string): string {
+  if (!isIsoDate(period)) throw new Error(`awal periode tidak valid: ${period}`);
+  return `DATE '${period}'`;
+}
+
 /**
  * Gerbang integritas file typed lokal sebelum diunggah/ditautkan (T-038): jumlah barisnya = baris data
- * raw yang dihitung writeTyped, dan `_row` unik. [] = lolos.
+ * raw yang dihitung writeTyped, dan `_row` unik. Segmen periode (T-049, `period` = awal periode):
+ * tidak ada `_period` NULL, dan baris periode itu = baris data metadata (satu segmen = satu periode).
+ * [] = lolos.
  */
 export async function typedFileProblems(
   duck: Duck,
   path: string,
   dataRows: number,
   label: string,
+  period?: string | null,
 ): Promise<string[]> {
-  const r = await duck.conn.runAndReadAll(
-    `SELECT count(*), count(DISTINCT _row) FROM read_parquet(${lit(path)})`,
-  );
-  const [n, d] = (r.getRows()[0] ?? [0, 0]).map(Number) as [number, number];
+  const periodCols = period
+    ? `, count(*) FILTER (WHERE _period IS NULL), count(*) FILTER (WHERE _period = ${periodLit(period)})`
+    : "";
+  let row: unknown[];
+  try {
+    const r = await duck.conn.runAndReadAll(
+      `SELECT count(*), count(DISTINCT _row)${periodCols} FROM read_parquet(${lit(path)})`,
+    );
+    row = r.getRows()[0] ?? [];
+  } catch (e) {
+    // File segmen periode tanpa kolom _period: rusak, bukan galat sementara.
+    if (period && /_period/.test(e instanceof Error ? e.message : "")) {
+      return [`${label}: kolom periode tidak ada di file`];
+    }
+    throw e;
+  }
+  const [n, d, nulls, inPeriod] = row.map(Number) as [number, number, number?, number?];
   const out: string[] = [];
   if (n !== dataRows) out.push(`${label}: ${n} baris di file, ${dataRows} baris data di sumber`);
   if (d !== n) out.push(`${label}: ${n - d} nomor baris ganda`);
+  if (period) {
+    if (nulls) out.push(`${label}: ${nulls} baris data tanpa periode`);
+    if (inPeriod !== dataRows) {
+      out.push(`${label}: ${inPeriod ?? 0} baris periode ${period}, ${dataRows} baris di metadata`);
+    }
+  }
   return out;
 }
 
@@ -342,6 +371,11 @@ export async function copyTyped(
     schema: ColumnSchema[];
     /** Rata-rata karakter per baris data (ukuran row group). */
     charsPerRow: number;
+    /**
+     * Awal periode segmen (T-049, ISO naive): `_period DATE` konstan setelah `_src_row`, ditulis dari
+     * metadata segmen (dibekukan saat unggah). Tanpa ini layout typed tidak berubah (tanpa `_period`).
+     */
+    period?: string | null;
   },
 ): Promise<void> {
   const where = `_row > ${Math.trunc(input.headerRow)}`;
@@ -359,7 +393,8 @@ export async function copyTyped(
     return p ? `${p.outer(`a${id}`)} AS c${id}` : `CAST(NULL AS ${sqlType(s)}) AS c${id}`;
   });
   const inner = [...parts].map(([pos, p]) => `${p.inner} AS a${Math.trunc(pos)}`);
-  const width = outer.length + 2;
+  const period = input.period ? `${periodLit(input.period)} AS _period, ` : "";
+  const width = outer.length + (period ? 3 : 2);
   const rowBase = input.rowBase ?? 0n;
   if (rowBase < 0n) throw new Error("rowBase negatif");
   // Tanpa ORDER BY: raw sudah urut _row dan urutan sisip dipertahankan (1 thread) → deterministik
@@ -367,7 +402,7 @@ export async function copyTyped(
   await watched(duck, input.watch, () =>
     copyParquet(
       duck,
-      `SELECT CAST(_row AS BIGINT) + ${rowBase.toString()}::BIGINT AS _row, _row AS _src_row, ${outer.join(", ")}
+      `SELECT CAST(_row AS BIGINT) + ${rowBase.toString()}::BIGINT AS _row, _row AS _src_row, ${period}${outer.join(", ")}
        FROM (SELECT ${["_row", ...inner].join(", ")}
              FROM read_parquet(${lit(input.rawPath)}) WHERE ${where})`,
       input.outPath,

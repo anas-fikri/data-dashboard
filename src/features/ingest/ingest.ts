@@ -121,6 +121,10 @@ export interface SegmentRecord {
   colMap?: number[];
   rowBase: bigint;
   maxSrcRow: number;
+  /** SHA-256 file asal (T-049). */
+  sha256?: string;
+  /** Jenis file asal (T-049). */
+  sourceKind?: "xlsx" | "csv";
 }
 
 export interface IngestRepo {
@@ -492,6 +496,8 @@ export async function runIngest(
         colCount: s.rec.colCount,
         rowBase,
         maxSrcRow,
+        sha256: dl.sha256,
+        sourceKind: ext,
       });
       created.push(segmentId);
       await storage.upload(key, s.path, PARQUET);

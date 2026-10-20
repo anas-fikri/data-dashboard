@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync } from "node:fs";
+import { DuckDBInstance } from "@duckdb/node-api";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { runIngest } from "@/features/ingest/ingest";
@@ -9,6 +10,7 @@ import {
   type RecastProgress,
   yieldsToIngest,
 } from "@/features/ingest/recast";
+import { PERIOD_COLUMN_FROZEN, PERIOD_HEADER_FROZEN, periodKeyOf } from "@/features/ingest/period";
 import { choiceOf, writeTyped } from "@/features/ingest/typed";
 import { gcPlan } from "@/features/versions/gc";
 import { newSegmentId } from "@/features/versions/segment-keys";
@@ -381,7 +383,8 @@ async function segmented(
   content: string,
   n: number,
   /** swapLast (T-gcn8): raw segmen terakhir menukar kolom 1 dan 2, peta kolom [2, 1], tanpa profil. */
-  opts: { extra?: boolean; profiles?: boolean; swapLast?: boolean } = {},
+  /** periods (T-049): awal periode per segmen → typed ditulis dengan `_period`, periode bulanan. */
+  opts: { extra?: boolean; profiles?: boolean; swapLast?: boolean; periods?: string[] } = {},
 ): Promise<Setup> {
   const r = await setup(content);
   const s = r.sheet();
@@ -451,8 +454,19 @@ async function segmented(
         rowBase,
       });
       if (extra) extraSchema = typed.schema.find((c) => c.pos === extraPos);
+      const periodStart = opts.periods?.[k] ?? null;
+      let uploadPath = typedPath;
+      if (periodStart) {
+        // Seperti unggahan periode: `_period` konstan setelah `_src_row`.
+        uploadPath = join(work, `typed-${k}-p.parquet`);
+        await duck.conn.run(
+          `COPY (SELECT _row, _src_row, DATE '${periodStart}' AS _period, * EXCLUDE (_row, _src_row)
+                 FROM read_parquet('${typedPath.replace(/'/g, "''")}'))
+           TO '${uploadPath.replace(/'/g, "''")}' (FORMAT parquet)`,
+        );
+      }
       const typedKey = `parquet/${DS}/seg/${id}/typed-1.parquet`;
-      await r.storage.upload(typedKey, typedPath);
+      await r.storage.upload(typedKey, uploadPath);
       const maxSrcRow = h + hi - lo + 1;
       r.rr.segments.set(id, {
         id,
@@ -462,6 +476,7 @@ async function segmented(
         headerRow: h,
         colCount,
         ...(swap ? { colMap: [2, 1] } : {}),
+        ...(periodStart ? { periodStart, periodKey: periodKeyOf("MONTH", periodStart) } : {}),
       });
       r.rr.manifest.push(
         r.rr.addRow({
@@ -476,6 +491,7 @@ async function segmented(
       );
       rowBase += BigInt(maxSrcRow);
     }
+    if (opts.periods) r.rr.period = { grain: "MONTH", source: "COLUMN", column: 1 };
     if (extraSchema) {
       s.colCount = extraPos;
       s.columns = [...s.columns, extraMeta];
@@ -817,5 +833,106 @@ describe("baris judul dan peta kolom per segmen (T-gcn8)", () => {
     const all = await allRows(r);
     expect(all.map((x) => x[2])).toEqual(Array.from({ length: 10 }, (_, i) => BigInt(i)));
     expect(all.map((x) => x[1])).toEqual(Array.from({ length: 10 }, (_, i) => `K${i}`));
+  });
+});
+
+describe("data periode (T-049)", () => {
+  // tanggal;nilai — kolom 1 = kolom periode (teks tanggal), kolom 2 = angka. Dua segmen = Jan dan Feb.
+  const CONTENT = `tanggal;nilai\n2026-01-05;1\n2026-01-20;2\n2026-02-03;3\n2026-02-28;x\n`;
+  const PERIODS = ["2026-01-01", "2026-02-01"];
+  const periodsOf = async (r: Setup) => {
+    const out: unknown[][] = [];
+    const db = await DuckDBInstance.create(":memory:");
+    const c = await db.connect();
+    try {
+      for (const x of r.rr.manifestTyped()) {
+        const path = join(r.storage.dir, x.typedKey).replace(/'/g, "''");
+        const q = await c.runAndReadAll(
+          `SELECT strftime(_period, '%Y-%m-%d') FROM read_parquet('${path}') ORDER BY _row`,
+        );
+        out.push(q.getRowsJS().map((row) => row[0]));
+      }
+    } finally {
+      c.closeSync();
+      db.closeSync();
+    }
+    return out;
+  };
+  /** Kolom terakhir (c2 = nilai) semua baris. */
+  const lastCol = (rows: unknown[][]) => rows.map((x) => x[x.length - 1]);
+
+  it("AC3: _period tertulis di typed segmen dan bertahan saat recast (dari metadata segmen)", async () => {
+    const r = await segmented(CONTENT, 2, { periods: PERIODS });
+    const out = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(out).toMatchObject({ outcome: "done", revision: 2 });
+    expect(r.rr.manifestTyped().map((x) => x.schemaRevision)).toEqual([2, 2]);
+    expect(await periodsOf(r)).toEqual([
+      ["2026-01-01", "2026-01-01"],
+      ["2026-02-01", "2026-02-01"],
+    ]);
+    for (const x of r.rr.manifestTyped()) {
+      const types = await parquetTypes(join(r.storage.dir, x.typedKey));
+      expect(Object.keys(types)).toEqual(["_row", "_src_row", "_period", "c1", "c2"]);
+      expect(types._period).toBe("DATE");
+    }
+    expect(lastCol(await allRows(r))).toEqual([1n, 2n, 3n, null]);
+  });
+
+  it("AC3: pilih ulang baris judul ditolak dengan pesan (juga satu segmen)", async () => {
+    const r = await segmented(CONTENT, 1, { periods: ["2026-01-01"] });
+    const before = [...r.rr.manifest];
+    const out = await recastSheet(r.sheetId, { headerRow: 2 }, r.deps);
+    expect(out).toEqual({ outcome: "invalid", message: PERIOD_HEADER_FROZEN });
+    expect(r.rr.manifest).toEqual(before);
+    expect(r.sheet().schemaRevision).toBe(1);
+  });
+
+  it("AC3: ubah tipe/format kolom periode ditolak; ganti nama kolom periode boleh", async () => {
+    const r = await segmented(CONTENT, 2, { periods: PERIODS });
+    for (const change of [
+      { pos: 1, type: "text" as const },
+      { pos: 1, type: "date" as const, dateFormat: "dd/mm/yyyy" as const },
+    ]) {
+      expect(await recastSheet(r.sheetId, { columns: [change] }, r.deps)).toEqual({
+        outcome: "invalid",
+        message: PERIOD_COLUMN_FROZEN,
+      });
+    }
+    expect(r.sheet().schemaRevision).toBe(1);
+    const renamed = await recastSheet(r.sheetId, { columns: [{ pos: 1, name: "Tgl" }] }, r.deps);
+    expect(renamed).toMatchObject({ outcome: "done", revision: 2 });
+    expect(r.sheet().schema![0]).toMatchObject({ name: "Tgl" });
+  });
+
+  it("AC4: segmen periode tanpa awal periode → gagal integritas, tidak ada yang aktif", async () => {
+    const r = await segmented(CONTENT, 2, { periods: PERIODS });
+    const seg = r.rr.segments.get(r.rr.manifestTyped()[1]!.segmentId)!;
+    seg.periodStart = null;
+    seg.periodKey = null;
+    const before = [...r.rr.manifest];
+    const out = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(out).toMatchObject({ outcome: "failed" });
+    expect((out as { message: string }).message).toMatch(/tanpa awal periode/);
+    expect(r.rr.manifest).toEqual(before);
+  });
+
+  it("AC4: dua segmen satu periode (baris tergandakan) → gerbang integritas menolak sebelum aktif", async () => {
+    const r = await segmented(CONTENT, 2, { periods: ["2026-01-01", "2026-01-01"] });
+    const before = [...r.rr.manifest];
+    const out = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(out).toMatchObject({ outcome: "failed" });
+    expect((out as { message: string }).message).toMatch(/2026-01 muncul lebih dari sekali/);
+    expect(r.rr.manifest).toEqual(before);
+  });
+
+  it("AC2: sheet non-periode → typed tanpa _period (layout sama seperti sebelumnya)", async () => {
+    const r = await segmented(CONTENT, 2);
+    expect(
+      await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps),
+    ).toMatchObject({ outcome: "done" });
+    for (const x of r.rr.manifestTyped()) {
+      const types = await parquetTypes(join(r.storage.dir, x.typedKey));
+      expect(Object.keys(types)).toEqual(["_row", "_src_row", "c1", "c2"]);
+    }
   });
 });

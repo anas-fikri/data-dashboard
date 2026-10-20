@@ -48,6 +48,81 @@ const sheet = (over: Partial<Parameters<typeof check.manifestProblems>[0][number
 
 beforeEach(() => vi.clearAllMocks());
 
+describe("versi periode (T-049 AC4)", () => {
+  const seg = (
+    ordinal: number,
+    start: string | null,
+    key: string | null,
+    dataRows: number | null = 5,
+  ) => ({
+    ordinal,
+    rawKey: `r${ordinal}`,
+    typedKey: `t${ordinal}`,
+    rowBase: BigInt(ordinal * 100),
+    maxSrcRow: 10,
+    periodStart: start,
+    periodKey: key,
+    dataRows,
+  });
+  const periodic = (segments: ReturnType<typeof seg>[], over = {}) =>
+    sheet({
+      typedKey: "t0",
+      periodGrain: "MONTH",
+      periodSource: "COLUMN",
+      segments,
+      ...over,
+    });
+
+  it("satu segmen per periode, kunci cocok satuan, baris tercatat → lolos", () => {
+    expect(
+      check.manifestProblems([
+        periodic([seg(0, "2026-01-01", "2026-01"), seg(1, "2026-02-01", "2026-02")]),
+      ]),
+    ).toEqual([]);
+    expect(
+      check.manifestProblems([
+        periodic([seg(0, "2026-04-01", "2026-Q2")], {
+          periodGrain: "QUARTER",
+          periodSource: "LABEL",
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("periode hilang, salah satuan, ganda, jumlah baris tidak tercatat, sumber tidak tercatat → ditolak", () => {
+    expect(
+      check.manifestProblems([
+        periodic(
+          [
+            seg(0, null, null),
+            seg(1, "2026-02-15", "2026-02"),
+            seg(2, "2026-03-01", "2026-03", null),
+            seg(3, "2026-03-01", "2026-03"),
+            seg(4, "2026-05-01", "2026-Q2"),
+          ],
+          { periodSource: null },
+        ),
+      ]),
+    ).toEqual([
+      'sheet "Data": sumber periode tidak tercatat',
+      'sheet "Data" segmen 1: periode tidak tercatat',
+      'sheet "Data" segmen 2: periode 2026-02 tidak cocok dengan satuan versi',
+      'sheet "Data" segmen 3: jumlah baris periode 2026-03 tidak tercatat',
+      'sheet "Data": periode 2026-03 muncul lebih dari sekali',
+      'sheet "Data" segmen 5: periode 2026-Q2 tidak cocok dengan satuan versi',
+    ]);
+  });
+
+  it("versi non-periode yang merujuk segmen berperiode → ditolak; tanpa periode tetap lolos (AC2)", () => {
+    expect(
+      check.manifestProblems([
+        sheet({ segments: [{ ...seg(0, "2026-01-01", "2026-01"), typedKey: "t1" }] }),
+      ]),
+    ).toEqual(['sheet "Data": segmen berperiode di versi non-periode']);
+    expect(check.manifestProblems([sheet({ periodGrain: null })])).toEqual([]);
+  });
+});
+
 describe("manifestProblems + verifyVersionIntegrity", () => {
   it("manifest lengkap → lolos; tanpa segmen, pointer beda, ordinal bolong, _row bertumpuk → ditolak", () => {
     expect(check.manifestProblems([sheet()])).toEqual([]);

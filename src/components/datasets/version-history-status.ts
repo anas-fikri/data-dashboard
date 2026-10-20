@@ -5,7 +5,8 @@ import type { VersionCode, VersionRow } from "@/features/versions/types";
  * Teks dan nada riwayat versi (T-013), murni agar bisa diuji unit. Hanya versi aktif yang bernada
  * primer, jadi penanda "Aktif" tidak tertukar dengan status lain; status selalu teks + ikon.
  */
-export type VersionKind = "active" | "ready" | "failed" | "mapping" | "processing" | "uploading";
+export type VersionKind =
+  "active" | "ready" | "failed" | "mapping" | "confirm" | "processing" | "uploading";
 
 export interface VersionStatusView {
   kind: VersionKind;
@@ -22,6 +23,8 @@ export function versionStatusView(v: Pick<VersionRow, "status" | "active">): Ver
       return { kind: "failed", label: "Gagal", tone: "destructive" };
     case "AWAITING_MAPPING":
       return { kind: "mapping", label: "Menunggu pemetaan", tone: "warning" };
+    case "AWAITING_CONFIRM":
+      return { kind: "confirm", label: "Menunggu konfirmasi", tone: "warning" };
     case "INGESTING":
       return { kind: "processing", label: "Memproses", tone: "neutral" };
     case "UPLOADED":
@@ -61,6 +64,8 @@ export const BUSY_TEXT: Record<ActivationBusy, string> = {
   processing: "Versi aktif bisa diganti setelah file baru selesai diproses.",
   awaiting_mapping:
     "Versi aktif bisa diganti setelah versi yang menunggu pemetaan dipetakan atau dibuang.",
+  awaiting_confirm:
+    "Versi aktif bisa diganti setelah unggahan yang menunggu konfirmasi diterapkan atau dibatalkan.",
 };
 
 /**

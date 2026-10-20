@@ -52,7 +52,8 @@ export function rawCutoff(now: Date): Date {
 }
 
 /**
- * Filter versi yang file aslinya sudah lewat 7 hari: selesai (siap/gagal/menunggu pemetaan) sebelum
+ * Filter versi yang file aslinya sudah lewat 7 hari: selesai (siap/gagal/menunggu pemetaan atau
+ * konfirmasi — datanya sudah di Parquet) sebelum
  * batas, atau FAILED tanpa ingestFinishedAt (unggahan kedaluwarsa/dibatalkan) yang terakhir berubah
  * sebelum batas. File yang sudah dihapus (sourceDeletedAt) tidak dipilih lagi.
  */
@@ -63,7 +64,7 @@ export function rawRetentionWhere(now: Date): Prisma.DatasetVersionWhereInput {
     sourceDeletedAt: null,
     OR: [
       {
-        status: { in: ["READY", "FAILED", "AWAITING_MAPPING"] },
+        status: { in: ["READY", "FAILED", "AWAITING_MAPPING", "AWAITING_CONFIRM"] },
         ingestFinishedAt: { lt: cutoff },
       },
       { status: "FAILED", ingestFinishedAt: null, updatedAt: { lt: cutoff } },

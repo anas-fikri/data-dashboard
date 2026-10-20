@@ -1,5 +1,6 @@
 import "server-only";
 import { Prisma } from "@prisma/client";
+import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { announceVersionActivated } from "@/features/query/warm";
@@ -20,7 +21,7 @@ import type { VersionCode, VersionResult, VersionRow, VersionStatus } from "./ty
  */
 
 /** Sama dengan uploads/service.ts: satu versi belum terminal per dataset (D4). */
-const NON_TERMINAL = ["UPLOADING", "UPLOADED", "INGESTING", "AWAITING_MAPPING"] as const;
+const NON_TERMINAL = NON_TERMINAL_STATUSES;
 /** Baris riwayat yang ditampilkan (retensi menjaga daftar tetap pendek; ini batas aman). */
 const LIST_MAX = 50;
 /** Aktivasi memetakan ulang semua widget dataset: lebih lama dari batas transaksi bawaan 5 detik. */
@@ -35,8 +36,12 @@ const notFound = <T>() => fail<T>("NOT_FOUND", "Versi data tidak ditemukan.");
 const busy = <T>() =>
   fail<T>(
     "DATASET_BUSY",
-    "Tunggu file baru selesai diproses, atau versi yang menunggu pemetaan dipetakan atau dibuang, sebelum mengganti versi aktif.",
+    "Tunggu file baru selesai diproses, atau versi yang menunggu pemetaan/konfirmasi diselesaikan atau dibuang, sebelum mengganti versi aktif.",
   );
+/** Versi tertunda yang boleh dibuang pemilik (data aktif tidak berubah). */
+const DISCARDABLE = ["AWAITING_MAPPING", "AWAITING_CONFIRM"] as const;
+const isDiscardable = (s: string): s is (typeof DISCARDABLE)[number] =>
+  (DISCARDABLE as readonly string[]).includes(s);
 
 const rowSelect = {
   id: true,
@@ -66,7 +71,7 @@ export function toVersionRow(v: VersionRecord, activeVersionId: string | null): 
     active,
     canActivate: status === "READY" && !active,
     canDiscard: status === "AWAITING_MAPPING",
-    message: status === "FAILED" || status === "AWAITING_MAPPING" ? v.errorMessage : null,
+    message: status === "FAILED" || isDiscardable(status) ? v.errorMessage : null,
     uploadedBy: v.uploadedBy ? (v.uploadedBy.name ?? v.uploadedBy.email) : null,
     sourceDeleted: v.sourceDeletedAt !== null,
   };
@@ -189,8 +194,9 @@ export async function activateVersion(
 }
 
 /**
- * Buang versi yang menunggu pemetaan (D4: hanya satu versi belum terminal per dataset, jadi unggahan
- * berikutnya terbuka lagi). Data aktif tidak berubah; objeknya dihapus job pembersihan.
+ * Buang versi yang menunggu pemetaan atau konfirmasi (T-049: "Batalkan upload") — D4: hanya satu versi
+ * belum terminal per dataset, jadi unggahan berikutnya terbuka lagi. Data aktif tidak berubah; objek
+ * prefix versi dihapus job pembersihan, segmen yang ditulisnya disapu GC segmen setelah masa tenggang.
  */
 export async function discardVersion(
   userId: string,
@@ -205,11 +211,14 @@ export async function discardVersion(
       select: { status: true, originalName: true },
     });
     if (!v) return notFound();
-    if (v.status !== "AWAITING_MAPPING") {
-      return fail("INVALID", "Hanya versi yang menunggu pemetaan yang bisa dibuang.");
+    if (!isDiscardable(v.status)) {
+      return fail(
+        "INVALID",
+        "Hanya versi yang menunggu pemetaan atau konfirmasi yang bisa dibuang.",
+      );
     }
     const del = await tx.datasetVersion.deleteMany({
-      where: { id: versionId, datasetId, status: "AWAITING_MAPPING", activeFor: { is: null } },
+      where: { id: versionId, datasetId, status: v.status, activeFor: { is: null } },
     });
     if (del.count !== 1) return notFound();
     await tx.storageCleanup.createMany({

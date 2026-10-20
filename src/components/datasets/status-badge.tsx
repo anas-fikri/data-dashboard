@@ -1,5 +1,6 @@
 import {
   IconAlertTriangle,
+  IconChecklist,
   IconCircleCheck,
   IconCircleDashed,
   IconLoader2,
@@ -39,7 +40,8 @@ export function StatusBadge({ label }: { label: DatasetLabel }) {
             badge.kind === "failed" && "bg-destructive/12",
             badge.kind === "processing" && "bg-primary/12",
             badge.kind === "uploading" && "bg-muted",
-            badge.kind === "awaiting_mapping" && "bg-warning/20",
+            (badge.kind === "awaiting_mapping" || badge.kind === "awaiting_confirm") &&
+              "bg-warning/20",
           )}
         >
           {badge.kind === "failed" ? (
@@ -52,6 +54,7 @@ export function StatusBadge({ label }: { label: DatasetLabel }) {
             <IconPlayerPause aria-hidden stroke={2} className="text-muted-foreground" />
           ) : null}
           {badge.kind === "awaiting_mapping" ? <IconRoute aria-hidden stroke={2} /> : null}
+          {badge.kind === "awaiting_confirm" ? <IconChecklist aria-hidden stroke={2} /> : null}
           {badge.text}
         </span>
       ) : null}

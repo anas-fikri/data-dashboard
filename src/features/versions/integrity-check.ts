@@ -5,7 +5,14 @@
  * bertumpuk) dan semua kunci yang dirujuk ada di storage. Jumlah baris + `_row` unik per file diperiksa
  * saat file typed ditulis (typedFileProblems, file masih lokal). Ada selisih → versi FAILED, versi aktif
  * tidak tersentuh.
+ *
+ * Versi periode (T-049): setiap sheet punya sumber periode; setiap segmen punya periode yang cocok
+ * dengan satuan versi dan jumlah baris tercatat; satu periode tidak muncul dua kali dalam satu sheet
+ * (baris tergandakan). Isi file — tidak ada `_period` NULL dan baris per periode = metadata — diperiksa
+ * typedFileProblems saat file ditulis (ingest/recast), jadi metadata yang dicek di sini sudah terbukti
+ * cocok dengan file-nya. Versi non-periode tidak boleh merujuk segmen berperiode.
  */
+import { isIsoDate, periodKeyOf, periodStartOf, type PeriodGrain } from "@/features/ingest/period";
 
 /** Gagal gerbang integritas: permanen (mengulang dengan file yang sama tidak menolong). */
 export class IntegrityError extends Error {
@@ -28,6 +35,12 @@ export interface ManifestSegment {
   rowBase: bigint;
   /** null = segmen legacy (rentang belum diukur). */
   maxSrcRow: number | null;
+  /** Periode segmen (T-049); null/tidak ada = segmen non-periode. */
+  periodKey?: string | null;
+  /** Awal periode ISO naive (YYYY-MM-DD). */
+  periodStart?: string | null;
+  /** Baris data file typed (SegmentTyped.dataRows); null = file lama (belum diukur). */
+  dataRows?: number | null;
 }
 export interface ManifestSheet {
   id: string;
@@ -35,6 +48,44 @@ export interface ManifestSheet {
   /** Pointer typed sheet (null = sheet tanpa data typed). */
   typedKey: string | null;
   segments: ManifestSegment[];
+  /** Satuan periode versi (T-049); null/tidak ada = versi non-periode. */
+  periodGrain?: PeriodGrain | null;
+  /** Sumber periode sheet (T-049). */
+  periodSource?: string | null;
+}
+
+/** Selisih periode satu sheet (T-049). */
+function periodProblems(s: ManifestSheet, label: string): string[] {
+  const out: string[] = [];
+  const grain = s.periodGrain ?? null;
+  if (!grain) {
+    if (s.segments.some((g) => g.periodKey || g.periodStart)) {
+      out.push(`${label}: segmen berperiode di versi non-periode`);
+    }
+    return out;
+  }
+  if (s.typedKey && !s.periodSource) out.push(`${label}: sumber periode tidak tercatat`);
+  const seen = new Set<string>();
+  for (const g of s.segments) {
+    const at = `${label} segmen ${g.ordinal + 1}`;
+    if (!g.periodKey || !g.periodStart || !isIsoDate(g.periodStart)) {
+      out.push(`${at}: periode tidak tercatat`);
+      continue;
+    }
+    if (
+      periodStartOf(grain, g.periodStart) !== g.periodStart ||
+      periodKeyOf(grain, g.periodStart) !== g.periodKey
+    ) {
+      out.push(`${at}: periode ${g.periodKey} tidak cocok dengan satuan versi`);
+    }
+    if (seen.has(g.periodKey))
+      out.push(`${label}: periode ${g.periodKey} muncul lebih dari sekali`);
+    seen.add(g.periodKey);
+    if (g.dataRows === null || g.dataRows === undefined) {
+      out.push(`${at}: jumlah baris periode ${g.periodKey} tidak tercatat`);
+    }
+  }
+  return out;
 }
 
 /** Selisih metadata manifest (tanpa I/O). [] = konsisten. Murni. */
@@ -60,6 +111,7 @@ export function manifestProblems(sheets: ManifestSheet[]): string[] {
         }
       }
     }
+    out.push(...periodProblems(s, label));
   }
   return out;
 }

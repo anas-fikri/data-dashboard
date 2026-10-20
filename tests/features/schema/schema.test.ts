@@ -302,6 +302,47 @@ function schemaDeps(
   return { deps, enqueue, releaseRateLimit, applyMetadata, ownedActiveSheet };
 }
 
+describe("T-049 AC3: aturan beku sheet periode", () => {
+  const period = { grain: "MONTH" as const, source: "COLUMN" as const, column: 2 };
+
+  it("pilih ulang baris judul atau ubah format kolom periode → INVALID dengan pesan, tidak antre", async () => {
+    const { deps, enqueue, applyMetadata } = schemaDeps({}, { period });
+    for (const body of [
+      { baseRevision: 2, headerRow: 3 },
+      { baseRevision: 2, columns: [{ pos: 2, dateFormat: "dd-mm-yyyy" }] },
+      { baseRevision: 2, columns: [{ pos: 2, type: "text" }] },
+    ]) {
+      const r = await requestRecast(USER, SHEET, body, deps);
+      expect(r).toMatchObject({ ok: false, code: "INVALID" });
+      expect((r as { message: string }).message).toMatch(/periode/);
+    }
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(applyMetadata).not.toHaveBeenCalled();
+  });
+
+  it("ganti nama kolom periode dan ubah tipe kolom lain tetap boleh", async () => {
+    const { deps, enqueue, applyMetadata } = schemaDeps({}, { period });
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 2, name: "Tgl" }] },
+        deps,
+      ),
+    ).toEqual({ ok: true, applied: true, revision: 3 });
+    expect(applyMetadata).toHaveBeenCalledTimes(1);
+    expect(
+      await requestRecast(
+        USER,
+        SHEET,
+        { baseRevision: 2, columns: [{ pos: 3, type: "integer" }] },
+        deps,
+      ),
+    ).toEqual({ ok: true, jobId: "17" });
+    expect(enqueue).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("AC 3–5: permintaan koreksi skema", () => {
   it("ganti tipe/format → antrean dengan baseRevision, peminta, dan hanya kolom yang berubah", async () => {
     const { deps, enqueue, applyMetadata } = schemaDeps();

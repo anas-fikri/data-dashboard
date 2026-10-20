@@ -68,7 +68,7 @@ describe("rawRetentionWhere", () => {
       sourceDeletedAt: null,
       OR: [
         {
-          status: { in: ["READY", "FAILED", "AWAITING_MAPPING"] },
+          status: { in: ["READY", "FAILED", "AWAITING_MAPPING", "AWAITING_CONFIRM"] },
           ingestFinishedAt: { lt: cutoff },
         },
         { status: "FAILED", ingestFinishedAt: null, updatedAt: { lt: cutoff } },

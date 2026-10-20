@@ -19,6 +19,9 @@
  *    antrean dipakai yang lain; percobaan berikutnya melanjutkan dari titik lanjut.
  *  - Kolom kosong (absent, T-014) selalu dibawa, juga saat baris header diganti: edit nama/tipe/format/
  *    sembunyi berlaku; ganti tipe hanya mengganti tipe CAST NULL-nya.
+ *  - Sheet periode (T-049): `_period` setiap file baru ditulis dari Segment.periodStart (dibekukan saat
+ *    unggah) dan diperiksa sebelum diunggah; ganti baris judul dan ubah tipe/format kolom periode
+ *    ditolak ("invalid") — keduanya bisa memindahkan baris antarperiode.
  */
 import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync, statSync } from "node:fs";
@@ -43,6 +46,7 @@ import {
   type RecastProgress,
 } from "./recast-input";
 import { IntegrityError, verifyVersionIntegrity } from "@/features/versions/integrity-check";
+import { periodFreezeViolation, type SheetPeriod } from "./period";
 import {
   canonicalProfile,
   castSignature,
@@ -81,7 +85,18 @@ export interface RecastSegment {
   colCount: number;
   /** Peta kolom raw → posisi kanonik (Segment.colMap, T-gcn8); kosong = identitas. */
   colMap: number[];
-  typed: { id: string; typedKey: string; columns: number[]; profile: unknown };
+  typed: {
+    id: string;
+    typedKey: string;
+    columns: number[];
+    profile: unknown;
+    /** Baris data file (T-038); null/tidak ada = file lama. */
+    dataRows?: number | null;
+  };
+  /** Periode segmen (T-049); null/tidak ada = non-periode. */
+  periodKey?: string | null;
+  /** Awal periode ISO naive = nilai `_period` di file typed segmen. */
+  periodStart?: string | null;
 }
 
 export interface RecastSheet {
@@ -99,6 +114,8 @@ export interface RecastSheet {
   source: SourceKind;
   /** Manifest sheet urut ordinal. */
   segments: RecastSegment[];
+  /** Mode periode sheet di versinya (T-049); null/tidak ada = non-periode. */
+  period?: SheetPeriod | null;
 }
 
 /** File typed segmen yang selesai ditulis (titik lanjut), belum dirujuk manifest. */
@@ -280,6 +297,18 @@ export async function recastSheet(
       return { outcome: "stale" };
     }
     if (!s.segments.length) throw new Error(`sheet ${sheetId} tanpa segmen (migrasi T-036?)`);
+    // Aturan beku periode (T-049): juga dijaga di sini, bukan hanya di app (job lama/langsung).
+    const frozen = periodFreezeViolation(s.period ?? null, {
+      headerRow: input.headerRow,
+      currentHeaderRow: s.headerRow,
+      columns: input.columns,
+      schema: s.schema,
+    });
+    if (frozen) return { outcome: "invalid", message: frozen };
+    const period = s.period ?? null;
+    if (period && s.segments.some((g) => !g.periodStart)) {
+      throw new IntegrityError([`sheet "${s.name}": segmen periode tanpa awal periode`]);
+    }
     const multi = s.segments.length > 1;
     const headerRow = input.headerRow ?? s.headerRow;
     const newHeader = headerRow !== s.headerRow;
@@ -386,13 +415,17 @@ export async function recastSheet(
       ).map((t) => [t.typedKey, t.id]),
     );
     for (const [key, id] of pending) mine.set(key, id);
-    const next = new Map<number, { typedId: string; typedKey: string }>();
+    const next = new Map<number, { typedId: string; typedKey: string; dataRows: number }>();
     for (const [i, g] of rewrite.entries()) {
       const key = keyOf(g);
       const id = pending.get(key);
       // Selesai di percobaan sebelumnya (worker mati, koneksi putus): tidak diulang (AC 2).
       if (id && (await deps.storage.exists(key))) {
-        next.set(g.ordinal, { typedId: id, typedKey: key });
+        next.set(g.ordinal, {
+          typedId: id,
+          typedKey: key,
+          dataRows: segProfile[s.segments.indexOf(g)]!.dataRows,
+        });
         continue;
       }
       await step({ phase: "write", current: i + 1, total: rewrite.length });
@@ -410,8 +443,15 @@ export async function recastSheet(
         colMap: g.colMap,
         schema: cols,
         charsPerRow: charsPerRow(p),
+        period: period ? g.periodStart : null,
       });
-      const bad = await typedFileProblems(d, out, p.dataRows, "file hasil koreksi");
+      const bad = await typedFileProblems(
+        d,
+        out,
+        p.dataRows,
+        "file hasil koreksi",
+        period ? g.periodStart : null,
+      );
       if (bad.length) throw new IntegrityError(bad);
       if (!mine.has(key)) mine.set(key, null);
       await deps.storage.upload(key, out, PARQUET);
@@ -427,28 +467,38 @@ export async function recastSheet(
           headerRow: hdr(g),
         }));
       mine.set(key, typedId);
-      next.set(g.ordinal, { typedId, typedKey: key });
+      next.set(g.ordinal, { typedId, typedKey: key, dataRows: p.dataRows });
       rmSync(out, { force: true });
     }
 
     // Tahap 3: aktif atomik. Gerbang integritas manifest rencana (fail-closed, T-038) lebih dulu.
-    const manifest = s.segments.map((g) => ({
-      ordinal: g.ordinal,
-      from: g.typed.id,
-      ...(next.get(g.ordinal) ?? { typedId: g.typed.id, typedKey: g.typed.typedKey }),
-    }));
+    const manifest = s.segments.map((g) => {
+      const n = next.get(g.ordinal);
+      return {
+        ordinal: g.ordinal,
+        from: g.typed.id,
+        typedId: n?.typedId ?? g.typed.id,
+        typedKey: n?.typedKey ?? g.typed.typedKey,
+        dataRows: n ? n.dataRows : (g.typed.dataRows ?? null),
+      };
+    });
     const problems = await verifyVersionIntegrity(s.versionId, {
       manifest: async () => [
         {
           id: sheetId,
           name: s.name,
           typedKey: manifest[0]!.typedKey,
+          periodGrain: period?.grain ?? null,
+          periodSource: period?.source ?? null,
           segments: s.segments.map((g, i) => ({
             ordinal: g.ordinal,
             rawKey: g.rawKey,
             typedKey: manifest[i]!.typedKey,
             rowBase: g.rowBase,
             maxSrcRow: g.maxSrcRow,
+            periodKey: g.periodKey ?? null,
+            periodStart: g.periodStart ?? null,
+            dataRows: manifest[i]!.dataRows,
           })),
         },
       ],
@@ -463,7 +513,12 @@ export async function recastSheet(
       schemaRevision: revision,
       headerRow,
       columns,
-      manifest,
+      manifest: manifest.map(({ ordinal, from, typedId, typedKey }) => ({
+        ordinal,
+        from,
+        typedId,
+        typedKey,
+      })),
     });
     if (!swapped) {
       keep = false;

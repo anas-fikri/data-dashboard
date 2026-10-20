@@ -71,13 +71,35 @@ enum VersionStatus {
   UPLOADED
   INGESTING
   AWAITING_MAPPING
+  /// Unggahan periode menunggu keputusan pemilik di layar tinjauan (T-049): non-terminal seperti
+  /// AWAITING_MAPPING (menahan unggahan lain dan rollback).
+  AWAITING_CONFIRM
   READY
   FAILED
 }
 
+/// Jenis versi (T-049, rencana G-6 §4.3). REPLACE = ganti semua data (non-periode); PERIOD = unggahan
+/// periode; PERIOD_SETUP = aktifkan mode periode atas data yang ada; PERIOD_REMOVE / PERIOD_RESTORE =
+/// hapus / pulihkan satu periode (hanya manifest). APPEND (T-015) dihapus.
 enum VersionMode {
   REPLACE
-  APPEND
+  PERIOD
+  PERIOD_SETUP
+  PERIOD_REMOVE
+  PERIOD_RESTORE
+}
+
+/// Satuan periode (T-049): minggu/hari sengaja tidak ada di v1 (rencana G-6 §4.4).
+enum PeriodGrain {
+  MONTH
+  QUARTER
+  YEAR
+}
+
+/// Sumber periode satu sheet (T-049): kolom tanggal typed, atau label yang dipilih saat unggah.
+enum PeriodSource {
+  COLUMN
+  LABEL
 }
 
 /// Profil dataset: kontainer untuk versi data dan dashboard. Label (kosong/siap) diturunkan,
@@ -110,6 +132,9 @@ model DatasetVersion {
   activeFor        Dataset?      @relation("ActiveVersion")
   status           VersionStatus @default(UPLOADING)
   mode             VersionMode   @default(REPLACE)
+  /// Satuan periode versi ini (T-049); null = versi non-periode. Mode periode milik versi (bukan
+  /// dataset): rollback ke versi sebelum periode diaktifkan mengembalikan dataset ke mode biasa.
+  periodGrain      PeriodGrain?
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?
@@ -188,6 +213,10 @@ model Sheet {
   /// (ingest refresh, pemetaan user); sumber rowBase segmen.
   lineageId      String
   lineage        SheetLineage   @relation(fields: [lineageId], references: [id], onDelete: Cascade)
+  /// Sumber periode sheet ini (T-049); null = sheet non-periode. Wajib diisi di versi periode.
+  periodSource   PeriodSource?
+  /// Posisi kanonik kolom periode (c<pos>) bila periodSource = COLUMN: tipe/format kolom ini dibekukan.
+  periodColumn   Int?
   /// Manifest data sheet ini: daftar segmen typed berurutan (REPLACE: tepat satu, ordinal 0).
   segments       SheetSegment[]
   createdAt      DateTime       @default(now())
@@ -236,6 +265,20 @@ model Segment {
   /// Peta kolom (T-gcn8): colMap[pos-1] = indeks kolom raw `c<n>` untuk posisi kanonik `pos`
   /// (0 = kolom tidak ada di file → NULL). Kosong = identitas (raw `c<pos>` = posisi kanonik).
   colMap             Int[]           @default([])
+  /// Kunci periode (T-049): "2026-03" (bulan), "2026-Q1" (kuartal), "2026" (tahun); null = segmen
+  /// non-periode. Satu segmen = satu periode; `_period` di typed = periodStart (dibekukan saat unggah).
+  periodKey          String?
+  /// Tanggal awal periode (naive, D8); null = segmen non-periode.
+  periodStart        DateTime?       @db.Date
+  /// Tanggal terkecil/terbesar kolom periode di segmen (naive): pemangkasan segmen saat filter tanggal.
+  minDate            DateTime?       @db.Timestamp(6)
+  maxDate            DateTime?       @db.Timestamp(6)
+  /// SHA-256 file asal segmen (deteksi "file identik"); null = tidak diketahui.
+  sha256             String?
+  /// Nama file asal (kartu Periode, sumber sel); null = tidak diketahui.
+  originalName       String?
+  /// Jenis file asal: "xlsx" | "csv" (cast per segmen memakai jenisnya sendiri); null = tidak diketahui.
+  sourceKind         String?
   /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
   /// objeknya dihapus GC mark-and-sweep setelah tidak dirujuk versi hidup ≥ SEGMENT_GC_GRACE_HOURS.
   createdByVersionId String?

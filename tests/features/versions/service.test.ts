@@ -221,7 +221,10 @@ describe("activateVersion", () => {
     expect(tx.datasetVersion.count).toHaveBeenCalledWith({
       where: {
         datasetId: DS,
-        status: { in: ["UPLOADING", "UPLOADED", "INGESTING", "AWAITING_MAPPING"] },
+        // T-049: AWAITING_CONFIRM menahan rollback seperti AWAITING_MAPPING.
+        status: {
+          in: ["UPLOADING", "UPLOADED", "INGESTING", "AWAITING_MAPPING", "AWAITING_CONFIRM"],
+        },
       },
     });
     expect(await svc.activateVersion(OWNER, DS, A)).toMatchObject({ code: "INVALID" });
@@ -272,6 +275,21 @@ describe("discardVersion", () => {
         { prefix: `raw/${DS}/${B}/`, reason: "versi dibuang pemilik" },
         { prefix: `parquet/${DS}/${B}/`, reason: "versi dibuang pemilik" },
       ],
+    });
+  });
+
+  it("T-049: AWAITING_CONFIRM (batalkan upload periode) → dibuang dengan penjaga status yang sama", async () => {
+    tx.datasetVersion.findFirst.mockResolvedValueOnce({
+      status: "AWAITING_CONFIRM",
+      originalName: "maret.xlsx",
+    });
+    tx.datasetVersion.deleteMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.discardVersion(OWNER, DS, B)).toEqual({
+      ok: true,
+      data: { fileName: "maret.xlsx" },
+    });
+    expect(tx.datasetVersion.deleteMany).toHaveBeenCalledWith({
+      where: { id: B, datasetId: DS, status: "AWAITING_CONFIRM", activeFor: { is: null } },
     });
   });
 

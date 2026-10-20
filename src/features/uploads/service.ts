@@ -6,6 +6,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { enqueueIngest } from "@/lib/queue/versions";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
+import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
 import { formatGiB, quotaDecision, quotaGraceUntil, userUsage } from "./quota";
 import { PART_SIZE, expectedPartSize, partCountOf, verifyParts } from "./parts";
@@ -40,7 +41,7 @@ export const SIGN_BATCH_MAX = 16;
 const COMPLETE_CLAIM_MS = 5 * 60 * 1000;
 const NAME_MAX = 255;
 
-const NON_TERMINAL = ["UPLOADING", "UPLOADED", "INGESTING", "AWAITING_MAPPING"] as const;
+const NON_TERMINAL = NON_TERMINAL_STATUSES;
 
 export interface InitInput {
   datasetId: unknown;
@@ -266,7 +267,9 @@ export async function initUpload(
           code: "DATASET_BUSY",
           message: own
             ? "Masih ada unggahan yang belum selesai di dataset ini. Pilih file yang sama untuk melanjutkan, atau batalkan unggahan itu dulu."
-            : "Dataset sedang memproses file lain. Tunggu sampai selesai, lalu unggah lagi.",
+            : busy.status === "AWAITING_CONFIRM"
+              ? "Unggahan sebelumnya menunggu konfirmasi. Terapkan atau batalkan dulu, lalu unggah lagi."
+              : "Dataset sedang memproses file lain. Tunggu sampai selesai, lalu unggah lagi.",
         };
       }
 

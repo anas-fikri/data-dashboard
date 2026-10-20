@@ -1,4 +1,5 @@
 import "server-only";
+import { isoDay } from "@/features/ingest/period";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { listChildPrefixes, listObjects, objectBytes, objectExists } from "@/lib/storage/objects";
@@ -21,19 +22,30 @@ export async function prismaManifest(versionId: string): Promise<ManifestSheet[]
   const v = await prisma.datasetVersion.findUnique({
     where: { id: versionId },
     select: {
+      periodGrain: true,
       sheets: {
         orderBy: { index: "asc" },
         select: {
           id: true,
           name: true,
           typedKey: true,
+          periodSource: true,
           segments: {
             select: {
               ordinal: true,
               segmentTyped: {
                 select: {
                   typedKey: true,
-                  segment: { select: { rawKey: true, rowBase: true, maxSrcRow: true } },
+                  dataRows: true,
+                  segment: {
+                    select: {
+                      rawKey: true,
+                      rowBase: true,
+                      maxSrcRow: true,
+                      periodKey: true,
+                      periodStart: true,
+                    },
+                  },
                 },
               },
             },
@@ -47,12 +59,17 @@ export async function prismaManifest(versionId: string): Promise<ManifestSheet[]
     id: s.id,
     name: s.name,
     typedKey: s.typedKey,
+    periodGrain: v.periodGrain,
+    periodSource: s.periodSource,
     segments: s.segments.map((m) => ({
       ordinal: m.ordinal,
       typedKey: m.segmentTyped.typedKey,
       rawKey: m.segmentTyped.segment.rawKey,
       rowBase: m.segmentTyped.segment.rowBase,
       maxSrcRow: m.segmentTyped.segment.maxSrcRow,
+      periodKey: m.segmentTyped.segment.periodKey,
+      periodStart: isoDay(m.segmentTyped.segment.periodStart),
+      dataRows: m.segmentTyped.dataRows,
     })),
   }));
 }
