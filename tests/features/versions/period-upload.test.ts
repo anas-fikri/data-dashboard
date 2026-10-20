@@ -156,6 +156,12 @@ describe("confirmPeriodUpload", () => {
     expect(commitPeriodInTx).toHaveBeenCalledTimes(1);
   });
 
+  it("review M1: manifest aktif berubah setelah HEAD → DATASET_BUSY (coba lagi), versi TIDAK ditandai gagal", async () => {
+    commitPeriodInTx.mockResolvedValueOnce({ outcome: "retry" });
+    expect(await confirm()).toMatchObject({ ok: false, code: "DATASET_BUSY" });
+    expect(prisma.datasetVersion.updateMany).not.toHaveBeenCalled();
+  });
+
   it("rencana berubah sejak ditinjau → PLAN_STALE", async () => {
     commitPeriodInTx.mockResolvedValueOnce({ outcome: "plan_stale", plan });
     expect(await confirm()).toMatchObject({ ok: false, code: "PLAN_STALE" });

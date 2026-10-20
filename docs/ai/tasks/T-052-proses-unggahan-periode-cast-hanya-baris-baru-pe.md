@@ -13,7 +13,7 @@ depends_on:
   - T-051
   - T-039
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T13:37:00Z"
+updated: "2026-10-20T13:52:37Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -23,7 +23,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 197286
+    duration_ms: 214951
     summary: |-
       …t
       > vitest run
@@ -31,23 +31,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792503369447,"service":"data-dashboard","host":"127.0.0.1","port":38039,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792503369500,"service":"data-dashboard","host":"127.0.0.1","port":42853,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792503369606,"service":"data-dashboard","host":"127.0.0.1","port":34633,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792503369713,"service":"data-dashboard","host":"127.0.0.1","port":42741,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792503381838,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792503391516,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792503391539,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792503391544,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792503391555,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792504266525,"service":"data-dashboard","host":"127.0.0.1","port":46585,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792504266579,"service":"data-dashboard","host":"127.0.0.1","port":39219,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792504266682,"service":"data-dashboard","host":"127.0.0.1","port":45715,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792504266809,"service":"data-dashboard","host":"127.0.0.1","port":34913,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792504276367,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792504288779,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792504288802,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792504288805,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792504288817,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  183 passed | 1 skipped (184)
-            Tests  2369 passed | 10 skipped (2379)
-         Start at  13:34:42
-         Duration  136.42s (tests 84%, import 13%, transform 3%)
+            Tests  2374 passed | 10 skipped (2384)
+         Start at  13:49:39
+         Duration  141.99s (tests 84%, import 13%, transform 3%)
 
-          Isolate  184 workers spawned · ~160ms startup each (spawn + environment, per file)
-                   at least ~9.66s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  184 workers spawned · ~165ms startup each (spawn + environment, per file)
+                   at least ~9.98s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -55,12 +55,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T13:37:00Z"
-    tree: 7cf273c404f7a7d523c1ae9d209682c2956ead35e536f8c5969ebfd148a3d494
+    at: "2026-10-20T13:52:02Z"
+    tree: e69985d450112c7d64ed1a1a749b4df2960ac6b3db735941d96d9b43202b5cac
   audit:
-    at: "2026-10-20T13:32:20Z"
+    at: "2026-10-20T13:52:10Z"
     passed: true
-    tree: 7b5e49f241b731c6e6683aff5b07889492366ff6ac6c34ff6d4524cddfe8501a
+    tree: e69985d450112c7d64ed1a1a749b4df2960ac6b3db735941d96d9b43202b5cac
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -68,7 +68,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 492 dirs visited, 2738 inodes visited, 1 Extract calls, 220.694969ms elapsed, 220.695316ms wall time
+          End status: 495 dirs visited, 2821 inodes visited, 1 Extract calls, 238.227678ms elapsed, 238.228066ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -98,12 +98,12 @@ hanya untuk mode + label yang sama dan InitOk menggemakan mode efektif. Cek ulan
 semua jalur baru pemilik saja, NOT_FOUND) dan T-017 (ekspor tidak berubah: membaca manifest versi aktif).
 
 ## Acceptance criteria
-- [ ] Given dataset periode bulanan berisi Jan–Mar dan file April (mode kolom), when ingest selesai, then hanya file baru yang di-parse dan di-cast (durasi ≤ 1,2× unggahan file yang sama ke dataset kosong), rencana berbunyi 'April 2026 ditambahkan (n baris)', versi aktif otomatis, dan tidak ada objek baru untuk Jan–Mar
-- [ ] Given 500 baris baru dengan 20 tanggal gagal cast di atas basis 100.000 baris valid, then vonis cast dihitung atas 500 baris baru (4% > 2%) sehingga hasilnya AWAITING_MAPPING
-- [ ] Given file arsip 12 bulan, then file dipecah menjadi satu segmen per periode dalam satu pass, dan periode dengan baris < 10% periode terbesar di file ditandai 'kemungkinan nyasar' sehingga rencana masuk AWAITING_CONFIRM
-- [ ] Given mode label, then penolakan karena batas terjadi setelah parse (sebelum typing); given mode kolom, then penolakan terjadi setelah query hitung per periode (sebelum writeTyped penuh)
-- [ ] Given versi aktif atau schemaRevision berubah antara rencana dan konfirmasi, then PLAN_STALE, rencana dihitung ulang, dan konfirmasi diminta ulang bila ada yang merusak; aktivasi meneruskan sheetMap dan melewati verifyVersionIntegrity
-- [ ] Given file yang sama dipilih ulang dengan mode/label berbeda, then resume tidak melanjutkan versi lama, dan InitOk menggemakan mode efektif
+- [x] Given dataset periode bulanan berisi Jan–Mar dan file April (mode kolom), when ingest selesai, then hanya file baru yang di-parse dan di-cast (durasi ≤ 1,2× unggahan file yang sama ke dataset kosong), rencana berbunyi 'April 2026 ditambahkan (n baris)', versi aktif otomatis, dan tidak ada objek baru untuk Jan–Mar
+- [x] Given 500 baris baru dengan 20 tanggal gagal cast di atas basis 100.000 baris valid, then vonis cast dihitung atas 500 baris baru (4% > 2%) sehingga hasilnya AWAITING_MAPPING
+- [x] Given file arsip 12 bulan, then file dipecah menjadi satu segmen per periode dalam satu pass, dan periode dengan baris < 10% periode terbesar di file ditandai 'kemungkinan nyasar' sehingga rencana masuk AWAITING_CONFIRM
+- [x] Given mode label, then penolakan karena batas terjadi setelah parse (sebelum typing); given mode kolom, then penolakan terjadi setelah query hitung per periode (sebelum writeTyped penuh)
+- [x] Given versi aktif atau schemaRevision berubah antara rencana dan konfirmasi, then PLAN_STALE, rencana dihitung ulang, dan konfirmasi diminta ulang bila ada yang merusak; aktivasi meneruskan sheetMap dan melewati verifyVersionIntegrity
+- [x] Given file yang sama dipilih ulang dengan mode/label berbeda, then resume tidak melanjutkan versi lama, dan InitOk menggemakan mode efektif
 
 ## Risk
 - Impact: jalur ingest baru untuk versi mode PERIOD (`period-ingest.ts`, dipilih worker dari
@@ -206,6 +206,17 @@ semua jalur baru pemilik saja, NOT_FOUND) dan T-017 (ekspor tidak berubah: memba
     di-abort; InitOk gema mode/label) + e2e AC6.
   - Regresi e2e terarah: period-upload 4/4, period-setup 3/3, versions 7/7, mapping 4/4, ingest 4/4, schema
     7/7, recast-segments 1/1, uploads 9/9; `aitk check` lulus (unit 2369).
+- Review putaran 1 (koordinator, 0 blokir), diperbaiki:
+  - M1: "Terapkan" saat manifest aktif berubah setelah HEAD kunci (mis. recast sheet lain yang tidak ada di
+    file menukar file typed) kini `retry` tanpa tulisan → DATASET_BUSY "coba terapkan lagi"; tidak pernah
+    menandai versi FAILED. Hanya file baru versi ini yang hilang yang tetap gagal integritas. Uji:
+    period-commit "review M1", period-upload "review M1".
+  - L1: status versi dibaca ulang setelah lock FOR UPDATE (buang/kedaluwarsa sebelum lock → gone/NOT_PENDING).
+  - L2: setelah FAILED tercatat dari INGESTING (commit pasti tidak masuk) objek seg/ percobaan itu dihapus
+    walau commit sempat dipanggil. Uji period-ingest "review L2".
+  - L3: unggahan lama (mode/label lain) hanya dibuang bila unggahan baru dibuat; penolakan sesudahnya
+    membatalkan transaksi (multipart lama tidak di-abort). Uji init-period "review L3".
+  - Setelah perbaikan: unit terarah 72/72, e2e period-upload 4/4, versions 7/7.
 - `aitk impact`/cakupan: `period-ingest-repo.ts` dan `versions/period-commit.ts` jalur Prisma dicakup e2e
   `period-upload` (worker sungguhan) + unit commit dengan transaksi tiruan.
 

@@ -207,6 +207,19 @@ describe("resume (AC6)", () => {
     expect(r).toMatchObject({ ok: false, code: "BUSY" });
   });
 
+  it("review L3: unggahan baru ditolak (sibuk/batas/kuota) setelah unggahan lama pilihan lain dihapus → transaksi batal, multipart lama tidak di-abort", async () => {
+    const s = storage();
+    tx.datasetVersion.findFirst
+      .mockResolvedValueOnce(ownUploading("REPLACE", null))
+      .mockResolvedValueOnce(null);
+    tx.datasetVersion.count.mockResolvedValueOnce(2);
+    const r = await initUpload("u1", { ...file, mode: "PERIOD", baseVersionId: ACTIVE }, s);
+    expect(r).toMatchObject({ ok: false, code: "LIMIT_REACHED" });
+    expect(tx.datasetVersion.deleteMany).toHaveBeenCalled(); // di transaksi yang dibatalkan
+    expect(s.abort).not.toHaveBeenCalled();
+    expect(s.remove).not.toHaveBeenCalled();
+  });
+
   it("REPLACE tanpa mode (helper lama) tetap melanjutkan unggahan REPLACE", async () => {
     tx.datasetVersion.findFirst.mockResolvedValueOnce(ownUploading("REPLACE", null));
     const r = await initUpload("u1", file, storage());

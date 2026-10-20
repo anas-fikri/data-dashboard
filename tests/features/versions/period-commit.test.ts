@@ -256,11 +256,31 @@ describe("commitPeriodInTx (worker)", () => {
     expect(activateVersionInTx).not.toHaveBeenCalled();
   });
 
-  it("kunci yang tidak terbukti ada → IntegrityError (transaksi batal), tidak aktif", async () => {
+  it("file baru versi ini tidak terbukti ada → IntegrityError (transaksi batal), tidak aktif", async () => {
     const present = allKeys();
-    present.delete(`parquet/${DS}/seg/g2026-01-01/raw.parquet`);
+    present.delete(`parquet/${DS}/seg/new2026-03-01/typed-2.parquet`);
     await expect(auto({ present })).rejects.toBeInstanceOf(IntegrityError);
     expect(activateVersionInTx).not.toHaveBeenCalled();
+  });
+
+  it("review M1: file periode lama belum di-HEAD (manifest aktif berubah, mis. recast sheet lain) → retry tanpa tulisan, bukan gagal", async () => {
+    const present = allKeys();
+    present.delete(`parquet/${DS}/seg/g2026-01-01/typed-2.parquet`);
+    expect(await auto({ present })).toEqual({ outcome: "retry" });
+    expect(tx.sheet.deleteMany).not.toHaveBeenCalled();
+    expect(tx.sheet.create).not.toHaveBeenCalled();
+    expect(tx.datasetVersion.updateMany).not.toHaveBeenCalled();
+    expect(activateVersionInTx).not.toHaveBeenCalled();
+  });
+
+  it("review L1: status versi dibaca ulang setelah lock (dibuang/kedaluwarsa sebelum lock) → gone", async () => {
+    let calls = 0;
+    tx.datasetVersion.findUnique.mockImplementation(async (q: Parameters<typeof findUnique>[0]) => {
+      if (q.where.id === VER && !q.select?.sheets && ++calls === 2) return null;
+      return findUnique(q);
+    });
+    expect(await auto()).toEqual({ outcome: "gone" });
+    expect(tx.sheet.create).not.toHaveBeenCalled();
   });
 
   it("versi bukan INGESTING / bukan PERIOD → gone", async () => {

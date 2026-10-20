@@ -231,6 +231,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
         case "plan_stale":
         case "blocked":
         case "preview":
+        case "retry":
           return { outcome: "stale" };
         case "gone":
           return { outcome: "gone" };

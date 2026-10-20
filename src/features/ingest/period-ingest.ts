@@ -605,6 +605,9 @@ export async function runPeriodIngest(
             deadline: e instanceof DeadlineError,
           });
     if (!(await repo.fail(versionId, located))) return { outcome: "skipped" };
+    // Status FAILED berhasil ditulis (dari INGESTING): commit pasti tidak masuk, objek segmen percobaan
+    // ini boleh dihapus walau commit sempat dipanggil.
+    committing = false;
     await cleanupPrefix(repo, storage, prefix, "ingest gagal");
     const removed = await repo.deleteSheets(versionId).catch(() => [] as string[]);
     await cleanupSegments([...created, ...removed], "ingest gagal");

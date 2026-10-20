@@ -231,6 +231,8 @@ export type PeriodTxResult =
   /** Acuan cast berubah (versi aktif/revisi skema): segmen baru harus ditulis ulang. */
   | { outcome: "stale" }
   | { outcome: "gone" }
+  /** Manifest aktif berubah sejak kunci di-HEAD: coba lagi (tanpa tulisan, data aktif tetap). */
+  | { outcome: "retry" }
   /** dryRun: rencana yang akan dikonfirmasi (sidik dihitung pemanggil). */
   | { outcome: "preview"; plan: PeriodPlan };
 
@@ -254,7 +256,14 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
         SELECT "activeVersionId", "keepPeriods", "onLimit" FROM "Dataset" WHERE id = ${v.datasetId}`
     : await tx.$queryRaw<DsRow[]>`
         SELECT "activeVersionId", "keepPeriods", "onLimit" FROM "Dataset" WHERE id = ${v.datasetId} FOR UPDATE`;
-  if (!ds || v.status !== a.from || v.mode !== "PERIOD") return { outcome: "gone" };
+  if (!ds) return { outcome: "gone" };
+  // Status dibaca ULANG setelah lock: buang/kedaluwarsa yang commit sebelum lock ini terlihat.
+  const locked = await tx.datasetVersion.findUnique({
+    where: { id: a.versionId },
+    select: { status: true, mode: true, plan: true },
+  });
+  if (!locked || locked.status !== a.from || locked.mode !== "PERIOD") return { outcome: "gone" };
+  v.plan = locked.plan;
   const frozen = parseFrozenPeriodPlan(v.plan);
   const facts = a.facts ?? (frozen ? factsOf(frozen) : null);
   if (!facts) return { outcome: "stale" };
@@ -312,6 +321,19 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
 
   // Manifest versi ini menurut rencana: sheet aktif disalin, file typed dirujuk (bukan disalin).
   const files = new Map([...active.flatMap((s) => [...s.files]), ...incoming.files]);
+  // File periode lama yang belum terbukti ada (HEAD sebelum lock): manifest aktif berubah di antaranya
+  // (mis. recast sheet lain menukar file typed) → "retry" tanpa menulis apa pun, bukan versi gagal.
+  // File baru versi ini yang hilang tetap gagal integritas (di bawah).
+  const own = new Set([...incoming.files.values()].flatMap((f) => [f.rawKey, f.typedKey]));
+  for (const refs of d.manifest.values()) {
+    for (const r of refs) {
+      const f = files.get(r.typedId);
+      if (!f) continue;
+      if ([f.rawKey, f.typedKey].some((k) => !own.has(k) && !a.present.has(k))) {
+        return { outcome: "retry" };
+      }
+    }
+  }
   await tx.sheet.deleteMany({ where: { versionId: a.versionId } });
   const sheetMap: Record<string, string> = {};
   const manifest: ManifestSheet[] = [];

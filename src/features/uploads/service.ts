@@ -168,6 +168,13 @@ export function validateInit(
   };
 }
 
+/** Penolakan init setelah unggahan lama dihapus di transaksi yang sama → transaksi dibatalkan. */
+class RejectRollback extends Error {
+  constructor(readonly decision: { code: UploadCode; message: string }) {
+    super(decision.message);
+  }
+}
+
 /** Tanggal ISO naive → nilai kolom @db.Date (UTC tengah malam, tanpa geser). */
 const dateOf = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
@@ -268,10 +275,8 @@ export async function initUpload(
   let replaced: { sourceKey: string | null; uploadId: string | null } | null = null;
   /** Label efektif (mode PERIOD dengan sheet bersumber label); null selain itu. */
   let label: string | null = null;
-  let decision: Decision;
-  try {
-    // Lock per pemilik: cek sibuk/batas/kuota + buat versi atomik terhadap permintaan paralel.
-    decision = await prisma.$transaction(async (tx): Promise<Decision> => {
+  const decide = async (tx: Prisma.TransactionClient): Promise<Decision> => {
+    {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`uploads:${userId}`}))`;
 
       // Mode PERIOD (T-052): hanya untuk dataset yang versi aktifnya per periode, terhadap versi aktif
@@ -463,8 +468,23 @@ export async function initUpload(
       const sourceKey = `raw/${dataset.id}/${created.id}/source.${v.ext}`;
       await tx.datasetVersion.update({ where: { id: created.id }, data: { sourceKey } });
       return { kind: "new", id: created.id, sourceKey, partCount };
+    }
+  };
+  let decision: Decision;
+  try {
+    // Lock per pemilik: cek sibuk/batas/kuota + buat versi atomik terhadap permintaan paralel.
+    decision = await prisma.$transaction(async (tx): Promise<Decision> => {
+      const r = await decide(tx);
+      // Unggahan lama (pilihan lain) hanya dibuang bila unggahan baru benar-benar dibuat: penolakan
+      // sesudahnya (sibuk/batas/kuota) membatalkan transaksi sehingga unggahan lama tetap bisa dilanjutkan.
+      if (r.kind === "reject" && replaced) throw new RejectRollback(r);
+      return r;
     });
   } catch (err) {
+    if (err instanceof RejectRollback) {
+      replaced = null;
+      return fail(err.decision.code, err.decision.message);
+    }
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2028") {
       return fail("BUSY", "Sedang memproses permintaan lain. Coba lagi.");
     }

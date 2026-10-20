@@ -246,6 +246,11 @@ export async function confirmPeriodUpload(
       return (await reprocess(datasetId, versionId))
         ? fail("PLAN_STALE", REPROCESS_MESSAGE)
         : fail("INVALID", REUPLOAD_MESSAGE);
+    case "retry":
+      return fail(
+        "DATASET_BUSY",
+        "Data aktif baru saja berubah (mis. skema sheet lain dikoreksi). Coba terapkan lagi.",
+      );
     case "gone":
     case "awaiting":
     case "preview":

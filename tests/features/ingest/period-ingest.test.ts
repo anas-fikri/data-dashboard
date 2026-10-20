@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { runIngest, type IngestProgress } from "@/features/ingest/ingest";
+import { DeadlineError, runIngest, type IngestProgress } from "@/features/ingest/ingest";
 import {
   runPeriodIngest,
   type PeriodActiveSheet,
@@ -517,5 +517,17 @@ describe("prasyarat", () => {
     const s = setup([HEADER, ...month(4, 30)], base, JAN_MAR);
     s.repo.commit = async () => ({ outcome: "stale" });
     await expect(s.run()).rejects.toThrow(/skema aktif berubah/);
+    expect(s.storage.keys().filter((k) => !s.before.includes(k))).toHaveLength(2);
+  });
+
+  it("review L2: commit melempar galat permanen lalu FAILED tercatat (commit pasti tidak masuk) → objek segmen dihapus", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = setup([HEADER, ...month(4, 30)], base, JAN_MAR);
+    s.repo.commit = async () => {
+      throw new DeadlineError("deadline");
+    };
+    expect(await s.run()).toMatchObject({ outcome: "failed" });
+    expect(s.repo.status).toBe("FAILED");
+    expect(s.storage.keys().filter((k) => !s.before.includes(k))).toEqual([]);
   });
 });
