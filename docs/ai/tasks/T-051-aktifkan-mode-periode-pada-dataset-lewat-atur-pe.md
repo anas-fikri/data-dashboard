@@ -1,8 +1,8 @@
 ---
 id: T-051
 title: Aktifkan mode periode pada dataset lewat 'Atur periode'
-status: in_progress
-profile: standard
+status: done
+profile: strict
 goal: G-6
 tags:
   - ui
@@ -12,17 +12,56 @@ depends_on:
   - T-049
   - T-050
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T12:31:53Z"
+updated: "2026-10-20T12:35:55Z"
+closed: "2026-10-20T12:35:55Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: c3626c94268728388b13d74f0249c1045b702980
+paths:
+  - playwright.config.ts
+  - prisma/migrations/20261020190000_t051_period_settings/migration.sql
+  - prisma/schema.prisma
+  - scripts/dev-segments.ts
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/[id]/periode/page.tsx
+  - src/components/datasets/period-setup-form.tsx
+  - src/components/datasets/version-history-row.tsx
+  - src/features/audit/service.ts
+  - src/features/datasets/service.ts
+  - src/features/ingest/period-setup-plan.ts
+  - src/features/ingest/period-setup-repo.ts
+  - src/features/ingest/period-setup.ts
+  - src/features/versions/actions.ts
+  - src/features/versions/period-setup.ts
+  - src/features/versions/service.ts
+  - src/features/versions/types.ts
+  - src/lib/queue/versions.ts
+  - src/worker/index.ts
+  - tests/components/version-history-busy.test.ts
+  - tests/components/version-history-r2.test.ts
+  - tests/components/version-history-status.test.ts
+  - tests/e2e/period-setup.spec.ts
+  - tests/features/ingest/period-setup-plan.test.ts
+  - tests/features/ingest/period-setup.test.ts
+  - tests/features/versions/period-setup.test.ts
+  - tests/features/versions/service.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T12:32:20Z"
+      findings: 5
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T12:32:20Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 193365
+    duration_ms: 188759
     summary: |-
       …t
       > vitest run
@@ -30,23 +69,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792499270813,"service":"data-dashboard","host":"127.0.0.1","port":44485,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792499270876,"service":"data-dashboard","host":"127.0.0.1","port":39701,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792499271005,"service":"data-dashboard","host":"127.0.0.1","port":35665,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792499271132,"service":"data-dashboard","host":"127.0.0.1","port":45115,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792499279078,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792499291560,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792499291583,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792499291586,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792499291598,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792499673060,"service":"data-dashboard","host":"127.0.0.1","port":46491,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499673115,"service":"data-dashboard","host":"127.0.0.1","port":45003,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792499673210,"service":"data-dashboard","host":"127.0.0.1","port":37929,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499673317,"service":"data-dashboard","host":"127.0.0.1","port":39381,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499684698,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792499695590,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792499695611,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792499695614,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792499695625,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  178 passed | 1 skipped (179)
             Tests  2309 passed | 10 skipped (2319)
-         Start at  12:26:30
-         Duration  136.05s (tests 84%, import 13%, transform 3%)
+         Start at  12:33:14
+         Duration  133.65s (tests 84%, import 13%, transform 3%)
 
-          Isolate  179 workers spawned · ~161ms startup each (spawn + environment, per file)
-                   at least ~9.42s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  179 workers spawned · ~152ms startup each (spawn + environment, per file)
+                   at least ~8.92s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -54,10 +93,104 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T12:28:48Z"
+    at: "2026-10-20T12:35:29Z"
     tree: 8c8f5e7b26f826c63e31bfb7a98c0ce80bc4cf55683b1a110d1f8cf010f80355
+  commits:
+    - 08ca5b4
+    - 0cb153a
+    - "1220871"
+    - 14bbbc8
+    - 17d81a7
+    - 18b74cc
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 27924c4
+    - 27986dc
+    - 29fe0f3
+    - 2d7b316
+    - 3602b55
+    - 36afc9f
+    - 3b96186
+    - 3bb3baa
+    - 49f49a5
+    - 4bd9881
+    - 4eea84c
+    - 5101f51
+    - 538221d
+    - 5603fc7
+    - 56a8447
+    - 56e4d6d
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 686497c
+    - 69b8953
+    - 6b3ee3f
+    - 70136f5
+    - "7187327"
+    - 75cf456
+    - 76e3ce7
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - 7d64743
+    - 7f238c4
+    - 7f9a7c7
+    - "8570e80"
+    - 8f8df38
+    - 8fc3abc
+    - 90e4e63
+    - 9159d7c
+    - "9298e14"
+    - 930dd6d
+    - 94bea50
+    - 94d85a4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - a687d4c
+    - a8f9162
+    - acb27a6
+    - ae4e5a2
+    - af1994a
+    - b0b99d8
+    - b30aea5
+    - b32d50d
+    - b8e59ee
+    - b933279
+    - ba2efef
+    - bafb4ad
+    - c15362c
+    - c1c8b0a
+    - c2fd95c
+    - c3626c9
+    - c76c343
+    - ca5782f
+    - ccd0a9a
+    - ce26ca5
+    - ce5d6a7
+    - ce649d0
+    - cf28ad3
+    - d32a8ea
+    - d557c9e
+    - da46e35
+    - dff9b8c
+    - e24e070
+    - e51fcb4
+    - f197114
+    - f3ea697
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
+    - f87b0a1
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 4
+    done: 4
   audit:
-    at: "2026-10-20T12:31:24Z"
+    at: "2026-10-20T12:35:30Z"
     passed: true
     tree: 8c8f5e7b26f826c63e31bfb7a98c0ce80bc4cf55683b1a110d1f8cf010f80355
     results:
@@ -67,7 +200,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 488 dirs visited, 2679 inodes visited, 1 Extract calls, 278.235084ms elapsed, 278.235439ms wall time
+          End status: 489 dirs visited, 2705 inodes visited, 1 Extract calls, 216.429418ms elapsed, 216.429611ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -182,3 +315,11 @@ ulang sesuai R21.
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A — tidak ada unggahan baru; kunci objek segmen dibuat server (seg/<id>/)
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — verified: Server Action berskema zod, rate limit (query untuk Tinjau, versionChange untuk Terapkan/pengaturan)
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — verified: default aman (onLimit REJECT, keepPeriods null = bawaan admin, CHECK ≥ 1); tanpa debug/konfigurasi baru
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T12:35:29Z (188759 ms)
+- Acceptance criteria: 4/4 satisfied
+- Commits: 08ca5b4, 0cb153a, 1220871, 14bbbc8, 17d81a7, 18b74cc, 1b2b9ab, 23e5ae9, 258a139, 27924c4, 27986dc, 29fe0f3, 2d7b316, 3602b55, 36afc9f, 3b96186, 3bb3baa, 49f49a5, 4bd9881, 4eea84c, 5101f51, 538221d, 5603fc7, 56a8447, 56e4d6d, 59ec9a3, 6123427, 62ec216, 686497c, 69b8953, 6b3ee3f, 70136f5, 7187327, 75cf456, 76e3ce7, 7824e56, 7ae2840, 7af4484, 7d64743, 7f238c4, 7f9a7c7, 8570e80, 8f8df38, 8fc3abc, 90e4e63, 9159d7c, 9298e14, 930dd6d, 94bea50, 94d85a4, a019f8f, a03481c, a0e1646, a687d4c, a8f9162, acb27a6, ae4e5a2, af1994a, b0b99d8, b30aea5, b32d50d, b8e59ee, b933279, ba2efef, bafb4ad, c15362c, c1c8b0a, c2fd95c, c3626c9, c76c343, ca5782f, ccd0a9a, ce26ca5, ce5d6a7, ce649d0, cf28ad3, d32a8ea, d557c9e, da46e35, dff9b8c, e24e070, e51fcb4, f197114, f3ea697, f54828c, f55d8d2, f5b2aa6, f87b0a1, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 5 findings
+- Review pass 2 by claude-code: 0 findings
