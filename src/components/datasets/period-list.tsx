@@ -244,6 +244,7 @@ export function PeriodList({
                       sourceVersionId={c.source.id}
                       sourceTitle={c.source.title ?? "tanpa nama"}
                       rows={c.source.rows}
+                      sheets={c.source.sheets}
                       replaces={c.state === "CHANGED"}
                       busy={busy}
                     />

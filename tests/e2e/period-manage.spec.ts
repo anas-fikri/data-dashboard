@@ -249,6 +249,11 @@ test.describe("kelola daftar periode", () => {
     const feb = candidate(page, "2026-02");
     await expect(feb).toContainText("tidak ada di data aktif");
     await expect(feb).toContainText("Dari versi “april.csv”");
+    // Review L1: dialog menyebut baris periode per sheet sebelum → sesudah.
+    await feb.getByTestId("period-restore").click();
+    await expect(page.getByTestId("period-restore-sheet")).toHaveCount(1);
+    await expect(page.getByTestId("period-restore-sheet")).toContainText("tidak ada → 1 baris");
+    await page.getByTestId("version-confirm").getByRole("button", { name: "Batal" }).click();
     await restoreVia(page, "2026-02", "Februari 2026");
     const restored = activeId(datasetId);
     expect(periodsOf(restored)).toEqual([

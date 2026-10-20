@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-054
 created: "2026-10-15T02:30:58Z"
-updated: "2026-10-20T16:22:33Z"
+updated: "2026-10-20T16:41:23Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,7 +21,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 196190
+    duration_ms: 195677
     summary: |-
       …t
       > vitest run
@@ -29,23 +29,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792513297928,"service":"data-dashboard","host":"127.0.0.1","port":33461,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792513297983,"service":"data-dashboard","host":"127.0.0.1","port":46145,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792513298090,"service":"data-dashboard","host":"127.0.0.1","port":33657,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792513298208,"service":"data-dashboard","host":"127.0.0.1","port":44021,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792513304938,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792513316671,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792513316692,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792513316697,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792513316707,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792514403056,"service":"data-dashboard","host":"127.0.0.1","port":42293,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792514403115,"service":"data-dashboard","host":"127.0.0.1","port":33051,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792514403226,"service":"data-dashboard","host":"127.0.0.1","port":40185,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792514403340,"service":"data-dashboard","host":"127.0.0.1","port":36993,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792514412955,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792514423143,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792514423166,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792514423172,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792514423185,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  189 passed | 1 skipped (190)
-            Tests  2459 passed | 10 skipped (2469)
-         Start at  16:20:14
-         Duration  137.37s (tests 84%, import 13%, transform 3%)
+            Tests  2461 passed | 10 skipped (2471)
+         Start at  16:38:41
+         Duration  135.34s (tests 84%, import 14%, transform 2%)
 
-          Isolate  190 workers spawned · ~157ms startup each (spawn + environment, per file)
-                   at least ~9.78s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  190 workers spawned · ~156ms startup each (spawn + environment, per file)
+                   at least ~9.74s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -53,12 +53,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T16:22:33Z"
-    tree: f10dfccbd3c767fea16fd35a0e1daa48e1032ee872e1cdce26323fe00e8cbeaf
+    at: "2026-10-20T16:40:58Z"
+    tree: 4356172ed55014323ea9b372fb461a06676f7d305e978d44553766b0daef5110
   audit:
-    at: "2026-10-20T16:18:42Z"
+    at: "2026-10-20T16:40:58Z"
     passed: true
-    tree: f10dfccbd3c767fea16fd35a0e1daa48e1032ee872e1cdce26323fe00e8cbeaf
+    tree: 4356172ed55014323ea9b372fb461a06676f7d305e978d44553766b0daef5110
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -66,7 +66,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 503 dirs visited, 3131 inodes visited, 1 Extract calls, 213.893812ms elapsed, 213.893997ms wall time
+          End status: 504 dirs visited, 3184 inodes visited, 1 Extract calls, 222.253783ms elapsed, 222.253927ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -103,7 +103,7 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
   klien selain metadata periode milik pemilik.
 - Rollback: kode — revert commit; data — setiap hapus/pulihkan adalah versi biasa, jadi "Aktifkan" versi
   sebelumnya mengembalikan manifest lama; migrasi — `ALTER TABLE "Segment" DROP COLUMN "uploadedById"`.
-- Validation: unit `period-manage-plan` 11, `period-manage` 10, `service` 19; e2e `period-manage` 1/1
+- Validation: unit `period-manage-plan` 12, `period-manage` 11, `service` 19; e2e `period-manage` 1/1
   (worker dihentikan sebelum hapus/pulihkan), regresi `versions` 7/7, `mapping` 4/4, `period-review` 6/6,
   `period-upload-panel` 2/2, `period-limits` 2/2, `period-setup` 3/3; `aitk check` lulus.
 
@@ -122,6 +122,12 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - Asumsi (keputusan standar): pemulihan tidak menahan GC tambahan (sesuai rencana §4.7); versi hapus/pulihkan
   berjudul "Hapus/Pulihkan periode <label>" di `originalName` (seperti "Atur periode"); daftar periode urut
   terbaru dulu.
+- Review putaran 1 (0 blokir): L1 diperbaiki — dialog "Pulihkan" menyebut baris periode per sheet sebelum →
+  sesudah, termasuk sheet yang kehilangan baris periode itu karena versi asal tidak memuatnya (uji unit +
+  e2e); L2 diperbaiki — recast/koreksi skema yang antre/berjalan di sheet aktif (indeks
+  `recast:inflight:s:<sheetId>`) → DATASET_BUSY sebelum transaksi, cek gagal = fail-closed (uji unit); L3
+  dicatat di sini sesuai arahan reviewer (tanpa perubahan kode). Sisa celah L2: cek indeks Redis di luar lock
+  DB, jadi recast yang diantre tepat setelah cek masih bisa basi (perilaku recast basi yang sudah ada).
 - Plugin frontend-expert tidak tersedia di sesi cloud: UI mengikuti pola yang ada (token CSS, Tabler
   `size={20} stroke={1.5}`, tabel → kartu di < @3xl, CTA 44 px di ponsel), diuji axe (serious/critical = 0)
   di 1280 dan 360 px.

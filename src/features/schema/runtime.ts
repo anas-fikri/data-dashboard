@@ -230,6 +230,22 @@ async function inFlight(userId: string, sheetId: string) {
 }
 
 /**
+ * Ada job recast/koreksi skema yang antre/berjalan untuk salah satu sheet ini (T-056 review L2): hapus/
+ * pulihkan periode di tengah recast membuat recast basi dan perubahan tipe pemilik hilang diam-diam.
+ * Entri basi dibuang seperti inFlight; galat Redis/antrean dilempar (pemanggil: fail-closed).
+ */
+export async function recastInFlightAny(sheetIds: string[]): Promise<boolean> {
+  if (!sheetIds.length) return false;
+  const r = await redisReady();
+  const jobs = await Promise.all(sheetIds.map((id) => r.get(sheetKey(id))));
+  const live = await Promise.all(jobs.map((j) => (j ? alive(j) : Promise.resolve(false))));
+  for (const [i, j] of jobs.entries()) {
+    if (j && !live[i]) await releaseLock(redisLockStore(r), sheetKey(sheetIds[i]!), j);
+  }
+  return live.some(Boolean);
+}
+
+/**
  * Id job dibuat lebih dulu dan dicatat di indeks SEBELUM masuk antrean (review T-008 R1): add yang
  * selesai setelah batas waktu tetap terhitung; add yang tidak pernah sampai terbaca "unknown" dan
  * dibuang dari indeks pada pengecekan berikutnya.

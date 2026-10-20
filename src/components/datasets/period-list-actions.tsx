@@ -7,6 +7,7 @@ import { createContext, use, useCallback, useState, type ReactNode } from "react
 import { Button } from "@/components/ui/button";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { removePeriodAction, restorePeriodAction } from "@/features/versions/actions";
+import { sheetChange } from "@/features/versions/period-sheet-change";
 import { UploadingInTab } from "./dataset-activity";
 import { VersionConfirm } from "./version-history-confirm";
 
@@ -140,6 +141,7 @@ export function PeriodRestore({
   sourceVersionId,
   sourceTitle,
   rows,
+  sheets,
   replaces,
   busy,
 }: {
@@ -150,6 +152,8 @@ export function PeriodRestore({
   sourceVersionId: string;
   sourceTitle: string;
   rows: number;
+  /** Baris periode ini per sheet aktif sebelum → sesudah (null = tidak ada). */
+  sheets: { name: string; before: number | null; after: number | null }[];
   /** Periode ada di data aktif dengan isi lain (diganti), bukan dikembalikan. */
   replaces: boolean;
   busy: boolean;
@@ -172,6 +176,18 @@ export function PeriodRestore({
           Isi {label} dari versi “{sourceTitle}” ({fmt(rows)} baris){" "}
           {replaces ? "menggantikan isi periode itu di data aktif" : "dikembalikan ke data aktif"};
           periode lain tidak berubah. Versi baru dibuat dan bisa dibatalkan lewat riwayat versi.
+          <span className="mt-3 block font-medium text-foreground">Baris {label} per sheet:</span>
+          <span className="mt-1 block" data-testid="period-restore-sheets">
+            {sheets.map((s) => (
+              <span
+                key={s.name}
+                className="block tabular-nums [overflow-wrap:anywhere]"
+                data-testid="period-restore-sheet"
+              >
+                {s.name}: {sheetChange(s)}
+              </span>
+            ))}
+          </span>
         </>
       }
       confirmLabel={`Pulihkan ${label}`}

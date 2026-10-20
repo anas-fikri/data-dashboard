@@ -13,6 +13,7 @@ import {
   restoreManifest,
   rollbackWarning,
   schemaSignature,
+  sheetChange,
   type ManageSegment,
   type ManageSheet,
   type ManageVersion,
@@ -234,6 +235,30 @@ describe("restoreCandidates", () => {
     expect(c[0]).toMatchObject({ key: "2026-01", source: null });
     expect(c[0]!.unavailable).toContain("Tipe kolom sudah berubah");
     expect(restoreCandidates(removedNow, [src("C2", removedNow)], [])).toEqual([]);
+  });
+});
+
+describe("review L1: pulihkan mengungkap perubahan per sheet", () => {
+  it("sheet yang memuat periode di data aktif tapi tidak di versi asal ikut tercantum (baris dilepas)", () => {
+    const src = version("B", [
+      sheet("L1", [seg("2026-01", 30), seg("2026-02", 40, "g-feb-old"), seg("2026-03", 31)]),
+      sheet("L2", [seg("2026-03", 6, "r-mar")]),
+    ]);
+    const c = restoreCandidates(
+      active,
+      [{ id: "B", title: "b.xlsx", at: "2026-10-20T01:00:00.000Z", version: src }],
+      [],
+    );
+    const feb = c.find((x) => x.key === "2026-02")!;
+    expect(feb.source!.sheets).toEqual([
+      { name: "Kirim", before: 28, after: 40 },
+      { name: "Retur", before: 5, after: null },
+    ]);
+    expect(feb.source!.sheets.map(sheetChange)).toEqual([
+      "28 → 40 baris",
+      "5 → tidak ada (baris periode ini dilepas dari sheet ini)",
+    ]);
+    expect(sheetChange({ before: null, after: 7 })).toBe("tidak ada → 7 baris");
   });
 });
 

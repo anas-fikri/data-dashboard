@@ -14,6 +14,7 @@ import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import { objectExists } from "@/lib/storage/objects";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
+import { recastInFlightAny } from "@/features/schema/runtime";
 import { activateVersionInTx } from "./activation";
 import { IntegrityError, integrityMessage, missingKeys } from "./integrity-check";
 import {
@@ -71,6 +72,8 @@ const BUSY =
 const STALE =
   "Data aktif berubah sejak halaman ini dimuat (mis. versi lain diaktifkan). Muat ulang halaman lalu coba lagi.";
 const RETRY = "Data aktif baru saja berubah. Coba lagi.";
+const RECASTING =
+  "Koreksi skema data sedang diterapkan. Tunggu sampai selesai (lihat halaman Skema), lalu coba lagi.";
 
 const keySchema = z.string().regex(PERIOD_KEY, "Periode tidak dikenal.");
 const idSchema = z.string().regex(/^[a-z0-9]{20,32}$/, "Versi tidak dikenal.");
@@ -480,6 +483,22 @@ async function applyChange(
   });
   if (!owned) return notFound();
   if (owned.activeVersionId !== req.baseVersionId) return fail("PLAN_STALE", STALE);
+  // Koreksi skema (recast) yang antre/berjalan di sheet aktif: versi baru akan membuatnya basi dan
+  // perubahan tipe pemilik hilang diam-diam (review L2) → tunggu selesai. Redis/antrean tidak menjawab
+  // = belum terbukti aman (fail-closed).
+  try {
+    const sheets = await prisma.sheet.findMany({
+      where: { versionId: req.baseVersionId },
+      select: { id: true },
+    });
+    if (await recastInFlightAny(sheets.map((s) => s.id))) return fail("DATASET_BUSY", RECASTING);
+  } catch (e) {
+    logger.warn(
+      { datasetId, err: e instanceof Error ? e.message : String(e) },
+      "cek koreksi skema berjalan gagal",
+    );
+    return fail("DATASET_BUSY", "Status koreksi skema belum bisa diperiksa. Coba lagi sebentar.");
+  }
   let present: Set<string>;
   try {
     present = await presentKeys(datasetId, [

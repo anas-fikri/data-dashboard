@@ -16,6 +16,7 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import { periodLabel, type PeriodGrain, type PeriodSource } from "@/features/ingest/period";
 import { computePeriodPlan, type OnLimit, type PeriodLimits } from "@/features/ingest/period-plan";
 import { planInputs, type ManifestRef } from "@/features/ingest/period-upload-plan";
+export { sheetChange } from "./period-sheet-change";
 
 // ── Catatan perubahan ──────────────────────────────────────────────────────────────────────────────
 
@@ -338,8 +339,18 @@ export interface RestoreCandidate {
   label: string;
   /** MISSING = tidak ada di data aktif; CHANGED = isi data aktif berbeda. */
   state: "MISSING" | "CHANGED";
-  /** Versi asal yang dipakai "Pulihkan"; null = tidak ada yang bisa dipakai. */
-  source: { id: string; title: string | null; at: string; rows: number } | null;
+  /**
+   * Versi asal yang dipakai "Pulihkan"; null = tidak ada yang bisa dipakai. `sheets` = baris periode ini
+   * per sheet aktif sebelum → sesudah (null = tidak ada), termasuk sheet yang kehilangan barisnya karena
+   * versi asal tidak memuat periode ini di sheet itu (review T-056 L1: tidak ada perubahan tersembunyi).
+   */
+  source: {
+    id: string;
+    title: string | null;
+    at: string;
+    rows: number;
+    sheets: { name: string; before: number | null; after: number | null }[];
+  } | null;
   /** Alasan aksi tidak tersedia (source null). */
   unavailable: string | null;
 }
@@ -376,7 +387,19 @@ export function restoreCandidates(
           start,
           label: periodLabel(grain, start),
           state: activeKeys.has(key) ? "CHANGED" : "MISSING",
-          source: { id: r.id, title: r.title, at: r.at, rows: m.change.afterRows },
+          source: {
+            id: r.id,
+            title: r.title,
+            at: r.at,
+            rows: m.change.afterRows,
+            sheets: active.sheets
+              .map((s) => ({
+                name: s.name,
+                before: m.change.before?.[s.lineageId] ?? null,
+                after: m.change.after?.[s.lineageId] ?? null,
+              }))
+              .filter((x) => x.before !== null || x.after !== null),
+          },
           unavailable: null,
         });
         break;

@@ -11,7 +11,10 @@ const activateVersionInTx = vi.fn();
 const recordAudit = vi.fn();
 vi.mock("@/features/versions/activation", () => ({ activateVersionInTx }));
 vi.mock("@/features/audit/service", () => ({ recordAudit }));
+const recastInFlightAny = vi.fn(async (_ids: string[]) => false);
+vi.mock("@/features/schema/runtime", () => ({ recastInFlightAny }));
 const prisma = {
+  sheet: { findMany: vi.fn(async () => [{ id: "sheet-a" }]) },
   dataset: { findFirst: vi.fn() },
   datasetVersion: { findMany: vi.fn() },
   $transaction: vi.fn(),
@@ -163,6 +166,8 @@ beforeEach(() => {
     typedKey: data.typedKey,
   }));
   activateVersionInTx.mockResolvedValue({ deletedTypedKeys: ["k-lama"] });
+  recastInFlightAny.mockResolvedValue(false);
+  prisma.sheet.findMany.mockResolvedValue([{ id: "sheet-a" }]);
   objectExists.mockResolvedValue(true);
 });
 
@@ -255,6 +260,19 @@ describe("removePeriod", () => {
     objectExists.mockImplementation(async (k: string) => !k.includes("g2026-03-01/typed"));
     expect(await remove()).toMatchObject({ ok: false, code: "DATASET_BUSY" });
     expect(tx.datasetVersion.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("review L2: koreksi skema berjalan", () => {
+  it("recast antre/berjalan di sheet aktif → DATASET_BUSY tanpa transaksi; cek gagal → fail-closed", async () => {
+    recastInFlightAny.mockResolvedValueOnce(true);
+    const r = await remove();
+    expect(r).toMatchObject({ ok: false, code: "DATASET_BUSY" });
+    expect(!r.ok && r.message).toContain("Koreksi skema");
+    expect(recastInFlightAny).toHaveBeenCalledWith(["sheet-a"]);
+    recastInFlightAny.mockRejectedValueOnce(new Error("redis mati"));
+    expect(await restore()).toMatchObject({ ok: false, code: "DATASET_BUSY" });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });
 
