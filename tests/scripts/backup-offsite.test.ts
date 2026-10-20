@@ -48,6 +48,8 @@ case $cmd in
       [ -f "$FAKE/down" ] && { echo "ERROR : dial tcp 10.0.0.9:9000: i/o timeout" >&2; exit 1; }
       [ -f "$FAKE/down-silent" ] && exit 1 ;;
     esac
+    # rclone sungguhan tidak membuat folder tujuan untuk bucket kosong.
+    case $1 in locals3:*) [ -f "$FAKE/empty-bucket" ] && exit 0 ;; esac
     d=$(map "$2"); mkdir -p "$d"
     case $1 in locals3:*) echo obj >"$d/obj" ;; *:*) cp -p "$(map "$1")" "$d/" ;; *) cp -p "$1"/dashboard-* "$d/" ;; esac ;;
   lsf) ls "$(map "$1")" | grep '\\.tar\\.age$' ;;
@@ -167,6 +169,17 @@ describe("backup.sh tanpa target off-VM", { timeout: 60_000 }, () => {
       notified: "off",
     });
     expect(mails()).toEqual([]);
+  });
+});
+
+describe("backup.sh bucket kosong (T-023 upgrade)", { timeout: 60_000 }, () => {
+  it("bucket tanpa objek (deploy baru) tetap menghasilkan arsip", () => {
+    writeFileSync(join(root, "empty-bucket"), "");
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toMatch(/arsip: dashboard-\d{8}T\d{6}Z\.tar\.age/);
+    expect(local().filter((f) => f.endsWith(".tar.age"))).toHaveLength(1);
+    expect(status()).toMatchObject({ lastBackupOk: true });
   });
 });
 

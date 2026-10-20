@@ -1,6 +1,6 @@
 # Runbook deploy produksi on-prem (T-023)
 
-Paket: `docker-compose.prod.yml`, `Dockerfile` (target `app`, `worker`), `renderer/Dockerfile`,
+Paket: `docker-compose.prod.yml`, `Dockerfile` (target `app`, `worker`), `renderer/Dockerfile`, `deploy/upgrade.sh` (§7),
 `deploy/` (Caddyfile, deploy.sh, backup.sh, restore.sh, storage-iam.mjs, check-public-presign.mjs).
 
 ## 1. Spesifikasi dan prasyarat
@@ -289,14 +289,16 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
     `sudo -u postgres psql -d data_dashboard -c 'SELECT u.email, round(sum(v."sizeBytes")/1024.0^3, 2) AS gb FROM "DatasetVersion" v JOIN "Dataset" d ON d.id = v."datasetId" JOIN "User" u ON u.id = d."ownerId" WHERE v.status <> '"'"'FAILED'"'"' GROUP BY u.email ORDER BY gb DESC'`.
   - Tepat setelah deploy (migrasi T-039 diterapkan) dan lagi setelah pemeriksaan malam pertama, cetak laporan
     per pengguna (hitungan lama vs baru, persen, file lama yang belum terukur):
-    `$C exec app node scripts/quota-report.mjs`.
+    `$C run --rm --no-deps worker node scripts/quota-report.mjs` (image app tidak membawa skrip ini).
   - Ukuran file segmen lama diisi pemeriksaan malam `segment-audit` (03.00 WIB); untuk segera:
     tunggu satu malam atau jalankan ulang worker lalu cetak laporan lagi.
   - Masa transisi `QUOTA_GRACE_DAYS` (bawaan 14 hari sejak migrasi T-039 diterapkan): pengguna yang masih
     muat menurut hitungan lama hanya diberi peringatan (banner), tidak ditolak.
   - Pengguna ≥ 80% kuota melihat banner di setiap halaman. Menaikkan kuota: set `USER_STORAGE_QUOTA_BYTES`
     di `.env.prod` lalu `$C up -d app worker`. Syarat disk: volume RustFS ≥ Σ kuota pengguna aktif + 20%.
-- **Update** (migrasi maju otomatis). Pra-deploy dulu — langkah manual, `deploy.sh` tidak mengerjakannya:
+- **Update** (migrasi maju otomatis). Untuk rilis G-6 (migrasi T-036…T-060) pakai prosedur §7 —
+  `deploy/upgrade.sh` mengerjakan langkah di bawah ini plus gerbang pemeriksaan dan rollback database.
+  Pra-deploy dulu — langkah manual, `deploy.sh` tidak mengerjakannya:
   ```bash
   stamp=$(date +%Y%m%d%H%M); tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod | tail -1); tag=${tag:-latest}
   for i in app worker renderer backup; do docker tag "dashboard-$i:$tag" "dashboard-$i:prev-$stamp"; done
@@ -323,3 +325,134 @@ Hasil wajib `LATIHAN RESTORE LULUS`; catat di tabel berikut.
   masa sesi lewat (12 jam), hapus yang lama dan deploy lagi.
 - **Kredensial storage**: app/worker memakai `S3_APP_*` (service account berpolicy prefix raw/,
   parquet/, exports/, guides/); akun root RustFS hanya untuk `storage-init` dan `backup`.
+
+## 7. Upgrade rilis G-6 (produksi tertinggal: migrasi T-036…T-060)
+
+Produksi olympus terakhir di-deploy sebelum T-036: migrasi terakhirnya `20261017104143_t_j9j6_guide_video_caption`
+(dicek ulang otomatis oleh preflight). Rilis ini menambah 15 migrasi (`20261019140000_t036_segments` …
+`20261021110000_t060_period_group`): model segmen + manifest (T-036/T-037), GC (garbage collection,
+pembersihan) segmen 24 jam (T-038), kuota byte nyata (T-039), recast per segmen (T-040), baris judul per file
+typed (T-gcn8), ekspor Lihat data (T-046), model data per periode (T-049…T-060). Semua aditif dengan backfill,
+kecuali T-049 yang menulis ulang enum `VersionMode` (lock singkat tabel `DatasetVersion`).
+
+Seluruh prosedur memakai satu skrip, `deploy/upgrade.sh`, dengan **gerbang**: setiap langkah berhenti bila
+pemeriksaan gagal dan mencetak langkah berikutnya. Status disimpan di `../data-dashboard-upgrade/<stamp>/`
+(mode 700, di luar folder aplikasi): `state.env` (tanpa rahasia), dump database, arsip kode lama, log.
+Jeda layanan ± 2–5 menit (langkah 4–5); umumkan ke pengguna dan pilih jam sepi.
+
+**Kenapa rollback = image lama + database lama.** Kode lama (sebelum T-036) tidak bisa menulis ke skema baru
+(`Sheet.lineageId` NOT NULL; enum `VersionMode` tanpa APPEND dan dengan nilai periode), dan setelah rilis baru
+membuat data periode (T-049/T-052/T-060) atau memilih ulang baris judul per file (T-gcn8), bentuk data tidak
+lagi bisa dibaca kode lama. Jadi rollback selalu memulihkan database dari dump pra-upgrade. Data yang dibuat
+setelah upgrade hilang dari database (disimpan dulu di dump pengaman).
+
+### Variabel lingkungan baru (opsional, bawaan aman di `docker-compose.prod.yml`)
+
+| Variabel | Bawaan | Arti |
+|---|---|---|
+| `QUOTA_GRACE_DAYS` | 14 | Masa transisi kuota byte nyata (T-039): pelanggaran hanya peringatan, dihitung dari waktu migrasi T-039 diterapkan |
+| `GRID_MAX_CONCURRENCY` | 2 | Slot query global maks untuk Lihat data (T-042); dipotong ke `MAX_QUERY_CONCURRENCY − 1` |
+| `PERIOD_KEEP_DEFAULT` | 24 | Periode disimpan per dataset bila pemilik tidak mengatur |
+| `PERIOD_KEEP_MAX` | 60 | Batas atas pengaturan "Simpan N periode" |
+| `PERIOD_SHEET_MAX_ROWS` | 10000000 | Baris per sheet, dijumlah atas semua periode |
+| `DATASET_MAX_DATA_BYTES` | 17179869184 (16 GiB) | Byte parquet per dataset |
+| `PERIOD_SHEET_MAX_SEGMENTS` | 120 | Segmen per sheet |
+| `PERIOD_WARN_PCT` | 80 | Ambang peringatan meter (persen) |
+| `PERIOD_SHRINK_CONFIRM_PCT` | 50 | Penggantian periode yang menyusut lebih dari ini wajib dicentang |
+| `PERIOD_STRAY_PCT` | 10 | Periode dengan baris < persen ini dari terbesar = "kemungkinan nyasar" |
+| `PERIOD_MAX_FILES` | 10 | File per kelompok "satu periode dari beberapa file" (2–36) |
+| `PERIOD_CONFIRM_TTL_HOURS` | 168 | Unggahan periode menunggu konfirmasi dibuang setelah sekian jam |
+
+Tidak perlu mengisi apa pun di `.env.prod`; isi hanya untuk mengubah bawaan. **HTTPS:** fitur salin ke papan
+klip (T-045, Lihat data) butuh *secure context* — `APP_URL` di compose selalu `https://…` dan app menolak start
+produksi bila bukan https. Pengguna membuka lewat `https://10.3.3.221:8443` (root LAN terpasang) atau domain
+publik; lewat `http://` atau peringatan sertifikat yang di-bypass tombol salin bisa gagal.
+
+### Langkah (pemilik, di olympus, folder `/data/docker-data/data-dashboard`)
+
+0. **Mesin build** (commit rilis): `bash deploy/images.sh build` → `bash deploy/images.sh save - | ssh olympus
+   'cat > /tmp/dashboard-images.tar.gz'` (§2). Salin juga skrip upgrade sendiri ke server:
+   `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+1. **Preflight dengan kode LAMA** (belum sinkron kode; tidak mengubah produksi):
+   ```bash
+   cd /data/docker-data/data-dashboard
+   bash /tmp/upgrade.sh preflight
+   ```
+   Isi: service berjalan; tidak ada migrasi gagal di `_prisma_migrations`; `SELECT count(*) FROM
+   "DatasetVersion" WHERE mode::text='APPEND'` = 0 (syarat T-049); tidak ada ingest (UPLOADED/INGESTING) atau
+   ekspor (QUEUED/RUNNING) yang sedang jalan (`FORCE=1` bila yakin; job diulang worker baru); hitungan kuota
+   lama → `kuota-sebelum.txt`; ruang disk Docker ≥ `MIN_FREE_GB` (15) dan folder status ≥ 2 × ukuran database;
+   ID image app/worker/renderer/backup yang sedang jalan dicatat dan diberi tag `dashboard-*:prev-<stamp>`;
+   arsip kode lama tanpa `.env.prod*`/kunci/sertifikat; backup terenkripsi lengkap (`backup.sh`, nama arsip
+   dicatat); dump `pg_dump -Fc` ke `db-<stamp>.dump` lalu diverifikasi (tidak kosong, `pg_restore --list`
+   memuat semua tabel). Harus berakhir `PREFLIGHT LULUS`.
+2. **Sinkron kode rilis** (`git pull`, atau `git archive` dari mesin dev → ekstrak di folder ini).
+3. **Muat image** (tag dari arsip, `IMAGE_TAG` di `.env.prod` diganti otomatis; cadangan `.env.prod.bak-upgrade`):
+   ```bash
+   bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz     # beberapa arsip per image juga boleh
+   ```
+   Tanpa mesin build: `bash deploy/upgrade.sh build` (build di VM, ± 16–21 menit di olympus).
+4. **Migrasi + gerbang** (jeda layanan mulai: app + worker dihentikan):
+   ```bash
+   bash deploy/upgrade.sh migrate
+   ```
+   `prisma migrate deploy` dengan image baru, lalu pemeriksaan pasca-migrasi (wajib lulus semua):
+   - `scripts/check-segments.mjs` (T-036): setiap sheet punya satu segmen legacy, manifest = typedKey,
+     lineage satu dataset, posisi kolom typed = skema (T-037) — semua 0 selisih. Hanya bermakna untuk data
+     sebelum rilis ini (dataset per periode kelak sah punya manifest > 1 segmen).
+   - T-gcn8 (wajib 0 baris): file typed yang judulnya (`SegmentTyped.headerRow`) beda dari sheet satu-segmen
+     yang merujuknya, atau dirujuk beberapa sheet dengan judul berbeda.
+   - T-049/T-060 (wajib 0): belum ada versi/segmen periode, kelompok, atau peta kolom.
+   - `scripts/quota-report.mjs` (T-039): bandingkan dengan `kuota-sebelum.txt`; `belumTerukur` diisi
+     pemeriksaan malam `segment-audit` (03.00 WIB).
+   Gagal → app/worker tetap berhenti; kirim `*.log` di folder status ke pengembang lalu rollback (langkah R).
+5. **Nyalakan + verifikasi**:
+   ```bash
+   bash deploy/upgrade.sh start
+   ```
+   `deploy.sh --no-build` (up, storage-init, recreate proxy/backup, `/api/health` hijau lewat TLS), lalu:
+   `/api/health` ok, `/login` 200 dengan HSTS, `APP_URL` https, `check-public-presign.mjs` (unggah 16 MiB lewat
+   proxy + allowlist storage; root LAN dipakai bila `deploy/certs/root.crt` ada), `admin-restore.mjs` email tak
+   dikenal exit 1, `check-segments.mjs` sekali lagi, `ps`.
+6. **Uji manual** (akun uji non-admin + admin): login; dashboard lama terbuka dengan angka sama; Lihat data
+   sebuah sheet (gulir, urut, saring, salin ke Excel); ekspor CSV + PDF; unggah file kecil sampai READY; ubah
+   tipe satu kolom (recast); Admin › Backup tampil. Dari mesin dengan Playwright (opsional):
+   `node scripts/smoke-prod-headers.mjs https://10.3.3.221:8443`.
+7. **Besok**: `$C run --rm --no-deps worker node scripts/quota-report.mjs` (ukuran file lama sudah terisi);
+   backup harian 02.00 berhasil dan `verify-backup.sh` cocok → hapus dump plaintext
+   `../data-dashboard-upgrade/<stamp>/db-<stamp>.dump` (dump pengaman rollback juga, bila ada). Catat hasil di
+   Notes T-023.
+
+### R. Rollback
+
+```bash
+bash deploy/upgrade.sh rollback          # minta ketik ROLLBACK; ROLLBACK_YES=1 untuk tanpa tanya
+```
+
+Urutan: app + worker berhenti → dump pengaman database saat ini (`db-sebelum-rollback-*.dump`) → database
+dipulihkan dari `db-<stamp>.dump` dalam **satu transaksi** (semua tabel + enum skema `public` dibuang lalu dump
+lama dimuat; gagal = database tetap seperti sebelum langkah ini; `pg_restore --clean` saja tidak cukup karena
+tabel baru menahan DROP tabel lama lewat FK) → kode lama dari arsip → `IMAGE_TAG=prev-<stamp>` → `up --wait` +
+recreate proxy/backup. Migrasi lama di container `migrate` = no-op.
+
+Batas: rollback cepat hanya **≤ 20 jam setelah `start`**. Sesudahnya GC segmen (24 jam) bisa sudah menghapus
+objek storage yang dirujuk database lama; skrip menolak (kecuali `ROLLBACK_LATE=1`) dan pemulihan memakai
+restore lengkap §5 dari arsip backup preflight (`BACKUP_ARCHIVE` di `state.env`, butuh kunci privat age dari
+laptop admin). Objek yang ditulis rilis baru (`parquet/<dataset>/seg/…`) tertinggal tanpa rujukan setelah
+rollback — aman, bisa dibersihkan manual nanti. Worker lama mencatat peringatan "job maintenance tidak dikenal"
+untuk jadwal baru (segment-gc, segment-audit, …) di Redis — tidak berbahaya.
+
+### Bukti uji (container cloud, 2026-10-20)
+
+- Build 4 image produksi dari commit rilis (`docker buildx`, target app/worker + renderer + backup): lulus;
+  image app start dengan env produksi (`/api/health/core` ok, `/login` 200).
+- Rantai migrasi penuh ke PostgreSQL 14 kosong (UTF8, C.UTF-8) dan ke database berbentuk produksi
+  (semua migrasi s.d. `t_j9j6` + data contoh: versi xlsx/csv, READY/FAILED/AWAITING_MAPPING/UPLOADING, alias
+  sheet, nama sheet kembar beda kapital, ekspor, dashboard): lulus; `prisma migrate diff` ke schema = kosong;
+  check-segments 0 selisih; dump → migrasi → rollback → isi per tabel identik → migrasi ulang lulus.
+- Simulasi utuh dengan `upgrade.sh` di stack compose produksi lokal (profil `hostdb` + PostgreSQL 14 di
+  127.0.0.1 dengan role non-superuser, seperti olympus; image lama = commit sebelum T-036): preflight (gerbang
+  ekspor aktif dan ruang disk teruji menolak) → load → migrate (gerbang T-gcn8 teruji menolak data rusak) →
+  start (health, presign 16 MiB, allowlist, admin-restore, env baru terbaca) → rollback: image `prev-*` jalan,
+  `/api/health` ok, isi database identik dengan dump preflight (sidik `fingerprint.sh`). Belum diuji: server
+  olympus sungguhan (pemilik), volume data nyata.

@@ -413,6 +413,8 @@ echo "[$stamp] backup mulai"
 step="pg_dump"
 pg_dump --format=custom --no-owner --no-privileges --file "$work/db.dump"
 step="salin storage lokal"
+# Folder dibuat dulu: bucket kosong (deploy baru) tidak membuat folder dan tar lalu gagal.
+mkdir -p "$work/s3"
 rclone copy "locals3:$S3_BUCKET" "$work/s3" --transfers 4 --checkers 8 --stats-one-line --stats 0
 
 step="enkripsi arsip"

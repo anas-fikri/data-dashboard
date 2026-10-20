@@ -64,6 +64,20 @@ APP_MEM=4g
 WORKER_MEM=3g
 WORKER_REPLICAS=2
 RENDERER_MEM=2g
+# Opsional (bawaan di docker-compose.prod.yml; runbook §6 Upgrade rilis G-6): kuota + data per periode.
+# USER_STORAGE_QUOTA_BYTES=21474836480
+# QUOTA_GRACE_DAYS=14
+# GRID_MAX_CONCURRENCY=2
+# PERIOD_KEEP_DEFAULT=24
+# PERIOD_KEEP_MAX=60
+# PERIOD_SHEET_MAX_ROWS=10000000
+# DATASET_MAX_DATA_BYTES=17179869184
+# PERIOD_SHEET_MAX_SEGMENTS=120
+# PERIOD_WARN_PCT=80
+# PERIOD_SHRINK_CONFIRM_PCT=50
+# PERIOD_STRAY_PCT=10
+# PERIOD_MAX_FILES=10
+# PERIOD_CONFIRM_TTL_HOURS=168
 EOF
   echo ".env.prod dibuat dengan secret acak. Isi nilai ISI_* (lihat runbook), lalu jalankan deploy lagi."
   exit 1

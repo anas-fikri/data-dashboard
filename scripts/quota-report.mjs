@@ -6,7 +6,7 @@
 // "run-job segment-audit" bila perlu segera). Cetak tepat setelah migrasi T-039 dan lagi setelah
 // pemeriksaan malam pertama (ukuran file lama terisi); butuh kolom T-039 — sebelum deploy pakai SQL
 // hitungan lama di runbook §kuota.
-// Pakai: node --env-file=.env scripts/quota-report.mjs   (app: docker compose exec app node scripts/quota-report.mjs)
+// Pakai: node --env-file=.env scripts/quota-report.mjs   (produksi: docker compose … run --rm --no-deps worker node scripts/quota-report.mjs — image app tidak membawa skrip ini)
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();

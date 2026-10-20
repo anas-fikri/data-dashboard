@@ -32,6 +32,19 @@ x-app-env: &app-env
   # Kuota per pengguna dari byte tersimpan (T-039; admin menaikkan sesuai disk, runbook §kuota).
   USER_STORAGE_QUOTA_BYTES: ${USER_STORAGE_QUOTA_BYTES:-21474836480}
   QUOTA_GRACE_DAYS: ${QUOTA_GRACE_DAYS:-14}
+  # Lihat data (T-042): slot query global maks untuk grid; sisanya selalu untuk widget dashboard.
+  GRID_MAX_CONCURRENCY: ${GRID_MAX_CONCURRENCY:-2}
+  # Data per periode (T-050–T-060, rencana G-6 §5.2). Bawaan = nilai kode; batas dievaluasi per periode utuh.
+  PERIOD_KEEP_DEFAULT: ${PERIOD_KEEP_DEFAULT:-24}
+  PERIOD_KEEP_MAX: ${PERIOD_KEEP_MAX:-60}
+  PERIOD_SHEET_MAX_ROWS: ${PERIOD_SHEET_MAX_ROWS:-10000000}
+  DATASET_MAX_DATA_BYTES: ${DATASET_MAX_DATA_BYTES:-17179869184}
+  PERIOD_SHEET_MAX_SEGMENTS: ${PERIOD_SHEET_MAX_SEGMENTS:-120}
+  PERIOD_WARN_PCT: ${PERIOD_WARN_PCT:-80}
+  PERIOD_SHRINK_CONFIRM_PCT: ${PERIOD_SHRINK_CONFIRM_PCT:-50}
+  PERIOD_STRAY_PCT: ${PERIOD_STRAY_PCT:-10}
+  PERIOD_MAX_FILES: ${PERIOD_MAX_FILES:-10}
+  PERIOD_CONFIRM_TTL_HOURS: ${PERIOD_CONFIRM_TTL_HOURS:-168}
   # Thread DuckDB per job ingest; WORKER_REPLICAS × nilai ini sebaiknya ≤ vCPU − 2.
   INGEST_DUCKDB_THREADS: ${INGEST_DUCKDB_THREADS:-2}
   # Worker thread pembaca sheet xlsx paralel per job ingest (1–4; 1 = berurutan);

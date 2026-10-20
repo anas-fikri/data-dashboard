@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: Paket deploy on-prem Docker Compose produksi
-status: blocked
+status: in_progress
 profile: strict
 profile_pinned: true
 goal: G-5
@@ -12,11 +12,11 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-19T02:39:58Z"
+updated: "2026-10-20T22:14:28Z"
 created_by: claude-code
 workers:
   - claude-code
-branch: worktree-t-001-scaffold
+branch: claude/intelligent-albattani-fd1va8
 base: 1bacfb5c33e15b6edf677d19425445a1f3cc6933
 paths:
   - .dockerignore
@@ -734,40 +734,31 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 94586
+    duration_ms: 179445
     summary: |-
-      > data-dashboard@0.1.0 check
-      > npm run lint && npm run typecheck && npm run test && npm run audit
-
-
-      > data-dashboard@0.1.0 lint
-      > eslint . && prettier --check .
-
-      Checking formatting...
-      All matched files use Prettier code style!
-
-      > data-dashboard@0.1.0 typecheck
-      > tsc --noEmit
-
-
-      > data-dashboard@0.1.0 test
+      …t
       > vitest run
 
 
-       RUN  v5.0.3 /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold
+       RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792214655108,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792214655132,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792214655136,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792214655153,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792534423655,"service":"data-dashboard","host":"127.0.0.1","port":34553,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792534423708,"service":"data-dashboard","host":"127.0.0.1","port":44717,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792534423810,"service":"data-dashboard","host":"127.0.0.1","port":44499,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792534423916,"service":"data-dashboard","host":"127.0.0.1","port":39199,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792534432337,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792534435979,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792534436002,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792534436004,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792534436013,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
-       Test Files  126 passed (126)
-            Tests  1733 passed (1733)
-         Start at  12:23:55
-         Duration  63.32s (tests 73%, import 20%, transform 7%)
+       Test Files  199 passed | 1 skipped (200)
+            Tests  2648 passed | 10 skipped (2658)
+         Start at  22:12:23
+         Duration  123.67s (tests 83%, import 14%, transform 3%)
 
-          Isolate  126 workers spawned · ~287ms startup each (spawn + environment, per file)
-                   at least ~3.73s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  200 workers spawned · ~140ms startup each (spawn + environment, per file)
+                   at least ~9.21s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -775,8 +766,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-17T05:25:01Z"
-    tree: 177f3c740fcb863f4704df4e893bd23f218c370ae96a55a42db66a3855be51ab
+    at: "2026-10-20T22:14:28Z"
+    tree: c2d4d798f170b40809df109ee661f25b0defffa2b790efeebd69c81f96862364
   commits:
     - 00400de
     - 0177afd
@@ -1065,18 +1056,18 @@ evidence:
     total: 7
     done: 5
   audit:
-    at: "2026-10-17T05:22:24Z"
+    at: "2026-10-20T22:11:02Z"
     passed: true
-    tree: 177f3c740fcb863f4704df4e893bd23f218c370ae96a55a42db66a3855be51ab
+    tree: c2d4d798f170b40809df109ee661f25b0defffa2b790efeebd69c81f96862364
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
         summary: |-
           Scanning dir .
           Starting filesystem walk for root: /
-          Scanned /Users/anasfikri/Documents/Projects/pcpexpress/data-dashboard/.claude/worktrees/t-001-scaffold/package-lock.json file and found 818 packages
-          End status: 186 dirs visited, 1063 inodes visited, 1 Extract calls, 168.098708ms elapsed, 168.1ms wall time
-          Loaded npm local db from /Users/anasfikri/Library/Caches/osv-scalibr/npm/all.zip
+          Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
+          End status: 514 dirs visited, 3802 inodes visited, 1 Extract calls, 216.405785ms elapsed, 216.406111ms wall time
+          Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -1102,12 +1093,13 @@ docker-compose.prod.yml: app (4 GB), worker ×2 (3 GB, concurrency 1), renderer 
 - [x] Given compose produksi, when diperiksa, then hanya reverse proxy mempublikasikan port; Redis requirepass + protected-mode; renderer hanya di network frontend; app/worker memakai service account MinIO berpolicy prefix (bukan root); MINIO_BROWSER=off
 - [x] Given storage.<domain>, when request selain PUT/GET/HEAD/OPTIONS ke /<bucket>/(raw|guides|exports)/* dengan X-Amz-Signature atau ke /minio/*, then proxy menolak; semua respons storage membawa X-Content-Type-Options: nosniff dan Content-Security-Policy: sandbox
 - [ ] Given backup harian, when diperiksa, then terenkripsi (age/gpg), disalin off-VM, retensi 30 hari, dan uji restore tercatat di runbook
+- [ ] Given produksi olympus di migrasi t_j9j6 (sebelum T-036), when pemilik menjalankan deploy/upgrade.sh preflight → load → migrate → start sesuai runbook §7, then semua gerbang lulus (APPEND = 0, check-segments 0 selisih, T-gcn8 0 baris, quota-report tercetak), /api/health hijau, check-public-presign lulus, dan uji manual §7 langkah 6 berhasil; bila gagal, upgrade.sh rollback memulihkan image prev-<stamp> + database pra-upgrade
 
 ## Risk
-Impact: paket produksi baru — docker-compose.prod.yml (proxy Caddy, app, worker, renderer, RustFS, Redis, backup, pg-relay/PostgreSQL), deploy/ (deploy.sh, backup/restore/verify-backup/restore-drill/fingerprint, storage-iam, lan-cert, host-db, rotate-db-password, set-smtp), runbook. Kode aplikasi yang berubah: healthcheck container memakai /api/health/core (inti saja), cache health per kelompok, next.config build (NEXT_BUILD_CPUS, staticPageGenerationTimeout), seccomp renderer (clone3 → ENOSYS). deploy.sh membuat ulang proxy + backup tiap deploy (bind mount satu file), host-db.sh membuat database UTF8. Produksi olympus: https://10.3.3.221:8443 (storage :8444) di VM bersama; aplikasi lain di VM tidak disentuh.
-Security (STRIDE): S — hanya proxy yang publish port; TLS dari root LAN berpembatasan IP 10.3.3.221/32 (kunci root offline) + HSTS; proxy menimpa Host/X-Forwarded-Host/X-Real-IP. T — storage hanya GET/HEAD/PUT/OPTIONS pada /<bucket>/(raw|guides|exports)/*, selain itu 403; app/worker memakai service account RustFS berpolicy prefix; backup age + sha256; restore satu transaksi. R — AuditLog aplikasi tetap; log akses tanpa query/Cookie/Authorization/Referer/Location, path token diredaksi. I — kredensial tidak di argumen proses (env libpq, REDISCLI_AUTH, config Redis dari file, stdin); secret acak per deploy di .env.prod (600); /api/health dan /api/health/core publik hanya status; kunci privat backup hanya di laptop admin. D — mem_limit per service, Redis maxmemory noeviction, batas body proxy, renderer/SMTP tidak lagi menentukan sehat-tidaknya app (gangguan fitur sampingan tidak mematikan situs), start_period renderer; pg-relay hanya menerima subnet aplikasi. E — cap_drop ALL + no-new-privileges + read_only, renderer seccomp + jaringan internal tanpa egress, Redis protected-mode + requirepass, console RustFS mati, init (tini) di Redis/renderer.
-Rollback: `docker compose --env-file .env.prod -f docker-compose.prod.yml down` (volume tetap) lalu deploy commit/IMAGE_TAG sebelumnya; data dipulihkan dari arsip backup (runbook §5, restore.sh). PostgreSQL host hanya berisi role + database dashboard (host-db.sh) — DROP bila rollback total. Perubahan kode aplikasi (route /api/health/core) cukup di-revert; Dockerfile HEALTHCHECK kembali ke /api/health.
-Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/183 + e2e health terarah (/api/health/core publik, hanya status); produksi: deploy.sh "Sehat" lewat rantai TLS terverifikasi (--cacert root LAN), check-public-presign (UploadPart 16 MiB 200, metode/path lain 403, nosniff + CSP sandbox), AC4 worker dibunuh saat ingest → READY tanpa objek parsial, ps tanpa kredensial (0), pg-relay menolak jaringan lain, log akses tanpa token/query, latihan restore LULUS (checksum OK, isi per tabel identik — jumlah + md5 tiap baris, produksi tidak berubah selama backup —, daftar objek storage identik, health 200); diagnosa 151 kolom PG14/SQL_ASCII produksi vs PG16/UTF8 hasil restore identik lewat dua jalur (DB kosong dan migrate + restore --clean); review 3 putaran (5 → 2 → 0 temuan blocking). Sisa risiko: DB olympus SQL_ASCII (ILIKE hanya ASCII) dan backup belum disalin off-VM — task lanjutan.
+Impact: paket produksi baru — docker-compose.prod.yml (proxy Caddy, app, worker, renderer, RustFS, Redis, backup, pg-relay/PostgreSQL), deploy/ (deploy.sh, backup/restore/verify-backup/restore-drill/fingerprint, storage-iam, lan-cert, host-db, rotate-db-password, set-smtp), runbook. Kode aplikasi yang berubah: healthcheck container memakai /api/health/core (inti saja), cache health per kelompok, next.config build (NEXT_BUILD_CPUS, staticPageGenerationTimeout), seccomp renderer (clone3 → ENOSYS). deploy.sh membuat ulang proxy + backup tiap deploy (bind mount satu file), host-db.sh membuat database UTF8. Produksi olympus: https://10.3.3.221:8443 (storage :8444) di VM bersama; aplikasi lain di VM tidak disentuh. Rilis G-6 (2026-10-20): deploy/upgrade.sh (preflight/load/build/migrate/start/rollback) + runbook §7; compose meneruskan GRID_MAX_CONCURRENCY + PERIOD_*/DATASET_MAX_DATA_BYTES dengan bawaan kode; deploy.sh menulis contoh env opsional; backup.sh tidak gagal pada bucket kosong.
+Security (STRIDE): S — hanya proxy yang publish port; TLS dari root LAN berpembatasan IP 10.3.3.221/32 (kunci root offline) + HSTS; proxy menimpa Host/X-Forwarded-Host/X-Real-IP. T — storage hanya GET/HEAD/PUT/OPTIONS pada /<bucket>/(raw|guides|exports)/*, selain itu 403; app/worker memakai service account RustFS berpolicy prefix; backup age + sha256; restore satu transaksi. R — AuditLog aplikasi tetap; log akses tanpa query/Cookie/Authorization/Referer/Location, path token diredaksi. I — kredensial tidak di argumen proses (env libpq, REDISCLI_AUTH, config Redis dari file, stdin); secret acak per deploy di .env.prod (600); /api/health dan /api/health/core publik hanya status; kunci privat backup hanya di laptop admin. D — mem_limit per service, Redis maxmemory noeviction, batas body proxy, renderer/SMTP tidak lagi menentukan sehat-tidaknya app (gangguan fitur sampingan tidak mematikan situs), start_period renderer; pg-relay hanya menerima subnet aplikasi. E — cap_drop ALL + no-new-privileges + read_only, renderer seccomp + jaringan internal tanpa egress, Redis protected-mode + requirepass, console RustFS mati, init (tini) di Redis/renderer. Upgrade G-6: I — dump database pra-upgrade tanpa enkripsi di ../data-dashboard-upgrade/<stamp>/ (folder 700, file 600, di luar folder aplikasi, tidak di image/repo; dihapus setelah backup harian terverifikasi), arsip kode lama tanpa .env.prod*/kunci/sertifikat, state.env tanpa rahasia, kredensial DB hanya lewat env pgenv.sh di container backup; T — rollback DB satu transaksi (gagal = tidak berubah) dengan dump pengaman dulu; D — gerbang menolak upgrade saat ingest/ekspor berjalan, disk kurang, atau pemeriksaan pasca-migrasi gagal (app/worker tetap berhenti).
+Rollback: `docker compose --env-file .env.prod -f docker-compose.prod.yml down` (volume tetap) lalu deploy commit/IMAGE_TAG sebelumnya; data dipulihkan dari arsip backup (runbook §5, restore.sh). PostgreSQL host hanya berisi role + database dashboard (host-db.sh) — DROP bila rollback total. Perubahan kode aplikasi (route /api/health/core) cukup di-revert; Dockerfile HEALTHCHECK kembali ke /api/health. Upgrade G-6: bash deploy/upgrade.sh rollback (image dashboard-*:prev-<stamp> + kode lama + database dari dump preflight, ≤ 20 jam setelah start karena GC segmen 24 jam; sesudahnya restore.sh lengkap dari arsip backup preflight). Kode lama tidak bisa menulis ke skema baru (Sheet.lineageId NOT NULL, enum VersionMode), jadi rollback kode saja tidak didukung.
+Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/183 + e2e health terarah (/api/health/core publik, hanya status); produksi: deploy.sh "Sehat" lewat rantai TLS terverifikasi (--cacert root LAN), check-public-presign (UploadPart 16 MiB 200, metode/path lain 403, nosniff + CSP sandbox), AC4 worker dibunuh saat ingest → READY tanpa objek parsial, ps tanpa kredensial (0), pg-relay menolak jaringan lain, log akses tanpa token/query, latihan restore LULUS (checksum OK, isi per tabel identik — jumlah + md5 tiap baris, produksi tidak berubah selama backup —, daftar objek storage identik, health 200); diagnosa 151 kolom PG14/SQL_ASCII produksi vs PG16/UTF8 hasil restore identik lewat dua jalur (DB kosong dan migrate + restore --clean); review 3 putaran (5 → 2 → 0 temuan blocking). Sisa risiko: DB olympus SQL_ASCII (ILIKE hanya ASCII) dan backup belum disalin off-VM — task lanjutan. Upgrade G-6 (lokal, bukan olympus): build 4 image; migrasi penuh PG14 kosong + DB berbentuk produksi (t_j9j6 + data contoh), migrate diff kosong; simulasi compose produksi hostdb + PG14 role non-superuser 2 putaran preflight→load→migrate→start→rollback (DB identik dump preflight); gerbang negatif teruji; uji regresi backup bucket kosong.
 
 ## Notes
 - 2026-10-11T14:57:00Z Image di-pin per digest; skrip deploy generate semua secret; runbook rotasi AUTH_SECRET (array: tambah baru di depan, hapus lama setelah maxAge); access log redaksi /render/* dan /verify*; CORS MinIO AllowedHeaders terbatas (Content-Type, Content-Length) + MaxAge.
@@ -1125,6 +1117,7 @@ Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/
 - 2026-10-15T20:31:39Z Dari T-018 (builder renderer): service renderer butuh cap_add SYS_CHROOT di samping cap_drop ALL (sandbox Chromium gagal start tanpa itu; kapabilitas efektif tetap 0). Image mcr.microsoft.com/playwright:v1.64.0-noble dipin digest sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f; menjalankan renderer/*.ts lewat renderer/loader.mjs (type stripping Node, tanpa tsx/esbuild host); RENDERER_HOST=0.0.0.0 di kontainer; nama service app di network render bukan app/dev (mis. dashboard-web); perintah bukti AC6 memakai -f docker-compose.dev.yml.
 - 2026-10-16T21:54:05Z Dari review T-021 N7: next.config proxyClientMaxBodySize kini 3 MB untuk semua rute (poster video ≤ 2 MB). Di reverse proxy set client_max_body_size kecil per lokasi (mis. 64 KB untuk /api/auth/*, 1 MB default) dan 3 MB hanya untuk /api/guides/videos/*/poster.
 - 2026-10-17T05:18:09Z Bukti AC olympus 2026-10-17: AC2 check-public-presign UploadPart 16 MiB 200 lewat proxy, metode/path lain 403. AC3 restore-drill.sh LULUS (dashboard-20261017T051529Z): checksum OK, jumlah + md5 tiap baris identik, objek storage identik, health 200 — salinan terisolasi di VM yang sama (VM kedua belum tersedia); diagnosa 151 kolom PG14/SQL_ASCII vs PG16/UTF8 identik. AC4 worker dibunuh saat ingest → READY tanpa objek parsial. AC5 hanya proxy publish port (8443/8444), Redis requirepass + protected-mode, renderer hanya di jaringan internal render (pengganti 'frontend', ADR-0006), service account RustFS berpolicy prefix, console RustFS mati. AC6 proxy storage menolak selain GET/HEAD/PUT/OPTIONS pada /<bucket>/(raw|guides|exports)/*, nosniff + CSP sandbox. TERBUKA: AC1 HTTPS + /health hijau (storage + renderer) tercapai, tetapi deploy.sh dengan build penuh 1283 dtk (>10 menit) di olympus (VM bersama di bawah spek minimum 4 vCPU/16 GB, I/O hypervisor ±85% dipakai pihak lain); AC7 backup terenkripsi age + sha256, retensi 30 hari, uji restore tercatat, tetapi salinan off-VM belum ada (butuh target NAS/SFTP/S3 dari user).
+- 2026-10-20T22:10:40Z Rilis G-6 (2026-10-20, dari edcbdff): deploy/upgrade.sh (preflight/load/build/migrate/start/rollback, gerbang + state di ../data-dashboard-upgrade/<stamp>/) + runbook §7. Produksi diasumsikan di migrasi 20261017104143_t_j9j6 (catatan kerja: deploy14 + T-036…T-040 belum jalan); preflight mencetak migrasi terakhir sebenarnya. Bukti lokal: build 4 image produksi lulus; migrasi penuh ke PG14 kosong + DB berbentuk produksi (s.d. t_j9j6 + data contoh) lulus, migrate diff kosong, check-segments 0; dump→migrasi→rollback identik→migrasi ulang lulus; simulasi utuh compose produksi (hostdb + PG14 role non-superuser, image lama = 49f49a5) 2 putaran: preflight→load→migrate→start (health, presign 16 MiB, allowlist, admin-restore exit 1, env baru terbaca)→rollback (image prev-*, health ok, isi DB identik dump preflight). Gerbang negatif teruji: ekspor aktif, disk kurang, judul T-gcn8 rusak. Catatan T-gcn8 tidak memuat kueri; kueri gerbang diturunkan dari migrasi tgcn8 (pasca-migrasi, karena tabel segmen belum ada sebelum T-036). Perbaikan: backup.sh gagal pada bucket kosong (mkdir s3 + uji regresi); runbook quota-report lewat worker (image app tidak membawa skrip). SISA (pemilik): jalankan §7 di olympus — AC8 belum dicentang; AC7 tetap menunggu T-h77x (NAS).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
@@ -1135,10 +1128,10 @@ Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/
 - [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — SQL skrip lewat stdin dengan literal di-escape (host-db.sh) atau password alfanumerik acak (rotate-db-password.sh); tidak ada eval input pengguna; path storage dicocokkan regex di Caddy
 - [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — backup age (X25519) + sha256, kunci privat hanya di laptop admin/brankas; root CA LAN kunci offline; tidak ada kunci di kode/image
 - [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — log akses Caddy tanpa query/Cookie/Authorization/Referer/Location/Set-Cookie, path token diredaksi; ps tanpa kredensial (0 baris); safeMessage di health; latihan restore hanya mencetak nama tabel yang beda
-- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — backup terenkripsi, retensi 30 hari, log json-file dirotasi 5x20 MB; .env.prod mode 600 dan tidak di-commit; salinan latihan dibongkar down -v + env dihapus
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — backup terenkripsi, retensi 30 hari, log json-file dirotasi 5x20 MB; .env.prod mode 600 dan tidak di-commit; salinan latihan dibongkar down -v + env dihapus ; upgrade G-6: dump plaintext pra-upgrade hanya di folder status 700/600 di luar folder aplikasi, wajib dihapus setelah backup harian terverifikasi (runbook §7 langkah 7)
 - [x] V9 Communication: TLS for all external traffic; certificates validated — TLS di proxy dengan sertifikat dari root LAN berpembatasan IP 10.3.3.221/32, rantai diverifikasi (deploy.sh --cacert, curl --cacert); HSTS; trafik antar-container di jaringan Docker privat
 - [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — image caddy/playwright dipin digest; npm audit 0 kerentanan; tidak ada panggilan jaringan tak terjelaskan (renderer tanpa egress)
-- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — restore satu transaksi (--single-transaction --exit-on-error) + checksum; latihan restore di project terpisah tanpa menyentuh data produksi; cache health 5 dtk per kelompok mencegah amplifikasi
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — restore satu transaksi (--single-transaction --exit-on-error) + checksum; latihan restore di project terpisah tanpa menyentuh data produksi; cache health 5 dtk per kelompok mencegah amplifikasi ; upgrade G-6: gerbang menolak saat ingest/ekspor berjalan, rollback DB satu transaksi + dump pengaman, rollback cepat dibatasi 20 jam (GC 24 jam)
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — unggahan presigned langsung ke storage lewat allowlist proxy; batas body proxy; volume temp worker sesuai ADR-0005; tanpa path dari input pengguna di skrip
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — CORS RustFS header terbatas; /api/health/core JSON {status, checkedAt} saja; rate limit aplikasi tidak berubah
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — NODE_ENV production, console RustFS mati, cap_drop ALL + no-new-privileges + read_only, seccomp renderer, header HSTS/CSP nonce, storage nosniff + CSP sandbox, Redis protected-mode, dependensi terbaru (npm audit 0)
