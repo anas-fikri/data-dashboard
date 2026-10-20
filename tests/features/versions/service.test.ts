@@ -13,6 +13,8 @@ const tx = {
   $queryRaw: vi.fn(),
   datasetVersion: { findFirst: vi.fn(), count: vi.fn(), deleteMany: vi.fn() },
   storageCleanup: { createMany: vi.fn() },
+  // Antrean unggah (T-059): file milik versi yang dibuang dicatat dibatalkan.
+  uploadQueueItem: { updateMany: vi.fn(async () => ({ count: 0 })) },
 };
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
@@ -463,6 +465,10 @@ describe("discardVersion", () => {
     });
     expect(tx.datasetVersion.deleteMany).toHaveBeenCalledWith({
       where: { id: B, datasetId: DS, status: "AWAITING_CONFIRM", activeFor: { is: null } },
+    }); // T-059 review L5: file antrean milik versi ini dicatat dibatalkan (bukan gagal) di transaksi yang sama.
+    expect(tx.uploadQueueItem.updateMany).toHaveBeenCalledWith({
+      where: { versionId: B, state: "STARTED" },
+      data: expect.objectContaining({ state: "CANCELLED" }),
     });
   });
 

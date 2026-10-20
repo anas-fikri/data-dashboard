@@ -26,6 +26,7 @@ type Version = {
 };
 type Queue = {
   id: string;
+  updatedAt: Date;
   datasetId: string;
   status: string;
   stoppedAt: Date | null;
@@ -51,6 +52,7 @@ type Item = {
   message: string | null;
   startedAt: Date | null;
   finishedAt: Date | null;
+  updatedAt: Date;
 };
 
 const st = {
@@ -143,6 +145,7 @@ const db = {
           dismissedAt: null,
           finishedAt: null,
           createdAt: new Date(),
+          updatedAt: new Date(),
         };
         st.queues.push(q);
         for (const c of data.items.create) {
@@ -157,6 +160,7 @@ const db = {
             message: null,
             startedAt: null,
             finishedAt: null,
+            updatedAt: new Date(),
             ...(c as object),
           } as Item);
         }
@@ -203,11 +207,33 @@ const db = {
         queue: { id: q.id, datasetId: q.datasetId, status: q.status, stoppedAt: q.stoppedAt },
       };
     }),
-    findMany: vi.fn(async () => []),
+    // Hanya kueri kedaluwarsa runUploadQueues: state + updatedAt file + updatedAt antrean OPEN.
+    findMany: vi.fn(
+      async ({
+        where,
+      }: {
+        where: {
+          state: { in: string[] };
+          updatedAt: { lt: Date };
+          queue: { status: string; updatedAt: { lt: Date } };
+        };
+      }) =>
+        st.items
+          .filter((i) => {
+            const q = st.queues.find((x) => x.id === i.queueId)!;
+            return (
+              where.state.in.includes(i.state) &&
+              i.updatedAt < where.updatedAt.lt &&
+              q.status === where.queue.status &&
+              q.updatedAt < where.queue.updatedAt.lt
+            );
+          })
+          .map((i) => ({ ...i, queue: { datasetId: DID } })),
+    ),
     updateMany: vi.fn(
       async ({ where, data }: { where: Record<string, unknown>; data: Partial<Item> }) => {
         const hit = st.items.filter((i) => itemMatch(i, where));
-        for (const i of hit) Object.assign(i, data);
+        for (const i of hit) Object.assign(i, { updatedAt: new Date() }, data);
         return { count: hit.length };
       },
     ),
@@ -426,10 +452,22 @@ describe("giliran antrean", () => {
     const view = await q.getUploadQueue(OWNER, DID);
     expect(view?.held).toMatchObject({ kind: "confirm", versionId: items[0]!.versionId });
     expect(view?.position).toBe(1);
-    st.versions = st.versions.filter((x) => x.id !== items[0]!.versionId); // "Batalkan upload"
+    // "Batalkan upload": versi dihapus dan file dicatat dibatalkan di transaksi yang sama (service).
+    st.versions = st.versions.filter((x) => x.id !== items[0]!.versionId);
+    Object.assign(items[0]!, { state: "CANCELLED", message: "Dibatalkan di layar tinjauan" });
     await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
     expect(items[0]!.state).toBe("CANCELLED");
     expect(items[1]!.state).toBe("STARTED");
+  });
+
+  it("review L5: versi gagal yang sudah dibersihkan retensi → file gagal, bukan dibatalkan", async () => {
+    const items = await queued();
+    const enqueue = vi.fn(async () => {});
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    st.versions = st.versions.filter((x) => x.id !== items[0]!.versionId);
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    expect(items[0]!.state).toBe("FAILED");
+    expect(items[0]!.message).toMatch(/^Gagal diproses/);
   });
 
   it("gagal diperiksa saat giliran (batas periode) → file gagal, objeknya dibuang, file berikutnya jalan", async () => {
@@ -539,6 +577,30 @@ describe("unggah file antrean", () => {
     expect(items[1]!.message).toBe("Dilewati pemilik.");
     expect(st.queues[0]!.status).toBe("DONE");
     expect(await q.skipQueueItem(OWNER, items[1]!.id, null)).toMatchObject({ code: "INVALID" });
+  });
+
+  it("review M1: kedaluwarsa 24 jam diukur dari aktivitas unggah antrean, bukan waktu file dibuat", async () => {
+    const items = await waiting();
+    const old = new Date(Date.now() - 25 * 60 * 60 * 1000);
+    for (const i of items) i.updatedAt = old;
+    st.queues[0]!.updatedAt = old;
+    // File 1 sedang diunggah (init menyentuh antrean) → file 2 yang belum mulai tidak kedaluwarsa.
+    await q.initQueueItem(OWNER, items[0]!.id, storage());
+    expect(st.queues[0]!.updatedAt.getTime()).toBeGreaterThan(old.getTime());
+    items[0]!.updatedAt = old;
+    expect(
+      await q.runUploadQueues({ storage: storage(), enqueue: vi.fn(async () => {}) }),
+    ).toMatchObject({ expired: 0 });
+    expect(items.map((i) => i.state)).toEqual(["UPLOADING", "WAITING"]);
+    // Tanpa aktivitas 24 jam → keduanya gagal (multipart file 1 di-abort), antrean selesai.
+    st.queues[0]!.updatedAt = old;
+    const s = storage();
+    expect(await q.runUploadQueues({ storage: s, enqueue: vi.fn(async () => {}) })).toMatchObject({
+      expired: 2,
+    });
+    expect(items.map((i) => i.state)).toEqual(["FAILED", "FAILED"]);
+    expect(items[0]!.message).toMatch(/24 jam/);
+    expect(s.abort).toHaveBeenCalledWith(`raw/${DID}/${items[0]!.versionId}/source.csv`, "up-1");
   });
 
   it("file antrean milik orang lain → NOT_FOUND (init/tandatangan/selesai/lewati)", async () => {

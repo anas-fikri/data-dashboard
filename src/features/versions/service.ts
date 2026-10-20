@@ -5,6 +5,7 @@ import { isIdShape } from "@/features/datasets/validation";
 import { parseFrozenPeriodPlan } from "@/features/ingest/period-plan";
 import { setupHistoryNote } from "@/features/ingest/period-setup-plan";
 import { periodPlanSummary } from "@/features/ingest/period-upload-plan";
+import { DISCARDED_MESSAGE } from "@/features/uploads/queue-plan";
 import { manageOf, periodSegmentsSelect } from "./period-manage";
 import {
   parsePeriodChange,
@@ -291,6 +292,8 @@ export async function discardVersion(
       where: { id: versionId, datasetId, status: v.status, activeFor: { is: null } },
     });
     if (del.count !== 1) return notFound();
+    // File antrean unggah (T-059) yang versinya dibuang: dicatat dibatalkan (bukan gagal).
+    await cancelQueueItemOf(tx, versionId);
     await tx.storageCleanup.createMany({
       data: versionPrefixes(datasetId, versionId).map((prefix) => ({
         prefix,
@@ -301,6 +304,21 @@ export async function discardVersion(
   });
   if (r.ok) logger.info({ datasetId, versionId }, "versi dataset dibuang");
   return r;
+}
+
+const EXPIRED_QUEUE_MESSAGE =
+  "Dibatalkan otomatis: tidak dikonfirmasi dalam batas waktu tinjauan; data aktif tidak berubah.";
+
+/** File antrean unggah (T-059) milik versi yang dibuang → CANCELLED dengan alasannya. */
+async function cancelQueueItemOf(
+  tx: Prisma.TransactionClient,
+  versionId: string,
+  message = DISCARDED_MESSAGE,
+) {
+  await tx.uploadQueueItem.updateMany({
+    where: { versionId, state: "STARTED" },
+    data: { state: "CANCELLED", message, finishedAt: new Date() },
+  });
 }
 
 /**
@@ -341,6 +359,7 @@ export async function expireAwaitingConfirm(ttlHours: number, now = new Date()):
           },
         });
         if (del.count !== 1) return false;
+        await cancelQueueItemOf(tx, v.id, EXPIRED_QUEUE_MESSAGE);
         await tx.storageCleanup.createMany({
           data: versionPrefixes(v.datasetId, v.id).map((prefix) => ({
             prefix,

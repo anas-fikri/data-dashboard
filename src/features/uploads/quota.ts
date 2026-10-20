@@ -9,7 +9,8 @@ import { logger } from "@/lib/logger";
  *  - byte segmen unik yang dirujuk versi hidup (raw + revisi typed yang dirujuk; tiap segmen sekali),
  *  - byte file sumber yang belum dihapus (versi selesai diunggah; sumber dihapus retensi 7 hari),
  *  - ukuran terdeklarasi unggahan yang masih UPLOADING,
- *  - ukuran file antrean unggah (T-059) yang belum menjadi versi (dipesan saat antrean dibuat).
+ *  - file antrean unggah (T-059) yang belum menjadi versi: ukuran + perkiraan parquet (dipesan saat
+ *    antrean dibuat, sama dengan proyeksi init).
  * `sizeBytes` versi tetap ukuran file unggahan (logika multipart bergantung padanya). Ukuran segmen
  * legacy (sebelum T-039) diisi pemeriksaan malam; selama belum terukur dihitung 0.
  * Init unggah memproyeksikan ukuran file + perkiraan parquet. Transisi makna (QUOTA_GRACE_DAYS sejak
@@ -58,11 +59,12 @@ function sourceStored(v: UsageVersion): boolean {
 }
 
 /**
- * Pemakaian dari baris versi + rujukan manifest versi hidup + byte file antrean yang belum menjadi
- * versi (`reservedBytes`, T-059). Murni.
+ * Pemakaian dari baris versi + rujukan manifest versi hidup + file antrean yang belum menjadi versi
+ * (`reservedBytes` = ukuran file, T-059): dipesan seperti proyeksi init/antrean (sumber + perkiraan
+ * parquet), sehingga antrean yang setengah jalan tidak membuka ruang kuota yang nanti dipakainya. Murni.
  */
 export function usageOf(versions: UsageVersion[], refs: UsageRef[], reservedBytes = 0): Usage {
-  let bytes = reservedBytes;
+  let bytes = reservedBytes > 0 ? projectedBytes(reservedBytes) : 0;
   let legacyBytes = reservedBytes;
   for (const v of versions) {
     const size = Number(v.sizeBytes ?? 0n);

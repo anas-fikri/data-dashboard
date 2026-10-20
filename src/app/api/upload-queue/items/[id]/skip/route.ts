@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { RULES } from "@/features/auth/rate-limit";
 import { uploadRoute } from "@/features/uploads/http";
 import { skipQueueItem } from "@/features/uploads/queue";
 
@@ -10,5 +11,7 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
-  return uploadRoute(req, null, (user, body) => skipQueueItem(user.id, id, body.reason));
+  return uploadRoute(req, RULES.uploadSign, (user, body) =>
+    skipQueueItem(user.id, id, body.reason),
+  );
 }

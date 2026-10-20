@@ -55,8 +55,13 @@ describe("usageOf", () => {
 });
 
 describe("usageOf + file antrean (T-059)", () => {
-  it("byte file antrean yang belum menjadi versi ikut dipesan (makna baru dan lama)", () => {
-    expect(q.usageOf([version()], [], 25)).toEqual({ bytes: 35, legacyBytes: 35, unmeasured: 0 });
+  it("file antrean yang belum menjadi versi dipesan dengan proyeksi yang sama dengan init", () => {
+    expect(q.usageOf([version()], [], 25)).toEqual({
+      bytes: 10 + q.projectedBytes(25),
+      legacyBytes: 35,
+      unmeasured: 0,
+    });
+    expect(q.projectedBytes(25)).toBe(55);
   });
 });
 

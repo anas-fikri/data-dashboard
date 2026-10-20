@@ -11,7 +11,7 @@ depends_on:
   - T-054
   - T-053
 created: "2026-10-15T02:30:59Z"
-updated: "2026-10-20T19:50:27Z"
+updated: "2026-10-20T20:05:01Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,7 +21,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 188284
+    duration_ms: 194327
     summary: |-
       …t
       > vitest run
@@ -29,23 +29,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792525781513,"service":"data-dashboard","host":"127.0.0.1","port":43649,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792525781583,"service":"data-dashboard","host":"127.0.0.1","port":35435,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792525781682,"service":"data-dashboard","host":"127.0.0.1","port":46629,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792525781798,"service":"data-dashboard","host":"127.0.0.1","port":45659,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792525789560,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792525801583,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792525801606,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792525801608,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792525801617,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792526475252,"service":"data-dashboard","host":"127.0.0.1","port":35209,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792526475313,"service":"data-dashboard","host":"127.0.0.1","port":43441,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792526475414,"service":"data-dashboard","host":"127.0.0.1","port":34335,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792526475525,"service":"data-dashboard","host":"127.0.0.1","port":39363,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792526485691,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792526498924,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792526498948,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792526498954,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792526498966,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
-       Test Files  197 passed | 1 skipped (198)
-            Tests  2603 passed | 10 skipped (2613)
-         Start at  19:48:18
-         Duration  127.23s (tests 84%, import 13%, transform 3%)
+       Test Files  198 passed | 1 skipped (199)
+            Tests  2608 passed | 10 skipped (2618)
+         Start at  19:59:55
+         Duration  130.66s (tests 83%, import 14%, transform 3%)
 
-          Isolate  198 workers spawned · ~146ms startup each (spawn + environment, per file)
-                   at least ~9.47s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  199 workers spawned · ~153ms startup each (spawn + environment, per file)
+                   at least ~9.97s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -53,12 +53,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T19:50:27Z"
-    tree: e27d3b58c91fb6ac8e694b35975a5a9abf85c2ef787d6eac4e82f13a8e21038b
+    at: "2026-10-20T20:02:07Z"
+    tree: 695bdd0fbcbfee6427dedcf710a4c83513aa2b95a99c2175e2dd5cfa0e56fe09
   audit:
-    at: "2026-10-20T19:46:45Z"
+    at: "2026-10-20T20:04:32Z"
     passed: true
-    tree: e27d3b58c91fb6ac8e694b35975a5a9abf85c2ef787d6eac4e82f13a8e21038b
+    tree: 695bdd0fbcbfee6427dedcf710a4c83513aa2b95a99c2175e2dd5cfa0e56fe09
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -66,7 +66,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 513 dirs visited, 3494 inodes visited, 1 Extract calls, 237.564498ms elapsed, 237.564736ms wall time
+          End status: 513 dirs visited, 3562 inodes visited, 1 Extract calls, 259.01068ms elapsed, 259.011076ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -132,6 +132,12 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - Plugin frontend-expert tidak tersedia di sesi cloud ini: UI mengikuti pola komponen yang ada (token,
   Badge/ConfirmDialog/FormAlert, Tabler 20/1.5, target sentuh 44 px di ponsel) + axe tanpa pelanggaran
   serius di e2e; audit `/frontend-expert:audit` belum dijalankan.
+
+- Review putaran 1 (0 blokir): M1 kedaluwarsa 24 jam diukur dari aktivitas unggah antrean (init/part/
+  selesai menyentuh antrean); L2 indeks unik parsial dijaga uji migrasi + catatan di schema/migrasi; L3
+  kuota memesan proyeksi (sumber + parquet) file antrean; L4 rate limit unggah di route selesai/lewati; L5
+  versi dibuang di tinjauan/kedaluwarsa dicatat dibatalkan di transaksi yang sama, versi yang hilang
+  tanpa catatan (retensi versi gagal) = gagal.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

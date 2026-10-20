@@ -608,7 +608,9 @@ model GuideVideo {
 }
 
 /// Antrean unggah banyak file periode (T-059, rencana G-6 §4.5 langkah 6). OPEN = masih ada file yang
-/// belum selesai; paling banyak satu OPEN per dataset (indeks unik parsial di migrasi).
+/// belum selesai; paling banyak satu OPEN per dataset lewat indeks unik parsial
+/// "UploadQueue_datasetId_open_key" yang hanya ada di migrasi 20261021100000_t059_upload_queue
+/// (Prisma tidak bisa memodelkannya): migrasi baru tidak boleh menghapusnya (diuji queue-migration).
 enum UploadQueueStatus {
   OPEN
   DONE

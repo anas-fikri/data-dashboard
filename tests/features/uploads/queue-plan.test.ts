@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  DISCARDED_MESSAGE,
+  VANISHED_MESSAGE,
   QUEUE_MAX_FILES,
   STOPPED_MESSAGE,
   decideAdvance,
@@ -137,7 +137,7 @@ describe("decideAdvance", () => {
     });
   });
 
-  it("hasil versi dicatat; gagal tidak menghentikan antrean; versi dibuang = dibatalkan", () => {
+  it("hasil versi dicatat; gagal tidak menghentikan antrean; versi hilang tanpa catatan batal = gagal", () => {
     const items = [
       it_(1, "STARTED"),
       it_(2, "STARTED"),
@@ -153,7 +153,7 @@ describe("decideAdvance", () => {
       settle: [
         { id: "i1", state: "DONE", message: "Maret 2026 ditambahkan (2 baris)" },
         { id: "i2", state: "FAILED", message: "Kolom tidak cocok." },
-        { id: "i3", state: "CANCELLED", message: DISCARDED_MESSAGE },
+        { id: "i3", state: "FAILED", message: VANISHED_MESSAGE },
       ],
       next: { kind: "promote", id: "i5" },
     });

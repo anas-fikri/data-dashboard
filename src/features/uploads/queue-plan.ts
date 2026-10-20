@@ -115,7 +115,7 @@ export interface AdvanceItem {
   versionId: string;
 }
 
-/** Versi milik file STARTED (null = sudah tidak ada: dibuang di tinjauan/pemetaan atau kedaluwarsa). */
+/** Versi milik file STARTED (null = sudah tidak ada). */
 export interface AdvanceVersion {
   status: string;
   errorMessage: string | null;
@@ -148,8 +148,15 @@ export interface AdvanceDecision {
 
 export const STOPPED_MESSAGE = "Antrean dihentikan sebelum file ini diproses.";
 
-export const DISCARDED_MESSAGE =
-  "Dibatalkan di layar tinjauan/pemetaan (atau kedaluwarsa); data aktif tidak berubah.";
+/** Versi file dibuang pemilik di tinjauan/pemetaan (dicatat saat dibuang, lihat versions/service). */
+export const DISCARDED_MESSAGE = "Dibatalkan di layar tinjauan/pemetaan; data aktif tidak berubah.";
+
+/**
+ * Versi file STARTED hilang tanpa dicatat dibatalkan: hanya pembersihan versi gagal (retensi) yang
+ * menghapusnya, jadi hasilnya gagal.
+ */
+export const VANISHED_MESSAGE =
+  "Gagal diproses; rincian galatnya sudah dibersihkan. Unggah ulang file ini bila periodenya masih dibutuhkan.";
 
 const HELD = new Set(["AWAITING_CONFIRM", "AWAITING_MAPPING"]);
 
@@ -178,7 +185,9 @@ export function decideAdvance(
     if (it.state === "STARTED") {
       const v = versions.get(it.versionId) ?? null;
       if (!v) {
-        settle.push({ id: it.id, state: "CANCELLED", message: DISCARDED_MESSAGE });
+        // Dibuang di tinjauan/pemetaan dicatat CANCELLED saat dibuang; yang tersisa = versi gagal
+        // yang sudah dibersihkan retensi.
+        settle.push({ id: it.id, state: "FAILED", message: VANISHED_MESSAGE });
         continue;
       }
       if (v.status === "READY") {

@@ -286,6 +286,18 @@ async function ownItem(userId: string, itemId: unknown) {
   });
 }
 
+/**
+ * Aktivitas unggah antrean (init/tanda tangan part/selesai): kedaluwarsa 24 jam diukur dari aktivitas
+ * terakhir antrean, bukan dari waktu file dibuat — file terakhir di antrean besar pada koneksi lambat
+ * baru mulai diunggah berjam-jam setelah antrean dibuat (review M1).
+ */
+async function touchQueue(queueId: string) {
+  await prisma.uploadQueue.updateMany({
+    where: { id: queueId, status: "OPEN" },
+    data: { updatedAt: new Date() },
+  });
+}
+
 const closedMessage = (it: { state: string; message: string | null }) =>
   it.state === "FAILED"
     ? (it.message ?? "File ini gagal diunggah.")
@@ -318,6 +330,7 @@ export async function initQueueItem(
     const all = Array.from({ length: it.partCount }, (_, i) => i + 1);
     return { ok: true, ...plan, uploadedParts: all, resumed: true };
   }
+  await touchQueue(it.queue.id);
   const key = itemSourceKey(it.queue.datasetId, it.versionId, it.originalName);
   if (it.state === "UPLOADING" && it.uploadId) {
     const uploaded = await uploadedPartNumbers(storage, {
@@ -369,6 +382,7 @@ export async function signQueueParts(
 ): Promise<QueueResult<{ urls: { partNumber: number; url: string; size: number }[] }>> {
   const it = await ownItem(userId, itemId);
   if (!it || it.state !== "UPLOADING" || !it.uploadId) return notFound();
+  await touchQueue(it.queue.id);
   return signTarget(
     {
       key: itemSourceKey(it.queue.datasetId, it.versionId, it.originalName),
@@ -404,6 +418,7 @@ export async function completeQueueItem(
     return it.state === "WAITING" ? notFound() : { ok: true, state: it.state };
   }
   if (!it.uploadId) return notFound();
+  await touchQueue(it.queue.id);
   const id = it.id;
   const uploadId = it.uploadId;
   const r = await completeTarget(
@@ -847,7 +862,8 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
 }
 
 /**
- * Pemeliharaan (tiap menit, worker): file yang tidak selesai diunggah dalam 24 jam ditandai gagal (antrean
+ * Pemeliharaan (tiap menit, worker): file yang tidak selesai diunggah dalam 24 jam sejak aktivitas
+ * unggah terakhir antrean ditandai gagal (antrean
  * lanjut), lalu giliran setiap antrean terbuka dijalankan — antrean tetap berjalan tanpa tab terbuka.
  */
 export async function runUploadQueues(
@@ -859,7 +875,8 @@ export async function runUploadQueues(
     where: {
       state: { in: ["WAITING", "UPLOADING"] },
       updatedAt: { lt: new Date(now - QUEUE_ITEM_STALE_MS) },
-      queue: { status: "OPEN" },
+      // Antrean masih diunggah (aktivitas < 24 jam) → file berikutnya belum ditinggalkan.
+      queue: { status: "OPEN", updatedAt: { lt: new Date(now - QUEUE_ITEM_STALE_MS) } },
     },
     select: {
       id: true,

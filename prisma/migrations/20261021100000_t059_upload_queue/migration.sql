@@ -68,4 +68,7 @@ ALTER TABLE "UploadQueueItem" ADD CONSTRAINT "UploadQueueItem_queueId_fkey" FORE
 
 
 -- Paling banyak satu antrean OPEN per dataset (giliran file berurutan, D4).
+-- Indeks parsial tidak bisa ditulis di schema.prisma: JANGAN dihapus oleh migrasi hasil
+-- `prisma migrate dev` berikutnya (drift "UploadQueue_datasetId_open_key" harus dipertahankan; dijaga
+-- tests/features/uploads/queue-migration.test.ts).
 CREATE UNIQUE INDEX "UploadQueue_datasetId_open_key" ON "UploadQueue"("datasetId") WHERE "status" = 'OPEN';
