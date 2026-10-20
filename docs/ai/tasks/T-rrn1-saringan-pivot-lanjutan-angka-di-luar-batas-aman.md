@@ -1,22 +1,32 @@
 ---
 id: T-rrn1
 title: 'Saringan pivot lanjutan: angka di luar batas aman dan ringkasan bagian Saring'
-status: in_progress
+status: in_review
 profile: standard
 depends_on:
   - T-f4a7
 created: "2026-10-19T16:45:51Z"
-updated: "2026-10-20T05:45:33Z"
+updated: "2026-10-20T05:50:54Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: f5b2aa6b867c729efcc23e37420e6be39bf46a45
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T05:47:43Z"
+      findings: 2
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T05:47:43Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 160908
+    duration_ms: 167213
     summary: |-
       …t
       > vitest run
@@ -24,23 +34,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792475057128,"service":"data-dashboard","host":"127.0.0.1","port":40101,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792475057183,"service":"data-dashboard","host":"127.0.0.1","port":35031,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792475057283,"service":"data-dashboard","host":"127.0.0.1","port":44035,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792475057386,"service":"data-dashboard","host":"127.0.0.1","port":42981,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792475062874,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792475072040,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792475072063,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792475072065,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792475072075,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792475380484,"service":"data-dashboard","host":"127.0.0.1","port":40509,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792475380535,"service":"data-dashboard","host":"127.0.0.1","port":42115,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792475380638,"service":"data-dashboard","host":"127.0.0.1","port":37687,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792475380743,"service":"data-dashboard","host":"127.0.0.1","port":39317,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792475387759,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792475398033,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792475398058,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792475398060,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792475398077,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  163 passed | 1 skipped (164)
             Tests  2107 passed | 10 skipped (2117)
-         Start at  05:43:04
-         Duration  119.22s (tests 86%, import 11%, transform 3%)
+         Start at  05:48:28
+         Duration  121.59s (tests 85%, import 12%, transform 3%)
 
-          Isolate  164 workers spawned · ~139ms startup each (spawn + environment, per file)
-                   at least ~7.48s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  164 workers spawned · ~144ms startup each (spawn + environment, per file)
+                   at least ~7.74s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -48,10 +58,10 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T05:45:04Z"
+    at: "2026-10-20T05:50:31Z"
     tree: 2212988544b2bba9d5db67a6ff513cf704db1830df4f7118e4b3587fb2a6ec74
   audit:
-    at: "2026-10-20T05:45:09Z"
+    at: "2026-10-20T05:50:32Z"
     passed: true
     tree: 2212988544b2bba9d5db67a6ff513cf704db1830df4f7118e4b3587fb2a6ec74
     results:
@@ -61,7 +71,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 832 packages
-          End status: 320 dirs visited, 1680 inodes visited, 1 Extract calls, 168.555249ms elapsed, 168.555418ms wall time
+          End status: 332 dirs visited, 1714 inodes visited, 1 Extract calls, 174.805466ms elapsed, 174.805747ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -93,3 +103,5 @@ Validation: tests/features/query/unsafe-numbers.test.ts (DuckDB sungguhan), test
 ## Notes
 - Pendekatan AC1: nilai tidak dilewati — disaring benar (bind teks + CAST). Angka ≥ 1e32 pada kolom DECIMAL(38,6) tidak mungkin sama: in = tidak cocok, not_in = semua.
 - Tanpa e2e baru: perubahan di validasi/SQL server (unit DuckDB) dan fungsi ringkasan murni (unit); e2e pivot tidak dijalankan ulang di sini.
+
+- Review claude-reviewer-subagent: 2 Low, 0 blokir (L1 input angka panel filter/spec widget masih ±2^53 — konsisten dengan perilaku lama; L2 tipe kolom tak dikenal teoretis). e2e pivot 8/8.
