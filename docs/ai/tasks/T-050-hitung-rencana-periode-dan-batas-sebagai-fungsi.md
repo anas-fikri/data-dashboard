@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-049
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T11:29:35Z"
+updated: "2026-10-20T11:36:50Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,7 +20,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 183196
+    duration_ms: 192231
     summary: |-
       …t
       > vitest run
@@ -28,23 +28,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792495712436,"service":"data-dashboard","host":"127.0.0.1","port":33359,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792495712491,"service":"data-dashboard","host":"127.0.0.1","port":37531,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792495712590,"service":"data-dashboard","host":"127.0.0.1","port":38199,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792495712698,"service":"data-dashboard","host":"127.0.0.1","port":36589,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792495721352,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792495729643,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792495729665,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792495729672,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792495729685,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792496119816,"service":"data-dashboard","host":"127.0.0.1","port":37085,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792496119875,"service":"data-dashboard","host":"127.0.0.1","port":38597,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792496119978,"service":"data-dashboard","host":"127.0.0.1","port":45261,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792496120093,"service":"data-dashboard","host":"127.0.0.1","port":34215,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792496128604,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792496138665,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792496138689,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792496138695,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792496138706,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  175 passed | 1 skipped (176)
-            Tests  2277 passed | 10 skipped (2287)
-         Start at  11:27:16
-         Duration  129.94s (tests 84%, import 13%, transform 3%)
+            Tests  2278 passed | 10 skipped (2288)
+         Start at  11:34:01
+         Duration  134.96s (tests 84%, import 13%, transform 3%)
 
-          Isolate  176 workers spawned · ~154ms startup each (spawn + environment, per file)
-                   at least ~8.86s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  176 workers spawned · ~156ms startup each (spawn + environment, per file)
+                   at least ~8.97s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -52,12 +52,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T11:29:27Z"
-    tree: e3f0eb80af0adaf33b0e2743eff8289dc762df0b45ba2d3bf92427dc2b0e6827
+    at: "2026-10-20T11:36:18Z"
+    tree: 09c00916c944edccc1cb7d148e8aa98589a34eaf45910a4b9561034b99d01feb
   audit:
-    at: "2026-10-20T11:25:57Z"
+    at: "2026-10-20T11:36:24Z"
     passed: true
-    tree: e3f0eb80af0adaf33b0e2743eff8289dc762df0b45ba2d3bf92427dc2b0e6827
+    tree: 09c00916c944edccc1cb7d148e8aa98589a34eaf45910a4b9561034b99d01feb
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -65,7 +65,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 483 dirs visited, 2544 inodes visited, 1 Extract calls, 181.597689ms elapsed, 181.598029ms wall time
+          End status: 483 dirs visited, 2574 inodes visited, 1 Extract calls, 271.330306ms elapsed, 271.330545ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -120,6 +120,12 @@ lokal), period-plan-store (mock prisma), env; `aitk check`.
 - Untuk T-052: panggil `computePeriodPlan` dengan rows/bytes per lineage; bytes boleh perkiraan untuk
   penolakan awal; bekukan dengan `freezePeriodPlan(versionId, plan)` (hanya non-terminal). Pengaturan
   dataset `keepPeriods/onLimit` belum punya kolom — dibuat oleh T-051 (Atur periode).
+- Untuk T-052/T-055 (review T-050): jangan pernah memercayai `autoActivate` (atau rencana apa pun) dari
+  rencana beku tanpa menghitung ulang dengan data aktif saat ini; saat "Terapkan", bandingkan rencana hasil
+  hitung ulang dengan rencana yang dikonfirmasi pemilik — beda yang merusak → PLAN_STALE + konfirmasi ulang.
+- Review putaran 1 (0 blokir): M1 pesan/limit penolakan kini dari batas yang mengikat (awalan k−1), bukan
+  batas pertama proyeksi penuh (uji probe ditambahkan); L2 cek OUT_OF_WINDOW independen via `fits`; L3
+  invarian nyasar/autoActivate ditambahkan.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

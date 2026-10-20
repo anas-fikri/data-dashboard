@@ -447,7 +447,9 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     let k = 0;
     while (violation(projected.slice(k), keep, limits)) k++;
     if (k > 0) {
-      const v = violation(projected, keep, limits)!;
+      // Batas yang mengikat: yang masih terlewati tepat sebelum periode terakhir awalan dilepas
+      // (bukan batas pertama proyeksi penuh, yang bisa sudah terpenuhi lebih awal).
+      const v = violation(projected.slice(k - 1), keep, limits)!;
       const prefix = projected.slice(0, k);
       const hit = prefix.filter((u) => u.fromUpload).map((u) => u.key);
       if (hit.length) {

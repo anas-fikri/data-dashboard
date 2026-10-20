@@ -260,6 +260,38 @@ describe("computePeriodPlan — batas (AC2, AC3)", () => {
     expect(p.totals.after).toEqual({ A: 7000 });
   });
 
+  it("pesan menyebut batas yang mengikat, bukan batas pertama proyeksi penuh (review M1)", () => {
+    const p = computePeriodPlan(
+      input({
+        active: [month("2026-01", { A: 400 }), month("2026-02", { A: 400 })],
+        incoming: [month("2026-03", { A: 900 })],
+        settings: { keepPeriods: 2, onLimit: "REJECT" },
+        limits: { ...LIMITS, sheetMaxRows: 1000 },
+      }),
+    );
+    expect(p.rejection).toMatchObject({
+      code: "PERIOD_LIMIT",
+      limit: "sheetRows",
+      used: 1300,
+      max: 1000,
+      mustRemove: ["2026-01", "2026-02"],
+    });
+    expect(p.rejection!.message).toContain("batas 1.000 baris per sheet");
+    const ev = computePeriodPlan(
+      input({
+        active: [month("2026-01", { A: 400 }), month("2026-02", { A: 400 })],
+        incoming: [month("2025-12", { A: 100 }), month("2026-03", { A: 900 })],
+        settings: { keepPeriods: 3, onLimit: "EVICT_OLDEST" },
+        limits: { ...LIMITS, sheetMaxRows: 1000 },
+      }),
+    );
+    expect(ev.rejection).toMatchObject({
+      code: "PERIOD_OUT_OF_WINDOW",
+      limit: "sheetRows",
+      periods: ["2025-12"],
+    });
+  });
+
   it("periode unggahan ini tidak pernah dilepas: lebih tua dari tertua saat jendela penuh → OUT_OF_WINDOW", () => {
     for (const onLimit of ["REJECT", "EVICT_OLDEST"] as const) {
       const p = computePeriodPlan(
@@ -635,6 +667,9 @@ function checkInvariants(inp: PeriodPlanInput, plan: PeriodPlan): void {
     expect(e.after).toEqual(after ? rowsMap(after) : null);
     if (after) result.push(after);
     if (e.action === "EXCLUDED") expect(e.stray && !(inp.include ?? []).includes(e.key)).toBe(true);
+    // Periode yang bukan nyasar (atau dipilih masuk) tidak pernah dikecualikan.
+    if (inc && (!e.stray || (inp.include ?? []).includes(e.key)))
+      expect(e.action).not.toBe("EXCLUDED");
   }
   const sumRows = (units: Slices[]) => {
     const m: Record<string, number> = {};
@@ -665,6 +700,12 @@ function checkInvariants(inp: PeriodPlanInput, plan: PeriodPlan): void {
       expect(fits(uploadUnits, keep, inp.limits)).toBe(true);
     }
     if (rej.code === "PERIOD_OUT_OF_WINDOW") {
+      // Independen: melepas semua periode aktif yang lebih tua dari periode unggahan tertua tetap tidak muat.
+      const oldest = plan.entries.find((e) => e.action === "REJECTED")!.start;
+      const rest = plan.entries
+        .filter((e) => e.start >= oldest && (e.action === "REJECTED" || e.before !== null))
+        .map((e) => (e.action === "REJECTED" ? merged(e.key) : active.get(e.key)!.sheets));
+      expect(fits(rest, keep, inp.limits)).toBe(false);
       expect(rej.periods.length).toBeGreaterThan(0);
       expect(rej.periods.every((k) => upload.includes(k))).toBe(true);
       // Tidak bisa diselesaikan dengan melepas periode terlama.
@@ -708,6 +749,9 @@ function checkInvariants(inp: PeriodPlanInput, plan: PeriodPlan): void {
       expect(fits([back, ...result], keep, inp.limits)).toBe(false);
     }
     // 6. Aktif otomatis hanya untuk penambahan murni mode kolom tanpa peringatan.
+    // Aktif otomatis tidak pernah bersamaan dengan alasan tinjauan.
+    expect(plan.autoActivate).toBe(plan.confirm.length === 0);
+    if (plan.confirm.length) expect(plan.autoActivate).toBe(false);
     if (plan.autoActivate) {
       expect(inp.source).toBe("COLUMN");
       expect(plan.entries.every((e) => e.action === "ADDED" || e.action === "UNCHANGED")).toBe(
