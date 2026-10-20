@@ -205,8 +205,9 @@
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+/* T-048: teks penuh di atas latar muted (muted-foreground di atas muted hanya 4,39:1 < AA). */
 .dd-grid .dd-grid-rownum {
-  color: var(--color-muted-foreground);
+  color: var(--color-foreground);
   background: var(--color-muted);
 }
 /* Baris dipilih lewat nomor baris (T-045): latar primary tipis + nomor baris tebal (bukan warna saja). */
@@ -222,4 +223,36 @@
 .dd-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
   outline: 2px solid hsl(var(--ring));
   outline-offset: -2px;
+}
+/* T-048: kepala kolom terfokus keyboard juga bercincin token (bukan hanya bayangan tipis bawaan AG). */
+.dd-grid .ag-header-cell:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
+/*
+ * T-048 ponsel (< 768 px): tombol menu kolom 44 px, dan menu kolom (urut/saring) tampil sebagai lembar
+ * dari bawah selebar layar dengan item 44 px. Pembungkus popper Radix memasang posisi inline, jadi
+ * ditimpa dengan !important hanya untuk menu kolom grid.
+ */
+@media (max-width: 767.98px) {
+  .dd-grid .dd-grid-menu-btn {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+  [data-radix-popper-content-wrapper]:has(> .dd-grid-colmenu) {
+    position: fixed !important;
+    inset: auto 0 0 0 !important;
+    min-width: 0 !important;
+    transform: none !important;
+  }
+  .dd-grid-colmenu {
+    width: 100%;
+    max-height: 85dvh;
+    overflow-y: auto;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    padding-bottom: max(0.25rem, env(safe-area-inset-bottom));
+  }
+  .dd-grid-colmenu [role^="menuitem"] {
+    height: 2.75rem;
+  }
 }

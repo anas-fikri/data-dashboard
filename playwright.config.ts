@@ -28,7 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
         /grid\.spec\.ts$/,
-        /data-view(-scroll|-query|-copy|-export)?\.spec\.ts$/,
+        /data-view(-scroll|-query|-copy|-export|-a11y)?\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -81,10 +81,16 @@ export default defineConfig({
       testMatch: /data-view-export\.spec\.ts$/,
       dependencies: ["data-view-copy"],
     },
+    // T-048: ponsel 360 px, keyboard, ARIA + axe (worker sendiri untuk fixture 450 baris).
+    {
+      name: "data-view-a11y",
+      testMatch: /data-view-a11y\.spec\.ts$/,
+      dependencies: ["data-view-export"],
+    },
     {
       name: "data-view-scroll",
       testMatch: /data-view-scroll\.spec\.ts$/,
-      dependencies: ["data-view-export"],
+      dependencies: ["data-view-a11y"],
     },
     {
       name: "data-view-scroll-firefox",

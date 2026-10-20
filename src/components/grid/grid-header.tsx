@@ -70,6 +70,8 @@ export interface HeaderMenuState {
   /** Urutan kolom ini dan berapa kolom yang sedang diurutkan. */
   sort: SortDir | null;
   sortCount: number;
+  /** Layar sempit (< 768 px): hanya nomor baris yang beku, jadi menu tanpa "Bekukan" (T-048). */
+  narrow: boolean;
 }
 
 export interface GridHeaderParams {
@@ -221,6 +223,8 @@ export function GridHeader(props: IHeaderParams & GridHeaderParams) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
+          // Ponsel: lembar dari bawah (globals.css), item ≥ 44 px.
+          className="dd-grid-colmenu"
           onCloseAutoFocus={(e) => {
             e.preventDefault();
             eGridHeader.focus();
@@ -288,7 +292,7 @@ export function GridHeader(props: IHeaderParams & GridHeaderParams) {
             <IconArrowAutofitWidth aria-hidden />
             Paskan lebar kolom
           </DropdownMenuItem>
-          {state?.frozen ? (
+          {state?.narrow ? null : state?.frozen ? (
             <DropdownMenuItem onSelect={() => act({ kind: "unfreeze" })}>
               <IconPinnedOff aria-hidden />
               Lepas pembekuan kolom

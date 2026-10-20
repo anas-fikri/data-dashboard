@@ -84,6 +84,9 @@ Rincian yang diputuskan bersama:
      tidak ditambal**; label/`aria-label` sentinel menjelaskannya. Salin melewati sentinel (`rowIndex ≥ total`),
      "Ke baris" dijepit ke total, bilah status tidak menghitung sentinel. Tidak memakai `navigateToNextCell` untuk
      menghentikan keyboard di baris data terakhir.
+     *Pembaruan T-048:* End/Home tanpa pengubah kini sel terakhir/pertama di baris yang sama (pola grid WAI-ARIA,
+     seperti Excel), bukan baris terakhir/pertama bawaan AG; Ctrl/Cmd+↓ dan PageDown tetap mendarat di sentinel.
+     `aria-rowcount` tetap total + 2 (rencana G-6 menulis total + 1; keputusan ini tidak diubah T-048).
   3. *Fokus keyboard* (`focusguard`): di `onCellFocused`, bila baris terfokus tidak terlihat penuh setelah dua frame,
      `ensureIndexVisible(row, 'top'|'bottom')`, lalu `'middle'` bila masih meleset. Tanpa ini Firefox menggulir baris
      terfokus ± 26.000 px ke luar layar (2/28 langkah) dan Chromium menyisakan setengah baris (1/28).

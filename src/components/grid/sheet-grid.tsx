@@ -5,6 +5,7 @@ import {
   IconArrowsSort,
   IconCopy,
   IconCornerDownLeft,
+  IconDots,
   IconDownload,
   IconFilterOff,
   IconLayoutColumns,
@@ -35,6 +36,7 @@ import {
   type GridReadyEvent,
   type IDatasource,
   type IGetRowsParams,
+  type ProcessRowParams,
   type SortChangedEvent,
   type SuppressHeaderKeyboardEventParams,
   type SuppressKeyboardEventParams,
@@ -42,7 +44,18 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
-import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { Dialog } from "radix-ui";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { DashFilter } from "@/components/dashboards/filters/filter-model";
 import { filterText } from "@/components/dashboards/filters/filter-text";
 import { Button } from "@/components/ui/button";
@@ -187,12 +200,22 @@ const defaultWidth = (c: GridColumn) =>
 const isJumpKey = (e: KeyboardEvent) =>
   (e.ctrlKey || e.metaKey) && (e.key === "Home" || e.key === "End");
 
+/**
+ * Home/End tanpa pengubah = sel pertama/terakhir di baris yang sama (pola grid WAI-ARIA, seperti
+ * Excel). Bawaan AG melompat ke baris pertama/terakhir (End mendarat di sentinel) → ditangani sendiri.
+ */
+const isRowEdgeKey = (e: KeyboardEvent) =>
+  !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && (e.key === "Home" || e.key === "End");
+
 // Stabil (di luar render): objek baru tiap render membuat AG menerapkan ulang definisi kolom dan
 // menghapus perubahan pengguna (beku, lebar).
 const DEFAULT_COL: ColDef<RowData> = {
   sortable: false,
   suppressKeyboardEvent: (p: SuppressKeyboardEventParams<RowData>) =>
-    isJumpKey(p.event) || isFindKey(p.event) || (p.event.altKey && p.event.key === "ArrowDown"),
+    isJumpKey(p.event) ||
+    isRowEdgeKey(p.event) ||
+    isFindKey(p.event) ||
+    (p.event.altKey && p.event.key === "ArrowDown"),
 };
 
 /** Ctrl/Cmd+F di dalam grid = Cari di data (bukan cari halaman browser). */
@@ -230,6 +253,9 @@ interface InFlight {
   ctrl: AbortController;
   /** Generasi cache saat permintaan dibuat; batal karena purge (generasi lama) tidak dicatat. */
   gen: number;
+  /** Penunda pengumuman "Memuat baris …" (T-048); `said` = sudah diumumkan (selesai juga diumumkan). */
+  timer?: number;
+  said?: string;
 }
 
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
@@ -256,6 +282,33 @@ const isCopyKey = (e: KeyboardEvent) =>
 
 /** Baris per permintaan saat salin baris yang belum dimuat (batas server GRID_ROWS_MAX). */
 const COPY_FETCH_ROWS = 500;
+
+/*
+ * T-048 ponsel (< 768 px, rencana §3.8): hanya nomor baris beku (pembekuan desktop disimpan, tidak
+ * ditimpa), geser kolom mati, baris 45 px (target sentuh), toolbar dilipat ke "Lainnya", ketuk sel →
+ * Isi sel. Keadaan lebar dibaca lewat matchMedia (bukan render server: grid hanya di klien).
+ */
+const NARROW_QUERY = "(max-width: 767.98px)";
+const subscribeNarrow = (cb: () => void) => {
+  const m = window.matchMedia(NARROW_QUERY);
+  m.addEventListener("change", cb);
+  return () => m.removeEventListener("change", cb);
+};
+const readNarrow = () => window.matchMedia(NARROW_QUERY).matches;
+const ROW_H = 32;
+// Sel = tinggi baris − 1 px garis baris → 45 agar sel sendiri ≥ 44 px.
+const ROW_H_TOUCH = 45;
+
+/** Blok yang belum kembali setelah ini (dan terlihat) diumumkan "Memuat baris …" (T-048 AC3). */
+const LOAD_ANNOUNCE_MS = 500;
+
+/**
+ * aria-selected pada baris (T-048, bawaan review T-045): AG Community hanya memasangnya untuk pilihan
+ * baris AG sendiri, sedangkan pilihan di sini lewat nomor baris → dipasang sendiri pada elemen baris
+ * (bagian beku + tengah) saat baris dibuat (processRowPostCreate) dan saat pilihan berubah.
+ */
+const markSelected = (el: Element | null | undefined, on: boolean) =>
+  el?.setAttribute("aria-selected", on ? "true" : "false");
 
 export interface SheetGridProps {
   sheetId: string;
@@ -291,12 +344,19 @@ export default function SheetGrid({
   const saveTimer = useRef<number | null>(null);
   const rangeFrame = useRef<number | null>(null);
 
+  const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
+  const narrowRef = useRef(narrow);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const jumped = useRef(false);
+
   const key = settingsKey(sheetId, schemaRevision);
   const byId = useMemo(() => new Map(columns.map((c) => [colIdOf(c.pos), c])), [columns]);
   const known = useMemo(() => columns.map((c) => colIdOf(c.pos)), [columns]);
   // Dibaca sekali saat mount (komponen hanya di klien); storage diblokir → kosong.
   const [initial] = useState<GridSettings>(() => loadSettings(storage, key, known));
   const formats = useRef<Record<string, NumberFormat>>({ ...initial.formats });
+  /** Kolom beku versi desktop: di ponsel dilepas di grid, tetapi tetap ini yang disimpan/dipulihkan. */
+  const desktopPins = useRef<string[]>(initial.columns.filter((c) => c.pinned).map((c) => c.colId));
 
   /** Baris tampilan saat ini (setelah saring/cari); `all` = baris sheet. */
   const [total, setTotal] = useState<number | null>(null);
@@ -369,7 +429,9 @@ export default function SheetGrid({
           colId: s.colId,
           ...(s.width != null ? { width: s.width } : {}),
           ...(s.hide ? { hide: true } : {}),
-          ...(s.pinned === "left" ? { pinned: true } : {}),
+          ...((narrowRef.current ? desktopPins.current.includes(s.colId) : s.pinned === "left")
+            ? { pinned: true }
+            : {}),
         }));
       saveSettings(storage, key, { columns: state, formats: formats.current });
     }, 300);
@@ -404,6 +466,18 @@ export default function SheetGrid({
           gen: gen.current,
         };
         inflight.current.add(entry);
+        // Status memuat untuk pembaca layar: hanya blok lambat yang terlihat (bukan setiap prefetch).
+        entry.timer = window.setTimeout(() => {
+          const api = apiRef.current;
+          if (!inflight.current.has(entry) || !api || api.isDestroyed()) return;
+          const first = api.getFirstDisplayedRowIndex();
+          const last = api.getLastDisplayedRowIndex();
+          if (p.startRow > last || p.endRow <= first) return;
+          const t = totalRef.current;
+          const end = t === null ? p.endRow : Math.min(p.endRow, t);
+          entry.said = `${fmtInt(p.startRow + 1)}–${fmtInt(end)}`;
+          setAnnounce(`Memuat baris ${entry.said}…`);
+        }, LOAD_ANNOUNCE_MS);
         void fetchBlock({
           sheetId,
           versionId,
@@ -416,6 +490,7 @@ export default function SheetGrid({
           signal: entry.ctrl.signal,
         }).then((r) => {
           inflight.current.delete(entry);
+          window.clearTimeout(entry.timer);
           // Jawaban tampilan lama (urut/saring/cari sudah berganti): AG mengabaikan blok cache lama;
           // jumlah barisnya tidak boleh menimpa jumlah tampilan baru.
           if (entry.gen !== gen.current) {
@@ -436,7 +511,7 @@ export default function SheetGrid({
               setAnnounce(
                 what === "search" ? `Ditemukan di ${fmtInt(n)} baris` : `${fmtInt(n)} baris cocok`,
               );
-            }
+            } else if (entry.said) setAnnounce(`Baris ${entry.said} dimuat`);
             const rows = r.rows;
             if (p.startRow + rows.length === n && p.endRow > n) {
               rows.push({ n: n + 1, _row: -1, end: true });
@@ -572,35 +647,44 @@ export default function SheetGrid({
     });
   }, [sweep]);
 
-  const goTo = useCallback((n: number, colId?: string) => {
-    const api = apiRef.current;
-    const t = totalRef.current;
-    if (!api || t === null || t < 1) return;
-    const row = Math.min(Math.max(1, n), t);
-    const focused = api.getFocusedCell();
-    const col =
-      colId ??
-      (focused && focused.column.getColId() !== ROWNUM ? focused.column.getColId() : null) ??
-      api
-        .getAllDisplayedColumns()
-        .find((c) => c.getColId() !== ROWNUM)
-        ?.getColId() ??
-      ROWNUM;
-    // ADR-0007 mitigasi 4: 'middle', bukan 'top' (meleset 3–30 px saat stretching).
-    api.ensureIndexVisible(row - 1, "middle");
-    api.setFocusedCell(row - 1, col);
-    // setFocusedCell tidak selalu memindahkan fokus DOM (mis. dari kotak "Ke baris"): fokuskan sel
-    // setelah baris dirender agar panah/PageDown langsung bekerja dari baris tujuan.
+  /**
+   * setFocusedCell tidak selalu memindahkan fokus DOM (mis. dari kotak "Ke baris", atau sel yang belum
+   * dirender): fokuskan sel setelah baris/kolom dirender agar panah/PageDown langsung bekerja di sana.
+   */
+  const focusCellDom = useCallback((i: number, col: string) => {
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         const el = boxRef.current?.querySelector<HTMLElement>(
-          `.ag-row[row-index="${row - 1}"] [col-id="${col}"]`,
+          `.ag-row[row-index="${i}"] [col-id="${CSS.escape(col)}"]`,
         );
         if (el && !el.contains(document.activeElement)) el.focus();
       }),
     );
-    setAnnounce(`Ke baris ${fmtInt(row)}`);
   }, []);
+
+  const goTo = useCallback(
+    (n: number, colId?: string) => {
+      const api = apiRef.current;
+      const t = totalRef.current;
+      if (!api || t === null || t < 1) return;
+      const row = Math.min(Math.max(1, n), t);
+      const focused = api.getFocusedCell();
+      const col =
+        colId ??
+        (focused && focused.column.getColId() !== ROWNUM ? focused.column.getColId() : null) ??
+        api
+          .getAllDisplayedColumns()
+          .find((c) => c.getColId() !== ROWNUM)
+          ?.getColId() ??
+        ROWNUM;
+      // ADR-0007 mitigasi 4: 'middle', bukan 'top' (meleset 3–30 px saat stretching).
+      api.ensureIndexVisible(row - 1, "middle");
+      api.setFocusedCell(row - 1, col);
+      focusCellDom(row - 1, col);
+      setAnnounce(`Ke baris ${fmtInt(row)}`);
+    },
+    [focusCellDom],
+  );
 
   // Kolom: urutan, lebar, sembunyi, dan beku dari pengaturan tersimpan (AC 3). Dibuat sekali per mount
   // (grid di-mount ulang per sheet + revisi skema): definisi baru membuat AG menerapkan ulang kolom dan
@@ -645,7 +729,7 @@ export default function SheetGrid({
           headerName: c.name,
           width: s?.width ?? defaultWidth(c),
           hide: Boolean(s?.hide),
-          pinned: s?.pinned ? "left" : null,
+          pinned: s?.pinned && !narrow ? "left" : null,
           lockPinned: true,
           // Urut dihitung server (Infinite Row Model meneruskan sortModel); AG memasang aria-sort.
           sortable: true,
@@ -779,8 +863,26 @@ export default function SheetGrid({
       format: formats.current[id],
       sort: sort === "asc" || sort === "desc" ? sort : null,
       sortCount: api ? api.getColumnState().filter((c) => c.sort).length : 0,
+      narrow: narrowRef.current,
     };
   });
+
+  // Ponsel ↔ desktop: lepas/pulihkan pembekuan kolom data (nomor baris tetap beku).
+  useEffect(() => {
+    const api = apiRef.current;
+    const was = narrowRef.current;
+    narrowRef.current = narrow;
+    if (!api || api.isDestroyed() || was === narrow) return;
+    if (narrow) {
+      desktopPins.current = api
+        .getColumnState()
+        .filter((c) => c.colId !== ROWNUM && c.pinned === "left")
+        .map((c) => c.colId);
+    }
+    api.applyColumnState({
+      state: desktopPins.current.map((colId) => ({ colId, pinned: narrow ? null : "left" })),
+    });
+  }, [narrow]);
 
   const actionRef = useRef((id: string, a: HeaderAction) => {
     const api = apiRef.current;
@@ -865,6 +967,9 @@ export default function SheetGrid({
     setSel(next);
     const api = apiRef.current;
     if (api && !api.isDestroyed()) api.refreshCells({ force: true });
+    boxRef.current?.querySelectorAll(".ag-row[row-index]").forEach((el) => {
+      markSelected(el, inSel(next, Number(el.getAttribute("row-index"))));
+    });
     if (next) {
       const n = next.to - next.from + 1;
       setAnnounce(
@@ -1034,15 +1139,29 @@ export default function SheetGrid({
     [byId, sheetId, versionId],
   );
 
+  /** Baris baru di DOM: aria-selected sesuai pilihan (baris dirender ulang saat digulir). */
+  const onRowCreated = useCallback((p: ProcessRowParams<RowData>) => {
+    const on = inSel(selRef.current, p.rowIndex);
+    for (const el of [p.eRow, p.ePinnedLeftRow, p.ePinnedRightRow]) markSelected(el, on);
+  }, []);
+
   const onCellClicked = useCallback(
     (e: CellClickedEvent<RowData>) => {
-      if (e.column.getColId() !== ROWNUM || e.rowIndex == null || e.data?.end) return;
+      if (e.rowIndex == null || e.data?.end) return;
+      if (e.column.getColId() !== ROWNUM) {
+        // Ponsel: ketuk sel = Isi sel (tanpa F2/klik ganda); salin ada di panel.
+        if (narrowRef.current) {
+          const from = (e.event?.target as HTMLElement | null)?.closest<HTMLElement>(".ag-cell");
+          openCell(e.rowIndex, e.column.getColId(), from ?? null);
+        }
+        return;
+      }
       const ev = e.event as MouseEvent | null;
       // Klik kedua dari klik ganda tidak membatalkan pilihan klik pertama (review L2).
       if (ev && ev.detail > 1) return;
       pickRow(e.rowIndex, Boolean(ev?.shiftKey));
     },
-    [pickRow],
+    [pickRow, openCell],
   );
 
   const setDecimalPref = (d: DecimalSep) => {
@@ -1092,9 +1211,10 @@ export default function SheetGrid({
       };
       install();
       // Nama grid untuk pembaca layar (AG tidak punya opsi aria-label).
-      boxRef.current
-        ?.querySelector('[role="grid"]')
-        ?.setAttribute("aria-label", `Data sheet ${sheetName}`);
+      const root = boxRef.current?.querySelector('[role="grid"]');
+      root?.setAttribute("aria-label", `Data sheet ${sheetName}`);
+      // Pilihan baris lewat nomor baris (bukan pilihan AG): rentang baris → multiselectable.
+      root?.setAttribute("aria-multiselectable", "true");
       // Kait uji e2e (hanya dev): API grid untuk mengukur gulir/fokus.
       if (process.env.NODE_ENV !== "production") {
         (window as unknown as { __ddGrid?: unknown }).__ddGrid = { api: e.api, goTo };
@@ -1107,7 +1227,10 @@ export default function SheetGrid({
     const flight = inflight.current;
     return () => {
       offWheel.current?.();
-      for (const f of flight) f.ctrl.abort();
+      for (const f of flight) {
+        window.clearTimeout(f.timer);
+        f.ctrl.abort();
+      }
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
       if (rangeFrame.current !== null) cancelAnimationFrame(rangeFrame.current);
       if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
@@ -1163,12 +1286,24 @@ export default function SheetGrid({
         openFilter(id, cell);
         return;
       }
+      if (isRowEdgeKey(e) && cellId && Number.isInteger(rowIdx)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const api = apiRef.current;
+        const cols = api?.getAllDisplayedColumns() ?? [];
+        const col = (e.key === "Home" ? cols[0] : cols[cols.length - 1])?.getColId();
+        if (!api || !col) return;
+        api.ensureColumnVisible(col);
+        api.setFocusedCell(rowIdx, col);
+        focusCellDom(rowIdx, col);
+        return;
+      }
       if (!isJumpKey(e)) return;
       ev.preventDefault();
       ev.stopPropagation();
       goTo(ev.key === "Home" ? 1 : (totalRef.current ?? 1));
     },
-    [goTo, openFilter, copyRows, copyCell, openCell, pickRow, select],
+    [goTo, openFilter, copyRows, copyCell, openCell, pickRow, select, focusCellDom],
   );
 
   const submitSearch = (ev: React.FormEvent) => {
@@ -1251,6 +1386,10 @@ export default function SheetGrid({
       return;
     }
     setGoError(null);
+    if (moreOpen) {
+      jumped.current = true;
+      setMoreOpen(false);
+    }
     goTo(n);
   };
 
@@ -1265,6 +1404,7 @@ export default function SheetGrid({
     const api = apiRef.current;
     if (!api) return;
     formats.current = {};
+    desktopPins.current = [];
     api.applyColumnState({
       state: [
         { colId: ROWNUM, pinned: "left" },
@@ -1308,6 +1448,118 @@ export default function SheetGrid({
   const filterList = Object.entries(filters);
   const filteredView = filterList.length > 0 || search !== null;
   const searching = search !== null && loading;
+
+  const goForm = (
+    <form onSubmit={submitGo} className="flex flex-col gap-1" noValidate>
+      <div className="flex items-center gap-2">
+        <label htmlFor={goId} className="shrink-0 text-sm font-medium">
+          Ke baris
+        </label>
+        <Input
+          id={goId}
+          inputMode="numeric"
+          autoComplete="off"
+          value={goText}
+          onChange={(e) => setGoText(e.target.value)}
+          aria-invalid={goError ? true : undefined}
+          aria-describedby={goError ? goErrId : undefined}
+          placeholder={total ? `1–${fmtInt(total)}` : undefined}
+          className="h-(--control-h-lg) w-40 md:h-(--control-h)"
+          data-testid="grid-goto-input"
+        />
+        <Button
+          type="submit"
+          variant="outline"
+          className="h-(--control-h-lg) md:h-(--control-h)"
+          disabled={total === null}
+        >
+          <IconCornerDownLeft aria-hidden />
+          Buka
+        </Button>
+      </div>
+      {goError ? (
+        <p id={goErrId} className="text-sm text-destructive">
+          {goError}
+        </p>
+      ) : null}
+    </form>
+  );
+  const exportButton = (
+    <Button
+      variant="outline"
+      className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
+      data-testid="grid-export-button"
+      onClick={() => {
+        setMoreOpen(false);
+        openExport();
+      }}
+    >
+      <IconDownload aria-hidden />
+      Unduh tampilan
+    </Button>
+  );
+  const columnList = (
+    <>
+      <fieldset className="flex flex-col gap-1">
+        <legend className="mb-1 text-sm font-medium">Kolom yang ditampilkan</legend>
+        {columns.map((c) => {
+          const id = colIdOf(c.pos);
+          const shown = !hidden.has(id);
+          return (
+            <label
+              key={id}
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-sm px-1 text-sm hover:bg-accent md:min-h-9"
+            >
+              <input
+                type="checkbox"
+                className="size-4 accent-[hsl(var(--primary))]"
+                checked={shown}
+                disabled={shown && columns.length - hidden.size <= 1}
+                onChange={(e) => setColumnShown(id, e.target.checked)}
+              />
+              <span className="w-8 shrink-0 text-xs text-muted-foreground">{colLetter(c.pos)}</span>
+              <span className="truncate">{c.name}</span>
+            </label>
+          );
+        })}
+      </fieldset>
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={resetColumns}
+        className="h-(--control-h-lg) self-start md:h-(--control-h-sm)"
+      >
+        Kembalikan tampilan bawaan
+      </Button>
+    </>
+  );
+  const decimalGroup = (
+    <div
+      role="group"
+      aria-label="Pemisah desimal saat menyalin ke Excel"
+      className="flex flex-wrap items-center gap-1"
+    >
+      <span>Desimal salinan:</span>
+      {(
+        [
+          [",", "Koma"],
+          [".", "Titik"],
+        ] as const
+      ).map(([d, label]) => (
+        <Button
+          key={d}
+          size="sm"
+          variant={decimal === d ? "secondary" : "ghost"}
+          aria-pressed={decimal === d}
+          className="h-(--control-h-lg) md:h-(--control-h-sm)"
+          data-testid={`grid-decimal-${label.toLowerCase()}`}
+          onClick={() => setDecimalPref(d)}
+        >
+          {label} ({d})
+        </Button>
+      ))}
+    </div>
+  );
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -1396,51 +1648,19 @@ export default function SheetGrid({
       ) : null}
 
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-        <form onSubmit={submitGo} className="flex flex-col gap-1" noValidate>
-          <div className="flex items-center gap-2">
-            <label htmlFor={goId} className="shrink-0 text-sm font-medium">
-              Ke baris
-            </label>
-            <Input
-              id={goId}
-              inputMode="numeric"
-              autoComplete="off"
-              value={goText}
-              onChange={(e) => setGoText(e.target.value)}
-              aria-invalid={goError ? true : undefined}
-              aria-describedby={goError ? goErrId : undefined}
-              placeholder={total ? `1–${fmtInt(total)}` : undefined}
-              className="h-(--control-h-lg) w-40 md:h-(--control-h)"
-              data-testid="grid-goto-input"
-            />
-            <Button
-              type="submit"
-              variant="outline"
-              className="h-(--control-h-lg) md:h-(--control-h)"
-              disabled={total === null}
-            >
-              <IconCornerDownLeft aria-hidden />
-              Buka
-            </Button>
-          </div>
-          {goError ? (
-            <p id={goErrId} className="text-sm text-destructive">
-              {goError}
-            </p>
-          ) : null}
-        </form>
+        {narrow ? null : goForm}
         <form
           role="search"
           onSubmit={submitSearch}
-          className="flex flex-col gap-1"
+          className="flex min-w-0 flex-col gap-1"
           noValidate
           data-testid="grid-search"
         >
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label htmlFor={searchId} className="shrink-0 text-sm font-medium">
               Cari
             </label>
-            <div className="relative">
+            <div className="relative min-w-0 flex-1 md:flex-none">
               <IconSearch
                 size={20}
                 stroke={1.5}
@@ -1465,7 +1685,7 @@ export default function SheetGrid({
                 aria-invalid={searchError ? true : undefined}
                 aria-describedby={searchStatusId}
                 aria-keyshortcuts="Control+F"
-                className="h-(--control-h-lg) w-56 pl-10 md:h-(--control-h)"
+                className="h-(--control-h-lg) w-full pl-10 md:h-(--control-h) md:w-56"
                 data-testid="grid-search-input"
               />
             </div>
@@ -1524,67 +1744,45 @@ export default function SheetGrid({
               ))}
           </p>
         </form>
-        <div className="flex items-center gap-2">
-          <span className="rounded-sm border px-2 py-1 text-xs text-muted-foreground">
-            Baca-saja
-          </span>
+        {narrow ? (
           <Button
             variant="outline"
-            className="h-(--control-h-lg) md:h-(--control-h)"
-            data-testid="grid-export-button"
-            onClick={openExport}
+            className="h-(--control-h-lg) w-full"
+            aria-haspopup="dialog"
+            data-testid="grid-more-button"
+            onClick={() => setMoreOpen(true)}
           >
-            <IconDownload aria-hidden />
-            Unduh tampilan
+            <IconDots aria-hidden />
+            Lainnya
           </Button>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="h-(--control-h-lg) md:h-(--control-h)"
-                data-testid="grid-columns-button"
-              >
-                <IconLayoutColumns aria-hidden />
-                Kolom
-                {hidden.size > 0 ? (
-                  <span className="text-muted-foreground">
-                    ({fmtInt(hidden.size)} disembunyikan)
-                  </span>
-                ) : null}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-72">
-              <fieldset className="flex flex-col gap-1">
-                <legend className="mb-1 text-sm font-medium">Kolom yang ditampilkan</legend>
-                {columns.map((c) => {
-                  const id = colIdOf(c.pos);
-                  const shown = !hidden.has(id);
-                  return (
-                    <label
-                      key={id}
-                      className="flex min-h-9 cursor-pointer items-center gap-2 rounded-sm px-1 text-sm hover:bg-accent"
-                    >
-                      <input
-                        type="checkbox"
-                        className="size-4 accent-[hsl(var(--primary))]"
-                        checked={shown}
-                        disabled={shown && columns.length - hidden.size <= 1}
-                        onChange={(e) => setColumnShown(id, e.target.checked)}
-                      />
-                      <span className="w-8 shrink-0 text-xs text-muted-foreground">
-                        {colLetter(c.pos)}
-                      </span>
-                      <span className="truncate">{c.name}</span>
-                    </label>
-                  );
-                })}
-              </fieldset>
-              <Button variant="ghost" size="sm" onClick={resetColumns} className="self-start">
-                Kembalikan tampilan bawaan
-              </Button>
-            </PopoverContent>
-          </Popover>
-        </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span className="rounded-sm border px-2 py-1 text-xs text-muted-foreground">
+              Baca-saja
+            </span>
+            {exportButton}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="h-(--control-h-lg) md:h-(--control-h)"
+                  data-testid="grid-columns-button"
+                >
+                  <IconLayoutColumns aria-hidden />
+                  Kolom
+                  {hidden.size > 0 ? (
+                    <span className="text-muted-foreground">
+                      ({fmtInt(hidden.size)} disembunyikan)
+                    </span>
+                  ) : null}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-72">
+                {columnList}
+              </PopoverContent>
+            </Popover>
+          </div>
+        )}
       </div>
 
       {filterList.length > 0 ? (
@@ -1685,6 +1883,9 @@ export default function SheetGrid({
           onColumnVisible={onVisibility}
           onSortChanged={onSortChanged}
           onCellClicked={onCellClicked}
+          processRowPostCreate={onRowCreated}
+          rowHeight={narrow ? ROW_H_TOUCH : ROW_H}
+          suppressMovableColumns={narrow}
           onCellDoubleClicked={(e) =>
             e.rowIndex != null &&
             openCell(
@@ -1718,31 +1919,7 @@ export default function SheetGrid({
             r={statsNow?.r ?? null}
           />
         ) : null}
-        <div
-          role="group"
-          aria-label="Pemisah desimal saat menyalin ke Excel"
-          className="flex items-center gap-1"
-        >
-          <span>Desimal salinan:</span>
-          {(
-            [
-              [",", "Koma"],
-              [".", "Titik"],
-            ] as const
-          ).map(([d, label]) => (
-            <Button
-              key={d}
-              size="sm"
-              variant={decimal === d ? "secondary" : "ghost"}
-              aria-pressed={decimal === d}
-              className="h-(--control-h-lg) md:h-(--control-h-sm)"
-              data-testid={`grid-decimal-${label.toLowerCase()}`}
-              onClick={() => setDecimalPref(d)}
-            >
-              {label} ({d})
-            </Button>
-          ))}
-        </div>
+        {narrow ? null : decimalGroup}
       </div>
       {exportOn ? (
         <Suspense fallback={null}>
@@ -1768,9 +1945,43 @@ export default function SheetGrid({
           />
         </Suspense>
       ) : null}
-      <p className="sr-only" aria-live="polite" aria-atomic="true">
+      <p className="sr-only" aria-live="polite" aria-atomic="true" data-testid="grid-announce">
         {announce}
       </p>
+      <Dialog.Root open={narrow && moreOpen} onOpenChange={setMoreOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay/40" />
+          <Dialog.Content
+            aria-describedby={undefined}
+            data-testid="grid-more-sheet"
+            onCloseAutoFocus={(e) => {
+              // "Ke baris" memindahkan fokus ke sel tujuan; jangan ditarik kembali ke tombol Lainnya.
+              if (jumped.current) e.preventDefault();
+              jumped.current = false;
+            }}
+            className="fixed inset-x-0 bottom-0 z-50 flex max-h-[85dvh] w-full flex-col rounded-t-lg border bg-card shadow-lg"
+          >
+            <div className="flex items-center justify-between gap-2 border-b px-4 py-2">
+              <Dialog.Title className="text-base font-semibold">Lainnya</Dialog.Title>
+              <Dialog.Close asChild>
+                <Button size="icon-lg" variant="ghost" aria-label="Tutup Lainnya">
+                  <IconX aria-hidden />
+                </Button>
+              </Dialog.Close>
+            </div>
+            <div className="flex min-h-0 flex-col gap-4 overflow-y-auto px-4 py-3">
+              {goForm}
+              {exportButton}
+              <div className="flex flex-col gap-1">{columnList}</div>
+              {decimalGroup}
+              <p className="text-sm text-muted-foreground">
+                Baca-saja. Urut dan saring lewat menu di kepala kolom. Tampilan terbaik di layar ≥
+                1024 px.
+              </p>
+            </div>
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
       <GridFilterDialog
         target={filterTarget}
         sheetId={sheetId}
