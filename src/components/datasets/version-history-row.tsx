@@ -3,6 +3,7 @@
    tampilan kartu; Safari/VoiceOver membuang semantik tabel tanpa ini (pola users-table.tsx). */
 import {
   IconAlertTriangle,
+  IconCalendarStats,
   IconChecklist,
   IconCircleCheck,
   IconCircleCheckFilled,
@@ -119,6 +120,15 @@ export function VersionHistoryRow({
           >
             <IconFileOff size={16} stroke={1.5} aria-hidden className="shrink-0" />
             File asli sudah dihapus
+          </span>
+        ) : null}
+        {v.note ? (
+          <span
+            className="mt-0.5 flex items-start gap-1 text-xs text-muted-foreground [overflow-wrap:anywhere]"
+            data-testid="version-note"
+          >
+            <IconCalendarStats size={16} stroke={1.5} aria-hidden className="shrink-0" />
+            {v.note}
           </span>
         ) : null}
       </td>

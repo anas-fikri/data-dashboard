@@ -1,6 +1,8 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
 import type Redis from "ioredis";
+import type { PeriodSetupJobData } from "@/features/ingest/period-setup";
+import { PERIOD_SETUP_JOB } from "@/features/ingest/period-setup-plan";
 import type { RecastInput } from "@/features/ingest/recast";
 import { acquireLock, redisLockStore, releaseLock } from "@/lib/lock";
 import { logger } from "@/lib/logger";
@@ -21,6 +23,18 @@ export async function enqueueIngest(versionId: string, datasetId?: string): Prom
     "enqueue ingest",
   );
   logger.info({ versionId }, "job ingest masuk antrean");
+}
+
+/**
+ * Masukkan job "Atur periode" (T-051) ke antrean ingest: jobId = versionId (sapuan macet dan
+ * finalisasi gagal ingest berlaku sama), diproses berurutan dengan unggahan lain.
+ */
+export async function enqueuePeriodSetup(data: PeriodSetupJobData): Promise<void> {
+  await withQueueTimeout(
+    ingestQueue().add(PERIOD_SETUP_JOB, data, { jobId: data.versionId }),
+    "enqueue atur periode",
+  );
+  logger.info({ versionId: data.versionId }, "job atur periode masuk antrean");
 }
 
 /** Batas id job yang dibaca untuk posisi antrean; lebih jauh dari ini ditampilkan tanpa nomor. */

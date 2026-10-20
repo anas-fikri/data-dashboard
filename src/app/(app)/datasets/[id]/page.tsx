@@ -1,3 +1,4 @@
+import { IconCalendarStats } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DatasetActivityProvider } from "@/components/datasets/dataset-activity";
@@ -8,12 +9,14 @@ import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
 import { VersionHistory } from "@/components/datasets/version-history";
 import { activationBusy } from "@/components/datasets/version-history-status";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { GuideHelp } from "@/components/guides/guide-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { datasetShareImpact, getDataset } from "@/features/datasets/service";
+import { GRAIN_LABEL } from "@/features/ingest/period-setup-plan";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
@@ -22,7 +25,7 @@ import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ created?: string; mapped?: string; discarded?: string }>;
+type Search = Promise<{ created?: string; mapped?: string; discarded?: string; period?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -118,6 +121,14 @@ export default async function DatasetDetailPage({
           </FocusNotice>
         </div>
       ) : null}
+      {/* Kembali dari "Atur periode" (T-051) selama job-nya masih berjalan. */}
+      {search.period === "1" && badge?.kind === "processing" ? (
+        <div data-testid="period-applying">
+          <FocusNotice>
+            Periode sedang diterapkan. Dashboard tetap memakai data sekarang sampai selesai.
+          </FocusNotice>
+        </div>
+      ) : null}
       <div>
         <StatusBadge label={dataset.label} />
       </div>
@@ -160,6 +171,31 @@ export default async function DatasetDetailPage({
             />
           </CardContent>
         </Card>
+
+        {active ? (
+          <Card data-testid="period-card">
+            <CardHeader>
+              <CardTitle>Data per periode</CardTitle>
+              <CardDescription>
+                {active.periodGrain
+                  ? `Data disimpan ${GRAIN_LABEL[active.periodGrain]}: setiap periode bisa ditambah atau diganti terpisah.`
+                  : "Ingin menyimpan data per bulan? Atur periode agar setiap bulan bisa ditambah atau diganti tanpa mengunggah ulang semua data."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button
+                asChild
+                variant="outline"
+                className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
+              >
+                <Link href={`/datasets/${dataset.id}/periode`} data-testid="period-link">
+                  <IconCalendarStats aria-hidden />
+                  {active.periodGrain ? "Pengaturan periode" : "Atur periode"}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
 
         {versions.length > 0 ? (
           <VersionHistory

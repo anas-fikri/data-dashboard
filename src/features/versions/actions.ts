@@ -8,7 +8,9 @@ import { AuthError, requireUser } from "@/features/auth/session";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
+import type { SetupPreview } from "@/features/ingest/period-setup-plan";
 import { pairPlanFor, submitMapping } from "./mapping";
+import { applyPeriodSetup, previewPeriodSetup, savePeriodSettings } from "./period-setup";
 import * as service from "./service";
 import type { MappingPairPlan, VersionResult } from "./types";
 
@@ -145,4 +147,52 @@ export async function pairPlanAction(
       (await pairPlanFor(userId, datasetId, versionId, activeSheetId, newSheetId)),
     false,
   );
+}
+
+/**
+ * "Tinjau" Atur periode (T-051): sebaran baris per periode, baris tanpa tanggal valid, dan proyeksi
+ * kapasitas. Baca saja (query lewat mesin query); rate limit aturan query.
+ */
+export async function previewPeriodSetupAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<SetupPreview>> {
+  return asOwner(
+    "previewPeriodSetup",
+    async (userId) =>
+      (await rateLimited(userId, RULES.query, "permintaan")) ??
+      (await previewPeriodSetup(userId, datasetId, payload)),
+    false,
+  );
+}
+
+/** "Terapkan" Atur periode (T-051): versi PERIOD_SETUP diproses worker lalu aktif. */
+export async function applyPeriodSetupAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<{ versionId: string }>> {
+  return asOwner("applyPeriodSetup", async (userId, ip) => {
+    const r = await applyPeriodSetup(userId, datasetId, payload, ip);
+    if (r.ok) {
+      revalidatePath(`/datasets/${datasetId}`);
+      revalidatePath(`/datasets/${datasetId}/periode`);
+      revalidatePath("/datasets");
+    }
+    return r;
+  });
+}
+
+/** Pengaturan periode dataset (T-051): "Simpan N periode" + "Saat batas tercapai". */
+export async function savePeriodSettingsAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<{ keepPeriods: number | null; onLimit: "REJECT" | "EVICT_OLDEST" }>> {
+  return asOwner("savePeriodSettings", async (userId, ip) => {
+    const r = await savePeriodSettings(userId, datasetId, payload, ip);
+    if (r.ok) {
+      revalidatePath(`/datasets/${datasetId}`);
+      revalidatePath(`/datasets/${datasetId}/periode`);
+    }
+    return r;
+  });
 }

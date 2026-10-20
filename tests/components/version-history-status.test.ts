@@ -162,6 +162,7 @@ describe("T-049: AWAITING_CONFIRM dirender (badge dataset + baris riwayat)", () 
               message: null,
               uploadedBy: null,
               sourceDeleted: false,
+              note: null,
             },
           }),
         ),

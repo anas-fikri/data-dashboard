@@ -43,6 +43,7 @@ export default defineConfig({
         /chart-polish\.spec\.ts$/,
         /pivot\.spec\.ts$/,
         /guide-roles\.spec\.ts$/,
+        /period-setup\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -131,7 +132,9 @@ export default defineConfig({
     { name: "chart-polish", testMatch: /chart-polish\.spec\.ts$/, dependencies: ["kpi-fit"] },
     // pivot (T-tcjp, T-jwhc): worker sendiri (24 customer × 2 layanan × 3 bulan); panel, gulir, cetak.
     { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["pivot"] },
+    // period-setup (T-051): worker sendiri; Atur periode → versi PERIOD_SETUP aktif → rollback.
+    { name: "period-setup", testMatch: /period-setup\.spec\.ts$/, dependencies: ["pivot"] },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["period-setup"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

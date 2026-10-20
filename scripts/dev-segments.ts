@@ -6,6 +6,9 @@
  *                            rowBase berurutan + profil), manifest sheet diganti ordinal 0..n-1
  *   manifest <sheetId>     → [{ordinal, schemaRevision, typedKey, createdAt}]
  *   finished <versionId>   → {status, ingestFinishedAt}
+ *   periods <versionId>    → {mode, periodGrain, sheets: [{id, name, periodSource, segments:
+ *                            [{periodKey, dataRows}]}]} (T-051: versi PERIOD_SETUP)
+ *   audit <datasetId> <action> → [{actorId, meta}] baris AuditLog dataset itu (T-051)
  * Pakai: npx tsx --conditions=react-server --env-file-if-exists=.env scripts/dev-segments.ts …
  */
 import { mkdtempSync, rmSync, statSync } from "node:fs";
@@ -185,6 +188,54 @@ async function main() {
         },
       });
       console.log(JSON.stringify(rows.map((r) => ({ ordinal: r.ordinal, ...r.segmentTyped }))));
+    } else if (cmd === "periods") {
+      const v = await prisma.datasetVersion.findUnique({
+        where: { id: a },
+        select: {
+          mode: true,
+          periodGrain: true,
+          sheets: {
+            orderBy: { index: "asc" },
+            select: {
+              id: true,
+              name: true,
+              periodSource: true,
+              segments: {
+                orderBy: { ordinal: "asc" },
+                select: {
+                  segmentTyped: {
+                    select: { dataRows: true, segment: { select: { periodKey: true } } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      console.log(
+        JSON.stringify(
+          v && {
+            mode: v.mode,
+            periodGrain: v.periodGrain,
+            sheets: v.sheets.map((s) => ({
+              id: s.id,
+              name: s.name,
+              periodSource: s.periodSource,
+              segments: s.segments.map((m) => ({
+                periodKey: m.segmentTyped.segment.periodKey,
+                dataRows: m.segmentTyped.dataRows,
+              })),
+            })),
+          },
+        ),
+      );
+    } else if (cmd === "audit") {
+      const rows = await prisma.auditLog.findMany({
+        where: { targetType: "dataset", targetId: a, action: b },
+        orderBy: { at: "asc" },
+        select: { actorId: true, meta: true },
+      });
+      console.log(JSON.stringify(rows));
     } else if (cmd === "finished") {
       const v = await prisma.datasetVersion.findUnique({
         where: { id: a },

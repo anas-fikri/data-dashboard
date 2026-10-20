@@ -36,7 +36,12 @@ export interface DatasetSummary {
   label: DatasetLabel;
   dashboardCount: number;
   /** Versi aktif (data yang dipakai dashboard), bila ada. */
-  active: { originalName: string | null; finishedAt: Date | null } | null;
+  active: {
+    originalName: string | null;
+    finishedAt: Date | null;
+    /** Satuan periode versi aktif (T-051); null = data biasa. */
+    periodGrain: "MONTH" | "QUARTER" | "YEAR" | null;
+  } | null;
   /** Nama file versi terbaru (untuk menjelaskan unggahan yang gagal). */
   latestFileName: string | null;
 }
@@ -53,7 +58,7 @@ const summarySelect = {
   description: true,
   updatedAt: true,
   activeVersionId: true,
-  activeVersion: { select: { originalName: true, ingestFinishedAt: true } },
+  activeVersion: { select: { originalName: true, ingestFinishedAt: true, periodGrain: true } },
   _count: { select: { dashboards: true } },
   versions: {
     orderBy: { createdAt: "desc" as const },
@@ -76,6 +81,7 @@ function toSummary(row: SummaryRow): DatasetSummary {
       ? {
           originalName: row.activeVersion.originalName,
           finishedAt: row.activeVersion.ingestFinishedAt,
+          periodGrain: row.activeVersion.periodGrain,
         }
       : null,
     latestFileName: latest?.originalName ?? null,

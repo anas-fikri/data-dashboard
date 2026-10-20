@@ -30,6 +30,11 @@ export interface VersionRow {
   uploadedBy: string | null;
   /** File asli sudah dihapus job retensi 7 hari (data Parquet tetap ada). */
   sourceDeleted: boolean;
+  /**
+   * Ringkasan operasi periode (T-051): "Mode periode diaktifkan (per bulan) · 12 periode · 5 baris
+   * tanpa tanggal valid dibuang atas pilihan pemilik"; null untuk versi biasa.
+   */
+  note: string | null;
 }
 
 /** STALE: skema aktif berubah sejak halaman pemetaan dimuat (T-014) — muat ulang halaman. */

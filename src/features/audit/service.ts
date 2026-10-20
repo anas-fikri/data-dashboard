@@ -26,6 +26,13 @@ export type AuditAction =
   | "dataset.version.activate"
   /** Pemetaan kolom versi yang menunggu pemetaan disimpan lalu versinya aktif (T-014). */
   | "dataset.version.map"
+  /**
+   * Mode periode diaktifkan lewat "Atur periode" (T-051): versi PERIOD_SETUP aktif, meta { from,
+   * versionId, grain, periods, droppedRows, sheets[{ sheetId, source, column, label }] }.
+   */
+  | "dataset.period.activate"
+  /** Pengaturan periode dataset diubah (T-051), meta { from, to } berisi { keepPeriods, onLimit }. */
+  | "dataset.period.settings"
   /** Pemilik menghapus dataset beserta dashboard dan share-nya (T-016). */
   | "dataset.delete"
   /** Share dashboard per user: diberikan, perannya diubah, dicabut (T-016). */

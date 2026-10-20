@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { buildSetupPreview } from "@/features/ingest/period-setup-plan";
 import type { VersionRecord } from "@/features/versions/service";
 
 /*
@@ -48,6 +49,8 @@ const record = (over: Partial<VersionRecord> = {}): VersionRecord => ({
   ingestFinishedAt: at,
   errorMessage: null,
   sourceDeletedAt: null,
+  mode: "REPLACE",
+  plan: null,
   uploadedBy: { name: null, email: "ana@pcpexpress.com" },
   ...over,
 });
@@ -75,6 +78,7 @@ describe("toVersionRow", () => {
       message: null,
       uploadedBy: "ana@pcpexpress.com",
       sourceDeleted: false,
+      note: null,
     });
     expect(
       svc.toVersionRow(record({ uploadedBy: { name: "Ana", email: "a@x.id" } }), B),
@@ -112,6 +116,51 @@ describe("toVersionRow", () => {
       sourceDeleted: true,
       finishedAt: null,
     });
+  });
+
+  it("PERIOD_SETUP → catatan riwayat dari rencana beku, termasuk baris yang dibuang (T-051 AC 2)", () => {
+    const plan = buildSetupPreview({
+      grain: "MONTH",
+      baseVersionId: A,
+      sheets: [
+        {
+          sheetId: "s1",
+          lineageId: "l1",
+          name: "Data",
+          source: "COLUMN",
+          column: { pos: 1, name: "Tanggal" },
+          totalRows: 12,
+          periods: [
+            { start: "2026-01-01", rows: 5 },
+            { start: "2026-02-01", rows: 5 },
+          ],
+          missing: 2,
+          missingSamples: [4, 9],
+          bytes: 1000,
+        },
+      ],
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+      limits: {
+        keepDefault: 24,
+        keepMax: 60,
+        sheetMaxRows: 10_000_000,
+        datasetMaxBytes: 16 * 1024 ** 3,
+        sheetMaxSegments: 120,
+        shrinkConfirmPct: 50,
+        strayPct: 10,
+        warnPct: 80,
+      },
+      dropMissing: 2,
+    }).plan;
+    const row = svc.toVersionRow(
+      record({ mode: "PERIOD_SETUP", plan: plan as never, originalName: "Atur periode" }),
+      A,
+    );
+    expect(row.note).toBe(
+      "Mode periode diaktifkan (per bulan) · 2 periode · 2 baris tanpa tanggal valid dibuang atas pilihan pemilik",
+    );
+    // Rencana rusak/tidak terbaca: tanpa catatan (fail-closed), bukan galat.
+    expect(svc.toVersionRow(record({ mode: "PERIOD_SETUP", plan: { v: 9 } }), A).note).toBeNull();
   });
 });
 

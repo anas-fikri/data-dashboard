@@ -102,6 +102,13 @@ enum PeriodSource {
   LABEL
 }
 
+/// Saat batas periode tercapai (T-051, rencana G-6 §5.3): tolak unggahan (bawaan) atau lepas periode
+/// terlama otomatis (selalu lewat tinjauan).
+enum PeriodOnLimit {
+  REJECT
+  EVICT_OLDEST
+}
+
 /// Profil dataset: kontainer untuk versi data dan dashboard. Label (kosong/siap) diturunkan,
 /// bukan disimpan (B5).
 model Dataset {
@@ -112,6 +119,11 @@ model Dataset {
   /// Nama ternormalisasi (trim + lowercase) untuk keunikan per pemilik tanpa peka kapital.
   nameKey         String
   description     String?
+  /// "Simpan N periode terbaru" (T-051); null = bawaan admin PERIOD_KEEP_DEFAULT, ≤ PERIOD_KEEP_MAX
+  /// (ditegakkan aplikasi). Pengaturan dataset, bukan mode: mode periode milik versi/sheet.
+  keepPeriods     Int?
+  /// Perilaku saat batas periode tercapai (T-051).
+  onLimit         PeriodOnLimit    @default(REJECT)
   activeVersionId String?          @unique
   activeVersion   DatasetVersion?  @relation("ActiveVersion", fields: [activeVersionId], references: [id], onDelete: SetNull)
   versions        DatasetVersion[] @relation("DatasetVersions")

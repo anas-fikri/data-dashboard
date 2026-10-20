@@ -32,6 +32,12 @@ import {
 import { FAILED_MESSAGE, RENDERER_UNAVAILABLE_MESSAGE } from "@/features/exports/service";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
 import { applyMapping } from "@/features/ingest/mapping";
+import {
+  PERIOD_SETUP_JOB,
+  runPeriodSetup,
+  type PeriodSetupJobData,
+} from "@/features/ingest/period-setup";
+import { prismaPeriodSetupRepo } from "@/features/ingest/period-setup-repo";
 import { recastSheet, yieldsToIngest } from "@/features/ingest/recast";
 import {
   finalizeFailed,
@@ -222,6 +228,22 @@ async function main() {
     INGEST_QUEUE,
     async (job: Job<IngestJobData>) => {
       const { versionId } = job.data;
+      if (job.name === PERIOD_SETUP_JOB) {
+        // T-051: data aktif dipecah per periode (versi PERIOD_SETUP), berurutan dengan unggahan.
+        logger.info(
+          { jobId: job.id, versionId, attempt: job.attemptsMade + 1 },
+          "atur periode mulai",
+        );
+        const r = await runPeriodSetup(job.data as PeriodSetupJobData, {
+          repo: prismaPeriodSetupRepo,
+          storage: s3IngestStorage,
+          tmpRoot,
+          duckThreads: env().INGEST_DUCKDB_THREADS,
+        });
+        logger.info({ jobId: job.id, versionId, ...r }, "atur periode selesai");
+        if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);
+        return r;
+      }
       logger.info({ jobId: job.id, versionId, attempt: job.attemptsMade + 1 }, "ingest mulai");
       const r = await runIngest(versionId, prismaIngestRepo, s3IngestStorage, {
         tmpRoot,

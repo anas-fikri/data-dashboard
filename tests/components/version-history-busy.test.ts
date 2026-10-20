@@ -27,6 +27,7 @@ const row = (over: Partial<VersionRow>): VersionRow => ({
   message: null,
   uploadedBy: null,
   sourceDeleted: false,
+  note: null,
   ...over,
 });
 

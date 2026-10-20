@@ -2,6 +2,8 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
+import { parseFrozenPeriodPlan } from "@/features/ingest/period-plan";
+import { setupHistoryNote } from "@/features/ingest/period-setup-plan";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { announceVersionActivated } from "@/features/query/warm";
 import { prisma } from "@/lib/db";
@@ -52,6 +54,8 @@ const rowSelect = {
   ingestFinishedAt: true,
   errorMessage: true,
   sourceDeletedAt: true,
+  mode: true,
+  plan: true,
   uploadedBy: { select: { name: true, email: true } },
 } satisfies Prisma.DatasetVersionSelect;
 
@@ -74,6 +78,7 @@ export function toVersionRow(v: VersionRecord, activeVersionId: string | null): 
     message: status === "FAILED" || isDiscardable(status) ? v.errorMessage : null,
     uploadedBy: v.uploadedBy ? (v.uploadedBy.name ?? v.uploadedBy.email) : null,
     sourceDeleted: v.sourceDeletedAt !== null,
+    note: v.mode === "PERIOD_SETUP" ? setupHistoryNote(parseFrozenPeriodPlan(v.plan)) : null,
   };
 }
 
