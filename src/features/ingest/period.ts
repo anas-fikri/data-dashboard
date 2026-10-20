@@ -102,3 +102,28 @@ export function periodFreezeViolation(
   }
   return null;
 }
+
+const MONTH_NAMES = [
+  "Januari",
+  "Februari",
+  "Maret",
+  "April",
+  "Mei",
+  "Juni",
+  "Juli",
+  "Agustus",
+  "September",
+  "Oktober",
+  "November",
+  "Desember",
+];
+
+/** Label periode untuk pesan/riwayat: "Maret 2026", "Kuartal 1 2026", "Tahun 2026" (naive). */
+export function periodLabel(grain: PeriodGrain, start: string): string {
+  const s = periodStartOf(grain, start);
+  const y = s.slice(0, 4);
+  const m = Number(s.slice(5, 7));
+  if (grain === "YEAR") return `Tahun ${y}`;
+  if (grain === "QUARTER") return `Kuartal ${(m - 1) / 3 + 1} ${y}`;
+  return `${MONTH_NAMES[m - 1]} ${y}`;
+}

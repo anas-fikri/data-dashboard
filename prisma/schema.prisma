@@ -135,6 +135,10 @@ model DatasetVersion {
   /// Satuan periode versi ini (T-049); null = versi non-periode. Mode periode milik versi (bukan
   /// dataset): rollback ke versi sebelum periode diaktifkan mengembalikan dataset ke mode biasa.
   periodGrain      PeriodGrain?
+  /// Rencana periode yang dibekukan (T-050, PeriodPlan v1 di src/features/ingest/period-plan.ts):
+  /// periode ditambah/diganti/dilepas/dikecualikan + baris sebelum → sesudah. Hanya ditulis selama
+  /// versi non-terminal; null = versi non-periode atau belum direncanakan.
+  plan             Json?
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?

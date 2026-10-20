@@ -35,6 +35,23 @@ describe("parseEnv", () => {
     );
   });
 
+  it("batas periode (T-050): default rencana G-6 §5.2, rentang divalidasi", () => {
+    const e = parseEnv(valid);
+    expect([
+      e.PERIOD_KEEP_DEFAULT,
+      e.PERIOD_KEEP_MAX,
+      e.PERIOD_SHEET_MAX_ROWS,
+      e.DATASET_MAX_DATA_BYTES,
+      e.PERIOD_SHEET_MAX_SEGMENTS,
+      e.PERIOD_WARN_PCT,
+      e.PERIOD_SHRINK_CONFIRM_PCT,
+      e.PERIOD_STRAY_PCT,
+    ]).toEqual([24, 60, 10_000_000, 16 * 1024 ** 3, 120, 80, 50, 10]);
+    expect(parseEnv({ ...valid, PERIOD_KEEP_MAX: "36" }).PERIOD_KEEP_MAX).toBe(36);
+    expect(() => parseEnv({ ...valid, PERIOD_KEEP_DEFAULT: "0" })).toThrow(/PERIOD_KEEP_DEFAULT/);
+    expect(() => parseEnv({ ...valid, PERIOD_STRAY_PCT: "101" })).toThrow(/PERIOD_STRAY_PCT/);
+  });
+
   it("INGEST_DUCKDB_THREADS: default 2, 1–16 (T-024)", () => {
     expect(parseEnv(valid).INGEST_DUCKDB_THREADS).toBe(2);
     expect(parseEnv({ ...valid, INGEST_DUCKDB_THREADS: "3" }).INGEST_DUCKDB_THREADS).toBe(3);

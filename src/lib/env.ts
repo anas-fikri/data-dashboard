@@ -152,6 +152,28 @@ export const envSchema = z.object({
   /** Masa transisi makna kuota (hari sejak migrasi T-039): pelanggaran hanya diberi peringatan. */
   QUOTA_GRACE_DAYS: z.coerce.number().int().min(0).max(90).default(14),
 
+  // --- Data per periode (T-050, rencana G-6 §5.2): batas dievaluasi per periode utuh ---
+  /** Periode disimpan per dataset bila pemilik tidak mengatur ("Simpan N periode terbaru"). */
+  PERIOD_KEEP_DEFAULT: z.coerce.number().int().min(1).max(600).default(24),
+  /** Batas atas pengaturan pemilik (sekaligus membatasi jumlah file per query); default dipotong ke sini. */
+  PERIOD_KEEP_MAX: z.coerce.number().int().min(1).max(600).default(60),
+  /** Baris data per sheet, dijumlah atas semua periode versi baru (skala terverifikasi D10/T-009). */
+  PERIOD_SHEET_MAX_ROWS: z.coerce.number().int().positive().default(10_000_000),
+  /** Byte parquet (raw + typed) yang dirujuk versi satu dataset. */
+  DATASET_MAX_DATA_BYTES: z.coerce
+    .number()
+    .int()
+    .positive()
+    .default(16 * 1024 * 1024 * 1024),
+  /** Segmen per sheet, supaya daftar file DuckDB tetap kecil. */
+  PERIOD_SHEET_MAX_SEGMENTS: z.coerce.number().int().min(1).max(1000).default(120),
+  /** Ambang peringatan meter (persen) untuk semua batas. */
+  PERIOD_WARN_PCT: z.coerce.number().int().min(1).max(100).default(80),
+  /** Penggantian periode yang menyusut lebih dari persen ini wajib dicentang. */
+  PERIOD_SHRINK_CONFIRM_PCT: z.coerce.number().int().min(0).max(100).default(50),
+  /** Periode file dengan baris < persen ini dari periode terbesar = "kemungkinan nyasar". */
+  PERIOD_STRAY_PCT: z.coerce.number().int().min(0).max(100).default(10),
+
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   /** Direktori kerja worker ingest (unduhan sumber + spill + DuckDB); butuh ± ukuran upload + 8 GiB. */
   WORKER_TMP_DIR: z.string().optional(),
