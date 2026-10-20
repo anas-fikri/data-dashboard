@@ -194,7 +194,10 @@ export interface SheetDistribution {
   periods: { start: string; rows: number; parts?: number }[];
   /** Baris tanpa tanggal valid (kosong, gagal cast, atau tahun di luar 1000–9999). */
   missing: number;
-  /** ≤ MISSING_SAMPLES nomor baris di file (baris fisik), naik. */
+  /**
+   * ≤ MISSING_SAMPLES nomor baris di file (baris fisik): satu file → naik; beberapa file → urut file
+   * (manifest), lalu naik di dalam file (nama file di missingSampleFiles).
+   */
   missingSamples: number[];
   /** Sheet beberapa file: nama file asal setiap contoh (sejajar missingSamples); null = satu file. */
   missingSampleFiles?: (string | null)[] | null;
@@ -265,18 +268,23 @@ export function setupRejectionMessage(
   r: NonNullable<PeriodPlan["rejection"]>,
   keepMax: number,
   sheetName: (lineageId: string | null) => string,
+  /** Atur ulang (T-qqyx): "Simpan N periode" diubah di kartu Pengaturan, bukan di formulir ini. */
+  reset = false,
 ): string {
   switch (r.limit) {
     case "periods":
       return r.used > keepMax
         ? `Data sekarang terbagi menjadi ${fmt(r.used)} periode, melebihi batas admin ${fmt(keepMax)} periode. Pilih satuan periode yang lebih besar, atau hubungi admin.`
-        : `Data sekarang terbagi menjadi ${fmt(r.used)} periode, melebihi pengaturan "Simpan ${fmt(r.max)} periode". Naikkan jumlahnya (maksimal ${fmt(keepMax)}) atau pilih satuan yang lebih besar.`;
+        : reset
+          ? `Data sekarang terbagi menjadi ${fmt(r.used)} periode, melebihi pengaturan "Simpan ${fmt(r.max)} periode". Naikkan "Simpan N periode" di kartu Pengaturan periode di atas (maksimal ${fmt(keepMax)}), lalu tinjau lagi, atau pilih satuan yang lebih besar.`
+          : `Data sekarang terbagi menjadi ${fmt(r.used)} periode, melebihi pengaturan "Simpan ${fmt(r.max)} periode". Naikkan jumlahnya (maksimal ${fmt(keepMax)}) atau pilih satuan yang lebih besar.`;
     case "sheetRows":
       return `Sheet “${sheetName(r.sheet)}” berisi ${fmt(r.used)} baris, melebihi batas ${fmt(r.max)} baris per sheet. Hubungi admin untuk menaikkan batas.`;
     case "datasetBytes":
       return `Data sekarang sekitar ${gb(r.used)}, melebihi batas ${gb(r.max)} per dataset. Hubungi admin untuk menaikkan batas.`;
     case "sheetSegments":
-      return `Sheet “${sheetName(r.sheet)}” terbagi menjadi ${fmt(r.used)} periode, melebihi batas ${fmt(r.max)} periode per sheet. Pilih satuan periode yang lebih besar.`;
+      // Segmen, bukan periode: periode kelompok (T-060/T-qqyx) terdiri dari beberapa bagian.
+      return `Sheet “${sheetName(r.sheet)}” terbagi menjadi ${fmt(r.used)} bagian data, melebihi batas ${fmt(r.max)} bagian per sheet. Pilih satuan periode yang lebih besar.`;
   }
 }
 
@@ -377,7 +385,12 @@ export function buildSetupPreview(a: {
   const blockers: string[] = [];
   if (plan.rejection) {
     blockers.push(
-      setupRejectionMessage(plan.rejection, a.limits.keepMax, (id) => names.get(id ?? "") ?? "?"),
+      setupRejectionMessage(
+        plan.rejection,
+        a.limits.keepMax,
+        (id) => names.get(id ?? "") ?? "?",
+        current !== null,
+      ),
     );
   }
   for (const s of a.sheets) {

@@ -1,4 +1,4 @@
-import { renameSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -16,6 +16,9 @@ import {
 import type { PeriodGrain } from "@/features/ingest/period";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import type { ManifestSheet } from "@/features/versions/integrity-check";
+import type { SourceKind } from "@/features/ingest/infer";
+import { copyTyped } from "@/features/ingest/typed";
+import { lit, openDuck } from "@/lib/duckdb";
 import { DS, testRoot, VID, type FakeRepo, type FakeStorage } from "./fakes";
 
 /*
@@ -567,5 +570,364 @@ describe("runPeriodSetup — atur ulang dataset yang sudah per periode (T-qqyx)"
     expect(await runPeriodSetup(job, r.deps)).toMatchObject({ outcome: "failed" });
     expect(r.repo.error).toMatch(/berbeda dengan yang ditinjau/);
     expect(r.storage.parquetKeys()).toEqual(r.before);
+  });
+});
+
+/* Review T-qqyx L4: segmen sumber beragam (header/peta kolom/jenis file), sumber yang sudah kelompok
+ * T-060, dan satu segmen sumber yang tersebar ke beberapa periode baru (setiap periode = kelompok). */
+
+interface SegSpec {
+  kind: SourceKind;
+  /** Baris raw mulai nomor 1 (judul/keterangan di atas header ikut). */
+  lines: (string | null)[][];
+  headerRow: number;
+  /** colMap[pos-1] = kolom raw posisi kanonik pos; [] = identitas. */
+  colMap: number[];
+  rowBase: bigint;
+  period: string;
+  name: string;
+}
+
+/** Dasar atur ulang dengan segmen buatan tangan (raw + typed lewat copyTyped, seperti ingest/recast). */
+async function customBase(csv: string, specs: SegSpec[]) {
+  const r = await setup(csv);
+  const schema = r.sheet.schema!;
+  const work = mkdtempSync(join(t.root, "tmp", "seg-"));
+  const duck = await openDuck({ path: join(work, "w.duckdb"), tmpDir: work, memoryLimit: "256MB" });
+  const segments: SetupSourceSheet["segments"] = [];
+  try {
+    for (const [i, g] of specs.entries()) {
+      const width = Math.max(...g.lines.map((l) => l.length));
+      const values = g.lines
+        .map(
+          (l, k) =>
+            `(${k + 1}, ${Array.from({ length: width }, (_, c) => (l[c] == null ? "NULL" : lit(l[c]!))).join(", ")})`,
+        )
+        .join(", ");
+      const cols = Array.from({ length: width }, (_, c) => `c${c + 1}`);
+      const raw = join(work, `raw-${i}.parquet`);
+      const typed = join(work, `typed-${i}.parquet`);
+      await duck.conn.run(
+        `COPY (SELECT CAST(_row AS INTEGER) AS _row, ${cols.map((c) => `CAST(${c} AS VARCHAR) AS ${c}`).join(", ")}
+               FROM (VALUES ${values}) v(_row, ${cols.join(", ")}) ORDER BY _row)
+         TO ${lit(raw)} (FORMAT parquet)`,
+      );
+      await copyTyped(duck, {
+        rawPath: raw,
+        outPath: typed,
+        source: g.kind,
+        headerRow: g.headerRow,
+        watch: async () => {},
+        rowBase: g.rowBase,
+        rawCols: width,
+        colMap: g.colMap,
+        schema,
+        charsPerRow: 10,
+        period: g.period,
+      });
+      const id = `seg${i}`;
+      const rawKey = `parquet/${DS}/seg/${id}/raw.parquet`;
+      const typedKey = `parquet/${DS}/seg/${id}/typed-1.parquet`;
+      await r.storage.upload(rawKey, raw);
+      await r.storage.upload(typedKey, typed);
+      segments.push({
+        segmentId: id,
+        rawKey,
+        typedKey,
+        legacyRow: false,
+        headerRow: g.headerRow,
+        colCount: width,
+        colMap: g.colMap,
+        sourceKind: g.kind,
+        sha256: `sha-${i}`,
+        originalName: g.name,
+        dataRows: g.lines.length - g.headerRow,
+      });
+    }
+  } finally {
+    duck.close();
+    rmSync(work, { recursive: true, force: true });
+  }
+  const base: SetupSourceSheet = {
+    id: r.sheetId,
+    index: 0,
+    name: r.sheet.name,
+    aliasName: null,
+    lineageId: r.sheet.lineageId!,
+    rawKey: segments[0]!.rawKey,
+    headerRow: 1,
+    colCount: r.sheet.colCount,
+    columns: r.sheet.columns,
+    truncatedCells: 0,
+    preview: null,
+    rawRows: 0,
+    schemaRevision: 1,
+    schema,
+    typedKey: segments[0]!.typedKey,
+    segments,
+  };
+  const repo = new FakeSetupRepo(r.ingest);
+  repo.lineage.set(base.lineageId, 1_000_000n);
+  repo.baseSheets = [base];
+  const before = r.storage.parquetKeys();
+  const job = (over: Partial<PeriodSetupJobData> = {}): PeriodSetupJobData =>
+    r.job({ versionId: SETUP2, baseGrain: "MONTH", dropMissing: 0, ...over });
+  return { ...r, repo, base, before, job, deps: { ...r.deps, repo } };
+}
+
+/** Isi typed baru per periode: [awal, baris, sum(c2), kode urut]; plus total + `_row` unik. */
+async function contents(storage: FakeStorage, keys: string[]) {
+  const f = files(storage, keys);
+  const per = (await query(
+    `SELECT strftime(_period, '%Y-%m-%d'), count(*), sum(c2), list(c3 ORDER BY c3)
+     FROM read_parquet(${f}) GROUP BY 1 ORDER BY 1`,
+  )) as [string, bigint, unknown, string[]][];
+  const [[n, distinct]] = (await query(
+    `SELECT count(*), count(DISTINCT _row) FROM read_parquet(${f})`,
+  )) as [[bigint, bigint]];
+  return {
+    periods: per.map(([p, c, sum, codes]) => [p, Number(c), Number(sum), codes]),
+    rows: Number(n),
+    unique: Number(distinct),
+  };
+}
+
+const H = ["tanggal", "nilai", "kode"];
+
+describe("runPeriodSetup — atur ulang dari segmen sumber beragam (review T-qqyx L4)", () => {
+  it("csv + xlsx dengan baris judul dan peta kolom berbeda → setiap bagian memakai header/peta/jenis segmennya", async () => {
+    // Segmen xlsx (parser menulis tanggal sel sebagai teks ISO): judul di baris 1, header di baris 2,
+    // kolom raw berurutan kode;tanggal;nilai (colMap kanonik → raw [2, 3, 1]).
+    const r = await customBase(CSV, [
+      {
+        kind: "csv",
+        lines: [H, ["2026-01-05", "10", "A"], ["2026-01-20", "20", "B"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 0n,
+        period: "2026-01-01",
+        name: "jan.csv",
+      },
+      {
+        kind: "xlsx",
+        lines: [
+          ["Laporan Februari"],
+          ["kode", "tanggal", "nilai"],
+          ["C", "2026-02-03", "30"],
+          ["G", "2026-02-28", "70"],
+        ],
+        headerRow: 2,
+        colMap: [2, 3, 1],
+        rowBase: 100n,
+        period: "2026-02-01",
+        name: "feb.xlsx",
+      },
+      {
+        kind: "csv",
+        lines: [H, ["2026-03-15", "50", "E"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 200n,
+        period: "2026-03-01",
+        name: "mar.csv",
+      },
+    ]);
+    r.repo.grain = "QUARTER";
+    const job = r.job({ grain: "QUARTER" });
+    job.sheets[0]!.expected = {
+      periods: { "2026-01-01": 5 },
+      missing: 0,
+      parts: { "2026-01-01": 3 },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toEqual({ outcome: "done", sheets: 1, periods: 1 });
+    const segs = [...r.repo.segments.values()];
+    expect(
+      segs.map((g) => [g.headerRow, g.colMap, g.sourceKind, g.originalName, g.groupPart]),
+    ).toEqual([
+      [1, [], "csv", "jan.csv", 1],
+      [2, [2, 3, 1], "xlsx", "feb.xlsx", 2],
+      [1, [], "csv", "mar.csv", 3],
+    ]);
+    expect(segs[1]).toMatchObject({
+      minDate: "2026-02-03 00:00:00",
+      maxDate: "2026-02-28 00:00:00",
+    });
+    expect(r.repo.sheets[0]!.segments.map((m) => [m.headerRow, m.dataRows])).toEqual([
+      [1, 2],
+      [2, 2],
+      [1, 1],
+    ]);
+    // Raw bagian xlsx membawa judul + header apa adanya, nomor baris fisik tetap.
+    const raw = await query(
+      `SELECT _row, c1 FROM read_parquet(${files(r.storage, [segs[1]!.rawKey])}) ORDER BY _row`,
+    );
+    expect(raw).toEqual([
+      [1, "Laporan Februari"],
+      [2, "kode"],
+      [3, "C"],
+      [4, "G"],
+    ]);
+    expect(
+      await contents(
+        r.storage,
+        r.repo.sheets[0]!.segments.map((m) => m.typedKey),
+      ),
+    ).toEqual({
+      periods: [["2026-01-01", 5, 180, ["A", "B", "C", "E", "G"]]],
+      rows: 5,
+      unique: 5,
+    });
+  });
+
+  it("sumber yang sudah kelompok file T-060 (Februari = 2 file) → per kuartal: satu kelompok baru 4 bagian, tanpa baris hilang/ganda", async () => {
+    const r = await customBase(CSV, [
+      {
+        kind: "csv",
+        lines: [H, ["2026-01-05", "10", "A"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 0n,
+        period: "2026-01-01",
+        name: "jan.csv",
+      },
+      {
+        kind: "csv",
+        lines: [H, ["2026-02-03", "30", "C"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 100n,
+        period: "2026-02-01",
+        name: "feb-1.csv",
+      },
+      {
+        kind: "csv",
+        lines: [H, ["2026-02-28", "70", "G"], ["2026-02-10", "5", "K"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 200n,
+        period: "2026-02-01",
+        name: "feb-2.csv",
+      },
+      {
+        kind: "csv",
+        lines: [H, ["2026-03-15", "50", "E"]],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 300n,
+        period: "2026-03-01",
+        name: "mar.csv",
+      },
+    ]);
+    r.repo.grain = "QUARTER";
+    const job = r.job({ grain: "QUARTER" });
+    job.sheets[0]!.expected = {
+      periods: { "2026-01-01": 5 },
+      missing: 0,
+      parts: { "2026-01-01": 4 },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toEqual({ outcome: "done", sheets: 1, periods: 1 });
+    expect(
+      [...r.repo.segments.values()].map((g) => [
+        g.originalName,
+        g.groupId,
+        g.groupPart,
+        g.groupSize,
+      ]),
+    ).toEqual([
+      ["jan.csv", SETUP2, 1, 4],
+      ["feb-1.csv", SETUP2, 2, 4],
+      ["feb-2.csv", SETUP2, 3, 4],
+      ["mar.csv", SETUP2, 4, 4],
+    ]);
+    expect(
+      await contents(
+        r.storage,
+        r.repo.sheets[0]!.segments.map((m) => m.typedKey),
+      ),
+    ).toEqual({
+      periods: [["2026-01-01", 5, 165, ["A", "C", "E", "G", "K"]]],
+      rows: 5,
+      unique: 5,
+    });
+    for (const k of r.before) expect(r.storage.parquetKeys()).toContain(k);
+  });
+
+  it("kolom lain: satu segmen sumber tersebar ke beberapa periode baru, setiap periode menjadi kelompok", async () => {
+    // Periode sekarang dari "tanggal" (Jan / Feb); diatur ulang dari "bayar" (kolom 4) per bulan.
+    const csv4 = ["tanggal;nilai;kode;bayar", "2026-01-05;10;A;2026-02-01"].join("\n");
+    const H4 = ["tanggal", "nilai", "kode", "bayar"];
+    const r = await customBase(csv4, [
+      {
+        kind: "csv",
+        lines: [
+          H4,
+          ["2026-01-05", "10", "A", "2026-01-30"],
+          ["2026-01-20", "20", "B", "2026-02-02"],
+          ["2026-01-25", "1", "Z", "2026-03-01"],
+        ],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 0n,
+        period: "2026-01-01",
+        name: "jan.csv",
+      },
+      {
+        kind: "csv",
+        lines: [
+          H4,
+          ["2026-02-03", "30", "C", "2026-01-31"],
+          ["2026-02-28", "70", "G", "2026-02-27"],
+        ],
+        headerRow: 1,
+        colMap: [],
+        rowBase: 100n,
+        period: "2026-02-01",
+        name: "feb.csv",
+      },
+    ]);
+    expect(r.base.schema!.find((c) => c.pos === 4)?.type).toBe("date");
+    const job = r.job({ grain: "MONTH" });
+    job.sheets[0] = {
+      sheetId: r.sheetId,
+      source: "COLUMN",
+      column: 4,
+      label: null,
+      expected: {
+        periods: { "2026-01-01": 2, "2026-02-01": 2, "2026-03-01": 1 },
+        missing: 0,
+        parts: { "2026-01-01": 2, "2026-02-01": 2, "2026-03-01": 1 },
+      },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toEqual({ outcome: "done", sheets: 1, periods: 3 });
+    const sheet = r.repo.sheets[0]!;
+    expect(sheet.periodColumn).toBe(4);
+    // Manifest kronologis: Jan(jan, feb) · Feb(jan, feb) · Mar(jan, satu bagian tanpa kelompok).
+    expect(
+      sheet.segments.map((m) => {
+        const g = r.repo.segments.get(m.segmentId)!;
+        return [g.periodKey, g.originalName, g.groupPart ?? null, g.groupSize ?? null, m.dataRows];
+      }),
+    ).toEqual([
+      ["2026-01", "jan.csv", 1, 2, 1],
+      ["2026-01", "feb.csv", 2, 2, 1],
+      ["2026-02", "jan.csv", 1, 2, 1],
+      ["2026-02", "feb.csv", 2, 2, 1],
+      ["2026-03", "jan.csv", null, null, 1],
+    ]);
+    expect(
+      await contents(
+        r.storage,
+        sheet.segments.map((m) => m.typedKey),
+      ),
+    ).toEqual({
+      periods: [
+        ["2026-01-01", 2, 40, ["A", "C"]],
+        ["2026-02-01", 2, 90, ["B", "G"]],
+        ["2026-03-01", 1, 1, ["Z"]],
+      ],
+      rows: 5,
+      unique: 5,
+    });
+    expect(r.repo.status).toBe("READY");
   });
 });

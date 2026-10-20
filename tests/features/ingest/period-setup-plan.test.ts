@@ -252,7 +252,9 @@ describe("atur ulang dataset yang sudah per periode (T-qqyx)", () => {
       dropMissing: 0,
       current: current(),
     });
-    expect(tight.blockers[0]).toMatch(/melebihi batas 2 periode per sheet/);
+    expect(tight.blockers[0]).toMatch(
+      /terbagi menjadi 3 bagian data, melebihi batas 2 bagian per sheet/,
+    );
   });
 
   it("sama persis dengan sekarang → nonaktif; KEEP ke satuan lebih kecil → nonaktif; kolom lain → boleh", () => {
