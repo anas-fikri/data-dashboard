@@ -11,6 +11,7 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import {
   TABLE_PAGE_SIZE,
   columnsOf,
+  sortColumnSchema,
   type ChartSort,
   type WidgetConfig,
 } from "@/features/widgets/spec";
@@ -28,7 +29,8 @@ import { isCalendarDate, resolveSpec, type Grain, type Plan, type QuerySpec } fr
 export const TABLE_PAGE_MAX = 100_000;
 
 const cuid = z.string().regex(/^[a-z0-9]{20,32}$/);
-const pos = z.number().int().min(1).max(16_384);
+// Kolom sungguhan atau kolom sistem Periode (T-058).
+const pos = sortColumnSchema;
 
 export const widgetBodySchema = z
   .object({

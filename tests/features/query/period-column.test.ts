@@ -5,6 +5,7 @@ import {
   PERIOD_COLUMN,
   PERIOD_NAME,
   PERIOD_NAME_SYSTEM,
+  periodPositionTaken,
   withPeriodColumn,
   withoutPeriodColumn,
 } from "@/features/query/period-column";
@@ -180,5 +181,13 @@ describe("remap widget lintas versi (aktivasi / ganti data)", () => {
     );
     expect(r.missing).toEqual(["Periode"]);
     expect(r.config.spec).toMatchObject({ columns: [1, MISSING_COLUMN] });
+  });
+});
+
+describe("T-058 review: posisi kolom sistem harus bebas sebelum Atur periode", () => {
+  it("kolom sungguhan di posisi ≥ PERIOD_COLUMN → ditolak; skema biasa lolos", () => {
+    expect(periodPositionTaken(RAW)).toBe(false);
+    expect(periodPositionTaken([...RAW, col(PERIOD_COLUMN, "X")])).toBe(true);
+    expect(periodPositionTaken([...RAW, col(PERIOD_COLUMN + 5, "Y")])).toBe(true);
   });
 });

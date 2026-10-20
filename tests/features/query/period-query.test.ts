@@ -12,6 +12,7 @@ import {
   type QueryRepo,
 } from "@/features/query/service";
 import { sheetSource, type SegmentFile } from "@/features/query/source";
+import { exportBodySchema } from "@/features/exports/schema";
 import { buildFilterValuesSql } from "@/features/query/sql";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -181,6 +182,18 @@ function deps(leased: string[] = []): QueryDeps {
       return null;
     },
     widget: async (userId, widgetId) => {
+      if (userId === VIEWER && widgetId === WID("table", SHEETS.per)) {
+        return {
+          type: "table",
+          spec: { ...WIDGETS.table!.spec, sheetId: SHEETS.per },
+          updatedAt: new Date(0),
+          datasetId: DS,
+          activeVersionId: VER,
+          filterColumns: [{ sheet: "Data", column: "Tanggal" }],
+          dashboardId: VIEW_DASH,
+          role: "VIEWER" as const,
+        };
+      }
       if (userId === VIEWER && widgetId === WID("kpi", SHEETS.per)) {
         // Dashboard viewer tanpa kolom filter Periode (pemilik tidak memasangnya).
         return {
@@ -389,5 +402,40 @@ describe("T-058 AC3 (D6): viewer hanya memakai filter Periode bila dipasang pemi
     );
     expect(ok.ok).toBe(true);
     expect([...new Set(leased)]).toEqual(["seg-06.parquet"]);
+  });
+});
+
+describe("T-058 review #1: urut tabel menurut Periode (viewer) dan ekspor", () => {
+  it("viewer mengurutkan tabel per Periode turun → April dulu, identik dengan gabungan", async () => {
+    const r = await runWidgetQuery(
+      VIEWER,
+      { widgetId: WID("table", SHEETS.per), sort: { column: PERIOD_COLUMN, dir: "desc" } },
+      deps(),
+    );
+    if (!r.ok) throw new Error(`${r.code} ${r.message}`);
+    const rows = (r as unknown as { rows: unknown[][] }).rows;
+    expect(rows[0]![0]).toBe("2026-06-01");
+    const one = await answer("table", SHEETS.one, { sort: { column: PERIOD_COLUMN, dir: "desc" } });
+    expect(rows).toEqual((one as { rows: unknown[][] }).rows);
+  });
+
+  it("posisi lain di atas kolom sungguhan tetap ditolak (bukan sembarang posisi)", async () => {
+    const r = await runWidgetQuery(
+      VIEWER,
+      { widgetId: WID("table", SHEETS.per), sort: { column: PERIOD_COLUMN - 1, dir: "asc" } },
+      deps(),
+    );
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
+  it("body ekspor widget menerima urut Periode, menolak posisi lain di atas 16.384", () => {
+    const base = { widgetId: WID("table", SHEETS.per), format: "csv" };
+    expect(
+      exportBodySchema.safeParse({ ...base, sort: { column: PERIOD_COLUMN, dir: "asc" } }).success,
+    ).toBe(true);
+    expect(
+      exportBodySchema.safeParse({ ...base, sort: { column: PERIOD_COLUMN - 1, dir: "asc" } })
+        .success,
+    ).toBe(false);
   });
 });

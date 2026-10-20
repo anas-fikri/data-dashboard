@@ -6,12 +6,11 @@
 import { z } from "zod";
 import { dashFiltersSchema, pivotFiltersSchema } from "@/features/query/filters";
 import { rowsBodySchema } from "@/features/query/grid";
+import { sortColumnSchema } from "@/features/widgets/spec";
 import { EXPORT_FORMATS } from "./types";
 
 const cuid = z.string().regex(/^[a-z0-9]{20,32}$/);
-const sortSchema = z
-  .object({ column: z.number().int().min(1).max(16_384), dir: z.enum(["asc", "desc"]) })
-  .strict();
+const sortSchema = z.object({ column: sortColumnSchema, dir: z.enum(["asc", "desc"]) }).strict();
 
 export const exportBodySchema = z
   .object({

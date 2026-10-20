@@ -148,3 +148,37 @@ describe("pruneSource — bukan sheet periode", () => {
     );
   });
 });
+
+describe("T-058 review #2: batas atas tahun 9999 tidak membalik urutan", () => {
+  const END = seg("9999-12-01", "9999-12-01T00:00:00", "9999-12-31T23:59:59");
+  it("max 9999-12-31T23:59:59 → tanpa batas atas; gte/gt/in/between tidak memangkas", () => {
+    const cases: PlanFilter[] = [
+      { col: "c3", type: "timestamp", op: "gte", values: ["9999-12-31T23:59:59"] },
+      { col: "c3", type: "timestamp", op: "gt", values: ["9999-12-31T23:59:58"] },
+      { col: "c3", type: "timestamp", op: "in", values: ["9999-12-31T23:59:59"] },
+      {
+        col: "c3",
+        type: "timestamp",
+        op: "between",
+        values: ["9999-12-31", "9999-12-31T23:59:59"],
+      },
+    ];
+    for (const pf of cases) expect(segmentExcluded(END, 3, { filters: [pf] })).toBe(false);
+    expect(
+      segmentExcluded(END, 3, { clauses: [ts({ op: "range", gte: "9999-12-31T12:00:00" })] }),
+    ).toBe(false);
+    // Rentang sebelum segmen tetap dipangkas.
+    expect(
+      segmentExcluded(END, 3, {
+        filters: [{ col: "c3", type: "timestamp", op: "lt", values: ["9999-11-30T00:00:00"] }],
+      }),
+    ).toBe(true);
+  });
+
+  it("tanggal metadata tidak sah → segmen tidak dipangkas (tanpa galat)", () => {
+    const bad = seg("2026-02-01", "2026-13-45T00:00:00", "2026-13-46T00:00:00");
+    expect(
+      segmentExcluded(bad, 3, { clauses: [ts({ op: "range", gte: "2030-01-01T00:00:00" })] }),
+    ).toBe(false);
+  });
+});

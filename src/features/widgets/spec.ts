@@ -57,6 +57,14 @@ export const MISSING_COLUMN = MAX_COLUMN + 1;
  * MISSING_COLUMN; hanya ada di skema yang dibaca lapisan query/dashboard, tidak pernah disimpan.
  */
 export const PERIOD_COLUMN = MAX_COLUMN + 2;
+/**
+ * Kolom urut tabel dari klien (widget /api/query dan ekspor): kolom sungguhan atau kolom sistem
+ * Periode (T-058) — tidak ada posisi lain di atas MAX_COLUMN.
+ */
+export const sortColumnSchema = z.union([
+  z.number().int().min(1).max(MAX_COLUMN),
+  z.literal(PERIOD_COLUMN),
+]);
 /** Posisi kolom di skema sheet (1-based, sama dengan c<pos>), MISSING_COLUMN, atau PERIOD_COLUMN. */
 const column = z.number().int().min(1).max(PERIOD_COLUMN);
 

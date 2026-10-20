@@ -72,6 +72,15 @@ export function withPeriodColumn<S extends ColumnSchema[] | null>(
   return [...schema, periodColumnOf(schema, p)] as S;
 }
 
+/**
+ * Kolom sungguhan di posisi kolom sistem Periode atau sesudahnya (tidak mungkin lewat ingest: semua jalur
+ * membatasi ≤ MAX_COLUMN) — sheet seperti itu ditolak saat "Atur periode" (T-058).
+ */
+export const periodPositionTaken = (schema: Pick<ColumnSchema, "pos">[]): boolean =>
+  schema.some((c) => c.pos >= PERIOD_COLUMN);
+export const PERIOD_POSITION_TAKEN =
+  "Sheet ini punya terlalu banyak kolom untuk disimpan per periode. Kurangi kolom lalu ganti semua data.";
+
 /** Skema tanpa kolom virtual (proyeksi file, penulisan skema). */
 export const withoutPeriodColumn = <C extends Pick<ColumnSchema, "pos">>(schema: C[]): C[] =>
   schema.filter((c) => c.pos !== PERIOD_COLUMN);

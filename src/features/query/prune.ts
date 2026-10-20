@@ -29,11 +29,18 @@ export function fullIso(v: string): string | null {
   return DATE_ONLY.test(s) ? `${s}T00:00:00` : s.length === 16 ? `${s}:00` : s;
 }
 
-/** Satu detik sesudah waktu ISO penuh (aritmetika kalender UTC = naive). */
-function nextSecond(iso: string): string {
+/** Tanpa batas atas: diurutkan sesudah setiap waktu ISO ("~" > digit). */
+const NO_UPPER = "~";
+
+/**
+ * Satu detik sesudah waktu ISO penuh (aritmetika kalender UTC = naive). Lewat tahun 9999 (toISOString
+ * menjadi "+010000-…", urut SEBELUM tanggal ISO) → tanpa batas atas; tanggal tidak sah → null.
+ */
+function nextSecond(iso: string): string | null {
   const t = new Date(`${iso}Z`);
+  if (Number.isNaN(t.getTime())) return null;
   t.setUTCSeconds(t.getUTCSeconds() + 1);
-  return t.toISOString().slice(0, 19);
+  return t.getUTCFullYear() > 9999 ? NO_UPPER : t.toISOString().slice(0, 19);
 }
 
 /** Rentang nilai satu kolom di satu segmen: lo ≤ nilai < hiUp, hari terakhir = maxDay. */
@@ -48,7 +55,9 @@ function span(min: string, max: string): Span | null {
   const lo = fullIso(min.slice(0, 19));
   const hi = fullIso(max.slice(0, 19));
   if (!lo || !hi || lo > hi) return null;
-  return { lo, hiUp: nextSecond(hi), minDay: lo.slice(0, 10), maxDay: hi.slice(0, 10) };
+  const hiUp = nextSecond(hi);
+  if (!hiUp || Number.isNaN(new Date(`${lo}Z`).getTime())) return null;
+  return { lo, hiUp, minDay: lo.slice(0, 10), maxDay: hi.slice(0, 10) };
 }
 
 /** Rentang kolom `col` di segmen ini, bila diketahui. */

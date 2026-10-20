@@ -24,6 +24,7 @@ import {
   validDateSql,
 } from "@/features/ingest/period-setup-plan";
 import type { PeriodGrain } from "@/features/ingest/period";
+import { PERIOD_POSITION_TAKEN, periodPositionTaken } from "@/features/query/period-column";
 import { runOnParquet, sourceOf, type QueryDeps } from "@/features/query/service";
 import { queryDeps } from "@/features/query/runtime";
 import type { SegmentFile } from "@/features/query/source";
@@ -266,6 +267,11 @@ async function distribution(
 ): Promise<Distribution> {
   if (!s.typedKey || !s.schema || s.segments.length !== 1) {
     return { ok: false, message: `Sheet “${s.name}”: ${MULTI_SEGMENT}` };
+  }
+  // Posisi kolom sistem Periode (T-058) harus bebas: kolom sungguhan selalu ≤ MAX_COLUMN (batas ingest),
+  // tapi skema yang melanggarnya tidak boleh menjadi sheet periode (kolom Periode akan tertutup).
+  if (periodPositionTaken(s.schema)) {
+    return { ok: false, message: `Sheet “${s.name}”: ${PERIOD_POSITION_TAKEN}` };
   }
   const col = choice.source === "COLUMN" ? periodColumnOf(s.schema, choice.column) : null;
   if (choice.source === "COLUMN" && !col) {
