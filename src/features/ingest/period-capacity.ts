@@ -43,6 +43,8 @@ export interface PeriodCapacity {
   projection: CapacityProjection | null;
   /** lineageId → nama sheet (hanya bila > 1 sheet; satu sheet tidak perlu disebut). */
   sheetNames: Record<string, string>;
+  /** Sheet logis data aktif (perkiraan baris file hanya dibandingkan dengan batas per sheet bila 1). */
+  sheetCount: number;
 }
 
 /** Masukan computePeriodPlan dari sheet aktif (periode → sheet → baris/byte). */
@@ -77,7 +79,10 @@ export function periodCapacity(a: {
     active,
     incoming: [],
     incomingSheets: [],
-    settings: a.settings,
+    // Meter = data aktif apa adanya: dengan EVICT_OLDEST rencana tanpa unggahan akan "melepas" periode
+    // yang sudah melewati batas (mis. Simpan N diturunkan) dan meter menampilkan angka sesudah pelepasan.
+    // REJECT tidak pernah melepas, jadi usage = data aktif (review T-055 #1).
+    settings: { keepPeriods: a.settings.keepPeriods, onLimit: "REJECT" },
     limits: a.limits,
   });
   const projection = capacityProjection(
@@ -97,6 +102,7 @@ export function periodCapacity(a: {
     usage: plan.usage,
     warn: plan.usage.some((u) => u.warn),
     projection,
+    sheetCount: a.sheets.length,
     sheetNames:
       a.sheets.length > 1 ? Object.fromEntries(a.sheets.map((s) => [s.lineageId, s.name])) : {},
   };
@@ -206,15 +212,18 @@ export function uploadEstimate(a: {
 }): UploadEstimate | null {
   const { capacity: c, limits: l } = a;
   const rows = a.bytesPerRow && a.bytesPerRow > 0 ? Math.round(a.fileBytes / a.bytesPerRow) : null;
+  // Perkiraan baris = seluruh file; batas baris berlaku per sheet, jadi hanya dibandingkan bila dataset
+  // satu sheet (file multi-sheet tidak bisa dibagi dengan jujur → tanpa "kemungkinan ditolak" palsu).
+  const rowsPerSheet = c.sheetCount === 1 ? rows : null;
   const bytes = Math.round(a.fileBytes * a.parquetRatio);
   const used = (name: LimitName) => c.usage.find((u) => u.limit === name)?.used ?? 0;
   const what =
     rows !== null
-      ? `Perkiraan ±${compactCount(rows)} baris dari ukuran file`
+      ? `Perkiraan ±${compactCount(rows)} baris di seluruh file (dari ukuran file)`
       : `Perkiraan ±${gbNum(bytes)} GB setelah diproses`;
   let likely: UploadEstimate["likely"] = null;
   let why = "";
-  if (rows !== null && rows > l.sheetMaxRows) {
+  if (rowsPerSheet !== null && rowsPerSheet > l.sheetMaxRows) {
     likely = "TOO_LARGE";
     why = `, melebihi batas ${compactCount(l.sheetMaxRows)} baris per sheet: kemungkinan ditolak`;
   } else if (bytes > l.datasetMaxBytes) {
@@ -224,7 +233,7 @@ export function uploadEstimate(a: {
     a.newPeriod !== false &&
     (c.periods + 1 > c.keep ||
       used("sheetSegments") + 1 > l.sheetMaxSegments ||
-      (rows !== null && used("sheetRows") + rows > l.sheetMaxRows) ||
+      (rowsPerSheet !== null && used("sheetRows") + rowsPerSheet > l.sheetMaxRows) ||
       used("datasetBytes") + bytes > l.datasetMaxBytes)
   ) {
     likely = c.onLimit === "EVICT_OLDEST" ? "EVICT" : "REJECT";
@@ -276,9 +285,11 @@ export function initPeriodRejection(a: {
     ],
     incomingSheets: lineages,
     settings: a.settings,
-    limits: a.limits,
+    // Sheet mana yang benar-benar berisi baris belum diketahui (slice 0 baris di semua sheet akan
+    // menghitung segmen yang mungkin tidak ditulis): batas periode per sheet diputuskan worker.
+    limits: { ...a.limits, sheetMaxSegments: Number.MAX_SAFE_INTEGER },
   });
   const r = plan.rejection;
-  if (!r || (r.limit !== "periods" && r.limit !== "sheetSegments")) return null;
+  if (!r || r.limit !== "periods") return null;
   return r.message;
 }

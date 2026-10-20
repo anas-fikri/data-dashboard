@@ -96,6 +96,21 @@ describe("AC3: meter dan proyeksi kapasitas", () => {
     expect(cap([sheet(3, 100, 1000)]).warn).toBe(false);
   });
 
+  it("review #1: data aktif sudah melewati batas (Simpan N diturunkan) → meter apa adanya di kedua mode", () => {
+    for (const onLimit of ["REJECT", "EVICT_OLDEST"] as const) {
+      const c = cap([sheet(24, 100, 1000)], 12, onLimit);
+      expect(c.onLimit).toBe(onLimit);
+      expect(c.periods).toBe(24);
+      expect(c.usage.find((u) => u.limit === "periods")).toMatchObject({
+        used: 24,
+        max: 12,
+        warn: true,
+      });
+      expect(c.usage.find((u) => u.limit === "sheetRows")).toMatchObject({ used: 2400 });
+      expect(capacityMeterLine(c)).toMatch(/^24 dari 12 periode · 2.400 dari 10 jt baris/);
+    }
+  });
+
   it("angka ringkas", () => {
     expect(compactCount(12_950)).toBe("12.950");
     expect(compactCount(1_000_000)).toBe("1,0 jt");
@@ -125,7 +140,7 @@ describe("AC3: perkiraan saat init (hanya peringatan)", () => {
     const e = est(cap([sheet(3, 100, 1000)]), 1_400_000_000, 100);
     expect(e).toMatchObject({ rows: 14_000_000, likely: "TOO_LARGE" });
     expect(e!.message).toBe(
-      "Perkiraan ±14 jt baris dari ukuran file, melebihi batas 10 jt baris per sheet: kemungkinan ditolak. Ini hanya perkiraan; batas diperiksa pasti setelah file dibaca.",
+      "Perkiraan ±14 jt baris di seluruh file (dari ukuran file), melebihi batas 10 jt baris per sheet: kemungkinan ditolak. Ini hanya perkiraan; batas diperiksa pasti setelah file dibaca.",
     );
   });
 
@@ -146,6 +161,17 @@ describe("AC3: perkiraan saat init (hanya peringatan)", () => {
       rows: 2_000_000,
       likely: "REJECT",
     });
+  });
+
+  it("review #3: dataset multi-sheet → baris seluruh file tidak dibandingkan dengan batas per sheet", () => {
+    const two = cap([sheet(3, 100, 1000, "l1", "A"), sheet(3, 100, 1000, "l2", "B")]);
+    expect(est(two, 1_400_000_000, 100)).toBeNull();
+    const nearFull = cap([sheet(9, 1_000_000, 1000, "l1", "A"), sheet(9, 10, 1000, "l2", "B")]);
+    const e = est(nearFull, 200_000_000, 100);
+    expect(e).toMatchObject({ rows: 2_000_000, likely: null });
+    expect(e!.message).toMatch(
+      /^Perkiraan ±2,0 jt baris di seluruh file \(dari ukuran file\): masih dalam batas/,
+    );
   });
 
   it("tanpa riwayat file sejenis: perkiraan byte saja; tanpa masalah dan di bawah ambang → null", () => {
@@ -182,6 +208,19 @@ describe("penegakan saat init: unggahan label yang pasti melewati batas periode"
     expect(reject("2023-12-01", 3, "EVICT_OLDEST")).toMatch(
       /^Periode Desember 2023 di luar batas simpan 3 periode/,
     );
+  });
+
+  it("review #2: batas periode per sheet tidak diputuskan di init (sheet berisi baris belum diketahui)", () => {
+    const limits = { ...LIMITS, sheetMaxSegments: 3 };
+    expect(
+      initPeriodRejection({
+        grain: "MONTH",
+        sheets: [sheet(3, 100, 1000, "l1"), sheet(1, 100, 1000, "l2")],
+        label: "2024-04-01",
+        settings: { keepPeriods: 24, onLimit: "REJECT" },
+        limits,
+      }),
+    ).toBeNull();
   });
 
   it("mengganti periode yang ada atau jendela belum penuh → tidak ditolak di init", () => {

@@ -382,10 +382,14 @@ export function UploadPanel({
       </p>
 
       {state.kind === "done" ? <FocusNotice>{`"${state.name}" terunggah.`}</FocusNotice> : null}
-      {state.kind === "done" ||
-      ((state.kind === "running" || state.kind === "paused") && state.choice?.mode === "PERIOD") ? (
-        <UploadEstimateNotice estimate={estimate} />
-      ) : null}
+      {/* Wilayah live selalu ada: perkiraan init diumumkan sopan saat muncul (review T-055 #4). */}
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {state.kind === "done" ||
+        ((state.kind === "running" || state.kind === "paused") &&
+          state.choice?.mode === "PERIOD") ? (
+          <UploadEstimateNotice estimate={estimate} />
+        ) : null}
+      </div>
       {state.kind === "cancelled" ? <FocusNotice>Unggahan dibatalkan.</FocusNotice> : null}
       {state.kind === "discarded" ? (
         <div data-testid="version-discard-result">

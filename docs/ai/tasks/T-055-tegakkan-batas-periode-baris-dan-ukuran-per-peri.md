@@ -11,7 +11,7 @@ depends_on:
   - T-054
   - T-039
 created: "2026-10-15T02:30:58Z"
-updated: "2026-10-20T15:36:46Z"
+updated: "2026-10-20T15:44:00Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,7 +21,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 198373
+    duration_ms: 190492
     summary: |-
       …t
       > vitest run
@@ -29,23 +29,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792510547184,"service":"data-dashboard","host":"127.0.0.1","port":35033,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792510547247,"service":"data-dashboard","host":"127.0.0.1","port":33333,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792510547350,"service":"data-dashboard","host":"127.0.0.1","port":37765,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792510547467,"service":"data-dashboard","host":"127.0.0.1","port":44041,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792510555401,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792510568401,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792510568424,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792510568427,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792510568435,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792510988396,"service":"data-dashboard","host":"127.0.0.1","port":40489,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792510988455,"service":"data-dashboard","host":"127.0.0.1","port":35751,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792510988559,"service":"data-dashboard","host":"127.0.0.1","port":42097,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792510988670,"service":"data-dashboard","host":"127.0.0.1","port":39853,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792510995871,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792511010380,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792511010402,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792511010405,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792511010415,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  187 passed | 1 skipped (188)
-            Tests  2434 passed | 10 skipped (2444)
-         Start at  15:34:20
-         Duration  136.74s (tests 84%, import 13%, transform 3%)
+            Tests  2437 passed | 10 skipped (2447)
+         Start at  15:41:45
+         Duration  133.09s (tests 84%, import 13%, transform 2%)
 
-          Isolate  188 workers spawned · ~158ms startup each (spawn + environment, per file)
-                   at least ~9.75s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  188 workers spawned · ~150ms startup each (spawn + environment, per file)
+                   at least ~9.22s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -53,8 +53,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T15:36:38Z"
-    tree: 72d60dd49e86bfc3836e578b3aeffc2f9d317283f76926be6d1a91551daaa6ba
+    at: "2026-10-20T15:44:00Z"
+    tree: 28f8695f06be46d78d7c90dbc8e10c8da18063d402a3076ee04ba5b7e26ba573
   audit:
     at: "2026-10-20T15:32:47Z"
     passed: true
@@ -122,6 +122,10 @@ jujur di kartu Periode dan panel unggah saat pemakaian ≥ PERIOD_WARN_PCT.
     hanya disebut di baris meter bila mendekati.
   - Perkiraan init ditampilkan panel selama unggahan dan sesudahnya (unggahan yang dilanjutkan tidak
     menghitung ulang; perkiraan sebelumnya dipertahankan di tab yang sama).
+- Review putaran 1 (1 blokir): #1 meter memakai rencana REJECT (data aktif apa adanya) walau pemilik memilih
+  EVICT_OLDEST — sebelumnya "12 dari 12" untuk 24 periode aktif dengan Simpan 12; #2 init hanya menolak
+  batas jumlah periode (periode per sheet diputuskan worker); #3 perkiraan baris = seluruh file, hanya
+  dibandingkan dengan batas per sheet pada dataset satu sheet; #4 perkiraan di wilayah live sopan.
 - Tidak dicek: tampilan meter di ponsel dengan axe (komponen kotak teks biasa, pola sama dengan banner
   T-054); kuota pengguna tidak ikut di baris meter (AC tidak memintanya; contoh §5.4 menyebutnya).
 
