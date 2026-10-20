@@ -1,7 +1,7 @@
 ---
 id: T-040
 title: Jalankan ubah tipe kolom/recast sebagai job per segmen
-status: in_progress
+status: in_review
 profile: standard
 goal: G-6
 tags:
@@ -10,36 +10,42 @@ tags:
 depends_on:
   - T-037
 created: "2026-10-15T02:30:55Z"
-updated: "2026-10-19T23:40:33Z"
+updated: "2026-10-20T01:04:43Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: worktree-t-001-scaffold
 base: c1c8b0aa5fad938d37d2afe59c41499e085bba4f
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T01:03:00Z"
+      findings: 3
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 168388
+    duration_ms: 70066
     summary: |-
-      …code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792453132539,"service":"data-dashboard","host":"127.0.0.1","port":50489,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792453132550,"service":"data-dashboard","host":"127.0.0.1","port":50498,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792453132589,"service":"data-dashboard","host":"127.0.0.1","port":50500,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792453132617,"service":"data-dashboard","host":"127.0.0.1","port":50504,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792453145243,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792453145268,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792453145271,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792453145304,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792453150446,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      …"code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792458247120,"service":"data-dashboard","host":"127.0.0.1","port":51496,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792458247132,"service":"data-dashboard","host":"127.0.0.1","port":51505,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792458247145,"service":"data-dashboard","host":"127.0.0.1","port":51507,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792458247169,"service":"data-dashboard","host":"127.0.0.1","port":51511,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792458247283,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792458252290,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792458252312,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792458252317,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792458252322,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  163 passed (163)
-            Tests  2111 passed (2111)
-         Start at  06:38:26
-         Duration  123.06s (tests 78%, import 18%, transform 3%)
+            Tests  2112 passed (2112)
+         Start at  08:03:51
+         Duration  49.46s (tests 80%, import 16%, transform 4%)
 
-          Isolate  163 workers spawned · ~476ms startup each (spawn + environment, per file)
-                   at least ~8.15s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  163 workers spawned · ~207ms startup each (spawn + environment, per file)
+                   at least ~3.55s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -47,8 +53,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-19T23:40:33Z"
-    tree: 4079170d19be085a8e404e69f268df9ed4de8c3f971ced8a987adefeecae5761
+    at: "2026-10-20T01:04:43Z"
+    tree: cc322764955722120c0a220964786e064447cdf62d9637be6e24907fda27e9b0
 ---
 
 ## Objective
@@ -66,7 +72,7 @@ Impact:
   - recast tanpa perubahan cast tidak lagi menulis file baru (revisi tetap naik);
   - file lama dibaca profilnya sekali pada recast pertama.
 - **Ingest dan pemetaan:** ikut menyimpan profil raw (JSONB kecil, field ≠ 0) per file typed.
-- **Antrean:** job recast kini berprioritas di bawah pemetaan, dan worker recast menunggu selama ingest berjalan.
+- **Antrean:** job recast kini berprioritas di bawah pemetaan. Selama ingest dataset lain berjalan atau pemetaan antre, job ditunda sebentar dan dilanjutkan dari titik lanjut ("yield").
 - **UI:** banner koreksi skema menampilkan "Segmen k dari N" bila N ≥ 2.
 - **Migrasi:** satu kolom JSONB nullable, tanpa pemindahan data.
 - **Batasan baru:** sheet beberapa segmen tidak bisa memilih ulang baris judul (belum ada di produksi).
@@ -104,7 +110,6 @@ Validation:
   - T-016: status polling recast tetap memeriksa kepemilikan sheet aktif; progres hanya angka.
   - T-017: ekspor membaca sumber lewat `sheetSource`/`withSegments` (T-037), tidak diubah.
 - **Batasan yang diketahui:**
-  - Recast aktif tidak memberi jalan ke job pemetaan yang datang setelahnya (concurrency 1). Prioritas hanya berlaku untuk job yang antre, dan untuk ingest yang sedang berjalan (ditunggu).
-  - Indeks job berjalan per sheet ber-TTL 2 jam: recast > 2 jam memungkinkan koreksi kedua masuk antrean. Koreksi itu menunggu "busy" ≤ 30 menit, lalu diulang dengan backoff.
+  - Review putaran 1 (claude-reviewer-subagent: 0 Critical/High, 3 Medium, 6 Low) sudah diperbaiki: M1 tidak mengalah pada ingest dataset yang sama; M2 "yield" melepas slot antrean, bukan tidur; M3 indeks sheet diperpanjang per segmen dan batas "busy" dihitung sejak mulai menunggu; L1 `dropTyped` lewat DELETE … RETURNING dan kunci kembar tidak dihapus (dicek di DB dev); L2 semua ordinal dicek saat swap; L5 lookup tertunda per segmen; L6a fixture memakai skema sheet. L3/L4 → task lanjutan; L6b selesai bersama M2 (progres hanya saat segmen benar-benar mulai).
   - Asumsi raw `c<pos>` = posisi kanonik ≤ `colCount` segmen. Pemetaan periode (T-055) perlu peta kolom per segmen bila urutan kolom file berbeda.
 - **e2e AC2 (worker dibunuh) tidak dijalankan:** lock job BullMQ 5 menit membuat stalled baru terdeteksi setelah ≥ 5 menit. Perilaku resume diuji di unit dengan DuckDB sungguhan + uji mutasi.

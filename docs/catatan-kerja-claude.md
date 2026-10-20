@@ -53,17 +53,22 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
-## Posisi terakhir (2026-10-20)
+## Posisi terakhir (2026-10-20, checkpoint)
 
-- Task aktif: **T-040** (recast per segmen), commit `b30aea5` + catatan `9298e14`. Review putaran 1
-  (subagen): 0 Critical/High, 3 Medium, 6 Low. Sedang diperbaiki:
-  - M1: jangan mengalah pada ingest dataset yang sama (koreksi skema jadi "stale");
-  - M2: saat ingest lain berjalan, recast melepas slot antrean (job ditunda, dilanjutkan dari titik
-    simpan) agar job pemetaan tidak tertahan;
-  - M3: TTL indeks job berjalan per sheet diperpanjang per segmen; batas tunggu "busy" dihitung sejak
-    mulai menunggu, bukan sejak job dibuat;
-  - L1 (`dropTyped` hanya kunci yang benar terhapus), L2 (cek semua ordinal saat swap), L5 (lookup
-    tertunda per segmen), L6a (`scripts/dev-segments.ts` memakai keputusan tipe tingkat sheet);
-  - L3/L4 (baris judul + peta kolom per segmen untuk unggahan periode) → task lanjutan sebelum T-052.
+- Task aktif: **T-040** (recast per segmen), status in_progress. Kode + perbaikan review putaran 1 sudah
+  di-commit dan di-push (commit "fix(T-040): review putaran 1 …").
+  - Bukti: `aitk check` lulus; unit ingest/schema/versions 324 lulus; e2e `recast-segments` 1/1 (log
+    worker: satu "yield" lalu "done"); `schema` 7/7, `ingest` 4/4, `mapping` 4/4, `versions` 7/7
+    (sebelum perbaikan).
+  - Review putaran 1 sudah dicatat (claude-reviewer-subagent, 3 temuan fungsional M1–M3, semuanya
+    diperbaiki bersama L1/L2/L5/L6a; rincian di Notes task).
+- **Langkah berikutnya untuk menutup T-040:**
+  1. `aitk brief`, lalu baca diff commit perbaikan review putaran 1.
+  2. Bila tidak ada temuan Critical/High/fungsional: `AITK_TOOL=claude-code aitk review pass --findings 0`.
+  3. `aitk task update T-040 --ac-done 1,2,3,4`, isi `aitk security checklist`, `aitk audit`,
+     `aitk check`, lalu `aitk close --summary "…" --knowledge "…"`.
+  4. Commit "chore(aitk): T-040 selesai", lalu push (cek 404 dulu).
+- Task lanjutan baru: **T-gcn8** (baris judul + peta kolom per segmen, hasil review L3/L4) — kerjakan
+  sebelum unggahan periode (T-052).
 - Setelah T-040: G-6 lanjut T-041…T-064, lalu T-rrn1. Produksi masih tertinggal (deploy14 + migrasi
   T-036…T-040 belum dijalankan; perlu backup DB, `check-segments.mjs`, `quota-report.mjs`).
