@@ -1,8 +1,8 @@
 ---
 id: T-058
 title: Tambahkan kolom sistem 'Periode', pemangkasan segmen, dan pemilih periode
-status: in_progress
-profile: standard
+status: done
+profile: strict
 goal: G-6
 tags:
   - query
@@ -12,17 +12,82 @@ depends_on:
   - T-052
   - T-044
 created: "2026-10-15T02:30:58Z"
-updated: "2026-10-20T18:48:45Z"
+updated: "2026-10-20T18:52:43Z"
+closed: "2026-10-20T18:52:43Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 4060d62cf7729b01c97f60b4a4676c9c8ef384b8
+paths:
+  - playwright.config.ts
+  - src/app/(app)/datasets/[id]/data/page.tsx
+  - src/components/dashboards/add-filter-column-menu.tsx
+  - src/components/dashboards/filters/date-panel.tsx
+  - src/components/dashboards/filters/filter-model.ts
+  - src/components/dashboards/filters/filter-text.ts
+  - src/components/dashboards/pivot-config-model.ts
+  - src/components/dashboards/widget-config-model.ts
+  - src/components/dashboards/widget-config.tsx
+  - src/components/grid/grid-export.tsx
+  - src/components/grid/grid-fetch.ts
+  - src/components/grid/grid-filter-dialog.tsx
+  - src/components/grid/grid-model.ts
+  - src/components/grid/grid-period-picker.tsx
+  - src/components/grid/sheet-grid.tsx
+  - src/components/grid/use-grid-values.ts
+  - src/components/widgets/table-view.tsx
+  - src/components/widgets/widget-query.ts
+  - src/features/dashboards/filter-columns.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/job.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/exports/sql.ts
+  - src/features/exports/types.ts
+  - src/features/ingest/infer.ts
+  - src/features/query/filter-values.ts
+  - src/features/query/filters.ts
+  - src/features/query/grid-page.ts
+  - src/features/query/grid-repo.ts
+  - src/features/query/grid-service.ts
+  - src/features/query/grid.ts
+  - src/features/query/period-column.ts
+  - src/features/query/prune.ts
+  - src/features/query/runtime.ts
+  - src/features/query/service.ts
+  - src/features/query/source.ts
+  - src/features/query/spec.ts
+  - src/features/query/table.ts
+  - src/features/query/widget.ts
+  - src/features/versions/activation.ts
+  - src/features/versions/period-setup.ts
+  - src/features/widgets/remap.ts
+  - src/features/widgets/spec.ts
+  - tests/components/widget-config.test.ts
+  - tests/e2e/period-query.spec.ts
+  - tests/features/dashboards/dashboards.test.ts
+  - tests/features/query/grid-page.test.ts
+  - tests/features/query/grid-period.test.ts
+  - tests/features/query/period-column.test.ts
+  - tests/features/query/period-query.test.ts
+  - tests/features/query/prune.test.ts
+  - tests/features/query/source.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T18:49:02Z"
+      findings: 2
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T18:49:03Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 189075
+    duration_ms: 189092
     summary: |-
       …t
       > vitest run
@@ -30,23 +95,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792522074969,"service":"data-dashboard","host":"127.0.0.1","port":33419,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792522075035,"service":"data-dashboard","host":"127.0.0.1","port":45645,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792522075134,"service":"data-dashboard","host":"127.0.0.1","port":39113,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792522075237,"service":"data-dashboard","host":"127.0.0.1","port":45933,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792522082927,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792522090523,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792522090545,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792522090552,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792522090565,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792522283860,"service":"data-dashboard","host":"127.0.0.1","port":40675,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792522283915,"service":"data-dashboard","host":"127.0.0.1","port":35185,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792522284014,"service":"data-dashboard","host":"127.0.0.1","port":46119,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792522284121,"service":"data-dashboard","host":"127.0.0.1","port":36269,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792522291640,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792522299684,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792522299707,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792522299711,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792522299724,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  193 passed | 1 skipped (194)
             Tests  2562 passed | 10 skipped (2572)
-         Start at  18:46:32
-         Duration  130.77s (tests 84%, import 13%, transform 2%)
+         Start at  18:50:00
+         Duration  130.92s (tests 84%, import 13%, transform 3%)
 
-          Isolate  194 workers spawned · ~151ms startup each (spawn + environment, per file)
-                   at least ~9.59s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  194 workers spawned · ~149ms startup each (spawn + environment, per file)
+                   at least ~9.50s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -54,12 +119,127 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T18:48:45Z"
+    at: "2026-10-20T18:52:12Z"
     tree: 5e7c6a9bdee18e894543bdd55a7ed05890a4278cab43a087cdbdca5a627b5d0c
+  commits:
+    - 08ca5b4
+    - 0cb153a
+    - "1220871"
+    - 14bbbc8
+    - 17d81a7
+    - 18b74cc
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 277b913
+    - 27924c4
+    - 27986dc
+    - 29fe0f3
+    - 2d7b316
+    - 337259e
+    - 35f92f6
+    - 3602b55
+    - 36afc9f
+    - 3b96186
+    - 3bb3baa
+    - 4060d62
+    - 4679db1
+    - 49f49a5
+    - 4bd9881
+    - 4e9a95e
+    - 4eea84c
+    - 5101f51
+    - 538221d
+    - 5603fc7
+    - 56a8447
+    - 56e4d6d
+    - 57df970
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 686497c
+    - 69b8953
+    - 6a7cef1
+    - 6b3ee3f
+    - 70136f5
+    - "7187327"
+    - 75cf456
+    - 76e3ce7
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - 7d64743
+    - 7f238c4
+    - 7f9a7c7
+    - "8570e80"
+    - 8f6ef33
+    - 8f8df38
+    - 8fc3abc
+    - 90e4e63
+    - 9159d7c
+    - "9298e14"
+    - 930dd6d
+    - 94bea50
+    - 94d85a4
+    - 9bd7e54
+    - 9ced9f4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - a5360dd
+    - a687d4c
+    - a8f9162
+    - acb27a6
+    - ae4e5a2
+    - af1994a
+    - b0b99d8
+    - b20b40b
+    - b30aea5
+    - b32d50d
+    - b42141b
+    - b8e59ee
+    - b933279
+    - ba2efef
+    - bafb4ad
+    - bcbddee
+    - c15362c
+    - c1c8b0a
+    - c2fd95c
+    - c3626c9
+    - c76c343
+    - ca5782f
+    - ccd0a9a
+    - ce26ca5
+    - ce5d6a7
+    - ce649d0
+    - cf28ad3
+    - cf730c5
+    - d32a8ea
+    - d4c2029
+    - d557c9e
+    - d602f56
+    - da46e35
+    - dfc2ebb
+    - dff9b8c
+    - e24e070
+    - e2f1df7
+    - e51fcb4
+    - f197114
+    - f3ea697
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
+    - f87b0a1
+    - f9d43c6
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 4
+    done: 4
   audit:
-    at: "2026-10-20T18:38:04Z"
+    at: "2026-10-20T18:52:13Z"
     passed: true
-    tree: 4f5946d9ddc9ebd80cad5c8c2ddc2a8ab5cd4f15f6684df2f272819009d84bdb
+    tree: 5e7c6a9bdee18e894543bdd55a7ed05890a4278cab43a087cdbdca5a627b5d0c
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -67,7 +247,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 505 dirs visited, 3349 inodes visited, 1 Extract calls, 242.017274ms elapsed, 242.017697ms wall time
+          End status: 505 dirs visited, 3455 inodes visited, 1 Extract calls, 239.197337ms elapsed, 239.197707ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -160,3 +340,11 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada unggahan/path baru; path parquet tetap dari cache sewa.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: body rows/values/stats/ekspor strict zod dengan `period` baru; rate limit tidak berubah.
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak ada konfigurasi baru.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T18:52:12Z (189092 ms)
+- Acceptance criteria: 4/4 satisfied
+- Commits: 08ca5b4, 0cb153a, 1220871, 14bbbc8, 17d81a7, 18b74cc, 1b2b9ab, 23e5ae9, 258a139, 277b913, 27924c4, 27986dc, 29fe0f3, 2d7b316, 337259e, 35f92f6, 3602b55, 36afc9f, 3b96186, 3bb3baa, 4060d62, 4679db1, 49f49a5, 4bd9881, 4e9a95e, 4eea84c, 5101f51, 538221d, 5603fc7, 56a8447, 56e4d6d, 57df970, 59ec9a3, 6123427, 62ec216, 686497c, 69b8953, 6a7cef1, 6b3ee3f, 70136f5, 7187327, 75cf456, 76e3ce7, 7824e56, 7ae2840, 7af4484, 7d64743, 7f238c4, 7f9a7c7, 8570e80, 8f6ef33, 8f8df38, 8fc3abc, 90e4e63, 9159d7c, 9298e14, 930dd6d, 94bea50, 94d85a4, 9bd7e54, 9ced9f4, a019f8f, a03481c, a0e1646, a5360dd, a687d4c, a8f9162, acb27a6, ae4e5a2, af1994a, b0b99d8, b20b40b, b30aea5, b32d50d, b42141b, b8e59ee, b933279, ba2efef, bafb4ad, bcbddee, c15362c, c1c8b0a, c2fd95c, c3626c9, c76c343, ca5782f, ccd0a9a, ce26ca5, ce5d6a7, ce649d0, cf28ad3, cf730c5, d32a8ea, d4c2029, d557c9e, d602f56, da46e35, dfc2ebb, dff9b8c, e24e070, e2f1df7, e51fcb4, f197114, f3ea697, f54828c, f55d8d2, f5b2aa6, f87b0a1, f9d43c6, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 2 findings
+- Review pass 2 by claude-code: 0 findings
