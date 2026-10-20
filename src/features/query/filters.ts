@@ -347,6 +347,13 @@ export const valuesClause = (
   c: ColumnSchema,
 ): DashClause | null => toClause({ column: c.name, op, values }, c, "");
 
+/**
+ * Klausa satu filter berbentuk filter dashboard untuk kolom skema tertentu (saringan Lihat data T-041:
+ * kolom dirujuk lewat posisi, bukan nama). null bila nilai/rentang tidak cocok tipe kolom.
+ */
+export const columnClause = (f: DashFilter, c: ColumnSchema, now: Date): DashClause | null =>
+  toClause(f, c, todayJakarta(now));
+
 export function applyDashFilters(
   filters: DashFilter[],
   schema: ColumnSchema[],

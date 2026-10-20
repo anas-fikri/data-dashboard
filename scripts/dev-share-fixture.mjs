@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Dev/e2e saja (akses DB langsung, menolak NODE_ENV=production):
-//   node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR|ORG>
+//   node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR|ORG> [datasetId]
+// (datasetId: dashboard dibuat di dataset pemilik yang sudah ada, mis. uji Lihat data T-041)
 // → dataset kosong + 1 dashboard milik pemilik, dibagikan ke penerima dengan peran itu, atau (ORG)
 //   dibagikan ke seluruh organisasi tanpa share per orang (uji peran panduan T-022). Data ikut
 //   terhapus dev-purge-test-data bersama akun uji.
@@ -17,7 +18,7 @@ if (process.env.NODE_ENV === "production") {
   console.error("menolak: NODE_ENV=production");
   process.exit(1);
 }
-const [ownerEmail, userEmail, role] = process.argv.slice(2);
+const [ownerEmail, userEmail, role, datasetId] = process.argv.slice(2);
 if (!ownerEmail || !userEmail || !["VIEWER", "EDITOR", "ORG"].includes(role)) {
   console.error(
     "pakai: node scripts/dev-share-fixture.mjs <emailPemilik> <emailPenerima> <VIEWER|EDITOR|ORG>",
@@ -35,9 +36,11 @@ try {
     ),
   );
   const name = `Bagikan ${Date.now()}`;
-  const dataset = await prisma.dataset.create({
-    data: { ownerId: owner.id, name, nameKey: name.toLowerCase() },
-  });
+  const dataset = datasetId
+    ? await prisma.dataset.findFirstOrThrow({ where: { id: datasetId, ownerId: owner.id } })
+    : await prisma.dataset.create({
+        data: { ownerId: owner.id, name, nameKey: name.toLowerCase() },
+      });
   const dashboard = await prisma.dashboard.create({
     data: { datasetId: dataset.id, name, nameKey: name.toLowerCase(), orgShared: role === "ORG" },
   });

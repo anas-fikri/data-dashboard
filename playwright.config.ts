@@ -27,6 +27,7 @@ export default defineConfig({
         /ingest\.spec\.ts$/,
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
+        /grid\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -55,7 +56,9 @@ export default defineConfig({
       testMatch: /recast-segments\.spec\.ts$/,
       dependencies: ["schema"],
     },
-    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["recast-segments"] },
+    // T-041: jendela baris Lihat data (worker sendiri untuk ingest fixture kecil).
+    { name: "grid", testMatch: /grid\.spec\.ts$/, dependencies: ["recast-segments"] },
+    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["grid"] },
     // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
     // backup (T-7psf) + smtp (T-byys): status.json / smtp.json di folder dev bersama berlaku untuk semua

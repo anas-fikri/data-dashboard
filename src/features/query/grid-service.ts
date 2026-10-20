@@ -1,0 +1,322 @@
+/*
+ * Layanan jendela baris "Lihat data" (T-041): akses pemilik/editor, cek versi, lalu jendela baris atau
+ * satu sel. Dependensi diinjeksi (repo + mesin query + cache parquet) agar bisa diuji tanpa layanan;
+ * perakitan produksi di grid-http.ts. Body jawaban gagal tidak pernah memuat nama kolom/sheet.
+ */
+import type { ColumnSchema } from "@/features/ingest/infer";
+import {
+  buildGridCountSql,
+  buildRawCellSql,
+  buildSortedWindowSql,
+  buildTypedCellSql,
+  buildWindowSql,
+  isPlainWindow,
+  planGrid,
+  rawColumn,
+  rowsBodySchema,
+  windowParts,
+  type GridPlan,
+} from "./grid";
+import {
+  fail,
+  RESULT_MAX_BYTES,
+  rowBytes,
+  runOnParquet,
+  toJson,
+  type QueryDeps,
+  type QueryFailure,
+} from "./service";
+import { sheetSource, type ParquetSource, type SegmentFile } from "./source";
+
+/** File typed di manifest + data segmennya (jumlah baris, raw, peta kolom, nama file sumber). */
+export interface GridSegment extends SegmentFile {
+  /** Baris data di file typed; null = file lama (belum diukur) → jalur umum. */
+  dataRows: number | null;
+  rowBase: number;
+  maxSrcRow: number | null;
+  rawKey: string;
+  colMap: number[];
+  fileName: string | null;
+}
+
+export interface GridSheet {
+  versionId: string;
+  versionStatus: string;
+  activeVersionId: string | null;
+  /** Peran peminta pada dataset sheet ini (null = tidak ada akses atau hanya viewer). */
+  role: "OWNER" | "EDITOR" | null;
+  typedKey: string | null;
+  rawKey: string;
+  fileName: string | null;
+  schemaRevision: number;
+  schema: ColumnSchema[] | null;
+  segments: GridSegment[];
+}
+
+export interface GridRepo {
+  /** Sheet + peran peminta (satu kali baca, tanpa cache); null = sheet tidak ada. */
+  sheet(userId: string, sheetId: string): Promise<GridSheet | null>;
+}
+
+export type GridDeps = Omit<QueryDeps, "repo" | "cache"> & { repo: GridRepo };
+
+/**
+ * Versi non-aktif yang boleh dipratinjau pemiliknya (G-6 §3.4). Status AWAITING_CONFIRM datang bersama
+ * unggahan periode (Bagian B); sampai ada, tidak ada versi non-aktif yang lolos.
+ */
+export const PREVIEW_STATUSES: readonly string[] = ["AWAITING_CONFIRM"];
+
+export type GridCode = "FORBIDDEN" | "VERSION_CHANGED" | QueryFailure["code"];
+export type GridFailure = {
+  ok: false;
+  code: GridCode;
+  message: string;
+  activeVersionId?: string | null;
+};
+
+const forbidden = (): GridFailure => ({
+  ok: false,
+  code: "FORBIDDEN",
+  message: "Anda tidak punya akses ke data ini.",
+});
+const invalid = (message = "Permintaan tidak valid."): GridFailure => ({
+  ok: false,
+  code: "INVALID",
+  message,
+});
+
+export interface GridRow {
+  /** Nomor baris di tampilan (1-based). */
+  n: number;
+  _row: number;
+  cells: unknown[];
+  /** Indeks sel (dalam `cols`) yang teksnya dipotong. */
+  cut: number[];
+}
+
+export interface GridRows {
+  ok: true;
+  versionId: string;
+  schemaRevision: number;
+  total: number;
+  filteredTotal: number;
+  rows: GridRow[];
+}
+
+/**
+ * Akses + versi: pemilik/editor saja (viewer, pengguna asing, dan sheet tak dikenal → FORBIDDEN yang
+ * sama). versionId harus versi sheet dan versi aktif; pengecualian: pemilik pada versi pratinjau.
+ */
+async function authorize(
+  userId: string,
+  sheetId: string,
+  versionId: string,
+  repo: GridRepo,
+): Promise<{ ok: true; sheet: GridSheet & { schema: ColumnSchema[] } } | GridFailure> {
+  const sheet = await repo.sheet(userId, sheetId);
+  if (!sheet || !sheet.role) return forbidden();
+  const preview =
+    sheet.role === "OWNER" &&
+    sheet.versionId === versionId &&
+    PREVIEW_STATUSES.includes(sheet.versionStatus);
+  const current = sheet.versionId === versionId && versionId === sheet.activeVersionId;
+  if (!current && !preview) {
+    return {
+      ok: false,
+      code: "VERSION_CHANGED",
+      message: "Data sudah diperbarui. Muat ulang untuk melihat versi terbaru.",
+      activeVersionId: sheet.activeVersionId,
+    };
+  }
+  if (!sheet.typedKey || !sheet.schema) {
+    return { ok: false, code: "NOT_READY", message: "Data sheet ini belum siap." };
+  }
+  return { ok: true, sheet: { ...sheet, schema: sheet.schema } };
+}
+
+const asFiles = (segs: GridSegment[]): SegmentFile[] =>
+  segs.map(({ typedKey, legacyRow, columns }) => ({ typedKey, legacyRow, columns }));
+
+function sourceFor(sheet: GridSheet & { schema: ColumnSchema[] }, segs: GridSegment[]) {
+  return sheetSource({ typedKey: sheet.typedKey!, schema: sheet.schema, segments: asFiles(segs) });
+}
+
+/** Baris DuckDB (`_row`, v0, [k0], v1, …) → GridRow. */
+function toRows(plan: GridPlan, rows: unknown[][], start: number): GridRow[] | null {
+  let bytes = 0;
+  const out: GridRow[] = [];
+  for (const [i, r] of rows.entries()) {
+    let k = 1;
+    const cells: unknown[] = [];
+    const cut: number[] = [];
+    plan.cols.forEach((c, j) => {
+      cells.push(toJson(r[k++], c.type));
+      if (c.type === "text" && r[k++] === true) cut.push(j);
+    });
+    bytes += rowBytes(cells);
+    if (bytes > RESULT_MAX_BYTES) return null;
+    out.push({ n: start + i + 1, _row: Number(r[0]), cells, cut });
+  }
+  return out;
+}
+
+const tooLarge = () =>
+  fail("RESULT_TOO_LARGE", "Blok baris terlalu besar. Kurangi jumlah baris atau kolom.");
+
+/** POST /api/sheets/:sheetId/rows. */
+export async function runGridRows(
+  userId: string,
+  sheetId: string,
+  body: unknown,
+  deps: GridDeps,
+): Promise<GridRows | GridFailure> {
+  const parsed = rowsBodySchema.safeParse(body);
+  if (!parsed.success) return invalid();
+  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  if (!auth.ok) return auth;
+  const { sheet } = auth;
+  const planned = planGrid(parsed.data, sheet.schema, (deps.now ?? (() => new Date()))());
+  if (!planned.ok) return invalid(planned.message);
+  const { plan } = planned;
+  const segs = sheet.segments;
+  const counts = segs.map((s) => s.dataRows);
+  const known = segs.length > 0 && counts.every((n): n is number => n !== null);
+  const total = known ? counts.reduce((a, b) => a + b, 0) : null;
+  const head = {
+    ok: true as const,
+    versionId: sheet.versionId,
+    schemaRevision: sheet.schemaRevision,
+  };
+
+  if (known && isPlainWindow(plan)) {
+    // Jalur 1: hanya segmen yang beririsan disewa.
+    const parts = windowParts(counts, plan.rowStart, plan.rowCount);
+    if (parts.length === 0) return { ...head, total: total!, filteredTotal: total!, rows: [] };
+    const used = parts.map((p) => segs[p.seg]!);
+    const key: ParquetSource =
+      used.length === 1 ? used[0]!.typedKey : { files: asFiles(used), schema: sheet.schema };
+    const r = await runOnParquet(userId, key, deps, (_p, exec, paths) =>
+      exec(
+        buildWindowSql(
+          parts.map((p, k) => ({ ...p, seg: k })),
+          asFiles(used),
+          paths,
+          plan.cols,
+        ),
+      ),
+    );
+    if (!r.ok) return r;
+    const rows = toRows(plan, r.value.rows, plan.rowStart);
+    if (!rows) return tooLarge();
+    return { ...head, total: total!, filteredTotal: total!, rows };
+  }
+
+  // Jalur 2: urut/saring/cari (atau jumlah baris segmen belum diketahui).
+  const filtered = !isPlainWindow(plan);
+  const r = await runOnParquet(userId, sourceFor(sheet, segs), deps, async (path, exec) => {
+    const out = await exec(buildSortedWindowSql(plan, path));
+    const n = await exec(buildGridCountSql(filtered ? plan : null, path));
+    const all =
+      total ?? (filtered ? Number((await exec(buildGridCountSql(null, path))).rows[0]![0]) : null);
+    const filteredTotal = Number(n.rows[0]![0]);
+    return { out, filteredTotal, total: all ?? filteredTotal };
+  });
+  if (!r.ok) return r;
+  const rows = toRows(plan, r.value.out.rows, plan.rowStart);
+  if (!rows) return tooLarge();
+  return { ...head, total: r.value.total, filteredTotal: r.value.filteredTotal, rows };
+}
+
+export interface GridCell {
+  ok: true;
+  versionId: string;
+  _row: number;
+  pos: number;
+  /** Nilai typed penuh (teks ≤ 32.767 karakter, batas ingest). */
+  value: unknown;
+  /** Isi asli dari file bila sel gagal dibaca sebagai tipenya (typed NULL, raw berisi); selain itu null. */
+  raw: string | null;
+  castFailed: boolean;
+  source: { fileName: string | null; srcRow: number; period: string | null };
+}
+
+const ROW_PARAM = /^\d{1,15}$/;
+const POS_PARAM = /^\d{1,6}$/;
+
+/** GET /api/sheets/:sheetId/cell?versionId&row&pos — `row` = `_row` (identitas baris, bukan nomor tampil). */
+export async function runGridCell(
+  userId: string,
+  sheetId: string,
+  q: { versionId: string | null; row: string | null; pos: string | null },
+  deps: GridDeps,
+): Promise<GridCell | GridFailure> {
+  if (
+    !q.versionId ||
+    !/^[a-z0-9]{20,32}$/.test(q.versionId) ||
+    !ROW_PARAM.test(q.row ?? "") ||
+    !POS_PARAM.test(q.pos ?? "")
+  ) {
+    return invalid();
+  }
+  const row = Number(q.row);
+  const pos = Number(q.pos);
+  const auth = await authorize(userId, sheetId, q.versionId, deps.repo);
+  if (!auth.ok) return auth;
+  const { sheet } = auth;
+  const col = sheet.schema.find((c) => c.pos === pos && !c.hidden);
+  if (!col) return invalid("Kolom yang diminta tidak tersedia.");
+  // Sheet tanpa manifest: satu typed + raw sheet (peta kolom identitas).
+  const segs: GridSegment[] = sheet.segments.length
+    ? sheet.segments
+    : [
+        {
+          typedKey: sheet.typedKey!,
+          legacyRow: true,
+          columns: [],
+          dataRows: null,
+          rowBase: 0,
+          maxSrcRow: null,
+          rawKey: sheet.rawKey,
+          colMap: [],
+          fileName: sheet.fileName,
+        },
+      ];
+  // Segmen baru: _row = rowBase + baris fisik (rowBase < _row ≤ rowBase + maxSrcRow); legacy: _row = fisik.
+  const candidates = segs.filter(
+    (s) =>
+      s.legacyRow || (row > s.rowBase && (s.maxSrcRow === null || row <= s.rowBase + s.maxSrcRow)),
+  );
+  for (const seg of candidates) {
+    const t = await runOnParquet(userId, seg.typedKey, deps, (path, exec) =>
+      exec(buildTypedCellSql(seg, col, path, row)),
+    );
+    if (!t.ok) return t;
+    const hit = t.value.rows[0];
+    if (!hit) continue;
+    const srcRow = Number(hit[0]);
+    const value = toJson(hit[1], col.type);
+    let raw: string | null = null;
+    const rc = rawColumn(seg.colMap, pos);
+    // Kolom yang tidak ada di file typed segmen ini = NULL sah, bukan gagal cast.
+    const inFile = seg.columns.length === 0 || seg.columns.includes(pos);
+    if (value === null && rc > 0 && inFile) {
+      const r = await runOnParquet(userId, seg.rawKey, deps, (path, exec) =>
+        exec(buildRawCellSql(rc, path, srcRow)),
+      );
+      if (!r.ok) return r;
+      const v = r.value.rows[0]?.[0];
+      raw = typeof v === "string" && v.trim() !== "" ? v : null;
+    }
+    return {
+      ok: true,
+      versionId: sheet.versionId,
+      _row: row,
+      pos,
+      value,
+      raw,
+      castFailed: raw !== null,
+      source: { fileName: seg.fileName, srcRow, period: null },
+    };
+  }
+  return { ok: false, code: "NOT_FOUND", message: "Baris tidak ditemukan." };
+}

@@ -388,7 +388,12 @@ export async function runOnParquet<T>(
   userId: string,
   key: ParquetSource,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
-  work: (path: string, exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>) => Promise<T>,
+  work: (
+    path: string,
+    exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>,
+    /** Path lokal semua file sumber, urut sumber (jendela baris T-041 membaca per segmen). */
+    paths: string[],
+  ) => Promise<T>,
 ): Promise<{ ok: true; value: T } | QueryFailure> {
   const { engine, signal } = deps;
   // Mesin palsu di test hanya punya withSlot: jatah user + global sekaligus.
@@ -415,7 +420,7 @@ export async function runOnParquet<T>(
               typeof key === "string" ? s : withSegments(s, key.files, lease.paths, key.schema);
             return engine.exec(q.sql, q.params, Math.min(left, maxMs), signal);
           };
-          return work(lease.paths[0]!, exec);
+          return work(lease.paths[0]!, exec, lease.paths);
         }, waitLeftMs);
       } finally {
         lease.release();
