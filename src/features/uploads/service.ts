@@ -9,6 +9,8 @@ import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
 import { isIsoDate, periodStartOf } from "@/features/ingest/period";
+import { periodInitCheck } from "@/features/versions/period-capacity";
+import type { UploadEstimate } from "@/features/ingest/period-capacity";
 import { formatGiB, quotaDecision, quotaGraceUntil, userUsage } from "./quota";
 import { PART_SIZE, expectedPartSize, partCountOf, verifyParts } from "./parts";
 import { SNIFF_BYTES, kindOf, sniff } from "./sniff";
@@ -33,7 +35,9 @@ export type UploadCode =
   | "UPLOAD_FAILED"
   | "STORAGE_ERROR"
   /** Unggahan periode (T-052): versi aktif berubah sejak halaman dibuka (baseVersionId basi). */
-  | "STALE";
+  | "STALE"
+  /** Unggahan periode (T-055): pasti melewati batas jumlah periode (mode label), sebelum byte pertama. */
+  | "PERIOD_LIMIT";
 
 export type UploadResult<T> =
   ({ ok: true } & T) | { ok: false; code: UploadCode; message: string; missing?: number[] };
@@ -72,6 +76,11 @@ export interface InitOk {
   mode: UploadMode;
   /** Label periode efektif (null = tanpa label / mode REPLACE). */
   label: string | null;
+  /**
+   * Perkiraan dari ukuran file terhadap batas periode (T-055, hanya peringatan; null = tidak ada yang
+   * perlu diperingatkan, unggahan dilanjutkan, atau mode REPLACE).
+   */
+  estimate: UploadEstimate | null;
 }
 
 const fail = (
@@ -275,6 +284,8 @@ export async function initUpload(
   let replaced: { sourceKey: string | null; uploadId: string | null } | null = null;
   /** Label efektif (mode PERIOD dengan sheet bersumber label); null selain itu. */
   let label: string | null = null;
+  /** Perkiraan batas periode dari ukuran file (unggahan periode baru, T-055). */
+  let estimate: UploadEstimate | null = null;
   const decide = async (tx: Prisma.TransactionClient): Promise<Decision> => {
     {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`uploads:${userId}`}))`;
@@ -443,6 +454,14 @@ export async function initUpload(
         );
       }
 
+      // Batas periode (T-055) sebelum byte pertama: penolakan pasti (label, jumlah periode) atau
+      // perkiraan dari ukuran file (hanya peringatan; baris tepat diperiksa worker + commit).
+      if (v.mode === "PERIOD") {
+        const chk = await periodInitCheck(tx, dataset.id, { name: v.name, size: v.size, label });
+        if (!chk.ok) return { kind: "reject", code: "PERIOD_LIMIT", message: chk.message };
+        estimate = chk.estimate;
+      }
+
       const partCount = partCountOf(v.size);
       const created = await tx.datasetVersion.create({
         data: {
@@ -525,6 +544,7 @@ export async function initUpload(
         uploadedParts: uploaded,
         resumed: true,
         ...echo,
+        estimate: null,
       };
     }
     // Multipart sudah hilang (lifecycle/abort): versi ini tidak bisa dilanjutkan.
@@ -562,6 +582,7 @@ export async function initUpload(
     uploadedParts: [],
     resumed: false,
     ...echo,
+    estimate: estimate as UploadEstimate | null,
   };
 }
 

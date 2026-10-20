@@ -463,6 +463,52 @@ describe("AC4: penolakan batas sebelum typing", () => {
     expect(s.storage.keys().filter((k) => !s.before.includes(k))).toEqual([]);
   });
 
+  it("T-055 EVICT_OLDEST: batas simpan → periode terlama dilepas utuh (tinjauan), tanpa baris dipotong", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = setup([HEADER, ...month(4, 30)], base, JAN_MAR, {
+      settings: { keepPeriods: 3, onLimit: "EVICT_OLDEST" },
+    });
+    expect((await s.run()).outcome).toBe("confirm");
+    const plan = s.repo.plan!;
+    expect(plan.confirm).toContain("EVICT");
+    expect(plan.rejection).toBeNull();
+    expect(plan.entries.map((e) => [e.key, e.action, e.beforeRows, e.afterRows])).toEqual([
+      ["2026-01", "EVICTED", 30, 0],
+      ["2026-02", "UNCHANGED", 28, 28],
+      ["2026-03", "UNCHANGED", 31, 31],
+      ["2026-04", "ADDED", 0, 30],
+    ]);
+    // Manifest: Januari tidak ikut (utuh), periode lain apa adanya; total = jumlah periode utuh.
+    expect(s.repo.manifest!.get(LINEAGE)!.map((r) => [r.periodKey, r.rows])).toEqual([
+      ["2026-02", 28],
+      ["2026-03", 31],
+      ["2026-04", 30],
+    ]);
+    expect(plan.totals.after).toEqual({ [LINEAGE]: 89 });
+  });
+
+  it("T-055 satu periode melebihi batas baris → ditolak dengan jumlah baris + batasnya, data aktif tidak berubah", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const limits = { ...LIMITS, sheetMaxRows: 20 };
+    const s = setup(
+      [HEADER, ...month(4, 30)],
+      base,
+      { "2026-01-01": 5 },
+      {
+        limits,
+        settings: { keepPeriods: null, onLimit: "EVICT_OLDEST" },
+      },
+    );
+    expect(await s.run()).toMatchObject({ outcome: "failed" });
+    expect(s.repo.error).toMatch(
+      /^Periode April 2026 berisi 30 baris di satu sheet, melebihi batas 20 baris per sheet\./,
+    );
+    // Tidak ada yang dilepas atau ditulis: tanpa commit, segmen, atau objek baru.
+    expect(s.repo.commits).toBe(0);
+    expect(s.repo.segments.size).toBe(0);
+    expect(s.storage.keys().filter((k) => !s.before.includes(k))).toEqual([]);
+  });
+
   it("mode label: periode di luar jendela → ditolak setelah parse, sebelum typing", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = setup(

@@ -287,7 +287,7 @@ export function setupPlanInput(
 
 /** Proyeksi kapasitas jujur (rencana §5.4): rata-rata per periode terhadap setiap batas. */
 export function capacityProjection(
-  sheets: SheetDistribution[],
+  sheets: Pick<SheetDistribution, "name" | "periods" | "bytes">[],
   keep: number,
   limits: PeriodLimits,
 ): CapacityProjection | null {

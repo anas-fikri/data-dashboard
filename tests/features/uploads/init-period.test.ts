@@ -37,6 +37,11 @@ vi.mock("@/lib/env", () => ({
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/lib/queue/versions", () => ({ enqueueIngest: vi.fn() }));
 vi.mock("@/lib/storage/multipart", () => ({ s3Multipart: {} }));
+// Batas periode saat init (T-055): logika murni diuji di period-capacity.test.ts; di sini urutan + gema.
+const periodInitCheck = vi.fn();
+vi.mock("@/features/versions/period-capacity", () => ({
+  periodInitCheck: (...a: unknown[]) => periodInitCheck(...a),
+}));
 vi.mock("@/features/uploads/quota", () => ({
   userUsage: vi.fn(async () => ({ bytes: 0 })),
   quotaGraceUntil: vi.fn(async () => null),
@@ -86,6 +91,7 @@ beforeEach(() => {
   tx.datasetVersion.create.mockResolvedValue({ id: "cmv4kljx40009oczvbaru00001" });
   tx.datasetVersion.update.mockResolvedValue({});
   tx.datasetVersion.deleteMany.mockResolvedValue({ count: 1 });
+  periodInitCheck.mockResolvedValue({ ok: true, estimate: null });
 });
 
 describe("validateInit (mode/label/baseVersionId)", () => {
@@ -224,5 +230,49 @@ describe("resume (AC6)", () => {
     tx.datasetVersion.findFirst.mockResolvedValueOnce(ownUploading("REPLACE", null));
     const r = await initUpload("u1", file, storage());
     expect(r).toMatchObject({ ok: true, versionId: OLD, resumed: true, mode: "REPLACE" });
+  });
+
+  it("T-055: batas periode pasti terlewati (mode label) → PERIOD_LIMIT sebelum versi/multipart dibuat", async () => {
+    tx.dataset.findUnique.mockResolvedValue(periodDataset("LABEL"));
+    periodInitCheck.mockResolvedValueOnce({
+      ok: false,
+      message:
+        "Menyimpan April 2026 akan melewati batas simpan 3 periode. Hapus periode Januari 2026 dulu.",
+    });
+    const s = storage();
+    const r = await initUpload(
+      "u1",
+      { ...file, mode: "PERIOD", baseVersionId: ACTIVE, label: "2026-04-01" },
+      s,
+    );
+    expect(r).toMatchObject({
+      ok: false,
+      code: "PERIOD_LIMIT",
+      message: expect.stringContaining("April 2026"),
+    });
+    expect(periodInitCheck).toHaveBeenCalledWith(tx, DID, {
+      name: "april.csv",
+      size: 5 * MiB,
+      label: "2026-04-01",
+    });
+    expect(tx.datasetVersion.create).not.toHaveBeenCalled();
+    expect(s.create).not.toHaveBeenCalled();
+  });
+
+  it("T-055: perkiraan dari ukuran file hanya peringatan — unggahan tetap dibuat, InitOk membawanya", async () => {
+    const estimate = {
+      rows: 14_000_000,
+      bytes: 6 * MiB,
+      likely: "TOO_LARGE",
+      message: "Perkiraan ±14 jt baris",
+    };
+    periodInitCheck.mockResolvedValueOnce({ ok: true, estimate });
+    const r = await initUpload("u1", { ...file, mode: "PERIOD", baseVersionId: ACTIVE }, storage());
+    expect(r).toMatchObject({ ok: true, resumed: false, estimate });
+    expect(tx.datasetVersion.create).toHaveBeenCalled();
+    // Mode REPLACE tidak diperiksa terhadap batas periode.
+    periodInitCheck.mockClear();
+    expect(await initUpload("u1", file, storage())).toMatchObject({ ok: true, estimate: null });
+    expect(periodInitCheck).not.toHaveBeenCalled();
   });
 });

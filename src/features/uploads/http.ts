@@ -30,6 +30,7 @@ const STATUS: Record<UploadCode, number> = {
   QUOTA_EXCEEDED: 409,
   STORAGE_ERROR: 503,
   STALE: 409,
+  PERIOD_LIMIT: 409,
 };
 
 const noStore = { "Cache-Control": "no-store" };

@@ -5,6 +5,7 @@ import { DatasetActivityProvider } from "@/components/datasets/dataset-activity"
 import { DatasetDataSummary } from "@/components/datasets/dataset-data-summary";
 import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
+import { PeriodCapacityNotice } from "@/components/datasets/period-usage";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
 import { VersionHistory } from "@/components/datasets/version-history";
@@ -217,11 +218,16 @@ export default async function DatasetDetailPage({
                   : "Ingin menyimpan data per bulan? Atur periode agar setiap bulan bisa ditambah atau diganti tanpa mengunggah ulang semua data."}
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="flex flex-col gap-4">
+              {/* Meter batas + proyeksi (T-055): hanya bila ada batas ≥ PERIOD_WARN_PCT. */}
+              <PeriodCapacityNotice
+                capacity={periodUpload?.capacity}
+                testId="period-card-capacity"
+              />
               <Button
                 asChild
                 variant="outline"
-                className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
+                className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
               >
                 <Link href={`/datasets/${dataset.id}/periode`} data-testid="period-link">
                   <IconCalendarStats aria-hidden />

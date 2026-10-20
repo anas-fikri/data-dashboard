@@ -13,6 +13,8 @@ import { enqueueIngest } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
 import { objectExists } from "@/lib/storage/objects";
 import { IntegrityError, integrityMessage, missingKeys } from "./integrity-check";
+import { loadPeriodCapacity } from "./period-capacity";
+import type { PeriodCapacity } from "@/features/ingest/period-capacity";
 import { commitPeriodInTx, periodSheetSelect, sheetKeys } from "./period-commit";
 import type { VersionCode, VersionResult } from "./types";
 
@@ -267,6 +269,8 @@ export interface PeriodUploadContext {
   periodCount: number;
   /** Ada sheet bersumber label → pemilih periode wajib diisi sebelum diproses. */
   needsLabel: boolean;
+  /** Meter batas + proyeksi data aktif (T-055): ditampilkan bila ada batas ≥ PERIOD_WARN_PCT. */
+  capacity: PeriodCapacity | null;
 }
 
 /** Hanya pemilik (lainnya null, sama seperti dataset tidak ada). */
@@ -298,5 +302,6 @@ export async function periodUploadContext(
     grain: a.periodGrain,
     periodCount: keys.length,
     needsLabel: a.sheets.some((s) => s.periodSource === "LABEL"),
+    capacity: await loadPeriodCapacity(prisma, datasetId),
   };
 }

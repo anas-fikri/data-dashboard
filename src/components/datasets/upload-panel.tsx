@@ -17,6 +17,7 @@ import { useCallback, useEffect, useId, useRef, useState, useTransition } from "
 import { FormAlert } from "@/components/auth/form-alert";
 import { usePublishUploading } from "@/components/datasets/dataset-activity";
 import { IngestProgress } from "@/components/datasets/ingest-progress";
+import { PeriodCapacityNotice, UploadEstimateNotice } from "@/components/datasets/period-usage";
 import {
   REPLACE_CHOICE,
   RETRYABLE,
@@ -38,6 +39,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import { FocusNotice } from "@/components/ui/focus-notice";
 import { periodLabel } from "@/features/ingest/period";
+import type { UploadEstimate } from "@/features/ingest/period-capacity";
 import type { IngestStatus } from "@/features/schema/service";
 import type { MappingLast } from "@/features/versions/types";
 import {
@@ -162,6 +164,8 @@ export function UploadPanel({
   // Versi server yang dimulai/dilanjutkan tab ini dan mungkin masih UPLOADING (upload-panel-state).
   const [ownVersion, setOwnVersion] = useState<string | undefined>();
   const [announce, setAnnounce] = useState("");
+  // Perkiraan batas periode dari ukuran file (T-055): dari init, tampil selama unggahan dan sesudahnya.
+  const [estimate, setEstimate] = useState<UploadEstimate | null>(null);
   const lastAnnounced = useRef(-1);
 
   const running = state.kind === "running";
@@ -210,6 +214,8 @@ export function UploadPanel({
       let started: { t: number; loaded: number } | null = null;
       setEta(null);
       setPicking(null);
+      // File baru → perkiraan lama tidak berlaku; melanjutkan versi yang sama mempertahankannya.
+      if (!versionId) setEstimate(null);
       setState({
         kind: "running",
         file,
@@ -223,6 +229,9 @@ export function UploadPanel({
           maxBytes,
           signal: controller.signal,
           ...(req.period ? { period: req.period } : {}),
+          onEstimate: (e) => {
+            if (!controller.signal.aborted && e) setEstimate(e);
+          },
           onProgress: (p) => {
             if (controller.signal.aborted) return;
             // Tanda tangan part bisa gagal tanpa membawa versionId: versi diingat sejak diketahui.
@@ -332,6 +341,7 @@ export function UploadPanel({
       if (abortRef.current !== mine) return;
       setPendingInfo(null);
       setOwnVersion(undefined);
+      setEstimate(null);
       // Notice yang menerima fokus (tombol yang ditekan hilang setelah batal).
       setState({ kind: "cancelled" });
       router.refresh();
@@ -372,6 +382,10 @@ export function UploadPanel({
       </p>
 
       {state.kind === "done" ? <FocusNotice>{`"${state.name}" terunggah.`}</FocusNotice> : null}
+      {state.kind === "done" ||
+      ((state.kind === "running" || state.kind === "paused") && state.choice?.mode === "PERIOD") ? (
+        <UploadEstimateNotice estimate={estimate} />
+      ) : null}
       {state.kind === "cancelled" ? <FocusNotice>Unggahan dibatalkan.</FocusNotice> : null}
       {state.kind === "discarded" ? (
         <div data-testid="version-discard-result">
@@ -627,6 +641,10 @@ export function UploadPanel({
             setAnnounce("Pemilihan file dibatalkan.");
           }}
         />
+      ) : null}
+
+      {showDropzone && period ? (
+        <PeriodCapacityNotice capacity={period.capacity} testId="upload-capacity" />
       ) : null}
 
       {showDropzone ? (

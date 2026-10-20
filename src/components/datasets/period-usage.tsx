@@ -1,3 +1,10 @@
+import { IconAlertTriangle } from "@tabler/icons-react";
+import {
+  capacityMeterLine,
+  capacityProjectionText,
+  type PeriodCapacity,
+  type UploadEstimate,
+} from "@/features/ingest/period-capacity";
 import type { PeriodPlan } from "@/features/ingest/period-plan";
 import { cn } from "@/lib/utils";
 
@@ -61,5 +68,56 @@ export function PeriodUsage({
         );
       })}
     </ul>
+  );
+}
+
+/**
+ * Meter + proyeksi kapasitas data aktif (T-055, §5.4) untuk kartu Periode dan panel unggah. Hanya tampil
+ * bila ada batas yang pemakaiannya ≥ PERIOD_WARN_PCT; angka tertulis (bukan hanya warna).
+ */
+export function PeriodCapacityNotice({
+  capacity,
+  testId,
+}: {
+  capacity: PeriodCapacity | null | undefined;
+  testId: string;
+}) {
+  if (!capacity?.warn) return null;
+  const projection = capacityProjectionText(capacity);
+  return (
+    <div
+      className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/15 p-3 text-sm"
+      data-testid={testId}
+    >
+      <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+      <div className="flex min-w-0 flex-col gap-1">
+        <p className="font-medium">Data periode mendekati batas penyimpanan</p>
+        <p className="tabular-nums [overflow-wrap:anywhere]" data-testid="capacity-meter">
+          {capacityMeterLine(capacity)}
+        </p>
+        {projection ? (
+          <p className="text-muted-foreground" data-testid="capacity-projection">
+            {projection}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** Perkiraan dari ukuran file saat init (T-055): hanya peringatan, unggahan tetap berjalan. */
+export function UploadEstimateNotice({ estimate }: { estimate: UploadEstimate | null }) {
+  if (!estimate) return null;
+  return (
+    <p
+      className={cn(
+        "flex items-start gap-2 rounded-md border p-3 text-sm",
+        estimate.likely ? "border-warning/50 bg-warning/15" : "bg-muted/40",
+      )}
+      data-testid="upload-estimate"
+    >
+      <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+      <span className="[overflow-wrap:anywhere]">{estimate.message}</span>
+    </p>
   );
 }

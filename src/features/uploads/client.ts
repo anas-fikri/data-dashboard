@@ -3,6 +3,7 @@
  * storage lewat presigned URL → complete. Part yang sudah ada di storage dilewati, jadi memilih file
  * yang sama setelah muat ulang/putus melanjutkan dari bagian terakhir.
  */
+import type { UploadEstimate } from "@/features/ingest/period-capacity";
 import { expectedPartSize, partRange } from "./parts";
 import { SNIFF_BYTES, kindOf, sniff } from "./sniff";
 
@@ -130,6 +131,8 @@ export interface UploadOptions {
    * `label` = awal periode untuk sheet bersumber label. Tanpa ini = ganti semua data.
    */
   period?: { baseVersionId: string; label: string | null };
+  /** Perkiraan batas periode dari ukuran file (T-055) segera setelah init; hanya peringatan. */
+  onEstimate?: (e: UploadEstimate | null) => void;
 }
 
 interface InitResponse extends ApiOk {
@@ -141,6 +144,7 @@ interface InitResponse extends ApiOk {
   /** Mode efektif (gema server). */
   mode: "REPLACE" | "PERIOD";
   label: string | null;
+  estimate?: UploadEstimate | null;
 }
 
 interface SignResponse extends ApiOk {
@@ -166,7 +170,7 @@ export async function precheck(file: File, maxBytes: number): Promise<void> {
 export async function uploadFile(
   opts: UploadOptions,
 ): Promise<{ versionId: string; mode: "REPLACE" | "PERIOD"; label: string | null }> {
-  const { file, datasetId, maxBytes, signal, onProgress, period } = opts;
+  const { file, datasetId, maxBytes, signal, onProgress, period, onEstimate } = opts;
   onProgress({ phase: "checking", loaded: 0, total: file.size, resumed: false });
   await precheck(file, maxBytes);
 
@@ -184,6 +188,7 @@ export async function uploadFile(
     },
     signal,
   );
+  onEstimate?.(init.estimate ?? null);
   await runMultipart({
     file,
     signal,
