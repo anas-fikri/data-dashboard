@@ -26,7 +26,10 @@ const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];
 
 /** Dimensi untuk kolom ini: tanggal dikelompokkan per bulan (paling umum untuk laporan). */
 export const dimensionFor = (c: Column): Dimension =>
-  TEMPORAL.includes(c.type) ? { column: c.pos, timeGrain: "month" } : { column: c.pos };
+  TEMPORAL.includes(c.type)
+    ? // Kolom sistem Periode (T-058): satuan periodenya.
+      { column: c.pos, timeGrain: c.period ?? "month" }
+    : { column: c.pos };
 
 /** Pilihan kolom baris: teks dulu (kategori), lalu tanggal, lalu sisanya. */
 function rowCandidates(cols: Column[]): Column[] {

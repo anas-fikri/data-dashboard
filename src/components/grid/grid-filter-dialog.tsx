@@ -33,6 +33,7 @@ export function GridFilterDialog({
   target,
   sheetId,
   versionId,
+  period,
   value,
   onApply,
   onClose,
@@ -40,6 +41,8 @@ export function GridFilterDialog({
   target: FilterTarget | null;
   sheetId: string;
   versionId: string;
+  /** Periode terpilih di Lihat data (T-058): daftar nilai dari periode itu saja. */
+  period?: string | null;
   value: DashFilter | undefined;
   onApply: (colId: string, f: DashFilter | null) => void;
   onClose: () => void;
@@ -82,6 +85,7 @@ export function GridFilterDialog({
                 column={col}
                 sheetId={sheetId}
                 versionId={versionId}
+                period={period}
                 value={value}
                 onApply={(f) => {
                   applied.current = true;
@@ -101,12 +105,15 @@ function FilterBody({
   column,
   sheetId,
   versionId,
+  period,
   value,
   onApply,
 }: {
   column: GridColumn;
   sheetId: string;
   versionId: string;
+  /** Periode terpilih di Lihat data (T-058): daftar nilai dari periode itu saja. */
+  period?: string | null;
   value: DashFilter | undefined;
   onApply: (f: DashFilter | null) => void;
 }) {
@@ -141,6 +148,7 @@ function FilterBody({
             column={column}
             sheetId={sheetId}
             versionId={versionId}
+            period={period}
             query={query}
             onQuery={setQuery}
             value={draft}
@@ -178,6 +186,7 @@ function ValueList({
   column,
   sheetId,
   versionId,
+  period,
   query,
   onQuery,
   ...selection
@@ -185,6 +194,8 @@ function ValueList({
   column: GridColumn;
   sheetId: string;
   versionId: string;
+  /** Periode terpilih di Lihat data (T-058): daftar nilai dari periode itu saja. */
+  period?: string | null;
   query: string;
   onQuery: (q: string) => void;
   value: DashFilter | undefined;
@@ -192,7 +203,7 @@ function ValueList({
   allMode: boolean;
   onAllMode: (on: boolean) => void;
 }) {
-  const values = useGridValues(sheetId, versionId, column.pos, query);
+  const values = useGridValues(sheetId, versionId, column.pos, query, period ?? null);
   return (
     <SlicerBody
       name={column.name}

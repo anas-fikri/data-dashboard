@@ -43,6 +43,8 @@ const view = {
   sort: rowsBodySchema.shape.sort,
   filters: rowsBodySchema.shape.filters,
   search: rowsBodySchema.shape.search,
+  /** Pemilih periode Lihat data (T-058): ekspor = periode yang sama dengan grid. */
+  period: rowsBodySchema.shape.period,
 };
 
 /**

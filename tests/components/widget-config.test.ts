@@ -1,3 +1,4 @@
+import { PERIOD_COLUMN } from "@/features/widgets/spec";
 import { describe, expect, it } from "vitest";
 import {
   OTHERS_LABEL,
@@ -419,6 +420,11 @@ describe("verifikasi T-011 putaran 3: panel pengaturan", () => {
     expect(withDimension(bar, 2, "date").spec).toMatchObject({
       dimension: { column: 2, timeGrain: "month" },
       sort: "value_desc",
+    });
+    // T-058: kolom sistem Periode → grain = satuan periode, batang kronologis.
+    expect(withDimension(bar, PERIOD_COLUMN, "date", "quarter").spec).toMatchObject({
+      dimension: { column: PERIOD_COLUMN, timeGrain: "quarter" },
+      sort: "label_asc",
     });
   });
 

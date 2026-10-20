@@ -25,10 +25,20 @@ import {
  * < hari berikutnya). Galat urutan ("Dari" sesudah "Sampai") hanya setelah isian ditetapkan — blur,
  * Enter, atau dipilih dari kalender — bukan di tengah ketikan (mis. hari "1" dari "15").
  */
-const OPTIONS: { value: Preset | "all"; label: string }[] = [
-  { value: "all", label: "Semua tanggal" },
-  ...PRESETS.map((p) => ({ value: p, label: PRESET_LABEL[p] })),
-];
+type Option = { value: Preset | "all"; label: string };
+const ALL: Option = { value: "all", label: "Semua tanggal" };
+const CALENDAR: Option[] = PRESETS.filter((p) => p !== "latest_period").map((p) => ({
+  value: p,
+  label: PRESET_LABEL[p],
+}));
+/**
+ * Kolom sistem Periode (T-058): "Periode terbaru" (dari data) didahulukan; kolom lain tidak
+ * menawarkannya (server melewatinya).
+ */
+const optionsFor = (period: boolean): Option[] =>
+  period
+    ? [ALL, { value: "latest_period", label: PRESET_LABEL.latest_period }, ...CALENDAR]
+    : [ALL, ...CALENDAR];
 
 export function DatePanel({
   dashboardId,
@@ -89,7 +99,7 @@ export function DatePanel({
           Pilihan cepat
         </p>
         <div className="grid grid-cols-2 gap-1.5">
-          {OPTIONS.map((o) => (
+          {optionsFor(!!column.period).map((o) => (
             <button
               key={o.value}
               type="button"

@@ -23,6 +23,7 @@ export const PRESET_LABEL: Record<Preset, string> = {
   last_year: "Tahun lalu",
   last_30_days: "30 hari terakhir",
   last_90_days: "90 hari terakhir",
+  latest_period: "Periode terbaru",
 };
 /** Sama dengan sumbu grafik dan sel tabel (features/widgets/format.ts). */
 export const EMPTY_LABEL = "(kosong)";

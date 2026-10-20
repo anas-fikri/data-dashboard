@@ -12,7 +12,7 @@ const db = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
-const { gridPageView, visibleColumns } = await import("@/features/query/grid-page");
+const { gridPageView, sheetPeriods, visibleColumns } = await import("@/features/query/grid-page");
 
 const schema = [
   { pos: 1, name: "Kode", original: "Kode", type: "text", hidden: false },
@@ -42,6 +42,9 @@ beforeEach(() => {
     schemaRevision: 4,
     schema,
     typedKey: "typed.parquet",
+    periodSource: null,
+    version: { periodGrain: null },
+    segments: [],
   });
 });
 
@@ -87,6 +90,9 @@ describe("gridPageView", () => {
       schemaRevision: 1,
       schema: null,
       typedKey: null,
+      periodSource: null,
+      version: { periodGrain: null },
+      segments: [],
     });
     const v = await gridPageView("owner", "d1", 9);
     expect(db.sheet.findFirst).toHaveBeenLastCalledWith(
@@ -147,5 +153,43 @@ describe("gridPageView", () => {
   it("visibleColumns menolak skema bukan larik", () => {
     expect(visibleColumns(null)).toBeNull();
     expect(visibleColumns({})).toBeNull();
+  });
+});
+
+describe("T-058: pemilih periode — daftar periode sheet", () => {
+  const seg = (key: string, start: string, rows: number | null) => ({
+    segmentTyped: {
+      dataRows: rows,
+      segment: { periodKey: key, periodStart: new Date(`${start}T00:00:00Z`) },
+    },
+  });
+
+  it("sheet periode: periode urut kronologis + label + baris metadata; non-periode → null", async () => {
+    db.sheet.findFirst.mockResolvedValueOnce({
+      id: "s1",
+      index: 1,
+      name: "Feb",
+      schemaRevision: 4,
+      schema,
+      typedKey: "typed.parquet",
+      periodSource: "LABEL",
+      version: { periodGrain: "MONTH" },
+      segments: [seg("2026-03", "2026-03-01", 30), seg("2026-01", "2026-01-01", 10)],
+    });
+    const v = await gridPageView("owner", "d1", 1);
+    expect(v!.sheet!.periods).toEqual([
+      { key: "2026-01", label: "Januari 2026", rows: 10 },
+      { key: "2026-03", label: "Maret 2026", rows: 30 },
+    ]);
+    expect((await gridPageView("owner", "d1", 1))!.sheet!.periods).toBeNull();
+  });
+
+  it("kuartal: label 'Kuartal 1 2026'; baris belum diukur → null", () => {
+    expect(
+      sheetPeriods("QUARTER", "COLUMN", [
+        { key: "2026-Q1", start: new Date("2026-01-01T00:00:00Z"), rows: null },
+      ]),
+    ).toEqual([{ key: "2026-Q1", label: "Kuartal 1 2026", rows: null }]);
+    expect(sheetPeriods(null, "COLUMN", [])).toBeNull();
   });
 });

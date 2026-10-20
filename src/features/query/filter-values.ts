@@ -146,6 +146,7 @@ export async function runFilterValues(
     // col ditemukan di skema → skema ada.
     schema: sheet.schema ?? [],
     segments: sheet.segments,
+    period: sheet.period,
   });
   const r = await runOnParquet(userId, source, limited, (path, exec) =>
     exec(

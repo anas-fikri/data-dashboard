@@ -1,5 +1,6 @@
 import "server-only";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { isoDay, periodLabel, type PeriodGrain } from "@/features/ingest/period";
 import { canEditWhere } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { PREVIEW_STATUSES } from "./grid-service";
@@ -20,6 +21,14 @@ export interface GridPageColumn {
   type: ColumnSchema["type"];
 }
 
+/** Satu pilihan pemilih periode (T-058): kunci, label ("Maret 2026"), baris di metadata segmen. */
+export interface GridPagePeriod {
+  key: string;
+  label: string;
+  /** Baris data periode ini di sheet (SegmentTyped.dataRows); null = belum diukur. */
+  rows: number | null;
+}
+
 export interface GridPageView {
   datasetId: string;
   datasetName: string;
@@ -38,7 +47,29 @@ export interface GridPageView {
     schemaRevision: number;
     /** null = skema/typed belum siap. */
     columns: GridPageColumn[] | null;
+    /** Sheet periode (T-058): periode di manifest, urut kronologis; null = sheet non-periode. */
+    periods: GridPagePeriod[] | null;
   } | null;
+}
+
+/** Periode manifest sheet, urut awal periode (satu segmen per periode per sheet). */
+export function sheetPeriods(
+  grain: PeriodGrain | null,
+  source: string | null,
+  segs: { key: string | null; start: Date | null; rows: number | null }[],
+): GridPagePeriod[] | null {
+  if (!grain || !source) return null;
+  const out = new Map<string, GridPagePeriod & { start: string }>();
+  for (const g of segs) {
+    const start = isoDay(g.start);
+    if (!g.key || !start) continue;
+    const e = out.get(g.key);
+    if (e) e.rows = e.rows === null || g.rows === null ? null : e.rows + g.rows;
+    else out.set(g.key, { key: g.key, start, label: periodLabel(grain, start), rows: g.rows });
+  }
+  return [...out.values()]
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : 0))
+    .map(({ start: _s, ...p }) => p);
 }
 
 export function visibleColumns(schema: unknown): GridPageColumn[] | null {
@@ -112,6 +143,18 @@ export async function gridPageView(
           schemaRevision: true,
           schema: true,
           typedKey: true,
+          periodSource: true,
+          version: { select: { periodGrain: true } },
+          segments: {
+            select: {
+              segmentTyped: {
+                select: {
+                  dataRows: true,
+                  segment: { select: { periodKey: true, periodStart: true } },
+                },
+              },
+            },
+          },
         },
       })
     : null;
@@ -129,6 +172,15 @@ export async function gridPageView(
           name: s.name,
           schemaRevision: s.schemaRevision,
           columns: s.typedKey ? visibleColumns(s.schema) : null,
+          periods: sheetPeriods(
+            s.version.periodGrain,
+            s.periodSource,
+            s.segments.map(({ segmentTyped: t }) => ({
+              key: t.segment.periodKey,
+              start: t.segment.periodStart,
+              rows: t.dataRows,
+            })),
+          ),
         }
       : null,
   };

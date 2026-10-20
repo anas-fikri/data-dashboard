@@ -318,6 +318,11 @@ export interface SheetGridProps {
   columns: GridColumn[];
   /** Batas baris ekspor (EXPORT_MAX_ROWS server) untuk dialog "Unduh tampilan" (T-046). */
   exportMaxRows?: number;
+  /**
+   * Pemilih periode (T-058): kunci periode yang dibatasi; null = semua. Ikut setiap permintaan grid
+   * (blok, salin, ringkasan, daftar nilai, ekspor); berganti = grid baru (key di halaman).
+   */
+  period?: string | null;
   nonce?: string;
 }
 
@@ -328,8 +333,10 @@ export default function SheetGrid({
   schemaRevision,
   columns,
   exportMaxRows = 1_000_000,
+  period = null,
   nonce,
 }: SheetGridProps) {
+  const periods = useMemo(() => (period ? [period] : []), [period]);
   const router = useRouter();
   const uid = useId();
   const boxRef = useRef<HTMLDivElement>(null);
@@ -486,7 +493,12 @@ export default function SheetGrid({
           rowCount: p.endRow - p.startRow,
           cols: requestColsRef.current(),
           // Model urut AG berurut sortIndex; lebih dari 3 dipangkas (onSortChanged melepas sisanya).
-          query: { sort: sortFromModel(p.sortModel), filters: bodyFilters, search },
+          query: {
+            sort: sortFromModel(p.sortModel),
+            filters: bodyFilters,
+            search,
+            period: periods,
+          },
           signal: entry.ctrl.signal,
         }).then((r) => {
           inflight.current.delete(entry);
@@ -544,7 +556,7 @@ export default function SheetGrid({
         });
       },
     }),
-    [sheetId, versionId, schemaRevision, bodyFilters, search],
+    [sheetId, versionId, schemaRevision, bodyFilters, search, periods],
   );
 
   /**
@@ -1065,7 +1077,12 @@ export default function SheetGrid({
             rowStart: start,
             rowCount: Math.min(COPY_FETCH_ROWS, to - start + 1),
             cols: requestColsRef.current(),
-            query: { sort: sortFromModel(sortedState(api)), filters: bodyFilters, search },
+            query: {
+              sort: sortFromModel(sortedState(api)),
+              filters: bodyFilters,
+              search,
+              period: periods,
+            },
           });
           if (!r.ok || myGen !== gen.current) throw new Error("rows");
           out.push(...r.rows);
@@ -1110,6 +1127,7 @@ export default function SheetGrid({
       schemaRevision,
       bodyFilters,
       search,
+      periods,
       decimal,
       copied,
     ],
@@ -1188,7 +1206,11 @@ export default function SheetGrid({
     const t = window.setTimeout(() => {
       void fetchStats(
         sheetId,
-        { versionId, pos: statsCol.pos, query: { sort: [], filters: bodyFilters, search } },
+        {
+          versionId,
+          pos: statsCol.pos,
+          query: { sort: [], filters: bodyFilters, search, period: periods },
+        },
         ctl.signal,
       ).then((r) => {
         if (r && !ctl.signal.aborted) {
@@ -1200,7 +1222,7 @@ export default function SheetGrid({
       window.clearTimeout(t);
       ctl.abort();
     };
-  }, [statsKey, statsCol, sheetId, versionId, bodyFilters, search]);
+  }, [statsKey, statsCol, sheetId, versionId, bodyFilters, search, periods]);
   const statsNow = statsKey && stats?.key === statsKey ? stats : null;
 
   const onGridReady = useCallback(
@@ -1436,6 +1458,7 @@ export default function SheetGrid({
       sort: api ? sortFromModel(sortedState(api)) : [],
       filters: bodyFilters,
       search: search ?? undefined,
+      ...(periods.length ? { period: periods } : {}),
     };
   };
   const openExport = () => {
@@ -1988,6 +2011,7 @@ export default function SheetGrid({
         target={filterTarget}
         sheetId={sheetId}
         versionId={versionId}
+        period={period}
         value={filterTarget ? filters[colIdOf(filterTarget.column.pos)] : undefined}
         onApply={applyFilter}
         onClose={() => setFilterTarget(null)}

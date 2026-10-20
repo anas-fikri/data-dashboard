@@ -20,15 +20,15 @@ import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { DuckDBConnection, DuckDBValue } from "@duckdb/node-api";
 import { buildGridCountSql, isPlainWindow } from "@/features/query/grid";
-import type { GridRepo } from "@/features/query/grid-service";
+import { sourceFor, type GridRepo } from "@/features/query/grid-service";
 import {
   forRole,
   resolveWidget,
-  sourceOf,
+  widgetSource,
   type QueryDeps,
   type ResolvedWidget,
 } from "@/features/query/service";
-import { sheetSource, sourceKeys, withSegments, type ParquetSource } from "@/features/query/source";
+import { sourceKeys, withSegments, type ParquetSource } from "@/features/query/source";
 import type { BuiltSql } from "@/features/query/sql";
 import type { OutColumn } from "@/features/query/spec";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
@@ -299,7 +299,7 @@ async function prepareWidget(
         };
   return {
     ok: true,
-    prepared: { source: sourceOf(resolved.sheet), title: row.title ?? "", producer },
+    prepared: { source: widgetSource(resolved), title: row.title ?? "", producer },
   };
 }
 
@@ -322,11 +322,8 @@ async function prepareSheet(
   if (!v.ok) return { ok: false, code: v.code, message: v.message };
   const { sheet, plan } = v;
   const segs = sheet.segments;
-  const source = sheetSource({
-    typedKey: sheet.typedKey!,
-    schema: sheet.schema,
-    segments: segs.map(({ typedKey, legacyRow, columns }) => ({ typedKey, legacyRow, columns })),
-  });
+  // Sheet periode: sumber membawa `_period` (urutan (_period, _row), T-058), sama dengan grid.
+  const source = sourceFor(sheet, segs);
   const names = new Map(sheet.schema.map((c) => [c.pos, c.name]));
   const bySegment = typeof source !== "string" && segmentOrdered(plan, segs);
   return {
@@ -401,7 +398,7 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
     }
     const src = paths[0]!;
     const seg = (b: BuiltSql): BuiltSql =>
-      typeof source === "string" ? b : withSegments(b, source.files, paths, source.schema);
+      typeof source === "string" ? b : withSegments(b, source, paths);
     const d = (duck = await openExportDuck(work, deps.duckMemory));
     const watch = async () => {
       if (Date.now() > deadline) throw new ExportDeadlineError();

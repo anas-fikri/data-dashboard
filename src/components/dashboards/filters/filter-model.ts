@@ -29,6 +29,8 @@ export const PRESETS = [
   "last_year",
   "last_30_days",
   "last_90_days",
+  /** Periode terbaru (T-058): hanya kolom sistem Periode; dihitung server dari manifest. */
+  "latest_period",
 ] as const;
 export type Preset = (typeof PRESETS)[number];
 export type FilterValue = string | number | boolean | null;

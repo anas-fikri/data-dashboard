@@ -197,6 +197,12 @@ export function defaultMeasure(
   return num ? { agg: "sum", column: num.pos } : { agg: "count" };
 }
 
+/**
+ * Grain bawaan dimensi tanggal: per bulan; kolom sistem Periode (T-058) memakai satuan periodenya
+ * sehingga label seperti "Mar 2026" / "K1 2026" tanpa memecah periode.
+ */
+export const defaultGrain = (c: Pick<SourceColumn, "period"> | undefined) => c?.period ?? "month";
+
 function defaultDimension(
   type: "bar" | "line" | "pie",
   columns: SourceColumn[],
@@ -207,11 +213,13 @@ function defaultDimension(
     if (c) return isTemporal(c.type) ? prev : { column: c.pos };
   }
   const date = columns.find((c) => isTemporal(c.type));
-  if (type === "line" && date) return { column: date.pos, timeGrain: "month" };
+  if (type === "line" && date) return { column: date.pos, timeGrain: defaultGrain(date) };
   const text = columns.find((c) => c.type === "text") ?? columns.find((c) => !isNumeric(c.type));
   const pick = text ?? columns[0];
   if (!pick) return null;
-  return isTemporal(pick.type) ? { column: pick.pos, timeGrain: "month" } : { column: pick.pos };
+  return isTemporal(pick.type)
+    ? { column: pick.pos, timeGrain: defaultGrain(pick) }
+    : { column: pick.pos };
 }
 
 /**
@@ -369,6 +377,7 @@ export function withDimension(
   config: ChartConfig,
   column: number,
   type: ColumnType | undefined,
+  period?: SourceColumn["period"],
 ): ChartConfig {
   const temporal = !!type && isTemporal(type);
   const byValue = config.spec.sort === "value_desc" || config.spec.sort === "value_asc";
@@ -376,8 +385,14 @@ export function withDimension(
     ...config,
     spec: {
       ...config.spec,
-      dimension: temporal ? { column, timeGrain: "month" } : { column },
-      sort: config.type === "line" && temporal && byValue ? SORT_DEFAULT.line : config.spec.sort,
+      dimension: temporal ? { column, timeGrain: defaultGrain({ period }) } : { column },
+      // Kolom sistem Periode (T-058) pada batang: kronologis (bisa diubah lewat Urutkan).
+      sort:
+        config.type === "line" && temporal && byValue
+          ? SORT_DEFAULT.line
+          : config.type === "bar" && period
+            ? "label_asc"
+            : config.spec.sort,
     },
   };
 }

@@ -49,6 +49,7 @@ export default defineConfig({
         /period-review\.spec\.ts$/,
         /period-limits\.spec\.ts$/,
         /period-manage\.spec\.ts$/,
+        /period-query\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -175,10 +176,16 @@ export default defineConfig({
       testMatch: /period-mapping\.spec\.ts$/,
       dependencies: ["period-manage"],
     },
+    // period-query (T-058): worker sendiri; kolom sistem Periode, preset terbaru, pemilih periode.
+    {
+      name: "period-query",
+      testMatch: /period-query\.spec\.ts$/,
+      dependencies: ["period-mapping"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-mapping"],
+      dependencies: ["period-query"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

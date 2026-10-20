@@ -291,7 +291,16 @@ export function WidgetConfigForm({
                     testId="config-dimension"
                     value={draft.spec.dimension.column}
                     columns={cols}
-                    onChange={(column) => commit(withDimension(draft, column, typeOf(column)))}
+                    onChange={(column) =>
+                      commit(
+                        withDimension(
+                          draft,
+                          column,
+                          typeOf(column),
+                          cols.find((c) => c.pos === column)?.period,
+                        ),
+                      )
+                    }
                   />
                   {isTemporal(typeOf(draft.spec.dimension.column) ?? "text") ? (
                     <Choice

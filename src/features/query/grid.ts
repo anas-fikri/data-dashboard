@@ -34,6 +34,15 @@ export const GRID_VALUES_MAX_MS = 10_000;
 
 const id = z.string().regex(/^[a-z0-9]{20,32}$/);
 const pos = z.number().int().min(1).max(100_000);
+/** Periode yang bisa dipilih sekaligus (pemilih "Periode", T-058) — batas jendela simpan admin. */
+export const GRID_PERIODS_MAX = 120;
+/** Kunci periode Segment.periodKey: "2026-03", "2026-Q1", "2026". */
+export const periodKeySchema = z.string().regex(/^\d{4}(-(0[1-9]|1[0-2])|-Q[1-4])?$/);
+/**
+ * Pemilih periode "Lihat data" (T-058): kunci periode yang dibatasi; kosong/tidak ada = semua periode.
+ * Hanya sheet periode; kunci yang tidak ada di manifest → INVALID.
+ */
+export const gridPeriodSchema = z.array(periodKeySchema).max(GRID_PERIODS_MAX).optional();
 
 export const rowsBodySchema = z
   .object({
@@ -54,8 +63,7 @@ export const rowsBodySchema = z
       })
       .strict()
       .optional(),
-    /** Pemilih periode (G-6 Bagian B) belum ada: hanya daftar kosong yang diterima. */
-    period: z.array(z.string().max(64)).max(0).optional(),
+    period: gridPeriodSchema,
   })
   .strict();
 
@@ -67,6 +75,7 @@ export const valuesBodySchema = z
     versionId: id,
     pos,
     q: z.string().max(GRID_SEARCH_TEXT_MAX).optional(),
+    period: gridPeriodSchema,
   })
   .strict();
 
@@ -80,6 +89,7 @@ export const statsBodySchema = z
     pos,
     filters: rowsBodySchema.shape.filters,
     search: rowsBodySchema.shape.search,
+    period: gridPeriodSchema,
   })
   .strict();
 
@@ -93,6 +103,8 @@ export interface GridPlan {
   sort: { col: SchemaCol; dir: "asc" | "desc" }[];
   clauses: DashClause[];
   search: { text: string; cols: SchemaCol[] } | null;
+  /** Sheet periode (T-058): urutan bawaan (_period, _row); sumber membawa `_period`. */
+  periodic?: boolean;
 }
 
 export type GridPlanResult = { ok: true; plan: GridPlan } | { ok: false; message: string };
@@ -101,7 +113,12 @@ export type GridPlanResult = { ok: true; plan: GridPlan } | { ok: false; message
  * Cocokkan body dengan skema. Posisi tidak ada/tersembunyi, saringan yang tidak cocok tipe, dan cari di
  * kolom bukan teks → pesan umum tanpa nama kolom.
  */
-export function planGrid(body: RowsBody, schema: ColumnSchema[], now: Date): GridPlanResult {
+export function planGrid(
+  body: RowsBody,
+  schema: ColumnSchema[],
+  now: Date,
+  periodic = false,
+): GridPlanResult {
   const visible = new Map(schema.filter((c) => !c.hidden).map((c) => [c.pos, c]));
   const pick = (p: number) => visible.get(p);
   const cols: SchemaCol[] = [];
@@ -143,7 +160,15 @@ export function planGrid(body: RowsBody, schema: ColumnSchema[], now: Date): Gri
   }
   return {
     ok: true,
-    plan: { rowStart: body.rowStart, rowCount: body.rowCount, cols, sort, clauses, search },
+    plan: {
+      rowStart: body.rowStart,
+      rowCount: body.rowCount,
+      cols,
+      sort,
+      clauses,
+      search,
+      ...(periodic ? { periodic } : {}),
+    },
   };
 }
 
@@ -235,13 +260,17 @@ export function gridWhereSql(plan: GridPlan, params: BuiltSql["params"]): string
   return parts.length ? `WHERE ${parts.join(" AND ")}` : "";
 }
 
-/** ORDER BY tampilan: kunci urut (teks dengan collation) lalu `_row`. Dipakai juga ekspor tampilan. */
+/**
+ * ORDER BY tampilan: kunci urut (teks dengan collation) lalu `_row` — didahului `_period` di sheet
+ * periode (T-058, kronologis). Dipakai juga ekspor tampilan.
+ */
 export function gridOrderSql(plan: GridPlan): string {
   return [
     ...plan.sort.map(
       (s) =>
         `${cid(s.col)}${s.col.type === "text" ? ` ${TEXT_COLLATE}` : ""} ${s.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`,
     ),
+    ...(plan.periodic ? [`_period ASC`] : []),
     `_row ASC`,
   ].join(", ");
 }

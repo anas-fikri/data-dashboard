@@ -15,7 +15,12 @@ import type { RateLimitResult } from "@/features/auth/rate-limit";
 import { forRole, resolveWidget, type QueryDeps } from "@/features/query/service";
 import type { DashboardAccessRole } from "@/features/sharing/access";
 import { planGrid } from "@/features/query/grid";
-import { authorizeGrid, type GridRepo, type GridRole } from "@/features/query/grid-service";
+import {
+  authorizeGrid,
+  scopePeriods,
+  type GridRepo,
+  type GridRole,
+} from "@/features/query/grid-service";
 import type { PresignGetOptions } from "@/lib/storage/exports";
 import { contentDisposition, exportFileName } from "./filename";
 import {
@@ -366,7 +371,7 @@ export const SHEET_FORBIDDEN_MESSAGE =
 export async function resolveSheetView(
   userId: string,
   sheetId: string,
-  view: Pick<SheetExportParams, "versionId" | "cols" | "sort" | "filters" | "search">,
+  view: Pick<SheetExportParams, "versionId" | "cols" | "sort" | "filters" | "search" | "period">,
   grid: GridRepo,
   now: Date,
 ) {
@@ -386,6 +391,9 @@ export async function resolveSheetView(
         return failure("SHEET_UNAVAILABLE", "Data sheet ini tidak bisa diekspor.");
     }
   }
+  // Pemilih periode (T-058): hanya segmen periode terpilih, sama dengan grid.
+  const scoped = scopePeriods(auth.sheet, view.period);
+  if (!scoped.ok) return failure("INVALID", `Tampilan tidak bisa diekspor: ${scoped.message}`);
   const planned = planGrid(
     {
       versionId: view.versionId,
@@ -396,11 +404,12 @@ export async function resolveSheetView(
       filters: view.filters,
       search: view.search,
     },
-    auth.sheet.schema,
+    scoped.sheet.schema,
     now,
+    !!scoped.sheet.period,
   );
   if (!planned.ok) return failure("INVALID", `Tampilan tidak bisa diekspor: ${planned.message}`);
-  return { ok: true as const, sheet: auth.sheet, plan: planned.plan };
+  return { ok: true as const, sheet: scoped.sheet, plan: planned.plan };
 }
 
 /**
@@ -430,9 +439,9 @@ export async function createSheetExport(
       `Permintaan ekspor tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
     );
   }
-  const { sheetId, format, versionId, cols, sort, filters, search } = parsed.data;
+  const { sheetId, format, versionId, cols, sort, filters, search, period } = parsed.data;
   const now = deps.now?.() ?? new Date();
-  const view = { versionId, cols, sort, filters, search };
+  const view = { versionId, cols, sort, filters, search, period };
   const r = await resolveSheetView(userId, sheetId, view, deps.grid, now);
   if (!r.ok) return r;
   const params: SheetExportParams = {
@@ -441,6 +450,7 @@ export async function createSheetExport(
     ...(sort?.length ? { sort } : {}),
     ...(filters?.length ? { filters } : {}),
     ...(search ? { search } : {}),
+    ...(period?.length ? { period } : {}),
     requestedAt: now.toISOString(),
   };
   const created = await deps.repo.createIfRoom(

@@ -80,7 +80,14 @@ export function AddFilterColumnMenu({
                   disabled={used || sameName}
                   className="h-auto min-h-11 py-1.5 md:min-h-9"
                   onSelect={() =>
-                    onAdd({ key, sheet: s.name, column: c.name, type: c.type, available: true })
+                    onAdd({
+                      key,
+                      sheet: s.name,
+                      column: c.name,
+                      type: c.type,
+                      available: true,
+                      ...(c.period ? { period: true as const } : {}),
+                    })
                   }
                 >
                   <span className="min-w-0 flex-1 truncate" title={c.name}>

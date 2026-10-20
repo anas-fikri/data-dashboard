@@ -1,9 +1,13 @@
 import "server-only";
 import { isIdShape } from "@/features/datasets/validation";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { isoDay } from "@/features/ingest/period";
 import { canEditWhere } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
-import type { GridRepo, GridRole } from "./grid-service";
+import { byPeriod, type GridRepo, type GridRole, type GridSegment } from "./grid-service";
+
+/** Waktu naive DB (UTC = naive) → ISO tanpa zona; null tetap null. */
+const isoTime = (d: Date | null): string | null => (d ? d.toISOString().slice(0, 19) : null);
 
 /*
  * Repo Prisma "Lihat data" (T-041; dipisah dari grid-http.ts di T-046 agar worker ekspor tampilan memakai
@@ -55,9 +59,12 @@ export const prismaGridRepo: GridRepo = {
         rawKey: true,
         schemaRevision: true,
         schema: true,
+        periodSource: true,
+        periodColumn: true,
         version: {
           select: {
             status: true,
+            periodGrain: true,
             originalName: true,
             datasetId: true,
             dataset: { select: { ownerId: true, activeVersionId: true, name: true } },
@@ -78,6 +85,10 @@ export const prismaGridRepo: GridRepo = {
                     maxSrcRow: true,
                     rawKey: true,
                     colMap: true,
+                    periodKey: true,
+                    periodStart: true,
+                    minDate: true,
+                    maxDate: true,
                     createdByVersion: { select: { originalName: true } },
                   },
                 },
@@ -90,6 +101,37 @@ export const prismaGridRepo: GridRepo = {
     if (!s) return null;
     const ds = s.version.dataset;
     const role = await roleOn(userId, s.version.datasetId, ds.ownerId);
+    const grain = s.version.periodGrain;
+    const period =
+      grain && s.periodSource
+        ? { grain, column: s.periodSource === "COLUMN" ? (s.periodColumn ?? null) : null }
+        : null;
+    const segments: GridSegment[] = s.segments.map(({ segmentTyped: t }) => {
+      const g = t.segment;
+      const start = isoDay(g.periodStart);
+      return {
+        typedKey: t.typedKey,
+        legacyRow: t.legacyRow,
+        columns: t.columns,
+        dataRows: t.dataRows,
+        rowBase: Number(g.rowBase),
+        maxSrcRow: g.maxSrcRow,
+        rawKey: g.rawKey,
+        colMap: g.colMap,
+        fileName: g.createdByVersion?.originalName ?? null,
+        // min/max hanya sah untuk kolom periode sumber KOLOM (berlabel: kolom acuan, T-054).
+        ...(period && g.periodKey && start
+          ? {
+              period: {
+                key: g.periodKey,
+                start,
+                min: period.column !== null ? isoTime(g.minDate) : null,
+                max: period.column !== null ? isoTime(g.maxDate) : null,
+              },
+            }
+          : {}),
+      };
+    });
     return {
       versionId: s.versionId,
       versionStatus: s.version.status,
@@ -102,17 +144,8 @@ export const prismaGridRepo: GridRepo = {
       fileName: s.version.originalName,
       schemaRevision: s.schemaRevision,
       schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
-      segments: s.segments.map(({ segmentTyped: t }) => ({
-        typedKey: t.typedKey,
-        legacyRow: t.legacyRow,
-        columns: t.columns,
-        dataRows: t.dataRows,
-        rowBase: Number(t.segment.rowBase),
-        maxSrcRow: t.segment.maxSrcRow,
-        rawKey: t.segment.rawKey,
-        colMap: t.segment.colMap,
-        fileName: t.segment.createdByVersion?.originalName ?? null,
-      })),
+      segments: period ? byPeriod(segments) : segments,
+      period,
     };
   },
 };

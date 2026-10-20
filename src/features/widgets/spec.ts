@@ -51,8 +51,14 @@ export const MAX_COLUMN = 16_384;
  * dan panel bisa menyebut kolom yang hilang.
  */
 export const MISSING_COLUMN = MAX_COLUMN + 1;
-/** Posisi kolom di skema sheet (1-based, sama dengan c<pos>), atau MISSING_COLUMN. */
-const column = z.number().int().min(1).max(MISSING_COLUMN);
+/**
+ * Kolom sistem "Periode" (T-058, rencana G-6 §4.10): `_period` sheet periode, diproyeksikan sumber
+ * query sebagai c<PERIOD_COLUMN> (features/query/source.ts). Di luar rentang kolom sungguhan dan
+ * MISSING_COLUMN; hanya ada di skema yang dibaca lapisan query/dashboard, tidak pernah disimpan.
+ */
+export const PERIOD_COLUMN = MAX_COLUMN + 2;
+/** Posisi kolom di skema sheet (1-based, sama dengan c<pos>), MISSING_COLUMN, atau PERIOD_COLUMN. */
+const column = z.number().int().min(1).max(PERIOD_COLUMN);
 
 /**
  * Format angka. "auto" (bawaan): bilangan bulat tanpa desimal, desimal maks. 2 angka di belakang

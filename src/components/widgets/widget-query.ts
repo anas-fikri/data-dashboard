@@ -28,6 +28,8 @@ export interface QueryColumn {
   key: string;
   label: string;
   type: ValueType;
+  /** Kolom sistem Periode (T-058): satuan periode untuk label sel ("Mar 2026"). */
+  grain?: string;
 }
 export interface WidgetData {
   columns: QueryColumn[];

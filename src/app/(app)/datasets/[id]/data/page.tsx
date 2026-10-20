@@ -2,6 +2,7 @@ import { IconArrowLeft, IconChecklist, IconEye, IconFileSpreadsheet } from "@tab
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GridPeriodPicker } from "@/components/grid/grid-period-picker";
 import { SheetGridLoader } from "@/components/grid/sheet-grid-loader";
 import { SheetTabs } from "@/components/schema/sheet-tabs";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ import { gridPageView } from "@/features/query/grid-page";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ sheet?: string; sheetId?: string; version?: string }>;
+type Search = Promise<{ sheet?: string; sheetId?: string; version?: string; periode?: string }>;
 
 export const metadata = { title: "Lihat data" };
 
@@ -21,7 +22,8 @@ export const metadata = { title: "Lihat data" };
  * "Lihat data" (T-043, rencana G-6 §3): penampil baca-saja gaya lembar kerja untuk pemilik dataset dan
  * editor dashboard-nya. Viewer/pengguna lain → 404 (D2). Grid dimuat lazy di klien; nonce CSP
  * diteruskan ke AG Grid (styleNonce, ADR-0007). ?version= (T-054 "Lihat isi file"): pratinjau unggahan
- * periode yang menunggu konfirmasi, hanya pemilik.
+ * periode yang menunggu konfirmasi, hanya pemilik. ?periode= (T-058): sheet periode dibatasi ke satu
+ * periode lewat pemilih "Periode: Semua ▾"; kunci yang tidak ada di sheet ini = semua periode.
  */
 export default async function DataViewPage({
   params,
@@ -68,6 +70,14 @@ export default async function DataViewPage({
   );
   const sheet = view.sheet;
   const multi = view.tabs.length > 1;
+  const previewParam = view.preview === "pending" && previewId ? `&version=${previewId}` : "";
+  const periods = sheet?.periods ?? null;
+  const period = periods?.find((p) => p.key === search.periode)?.key ?? null;
+  const periodHref = (key: string | null) =>
+    `/datasets/${view.datasetId}/data?sheet=${sheet?.index ?? 0}${previewParam}${key ? `&periode=${encodeURIComponent(key)}` : ""}`;
+  const allRows = periods?.every((p) => p.rows !== null)
+    ? periods.reduce((n, p) => n + (p.rows ?? 0), 0)
+    : null;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
@@ -147,17 +157,29 @@ export default async function DataViewPage({
           description="Tampilkan kembali kolom di halaman Skema data untuk melihat isinya."
         />
       ) : (
-        <SheetGridLoader
-          // Versi/revisi baru (Muat ulang setelah data diperbarui) → grid baru tanpa sisa blok lama.
-          key={`${sheet.id}:${sheet.schemaRevision}`}
-          sheetId={sheet.id}
-          sheetName={sheet.name}
-          versionId={view.version.id}
-          schemaRevision={sheet.schemaRevision}
-          columns={sheet.columns}
-          exportMaxRows={env().EXPORT_MAX_ROWS}
-          nonce={nonce}
-        />
+        <>
+          {periods?.length ? (
+            <GridPeriodPicker
+              current={period}
+              options={[
+                { key: null, label: "Semua periode", rows: allRows, href: periodHref(null) },
+                ...periods.map((p) => ({ ...p, href: periodHref(p.key) })),
+              ]}
+            />
+          ) : null}
+          <SheetGridLoader
+            // Versi/revisi/periode baru → grid baru tanpa sisa blok lama.
+            key={`${sheet.id}:${sheet.schemaRevision}:${period ?? ""}`}
+            sheetId={sheet.id}
+            sheetName={sheet.name}
+            versionId={view.version.id}
+            schemaRevision={sheet.schemaRevision}
+            columns={sheet.columns}
+            period={period}
+            exportMaxRows={env().EXPORT_MAX_ROWS}
+            nonce={nonce}
+          />
+        </>
       )}
 
       {sheet ? (
@@ -166,7 +188,7 @@ export default async function DataViewPage({
           sheets={view.tabs}
           current={sheet.index}
           page="data"
-          extra={view.preview === "pending" && previewId ? `&version=${previewId}` : ""}
+          extra={previewParam}
         />
       ) : null}
     </div>

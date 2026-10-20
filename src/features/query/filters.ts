@@ -26,8 +26,15 @@ export const PRESETS = [
   "last_year",
   "last_30_days",
   "last_90_days",
+  /**
+   * Periode terbaru (T-058): awal periode terbaru manifest sheet widget, hanya untuk kolom sistem
+   * Periode; kolom lain melewati filter ini (skippedFilters).
+   */
+  "latest_period",
 ] as const;
 export type Preset = (typeof PRESETS)[number];
+/** Preset yang dihitung dari tanggal hari ini (bukan dari data). */
+export type CalendarPreset = Exclude<Preset, "latest_period">;
 export const JAKARTA_TZ = "Asia/Jakarta";
 
 const column = z.string().min(1).max(200);
@@ -162,7 +169,7 @@ export function addDays(day: string, n: number): string {
  * ini), periode sebelumnya utuh (bulan / kuartal / tahun lalu, T-9gs1), dan N hari terakhir termasuk
  * hari ini.
  */
-export function presetRange(preset: Preset, today: string): { start: string; end: string } {
+export function presetRange(preset: CalendarPreset, today: string): { start: string; end: string } {
   const [y = 0, m = 1] = today.split("-").map(Number);
   const first = (yy: number, mm: number) => {
     const t = new Date(Date.UTC(yy, mm - 1, 1));
@@ -302,6 +309,12 @@ function toClause(f: DashFilter, c: ColumnSchema, today: string): DashClause | n
     }
     case "preset": {
       if (!temporal) return null;
+      if (f.preset === "latest_period") {
+        // Hanya kolom sistem Periode yang tahu periode terbarunya (dari manifest, tanpa SQL).
+        return c.system === "period" && c.periodLatest
+          ? { ...base, op: "in", values: [c.periodLatest] }
+          : null;
+      }
       const { start, end } = presetRange(f.preset, today);
       // DATE: awal ≤ c ≤ hari ini. TIMESTAMP: awal 00:00 ≤ c < besok 00:00 (tanpa geser zona, D8).
       return c.type === "date"

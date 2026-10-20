@@ -4,6 +4,7 @@
  * perakitan produksi di grid-http.ts. Body jawaban gagal tidak pernah memuat nama kolom/sheet.
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { periodLabel, type PeriodGrain } from "@/features/ingest/period";
 import {
   buildGridCountSql,
   buildGridStatsSql,
@@ -36,7 +37,7 @@ import {
   type QueryFailure,
 } from "./service";
 import { buildFilterValuesSql, FILTER_VALUES_LIMIT } from "./sql";
-import { sheetSource, type ParquetSource, type SegmentFile } from "./source";
+import { sheetSource, type ParquetSource, type SegmentFile, type SourcePeriod } from "./source";
 
 /** File typed di manifest + data segmennya (jumlah baris, raw, peta kolom, nama file sumber). */
 export interface GridSegment extends SegmentFile {
@@ -48,6 +49,20 @@ export interface GridSegment extends SegmentFile {
   colMap: number[];
   fileName: string | null;
 }
+
+/**
+ * Sheet periode: segmen diurutkan menurut awal periode (stabil, lalu ordinal) — satu segmen per periode,
+ * baris di file urut `_row`, jadi urutan jalur 1 grid/ekspor = (_period, _row) (T-058).
+ */
+export const byPeriod = (segs: GridSegment[]): GridSegment[] =>
+  segs
+    .map((s, i) => ({ s, i }))
+    .sort((a, b) => {
+      const x = a.s.period?.start ?? "";
+      const y = b.s.period?.start ?? "";
+      return x < y ? -1 : x > y ? 1 : a.i - b.i;
+    })
+    .map(({ s }) => s);
 
 /** Peran yang boleh membuka "Lihat data": pemilik dataset atau editor dashboard-nya. */
 export type GridRole = "OWNER" | "EDITOR";
@@ -67,7 +82,10 @@ export interface GridSheet {
   fileName: string | null;
   schemaRevision: number;
   schema: ColumnSchema[] | null;
+  /** Urut manifest; sheet periode: urut awal periode (= urutan (_period, _row) jalur 1). */
   segments: GridSegment[];
+  /** Sheet periode (T-058): kolom periode + satuan (label sumber sel, pemilih periode). */
+  period?: (SourcePeriod & { grain: PeriodGrain }) | null;
 }
 
 export interface GridRepo {
@@ -84,15 +102,40 @@ export type GridDeps = Omit<QueryDeps, "repo" | "cache"> & {
   cache?: ResultCache<CachedQuery> | null;
 };
 
-/** Count jalur urut/saring di cache hasil: kunci = sheet + versi + revisi skema + saringan + cari. */
-function countKey(sheetId: string, sheet: GridSheet, plan: GridPlan) {
+/**
+ * Count jalur urut/saring di cache hasil: kunci = sheet + versi + revisi skema + saringan + cari +
+ * periode terpilih (T-058).
+ */
+function countKey(sheetId: string, sheet: GridSheet, plan: GridPlan, period: string[]) {
   return resultKey({
     datasetId: "grid-count",
     versionId: sheet.versionId,
     sheetId,
     schemaRevision: sheet.schemaRevision,
-    spec: { clauses: plan.clauses, search: plan.search },
+    spec: { clauses: plan.clauses, search: plan.search, ...(period.length ? { period } : {}) },
   });
+}
+
+/** Kunci periode terpilih yang baku (unik, terurut) untuk kunci cache. */
+const periodKeys = (keys: string[] | undefined): string[] => [...new Set(keys ?? [])].sort();
+
+/**
+ * Pemilih periode "Lihat data" (T-058): batasi manifest ke periode terpilih (satu segmen = satu periode
+ * per sheet, jadi tanpa WHERE dan total = baris periode di metadata). Kosong = semua. Sheet non-periode
+ * atau kunci yang tidak ada di manifest → INVALID tanpa query.
+ */
+export function scopePeriods<S extends GridSheet>(
+  sheet: S,
+  keys: string[] | undefined,
+): { ok: true; sheet: S } | GridFailure {
+  if (!keys?.length) return { ok: true, sheet };
+  if (!sheet.period) return invalid("Sheet ini tidak menyimpan data per periode.");
+  const want = new Set(keys);
+  const segments = sheet.segments.filter((s) => s.period && want.has(s.period.key));
+  if (new Set(segments.map((s) => s.period!.key)).size !== want.size) {
+    return invalid("Periode yang dipilih tidak ada di data ini. Muat ulang halaman.");
+  }
+  return { ok: true, sheet: { ...sheet, segments } };
 }
 
 /**
@@ -194,11 +237,22 @@ export function segmentForRow(segs: GridSegment[], row: number): GridSegment | n
   return best;
 }
 
-const asFiles = (segs: GridSegment[]): SegmentFile[] =>
-  segs.map(({ typedKey, legacyRow, columns }) => ({ typedKey, legacyRow, columns }));
+export const asFiles = (segs: GridSegment[]): SegmentFile[] =>
+  segs.map(({ typedKey, legacyRow, columns, period }) => ({
+    typedKey,
+    legacyRow,
+    columns,
+    ...(period ? { period } : {}),
+  }));
 
-function sourceFor(sheet: GridSheet & { schema: ColumnSchema[] }, segs: GridSegment[]) {
-  return sheetSource({ typedKey: sheet.typedKey!, schema: sheet.schema, segments: asFiles(segs) });
+/** Sumber jalur 2 (urut/saring/cari): sheet periode membawa `_period` (urutan, T-058). */
+export function sourceFor(sheet: GridSheet & { schema: ColumnSchema[] }, segs: GridSegment[]) {
+  return sheetSource({
+    typedKey: sheet.typedKey!,
+    schema: sheet.schema,
+    segments: asFiles(segs),
+    period: sheet.period ? { column: sheet.period.column } : null,
+  });
 }
 
 /** Baris DuckDB (`_row`, v0, [k0], v1, …) → GridRow. */
@@ -251,8 +305,16 @@ export async function runGridRows(
   if (!parsed.success) return invalid();
   const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
-  const { sheet } = auth;
-  const planned = planGrid(parsed.data, sheet.schema, (deps.now ?? (() => new Date()))());
+  const scoped = scopePeriods(auth.sheet, parsed.data.period);
+  if (!scoped.ok) return scoped;
+  const { sheet } = scoped;
+  const period = periodKeys(parsed.data.period);
+  const planned = planGrid(
+    parsed.data,
+    sheet.schema,
+    (deps.now ?? (() => new Date()))(),
+    !!sheet.period,
+  );
   if (!planned.ok) return invalid(planned.message);
   const { plan } = planned;
   const segs = sheet.segments;
@@ -290,7 +352,7 @@ export async function runGridRows(
 
   // Jalur 2: urut/saring/cari (atau jumlah baris segmen belum diketahui).
   const filtered = !isPlainWindow(plan);
-  const ck = deps.cache ? countKey(sheetId, sheet, plan) : null;
+  const ck = deps.cache ? countKey(sheetId, sheet, plan, period) : null;
   const hit = ck ? deps.cache!.get(ck) : null;
   const known2 = hit && "gridCount" in hit ? hit.gridCount : null;
   // Cari dibatasi GRID_SEARCH_MAX_MS (AC3); urut/saring memakai batas query biasa (QUERY_TIMEOUT_MS).
@@ -400,7 +462,12 @@ export async function runGridCell(
       value,
       raw,
       castFailed: raw !== null,
-      source: { fileName: seg.fileName, srcRow, period: null },
+      source: {
+        fileName: seg.fileName,
+        srcRow,
+        period:
+          sheet.period && seg.period ? periodLabel(sheet.period.grain, seg.period.start) : null,
+      },
     };
   }
   return { ok: false, code: "NOT_FOUND", message: "Baris tidak ditemukan." };
@@ -429,17 +496,20 @@ export async function runGridValues(
   if (!parsed.success) return invalid();
   const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
-  const { sheet } = auth;
+  const scoped = scopePeriods(auth.sheet, parsed.data.period);
+  if (!scoped.ok) return scoped;
+  const { sheet } = scoped;
   const col = sheet.schema.find((c) => c.pos === parsed.data.pos && !c.hidden);
   if (!col) return invalid("Kolom yang diminta tidak tersedia.");
   const q = normalizeSearch(parsed.data.q);
+  const period = periodKeys(parsed.data.period);
   const key = deps.cache
     ? resultKey({
         datasetId: "grid-values",
         versionId: sheet.versionId,
         sheetId,
         schemaRevision: sheet.schemaRevision,
-        spec: { filterValues: `c${col.pos}`, q },
+        spec: { filterValues: `c${col.pos}`, q, ...(period.length ? { period } : {}) },
       })
     : null;
   const hit = key ? deps.cache!.get(key) : null;
@@ -498,8 +568,11 @@ export async function runGridStats(
   if (!parsed.success) return invalid();
   const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
-  const { sheet } = auth;
+  const scoped = scopePeriods(auth.sheet, parsed.data.period);
+  if (!scoped.ok) return scoped;
+  const { sheet } = scoped;
   const { pos, filters, search } = parsed.data;
+  const period = periodKeys(parsed.data.period);
   const planned = planGrid(
     { versionId: parsed.data.versionId, rowStart: 0, rowCount: 1, cols: [pos], filters, search },
     sheet.schema,
@@ -514,7 +587,12 @@ export async function runGridStats(
         versionId: sheet.versionId,
         sheetId,
         schemaRevision: sheet.schemaRevision,
-        spec: { stats: col.pos, clauses: planned.plan.clauses, search: planned.plan.search },
+        spec: {
+          stats: col.pos,
+          clauses: planned.plan.clauses,
+          search: planned.plan.search,
+          ...(period.length ? { period } : {}),
+        },
       })
     : null;
   const head = { ok: true as const, versionId: sheet.versionId };

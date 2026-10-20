@@ -14,7 +14,7 @@ import { ident } from "@/lib/duckdb";
 import type { ResolvedWidget } from "@/features/query/service";
 import type { OutColumn, Plan } from "@/features/query/spec";
 import { buildSql, TEXT_COLLATE, whereClauses, type BuiltSql } from "@/features/query/sql";
-import { buildTableCount } from "@/features/query/table";
+import { buildTableCount, rowOrder } from "@/features/query/table";
 
 export type ExportTarget = "csv" | "xlsx";
 
@@ -99,14 +99,13 @@ export function buildExportSql(
   const where = whereClauses(plan, params);
   const sort = r.planned.sort;
   const by = sort ? plan.dimensions[sort.index] : undefined;
-  const row = ident("_row");
   const order = [
     ...(by
       ? [
           `${ident(by.col)}${by.type === "text" ? ` ${TEXT_COLLATE}` : ""} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`,
         ]
       : []),
-    `${row} ASC`,
+    ...rowOrder(plan.periodic),
   ].join(", ");
   const select = plan.dimensions.map(
     (d, i) => `${valueExpr(ident(d.col), cols[i]!.type, target)} AS ${ident(d.key)}`,

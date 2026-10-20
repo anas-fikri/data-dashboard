@@ -431,7 +431,8 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     });
     expect(prisma.sheet.findFirst).toHaveBeenCalledWith({
       where: { id: SHEET, version: { activeFor: { id: DS } } },
-      select: { schema: true },
+      // Sumber periode + satuan versi: kolom sistem Periode (T-058).
+      select: { schema: true, periodSource: true, version: { select: { periodGrain: true } } },
     });
     // Pengaturan baru menghapus catatan kolom hilang dari aktivasi versi (T-013). Cek akses edit
     // (T-016) ada di where penulisan di dalam transaksi lock.

@@ -38,6 +38,8 @@ export interface SheetExportCreateBody {
   sort?: { pos: number; dir: "asc" | "desc" }[];
   filters?: ({ pos: number } & Record<string, unknown>)[];
   search?: { text: string; cols: number[] };
+  /** Pemilih periode Lihat data (T-058): kunci periode terpilih. */
+  period?: string[];
 }
 
 /**

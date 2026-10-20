@@ -112,6 +112,7 @@ export function queryBody(q: GridQuery | undefined): Record<string, unknown> {
     ...(q.sort.length ? { sort: q.sort } : {}),
     ...(q.filters.length ? { filters: q.filters } : {}),
     ...(q.search ? { search: q.search } : {}),
+    ...(q.period?.length ? { period: q.period } : {}),
   };
 }
 

@@ -8,13 +8,29 @@
  *    berikutnya, T-057) → proyeksi eksplisit per kelompok skema: `(SELECT CAST(_row AS BIGINT) AS _row,
  *    <_src_row>, CAST(c<pos> | NULL AS <tipe skema>) AS c<pos> … FROM read_parquet($s0) UNION ALL …)`.
  *    Daftar polos dan union_by_name dilarang untuk skema campuran (ADR-0008 butir 4–5).
+ * Sheet periode (T-058): sumber SELALU diproyeksikan dan membawa `_period` serta kolom sistem Periode
+ * `_period AS c<PERIOD_COLUMN>` — juga untuk satu file dan untuk skema campuran (review T-049 L3: proyeksi
+ * NULL dulu membuang `_period`). Filter/dimensi Periode dan urutan (_period, _row) bergantung padanya.
  * Daftar path hanya berisi file cache lokal hasil sewa (sandbox allowed_directories tetap berlaku).
  * Murni (kecuali listValue dari node-api).
  */
 import { listValue, type DuckDBValue } from "@duckdb/node-api";
 import { sqlType } from "@/features/ingest/infer";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { PERIOD_COLUMN, withoutPeriodColumn } from "./period-column";
 import type { BuiltSql } from "./sql";
+
+/**
+ * Periode satu segmen (T-058, pemangkasan): awal periode (= `_period` semua barisnya) dan, untuk sumber
+ * KOLOM, tanggal terkecil/terbesar kolom periode (Segment.minDate/maxDate, ISO naive). Segmen berlabel
+ * (T-054) tidak membawa min/max: di sana min/max = kolom tanggal acuan, bukan rentang periode.
+ */
+export interface SegmentPeriod {
+  key: string;
+  start: string;
+  min: string | null;
+  max: string | null;
+}
 
 /** Satu file typed segmen di manifest sheet, urut ordinal. */
 export interface SegmentFile {
@@ -23,11 +39,24 @@ export interface SegmentFile {
   legacyRow: boolean;
   /** Posisi c<pos> di file; kosong = tidak diketahui (dianggap semua kolom skema). */
   columns: number[];
+  /** Sheet periode: periode segmen ini. */
+  period?: SegmentPeriod;
 }
 
-/** Sumber query: satu kunci typed (perilaku lama) atau daftar segmen + skema sheet untuk proyeksi. */
+/** Sheet periode: posisi kolom periode (sumber KOLOM) atau null (LABEL). */
+export interface SourcePeriod {
+  column: number | null;
+}
+
+type SourceSchema = Pick<ColumnSchema, "pos" | "type" | "float">[];
+
+/**
+ * Sumber query: satu kunci typed (perilaku lama) atau daftar segmen + skema sheet untuk proyeksi
+ * (`period` = sheet periode, proyeksi `_period` + kolom sistem Periode).
+ */
 export type ParquetSource =
-  string | { files: SegmentFile[]; schema: Pick<ColumnSchema, "pos" | "type" | "float">[] };
+  string | { files: SegmentFile[]; schema: SourceSchema; period?: SourcePeriod };
+export type SegmentSource = Exclude<ParquetSource, string>;
 
 /** Token sumber yang ditulis semua pembangun SQL (sql.ts, table.ts, pivot.ts, ekspor, sampel). */
 export const SOURCE_TOKEN = "read_parquet($path)";
@@ -48,12 +77,17 @@ const covers = (f: SegmentFile, schema: Pick<ColumnSchema, "pos">[]) => {
  */
 export function sheetSource(sheet: {
   typedKey: string;
-  schema: Pick<ColumnSchema, "pos" | "type" | "float">[];
+  schema: SourceSchema;
   segments?: SegmentFile[];
+  /** Sheet periode (T-058): sumber selalu daftar segmen dengan proyeksi `_period`. */
+  period?: SourcePeriod | null;
 }): ParquetSource {
   const files = sheet.segments ?? [];
-  const plain = files.length <= 1 && (!files[0] || covers(files[0], sheet.schema));
-  return plain ? sheet.typedKey : { files, schema: sheet.schema };
+  // Kolom sistem Periode bukan kolom file: tidak pernah ikut proyeksi c<pos>.
+  const schema = withoutPeriodColumn(sheet.schema);
+  if (sheet.period && files.length) return { files, schema, period: sheet.period };
+  const plain = files.length <= 1 && (!files[0] || covers(files[0], schema));
+  return plain ? sheet.typedKey : { files, schema };
 }
 
 /** Kunci typed semua file sumber (sewa cache, unduh ekspor). */
@@ -63,18 +97,18 @@ export const sourceKeys = (s: ParquetSource): string[] =>
 /** Tanda kelompok skema: jenis `_row` + set kolom. */
 const signature = (f: SegmentFile) => `${f.legacyRow ? "L" : "S"}:${f.columns.join(",")}`;
 
+/** Identifier kolom sistem Periode di sumber yang diproyeksikan. */
+export const PERIOD_IDENT = `c${PERIOD_COLUMN}`;
+
 /**
  * Ganti `read_parquet($path)` di `built` dengan sumber segmen. `paths[i]` = file lokal untuk
- * `files[i]`. Parameter `path` milik pembangun diganti (daftar) atau dibuang (proyeksi).
+ * `source.files[i]`. Parameter `path` milik pembangun diganti (daftar) atau dibuang (proyeksi).
  */
-export function withSegments(
-  built: BuiltSql,
-  files: SegmentFile[],
-  paths: string[],
-  schema: Pick<ColumnSchema, "pos" | "type" | "float">[],
-): BuiltSql {
+export function withSegments(built: BuiltSql, source: SegmentSource, paths: string[]): BuiltSql {
+  const { files, period } = source;
+  const schema = withoutPeriodColumn(source.schema);
   if (!files.length || !built.sql.includes(SOURCE_TOKEN)) return built;
-  if (files.length === 1 && covers(files[0]!, schema)) return built;
+  if (!period && files.length === 1 && covers(files[0]!, schema)) return built;
   if (files.length !== paths.length) throw new Error("jumlah path segmen tidak cocok");
   const groups = new Map<string, { file: SegmentFile; paths: string[] }>();
   files.forEach((f, i) => {
@@ -84,10 +118,20 @@ export function withSegments(
   });
   const params: Record<string, DuckDBValue> = { ...built.params };
   if (groups.size === 1 && covers(files[0]!, schema)) {
-    params.path = listValue(paths);
-    return { sql: built.sql, params };
+    if (!period) {
+      params.path = listValue(paths);
+      return { sql: built.sql, params };
+    }
+    delete params.path;
+    params.s0 = listValue(paths);
+    const src = `(SELECT *, CAST(_period AS DATE) AS ${PERIOD_IDENT} FROM read_parquet($s0))`;
+    return { sql: built.sql.replaceAll(SOURCE_TOKEN, src), params };
   }
   delete params.path;
+  // Sheet periode: `_period` + kolom sistem ikut di SETIAP kelompok skema (review T-049 L3).
+  const periodCols = period
+    ? `, CAST(_period AS DATE) AS _period, CAST(_period AS DATE) AS ${PERIOD_IDENT}`
+    : "";
   const cols = [...schema].sort((a, b) => a.pos - b.pos);
   const parts = [...groups.values()].map((g, k) => {
     const has = new Set(g.file.columns.length ? g.file.columns : cols.map((c) => c.pos));
@@ -97,7 +141,7 @@ export function withSegments(
       return `CAST(${has.has(c.pos) ? id : "NULL"} AS ${sqlType(c)}) AS ${id}`;
     });
     const src = g.file.legacyRow ? "CAST(_row AS INTEGER)" : "_src_row";
-    return `SELECT CAST(_row AS BIGINT) AS _row, ${src} AS _src_row, ${values.join(", ")} FROM read_parquet($s${k})`;
+    return `SELECT CAST(_row AS BIGINT) AS _row, ${src} AS _src_row${periodCols}, ${values.join(", ")} FROM read_parquet($s${k})`;
   });
   return { sql: built.sql.replaceAll(SOURCE_TOKEN, `(${parts.join(" UNION ALL ")})`), params };
 }

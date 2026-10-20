@@ -2,6 +2,7 @@ import "server-only";
 import { join } from "node:path";
 import { filterSourcesFor } from "@/features/dashboards/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { isoDay } from "@/features/ingest/period";
 import { canViewWhere, dashboardAccess, roleOf, roleSelect } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
@@ -10,6 +11,7 @@ import { ResultCache } from "./cache";
 import { GridGate } from "./grid-gate";
 import { HistoryCache } from "./history-cache";
 import { localParquetCache, queryCacheBase } from "./local-parquet";
+import { withPeriodColumn } from "./period-column";
 import type { CachedQuery, FilterSource, QueryDeps, QueryRepo } from "./service";
 
 /*
@@ -80,21 +82,54 @@ export const prismaQueryRepo: QueryRepo = {
         typedKey: true,
         schemaRevision: true,
         schema: true,
+        periodSource: true,
+        periodColumn: true,
+        version: { select: { periodGrain: true } },
         // Manifest segmen (ADR-0008, T-037): sumber query = daftar file typed urut ordinal.
         segments: {
           orderBy: { ordinal: "asc" },
-          select: { segmentTyped: { select: { typedKey: true, legacyRow: true, columns: true } } },
+          select: {
+            segmentTyped: {
+              select: {
+                typedKey: true,
+                legacyRow: true,
+                columns: true,
+                segment: {
+                  select: { periodKey: true, periodStart: true, minDate: true, maxDate: true },
+                },
+              },
+            },
+          },
         },
       },
     });
-    return (
-      s && {
-        typedKey: s.typedKey,
-        schemaRevision: s.schemaRevision,
-        schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
-        segments: s.segments.map((m) => m.segmentTyped),
-      }
+    if (!s) return null;
+    // Sheet periode (T-058): kolom sistem Periode + periode tiap segmen (pemangkasan). min/max hanya
+    // untuk sumber KOLOM — di sheet berlabel itu rentang kolom tanggal acuan (T-054).
+    const grain = s.version.periodGrain;
+    const periodic = !!grain && !!s.periodSource && s.segments.length > 0;
+    const column = s.periodSource === "COLUMN" ? (s.periodColumn ?? null) : null;
+    const time = (d: Date | null) => (d && column !== null ? d.toISOString().slice(0, 19) : null);
+    const segments = s.segments.map(({ segmentTyped: { segment: g, ...t } }) => {
+      const start = isoDay(g.periodStart);
+      return periodic && g.periodKey && start
+        ? { ...t, period: { key: g.periodKey, start, min: time(g.minDate), max: time(g.maxDate) } }
+        : t;
+    });
+    const latest = segments.reduce<string | null>(
+      (m, f) => ("period" in f && f.period && (!m || f.period.start > m) ? f.period.start : m),
+      null,
     );
+    const schema = (s.schema as unknown as ColumnSchema[] | null) ?? null;
+    return {
+      typedKey: s.typedKey,
+      schemaRevision: s.schemaRevision,
+      schema: periodic
+        ? withPeriodColumn(schema, { grain, source: s.periodSource, latest })
+        : schema,
+      segments,
+      period: periodic ? { column } : null,
+    };
   },
   sheetHistory(datasetId, activeVersionId, sheetId) {
     // Widget lama dibaca berulang (tiap muat dashboard): skema lama + daftar sheet aktif di-cache sebentar.

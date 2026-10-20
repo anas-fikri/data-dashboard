@@ -20,7 +20,7 @@ type Result =
 
 export async function fetchGridValues(
   sheetId: string,
-  body: { versionId: string; pos: number; q?: string },
+  body: { versionId: string; pos: number; q?: string; period?: string[] },
   signal: AbortSignal,
   fetcher: typeof fetch = fetch,
 ): Promise<Result | null> {
@@ -64,10 +64,12 @@ export function useGridValues(
   versionId: string,
   pos: number,
   query: string,
+  /** Periode terpilih di Lihat data (T-058): nilai hanya dari periode itu. */
+  period: string | null = null,
 ): SlicerValues {
   const q = query.trim();
   const [attempt, setAttempt] = useState(0);
-  const key = JSON.stringify([sheetId, versionId, pos, q, attempt]);
+  const key = JSON.stringify([sheetId, versionId, pos, q, period, attempt]);
   const [res, setRes] = useState<{
     key: string;
     data: SlicerValues["data"];
@@ -82,7 +84,12 @@ export function useGridValues(
       () => {
         void fetchGridValues(
           sheetId,
-          q ? { versionId, pos, q } : { versionId, pos },
+          {
+            versionId,
+            pos,
+            ...(q ? { q } : {}),
+            ...(period ? { period: [period] } : {}),
+          },
           ctl.signal,
         ).then((r) => {
           if (!r || ctl.signal.aborted) return;
@@ -105,7 +112,7 @@ export function useGridValues(
       clearTimeout(t);
       ctl.abort();
     };
-  }, [sheetId, versionId, pos, q, key]);
+  }, [sheetId, versionId, pos, q, period, key]);
 
   return {
     loading: res.key !== key,

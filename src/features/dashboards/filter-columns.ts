@@ -27,6 +27,8 @@ export interface FilterColumnView {
   type: ColumnType;
   /** Kolom ada dan tidak disembunyikan di versi data aktif. */
   available: boolean;
+  /** Kolom sistem Periode (T-058): preset "Periode terbaru" ditawarkan. */
+  period?: true;
 }
 
 /** Kolom sumber filter dashboard + tipenya di versi aktif (null = tidak ada/disembunyikan). */
@@ -96,6 +98,7 @@ export function filterColumnViews(
       column: a?.col.name ?? f.column,
       type: a?.col.type ?? "text",
       available: !!a,
+      ...(a?.col.system === "period" ? { period: true as const } : {}),
     };
   });
 }

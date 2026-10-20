@@ -13,6 +13,13 @@ import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import type { Plan } from "./spec";
 import { DIM_TEXT_MAX, TEXT_COLLATE, whereClauses, type BuiltSql } from "./sql";
 
+/**
+ * Pemecah seri baris setelah kolom urut: `_row`, didahului `_period` di sheet periode (T-058) sehingga
+ * urutan bawaan kronologis. Dipakai juga ekspor tabel widget (exports/sql.ts).
+ */
+export const rowOrder = (periodic: boolean | undefined): string[] =>
+  periodic ? [`${ident("_period")} ASC`, `${ident("_row")} ASC`] : [`${ident("_row")} ASC`];
+
 function where(plan: Plan, params: BuiltSql["params"]): string {
   const clauses = whereClauses(plan, params);
   return clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -42,7 +49,7 @@ export function buildTablePage(
           `${ident(by.col)}${by.type === "text" ? ` ${TEXT_COLLATE}` : ""} ${sort!.dir === "desc" ? "DESC" : "ASC"} NULLS LAST`,
         ]
       : []),
-    `${row} ASC`,
+    ...rowOrder(plan.periodic),
   ].join(", ");
   const select = plan.dimensions.map((d) => {
     const c = ident(d.col);

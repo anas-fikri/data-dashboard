@@ -10,7 +10,7 @@
  * menyimpan pengaturan widget; T-013/T-014 memindahkannya ke saat aktivasi versi. Murni.
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { MISSING_COLUMN, columnsOf, type WidgetConfig } from "./spec";
+import { MISSING_COLUMN, PERIOD_COLUMN, columnsOf, type WidgetConfig } from "./spec";
 
 export { MISSING_COLUMN };
 
@@ -98,7 +98,9 @@ export function remapConfig(
   target: SheetInfo,
   stored: string[] = [],
 ): Remapped {
-  const byPos = (s: SheetInfo) => [...s.schema].sort((a, b) => a.pos - b.pos);
+  // Kolom sistem Periode tidak ikut pencocokan judul (lihat penanganan PERIOD_COLUMN di bawah).
+  const byPos = (s: SheetInfo) =>
+    s.schema.filter((c) => c.pos !== PERIOD_COLUMN).sort((a, b) => a.pos - b.pos);
   const oldCols = byPos(old);
   const oldKeys = columnKeys(oldCols.map((c) => c.original));
   const oldCol = new Map(oldCols.map((c, i) => [c.pos, { name: c.name, key: oldKeys[i]! }]));
@@ -116,6 +118,14 @@ export function remapConfig(
   const pos = (p: number): number => {
     if (p === MISSING_COLUMN) {
       for (const n of marked) if (!missing.includes(n)) missing.push(n);
+      return MISSING_COLUMN;
+    }
+    // Kolom sistem Periode (T-058) bukan kolom file: tetap selama sheet target juga sheet periode.
+    if (p === PERIOD_COLUMN) {
+      const sys = target.schema.find((c) => c.pos === PERIOD_COLUMN);
+      if (sys) return p;
+      const label = old.schema.find((c) => c.pos === PERIOD_COLUMN)?.name ?? "Periode";
+      if (!missing.includes(label)) missing.push(label);
       return MISSING_COLUMN;
     }
     const o = oldCol.get(p);

@@ -57,7 +57,8 @@ export function tableCellText(
     const f = formatOf(positions[i]!);
     return plain[i] && typeof v === "number" && f.style === "auto"
       ? formatLabelNumber(v)
-      : formatCell(v, data.columns[i]!.type, f);
+      : // Kolom sistem Periode (T-058): label periode ("Mar 2026") menurut satuannya.
+        formatCell(v, data.columns[i]!.type, f, data.columns[i]!.grain);
   };
 }
 

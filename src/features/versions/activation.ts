@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import { PERIOD_SHEET_SELECT, periodOf, withPeriodColumn } from "@/features/query/period-column";
 import { markerNames, matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retention";
@@ -123,7 +124,7 @@ export function planWidget(
   return record(moved.missing);
 }
 
-const schemaOf = (s: unknown) => (s as ColumnSchema[] | null) ?? [];
+const schemaOf = (s: unknown): ColumnSchema[] => (s as ColumnSchema[] | null) ?? [];
 const sheetIdOf = (w: StoredWidget): string | null => {
   const c = parseWidgetConfig(w.type, w.spec);
   return c.ok && c.config.type !== "empty" ? c.config.spec.sheetId : null;
@@ -154,13 +155,24 @@ async function persistWidgets(
     select: { id: true, type: true, spec: true, missingColumns: true },
   });
   if (!widgets.length) return;
+  // Sheet periode: skema + kolom sistem Periode (T-058), agar widget yang memakainya tetap terpetakan.
   const target: SheetInfo[] = (
     await tx.sheet.findMany({
       where: { versionId, typedKey: { not: null } },
       orderBy: { index: "asc" },
-      select: { id: true, name: true, aliasName: true, index: true, schema: true },
+      select: {
+        id: true,
+        name: true,
+        aliasName: true,
+        index: true,
+        schema: true,
+        ...PERIOD_SHEET_SELECT,
+      },
     })
-  ).map((s) => ({ ...s, schema: schemaOf(s.schema) }));
+  ).map(({ periodSource, version, ...s }) => ({
+    ...s,
+    schema: withPeriodColumn(schemaOf(s.schema), periodOf({ periodSource, version })),
+  }));
   const targetIds = new Set(target.map((s) => s.id));
   const oldIds = [
     ...new Set(widgets.flatMap((w) => sheetIdOf(w) ?? []).filter((id) => !targetIds.has(id))),

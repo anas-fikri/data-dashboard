@@ -4,6 +4,7 @@ import { cache } from "react";
 import { recordAudit } from "@/features/audit/service";
 import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import { PERIOD_SHEET_SELECT, periodOf, withPeriodColumn } from "@/features/query/period-column";
 import { widgetPlan } from "@/features/query/widget";
 import {
   canEdit,
@@ -86,7 +87,13 @@ export interface WidgetView {
 export interface SourceSheet {
   id: string;
   name: string;
-  columns: { pos: number; name: string; type: ColumnType }[];
+  columns: {
+    pos: number;
+    name: string;
+    type: ColumnType;
+    /** Kolom sistem Periode (T-058): satuan periode sheet (grain bawaan dimensi). */
+    period?: "month" | "quarter" | "year";
+  }[];
 }
 
 const WIDGET_SELECT = { id: true, type: true, title: true, spec: true, updatedAt: true } as const;
@@ -510,12 +517,13 @@ async function activeSheets(versionId: string, ids?: string[]): Promise<ActiveSh
   const rows = await prisma.sheet.findMany({
     where: { versionId, typedKey: { not: null }, ...(ids ? { id: { in: ids } } : {}) },
     orderBy: { index: "asc" },
-    select: { id: true, name: true, schema: true },
+    select: { id: true, name: true, schema: true, ...PERIOD_SHEET_SELECT },
   });
+  // Sheet periode: + kolom sistem Periode (T-058) — kolom filter/cross-filter lewat nama.
   return rows.map((s) => ({
     id: s.id,
     name: s.name,
-    schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
+    schema: withPeriodColumn((s.schema as unknown as ColumnSchema[] | null) ?? null, periodOf(s)),
   }));
 }
 
@@ -705,9 +713,12 @@ async function remapToActive(
     (
       await prisma.sheet.findMany({
         where: { id: { in: targetIds }, versionId: activeVersionId },
-        select: { id: true, schema: true },
+        select: { id: true, schema: true, ...PERIOD_SHEET_SELECT },
       })
-    ).map((s) => [s.id, (s.schema as unknown as ColumnSchema[] | null) ?? []]),
+    ).map((s) => [
+      s.id,
+      withPeriodColumn((s.schema as unknown as ColumnSchema[] | null) ?? [], periodOf(s)),
+    ]),
   );
   return parsed.map(({ w, c, m }) => {
     if (!c.ok || c.config.type === "empty") return w;
@@ -748,14 +759,20 @@ export async function getDashboardSources(
       },
     },
     orderBy: { index: "asc" },
-    select: { id: true, name: true, schema: true },
+    select: { id: true, name: true, schema: true, ...PERIOD_SHEET_SELECT },
   });
+  // Sheet periode: kolom sistem Periode (T-058) di akhir daftar, dengan satuannya (grain bawaan).
   return sheets.map((s) => ({
     id: s.id,
     name: s.name,
-    columns: ((s.schema as unknown as ColumnSchema[] | null) ?? [])
+    columns: withPeriodColumn((s.schema as unknown as ColumnSchema[] | null) ?? [], periodOf(s))
       .filter((c) => !c.hidden)
-      .map((c) => ({ pos: c.pos, name: c.name, type: c.type })),
+      .map((c) => ({
+        pos: c.pos,
+        name: c.name,
+        type: c.type,
+        ...(c.periodGrain ? { period: c.periodGrain } : {}),
+      })),
   }));
 }
 
@@ -787,9 +804,11 @@ async function checkConfig(
   const config = parsed.config;
   const sheet = await prisma.sheet.findFirst({
     where: { id: config.spec.sheetId, version: { activeFor: { id: datasetId } } },
-    select: { schema: true },
+    select: { schema: true, ...PERIOD_SHEET_SELECT },
   });
-  const schema = sheet?.schema as unknown as ColumnSchema[] | null | undefined;
+  const schema = sheet
+    ? withPeriodColumn(sheet.schema as unknown as ColumnSchema[] | null, periodOf(sheet))
+    : undefined;
   if (!schema) {
     const message = "Sheet tidak ditemukan di data aktif dataset ini.";
     if (sheet) return { ok: false, message };

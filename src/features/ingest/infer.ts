@@ -71,6 +71,16 @@ export interface ColumnSchema {
    * "Tgl Kirim" untuk "Tanggal Kirim"): unggahan berikutnya dengan judul itu terpetakan otomatis.
    */
   aliases?: string[];
+  /**
+   * Kolom sistem virtual (T-058): "period" = `_period` sheet periode (pos = PERIOD_COLUMN). Hanya
+   * ditambahkan saat skema dibaca lapisan query/dashboard (features/query/period-column.ts), tidak
+   * pernah disimpan di Sheet.schema.
+   */
+  system?: "period";
+  /** Kolom sistem Periode: satuan periode sheet (grain bawaan dimensi, label "Mar 2026"). */
+  periodGrain?: "month" | "quarter" | "year";
+  /** Kolom sistem Periode: awal periode terbaru di manifest sheet (preset "Periode terbaru"). */
+  periodLatest?: string;
 }
 
 export const INFER_THRESHOLD = 0.98;

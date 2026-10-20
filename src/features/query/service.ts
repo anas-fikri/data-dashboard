@@ -58,12 +58,14 @@ import {
   shapePivot,
   type PivotData,
 } from "./pivot";
+import { pruneSource } from "./prune";
 import {
   sheetSource,
   sourceKeys,
   withSegments,
   type ParquetSource,
   type SegmentFile,
+  type SourcePeriod,
 } from "./source";
 import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
@@ -180,6 +182,11 @@ export interface QueryRepo {
     schema: ColumnSchema[] | null;
     /** Manifest segmen sheet urut ordinal (T-037); tidak ada/≤ 1 → typedKey saja. */
     segments?: SegmentFile[];
+    /**
+     * Sheet periode (T-058): skema di atas SUDAH memuat kolom sistem Periode (period-column.ts) dan
+     * sumber memproyeksikan `_period`; segmen membawa periodenya (pemangkasan).
+     */
+    period?: SourcePeriod | null;
   } | null>;
   /**
    * Sheet lama (versi mana pun dari dataset yang sama) + sheet versi aktif, untuk memetakan widget
@@ -432,8 +439,7 @@ export async function runOnParquet<T>(
             const left = deadline - Date.now();
             if (left <= 0) throw new QueryTimeoutError();
             // Banyak segmen: read_parquet($path) diganti daftar/proyeksi (source.ts).
-            const q =
-              typeof key === "string" ? s : withSegments(s, key.files, lease.paths, key.schema);
+            const q = typeof key === "string" ? s : withSegments(s, key, lease.paths);
             return engine.exec(q.sql, q.params, Math.min(left, maxMs), signal);
           };
           return work(lease.paths[0]!, exec, lease.paths);
@@ -548,8 +554,10 @@ async function runSpec(
     typedKey: sheet.typedKey,
     schema: sheet.schema,
     segments: sheet.segments,
+    period: sheet.period,
   });
-  return runAggPlan(userId, key, source, resolved.plan, deps, t0);
+  const plan = resolved.plan;
+  return runAggPlan(userId, key, pruneSource(source, { filters: plan.filters }), plan, deps, t0);
 }
 
 /** Sumber query sheet yang sudah siap (typedKey + skema ada): satu file atau daftar segmen. */
@@ -557,6 +565,7 @@ export const sourceOf = (sheet: {
   typedKey: string;
   schema: ColumnSchema[];
   segments?: SegmentFile[];
+  period?: SourcePeriod | null;
 }): ParquetSource => sheetSource(sheet);
 
 /** Pesan umum COLUMN_UNAVAILABLE untuk viewer (catatan T-011): tanpa nama kolom lama/tersembunyi. */
@@ -815,6 +824,8 @@ export interface ResolvedWidget {
     schema: ColumnSchema[];
     /** Manifest segmen (T-037): ekspor mengunduh semua file sumber. */
     segments?: SegmentFile[];
+    /** Sheet periode (T-058): proyeksi `_period` + kolom sistem Periode. */
+    period?: SourcePeriod | null;
   };
   planned: Extract<WidgetPlan, { ok: true }>;
   /** Filter dashboard yang berlaku (klausa kanonik) + nama yang dilewati. */
@@ -907,12 +918,22 @@ export async function resolveWidget(
       schemaRevision: sheet.schemaRevision,
       schema: sheet.schema,
       ...(sheet.segments ? { segments: sheet.segments } : {}),
+      ...(sheet.period ? { period: sheet.period } : {}),
     },
     planned,
     dash,
     absent: absentNames(config, sheet.schema),
   };
 }
+
+/**
+ * Sumber widget yang sudah lolos resolveWidget, dipangkas menurut filter dashboard + filter rencana
+ * (T-058). Juga dipakai job ekspor agar file yang diunduh sama dengan yang disewa query layar.
+ */
+export const widgetSource = (
+  r: Pick<ResolvedWidget, "sheet" | "planned" | "dash">,
+): ParquetSource =>
+  pruneSource(sourceOf(r.sheet), { clauses: r.dash.clauses, filters: r.planned.plan.filters });
 
 /** Sisa query widget setelah otorisasi (hasil mentah; bentuk per peran di forRole). */
 async function widgetResult(
@@ -944,6 +965,8 @@ async function widgetResult(
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
+  // Pemangkasan segmen (T-058): hanya segmen yang beririsan dengan filter dashboard yang disewa.
+  const source = widgetSource(resolved);
   if (planned.kind === "pivot" && planned.pivot.list !== undefined) {
     return withNotes(
       await runPivotValues(
@@ -952,7 +975,7 @@ async function widgetResult(
           ...keyParts,
           spec: { pivotValues: planned.spec, shape: planned.pivot, dash: dashKey },
         }),
-        sourceOf(sheet),
+        source,
         { ...planned.plan, dash: dash.clauses },
         planned.pivot,
         deps,
@@ -968,7 +991,7 @@ async function widgetResult(
           ...keyParts,
           spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey },
         }),
-        sourceOf(sheet),
+        source,
         { ...planned.plan, dash: dash.clauses },
         planned.pivot,
         deps,
@@ -987,7 +1010,7 @@ async function widgetResult(
             ? { chart: planned.spec, dash: dashKey }
             : { ...planned.spec, dash: dashKey },
         }),
-        sourceOf(sheet),
+        source,
         { ...planned.plan, dash: dash.clauses },
         deps,
         t0,
@@ -1013,7 +1036,7 @@ async function widgetResult(
   const knownTotal =
     countHit && "rows" in countHit ? Number(countHit.rows[0]?.[0] ?? 0) : undefined;
 
-  const r = await runOnParquet(userId, sourceOf(sheet), deps, async (path, exec) => {
+  const r = await runOnParquet(userId, source, deps, async (path, exec) => {
     const total = knownTotal ?? Number((await exec(buildTableCount(plan, path))).rows[0]?.[0] ?? 0);
     // Halaman di luar data dijepit ke halaman terakhir — tidak ada OFFSET mahal tanpa hasil (M1).
     const at = Math.min(page, Math.max(0, Math.ceil(total / TABLE_PAGE_SIZE) - 1));

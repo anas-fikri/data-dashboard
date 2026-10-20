@@ -262,6 +262,8 @@ export interface GridQuery {
   sort: SortItem[];
   filters: BodyFilter[];
   search: GridSearch | null;
+  /** Pemilih periode (T-058): kunci periode terpilih; kosong/tidak ada = semua periode. */
+  period?: string[];
 }
 
 export const posOf = (colId: string): number | null => {

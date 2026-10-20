@@ -90,6 +90,11 @@ export interface OutColumn {
   key: string;
   label: string;
   type: ColumnType | "count";
+  /**
+   * Kolom sistem Periode (T-058): satuan periode — sel tabel/label tampil "Mar 2026", bukan tanggal
+   * awal periode. Kolom lain tanpa field ini.
+   */
+  grain?: Grain;
 }
 
 export interface PlanDimension {
@@ -124,6 +129,11 @@ export interface Plan {
   sort: { key: string; dir: "asc" | "desc" }[];
   limit: number;
   columns: OutColumn[];
+  /**
+   * Sheet periode (T-058): sumber membawa `_period`, urutan baris bawaan tabel = (_period, _row) —
+   * kronologis walau periode lama diunggah belakangan (`_row` naik menurut urutan unggah).
+   */
+  periodic?: boolean;
 }
 
 export type Resolved = { ok: true; plan: Plan } | { ok: false; message: string };
@@ -203,7 +213,8 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
       return fail(`Pengelompokan waktu hanya untuk kolom tanggal ("${d.column}").`);
     }
     dimensions.push({ key: `d${i}`, col: `c${c.pos}`, type: c.type, grain: d.timeGrain });
-    columns.push({ key: `d${i}`, label: c.name, type: c.type });
+    const grain = c.system === "period" ? (d.timeGrain ?? c.periodGrain) : undefined;
+    columns.push({ key: `d${i}`, label: c.name, type: c.type, ...(grain ? { grain } : {}) });
   }
 
   const measures: PlanMeasure[] = [];
@@ -279,6 +290,8 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
       sort: spec.sort.map((s) => ({ key: s.by, dir: s.dir })),
       limit: spec.limit,
       columns,
+      // Kolom sistem Periode hanya ada di skema sheet periode (period-column.ts).
+      ...(schema.some((c) => c.system === "period") ? { periodic: true } : {}),
     },
   };
 }

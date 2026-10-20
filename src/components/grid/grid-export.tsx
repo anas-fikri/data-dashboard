@@ -30,7 +30,10 @@ import { fmtInt } from "./grid-model";
  * dengan EXPORT_TOO_LARGE — file tidak pernah dipotong).
  */
 
-export type SheetView = Pick<SheetExportCreateBody, "cols" | "sort" | "filters" | "search">;
+export type SheetView = Pick<
+  SheetExportCreateBody,
+  "cols" | "sort" | "filters" | "search" | "period"
+>;
 
 const BTN = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
 const SPINNER = <IconLoader2 className="motion-safe:animate-spin" aria-hidden />;
@@ -97,6 +100,7 @@ export default function GridExport({
       ...(v.sort?.length ? { sort: v.sort } : {}),
       ...(v.filters?.length ? { filters: v.filters } : {}),
       ...(v.search ? { search: v.search } : {}),
+      ...(v.period?.length ? { period: v.period } : {}),
     });
   }
 
