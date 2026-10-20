@@ -9,6 +9,9 @@
  *   periods <versionId>    → {mode, periodGrain, sheets: [{id, name, periodSource, segments:
  *                            [{periodKey, dataRows}]}]} (T-051: versi PERIOD_SETUP)
  *   audit <datasetId> <action> → [{actorId, meta}] baris AuditLog dataset itu (T-051)
+ *   review <versionId> [include,…]  → hasil reviewPeriodUpload pemilik dataset (T-052)
+ *   confirm <versionId> <json>      → hasil confirmPeriodUpload pemilik dataset; json = payload
+ *                                     {include, digest, ack} (T-052)
  * Pakai: npx tsx --conditions=react-server --env-file-if-exists=.env scripts/dev-segments.ts …
  */
 import { mkdtempSync, rmSync, statSync } from "node:fs";
@@ -204,7 +207,12 @@ async function main() {
                 orderBy: { ordinal: "asc" },
                 select: {
                   segmentTyped: {
-                    select: { dataRows: true, segment: { select: { periodKey: true } } },
+                    select: {
+                      id: true,
+                      typedKey: true,
+                      dataRows: true,
+                      segment: { select: { id: true, periodKey: true, rawKey: true } },
+                    },
                   },
                 },
               },
@@ -224,6 +232,10 @@ async function main() {
               segments: s.segments.map((m) => ({
                 periodKey: m.segmentTyped.segment.periodKey,
                 dataRows: m.segmentTyped.dataRows,
+                segmentId: m.segmentTyped.segment.id,
+                typedId: m.segmentTyped.id,
+                rawKey: m.segmentTyped.segment.rawKey,
+                typedKey: m.segmentTyped.typedKey,
               })),
             })),
           },
@@ -236,6 +248,28 @@ async function main() {
         select: { actorId: true, meta: true },
       });
       console.log(JSON.stringify(rows));
+    } else if (cmd === "review" || cmd === "confirm") {
+      // Pemilik dataset versi itu (dev/e2e saja): layar tinjauan T-054 belum ada.
+      const v = await prisma.datasetVersion.findUniqueOrThrow({
+        where: { id: a },
+        select: { datasetId: true, dataset: { select: { ownerId: true } } },
+      });
+      const svc = await import("@/features/versions/period-upload");
+      const r =
+        cmd === "review"
+          ? await svc.reviewPeriodUpload(v.dataset.ownerId, v.datasetId, a, {
+              include: b ? b.split(",") : [],
+            })
+          : await svc.confirmPeriodUpload(
+              v.dataset.ownerId,
+              v.datasetId,
+              a,
+              JSON.parse(b ?? "{}"),
+              "127.0.0.1",
+            );
+      console.log(JSON.stringify(r));
+      // Klien Redis/antrean yang terbuka tidak boleh menahan proses.
+      process.exit(0);
     } else if (cmd === "finished") {
       const v = await prisma.datasetVersion.findUnique({
         where: { id: a },

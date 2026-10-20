@@ -1,10 +1,10 @@
 "use client";
 
-import { IconInfoCircle, IconRestore } from "@tabler/icons-react";
+import { IconInfoCircle, IconRestore, IconTrash } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { createContext, use, useCallback, useState, type ReactNode } from "react";
 import { FocusNotice } from "@/components/ui/focus-notice";
-import { activateVersionAction } from "@/features/versions/actions";
+import { activateVersionAction, discardVersionAction } from "@/features/versions/actions";
 import { UploadingInTab } from "./dataset-activity";
 import { VersionConfirm } from "./version-history-confirm";
 import { BUSY_TEXT, keepNotice, shownBusy, type ActivationBusy } from "./version-history-status";
@@ -102,6 +102,39 @@ export function VersionActivate({
         notify(versionId, name);
         router.refresh();
       }}
+    />
+  );
+}
+
+/**
+ * "Batalkan unggahan" pada unggahan periode yang menunggu konfirmasi (T-052): versinya dibuang, data
+ * aktif tidak berubah, dan dataset terbuka lagi untuk unggahan berikutnya. Layar tinjauan = T-054.
+ */
+export function VersionCancelPending({
+  datasetId,
+  versionId,
+  fileName,
+}: {
+  datasetId: string;
+  versionId: string;
+  fileName: string;
+}) {
+  const router = useRouter();
+  return (
+    <VersionConfirm
+      label={
+        <>
+          Batalkan unggahan<span className="sr-only"> “{fileName}”</span>
+        </>
+      }
+      icon={<IconTrash aria-hidden />}
+      testId="version-cancel-pending"
+      title={`Batalkan unggahan “${fileName}”?`}
+      description="File ini tidak dipakai dan dibuang; data aktif sekarang tetap dipakai dashboard. Anda bisa mengunggahnya lagi."
+      confirmLabel="Batalkan unggahan"
+      destructive
+      run={() => discardVersionAction(datasetId, versionId)}
+      onDone={() => router.refresh()}
     />
   );
 }

@@ -68,6 +68,37 @@ describe("gcPlan", () => {
     });
   });
 
+  it("T-052: file typed segmen versi yang menunggu konfirmasi tetap dirujuk walau di luar manifest; setelah READY tidak lagi", () => {
+    const snap = (status: string): Snapshot => ({
+      versions: [
+        { id: "vActive", status: "READY" },
+        { id: "vPending", status },
+      ],
+      // Manifest versi tertunda tidak memuat t6 (periode "nyasar" yang dikecualikan bawaan).
+      manifests: [
+        { versionId: "vActive", typedId: "t1" },
+        { versionId: "vPending", typedId: "t1" },
+        { versionId: "vPending", typedId: "t5" },
+      ],
+      segments: [
+        seg(S(1)),
+        seg(S(5), { createdByVersionId: "vPending" }),
+        seg(S(6), { createdByVersionId: "vPending" }),
+      ],
+      typed: [
+        typed("t1", S(1)),
+        typed("t5", S(5)),
+        typed("t6", S(6), { unreferencedAt: ago(48 * H) }),
+      ],
+    });
+    const pending = gcPlan(snap("AWAITING_CONFIRM"), NOW);
+    expect(pending.sweepTyped).toEqual([]);
+    expect(pending.unmarkTyped).toEqual(["t6"]);
+    expect(pending.markTyped).toEqual([]);
+    // Sudah diputuskan (READY, periode tetap dikecualikan): revisi di luar manifest boleh disapu.
+    expect(gcPlan(snap("READY"), NOW).sweepTyped).toEqual(["t6"]);
+  });
+
   it("disapu hanya setelah tidak dirujuk ≥ 24 jam; dirujuk lagi → tanda dilepas", () => {
     const s: Snapshot = {
       versions: [{ id: "v", status: "READY" }],

@@ -367,3 +367,7 @@ export function validateMapping(raw: unknown, ctx: MappingContext): MappingCheck
   }
   return { ok: true, input, plan };
 }
+
+/** Pemetaan unggahan periode = T-057; sampai itu versi seperti ini hanya bisa dibuang (T-052). */
+export const PERIOD_MAPPING_UNSUPPORTED =
+  "Pemetaan kolom untuk unggahan periode belum tersedia. Buang versi ini, samakan judul kolom file dengan data aktif, lalu unggah lagi.";

@@ -1,4 +1,5 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { isoDay } from "@/features/ingest/period";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -17,9 +18,15 @@ import { DATA_KEY } from "./segment-keys";
  *    tidak ada diserahkan ke StorageCleanup (yang memeriksa ulang sebelum menghapus).
  */
 
-/** Manifest versi dari DB (Prisma). */
-export async function prismaManifest(versionId: string): Promise<ManifestSheet[] | null> {
-  const v = await prisma.datasetVersion.findUnique({
+/**
+ * Manifest versi dari DB (Prisma). `db` = klien transaksi bila manifest baru ditulis di transaksi yang
+ * sama (commit unggahan periode T-052 memeriksa yang benar-benar akan di-commit).
+ */
+export async function prismaManifest(
+  versionId: string,
+  db: Pick<Prisma.TransactionClient, "datasetVersion"> = prisma,
+): Promise<ManifestSheet[] | null> {
+  const v = await db.datasetVersion.findUnique({
     where: { id: versionId },
     select: {
       periodGrain: true,

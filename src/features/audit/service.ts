@@ -33,6 +33,11 @@ export type AuditAction =
   | "dataset.period.activate"
   /** Pengaturan periode dataset diubah (T-051), meta { from, to } berisi { keepPeriods, onLimit }. */
   | "dataset.period.settings"
+  /**
+   * Pemilik menerapkan unggahan periode yang menunggu konfirmasi (T-052): meta { from, versionId,
+   * summary, include, droppedRows }.
+   */
+  | "dataset.period.confirm"
   /** Pemilik menghapus dataset beserta dashboard dan share-nya (T-016). */
   | "dataset.delete"
   /** Share dashboard per user: diberikan, perannya diubah, dicabut (T-016). */

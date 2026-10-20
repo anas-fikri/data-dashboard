@@ -52,6 +52,16 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...valid, PERIOD_STRAY_PCT: "101" })).toThrow(/PERIOD_STRAY_PCT/);
   });
 
+  it("PERIOD_CONFIRM_TTL_HOURS (T-052): default 7 hari, minimal 1 jam", () => {
+    expect(parseEnv(valid).PERIOD_CONFIRM_TTL_HOURS).toBe(168);
+    expect(parseEnv({ ...valid, PERIOD_CONFIRM_TTL_HOURS: "24" }).PERIOD_CONFIRM_TTL_HOURS).toBe(
+      24,
+    );
+    expect(() => parseEnv({ ...valid, PERIOD_CONFIRM_TTL_HOURS: "0" })).toThrow(
+      /PERIOD_CONFIRM_TTL_HOURS/,
+    );
+  });
+
   it("INGEST_DUCKDB_THREADS: default 2, 1–16 (T-024)", () => {
     expect(parseEnv(valid).INGEST_DUCKDB_THREADS).toBe(2);
     expect(parseEnv({ ...valid, INGEST_DUCKDB_THREADS: "3" }).INGEST_DUCKDB_THREADS).toBe(3);

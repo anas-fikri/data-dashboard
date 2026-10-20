@@ -85,6 +85,11 @@ export interface PeriodPlanInput {
   fileSha256?: string | null;
   /** Baris tanpa tanggal valid yang dibuang atas pilihan eksplisit pemilik. */
   droppedRows?: number;
+  /**
+   * Sheet di file yang tidak berpasangan dengan sheet data aktif (T-052): tidak ikut disimpan, jadi
+   * pemilik wajib meninjaunya (nama sheet di file, untuk tampilan).
+   */
+  ignoredSheets?: string[];
 }
 
 const LIMIT_NAMES = ["periods", "sheetRows", "datasetBytes", "sheetSegments"] as const;
@@ -147,6 +152,13 @@ export const periodPlanSchema = z.object({
   fileSha256: z.string().nullable(),
   droppedRows: count,
   include: z.array(z.string()),
+  /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
+  ignoredSheets: z.array(z.string()).default([]),
+  /**
+   * Sheet logis (lineageId) yang ada di file (= masukan incomingSheets, urut): periode yang diganti
+   * hanya diganti di sheet ini (T-052 menyusun manifest dan menghitung ulang rencana darinya).
+   */
+  fileSheets: z.array(z.string()).default([]),
   /** Semua periode aktif ∪ file, urut kunci periode (terlama dulu). */
   entries: z.array(entrySchema),
   totals: z.object({
@@ -184,6 +196,7 @@ export const periodPlanSchema = z.object({
       "IDENTICAL",
       "DROPPED_ROWS",
       "NO_CHANGE",
+      "IGNORED_SHEETS",
     ]),
   ),
   autoActivate: z.boolean(),
@@ -476,6 +489,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   }
 
   const fileSha = input.fileSha256 ?? null;
+  const ignoredSheets = [...new Set(input.ignoredSheets ?? [])].sort();
   const entries: PeriodPlanEntry[] = allKeys.map((key) => {
     const a = active.get(key);
     const inc = incoming.get(key);
@@ -559,6 +573,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     if (entries.some((e) => e.identical)) confirm.push("IDENTICAL");
     if ((input.droppedRows ?? 0) > 0) confirm.push("DROPPED_ROWS");
     if (!has("ADDED") && !has("REPLACED") && !has("EVICTED")) confirm.push("NO_CHANGE");
+    if (ignoredSheets.length) confirm.push("IGNORED_SHEETS");
   }
 
   return {
@@ -572,6 +587,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     fileSha256: fileSha,
     droppedRows: input.droppedRows ?? 0,
     include: [...include].filter((k) => incoming.has(k)).sort(),
+    ignoredSheets,
+    fileSheets: [...fileSheets].sort(),
     entries,
     totals: {
       before: totalRows(activeSheets),

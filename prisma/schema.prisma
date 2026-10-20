@@ -151,6 +151,11 @@ model DatasetVersion {
   /// periode ditambah/diganti/dilepas/dikecualikan + baris sebelum → sesudah. Hanya ditulis selama
   /// versi non-terminal; null = versi non-periode atau belum direncanakan.
   plan             Json?
+  /// Versi aktif yang dilihat pemilik saat init unggahan periode (T-052); berbeda dengan versi aktif
+  /// saat file diproses → tidak aktif otomatis (tinjauan). Bukan relasi: versi dasar boleh dibuang.
+  baseVersionId    String?
+  /// Awal periode pilihan pemilik untuk sheet bersumber label (T-052, naive D8); null = tanpa label.
+  periodLabel      DateTime?     @db.Date
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?

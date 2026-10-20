@@ -125,6 +125,11 @@ export interface UploadOptions {
   maxBytes: number;
   signal: AbortSignal;
   onProgress: (p: UploadProgress) => void;
+  /**
+   * Unggahan periode (T-052): "PERIOD" = tambah/perbarui periode terhadap versi aktif `baseVersionId`,
+   * `label` = awal periode untuk sheet bersumber label. Tanpa ini = ganti semua data.
+   */
+  period?: { baseVersionId: string; label: string | null };
 }
 
 interface InitResponse extends ApiOk {
@@ -133,6 +138,9 @@ interface InitResponse extends ApiOk {
   partCount: number;
   uploadedParts: number[];
   resumed: boolean;
+  /** Mode efektif (gema server). */
+  mode: "REPLACE" | "PERIOD";
+  label: string | null;
 }
 
 interface SignResponse extends ApiOk {
@@ -155,15 +163,25 @@ export async function precheck(file: File, maxBytes: number): Promise<void> {
   if (!r.ok) throw new UploadError("INVALID_FORMAT", r.message);
 }
 
-export async function uploadFile(opts: UploadOptions): Promise<{ versionId: string }> {
-  const { file, datasetId, maxBytes, signal, onProgress } = opts;
+export async function uploadFile(
+  opts: UploadOptions,
+): Promise<{ versionId: string; mode: "REPLACE" | "PERIOD"; label: string | null }> {
+  const { file, datasetId, maxBytes, signal, onProgress, period } = opts;
   onProgress({ phase: "checking", loaded: 0, total: file.size, resumed: false });
   await precheck(file, maxBytes);
 
   const init = await api<InitResponse>(
     "/api/uploads",
     "POST",
-    { datasetId, name: file.name, size: file.size, lastModified: file.lastModified },
+    {
+      datasetId,
+      name: file.name,
+      size: file.size,
+      lastModified: file.lastModified,
+      ...(period
+        ? { mode: "PERIOD", baseVersionId: period.baseVersionId, label: period.label }
+        : {}),
+    },
     signal,
   );
   await runMultipart({
@@ -173,7 +191,7 @@ export async function uploadFile(opts: UploadOptions): Promise<{ versionId: stri
     plan: init,
     base: `/api/uploads/${init.versionId}`,
   });
-  return { versionId: init.versionId };
+  return { versionId: init.versionId, mode: init.mode ?? "REPLACE", label: init.label ?? null };
 }
 
 export interface MultipartRun {

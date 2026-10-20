@@ -8,6 +8,7 @@ import { enqueueIngest } from "@/lib/queue/versions";
 import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
+import { isIsoDate, periodStartOf } from "@/features/ingest/period";
 import { formatGiB, quotaDecision, quotaGraceUntil, userUsage } from "./quota";
 import { PART_SIZE, expectedPartSize, partCountOf, verifyParts } from "./parts";
 import { SNIFF_BYTES, kindOf, sniff } from "./sniff";
@@ -30,7 +31,9 @@ export type UploadCode =
   | "INCOMPLETE"
   | "UPLOAD_CORRUPT"
   | "UPLOAD_FAILED"
-  | "STORAGE_ERROR";
+  | "STORAGE_ERROR"
+  /** Unggahan periode (T-052): versi aktif berubah sejak halaman dibuka (baseVersionId basi). */
+  | "STALE";
 
 export type UploadResult<T> =
   ({ ok: true } & T) | { ok: false; code: UploadCode; message: string; missing?: number[] };
@@ -48,7 +51,15 @@ export interface InitInput {
   name: unknown;
   size: unknown;
   lastModified: unknown;
+  /** "REPLACE" (bawaan, ganti semua data) atau "PERIOD" (tambah/perbarui periode, T-052). */
+  mode?: unknown;
+  /** Awal periode (YYYY-MM-DD) untuk sheet bersumber label (mode PERIOD). */
+  label?: unknown;
+  /** Versi aktif yang dilihat pemilik (wajib untuk mode PERIOD). */
+  baseVersionId?: unknown;
 }
+
+export type UploadMode = "REPLACE" | "PERIOD";
 
 export interface InitOk {
   versionId: string;
@@ -57,6 +68,10 @@ export interface InitOk {
   /** Nomor part yang sudah ada di storage (resume). */
   uploadedParts: number[];
   resumed: boolean;
+  /** Mode efektif versi ini (gema init; resume hanya untuk mode + label yang sama, T-052). */
+  mode: UploadMode;
+  /** Label periode efektif (null = tanpa label / mode REPLACE). */
+  label: string | null;
 }
 
 const fail = (
@@ -95,6 +110,9 @@ export function validateInit(
       size: number;
       lastModified: number;
       ext: "xlsx" | "csv";
+      mode: UploadMode;
+      label: string | null;
+      baseVersionId: string | null;
     }
   | { ok: false; code: UploadCode; message: string } {
   if (typeof input.datasetId !== "string" || !isIdShape(input.datasetId)) return notFound();
@@ -119,8 +137,39 @@ export function validateInit(
   if (typeof lm !== "number" || !Number.isSafeInteger(lm) || lm < 0) {
     return fail("INVALID", "Data file tidak lengkap. Pilih ulang file.");
   }
-  return { ok: true, datasetId: input.datasetId, name, size, lastModified: lm, ext };
+  const mode = input.mode ?? "REPLACE";
+  if (mode !== "REPLACE" && mode !== "PERIOD") {
+    return fail("INVALID", "Mode unggahan tidak dikenal. Muat ulang halaman.");
+  }
+  let label: string | null = null;
+  let baseVersionId: string | null = null;
+  if (mode === "PERIOD") {
+    if (input.label !== undefined && input.label !== null) {
+      if (typeof input.label !== "string" || !isIsoDate(input.label)) {
+        return fail("INVALID", "Periode file tidak valid. Pilih periodenya lagi.");
+      }
+      label = input.label;
+    }
+    if (typeof input.baseVersionId !== "string" || !isIdShape(input.baseVersionId)) {
+      return fail("INVALID", "Data unggahan tidak lengkap. Muat ulang halaman lalu unggah lagi.");
+    }
+    baseVersionId = input.baseVersionId;
+  }
+  return {
+    ok: true,
+    datasetId: input.datasetId,
+    name,
+    size,
+    lastModified: lm,
+    ext,
+    mode,
+    label,
+    baseVersionId,
+  };
 }
+
+/** Tanggal ISO naive → nilai kolom @db.Date (UTC tengah malam, tanpa geser). */
+const dateOf = (iso: string) => new Date(`${iso}T00:00:00Z`);
 
 /** Tandai unggahan UPLOADING yang melewati 24 jam sebagai FAILED dan abort multipart-nya. */
 export async function expireStaleUploads(
@@ -215,13 +264,63 @@ export async function initUpload(
     | { kind: "new"; id: string; sourceKey: string; partCount: number }
     | { kind: "reject"; code: UploadCode; message: string };
 
+  /** Unggahan lama file yang sama dengan mode/label lain: dibuang, multipart-nya di-abort setelah commit. */
+  let replaced: { sourceKey: string | null; uploadId: string | null } | null = null;
+  /** Label efektif (mode PERIOD dengan sheet bersumber label); null selain itu. */
+  let label: string | null = null;
   let decision: Decision;
   try {
     // Lock per pemilik: cek sibuk/batas/kuota + buat versi atomik terhadap permintaan paralel.
     decision = await prisma.$transaction(async (tx): Promise<Decision> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`uploads:${userId}`}))`;
 
-      const resumable = await tx.datasetVersion.findFirst({
+      // Mode PERIOD (T-052): hanya untuk dataset yang versi aktifnya per periode, terhadap versi aktif
+      // yang dilihat pemilik; label wajib bila ada sheet bersumber label (dan harus awal periode).
+      let grain: "MONTH" | "QUARTER" | "YEAR" | null = null;
+      if (v.mode === "PERIOD") {
+        const ds = await tx.dataset.findUnique({
+          where: { id: dataset.id },
+          select: {
+            activeVersionId: true,
+            activeVersion: {
+              select: { periodGrain: true, sheets: { select: { periodSource: true } } },
+            },
+          },
+        });
+        const a = ds?.activeVersion;
+        if (!a?.periodGrain) {
+          return {
+            kind: "reject",
+            code: "INVALID",
+            message:
+              "Dataset ini belum menyimpan data per periode. Atur periode dulu, atau ganti semua data.",
+          };
+        }
+        if (ds?.activeVersionId !== v.baseVersionId) {
+          return {
+            kind: "reject",
+            code: "STALE",
+            message:
+              "Data aktif berubah sejak halaman dibuka. Muat ulang halaman lalu unggah lagi.",
+          };
+        }
+        grain = a.periodGrain;
+        if (a.sheets.some((sh) => sh.periodSource === "LABEL")) {
+          if (!v.label) {
+            return { kind: "reject", code: "INVALID", message: "Pilih periode untuk file ini." };
+          }
+          if (periodStartOf(grain, v.label) !== v.label || Number(v.label.slice(0, 4)) < 1000) {
+            return {
+              kind: "reject",
+              code: "INVALID",
+              message: "Periode file tidak valid. Pilih periodenya lagi.",
+            };
+          }
+          label = v.label;
+        }
+      }
+
+      const own = await tx.datasetVersion.findFirst({
         where: {
           datasetId: dataset.id,
           uploadedById: userId,
@@ -236,8 +335,36 @@ export async function initUpload(
           sizeBytes: true,
           partSize: true,
           partCount: true,
+          mode: true,
+          periodLabel: true,
         },
       });
+      // Resume hanya untuk pilihan yang sama (mode + label, R20): pilihan lain tidak pernah memakai
+      // versi lama diam-diam — versi lama (belum berisi data) dibuang dan unggahan dimulai baru.
+      const sameChoice =
+        own?.mode === v.mode && (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label;
+      const resumable = own && sameChoice ? own : null;
+      if (own && !sameChoice) {
+        // Sama dengan cancelUpload: tidak boleh saat complete sedang berjalan (klaim completingAt).
+        const del = await tx.datasetVersion.deleteMany({
+          where: {
+            id: own.id,
+            status: "UPLOADING",
+            OR: [
+              { completingAt: null },
+              { completingAt: { lt: new Date(Date.now() - COMPLETE_CLAIM_MS) } },
+            ],
+          },
+        });
+        if (del.count !== 1) {
+          return {
+            kind: "reject",
+            code: "BUSY",
+            message: "File yang sama sedang diperiksa. Tunggu sebentar, lalu pilih lagi.",
+          };
+        }
+        replaced = { sourceKey: own.sourceKey, uploadId: own.uploadId };
+      }
       if (
         resumable?.sourceKey &&
         resumable.uploadId &&
@@ -245,6 +372,13 @@ export async function initUpload(
         resumable.partSize &&
         resumable.partCount
       ) {
+        // Versi aktif yang dilihat pemilik diperbarui (rencana dihitung terhadap data terbaru).
+        if (v.mode === "PERIOD") {
+          await tx.datasetVersion.update({
+            where: { id: resumable.id },
+            data: { baseVersionId: v.baseVersionId },
+          });
+        }
         return {
           kind: "resume",
           id: resumable.id,
@@ -315,6 +449,14 @@ export async function initUpload(
           fingerprint,
           partSize: PART_SIZE,
           partCount,
+          mode: v.mode,
+          ...(v.mode === "PERIOD"
+            ? {
+                periodGrain: grain,
+                baseVersionId: v.baseVersionId,
+                periodLabel: label ? dateOf(label) : null,
+              }
+            : {}),
         },
         select: { id: true },
       });
@@ -328,6 +470,20 @@ export async function initUpload(
     }
     throw err;
   }
+
+  const old = replaced as { sourceKey: string | null; uploadId: string | null } | null;
+  if (old?.sourceKey) {
+    // Versi lama sudah dihapus: multipart-nya di-abort (gagal → lifecycle storage membersihkan).
+    if (old.uploadId) {
+      await storage
+        .abort(old.sourceKey, old.uploadId)
+        .catch((err: unknown) =>
+          logger.warn({ err: String(err) }, "abort multipart unggahan yang diganti gagal"),
+        );
+    }
+    await storage.remove(old.sourceKey).catch(() => {});
+  }
+  const echo = { mode: v.mode, label };
 
   if (decision.kind === "reject") return fail(decision.code, decision.message);
 
@@ -348,6 +504,7 @@ export async function initUpload(
         partCount: decision.partCount,
         uploadedParts: uploaded,
         resumed: true,
+        ...echo,
       };
     }
     // Multipart sudah hilang (lifecycle/abort): versi ini tidak bisa dilanjutkan.
@@ -384,6 +541,7 @@ export async function initUpload(
     partCount: decision.partCount,
     uploadedParts: [],
     resumed: false,
+    ...echo,
   };
 }
 

@@ -570,6 +570,22 @@ describe("applyMapping (job map-version)", () => {
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "stale" });
   });
 
+  it("T-052: versi unggahan periode → invalid tanpa menulis apa pun (pemetaan periode = T-057)", async () => {
+    const m = await awaiting();
+    const before = m.typedKeys();
+    const load = m.deps.repo.load.bind(m.deps.repo);
+    m.deps.repo.load = async (id) => {
+      const v = await load(id);
+      return v ? { ...v, mode: "PERIOD" } : v;
+    };
+    expect(await applyMapping(m.job, m.deps)).toMatchObject({
+      outcome: "invalid",
+      message: expect.stringMatching(/unggahan periode belum tersedia/),
+    });
+    expect(m.typedKeys()).toEqual(before);
+    expect(m.commits).toEqual([]);
+  });
+
   it("versi dibuang saat job berjalan → gone, file yang sempat diunggah dihapus", async () => {
     const m = await awaiting();
     const before = m.typedKeys();

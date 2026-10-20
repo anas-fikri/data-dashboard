@@ -15,7 +15,16 @@ import { choiceOf, writeTyped } from "@/features/ingest/typed";
 import { gcPlan } from "@/features/versions/gc";
 import { newSegmentId } from "@/features/versions/segment-keys";
 import { openDuck } from "@/lib/duckdb";
-import { DS, fakeLock, parquetTypes, readParquet, testRoot, VID, type FakeStorage } from "./fakes";
+import {
+  buildXlsx,
+  DS,
+  fakeLock,
+  parquetTypes,
+  readParquet,
+  testRoot,
+  VID,
+  type FakeStorage,
+} from "./fakes";
 import { FakeRecastRepo } from "./recast-fakes";
 
 /* Recast (T-007 AC 5; per segmen T-040): satu per sheet (lock), typed-<rev+1>, revisi lama disapu GC. */
@@ -934,5 +943,41 @@ describe("data periode (T-049)", () => {
       const types = await parquetTypes(join(r.storage.dir, x.typedKey));
       expect(Object.keys(types)).toEqual(["_row", "_src_row", "c1", "c2"]);
     }
+  });
+});
+
+describe("T-052: cast per segmen memakai jenis file asalnya", () => {
+  it("segmen xlsx di versi bersumber CSV → tanggal seri Excel tetap dibaca aturan xlsx (1900 kabisat)", async () => {
+    // Seri 15 = 15 Jan 1900 di Excel; parser linier memberi "1900-01-14T…", aturan xlsx menggeser +1 hari.
+    const xml =
+      '<row r="1"><c r="A1" t="inlineStr"><is><t>tanggal</t></is></c><c r="B1" t="inlineStr"><is><t>nilai</t></is></c></row>' +
+      '<row r="2"><c r="A2" s="1"><v>15</v></c><c r="B2"><v>7</v></c></row>' +
+      '<row r="3"><c r="A3" s="1"><v>46000</v></c><c r="B3"><v>8</v></c></row>';
+    const s = t.setup(
+      t.file(
+        `x-${Math.random().toString(36).slice(2)}.xlsx`,
+        await buildXlsx([{ name: "Data", xml }], { dateStyle: true }),
+      ),
+    );
+    expect(await runIngest(VID, s.repo, s.storage, s.opts)).toEqual({ outcome: "done", sheets: 1 });
+    const [sheetId] = [...s.repo.sheets.keys()];
+    const rr = FakeRecastRepo.fromIngest(s.repo, sheetId!);
+    // Versi bersumber CSV (unggahan periode bulan lain), segmen ini dari xlsx.
+    rr.source = "csv";
+    for (const g of rr.segments.values()) g.sourceKind = "xlsx";
+    const deps: RecastDeps = {
+      repo: rr,
+      storage: s.storage,
+      lock: fakeLock(),
+      tmpRoot: join(t.root, "tmp"),
+      duckMemory: "256MB",
+    };
+    const out = await recastSheet(sheetId!, { columns: [{ pos: 2, type: "text" }] }, deps);
+    expect(out).toMatchObject({ outcome: "done" });
+    const rows = await readParquet(join(s.storage.dir, rr.manifestTyped()[0]!.typedKey));
+    expect(rows.map((r) => (r[1] as Date).toISOString().slice(0, 10))).toEqual([
+      "1900-01-15",
+      "2025-12-09",
+    ]);
   });
 });

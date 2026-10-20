@@ -4,6 +4,7 @@ import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
 import { parseFrozenPeriodPlan } from "@/features/ingest/period-plan";
 import { setupHistoryNote } from "@/features/ingest/period-setup-plan";
+import { periodPlanSummary } from "@/features/ingest/period-upload-plan";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { announceVersionActivated } from "@/features/query/warm";
 import { prisma } from "@/lib/db";
@@ -61,6 +62,16 @@ const rowSelect = {
 
 export type VersionRecord = Prisma.DatasetVersionGetPayload<{ select: typeof rowSelect }>;
 
+/** Ringkasan operasi periode untuk riwayat (T-051 atur periode, T-052 unggahan periode). */
+function noteOf(v: VersionRecord): string | null {
+  if (v.mode === "PERIOD_SETUP") return setupHistoryNote(parseFrozenPeriodPlan(v.plan));
+  if (v.mode !== "PERIOD") return null;
+  const plan = parseFrozenPeriodPlan(v.plan);
+  if (!plan) return null;
+  const text = periodPlanSummary(plan);
+  return v.status === "AWAITING_CONFIRM" ? `Menunggu konfirmasi: ${text}` : text;
+}
+
 /** Baris DB → baris riwayat (murni). */
 export function toVersionRow(v: VersionRecord, activeVersionId: string | null): VersionRow {
   const status = v.status as VersionStatus;
@@ -74,11 +85,11 @@ export function toVersionRow(v: VersionRecord, activeVersionId: string | null): 
     finishedAt: v.ingestFinishedAt?.toISOString() ?? null,
     active,
     canActivate: status === "READY" && !active,
-    canDiscard: status === "AWAITING_MAPPING",
+    canDiscard: isDiscardable(status),
     message: status === "FAILED" || isDiscardable(status) ? v.errorMessage : null,
     uploadedBy: v.uploadedBy ? (v.uploadedBy.name ?? v.uploadedBy.email) : null,
     sourceDeleted: v.sourceDeletedAt !== null,
-    note: v.mode === "PERIOD_SETUP" ? setupHistoryNote(parseFrozenPeriodPlan(v.plan)) : null,
+    note: noteOf(v),
   };
 }
 
@@ -236,4 +247,68 @@ export async function discardVersion(
   });
   if (r.ok) logger.info({ datasetId, versionId }, "versi dataset dibuang");
   return r;
+}
+
+/**
+ * Unggahan periode yang menunggu konfirmasi lebih dari PERIOD_CONFIRM_TTL_HOURS (T-052, §4.5/R9) dibuang
+ * otomatis seperti "Batalkan upload": dataset tidak tertahan selamanya, data aktif tidak berubah.
+ * Dipanggil job pemeliharaan worker; mengembalikan jumlah versi yang dibuang.
+ */
+export async function expireAwaitingConfirm(ttlHours: number, now = new Date()): Promise<number> {
+  const cutoff = new Date(now.getTime() - ttlHours * 60 * 60 * 1000);
+  const stale = await prisma.datasetVersion.findMany({
+    where: {
+      status: "AWAITING_CONFIRM",
+      OR: [
+        { ingestFinishedAt: { lt: cutoff } },
+        { ingestFinishedAt: null, updatedAt: { lt: cutoff } },
+      ],
+    },
+    select: { id: true, datasetId: true },
+    take: 100,
+  });
+  let n = 0;
+  for (const v of stale) {
+    const done = await prisma
+      .$transaction(async (tx) => {
+        // Lock Dataset lebih dulu (urutan sama dengan aktivasi/buang/"Terapkan").
+        const rows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "Dataset" WHERE id = ${v.datasetId} FOR UPDATE`;
+        if (!rows.length) return false;
+        const del = await tx.datasetVersion.deleteMany({
+          where: {
+            id: v.id,
+            status: "AWAITING_CONFIRM",
+            activeFor: { is: null },
+            OR: [
+              { ingestFinishedAt: { lt: cutoff } },
+              { ingestFinishedAt: null, updatedAt: { lt: cutoff } },
+            ],
+          },
+        });
+        if (del.count !== 1) return false;
+        await tx.storageCleanup.createMany({
+          data: versionPrefixes(v.datasetId, v.id).map((prefix) => ({
+            prefix,
+            reason: "unggahan periode kedaluwarsa tanpa konfirmasi",
+          })),
+        });
+        return true;
+      }, TX_OPTIONS)
+      .catch((e: unknown) => {
+        logger.warn(
+          { versionId: v.id, err: e instanceof Error ? e.message : String(e) },
+          "buang unggahan periode kedaluwarsa gagal; dicoba lagi nanti",
+        );
+        return false;
+      });
+    if (done) {
+      n++;
+      logger.info(
+        { datasetId: v.datasetId, versionId: v.id },
+        "unggahan periode kedaluwarsa dibuang",
+      );
+    }
+  }
+  return n;
 }

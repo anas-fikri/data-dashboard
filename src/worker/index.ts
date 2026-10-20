@@ -1,13 +1,15 @@
 /*
  * Proses worker terpisah dari app (flow-kerja B1). Antrean:
  *   - "ingest": file unggahan → raw.parquet per sheet (T-006). Concurrency 1 per proses (D7); lock job
- *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih.
+ *     diperpanjang otomatis, job dari worker yang mati diambil ulang (stalled) dan mulai bersih. Versi
+ *     mode PERIOD (T-052) diproses runPeriodIngest (segmen per periode + rencana), sisanya runIngest.
  *   - "recast": typed-<rev+1>.parquet per sheet (T-007; koreksi skema T-008), satu per sheet (lock),
  *     dan job "map-version": pemetaan kolom versi AWAITING_MAPPING lalu aktivasi (T-014).
  *   - "export": ekspor widget CSV/XLSX (T-017), job ringan terpisah dari ingest; status di tabel Export.
  *   - "pdf": PDF dashboard (T-018): token render → renderer (POST /render) → cek PDF → unggah; terpisah
  *     dari "export" agar PDF tidak menunggu XLSX besar. Concurrency 1 per proses.
- *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, pembersihan storage,
+ *   - "maintenance": job terjadwal (unggahan > 24 jam → FAILED, ingest macet, unggahan periode yang
+ *     menunggu konfirmasi > PERIOD_CONFIRM_TTL_HOURS dibuang (T-052), pembersihan storage,
  *     file asli > 7 hari, pembersihan ekspor tiap 5 menit) dan hapus typed lama / objek ekspor
  *     kedaluwarsa (delete-export, tertunda 60 menit).
  * Jalankan: npm run worker (tsx dengan kondisi react-server agar modul "server-only" bisa dimuat).
@@ -38,6 +40,9 @@ import {
   type PeriodSetupJobData,
 } from "@/features/ingest/period-setup";
 import { prismaPeriodSetupRepo } from "@/features/ingest/period-setup-repo";
+import { runPeriodIngest } from "@/features/ingest/period-ingest";
+import { prismaPeriodIngestRepo, versionMode } from "@/features/ingest/period-ingest-repo";
+import { periodLimits } from "@/features/ingest/period-plan";
 import { recastSheet, yieldsToIngest } from "@/features/ingest/recast";
 import {
   finalizeFailed,
@@ -57,6 +62,7 @@ import { expireStaleUploads } from "@/features/uploads/service";
 import { keyReferenced, runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { runSegmentGc } from "@/features/versions/gc";
 import { runStorageAudit } from "@/features/versions/integrity";
+import { expireAwaitingConfirm } from "@/features/versions/service";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
@@ -80,6 +86,8 @@ import { deleteObject } from "@/lib/storage/objects";
 const MAINTENANCE = "maintenance";
 const EXPIRE_UPLOADS = "expire-stale-uploads";
 const RECOVER_INGESTS = "recover-stuck-ingests";
+/** Unggahan periode yang menunggu konfirmasi > PERIOD_CONFIRM_TTL_HOURS dibuang (T-052). */
+const EXPIRE_PERIOD_CONFIRM = "expire-period-confirm";
 /**
  * Hapus satu typed revisi lama (dijadwalkan recast/pemetaan sebelum T-038). Tidak dijadwalkan lagi —
  * GC segmen yang memutuskan — tetapi job yang masih antre saat deploy tetap diproses dengan penjaga.
@@ -169,6 +177,7 @@ async function main() {
   const schedules: [string, number][] = [
     [EXPIRE_UPLOADS, 60 * 60 * 1000],
     [RECOVER_INGESTS, 15 * 60 * 1000],
+    [EXPIRE_PERIOD_CONFIRM, 60 * 60 * 1000],
     [STORAGE_CLEANUP, 15 * 60 * 1000],
     [RAW_RETENTION, 60 * 60 * 1000],
     [EXPORT_CLEANUP, 5 * 60 * 1000],
@@ -193,6 +202,9 @@ async function main() {
       if (job.name === EXPIRE_UPLOADS) return { expired: await runExpireStaleUploads() };
       if (job.name === RECOVER_INGESTS)
         return { recovered: await recoverStuckIngests(ingestQueue) };
+      if (job.name === EXPIRE_PERIOD_CONFIRM) {
+        return { expired: await expireAwaitingConfirm(env().PERIOD_CONFIRM_TTL_HOURS) };
+      }
       if (job.name === STORAGE_CLEANUP) return await runStorageCleanup();
       if (job.name === RAW_RETENTION) return await runRawRetention();
       if (job.name === EXPORT_CLEANUP) return await runExportCleanup(exportCleanupDeps);
@@ -224,6 +236,7 @@ async function main() {
   watchRedis(announceRedis, logger, "redis pengumuman versi aktif");
 
   // --- ingest ---
+  const periodIngestRepo = prismaPeriodIngestRepo(() => periodLimits(env()));
   const ingestWorker = new Worker<IngestJobData>(
     INGEST_QUEUE,
     async (job: Job<IngestJobData>) => {
@@ -245,12 +258,25 @@ async function main() {
         return r;
       }
       logger.info({ jobId: job.id, versionId, attempt: job.attemptsMade + 1 }, "ingest mulai");
-      const r = await runIngest(versionId, prismaIngestRepo, s3IngestStorage, {
+      const opts = {
         tmpRoot,
         datasetIdHint: job.data.datasetId,
         duckThreads: env().INGEST_DUCKDB_THREADS,
         sheetThreads: env().INGEST_XLSX_SHEET_THREADS,
-      });
+      };
+      // Unggahan periode (T-052): hanya file baru yang diproses, periode lama dirujuk ulang.
+      const r =
+        (await versionMode(versionId)) === "PERIOD"
+          ? await runPeriodIngest(
+              versionId,
+              {
+                repo: periodIngestRepo,
+                storage: s3IngestStorage,
+                limits: periodLimits(env()),
+              },
+              opts,
+            )
+          : await runIngest(versionId, prismaIngestRepo, s3IngestStorage, opts);
       logger.info({ jobId: job.id, versionId, ...r }, "ingest selesai");
       if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);
       return r;

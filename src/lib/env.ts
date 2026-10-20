@@ -173,6 +173,13 @@ export const envSchema = z.object({
   PERIOD_SHRINK_CONFIRM_PCT: z.coerce.number().int().min(0).max(100).default(50),
   /** Periode file dengan baris < persen ini dari periode terbesar = "kemungkinan nyasar". */
   PERIOD_STRAY_PCT: z.coerce.number().int().min(0).max(100).default(10),
+  /** Unggahan periode yang menunggu konfirmasi dibuang otomatis setelah sekian jam (T-052, §5.2). */
+  PERIOD_CONFIRM_TTL_HOURS: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 90)
+    .default(168),
 
   SEED_ADMIN_EMAIL: z.string().email().optional(),
   /** Direktori kerja worker ingest (unduhan sumber + spill + DuckDB); butuh ± ukuran upload + 8 GiB. */

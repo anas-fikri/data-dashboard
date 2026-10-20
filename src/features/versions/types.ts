@@ -22,7 +22,7 @@ export interface VersionRow {
   active: boolean;
   /** READY dan bukan versi aktif: pemilik bisa mengaktifkannya (rollback). */
   canActivate: boolean;
-  /** AWAITING_MAPPING: pemilik bisa membuangnya. */
+  /** AWAITING_MAPPING atau AWAITING_CONFIRM (T-052): pemilik bisa membuangnya. */
   canDiscard: boolean;
   /** Pesan error untuk FAILED/AWAITING_MAPPING; null untuk status lain. */
   message: string | null;
@@ -38,7 +38,17 @@ export interface VersionRow {
 }
 
 /** STALE: skema aktif berubah sejak halaman pemetaan dimuat (T-014) — muat ulang halaman. */
-export type VersionCode = "NOT_FOUND" | "DATASET_BUSY" | "INVALID" | "RATE_LIMITED" | "STALE";
+export type VersionCode =
+  | "NOT_FOUND"
+  | "DATASET_BUSY"
+  | "INVALID"
+  | "RATE_LIMITED"
+  | "STALE"
+  /**
+   * Rencana unggahan periode berubah sejak ditinjau (T-052: versi aktif, skema, pengaturan, atau batas
+   * berubah): rencana dihitung ulang dan pemilik harus meninjau lagi.
+   */
+  | "PLAN_STALE";
 
 /** Hasil Server Action versi (konvensi D2: kegagalan yang diharapkan tidak melempar). */
 export type VersionResult<T> =

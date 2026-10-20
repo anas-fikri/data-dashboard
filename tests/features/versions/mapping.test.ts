@@ -472,6 +472,20 @@ describe("submitMapping", () => {
     expect(enqueueMapping).not.toHaveBeenCalled();
   });
 
+  it("T-052: unggahan periode yang menunggu pemetaan → INVALID (pemetaan periode = T-057), tanpa antre", async () => {
+    tx.datasetVersion.findFirst.mockResolvedValueOnce({
+      status: "AWAITING_MAPPING",
+      mode: "PERIOD",
+      sheets: freshRows,
+    });
+    expect(await submit()).toMatchObject({
+      ok: false,
+      code: "INVALID",
+      message: expect.stringMatching(/unggahan periode belum tersedia/),
+    });
+    expect(enqueueMapping).not.toHaveBeenCalled();
+  });
+
   it("versi sudah tidak menunggu pemetaan → INVALID", async () => {
     tx.datasetVersion.findFirst.mockResolvedValueOnce({ status: "READY", sheets: freshRows });
     expect(await submit()).toMatchObject({ ok: false, code: "INVALID" });

@@ -4,6 +4,7 @@ import { isIdShape } from "@/features/datasets/validation";
 import type { ColumnMeta } from "@/features/ingest/header";
 import { INFER_THRESHOLD, type ColumnSchema } from "@/features/ingest/infer";
 import {
+  PERIOD_MAPPING_UNSUPPORTED,
   parseMappingInput,
   validateMapping,
   type MappingReviewIssue,
@@ -484,12 +485,13 @@ export async function submitMapping(
     if (!ds) return notFound();
     const v = await tx.datasetVersion.findFirst({
       where: { id: versionId, datasetId },
-      select: { status: true, sheets: { select: versionSheetSelect } },
+      select: { status: true, mode: true, sheets: { select: versionSheetSelect } },
     });
     if (!v) return notFound();
     if (v.status !== "AWAITING_MAPPING") {
       return fail("INVALID", "Versi ini sudah tidak menunggu pemetaan. Muat ulang halaman.");
     }
+    if (v.mode === "PERIOD") return fail("INVALID", PERIOD_MAPPING_UNSUPPORTED);
     const active = ds.activeVersionId
       ? {
           versionId: ds.activeVersionId,

@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { computePeriodPlan } from "@/features/ingest/period-plan";
 import { buildSetupPreview } from "@/features/ingest/period-setup-plan";
 import type { VersionRecord } from "@/features/versions/service";
 
@@ -17,7 +18,11 @@ const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dataset: { findFirst: vi.fn() },
   // Gerbang integritas rollback (T-038) di luar transaksi: bawaan target tidak ditemukan → dilewati.
-  datasetVersion: { findFirst: vi.fn(), updateMany: vi.fn() },
+  datasetVersion: {
+    findFirst: vi.fn(),
+    updateMany: vi.fn(),
+    findMany: vi.fn(async (): Promise<unknown[]> => []),
+  },
 };
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
@@ -161,6 +166,82 @@ describe("toVersionRow", () => {
     );
     // Rencana rusak/tidak terbaca: tanpa catatan (fail-closed), bukan galat.
     expect(svc.toVersionRow(record({ mode: "PERIOD_SETUP", plan: { v: 9 } }), A).note).toBeNull();
+  });
+});
+
+describe("toVersionRow unggahan periode (T-052)", () => {
+  const plan = computePeriodPlan({
+    grain: "MONTH",
+    source: "COLUMN",
+    baseVersionId: A,
+    active: [{ key: "2026-03", start: "2026-03-01", sheets: { l1: { rows: 10, bytes: 10 } } }],
+    incoming: [
+      { key: "2026-04", start: "2026-04-01", sheets: { l1: { rows: 12_950, bytes: 10 } } },
+    ],
+    incomingSheets: ["l1"],
+    settings: { keepPeriods: null, onLimit: "REJECT" },
+    limits: {
+      keepDefault: 24,
+      keepMax: 60,
+      sheetMaxRows: 10_000_000,
+      datasetMaxBytes: 16 * 1024 ** 3,
+      sheetMaxSegments: 120,
+      shrinkConfirmPct: 50,
+      strayPct: 10,
+      warnPct: 80,
+    },
+  });
+
+  it("READY → catatan 'April 2026 ditambahkan (12.950 baris)'", () => {
+    const row = svc.toVersionRow(record({ mode: "PERIOD", plan: plan as never }), A);
+    expect(row.note).toBe("April 2026 ditambahkan (12.950 baris)");
+    expect(row.canDiscard).toBe(false);
+  });
+
+  it("AWAITING_CONFIRM → bisa dibuang ('Batalkan unggahan') + catatan menunggu konfirmasi", () => {
+    const row = svc.toVersionRow(
+      record({ mode: "PERIOD", status: "AWAITING_CONFIRM", plan: plan as never }),
+      A,
+    );
+    expect(row).toMatchObject({
+      canDiscard: true,
+      canActivate: false,
+      note: "Menunggu konfirmasi: April 2026 ditambahkan (12.950 baris)",
+    });
+  });
+});
+
+describe("expireAwaitingConfirm (T-052: dibuang otomatis setelah 7 hari)", () => {
+  it("yang lewat batas dibuang di bawah lock Dataset + prefix diantrekan; yang tidak lagi cocok dilewati", async () => {
+    const now = new Date("2026-10-20T00:00:00Z");
+    prisma.datasetVersion.findMany.mockResolvedValueOnce([
+      { id: A, datasetId: DS },
+      { id: B, datasetId: DS },
+    ]);
+    tx.$queryRaw.mockResolvedValue([{ id: DS }]);
+    tx.datasetVersion.deleteMany
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    expect(await svc.expireAwaitingConfirm(168, now)).toBe(1);
+    const cutoff = new Date("2026-10-13T00:00:00Z");
+    expect(prisma.datasetVersion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          status: "AWAITING_CONFIRM",
+          OR: [
+            { ingestFinishedAt: { lt: cutoff } },
+            { ingestFinishedAt: null, updatedAt: { lt: cutoff } },
+          ],
+        }),
+      }),
+    );
+    expect(tx.datasetVersion.deleteMany.mock.calls[0]![0].where).toMatchObject({
+      id: A,
+      status: "AWAITING_CONFIRM",
+      activeFor: { is: null },
+    });
+    expect(tx.storageCleanup.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.storageCleanup.createMany.mock.calls[0]![0].data[0].prefix).toBe(`raw/${DS}/${A}/`);
   });
 });
 

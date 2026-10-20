@@ -422,6 +422,7 @@ export const prismaRecastRepo: RecastRepo = {
                     colMap: true,
                     periodKey: true,
                     periodStart: true,
+                    sourceKind: true,
                   },
                 },
               },
@@ -455,6 +456,10 @@ export const prismaRecastRepo: RecastRepo = {
         colMap: t.segment.colMap,
         periodKey: t.segment.periodKey,
         periodStart: isoDay(t.segment.periodStart),
+        sourceKind:
+          t.segment.sourceKind === "csv" || t.segment.sourceKind === "xlsx"
+            ? t.segment.sourceKind
+            : null,
         typed: {
           id: t.id,
           typedKey: t.typedKey,
@@ -610,6 +615,7 @@ export const prismaMappingRepo: MappingRepo = {
       select: {
         datasetId: true,
         status: true,
+        mode: true,
         sourceKey: true,
         sheets: {
           orderBy: { index: "asc" },
@@ -635,6 +641,7 @@ export const prismaMappingRepo: MappingRepo = {
     return {
       datasetId: v.datasetId,
       status: v.status,
+      mode: v.mode,
       source: v.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
       sheets: v.sheets.map(({ segments, ...s }) => ({
         ...s,

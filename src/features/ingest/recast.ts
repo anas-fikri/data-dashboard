@@ -97,6 +97,11 @@ export interface RecastSegment {
   periodKey?: string | null;
   /** Awal periode ISO naive = nilai `_period` di file typed segmen. */
   periodStart?: string | null;
+  /**
+   * Jenis file asal segmen (Segment.sourceKind, T-049): cast segmen memakai jenisnya sendiri — unggahan
+   * periode bisa bergantian xlsx/CSV antarbulan (T-052). null/tidak ada = jenis sumber versi.
+   */
+  sourceKind?: SourceKind | null;
 }
 
 export interface RecastSheet {
@@ -435,7 +440,7 @@ export async function recastSheet(
       await copyTyped(d, {
         rawPath: await rawOf(g),
         outPath: out,
-        source: s.source,
+        source: g.sourceKind ?? s.source,
         headerRow: hdr(g),
         rowBase: g.rowBase,
         watch,

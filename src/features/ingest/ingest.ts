@@ -240,6 +240,8 @@ export type IngestOutcome =
   | { outcome: "done"; sheets: number }
   /** Versi refresh tidak cocok dengan skema aktif: menunggu pemetaan (T-014). */
   | { outcome: "awaiting"; sheets: number; message: string }
+  /** Unggahan periode menunggu konfirmasi pemilik (T-052): rencana beku di versi. */
+  | { outcome: "confirm"; sheets: number; message: string }
   | { outcome: "gone" }
   | { outcome: "skipped" }
   | { outcome: "failed"; message: string };
@@ -580,7 +582,7 @@ export async function runIngest(
  * Header sheet refresh: baris header sheet aktif (dibaca dari raw lokal) lalu tebakan; dipilih yang
  * tidak kehilangan kolom aktif terlihat (refresh.chooseHeader).
  */
-async function refreshHeader(
+export async function refreshHeader(
   duck: Duck,
   s: { rec: SheetRecord; path: string },
   active: ActiveSheet,
@@ -595,7 +597,7 @@ async function refreshHeader(
  * xlsx: parser memancarkan baris secara sinkron; antrean dikuras di titik `drain` (≤ satu potongan).
  * sheetThreads > 1 dan ≥ 2 sheet besar → sheet di-parse paralel di worker thread (xlsx-parallel.ts).
  */
-async function xlsxSheets(
+export async function xlsxSheets(
   duck: Duck,
   src: string,
   work: string,

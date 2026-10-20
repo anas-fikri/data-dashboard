@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button";
 import { formatBytes } from "@/features/uploads/client";
 import type { VersionRow } from "@/features/versions/types";
 import { cn } from "@/lib/utils";
-import { VersionActivate } from "./version-history-actions";
+import { VersionActivate, VersionCancelPending } from "./version-history-actions";
 import {
   formatJakarta,
   versionStatusView,
@@ -184,6 +184,8 @@ export function VersionHistoryRow({
       >
         {canActivate ? (
           <VersionActivate datasetId={datasetId} versionId={v.id} fileName={name} />
+        ) : v.canDiscard && v.status === "AWAITING_CONFIRM" ? (
+          <VersionCancelPending datasetId={datasetId} versionId={v.id} fileName={name} />
         ) : v.canDiscard ? (
           <MappingAction datasetId={datasetId} name={name} applying={mappingApplying} />
         ) : null}

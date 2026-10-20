@@ -24,6 +24,7 @@ import type { ColumnMeta } from "./header";
 import { INFER_THRESHOLD, type ColumnSchema, type SourceKind } from "./infer";
 import { DatasetGoneError, DeadlineError, permanentMessage, type TypedStorage } from "./ingest";
 import {
+  PERIOD_MAPPING_UNSUPPORTED,
   REVIEW_MAX,
   validateMapping,
   type MappingOutcome,
@@ -68,6 +69,8 @@ export interface MappingVersion {
   active: ActiveSnapshot | null;
   /** Versi READY: id job pemetaan yang meng-commit-nya (AuditLog), null bila tidak diketahui. */
   mappedBy?: string | null;
+  /** Mode versi (T-052): pemetaan unggahan periode belum didukung (T-057). */
+  mode?: string;
 }
 
 export interface MappingSheetUpdate {
@@ -205,6 +208,7 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
         : { outcome: "gone", message: ALREADY_MAPPED_MESSAGE };
     }
     if (v.status !== "AWAITING_MAPPING") return { outcome: "gone" };
+    if (v.mode === "PERIOD") return { outcome: "invalid", message: PERIOD_MAPPING_UNSUPPORTED };
     const check = validateMapping(job.input, { sheets: v.sheets, active: v.active });
     if (!check.ok) {
       return check.code === "STALE"

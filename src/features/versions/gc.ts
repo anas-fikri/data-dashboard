@@ -47,6 +47,18 @@ export interface GcPlan {
 export function gcPlan(s: GcSnapshot, now: Date, graceMs = SEGMENT_GC_GRACE_MS): GcPlan {
   const live = new Set(s.versions.filter((v) => v.status !== "FAILED").map((v) => v.id));
   const refTyped = new Set(s.manifests.filter((m) => live.has(m.versionId)).map((m) => m.typedId));
+  // Versi belum terminal (T-052): file typed segmen yang ditulisnya boleh belum ada di manifest mana
+  // pun (unggahan periode yang menunggu konfirmasi: periode "nyasar" yang dikecualikan bisa dimasukkan
+  // pemilik saat "Terapkan") — semuanya tetap dirujuk sampai versinya READY/FAILED/dibuang.
+  const pending = new Set(
+    s.versions.filter((v) => v.status !== "FAILED" && v.status !== "READY").map((v) => v.id),
+  );
+  const held = new Set(
+    s.segments
+      .filter((g) => g.createdByVersionId && pending.has(g.createdByVersionId))
+      .map((g) => g.id),
+  );
+  for (const t of s.typed) if (held.has(t.segmentId)) refTyped.add(t.id);
   const refSeg = new Set(s.typed.filter((t) => refTyped.has(t.id)).map((t) => t.segmentId));
   for (const g of s.segments) {
     if (g.createdByVersionId && live.has(g.createdByVersionId)) refSeg.add(g.id);

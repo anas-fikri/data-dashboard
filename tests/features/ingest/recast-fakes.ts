@@ -17,6 +17,8 @@ export interface FakeSegment {
   /** Periode segmen (T-049). */
   periodKey?: string | null;
   periodStart?: string | null;
+  /** Jenis file asal segmen (T-049/T-052); null/tidak ada = jenis sumber versi. */
+  sourceKind?: "csv" | "xlsx" | null;
 }
 
 export interface FakeTyped extends Omit<
@@ -122,6 +124,7 @@ export class FakeRecastRepo implements RecastRepo {
           colMap: g.colMap ?? [],
           periodKey: g.periodKey ?? null,
           periodStart: g.periodStart ?? null,
+          sourceKind: g.sourceKind ?? null,
           typed: {
             id: t.id,
             typedKey: t.typedKey,

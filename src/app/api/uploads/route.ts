@@ -5,7 +5,10 @@ import { initUpload } from "@/features/uploads/service";
 
 export const dynamic = "force-dynamic";
 
-/** Mulai atau lanjutkan unggahan: { datasetId, name, size, lastModified }. */
+/**
+ * Mulai atau lanjutkan unggahan: { datasetId, name, size, lastModified, mode?, label?, baseVersionId? }
+ * (mode "PERIOD" = tambah/perbarui periode, T-052; tanpa mode = ganti semua data).
+ */
 export function POST(req: NextRequest) {
   return uploadRoute(req, RULES.uploadInit, (user, body) =>
     initUpload(user.id, {
@@ -13,6 +16,9 @@ export function POST(req: NextRequest) {
       name: body.name,
       size: body.size,
       lastModified: body.lastModified,
+      mode: body.mode,
+      label: body.label,
+      baseVersionId: body.baseVersionId,
     }),
   );
 }

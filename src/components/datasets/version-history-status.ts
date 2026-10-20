@@ -125,6 +125,10 @@ const ERRORS: Record<VersionCode, { text: string; preferServer: boolean }> = {
     text: "Skema aktif berubah. Muat ulang halaman ini.",
     preferServer: false,
   },
+  PLAN_STALE: {
+    text: "Rencana periode berubah sejak ditinjau. Tinjau ulang sebelum menerapkan.",
+    preferServer: true,
+  },
 };
 
 export function versionErrorText(code: string, serverMessage: string): string {

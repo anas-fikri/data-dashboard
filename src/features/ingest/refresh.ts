@@ -224,7 +224,7 @@ const clip = (s: string) => {
 };
 
 /** Kolom untuk pesan: nama tampil, plus judul di file bila user sudah menggantinya dan nama sheet. */
-function columnRef(c: ColumnSchema, sheet: string | null): string {
+export function columnRef(c: ColumnSchema, sheet: string | null): string {
   const notes: string[] = [];
   if (c.original.trim() !== "" && normName(c.original) !== normName(c.name)) {
     notes.push(`judul di file "${clip(c.original)}"`);

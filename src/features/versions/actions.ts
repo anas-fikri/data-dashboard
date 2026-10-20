@@ -11,6 +11,7 @@ import { redisReady } from "@/lib/redis";
 import type { SetupPreview } from "@/features/ingest/period-setup-plan";
 import { pairPlanFor, submitMapping } from "./mapping";
 import { applyPeriodSetup, previewPeriodSetup, savePeriodSettings } from "./period-setup";
+import { confirmPeriodUpload, reviewPeriodUpload, type PeriodReview } from "./period-upload";
 import * as service from "./service";
 import type { MappingPairPlan, VersionResult } from "./types";
 
@@ -192,6 +193,42 @@ export async function savePeriodSettingsAction(
     if (r.ok) {
       revalidatePath(`/datasets/${datasetId}`);
       revalidatePath(`/datasets/${datasetId}/periode`);
+    }
+    return r;
+  });
+}
+
+/**
+ * Tinjauan unggahan periode yang menunggu konfirmasi (T-052): rencana dihitung ulang dari data aktif
+ * sekarang (+ pilihan "Masukkan" periode nyasar) beserta sidiknya. Baca saja; rate limit aturan query.
+ */
+export async function reviewPeriodUploadAction(
+  datasetId: string,
+  versionId: string,
+  payload: unknown,
+): Promise<VersionResult<PeriodReview>> {
+  return asOwner(
+    "reviewPeriodUpload",
+    async (userId) =>
+      (await rateLimited(userId, RULES.query, "permintaan")) ??
+      (await reviewPeriodUpload(userId, datasetId, versionId, payload)),
+    false,
+  );
+}
+
+/** "Terapkan" unggahan periode (T-052): PLAN_STALE bila rencana berubah sejak ditinjau. */
+export async function confirmPeriodUploadAction(
+  datasetId: string,
+  versionId: string,
+  payload: unknown,
+): Promise<VersionResult<{ fileName: string; summary: string }>> {
+  return asOwner("confirmPeriodUpload", async (userId, ip) => {
+    const r = await confirmPeriodUpload(userId, datasetId, versionId, payload, ip);
+    if (r.ok) {
+      revalidatePath(`/datasets/${datasetId}`);
+      revalidatePath("/datasets");
+      revalidatePath("/dashboards");
+      revalidatePath("/dashboards/[id]", "page");
     }
     return r;
   });

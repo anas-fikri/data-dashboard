@@ -44,6 +44,7 @@ export default defineConfig({
         /pivot\.spec\.ts$/,
         /guide-roles\.spec\.ts$/,
         /period-setup\.spec\.ts$/,
+        /period-upload\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -134,7 +135,13 @@ export default defineConfig({
     { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
     // period-setup (T-051): worker sendiri; Atur periode → versi PERIOD_SETUP aktif → rollback.
     { name: "period-setup", testMatch: /period-setup\.spec\.ts$/, dependencies: ["pivot"] },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["period-setup"] },
+    // period-upload (T-052): worker sendiri; unggahan periode → aktif otomatis / menunggu konfirmasi.
+    {
+      name: "period-upload",
+      testMatch: /period-upload\.spec\.ts$/,
+      dependencies: ["period-setup"],
+    },
+    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["period-upload"] },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined
