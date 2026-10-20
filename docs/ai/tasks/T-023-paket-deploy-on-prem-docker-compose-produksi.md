@@ -1,7 +1,7 @@
 ---
 id: T-023
 title: Paket deploy on-prem Docker Compose produksi
-status: in_progress
+status: blocked
 profile: strict
 profile_pinned: true
 goal: G-5
@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-20T22:35:34Z"
+updated: "2026-10-20T22:39:06Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -730,11 +730,19 @@ review:
       by: claude-confirm-review
       at: "2026-10-17T05:11:30Z"
       findings: 0
+    - "n": 4
+      by: claude-reviewer-subagent
+      at: "2026-10-20T22:35:56Z"
+      findings: 5
+    - "n": 5
+      by: claude-code
+      at: "2026-10-20T22:35:56Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 170734
+    duration_ms: 164980
     summary: |-
       …t
       > vitest run
@@ -742,23 +750,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792535656828,"service":"data-dashboard","host":"127.0.0.1","port":32803,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792535656879,"service":"data-dashboard","host":"127.0.0.1","port":46165,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792535656974,"service":"data-dashboard","host":"127.0.0.1","port":37311,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792535657077,"service":"data-dashboard","host":"127.0.0.1","port":38219,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792535663687,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792535674342,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792535674365,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792535674367,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792535674376,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792535878888,"service":"data-dashboard","host":"127.0.0.1","port":38239,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535878939,"service":"data-dashboard","host":"127.0.0.1","port":43515,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792535879034,"service":"data-dashboard","host":"127.0.0.1","port":43745,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535879132,"service":"data-dashboard","host":"127.0.0.1","port":39741,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535887668,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792535893798,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792535893822,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792535893826,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792535893833,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  200 passed | 1 skipped (201)
             Tests  2659 passed | 10 skipped (2669)
-         Start at  22:33:01
-         Duration  115.54s (tests 83%, import 14%, transform 3%)
+         Start at  22:36:46
+         Duration  114.58s (tests 84%, import 13%, transform 3%)
 
-          Isolate  201 workers spawned · ~131ms startup each (spawn + environment, per file)
-                   at least ~8.66s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  201 workers spawned · ~130ms startup each (spawn + environment, per file)
+                   at least ~8.56s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -766,11 +774,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T22:34:58Z"
+    at: "2026-10-20T22:38:42Z"
     tree: 8e58acf240a7c492ef82df6c095e81c82bedd78b2e5e3962b43b281de0de2160
   commits:
     - 00400de
     - 0177afd
+    - 03a0095
     - 03b1d73
     - 03d94b3
     - 03f863a
@@ -782,26 +791,35 @@ evidence:
     - 0712a9c
     - 0727a63
     - 0796bbf
+    - 08ca5b4
     - 098fc77
     - 0a23305
     - 0a542eb
     - 0ad2dbe
     - 0b3dbca
+    - 0cb153a
     - 0d4c16b
     - 0d77bf5
+    - 0e22c88
     - 0f862c9
     - 104dc4c
     - 10ed698
+    - "1220871"
     - 13b3d0b
+    - 14bbbc8
     - 15536b5
     - 16375df
     - "1663077"
     - 16ed998
+    - "1781974"
     - 17c1240
+    - 17d81a7
     - 183aee3
+    - 18b74cc
     - 19714b5
     - "1977286"
     - 1add773
+    - 1b2b9ab
     - 1b6e65d
     - 1bacfb5
     - 1c4ecfb
@@ -811,17 +829,23 @@ evidence:
     - 2291c8a
     - 22b384e
     - 2361fa1
+    - 23e5ae9
     - "2496574"
     - 24af891
     - 24d5af2
     - 24e2978
     - 254f209
+    - 258a139
     - 2653b85
     - 2687b77
     - 26ac601
     - "2725e19"
+    - 277b913
+    - 27924c4
+    - 27986dc
     - 27bf134
     - 29f1080
+    - 29fe0f3
     - 2a7eff2
     - 2b68a94
     - 2b68d11
@@ -829,20 +853,30 @@ evidence:
     - 2c2e6a4
     - 2c5ffeb
     - 2ca934f
+    - 2d7b316
+    - 2d82efa
+    - 2ed6480
     - 30baa8d
     - 3107c1b
     - 316fa62
     - 327dde2
     - 33352bb
+    - 337259e
+    - 35f92f6
+    - 3602b55
+    - 36afc9f
     - 37af03d
     - 38adbac
     - 3a7b69d
+    - 3b96186
+    - 3bb3baa
     - 3bf60b5
     - 3c5143a
     - 3d486ab
     - 3e91002
     - 3fd726f
     - 401b86a
+    - 4060d62
     - 40c4360
     - 41a5b3a
     - "42238e1"
@@ -852,26 +886,39 @@ evidence:
     - 457220a
     - 460d650
     - "4647639"
+    - 4679db1
     - 467b44d
     - 471d15b
     - 474aa11
     - "4874549"
+    - 49f49a5
     - 4a2154f
+    - 4bd9881
     - 4bff118
     - 4c397a1
     - 4d5aa50
+    - 4e9a95e
+    - 4eea84c
     - 4f5f3fc
     - 4f751b8
     - 506e66d
+    - 5101f51
     - "5219784"
+    - 538221d
     - 544d726
     - 54909aa
     - 54d4ddc
+    - 5603fc7
     - 561dfa3
     - 561f910
+    - 56a8447
     - 56b7176
+    - 56e4d6d
+    - 57df970
     - 58fa92d
+    - 58fdf0c
     - 592bae9
+    - 59ec9a3
     - 59fa9e0
     - 5a7d2eb
     - 5aeb313
@@ -885,58 +932,86 @@ evidence:
     - 60938f4
     - 60d050b
     - 60ea826
+    - "6123427"
     - 61d6e8b
     - 6242a82
     - "6248130"
     - 626d6d6
+    - 62ec216
     - 62f258a
     - 642bb4e
     - 644c4db
     - 64a8e95
     - 6507eda
     - 657762f
+    - 65e370c
     - 66ba1d5
     - 67ad81e
+    - 686497c
+    - 69b8953
+    - 6a7cef1
+    - 6b3ee3f
     - 6bb6067
     - 6c02829
     - 6c7cef8
+    - 70136f5
     - 701a3aa
     - 70b7906
+    - "7187327"
     - 724603c
     - 72bfd90
     - 73a9487
     - 75c431f
+    - 75cf456
     - 76c40e2
     - 76e3600
+    - 76e3ce7
+    - "7824e56"
     - 798158f
     - 799df98
+    - 7ae2840
+    - 7af4484
     - 7b59767
     - 7c5267b
     - 7d27e01
+    - 7d64743
     - 7dddfc4
     - 7e55cbd
     - 7e58646
+    - 7f238c4
     - 7f8b180
+    - 7f9a7c7
     - 7fa3c87
     - 81eb135
     - 82de1b6
     - 841d6c1
     - 846c6be
     - "8492031"
+    - "8570e80"
     - 87afa6c
     - "8940158"
     - 8963fe4
     - 8a5c605
     - 8aff0f1
     - 8b18ca6
+    - 8c08ba4
     - 8c59cdc
     - 8e072af
     - 8e4a34f
     - 8ec9de3
+    - 8f6ef33
+    - 8f8df38
+    - 8fc3abc
     - 8fe24a0
     - 905fc9a
+    - 90e4e63
+    - 9159d7c
     - 915c9f1
+    - "9298e14"
     - 930d1c4
+    - 930dd6d
+    - 94bea50
+    - 94d85a4
     - 94df0a4
     - 9558d66
     - 95bc294
@@ -945,38 +1020,61 @@ evidence:
     - "9835114"
     - 9b2bfc6
     - 9b8693d
+    - 9bd7e54
     - 9cd6ff0
+    - 9ced9f4
     - 9cee0e6
     - 9dbbba2
+    - 9f78595
+    - a019f8f
     - a01a9ef
     - a02a7c0
+    - a03481c
+    - a0e1646
     - a1ea496
     - a384931
     - a405b2f
     - a45de8e
+    - a5360dd
     - a5bd0e9
+    - a687d4c
     - a7d7de9
     - a87c52d
+    - a8f9162
     - a94e552
     - a9cc976
     - aab1818
     - ab9e083
+    - acb27a6
+    - acf0247
     - ae491a6
+    - ae4e5a2
     - af017d5
+    - af1994a
     - afc158d
+    - b0b99d8
     - b189cbc
+    - b20b40b
     - b293f29
     - b2a1115
     - b2d4c94
     - b2f77ed
+    - b30aea5
+    - b32d50d
     - b330d22
+    - b42141b
     - b61a116
     - b6b0242
     - b6cbc3a
     - b6d2610
     - b7217d9
+    - b8e59ee
+    - b933279
     - b96c635
+    - ba2efef
+    - bafb4ad
     - bb18e9b
+    - bcbddee
     - bdc0360
     - bdd24f1
     - be956d7
@@ -984,9 +1082,14 @@ evidence:
     - bf6e4c5
     - c03b05f
     - c0a7685
+    - c15362c
+    - c1a5b7f
+    - c1c8b0a
     - c1db097
     - c291f06
     - c29fdcb
+    - c2fd95c
+    - c3626c9
     - c47d177
     - c4eef6a
     - c51c2b5
@@ -995,27 +1098,40 @@ evidence:
     - c67c26b
     - c6a3037
     - c6e50a2
+    - c76c343
     - c89ccc2
     - c93bb8b
     - c940620
+    - ca5782f
     - ca648f6
+    - ccd0a9a
     - ccfc959
     - cd5c936
+    - ce26ca5
+    - ce5d6a7
+    - ce649d0
     - ce6ecb7
     - ced0728
+    - cf28ad3
+    - cf730c5
     - cfc55cb
     - d015a22
     - d03c1fa
     - d0e8dd2
     - d1fa24d
+    - d32a8ea
     - d363c9a
     - d36b404
+    - d4c2029
     - d4f31ce
+    - d557c9e
+    - d602f56
     - d6d03db
     - d6e2a2e
     - d85299c
     - d8c6887
     - d9f240b
+    - da46e35
     - dbe1056
     - dbf8525
     - dc23b05
@@ -1023,11 +1139,16 @@ evidence:
     - dd4b27f
     - ddf64a3
     - de87d25
+    - dfc2ebb
+    - dff9b8c
     - e1ff563
+    - e24e070
     - e28eb08
+    - e2f1df7
     - e39d424
     - e3d5ef8
     - e3da62b
+    - e51fcb4
     - e541eb1
     - e547f3f
     - e56694e
@@ -1037,26 +1158,36 @@ evidence:
     - eab780e
     - ec8018f
     - ed0fdcd
+    - edcbdff
     - efc6950
     - f0a7905
     - f14041f
+    - f197114
     - f3b0946
+    - f3ea697
     - f423ad5
     - f511b61
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
     - f6be096
     - f7101ee
     - f7efe9a
     - f86bdb7
+    - f87b0a1
     - f8b7660
     - f9bd074
+    - f9d43c6
     - fb26036
     - fbf5494
+    - fc288cb
+    - fc87996
     - fe5861e
   acceptance:
-    total: 7
-    done: 5
+    total: 8
+    done: 6
   audit:
-    at: "2026-10-20T22:35:05Z"
+    at: "2026-10-20T22:38:42Z"
     passed: true
     tree: 8e58acf240a7c492ef82df6c095e81c82bedd78b2e5e3962b43b281de0de2160
     results:
@@ -1066,7 +1197,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 515 dirs visited, 3820 inodes visited, 1 Extract calls, 198.680404ms elapsed, 198.680645ms wall time
+          End status: 515 dirs visited, 3832 inodes visited, 1 Extract calls, 197.003555ms elapsed, 197.003723ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -1139,9 +1270,11 @@ Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/
 
 ## Evidence
 <!-- Generated by aitk close. -->
-- Check: `npm run check` → exit 0 at 2026-10-17T05:25:01Z (94586 ms)
-- Acceptance criteria: 5/7 satisfied
-- Commits: 00400de, 0177afd, 03b1d73, 03d94b3, 03f863a, 0423efd, 0458545, 0469447, 04e47a2, 0568901, 0712a9c, 0727a63, 0796bbf, 098fc77, 0a23305, 0a542eb, 0ad2dbe, 0b3dbca, 0d4c16b, 0d77bf5, 0f862c9, 104dc4c, 10ed698, 13b3d0b, 15536b5, 16375df, 1663077, 16ed998, 17c1240, 183aee3, 19714b5, 1977286, 1add773, 1b6e65d, 1bacfb5, 1c4ecfb, 1cee571, 1d787d4, 2170640, 2291c8a, 22b384e, 2361fa1, 2496574, 24af891, 24d5af2, 24e2978, 254f209, 2653b85, 2687b77, 26ac601, 2725e19, 27bf134, 29f1080, 2a7eff2, 2b68a94, 2b68d11, 2ba4512, 2c2e6a4, 2c5ffeb, 2ca934f, 30baa8d, 3107c1b, 316fa62, 327dde2, 33352bb, 37af03d, 38adbac, 3a7b69d, 3bf60b5, 3c5143a, 3d486ab, 3e91002, 3fd726f, 401b86a, 40c4360, 41a5b3a, 42238e1, 42f5428, 43acc6d, 4508626, 457220a, 460d650, 4647639, 467b44d, 471d15b, 474aa11, 4874549, 4a2154f, 4bff118, 4c397a1, 4d5aa50, 4f5f3fc, 4f751b8, 506e66d, 5219784, 544d726, 54909aa, 54d4ddc, 561dfa3, 561f910, 56b7176, 58fa92d, 592bae9, 59fa9e0, 5a7d2eb, 5aeb313, 5b7e0dd, 5d46f4b, 5dcfd88, 5def94f, 5f13bde, 5fee32e, 608c247, 60938f4, 60d050b, 60ea826, 61d6e8b, 6242a82, 6248130, 626d6d6, 62f258a, 642bb4e, 644c4db, 64a8e95, 6507eda, 657762f, 66ba1d5, 67ad81e, 6bb6067, 6c02829, 6c7cef8, 701a3aa, 70b7906, 724603c, 72bfd90, 73a9487, 75c431f, 76c40e2, 76e3600, 798158f, 799df98, 7b59767, 7c5267b, 7d27e01, 7dddfc4, 7e55cbd, 7e58646, 7f8b180, 7fa3c87, 81eb135, 82de1b6, 841d6c1, 846c6be, 8492031, 87afa6c, 8940158, 8963fe4, 8a5c605, 8aff0f1, 8b18ca6, 8c59cdc, 8e072af, 8e4a34f, 8ec9de3, 8fe24a0, 905fc9a, 915c9f1, 930d1c4, 94df0a4, 9558d66, 95bc294, 978656b, 97b3218, 9835114, 9b2bfc6, 9b8693d, 9cd6ff0, 9cee0e6, 9dbbba2, a01a9ef, a02a7c0, a1ea496, a384931, a405b2f, a45de8e, a5bd0e9, a7d7de9, a87c52d, a94e552, a9cc976, aab1818, ab9e083, ae491a6, af017d5, afc158d, b189cbc, b293f29, b2a1115, b2d4c94, b2f77ed, b330d22, b61a116, b6b0242, b6cbc3a, b6d2610, b7217d9, b96c635, bb18e9b, bdc0360, bdd24f1, be956d7, bec0af8, bf6e4c5, c03b05f, c0a7685, c1db097, c291f06, c29fdcb, c47d177, c4eef6a, c51c2b5, c540736, c665ce6, c67c26b, c6a3037, c6e50a2, c89ccc2, c93bb8b, c940620, ca648f6, ccfc959, cd5c936, ce6ecb7, ced0728, cfc55cb, d015a22, d03c1fa, d0e8dd2, d1fa24d, d363c9a, d36b404, d4f31ce, d6d03db, d6e2a2e, d85299c, d8c6887, d9f240b, dbe1056, dbf8525, dc23b05, dd15a67, dd4b27f, ddf64a3, de87d25, e1ff563, e28eb08, e39d424, e3d5ef8, e3da62b, e541eb1, e547f3f, e56694e, e594327, e5a4396, e5ac78f, eab780e, ec8018f, ed0fdcd, efc6950, f0a7905, f14041f, f3b0946, f423ad5, f511b61, f6be096, f7101ee, f7efe9a, f86bdb7, f8b7660, f9bd074, fb26036, fbf5494, fe5861e
+- Check: `npm run check` → exit 0 at 2026-10-20T22:38:42Z (164980 ms)
+- Acceptance criteria: 6/8 satisfied
+- Commits: 00400de, 0177afd, 03a0095, 03b1d73, 03d94b3, 03f863a, 0423efd, 0458545, 0469447, 04e47a2, 0568901, 0712a9c, 0727a63, 0796bbf, 08ca5b4, 098fc77, 0a23305, 0a542eb, 0ad2dbe, 0b3dbca, 0cb153a, 0d4c16b, 0d77bf5, 0e22c88, 0f862c9, 104dc4c, 10ed698, 1220871, 13b3d0b, 14bbbc8, 15536b5, 16375df, 1663077, 16ed998, 1781974, 17c1240, 17d81a7, 183aee3, 18b74cc, 19714b5, 1977286, 1add773, 1b2b9ab, 1b6e65d, 1bacfb5, 1c4ecfb, 1cee571, 1d787d4, 2170640, 2291c8a, 22b384e, 2361fa1, 23e5ae9, 2496574, 24af891, 24d5af2, 24e2978, 254f209, 258a139, 2653b85, 2687b77, 26ac601, 2725e19, 277b913, 27924c4, 27986dc, 27bf134, 29f1080, 29fe0f3, 2a7eff2, 2b68a94, 2b68d11, 2ba4512, 2c2e6a4, 2c5ffeb, 2ca934f, 2d7b316, 2d82efa, 2ed6480, 30baa8d, 3107c1b, 316fa62, 327dde2, 33352bb, 337259e, 35f92f6, 3602b55, 36afc9f, 37af03d, 38adbac, 3a7b69d, 3b96186, 3bb3baa, 3bf60b5, 3c5143a, 3d486ab, 3e91002, 3fd726f, 401b86a, 4060d62, 40c4360, 41a5b3a, 42238e1, 42f5428, 43acc6d, 4508626, 457220a, 460d650, 4647639, 4679db1, 467b44d, 471d15b, 474aa11, 4874549, 49f49a5, 4a2154f, 4bd9881, 4bff118, 4c397a1, 4d5aa50, 4e9a95e, 4eea84c, 4f5f3fc, 4f751b8, 506e66d, 5101f51, 5219784, 538221d, 544d726, 54909aa, 54d4ddc, 5603fc7, 561dfa3, 561f910, 56a8447, 56b7176, 56e4d6d, 57df970, 58fa92d, 58fdf0c, 592bae9, 59ec9a3, 59fa9e0, 5a7d2eb, 5aeb313, 5b7e0dd, 5d46f4b, 5dcfd88, 5def94f, 5f13bde, 5fee32e, 608c247, 60938f4, 60d050b, 60ea826, 6123427, 61d6e8b, 6242a82, 6248130, 626d6d6, 62ec216, 62f258a, 642bb4e, 644c4db, 64a8e95, 6507eda, 657762f, 65e370c, 66ba1d5, 67ad81e, 686497c, 69b8953, 6a7cef1, 6b3ee3f, 6bb6067, 6c02829, 6c7cef8, 70136f5, 701a3aa, 70b7906, 7187327, 724603c, 72bfd90, 73a9487, 75c431f, 75cf456, 76c40e2, 76e3600, 76e3ce7, 7824e56, 798158f, 799df98, 7ae2840, 7af4484, 7b59767, 7c5267b, 7d27e01, 7d64743, 7dddfc4, 7e55cbd, 7e58646, 7f238c4, 7f8b180, 7f9a7c7, 7fa3c87, 81eb135, 82de1b6, 841d6c1, 846c6be, 8492031, 8570e80, 87afa6c, 8940158, 8963fe4, 8a5c605, 8aff0f1, 8b18ca6, 8c08ba4, 8c59cdc, 8e072af, 8e4a34f, 8ec9de3, 8f6ef33, 8f8df38, 8fc3abc, 8fe24a0, 905fc9a, 90e4e63, 9159d7c, 915c9f1, 9298e14, 930d1c4, 930dd6d, 94bea50, 94d85a4, 94df0a4, 9558d66, 95bc294, 978656b, 97b3218, 9835114, 9b2bfc6, 9b8693d, 9bd7e54, 9cd6ff0, 9ced9f4, 9cee0e6, 9dbbba2, 9f78595, a019f8f, a01a9ef, a02a7c0, a03481c, a0e1646, a1ea496, a384931, a405b2f, a45de8e, a5360dd, a5bd0e9, a687d4c, a7d7de9, a87c52d, a8f9162, a94e552, a9cc976, aab1818, ab9e083, acb27a6, acf0247, ae491a6, ae4e5a2, af017d5, af1994a, afc158d, b0b99d8, b189cbc, b20b40b, b293f29, b2a1115, b2d4c94, b2f77ed, b30aea5, b32d50d, b330d22, b42141b, b61a116, b6b0242, b6cbc3a, b6d2610, b7217d9, b8e59ee, b933279, b96c635, ba2efef, bafb4ad, bb18e9b, bcbddee, bdc0360, bdd24f1, be956d7, bec0af8, bf6e4c5, c03b05f, c0a7685, c15362c, c1a5b7f, c1c8b0a, c1db097, c291f06, c29fdcb, c2fd95c, c3626c9, c47d177, c4eef6a, c51c2b5, c540736, c665ce6, c67c26b, c6a3037, c6e50a2, c76c343, c89ccc2, c93bb8b, c940620, ca5782f, ca648f6, ccd0a9a, ccfc959, cd5c936, ce26ca5, ce5d6a7, ce649d0, ce6ecb7, ced0728, cf28ad3, cf730c5, cfc55cb, d015a22, d03c1fa, d0e8dd2, d1fa24d, d32a8ea, d363c9a, d36b404, d4c2029, d4f31ce, d557c9e, d602f56, d6d03db, d6e2a2e, d85299c, d8c6887, d9f240b, da46e35, dbe1056, dbf8525, dc23b05, dd15a67, dd4b27f, ddf64a3, de87d25, dfc2ebb, dff9b8c, e1ff563, e24e070, e28eb08, e2f1df7, e39d424, e3d5ef8, e3da62b, e51fcb4, e541eb1, e547f3f, e56694e, e594327, e5a4396, e5ac78f, eab780e, ec8018f, ed0fdcd, edcbdff, efc6950, f0a7905, f14041f, f197114, f3b0946, f3ea697, f423ad5, f511b61, f54828c, f55d8d2, f5b2aa6, f6be096, f7101ee, f7efe9a, f86bdb7, f87b0a1, f8b7660, f9bd074, f9d43c6, fb26036, fbf5494, fc288cb, fc87996, fe5861e
 - Review pass 1 by claude-verify-workflow: 5 findings
 - Review pass 2 by claude-agent-review: 2 findings
 - Review pass 3 by claude-confirm-review: 0 findings
+- Review pass 4 by claude-reviewer-subagent: 5 findings
+- Review pass 5 by claude-code: 0 findings
