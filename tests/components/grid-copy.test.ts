@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { sourceText } from "@/components/grid/grid-cell-panel";
 import {
+  clipCell,
+  clipCellInfo,
   COPY_MAX_ROWS,
   defaultDecimal,
   excelValue,
@@ -90,5 +92,30 @@ describe("defaultDecimal dan sumber sel", () => {
       "maret-2026.xlsx · baris 1.234 · Maret 2026",
     );
     expect(sourceText({ fileName: "a.csv", srcRow: 2, period: null })).toBe("a.csv · baris 2");
+  });
+});
+
+describe("clipCell (salin satu sel, review T-045 H1)", () => {
+  it("teks multi-baris dengan formula di baris berikutnya tetap satu sel berkutip", () => {
+    const t = 'catatan\n=HYPERLINK("http://x")';
+    expect(clipCell(t, "text", ",")).toBe('"catatan\n=HYPERLINK(""http://x"")"');
+    expect(clipCell("a\r\n+1", "text", ",")).toBe('"a\r\n+1"');
+  });
+
+  it("tab tidak memecah kolom; awalan formula tetap dinetralkan di dalam kutip", () => {
+    expect(clipCell("a\tb", "text", ",")).toBe('"a\tb"');
+    expect(clipCell("=1\n=2", "text", ",")).toBe(`"'=1\n=2"`);
+    expect(clipCell("@x", "text", ",")).toBe("'@x");
+    expect(clipCell("biasa", "text", ",")).toBe("biasa");
+    expect(clipCell(-12.5, "decimal", ",")).toBe("-12,5");
+  });
+
+  it("isi sel gagal cast menyalin nilai asli sebagai teks (dinetralkan)", () => {
+    expect(clipCellInfo({ value: null, raw: "abc", castFailed: true }, "integer", ",")).toBe("abc");
+    expect(clipCellInfo({ value: null, raw: "-x\ty", castFailed: true }, "integer", ",")).toBe(
+      `"'-x\ty"`,
+    );
+    expect(clipCellInfo({ value: 5, raw: null, castFailed: false }, "integer", ",")).toBe("5");
+    expect(clipCellInfo({ value: null, raw: null, castFailed: false }, "date", ",")).toBe("");
   });
 });

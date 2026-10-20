@@ -50,9 +50,10 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import type { NumberFormat } from "@/features/widgets/spec";
 import type { CellTarget } from "./grid-cell-panel";
 import {
+  clipCell,
+  clipCellInfo,
   COPY_MAX_ROWS,
   defaultDecimal,
-  excelValue,
   rowsToTsv,
   writeClipboard,
   type DecimalSep,
@@ -892,12 +893,15 @@ export default function SheetGrid({
       const data = apiRef.current?.getDisplayedRowAtIndex(i)?.data;
       const col = byId.get(id);
       if (!data || data.end || !col) return;
-      const text = data.cut?.includes(id)
-        ? fetchCell(sheetId, { versionId, row: data._row, pos: col.pos }).then((r) => {
-            if (!r?.ok) throw new Error("cell");
-            return excelValue(r.data.value, col.type, decimal);
-          })
-        : excelValue(data[id], col.type, decimal);
+      const v = data[id];
+      // Teks terpotong → isi penuh; sel kosong bertipe non-teks bisa gagal cast → nilai asli (L5).
+      const text =
+        data.cut?.includes(id) || (v == null && col.type !== "text")
+          ? fetchCell(sheetId, { versionId, row: data._row, pos: col.pos }).then((r) => {
+              if (!r?.ok) throw new Error("cell");
+              return clipCellInfo(r.data, col.type, decimal);
+            })
+          : clipCell(v, col.type, decimal);
       copied(writeClipboard(text), "Sel disalin");
     },
     [byId, sheetId, versionId, decimal, copied],
@@ -1025,6 +1029,8 @@ export default function SheetGrid({
     (e: CellClickedEvent<RowData>) => {
       if (e.column.getColId() !== ROWNUM || e.rowIndex == null || e.data?.end) return;
       const ev = e.event as MouseEvent | null;
+      // Klik kedua dari klik ganda tidak membatalkan pilihan klik pertama (review L2).
+      if (ev && ev.detail > 1) return;
       pickRow(e.rowIndex, Boolean(ev?.shiftKey));
     },
     [pickRow],
@@ -1208,6 +1214,8 @@ export default function SheetGrid({
     // Kolom yang muncul lagi belum punya data di blok yang dimuat → muat ulang blok.
     const shownAgain = [...hidden].some((id) => !next.has(id));
     setHidden(next);
+    // Kolom ringkasan disembunyikan → ringkasannya tidak tampil lagi (review L4).
+    setFocusCol((f) => (f && next.has(f) ? null : f));
     persist();
     // Cari hanya di kolom teks yang terlihat (AC3): kolom berubah → cari diulang dengan kolom baru.
     const q = searchRef.current;

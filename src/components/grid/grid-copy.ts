@@ -71,6 +71,21 @@ function tsvCell(s: string): string {
   return /[\t\n\r"]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
+/**
+ * Satu sel untuk papan klip (salin sel / "Salin isi"): nilai Excel + kutip TSV yang sama dengan salin
+ * baris, sehingga teks bertab/baris baru tetap SATU sel dan baris berikutnya (mis. "\n=HYPERLINK(…)")
+ * tidak dipecah menjadi sel baru yang dibaca sebagai formula (review T-045 H1).
+ */
+export const clipCell = (value: unknown, type: ColumnType, sep: DecimalSep): string =>
+  tsvCell(excelValue(value, type, sep));
+
+/** Isi sel dari GET …/cell: gagal cast → nilai asli dari file (teks), selain itu nilai typed. */
+export const clipCellInfo = (
+  c: { value: unknown; raw: string | null; castFailed: boolean },
+  type: ColumnType,
+  sep: DecimalSep,
+): string => (c.castFailed ? clipCell(c.raw, "text", sep) : clipCell(c.value, type, sep));
+
 export interface CopyColumn {
   /** Kunci nilai di baris (colId c<pos>). */
   id: string;

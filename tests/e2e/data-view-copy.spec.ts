@@ -142,6 +142,11 @@ test.describe("Lihat data: Isi sel, salin, ringkasan kolom", () => {
     await cell(page, 0, "c1").click();
     await page.keyboard.press("ControlOrMeta+c");
     await expect.poll(() => clipboard(page)).toBe("'=SUM(1)");
+
+    // Sel gagal cast (Qty 'abc' di baris 7) → nilai asli dari file.
+    await cell(page, 6, "c3").click();
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect.poll(() => clipboard(page)).toBe("abc");
     await page.close();
   });
 

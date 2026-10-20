@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { TYPE_LABEL } from "@/components/schema/labels";
 import { Button } from "@/components/ui/button";
 import type { NumberFormat } from "@/features/widgets/spec";
-import { excelValue, writeClipboard, type DecimalSep } from "./grid-copy";
+import { clipCellInfo, writeClipboard, type DecimalSep } from "./grid-copy";
 import { fetchCell, type CellInfo, type Fetch } from "./grid-fetch";
 import { colLetter, displayCell, fmtInt, type GridColumn } from "./grid-model";
 
@@ -143,9 +143,7 @@ function CellBody({
   const shown = cell.castFailed
     ? null
     : (displayCell(cell.value, column.type, target.format) ?? null);
-  const copyText = cell.castFailed
-    ? excelValue(cell.raw, "text", decimal)
-    : excelValue(cell.value, column.type, decimal);
+  const copyText = clipCellInfo(cell, column.type, decimal);
   const copy = () =>
     writeClipboard(copyText).then(
       () => onAnnounce("Isi sel disalin"),
