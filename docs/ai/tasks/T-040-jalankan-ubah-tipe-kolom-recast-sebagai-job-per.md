@@ -1,8 +1,8 @@
 ---
 id: T-040
 title: Jalankan ubah tipe kolom/recast sebagai job per segmen
-status: in_review
-profile: standard
+status: done
+profile: strict
 goal: G-6
 tags:
   - worker
@@ -10,12 +10,44 @@ tags:
 depends_on:
   - T-037
 created: "2026-10-15T02:30:55Z"
-updated: "2026-10-20T02:52:56Z"
+updated: "2026-10-20T05:15:58Z"
+closed: "2026-10-20T05:15:58Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: c1c8b0aa5fad938d37d2afe59c41499e085bba4f
+paths:
+  - docs/catatan-kerja-claude.md
+  - docs/flow-kerja.md
+  - docs/panduan-developer.md
+  - docs/runbook-deploy.md
+  - playwright.config.ts
+  - prisma/migrations/20261020110000_t040_segment_profile/migration.sql
+  - prisma/schema.prisma
+  - scripts/dev-segments.ts
+  - src/components/schema/recast-banner.tsx
+  - src/components/schema/use-recast.tsx
+  - src/features/ingest/ingest.ts
+  - src/features/ingest/mapping.ts
+  - src/features/ingest/profile.ts
+  - src/features/ingest/recast-input.ts
+  - src/features/ingest/recast.ts
+  - src/features/ingest/repo.ts
+  - src/features/ingest/typed.ts
+  - src/features/schema/runtime.ts
+  - src/features/schema/service.ts
+  - src/lib/queue/connection.ts
+  - src/lib/queue/versions.ts
+  - src/worker/index.ts
+  - tests/e2e/recast-segments.spec.ts
+  - tests/features/backup/probe.test.ts
+  - tests/features/ingest/profile.test.ts
+  - tests/features/ingest/recast-fakes.ts
+  - tests/features/ingest/recast.test.ts
+  - tests/features/ingest/segments.test.ts
+  - tests/features/schema/schema.test.ts
+  - tests/scripts/fixtures.test.ts
 review:
   passes:
     - "n": 1
@@ -29,70 +61,95 @@ review:
 evidence:
   check:
     cmd: npm run check
-    exit_code: 1
-    duration_ms: 173773
+    exit_code: 0
+    duration_ms: 166317
     summary: |-
-      …b.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+      …oneksi ditolak NAS"}
+      {"level":40,"time":1792473259488,"service":"data-dashboard","host":"127.0.0.1","port":39823,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792473274214,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792473274236,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792473274240,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792473274253,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792473280922,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792473280945,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:86:23\n\n  83 \n  84 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  85   const [versions, refs] = await Promise.all([\n→ 86     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
-      ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+       Test Files  162 passed | 1 skipped (163)
+            Tests  2101 passed | 10 skipped (2111)
+         Start at  05:13:03
+         Duration  118.94s (tests 86%, import 12%, transform 3%)
 
-       FAIL  tests/scripts/fixtures.test.ts > fixture kecil > deterministik: regenerasi kecil.xlsx identik byte demi byte dengan yang di-commit
-      AssertionError: expected false to be true // Object.is equality
+          Isolate  163 workers spawned · ~139ms startup each (spawn + environment, per file)
+                   at least ~7.39s faster with isolate: false — reuses workers across files instead of one per file
 
-      - Expected
-      + Received
 
-      - true
-      + false
+      > data-dashboard@0.1.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
 
-       ❯ tests/scripts/fixtures.test.ts:43:62
-           41|     });
-           42|     expect(r.status).toBe(0);
-           43|     expect(readFileSync(out).equals(readFileSync(spec.out))).toBe(true…
-             |                                                              ^
-           44|   }, 60_000);
-           45|
-
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
-
-       FAIL  tests/features/backup/probe.test.ts > probeOffsite > folder tanpa izin tulis → pesan yang bisa ditindak
-      AssertionError: expected { ok: true, …(1) } to match object { ok: false, …(1) }
-      (1 matching property omitted from actual)
-
-      - Expected
-      + Received
-
-        {
-      -   "message": StringContaining "tidak punya izin menulis file uji",
-      -   "ok": false,
-      +   "ok": true,
-        }
-
-       ❯ tests/features/backup/probe.test.ts:76:15
-
-       Test Files  2 failed | 160 passed | 1 skipped (163)
-           74|   ])("%s → pesan yang bisa ditindak", async (_n, over, text) => {
-           75|     const r = await probeOffsite(cfg(over));
-           76|     expect(r).toMatchObject({ ok: false, message: expect.stringContain…
-             |               ^
-           77|     expect(JSON.stringify(r)).not.toContain(PASSWORD);
-           78|   });
-
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
-
-            Tests  2 failed | 2100 passed | 10 skipped (2112)
-         Start at  02:50:55
-         Duration  120.82s (tests 85%, import 12%, transform 3%)
-
-          Isolate  163 workers spawned · ~133ms startup each (spawn + environment, per file)
-                   at least ~7.11s faster with isolate: false — reuses workers across files instead of one per file
-    at: "2026-10-20T02:52:56Z"
-    tree: 1b51c3ea728519e567f2f9890e14d67e29e40ddd1b7a4ab4e7653c9cfe33b448
-  check_failures: 2
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-20T05:15:03Z"
+    tree: f900ce668d1318fe3789b02ae71d6646e6539264a2807cf23cf67a9879a994cc
+  commits:
+    - 17d81a7
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 27924c4
+    - 27986dc
+    - 2d7b316
+    - 3602b55
+    - 36afc9f
+    - 3bb3baa
+    - 49f49a5
+    - 4bd9881
+    - 4eea84c
+    - 5101f51
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 6b3ee3f
+    - "7187327"
+    - 75cf456
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - "8570e80"
+    - 8f8df38
+    - 90e4e63
+    - "9298e14"
+    - 94d85a4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - acb27a6
+    - af1994a
+    - b0b99d8
+    - b30aea5
+    - b32d50d
+    - b8e59ee
+    - ba2efef
+    - c1c8b0a
+    - c2fd95c
+    - ccd0a9a
+    - ce26ca5
+    - ce649d0
+    - cf28ad3
+    - d32a8ea
+    - d557c9e
+    - da46e35
+    - e24e070
+    - f197114
+    - f54828c
+    - f55d8d2
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 4
+    done: 4
   audit:
-    at: "2026-10-20T01:31:49Z"
+    at: "2026-10-20T05:15:16Z"
     passed: true
-    tree: cc322764955722120c0a220964786e064447cdf62d9637be6e24907fda27e9b0
+    tree: f900ce668d1318fe3789b02ae71d6646e6539264a2807cf23cf67a9879a994cc
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -100,7 +157,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 832 packages
-          End status: 233 dirs visited, 1491 inodes visited, 1 Extract calls, 173.305392ms elapsed, 173.305622ms wall time
+          End status: 250 dirs visited, 1527 inodes visited, 1 Extract calls, 167.972063ms elapsed, 167.972199ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -189,3 +246,11 @@ Validation:
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — kunci typed dibentuk server dari rawKey + revisi + tag job, bukan dari masukan pengguna; tanpa unggahan baru
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A — tidak ada endpoint baru; progres recast dibaca lewat route progres yang sudah ada
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — tanpa konfigurasi/env baru; npm audit 0 kerentanan
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T05:15:03Z (166317 ms)
+- Acceptance criteria: 4/4 satisfied
+- Commits: 17d81a7, 1b2b9ab, 23e5ae9, 258a139, 27924c4, 27986dc, 2d7b316, 3602b55, 36afc9f, 3bb3baa, 49f49a5, 4bd9881, 4eea84c, 5101f51, 59ec9a3, 6123427, 62ec216, 6b3ee3f, 7187327, 75cf456, 7824e56, 7ae2840, 7af4484, 8570e80, 8f8df38, 90e4e63, 9298e14, 94d85a4, a019f8f, a03481c, a0e1646, acb27a6, af1994a, b0b99d8, b30aea5, b32d50d, b8e59ee, ba2efef, c1c8b0a, c2fd95c, ccd0a9a, ce26ca5, ce649d0, cf28ad3, d32a8ea, d557c9e, da46e35, e24e070, f197114, f54828c, f55d8d2, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 3 findings
+- Review pass 2 by claude-code: 0 findings

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import yauzl from "yauzl";
 import yazl from "yazl";
 import { createSaxParser, DEFAULT_LIMITS } from "../../scripts/bench/parser-sax";
 import type { RawValue } from "../../scripts/bench/types";
@@ -32,15 +33,41 @@ function manifestOf(path: string) {
   };
 }
 
+/** Isi setiap entri zip (nama → byte). Byte zip utuh bergantung versi zlib Node, isinya tidak. */
+function zipEntries(path: string): Promise<Map<string, Buffer>> {
+  return new Promise((resolve, reject) => {
+    yauzl.open(path, { lazyEntries: true }, (err, zip) => {
+      if (err) return reject(err);
+      const out = new Map<string, Buffer>();
+      zip.on("error", reject);
+      zip.on("end", () => resolve(out));
+      zip.on("entry", (e: yauzl.Entry) =>
+        zip.openReadStream(e, (err2, rs) => {
+          if (err2) return reject(err2);
+          const chunks: Buffer[] = [];
+          rs.on("data", (c: Buffer) => chunks.push(c));
+          rs.on("end", () => {
+            out.set(e.fileName, Buffer.concat(chunks));
+            zip.readEntry();
+          });
+        }),
+      );
+      zip.readEntry();
+    });
+  });
+}
+
 describe("fixture kecil", () => {
-  it("deterministik: regenerasi kecil.xlsx identik byte demi byte dengan yang di-commit", () => {
+  it("deterministik: regenerasi kecil.xlsx berisi entri identik dengan yang di-commit", async () => {
     const spec = COMMITTED.find((f) => f.out.endsWith("kecil.xlsx"))!;
     const out = join(tmp, "kecil.xlsx");
     const r = spawnSync("npx", ["tsx", "scripts/make-fixture.ts", ...spec.args, "--out", out], {
       timeout: 55_000,
     });
     expect(r.status).toBe(0);
-    expect(readFileSync(out).equals(readFileSync(spec.out))).toBe(true);
+    const [got, want] = await Promise.all([zipEntries(out), zipEntries(spec.out)]);
+    expect([...got.keys()]).toEqual([...want.keys()]);
+    for (const [name, data] of want) expect(got.get(name)!.equals(data), name).toBe(true);
   }, 60_000);
 
   it("setiap fixture yang di-commit punya manifest", () => {

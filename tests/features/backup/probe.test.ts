@@ -66,16 +66,29 @@ describe("probeOffsite", () => {
     }
   });
 
+  // root mengabaikan izin folder (container CI/cloud): kasus "tanpa izin tulis" tidak bisa terjadi.
+  const asRoot = process.getuid?.() === 0;
   it.each([
     ["password salah", { password: "salah" }, "Username atau password ditolak"],
     ["folder tidak ada", { folder: "/tidak-ada" }, "Folder /tidak-ada tidak ditemukan"],
-    ["folder tanpa izin tulis", { folder: "/hanya-baca" }, "tidak punya izin menulis file uji"],
+    ...(asRoot
+      ? []
+      : [
+          [
+            "folder tanpa izin tulis",
+            { folder: "/hanya-baca" },
+            "tidak punya izin menulis file uji",
+          ],
+        ]),
     ["port tertutup", { port: 1 }, "Tidak bisa terhubung ke NAS"],
-  ])("%s → pesan yang bisa ditindak", async (_n, over, text) => {
-    const r = await probeOffsite(cfg(over));
-    expect(r).toMatchObject({ ok: false, message: expect.stringContaining(text) });
-    expect(JSON.stringify(r)).not.toContain(PASSWORD);
-  });
+  ] as [string, Record<string, unknown>, string][])(
+    "%s → pesan yang bisa ditindak",
+    async (_n, over, text) => {
+      const r = await probeOffsite(cfg(over));
+      expect(r).toMatchObject({ ok: false, message: expect.stringContaining(text) });
+      expect(JSON.stringify(r)).not.toContain(PASSWORD);
+    },
+  );
 
   it("login diterima tetapi subsistem SFTP ditolak (SFTP mati / akun tanpa hak) → sebut port + hak akun", async () => {
     const dsm = await startFakeSftp({
