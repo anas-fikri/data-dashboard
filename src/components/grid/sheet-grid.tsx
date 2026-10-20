@@ -883,6 +883,8 @@ export default function SheetGrid({
       state: desktopPins.current.map((colId) => ({ colId, pinned: narrow ? null : "left" })),
     });
   }, [narrow]);
+  // Lembar Lainnya hanya ada di ponsel: tutup saat melebar agar tidak terbuka lagi saat diputar balik.
+  if (!narrow && moreOpen) setMoreOpen(false);
 
   const actionRef = useRef((id: string, a: HeaderAction) => {
     const api = apiRef.current;
