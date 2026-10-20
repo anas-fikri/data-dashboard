@@ -44,6 +44,7 @@ export function MappingMissingRow({
   disabled,
   onChange,
   onCast,
+  noNull = false,
 }: {
   id: string;
   column: MappingActiveColumn;
@@ -63,6 +64,8 @@ export function MappingMissingRow({
   disabled: boolean;
   onChange: (next: number | null) => void;
   onCast: (next: CastChoice) => void;
+  /** Kolom periode unggahan periode (T-057): wajib dipetakan, tidak bisa dikosongkan. */
+  noNull?: boolean;
 }) {
   const errorId = `${id}-err`;
   const castId = `${id}-cast-note`;
@@ -104,8 +107,13 @@ export function MappingMissingRow({
           describedBy={error ? errorId : undefined}
           disabled={disabled}
           onChange={onChange}
+          noNull={noNull}
         />
-        {options.length === 0 ? (
+        {noNull ? (
+          <p className="text-xs text-muted-foreground" data-testid="mapping-period-column">
+            Kolom periode: pilih kolom tanggal di file; kolom ini tidak bisa dikosongkan.
+          </p>
+        ) : options.length === 0 ? (
           <p className="text-xs text-muted-foreground">
             Semua kolom file baru sudah cocok dengan kolom lain; kolom ini hanya bisa dikosongkan.
           </p>

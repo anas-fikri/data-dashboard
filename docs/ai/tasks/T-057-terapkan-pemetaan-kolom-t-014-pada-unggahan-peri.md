@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-052
 created: "2026-10-15T02:30:58Z"
-updated: "2026-10-20T17:32:23Z"
+updated: "2026-10-20T17:49:15Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,7 +21,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 183816
+    duration_ms: 176304
     summary: |-
       …t
       > vitest run
@@ -29,23 +29,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792517494155,"service":"data-dashboard","host":"127.0.0.1","port":40791,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792517494215,"service":"data-dashboard","host":"127.0.0.1","port":33927,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792517494314,"service":"data-dashboard","host":"127.0.0.1","port":34089,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792517494420,"service":"data-dashboard","host":"127.0.0.1","port":44695,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792517502906,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792517516297,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792517516319,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792517516324,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792517516333,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792518508128,"service":"data-dashboard","host":"127.0.0.1","port":45425,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792518508183,"service":"data-dashboard","host":"127.0.0.1","port":42253,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792518508278,"service":"data-dashboard","host":"127.0.0.1","port":43493,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792518508379,"service":"data-dashboard","host":"127.0.0.1","port":35095,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792518514789,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792518528249,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792518528272,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792518528276,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792518528289,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  189 passed | 1 skipped (190)
-            Tests  2482 passed | 10 skipped (2492)
-         Start at  17:30:15
-         Duration  126.18s (tests 84%, import 13%, transform 3%)
+            Tests  2484 passed | 10 skipped (2494)
+         Start at  17:47:09
+         Duration  123.64s (tests 84%, import 13%, transform 3%)
 
           Isolate  190 workers spawned · ~145ms startup each (spawn + environment, per file)
-                   at least ~9.03s faster with isolate: false — reuses workers across files instead of one per file
+                   at least ~9.01s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -53,8 +53,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T17:32:23Z"
-    tree: 67c26793a6d74422d37746f7cabdb90d5b7f3577d8b243731c8d37053fb7709a
+    at: "2026-10-20T17:49:14Z"
+    tree: c434c2a42f4229cc767d89ab1a0e985f0c2d98e3746e3eb622f3b84addf249a6
   audit:
     at: "2026-10-20T17:28:32Z"
     passed: true
@@ -141,9 +141,15 @@ membaca manifest versi aktif + proyeksi kolom yang tidak ada di file lama).
     ulang karena file lamanya tidak memuat kolom itu). Statistik kolom baru dihitung dari file itu saja.
   - Revisi skema tidak naik karena kolom baru/alias: perubahan skema (`periodMeta.changes`) diterapkan
     pada salinan sheet aktif saat commit dan hanya bila revisinya sama (`applySchemaChange`, selain itu
-    stale). Kolom absent (T-014) dinormalkan menjadi kolom biasa bila lebar kanonik bertambah (posisi
-    absent selalu tepat setelah Sheet.colCount); bila kolom itu tidak ada di unggahan berikutnya, ia
-    muncul sebagai kolom hilang (keputusan pemetaan) — semantik periode: kosong hanya untuk periode itu.
+    stale). Kolom absent (T-014) tetap absent kecuali kembali ada di file (lihat review M1 di bawah).
+  - Review putaran 1 (M1, diperbaiki): saat lebar kanonik bertambah, hanya kolom absent yang kembali ada
+    di file yang menjadi kolom biasa; yang tetap tidak ada tetap absent di dalam lebar kanonik (recast
+    menjaganya lewat keepInnerAbsent, carryAbsent hanya untuk pos > colCount) — unggahan berikutnya tanpa
+    kolom itu tidak berhenti di pemetaan. Uji: period-ingest "review M1" (Diskon absent, April menambah
+    catatan, Mei tanpa Diskon aktif otomatis), recast "review M1". Poin "dinormalkan bila lebar
+    bertambah" di atas hanya berlaku untuk kolom absent yang kembali ada.
+  - Review putaran 1 (L2, diperbaiki): di layar pemetaan periode pilihan "Kosongkan" untuk kolom periode
+    dinonaktifkan dengan alasan (server tetap menolak); e2e period-mapping memeriksanya.
   - Kolom absent yang kembali ada di file periode dipetakan langsung (nilai periode itu dari file,
     periode lama tetap NULL) — sebelumnya AWAITING_MAPPING.
   - Alias dicocokkan hanya bila pasti (satu kolom aktif pemilik alias, satu kolom file berjudul itu);

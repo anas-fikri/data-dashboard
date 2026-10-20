@@ -100,6 +100,36 @@ describe("recast", () => {
     expect(r.sheet().schema!.map((c) => c.aliases)).toEqual([["kd"], undefined]);
   });
 
+  it("T-057 review M1: kolom absent di dalam lebar kanonik tetap absent (tidak digandakan di belakang)", async () => {
+    const r = await setup(DATA);
+    const sh = r.sheet();
+    sh.colCount = 3;
+    sh.columns = [...sh.columns, { pos: 3, name: "Diskon", original: "Diskon" }];
+    sh.schema = [
+      ...sh.schema!,
+      {
+        pos: 3,
+        name: "Diskon",
+        original: "Diskon",
+        type: "integer",
+        numberLocale: "us",
+        hidden: false,
+        nullPct: 1,
+        distinctCount: 0,
+        castFailCount: 0,
+        nonEmpty: 0,
+        absent: true,
+      },
+    ];
+    const a = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(a).toMatchObject({ outcome: "done", revision: 2 });
+    expect(r.sheet().schema!.map((c) => [c.pos, c.name, c.absent ?? false])).toEqual([
+      [1, "kode", false],
+      [2, "nilai", false],
+      [3, "Diskon", true],
+    ]);
+  });
+
   it("T-040: tanpa perubahan cast → file typed tetap dipakai (tidak ditulis ulang), revisi naik", async () => {
     const r = await setup(DATA);
     const typed1 = r.sheet().typedKey;

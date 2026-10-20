@@ -37,8 +37,9 @@ import { columnTypeSchema } from "./recast-input";
  *  - kolom tambahan file → kolom tersembunyi baru (Teks) dengan posisi kanonik baru dan judul tersimpan;
  *    file typed periode lama tidak memuatnya → NULL lewat proyeksi query;
  *  - judul pengganti yang dikonfirmasi saat pemetaan → alias kolom (bulan berikutnya cocok otomatis);
- *  - kolom kosong (absent, T-014) dinormalkan menjadi kolom biasa bila lebar kanonik bertambah (posisi
- *    absent selalu tepat setelah Sheet.colCount; kolom baru harus sesudahnya).
+ *  - lebar kanonik bertambah melewati kolom kosong (absent, T-014; posisinya tepat setelah
+ *    Sheet.colCount, kolom baru sesudahnya): absent yang kembali ada di file menjadi kolom biasa
+ *    (`normalized`), yang tetap tidak ada tetap absent di dalam lebar kanonik (recast menjaganya).
  */
 export interface SheetSchemaChange {
   lineageId: string;
@@ -51,7 +52,7 @@ export interface SheetSchemaChange {
   /** Kolom baru (tersembunyi, Teks). */
   added: ColumnSchema[];
   aliases: { pos: number; alias: string }[];
-  /** Posisi kolom absent yang menjadi kolom biasa. */
+  /** Posisi kolom absent yang kembali ada di file (menjadi kolom biasa). */
   normalized: number[];
 }
 
@@ -190,7 +191,10 @@ export function periodColumnPlan(
   const colMap = Array.from({ length: width }, (_, i) => map.get(i + 1) ?? 0);
   const aliasBy = new Map<number, string[]>();
   for (const x of aliases) aliasBy.set(x.pos, [...(aliasBy.get(x.pos) ?? []), x.alias]);
-  const normalized = grow ? schema.filter((c) => c.absent).map((c) => c.pos) : [];
+  // Hanya kolom absent yang kembali ada di file ini menjadi kolom biasa; yang tetap tidak ada tetap
+  // absent (kosong permanen) walau posisinya kini di dalam lebar kanonik — unggahan berikutnya tanpa
+  // kolom itu tidak berhenti di pemetaan (review T-057 M1).
+  const normalized = [...matched.values()].filter((a) => a.absent).map((a) => a.pos);
   const out = schema.map((c): ColumnSchema => {
     let x: ColumnSchema = c;
     const al = aliasBy.get(c.pos);
@@ -214,8 +218,9 @@ export function periodColumnPlan(
   }));
   const metas: ColumnMeta[] = grow
     ? [
+        // Semua posisi di atas Sheet.colCount lama (absent tetap atau kembali ada) mendapat judul.
         ...schema
-          .filter((c) => normalized.includes(c.pos) && c.pos > base)
+          .filter((c) => c.absent && c.pos > base)
           .map((c) => ({ pos: c.pos, name: c.name, original: c.original })),
         ...added.map((c) => ({ pos: c.pos, name: c.name, original: c.original })),
       ].sort((a, b) => a.pos - b.pos)

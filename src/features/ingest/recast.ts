@@ -202,11 +202,19 @@ function merge(base: ColumnOverride[], changes: ColumnOverride[] = []): ColumnOv
   return [...m.values()];
 }
 
-/** Kolom kosong skema sekarang (urut posisi) dengan override yang berlaku untuk posisinya. */
-function carryAbsent(schema: ColumnSchema[] | null, overrides: ColumnOverride[]): AbsentColumn[] {
+/**
+ * Kolom kosong skema sekarang setelah kolom nyata (pos > colCount, urut posisi) dengan override yang
+ * berlaku untuk posisinya. Kolom kosong di dalam lebar kanonik (sheet periode yang melebar, T-057)
+ * dijaga keepInnerAbsent, bukan ditambahkan lagi di belakang.
+ */
+function carryAbsent(
+  schema: ColumnSchema[] | null,
+  overrides: ColumnOverride[],
+  colCount: number,
+): AbsentColumn[] {
   const by = new Map(overrides.map((o) => [o.pos, o]));
   return (schema ?? [])
-    .filter((c) => c.absent)
+    .filter((c) => c.absent && c.pos > colCount)
     .sort((a, b) => a.pos - b.pos)
     .map((c) => {
       const o = by.get(c.pos);
@@ -232,6 +240,33 @@ function withAliases(schema: ColumnSchema[], prev: ColumnSchema[] | null): Colum
   const by = new Map(prev.filter((c) => c.aliases?.length).map((c) => [c.pos, c.aliases!]));
   if (!by.size) return schema;
   return schema.map((c) => (by.has(c.pos) ? { ...c, aliases: by.get(c.pos) } : c));
+}
+
+/**
+ * Kolom kosong (absent) di dalam lebar kanonik (pos ≤ colCount; sheet periode yang melebar karena kolom
+ * baru, T-057): tetap absent di revisi baru (NULL di semua file, tanpa statistik), sehingga unggahan
+ * berikutnya tanpa kolom itu tidak meminta pemetaan. Diubah di tempat.
+ */
+function keepInnerAbsent(
+  schema: ColumnSchema[],
+  prev: ColumnSchema[] | null,
+  colCount: number,
+  dataRows: number,
+): void {
+  const inner = new Set(
+    (prev ?? []).filter((c) => c.absent && c.pos <= colCount).map((c) => c.pos),
+  );
+  if (!inner.size) return;
+  for (const c of schema) {
+    if (!inner.has(c.pos)) continue;
+    Object.assign(c, {
+      absent: true,
+      nullPct: dataRows > 0 ? 1 : 0,
+      distinctCount: 0,
+      castFailCount: 0,
+      nonEmpty: 0,
+    });
+  }
 }
 
 class LockLostError extends Error {
@@ -365,7 +400,7 @@ export async function recastSheet(
       : s.columns;
     const base = newHeader || !s.schema ? [] : currentChoices(s.schema);
     const overrides = merge(base, input.columns);
-    const absent = carryAbsent(s.schema, overrides);
+    const absent = carryAbsent(s.schema, overrides, s.colCount);
     const absentMeta = absent.map((a, i) => ({ ...a, pos: s.colCount + i + 1 }));
     const dup = duplicateName([...columns, ...absentMeta], overrides);
     if (dup)
@@ -412,6 +447,12 @@ export async function recastSheet(
         absent,
       }),
       newHeader ? null : s.schema,
+    );
+    keepInnerAbsent(
+      schema,
+      newHeader ? null : s.schema,
+      s.colCount,
+      mergeProfiles(segProfile).dataRows,
     );
 
     // Tahap 2: tulis ulang hanya segmen yang file-nya memuat kolom dengan cast berubah (AC 4).

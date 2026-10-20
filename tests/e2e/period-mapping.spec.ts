@@ -193,7 +193,12 @@ test.describe("pemetaan unggahan periode", () => {
     );
     const kirim = missingRow(page, 2);
     await expect(kirim).toContainText("Tanggal Kirim");
+    // Kolom periode tidak bisa dikosongkan (alasan tampil).
+    await expect(kirim.getByTestId("mapping-period-column")).toBeVisible();
     await kirim.getByTestId("mapping-picker").click();
+    await expect(
+      page.getByRole("option", { name: /Tidak ada di file — kosongkan/ }),
+    ).toHaveAttribute("aria-disabled", "true");
     await page.getByRole("option", { name: /^“Tgl Kirim”/ }).click();
     await expect(kirim).toHaveAttribute("data-state", "mapped");
     await expect(page.locator('[id$="-cast-type"]')).toHaveCount(0);

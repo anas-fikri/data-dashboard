@@ -157,6 +157,8 @@ export interface MappingSheetView extends MappingPlanView {
   target: { id: string; name: string } | null;
   /** Sheet baru tanpa pasangan (hanya bila target null), tanpa rencana kolom. */
   candidates: MappingCandidate[];
+  /** Unggahan periode (T-057): posisi kolom periode — tidak bisa dikosongkan. */
+  periodColumn?: number | null;
 }
 
 /** Acuan skema aktif yang dilihat halaman; dikirim kembali saat simpan (berubah → STALE). */

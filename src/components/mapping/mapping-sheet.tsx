@@ -164,6 +164,7 @@ export function MappingSheet({
                 disabled={disabled}
                 onChange={(next) => onChange(withColumn(d, pos, next))}
                 onCast={(next) => cast && onChange(withCast(d, cast.base, cast.column.pos, next))}
+                noNull={period && sheet.periodColumn === pos}
               />
             );
           })}

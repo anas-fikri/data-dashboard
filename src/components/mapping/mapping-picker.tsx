@@ -35,6 +35,7 @@ export function MappingPicker({
   describedBy,
   disabled,
   onChange,
+  noNull = false,
 }: {
   id: string;
   options: PickOption[];
@@ -44,6 +45,8 @@ export function MappingPicker({
   describedBy: string | undefined;
   disabled: boolean;
   onChange: (next: number | null) => void;
+  /** Kolom periode unggahan periode (T-057): "kosongkan" tidak tersedia (alasan ditampilkan). */
+  noNull?: boolean;
 }) {
   const chosen = options.find((o) => o.column.pos === value)?.column;
   return (
@@ -89,8 +92,13 @@ export function MappingPicker({
         {options.length > 0 ? (
           <SelectPrimitive.Separator className="-mx-1 my-1 h-px bg-border" />
         ) : null}
-        <SelectItem value={NULL} textValue={NULL_LABEL}>
-          {NULL_LABEL}
+        <SelectItem value={NULL} textValue={NULL_LABEL} disabled={noNull} className="group">
+          <span className="block">{NULL_LABEL}</span>
+          {noNull ? (
+            <span className="block text-xs text-muted-foreground [overflow-wrap:anywhere]">
+              Tidak tersedia: kolom periode menentukan periode setiap baris.
+            </span>
+          ) : null}
         </SelectItem>
       </SelectContent>
     </Select>

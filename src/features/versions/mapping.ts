@@ -285,6 +285,7 @@ export function periodMappingSheets(
       active: activeView(a),
       target: { id: src.id, name: src.name },
       candidates: [],
+      periodColumn: periodColumnOf(a),
       newColumns: src.columns.map((c): MappingNewColumn => ({
         pos: c.pos,
         original: c.original,

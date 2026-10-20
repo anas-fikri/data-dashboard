@@ -580,6 +580,12 @@ describe("submitMapping", () => {
         lowCast: [],
       });
       expect(s!.newColumns.map((c) => c.type)).toEqual(["text", "text", "text", "text"]);
+      expect(s!.periodColumn).toBeNull();
+      const [withPc] = m.periodMappingSheets(
+        periodActive({ periodSource: "COLUMN", periodColumn: 2 }) as never,
+        [{ ...freshData, lineageId: L1 }],
+      );
+      expect(withPc!.periodColumn).toBe(2);
     });
   });
 

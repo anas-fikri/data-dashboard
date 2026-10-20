@@ -925,3 +925,54 @@ describe("T-057 AC2: 'Kosongkan' dan kolom tambahan", () => {
     expect(s.repo.status).toBe("AWAITING_MAPPING");
   });
 });
+
+describe("T-057 review M1: kolom absent (T-014) yang tetap tidak ada", () => {
+  it("absent Diskon, April menambah Catatan → Diskon tetap absent; Mei tanpa Diskon aktif otomatis (tanpa pemetaan)", async () => {
+    const base0 = await schemaOf([HEADER, ...month(1, 30)]);
+    const diskon: ColumnSchema = {
+      pos: 4,
+      name: "Diskon",
+      original: "Diskon",
+      type: "integer",
+      numberLocale: "us",
+      hidden: false,
+      nullPct: 1,
+      distinctCount: 0,
+      castFailCount: 0,
+      nonEmpty: 0,
+      absent: true,
+    };
+    const base = { ...base0, schema: [...base0.schema, diskon] };
+    const april = setup(
+      [[...HEADER, "catatan"], ...month(4, 5).map((r) => [...r, "ok"])],
+      base,
+      JAN_MAR,
+    );
+    expect(await april.run()).toEqual({ outcome: "done", sheets: 1 });
+    const ch = april.repo.changes[0]!;
+    expect(ch).toMatchObject({ colCount: 5, normalized: [] });
+    expect(ch.columns.map((c) => [c.pos, c.original])).toEqual([
+      [4, "Diskon"],
+      [5, "catatan"],
+    ]);
+    const seg = [...april.repo.segments.values()][0]!;
+    expect(seg.colMap).toEqual([1, 2, 3, 0, 4]);
+    const typed = await readParquet(
+      join(april.storage.dir, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`),
+    );
+    expect(typed.map((r) => [r[5], r[6]])).toEqual(range(5, () => [null, "ok"]));
+    const next = applySchemaChange(
+      { colCount: 3, columns: [], schema: base.schema, schemaRevision: 2 },
+      ch,
+    )!;
+    expect(next.schema.find((c) => c.pos === 4)!.absent).toBe(true);
+    // Mei: tanpa Diskon (tetap absent) → aktif otomatis, tanpa pemetaan.
+    const mei = setup(
+      [[...HEADER, "catatan"], ...month(5, 3).map((r) => [...r, "x"])],
+      { ...base, schema: next.schema, colCount: next.colCount },
+      { ...JAN_MAR, "2026-04-01": 5 },
+    );
+    expect(await mei.run()).toEqual({ outcome: "done", sheets: 1 });
+    expect(mei.repo.changes).toEqual([]);
+  });
+});
