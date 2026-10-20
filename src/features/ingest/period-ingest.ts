@@ -392,7 +392,7 @@ export async function runPeriodIngest(
     // 2. Periode setiap baris + hitungan per periode (tanpa typing).
     for (const it of items) {
       setProgress({
-        stage: "tipe",
+        stage: "periode",
         sheet: it.s.rec.index,
         sheetName: it.s.rec.name,
         fraction: null,
@@ -456,6 +456,7 @@ export async function runPeriodIngest(
     if (issues.length) return await awaitMapping(issues);
 
     // 5. Segmen per periode (raw + typed skema aktif + `_period`).
+    setProgress({ stage: "tipe", fraction: null });
     const incoming: IncomingSegmentRef[] = [];
     const keys: string[] = [];
     for (const it of items) {

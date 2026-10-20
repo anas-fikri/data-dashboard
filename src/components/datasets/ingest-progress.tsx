@@ -14,12 +14,28 @@ import { cn } from "@/lib/utils";
  * diumumkan tiap tick ke pembaca layar — hanya pergantian tahap.
  */
 const POLL_MS = 2_500;
-const STEPS: { key: Progress["stage"]; label: string }[] = [
+type Step = { key: Progress["stage"]; label: string };
+const STEPS: Step[] = [
   { key: "unduh", label: "Menyiapkan file" },
   { key: "baca", label: "Membaca isi file" },
   { key: "simpan", label: "Menyimpan data" },
   { key: "tipe", label: "Mendeteksi tipe kolom" },
 ];
+/**
+ * Unggahan periode (T-053): baris dibagi per periode sebelum di-cast dengan skema aktif (D4, tanpa
+ * deteksi tipe), jadi ada tahap "Membaca periode" dan tahap tipe = skema aktif.
+ */
+const PERIOD_STEPS: Step[] = [
+  { key: "unduh", label: "Menyiapkan file" },
+  { key: "baca", label: "Membaca isi file" },
+  { key: "periode", label: "Membaca periode" },
+  { key: "tipe", label: "Menerapkan skema aktif" },
+];
+
+/** Daftar tahap yang ditampilkan untuk status ini (murni, diuji unit). */
+export function ingestSteps(status: Pick<IngestStatus, "period">): Step[] {
+  return status.period === true ? PERIOD_STEPS : STEPS;
+}
 const ACTIVE = new Set(["UPLOADED", "INGESTING"]);
 /** Ganti data (refresh) di-cast dengan skema aktif tanpa deteksi tipe (D4), jadi labelnya lain. */
 const REFRESH_TYPE_LABEL = "Menerapkan skema aktif";
@@ -54,11 +70,11 @@ export function IngestProgress({
   });
   const s = data?.status ?? initial;
   const p = s.progress;
-  const step = p ? STEPS.findIndex((x) => x.key === p.stage) : -1;
+  const steps = ingestSteps(s);
+  const step = p ? steps.findIndex((x) => x.key === p.stage) : -1;
   // `=== true`: progres tersimpan sebelum T-013 tidak punya field refresh.
   const refresh = p?.refresh === true;
-  const labelOf = (x: (typeof STEPS)[number]) =>
-    x.key === "tipe" && refresh ? REFRESH_TYPE_LABEL : x.label;
+  const labelOf = (x: Step) => (x.key === "tipe" && refresh ? REFRESH_TYPE_LABEL : x.label);
   const fraction = p?.stage === "baca" && p.fraction !== null ? p.fraction : null;
   const pct = fraction === null ? null : Math.round(Math.min(1, Math.max(0, fraction)) * 100);
 
@@ -86,7 +102,7 @@ export function IngestProgress({
       </p>
 
       <ol className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Tahap pemrosesan">
-        {STEPS.map((x, i) => {
+        {steps.map((x, i) => {
           const state = step < 0 ? "todo" : i < step ? "done" : i === step ? "now" : "todo";
           return (
             <li
@@ -172,7 +188,7 @@ export function IngestProgress({
       ) : null}
 
       <p className="sr-only" aria-live="polite">
-        {step >= 0 ? `Tahap: ${labelOf(STEPS[step]!)}` : ""}
+        {step >= 0 ? `Tahap: ${labelOf(steps[step]!)}` : ""}
       </p>
       {error ? (
         <p className="flex flex-wrap items-center gap-2 text-muted-foreground" role="status">

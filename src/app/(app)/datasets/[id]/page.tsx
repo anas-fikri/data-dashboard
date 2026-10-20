@@ -21,6 +21,7 @@ import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
 import { mappingJobId } from "@/features/versions/mapping";
+import { periodUploadContext } from "@/features/versions/period-upload";
 import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
 
@@ -59,13 +60,15 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, mappingJob, shareImpact] = await Promise.all([
+  const [pending, versions, mappingJob, shareImpact, periodUpload] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
     listVersions(user.id, dataset.id),
     // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
     awaiting ? mappingJobId(user.id, dataset.id) : null,
     // Dialog hapus menyebut siapa yang kehilangan akses ke dashboard yang dibagikan (T-016).
     dataset.dashboardCount > 0 ? datasetShareImpact(user.id, dataset.id) : null,
+    // Panel unggah dataset per periode (T-053): versi dasar, satuan, jumlah periode, sheet berlabel.
+    active?.periodGrain ? periodUploadContext(user.id, dataset.id) : null,
   ]);
   const applyingJobId = mappingJob?.jobId ?? null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
@@ -154,6 +157,8 @@ export default async function DatasetDetailPage({
               maxBytes={env().MAX_UPLOAD_BYTES}
               hasData={Boolean(active)}
               pending={pending}
+              period={periodUpload}
+              setupHref={`/datasets/${dataset.id}/periode`}
               processing={
                 ingest
                   ? { kind: "ingest", status: ingest }

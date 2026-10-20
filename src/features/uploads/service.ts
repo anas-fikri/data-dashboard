@@ -843,6 +843,9 @@ export interface PendingUpload {
   sizeBytes: number;
   /** Jumlah byte part yang sudah ada di storage (sama dengan hitungan progres klien). */
   uploadedBytes: number;
+  /** Pilihan saat unggahan dimulai (T-053): melanjutkan hanya dengan mode + label yang sama (R20). */
+  mode: UploadMode;
+  label: string | null;
 }
 
 /** Unggahan milik user yang belum selesai di dataset ini (untuk ajakan melanjutkan). */
@@ -869,6 +872,8 @@ export async function getPendingUpload(
       uploadId: true,
       partSize: true,
       partCount: true,
+      mode: true,
+      periodLabel: true,
     },
   });
   if (!v?.sourceKey || !v.uploadId || v.sizeBytes === null || !v.partSize || !v.partCount)
@@ -893,5 +898,7 @@ export async function getPendingUpload(
     originalName: v.originalName ?? "file",
     sizeBytes: size,
     uploadedBytes,
+    mode: v.mode === "PERIOD" ? "PERIOD" : "REPLACE",
+    label: v.mode === "PERIOD" && v.periodLabel ? v.periodLabel.toISOString().slice(0, 10) : null,
   };
 }

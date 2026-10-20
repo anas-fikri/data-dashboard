@@ -57,7 +57,8 @@ export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
 const PROGRESS_EVERY_MS = 5_000;
 
 export interface IngestProgress {
-  stage: "unduh" | "baca" | "simpan" | "tipe";
+  /** "periode": unggahan periode membaca periode setiap baris (T-053; ingest biasa tidak memakainya). */
+  stage: "unduh" | "baca" | "simpan" | "tipe" | "periode";
   /** Sheet berjalan di-cast dengan skema aktif (versi refresh), bukan inferensi tipe. */
   refresh: boolean;
   sheet: number;

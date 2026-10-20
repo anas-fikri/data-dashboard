@@ -45,6 +45,8 @@ export interface IngestStatus {
   fileName: string | null;
   /** `progress.refresh`: tahap "tipe" menerapkan skema aktif (versi refresh, T-013). */
   progress: IngestProgress | null;
+  /** Unggahan periode (mode PERIOD, T-053): tahap "Membaca periode" ditampilkan. */
+  period?: boolean;
   /** Sheet yang sudah tersimpan mentah (raw), urut indeks. */
   sheets: { index: number; name: string; rawRows: number; typed: boolean }[];
   errorMessage: string | null;

@@ -45,6 +45,7 @@ export default defineConfig({
         /guide-roles\.spec\.ts$/,
         /period-setup\.spec\.ts$/,
         /period-upload\.spec\.ts$/,
+        /period-upload-panel\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -141,7 +142,17 @@ export default defineConfig({
       testMatch: /period-upload\.spec\.ts$/,
       dependencies: ["period-setup"],
     },
-    { name: "rate-limit", testMatch: /zz-rate-limit\.spec\.ts$/, dependencies: ["period-upload"] },
+    // period-upload-panel (T-053): worker sendiri; panel unggah dataset periode + pemilih periode.
+    {
+      name: "period-upload-panel",
+      testMatch: /period-upload-panel\.spec\.ts$/,
+      dependencies: ["period-upload"],
+    },
+    {
+      name: "rate-limit",
+      testMatch: /zz-rate-limit\.spec\.ts$/,
+      dependencies: ["period-upload-panel"],
+    },
   ],
   webServer: process.env.E2E_BASE_URL
     ? undefined

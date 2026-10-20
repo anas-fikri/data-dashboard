@@ -47,6 +47,7 @@ export const prismaSchemaRepo: SchemaRepo = {
           select: {
             id: true,
             status: true,
+            mode: true,
             originalName: true,
             progress: true,
             errorMessage: true,
@@ -66,6 +67,7 @@ export const prismaSchemaRepo: SchemaRepo = {
       status: v.status,
       fileName: v.originalName,
       progress: progressOf(v.progress),
+      period: v.mode === "PERIOD",
       sheets: v.sheets.map((s) => ({
         index: s.index,
         name: s.name,

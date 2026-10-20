@@ -257,3 +257,46 @@ export async function confirmPeriodUpload(
       return fail("INVALID", NOT_PENDING);
   }
 }
+
+/** Konteks panel unggah dataset per periode (T-053); null = versi aktif bukan per periode. */
+export interface PeriodUploadContext {
+  /** Versi aktif yang dilihat pemilik: `baseVersionId` init (STALE bila berganti). */
+  baseVersionId: string;
+  grain: "MONTH" | "QUARTER" | "YEAR";
+  /** Periode berbeda di data aktif (untuk "Semua N periode akan diganti"). */
+  periodCount: number;
+  /** Ada sheet bersumber label → pemilih periode wajib diisi sebelum diproses. */
+  needsLabel: boolean;
+}
+
+/** Hanya pemilik (lainnya null, sama seperti dataset tidak ada). */
+export async function periodUploadContext(
+  ownerId: string,
+  datasetId: string,
+): Promise<PeriodUploadContext | null> {
+  if (!isIdShape(datasetId)) return null;
+  const ds = await prisma.dataset.findFirst({
+    where: { id: datasetId, ownerId },
+    select: {
+      activeVersionId: true,
+      activeVersion: { select: { periodGrain: true, sheets: { select: { periodSource: true } } } },
+    },
+  });
+  const a = ds?.activeVersion;
+  if (!ds?.activeVersionId || !a?.periodGrain) return null;
+  const keys = await prisma.segment.findMany({
+    where: {
+      datasetId,
+      periodKey: { not: null },
+      typed: { some: { sheets: { some: { sheet: { versionId: ds.activeVersionId } } } } },
+    },
+    distinct: ["periodKey"],
+    select: { periodKey: true },
+  });
+  return {
+    baseVersionId: ds.activeVersionId,
+    grain: a.periodGrain,
+    periodCount: keys.length,
+    needsLabel: a.sheets.some((s) => s.periodSource === "LABEL"),
+  };
+}

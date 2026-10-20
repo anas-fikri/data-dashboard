@@ -5,12 +5,29 @@ import type { UploadProgress } from "@/features/uploads/client";
  * dimulai/dilanjutkan tab ini dan mungkin masih UPLOADING: selama ada, "Aktifkan" ditahan dan galat
  * menawarkan "Batalkan unggahan". Dihapus saat selesai, batal berhasil, atau versi terbukti hilang.
  */
+/**
+ * Pilihan unggahan (T-053): REPLACE = ganti semua data; PERIOD = tambah/perbarui periode (label = awal
+ * periode untuk sheet bersumber label). Dibawa bersama file agar "Coba lagi"/"Lanjutkan" memakai
+ * pilihan yang sama — server hanya melanjutkan versi dengan mode + label yang sama.
+ */
+export type UploadChoice = { mode: "REPLACE" } | { mode: "PERIOD"; label: string | null };
+
+export const REPLACE_CHOICE: UploadChoice = { mode: "REPLACE" };
+
 export type UploadPanelState =
   | { kind: "idle" }
   | { kind: "cancelled" }
-  | { kind: "running"; file: File; progress: UploadProgress }
-  | { kind: "paused"; file: File; progress: UploadProgress }
-  | { kind: "error"; file: File | null; message: string; retryable: boolean }
+  | { kind: "running"; file: File; progress: UploadProgress; choice?: UploadChoice }
+  | { kind: "paused"; file: File; progress: UploadProgress; choice?: UploadChoice }
+  | {
+      kind: "error";
+      file: File | null;
+      message: string;
+      retryable: boolean;
+      choice?: UploadChoice;
+      /** Versi aktif berganti sejak halaman dibuka (STALE): tawarkan muat ulang. */
+      stale?: boolean;
+    }
   | { kind: "done"; name: string }
   | { kind: "discarded"; name: string };
 
@@ -62,13 +79,13 @@ export function ownVersionAfterError(
  * (selama versi milik tab ini masih ada); melanjutkan tetap bisa dengan memilih file yang sama.
  */
 export function cancelFailedState(prev: UploadPanelState, err: UploadErrLike | null): ErrorState {
-  const file =
-    prev.kind === "running" || prev.kind === "paused" || prev.kind === "error" ? prev.file : null;
+  const held = prev.kind === "running" || prev.kind === "paused" || prev.kind === "error";
   return {
     kind: "error",
-    file,
+    file: held ? prev.file : null,
     message: !err || err.code === "NETWORK" ? CANCEL_FAILED : err.message,
     retryable: false,
+    ...(held && prev.choice ? { choice: prev.choice } : {}),
   };
 }
 
@@ -110,4 +127,35 @@ export function showsPendingCard(
     isIdleLike(state) &&
     !(state.kind === "error" && ownVersion === pendingVersionId)
   );
+}
+
+/**
+ * Pilihan untuk file yang dipilih di dropzone utama. File sama dengan unggahan tertunda (nama + ukuran)
+ * → pilihan unggahan itu (melanjutkan, R20); dataset non-periode → REPLACE; dataset periode tanpa
+ * sheet berlabel → PERIOD tanpa label; dengan sheet berlabel → null (pemilih periode harus diisi dulu).
+ */
+export function choiceForFile(
+  file: Pick<File, "name" | "size">,
+  ctx: {
+    period: { needsLabel: boolean } | null;
+    pending: {
+      originalName: string;
+      sizeBytes: number;
+      mode: "REPLACE" | "PERIOD";
+      label: string | null;
+    } | null;
+  },
+): UploadChoice | null {
+  const p = ctx.pending;
+  // Unggahan periode tertunda hanya dilanjutkan selama dataset masih per periode (ada versi dasar).
+  if (
+    p &&
+    p.originalName === file.name &&
+    p.sizeBytes === file.size &&
+    (p.mode === "REPLACE" || ctx.period)
+  ) {
+    return p.mode === "PERIOD" ? { mode: "PERIOD", label: p.label } : REPLACE_CHOICE;
+  }
+  if (!ctx.period) return REPLACE_CHOICE;
+  return ctx.period.needsLabel ? null : { mode: "PERIOD", label: null };
 }
