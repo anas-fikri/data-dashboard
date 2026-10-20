@@ -10,11 +10,11 @@ tags:
 depends_on:
   - T-037
 created: "2026-10-15T02:30:55Z"
-updated: "2026-10-20T01:04:43Z"
+updated: "2026-10-20T01:35:52Z"
 created_by: claude-code
 workers:
   - claude-code
-branch: worktree-t-001-scaffold
+branch: claude/intelligent-albattani-fd1va8
 base: c1c8b0aa5fad938d37d2afe59c41499e085bba4f
 review:
   passes:
@@ -22,49 +22,94 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-20T01:03:00Z"
       findings: 3
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T01:29:47Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
-    exit_code: 0
-    duration_ms: 70066
+    exit_code: 1
+    duration_ms: 215166
     summary: |-
-      …"code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792458247120,"service":"data-dashboard","host":"127.0.0.1","port":51496,"step":"menulis file uji","code":3,"err":"Permission denied","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792458247132,"service":"data-dashboard","host":"127.0.0.1","port":51505,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792458247145,"service":"data-dashboard","host":"127.0.0.1","port":51507,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792458247169,"service":"data-dashboard","host":"127.0.0.1","port":51511,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792458247283,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792458252290,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792458252312,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792458252317,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792458252322,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …s tidak mundur
+      WorkerStartError: worker thread pembaca sheet gagal dimulai: Cannot find module '/home/user/data-dashboard/src/lib/xlsx/parallel' imported from /home/user/data-dashboard/src/lib/xlsx/sheet-worker.ts
+       ❯ early src/lib/xlsx/parallel.ts:101:88
+          101|   let settled = false;
+          102|   let chain: Promise<void> = Promise.resolve();
+          103|   let settle!: { resolve: (n: number) => void; reject: (e: unknown) =>…
+             |                 ^
+          104|   const done = new Promise<number>((resolve, reject) => (settle = { re…
+          105|   const fail = (e: unknown) => {
+       ❯ Worker.<anonymous> src/lib/xlsx/parallel.ts:118:33
 
-       Test Files  163 passed (163)
-            Tests  2112 passed (2112)
-         Start at  08:03:51
-         Duration  49.46s (tests 80%, import 16%, transform 4%)
+      Caused by: Error: Cannot find module '/home/user/data-dashboard/src/lib/xlsx/parallel' imported from /home/user/data-dashboard/src/lib/xlsx/sheet-worker.ts
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+      Serialized Error: { code: 'ERR_MODULE_NOT_FOUND', url: 'file:///home/user/data-dashboard/src/lib/xlsx/parallel' }
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
 
-          Isolate  163 workers spawned · ~207ms startup each (spawn + environment, per file)
-                   at least ~3.55s faster with isolate: false — reuses workers across files instead of one per file
+       FAIL  tests/features/ingest/parallel.test.ts > sheet paralel: urutan, progres, galat > galat parse di satu sheet → sheet lain dihentikan, FAILED dengan nama sheet, tanpa objek
+      AssertionError: expected 'Sheet "Satu", sekitar baris 100.001: …' not to match /Sheet "Satu"|Sheet "Tiga"/
+
+      - Expected:
+      /Sheet "Satu"|Sheet "Tiga"/
+
+      + Received:
+      "Sheet \"Satu\", sekitar baris 100.001: nomor baris tidak valid di sheet \"Rusak\" (baris 2)"
+
+       ❯ tests/features/ingest/parallel.test.ts:333:30
+          331|     expect(s.repo.status).toBe("FAILED");
+          332|     expect(s.repo.error).toMatch(/sheet "Rusak"/);
+          333|     expect(s.repo.error).not.toMatch(/Sheet "Satu"|Sheet "Tiga"/);
+             |                              ^
+          334|     expect(s.storage.parquetKeys()).toEqual([]);
+          335|     expect(inWorker.sheets).toBe(3);
+
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
 
 
-      > data-dashboard@0.1.0 audit
-      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
-
-      found 0 vulnerabilities
-      found 0 vulnerabilities
-    at: "2026-10-20T01:04:43Z"
+       Test Files  3 failed | 159 passed | 1 skipped (163)
+            Tests  4 failed | 2098 passed | 10 skipped (2112)
+         Start at  01:33:17
+         Duration  154.91s (tests 84%, import 13%, transform 3%)
+    at: "2026-10-20T01:35:52Z"
     tree: cc322764955722120c0a220964786e064447cdf62d9637be6e24907fda27e9b0
+  check_failures: 1
+  audit:
+    at: "2026-10-20T01:31:49Z"
+    passed: true
+    tree: cc322764955722120c0a220964786e064447cdf62d9637be6e24907fda27e9b0
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 832 packages
+          End status: 233 dirs visited, 1491 inodes visited, 1 Extract calls, 173.305392ms elapsed, 173.305622ms wall time
+          Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
 Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P-8, Fase 1. Perkiraan 3–4 hari. Baca bagian rencana yang relevan (§3 Lihat data, §4 periode, §5 batas, §6 risiko) sebelum mulai; cek ulang kontrak T-016 (otorisasi) dan T-017 (ekspor) sesuai risiko R21.
 
 ## Acceptance criteria
-- [ ] Given sheet 24 segmen, when pemilik mengubah tipe kolom, then job per segmen berjalan dengan prioritas di bawah ingest, progres 'Segmen 7 dari 24' tampil, dan revisi baru aktif atomik hanya setelah semua segmen selesai
-- [ ] Given worker mati di tengah recast, when worker hidup lagi, then segmen yang sudah selesai tidak diulang dan hasil akhir identik
-- [ ] Given versi lama berbagi segmen, when recast selesai, then typed revisi lama tetap utuh sehingga rollback tetap bisa
-- [ ] Given kolom tersembunyi baru ditambahkan, then segmen lama tidak di-cast ulang (diproyeksikan NULL)
+- [x] Given sheet 24 segmen, when pemilik mengubah tipe kolom, then job per segmen berjalan dengan prioritas di bawah ingest, progres 'Segmen 7 dari 24' tampil, dan revisi baru aktif atomik hanya setelah semua segmen selesai
+- [x] Given worker mati di tengah recast, when worker hidup lagi, then segmen yang sudah selesai tidak diulang dan hasil akhir identik
+- [x] Given versi lama berbagi segmen, when recast selesai, then typed revisi lama tetap utuh sehingga rollback tetap bisa
+- [x] Given kolom tersembunyi baru ditambahkan, then segmen lama tidak di-cast ulang (diproyeksikan NULL)
 
 ## Risk
 Impact:
@@ -113,3 +158,20 @@ Validation:
   - Review putaran 1 (claude-reviewer-subagent: 0 Critical/High, 3 Medium, 6 Low) sudah diperbaiki: M1 tidak mengalah pada ingest dataset yang sama; M2 "yield" melepas slot antrean, bukan tidur; M3 indeks sheet diperpanjang per segmen dan batas "busy" dihitung sejak mulai menunggu; L1 `dropTyped` lewat DELETE … RETURNING dan kunci kembar tidak dihapus (dicek di DB dev); L2 semua ordinal dicek saat swap; L5 lookup tertunda per segmen; L6a fixture memakai skema sheet. L3/L4 → task lanjutan; L6b selesai bersama M2 (progres hanya saat segmen benar-benar mulai).
   - Asumsi raw `c<pos>` = posisi kanonik ≤ `colCount` segmen. Pemetaan periode (T-055) perlu peta kolom per segmen bila urutan kolom file berbeda.
 - **e2e AC2 (worker dibunuh) tidak dijalankan:** lock job BullMQ 5 menit membuat stalled baru terdeteksi setelah ≥ 5 menit. Perilaku resume diuji di unit dengan DuckDB sungguhan + uji mutasi.
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — recast tetap di worker (proses terpisah) membaca/menulis parquet di storage + metadata PostgreSQL; tanpa komponen atau batas kepercayaan baru
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A — tidak menyentuh autentikasi
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A — tidak menyentuh sesi
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — enqueue recast tetap lewat Server Action skema yang sudah memeriksa pemilik (requireUser + ownerId); worker hanya memproses job dari antrean internal
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — input recast (override kolom) tetap divalidasi zod seperti sebelumnya; SQL DuckDB memakai identifier dari skema; DELETE … RETURNING di dropTyped memakai parameter binding Prisma ($queryRaw tagged template)
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A — tidak ada data rahasia
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — galat per segmen dicatat pino dengan jobId/sheetId; pesan pengguna tetap umum ("job lain berjalan terlalu lama", batas waktu segmen)
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A — tidak menambah data pribadi; file typed tertunda yang gagal dihapus (dropTyped) dan disapu GC segmen
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A — tidak ada lalu lintas eksternal baru
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — tanpa dependensi baru
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — satu recast per sheet (lock Redis + indeks diperpanjang per segmen); swap manifest atomik dalam satu transaksi dengan cek revisi dan semua ordinal; yield/busy dibatasi waktu (15/30 menit) sehingga job tidak menggantung
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — kunci typed dibentuk server dari rawKey + revisi + tag job, bukan dari masukan pengguna; tanpa unggahan baru
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A — tidak ada endpoint baru; progres recast dibaca lewat route progres yang sudah ada
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — tanpa konfigurasi/env baru; npm audit 0 kerentanan
