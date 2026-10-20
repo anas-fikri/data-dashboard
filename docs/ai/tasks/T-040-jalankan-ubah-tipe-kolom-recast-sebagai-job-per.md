@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-037
 created: "2026-10-15T02:30:55Z"
-updated: "2026-10-20T01:35:52Z"
+updated: "2026-10-20T02:52:56Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -30,51 +30,65 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 1
-    duration_ms: 215166
+    duration_ms: 173773
     summary: |-
-      …s tidak mundur
-      WorkerStartError: worker thread pembaca sheet gagal dimulai: Cannot find module '/home/user/data-dashboard/src/lib/xlsx/parallel' imported from /home/user/data-dashboard/src/lib/xlsx/sheet-worker.ts
-       ❯ early src/lib/xlsx/parallel.ts:101:88
-          101|   let settled = false;
-          102|   let chain: Promise<void> = Promise.resolve();
-          103|   let settle!: { resolve: (n: number) => void; reject: (e: unknown) =>…
-             |                 ^
-          104|   const done = new Promise<number>((resolve, reject) => (settle = { re…
-          105|   const fail = (e: unknown) => {
-       ❯ Worker.<anonymous> src/lib/xlsx/parallel.ts:118:33
+      …b.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
-      Caused by: Error: Cannot find module '/home/user/data-dashboard/src/lib/xlsx/parallel' imported from /home/user/data-dashboard/src/lib/xlsx/sheet-worker.ts
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
-      Serialized Error: { code: 'ERR_MODULE_NOT_FOUND', url: 'file:///home/user/data-dashboard/src/lib/xlsx/parallel' }
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+      ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
 
-       FAIL  tests/features/ingest/parallel.test.ts > sheet paralel: urutan, progres, galat > galat parse di satu sheet → sheet lain dihentikan, FAILED dengan nama sheet, tanpa objek
-      AssertionError: expected 'Sheet "Satu", sekitar baris 100.001: …' not to match /Sheet "Satu"|Sheet "Tiga"/
+       FAIL  tests/scripts/fixtures.test.ts > fixture kecil > deterministik: regenerasi kecil.xlsx identik byte demi byte dengan yang di-commit
+      AssertionError: expected false to be true // Object.is equality
 
-      - Expected:
-      /Sheet "Satu"|Sheet "Tiga"/
+      - Expected
+      + Received
 
-      + Received:
-      "Sheet \"Satu\", sekitar baris 100.001: nomor baris tidak valid di sheet \"Rusak\" (baris 2)"
+      - true
+      + false
 
-       ❯ tests/features/ingest/parallel.test.ts:333:30
-          331|     expect(s.repo.status).toBe("FAILED");
-          332|     expect(s.repo.error).toMatch(/sheet "Rusak"/);
-          333|     expect(s.repo.error).not.toMatch(/Sheet "Satu"|Sheet "Tiga"/);
-             |                              ^
-          334|     expect(s.storage.parquetKeys()).toEqual([]);
-          335|     expect(inWorker.sheets).toBe(3);
+       ❯ tests/scripts/fixtures.test.ts:43:62
+           41|     });
+           42|     expect(r.status).toBe(0);
+           43|     expect(readFileSync(out).equals(readFileSync(spec.out))).toBe(true…
+             |                                                              ^
+           44|   }, 60_000);
+           45|
 
-      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/4]⎯
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
 
+       FAIL  tests/features/backup/probe.test.ts > probeOffsite > folder tanpa izin tulis → pesan yang bisa ditindak
+      AssertionError: expected { ok: true, …(1) } to match object { ok: false, …(1) }
+      (1 matching property omitted from actual)
 
-       Test Files  3 failed | 159 passed | 1 skipped (163)
-            Tests  4 failed | 2098 passed | 10 skipped (2112)
-         Start at  01:33:17
-         Duration  154.91s (tests 84%, import 13%, transform 3%)
-    at: "2026-10-20T01:35:52Z"
-    tree: cc322764955722120c0a220964786e064447cdf62d9637be6e24907fda27e9b0
-  check_failures: 1
+      - Expected
+      + Received
+
+        {
+      -   "message": StringContaining "tidak punya izin menulis file uji",
+      -   "ok": false,
+      +   "ok": true,
+        }
+
+       ❯ tests/features/backup/probe.test.ts:76:15
+
+       Test Files  2 failed | 160 passed | 1 skipped (163)
+           74|   ])("%s → pesan yang bisa ditindak", async (_n, over, text) => {
+           75|     const r = await probeOffsite(cfg(over));
+           76|     expect(r).toMatchObject({ ok: false, message: expect.stringContain…
+             |               ^
+           77|     expect(JSON.stringify(r)).not.toContain(PASSWORD);
+           78|   });
+
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+            Tests  2 failed | 2100 passed | 10 skipped (2112)
+         Start at  02:50:55
+         Duration  120.82s (tests 85%, import 12%, transform 3%)
+
+          Isolate  163 workers spawned · ~133ms startup each (spawn + environment, per file)
+                   at least ~7.11s faster with isolate: false — reuses workers across files instead of one per file
+    at: "2026-10-20T02:52:56Z"
+    tree: 1b51c3ea728519e567f2f9890e14d67e29e40ddd1b7a4ab4e7653c9cfe33b448
+  check_failures: 2
   audit:
     at: "2026-10-20T01:31:49Z"
     passed: true
