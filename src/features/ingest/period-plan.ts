@@ -538,7 +538,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       beforeBytes: a ? bytesOf(a.sheets) : 0,
       afterBytes: after ? bytesOf(after) : 0,
       shrink,
-      identical: !!(inc && a && fileSha && a.sha256 === fileSha),
+      // Sidik per periode (kelompok T-060: gabungan file yang memuat periode ini) bila diketahui.
+      identical: !!(inc && a && (inc.sha256 ?? fileSha) && a.sha256 === (inc.sha256 ?? fileSha)),
     };
   });
 

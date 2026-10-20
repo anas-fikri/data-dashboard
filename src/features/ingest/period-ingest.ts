@@ -232,6 +232,10 @@ export const NO_SHEET_MESSAGE =
 export const groupMappingMessage = (detail: string) =>
   `Kelompok file tidak diproses: ${detail}. Kelompok file harus cocok dengan kolom data aktif tanpa pemetaan — samakan judul dan isi kolom semua file, lalu unggah ulang kelompoknya. Data aktif tidak berubah.`;
 
+/** Dua file kelompok berisi sama persis (sha256 sama, review M1). */
+export const groupDuplicateMessage = (a: string, b: string) =>
+  `Kelompok file tidak diproses: “${a}” dan “${b}” berisi sama persis, sehingga barisnya akan tergandakan. Hapus salah satunya, lalu unggah ulang kelompoknya. Data aktif tidak berubah.`;
+
 /** File sumber versi (kelompok T-060 atau satu file). */
 export const sourcesOf = (
   v: Pick<PeriodIngestLoad, "sources" | "sourceKey" | "originalName">,
@@ -386,6 +390,14 @@ export async function runPeriodIngest(
       const src = join(dir, `source.${ext}`);
       setProgress({ stage: "unduh" });
       const dl = await storage.download(f.key, src);
+      // Kelompok (T-060, review M1): file yang sama dua kali (mis. salinan "maret-2 (1).csv") akan
+      // menggandakan baris periode itu → seluruh kelompok ditolak.
+      const twin = fileShas.indexOf(dl.sha256);
+      if (grouped && twin >= 0) {
+        throw new PeriodUploadError(
+          groupDuplicateMessage(files[twin]!.name ?? `file ${twin + 1}`, f.name ?? `file ${i + 1}`),
+        );
+      }
       fileShas.push(dl.sha256);
       await ensureAlive();
       setProgress({ stage: "baca" });
@@ -411,8 +423,12 @@ export async function runPeriodIngest(
                 { bufferSize: opts.csvBufferSize },
               ),
             ];
-      // Raw parquet sudah ditulis: file sumber lokal tidak dibutuhkan lagi (disk kerja kelompok).
-      if (grouped) rmSync(src, { force: true });
+      // Raw parquet sudah ditulis: file sumber lokal (dan salinan UTF-8 CSV) tidak dibutuhkan lagi
+      // (disk kerja kelompok, review L2).
+      if (grouped) {
+        rmSync(src, { force: true });
+        rmSync(join(dir, "source-utf8.csv"), { force: true });
+      }
       await ensureAlive();
       const file: ItemFile = { part: i + 1, name: f.name, sha256: dl.sha256, ext };
       const plan = planSheets(
@@ -422,7 +438,10 @@ export async function runPeriodIngest(
       for (const [j, sh] of sheets.entries()) {
         const pair = (plan.pairs[j] as PeriodActiveSheet | null) ?? null;
         if (!pair) {
-          if (!ignored.includes(sh.rec.name)) ignored.push(sh.rec.name);
+          // Kelompok (review L3): sheet diabaikan disebut per file.
+          const name = grouped ? `${sh.rec.name} (${f.name ?? `file ${i + 1}`})` : sh.rec.name;
+          if (!ignored.includes(name)) ignored.push(name);
+          rmSync(sh.path, { force: true });
           continue;
         }
         Object.assign(sh.rec, await refreshHeader(d, sh, pair));
@@ -666,6 +685,7 @@ async function processPeriodItems(
           periodStart: p.start,
           rows: p.rows,
           bytes: total > 0 ? Math.floor((it.rawBytes * p.rows) / total) : 0,
+          sha256: it.file.sha256,
           ...groupRef(it, p.start),
         }));
       }),
@@ -808,12 +828,18 @@ async function processPeriodItems(
         periodStart: p.start,
         rows: p.rows,
         bytes: rawBytes + typedBytes,
+        sha256: it.file.sha256,
         ...groupRef(it, p.start),
       });
       keys.push(rawKey, typedKey);
       rmSync(typedPath, { force: true });
       if (seg.raw !== it.s.path) rmSync(seg.raw, { force: true });
       await ensureAlive();
+    }
+    // Semua segmen item ini tertulis: raw lokal + tabel periodenya tidak dibutuhkan lagi (review L2).
+    if (c.group) {
+      rmSync(it.s.path, { force: true });
+      await d.conn.run(`DROP TABLE IF EXISTS assign_${it.tag}`);
     }
   }
 

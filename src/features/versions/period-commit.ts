@@ -170,6 +170,7 @@ async function incomingOf(
       groupId: true,
       groupPart: true,
       groupSize: true,
+      sha256: true,
       typed: {
         select: {
           id: true,
@@ -201,6 +202,7 @@ async function incomingOf(
       periodStart: start,
       rows: t.dataRows,
       bytes: Number(g.rawBytes ?? 0n) + Number(t.typedBytes ?? 0n),
+      sha256: g.sha256,
       groupId: g.groupId,
       groupPart: g.groupPart,
       groupSize: g.groupSize,

@@ -466,6 +466,8 @@ export interface ActivePeriodSheet {
  * T-060: satu per file kelompok yang memuat periode itu).
  */
 export interface IncomingSegmentRef extends SegmentGroupRef {
+  /** SHA-256 file asal (T-060 review L4: sidik per periode); tidak ada = sidik file unggahan. */
+  sha256?: string | null;
   typedId: string;
   segmentId: string;
   lineageId: string;

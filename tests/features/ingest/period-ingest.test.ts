@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
@@ -167,6 +167,7 @@ class FakePeriodRepo implements PeriodIngestRepo {
         periodStart: g.period!.start,
         rows: tr.dataRows,
         bytes: g.rawBytes + tr.typedBytes,
+        sha256: g.sha256,
         ...(g.group
           ? { groupId: g.group.id, groupPart: g.group.part, groupSize: g.group.size }
           : {}),
@@ -1117,6 +1118,59 @@ describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () 
       again.repo.manifest!.get(LINEAGE)!.filter((r) => r.periodKey === "2026-03"),
     ).toHaveLength(3);
     expect(await marchRows(again)).toEqual(first);
+  });
+
+  it("review M1: file kelompok yang sama persis dua kali (salinan) → kelompok ditolak, kedua nama disebut, tanpa commit", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const files = await parts();
+    const copy = t.file(
+      `m2copy-${Math.random().toString(36).slice(2)}.csv`,
+      readFileSync(files[1]!),
+    );
+    const s = groupSetup([files[0]!, files[1]!, copy], base);
+    expect(await s.run()).toMatchObject({ outcome: "failed" });
+    expect(s.repo.error).toBe(
+      "Kelompok file tidak diproses: “maret-2.csv” dan “maret-3.xlsx” berisi sama persis, sehingga barisnya akan tergandakan. Hapus salah satunya, lalu unggah ulang kelompoknya. Data aktif tidak berubah.",
+    );
+    expect(s.repo.commits).toBe(0);
+    expect(s.repo.segments.size).toBe(0);
+  });
+
+  it("review L4: kelompok multi-periode — identik dinilai per periode (Maret sama, Februari berubah)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const files = await parts();
+    const feb = t.file(
+      `feb-${Math.random().toString(36).slice(2)}.csv`,
+      csv([HEADER, ...month(2, 5)]),
+    );
+    // Data aktif: Maret dari kelompok 3 file Maret yang sama (sidik gabungan file-file itu).
+    const s0 = groupSetup(files, base);
+    await s0.run();
+    const marchSegs = s0.repo
+      .incoming()
+      .map((g) => ({ ...g, sha256: s0.repo.segments.get(g.segmentId)!.sha256 }));
+    const active: PeriodActiveSheet = {
+      ...s0.sheet,
+      segments: [...s0.sheet.segments.filter((g) => g.periodKey !== "2026-03"), ...marchSegs],
+      keys: [
+        ...s0.sheet.keys,
+        ...s0.repo
+          .incoming()
+          .flatMap((g) => [
+            s0.repo.segments.get(g.segmentId)!.rawKey,
+            s0.repo.typed.get(g.typedId)!.typedKey,
+          ]),
+      ],
+    };
+    // Kelompok baru: 3 file Maret yang sama + 1 file Februari baru (4 file → keys/sources disesuaikan).
+    const s = groupSetup(files, base, active);
+    const febKey = `raw/${DS}/${VID}/part-4.csv`;
+    s.storage.sources[febKey] = feb;
+    s.repo.load0.sources = [...s.repo.load0.sources!, { key: febKey, name: "februari.csv" }];
+    expect(await s.run()).toMatchObject({ outcome: "confirm" });
+    const by = Object.fromEntries(s.repo.plan!.entries.map((e) => [e.key, e]));
+    expect(by["2026-03"]).toMatchObject({ action: "REPLACED", identical: true });
+    expect(by["2026-02"]).toMatchObject({ action: "REPLACED", identical: false });
   });
 
   it("satu file kelompok butuh pemetaan kolom → seluruh kelompok gagal, data aktif tidak berubah, segmen dibersihkan", async () => {
