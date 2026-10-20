@@ -13,6 +13,7 @@ import {
   dimensionExpr,
   groupKey,
   measureExpr,
+  paramValue,
   textLabel,
   whereClauses,
   type BuiltSql,
@@ -55,7 +56,7 @@ function localClauses(plan: Plan, local: PivotLocal[], params: BuiltSql["params"
   let n = 0;
   const bind = (v: string | number | boolean) => {
     const name = `l${++n}`;
-    params[name] = v;
+    params[name] = paramValue(v);
     return `$${name}`;
   };
   return local.flatMap((f) => {

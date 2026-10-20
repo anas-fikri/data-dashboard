@@ -90,6 +90,26 @@ describe("panel pivot", () => {
     );
   });
 
+  it("T-rrn1 AC2: ringkasan menyebut bagian Saring tersimpan (hanya / tanpa, kosong, sisa)", () => {
+    const spec = (defaultConfig("pivot", sources, empty) as { spec: PivotSpec }).spec;
+    const parts = pivotSummary(
+      {
+        ...spec,
+        filters: [
+          { column: 4, op: "in", values: ["Darat"] },
+          { column: 3, op: "not_in", values: [1500, null, 2, 3] },
+          { column: MISSING_COLUMN, op: "in", values: ["x"] },
+        ],
+      },
+      cols,
+      () => "Total No.",
+    );
+    expect(parts.map((p) => p.text).join("")).toBe(
+      "Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total, hanya Darat (Layanan), tanpa 1.500, (kosong) +2 (No.).",
+    );
+    expect(parts).toContainEqual({ text: "Darat", strong: true });
+  });
+
   const form = (spec: PivotSpec) =>
     renderToStaticMarkup(
       createElement(WidgetConfigForm, {

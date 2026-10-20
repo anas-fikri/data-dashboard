@@ -34,9 +34,10 @@ const column = z.string().min(1).max(200);
 const num = z.number().min(-Number.MAX_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
 /**
  * Nilai slicer/cross-filter; null = (Kosong). Teks ≤ 2000 unit UTF-16: daftar slicer memuat teks
- * ≤ 1000 karakter (karakter di luar BMP = 2 unit).
+ * ≤ 1000 karakter (karakter di luar BMP = 2 unit). Angka boleh di luar ±2^53 (label grafik/pivot dari kolom
+ * DOUBLE/DECIMAL besar, T-rrn1): di-bind sebagai teks lalu di-CAST (paramValue).
  */
-const inValue = z.union([z.string().max(2_000), num, z.boolean(), z.null()]);
+const inValue = z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]);
 /** Batas rentang: angka, atau tanggal/waktu naive ISO (YYYY-MM-DD[THH:MM[:SS]]). */
 const bound = z.union([
   z.string().max(19).refine(isCalendarDate, { message: "Tanggal tidak valid" }),

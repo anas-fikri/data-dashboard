@@ -15,6 +15,14 @@ export interface BuiltSql {
   params: Record<string, DuckDBValue>;
 }
 
+/**
+ * Nilai parameter untuk DuckDB: angka bulat di luar ±2^53 di-bind node-api sebagai BIGINT dan gagal
+ * ("bigint out of int64 range") — dikirim sebagai teks desimal lalu di-CAST (selalu AS DOUBLE/DECIMAL
+ * oleh pemanggil), jadi label grafik/pivot sebesar itu tetap bisa disaring (T-rrn1).
+ */
+export const paramValue = (v: string | number | boolean): string | number | boolean =>
+  typeof v === "number" && Number.isInteger(v) && !Number.isSafeInteger(v) ? String(v) : v;
+
 const OP_SQL = { eq: "=", neq: "<>", gt: ">", gte: ">=", lt: "<", lte: "<=" } as const;
 /** Panjang maksimum teks dimensi di hasil. */
 export const DIM_TEXT_MAX = 500;
@@ -112,7 +120,7 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
   let n = 0;
   const bind = (v: string | number | boolean) => {
     const name = `f${++n}`;
-    params[name] = v;
+    params[name] = paramValue(v);
     return `$${name}`;
   };
   const value = (
@@ -127,6 +135,8 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
         return `CAST(${bind(v)} AS TIMESTAMP)`;
       case "decimal": {
         if (cl.float || typeof v !== "number") return `CAST(${bind(v)} AS DOUBLE)`;
+        // DECIMAL(38,6) memuat < 10^32: angka sebesar itu tidak mungkin sama (in) — dilewati, bukan 500.
+        if (Math.abs(v) >= 1e32) return mode === "exact" ? null : `CAST(${bind(v)} AS DOUBLE)`;
         const d = decimal6(v, mode);
         return d === null ? null : `CAST(${bind(d)} AS DECIMAL(38,6))`;
       }

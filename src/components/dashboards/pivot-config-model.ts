@@ -1,3 +1,4 @@
+import { valuesText } from "@/components/dashboards/filters/filter-text";
 import type { SourceSheet } from "@/features/dashboards/service";
 import type { ColumnType } from "@/features/ingest/infer";
 import type { Agg, Grain } from "@/features/query/spec";
@@ -147,7 +148,7 @@ export function dimensionText(d: Dimension, cols: Column[]): string {
 /**
  * Ringkasan bentuk tabel untuk panel, dalam potongan (teks biasa + nama yang ditebalkan), mis.
  * "Satu baris per Customer, dirinci per Layanan, satu kolom per Tanggal (per bulan), berisi Total No.,
- * dengan kolom dan baris Total."
+ * dengan kolom dan baris Total, hanya Darat (Layanan)." — bagian Saring ikut disebut (T-rrn1).
  */
 export function pivotSummary(
   spec: PivotSpec,
@@ -173,6 +174,15 @@ export function pivotSummary(
   if (spec.totals)
     out.push({ text: spec.column ? ", dengan kolom dan baris Total" : ", dengan baris Total" });
   if (spec.subtotals && spec.rows[1]) out.push({ text: " serta subtotal per kelompok" });
+  for (const f of spec.filters ?? []) {
+    if (f.column === MISSING_COLUMN) continue;
+    const col = cols.find((c) => c.pos === f.column);
+    out.push(
+      { text: f.op === "in" ? ", hanya " : ", tanpa " },
+      { text: valuesText(f.values, col?.type), strong: true },
+      { text: ` (${col?.name ?? "kolom tidak tersedia"})` },
+    );
+  }
   out.push({ text: "." });
   return out;
 }
