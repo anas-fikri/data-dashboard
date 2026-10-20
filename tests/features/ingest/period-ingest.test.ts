@@ -496,9 +496,40 @@ describe("AC4: penolakan batas sebelum typing", () => {
     });
     expect((await s.run()).outcome).toBe("confirm");
     expect(s.repo.plan!.confirm).toEqual(["LABEL"]);
+    // T-054: min/max kolom tanggal acuan (kolom date pertama) dicatat untuk peringatan tinjauan.
     expect([...s.repo.segments.values()][0]!.period).toMatchObject({
       key: "2026-04",
+      minDate: "2026-04-01 00:00:00",
+      maxDate: "2026-04-28 00:00:00",
+    });
+  });
+
+  it("T-054 mode label: rentang kolom acuan dicatat apa adanya walau di luar label", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = setup([HEADER, ...month(4, 5)], base, JAN_MAR, {
+      source: "LABEL",
+      label: "2026-05-01",
+    });
+    expect((await s.run()).outcome).toBe("confirm");
+    expect([...s.repo.segments.values()][0]!.period).toMatchObject({
+      key: "2026-05",
+      start: "2026-05-01",
+      minDate: "2026-04-01 00:00:00",
+      maxDate: "2026-04-05 00:00:00",
+    });
+  });
+
+  it("T-054 mode label tanpa kolom tanggal acuan → rentang null", async () => {
+    const rows = (n: number) => range(n, (i) => [`K${i}`, String(10 + i)]);
+    const base = await schemaOf([["kode", "nilai"], ...rows(30)]);
+    const s = setup([["kode", "nilai"], ...rows(30)], base, JAN_MAR, {
+      source: "LABEL",
+      label: "2026-04-01",
+    });
+    expect((await s.run()).outcome).toBe("confirm");
+    expect([...s.repo.segments.values()][0]!.period).toMatchObject({
       minDate: null,
+      maxDate: null,
     });
   });
 });

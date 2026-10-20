@@ -185,7 +185,15 @@ export function VersionHistoryRow({
         {canActivate ? (
           <VersionActivate datasetId={datasetId} versionId={v.id} fileName={name} />
         ) : v.canDiscard && v.status === "AWAITING_CONFIRM" ? (
-          <VersionCancelPending datasetId={datasetId} versionId={v.id} fileName={name} />
+          <span className="flex flex-col gap-2 md:flex-row">
+            <Button asChild size="sm" className={ROW_LINK}>
+              <Link href={`/datasets/${datasetId}/tinjau/${v.id}`} data-testid="version-review">
+                <IconChecklist aria-hidden />
+                Tinjau perubahan<span className="sr-only"> “{name}”</span>
+              </Link>
+            </Button>
+            <VersionCancelPending datasetId={datasetId} versionId={v.id} fileName={name} />
+          </span>
         ) : v.canDiscard ? (
           <MappingAction datasetId={datasetId} name={name} applying={mappingApplying} />
         ) : null}

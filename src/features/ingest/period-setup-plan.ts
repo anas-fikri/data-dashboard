@@ -68,6 +68,19 @@ export function periodColumnOf(
   return c && !c.absent && (c.type === "date" || c.type === "timestamp") ? c : null;
 }
 
+/**
+ * Kolom tanggal acuan sheet bersumber label (T-054, rencana §4.4): kolom date/timestamp pertama (posisi
+ * kanonik terkecil) yang ada di file; null = sheet tanpa kolom tanggal. Min/max-nya dicatat di
+ * Segment.minDate/maxDate segmen berlabel dan dibandingkan dengan label di layar tinjauan.
+ */
+export function labelReferenceColumn(schema: ColumnSchema[] | null): ColumnSchema | null {
+  return (
+    [...(schema ?? [])]
+      .sort((a, b) => a.pos - b.pos)
+      .find((c) => !c.absent && (c.type === "date" || c.type === "timestamp")) ?? null
+  );
+}
+
 /** Pengaturan dataset (rencana §5.2): hanya boleh ≤ batas admin. */
 export function periodSettingsSchema(keepMax: number) {
   return z

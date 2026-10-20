@@ -26,7 +26,14 @@ import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ created?: string; mapped?: string; discarded?: string; period?: string }>;
+type Search = Promise<{
+  created?: string;
+  mapped?: string;
+  discarded?: string;
+  period?: string;
+  confirmed?: string;
+  cancelled?: string;
+}>;
 
 export async function generateMetadata({ params }: { params: Params }) {
   const { id } = await params;
@@ -73,6 +80,11 @@ export default async function DatasetDetailPage({
   const applyingJobId = mappingJob?.jobId ?? null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
   const mapping = versions.find((v) => v.canDiscard) ?? null;
+  // Unggahan periode yang menunggu konfirmasi (T-054): ajakan "Tinjau perubahan" di panel unggah.
+  const confirming =
+    badge?.kind === "awaiting_confirm"
+      ? (versions.find((v) => v.status === "AWAITING_CONFIRM") ?? null)
+      : null;
   // Status awal progres dirender server (tidak ada layar kosong sebelum polling pertama, T-008).
   let ingest: IngestStatus | null = null;
   if (badge?.kind === "processing") {
@@ -124,6 +136,22 @@ export default async function DatasetDetailPage({
           </FocusNotice>
         </div>
       ) : null}
+      {/* Kembali dari layar tinjauan unggahan periode (T-054). */}
+      {search.confirmed === "1" && !confirming ? (
+        <div data-testid="review-confirmed">
+          <FocusNotice>
+            <span className="[overflow-wrap:anywhere]">
+              Perubahan periode diterapkan. Versi “{active?.originalName ?? "file baru"}” aktif dan
+              dashboard memakai data ini sekarang.
+            </span>
+          </FocusNotice>
+        </div>
+      ) : null}
+      {search.cancelled === "1" && !confirming ? (
+        <div data-testid="review-cancelled">
+          <FocusNotice>Unggahan dibatalkan. Data aktif tidak berubah.</FocusNotice>
+        </div>
+      ) : null}
       {/* Kembali dari "Atur periode" (T-051) selama job-nya masih berjalan. */}
       {search.period === "1" && badge?.kind === "processing" ? (
         <div data-testid="period-applying">
@@ -162,16 +190,18 @@ export default async function DatasetDetailPage({
               processing={
                 ingest
                   ? { kind: "ingest", status: ingest }
-                  : awaiting
-                    ? {
-                        kind: "mapping",
-                        versionId: mapping?.id ?? null,
-                        fileName: mapping?.fileName ?? dataset.latestFileName,
-                        message: mapping?.message ?? null,
-                        mappingJobId: applyingJobId,
-                        mappingLast: mappingJob?.last ?? null,
-                      }
-                    : null
+                  : confirming
+                    ? { kind: "confirm", versionId: confirming.id, fileName: confirming.fileName }
+                    : awaiting
+                      ? {
+                          kind: "mapping",
+                          versionId: mapping?.id ?? null,
+                          fileName: mapping?.fileName ?? dataset.latestFileName,
+                          message: mapping?.message ?? null,
+                          mappingJobId: applyingJobId,
+                          mappingLast: mappingJob?.last ?? null,
+                        }
+                      : null
               }
             />
           </CardContent>

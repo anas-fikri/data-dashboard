@@ -2,6 +2,7 @@
 
 import {
   IconCalendarStats,
+  IconChecklist,
   IconFileSpreadsheet,
   IconPlayerPause,
   IconPlayerPlay,
@@ -80,6 +81,8 @@ interface UploadPanelProps {
         /** Hasil terakhir job pemetaan yang tidak selesai (gagal/perlu diperiksa), atau null. */
         mappingLast: MappingLast | null;
       }
+    /** Unggahan periode menunggu keputusan pemilik di layar tinjauan (T-054). */
+    | { kind: "confirm"; versionId: string; fileName: string | null }
     | null;
   /**
    * Dataset per periode (T-053): dropzone utama menambah/memperbarui periode terhadap versi aktif,
@@ -394,6 +397,29 @@ export function UploadPanel({
           last={processing.mappingLast}
           onDiscarded={(name) => setState({ kind: "discarded", name })}
         />
+      ) : null}
+      {processing?.kind === "confirm" && idleLike ? (
+        <div
+          className="flex flex-col gap-3 rounded-md border border-warning/50 bg-warning/15 p-3 text-sm md:flex-row md:items-center md:justify-between"
+          data-testid="upload-awaiting-confirm"
+        >
+          <p className="flex min-w-0 items-start gap-2">
+            <IconChecklist size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+            <span className="[overflow-wrap:anywhere]">
+              {processing.fileName ? `“${processing.fileName}”` : "File baru"} menunggu konfirmasi:
+              tinjau periode yang akan ditambah, diganti, atau dilepas. Data aktif belum berubah.
+            </span>
+          </p>
+          <Button
+            asChild
+            className="h-(--control-h-lg) w-full shrink-0 md:h-(--control-h) md:w-auto"
+          >
+            <Link href={`/datasets/${datasetId}/tinjau/${processing.versionId}`}>
+              <IconChecklist aria-hidden />
+              Tinjau perubahan
+            </Link>
+          </Button>
+        </div>
       ) : null}
 
       {state.kind === "error" ? (

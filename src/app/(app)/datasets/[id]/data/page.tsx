@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconFileSpreadsheet } from "@tabler/icons-react";
+import { IconArrowLeft, IconChecklist, IconEye, IconFileSpreadsheet } from "@tabler/icons-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -13,14 +13,15 @@ import { gridPageView } from "@/features/query/grid-page";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ sheet?: string; sheetId?: string }>;
+type Search = Promise<{ sheet?: string; sheetId?: string; version?: string }>;
 
 export const metadata = { title: "Lihat data" };
 
 /**
  * "Lihat data" (T-043, rencana G-6 §3): penampil baca-saja gaya lembar kerja untuk pemilik dataset dan
  * editor dashboard-nya. Viewer/pengguna lain → 404 (D2). Grid dimuat lazy di klien; nonce CSP
- * diteruskan ke AG Grid (styleNonce, ADR-0007).
+ * diteruskan ke AG Grid (styleNonce, ADR-0007). ?version= (T-054 "Lihat isi file"): pratinjau unggahan
+ * periode yang menunggu konfirmasi, hanya pemilik.
  */
 export default async function DataViewPage({
   params,
@@ -37,16 +38,31 @@ export default async function DataViewPage({
     : /^\d{1,4}$/.test(search.sheet ?? "")
       ? Number(search.sheet)
       : null;
-  const view = isIdShape(id) ? await gridPageView(user.id, id, wanted) : null;
+  // ?version= berbentuk salah tetap dianggap pratinjau (→ "tidak lagi menunggu"), bukan versi aktif.
+  const previewId = search.version === undefined ? null : String(search.version);
+  const view = isIdShape(id) ? await gridPageView(user.id, id, wanted, previewId) : null;
   if (!view) notFound();
+  const reviewHref = previewId ? `/datasets/${view.datasetId}/tinjau/${previewId}` : null;
   const nonce = (await headers()).get("x-nonce") ?? undefined;
 
   const owner = view.role === "OWNER";
   const back = (
     <Button asChild variant="outline" className="h-(--control-h-lg) md:h-(--control-h)">
-      <Link href={owner ? `/datasets/${view.datasetId}` : "/dashboards"}>
+      <Link
+        href={
+          view.preview === "pending" && reviewHref
+            ? reviewHref
+            : owner
+              ? `/datasets/${view.datasetId}`
+              : "/dashboards"
+        }
+      >
         <IconArrowLeft aria-hidden />
-        {owner ? "Kembali ke dataset" : "Kembali ke dashboard"}
+        {view.preview === "pending"
+          ? "Kembali ke tinjauan"
+          : owner
+            ? "Kembali ke dataset"
+            : "Kembali ke dashboard"}
       </Link>
     </Button>
   );
@@ -90,7 +106,27 @@ export default async function DataViewPage({
         actions={back}
       />
 
-      {!view.version || !sheet ? (
+      {view.preview === "pending" ? (
+        <p
+          className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/15 px-3 py-2 text-sm"
+          data-testid="grid-preview-banner"
+        >
+          <IconEye size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+          <span className="min-w-0 [overflow-wrap:anywhere]">
+            Pratinjau unggahan yang belum diterapkan: isi data bila perubahan ini diterapkan.
+            Dashboard masih memakai data aktif.
+          </span>
+        </p>
+      ) : null}
+
+      {view.preview === "gone" ? (
+        <EmptyState
+          icon={<IconChecklist />}
+          title="Unggahan ini tidak lagi menunggu konfirmasi"
+          description="Mungkin sudah diterapkan, dibatalkan, atau dibuang otomatis. Lihat status terbarunya di halaman dataset."
+          action={back}
+        />
+      ) : !view.version || !sheet ? (
         <EmptyState
           icon={<IconFileSpreadsheet />}
           title="Belum ada data yang siap"
@@ -129,6 +165,7 @@ export default async function DataViewPage({
           sheets={view.tabs}
           current={sheet.index}
           page="data"
+          extra={view.preview === "pending" && previewId ? `&version=${previewId}` : ""}
         />
       ) : null}
     </div>

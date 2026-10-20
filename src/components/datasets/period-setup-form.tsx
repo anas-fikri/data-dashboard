@@ -10,6 +10,7 @@ import {
 } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";
+import { LIMIT_TEXT, PeriodUsage } from "@/components/datasets/period-usage";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -43,8 +44,6 @@ import { cn } from "@/lib/utils";
  */
 
 const fmt = (n: number) => n.toLocaleString("id-ID");
-const gb = (n: number) =>
-  `${(n / 1024 ** 3).toLocaleString("id-ID", { maximumFractionDigits: 1 })} GB`;
 const CTA = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
 const MONTHS = [
   "Januari",
@@ -61,26 +60,6 @@ const MONTHS = [
   "Desember",
 ];
 const LABEL_SOURCE = "label";
-
-const LIMIT_TEXT: Record<SetupPreview["plan"]["usage"][number]["limit"], string> = {
-  periods: "batas simpan periode",
-  sheetRows: "batas baris per sheet",
-  datasetBytes: "batas ukuran dataset",
-  sheetSegments: "batas periode per sheet",
-};
-
-function usageText(u: SetupPreview["plan"]["usage"][number], sheet: string | null): string {
-  switch (u.limit) {
-    case "periods":
-      return `${fmt(u.used)} dari ${fmt(u.max)} periode disimpan`;
-    case "sheetRows":
-      return `${fmt(u.used)} dari ${fmt(u.max)} baris per sheet${sheet ? ` (sheet “${sheet}”)` : ""}`;
-    case "datasetBytes":
-      return `${gb(u.used)} dari ${gb(u.max)} per dataset`;
-    case "sheetSegments":
-      return `${fmt(u.used)} dari ${fmt(u.max)} periode per sheet`;
-  }
-}
 
 /** Penjelasan "Saat batas tercapai" (AC 4: dijelaskan di layar). */
 const ON_LIMIT: { value: OnLimit; label: string; hint: string }[] = [
@@ -250,28 +229,10 @@ function PreviewResult({ p }: { p: SetupPreview }) {
         <h3 id="period-capacity-title" className="text-sm font-semibold">
           Kapasitas
         </h3>
-        <ul className="flex flex-col gap-2" data-testid="period-usage">
-          {p.plan.usage.map((u) => {
-            const pct = u.max > 0 ? Math.min(100, Math.round((u.used * 100) / u.max)) : 0;
-            return (
-              <li key={u.limit} className="flex flex-col gap-1 text-sm">
-                <span className={cn(u.warn && "font-medium")}>
-                  {usageText(
-                    u,
-                    u.sheet && p.sheets.length > 1 ? (names.get(u.sheet) ?? null) : null,
-                  )}
-                  {u.warn ? " · mendekati batas" : ""}
-                </span>
-                <span aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                  <span
-                    className={cn("block h-full", u.warn ? "bg-warning" : "bg-primary")}
-                    style={{ width: `${pct}%` }}
-                  />
-                </span>
-              </li>
-            );
-          })}
-        </ul>
+        <PeriodUsage
+          usage={p.plan.usage}
+          sheetName={(id) => (p.sheets.length > 1 ? (names.get(id) ?? null) : null)}
+        />
         {proj ? (
           <p className="text-sm text-muted-foreground" data-testid="period-projection">
             Dengan rata-rata {fmt(proj.avgRows)} baris per periode

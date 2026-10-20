@@ -47,7 +47,7 @@ import {
 } from "./ingest";
 import { isIsoDate, periodKeyOf, periodLabel, type PeriodGrain, type PeriodSource } from "./period";
 import { computePeriodPlan, type OnLimit, type PeriodLimits, type PeriodPlan } from "./period-plan";
-import { periodSql, validDateSql } from "./period-setup-plan";
+import { labelReferenceColumn, periodSql, validDateSql } from "./period-setup-plan";
 import {
   castIssues,
   periodColumnPlan,
@@ -620,6 +620,37 @@ export async function runPeriodIngest(
   }
 }
 
+/**
+ * Sheet berlabel (T-054): min/max kolom tanggal acuan (labelReferenceColumn) di file baru, di-cast
+ * dengan tipe/format skema aktif; null = tanpa kolom acuan atau kolomnya tidak ada di file. Hanya
+ * informasi tinjauan ("rentang di luar label") — periode tetap label pilihan pemilik.
+ */
+async function labelRefRange(
+  d: Duck,
+  it: Item,
+  source: SourceKind,
+  raw: string,
+  hr: number,
+  watch: () => Promise<void>,
+): Promise<{ lo: string | null; hi: string | null } | null> {
+  const ref = labelReferenceColumn(it.pair.schema);
+  if (!ref) return null;
+  const rawCol = it.colMap.length ? (it.colMap[ref.pos - 1] ?? 0) : ref.pos;
+  if (!(rawCol > 0)) return null;
+  const parts = typedParts(`c${Math.trunc(rawCol)}`, ref, source);
+  const r = await watched(d, watch, () =>
+    one(
+      d,
+      `SELECT strftime(min(t), '%Y-%m-%d %H:%M:%S'), strftime(max(t), '%Y-%m-%d %H:%M:%S')
+       FROM (SELECT CASE WHEN ${validDateSql("v")} THEN CAST(v AS TIMESTAMP) END AS t
+             FROM (SELECT ${parts.outer("a")} AS v
+                   FROM (SELECT ${parts.inner} AS a FROM read_parquet(${raw}) WHERE _row > ${hr})))`,
+    ),
+  );
+  const str = (x: unknown) => (typeof x === "string" ? x : null);
+  return { lo: str(r[0]), hi: str(r[1]) };
+}
+
 /** Kolom periode di raw file baru di-cast dengan tipe/format skema aktif → periode per baris data. */
 async function assignPeriods(
   d: Duck,
@@ -639,7 +670,9 @@ async function assignPeriods(
        FROM read_parquet(${raw}) WHERE _row > ${hr}`,
     );
     const n = Number((await one(d, `SELECT count(*) FROM ${table}`))[0]);
-    it.periods = n > 0 ? [{ start: label, rows: n, lo: null, hi: null }] : [];
+    const range = n > 0 ? await labelRefRange(d, it, source, raw, hr, watch) : null;
+    it.periods =
+      n > 0 ? [{ start: label, rows: n, lo: range?.lo ?? null, hi: range?.hi ?? null }] : [];
     it.missing = 0;
     return;
   }

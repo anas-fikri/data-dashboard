@@ -8,6 +8,7 @@ const db = vi.hoisted(() => ({
   dataset: { findUnique: vi.fn() },
   dashboard: { findFirst: vi.fn() },
   sheet: { findFirst: vi.fn() },
+  datasetVersion: { findFirst: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
@@ -103,6 +104,44 @@ describe("gridPageView", () => {
     expect(db.sheet.findFirst).toHaveBeenLastCalledWith(
       expect.objectContaining({ where: { id: "s0", versionId: "v1" } }),
     );
+  });
+
+  it("T-054: ?version= versi tertunda hanya untuk pemilik; versi tidak lagi menunggu → gone", async () => {
+    db.datasetVersion.findFirst.mockResolvedValueOnce({
+      id: "v2",
+      status: "AWAITING_CONFIRM",
+      originalName: "feb.csv",
+      sheets: [{ id: "s9", index: 0, name: "Jan" }],
+    });
+    const v = await gridPageView("owner", "d1", null, "v2");
+    expect(db.datasetVersion.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: "v2", datasetId: "d1" } }),
+    );
+    expect(db.sheet.findFirst).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: "s9", versionId: "v2" } }),
+    );
+    expect(v).toMatchObject({ preview: "pending", version: { id: "v2", fileName: "feb.csv" } });
+
+    db.datasetVersion.findFirst.mockResolvedValueOnce({
+      id: "v3",
+      status: "READY",
+      originalName: "x.csv",
+      sheets: [{ id: "s8", index: 0, name: "Jan" }],
+    });
+    expect(await gridPageView("owner", "d1", null, "v3")).toMatchObject({
+      preview: "gone",
+      version: null,
+      tabs: [],
+      sheet: null,
+    });
+    db.datasetVersion.findFirst.mockResolvedValueOnce(null);
+    expect((await gridPageView("owner", "d1", null, "vx"))!.preview).toBe("gone");
+
+    // Editor dashboard tidak boleh membuka versi tertunda (404), versi aktif tetap boleh.
+    db.dashboard.findFirst.mockResolvedValueOnce({ id: "dash" });
+    expect(await gridPageView("editor", "d1", null, "v2")).toBeNull();
+    expect(db.datasetVersion.findFirst).toHaveBeenCalledTimes(3);
+    expect((await gridPageView("owner", "d1", null))!.preview).toBeNull();
   });
 
   it("visibleColumns menolak skema bukan larik", () => {

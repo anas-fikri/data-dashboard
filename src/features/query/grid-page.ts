@@ -2,12 +2,15 @@ import "server-only";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { canEditWhere } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
+import { PREVIEW_STATUSES } from "./grid-service";
 
 /*
  * Data halaman "Lihat data" /datasets/:id/data (T-043): pemilik dataset atau editor salah satu
  * dashboard-nya; selain itu null (404, D2). Hanya versi aktif; tab sheet cukup id/indeks/nama, skema
  * hanya untuk sheet yang dibuka. Kolom yang disembunyikan di skema tidak dikirim ke klien (endpoint
- * baris juga menolaknya, G-6 §3.4).
+ * baris juga menolaknya, G-6 §3.4). Pengecualian (T-054, "Lihat isi file"): ?version= = versi
+ * unggahan periode yang menunggu konfirmasi, hanya untuk pemilik (editor → 404); endpoint grid
+ * mengizinkan versi itu lewat PREVIEW_STATUSES.
  */
 
 export interface GridPageColumn {
@@ -22,6 +25,11 @@ export interface GridPageView {
   datasetName: string;
   role: "OWNER" | "EDITOR";
   version: { id: string; fileName: string | null } | null;
+  /**
+   * Pratinjau versi tertunda (T-054): null = versi aktif; "pending" = versi tertunda dibuka; "gone" =
+   * versi yang diminta tidak lagi menunggu konfirmasi (diterapkan/dibatalkan/kedaluwarsa).
+   */
+  preview: "pending" | "gone" | null;
   tabs: { index: number; name: string }[];
   sheet: {
     id: string;
@@ -48,6 +56,7 @@ export async function gridPageView(
   userId: string,
   datasetId: string,
   sheet: number | string | null,
+  previewVersionId: string | null = null,
 ): Promise<GridPageView | null> {
   const ds = await prisma.dataset.findUnique({
     where: { id: datasetId },
@@ -74,7 +83,22 @@ export async function gridPageView(
     role = d ? "EDITOR" : null;
   }
   if (!role) return null;
-  const v = ds.activeVersion;
+  let v = ds.activeVersion;
+  let preview: GridPageView["preview"] = null;
+  if (previewVersionId !== null) {
+    if (role !== "OWNER") return null;
+    const pv = await prisma.datasetVersion.findFirst({
+      where: { id: previewVersionId, datasetId: ds.id },
+      select: {
+        id: true,
+        status: true,
+        originalName: true,
+        sheets: { orderBy: { index: "asc" }, select: { id: true, index: true, name: true } },
+      },
+    });
+    preview = pv && PREVIEW_STATUSES.includes(pv.status) ? "pending" : "gone";
+    v = pv && preview === "pending" ? pv : null;
+  }
   const tabs = v?.sheets ?? [];
   const chosen =
     tabs.find((t) => (typeof sheet === "string" ? t.id === sheet : t.index === sheet)) ?? tabs[0];
@@ -96,6 +120,7 @@ export async function gridPageView(
     datasetName: ds.name,
     role,
     version: v ? { id: v.id, fileName: v.originalName } : null,
+    preview,
     tabs: tabs.map((t) => ({ index: t.index, name: t.name })),
     sheet: s
       ? {

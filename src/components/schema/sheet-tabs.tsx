@@ -11,11 +11,14 @@ export function SheetTabs({
   current,
   page = "skema",
   label = "Sheet",
+  extra = "",
 }: {
   datasetId: string;
   /** Subhalaman dataset tujuan tab (skema atau data/Lihat data); "data" = tab di bawah grid (gaya Excel). */
   page?: "skema" | "data";
   label?: string;
+  /** Parameter tambahan yang dipertahankan antartab, mis. "&version=<id>" (pratinjau T-054). */
+  extra?: string;
   sheets: { index: number; name: string }[];
   current: number;
 }) {
@@ -28,7 +31,7 @@ export function SheetTabs({
           return (
             <li key={s.index}>
               <Link
-                href={`/datasets/${datasetId}/${page}?sheet=${s.index}`}
+                href={`/datasets/${datasetId}/${page}?sheet=${s.index}${extra}`}
                 aria-current={active ? "page" : undefined}
                 scroll={false}
                 className={cn(

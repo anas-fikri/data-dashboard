@@ -46,6 +46,7 @@ export default defineConfig({
         /period-setup\.spec\.ts$/,
         /period-upload\.spec\.ts$/,
         /period-upload-panel\.spec\.ts$/,
+        /period-review\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -148,10 +149,16 @@ export default defineConfig({
       testMatch: /period-upload-panel\.spec\.ts$/,
       dependencies: ["period-upload"],
     },
+    // period-review (T-054): worker sendiri; layar tinjauan unggahan periode (Terapkan/Batalkan).
+    {
+      name: "period-review",
+      testMatch: /period-review\.spec\.ts$/,
+      dependencies: ["period-upload-panel"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-upload-panel"],
+      dependencies: ["period-review"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

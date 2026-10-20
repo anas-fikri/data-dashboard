@@ -292,6 +292,7 @@ model Segment {
   /// Tanggal awal periode (naive, D8); null = segmen non-periode.
   periodStart        DateTime?       @db.Date
   /// Tanggal terkecil/terbesar kolom periode di segmen (naive): pemangkasan segmen saat filter tanggal.
+  /// Sheet berlabel (T-054): kolom tanggal acuan (labelReferenceColumn) — hanya info tinjauan.
   minDate            DateTime?       @db.Timestamp(6)
   maxDate            DateTime?       @db.Timestamp(6)
   /// SHA-256 file asal segmen (deteksi "file identik"); null = tidak diketahui.
