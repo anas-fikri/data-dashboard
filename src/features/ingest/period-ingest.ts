@@ -623,7 +623,9 @@ export async function runPeriodIngest(
 /**
  * Sheet berlabel (T-054): min/max kolom tanggal acuan (labelReferenceColumn) di file baru, di-cast
  * dengan tipe/format skema aktif; null = tanpa kolom acuan atau kolomnya tidak ada di file. Hanya
- * informasi tinjauan ("rentang di luar label") — periode tetap label pilihan pemilik.
+ * informasi tinjauan ("rentang di luar label") — periode tetap label pilihan pemilik. Disimpan di
+ * Segment.minDate/maxDate: untuk sheet berlabel itu rentang kolom acuan, BUKAN rentang periode —
+ * pemangkasan segmen (T-058) tidak boleh memakainya sebagai rentang `_period`.
  */
 async function labelRefRange(
   d: Duck,

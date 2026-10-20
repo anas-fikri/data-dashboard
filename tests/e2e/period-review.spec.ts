@@ -431,6 +431,8 @@ test.describe("layar tinjauan periode", () => {
     // Masukkan → Maret diganti utuh (rencana dihitung ulang); kembali ke Kecualikan.
     await mar.getByTestId("review-stray-include").check();
     await expect(mar).toHaveAttribute("data-action", "REPLACED");
+    // Review L1: fokus tetap di radio pilihan setelah rencana dihitung ulang.
+    await expect(mar.getByTestId("review-stray-include")).toBeFocused();
     await mar.getByTestId("review-stray-exclude").check();
     await expect(mar).toHaveAttribute("data-action", "EXCLUDED");
 

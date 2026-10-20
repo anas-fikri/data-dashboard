@@ -15,6 +15,11 @@ import type { VersionResult } from "./types";
  * reviewPeriodUpload (tanpa mengubah apa pun, pilihan nyasar bawaan "Kecualikan"); konteks yang tidak
  * bergantung pada pilihan (nama sheet, baris file per periode, rentang kolom tanggal acuan sheet
  * berlabel, batas waktu keputusan) dibaca sekali di sini.
+ *
+ * PERHATIAN (T-058): pada sheet berlabel, Segment.minDate/maxDate = rentang kolom tanggal ACUAN
+ * (labelReferenceColumn), bukan rentang periode. Pemangkasan segmen untuk filter tanggal/Periode tidak
+ * boleh memakainya sebagai rentang periode (pakai periodStart/periodKey); hanya sah untuk filter pada
+ * kolom acuan itu sendiri.
  */
 
 export interface PeriodReviewContext {

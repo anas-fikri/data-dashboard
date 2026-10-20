@@ -1,6 +1,6 @@
 "use client";
 
-/* eslint-disable jsx-a11y/no-interactive-element-to-noninteractive-role --
+/* eslint-disable jsx-a11y/no-interactive-element-to-noninteractive-role, jsx-a11y/no-redundant-roles --
    peran eksplisit (row/cell) menjaga semantik tabel saat display diubah ke block/grid untuk tampilan
    kartu di ponsel; Safari/VoiceOver membuang semantik tabel tanpa ini (pola version-history-row). */
 
@@ -152,8 +152,11 @@ function StrayChoice({
         type="radio"
         name={`${uid}-stray`}
         checked={included === value}
-        disabled={disabled}
-        onChange={() => onChange(value)}
+        // aria-disabled (bukan disabled) selama rencana dihitung ulang: fokus tetap di radio pilihan.
+        aria-disabled={disabled || undefined}
+        onChange={() => {
+          if (!disabled) onChange(value);
+        }}
         className="size-4 shrink-0 accent-[hsl(var(--primary))]"
         data-testid={value ? "review-stray-include" : "review-stray-exclude"}
       />
@@ -195,29 +198,41 @@ function ReviewTable({
   return (
     <div className="flex flex-col gap-2">
       <table
+        role="table"
         className="block w-full text-sm md:table md:border-collapse"
         data-testid="review-table"
       >
         <caption className="sr-only">
           Perubahan periode: baris sekarang dan setelah diterapkan
         </caption>
-        <thead className="sr-only md:not-sr-only md:table-header-group md:bg-muted md:text-left">
-          <tr>
-            <th scope="col" className="md:px-3 md:py-2 md:font-medium">
+        <thead
+          role="rowgroup"
+          className="sr-only md:not-sr-only md:table-header-group md:bg-muted md:text-left"
+        >
+          <tr role="row">
+            <th role="columnheader" scope="col" className="md:px-3 md:py-2 md:font-medium">
               Periode
             </th>
-            <th scope="col" className="md:px-3 md:py-2 md:text-right md:font-medium">
+            <th
+              role="columnheader"
+              scope="col"
+              className="md:px-3 md:py-2 md:text-right md:font-medium"
+            >
               Sekarang
             </th>
-            <th scope="col" className="md:px-3 md:py-2 md:text-right md:font-medium">
+            <th
+              role="columnheader"
+              scope="col"
+              className="md:px-3 md:py-2 md:text-right md:font-medium"
+            >
               Setelah
             </th>
-            <th scope="col" className="md:px-3 md:py-2 md:font-medium">
+            <th role="columnheader" scope="col" className="md:px-3 md:py-2 md:font-medium">
               Keterangan
             </th>
           </tr>
         </thead>
-        <tbody className="flex flex-col gap-2 md:table-row-group">
+        <tbody role="rowgroup" className="flex flex-col gap-2 md:table-row-group">
           {rows.map((r) => {
             const t = TONE[r.tone];
             return (
@@ -237,18 +252,14 @@ function ReviewTable({
                   {r.label}
                 </th>
                 <td role="cell" className={cn(CELL, "md:text-right")}>
-                  <span className={label} aria-hidden>
-                    Sekarang:{" "}
-                  </span>
+                  <span className={label}>Sekarang: </span>
                   <span className="tabular-nums" data-testid="review-before">
                     <Rows n={r.before} />
                   </span>
                   {r.sheets.length ? <SheetLines sheets={r.sheets} pick={(s) => s.before} /> : null}
                 </td>
                 <td role="cell" className={cn(CELL, "md:text-right")}>
-                  <span className={label} aria-hidden>
-                    Setelah:{" "}
-                  </span>
+                  <span className={label}>Setelah: </span>
                   <span className="font-medium tabular-nums" data-testid="review-after">
                     <Rows n={r.after} />
                   </span>
@@ -562,7 +573,10 @@ export function PeriodReviewForm({
       </section>
 
       {needed.length ? (
-        <fieldset className="flex flex-col gap-2">
+        <fieldset
+          className="flex flex-col gap-2"
+          aria-describedby={blockedBy ? `${uid}-blocked` : undefined}
+        >
           <legend className="mb-1 text-base font-semibold">Konfirmasi</legend>
           {needed.map((a) => (
             <label
@@ -616,15 +630,15 @@ export function PeriodReviewForm({
           </Button>
           <CancelUpload context={context} />
         </div>
-        {blockedBy ? (
-          <p
-            id={`${uid}-blocked`}
-            className="text-sm text-muted-foreground [overflow-wrap:anywhere]"
-            data-testid="review-apply-blocked"
-          >
-            {blockedBy}
-          </p>
-        ) : null}
+        {/* Selalu ada (live region): alasan "Terapkan" nonaktif diumumkan saat berubah. */}
+        <p
+          id={`${uid}-blocked`}
+          aria-live="polite"
+          className="text-sm text-muted-foreground [overflow-wrap:anywhere] empty:hidden"
+          data-testid="review-apply-blocked"
+        >
+          {blockedBy ?? ""}
+        </p>
       </div>
     </div>
   );

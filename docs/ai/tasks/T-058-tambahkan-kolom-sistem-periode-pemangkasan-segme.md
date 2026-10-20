@@ -29,5 +29,9 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+- Dari T-054: pada sheet bersumber LABEL, Segment.minDate/maxDate berisi rentang kolom tanggal acuan
+  (labelReferenceColumn), bukan rentang periode. Pemangkasan untuk filter Periode/tanggal kolom periode
+  harus memakai periodStart/periodKey untuk segmen berlabel; minDate/maxDate hanya sah untuk filter pada
+  kolom acuan itu sendiri.
 
 - Dari review T-049 (L3): proyeksi skema campuran di query/source.ts membuang _period — filter _period gagal pada sheet bersegmen campuran.

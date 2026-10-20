@@ -113,8 +113,9 @@ export default async function DataViewPage({
         >
           <IconEye size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
           <span className="min-w-0 [overflow-wrap:anywhere]">
-            Pratinjau unggahan yang belum diterapkan: isi data bila perubahan ini diterapkan.
-            Dashboard masih memakai data aktif.
+            Pratinjau unggahan yang belum diterapkan: isi file dengan pilihan bawaan (periode
+            kemungkinan nyasar dikecualikan), bukan hasil akhir bila Anda mengubah pilihan di
+            tinjauan atau data aktif berubah. Dashboard masih memakai data aktif.
           </span>
         </p>
       ) : null}
