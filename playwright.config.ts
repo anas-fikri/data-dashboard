@@ -28,7 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
         /grid\.spec\.ts$/,
-        /data-view(-scroll|-query|-copy)?\.spec\.ts$/,
+        /data-view(-scroll|-query|-copy|-export)?\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -75,10 +75,16 @@ export default defineConfig({
       testMatch: /data-view-copy\.spec\.ts$/,
       dependencies: ["data-view-query"],
     },
+    // T-046: Unduh tampilan (worker sendiri dengan EXPORT_MAX_ROWS=500 untuk batas baris).
+    {
+      name: "data-view-export",
+      testMatch: /data-view-export\.spec\.ts$/,
+      dependencies: ["data-view-copy"],
+    },
     {
       name: "data-view-scroll",
       testMatch: /data-view-scroll\.spec\.ts$/,
-      dependencies: ["data-view-copy"],
+      dependencies: ["data-view-export"],
     },
     {
       name: "data-view-scroll-firefox",

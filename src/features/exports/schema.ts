@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import { dashFiltersSchema, pivotFiltersSchema } from "@/features/query/filters";
+import { rowsBodySchema } from "@/features/query/grid";
 import { EXPORT_FORMATS } from "./types";
 
 const cuid = z.string().regex(/^[a-z0-9]{20,32}$/);
@@ -33,6 +34,32 @@ export const exportParamsSchema = z
   })
   .strict();
 export type ExportParams = z.infer<typeof exportParamsSchema>;
+
+/** Kolom ekspor tampilan: batas kolom satu sheet Excel (bukan GRID_COLS_MAX per blok jendela). */
+export const SHEET_EXPORT_COLS_MAX = 16_384;
+const view = {
+  versionId: cuid,
+  cols: z.array(z.number().int().min(1).max(100_000)).min(1).max(SHEET_EXPORT_COLS_MAX),
+  sort: rowsBodySchema.shape.sort,
+  filters: rowsBodySchema.shape.filters,
+  search: rowsBodySchema.shape.search,
+};
+
+/**
+ * Body "Unduh tampilan" Lihat data (T-046): strict { sheetId, versionId, format, cols, sort?, filters?,
+ * search? } — bentuk urut/saring/cari sama dengan POST /api/sheets/:id/rows (dicocokkan lagi dengan
+ * skema lewat planGrid saat buat DAN di worker).
+ */
+export const sheetExportBodySchema = z
+  .object({ sheetId: cuid, format: z.enum(EXPORT_FORMATS), ...view })
+  .strict();
+export type SheetExportBody = z.infer<typeof sheetExportBodySchema>;
+
+/** Export.params ekspor tampilan: tampilan + versi yang dilihat + jam preset tanggal saringan. */
+export const sheetExportParamsSchema = z
+  .object({ ...view, requestedAt: z.string().datetime() })
+  .strict();
+export type SheetExportParams = z.infer<typeof sheetExportParamsSchema>;
 
 /**
  * `f` PDF (T-018) = encodeFilterParam(status filter). Batas panjang ≤ body ekspor (64 KB): status filter

@@ -19,6 +19,7 @@ import { DelayedError, Queue, Worker, type Job } from "bullmq";
 import Redis from "ioredis";
 import { expireExport, runExportCleanup } from "@/features/exports/cleanup";
 import { removeStaleExportDirs, runExportJob } from "@/features/exports/job";
+import { prismaGridRepo } from "@/features/query/grid-repo";
 import { RendererBusyError, runPdfJob } from "@/features/exports/pdf-job";
 import { mintRenderToken, redisRenderStore } from "@/features/exports/render-token";
 import { rendererClient } from "@/features/exports/renderer-client";
@@ -407,6 +408,7 @@ async function main() {
       const r = await runExportJob(job.data.exportId, {
         repo: prismaExportJobRepo,
         query: { repo: prismaQueryRepo },
+        grid: prismaGridRepo,
         storage: s3ExportStorage,
         scheduleDelete: scheduleExportDelete,
         tmpRoot,

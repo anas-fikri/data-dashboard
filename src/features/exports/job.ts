@@ -9,6 +9,9 @@
  *     (streaming), semua di bawah tenggat EXPORT_DEADLINE_MS (watched);
  *  4. unggah ke exports/<userId>/<id>.<ext> dengan Content-Type/Disposition, DONE + expiresAt, lalu
  *     jadwalkan hapus objek saat kedaluwarsa.
+ * T-046: baris dengan sheetId = "Unduh tampilan" Lihat data — langkah 2 memakai resolver grid (pemilik/
+ * editor, versi aktif, tampilan dicocokkan lagi dengan skema) dan SQL sheet-sql.ts (baris + urutan sama
+ * dengan grid); langkah 3–4 sama. Batas baris XLSX = min(EXPORT_MAX_ROWS, 1.048.575).
  * Galat yang dikenal → FAILED dengan pesan per peran (tanpa galat mentah DuckDB/S3); galat lain dilempar
  * (BullMQ mengulang sekali; gagal final → FAILED umum di worker).
  */
@@ -16,8 +19,16 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { DuckDBConnection, DuckDBValue } from "@duckdb/node-api";
-import { forRole, resolveWidget, sourceOf, type QueryDeps } from "@/features/query/service";
-import { sourceKeys, withSegments } from "@/features/query/source";
+import { buildGridCountSql, isPlainWindow } from "@/features/query/grid";
+import type { GridRepo } from "@/features/query/grid-service";
+import {
+  forRole,
+  resolveWidget,
+  sourceOf,
+  type QueryDeps,
+  type ResolvedWidget,
+} from "@/features/query/service";
+import { sheetSource, sourceKeys, withSegments, type ParquetSource } from "@/features/query/source";
 import type { BuiltSql } from "@/features/query/sql";
 import type { OutColumn } from "@/features/query/spec";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
@@ -25,10 +36,22 @@ import { exportKey } from "@/lib/storage/exports";
 import { writeCsv } from "./csv";
 import { contentDisposition, sheetName } from "./filename";
 import { writePivotExport } from "./pivot";
-import { exportParamsSchema } from "./schema";
-import { exportCodeOf, MIME, type ExportFormat, type ExportStatus } from "./service";
+import { exportParamsSchema, sheetExportParamsSchema } from "./schema";
+import {
+  exportCodeOf,
+  MIME,
+  resolveSheetView,
+  type ExportFormat,
+  type ExportStatus,
+} from "./service";
+import {
+  buildSheetExportSegmentSql,
+  buildSheetExportSql,
+  segmentOrdered,
+  sheetExportColumns,
+} from "./sheet-sql";
 import { buildExportCount, buildExportSql, exportColumns } from "./sql";
-import { EXPORT_CODES, type ExportFormatInput } from "./types";
+import { EXPORT_CODES, XLSX_MAX_DATA_ROWS, type ExportFormatInput } from "./types";
 import { writeXlsx, type XlsxColumn } from "./xlsx";
 
 export interface ExportJobRow {
@@ -36,6 +59,8 @@ export interface ExportJobRow {
   userId: string;
   dashboardId: string | null;
   widgetId: string | null;
+  /** Ekspor tampilan Lihat data (T-046); undefined di baris uji lama = widget. */
+  sheetId?: string | null;
   format: ExportFormat;
   status: ExportStatus;
   params: unknown;
@@ -76,6 +101,8 @@ export interface ExportStorage {
 export interface ExportJobDeps {
   repo: ExportJobRepo;
   query: Pick<QueryDeps, "repo">;
+  /** Resolver sheet "Lihat data" (T-046): wajib untuk ekspor tampilan. */
+  grid?: GridRepo;
   storage: ExportStorage;
   /** Jadwalkan hapus objek setelah `delayMs` (job maintenance delete-export). */
   scheduleDelete(exportId: string, key: string, delayMs: number): Promise<void>;
@@ -125,11 +152,12 @@ export const tooLargeMessage = (n: number, max: number) =>
   `Hasil ${n.toLocaleString("id-ID")} baris melebihi batas ${max.toLocaleString("id-ID")} baris. Persempit filter lalu ekspor lagi.`;
 export const TIMEOUT_MESSAGE = "Ekspor melebihi batas waktu. Persempit filter lalu ekspor lagi.";
 const GONE_MESSAGE = "Widget tidak ditemukan atau akses ke dashboard sudah dicabut.";
+const INVALID_PARAMS = "Parameter ekspor tidak valid.";
 const HEAVY_MESSAGE =
   "Ekspor terlalu berat untuk diproses. Persempit filter atau kurangi kolom, lalu ekspor lagi.";
 
 /** Jenis sel XLSX per tipe kolom keluaran. */
-export function xlsxColumn(c: OutColumn): XlsxColumn {
+export function xlsxColumn(c: Pick<OutColumn, "label" | "type">): XlsxColumn {
   switch (c.type) {
     case "text":
       return { label: c.label, kind: "text" };
@@ -191,27 +219,56 @@ async function countRows(conn: DuckDBConnection, sql: string, params: Record<str
   return Number(r.getRows()[0]?.[0] ?? 0);
 }
 
-export async function runExportJob(exportId: string, deps: ExportJobDeps): Promise<ExportOutcome> {
-  const { repo } = deps;
-  const row = await repo.load(exportId);
-  if (!row || (row.status !== "QUEUED" && row.status !== "RUNNING")) return { outcome: "skipped" };
-  const failWith = async (code: string, message: string): Promise<ExportOutcome> => {
-    await repo.fail(row.id, code, message);
-    return { outcome: "failed", code };
-  };
-  const ext: ExportFormatInput | null =
-    row.format === "CSV" ? "csv" : row.format === "XLSX" ? "xlsx" : null;
-  if (!ext || !row.widgetId || !row.dashboardId) {
-    return failWith(EXPORT_CODES.NOT_FOUND, GONE_MESSAGE);
-  }
-  const params = exportParamsSchema.safeParse(row.params);
-  if (!params.success) return failWith(EXPORT_CODES.INVALID, "Parameter ekspor tidak valid.");
-  if (!(await repo.start(row.id))) return { outcome: "skipped" };
+/** Penghasil isi file: tabel pivot tersusun, atau SELECT baris (widget tabel/KPI/grafik, tampilan). */
+type Producer =
+  | { kind: "pivot"; resolved: ResolvedWidget }
+  | {
+      kind: "rows";
+      /** Jumlah baris sebelum menulis (null = sudah dibatasi rencana). */
+      count(src: string, seg: (b: BuiltSql) => BuiltSql): BuiltSql | null;
+      select(
+        src: string,
+        seg: (b: BuiltSql) => BuiltSql,
+        paths: string[],
+        maxRows: number,
+      ): BuiltSql;
+      cols: Pick<OutColumn, "key" | "label" | "type">[];
+      tooLarge(n: number, max: number): string;
+    };
 
-  // Akses dicek ulang dengan peran SEKARANG (pencabutan setelah permintaan berlaku di sini).
+interface Prepared {
+  source: ParquetSource;
+  /** Nama sheet XLSX. */
+  title: string;
+  producer: Producer;
+}
+
+type Prep = { ok: true; prepared: Prepared } | { ok: false; code: string; message: string };
+
+/** Batas baris efektif: XLSX tidak pernah lebih dari 1.048.575 baris data (satu sheet Excel). */
+export const maxRowsFor = (ext: ExportFormatInput, maxRows: number) =>
+  ext === "xlsx" ? Math.min(maxRows, XLSX_MAX_DATA_ROWS) : maxRows;
+
+/** Pesan tampilan Lihat data melewati batas (T-046 AC2): sebut batasnya + sarankan saringan. */
+export function sheetTooLargeMessage(n: number, max: number, ext: ExportFormatInput): string {
+  const f = (x: number) => x.toLocaleString("id-ID");
+  const excel =
+    ext === "xlsx" ? ` File Excel (XLSX) paling banyak ${f(XLSX_MAX_DATA_ROWS)} baris data.` : "";
+  return `Tampilan ini ${f(n)} baris, melebihi batas unduhan ${f(max)} baris.${excel} Saring data dulu lalu unduh lagi; file tidak pernah dipotong.`;
+}
+
+/** Ekspor widget (T-017): akses dicek ulang dengan peran SEKARANG + resolver /api/query. */
+async function prepareWidget(
+  row: ExportJobRow & { widgetId: string; dashboardId: string },
+  ext: ExportFormatInput,
+  deps: ExportJobDeps,
+): Promise<Prep> {
+  const params = exportParamsSchema.safeParse(row.params);
+  if (!params.success) return { ok: false, code: EXPORT_CODES.INVALID, message: INVALID_PARAMS };
   const w = await deps.query.repo.widget(row.userId, row.widgetId);
-  if (!w || w.dashboardId !== row.dashboardId)
-    return failWith(EXPORT_CODES.NOT_FOUND, GONE_MESSAGE);
+  if (!w || w.dashboardId !== row.dashboardId) {
+    return { ok: false, code: EXPORT_CODES.NOT_FOUND, message: GONE_MESSAGE };
+  }
   const requestedAt = new Date(params.data.requestedAt);
   const resolved = await resolveWidget(
     w,
@@ -225,8 +282,103 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
   );
   if (!resolved.ok) {
     const f = forRole(w.role, resolved);
-    return failWith(exportCodeOf(f.code), f.message);
+    return { ok: false, code: exportCodeOf(f.code), message: f.message };
   }
+  const producer: Producer =
+    resolved.planned.kind === "pivot"
+      ? { kind: "pivot", resolved }
+      : {
+          kind: "rows",
+          count: (src, seg) => {
+            const c = buildExportCount(resolved, src);
+            return c && seg(c);
+          },
+          select: (src, seg, _paths, max) => seg(buildExportSql(resolved, src, ext, max)),
+          cols: exportColumns(resolved),
+          tooLarge: tooLargeMessage,
+        };
+  return {
+    ok: true,
+    prepared: { source: sourceOf(resolved.sheet), title: row.title ?? "", producer },
+  };
+}
+
+/**
+ * Ekspor tampilan Lihat data (T-046): akses pemilik/editor + versi aktif dicek ulang SEKARANG (viewer /
+ * akses dicabut → FORBIDDEN, versi berganti → VERSION_CHANGED — baris dua versi tidak pernah tercampur),
+ * tampilan dicocokkan lagi dengan skema, preset tanggal saringan memakai waktu permintaan.
+ */
+async function prepareSheet(
+  row: ExportJobRow & { sheetId: string },
+  ext: ExportFormatInput,
+  deps: ExportJobDeps,
+): Promise<Prep> {
+  const params = sheetExportParamsSchema.safeParse(row.params);
+  if (!params.success || !deps.grid) {
+    return { ok: false, code: EXPORT_CODES.INVALID, message: INVALID_PARAMS };
+  }
+  const requestedAt = new Date(params.data.requestedAt);
+  const v = await resolveSheetView(row.userId, row.sheetId, params.data, deps.grid, requestedAt);
+  if (!v.ok) return { ok: false, code: v.code, message: v.message };
+  const { sheet, plan } = v;
+  const segs = sheet.segments;
+  const source = sheetSource({
+    typedKey: sheet.typedKey!,
+    schema: sheet.schema,
+    segments: segs.map(({ typedKey, legacyRow, columns }) => ({ typedKey, legacyRow, columns })),
+  });
+  const names = new Map(sheet.schema.map((c) => [c.pos, c.name]));
+  const bySegment = typeof source !== "string" && segmentOrdered(plan, segs);
+  return {
+    ok: true,
+    prepared: {
+      source,
+      title: sheet.title ?? "",
+      producer: {
+        kind: "rows",
+        count: (src, seg) => seg(buildGridCountSql(isPlainWindow(plan) ? null : plan, src)),
+        select: (src, seg, paths, max) =>
+          bySegment && typeof source !== "string"
+            ? buildSheetExportSegmentSql(plan, source.files, paths, ext, max)
+            : seg(buildSheetExportSql(plan, src, ext, max)),
+        cols: sheetExportColumns(plan, names),
+        tooLarge: (n, max) => sheetTooLargeMessage(n, max, ext),
+      },
+    },
+  };
+}
+
+export async function runExportJob(exportId: string, deps: ExportJobDeps): Promise<ExportOutcome> {
+  const { repo } = deps;
+  const row = await repo.load(exportId);
+  if (!row || (row.status !== "QUEUED" && row.status !== "RUNNING")) return { outcome: "skipped" };
+  const failWith = async (code: string, message: string): Promise<ExportOutcome> => {
+    await repo.fail(row.id, code, message);
+    return { outcome: "failed", code };
+  };
+  const ext: ExportFormatInput | null =
+    row.format === "CSV" ? "csv" : row.format === "XLSX" ? "xlsx" : null;
+  const sheetId = row.sheetId ?? null;
+  const widget = row.widgetId && row.dashboardId ? row.widgetId : null;
+  if (!ext || (!sheetId && !widget)) return failWith(EXPORT_CODES.NOT_FOUND, GONE_MESSAGE);
+  // Parameter rusak ditolak sebelum RUNNING (baris lama/rusak → gagal bersih, bukan galat DuckDB).
+  const paramsOk = sheetId
+    ? sheetExportParamsSchema.safeParse(row.params).success
+    : exportParamsSchema.safeParse(row.params).success;
+  if (!paramsOk) return failWith(EXPORT_CODES.INVALID, INVALID_PARAMS);
+  if (!(await repo.start(row.id))) return { outcome: "skipped" };
+
+  // Akses dicek ulang dengan peran SEKARANG (pencabutan setelah permintaan berlaku di sini).
+  const prep = sheetId
+    ? await prepareSheet({ ...row, sheetId }, ext, deps)
+    : await prepareWidget(
+        { ...row, widgetId: row.widgetId!, dashboardId: row.dashboardId! },
+        ext,
+        deps,
+      );
+  if (!prep.ok) return failWith(prep.code, prep.message);
+  const { source, title, producer } = prep.prepared;
+  const maxRows = maxRowsFor(ext, deps.maxRows);
 
   const deadline = Date.now() + deps.deadlineMs;
   const key = exportKey(row.userId, row.id, ext);
@@ -235,7 +387,6 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
   let uploaded = false;
   try {
     // Semua segmen manifest sheet (T-037) diunduh ke direktori kerja; satu segmen = typed.parquet.
-    const source = sourceOf(resolved.sheet);
     const keys = sourceKeys(source);
     const paths = keys.map((_, i) =>
       join(work, keys.length === 1 ? "typed.parquet" : `typed-${i}.parquet`),
@@ -259,22 +410,22 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
 
     const out = join(work, `ekspor.${ext}`);
     let rows: number;
-    if (resolved.planned.kind === "pivot") {
+    if (producer.kind === "pivot") {
       // Pivot (T-9bc2): tabel tersusun seperti layar (batas tampil 200 × 40), bukan SELECT datar.
+      const resolved = producer.resolved;
       rows = await watched(d, watch, () =>
-        writePivotExport(d.conn, resolved, src, ext, out, sheetName(row.title ?? ""), seg),
+        writePivotExport(d.conn, resolved, src, ext, out, sheetName(title), seg),
       );
     } else {
-      const counted = buildExportCount(resolved, src);
-      const count = counted && seg(counted);
+      const count = producer.count(src, seg);
       if (count) {
         const n = await watched(d, watch, () => countRows(d.conn, count.sql, count.params));
-        if (n > deps.maxRows) {
-          return await failWith(EXPORT_CODES.EXPORT_TOO_LARGE, tooLargeMessage(n, deps.maxRows));
+        if (n > maxRows) {
+          return await failWith(EXPORT_CODES.EXPORT_TOO_LARGE, producer.tooLarge(n, maxRows));
         }
       }
-      const built = seg(buildExportSql(resolved, src, ext, deps.maxRows));
-      const cols = exportColumns(resolved);
+      const built = producer.select(src, seg, paths, maxRows);
+      const cols = producer.cols;
       rows = await watched(d, watch, async () => {
         if (ext === "csv") {
           return writeCsv(d.conn, built, cols, join(work, "body.csv"), out);
@@ -291,7 +442,7 @@ export async function runExportJob(exportId: string, deps: ExportJobDeps): Promi
         const result = await d.conn.stream(`SELECT * FROM read_parquet(${lit(sorted)})`);
         return writeXlsx(
           out,
-          { sheetName: sheetName(row.title ?? ""), columns: cols.map(xlsxColumn) },
+          { sheetName: sheetName(title), columns: cols.map(xlsxColumn) },
           result.yieldRowsJs() as AsyncIterable<unknown[][]>,
         );
       });

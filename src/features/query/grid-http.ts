@@ -1,11 +1,7 @@
 import "server-only";
 import type { NextRequest } from "next/server";
 import { hit, RULES } from "@/features/auth/rate-limit";
-import { isIdShape } from "@/features/datasets/validation";
-import type { ColumnSchema } from "@/features/ingest/infer";
-import { canEditWhere } from "@/features/sharing/access";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
-import { prisma } from "@/lib/db";
 import { redisReady } from "@/lib/redis";
 import { GRID_BODY_MAX } from "./grid";
 import {
@@ -15,8 +11,8 @@ import {
   runGridValues,
   type GridCode,
   type GridDeps,
-  type GridRepo,
 } from "./grid-service";
+import { prismaGridRepo } from "./grid-repo";
 import { gridEngine } from "./grid-gate";
 import { gridRuntime } from "./runtime";
 
@@ -43,85 +39,6 @@ const STATUS: Record<GridCode, number> = {
   QUERY_FAILED: 500,
   COLUMN_UNAVAILABLE: 409,
   SHEET_UNAVAILABLE: 409,
-};
-
-/** Sheet + peran peminta pada dataset-nya: pemilik dataset, atau editor salah satu dashboard-nya. */
-export const prismaGridRepo: GridRepo = {
-  async sheet(userId, sheetId) {
-    if (!isIdShape(sheetId)) return null;
-    const s = await prisma.sheet.findUnique({
-      where: { id: sheetId },
-      select: {
-        versionId: true,
-        typedKey: true,
-        rawKey: true,
-        schemaRevision: true,
-        schema: true,
-        version: {
-          select: {
-            status: true,
-            originalName: true,
-            datasetId: true,
-            dataset: { select: { ownerId: true, activeVersionId: true } },
-          },
-        },
-        segments: {
-          orderBy: { ordinal: "asc" },
-          select: {
-            segmentTyped: {
-              select: {
-                typedKey: true,
-                legacyRow: true,
-                columns: true,
-                dataRows: true,
-                segment: {
-                  select: {
-                    rowBase: true,
-                    maxSrcRow: true,
-                    rawKey: true,
-                    colMap: true,
-                    createdByVersion: { select: { originalName: true } },
-                  },
-                },
-              },
-            },
-          },
-        },
-      },
-    });
-    if (!s) return null;
-    const ds = s.version.dataset;
-    let role: "OWNER" | "EDITOR" | null = ds.ownerId === userId ? "OWNER" : null;
-    if (!role) {
-      const d = await prisma.dashboard.findFirst({
-        where: { datasetId: s.version.datasetId, ...canEditWhere(userId) },
-        select: { id: true },
-      });
-      role = d ? "EDITOR" : null;
-    }
-    return {
-      versionId: s.versionId,
-      versionStatus: s.version.status,
-      activeVersionId: ds.activeVersionId,
-      role,
-      typedKey: s.typedKey,
-      rawKey: s.rawKey,
-      fileName: s.version.originalName,
-      schemaRevision: s.schemaRevision,
-      schema: (s.schema as unknown as ColumnSchema[] | null) ?? null,
-      segments: s.segments.map(({ segmentTyped: t }) => ({
-        typedKey: t.typedKey,
-        legacyRow: t.legacyRow,
-        columns: t.columns,
-        dataRows: t.dataRows,
-        rowBase: Number(t.segment.rowBase),
-        maxSrcRow: t.segment.maxSrcRow,
-        rawKey: t.segment.rawKey,
-        colMap: t.segment.colMap,
-        fileName: t.segment.createdByVersion?.originalName ?? null,
-      })),
-    };
-  },
 };
 
 async function gridDeps(signal: AbortSignal): Promise<GridDeps> {

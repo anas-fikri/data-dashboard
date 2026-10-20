@@ -13,6 +13,7 @@ import {
   type ExportFormatInput,
   type ExportStatusView,
   type PdfExportCreateBody,
+  type SheetExportCreateBody,
 } from "@/features/exports/types";
 import type { WidgetRequest } from "./widget-query";
 
@@ -28,8 +29,10 @@ export const exportDownloadUrl = (id: string) => `${exportStatusUrl(id)}/downloa
  * widget berbentuk cuid (tanpa ":"), jadi tidak pernah bertabrakan dengan awalan "dashboard:".
  */
 export const dashboardExportTarget = (dashboardId: string) => `dashboard:${dashboardId}`;
-/** Body POST yang dimulai use-export-job: ekspor widget atau PDF dashboard. */
-export type ExportStartBody = ExportCreateBody | PdfExportCreateBody;
+/** Sasaran "Unduh tampilan" Lihat data (T-046): satu ekspor berjalan per sheet. */
+export const sheetExportTarget = (sheetId: string) => `sheet:${sheetId}`;
+/** Body POST yang dimulai use-export-job: ekspor widget, PDF dashboard, atau tampilan Lihat data. */
+export type ExportStartBody = ExportCreateBody | PdfExportCreateBody | SheetExportCreateBody;
 
 /**
  * Body ekspor dari body query widget yang sedang tampil (body-state.ts widgetRequest): filter dashboard

@@ -49,6 +49,11 @@ export type AuditAction =
    */
   | "dashboard.export"
   /**
+   * File "Unduh tampilan" Lihat data (CSV/XLSX) diunduh (T-046): ditulis setiap kali tautan unduh
+   * diberikan, target = dataset, meta { sheetId, exportId, format, rows, role } tanpa nilai saringan.
+   */
+  | "dataset.sheet.export"
+  /**
    * Admin membuat / mengubah (T-0vjt) / menerbitkan / menarik / menghapus artikel panduan (T-020), meta
    * { slug, role } tanpa isi artikel. Terbit/tarik hanya bila statusnya benar-benar berubah.
    */

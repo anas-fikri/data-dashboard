@@ -55,6 +55,7 @@ function makeDeps(over: { rows?: ExportRow[]; roles?: Record<string, DashboardAc
     dashboardRole: vi.fn(async (userId: string, dashboardId: string) =>
       dashboardId === DASH ? (roles[userId] ?? null) : null,
     ),
+    sheetAccess: vi.fn(async () => null),
     audit: vi.fn(async (e: AuditEntry) => {
       audits.push(e);
     }),

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
 import { isIdShape } from "@/features/datasets/validation";
 import { gridPageView } from "@/features/query/grid-page";
+import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
 type Search = Promise<{ sheet?: string }>;
@@ -112,6 +113,7 @@ export default async function DataViewPage({
           versionId={view.version.id}
           schemaRevision={sheet.schemaRevision}
           columns={sheet.columns}
+          exportMaxRows={env().EXPORT_MAX_ROWS}
           nonce={nonce}
         />
       )}

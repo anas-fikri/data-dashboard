@@ -5,6 +5,7 @@ import {
   IconArrowsSort,
   IconCopy,
   IconCornerDownLeft,
+  IconDownload,
   IconFilterOff,
   IconLayoutColumns,
   IconLoader2,
@@ -125,6 +126,8 @@ import {
  */
 // T-045: panel Isi sel di chunk terpisah (diunduh saat pertama dibuka, tidak menambah chunk grid).
 const GridCellPanel = lazy(() => import("./grid-cell-panel"));
+// T-046: dialog "Unduh tampilan" di chunk sendiri (chunk grid sudah di dekat batas 293 KiB).
+const GridExport = lazy(() => import("./grid-export"));
 
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -260,6 +263,8 @@ export interface SheetGridProps {
   versionId: string;
   schemaRevision: number;
   columns: GridColumn[];
+  /** Batas baris ekspor (EXPORT_MAX_ROWS server) untuk dialog "Unduh tampilan" (T-046). */
+  exportMaxRows?: number;
   nonce?: string;
 }
 
@@ -269,6 +274,7 @@ export default function SheetGrid({
   versionId,
   schemaRevision,
   columns,
+  exportMaxRows = 1_000_000,
   nonce,
 }: SheetGridProps) {
   const router = useRouter();
@@ -327,6 +333,9 @@ export default function SheetGrid({
   const selRef = useRef<Selection | null>(null);
   const [cellTarget, setCellTarget] = useState<CellTarget | null>(null);
   const [panelOn, setPanelOn] = useState(false);
+  // T-046: dialog dipasang saat pertama dibuka lalu tetap (polling ekspor jalan walau ditutup).
+  const [exportOn, setExportOn] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [focusCol, setFocusCol] = useState<string | null>(null);
   const [stats, setStats] = useState<{
     key: string;
@@ -1273,6 +1282,25 @@ export default function SheetGrid({
     setAnnounce("Tampilan kolom dikembalikan ke bawaan");
   };
 
+  /** Tampilan sekarang untuk "Unduh tampilan": kolom terlihat urut tampil, urut, saringan, cari. */
+  const exportView = () => {
+    const api = apiRef.current;
+    const cols = dataColsInOrder().flatMap((id) => {
+      const p = posOf(id);
+      return p === null ? [] : [p];
+    });
+    return {
+      cols: cols.length ? cols : requestCols(),
+      sort: api ? sortFromModel(sortedState(api)) : [],
+      filters: bodyFilters,
+      search: search ?? undefined,
+    };
+  };
+  const openExport = () => {
+    setExportOn(true);
+    setExportOpen(true);
+  };
+
   const goId = `${uid}-go`;
   const goErrId = `${uid}-go-err`;
   const searchId = `${uid}-search`;
@@ -1500,6 +1528,15 @@ export default function SheetGrid({
           <span className="rounded-sm border px-2 py-1 text-xs text-muted-foreground">
             Baca-saja
           </span>
+          <Button
+            variant="outline"
+            className="h-(--control-h-lg) md:h-(--control-h)"
+            data-testid="grid-export-button"
+            onClick={openExport}
+          >
+            <IconDownload aria-hidden />
+            Unduh tampilan
+          </Button>
           <Popover>
             <PopoverTrigger asChild>
               <Button
@@ -1607,7 +1644,12 @@ export default function SheetGrid({
       ) : null}
 
       {sel ? (
-        <SelectionBar sel={sel} onCopy={() => copyRows(sel)} onClear={() => select(null)} />
+        <SelectionBar
+          sel={sel}
+          onCopy={() => copyRows(sel)}
+          onExport={openExport}
+          onClear={() => select(null)}
+        />
       ) : null}
 
       <div
@@ -1702,6 +1744,20 @@ export default function SheetGrid({
           ))}
         </div>
       </div>
+      {exportOn ? (
+        <Suspense fallback={null}>
+          <GridExport
+            open={exportOpen}
+            onOpenChange={setExportOpen}
+            sheetId={sheetId}
+            versionId={versionId}
+            rows={loading || timeoutMsg || loadError ? null : total}
+            maxRows={exportMaxRows}
+            getView={exportView}
+            onAccessLost={() => router.refresh()}
+          />
+        </Suspense>
+      ) : null}
       {panelOn ? (
         <Suspense fallback={null}>
           <GridCellPanel
@@ -1731,10 +1787,12 @@ export default function SheetGrid({
 function SelectionBar({
   sel,
   onCopy,
+  onExport,
   onClear,
 }: {
   sel: Selection;
   onCopy: () => void;
+  onExport: () => void;
   onClear: () => void;
 }) {
   const n = sel.to - sel.from + 1;
@@ -1749,11 +1807,23 @@ function SelectionBar({
         {n > 1 ? ` (baris ${fmtInt(sel.from + 1)}–${fmtInt(sel.to + 1)})` : ""}
       </span>
       {over ? (
-        <span role="alert" className="flex items-start gap-2" data-testid="grid-copy-offer">
-          <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
-          Salin ke Excel paling banyak {fmtInt(COPY_MAX_ROWS)} baris. Untuk {fmtInt(n)} baris, pakai
-          Unduh tampilan (CSV/XLSX) — atau saring data lebih dulu.
-        </span>
+        <>
+          <span role="alert" className="flex items-start gap-2" data-testid="grid-copy-offer">
+            <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+            Salin ke Excel paling banyak {fmtInt(COPY_MAX_ROWS)} baris. Untuk {fmtInt(n)} baris,
+            pakai Unduh tampilan (CSV/XLSX) — atau saring data lebih dulu.
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-(--control-h-lg) md:h-(--control-h-sm)"
+            data-testid="grid-selection-export"
+            onClick={onExport}
+          >
+            <IconDownload aria-hidden />
+            Unduh tampilan
+          </Button>
+        </>
       ) : (
         <Button
           size="sm"

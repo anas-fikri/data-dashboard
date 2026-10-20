@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse, type NextRequest } from "next/server";
 import { clientIp, hit, RULES } from "@/features/auth/rate-limit";
 import { getDashboard } from "@/features/dashboards/service";
+import { prismaGridRepo } from "@/features/query/grid-repo";
 import { prismaQueryRepo } from "@/features/query/runtime";
 import { SPEC_MAX_BYTES } from "@/features/query/spec";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
@@ -14,16 +15,18 @@ import { prismaExportRepo } from "./repo";
 import {
   createExport,
   createPdfExport,
+  createSheetExport,
   downloadExport,
   EXPORT_STATUS,
   exportStatus,
   type ExportDeps,
   type ExportFailure,
   type PdfExportDeps,
+  type SheetExportDeps,
 } from "./service";
 
 /*
- * HTTP ekspor (T-017, PDF T-018): POST /api/exports (Origin = APP_URL, sesi, rate limit + batas
+ * HTTP ekspor (T-017, PDF T-018, tampilan Lihat data T-046 — body { sheetId, … }): POST /api/exports (Origin = APP_URL, sesi, rate limit + batas
  * berjalan, body JSON ≤ 64 KB) → 202 { ok, exportId }; body { format: "pdf", dashboardId, f? } → PDF
  * dashboard (503 RENDERER_UNAVAILABLE bila renderer mati, dicek ≤ 3 detik); GET /api/exports/[id] →
  * status (pemilik saja); GET /api/exports/[id]/download (rate limit per user) → 302 ke presigned GET
@@ -49,6 +52,11 @@ function deps(): ExportDeps {
   };
 }
 
+function sheetDeps(): SheetExportDeps {
+  const d = deps();
+  return { repo: d.repo, grid: prismaGridRepo, enqueue: d.enqueue, rateLimit: d.rateLimit };
+}
+
 function pdfDeps(): PdfExportDeps {
   const e = env();
   const renderer = rendererClient({ url: e.RENDERER_URL, secret: e.RENDERER_SECRET });
@@ -71,6 +79,9 @@ const failed = (r: ExportFailure) =>
 
 const isPdfBody = (body: unknown) =>
   !!body && typeof body === "object" && (body as { format?: unknown }).format === "pdf";
+/** Body "Unduh tampilan" Lihat data (T-046): ditandai sheetId; skemanya strict (field lain → INVALID). */
+const isSheetBody = (body: unknown) =>
+  !!body && typeof body === "object" && Object.hasOwn(body, "sheetId");
 
 export function createExportRoute(req: NextRequest): Promise<NextResponse> {
   const cross = rejectCrossOrigin(req);
@@ -80,7 +91,9 @@ export function createExportRoute(req: NextRequest): Promise<NextResponse> {
     if ("response" in read) return read.response;
     const r = isPdfBody(read.body)
       ? await createPdfExport(userId, read.body, pdfDeps())
-      : await createExport(userId, read.body, deps());
+      : isSheetBody(read.body)
+        ? await createSheetExport(userId, read.body, sheetDeps())
+        : await createExport(userId, read.body, deps());
     return r.ok ? json(r, 202) : failed(r);
   });
 }

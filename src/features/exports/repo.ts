@@ -1,5 +1,7 @@
 import "server-only";
+import type { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
+import { sheetAccess } from "@/features/query/grid-repo";
 import { dashboardAccess } from "@/features/sharing/access";
 import { prisma } from "@/lib/db";
 import { downloadToFile, uploadFile } from "@/lib/storage/files";
@@ -19,6 +21,7 @@ const ROW_SELECT = {
   userId: true,
   dashboardId: true,
   widgetId: true,
+  sheetId: true,
   format: true,
   status: true,
   errorCode: true,
@@ -47,8 +50,9 @@ export const prismaExportRepo: ExportRepo = {
           userId: input.userId,
           dashboardId: input.dashboardId,
           widgetId: input.widgetId,
+          sheetId: input.sheetId ?? null,
           format: input.format,
-          params: input.params,
+          params: input.params as Prisma.InputJsonValue,
           fileName: input.fileName,
         },
         select: { id: true },
@@ -71,6 +75,7 @@ export const prismaExportRepo: ExportRepo = {
   async dashboardRole(userId, dashboardId) {
     return (await dashboardAccess(userId, dashboardId))?.role ?? null;
   },
+  sheetAccess,
   audit: (entry) => recordAudit(prisma, entry),
 };
 
@@ -83,6 +88,7 @@ export const prismaExportJobRepo: ExportJobRepo = {
         userId: true,
         dashboardId: true,
         widgetId: true,
+        sheetId: true,
         format: true,
         status: true,
         params: true,

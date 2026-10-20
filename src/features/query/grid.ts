@@ -223,8 +223,8 @@ export function buildWindowSql(
   return { sql, params };
 }
 
-/** WHERE saringan + cari (nilai $f… dari dashClauses, teks cari $q). */
-function whereSql(plan: GridPlan, params: BuiltSql["params"]): string {
+/** WHERE saringan + cari (nilai $f… dari dashClauses, teks cari $q). Dipakai juga ekspor tampilan (T-046). */
+export function gridWhereSql(plan: GridPlan, params: BuiltSql["params"]): string {
   const parts = dashClauses(plan.clauses, params);
   if (plan.search) {
     params.q = plan.search.text;
@@ -235,7 +235,8 @@ function whereSql(plan: GridPlan, params: BuiltSql["params"]): string {
   return parts.length ? `WHERE ${parts.join(" AND ")}` : "";
 }
 
-function orderSql(plan: GridPlan): string {
+/** ORDER BY tampilan: kunci urut (teks dengan collation) lalu `_row`. Dipakai juga ekspor tampilan. */
+export function gridOrderSql(plan: GridPlan): string {
   return [
     ...plan.sort.map(
       (s) =>
@@ -251,11 +252,11 @@ function orderSql(plan: GridPlan): string {
  */
 export function buildSortedWindowSql(plan: GridPlan, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
-  const order = orderSql(plan);
+  const order = gridOrderSql(plan);
   const sql = [
     `WITH ids AS (`,
     `  SELECT _row FROM read_parquet($path)`,
-    `  ${whereSql(plan, params)}`,
+    `  ${gridWhereSql(plan, params)}`,
     `  ORDER BY ${order}`,
     `  LIMIT ${Math.trunc(plan.rowCount)} OFFSET ${Math.trunc(plan.rowStart)}`,
     `)`,
@@ -270,7 +271,7 @@ export function buildSortedWindowSql(plan: GridPlan, parquetPath: string): Built
 /** Jumlah baris di bawah saringan/cari yang sama (tanpa saringan = total sheet). */
 export function buildGridCountSql(plan: GridPlan | null, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
-  const where = plan ? whereSql(plan, params) : "";
+  const where = plan ? gridWhereSql(plan, params) : "";
   return { sql: [`SELECT count(*) AS n FROM read_parquet($path)`, where].join("\n"), params };
 }
 
@@ -288,7 +289,7 @@ export function buildGridStatsSql(plan: GridPlan, col: SchemaCol, parquetPath: s
     (agg, i) => `${measureExpr({ key: agg, agg, col: c })} AS a${i}`,
   );
   return {
-    sql: [`SELECT ${select.join(", ")}`, `FROM read_parquet($path)`, whereSql(plan, params)]
+    sql: [`SELECT ${select.join(", ")}`, `FROM read_parquet($path)`, gridWhereSql(plan, params)]
       .filter(Boolean)
       .join("\n"),
     params,

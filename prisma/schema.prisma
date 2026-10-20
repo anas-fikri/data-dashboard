@@ -426,6 +426,9 @@ model Export {
   dashboard    Dashboard?   @relation(fields: [dashboardId], references: [id], onDelete: SetNull)
   /// Widget sumber (tanpa FK: widget boleh dihapus setelah ekspor dibuat).
   widgetId     String?
+  /// Sheet sumber "Unduh tampilan" Lihat data (T-046; tanpa FK seperti widgetId). Terisi = ekspor
+  /// tampilan grid (dashboardId/widgetId null), akses = pemilik/editor dataset sheet ini.
+  sheetId      String?
   format       ExportFormat
   status       ExportStatus @default(QUEUED)
   /// Parameter permintaan (filter dashboard, urutan, requestedAt untuk preset tanggal).

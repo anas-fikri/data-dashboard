@@ -53,7 +53,7 @@ function durationText(x: string): string {
  * Nilai satu kolom untuk target file. Desimal: teks titik-tetap tanpa nol di belakang ("1.500000" →
  * "1.5", "100.000000" → "100"); bentuk lain (DOUBLE 1e+20, inf) dibiarkan apa adanya.
  */
-function valueExpr(x: string, type: OutColumn["type"], target: ExportTarget): string {
+export function valueExpr(x: string, type: OutColumn["type"], target: ExportTarget): string {
   if (type === "date") return `CAST(${x} AS DATE)`;
   if (target === "xlsx") return x;
   switch (type) {

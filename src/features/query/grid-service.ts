@@ -49,12 +49,19 @@ export interface GridSegment extends SegmentFile {
   fileName: string | null;
 }
 
+/** Peran yang boleh membuka "Lihat data": pemilik dataset atau editor dashboard-nya. */
+export type GridRole = "OWNER" | "EDITOR";
+
 export interface GridSheet {
   versionId: string;
   versionStatus: string;
   activeVersionId: string | null;
   /** Peran peminta pada dataset sheet ini (null = tidak ada akses atau hanya viewer). */
-  role: "OWNER" | "EDITOR" | null;
+  role: GridRole | null;
+  /** Dataset sheet ini (AuditLog ekspor tampilan, T-046). */
+  datasetId?: string;
+  /** "<dataset> - <sheet>" untuk nama file ekspor tampilan (T-046). */
+  title?: string;
   typedKey: string | null;
   rawKey: string;
   fileName: string | null;
@@ -135,7 +142,7 @@ export interface GridRows {
  * Akses + versi: pemilik/editor saja (viewer, pengguna asing, dan sheet tak dikenal → FORBIDDEN yang
  * sama). versionId harus versi sheet dan versi aktif; pengecualian: pemilik pada versi pratinjau.
  */
-async function authorize(
+export async function authorizeGrid(
   userId: string,
   sheetId: string,
   versionId: string,
@@ -242,7 +249,7 @@ export async function runGridRows(
 ): Promise<GridRows | GridFailure> {
   const parsed = rowsBodySchema.safeParse(body);
   if (!parsed.success) return invalid();
-  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
   const { sheet } = auth;
   const planned = planGrid(parsed.data, sheet.schema, (deps.now ?? (() => new Date()))());
@@ -341,7 +348,7 @@ export async function runGridCell(
   }
   const row = Number(q.row);
   const pos = Number(q.pos);
-  const auth = await authorize(userId, sheetId, q.versionId, deps.repo);
+  const auth = await authorizeGrid(userId, sheetId, q.versionId, deps.repo);
   if (!auth.ok) return auth;
   const { sheet } = auth;
   const col = sheet.schema.find((c) => c.pos === pos && !c.hidden);
@@ -420,7 +427,7 @@ export async function runGridValues(
 ): Promise<GridValues | GridFailure> {
   const parsed = valuesBodySchema.safeParse(body);
   if (!parsed.success) return invalid();
-  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
   const { sheet } = auth;
   const col = sheet.schema.find((c) => c.pos === parsed.data.pos && !c.hidden);
@@ -489,7 +496,7 @@ export async function runGridStats(
 ): Promise<GridStats | GridFailure> {
   const parsed = statsBodySchema.safeParse(body);
   if (!parsed.success) return invalid();
-  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
   if (!auth.ok) return auth;
   const { sheet } = auth;
   const { pos, filters, search } = parsed.data;

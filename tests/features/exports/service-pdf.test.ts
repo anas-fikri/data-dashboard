@@ -241,6 +241,7 @@ describe("downloadExport PDF", () => {
       fail: vi.fn(),
       widgetTitle: vi.fn(),
       dashboardRole: vi.fn(async (u: string) => ROLES[u] ?? null),
+      sheetAccess: vi.fn(async () => null),
       audit: vi.fn(async (e: AuditEntry) => {
         audits.push(e);
       }),

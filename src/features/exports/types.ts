@@ -26,6 +26,21 @@ export interface ExportCreateBody {
 }
 
 /**
+ * Body POST /api/exports "Unduh tampilan" Lihat data (T-046): tampilan grid saat ini — kolom terlihat
+ * dalam urutan tampil (posisi skema), urut, saringan, dan cari dengan bentuk POST /api/sheets/:id/rows.
+ * Hanya pemilik/editor dataset; viewer → FORBIDDEN.
+ */
+export interface SheetExportCreateBody {
+  sheetId: string;
+  versionId: string;
+  format: ExportFormatInput;
+  cols: number[];
+  sort?: { pos: number; dir: "asc" | "desc" }[];
+  filters?: ({ pos: number } & Record<string, unknown>)[];
+  search?: { text: string; cols: number[] };
+}
+
+/**
  * Body POST /api/exports untuk PDF dashboard (T-018): `f` = encodeFilterParam(status filter yang
  * berlaku di layar) — null/kosong = tanpa filter. Server memvalidasi + menyaring ulang `f` terhadap
  * kolom filter dan cross-filter dashboard saat buat DAN saat render.
@@ -68,6 +83,8 @@ export const EXPORT_CODES = {
   /** Galat lain saat menyiapkan file (detail hanya di log server). */
   EXPORT_FAILED: "EXPORT_FAILED",
   FORBIDDEN: "FORBIDDEN",
+  /** Ekspor tampilan (T-046): versi data aktif berganti sejak tampilan dimuat/diminta. */
+  VERSION_CHANGED: "VERSION_CHANGED",
   UNAVAILABLE: "UNAVAILABLE",
   /**
    * Renderer PDF tidak bisa dihubungi (T-018): 503 langsung saat buat (cek kesehatan ≤ 3 detik), atau
@@ -79,5 +96,7 @@ export type ExportCode = (typeof EXPORT_CODES)[keyof typeof EXPORT_CODES];
 
 /** Batas baris default (EXPORT_MAX_ROWS); teks UI boleh menyebutnya. */
 export const EXPORT_MAX_ROWS_DEFAULT = 1_000_000;
+/** Baris data maksimum satu sheet XLSX (1.048.576 baris Excel dikurangi baris judul). */
+export const XLSX_MAX_DATA_ROWS = 1_048_575;
 /** Ekspor berjalan (antre/diproses) per user. */
 export const EXPORT_IN_FLIGHT_MAX = 2;

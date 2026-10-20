@@ -14,6 +14,8 @@ import type { AuditEntry } from "@/features/audit/service";
 import type { RateLimitResult } from "@/features/auth/rate-limit";
 import { forRole, resolveWidget, type QueryDeps } from "@/features/query/service";
 import type { DashboardAccessRole } from "@/features/sharing/access";
+import { planGrid } from "@/features/query/grid";
+import { authorizeGrid, type GridRepo, type GridRole } from "@/features/query/grid-service";
 import type { PresignGetOptions } from "@/lib/storage/exports";
 import { contentDisposition, exportFileName } from "./filename";
 import {
@@ -26,8 +28,10 @@ import {
   exportBodySchema,
   isExportId,
   pdfBodySchema,
+  sheetExportBodySchema,
   type ExportParams,
   type PdfParams,
+  type SheetExportParams,
 } from "./schema";
 import {
   EXPORT_CODES,
@@ -45,6 +49,8 @@ export interface ExportRow {
   userId: string;
   dashboardId: string | null;
   widgetId: string | null;
+  /** Ekspor tampilan Lihat data (T-046); dashboardId/widgetId null. Tidak ada = widget/PDF. */
+  sheetId?: string | null;
   format: ExportFormat;
   status: ExportStatus;
   errorCode: string | null;
@@ -62,8 +68,19 @@ export type NewExport =
       userId: string;
       dashboardId: string;
       widgetId: string;
+      sheetId?: null;
       format: Exclude<ExportFormat, "PDF">;
       params: ExportParams;
+      fileName: string;
+    }
+  /** Tampilan "Lihat data" (T-046): tanpa dashboard/widget. */
+  | {
+      userId: string;
+      dashboardId: null;
+      widgetId: null;
+      sheetId: string;
+      format: Exclude<ExportFormat, "PDF">;
+      params: SheetExportParams;
       fileName: string;
     }
   /** PDF dashboard utuh (T-018): tanpa widget. */
@@ -71,6 +88,7 @@ export type NewExport =
       userId: string;
       dashboardId: string;
       widgetId: null;
+      sheetId?: null;
       format: "PDF";
       params: PdfParams;
       fileName: string;
@@ -90,6 +108,11 @@ export interface ExportRepo {
   widgetTitle(widgetId: string): Promise<string | null>;
   /** Peran user pada dashboard sekarang (tanpa cache); null = tidak punya akses. */
   dashboardRole(userId: string, dashboardId: string): Promise<DashboardAccessRole | null>;
+  /** Peran user sekarang pada dataset sheet (pemilik/editor, tanpa cache); null = tanpa akses (T-046). */
+  sheetAccess(
+    userId: string,
+    sheetId: string,
+  ): Promise<{ role: GridRole; datasetId: string } | null>;
   audit(entry: AuditEntry): Promise<void>;
 }
 
@@ -110,6 +133,17 @@ export interface ExportDeps {
 export interface PdfDashboard extends FilterTarget {
   id: string;
   name: string;
+}
+
+/** Dependensi POST /api/exports "Unduh tampilan" Lihat data (T-046). */
+export interface SheetExportDeps {
+  repo: Pick<ExportRepo, "createIfRoom" | "fail">;
+  /** Resolver sheet + peran yang sama dengan POST /api/sheets/:id/rows. */
+  grid: GridRepo;
+  enqueue(exportId: string): Promise<void>;
+  /** Satu hit RULES.export (jatah yang sama dengan ekspor widget). */
+  rateLimit(userId: string): Promise<RateLimitResult>;
+  now?: () => Date;
 }
 
 /** Dependensi POST /api/exports format "pdf" (T-018). */
@@ -154,6 +188,7 @@ export const EXPORT_STATUS: Record<ExportCode, number> = {
   EXPORT_TIMEOUT: 504,
   EXPORT_FAILED: 500,
   FORBIDDEN: 403,
+  VERSION_CHANGED: 409,
   UNAVAILABLE: 503,
   RENDERER_UNAVAILABLE: 503,
 };
@@ -319,6 +354,140 @@ export async function createPdfExport(
   return { ok: true, exportId: created.id };
 }
 
+export const SHEET_FORBIDDEN_MESSAGE =
+  "Hanya pemilik dataset dan editor dashboard-nya yang bisa mengunduh tampilan ini.";
+
+/**
+ * Akses + versi ekspor tampilan (T-046): resolver "Lihat data" (pemilik/editor; viewer, pengguna asing,
+ * dan sheet tak dikenal → FORBIDDEN yang sama, G-6 §3.4), versi = versi aktif, lalu tampilan dicocokkan
+ * lagi dengan skema (kolom tersembunyi skema, saringan/cari tidak cocok → INVALID). Dipakai saat buat
+ * dan di worker (dengan peran dan versi SAAT ITU).
+ */
+export async function resolveSheetView(
+  userId: string,
+  sheetId: string,
+  view: Pick<SheetExportParams, "versionId" | "cols" | "sort" | "filters" | "search">,
+  grid: GridRepo,
+  now: Date,
+) {
+  const auth = await authorizeGrid(userId, sheetId, view.versionId, grid);
+  if (!auth.ok) {
+    switch (auth.code) {
+      case "FORBIDDEN":
+        return failure("FORBIDDEN", SHEET_FORBIDDEN_MESSAGE);
+      case "VERSION_CHANGED":
+        return failure(
+          "VERSION_CHANGED",
+          "Data sudah diperbarui sejak tampilan ini dimuat. Muat ulang lalu unduh lagi.",
+        );
+      case "NOT_READY":
+        return failure("NOT_READY", "Data sheet ini belum siap.");
+      default:
+        return failure("SHEET_UNAVAILABLE", "Data sheet ini tidak bisa diekspor.");
+    }
+  }
+  const planned = planGrid(
+    {
+      versionId: view.versionId,
+      rowStart: 0,
+      rowCount: 1,
+      cols: view.cols,
+      sort: view.sort,
+      filters: view.filters,
+      search: view.search,
+    },
+    auth.sheet.schema,
+    now,
+  );
+  if (!planned.ok) return failure("INVALID", `Tampilan tidak bisa diekspor: ${planned.message}`);
+  return { ok: true as const, sheet: auth.sheet, plan: planned.plan };
+}
+
+/**
+ * POST /api/exports "Unduh tampilan" (T-046): rate limit RULES.export → body strict → akses + versi +
+ * tampilan (resolveSheetView, tanpa DuckDB) → baris Export (batas 2 berjalan per user, bersama ekspor
+ * widget/PDF) → antrean "export". Jumlah baris dihitung worker; melewati batas → EXPORT_TOO_LARGE, file
+ * tidak pernah dipotong.
+ */
+export async function createSheetExport(
+  userId: string,
+  body: unknown,
+  deps: SheetExportDeps,
+): Promise<{ ok: true; exportId: string } | ExportFailure> {
+  const rl = await deps.rateLimit(userId);
+  if (!rl.allowed) {
+    return failure(
+      "RATE_LIMITED",
+      `Terlalu banyak permintaan ekspor. Coba lagi dalam ${rl.retryAfterSec} detik.`,
+      rl.retryAfterSec,
+    );
+  }
+  const parsed = sheetExportBodySchema.safeParse(body);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return failure(
+      "INVALID",
+      `Permintaan ekspor tidak valid${issue?.path.length ? ` (${issue.path.join(".")})` : ""}: ${issue?.message ?? "format salah"}.`,
+    );
+  }
+  const { sheetId, format, versionId, cols, sort, filters, search } = parsed.data;
+  const now = deps.now?.() ?? new Date();
+  const view = { versionId, cols, sort, filters, search };
+  const r = await resolveSheetView(userId, sheetId, view, deps.grid, now);
+  if (!r.ok) return r;
+  const params: SheetExportParams = {
+    versionId,
+    cols,
+    ...(sort?.length ? { sort } : {}),
+    ...(filters?.length ? { filters } : {}),
+    ...(search ? { search } : {}),
+    requestedAt: now.toISOString(),
+  };
+  const created = await deps.repo.createIfRoom(
+    {
+      userId,
+      dashboardId: null,
+      widgetId: null,
+      sheetId,
+      format: format === "csv" ? "CSV" : "XLSX",
+      params,
+      fileName: exportFileName(r.sheet.title ?? "Lihat data", now, format),
+    },
+    EXPORT_IN_FLIGHT_MAX,
+    new Date(now.getTime() - IN_FLIGHT_STALE_MS),
+  );
+  if (!created) return failure("EXPORT_BUSY", BUSY_MESSAGE);
+  try {
+    await deps.enqueue(created.id);
+  } catch (e) {
+    await deps.repo.fail(created.id, EXPORT_CODES.UNAVAILABLE, FAILED_MESSAGE).catch(() => {});
+    throw e;
+  }
+  return { ok: true, exportId: created.id };
+}
+
+/**
+ * Masih boleh melihat hasil ekspor ini? Widget/PDF: peran dashboard sekarang; tampilan Lihat data:
+ * peran pemilik/editor pada dataset sheet sekarang (T-046). null = 404.
+ */
+async function accessOf(
+  userId: string,
+  row: ExportRow,
+  repo: Pick<ExportRepo, "dashboardRole" | "sheetAccess">,
+): Promise<
+  | { kind: "dashboard"; dashboardId: string; role: DashboardAccessRole }
+  | { kind: "sheet"; sheetId: string; datasetId: string; role: GridRole }
+  | null
+> {
+  if (row.sheetId) {
+    const a = await repo.sheetAccess(userId, row.sheetId);
+    return a ? { kind: "sheet", sheetId: row.sheetId, ...a } : null;
+  }
+  if (!row.dashboardId) return null;
+  const role = await repo.dashboardRole(userId, row.dashboardId);
+  return role ? { kind: "dashboard", dashboardId: row.dashboardId, role } : null;
+}
+
 /** Kedaluwarsa: lewat expiresAt, objek sudah dihapus, atau tidak pernah punya objek. */
 export function isExpired(row: ExportRow, now: Date): boolean {
   return row.deletedAt !== null || !row.key || !row.expiresAt || row.expiresAt <= now;
@@ -358,12 +527,11 @@ export function statusView(row: ExportRow, now: Date): ExportStatusView {
 export async function exportStatus(
   userId: string,
   id: string,
-  deps: Pick<ExportDeps, "repo" | "now">,
+  deps: { repo: Pick<ExportRepo, "findOwned" | "dashboardRole" | "sheetAccess">; now?: () => Date },
 ): Promise<({ ok: true } & ExportStatusView) | ExportFailure> {
   if (!isExportId(id)) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const row = await deps.repo.findOwned(userId, id);
-  if (!row || !row.dashboardId) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
-  if (!(await deps.repo.dashboardRole(userId, row.dashboardId))) {
+  if (!row || !(await accessOf(userId, row, deps.repo))) {
     return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   }
   return { ok: true, ...statusView(row, deps.now?.() ?? new Date()) };
@@ -391,10 +559,9 @@ export async function downloadExport(
   }
   if (!isExportId(id)) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const row = await deps.repo.findOwned(userId, id);
-  if (!row || !row.dashboardId) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
-  const role = await deps.repo.dashboardRole(userId, row.dashboardId);
+  const access = row ? await accessOf(userId, row, deps.repo) : null;
+  if (!row || !access) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const ext = extOf(row.format);
-  if (!role) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   if (row.status === "QUEUED" || row.status === "RUNNING") {
     return failure("NOT_READY", "Ekspor belum selesai. Tunggu sebentar lalu coba lagi.");
   }
@@ -407,25 +574,36 @@ export async function downloadExport(
     contentDisposition: contentDisposition(row.fileName ?? `ekspor.${ext}`),
     contentType: MIME[ext],
   });
-  // PDF dashboard: aksi sendiri, meta tanpa nilai filter (T-018 D16).
+  const { role } = access;
+  // Tampilan Lihat data (T-046): aksi dataset, meta tanpa nilai saringan/cari. PDF dashboard: aksi
+  // sendiri, meta tanpa nilai filter (T-018 D16).
   await deps.repo.audit(
-    ext === "pdf"
+    access.kind === "sheet"
       ? {
           actorId: userId,
-          action: "dashboard.export",
-          targetType: "dashboard",
-          targetId: row.dashboardId,
-          meta: { exportId: row.id, format: ext, role },
+          action: "dataset.sheet.export",
+          targetType: "dataset",
+          targetId: access.datasetId,
+          meta: { sheetId: access.sheetId, exportId: row.id, format: ext, rows: row.rows, role },
           ip,
         }
-      : {
-          actorId: userId,
-          action: "dashboard.widget.export",
-          targetType: "dashboard",
-          targetId: row.dashboardId,
-          meta: { widgetId: row.widgetId, exportId: row.id, format: ext, rows: row.rows, role },
-          ip,
-        },
+      : ext === "pdf"
+        ? {
+            actorId: userId,
+            action: "dashboard.export",
+            targetType: "dashboard",
+            targetId: access.dashboardId,
+            meta: { exportId: row.id, format: ext, role },
+            ip,
+          }
+        : {
+            actorId: userId,
+            action: "dashboard.widget.export",
+            targetType: "dashboard",
+            targetId: access.dashboardId,
+            meta: { widgetId: row.widgetId, exportId: row.id, format: ext, rows: row.rows, role },
+            ip,
+          },
   );
   return { ok: true, url };
 }
