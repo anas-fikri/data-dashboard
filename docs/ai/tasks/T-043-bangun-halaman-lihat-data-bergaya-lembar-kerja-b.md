@@ -10,7 +10,7 @@ depends_on:
   - T-041
   - T-035
 created: "2026-10-15T02:30:56Z"
-updated: "2026-10-20T07:21:31Z"
+updated: "2026-10-20T07:37:30Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,7 +20,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 186375
+    duration_ms: 190559
     summary: |-
       …t
       > vitest run
@@ -28,23 +28,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792480835895,"service":"data-dashboard","host":"127.0.0.1","port":41207,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792480835955,"service":"data-dashboard","host":"127.0.0.1","port":38203,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792480836056,"service":"data-dashboard","host":"127.0.0.1","port":37315,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792480836176,"service":"data-dashboard","host":"127.0.0.1","port":40263,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792480847368,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792480855988,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792480856014,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792480856020,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792480856029,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792481765274,"service":"data-dashboard","host":"127.0.0.1","port":36913,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792481765331,"service":"data-dashboard","host":"127.0.0.1","port":43029,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792481765434,"service":"data-dashboard","host":"127.0.0.1","port":44041,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792481765548,"service":"data-dashboard","host":"127.0.0.1","port":43285,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792481775032,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792481783154,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792481783176,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792481783179,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792481783187,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  168 passed | 1 skipped (169)
-            Tests  2164 passed | 10 skipped (2174)
-         Start at  07:19:15
-         Duration  134.13s (tests 85%, import 12%, transform 3%)
+            Tests  2166 passed | 10 skipped (2176)
+         Start at  07:34:43
+         Duration  133.47s (tests 85%, import 12%, transform 3%)
 
-          Isolate  169 workers spawned · ~160ms startup each (spawn + environment, per file)
-                   at least ~8.87s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  169 workers spawned · ~155ms startup each (spawn + environment, per file)
+                   at least ~8.59s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -52,12 +52,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T07:21:30Z"
-    tree: 394c3f8affc4692320433c4b48bd31f793afebbb8b3a814ee3e16a06707d0cc4
+    at: "2026-10-20T07:36:58Z"
+    tree: c8de71a4670d63bb80694a7a99c7be930c5f7a32f6829f27a6574643813459fc
   audit:
-    at: "2026-10-20T07:17:48Z"
+    at: "2026-10-20T07:37:06Z"
     passed: true
-    tree: 394c3f8affc4692320433c4b48bd31f793afebbb8b3a814ee3e16a06707d0cc4
+    tree: c8de71a4670d63bb80694a7a99c7be930c5f7a32f6829f27a6574643813459fc
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -65,7 +65,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 408 dirs visited, 1975 inodes visited, 1 Extract calls, 183.85876ms elapsed, 183.859157ms wall time
+          End status: 422 dirs visited, 2043 inodes visited, 1 Extract calls, 197.377198ms elapsed, 197.377702ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -101,8 +101,8 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
   Pengaturan kolom di localStorage hanya berisi colId/lebar/format, dibersihkan saat dibaca. CSP tidak berubah;
   `styleNonce` dari nonce permintaan.
 - Rollback: revert commit T-043 (hapus rute, komponen grid, tautan, dependensi AG). Data tidak tersentuh.
-- Validation: unit `tests/components/grid-model.test.ts` (16), `tests/features/query/grid-page.test.ts` (4),
-  `dashboard-page-access` (tautan per peran); e2e `data-view` (4, Chromium, data sungguhan) dan `data-view-scroll`
+- Validation: unit `tests/components/grid-model.test.ts` (18), `tests/features/query/grid-page.test.ts` (4),
+  `dashboard-page-access` (tautan per peran); e2e `data-view` (5, Chromium, data sungguhan, termasuk sheet 140 kolom) dan `data-view-scroll`
   (7 × Chromium/Firefox/WebKit, 10 jt baris sintetis); `node scripts/measure-grid-chunk.mjs` 259,9 KiB ≤ 293.
 
 ## Notes
@@ -121,12 +121,34 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
   dan macOS (VoiceOver, Safari). Sudah ada: `role=grid` + aria-label, `aria-rowcount` = total + 2, `aria-rowindex`
   dari AG, nama/tipe kolom di kepala, live region "Ke baris N". Urut kolom (dan pengumuman `aria-sort`) masuk
   T-044 (P-12), jadi bagian "header diurutkan" belum bisa diuji di T-043. Gerbang ini menentukan ADR-0007 `accepted`.
+- AC 5 — langkah uji manual untuk pemilik (centang AC 5 hanya oleh pemilik setelah lulus; gagal Critical/High →
+  kriteria fallback ADR-0007):
+  1. Siapkan dataset dengan ≥ 300 baris dan kolom teks/angka/tanggal/Ya-Tidak; buka profil dataset → "Lihat data".
+  2. Windows + NVDA (terbaru), di Firefox lalu Chrome. macOS + VoiceOver (Cmd+F5), di Safari.
+  3. Tab ke grid (atau klik sel A1). Harus terdengar: nama grid "Data sheet <nama>", jumlah baris (total + 2),
+     posisi "baris 2, kolom 2", nama kolom (huruf + nama + tipe, mis. "A Kode, Teks"), dan isi sel.
+  4. Panah kanan/kiri/atas/bawah: setiap langkah mengumumkan kolom baru (nama) atau baris baru (nomor) + isi sel.
+  5. Home/End (awal/akhir baris), PageDown/PageUp: posisi baris diumumkan; baris terfokus terlihat di layar.
+  6. Ctrl+End (Cmd+End di Mac): fokus ke baris data terakhir, diumumkan nomornya. Panah bawah sekali lagi:
+     terdengar "Akhir data" (baris sentinel, `aria-rowcount` = total + 2 — sesuai ADR-0007).
+  7. Ctrl+Home: kembali ke baris 1. Isi "Ke baris" = 150 lalu Enter: terdengar "Ke baris 150" dan fokus di baris 150.
+  8. Fokus ke kepala kolom (panah atas dari baris 1), tekan Enter: menu kolom terbuka dan item terbaca; Esc
+     mengembalikan fokus ke kepala kolom.
+  9. Urut kolom + `aria-sort` belum ada di T-043 (masuk T-044): ulangi langkah "header diurutkan" setelah T-044.
+  10. Catat engine/versi pembaca layar, langkah yang gagal, dan kutipan pengumuman di Notes task ini.
 - AC 6: semua mitigasi aktif, 3 engine lulus (seret ke akhir, wheel median 3 / maks 4–6, Ctrl+↓/End/PageDown di
   akhir, ArrowDown ×25 + PageDown dari 5 jt, cincin fokus terang/gelap ≥ 3:1); chunk 259,9 KiB. Laporan
   `docs/ai/perf/T-043.md`. Batas: seret thumb diuji via scrollTop maks; sentuh/trackpad nyata tidak diuji.
 - Dilewati (task lanjutan G-6 yang sudah ada): urut/saring/cari (T-044), Isi sel + salin + ringkasan (T-045),
   unduh tampilan (T-046), ponsel/keyboard lengkap + axe (T-048). Ikon bawaan AG (bayangan seret kolom) belum
   diganti Tabler — kosmetik.
+- Review putaran 1 (orkestrator): H1 sheet > 64 kolom memecah satu blok jadi beberapa POST paralel → 429
+  QUERY_BUSY (> 128 kolom selalu gagal): potongan kolom kini diambil berurutan (≤ 1 slot server per blok, ≤ 2
+  blok bersamaan = batas per pengguna 2); e2e "Sheet lebar 140 kolom" (gagal di kode lama, lulus sekarang) + unit
+  puncak konkurensi 1. M1: 429 QUERY_BUSY dicoba ulang 150/400/900 ms lalu diperlakukan seperti blok batal
+  (dimuat ulang saat terlihat, pengatur waktu 1 s), bukan banner galat. L1: purge memakai generasi — batal akibat
+  purge tidak memicu purge kedua. L2: package-lock dikembalikan ke lockfile f87b0a1 + hanya 4 paket ag-* (medan
+  `libc` utuh; npm 10.9.x di container menghapusnya bila meregenerasi).
 - Firefox/WebKit Playwright: `npx playwright install firefox webkit` (+ `install-deps` di Linux).
 
 ## Conventions check

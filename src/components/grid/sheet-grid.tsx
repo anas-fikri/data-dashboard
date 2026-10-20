@@ -132,6 +132,8 @@ interface InFlight {
   start: number;
   end: number;
   ctrl: AbortController;
+  /** Generasi cache saat permintaan dibuat; batal karena purge (generasi lama) tidak dicatat. */
+  gen: number;
 }
 
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
@@ -160,6 +162,9 @@ export default function SheetGrid({
   const offWheel = useRef<(() => void) | null>(null);
   const inflight = useRef(new Set<InFlight>());
   const aborted = useRef(new Set<number>());
+  const gen = useRef(0);
+  const retryTimer = useRef<number | null>(null);
+  const sweepRef = useRef<() => void>(() => {});
   const totalRef = useRef<number | null>(null);
   const saveTimer = useRef<number | null>(null);
   const rangeFrame = useRef<number | null>(null);
@@ -225,7 +230,12 @@ export default function SheetGrid({
           p.successCallback(rows, known + 1);
           return;
         }
-        const entry: InFlight = { start: p.startRow, end: p.endRow, ctrl: new AbortController() };
+        const entry: InFlight = {
+          start: p.startRow,
+          end: p.endRow,
+          ctrl: new AbortController(),
+          gen: gen.current,
+        };
         inflight.current.add(entry);
         void fetchBlock({
           sheetId,
@@ -248,8 +258,17 @@ export default function SheetGrid({
             p.successCallback(rows, r.total + 1);
             return;
           }
-          if (r.kind === "aborted") aborted.current.add(p.startRow);
-          else if (r.kind === "version") setVersionChanged(true);
+          if (r.kind === "aborted" || r.kind === "busy") {
+            // Dibatalkan (digulir lewat) atau slot server masih penuh (review T-043 M1): bukan galat;
+            // blok dimuat ulang saat terlihat. Batal karena purge (generasi lama) tidak dicatat.
+            if (entry.gen === gen.current) aborted.current.add(p.startRow);
+            if (r.kind === "busy" && retryTimer.current === null) {
+              retryTimer.current = window.setTimeout(() => {
+                retryTimer.current = null;
+                sweepRef.current();
+              }, 1000);
+            }
+          } else if (r.kind === "version") setVersionChanged(true);
           else setLoadError(r.message);
           p.failCallback();
         });
@@ -257,6 +276,16 @@ export default function SheetGrid({
     }),
     [sheetId, versionId, schemaRevision],
   );
+
+  /** Buang semua blok (dan batalkan yang berjalan); blok yang terlihat dimuat ulang. */
+  const purge = useCallback(() => {
+    const api = apiRef.current;
+    if (!api || api.isDestroyed()) return;
+    gen.current++;
+    for (const f of inflight.current) f.ctrl.abort();
+    aborted.current.clear();
+    api.purgeInfiniteCache();
+  }, []);
 
   /** Batalkan blok yang sudah jauh dari layar; blok gagal-batal yang kembali terlihat dimuat ulang. */
   const sweep = useCallback(() => {
@@ -270,13 +299,14 @@ export default function SheetGrid({
     }
     for (const start of aborted.current) {
       if (start <= last && start + BLOCK_SIZE > first) {
-        aborted.current.clear();
-        for (const f of inflight.current) f.ctrl.abort();
-        api.purgeInfiniteCache();
+        purge();
         break;
       }
     }
-  }, []);
+  }, [purge]);
+  useEffect(() => {
+    sweepRef.current = sweep;
+  }, [sweep]);
 
   const updateRange = useCallback(() => {
     if (rangeFrame.current !== null) return;
@@ -484,6 +514,7 @@ export default function SheetGrid({
       for (const f of flight) f.ctrl.abort();
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
       if (rangeFrame.current !== null) cancelAnimationFrame(rangeFrame.current);
+      if (retryTimer.current !== null) window.clearTimeout(retryTimer.current);
     };
   }, []);
 
@@ -527,13 +558,9 @@ export default function SheetGrid({
     // Kolom yang muncul lagi belum punya data di blok yang dimuat → muat ulang blok.
     const shownAgain = [...hidden].some((id) => !next.has(id));
     setHidden(next);
-    if (shownAgain) {
-      for (const f of inflight.current) f.ctrl.abort();
-      aborted.current.clear();
-      api.purgeInfiniteCache();
-    }
+    if (shownAgain) purge();
     persist();
-  }, [hidden, persist]);
+  }, [hidden, persist, purge]);
 
   const submitGo = (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -605,6 +632,7 @@ export default function SheetGrid({
       {loadError && !versionChanged ? (
         <div
           role="alert"
+          data-testid="grid-load-error"
           className="flex flex-col gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
         >
           <span className="flex items-start gap-2">
@@ -617,8 +645,7 @@ export default function SheetGrid({
             className="h-(--control-h-lg) w-full sm:h-(--control-h-sm) sm:w-auto"
             onClick={() => {
               setLoadError(null);
-              aborted.current.clear();
-              apiRef.current?.purgeInfiniteCache();
+              purge();
             }}
           >
             <IconRefresh aria-hidden />

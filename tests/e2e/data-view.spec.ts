@@ -272,6 +272,58 @@ test.describe("Lihat data: halaman lembar kerja", () => {
     await viewer.close();
   });
 
+  test("Sheet lebar 140 kolom (> 2 potongan × 64): blok dimuat tanpa 429/galat (review H1)", async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const WIDE = 140;
+    const head = Array.from({ length: WIDE }, (_, j) => `Kol${j + 1}`).join(";");
+    const lines = [head];
+    for (let i = 1; i <= ROWS; i++) {
+      lines.push(Array.from({ length: WIDE }, (_, j) => `r${i}c${j + 1}`).join(";"));
+    }
+    const path = join(dir, "lebar.csv");
+    writeFileSync(path, `${lines.join("\n")}\n`);
+    const page = await pageFor(browser, OWNER);
+    await page.goto("/datasets/baru");
+    await page.getByLabel("Nama dataset").fill(`Lebar ${Date.now()}`);
+    await page.getByRole("button", { name: "Buat dataset" }).click();
+    await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/, { timeout: 30_000 });
+    const wideId = new URL(page.url()).pathname.split("/").pop()!;
+    await page.getByTestId("upload-input").setInputFiles(path);
+    await expect(page.getByTestId("dataset-data-link")).toBeVisible({ timeout: 120_000 });
+
+    const statuses: number[] = [];
+    page.on("response", (r) => {
+      if (r.url().includes("/rows")) statuses.push(r.status());
+    });
+    await page.goto(`/datasets/${wideId}/data`);
+    await expect(cell(page, 0, "c1")).toHaveText("r1c1");
+    // Dua blok bersamaan (awal + lompat), masing-masing 3 potongan kolom.
+    await page.getByTestId("grid-goto-input").fill("300");
+    await page.getByTestId("grid-goto-input").press("Enter");
+    await expect(cell(page, 299, "c1")).toHaveText("r300c1");
+    await page.keyboard.press("Control+End");
+    await expect(cell(page, ROWS - 1, "c1")).toHaveText(`r${ROWS}c1`);
+    await page.evaluate(() => {
+      const g = (
+        window as unknown as { __ddGrid: { api: { ensureColumnVisible: (c: string) => void } } }
+      ).__ddGrid;
+      g.api.ensureColumnVisible("c140");
+    });
+    await expect(cell(page, ROWS - 1, "c140")).toHaveText(`r${ROWS}c140`);
+    await page.evaluate(() => {
+      const g = (
+        window as unknown as { __ddGrid: { api: { ensureColumnVisible: (c: string) => void } } }
+      ).__ddGrid;
+      g.api.ensureColumnVisible("c70");
+    });
+    await expect(cell(page, ROWS - 1, "c70")).toHaveText(`r${ROWS}c70`);
+    await expect(page.getByTestId("grid-load-error")).toHaveCount(0);
+    expect(statuses.filter((s) => s !== 200)).toEqual([]);
+    await page.close();
+  });
+
   test("AC4: versi berganti saat menggulir → banner, tanpa baris dua versi; Muat ulang memuat versi baru", async ({
     browser,
   }) => {

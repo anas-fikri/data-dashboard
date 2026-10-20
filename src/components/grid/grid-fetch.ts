@@ -31,6 +31,8 @@ export type BlockResult =
   | { ok: true; total: number; rows: RowData[] }
   | { ok: false; kind: "version"; activeVersionId?: string | null }
   | { ok: false; kind: "aborted" }
+  /** Slot query grid per pengguna/global penuh (429 QUERY_BUSY) setelah coba ulang: muat lagi nanti. */
+  | { ok: false; kind: "busy" }
   | { ok: false; kind: "error"; message: string; status: number };
 
 interface RowsResponse {
@@ -81,6 +83,7 @@ async function fetchChunk(
       activeVersionId: typeof b.activeVersionId === "string" ? b.activeVersionId : null,
     };
   }
+  if (res.status === 429 && b.code === "QUERY_BUSY") return { ok: false, kind: "busy" };
   if (!res.ok || b.ok !== true) {
     const message = typeof b.message === "string" && b.message ? b.message : GENERIC;
     return { ok: false, kind: "error", message, status: res.status };
@@ -93,15 +96,52 @@ async function fetchChunk(
   return { ok: true, body: r };
 }
 
+/** Jeda coba ulang saat QUERY_BUSY (slot permintaan yang baru dibatalkan bisa belum dilepas server). */
+export const BUSY_BACKOFF_MS = [150, 400, 900];
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve) => {
+    if (signal?.aborted) return resolve();
+    const t = setTimeout(done, ms);
+    function done() {
+      clearTimeout(t);
+      signal?.removeEventListener("abort", done);
+      resolve();
+    }
+    signal?.addEventListener("abort", done, { once: true });
+  });
+
+async function fetchChunkRetry(
+  req: BlockRequest,
+  cols: number[],
+  fetcher: typeof fetch,
+  backoff: readonly number[],
+) {
+  for (let attempt = 0; ; attempt++) {
+    const r = await fetchChunk(req, cols, fetcher);
+    if (r.ok || r.kind !== "busy" || attempt >= backoff.length) return r;
+    await sleep(backoff[attempt]!, req.signal);
+    if (req.signal?.aborted) return { ok: false as const, kind: "aborted" as const };
+  }
+}
+
+/**
+ * Potongan kolom diambil BERURUTAN, bukan paralel: server membatasi 2 permintaan grid in-flight per
+ * pengguna (T-042) dan grid sendiri memuat ≤ 2 blok bersamaan, jadi satu blok tidak boleh memakai lebih
+ * dari satu slot — kalau tidak, sheet > 64 kolom selalu kena 429 QUERY_BUSY (review T-043 H1).
+ */
 export async function fetchBlock(
   req: BlockRequest,
   fetcher: typeof fetch = fetch,
+  backoff: readonly number[] = BUSY_BACKOFF_MS,
 ): Promise<BlockResult> {
   const chunks = req.cols.length > 0 ? chunkCols(req.cols) : [[]];
-  const parts = await Promise.all(chunks.map((c) => fetchChunk(req, c, fetcher)));
-  for (const p of parts) if (!p.ok && p.kind === "version") return p;
-  for (const p of parts) if (!p.ok && p.kind === "aborted") return p;
-  for (const p of parts) if (!p.ok) return p;
+  const parts: { ok: true; body: RowsResponse }[] = [];
+  for (const c of chunks) {
+    const p = await fetchChunkRetry(req, c, fetcher, backoff);
+    if (!p.ok) return p;
+    parts.push(p);
+  }
   const bodies = parts.map((p) => (p as { ok: true; body: RowsResponse }).body);
   const first = bodies[0]!;
   // Potongan harus menunjuk baris yang sama (urutan tanpa urut/saring deterministik per `_row`).

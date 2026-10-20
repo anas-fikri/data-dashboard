@@ -274,6 +274,44 @@ describe("fetchBlock", () => {
     });
   });
 
+  it("potongan kolom berurutan: satu blok tidak pernah memakai > 1 slot server (review H1)", async () => {
+    let active = 0;
+    let peak = 0;
+    const f = vi.fn(async (_url: string, init?: RequestInit) => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      const b = JSON.parse(String(init!.body)) as { cols: number[] };
+      return new Response(JSON.stringify(ok(b.cols)), { status: 200 });
+    }) as unknown as typeof fetch;
+    const cols = Array.from({ length: 200 }, (_, i) => i + 1);
+    const r = await fetchBlock({ ...base, cols }, f);
+    expect(f).toHaveBeenCalledTimes(4);
+    expect(peak).toBe(1);
+    expect(r.ok && r.rows[0]!.c200).toBe("200:1");
+  });
+
+  it("429 QUERY_BUSY dicoba ulang dengan jeda; tetap sibuk → kind busy (bukan galat)", async () => {
+    let calls = 0;
+    const flaky = fetcher((b) =>
+      calls++ < 2
+        ? { status: 429, json: { ok: false, code: "QUERY_BUSY", message: "sibuk" } }
+        : { status: 200, json: ok(b.cols) },
+    );
+    expect((await fetchBlock({ ...base, cols: [1] }, flaky, [1, 1, 1])).ok).toBe(true);
+    expect(calls).toBe(3);
+    const busy = fetcher(() => ({
+      status: 429,
+      json: { ok: false, code: "QUERY_BUSY", message: "sibuk" },
+    }));
+    expect(await fetchBlock({ ...base, cols: [1] }, busy, [1, 1])).toEqual({
+      ok: false,
+      kind: "busy",
+    });
+    expect(busy).toHaveBeenCalledTimes(3);
+  });
+
   it("meneruskan AbortSignal ke fetch", async () => {
     const ctrl = new AbortController();
     const f = fetcher((b) => ({ status: 200, json: ok(b.cols) }));
