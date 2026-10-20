@@ -40,6 +40,11 @@ export const RULES = {
    */
   query: { name: "query:user", limit: 600, windowSec: 60 },
   /**
+   * Jendela baris + isi sel "Lihat data" per user (T-042, GRID_RATE_PER_MIN di rencana G-6): terpisah
+   * dari aturan query, jadi menggulir sheet tidak menghabiskan jatah widget dashboard.
+   */
+  grid: { name: "grid:user", limit: 300, windowSec: 60 },
+  /**
    * Daftar nilai slicer dashboard per user (T-012): dipanggil per ketikan (klien membatalkan yang
    * lama), jadi terpisah dari query widget agar pencarian tidak menghabiskan jatah dashboard.
    */

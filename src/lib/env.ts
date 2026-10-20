@@ -169,6 +169,11 @@ export const envSchema = z.object({
     .default(10 * 1024 * 1024 * 1024),
   /** Query DuckDB bersamaan per proses aplikasi. */
   MAX_QUERY_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+  /**
+   * Slot global yang boleh dipegang permintaan grid "Lihat data" (T-042); sisanya selalu untuk widget.
+   * Dipotong ke MAX_QUERY_CONCURRENCY − 1 (minimal 1) di runtime.
+   */
+  GRID_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
   QUERY_MEMORY_LIMIT: z
     .string()
     .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)

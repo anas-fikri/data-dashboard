@@ -15,12 +15,14 @@ import {
   type GridDeps,
   type GridRepo,
 } from "./grid-service";
-import { queryDeps } from "./runtime";
+import { gridEngine } from "./grid-gate";
+import { gridRuntime } from "./runtime";
 
 /*
  * HTTP jendela baris "Lihat data" (T-041): POST /api/sheets/:id/rows dan GET /api/sheets/:id/cell.
  * Route Handler terpisah dari /api/query (otorisasi widget tidak tersentuh). Sesi wajib, Origin = APP_URL
- * untuk POST, rate limit per user (aturan query; aturan grid terpisah menyusul di T-042), body ≤ 64 KB.
+ * untuk POST, rate limit per user (aturan grid sendiri, T-042), body ≤ 64 KB. Mesin lewat gerbang grid
+ * (≤ 2 slot global, 2 in-flight per user); cache hasil hanya untuk count, bukan blok baris.
  * Error tak terduga → 503 tanpa detail (withUser).
  */
 
@@ -119,12 +121,13 @@ export const prismaGridRepo: GridRepo = {
 };
 
 async function gridDeps(): Promise<GridDeps> {
-  const { repo: _r, cache: _c, ...rest } = await queryDeps();
-  return { ...rest, repo: prismaGridRepo };
+  const { deps, gate } = await gridRuntime();
+  const { repo: _r, engine, ...rest } = deps;
+  return { ...rest, engine: gridEngine(engine, gate), repo: prismaGridRepo };
 }
 
 async function limited(userId: string) {
-  const rl = await hit(await redisReady(), RULES.query, userId);
+  const rl = await hit(await redisReady(), RULES.grid, userId);
   return rl.allowed
     ? null
     : json(

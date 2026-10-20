@@ -7,6 +7,7 @@ import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { env } from "@/lib/env";
 import { ResultCache } from "./cache";
+import { GridGate } from "./grid-gate";
 import { HistoryCache } from "./history-cache";
 import { localParquetCache, queryCacheBase } from "./local-parquet";
 import type { CachedQuery, FilterSource, QueryDeps, QueryRepo } from "./service";
@@ -194,6 +195,8 @@ export const prismaQueryRepo: QueryRepo = {
 
 interface Runtime {
   deps: QueryDeps;
+  /** Gerbang grid "Lihat data" (T-042): slot global terpisah dari widget, in-flight per user. */
+  gridGate: GridGate;
 }
 
 const globalForQuery = globalThis as unknown as {
@@ -224,6 +227,12 @@ async function build(): Promise<Runtime> {
       cache: new ResultCache<CachedQuery>(e.QUERY_RESULT_CACHE_BYTES),
       timeoutMs: e.QUERY_TIMEOUT_MS,
     },
+    gridGate: new GridGate({
+      // Widget selalu kebagian ≥ 1 slot global walau MAX_QUERY_CONCURRENCY kecil.
+      maxGlobal: Math.max(1, Math.min(e.GRID_MAX_CONCURRENCY, e.MAX_QUERY_CONCURRENCY - 1)),
+      perUser: 2,
+      queueWaitMs: 10_000,
+    }),
   };
 }
 
@@ -244,4 +253,10 @@ export async function queryDeps(): Promise<QueryDeps> {
   // Repo diambil dari modul saat ini, bukan dari runtime global yang dibuat sekali per proses:
   // setelah hot reload (dev) runtime lama tidak membawa method repo yang baru ditambahkan.
   return { ...(await runtime()).deps, repo: prismaQueryRepo };
+}
+
+/** Dependensi query + gerbang grid (T-042) untuk route "Lihat data". */
+export async function gridRuntime(): Promise<{ deps: QueryDeps; gate: GridGate }> {
+  const r = await runtime();
+  return { deps: { ...r.deps, repo: prismaQueryRepo }, gate: r.gridGate };
 }

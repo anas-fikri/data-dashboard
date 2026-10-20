@@ -7,12 +7,17 @@
  *
  * Mengukur: (a) rowStart = rows − 200 (AC1), (b) posisi acak di seluruh sheet, (c) lintas batas segmen;
  * p50/p95 server dalam ms, dan kunci yang disewa per permintaan (harus hanya segmen yang beririsan).
+ *
+ * --load (T-042): dashboard 6 widget (agregat DuckDB, jatah 2/user) diukur sendirian (baseline) lalu
+ * bersamaan dengan 5 penggulir (masing-masing 2 jendela in-flight lewat gerbang grid 2/4 slot);
+ * dicatat p95 widget dan jumlah QUERY_BUSY widget/grid. Hasil di docs/ai/perf/T-042.md.
  */
 import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
 import { cpus, totalmem } from "node:os";
 import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import type { ColumnSchema } from "../src/features/ingest/infer";
+import { GridGate, gridEngine } from "../src/features/query/grid-gate";
 import { runGridRows, type GridDeps, type GridSegment } from "../src/features/query/grid-service";
 import { QueryEngine } from "../src/lib/duckdb/engine";
 import { ParquetCache } from "../src/lib/duckdb/parquet-cache";
@@ -168,6 +173,69 @@ async function main() {
     cpus: cpus().length,
     memGB: Math.round(totalmem() / 2 ** 30),
   };
+  async function load() {
+    const gate = new GridGate({ maxGlobal: 2, perUser: 2, queueWaitMs: 10_000 });
+    const gdeps: GridDeps = { ...deps, engine: gridEngine(engine, gate) };
+    const widgetSql = [
+      "SELECT count(*) FROM read_parquet($p)",
+      "SELECT sum(c11) FROM read_parquet($p)",
+      "SELECT c1, sum(c12) s FROM read_parquet($p) GROUP BY c1 ORDER BY s DESC LIMIT 20",
+      "SELECT date_trunc('month', c26) m, sum(c13) FROM read_parquet($p) GROUP BY m ORDER BY m",
+      "SELECT c2, count(*) FROM read_parquet($p) GROUP BY c2 ORDER BY 2 DESC LIMIT 20",
+      "SELECT c1, c11, c21 FROM read_parquet($p) ORDER BY c21 DESC LIMIT 50",
+    ];
+    const lease = await cache.acquire(segments[0]!.typedKey);
+    let busy = 0;
+    const dashboard = async () => {
+      const t0 = performance.now();
+      await Promise.all(
+        widgetSql.map(async (sql) => {
+          const w0 = performance.now();
+          try {
+            await engine.run("dash", sql, { p: lease.path }, 30_000);
+          } catch (e) {
+            if ((e as Error).name === "QueryBusyError") busy++;
+            else throw e;
+          }
+          widget.push(performance.now() - w0);
+        }),
+      );
+      dash.push(performance.now() - t0);
+    };
+    let widget: number[] = [];
+    let dash: number[] = [];
+    for (let i = 0; i < REPS; i++) await dashboard();
+    const base = { widgetP95: Math.round(pct(widget, 95)), dashP95: Math.round(pct(dash, 95)) };
+    widget = [];
+    dash = [];
+    let stop = false;
+    let gridBusy = 0;
+    let gridOk = 0;
+    const scroller = async (u: string) => {
+      while (!stop) {
+        const r = await runGridRows(
+          u,
+          "cmv4kljx40009oczvdperfsht1",
+          { versionId: V, rowStart: Math.floor(Math.random() * (ROWS - 200)), rowCount: 200, cols },
+          gdeps,
+        );
+        if (r.ok) gridOk++;
+        else if (r.code === "QUERY_BUSY") gridBusy++;
+        else throw new Error(`${r.code} ${r.message}`);
+      }
+    };
+    const users = ["s1", "s2", "s3", "s4", "s5"].flatMap((u) => [scroller(u), scroller(u)]);
+    await new Promise((r) => setTimeout(r, 200));
+    for (let i = 0; i < REPS; i++) await dashboard();
+    stop = true;
+    await Promise.all(users);
+    lease.release();
+    const loaded = { widgetP95: Math.round(pct(widget, 95)), dashP95: Math.round(pct(dash, 95)) };
+    const res = { base, loaded, widgetBusy: busy, gridOk, gridBusy };
+    console.log("beban 5 penggulir + dashboard 6 widget", res);
+    return res;
+  }
+
   for (const [name, pos] of scenarios) {
     const ms: number[] = [];
     let maxLeased = 0;
@@ -180,6 +248,7 @@ async function main() {
     console.log(name, res);
     out[name] = res;
   }
+  if (process.argv.includes("--load")) out.load = await load();
   const end = await run(ROWS - 200);
   console.log("sewa untuk rowStart rows-200:", end.leased);
   console.log(JSON.stringify(out));

@@ -121,9 +121,16 @@ export interface TablePage extends QueryData {
   pageSize: number;
 }
 
-/** Nilai cache: hasil, daftar nilai slicer (T-012), atau penanda timeout (cache negatif). */
+/**
+ * Nilai cache: hasil, daftar nilai slicer (T-012), penanda timeout (cache negatif), atau count jendela
+ * baris "Lihat data" (T-042; blok baris grid tidak di-cache).
+ */
 export type CachedQuery =
-  QueryData | TablePage | { filterValues: DashValue[]; truncated: boolean } | { timeout: true };
+  | QueryData
+  | TablePage
+  | { filterValues: DashValue[]; truncated: boolean }
+  | { timeout: true }
+  | { gridCount: { total: number; filteredTotal: number } };
 
 /**
  * `cached`/`ms` hanya untuk pemilik (T-016): non-pemilik tidak bisa menebak apakah user lain baru saja

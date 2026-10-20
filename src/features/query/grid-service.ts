@@ -17,12 +17,14 @@ import {
   windowParts,
   type GridPlan,
 } from "./grid";
+import { resultKey, type ResultCache } from "./cache";
 import {
   fail,
   RESULT_MAX_BYTES,
   rowBytes,
   runOnParquet,
   toJson,
+  type CachedQuery,
   type QueryDeps,
   type QueryFailure,
 } from "./service";
@@ -58,7 +60,25 @@ export interface GridRepo {
   sheet(userId: string, sheetId: string): Promise<GridSheet | null>;
 }
 
-export type GridDeps = Omit<QueryDeps, "repo" | "cache"> & { repo: GridRepo };
+/**
+ * `cache` (T-042): cache hasil bersama, HANYA untuk count (total/filteredTotal) — blok baris tidak pernah
+ * masuk (G-6 §3.4 isolasi beban).
+ */
+export type GridDeps = Omit<QueryDeps, "repo" | "cache"> & {
+  repo: GridRepo;
+  cache?: ResultCache<CachedQuery> | null;
+};
+
+/** Count jalur urut/saring di cache hasil: kunci = sheet + versi + revisi skema + saringan + cari. */
+function countKey(sheetId: string, sheet: GridSheet, plan: GridPlan) {
+  return resultKey({
+    datasetId: "grid-count",
+    versionId: sheet.versionId,
+    sheetId,
+    schemaRevision: sheet.schemaRevision,
+    spec: { clauses: plan.clauses, search: plan.search },
+  });
+}
 
 /**
  * Versi non-aktif yang boleh dipratinjau pemiliknya (G-6 §3.4). Status AWAITING_CONFIRM datang bersama
@@ -238,8 +258,12 @@ export async function runGridRows(
 
   // Jalur 2: urut/saring/cari (atau jumlah baris segmen belum diketahui).
   const filtered = !isPlainWindow(plan);
+  const ck = deps.cache ? countKey(sheetId, sheet, plan) : null;
+  const hit = ck ? deps.cache!.get(ck) : null;
+  const known2 = hit && "gridCount" in hit ? hit.gridCount : null;
   const r = await runOnParquet(userId, sourceFor(sheet, segs), deps, async (path, exec) => {
     const out = await exec(buildSortedWindowSql(plan, path));
+    if (known2) return { out, ...known2 };
     const n = await exec(buildGridCountSql(filtered ? plan : null, path));
     const all =
       total ?? (filtered ? Number((await exec(buildGridCountSql(null, path))).rows[0]![0]) : null);
@@ -247,9 +271,12 @@ export async function runGridRows(
     return { out, filteredTotal, total: all ?? filteredTotal };
   });
   if (!r.ok) return r;
+  const { total: t, filteredTotal } = r.value;
+  // Hanya count yang di-cache (beberapa puluh byte); blok baris tidak.
+  if (ck && !known2) deps.cache!.set(ck, { gridCount: { total: t, filteredTotal } }, 64);
   const rows = toRows(plan, r.value.out.rows, plan.rowStart);
   if (!rows) return tooLarge();
-  return { ...head, total: r.value.total, filteredTotal: r.value.filteredTotal, rows };
+  return { ...head, total: t, filteredTotal, rows };
 }
 
 export interface GridCell {

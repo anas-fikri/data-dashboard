@@ -14,6 +14,8 @@ import {
 } from "@/features/query/grid-service";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
+import { ResultCache } from "@/features/query/cache";
+import type { CachedQuery } from "@/features/query/service";
 
 /*
  * T-041: jendela baris "Lihat data" atas manifest 3 segmen (legacy `_row INTEGER`, segmen tanpa c3,
@@ -487,5 +489,40 @@ describe("review M1/M2: identitas _row", () => {
     expect(r).toMatchObject({ ok: false, code: "QUERY_FAILED" });
     const c = await runGridCell(OWNER, SHEET, { versionId: VER, row: "2", pos: "1" }, deps(two));
     expect(c).toMatchObject({ ok: false, code: "QUERY_FAILED" });
+  });
+});
+
+describe("T-042: cache hasil hanya untuk count", () => {
+  it("blok baris tidak masuk cache; count urut/saring di-cache dan dipakai ulang", async () => {
+    const cache = new ResultCache<CachedQuery>(64 * 1024 * 1024);
+    const spy: CachedQuery[] = [];
+    const set = cache.set.bind(cache);
+    cache.set = (k, v, b, t) => {
+      spy.push(v);
+      set(k, v, b, t);
+    };
+    // Jalur tanpa urut: tidak ada yang di-cache.
+    const plain = await runGridRows(OWNER, SHEET, body({ rowStart: 0, rowCount: 50 }), {
+      ...deps(),
+      cache,
+    });
+    expect(plain.ok).toBe(true);
+    expect(spy).toEqual([]);
+    const b = body({
+      rowCount: 10,
+      sort: [{ pos: 2, dir: "asc" }],
+      search: { text: "cabang 1", cols: [1] },
+    });
+    const a = await runGridRows(OWNER, SHEET, b, { ...deps(), cache });
+    if (!a.ok) throw new Error(a.message);
+    expect(spy).toEqual([{ gridCount: { total: TOTAL, filteredTotal: a.filteredTotal } }]);
+    expect(cache.totalBytes).toBeLessThan(1024);
+    // Halaman lain dengan saringan yang sama: count dari cache, baris tetap dihitung.
+    const next = await runGridRows(OWNER, SHEET, { ...b, rowStart: 10 }, { ...deps(), cache });
+    if (!next.ok) throw new Error(next.message);
+    expect(spy).toHaveLength(1);
+    expect(next.filteredTotal).toBe(a.filteredTotal);
+    expect(next.rows[0]!.n).toBe(11);
+    expect(next.rows.map((r) => r._row)).not.toEqual(a.rows.map((r) => r._row));
   });
 });
