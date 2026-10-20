@@ -1,4 +1,4 @@
-import { IconFileSpreadsheet, IconTableOptions } from "@tabler/icons-react";
+import { IconFileSpreadsheet, IconTable, IconTableOptions } from "@tabler/icons-react";
 import Link from "next/link";
 import { FormAlert } from "@/components/auth/form-alert";
 import { formatJakarta } from "@/components/datasets/version-history-status";
@@ -58,7 +58,18 @@ export function DatasetDataSummary({
         </p>
       ) : null}
       {active ? (
-        <div>
+        <div className="flex flex-col gap-2 md:flex-row">
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
+          >
+            <Link href={`/datasets/${datasetId}/data`} data-testid="dataset-data-link">
+              <IconTable aria-hidden />
+              Lihat data
+            </Link>
+          </Button>
           <Button
             asChild
             variant="outline"

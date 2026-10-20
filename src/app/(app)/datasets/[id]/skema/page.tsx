@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconFileSpreadsheet } from "@tabler/icons-react";
+import { IconArrowLeft, IconFileSpreadsheet, IconTable } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
@@ -77,6 +77,17 @@ export default async function SchemaPage({
       actions={
         <>
           <GuideHelp context="SCHEMA" page="Skema data" as="OWNER" />
+          {view.version ? (
+            <Button asChild variant="outline" className="h-(--control-h-lg) md:h-(--control-h)">
+              <Link
+                href={`/datasets/${view.datasetId}/data${view.sheet ? `?sheet=${view.sheet.index}` : ""}`}
+                data-testid="schema-data-link"
+              >
+                <IconTable aria-hidden />
+                Lihat data
+              </Link>
+            </Button>
+          ) : null}
           {back}
         </>
       }

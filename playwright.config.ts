@@ -28,6 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
         /grid\.spec\.ts$/,
+        /data-view(-scroll)?\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -58,7 +59,28 @@ export default defineConfig({
     },
     // T-041: jendela baris Lihat data (worker sendiri untuk ingest fixture kecil).
     { name: "grid", testMatch: /grid\.spec\.ts$/, dependencies: ["recast-segments"] },
-    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["grid"] },
+    // T-043: halaman Lihat data (worker sendiri; unggah versi kedua untuk banner versi berganti).
+    { name: "data-view", testMatch: /data-view\.spec\.ts$/, dependencies: ["grid"] },
+    // T-043 / ADR-0007: mekanika gulir 10 jt baris (respons baris sintetis) di tiga engine. Firefox dan
+    // WebKit: `npx playwright install firefox webkit` (+ install-deps di Linux).
+    {
+      name: "data-view-scroll",
+      testMatch: /data-view-scroll\.spec\.ts$/,
+      dependencies: ["data-view"],
+    },
+    {
+      name: "data-view-scroll-firefox",
+      testMatch: /data-view-scroll\.spec\.ts$/,
+      use: { browserName: "firefox" },
+      dependencies: ["data-view-scroll"],
+    },
+    {
+      name: "data-view-scroll-webkit",
+      testMatch: /data-view-scroll\.spec\.ts$/,
+      use: { browserName: "webkit" },
+      dependencies: ["data-view-scroll-firefox"],
+    },
+    { name: "widgets", testMatch: /widgets\.spec\.ts$/, dependencies: ["data-view-scroll-webkit"] },
     // admin: juga menyalakan worker sendiri (dataset + KPI sungguhan untuk uji alih kepemilikan).
     { name: "admin", testMatch: /admin\.spec\.ts$/, dependencies: ["widgets"] },
     // backup (T-7psf) + smtp (T-byys): status.json / smtp.json di folder dev bersama berlaku untuk semua

@@ -115,6 +115,8 @@ describe("akses halaman dashboard", () => {
     expect(out).not.toContain('data-testid="edit-dashboard"');
     expect(out).not.toContain('data-testid="share-open"');
     expect(out).not.toContain('data-testid="settings"');
+    // T-043: Lihat data (seluruh sheet) hanya untuk pemilik/editor.
+    expect(out).not.toContain('data-testid="dashboard-data-link"');
     expect(m.getDashboardSources).not.toHaveBeenCalled();
   });
 
@@ -154,10 +156,11 @@ describe("akses halaman dashboard", () => {
     expect(out).toContain("&quot;role&quot;:&quot;EDITOR&quot;");
   });
 
-  it("editor mode lihat: tombol edit ada", async () => {
+  it("editor mode lihat: tombol edit dan Lihat data ada", async () => {
     m.getDashboard.mockResolvedValue(view("EDITOR"));
     const out = await render();
     expect(out).toContain('data-testid="edit-dashboard"');
+    expect(out).toContain('href="/datasets/ds1/data"');
     expect(m.getDashboardSources).not.toHaveBeenCalled();
   });
 

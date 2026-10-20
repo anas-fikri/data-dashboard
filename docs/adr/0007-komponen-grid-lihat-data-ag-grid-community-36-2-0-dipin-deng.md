@@ -192,7 +192,18 @@ dipertimbangkan ulang bila merilis versi stabil dengan dukungan React 19 dan per
   `import()`/`require` termasuk template literal) di semua ekstensi kode.
 * `tests/lib/no-enterprise-deps.test.ts`: menguji aturan lint lewat API ESLint (12 bentuk impor, 8 ekstensi) dan
   memastikan `package-lock.json` tidak memuat paket Enterprise.
-* Dependensi grid belum dipasang; dipasang dengan versi persis di atas saat T-043 dimulai.
+* Dependensi grid dipasang di T-043 dengan versi persis (`ag-grid-community@36.2.0`, `ag-grid-react@36.2.0`).
+
+## Status implementasi (T-043, 2026-10-20)
+
+* Dibangun: label "Akhir data" pada sentinel, `aria-rowcount` = total + 2 (diuji), bilah status yang tidak menghitung
+  sentinel, Ctrl/Cmd+Home/End kustom (tangkap `keydown` di wadah grid), rantai `styleNonce` dari `headers()`, fokus DOM
+  setelah "Ke baris". Catatan DOM v36: satu `.ag-row` per baris berisi sel beku (`.ag-grid-pinned-left-cells`) dan
+  sel gulir; kepala ada di dalam `.ag-grid-viewport` (`role=grid`).
+* Diuji di build Next (dev Turbopack) pada Chromium, Firefox, WebKit dengan semua mitigasi aktif: lulus — laporan
+  `docs/ai/perf/T-043.md`; chunk rute produksi 259,9 KiB gzip.
+* Belum diuji: sentuh/trackpad nyata dan **pembaca layar NVDA/VoiceOver** — ADR tetap `proposed` sampai gerbang itu
+  dijalankan pemilik.
 
 ## Lampiran: kode mitigasi dari prototipe
 

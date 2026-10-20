@@ -1,3 +1,4 @@
+import { IconTable } from "@tabler/icons-react";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -13,6 +14,7 @@ import { EmailText } from "@/components/admin/email-text";
 import { SharedRoleBadge } from "@/components/sharing/access-badge";
 import { ShareDialog } from "@/components/sharing/share-dialog";
 import { GuideHelp } from "@/components/guides/guide-help";
+import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { ExportUserProvider } from "@/components/widgets/export-user";
 import { clientIp } from "@/features/auth/rate-limit";
@@ -145,6 +147,19 @@ export default async function DashboardPage({
                 ) : null}
                 {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
                 {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
+                {canEdit && !editing ? (
+                  // Lihat data (T-043): seluruh sheet dataset untuk pemilik/editor; viewer tidak.
+                  <Button
+                    asChild
+                    variant="outline"
+                    className="h-(--control-h-lg) md:h-(--control-h)"
+                  >
+                    <Link href={`/datasets/${d.dataset.id}/data`} data-testid="dashboard-data-link">
+                      <IconTable aria-hidden />
+                      Lihat data
+                    </Link>
+                  </Button>
+                ) : null}
                 {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}
               </>
             ) : undefined

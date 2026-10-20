@@ -129,3 +129,62 @@
     transition: none !important;
   }
 }
+
+/*
+ * Grid "Lihat data" (T-043, AG Grid): kepala kolom dua baris (huruf + ikon tipe + nama), kolom nomor
+ * baris, dan angka rata kanan tabular. Warna dari token (tema AG memakai hsl(var(--…))).
+ */
+.dd-grid .dd-grid-header {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+}
+.dd-grid .dd-grid-header-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  line-height: 1.2;
+}
+.dd-grid .dd-grid-letter {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--color-muted-foreground);
+}
+.dd-grid .dd-grid-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.25rem;
+  font-weight: 600;
+}
+.dd-grid .dd-grid-menu-btn {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  color: var(--color-muted-foreground);
+}
+.dd-grid .dd-grid-menu-btn:hover {
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
+}
+.dd-grid .dd-grid-rownum,
+.dd-grid .dd-grid-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.dd-grid .dd-grid-rownum {
+  color: var(--color-muted-foreground);
+  background: var(--color-muted);
+}
+/* Sel terfokus: cincin 2px dari token --ring (bawaan AG 1px border) — kontras ≥ 3:1 terang & gelap. */
+.dd-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: -2px;
+}
