@@ -3,8 +3,10 @@
  * versi aktifnya per periode. Hanya file baru yang di-parse dan di-cast; periode lama dirujuk ulang
  * (tidak ada objek baru untuk periode yang tidak berubah).
  *  1. Parse file ke raw lokal (sama dengan ingest biasa), pasangkan sheet dengan sheet aktif (nama/alias),
- *     baris judul + kolom → posisi kanonik skema aktif (peta kolom per segmen, divalidasi).
- *     Kolom terlihat hilang / kolom periode hilang → AWAITING_MAPPING (pemetaan periode = T-057).
+ *     baris judul + kolom → posisi kanonik skema aktif (peta kolom per segmen, divalidasi; judul
+ *     alias tersimpan ikut dicocokkan, T-057). Kolom terlihat hilang / kolom periode hilang →
+ *     AWAITING_MAPPING (dipetakan lewat runPeriodMapping, T-057). Kolom tambahan → kolom tersembunyi
+ *     baru (posisi kanonik baru, periode lama NULL lewat proyeksi; perubahan skema dibawa commit).
  *  2. Tetapkan periode setiap baris: sumber kolom = date_trunc(satuan, kolom periode di-cast dengan
  *     skema aktif); sumber label = label pilihan pemilik saat init. Hitung baris per periode.
  *  3. Tolak lebih awal bila melewati batas (computePeriodPlan atas jumlah baris tepat + byte batas
@@ -48,18 +50,23 @@ import {
 import { isIsoDate, periodKeyOf, periodLabel, type PeriodGrain, type PeriodSource } from "./period";
 import { computePeriodPlan, type OnLimit, type PeriodLimits, type PeriodPlan } from "./period-plan";
 import { labelReferenceColumn, periodSql, validDateSql } from "./period-setup-plan";
+import { REVIEW_MAX, validatePeriodMapping, type MappingReviewIssue } from "./mapping-input";
 import {
   castIssues,
+  castProblems,
   periodColumnPlan,
   planInputs,
   validateColMap,
+  withAddedStats,
   type ActivePeriodSheet,
   type IncomingSegmentRef,
+  type PeriodColumnPlan,
+  type SheetSchemaChange,
   type UploadFacts,
 } from "./period-upload-plan";
 import { mergeProfiles, packProfile, type RawProfile, type StoredProfile } from "./profile";
 import { copyParquet } from "./raw-writer";
-import { planSheets, verdictOf, type ActiveSheet, type SnapshotRef } from "./refresh";
+import { planSheets, typeLabel, verdictOf, type ActiveSheet, type SnapshotRef } from "./refresh";
 import { canonicalProfile, copyTyped, maxSourceRow, profileRaw, typedFileProblems } from "./typed";
 
 const PARQUET = "application/vnd.apache.parquet";
@@ -131,6 +138,8 @@ export interface PeriodCommitInput {
   allowAuto: boolean;
   /** Kunci yang sudah terbukti ada (HEAD) — gerbang integritas di dalam lock tanpa I/O storage. */
   present: string[];
+  /** Perubahan skema sheet (T-057: kolom baru, alias) yang dibawa ke versi baru. */
+  changes: SheetSchemaChange[];
 }
 
 export type PeriodCommitResult =
@@ -160,8 +169,14 @@ export interface PeriodIngestRepo {
     segmentId: string,
     rawKey: string,
   ): Promise<void>;
-  /** INGESTING → AWAITING_MAPPING dengan alasan (versi aktif tidak berubah). */
-  awaitMapping(versionId: string, d: { sha256: string; reason: string }): Promise<boolean>;
+  /**
+   * INGESTING → AWAITING_MAPPING dengan alasan (versi aktif tidak berubah); sheet file yang diabaikan
+   * disimpan untuk rencana setelah pemetaan (T-057).
+   */
+  awaitMapping(
+    versionId: string,
+    d: { sha256: string; reason: string; ignoredSheets: string[] },
+  ): Promise<boolean>;
   /** Lihat PeriodCommitInput / decidePeriodCommit. */
   commit(versionId: string, d: PeriodCommitInput): Promise<PeriodCommitResult>;
   /** UPLOADED|INGESTING → FAILED; false = versi sudah di status lain. */
@@ -197,11 +212,37 @@ interface Item {
   s: { rec: SheetRecord; path: string };
   pair: PeriodActiveSheet;
   colMap: number[];
+  /** Lebar kanonik sheet versi baru (panjang peta kolom; T-057 kolom baru menambahnya). */
+  width: number;
+  /** Skema cast segmen baru: skema aktif + alias + kolom baru (T-057). */
+  schema: ColumnSchema[];
+  /** Perubahan skema sheet yang dibawa ke versi baru (T-057); null = skema aktif apa adanya. */
+  change: PeriodColumnPlan["change"];
   /** Jumlah kolom raw file (c1..c<rawCols>). */
   rawCols: number;
   rawBytes: number;
   periods: { start: string; rows: number; lo: string | null; hi: string | null }[];
   missing: number;
+}
+
+/** Item dari sheet file + rencana kolomnya. */
+function itemOf(
+  s: { rec: SheetRecord; path: string },
+  pair: PeriodActiveSheet,
+  cp: PeriodColumnPlan,
+): Item {
+  return {
+    s,
+    pair,
+    colMap: cp.colMap,
+    width: cp.colCount,
+    schema: cp.schema,
+    change: cp.change,
+    rawCols: s.rec.colCount,
+    rawBytes: statSync(s.path).size,
+    periods: [],
+    missing: 0,
+  };
 }
 
 export async function runPeriodIngest(
@@ -333,15 +374,7 @@ export async function runPeriodIngest(
         label,
       );
       issues.push(...cp.issues);
-      items.push({
-        s,
-        pair,
-        colMap: cp.colMap,
-        rawCols: s.rec.colCount,
-        rawBytes: statSync(s.path).size,
-        periods: [],
-        missing: 0,
-      });
+      items.push(itemOf(s, pair, cp));
     }
     /** Versi menunggu pemetaan: sheet raw saja (tanpa typed/manifest), versi aktif tidak berubah. */
     const awaitMapping = async (found: string[]): Promise<IngestOutcome> => {
@@ -370,205 +403,44 @@ export async function runPeriodIngest(
         await repo.createRawSheet(versionId, it.s.rec, it.pair.lineageId, id, rawKey);
         await ensureAlive();
       }
-      if (!(await repo.awaitMapping(versionId, { sha256: dl.sha256, reason }))) {
+      if (
+        !(await repo.awaitMapping(versionId, { sha256: dl.sha256, reason, ignoredSheets: ignored }))
+      ) {
         throw new DatasetGoneError();
       }
       return { outcome: "awaiting", sheets: items.length, message: reason };
     };
     if (!items.length) throw new PeriodUploadError(NO_SHEET_MESSAGE);
     for (const it of items) {
-      const bad = validateColMap(
-        it.colMap,
-        it.pair.colCount,
-        it.rawCols,
-        `sheet "${it.s.rec.name}"`,
-      );
+      const bad = validateColMap(it.colMap, it.width, it.rawCols, `sheet "${it.s.rec.name}"`);
       if (bad.length && !issues.length) throw new IntegrityError(bad);
     }
     if (issues.length) {
       return await awaitMapping(issues);
     }
-
-    // 2. Periode setiap baris + hitungan per periode (tanpa typing).
-    for (const it of items) {
-      setProgress({
-        stage: "periode",
-        sheet: it.s.rec.index,
-        sheetName: it.s.rec.name,
-        fraction: null,
-      });
-      await assignPeriods(d, it, grain, ext, v.label, ensureAlive);
-    }
-
-    // 3. Tolak lebih awal (byte = batas bawah: raw saja, typed belum ditulis).
-    const facts: UploadFacts = {
+    const core = await processPeriodItems({
+      d,
+      work,
+      versionId,
+      v,
+      a,
       grain,
-      source: items.some((it) => it.pair.periodSource === "LABEL") ? "LABEL" : "COLUMN",
-      fileSheets: [...new Set(items.map((it) => it.pair.lineageId))],
-      droppedRows: items.reduce((n, it) => n + it.missing, 0),
-      ignoredSheets: ignored,
-      fileSha256: dl.sha256,
-    };
-    const early = computePeriodPlan({
-      grain,
-      source: facts.source,
-      baseVersionId: a.versionId,
-      active: planInputs(a.sheets, []).active,
-      incoming: planInputs(
-        [],
-        items.flatMap((it) => {
-          const total = it.periods.reduce((n, p) => n + p.rows, 0) + it.missing;
-          return it.periods.map((p) => ({
-            typedId: "",
-            segmentId: "",
-            lineageId: it.pair.lineageId,
-            periodKey: periodKeyOf(grain, p.start),
-            periodStart: p.start,
-            rows: p.rows,
-            bytes: total > 0 ? Math.floor((it.rawBytes * p.rows) / total) : 0,
-          }));
-        }),
-      ).incoming,
-      incomingSheets: facts.fileSheets,
-      settings: v.settings,
-      limits: deps.limits,
-      fileSha256: facts.fileSha256,
-      droppedRows: facts.droppedRows,
-      ignoredSheets: facts.ignoredSheets,
+      ext,
+      sha256: dl.sha256,
+      items,
+      ignored,
+      multi: usable.length > 1,
+      deps,
+      created,
+      watch: ensureAlive,
+      setProgress,
+      acceptCast: false,
     });
-    if (early.rejection) throw new PeriodUploadError(early.rejection.message);
+    if (core.kind === "cast") return await awaitMapping(core.issues);
 
-    // 4. Profil per periode (+ baris tanpa tanggal) → vonis cast atas baris file baru saja.
-    const profiles = new Map<
-      Item,
-      Map<string, { raw: string; profile: RawProfile; maxSrcRow: number; rawRows: number }>
-    >();
-    for (const it of items) {
-      const per = await segmentRaws(d, it, work, ensureAlive);
-      profiles.set(it, per.segments);
-      const all = mergeProfiles([
-        ...[...per.segments.values()].map((x) => x.profile),
-        ...per.extra,
-      ]);
-      const label = usable.length > 1 ? it.pair.name : null;
-      issues.push(...castIssues(it.pair.schema, all, it.colMap, ext, label));
-    }
-    if (issues.length) return await awaitMapping(issues);
-
-    // 5. Segmen per periode (raw + typed skema aktif + `_period`).
-    setProgress({ stage: "tipe", fraction: null });
-    const incoming: IncomingSegmentRef[] = [];
-    const keys: string[] = [];
-    for (const it of items) {
-      const hr = Math.trunc(it.s.rec.headerRow);
-      for (const p of it.periods) {
-        const seg = profiles.get(it)!.get(p.start)!;
-        const key = periodKeyOf(grain, p.start);
-        const label = `sheet "${it.s.rec.name}" periode ${periodLabel(grain, p.start)}`;
-        if (seg.profile.dataRows !== p.rows) {
-          throw new IntegrityError([
-            `${label}: ${seg.profile.dataRows} baris tertulis, ${p.rows} baris dihitung`,
-          ]);
-        }
-        const rowBase = await repo.allocateRows(it.pair.lineageId, seg.maxSrcRow);
-        const typedPath = join(work, `typed-${it.s.rec.index}-${key}.parquet`);
-        const chars = [...seg.profile.profiles.values()].reduce((n, x) => n + x.chars, 0);
-        await copyTyped(d, {
-          rawPath: seg.raw,
-          outPath: typedPath,
-          source: ext,
-          headerRow: hr,
-          watch: ensureAlive,
-          rowBase,
-          rawCols: it.rawCols,
-          colMap: it.colMap,
-          schema: it.pair.schema,
-          charsPerRow: p.rows > 0 ? chars / p.rows : 0,
-          period: p.start,
-        });
-        const bad = await typedFileProblems(d, typedPath, p.rows, label, p.start);
-        const pc = it.pair.periodSource === "COLUMN" ? it.pair.periodColumn : null;
-        if (pc !== null) {
-          // Periode ditetapkan dari cast kolom periode di raw; file typed harus sepakat baris demi baris.
-          const col = `c${Math.trunc(pc)}`;
-          const off = Number(
-            (
-              await one(
-                d,
-                `SELECT count(*) FILTER (WHERE NOT coalesce(${validDateSql(col)} AND ${periodSql(grain, col)} = DATE '${p.start}', false))
-                 FROM read_parquet(${lit(typedPath)})`,
-              )
-            )[0],
-          );
-          if (off > 0) bad.push(`${label}: ${off} baris tanggalnya tidak masuk periode ini`);
-        }
-        if (bad.length) throw new IntegrityError(bad);
-        const id = newSegmentId();
-        const sp = segmentPrefix(v.datasetId, id);
-        const rawKey = `${sp}raw.parquet`;
-        const typedKey = `${sp}typed-${it.pair.schemaRevision}.parquet`;
-        const rawBytes = statSync(seg.raw).size;
-        const typedBytes = statSync(typedPath).size;
-        // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
-        await repo.createSegment(versionId, {
-          id,
-          lineageId: it.pair.lineageId,
-          rawKey,
-          rawBytes,
-          rawRows: seg.rawRows,
-          headerRow: hr,
-          colCount: it.rawCols,
-          colMap: it.colMap,
-          rowBase,
-          maxSrcRow: seg.maxSrcRow,
-          sha256: dl.sha256,
-          sourceKind: ext,
-          period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
-        });
-        created.push(id);
-        await storage.upload(rawKey, seg.raw, PARQUET);
-        await storage.upload(typedKey, typedPath, PARQUET);
-        const typedId = await repo.addTyped(id, {
-          typedKey,
-          schemaRevision: it.pair.schemaRevision,
-          columns: [...new Set(it.pair.schema.map((c) => c.pos))].sort((x, y) => x - y),
-          dataRows: p.rows,
-          typedBytes,
-          profile: packProfile(hr, seg.profile),
-          headerRow: hr,
-        });
-        incoming.push({
-          typedId,
-          segmentId: id,
-          lineageId: it.pair.lineageId,
-          periodKey: key,
-          periodStart: p.start,
-          rows: p.rows,
-          bytes: rawBytes + typedBytes,
-        });
-        keys.push(rawKey, typedKey);
-        rmSync(typedPath, { force: true });
-        if (seg.raw !== it.s.path) rmSync(seg.raw, { force: true });
-        await ensureAlive();
-      }
-    }
-
-    // 6. Gerbang integritas kunci (HEAD di luar lock), lalu commit di bawah lock Dataset.
-    const all = [...new Set([...keys, ...a.sheets.flatMap((s) => s.keys)])];
-    const missing = await missingKeys(all, (k) => storage.exists(k));
-    if (missing.length) throw new IntegrityError(missing.map((k) => `file data tidak ada: ${k}`));
     let r: PeriodCommitResult;
     try {
-      r = await repo.commit(versionId, {
-        snapshot: {
-          activeVersionId: a.versionId,
-          sheets: a.sheets.map((s) => ({ id: s.id, schemaRevision: s.schemaRevision })),
-        },
-        sha256: dl.sha256,
-        facts,
-        allowAuto: v.baseVersionId === a.versionId,
-        present: all,
-      });
+      r = await repo.commit(versionId, core.input);
     } catch (e) {
       // Commit bisa sudah masuk sebelum koneksi putus: objek mungkin milik versi yang kini aktif.
       // Gerbang integritas melempar dari dalam transaksi → pasti batal, objek boleh dibersihkan.
@@ -615,6 +487,489 @@ export async function runPeriodIngest(
     return { outcome: "failed", message: located };
   } finally {
     clearInterval(heartbeat);
+    duck?.close();
+    rmSync(work, { recursive: true, force: true });
+  }
+}
+
+interface CoreInput {
+  d: Duck;
+  work: string;
+  versionId: string;
+  v: PeriodIngestLoad;
+  a: NonNullable<PeriodIngestLoad["active"]>;
+  grain: PeriodGrain;
+  /** Jenis file asal segmen baru (cast memakai jenisnya). */
+  ext: SourceKind;
+  sha256: string;
+  items: Item[];
+  /** Sheet file yang tidak berpasangan (tidak disimpan). */
+  ignored: string[];
+  /** Dataset punya lebih dari satu sheet periode (nama sheet di pesan). */
+  multi: boolean;
+  deps: Pick<PeriodIngestDeps, "storage" | "limits"> & {
+    repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped">;
+  };
+  /** Id segmen yang dibuat (pembersihan saat gagal). */
+  created: string[];
+  watch: () => Promise<void>;
+  setProgress: (p: Partial<IngestProgress>) => void;
+  /** Pemetaan dengan persetujuan pemilik (T-057): nilai yang tidak cocok menjadi kosong. */
+  acceptCast: boolean;
+}
+
+/** Kolom < 98 % lolos cast di file baru, dalam bentuk alasan (ingest) dan isu tinjau (pemetaan). */
+interface CastFinding {
+  issues: string[];
+  review: MappingReviewIssue[];
+}
+
+/**
+ * Langkah 2–6 unggahan periode (ingest file dan pemetaan T-057 memakai jalur yang sama): periode per
+ * baris, tolak lebih awal, vonis cast atas baris file baru, segmen per periode (raw + typed + `_period`),
+ * gerbang kunci (HEAD di luar lock). Hasil: masukan commit, atau temuan cast (tanpa segmen ditulis).
+ */
+async function processPeriodItems(
+  c: CoreInput,
+): Promise<({ kind: "cast" } & CastFinding) | { kind: "commit"; input: PeriodCommitInput }> {
+  const { d, work, versionId, v, a, grain, ext, items, deps } = c;
+  const repo = deps.repo;
+  const storage = deps.storage;
+  const ensureAlive = c.watch;
+  const setProgress = c.setProgress;
+  const ignored = c.ignored;
+  const created = c.created;
+  const dl = { sha256: c.sha256 };
+  const issues: string[] = [];
+  const review: MappingReviewIssue[] = [];
+  const merged = new Map<Item, RawProfile>();
+  // 2. Periode setiap baris + hitungan per periode (tanpa typing).
+  for (const it of items) {
+    setProgress({
+      stage: "periode",
+      sheet: it.s.rec.index,
+      sheetName: it.s.rec.name,
+      fraction: null,
+    });
+    await assignPeriods(d, it, grain, ext, v.label, ensureAlive);
+  }
+
+  // 3. Tolak lebih awal (byte = batas bawah: raw saja, typed belum ditulis).
+  const facts: UploadFacts = {
+    grain,
+    source: items.some((it) => it.pair.periodSource === "LABEL") ? "LABEL" : "COLUMN",
+    fileSheets: [...new Set(items.map((it) => it.pair.lineageId))],
+    droppedRows: items.reduce((n, it) => n + it.missing, 0),
+    ignoredSheets: ignored,
+    fileSha256: dl.sha256,
+  };
+  const early = computePeriodPlan({
+    grain,
+    source: facts.source,
+    baseVersionId: a.versionId,
+    active: planInputs(a.sheets, []).active,
+    incoming: planInputs(
+      [],
+      items.flatMap((it) => {
+        const total = it.periods.reduce((n, p) => n + p.rows, 0) + it.missing;
+        return it.periods.map((p) => ({
+          typedId: "",
+          segmentId: "",
+          lineageId: it.pair.lineageId,
+          periodKey: periodKeyOf(grain, p.start),
+          periodStart: p.start,
+          rows: p.rows,
+          bytes: total > 0 ? Math.floor((it.rawBytes * p.rows) / total) : 0,
+        }));
+      }),
+    ).incoming,
+    incomingSheets: facts.fileSheets,
+    settings: v.settings,
+    limits: deps.limits,
+    fileSha256: facts.fileSha256,
+    droppedRows: facts.droppedRows,
+    ignoredSheets: facts.ignoredSheets,
+  });
+  if (early.rejection) throw new PeriodUploadError(early.rejection.message);
+
+  // 4. Profil per periode (+ baris tanpa tanggal) → vonis cast atas baris file baru saja.
+  const profiles = new Map<
+    Item,
+    Map<string, { raw: string; profile: RawProfile; maxSrcRow: number; rawRows: number }>
+  >();
+  for (const it of items) {
+    const per = await segmentRaws(d, it, work, ensureAlive);
+    profiles.set(it, per.segments);
+    const all = mergeProfiles([...[...per.segments.values()].map((x) => x.profile), ...per.extra]);
+    merged.set(it, all);
+    const label = c.multi ? it.pair.name : null;
+    const found = castProblems(it.schema, all, it.colMap, ext);
+    issues.push(...castIssues(it.schema, all, it.colMap, ext, label));
+    for (const { column, pct } of found) {
+      const raw = it.colMap.length ? (it.colMap[column.pos - 1] ?? 0) : column.pos;
+      review.push({
+        sheet: it.pair.name,
+        column: column.name,
+        header: it.s.rec.columns.find((x) => x.pos === raw)?.original ?? column.original,
+        pct,
+        typeLabel: typeLabel(column),
+      });
+    }
+  }
+  if (issues.length && !c.acceptCast) return { kind: "cast", issues, review };
+
+  // 5. Segmen per periode (raw + typed skema aktif + `_period`).
+  setProgress({ stage: "tipe", fraction: null });
+  const incoming: IncomingSegmentRef[] = [];
+  const keys: string[] = [];
+  for (const it of items) {
+    const hr = Math.trunc(it.s.rec.headerRow);
+    for (const p of it.periods) {
+      const seg = profiles.get(it)!.get(p.start)!;
+      const key = periodKeyOf(grain, p.start);
+      const label = `sheet "${it.s.rec.name}" periode ${periodLabel(grain, p.start)}`;
+      if (seg.profile.dataRows !== p.rows) {
+        throw new IntegrityError([
+          `${label}: ${seg.profile.dataRows} baris tertulis, ${p.rows} baris dihitung`,
+        ]);
+      }
+      const rowBase = await repo.allocateRows(it.pair.lineageId, seg.maxSrcRow);
+      const typedPath = join(work, `typed-${it.s.rec.index}-${key}.parquet`);
+      const chars = [...seg.profile.profiles.values()].reduce((n, x) => n + x.chars, 0);
+      await copyTyped(d, {
+        rawPath: seg.raw,
+        outPath: typedPath,
+        source: ext,
+        headerRow: hr,
+        watch: ensureAlive,
+        rowBase,
+        rawCols: it.rawCols,
+        colMap: it.colMap,
+        schema: it.schema,
+        charsPerRow: p.rows > 0 ? chars / p.rows : 0,
+        period: p.start,
+      });
+      const bad = await typedFileProblems(d, typedPath, p.rows, label, p.start);
+      const pc = it.pair.periodSource === "COLUMN" ? it.pair.periodColumn : null;
+      if (pc !== null) {
+        // Periode ditetapkan dari cast kolom periode di raw; file typed harus sepakat baris demi baris.
+        const col = `c${Math.trunc(pc)}`;
+        const off = Number(
+          (
+            await one(
+              d,
+              `SELECT count(*) FILTER (WHERE NOT coalesce(${validDateSql(col)} AND ${periodSql(grain, col)} = DATE '${p.start}', false))
+               FROM read_parquet(${lit(typedPath)})`,
+            )
+          )[0],
+        );
+        if (off > 0) bad.push(`${label}: ${off} baris tanggalnya tidak masuk periode ini`);
+      }
+      if (bad.length) throw new IntegrityError(bad);
+      const id = newSegmentId();
+      const sp = segmentPrefix(v.datasetId, id);
+      const rawKey = `${sp}raw.parquet`;
+      const typedKey = `${sp}typed-${it.pair.schemaRevision}.parquet`;
+      const rawBytes = statSync(seg.raw).size;
+      const typedBytes = statSync(typedPath).size;
+      // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
+      await repo.createSegment(versionId, {
+        id,
+        lineageId: it.pair.lineageId,
+        rawKey,
+        rawBytes,
+        rawRows: seg.rawRows,
+        headerRow: hr,
+        colCount: it.rawCols,
+        colMap: it.colMap,
+        rowBase,
+        maxSrcRow: seg.maxSrcRow,
+        sha256: dl.sha256,
+        sourceKind: ext,
+        period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
+      });
+      created.push(id);
+      await storage.upload(rawKey, seg.raw, PARQUET);
+      await storage.upload(typedKey, typedPath, PARQUET);
+      const typedId = await repo.addTyped(id, {
+        typedKey,
+        schemaRevision: it.pair.schemaRevision,
+        columns: [...new Set(it.schema.map((x) => x.pos))].sort((x, y) => x - y),
+        dataRows: p.rows,
+        typedBytes,
+        profile: packProfile(hr, seg.profile),
+        headerRow: hr,
+      });
+      incoming.push({
+        typedId,
+        segmentId: id,
+        lineageId: it.pair.lineageId,
+        periodKey: key,
+        periodStart: p.start,
+        rows: p.rows,
+        bytes: rawBytes + typedBytes,
+      });
+      keys.push(rawKey, typedKey);
+      rmSync(typedPath, { force: true });
+      if (seg.raw !== it.s.path) rmSync(seg.raw, { force: true });
+      await ensureAlive();
+    }
+  }
+
+  // 6. Gerbang integritas kunci (HEAD di luar lock); commit di bawah lock Dataset oleh pemanggil.
+  const all = [...new Set([...keys, ...a.sheets.flatMap((s) => s.keys)])];
+  const missing = await missingKeys(all, (k) => storage.exists(k));
+  if (missing.length) throw new IntegrityError(missing.map((k) => `file data tidak ada: ${k}`));
+  const changes: SheetSchemaChange[] = items.flatMap((it) =>
+    it.change
+      ? [
+          {
+            ...withAddedStats(it.change, merged.get(it)!),
+            lineageId: it.pair.lineageId,
+            baseRevision: it.pair.schemaRevision,
+          },
+        ]
+      : [],
+  );
+  return {
+    kind: "commit",
+    input: {
+      snapshot: {
+        activeVersionId: a.versionId,
+        sheets: a.sheets.map((s) => ({ id: s.id, schemaRevision: s.schemaRevision })),
+      },
+      sha256: dl.sha256,
+      facts,
+      allowAuto: v.baseVersionId === a.versionId,
+      present: all,
+      changes,
+    },
+  };
+}
+
+// ── Pemetaan unggahan periode (T-057) ───────────────────────────────────────────────────────────────
+
+/** Sheet raw versi periode yang menunggu pemetaan (T-052: raw saja, lineage sheet aktif pasangannya). */
+export interface PeriodRawSheet extends SheetRecord {
+  id: string;
+  lineageId: string;
+  rawKey: string;
+}
+
+export interface PeriodMappingRepo extends Pick<
+  PeriodIngestRepo,
+  "load" | "allocateRows" | "createSegment" | "addTyped" | "recordCleanup"
+> {
+  /** Sheet raw versi yang menunggu pemetaan + fakta file dari ingest; null = versi tidak ada. */
+  rawSheets(versionId: string): Promise<{
+    sheets: PeriodRawSheet[];
+    sha256: string;
+    ignoredSheets: string[];
+  } | null>;
+  /**
+   * Segmen periode percobaan pemetaan sebelumnya dihapus (hanya selama versi masih AWAITING_MAPPING:
+   * commit belum pernah masuk); id segmen yang dihapus.
+   */
+  deletePeriodSegments(versionId: string): Promise<string[]>;
+  /** Commit dari AWAITING_MAPPING (decidePeriodCommit yang sama) + AuditLog dataset.version.map. */
+  commit(
+    versionId: string,
+    d: PeriodCommitInput & {
+      audit: { actorId: string; ip: string; meta: Record<string, unknown> };
+    },
+  ): Promise<PeriodCommitResult>;
+  /** Setelah commit: segmen raw saja versi ini tidak dirujuk lagi → baris dihapus; id segmen. */
+  dropRawSegments(versionId: string): Promise<string[]>;
+}
+
+export interface PeriodMappingDeps {
+  repo: PeriodMappingRepo;
+  storage: TypedStorage;
+  limits: PeriodLimits;
+}
+
+export type PeriodMappingResult =
+  | { outcome: "done"; activated: boolean }
+  | { outcome: "stale" }
+  | { outcome: "gone" }
+  | { outcome: "invalid"; message: string }
+  | { outcome: "failed"; message: string }
+  | { outcome: "review"; issues: MappingReviewIssue[] };
+
+export interface PeriodMappingOptions {
+  tmpRoot: string;
+  duckMemory?: string;
+  /** Lock/deadline/versi masih menunggu pemetaan (melempar → berhenti). */
+  watch: () => Promise<void>;
+  actorId: string;
+  ip: string;
+  jobId?: string;
+}
+
+/**
+ * Terapkan pemetaan pada unggahan periode (T-057, rencana G-6 §4.9): raw sheet yang tersimpan saat
+ * ingest (file asli tidak dibaca) → peta kolom dari keputusan pemilik (kolom hilang dipetakan atau
+ * dikosongkan HANYA untuk periode file ini, kolom tambahan menjadi kolom tersembunyi baru, judul pengganti
+ * diingat sebagai alias) → jalur periode yang sama dengan ingest (processPeriodItems: periode per baris,
+ * batas, vonis cast, segmen per periode) → commit di bawah lock (aktif otomatis atau menunggu konfirmasi).
+ * Periode lama tidak pernah di-cast ulang atau ditulis ulang. Galat sementara / IntegrityError /
+ * DatasetGoneError dilempar ke pemanggil (applyMapping); segmen percobaan ini dibersihkan bila commit
+ * pasti tidak masuk.
+ */
+export async function runPeriodMapping(
+  versionId: string,
+  input: unknown,
+  deps: PeriodMappingDeps,
+  opts: PeriodMappingOptions,
+): Promise<PeriodMappingResult> {
+  const { repo, storage } = deps;
+  const v = await repo.load(versionId);
+  const raw = v ? await repo.rawSheets(versionId) : null;
+  if (!v || !raw) return { outcome: "gone" };
+  const a = v.active;
+  if (!a || !a.grain || a.grain !== v.grain)
+    return { outcome: "failed", message: NOT_PERIOD_MESSAGE };
+  const check = validatePeriodMapping(input, {
+    sheets: raw.sheets.map((s) => ({ ...s, preview: s.preview ?? null })),
+    active: { versionId: a.versionId, sheets: a.sheets },
+  });
+  if (!check.ok) {
+    return check.code === "STALE"
+      ? { outcome: "stale" }
+      : { outcome: "invalid", message: check.message };
+  }
+  if (a.sheets.some((s) => s.periodSource === "LABEL") && !(v.label && isIsoDate(v.label))) {
+    return { outcome: "failed", message: LABEL_MISSING_MESSAGE };
+  }
+  const grain = a.grain;
+  const ext: SourceKind = v.sourceKey.endsWith(".csv") ? "csv" : "xlsx";
+  const usable = a.sheets.filter((s) => s.periodSource);
+  const created: string[] = [];
+  /** commit dipanggil lalu gagal / sudah masuk: objek segmen tidak boleh dihapus. */
+  let committing = false;
+  const discard = async (reason: string) => {
+    if (committing) return;
+    const ids = await repo.deletePeriodSegments(versionId).catch(() => [] as string[]);
+    for (const id of new Set([...created, ...ids])) {
+      await cleanupPrefix(repo, storage, segmentPrefix(v.datasetId, id), reason);
+    }
+  };
+  const work = mkdtempSync(join(opts.tmpRoot, "period-map-"));
+  let duck: Duck | null = null;
+  try {
+    // Percobaan sebelumnya job ini (worker mati sebelum commit): mulai bersih.
+    for (const id of await repo.deletePeriodSegments(versionId)) {
+      await storage.deletePrefix(segmentPrefix(v.datasetId, id));
+    }
+    duck = await openDuck({
+      path: join(work, "work.duckdb"),
+      tmpDir: work,
+      memoryLimit: opts.duckMemory,
+    });
+    const d = duck;
+    const items: Item[] = [];
+    for (const s of [...raw.sheets].sort((x, y) => x.index - y.index)) {
+      const pair = usable.find((x) => x.lineageId === s.lineageId);
+      if (!pair) continue; // validatePeriodMapping: setiap sheet raw berpasangan
+      const path = join(work, `raw-${Math.trunc(s.index)}.parquet`);
+      await storage.download(s.rawKey, path);
+      await opts.watch();
+      const label = usable.length > 1 ? pair.name : null;
+      const cp = periodColumnPlan(
+        s.columns,
+        pair.schema,
+        pair.colCount,
+        pair.periodSource === "COLUMN" ? pair.periodColumn : null,
+        label,
+        check.decisions.get(pair.id) ?? new Map(),
+      );
+      if (cp.issues.length) return { outcome: "invalid", message: cp.issues[0]! };
+      const bad = validateColMap(cp.colMap, cp.colCount, s.colCount, `sheet "${s.name}"`);
+      if (bad.length) throw new IntegrityError(bad);
+      const { id: _id, lineageId: _l, rawKey: _k, ...rec } = s;
+      items.push(itemOf({ rec, path }, pair, cp));
+    }
+    if (!items.length) return { outcome: "invalid", message: NO_SHEET_MESSAGE };
+    const core = await processPeriodItems({
+      d,
+      work,
+      versionId,
+      v,
+      a,
+      grain,
+      ext,
+      sha256: raw.sha256,
+      items,
+      ignored: raw.ignoredSheets,
+      multi: usable.length > 1,
+      deps: { repo, storage, limits: deps.limits },
+      created,
+      watch: opts.watch,
+      setProgress: () => {},
+      acceptCast: check.input.acknowledge === true,
+    });
+    if (core.kind === "cast") {
+      // Terburuk dulu (sort stabil: urutan sheet lalu posisi untuk persen yang sama).
+      const issues = [...core.review].sort((x, y) => x.pct - y.pct).slice(0, REVIEW_MAX);
+      return { outcome: "review", issues };
+    }
+    await opts.watch(); // lock masih milik kita tepat sebelum commit
+    let r: PeriodCommitResult;
+    try {
+      r = await repo.commit(versionId, {
+        ...core.input,
+        audit: {
+          actorId: opts.actorId,
+          ip: opts.ip,
+          meta: {
+            mapped: [...check.decisions.values()].reduce(
+              (n, m) => n + [...m.values()].filter((x) => x !== null).length,
+              0,
+            ),
+            nulls: [...check.decisions.values()].reduce(
+              (n, m) => n + [...m.values()].filter((x) => x === null).length,
+              0,
+            ),
+            added: core.input.changes.reduce((n, ch) => n + ch.added.length, 0),
+            period: true,
+            ...(opts.jobId ? { jobId: opts.jobId } : {}),
+          },
+        },
+      });
+    } catch (e) {
+      // Commit bisa sudah masuk sebelum koneksi putus; gerbang integritas melempar dari dalam
+      // transaksi → pasti batal, objek boleh dibersihkan.
+      if (!(e instanceof IntegrityError)) committing = true;
+      throw e;
+    }
+    if (r.outcome === "gone") {
+      await discard("versi dibuang saat pemetaan");
+      return { outcome: "gone" };
+    }
+    if (r.outcome === "stale") {
+      await discard("acuan pemetaan basi");
+      return { outcome: "stale" };
+    }
+    if (r.outcome === "rejected") {
+      await discard("pemetaan ditolak batas");
+      return { outcome: "failed", message: r.message };
+    }
+    committing = true;
+    // Raw saja dari ingest tidak dirujuk lagi (segmen periode baru membawa raw-nya sendiri).
+    for (const id of await repo.dropRawSegments(versionId).catch(() => [] as string[])) {
+      await cleanupPrefix(repo, storage, segmentPrefix(v.datasetId, id), "raw pemetaan periode");
+    }
+    return { outcome: "done", activated: r.outcome === "activated" };
+  } catch (e) {
+    if (e instanceof PeriodUploadError) {
+      await discard("pemetaan periode ditolak");
+      return { outcome: "failed", message: e.message };
+    }
+    // Lock pemetaan hilang: job lain mungkin sedang menulis segmen versi ini — jangan sentuh.
+    if (!(e instanceof Error && e.name === "LockLostError"))
+      await discard("pemetaan periode gagal");
+    throw e;
+  } finally {
     duck?.close();
     rmSync(work, { recursive: true, force: true });
   }
@@ -728,7 +1083,7 @@ async function segmentRaws(
     canonicalProfile(
       await profileRaw(d, { rawPath: path, headerRow: hr, colCount: it.rawCols, watch }),
       it.colMap,
-      it.pair.colCount,
+      it.width,
     );
   const rawRows = async (path: string) =>
     Number((await one(d, `SELECT count(*) FROM read_parquet(${lit(path)})`))[0]);

@@ -135,7 +135,10 @@ export default async function DatasetDetailPage({
         <div data-testid="mapping-done">
           <FocusNotice>
             <span className="[overflow-wrap:anywhere]">
-              Pemetaan disimpan. Versi “{active.originalName ?? "file baru"}” aktif.
+              {/* Unggahan periode (T-057) yang perlu ditinjau: belum aktif, tinjauan ada di bawah. */}
+              {confirming
+                ? `Pemetaan disimpan. Tinjau periode “${confirming.fileName ?? "file baru"}” lalu terapkan.`
+                : `Pemetaan disimpan. Versi “${active.originalName ?? "file baru"}” aktif.`}
             </span>
           </FocusNotice>
         </div>

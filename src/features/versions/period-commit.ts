@@ -9,10 +9,14 @@ import {
   type PeriodPlan,
 } from "@/features/ingest/period-plan";
 import type { ColumnSchema } from "@/features/ingest/infer";
+import type { ColumnMeta } from "@/features/ingest/header";
 import {
+  applySchemaChange,
   decidePeriodCommit,
   factsOf,
+  parsePeriodMeta,
   periodPlanSummary,
+  type PeriodMeta,
   type ActivePeriodSheet,
   type CommitMode,
   type IncomingSegmentRef,
@@ -202,14 +206,24 @@ async function incomingOf(
 
 export interface PeriodCommitArgs {
   versionId: string;
-  /** Status versi yang diharapkan (worker: INGESTING; app: AWAITING_CONFIRM). */
-  from: "INGESTING" | "AWAITING_CONFIRM";
+  /**
+   * Status versi yang diharapkan (worker: INGESTING, atau AWAITING_MAPPING untuk pemetaan T-057;
+   * app: AWAITING_CONFIRM).
+   */
+  from: "INGESTING" | "AWAITING_CONFIRM" | "AWAITING_MAPPING";
   /** Worker: acuan cast yang dipakai menulis segmen. */
   snapshot?: SnapshotRef;
   /** Worker: fakta file; app: dari rencana beku. */
   facts?: UploadFacts;
   /** Worker: SHA-256 file (dicatat di versi). */
   sha256?: string;
+  /**
+   * Worker: fakta unggahan di luar rencana (T-057: sheet diabaikan + perubahan skema sheet), ditulis ke
+   * versi bersama statusnya; app: dibaca dari versi.
+   */
+  meta?: PeriodMeta;
+  /** Pemetaan (T-057): AuditLog dataset.version.map (id job: percobaan ulang tahu commit miliknya). */
+  mapAudit?: { actorId: string; ip: string; meta: Record<string, unknown> };
   /** Periode "nyasar" yang dimasukkan pemilik. */
   include: string[];
   mode: CommitMode;
@@ -260,10 +274,12 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
   // Status dibaca ULANG setelah lock: buang/kedaluwarsa yang commit sebelum lock ini terlihat.
   const locked = await tx.datasetVersion.findUnique({
     where: { id: a.versionId },
-    select: { status: true, mode: true, plan: true },
+    select: { status: true, mode: true, plan: true, periodMeta: true },
   });
   if (!locked || locked.status !== a.from || locked.mode !== "PERIOD") return { outcome: "gone" };
   v.plan = locked.plan;
+  const meta = a.meta ?? parsePeriodMeta(locked.periodMeta);
+  if (!a.meta && locked.periodMeta != null && !meta) return { outcome: "stale" };
   const frozen = parseFrozenPeriodPlan(v.plan);
   const facts = a.facts ?? (frozen ? factsOf(frozen) : null);
   if (!facts) return { outcome: "stale" };
@@ -295,6 +311,25 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
     const s = byLineage.get(lineage);
     // Segmen baru di-cast dengan skema revisi lain (koreksi skema setelah diproses) → tulis ulang.
     if (!s || s.schemaRevision !== rev || !s.periodSource) return { outcome: "stale" };
+  }
+  // Perubahan skema sheet unggahan ini (T-057) diterapkan pada salinan sheet aktif; tidak cocok lagi
+  // dengan sheet aktif (revisi lain) → acuan basi, tidak pernah ditebak.
+  const schemas = new Map<string, SheetShape>();
+  for (const ch of meta?.changes ?? []) {
+    const s = byLineage.get(ch.lineageId);
+    const next = s
+      ? applySchemaChange(
+          {
+            colCount: s.colCount,
+            columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
+            schema: schemaOf(s.schema),
+            schemaRevision: s.schemaRevision,
+          },
+          ch,
+        )
+      : null;
+    if (!next || schemas.has(ch.lineageId)) return { outcome: "stale" };
+    schemas.set(ch.lineageId, next);
   }
   const active = rows.map(activeOf);
   const d = decidePeriodCommit({
@@ -341,6 +376,7 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
     manifest: d.manifest,
     files,
     present: a.present,
+    schemas,
   });
   const activate = d.decision === "activate";
   const r = await tx.datasetVersion.updateMany({
@@ -349,12 +385,25 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
       status: activate ? "READY" : "AWAITING_CONFIRM",
       plan: frozenJson(d.plan),
       errorMessage: null,
+      ...(a.meta
+        ? { periodMeta: JSON.parse(JSON.stringify(a.meta)) as Prisma.InputJsonValue }
+        : {}),
       ...(a.from === "INGESTING"
         ? { ingestStage: "typed", ingestFinishedAt: new Date(), sha256: a.sha256 ?? v.sha256 }
         : {}),
     },
   });
   if (r.count !== 1) throw new Error("status versi periode berubah di tengah commit");
+  if (a.mapAudit) {
+    await recordAudit(tx, {
+      actorId: a.mapAudit.actorId,
+      action: "dataset.version.map",
+      targetType: "dataset",
+      targetId: v.datasetId,
+      meta: { from: ds.activeVersionId, versionId: a.versionId, ...a.mapAudit.meta },
+      ip: a.mapAudit.ip,
+    });
+  }
   if (!activate) return { outcome: "awaiting", plan: d.plan };
   const done = await activateVersionInTx(tx, v.datasetId, a.versionId, { sheetMap });
   if (a.audit) {
@@ -392,6 +441,15 @@ export interface WriteManifestArgs {
   files: Map<string, FileInfo>;
   /** Kunci yang sudah terbukti ada di storage (HEAD sebelum lock). */
   present: ReadonlySet<string>;
+  /** Skema sheet versi ini per lineage bila berbeda dari sheet aktif (T-057: kolom baru, alias). */
+  schemas?: ReadonlyMap<string, SheetShape>;
+}
+
+/** Bentuk kolom sheet (Sheet.colCount/columns/schema). */
+export interface SheetShape {
+  colCount: number;
+  columns: ColumnMeta[];
+  schema: ColumnSchema[];
 }
 
 /**
@@ -411,6 +469,7 @@ export async function writePeriodManifest(
   const typedIds: string[] = [];
   for (const s of w.rows) {
     const refs: ManifestRef[] = w.manifest.get(s.lineageId) ?? [];
+    const shape = w.schemas?.get(s.lineageId);
     const info = refs.map((r) => {
       const f = w.files.get(r.typedId);
       if (!f)
@@ -426,14 +485,18 @@ export async function writePeriodManifest(
         aliasName: s.aliasName,
         rawKey: info[0]?.rawKey ?? s.rawKey,
         rawRows: info.length ? info.reduce((n, f) => n + f.rawRows, 0) : s.rawRows,
-        colCount: s.colCount,
+        colCount: shape?.colCount ?? s.colCount,
         headerRow: s.headerRow,
-        columns: s.columns as Prisma.InputJsonValue,
+        columns: (shape?.columns ?? s.columns) as Prisma.InputJsonValue,
         truncatedCells: s.truncatedCells,
         preview: s.preview === null ? Prisma.DbNull : (s.preview as Prisma.InputJsonValue),
         typedKey: info[0]?.typedKey ?? (refs.length ? null : s.segments.length ? null : s.typedKey),
         schemaRevision: s.schemaRevision,
-        schema: s.schema === null ? Prisma.DbNull : (s.schema as Prisma.InputJsonValue),
+        schema: shape
+          ? (shape.schema as unknown as Prisma.InputJsonValue)
+          : s.schema === null
+            ? Prisma.DbNull
+            : (s.schema as Prisma.InputJsonValue),
         periodSource: s.periodSource as PeriodSource | null,
         periodColumn: s.periodColumn,
       },

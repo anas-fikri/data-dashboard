@@ -126,6 +126,31 @@ export function planColumns(columns: ColumnMeta[], active: ColumnSchema[]): Colu
     if (a) matched.set(c.pos, a);
   });
   const found = new Set(matched.values());
+  // Alias tersimpan (T-057): kolom aktif yang belum cocok mengambil kolom baru yang belum cocok dengan
+  // judul sama dengan aliasnya — hanya bila pasti (satu kolom aktif pemilik alias itu, satu kolom baru
+  // dengan judul itu). Ragu → tetap hilang (pemetaan), bukan tebakan.
+  const owners = new Map<string, ColumnSchema | null>();
+  for (const a of act) {
+    if (found.has(a)) continue;
+    for (const al of new Set((a.aliases ?? []).map(normName))) {
+      if (!al) continue;
+      owners.set(al, owners.has(al) ? null : a);
+    }
+  }
+  if (owners.size) {
+    const free = new Map<string, ColumnMeta[]>();
+    for (const c of columns) {
+      if (matched.has(c.pos)) continue;
+      const k = normName(c.original);
+      free.set(k, [...(free.get(k) ?? []), c]);
+    }
+    for (const [k, a] of owners) {
+      const hit = free.get(k);
+      if (!a || found.has(a) || hit?.length !== 1) continue;
+      matched.set(hit[0]!.pos, a);
+      found.add(a);
+    }
+  }
   // Nama tampil kolom tambahan tidak boleh bentrok dengan nama akhir mana pun (cocok, dipetakan,
   // kosong — T-014): semua nama skema aktif dicadangkan.
   const used = new Set(act.map((a) => a.name.toLowerCase()));

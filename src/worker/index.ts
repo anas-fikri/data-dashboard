@@ -41,7 +41,11 @@ import {
 } from "@/features/ingest/period-setup";
 import { prismaPeriodSetupRepo } from "@/features/ingest/period-setup-repo";
 import { runPeriodIngest } from "@/features/ingest/period-ingest";
-import { prismaPeriodIngestRepo, versionMode } from "@/features/ingest/period-ingest-repo";
+import {
+  prismaPeriodIngestRepo,
+  prismaPeriodMappingRepo,
+  versionMode,
+} from "@/features/ingest/period-ingest-repo";
 import { periodLimits } from "@/features/ingest/period-plan";
 import { recastSheet, yieldsToIngest } from "@/features/ingest/recast";
 import {
@@ -237,6 +241,7 @@ async function main() {
 
   // --- ingest ---
   const periodIngestRepo = prismaPeriodIngestRepo(() => periodLimits(env()));
+  const periodMappingRepo = prismaPeriodMappingRepo(() => periodLimits(env()));
   const ingestWorker = new Worker<IngestJobData>(
     INGEST_QUEUE,
     async (job: Job<IngestJobData>) => {
@@ -336,6 +341,12 @@ async function main() {
         storage: s3IngestStorage,
         lock: redisLockStore(lockRedis),
         tmpRoot,
+        // Pemetaan unggahan periode (T-057): jalur periode yang sama dengan ingest.
+        period: {
+          repo: periodMappingRepo,
+          storage: s3IngestStorage,
+          limits: periodLimits(env()),
+        },
       },
     );
     logger.info(

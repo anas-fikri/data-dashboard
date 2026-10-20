@@ -168,6 +168,13 @@ export type MappingView =
       none: false;
       datasetId: string;
       datasetName: string;
+      /**
+       * Unggahan data per periode (T-057): pemetaan hanya untuk periode di file ini, tanpa ubah tipe
+       * (arahan ke halaman Skema), sheet aktif yang tidak ada di file dipertahankan.
+       */
+      period: boolean;
+      /** Alasan menunggu pemetaan dari ingest (unggahan periode); null = tidak ditampilkan. */
+      reason: string | null;
       /** Versi yang menunggu pemetaan. */
       awaiting: { id: string; fileName: string | null; createdAt: string; sourceDeleted: boolean };
       active: { id: string; fileName: string | null };

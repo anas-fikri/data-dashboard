@@ -30,6 +30,7 @@ import {
   type ActiveSnapshot,
   type SnapshotRef,
 } from "./refresh";
+import { periodMappingColumns } from "./period-upload-plan";
 import { choiceOf, type AbsentColumn, type ColumnOverride } from "./typed";
 
 /** Tipe/format pilihan user untuk kolom baru yang cocok/dipetakan (posisi di file baru). */
@@ -368,6 +369,122 @@ export function validateMapping(raw: unknown, ctx: MappingContext): MappingCheck
   return { ok: true, input, plan };
 }
 
-/** Pemetaan unggahan periode = T-057; sampai itu versi seperti ini hanya bisa dibuang (T-052). */
+/** Worker tanpa dependensi pemetaan periode (tidak terjadi di produksi): versi hanya bisa dibuang. */
 export const PERIOD_MAPPING_UNSUPPORTED =
   "Pemetaan kolom untuk unggahan periode belum tersedia. Buang versi ini, samakan judul kolom file dengan data aktif, lalu unggah lagi.";
+
+// ── Pemetaan unggahan periode (T-057, rencana G-6 §4.9) ─────────────────────────────────────────────
+
+/** Ubah tipe tidak ditawarkan di pemetaan periode: recast per segmen lewat halaman Skema. */
+export const PERIOD_CAST_MESSAGE =
+  "Tipe kolom tidak bisa diubah di pemetaan data per periode. Ubah tipe di halaman Skema setelah pemetaan disimpan.";
+
+/** Sheet raw versi periode yang menunggu pemetaan: lineage sheet aktif pasangannya (dari ingest). */
+export interface PeriodVersionSheet extends VersionSheet {
+  lineageId: string;
+}
+
+/** Sheet aktif dataset periode (acuan pemetaan). */
+export interface PeriodActiveRef extends ActiveSheet {
+  lineageId: string;
+  colCount: number;
+  periodSource: "COLUMN" | "LABEL" | null;
+  periodColumn: number | null;
+}
+
+export interface PeriodMappingContext {
+  sheets: PeriodVersionSheet[];
+  active: { versionId: string; sheets: PeriodActiveRef[] } | null;
+}
+
+/** Pasangan sheet aktif ↔ sheet file (lineage yang sama; hanya sheet aktif yang punya sumber periode). */
+export function periodPairs(
+  sheets: PeriodVersionSheet[],
+  active: PeriodActiveRef[],
+): { active: PeriodActiveRef; target: PeriodVersionSheet }[] {
+  const out: { active: PeriodActiveRef; target: PeriodVersionSheet }[] = [];
+  for (const a of [...active].sort((x, y) => x.index - y.index)) {
+    if (!a.periodSource) continue;
+    const t = sheets.filter((s) => s.lineageId === a.lineageId);
+    if (t.length === 1) out.push({ active: a, target: t[0]! });
+  }
+  return out;
+}
+
+/** Posisi kanonik kolom periode sheet aktif (sumber kolom), selain itu null. */
+export const periodColumnOf = (a: Pick<PeriodActiveRef, "periodSource" | "periodColumn">) =>
+  a.periodSource === "COLUMN" ? a.periodColumn : null;
+
+export type PeriodMappingCheck =
+  | {
+      ok: true;
+      input: MappingInput;
+      /** Per id sheet aktif: posisi kolom aktif yang hilang → kolom file baru, null = kosongkan. */
+      decisions: Map<string, Map<number, number | null>>;
+    }
+  | { ok: false; code: "INVALID" | "STALE"; message: string };
+
+function invalidP(message: string): PeriodMappingCheck {
+  return { ok: false, code: "INVALID", message };
+}
+
+/**
+ * Validasi pemetaan unggahan periode (murni; app dan worker): bentuk + acuan (STALE) sama dengan
+ * validateMapping; pasangan sheet tetap (lineage dari ingest, sheet aktif yang tidak ada di file
+ * dipertahankan — tidak diputuskan); tanpa ubah tipe; setiap kolom yang hilang (termasuk kolom periode
+ * tersembunyi) diputuskan tepat sekali; kolom baru dipakai sekali dan belum cocok; kolom periode tidak
+ * bisa dikosongkan.
+ */
+export function validatePeriodMapping(raw: unknown, ctx: PeriodMappingContext): PeriodMappingCheck {
+  const parsed = parseMappingInput(raw);
+  if (!parsed.ok) return parsed;
+  const { input } = parsed;
+  if (!ctx.active || !sameSnapshot(input.base, snapshotRef(ctx.active))) {
+    return { ok: false, code: "STALE", message: MAPPING_STALE_MESSAGE };
+  }
+  const pairs = periodPairs(ctx.sheets, ctx.active.sheets);
+  const byActive = new Map(pairs.map((p) => [p.active.id, p]));
+  const given = new Map<string, SheetMappingInput>();
+  for (const d of input.sheets) {
+    const p = byActive.get(d.activeSheetId);
+    if (!p) return invalidP("Sheet aktif tidak dikenal atau tidak ada di file ini.");
+    if (given.has(d.activeSheetId)) return invalidP("Satu sheet aktif diputuskan dua kali.");
+    given.set(d.activeSheetId, d);
+    if (d.target !== p.target.id) {
+      return invalidP(
+        `Sheet "${p.active.name}" sudah berpasangan dengan sheet "${p.target.name}".`,
+      );
+    }
+    if (d.casts?.length) return invalidP(PERIOD_CAST_MESSAGE);
+  }
+  const decisions = new Map<string, Map<number, number | null>>();
+  for (const p of pairs) {
+    const where = pairs.length > 1 ? ` di sheet "${p.active.name}"` : "";
+    const pc = periodColumnOf(p.active);
+    const plan = periodMappingColumns(p.target.columns, p.active.schema, pc);
+    const missing = new Map(plan.missing.map((a) => [a.pos, a]));
+    const taken = new Set(plan.matched.keys());
+    const out = new Map<number, number | null>();
+    for (const c of given.get(p.active.id)?.columns ?? []) {
+      const a = missing.get(c.activePos);
+      if (!a) return invalidP(`Kolom posisi ${c.activePos}${where} tidak perlu dipetakan.`);
+      if (out.has(a.pos)) return invalidP(`Kolom "${a.name}"${where} diputuskan dua kali.`);
+      if (c.newPos === null) {
+        if (a.pos === pc) {
+          return invalidP(
+            `Kolom "${a.name}"${where} adalah kolom periode dan tidak bisa dikosongkan.`,
+          );
+        }
+      } else if (!p.target.columns.some((x) => x.pos === c.newPos)) {
+        return invalidP(`Kolom file baru posisi ${c.newPos}${where} tidak ada.`);
+      } else if (taken.has(c.newPos)) {
+        return invalidP(`Kolom file baru posisi ${c.newPos}${where} sudah dipakai kolom lain.`);
+      } else taken.add(c.newPos);
+      out.set(a.pos, c.newPos);
+    }
+    const open = plan.missing.find((a) => !out.has(a.pos));
+    if (open) return invalidP(`Kolom "${open.name}"${where} belum dipetakan atau dikosongkan.`);
+    decisions.set(p.active.id, out);
+  }
+  return { ok: true, input, decisions };
+}

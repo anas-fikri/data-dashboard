@@ -124,6 +124,8 @@ const view: MappingReady = {
   none: false,
   datasetId: "d1",
   datasetName: "Penjualan",
+  period: false,
+  reason: null,
   awaiting: {
     id: "v2",
     fileName: "baru.xlsx",
@@ -409,6 +411,28 @@ describe("tahap tinjau (review)", () => {
     expect(castTargetId(num, num, { columns: { 2: null }, casts: {} }, 2)).toBeNull();
     const numView: MappingReady = { ...view, sheets: [num] };
     expect(issueTargets(numView, {}, {}, [issue("Cabang", 0)])).toEqual(["map-a1-2"]);
+  });
+
+  it("T-057 unggahan periode: tanpa pemicu 'Ubah tipe' (halaman Skema) dan tanpa hitungan baris tipe", () => {
+    const num: MappingSheetView = {
+      ...sales,
+      active: {
+        ...sales.active,
+        columns: sales.active.columns.map((c) => (c.pos === 2 ? { ...c, type: "integer" } : c)),
+      },
+    };
+    const pv: MappingReady = { ...view, period: true, sheets: [num] };
+    expect(issueTargets(pv, {}, {}, [issue("Cabang", 0), issue("Tanggal", 0.5)])).toEqual([
+      null,
+      null,
+    ]);
+    const flags = withReview({}, pv, [issue("Tanggal", 0.85), issue("Cabang", 0)]);
+    const mapped: MappingDraft = { a1: { columns: { 2: 2 }, casts: {} } };
+    expect(summaryCounts(pv, mapped, {}, flags)).toMatchObject({
+      lowCast: 0,
+      retyped: 0,
+      missing: 1,
+    });
   });
 
   it("R2-UI-10: ringkasan menghitung kolom hilang yang dipetakan dan ditandai tinjau", () => {

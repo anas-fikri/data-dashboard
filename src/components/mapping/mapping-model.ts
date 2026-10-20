@@ -288,6 +288,8 @@ export function issueTargets(
   plans: PairPlans,
   issues: MappingReviewIssue[],
 ): (string | null)[] {
+  // Unggahan periode (T-057): tipe hanya bisa diubah dari halaman Skema.
+  if (view.period) return issues.map(() => null);
   return issues.map((issue) => {
     const at = locateIssue(view, issue);
     const sheet = at && view.sheets.find((s) => s.active.id === at.sheetId);
@@ -387,10 +389,12 @@ export function summaryCounts(
     if (!pair) continue;
     const f = flags[s.active.id];
     missing += pair.missing.length;
+    hidden += hiddenExtras(pair, d).length;
+    // Unggahan periode: tanpa baris tipe (ubah tipe lewat halaman Skema).
+    if (view.period) continue;
     lowCast += castRows(pair, f).length;
     lowCast += pair.missing.filter((pos) => mappedCast(s, pair, d, pos, f)?.review).length;
     retyped += retypedColumns(s, pair, f).length;
-    hidden += hiddenExtras(pair, d).length;
   }
   return {
     missing,

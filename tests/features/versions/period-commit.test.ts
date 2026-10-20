@@ -367,3 +367,104 @@ describe('commitPeriodInTx ("Terapkan" pemilik)', () => {
     expect(tx.sheet.deleteMany).not.toHaveBeenCalled();
   });
 });
+
+describe("T-057: perubahan skema sheet + commit pemetaan", () => {
+  const change = (over: Record<string, unknown> = {}) => ({
+    lineageId: L1,
+    baseRevision: 2,
+    colCount: 4,
+    columns: [{ pos: 4, name: "catatan", original: "catatan" }],
+    added: [
+      {
+        pos: 4,
+        name: "catatan",
+        original: "catatan",
+        type: "text" as const,
+        hidden: true,
+        nullPct: 0,
+        distinctCount: 1,
+        castFailCount: 0,
+        nonEmpty: 31,
+      },
+    ],
+    aliases: [],
+    normalized: [],
+    ...over,
+  });
+
+  it("kolom baru dibawa ke sheet versi baru (colCount/columns/schema), revisi tetap; fakta ditulis ke versi", async () => {
+    const meta = { ignoredSheets: [], changes: [change()] };
+    expect((await auto({ meta })).outcome).toBe("activated");
+    const data = tx.sheet.create.mock.calls[0]![0].data;
+    expect(data).toMatchObject({ colCount: 4, schemaRevision: 2 });
+    expect(data.columns).toEqual([{ pos: 4, name: "catatan", original: "catatan" }]);
+    expect(data.schema).toEqual([expect.objectContaining({ pos: 4, hidden: true, type: "text" })]);
+    expect(tx.datasetVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: VER, status: "INGESTING" },
+      data: expect.objectContaining({ status: "READY", periodMeta: meta }),
+    });
+  });
+
+  it("perubahan dihitung atas revisi skema lain → stale tanpa tulisan", async () => {
+    expect(
+      (await auto({ meta: { ignoredSheets: [], changes: [change({ baseRevision: 1 })] } })).outcome,
+    ).toBe("stale");
+    expect(tx.sheet.create).not.toHaveBeenCalled();
+  });
+
+  it("'Terapkan' (AWAITING_CONFIRM): perubahan dibaca dari versi; bentuk rusak → stale", async () => {
+    version.periodMeta = { ignoredSheets: [], changes: [change()] };
+    incoming = [incomingRow("2026-02-01", 27)];
+    const r = await auto({ meta: version.periodMeta });
+    if (r.outcome !== "awaiting") throw new Error(r.outcome);
+    vi.clearAllMocks();
+    tx.datasetVersion.updateMany.mockResolvedValue({ count: 1 });
+    tx.sheet.create.mockImplementation(async ({ data }: { data: { typedKey: string | null } }) => ({
+      id: "newsheet",
+      typedKey: data.typedKey,
+    }));
+    activateVersionInTx.mockResolvedValue({ deletedTypedKeys: [] });
+    version.status = "AWAITING_CONFIRM";
+    version.plan = JSON.parse(JSON.stringify(r.plan));
+    const confirm = () =>
+      commitPeriodInTx(tx as never, {
+        versionId: VER,
+        from: "AWAITING_CONFIRM",
+        include: [],
+        mode: {
+          kind: "confirm",
+          digest: periodPlanDigest(r.plan),
+          ack: { shrink: true, droppedRows: 0 },
+        },
+        present: allKeys(),
+        limits: LIMITS,
+      });
+    expect((await confirm()).outcome).toBe("activated");
+    expect(tx.sheet.create.mock.calls[0]![0].data).toMatchObject({ colCount: 4 });
+    version.periodMeta = { changes: [{ lineageId: 5 }] };
+    expect((await confirm()).outcome).toBe("stale");
+  });
+
+  it("pemetaan (dari AWAITING_MAPPING) → AuditLog dataset.version.map dengan id job, juga saat menunggu konfirmasi", async () => {
+    version.status = "AWAITING_MAPPING";
+    incoming = [incomingRow("2026-02-01", 27)];
+    const r = await auto({
+      from: "AWAITING_MAPPING",
+      meta: { ignoredSheets: [], changes: [] },
+      mapAudit: { actorId: "u1", ip: "ip", meta: { jobId: "mp_1" } },
+    });
+    expect(r.outcome).toBe("awaiting");
+    expect(recordAudit).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({
+        action: "dataset.version.map",
+        actorId: "u1",
+        meta: expect.objectContaining({ versionId: VER, jobId: "mp_1" }),
+      }),
+    );
+    expect(tx.datasetVersion.updateMany).toHaveBeenCalledWith({
+      where: { id: VER, status: "AWAITING_MAPPING" },
+      data: expect.not.objectContaining({ ingestStage: "typed" }),
+    });
+  });
+});

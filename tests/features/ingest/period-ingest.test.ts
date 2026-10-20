@@ -5,6 +5,9 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import { DeadlineError, runIngest, type IngestProgress } from "@/features/ingest/ingest";
 import {
   runPeriodIngest,
+  runPeriodMapping,
+  type PeriodMappingRepo,
+  type PeriodRawSheet,
   type PeriodActiveSheet,
   type PeriodCommitInput,
   type PeriodCommitResult,
@@ -15,13 +18,16 @@ import {
 } from "@/features/ingest/period-ingest";
 import type { PeriodLimits, PeriodPlan } from "@/features/ingest/period-plan";
 import {
+  applySchemaChange,
   decidePeriodCommit,
   periodPlanSummary,
+  type SheetSchemaChange,
   type ActiveSegmentRef,
   type IncomingSegmentRef,
   type ManifestRef,
 } from "@/features/ingest/period-upload-plan";
 import { sameSnapshot } from "@/features/ingest/refresh";
+import type { SheetRecord } from "@/features/ingest/ingest";
 import { buildXlsx, colLetter, DS, FakeStorage, readParquet, testRoot, VID } from "./fakes";
 
 /*
@@ -79,6 +85,11 @@ class FakePeriodRepo implements PeriodIngestRepo {
   segments = new Map<string, PeriodSegmentRecord>();
   typed = new Map<string, PeriodTypedRecord & { segmentId: string }>();
   rawSheets: string[] = [];
+  /** Sheet raw saja versi yang menunggu pemetaan (T-057: sumber pemetaan). */
+  rawRecs: PeriodRawSheet[] = [];
+  ignored: string[] = [];
+  /** Perubahan skema sheet yang dibawa commit (T-057). */
+  changes: SheetSchemaChange[] = [];
   progressLog: IngestProgress[] = [];
   highWater = 10_000n;
   commits = 0;
@@ -123,13 +134,26 @@ class FakePeriodRepo implements PeriodIngestRepo {
     this.typed.set(id, { ...tr, segmentId });
     return id;
   }
-  async createRawSheet(_v: string, s: { name: string }) {
+  async createRawSheet(
+    _v: string,
+    s: SheetRecord,
+    lineageId: string,
+    _segmentId: string,
+    rawKey: string,
+  ) {
     this.rawSheets.push(s.name);
+    this.rawRecs.push({
+      ...structuredClone(s),
+      id: `rawsheet${this.rawRecs.length + 1}`,
+      lineageId,
+      rawKey,
+    });
   }
-  async awaitMapping(_v: string, d: { reason: string }) {
+  async awaitMapping(_v: string, d: { reason: string; ignoredSheets: string[] }) {
     if (this.status !== "INGESTING") return false;
     this.status = "AWAITING_MAPPING";
     this.error = d.reason;
+    this.ignored = d.ignoredSheets;
     return true;
   }
   incoming(): IncomingSegmentRef[] {
@@ -168,6 +192,7 @@ class FakePeriodRepo implements PeriodIngestRepo {
     if (r.decision !== "activate" && r.decision !== "await") return { outcome: "stale" };
     this.plan = r.plan;
     this.manifest = r.manifest;
+    this.changes = d.changes;
     this.status = r.decision === "activate" ? "READY" : "AWAITING_CONFIRM";
     return { outcome: r.decision === "activate" ? "activated" : "awaiting", plan: r.plan };
   }
@@ -222,7 +247,7 @@ function activeSheet(
     colCount: base.colCount,
     periodSource,
     periodColumn:
-      periodSource === "COLUMN" ? base.schema.find((c) => c.original === "tanggal")!.pos : null,
+      periodSource === "COLUMN" ? base.schema.find((c) => /tanggal/i.test(c.original))!.pos : null,
     segments,
     keys,
   };
@@ -606,5 +631,297 @@ describe("prasyarat", () => {
     expect(await s.run()).toMatchObject({ outcome: "failed" });
     expect(s.repo.status).toBe("FAILED");
     expect(s.storage.keys().filter((k) => !s.before.includes(k))).toEqual([]);
+  });
+});
+
+// ── T-057: pemetaan kolom pada unggahan periode ─────────────────────────────────────────────────────
+
+/** Repo pemetaan di atas repo ingest tiruan (status, segmen, commit yang sama). */
+class FakeMappingRepo implements PeriodMappingRepo {
+  audit: { actorId: string; ip: string; meta: Record<string, unknown> } | null = null;
+  commits = 0;
+  constructor(readonly r: FakePeriodRepo) {}
+  load = () => this.r.load();
+  allocateRows = (l: string, n: number) => this.r.allocateRows(l, n);
+  createSegment = (v: string, d: PeriodSegmentRecord) => this.r.createSegment(v, d);
+  addTyped = (id: string, t: PeriodTypedRecord) => this.r.addTyped(id, t);
+  recordCleanup = async () => {};
+  async rawSheets() {
+    return {
+      sheets: structuredClone(this.r.rawRecs),
+      sha256: "sha-file",
+      ignoredSheets: this.r.ignored,
+    };
+  }
+  async deletePeriodSegments() {
+    if (this.r.status !== "AWAITING_MAPPING") return [];
+    const ids = [...this.r.segments.values()].filter((g) => g.period).map((g) => g.id);
+    for (const id of ids) this.r.segments.delete(id);
+    for (const [k, t] of this.r.typed) if (ids.includes(t.segmentId)) this.r.typed.delete(k);
+    return ids;
+  }
+  async commit(v: string, d: Parameters<PeriodMappingRepo["commit"]>[1]) {
+    this.commits++;
+    if (this.r.status !== "AWAITING_MAPPING") return { outcome: "gone" as const };
+    const r = await this.r.commit(v, d);
+    if (r.outcome === "activated" || r.outcome === "awaiting") this.audit = d.audit;
+    return r;
+  }
+  async dropRawSegments() {
+    const ids = [...this.r.segments.values()].filter((g) => !g.period).map((g) => g.id);
+    for (const id of ids) this.r.segments.delete(id);
+    return ids;
+  }
+}
+
+/** Unggahan periode yang menunggu pemetaan + jalankan pemetaan dengan keputusan `columns`. */
+async function awaiting(
+  rows: string[][],
+  base: { schema: ColumnSchema[]; colCount: number; headerRow: number },
+  over: Parameters<typeof setup>[3] = {},
+) {
+  const s = setup(rows, base, JAN_MAR, over);
+  expect((await s.run()).outcome).toBe("awaiting");
+  const mrepo = new FakeMappingRepo(s.repo);
+  const snapshot = {
+    activeVersionId: ACTIVE,
+    sheets: [{ id: SHEET, schemaRevision: 2 }],
+  };
+  const map = (
+    columns: { activePos: number; newPos: number | null }[],
+    extra: Record<string, unknown> = {},
+  ) =>
+    runPeriodMapping(
+      VID,
+      {
+        base: snapshot,
+        sheets: [{ activeSheetId: SHEET, target: s.repo.rawRecs[0]!.id, columns }],
+        ...extra,
+      },
+      { repo: mrepo, storage: s.storage, limits: LIMITS },
+      {
+        tmpRoot: join(t.root, "tmp"),
+        duckMemory: "256MB",
+        watch: async () => {},
+        actorId: "owner1",
+        ip: "10.0.0.1",
+        jobId: "mp_9",
+      },
+    );
+  return { ...s, mrepo, map };
+}
+
+const KIRIM = ["kode", "Tanggal Kirim", "nilai"];
+const newKeys = (s: { storage: FakeStorage; before: string[] }) =>
+  s.storage.keys().filter((k) => !s.before.includes(k));
+
+describe("T-057 AC1: judul kolom berganti → AWAITING_MAPPING; hanya segmen baru yang di-cast", () => {
+  it("'Tgl Kirim' vs 'Tanggal Kirim' → menunggu pemetaan; setelah dipetakan April aktif, Jan–Mar tidak tersentuh", async () => {
+    const base = await schemaOf([KIRIM, ...month(1, 30)]);
+    const s = await awaiting([["kode", "Tgl Kirim", "nilai"], ...month(4, 10)], base);
+    expect(s.repo.error).toMatch(/Kolom "Tanggal Kirim" tidak ada di file baru/);
+    // Raw saja; tanpa typed.
+    expect(s.repo.typed.size).toBe(0);
+    const rawOnly = [...s.repo.segments.keys()];
+
+    expect(await s.map([{ activePos: 2, newPos: 2 }])).toEqual({
+      outcome: "done",
+      activated: true,
+    });
+    expect(s.repo.status).toBe("READY");
+    expect(periodPlanSummary(s.repo.plan!)).toBe("April 2026 ditambahkan (10 baris)");
+    // Manifest: Jan–Mar = file typed aktif yang sama (tidak di-cast ulang), April = segmen baru.
+    const m = s.repo.manifest!.get(LINEAGE)!;
+    expect(m.filter((r) => !r.fromUpload).map((r) => r.typedId)).toEqual([
+      "t-2026-01-01",
+      "t-2026-02-01",
+      "t-2026-03-01",
+    ]);
+    // Objek baru hanya raw + typed segmen April; raw saja dari ingest dibersihkan.
+    const seg = [...s.repo.segments.values()].find((g) => g.period)!;
+    expect(newKeys(s).sort()).toEqual(
+      [seg.rawKey, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`].sort(),
+    );
+    expect(rawOnly.some((id) => s.repo.segments.has(id))).toBe(false);
+    // Nilai tanggal dari kolom 'Tgl Kirim' masuk ke posisi kanonik 'Tanggal Kirim'.
+    const typed = await readParquet(
+      join(s.storage.dir, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`),
+    );
+    expect(typed.map((r) => r[3])).toEqual(month(4, 10).map((r) => new Date(`${r[1]}T00:00:00Z`)));
+    // Judul pengganti diingat sebagai alias; audit pemetaan dengan id job.
+    expect(s.repo.changes).toEqual([
+      expect.objectContaining({
+        lineageId: LINEAGE,
+        baseRevision: 2,
+        aliases: [{ pos: 2, alias: "Tgl Kirim" }],
+        added: [],
+      }),
+    ]);
+    expect(s.mrepo.audit).toMatchObject({
+      actorId: "owner1",
+      meta: { jobId: "mp_9", mapped: 1, nulls: 0 },
+    });
+  });
+
+  it("AC4: bulan berikutnya memakai 'Tgl Kirim' lagi → terpetakan otomatis lewat alias, tanpa AWAITING_MAPPING", async () => {
+    const base = await schemaOf([KIRIM, ...month(1, 30)]);
+    const first = await awaiting([["kode", "Tgl Kirim", "nilai"], ...month(4, 10)], base);
+    expect((await first.map([{ activePos: 2, newPos: 2 }])).outcome).toBe("done");
+    const ch = first.repo.changes[0]!;
+    const next = applySchemaChange({ ...base, columns: [], schemaRevision: 2 }, ch)!;
+    expect(next.schema[1]!.aliases).toEqual(["Tgl Kirim"]);
+    const s = setup(
+      [["kode", "Tgl Kirim", "nilai"], ...month(5, 12)],
+      { ...base, schema: next.schema },
+      {
+        ...JAN_MAR,
+        "2026-04-01": 10,
+      },
+    );
+    expect(await s.run()).toEqual({ outcome: "done", sheets: 1 });
+    expect(periodPlanSummary(s.repo.plan!)).toBe("Mei 2026 ditambahkan (12 baris)");
+    expect(s.repo.changes).toEqual([]);
+  });
+
+  it("acuan skema berubah sejak halaman dibuka → stale; ubah tipe → invalid; tanpa segmen ditulis", async () => {
+    const base = await schemaOf([KIRIM, ...month(1, 30)]);
+    const s = await awaiting([["kode", "Tgl Kirim", "nilai"], ...month(4, 10)], base);
+    const stale = await runPeriodMapping(
+      VID,
+      {
+        base: { activeVersionId: ACTIVE, sheets: [{ id: SHEET, schemaRevision: 1 }] },
+        sheets: [{ activeSheetId: SHEET, target: s.repo.rawRecs[0]!.id, columns: [] }],
+      },
+      { repo: s.mrepo, storage: s.storage, limits: LIMITS },
+      { tmpRoot: join(t.root, "tmp"), watch: async () => {}, actorId: "o", ip: "i" },
+    );
+    expect(stale).toEqual({ outcome: "stale" });
+    expect(
+      await s.map([{ activePos: 2, newPos: 2 }], {
+        sheets: [
+          {
+            activeSheetId: SHEET,
+            target: s.repo.rawRecs[0]!.id,
+            columns: [{ activePos: 2, newPos: 2 }],
+            casts: [{ pos: 3, type: "text" }],
+          },
+        ],
+      }),
+    ).toMatchObject({ outcome: "invalid", message: expect.stringMatching(/halaman Skema/) });
+    expect(await s.map([{ activePos: 2, newPos: null }])).toMatchObject({
+      outcome: "invalid",
+      message: expect.stringMatching(/kolom periode/),
+    });
+    expect([...s.repo.segments.values()].filter((g) => g.period)).toEqual([]);
+    expect(s.repo.status).toBe("AWAITING_MAPPING");
+  });
+
+  it("nilai kolom yang dipetakan banyak tidak cocok → review (tanpa segmen); dengan persetujuan → nilai itu NULL", async () => {
+    const base = await schemaOf([KIRIM, ...month(1, 30)]);
+    // 'nilai' (bilangan bulat) hilang; pemilik memetakan 'ket' (teks) ke sana.
+    const rows = [
+      ["kode", "Tanggal Kirim", "ket"],
+      ...month(4, 10).map((r, i) => [r[0]!, r[1]!, i < 5 ? "x" : "7"]),
+    ];
+    const s = await awaiting(rows, base);
+    const review = await s.map([{ activePos: 3, newPos: 3 }]);
+    expect(review).toEqual({
+      outcome: "review",
+      issues: [
+        { sheet: "CSV", column: "nilai", header: "ket", pct: 0.5, typeLabel: expect.any(String) },
+      ],
+    });
+    expect([...s.repo.segments.values()].filter((g) => g.period)).toEqual([]);
+    expect((await s.map([{ activePos: 3, newPos: 3 }], { acknowledge: true })).outcome).toBe(
+      "done",
+    );
+    const seg = [...s.repo.segments.values()].find((g) => g.period)!;
+    const typed = await readParquet(
+      join(s.storage.dir, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`),
+    );
+    expect(typed.map((r) => r[4])).toEqual([null, null, null, null, null, 7n, 7n, 7n, 7n, 7n]);
+  });
+});
+
+describe("T-057 AC2: 'Kosongkan' dan kolom tambahan", () => {
+  it("'Kosongkan' → NULL hanya di periode baru, kolom tidak absent; kolom tambahan → kolom tersembunyi baru, periode lama tanpa cast ulang", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = [
+      ["kode", "tanggal", "keterangan"],
+      ...month(4, 6).map((r, i) => [r[0]!, r[1]!, `catatan ${i}`]),
+    ];
+    const s = await awaiting(rows, base);
+    expect(s.repo.error).toMatch(/Kolom "nilai" tidak ada di file baru/);
+    expect(await s.map([{ activePos: 3, newPos: null }])).toEqual({
+      outcome: "done",
+      activated: true,
+    });
+    const seg = [...s.repo.segments.values()].find((g) => g.period)!;
+    // nilai (pos 3) = kosong untuk April; keterangan = posisi kanonik baru 4 (kolom file 3).
+    expect(seg.colMap).toEqual([1, 2, 0, 3]);
+    const typed = await readParquet(
+      join(s.storage.dir, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`),
+    );
+    expect(typed.map((r) => r[4])).toEqual([null, null, null, null, null, null]);
+    expect(typed.map((r) => r[5])).toEqual(range(6, (i) => `catatan ${i}`));
+    const tr = [...s.repo.typed.values()][0]!;
+    expect(tr.columns).toEqual([1, 2, 3, 4]);
+    const ch = s.repo.changes[0]!;
+    expect(ch).toMatchObject({
+      colCount: 4,
+      columns: [{ pos: 4, original: "keterangan" }],
+      aliases: [],
+      normalized: [],
+    });
+    expect(ch.added).toEqual([
+      expect.objectContaining({
+        pos: 4,
+        original: "keterangan",
+        type: "text",
+        hidden: true,
+        nonEmpty: 6,
+        nullPct: 0,
+      }),
+    ]);
+    // Skema versi baru: nilai tetap kolom biasa (bukan absent), kolom baru tersembunyi.
+    const next = applySchemaChange({ ...base, columns: [], schemaRevision: 2 }, ch)!;
+    expect(next.schema.find((c) => c.pos === 3)!.absent).toBeUndefined();
+    expect(next.schema.map((c) => [c.pos, c.hidden])).toEqual([
+      [1, false],
+      [2, false],
+      [3, false],
+      [4, true],
+    ]);
+    // Periode lama: file typed yang sama (tanpa kolom 4 → NULL lewat proyeksi query), tidak ditulis ulang.
+    expect(newKeys(s)).toHaveLength(2);
+  });
+
+  it("kolom tambahan tanpa kolom yang hilang → aktif otomatis dengan kolom tersembunyi baru (tanpa pemetaan)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = [[...HEADER, "catatan"], ...month(4, 5).map((r) => [...r, "ok"])];
+    const s = setup(rows, base, JAN_MAR);
+    expect(await s.run()).toEqual({ outcome: "done", sheets: 1 });
+    const seg = [...s.repo.segments.values()][0]!;
+    expect(seg.colMap).toEqual([]);
+    expect(s.repo.changes).toEqual([
+      expect.objectContaining({
+        colCount: 4,
+        added: [expect.objectContaining({ pos: 4, original: "catatan", hidden: true })],
+      }),
+    ]);
+    const typed = await readParquet(
+      join(s.storage.dir, `parquet/${DS}/seg/${seg.id}/typed-2.parquet`),
+    );
+    expect(typed.map((r) => r[5])).toEqual(["ok", "ok", "ok", "ok", "ok"]);
+  });
+
+  it("commit menolak (batas) → segmen pemetaan dibersihkan, versi tetap menunggu pemetaan", async () => {
+    const base = await schemaOf([KIRIM, ...month(1, 30)]);
+    const s = await awaiting([["kode", "Tgl Kirim", "nilai"], ...month(4, 10)], base);
+    s.repo.commitSettings = { keepPeriods: 3, onLimit: "REJECT" };
+    const r = await s.map([{ activePos: 2, newPos: 2 }]);
+    expect(r).toMatchObject({ outcome: "failed" });
+    expect([...s.repo.segments.values()].filter((g) => g.period)).toEqual([]);
+    expect(s.repo.status).toBe("AWAITING_MAPPING");
   });
 });

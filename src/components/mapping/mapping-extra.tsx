@@ -3,7 +3,16 @@ import { TYPE_LABEL, fmtInt } from "@/components/schema/labels";
 import type { MappingActiveColumn, MappingNewColumn } from "./mapping-types";
 
 /** Kolom file baru yang tidak dipakai pemetaan: masuk skema tersembunyi (AC 4). Hanya baca. */
-export function MappingExtra({ id, columns }: { id: string; columns: MappingNewColumn[] }) {
+export function MappingExtra({
+  id,
+  columns,
+  period = false,
+}: {
+  id: string;
+  columns: MappingNewColumn[];
+  /** Unggahan periode (T-057): kolom baru Teks, periode lama kosong; tipe tidak ditampilkan. */
+  period?: boolean;
+}) {
   return (
     <section
       aria-labelledby={`${id}-title`}
@@ -14,8 +23,9 @@ export function MappingExtra({ id, columns }: { id: string; columns: MappingNewC
         Kolom baru yang disembunyikan ({fmtInt(columns.length)})
       </h3>
       <p className="text-sm text-muted-foreground">
-        Kolom ini ikut tersimpan tetapi tidak muncul di builder dashboard. Tampilkan dari halaman
-        Skema setelah versi baru aktif.
+        {period
+          ? "Kolom ini ditambahkan sebagai kolom tersembunyi bertipe Teks; periode lama bernilai kosong. Tampilkan atau ubah tipenya dari halaman Skema setelah versi baru aktif."
+          : "Kolom ini ikut tersimpan tetapi tidak muncul di builder dashboard. Tampilkan dari halaman Skema setelah versi baru aktif."}
       </p>
       <ul className="flex flex-wrap gap-2">
         {columns.map((c) => (
@@ -33,9 +43,11 @@ export function MappingExtra({ id, columns }: { id: string; columns: MappingNewC
             <span className="min-w-0 [overflow-wrap:anywhere]">
               “{c.original || `Kolom ${c.pos}`}”
             </span>
-            <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">
-              {TYPE_LABEL[c.type]}
-            </span>
+            {period ? null : (
+              <span className="mt-0.5 shrink-0 text-xs text-muted-foreground">
+                {TYPE_LABEL[c.type]}
+              </span>
+            )}
           </li>
         ))}
       </ul>

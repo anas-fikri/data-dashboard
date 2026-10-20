@@ -68,6 +68,23 @@ describe("withSegments", () => {
     expect(parts[2]).toContain("CAST(c3 AS DATE) AS c3");
   });
 
+  it("T-057: file tanpa kolom yang ditambahkan kemudian (satu file / satu kelompok) → proyeksi NULL, bukan galat kolom", () => {
+    const narrow = file("a", { columns: [1, 2] });
+    const one = sheetSource({ typedKey: "a", schema, segments: [narrow] });
+    expect(typeof one).toBe("object");
+    const r1 = withSegments(built, [narrow], ["/c/a"], schema);
+    expect(r1.sql).toContain("CAST(NULL AS DATE) AS c3");
+    expect(r1.params.path).toBeUndefined();
+    const r2 = withSegments(
+      built,
+      [narrow, file("b", { columns: [1, 2] })],
+      ["/c/a", "/c/b"],
+      schema,
+    );
+    expect(r2.sql).toContain("CAST(NULL AS DATE) AS c3");
+    expect((r2.params.s0 as DuckDBListValue).items).toEqual(["/c/a", "/c/b"]);
+  });
+
   it("jumlah path tidak cocok → galat (tidak pernah membaca file yang salah)", () => {
     expect(() => withSegments(built, [file("a"), file("b")], ["/c/a"], schema)).toThrow();
   });

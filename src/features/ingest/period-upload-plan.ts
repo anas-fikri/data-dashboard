@@ -24,25 +24,97 @@ import {
 } from "./period-plan";
 import type { RawProfile } from "./profile";
 import { columnRef, planColumns, typeLabel } from "./refresh";
+import { normName } from "@/features/widgets/remap";
+import { MAX_COLUMN } from "@/features/widgets/spec";
+import { z } from "zod";
+import { columnTypeSchema } from "./recast-input";
 
 // ── Kolom ───────────────────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Perubahan skema sheet periode dari satu unggahan (T-057, rencana G-6 §4.9), diterapkan pada salinan
+ * sheet aktif saat commit (applySchemaChange) — periode lama tidak pernah di-cast ulang:
+ *  - kolom tambahan file → kolom tersembunyi baru (Teks) dengan posisi kanonik baru dan judul tersimpan;
+ *    file typed periode lama tidak memuatnya → NULL lewat proyeksi query;
+ *  - judul pengganti yang dikonfirmasi saat pemetaan → alias kolom (bulan berikutnya cocok otomatis);
+ *  - kolom kosong (absent, T-014) dinormalkan menjadi kolom biasa bila lebar kanonik bertambah (posisi
+ *    absent selalu tepat setelah Sheet.colCount; kolom baru harus sesudahnya).
+ */
+export interface SheetSchemaChange {
+  lineageId: string;
+  /** Revisi skema sheet aktif tempat perubahan dihitung (berbeda saat commit → acuan basi). */
+  baseRevision: number;
+  /** Sheet.colCount baru (lebar kanonik). */
+  colCount: number;
+  /** Judul kolom (Sheet.columns) untuk posisi baru di atas Sheet.colCount lama. */
+  columns: ColumnMeta[];
+  /** Kolom baru (tersembunyi, Teks). */
+  added: ColumnSchema[];
+  aliases: { pos: number; alias: string }[];
+  /** Posisi kolom absent yang menjadi kolom biasa. */
+  normalized: number[];
+}
+
+/** Keputusan pemetaan satu sheet periode (T-057): posisi kolom aktif → kolom file baru, null = kosongkan. */
+export type PeriodColumnDecision = ReadonlyMap<number, number | null>;
+
 export interface PeriodColumnPlan {
   /**
-   * colMap[pos-1] = kolom raw `c<n>` file baru untuk posisi kanonik `pos` (0 = tidak ada di file);
-   * panjang = jumlah kolom kanonik sheet. [] = identitas (urutan dan jumlah kolom sama persis).
+   * colMap[pos-1] = kolom raw `c<n>` file baru untuk posisi kanonik `pos` (0 = tidak ada di file → NULL);
+   * panjang = lebar kanonik (`colCount`). [] = identitas (urutan dan jumlah kolom sama persis).
    */
   colMap: number[];
   /** Masalah yang membuat versi menunggu pemetaan (kosong = cocok). */
   issues: string[];
-  /** Kolom file baru yang tidak cocok dengan kolom aktif (tetap tersimpan di raw, tidak di typed). */
+  /** Kolom file baru yang tidak cocok/dipetakan (menjadi kolom tersembunyi baru). */
   extra: number;
+  /** Lebar kanonik sheet versi baru (Sheet.colCount). */
+  colCount: number;
+  /** Skema cast segmen baru: skema aktif + alias + kolom baru (posisi kanonik). */
+  schema: ColumnSchema[];
+  /** Perubahan skema yang dibawa ke versi baru; null = skema aktif apa adanya. */
+  change: Omit<SheetSchemaChange, "lineageId" | "baseRevision"> | null;
 }
 
 /**
- * Pasangkan kolom file baru (judul asli + urutan kemunculan, aturan refresh T-013) dengan skema aktif
- * sheet periode. `sheetColCount` = kolom kanonik sheet (Sheet.colCount); `periodColumn` = posisi
- * kanonik kolom periode (sumber kolom) atau null.
+ * Kolom sheet periode yang perlu keputusan pemetaan (sama di halaman, validasi app, dan worker): kolom
+ * aktif terlihat yang hilang + kolom periode yang hilang (walau tersembunyi). `extra` = posisi kolom file
+ * baru yang belum cocok (bisa dipilih untuk kolom yang hilang; sisanya menjadi kolom tersembunyi baru).
+ */
+export function periodMappingColumns(
+  columns: ColumnMeta[],
+  schema: ColumnSchema[],
+  periodColumn: number | null,
+): {
+  matched: Map<number, ColumnSchema>;
+  missing: ColumnSchema[];
+  extra: number[];
+  names: Map<number, string>;
+} {
+  const plan = planColumns(columns, schema);
+  const found = new Set(plan.matched.values());
+  const missing = [...plan.missing];
+  const pc = periodColumn === null ? undefined : schema.find((c) => c.pos === periodColumn);
+  if (pc && !found.has(pc) && !missing.includes(pc)) missing.push(pc);
+  missing.sort((a, b) => a.pos - b.pos);
+  return {
+    matched: plan.matched,
+    missing,
+    extra: columns.filter((c) => !plan.matched.has(c.pos)).map((c) => c.pos),
+    names: new Map(plan.overrides.map((o) => [o.pos, o.name ?? `kolom_${o.pos}`])),
+  };
+}
+
+const hasAlias = (c: ColumnSchema, title: string) =>
+  normName(c.original) === normName(title) ||
+  (c.aliases ?? []).some((x) => normName(x) === normName(title));
+
+/**
+ * Pasangkan kolom file baru (judul asli + urutan kemunculan, aturan refresh T-013, lalu alias tersimpan)
+ * dengan skema aktif sheet periode. `sheetColCount` = kolom kanonik sheet (Sheet.colCount);
+ * `periodColumn` = posisi kanonik kolom periode (sumber kolom) atau null; `decision` = keputusan
+ * pemetaan (T-057; tanpa keputusan setiap kolom yang hilang = masalah). Kolom absent yang kembali ada
+ * dipetakan (periode lama tetap NULL); kolom tambahan menjadi kolom tersembunyi baru.
  */
 export function periodColumnPlan(
   columns: ColumnMeta[],
@@ -50,37 +122,224 @@ export function periodColumnPlan(
   sheetColCount: number,
   periodColumn: number | null,
   sheet: string | null,
+  decision?: PeriodColumnDecision,
 ): PeriodColumnPlan {
-  const plan = planColumns(columns, schema);
-  const issues = plan.missing.map((a) => `${columnRef(a, sheet)} tidak ada di file baru.`);
-  const map = Array.from({ length: Math.max(0, Math.trunc(sheetColCount)) }, () => 0);
-  for (const [newPos, a] of plan.matched) {
-    if (a.absent) {
-      // Kolom yang dikosongkan saat pemetaan kembali ada: datanya butuh keputusan pemetaan (T-057),
-      // bukan NULL diam-diam.
-      issues.push(`${columnRef(a, sheet)} kembali ada di file baru dan perlu dipetakan.`);
+  const { matched, missing, names } = periodMappingColumns(columns, schema, periodColumn);
+  const issues: string[] = [];
+  const pc = periodColumn === null ? undefined : schema.find((c) => c.pos === periodColumn);
+  if (periodColumn !== null && !pc) {
+    issues.push(`Kolom periode sheet${sheet ? ` ${sheet}` : ""} tidak dikenal.`);
+  }
+  const map = new Map<number, number>();
+  for (const [newPos, a] of matched) map.set(a.pos, newPos);
+  const byNew = new Map(columns.map((c) => [c.pos, c]));
+  const missingPos = new Set(missing.map((a) => a.pos));
+  for (const pos of decision?.keys() ?? []) {
+    if (!missingPos.has(pos)) issues.push(`Kolom posisi ${pos} tidak perlu dipetakan.`);
+  }
+  const aliases: { pos: number; alias: string }[] = [];
+  for (const a of missing) {
+    const pick = decision?.get(a.pos);
+    const isPeriod = a === pc;
+    if (pick === undefined) {
+      // Kolom periode tersembunyi tidak termasuk kolom terlihat yang hilang: pesannya sendiri.
+      issues.push(
+        isPeriod && (a.hidden || a.absent)
+          ? `${columnRef(a, sheet)} (kolom periode) tidak ada di file baru.`
+          : `${columnRef(a, sheet)} tidak ada di file baru.`,
+      );
       continue;
     }
-    if (a.pos < 1 || a.pos > map.length) {
+    if (pick === null) {
+      if (isPeriod) {
+        issues.push(`${columnRef(a, sheet)} adalah kolom periode dan tidak bisa dikosongkan.`);
+      }
+      continue; // kosong (NULL) hanya di segmen baru; kolom tetap ada
+    }
+    const c = byNew.get(pick);
+    if (!c || matched.has(pick) || [...map.values()].includes(pick)) {
+      issues.push(
+        `Kolom file baru posisi ${pick} tidak bisa dipakai untuk ${columnRef(a, sheet)}.`,
+      );
+      continue;
+    }
+    map.set(a.pos, pick);
+    if (c.original.trim() !== "" && !hasAlias(a, c.original)) {
+      aliases.push({ pos: a.pos, alias: c.original });
+    }
+  }
+  const used = new Set(map.values());
+  const extras = columns.filter((c) => !used.has(c.pos));
+  const reappeared = [...matched.values()].some((a) => a.absent);
+  const base = Math.max(0, Math.trunc(sheetColCount));
+  const wide = Math.max(base, ...schema.map((c) => Math.trunc(c.pos)));
+  // Lebar kanonik bertambah hanya bila perlu (kolom baru / absent kembali ada); selain itu tetap.
+  const grow = extras.length > 0 || reappeared;
+  const width = grow ? wide + extras.length : base;
+  if (width > MAX_COLUMN) {
+    issues.push(
+      `Terlalu banyak kolom${sheet ? ` di sheet ${sheet}` : ""}: ${width} kolom melebihi ${MAX_COLUMN.toLocaleString("id-ID")}.`,
+    );
+  }
+  for (const pos of map.keys()) {
+    if (pos < 1 || pos > width) {
+      const a = schema.find((c) => c.pos === pos)!;
       issues.push(`${columnRef(a, sheet)} perlu dipetakan ulang.`);
-      continue;
-    }
-    map[a.pos - 1] = newPos;
-  }
-  if (periodColumn !== null) {
-    const pc = schema.find((c) => c.pos === periodColumn);
-    const mapped = pc && periodColumn >= 1 && periodColumn <= map.length && map[periodColumn - 1];
-    if (!pc) issues.push(`Kolom periode sheet${sheet ? ` ${sheet}` : ""} tidak dikenal.`);
-    else if (!mapped && !plan.missing.includes(pc)) {
-      issues.push(`${columnRef(pc, sheet)} (kolom periode) tidak ada di file baru.`);
     }
   }
-  const identity = columns.length === map.length && map.every((n, i) => n === i + 1);
-  const used = new Set(map.filter((n) => n > 0));
+  const colMap = Array.from({ length: width }, (_, i) => map.get(i + 1) ?? 0);
+  const aliasBy = new Map<number, string[]>();
+  for (const x of aliases) aliasBy.set(x.pos, [...(aliasBy.get(x.pos) ?? []), x.alias]);
+  const normalized = grow ? schema.filter((c) => c.absent).map((c) => c.pos) : [];
+  const out = schema.map((c): ColumnSchema => {
+    let x: ColumnSchema = c;
+    const al = aliasBy.get(c.pos);
+    if (al) x = { ...x, aliases: [...(c.aliases ?? []), ...al] };
+    if (normalized.includes(c.pos)) {
+      const { absent: _absent, ...rest } = x;
+      x = rest;
+    }
+    return x;
+  });
+  const added = extras.map((c, i): ColumnSchema => ({
+    pos: wide + i + 1,
+    name: names.get(c.pos) ?? `kolom_${wide + i + 1}`,
+    original: c.original,
+    type: "text",
+    hidden: true,
+    nullPct: 0,
+    distinctCount: 0,
+    castFailCount: 0,
+    nonEmpty: 0,
+  }));
+  const metas: ColumnMeta[] = grow
+    ? [
+        ...schema
+          .filter((c) => normalized.includes(c.pos) && c.pos > base)
+          .map((c) => ({ pos: c.pos, name: c.name, original: c.original })),
+        ...added.map((c) => ({ pos: c.pos, name: c.name, original: c.original })),
+      ].sort((a, b) => a.pos - b.pos)
+    : [];
+  // Kolom baru membawa raw-nya lewat peta kolom (posisi kanonik baru → kolom file).
+  if (grow) {
+    extras.forEach((c, i) => {
+      colMap[wide + i] = c.pos;
+    });
+  }
+  const identityAll = columns.length === width && colMap.every((n, i) => n === i + 1);
+  const change =
+    grow || aliases.length ? { colCount: width, columns: metas, added, aliases, normalized } : null;
   return {
-    colMap: identity ? [] : map,
+    colMap: identityAll ? [] : colMap,
     issues,
-    extra: columns.filter((c) => !used.has(c.pos)).length,
+    extra: extras.length,
+    colCount: width,
+    schema: [...out, ...added],
+    change,
+  };
+}
+
+/** DatasetVersion.periodMeta (T-057): sheet file yang diabaikan + perubahan skema sheet unggahan. */
+export interface PeriodMeta {
+  ignoredSheets: string[];
+  changes: SheetSchemaChange[];
+}
+
+const posSchema = z.number().int().min(1).max(MAX_COLUMN);
+const metaSchema = z.object({ pos: posSchema, name: z.string(), original: z.string() });
+const periodMetaSchema = z.object({
+  ignoredSheets: z.array(z.string()).max(1_024).default([]),
+  changes: z
+    .array(
+      z.object({
+        lineageId: z.string().min(1),
+        baseRevision: z.number().int().min(0),
+        colCount: z.number().int().min(0).max(MAX_COLUMN),
+        columns: z.array(metaSchema).max(MAX_COLUMN),
+        // Kolom baru ditulis worker sendiri: bentuk ColumnSchema dijaga (posisi, tipe), sisanya apa adanya.
+        added: z
+          .array(
+            z
+              .object({
+                pos: posSchema,
+                name: z.string(),
+                original: z.string(),
+                type: columnTypeSchema,
+              })
+              .passthrough(),
+          )
+          .max(MAX_COLUMN),
+        aliases: z.array(z.object({ pos: posSchema, alias: z.string() })).max(MAX_COLUMN),
+        normalized: z.array(posSchema).max(MAX_COLUMN),
+      }),
+    )
+    .max(1_024)
+    .default([]),
+});
+
+/** periodMeta tersimpan → bentuk sah; null = kosong; bentuk tidak dikenal → null juga (dicatat pemanggil). */
+export function parsePeriodMeta(raw: unknown): PeriodMeta | null {
+  if (raw === null || raw === undefined) return null;
+  const r = periodMetaSchema.safeParse(raw);
+  return r.success ? (r.data as unknown as PeriodMeta) : null;
+}
+
+/**
+ * Terapkan perubahan skema unggahan (T-057) pada sheet aktif yang disalin ke versi baru; null = tidak
+ * cocok lagi dengan sheet itu (revisi berbeda, posisi bentrok) → acuan basi, tidak pernah ditebak.
+ */
+export function applySchemaChange(
+  row: { colCount: number; columns: ColumnMeta[]; schema: ColumnSchema[]; schemaRevision: number },
+  ch: SheetSchemaChange,
+): { colCount: number; columns: ColumnMeta[]; schema: ColumnSchema[] } | null {
+  if (ch.baseRevision !== row.schemaRevision || ch.colCount < row.colCount) return null;
+  const have = new Set(row.schema.map((c) => c.pos));
+  const top = Math.max(row.colCount, ...row.schema.map((c) => c.pos));
+  const addedPos = ch.added.map((c) => c.pos);
+  if (new Set(addedPos).size !== addedPos.length) return null;
+  if (addedPos.some((p) => have.has(p) || p <= top || p > ch.colCount)) return null;
+  if (ch.normalized.some((p) => !have.has(p) || p > ch.colCount)) return null;
+  if (ch.aliases.some((x) => !have.has(x.pos))) return null;
+  const metaPos = ch.columns.map((c) => c.pos);
+  if (new Set(metaPos).size !== metaPos.length) return null;
+  if (metaPos.some((p) => p <= row.colCount || p > ch.colCount)) return null;
+  const schema = row.schema.map((c): ColumnSchema => {
+    let x: ColumnSchema = c;
+    for (const a of ch.aliases) {
+      if (a.pos === c.pos && !hasAlias(x, a.alias)) {
+        x = { ...x, aliases: [...(x.aliases ?? []), a.alias] };
+      }
+    }
+    if (ch.normalized.includes(c.pos)) {
+      const { absent: _absent, ...rest } = x;
+      x = rest;
+    }
+    return x;
+  });
+  return {
+    colCount: ch.colCount,
+    columns: [...row.columns.filter((c) => c.pos <= row.colCount), ...ch.columns].sort(
+      (a, b) => a.pos - b.pos,
+    ),
+    schema: [...schema, ...ch.added].sort((a, b) => a.pos - b.pos),
+  };
+}
+
+/** Statistik kolom baru dari profil kanonik file baru (hanya baris file ini; periode lama NULL). */
+export function withAddedStats<T extends { added: ColumnSchema[] }>(ch: T, profile: RawProfile): T {
+  const rows = profile.dataRows;
+  return {
+    ...ch,
+    added: ch.added.map((c) => {
+      const p = profile.profiles.get(`c${c.pos}`);
+      const n = p?.n ?? 0;
+      return {
+        ...c,
+        nullPct: rows > 0 ? Math.round(((rows - n) / rows) * 10_000) / 10_000 : 0,
+        distinctCount: p?.distinct ?? 0,
+        nonEmpty: n,
+      };
+    }),
   };
 }
 
@@ -118,18 +377,24 @@ export function validateColMap(
   return out;
 }
 
+/** Kolom dengan nilai lolos konversi < 98% di file baru (persen bulat ke bawah). */
+export interface CastProblem {
+  column: ColumnSchema;
+  /** Porsi nilai yang cocok (0–1), dibulatkan ke bawah ke persen bulat. */
+  pct: number;
+}
+
 /**
- * Vonis cast atas baris file baru saja (AC 2): kolom non-teks yang terpetakan dengan nilai lolos
- * konversi < 98% → masalah. `profile` = profil kanonik (berkunci posisi skema).
+ * Vonis cast atas baris file baru saja (AC 2 T-052): kolom non-teks yang terpetakan dengan nilai lolos
+ * konversi < 98%. `profile` = profil kanonik (berkunci posisi skema).
  */
-export function castIssues(
+export function castProblems(
   schema: ColumnSchema[],
   profile: RawProfile,
   colMap: number[],
   source: SourceKind,
-  sheet: string | null,
-): string[] {
-  const out: string[] = [];
+): CastProblem[] {
+  const out: CastProblem[] = [];
   for (const c of [...schema].sort((a, b) => a.pos - b.pos)) {
     if (c.absent || c.type === "text") continue;
     if (colMap.length && !(colMap[c.pos - 1]! > 0)) continue;
@@ -138,12 +403,23 @@ export function castIssues(
     if (!p || n === 0) continue;
     const ok = Math.min(n, okCount(p, c, source));
     if (ok / n >= INFER_THRESHOLD) continue;
-    const pct = Math.floor((ok * 100) / n);
-    out.push(
-      `${columnRef(c, sheet)} hanya ${pct}% nilai di file baru yang cocok dengan tipe ${typeLabel(c)}.`,
-    );
+    out.push({ column: c, pct: Math.floor((ok * 100) / n) / 100 });
   }
   return out;
+}
+
+/** castProblems sebagai kalimat alasan menunggu pemetaan. */
+export function castIssues(
+  schema: ColumnSchema[],
+  profile: RawProfile,
+  colMap: number[],
+  source: SourceKind,
+  sheet: string | null,
+): string[] {
+  return castProblems(schema, profile, colMap, source).map(
+    ({ column: c, pct }) =>
+      `${columnRef(c, sheet)} hanya ${Math.round(pct * 100)}% nilai di file baru yang cocok dengan tipe ${typeLabel(c)}.`,
+  );
 }
 
 // ── Rencana + manifest ──────────────────────────────────────────────────────────────────────────────

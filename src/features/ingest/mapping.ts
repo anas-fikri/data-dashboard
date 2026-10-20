@@ -15,6 +15,9 @@
  *    typed lama dihapus 1 jam kemudian.
  *  - Versi sudah READY saat dimuat: "done" hanya bila commit-nya oleh job ini; selain itu "gone".
  *  - Hasil selain done → file yang diunggah job ini dihapus.
+ *  - Unggahan periode (mode PERIOD, T-057): runPeriodMapping — raw tersimpan + keputusan → jalur periode
+ *    yang sama dengan ingest (segmen baru saja; periode lama tidak di-cast ulang), commit di bawah lock
+ *    (aktif otomatis atau menunggu konfirmasi periode).
  */
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -37,6 +40,7 @@ import {
   verifyVersionIntegrity,
   type ManifestSheet,
 } from "@/features/versions/integrity-check";
+import { runPeriodMapping, type PeriodMappingDeps } from "./period-ingest";
 import { RECAST_LOCK_MS, RECAST_RENEW_MS } from "./recast";
 import { lineageRoot, typeLabel, type ActiveSnapshot, type SnapshotRef } from "./refresh";
 import type { StoredProfile } from "./profile";
@@ -69,7 +73,7 @@ export interface MappingVersion {
   active: ActiveSnapshot | null;
   /** Versi READY: id job pemetaan yang meng-commit-nya (AuditLog), null bila tidak diketahui. */
   mappedBy?: string | null;
-  /** Mode versi (T-052): pemetaan unggahan periode belum didukung (T-057). */
+  /** Mode versi (T-052): unggahan periode dipetakan lewat runPeriodMapping (T-057). */
   mode?: string;
 }
 
@@ -127,6 +131,8 @@ export interface MappingRepo {
 
 export interface MappingDeps {
   repo: MappingRepo;
+  /** Pemetaan unggahan periode (T-057); tanpa ini versi periode ditolak (hanya bisa dibuang). */
+  period?: PeriodMappingDeps;
   storage: Pick<TypedStorage, "download" | "upload" | "deleteObject" | "exists">;
   lock: LockStore;
   tmpRoot: string;
@@ -202,13 +208,25 @@ export async function applyMapping(job: MappingJob, deps: MappingDeps): Promise<
     if (!v) return { outcome: "gone" };
     // Percobaan sebelumnya job INI sudah commit lalu gagal sesudahnya (mis. menjadwalkan hapus):
     // selesai. Di-commit job lain → keputusan job ini tidak pernah diterapkan.
-    if (v.status === "READY") {
+    // Unggahan periode (T-057) bisa berakhir menunggu konfirmasi periode, bukan READY.
+    if (v.status === "READY" || (v.mode === "PERIOD" && v.status === "AWAITING_CONFIRM")) {
       return job.jobId && v.mappedBy === job.jobId
         ? { outcome: "done" }
         : { outcome: "gone", message: ALREADY_MAPPED_MESSAGE };
     }
     if (v.status !== "AWAITING_MAPPING") return { outcome: "gone" };
-    if (v.mode === "PERIOD") return { outcome: "invalid", message: PERIOD_MAPPING_UNSUPPORTED };
+    if (v.mode === "PERIOD") {
+      if (!deps.period) return { outcome: "invalid", message: PERIOD_MAPPING_UNSUPPORTED };
+      const r = await runPeriodMapping(job.versionId, job.input, deps.period, {
+        tmpRoot: deps.tmpRoot,
+        duckMemory: deps.duckMemory,
+        watch,
+        actorId: job.actorId,
+        ip: job.ip,
+        jobId: job.jobId,
+      });
+      return r.outcome === "done" ? { outcome: "done" } : r;
+    }
     const check = validateMapping(job.input, { sheets: v.sheets, active: v.active });
     if (!check.ok) {
       return check.code === "STALE"

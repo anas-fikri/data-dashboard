@@ -158,6 +158,10 @@ model DatasetVersion {
   baseVersionId    String?
   /// Awal periode pilihan pemilik untuk sheet bersumber label (T-052, naive D8); null = tanpa label.
   periodLabel      DateTime?     @db.Date
+  /// Fakta unggahan periode di luar rencana (T-057): { ignoredSheets: string[], changes:
+  /// SheetSchemaChange[] } — sheet file yang tidak disimpan (dipakai lagi setelah pemetaan) dan
+  /// perubahan skema sheet (kolom tersembunyi baru, alias judul) yang dibawa ke versi ini saat commit.
+  periodMeta       Json?
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?

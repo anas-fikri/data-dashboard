@@ -92,6 +92,14 @@ describe("recast", () => {
     expect(rows.map((x) => x[2])).toEqual([1n, 2n, null]);
   });
 
+  it("T-057: alias judul kolom ikut ke revisi berikutnya", async () => {
+    const r = await setup(DATA);
+    r.sheet().schema![0]!.aliases = ["kd"];
+    const a = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(a).toMatchObject({ outcome: "done", revision: 2 });
+    expect(r.sheet().schema!.map((c) => c.aliases)).toEqual([["kd"], undefined]);
+  });
+
   it("T-040: tanpa perubahan cast → file typed tetap dipakai (tidak ditulis ulang), revisi naik", async () => {
     const r = await setup(DATA);
     const typed1 = r.sheet().typedKey;

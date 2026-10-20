@@ -203,6 +203,7 @@ async function main() {
               id: true,
               name: true,
               periodSource: true,
+              schema: true,
               segments: {
                 orderBy: { ordinal: "asc" },
                 select: {
@@ -229,6 +230,24 @@ async function main() {
               id: s.id,
               name: s.name,
               periodSource: s.periodSource,
+              // T-057: kolom sheet (kolom tersembunyi baru, alias judul, bukan absent).
+              columns: (
+                (s.schema ?? []) as {
+                  pos: number;
+                  name: string;
+                  type: string;
+                  hidden: boolean;
+                  absent?: boolean;
+                  aliases?: string[];
+                }[]
+              ).map((c) => ({
+                pos: c.pos,
+                name: c.name,
+                type: c.type,
+                hidden: c.hidden,
+                absent: c.absent === true,
+                aliases: c.aliases ?? [],
+              })),
               segments: s.segments.map((m) => ({
                 periodKey: m.segmentTyped.segment.periodKey,
                 dataRows: m.segmentTyped.dataRows,

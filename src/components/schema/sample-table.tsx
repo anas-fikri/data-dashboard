@@ -88,8 +88,9 @@ export function SampleTable({
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={String(r[0])} className="hover:bg-accent/60">
+            {/* Nomor baris fisik bisa sama antar-unggahan (segmen periode): kunci = urutan. */}
+            {rows.map((r, i) => (
+              <tr key={`${i}:${String(r[0])}`} className="hover:bg-accent/60">
                 <th
                   scope="row"
                   className="sticky left-0 z-10 border-b border-r bg-card px-3 py-1.5 text-left font-normal tabular-nums text-muted-foreground"

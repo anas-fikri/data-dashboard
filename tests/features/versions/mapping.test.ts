@@ -472,18 +472,115 @@ describe("submitMapping", () => {
     expect(enqueueMapping).not.toHaveBeenCalled();
   });
 
-  it("T-052: unggahan periode yang menunggu pemetaan → INVALID (pemetaan periode = T-057), tanpa antre", async () => {
-    tx.datasetVersion.findFirst.mockResolvedValueOnce({
+  describe("T-057: unggahan periode", () => {
+    const L1 = "lineagecmv4kljx40009oczv01";
+    const periodActive = (over: Record<string, unknown> = {}) => [
+      {
+        ...activeData,
+        lineageId: L1,
+        colCount: 4,
+        periodSource: "LABEL",
+        periodColumn: null,
+        ...over,
+      },
+      // Sheet aktif lain yang tidak ada di file: dipertahankan, bukan keputusan.
+      {
+        ...activeData,
+        id: AS2,
+        name: "Lain",
+        index: 1,
+        lineageId: "lineagecmv4kljx40009oczv02",
+        colCount: 4,
+        periodSource: "LABEL",
+        periodColumn: null,
+      },
+    ];
+    const periodVersion = {
       status: "AWAITING_MAPPING",
       mode: "PERIOD",
-      sheets: freshRows,
+      sheets: [{ ...freshRows[0], lineageId: L1 }],
+    };
+    const pbase = {
+      activeVersionId: ACTIVE_V,
+      sheets: [
+        { id: AS1, schemaRevision: 2 },
+        { id: AS2, schemaRevision: 2 },
+      ],
+    };
+    const ppayload = (over: Record<string, unknown> = {}) => ({
+      base: pbase,
+      sheets: [{ activeSheetId: AS1, target: FS1, columns: [{ activePos: 2, newPos: 2 }] }],
+      ...over,
     });
-    expect(await submit()).toMatchObject({
-      ok: false,
-      code: "INVALID",
-      message: expect.stringMatching(/unggahan periode belum tersedia/),
+
+    it("pemetaan valid (pasangan dari lineage, sheet aktif lain dipertahankan) → antre", async () => {
+      tx.datasetVersion.findFirst.mockResolvedValueOnce(periodVersion);
+      tx.sheet.findMany.mockResolvedValueOnce(periodActive());
+      expect(await submit(ppayload())).toEqual({ ok: true, data: { jobId: "mp_1" } });
+      expect(enqueueMapping.mock.calls[0]![0].input).toEqual(ppayload());
     });
-    expect(enqueueMapping).not.toHaveBeenCalled();
+
+    it("ubah tipe di pemetaan periode → INVALID dengan arahan ke halaman Skema, tanpa antre", async () => {
+      tx.datasetVersion.findFirst.mockResolvedValueOnce(periodVersion);
+      tx.sheet.findMany.mockResolvedValueOnce(periodActive());
+      const p = ppayload({
+        sheets: [
+          {
+            activeSheetId: AS1,
+            target: FS1,
+            columns: [{ activePos: 2, newPos: 2 }],
+            casts: [{ pos: 3, type: "text" }],
+          },
+        ],
+      });
+      expect(await submit(p)).toMatchObject({
+        ok: false,
+        code: "INVALID",
+        message: expect.stringMatching(/halaman Skema/),
+      });
+      expect(enqueueMapping).not.toHaveBeenCalled();
+    });
+
+    it("kolom hilang belum diputuskan / kolom periode dikosongkan / sheet lain → INVALID", async () => {
+      tx.datasetVersion.findFirst.mockResolvedValue(periodVersion);
+      tx.sheet.findMany.mockResolvedValue(periodActive());
+      expect(await submit(ppayload({ sheets: [] }))).toMatchObject({
+        code: "INVALID",
+        message: expect.stringMatching(/"Cabang" belum dipetakan atau dikosongkan/),
+      });
+      expect(
+        await submit(ppayload({ sheets: [{ activeSheetId: AS2, target: FS1, columns: [] }] })),
+      ).toMatchObject({ code: "INVALID", message: expect.stringMatching(/tidak ada di file ini/) });
+      // Kolom periode (sumber kolom) yang hilang tidak bisa dikosongkan.
+      tx.sheet.findMany.mockResolvedValue(
+        periodActive({ periodSource: "COLUMN", periodColumn: 2 }),
+      );
+      expect(
+        await submit(
+          ppayload({
+            sheets: [
+              { activeSheetId: AS1, target: FS1, columns: [{ activePos: 2, newPos: null }] },
+            ],
+          }),
+        ),
+      ).toMatchObject({ code: "INVALID", message: expect.stringMatching(/kolom periode/) });
+      expect(enqueueMapping).not.toHaveBeenCalled();
+    });
+
+    it("tampilan: hanya pasangan lineage dengan kolom hilang, tanpa baris tipe, kolom baru Teks", () => {
+      const [s, ...rest] = m.periodMappingSheets(periodActive() as never, [
+        { ...freshData, lineageId: L1 },
+      ]);
+      expect(rest).toEqual([]);
+      expect(s).toMatchObject({
+        target: { id: FS1, name: "Data" },
+        candidates: [],
+        missing: [2],
+        extra: [2, 4],
+        lowCast: [],
+      });
+      expect(s!.newColumns.map((c) => c.type)).toEqual(["text", "text", "text", "text"]);
+    });
   });
 
   it("versi sudah tidak menunggu pemetaan → INVALID", async () => {

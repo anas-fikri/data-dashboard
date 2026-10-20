@@ -169,10 +169,16 @@ export default defineConfig({
       testMatch: /period-manage\.spec\.ts$/,
       dependencies: ["period-limits"],
     },
+    // period-mapping (T-057): worker sendiri; pemetaan kolom unggahan periode lewat halaman pemetaan.
+    {
+      name: "period-mapping",
+      testMatch: /period-mapping\.spec\.ts$/,
+      dependencies: ["period-manage"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-manage"],
+      dependencies: ["period-mapping"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

@@ -223,6 +223,17 @@ function carryAbsent(schema: ColumnSchema[] | null, overrides: ColumnOverride[])
     });
 }
 
+/**
+ * Alias judul kolom (T-057) ikut ke revisi baru di posisi yang sama: recast tidak mengubah judul file,
+ * jadi judul pengganti yang dikonfirmasi tetap berlaku. Baris judul baru → judul berubah, alias dibuang.
+ */
+function withAliases(schema: ColumnSchema[], prev: ColumnSchema[] | null): ColumnSchema[] {
+  if (!prev) return schema;
+  const by = new Map(prev.filter((c) => c.aliases?.length).map((c) => [c.pos, c.aliases!]));
+  if (!by.size) return schema;
+  return schema.map((c) => (by.has(c.pos) ? { ...c, aliases: by.get(c.pos) } : c));
+}
+
 class LockLostError extends Error {
   constructor() {
     super("lock recast hilang");
@@ -338,7 +349,14 @@ export async function recastSheet(
     };
     // Satu segmen: ukuran dan judul sheet (perilaku sebelum T-040); beberapa: milik tiap segmen.
     const hdr = (g: RecastSegment) => (multi ? g.headerRow : headerRow);
-    const rawCols = (g: RecastSegment) => (multi || g.colMap.length ? g.colCount : s.colCount);
+    // Sheet satu segmen yang lebih sempit dari skema (kolom ditambahkan unggahan periode yang kemudian
+    // dihapus, T-057): kolom di luar raw file tidak dibaca (NULL), bukan galat "kolom tidak ada".
+    const rawCols = (g: RecastSegment) =>
+      multi || g.colMap.length
+        ? g.colCount
+        : g.colCount > 0
+          ? Math.min(g.colCount, s.colCount)
+          : s.colCount;
 
     // Header baru: rentang data berubah → nama dari baris itu dan inferensi ulang (pilihan lama
     // tidak dibawa); selain itu pilihan yang sudah berlaku tetap dipakai.
@@ -385,13 +403,16 @@ export async function recastSheet(
       if (!newHeader) await deps.repo.saveProfile(g.typed.id, packProfile(hdr(g), p));
     }
     const segProfile = profiles as RawProfile[];
-    const schema = typedSchema(mergeProfiles(segProfile), {
-      source: s.source,
-      colCount: s.colCount,
-      columns,
-      overrides,
-      absent,
-    });
+    const schema = withAliases(
+      typedSchema(mergeProfiles(segProfile), {
+        source: s.source,
+        colCount: s.colCount,
+        columns,
+        overrides,
+        absent,
+      }),
+      newHeader ? null : s.schema,
+    );
 
     // Tahap 2: tulis ulang hanya segmen yang file-nya memuat kolom dengan cast berubah (AC 4).
     const before = new Map((s.schema ?? []).map((c) => [c.pos, castSignature(c, s.source)]));

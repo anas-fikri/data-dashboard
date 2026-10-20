@@ -160,6 +160,25 @@ describe("pairedHeader (T-014, sheet yang dipasangkan user)", () => {
 });
 
 describe("planColumns", () => {
+  it("T-057: alias tersimpan mencocokkan kolom yang belum cocok; ragu (dua kandidat) → tetap hilang", () => {
+    const active = [
+      col(1, "Kode"),
+      col(2, "Tanggal Kirim", { type: "date", dateFormat: "yyyy-mm-dd", aliases: ["Tgl Kirim"] }),
+    ];
+    const p = planColumns(meta(["kode", " TGL  kirim "]), active);
+    expect(p.missing).toEqual([]);
+    expect(p.matched.get(2)?.pos).toBe(2);
+    // Judul asli tetap didahulukan: file dengan judul asli dan alias → alias menjadi kolom tambahan.
+    const both = planColumns(meta(["Tanggal Kirim", "Tgl Kirim", "Kode"]), active);
+    expect([...both.matched].map(([n, a]) => [n, a.pos])).toEqual([
+      [1, 2],
+      [3, 1],
+    ]);
+    // Dua kolom file berjudul alias yang sama → tidak ditebak.
+    const twice = planColumns(meta(["Kode", "Tgl Kirim", "tgl kirim"]), active);
+    expect(twice.missing.map((a) => a.pos)).toEqual([2]);
+  });
+
   it("kunci = nama asli ternormalisasi + urutan; duplikat dan judul kosong dicocokkan berurutan", () => {
     expect(columnKeys(["Total", " total ", "", "Kota", ""])).toEqual([
       "total\n1",

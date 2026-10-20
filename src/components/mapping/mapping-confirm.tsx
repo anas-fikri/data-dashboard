@@ -39,10 +39,13 @@ export function MappingConfirm({
   multiSheet,
   onCancel,
   onConfirm,
+  period = false,
 }: {
   open: boolean;
   choices: ReturnType<typeof nullChoices>;
   multiSheet: boolean;
+  /** Unggahan periode (T-057): kosong hanya untuk periode di file ini. */
+  period?: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
@@ -65,7 +68,11 @@ export function MappingConfirm({
           ? `Kosongkan ${fmtInt(columns.length)} kolom?`
           : `Tidak memakai ${fmtInt(droppedSheets.length)} sheet lagi?`
       }
-      description="Kolom yang dikosongkan tetap ada di skema tanpa nilai, jadi widget yang memakainya menampilkan nilai kosong, bukan galat. Versi baru aktif setelah pemetaan selesai diterapkan."
+      description={
+        period
+          ? "Kolom yang dikosongkan bernilai kosong hanya untuk periode di file ini; periode lama tetap berisi dan kolomnya tetap ada di skema."
+          : "Kolom yang dikosongkan tetap ada di skema tanpa nilai, jadi widget yang memakainya menampilkan nilai kosong, bukan galat. Versi baru aktif setelah pemetaan selesai diterapkan."
+      }
       data-testid="mapping-confirm"
       action={
         <Button
@@ -76,7 +83,7 @@ export function MappingConfirm({
             onConfirm();
           }}
         >
-          Simpan &amp; aktifkan
+          {period ? "Simpan pemetaan" : <>Simpan &amp; aktifkan</>}
         </Button>
       }
     >

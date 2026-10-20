@@ -570,7 +570,7 @@ describe("applyMapping (job map-version)", () => {
     expect(await applyMapping(m.job, m.deps)).toEqual({ outcome: "stale" });
   });
 
-  it("T-052: versi unggahan periode → invalid tanpa menulis apa pun (pemetaan periode = T-057)", async () => {
+  it("versi unggahan periode tanpa dependensi pemetaan periode → invalid tanpa menulis apa pun", async () => {
     const m = await awaiting();
     const before = m.typedKeys();
     const load = m.deps.repo.load.bind(m.deps.repo);
@@ -584,6 +584,39 @@ describe("applyMapping (job map-version)", () => {
     });
     expect(m.typedKeys()).toEqual(before);
     expect(m.commits).toEqual([]);
+  });
+
+  it("T-057: versi unggahan periode → jalur pemetaan periode; commit periode oleh job ini (AWAITING_CONFIRM) → done", async () => {
+    const m = await awaiting();
+    const load = m.deps.repo.load.bind(m.deps.repo);
+    m.deps.repo.load = async (id) => {
+      const v = await load(id);
+      return v ? { ...v, mode: "PERIOD" } : v;
+    };
+    const calls: string[] = [];
+    const period = {
+      repo: {
+        load: async (id: string) => {
+          calls.push(id);
+          return null;
+        },
+      },
+    } as unknown as NonNullable<Parameters<typeof applyMapping>[1]["period"]>;
+    expect(await applyMapping(m.job, { ...m.deps, period })).toEqual({ outcome: "gone" });
+    expect(calls).toEqual([m.job.versionId]);
+    expect(m.commits).toEqual([]);
+    // Percobaan ulang setelah commit periode masuk (menunggu konfirmasi periode) oleh job yang sama.
+    m.deps.repo.load = async (id) => {
+      const v = await load(id);
+      return v ? { ...v, mode: "PERIOD", status: "AWAITING_CONFIRM", mappedBy: "mp_p" } : v;
+    };
+    expect(await applyMapping({ ...m.job, jobId: "mp_p" }, { ...m.deps, period })).toEqual({
+      outcome: "done",
+    });
+    // Di-commit job lain → keputusan job ini tidak diterapkan.
+    expect(await applyMapping({ ...m.job, jobId: "mp_q" }, { ...m.deps, period })).toMatchObject({
+      outcome: "gone",
+    });
   });
 
   it("versi dibuang saat job berjalan → gone, file yang sempat diunggah dihapus", async () => {

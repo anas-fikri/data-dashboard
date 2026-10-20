@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import type { PeriodLimits } from "@/features/ingest/period-plan";
 import {
+  applySchemaChange,
   buildPeriodManifest,
   confirmBlocker,
   decidePeriodCommit,
@@ -49,18 +50,32 @@ const SCHEMA = [
 const meta = (names: string[]) => names.map((n, i) => ({ pos: i + 1, name: n, original: n }));
 
 describe("periodColumnPlan + validateColMap", () => {
-  it("urutan sama → identitas; diurutkan ulang → peta ke posisi kanonik; kolom tambahan dihitung", () => {
+  it("urutan sama → identitas; diurutkan ulang → peta ke posisi kanonik; kolom tambahan → kolom tersembunyi baru (T-057)", () => {
     expect(periodColumnPlan(meta(["kode", "tanggal", "nilai"]), SCHEMA, 3, 2, null)).toEqual({
       colMap: [],
       issues: [],
       extra: 0,
+      colCount: 3,
+      schema: SCHEMA,
+      change: null,
     });
     const p = periodColumnPlan(meta(["Nilai", "baru", "KODE", "tanggal"]), SCHEMA, 3, 2, null);
-    expect(p).toEqual({ colMap: [3, 4, 1], issues: [], extra: 1 });
-    expect(validateColMap(p.colMap, 3, 4, "s")).toEqual([]);
+    // Posisi kanonik 4 = kolom baru "baru" (kolom file 2); periode lama tidak memuatnya (NULL).
+    expect(p.colMap).toEqual([3, 4, 1, 2]);
+    expect(p.issues).toEqual([]);
+    expect(p.extra).toBe(1);
+    expect(p.colCount).toBe(4);
+    expect(p.schema[3]).toMatchObject({ pos: 4, original: "baru", type: "text", hidden: true });
+    expect(p.change).toMatchObject({
+      colCount: 4,
+      columns: [{ pos: 4, original: "baru" }],
+      aliases: [],
+      normalized: [],
+    });
+    expect(validateColMap(p.colMap, 4, 4, "s")).toEqual([]);
   });
 
-  it("kolom terlihat/periode hilang dan kolom kosong yang kembali → masalah pemetaan", () => {
+  it("kolom terlihat/periode hilang → masalah pemetaan; kolom kosong yang kembali dipetakan (T-057)", () => {
     const hidden = [SCHEMA[0]!, { ...SCHEMA[1]!, hidden: true }, SCHEMA[2]!];
     expect(periodColumnPlan(meta(["kode", "nilai"]), hidden, 3, 2, "Data").issues).toEqual([
       'Kolom "tanggal" (sheet Data) (kolom periode) tidak ada di file baru.',
@@ -68,10 +83,93 @@ describe("periodColumnPlan + validateColMap", () => {
     expect(periodColumnPlan(meta(["kode", "tanggal"]), SCHEMA, 3, 2, null).issues).toEqual([
       'Kolom "nilai" tidak ada di file baru.',
     ]);
+    // Kolom absent (T-014) yang kembali ada: nilainya dari file untuk periode ini, periode lama tetap
+    // NULL; kolom menjadi kolom biasa (lebar kanonik 4).
     const absent = [...SCHEMA, col(4, "catatan", { absent: true })];
+    const back = periodColumnPlan(
+      meta(["kode", "tanggal", "nilai", "catatan"]),
+      absent,
+      3,
+      2,
+      null,
+    );
+    expect(back.issues).toEqual([]);
+    expect(back.colMap).toEqual([]);
+    expect(back.colCount).toBe(4);
+    expect(back.schema[3]!.absent).toBeUndefined();
+    expect(back.change).toMatchObject({ colCount: 4, normalized: [4], added: [] });
+  });
+
+  it("T-057 keputusan pemetaan: dipetakan → alias; kosongkan → NULL (kolom tetap); kolom periode tidak bisa dikosongkan", () => {
+    const file = meta(["kode", "Tgl", "ket"]);
+    const p = periodColumnPlan(
+      file,
+      SCHEMA,
+      3,
+      2,
+      null,
+      new Map([
+        [2, 2],
+        [3, null],
+      ]),
+    );
+    expect(p.issues).toEqual([]);
+    expect(p.colMap).toEqual([1, 2, 0, 3]);
+    expect(p.schema[1]!.aliases).toEqual(["Tgl"]);
+    expect(p.schema[2]!.absent).toBeUndefined();
+    expect(p.change).toMatchObject({ aliases: [{ pos: 2, alias: "Tgl" }], colCount: 4 });
     expect(
-      periodColumnPlan(meta(["kode", "tanggal", "nilai", "catatan"]), absent, 3, 2, null).issues,
-    ).toEqual(['Kolom "catatan" kembali ada di file baru dan perlu dipetakan.']);
+      periodColumnPlan(
+        file,
+        SCHEMA,
+        3,
+        2,
+        null,
+        new Map([
+          [2, null],
+          [3, null],
+        ]),
+      ).issues,
+    ).toEqual(['Kolom "tanggal" adalah kolom periode dan tidak bisa dikosongkan.']);
+    // Kolom file yang sudah cocok tidak bisa dipakai lagi; keputusan untuk kolom yang tidak hilang ditolak.
+    expect(
+      periodColumnPlan(meta(["kode", "tanggal"]), SCHEMA, 3, 2, null, new Map([[3, 1]])).issues,
+    ).toEqual(['Kolom file baru posisi 1 tidak bisa dipakai untuk Kolom "nilai".']);
+    expect(
+      periodColumnPlan(meta(["kode", "tanggal", "nilai"]), SCHEMA, 3, 2, null, new Map([[1, 1]]))
+        .issues,
+    ).toEqual(["Kolom posisi 1 tidak perlu dipetakan."]);
+  });
+
+  it("T-057 applySchemaChange: diterapkan pada sheet aktif yang sama; revisi lain / posisi bentrok → null", () => {
+    const p = periodColumnPlan(
+      meta(["kode", "Tgl", "nilai", "baru"]),
+      SCHEMA,
+      3,
+      2,
+      null,
+      new Map([[2, 2]]),
+    );
+    const ch = { ...p.change!, lineageId: "L", baseRevision: 4 };
+    const row = {
+      colCount: 3,
+      columns: meta(["kode", "tanggal", "nilai"]),
+      schema: SCHEMA,
+      schemaRevision: 4,
+    };
+    const next = applySchemaChange(row, ch)!;
+    expect(next.colCount).toBe(4);
+    expect(next.columns.map((c) => c.original)).toEqual(["kode", "tanggal", "nilai", "baru"]);
+    expect(next.schema.map((c) => [c.pos, c.hidden, c.aliases])).toEqual([
+      [1, false, undefined],
+      [2, false, ["Tgl"]],
+      [3, false, undefined],
+      [4, true, undefined],
+    ]);
+    expect(applySchemaChange({ ...row, schemaRevision: 5 }, ch)).toBeNull();
+    expect(
+      applySchemaChange({ ...row, schema: [...SCHEMA, col(4, "lain", { absent: true })] }, ch),
+    ).toBeNull();
   });
 
   it("validateColMap menolak peta yang membuang/menggandakan data", () => {

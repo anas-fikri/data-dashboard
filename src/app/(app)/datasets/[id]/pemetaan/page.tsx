@@ -2,6 +2,7 @@ import { IconArrowLeft, IconListCheck } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MappingForm } from "@/components/mapping/mapping-form";
+import { MappingPeriodNotice } from "@/components/mapping/mapping-period-notice";
 import { baseKey } from "@/components/mapping/mapping-model";
 import { MappingVersion } from "@/components/mapping/mapping-version";
 import { Button } from "@/components/ui/button";
@@ -60,7 +61,9 @@ export default async function MappingPage({ params }: { params: Params }) {
       description={
         view.none
           ? undefined
-          : "Kolom file baru tidak cocok dengan skema aktif. Petakan kolomnya; sampai disimpan, dashboard tetap memakai data aktif."
+          : view.period
+            ? "Kolom file periode baru tidak cocok dengan skema aktif. Petakan kolomnya; sampai disimpan, dashboard tetap memakai data aktif."
+            : "Kolom file baru tidak cocok dengan skema aktif. Petakan kolomnya; sampai disimpan, dashboard tetap memakai data aktif."
       }
       actions={view.none ? undefined : back}
     />
@@ -79,6 +82,9 @@ export default async function MappingPage({ params }: { params: Params }) {
       ) : (
         <>
           <MappingVersion view={view} />
+          {view.period ? (
+            <MappingPeriodNotice datasetId={view.datasetId} reason={view.reason} />
+          ) : null}
           {/* Acuan skema aktif berubah (mis. muat ulang setelah STALE) → draf lama tidak berlaku. */}
           <MappingForm key={baseKey(view)} view={view} />
         </>

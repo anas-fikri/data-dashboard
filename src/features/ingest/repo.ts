@@ -651,7 +651,11 @@ export const prismaMappingRepo: MappingRepo = {
         segment: segments[0]?.segmentTyped.segment ?? null,
       })),
       active: snapshotOf(v.dataset.activeVersion, versionId),
-      mappedBy: v.status === "READY" ? await mappedBy(v.datasetId, versionId) : null,
+      // Pemetaan periode (T-057) bisa berakhir AWAITING_CONFIRM: commit-nya juga milik job tertentu.
+      mappedBy:
+        v.status === "READY" || v.status === "AWAITING_CONFIRM"
+          ? await mappedBy(v.datasetId, versionId)
+          : null,
     };
   },
 

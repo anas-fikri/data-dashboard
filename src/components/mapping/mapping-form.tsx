@@ -42,15 +42,20 @@ export function MappingForm({ view }: { view: MappingReady }) {
   const [confirming, setConfirming] = useState(false);
   // Hasil terakhir dari server (job sebelumnya) tampil sampai pemetaan disimpan lagi.
   const [showLast, setShowLast] = useState(true);
+  // Unggahan periode (T-057): tanpa baris tipe, jadi tanda tinjau per kolom tidak dipakai.
   const [flags, setFlags] = useState<ReviewFlags>(() =>
-    view.last?.state === "review" ? withReview({}, view, view.last.issues ?? []) : {},
+    view.last?.state === "review" && !view.period
+      ? withReview({}, view, view.last.issues ?? [])
+      : {},
   );
   const plans = usePairPlans(view.datasetId, view.awaiting.id);
   const { local, job, busy, submit, dismiss } = useMappingJob(
     view.datasetId,
     view.awaiting.id,
     view.applying ? view.jobId : null,
-    (issues) => setFlags((prev) => withReview(prev, view, issues)),
+    (issues) => {
+      if (!view.period) setFlags((prev) => withReview(prev, view, issues));
+    },
   );
   const ready = plans.ready;
   const { done, total } = progress(view, draft, ready);
@@ -157,6 +162,7 @@ export function MappingForm({ view }: { view: MappingReady }) {
                 setDraft((prev) => ({ ...prev, [sid]: withTarget(sheetDraft(prev, sid), target) }));
                 if (target) void plans.load(sid, target);
               }}
+              period={view.period}
               onRetry={() => {
                 if (!d.target) return;
                 // Blok galat (dan tombol "Muat lagi" yang difokus) diganti status memuat: fokus ke
@@ -173,12 +179,14 @@ export function MappingForm({ view }: { view: MappingReady }) {
           busy={busy}
           pending={local.phase === "submitting"}
           reviewPending={ackable}
+          period={view.period}
         />
       </form>
       <MappingConfirm
         open={confirming}
         choices={nullChoices(view, draft, ready)}
         multiSheet={multi}
+        period={view.period}
         onCancel={() => setConfirming(false)}
         onConfirm={() => {
           setConfirming(false);

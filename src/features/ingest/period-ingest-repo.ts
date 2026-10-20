@@ -12,7 +12,15 @@ import { DatasetGoneError } from "./ingest";
 import { isoDay } from "./period";
 import type { PeriodLimits } from "./period-plan";
 import { naiveToDate } from "./period-setup";
-import type { PeriodIngestRepo, PeriodActiveSheet } from "./period-ingest";
+import { parsePeriodMeta } from "./period-upload-plan";
+import type {
+  PeriodActiveSheet,
+  PeriodCommitResult,
+  PeriodIngestRepo,
+  PeriodMappingRepo,
+} from "./period-ingest";
+import type { ColumnMeta } from "./header";
+import { parsePreview } from "./preview";
 import { prismaIngestRepo } from "./repo";
 
 /*
@@ -111,6 +119,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           progress: Prisma.DbNull,
           errorMessage: null,
           plan: Prisma.DbNull,
+          periodMeta: Prisma.DbNull,
         },
       });
       return r.count > 0;
@@ -197,6 +206,8 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           status: "AWAITING_MAPPING",
           errorMessage: d.reason,
           sha256: d.sha256,
+          // Sheet file yang tidak disimpan: rencana setelah pemetaan (T-057) tetap mencatatnya.
+          periodMeta: { ignoredSheets: d.ignoredSheets, changes: [] },
           ingestStage: "typed",
           ingestFinishedAt: new Date(),
         },
@@ -214,6 +225,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
             snapshot: d.snapshot,
             facts: d.facts,
             sha256: d.sha256,
+            meta: { ignoredSheets: d.facts.ignoredSheets, changes: d.changes },
             include: [],
             mode: { kind: "auto", allowAuto: d.allowAuto },
             present,
@@ -241,6 +253,127 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
 
     async fail(versionId, message) {
       return prismaIngestRepo.fail(versionId, message);
+    },
+  };
+}
+
+/** Hasil transaksi commit → hasil untuk worker (galat sementara/basi = "stale"). */
+function resultOf(r: Awaited<ReturnType<typeof commitPeriodInTx>>): PeriodCommitResult {
+  switch (r.outcome) {
+    case "activated":
+      return { outcome: "activated", plan: r.plan };
+    case "awaiting":
+      return { outcome: "awaiting", plan: r.plan };
+    case "rejected":
+      return { outcome: "rejected", message: r.message };
+    case "gone":
+      return { outcome: "gone" };
+    default:
+      return { outcome: "stale" };
+  }
+}
+
+/**
+ * Pemetaan unggahan periode (T-057). Tulisan segmen sama dengan ingest periode; penghapusan segmen
+ * percobaan hanya selama versi masih AWAITING_MAPPING (commit belum masuk), di bawah lock baris versi.
+ */
+export function prismaPeriodMappingRepo(limits: () => PeriodLimits): PeriodMappingRepo {
+  const ingest = prismaPeriodIngestRepo(limits);
+  return {
+    load: (versionId) => ingest.load(versionId),
+    allocateRows: (lineageId, span) => ingest.allocateRows(lineageId, span),
+    createSegment: (versionId, d) => ingest.createSegment(versionId, d),
+    addTyped: (segmentId, t) => ingest.addTyped(segmentId, t),
+    recordCleanup: (prefix, reason) => ingest.recordCleanup(prefix, reason),
+
+    async rawSheets(versionId) {
+      const v = await prisma.datasetVersion.findUnique({
+        where: { id: versionId },
+        select: {
+          sha256: true,
+          periodMeta: true,
+          sheets: {
+            orderBy: { index: "asc" },
+            select: {
+              id: true,
+              index: true,
+              name: true,
+              aliasName: true,
+              lineageId: true,
+              rawKey: true,
+              rawRows: true,
+              colCount: true,
+              headerRow: true,
+              columns: true,
+              truncatedCells: true,
+              preview: true,
+            },
+          },
+        },
+      });
+      if (!v) return null;
+      return {
+        sha256: v.sha256 ?? "",
+        ignoredSheets: parsePeriodMeta(v.periodMeta)?.ignoredSheets ?? [],
+        sheets: v.sheets.map((s) => ({
+          ...s,
+          columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
+          preview: parsePreview(s.preview) ?? { rows: [], colCount: 0 },
+        })),
+      };
+    },
+
+    async deletePeriodSegments(versionId) {
+      return prisma.$transaction(async (tx) => {
+        const [v] = await tx.$queryRaw<{ status: string }[]>`
+          SELECT status::text AS status FROM "DatasetVersion" WHERE id = ${versionId} FOR UPDATE`;
+        if (v?.status !== "AWAITING_MAPPING") return [];
+        const rows = await tx.segment.findMany({
+          where: { createdByVersionId: versionId, periodKey: { not: null } },
+          select: { id: true },
+        });
+        if (rows.length) {
+          await tx.segment.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+        }
+        return rows.map((r) => r.id);
+      });
+    },
+
+    async commit(versionId, d) {
+      const present = new Set(d.present);
+      const r = await prisma.$transaction(
+        (tx) =>
+          commitPeriodInTx(tx, {
+            versionId,
+            from: "AWAITING_MAPPING",
+            snapshot: d.snapshot,
+            facts: d.facts,
+            meta: { ignoredSheets: d.facts.ignoredSheets, changes: d.changes },
+            include: [],
+            mode: { kind: "auto", allowAuto: d.allowAuto },
+            present,
+            limits: limits(),
+            mapAudit: d.audit,
+          }),
+        { timeout: FINISH_TX_TIMEOUT_MS },
+      );
+      return resultOf(r);
+    },
+
+    async dropRawSegments(versionId) {
+      // Raw saja dari ingest (tanpa periode, tanpa file typed) yang tidak dirujuk sheet versi mana pun.
+      const rows = await prisma.segment.findMany({
+        where: { createdByVersionId: versionId, periodKey: null, typed: { none: {} } },
+        select: { id: true, rawKey: true },
+      });
+      const out: string[] = [];
+      for (const g of rows) {
+        const used = await prisma.sheet.count({ where: { rawKey: g.rawKey } });
+        if (used) continue;
+        await prisma.segment.deleteMany({ where: { id: g.id } });
+        out.push(g.id);
+      }
+      return out;
     },
   };
 }

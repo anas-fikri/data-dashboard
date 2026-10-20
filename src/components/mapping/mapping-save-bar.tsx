@@ -20,12 +20,15 @@ export function MappingSaveBar({
   busy,
   pending,
   reviewPending = false,
+  period = false,
 }: {
   done: number;
   total: number;
   busy: boolean;
   pending: boolean;
   reviewPending?: boolean;
+  /** Unggahan periode (T-057): periode baru aktif otomatis atau masuk tinjauan periode. */
+  period?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -69,7 +72,11 @@ export function MappingSaveBar({
         ) : (
           <>
             <span className="font-medium">Siap disimpan</span>
-            <span className="text-muted-foreground"> · versi baru langsung aktif</span>
+            <span className="text-muted-foreground">
+              {period
+                ? " · periode di file ini diproses dengan pemetaan ini"
+                : " · versi baru langsung aktif"}
+            </span>
           </>
         )}
       </p>
@@ -83,7 +90,13 @@ export function MappingSaveBar({
         leadingIcon={reviewPending ? <IconArrowUp aria-hidden /> : <IconDeviceFloppy aria-hidden />}
         className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
       >
-        {reviewPending ? "Lihat yang perlu diperiksa" : <>Simpan &amp; aktifkan</>}
+        {reviewPending ? (
+          "Lihat yang perlu diperiksa"
+        ) : period ? (
+          "Simpan pemetaan"
+        ) : (
+          <>Simpan &amp; aktifkan</>
+        )}
       </Button>
     </div>
   );

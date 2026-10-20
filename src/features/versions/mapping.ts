@@ -4,12 +4,16 @@ import { isIdShape } from "@/features/datasets/validation";
 import type { ColumnMeta } from "@/features/ingest/header";
 import { INFER_THRESHOLD, type ColumnSchema } from "@/features/ingest/infer";
 import {
-  PERIOD_MAPPING_UNSUPPORTED,
   parseMappingInput,
+  periodColumnOf,
+  periodPairs,
   validateMapping,
+  validatePeriodMapping,
   type MappingReviewIssue,
-  type VersionSheet,
+  type PeriodActiveRef,
+  type PeriodVersionSheet,
 } from "@/features/ingest/mapping-input";
+import { periodMappingColumns } from "@/features/ingest/period-upload-plan";
 import { parsePreview, type SheetPreview } from "@/features/ingest/preview";
 import {
   pairedHeader,
@@ -259,6 +263,45 @@ export function mappingSheets(active: ActiveSheet[], fresh: FreshSheet[]): Mappi
   return out;
 }
 
+/**
+ * Sheet yang perlu keputusan pada unggahan periode (T-057): pasangan tetap dari ingest (lineage sheet
+ * aktif), hanya yang punya kolom hilang (termasuk kolom periode tersembunyi). Sheet aktif yang tidak ada
+ * di file dipertahankan (bukan keputusan); tanpa baris tipe (ubah tipe lewat halaman Skema) — rasio cast
+ * tepat datang dari job ("review").
+ */
+export function periodMappingSheets(
+  active: PeriodActiveRef[],
+  fresh: (FreshSheet & { lineageId: string })[],
+): MappingSheetView[] {
+  const out: MappingSheetView[] = [];
+  for (const { active: a, target: f } of periodPairs(
+    fresh.map((x) => ({ ...x, preview: x.preview })),
+    active,
+  )) {
+    const src = fresh.find((x) => x.id === f.id)!;
+    const plan = periodMappingColumns(src.columns, a.schema, periodColumnOf(a));
+    if (!plan.missing.length) continue;
+    out.push({
+      active: activeView(a),
+      target: { id: src.id, name: src.name },
+      candidates: [],
+      newColumns: src.columns.map((c): MappingNewColumn => ({
+        pos: c.pos,
+        original: c.original,
+        name: plan.names.get(c.pos) ?? c.name,
+        type: "text",
+        castFailCount: 0,
+        samples: samplesOf(src, c.pos, src.headerRow),
+      })),
+      autoMatched: [...plan.matched].map(([newPos, x]) => ({ activePos: x.pos, newPos })),
+      missing: plan.missing.map((x) => x.pos),
+      extra: plan.extra,
+      lowCast: [],
+    });
+  }
+  return out;
+}
+
 // ── DB ──────────────────────────────────────────────────────────────────────────────────────────
 
 const activeSheetSelect = {
@@ -269,10 +312,16 @@ const activeSheetSelect = {
   headerRow: true,
   schemaRevision: true,
   schema: true,
+  // Pemetaan unggahan periode (T-057): pasangan lewat lineage, kolom periode.
+  lineageId: true,
+  colCount: true,
+  periodSource: true,
+  periodColumn: true,
 } satisfies Prisma.SheetSelect;
 
 const freshSheetSelect = {
   id: true,
+  lineageId: true,
   index: true,
   name: true,
   headerRow: true,
@@ -286,6 +335,7 @@ const freshSheetSelect = {
 /** Yang dibutuhkan validateMapping saja (tanpa skema typed-1). */
 const versionSheetSelect = {
   id: true,
+  lineageId: true,
   index: true,
   name: true,
   headerRow: true,
@@ -298,17 +348,17 @@ type ActiveRow = Prisma.SheetGetPayload<{ select: typeof activeSheetSelect }>;
 type FreshRow = Prisma.SheetGetPayload<{ select: typeof freshSheetSelect }>;
 type VersionRow = Prisma.SheetGetPayload<{ select: typeof versionSheetSelect }>;
 
-const activeSheetOf = (s: ActiveRow): ActiveSheet => ({
+const activeSheetOf = (s: ActiveRow): PeriodActiveRef => ({
   ...s,
   schema: (s.schema as ColumnSchema[] | null) ?? [],
 });
-const freshSheetOf = (s: FreshRow): FreshSheet => ({
+const freshSheetOf = (s: FreshRow): FreshSheet & { lineageId: string } => ({
   ...s,
   columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
   schema: (s.schema as ColumnSchema[] | null) ?? null,
   preview: parsePreview(s.preview),
 });
-const versionSheetOf = (s: VersionRow): VersionSheet => ({
+const versionSheetOf = (s: VersionRow): PeriodVersionSheet => ({
   ...s,
   columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
   preview: parsePreview(s.preview),
@@ -378,6 +428,8 @@ export async function mappingView(userId: string, datasetId: string): Promise<Ma
         take: 1,
         select: {
           id: true,
+          mode: true,
+          errorMessage: true,
           originalName: true,
           createdAt: true,
           sourceDeletedAt: true,
@@ -392,8 +444,12 @@ export async function mappingView(userId: string, datasetId: string): Promise<Ma
   if (!v || !a) return { none: true, datasetId: ds.id, datasetName: ds.name };
   const active = a.sheets.map(activeSheetOf);
   const [jobId, last] = await Promise.all([runningJob(v.id), lastJob(v.id)]);
+  const period = v.mode === "PERIOD";
+  const fresh = v.sheets.map(freshSheetOf);
   return {
     none: false,
+    period,
+    reason: period ? v.errorMessage : null,
     datasetId: ds.id,
     datasetName: ds.name,
     awaiting: {
@@ -407,7 +463,7 @@ export async function mappingView(userId: string, datasetId: string): Promise<Ma
     applying: jobId !== null,
     jobId,
     last,
-    sheets: mappingSheets(active, v.sheets.map(freshSheetOf)),
+    sheets: period ? periodMappingSheets(active, fresh) : mappingSheets(active, fresh),
   };
 }
 
@@ -491,7 +547,6 @@ export async function submitMapping(
     if (v.status !== "AWAITING_MAPPING") {
       return fail("INVALID", "Versi ini sudah tidak menunggu pemetaan. Muat ulang halaman.");
     }
-    if (v.mode === "PERIOD") return fail("INVALID", PERIOD_MAPPING_UNSUPPORTED);
     const active = ds.activeVersionId
       ? {
           versionId: ds.activeVersionId,
@@ -503,8 +558,13 @@ export async function submitMapping(
           ).map(activeSheetOf),
         }
       : null;
-    // Acuan skema aktif (STALE) + semua keputusan, terhadap skema aktif di bawah lock ini.
-    const checked = validateMapping(shape.input, { sheets: v.sheets.map(versionSheetOf), active });
+    // Acuan skema aktif (STALE) + semua keputusan, terhadap skema aktif di bawah lock ini. Unggahan
+    // periode (T-057): pasangan tetap, tanpa ubah tipe, kolom periode tidak bisa dikosongkan.
+    const sheets = v.sheets.map(versionSheetOf);
+    const checked =
+      v.mode === "PERIOD"
+        ? validatePeriodMapping(shape.input, { sheets, active })
+        : validateMapping(shape.input, { sheets, active });
     if (!checked.ok) return fail(checked.code, checked.message);
     const q = await enqueueMapping(
       { versionId, datasetId, input: checked.input, actorId: userId, ip },

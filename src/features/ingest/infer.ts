@@ -66,6 +66,11 @@ export interface ColumnSchema {
    * NULL setelah kolom nyata. Refresh berikutnya yang juga tidak memuatnya menulisnya ulang kosong.
    */
   absent?: boolean;
+  /**
+   * Judul lain kolom ini yang sudah dikonfirmasi pemilik saat pemetaan unggahan periode (T-057, mis.
+   * "Tgl Kirim" untuk "Tanggal Kirim"): unggahan berikutnya dengan judul itu terpetakan otomatis.
+   */
+  aliases?: string[];
 }
 
 export const INFER_THRESHOLD = 0.98;

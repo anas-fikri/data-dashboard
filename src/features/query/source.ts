@@ -4,7 +4,8 @@
  *  - satu file → tidak berubah (`$path` = path file, persis seperti sebelum segmen);
  *  - beberapa file berskema sama (set kolom + jenis `_row` sama) → `$path` = listValue([...]) — satu
  *    parameter, bukan larik JS atau literal SQL (ADR-0008 butir 1);
- *  - skema campuran → proyeksi eksplisit per kelompok skema: `(SELECT CAST(_row AS BIGINT) AS _row,
+ *  - skema campuran, atau file yang tidak memuat semua kolom skema (kolom ditambahkan unggahan periode
+ *    berikutnya, T-057) → proyeksi eksplisit per kelompok skema: `(SELECT CAST(_row AS BIGINT) AS _row,
  *    <_src_row>, CAST(c<pos> | NULL AS <tipe skema>) AS c<pos> … FROM read_parquet($s0) UNION ALL …)`.
  *    Daftar polos dan union_by_name dilarang untuk skema campuran (ADR-0008 butir 4–5).
  * Daftar path hanya berisi file cache lokal hasil sewa (sandbox allowed_directories tetap berlaku).
@@ -31,14 +32,28 @@ export type ParquetSource =
 /** Token sumber yang ditulis semua pembangun SQL (sql.ts, table.ts, pivot.ts, ekspor, sampel). */
 export const SOURCE_TOKEN = "read_parquet($path)";
 
-/** Sumber sheet dari repo: ≤ 1 segmen → kunci typed (tanpa jalur baru), selain itu daftar segmen. */
+/**
+ * File memuat semua kolom skema sheet (kolom kosong = tidak diketahui → dianggap lengkap). Sheet periode
+ * bisa punya kolom yang ditambahkan setelah file ini ditulis (T-057): kolom itu NULL lewat proyeksi.
+ */
+const covers = (f: SegmentFile, schema: Pick<ColumnSchema, "pos">[]) => {
+  if (!f.columns.length) return true;
+  const has = new Set(f.columns);
+  return schema.every((c) => has.has(c.pos));
+};
+
+/**
+ * Sumber sheet dari repo: satu segmen yang memuat semua kolom skema → kunci typed (tanpa jalur baru),
+ * selain itu daftar segmen (proyeksi bila kolomnya tidak lengkap).
+ */
 export function sheetSource(sheet: {
   typedKey: string;
   schema: Pick<ColumnSchema, "pos" | "type" | "float">[];
   segments?: SegmentFile[];
 }): ParquetSource {
   const files = sheet.segments ?? [];
-  return files.length > 1 ? { files, schema: sheet.schema } : sheet.typedKey;
+  const plain = files.length <= 1 && (!files[0] || covers(files[0], sheet.schema));
+  return plain ? sheet.typedKey : { files, schema: sheet.schema };
 }
 
 /** Kunci typed semua file sumber (sewa cache, unduh ekspor). */
@@ -58,7 +73,8 @@ export function withSegments(
   paths: string[],
   schema: Pick<ColumnSchema, "pos" | "type" | "float">[],
 ): BuiltSql {
-  if (files.length <= 1 || !built.sql.includes(SOURCE_TOKEN)) return built;
+  if (!files.length || !built.sql.includes(SOURCE_TOKEN)) return built;
+  if (files.length === 1 && covers(files[0]!, schema)) return built;
   if (files.length !== paths.length) throw new Error("jumlah path segmen tidak cocok");
   const groups = new Map<string, { file: SegmentFile; paths: string[] }>();
   files.forEach((f, i) => {
@@ -67,7 +83,7 @@ export function withSegments(
     groups.set(signature(f), g);
   });
   const params: Record<string, DuckDBValue> = { ...built.params };
-  if (groups.size === 1) {
+  if (groups.size === 1 && covers(files[0]!, schema)) {
     params.path = listValue(paths);
     return { sql: built.sql, params };
   }

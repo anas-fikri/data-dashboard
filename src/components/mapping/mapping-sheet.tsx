@@ -76,6 +76,7 @@ export function MappingSheet({
   onChange,
   onTarget,
   onRetry,
+  period = false,
 }: {
   sheet: MappingSheetView;
   title: string;
@@ -93,14 +94,19 @@ export function MappingSheet({
   /** Sheet pasangan dipilih: draf per pasangan + muat rencana kolomnya. */
   onTarget: (target: string | null) => void;
   onRetry: () => void;
+  /**
+   * Unggahan periode (T-057): pemetaan hanya untuk periode di file ini, tanpa pilihan tipe (halaman
+   * Skema), kolom tambahan menjadi kolom tersembunyi baru.
+   */
+  period?: boolean;
 }) {
   const sid = sheet.active.id;
   const pair = pairOf(sheet, d, plans);
   const active = new Map(sheet.active.columns.map((c) => [c.pos, c]));
   const fresh = new Map((pair?.newColumns ?? []).map((c) => [c.pos, c]));
   const hidden = pair ? hiddenExtras(pair, d) : [];
-  const casts = pair ? castRows(pair, flags) : [];
-  const retyped = pair ? retypedColumns(sheet, pair, flags) : [];
+  const casts = pair && !period ? castRows(pair, flags) : [];
+  const retyped = pair && !period ? retypedColumns(sheet, pair, flags) : [];
   const renamed = sheet.target?.name !== sheet.active.name ? sheet.target?.name : undefined;
   const sheetError =
     !attempted || pair ? null : d.target === undefined ? ERR_SHEET : d.target ? ERR_PLAN : null;
@@ -131,13 +137,17 @@ export function MappingSheet({
         <Block
           id={`map-${sid}-missing`}
           title={`Kolom yang tidak ditemukan (${fmtInt(pair.missing.length)})`}
-          hint="Pilih kolom file baru yang berisi data yang sama; kolom itu memakai nama, tipe, dan format kolom aktif sehingga widget tetap jalan. Bila kolomnya memang sudah tidak ada, kosongkan."
+          hint={
+            period
+              ? "Pilih kolom file baru yang berisi data yang sama; judulnya diingat sehingga unggahan berikutnya terpetakan otomatis. Kosongkan bila kolomnya memang tidak ada: nilainya kosong hanya untuk periode di file ini, periode lama tetap berisi."
+              : "Pilih kolom file baru yang berisi data yang sama; kolom itu memakai nama, tipe, dan format kolom aktif sehingga widget tetap jalan. Bila kolomnya memang sudah tidak ada, kosongkan."
+          }
         >
           {pair.missing.map((pos) => {
             const column = active.get(pos);
             if (!column) return null;
             const value = d.columns[pos];
-            const mismatch = mappedCast(sheet, pair, d, pos, flags);
+            const mismatch = period ? null : mappedCast(sheet, pair, d, pos, flags);
             const cast = mismatch && {
               ...mismatch,
               value: d.casts[mismatch.column.pos] ?? mismatch.base,
@@ -197,7 +207,9 @@ export function MappingSheet({
         </p>
       ) : null}
 
-      {hidden.length > 0 ? <MappingExtra id={`map-${sid}-extra`} columns={hidden} /> : null}
+      {hidden.length > 0 ? (
+        <MappingExtra id={`map-${sid}-extra`} columns={hidden} period={period} />
+      ) : null}
       {pair && pair.autoMatched.length > 0 ? (
         <MappingAutoMatched
           pairs={pair.autoMatched}
