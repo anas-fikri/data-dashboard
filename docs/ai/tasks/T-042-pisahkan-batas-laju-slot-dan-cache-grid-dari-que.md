@@ -1,8 +1,8 @@
 ---
 id: T-042
 title: Pisahkan batas laju, slot, dan cache grid dari query widget
-status: in_progress
-profile: standard
+status: done
+profile: strict
 goal: G-6
 tags:
   - perf
@@ -10,17 +10,41 @@ tags:
 depends_on:
   - T-041
 created: "2026-10-15T02:30:56Z"
-updated: "2026-10-20T06:33:10Z"
+updated: "2026-10-20T06:36:39Z"
+closed: "2026-10-20T06:36:39Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: ae4e5a271e11f802d384b932e332d8977cec41e6
+paths:
+  - .env.example
+  - scripts/perf-grid.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/query/grid-gate.ts
+  - src/features/query/grid-http.ts
+  - src/features/query/grid-service.ts
+  - src/features/query/runtime.ts
+  - src/features/query/service.ts
+  - src/lib/env.ts
+  - tests/features/query/grid-gate.test.ts
+  - tests/features/query/grid-http.test.ts
+  - tests/features/query/grid.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T06:33:27Z"
+      findings: 5
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T06:33:27Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 171858
+    duration_ms: 167002
     summary: |-
       …t
       > vitest run
@@ -28,23 +52,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792477940423,"service":"data-dashboard","host":"127.0.0.1","port":41713,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477940487,"service":"data-dashboard","host":"127.0.0.1","port":32933,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792477940593,"service":"data-dashboard","host":"127.0.0.1","port":44201,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477940700,"service":"data-dashboard","host":"127.0.0.1","port":36379,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477947860,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792477954527,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792477954549,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792477954552,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792477954560,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792478123572,"service":"data-dashboard","host":"127.0.0.1","port":43341,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792478123627,"service":"data-dashboard","host":"127.0.0.1","port":46635,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792478123726,"service":"data-dashboard","host":"127.0.0.1","port":43147,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792478123838,"service":"data-dashboard","host":"127.0.0.1","port":44931,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792478129731,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792478142005,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792478142026,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792478142031,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792478142041,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  166 passed | 1 skipped (167)
             Tests  2144 passed | 10 skipped (2154)
-         Start at  06:31:05
-         Duration  123.51s (tests 86%, import 12%, transform 2%)
+         Start at  06:34:12
+         Duration  121.49s (tests 85%, import 12%, transform 3%)
 
-          Isolate  167 workers spawned · ~142ms startup each (spawn + environment, per file)
-                   at least ~7.78s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  167 workers spawned · ~145ms startup each (spawn + environment, per file)
+                   at least ~7.92s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -52,12 +76,81 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T06:33:10Z"
+    at: "2026-10-20T06:36:15Z"
     tree: 640a70f83eff004125a6bfa01942342e488a1622eb67e7c8eaf10a648b455b50
+  commits:
+    - 0cb153a
+    - "1220871"
+    - 17d81a7
+    - 18b74cc
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 27924c4
+    - 27986dc
+    - 2d7b316
+    - 3602b55
+    - 36afc9f
+    - 3bb3baa
+    - 49f49a5
+    - 4bd9881
+    - 4eea84c
+    - 5101f51
+    - 56e4d6d
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 69b8953
+    - 6b3ee3f
+    - "7187327"
+    - 75cf456
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - 7f238c4
+    - "8570e80"
+    - 8f8df38
+    - 8fc3abc
+    - 90e4e63
+    - "9298e14"
+    - 94bea50
+    - 94d85a4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - acb27a6
+    - ae4e5a2
+    - af1994a
+    - b0b99d8
+    - b30aea5
+    - b32d50d
+    - b8e59ee
+    - ba2efef
+    - c1c8b0a
+    - c2fd95c
+    - c76c343
+    - ccd0a9a
+    - ce26ca5
+    - ce649d0
+    - cf28ad3
+    - d32a8ea
+    - d557c9e
+    - da46e35
+    - e24e070
+    - f197114
+    - f3ea697
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 3
+    done: 3
   audit:
-    at: "2026-10-20T06:26:27Z"
+    at: "2026-10-20T06:36:15Z"
     passed: true
-    tree: 2402aa4703582846fdd4ee01a3423753870eea1a9a74163d9cf8e5f17dbada1c
+    tree: 640a70f83eff004125a6bfa01942342e488a1622eb67e7c8eaf10a648b455b50
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -65,7 +158,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 832 packages
-          End status: 385 dirs visited, 1877 inodes visited, 1 Extract calls, 199.08613ms elapsed, 199.086359ms wall time
+          End status: 403 dirs visited, 1941 inodes visited, 1 Extract calls, 170.08189ms elapsed, 170.0821ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -119,3 +212,11 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A — tidak ada file/unggahan
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — verified: rate limit grid:user 300/menit terpisah (uji grid-http)
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — verified: default aman GRID_MAX_CONCURRENCY=2 dipotong ke MAX_QUERY_CONCURRENCY−1
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T06:36:15Z (167002 ms)
+- Acceptance criteria: 3/3 satisfied
+- Commits: 0cb153a, 1220871, 17d81a7, 18b74cc, 1b2b9ab, 23e5ae9, 258a139, 27924c4, 27986dc, 2d7b316, 3602b55, 36afc9f, 3bb3baa, 49f49a5, 4bd9881, 4eea84c, 5101f51, 56e4d6d, 59ec9a3, 6123427, 62ec216, 69b8953, 6b3ee3f, 7187327, 75cf456, 7824e56, 7ae2840, 7af4484, 7f238c4, 8570e80, 8f8df38, 8fc3abc, 90e4e63, 9298e14, 94bea50, 94d85a4, a019f8f, a03481c, a0e1646, acb27a6, ae4e5a2, af1994a, b0b99d8, b30aea5, b32d50d, b8e59ee, ba2efef, c1c8b0a, c2fd95c, c76c343, ccd0a9a, ce26ca5, ce649d0, cf28ad3, d32a8ea, d557c9e, da46e35, e24e070, f197114, f3ea697, f54828c, f55d8d2, f5b2aa6, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 5 findings
+- Review pass 2 by claude-code: 0 findings
