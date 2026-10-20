@@ -12,7 +12,7 @@ depends_on:
   - T-018
   - T-027
 created: "2026-10-11T14:45:09Z"
-updated: "2026-10-20T22:14:28Z"
+updated: "2026-10-20T22:35:34Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -734,7 +734,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 179445
+    duration_ms: 170734
     summary: |-
       …t
       > vitest run
@@ -742,23 +742,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792534423655,"service":"data-dashboard","host":"127.0.0.1","port":34553,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792534423708,"service":"data-dashboard","host":"127.0.0.1","port":44717,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792534423810,"service":"data-dashboard","host":"127.0.0.1","port":44499,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792534423916,"service":"data-dashboard","host":"127.0.0.1","port":39199,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792534432337,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792534435979,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792534436002,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792534436004,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792534436013,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792535656828,"service":"data-dashboard","host":"127.0.0.1","port":32803,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535656879,"service":"data-dashboard","host":"127.0.0.1","port":46165,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792535656974,"service":"data-dashboard","host":"127.0.0.1","port":37311,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535657077,"service":"data-dashboard","host":"127.0.0.1","port":38219,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792535663687,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792535674342,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792535674365,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792535674367,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792535674376,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
-       Test Files  199 passed | 1 skipped (200)
-            Tests  2648 passed | 10 skipped (2658)
-         Start at  22:12:23
-         Duration  123.67s (tests 83%, import 14%, transform 3%)
+       Test Files  200 passed | 1 skipped (201)
+            Tests  2659 passed | 10 skipped (2669)
+         Start at  22:33:01
+         Duration  115.54s (tests 83%, import 14%, transform 3%)
 
-          Isolate  200 workers spawned · ~140ms startup each (spawn + environment, per file)
-                   at least ~9.21s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  201 workers spawned · ~131ms startup each (spawn + environment, per file)
+                   at least ~8.66s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -766,8 +766,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T22:14:28Z"
-    tree: c2d4d798f170b40809df109ee661f25b0defffa2b790efeebd69c81f96862364
+    at: "2026-10-20T22:34:58Z"
+    tree: 8e58acf240a7c492ef82df6c095e81c82bedd78b2e5e3962b43b281de0de2160
   commits:
     - 00400de
     - 0177afd
@@ -1056,9 +1056,9 @@ evidence:
     total: 7
     done: 5
   audit:
-    at: "2026-10-20T22:11:02Z"
+    at: "2026-10-20T22:35:05Z"
     passed: true
-    tree: c2d4d798f170b40809df109ee661f25b0defffa2b790efeebd69c81f96862364
+    tree: 8e58acf240a7c492ef82df6c095e81c82bedd78b2e5e3962b43b281de0de2160
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -1066,7 +1066,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 514 dirs visited, 3802 inodes visited, 1 Extract calls, 216.405785ms elapsed, 216.406111ms wall time
+          End status: 515 dirs visited, 3820 inodes visited, 1 Extract calls, 198.680404ms elapsed, 198.680645ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -1118,6 +1118,7 @@ Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/
 - 2026-10-16T21:54:05Z Dari review T-021 N7: next.config proxyClientMaxBodySize kini 3 MB untuk semua rute (poster video ≤ 2 MB). Di reverse proxy set client_max_body_size kecil per lokasi (mis. 64 KB untuk /api/auth/*, 1 MB default) dan 3 MB hanya untuk /api/guides/videos/*/poster.
 - 2026-10-17T05:18:09Z Bukti AC olympus 2026-10-17: AC2 check-public-presign UploadPart 16 MiB 200 lewat proxy, metode/path lain 403. AC3 restore-drill.sh LULUS (dashboard-20261017T051529Z): checksum OK, jumlah + md5 tiap baris identik, objek storage identik, health 200 — salinan terisolasi di VM yang sama (VM kedua belum tersedia); diagnosa 151 kolom PG14/SQL_ASCII vs PG16/UTF8 identik. AC4 worker dibunuh saat ingest → READY tanpa objek parsial. AC5 hanya proxy publish port (8443/8444), Redis requirepass + protected-mode, renderer hanya di jaringan internal render (pengganti 'frontend', ADR-0006), service account RustFS berpolicy prefix, console RustFS mati. AC6 proxy storage menolak selain GET/HEAD/PUT/OPTIONS pada /<bucket>/(raw|guides|exports)/*, nosniff + CSP sandbox. TERBUKA: AC1 HTTPS + /health hijau (storage + renderer) tercapai, tetapi deploy.sh dengan build penuh 1283 dtk (>10 menit) di olympus (VM bersama di bawah spek minimum 4 vCPU/16 GB, I/O hypervisor ±85% dipakai pihak lain); AC7 backup terenkripsi age + sha256, retensi 30 hari, uji restore tercatat, tetapi salinan off-VM belum ada (butuh target NAS/SFTP/S3 dari user).
 - 2026-10-20T22:10:40Z Rilis G-6 (2026-10-20, dari edcbdff): deploy/upgrade.sh (preflight/load/build/migrate/start/rollback, gerbang + state di ../data-dashboard-upgrade/<stamp>/) + runbook §7. Produksi diasumsikan di migrasi 20261017104143_t_j9j6 (catatan kerja: deploy14 + T-036…T-040 belum jalan); preflight mencetak migrasi terakhir sebenarnya. Bukti lokal: build 4 image produksi lulus; migrasi penuh ke PG14 kosong + DB berbentuk produksi (s.d. t_j9j6 + data contoh) lulus, migrate diff kosong, check-segments 0; dump→migrasi→rollback identik→migrasi ulang lulus; simulasi utuh compose produksi (hostdb + PG14 role non-superuser, image lama = 49f49a5) 2 putaran: preflight→load→migrate→start (health, presign 16 MiB, allowlist, admin-restore exit 1, env baru terbaca)→rollback (image prev-*, health ok, isi DB identik dump preflight). Gerbang negatif teruji: ekspor aktif, disk kurang, judul T-gcn8 rusak. Catatan T-gcn8 tidak memuat kueri; kueri gerbang diturunkan dari migrasi tgcn8 (pasca-migrasi, karena tabel segmen belum ada sebelum T-036). Perbaikan: backup.sh gagal pada bucket kosong (mkdir s3 + uji regresi); runbook quota-report lewat worker (image app tidak membawa skrip). SISA (pemilik): jalankan §7 di olympus — AC8 belum dicentang; AC7 tetap menunggu T-h77x (NAS).
+- 2026-10-20T22:32:06Z Review putaran 1 (5 temuan, 2 blokir) diperbaiki: (1) gerbang pasca-migrasi fail-closed — setiap gerbang memeriksa status keluarnya sendiri (kueri error ≠ '0 baris'); (2) STARTED_AT dicatat sekali (start pertama); (3) migrate mengecek job aktif sebelum+sesudah stop dan mengambil dump terverifikasi baru (db-migrate-*) sebagai dump rollback selama skema masih lama; (4) tag arsip dibaca dari manifest.json sebelum docker load (= OLD_TAG / prev-* ditolak); (5) rollback memeriksa nama DB = preflight dan tabel public ⊆ dump ∪ tabel baru rilis sebelum stop/drop. Tambahan: langkah setelah preflight tidak lulus/rollback ditolak. Bukti: tests/scripts/upgrade-gates.test.ts 11/11 (8 gagal pada skrip lama); simulasi compose produksi ulang: preflight→tulis data saat sinkron→load (tag lama ditolak)→migrate (dump baru)→gerbang T-gcn8 kueri error menolak→migrate ulang lulus→start ×2 (STARTED_AT tetap)→rollback ditolak untuk tabel asing dan nama DB beda→rollback nyata: data saat sinkron tetap ada, DB identik dump migrate, image prev-* sehat.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

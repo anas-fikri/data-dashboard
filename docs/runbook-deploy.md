@@ -391,12 +391,18 @@ publik; lewat `http://` atau peringatan sertifikat yang di-bypass tombol salin b
    ```bash
    bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz     # beberapa arsip per image juga boleh
    ```
-   Tanpa mesin build: `bash deploy/upgrade.sh build` (build di VM, ± 16–21 menit di olympus).
+   Tag arsip dibaca dari `manifest.json` sebelum `docker load`: arsip bertag sama dengan produksi lama atau
+   `prev-*` ditolak. Tanpa mesin build: `bash deploy/upgrade.sh build` (build di VM, ± 16–21 menit di olympus).
 4. **Migrasi + gerbang** (jeda layanan mulai: app + worker dihentikan):
    ```bash
    bash deploy/upgrade.sh migrate
    ```
-   `prisma migrate deploy` dengan image baru, lalu pemeriksaan pasca-migrasi (wajib lulus semua):
+   Sebelum dan sesudah app + worker dihentikan job aktif dicek lagi (ada job → berhenti tanpa perubahan;
+   bila job mulai di antaranya, app/worker dinyalakan lagi). Lalu **dump database baru** (`db-migrate-*.dump`,
+   diverifikasi seperti di preflight) menggantikan dump preflight sebagai dump rollback, sehingga unggahan
+   atau perubahan selama langkah 2–3 tidak hilang bila rollback. Bila `migrate` diulang setelah gerbang gagal
+   (database sudah berskema baru), dump rollback tetap yang lama. Lalu `prisma migrate deploy` dengan image
+   baru dan pemeriksaan pasca-migrasi (wajib lulus semua; kueri yang error = gagal, bukan "0 baris"):
    - `scripts/check-segments.mjs` (T-036): setiap sheet punya satu segmen legacy, manifest = typedKey,
      lineage satu dataset, posisi kolom typed = skema (T-037) — semua 0 selisih. Hanya bermakna untuk data
      sebelum rilis ini (dataset per periode kelak sah punya manifest > 1 segmen).
@@ -420,7 +426,7 @@ publik; lewat `http://` atau peringatan sertifikat yang di-bypass tombol salin b
    `node scripts/smoke-prod-headers.mjs https://10.3.3.221:8443`.
 7. **Besok**: `$C run --rm --no-deps worker node scripts/quota-report.mjs` (ukuran file lama sudah terisi);
    backup harian 02.00 berhasil dan `verify-backup.sh` cocok → hapus dump plaintext
-   `../data-dashboard-upgrade/<stamp>/db-<stamp>.dump` (dump pengaman rollback juga, bila ada). Catat hasil di
+   semua `../data-dashboard-upgrade/<stamp>/db-*.dump` (preflight, migrate, pengaman rollback). Catat hasil di
    Notes T-023.
 
 ### R. Rollback
@@ -429,13 +435,18 @@ publik; lewat `http://` atau peringatan sertifikat yang di-bypass tombol salin b
 bash deploy/upgrade.sh rollback          # minta ketik ROLLBACK; ROLLBACK_YES=1 untuk tanpa tanya
 ```
 
+Pemeriksaan dulu (belum ada yang dihentikan/dibuang): nama database sama dengan yang dicatat preflight, dan
+setiap tabel `public` saat ini ada di dump rollback atau termasuk tabel baru rilis ini (`SheetLineage`,
+`Segment`, `SegmentTyped`, `SheetSegment`, `UploadQueue`, `UploadQueueItem`); selain itu rollback dibatalkan.
 Urutan: app + worker berhenti → dump pengaman database saat ini (`db-sebelum-rollback-*.dump`) → database
-dipulihkan dari `db-<stamp>.dump` dalam **satu transaksi** (semua tabel + enum skema `public` dibuang lalu dump
-lama dimuat; gagal = database tetap seperti sebelum langkah ini; `pg_restore --clean` saja tidak cukup karena
-tabel baru menahan DROP tabel lama lewat FK) → kode lama dari arsip → `IMAGE_TAG=prev-<stamp>` → `up --wait` +
+dipulihkan dari dump rollback (`DB_DUMP` di `state.env`: `db-migrate-*.dump`, atau `db-<stamp>.dump` bila
+migrate belum jalan) dalam **satu transaksi** (semua tabel + enum skema `public` dibuang lalu dump dimuat;
+gagal = database tetap seperti sebelum langkah ini; `pg_restore --clean` saja tidak cukup karena tabel baru
+menahan DROP tabel lama lewat FK) → kode lama dari arsip → `IMAGE_TAG=prev-<stamp>` → `up --wait` +
 recreate proxy/backup. Migrasi lama di container `migrate` = no-op.
 
-Batas: rollback cepat hanya **≤ 20 jam setelah `start`**. Sesudahnya GC segmen (24 jam) bisa sudah menghapus
+Batas: rollback cepat hanya **≤ 20 jam setelah `start` pertama** (dicatat sekali; `start` ulang tidak
+menggesernya). Sesudahnya GC segmen (24 jam) bisa sudah menghapus
 objek storage yang dirujuk database lama; skrip menolak (kecuali `ROLLBACK_LATE=1`) dan pemulihan memakai
 restore lengkap §5 dari arsip backup preflight (`BACKUP_ARCHIVE` di `state.env`, butuh kunci privat age dari
 laptop admin). Objek yang ditulis rilis baru (`parquet/<dataset>/seg/…`) tertinggal tanpa rujukan setelah
@@ -454,5 +465,8 @@ untuk jadwal baru (segment-gc, segment-audit, …) di Redis — tidak berbahaya.
   127.0.0.1 dengan role non-superuser, seperti olympus; image lama = commit sebelum T-036): preflight (gerbang
   ekspor aktif dan ruang disk teruji menolak) → load → migrate (gerbang T-gcn8 teruji menolak data rusak) →
   start (health, presign 16 MiB, allowlist, admin-restore, env baru terbaca) → rollback: image `prev-*` jalan,
-  `/api/health` ok, isi database identik dengan dump preflight (sidik `fingerprint.sh`). Belum diuji: server
+  `/api/health` ok, isi database identik dengan dump rollback (sidik `fingerprint.sh`). Gerbang juga diuji
+  dengan `docker` tiruan (`tests/scripts/upgrade-gates.test.ts`): kueri T-gcn8 error, check-segments gagal,
+  dump baru hanya selama skema lama, STARTED_AT sekali, tag arsip = produksi lama, database/tabel rollback
+  tidak cocok. Belum diuji: server
   olympus sungguhan (pemilik), volume data nyata.

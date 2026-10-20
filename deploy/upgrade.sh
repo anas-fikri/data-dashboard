@@ -17,7 +17,8 @@
 # ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start).
 set -euo pipefail
 
-die() { echo "GAGAL: $*" >&2; exit 1; }
+DIE_HINT=""
+die() { echo "GAGAL: $*" >&2; [ -z "$DIE_HINT" ] || echo "$DIE_HINT" >&2; exit 1; }
 info() { echo "== $*"; }
 warn() { echo "PERINGATAN: $*" >&2; }
 
@@ -25,6 +26,8 @@ ENV_FILE=.env.prod
 STATE_ROOT=${UPGRADE_DIR:-../$(basename "$PWD")-upgrade}
 C=(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml)
 SERVICES=(app worker renderer backup)
+# Tabel yang ditambahkan migrasi rilis ini (T-036…T-060): boleh ada di database tapi tidak di dump lama.
+NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQueueItem"
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
 
@@ -53,6 +56,7 @@ load_state() {
   STATE=$(cd "$dir" && pwd)
   # shellcheck disable=SC1091
   . "$STATE/state.env"
+  [ -n "${PREFLIGHT_AT:-}" ] || die "preflight $STATE belum lulus — ulangi preflight (kode lama)"
 }
 
 record() { printf '%s=%q\n' "$1" "$2" >>"$STATE/state.env"; }
@@ -66,9 +70,52 @@ require_app_dir() {
 
 free_gb() { df -Pk "$1" | awk 'NR==2 {printf "%d", $4/1024/1024}'; }
 
+# Satu angka dari SQL; kueri gagal atau hasil bukan angka = gagal (gerbang tertutup, bukan "0").
+sql_count() {
+  local v
+  v=$(echo "$1" | psql_q) || return 1
+  [[ "$v" =~ ^[0-9]+$ ]] || return 1
+  echo "$v"
+}
+
+# "<ingest> <ekspor>" yang sedang berjalan (UPLOADED/INGESTING, QUEUED/RUNNING).
+active_jobs() {
+  local b e
+  b=$(sql_count "SELECT count(*) FROM \"DatasetVersion\" WHERE status::text IN ('UPLOADED', 'INGESTING');") || return 1
+  e=$(sql_count "SELECT count(*) FROM \"Export\" WHERE status::text IN ('QUEUED', 'RUNNING');") || return 1
+  echo "$b $e"
+}
+
+last_migration() {
+  echo "SELECT max(migration_name) FROM _prisma_migrations WHERE finished_at IS NOT NULL;" | psql_q
+}
+
+# dump_verified <nama>: pg_dump custom ke $STATE/<nama>, lalu pg_restore --list wajib memuat semua tabel
+# public. Gagal = die. Mencatat DB_DUMP (dump yang dipakai rollback).
+dump_verified() {
+  local name=$1 tables entries sz
+  tables=$(sql_count "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';") || die "jumlah tabel tidak terbaca"
+  sz=$(sql_count "SELECT pg_database_size(current_database());") || die "ukuran database tidak terbaca"
+  [ "$(($(free_gb "$STATE") * 1024 * 1024 * 1024))" -ge "$((sz * 2 + 1073741824))" ] ||
+    die "ruang folder status kurang untuk dump database"
+  entries=$("${C[@]}" run --rm --no-deps -T -v "$STATE:/out" backup bash -c \
+    '. /usr/local/bin/pgenv.sh && pg_env_from_url "$DATABASE_URL" && umask 077 &&
+     pg_dump --format=custom --no-owner --no-privileges --file "/out/$0" &&
+     pg_restore --list "/out/$0" | grep -c " TABLE DATA public "' "$name") || die "pg_dump gagal"
+  [ -s "$STATE/$name" ] || die "dump kosong"
+  [ "$entries" = "$tables" ] || die "dump memuat $entries tabel, database $tables"
+  record DB_DUMP "$name"
+  echo "   $STATE/$name ($(du -h "$STATE/$name" | cut -f1), $entries tabel)"
+}
+
+# Upgrade yang sudah di-rollback tidak boleh dilanjutkan dengan status yang sama.
+not_rolled_back() {
+  [ -z "${ROLLED_BACK_AT:-}" ] || die "upgrade $STAMP sudah di-rollback — mulai lagi dari preflight (kode lama)"
+}
+
 # ---------------------------------------------------------------------------------------------------
 preflight() {
-  local stamp tag root sz fdock fstate n busy exp failed last dump tables entries out archive
+  local stamp tag root sz fdock fstate n busy exp failed last db tables out archive
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   tag=$(envval IMAGE_TAG); tag=${tag:-latest}
   umask 077
@@ -87,24 +134,27 @@ preflight() {
   done
 
   info "2/7 pemeriksaan SQL pra-deploy"
-  failed=$(echo "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;" | psql_q)
+  failed=$(sql_count "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;") ||
+    die "_prisma_migrations tidak terbaca"
   [ "$failed" = 0 ] || die "$failed migrasi gagal/setengah jalan di _prisma_migrations — selesaikan dulu (prisma migrate resolve)"
-  last=$(echo "SELECT max(migration_name) FROM _prisma_migrations WHERE finished_at IS NOT NULL;" | psql_q)
+  last=$(last_migration) && [ -n "$last" ] || die "migrasi terakhir tidak terbaca"
   record OLD_MIGRATION "$last"
+  db=$(echo "SELECT current_database();" | psql_q) && [ -n "$db" ] || die "nama database tidak terbaca"
+  record OLD_DB "$db"
   echo "   migrasi terakhir produksi: $last"
-  n=$(echo "SELECT count(*) FROM \"DatasetVersion\" WHERE mode::text = 'APPEND';" | psql_q)
+  n=$(sql_count "SELECT count(*) FROM \"DatasetVersion\" WHERE mode::text = 'APPEND';") || die "cek APPEND gagal"
   echo "   versi mode APPEND (T-049, wajib 0): $n"
   [ "$n" = 0 ] || die "ada $n versi APPEND — migrasi T-049 akan berhenti; putuskan versi itu dulu (Notes T-049)"
-  busy=$(echo "SELECT count(*) FROM \"DatasetVersion\" WHERE status::text IN ('UPLOADED', 'INGESTING');" | psql_q)
-  exp=$(echo "SELECT count(*) FROM \"Export\" WHERE status::text IN ('QUEUED', 'RUNNING');" | psql_q)
-  n=$(echo "SELECT count(*) FROM \"DatasetVersion\" WHERE status::text = 'UPLOADING';" | psql_q)
+  read -r busy exp < <(active_jobs || echo x x)
+  [ "$busy" != x ] || die "cek job aktif gagal"
+  n=$(sql_count "SELECT count(*) FROM \"DatasetVersion\" WHERE status::text = 'UPLOADING';") || die "cek unggahan gagal"
   echo "   ingest berjalan: $busy · ekspor berjalan: $exp · unggahan belum selesai (info): $n"
   if [ "$busy" != 0 ] || [ "$exp" != 0 ]; then
     [ "${FORCE:-}" = 1 ] || die "masih ada job aktif — tunggu selesai (ulang preflight) atau FORCE=1 (job diulang worker baru)"
     warn "FORCE=1: job aktif diabaikan"
   fi
-  sz=$(echo "SELECT pg_database_size(current_database());" | psql_q)
-  tables=$(echo "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';" | psql_q)
+  sz=$(sql_count "SELECT pg_database_size(current_database());") || die "ukuran database tidak terbaca"
+  tables=$(sql_count "SELECT count(*) FROM pg_tables WHERE schemaname = 'public';") || die "jumlah tabel tidak terbaca"
   echo "   ukuran database: $((sz / 1024 / 1024)) MB, tabel: $tables"
   # Hitungan kuota lama (sebelum T-039) untuk dibandingkan dengan quota-report setelah migrasi.
   psql_q >"$STATE/kuota-sebelum.txt" <<'SQL'
@@ -145,15 +195,7 @@ SQL
   record BACKUP_ARCHIVE "$archive"
 
   info "7/7 dump database pra-upgrade (pg_dump custom) + verifikasi"
-  dump=db-$stamp.dump
-  entries=$("${C[@]}" run --rm --no-deps -T -v "$STATE:/out" backup bash -c \
-    '. /usr/local/bin/pgenv.sh && pg_env_from_url "$DATABASE_URL" && umask 077 &&
-     pg_dump --format=custom --no-owner --no-privileges --file "/out/$0" &&
-     pg_restore --list "/out/$0" | grep -c " TABLE DATA public "' "$dump")
-  [ -s "$STATE/$dump" ] || die "dump kosong"
-  [ "$entries" = "$tables" ] || die "dump memuat $entries tabel, database $tables"
-  record DB_DUMP "$dump"
-  echo "   $STATE/$dump ($(du -h "$STATE/$dump" | cut -f1), $entries tabel)"
+  dump_verified "db-$stamp.dump"
 
   record PREFLIGHT_AT "$(date -u +%s)"
   cat <<EOF
@@ -170,14 +212,23 @@ load_images() {
   load_state
   [ $# -ge 1 ] || die "pakai: upgrade.sh load <arsip.tar.gz>…"
   local f tags tag
+  # Tag dibaca dari manifest.json arsip SEBELUM docker load: arsip bertag sama dengan produksi akan
+  # memindahkan tag yang sedang dipakai container (rollback tetap lewat prev-<stamp>, tapi deploy salah).
+  : >"$STATE/load-tags.txt"
+  for f in "$@"; do
+    gunzip -c "$f" | tar -xOf - manifest.json | grep -o '"dashboard-[a-z]*:[^"]*"' | tr -d '"' >>"$STATE/load-tags.txt" ||
+      die "$f: manifest.json tanpa image dashboard-* (bukan arsip deploy/images.sh?)"
+  done
+  tags=$(sed 's/^dashboard-[a-z]*://' "$STATE/load-tags.txt" | sort -u)
+  [ -n "$tags" ] && [ "$(echo "$tags" | wc -l)" = 1 ] || die "arsip harus berisi satu tag image (ditemukan: $(echo $tags))"
+  tag=$tags
+  case "$tag" in prev-*) die "arsip bertag $tag (cadangan rollback)" ;; esac
+  [ "$tag" != "$OLD_TAG" ] || die "arsip bertag $tag = tag produksi lama — build ulang dengan tag lain (commit rilis)"
   : >"$STATE/load.log"
   for f in "$@"; do
     info "muat $f"
     gunzip -c "$f" | docker load | tee -a "$STATE/load.log"
   done
-  tags=$(sed -n 's/^Loaded image: dashboard-[a-z]*:\(.*\)$/\1/p' "$STATE/load.log" | sort -u)
-  [ "$(echo "$tags" | wc -l)" = 1 ] && [ -n "$tags" ] || die "arsip harus berisi satu tag image (ditemukan: $(echo $tags))"
-  tag=$tags
   set_tag "$tag"
 }
 
@@ -207,7 +258,7 @@ set_tag() {
 # ---------------------------------------------------------------------------------------------------
 migrate() {
   load_state
-  local tag s n
+  local tag s busy exp last
   tag=$(envval IMAGE_TAG)
   [ -n "$tag" ] && [ "$tag" != "$OLD_TAG" ] || die "IMAGE_TAG belum diganti ke rilis baru (upgrade.sh load/build)"
   for s in "${SERVICES[@]}"; do
@@ -217,19 +268,45 @@ migrate() {
     die "image worker $tag = image lama — rilis baru belum dimuat"
   [ -f deploy/upgrade.sh ] && grep -q GRID_MAX_CONCURRENCY docker-compose.prod.yml ||
     die "kode di folder ini belum rilis baru (sinkron kode dulu)"
+  not_rolled_back
+  read -r busy exp < <(active_jobs || echo x x)
+  [ "$busy" != x ] || die "cek job aktif gagal"
+  if [ "$busy $exp" != "0 0" ] && [ "${FORCE:-}" != 1 ]; then
+    die "job aktif (ingest $busy, ekspor $exp) — tunggu selesai lalu ulang migrate (produksi belum diubah)"
+  fi
 
   record MIGRATED_AT ""
   info "hentikan app + worker (jeda layanan dimulai)"
   record DOWNTIME_AT "$(date -u +%s)"
   "${C[@]}" stop app worker
+  last=$(last_migration) && [ -n "$last" ] || gate_fail "migrasi terakhir tidak terbaca"
+  if [ "$last" = "$OLD_MIGRATION" ]; then
+    # Skema masih lama: produksi lama aman dinyalakan lagi bila ada yang menghalangi.
+    DIE_HINT="Database BELUM dimigrasi. Nyalakan lagi produksi lama: ${C[*]} start app worker"
+    read -r busy exp < <(active_jobs || echo x x)
+    [ "$busy" != x ] || { "${C[@]}" start app worker; die "cek job aktif gagal (app/worker dinyalakan lagi)"; }
+    if [ "$busy $exp" != "0 0" ] && [ "${FORCE:-}" != 1 ]; then
+      "${C[@]}" start app worker
+      die "job mulai saat app/worker dihentikan (ingest $busy, ekspor $exp) — app/worker dinyalakan lagi, ulang migrate"
+    fi
+    # Dump baru setelah penulis berhenti: unggahan/perubahan selama sinkron kode + load tidak hilang bila
+    # rollback.
+    info "dump database terbaru (app/worker berhenti) untuk rollback"
+    dump_verified "db-migrate-$(date -u +%Y%m%dT%H%M%SZ).dump"
+  else
+    # migrate diulang setelah gerbang gagal: database sudah (sebagian) berskema baru — dump rollback tetap
+    # yang terakhir berskema lama.
+    warn "database sudah di $last (bukan $OLD_MIGRATION): dump rollback tetap $DB_DUMP"
+  fi
 
+  DIE_HINT="App/worker berhenti. Bila database sudah berubah: bash deploy/upgrade.sh rollback"
   info "migrasi database (prisma migrate deploy, image $tag)"
   "${C[@]}" run --rm --no-deps migrate 2>&1 | tee "$STATE/migrate.log" ||
     gate_fail "migrasi gagal (database TIDAK berubah untuk migrasi yang gagal: tiap migrasi satu transaksi)"
   grep -q "successfully applied\|No pending migrations" "$STATE/migrate.log" || gate_fail "hasil migrasi tidak dikenali"
 
   info "pemeriksaan pasca-migrasi"
-  post_migrate_checks || gate_fail "pemeriksaan pasca-migrasi gagal"
+  if ! post_migrate_checks; then gate_fail "pemeriksaan pasca-migrasi gagal"; fi
   record MIGRATED_AT "$(date -u +%s)"
   cat <<EOF
 
@@ -248,11 +325,16 @@ EOF
 }
 
 post_migrate_checks() {
+  # Setiap gerbang memeriksa status keluarnya sendiri: fungsi ini dipanggil dalam konteks if/||, di mana
+  # set -e mati — tanpa itu kueri yang error menghasilkan teks kosong dan terbaca "0 baris" (lulus).
   local ok=0 rows
   echo "-- check-segments.mjs (T-036, model segmen)"
-  "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs 2>&1 | tee "$STATE/check-segments.log" || ok=1
+  if ! "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >"$STATE/check-segments.log" 2>&1; then
+    ok=1; echo "   GAGAL (exit bukan 0)"
+  fi
+  sed 's/^/   /' "$STATE/check-segments.log"
   echo "-- T-gcn8: baris judul per file typed = baris judul sheet yang merujuknya (wajib 0 baris)"
-  rows=$(psql_q <<'SQL' | tee "$STATE/check-gcn8.log"
+  if rows=$(psql_q <<'SQL'
 SELECT t.id FROM "SegmentTyped" t
 JOIN "SheetSegment" m ON m."segmentTypedId" = t.id
 JOIN "Sheet" s ON s.id = m."sheetId"
@@ -262,19 +344,25 @@ UNION
 SELECT m."segmentTypedId" FROM "SheetSegment" m JOIN "Sheet" s ON s.id = m."sheetId"
 GROUP BY m."segmentTypedId" HAVING count(DISTINCT s."headerRow") > 1;
 SQL
-)
-  if [ -n "$rows" ]; then echo "   $(echo "$rows" | wc -l) file typed tidak cocok"; ok=1; else echo "   0 baris"; fi
+  ); then
+    printf '%s\n' "$rows" >"$STATE/check-gcn8.log"
+    if [ -n "$rows" ]; then echo "   $(echo "$rows" | wc -l) file typed tidak cocok"; ok=1; else echo "   0 baris"; fi
+  else
+    ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+  fi
   echo "-- T-049/T-060: data lama tetap non-periode (wajib 0)"
-  rows=$(psql_q <<'SQL' | tee "$STATE/check-period.log"
-SELECT (SELECT count(*) FROM "DatasetVersion" WHERE mode <> 'REPLACE' OR status = 'AWAITING_CONFIRM'
-          OR "periodGrain" IS NOT NULL)
-     + (SELECT count(*) FROM "Segment" WHERE "periodKey" IS NOT NULL OR "groupId" IS NOT NULL
-          OR cardinality("colMap") > 0);
-SQL
-)
-  echo "   $rows"; [ "$rows" = 0 ] || ok=1
+  if rows=$(sql_count "SELECT (SELECT count(*) FROM \"DatasetVersion\" WHERE mode <> 'REPLACE'
+      OR status = 'AWAITING_CONFIRM' OR \"periodGrain\" IS NOT NULL) + (SELECT count(*) FROM \"Segment\"
+      WHERE \"periodKey\" IS NOT NULL OR \"groupId\" IS NOT NULL OR cardinality(\"colMap\") > 0);"); then
+    echo "   $rows"; [ "$rows" = 0 ] || ok=1
+  else
+    ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+  fi
   echo "-- quota-report.mjs (T-039; bandingkan dengan kuota-sebelum.txt)"
-  "${C[@]}" run --rm --no-deps -T worker node scripts/quota-report.mjs 2>&1 | tee "$STATE/quota-report.log" || ok=1
+  if ! "${C[@]}" run --rm --no-deps -T worker node scripts/quota-report.mjs >"$STATE/quota-report.log" 2>&1; then
+    ok=1; echo "   GAGAL (exit bukan 0)"
+  fi
+  cat "$STATE/quota-report.log"
   return $ok
 }
 
@@ -282,9 +370,12 @@ SQL
 start() {
   load_state
   [ -n "${MIGRATED_AT:-}" ] || die "migrasi belum lulus (bash deploy/upgrade.sh migrate)"
+  not_rolled_back
   local app_host host port tls=() domain rc=0
   info "nyalakan rilis baru (deploy.sh --no-build: up, storage-init, tunggu sehat)"
-  record STARTED_AT "$(date -u +%s)"
+  # Sekali saja (start pertama yang menyalakan worker baru = awal hitungan GC segmen 24 jam); start ulang
+  # tidak menggeser batas rollback cepat.
+  [ -n "${STARTED_AT:-}" ] || record STARTED_AT "$(date -u +%s)"
   bash deploy/deploy.sh --no-build || gate_fail "deploy.sh tidak hijau"
 
   info "verifikasi pasca-deploy"
@@ -331,7 +422,7 @@ UPGRADE SELESAI. Uji manual (runbook §7 langkah 6): login, buka dashboard, Liha
 ekspor PDF, unggah file kecil. Laporan kuota kedua besok setelah pemeriksaan malam 03.00 WIB:
   ${C[*]} run --rm --no-deps worker node scripts/quota-report.mjs
 Rollback cepat hanya sampai ± 20 jam setelah start (sesudahnya: restore.sh dari $BACKUP_ARCHIVE).
-Setelah backup harian berikutnya terverifikasi: hapus $STATE/$DB_DUMP (dump database tanpa enkripsi).
+Setelah backup harian berikutnya terverifikasi: hapus $STATE/db-*.dump (dump database tanpa enkripsi).
 EOF
 }
 
@@ -348,9 +439,10 @@ yang dirujuk database lama. Pakai restore lengkap (runbook §5) dari $BACKUP_ARC
     docker image inspect "dashboard-$s:prev-$STAMP" >/dev/null 2>&1 || die "image dashboard-$s:prev-$STAMP tidak ada"
   done
   [ -s "$STATE/$DB_DUMP" ] || die "dump $STATE/$DB_DUMP tidak ada"
+  rollback_target_check
   cat <<EOF
 ROLLBACK ke kondisi $STAMP: image dashboard-*:prev-$STAMP, kode lama, database dari $DB_DUMP.
-Semua perubahan data SETELAH preflight (unggahan, dashboard, pengguna baru) hilang dari database; isinya
+Semua perubahan data SETELAH dump itu (unggahan, dashboard, pengguna baru) hilang dari database; isinya
 disimpan dulu ke dump pengaman di $STATE.
 EOF
   if [ "${ROLLBACK_YES:-}" != 1 ]; then
@@ -399,10 +491,29 @@ SQL
   record ROLLED_BACK_AT "$(date -u +%s)"
   cat <<EOF
 
-ROLLBACK SELESAI: produksi memakai image prev-$STAMP dan database $STAMP. Cek: bash deploy/deploy.sh --no-build
+ROLLBACK SELESAI: produksi memakai image prev-$STAMP dan database dari $DB_DUMP. Cek: bash deploy/deploy.sh --no-build
 (health) atau buka aplikasi. Objek storage yang ditulis rilis baru (parquet/<dataset>/seg/…) tertinggal
 tanpa rujukan — aman, bisa dibersihkan nanti. Database rilis baru tersimpan di $STATE/$dump2.
 EOF
+}
+
+# Sebelum membuang apa pun: database tujuan = database preflight, dan setiap tabel public saat ini ada di
+# dump atau termasuk tabel baru rilis ini. Selain itu (DATABASE_URL berubah, dump salah) → berhenti.
+rollback_target_check() {
+  local db cur dumpt extra
+  info "periksa database tujuan rollback"
+  db=$(echo "SELECT current_database();" | psql_q) && [ -n "$db" ] || die "nama database tidak terbaca"
+  [ "$db" = "${OLD_DB:-}" ] || die "database sekarang '$db' ≠ database preflight '${OLD_DB:-?}' (DATABASE_URL berubah?)"
+  cur=$(echo "SELECT tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY 1;" | psql_q) ||
+    die "daftar tabel tidak terbaca"
+  dumpt=$("${C[@]}" run --rm --no-deps -T -v "$STATE:/in:ro" backup pg_restore --list "/in/$DB_DUMP" \
+    2> >(grep -v '^ Container .* Creat' >&2) | awk '$4 == "TABLE" && $5 == "public" {print $6}') ||
+    die "isi dump $DB_DUMP tidak terbaca"
+  grep -qx _prisma_migrations <<<"$dumpt" || die "dump $DB_DUMP tanpa _prisma_migrations — bukan dump aplikasi ini"
+  extra=$(LC_ALL=C comm -23 <(LC_ALL=C sort -u <<<"$cur") \
+    <(printf '%s\n' $dumpt $NEW_TABLES | LC_ALL=C sort -u))
+  [ -z "$extra" ] || die "tabel di database yang tidak ada di dump maupun rilis ini: $(echo $extra) — rollback dibatalkan"
+  echo "   database $db, $(echo "$cur" | wc -l) tabel ⊆ dump ($(echo "$dumpt" | wc -l)) + tabel baru rilis"
 }
 
 main() {
