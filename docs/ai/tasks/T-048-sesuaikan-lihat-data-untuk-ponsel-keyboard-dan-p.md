@@ -1,7 +1,7 @@
 ---
 id: T-048
 title: Sesuaikan Lihat data untuk ponsel, keyboard, dan pembaca layar
-status: in_progress
+status: blocked
 profile: standard
 goal: G-6
 tags:
@@ -12,17 +12,35 @@ depends_on:
   - T-044
   - T-045
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T10:27:42Z"
+updated: "2026-10-20T10:36:48Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 14bbbc800d5b469cd4253afc8ce888995fc4468d
+paths:
+  - package-lock.json
+  - package.json
+  - playwright.config.ts
+  - src/app/globals.css
+  - src/components/grid/grid-header.tsx
+  - src/components/grid/sheet-grid.tsx
+  - tests/e2e/data-view-a11y.spec.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T10:33:20Z"
+      findings: 2
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T10:33:20Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 190042
+    duration_ms: 181076
     summary: |-
       …t
       > vitest run
@@ -30,23 +48,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792492008377,"service":"data-dashboard","host":"127.0.0.1","port":35415,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792492008443,"service":"data-dashboard","host":"127.0.0.1","port":40845,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792492008554,"service":"data-dashboard","host":"127.0.0.1","port":36449,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792492008673,"service":"data-dashboard","host":"127.0.0.1","port":42455,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792492018189,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792492029032,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792492029055,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792492029059,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792492029072,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792492527832,"service":"data-dashboard","host":"127.0.0.1","port":44731,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792492527892,"service":"data-dashboard","host":"127.0.0.1","port":44185,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792492527998,"service":"data-dashboard","host":"127.0.0.1","port":40419,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792492528113,"service":"data-dashboard","host":"127.0.0.1","port":45859,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792492536793,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792492549120,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792492549143,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792492549147,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792492549160,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  172 passed | 1 skipped (173)
             Tests  2224 passed | 10 skipped (2234)
-         Start at  10:25:25
-         Duration  134.97s (tests 84%, import 13%, transform 3%)
+         Start at  10:34:11
+         Duration  129.67s (tests 84%, import 13%, transform 3%)
 
-          Isolate  173 workers spawned · ~153ms startup each (spawn + environment, per file)
-                   at least ~8.65s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  173 workers spawned · ~151ms startup each (spawn + environment, per file)
+                   at least ~8.53s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -54,12 +72,98 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T10:27:41Z"
-    tree: 6e7ac9ef3521e23dbed13bd5cbfa297fd239a6e2c829f5bc1014faeed7d29bfb
+    at: "2026-10-20T10:36:22Z"
+    tree: 1f535cd1c6a2a965c6a52cb0256b0f7a8e2d6371cb8949bc93ddae9ec29c29af
+  commits:
+    - 08ca5b4
+    - 0cb153a
+    - "1220871"
+    - 14bbbc8
+    - 17d81a7
+    - 18b74cc
+    - 1b2b9ab
+    - 23e5ae9
+    - 258a139
+    - 27924c4
+    - 27986dc
+    - 29fe0f3
+    - 2d7b316
+    - 3602b55
+    - 36afc9f
+    - 3b96186
+    - 3bb3baa
+    - 49f49a5
+    - 4bd9881
+    - 4eea84c
+    - 5101f51
+    - 5603fc7
+    - 56a8447
+    - 56e4d6d
+    - 59ec9a3
+    - "6123427"
+    - 62ec216
+    - 69b8953
+    - 6b3ee3f
+    - 70136f5
+    - "7187327"
+    - 75cf456
+    - 76e3ce7
+    - "7824e56"
+    - 7ae2840
+    - 7af4484
+    - 7f238c4
+    - 7f9a7c7
+    - "8570e80"
+    - 8f8df38
+    - 8fc3abc
+    - 90e4e63
+    - "9298e14"
+    - 930dd6d
+    - 94bea50
+    - 94d85a4
+    - a019f8f
+    - a03481c
+    - a0e1646
+    - a687d4c
+    - acb27a6
+    - ae4e5a2
+    - af1994a
+    - b0b99d8
+    - b30aea5
+    - b32d50d
+    - b8e59ee
+    - b933279
+    - ba2efef
+    - c15362c
+    - c1c8b0a
+    - c2fd95c
+    - c76c343
+    - ccd0a9a
+    - ce26ca5
+    - ce5d6a7
+    - ce649d0
+    - cf28ad3
+    - d32a8ea
+    - d557c9e
+    - da46e35
+    - dff9b8c
+    - e24e070
+    - e51fcb4
+    - f197114
+    - f3ea697
+    - f54828c
+    - f55d8d2
+    - f5b2aa6
+    - f87b0a1
+    - fc288cb
+    - fc87996
+  acceptance:
+    total: 3
+    done: 2
   audit:
-    at: "2026-10-20T10:24:06Z"
+    at: "2026-10-20T10:36:23Z"
     passed: true
-    tree: 6e7ac9ef3521e23dbed13bd5cbfa297fd239a6e2c829f5bc1014faeed7d29bfb
+    tree: 1f535cd1c6a2a965c6a52cb0256b0f7a8e2d6371cb8949bc93ddae9ec29c29af
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -67,7 +171,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 468 dirs visited, 2401 inodes visited, 1 Extract calls, 232.971734ms elapsed, 232.972356ms wall time
+          End status: 470 dirs visited, 2431 inodes visited, 1 Extract calls, 209.001237ms elapsed, 209.001571ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -92,8 +196,8 @@ axe tanpa pelanggaran serius). Bawaan review T-045: aria-selected pada baris ter
 server/otorisasi (kontrak T-016/T-017 tidak tersentuh).
 
 ## Acceptance criteria
-- [ ] Given lebar 360 px, then halaman tidak bergulir horizontal, hanya nomor baris yang beku, toolbar terlipat ke 'Lainnya', urut/saring di bottom sheet, ketuk sel membuka isi penuh, dan target sentuh ≥ 44 px
-- [ ] Given hanya keyboard, then panah, Tab, PageUp/Down, Home/End, Ctrl+Home/End, Alt+↓, F2/Enter, Ctrl+F, dan Shift+Spasi berfungsi dengan fokus terlihat
+- [x] Given lebar 360 px, then halaman tidak bergulir horizontal, hanya nomor baris yang beku, toolbar terlipat ke 'Lainnya', urut/saring di bottom sheet, ketuk sel membuka isi penuh, dan target sentuh ≥ 44 px
+- [x] Given hanya keyboard, then panah, Tab, PageUp/Down, Home/End, Ctrl+Home/End, Alt+↓, F2/Enter, Ctrl+F, dan Shift+Spasi berfungsi dengan fokus terlihat
 - [ ] Given axe dan NVDA/VoiceOver, then role=grid, aria-rowcount = total + 1, aria-colcount, dan aria-rowindex nyata terpasang, status memuat diumumkan, axe tanpa pelanggaran serius, dan /frontend-expert:audit tanpa Critical/High
 
 ## Risk
@@ -162,3 +266,11 @@ data-view-export 4, data-view-scroll 7×3 engine; aitk check hijau; measure-grid
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada unggahan/berkas baru
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — verified: CSP tidak diubah (axe disuntik hanya di e2e lewat CDP); npm audit hijau
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T10:36:22Z (181076 ms)
+- Acceptance criteria: 2/3 satisfied
+- Commits: 08ca5b4, 0cb153a, 1220871, 14bbbc8, 17d81a7, 18b74cc, 1b2b9ab, 23e5ae9, 258a139, 27924c4, 27986dc, 29fe0f3, 2d7b316, 3602b55, 36afc9f, 3b96186, 3bb3baa, 49f49a5, 4bd9881, 4eea84c, 5101f51, 5603fc7, 56a8447, 56e4d6d, 59ec9a3, 6123427, 62ec216, 69b8953, 6b3ee3f, 70136f5, 7187327, 75cf456, 76e3ce7, 7824e56, 7ae2840, 7af4484, 7f238c4, 7f9a7c7, 8570e80, 8f8df38, 8fc3abc, 90e4e63, 9298e14, 930dd6d, 94bea50, 94d85a4, a019f8f, a03481c, a0e1646, a687d4c, acb27a6, ae4e5a2, af1994a, b0b99d8, b30aea5, b32d50d, b8e59ee, b933279, ba2efef, c15362c, c1c8b0a, c2fd95c, c76c343, ccd0a9a, ce26ca5, ce5d6a7, ce649d0, cf28ad3, d32a8ea, d557c9e, da46e35, dff9b8c, e24e070, e51fcb4, f197114, f3ea697, f54828c, f55d8d2, f5b2aa6, f87b0a1, fc288cb, fc87996
+- Review pass 1 by claude-reviewer-subagent: 2 findings
+- Review pass 2 by claude-code: 0 findings
