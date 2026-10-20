@@ -600,6 +600,13 @@ export async function transferDatasets(
         });
       }
 
+      // Antrean unggah banyak file (T-059) pemilik lama dihentikan: file-filenya ada di browser pemilik
+      // lama; file yang belum diproses dibatalkan job pemeliharaan (objek/multipart ikut dibuang).
+      await tx.uploadQueue.updateMany({
+        where: { datasetId: { in: ids }, status: "OPEN", stoppedAt: null },
+        data: { stoppedAt: new Date() },
+      });
+
       const plan = planNames(incoming, existing);
       const keep = plan.filter((p) => p.renamedFrom === null).map((p) => p.id);
       let moved = 0;

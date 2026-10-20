@@ -50,6 +50,7 @@ export default defineConfig({
         /period-limits\.spec\.ts$/,
         /period-manage\.spec\.ts$/,
         /period-query\.spec\.ts$/,
+        /period-queue\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -182,10 +183,16 @@ export default defineConfig({
       testMatch: /period-query\.spec\.ts$/,
       dependencies: ["period-mapping"],
     },
+    // period-queue (T-059): worker sendiri; antrean unggah banyak file periode.
+    {
+      name: "period-queue",
+      testMatch: /period-queue\.spec\.ts$/,
+      dependencies: ["period-query"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-query"],
+      dependencies: ["period-queue"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

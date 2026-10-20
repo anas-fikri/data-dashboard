@@ -45,7 +45,7 @@ export type UploadResult<T> =
 export const MAX_ACTIVE_UPLOADS_PER_USER = 2;
 export const STALE_UPLOAD_MS = 24 * 60 * 60 * 1000;
 export const SIGN_BATCH_MAX = 16;
-const COMPLETE_CLAIM_MS = 5 * 60 * 1000;
+export const COMPLETE_CLAIM_MS = 5 * 60 * 1000;
 const NAME_MAX = 255;
 
 const NON_TERMINAL = NON_TERMINAL_STATUSES;
@@ -224,7 +224,7 @@ export async function expireStaleUploads(
   return n;
 }
 
-async function uploadedPartNumbers(
+export async function uploadedPartNumbers(
   storage: MultipartStorage,
   v: {
     sourceKey: string;
@@ -406,6 +406,15 @@ export async function initUpload(
         };
       }
 
+      // Antrean banyak file (T-059) memegang giliran dataset sampai selesai/dihentikan.
+      if (await tx.uploadQueue.count({ where: { datasetId: dataset.id, status: "OPEN" } })) {
+        return {
+          kind: "reject",
+          code: "DATASET_BUSY",
+          message:
+            "Antrean unggahan sedang berjalan di dataset ini. Tunggu sampai selesai atau hentikan antrean, lalu unggah lagi.",
+        };
+      }
       const busy = await tx.datasetVersion.findFirst({
         where: { datasetId: dataset.id, status: { in: [...NON_TERMINAL] } },
         select: { status: true, uploadedById: true },
@@ -624,23 +633,50 @@ export async function signParts(
   ) {
     return notFound();
   }
+  return signTarget(
+    {
+      key: v.sourceKey,
+      uploadId: v.uploadId,
+      size: Number(v.sizeBytes),
+      partSize: v.partSize,
+      partCount: v.partCount,
+    },
+    partNumbers,
+    storage,
+  );
+}
+
+/** Multipart yang sedang berjalan (versi unggahan atau file antrean T-059). */
+export interface MultipartPlan {
+  key: string;
+  uploadId: string;
+  size: number;
+  partSize: number;
+  partCount: number;
+}
+
+/** Presigned URL part (nomor divalidasi terhadap rencana; ukuran ditandatangani). */
+export async function signTarget(
+  t: MultipartPlan,
+  partNumbers: unknown,
+  storage: MultipartStorage,
+): Promise<UploadResult<{ urls: { partNumber: number; url: string; size: number }[] }>> {
   if (
     !Array.isArray(partNumbers) ||
     partNumbers.length === 0 ||
     partNumbers.length > SIGN_BATCH_MAX ||
     new Set(partNumbers).size !== partNumbers.length ||
-    !partNumbers.every((n) => Number.isInteger(n) && n >= 1 && n <= (v.partCount ?? 0))
+    !partNumbers.every((n) => Number.isInteger(n) && n >= 1 && n <= t.partCount)
   ) {
     return fail("INVALID", "Nomor bagian file tidak valid.");
   }
-  const size = Number(v.sizeBytes);
   const urls = await Promise.all(
     (partNumbers as number[]).map(async (n) => {
-      const len = expectedPartSize(n, size, v.partSize!, v.partCount!);
+      const len = expectedPartSize(n, t.size, t.partSize, t.partCount);
       return {
         partNumber: n,
         size: len,
-        url: await storage.signPart(v.sourceKey!, v.uploadId!, n, len),
+        url: await storage.signPart(t.key, t.uploadId, n, len),
       };
     }),
   );
@@ -689,41 +725,93 @@ export async function completeUpload(
   }
   if (!v.sourceKey || !v.uploadId || !v.partSize || !v.partCount || v.sizeBytes === null)
     return notFound();
-  const { id, sourceKey: key, uploadId, partSize, partCount } = v;
-  const size = Number(v.sizeBytes);
-  const ext = key.endsWith(".csv") ? "csv" : "xlsx";
-
-  // Klaim: hanya satu complete yang berjalan per versi.
-  const claim = await prisma.datasetVersion.updateMany({
-    where: {
-      id,
-      status: "UPLOADING",
-      OR: [
-        { completingAt: null },
-        { completingAt: { lt: new Date(Date.now() - COMPLETE_CLAIM_MS) } },
-      ],
+  const id = v.id;
+  const r = await completeTarget(
+    {
+      key: v.sourceKey,
+      uploadId: v.uploadId,
+      size: Number(v.sizeBytes),
+      partSize: v.partSize,
+      partCount: v.partCount,
+      logId: { versionId: id },
+      claim: async () => {
+        const claim = await prisma.datasetVersion.updateMany({
+          where: {
+            id,
+            status: "UPLOADING",
+            OR: [
+              { completingAt: null },
+              { completingAt: { lt: new Date(Date.now() - COMPLETE_CLAIM_MS) } },
+            ],
+          },
+          data: { completingAt: new Date() },
+        });
+        return claim.count > 0;
+      },
+      release: () =>
+        prisma.datasetVersion.updateMany({
+          where: { id, status: "UPLOADING" },
+          data: { completingAt: null },
+        }),
+      markFailed: (message) => markFailed(id, message),
+      // Dataset bisa terhapus selama unggahan: versi ikut hilang → objek dibuang (review T-003).
+      markUploaded: async (etag) => {
+        const done = await prisma.datasetVersion.updateMany({
+          where: { id, status: "UPLOADING" },
+          data: { status: "UPLOADED", etag, uploadId: null, completingAt: null },
+        });
+        return done.count > 0;
+      },
     },
-    data: { completingAt: new Date() },
-  });
-  if (claim.count === 0) return fail("BUSY", "File sedang diperiksa. Tunggu sebentar.");
-  const release = () =>
-    prisma.datasetVersion.updateMany({
-      where: { id, status: "UPLOADING" },
-      data: { completingAt: null },
-    });
+    storage,
+  );
+  if (!r.ok) return r;
+  try {
+    await enqueue(id, v.datasetId);
+  } catch (err) {
+    // Versi tetap UPLOADED; complete berikutnya mengantre ulang, worker (T-006) menyapu saat start.
+    logger.error({ versionId: id, err: String(err) }, "enqueue ingest gagal");
+  }
+  logger.info({ versionId: id, size: Number(v.sizeBytes) }, "unggahan selesai");
+  return { ok: true, status: "UPLOADED" };
+}
+
+/** Target complete multipart: rencana + transisi status pemiliknya (versi atau file antrean). */
+export interface CompleteTarget extends MultipartPlan {
+  logId: Record<string, string>;
+  /** Klaim complete (satu complete per target); false = sedang diklaim complete lain. */
+  claim: () => Promise<boolean>;
+  release: () => Promise<unknown>;
+  markFailed: (message: string) => Promise<void>;
+  /** Objek valid → status "terunggah"; false = target sudah hilang (objek dibuang). */
+  markUploaded: (etag: string) => Promise<boolean>;
+}
+
+/**
+ * Selesaikan multipart (flow-kerja B2): ListParts → verifikasi rencana → complete → HeadObject (ukuran,
+ * batas) → signature 64 KB → status terunggah. Error storage → klaim dilepas (ulangi nanti); objek tidak
+ * valid → dihapus dan target ditandai gagal.
+ */
+export async function completeTarget(
+  t: CompleteTarget,
+  storage: MultipartStorage,
+): Promise<UploadResult<Record<never, never>>> {
+  const { key, uploadId, size, partSize, partCount, logId } = t;
+  const ext = key.endsWith(".csv") ? "csv" : "xlsx";
+  if (!(await t.claim())) return fail("BUSY", "File sedang diperiksa. Tunggu sebentar.");
 
   const rejectObject = async (code: UploadCode, message: string) => {
     await storage
       .remove(key)
       .catch((e: unknown) =>
-        logger.error({ versionId: id, err: String(e) }, "hapus objek yang ditolak gagal"),
+        logger.error({ ...logId, err: String(e) }, "hapus objek yang ditolak gagal"),
       );
-    await markFailed(id, message);
+    await t.markFailed(message);
     return fail(code, message);
   };
 
-  /** Validasi objek hasil complete lalu UPLOADED + antre ingest. Error storage → klaim dilepas. */
-  const finalize = async (etagHint: string): Promise<UploadResult<{ status: "UPLOADED" }>> => {
+  /** Validasi objek hasil complete lalu status terunggah. Error storage → klaim dilepas. */
+  const finalize = async (etagHint: string): Promise<UploadResult<Record<never, never>>> => {
     let etag = etagHint;
     try {
       const head = await storage.head(key);
@@ -744,36 +832,23 @@ export async function completeUpload(
       if (!sniffed.ok) return rejectObject("INVALID_FORMAT", sniffed.message);
     } catch (err) {
       // Objek sudah utuh di storage; ulangi complete nanti (jalur "multipart sudah selesai").
-      logger.error({ versionId: id, err: String(err) }, "validasi objek setelah complete gagal");
-      await release();
+      logger.error({ ...logId, err: String(err) }, "validasi objek setelah complete gagal");
+      await t.release();
       return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
     }
-
-    // Dataset bisa terhapus selama unggahan: versi ikut hilang → objek dibuang (review T-003).
-    const done = await prisma.datasetVersion.updateMany({
-      where: { id, status: "UPLOADING" },
-      data: { status: "UPLOADED", etag, uploadId: null, completingAt: null },
-    });
-    if (done.count === 0) {
+    if (!(await t.markUploaded(etag))) {
       await storage.remove(key).catch(() => {});
       return notFound();
     }
-    try {
-      await enqueue(id, v.datasetId);
-    } catch (err) {
-      // Versi tetap UPLOADED; complete berikutnya mengantre ulang, worker (T-006) menyapu saat start.
-      logger.error({ versionId: id, err: String(err) }, "enqueue ingest gagal");
-    }
-    logger.info({ versionId: id, size, etag }, "unggahan selesai");
-    return { ok: true, status: "UPLOADED" };
+    return { ok: true };
   };
 
   let parts: Awaited<ReturnType<MultipartStorage["listParts"]>>;
   try {
     parts = await storage.listParts(key, uploadId);
   } catch (err) {
-    logger.error({ versionId: id, err: String(err) }, "ListParts gagal");
-    await release();
+    logger.error({ ...logId, err: String(err) }, "ListParts gagal");
+    await t.release();
     return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
   }
   if (!parts) {
@@ -783,12 +858,12 @@ export async function completeUpload(
     try {
       existing = await storage.head(key); // null hanya untuk 404; error lain = belum tahu
     } catch (err) {
-      logger.error({ versionId: id, err: String(err) }, "HeadObject pemulihan gagal");
-      await release();
+      logger.error({ ...logId, err: String(err) }, "HeadObject pemulihan gagal");
+      await t.release();
       return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
     }
     if (existing) return finalize(existing.etag ?? "");
-    await markFailed(id, "Unggahan kedaluwarsa. Unggah ulang file.");
+    await t.markFailed("Unggahan kedaluwarsa. Unggah ulang file.");
     return fail(
       "UPLOAD_FAILED",
       "Unggahan sudah kedaluwarsa. Pilih file lagi untuk mulai dari awal.",
@@ -796,16 +871,16 @@ export async function completeUpload(
   }
   const verdict = verifyParts(parts, size, partSize, partCount);
   if (verdict.kind === "missing") {
-    await release();
+    await t.release();
     return { ...fail("INCOMPLETE", "Sebagian file belum terunggah."), missing: verdict.missing };
   }
   if (verdict.kind === "corrupt") {
     logger.warn(
-      { versionId: id, reason: verdict.reason },
+      { ...logId, reason: verdict.reason },
       "unggahan ditolak: part tidak sesuai rencana",
     );
     await storage.abort(key, uploadId).catch(() => {});
-    await markFailed(id, "Unggahan rusak: bagian file tidak sesuai. Unggah ulang file.");
+    await t.markFailed("Unggahan rusak: bagian file tidak sesuai. Unggah ulang file.");
     return fail("UPLOAD_CORRUPT", "Unggahan rusak: bagian file tidak sesuai. Unggah ulang file.");
   }
 
@@ -813,8 +888,8 @@ export async function completeUpload(
   try {
     etag = await storage.complete(key, uploadId, parts);
   } catch (err) {
-    logger.error({ versionId: id, err: String(err) }, "completeMultipartUpload gagal");
-    await release();
+    logger.error({ ...logId, err: String(err) }, "completeMultipartUpload gagal");
+    await t.release();
     return fail("STORAGE_ERROR", "Penyimpanan file sedang tidak bisa dihubungi. Coba lagi.");
   }
   return finalize(etag);

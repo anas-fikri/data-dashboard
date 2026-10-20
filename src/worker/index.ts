@@ -62,6 +62,7 @@ import {
 } from "@/features/ingest/repo";
 import { prismaQueryRepo } from "@/features/query/runtime";
 import { announceVersionActivated, watchRedis } from "@/features/query/warm";
+import { advanceUploadQueue, runUploadQueues } from "@/features/uploads/queue";
 import { expireStaleUploads } from "@/features/uploads/service";
 import { keyReferenced, runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
 import { runSegmentGc } from "@/features/versions/gc";
@@ -103,6 +104,11 @@ const SEGMENT_GC = "segment-gc";
 const SEGMENT_AUDIT = "segment-audit";
 /** Proses StorageCleanup (T-013): prefix versi yang dibuang retensi/pemilik + hapus yang gagal. */
 const STORAGE_CLEANUP = "storage-cleanup";
+/**
+ * Antrean unggah banyak file (T-059): file yang ditinggalkan > 24 jam → gagal, lalu giliran setiap
+ * antrean terbuka (jaring pengaman; giliran utama dipicu selesai unggah, akhir job, dan tinjauan).
+ */
+const UPLOAD_QUEUES = "upload-queues";
 /** Hapus file asli 7 hari setelah ingest selesai (T-013, B1). */
 const RAW_RETENTION = "raw-retention";
 /** Sapuan ekspor (T-017): kedaluwarsa, job basi, objek yatim di exports/. */
@@ -185,6 +191,7 @@ async function main() {
     [STORAGE_CLEANUP, 15 * 60 * 1000],
     [RAW_RETENTION, 60 * 60 * 1000],
     [EXPORT_CLEANUP, 5 * 60 * 1000],
+    [UPLOAD_QUEUES, 60 * 1000],
   ];
   schedules.push([SEGMENT_GC, 60 * 60 * 1000]);
   for (const [name, every] of schedules) {
@@ -211,6 +218,7 @@ async function main() {
       }
       if (job.name === STORAGE_CLEANUP) return await runStorageCleanup();
       if (job.name === RAW_RETENTION) return await runRawRetention();
+      if (job.name === UPLOAD_QUEUES) return await runUploadQueues();
       if (job.name === EXPORT_CLEANUP) return await runExportCleanup(exportCleanupDeps);
       if (job.name === DELETE_EXPORT) {
         const { exportId, key } = job.data as { exportId: string; key: string };
@@ -293,6 +301,11 @@ async function main() {
       maxStalledCount: 2,
     },
   );
+  // Antrean unggah (T-059): job file selesai (aktif/menunggu tinjauan/gagal) → giliran file berikutnya.
+  const advanceQueueOf = (datasetId: string | undefined) => {
+    if (datasetId) void advanceUploadQueue(datasetId);
+  };
+  ingestWorker.on("completed", (job) => advanceQueueOf(job.data.datasetId));
   ingestWorker.on("failed", (job, err) => {
     if (!job) return;
     logger.error(
@@ -312,6 +325,7 @@ async function main() {
           "finalisasi ingest gagal; penyapu akan mengulang",
         );
       }
+      advanceQueueOf(job.data.datasetId);
     })();
   });
 
@@ -434,6 +448,10 @@ async function main() {
     // Worker mati dua kali di tengah recast panjang tetap dilanjutkan (titik lanjut per segmen).
     { connection: connection(), concurrency: 1, lockDuration: INGEST_LOCK_MS, maxStalledCount: 2 },
   );
+  // Pemetaan versi unggahan antrean selesai (aktif/tinjauan) → giliran file berikutnya (T-059).
+  recastWorker.on("completed", (job) => {
+    if (job.name === MAP_VERSION_JOB) advanceQueueOf((job.data as MappingJobData).datasetId);
+  });
   recastWorker.on("failed", (job, err) => {
     logger.error({ jobId: job?.id, jobName: job?.name, err: err.message }, "recast gagal");
     if (job?.name !== MAP_VERSION_JOB) return;

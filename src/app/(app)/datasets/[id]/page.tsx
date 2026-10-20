@@ -21,6 +21,7 @@ import { datasetShareImpact, getDataset } from "@/features/datasets/service";
 import { GRAIN_LABEL } from "@/features/ingest/period-setup-plan";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
+import { getUploadQueue } from "@/features/uploads/queue";
 import { getPendingUpload } from "@/features/uploads/service";
 import { mappingJobId } from "@/features/versions/mapping";
 import { periodOverview } from "@/features/versions/period-manage";
@@ -72,18 +73,21 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, mappingJob, shareImpact, periodUpload, periods] = await Promise.all([
-    processing ? null : getPendingUpload(user.id, dataset.id),
-    listVersions(user.id, dataset.id),
-    // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
-    awaiting ? mappingJobId(user.id, dataset.id) : null,
-    // Dialog hapus menyebut siapa yang kehilangan akses ke dashboard yang dibagikan (T-016).
-    dataset.dashboardCount > 0 ? datasetShareImpact(user.id, dataset.id) : null,
-    // Panel unggah dataset per periode (T-053): versi dasar, satuan, jumlah periode, sheet berlabel.
-    active?.periodGrain ? periodUploadContext(user.id, dataset.id) : null,
-    // Kartu Periode (T-056): daftar periode + yang bisa dipulihkan dari versi lama yang tersimpan.
-    active?.periodGrain ? periodOverview(user.id, dataset.id) : null,
-  ]);
+  const [pending, versions, mappingJob, shareImpact, periodUpload, periods, queue] =
+    await Promise.all([
+      processing ? null : getPendingUpload(user.id, dataset.id),
+      listVersions(user.id, dataset.id),
+      // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
+      awaiting ? mappingJobId(user.id, dataset.id) : null,
+      // Dialog hapus menyebut siapa yang kehilangan akses ke dashboard yang dibagikan (T-016).
+      dataset.dashboardCount > 0 ? datasetShareImpact(user.id, dataset.id) : null,
+      // Panel unggah dataset per periode (T-053): versi dasar, satuan, jumlah periode, sheet berlabel.
+      active?.periodGrain ? periodUploadContext(user.id, dataset.id) : null,
+      // Kartu Periode (T-056): daftar periode + yang bisa dipulihkan dari versi lama yang tersimpan.
+      active?.periodGrain ? periodOverview(user.id, dataset.id) : null,
+      // Antrean unggah banyak file (T-059): berjalan, atau ringkasan terakhir yang belum ditutup.
+      getUploadQueue(user.id, dataset.id),
+    ]);
   // "Unggah ulang" hanya untuk periode yang memang ada di data aktif (selain itu diabaikan).
   const reuploadRow =
     typeof search.unggah === "string"
@@ -202,6 +206,7 @@ export default async function DatasetDetailPage({
               pending={pending}
               period={periodUpload}
               reupload={reuploadRow ? { start: reuploadRow.start, label: reuploadRow.label } : null}
+              queue={queue}
               setupHref={`/datasets/${dataset.id}/periode`}
               processing={
                 ingest

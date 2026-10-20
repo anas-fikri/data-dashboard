@@ -34,6 +34,8 @@ import {
   type UploadPanelState,
 } from "@/components/datasets/upload-panel-state";
 import { UploadPeriodPicker } from "@/components/datasets/upload-period-picker";
+import { UploadQueueDraft, UploadQueuePanel } from "@/components/datasets/upload-queue";
+import { queueUploader } from "@/components/datasets/upload-queue-store";
 import { VersionMappingNotice } from "@/components/datasets/version-history-mapping";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
@@ -50,6 +52,7 @@ import {
   type UploadProgress,
 } from "@/features/uploads/client";
 import { guessPeriodFromName } from "@/features/uploads/period-label";
+import type { QueueView } from "@/features/uploads/queue-plan";
 import type { PeriodUploadContext } from "@/features/versions/period-upload";
 import { cn } from "@/lib/utils";
 
@@ -98,6 +101,11 @@ interface UploadPanelProps {
    * berlabel) untuk file berikutnya; null = tanpa.
    */
   reupload?: { start: string; label: string } | null;
+  /**
+   * Antrean unggah banyak file (T-059): yang sedang berjalan (dropzone ditahan) atau ringkasan antrean
+   * terakhir yang belum ditutup; null = tanpa antrean.
+   */
+  queue?: QueueView | null;
 }
 
 /** Keterangan pilihan unggahan di kartu progres/tertunda dataset periode. */
@@ -139,6 +147,7 @@ export function UploadPanel({
   period = null,
   setupHref = null,
   reupload = null,
+  queue = null,
 }: UploadPanelProps) {
   const router = useRouter();
   const inputId = useId();
@@ -153,14 +162,18 @@ export function UploadPanel({
    * dengan unggahan "ganti semua" tertunda yang dipilih di dropzone periode (review M2).
    */
   const [confirmReplace, setConfirmReplace] = useState<false | "pick" | { file: File }>(false);
+  // Banyak file terpilih di dataset periode (T-059): draf antrean, belum ada yang dikirim ke server.
+  const [draft, setDraft] = useState<File[] | null>(null);
+  const queueOpen = queue?.status === "OPEN";
   const pickButtonRef = useRef<HTMLButtonElement>(null);
-  // Batal di pemilih periode → fokus kembali ke "Pilih file" setelah dropzone tampil lagi (review L1).
+  // Batal di pemilih periode/draf antrean → fokus kembali ke "Pilih file" setelah dropzone tampil lagi
+  // (review L1).
   const refocusPick = useRef(false);
   useEffect(() => {
-    if (picking || !refocusPick.current) return;
+    if (picking || draft || !refocusPick.current) return;
     refocusPick.current = false;
     pickButtonRef.current?.focus();
-  }, [picking]);
+  }, [picking, draft]);
   const abortRef = useRef<AbortController | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<UploadPanelState>({ kind: "idle" });
@@ -308,8 +321,27 @@ export function UploadPanel({
 
   const onFiles = (files: FileList | null) => {
     const file = files?.[0];
+    const all = files ? [...files] : [];
     if (inputRef.current) inputRef.current.value = "";
     if (!file) return;
+    // Banyak file → antrean (hanya dataset periode; dataset biasa tetap satu file = ganti data).
+    if (period && all.length > 1) {
+      setReuploadUsed(true);
+      if (pendingInfo) {
+        setState({
+          kind: "error",
+          file: null,
+          retryable: false,
+          message:
+            "Masih ada unggahan yang belum selesai. Lanjutkan atau batalkan unggahan itu dulu, lalu pilih beberapa file.",
+        });
+        return;
+      }
+      setState({ kind: "idle" });
+      setPicking(null);
+      setDraft(all);
+      return;
+    }
     const action = actionForFile(file, { period, pending: pendingInfo });
     const target = reuploadOpen;
     setReuploadUsed(true);
@@ -380,7 +412,7 @@ export function UploadPanel({
 
   const pct = progress ? percentOf(progress) : 0;
   const idleLike = isIdleLike(state);
-  const showDropzone = idleLike && !processing && !picking;
+  const showDropzone = idleLike && !processing && !picking && !draft && !queueOpen;
   const showPending = showsPendingCard(state, pendingInfo?.versionId, ownVersion);
   const pendingText = pendingInfo
     ? choiceText(
@@ -434,7 +466,9 @@ export function UploadPanel({
           onDiscarded={(name) => setState({ kind: "discarded", name })}
         />
       ) : null}
-      {processing?.kind === "confirm" && idleLike ? (
+      {processing?.kind === "confirm" &&
+      idleLike &&
+      !(queueOpen && queue?.held?.versionId === processing.versionId) ? (
         <div
           className="flex flex-col gap-3 rounded-md border border-warning/50 bg-warning/15 p-3 text-sm md:flex-row md:items-center md:justify-between"
           data-testid="upload-awaiting-confirm"
@@ -506,6 +540,34 @@ export function UploadPanel({
             </span>
           ) : null}
         </FormAlert>
+      ) : null}
+
+      {queue ? (
+        <UploadQueuePanel
+          key={queue.id}
+          datasetId={datasetId}
+          initial={queue}
+          maxBytes={maxBytes}
+        />
+      ) : null}
+      {draft && period && !queueOpen && !processing ? (
+        <UploadQueueDraft
+          datasetId={datasetId}
+          period={period}
+          files={draft}
+          onCancel={() => {
+            setDraft(null);
+            refocusPick.current = true;
+            setAnnounce("Antrean dibatalkan sebelum dimulai.");
+          }}
+          onCreated={(q, files) => {
+            const u = queueUploader(q.id);
+            u.attach(q.items, files);
+            u.start(maxBytes);
+            setDraft(null);
+            startRefresh(() => router.refresh());
+          }}
+        />
       ) : null}
 
       {showPending && pendingInfo ? (
@@ -722,8 +784,11 @@ export function UploadPanel({
             )}
             <p id={hintId} className="mt-1 text-muted-foreground">
               Pilih atau seret file .xlsx/.csv (maks. {formatBytes(maxBytes)}).
-              {period?.needsLabel ? " Periode file dipilih sebelum diproses." : ""} Unggahan bisa
-              dilanjutkan bila koneksi terputus.
+              {period?.needsLabel ? " Periode file dipilih sebelum diproses." : ""}
+              {period
+                ? " Pilih beberapa file sekaligus untuk mengisi banyak periode berurutan."
+                : ""}{" "}
+              Unggahan bisa dilanjutkan bila koneksi terputus.
             </p>
           </div>
           {/* Input asli tersembunyi; tombol nyata memicunya (fokus keyboard + label jelas). */}
@@ -735,6 +800,7 @@ export function UploadPanel({
             className="hidden"
             tabIndex={-1}
             aria-label="Pilih file data"
+            multiple={period !== null}
             data-testid="upload-input"
             onChange={(e) => onFiles(e.target.files)}
           />

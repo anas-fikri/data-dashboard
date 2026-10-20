@@ -54,6 +54,12 @@ describe("usageOf", () => {
   });
 });
 
+describe("usageOf + file antrean (T-059)", () => {
+  it("byte file antrean yang belum menjadi versi ikut dipesan (makna baru dan lama)", () => {
+    expect(q.usageOf([version()], [], 25)).toEqual({ bytes: 35, legacyBytes: 35, unmeasured: 0 });
+  });
+});
+
 describe("quotaDecision (init unggah)", () => {
   const quota = 20 * GiB;
   it("proyeksi = sumber + ±1,2× parquet; melewati kuota → ditolak dengan angka terpakai + proyeksi", () => {

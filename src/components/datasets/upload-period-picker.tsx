@@ -23,7 +23,7 @@ import {
  * dataset (bulan/kuartal + tahun, atau tahun saja), bukan teks bebas. Terisi dari nama file bila ada
  * tebakan yang jelas; tanpa tebakan kosong dan wajib diisi sebelum file diproses.
  */
-const MONTHS = [
+export const MONTHS = [
   "Januari",
   "Februari",
   "Maret",

@@ -9,6 +9,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import type { SetupPreview } from "@/features/ingest/period-setup-plan";
+import { advanceUploadQueue } from "@/features/uploads/queue";
 import { pairPlanFor, submitMapping } from "./mapping";
 import { applyPeriodSetup, previewPeriodSetup, savePeriodSettings } from "./period-setup";
 import { removePeriod, restorePeriod } from "./period-manage";
@@ -99,6 +100,8 @@ export async function discardVersionAction(
   return asOwner("discardVersion", async (userId) => {
     const r = await service.discardVersion(userId, datasetId, versionId);
     if (r.ok) {
+      // Versi milik antrean unggah (T-059) dibuang → antrean lanjut ke file berikutnya.
+      await advanceUploadQueue(datasetId);
       revalidatePath(`/datasets/${datasetId}`);
       revalidatePath("/datasets");
     }
@@ -226,6 +229,8 @@ export async function confirmPeriodUploadAction(
   return asOwner("confirmPeriodUpload", async (userId, ip) => {
     const r = await confirmPeriodUpload(userId, datasetId, versionId, payload, ip);
     if (r.ok) {
+      // Tinjauan diputuskan → antrean unggah (T-059) yang tertahan lanjut ke file berikutnya.
+      await advanceUploadQueue(datasetId);
       revalidatePath(`/datasets/${datasetId}`);
       revalidatePath("/datasets");
       revalidatePath("/dashboards");

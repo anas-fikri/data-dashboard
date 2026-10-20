@@ -223,6 +223,9 @@ export function fakeDb() {
     },
     // Manifest segmen (T-039 kuota): fake ini tanpa segmen.
     sheetSegment: { findMany: vi.fn(async () => []) },
+    // File antrean unggah yang dipesan (T-059 kuota): fake ini tanpa antrean.
+    uploadQueueItem: { aggregate: vi.fn(async () => ({ _sum: { sizeBytes: null } })) },
+    uploadQueue: { updateMany: vi.fn(async () => ({ count: 0 })) },
     dashboardShare: {
       deleteMany: vi.fn(
         async ({

@@ -132,6 +132,7 @@ model Dataset {
   dashboards      Dashboard[]
   lineages        SheetLineage[]
   segments        Segment[]
+  uploadQueues    UploadQueue[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -604,4 +605,78 @@ model GuideVideo {
   updatedAt   DateTime         @updatedAt
 
   @@index([articleId, status])
+}
+
+/// Antrean unggah banyak file periode (T-059, rencana G-6 §4.5 langkah 6). OPEN = masih ada file yang
+/// belum selesai; paling banyak satu OPEN per dataset (indeks unik parsial di migrasi).
+enum UploadQueueStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+/// Status satu file antrean. WAITING = belum diunggah; UPLOADING = multipart berjalan; QUEUED = file
+/// utuh di storage menunggu giliran; STARTED = versi dibuat dan sedang diproses/ditinjau; DONE/FAILED/
+/// CANCELLED = selesai (hasil versi dicatat di sini, karena versinya bisa dibuang retensi kemudian).
+enum UploadQueueItemState {
+  WAITING
+  UPLOADING
+  QUEUED
+  STARTED
+  DONE
+  FAILED
+  CANCELLED
+}
+
+model UploadQueue {
+  id          String            @id @default(cuid())
+  datasetId   String
+  dataset     Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  status      UploadQueueStatus @default(OPEN)
+  /// "Hentikan antrean": file yang belum diproses dibatalkan; file yang sedang diproses diselesaikan
+  /// dulu, lalu antrean berstatus CANCELLED.
+  stoppedAt   DateTime?
+  /// Ringkasan antrean yang sudah selesai disembunyikan pemilik.
+  dismissedAt DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  items       UploadQueueItem[]
+
+  @@index([datasetId, createdAt])
+  @@index([status])
+}
+
+model UploadQueueItem {
+  id           String               @id @default(cuid())
+  queueId      String
+  queue        UploadQueue          @relation(fields: [queueId], references: [id], onDelete: Cascade)
+  /// Urutan proses (1..n), ditetapkan server saat antrean dibuat.
+  seq          Int
+  /// Id DatasetVersion yang dibuat saat giliran file ini (dipesan di depan agar file sumber langsung
+  /// berada di prefix versinya: raw/<ds>/<versionId>/, sehingga retensi/pembersihan berlaku apa adanya).
+  versionId    String               @unique @default(cuid())
+  originalName String
+  sizeBytes    BigInt
+  /// lastModified klien (ms) — mencocokkan file yang dipilih ulang setelah muat ulang halaman.
+  lastModified BigInt
+  /// Awal periode pilihan pemilik untuk sheet bersumber label (naive D8); null = dari kolom tanggal.
+  periodLabel  DateTime?            @db.Date
+  /// Multipart di raw/<ds>/<versionId>/source.<ext> (kunci diturunkan dari versionId + ekstensi nama).
+  uploadId     String?
+  partSize     Int
+  partCount    Int
+  etag         String?
+  /// Klaim complete (sama dengan DatasetVersion.completingAt).
+  completingAt DateTime?
+  state        UploadQueueItemState @default(WAITING)
+  /// Keterangan hasil: alasan gagal/batal, atau ringkasan rencana periode yang diterapkan.
+  message      String?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  @@unique([queueId, seq])
+  @@index([state, updatedAt])
 }

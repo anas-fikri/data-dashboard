@@ -8,7 +8,8 @@ import { logger } from "@/lib/logger";
  * Kuota penyimpanan per pengguna dari byte yang benar-benar tersimpan (T-039, rencana §5.7):
  *  - byte segmen unik yang dirujuk versi hidup (raw + revisi typed yang dirujuk; tiap segmen sekali),
  *  - byte file sumber yang belum dihapus (versi selesai diunggah; sumber dihapus retensi 7 hari),
- *  - ukuran terdeklarasi unggahan yang masih UPLOADING.
+ *  - ukuran terdeklarasi unggahan yang masih UPLOADING,
+ *  - ukuran file antrean unggah (T-059) yang belum menjadi versi (dipesan saat antrean dibuat).
  * `sizeBytes` versi tetap ukuran file unggahan (logika multipart bergantung padanya). Ukuran segmen
  * legacy (sebelum T-039) diisi pemeriksaan malam; selama belum terukur dihitung 0.
  * Init unggah memproyeksikan ukuran file + perkiraan parquet. Transisi makna (QUOTA_GRACE_DAYS sejak
@@ -56,10 +57,13 @@ function sourceStored(v: UsageVersion): boolean {
   return v.status !== "FAILED" || v.etag !== null;
 }
 
-/** Pemakaian dari baris versi + rujukan manifest versi hidup. Murni. */
-export function usageOf(versions: UsageVersion[], refs: UsageRef[]): Usage {
-  let bytes = 0;
-  let legacyBytes = 0;
+/**
+ * Pemakaian dari baris versi + rujukan manifest versi hidup + byte file antrean yang belum menjadi
+ * versi (`reservedBytes`, T-059). Murni.
+ */
+export function usageOf(versions: UsageVersion[], refs: UsageRef[], reservedBytes = 0): Usage {
+  let bytes = reservedBytes;
+  let legacyBytes = reservedBytes;
   for (const v of versions) {
     const size = Number(v.sizeBytes ?? 0n);
     if (v.status !== "FAILED") legacyBytes += size;
@@ -79,10 +83,10 @@ export function usageOf(versions: UsageVersion[], refs: UsageRef[]): Usage {
   return { bytes, legacyBytes, unmeasured };
 }
 
-type Db = Pick<Prisma.TransactionClient, "datasetVersion" | "sheetSegment">;
+type Db = Pick<Prisma.TransactionClient, "datasetVersion" | "sheetSegment" | "uploadQueueItem">;
 
 export async function userUsage(db: Db, userId: string): Promise<Usage> {
-  const [versions, refs] = await Promise.all([
+  const [versions, refs, reserved] = await Promise.all([
     db.datasetVersion.findMany({
       where: { dataset: { ownerId: userId } },
       select: {
@@ -101,6 +105,14 @@ export async function userUsage(db: Db, userId: string): Promise<Usage> {
         },
       },
     }),
+    // File antrean yang belum menjadi versi: belum/sedang diunggah atau menunggu giliran (T-059).
+    db.uploadQueueItem.aggregate({
+      where: {
+        state: { in: ["WAITING", "UPLOADING", "QUEUED"] },
+        queue: { dataset: { ownerId: userId } },
+      },
+      _sum: { sizeBytes: true },
+    }),
   ]);
   return usageOf(
     versions,
@@ -110,6 +122,7 @@ export async function userUsage(db: Db, userId: string): Promise<Usage> {
       segmentId: r.segmentTyped.segment.id,
       rawBytes: r.segmentTyped.segment.rawBytes,
     })),
+    Number(reserved._sum.sizeBytes ?? 0n),
   );
 }
 

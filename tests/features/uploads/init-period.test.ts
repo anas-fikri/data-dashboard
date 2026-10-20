@@ -11,6 +11,8 @@ const MiB = 1024 * 1024;
 const tx = {
   $executeRaw: vi.fn(),
   dataset: { findUnique: vi.fn() },
+  // Antrean unggah (T-059): tanpa antrean terbuka.
+  uploadQueue: { count: vi.fn(async () => 0) },
   datasetVersion: {
     findFirst: vi.fn(),
     deleteMany: vi.fn(),
@@ -175,6 +177,16 @@ describe("initUpload mode PERIOD", () => {
     expect(
       await initUpload("u1", { ...file, mode: "PERIOD", baseVersionId: ACTIVE }, storage()),
     ).toMatchObject({ ok: false, code: "STALE" });
+    expect(tx.datasetVersion.create).not.toHaveBeenCalled();
+  });
+});
+
+describe("antrean unggah terbuka (T-059)", () => {
+  it("unggahan satu file ditahan selama antrean dataset berjalan → DATASET_BUSY, tanpa versi", async () => {
+    tx.uploadQueue.count.mockResolvedValueOnce(1);
+    const r = await initUpload("u1", { ...file, mode: "PERIOD", baseVersionId: ACTIVE }, storage());
+    expect(r).toMatchObject({ ok: false, code: "DATASET_BUSY" });
+    expect((r as { message: string }).message).toMatch(/Antrean unggahan sedang berjalan/);
     expect(tx.datasetVersion.create).not.toHaveBeenCalled();
   });
 });
