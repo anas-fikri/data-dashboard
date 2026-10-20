@@ -380,7 +380,8 @@ describe("kolom kosong (absent, T-014) bertahan di setiap recast", () => {
 async function segmented(
   content: string,
   n: number,
-  opts: { extra?: boolean; profiles?: boolean } = {},
+  /** swapLast (T-gcn8): raw segmen terakhir menukar kolom 1 dan 2, peta kolom [2, 1], tanpa profil. */
+  opts: { extra?: boolean; profiles?: boolean; swapLast?: boolean } = {},
 ): Promise<Setup> {
   const r = await setup(content);
   const s = r.sheet();
@@ -422,7 +423,18 @@ async function segmented(
               FROM read_parquet('${raw}') WHERE _row <= ${h} OR _row BETWEEN ${lo} AND ${hi} ORDER BY _row)
          TO '${segRaw.replace(/'/g, "''")}' (FORMAT parquet)`,
       );
-      await r.storage.upload(rawKey, segRaw);
+      const swap = opts.swapLast === true && k === n - 1;
+      if (swap) {
+        // Unggahan dengan urutan kolom berbeda: raw tersimpan apa adanya (c1 = nilai, c2 = kode).
+        const swapped = join(work, `raw-${k}-swap.parquet`);
+        await duck.conn.run(
+          `COPY (SELECT _row, c2 AS c1, c1 AS c2 FROM read_parquet('${segRaw.replace(/'/g, "''")}') ORDER BY _row)
+           TO '${swapped.replace(/'/g, "''")}' (FORMAT parquet)`,
+        );
+        await r.storage.upload(rawKey, swapped);
+      } else {
+        await r.storage.upload(rawKey, segRaw);
+      }
       const typedPath = join(work, `typed-${k}.parquet`);
       const typed = await writeTyped(duck, {
         rawPath: segRaw,
@@ -442,7 +454,15 @@ async function segmented(
       const typedKey = `parquet/${DS}/seg/${id}/typed-1.parquet`;
       await r.storage.upload(typedKey, typedPath);
       const maxSrcRow = h + hi - lo + 1;
-      r.rr.segments.set(id, { id, rawKey, rowBase, maxSrcRow, headerRow: h, colCount });
+      r.rr.segments.set(id, {
+        id,
+        rawKey,
+        rowBase,
+        maxSrcRow,
+        headerRow: h,
+        colCount,
+        ...(swap ? { colMap: [2, 1] } : {}),
+      });
       r.rr.manifest.push(
         r.rr.addRow({
           segmentId: id,
@@ -451,7 +471,7 @@ async function segmented(
           columns: typed.schema.map((c) => c.pos),
           dataRows: typed.dataRows,
           typedBytes: null,
-          profile: opts.profiles === false ? null : typed.profile,
+          profile: opts.profiles === false || swap ? null : typed.profile,
         }),
       );
       rowBase += BigInt(maxSrcRow);
@@ -749,5 +769,53 @@ describe("recast per segmen (T-040)", () => {
     // File baru milik job ini dihapus bersama barisnya.
     expect([...r.rr.typed.values()].some((x) => x.schemaRevision === 2)).toBe(false);
     expect(r.storage.parquetKeys().some((k) => k.includes("typed-2-"))).toBe(false);
+  });
+});
+
+describe("baris judul dan peta kolom per segmen (T-gcn8)", () => {
+  it("AC1: dua versi berbagi segmen → judul baru milik file typed baru; versi lain tetap memakai judulnya", async () => {
+    const r = await setup(`Laporan Gudang;\nkode;nilai\nA;1\nB;2\n`);
+    const old = r.rr.manifest[0]!;
+    const g = r.rr.typed.get(old)!.segmentId;
+    const headerBefore = r.rr.segments.get(g)!.headerRow;
+    r.rr.others = [[old]]; // versi lain merujuk file typed yang sama (segmen dibagi)
+    const snap = structuredClone({
+      headerRow: r.sheet().headerRow,
+      columns: r.sheet().columns,
+      schema: r.sheet().schema,
+      schemaRevision: r.sheet().schemaRevision,
+      typedKey: r.sheet().typedKey,
+    });
+    const target = headerBefore === 2 ? 1 : 2;
+    expect(await recastSheet(r.sheetId, { headerRow: target }, r.deps)).toMatchObject({
+      outcome: "done",
+    });
+    const fresh = r.rr.manifestTyped()[0]!;
+    expect(fresh.headerRow).toBe(target);
+    // Segmen dan file typed versi lain tidak diubah.
+    expect(r.rr.segments.get(g)!.headerRow).toBe(headerBefore);
+    expect(r.rr.typed.get(old)!.headerRow ?? null).toBeNull();
+    // Versi lain (manifest + sheet miliknya) di-recast: tetap memakai judulnya sendiri.
+    r.rr.manifest = [old];
+    Object.assign(r.sheet(), snap);
+    const dataRows = (await readParquet(join(r.storage.dir, snap.typedKey!))).length;
+    const out = await recastSheet(r.sheetId, { columns: [{ pos: 1, type: "text" }] }, r.deps);
+    expect(out).toMatchObject({ outcome: "done" });
+    expect(r.sheet().headerRow).toBe(headerBefore);
+    expect(r.rr.manifestTyped()[0]!.headerRow ?? headerBefore).toBe(headerBefore);
+    const rows = await readParquet(join(r.storage.dir, r.sheet().typedKey!));
+    expect(rows).toHaveLength(dataRows);
+  });
+
+  it("AC2: urutan kolom raw segmen berbeda → setiap kolom di-cast dari kolom raw yang benar lewat peta kolom", async () => {
+    const rows = Array.from({ length: 10 }, (_, i) => `K${i};${i}`);
+    const r = await segmented(`kode;nilai\n${rows.join("\n")}\n`, 2, { swapLast: true });
+    const out = await recastSheet(r.sheetId, { columns: [{ pos: 2, type: "integer" }] }, r.deps);
+    expect(out).toMatchObject({ outcome: "done", revision: 2 });
+    // Profil segmen bertukar kolom dibaca lewat peta: tidak ada gagal cast palsu.
+    expect(r.sheet().schema![1]).toMatchObject({ type: "integer", castFailCount: 0, nonEmpty: 10 });
+    const all = await allRows(r);
+    expect(all.map((x) => x[2])).toEqual(Array.from({ length: 10 }, (_, i) => BigInt(i)));
+    expect(all.map((x) => x[1])).toEqual(Array.from({ length: 10 }, (_, i) => `K${i}`));
   });
 });

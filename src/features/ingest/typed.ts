@@ -186,6 +186,36 @@ function resolve(p: Profile | undefined, source: SourceKind, o?: ColumnOverride)
   return { type: t };
 }
 
+/**
+ * Kolom raw (indeks `c<n>`) untuk posisi kanonik `pos` menurut peta kolom segmen (T-gcn8); peta kosong
+ * = identitas. 0 = kolom tidak ada di file.
+ */
+export function rawColumnOf(colMap: number[] | undefined, pos: number): number {
+  const p = Math.trunc(pos);
+  if (!colMap?.length) return p;
+  const n = colMap[p - 1];
+  return n !== undefined && Number.isInteger(n) && n > 0 ? n : 0;
+}
+
+/**
+ * Profil per kolom raw → per posisi kanonik (`c<pos>`) lewat peta kolom segmen: gabungan profil
+ * antarsegmen dan skema selalu berkunci posisi kanonik. Peta kosong = identitas (profil apa adanya).
+ */
+export function canonicalProfile(
+  raw: RawProfile,
+  colMap: number[] | undefined,
+  colCount: number,
+): RawProfile {
+  if (!colMap?.length) return raw;
+  const profiles = new Map<string, Profile>();
+  for (let pos = 1; pos <= colCount; pos++) {
+    const n = rawColumnOf(colMap, pos);
+    const p = n ? raw.profiles.get(`c${n}`) : undefined;
+    if (p) profiles.set(`c${pos}`, { ...p, col: `c${pos}` });
+  }
+  return { dataRows: raw.dataRows, profiles };
+}
+
 /** Profil raw (baris data = _row > headerRow) kolom c1..c<colCount>: tahap mahal penentuan tipe. */
 export async function profileRaw(
   duck: Duck,
@@ -307,18 +337,21 @@ export async function copyTyped(
   input: Pick<TypedInput, "rawPath" | "outPath" | "source" | "headerRow" | "watch" | "rowBase"> & {
     /** Kolom raw file ini (c1..c<rawCols>). */
     rawCols: number;
+    /** Peta kolom segmen (T-gcn8): colMap[pos-1] = kolom raw posisi kanonik `pos`; kosong = identitas. */
+    colMap?: number[];
     schema: ColumnSchema[];
     /** Rata-rata karakter per baris data (ukuran row group). */
     charsPerRow: number;
   },
 ): Promise<void> {
   const where = `_row > ${Math.trunc(input.headerRow)}`;
-  const fromRaw = (s: ColumnSchema) => !s.absent && s.pos <= input.rawCols;
+  const src = (s: ColumnSchema) => rawColumnOf(input.colMap, s.pos);
+  const fromRaw = (s: ColumnSchema) => !s.absent && src(s) >= 1 && src(s) <= input.rawCols;
   // Dua tahap: parse sekali di subquery (a<pos>), penjaga diterapkan pada hasilnya di luar.
   const parts = new Map(
     input.schema
       .filter(fromRaw)
-      .map((s) => [s.pos, typedParts(`c${Math.trunc(s.pos)}`, s, input.source)] as const),
+      .map((s) => [s.pos, typedParts(`c${src(s)}`, s, input.source)] as const),
   );
   const outer = input.schema.map((s) => {
     const id = Math.trunc(s.pos);

@@ -117,6 +117,8 @@ export interface SegmentRecord {
   rawRows: number;
   headerRow: number;
   colCount: number;
+  /** Peta kolom raw → posisi kanonik (T-gcn8, lihat Segment.colMap); kosong/tidak ada = identitas. */
+  colMap?: number[];
   rowBase: bigint;
   maxSrcRow: number;
 }

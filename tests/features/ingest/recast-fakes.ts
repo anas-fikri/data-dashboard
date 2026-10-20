@@ -11,14 +11,21 @@ export interface FakeSegment {
   maxSrcRow: number | null;
   headerRow: number;
   colCount: number;
+  /** Peta kolom raw → posisi kanonik (T-gcn8); kosong = identitas. */
+  colMap?: number[];
 }
 
-export interface FakeTyped extends Omit<NewTyped, "profile" | "dataRows" | "typedBytes"> {
+export interface FakeTyped extends Omit<
+  NewTyped,
+  "profile" | "dataRows" | "typedBytes" | "headerRow"
+> {
   id: string;
   segmentId: string;
   dataRows: number | null;
   typedBytes: number | null;
   profile: unknown;
+  /** null/undefined = Segment.headerRow (file sebelum T-gcn8). */
+  headerRow?: number | null;
 }
 
 export class FakeRecastRepo implements RecastRepo {
@@ -103,8 +110,9 @@ export class FakeRecastRepo implements RecastRepo {
           rawKey: g.rawKey,
           rowBase: g.rowBase,
           maxSrcRow: g.maxSrcRow,
-          headerRow: g.headerRow,
+          headerRow: t.headerRow ?? g.headerRow,
           colCount: g.colCount,
+          colMap: g.colMap ?? [],
           typed: { id: t.id, typedKey: t.typedKey, columns: t.columns, profile: t.profile },
         };
       }),

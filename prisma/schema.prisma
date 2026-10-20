@@ -228,8 +228,14 @@ model Segment {
   rawRows            Int
   /// Ukuran raw.parquet di storage (T-039 kuota); null = segmen lama yang belum diukur.
   rawBytes           BigInt?
+  /// Baris judul saat segmen ditulis (imutabel, T-gcn8). Judul yang berlaku untuk satu file typed ada
+  /// di SegmentTyped.headerRow — segmen bisa dibagi beberapa versi dengan judul berbeda.
   headerRow          Int
+  /// Kolom raw di file ini (c1..c<colCount>).
   colCount           Int
+  /// Peta kolom (T-gcn8): colMap[pos-1] = indeks kolom raw `c<n>` untuk posisi kanonik `pos`
+  /// (0 = kolom tidak ada di file → NULL). Kosong = identitas (raw `c<pos>` = posisi kanonik).
+  colMap             Int[]           @default([])
   /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
   /// objeknya dihapus GC mark-and-sweep setelah tidak dirujuk versi hidup ≥ SEGMENT_GC_GRACE_HOURS.
   createdByVersionId String?
@@ -263,6 +269,8 @@ model SegmentTyped {
   /// Profil raw segmen untuk baris judul file ini (T-040, src/features/ingest/profile.ts): recast per
   /// segmen memutuskan tipe dari gabungan profil tanpa memindai ulang raw; null = file lama.
   profile        Json?
+  /// Baris judul yang dipakai file ini (T-gcn8); null = Segment.headerRow (file sebelum T-gcn8).
+  headerRow      Int?
   /// Tanda GC (T-038): sejak kapan revisi ini tidak dirujuk manifest versi hidup; null = dirujuk.
   unreferencedAt DateTime?
   sheets         SheetSegment[]

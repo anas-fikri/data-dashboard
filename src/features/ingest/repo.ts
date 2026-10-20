@@ -95,10 +95,7 @@ async function linkTyped(
       })
     )?.segmentTyped.segmentId;
   if (!seg) throw new Error(`sheet ${sheetId} tanpa segmen (migrasi T-036?)`);
-  // Baris header dipilih ulang (recast/pemetaan): metadata segmen ikut, seperti Sheet.headerRow.
-  if (typed.headerRow !== undefined) {
-    await tx.segment.update({ where: { id: seg }, data: { headerRow: typed.headerRow } });
-  }
+  // Judul milik file typed ini (T-gcn8), bukan segmen: segmen bisa dibagi versi lain.
   const t = await tx.segmentTyped.create({
     data: {
       segmentId: seg,
@@ -109,6 +106,7 @@ async function linkTyped(
       ...(typed.dataRows !== undefined ? { dataRows: typed.dataRows } : {}),
       ...(typed.typedBytes !== undefined ? { typedBytes: BigInt(typed.typedBytes) } : {}),
       ...(typed.profile ? { profile: typed.profile as unknown as Prisma.InputJsonValue } : {}),
+      ...(typed.headerRow !== undefined ? { headerRow: typed.headerRow } : {}),
     },
     select: { id: true },
   });
@@ -244,6 +242,7 @@ export const prismaIngestRepo: IngestRepo = {
           rawRows: d.rawRows,
           headerRow: d.headerRow,
           colCount: d.colCount,
+          ...(d.colMap?.length ? { colMap: d.colMap } : {}),
           createdByVersionId: versionId,
         },
         select: { id: true },
@@ -401,6 +400,7 @@ export const prismaRecastRepo: RecastRepo = {
                 typedKey: true,
                 columns: true,
                 profile: true,
+                headerRow: true,
                 segment: {
                   select: {
                     id: true,
@@ -409,6 +409,7 @@ export const prismaRecastRepo: RecastRepo = {
                     maxSrcRow: true,
                     headerRow: true,
                     colCount: true,
+                    colMap: true,
                   },
                 },
               },
@@ -436,8 +437,9 @@ export const prismaRecastRepo: RecastRepo = {
         rawKey: t.segment.rawKey,
         rowBase: t.segment.rowBase,
         maxSrcRow: t.segment.maxSrcRow,
-        headerRow: t.segment.headerRow,
+        headerRow: t.headerRow ?? t.segment.headerRow,
         colCount: t.segment.colCount,
+        colMap: t.segment.colMap,
         typed: { id: t.id, typedKey: t.typedKey, columns: t.columns, profile: t.profile },
       })),
     };
@@ -475,6 +477,7 @@ export const prismaRecastRepo: RecastRepo = {
           dataRows: t.dataRows,
           typedBytes: BigInt(t.typedBytes),
           profile: t.profile as unknown as Prisma.InputJsonValue,
+          headerRow: t.headerRow,
         },
         select: { id: true },
       });
@@ -536,19 +539,6 @@ export const prismaRecastRepo: RecastRepo = {
           where: { id: { in: next.manifest.map((m) => m.typedId) }, unreferencedAt: { not: null } },
           data: { unreferencedAt: null },
         });
-        // Baris header dipilih ulang (hanya sheet satu segmen): metadata segmen ikut.
-        if (next.manifest.length === 1) {
-          const t = await tx.segmentTyped.findUnique({
-            where: { id: first.typedId },
-            select: { segmentId: true },
-          });
-          if (t) {
-            await tx.segment.update({
-              where: { id: t.segmentId },
-              data: { headerRow: next.headerRow },
-            });
-          }
-        }
         return true;
       })
       .catch((e: unknown) => {

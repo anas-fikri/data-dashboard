@@ -44,6 +44,7 @@ import {
 } from "./recast-input";
 import { IntegrityError, verifyVersionIntegrity } from "@/features/versions/integrity-check";
 import {
+  canonicalProfile,
   castSignature,
   choiceOf,
   copyTyped,
@@ -74,8 +75,12 @@ export interface RecastSegment {
   rowBase: bigint;
   /** null = segmen legacy (rentang belum diukur). */
   maxSrcRow: number | null;
+  /** Baris judul file typed manifest (SegmentTyped.headerRow ?? Segment.headerRow, T-gcn8). */
   headerRow: number;
+  /** Kolom raw file segmen. */
   colCount: number;
+  /** Peta kolom raw → posisi kanonik (Segment.colMap, T-gcn8); kosong = identitas. */
+  colMap: number[];
   typed: { id: string; typedKey: string; columns: number[]; profile: unknown };
 }
 
@@ -106,6 +111,8 @@ export interface NewTyped {
   /** Ukuran file (T-039). */
   typedBytes: number;
   profile: StoredProfile;
+  /** Baris judul file ini (T-gcn8): milik file, bukan segmen yang bisa dibagi versi lain. */
+  headerRow: number;
 }
 
 export interface RecastRepo {
@@ -297,7 +304,7 @@ export async function recastSheet(
     };
     // Satu segmen: ukuran dan judul sheet (perilaku sebelum T-040); beberapa: milik tiap segmen.
     const hdr = (g: RecastSegment) => (multi ? g.headerRow : headerRow);
-    const rawCols = (g: RecastSegment) => (multi ? g.colCount : s.colCount);
+    const rawCols = (g: RecastSegment) => (multi || g.colMap.length ? g.colCount : s.colCount);
 
     // Header baru: rentang data berubah → nama dari baris itu dan inferensi ulang (pilihan lama
     // tidak dibawa); selain itu pilihan yang sudah berlaku tetap dipakai.
@@ -328,12 +335,17 @@ export async function recastSheet(
     for (const [i, g] of s.segments.entries()) {
       if (profiles[i]) continue;
       await step({ phase: "read", current: ++read, total: toRead });
-      const p = await profileRaw(d, {
-        rawPath: await rawOf(g),
-        headerRow: hdr(g),
-        colCount: rawCols(g),
-        watch,
-      });
+      // Profil berkunci posisi kanonik (peta kolom segmen, T-gcn8), seperti skema.
+      const p = canonicalProfile(
+        await profileRaw(d, {
+          rawPath: await rawOf(g),
+          headerRow: hdr(g),
+          colCount: rawCols(g),
+          watch,
+        }),
+        g.colMap,
+        s.colCount,
+      );
       profiles[i] = p;
       // Judul baru: profil milik file revisi baru (disimpan bersamanya), bukan file yang ada.
       if (!newHeader) await deps.repo.saveProfile(g.typed.id, packProfile(hdr(g), p));
@@ -395,6 +407,7 @@ export async function recastSheet(
         rowBase: g.rowBase,
         watch,
         rawCols: rawCols(g),
+        colMap: g.colMap,
         schema: cols,
         charsPerRow: charsPerRow(p),
       });
@@ -411,6 +424,7 @@ export async function recastSheet(
           dataRows: p.dataRows,
           typedBytes: statSync(out).size,
           profile: packProfile(hdr(g), p),
+          headerRow: hdr(g),
         }));
       mine.set(key, typedId);
       next.set(g.ordinal, { typedId, typedKey: key });
