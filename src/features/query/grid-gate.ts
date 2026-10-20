@@ -47,19 +47,32 @@ export class GridGate {
   }
 
   /** Slot grid global; slot yang dilepas diserahkan langsung ke penunggu (active ≤ maxGlobal). */
-  async withGlobal<T>(fn: () => Promise<T>, waitMs = this.o.queueWaitMs): Promise<T> {
+  async withGlobal<T>(
+    fn: () => Promise<T>,
+    waitMs = this.o.queueWaitMs,
+    signal?: AbortSignal,
+  ): Promise<T> {
+    signal?.throwIfAborted();
     if (this.active < this.o.maxGlobal) this.active++;
     else {
+      // Klien membatalkan blok yang sudah lewat: penunggu dicabut segera (in-flight user ikut lepas
+      // lewat withUser), bukan menunggu sampai batas waktu antre (review T-042 M1).
       await new Promise<void>((resolve, reject) => {
-        const wake = () => {
+        const leave = (err: unknown) => {
           clearTimeout(timer);
-          resolve();
-        };
-        const timer = setTimeout(() => {
+          signal?.removeEventListener("abort", onAbort);
           const i = this.waiters.indexOf(wake);
           if (i >= 0) this.waiters.splice(i, 1);
-          reject(new QueryBusyError());
-        }, waitMs);
+          reject(err);
+        };
+        const wake = () => {
+          clearTimeout(timer);
+          signal?.removeEventListener("abort", onAbort);
+          resolve();
+        };
+        const onAbort = () => leave(signal!.reason);
+        const timer = setTimeout(() => leave(new QueryBusyError()), waitMs);
+        signal?.addEventListener("abort", onAbort, { once: true });
         this.waiters.push(wake);
       });
     }
@@ -75,15 +88,20 @@ export class GridGate {
 
 /**
  * Mesin untuk GridDeps: jatah user = in-flight grid; slot global = slot grid lalu slot global mesin
- * (sisa waktu antre dibagi, jadi total antre ≤ queueWaitMs). exec tetap mesin yang sama.
+ * (sisa waktu antre dibagi, jadi total antre ≤ queueWaitMs). exec tetap mesin yang sama. `signal`
+ * (permintaan HTTP) mencabut antrean slot grid saat klien membatalkan.
  */
-export function gridEngine(engine: Engine, gate: GridGate): Engine {
+export function gridEngine(engine: Engine, gate: GridGate, signal?: AbortSignal): Engine {
   const withGlobal = <T>(fn: () => Promise<T>, waitMs = gate.o.queueWaitMs) => {
     const t0 = Date.now();
-    return gate.withGlobal(() => {
-      const left = Math.max(0, waitMs - (Date.now() - t0));
-      return engine.withGlobal ? engine.withGlobal(fn, left) : fn();
-    }, waitMs);
+    return gate.withGlobal(
+      () => {
+        const left = Math.max(0, waitMs - (Date.now() - t0));
+        return engine.withGlobal ? engine.withGlobal(fn, left) : fn();
+      },
+      waitMs,
+      signal,
+    );
   };
   return {
     exec: (sql, params, timeoutMs, signal) => engine.exec(sql, params, timeoutMs, signal),

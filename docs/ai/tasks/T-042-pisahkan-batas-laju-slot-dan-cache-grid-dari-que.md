@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-041
 created: "2026-10-15T02:30:56Z"
-updated: "2026-10-20T06:26:55Z"
+updated: "2026-10-20T06:33:10Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,7 +20,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 170989
+    duration_ms: 171858
     summary: |-
       …t
       > vitest run
@@ -28,23 +28,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792477480132,"service":"data-dashboard","host":"127.0.0.1","port":43833,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477480187,"service":"data-dashboard","host":"127.0.0.1","port":39481,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792477480282,"service":"data-dashboard","host":"127.0.0.1","port":35823,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477480409,"service":"data-dashboard","host":"127.0.0.1","port":36791,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792477489243,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792477497210,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792477497232,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792477497236,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792477497250,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792477940423,"service":"data-dashboard","host":"127.0.0.1","port":41713,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792477940487,"service":"data-dashboard","host":"127.0.0.1","port":32933,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792477940593,"service":"data-dashboard","host":"127.0.0.1","port":44201,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792477940700,"service":"data-dashboard","host":"127.0.0.1","port":36379,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792477947860,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792477954527,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792477954549,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792477954552,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792477954560,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  166 passed | 1 skipped (167)
-            Tests  2143 passed | 10 skipped (2153)
-         Start at  06:23:24
-         Duration  122.84s (tests 85%, import 12%, transform 3%)
+            Tests  2144 passed | 10 skipped (2154)
+         Start at  06:31:05
+         Duration  123.51s (tests 86%, import 12%, transform 2%)
 
-          Isolate  167 workers spawned · ~144ms startup each (spawn + environment, per file)
-                   at least ~7.89s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  167 workers spawned · ~142ms startup each (spawn + environment, per file)
+                   at least ~7.78s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -52,8 +52,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T06:25:28Z"
-    tree: 2402aa4703582846fdd4ee01a3423753870eea1a9a74163d9cf8e5f17dbada1c
+    at: "2026-10-20T06:33:10Z"
+    tree: 640a70f83eff004125a6bfa01942342e488a1622eb67e7c8eaf10a648b455b50
   audit:
     at: "2026-10-20T06:26:27Z"
     passed: true
@@ -99,6 +99,8 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 - Gerbang grid tidak memakai jatah per-user mesin (2), jadi pengguna yang menggulir tidak membuat widget dashboard-nya sendiri antre. Grid memegang slot grid lalu slot global mesin (sisa waktu antre dibagi).
 - `GRID_RATE_PER_MIN` di rencana diwujudkan sebagai konstanta `RULES.grid` (300/menit), sama dengan aturan rate lain (bukan env).
 - Count jalur urut/saring/cari di-cache di cache hasil yang ada (≈64 byte/entri, TTL 24 jam); jalur tanpa urut tidak perlu count (dari manifest). "Ringkasan" (stats) belum ada endpoint-nya (P-12+); akan memakai pola yang sama.
+- Review M1: permintaan grid yang dibatalkan klien saat antre slot grid dicabut segera (signal HTTP diteruskan ke GridGate), sehingga jatah in-flight user langsung lepas. Review L2: gerbang dibuat malas bila runtime global lama (sebelum hot reload) belum memilikinya.
+- Batas yang diketahui (review L1): dengan MAX_QUERY_CONCURRENCY=1 grid bisa memegang satu-satunya slot global (maxGlobal minimal 1); produksi memakai 4. Review L4: slot dan in-flight grid berlaku per proses/replika aplikasi (seperti slot query); rate limit grid di Redis berlaku global.
 - AC3 diukur di container cloud 4 vCPU (bukan VM T-023); ulang di olympus pada P-29.
 
 ## Security checklist (OWASP ASVS 4.0.3)

@@ -109,4 +109,26 @@ describe("GridGate + gridEngine", () => {
     const r = await grid.withSlot("a", () => grid.exec("SELECT 42 AS v", {}, 5_000));
     expect(r.rows[0]![0]).toBe(42);
   });
+
+  it("review M1: blok yang dibatalkan saat antre dicabut segera dan in-flight user lepas", async () => {
+    const gate = new GridGate({ maxGlobal: 1, perUser: 2, queueWaitMs: 10_000 });
+    const hold = deferred();
+    const first = gridEngine(engine, gate).withSlot("a", () => hold.p);
+    const ac = new AbortController();
+    const g = gridEngine(engine, gate, ac.signal);
+    const t0 = Date.now();
+    const queued = g.withSlot("u", async () => "tidak jalan");
+    const queued2 = g.withSlot("u", async () => "tidak jalan");
+    await new Promise((r) => setTimeout(r, 20));
+    ac.abort();
+    await expect(queued).rejects.toBeTruthy();
+    await expect(queued2).rejects.toBeTruthy();
+    expect(Date.now() - t0).toBeLessThan(1_000);
+    // Jatah in-flight "u" sudah lepas: blok berikutnya antre normal, bukan QueryBusyError.
+    const next = gridEngine(engine, gate).withSlot("u", async () => "ok");
+    hold.open();
+    await first;
+    expect(await next).toBe("ok");
+    expect(gate.activeGlobal).toBe(0);
+  });
 });

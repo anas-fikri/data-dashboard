@@ -120,10 +120,10 @@ export const prismaGridRepo: GridRepo = {
   },
 };
 
-async function gridDeps(): Promise<GridDeps> {
+async function gridDeps(signal: AbortSignal): Promise<GridDeps> {
   const { deps, gate } = await gridRuntime();
   const { repo: _r, engine, ...rest } = deps;
-  return { ...rest, engine: gridEngine(engine, gate), repo: prismaGridRepo };
+  return { ...rest, engine: gridEngine(engine, gate, signal), repo: prismaGridRepo, signal };
 }
 
 async function limited(userId: string) {
@@ -149,10 +149,7 @@ export function gridRowsRoute(req: NextRequest, sheetId: string) {
     if (rl) return rl;
     const read = await readJson(req, GRID_BODY_MAX);
     if ("response" in read) return read.response;
-    const r = await runGridRows(userId, sheetId, read.body, {
-      ...(await gridDeps()),
-      signal: req.signal,
-    });
+    const r = await runGridRows(userId, sheetId, read.body, await gridDeps(req.signal));
     return r.ok ? json(r) : json(r, STATUS[r.code]);
   });
 }
@@ -166,7 +163,7 @@ export function gridCellRoute(req: NextRequest, sheetId: string) {
       userId,
       sheetId,
       { versionId: p.get("versionId"), row: p.get("row"), pos: p.get("pos") },
-      { ...(await gridDeps()), signal: req.signal },
+      await gridDeps(req.signal),
     );
     return r.ok ? json(r) : json(r, STATUS[r.code]);
   });

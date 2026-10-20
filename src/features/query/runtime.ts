@@ -227,13 +227,18 @@ async function build(): Promise<Runtime> {
       cache: new ResultCache<CachedQuery>(e.QUERY_RESULT_CACHE_BYTES),
       timeoutMs: e.QUERY_TIMEOUT_MS,
     },
-    gridGate: new GridGate({
-      // Widget selalu kebagian ≥ 1 slot global walau MAX_QUERY_CONCURRENCY kecil.
-      maxGlobal: Math.max(1, Math.min(e.GRID_MAX_CONCURRENCY, e.MAX_QUERY_CONCURRENCY - 1)),
-      perUser: 2,
-      queueWaitMs: 10_000,
-    }),
+    gridGate: newGridGate(e),
   };
+}
+
+function newGridGate(e: ReturnType<typeof env>): GridGate {
+  return new GridGate({
+    // Widget kebagian ≥ 1 slot global bila MAX_QUERY_CONCURRENCY ≥ 2 (dengan 1 slot, grid bisa
+    // memegangnya — konfigurasi produksi 4).
+    maxGlobal: Math.max(1, Math.min(e.GRID_MAX_CONCURRENCY, e.MAX_QUERY_CONCURRENCY - 1)),
+    perUser: 2,
+    queueWaitMs: 10_000,
+  });
 }
 
 function runtime(): Promise<Runtime> {
@@ -258,5 +263,7 @@ export async function queryDeps(): Promise<QueryDeps> {
 /** Dependensi query + gerbang grid (T-042) untuk route "Lihat data". */
 export async function gridRuntime(): Promise<{ deps: QueryDeps; gate: GridGate }> {
   const r = await runtime();
+  // Runtime yang dibuat sebelum hot reload (dev) belum punya gridGate (review T-042 L2).
+  r.gridGate ??= newGridGate(env());
   return { deps: { ...r.deps, repo: prismaQueryRepo }, gate: r.gridGate };
 }
