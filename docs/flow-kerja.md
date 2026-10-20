@@ -247,7 +247,7 @@ flowchart TD
   - Hanya segmen yang file-nya memuat kolom dengan cast berubah yang ditulis ulang. Kolom yang tidak ada di file (mis. kolom tersembunyi baru dari unggahan berikutnya) diproyeksikan NULL saat query.
   - Titik lanjut: tiap file yang selesai dicatat sebagai `SegmentTyped` tertunda dengan kunci deterministik per job (`typed-<rev>-<hash jobId>`). Percobaan ulang setelah worker mati melewati segmen yang sudah selesai.
   - Aktif atomik: gerbang integritas manifest rencana, lalu satu transaksi mengganti skema + semua ordinal manifest. Revisi lama tetap utuh untuk versi lain/rollback; yang tidak dirujuk disapu GC (T-038).
-  - Prioritas di bawah ingest: sebelum tiap segmen, recast menunggu selama ada job ingest aktif (≤ 15 menit), dan job pemetaan yang antre diambil sebelum recast (priority BullMQ). UI menampilkan "Segmen 7 dari 24".
+  - Prioritas di bawah ingest: sebelum tiap segmen, bila ingest dataset **lain** sedang berjalan atau job pemetaan antre, job recast memberi jalan. Job ditunda 10 detik tanpa memakai jatah percobaan, slot antrean dipakai pekerjaan lain, lalu dilanjutkan dari titik lanjut (≤ 15 menit per segmen). Ingest refresh dataset yang sama tidak ditunggu, supaya koreksi commit lebih dulu dan refresh mengulang dengan koreksi itu (T-013). Job pemetaan yang antre juga diambil sebelum recast (priority BullMQ). UI menampilkan "Segmen 7 dari 24".
   - Sheet beberapa segmen tidak bisa memilih ulang baris judul.
 - Memori worker terikat batch + `memory_limit` DuckDB. Risiko diketahui: tabel shared strings xlsx dimuat utuh oleh sebagian parser; T-005 mengukur ini dengan fixture teks-berat dan menetapkan mitigasi (spill ke tabel DuckDB sementara) bila perlu.
 

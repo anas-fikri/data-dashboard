@@ -7,6 +7,7 @@ import {
   recastSheet,
   type RecastDeps,
   type RecastProgress,
+  yieldsToIngest,
 } from "@/features/ingest/recast";
 import { choiceOf, writeTyped } from "@/features/ingest/typed";
 import { gcPlan } from "@/features/versions/gc";
@@ -565,35 +566,53 @@ describe("recast per segmen (T-040)", () => {
     expect(r.rr.calls.swap).toBe(0);
   });
 
-  it("AC1: prioritas di bawah ingest → menunggu selama ingest berjalan sebelum segmen berikutnya", async () => {
+  it("AC1: prioritas di bawah ingest → job memberi jalan sebelum segmen berikutnya lalu dilanjutkan dari titik lanjut", async () => {
     const r = await segmented(CONTENT, 3);
-    const log: string[] = [];
-    let busy = 4;
+    const jobId = "rc_dddddddddddddddddddddddd";
+    const asked: string[] = [];
+    const seen: number[] = [];
+    const first = counting(r);
     const out = await recastSheet(r.sheetId, toInteger, {
       ...r.deps,
-      yieldPollMs: 1,
-      ingestActive: async () => {
-        log.push(busy > 0 ? "ingest" : "bebas");
-        return busy-- > 0;
+      jobId,
+      storage: first.storage,
+      // Ingest lain mulai setelah segmen 1: berhenti sebelum segmen 2 tanpa melapor progres segmen 2.
+      shouldYield: async (datasetId) => {
+        asked.push(datasetId);
+        return asked.length > 1;
       },
       progress: (p) => {
-        log.push(`segmen ${p.current}`);
+        seen.push(p.current);
       },
     });
-    expect(out).toMatchObject({ outcome: "done" });
-    // Progres dilaporkan dulu, lalu menunggu sampai ingest selesai, baru segmen dikerjakan.
-    expect(log).toEqual([
-      "segmen 1",
-      "ingest",
-      "ingest",
-      "ingest",
-      "ingest",
-      "bebas",
-      "segmen 2",
-      "bebas",
-      "segmen 3",
-      "bebas",
-    ]);
+    expect(out).toEqual({ outcome: "yield" });
+    expect(asked).toEqual([DS, DS]);
+    expect(seen).toEqual([1]);
+    expect(first.uploads()).toBe(1);
+    expect(r.sheet().schemaRevision).toBe(1);
+    expect(r.lock.held.size).toBe(0);
+    const again = counting(r);
+    expect(
+      await recastSheet(r.sheetId, toInteger, {
+        ...r.deps,
+        jobId,
+        storage: again.storage,
+        shouldYield: async () => false,
+        progress: (p) => {
+          seen.push(p.current);
+        },
+      }),
+    ).toMatchObject({ outcome: "done", revision: 2 });
+    expect(again.uploads()).toBe(2);
+    expect(seen).toEqual([1, 2, 3]);
+    expect(r.rr.manifestTyped().map((x) => x.schemaRevision)).toEqual([2, 2, 2]);
+  });
+
+  it("review M1: hanya ingest dataset LAIN yang membuat recast mengalah (refresh dataset sama tidak ditunggu)", () => {
+    expect(yieldsToIngest([{ datasetId: DS }], DS)).toBe(false);
+    expect(yieldsToIngest([{ datasetId: DS }, { datasetId: "lain" }], DS)).toBe(true);
+    expect(yieldsToIngest([{}], DS)).toBe(true);
+    expect(yieldsToIngest([], DS)).toBe(false);
   });
 
   it("AC2: worker mati di tengah → percobaan ulang tidak mengulang segmen yang selesai; hasil identik", async () => {

@@ -390,7 +390,7 @@ export const prismaRecastRepo: RecastRepo = {
         colCount: true,
         columns: true,
         schema: true,
-        version: { select: { sourceKey: true, status: true } },
+        version: { select: { sourceKey: true, status: true, datasetId: true } },
         segments: {
           orderBy: { ordinal: "asc" },
           select: {
@@ -420,6 +420,7 @@ export const prismaRecastRepo: RecastRepo = {
     if (!s?.rawKey) return null;
     return {
       versionId: s.versionId,
+      datasetId: s.version.datasetId,
       versionStatus: s.version.status,
       name: s.name,
       typedKey: s.typedKey,
@@ -449,10 +450,10 @@ export const prismaRecastRepo: RecastRepo = {
     });
   },
 
-  async pendingTyped(typedKeys) {
+  async pendingTyped(segmentIds, typedKeys) {
     if (!typedKeys.length) return [];
     return prisma.segmentTyped.findMany({
-      where: { typedKey: { in: typedKeys } },
+      where: { segmentId: { in: segmentIds }, typedKey: { in: typedKeys } },
       select: { id: true, typedKey: true },
     });
   },
@@ -485,12 +486,22 @@ export const prismaRecastRepo: RecastRepo = {
   },
 
   async dropTyped(ids) {
+    if (!ids.length) return [];
     return prisma.$transaction(async (tx) => {
-      // Hanya yang tidak dirujuk manifest mana pun (SheetSegment NoAction).
-      const where = { id: { in: ids }, sheets: { none: {} } };
-      const rows = await tx.segmentTyped.findMany({ where, select: { typedKey: true } });
-      await tx.segmentTyped.deleteMany({ where });
-      return rows.map((r) => r.typedKey);
+      // Hanya yang tidak dirujuk manifest mana pun; kunci dari baris yang BENAR terhapus, dan hanya bila
+      // tidak ada baris lain berkunci sama (file-nya boleh dihapus, review T-040 L1).
+      const gone = await tx.$queryRaw<{ typedKey: string }[]>`
+        DELETE FROM "SegmentTyped" t WHERE t.id = ANY(${ids})
+          AND NOT EXISTS (SELECT 1 FROM "SheetSegment" m WHERE m."segmentTypedId" = t.id)
+        RETURNING t."typedKey"`;
+      const keys = gone.map((r) => r.typedKey);
+      if (!keys.length) return [];
+      const still = await tx.segmentTyped.findMany({
+        where: { typedKey: { in: keys } },
+        select: { typedKey: true },
+      });
+      const kept = new Set(still.map((r) => r.typedKey));
+      return keys.filter((k) => !kept.has(k));
     });
   },
 
@@ -511,9 +522,9 @@ export const prismaRecastRepo: RecastRepo = {
           },
         });
         if (r.count === 0) return false;
-        // Semua ordinal sekaligus, masing-masing hanya bila masih menunjuk file yang dibaca recast.
+        // Semua ordinal sekaligus — termasuk yang tetap — masing-masing hanya bila masih menunjuk file
+        // yang dibaca recast (review T-040 L2).
         for (const m of next.manifest) {
-          if (m.typedId === m.from) continue;
           const u = await tx.sheetSegment.updateMany({
             where: { sheetId, ordinal: m.ordinal, segmentTypedId: m.from },
             data: { segmentTypedId: m.typedId },

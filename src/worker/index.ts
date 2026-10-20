@@ -31,7 +31,7 @@ import {
 import { FAILED_MESSAGE, RENDERER_UNAVAILABLE_MESSAGE } from "@/features/exports/service";
 import { DatasetGoneError, runIngest } from "@/features/ingest/ingest";
 import { applyMapping } from "@/features/ingest/mapping";
-import { recastSheet } from "@/features/ingest/recast";
+import { recastSheet, yieldsToIngest } from "@/features/ingest/recast";
 import {
   finalizeFailed,
   recoverStuckIngests,
@@ -67,7 +67,7 @@ import {
   type MappingJobData,
   type RecastJobData,
 } from "@/lib/queue/connection";
-import { recordMappingLast, type MappingLastRecord } from "@/lib/queue/versions";
+import { keepRecastIndexed, recordMappingLast, type MappingLastRecord } from "@/lib/queue/versions";
 import { deleteObject } from "@/lib/storage/objects";
 
 const MAINTENANCE = "maintenance";
@@ -94,9 +94,12 @@ const EXPORT_LOCK_MS = 5 * 60 * 1000;
 /** Lock job PDF (diperpanjang otomatis selama proses hidup); > RENDER_TIMEOUT_MS bawaan 60 detik. */
 const PDF_LOCK_MS = 2 * 60 * 1000;
 const SCHEDULED_OPTS = { removeOnComplete: 50, removeOnFail: 100 };
-/** Jeda tunda recast "busy" dan batas total tunggunya (> deadline recast 20 menit). */
+/** Jeda tunda recast "busy" dan batas tunggunya sejak mulai menunggu (> deadline segmen 20 menit). */
 const RECAST_BUSY_DELAY_MS = 30 * 1000;
 const RECAST_BUSY_MAX_MS = 30 * 60 * 1000;
+/** Recast memberi jalan ingest/pemetaan (T-040): jeda tunda, dan paling lama per segmen. */
+const RECAST_YIELD_DELAY_MS = 10 * 1000;
+const RECAST_YIELD_MAX_MS = 15 * 60 * 1000;
 /** Batas tunggu pemetaan "busy" (> deadline pemetaan 60 menit). */
 const MAPPING_BUSY_MAX_MS = 70 * 60 * 1000;
 const INGEST_LOCK_MS = 5 * 60 * 1000;
@@ -151,6 +154,8 @@ async function main() {
     connection: connection(),
     defaultJobOptions: INGEST_JOB_OPTIONS,
   });
+  /** Hanya membaca jumlah job pemetaan yang antre (job recast berprioritas tidak terhitung "waiting"). */
+  const recastQueue = new Queue(RECAST_QUEUE, { connection: connection() });
 
   // --- maintenance ---
   const maintenance = new Queue(MAINTENANCE, { connection: connection() });
@@ -298,11 +303,32 @@ async function main() {
     if (r.outcome === "done") void announceVersionActivated(announceRedis, versionId, logger);
     return r;
   };
+  /**
+   * Tunda job recast tanpa memakai jatah percobaan (T-040). busySince: lock sheet dipegang job lain —
+   * batas tunggu dihitung sejak mulai menunggu, bukan sejak job dibuat (recast banyak segmen bisa jauh
+   * lebih lama). yieldSince: memberi jalan ingest/pemetaan — batasnya di shouldYield. Keduanya dihapus
+   * begitu segmen berikutnya benar-benar mulai.
+   */
+  const waitRecast = async (
+    job: Job,
+    token: string | undefined,
+    field: "busySince" | "yieldSince",
+    delayMs: number,
+    maxMs = Infinity,
+  ): Promise<never> => {
+    const d = job.data as RecastJobData;
+    const since = d[field] ?? Date.now();
+    if (Date.now() - since > maxMs) throw new Error("job lain berjalan terlalu lama");
+    await job.updateData({ ...d, [field]: since });
+    await job.moveToDelayed(Date.now() + delayMs, token);
+    throw new DelayedError();
+  };
   const recastWorker = new Worker<RecastJobData | MappingJobData>(
     RECAST_QUEUE,
     async (job: Job<RecastJobData | MappingJobData>, token?: string) => {
       if (job.name === MAP_VERSION_JOB) return mapVersion(job as Job<MappingJobData>, token);
       const { sheetId, input } = job.data as RecastJobData;
+      const jobId = job.id ?? "";
       const r = await recastSheet(sheetId, input, {
         repo: prismaRecastRepo,
         storage: s3IngestStorage,
@@ -314,15 +340,35 @@ async function main() {
           }
         },
         // T-040: kunci file per job (percobaan ulang melanjutkan segmen yang selesai), progres per
-        // segmen untuk UI, dan menunggu selama ingest berjalan (prioritas di bawah ingest).
-        jobId: job.id,
-        progress: (p) => job.updateProgress({ ...p }),
-        ingestActive: async () => (await ingestQueue.getActiveCount()) > 0,
+        // segmen untuk UI, dan memberi jalan ingest/pemetaan (prioritas di bawah ingest).
+        jobId,
+        progress: async (p) => {
+          await job.updateProgress({ ...p });
+          const d = job.data as RecastJobData;
+          if (d.busySince !== undefined || d.yieldSince !== undefined) {
+            await job.updateData({ sheetId: d.sheetId, input: d.input, userId: d.userId });
+          }
+          // Satu koreksi per sheet tetap terjaga selama job berjalan lama (indeks app ber-TTL).
+          await keepRecastIndexed(lockRedis, sheetId, jobId);
+        },
+        shouldYield: async (datasetId) => {
+          const since = (job.data as RecastJobData).yieldSince;
+          if (since !== undefined && Date.now() - since > RECAST_YIELD_MAX_MS) return false;
+          if ((await recastQueue.getWaitingCount()) > 0) return true;
+          const active = await ingestQueue.getActive();
+          return yieldsToIngest(
+            active.map((j) => j.data),
+            datasetId,
+          );
+        },
       });
       logger.info({ jobId: job.id, sheetId, ...r, schema: undefined }, "recast selesai");
-      // Recast lain sedang memegang lock sheet ini (bisa sampai deadline 20 menit) → tunda tanpa
-      // memakai jatah percobaan, sampai batas tunggu > deadline; perubahan user tidak dibuang.
-      if (r.outcome === "busy") return delayBusy(job, RECAST_BUSY_MAX_MS, token);
+      // Recast lain sedang memegang lock sheet ini → tunda tanpa memakai jatah percobaan, sampai batas
+      // tunggu > deadline segmen; perubahan user tidak dibuang.
+      if (r.outcome === "busy") {
+        return waitRecast(job, token, "busySince", RECAST_BUSY_DELAY_MS, RECAST_BUSY_MAX_MS);
+      }
+      if (r.outcome === "yield") return waitRecast(job, token, "yieldSince", RECAST_YIELD_DELAY_MS);
       return r.outcome === "done" ? { outcome: r.outcome, revision: r.revision } : r;
     },
     // Worker mati dua kali di tengah recast panjang tetap dilanjutkan (titik lanjut per segmen).
@@ -466,6 +512,7 @@ async function main() {
     lockRedis.disconnect();
     announceRedis.disconnect();
     await ingestQueue.close();
+    await recastQueue.close();
     await maintenance.close();
     await prisma.$disconnect();
     process.exit(0);

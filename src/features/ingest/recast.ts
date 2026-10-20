@@ -14,7 +14,9 @@
  *  - Manifest + pointer diganti dalam satu transaksi hanya setelah semua segmen selesai, file ada, dan
  *    revisi belum berubah. Revisi lama tidak dihapus di sini (manifest versi lain dan rollback tetap
  *    merujuknya; yang tidak dirujuk disapu GC segmen, T-038).
- *  - Prioritas di bawah ingest: sebelum tiap segmen menunggu selama ingest berjalan (≤ 15 menit).
+ *  - Prioritas di bawah ingest: sebelum tiap segmen, bila ingest dataset lain berjalan atau job
+ *    pemetaan antre (shouldYield), job berhenti dengan "yield" — worker menundanya sebentar dan slot
+ *    antrean dipakai yang lain; percobaan berikutnya melanjutkan dari titik lanjut.
  *  - Kolom kosong (absent, T-014) selalu dibawa, juga saat baris header diganti: edit nama/tipe/format/
  *    sembunyi berlaku; ganti tipe hanya mengganti tipe CAST NULL-nya.
  */
@@ -59,9 +61,6 @@ export const RECAST_LOCK_MS = 3 * 60 * 1000;
 export const RECAST_RENEW_MS = 60 * 1000;
 /** Batas waktu satu segmen (T-040: per segmen, bukan per job). */
 export const RECAST_DEADLINE_MS = 20 * 60 * 1000;
-/** Lama menunggu ingest yang sedang berjalan sebelum satu segmen; setelah itu tetap jalan. */
-export const RECAST_YIELD_MAX_MS = 15 * 60 * 1000;
-const RECAST_YIELD_POLL_MS = 5_000;
 const PARQUET = "application/vnd.apache.parquet";
 export const MULTI_HEADER_MESSAGE =
   "Baris judul tidak bisa diganti karena data sheet ini digabung dari beberapa unggahan.";
@@ -82,6 +81,7 @@ export interface RecastSegment {
 
 export interface RecastSheet {
   versionId: string;
+  datasetId: string;
   /** Status versi: hanya READY yang boleh di-recast (ingest masih menulis typed-1 → "busy"). */
   versionStatus: string;
   name: string;
@@ -112,8 +112,11 @@ export interface RecastRepo {
   loadSheet(sheetId: string): Promise<RecastSheet | null>;
   /** Profil raw untuk file typed segmen yang sudah ada (raw imutabel: berlaku selama judulnya sama). */
   saveProfile(typedId: string, profile: StoredProfile): Promise<void>;
-  /** File typed tertunda dengan kunci ini (percobaan sebelumnya job yang sama). */
-  pendingTyped(typedKeys: string[]): Promise<{ id: string; typedKey: string }[]>;
+  /** File typed tertunda segmen ini dengan kunci ini (percobaan sebelumnya job yang sama). */
+  pendingTyped(
+    segmentIds: string[],
+    typedKeys: string[],
+  ): Promise<{ id: string; typedKey: string }[]>;
   /** Catat file typed segmen yang selesai diunggah; idempoten per kunci. */
   addTyped(segmentId: string, t: NewTyped): Promise<string>;
   /** Hapus baris tertunda yang tidak dirujuk manifest mana pun; kembalikan kunci yang terhapus. */
@@ -152,10 +155,11 @@ export interface RecastDeps {
   jobId?: string;
   /** Progres per segmen; gagal melapor tidak menghentikan recast. */
   progress?: (p: RecastProgress) => Promise<unknown> | void;
-  /** Ingest sedang berjalan → tunggu sebelum segmen berikutnya (prioritas di bawah ingest). */
-  ingestActive?: () => Promise<boolean>;
-  /** Jeda cek ingest (default 5 detik; uji memakai jeda pendek). */
-  yieldPollMs?: number;
+  /**
+   * true = beri jalan pekerjaan lain sebelum segmen berikutnya (ingest dataset lain berjalan, job
+   * pemetaan antre): recast berhenti dengan "yield" dan dilanjutkan percobaan berikutnya.
+   */
+  shouldYield?: (datasetId: string) => Promise<boolean>;
 }
 
 /** Pilihan yang sudah berlaku di skema sekarang, sebagai dasar override recast berikutnya. */
@@ -197,6 +201,16 @@ class LockLostError extends Error {
   }
 }
 
+class YieldError extends Error {}
+
+/**
+ * Recast mengalah pada ingest yang sedang berjalan untuk dataset LAIN. Ingest refresh dataset yang sama
+ * tidak ditunggu: recast yang commit lebih dulu membuat ingest itu mengulang dengan koreksi ini (T-013);
+ * menunggunya membuat koreksi selalu "stale" (review T-040 M1). Data job lama tanpa datasetId → mengalah.
+ */
+export const yieldsToIngest = (active: { datasetId?: string }[], datasetId: string) =>
+  active.some((j) => j.datasetId !== datasetId);
+
 /** Nama tampil akhir yang dipakai lebih dari sekali (tidak peka kapital), atau null. */
 function duplicateName(columns: ColumnMeta[], overrides: ColumnOverride[]): string | null {
   const names = new Map(columns.map((c) => [c.pos, c.name]));
@@ -210,7 +224,6 @@ function duplicateName(columns: ColumnMeta[], overrides: ColumnOverride[]): stri
   return null;
 }
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const charsPerRow = (p: RawProfile) =>
   p.dataRows > 0 ? [...p.profiles.values()].reduce((n, x) => n + x.chars, 0) / p.dataRows : 0;
 
@@ -300,16 +313,11 @@ export async function recastSheet(
       return { outcome: "invalid", message: `Nama kolom "${dup}" dipakai lebih dari sekali.` };
     const revision = s.schemaRevision + 1;
 
-    /** Sebelum tiap segmen: progres, beri jalan ingest yang sedang berjalan, tenggat baru. */
+    /** Sebelum tiap segmen: beri jalan pekerjaan lain bila perlu, lalu progres + tenggat baru. */
     const step = async (p: RecastProgress) => {
+      if (lockLost) throw new LockLostError();
+      if (await deps.shouldYield?.(s.datasetId).catch(() => false)) throw new YieldError();
       await Promise.resolve(deps.progress?.(p)).catch(() => {});
-      const until = Date.now() + RECAST_YIELD_MAX_MS;
-      while (deps.ingestActive && Date.now() < until) {
-        if (!(await deps.ingestActive().catch(() => false))) break;
-        if (lockLost) throw new LockLostError();
-        await deps.watch?.();
-        await sleep(deps.yieldPollMs ?? RECAST_YIELD_POLL_MS);
-      }
       deadline = Date.now() + RECAST_DEADLINE_MS;
     };
 
@@ -358,7 +366,12 @@ export async function recastSheet(
     const keyOf = (g: RecastSegment) =>
       `${g.rawKey.slice(0, g.rawKey.lastIndexOf("/") + 1)}typed-${revision}-${tag}.parquet`;
     const pending = new Map(
-      (await deps.repo.pendingTyped(rewrite.map(keyOf))).map((t) => [t.typedKey, t.id]),
+      (
+        await deps.repo.pendingTyped(
+          rewrite.map((g) => g.segmentId),
+          rewrite.map(keyOf),
+        )
+      ).map((t) => [t.typedKey, t.id]),
     );
     for (const [key, id] of pending) mine.set(key, id);
     const next = new Map<number, { typedId: string; typedKey: string }>();
@@ -449,8 +462,9 @@ export async function recastSheet(
       keep = false;
       return { outcome: "gone" };
     }
-    // Lock hilang: job ditunda lalu diulang → melanjutkan dari file yang sudah tercatat.
+    // Lock hilang / memberi jalan: job ditunda lalu diulang → melanjutkan dari file yang tercatat.
     if (e instanceof LockLostError) return { outcome: "busy" };
+    if (e instanceof YieldError) return { outcome: "yield" };
     if (e instanceof DeadlineError) {
       keep = false;
       return {

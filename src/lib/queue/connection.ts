@@ -43,6 +43,10 @@ export interface RecastJobData {
   input: RecastInput;
   /** Peminta (batas job berjalan per user, review T-008 M2); kosong untuk job lama. */
   userId?: string;
+  /** Sejak kapan menunggu lock sheet dipegang job lain (T-040; dihapus saat segmen berikutnya mulai). */
+  busySince?: number;
+  /** Sejak kapan memberi jalan ingest/pemetaan (T-040; dihapus saat segmen berikutnya mulai). */
+  yieldSince?: number;
 }
 
 /** Job pemetaan kolom versi AWAITING_MAPPING (T-014); pelaku + ip untuk AuditLog commit. */

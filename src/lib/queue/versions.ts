@@ -102,6 +102,21 @@ const LIVE = new Set(["waiting", "prioritized", "waiting-children", "active", "d
  * percobaan ulang) tetap terhitung dalam batas per user.
  */
 export const USER_INFLIGHT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Indeks job recast per sheet (schema/runtime.ts: satu koreksi berjalan per sheet). TTL pengaman; worker
+ * memperpanjangnya di setiap segmen (T-040: recast banyak segmen bisa lebih lama dari TTL ini).
+ */
+export const RECAST_SHEET_INDEX_TTL_MS = 2 * 60 * 60 * 1000;
+export const recastSheetKey = (sheetId: string) => `recast:inflight:s:${sheetId}`;
+
+/** Perpanjang indeks sheet selama job ini pemiliknya (job lain/selesai tidak tersentuh). */
+export async function keepRecastIndexed(redis: Redis, sheetId: string, jobId: string) {
+  await redisLockStore(redis).pexpireIfEquals(
+    recastSheetKey(sheetId),
+    jobId,
+    RECAST_SHEET_INDEX_TTL_MS,
+  );
+}
 const userKey = (userId: string) => `recast:inflight:u:${userId}`;
 const enqueueLockKey = (userId: string) => `recast:enqueue-lock:${userId}`;
 

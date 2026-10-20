@@ -1,5 +1,5 @@
 import type { NewTyped, RecastRepo, RecastSheet } from "@/features/ingest/recast";
-import { VID, type FakeRepo } from "./fakes";
+import { DS, VID, type FakeRepo } from "./fakes";
 
 /* Repo recast di memori (T-040): segmen, file typed per revisi, dan manifest sheet seperti tabel
  * Segment/SegmentTyped/SheetSegment. Pointer/skema sheet tetap di FakeRepo (hasil ingest). */
@@ -85,6 +85,7 @@ export class FakeRecastRepo implements RecastRepo {
     if (id !== this.sheetId || !s?.rawKey) return null;
     return {
       versionId: VID,
+      datasetId: DS,
       versionStatus: this.versionStatus,
       name: s.name,
       typedKey: s.typedKey ?? null,
@@ -115,9 +116,9 @@ export class FakeRecastRepo implements RecastRepo {
     this.typed.get(id)!.profile = profile;
   }
 
-  async pendingTyped(keys: string[]) {
+  async pendingTyped(segmentIds: string[], keys: string[]) {
     return [...this.typed.values()]
-      .filter((t) => keys.includes(t.typedKey))
+      .filter((t) => segmentIds.includes(t.segmentId) && keys.includes(t.typedKey))
       .map((t) => ({ id: t.id, typedKey: t.typedKey }));
   }
 

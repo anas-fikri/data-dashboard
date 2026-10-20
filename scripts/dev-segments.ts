@@ -12,9 +12,9 @@ import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Prisma } from "@prisma/client";
-import type { ColumnMeta } from "@/features/ingest/header";
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { choiceOf, writeTyped } from "@/features/ingest/typed";
+import { packProfile } from "@/features/ingest/profile";
+import { copyTyped, profileRaw } from "@/features/ingest/typed";
 import { newSegmentId, segmentPrefix } from "@/features/versions/segment-keys";
 import { prisma } from "@/lib/db";
 import { lit, openDuck } from "@/lib/duckdb";
@@ -84,17 +84,25 @@ async function split(sheetId: string, n: number) {
               FROM read_parquet(${lit(raw)}) WHERE _row <= ${h} OR _row BETWEEN ${lo} AND ${hi} ORDER BY _row)
          TO ${lit(segRaw)} (FORMAT parquet)`,
       );
+      // Skema sheet apa adanya (tipe fisik sama di semua segmen, seperti hasil recast T-040).
       const typedPath = join(work, `typed-${k}.parquet`);
-      const typed = await writeTyped(duck, {
+      const profile = await profileRaw(duck, {
+        rawPath: segRaw,
+        headerRow: h,
+        colCount: s.colCount,
+        watch: async () => {},
+      });
+      const chars = [...profile.profiles.values()].reduce((n, p) => n + p.chars, 0);
+      await copyTyped(duck, {
         rawPath: segRaw,
         outPath: typedPath,
         source: s.version.sourceKey?.endsWith(".csv") ? "csv" : "xlsx",
         headerRow: h,
-        colCount: s.colCount,
-        columns: s.columns as unknown as ColumnMeta[],
-        overrides: schema.filter((c) => !c.absent).map((c) => choiceOf(c)),
-        watch: async () => {},
         rowBase,
+        watch: async () => {},
+        rawCols: s.colCount,
+        schema,
+        charsPerRow: profile.dataRows > 0 ? chars / profile.dataRows : 0,
       });
       const rawKey = `${prefix}raw.parquet`;
       const typedKey = `${prefix}typed-${s.schemaRevision}.parquet`;
@@ -109,9 +117,9 @@ async function split(sheetId: string, n: number) {
         maxSrcRow,
         rawBytes: statSync(segRaw).size,
         typedBytes: statSync(typedPath).size,
-        dataRows: typed.dataRows,
-        columns: typed.schema.map((c) => c.pos),
-        profile: typed.profile,
+        dataRows: profile.dataRows,
+        columns: schema.map((c) => c.pos),
+        profile: packProfile(h, profile),
       });
       rowBase += BigInt(maxSrcRow);
       rmSync(segRaw, { force: true });

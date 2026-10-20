@@ -39,6 +39,8 @@ export interface RecastInput {
 export type RecastOutcome =
   | { outcome: "done"; revision: number; schema: ColumnSchema[] }
   | { outcome: "busy" }
+  /** Memberi jalan ingest/pemetaan (T-040); seperti "busy", tidak pernah menjadi hasil akhir job. */
+  | { outcome: "yield" }
   | { outcome: "gone" }
   | { outcome: "stale" }
   | { outcome: "invalid"; message: string }
