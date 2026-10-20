@@ -10,6 +10,7 @@ import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } fro
  * proyeksi; tanpa perubahan data), "Terapkan" nonaktif sampai "Buang N baris" dicentang, versi
  * PERIOD_SETUP aktif satu segmen per periode dengan angka sama (minus baris dibuang), riwayat +
  * AuditLog, "Simpan N periode" > maksimal ditolak, pengaturan tersimpan, rollback → mode biasa.
+ * T-qqyx: dataset yang sudah per periode diatur ulang ke satuan lain sebagai versi baru → rollback.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -234,6 +235,105 @@ test.describe("atur periode", () => {
     await page.reload();
     await expect(page.getByTestId("period-card")).toContainText("Ingin menyimpan data per bulan?");
     expect(await kpi(page, baseURL!, datasetId, sheetOf(versionA))).toEqual([285, 8]);
+  });
+
+  test("T-qqyx: dataset per periode → atur ulang ke per kuartal sebagai versi baru (kelompok 3 bagian, angka sama); rollback → per bulan", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(240_000);
+    type V = { id: string; status: string; active: boolean };
+    const list = () => fx("versions", datasetId) as unknown as V[];
+    const versionB = list().find((v) => v.id !== versionA)!.id;
+    // Aktifkan lagi versi per bulan (B) dari riwayat.
+    await page.goto(`/datasets/${datasetId}`);
+    await versionRow(page, versionB).getByTestId("version-activate").click();
+    await page
+      .getByTestId("version-confirm")
+      .getByRole("button", { name: "Aktifkan", exact: true })
+      .click();
+    await expect(versionRow(page, versionB)).toHaveAttribute("data-active", "true", SLOW);
+
+    await page.goto(`/datasets/${datasetId}/periode`);
+    await expect(page.getByTestId("period-page")).toHaveAttribute("data-state", "period");
+    const reset = page.getByTestId("period-reset");
+    // Jalur "Ganti semua data" tetap jelas.
+    await expect(
+      page.getByTestId("period-replace-all").getByRole("link", { name: "Ganti semua data…" }),
+    ).toHaveAttribute("href", `/datasets/${datasetId}`);
+    await expect(reset.getByTestId("period-source")).toContainText(
+      "Dari kolom tanggal: Tanggal Kirim · per bulan",
+    );
+    // Sama persis dengan sekarang → Terapkan nonaktif dengan alasan.
+    await reset.getByTestId("period-review").click();
+    await expect(reset.getByTestId("period-apply-blocked")).toContainText(
+      "sama dengan yang sekarang",
+      SLOW,
+    );
+    await expect(reset.getByTestId("period-apply")).toBeDisabled();
+
+    await reset.getByTestId("period-grain").click();
+    await page.getByRole("option", { name: "Kuartal", exact: true }).click();
+    await reset.getByTestId("period-review").click();
+    await expect(reset.getByTestId("period-preview")).toBeVisible(SLOW);
+    await expect(reset.getByTestId("period-row")).toHaveCount(1);
+    await expect(reset.getByTestId("period-row")).toContainText("Kuartal 1 2026 · dari 3 bagian");
+    await expect(reset.getByTestId("period-apply")).toBeEnabled();
+    await reset.getByTestId("period-apply").click();
+    await expect(page).toHaveURL(new RegExp(`/datasets/${datasetId}\\?period=1$`), SLOW);
+
+    await expect.poll(() => list().length, SLOW).toBe(3);
+    await expect.poll(() => list()[0]!.active, SLOW).toBe(true);
+    const versionC = list()[0]!.id;
+    expect(seg("periods", versionC)).toMatchObject({
+      mode: "PERIOD_SETUP",
+      periodGrain: "QUARTER",
+      sheets: [
+        {
+          periodSource: "COLUMN",
+          segments: [
+            { periodKey: "2026-Q1", dataRows: 3, groupSize: 3 },
+            { periodKey: "2026-Q1", dataRows: 2, groupSize: 3 },
+            { periodKey: "2026-Q1", dataRows: 1, groupSize: 3 },
+          ],
+        },
+      ],
+    });
+    // Segmen versi B tidak disentuh (versi baru menulis segmen sendiri).
+    const segsOf = (v: string) =>
+      (
+        seg("periods", v) as { sheets: { segments: { segmentId: string }[] }[] }
+      ).sheets[0]!.segments.map((g) => g.segmentId);
+    const fromB = segsOf(versionB);
+    expect(fromB).toHaveLength(3);
+    expect(segsOf(versionC).some((id) => fromB.includes(id))).toBe(false);
+    expect(await kpi(page, baseURL!, datasetId, sheetOf(versionC))).toEqual([185, 6]);
+    const audit = seg("audit", datasetId, "dataset.period.activate") as {
+      meta: Record<string, unknown>;
+    }[];
+    expect(audit.at(-1)!.meta).toMatchObject({
+      from: versionB,
+      versionId: versionC,
+      grain: "QUARTER",
+      fromGrain: "MONTH",
+      periods: 1,
+    });
+    await page.goto(`/datasets/${datasetId}`);
+    await expect(versionRow(page, versionC).getByTestId("version-note")).toHaveText(
+      "Periode diatur ulang (per bulan → per kuartal) · 1 periode",
+    );
+    await expect(page.getByTestId("period-card")).toContainText("Data disimpan per kuartal");
+
+    // Rollback ke B → kembali per bulan, angka sama.
+    await versionRow(page, versionB).getByTestId("version-activate").click();
+    await page
+      .getByTestId("version-confirm")
+      .getByRole("button", { name: "Aktifkan", exact: true })
+      .click();
+    await expect(versionRow(page, versionB)).toHaveAttribute("data-active", "true", SLOW);
+    await page.reload();
+    await expect(page.getByTestId("period-card")).toContainText("Data disimpan per bulan");
+    expect(await kpi(page, baseURL!, datasetId, sheetOf(versionB))).toEqual([185, 6]);
   });
 
   test("AC4: bukan pemilik → 404 halaman Atur periode", async ({ page }) => {

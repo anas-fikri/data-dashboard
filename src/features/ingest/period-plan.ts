@@ -156,6 +156,8 @@ export const periodPlanSchema = z.object({
   include: z.array(z.string()),
   /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
   ignoredSheets: z.array(z.string()).default([]),
+  /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
+  resetFrom: z.enum(["MONTH", "QUARTER", "YEAR"]).optional(),
   /**
    * Sheet logis (lineageId) yang ada di file (= masukan incomingSheets, urut): periode yang diganti
    * hanya diganti di sheet ini (T-052 menyusun manifest dan menghitung ulang rencana darinya).

@@ -6,6 +6,7 @@ import {
   periodColumnOf,
   periodSettingsSchema,
   periodSetupSchema,
+  resetBlockers,
   setupHistoryNote,
   type SheetDistribution,
 } from "@/features/ingest/period-setup-plan";
@@ -205,5 +206,75 @@ describe("setupHistoryNote", () => {
       "Mode periode diaktifkan (per bulan) · 3 periode",
     );
     expect(setupHistoryNote(null)).toBeNull();
+  });
+});
+
+describe("atur ulang dataset yang sudah per periode (T-qqyx)", () => {
+  const current = (source: "COLUMN" | "LABEL" = "COLUMN") => ({
+    grain: "MONTH" as const,
+    sheets: { [SHEET]: { source, column: source === "COLUMN" ? 2 : null } },
+  });
+  const reset = (sheets: SheetDistribution[], grain: "MONTH" | "QUARTER" | "YEAR", c = current()) =>
+    buildSetupPreview({
+      grain,
+      baseVersionId: "base",
+      sheets,
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+      limits: LIMITS,
+      dropMissing: 0,
+      current: c,
+    });
+
+  it("'Ikuti periode sekarang' (KEEP) diterima skema tanpa label", () => {
+    const s = periodSetupSchema(60).safeParse({
+      grain: "QUARTER",
+      sheets: [{ sheetId: SHEET, source: "KEEP", column: null }],
+      label: null,
+      keepPeriods: null,
+      onLimit: "REJECT",
+      dropMissing: 0,
+    });
+    expect(s.success).toBe(true);
+  });
+
+  it("kelompok bagian per periode dihitung ke batas segmen per sheet dan ke sidik tinjauan", () => {
+    const grouped = dist({ periods: [{ start: "2024-01-01", rows: 3000, parts: 3 }] });
+    const p = reset([grouped], "QUARTER");
+    expect(p.plan.usage.find((u) => u.limit === "sheetSegments")).toMatchObject({ used: 3 });
+    expect(p.plan.resetFrom).toBe("MONTH");
+    expect(p.blockers).toEqual([]);
+    const tight = buildSetupPreview({
+      grain: "QUARTER",
+      baseVersionId: "base",
+      sheets: [grouped],
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+      limits: { ...LIMITS, sheetMaxSegments: 2 },
+      dropMissing: 0,
+      current: current(),
+    });
+    expect(tight.blockers[0]).toMatch(/melebihi batas 2 periode per sheet/);
+  });
+
+  it("sama persis dengan sekarang → nonaktif; KEEP ke satuan lebih kecil → nonaktif; kolom lain → boleh", () => {
+    expect(resetBlockers("MONTH", current(), [dist()])[0]).toMatch(/sama dengan yang sekarang/);
+    expect(
+      resetBlockers("MONTH", current(), [dist({ column: { pos: 3, name: "Bayar" } })]),
+    ).toEqual([]);
+    const keep = dist({ source: "KEEP", column: null });
+    expect(resetBlockers("MONTH", current("LABEL"), [keep])[0]).toMatch(/sama dengan/);
+    expect(resetBlockers("QUARTER", current("LABEL"), [keep])).toEqual([]);
+    const q = { ...current("LABEL"), grain: "QUARTER" as const };
+    expect(resetBlockers("MONTH", q, [keep])[0]).toMatch(
+      /per kuartal tidak bisa dipecah menjadi per bulan/,
+    );
+  });
+
+  it("riwayat versi: satuan berubah / hanya sumber berubah", () => {
+    expect(setupHistoryNote(reset([dist()], "QUARTER").plan)).toBe(
+      "Periode diatur ulang (per bulan → per kuartal) · 1 periode",
+    );
+    expect(
+      setupHistoryNote(reset([dist({ column: { pos: 3, name: "Bayar" } })], "MONTH").plan),
+    ).toBe("Sumber periode diatur ulang (per bulan) · 3 periode");
   });
 });

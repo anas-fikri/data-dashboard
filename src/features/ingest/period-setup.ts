@@ -15,6 +15,12 @@
  *  - Setiap file diperiksa (typedFileProblems: baris, `_row` unik, `_period`), lalu gerbang integritas
  *    versi, lalu aktivasi di bawah lock Dataset (+ AuditLog dataset.period.activate).
  *  - Percobaan ulang mulai bersih: sheet/segmen percobaan sebelumnya versi ini dihapus dulu.
+ *  - Atur ulang (T-qqyx): sheet boleh terdiri dari banyak segmen (dataset periode, kelompok file,
+ *    sheet berlabel). Setiap segmen sumber dipecah menurut periode baru menjadi bagian baru (raw =
+ *    baris judul segmen itu + barisnya; header/peta kolom/jenis file segmen itu sendiri); periode baru
+ *    yang terisi dari > 1 segmen sumber menjadi satu kelompok segmen (groupId = id versi ini, T-060).
+ *    Segmen lama tidak pernah diubah — versi dasar tetap utuh untuk rollback. "Ikuti periode sekarang"
+ *    (keep) membawa `_period` segmen ke satuan baru (hanya satuan sama/lebih besar).
  */
 import { mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
@@ -38,6 +44,7 @@ import { isIsoDate, periodKeyOf, periodLabel, type PeriodGrain, type PeriodSourc
 import { packProfile, type StoredProfile } from "./profile";
 import { copyParquet } from "./raw-writer";
 import {
+  GRAIN_RANK,
   PERIOD_SETUP_JOB,
   PERIOD_SETUP_STAGE,
   periodColumnOf,
@@ -56,10 +63,15 @@ export interface SetupSheetChoice {
   source: PeriodSource;
   /** Posisi kanonik kolom tanggal (COLUMN). */
   column: number | null;
-  /** Awal periode semua baris (LABEL). */
+  /** Awal periode semua baris (LABEL tanpa keep). */
   label: string | null;
-  /** Sebaran yang ditinjau: baris per awal periode + baris tanpa tanggal valid. */
-  expected: { periods: Record<string, number>; missing: number };
+  /** LABEL: ikuti periode sekarang setiap segmen (`_period` ke satuan baru; atur ulang, T-qqyx). */
+  keep?: boolean;
+  /**
+   * Sebaran yang ditinjau: baris per awal periode + baris tanpa tanggal valid; `parts` = jumlah segmen
+   * sumber per periode (tidak ada = job lama T-051, tidak dicek).
+   */
+  expected: { periods: Record<string, number>; missing: number; parts?: Record<string, number> };
 }
 
 export interface PeriodSetupJobData {
@@ -67,6 +79,8 @@ export interface PeriodSetupJobData {
   datasetId: string;
   baseVersionId: string;
   grain: PeriodGrain;
+  /** Satuan versi dasar (atur ulang dataset periode, T-qqyx); null/tidak ada = data biasa. */
+  baseGrain?: PeriodGrain | null;
   /** Revisi skema sheet versi dasar saat ditinjau (PLAN_STALE bila berubah). */
   base: SnapshotRef;
   sheets: SetupSheetChoice[];
@@ -76,7 +90,7 @@ export interface PeriodSetupJobData {
   ip: string;
 }
 
-/** Segmen manifest sheet dasar (tepat satu untuk aktivasi periode). */
+/** Segmen manifest sheet dasar (urut ordinal; banyak = atur ulang, T-qqyx). */
 export interface SetupSourceSegment {
   segmentId: string;
   rawKey: string;
@@ -144,6 +158,10 @@ export interface NewSetupSegment {
   /** Pengunggah file asal segmen sumber (T-056); null = tidak diketahui. */
   uploadedById?: string | null;
   sourceKind: SourceKind;
+  /** Kelompok segmen periode (T-060/T-qqyx): id versi ini, nomor bagian 1..n, n; null = satu segmen. */
+  groupId?: string | null;
+  groupPart?: number | null;
+  groupSize?: number | null;
 }
 
 export interface NewSetupSheet {
@@ -157,6 +175,8 @@ export interface NewSetupSheet {
     segmentId: string;
     rawKey: string;
     typedKey: string;
+    /** Baris judul file typed (= segmen sumber). */
+    headerRow: number;
     dataRows: number;
     typedBytes: number;
     profile: StoredProfile;
@@ -344,6 +364,8 @@ export async function runPeriodSetup(
         meta: {
           versionId,
           grain: job.grain,
+          // Atur ulang (T-qqyx): satuan versi dasar; null = mode periode baru diaktifkan.
+          fromGrain: job.baseGrain ?? null,
           periods: periods.size,
           droppedRows: dropped,
           sheets: job.sheets.map((c) => ({
@@ -394,7 +416,25 @@ export async function runPeriodSetup(
   }
 }
 
-/** Satu sheet → segmen per periode (diunggah + baris Segment), sesuai sebaran yang ditinjau. */
+/** Kolom file parquet (nama). */
+async function fileColumns(duck: Duck, path: string): Promise<Set<string>> {
+  const rows = (
+    await duck.conn.runAndReadAll(`DESCRIBE SELECT * FROM read_parquet(${lit(path)})`)
+  ).getRows();
+  return new Set(rows.map((r) => String(r[0])));
+}
+
+const mismatch = (s: SetupSourceSheet) =>
+  new SetupError(
+    `Sebaran periode sheet “${s.name}” berbeda dengan yang ditinjau. Tinjau ulang di “Atur periode”.`,
+  );
+
+/**
+ * Satu sheet → segmen per periode (diunggah + baris Segment), sesuai sebaran yang ditinjau. Dua tahap:
+ * (1) periode setiap baris dari file typed setiap segmen sumber (tabel `assign`: segmen, baris fisik,
+ * periode, tanggal), dicocokkan dengan tinjauan; (2) per segmen sumber, raw-nya dipecah per periode
+ * dan di-cast ulang dengan skema sheet (bagian baru, segmen lama tidak diubah).
+ */
 async function splitSheet(
   duck: Duck,
   job: PeriodSetupJobData,
@@ -407,60 +447,78 @@ async function splitSheet(
   created: string[],
 ): Promise<{ sheet: NewSetupSheet; periods: string[]; dropped: number }> {
   const label = `sheet "${s.name}"`;
-  if (s.segments.length !== 1) {
-    throw new SetupError(
-      `Sheet “${s.name}” sudah terdiri dari beberapa bagian data; atur periode hanya untuk data biasa. Ganti semua data untuk memakai pengaturan periode lain.`,
-    );
-  }
-  const g = s.segments[0]!;
   const schema = s.schema ?? [];
-  const rawPath = join(work, `raw-${s.index}.parquet`);
-  const typedPath = join(work, `typed-${s.index}.parquet`);
-  await deps.storage.download(g.rawKey, rawPath);
-  await deps.storage.download(g.typedKey, typedPath);
-  await watch();
-  const src = g.legacyRow ? "_row" : "_src_row";
-  let assign: string;
+  if (!s.segments.length) throw new SetupError(SETUP_STALE_MESSAGE);
   /** Kolom periode di file typed baru (COLUMN): setiap baris harus jatuh di periode segmennya. */
   let periodCol: string | null = null;
   if (choice.source === "COLUMN") {
     const c = periodColumnOf(schema, choice.column);
     if (!c) throw new SetupError(SETUP_STALE_MESSAGE);
-    const col = `c${Math.trunc(c.pos)}`;
-    periodCol = col;
-    const ok = validDateSql(col);
-    assign = `SELECT CAST(${src} AS BIGINT) AS src,
-        CASE WHEN ${ok} THEN ${periodSql(job.grain, col)} END AS p,
-        CASE WHEN ${ok} THEN CAST(${col} AS TIMESTAMP) END AS d
-      FROM read_parquet(${lit(typedPath)})`;
-  } else {
-    if (!choice.label || !isIsoDate(choice.label)) throw new SetupError(SETUP_STALE_MESSAGE);
-    assign = `SELECT CAST(${src} AS BIGINT) AS src, DATE '${choice.label}' AS p,
-        CAST(NULL AS TIMESTAMP) AS d FROM read_parquet(${lit(typedPath)})`;
+    periodCol = `c${Math.trunc(c.pos)}`;
+  } else if (choice.keep) {
+    if (!job.baseGrain) throw new SetupError(SETUP_STALE_MESSAGE);
+    if (GRAIN_RANK[job.grain] < GRAIN_RANK[job.baseGrain]) {
+      throw new SetupError(
+        `Periode sheet “${s.name}” tidak bisa dipecah ke satuan yang lebih kecil tanpa kolom tanggal. Tinjau ulang di “Atur periode”.`,
+      );
+    }
+  } else if (!choice.label || !isIsoDate(choice.label)) {
+    throw new SetupError(SETUP_STALE_MESSAGE);
   }
-  await duck.conn.run(`CREATE OR REPLACE TABLE assign AS ${assign}`);
+
+  // Tahap 1: periode setiap baris data, per segmen sumber.
+  await duck.conn.run(
+    "CREATE OR REPLACE TABLE assign (seg INTEGER, src BIGINT, p DATE, d TIMESTAMP)",
+  );
+  for (const [k, g] of s.segments.entries()) {
+    const typedPath = join(work, `typed-${s.index}-${k}.parquet`);
+    await deps.storage.download(g.typedKey, typedPath);
+    await watch();
+    const cols = await fileColumns(duck, typedPath);
+    let sel: string;
+    if (periodCol) {
+      // File lama tanpa kolom itu (kolom ditambahkan belakangan, T-057): semua barisnya tanpa tanggal.
+      const ok = validDateSql(periodCol);
+      sel = cols.has(periodCol)
+        ? `CASE WHEN ${ok} THEN ${periodSql(job.grain, periodCol)} END,
+           CASE WHEN ${ok} THEN CAST(${periodCol} AS TIMESTAMP) END`
+        : "CAST(NULL AS DATE), CAST(NULL AS TIMESTAMP)";
+    } else if (choice.keep) {
+      if (!cols.has("_period")) {
+        throw new IntegrityError([`${label} segmen ${k + 1}: periode tidak tercatat di file`]);
+      }
+      sel = `${periodSql(job.grain, "_period")}, CAST(NULL AS TIMESTAMP)`;
+    } else {
+      sel = `DATE '${choice.label}', CAST(NULL AS TIMESTAMP)`;
+    }
+    const src = g.legacyRow ? "_row" : "_src_row";
+    await watched(duck, watch, () =>
+      duck.conn.run(
+        `INSERT INTO assign SELECT ${k}, CAST(${src} AS BIGINT), ${sel} FROM read_parquet(${lit(typedPath)})`,
+      ),
+    );
+    rmSync(typedPath, { force: true });
+  }
   const counts = (
     await watched(duck, watch, () =>
       duck.conn.runAndReadAll(
-        `SELECT strftime(p, '%Y-%m-%d') AS p, count(*) AS n,
-            strftime(min(d), '%Y-%m-%d %H:%M:%S') AS lo, strftime(max(d), '%Y-%m-%d %H:%M:%S') AS hi
+        `SELECT strftime(p, '%Y-%m-%d') AS p, count(*) AS n, count(DISTINCT seg) AS parts
          FROM assign WHERE p IS NOT NULL GROUP BY 1 ORDER BY 1`,
       ),
     )
-  ).getRowObjects() as { p: string; n: bigint | number; lo: string | null; hi: string | null }[];
+  ).getRowObjects() as { p: string; n: bigint | number; parts: bigint | number }[];
   const missing = Number((await one(duck, `SELECT count(*) FROM assign WHERE p IS NULL`))[0]);
-  // Sebaran harus sama persis dengan yang ditinjau (baris per periode + tanpa tanggal valid).
+  // Sebaran harus sama persis dengan yang ditinjau (baris + bagian per periode, tanpa tanggal valid).
   const got = Object.fromEntries(counts.map((r) => [r.p, Number(r.n)]));
   const want = choice.expected.periods;
   const same =
     missing === choice.expected.missing &&
     Object.keys(got).length === Object.keys(want).length &&
     Object.entries(got).every(([k, n]) => want[k] === n);
-  if (!same) {
-    throw new SetupError(
-      `Sebaran periode sheet “${s.name}” berbeda dengan yang ditinjau. Tinjau ulang di “Atur periode”.`,
-    );
-  }
+  if (!same) throw mismatch(s);
+  const parts = new Map(counts.map((r) => [r.p, Number(r.parts)]));
+  const wantParts = choice.expected.parts;
+  if (wantParts && [...parts].some(([p, n]) => (wantParts[p] ?? 1) !== n)) throw mismatch(s);
 
   if (!counts.length) {
     // Tinjau sudah menolak sheet tanpa periode; data berubah di antaranya → jangan tulis sheet kosong.
@@ -468,130 +526,169 @@ async function splitSheet(
       `Sheet “${s.name}” tidak punya baris data bertanggal valid, jadi tidak bisa dibagi per periode. Tinjau ulang di “Atur periode”.`,
     );
   }
-  const hr = Math.trunc(g.headerRow);
-  const sheet: NewSetupSheet = {
-    from: s,
-    periodSource: choice.source,
-    periodColumn: choice.source === "COLUMN" ? choice.column : null,
-    rawRows: 0,
-    segments: [],
-  };
-  for (const [k, r] of counts.entries()) {
-    const start = r.p;
-    const n = Number(r.n);
-    const key = periodKeyOf(job.grain, start);
-    const segRaw = join(work, `seg-${s.index}-${k}-raw.parquet`);
-    const segTyped = join(work, `seg-${s.index}-${k}-typed.parquet`);
-    // Baris judul (dan di atasnya) + baris periode ini, nomor baris fisik apa adanya.
-    await watched(duck, watch, () =>
-      copyParquet(
-        duck,
-        `SELECT r.* FROM read_parquet(${lit(rawPath)}) r
-         WHERE r._row <= ${hr} OR r._row IN (SELECT src FROM assign WHERE p = DATE '${start}')
-         ORDER BY r._row`,
-        segRaw,
-        g.colCount + 1,
-      ),
-    );
-    const rawRows = Number(
-      (await one(duck, `SELECT count(*) FROM read_parquet(${lit(segRaw)})`))[0],
-    );
-    const maxSrcRow = await maxSourceRow(duck, segRaw);
-    const profile = await profileRaw(duck, {
-      rawPath: segRaw,
-      headerRow: hr,
-      colCount: g.colCount,
-      watch,
-    });
-    if (profile.dataRows !== n) {
-      throw new IntegrityError([
-        `${label} periode ${key}: ${profile.dataRows} baris tertulis, ${n} baris ditinjau`,
-      ]);
-    }
-    const rowBase = await deps.repo.allocateRows(s.lineageId, maxSrcRow);
-    const chars = [...profile.profiles.values()].reduce((a, p) => a + p.chars, 0);
-    await copyTyped(duck, {
-      rawPath: segRaw,
-      outPath: segTyped,
-      source: g.sourceKind,
-      headerRow: hr,
-      watch,
-      rowBase,
-      rawCols: g.colCount,
-      colMap: g.colMap,
-      schema,
-      charsPerRow: profile.dataRows > 0 ? chars / profile.dataRows : 0,
-      period: start,
-    });
-    const bad = await typedFileProblems(
-      duck,
-      segTyped,
-      n,
-      `${label} periode ${periodLabel(job.grain, start)}`,
-      start,
-    );
-    // Periode ditetapkan dari file typed LAMA, nilai baru di-cast ulang dari raw: keduanya harus
-    // sepakat (cast berubah → baris di periode salah). Satu saja yang meleset → versi gagal.
-    if (periodCol) {
-      const off = Number(
-        (
-          await one(
-            duck,
-            `SELECT count(*) FILTER (WHERE NOT coalesce(${validDateSql(periodCol)} AND ${periodSql(job.grain, periodCol)} = DATE '${start}', false))
-             FROM read_parquet(${lit(segTyped)})`,
-          )
-        )[0],
-      );
-      if (off > 0) {
-        bad.push(
-          `${label} periode ${periodLabel(job.grain, start)}: ${off} baris tanggalnya tidak masuk periode ini`,
-        );
-      }
-    }
-    if (bad.length) throw new IntegrityError(bad);
-    const id = newSegmentId();
-    const prefix = segmentPrefix(datasetId, id);
-    const rawKey = `${prefix}raw.parquet`;
-    const typedKey = `${prefix}typed-${s.schemaRevision}.parquet`;
-    // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
-    await deps.repo.createSegment(job.versionId, {
-      id,
-      lineageId: s.lineageId,
-      rawKey,
-      rawBytes: statSync(segRaw).size,
-      rawRows,
-      headerRow: hr,
-      colCount: g.colCount,
-      colMap: g.colMap,
-      rowBase,
-      maxSrcRow,
-      periodKey: key,
-      periodStart: start,
-      minDate: r.lo,
-      maxDate: r.hi,
-      sha256: g.sha256,
-      originalName: g.originalName,
-      uploadedById: g.uploadedById ?? null,
-      sourceKind: g.sourceKind,
-    });
-    created.push(id);
-    await deps.storage.upload(rawKey, segRaw, PARQUET);
-    await deps.storage.upload(typedKey, segTyped, PARQUET);
-    sheet.rawRows += rawRows;
-    sheet.segments.push({
-      segmentId: id,
-      rawKey,
-      typedKey,
-      dataRows: n,
-      typedBytes: statSync(segTyped).size,
-      profile: packProfile(hr, profile),
-    });
-    rmSync(segRaw, { force: true });
-    rmSync(segTyped, { force: true });
+
+  // Tahap 2: bagian baru per (segmen sumber, periode); urut segmen sumber agar `_row` naik.
+  const pieces = (
+    await duck.conn.runAndReadAll(
+      `SELECT seg, strftime(p, '%Y-%m-%d') AS p, count(*) AS n,
+          strftime(min(d), '%Y-%m-%d %H:%M:%S') AS lo, strftime(max(d), '%Y-%m-%d %H:%M:%S') AS hi
+       FROM assign WHERE p IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2`,
+    )
+  ).getRowObjects() as {
+    seg: number;
+    p: string;
+    n: bigint | number;
+    lo: string | null;
+    hi: string | null;
+  }[];
+  const nextPart = new Map<string, number>();
+  const written: { start: string; seg: number; m: NewSetupSheet["segments"][number] }[] = [];
+  let rawRowsTotal = 0;
+  for (const [k, g] of s.segments.entries()) {
+    const mine = pieces.filter((x) => Number(x.seg) === k);
+    if (!mine.length) continue;
+    const rawPath = join(work, `raw-${s.index}-${k}.parquet`);
+    await deps.storage.download(g.rawKey, rawPath);
     await watch();
+    const hr = Math.trunc(g.headerRow);
+    for (const r of mine) {
+      const start = r.p;
+      const n = Number(r.n);
+      const key = periodKeyOf(job.grain, start);
+      const size = parts.get(start) ?? 1;
+      const part = (nextPart.get(start) ?? 0) + 1;
+      nextPart.set(start, part);
+      const segRaw = join(work, `seg-${s.index}-${k}-${start}-raw.parquet`);
+      const segTyped = join(work, `seg-${s.index}-${k}-${start}-typed.parquet`);
+      // Baris judul (dan di atasnya) + baris periode ini dari segmen ini, nomor baris fisik apa adanya.
+      await watched(duck, watch, () =>
+        copyParquet(
+          duck,
+          `SELECT r.* FROM read_parquet(${lit(rawPath)}) r
+           WHERE r._row <= ${hr}
+              OR r._row IN (SELECT src FROM assign WHERE seg = ${k} AND p = DATE '${start}')
+           ORDER BY r._row`,
+          segRaw,
+          g.colCount + 1,
+        ),
+      );
+      const rawRows = Number(
+        (await one(duck, `SELECT count(*) FROM read_parquet(${lit(segRaw)})`))[0],
+      );
+      const maxSrcRow = await maxSourceRow(duck, segRaw);
+      const profile = await profileRaw(duck, {
+        rawPath: segRaw,
+        headerRow: hr,
+        colCount: g.colCount,
+        watch,
+      });
+      if (profile.dataRows !== n) {
+        throw new IntegrityError([
+          `${label} periode ${key}: ${profile.dataRows} baris tertulis, ${n} baris ditinjau`,
+        ]);
+      }
+      const rowBase = await deps.repo.allocateRows(s.lineageId, maxSrcRow);
+      const chars = [...profile.profiles.values()].reduce((a, p) => a + p.chars, 0);
+      await copyTyped(duck, {
+        rawPath: segRaw,
+        outPath: segTyped,
+        source: g.sourceKind,
+        headerRow: hr,
+        watch,
+        rowBase,
+        rawCols: g.colCount,
+        colMap: g.colMap,
+        schema,
+        charsPerRow: profile.dataRows > 0 ? chars / profile.dataRows : 0,
+        period: start,
+      });
+      const bad = await typedFileProblems(
+        duck,
+        segTyped,
+        n,
+        `${label} periode ${periodLabel(job.grain, start)}`,
+        start,
+      );
+      // Periode ditetapkan dari file typed LAMA, nilai baru di-cast ulang dari raw: keduanya harus
+      // sepakat (cast berubah → baris di periode salah). Satu saja yang meleset → versi gagal.
+      if (periodCol) {
+        const off = Number(
+          (
+            await one(
+              duck,
+              `SELECT count(*) FILTER (WHERE NOT coalesce(${validDateSql(periodCol)} AND ${periodSql(job.grain, periodCol)} = DATE '${start}', false))
+               FROM read_parquet(${lit(segTyped)})`,
+            )
+          )[0],
+        );
+        if (off > 0) {
+          bad.push(
+            `${label} periode ${periodLabel(job.grain, start)}: ${off} baris tanggalnya tidak masuk periode ini`,
+          );
+        }
+      }
+      if (bad.length) throw new IntegrityError(bad);
+      const id = newSegmentId();
+      const prefix = segmentPrefix(datasetId, id);
+      const rawKey = `${prefix}raw.parquet`;
+      const typedKey = `${prefix}typed-${s.schemaRevision}.parquet`;
+      // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
+      await deps.repo.createSegment(job.versionId, {
+        id,
+        lineageId: s.lineageId,
+        rawKey,
+        rawBytes: statSync(segRaw).size,
+        rawRows,
+        headerRow: hr,
+        colCount: g.colCount,
+        colMap: g.colMap,
+        rowBase,
+        maxSrcRow,
+        periodKey: key,
+        periodStart: start,
+        minDate: r.lo,
+        maxDate: r.hi,
+        sha256: g.sha256,
+        originalName: g.originalName,
+        uploadedById: g.uploadedById ?? null,
+        sourceKind: g.sourceKind,
+        ...(size > 1 ? { groupId: job.versionId, groupPart: part, groupSize: size } : {}),
+      });
+      created.push(id);
+      await deps.storage.upload(rawKey, segRaw, PARQUET);
+      await deps.storage.upload(typedKey, segTyped, PARQUET);
+      rawRowsTotal += rawRows;
+      written.push({
+        start,
+        seg: k,
+        m: {
+          segmentId: id,
+          rawKey,
+          typedKey,
+          headerRow: hr,
+          dataRows: n,
+          typedBytes: statSync(segTyped).size,
+          profile: packProfile(hr, profile),
+        },
+      });
+      rmSync(segRaw, { force: true });
+      rmSync(segTyped, { force: true });
+      await watch();
+    }
+    rmSync(rawPath, { force: true });
   }
   await duck.conn.run("DROP TABLE IF EXISTS assign");
-  rmSync(rawPath, { force: true });
-  rmSync(typedPath, { force: true });
-  return { sheet, periods: counts.map((r) => r.p), dropped: missing };
+  // Manifest kronologis: periode, lalu urutan segmen sumber.
+  written.sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.seg - b.seg));
+  return {
+    sheet: {
+      from: s,
+      periodSource: choice.source,
+      periodColumn: choice.source === "COLUMN" ? choice.column : null,
+      rawRows: rawRowsTotal,
+      segments: written.map((w) => w.m),
+    },
+    periods: counts.map((r) => r.p),
+    dropped: missing,
+  };
 }

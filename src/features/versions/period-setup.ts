@@ -16,6 +16,7 @@ import {
   periodSettingsSchema,
   periodSql,
   periodSetupSchema,
+  resultSource,
   SETUP_MAX_PERIODS,
   setupDigestSource,
   type PeriodSetupInput,
@@ -23,7 +24,7 @@ import {
   type SheetDistribution,
   validDateSql,
 } from "@/features/ingest/period-setup-plan";
-import type { PeriodGrain } from "@/features/ingest/period";
+import { isIsoDate, type PeriodGrain } from "@/features/ingest/period";
 import { PERIOD_POSITION_TAKEN, periodPositionTaken } from "@/features/query/period-column";
 import { runOnParquet, sourceOf, type QueryDeps } from "@/features/query/service";
 import { queryDeps } from "@/features/query/runtime";
@@ -46,6 +47,11 @@ import type { VersionCode, VersionResult } from "./types";
  *    PERIOD_SETUP (INGESTING, rencana beku) + pengaturan dataset disimpan; job worker yang memecah dan
  *    mengaktifkannya (AuditLog dataset.period.activate saat aktif).
  *  - savePeriodSettings: "Simpan N periode" (≤ PERIOD_KEEP_MAX) + "Saat batas tercapai" (AuditLog).
+ *  - Atur ulang (T-qqyx): dataset yang SUDAH per periode (juga sheet beberapa segmen: periode, kelompok
+ *    file, sheet berlabel) memakai alur yang sama — Tinjau atas seluruh manifest aktif, Terapkan →
+ *    versi PERIOD_SETUP baru (segmen lama tidak disentuh; rollback = versi periode sebelumnya). Sumber
+ *    "KEEP" = ikuti periode sekarang (satuan sama/lebih besar). Periode baru yang terisi dari beberapa
+ *    segmen sekarang menjadi satu kelompok segmen (T-060).
  */
 
 const TX_OPTIONS = { maxWait: 5_000, timeout: 30_000 };
@@ -61,10 +67,12 @@ const BUSY_MESSAGE =
 const STALE_MESSAGE =
   "Data aktif berubah sejak ditinjau (versi lain diaktifkan atau skema diubah). Tinjau ulang sebelum menerapkan.";
 const REVIEW_STALE_MESSAGE = "Data berubah sejak ditinjau. Tinjau ulang sebelum menerapkan.";
-const ALREADY_PERIOD =
-  "Dataset ini sudah menyimpan data per periode. Untuk memakai sumber atau satuan periode lain, ganti semua data.";
-const MULTI_SEGMENT =
-  "Data sheet ini sudah terdiri dari beberapa bagian, jadi periode belum bisa diatur dari data ini. Ganti semua data lalu atur periode.";
+const LEGACY_SEGMENTS =
+  "Data sheet ini terdiri dari beberapa bagian lama tanpa rentang baris, jadi periodenya belum bisa diatur. Ganti semua data lalu atur periode.";
+const KEEP_ONLY_PERIOD =
+  "“Ikuti periode sekarang” hanya untuk dataset yang sudah per periode. Muat ulang halaman.";
+const LABEL_IN_PERIOD =
+  "Dataset ini sudah per periode: pilih kolom tanggal atau “Ikuti periode sekarang”. Muat ulang halaman.";
 
 /** Kolom tanggal yang bisa menjadi sumber periode satu sheet. */
 export interface SetupDateColumn {
@@ -79,6 +87,8 @@ export interface PeriodSetupSheet {
   dateColumns: SetupDateColumn[];
   /** Mode periode sheet sekarang (dataset sudah per periode). */
   periodSource: "COLUMN" | "LABEL" | null;
+  /** Posisi kolom periode sekarang (COLUMN). */
+  periodColumn: number | null;
   periodColumnName: string | null;
 }
 
@@ -87,9 +97,11 @@ export interface PeriodSetupView {
   datasetName: string;
   /**
    * empty = belum ada data aktif; busy = ada versi belum terminal; ready = bisa diatur; period =
-   * versi aktif sudah per periode (hanya pengaturan).
+   * versi aktif sudah per periode (pengaturan + atur ulang, T-qqyx).
    */
   state: "empty" | "busy" | "ready" | "period";
+  /** Ada versi belum terminal (mode periode: atur ulang belum bisa). */
+  busy: boolean;
   grain: PeriodGrain | null;
   /** Jumlah periode di versi aktif (mode periode). */
   periodCount: number;
@@ -152,6 +164,7 @@ export async function periodSetupView(
         name: s.name,
         dateColumns,
         periodSource: s.periodSource,
+        periodColumn: s.periodSource === "COLUMN" ? s.periodColumn : null,
         periodColumnName:
           s.periodSource === "COLUMN"
             ? (schema.find((c) => c.pos === s.periodColumn)?.name ?? null)
@@ -167,6 +180,7 @@ export async function periodSetupView(
     datasetId: ds.id,
     datasetName: ds.name,
     state: !a ? "empty" : a.periodGrain ? "period" : pending ? "busy" : "ready",
+    busy: pending > 0,
     grain: a?.periodGrain ?? null,
     periodCount: keys.size,
     sheets,
@@ -182,7 +196,14 @@ interface BaseSheet {
   schemaRevision: number;
   typedKey: string | null;
   schema: ColumnSchema[] | null;
-  segments: (SegmentFile & { bytes: number })[];
+  periodSource: "COLUMN" | "LABEL" | null;
+  periodColumn: number | null;
+  segments: (SegmentFile & {
+    bytes: number;
+    rowBase: bigint;
+    maxSrcRow: number | null;
+    originalName: string | null;
+  })[];
 }
 interface Base {
   versionId: string;
@@ -209,6 +230,8 @@ async function loadBase(userId: string, datasetId: string): Promise<Base | "none
               schemaRevision: true,
               typedKey: true,
               schema: true,
+              periodSource: true,
+              periodColumn: true,
               segments: {
                 orderBy: { ordinal: "asc" },
                 select: {
@@ -218,7 +241,14 @@ async function loadBase(userId: string, datasetId: string): Promise<Base | "none
                       legacyRow: true,
                       columns: true,
                       typedBytes: true,
-                      segment: { select: { rawBytes: true } },
+                      segment: {
+                        select: {
+                          rawBytes: true,
+                          rowBase: true,
+                          maxSrcRow: true,
+                          originalName: true,
+                        },
+                      },
                     },
                   },
                 },
@@ -242,21 +272,37 @@ async function loadBase(userId: string, datasetId: string): Promise<Base | "none
       schemaRevision: s.schemaRevision,
       typedKey: s.typedKey,
       schema: (s.schema as ColumnSchema[] | null) ?? null,
+      periodSource: a.periodGrain ? s.periodSource : null,
+      periodColumn: a.periodGrain && s.periodSource === "COLUMN" ? s.periodColumn : null,
       segments: s.segments.map(({ segmentTyped: t }) => ({
         typedKey: t.typedKey,
         legacyRow: t.legacyRow,
         columns: t.columns,
         bytes: Number(t.typedBytes ?? 0n) + Number(t.segment.rawBytes ?? 0n),
+        rowBase: t.segment.rowBase,
+        maxSrcRow: t.segment.maxSrcRow,
+        originalName: t.segment.originalName,
       })),
     })),
   };
+}
+
+/** Label tervalidasi skema (ISO naive); selain itu galat pemrograman, bukan SQL dari klien. */
+function isoLabel(label: string | null): string {
+  if (!label || !isIsoDate(label)) throw new Error("label periode tidak valid");
+  return label;
 }
 
 type Distribution = { ok: true; sheet: SheetDistribution } | { ok: false; message: string };
 
 const n = (v: unknown) => Number(v ?? 0);
 
-/** Sebaran baris satu sheet lewat mesin query (sewa file cache app, slot user, batas waktu). */
+/**
+ * Sebaran baris satu sheet lewat mesin query (sewa file cache app, slot user, batas waktu). Sumber =
+ * seluruh manifest sheet (satu file atau banyak segmen). Banyak segmen: setiap baris dipetakan ke
+ * segmennya lewat rentang `_row` (rowBase + 1 .. rowBase + maxSrcRow, tidak bertumpuk — gerbang
+ * integritas), untuk jumlah bagian per periode baru (kelompok segmen) dan nama file contoh baris.
+ */
 async function distribution(
   userId: string,
   deps: QueryDeps,
@@ -264,9 +310,17 @@ async function distribution(
   choice: PeriodSetupInput["sheets"][number],
   grain: PeriodGrain,
   label: string | null,
+  periodBase: boolean,
 ): Promise<Distribution> {
-  if (!s.typedKey || !s.schema || s.segments.length !== 1) {
-    return { ok: false, message: `Sheet “${s.name}”: ${MULTI_SEGMENT}` };
+  if (!s.typedKey || !s.schema || !s.segments.length) {
+    return {
+      ok: false,
+      message: `Sheet “${s.name}”: data sheet tidak lengkap. Muat ulang halaman.`,
+    };
+  }
+  const multi = s.segments.length > 1;
+  if (multi && s.segments.some((g) => g.maxSrcRow === null)) {
+    return { ok: false, message: `Sheet “${s.name}”: ${LEGACY_SEGMENTS}` };
   }
   // Posisi kolom sistem Periode (T-058) harus bebas: kolom sungguhan selalu ≤ MAX_COLUMN (batas ingest),
   // tapi skema yang melanggarnya tidak boleh menjadi sheet periode (kolom Periode akan tertutup).
@@ -281,38 +335,50 @@ async function distribution(
     };
   }
   const src = s.segments.every((f) => f.legacyRow) ? "_row" : "_src_row";
-  const source = sourceOf({ typedKey: s.typedKey, schema: s.schema, segments: s.segments });
+  const source = sourceOf({
+    typedKey: s.typedKey,
+    schema: s.schema,
+    segments: s.segments,
+    // Sheet periode: `_period` ikut diproyeksikan (sumber KEEP membacanya).
+    period: periodBase && s.periodSource ? { column: s.periodColumn } : null,
+  });
+  // Rentang `_row` per segmen: semua nilai bilangan dari DB, bukan dari klien.
+  const ranges = multi
+    ? `LEFT JOIN (VALUES ${s.segments
+        .map(
+          (g, i) =>
+            `(${i}, ${g.rowBase.toString()}::BIGINT + 1, ${g.rowBase.toString()}::BIGINT + ${Math.trunc(g.maxSrcRow!)})`,
+        )
+        .join(", ")}) seg(i, lo, hi) ON t._row BETWEEN seg.lo AND seg.hi`
+    : "";
+  const segOf = multi ? "seg.i" : "0";
   const r = await runOnParquet(userId, source, deps, async (path, exec) => {
     const q = (sql: string) => exec({ sql, params: { path } });
-    if (!col) {
-      const total = n((await q(`SELECT count(*) FROM read_parquet($path)`)).rows[0]?.[0]);
-      return {
-        total,
-        periods: total > 0 ? [{ start: label!, rows: total }] : [],
-        missing: 0,
-        samples: [],
-      };
-    }
-    const c = `c${Math.trunc(col.pos)}`;
-    const ok = validDateSql(c);
+    // LABEL: semua baris satu periode pilihan (label tervalidasi ISO oleh skema); KEEP: `_period`
+    // segmen dibawa ke satuan baru; COLUMN: date_trunc kolom tanggal bertipe.
+    const c = col ? `t.c${Math.trunc(col.pos)}` : "t._period";
+    const ok = choice.source === "LABEL" ? "TRUE" : col ? validDateSql(c) : `(${c} IS NOT NULL)`;
+    const p = choice.source === "LABEL" ? `DATE '${isoLabel(label)}'` : periodSql(grain, c);
     const periods = await q(
-      `SELECT strftime(${periodSql(grain, c)}, '%Y-%m-%d') AS p, count(*) AS n
-       FROM read_parquet($path) WHERE ${ok} GROUP BY 1 ORDER BY 1 LIMIT ${SETUP_MAX_PERIODS + 1}`,
+      `SELECT strftime(${p}, '%Y-%m-%d') AS p, count(*) AS n,
+         count(DISTINCT ${segOf}) AS parts
+       FROM read_parquet($path) t ${ranges} WHERE ${ok} GROUP BY 1 ORDER BY 1 LIMIT ${SETUP_MAX_PERIODS + 1}`,
     );
     const counts = await q(
-      `SELECT count(*), count(*) FILTER (WHERE NOT ${ok}) FROM read_parquet($path)`,
+      `SELECT count(*), count(*) FILTER (WHERE NOT ${ok}) FROM read_parquet($path) t`,
     );
     const missing = n(counts.rows[0]?.[1]);
     const samples = missing
       ? (
           await q(
-            `SELECT ${src} FROM read_parquet($path) WHERE NOT ${ok} ORDER BY 1 LIMIT ${MISSING_SAMPLES}`,
+            `SELECT t.${src}, ${segOf} FROM read_parquet($path) t ${ranges} WHERE NOT ${ok}
+             ORDER BY ${multi ? "t._row" : "1"} LIMIT ${MISSING_SAMPLES}`,
           )
-        ).rows.map((x) => n(x[0]))
+        ).rows.map((x) => ({ row: n(x[0]), seg: n(x[1]) }))
       : [];
     return {
       total: n(counts.rows[0]?.[0]),
-      periods: periods.rows.map((x) => ({ start: String(x[0]), rows: n(x[1]) })),
+      periods: periods.rows.map((x) => ({ start: String(x[0]), rows: n(x[1]), parts: n(x[2]) })),
       missing,
       samples,
     };
@@ -321,7 +387,9 @@ async function distribution(
   if (r.value.periods.length > SETUP_MAX_PERIODS) {
     return {
       ok: false,
-      message: `Kolom “${col!.name}” di sheet “${s.name}” menghasilkan lebih dari ${SETUP_MAX_PERIODS} periode. Periksa isi kolom tanggalnya atau pilih satuan yang lebih besar.`,
+      message: col
+        ? `Kolom “${col.name}” di sheet “${s.name}” menghasilkan lebih dari ${SETUP_MAX_PERIODS} periode. Periksa isi kolom tanggalnya atau pilih satuan yang lebih besar.`
+        : `Sheet “${s.name}” punya lebih dari ${SETUP_MAX_PERIODS} periode. Pilih satuan yang lebih besar.`,
     };
   }
   return {
@@ -333,9 +401,12 @@ async function distribution(
       source: choice.source,
       column: col ? { pos: col.pos, name: col.name } : null,
       totalRows: r.value.total,
-      periods: r.value.periods,
+      periods: r.value.periods.map((p) => (p.parts > 1 ? p : { start: p.start, rows: p.rows })),
       missing: r.value.missing,
-      missingSamples: r.value.samples,
+      missingSamples: r.value.samples.map((x) => x.row),
+      missingSampleFiles: multi
+        ? r.value.samples.map((x) => s.segments[x.seg]?.originalName ?? null)
+        : null,
       bytes: s.segments.reduce((a, g) => a + g.bytes, 0),
     },
   };
@@ -362,7 +433,12 @@ async function check(
   if (base === "none") {
     return fail("INVALID", "Dataset belum punya data aktif yang siap. Unggah data dulu.");
   }
-  if (base.periodGrain) return fail("INVALID", ALREADY_PERIOD);
+  // Atur ulang (T-qqyx): dataset periode memakai kolom atau "ikuti periode sekarang"; data biasa
+  // memakai kolom atau satu label untuk semua baris.
+  for (const c of input.sheets) {
+    if (base.periodGrain && c.source === "LABEL") return fail("INVALID", LABEL_IN_PERIOD);
+    if (!base.periodGrain && c.source === "KEEP") return fail("INVALID", KEEP_ONLY_PERIOD);
+  }
   const dataSheets = base.sheets.filter((s) => s.typedKey);
   const choices = new Map(input.sheets.map((c) => [c.sheetId, c]));
   if (dataSheets.length !== input.sheets.length || dataSheets.some((s) => !choices.has(s.id))) {
@@ -371,7 +447,15 @@ async function check(
   const d = deps ?? (await queryDeps());
   const sheets: SheetDistribution[] = [];
   for (const s of dataSheets) {
-    const r = await distribution(userId, d, s, choices.get(s.id)!, input.grain, input.label);
+    const r = await distribution(
+      userId,
+      d,
+      s,
+      choices.get(s.id)!,
+      input.grain,
+      input.label,
+      base.periodGrain !== null,
+    );
     if (!r.ok) return fail("INVALID", r.message);
     sheets.push(r.sheet);
   }
@@ -382,6 +466,14 @@ async function check(
     settings: { keepPeriods: input.keepPeriods, onLimit: input.onLimit },
     limits,
     dropMissing: input.dropMissing,
+    current: base.periodGrain
+      ? {
+          grain: base.periodGrain,
+          sheets: Object.fromEntries(
+            base.sheets.map((s) => [s.id, { source: s.periodSource, column: s.periodColumn }]),
+          ),
+        }
+      : null,
   });
   preview.digest = createHash("sha256")
     .update(setupDigestSource(input.grain, base.versionId, sheets))
@@ -436,18 +528,21 @@ export async function applyPeriodSetup(
     datasetId: id,
     baseVersionId: base.versionId,
     grain: input.grain,
+    baseGrain: base.periodGrain,
     base: {
       activeVersionId: base.versionId,
       sheets: base.sheets.map((s) => ({ id: s.id, schemaRevision: s.schemaRevision })),
     },
     sheets: preview.sheets.map((s) => ({
       sheetId: s.sheetId,
-      source: s.source,
+      source: resultSource(s.source),
       column: s.column?.pos ?? null,
       label: s.source === "LABEL" ? label : null,
+      ...(s.source === "KEEP" ? { keep: true } : {}),
       expected: {
         periods: Object.fromEntries(s.periods.map((p) => [p.start, p.rows])),
         missing: s.missing,
+        parts: Object.fromEntries(s.periods.map((p) => [p.start, p.parts ?? 1])),
       },
     })),
     dropMissing: preview.missingTotal,
@@ -486,7 +581,7 @@ export async function applyPeriodSetup(
           mode: "PERIOD_SETUP",
           periodGrain: input.grain,
           ingestStage: PERIOD_SETUP_STAGE,
-          originalName: `Atur periode (${GRAIN_LABEL[input.grain]})`,
+          originalName: `${base.periodGrain ? "Atur ulang periode" : "Atur periode"} (${GRAIN_LABEL[input.grain]})`,
           uploadedById: userId,
           plan: preview.plan as unknown as Prisma.InputJsonValue,
         },

@@ -27,8 +27,9 @@ export type AuditAction =
   /** Pemetaan kolom versi yang menunggu pemetaan disimpan lalu versinya aktif (T-014). */
   | "dataset.version.map"
   /**
-   * Mode periode diaktifkan lewat "Atur periode" (T-051): versi PERIOD_SETUP aktif, meta { from,
-   * versionId, grain, periods, droppedRows, sheets[{ sheetId, source, column, label }] }.
+   * Mode periode diaktifkan lewat "Atur periode" (T-051) atau diatur ulang (T-qqyx): versi PERIOD_SETUP
+   * aktif, meta { from, versionId, grain, fromGrain (null = aktivasi pertama), periods, droppedRows,
+   * sheets[{ sheetId, source, column, label }] }.
    */
   | "dataset.period.activate"
   /** Pengaturan periode dataset diubah (T-051), meta { from, to } berisi { keepPeriods, onLimit }. */

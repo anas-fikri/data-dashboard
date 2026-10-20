@@ -11,7 +11,9 @@ import {
   type PeriodSetupJobData,
   type PeriodSetupRepo,
   type SetupLoad,
+  type SetupSourceSheet,
 } from "@/features/ingest/period-setup";
+import type { PeriodGrain } from "@/features/ingest/period";
 import type { IngestProgress } from "@/features/ingest/ingest";
 import type { ManifestSheet } from "@/features/versions/integrity-check";
 import { DS, testRoot, VID, type FakeRepo, type FakeStorage } from "./fakes";
@@ -19,7 +21,8 @@ import { DS, testRoot, VID, type FakeRepo, type FakeStorage } from "./fakes";
 /*
  * Job "Atur periode" (T-051 AC 3) dengan DuckDB sungguhan: data hasil ingest dipecah menjadi satu
  * segmen per periode (raw + typed `_period`), total sama dikurangi baris yang dibuang eksplisit, `_row`
- * unik, rencana yang ditinjau harus sama persis, acuan basi → gagal tanpa sisa.
+ * unik, rencana yang ditinjau harus sama persis, acuan basi → gagal tanpa sisa. Atur ulang (T-qqyx):
+ * dasar = hasil atur periode sebelumnya (banyak segmen) → satuan/kolom baru sebagai kelompok bagian.
  */
 const t = testRoot("period-setup");
 afterAll(t.cleanup);
@@ -47,6 +50,10 @@ class FakeSetupRepo implements PeriodSetupRepo {
   sheetMap: Record<string, string> | null = null;
   progressLog: IngestProgress[] = [];
   lineage = new Map<string, bigint>();
+  /** Satuan versi yang ditulis (manifest gerbang integritas). */
+  grain: PeriodGrain = "MONTH";
+  /** Dasar lain (atur ulang): sheet hasil atur periode sebelumnya. */
+  baseSheets: SetupSourceSheet[] | null = null;
   constructor(private readonly ingest: FakeRepo) {
     for (const s of ingest.sheets.values()) {
       const g = ingest.segments.get(s.segmentId!)!;
@@ -54,6 +61,14 @@ class FakeSetupRepo implements PeriodSetupRepo {
     }
   }
   async load(): Promise<SetupLoad> {
+    if (this.baseSheets) {
+      return {
+        datasetId: DS,
+        status: this.status,
+        mode: "PERIOD_SETUP",
+        base: { id: VID, sheets: this.baseSheets },
+      };
+    }
     const sheets = [...this.ingest.sheets.entries()].map(([id, s]) => {
       const g = this.ingest.segments.get(s.segmentId!)!;
       return {
@@ -132,7 +147,7 @@ class FakeSetupRepo implements PeriodSetupRepo {
       id: s.id,
       name: s.from.name,
       typedKey: s.segments[0]?.typedKey ?? null,
-      periodGrain: "MONTH",
+      periodGrain: this.grain,
       periodSource: s.periodSource,
       segments: s.segments.map((m, ordinal) => {
         const g = this.segments.get(m.segmentId)!;
@@ -145,6 +160,9 @@ class FakeSetupRepo implements PeriodSetupRepo {
           periodKey: g.periodKey,
           periodStart: g.periodStart,
           dataRows: m.dataRows,
+          groupId: g.groupId ?? null,
+          groupPart: g.groupPart ?? null,
+          groupSize: g.groupSize ?? null,
         };
       }),
     }));
@@ -208,7 +226,7 @@ async function setup(content = CSV) {
     ...over,
   });
   const deps = { repo, storage: s.storage, tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" };
-  return { ...s, sheetId: sheetId!, sheet, repo, job, deps };
+  return { ...s, ingest: s.repo, sheetId: sheetId!, sheet, repo, job, deps };
 }
 
 async function query(sql: string): Promise<unknown[][]> {
@@ -414,5 +432,140 @@ describe("runPeriodSetup", () => {
     expect(g).toMatchObject({ periodKey: "2026-04", minDate: null, maxDate: null });
     expect(r.repo.sheets[0]!.periodSource).toBe("LABEL");
     expect(r.repo.sheets[0]!.periodColumn).toBeNull();
+  });
+});
+
+/** Hasil atur periode pertama (per bulan, 3 segmen) sebagai versi dasar atur ulang. */
+async function periodSetup() {
+  const r = await setup();
+  expect(await runPeriodSetup(r.job(), r.deps)).toMatchObject({ outcome: "done", periods: 3 });
+  const [done] = r.repo.sheets;
+  const base: SetupSourceSheet = {
+    ...done!.from,
+    typedKey: done!.segments[0]!.typedKey,
+    rawRows: done!.rawRows,
+    segments: done!.segments.map((m) => {
+      const g = r.repo.segments.get(m.segmentId)!;
+      return {
+        segmentId: g.id,
+        rawKey: g.rawKey,
+        typedKey: m.typedKey,
+        legacyRow: false,
+        headerRow: m.headerRow,
+        colCount: g.colCount,
+        colMap: g.colMap,
+        sourceKind: g.sourceKind,
+        sha256: g.sha256,
+        originalName: g.originalName,
+        dataRows: m.dataRows,
+      };
+    }),
+  };
+  const repo = new FakeSetupRepo(r.ingest);
+  repo.lineage = new Map(r.repo.lineage);
+  repo.baseSheets = [base];
+  const before = r.storage.parquetKeys();
+  const job = (over: Partial<PeriodSetupJobData> = {}): PeriodSetupJobData =>
+    r.job({ versionId: SETUP2, baseGrain: "MONTH", grain: "QUARTER", dropMissing: 0, ...over });
+  return { ...r, first: r.repo, repo, base, before, job, deps: { ...r.deps, repo } };
+}
+
+const SETUP2 = "cmv4kljx40009oczvsetup0002";
+
+describe("runPeriodSetup — atur ulang dataset yang sudah per periode (T-qqyx)", () => {
+  it("per bulan → per kuartal dari kolom: tiga segmen sumber menjadi satu kelompok lengkap; segmen lama utuh", async () => {
+    const r = await periodSetup();
+    r.repo.grain = "QUARTER";
+    const job = r.job();
+    job.sheets[0]!.expected = {
+      periods: { "2026-01-01": 5 },
+      missing: 0,
+      parts: { "2026-01-01": 3 },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toEqual({ outcome: "done", sheets: 1, periods: 1 });
+    expect(r.repo.status).toBe("READY");
+    const segs = [...r.repo.segments.values()];
+    expect(segs.map((g) => [g.periodKey, g.groupId, g.groupPart, g.groupSize])).toEqual([
+      ["2026-Q1", SETUP2, 1, 3],
+      ["2026-Q1", SETUP2, 2, 3],
+      ["2026-Q1", SETUP2, 3, 3],
+    ]);
+    // Rentang tanggal per bagian (pemangkasan filter) + asal file dibawa.
+    expect(segs.map((g) => [g.minDate, g.maxDate])).toEqual([
+      ["2026-01-05 00:00:00", "2026-01-20 00:00:00"],
+      ["2026-02-03 00:00:00", "2026-02-28 00:00:00"],
+      ["2026-03-15 00:00:00", "2026-03-15 00:00:00"],
+    ]);
+    const [sheet] = r.repo.sheets;
+    expect(sheet!.periodSource).toBe("COLUMN");
+    const typed = files(
+      r.storage,
+      sheet!.segments.map((m) => m.typedKey),
+    );
+    const [[n, distinct, sum, periods]] = (await query(
+      `SELECT count(*), count(DISTINCT _row), sum(c2), list(DISTINCT strftime(_period, '%Y-%m-%d'))
+       FROM read_parquet(${typed})`,
+    )) as [[bigint, bigint, unknown, string[]]];
+    expect([Number(n), Number(distinct), Number(sum), periods]).toEqual([
+      5,
+      5,
+      180,
+      ["2026-01-01"],
+    ]);
+    // Versi dasar tidak disentuh: semua objeknya masih ada, segmen baru di prefix baru.
+    for (const k of r.before) expect(r.storage.parquetKeys()).toContain(k);
+    expect(segs.every((g) => !r.base.segments.some((b) => b.rawKey === g.rawKey))).toBe(true);
+  });
+
+  it("ikuti periode sekarang ke satuan lebih besar: `_period` dibawa, sheet menjadi bersumber label", async () => {
+    const r = await periodSetup();
+    r.repo.grain = "YEAR";
+    const job = r.job({ grain: "YEAR" });
+    job.sheets[0] = {
+      sheetId: r.sheetId,
+      source: "LABEL",
+      column: null,
+      label: null,
+      keep: true,
+      expected: { periods: { "2026-01-01": 5 }, missing: 0, parts: { "2026-01-01": 3 } },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toEqual({ outcome: "done", sheets: 1, periods: 1 });
+    expect(r.repo.sheets[0]!.periodSource).toBe("LABEL");
+    expect(r.repo.sheets[0]!.periodColumn).toBeNull();
+    expect([...r.repo.segments.values()].map((g) => [g.periodKey, g.groupSize])).toEqual([
+      ["2026", 3],
+      ["2026", 3],
+      ["2026", 3],
+    ]);
+  });
+
+  it("ikuti periode sekarang ke satuan lebih kecil → gagal, data aktif tidak berubah", async () => {
+    const r = await periodSetup();
+    const job = r.job({ grain: "MONTH", baseGrain: "QUARTER" });
+    job.sheets[0] = {
+      sheetId: r.sheetId,
+      source: "LABEL",
+      column: null,
+      label: null,
+      keep: true,
+      expected: { periods: { "2026-01-01": 2 }, missing: 0 },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toMatchObject({ outcome: "failed" });
+    expect(r.repo.error).toMatch(/satuan yang lebih kecil/);
+    expect(r.repo.segments.size).toBe(0);
+    expect(r.storage.parquetKeys()).toEqual(r.before);
+  });
+
+  it("jumlah bagian per periode berbeda dengan yang ditinjau → gagal tanpa sisa objek", async () => {
+    const r = await periodSetup();
+    const job = r.job();
+    job.sheets[0]!.expected = {
+      periods: { "2026-01-01": 5 },
+      missing: 0,
+      parts: { "2026-01-01": 2 },
+    };
+    expect(await runPeriodSetup(job, r.deps)).toMatchObject({ outcome: "failed" });
+    expect(r.repo.error).toMatch(/berbeda dengan yang ditinjau/);
+    expect(r.storage.parquetKeys()).toEqual(r.before);
   });
 });

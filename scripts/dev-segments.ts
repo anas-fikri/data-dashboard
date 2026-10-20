@@ -212,7 +212,9 @@ async function main() {
                       id: true,
                       typedKey: true,
                       dataRows: true,
-                      segment: { select: { id: true, periodKey: true, rawKey: true } },
+                      segment: {
+                        select: { id: true, periodKey: true, rawKey: true, groupSize: true },
+                      },
                     },
                   },
                 },
@@ -255,6 +257,7 @@ async function main() {
                 typedId: m.segmentTyped.id,
                 rawKey: m.segmentTyped.segment.rawKey,
                 typedKey: m.segmentTyped.typedKey,
+                groupSize: m.segmentTyped.segment.groupSize,
               })),
             })),
           },

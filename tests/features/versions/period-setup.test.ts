@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 /*
  * "Atur periode" sisi app (T-051): pemilik saja (NOT_FOUND), batas "Simpan N periode" dari env,
  * "Buang N baris" wajib eksplisit, acuan basi/versi tertunda ditolak, versi PERIOD_SETUP + job, dan
- * AuditLog pengaturan. Prisma, mesin query, dan antrean dimock.
+ * AuditLog pengaturan. Atur ulang dataset yang sudah per periode (T-qqyx): banyak segmen, kelompok
+ * bagian per periode baru, "ikuti periode sekarang". Prisma, mesin query, dan antrean dimock.
  */
 const tx = {
   $queryRaw: vi.fn(),
@@ -64,15 +65,18 @@ const activeRow = {
         schema: [
           { pos: 1, name: "Kode", type: "text" },
           { pos: 2, name: "Tanggal Kirim", type: "date" },
+          { pos: 3, name: "Tanggal Bayar", type: "date" },
         ],
+        periodSource: null,
+        periodColumn: null,
         segments: [
           {
             segmentTyped: {
               typedKey: "parquet/x/seg/y/typed-3.parquet",
               legacyRow: false,
-              columns: [1, 2],
+              columns: [1, 2, 3],
               typedBytes: 1000n,
-              segment: { rawBytes: 2000n },
+              segment: { rawBytes: 2000n, rowBase: 0n, maxSrcRow: 10, originalName: "a.csv" },
             },
           },
         ],
@@ -109,7 +113,12 @@ const distribution = (missing = 2) => ({
       { start: "2026-02-01", rows: 3 },
     ],
     missing,
-    samples: missing ? [4, 9] : [],
+    samples: missing
+      ? [
+          { row: 4, seg: 0 },
+          { row: 9, seg: 0 },
+        ]
+      : [],
   },
 });
 
@@ -173,12 +182,167 @@ describe("previewPeriodSetup", () => {
       message: "Simpan paling banyak 60 periode.",
     });
   });
+});
 
-  it("dataset sudah per periode → INVALID (atur ulang lewat ganti semua data)", async () => {
-    prisma.dataset.findFirst.mockResolvedValue({
-      activeVersion: { ...activeRow.activeVersion, periodGrain: "MONTH" },
+/** Versi aktif per bulan dari kolom 2, tiga segmen (Jan, Feb, Mar) — dasar atur ulang (T-qqyx). */
+const periodRow = (source: "COLUMN" | "LABEL" = "COLUMN") => {
+  const sheet = activeRow.activeVersion.sheets[0]!;
+  const seg = (i: number, name: string) => ({
+    segmentTyped: {
+      ...sheet.segments[0]!.segmentTyped,
+      typedKey: `parquet/x/seg/s${i}/typed-3.parquet`,
+      segment: { rawBytes: 2000n, rowBase: BigInt(i * 100), maxSrcRow: 40, originalName: name },
+    },
+  });
+  return {
+    activeVersion: {
+      ...activeRow.activeVersion,
+      periodGrain: "MONTH",
+      sheets: [
+        {
+          ...sheet,
+          periodSource: source,
+          periodColumn: source === "COLUMN" ? 2 : null,
+          segments: [seg(0, "jan.csv"), seg(1, "feb.csv"), seg(2, "mar.csv")],
+        },
+      ],
+    },
+  };
+};
+
+describe("atur ulang dataset yang sudah per periode (T-qqyx)", () => {
+  /** Mesin query palsu yang benar-benar memanggil `work`: SQL yang dibangun ikut diperiksa. */
+  const sqls: string[] = [];
+  const fakeEngine = (periods: unknown[][], missing = 0, samples: unknown[][] = []) =>
+    runOnParquet.mockImplementation(async (_u, _src, _d, work) => {
+      const exec = async ({ sql }: { sql: string }) => {
+        sqls.push(sql);
+        if (/GROUP BY 1/.test(sql)) return { rows: periods };
+        if (/FILTER/.test(sql)) return { rows: [[8 + missing, missing]] };
+        return { rows: samples };
+      };
+      return { ok: true, value: await work("p", exec, ["p"]) };
     });
-    expect(await svc.previewPeriodSetup(OWNER, DS, input())).toMatchObject({ code: "INVALID" });
+
+  beforeEach(() => {
+    sqls.length = 0;
+    prisma.dataset.findFirst.mockResolvedValue(periodRow());
+  });
+
+  it("satuan baru: sebaran per kuartal dari tiga segmen → satu periode tiga bagian; job membawa bagian + satuan dasar", async () => {
+    fakeEngine([["2026-01-01", 8, 3]]);
+    const body = await reviewed({ grain: "QUARTER" });
+    expect(sqls.some((q) => q.includes("seg(i, lo, hi)"))).toBe(true);
+    // Rentang `_row` setiap segmen dari DB (rowBase + 1 .. rowBase + maxSrcRow).
+    expect(sqls.find((q) => q.includes("seg(i, lo, hi)"))).toContain(
+      "(1, 100::BIGINT + 1, 100::BIGINT + 40)",
+    );
+    const p = await svc.previewPeriodSetup(OWNER, DS, input({ grain: "QUARTER" }));
+    expect(p.ok && p.data).toMatchObject({
+      blockers: [],
+      plan: { resetFrom: "MONTH", grain: "QUARTER" },
+      sheets: [{ periods: [{ start: "2026-01-01", rows: 8, parts: 3 }] }],
+    });
+    const r = await svc.applyPeriodSetup(OWNER, DS, body, "ip");
+    expect(r).toEqual({ ok: true, data: { versionId: NEW } });
+    expect(tx.datasetVersion.create.mock.calls[0]![0].data).toMatchObject({
+      mode: "PERIOD_SETUP",
+      periodGrain: "QUARTER",
+      originalName: "Atur ulang periode (per kuartal)",
+    });
+    expect(enqueuePeriodSetup.mock.calls[0]![0]).toMatchObject({
+      grain: "QUARTER",
+      baseGrain: "MONTH",
+      sheets: [
+        {
+          source: "COLUMN",
+          column: 2,
+          expected: { periods: { "2026-01-01": 8 }, parts: { "2026-01-01": 3 }, missing: 0 },
+        },
+      ],
+    });
+  });
+
+  it("kolom lain: baris tanpa tanggal valid disebut bersama nama file asalnya", async () => {
+    fakeEngine([["2026-01-01", 6, 2]], 2, [
+      [7, 0],
+      [3, 2],
+    ]);
+    const p = await svc.previewPeriodSetup(
+      OWNER,
+      DS,
+      input({ sheets: [{ sheetId: SHEET, source: "COLUMN", column: 3 }] }),
+    );
+    expect(p.ok && p.data.sheets[0]).toMatchObject({
+      missing: 2,
+      missingSamples: [7, 3],
+      missingSampleFiles: ["jan.csv", "mar.csv"],
+    });
+    expect(p.ok && p.data.blockers).toEqual([]);
+  });
+
+  it("sama persis dengan sekarang → Terapkan nonaktif; 'ikuti periode sekarang' ke satuan lebih kecil → nonaktif", async () => {
+    fakeEngine([
+      ["2026-01-01", 3, 1],
+      ["2026-02-01", 3, 1],
+      ["2026-03-01", 2, 1],
+    ]);
+    const same = await svc.previewPeriodSetup(OWNER, DS, input());
+    expect(same.ok && same.data.blockers[0]).toMatch(/sama dengan yang sekarang/);
+    prisma.dataset.findFirst.mockResolvedValue({
+      activeVersion: { ...periodRow("LABEL").activeVersion, periodGrain: "QUARTER" },
+    });
+    const keep = { sheets: [{ sheetId: SHEET, source: "KEEP", column: null }] };
+    const finer = await svc.previewPeriodSetup(OWNER, DS, input(keep));
+    expect(finer.ok && finer.data.blockers[0]).toMatch(/tidak bisa dipecah menjadi per bulan/);
+    // KEEP membaca `_period` segmen (bukan kolom pengguna).
+    expect(sqls.some((q) => q.includes("date_trunc('month', t._period)"))).toBe(true);
+    const sameLabel = await svc.previewPeriodSetup(OWNER, DS, input({ ...keep, grain: "QUARTER" }));
+    expect(sameLabel.ok && sameLabel.data.blockers[0]).toMatch(/sama dengan yang sekarang/);
+    const coarser = await svc.applyPeriodSetup(
+      OWNER,
+      DS,
+      await reviewed({ ...keep, grain: "YEAR" }),
+      "ip",
+    );
+    expect(coarser).toEqual({ ok: true, data: { versionId: NEW } });
+    expect(enqueuePeriodSetup.mock.calls[0]![0].sheets[0]).toMatchObject({
+      source: "LABEL",
+      keep: true,
+      label: null,
+    });
+  });
+
+  it("satu label untuk semua baris di dataset periode, atau 'ikuti periode sekarang' di data biasa → INVALID", async () => {
+    fakeEngine([["2026-01-01", 8, 3]]);
+    expect(
+      await svc.previewPeriodSetup(
+        OWNER,
+        DS,
+        input({ sheets: [{ sheetId: SHEET, source: "LABEL", column: null }], label: "2026-01-01" }),
+      ),
+    ).toMatchObject({ code: "INVALID", message: expect.stringMatching(/Ikuti periode sekarang/) });
+    prisma.dataset.findFirst.mockResolvedValue(activeRow);
+    expect(
+      await svc.previewPeriodSetup(
+        OWNER,
+        DS,
+        input({ sheets: [{ sheetId: SHEET, source: "KEEP", column: null }] }),
+      ),
+    ).toMatchObject({ code: "INVALID" });
+    expect(runOnParquet).not.toHaveBeenCalled();
+  });
+
+  it("segmen lama tanpa rentang baris → INVALID dengan arahan ganti semua data", async () => {
+    const row = periodRow();
+    row.activeVersion.sheets[0]!.segments[1]!.segmentTyped.segment.maxSrcRow =
+      null as unknown as number;
+    prisma.dataset.findFirst.mockResolvedValue(row);
+    const r = await svc.previewPeriodSetup(OWNER, DS, input({ grain: "QUARTER" }));
+    expect(r).toMatchObject({
+      code: "INVALID",
+      message: expect.stringMatching(/Ganti semua data/),
+    });
   });
 });
 
@@ -213,6 +377,7 @@ describe("applyPeriodSetup", () => {
       datasetId: DS,
       baseVersionId: BASE,
       grain: "MONTH",
+      baseGrain: null,
       base: { activeVersionId: BASE, sheets: [{ id: SHEET, schemaRevision: 3 }] },
       sheets: [
         {
@@ -220,7 +385,11 @@ describe("applyPeriodSetup", () => {
           source: "COLUMN",
           column: 2,
           label: null,
-          expected: { periods: { "2026-01-01": 5, "2026-02-01": 3 }, missing: 2 },
+          expected: {
+            periods: { "2026-01-01": 5, "2026-02-01": 3 },
+            missing: 2,
+            parts: { "2026-01-01": 1, "2026-02-01": 1 },
+          },
         },
       ],
       dropMissing: 2,

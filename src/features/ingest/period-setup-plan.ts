@@ -7,6 +7,10 @@
  *  - buildSetupPreview: sebaran baris per periode → rencana computePeriodPlan (data aktif dianggap
  *    "unggahan" ke dataset periode kosong; periode kecil TIDAK dikecualikan — semua baris ikut), meter
  *    batas, proyeksi kapasitas, dan alasan "Terapkan" nonaktif. Tidak ada yang berubah di sini.
+ *  - Atur ulang (T-qqyx): dataset yang SUDAH per periode boleh memilih satuan/kolom baru. Sumber
+ *    "KEEP" (= "Ikuti periode sekarang") membawa periode setiap segmen (`_period`) ke satuan baru —
+ *    hanya untuk satuan yang sama atau lebih besar; hasilnya sheet bersumber label. resetBlockers
+ *    menolak satuan lebih kecil tanpa kolom tanggal dan pengaturan yang sama persis dengan sekarang.
  */
 import { z } from "zod";
 import type { ColumnSchema } from "./infer";
@@ -40,6 +44,8 @@ export const VALID_YEAR_MIN = 1000;
 export const VALID_YEAR_MAX = 9999;
 
 export const GRAINS = ["MONTH", "QUARTER", "YEAR"] as const satisfies readonly PeriodGrain[];
+/** Urutan satuan: periode hanya bisa digabung ke satuan yang sama atau lebih besar. */
+export const GRAIN_RANK: Record<PeriodGrain, number> = { MONTH: 0, QUARTER: 1, YEAR: 2 };
 export const GRAIN_LABEL: Record<PeriodGrain, string> = {
   MONTH: "per bulan",
   QUARTER: "per kuartal",
@@ -107,7 +113,10 @@ export function periodSetupSchema(keepMax: number) {
           z
             .object({
               sheetId: z.string().regex(ID, "Sheet tidak dikenal."),
-              source: z.enum(["COLUMN", "LABEL"], { message: "Sumber periode tidak dikenal." }),
+              /** KEEP = ikuti periode sekarang (atur ulang dataset periode, T-qqyx). */
+              source: z.enum(["COLUMN", "LABEL", "KEEP"], {
+                message: "Sumber periode tidak dikenal.",
+              }),
               column: z.number().int().min(1).max(100_000).nullable(),
             })
             .strict(),
@@ -161,23 +170,34 @@ export function periodSetupSchema(keepMax: number) {
 }
 export type PeriodSetupInput = z.infer<ReturnType<typeof periodSetupSchema>>;
 
+export type SetupSource = PeriodSetupInput["sheets"][number]["source"];
+
+/** Sumber periode sheet hasil pilihan: "ikuti periode sekarang" → sheet bersumber label. */
+export const resultSource = (s: SetupSource): PeriodSource => (s === "COLUMN" ? "COLUMN" : "LABEL");
+
 /** Sebaran satu sheet (hasil query Tinjau, atau hitungan job). */
 export interface SheetDistribution {
   sheetId: string;
   /** Sheet logis (lineageId): kunci per sheet di rencana. */
   lineageId: string;
   name: string;
-  source: PeriodSource;
+  /** Pilihan sumber (KEEP = ikuti periode sekarang; hasilnya sheet bersumber label). */
+  source: SetupSource;
   /** Kolom periode (source COLUMN). */
   column: { pos: number; name: string } | null;
   /** Baris data sheet. */
   totalRows: number;
-  /** Baris per awal periode (ISO naive), urut. */
-  periods: { start: string; rows: number }[];
+  /**
+   * Baris per awal periode (ISO naive), urut. `parts` (> 1) = periode baru terisi dari beberapa
+   * segmen sekarang (atur ulang dataset periode, T-qqyx) → disimpan sebagai satu kelompok segmen.
+   */
+  periods: { start: string; rows: number; parts?: number }[];
   /** Baris tanpa tanggal valid (kosong, gagal cast, atau tahun di luar 1000–9999). */
   missing: number;
   /** ≤ MISSING_SAMPLES nomor baris di file (baris fisik), naik. */
   missingSamples: number[];
+  /** Sheet beberapa file: nama file asal setiap contoh (sejajar missingSamples); null = satu file. */
+  missingSampleFiles?: (string | null)[] | null;
   /** Byte parquet (raw + typed) sheet sekarang: perkiraan byte per periode. */
   bytes: number;
 }
@@ -231,7 +251,7 @@ export function setupDigestSource(
         s.column?.pos ?? null,
         s.totalRows,
         s.missing,
-        s.periods.map((p) => [p.start, p.rows]),
+        s.periods.map((p) => [p.start, p.rows, p.parts ?? 1]),
       ]),
   ]);
 }
@@ -275,6 +295,8 @@ export function setupPlanInput(
       e.sheets[s.lineageId] = {
         rows: p.rows,
         bytes: rows > 0 ? Math.round((s.bytes * p.rows) / Math.max(rows, s.totalRows)) : 0,
+        // Kelompok segmen (T-qqyx): batas segmen per sheet menghitung setiap bagiannya.
+        ...((p.parts ?? 1) > 1 ? { segments: p.parts } : {}),
       };
       byKey.set(key, e);
     }
@@ -331,9 +353,12 @@ export function buildSetupPreview(a: {
   settings: { keepPeriods: number | null; onLimit: OnLimit };
   limits: PeriodLimits;
   dropMissing: number;
+  /** Mode periode versi aktif (atur ulang, T-qqyx); null/tidak ada = data biasa. */
+  current?: CurrentPeriodMode | null;
 }): SetupPreview {
   const { incoming, incomingSheets } = setupPlanInput(a.grain, a.sheets);
   const source: PeriodSource = a.sheets.some((s) => s.source === "COLUMN") ? "COLUMN" : "LABEL";
+  const current = a.current ?? null;
   const plan = computePeriodPlan({
     grain: a.grain,
     source,
@@ -347,6 +372,7 @@ export function buildSetupPreview(a: {
     include: incoming.map((p) => p.key),
     droppedRows: a.dropMissing,
   });
+  if (current) plan.resetFrom = current.grain;
   const names = new Map(a.sheets.map((s) => [s.lineageId, s.name]));
   const blockers: string[] = [];
   if (plan.rejection) {
@@ -364,6 +390,7 @@ export function buildSetupPreview(a: {
       blockers.push(`Sheet “${s.name}” tidak punya baris dengan tanggal valid di kolom periode.`);
     }
   }
+  if (current) blockers.push(...resetBlockers(a.grain, current, a.sheets));
   const missingTotal = a.sheets.reduce((n, s) => n + s.missing, 0);
   return {
     grain: a.grain,
@@ -378,6 +405,47 @@ export function buildSetupPreview(a: {
   };
 }
 
+/** Mode periode versi aktif per sheet (dasar atur ulang). */
+export interface CurrentPeriodMode {
+  grain: PeriodGrain;
+  sheets: Record<string, { source: PeriodSource | null; column: number | null }>;
+}
+
+/**
+ * Alasan "Terapkan" nonaktif khusus atur ulang (murni): "ikuti periode sekarang" ke satuan lebih kecil
+ * tidak bisa (periode sekarang tidak bisa dipecah tanpa tanggal per baris), dan pengaturan yang sama
+ * persis dengan sekarang tidak perlu diterapkan (job O(total) tanpa hasil).
+ */
+export function resetBlockers(
+  grain: PeriodGrain,
+  current: CurrentPeriodMode,
+  sheets: Pick<SheetDistribution, "sheetId" | "name" | "source" | "column">[],
+): string[] {
+  const out: string[] = [];
+  if (GRAIN_RANK[grain] < GRAIN_RANK[current.grain]) {
+    for (const s of sheets.filter((x) => x.source === "KEEP")) {
+      out.push(
+        `Sheet “${s.name}”: periode sekarang ${GRAIN_LABEL[current.grain]} tidak bisa dipecah menjadi ${GRAIN_LABEL[grain]} tanpa kolom tanggal. Pilih kolom tanggal, atau satuan yang sama atau lebih besar.`,
+      );
+    }
+  }
+  const same =
+    grain === current.grain &&
+    sheets.every((s) => {
+      const c = current.sheets[s.sheetId];
+      if (!c) return false;
+      return s.source === "COLUMN"
+        ? c.source === "COLUMN" && c.column === (s.column?.pos ?? null)
+        : s.source === "KEEP" && c.source === "LABEL";
+    });
+  if (same) {
+    out.push(
+      "Satuan dan sumber periode sama dengan yang sekarang, jadi tidak ada yang perlu diterapkan. Ubah satuan atau kolom periode dulu.",
+    );
+  }
+  return out;
+}
+
 /** Label periode untuk tampilan (klien juga memakainya). */
 export const setupPeriodLabel = (grain: PeriodGrain, start: string) => periodLabel(grain, start);
 
@@ -385,7 +453,11 @@ export const setupPeriodLabel = (grain: PeriodGrain, start: string) => periodLab
 export function setupHistoryNote(plan: PeriodPlan | null): string | null {
   if (!plan) return null;
   const parts = [
-    `Mode periode diaktifkan (${GRAIN_LABEL[plan.grain]})`,
+    plan.resetFrom
+      ? plan.resetFrom === plan.grain
+        ? `Sumber periode diatur ulang (${GRAIN_LABEL[plan.grain]})`
+        : `Periode diatur ulang (${GRAIN_LABEL[plan.resetFrom]} → ${GRAIN_LABEL[plan.grain]})`
+      : `Mode periode diaktifkan (${GRAIN_LABEL[plan.grain]})`,
     `${fmt(plan.totals.periodsAfter)} periode`,
   ];
   if (plan.droppedRows > 0) {

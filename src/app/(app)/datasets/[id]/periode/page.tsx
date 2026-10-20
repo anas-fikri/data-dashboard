@@ -1,4 +1,4 @@
-import { IconArrowLeft, IconCalendarStats } from "@tabler/icons-react";
+import { IconArrowLeft, IconCalendarStats, IconReplace } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PeriodSettingsForm, PeriodSetupForm } from "@/components/datasets/period-setup-form";
@@ -15,7 +15,8 @@ export const metadata = { title: "Atur periode" };
 
 /**
  * "Atur periode" (T-051): pemilik saja (lainnya 404, D2). Data biasa → pilihan sumber + Tinjau +
- * Terapkan; sudah per periode → pengaturan saja; tanpa data / ada proses lain → keadaan kosong.
+ * Terapkan; sudah per periode → pengaturan + "Atur ulang periode" (T-qqyx: satuan/kolom baru sebagai
+ * versi baru, atau jalur "Ganti semua data"); tanpa data / ada proses lain → keadaan kosong.
  */
 export default async function PeriodSetupPage({ params }: { params: Params }) {
   const { id } = await params;
@@ -92,6 +93,47 @@ export default async function PeriodSetupPage({ params }: { params: Params }) {
           </CardContent>
         </Card>
       )}
+      {view.state === "period" ? (
+        <Card data-testid="period-reset">
+          <CardHeader>
+            <CardTitle>Atur ulang periode</CardTitle>
+            <CardDescription>
+              Ganti satuan atau kolom periode. Data aktif disusun ulang sebagai versi baru (tanpa
+              mengunggah ulang); versi sekarang tetap tersimpan dan bisa diaktifkan lagi.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-6">
+            {view.busy ? (
+              <p className="text-sm text-muted-foreground" data-testid="period-reset-busy">
+                Tunggu file yang sedang diproses, atau selesaikan versi yang menunggu
+                pemetaan/konfirmasi, sebelum mengatur ulang periode.
+              </p>
+            ) : (
+              <PeriodSetupForm view={view} />
+            )}
+            <div
+              className="flex flex-col gap-2 border-t pt-4 text-sm"
+              data-testid="period-replace-all"
+            >
+              <p className="text-muted-foreground">
+                Ingin mulai dari file baru dengan susunan periode lain? Ganti semua data dari
+                halaman dataset (tautan “Ganti semua data…” di panel unggah), lalu atur periode
+                lagi.
+              </p>
+              <Button
+                asChild
+                variant="outline"
+                className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
+              >
+                <Link href={`/datasets/${view.datasetId}`}>
+                  <IconReplace aria-hidden />
+                  Ganti semua data…
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

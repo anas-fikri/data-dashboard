@@ -41,6 +41,8 @@ import { cn } from "@/lib/utils";
  * tanggal, atau "Saya pilih saat upload" dengan periode data sekarang), pengaturan "Simpan N periode"
  * dan "Saat batas tercapai", lalu "Tinjau" (tanpa mengubah data) dan "Terapkan". Setiap perubahan
  * isian membuang hasil tinjauan: "Terapkan" selalu untuk isian yang terakhir ditinjau.
+ * Atur ulang (T-qqyx, dataset sudah per periode): satuan/kolom baru atau "Ikuti periode sekarang";
+ * pengaturan simpan diatur di kartu pengaturan (PeriodSettingsForm), jadi tidak ditampilkan di sini.
  */
 
 const fmt = (n: number) => n.toLocaleString("id-ID");
@@ -60,6 +62,7 @@ const MONTHS = [
   "Desember",
 ];
 const LABEL_SOURCE = "label";
+const KEEP_SOURCE = "keep";
 
 /** Penjelasan "Saat batas tercapai" (AC 4: dijelaskan di layar). */
 const ON_LIMIT: { value: OnLimit; label: string; hint: string }[] = [
@@ -181,7 +184,11 @@ function PreviewResult({ p }: { p: SetupPreview }) {
           <h3 className="text-sm font-semibold [overflow-wrap:anywhere]">
             Sheet “{s.name}” ·{" "}
             <span className="font-normal text-muted-foreground">
-              {s.column ? `dari kolom “${s.column.name}”` : "periode dipilih saat upload"}
+              {s.column
+                ? `dari kolom “${s.column.name}”`
+                : s.source === "KEEP"
+                  ? "mengikuti periode sekarang"
+                  : "periode dipilih saat upload"}
             </span>
           </h3>
           <div className="max-h-72 overflow-auto rounded-md border">
@@ -200,7 +207,15 @@ function PreviewResult({ p }: { p: SetupPreview }) {
               <tbody>
                 {s.periods.map((x) => (
                   <tr key={x.start} className="border-t" data-testid="period-row">
-                    <td className="px-3 py-1.5">{setupPeriodLabel(p.grain, x.start)}</td>
+                    <td className="px-3 py-1.5">
+                      {setupPeriodLabel(p.grain, x.start)}
+                      {(x.parts ?? 1) > 1 ? (
+                        <span className="text-muted-foreground">
+                          {" "}
+                          · dari {fmt(x.parts!)} bagian
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">{fmt(x.rows)}</td>
                   </tr>
                 ))}
@@ -217,7 +232,12 @@ function PreviewResult({ p }: { p: SetupPreview }) {
                 {fmt(s.missing)} baris tanpa tanggal valid di kolom “{s.column?.name}”. Contoh nomor
                 baris di file:{" "}
                 <span data-testid="period-missing-samples">
-                  {s.missingSamples.map(fmt).join(", ")}
+                  {s.missingSamples
+                    .map((r, i) => {
+                      const file = s.missingSampleFiles?.[i];
+                      return file ? `${fmt(r)} (${file})` : fmt(r);
+                    })
+                    .join(", ")}
                 </span>
                 {s.missing > s.missingSamples.length ? ", …" : ""}.
               </span>
@@ -248,18 +268,24 @@ function PreviewResult({ p }: { p: SetupPreview }) {
   );
 }
 
+/** Pilihan awal sumber sheet: atur ulang = sumber sekarang; data biasa = kolom tanggal pertama. */
+function initialSource(s: PeriodSetupView["sheets"][number], reset: boolean): string {
+  if (reset) {
+    return s.periodSource === "COLUMN" && s.periodColumn !== null
+      ? `col:${s.periodColumn}`
+      : KEEP_SOURCE;
+  }
+  return s.dateColumns[0] ? `col:${s.dateColumns[0].pos}` : LABEL_SOURCE;
+}
+
 export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
   const router = useRouter();
   const uid = useId();
+  const reset = view.state === "period";
   const [pending, start] = useTransition();
-  const [grain, setGrain] = useState<PeriodGrain>("MONTH");
+  const [grain, setGrain] = useState<PeriodGrain>(view.grain ?? "MONTH");
   const [sources, setSources] = useState<Record<string, string>>(() =>
-    Object.fromEntries(
-      view.sheets.map((s) => [
-        s.id,
-        s.dateColumns[0] ? `col:${s.dateColumns[0].pos}` : LABEL_SOURCE,
-      ]),
-    ),
+    Object.fromEntries(view.sheets.map((s) => [s.id, initialSource(s, reset)])),
   );
   const now = new Date();
   const [year, setYear] = useState(String(now.getFullYear()));
@@ -284,22 +310,26 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
   const anyLabel = view.sheets.some((s) => sources[s.id] === LABEL_SOURCE);
 
   const payload = (dropMissing: number) => {
-    const k = keepValue(keep);
+    // Atur ulang: pengaturan simpan tetap yang tersimpan (diubah lewat kartu pengaturan).
+    const k = reset ? view.settings.keepPeriods : keepValue(keep);
     if (k === "invalid") {
       setKeepError("Jumlah periode harus angka bulat.");
       return null;
     }
+    const fallback = reset ? KEEP_SOURCE : LABEL_SOURCE;
     return {
       grain,
       sheets: view.sheets.map((s) => {
-        const v = sources[s.id] ?? LABEL_SOURCE;
+        const v = sources[s.id] ?? fallback;
         return v === LABEL_SOURCE
           ? { sheetId: s.id, source: "LABEL" as const, column: null }
-          : { sheetId: s.id, source: "COLUMN" as const, column: Number(v.slice(4)) };
+          : v === KEEP_SOURCE
+            ? { sheetId: s.id, source: "KEEP" as const, column: null }
+            : { sheetId: s.id, source: "COLUMN" as const, column: Number(v.slice(4)) };
       }),
       label: anyLabel ? labelIso(grain, year, part) : null,
       keepPeriods: k,
-      onLimit,
+      onLimit: reset ? view.settings.onLimit : onLimit,
       dropMissing,
     };
   };
@@ -388,13 +418,23 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
                   Dari kolom tanggal: {c.name} · {GRAIN_LABEL[grain]}
                 </SelectItem>
               ))}
-              <SelectItem value={LABEL_SOURCE}>Saya pilih saat upload</SelectItem>
+              {reset ? (
+                <SelectItem value={KEEP_SOURCE}>
+                  Ikuti periode sekarang · berikutnya dipilih saat upload
+                </SelectItem>
+              ) : (
+                <SelectItem value={LABEL_SOURCE}>Saya pilih saat upload</SelectItem>
+              )}
             </SelectContent>
           </Select>
           <p id={`${uid}-src-${s.id}-hint`} className="text-sm text-muted-foreground">
-            {s.dateColumns.length
-              ? "Kolom tanggal disarankan: satu file boleh berisi banyak periode dan dipecah otomatis."
-              : "Sheet ini tidak punya kolom bertipe tanggal, jadi periode dipilih setiap kali mengunggah."}
+            {reset
+              ? sources[s.id] === KEEP_SOURCE
+                ? "Setiap baris tetap di periodenya sekarang, digabung ke satuan yang dipilih. Satuan yang lebih kecil butuh kolom tanggal."
+                : "Periode setiap baris dihitung ulang dari kolom tanggal ini."
+              : s.dateColumns.length
+                ? "Kolom tanggal disarankan: satu file boleh berisi banyak periode dan dipecah otomatis."
+                : "Sheet ini tidak punya kolom bertipe tanggal, jadi periode dipilih setiap kali mengunggah."}
           </p>
         </div>
       ))}
@@ -444,14 +484,22 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
         </fieldset>
       ) : null}
 
-      <SettingsFields
-        view={view}
-        keep={keep}
-        onKeep={changed(setKeep)}
-        onLimit={onLimit}
-        onOnLimit={changed(setOnLimit)}
-        error={keepError}
-      />
+      {reset ? (
+        keepError ? (
+          <p role="alert" className="text-sm text-destructive [overflow-wrap:anywhere]">
+            {keepError}
+          </p>
+        ) : null
+      ) : (
+        <SettingsFields
+          view={view}
+          keep={keep}
+          onKeep={changed(setKeep)}
+          onLimit={onLimit}
+          onOnLimit={changed(setOnLimit)}
+          error={keepError}
+        />
+      )}
 
       <div className="flex flex-col gap-2">
         <Button
@@ -530,9 +578,9 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
             <div className="flex flex-col gap-2">
               <p className="flex items-start gap-2 text-sm text-muted-foreground">
                 <IconInfoCircle size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
-                Terapkan memecah data aktif menjadi satu bagian per periode sebagai versi baru.
-                Dashboard memakai angka yang sama; versi sebelumnya tetap bisa diaktifkan lagi dari
-                Riwayat versi.
+                {reset
+                  ? "Terapkan menyusun ulang data aktif per periode baru sebagai versi baru; data sekarang tidak diubah. Dashboard memakai angka yang sama; versi sebelumnya (dengan periode sekarang) tetap bisa diaktifkan lagi dari Riwayat versi."
+                  : "Terapkan memecah data aktif menjadi satu bagian per periode sebagai versi baru. Dashboard memakai angka yang sama; versi sebelumnya tetap bisa diaktifkan lagi dari Riwayat versi."}
               </p>
               <Button
                 type="button"
@@ -566,7 +614,7 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
   );
 }
 
-/** Dataset sudah per periode: ringkasan mode + pengaturan saja (atur ulang = ganti semua data). */
+/** Dataset sudah per periode: ringkasan mode + pengaturan (atur ulang = PeriodSetupForm, T-qqyx). */
 export function PeriodSettingsForm({ view }: { view: PeriodSetupView }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -616,9 +664,6 @@ export function PeriodSettingsForm({ view }: { view: PeriodSetupView }) {
             </li>
           ))}
         </ul>
-        <p className="text-muted-foreground">
-          Untuk memakai sumber atau satuan periode lain, ganti semua data lalu atur periode lagi.
-        </p>
       </div>
       <SettingsFields
         view={view}

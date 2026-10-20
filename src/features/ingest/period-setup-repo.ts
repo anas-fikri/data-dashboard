@@ -167,6 +167,10 @@ export const prismaPeriodSetupRepo: PeriodSetupRepo = {
         originalName: d.originalName,
         uploadedById: d.uploadedById ?? null,
         sourceKind: d.sourceKind,
+        // Kelompok segmen periode (atur ulang dari beberapa segmen sumber, T-qqyx).
+        groupId: d.groupId ?? null,
+        groupPart: d.groupPart ?? null,
+        groupSize: d.groupSize ?? null,
         createdByVersionId: versionId,
       },
     });
@@ -214,7 +218,7 @@ export const prismaPeriodSetupRepo: PeriodSetupRepo = {
                 dataRows: g.dataRows,
                 typedBytes: BigInt(g.typedBytes),
                 profile: g.profile as unknown as Prisma.InputJsonValue,
-                headerRow: f.segments[0]?.headerRow ?? f.headerRow,
+                headerRow: g.headerRow,
               },
               select: { id: true },
             });
