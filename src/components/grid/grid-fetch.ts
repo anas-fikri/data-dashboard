@@ -272,3 +272,97 @@ export async function fetchBlock(
   }
   return { ok: true, total: first.total, filteredTotal: first.filteredTotal, rows };
 }
+
+/* ---------- T-045: isi sel dan ringkasan kolom (lewat jatah klien yang sama) ---------- */
+
+export interface CellInfo {
+  value: unknown;
+  raw: string | null;
+  castFailed: boolean;
+  source: { fileName: string | null; srcRow: number; period: string | null };
+}
+
+export interface ColumnStats {
+  count: number;
+  sum: number | null;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+/** Gagal: pesan siap tampil; `reload` = versi berganti/sesi habis (mengulang tidak menolong). */
+export type Fetch<T> = { ok: true; data: T } | { ok: false; message: string; reload: boolean };
+
+async function gridJson<T>(
+  url: string,
+  init: RequestInit,
+  pick: (b: Record<string, unknown>) => T | null,
+  fallback: string,
+  fetcher: typeof fetch,
+): Promise<Fetch<T> | null> {
+  const got = await slotFetch(url, { ...init, cache: "no-store" }, fetcher);
+  if (!got.ok) {
+    return got.aborted
+      ? null
+      : { ok: false, message: "Tidak bisa menghubungi server. Coba lagi.", reload: false };
+  }
+  const b = (got.body ?? {}) as Record<string, unknown>;
+  const data = b.ok === true ? pick(b) : null;
+  if (data) return { ok: true, data };
+  const status = got.res.status;
+  return {
+    ok: false,
+    reload: status === 401 || b.code === "VERSION_CHANGED",
+    message:
+      status === 401
+        ? "Sesi Anda berakhir. Muat ulang halaman lalu masuk lagi."
+        : b.code === "VERSION_CHANGED"
+          ? "Data sudah diperbarui. Muat ulang untuk melihat versi terbaru."
+          : typeof b.message === "string" && b.message
+            ? b.message
+            : fallback,
+  };
+}
+
+/** GET /api/sheets/:id/cell — `row` = `_row` (identitas baris). null = dibatalkan. */
+export function fetchCell(
+  sheetId: string,
+  q: { versionId: string; row: number; pos: number },
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<Fetch<CellInfo> | null> {
+  const qs = new URLSearchParams({
+    versionId: q.versionId,
+    row: String(q.row),
+    pos: String(q.pos),
+  });
+  return gridJson(
+    `/api/sheets/${encodeURIComponent(sheetId)}/cell?${qs}`,
+    { signal },
+    (b) => (b.versionId === q.versionId && b.source ? (b as unknown as CellInfo) : null),
+    "Isi sel gagal dimuat. Coba lagi.",
+    fetcher,
+  );
+}
+
+/** POST /api/sheets/:id/stats — ringkasan kolom angka di bawah saringan/cari tampilan. */
+export function fetchStats(
+  sheetId: string,
+  body: { versionId: string; pos: number; query?: GridQuery },
+  signal?: AbortSignal,
+  fetcher: typeof fetch = fetch,
+): Promise<Fetch<ColumnStats> | null> {
+  const { sort: _s, ...rest } = queryBody(body.query);
+  return gridJson(
+    `/api/sheets/${encodeURIComponent(sheetId)}/stats`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ versionId: body.versionId, pos: body.pos, ...rest }),
+      signal,
+    },
+    (b) => (b.versionId === body.versionId ? (b as unknown as ColumnStats) : null),
+    "Ringkasan kolom gagal dihitung.",
+    fetcher,
+  );
+}

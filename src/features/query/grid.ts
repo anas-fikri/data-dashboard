@@ -16,7 +16,7 @@ import { sqlType, type ColumnSchema } from "@/features/ingest/infer";
 import { ident } from "@/lib/duckdb";
 import { columnClause, dashFilterSchema, type DashClause } from "./filters";
 import type { SegmentFile } from "./source";
-import { dashClauses, TEXT_COLLATE, type BuiltSql } from "./sql";
+import { dashClauses, measureExpr, TEXT_COLLATE, type BuiltSql } from "./sql";
 
 export const GRID_ROWS_MAX = 500;
 export const GRID_COLS_MAX = 64;
@@ -67,6 +67,19 @@ export const valuesBodySchema = z
     versionId: id,
     pos,
     q: z.string().max(GRID_SEARCH_TEXT_MAX).optional(),
+  })
+  .strict();
+
+/**
+ * POST /api/sheets/:id/stats (T-045): ringkasan satu kolom angka di bawah saringan/cari yang sama
+ * dengan jendela baris (bentuk `filters`/`search` = rowsBodySchema).
+ */
+export const statsBodySchema = z
+  .object({
+    versionId: id,
+    pos,
+    filters: rowsBodySchema.shape.filters,
+    search: rowsBodySchema.shape.search,
   })
   .strict();
 
@@ -259,6 +272,27 @@ export function buildGridCountSql(plan: GridPlan | null, parquetPath: string): B
   const params: BuiltSql["params"] = { path: parquetPath };
   const where = plan ? whereSql(plan, params) : "";
   return { sql: [`SELECT count(*) AS n FROM read_parquet($path)`, where].join("\n"), params };
+}
+
+/** Agregat ringkasan kolom (urutan kolom hasil buildGridStatsSql). */
+export const GRID_STATS_AGGS = ["count", "sum", "avg", "min", "max"] as const;
+
+/**
+ * Ringkasan satu kolom (T-045 AC4): ekspresi agregat sama persis dengan widget KPI (measureExpr:
+ * Jumlah = coalesce(sum, 0), Hitung = count(kolom) = sel terisi) di bawah saringan/cari tampilan.
+ */
+export function buildGridStatsSql(plan: GridPlan, col: SchemaCol, parquetPath: string): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const c = `c${Math.trunc(col.pos)}`;
+  const select = GRID_STATS_AGGS.map(
+    (agg, i) => `${measureExpr({ key: agg, agg, col: c })} AS a${i}`,
+  );
+  return {
+    sql: [`SELECT ${select.join(", ")}`, `FROM read_parquet($path)`, whereSql(plan, params)]
+      .filter(Boolean)
+      .join("\n"),
+    params,
+  };
 }
 
 /** Satu sel typed per `_row`: baris fisik sumber + nilai (NULL bila kolom tidak ada di file). */

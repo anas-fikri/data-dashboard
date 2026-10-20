@@ -209,6 +209,15 @@
   color: var(--color-muted-foreground);
   background: var(--color-muted);
 }
+/* Baris dipilih lewat nomor baris (T-045): latar primary tipis + nomor baris tebal (bukan warna saja). */
+.dd-grid .dd-grid-selected {
+  background: color-mix(in oklab, var(--color-primary) 14%, transparent);
+}
+.dd-grid .dd-grid-rownum.dd-grid-selected {
+  color: var(--color-foreground);
+  font-weight: 600;
+  box-shadow: inset -3px 0 0 var(--color-primary);
+}
 /* Sel terfokus: cincin 2px dari token --ring (bawaan AG 1px border) — kontras ≥ 3:1 terang & gelap. */
 .dd-grid .ag-cell-focus:not(.ag-cell-range-selected):focus-within {
   outline: 2px solid hsl(var(--ring));

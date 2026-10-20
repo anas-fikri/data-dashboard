@@ -130,7 +130,16 @@ export type CachedQuery =
   | TablePage
   | { filterValues: DashValue[]; truncated: boolean }
   | { timeout: true }
-  | { gridCount: { total: number; filteredTotal: number } };
+  | { gridCount: { total: number; filteredTotal: number } }
+  | {
+      gridStats: {
+        count: number;
+        sum: number | null;
+        avg: number | null;
+        min: number | null;
+        max: number | null;
+      };
+    };
 
 /**
  * `cached`/`ms` hanya untuk pemilik (T-016): non-pemilik tidak bisa menebak apakah user lain baru saja

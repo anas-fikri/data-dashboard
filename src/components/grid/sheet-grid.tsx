@@ -3,6 +3,7 @@
 import {
   IconAlertTriangle,
   IconArrowsSort,
+  IconCopy,
   IconCornerDownLeft,
   IconFilterOff,
   IconLayoutColumns,
@@ -25,6 +26,8 @@ import {
   themeQuartz,
   TooltipModule,
   type BodyScrollEndEvent,
+  type CellClassParams,
+  type CellClickedEvent,
   type CellFocusedEvent,
   type ColDef,
   type GridApi,
@@ -38,14 +41,30 @@ import {
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { DashFilter } from "@/components/dashboards/filters/filter-model";
 import { filterText } from "@/components/dashboards/filters/filter-text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { NumberFormat } from "@/features/widgets/spec";
-import { fetchBlock, type RowData } from "./grid-fetch";
+import type { CellTarget } from "./grid-cell-panel";
+import {
+  COPY_MAX_ROWS,
+  defaultDecimal,
+  excelValue,
+  rowsToTsv,
+  writeClipboard,
+  type DecimalSep,
+} from "./grid-copy";
+import {
+  fetchBlock,
+  fetchCell,
+  fetchStats,
+  type ColumnStats,
+  type Fetch,
+  type RowData,
+} from "./grid-fetch";
 import { GridFilterDialog, type FilterTarget } from "./grid-filter-dialog";
 import {
   GridHeader,
@@ -98,7 +117,14 @@ import {
  * saringan"), dan cari (Ctrl+F di dalam grid, ≤ 10 kolom teks terlihat, server membatasi 10 detik,
  * bisa dibatalkan). Semuanya dihitung server; perubahan urut/saring/cari membatalkan blok yang
  * berjalan dan memulai cache baru (nomor baris = posisi di tampilan baru).
+ *
+ * T-045: F2/Enter/klik ganda → panel Isi sel (lazy); Ctrl/Cmd+C salin sel atau baris terpilih (klik/
+ * Shift+klik nomor baris, Shift+Spasi; ≤ 1.000) ke Excel; kolom angka terfokus → ringkasan di bilah
+ * status (POST …/stats). Pilihan dan ringkasan tampilan lama dibuang saat tampilan berganti.
  */
+// T-045: panel Isi sel di chunk terpisah (diunduh saat pertama dibuka, tidak menambah chunk grid).
+const GridCellPanel = lazy(() => import("./grid-cell-panel"));
+
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
   ScrollApiModule,
@@ -204,6 +230,29 @@ interface InFlight {
 
 const storage = () => (typeof window === "undefined" ? null : window.localStorage);
 
+/** Pilihan "Excel saya pakai koma/titik" (per pengguna di peramban ini). */
+const DECIMAL_KEY = "dd.grid.copyDecimal";
+function loadDecimal(): DecimalSep {
+  try {
+    const v = storage()?.getItem(DECIMAL_KEY);
+    if (v === "," || v === ".") return v;
+  } catch {
+    // storage diblokir → bawaan bahasa peramban
+  }
+  return defaultDecimal(typeof navigator === "undefined" ? undefined : navigator.language);
+}
+
+/** Pilihan baris lewat nomor baris: indeks tampilan 0-based [from, to], anchor = awal Shift+klik. */
+type Selection = { anchor: number; from: number; to: number };
+const inSel = (s: Selection | null, i: number | null | undefined) =>
+  s !== null && i != null && i >= s.from && i <= s.to;
+
+const isCopyKey = (e: KeyboardEvent) =>
+  (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "c";
+
+/** Baris per permintaan saat salin baris yang belum dimuat (batas server GRID_ROWS_MAX). */
+const COPY_FETCH_ROWS = 500;
+
 export interface SheetGridProps {
   sheetId: string;
   sheetName: string;
@@ -270,6 +319,19 @@ export default function SheetGrid({
   const searchInput = useRef<HTMLInputElement>(null);
   /** Pengumuman setelah blok pertama tampilan baru dimuat (jumlah hasil). */
   const pendingAnnounce = useRef<"filter" | "search" | null>(null);
+
+  // T-045: pilihan baris, salin, panel Isi sel, ringkasan kolom angka.
+  const [decimal, setDecimal] = useState<DecimalSep>(loadDecimal);
+  const [sel, setSel] = useState<Selection | null>(null);
+  const selRef = useRef<Selection | null>(null);
+  const [cellTarget, setCellTarget] = useState<CellTarget | null>(null);
+  const [panelOn, setPanelOn] = useState(false);
+  const [focusCol, setFocusCol] = useState<string | null>(null);
+  const [stats, setStats] = useState<{
+    key: string;
+    r: Fetch<ColumnStats>;
+    format?: NumberFormat;
+  } | null>(null);
 
   /** Posisi kolom data yang diminta: semua kolom yang tidak disembunyikan pengguna. */
   const requestCols = useCallback(() => {
@@ -410,7 +472,10 @@ export default function SheetGrid({
     aborted.current.clear();
     totalRef.current = null;
     pendingAnnounce.current = announce;
-    // Jumlah tampilan lama tidak boleh tampil untuk tampilan baru (review T-044 #1).
+    // Jumlah tampilan lama tidak boleh tampil untuk tampilan baru (review T-044 #1); pilihan baris
+    // menunjuk nomor tampilan lama → dilepas (T-045).
+    selRef.current = null;
+    setSel(null);
     setTotal(null);
     setAll(null);
     setLoading(true);
@@ -554,7 +619,8 @@ export default function SheetGrid({
         suppressMovable: true,
         resizable: false,
         width: 96,
-        cellClass: "dd-grid-rownum",
+        cellClass: (p: CellClassParams<RowData>) =>
+          inSel(selRef.current, p.rowIndex) ? "dd-grid-rownum dd-grid-selected" : "dd-grid-rownum",
         headerClass: "dd-grid-rownum-header",
         valueGetter: (p) => (p.data?.end ? null : (p.data?.n ?? null)),
         valueFormatter: (p: ValueFormatterParams<RowData>) =>
@@ -583,6 +649,7 @@ export default function SheetGrid({
               : `Kolom ${colLetter(c.pos)} di file asli`,
           cellClass: (p) => {
             const cls: string[] = numericType(c.type) ? ["dd-grid-num"] : [];
+            if (inSel(selRef.current, p.rowIndex)) cls.push("dd-grid-selected");
             const q = searchRef.current;
             // AC3: sel cocok di kolom yang dicari disorot (teks tampil, ≤ 500 karakter).
             if (q && q.cols.includes(c.pos) && cellMatches(p.value, q.text)) {
@@ -781,6 +848,225 @@ export default function SheetGrid({
     }
   });
 
+  /* ---------- T-045: pilih baris, salin ke Excel, panel Isi sel ---------- */
+
+  const select = useCallback((next: Selection | null) => {
+    selRef.current = next;
+    setSel(next);
+    const api = apiRef.current;
+    if (api && !api.isDestroyed()) api.refreshCells({ force: true });
+    if (next) {
+      const n = next.to - next.from + 1;
+      setAnnounce(
+        n === 1
+          ? `Baris ${fmtInt(next.from + 1)} dipilih. Ctrl+C untuk menyalin`
+          : `${fmtInt(n)} baris dipilih (baris ${fmtInt(next.from + 1)}–${fmtInt(next.to + 1)})`,
+      );
+    }
+  }, []);
+
+  /** Klik/Shift+klik nomor baris (Shift+Spasi dari keyboard): pilih atau perluas dari anchor. */
+  const pickRow = useCallback(
+    (i: number, extend: boolean) => {
+      const t = totalRef.current;
+      if (t === null || i < 0 || i >= t) return;
+      const cur = selRef.current;
+      if (extend && cur) {
+        select({ anchor: cur.anchor, from: Math.min(cur.anchor, i), to: Math.max(cur.anchor, i) });
+      } else if (cur && cur.from === i && cur.to === i) select(null);
+      else select({ anchor: i, from: i, to: i });
+    },
+    [select],
+  );
+
+  const copied = useCallback((p: Promise<void>, done: string) => {
+    p.then(
+      () => setAnnounce(done),
+      () => setAnnounce("Gagal menyalin. Izinkan akses papan klip lalu coba lagi."),
+    );
+  }, []);
+
+  /** Ctrl/Cmd+C pada satu sel: nilai terbaca Excel; teks terpotong diambil penuh dari server. */
+  const copyCell = useCallback(
+    (i: number, id: string) => {
+      const data = apiRef.current?.getDisplayedRowAtIndex(i)?.data;
+      const col = byId.get(id);
+      if (!data || data.end || !col) return;
+      const text = data.cut?.includes(id)
+        ? fetchCell(sheetId, { versionId, row: data._row, pos: col.pos }).then((r) => {
+            if (!r?.ok) throw new Error("cell");
+            return excelValue(r.data.value, col.type, decimal);
+          })
+        : excelValue(data[id], col.type, decimal);
+      copied(writeClipboard(text), "Sel disalin");
+    },
+    [byId, sheetId, versionId, decimal, copied],
+  );
+
+  /**
+   * Salin baris terpilih (≤ COPY_MAX_ROWS) sebagai TSV + judul, kolom terlihat urut tampil. Baris dari
+   * cache grid bila semuanya sudah dimuat; selain itu diambil ulang per ≤ 500 baris lewat jatah grid
+   * yang sama (urut/saring/cari yang sama). Tampilan berganti di tengah jalan → dibatalkan.
+   */
+  const copyRows = useCallback(
+    (s: Selection) => {
+      const api = apiRef.current;
+      const t = totalRef.current;
+      if (!api || t === null) return;
+      const from = s.from;
+      const to = Math.min(s.to, t - 1);
+      const count = to - from + 1;
+      if (count < 1) return;
+      if (count > COPY_MAX_ROWS) {
+        setAnnounce(
+          `Salin paling banyak ${fmtInt(COPY_MAX_ROWS)} baris. Pakai Unduh tampilan untuk ${fmtInt(count)} baris`,
+        );
+        return;
+      }
+      const cols = dataColsInOrder().flatMap((id) => {
+        const c = byId.get(id);
+        return c ? [{ id, name: c.name, type: c.type }] : [];
+      });
+      const cached: RowData[] = [];
+      for (let i = from; i <= to; i++) {
+        const d = api.getDisplayedRowAtIndex(i)?.data;
+        if (!d || d.end || cols.some((c) => !(c.id in d))) break;
+        cached.push(d);
+      }
+      const myGen = gen.current;
+      const load = async (): Promise<RowData[]> => {
+        if (cached.length === count) return cached;
+        const out: RowData[] = [];
+        for (let start = from; start <= to; start += COPY_FETCH_ROWS) {
+          const r = await fetchBlock({
+            sheetId,
+            versionId,
+            schemaRevision,
+            rowStart: start,
+            rowCount: Math.min(COPY_FETCH_ROWS, to - start + 1),
+            cols: requestColsRef.current(),
+            query: { sort: sortFromModel(sortedState(api)), filters: bodyFilters, search },
+          });
+          if (!r.ok || myGen !== gen.current) throw new Error("rows");
+          out.push(...r.rows);
+        }
+        return out;
+      };
+      const rows = cached.length === count ? cached : null;
+      const cut = (list: RowData[]) =>
+        list.reduce(
+          (a, r) => a + (r.cut?.filter((id) => cols.some((c) => c.id === id)).length ?? 0),
+          0,
+        );
+      const done = (list: RowData[]) =>
+        `${fmtInt(list.length)} baris disalin${
+          cut(list) ? `; ${fmtInt(cut(list))} sel teks lebih dari 500 karakter terpotong` : ""
+        }`;
+      if (rows) {
+        copied(writeClipboard(rowsToTsv(cols, rows, decimal)), done(rows));
+        return;
+      }
+      setAnnounce(`Menyiapkan ${fmtInt(count)} baris…`);
+      let got: RowData[] = [];
+      const text = load().then((list) => {
+        got = list;
+        return rowsToTsv(cols, list, decimal);
+      });
+      writeClipboard(text).then(
+        () => setAnnounce(done(got)),
+        () =>
+          setAnnounce(
+            myGen !== gen.current
+              ? "Tampilan berubah; salin dibatalkan"
+              : "Gagal menyalin baris. Coba lagi.",
+          ),
+      );
+    },
+    [
+      byId,
+      dataColsInOrder,
+      sheetId,
+      versionId,
+      schemaRevision,
+      bodyFilters,
+      search,
+      decimal,
+      copied,
+    ],
+  );
+
+  const openCell = useCallback(
+    (i: number, id: string, from: HTMLElement | null) => {
+      const data = apiRef.current?.getDisplayedRowAtIndex(i)?.data;
+      const column = byId.get(id);
+      if (!data || data.end || !column) return;
+      setPanelOn(true);
+      setCellTarget({
+        sheetId,
+        versionId,
+        column,
+        row: data._row,
+        n: data.n,
+        format: formats.current[id],
+        returnFocus: () => {
+          if (from?.isConnected) {
+            from.focus();
+            return true;
+          }
+          apiRef.current?.setFocusedCell(i, id);
+          return false;
+        },
+      });
+    },
+    [byId, sheetId, versionId],
+  );
+
+  const onCellClicked = useCallback(
+    (e: CellClickedEvent<RowData>) => {
+      if (e.column.getColId() !== ROWNUM || e.rowIndex == null || e.data?.end) return;
+      const ev = e.event as MouseEvent | null;
+      pickRow(e.rowIndex, Boolean(ev?.shiftKey));
+    },
+    [pickRow],
+  );
+
+  const setDecimalPref = (d: DecimalSep) => {
+    setDecimal(d);
+    try {
+      storage()?.setItem(DECIMAL_KEY, d);
+    } catch {
+      // tidak tersimpan: tetap berlaku sampai halaman ditutup
+    }
+  };
+
+  // Ringkasan kolom angka terfokus atas seluruh baris tersaring (AC4); ditunda 300 ms, permintaan
+  // lama dibatalkan. Kunci memuat versi + saringan + cari: tampilan berganti → angka lama tidak tampil.
+  const statsCol = focusCol ? byId.get(focusCol) : undefined;
+  const statsKey =
+    statsCol && numericType(statsCol.type)
+      ? JSON.stringify([versionId, statsCol.pos, bodyFilters, search])
+      : null;
+  useEffect(() => {
+    if (!statsKey || !statsCol) return;
+    const ctl = new AbortController();
+    const t = window.setTimeout(() => {
+      void fetchStats(
+        sheetId,
+        { versionId, pos: statsCol.pos, query: { sort: [], filters: bodyFilters, search } },
+        ctl.signal,
+      ).then((r) => {
+        if (r && !ctl.signal.aborted) {
+          setStats({ key: statsKey, r, format: formats.current[colIdOf(statsCol.pos)] });
+        }
+      });
+    }, 300);
+    return () => {
+      window.clearTimeout(t);
+      ctl.abort();
+    };
+  }, [statsKey, statsCol, sheetId, versionId, bodyFilters, search]);
+  const statsNow = statsKey && stats?.key === statsKey ? stats : null;
+
   const onGridReady = useCallback(
     (e: GridReadyEvent<RowData>) => {
       apiRef.current = e.api;
@@ -829,8 +1115,33 @@ export default function SheetGrid({
       }
       const cell = target.closest<HTMLElement>(".ag-cell");
       if (!cell) return;
+      // T-045: Ctrl/Cmd+C salin, F2/Enter Isi sel, Shift+Spasi pilih baris, Escape lepas pilihan.
+      const cellId = cell.getAttribute("col-id");
+      const rowIdx = Number(cell.closest(".ag-row")?.getAttribute("row-index") ?? NaN);
+      if (cellId && Number.isInteger(rowIdx)) {
+        const key = (fn: () => void) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          fn();
+        };
+        if (isCopyKey(e)) {
+          const s = selRef.current;
+          return key(() =>
+            s
+              ? copyRows(s)
+              : cellId === ROWNUM
+                ? copyRows({ anchor: rowIdx, from: rowIdx, to: rowIdx })
+                : copyCell(rowIdx, cellId),
+          );
+        }
+        if ((e.key === "F2" || e.key === "Enter") && !e.altKey && cellId !== ROWNUM) {
+          return key(() => openCell(rowIdx, cellId, cell));
+        }
+        if (e.key === " " && e.shiftKey) return key(() => pickRow(rowIdx, selRef.current !== null));
+        if (e.key === "Escape" && selRef.current) return key(() => select(null));
+      }
       if (e.altKey && e.key === "ArrowDown") {
-        const id = cell.getAttribute("col-id");
+        const id = cellId;
         if (!id || id === ROWNUM) return;
         ev.preventDefault();
         ev.stopPropagation();
@@ -842,7 +1153,7 @@ export default function SheetGrid({
       ev.stopPropagation();
       goTo(ev.key === "Home" ? 1 : (totalRef.current ?? 1));
     },
-    [goTo, openFilter],
+    [goTo, openFilter, copyRows, copyCell, openCell, pickRow, select],
   );
 
   const submitSearch = (ev: React.FormEvent) => {
@@ -870,6 +1181,8 @@ export default function SheetGrid({
   };
 
   const onCellFocused = useCallback((e: CellFocusedEvent<RowData>) => {
+    const id = e.column && typeof e.column !== "string" ? e.column.getColId() : null;
+    if (id && id !== ROWNUM) setFocusCol(id);
     if (e.rowIndex == null || !apiRef.current) return;
     guardFocus(boxRef.current, apiRef.current, e.rowIndex);
   }, []);
@@ -1285,6 +1598,10 @@ export default function SheetGrid({
         </div>
       ) : null}
 
+      {sel ? (
+        <SelectionBar sel={sel} onCopy={() => copyRows(sel)} onClear={() => select(null)} />
+      ) : null}
+
       <div
         ref={boxRef}
         className="dd-grid h-[calc(100dvh-var(--topbar-h)-17rem)] min-h-96 w-full"
@@ -1317,6 +1634,15 @@ export default function SheetGrid({
           onColumnPinned={persist}
           onColumnVisible={onVisibility}
           onSortChanged={onSortChanged}
+          onCellClicked={onCellClicked}
+          onCellDoubleClicked={(e) =>
+            e.rowIndex != null &&
+            openCell(
+              e.rowIndex,
+              e.column.getColId(),
+              (e.event?.target as HTMLElement | null)?.closest<HTMLElement>(".ag-cell") ?? null,
+            )
+          }
         />
       </div>
 
@@ -1334,7 +1660,50 @@ export default function SheetGrid({
                 filteredView ? all : null,
               )}
         </span>
+        {statsCol && statsKey ? (
+          <StatsText
+            name={statsCol.name}
+            type={statsCol.type}
+            format={statsNow?.format}
+            r={statsNow?.r ?? null}
+          />
+        ) : null}
+        <div
+          role="group"
+          aria-label="Pemisah desimal saat menyalin ke Excel"
+          className="flex items-center gap-1"
+        >
+          <span>Desimal salinan:</span>
+          {(
+            [
+              [",", "Koma"],
+              [".", "Titik"],
+            ] as const
+          ).map(([d, label]) => (
+            <Button
+              key={d}
+              size="sm"
+              variant={decimal === d ? "secondary" : "ghost"}
+              aria-pressed={decimal === d}
+              className="h-(--control-h-lg) md:h-(--control-h-sm)"
+              data-testid={`grid-decimal-${label.toLowerCase()}`}
+              onClick={() => setDecimalPref(d)}
+            >
+              {label} ({d})
+            </Button>
+          ))}
+        </div>
       </div>
+      {panelOn ? (
+        <Suspense fallback={null}>
+          <GridCellPanel
+            target={cellTarget}
+            decimal={decimal}
+            onClose={() => setCellTarget(null)}
+            onAnnounce={setAnnounce}
+          />
+        </Suspense>
+      ) : null}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announce}
       </p>
@@ -1347,5 +1716,81 @@ export default function SheetGrid({
         onClose={() => setFilterTarget(null)}
       />
     </div>
+  );
+}
+
+/** Bilah pilihan baris (T-045 AC3): jumlah, Salin (≤ 1.000), atau tawaran "Unduh tampilan". */
+function SelectionBar({
+  sel,
+  onCopy,
+  onClear,
+}: {
+  sel: Selection;
+  onCopy: () => void;
+  onClear: () => void;
+}) {
+  const n = sel.to - sel.from + 1;
+  const over = n > COPY_MAX_ROWS;
+  return (
+    <div
+      className="flex flex-col gap-2 rounded-md border bg-muted/50 px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center"
+      data-testid="grid-selection"
+    >
+      <span className="tabular-nums">
+        {fmtInt(n)} baris dipilih
+        {n > 1 ? ` (baris ${fmtInt(sel.from + 1)}–${fmtInt(sel.to + 1)})` : ""}
+      </span>
+      {over ? (
+        <span role="alert" className="flex items-start gap-2" data-testid="grid-copy-offer">
+          <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+          Salin ke Excel paling banyak {fmtInt(COPY_MAX_ROWS)} baris. Untuk {fmtInt(n)} baris, pakai
+          Unduh tampilan (CSV/XLSX) — atau saring data lebih dulu.
+        </span>
+      ) : (
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-(--control-h-lg) md:h-(--control-h-sm)"
+          data-testid="grid-selection-copy"
+          onClick={onCopy}
+        >
+          <IconCopy aria-hidden />
+          Salin (Ctrl+C)
+        </Button>
+      )}
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-(--control-h-lg) md:h-(--control-h-sm)"
+        onClick={onClear}
+      >
+        <IconX aria-hidden />
+        Batal pilih
+      </Button>
+    </div>
+  );
+}
+
+/** Ringkasan kolom angka terfokus (T-045 AC4) di bilah status. */
+function StatsText({
+  name,
+  type,
+  format,
+  r,
+}: {
+  name: string;
+  type: GridColumn["type"];
+  format: NumberFormat | undefined;
+  r: Fetch<ColumnStats> | null;
+}) {
+  if (!r) return <span>Menghitung ringkasan {name}…</span>;
+  if (!r.ok) return <span data-testid="grid-stats">{r.message}</span>;
+  const v = (x: number | null, t = type) => (x === null ? "–" : (displayCell(x, t, format) ?? "–"));
+  const d = r.data;
+  return (
+    <span className="tabular-nums" data-testid="grid-stats">
+      {name}: Jumlah {v(d.sum)} · Rata-rata {v(d.avg, type === "integer" ? "decimal" : type)} · Min{" "}
+      {v(d.min)} · Maks {v(d.max)} · Hitung {fmtInt(d.count)}
+    </span>
   );
 }

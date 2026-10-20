@@ -15,6 +15,7 @@ const hit = vi.fn();
 const runGridRows = vi.fn();
 const runGridCell = vi.fn();
 const runGridValues = vi.fn();
+const runGridStats = vi.fn();
 vi.mock("@/features/auth/session", () => ({ AuthError, requireUser }));
 vi.mock("@/features/auth/rate-limit", async (orig) => ({
   ...(await orig<typeof import("@/features/auth/rate-limit")>()),
@@ -36,9 +37,14 @@ vi.mock("@/features/query/runtime", async () => {
     })),
   };
 });
-vi.mock("@/features/query/grid-service", () => ({ runGridRows, runGridCell, runGridValues }));
+vi.mock("@/features/query/grid-service", () => ({
+  runGridRows,
+  runGridCell,
+  runGridValues,
+  runGridStats,
+}));
 
-const { gridRowsRoute, gridCellRoute, gridValuesRoute } =
+const { gridRowsRoute, gridCellRoute, gridValuesRoute, gridStatsRoute } =
   await import("@/features/query/grid-http");
 const { RULES } = await import("@/features/auth/rate-limit");
 
@@ -99,5 +105,22 @@ describe("grid HTTP rate limit", () => {
     const cross = await gridValuesRoute(req("https://jahat.example"), SHEET);
     expect(cross.status).toBe(403);
     expect(runGridValues).toHaveBeenCalledTimes(1);
+  });
+
+  it("POST stats (T-045) memakai RULES.grid, Origin wajib, mesin gerbang grid, status kode grid", async () => {
+    runGridStats.mockResolvedValueOnce({ ok: false, code: "VERSION_CHANGED", message: "x" });
+    const req = (origin: string) =>
+      new NextRequest(`http://localhost:3100/api/sheets/${SHEET}/stats`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ versionId: VER, pos: 2 }),
+      });
+    const r = await gridStatsRoute(req("http://localhost:3100"), SHEET);
+    expect(r.status).toBe(409);
+    expect(hit).toHaveBeenCalledWith(expect.anything(), RULES.grid, "u1");
+    expect(typeof runGridStats.mock.calls[0]![3].engine.withGlobal).toBe("function");
+    const cross = await gridStatsRoute(req("https://jahat.example"), SHEET);
+    expect(cross.status).toBe(403);
+    expect(runGridStats).toHaveBeenCalledTimes(1);
   });
 });

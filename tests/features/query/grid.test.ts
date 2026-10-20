@@ -8,7 +8,9 @@ import { buildSortedWindowSql, planGrid, windowParts, type RowsBody } from "@/fe
 import {
   runGridCell,
   runGridRows,
+  runGridStats,
   runGridValues,
+  STATS_TIMEOUT_MESSAGE,
   SEARCH_TIMEOUT_MESSAGE,
   SORT_TIMEOUT_MESSAGE,
   type GridDeps,
@@ -633,5 +635,92 @@ describe("T-044: daftar nilai menu saring", () => {
     );
     expect(seen).toEqual([]);
     expect(b).toEqual(a);
+  });
+});
+
+describe("T-045: ringkasan kolom angka (AC4)", () => {
+  /** Ringkasan KPI dihitung ulang dari harapan: Hitung = sel terisi, Jumlah kosong = 0. */
+  function kpi(keep: (cells: unknown[]) => boolean) {
+    const nums = expected()
+      .filter((x) => keep(x.cells))
+      .map((x) => x.cells[1])
+      .filter((v): v is number => typeof v === "number");
+    const sum = nums.reduce((a, b) => a + b, 0);
+    return {
+      count: nums.length,
+      sum,
+      avg: nums.length ? sum / nums.length : null,
+      min: nums.length ? Math.min(...nums) : null,
+      max: nums.length ? Math.max(...nums) : null,
+    };
+  }
+
+  it("seluruh baris (semua segmen), lalu di bawah saringan + cari tampilan", async () => {
+    const all = await runGridStats(OWNER, SHEET, { versionId: VER, pos: 2 }, deps());
+    if (!all.ok) throw new Error(all.message);
+    const want = kpi(() => true);
+    expect(all).toMatchObject({ versionId: VER, count: want.count, sum: want.sum });
+    expect(all.avg).toBeCloseTo(want.avg!, 9);
+    expect([all.min, all.max]).toEqual([want.min, want.max]);
+
+    const f = await runGridStats(
+      EDITOR,
+      SHEET,
+      {
+        versionId: VER,
+        pos: 2,
+        filters: [{ pos: 1, op: "in", values: ["Cabang 1", "Cabang 3"] }],
+        search: { text: "CABANG 3", cols: [1] },
+      },
+      deps(),
+    );
+    if (!f.ok) throw new Error(f.message);
+    const w = kpi((c) => c[0] === "Cabang 3");
+    expect(f).toMatchObject({ count: w.count, sum: w.sum, min: w.min, max: w.max });
+    expect(f.avg).toBeCloseTo(w.avg!, 9);
+
+    // Tanpa baris cocok: Jumlah 0 (seperti KPI), lainnya kosong.
+    const none = await runGridStats(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 2, search: { text: "tidak-ada", cols: [1] } },
+      deps(),
+    );
+    expect(none).toMatchObject({ ok: true, count: 0, sum: 0, avg: null, min: null, max: null });
+  });
+
+  it("viewer/kolom teks/tersembunyi/versi lama ditolak tanpa nama kolom", async () => {
+    const viewer = await runGridStats("orang-lain", SHEET, { versionId: VER, pos: 2 }, deps());
+    expect(viewer).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    const text = await runGridStats(OWNER, SHEET, { versionId: VER, pos: 1 }, deps());
+    expect(text).toMatchObject({ ok: false, code: "INVALID" });
+    const hidden = await runGridStats(OWNER, SHEET, { versionId: VER, pos: 4 }, deps());
+    expect(hidden).toMatchObject({ ok: false, code: "INVALID" });
+    expect(JSON.stringify(hidden)).not.toContain(SECRET_COL);
+    const old = await runGridStats(OWNER, SHEET, { versionId: OLD, pos: 2 }, deps());
+    expect(old).toMatchObject({ ok: false, code: "VERSION_CHANGED", activeVersionId: VER });
+    const extra = await runGridStats(OWNER, SHEET, { versionId: VER, pos: 2, sql: "1" }, deps());
+    expect(extra).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
+  it("di-cache per saringan; timeout → pesan yang bisa ditindak", async () => {
+    const cache = new ResultCache<CachedQuery>(64 * 1024 * 1024);
+    const a = await runGridStats(OWNER, SHEET, { versionId: VER, pos: 2 }, { ...deps(), cache });
+    const seen: number[] = [];
+    const b = await runGridStats(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 2 },
+      { ...deps(), cache, engine: timingOut(seen) },
+    );
+    expect(seen).toEqual([]);
+    expect(b).toEqual(a);
+    const t = await runGridStats(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 2, filters: [{ pos: 1, op: "in", values: ["Cabang 1"] }] },
+      { ...deps(), cache, engine: timingOut(seen) },
+    );
+    expect(t).toMatchObject({ ok: false, code: "QUERY_TIMEOUT", message: STATS_TIMEOUT_MESSAGE });
   });
 });

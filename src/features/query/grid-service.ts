@@ -6,6 +6,7 @@
 import type { ColumnSchema } from "@/features/ingest/infer";
 import {
   buildGridCountSql,
+  buildGridStatsSql,
   buildRawCellSql,
   buildSortedWindowSql,
   buildTypedCellSql,
@@ -16,6 +17,7 @@ import {
   planGrid,
   rawColumn,
   rowsBodySchema,
+  statsBodySchema,
   valuesBodySchema,
   windowParts,
   type GridPlan,
@@ -455,4 +457,82 @@ export async function runGridValues(
     deps.cache!.set(key, { filterValues: values, truncated }, bytes);
   }
   return { ...head, values, truncated };
+}
+
+export interface GridStats {
+  ok: true;
+  versionId: string;
+  /** Sel terisi (KPI "Jumlah terisi"). */
+  count: number;
+  /** coalesce(sum, 0) seperti KPI "Total"; tipe = tipe kolom. */
+  sum: number | null;
+  avg: number | null;
+  min: number | null;
+  max: number | null;
+}
+
+const NUMERIC_TYPES: readonly string[] = ["integer", "decimal", "duration"];
+export const STATS_TIMEOUT_MESSAGE =
+  "Ringkasan kolom terlalu berat dihitung. Persempit saringan lalu coba lagi.";
+
+/**
+ * POST /api/sheets/:sheetId/stats (T-045 AC4): Jumlah, Rata-rata, Min, Maks, Hitung satu kolom angka
+ * terlihat atas SELURUH baris tersaring (bukan blok yang dimuat), dengan ekspresi agregat widget KPI.
+ * Akses/versi sama dengan jendela baris; ringkasan kecil di-cache (kunci: versi + revisi + saringan +
+ * cari), blok baris tetap tidak.
+ */
+export async function runGridStats(
+  userId: string,
+  sheetId: string,
+  body: unknown,
+  deps: GridDeps,
+): Promise<GridStats | GridFailure> {
+  const parsed = statsBodySchema.safeParse(body);
+  if (!parsed.success) return invalid();
+  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  if (!auth.ok) return auth;
+  const { sheet } = auth;
+  const { pos, filters, search } = parsed.data;
+  const planned = planGrid(
+    { versionId: parsed.data.versionId, rowStart: 0, rowCount: 1, cols: [pos], filters, search },
+    sheet.schema,
+    (deps.now ?? (() => new Date()))(),
+  );
+  if (!planned.ok) return invalid(planned.message);
+  const col = planned.plan.cols[0]!;
+  if (!NUMERIC_TYPES.includes(col.type)) return invalid("Ringkasan hanya untuk kolom angka.");
+  const key = deps.cache
+    ? resultKey({
+        datasetId: "grid-stats",
+        versionId: sheet.versionId,
+        sheetId,
+        schemaRevision: sheet.schemaRevision,
+        spec: { stats: col.pos, clauses: planned.plan.clauses, search: planned.plan.search },
+      })
+    : null;
+  const head = { ok: true as const, versionId: sheet.versionId };
+  const hit = key ? deps.cache!.get(key) : null;
+  if (hit && "gridStats" in hit) return { ...head, ...hit.gridStats };
+  const limited = planned.plan.search
+    ? { ...deps, timeoutMs: Math.min(deps.timeoutMs, GRID_SEARCH_MAX_MS) }
+    : deps;
+  const r = await runOnParquet(userId, sourceFor(sheet, sheet.segments), limited, (path, exec) =>
+    exec(buildGridStatsSql(planned.plan, col, path)),
+  );
+  if (!r.ok) return r.code === "QUERY_TIMEOUT" ? { ...r, message: STATS_TIMEOUT_MESSAGE } : r;
+  const row = r.value.rows[0] ?? [];
+  const num = (v: unknown, type: Parameters<typeof toJson>[1]) => {
+    const j = toJson(v, type);
+    return j === null || j === undefined ? null : Number(j);
+  };
+  // avg bilangan bulat = desimal (sama dengan kolom keluaran KPI).
+  const stats = {
+    count: num(row[0], "count") ?? 0,
+    sum: num(row[1], col.type),
+    avg: num(row[2], col.type === "integer" ? "decimal" : col.type),
+    min: num(row[3], col.type),
+    max: num(row[4], col.type),
+  };
+  if (key) deps.cache!.set(key, { gridStats: stats }, 128);
+  return { ...head, ...stats };
 }

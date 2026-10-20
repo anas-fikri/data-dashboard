@@ -28,7 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
         /grid\.spec\.ts$/,
-        /data-view(-scroll|-query)?\.spec\.ts$/,
+        /data-view(-scroll|-query|-copy)?\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -69,10 +69,16 @@ export default defineConfig({
     },
     // T-043 / ADR-0007: mekanika gulir 10 jt baris (respons baris sintetis) di tiga engine. Firefox dan
     // WebKit: `npx playwright install firefox webkit` (+ install-deps di Linux).
+    // T-045: Isi sel, salin ke Excel, ringkasan kolom (worker sendiri untuk fixture 1.200 baris).
+    {
+      name: "data-view-copy",
+      testMatch: /data-view-copy\.spec\.ts$/,
+      dependencies: ["data-view-query"],
+    },
     {
       name: "data-view-scroll",
       testMatch: /data-view-scroll\.spec\.ts$/,
-      dependencies: ["data-view-query"],
+      dependencies: ["data-view-copy"],
     },
     {
       name: "data-view-scroll-firefox",
