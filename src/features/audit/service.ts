@@ -38,6 +38,16 @@ export type AuditAction =
    * summary, include, droppedRows }.
    */
   | "dataset.period.confirm"
+  /**
+   * Pemilik menghapus satu periode (T-056): versi PERIOD_REMOVE aktif, meta { from, versionId, period,
+   * rows }.
+   */
+  | "dataset.period.remove"
+  /**
+   * Pemilik memulihkan satu periode dari versi lama yang masih tersimpan (T-056): versi PERIOD_RESTORE
+   * aktif, meta { from, versionId, period, sourceVersionId, beforeRows, afterRows }.
+   */
+  | "dataset.period.restore"
   /** Pemilik menghapus dataset beserta dashboard dan share-nya (T-016). */
   | "dataset.delete"
   /** Share dashboard per user: diberikan, perannya diubah, dicabut (T-016). */

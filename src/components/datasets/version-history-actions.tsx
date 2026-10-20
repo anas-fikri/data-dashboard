@@ -1,6 +1,6 @@
 "use client";
 
-import { IconInfoCircle, IconRestore, IconTrash } from "@tabler/icons-react";
+import { IconAlertTriangle, IconInfoCircle, IconRestore, IconTrash } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { createContext, use, useCallback, useState, type ReactNode } from "react";
 import { FocusNotice } from "@/components/ui/focus-notice";
@@ -77,10 +77,13 @@ export function VersionActivate({
   datasetId,
   versionId,
   fileName,
+  warning = null,
 }: {
   datasetId: string;
   versionId: string;
   fileName: string;
+  /** Periode yang ikut hilang / berubah bila versi ini diaktifkan (T-056); null = tidak ada. */
+  warning?: string | null;
 }) {
   const router = useRouter();
   const notify = use(NotifyContext);
@@ -95,11 +98,25 @@ export function VersionActivate({
       icon={<IconRestore aria-hidden />}
       testId="version-activate"
       title={`Aktifkan versi “${fileName}”?`}
-      description="Semua dashboard dataset ini akan memakai data versi ini. Versi aktif sekarang tetap tersimpan dan bisa diaktifkan lagi."
+      description={
+        <>
+          Semua dashboard dataset ini akan memakai data versi ini. Versi aktif sekarang tetap
+          tersimpan dan bisa diaktifkan lagi.
+          {warning ? (
+            <span
+              className="mt-3 flex items-start gap-2 rounded-md border border-warning/50 bg-warning/15 p-3 text-foreground [overflow-wrap:anywhere]"
+              data-testid="version-activate-warning"
+            >
+              <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+              <span>{warning}</span>
+            </span>
+          ) : null}
+        </>
+      }
       confirmLabel="Aktifkan"
       run={() => activateVersionAction(datasetId, versionId)}
-      onDone={(name) => {
-        notify(versionId, name);
+      onDone={(d) => {
+        notify(versionId, d.fileName);
         router.refresh();
       }}
     />

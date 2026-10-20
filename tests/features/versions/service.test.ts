@@ -56,6 +56,7 @@ const record = (over: Partial<VersionRecord> = {}): VersionRecord => ({
   sourceDeletedAt: null,
   mode: "REPLACE",
   plan: null,
+  periodGrain: null,
   uploadedBy: { name: null, email: "ana@pcpexpress.com" },
   ...over,
 });
@@ -84,6 +85,7 @@ describe("toVersionRow", () => {
       uploadedBy: "ana@pcpexpress.com",
       sourceDeleted: false,
       note: null,
+      rollbackWarning: null,
     });
     expect(
       svc.toVersionRow(record({ uploadedBy: { name: "Ana", email: "a@x.id" } }), B),
@@ -166,6 +168,47 @@ describe("toVersionRow", () => {
     );
     // Rencana rusak/tidak terbaca: tanpa catatan (fail-closed), bukan galat.
     expect(svc.toVersionRow(record({ mode: "PERIOD_SETUP", plan: { v: 9 } }), A).note).toBeNull();
+  });
+
+  it("T-056: hapus/pulihkan periode → judul + kalimat riwayat; peringatan rollback hanya untuk versi siap tidak aktif", () => {
+    const change = {
+      v: 1,
+      kind: "REMOVE",
+      grain: "MONTH",
+      key: "2026-02",
+      start: "2026-02-01",
+      label: "Februari 2026",
+      before: { l1: 12400 },
+      after: null,
+      beforeRows: 12400,
+      afterRows: 0,
+      baseVersionId: A,
+      sourceVersionId: null,
+      periodsAfter: 3,
+    };
+    const removed = record({
+      originalName: null,
+      sizeBytes: null,
+      mode: "PERIOD_REMOVE",
+      periodGrain: "MONTH",
+      plan: change,
+    });
+    expect(svc.toVersionRow(removed, A, "Maret 2026 ikut hilang dari data aktif.")).toMatchObject({
+      fileName: "Hapus periode Februari 2026",
+      note: "Februari 2026 dihapus (12.400 baris)",
+      rollbackWarning: "Maret 2026 ikut hilang dari data aktif.",
+    });
+    const restored = record({
+      originalName: null,
+      mode: "PERIOD_RESTORE",
+      plan: { ...change, kind: "RESTORE", after: { l1: 12950 }, afterRows: 12950 },
+    });
+    expect(svc.toVersionRow(restored, B, "x")).toMatchObject({
+      fileName: "Pulihkan periode Februari 2026",
+      note: "Februari 2026 dipulihkan (12.400 → 12.950 baris)",
+      active: true,
+      rollbackWarning: null,
+    });
   });
 });
 

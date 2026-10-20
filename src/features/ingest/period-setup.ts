@@ -90,6 +90,8 @@ export interface SetupSourceSegment {
   sourceKind: SourceKind;
   sha256: string | null;
   originalName: string | null;
+  /** Pengunggah file asal (T-056); tidak ada/null = tidak diketahui. */
+  uploadedById?: string | null;
   dataRows: number | null;
 }
 
@@ -139,6 +141,8 @@ export interface NewSetupSegment {
   maxDate: string | null;
   sha256: string | null;
   originalName: string | null;
+  /** Pengunggah file asal segmen sumber (T-056); null = tidak diketahui. */
+  uploadedById?: string | null;
   sourceKind: SourceKind;
 }
 
@@ -567,6 +571,7 @@ async function splitSheet(
       maxDate: r.hi,
       sha256: g.sha256,
       originalName: g.originalName,
+      uploadedById: g.uploadedById ?? null,
       sourceKind: g.sourceKind,
     });
     created.push(id);

@@ -5,6 +5,7 @@ import { DatasetActivityProvider } from "@/components/datasets/dataset-activity"
 import { DatasetDataSummary } from "@/components/datasets/dataset-data-summary";
 import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
+import { PeriodList } from "@/components/datasets/period-list";
 import { PeriodCapacityNotice } from "@/components/datasets/period-usage";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
@@ -22,6 +23,7 @@ import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getPendingUpload } from "@/features/uploads/service";
 import { mappingJobId } from "@/features/versions/mapping";
+import { periodOverview } from "@/features/versions/period-manage";
 import { periodUploadContext } from "@/features/versions/period-upload";
 import { listVersions } from "@/features/versions/service";
 import { env } from "@/lib/env";
@@ -34,6 +36,8 @@ type Search = Promise<{
   period?: string;
   confirmed?: string;
   cancelled?: string;
+  /** "Unggah ulang" di kartu Periode (T-056): awal periode yang diisikan ke panel unggah. */
+  unggah?: string;
 }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
@@ -68,7 +72,7 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, mappingJob, shareImpact, periodUpload] = await Promise.all([
+  const [pending, versions, mappingJob, shareImpact, periodUpload, periods] = await Promise.all([
     processing ? null : getPendingUpload(user.id, dataset.id),
     listVersions(user.id, dataset.id),
     // Job pemetaan yang sedang diterapkan + hasil terakhirnya (T-014): panel unggah dan riwayat versi.
@@ -77,7 +81,14 @@ export default async function DatasetDetailPage({
     dataset.dashboardCount > 0 ? datasetShareImpact(user.id, dataset.id) : null,
     // Panel unggah dataset per periode (T-053): versi dasar, satuan, jumlah periode, sheet berlabel.
     active?.periodGrain ? periodUploadContext(user.id, dataset.id) : null,
+    // Kartu Periode (T-056): daftar periode + yang bisa dipulihkan dari versi lama yang tersimpan.
+    active?.periodGrain ? periodOverview(user.id, dataset.id) : null,
   ]);
+  // "Unggah ulang" hanya untuk periode yang memang ada di data aktif (selain itu diabaikan).
+  const reuploadRow =
+    typeof search.unggah === "string"
+      ? (periods?.rows.find((r) => r.start === search.unggah) ?? null)
+      : null;
   const applyingJobId = mappingJob?.jobId ?? null;
   // Versi yang menunggu pemetaan (paling banyak satu, D4): alasan + tombol buang di panel unggah.
   const mapping = versions.find((v) => v.canDiscard) ?? null;
@@ -166,7 +177,7 @@ export default async function DatasetDetailPage({
       </div>
 
       <DatasetActivityProvider>
-        <Card>
+        <Card id="unggah" className="scroll-mt-20">
           <CardHeader>
             <CardTitle>Data</CardTitle>
             <CardDescription>File Excel/CSV yang menjadi isi dataset ini.</CardDescription>
@@ -187,6 +198,7 @@ export default async function DatasetDetailPage({
               hasData={Boolean(active)}
               pending={pending}
               period={periodUpload}
+              reupload={reuploadRow ? { start: reuploadRow.start, label: reuploadRow.label } : null}
               setupHref={`/datasets/${dataset.id}/periode`}
               processing={
                 ingest
@@ -224,6 +236,9 @@ export default async function DatasetDetailPage({
                 capacity={periodUpload?.capacity}
                 testId="period-card-capacity"
               />
+              {periods ? (
+                <PeriodList datasetId={dataset.id} overview={periods} busy={busy !== null} />
+              ) : null}
               <Button
                 asChild
                 variant="outline"

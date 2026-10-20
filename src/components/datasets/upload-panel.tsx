@@ -93,6 +93,11 @@ interface UploadPanelProps {
   period?: PeriodUploadContext | null;
   /** Dataset biasa yang sudah berisi data: tautan "Atur periode" (T-051); null = tanpa tautan. */
   setupHref?: string | null;
+  /**
+   * "Unggah ulang" dari kartu Periode (T-056): periode yang diisikan ke pemilih periode (sheet
+   * berlabel) untuk file berikutnya; null = tanpa.
+   */
+  reupload?: { start: string; label: string } | null;
 }
 
 /** Keterangan pilihan unggahan di kartu progres/tertunda dataset periode. */
@@ -133,6 +138,7 @@ export function UploadPanel({
   processing,
   period = null,
   setupHref = null,
+  reupload = null,
 }: UploadPanelProps) {
   const router = useRouter();
   const inputId = useId();
@@ -166,6 +172,15 @@ export function UploadPanel({
   const [announce, setAnnounce] = useState("");
   // Perkiraan batas periode dari ukuran file (T-055): dari init, tampil selama unggahan dan sesudahnya.
   const [estimate, setEstimate] = useState<UploadEstimate | null>(null);
+  // "Unggah ulang <periode>" berlaku untuk file pertama yang dipilih setelahnya (T-056); periode lain
+  // dari tautan lain = ajakan baru (reset saat prop berubah, tanpa efek).
+  const [reuploadUsed, setReuploadUsed] = useState(false);
+  const [seenReupload, setSeenReupload] = useState(reupload?.start ?? null);
+  if (seenReupload !== (reupload?.start ?? null)) {
+    setSeenReupload(reupload?.start ?? null);
+    setReuploadUsed(false);
+  }
+  const reuploadOpen = period && reupload && !reuploadUsed ? reupload : null;
   const lastAnnounced = useRef(-1);
 
   const running = state.kind === "running";
@@ -296,10 +311,13 @@ export function UploadPanel({
     if (inputRef.current) inputRef.current.value = "";
     if (!file) return;
     const action = actionForFile(file, { period, pending: pendingInfo });
-    // Sheet berlabel: periode dipilih dulu (terisi dari nama file bila jelas), baru diunggah.
+    const target = reuploadOpen;
+    setReuploadUsed(true);
+    // Sheet berlabel: periode dipilih dulu (terisi dari "Unggah ulang", atau dari nama file bila
+    // jelas), baru diunggah.
     if (action.kind === "pick" && period) {
       setState({ kind: "idle" });
-      setPicking({ file, guess: guessPeriodFromName(file.name, period.grain) });
+      setPicking({ file, guess: target?.start ?? guessPeriodFromName(file.name, period.grain) });
       return;
     }
     if (action.kind === "confirm-replace") {
@@ -649,6 +667,20 @@ export function UploadPanel({
 
       {showDropzone && period ? (
         <PeriodCapacityNotice capacity={period.capacity} testId="upload-capacity" />
+      ) : null}
+
+      {showDropzone && reuploadOpen ? (
+        <div data-testid="upload-reupload">
+          <FocusNotice>
+            <span className="[overflow-wrap:anywhere]">
+              Unggah ulang {reuploadOpen.label}: pilih file berisi data pengganti periode ini.{" "}
+              {period?.needsLabel
+                ? `Periode file terisi ${reuploadOpen.label} dan masih bisa diubah sebelum diproses.`
+                : "Periode dibaca dari kolom tanggal file; periode yang sudah ada diganti utuh."}{" "}
+              Periode lain tidak berubah.
+            </span>
+          </FocusNotice>
+        </div>
       ) : null}
 
       {showDropzone ? (

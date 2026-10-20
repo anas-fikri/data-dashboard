@@ -27,6 +27,8 @@ model User {
   tokens          VerificationToken[]
   datasets        Dataset[]
   uploads         DatasetVersion[]    @relation("VersionUploader")
+  /// Segmen periode yang diunggah user ini (T-056, kartu Periode "Diunggah oleh").
+  segmentUploads  Segment[]           @relation("SegmentUploader")
   auditLogs       AuditLog[]          @relation("AuditActor")
   /// Dashboard yang dibagikan ke user ini (T-016).
   dashboardShares DashboardShare[]    @relation("DashboardShareUser")
@@ -301,6 +303,10 @@ model Segment {
   originalName       String?
   /// Jenis file asal: "xlsx" | "csv" (cast per segmen memakai jenisnya sendiri); null = tidak diketahui.
   sourceKind         String?
+  /// Pengunggah file asal segmen (T-056, kartu Periode "Diunggah oleh"): bertahan walau versi
+  /// pembuatnya dibuang retensi. SetNull bila akunnya dihapus; null = tidak diketahui.
+  uploadedById       String?
+  uploadedBy         User?           @relation("SegmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
   /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
   /// objeknya dihapus GC mark-and-sweep setelah tidak dirujuk versi hidup ≥ SEGMENT_GC_GRACE_HOURS.
   createdByVersionId String?

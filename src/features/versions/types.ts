@@ -35,6 +35,11 @@ export interface VersionRow {
    * tanpa tanggal valid dibuang atas pilihan pemilik"; null untuk versi biasa.
    */
   note: string | null;
+  /**
+   * Peringatan "Aktifkan" (rollback) versi periode (T-056): periode yang ikut hilang / kembali ke isi
+   * versi ini; null/tidak ada = tidak ada perubahan periode yang perlu disebut.
+   */
+  rollbackWarning?: string | null;
 }
 
 /** STALE: skema aktif berubah sejak halaman pemetaan dimuat (T-014) — muat ulang halaman. */

@@ -5,6 +5,13 @@ import { isIdShape } from "@/features/datasets/validation";
 import { parseFrozenPeriodPlan } from "@/features/ingest/period-plan";
 import { setupHistoryNote } from "@/features/ingest/period-setup-plan";
 import { periodPlanSummary } from "@/features/ingest/period-upload-plan";
+import { manageOf, periodSegmentsSelect } from "./period-manage";
+import {
+  parsePeriodChange,
+  periodChangeNote,
+  periodChangeTitle,
+  rollbackWarning,
+} from "./period-manage-plan";
 import { forgetLocalParquet } from "@/features/query/local-parquet";
 import { announceVersionActivated } from "@/features/query/warm";
 import { prisma } from "@/lib/db";
@@ -57,6 +64,7 @@ const rowSelect = {
   sourceDeletedAt: true,
   mode: true,
   plan: true,
+  periodGrain: true,
   uploadedBy: { select: { name: true, email: true } },
 } satisfies Prisma.DatasetVersionSelect;
 
@@ -65,6 +73,10 @@ export type VersionRecord = Prisma.DatasetVersionGetPayload<{ select: typeof row
 /** Ringkasan operasi periode untuk riwayat (T-051 atur periode, T-052 unggahan periode). */
 function noteOf(v: VersionRecord): string | null {
   if (v.mode === "PERIOD_SETUP") return setupHistoryNote(parseFrozenPeriodPlan(v.plan));
+  if (v.mode === "PERIOD_REMOVE" || v.mode === "PERIOD_RESTORE") {
+    const change = parsePeriodChange(v.plan);
+    return change ? periodChangeNote(change) : null;
+  }
   if (v.mode !== "PERIOD") return null;
   const plan = parseFrozenPeriodPlan(v.plan);
   if (!plan) return null;
@@ -72,13 +84,25 @@ function noteOf(v: VersionRecord): string | null {
   return v.status === "AWAITING_CONFIRM" ? `Menunggu konfirmasi: ${text}` : text;
 }
 
+/** Judul versi tanpa file unggahan (hapus/pulihkan periode, T-056). */
+function titleOf(v: VersionRecord): string | null {
+  if (v.originalName) return v.originalName;
+  if (v.mode !== "PERIOD_REMOVE" && v.mode !== "PERIOD_RESTORE") return null;
+  const change = parsePeriodChange(v.plan);
+  return change ? periodChangeTitle(change) : null;
+}
+
 /** Baris DB → baris riwayat (murni). */
-export function toVersionRow(v: VersionRecord, activeVersionId: string | null): VersionRow {
+export function toVersionRow(
+  v: VersionRecord,
+  activeVersionId: string | null,
+  warning: string | null = null,
+): VersionRow {
   const status = v.status as VersionStatus;
   const active = v.id === activeVersionId;
   return {
     id: v.id,
-    fileName: v.originalName,
+    fileName: titleOf(v),
     status,
     sizeBytes: v.sizeBytes === null ? null : Number(v.sizeBytes),
     createdAt: v.createdAt.toISOString(),
@@ -90,7 +114,35 @@ export function toVersionRow(v: VersionRecord, activeVersionId: string | null): 
     uploadedBy: v.uploadedBy ? (v.uploadedBy.name ?? v.uploadedBy.email) : null,
     sourceDeleted: v.sourceDeletedAt !== null,
     note: noteOf(v),
+    rollbackWarning: status === "READY" && !active ? warning : null,
   };
+}
+
+/**
+ * Peringatan rollback per versi siap yang tidak aktif (T-056, §4.8): dibandingkan dengan manifest
+ * versi aktif (hanya bila versi aktif per periode).
+ */
+async function rollbackWarnings(
+  activeVersionId: string | null,
+  versions: VersionRecord[],
+): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const active = versions.find((v) => v.id === activeVersionId);
+  if (!active?.periodGrain) return out;
+  const ids = versions.filter((v) => v.status === "READY").map((v) => v.id);
+  if (ids.length < 2) return out;
+  const rows = await prisma.datasetVersion.findMany({
+    where: { id: { in: ids } },
+    select: {
+      id: true,
+      periodGrain: true,
+      sheets: { orderBy: { index: "asc" }, select: periodSegmentsSelect },
+    },
+  });
+  const by = new Map(rows.map((r) => [r.id, manageOf(r.id, r.periodGrain, r.sheets)]));
+  const a = by.get(active.id) ?? null;
+  for (const [id, m] of by) if (id !== active.id) out.set(id, rollbackWarning(a, m));
+  return out;
 }
 
 /** Riwayat versi (terbaru dulu, tanpa unggahan yang belum selesai); bukan pemilik → []. */
@@ -108,7 +160,9 @@ export async function listVersions(userId: string, datasetId: string): Promise<V
       },
     },
   });
-  return ds ? ds.versions.map((v) => toVersionRow(v, ds.activeVersionId)) : [];
+  if (!ds) return [];
+  const warnings = await rollbackWarnings(ds.activeVersionId, ds.versions);
+  return ds.versions.map((v) => toVersionRow(v, ds.activeVersionId, warnings.get(v.id) ?? null));
 }
 
 type Tx = Prisma.TransactionClient;

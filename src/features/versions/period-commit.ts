@@ -92,7 +92,7 @@ export const periodSheetSelect = {
 export type PeriodSheetRow = Prisma.SheetGetPayload<{ select: typeof periodSheetSelect }>;
 
 /** Lokasi file satu file typed (manifest + gerbang integritas). */
-interface FileInfo {
+export interface FileInfo {
   rawKey: string;
   typedKey: string;
   rawRows: number;
@@ -334,101 +334,13 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
       }
     }
   }
-  await tx.sheet.deleteMany({ where: { versionId: a.versionId } });
-  const sheetMap: Record<string, string> = {};
-  const manifest: ManifestSheet[] = [];
-  const typedIds: string[] = [];
-  for (const s of rows) {
-    const refs: ManifestRef[] = d.manifest.get(s.lineageId) ?? [];
-    const info = refs.map((r) => {
-      const f = files.get(r.typedId);
-      if (!f)
-        throw new IntegrityError([`sheet "${s.name}": file periode ${r.periodKey} tidak dikenal`]);
-      return f;
-    });
-    const created = await tx.sheet.create({
-      data: {
-        versionId: a.versionId,
-        lineageId: s.lineageId,
-        index: s.index,
-        name: s.name,
-        aliasName: s.aliasName,
-        rawKey: info[0]?.rawKey ?? s.rawKey,
-        rawRows: info.length ? info.reduce((n, f) => n + f.rawRows, 0) : s.rawRows,
-        colCount: s.colCount,
-        headerRow: s.headerRow,
-        columns: s.columns as Prisma.InputJsonValue,
-        truncatedCells: s.truncatedCells,
-        preview: s.preview === null ? Prisma.DbNull : (s.preview as Prisma.InputJsonValue),
-        typedKey: info[0]?.typedKey ?? (refs.length ? null : s.segments.length ? null : s.typedKey),
-        schemaRevision: s.schemaRevision,
-        schema: s.schema === null ? Prisma.DbNull : (s.schema as Prisma.InputJsonValue),
-        periodSource: s.periodSource as PeriodSource | null,
-        periodColumn: s.periodColumn,
-      },
-      select: { id: true, typedKey: true },
-    });
-    sheetMap[s.id] = created.id;
-    if (refs.length) {
-      await tx.sheetSegment.createMany({
-        data: refs.map((r, ordinal) => ({
-          sheetId: created.id,
-          segmentTypedId: r.typedId,
-          ordinal,
-        })),
-      });
-    }
-    typedIds.push(...refs.map((r) => r.typedId));
-    manifest.push({
-      id: created.id,
-      name: s.name,
-      typedKey: created.typedKey,
-      periodGrain: v.periodGrain as PeriodGrain,
-      periodSource: s.periodSource,
-      segments: refs.map((r, ordinal) => {
-        const f = info[ordinal]!;
-        return {
-          ordinal,
-          rawKey: f.rawKey,
-          typedKey: f.typedKey,
-          rowBase: f.rowBase,
-          maxSrcRow: f.maxSrcRow,
-          periodKey: r.periodKey,
-          periodStart: r.periodStart,
-          dataRows: r.rows,
-        };
-      }),
-    });
-  }
-  // Gerbang integritas (fail-closed) di dalam lock: verifyVersionIntegrity atas manifest yang BARU
-  // ditulis di transaksi ini (dibaca ulang) + kunci yang sudah terbukti ada (HEAD sebelum lock).
-  const problems = await verifyVersionIntegrity(a.versionId, {
-    manifest: (id) => prismaManifest(id, tx),
-    exists: async (k) => a.present.has(k),
-  });
-  // Selisih manifest yang dibaca ulang dengan yang direncanakan (baris per periode) = galat juga.
-  const written = await prismaManifest(a.versionId, tx);
-  for (const s of manifest) {
-    const w = written?.find((x) => x.id === s.id);
-    const same =
-      w?.segments.length === s.segments.length &&
-      w.segments.every((g, i) => {
-        const p = s.segments.find((x) => x.ordinal === g.ordinal) ?? s.segments[i]!;
-        return (
-          g.typedKey === p.typedKey && g.periodKey === p.periodKey && g.dataRows === p.dataRows
-        );
-      });
-    if (!same) problems.push(`sheet "${s.name}": manifest tertulis berbeda dengan rencana`);
-  }
-  if (problems.length) throw new IntegrityError(problems);
-  // Dirujuk lagi (bisa sudah ditandai GC): tanda dibuang sekarang, sebelum versi lain dibuang retensi.
-  await tx.segmentTyped.updateMany({
-    where: { id: { in: typedIds }, unreferencedAt: { not: null } },
-    data: { unreferencedAt: null },
-  });
-  await tx.segment.updateMany({
-    where: { typed: { some: { id: { in: typedIds } } }, unreferencedAt: { not: null } },
-    data: { unreferencedAt: null },
+  const { sheetMap } = await writePeriodManifest(tx, {
+    versionId: a.versionId,
+    grain: v.periodGrain as PeriodGrain,
+    rows,
+    manifest: d.manifest,
+    files,
+    present: a.present,
   });
   const activate = d.decision === "activate";
   const r = await tx.datasetVersion.updateMany({
@@ -467,6 +379,129 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
     deletedTypedKeys: done.deletedTypedKeys,
     datasetId: v.datasetId,
   };
+}
+
+export interface WriteManifestArgs {
+  versionId: string;
+  grain: PeriodGrain;
+  /** Sheet versi aktif (disalin ke versi ini, urut index). */
+  rows: PeriodSheetRow[];
+  /** Manifest per sheet logis (lineageId), urut awal periode. */
+  manifest: Map<string, ManifestRef[]>;
+  /** Lokasi file per SegmentTyped.id yang dirujuk manifest. */
+  files: Map<string, FileInfo>;
+  /** Kunci yang sudah terbukti ada di storage (HEAD sebelum lock). */
+  present: ReadonlySet<string>;
+}
+
+/**
+ * Tulis manifest versi periode (T-052; dipakai juga hapus/pulihkan periode T-056) di transaksi
+ * pemanggil yang sudah memegang lock Dataset: sheet aktif disalin, file typed dirujuk (bukan disalin),
+ * lalu gerbang integritas (fail-closed) atas manifest yang dibaca ulang + kunci yang sudah di-HEAD, dan
+ * tanda GC file yang dirujuk lagi dibuang. Melempar IntegrityError (transaksi batal) bila tidak lolos.
+ * Mengembalikan sheetMap sheet aktif → sheet versi ini (aktivasi memetakan widget lewat ini).
+ */
+export async function writePeriodManifest(
+  tx: Tx,
+  w: WriteManifestArgs,
+): Promise<{ sheetMap: Record<string, string> }> {
+  await tx.sheet.deleteMany({ where: { versionId: w.versionId } });
+  const sheetMap: Record<string, string> = {};
+  const manifest: ManifestSheet[] = [];
+  const typedIds: string[] = [];
+  for (const s of w.rows) {
+    const refs: ManifestRef[] = w.manifest.get(s.lineageId) ?? [];
+    const info = refs.map((r) => {
+      const f = w.files.get(r.typedId);
+      if (!f)
+        throw new IntegrityError([`sheet "${s.name}": file periode ${r.periodKey} tidak dikenal`]);
+      return f;
+    });
+    const created = await tx.sheet.create({
+      data: {
+        versionId: w.versionId,
+        lineageId: s.lineageId,
+        index: s.index,
+        name: s.name,
+        aliasName: s.aliasName,
+        rawKey: info[0]?.rawKey ?? s.rawKey,
+        rawRows: info.length ? info.reduce((n, f) => n + f.rawRows, 0) : s.rawRows,
+        colCount: s.colCount,
+        headerRow: s.headerRow,
+        columns: s.columns as Prisma.InputJsonValue,
+        truncatedCells: s.truncatedCells,
+        preview: s.preview === null ? Prisma.DbNull : (s.preview as Prisma.InputJsonValue),
+        typedKey: info[0]?.typedKey ?? (refs.length ? null : s.segments.length ? null : s.typedKey),
+        schemaRevision: s.schemaRevision,
+        schema: s.schema === null ? Prisma.DbNull : (s.schema as Prisma.InputJsonValue),
+        periodSource: s.periodSource as PeriodSource | null,
+        periodColumn: s.periodColumn,
+      },
+      select: { id: true, typedKey: true },
+    });
+    sheetMap[s.id] = created.id;
+    if (refs.length) {
+      await tx.sheetSegment.createMany({
+        data: refs.map((r, ordinal) => ({
+          sheetId: created.id,
+          segmentTypedId: r.typedId,
+          ordinal,
+        })),
+      });
+    }
+    typedIds.push(...refs.map((r) => r.typedId));
+    manifest.push({
+      id: created.id,
+      name: s.name,
+      typedKey: created.typedKey,
+      periodGrain: w.grain,
+      periodSource: s.periodSource,
+      segments: refs.map((r, ordinal) => {
+        const f = info[ordinal]!;
+        return {
+          ordinal,
+          rawKey: f.rawKey,
+          typedKey: f.typedKey,
+          rowBase: f.rowBase,
+          maxSrcRow: f.maxSrcRow,
+          periodKey: r.periodKey,
+          periodStart: r.periodStart,
+          dataRows: r.rows,
+        };
+      }),
+    });
+  }
+  // Gerbang integritas (fail-closed) di dalam lock: verifyVersionIntegrity atas manifest yang BARU
+  // ditulis di transaksi ini (dibaca ulang) + kunci yang sudah terbukti ada (HEAD sebelum lock).
+  const problems = await verifyVersionIntegrity(w.versionId, {
+    manifest: (id) => prismaManifest(id, tx),
+    exists: async (k) => w.present.has(k),
+  });
+  // Selisih manifest yang dibaca ulang dengan yang direncanakan (baris per periode) = galat juga.
+  const written = await prismaManifest(w.versionId, tx);
+  for (const s of manifest) {
+    const w = written?.find((x) => x.id === s.id);
+    const same =
+      w?.segments.length === s.segments.length &&
+      w.segments.every((g, i) => {
+        const p = s.segments.find((x) => x.ordinal === g.ordinal) ?? s.segments[i]!;
+        return (
+          g.typedKey === p.typedKey && g.periodKey === p.periodKey && g.dataRows === p.dataRows
+        );
+      });
+    if (!same) problems.push(`sheet "${s.name}": manifest tertulis berbeda dengan rencana`);
+  }
+  if (problems.length) throw new IntegrityError(problems);
+  // Dirujuk lagi (bisa sudah ditandai GC): tanda dibuang sekarang, sebelum versi lain dibuang retensi.
+  await tx.segmentTyped.updateMany({
+    where: { id: { in: typedIds }, unreferencedAt: { not: null } },
+    data: { unreferencedAt: null },
+  });
+  await tx.segment.updateMany({
+    where: { typed: { some: { id: { in: typedIds } } }, unreferencedAt: { not: null } },
+    data: { unreferencedAt: null },
+  });
+  return { sheetMap };
 }
 
 /** Kunci raw/typed manifest sheet aktif (HEAD sebelum transaksi). */

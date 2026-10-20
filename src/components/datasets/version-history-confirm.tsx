@@ -10,7 +10,7 @@ import { NETWORK_ERROR, versionErrorText } from "./version-history-status";
 /** Tombol aksi di baris/kartu: 44px dan full-width di ponsel, ringkas mulai 768. */
 export const ROW_CTA = "h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto";
 
-interface VersionConfirmProps {
+interface VersionConfirmProps<T> {
   /** Isi tombol pemicu (boleh berisi teks sr-only untuk konteks baris). */
   label: ReactNode;
   icon: ReactNode;
@@ -19,9 +19,11 @@ interface VersionConfirmProps {
   description: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
-  run: () => Promise<VersionResult<{ fileName: string }>>;
+  run: () => Promise<VersionResult<T>>;
   /** Berhasil: dialog sudah tertutup; pemanggil menampilkan hasil (yang mengambil fokus). */
-  onDone: (fileName: string) => void;
+  onDone: (data: T) => void;
+  /** Varian tombol pemicu (default outline). */
+  triggerVariant?: "outline" | "ghost";
 }
 
 /**
@@ -29,7 +31,7 @@ interface VersionConfirmProps {
  * dialog dan menerima fokus; dialog tidak bisa ditutup selama permintaan berjalan; gagal/batal
  * mengembalikan fokus ke tombol pemicu, berhasil menyerahkan fokus ke pemberitahuan hasil.
  */
-export function VersionConfirm({
+export function VersionConfirm<T>({
   label,
   icon,
   testId,
@@ -39,7 +41,8 @@ export function VersionConfirm({
   destructive = false,
   run,
   onDone,
-}: VersionConfirmProps) {
+  triggerVariant = "outline",
+}: VersionConfirmProps<T>) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const succeeded = useRef(false);
   const [open, setOpen] = useState(false);
@@ -57,7 +60,7 @@ export function VersionConfirm({
       }
       succeeded.current = true;
       setOpen(false);
-      onDone(res.data.fileName);
+      onDone(res.data);
     });
   }
 
@@ -76,7 +79,7 @@ export function VersionConfirm({
     <>
       <Button
         ref={triggerRef}
-        variant="outline"
+        variant={triggerVariant}
         size="sm"
         leadingIcon={icon}
         className={ROW_CTA}

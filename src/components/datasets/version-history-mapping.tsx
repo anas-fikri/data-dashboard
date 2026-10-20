@@ -106,7 +106,7 @@ export function VersionMappingNotice({
               destructive
               run={() => discardVersionAction(datasetId, versionId)}
               onDone={(discarded) => {
-                onDiscarded(discarded);
+                onDiscarded(discarded.fileName);
                 router.refresh();
               }}
             />

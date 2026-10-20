@@ -125,7 +125,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
     async createSegment(versionId, d) {
       const v = await prisma.datasetVersion.findUnique({
         where: { id: versionId },
-        select: { datasetId: true, originalName: true },
+        select: { datasetId: true, originalName: true, uploadedById: true },
       });
       if (!v) throw new DatasetGoneError();
       try {
@@ -153,6 +153,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
             sha256: d.sha256,
             sourceKind: d.sourceKind,
             originalName: v.originalName,
+            uploadedById: v.uploadedById,
             createdByVersionId: versionId,
           },
         });

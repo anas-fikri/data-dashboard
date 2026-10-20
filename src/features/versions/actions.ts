@@ -11,6 +11,7 @@ import { redisReady } from "@/lib/redis";
 import type { SetupPreview } from "@/features/ingest/period-setup-plan";
 import { pairPlanFor, submitMapping } from "./mapping";
 import { applyPeriodSetup, previewPeriodSetup, savePeriodSettings } from "./period-setup";
+import { removePeriod, restorePeriod } from "./period-manage";
 import { confirmPeriodUpload, reviewPeriodUpload, type PeriodReview } from "./period-upload";
 import * as service from "./service";
 import type { MappingPairPlan, VersionResult } from "./types";
@@ -230,6 +231,41 @@ export async function confirmPeriodUploadAction(
       revalidatePath("/dashboards");
       revalidatePath("/dashboards/[id]", "page");
     }
+    return r;
+  });
+}
+
+/** Revalidasi setelah data aktif berganti (hapus/pulihkan periode, T-056). */
+function revalidateActive(datasetId: string) {
+  revalidatePath(`/datasets/${datasetId}`);
+  revalidatePath("/datasets");
+  revalidatePath("/dashboards");
+  revalidatePath("/dashboards/[id]", "page");
+}
+
+/**
+ * "Hapus <periode>" di kartu Periode (T-056): versi PERIOD_REMOVE aktif tanpa job worker; bisa
+ * di-rollback atau dipulihkan. PLAN_STALE bila versi aktif berganti sejak halaman dimuat.
+ */
+export async function removePeriodAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<{ label: string; versionId: string }>> {
+  return asOwner("removePeriod", async (userId, ip) => {
+    const r = await removePeriod(userId, datasetId, payload, ip);
+    if (r.ok) revalidateActive(datasetId);
+    return r;
+  });
+}
+
+/** "Pulihkan <periode>" dari versi siap yang masih tersimpan (T-056): versi PERIOD_RESTORE aktif. */
+export async function restorePeriodAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<{ label: string; versionId: string }>> {
+  return asOwner("restorePeriod", async (userId, ip) => {
+    const r = await restorePeriod(userId, datasetId, payload, ip);
+    if (r.ok) revalidateActive(datasetId);
     return r;
   });
 }

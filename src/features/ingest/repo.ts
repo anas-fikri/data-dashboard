@@ -227,7 +227,7 @@ export const prismaIngestRepo: IngestRepo = {
   async createSegment(versionId, d) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: { datasetId: true, originalName: true },
+      select: { datasetId: true, originalName: true, uploadedById: true },
     });
     if (!v) throw new DatasetGoneError();
     try {
@@ -248,6 +248,7 @@ export const prismaIngestRepo: IngestRepo = {
           sha256: d.sha256 ?? null,
           sourceKind: d.sourceKind ?? null,
           originalName: v.originalName,
+          uploadedById: v.uploadedById,
           createdByVersionId: versionId,
         },
         select: { id: true },

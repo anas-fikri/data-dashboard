@@ -183,7 +183,12 @@ export function VersionHistoryRow({
         )}
       >
         {canActivate ? (
-          <VersionActivate datasetId={datasetId} versionId={v.id} fileName={name} />
+          <VersionActivate
+            datasetId={datasetId}
+            versionId={v.id}
+            fileName={name}
+            warning={v.rollbackWarning ?? null}
+          />
         ) : v.canDiscard && v.status === "AWAITING_CONFIRM" ? (
           <span className="flex flex-col gap-2 md:flex-row">
             <Button asChild size="sm" className={ROW_LINK}>
