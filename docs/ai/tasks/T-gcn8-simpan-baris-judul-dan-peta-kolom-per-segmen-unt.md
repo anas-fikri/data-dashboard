@@ -1,22 +1,37 @@
 ---
 id: T-gcn8
 title: Simpan baris judul dan peta kolom per segmen untuk unggahan periode
-status: in_progress
-profile: standard
+status: in_review
+profile: strict
 depends_on:
   - T-040
 created: "2026-10-20T01:03:01Z"
-updated: "2026-10-20T05:31:04Z"
+updated: "2026-10-20T05:34:43Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 69b8953d5c8f45ac76bc60aa50a59d9a82f30388
+paths:
+  - prisma/migrations/20261020130000_tgcn8_segment_header_colmap/migration.sql
+  - prisma/schema.prisma
+  - src/features/ingest/ingest.ts
+  - src/features/ingest/recast.ts
+  - src/features/ingest/repo.ts
+  - src/features/ingest/typed.ts
+  - tests/features/ingest/recast-fakes.ts
+  - tests/features/ingest/recast.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-code
+      at: "2026-10-20T05:31:16Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 166972
+    duration_ms: 170444
     summary: |-
       …t
       > vitest run
@@ -24,23 +39,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792474215483,"service":"data-dashboard","host":"127.0.0.1","port":38715,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792474215535,"service":"data-dashboard","host":"127.0.0.1","port":40225,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792474215634,"service":"data-dashboard","host":"127.0.0.1","port":42159,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792474215744,"service":"data-dashboard","host":"127.0.0.1","port":32839,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792474229180,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792474229206,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792474229209,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792474229220,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792474238313,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792474422836,"service":"data-dashboard","host":"127.0.0.1","port":44647,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792474422895,"service":"data-dashboard","host":"127.0.0.1","port":44775,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792474422998,"service":"data-dashboard","host":"127.0.0.1","port":46071,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792474423121,"service":"data-dashboard","host":"127.0.0.1","port":45309,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792474432247,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792474436891,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792474436913,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792474436923,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792474436933,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  162 passed | 1 skipped (163)
             Tests  2103 passed | 10 skipped (2113)
-         Start at  05:29:00
-         Duration  122.04s (tests 86%, import 12%, transform 3%)
+         Start at  05:32:25
+         Duration  123.81s (tests 86%, import 11%, transform 3%)
 
-          Isolate  163 workers spawned · ~146ms startup each (spawn + environment, per file)
-                   at least ~7.78s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  163 workers spawned · ~140ms startup each (spawn + environment, per file)
+                   at least ~7.48s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -48,16 +63,52 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T05:31:04Z"
+    at: "2026-10-20T05:34:30Z"
     tree: 936377ea69da418a10cb5dbd0c9d31c3bba2b39a6405464fa4c5035a3322f7f7
+  commits:
+    - 18b74cc
+    - 23e5ae9
+    - 4eea84c
+    - "6123427"
+    - 69b8953
+    - 90e4e63
+    - f54828c
+  acceptance:
+    total: 2
+    done: 2
+  audit:
+    at: "2026-10-20T05:31:17Z"
+    passed: true
+    tree: 936377ea69da418a10cb5dbd0c9d31c3bba2b39a6405464fa4c5035a3322f7f7
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 832 packages
+          End status: 297 dirs visited, 1628 inodes visited, 1 Extract calls, 171.856871ms elapsed, 171.857387ms wall time
+          Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
+
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@0.1.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
 Tindak lanjut review T-040 (L3/L4), sebelum unggahan periode (T-052). Baris judul yang berlaku disimpan per file typed (`SegmentTyped.headerRow`; null = `Segment.headerRow`, kini imutabel), sehingga memilih ulang baris judul di satu versi tidak mengubah versi lain yang berbagi segmen. Setiap segmen menyimpan peta kolom raw → posisi kanonik (`Segment.colMap`, kosong = identitas); recast memprofil dan meng-cast lewat peta itu, sehingga unggahan dengan urutan kolom berbeda tetap di-cast dari kolom raw yang benar.
 
 ## Acceptance criteria
-- [ ] Given dua versi berbagi satu segmen, when baris judul dipilih ulang di salah satu versi, then baris judul segmen versi lain tidak berubah dan recast-nya tetap memakai baris judul miliknya
-- [ ] Given unggahan periode dengan urutan kolom berbeda dari skema aktif, when recast per segmen berjalan, then setiap kolom di-cast dari kolom raw segmen yang benar lewat peta kolom per segmen yang tersimpan
+- [x] Given dua versi berbagi satu segmen, when baris judul dipilih ulang di salah satu versi, then baris judul segmen versi lain tidak berubah dan recast-nya tetap memakai baris judul miliknya
+- [x] Given unggahan periode dengan urutan kolom berbeda dari skema aktif, when recast per segmen berjalan, then setiap kolom di-cast dari kolom raw segmen yang benar lewat peta kolom per segmen yang tersimpan
 
 ## Risk
 Impact: migrasi 2 kolom (Segment.colMap default kosong, SegmentTyped.headerRow nullable + isi dari sheet satu segmen yang merujuknya). Recast/pemetaan tidak lagi mengubah Segment.headerRow. Peta kolom baru dipakai recast; penulisnya (pemetaan periode T-055) belum ada — semua segmen sekarang identitas.
@@ -67,3 +118,27 @@ Validation: unit recast 30/30 (2 baru: AC1 judul per file, AC2 peta kolom); e2e 
 
 ## Notes
 - Asumsi: `colMap` ditulis oleh pemetaan periode (T-055) saat segmen dibuat; recast ganti baris judul untuk sheet satu segmen ber-peta non-identitas memakai nama dari urutan raw (belum mungkin terjadi sekarang).
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — recast tetap di worker; tanpa komponen/batas kepercayaan baru
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak menyentuh autentikasi
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak menyentuh sesi
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — N/A: tidak ada endpoint/aksi baru; jalur recast tetap memeriksa kepemilikan seperti sebelumnya
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — indeks peta kolom masuk SQL hanya sebagai bilangan bulat > 0 (rawColumnOf), input recast tetap divalidasi parseRecastInput
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak ada data kriptografis
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — tidak ada pesan/log baru
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A: tidak ada data pribadi baru
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak ada lalu lintas eksternal baru
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — tanpa dependensi atau panggilan jaringan baru
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — judul per file typed menghilangkan efek samping lintas versi; swap tetap optimistic per revisi
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak menyentuh unggahan
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: konfigurasi tidak berubah; aitk audit hijau
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-20T05:34:30Z (170444 ms)
+- Acceptance criteria: 2/2 satisfied
+- Commits: 18b74cc, 23e5ae9, 4eea84c, 6123427, 69b8953, 90e4e63, f54828c
+- Review pass 1 by claude-code: 0 findings
