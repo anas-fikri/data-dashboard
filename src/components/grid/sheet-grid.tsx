@@ -410,6 +410,9 @@ export default function SheetGrid({
     aborted.current.clear();
     totalRef.current = null;
     pendingAnnounce.current = announce;
+    // Jumlah tampilan lama tidak boleh tampil untuk tampilan baru (review T-044 #1).
+    setTotal(null);
+    setAll(null);
     setLoading(true);
     setLoadError(null);
     setTimeoutMsg(null);
@@ -892,9 +895,21 @@ export default function SheetGrid({
     // Kolom yang muncul lagi belum punya data di blok yang dimuat → muat ulang blok.
     const shownAgain = [...hidden].some((id) => !next.has(id));
     setHidden(next);
-    if (shownAgain) purge();
     persist();
-  }, [hidden, persist, purge]);
+    // Cari hanya di kolom teks yang terlihat (AC3): kolom berubah → cari diulang dengan kolom baru.
+    const q = searchRef.current;
+    if (q) {
+      const cols = searchColumns(dataColsInOrder(), (id) => byId.get(id)?.type);
+      if (cols.join() !== q.cols.join()) {
+        if (cols.length === 0) {
+          setSearchError("Tidak ada kolom teks yang terlihat untuk dicari.");
+          applySearch(null);
+        } else applySearch({ text: q.text, cols });
+        return;
+      }
+    }
+    if (shownAgain) purge();
+  }, [hidden, persist, purge, dataColsInOrder, byId, applySearch]);
 
   const submitGo = (ev: React.FormEvent) => {
     ev.preventDefault();
@@ -1153,7 +1168,7 @@ export default function SheetGrid({
                   />
                   Mencari “{search.text}”… (paling lama 10 detik)
                 </span>
-              ) : search && total !== null ? (
+              ) : search && total !== null && !loading && !timeoutMsg && !loadError ? (
                 <span data-testid="grid-search-count">Ditemukan di {fmtInt(total)} baris</span>
               ) : (
                 "Ctrl+F di dalam grid. Mencari di ≤ 10 kolom teks yang terlihat."
@@ -1261,9 +1276,11 @@ export default function SheetGrid({
             className="text-sm text-muted-foreground tabular-nums"
             data-testid="grid-filter-count"
           >
-            {total !== null && all !== null && !loading
-              ? filteredCountText(total, all, true)
-              : "Menghitung baris…"}
+            {timeoutMsg || loadError
+              ? "Jumlah baris belum diketahui"
+              : total !== null && all !== null && !loading
+                ? filteredCountText(total, all, true)
+                : "Menghitung baris…"}
           </span>
         </div>
       ) : null}
@@ -1308,7 +1325,14 @@ export default function SheetGrid({
         data-testid="grid-status"
       >
         <span className="tabular-nums" data-testid="grid-status-rows">
-          {statusText(range?.first ?? null, range?.last ?? null, total, filteredView ? all : null)}
+          {timeoutMsg || loadError
+            ? "Baris belum dimuat"
+            : statusText(
+                range?.first ?? null,
+                range?.last ?? null,
+                loading ? null : total,
+                filteredView ? all : null,
+              )}
         </span>
       </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">

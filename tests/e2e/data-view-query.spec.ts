@@ -138,7 +138,8 @@ test.describe("Lihat data: urut, saring, cari", () => {
     // Keyboard: Enter di kepala kolom → menu → "Urutkan turun" (mengganti urutan).
     await header(page, "c4").focus();
     await page.keyboard.press("Enter");
-    await page.getByRole("menuitemradio", { name: "Urutkan turun" }).click();
+    // Kolom lain sedang diurutkan: label menyebut urutan lain ikut dilepas (review #4).
+    await page.getByRole("menuitemradio", { name: /^Urutkan turun saja/ }).click();
     await expect(header(page, "c4")).toHaveAttribute("aria-sort", "descending");
     await expect(header(page, "c1")).toHaveAttribute("aria-sort", "none");
     // Teks: K9 > K60 > K6 … (urut teks, bukan angka).
@@ -247,6 +248,20 @@ test.describe("Lihat data: urut, saring, cari", () => {
       await expect(cell(page, r, "c4")).not.toHaveClass(/dd-grid-match/);
     }
     await expect(cell(page, 1, "c4")).toHaveText(`K${hits[1]}`);
+    // Kolom yang dicari disembunyikan → cari diulang hanya di kolom teks yang masih terlihat (review #3).
+    await header(page, "c4").hover();
+    await header(page, "c4")
+      .getByRole("button", { name: /^Menu kolom/ })
+      .click();
+    await page.getByRole("menuitem", { name: "Sembunyikan kolom" }).click();
+    await expect.poll(() => searchBody!.search).toEqual({ text: "jakarta", cols: [1] });
+    await expect(page.getByTestId("grid-search-count")).toHaveText(
+      `Ditemukan di ${hits.length} baris`,
+    );
+    await page.getByTestId("grid-columns-button").click();
+    await page.getByRole("checkbox").last().check();
+    await page.keyboard.press("Escape");
+    await expect.poll(() => searchBody!.search).toEqual({ text: "jakarta", cols: [1, 4] });
     await page.getByTestId("grid-search-clear").click();
     await expect(cell(page, 0, "c4")).toHaveText("K1");
 
@@ -274,6 +289,13 @@ test.describe("Lihat data: urut, saring, cari", () => {
   }) => {
     const page = await pageFor(browser, OWNER);
     await openGrid(page);
+    // Cari dulu (tanpa urut, tidak dicegat): jumlah tampil.
+    const hits = Array.from({ length: ROWS }, (_, i) => i + 1).filter((i) =>
+      city(i).toLowerCase().includes("jakarta"),
+    ).length;
+    await page.getByTestId("grid-search-input").fill("jakarta");
+    await page.getByTestId("grid-search-input").press("Enter");
+    await expect(page.getByTestId("grid-search-count")).toHaveText(`Ditemukan di ${hits} baris`);
     await page.route("**/api/sheets/*/rows", async (route: Route) => {
       const b = route.request().postDataJSON() as { sort?: unknown[] };
       if (!b.sort?.length) return route.continue();
@@ -291,9 +313,14 @@ test.describe("Lihat data: urut, saring, cari", () => {
       "Pengurutan ini terlalu berat; saring data dulu",
     );
     await expect(page.getByTestId("grid-load-error")).toBeHidden();
+    // Tanpa jumlah basi dari tampilan sebelumnya (review #1).
+    await expect(page.getByTestId("grid-search-count")).toBeHidden();
+    await expect(page.getByTestId("grid-status-rows")).toHaveText("Baris belum dimuat");
     // Grid tetap bisa dipakai: hapus urutan → data kembali, Ke baris jalan.
     await page.getByTestId("grid-clear-sort").click();
     await expect(page.getByTestId("grid-timeout")).toBeHidden();
+    await expect(page.getByTestId("grid-search-count")).toHaveText(`Ditemukan di ${hits} baris`);
+    await page.getByTestId("grid-search-clear").click();
     await expect(header(page, "c1")).toHaveAttribute("aria-sort", "none");
     await expect(cell(page, 0, "c4")).toHaveText("K1");
     await page.getByTestId("grid-goto-input").fill("40");

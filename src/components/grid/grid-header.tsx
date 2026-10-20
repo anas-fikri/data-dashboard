@@ -235,7 +235,7 @@ export function GridHeader(props: IHeaderParams & GridHeaderParams) {
             onSelect={() => act({ kind: "sort", dir: "asc", add: false })}
           >
             <IconSortAscending aria-hidden />
-            Urutkan naik
+            {others > 0 ? "Urutkan naik saja (lepas urutan lain)" : "Urutkan naik"}
           </DropdownMenuItem>
           <DropdownMenuItem
             role="menuitemradio"
@@ -243,7 +243,7 @@ export function GridHeader(props: IHeaderParams & GridHeaderParams) {
             onSelect={() => act({ kind: "sort", dir: "desc", add: false })}
           >
             <IconSortDescending aria-hidden />
-            Urutkan turun
+            {others > 0 ? "Urutkan turun saja (lepas urutan lain)" : "Urutkan turun"}
           </DropdownMenuItem>
           {canAdd && !state?.sort ? (
             <>
