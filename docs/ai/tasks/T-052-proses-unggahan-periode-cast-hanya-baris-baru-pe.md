@@ -32,3 +32,5 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- Dari review T-049 (L2): canDiscard hanya AWAITING_MAPPING dan AWAITING_CONFIRM tanpa kedaluwarsa otomatis — T-052 harus rilis bersama layar tinjauan/buang (T-053/T-054) atau memperluas canDiscard + auto-buang 7 hari.

@@ -28,3 +28,5 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- Dari review T-049 (M1): job pemetaan (src/features/ingest/mapping.ts:240-253) menulis typed tanpa period dan typedFileProblems tidak memeriksa _period — WAJIB ditangani di task ini (versi periode AWAITING_MAPPING).
