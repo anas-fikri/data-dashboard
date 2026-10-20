@@ -108,9 +108,44 @@ describe("versi periode (T-049 AC4)", () => {
       'sheet "Data" segmen 1: periode tidak tercatat',
       'sheet "Data" segmen 2: periode 2026-02 tidak cocok dengan satuan versi',
       'sheet "Data" segmen 3: jumlah baris periode 2026-03 tidak tercatat',
-      'sheet "Data": periode 2026-03 muncul lebih dari sekali',
       'sheet "Data" segmen 5: periode 2026-Q2 tidak cocok dengan satuan versi',
+      'sheet "Data": periode 2026-03 muncul lebih dari sekali',
     ]);
+  });
+
+  it("T-060: satu periode dari beberapa segmen hanya sah sebagai satu kelompok file yang lengkap", () => {
+    const part = (o: number, p: number, size: number, id: string | null = "grp1") => ({
+      ...seg(o, "2026-03-01", "2026-03"),
+      groupId: id,
+      groupPart: p,
+      groupSize: size,
+    });
+    // Kelompok 3 file lengkap → sah (segmen lain bulan berbeda tetap boleh).
+    expect(
+      check.manifestProblems([
+        periodic([seg(0, "2026-02-01", "2026-02"), part(1, 1, 3), part(2, 2, 3), part(3, 3, 3)]),
+      ]),
+    ).toEqual([]);
+    // Satu file kelompok hilang (2 dari 3) → tidak lengkap; nomor file ganda; dua kelompok berbeda;
+    // segmen tanpa kelompok di samping kelompok (append buta) → ditolak.
+    const bad = (segs: ReturnType<typeof seg>[]) => check.manifestProblems([periodic(segs)]);
+    expect(bad([part(0, 1, 3), part(1, 2, 3)])).toEqual([
+      'sheet "Data": periode 2026-03 kelompok file tidak lengkap',
+    ]);
+    expect(bad([part(0, 1, 2), part(1, 1, 2)])).toEqual([
+      'sheet "Data": periode 2026-03 nomor file kelompok ganda',
+    ]);
+    expect(bad([part(0, 1, 2), part(1, 2, 2, "grp2")])).toEqual([
+      'sheet "Data": periode 2026-03 muncul lebih dari sekali',
+    ]);
+    expect(bad([part(0, 1, 2), { ...seg(1, "2026-03-01", "2026-03") }])).toEqual([
+      'sheet "Data": periode 2026-03 muncul lebih dari sekali',
+    ]);
+    // Satu segmen kelompok yang mengaku bagian dari 2 file → tidak lengkap; ukuran 1 → sah.
+    expect(bad([part(0, 1, 2)])).toEqual([
+      'sheet "Data": periode 2026-03 kelompok file tidak lengkap',
+    ]);
+    expect(bad([part(0, 1, 1)])).toEqual([]);
   });
 
   it("versi non-periode yang merujuk segmen berperiode → ditolak; tanpa periode tetap lolos (AC2)", () => {

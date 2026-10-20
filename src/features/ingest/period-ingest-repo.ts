@@ -12,6 +12,7 @@ import { DatasetGoneError } from "./ingest";
 import { isoDay } from "./period";
 import type { PeriodLimits } from "./period-plan";
 import { naiveToDate } from "./period-setup";
+import { parseGroupFiles } from "./period-group";
 import { parsePeriodMeta } from "./period-upload-plan";
 import type {
   PeriodActiveSheet,
@@ -56,6 +57,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           periodGrain: true,
           periodLabel: true,
           baseVersionId: true,
+          groupFiles: true,
           dataset: {
             select: {
               keepPeriods: true,
@@ -73,10 +75,16 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
       });
       if (!v?.sourceKey) return null;
       const a = v.dataset.activeVersion;
+      const group = parseGroupFiles(v.groupFiles);
       return {
         datasetId: v.datasetId,
         sourceKey: v.sourceKey,
         originalName: v.originalName,
+        // Kelompok file (T-060); kolom berisi tapi tidak terbaca → [] (worker menggagalkan versi,
+        // tidak pernah memproses sebagian file kelompok).
+        ...(v.groupFiles !== null
+          ? { sources: (group ?? []).map((f) => ({ key: f.key, name: f.name })) }
+          : {}),
         grain: v.periodGrain,
         label: isoDay(v.periodLabel),
         baseVersionId: v.baseVersionId,
@@ -161,7 +169,10 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
               : {}),
             sha256: d.sha256,
             sourceKind: d.sourceKind,
-            originalName: v.originalName,
+            originalName: d.originalName ?? v.originalName,
+            ...(d.group
+              ? { groupId: d.group.id, groupPart: d.group.part, groupSize: d.group.size }
+              : {}),
             uploadedById: v.uploadedById,
             createdByVersionId: versionId,
           },

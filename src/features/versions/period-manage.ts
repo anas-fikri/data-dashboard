@@ -106,6 +106,9 @@ const overviewSheetSelect = {
               rawBytes: true,
               originalName: true,
               createdAt: true,
+              groupId: true,
+              groupPart: true,
+              groupSize: true,
               uploadedBy: { select: { name: true, email: true } },
             },
           },
@@ -132,7 +135,17 @@ export const periodSegmentsSelect = {
           id: true,
           dataRows: true,
           typedBytes: true,
-          segment: { select: { id: true, periodKey: true, periodStart: true, rawBytes: true } },
+          segment: {
+            select: {
+              id: true,
+              periodKey: true,
+              periodStart: true,
+              rawBytes: true,
+              groupId: true,
+              groupPart: true,
+              groupSize: true,
+            },
+          },
         },
       },
     },
@@ -158,6 +171,9 @@ interface SheetLike {
         periodKey: string | null;
         periodStart: Date | null;
         rawBytes: bigint | null;
+        groupId?: string | null;
+        groupPart?: number | null;
+        groupSize?: number | null;
       };
     };
   }[];
@@ -190,6 +206,9 @@ export function manageOf(
             periodStart: start,
             rows: t.dataRows ?? 0,
             bytes: Number(t.segment.rawBytes ?? 0n) + Number(t.typedBytes ?? 0n),
+            groupId: t.segment.groupId ?? null,
+            groupPart: t.segment.groupPart ?? null,
+            groupSize: t.segment.groupSize ?? null,
           },
         ];
       }),

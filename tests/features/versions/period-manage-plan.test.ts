@@ -344,3 +344,79 @@ describe("kartu Periode dan catatan", () => {
     );
   });
 });
+
+describe("T-060: periode dari kelompok file", () => {
+  const part = (key: string, rows: number, p: number, size = 3, gid = "grp"): ManageSegment => ({
+    ...seg(key, rows, `${gid}-${key}-${p}`),
+    groupId: gid,
+    groupPart: p,
+    groupSize: size,
+  });
+  const grouped = version("OLD", [
+    sheet("L1", [
+      seg("2026-01", 30),
+      part("2026-03", 15, 1),
+      part("2026-03", 15, 2),
+      part("2026-03", 10, 3),
+    ]),
+  ]);
+
+  it("hapus periode kelompok: semua file kelompok dilepas, baris = jumlah semua file", () => {
+    const r = removeManifest(grouped, "2026-03");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.manifest.get("L1")!.map((x) => x.periodKey)).toEqual(["2026-01"]);
+    expect(r.change).toMatchObject({ beforeRows: 40, before: { L1: 40 } });
+  });
+
+  it("pulihkan periode kelompok: SEMUA file kelompok dirujuk ulang (tidak pernah sebagian), urut nomor file", () => {
+    const now = version("A2", [
+      sheet("L1", [seg("2026-01", 30), seg("2026-03", 31, "single-mar")]),
+    ]);
+    const r = restoreManifest(now, grouped, "2026-03");
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.manifest.get("L1")!.map((x) => [x.periodKey, x.segmentId, x.rows])).toEqual([
+      ["2026-01", "g-2026-01", 30],
+      ["2026-03", "grp-2026-03-1", 15],
+      ["2026-03", "grp-2026-03-2", 15],
+      ["2026-03", "grp-2026-03-3", 10],
+    ]);
+    expect(r.change).toMatchObject({ beforeRows: 31, afterRows: 40 });
+    // Batas saat memulihkan menghitung kelompok sebagai satu periode (tanpa galat "muncul dua kali").
+    expect(
+      restoreLimitMessage(
+        now,
+        grouped,
+        "2026-03",
+        { keepPeriods: null, onLimit: "REJECT" },
+        LIMITS,
+      ),
+    ).toBeNull();
+    // Isi sama (segmen kelompok yang sama) → tidak ada yang dipulihkan.
+    expect(restoreManifest(grouped, grouped, "2026-03")).toMatchObject({
+      ok: false,
+      block: "SAME",
+    });
+  });
+
+  it("kartu Periode: satu baris per sheet (baris dijumlah), semua nama file", () => {
+    const rows = periodTableRows("MONTH", [
+      {
+        name: "Kirim",
+        segments: [1, 2, 3].map((p) => ({
+          ...part("2026-03", p === 3 ? 10 : 15, p),
+          originalName: `maret-${p}.xlsx`,
+          uploadedBy: "Ana",
+          createdAt: "2026-10-20T00:00:00.000Z",
+        })),
+      },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      rows: 40,
+      sheets: [{ name: "Kirim", rows: 40 }],
+      files: ["maret-1.xlsx", "maret-2.xlsx", "maret-3.xlsx"],
+    });
+  });
+});

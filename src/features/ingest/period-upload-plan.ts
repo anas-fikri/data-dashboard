@@ -429,8 +429,18 @@ export function castIssues(
 
 // ── Rencana + manifest ──────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Kelompok file satu periode (T-060, Segment.groupId/groupPart/groupSize): id kelompok, nomor file
+ * 1..n, dan jumlah segmen kelompok di periode + sheet logis yang sama. Tidak ada/null = satu file.
+ */
+export interface SegmentGroupRef {
+  groupId?: string | null;
+  groupPart?: number | null;
+  groupSize?: number | null;
+}
+
 /** Satu file typed periode di manifest versi aktif. */
-export interface ActiveSegmentRef {
+export interface ActiveSegmentRef extends SegmentGroupRef {
   /** SegmentTyped.id (dirujuk ulang apa adanya oleh versi baru). */
   typedId: string;
   segmentId: string;
@@ -451,8 +461,11 @@ export interface ActivePeriodSheet {
   segments: ActiveSegmentRef[];
 }
 
-/** Segmen baru dari file unggahan (satu per periode per sheet logis, baris > 0). */
-export interface IncomingSegmentRef {
+/**
+ * Segmen baru dari file unggahan (satu per periode per sheet logis per file, baris > 0; kelompok file
+ * T-060: satu per file kelompok yang memuat periode itu).
+ */
+export interface IncomingSegmentRef extends SegmentGroupRef {
   typedId: string;
   segmentId: string;
   lineageId: string;
@@ -465,36 +478,83 @@ export interface IncomingSegmentRef {
 const byStart = <T extends { periodStart: string }>(a: T, b: T) =>
   a.periodStart < b.periodStart ? -1 : a.periodStart > b.periodStart ? 1 : 0;
 
-/** Periode → sheet logis → isi (rows/bytes), dan sha256 file asal bila sama di semua sheet. */
+/**
+ * Sidik gabungan file asal (T-060): satu file = sha256-nya apa adanya (sama dengan sebelum kelompok);
+ * beberapa file = sha256 dari daftar sha terurut, jadi kelompok file yang sama (urutan apa pun) memberi
+ * sidik yang sama. Ada yang tidak diketahui (null) → null.
+ */
+export function combinedSha256(shas: readonly (string | null | undefined)[]): string | null {
+  const set = new Set(shas.map((x) => x ?? null));
+  if (!set.size || set.has(null)) return null;
+  const list = [...set].sort() as string[];
+  return list.length === 1
+    ? list[0]!
+    : createHash("sha256")
+        .update(`group:${list.join(",")}`)
+        .digest("hex");
+}
+
+/**
+ * Masalah segmen satu periode di satu sheet logis (T-060): lebih dari satu segmen hanya sah bila
+ * semuanya satu kelompok file yang lengkap (id kelompok sama, nomor file berbeda, jumlah = groupSize).
+ * Satu segmen: tanpa kelompok, atau kelompok berukuran 1. null = sah. Murni (dipakai rencana, manifest,
+ * dan gerbang integritas).
+ */
+export function segmentGroupProblem(segs: readonly SegmentGroupRef[]): string | null {
+  if (segs.length <= 1) {
+    const g = segs[0];
+    if (g?.groupId && g.groupSize !== 1) return "kelompok file tidak lengkap";
+    return null;
+  }
+  const id = segs[0]!.groupId;
+  if (!id || segs.some((g) => g.groupId !== id)) return "muncul lebih dari sekali";
+  const parts = new Set(segs.map((g) => g.groupPart));
+  if (parts.size !== segs.length || [...parts].some((p) => !p || p < 1)) {
+    return "nomor file kelompok ganda";
+  }
+  if (segs.some((g) => g.groupSize !== segs.length)) return "kelompok file tidak lengkap";
+  return null;
+}
+
+/** Periode → sheet logis → isi (rows/bytes/segmen), dan sidik file asal gabungan (combinedSha256). */
 function group(
-  segs: {
+  segs: ({
     lineageId: string;
     periodKey: string;
     periodStart: string;
     rows: number;
     bytes: number;
     sha256?: string | null;
-  }[],
+  } & SegmentGroupRef)[],
 ): PlanPeriodInput[] {
-  const by = new Map<string, PlanPeriodInput & { shas: Set<string | null> }>();
+  const by = new Map<
+    string,
+    { key: string; start: string; parts: Map<string, typeof segs>; shas: (string | null)[] }
+  >();
   for (const g of [...segs].sort(byStart)) {
     const e = by.get(g.periodKey) ?? {
       key: g.periodKey,
       start: g.periodStart,
-      sheets: {},
-      shas: new Set<string | null>(),
+      parts: new Map<string, typeof segs>(),
+      shas: [],
     };
-    if (e.sheets[g.lineageId]) {
-      throw new Error(`periode ${g.periodKey} muncul dua kali di sheet logis ${g.lineageId}`);
-    }
-    e.sheets[g.lineageId] = { rows: g.rows, bytes: g.bytes };
-    e.shas.add(g.sha256 ?? null);
+    e.parts.set(g.lineageId, [...(e.parts.get(g.lineageId) ?? []), g]);
+    e.shas.push(g.sha256 ?? null);
     by.set(g.periodKey, e);
   }
-  return [...by.values()].map(({ shas, ...p }) => ({
-    ...p,
-    sha256: shas.size === 1 ? [...shas][0]! : null,
-  }));
+  return [...by.values()].map((e) => {
+    const sheets: PlanPeriodInput["sheets"] = {};
+    for (const [lineage, list] of e.parts) {
+      const bad = segmentGroupProblem(list);
+      if (bad) throw new Error(`periode ${e.key} di sheet logis ${lineage}: ${bad}`);
+      sheets[lineage] = {
+        rows: list.reduce((n, x) => n + x.rows, 0),
+        bytes: list.reduce((n, x) => n + x.bytes, 0),
+        ...(list.length > 1 ? { segments: list.length } : {}),
+      };
+    }
+    return { key: e.key, start: e.start, sheets, sha256: combinedSha256(e.shas) };
+  });
 }
 
 /** Masukan computePeriodPlan dari manifest aktif dan segmen file baru. */
@@ -541,21 +601,21 @@ export function buildPeriodManifest(
       if (e.after === null) continue;
       const fresh = (e.action === "ADDED" || e.action === "REPLACED") && file.has(s.lineageId);
       const want = e.after[s.lineageId] ?? 0;
-      const ref: ManifestRef | null = fresh
-        ? pick(
-            incoming.find((g) => g.lineageId === s.lineageId && g.periodKey === e.key),
-            true,
-          )
-        : pick(
-            s.segments.find((g) => g.periodKey === e.key),
-            false,
-          );
-      if ((ref?.rows ?? 0) !== want) {
-        throw new Error(
-          `manifest ${s.name} periode ${e.key}: ${ref?.rows ?? 0} baris, rencana ${want} baris`,
-        );
+      // Satu periode = semua segmennya (kelompok file T-060: semua file kelompok, urut nomor file).
+      const list = fresh
+        ? incoming.filter((g) => g.lineageId === s.lineageId && g.periodKey === e.key)
+        : s.segments.filter((g) => g.periodKey === e.key);
+      const bad = segmentGroupProblem(list);
+      if (bad) throw new Error(`manifest ${s.name} periode ${e.key}: ${bad}`);
+      const got = list.reduce((n, g) => n + g.rows, 0);
+      if (got !== want) {
+        throw new Error(`manifest ${s.name} periode ${e.key}: ${got} baris, rencana ${want} baris`);
       }
-      if (ref) refs.push(ref);
+      refs.push(
+        ...[...list]
+          .sort((x, y) => (x.groupPart ?? 0) - (y.groupPart ?? 0))
+          .map((g) => pick(g, fresh)),
+      );
     }
     out.set(s.lineageId, refs);
   }
@@ -563,21 +623,17 @@ export function buildPeriodManifest(
 }
 
 function pick(
-  g:
-    | { typedId: string; segmentId: string; periodKey: string; periodStart: string; rows: number }
-    | undefined,
+  g: { typedId: string; segmentId: string; periodKey: string; periodStart: string; rows: number },
   fromUpload: boolean,
-): ManifestRef | null {
-  return g
-    ? {
-        typedId: g.typedId,
-        segmentId: g.segmentId,
-        periodKey: g.periodKey,
-        periodStart: g.periodStart,
-        rows: g.rows,
-        fromUpload,
-      }
-    : null;
+): ManifestRef {
+  return {
+    typedId: g.typedId,
+    segmentId: g.segmentId,
+    periodKey: g.periodKey,
+    periodStart: g.periodStart,
+    rows: g.rows,
+    fromUpload,
+  };
 }
 
 /** JSON dengan kunci objek terurut (sidik stabil walau urutan field berbeda). */

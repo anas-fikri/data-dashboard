@@ -271,6 +271,8 @@ export interface PeriodUploadContext {
   needsLabel: boolean;
   /** Meter batas + proyeksi data aktif (T-055): ditampilkan bila ada batas ≥ PERIOD_WARN_PCT. */
   capacity: PeriodCapacity | null;
+  /** PERIOD_MAX_FILES (T-060): file per kelompok "satu periode dari beberapa file". */
+  groupMaxFiles: number;
 }
 
 /** Hanya pemilik (lainnya null, sama seperti dataset tidak ada). */
@@ -303,5 +305,6 @@ export async function periodUploadContext(
     periodCount: keys.length,
     needsLabel: a.sheets.some((s) => s.periodSource === "LABEL"),
     capacity: await loadPeriodCapacity(prisma, datasetId),
+    groupMaxFiles: env().PERIOD_MAX_FILES,
   };
 }

@@ -159,6 +159,10 @@ model DatasetVersion {
   baseVersionId    String?
   /// Awal periode pilihan pemilik untuk sheet bersumber label (T-052, naive D8); null = tanpa label.
   periodLabel      DateTime?     @db.Date
+  /// Kelompok file satu periode (T-060): [{ seq, key, name, size }] file sumber kelompok, semuanya di
+  /// raw/<ds>/<versionId>/ (retensi/pembersihan prefix versi berlaku apa adanya). null = satu file
+  /// (sourceKey). sourceKey = file pertama kelompok.
+  groupFiles       Json?
   /// Fakta unggahan periode di luar rencana (T-057): { ignoredSheets: string[], changes:
   /// SheetSchemaChange[] } — sheet file yang tidak disimpan (dipakai lagi setelah pemetaan) dan
   /// perubahan skema sheet (kolom tersembunyi baru, alias judul) yang dibawa ke versi ini saat commit.
@@ -312,6 +316,14 @@ model Segment {
   /// pembuatnya dibuang retensi. SetNull bila akunnya dihapus; null = tidak diketahui.
   uploadedById       String?
   uploadedBy         User?           @relation("SegmentUploader", fields: [uploadedById], references: [id], onDelete: SetNull)
+  /// Kelompok file satu periode (T-060, rencana G-6 §4.6 P-28): id kelompok (= id versi unggahan
+  /// kelompok; bukan relasi, bertahan walau versinya dibuang retensi), nomor file 1..n di kelompok, dan
+  /// jumlah segmen kelompok ini di periode + sheet logis yang sama. null = segmen dari satu file. Satu
+  /// periode boleh punya > 1 segmen di satu sheet HANYA bila semuanya satu kelompok lengkap (gerbang
+  /// integritas, src/features/versions/integrity-check.ts) — bukan append buta.
+  groupId            String?
+  groupPart          Int?
+  groupSize          Int?
   /// Versi yang menulis segmen ini. SetNull (T-038): segmen tidak ikut terhapus bersama versinya —
   /// objeknya dihapus GC mark-and-sweep setelah tidak dirujuk versi hidup ≥ SEGMENT_GC_GRACE_HOURS.
   createdByVersionId String?
@@ -631,19 +643,24 @@ enum UploadQueueItemState {
 }
 
 model UploadQueue {
-  id          String            @id @default(cuid())
-  datasetId   String
-  dataset     Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
-  status      UploadQueueStatus @default(OPEN)
+  id             String            @id @default(cuid())
+  datasetId      String
+  dataset        Dataset           @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  status         UploadQueueStatus @default(OPEN)
+  /// Kelompok (T-060): semua file adalah bagian dari periode yang sama dan diproses sebagai SATU versi
+  /// setelah semuanya terunggah (gagal/dibatalkan satu = seluruh kelompok tidak diproses).
+  grouped        Boolean           @default(false)
+  /// Id versi kelompok yang dipesan saat antrean dibuat (file sumber di raw/<ds>/<groupVersionId>/).
+  groupVersionId String?           @unique
   /// "Hentikan antrean": file yang belum diproses dibatalkan; file yang sedang diproses diselesaikan
   /// dulu, lalu antrean berstatus CANCELLED.
-  stoppedAt   DateTime?
+  stoppedAt      DateTime?
   /// Ringkasan antrean yang sudah selesai disembunyikan pemilik.
-  dismissedAt DateTime?
-  finishedAt  DateTime?
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
-  items       UploadQueueItem[]
+  dismissedAt    DateTime?
+  finishedAt     DateTime?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  items          UploadQueueItem[]
 
   @@index([datasetId, createdAt])
   @@index([status])

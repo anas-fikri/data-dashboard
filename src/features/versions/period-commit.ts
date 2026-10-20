@@ -85,6 +85,9 @@ export const periodSheetSelect = {
               periodKey: true,
               periodStart: true,
               sha256: true,
+              groupId: true,
+              groupPart: true,
+              groupSize: true,
             },
           },
         },
@@ -127,6 +130,9 @@ export function activeOf(s: PeriodSheetRow): ActivePeriodSheet & { files: Map<st
         rows: t.dataRows ?? 0,
         bytes: Number(g.rawBytes ?? 0n) + Number(t.typedBytes ?? 0n),
         sha256: g.sha256,
+        groupId: g.groupId,
+        groupPart: g.groupPart,
+        groupSize: g.groupSize,
       },
     ];
   });
@@ -161,6 +167,9 @@ async function incomingOf(
       rawBytes: true,
       rowBase: true,
       maxSrcRow: true,
+      groupId: true,
+      groupPart: true,
+      groupSize: true,
       typed: {
         select: {
           id: true,
@@ -192,6 +201,9 @@ async function incomingOf(
       periodStart: start,
       rows: t.dataRows,
       bytes: Number(g.rawBytes ?? 0n) + Number(t.typedBytes ?? 0n),
+      groupId: g.groupId,
+      groupPart: g.groupPart,
+      groupSize: g.groupSize,
     });
     files.set(t.id, {
       rawKey: g.rawKey,

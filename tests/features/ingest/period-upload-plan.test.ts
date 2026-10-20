@@ -4,9 +4,12 @@ import type { PeriodLimits } from "@/features/ingest/period-plan";
 import {
   applySchemaChange,
   buildPeriodManifest,
+  combinedSha256,
   confirmBlocker,
   decidePeriodCommit,
   periodColumnPlan,
+  planInputs,
+  segmentGroupProblem,
   periodPlanDigest,
   periodPlanSummary,
   validateColMap,
@@ -390,5 +393,116 @@ describe("decidePeriodCommit + buildPeriodManifest", () => {
     const reordered = Object.fromEntries(Object.entries(p).reverse()) as typeof p;
     expect(periodPlanDigest(reordered)).toBe(periodPlanDigest(p));
     expect(periodPlanDigest({ ...p, droppedRows: 1 })).not.toBe(periodPlanDigest(p));
+  });
+});
+
+describe("T-060: kelompok file satu periode di rencana dan manifest", () => {
+  const ref = (key: string, rows: number, id: string, g?: [number, number]) => ({
+    typedId: `t-${id}`,
+    segmentId: id,
+    lineageId: "L1",
+    periodKey: key,
+    periodStart: `${key}-01`,
+    rows,
+    bytes: 10,
+    ...(g ? { groupId: "grp", groupPart: g[0], groupSize: g[1] } : {}),
+  });
+
+  it("combinedSha256: satu file = sha-nya; kelompok = sidik urutan-bebas; ada null → null", () => {
+    expect(combinedSha256(["a"])).toBe("a");
+    expect(combinedSha256(["a", "a"])).toBe("a");
+    const ab = combinedSha256(["a", "b"]);
+    expect(ab).toMatch(/^[0-9a-f]{64}$/);
+    expect(combinedSha256(["b", "a"])).toBe(ab);
+    expect(combinedSha256(["a", null])).toBeNull();
+  });
+
+  it("segmentGroupProblem: >1 segmen hanya sebagai satu kelompok lengkap", () => {
+    expect(segmentGroupProblem([])).toBeNull();
+    expect(segmentGroupProblem([{}])).toBeNull();
+    expect(segmentGroupProblem([{}, {}])).toBe("muncul lebih dari sekali");
+    const g = (p: number, n: number, id = "x") => ({ groupId: id, groupPart: p, groupSize: n });
+    expect(segmentGroupProblem([g(1, 2), g(2, 2)])).toBeNull();
+    expect(segmentGroupProblem([g(1, 3), g(2, 3)])).toBe("kelompok file tidak lengkap");
+    expect(segmentGroupProblem([g(1, 2), g(1, 2)])).toBe("nomor file kelompok ganda");
+    expect(segmentGroupProblem([g(1, 2), g(2, 2, "y")])).toBe("muncul lebih dari sekali");
+  });
+
+  it("kelompok menggantikan periode utuh: baris dijumlah, segmen dihitung untuk batas, manifest semua file", () => {
+    const active: ActivePeriodSheet[] = [
+      {
+        sheetId: "S1",
+        lineageId: "L1",
+        name: "Data",
+        schemaRevision: 1,
+        segments: [
+          { ...ref("2026-02", 20, "feb"), sha256: "s-feb" },
+          { ...ref("2026-03", 31, "mar"), sha256: "s-mar" },
+        ],
+      },
+    ];
+    const incoming = [
+      ref("2026-03", 15, "p1", [1, 3]),
+      ref("2026-03", 15, "p2", [2, 3]),
+      ref("2026-03", 10, "p3", [3, 3]),
+    ];
+    const inputs = planInputs(active, incoming);
+    expect(inputs.incoming).toEqual([
+      {
+        key: "2026-03",
+        start: "2026-03-01",
+        sheets: { L1: { rows: 40, bytes: 30, segments: 3 } },
+        sha256: null,
+      },
+    ]);
+    const d = decidePeriodCommit({
+      facts: {
+        grain: "MONTH",
+        source: "COLUMN",
+        fileSheets: ["L1"],
+        droppedRows: 0,
+        ignoredSheets: [],
+        fileSha256: "f",
+      },
+      activeVersionId: "A",
+      active,
+      incoming,
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+      limits: { ...LIMITS, sheetMaxSegments: 3 },
+      include: [],
+      mode: { kind: "auto", allowAuto: true },
+    });
+    // Feb (1) + Maret (3 file) = 4 segmen > batas 3 segmen per sheet → ditolak sebelum commit.
+    expect(d.decision).toBe("reject");
+    const ok = decidePeriodCommit({
+      facts: {
+        grain: "MONTH",
+        source: "COLUMN",
+        fileSheets: ["L1"],
+        droppedRows: 0,
+        ignoredSheets: [],
+        fileSha256: "f",
+      },
+      activeVersionId: "A",
+      active,
+      incoming: [...incoming].reverse(),
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+      limits: LIMITS,
+      include: [],
+      mode: { kind: "auto", allowAuto: true },
+    });
+    expect(ok.decision).toBe("await");
+    if (ok.decision !== "await") return;
+    expect(ok.manifest.get("L1")!.map((r) => [r.periodKey, r.segmentId])).toEqual([
+      ["2026-02", "feb"],
+      ["2026-03", "p1"],
+      ["2026-03", "p2"],
+      ["2026-03", "p3"],
+    ]);
+    // Kelompok tidak lengkap / dua segmen tanpa kelompok → galat bentuk (tidak pernah diaktifkan).
+    expect(() => planInputs(active, incoming.slice(0, 2))).toThrow(/kelompok file tidak lengkap/);
+    expect(() => planInputs(active, [ref("2026-03", 1, "a"), ref("2026-03", 1, "b")])).toThrow(
+      /muncul lebih dari sekali/,
+    );
   });
 });

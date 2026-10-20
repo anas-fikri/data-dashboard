@@ -50,10 +50,13 @@ async function asOwner<T>(
   }
 }
 
-/** Buat antrean dari daftar file: { baseVersionId, files: [{ name, size, lastModified, label }] }. */
+/**
+ * Buat antrean dari daftar file: { baseVersionId, files: [{ name, size, lastModified, label }], group? }.
+ * group = kelompok file satu periode (T-060): satu versi setelah semua file terunggah.
+ */
 export async function createUploadQueueAction(
   datasetId: string,
-  input: { baseVersionId: unknown; files: unknown },
+  input: { baseVersionId: unknown; files: unknown; group?: unknown },
 ): Promise<ActionResult<{ queue: QueueView }>> {
   return asOwner(
     "createUploadQueue",
@@ -62,6 +65,7 @@ export async function createUploadQueueAction(
         datasetId,
         baseVersionId: input?.baseVersionId,
         files: input?.files,
+        group: input?.group,
       });
       if (r.ok) revalidatePath(`/datasets/${datasetId}`);
       return r;

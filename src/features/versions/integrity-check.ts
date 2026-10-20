@@ -8,11 +8,13 @@
  *
  * Versi periode (T-049): setiap sheet punya sumber periode; setiap segmen punya periode yang cocok
  * dengan satuan versi dan jumlah baris tercatat; satu periode tidak muncul dua kali dalam satu sheet
- * (baris tergandakan). Isi file — tidak ada `_period` NULL dan baris per periode = metadata — diperiksa
+ * (baris tergandakan) — kecuali sebagai satu kelompok file yang lengkap (T-060: id kelompok sama, nomor
+ * file berbeda, jumlah = groupSize; segmentGroupProblem). Isi file — tidak ada `_period` NULL dan baris per periode = metadata — diperiksa
  * typedFileProblems saat file ditulis (ingest/recast), jadi metadata yang dicek di sini sudah terbukti
  * cocok dengan file-nya. Versi non-periode tidak boleh merujuk segmen berperiode.
  */
 import { isIsoDate, periodKeyOf, periodStartOf, type PeriodGrain } from "@/features/ingest/period";
+import { segmentGroupProblem } from "@/features/ingest/period-upload-plan";
 
 /** Gagal gerbang integritas: permanen (mengulang dengan file yang sama tidak menolong). */
 export class IntegrityError extends Error {
@@ -41,6 +43,10 @@ export interface ManifestSegment {
   periodStart?: string | null;
   /** Baris data file typed (SegmentTyped.dataRows); null = file lama (belum diukur). */
   dataRows?: number | null;
+  /** Kelompok file satu periode (T-060, Segment.groupId/groupPart/groupSize); null = satu file. */
+  groupId?: string | null;
+  groupPart?: number | null;
+  groupSize?: number | null;
 }
 export interface ManifestSheet {
   id: string;
@@ -65,7 +71,7 @@ function periodProblems(s: ManifestSheet, label: string): string[] {
     return out;
   }
   if (s.typedKey && !s.periodSource) out.push(`${label}: sumber periode tidak tercatat`);
-  const seen = new Set<string>();
+  const byKey = new Map<string, ManifestSegment[]>();
   for (const g of s.segments) {
     const at = `${label} segmen ${g.ordinal + 1}`;
     if (!g.periodKey || !g.periodStart || !isIsoDate(g.periodStart)) {
@@ -78,12 +84,14 @@ function periodProblems(s: ManifestSheet, label: string): string[] {
     ) {
       out.push(`${at}: periode ${g.periodKey} tidak cocok dengan satuan versi`);
     }
-    if (seen.has(g.periodKey))
-      out.push(`${label}: periode ${g.periodKey} muncul lebih dari sekali`);
-    seen.add(g.periodKey);
+    byKey.set(g.periodKey, [...(byKey.get(g.periodKey) ?? []), g]);
     if (g.dataRows === null || g.dataRows === undefined) {
       out.push(`${at}: jumlah baris periode ${g.periodKey} tidak tercatat`);
     }
+  }
+  for (const [key, list] of byKey) {
+    const bad = segmentGroupProblem(list);
+    if (bad) out.push(`${label}: periode ${key} ${bad}`);
   }
   return out;
 }

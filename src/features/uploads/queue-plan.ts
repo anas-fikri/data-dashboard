@@ -106,6 +106,90 @@ export function queueFilesProblem(
   return null;
 }
 
+// ── Kelompok file satu periode (T-060) ───────────────────────────────────────────────────────────
+
+/** Bawaan PERIOD_MAX_FILES (server memakai env; klien hanya untuk pesan awal). */
+export const GROUP_MAX_FILES_DEFAULT = 10;
+
+/**
+ * Pemeriksaan daftar file kelompok "satu periode dari beberapa file" (murni; server memeriksa ulang
+ * dengan PERIOD_MAX_FILES). null = boleh. Semua file adalah bagian periode yang sama: sheet berlabel
+ * wajib satu periode untuk seluruh kelompok.
+ */
+export function groupFilesProblem(
+  files: readonly QueueFile[],
+  ctx: { grain: PeriodGrain; needsLabel: boolean; maxFiles: number },
+): string | null {
+  if (files.length < QUEUE_MIN_FILES) return "Pilih minimal 2 file untuk satu kelompok.";
+  if (files.length > ctx.maxFiles) {
+    return `Satu kelompok paling banyak ${ctx.maxFiles} file, Anda memilih ${files.length} file. Gabungkan sebagian file (atau ekspor sebagai CSV), atau minta admin menaikkan batas PERIOD_MAX_FILES.`;
+  }
+  const seen = new Set<string>();
+  for (const f of files) {
+    const id = fileIdentity(f);
+    if (seen.has(id)) return `File “${f.name}” terpilih dua kali. Hapus salah satunya.`;
+    seen.add(id);
+  }
+  if (!ctx.needsLabel) return null;
+  if (files.some((f) => !f.label)) return "Pilih periode kelompok ini.";
+  if (new Set(files.map((f) => f.label)).size > 1) {
+    return "Semua file satu kelompok harus untuk periode yang sama. Pilih satu periode untuk kelompok ini.";
+  }
+  return null;
+}
+
+/** File kelompok lain gagal/dilewati sebelum diproses: kelompok tidak pernah diproses sebagian. */
+export const groupIncompleteMessage = (names: readonly string[]) =>
+  `Kelompok tidak diproses karena ${names.length === 1 ? `“${names[0]}”` : `${names.length} file`} gagal atau dilewati sebelum kelompok lengkap; data aktif tidak berubah. Unggah ulang seluruh kelompok.`;
+
+/**
+ * Langkah berikutnya antrean kelompok (murni, T-060). Semua file harus terunggah dulu; lalu SATU versi
+ * untuk seluruh kelompok (`version` = versi kelompok; undefined = belum dibuat, null = sudah tidak ada).
+ * File mana pun gagal/dilewati sebelum diproses → semua file lain dibatalkan (tidak ada aktivasi
+ * sebagian). Hasil versi dicatat di setiap file kelompok.
+ */
+export function decideGroupAdvance(
+  items: readonly (AdvanceItem & { name?: string })[],
+  version: AdvanceVersion | null | undefined,
+  busy: boolean,
+  stopped = false,
+): AdvanceDecision {
+  const ordered = [...items].sort((a, b) => a.seq - b.seq);
+  const head = ordered[0];
+  if (!head) return { settle: [], next: { kind: "finished" } };
+  const open = ordered.filter((it) => !TERMINAL_ITEM_STATES.has(it.state));
+  const started = open.filter((it) => it.state === "STARTED");
+  const all = (state: AdvanceSettle["state"], message: string | null, list = open) => ({
+    settle: list.map((it) => ({ id: it.id, state, message })),
+    next: { kind: "finished" } as AdvanceNext,
+  });
+  if (started.length) {
+    if (version === undefined || version === null) return all("FAILED", VANISHED_MESSAGE, started);
+    if (version.status === "READY") return all("DONE", version.summary, started);
+    if (version.status === "FAILED") {
+      return all("FAILED", version.errorMessage ?? "Gagal diproses.", started);
+    }
+    if (version.status === "UPLOADED") {
+      return { settle: [], next: { kind: "reenqueue", id: head.id, versionId: head.versionId } };
+    }
+    return {
+      settle: [],
+      next: { kind: "wait", id: head.id, reason: HELD.has(version.status) ? "held" : "processing" },
+    };
+  }
+  if (!open.length) return { settle: [], next: { kind: "finished" } };
+  if (stopped) return all("CANCELLED", STOPPED_MESSAGE);
+  const lost = ordered.filter((it) => it.state === "FAILED" || it.state === "CANCELLED");
+  if (lost.length)
+    return all("CANCELLED", groupIncompleteMessage(lost.map((x) => x.name ?? `file ${x.seq}`)));
+  const pending = open.find((it) => it.state !== "QUEUED");
+  if (pending) return { settle: [], next: { kind: "wait", id: pending.id, reason: "upload" } };
+  return {
+    settle: [],
+    next: busy ? { kind: "wait", id: head.id, reason: "busy" } : { kind: "promote", id: head.id },
+  };
+}
+
 // ── Keputusan langkah berikutnya ─────────────────────────────────────────────────────────────────
 
 export interface AdvanceItem {
@@ -243,6 +327,8 @@ export interface QueueItemView extends QueueItemRow {
 export interface QueueView {
   id: string;
   status: QueueStatus;
+  /** Kelompok file satu periode (T-060): semua file diproses sebagai satu versi. */
+  grouped: boolean;
   grain: PeriodGrain | null;
   /** "Hentikan antrean" sudah ditekan (file yang sedang diproses masih diselesaikan). */
   stopped: boolean;
@@ -285,7 +371,13 @@ function statusOf(r: QueueItemRow): { statusText: string; tone: QueueTone } {
 
 /** Tampilan antrean dari baris file (murni). */
 export function queueView(
-  q: { id: string; status: QueueStatus; grain: PeriodGrain | null; stopped: boolean },
+  q: {
+    id: string;
+    status: QueueStatus;
+    grain: PeriodGrain | null;
+    stopped: boolean;
+    grouped?: boolean;
+  },
   rows: readonly QueueItemRow[],
 ): QueueView {
   const items = [...rows].sort((a, b) => a.seq - b.seq).map((r) => ({ ...r, ...statusOf(r) }));
@@ -307,12 +399,13 @@ export function queueView(
               ? ("confirm" as const)
               : ("mapping" as const),
           versionId: current.versionId,
-          name: current.name,
+          name: q.grouped ? `Kelompok ${fmtN(items.length)} file` : current.name,
         }
       : null;
   return {
     id: q.id,
     status: q.status,
+    grouped: q.grouped ?? false,
     grain: q.grain,
     stopped: q.stopped,
     total: items.length,
@@ -323,12 +416,26 @@ export function queueView(
   };
 }
 
+const fmtN = (n: number) => n.toLocaleString("id-ID");
+
 /** Kalimat ringkasan antrean yang selesai/dihentikan. */
-export function queueSummaryText(v: Pick<QueueView, "status" | "total" | "counts">): string {
+export function queueSummaryText(
+  v: Pick<QueueView, "status" | "total" | "counts"> & { grouped?: boolean },
+): string {
   const fmt = (n: number) => n.toLocaleString("id-ID");
   const parts = [`${fmt(v.counts.done)} berhasil`];
   if (v.counts.failed) parts.push(`${fmt(v.counts.failed)} gagal`);
   if (v.counts.cancelled) parts.push(`${fmt(v.counts.cancelled)} dibatalkan`);
+  if (v.grouped) {
+    const head = v.status === "CANCELLED" ? "Kelompok dihentikan" : "Kelompok selesai";
+    const result =
+      v.counts.done === v.total
+        ? "diterapkan sebagai satu periode"
+        : v.counts.failed
+          ? "gagal, data aktif tidak berubah"
+          : "dibatalkan, data aktif tidak berubah";
+    return `${head}: ${fmt(v.total)} file — ${result}.`;
+  }
   const head = v.status === "CANCELLED" ? "Antrean dihentikan" : "Antrean selesai";
   return `${head}: ${fmt(v.total)} file — ${parts.join(", ")}.`;
 }

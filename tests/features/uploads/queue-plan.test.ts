@@ -4,6 +4,8 @@ import {
   QUEUE_MAX_FILES,
   STOPPED_MESSAGE,
   decideAdvance,
+  decideGroupAdvance,
+  groupFilesProblem,
   orderQueueFiles,
   queueFilesProblem,
   queueSummaryText,
@@ -11,6 +13,7 @@ import {
   type AdvanceItem,
   type AdvanceVersion,
   type QueueItemRow,
+  type QueueItemState,
 } from "@/features/uploads/queue-plan";
 
 /*
@@ -253,5 +256,123 @@ describe("queueView", () => {
       row(2, { state: "CANCELLED" }),
     ]);
     expect(queueSummaryText(s)).toBe("Antrean dihentikan: 2 file — 0 berhasil, 2 dibatalkan.");
+  });
+});
+
+describe("T-060: kelompok file satu periode", () => {
+  const f = (name: string, label: string | null = null) => ({
+    name,
+    size: 10,
+    lastModified: 1,
+    label,
+  });
+  const ctx = { grain: "MONTH" as const, needsLabel: false, maxFiles: 3 };
+
+  it("groupFilesProblem: 2..maxFiles file, tanpa duplikat, label satu periode", () => {
+    expect(groupFilesProblem([f("a.csv")], ctx)).toBe("Pilih minimal 2 file untuk satu kelompok.");
+    expect(groupFilesProblem([f("a"), f("b"), f("c"), f("d")], ctx)).toMatch(
+      /^Satu kelompok paling banyak 3 file, Anda memilih 4 file/,
+    );
+    expect(groupFilesProblem([f("a"), f("a")], ctx)).toMatch(/terpilih dua kali/);
+    expect(groupFilesProblem([f("a"), f("b"), f("c")], ctx)).toBeNull();
+    const lab = { ...ctx, needsLabel: true };
+    expect(groupFilesProblem([f("a", "2026-03-01"), f("b")], lab)).toBe(
+      "Pilih periode kelompok ini.",
+    );
+    expect(groupFilesProblem([f("a", "2026-03-01"), f("b", "2026-04-01")], lab)).toMatch(
+      /periode yang sama/,
+    );
+    // Satu periode dua file: kelompok boleh (antrean biasa menolaknya).
+    expect(groupFilesProblem([f("a", "2026-03-01"), f("b", "2026-03-01")], lab)).toBeNull();
+    expect(
+      queueFilesProblem([f("a", "2026-03-01"), f("b", "2026-03-01")], {
+        grain: "MONTH",
+        needsLabel: true,
+      }),
+    ).toMatch(/sama-sama untuk Maret 2026/);
+  });
+
+  const it3 = (states: QueueItemState[]) =>
+    states.map((state, i) => ({
+      id: `i${i + 1}`,
+      seq: i + 1,
+      state,
+      versionId: "g",
+      name: `f${i + 1}`,
+    }));
+
+  it("decideGroupAdvance: tunggu semua terunggah, promosi sekali, hasil versi ke semua file", () => {
+    expect(
+      decideGroupAdvance(it3(["QUEUED", "UPLOADING", "QUEUED"]), undefined, false).next,
+    ).toEqual({
+      kind: "wait",
+      id: "i2",
+      reason: "upload",
+    });
+    expect(decideGroupAdvance(it3(["QUEUED", "QUEUED", "QUEUED"]), undefined, true).next).toEqual({
+      kind: "wait",
+      id: "i1",
+      reason: "busy",
+    });
+    expect(decideGroupAdvance(it3(["QUEUED", "QUEUED", "QUEUED"]), undefined, false).next).toEqual({
+      kind: "promote",
+      id: "i1",
+    });
+    const started = it3(["STARTED", "STARTED", "STARTED"]);
+    const v = (status: string) => ({
+      status,
+      errorMessage: "rusak",
+      summary: "Maret 2026 diganti",
+    });
+    expect(decideGroupAdvance(started, v("UPLOADED"), false).next).toEqual({
+      kind: "reenqueue",
+      id: "i1",
+      versionId: "g",
+    });
+    expect(decideGroupAdvance(started, v("AWAITING_CONFIRM"), false).next).toMatchObject({
+      kind: "wait",
+      reason: "held",
+    });
+    expect(decideGroupAdvance(started, v("READY"), false)).toEqual({
+      settle: ["i1", "i2", "i3"].map((id) => ({
+        id,
+        state: "DONE",
+        message: "Maret 2026 diganti",
+      })),
+      next: { kind: "finished" },
+    });
+    expect(decideGroupAdvance(started, v("FAILED"), false).settle.map((s) => s.state)).toEqual([
+      "FAILED",
+      "FAILED",
+      "FAILED",
+    ]);
+    expect(decideGroupAdvance(started, null, false).settle[0]).toMatchObject({ state: "FAILED" });
+  });
+
+  it("decideGroupAdvance: satu file gagal/dilewati atau dihentikan → semua dibatalkan", () => {
+    const d = decideGroupAdvance(it3(["QUEUED", "FAILED", "WAITING"]), undefined, false);
+    expect(d.settle.map((s) => [s.id, s.state])).toEqual([
+      ["i1", "CANCELLED"],
+      ["i3", "CANCELLED"],
+    ]);
+    expect(d.settle[0]!.message).toMatch(/“f2” gagal atau dilewati/);
+    expect(d.next).toEqual({ kind: "finished" });
+    const stop = decideGroupAdvance(it3(["QUEUED", "QUEUED", "UPLOADING"]), undefined, false, true);
+    expect(stop.settle.map((s) => s.state)).toEqual(["CANCELLED", "CANCELLED", "CANCELLED"]);
+  });
+
+  it("ringkasan kelompok", () => {
+    const counts = { done: 3, failed: 0, cancelled: 0, remaining: 0 };
+    expect(queueSummaryText({ status: "DONE", total: 3, counts, grouped: true })).toBe(
+      "Kelompok selesai: 3 file — diterapkan sebagai satu periode.",
+    );
+    expect(
+      queueSummaryText({
+        status: "DONE",
+        total: 3,
+        counts: { done: 0, failed: 3, cancelled: 0, remaining: 0 },
+        grouped: true,
+      }),
+    ).toBe("Kelompok selesai: 3 file — gagal, data aktif tidak berubah.");
   });
 });

@@ -9,15 +9,19 @@ import { s3Multipart, type MultipartStorage } from "@/lib/storage/multipart";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
 import { isIdShape } from "@/features/datasets/validation";
 import { periodStartOf, type PeriodGrain } from "@/features/ingest/period";
+import { groupSourceKey, groupTitle, type GroupFile } from "@/features/ingest/period-group";
 import { parseFrozenPeriodPlan } from "@/features/ingest/period-plan";
 import { periodPlanSummary } from "@/features/ingest/period-upload-plan";
 import { periodInitCheck } from "@/features/versions/period-capacity";
+import { newSegmentId } from "@/features/versions/segment-keys";
 import { PART_SIZE, partCountOf } from "./parts";
 import { formatGiB, quotaDecision, quotaGraceUntil, userUsage } from "./quota";
 import {
   QUEUE_MAX_FILES,
   UNSTARTED_ITEM_STATES,
   decideAdvance,
+  decideGroupAdvance,
+  groupFilesProblem,
   orderQueueFiles,
   queueFilesProblem,
   queueView,
@@ -73,6 +77,19 @@ export function itemSourceKey(datasetId: string, versionId: string, name: string
   return `raw/${datasetId}/${versionId}/source.${kindOf(name) ?? "csv"}`;
 }
 
+/**
+ * Kunci file sumber satu file antrean: antrean biasa = prefix versi file itu; kelompok (T-060) = file
+ * nomor `seq` di prefix versi kelompok (raw/<ds>/<groupVersionId>/part-<seq>.<ext>).
+ */
+export function queueItemKey(
+  q: { datasetId: string; grouped: boolean; groupVersionId: string | null },
+  it: { seq: number; versionId: string; originalName: string },
+): string {
+  return q.grouped && q.groupVersionId
+    ? groupSourceKey(q.datasetId, q.groupVersionId, it.seq, kindOf(it.originalName) ?? "csv")
+    : itemSourceKey(q.datasetId, it.versionId, it.originalName);
+}
+
 const fileSchema = z.object({
   name: z.unknown(),
   size: z.unknown(),
@@ -83,6 +100,8 @@ const createSchema = z.object({
   datasetId: z.unknown(),
   baseVersionId: z.unknown(),
   files: z.array(fileSchema).min(1).max(QUEUE_MAX_FILES),
+  /** Kelompok file satu periode (T-060): semua file = satu periode, diproses sebagai satu versi. */
+  group: z.boolean().optional(),
 });
 
 const busyMessage = (status: string, own: boolean) =>
@@ -116,6 +135,15 @@ export async function createUploadQueue(
     );
   }
   const { datasetId, baseVersionId } = parsed.data;
+  const grouped = parsed.data.group === true;
+  const maxGroup = env().PERIOD_MAX_FILES;
+  if (grouped && parsed.data.files.length > maxGroup) {
+    // Ditolak sebelum apa pun dibuat (T-060 AC2): kelompok > PERIOD_MAX_FILES.
+    return fail(
+      "LIMIT_REACHED",
+      `Satu kelompok paling banyak ${maxGroup} file, Anda memilih ${parsed.data.files.length} file. Gabungkan sebagian file (atau ekspor sebagai CSV), atau minta admin menaikkan batas PERIOD_MAX_FILES.`,
+    );
+  }
   if (typeof datasetId !== "string" || !isIdShape(datasetId)) return notFound();
   const maxBytes = env().MAX_UPLOAD_BYTES;
   const files: { name: string; size: number; lastModified: number; label: string | null }[] = [];
@@ -208,7 +236,9 @@ export async function createUploadQueue(
           };
         }
       }
-      const problem = queueFilesProblem(files, { grain, needsLabel });
+      const problem = grouped
+        ? groupFilesProblem(files, { grain, needsLabel, maxFiles: maxGroup })
+        : queueFilesProblem(files, { grain, needsLabel });
       if (problem) return { kind: "reject", code: "INVALID", message: problem };
 
       const total = files.reduce((n, f) => n + f.size, 0);
@@ -231,6 +261,7 @@ export async function createUploadQueue(
       const queue = await tx.uploadQueue.create({
         data: {
           datasetId,
+          ...(grouped ? { grouped: true, groupVersionId: newSegmentId() } : {}),
           items: {
             create: ordered.map((f, i) => ({
               seq: i + 1,
@@ -258,8 +289,8 @@ export async function createUploadQueue(
   }
   if (created.kind === "reject") return fail(created.code, created.message);
   logger.info(
-    { datasetId, queueId: created.queueId, files: files.length },
-    "antrean unggah dibuat",
+    { datasetId, queueId: created.queueId, files: files.length, grouped },
+    grouped ? "kelompok file periode dibuat" : "antrean unggah dibuat",
   );
   const view = await getUploadQueue(userId, datasetId);
   if (!view) return notFound();
@@ -281,7 +312,17 @@ async function ownItem(userId: string, itemId: unknown) {
       uploadId: true,
       partSize: true,
       partCount: true,
-      queue: { select: { id: true, datasetId: true, status: true, stoppedAt: true } },
+      seq: true,
+      queue: {
+        select: {
+          id: true,
+          datasetId: true,
+          status: true,
+          stoppedAt: true,
+          grouped: true,
+          groupVersionId: true,
+        },
+      },
     },
   });
 }
@@ -331,7 +372,7 @@ export async function initQueueItem(
     return { ok: true, ...plan, uploadedParts: all, resumed: true };
   }
   await touchQueue(it.queue.id);
-  const key = itemSourceKey(it.queue.datasetId, it.versionId, it.originalName);
+  const key = queueItemKey(it.queue, it);
   if (it.state === "UPLOADING" && it.uploadId) {
     const uploaded = await uploadedPartNumbers(storage, {
       sourceKey: key,
@@ -385,7 +426,7 @@ export async function signQueueParts(
   await touchQueue(it.queue.id);
   return signTarget(
     {
-      key: itemSourceKey(it.queue.datasetId, it.versionId, it.originalName),
+      key: queueItemKey(it.queue, it),
       uploadId: it.uploadId,
       size: Number(it.sizeBytes),
       partSize: it.partSize,
@@ -423,7 +464,7 @@ export async function completeQueueItem(
   const uploadId = it.uploadId;
   const r = await completeTarget(
     {
-      key: itemSourceKey(it.queue.datasetId, it.versionId, it.originalName),
+      key: queueItemKey(it.queue, it),
       uploadId,
       size: Number(it.sizeBytes),
       partSize: it.partSize,
@@ -521,17 +562,16 @@ export async function skipQueueItem(
   });
   if (r.count !== 1)
     return fail("BUSY", "File ini sedang diperiksa. Tunggu sebentar, lalu coba lagi.");
-  await removeItemObject(storage, it.queue.datasetId, it);
+  await removeItemObject(storage, { ...it, key: queueItemKey(it.queue, it) });
   await advanceUploadQueue(it.queue.datasetId, deps);
   return { ok: true, state: failed ? "FAILED" : "CANCELLED" };
 }
 
 async function removeItemObject(
   storage: MultipartStorage,
-  datasetId: string,
-  it: { id: string; versionId: string; originalName: string; uploadId: string | null },
+  it: { id: string; key: string; uploadId: string | null },
 ) {
-  const key = itemSourceKey(datasetId, it.versionId, it.originalName);
+  const key = it.key;
   if (it.uploadId) {
     await storage
       .abort(key, it.uploadId)
@@ -611,6 +651,8 @@ export async function getUploadQueue(userId: string, datasetId: string): Promise
       id: true,
       status: true,
       stoppedAt: true,
+      grouped: true,
+      groupVersionId: true,
       dataset: { select: { activeVersion: { select: { periodGrain: true } } } },
       items: {
         select: {
@@ -628,7 +670,10 @@ export async function getUploadQueue(userId: string, datasetId: string): Promise
     },
   });
   if (!q) return null;
-  const started = q.items.filter((i) => i.state === "STARTED").map((i) => i.versionId);
+  // Kelompok (T-060): semua file berbagi satu versi kelompok.
+  const vid = (i: { versionId: string }) =>
+    q.grouped && q.groupVersionId ? q.groupVersionId : i.versionId;
+  const started = [...new Set(q.items.filter((i) => i.state === "STARTED").map(vid))];
   const versions = started.length
     ? await prisma.datasetVersion.findMany({
         where: { id: { in: started }, datasetId },
@@ -645,8 +690,8 @@ export async function getUploadQueue(userId: string, datasetId: string): Promise
     label: isoOf(i.periodLabel),
     state: i.state,
     message: i.message,
-    versionId: i.versionId,
-    versionStatus: statusOf.get(i.versionId) ?? null,
+    versionId: vid(i),
+    versionStatus: statusOf.get(vid(i)) ?? null,
   }));
   return queueView(
     {
@@ -654,6 +699,7 @@ export async function getUploadQueue(userId: string, datasetId: string): Promise
       status: q.status,
       grain: (q.dataset.activeVersion?.periodGrain ?? null) as PeriodGrain | null,
       stopped: q.stoppedAt !== null,
+      grouped: q.grouped,
     },
     rows,
   );
@@ -664,7 +710,7 @@ type StepResult =
   | { kind: "again"; cleanup: CleanupItem[] }
   | { kind: "enqueue"; versionId: string; cleanup: CleanupItem[] }
   | { kind: "stay"; cleanup: CleanupItem[] };
-type CleanupItem = { id: string; versionId: string; originalName: string; uploadId: string | null };
+type CleanupItem = { id: string; key: string; uploadId: string | null };
 
 /**
  * Jalankan giliran antrean dataset (idempoten; aman dipanggil dari mana saja, berkali-kali): catat hasil
@@ -681,7 +727,7 @@ export async function advanceUploadQueue(datasetId: string, deps: QueueDeps = {}
     for (let round = 0; round <= QUEUE_MAX_FILES + 1; round++) {
       const step = await prisma.$transaction((tx) => advanceStep(tx, datasetId), TX_OPTIONS);
       if (step.kind === "none") return;
-      for (const c of step.cleanup) await removeItemObject(storage, datasetId, c);
+      for (const c of step.cleanup) await removeItemObject(storage, c);
       if (step.kind === "enqueue") {
         await enqueue(step.versionId, datasetId).catch((err: unknown) =>
           // Versi tetap UPLOADED: giliran berikutnya (atau sapuan worker saat start) mengantre ulang.
@@ -717,6 +763,8 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
     select: {
       id: true,
       stoppedAt: true,
+      grouped: true,
+      groupVersionId: true,
       items: {
         select: {
           id: true,
@@ -736,7 +784,12 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
     },
   });
   if (!q) return { kind: "none" };
-  const startedIds = q.items.filter((i) => i.state === "STARTED").map((i) => i.versionId);
+  const grouped = q.grouped && !!q.groupVersionId;
+  const keyOf = (it: { seq: number; versionId: string; originalName: string }) =>
+    queueItemKey({ datasetId, grouped: q.grouped, groupVersionId: q.groupVersionId }, it);
+  // Kelompok (T-060): satu versi untuk semua file (UploadQueue.groupVersionId).
+  const vid = (it: { versionId: string }) => (grouped ? q.groupVersionId! : it.versionId);
+  const startedIds = [...new Set(q.items.filter((i) => i.state === "STARTED").map((i) => vid(i)))];
   const rows = startedIds.length
     ? await tx.datasetVersion.findMany({
         where: { id: { in: startedIds }, datasetId },
@@ -764,7 +817,14 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
         id: { notIn: startedIds },
       },
     })) > 0;
-  const d = decideAdvance(q.items, versions, busy, q.stoppedAt !== null);
+  const d = grouped
+    ? decideGroupAdvance(
+        q.items.map((i) => ({ ...i, versionId: vid(i), name: i.originalName })),
+        startedIds.length ? (versions.get(q.groupVersionId!) ?? null) : undefined,
+        busy,
+        q.stoppedAt !== null,
+      )
+    : decideAdvance(q.items, versions, busy, q.stoppedAt !== null);
 
   const now = new Date();
   const cleanup: CleanupItem[] = [];
@@ -780,8 +840,11 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
         finishedAt: now,
       },
     });
-    // File yang belum menjadi versi (antrean dihentikan): objek/multipart-nya dibuang setelah commit.
-    if (r.count === 1 && it.state !== "STARTED") cleanup.push(it);
+    // File yang belum menjadi versi (antrean dihentikan / kelompok tidak lengkap): objek/multipart-nya
+    // dibuang setelah commit.
+    if (r.count === 1 && it.state !== "STARTED") {
+      cleanup.push({ id: it.id, key: keyOf(it), uploadId: it.uploadId });
+    }
   }
 
   const next = d.next;
@@ -796,15 +859,19 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
   if (next.kind === "reenqueue") return { kind: "enqueue", versionId: next.versionId, cleanup };
   if (next.kind === "wait") return { kind: "stay", cleanup };
 
-  // Promosi: file berikutnya menjadi versi PERIOD terhadap versi aktif saat ini.
+  // Promosi: file berikutnya (kelompok: seluruh kelompok) menjadi versi PERIOD terhadap versi aktif.
   const it = q.items.find((i) => i.id === next.id)!;
   const failItem = async (message: string) => {
-    await tx.uploadQueueItem.updateMany({
-      where: { id: it.id, state: "QUEUED" },
-      data: { state: "FAILED", message, finishedAt: now },
-    });
-    // Objek file sumber dibuang (tidak pernah menjadi versi).
-    cleanup.push({ ...it, uploadId: null });
+    // Kelompok (T-060): semua file gagal bersama (tidak pernah diproses sebagian).
+    const list = grouped ? q.items.filter((i) => i.state === "QUEUED") : [it];
+    for (const x of list) {
+      await tx.uploadQueueItem.updateMany({
+        where: { id: x.id, state: "QUEUED" },
+        data: { state: "FAILED", message, finishedAt: now },
+      });
+      // Objek file sumber dibuang (tidak pernah menjadi versi).
+      cleanup.push({ id: x.id, key: keyOf(x), uploadId: null });
+    }
     return { kind: "again" as const, cleanup };
   };
   const active = ds.activeVersionId
@@ -826,23 +893,42 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
       "Periode file ini tidak sesuai pengaturan periode dataset saat gilirannya (pengaturan berubah). Unggah ulang file ini dengan periode yang benar.",
     );
   }
-  const size = Number(it.sizeBytes);
+  const members = grouped ? [...q.items].sort((a, b) => a.seq - b.seq) : [it];
+  if (grouped && members.some((m) => isoOf(m.periodLabel) !== isoOf(it.periodLabel))) {
+    return failItem("Periode file kelompok tidak sama. Unggah ulang kelompok dengan satu periode.");
+  }
+  const size = members.reduce((n, m) => n + Number(m.sizeBytes), 0);
+  const name = grouped ? groupTitle(members.map((m) => m.originalName)) : it.originalName;
   const chk = await periodInitCheck(tx, datasetId, { name: it.originalName, size, label });
   if (!chk.ok) return failItem(chk.message);
 
+  const versionId = vid(it);
+  const groupFiles: GroupFile[] | null = grouped
+    ? members.map((m) => ({
+        seq: m.seq,
+        key: keyOf(m),
+        name: m.originalName,
+        size: Number(m.sizeBytes),
+      }))
+    : null;
   await tx.datasetVersion.create({
     data: {
-      id: it.versionId,
+      id: versionId,
       datasetId,
       uploadedById: owner.ownerId,
       status: "UPLOADED",
-      originalName: it.originalName,
-      sizeBytes: it.sizeBytes,
-      fingerprint: fingerprintOf(it.originalName, size, Number(it.lastModified)),
-      partSize: it.partSize,
-      partCount: it.partCount,
-      sourceKey: itemSourceKey(datasetId, it.versionId, it.originalName),
-      etag: it.etag ?? "",
+      originalName: name,
+      sizeBytes: BigInt(size),
+      // Kelompok: tanpa sidik resume (bukan satu file) dan tanpa ukuran part satu file.
+      ...(grouped
+        ? { groupFiles: groupFiles as unknown as Prisma.InputJsonValue }
+        : {
+            fingerprint: fingerprintOf(it.originalName, size, Number(it.lastModified)),
+            partSize: it.partSize,
+            partCount: it.partCount,
+          }),
+      sourceKey: keyOf(members[0]!),
+      etag: members[0]!.etag ?? "",
       mode: "PERIOD",
       periodGrain: grain,
       baseVersionId: ds.activeVersionId,
@@ -850,15 +936,15 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
     },
   });
   const moved = await tx.uploadQueueItem.updateMany({
-    where: { id: it.id, state: "QUEUED" },
+    where: { id: { in: members.map((m) => m.id) }, state: "QUEUED" },
     data: { state: "STARTED", startedAt: now },
   });
-  if (moved.count !== 1) throw new Error("file antrean berubah saat giliran");
+  if (moved.count !== members.length) throw new Error("file antrean berubah saat giliran");
   logger.info(
-    { datasetId, queueId: q.id, versionId: it.versionId, seq: it.seq },
-    "giliran file antrean",
+    { datasetId, queueId: q.id, versionId, seq: it.seq, files: members.length },
+    grouped ? "giliran kelompok file periode" : "giliran file antrean",
   );
-  return { kind: "enqueue", versionId: it.versionId, cleanup };
+  return { kind: "enqueue", versionId, cleanup };
 }
 
 /**
@@ -884,7 +970,8 @@ export async function runUploadQueues(
       originalName: true,
       uploadId: true,
       state: true,
-      queue: { select: { datasetId: true } },
+      seq: true,
+      queue: { select: { datasetId: true, grouped: true, groupVersionId: true } },
     },
     take: 200,
   });
@@ -905,7 +992,7 @@ export async function runUploadQueues(
     });
     if (r.count === 1) {
       expired++;
-      await removeItemObject(storage, it.queue.datasetId, it);
+      await removeItemObject(storage, { ...it, key: queueItemKey(it.queue, it) });
     }
   }
   const open = await prisma.uploadQueue.findMany({

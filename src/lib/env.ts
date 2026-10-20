@@ -173,6 +173,11 @@ export const envSchema = z.object({
   PERIOD_SHRINK_CONFIRM_PCT: z.coerce.number().int().min(0).max(100).default(50),
   /** Periode file dengan baris < persen ini dari periode terbesar = "kemungkinan nyasar". */
   PERIOD_STRAY_PCT: z.coerce.number().int().min(0).max(100).default(10),
+  /**
+   * File per kelompok "satu periode dari beberapa file" (T-060, §5.2): kelompok yang lebih besar
+   * ditolak saat dibuat. Paling banyak 36 (batas file per antrean, QUEUE_MAX_FILES).
+   */
+  PERIOD_MAX_FILES: z.coerce.number().int().min(2).max(36).default(10),
   /** Unggahan periode yang menunggu konfirmasi dibuang otomatis setelah sekian jam (T-052, §5.2). */
   PERIOD_CONFIRM_TTL_HOURS: z.coerce
     .number()

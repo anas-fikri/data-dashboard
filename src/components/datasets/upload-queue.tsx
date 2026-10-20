@@ -28,6 +28,7 @@ import {
 } from "@/components/datasets/upload-queue-store";
 import { MONTHS } from "@/components/datasets/upload-period-picker";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import {
@@ -52,6 +53,7 @@ import {
 } from "@/features/uploads/queue-actions";
 import {
   TERMINAL_ITEM_STATES,
+  groupFilesProblem,
   orderQueueFiles,
   queueFilesProblem,
   queueSummaryText,
@@ -66,7 +68,9 @@ import { cn } from "@/lib/utils";
 /*
  * Antrean unggah banyak file periode (T-059, rencana G-6 §4.5 langkah 6).
  *  - UploadQueueDraft: daftar file terpilih dalam urutan proses (periode lama dulu), periode per file
- *    untuk sheet berlabel, lalu "Mulai antrean".
+ *    untuk sheet berlabel, lalu "Mulai antrean". Sakelar "Satu periode dari beberapa file" (T-060)
+ *    menjadikannya kelompok: satu periode untuk semua file, diproses sebagai SATU versi setelah semua
+ *    file terunggah (gagal satu = tidak ada yang diterapkan).
  *  - UploadQueuePanel: status server per file ("File 3 dari 12"), progres unggah tab ini, antrean
  *    berhenti saat file menunggu tinjauan/pemetaan dan lanjut sendiri setelah diputuskan, ringkasan
  *    (berhasil/gagal/dibatalkan) di akhir. Status dibaca ulang tiap 2,5 detik dari server, jadi tetap
@@ -112,6 +116,13 @@ export function UploadQueueDraft({
     })),
   );
   const [error, setError] = useState<{ message: string; stale: boolean } | null>(null);
+  const [group, setGroup] = useState(false);
+  const [groupLabel, setGroupLabel] = useState<string | null>(() =>
+    period.needsLabel
+      ? (files.map((f) => guessPeriodFromName(f.name, period.grain)).find((x) => x) ?? null)
+      : null,
+  );
+  const groupId = useId();
   const [pending, startPending] = useTransition();
   const [refreshing, startRefresh] = useTransition();
 
@@ -135,13 +146,21 @@ export function UploadQueueDraft({
       ),
     [entries, period.grain],
   );
-  const missingLabels = period.needsLabel ? ordered.filter((e) => !e.label).length : 0;
+  const missingLabels = period.needsLabel && !group ? ordered.filter((e) => !e.label).length : 0;
+  // Kelompok (T-060): satu periode untuk semua file.
+  const submitted = group ? ordered.map((e) => ({ ...e, label: groupLabel })) : ordered;
 
   const submit = () => {
-    const problem = queueFilesProblem(ordered, {
-      grain: period.grain,
-      needsLabel: period.needsLabel,
-    });
+    const problem = group
+      ? groupFilesProblem(submitted, {
+          grain: period.grain,
+          needsLabel: period.needsLabel,
+          maxFiles: period.groupMaxFiles,
+        })
+      : queueFilesProblem(submitted, {
+          grain: period.grain,
+          needsLabel: period.needsLabel,
+        });
     if (problem) {
       setError({ message: problem, stale: false });
       return;
@@ -150,12 +169,13 @@ export function UploadQueueDraft({
     startPending(async () => {
       const r = await createUploadQueueAction(datasetId, {
         baseVersionId: period.baseVersionId,
-        files: ordered.map((e) => ({
+        files: submitted.map((e) => ({
           name: e.name,
           size: e.size,
           lastModified: e.lastModified,
-          label: e.label,
+          label: period.needsLabel ? e.label : null,
         })),
+        ...(group ? { group: true } : {}),
       });
       if (!r.ok) {
         setError({ message: r.message, stale: r.code === "STALE" });
@@ -183,15 +203,58 @@ export function UploadQueueDraft({
         />
         <div className="min-w-0 flex-1 text-sm">
           <h3 id={titleId} ref={headingRef} tabIndex={-1} className="font-medium outline-none">
-            Antrean {fmt(ordered.length)} file
+            {group
+              ? `Kelompok ${fmt(ordered.length)} file — satu periode`
+              : `Antrean ${fmt(ordered.length)} file`}
           </h3>
-          <p className="text-muted-foreground">
-            File diproses satu per satu dalam urutan ini (periode lama dulu). Periode yang sudah ada
-            diganti utuh; bila sebuah file perlu ditinjau, antrean berhenti sampai Anda memutuskan.
-            {period.needsLabel ? " Pilih periode setiap file sebelum memulai." : ""}
+          <p className="text-muted-foreground" data-testid="upload-queue-draft-help">
+            {group
+              ? "Semua file adalah bagian dari satu periode (mis. bulan yang dipecah karena batas 1.048.576 baris Excel). Setelah semua file terunggah, file-file ini diproses sekaligus sebagai satu versi: periode di file mana pun diganti utuh oleh gabungan semua file. Bila satu file gagal, tidak ada yang diterapkan."
+              : "File diproses satu per satu dalam urutan ini (periode lama dulu). Periode yang sudah ada diganti utuh; bila sebuah file perlu ditinjau, antrean berhenti sampai Anda memutuskan."}
+            {period.needsLabel
+              ? group
+                ? " Pilih periode kelompok sebelum memulai."
+                : " Pilih periode setiap file sebelum memulai."
+              : ""}
           </p>
         </div>
       </div>
+
+      {ordered.length >= 2 ? (
+        <div className="flex items-start gap-3 rounded-md border bg-muted/40 p-3 text-sm">
+          <Switch
+            id={groupId}
+            checked={group}
+            onCheckedChange={(v) => {
+              setGroup(v);
+              setError(null);
+            }}
+            aria-describedby={`${groupId}-desc`}
+            data-testid="upload-queue-group"
+          />
+          <div className="min-w-0 flex-1 md:pt-0.5">
+            <label htmlFor={groupId} className="font-medium">
+              Satu periode dari beberapa file
+            </label>
+            <p id={`${groupId}-desc`} className="text-muted-foreground">
+              Aktifkan bila file-file ini adalah satu periode yang dipecah, bukan periode yang
+              berbeda. Paling banyak {fmt(period.groupMaxFiles)} file per kelompok.
+            </p>
+          </div>
+        </div>
+      ) : null}
+      {group && period.needsLabel ? (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <p className="text-sm font-medium sm:flex-1">Periode kelompok</p>
+          <QueuePeriodSelects
+            fileName="kelompok"
+            grain={period.grain}
+            value={groupLabel}
+            invalid={Boolean(error) && !groupLabel}
+            onChange={setGroupLabel}
+          />
+        </div>
+      ) : null}
 
       {error ? (
         <FormAlert tone="error" ref={errorRef}>
@@ -229,11 +292,13 @@ export function UploadQueueDraft({
                 <span className="block [overflow-wrap:anywhere] font-medium">{e.name}</span>
                 <span className="block text-muted-foreground">
                   {formatBytes(e.size)}
-                  {period.needsLabel && e.label ? ` · ${periodLabel(period.grain, e.label)}` : ""}
+                  {period.needsLabel && e.label && !group
+                    ? ` · ${periodLabel(period.grain, e.label)}`
+                    : ""}
                 </span>
               </span>
             </p>
-            {period.needsLabel ? (
+            {period.needsLabel && !group ? (
               <QueuePeriodSelects
                 fileName={e.name}
                 grain={period.grain}
@@ -285,7 +350,9 @@ export function UploadQueueDraft({
           data-testid="upload-queue-start"
           onClick={submit}
         >
-          Mulai antrean ({fmt(ordered.length)} file)
+          {group
+            ? `Unggah sebagai satu kelompok (${fmt(ordered.length)} file)`
+            : `Mulai antrean (${fmt(ordered.length)} file)`}
         </Button>
       </div>
     </section>
@@ -381,6 +448,20 @@ function QueuePeriodSelects({
 }
 
 // ── Panel antrean ────────────────────────────────────────────────────────────────────────────────
+
+/** Kalimat status kelompok yang masih berjalan (T-060). */
+function groupHeadline(q: QueueView, uploaded: number): string {
+  if (q.held) {
+    return `Kelompok ${fmt(q.total)} file menunggu ${q.held.kind === "confirm" ? "tinjauan" : "pemetaan kolom"} Anda.`;
+  }
+  if (q.stopped) return "Kelompok dibatalkan.";
+  if (q.items.some((i) => i.state === "STARTED")) {
+    return `Kelompok ${fmt(q.total)} file sedang diproses sebagai satu versi.`;
+  }
+  return uploaded < q.total
+    ? `${fmt(uploaded)} dari ${fmt(q.total)} file terunggah — kelompok diproses setelah semua file terunggah.`
+    : `Semua ${fmt(q.total)} file terunggah, menunggu giliran diproses.`;
+}
 
 const TONE_BADGE: Record<QueueTone, "neutral" | "primary" | "success" | "warning" | "destructive"> =
   {
@@ -484,15 +565,18 @@ export function UploadQueuePanel({
         )
       : [];
 
+  const uploaded = q.items.filter((i) => i.state !== "WAITING" && i.state !== "UPLOADING").length;
   const headline = !open
     ? queueSummaryText(q)
-    : q.held
-      ? `File ${fmt(q.position ?? 0)} dari ${fmt(q.total)} menunggu ${q.held.kind === "confirm" ? "tinjauan" : "pemetaan kolom"} Anda — antrean berhenti sampai diputuskan.`
-      : q.stopped
-        ? "Antrean dihentikan: file yang sedang diproses diselesaikan dulu."
-        : current
-          ? `File ${fmt(current.seq)} dari ${fmt(q.total)}: ${current.statusText.toLowerCase()}.`
-          : `${fmt(q.total)} file`;
+    : q.grouped
+      ? groupHeadline(q, uploaded)
+      : q.held
+        ? `File ${fmt(q.position ?? 0)} dari ${fmt(q.total)} menunggu ${q.held.kind === "confirm" ? "tinjauan" : "pemetaan kolom"} Anda — antrean berhenti sampai diputuskan.`
+        : q.stopped
+          ? "Antrean dihentikan: file yang sedang diproses diselesaikan dulu."
+          : current
+            ? `File ${fmt(current.seq)} dari ${fmt(q.total)}: ${current.statusText.toLowerCase()}.`
+            : `${fmt(q.total)} file`;
 
   const stop = () =>
     startBusy(async () => {
@@ -552,7 +636,7 @@ export function UploadQueuePanel({
         />
         <div className="min-w-0 flex-1 text-sm">
           <h3 id={titleId} className="font-medium">
-            Antrean unggah
+            {q.grouped ? "Kelompok file satu periode" : "Antrean unggah"}
           </h3>
           {/* Satu wilayah live: posisi/tahan/selesai diumumkan saat berubah, bukan tiap progres. */}
           <p
@@ -599,7 +683,10 @@ export function UploadQueuePanel({
             <IconChecklist size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
             <span className="[overflow-wrap:anywhere]">
               “{q.held.name}” menunggu konfirmasi: tinjau periode yang akan ditambah, diganti, atau
-              dilepas. Antrean lanjut sendiri setelah Anda menerapkan atau membatalkannya.
+              dilepas.{" "}
+              {q.grouped
+                ? "Semua file kelompok diterapkan atau dibatalkan bersama."
+                : "Antrean lanjut sendiri setelah Anda menerapkan atau membatalkannya."}
             </span>
           </p>
           <Button
@@ -683,8 +770,10 @@ export function UploadQueuePanel({
             sending && up.current!.total > 0
               ? Math.floor((up.current!.loaded / up.current!.total) * 100)
               : 0;
+          // Kelompok (T-060): satu file dilewati = seluruh kelompok batal, jadi pakai "Hentikan".
           const canSkip =
             open &&
+            !q.grouped &&
             !q.stopped &&
             !sending &&
             (it.state === "WAITING" || it.state === "UPLOADING" || it.state === "QUEUED");
@@ -761,7 +850,7 @@ export function UploadQueuePanel({
       </ol>
 
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-        {open && !q.stopped ? (
+        {open && !q.stopped && !(q.grouped && q.items.some((i) => i.state === "STARTED")) ? (
           <Button
             size="sm"
             variant="ghost"
@@ -770,7 +859,7 @@ export function UploadQueuePanel({
             data-testid="upload-queue-stop"
             onClick={() => setStopOpen(true)}
           >
-            Hentikan antrean
+            {q.grouped ? "Batalkan kelompok" : "Hentikan antrean"}
           </Button>
         ) : null}
         {!open ? (
@@ -793,10 +882,14 @@ export function UploadQueuePanel({
         onOpenChange={(o) => {
           if (!busy) setStopOpen(o);
         }}
-        title="Hentikan antrean?"
+        title={q.grouped ? "Batalkan kelompok?" : "Hentikan antrean?"}
         busy={busy}
         data-testid="upload-queue-stop-confirm"
-        description={`${fmt(q.counts.remaining)} file yang belum selesai dibatalkan dan tidak diproses. File yang sedang diproses atau ditinjau tetap diselesaikan; periode yang sudah diterapkan tidak berubah.`}
+        description={
+          q.grouped
+            ? "Semua file kelompok yang belum diproses dibatalkan; tidak ada yang diterapkan dan data aktif tidak berubah. Bila kelompok sudah sedang diproses atau ditinjau, batalkan di layar tinjauan."
+            : `${fmt(q.counts.remaining)} file yang belum selesai dibatalkan dan tidak diproses. File yang sedang diproses atau ditinjau tetap diselesaikan; periode yang sudah diterapkan tidak berubah.`
+        }
         action={
           <Button
             variant="destructive"
@@ -806,7 +899,7 @@ export function UploadQueuePanel({
             data-testid="upload-queue-stop-go"
             onClick={stop}
           >
-            Hentikan antrean
+            {q.grouped ? "Batalkan kelompok" : "Hentikan antrean"}
           </Button>
         }
       />

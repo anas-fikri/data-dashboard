@@ -424,6 +424,9 @@ export const prismaRecastRepo: RecastRepo = {
                     periodKey: true,
                     periodStart: true,
                     sourceKind: true,
+                    groupId: true,
+                    groupPart: true,
+                    groupSize: true,
                   },
                 },
               },
@@ -457,6 +460,9 @@ export const prismaRecastRepo: RecastRepo = {
         colMap: t.segment.colMap,
         periodKey: t.segment.periodKey,
         periodStart: isoDay(t.segment.periodStart),
+        groupId: t.segment.groupId,
+        groupPart: t.segment.groupPart,
+        groupSize: t.segment.groupSize,
         sourceKind:
           t.segment.sourceKind === "csv" || t.segment.sourceKind === "xlsx"
             ? t.segment.sourceKind

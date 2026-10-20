@@ -23,7 +23,7 @@ import {
 } from "./period-plan";
 import { capacityProjection, type CapacityProjection } from "./period-setup-plan";
 
-/** Sheet logis data aktif: satu entri per periode (segmen). */
+/** Sheet logis data aktif: satu entri per segmen (kelompok file T-060: beberapa per periode). */
 export interface CapacitySheet {
   lineageId: string;
   name: string;
@@ -55,9 +55,11 @@ function activeInputs(grain: PeriodGrain, sheets: CapacitySheet[]): PlanPeriodIn
       const key = periodKeyOf(grain, g.periodStart);
       const e = byKey.get(key) ?? { key, start: g.periodStart, sheets: {} };
       const cur = e.sheets[s.lineageId];
+      // Kelompok file (T-060): beberapa segmen satu periode di satu sheet → dijumlah, segmen dihitung.
       e.sheets[s.lineageId] = {
         rows: (cur?.rows ?? 0) + g.rows,
         bytes: (cur?.bytes ?? 0) + g.bytes,
+        segments: (cur ? (cur.segments ?? 1) : 0) + 1,
       };
       byKey.set(key, e);
     }
@@ -88,7 +90,14 @@ export function periodCapacity(a: {
   const projection = capacityProjection(
     a.sheets.map((s) => ({
       name: s.name,
-      periods: s.segments.map((g) => ({ start: g.periodStart, rows: g.rows })),
+      periods: [
+        ...s.segments
+          .reduce(
+            (m, g) => m.set(g.periodStart, (m.get(g.periodStart) ?? 0) + g.rows),
+            new Map<string, number>(),
+          )
+          .entries(),
+      ].map(([start, rows]) => ({ start, rows })),
       bytes: s.segments.reduce((n, g) => n + g.bytes, 0),
     })),
     plan.keep,

@@ -51,6 +51,9 @@ export async function prismaManifest(
                       maxSrcRow: true,
                       periodKey: true,
                       periodStart: true,
+                      groupId: true,
+                      groupPart: true,
+                      groupSize: true,
                     },
                   },
                 },
@@ -77,6 +80,9 @@ export async function prismaManifest(
       periodKey: m.segmentTyped.segment.periodKey,
       periodStart: isoDay(m.segmentTyped.segment.periodStart),
       dataRows: m.segmentTyped.dataRows,
+      groupId: m.segmentTyped.segment.groupId,
+      groupPart: m.segmentTyped.segment.groupPart,
+      groupSize: m.segmentTyped.segment.groupSize,
     })),
   }));
 }

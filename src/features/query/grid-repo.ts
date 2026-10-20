@@ -89,6 +89,8 @@ export const prismaGridRepo: GridRepo = {
                     periodStart: true,
                     minDate: true,
                     maxDate: true,
+                    originalName: true,
+                    groupId: true,
                     createdByVersion: { select: { originalName: true } },
                   },
                 },
@@ -118,7 +120,8 @@ export const prismaGridRepo: GridRepo = {
         maxSrcRow: g.maxSrcRow,
         rawKey: g.rawKey,
         colMap: g.colMap,
-        fileName: g.createdByVersion?.originalName ?? null,
+        // Kelompok file (T-060): nama file bagian ini, bukan judul kelompok versinya.
+        fileName: (g.groupId ? g.originalName : null) ?? g.createdByVersion?.originalName ?? null,
         // min/max hanya sah untuk kolom periode sumber KOLOM (berlabel: kolom acuan, T-054).
         ...(period && g.periodKey && start
           ? {

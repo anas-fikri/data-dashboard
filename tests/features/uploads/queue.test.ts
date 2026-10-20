@@ -33,6 +33,8 @@ type Queue = {
   dismissedAt: Date | null;
   finishedAt: Date | null;
   createdAt: Date;
+  grouped: boolean;
+  groupVersionId: string | null;
 };
 type Item = {
   id: string;
@@ -67,7 +69,10 @@ const nextId = () => `cmv4kljx40009oczv${String(++st.seq).padStart(8, "0")}`;
 const matchState = (v: string, w: unknown) =>
   w === undefined || (typeof w === "string" ? v === w : (w as { in: string[] }).in.includes(v));
 const itemMatch = (i: Item, w: Record<string, unknown>) => {
-  if (w.id !== undefined && i.id !== w.id) return false;
+  if (w.id !== undefined) {
+    const ids = typeof w.id === "string" ? [w.id] : (w.id as { in: string[] }).in;
+    if (!ids.includes(i.id)) return false;
+  }
   if (!matchState(i.state, w.state)) return false;
   if (w.uploadId !== undefined && i.uploadId !== w.uploadId) return false;
   const q = st.queues.find((x) => x.id === i.queueId)!;
@@ -135,11 +140,18 @@ const db = {
       async ({
         data,
       }: {
-        data: { datasetId: string; items: { create: Record<string, unknown>[] } };
+        data: {
+          datasetId: string;
+          grouped?: boolean;
+          groupVersionId?: string;
+          items: { create: Record<string, unknown>[] };
+        };
       }) => {
         const q: Queue = {
           id: nextId(),
           datasetId: data.datasetId,
+          grouped: data.grouped ?? false,
+          groupVersionId: data.groupVersionId ?? null,
           status: "OPEN",
           stoppedAt: null,
           dismissedAt: null,
@@ -204,7 +216,14 @@ const db = {
       const q = st.queues.find((x) => x.id === i.queueId)!;
       return {
         ...i,
-        queue: { id: q.id, datasetId: q.datasetId, status: q.status, stoppedAt: q.stoppedAt },
+        queue: {
+          id: q.id,
+          datasetId: q.datasetId,
+          status: q.status,
+          stoppedAt: q.stoppedAt,
+          grouped: q.grouped,
+          groupVersionId: q.groupVersionId,
+        },
       };
     }),
     // Hanya kueri kedaluwarsa runUploadQueues: state + updatedAt file + updatedAt antrean OPEN.
@@ -228,7 +247,13 @@ const db = {
               q.updatedAt < where.queue.updatedAt.lt
             );
           })
-          .map((i) => ({ ...i, queue: { datasetId: DID } })),
+          .map((i) => {
+            const q = st.queues.find((x) => x.id === i.queueId)!;
+            return {
+              ...i,
+              queue: { datasetId: DID, grouped: q.grouped, groupVersionId: q.groupVersionId },
+            };
+          }),
     ),
     updateMany: vi.fn(
       async ({ where, data }: { where: Record<string, unknown>; data: Partial<Item> }) => {
@@ -242,7 +267,11 @@ const db = {
 };
 vi.mock("@/lib/db", () => ({ prisma: db }));
 vi.mock("@/lib/env", () => ({
-  env: () => ({ MAX_UPLOAD_BYTES: 1024 * MiB, USER_STORAGE_QUOTA_BYTES: 20 * 1024 * MiB }),
+  env: () => ({
+    MAX_UPLOAD_BYTES: 1024 * MiB,
+    USER_STORAGE_QUOTA_BYTES: 20 * 1024 * MiB,
+    PERIOD_MAX_FILES: 3,
+  }),
 }));
 vi.mock("@/lib/logger", () => ({ logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
 vi.mock("@/lib/queue/versions", () => ({ enqueueIngest: vi.fn() }));
@@ -613,5 +642,142 @@ describe("unggah file antrean", () => {
     });
     expect(await q.skipQueueItem(OTHER, id, null)).toMatchObject({ code: "NOT_FOUND" });
     expect(await q.getUploadQueue(OTHER, DID)).toBeNull();
+  });
+});
+
+describe("T-060: kelompok file satu periode", () => {
+  const createGroup = (files: ReturnType<typeof file>[]) =>
+    q.createUploadQueue(
+      OWNER,
+      { datasetId: DID, baseVersionId: ACTIVE, files, group: true },
+      storage(),
+    );
+  const three = () => [file("maret-2.csv"), file("maret-1.csv"), file("maret-3.csv")];
+
+  it("AC2: kelompok > PERIOD_MAX_FILES → ditolak dengan pesan, tanpa antrean", async () => {
+    periodActive();
+    const r = await createGroup([...three(), file("maret-4.csv")]);
+    expect(r).toMatchObject({
+      ok: false,
+      code: "LIMIT_REACHED",
+      message: expect.stringContaining("Satu kelompok paling banyak 3 file, Anda memilih 4 file"),
+    });
+    expect(st.queues).toHaveLength(0);
+    // Batas antrean biasa (36) tidak berubah: 4 file tanpa kelompok tetap boleh.
+    expect((await create([...three(), file("maret-4.csv")])).ok).toBe(true);
+  });
+
+  it("sheet berlabel: semua file satu kelompok wajib satu periode", async () => {
+    periodActive("LABEL");
+    expect(
+      await createGroup([file("a.csv", "2026-03-01"), file("b.csv", "2026-04-01")]),
+    ).toMatchObject({
+      ok: false,
+      code: "INVALID",
+      message: expect.stringMatching(/periode yang sama/),
+    });
+    const ok = await createGroup([file("a.csv", "2026-03-01"), file("b.csv", "2026-03-01")]);
+    expect(ok.ok).toBe(true);
+  });
+
+  it("menunggu semua file terunggah, lalu SATU versi untuk seluruh kelompok (file di prefix versinya)", async () => {
+    periodActive();
+    const r = await createGroup(three());
+    if (!r.ok) throw new Error(r.message);
+    expect(r.queue.grouped).toBe(true);
+    const gid = st.queues[0]!.groupVersionId!;
+    expect(gid).toMatch(/^[a-z0-9]{25}$/);
+    const items = [...st.items].sort((a, b) => a.seq - b.seq);
+    expect(items.map((i) => i.originalName)).toEqual(["maret-1.csv", "maret-2.csv", "maret-3.csv"]);
+    const enqueue = vi.fn(async () => {});
+    // Dua dari tiga terunggah: belum ada versi.
+    Object.assign(items[0]!, { state: "QUEUED", etag: '"e1"' });
+    Object.assign(items[1]!, { state: "QUEUED", etag: '"e2"' });
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    expect(st.versions.filter((v) => v.id === gid)).toHaveLength(0);
+    expect(enqueue).not.toHaveBeenCalled();
+    Object.assign(items[2]!, { state: "QUEUED", etag: '"e3"' });
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    expect(db.datasetVersion.create).toHaveBeenCalledTimes(1);
+    const v = st.versions.find((x) => x.id === gid)!;
+    expect(v.data).toMatchObject({
+      status: "UPLOADED",
+      mode: "PERIOD",
+      baseVersionId: ACTIVE,
+      originalName: "maret-1.csv + 2 file lain",
+      sizeBytes: BigInt(15 * MiB),
+      sourceKey: `raw/${DID}/${gid}/part-1.csv`,
+      groupFiles: [1, 2, 3].map((n) => ({
+        seq: n,
+        key: `raw/${DID}/${gid}/part-${n}.csv`,
+        name: `maret-${n}.csv`,
+        size: 5 * MiB,
+      })),
+    });
+    expect(items.map((i) => i.state)).toEqual(["STARTED", "STARTED", "STARTED"]);
+    expect(enqueue).toHaveBeenNthCalledWith(1, gid, DID);
+    expect(enqueue).toHaveBeenNthCalledWith(2, gid, DID);
+    const view = await q.getUploadQueue(OWNER, DID);
+    expect(view?.items.every((i) => i.versionId === gid && i.versionStatus === "UPLOADED")).toBe(
+      true,
+    );
+    // Menunggu tinjauan → kelompok ditahan; diterapkan → semua file selesai, antrean DONE.
+    v.status = "AWAITING_CONFIRM";
+    expect((await q.getUploadQueue(OWNER, DID))?.held).toMatchObject({
+      kind: "confirm",
+      versionId: gid,
+      name: "Kelompok 3 file",
+    });
+    v.status = "READY";
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue });
+    expect(items.map((i) => i.state)).toEqual(["DONE", "DONE", "DONE"]);
+    expect(st.queues[0]!.status).toBe("DONE");
+  });
+
+  it("satu file dilewati/gagal sebelum kelompok lengkap → semua file dibatalkan, tidak ada versi", async () => {
+    periodActive();
+    const r = await createGroup(three());
+    if (!r.ok) throw new Error(r.message);
+    const items = [...st.items].sort((a, b) => a.seq - b.seq);
+    const gid = st.queues[0]!.groupVersionId!;
+    Object.assign(items[0]!, { state: "QUEUED", etag: '"e1"' });
+    const s = storage();
+    expect(await q.skipQueueItem(OWNER, items[1]!.id, null, { storage: s })).toMatchObject({
+      ok: true,
+    });
+    expect(items.map((i) => i.state)).toEqual(["CANCELLED", "CANCELLED", "CANCELLED"]);
+    expect(items[0]!.message).toMatch(/Kelompok tidak diproses karena “maret-2.csv”/);
+    expect(st.versions.some((v) => v.id === gid)).toBe(false);
+    expect(s.remove).toHaveBeenCalledWith(`raw/${DID}/${gid}/part-1.csv`);
+    expect(s.remove).toHaveBeenCalledWith(`raw/${DID}/${gid}/part-2.csv`);
+    expect(st.queues[0]!.status).toBe("DONE");
+  });
+
+  it("gagal diperiksa saat giliran → seluruh kelompok gagal (tidak pernah sebagian)", async () => {
+    periodActive();
+    const r = await createGroup(three());
+    if (!r.ok) throw new Error(r.message);
+    for (const i of st.items) Object.assign(i, { state: "QUEUED", etag: '"e"' });
+    periodInitCheck.mockResolvedValueOnce({ ok: false, message: "Melewati batas 24 periode." });
+    await q.advanceUploadQueue(DID, { storage: storage(), enqueue: vi.fn(async () => {}) });
+    expect(st.items.map((i) => [i.state, i.message])).toEqual([
+      ["FAILED", "Melewati batas 24 periode."],
+      ["FAILED", "Melewati batas 24 periode."],
+      ["FAILED", "Melewati batas 24 periode."],
+    ]);
+    expect(st.versions.filter((v) => v.status === "UPLOADED")).toHaveLength(0);
+    expect(st.queues[0]!.status).toBe("DONE");
+  });
+
+  it("unggah file kelompok memakai kunci part-<n> di prefix versi kelompok", async () => {
+    periodActive();
+    const r = await createGroup(three());
+    if (!r.ok) throw new Error(r.message);
+    const gid = st.queues[0]!.groupVersionId!;
+    const it2 = st.items.find((i) => i.seq === 2)!;
+    const s = storage();
+    expect((await q.initQueueItem(OWNER, it2.id, s)).ok).toBe(true);
+    expect(s.create).toHaveBeenCalledWith(`raw/${DID}/${gid}/part-2.csv`);
   });
 });

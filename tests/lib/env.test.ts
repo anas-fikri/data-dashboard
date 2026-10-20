@@ -52,6 +52,13 @@ describe("parseEnv", () => {
     expect(() => parseEnv({ ...valid, PERIOD_STRAY_PCT: "101" })).toThrow(/PERIOD_STRAY_PCT/);
   });
 
+  it("PERIOD_MAX_FILES (T-060): default 10 file per kelompok, 2–36", () => {
+    expect(parseEnv(valid).PERIOD_MAX_FILES).toBe(10);
+    expect(parseEnv({ ...valid, PERIOD_MAX_FILES: "3" }).PERIOD_MAX_FILES).toBe(3);
+    expect(() => parseEnv({ ...valid, PERIOD_MAX_FILES: "1" })).toThrow(/PERIOD_MAX_FILES/);
+    expect(() => parseEnv({ ...valid, PERIOD_MAX_FILES: "37" })).toThrow(/PERIOD_MAX_FILES/);
+  });
+
   it("PERIOD_CONFIRM_TTL_HOURS (T-052): default 7 hari, minimal 1 jam", () => {
     expect(parseEnv(valid).PERIOD_CONFIRM_TTL_HOURS).toBe(168);
     expect(parseEnv({ ...valid, PERIOD_CONFIRM_TTL_HOURS: "24" }).PERIOD_CONFIRM_TTL_HOURS).toBe(

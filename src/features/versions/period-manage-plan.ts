@@ -15,7 +15,11 @@ import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { periodLabel, type PeriodGrain, type PeriodSource } from "@/features/ingest/period";
 import { computePeriodPlan, type OnLimit, type PeriodLimits } from "@/features/ingest/period-plan";
-import { planInputs, type ManifestRef } from "@/features/ingest/period-upload-plan";
+import {
+  planInputs,
+  type ManifestRef,
+  type SegmentGroupRef,
+} from "@/features/ingest/period-upload-plan";
 export { sheetChange } from "./period-sheet-change";
 
 // ── Catatan perubahan ──────────────────────────────────────────────────────────────────────────────
@@ -68,7 +72,8 @@ export function periodChangeTitle(c: PeriodChange): string {
 
 // ── Model manifest ─────────────────────────────────────────────────────────────────────────────────
 
-export interface ManageSegment {
+/** Satu file typed periode; kelompok file (T-060): satu periode di satu sheet = semua file kelompok. */
+export interface ManageSegment extends SegmentGroupRef {
   typedId: string;
   segmentId: string;
   periodKey: string;
@@ -118,15 +123,26 @@ export function periodsOf(v: ManageVersion): Map<string, string> {
   return new Map(all.map((g) => [g.periodKey, g.periodStart]));
 }
 
-/** Isi satu periode: lineage → segmen (identitas data, bukan file typed). */
-function contentOf(v: ManageVersion, key: string): Map<string, ManageSegment> {
-  const m = new Map<string, ManageSegment>();
+/**
+ * Isi satu periode: lineage → segmennya (identitas data, bukan file typed), urut nomor file kelompok.
+ * Kelompok file (T-060) = semua file kelompok sekaligus: periode tidak pernah dipulihkan sebagian.
+ */
+function contentOf(v: ManageVersion, key: string): Map<string, ManageSegment[]> {
+  const m = new Map<string, ManageSegment[]>();
   for (const s of v.sheets) {
-    const g = s.segments.find((x) => x.periodKey === key);
-    if (g) m.set(s.lineageId, g);
+    const list = s.segments
+      .filter((x) => x.periodKey === key)
+      .sort((x, y) => (x.groupPart ?? 0) - (y.groupPart ?? 0));
+    if (list.length) m.set(s.lineageId, list);
   }
   return m;
 }
+
+const idsOf = (list: ManageSegment[] | undefined) =>
+  (list ?? [])
+    .map((g) => g.segmentId)
+    .sort()
+    .join(",");
 
 /** Isi periode di dua versi sama untuk sheet logis milik `a` (segmen yang sama atau sama-sama tidak ada). */
 function sameContent(a: ManageVersion, b: ManageVersion, key: string): boolean {
@@ -134,7 +150,7 @@ function sameContent(a: ManageVersion, b: ManageVersion, key: string): boolean {
   const y = contentOf(b, key);
   const lineages = new Set([...a.sheets.map((s) => s.lineageId)]);
   for (const l of lineages) {
-    if ((x.get(l)?.segmentId ?? null) !== (y.get(l)?.segmentId ?? null)) return false;
+    if (idsOf(x.get(l)) !== idsOf(y.get(l))) return false;
   }
   return true;
 }
@@ -148,8 +164,12 @@ const ref = (g: ManageSegment, fromUpload: boolean): ManifestRef => ({
   fromUpload,
 });
 
-const rowsByLineage = (c: Map<string, ManageSegment>): Record<string, number> | null =>
-  c.size ? Object.fromEntries([...c.keys()].sort().map((l) => [l, c.get(l)!.rows])) : null;
+const rowsByLineage = (c: Map<string, ManageSegment[]>): Record<string, number> | null =>
+  c.size
+    ? Object.fromEntries(
+        [...c.keys()].sort().map((l) => [l, c.get(l)!.reduce((n, g) => n + g.rows, 0)]),
+      )
+    : null;
 const total = (r: Record<string, number> | null) =>
   r ? Object.values(r).reduce((n, x) => n + x, 0) : 0;
 
@@ -249,8 +269,9 @@ export function restoreManifest(
   const manifest = new Map(
     active.sheets.map((s) => {
       const keep = s.segments.filter((g) => g.periodKey !== key).map((g) => ref(g, false));
-      const g = from.get(s.lineageId);
-      return [s.lineageId, [...keep, ...(g ? [ref(g, true)] : [])].sort(byStart)];
+      const g = from.get(s.lineageId) ?? [];
+      // Urut stabil: periode lain apa adanya, file kelompok periode ini tetap urut nomor file.
+      return [s.lineageId, [...keep, ...g.map((x) => ref(x, true))].sort(byStart)];
     }),
   );
   const activeKeys = periodsOf(active);
@@ -511,7 +532,10 @@ export function periodTableRows(
         uploadedBy: [],
         uploadedAt: g.createdAt,
       };
-      row.sheets.push({ name: s.name, rows: g.rows });
+      // Kelompok file (T-060): beberapa segmen satu sheet di periode yang sama → satu baris sheet.
+      const sheet = row.sheets.find((x) => x.name === s.name);
+      if (sheet) sheet.rows += g.rows;
+      else row.sheets.push({ name: s.name, rows: g.rows });
       row.rows += g.rows;
       if (g.originalName && !row.files.includes(g.originalName)) row.files.push(g.originalName);
       if (g.uploadedBy && !row.uploadedBy.includes(g.uploadedBy)) row.uploadedBy.push(g.uploadedBy);

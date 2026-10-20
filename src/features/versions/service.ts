@@ -316,7 +316,8 @@ async function cancelQueueItemOf(
   message = DISCARDED_MESSAGE,
 ) {
   await tx.uploadQueueItem.updateMany({
-    where: { versionId, state: "STARTED" },
+    // Kelompok file (T-060): semua file kelompok berbagi satu versi (UploadQueue.groupVersionId).
+    where: { OR: [{ versionId }, { queue: { groupVersionId: versionId } }], state: "STARTED" },
     data: { state: "CANCELLED", message, finishedAt: new Date() },
   });
 }

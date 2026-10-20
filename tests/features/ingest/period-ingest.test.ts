@@ -167,6 +167,9 @@ class FakePeriodRepo implements PeriodIngestRepo {
         periodStart: g.period!.start,
         rows: tr.dataRows,
         bytes: g.rawBytes + tr.typedBytes,
+        ...(g.group
+          ? { groupId: g.group.id, groupPart: g.group.part, groupSize: g.group.size }
+          : {}),
       };
     });
   }
@@ -974,5 +977,163 @@ describe("T-057 review M1: kolom absent (T-014) yang tetap tidak ada", () => {
     );
     expect(await mei.run()).toEqual({ outcome: "done", sheets: 1 });
     expect(mei.repo.changes).toEqual([]);
+  });
+});
+
+describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () => {
+  const xml = (rows: string[][]) =>
+    rows
+      .map(
+        (r, i) =>
+          `<row r="${i + 1}">${r.map((v, c) => `<c r="${colLetter(c + 1)}${i + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join("")}</row>`,
+      )
+      .join("");
+  /** Maret 2026 (40 baris) dipecah ke 3 file: 2 CSV + 1 xlsx (jenis file per bagian). */
+  async function parts() {
+    const rows = month(3, 40);
+    const tag = Math.random().toString(36).slice(2);
+    return [
+      t.file(`m1-${tag}.csv`, csv([HEADER, ...rows.slice(0, 15)])),
+      t.file(`m2-${tag}.csv`, csv([HEADER, ...rows.slice(15, 30)])),
+      t.file(
+        `m3-${tag}.xlsx`,
+        await buildXlsx([{ name: "CSV", xml: xml([HEADER, ...rows.slice(30)]) }]),
+      ),
+    ];
+  }
+  const keys = [1, 2, 3].map((n) => `raw/${DS}/${VID}/part-${n}.${n === 3 ? "xlsx" : "csv"}`);
+  const names = ["maret-1.csv", "maret-2.csv", "maret-3.xlsx"];
+
+  function groupSetup(
+    files: string[],
+    base: { schema: ColumnSchema[]; colCount: number; headerRow: number },
+    sheet?: PeriodActiveSheet,
+  ) {
+    const storage = new FakeStorage(join(t.root, `store-g${Math.random().toString(36).slice(2)}`), {
+      [keys[0]!]: files[0]!,
+      [keys[1]!]: files[1]!,
+      [keys[2]!]: files[2]!,
+    });
+    const active = sheet ?? activeSheet(storage, base, JAN_MAR);
+    // Segmen aktif dari unggahan kelompok sebelumnya: file tiruan juga harus ada di storage ini.
+    for (const k of active.keys) {
+      if (!storage.keys().includes(k)) {
+        const p = join(storage.dir, k);
+        mkdirSync(dirname(p), { recursive: true });
+        writeFileSync(p, "x");
+      }
+    }
+    const repo = new FakePeriodRepo({
+      datasetId: DS,
+      sourceKey: keys[0]!,
+      originalName: "maret-1.csv + 2 file lain",
+      sources: keys.map((key, i) => ({ key, name: names[i]! })),
+      grain: "MONTH",
+      label: null,
+      baseVersionId: ACTIVE,
+      active: { versionId: ACTIVE, grain: "MONTH", sheets: [active] },
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+    });
+    const run = () =>
+      runPeriodIngest(
+        VID,
+        { repo, storage, limits: LIMITS },
+        { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+      );
+    return { storage, repo, run, sheet: active };
+  }
+
+  /** Isi data Maret dari file typed manifest (tanpa _row): urut file kelompok lalu baris. */
+  async function marchRows(s: ReturnType<typeof groupSetup>) {
+    const out: unknown[][] = [];
+    for (const r of s.repo.manifest!.get(LINEAGE)!.filter((x) => x.periodKey === "2026-03")) {
+      const tr = s.repo.typed.get(r.typedId)!;
+      for (const row of await readParquet(join(s.storage.dir, tr.typedKey))) out.push(row.slice(1));
+    }
+    return out;
+  }
+
+  it("3 file Maret → satu versi berisi 3 segmen Maret yang menggantikan seluruh Maret; unggah ulang kelompok yang sama → data identik, tanpa baris ganda", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const files = await parts();
+    const s = groupSetup(files, base);
+    expect(await s.run()).toMatchObject({ outcome: "confirm" });
+    expect(s.repo.status).toBe("AWAITING_CONFIRM");
+    const mar = s.repo.plan!.entries.find((e) => e.key === "2026-03")!;
+    expect(mar).toMatchObject({ action: "REPLACED", beforeRows: 31, afterRows: 40 });
+    expect(periodPlanSummary(s.repo.plan!)).toBe("Maret 2026 diganti (31 → 40 baris)");
+    // Satu segmen per file, satu kelompok lengkap, nama file per bagian, jenis file per bagian.
+    const segs = [...s.repo.segments.values()].sort((a, b) => a.group!.part - b.group!.part);
+    expect(segs.map((g) => [g.period!.key, g.group, g.originalName, g.sourceKind])).toEqual([
+      ["2026-03", { id: VID, part: 1, size: 3 }, "maret-1.csv", "csv"],
+      ["2026-03", { id: VID, part: 2, size: 3 }, "maret-2.csv", "csv"],
+      ["2026-03", { id: VID, part: 3, size: 3 }, "maret-3.xlsx", "xlsx"],
+    ]);
+    // Rentang _row antarbagian tidak bertumpuk (dialokasikan per segmen).
+    expect(new Set(segs.map((g) => g.rowBase)).size).toBe(3);
+    // Manifest: Jan–Feb dirujuk ulang, Maret = 3 segmen baru (urut nomor file), Maret lama tidak ikut.
+    const m = s.repo.manifest!.get(LINEAGE)!;
+    expect(m.map((r) => [r.periodKey, r.rows, r.fromUpload])).toEqual([
+      ["2026-01", 30, false],
+      ["2026-02", 28, false],
+      ["2026-03", 15, true],
+      ["2026-03", 15, true],
+      ["2026-03", 10, true],
+    ]);
+    expect(m.some((r) => r.typedId === "t-2026-03-01")).toBe(false);
+    const first = await marchRows(s);
+    expect(first).toHaveLength(40);
+    expect(new Set(first.map((r) => r[1])).size).toBe(40); // kode unik: tanpa baris ganda
+
+    // Unggah ulang kelompok yang sama di atas hasil di atas (Maret = 3 segmen kelompok).
+    const after: PeriodActiveSheet = {
+      ...s.sheet,
+      segments: [
+        ...s.sheet.segments.filter((g) => g.periodKey !== "2026-03"),
+        ...s.repo
+          .incoming()
+          .map((g) => ({ ...g, sha256: s.repo.segments.get(g.segmentId)!.sha256 })),
+      ],
+      keys: [
+        ...s.sheet.keys.filter((k) => !k.includes("seg20260301")),
+        ...s.repo.incoming().flatMap((g) => {
+          const seg = s.repo.segments.get(g.segmentId)!;
+          return [seg.rawKey, s.repo.typed.get(g.typedId)!.typedKey];
+        }),
+      ],
+    };
+    const again = groupSetup(files, base, after);
+    // Objek kelompok pertama ikut ada di storage kedua (sudah dibuat oleh helper).
+    expect(await again.run()).toMatchObject({ outcome: "confirm" });
+    const mar2 = again.repo.plan!.entries.find((e) => e.key === "2026-03")!;
+    expect(mar2).toMatchObject({
+      action: "REPLACED",
+      beforeRows: 40,
+      afterRows: 40,
+      identical: true,
+    });
+    expect(again.repo.plan!.confirm).toEqual(["REPLACE", "IDENTICAL"]);
+    expect(
+      again.repo.manifest!.get(LINEAGE)!.filter((r) => r.periodKey === "2026-03"),
+    ).toHaveLength(3);
+    expect(await marchRows(again)).toEqual(first);
+  });
+
+  it("satu file kelompok butuh pemetaan kolom → seluruh kelompok gagal, data aktif tidak berubah, segmen dibersihkan", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const files = await parts();
+    const rows = month(3, 40);
+    files[1] = t.file(
+      `m2b-${Math.random().toString(36).slice(2)}.csv`,
+      csv([["kode", "tgl_lain", "nilai"], ...rows.slice(15, 30)]),
+    );
+    const s = groupSetup(files, base);
+    const r = await s.run();
+    expect(r.outcome).toBe("failed");
+    expect(s.repo.status).toBe("FAILED");
+    expect(s.repo.error).toMatch(/^Kelompok file tidak diproses: /);
+    expect(s.repo.commits).toBe(0);
+    expect(s.repo.segments.size).toBe(0);
+    expect(s.storage.keys().some((k) => k.includes("/seg/") && !k.includes("seg2026"))).toBe(false);
   });
 });

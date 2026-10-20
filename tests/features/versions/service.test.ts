@@ -467,7 +467,7 @@ describe("discardVersion", () => {
       where: { id: B, datasetId: DS, status: "AWAITING_CONFIRM", activeFor: { is: null } },
     }); // T-059 review L5: file antrean milik versi ini dicatat dibatalkan (bukan gagal) di transaksi yang sama.
     expect(tx.uploadQueueItem.updateMany).toHaveBeenCalledWith({
-      where: { versionId: B, state: "STARTED" },
+      where: { OR: [{ versionId: B }, { queue: { groupVersionId: B } }], state: "STARTED" },
       data: expect.objectContaining({ state: "CANCELLED" }),
     });
   });

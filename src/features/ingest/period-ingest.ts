@@ -21,8 +21,15 @@
  *     init = versi aktif) atau AWAITING_CONFIRM dengan rencana beku; penolakan → FAILED.
  * Percobaan ulang mulai bersih (sheet/segmen percobaan sebelumnya dihapus). Commit yang statusnya tidak
  * diketahui (koneksi putus) tidak pernah diikuti penghapusan objek.
+ *
+ * Kelompok file satu periode (T-060, rencana G-6 §4.6 P-28): versi dengan beberapa file sumber diproses
+ * SEKALIGUS sebagai satu versi — setiap file di-parse dan dipecah per periode seperti biasa, satu segmen
+ * per file per periode per sheet (Segment.groupId/groupPart/groupSize), rencana memperlakukan semua file
+ * sebagai satu unggahan (periode yang ada di file mana pun diganti UTUH oleh gabungan semua file), lalu
+ * satu commit. Tidak ada aktivasi sebagian: file mana pun gagal / butuh pemetaan → seluruh kelompok gagal
+ * dan data aktif tidak berubah (pemetaan kolom kelompok tidak didukung; samakan judul kolom).
  */
-import { mkdtempSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
 import { DEFAULT_LIMITS } from "@/lib/xlsx/parser";
@@ -54,6 +61,7 @@ import { REVIEW_MAX, validatePeriodMapping, type MappingReviewIssue } from "./ma
 import {
   castIssues,
   castProblems,
+  combinedSha256,
   periodColumnPlan,
   planInputs,
   validateColMap,
@@ -82,10 +90,21 @@ export interface PeriodActiveSheet extends ActiveSheet, ActivePeriodSheet {
   keys: string[];
 }
 
+/** Satu file sumber versi (kelompok file T-060: urut nomor file 1..n). */
+export interface PeriodSourceFile {
+  key: string;
+  name: string | null;
+}
+
 export interface PeriodIngestLoad {
   datasetId: string;
   sourceKey: string;
   originalName: string | null;
+  /**
+   * File sumber (T-060). Satu file = [{ sourceKey, originalName }]; > 1 = kelompok file satu periode
+   * (diproses sebagai satu versi). Tidak ada = satu file sourceKey.
+   */
+  sources?: PeriodSourceFile[];
   /** Satuan versi (dari versi aktif saat init). */
   grain: PeriodGrain | null;
   /** Awal periode untuk sheet bersumber label (ISO naive); null = tanpa label. */
@@ -117,6 +136,10 @@ export interface PeriodSegmentRecord {
   sourceKind: SourceKind;
   /** null = raw saja (menunggu pemetaan). */
   period: { key: string; start: string; minDate: string | null; maxDate: string | null } | null;
+  /** Nama file asal (kelompok file T-060: nama file bagian ini); tidak ada = nama file versi. */
+  originalName?: string | null;
+  /** Kelompok file satu periode (T-060); tidak ada/null = satu file. */
+  group?: { id: string; part: number; size: number } | null;
 }
 
 export interface PeriodTypedRecord {
@@ -205,11 +228,34 @@ export const LABEL_MISSING_MESSAGE =
 export const NO_SHEET_MESSAGE =
   "Tidak ada sheet di file yang cocok dengan sheet data periode dataset ini (nama sheet berbeda). Samakan nama sheet, atau ganti semua data.";
 
+/** Kelompok file (T-060) yang butuh pemetaan kolom / vonis cast: tidak didukung, seluruhnya gagal. */
+export const groupMappingMessage = (detail: string) =>
+  `Kelompok file tidak diproses: ${detail}. Kelompok file harus cocok dengan kolom data aktif tanpa pemetaan — samakan judul dan isi kolom semua file, lalu unggah ulang kelompoknya. Data aktif tidak berubah.`;
+
+/** File sumber versi (kelompok T-060 atau satu file). */
+export const sourcesOf = (
+  v: Pick<PeriodIngestLoad, "sources" | "sourceKey" | "originalName">,
+): PeriodSourceFile[] => v.sources ?? [{ key: v.sourceKey, name: v.originalName }];
+
+export const GROUP_UNREADABLE_MESSAGE =
+  "Daftar file kelompok tidak terbaca, jadi kelompok tidak diproses. Unggah ulang kelompoknya. Data aktif tidak berubah.";
+
 const one = async (duck: Duck, sql: string): Promise<unknown[]> =>
   (await duck.conn.runAndReadAll(sql)).getRows()[0] ?? [];
 
+/** File asal item (kelompok T-060: nomor file 1..n; satu file: 1). */
+interface ItemFile {
+  part: number;
+  name: string | null;
+  sha256: string;
+  ext: SourceKind;
+}
+
 interface Item {
   s: { rec: SheetRecord; path: string };
+  file: ItemFile;
+  /** Penanda unik item untuk nama tabel/berkas kerja (file + sheet). */
+  tag: string;
   pair: PeriodActiveSheet;
   colMap: number[];
   /** Lebar kanonik sheet versi baru (panjang peta kolom; T-057 kolom baru menambahnya). */
@@ -230,9 +276,12 @@ function itemOf(
   s: { rec: SheetRecord; path: string },
   pair: PeriodActiveSheet,
   cp: PeriodColumnPlan,
+  file: ItemFile,
 ): Item {
   return {
     s,
+    file,
+    tag: `${Math.trunc(file.part)}_${Math.trunc(s.rec.index)}`,
     pair,
     colMap: cp.colMap,
     width: cp.colCount,
@@ -312,11 +361,10 @@ export async function runPeriodIngest(
       throw new PeriodUploadError(LABEL_MISSING_MESSAGE);
     }
 
-    const ext: SourceKind = v.sourceKey.endsWith(".csv") ? "csv" : "xlsx";
-    const src = join(work, `source.${ext}`);
-    const dl = await storage.download(v.sourceKey, src);
-    await ensureAlive();
-    setProgress({ stage: "baca" });
+    const files = sourcesOf(v);
+    if (!files.length) throw new PeriodUploadError(GROUP_UNREADABLE_MESSAGE);
+    /** Kelompok file satu periode (T-060): satu versi dari beberapa file. */
+    const grouped = files.length > 1;
     duck = await openDuck({
       path: join(work, "work.duckdb"),
       tmpDir: work,
@@ -325,61 +373,79 @@ export async function runPeriodIngest(
       widePath: join(work, "wide.duckdb"),
     });
     const d = duck;
-    const sheets =
-      ext === "xlsx"
-        ? await xlsxSheets(
-            d,
-            src,
-            work,
-            { ...(opts.limits ?? DEFAULT_LIMITS), deadline },
-            setProgress,
-            ensureAlive,
-            opts,
-            at,
-          )
-        : [
-            await csvToParquet(
-              d,
-              src,
-              work,
-              ensureAlive,
-              (n) => setProgress({ sheetName: "CSV", rowsEstimate: n }),
-              { bufferSize: opts.csvBufferSize },
-            ),
-          ];
-    await ensureAlive();
-
-    // 1. Pasangan sheet + kolom (hanya sheet aktif yang punya sumber periode bisa menerima data).
+    // 1. Pasangan sheet + kolom per file (hanya sheet aktif yang punya sumber periode bisa menerima data).
     const usable = a.sheets.filter((s) => s.periodSource);
-    const plan = planSheets(
-      sheets.map((s) => s.rec),
-      usable,
-    );
     const ignored: string[] = [];
     const items: Item[] = [];
     const issues: string[] = [];
-    for (const [i, s] of sheets.entries()) {
-      const pair = (plan.pairs[i] as PeriodActiveSheet | null) ?? null;
-      if (!pair) {
-        ignored.push(s.rec.name);
-        continue;
-      }
-      Object.assign(s.rec, await refreshHeader(d, s, pair));
-      const label = usable.length > 1 ? pair.name : null;
-      const cp = periodColumnPlan(
-        s.rec.columns,
-        pair.schema,
-        pair.colCount,
-        pair.periodSource === "COLUMN" ? pair.periodColumn : null,
-        label,
+    const fileShas: string[] = [];
+    for (const [i, f] of files.entries()) {
+      const ext: SourceKind = f.key.endsWith(".csv") ? "csv" : "xlsx";
+      const dir = grouped ? join(work, `part-${i + 1}`) : work;
+      if (grouped) mkdirSync(dir, { recursive: true });
+      const src = join(dir, `source.${ext}`);
+      setProgress({ stage: "unduh" });
+      const dl = await storage.download(f.key, src);
+      fileShas.push(dl.sha256);
+      await ensureAlive();
+      setProgress({ stage: "baca" });
+      const sheets =
+        ext === "xlsx"
+          ? await xlsxSheets(
+              d,
+              src,
+              dir,
+              { ...(opts.limits ?? DEFAULT_LIMITS), deadline },
+              setProgress,
+              ensureAlive,
+              opts,
+              at,
+            )
+          : [
+              await csvToParquet(
+                d,
+                src,
+                dir,
+                ensureAlive,
+                (n) => setProgress({ sheetName: "CSV", rowsEstimate: n }),
+                { bufferSize: opts.csvBufferSize },
+              ),
+            ];
+      // Raw parquet sudah ditulis: file sumber lokal tidak dibutuhkan lagi (disk kerja kelompok).
+      if (grouped) rmSync(src, { force: true });
+      await ensureAlive();
+      const file: ItemFile = { part: i + 1, name: f.name, sha256: dl.sha256, ext };
+      const plan = planSheets(
+        sheets.map((x) => x.rec),
+        usable,
       );
-      issues.push(...cp.issues);
-      items.push(itemOf(s, pair, cp));
+      for (const [j, sh] of sheets.entries()) {
+        const pair = (plan.pairs[j] as PeriodActiveSheet | null) ?? null;
+        if (!pair) {
+          if (!ignored.includes(sh.rec.name)) ignored.push(sh.rec.name);
+          continue;
+        }
+        Object.assign(sh.rec, await refreshHeader(d, sh, pair));
+        const label = usable.length > 1 ? pair.name : null;
+        const cp = periodColumnPlan(
+          sh.rec.columns,
+          pair.schema,
+          pair.colCount,
+          pair.periodSource === "COLUMN" ? pair.periodColumn : null,
+          label,
+        );
+        issues.push(...cp.issues.map((x) => (grouped ? `“${f.name ?? "file"}”: ${x}` : x)));
+        items.push(itemOf(sh, pair, cp, file));
+      }
     }
+    const ext = items[0]?.file.ext ?? (v.sourceKey.endsWith(".csv") ? "csv" : "xlsx");
+    const sha256 = combinedSha256(fileShas) ?? fileShas[0]!;
     /** Versi menunggu pemetaan: sheet raw saja (tanpa typed/manifest), versi aktif tidak berubah. */
     const awaitMapping = async (found: string[]): Promise<IngestOutcome> => {
       const verdict = verdictOf(found);
       const reason = verdict.ok ? "" : verdict.reason;
+      // Kelompok file (T-060): pemetaan tidak didukung → seluruh kelompok gagal (tanpa aktivasi).
+      if (grouped) throw new PeriodUploadError(groupMappingMessage(reason || found[0]!));
       for (const it of items) {
         const id = newSegmentId();
         const rawKey = `${segmentPrefix(v.datasetId, id)}raw.parquet`;
@@ -394,7 +460,7 @@ export async function runPeriodIngest(
           colMap: [],
           rowBase: 0n,
           maxSrcRow: await maxSourceRow(d, it.s.path),
-          sha256: dl.sha256,
+          sha256,
           sourceKind: ext,
           period: null,
         });
@@ -403,9 +469,7 @@ export async function runPeriodIngest(
         await repo.createRawSheet(versionId, it.s.rec, it.pair.lineageId, id, rawKey);
         await ensureAlive();
       }
-      if (
-        !(await repo.awaitMapping(versionId, { sha256: dl.sha256, reason, ignoredSheets: ignored }))
-      ) {
+      if (!(await repo.awaitMapping(versionId, { sha256, reason, ignoredSheets: ignored }))) {
         throw new DatasetGoneError();
       }
       return { outcome: "awaiting", sheets: items.length, message: reason };
@@ -425,11 +489,11 @@ export async function runPeriodIngest(
       v,
       a,
       grain,
-      ext,
-      sha256: dl.sha256,
+      sha256,
       items,
       ignored,
       multi: usable.length > 1,
+      group: grouped ? versionId : null,
       deps,
       created,
       watch: ensureAlive,
@@ -474,7 +538,7 @@ export async function runPeriodIngest(
         ? message
         : failureMessage(message, current, {
             row: at.row,
-            csv: v.sourceKey.endsWith(".csv"),
+            csv: sourcesOf(v).some((f) => f.key.endsWith(".csv")),
             deadline: e instanceof DeadlineError,
           });
     if (!(await repo.fail(versionId, located))) return { outcome: "skipped" };
@@ -499,14 +563,16 @@ interface CoreInput {
   v: PeriodIngestLoad;
   a: NonNullable<PeriodIngestLoad["active"]>;
   grain: PeriodGrain;
-  /** Jenis file asal segmen baru (cast memakai jenisnya). */
-  ext: SourceKind;
+  /** Sidik file unggahan (kelompok T-060: gabungan semua file, combinedSha256). */
   sha256: string;
+  /** Item per file per sheet; jenis file + sha256 asal segmen ada di item (Item.file). */
   items: Item[];
   /** Sheet file yang tidak berpasangan (tidak disimpan). */
   ignored: string[];
   /** Dataset punya lebih dari satu sheet periode (nama sheet di pesan). */
   multi: boolean;
+  /** Kelompok file satu periode (T-060): id kelompok (= id versi); null = satu file. */
+  group: string | null;
   deps: Pick<PeriodIngestDeps, "storage" | "limits"> & {
     repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped">;
   };
@@ -532,7 +598,7 @@ interface CastFinding {
 async function processPeriodItems(
   c: CoreInput,
 ): Promise<({ kind: "cast" } & CastFinding) | { kind: "commit"; input: PeriodCommitInput }> {
-  const { d, work, versionId, v, a, grain, ext, items, deps } = c;
+  const { d, work, versionId, v, a, grain, items, deps } = c;
   const repo = deps.repo;
   const storage = deps.storage;
   const ensureAlive = c.watch;
@@ -551,8 +617,28 @@ async function processPeriodItems(
       sheetName: it.s.rec.name,
       fraction: null,
     });
-    await assignPeriods(d, it, grain, ext, v.label, ensureAlive);
+    await assignPeriods(d, it, grain, it.file.ext, v.label, ensureAlive);
   }
+  // Kelompok file (T-060): jumlah file kelompok per (sheet logis, periode) = Segment.groupSize.
+  const groupSize = new Map<string, number>();
+  for (const it of items) {
+    for (const p of it.periods) {
+      const k = `${it.pair.lineageId}|${p.start}`;
+      groupSize.set(k, (groupSize.get(k) ?? 0) + 1);
+    }
+  }
+  const groupOf = (it: Item, start: string) =>
+    c.group
+      ? {
+          id: c.group,
+          part: it.file.part,
+          size: groupSize.get(`${it.pair.lineageId}|${start}`) ?? 0,
+        }
+      : null;
+  const groupRef = (it: Item, start: string) => {
+    const g = groupOf(it, start);
+    return g ? { groupId: g.id, groupPart: g.part, groupSize: g.size } : {};
+  };
 
   // 3. Tolak lebih awal (byte = batas bawah: raw saja, typed belum ditulis).
   const facts: UploadFacts = {
@@ -580,6 +666,7 @@ async function processPeriodItems(
           periodStart: p.start,
           rows: p.rows,
           bytes: total > 0 ? Math.floor((it.rawBytes * p.rows) / total) : 0,
+          ...groupRef(it, p.start),
         }));
       }),
     ).incoming,
@@ -603,8 +690,13 @@ async function processPeriodItems(
     const all = mergeProfiles([...[...per.segments.values()].map((x) => x.profile), ...per.extra]);
     merged.set(it, all);
     const label = c.multi ? it.pair.name : null;
+    const ext = it.file.ext;
     const found = castProblems(it.schema, all, it.colMap, ext);
-    issues.push(...castIssues(it.schema, all, it.colMap, ext, label));
+    issues.push(
+      ...castIssues(it.schema, all, it.colMap, ext, label).map((x) =>
+        c.group ? `“${it.file.name ?? "file"}”: ${x}` : x,
+      ),
+    );
     for (const { column, pct } of found) {
       const raw = it.colMap.length ? (it.colMap[column.pos - 1] ?? 0) : column.pos;
       review.push({
@@ -616,7 +708,14 @@ async function processPeriodItems(
       });
     }
   }
-  if (issues.length && !c.acceptCast) return { kind: "cast", issues, review };
+  if (issues.length && !c.acceptCast) {
+    // Kelompok file (T-060): tanpa layar pemetaan, jadi tidak pernah aktif sebagian → gagal utuh.
+    if (c.group) {
+      const verdict = verdictOf(issues);
+      throw new PeriodUploadError(groupMappingMessage(verdict.ok ? issues[0]! : verdict.reason));
+    }
+    return { kind: "cast", issues, review };
+  }
 
   // 5. Segmen per periode (raw + typed skema aktif + `_period`).
   setProgress({ stage: "tipe", fraction: null });
@@ -627,19 +726,19 @@ async function processPeriodItems(
     for (const p of it.periods) {
       const seg = profiles.get(it)!.get(p.start)!;
       const key = periodKeyOf(grain, p.start);
-      const label = `sheet "${it.s.rec.name}" periode ${periodLabel(grain, p.start)}`;
+      const label = `${c.group ? `file "${it.file.name ?? it.file.part}" ` : ""}sheet "${it.s.rec.name}" periode ${periodLabel(grain, p.start)}`;
       if (seg.profile.dataRows !== p.rows) {
         throw new IntegrityError([
           `${label}: ${seg.profile.dataRows} baris tertulis, ${p.rows} baris dihitung`,
         ]);
       }
       const rowBase = await repo.allocateRows(it.pair.lineageId, seg.maxSrcRow);
-      const typedPath = join(work, `typed-${it.s.rec.index}-${key}.parquet`);
+      const typedPath = join(work, `typed-${it.tag}-${key}.parquet`);
       const chars = [...seg.profile.profiles.values()].reduce((n, x) => n + x.chars, 0);
       await copyTyped(d, {
         rawPath: seg.raw,
         outPath: typedPath,
-        source: ext,
+        source: it.file.ext,
         headerRow: hr,
         watch: ensureAlive,
         rowBase,
@@ -684,9 +783,10 @@ async function processPeriodItems(
         colMap: it.colMap,
         rowBase,
         maxSrcRow: seg.maxSrcRow,
-        sha256: dl.sha256,
-        sourceKind: ext,
+        sha256: it.file.sha256,
+        sourceKind: it.file.ext,
         period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
+        ...(c.group ? { originalName: it.file.name, group: groupOf(it, p.start) } : {}),
       });
       created.push(id);
       await storage.upload(rawKey, seg.raw, PARQUET);
@@ -708,6 +808,7 @@ async function processPeriodItems(
         periodStart: p.start,
         rows: p.rows,
         bytes: rawBytes + typedBytes,
+        ...groupRef(it, p.start),
       });
       keys.push(rawKey, typedKey);
       rmSync(typedPath, { force: true });
@@ -841,6 +942,10 @@ export async function runPeriodMapping(
   if (a.sheets.some((s) => s.periodSource === "LABEL") && !(v.label && isIsoDate(v.label))) {
     return { outcome: "failed", message: LABEL_MISSING_MESSAGE };
   }
+  // Kelompok file (T-060) tidak pernah menunggu pemetaan (gagal utuh di ingest); jaga-jaga saja.
+  if (sourcesOf(v).length !== 1) {
+    return { outcome: "failed", message: groupMappingMessage("pemetaan kolom kelompok file") };
+  }
   const grain = a.grain;
   const ext: SourceKind = v.sourceKey.endsWith(".csv") ? "csv" : "xlsx";
   const usable = a.sheets.filter((s) => s.periodSource);
@@ -887,7 +992,9 @@ export async function runPeriodMapping(
       const bad = validateColMap(cp.colMap, cp.colCount, s.colCount, `sheet "${s.name}"`);
       if (bad.length) throw new IntegrityError(bad);
       const { id: _id, lineageId: _l, rawKey: _k, ...rec } = s;
-      items.push(itemOf({ rec, path }, pair, cp));
+      items.push(
+        itemOf({ rec, path }, pair, cp, { part: 1, name: v.originalName, sha256: raw.sha256, ext }),
+      );
     }
     if (!items.length) return { outcome: "invalid", message: NO_SHEET_MESSAGE };
     const core = await processPeriodItems({
@@ -897,11 +1004,11 @@ export async function runPeriodMapping(
       v,
       a,
       grain,
-      ext,
       sha256: raw.sha256,
       items,
       ignored: raw.ignoredSheets,
       multi: usable.length > 1,
+      group: null,
       deps: { repo, storage, limits: deps.limits },
       created,
       watch: opts.watch,
@@ -1019,7 +1126,7 @@ async function assignPeriods(
 ): Promise<void> {
   const hr = Math.trunc(it.s.rec.headerRow);
   const raw = lit(it.s.path);
-  const table = `assign_${Math.trunc(it.s.rec.index)}`;
+  const table = `assign_${it.tag}`;
   if (it.pair.periodSource === "LABEL") {
     if (!label || !isIsoDate(label)) throw new PeriodUploadError(LABEL_MISSING_MESSAGE);
     await d.conn.run(
@@ -1078,7 +1185,7 @@ async function segmentRaws(
   extra: RawProfile[];
 }> {
   const hr = Math.trunc(it.s.rec.headerRow);
-  const table = `assign_${Math.trunc(it.s.rec.index)}`;
+  const table = `assign_${it.tag}`;
   const profileOf = async (path: string) =>
     canonicalProfile(
       await profileRaw(d, { rawPath: path, headerRow: hr, colCount: it.rawCols, watch }),
@@ -1115,7 +1222,7 @@ async function segmentRaws(
   }
   for (const [k, p] of it.periods.entries()) {
     if (!isIsoDate(p.start)) throw new Error(`awal periode tidak valid: ${p.start}`);
-    const out = join(work, `seg-${it.s.rec.index}-${k}-raw.parquet`);
+    const out = join(work, `seg-${it.tag}-${k}-raw.parquet`);
     await subset(`p = DATE '${p.start}'`, out);
     segments.set(p.start, {
       raw: out,
@@ -1127,7 +1234,7 @@ async function segmentRaws(
   }
   const extra: RawProfile[] = [];
   if (it.missing > 0) {
-    const out = join(work, `missing-${it.s.rec.index}-raw.parquet`);
+    const out = join(work, `missing-${it.tag}-raw.parquet`);
     await subset("p IS NULL", out);
     extra.push(await profileOf(out));
     rmSync(out, { force: true });

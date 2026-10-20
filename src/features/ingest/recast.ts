@@ -97,6 +97,10 @@ export interface RecastSegment {
   periodKey?: string | null;
   /** Awal periode ISO naive = nilai `_period` di file typed segmen. */
   periodStart?: string | null;
+  /** Kelompok file satu periode (T-060): gerbang integritas manifest revisi baru. */
+  groupId?: string | null;
+  groupPart?: number | null;
+  groupSize?: number | null;
   /**
    * Jenis file asal segmen (Segment.sourceKind, T-049): cast segmen memakai jenisnya sendiri — unggahan
    * periode bisa bergantian xlsx/CSV antarbulan (T-052). null/tidak ada = jenis sumber versi.
@@ -566,6 +570,9 @@ export async function recastSheet(
             periodKey: g.periodKey ?? null,
             periodStart: g.periodStart ?? null,
             dataRows: manifest[i]!.dataRows,
+            groupId: g.groupId ?? null,
+            groupPart: g.groupPart ?? null,
+            groupSize: g.groupSize ?? null,
           })),
         },
       ],

@@ -31,11 +31,13 @@ import {
 
 export type OnLimit = "REJECT" | "EVICT_OLDEST";
 
-/** Isi satu periode di satu sheet logis (lineageId): satu segmen. */
+/** Isi satu periode di satu sheet logis (lineageId): satu segmen, atau satu kelompok file (T-060). */
 export interface PeriodSlice {
   rows: number;
   /** Byte parquet (raw + typed) segmen; perkiraan boleh dipakai untuk penolakan awal. */
   bytes: number;
+  /** Segmen yang membentuk isi ini (kelompok file T-060: satu per file); tidak ada = 1. */
+  segments?: number;
 }
 
 export interface PlanPeriodInput {
@@ -303,6 +305,8 @@ function validate(input: PeriodPlanInput): void {
       for (const [sheet, s] of Object.entries(p.sheets)) {
         assertCount(s.rows, `${name} ${p.key} ${sheet}.rows`);
         assertCount(s.bytes, `${name} ${p.key} ${sheet}.bytes`);
+        if (s.segments !== undefined)
+          assertCount(s.segments, `${name} ${p.key} ${sheet}.segments`, 1);
         if (name === "incoming" && !fileSheets.has(sheet)) {
           throw new Error(
             `computePeriodPlan: sheet ${sheet} periode ${p.key} tidak ada di incomingSheets`,
@@ -324,7 +328,7 @@ function usageOf(units: Unit[], keep: number, l: PeriodLimits): Violation[] {
   for (const u of units) {
     for (const [sheet, s] of Object.entries(u.sheets)) {
       rows.set(sheet, (rows.get(sheet) ?? 0) + s.rows);
-      segs.set(sheet, (segs.get(sheet) ?? 0) + 1);
+      segs.set(sheet, (segs.get(sheet) ?? 0) + (s.segments ?? 1));
     }
   }
   // Sheet terberat (seri: lineageId terkecil) mewakili batas per sheet.
