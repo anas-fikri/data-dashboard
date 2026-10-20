@@ -102,6 +102,15 @@ export function periodSetupSchema(keepMax: number) {
         .min(1, "Pilih sumber periode untuk setiap sheet.")
         .max(500),
       label: z.string().max(10).nullable(),
+      /** Tinjauan yang diterapkan (Terapkan): versi dasar + sidik sebaran yang dilihat pemilik. */
+      reviewed: z
+        .object({
+          baseVersionId: z.string().regex(ID, "Tinjauan tidak dikenal."),
+          digest: z.string().regex(/^[0-9a-f]{64}$/, "Tinjauan tidak dikenal."),
+        })
+        .strict()
+        .nullable()
+        .optional(),
       /** Baris tanpa tanggal valid yang dibuang ("Buang N baris"); 0 = tidak ada yang dibuang. */
       dropMissing: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     })
@@ -185,6 +194,33 @@ export interface SetupPreview {
   blockers: string[];
   /** Pemilik wajib mencentang "Buang N baris" (missingTotal > 0). */
   needsDrop: boolean;
+  /**
+   * Sidik tinjauan (sha256 heksa, diisi server dari setupDigestSource): Terapkan mengirimnya kembali
+   * bersama baseVersionId; berbeda dengan hitungan ulang → STALE (data berubah sejak ditinjau).
+   */
+  digest: string;
+}
+
+/** Teks kanonik yang disidik: satuan, versi dasar, sumber + sebaran + baris tanpa tanggal per sheet. */
+export function setupDigestSource(
+  grain: PeriodGrain,
+  baseVersionId: string,
+  sheets: SheetDistribution[],
+): string {
+  return JSON.stringify([
+    grain,
+    baseVersionId,
+    [...sheets]
+      .sort((a, b) => (a.sheetId < b.sheetId ? -1 : a.sheetId > b.sheetId ? 1 : 0))
+      .map((s) => [
+        s.sheetId,
+        s.source,
+        s.column?.pos ?? null,
+        s.totalRows,
+        s.missing,
+        s.periods.map((p) => [p.start, p.rows]),
+      ]),
+  ]);
 }
 
 const fmt = (n: number) => n.toLocaleString("id-ID");
@@ -306,7 +342,12 @@ export function buildSetupPreview(a: {
     );
   }
   for (const s of a.sheets) {
-    if (s.totalRows > 0 && s.periods.every((p) => p.rows <= 0)) {
+    if (s.totalRows === 0) {
+      // Segmen periode butuh periode; sheet kosong tidak bisa dibawa tanpa merusak widget/grid-nya.
+      blockers.push(
+        `Sheet “${s.name}” tidak berisi baris data, jadi tidak bisa dibagi per periode. Isi datanya, atau hapus sheet kosong itu dari file lalu ganti semua data, sebelum mengatur periode.`,
+      );
+    } else if (s.periods.every((p) => p.rows <= 0)) {
       blockers.push(`Sheet “${s.name}” tidak punya baris dengan tanggal valid di kolom periode.`);
     }
   }
@@ -320,6 +361,7 @@ export function buildSetupPreview(a: {
     missingTotal,
     blockers,
     needsDrop: missingTotal > 0,
+    digest: "",
   };
 }
 

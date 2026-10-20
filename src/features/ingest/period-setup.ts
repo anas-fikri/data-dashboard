@@ -99,6 +99,8 @@ export interface SetupSourceSheet {
   name: string;
   aliasName: string | null;
   lineageId: string;
+  /** Raw sheet di versi dasar (dibawa apa adanya untuk sheet tanpa data typed). */
+  rawKey: string;
   headerRow: number;
   colCount: number;
   columns: unknown;
@@ -415,10 +417,13 @@ async function splitSheet(
   await watch();
   const src = g.legacyRow ? "_row" : "_src_row";
   let assign: string;
+  /** Kolom periode di file typed baru (COLUMN): setiap baris harus jatuh di periode segmennya. */
+  let periodCol: string | null = null;
   if (choice.source === "COLUMN") {
     const c = periodColumnOf(schema, choice.column);
     if (!c) throw new SetupError(SETUP_STALE_MESSAGE);
     const col = `c${Math.trunc(c.pos)}`;
+    periodCol = col;
     const ok = validDateSql(col);
     assign = `SELECT CAST(${src} AS BIGINT) AS src,
         CASE WHEN ${ok} THEN ${periodSql(job.grain, col)} END AS p,
@@ -453,6 +458,12 @@ async function splitSheet(
     );
   }
 
+  if (!counts.length) {
+    // Tinjau sudah menolak sheet tanpa periode; data berubah di antaranya → jangan tulis sheet kosong.
+    throw new SetupError(
+      `Sheet “${s.name}” tidak punya baris data bertanggal valid, jadi tidak bisa dibagi per periode. Tinjau ulang di “Atur periode”.`,
+    );
+  }
   const hr = Math.trunc(g.headerRow);
   const sheet: NewSetupSheet = {
     from: s,
@@ -515,6 +526,24 @@ async function splitSheet(
       `${label} periode ${periodLabel(job.grain, start)}`,
       start,
     );
+    // Periode ditetapkan dari file typed LAMA, nilai baru di-cast ulang dari raw: keduanya harus
+    // sepakat (cast berubah → baris di periode salah). Satu saja yang meleset → versi gagal.
+    if (periodCol) {
+      const off = Number(
+        (
+          await one(
+            duck,
+            `SELECT count(*) FILTER (WHERE NOT coalesce(${validDateSql(periodCol)} AND ${periodSql(job.grain, periodCol)} = DATE '${start}', false))
+             FROM read_parquet(${lit(segTyped)})`,
+          )
+        )[0],
+      );
+      if (off > 0) {
+        bad.push(
+          `${label} periode ${periodLabel(job.grain, start)}: ${off} baris tanggalnya tidak masuk periode ini`,
+        );
+      }
+    }
     if (bad.length) throw new IntegrityError(bad);
     const id = newSegmentId();
     const prefix = segmentPrefix(datasetId, id);

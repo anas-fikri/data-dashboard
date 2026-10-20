@@ -91,6 +91,14 @@ const input = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** Isian Terapkan dengan tinjauan yang baru saja dilihat (versi dasar + sidik dari Tinjau). */
+async function reviewed(over: Record<string, unknown> = {}) {
+  const p = await svc.previewPeriodSetup(OWNER, DS, input(over));
+  if (!p.ok) throw new Error(p.message);
+  const reviewed = { baseVersionId: p.data.baseVersionId, digest: p.data.digest };
+  return { ...input(over), reviewed };
+}
+
 /** Sebaran dari mesin query: Jan 5 baris, Feb 3 baris, 2 baris tanpa tanggal valid. */
 const distribution = (missing = 2) => ({
   ok: true,
@@ -176,7 +184,7 @@ describe("previewPeriodSetup", () => {
 
 describe("applyPeriodSetup", () => {
   it("ada baris tanpa tanggal valid tanpa 'Buang N baris' → INVALID, tidak ada versi (AC 2)", async () => {
-    const r = await svc.applyPeriodSetup(OWNER, DS, input(), "10.0.0.1");
+    const r = await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "10.0.0.1");
     expect(r).toMatchObject({ ok: false, code: "INVALID" });
     expect(!r.ok && r.message).toMatch(/Buang 2 baris/);
     expect(tx.datasetVersion.create).not.toHaveBeenCalled();
@@ -186,7 +194,7 @@ describe("applyPeriodSetup", () => {
     const r = await svc.applyPeriodSetup(
       OWNER,
       DS,
-      input({ dropMissing: 2, keepPeriods: 36, onLimit: "EVICT_OLDEST" }),
+      await reviewed({ dropMissing: 2, keepPeriods: 36, onLimit: "EVICT_OLDEST" }),
       "10.0.0.1",
     );
     expect(r).toEqual({ ok: true, data: { versionId: NEW } });
@@ -241,26 +249,30 @@ describe("applyPeriodSetup", () => {
   it("bukan pemilik di bawah lock → NOT_FOUND; versi tertunda → DATASET_BUSY; acuan berubah → STALE", async () => {
     runOnParquet.mockResolvedValue(distribution(0));
     tx.$queryRaw.mockResolvedValueOnce([]);
-    expect(await svc.applyPeriodSetup(OWNER, DS, input(), "ip")).toMatchObject({
+    expect(await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "ip")).toMatchObject({
       code: "NOT_FOUND",
     });
     tx.datasetVersion.count.mockResolvedValueOnce(1);
-    expect(await svc.applyPeriodSetup(OWNER, DS, input(), "ip")).toMatchObject({
+    expect(await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "ip")).toMatchObject({
       code: "DATASET_BUSY",
     });
     tx.sheet.findMany.mockResolvedValueOnce([{ id: SHEET, schemaRevision: 4 }]);
-    expect(await svc.applyPeriodSetup(OWNER, DS, input(), "ip")).toMatchObject({ code: "STALE" });
+    expect(await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "ip")).toMatchObject({
+      code: "STALE",
+    });
     tx.$queryRaw.mockResolvedValueOnce([
       { activeVersionId: "lain", keepPeriods: null, onLimit: "REJECT" },
     ]);
-    expect(await svc.applyPeriodSetup(OWNER, DS, input(), "ip")).toMatchObject({ code: "STALE" });
+    expect(await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "ip")).toMatchObject({
+      code: "STALE",
+    });
     expect(tx.datasetVersion.create).not.toHaveBeenCalled();
   });
 
   it("antrean mati → versi langsung FAILED (tidak menahan dataset) + DATASET_BUSY", async () => {
     runOnParquet.mockResolvedValue(distribution(0));
     enqueuePeriodSetup.mockRejectedValue(new Error("redis mati"));
-    expect(await svc.applyPeriodSetup(OWNER, DS, input(), "ip")).toMatchObject({
+    expect(await svc.applyPeriodSetup(OWNER, DS, await reviewed(), "ip")).toMatchObject({
       code: "DATASET_BUSY",
     });
     expect(prisma.datasetVersion.updateMany).toHaveBeenCalledWith(
@@ -269,6 +281,42 @@ describe("applyPeriodSetup", () => {
         data: expect.objectContaining({ status: "FAILED" }),
       }),
     );
+  });
+});
+
+describe("applyPeriodSetup — tinjauan yang diterapkan", () => {
+  it("tanpa tinjauan → INVALID; versi dasar / sebaran berbeda dari yang ditinjau → STALE, tanpa versi", async () => {
+    expect(await svc.applyPeriodSetup(OWNER, DS, input({ dropMissing: 2 }), "ip")).toMatchObject({
+      code: "INVALID",
+      message: "Tinjau dulu sebelum menerapkan.",
+    });
+    const ok = await reviewed({ dropMissing: 2 });
+    const stale = "Data berubah sejak ditinjau. Tinjau ulang sebelum menerapkan.";
+    expect(
+      await svc.applyPeriodSetup(
+        OWNER,
+        DS,
+        { ...ok, reviewed: { ...ok.reviewed, baseVersionId: "cmv4kljx40009oczvlainnya01" } },
+        "ip",
+      ),
+    ).toEqual({ ok: false, code: "STALE", message: stale });
+    // Satu baris pindah periode sejak ditinjau (jumlah total sama) → sidik berbeda.
+    runOnParquet.mockResolvedValue({
+      ok: true,
+      value: {
+        ...distribution().value,
+        periods: [
+          { start: "2026-01-01", rows: 4 },
+          { start: "2026-02-01", rows: 4 },
+        ],
+      },
+    });
+    expect(await svc.applyPeriodSetup(OWNER, DS, ok, "ip")).toEqual({
+      ok: false,
+      code: "STALE",
+      message: stale,
+    });
+    expect(tx.datasetVersion.create).not.toHaveBeenCalled();
   });
 });
 

@@ -39,6 +39,7 @@ export const prismaPeriodSetupRepo: PeriodSetupRepo = {
             name: true,
             aliasName: true,
             lineageId: true,
+            rawKey: true,
             headerRow: true,
             colCount: true,
             columns: true,
@@ -181,7 +182,8 @@ export const prismaPeriodSetupRepo: PeriodSetupRepo = {
               index: f.index,
               name: f.name,
               aliasName: f.aliasName,
-              rawKey: first ? first.rawKey : "",
+              // Sheet tanpa data typed: raw dasar dibawa (rujukan, bukan salinan).
+              rawKey: first ? first.rawKey : f.rawKey,
               rawRows: s.rawRows,
               colCount: f.colCount,
               headerRow: f.headerRow,

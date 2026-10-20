@@ -152,6 +152,12 @@ describe("buildSetupPreview", () => {
     );
   });
 
+  it("sheet tanpa baris data (hanya judul) → nonaktif dengan pesan, bukan sheet kosong diam-diam", () => {
+    const p = preview([dist({ periods: [], totalRows: 0 })]);
+    expect(p.blockers).toHaveLength(1);
+    expect(p.blockers[0]).toMatch(/^Sheet “Pengiriman” tidak berisi baris data/);
+  });
+
   it("sheet ber-data tanpa satu pun tanggal valid → nonaktif", () => {
     const p = preview([dist({ periods: [], missing: 3000 })]);
     expect(p.blockers).toEqual([

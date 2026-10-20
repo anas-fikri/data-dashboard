@@ -12,7 +12,7 @@ depends_on:
   - T-049
   - T-050
 created: "2026-10-15T02:30:57Z"
-updated: "2026-10-20T12:17:19Z"
+updated: "2026-10-20T12:31:53Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,7 +22,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 203758
+    duration_ms: 193365
     summary: |-
       …t
       > vitest run
@@ -30,23 +30,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792498583403,"service":"data-dashboard","host":"127.0.0.1","port":40627,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792498583459,"service":"data-dashboard","host":"127.0.0.1","port":44145,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792498583562,"service":"data-dashboard","host":"127.0.0.1","port":33555,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792498583670,"service":"data-dashboard","host":"127.0.0.1","port":39751,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792498595641,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792498601869,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792498601893,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792498601899,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792498601907,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792499270813,"service":"data-dashboard","host":"127.0.0.1","port":44485,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499270876,"service":"data-dashboard","host":"127.0.0.1","port":39701,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792499271005,"service":"data-dashboard","host":"127.0.0.1","port":35665,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499271132,"service":"data-dashboard","host":"127.0.0.1","port":45115,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792499279078,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792499291560,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792499291583,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792499291586,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792499291598,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  178 passed | 1 skipped (179)
-            Tests  2305 passed | 10 skipped (2315)
-         Start at  12:14:55
-         Duration  141.74s (tests 85%, import 12%, transform 3%)
+            Tests  2309 passed | 10 skipped (2319)
+         Start at  12:26:30
+         Duration  136.05s (tests 84%, import 13%, transform 3%)
 
-          Isolate  179 workers spawned · ~158ms startup each (spawn + environment, per file)
-                   at least ~9.28s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  179 workers spawned · ~161ms startup each (spawn + environment, per file)
+                   at least ~9.42s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -54,12 +54,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T12:17:19Z"
-    tree: 54c910c99371a68dab5c7f7dd940d7fd77b83889e24f5ab669a79b2065f15eda
+    at: "2026-10-20T12:28:48Z"
+    tree: 8c8f5e7b26f826c63e31bfb7a98c0ce80bc4cf55683b1a110d1f8cf010f80355
   audit:
-    at: "2026-10-20T12:13:23Z"
+    at: "2026-10-20T12:31:24Z"
     passed: true
-    tree: 54c910c99371a68dab5c7f7dd940d7fd77b83889e24f5ab669a79b2065f15eda
+    tree: 8c8f5e7b26f826c63e31bfb7a98c0ce80bc4cf55683b1a110d1f8cf010f80355
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -67,7 +67,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 485 dirs visited, 2616 inodes visited, 1 Extract calls, 225.733404ms elapsed, 225.733692ms wall time
+          End status: 488 dirs visited, 2679 inodes visited, 1 Extract calls, 278.235084ms elapsed, 278.235439ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -118,7 +118,7 @@ ulang sesuai R21.
 - Rollback: aplikasi — revert commit; data — aktifkan versi sebelum PERIOD_SETUP dari Riwayat versi (manifest
   lama utuh). Skema — `ALTER TABLE "Dataset" DROP COLUMN "keepPeriods", DROP COLUMN "onLimit"; DROP TYPE
   "PeriodOnLimit";` (kolom belum dibaca kode lain).
-- Validation: unit (period-setup-plan 10, job DuckDB 7, service app 9, riwayat 1) + e2e `period-setup` 3/3
+- Validation: unit (period-setup-plan 11, job DuckDB 9, service app 10, riwayat 1) + e2e `period-setup` 3/3
   (worker sungguhan) + e2e `versions` 7/7, `datasets`+`uploads` 16/16; `aitk check` lulus.
 
 ## Notes
@@ -148,6 +148,21 @@ ulang sesuai R21.
 - Plugin frontend-expert tidak tersedia di sesi cloud ini; UI mengikuti token (tanpa hex), Tabler
   `size=20 stroke=1.5`, CTA penuh di < 768, label/fieldset/aria-describedby, aria-live untuk hasil tinjauan.
   Audit `/frontend-expert:audit` belum dijalankan → dicatat untuk reviewer.
+- Review putaran 1 (koordinator), diperbaiki:
+  1. Sheet hanya-judul (typed, 0 baris data) tidak lagi lolos menjadi sheet tanpa typed/manifest: Tinjau
+     menonaktifkan Terapkan dengan pesan, job menolak sheet tanpa periode (uji plan + job header-only).
+  2. Terapkan membawa tinjauan yang dilihat pemilik (`reviewed`: baseVersionId + sha256 sebaran/baris tanpa
+     tanggal per sheet); hitungan ulang server berbeda → STALE "Data berubah sejak ditinjau…" (uji service).
+  3. Job memverifikasi setiap file typed baru: semua baris bertanggal valid dan date_trunc = `_period`
+     segmennya (periode diambil dari typed lama, nilai dicast ulang dari raw); meleset → FAILED, segmen
+     dihapus (uji job dengan typed dasar bergeser satu bulan).
+  4. Sheet tanpa data typed membawa rawKey dasar (bukan "").
+  5. Job basi yang diambil ulang (stalled) saat worker pertama masih hidup bisa berjalan dua kali — risiko
+     yang sama dengan ingest (lock BullMQ diperpanjang otomatis, maxStalledCount 2). Hanya satu yang bisa
+     commit (status INGESTING dijaga di finish); deleteAttempt percobaan kedua bisa menghapus baris/segmen
+     percobaan pertama di tengah jalan sehingga salah satunya gagal (FK/gerbang integritas) → versi FAILED dan
+     pemilik menerapkan ulang. Tidak ada data
+     aktif yang berubah. Belum ditangani khusus (sama dengan ingest).
 - `aitk impact`: period-setup-form.tsx dan period-setup-repo.ts tanpa unit test; keduanya dicakup e2e
   `period-setup` (UI + Prisma repo lewat worker sungguhan).
 

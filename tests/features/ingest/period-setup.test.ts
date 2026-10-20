@@ -1,3 +1,4 @@
+import { renameSync } from "node:fs";
 import { join } from "node:path";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
@@ -61,6 +62,7 @@ class FakeSetupRepo implements PeriodSetupRepo {
         name: s.name,
         aliasName: null,
         lineageId: s.lineageId!,
+        rawKey: g.rawKey,
         headerRow: s.headerRow,
         colCount: s.colCount,
         columns: s.columns,
@@ -175,12 +177,12 @@ class FakeSetupRepo implements PeriodSetupRepo {
   async recordCleanup() {}
 }
 
-async function setup() {
-  const s = t.setup(t.file(`p-${Math.random().toString(36).slice(2)}.csv`, CSV));
+async function setup(content = CSV) {
+  const s = t.setup(t.file(`p-${Math.random().toString(36).slice(2)}.csv`, content));
   expect(await runIngest(VID, s.repo, s.storage, s.opts)).toEqual({ outcome: "done", sheets: 1 });
   const [sheetId] = [...s.repo.sheets.keys()];
   const sheet = s.repo.sheets.get(sheetId!)!;
-  expect(sheet.schema!.find((c) => c.pos === 1)?.type).toBe("date");
+  if (content === CSV) expect(sheet.schema!.find((c) => c.pos === 1)?.type).toBe("date");
   const repo = new FakeSetupRepo(s.repo);
   const job = (over: Partial<PeriodSetupJobData> = {}): PeriodSetupJobData => ({
     versionId: SETUP,
@@ -345,6 +347,49 @@ describe("runPeriodSetup", () => {
     for (const m of r.repo.sheets[0]!.segments) {
       expect(await r.storage.exists(m.typedKey)).toBe(true);
     }
+  });
+
+  it("periode dari typed lama tidak cocok dengan cast ulang dari raw → FAILED, segmen dibersihkan", async () => {
+    const r = await setup();
+    const before = r.storage.parquetKeys();
+    // Typed dasar "basi": tanggal bergeser satu bulan dari isi raw (mis. cast pernah berbeda).
+    const path = join(r.storage.dir, r.sheet.typedKey!);
+    const shifted = `${path}.shifted`;
+    await query(
+      `COPY (SELECT * REPLACE (CAST(c1 + INTERVAL 1 MONTH AS DATE) AS c1) FROM read_parquet('${path}'))
+       TO '${shifted}' (FORMAT parquet)`,
+    );
+    renameSync(shifted, path);
+    const job = r.job();
+    job.sheets[0]!.expected.periods = { "2026-02-01": 2, "2026-03-01": 2, "2026-04-01": 1 };
+    const out = await runPeriodSetup(job, r.deps);
+    expect(out).toMatchObject({ outcome: "failed" });
+    expect(r.repo.error).toMatch(/2 baris tanggalnya tidak masuk periode ini/);
+    expect(r.repo.status).toBe("FAILED");
+    expect(r.repo.segments.size).toBe(0);
+    expect(r.storage.parquetKeys()).toEqual(before);
+  });
+
+  it("sheet tanpa baris data → gagal dengan pesan, tidak ada sheet kosong yang ditulis", async () => {
+    const r = await setup("tanggal;nilai;kode\n");
+    const out = await runPeriodSetup(
+      r.job({
+        sheets: [
+          {
+            sheetId: r.sheetId,
+            source: "LABEL",
+            column: null,
+            label: "2026-04-01",
+            expected: { periods: {}, missing: 0 },
+          },
+        ],
+        dropMissing: 0,
+      }),
+      r.deps,
+    );
+    expect(out).toMatchObject({ outcome: "failed" });
+    expect(r.repo.error).toMatch(/tidak punya baris data/);
+    expect(r.repo.sheets).toEqual([]);
   });
 
   it("sumber label: semua baris (termasuk tanggal kosong) masuk satu periode pilihan pemilik", async () => {

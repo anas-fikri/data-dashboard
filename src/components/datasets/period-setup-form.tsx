@@ -363,8 +363,10 @@ export function PeriodSetupForm({ view }: { view: PeriodSetupView }) {
     if (!preview) return;
     const body = payload(drop ? preview.missingTotal : 0);
     if (!body) return;
+    // Versi dasar + sidik sebaran yang ditinjau: data berubah sejak itu → STALE, tinjau ulang.
+    const reviewed = { baseVersionId: preview.baseVersionId, digest: preview.digest };
     start(async () => {
-      const r = await applyPeriodSetupAction(view.datasetId, body);
+      const r = await applyPeriodSetupAction(view.datasetId, { ...body, reviewed });
       if (r.ok) {
         router.push(`/datasets/${view.datasetId}?period=1`);
       } else {

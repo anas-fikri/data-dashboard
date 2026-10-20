@@ -1,4 +1,5 @@
 import "server-only";
+import { createHash } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import { NON_TERMINAL_STATUSES } from "@/features/datasets/label";
@@ -16,6 +17,7 @@ import {
   periodSql,
   periodSetupSchema,
   SETUP_MAX_PERIODS,
+  setupDigestSource,
   type PeriodSetupInput,
   type SetupPreview,
   type SheetDistribution,
@@ -57,6 +59,7 @@ const BUSY_MESSAGE =
   "Tunggu file yang sedang diproses, atau versi yang menunggu pemetaan/konfirmasi diselesaikan atau dibuang, sebelum mengatur periode.";
 const STALE_MESSAGE =
   "Data aktif berubah sejak ditinjau (versi lain diaktifkan atau skema diubah). Tinjau ulang sebelum menerapkan.";
+const REVIEW_STALE_MESSAGE = "Data berubah sejak ditinjau. Tinjau ulang sebelum menerapkan.";
 const ALREADY_PERIOD =
   "Dataset ini sudah menyimpan data per periode. Untuk memakai sumber atau satuan periode lain, ganti semua data.";
 const MULTI_SEGMENT =
@@ -374,6 +377,9 @@ async function check(
     limits,
     dropMissing: input.dropMissing,
   });
+  preview.digest = createHash("sha256")
+    .update(setupDigestSource(input.grain, base.versionId, sheets))
+    .digest("hex");
   return { ok: true, data: { input, base, preview } };
 }
 
@@ -404,6 +410,11 @@ export async function applyPeriodSetup(
   const r = await check(userId, datasetId, payload, deps);
   if (!r.ok) return r;
   const { input, base, preview } = r.data;
+  // Terapkan hanya untuk tinjauan yang dilihat pemilik: versi dasar dan sebaran harus sama persis.
+  if (!input.reviewed) return fail("INVALID", "Tinjau dulu sebelum menerapkan.");
+  if (input.reviewed.baseVersionId !== base.versionId || input.reviewed.digest !== preview.digest) {
+    return fail("STALE", REVIEW_STALE_MESSAGE);
+  }
   if (preview.blockers.length) return fail("INVALID", preview.blockers[0]!);
   if (input.dropMissing !== preview.missingTotal) {
     return fail(
