@@ -14,7 +14,7 @@ depends_on:
   - T-035
   - T-016
 created: "2026-10-15T02:30:55Z"
-updated: "2026-10-20T06:09:41Z"
+updated: "2026-10-20T06:14:40Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -24,7 +24,7 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 174316
+    duration_ms: 168089
     summary: |-
       …t
       > vitest run
@@ -32,23 +32,23 @@ evidence:
 
        RUN  v5.0.3 /home/user/data-dashboard
 
-      {"level":40,"time":1792476530088,"service":"data-dashboard","host":"127.0.0.1","port":43471,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792476530148,"service":"data-dashboard","host":"127.0.0.1","port":36321,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792476530250,"service":"data-dashboard","host":"127.0.0.1","port":42127,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792476530372,"service":"data-dashboard","host":"127.0.0.1","port":43189,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792476538473,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792476546833,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792476546856,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792476546861,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792476546877,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792476832836,"service":"data-dashboard","host":"127.0.0.1","port":40167,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792476832887,"service":"data-dashboard","host":"127.0.0.1","port":33713,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792476832986,"service":"data-dashboard","host":"127.0.0.1","port":45787,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792476833088,"service":"data-dashboard","host":"127.0.0.1","port":41067,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792476841229,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792476845511,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792476845533,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792476845536,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792476845543,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  164 passed | 1 skipped (165)
-            Tests  2133 passed | 10 skipped (2143)
-         Start at  06:07:34
-         Duration  125.30s (tests 85%, import 12%, transform 3%)
+            Tests  2135 passed | 10 skipped (2145)
+         Start at  06:12:39
+         Duration  118.83s (tests 86%, import 12%, transform 2%)
 
-          Isolate  165 workers spawned · ~148ms startup each (spawn + environment, per file)
-                   at least ~8.00s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  165 workers spawned · ~139ms startup each (spawn + environment, per file)
+                   at least ~7.49s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -56,8 +56,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-20T06:09:41Z"
-    tree: d5463c0506654bc9444ab4ff9b2eb9e080da3918d1bee309bcc9252094964884
+    at: "2026-10-20T06:14:39Z"
+    tree: d76c020d3bda566926758e46791d3828a30594b65db06944d9fa1d3181d2d923
   audit:
     at: "2026-10-20T06:06:22Z"
     passed: true
@@ -117,6 +117,10 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
   `scripts/perf-grid.ts` → docs/ai/perf/T-041.md, `aitk check`.
 
 ## Notes
+- 403 (bukan 404 seperti konvensi umum) untuk viewer/pengguna asing disengaja: mengikuti rencana §3.4 dan
+  AC P-9 #2; sheet tak dikenal juga 403 identik sehingga keberadaan tidak bocor.
+- Review M1/M2: GET …/cell memilih satu segmen dari rentang rowBase (≤ 1 file typed disewa); manifest
+  dengan rentang `_row` bertumpuk (mis. dua segmen legacy) ditolak QUERY_FAILED (uji regresi).
 - Asumsi (keputusan standar): "editor" sheet = pengguna dengan share EDITOR di salah satu dashboard dataset
   itu (kontrak T-016 per dashboard; tidak ada peran per dataset). Viewer dan pengguna asing mendapat 403
   yang sama (AC2) — sheet yang tidak ada juga 403 agar keberadaan tidak bocor.

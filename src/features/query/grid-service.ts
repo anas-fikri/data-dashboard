@@ -131,7 +131,32 @@ async function authorize(
   if (!sheet.typedKey || !sheet.schema) {
     return { ok: false, code: "NOT_READY", message: "Data sheet ini belum siap." };
   }
+  if (!uniqueRowSpace(sheet.segments)) {
+    return { ok: false, code: "QUERY_FAILED", message: "Data sheet ini tidak bisa ditampilkan." };
+  }
   return { ok: true, sheet: { ...sheet, schema: sheet.schema } };
+}
+
+/**
+ * `_row` unik per sheet hanya bila rentang segmen tidak bertumpuk: segmen legacy (`_row` = baris fisik,
+ * rowBase 0) hanya ada satu per sheet (migrasi T-036, ordinal 0), segmen baru punya rowBase unik dari
+ * rowHighWater (≥ 2^31 − 1 untuk lineage hasil migrasi). Manifest yang melanggar ditolak, bukan dibaca
+ * dengan `_row` ganda (jendela berurut dan GET …/cell bisa salah file).
+ */
+export function uniqueRowSpace(segs: GridSegment[]): boolean {
+  const bases = segs.map((s) => (s.legacyRow ? 0 : s.rowBase));
+  return new Set(bases).size === bases.length;
+}
+
+/** Satu-satunya segmen yang bisa memuat `_row` ini: rowBase terbesar di bawahnya (rentang disjoint). */
+export function segmentForRow(segs: GridSegment[], row: number): GridSegment | null {
+  let best: GridSegment | null = null;
+  for (const s of segs) {
+    const base = s.legacyRow ? 0 : s.rowBase;
+    if (row <= base || (s.maxSrcRow !== null && row > base + s.maxSrcRow)) continue;
+    if (!best || base > (best.legacyRow ? 0 : best.rowBase)) best = s;
+  }
+  return best;
 }
 
 const asFiles = (segs: GridSegment[]): SegmentFile[] =>
@@ -281,12 +306,9 @@ export async function runGridCell(
           fileName: sheet.fileName,
         },
       ];
-  // Segmen baru: _row = rowBase + baris fisik (rowBase < _row ≤ rowBase + maxSrcRow); legacy: _row = fisik.
-  const candidates = segs.filter(
-    (s) =>
-      s.legacyRow || (row > s.rowBase && (s.maxSrcRow === null || row <= s.rowBase + s.maxSrcRow)),
-  );
-  for (const seg of candidates) {
+  // Segmen baru: _row = rowBase + baris fisik; legacy: _row = fisik. Paling banyak satu file disewa.
+  const found = segmentForRow(segs, row);
+  for (const seg of found ? [found] : []) {
     const t = await runOnParquet(userId, seg.typedKey, deps, (path, exec) =>
       exec(buildTypedCellSql(seg, col, path, row)),
     );

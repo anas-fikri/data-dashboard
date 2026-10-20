@@ -469,3 +469,23 @@ describe("AC4: urut + saring deterministik, isi sel", () => {
     });
   });
 });
+
+describe("review M1/M2: identitas _row", () => {
+  it("GET cell menyewa paling banyak satu file typed", async () => {
+    leased = [];
+    await runGridCell(OWNER, SHEET, { versionId: VER, row: "999999", pos: "1" }, deps());
+    expect(leased).toEqual([]);
+    leased = [];
+    await runGridCell(OWNER, SHEET, { versionId: VER, row: "2010", pos: "2" }, deps());
+    expect(leased).toEqual(["typed-2.parquet"]);
+  });
+
+  it("dua segmen legacy berbagi _row → ditolak, bukan baris ganda/salah file", async () => {
+    const two = () =>
+      sheet({ segments: [segments[0]!, { ...segments[0]!, typedKey: "typed-0b.parquet" }] });
+    const r = await runGridRows(OWNER, SHEET, body({ sort: [{ pos: 1, dir: "asc" }] }), deps(two));
+    expect(r).toMatchObject({ ok: false, code: "QUERY_FAILED" });
+    const c = await runGridCell(OWNER, SHEET, { versionId: VER, row: "2", pos: "1" }, deps(two));
+    expect(c).toMatchObject({ ok: false, code: "QUERY_FAILED" });
+  });
+});
