@@ -153,6 +153,32 @@
   font-weight: 400;
   color: var(--color-muted-foreground);
 }
+/* T-044: klik nama kolom = urut; penanda urut (panah + nomor urutan) dan saring di baris huruf. */
+.dd-grid .dd-grid-sortable {
+  cursor: pointer;
+}
+.dd-grid .dd-grid-letter {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+.dd-grid .dd-grid-header-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--color-primary);
+}
+.dd-grid .dd-grid-sort-mark {
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+/* Sel cocok dengan "Cari": latar warning + garis kiri (bukan warna saja). */
+.dd-grid .dd-grid-match {
+  background: color-mix(in oklab, var(--color-warning) 28%, transparent);
+  box-shadow: inset 3px 0 0 var(--color-warning);
+}
 .dd-grid .dd-grid-name {
   display: flex;
   min-width: 0;

@@ -202,14 +202,24 @@ export function blockNearView(
   return end > first - margin && start <= last + margin;
 }
 
-/** Teks bilah status (AC 1): "Baris 1–40 dari 9.812.334". */
-export function statusText(first: number | null, last: number | null, total: number | null) {
+/**
+ * Teks bilah status (AC 1): "Baris 1–40 dari 9.812.334". `all` (T-044): jumlah baris sheet saat
+ * saringan/cari aktif → "… dari 12 (tersaring dari 450)".
+ */
+export function statusText(
+  first: number | null,
+  last: number | null,
+  total: number | null,
+  all: number | null = null,
+) {
   if (total === null) return "Memuat baris…";
-  if (total === 0) return "Tidak ada baris data";
-  if (first === null || last === null) return `${fmtInt(total)} baris`;
+  const from = all !== null ? ` (tersaring dari ${fmtInt(all)})` : "";
+  if (total === 0)
+    return all !== null ? `Tidak ada baris yang cocok${from}` : "Tidak ada baris data";
+  if (first === null || last === null) return `${fmtInt(total)} baris${from}`;
   const a = Math.min(Math.max(first, 1), total);
   const b = Math.min(Math.max(last, a), total);
-  return `Baris ${fmtInt(a)}–${fmtInt(b)} dari ${fmtInt(total)}`;
+  return `Baris ${fmtInt(a)}–${fmtInt(b)} dari ${fmtInt(total)}${from}`;
 }
 
 /** "Ke baris" dari input pengguna ("9.000.000", "9000000") → nomor 1..total, null bila tidak valid. */
@@ -219,4 +229,122 @@ export function parseRowInput(text: string, total: number): number | null {
   const n = Number(digits);
   if (n < 1) return null;
   return Math.min(n, total);
+}
+
+/* ---------- T-044: urut, saring, cari ---------- */
+
+/** Urut paling banyak 3 kolom (server GRID_SORT_MAX). */
+export const MAX_SORT = 3;
+/** Cari: teks ≤ 100 karakter di ≤ 10 kolom teks terlihat (server GRID_SEARCH_*). */
+export const SEARCH_TEXT_MAX = 100;
+export const SEARCH_COLS_MAX = 10;
+/** Saringan kolom paling banyak 20 (server GRID_FILTERS_MAX). */
+export const MAX_FILTERS = 20;
+
+export type SortDir = "asc" | "desc";
+export interface SortItem {
+  pos: number;
+  dir: SortDir;
+}
+/** Saringan satu kolom dalam bentuk body server: bentuk filters.ts dengan `pos` (bukan nama). */
+export type BodyFilter = { pos: number } & (
+  | { op: "in" | "not_in"; values: (string | number | boolean | null)[] }
+  | { op: "range"; gte?: string | number; lte?: string | number; lt?: string | number }
+  | { op: "preset"; preset: string }
+);
+export interface GridSearch {
+  text: string;
+  /** Posisi kolom teks yang dicari (snapshot saat cari diterapkan). */
+  cols: number[];
+}
+/** Urut/saring/cari yang dikirim di setiap blok. */
+export interface GridQuery {
+  sort: SortItem[];
+  filters: BodyFilter[];
+  search: GridSearch | null;
+}
+
+export const posOf = (colId: string): number | null => {
+  const m = /^c(\d+)$/.exec(colId);
+  return m ? Number(m[1]) : null;
+};
+
+/** Model urut AG (urut sortIndex) → urutan server: hanya kolom data, paling banyak MAX_SORT. */
+export function sortFromModel(model: readonly { colId: string; sort: string }[]): SortItem[] {
+  const out: SortItem[] = [];
+  for (const m of model) {
+    const pos = posOf(m.colId);
+    if (pos === null || (m.sort !== "asc" && m.sort !== "desc")) continue;
+    if (out.some((s) => s.pos === pos)) continue;
+    out.push({ pos, dir: m.sort });
+    if (out.length === MAX_SORT) break;
+  }
+  return out;
+}
+
+/** Kolom cari: ≤ 10 kolom teks pertama menurut urutan tampil (yang terlihat). */
+export function searchColumns(
+  displayed: readonly string[],
+  typeOf: (colId: string) => ColumnType | undefined,
+): number[] {
+  const out: number[] = [];
+  for (const id of displayed) {
+    const pos = posOf(id);
+    if (pos === null || typeOf(id) !== "text") continue;
+    out.push(pos);
+    if (out.length === SEARCH_COLS_MAX) break;
+  }
+  return out;
+}
+
+/** Teks cari dari isian: dipangkas; kosong → null; dipotong di SEARCH_TEXT_MAX. */
+export function normalizeSearchText(text: string): string | null {
+  const t = text.trim().slice(0, SEARCH_TEXT_MAX);
+  return t ? t : null;
+}
+
+/** Sel cocok dengan teks cari (sama dengan server: mengandung, tanpa peka besar/kecil). */
+export function cellMatches(value: unknown, needle: string): boolean {
+  if (typeof value !== "string" || !needle) return false;
+  return value.toLowerCase().includes(needle.toLowerCase());
+}
+
+/** "x baris (tersaring dari y)"; tanpa saringan → "y baris". */
+export function filteredCountText(filtered: number, total: number, active: boolean): string {
+  if (!active) return `${fmtInt(total)} baris`;
+  return `${fmtInt(filtered)} baris (tersaring dari ${fmtInt(total)})`;
+}
+
+const DIR_TEXT: Record<SortDir, string> = { asc: "naik", desc: "turun" };
+
+/** Pengumuman urutan untuk pembaca layar: "Diurutkan berdasarkan Tanggal naik, lalu Kode turun". */
+export function sortAnnouncement(
+  sort: readonly SortItem[],
+  nameOf: (pos: number) => string,
+): string {
+  if (sort.length === 0) return "Urutan dihapus; baris kembali ke urutan file";
+  return `Diurutkan berdasarkan ${sort.map((s) => `${nameOf(s.pos)} ${DIR_TEXT[s.dir]}`).join(", lalu ")}`;
+}
+
+export const sortDirText = (d: SortDir) => DIR_TEXT[d];
+
+/**
+ * Penyimpan kecil (useSyncExternalStore) untuk keadaan yang dibaca kepala kolom AG: kepala kolom
+ * tidak dirender ulang oleh React saat state SheetGrid berubah (columnDefs stabil, T-043).
+ */
+export class Store<T> {
+  private listeners = new Set<() => void>();
+  constructor(private value: T) {}
+  get = (): T => this.value;
+  set(next: T) {
+    if (Object.is(next, this.value)) return;
+    this.value = next;
+    for (const l of this.listeners) l();
+  }
+  subscribe = (l: () => void) => {
+    this.listeners.add(l);
+    return () => {
+      this.listeners.delete(l);
+    };
+  };
 }

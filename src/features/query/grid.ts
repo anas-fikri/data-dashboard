@@ -27,6 +27,10 @@ export const GRID_SEARCH_COLS_MAX = 10;
 /** Teks sel di jendela dipotong di sini (`cut` menandai); isi penuh lewat GET …/cell. */
 export const GRID_CELL_TEXT_MAX = 500;
 export const GRID_BODY_MAX = 64 * 1024;
+/** Batas waktu jendela dengan cari (T-044 AC3): lebih pendek dari QUERY_TIMEOUT_MS. */
+export const GRID_SEARCH_MAX_MS = 10_000;
+/** Batas waktu daftar nilai menu saring (sama dengan slicer dashboard). */
+export const GRID_VALUES_MAX_MS = 10_000;
 
 const id = z.string().regex(/^[a-z0-9]{20,32}$/);
 const pos = z.number().int().min(1).max(100_000);
@@ -56,6 +60,15 @@ export const rowsBodySchema = z
   .strict();
 
 export type RowsBody = z.infer<typeof rowsBodySchema>;
+
+/** POST /api/sheets/:id/values (T-044): daftar nilai satu kolom untuk menu saring, cari opsional. */
+export const valuesBodySchema = z
+  .object({
+    versionId: id,
+    pos,
+    q: z.string().max(GRID_SEARCH_TEXT_MAX).optional(),
+  })
+  .strict();
 
 type SchemaCol = Pick<ColumnSchema, "pos" | "type" | "float" | "hidden">;
 

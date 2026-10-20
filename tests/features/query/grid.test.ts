@@ -8,6 +8,9 @@ import { buildSortedWindowSql, planGrid, windowParts, type RowsBody } from "@/fe
 import {
   runGridCell,
   runGridRows,
+  runGridValues,
+  SEARCH_TIMEOUT_MESSAGE,
+  SORT_TIMEOUT_MESSAGE,
   type GridDeps,
   type GridSegment,
   type GridSheet,
@@ -524,5 +527,111 @@ describe("T-042: cache hasil hanya untuk count", () => {
     expect(next.filteredTotal).toBe(a.filteredTotal);
     expect(next.rows[0]!.n).toBe(11);
     expect(next.rows.map((r) => r._row)).not.toEqual(a.rows.map((r) => r._row));
+  });
+});
+
+/** Mesin yang menolak setiap exec sebagai batas waktu; mencatat batas waktu yang diminta. */
+function timingOut(seen: number[]): GridDeps["engine"] {
+  return {
+    withSlot: (u, fn) => engine.withSlot(u, fn),
+    exec: async (_sql, _params, maxMs) => {
+      seen.push(maxMs);
+      const e = new Error("timeout");
+      e.name = "QueryTimeoutError";
+      throw e;
+    },
+  };
+}
+
+describe("T-044: urut/cari melewati batas waktu", () => {
+  it("AC4: urut yang melewati QUERY_TIMEOUT_MS → pesan 'Pengurutan ini terlalu berat; saring data dulu'", async () => {
+    const seen: number[] = [];
+    const r = await runGridRows(OWNER, SHEET, body({ sort: [{ pos: 1, dir: "asc" }] }), {
+      ...deps(),
+      engine: timingOut(seen),
+    });
+    expect(r).toMatchObject({ ok: false, code: "QUERY_TIMEOUT", message: SORT_TIMEOUT_MESSAGE });
+    expect(SORT_TIMEOUT_MESSAGE).toBe("Pengurutan ini terlalu berat; saring data dulu.");
+    expect(seen[0]).toBeGreaterThan(10_000);
+  });
+
+  it("AC3: cari dibatasi 10 detik (bukan QUERY_TIMEOUT_MS) dengan pesan cari", async () => {
+    const seen: number[] = [];
+    const r = await runGridRows(
+      OWNER,
+      SHEET,
+      body({ sort: [{ pos: 1, dir: "asc" }], search: { text: "jakarta", cols: [1] } }),
+      { ...deps(), engine: timingOut(seen) },
+    );
+    expect(r).toMatchObject({ ok: false, code: "QUERY_TIMEOUT", message: SEARCH_TIMEOUT_MESSAGE });
+    expect(seen[0]).toBeLessThanOrEqual(10_000);
+    expect(seen[0]).toBeGreaterThan(9_000);
+  });
+
+  it("jalur tanpa urut tidak terpengaruh pesan urut", async () => {
+    const seen: number[] = [];
+    const r = await runGridRows(OWNER, SHEET, body(), { ...deps(), engine: timingOut(seen) });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).not.toBe(SORT_TIMEOUT_MESSAGE);
+  });
+});
+
+describe("T-044: daftar nilai menu saring", () => {
+  it("nilai unik kolom teks (urut, cari tanpa peka besar/kecil) dari semua segmen", async () => {
+    const r = await runGridValues(OWNER, SHEET, { versionId: VER, pos: 1 }, deps());
+    if (!r.ok) throw new Error(r.message);
+    const all = [...new Set(expected().map((x) => x.cells[0]))];
+    expect(r.truncated).toBe(false);
+    // Teks > 1.000 karakter tidak masuk daftar (FILTER_TEXT_MAX) → 600 x ikut, sama dengan slicer.
+    expect([...r.values].sort()).toEqual(
+      [...all.filter((v) => v !== "x".repeat(500)), LONG].sort(),
+    );
+    const q = await runGridValues(OWNER, SHEET, { versionId: VER, pos: 1, q: "CABANG 2" }, deps());
+    if (!q.ok) throw new Error(q.message);
+    expect(q.values).toEqual(["Cabang 2"]);
+  });
+
+  it("kolom angka, editor boleh; viewer/kolom tersembunyi/versi lama ditolak tanpa nama", async () => {
+    const n = await runGridValues(EDITOR, SHEET, { versionId: VER, pos: 2 }, deps());
+    if (!n.ok) throw new Error(n.message);
+    expect(n.values[0]).toBeNull();
+    expect(n.values.slice(1).every((v) => typeof v === "number")).toBe(true);
+    const viewer = await runGridValues("orang-lain", SHEET, { versionId: VER, pos: 1 }, deps());
+    expect(viewer).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    const hidden = await runGridValues(OWNER, SHEET, { versionId: VER, pos: 4 }, deps());
+    expect(hidden).toMatchObject({ ok: false, code: "INVALID" });
+    expect(JSON.stringify(hidden)).not.toContain(SECRET_COL);
+    const old = await runGridValues(OWNER, SHEET, { versionId: OLD, pos: 1 }, deps());
+    expect(old).toMatchObject({ ok: false, code: "VERSION_CHANGED", activeVersionId: VER });
+    const bad = await runGridValues(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 1, q: "x".repeat(101) },
+      deps(),
+    );
+    expect(bad).toMatchObject({ ok: false, code: "INVALID" });
+  });
+
+  it("daftar kecil di-cache per versi + revisi + kata cari", async () => {
+    const cache = new ResultCache<CachedQuery>(64 * 1024 * 1024);
+    const a = await runGridValues(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 1, q: "cab" },
+      { ...deps(), cache },
+    );
+    const seen: number[] = [];
+    const b = await runGridValues(
+      OWNER,
+      SHEET,
+      { versionId: VER, pos: 1, q: "CAB" },
+      {
+        ...deps(),
+        cache,
+        engine: timingOut(seen),
+      },
+    );
+    expect(seen).toEqual([]);
+    expect(b).toEqual(a);
   });
 });

@@ -1,18 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
-import { fetchBlock } from "@/components/grid/grid-fetch";
+import { fetchBlock, queryBody, Slots, slotFetch } from "@/components/grid/grid-fetch";
 import {
   blockNearView,
+  cellMatches,
   chunkCols,
   colLetter,
   displayCell,
   EMPTY_SETTINGS,
+  filteredCountText,
   formatGridDate,
   loadSettings,
+  normalizeSearchText,
   parseRowInput,
   sanitizeSettings,
   saveSettings,
+  searchColumns,
   settingsKey,
+  sortAnnouncement,
+  sortFromModel,
   statusText,
+  Store,
 } from "@/components/grid/grid-model";
 
 /*
@@ -317,5 +324,207 @@ describe("fetchBlock", () => {
     const f = fetcher((b) => ({ status: 200, json: ok(b.cols) }));
     await fetchBlock({ ...base, cols: [1], signal: ctrl.signal }, f);
     expect((f as unknown as ReturnType<typeof vi.fn>).mock.calls[0]![1].signal).toBe(ctrl.signal);
+  });
+});
+
+describe("T-044: urut, saring, cari (logika murni)", () => {
+  it("sortFromModel: urutan sortIndex, hanya kolom data, paling banyak 3", () => {
+    expect(
+      sortFromModel([
+        { colId: "c4", sort: "desc" },
+        { colId: "n", sort: "asc" },
+        { colId: "c1", sort: "asc" },
+        { colId: "c2", sort: "asc" },
+        { colId: "c9", sort: "desc" },
+      ]),
+    ).toEqual([
+      { pos: 4, dir: "desc" },
+      { pos: 1, dir: "asc" },
+      { pos: 2, dir: "asc" },
+    ]);
+    expect(sortFromModel([])).toEqual([]);
+  });
+
+  it("searchColumns: ≤ 10 kolom teks pertama menurut urutan tampil", () => {
+    const ids = Array.from({ length: 14 }, (_, i) => `c${i + 1}`);
+    const type = (id: string) => (id === "c2" ? "integer" : "text");
+    const cols = searchColumns(["n", ...ids], type);
+    expect(cols).toHaveLength(10);
+    expect(cols[0]).toBe(1);
+    expect(cols).not.toContain(2);
+    expect(searchColumns(["c3", "c1"], () => "text")).toEqual([3, 1]);
+  });
+
+  it("teks cari, sorot sel, status tersaring, dan pengumuman urut", () => {
+    expect(normalizeSearchText("  jakarta ")).toBe("jakarta");
+    expect(normalizeSearchText("   ")).toBeNull();
+    expect(normalizeSearchText("x".repeat(150))).toHaveLength(100);
+    expect(cellMatches("Kantor JAKARTA Pusat", "jakarta")).toBe(true);
+    expect(cellMatches("Bandung", "jakarta")).toBe(false);
+    expect(cellMatches(12, "1")).toBe(false);
+    expect(filteredCountText(12, 450, true)).toBe("12 baris (tersaring dari 450)");
+    expect(filteredCountText(450, 450, false)).toBe("450 baris");
+    expect(statusText(1, 12, 12, 450)).toBe("Baris 1–12 dari 12 (tersaring dari 450)");
+    expect(statusText(1, 1, 0, 450)).toBe("Tidak ada baris yang cocok (tersaring dari 450)");
+    const name = (p: number) => ["", "Kode", "Jumlah"][p]!;
+    expect(
+      sortAnnouncement(
+        [
+          { pos: 2, dir: "desc" },
+          { pos: 1, dir: "asc" },
+        ],
+        name,
+      ),
+    ).toBe("Diurutkan berdasarkan Jumlah turun, lalu Kode naik");
+    expect(sortAnnouncement([], name)).toMatch(/^Urutan dihapus/);
+  });
+
+  it("Store memberi tahu pelanggan hanya saat nilai berubah", () => {
+    const st = new Store(1);
+    const fn = vi.fn();
+    const off = st.subscribe(fn);
+    st.set(1);
+    st.set(2);
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(st.get()).toBe(2);
+    off();
+    st.set(3);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("T-044: fetchBlock dengan urut/saring/cari", () => {
+  const base = { sheetId: "s1", versionId: "v1", schemaRevision: 2, rowStart: 0, rowCount: 2 };
+  it("body membawa sort/filters/search hanya bila terisi; filteredTotal diteruskan", async () => {
+    expect(queryBody(undefined)).toEqual({});
+    expect(queryBody({ sort: [], filters: [], search: null })).toEqual({});
+    const bodies: Record<string, unknown>[] = [];
+    const f = vi.fn(async (_u: string, init?: RequestInit) => {
+      const b = JSON.parse(String(init!.body)) as Record<string, unknown> & { cols: number[] };
+      bodies.push(b);
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          versionId: "v1",
+          schemaRevision: 2,
+          total: 450,
+          filteredTotal: 12,
+          rows: [{ n: 1, _row: 9, cells: b.cols.map(() => "x"), cut: [] }],
+        }),
+        { status: 200 },
+      );
+    }) as unknown as typeof fetch;
+    const query = {
+      sort: [{ pos: 2, dir: "desc" as const }],
+      filters: [{ pos: 4, op: "range" as const, gte: "2026-03-01" }],
+      search: { text: "jakarta", cols: [1] },
+    };
+    const r = await fetchBlock({ ...base, cols: [1, 2], query }, f);
+    expect(r).toMatchObject({ ok: true, total: 450, filteredTotal: 12 });
+    expect(bodies[0]).toMatchObject({
+      sort: query.sort,
+      filters: query.filters,
+      search: query.search,
+    });
+  });
+
+  it("504 QUERY_TIMEOUT → kind timeout dengan pesan server (bukan galat umum)", async () => {
+    const f = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: false,
+            code: "QUERY_TIMEOUT",
+            message: "Pengurutan ini terlalu berat; saring data dulu.",
+          }),
+          { status: 504 },
+        ),
+    ) as unknown as typeof fetch;
+    expect(await fetchBlock({ ...base, cols: [1] }, f)).toEqual({
+      ok: false,
+      kind: "timeout",
+      message: "Pengurutan ini terlalu berat; saring data dulu.",
+    });
+  });
+
+  it("Slots: paling banyak 2 bersamaan; antrean yang dibatalkan tidak memakan slot", async () => {
+    const slots = new Slots(2);
+    let active = 0;
+    let peak = 0;
+    const job = () =>
+      slots.run(async () => {
+        active++;
+        peak = Math.max(peak, active);
+        await new Promise((r) => setTimeout(r, 5));
+        active--;
+        return true;
+      });
+    const ctrl = new AbortController();
+    const blocker = Promise.all([job(), job()]);
+    const late = slots.run(async () => "tidak jalan", ctrl.signal);
+    ctrl.abort();
+    await expect(late).rejects.toThrow();
+    await blocker;
+    expect(await Promise.all([job(), job(), job(), job()])).toEqual([true, true, true, true]);
+    expect(peak).toBe(2);
+    expect(slots.active).toBe(0);
+  });
+
+  it("slotFetch: blok baris dan daftar nilai berbagi jatah 2 permintaan", async () => {
+    const slots = new Slots(2);
+    let active = 0;
+    let peak = 0;
+    const f = vi.fn(async () => {
+      active++;
+      peak = Math.max(peak, active);
+      await new Promise((r) => setTimeout(r, 5));
+      active--;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    await Promise.all(Array.from({ length: 5 }, () => slotFetch("/x", {}, f, slots)));
+    expect(f).toHaveBeenCalledTimes(5);
+    expect(peak).toBe(2);
+  });
+});
+
+describe("T-044: fetchGridValues (menu saring)", () => {
+  it("nilai + truncated; galat → pesan server; versi berganti/401 → muat ulang; batal → null", async () => {
+    const { fetchGridValues } = await import("@/components/grid/use-grid-values");
+    const reply = (status: number, json: unknown) =>
+      vi.fn(async () => new Response(JSON.stringify(json), { status })) as unknown as typeof fetch;
+    const sig = () => new AbortController().signal;
+    const body = { versionId: "v1", pos: 1, q: "jak" };
+    expect(
+      await fetchGridValues(
+        "s1",
+        body,
+        sig(),
+        reply(200, { ok: true, values: ["Jakarta", null], truncated: true }),
+      ),
+    ).toEqual({ ok: true, values: ["Jakarta", null], truncated: true });
+    expect(
+      await fetchGridValues(
+        "s1",
+        body,
+        sig(),
+        reply(422, { ok: false, code: "QUERY_TIMEOUT", message: "Berat." }),
+      ),
+    ).toEqual({ ok: false, message: "Berat.", reload: false });
+    expect(
+      await fetchGridValues(
+        "s1",
+        body,
+        sig(),
+        reply(409, { ok: false, code: "VERSION_CHANGED", message: "x" }),
+      ),
+    ).toMatchObject({ ok: false, reload: true });
+    expect(await fetchGridValues("s1", body, sig(), reply(401, {}))).toMatchObject({
+      ok: false,
+      reload: true,
+      message: expect.stringMatching(/Sesi Anda berakhir/),
+    });
+    const ctrl = new AbortController();
+    ctrl.abort();
+    expect(await fetchGridValues("s1", body, ctrl.signal, reply(200, {}))).toBeNull();
   });
 });

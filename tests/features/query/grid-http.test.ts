@@ -14,6 +14,7 @@ const requireUser = vi.fn();
 const hit = vi.fn();
 const runGridRows = vi.fn();
 const runGridCell = vi.fn();
+const runGridValues = vi.fn();
 vi.mock("@/features/auth/session", () => ({ AuthError, requireUser }));
 vi.mock("@/features/auth/rate-limit", async (orig) => ({
   ...(await orig<typeof import("@/features/auth/rate-limit")>()),
@@ -35,9 +36,10 @@ vi.mock("@/features/query/runtime", async () => {
     })),
   };
 });
-vi.mock("@/features/query/grid-service", () => ({ runGridRows, runGridCell }));
+vi.mock("@/features/query/grid-service", () => ({ runGridRows, runGridCell, runGridValues }));
 
-const { gridRowsRoute, gridCellRoute } = await import("@/features/query/grid-http");
+const { gridRowsRoute, gridCellRoute, gridValuesRoute } =
+  await import("@/features/query/grid-http");
 const { RULES } = await import("@/features/auth/rate-limit");
 
 const SHEET = "cmv4kljx40009oczvdgridsh1";
@@ -80,5 +82,22 @@ describe("grid HTTP rate limit", () => {
     const deps = runGridCell.mock.calls[0]![3];
     expect(typeof deps.engine.withUser).toBe("function");
     expect(typeof deps.engine.withGlobal).toBe("function");
+  });
+
+  it("POST values (T-044) memakai RULES.grid, Origin wajib, dan status kode grid", async () => {
+    runGridValues.mockResolvedValueOnce({ ok: false, code: "FORBIDDEN", message: "x" });
+    const req = (origin: string) =>
+      new NextRequest(`http://localhost:3100/api/sheets/${SHEET}/values`, {
+        method: "POST",
+        headers: { origin, "content-type": "application/json" },
+        body: JSON.stringify({ versionId: VER, pos: 1 }),
+      });
+    const r = await gridValuesRoute(req("http://localhost:3100"), SHEET);
+    expect(r.status).toBe(403);
+    expect(hit).toHaveBeenCalledWith(expect.anything(), RULES.grid, "u1");
+    expect(typeof runGridValues.mock.calls[0]![3].engine.withUser).toBe("function");
+    const cross = await gridValuesRoute(req("https://jahat.example"), SHEET);
+    expect(cross.status).toBe(403);
+    expect(runGridValues).toHaveBeenCalledTimes(1);
   });
 });

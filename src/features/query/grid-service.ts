@@ -10,14 +10,19 @@ import {
   buildSortedWindowSql,
   buildTypedCellSql,
   buildWindowSql,
+  GRID_SEARCH_MAX_MS,
+  GRID_VALUES_MAX_MS,
   isPlainWindow,
   planGrid,
   rawColumn,
   rowsBodySchema,
+  valuesBodySchema,
   windowParts,
   type GridPlan,
 } from "./grid";
 import { resultKey, type ResultCache } from "./cache";
+import { normalizeSearch, SLICER_CACHE_MAX_BYTES } from "./filter-values";
+import type { DashValue } from "./filters";
 import {
   fail,
   RESULT_MAX_BYTES,
@@ -28,6 +33,7 @@ import {
   type QueryDeps,
   type QueryFailure,
 } from "./service";
+import { buildFilterValuesSql, FILTER_VALUES_LIMIT } from "./sql";
 import { sheetSource, type ParquetSource, type SegmentFile } from "./source";
 
 /** File typed di manifest + data segmennya (jumlah baris, raw, peta kolom, nama file sumber). */
@@ -208,6 +214,23 @@ function toRows(plan: GridPlan, rows: unknown[][], start: number): GridRow[] | n
 const tooLarge = () =>
   fail("RESULT_TOO_LARGE", "Blok baris terlalu besar. Kurangi jumlah baris atau kolom.");
 
+/** Pesan batas waktu jalur urut/saring/cari (T-044 AC3–4): sebut penyebab yang bisa ditindak. */
+export const SORT_TIMEOUT_MESSAGE = "Pengurutan ini terlalu berat; saring data dulu.";
+export const SEARCH_TIMEOUT_MESSAGE =
+  "Pencarian melewati 10 detik. Persempit kata yang dicari atau saring data dulu.";
+export const FILTER_TIMEOUT_MESSAGE =
+  "Saringan ini terlalu berat untuk dihitung. Persempit saringan lalu coba lagi.";
+
+function timeoutFor(plan: GridPlan, f: QueryFailure): QueryFailure {
+  if (f.code !== "QUERY_TIMEOUT") return f;
+  const message = plan.search
+    ? SEARCH_TIMEOUT_MESSAGE
+    : plan.sort.length
+      ? SORT_TIMEOUT_MESSAGE
+      : FILTER_TIMEOUT_MESSAGE;
+  return { ...f, message };
+}
+
 /** POST /api/sheets/:sheetId/rows. */
 export async function runGridRows(
   userId: string,
@@ -261,7 +284,11 @@ export async function runGridRows(
   const ck = deps.cache ? countKey(sheetId, sheet, plan) : null;
   const hit = ck ? deps.cache!.get(ck) : null;
   const known2 = hit && "gridCount" in hit ? hit.gridCount : null;
-  const r = await runOnParquet(userId, sourceFor(sheet, segs), deps, async (path, exec) => {
+  // Cari dibatasi GRID_SEARCH_MAX_MS (AC3); urut/saring memakai batas query biasa (QUERY_TIMEOUT_MS).
+  const limited = plan.search
+    ? { ...deps, timeoutMs: Math.min(deps.timeoutMs, GRID_SEARCH_MAX_MS) }
+    : deps;
+  const r = await runOnParquet(userId, sourceFor(sheet, segs), limited, async (path, exec) => {
     const out = await exec(buildSortedWindowSql(plan, path));
     if (known2) return { out, ...known2 };
     const n = await exec(buildGridCountSql(filtered ? plan : null, path));
@@ -270,7 +297,7 @@ export async function runGridRows(
     const filteredTotal = Number(n.rows[0]![0]);
     return { out, filteredTotal, total: all ?? filteredTotal };
   });
-  if (!r.ok) return r;
+  if (!r.ok) return timeoutFor(plan, r);
   const { total: t, filteredTotal } = r.value;
   // Hanya count yang di-cache (beberapa puluh byte); blok baris tidak.
   if (ck && !known2) deps.cache!.set(ck, { gridCount: { total: t, filteredTotal } }, 64);
@@ -368,4 +395,64 @@ export async function runGridCell(
     };
   }
   return { ok: false, code: "NOT_FOUND", message: "Baris tidak ditemukan." };
+}
+
+export interface GridValues {
+  ok: true;
+  versionId: string;
+  values: DashValue[];
+  truncated: boolean;
+}
+
+/**
+ * POST /api/sheets/:sheetId/values (T-044): nilai unik satu kolom terlihat untuk menu saring (≤ 1.000 +
+ * penanda terpotong, cari tidak peka besar/kecil dan aksen) — SQL yang sama dengan slicer dashboard.
+ * Akses dan versi sama dengan jendela baris; batas waktu GRID_VALUES_MAX_MS. Daftar kecil di-cache
+ * (kunci memuat versi + revisi skema + kata cari baku) seperti ringkasan; blok baris tetap tidak.
+ */
+export async function runGridValues(
+  userId: string,
+  sheetId: string,
+  body: unknown,
+  deps: GridDeps,
+): Promise<GridValues | GridFailure> {
+  const parsed = valuesBodySchema.safeParse(body);
+  if (!parsed.success) return invalid();
+  const auth = await authorize(userId, sheetId, parsed.data.versionId, deps.repo);
+  if (!auth.ok) return auth;
+  const { sheet } = auth;
+  const col = sheet.schema.find((c) => c.pos === parsed.data.pos && !c.hidden);
+  if (!col) return invalid("Kolom yang diminta tidak tersedia.");
+  const q = normalizeSearch(parsed.data.q);
+  const key = deps.cache
+    ? resultKey({
+        datasetId: "grid-values",
+        versionId: sheet.versionId,
+        sheetId,
+        schemaRevision: sheet.schemaRevision,
+        spec: { filterValues: `c${col.pos}`, q },
+      })
+    : null;
+  const hit = key ? deps.cache!.get(key) : null;
+  const head = { ok: true as const, versionId: sheet.versionId };
+  if (hit && "filterValues" in hit) {
+    return { ...head, values: hit.filterValues, truncated: hit.truncated };
+  }
+  const limited = { ...deps, timeoutMs: Math.min(deps.timeoutMs, GRID_VALUES_MAX_MS) };
+  const r = await runOnParquet(userId, sourceFor(sheet, sheet.segments), limited, (path, exec) =>
+    exec(buildFilterValuesSql({ col: `c${col.pos}`, type: col.type, float: col.float }, q, path)),
+  );
+  if (!r.ok) {
+    return r.code === "QUERY_TIMEOUT"
+      ? { ...r, message: "Daftar nilai terlalu berat. Ketik kata untuk mempersempit." }
+      : r;
+  }
+  const all = r.value.rows.map((row) => toJson(row[0], col.type) as DashValue);
+  const truncated = all.length > FILTER_VALUES_LIMIT;
+  const values = all.slice(0, FILTER_VALUES_LIMIT);
+  const bytes = values.reduce<number>((n, v) => n + rowBytes([v]), 64);
+  if (key && bytes <= SLICER_CACHE_MAX_BYTES) {
+    deps.cache!.set(key, { filterValues: values, truncated }, bytes);
+  }
+  return { ...head, values, truncated };
 }

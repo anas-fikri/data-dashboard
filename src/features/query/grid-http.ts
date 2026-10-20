@@ -11,6 +11,7 @@ import { GRID_BODY_MAX } from "./grid";
 import {
   runGridCell,
   runGridRows,
+  runGridValues,
   type GridCode,
   type GridDeps,
   type GridRepo,
@@ -19,7 +20,8 @@ import { gridEngine } from "./grid-gate";
 import { gridRuntime } from "./runtime";
 
 /*
- * HTTP jendela baris "Lihat data" (T-041): POST /api/sheets/:id/rows dan GET /api/sheets/:id/cell.
+ * HTTP jendela baris "Lihat data" (T-041): POST /api/sheets/:id/rows dan GET /api/sheets/:id/cell;
+ * T-044: POST /api/sheets/:id/values (daftar nilai menu saring).
  * Route Handler terpisah dari /api/query (otorisasi widget tidak tersentuh). Sesi wajib, Origin = APP_URL
  * untuk POST, rate limit per user (aturan grid sendiri, T-042), body ≤ 64 KB. Mesin lewat gerbang grid
  * (≤ 2 slot global, 2 in-flight per user); cache hasil hanya untuk count, bukan blok baris.
@@ -150,6 +152,19 @@ export function gridRowsRoute(req: NextRequest, sheetId: string) {
     const read = await readJson(req, GRID_BODY_MAX);
     if ("response" in read) return read.response;
     const r = await runGridRows(userId, sheetId, read.body, await gridDeps(req.signal));
+    return r.ok ? json(r) : json(r, STATUS[r.code]);
+  });
+}
+
+export function gridValuesRoute(req: NextRequest, sheetId: string) {
+  const cross = rejectCrossOrigin(req);
+  if (cross) return Promise.resolve(cross);
+  return withUser("daftar nilai grid gagal", async (userId) => {
+    const rl = await limited(userId);
+    if (rl) return rl;
+    const read = await readJson(req, GRID_BODY_MAX);
+    if ("response" in read) return read.response;
+    const r = await runGridValues(userId, sheetId, read.body, await gridDeps(req.signal));
     return r.ok ? json(r) : json(r, STATUS[r.code]);
   });
 }

@@ -28,7 +28,7 @@ export default defineConfig({
         /schema\.spec\.ts$/,
         /recast-segments\.spec\.ts$/,
         /grid\.spec\.ts$/,
-        /data-view(-scroll)?\.spec\.ts$/,
+        /data-view(-scroll|-query)?\.spec\.ts$/,
         /widgets\.spec\.ts$/,
         /admin\.spec\.ts$/,
         /backup\.spec\.ts$/,
@@ -61,12 +61,18 @@ export default defineConfig({
     { name: "grid", testMatch: /grid\.spec\.ts$/, dependencies: ["recast-segments"] },
     // T-043: halaman Lihat data (worker sendiri; unggah versi kedua untuk banner versi berganti).
     { name: "data-view", testMatch: /data-view\.spec\.ts$/, dependencies: ["grid"] },
+    // T-044: urut/saring/cari Lihat data (worker sendiri untuk fixture 60 baris).
+    {
+      name: "data-view-query",
+      testMatch: /data-view-query\.spec\.ts$/,
+      dependencies: ["data-view"],
+    },
     // T-043 / ADR-0007: mekanika gulir 10 jt baris (respons baris sintetis) di tiga engine. Firefox dan
     // WebKit: `npx playwright install firefox webkit` (+ install-deps di Linux).
     {
       name: "data-view-scroll",
       testMatch: /data-view-scroll\.spec\.ts$/,
-      dependencies: ["data-view"],
+      dependencies: ["data-view-query"],
     },
     {
       name: "data-view-scroll-firefox",

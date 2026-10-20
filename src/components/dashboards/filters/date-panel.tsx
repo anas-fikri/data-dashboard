@@ -36,7 +36,8 @@ export function DatePanel({
   value,
   onChange,
 }: {
-  dashboardId: string;
+  /** Tanpa dashboard (grid Lihat data, T-044): bagian "Pilih periode" tidak ditampilkan. */
+  dashboardId?: string;
   column: FilterColumnView;
   value: DashFilter | undefined;
   onChange: (f: DashFilter | null) => void;
@@ -115,7 +116,9 @@ export function DatePanel({
         </div>
         <p className="text-xs text-muted-foreground">Menurut tanggal hari ini di Jakarta (WIB).</p>
       </div>
-      <PeriodPicker dashboardId={dashboardId} column={column} value={value} onChange={onChange} />
+      {dashboardId ? (
+        <PeriodPicker dashboardId={dashboardId} column={column} value={value} onChange={onChange} />
+      ) : null}
       <fieldset className="flex min-w-0 flex-col gap-1.5">
         <legend className="mb-1.5 text-sm font-medium">Rentang sendiri</legend>
         <div className="flex flex-col gap-2">

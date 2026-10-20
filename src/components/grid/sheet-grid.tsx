@@ -2,9 +2,14 @@
 
 import {
   IconAlertTriangle,
+  IconArrowsSort,
   IconCornerDownLeft,
+  IconFilterOff,
   IconLayoutColumns,
+  IconLoader2,
   IconRefresh,
+  IconSearch,
+  IconX,
 } from "@tabler/icons-react";
 import {
   CellStyleModule,
@@ -26,35 +31,59 @@ import {
   type GridReadyEvent,
   type IDatasource,
   type IGetRowsParams,
+  type SortChangedEvent,
+  type SuppressHeaderKeyboardEventParams,
   type SuppressKeyboardEventParams,
   type ValueFormatterParams,
 } from "ag-grid-community";
 import { AgGridReact } from "ag-grid-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { DashFilter } from "@/components/dashboards/filters/filter-model";
+import { filterText } from "@/components/dashboards/filters/filter-text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { fetchBlock, type RowData } from "./grid-fetch";
-import { GridHeader, type GridHeaderParams, type HeaderAction } from "./grid-header";
+import { GridFilterDialog, type FilterTarget } from "./grid-filter-dialog";
+import {
+  GridHeader,
+  isHeaderMenuKey,
+  type GridHeaderParams,
+  type HeaderAction,
+} from "./grid-header";
 import { fixBottom, guardFocus, installWheelFix, visibleRowRange } from "./grid-mitigations";
 import {
   BLOCK_SIZE,
   blockNearView,
+  cellMatches,
   colIdOf,
   colLetter,
   displayCell,
+  filteredCountText,
   fmtInt,
   loadSettings,
+  MAX_FILTERS,
   MAX_FROZEN,
+  MAX_SORT,
+  normalizeSearchText,
   numericType,
   parseRowInput,
+  posOf,
   saveSettings,
+  SEARCH_TEXT_MAX,
+  searchColumns,
   settingsKey,
+  sortAnnouncement,
+  sortFromModel,
   statusText,
+  Store,
+  type BodyFilter,
   type GridColumn,
+  type GridSearch,
   type GridSettings,
+  type SortDir,
 } from "./grid-model";
 
 /*
@@ -63,6 +92,12 @@ import {
  * bersamaan, blok yang sudah digulir lewat dibatalkan lewat AbortSignal). Baris sentinel "Akhir data"
  * setelah baris terakhir (aria-rowcount = total + 2, didokumentasikan di ADR-0007). Dimuat lazy tanpa
  * SSR (sheet-grid-loader.tsx); modul AG didaftarkan satu per satu (JANGAN AllCommunityModule).
+ *
+ * T-044: urut (klik/Shift+klik kepala kolom atau menu kolom, ≤ 3 kolom; model urut AG dipakai apa
+ * adanya sehingga aria-sort dipasang AG), saring per kolom (Alt+↓ / menu → dialog, chip + "Hapus semua
+ * saringan"), dan cari (Ctrl+F di dalam grid, ≤ 10 kolom teks terlihat, server membatasi 10 detik,
+ * bisa dibatalkan). Semuanya dihitung server; perubahan urut/saring/cari membatalkan blok yang
+ * berjalan dan memulai cache baru (nomor baris = posisi di tampilan baru).
  */
 ModuleRegistry.registerModules([
   InfiniteRowModelModule,
@@ -102,6 +137,7 @@ const LOCALE = {
   noRowsToShow: "Tidak ada baris",
   ariaRowSelect: "Tekan Spasi untuk memilih baris ini",
   ariaSearch: "Cari",
+  ariaSortableColumn: "Klik untuk mengurutkan. Enter membuka menu kolom, Alt+Panah bawah menyaring",
 };
 
 const ROWNUM = "n";
@@ -125,8 +161,38 @@ const isJumpKey = (e: KeyboardEvent) =>
 // menghapus perubahan pengguna (beku, lebar).
 const DEFAULT_COL: ColDef<RowData> = {
   sortable: false,
-  suppressKeyboardEvent: (p: SuppressKeyboardEventParams<RowData>) => isJumpKey(p.event),
+  suppressKeyboardEvent: (p: SuppressKeyboardEventParams<RowData>) =>
+    isJumpKey(p.event) || isFindKey(p.event) || (p.event.altKey && p.event.key === "ArrowDown"),
 };
+
+/** Ctrl/Cmd+F di dalam grid = Cari di data (bukan cari halaman browser). */
+const isFindKey = (e: KeyboardEvent) =>
+  (e.ctrlKey || e.metaKey) && !e.altKey && e.key.toLowerCase() === "f";
+
+/** Enter dan Alt+↓ di kepala kolom ditangani GridHeader (menu/saring), bukan urut bawaan AG. */
+const suppressHeaderKey = (p: SuppressHeaderKeyboardEventParams<RowData>) =>
+  isHeaderMenuKey(p.event);
+
+const EMPTY_SET: ReadonlySet<string> = new Set();
+
+type SortState = { colId: string; sort: SortDir };
+
+/** Kolom yang sedang diurutkan, berurut sortIndex. */
+function sortedState(api: GridApi<RowData>): SortState[] {
+  return api
+    .getColumnState()
+    .filter((c) => c.sort === "asc" || c.sort === "desc")
+    .sort((a, b) => (a.sortIndex ?? 0) - (b.sortIndex ?? 0))
+    .map((c) => ({ colId: c.colId, sort: c.sort as SortDir }));
+}
+
+/** Terapkan daftar urut persis (kolom lain dilepas); AG memicu sortChanged → cache baru. */
+function applySort(api: GridApi<RowData>, list: SortState[]) {
+  api.applyColumnState({
+    state: list.map((c, i) => ({ colId: c.colId, sort: c.sort, sortIndex: i })),
+    defaultState: { sort: null, sortIndex: null },
+  });
+}
 
 interface InFlight {
   start: number;
@@ -176,7 +242,9 @@ export default function SheetGrid({
   const [initial] = useState<GridSettings>(() => loadSettings(storage, key, known));
   const formats = useRef<Record<string, NumberFormat>>({ ...initial.formats });
 
+  /** Baris tampilan saat ini (setelah saring/cari); `all` = baris sheet. */
   const [total, setTotal] = useState<number | null>(null);
+  const [all, setAll] = useState<number | null>(null);
   const [range, setRange] = useState<{ first: number; last: number } | null>(null);
   const [versionChanged, setVersionChanged] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -186,6 +254,22 @@ export default function SheetGrid({
   const [hidden, setHidden] = useState<Set<string>>(
     () => new Set(initial.columns.filter((c) => c.hide).map((c) => c.colId)),
   );
+
+  // T-044: saringan per kolom (DashFilter.column = colId), cari, dan status muat tampilan baru.
+  const [filters, setFilters] = useState<Record<string, DashFilter>>({});
+  const filtersRef = useRef<Record<string, DashFilter>>({});
+  const [search, setSearch] = useState<GridSearch | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [timeoutMsg, setTimeoutMsg] = useState<string | null>(null);
+  const [sortCount, setSortCount] = useState(0);
+  const [filterTarget, setFilterTarget] = useState<FilterTarget | null>(null);
+  const [filteredStore] = useState(() => new Store<ReadonlySet<string>>(EMPTY_SET));
+  const searchRef = useRef<GridSearch | null>(null);
+  const searchInput = useRef<HTMLInputElement>(null);
+  /** Pengumuman setelah blok pertama tampilan baru dimuat (jumlah hasil). */
+  const pendingAnnounce = useRef<"filter" | "search" | null>(null);
 
   /** Posisi kolom data yang diminta: semua kolom yang tidak disembunyikan pengguna. */
   const requestCols = useCallback(() => {
@@ -219,6 +303,17 @@ export default function SheetGrid({
     }, 300);
   }, [key]);
 
+  const bodyFilters = useMemo<BodyFilter[]>(
+    () =>
+      Object.entries(filters).flatMap(([id, f]) => {
+        const pos = posOf(id);
+        if (pos === null) return [];
+        const { column: _c, ...rest } = f;
+        return [{ pos, ...rest } as BodyFilter];
+      }),
+    [filters],
+  );
+
   const datasource = useMemo<IDatasource>(
     () => ({
       getRows(p: IGetRowsParams) {
@@ -244,18 +339,37 @@ export default function SheetGrid({
           rowStart: p.startRow,
           rowCount: p.endRow - p.startRow,
           cols: requestColsRef.current(),
+          // Model urut AG berurut sortIndex; lebih dari 3 dipangkas (onSortChanged melepas sisanya).
+          query: { sort: sortFromModel(p.sortModel), filters: bodyFilters, search },
           signal: entry.ctrl.signal,
         }).then((r) => {
           inflight.current.delete(entry);
+          // Jawaban tampilan lama (urut/saring/cari sudah berganti): AG mengabaikan blok cache lama;
+          // jumlah barisnya tidak boleh menimpa jumlah tampilan baru.
+          if (entry.gen !== gen.current) {
+            p.failCallback();
+            return;
+          }
           if (r.ok) {
-            totalRef.current = r.total;
-            setTotal(r.total);
+            const n = r.filteredTotal;
+            totalRef.current = n;
+            setTotal(n);
+            setAll(r.total);
             setLoadError(null);
-            const rows = r.rows;
-            if (p.startRow + rows.length === r.total && p.endRow > r.total) {
-              rows.push({ n: r.total + 1, _row: -1, end: true });
+            setTimeoutMsg(null);
+            setLoading(false);
+            const what = pendingAnnounce.current;
+            if (what) {
+              pendingAnnounce.current = null;
+              setAnnounce(
+                what === "search" ? `Ditemukan di ${fmtInt(n)} baris` : `${fmtInt(n)} baris cocok`,
+              );
             }
-            p.successCallback(rows, r.total + 1);
+            const rows = r.rows;
+            if (p.startRow + rows.length === n && p.endRow > n) {
+              rows.push({ n: n + 1, _row: -1, end: true });
+            }
+            p.successCallback(rows, n + 1);
             return;
           }
           if (r.kind === "aborted" || r.kind === "busy") {
@@ -269,12 +383,74 @@ export default function SheetGrid({
               }, 1000);
             }
           } else if (r.kind === "version") setVersionChanged(true);
-          else setLoadError(r.message);
+          else if (r.kind === "timeout") {
+            // AC4: urut/cari terlalu berat → pesan + jalan keluar; grid tetap bisa dipakai.
+            setTimeoutMsg(r.message);
+            setLoading(false);
+            pendingAnnounce.current = null;
+            setAnnounce(r.message);
+          } else {
+            setLoadError(r.message);
+            setLoading(false);
+          }
           p.failCallback();
         });
       },
     }),
-    [sheetId, versionId, schemaRevision],
+    [sheetId, versionId, schemaRevision, bodyFilters, search],
+  );
+
+  /**
+   * Tampilan berganti (urut/saring/cari): batalkan semua blok yang berjalan (slot server dilepas),
+   * lupakan jumlah lama; AG membuat cache baru (datasource baru / event urut) dari baris 1.
+   */
+  const startView = useCallback((announce: "filter" | "search" | null) => {
+    gen.current++;
+    for (const f of inflight.current) f.ctrl.abort();
+    aborted.current.clear();
+    totalRef.current = null;
+    pendingAnnounce.current = announce;
+    setLoading(true);
+    setLoadError(null);
+    setTimeoutMsg(null);
+  }, []);
+
+  const setAllFilters = useCallback(
+    (next: Record<string, DashFilter>) => {
+      filtersRef.current = next;
+      filteredStore.set(new Set(Object.keys(next)));
+      setFilters(next);
+      startView("filter");
+    },
+    [filteredStore, startView],
+  );
+
+  const applyFilter = useCallback(
+    (colId: string, f: DashFilter | null) => {
+      const prev = filtersRef.current;
+      if (!f && !(colId in prev)) return;
+      if (f && !(colId in prev) && Object.keys(prev).length >= MAX_FILTERS) {
+        setAnnounce(`Paling banyak ${MAX_FILTERS} kolom bisa disaring sekaligus`);
+        return;
+      }
+      const next = { ...prev };
+      if (f) next[colId] = { ...f, column: colId };
+      else delete next[colId];
+      setAllFilters(next);
+    },
+    [setAllFilters],
+  );
+
+  const clearFilters = useCallback(() => setAllFilters({}), [setAllFilters]);
+
+  const applySearch = useCallback(
+    (next: GridSearch | null) => {
+      searchRef.current = next;
+      setSearch(next);
+      startView(next ? "search" : null);
+      if (!next) setAnnounce("Pencarian dihapus");
+    },
+    [startView],
   );
 
   /** Buang semua blok (dan batalkan yang berjalan); blok yang terlihat dimuat ulang. */
@@ -363,6 +539,7 @@ export default function SheetGrid({
       type: c.type,
       menuState: (id) => menuStateRef.current(id),
       onAction: (id, a) => actionRef.current(id, a),
+      filtered: filteredStore,
     });
     return [
       {
@@ -391,7 +568,9 @@ export default function SheetGrid({
           hide: Boolean(s?.hide),
           pinned: s?.pinned ? "left" : null,
           lockPinned: true,
-          sortable: false,
+          // Urut dihitung server (Infinite Row Model meneruskan sortModel); AG memasang aria-sort.
+          sortable: true,
+          suppressHeaderKeyboardEvent: suppressHeaderKey,
           resizable: true,
           headerComponent: GridHeader,
           headerComponentParams: headerParams(c),
@@ -399,7 +578,15 @@ export default function SheetGrid({
             c.original && c.original !== c.name
               ? `Kolom ${colLetter(c.pos)} di file asli: "${c.original}"`
               : `Kolom ${colLetter(c.pos)} di file asli`,
-          cellClass: numericType(c.type) ? "dd-grid-num" : undefined,
+          cellClass: (p) => {
+            const cls: string[] = numericType(c.type) ? ["dd-grid-num"] : [];
+            const q = searchRef.current;
+            // AC3: sel cocok di kolom yang dicari disorot (teks tampil, ≤ 500 karakter).
+            if (q && q.cols.includes(c.pos) && cellMatches(p.value, q.text)) {
+              cls.push("dd-grid-match");
+            }
+            return cls;
+          },
           valueFormatter: (p: ValueFormatterParams<RowData>) =>
             displayCell(p.value, c.type, formats.current[id], Boolean(p.data?.cut?.includes(id))) ??
             "",
@@ -407,6 +594,88 @@ export default function SheetGrid({
       }),
     ];
   });
+
+  const headerCell = (id: string) =>
+    boxRef.current?.querySelector<HTMLElement>(`.ag-header-cell[col-id="${CSS.escape(id)}"]`) ??
+    null;
+
+  /**
+   * Fokus kembali setelah dialog saring: dari kepala kolom → kepala kolom itu; dari sel → sel kolom
+   * itu di baris pertama tampilan baru (baris lama sudah dibuang), menunggu baris dirender ≤ ~1 detik
+   * dengan kepala kolom sebagai pegangan sementara agar fokus tidak jatuh ke <body>.
+   */
+  const focusAfterFilter = useCallback((id: string, from: HTMLElement | null, applied: boolean) => {
+    const head = headerCell(id);
+    const fromCell = Boolean(from?.closest(".ag-cell"));
+    if (!fromCell || !applied) {
+      // Batal (tanpa perubahan): kembali ke elemen asal bila masih ada.
+      const el = from?.isConnected ? from : head;
+      el?.focus();
+      return Boolean(el);
+    }
+    const api = apiRef.current;
+    if (!api || api.isDestroyed()) return false;
+    head?.focus();
+    let tries = 0;
+    const attempt = () => {
+      if (api.isDestroyed()) return;
+      // Tunggu blok pertama tampilan baru (baris placeholder diganti baris berdata).
+      if (!api.getDisplayedRowAtIndex(0)?.data) {
+        if (tries++ < 120) requestAnimationFrame(attempt);
+        return;
+      }
+      api.ensureIndexVisible(0);
+      api.setFocusedCell(0, id);
+      requestAnimationFrame(() =>
+        boxRef.current
+          ?.querySelector<HTMLElement>(`.ag-row[row-index="0"] [col-id="${CSS.escape(id)}"]`)
+          ?.focus(),
+      );
+    };
+    requestAnimationFrame(attempt);
+    return true;
+  }, []);
+
+  const openFilter = useCallback(
+    (id: string, from: HTMLElement | null) => {
+      const column = byId.get(id);
+      if (column) {
+        setFilterTarget({
+          column,
+          returnFocus: (applied) => focusAfterFilter(id, from, applied),
+        });
+      }
+    },
+    [byId, focusAfterFilter],
+  );
+  // Dipanggil dari kepala kolom AG (definisi kolom stabil): selalu fungsi terbaru.
+  const openFilterRef = useRef(openFilter);
+  const applyFilterRef = useRef(applyFilter);
+  useEffect(() => {
+    openFilterRef.current = openFilter;
+    applyFilterRef.current = applyFilter;
+  }, [openFilter, applyFilter]);
+
+  const onSortChanged = useCallback(
+    (e: SortChangedEvent<RowData>) => {
+      const list = sortedState(e.api);
+      if (list.length > MAX_SORT) {
+        // Shift+klik kolom ke-4: kolom terakhir dilepas lagi (event berikutnya memuat ulang).
+        applySort(e.api, list.slice(0, MAX_SORT));
+        setAnnounce(`Paling banyak ${MAX_SORT} kolom bisa diurutkan sekaligus`);
+        return;
+      }
+      startView(null);
+      setSortCount(list.length);
+      setAnnounce(
+        sortAnnouncement(
+          sortFromModel(list),
+          (pos) => byId.get(colIdOf(pos))?.name ?? colLetter(pos),
+        ),
+      );
+    },
+    [byId, startView],
+  );
 
   const dataColsInOrder = useCallback(() => {
     const api = apiRef.current;
@@ -421,12 +690,15 @@ export default function SheetGrid({
     const api = apiRef.current;
     const order = dataColsInOrder();
     const frozen = api ? order.filter((c) => api.getColumn(c)?.getPinned() === "left") : [];
+    const sort = api?.getColumn(id)?.getSort();
     return {
       index: Math.max(0, order.indexOf(id)),
       frozen: frozen.includes(id),
       frozenCount: frozen.length,
       visibleCount: order.length,
       format: formats.current[id],
+      sort: sort === "asc" || sort === "desc" ? sort : null,
+      sortCount: api ? api.getColumnState().filter((c) => c.sort).length : 0,
     };
   });
 
@@ -483,6 +755,26 @@ export default function SheetGrid({
         api.refreshCells({ columns: [id], force: true });
         persist();
         break;
+      case "sort": {
+        const current = sortedState(api).filter((c) => c.colId !== id);
+        const base = a.add ? current : [];
+        if (a.dir && base.length >= MAX_SORT) {
+          setAnnounce(`Paling banyak ${MAX_SORT} kolom bisa diurutkan sekaligus`);
+          return;
+        }
+        const next = a.dir ? [...base, { colId: id, sort: a.dir }] : base;
+        applySort(api, next);
+        break;
+      }
+      case "clearSorts":
+        applySort(api, []);
+        break;
+      case "filter":
+        openFilterRef.current(id, headerCell(id));
+        break;
+      case "clearFilter":
+        applyFilterRef.current(id, null);
+        break;
     }
   });
 
@@ -520,17 +812,59 @@ export default function SheetGrid({
 
   // Ctrl/Cmd+Home/End dari sel mana pun di grid (tangkap sebelum AG; AG sendiri menekannya lewat
   // suppressKeyboardEvent di DEFAULT_COL).
+  // T-044: Ctrl/Cmd+F di mana pun di dalam grid → kotak Cari; Alt+↓ di sel data → saring kolomnya.
   const onKeyDownCapture = useCallback(
     (ev: React.KeyboardEvent<HTMLDivElement>) => {
-      if (!isJumpKey(ev.nativeEvent)) return;
+      const e = ev.nativeEvent;
       const target = ev.target as HTMLElement;
-      if (!target.closest(".ag-cell")) return;
+      if (isFindKey(e)) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        searchInput.current?.focus();
+        searchInput.current?.select();
+        return;
+      }
+      const cell = target.closest<HTMLElement>(".ag-cell");
+      if (!cell) return;
+      if (e.altKey && e.key === "ArrowDown") {
+        const id = cell.getAttribute("col-id");
+        if (!id || id === ROWNUM) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openFilter(id, cell);
+        return;
+      }
+      if (!isJumpKey(e)) return;
       ev.preventDefault();
       ev.stopPropagation();
       goTo(ev.key === "Home" ? 1 : (totalRef.current ?? 1));
     },
-    [goTo],
+    [goTo, openFilter],
   );
+
+  const submitSearch = (ev: React.FormEvent) => {
+    ev.preventDefault();
+    const text = normalizeSearchText(searchText);
+    if (!text) {
+      setSearchError(null);
+      if (search) applySearch(null);
+      return;
+    }
+    const api = apiRef.current;
+    const cols = searchColumns(dataColsInOrder(), (id) => byId.get(id)?.type);
+    if (!api || cols.length === 0) {
+      setSearchError("Tidak ada kolom teks yang terlihat untuk dicari.");
+      return;
+    }
+    setSearchError(null);
+    applySearch({ text, cols });
+  };
+
+  const cancelSearch = () => {
+    setSearchText("");
+    setSearchError(null);
+    applySearch(null);
+  };
 
   const onCellFocused = useCallback((e: CellFocusedEvent<RowData>) => {
     if (e.rowIndex == null || !apiRef.current) return;
@@ -605,6 +939,11 @@ export default function SheetGrid({
 
   const goId = `${uid}-go`;
   const goErrId = `${uid}-go-err`;
+  const searchId = `${uid}-search`;
+  const searchStatusId = `${uid}-search-status`;
+  const filterList = Object.entries(filters);
+  const filteredView = filterList.length > 0 || search !== null;
+  const searching = search !== null && loading;
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -654,6 +993,44 @@ export default function SheetGrid({
         </div>
       ) : null}
 
+      {timeoutMsg && !versionChanged ? (
+        <div
+          role="alert"
+          data-testid="grid-timeout"
+          className="flex flex-col gap-3 rounded-md border border-warning/50 bg-warning/15 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+        >
+          <span className="flex items-start gap-2">
+            <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-px shrink-0" />
+            {timeoutMsg}
+          </span>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            {search ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-(--control-h-lg) w-full sm:h-(--control-h-sm) sm:w-auto"
+                onClick={cancelSearch}
+              >
+                <IconX aria-hidden />
+                Hapus pencarian
+              </Button>
+            ) : null}
+            {sortCount > 0 ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-(--control-h-lg) w-full sm:h-(--control-h-sm) sm:w-auto"
+                data-testid="grid-clear-sort"
+                onClick={() => apiRef.current && applySort(apiRef.current, [])}
+              >
+                <IconArrowsSort aria-hidden />
+                Hapus urutan
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <form onSubmit={submitGo} className="flex flex-col gap-1" noValidate>
           <div className="flex items-center gap-2">
@@ -687,6 +1064,101 @@ export default function SheetGrid({
               {goError}
             </p>
           ) : null}
+        </form>
+        <form
+          role="search"
+          onSubmit={submitSearch}
+          className="flex flex-col gap-1"
+          noValidate
+          data-testid="grid-search"
+        >
+          <div className="flex items-center gap-2">
+            <label htmlFor={searchId} className="shrink-0 text-sm font-medium">
+              Cari
+            </label>
+            <div className="relative">
+              <IconSearch
+                size={20}
+                stroke={1.5}
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                ref={searchInput}
+                id={searchId}
+                type="search"
+                autoComplete="off"
+                maxLength={SEARCH_TEXT_MAX}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape" && search) {
+                    e.preventDefault();
+                    cancelSearch();
+                  }
+                }}
+                placeholder="Teks di kolom terlihat"
+                aria-invalid={searchError ? true : undefined}
+                aria-describedby={searchStatusId}
+                aria-keyshortcuts="Control+F"
+                className="h-(--control-h-lg) w-56 pl-10 md:h-(--control-h)"
+                data-testid="grid-search-input"
+              />
+            </div>
+            <Button
+              type="submit"
+              variant="outline"
+              className="h-(--control-h-lg) md:h-(--control-h)"
+              disabled={searching}
+            >
+              Cari
+            </Button>
+            {searching ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="h-(--control-h-lg) md:h-(--control-h)"
+                data-testid="grid-search-cancel"
+                onClick={cancelSearch}
+              >
+                <IconX aria-hidden />
+                Batalkan
+              </Button>
+            ) : search ? (
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-(--control-h-lg) md:h-(--control-h)"
+                data-testid="grid-search-clear"
+                onClick={cancelSearch}
+              >
+                <IconX aria-hidden />
+                Hapus pencarian
+              </Button>
+            ) : null}
+          </div>
+          <p
+            id={searchStatusId}
+            className={searchError ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
+            data-testid="grid-search-status"
+          >
+            {searchError ??
+              (searching ? (
+                <span className="inline-flex items-center gap-1">
+                  <IconLoader2
+                    size={16}
+                    stroke={1.5}
+                    aria-hidden
+                    className="motion-safe:animate-spin"
+                  />
+                  Mencari “{search.text}”… (paling lama 10 detik)
+                </span>
+              ) : search && total !== null ? (
+                <span data-testid="grid-search-count">Ditemukan di {fmtInt(total)} baris</span>
+              ) : (
+                "Ctrl+F di dalam grid. Mencari di ≤ 10 kolom teks yang terlihat."
+              ))}
+          </p>
         </form>
         <div className="flex items-center gap-2">
           <span className="rounded-sm border px-2 py-1 text-xs text-muted-foreground">
@@ -742,6 +1214,60 @@ export default function SheetGrid({
         </div>
       </div>
 
+      {filterList.length > 0 ? (
+        <div
+          className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center"
+          data-testid="grid-filters"
+        >
+          <ul aria-label="Saringan aktif" className="flex min-w-0 flex-wrap gap-2">
+            {filterList.map(([id, f]) => {
+              const col = byId.get(id);
+              const name = col?.name ?? id;
+              const value = filterText(f, col?.type);
+              return (
+                <li
+                  key={id}
+                  className="inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border bg-muted pl-3 text-sm"
+                  data-testid="grid-filter-chip"
+                  data-col={id}
+                >
+                  <span className="min-w-0 truncate" title={`${name}: ${value}`}>
+                    {name}: <span className="font-medium">{value}</span>
+                  </span>
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="size-11 shrink-0 rounded-full text-muted-foreground hover:text-foreground md:size-8 [&_svg]:size-4"
+                    aria-label={`Hapus saringan ${name}`}
+                    onClick={() => applyFilter(id, null)}
+                  >
+                    <IconX aria-hidden />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-(--control-h-lg) self-start md:h-(--control-h-sm)"
+            data-testid="grid-filter-clear-all"
+            onClick={clearFilters}
+          >
+            <IconFilterOff aria-hidden />
+            Hapus semua saringan
+          </Button>
+          <span
+            className="text-sm text-muted-foreground tabular-nums"
+            data-testid="grid-filter-count"
+          >
+            {total !== null && all !== null && !loading
+              ? filteredCountText(total, all, true)
+              : "Menghitung baris…"}
+          </span>
+        </div>
+      ) : null}
+
       <div
         ref={boxRef}
         className="dd-grid h-[calc(100dvh-var(--topbar-h)-17rem)] min-h-96 w-full"
@@ -773,6 +1299,7 @@ export default function SheetGrid({
           onColumnMoved={(e) => e.finished && persist()}
           onColumnPinned={persist}
           onColumnVisible={onVisibility}
+          onSortChanged={onSortChanged}
         />
       </div>
 
@@ -781,12 +1308,20 @@ export default function SheetGrid({
         data-testid="grid-status"
       >
         <span className="tabular-nums" data-testid="grid-status-rows">
-          {statusText(range?.first ?? null, range?.last ?? null, total)}
+          {statusText(range?.first ?? null, range?.last ?? null, total, filteredView ? all : null)}
         </span>
       </div>
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {announce}
       </p>
+      <GridFilterDialog
+        target={filterTarget}
+        sheetId={sheetId}
+        versionId={versionId}
+        value={filterTarget ? filters[colIdOf(filterTarget.column.pos)] : undefined}
+        onApply={applyFilter}
+        onClose={() => setFilterTarget(null)}
+      />
     </div>
   );
 }
