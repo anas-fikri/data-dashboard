@@ -1,7 +1,7 @@
 ---
 id: T-046
 title: Unduh tampilan Lihat data lewat job ekspor
-status: in_progress
+status: in_review
 profile: standard
 goal: G-6
 tags:
@@ -12,52 +12,63 @@ depends_on:
   - T-044
   - T-017
 created: "2026-10-15T02:30:56Z"
-updated: "2026-10-20T09:23:18Z"
+updated: "2026-10-20T09:29:40Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: e51fcb41e894cee77d4e5c2e033084b2436e1b02
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-20T09:26:07Z"
+      findings: 2
+    - "n": 2
+      by: claude-code
+      at: "2026-10-20T09:26:07Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
-    exit_code: 0
-    duration_ms: 188875
+    exit_code: 1
+    duration_ms: 187067
     summary: |-
-      …t
-      > vitest run
+      …"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792488503137,"service":"data-dashboard","host":"127.0.0.1","port":42125,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792488509562,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792488523060,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792488523083,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792488523089,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792488523098,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+      ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+       FAIL  tests/features/guides/markdown.test.ts > GuideMarkdown tabel (T-0vjt) > kolom > 8 ditolak saat simpan dan tidak dirender; tabel terburuk dalam batas tetap cepat
+      AssertionError: expected 1037.206 to be less than 1000
+       ❯ tests/features/guides/markdown.test.ts:257:83
+          255|     const edge = `${row(8, "a")}\n${row(8, "-")}\n${"a\n".repeat(1990)…
+          256|     expect(guideBodyProblem(edge)).toBeNull();
+          257|     expect(cpuMs(() => expect(html(edge).match(/<td>/g)).toHaveLength(…
+             |                                                                                   ^
+          258|       RENDER_MAX_MS,
+          259|     );
+
+      ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
 
 
-       RUN  v5.0.3 /home/user/data-dashboard
+       Test Files  1 failed | 170 passed | 1 skipped (172)
+            Tests  1 failed | 2219 passed | 10 skipped (2230)
+         Start at  09:27:01
+         Duration  133.31s (tests 84%, import 13%, transform 3%)
 
-      {"level":40,"time":1792488111132,"service":"data-dashboard","host":"127.0.0.1","port":34573,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792488111187,"service":"data-dashboard","host":"127.0.0.1","port":36491,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792488111290,"service":"data-dashboard","host":"127.0.0.1","port":40903,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792488111400,"service":"data-dashboard","host":"127.0.0.1","port":45869,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792488117425,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792488130364,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792488130390,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792488130400,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792488130408,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-
-       Test Files  171 passed | 1 skipped (172)
-            Tests  2220 passed | 10 skipped (2230)
-         Start at  09:20:31
-         Duration  132.75s (tests 84%, import 13%, transform 3%)
-
-          Isolate  172 workers spawned · ~160ms startup each (spawn + environment, per file)
-                   at least ~9.02s faster with isolate: false — reuses workers across files instead of one per file
-
-
-      > data-dashboard@0.1.0 audit
-      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
-
-      found 0 vulnerabilities
-      found 0 vulnerabilities
-    at: "2026-10-20T09:22:46Z"
+          Isolate  172 workers spawned · ~157ms startup each (spawn + environment, per file)
+                   at least ~8.87s faster with isolate: false — reuses workers across files instead of one per file
+    at: "2026-10-20T09:29:15Z"
     tree: cd0a8fd3fb1526bbde3b3ae9d24dacc1c7c300e30f3f6ca686ab1404d15101d3
+  check_failures: 1
   audit:
-    at: "2026-10-20T09:22:49Z"
+    at: "2026-10-20T09:29:16Z"
     passed: true
     tree: cd0a8fd3fb1526bbde3b3ae9d24dacc1c7c300e30f3f6ca686ab1404d15101d3
     results:
@@ -67,7 +78,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 458 dirs visited, 2265 inodes visited, 1 Extract calls, 199.084678ms elapsed, 199.084928ms wall time
+          End status: 462 dirs visited, 2323 inodes visited, 1 Extract calls, 236.384563ms elapsed, 236.384953ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
