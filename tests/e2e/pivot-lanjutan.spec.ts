@@ -343,7 +343,13 @@ test.describe("pivot lanjutan lintas fitur (T-075)", () => {
     ).dashboardId;
     const headers = { origin: baseURL!, "content-type": "application/json" };
     let revision = 0;
-    for (const title of ["Pivot kota", "Batang wilayah", "KPI pendapatan", "Tabel kota"]) {
+    for (const title of [
+      "Pivot kota",
+      "Batang wilayah",
+      "KPI pendapatan",
+      "Tabel kota",
+      "Pivot kecil",
+    ]) {
       const r = await p.request.post(`/api/dashboards/${dash}/widgets`, {
         headers,
         data: { baseRevision: revision, title },
@@ -370,6 +376,8 @@ test.describe("pivot lanjutan lintas fitur (T-075)", () => {
           at("KPI pendapatan", 0, 16, 4, 3),
           at("Batang wilayah", 4, 16, 8, 6),
           at("Tabel kota", 0, 22, 12, 8),
+          // T-7ykh: pivot bertingkat di kartu kecil 4×4 (halaman cetak).
+          at("Pivot kecil", 0, 30, 4, 4),
         ],
       },
     });
@@ -436,6 +444,7 @@ test.describe("pivot lanjutan lintas fitur (T-075)", () => {
     await bind(page, "Batang wilayah", "Batang");
     await bind(page, "KPI pendapatan", "Angka");
     await bind(page, "Tabel kota", "Tabel");
+    await bind(page, "Pivot kecil", "Pivot");
 
     await page.goto(`/dashboards/${dash}`);
     await expect(card(page, "KPI pendapatan").getByTestId("kpi-value")).toHaveText(rupiah(P));
@@ -500,7 +509,7 @@ test.describe("pivot lanjutan lintas fitur (T-075)", () => {
     await expect(table.locator("tfoot td").first()).toHaveText(rupiah(P));
     await page.goto(`/datasets/${datasetId}`);
     await expect(row(page, NAME).getByTestId("saved-pivot-usage")).toContainText(
-      "4 widget, 1 dashboard",
+      "5 widget, 1 dashboard",
     );
   });
 
@@ -617,10 +626,40 @@ test.describe("pivot lanjutan lintas fitur (T-075)", () => {
       const printed = page.getByTestId("print-widget");
       await expect(printed.getByTestId("kpi-value")).toHaveText(rupiah(B));
       const pivots = printed.getByTestId("widget-pivot");
-      await expect(pivots).toHaveCount(2);
+      await expect(pivots).toHaveCount(3);
       await expect(pivots.first().locator("tbody th[data-other]").first()).toHaveText("(Lainnya)");
       // Potongan baris/kolom halaman dijelaskan di catatan (bukan terpotong diam-diam).
       await expect(page.getByTestId("print-pivot-note").first()).toContainText("dari 32 baris");
+      // T-7ykh: kartu kecil pivot 4 tingkat — baris data tercetak, atau catatan menyarankan memperbesar
+      // kartu (tidak berhenti di "0 dari 32 baris" saja). Petunjuk itu terlihat utuh (tidak terpotong
+      // line-clamp catatan).
+      const small = printed.filter({ hasText: "Pivot kecil" });
+      await expect(small.getByTestId("widget-pivot")).toHaveCount(1);
+      const leaves = await small.locator("tbody tr[data-kind='leaf']").count();
+      const note = small.getByTestId("print-pivot-note");
+      console.log(`kartu kecil: ${leaves} baris data tercetak`);
+      if (leaves === 0) {
+        await expect(note).toContainText(
+          "Menampilkan 0 dari 32 baris · Perbesar kartu agar baris data muat",
+        );
+        const span = note.locator("span");
+        const clipped = await span.evaluate((el) => el.scrollHeight - el.clientHeight);
+        const text = (await span.textContent()) ?? "";
+        // Bila catatan dipotong, petunjuk tetap di awal (dua baris pertama) — ukur posisinya.
+        const hintTop = await span.evaluate((el) => {
+          const r = document.createRange();
+          const t = el.firstChild!;
+          const i = (t.textContent ?? "").indexOf("Perbesar kartu");
+          r.setStart(t, i);
+          r.setEnd(t, i + "Perbesar kartu agar baris data muat".length);
+          const rects = [...r.getClientRects()];
+          return Math.max(...rects.map((x) => x.bottom)) - el.getBoundingClientRect().top;
+        });
+        const box = await span.evaluate((el) => el.clientHeight);
+        expect(hintTop, `${text} (terpotong ${clipped} px)`).toBeLessThanOrEqual(box + 0.5);
+      } else {
+        await expect(note).not.toContainText("Perbesar kartu");
+      }
       await shot(page, "pivot-lanjutan-print");
     } finally {
       await ctx.close();

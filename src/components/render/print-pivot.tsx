@@ -16,6 +16,9 @@ import { fittingColumns } from "./print-table";
  */
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
 
+/** Petunjuk saat tidak satu pun baris data muat di kartu (hanya kepala kelompok/Total). */
+export const SMALL_CARD_HINT = "Perbesar kartu agar baris data muat";
+
 /** Keterangan bawah pivot cetak; null bila semua tercetak. Murni. */
 export function printPivotNote(
   data: Pick<PivotData, "rowCount" | "columnCount" | "columns" | "columnField">,
@@ -25,6 +28,8 @@ export function printPivotNote(
   const parts: string[] = [];
   if (leavesShown < data.rowCount) {
     parts.push(`Menampilkan ${count(leavesShown)} dari ${count(data.rowCount)} baris`);
+    // Pivot bertingkat di kartu kecil: hanya kepala kelompok yang muat (T-7ykh) — beri jalan keluar.
+    if (leavesShown === 0) parts.push(SMALL_CARD_HINT);
   }
   if (data.columnField && data.columnCount > data.columns.length) {
     parts.push(

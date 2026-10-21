@@ -15,7 +15,7 @@ import {
 import { PivotFields } from "@/components/dashboards/pivot-config";
 import { WidgetConfigForm } from "@/components/dashboards/widget-config";
 import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
-import { fittingPivotRows, printPivotNote } from "@/components/render/print-pivot";
+import { SMALL_CARD_HINT, fittingPivotRows, printPivotNote } from "@/components/render/print-pivot";
 import { PivotTableMarkup } from "@/components/widgets/pivot-markup";
 import type { PivotData } from "@/features/query/pivot";
 import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-table";
@@ -288,6 +288,13 @@ describe("pivot cetak PDF", () => {
     expect(printPivotNote(data({ columnCount: 55 }), 2, [])).toBe(
       "2 dari 55 kolom Tanggal · Total mencakup semua data",
     );
+  });
+
+  it("T-7ykh: tidak satu pun baris data muat (pivot bertingkat di kartu kecil) → petunjuk perbesar kartu", () => {
+    expect(printPivotNote(data({ rowCount: 32 }), 0, [])).toBe(
+      `Menampilkan 0 dari 32 baris · ${SMALL_CARD_HINT} · Total mencakup semua data`,
+    );
+    expect(printPivotNote(data({ rowCount: 32 }), 1, [])).not.toContain(SMALL_CARD_HINT);
   });
 });
 
