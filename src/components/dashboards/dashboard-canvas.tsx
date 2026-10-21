@@ -102,6 +102,38 @@ export function isCanvasUndo(
 }
 
 /**
+ * Ctrl/Cmd+Z, Ctrl+Y, atau Ctrl/Cmd+Shift+Z di luar kolom isian: urungkan/ulangi BAWAAN peramban
+ * berlaku untuk seluruh dokumen, jadi mengubah kolom isian lain yang tidak difokus — mis. menghapus
+ * judul widget yang baru diketik saat fokus di dialog Bagikan, lalu kolom itu kehilangan fokus dan
+ * judul kosong tersimpan (T-ev34). Tombol ini di luar kolom isian selalu dicegah bawaannya. Murni.
+ */
+export function isStrayNativeUndo(
+  e: Pick<KeyboardEvent, "key" | "metaKey" | "ctrlKey" | "altKey" | "target">,
+): boolean {
+  if (!(e.metaKey || e.ctrlKey) || e.altKey) return false;
+  const k = e.key.toLowerCase();
+  if (k !== "z" && k !== "y") return false;
+  const t = e.target as Element | null;
+  if (t?.closest?.("textarea, [contenteditable]:not([contenteditable='false'])")) return false;
+  // Kotak centang/radio/tombol bukan kolom teks: urungkan bawaan tetap mengenai kolom lain.
+  const input = t?.closest?.("input") as HTMLInputElement | null | undefined;
+  return !input || NON_TEXT_INPUTS.has(input.type);
+}
+
+const NON_TEXT_INPUTS = new Set([
+  "checkbox",
+  "radio",
+  "button",
+  "submit",
+  "reset",
+  "image",
+  "file",
+  "range",
+  "color",
+  "hidden",
+]);
+
+/**
  * Simpan semua sebelum meninggalkan mode edit ("Selesai"): panel pengaturan yang terbuka ditutup
  * SINKRON lebih dulu — saat dilepas, panel mengirim simpanannya yang masih menunggu jeda ke antrean
  * editor — lalu flush() menunggu antrean itu. Tanpa ini props mode lihat dibaca sebelum PATCH-nya
@@ -246,13 +278,14 @@ function Canvas(props: CanvasProps) {
     };
   }, [dashboardId, editing]);
 
-  // Ctrl/Cmd+Z = urungkan (di luar kolom isian dan dialog lain).
+  // Ctrl/Cmd+Z = urungkan (di luar kolom isian dan dialog lain); urungkan bawaan peramban di luar kolom
+  // isian dicegah (T-ev34).
   useEffect(() => {
     if (!canEdit) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!ed.canUndo || !isCanvasUndo(e, document)) return;
-      e.preventDefault();
-      void ed.undo();
+      const mine = ed.canUndo && isCanvasUndo(e, document);
+      if (mine || isStrayNativeUndo(e)) e.preventDefault();
+      if (mine) void ed.undo();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
