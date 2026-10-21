@@ -8,9 +8,11 @@ import { prisma } from "@/lib/db";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { env } from "@/lib/env";
 import { ResultCache } from "./cache";
-import { GridGate } from "./grid-gate";
+import { GridGate, gridEngine } from "./grid-gate";
+import type { GridOrder } from "./grid-order";
 import { HistoryCache } from "./history-cache";
-import { localParquetCache, queryCacheBase } from "./local-parquet";
+import { localParquetCache, queryCacheBase, registerOrderCache } from "./local-parquet";
+import { ORDER_CACHE_TTL_MS, OrderCache } from "./order-cache";
 import { withPeriodColumn } from "./period-column";
 import type { CachedQuery, FilterSource, QueryDeps, QueryRepo } from "./service";
 
@@ -232,6 +234,8 @@ interface Runtime {
   deps: QueryDeps;
   /** Gerbang grid "Lihat data" (T-042): slot global terpisah dari widget, in-flight per user. */
   gridGate: GridGate;
+  /** Cache urutan "Lihat data" (T-062); tidak ada = mati (atau runtime sebelum hot reload). */
+  order?: GridOrder;
 }
 
 const globalForQuery = globalThis as unknown as {
@@ -243,9 +247,11 @@ async function build(): Promise<Runtime> {
   const e = env();
   // Cache dibagi dengan pemanasan versi aktif (T-pvq8): bisa sudah dibuat sebelum mesin query.
   const parquet = localParquetCache();
+  const orderDir = join(queryCacheBase(), "order");
   const engine = await QueryEngine.create({
     dataDir: parquet.dir,
     tmpDir: join(queryCacheBase(), "tmp"),
+    extraDirs: [orderDir],
     memoryLimit: e.QUERY_MEMORY_LIMIT,
     threads: 2,
     maxTempSize: "4GB",
@@ -254,16 +260,38 @@ async function build(): Promise<Runtime> {
     perUser: Math.max(1, Math.floor(e.MAX_QUERY_CONCURRENCY / 2)),
     queueWaitMs: 10_000,
   });
-  return {
-    deps: {
-      repo: prismaQueryRepo,
-      parquet,
-      engine,
-      cache: new ResultCache<CachedQuery>(e.QUERY_RESULT_CACHE_BYTES),
-      timeoutMs: e.QUERY_TIMEOUT_MS,
-    },
-    gridGate: newGridGate(e),
+  const deps: QueryDeps = {
+    repo: prismaQueryRepo,
+    parquet,
+    engine,
+    cache: new ResultCache<CachedQuery>(e.QUERY_RESULT_CACHE_BYTES),
+    timeoutMs: e.QUERY_TIMEOUT_MS,
   };
+  const gridGate = newGridGate(e);
+  return { deps, gridGate, order: newOrder(e, orderDir, deps, gridGate) };
+}
+
+/**
+ * Cache urutan (T-062): berkas di QUERY_CACHE_DIR/order (dikosongkan saat proses mulai). Permutasi
+ * dibangun di belakang lewat gerbang grid yang sama (slot grid → widget tetap kebagian) tanpa sinyal
+ * permintaan; entri kedaluwarsa disapu tiap menit.
+ */
+function newOrder(
+  e: ReturnType<typeof env>,
+  dir: string,
+  deps: QueryDeps,
+  gate: GridGate,
+): GridOrder | undefined {
+  if (e.GRID_ORDER_CACHE_BYTES <= 0) return undefined;
+  const cache = new OrderCache({
+    dir,
+    maxBytes: e.GRID_ORDER_CACHE_BYTES,
+    ttlMs: ORDER_CACHE_TTL_MS,
+  });
+  registerOrderCache(cache);
+  setInterval(() => cache.sweep(), 60_000).unref();
+  const { parquet, engine, timeoutMs } = deps;
+  return { cache, background: { parquet, engine: gridEngine(engine, gate), timeoutMs } };
 }
 
 function newGridGate(e: ReturnType<typeof env>): GridGate {
@@ -296,9 +324,13 @@ export async function queryDeps(): Promise<QueryDeps> {
 }
 
 /** Dependensi query + gerbang grid (T-042) untuk route "Lihat data". */
-export async function gridRuntime(): Promise<{ deps: QueryDeps; gate: GridGate }> {
+export async function gridRuntime(): Promise<{
+  deps: QueryDeps;
+  gate: GridGate;
+  order: GridOrder | null;
+}> {
   const r = await runtime();
   // Runtime yang dibuat sebelum hot reload (dev) belum punya gridGate (review T-042 L2).
   r.gridGate ??= newGridGate(env());
-  return { deps: { ...r.deps, repo: prismaQueryRepo }, gate: r.gridGate };
+  return { deps: { ...r.deps, repo: prismaQueryRepo }, gate: r.gridGate, order: r.order ?? null };
 }

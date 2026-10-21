@@ -208,6 +208,15 @@ export const envSchema = z.object({
    * Dipotong ke MAX_QUERY_CONCURRENCY − 1 (minimal 1) di runtime.
    */
   GRID_MAX_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(2),
+  /**
+   * Cache urutan "Lihat data" (T-062): batas byte berkas permutasi + potongan terurut di
+   * QUERY_CACHE_DIR/order (LRU, TTL 30 menit). 0 = mati.
+   */
+  GRID_ORDER_CACHE_BYTES: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .default(1024 * 1024 * 1024),
   QUERY_MEMORY_LIMIT: z
     .string()
     .regex(/^\d+(\.\d+)?\s*(MB|GB|MiB|GiB)$/i)

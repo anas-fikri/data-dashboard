@@ -15,10 +15,20 @@ interface Forgetful {
   forget(key: string): void;
 }
 
+interface ForgetOrder {
+  forget(typedKeys: string[]): void;
+}
+
 const g = globalThis as unknown as {
   queryLocalParquet?: Forgetful;
   queryParquetCache?: ParquetCache;
+  queryOrderCache?: ForgetOrder;
 };
+
+/** Cache urutan "Lihat data" (T-062) proses ini: entri dari data yang dihapus ikut dibuang. */
+export function registerOrderCache(cache: ForgetOrder) {
+  g.queryOrderCache = cache;
+}
 
 export function registerLocalParquet(cache: Forgetful) {
   g.queryLocalParquet = cache;
@@ -52,6 +62,7 @@ export function localParquetCache(): ParquetCache {
 
 /** Buang salinan lokal typed.parquet data yang dihapus, termasuk yang sedang diunduh. */
 export function forgetLocalParquet(keys: string[]) {
+  g.queryOrderCache?.forget(keys);
   const c = g.queryLocalParquet;
   if (!c) return;
   for (const k of keys) c.forget(k);

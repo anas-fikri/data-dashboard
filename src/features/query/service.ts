@@ -407,7 +407,7 @@ async function leaseSource(
  * selama `work` berjalan. `exec` boleh dipanggil beberapa kali berurutan; semuanya berbagi satu batas
  * waktu `timeoutMs` (bukan masing-masing).
  */
-export async function runOnParquet<T>(
+export function runOnParquet<T>(
   userId: string,
   key: ParquetSource,
   deps: Pick<QueryDeps, "parquet" | "engine" | "timeoutMs" | "prepareWaitMs" | "signal">,
@@ -415,6 +415,49 @@ export async function runOnParquet<T>(
     path: string,
     exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>,
     /** Path lokal semua file sumber, urut sumber (jendela baris T-041 membaca per segmen). */
+    paths: string[],
+  ) => Promise<T>,
+): Promise<{ ok: true; value: T } | QueryFailure> {
+  return runGated(
+    userId,
+    deps,
+    () =>
+      leaseSource(deps.parquet, key, {
+        owner: userId,
+        waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
+      }),
+    // Banyak segmen: read_parquet($path) diganti daftar/proyeksi (source.ts).
+    (s, paths) => (typeof key === "string" ? s : withSegments(s, key, paths)),
+    (exec, paths) => work(paths[0]!, exec, paths),
+  );
+}
+
+/**
+ * Pekerjaan DuckDB atas file lokal milik proses ini (cache urutan "Lihat data", T-062): gerbang, batas
+ * waktu, dan pemetaan galat sama dengan runOnParquet, tanpa menyewa file sumber. Pemanggil menjaga file
+ * tetap ada (pin) selama `work`.
+ */
+export function runOnLocal<T>(
+  userId: string,
+  deps: Pick<QueryDeps, "engine" | "timeoutMs" | "signal">,
+  work: (exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>) => Promise<T>,
+): Promise<{ ok: true; value: T } | QueryFailure> {
+  return runGated(
+    userId,
+    deps,
+    async () => ({ paths: [], release: () => {} }),
+    (s) => s,
+    (exec) => work(exec),
+  );
+}
+
+async function runGated<T>(
+  userId: string,
+  deps: Pick<QueryDeps, "engine" | "timeoutMs" | "signal">,
+  lease: () => Promise<ParquetLeases>,
+  rewrite: (s: BuiltSql, paths: string[]) => BuiltSql,
+  work: (
+    exec: (s: BuiltSql, maxMs?: number) => Promise<EngineResult>,
     paths: string[],
   ) => Promise<T>,
 ): Promise<{ ok: true; value: T } | QueryFailure> {
@@ -427,10 +470,7 @@ export async function runOnParquet<T>(
   try {
     const value = await userGate(async (waitLeftMs) => {
       signal?.throwIfAborted();
-      const lease = await leaseSource(deps.parquet, key, {
-        owner: userId,
-        waitMs: deps.prepareWaitMs ?? PREPARE_WAIT_MS,
-      });
+      const leased = await lease();
       try {
         return await globalGate(() => {
           const deadline = Date.now() + deps.timeoutMs;
@@ -438,14 +478,13 @@ export async function runOnParquet<T>(
             signal?.throwIfAborted();
             const left = deadline - Date.now();
             if (left <= 0) throw new QueryTimeoutError();
-            // Banyak segmen: read_parquet($path) diganti daftar/proyeksi (source.ts).
-            const q = typeof key === "string" ? s : withSegments(s, key, lease.paths);
+            const q = rewrite(s, leased.paths);
             return engine.exec(q.sql, q.params, Math.min(left, maxMs), signal);
           };
-          return work(lease.paths[0]!, exec, lease.paths);
+          return work(exec, leased.paths);
         }, waitLeftMs);
       } finally {
-        lease.release();
+        leased.release();
       }
     });
     return { ok: true, value };

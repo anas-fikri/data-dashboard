@@ -36,6 +36,15 @@ import {
   type QueryDeps,
   type QueryFailure,
 } from "./service";
+import {
+  orderChunkRows,
+  orderKey,
+  orderWindow,
+  scheduleOrder,
+  usesOrderCache,
+  type GridOrder,
+} from "./grid-order";
+import type { OrderMeta } from "./order-cache";
 import { buildFilterValuesSql, FILTER_VALUES_LIMIT } from "./sql";
 import { sheetSource, type ParquetSource, type SegmentFile, type SourcePeriod } from "./source";
 
@@ -100,6 +109,8 @@ export interface GridRepo {
 export type GridDeps = Omit<QueryDeps, "repo" | "cache"> & {
   repo: GridRepo;
   cache?: ResultCache<CachedQuery> | null;
+  /** Cache urutan (T-062): jalur urut/cari membaca permutasi + potongan terurut; null = mati. */
+  order?: GridOrder | null;
 };
 
 /**
@@ -304,7 +315,12 @@ export async function runGridRows(
   const parsed = rowsBodySchema.safeParse(body);
   if (!parsed.success) return invalid();
   const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
-  if (!auth.ok) return auth;
+  // Versi/revisi berganti (T-062 AC2): entri cache urutan sheet ini yang lama dibuang.
+  if (!auth.ok) {
+    if (auth.code === "VERSION_CHANGED") deps.order?.cache.invalidate(sheetId, null);
+    return auth;
+  }
+  deps.order?.cache.invalidate(sheetId, auth.sheet.versionId, auth.sheet.schemaRevision);
   const scoped = scopePeriods(auth.sheet, parsed.data.period);
   if (!scoped.ok) return scoped;
   const { sheet } = scoped;
@@ -351,15 +367,33 @@ export async function runGridRows(
   }
 
   // Jalur 2: urut/saring/cari (atau jumlah baris segmen belum diketahui).
-  const filtered = !isPlainWindow(plan);
-  const ck = deps.cache ? countKey(sheetId, sheet, plan, period) : null;
-  const hit = ck ? deps.cache!.get(ck) : null;
-  const known2 = hit && "gridCount" in hit ? hit.gridCount : null;
   // Cari dibatasi GRID_SEARCH_MAX_MS (AC3); urut/saring memakai batas query biasa (QUERY_TIMEOUT_MS).
   const limited = plan.search
     ? { ...deps, timeoutMs: Math.min(deps.timeoutMs, GRID_SEARCH_MAX_MS) }
     : deps;
-  const r = await runOnParquet(userId, sourceFor(sheet, segs), limited, async (path, exec) => {
+  const source = sourceFor(sheet, segs);
+  const cached = deps.order && usesOrderCache(plan) ? deps.order : null;
+  const meta: OrderMeta = {
+    sheetId,
+    versionId: sheet.versionId,
+    schemaRevision: sheet.schemaRevision,
+    typedKeys: segs.map((s) => s.typedKey),
+  };
+  const okey = cached ? orderKey(meta, plan, period) : null;
+  if (cached && okey) {
+    const w = await orderWindow(userId, okey, plan, source, cached, limited);
+    if (w && !w.ok) return timeoutFor(plan, w);
+    if (w) {
+      const rows = toRows(plan, w.rows, plan.rowStart);
+      if (!rows) return tooLarge();
+      return { ...head, total: w.total, filteredTotal: w.filteredTotal, rows };
+    }
+  }
+  const filtered = !isPlainWindow(plan);
+  const ck = deps.cache ? countKey(sheetId, sheet, plan, period) : null;
+  const hit = ck ? deps.cache!.get(ck) : null;
+  const known2 = hit && "gridCount" in hit ? hit.gridCount : null;
+  const r = await runOnParquet(userId, source, limited, async (path, exec) => {
     const out = await exec(buildSortedWindowSql(plan, path));
     if (known2) return { out, ...known2 };
     const n = await exec(buildGridCountSql(filtered ? plan : null, path));
@@ -372,6 +406,19 @@ export async function runGridRows(
   const { total: t, filteredTotal } = r.value;
   // Hanya count yang di-cache (beberapa puluh byte); blok baris tidak.
   if (ck && !known2) deps.cache!.set(ck, { gridCount: { total: t, filteredTotal } }, 64);
+  // Blok berikutnya dari cache urutan: permutasi dibangun di belakang (tidak ditunggu).
+  if (cached && okey) {
+    const visible = sheet.schema.filter((c) => !c.hidden).length;
+    scheduleOrder(
+      okey,
+      meta,
+      plan,
+      source,
+      { filteredTotal, total: t },
+      cached.chunkRows ?? orderChunkRows(visible),
+      cached,
+    );
+  }
   const rows = toRows(plan, r.value.out.rows, plan.rowStart);
   if (!rows) return tooLarge();
   return { ...head, total: t, filteredTotal, rows };

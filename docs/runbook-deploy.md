@@ -352,6 +352,7 @@ setelah upgrade hilang dari database (disimpan dulu di dump pengaman).
 |---|---|---|
 | `QUOTA_GRACE_DAYS` | 14 | Masa transisi kuota byte nyata (T-039): pelanggaran hanya peringatan, dihitung dari waktu migrasi T-039 diterapkan |
 | `GRID_MAX_CONCURRENCY` | 2 | Slot query global maks untuk Lihat data (T-042); dipotong ke `MAX_QUERY_CONCURRENCY − 1` |
+| `GRID_ORDER_CACHE_BYTES` | 1073741824 (1 GiB) | Cache urutan Lihat data (T-062): permutasi + potongan terurut di disk lokal app (`<QUERY_CACHE_DIR>/order`, dikosongkan saat app mulai), LRU, TTL 30 menit; 0 = mati. Sediakan ruang disk app sebesar nilai ini |
 | `PERIOD_KEEP_DEFAULT` | 24 | Periode disimpan per dataset bila pemilik tidak mengatur |
 | `PERIOD_KEEP_MAX` | 60 | Batas atas pengaturan "Simpan N periode" |
 | `PERIOD_SHEET_MAX_ROWS` | 10000000 | Baris per sheet, dijumlah atas semua periode |

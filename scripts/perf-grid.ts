@@ -2,10 +2,11 @@
  * Perf "Lihat data" (G-6 §3.6) lewat jalur server sungguhan: runGridRows/runGridValues/runGridStats
  * (QueryEngine produksi: memory_limit 1GB, 2 thread, 4 slot, 2 per user, sandbox) + ParquetCache lokal
  * hangat. Bukan bagian check. Riwayat: T-041 (jendela tanpa urut), T-042 (--load), T-061 (urut/saring/
- * cari/periode, beban dengan widget atas seluruh sheet, 13 jt baris).
+ * cari/periode, beban dengan widget atas seluruh sheet, 13 jt baris), T-062 (cache urutan).
  *
  *   npm run perf -- grid --dir /path/scratch [--rows 10000000] [--segs 24] [--layout period|single]
  *                        [--reps 30] [--load] [--grid-slots 2] [--only a,b] [--json out.json] [--keep]
+ *                        [--order-bytes 1073741824] [--no-order]
  *
  * Data (deterministik, dibangkitkan DuckDB, tata letak typed ingest: zstd, row group 122.880):
  *   layout period (bawaan): `segs` segmen bulanan (Jan 2024 + k), tiap file `_row BIGINT` (rowBase
@@ -19,11 +20,17 @@
  * hasil dengan count sudah di-cache seperti gulir lanjutan):
  *   ujung (rows-200), acak, lintas batas segmen, ke baris 9.000.000 (2 blok seperti klien)
  *   urut angka/teks pertama + dalam, saring pertama + dalam, cari pertama, periode (1 dan 3 bulan),
- *   daftar nilai menu saring, ringkasan kolom.
+ *   daftar nilai menu saring, ringkasan kolom. Skenario tanpa "cache urutan" di namanya memakai jalur
+ *   tanpa cache urutan (sebanding T-061).
+ * Cache urutan (T-062, kecuali --no-order; pilih dengan --only cache): permutasi dibangun di belakang
+ *   setelah permintaan pertama (ditunggu), lalu "lompat acak" (posisi acak 25–100 %, potongan biasanya
+ *   belum ada) dan "blok berikutnya" (blok sesudah lompatan = gulir lanjutan) untuk urut teks/angka dan
+ *   saring + urut; "bangun permutasi" = lama pembangunan di belakang.
  * --load: dashboard 6 widget atas SELURUH sheet (sumber segmen + gerbang user 2, jatah global 4)
  *   sendirian (baseline) lalu bersamaan dengan 5 penggulir (masing-masing 2 jendela in-flight lewat
- *   gerbang grid 2/4 slot): varian gulir polos dan gulir dalam urut teks. Dicatat p95 widget, rasio,
- *   QUERY_BUSY/QUERY_TIMEOUT widget dan grid.
+ *   gerbang grid 2/4 slot): varian gulir polos, gulir dalam urut teks, dan (T-062) urut teks dengan cache
+ *   urutan (lompat acak lalu 4 blok berikutnya; permutasi dibangun lewat gerbang grid). Dicatat p95
+ *   widget, rasio, QUERY_BUSY/QUERY_TIMEOUT widget dan grid.
  * Keluaran: satu baris per skenario + satu baris JSON (juga ke --json). Data dihapus kecuali --keep.
  */
 import { copyFileSync, linkSync, rmSync, writeFileSync } from "node:fs";
@@ -40,6 +47,8 @@ import {
   type GridDeps,
   type GridSheet,
 } from "../src/features/query/grid-service";
+import type { GridOrder } from "../src/features/query/grid-order";
+import { ORDER_CACHE_TTL_MS, OrderCache } from "../src/features/query/order-cache";
 import { runOnParquet, type CachedQuery } from "../src/features/query/service";
 import { QueryEngine } from "../src/lib/duckdb/engine";
 import { ParquetCache } from "../src/lib/duckdb/parquet-cache";
@@ -64,6 +73,9 @@ const ONLY = arg("only")?.split(",");
 /** Slot global grid (GRID_MAX_CONCURRENCY produksi, bawaan 2). */
 const GRID_SLOTS = Number(arg("grid-slots", "2"));
 const COLS = GRID_COLS;
+/** Cache urutan (T-062): GRID_ORDER_CACHE_BYTES; --no-order = jalur tanpa cache (angka T-061). */
+const ORDER_BYTES = Number(arg("order-bytes", String(2 ** 30)));
+const ORDER = !process.argv.includes("--no-order");
 
 function stats(xs: number[]) {
   const s = [...xs].sort((a, b) => a - b);
@@ -90,6 +102,7 @@ async function main() {
     maxConcurrency: 4,
     perUser: 2,
     queueWaitMs: 10_000,
+    extraDirs: [join(DIR, "order")],
   });
   const cache = new ParquetCache({
     dir: join(DIR, "cache"),
@@ -136,6 +149,10 @@ async function main() {
     timeoutMs: 30_000,
     prepareWaitMs: 600_000,
   };
+  const orderCache = () =>
+    new OrderCache({ dir: join(DIR, "order"), maxBytes: ORDER_BYTES, ttlMs: ORDER_CACHE_TTL_MS });
+  const oc = orderCache();
+  const order = (): GridOrder => ({ cache: oc, background: base });
   const cols = schema.map((s) => s.pos);
   type Body = Record<string, unknown>;
   const rows = async (body: Body, deps: GridDeps, user = "perf") => {
@@ -153,6 +170,7 @@ async function main() {
     cols: COLS,
     reps: REPS,
     gridSlots: GRID_SLOTS,
+    orderCache: ORDER ? ORDER_BYTES : 0,
     cpus: cpus().length,
     cpuModel: cpus()[0]?.model,
     memGB: Math.round(totalmem() / 2 ** 30),
@@ -187,10 +205,55 @@ async function main() {
         { ...base, cache: warm },
       );
   };
+  /**
+   * Cache urutan (T-062): permutasi dibangun di belakang setelah permintaan jalur 2 pertama (ditunggu di
+   * sini), lalu "lompat" = posisi acak di 25–100 % (potongan biasanya belum ada → diambil dari sumber)
+   * dan "berikutnya" = blok sesudah lompatan (gulir lanjutan; potongan sudah ada).
+   */
+  const ordered = async (body: Body) => {
+    const deps = { ...base, cache: warm, order: order() };
+    const n = (await rows({ ...body, rowStart: 0 }, deps)).r.filteredTotal;
+    await oc.idle();
+    let at = 0;
+    const jump = async () => {
+      at = rand(Math.floor(n * 0.25), Math.max(1, n - 400));
+      return rows({ ...body, rowStart: at }, deps);
+    };
+    const next = async () => {
+      await jump();
+      return rows({ ...body, rowStart: at + 200 }, deps);
+    };
+    return { jump, next };
+  };
   const deepSortText = await deep({ sort: SORT_TEXT });
   const deepSortNum = await deep({ sort: SORT_NUM });
   const deepFilter = await deep({ filters: FILTER });
+  const orderScenarios = async (): Promise<Scenario[]> => {
+    if (!ORDER) return [];
+    const text = await ordered({ sort: SORT_TEXT });
+    const num = await ordered({ sort: SORT_NUM });
+    const filterText = await ordered({ filters: FILTER, sort: SORT_TEXT });
+    return [
+      ["cache urutan: urut teks dalam, lompat acak", text.jump],
+      ["cache urutan: urut teks dalam, blok berikutnya", text.next],
+      ["cache urutan: urut angka dalam, blok berikutnya", num.next],
+      ["cache urutan: saring + urut teks dalam, blok berikutnya", filterText.next],
+      // Terakhir: mengosongkan cache urutan tiap putaran.
+      [
+        "cache urutan: bangun permutasi teks",
+        async () => {
+          oc.clear();
+          const deps = { ...base, cache: warm, order: order() };
+          await rows({ rowStart: 0, sort: SORT_TEXT }, deps);
+          const t0 = performance.now();
+          await oc.idle();
+          return { ms: performance.now() - t0 };
+        },
+      ],
+    ];
+  };
   const scenarios: Scenario[] = [
+    ...(!ONLY || ONLY.some((o) => o.includes("cache")) ? await orderScenarios() : []),
     ["ujung (rows-200)", () => rows({ rowStart: ROWS - 200 }, base)],
     ["acak", () => rows({ rowStart: rand(0, ROWS - 200) }, base)],
     [
@@ -325,9 +388,19 @@ async function main() {
     search: await filteredTotal({ search: SEARCH }),
   };
 
-  async function load(variant: "polos" | "urut teks") {
+  async function load(variant: "polos" | "urut teks" | "urut teks, cache urutan") {
     const gate = new GridGate({ maxGlobal: GRID_SLOTS, perUser: 2, queueWaitMs: 10_000 });
-    const gdeps: GridDeps = { ...base, engine: gridEngine(engine, gate), cache: warm };
+    const withOrder = variant === "urut teks, cache urutan";
+    if (withOrder) oc.clear();
+    const gdeps: GridDeps = {
+      ...base,
+      engine: gridEngine(engine, gate),
+      cache: warm,
+      // Produksi: permutasi dibangun lewat gerbang grid yang sama tanpa sinyal permintaan.
+      ...(withOrder
+        ? { order: { cache: oc, background: { ...base, engine: gridEngine(engine, gate) } } }
+        : {}),
+    };
     // Widget = SQL agregat atas SELURUH sheet lewat runOnParquet + sumber segmen (jalur widget).
     const widgetSql = [
       "SELECT count(*) FROM read_parquet($path)",
@@ -370,12 +443,19 @@ async function main() {
     let stop = false;
     const grid = { ok: 0, busy: 0, timeout: 0, ms: [] as number[] };
     const n = ROWS;
+    // Varian cache urutan: lompat ke posisi acak lalu gulir 4 blok berikutnya (pola gulir nyata).
     const scroller = async (u: string) => {
+      let step = 0;
+      let at = 0;
       while (!stop) {
+        if (step++ % 5 === 0) at = rand(Math.floor(n * 0.25), n - 1200);
+        else at += 200;
         const body =
           variant === "polos"
             ? { rowStart: rand(0, n - 200) }
-            : { rowStart: rand(Math.floor(n * 0.25), n - 200), sort: SORT_TEXT };
+            : withOrder
+              ? { rowStart: at, sort: SORT_TEXT }
+              : { rowStart: rand(Math.floor(n * 0.25), n - 200), sort: SORT_TEXT };
         const t0 = performance.now();
         const r = await runGridRows(
           u,
@@ -416,7 +496,11 @@ async function main() {
     return res;
   }
   if (process.argv.includes("--load")) {
-    out.load = { polos: await load("polos"), urutTeks: await load("urut teks") };
+    out.load = {
+      polos: await load("polos"),
+      urutTeks: await load("urut teks"),
+      ...(ORDER ? { urutTeksCache: await load("urut teks, cache urutan") } : {}),
+    };
   }
   out.load1End = loadavg()[0];
   console.log(JSON.stringify(out));

@@ -42,9 +42,9 @@ const STATUS: Record<GridCode, number> = {
 };
 
 async function gridDeps(signal: AbortSignal): Promise<GridDeps> {
-  const { deps, gate } = await gridRuntime();
+  const { deps, gate, order } = await gridRuntime();
   const { repo: _r, engine, ...rest } = deps;
-  return { ...rest, engine: gridEngine(engine, gate, signal), repo: prismaGridRepo, signal };
+  return { ...rest, engine: gridEngine(engine, gate, signal), repo: prismaGridRepo, signal, order };
 }
 
 async function limited(userId: string) {

@@ -1,0 +1,233 @@
+{
+  "rows": 10000000,
+  "segs": 24,
+  "layout": "period",
+  "cols": 30,
+  "reps": 30,
+  "gridSlots": 2,
+  "orderCache": 1073741824,
+  "cpus": 4,
+  "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "memGB": 16,
+  "node": "v22.23.3",
+  "load1Start": 0.91,
+  "dataMb": 915,
+  "scenarios": {
+    "cache urutan: urut teks dalam, lompat acak": {
+      "n": 30,
+      "p50": 3019,
+      "p95": 3276,
+      "max": 3332,
+      "maxLeased": 24
+    },
+    "cache urutan: urut teks dalam, blok berikutnya": {
+      "n": 30,
+      "p50": 16,
+      "p95": 24,
+      "max": 39
+    },
+    "cache urutan: urut angka dalam, blok berikutnya": {
+      "n": 30,
+      "p50": 16,
+      "p95": 21,
+      "max": 26
+    },
+    "cache urutan: saring + urut teks dalam, blok berikutnya": {
+      "n": 30,
+      "p50": 17,
+      "p95": 23,
+      "max": 24
+    },
+    "cache urutan: bangun permutasi teks": {
+      "n": 30,
+      "p50": 3963,
+      "p95": 4187,
+      "max": 4200
+    },
+    "acak": {
+      "n": 30,
+      "p50": 53,
+      "p95": 81,
+      "max": 101,
+      "maxLeased": 1
+    },
+    "urut teks pertama": {
+      "n": 30,
+      "p50": 3084,
+      "p95": 3364,
+      "max": 3608,
+      "maxLeased": 24
+    },
+    "urut teks dalam": {
+      "n": 30,
+      "p50": 6148,
+      "p95": 6493,
+      "max": 6516,
+      "maxLeased": 24
+    },
+    "saring + urut teks pertama": {
+      "n": 30,
+      "p50": 3198,
+      "p95": 3320,
+      "max": 3335,
+      "maxLeased": 24
+    },
+    "periode 1 bulan, acak": {
+      "n": 30,
+      "p50": 55,
+      "p95": 70,
+      "max": 81,
+      "maxLeased": 1
+    },
+    "periode 3 bulan, urut teks pertama": {
+      "n": 30,
+      "p50": 416,
+      "p95": 461,
+      "max": 492,
+      "maxLeased": 3
+    }
+  },
+  "counts": {
+    "sortedTotal": 10000000,
+    "filtered": 1000023,
+    "search": 3602508
+  },
+  "load": {
+    "polos": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 327,
+          "p95": 692,
+          "max": 742
+        },
+        "dash": {
+          "n": 30,
+          "p50": 671,
+          "p95": 741,
+          "max": 742
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 401,
+          "p95": 823,
+          "max": 861
+        },
+        "dash": {
+          "n": 30,
+          "p50": 787,
+          "p95": 853,
+          "max": 861
+        }
+      },
+      "ratioWidgetP95": 1.19,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 681,
+        "busy": 0,
+        "timeout": 0,
+        "ms": {
+          "n": 681,
+          "p50": 360,
+          "p95": 446,
+          "max": 538
+        }
+      },
+      "load1": 2.03
+    },
+    "urutTeks": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 320,
+          "p95": 665,
+          "max": 740
+        },
+        "dash": {
+          "n": 30,
+          "p50": 643,
+          "p95": 717,
+          "max": 740
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 589,
+          "p95": 1463,
+          "max": 1694
+        },
+        "dash": {
+          "n": 30,
+          "p50": 1440,
+          "p95": 1595,
+          "max": 1694
+        }
+      },
+      "ratioWidgetP95": 2.2,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 12,
+        "busy": 30,
+        "timeout": 0,
+        "ms": {
+          "n": 12,
+          "p50": 17498,
+          "p95": 19189,
+          "max": 19189
+        }
+      },
+      "load1": 3.45
+    },
+    "urutTeksCache": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 328,
+          "p95": 677,
+          "max": 718
+        },
+        "dash": {
+          "n": 30,
+          "p50": 657,
+          "p95": 699,
+          "max": 718
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 599,
+          "p95": 1466,
+          "max": 1690
+        },
+        "dash": {
+          "n": 30,
+          "p50": 1405,
+          "p95": 1591,
+          "max": 1690
+        }
+      },
+      "ratioWidgetP95": 2.17,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 32,
+        "busy": 24,
+        "timeout": 0,
+        "ms": {
+          "n": 32,
+          "p50": 10157,
+          "p95": 20455,
+          "max": 21995
+        }
+      },
+      "load1": 3.54
+    }
+  },
+  "load1End": 3.95
+}

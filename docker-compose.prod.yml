@@ -34,6 +34,8 @@ x-app-env: &app-env
   QUOTA_GRACE_DAYS: ${QUOTA_GRACE_DAYS:-14}
   # Lihat data (T-042): slot query global maks untuk grid; sisanya selalu untuk widget dashboard.
   GRID_MAX_CONCURRENCY: ${GRID_MAX_CONCURRENCY:-2}
+  # Cache urutan Lihat data (T-062): byte maks berkas di QUERY_CACHE_DIR/order, TTL 30 menit; 0 = mati.
+  GRID_ORDER_CACHE_BYTES: ${GRID_ORDER_CACHE_BYTES:-1073741824}
   # Data per periode (T-050–T-060, rencana G-6 §5.2). Bawaan = nilai kode; batas dievaluasi per periode utuh.
   PERIOD_KEEP_DEFAULT: ${PERIOD_KEEP_DEFAULT:-24}
   PERIOD_KEEP_MAX: ${PERIOD_KEEP_MAX:-60}

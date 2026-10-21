@@ -27,6 +27,8 @@ export interface EngineOptions {
   /** Direktori yang boleh dibaca (cache parquet lokal). */
   dataDir: string;
   tmpDir: string;
+  /** Direktori lain yang boleh dibaca/ditulis (cache urutan "Lihat data", T-062). */
+  extraDirs?: string[];
   memoryLimit: string;
   threads: number;
   maxTempSize: string;
@@ -60,6 +62,7 @@ export class QueryEngine {
   static async create(o: EngineOptions): Promise<QueryEngine> {
     mkdirSync(o.dataDir, { recursive: true });
     mkdirSync(o.tmpDir, { recursive: true });
+    for (const d of o.extraDirs ?? []) mkdirSync(d, { recursive: true });
     const db = await DuckDBInstance.create(":memory:", {
       memory_limit: o.memoryLimit,
       threads: String(o.threads),
@@ -71,7 +74,9 @@ export class QueryEngine {
     try {
       const conn = await db.connect();
       try {
-        const dirs = [o.dataDir, o.tmpDir].map((d) => lit(d.endsWith("/") ? d : `${d}/`));
+        const dirs = [o.dataDir, o.tmpDir, ...(o.extraDirs ?? [])].map((d) =>
+          lit(d.endsWith("/") ? d : `${d}/`),
+        );
         await conn.run(`SET allowed_directories = [${dirs.join(", ")}]`);
         await conn.run("SET enable_external_access = false");
         await conn.run("SET lock_configuration = true");
