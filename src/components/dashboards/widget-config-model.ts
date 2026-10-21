@@ -10,8 +10,10 @@ import {
   TABLE_COLUMNS_MAX,
   TOP_N_DEFAULT,
   TOP_N_MAX,
+  PIVOT_VALUES_MAX,
   columnsOf,
   isCalcValue,
+  type CalcValue,
   type ChartSort,
   type ChartSpec,
   type ChartType,
@@ -19,7 +21,7 @@ import {
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
-import { calcText, type CalcExpr } from "@/features/widgets/calc";
+import { isAdditiveCalc } from "@/features/widgets/calc";
 import { defaultPivot } from "./pivot-config-model";
 
 /*
@@ -67,10 +69,6 @@ export function measureText(m: { agg: Agg; column?: number }, name: (pos: number
   }
   return `${AGG_LABEL[m.agg]} ${m.column === undefined ? "kolom" : name(m.column)}`;
 }
-
-/** Rumus field terhitung dalam kata (T-068): "(Total Pendapatan − Total Biaya) ÷ Total Pendapatan". */
-export const calcFormulaText = (expr: CalcExpr, name: (pos: number) => string) =>
-  calcText(expr, (l) => measureText(l, name));
 
 /** Opsi "Nilai": "Jumlah terisi" tepat di bawah "Jumlah baris" bila sheet punya kolom. */
 export function aggChoiceOptions(
@@ -261,7 +259,6 @@ export function defaultConfig(
       : prev.type === "kpi" || (prev.type !== "empty" && prev.type !== "table")
         ? prev.spec.measure
         : undefined;
-  // Field terhitung (T-068) tidak dibawa ke jenis/sheet lain: kembali ke ukuran bawaan.
   const prevMeasure = prevAny && !isCalcValue(prevAny) ? prevAny : undefined;
 
   if (type === "table") {
@@ -272,13 +269,14 @@ export function defaultConfig(
       : cols.slice(0, Math.min(6, TABLE_COLUMNS_MAX)).map((c) => c.pos);
     return { type, spec: { sheetId: sheet.id, columns, format } };
   }
-  // Batang ↔ garis di sheet yang sama: field terhitung ikut (rumus dan cara tampilnya berlaku sama).
+  // Field terhitung ikut ke KPI/batang/garis/pivot di sheet yang sama (rumusnya berlaku sama; KPI
+  // tanpa cara tampil); pai hanya rumus aditif (isAdditiveCalc) — selain itu kembali ke ukuran bawaan
+  // dan panel memberi tahu (droppedCalcNotice).
   const keepCalc =
     prevAny &&
     isCalcValue(prevAny) &&
-    (type === "bar" || type === "line") &&
-    (prev.type === "bar" || prev.type === "line") &&
-    prev.spec.sheetId === sheet.id
+    prevSheet === sheet.id &&
+    (type !== "pie" || isAdditiveCalc(prevAny.expr))
       ? prevAny
       : undefined;
   const kept =
@@ -310,6 +308,59 @@ export function defaultConfig(
       format,
     },
   };
+}
+
+/** Field terhitung (nilai pertama pivot, atau ukuran grafik/KPI) di konfigurasi ini. */
+export function calcOf(c: WidgetConfig): CalcValue | undefined {
+  if (c.type === "empty" || c.type === "table") return undefined;
+  const v = c.type === "pivot" ? c.spec.values[0] : c.spec.measure;
+  return v && isCalcValue(v) ? v : undefined;
+}
+
+/**
+ * Bawa field terhitung yang sedang dipakai ke konfigurasi jenis lain di sheet yang sama (juga ke
+ * pengaturan jenis itu yang diingat panel): ukuran grafik/KPI diganti rumusnya (KPI tanpa cara tampil,
+ * grafik hanya cara tampil yang didukung), pivot mendapatkannya sebagai nilai pertama. Pai hanya rumus
+ * aditif; tabel dan sheet lain tidak.
+ */
+export function carryCalc(prev: WidgetConfig, next: WidgetConfig): WidgetConfig {
+  const calc = calcOf(prev);
+  if (!calc || next.type === "empty" || next.type === "table") return next;
+  if (prev.type === "empty" || prev.spec.sheetId !== next.spec.sheetId) return next;
+  if (next.type === "pie" && !isAdditiveCalc(calc.expr)) return next;
+  const { showAs, ...plain } = calc as CalcValue & { showAs?: ShowAs };
+  if (next.type === "kpi") return { ...next, spec: { ...next.spec, measure: plain } };
+  if (next.type === "pivot") {
+    const rest = next.spec.values.filter((v) => !(isCalcValue(v) && v.label === calc.label));
+    return {
+      ...next,
+      spec: { ...next.spec, values: [calc, ...rest].slice(0, PIVOT_VALUES_MAX) },
+    };
+  }
+  const measure = showAs && SHOW_AS_FOR[next.type].includes(showAs) ? calc : plain;
+  return { ...next, spec: { ...next.spec, measure } };
+}
+
+/**
+ * Pemberitahuan saat berganti jenis/sheet membuang field terhitung (T-068 L3): pai hanya menerima
+ * rumus penjumlahan/pengurangan Total atau Jumlah baris, tabel baris mentah tidak punya ukuran, dan
+ * rumus tidak dibawa ke sheet lain (kolomnya berbeda). null bila tidak ada yang dibuang.
+ */
+export function droppedCalcNotice(prev: WidgetConfig, next: WidgetConfig): string | null {
+  const calc = calcOf(prev);
+  if (!calc || next.type === "empty") return null;
+  const kept =
+    next.type === "pivot"
+      ? next.spec.values.some((v) => isCalcValue(v) && v.label === calc.label)
+      : !!calcOf(next);
+  if (kept) return null;
+  const reason =
+    next.type === "table"
+      ? "tabel menampilkan baris mentah, bukan ukuran"
+      : prev.type !== "empty" && prev.spec.sheetId !== next.spec.sheetId
+        ? "rumusnya memakai kolom sheet lain"
+        : "pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris";
+  return `Field terhitung “${calc.label}” tidak dipakai di sini karena ${reason}. Kembali ke jenis sebelumnya untuk memakainya lagi.`;
 }
 
 /**

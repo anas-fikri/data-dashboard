@@ -1,16 +1,18 @@
 "use client";
 
-import { IconAlertCircle } from "@tabler/icons-react";
+import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { configVersion } from "@/components/widgets/body-state";
 import type { WidgetView } from "@/features/dashboards/service";
 import {
+  PIE_AGGS,
   isCalcValue,
   parseWidgetConfig,
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
+import { CalcField } from "./calc-editor";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
 import { PivotFields } from "./pivot-config";
@@ -27,8 +29,11 @@ import {
 } from "./config-sections";
 import {
   GRAIN_LABEL,
-  calcFormulaText,
+  AGG_ORDER,
   defaultConfig,
+  defaultMeasure,
+  carryCalc,
+  droppedCalcNotice,
   isNumeric,
   isTemporal,
   measureMismatch,
@@ -84,6 +89,8 @@ export function WidgetConfigForm({
   const status = panelSaveStatus(saveState.status, saveError);
   const { reloads } = saveState;
   const [retargeted, setRetargeted] = useState(widget.retargeted === true);
+  // Field terhitung yang tidak ikut saat jenis/sheet berganti (T-069).
+  const [calcNotice, setCalcNotice] = useState<string | null>(null);
   // Spec tampilan widget retargeted belum tersimpan: simpanan pertama selalu memuat ulang kartu.
   const savedVersion = useRef(
     widget.retargeted ? "" : configVersion(parsed.ok ? parsed.config : EMPTY),
@@ -155,9 +162,17 @@ export function WidgetConfigForm({
       kept &&
       kept.type !== "empty" &&
       sources.some((s) => s.id === kept.spec.sheetId && s.columns.length);
-    if (!usable) return commit(defaultConfig(type, sources, draft));
     // Yang diingat berisi nilai yang tidak cocok (spec lama): pilih ulang nilainya saja, sisanya tetap.
-    commit(measureMismatch(kept, sources) ? defaultConfig(type, sources, kept) : kept);
+    const base = !usable
+      ? defaultConfig(type, sources, draft)
+      : measureMismatch(kept, sources)
+        ? defaultConfig(type, sources, kept)
+        : kept;
+    // Field terhitung yang sedang dipakai ikut bila jenis ini mendukungnya (T-069); bila tidak,
+    // panel memberi tahu alasannya.
+    const next = base && carryCalc(draft, base);
+    setCalcNotice(next ? droppedCalcNotice(draft, next) : null);
+    commit(next);
   };
 
   if (!sources.some((s) => s.columns.length)) {
@@ -242,6 +257,17 @@ export function WidgetConfigForm({
             />
           ) : null}
 
+          {calcNotice ? (
+            <p
+              role="status"
+              className="flex gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
+              data-testid="config-calc-dropped"
+            >
+              <IconAlertTriangle size={20} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
+              <span className="min-w-0">{calcNotice}</span>
+            </p>
+          ) : null}
+
           {sources.length > 1 || noSheet ? (
             <Choice
               label="Sheet"
@@ -251,16 +277,16 @@ export function WidgetConfigForm({
               options={sources
                 .filter((s) => s.columns.length)
                 .map((s) => ({ value: s.id, label: s.name }))}
-              onChange={(sheetId) =>
-                commit(
-                  defaultConfig(
-                    draft.type as Exclude<WidgetType, "empty">,
-                    sources,
-                    draft,
-                    sheetId,
-                  ),
-                )
-              }
+              onChange={(sheetId) => {
+                const next = defaultConfig(
+                  draft.type as Exclude<WidgetType, "empty">,
+                  sources,
+                  draft,
+                  sheetId,
+                );
+                setCalcNotice(next ? droppedCalcNotice(draft, next) : null);
+                commit(next);
+              }}
             />
           ) : null}
 
@@ -336,20 +362,7 @@ export function WidgetConfigForm({
                 </>
               ) : null}
 
-              {isCalcValue(draft.spec.measure) ? (
-                // Field terhitung (T-068): penyusun rumusnya menyusul (T-069); di sini dibaca saja.
-                <p className="text-sm">
-                  <span className="font-medium">{draft.spec.measure.label}</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    ={" "}
-                    {calcFormulaText(
-                      draft.spec.measure.expr,
-                      (pos) => cols.find((c) => c.pos === pos)?.name ?? "kolom",
-                    )}
-                  </span>
-                </p>
-              ) : (
+              {isCalcValue(draft.spec.measure) ? null : (
                 <MeasureFields
                   type={draft.type}
                   columns={cols}
@@ -364,6 +377,39 @@ export function WidgetConfigForm({
                   }
                 />
               )}
+              {/* Satu instans untuk kedua keadaan: fokus kembali ke tombolnya setelah editor ditutup. */}
+              <CalcField
+                dashboardId={dashboardId}
+                sheetId={draft.spec.sheetId}
+                type={draft.type}
+                columns={cols}
+                widgetFormat={draft.spec.format}
+                value={isCalcValue(draft.spec.measure) ? draft.spec.measure : undefined}
+                addLabel="Pakai field terhitung"
+                axis={
+                  draft.type !== "kpi"
+                    ? cols.find((c) => c.pos === draft.spec.dimension.column)?.name
+                    : undefined
+                }
+                onSave={(measure) =>
+                  commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
+                }
+                onRemove={() =>
+                  commit({
+                    ...draft,
+                    spec: {
+                      ...draft.spec,
+                      measure: defaultMeasure(
+                        cols,
+                        undefined,
+                        draft.type === "pie" ? PIE_AGGS : AGG_ORDER,
+                        draft.type,
+                      ),
+                    },
+                  } as WidgetConfig)
+                }
+                removeLabel="Kembali ke ukuran biasa"
+              />
 
               {draft.type !== "kpi" ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">

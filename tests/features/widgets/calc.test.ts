@@ -365,7 +365,7 @@ describe("panel: ganti jenis grafik", () => {
     format: fmt,
   });
 
-  it("batang → garis mempertahankan field terhitung; ke pai/KPI kembali ke ukuran bawaan", () => {
+  it("batang → garis/KPI mempertahankan field terhitung (KPI tanpa cara tampil); pai rasio → ukuran bawaan", () => {
     if (!bar.ok) throw new Error(bar.message);
     const line = defaultConfig("line", sources, bar.config);
     expect(line).toMatchObject({
@@ -376,8 +376,10 @@ describe("panel: ganti jenis grafik", () => {
     expect(defaultConfig("pie", sources, bar.config)).toMatchObject({
       spec: { measure: { agg: "sum", column: 2 } },
     });
-    expect(defaultConfig("kpi", sources, bar.config)).toMatchObject({
-      spec: { measure: { agg: "sum", column: 2 } },
-    });
+    // T-069 (T-068 L3): KPI memakai rumus yang sama tanpa "Tampilkan sebagai".
+    const kpi = defaultConfig("kpi", sources, bar.config);
+    expect(kpi).toMatchObject({ type: "kpi", spec: { measure: calc(MARGIN) } });
+    expect(kpi!.spec).not.toHaveProperty("measure.showAs");
+    expect(parseWidgetConfig(kpi!.type, kpi!.spec).ok).toBe(true);
   });
 });

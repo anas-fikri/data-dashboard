@@ -8,6 +8,7 @@ import {
   isCalcValue,
   type PivotSpec,
 } from "@/features/widgets/spec";
+import { CalcField } from "./calc-editor";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
@@ -23,13 +24,7 @@ import {
   pivotSummary,
   splitColumn,
 } from "./pivot-config-model";
-import {
-  CHART_SORT_ORDER,
-  calcFormulaText,
-  measureText,
-  sortLabel,
-  type SourceColumn,
-} from "./widget-config-model";
+import { CHART_SORT_ORDER, measureText, sortLabel, type SourceColumn } from "./widget-config-model";
 
 /*
  * Bagian panel untuk widget pivot (T-tcjp), disusun seperti cara orang membaca PivotTable Excel:
@@ -148,11 +143,24 @@ export function PivotFields({
               ) : null}
             </div>
             {isCalcValue(m) ? (
-              // Field terhitung (T-068): penyusun rumusnya menyusul (T-069); di sini dibaca saja.
-              <p className="text-sm">
-                <span className="font-medium">{m.label}</span>
-                <span className="text-muted-foreground"> = {calcFormulaText(m.expr, name)}</span>
-              </p>
+              <CalcField
+                dashboardId={dashboardId}
+                sheetId={spec.sheetId}
+                type="pivot"
+                columns={columns}
+                widgetFormat={spec.format}
+                value={m}
+                split={!!split}
+                axis={name((split ?? row1 ?? row0)?.column)}
+                onSave={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}
+                // Satu-satunya nilai: tidak bisa dihapus, tetapi bisa kembali ke ukuran biasa.
+                onRemove={
+                  spec.values.length === 1
+                    ? () => set({ values: [defaultMeasureFor({ ...spec, values: [] }, columns)] })
+                    : undefined
+                }
+                removeLabel="Ganti dengan ukuran biasa"
+              />
             ) : (
               <MeasureFields
                 type="pivot"
@@ -169,11 +177,21 @@ export function PivotFields({
           </div>
         ))}
         {canAddValue(spec) ? (
-          <AddButton
-            onClick={() => set({ values: [...spec.values, defaultMeasureFor(spec, columns)] })}
-          >
-            Tambah nilai
-          </AddButton>
+          <div className="flex min-w-0 flex-col gap-2 md:flex-row md:flex-wrap md:items-start">
+            <AddButton
+              onClick={() => set({ values: [...spec.values, defaultMeasureFor(spec, columns)] })}
+            >
+              Tambah nilai
+            </AddButton>
+            <CalcField
+              dashboardId={dashboardId}
+              sheetId={spec.sheetId}
+              type="pivot"
+              columns={columns}
+              widgetFormat={spec.format}
+              onSave={(v) => set({ values: [...spec.values, v] })}
+            />
+          </div>
         ) : null}
       </fieldset>
 
