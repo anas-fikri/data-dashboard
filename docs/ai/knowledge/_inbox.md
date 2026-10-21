@@ -9,3 +9,4 @@
 - Artikel panduan baru terbit lewat seed tanpa --update, tetapi artikel lama yang diubah hanya diperbarui dengan --update --only <slug>. <!-- aitk:k date=2026-10-21 task=T-064 tags=docs,uat -->
 - Satu sumber versi = package.json: server membaca lewat src/lib/version.ts (server-only) dan meneruskan ke klien lewat props; cek tag di bash jangan lewat 'docker ps | grep -q' (SIGPIPE+pipefail membuat cek lolos). <!-- aitk:k date=2026-10-21 task=T-066 tags=ops,ui -->
 - Show Values As dihitung sebagai lapisan di atas UNION pivot (CTE ber-window) hanya bila showAs dipakai, sehingga SQL dan kunci cache spec lama tidak berubah. <!-- aitk:k date=2026-10-21 task=T-067 tags=query,ui -->
+- useContainerWidth react-grid-layout hanya mengukur saat mount — kontainer yang dirender bersyarat butuh use-grid-width; tes piksel yang lulus sendiri tapi gagal saat suite utuh bisa menandakan lebar grid basi. <!-- aitk:k date=2026-10-21 task=T-1zdf -->

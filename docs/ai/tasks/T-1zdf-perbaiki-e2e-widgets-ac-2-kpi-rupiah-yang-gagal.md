@@ -1,39 +1,55 @@
 ---
 id: T-1zdf
 title: Perbaiki e2e widgets AC 2 KPI Rupiah yang gagal
-status: in_progress
+status: done
 profile: standard
 created: "2026-10-21T11:40:02Z"
-updated: "2026-10-21T12:38:55Z"
+updated: "2026-10-21T12:44:12Z"
+closed: "2026-10-21T12:44:12Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 8ce72cf62cc3dda3ea61b9a6b114b84505908aa5
+paths:
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/use-grid-width.ts
+  - tests/e2e/dashboards.spec.ts
+  - tests/e2e/widgets.spec.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T12:40:15Z"
+      findings: 2
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T12:40:15Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 204472
+    duration_ms: 208616
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792586293076,"service":"data-dashboard","host":"127.0.0.1","port":44527,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792586293132,"service":"data-dashboard","host":"127.0.0.1","port":40055,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792586293235,"service":"data-dashboard","host":"127.0.0.1","port":39527,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792586293346,"service":"data-dashboard","host":"127.0.0.1","port":41133,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792586306030,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792586316755,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792586316778,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792586316783,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792586316793,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792586580464,"service":"data-dashboard","host":"127.0.0.1","port":35669,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792586580520,"service":"data-dashboard","host":"127.0.0.1","port":44977,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792586580619,"service":"data-dashboard","host":"127.0.0.1","port":33111,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792586580727,"service":"data-dashboard","host":"127.0.0.1","port":35441,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792586593765,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792586604946,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792586604969,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792586604972,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792586604986,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  208 passed | 1 skipped (209)
             Tests  2729 passed | 10 skipped (2739)
-         Start at  12:36:32
-         Duration  141.70s (tests 85%, import 13%, transform 2%)
+         Start at  12:41:16
+         Duration  147.45s (tests 84%, import 13%, transform 3%)
 
-          Isolate  209 workers spawned · ~152ms startup each (spawn + environment, per file)
-                   at least ~10.45s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  209 workers spawned · ~159ms startup each (spawn + environment, per file)
+                   at least ~10.94s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -41,10 +57,15 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T12:38:55Z"
+    at: "2026-10-21T12:43:45Z"
     tree: 24a81b0ce6f49e46e2896bda662e7ffb8ad3336821c93df4551570379a37fba2
+  commits:
+    - c4a56e5
+  acceptance:
+    total: 1
+    done: 1
   audit:
-    at: "2026-10-21T12:35:01Z"
+    at: "2026-10-21T12:43:45Z"
     passed: true
     tree: 24a81b0ce6f49e46e2896bda662e7ffb8ad3336821c93df4551570379a37fba2
     results:
@@ -54,7 +75,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 519 dirs visited, 4363 inodes visited, 1 Extract calls, 261.213781ms elapsed, 261.213956ms wall time
+          End status: 519 dirs visited, 4381 inodes visited, 1 Extract calls, 255.922929ms elapsed, 255.923282ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -105,3 +126,11 @@ Di luar cakupan (gagal juga di HEAD): T-z8y2 (dashboards.spec klik Pengaturan se
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada unggahan/berkas baru
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak ada konfigurasi/header baru
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T12:43:45Z (208616 ms)
+- Acceptance criteria: 1/1 satisfied
+- Commits: c4a56e5
+- Review pass 1 by claude-reviewer-subagent: 2 findings
+- Review pass 2 by claude-code: 0 findings
