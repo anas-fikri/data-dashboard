@@ -37,6 +37,28 @@ describe("isi panduan content/panduan (T-xfzy)", () => {
       ).toBe(true);
   });
 
+  it("T-064 AC2: artikel Lihat data dan data per periode terbit untuk pemilik dengan isi wajib", () => {
+    const bySlug = (slug: string) => guides.find((g) => g.slug === slug);
+    const view = bySlug("lihat-data-seperti-excel");
+    const period = bySlug("data-per-periode");
+    expect(view?.role).toBe("OWNER");
+    expect(period).toMatchObject({ role: "OWNER", contextKey: "UPLOAD" });
+    // Isi yang diminta AC: yang bisa/belum bisa, salin, unduh; batas, tinjauan, pulihkan.
+    for (const text of [
+      "## Yang bisa dan belum bisa",
+      "## Menyalin ke Excel",
+      "## Mengunduh tampilan",
+    ])
+      expect(view?.bodyMarkdown).toContain(text);
+    for (const text of ["## Batas penyimpanan", "## Layar tinjauan", "**Pulihkan periode**"])
+      expect(period?.bodyMarkdown).toContain(text);
+    // Editor dan viewer mendapat bagian Lihat data / Perbesar di artikel perannya sendiri.
+    expect(bySlug("editor-ubah-dashboard")?.bodyMarkdown).toContain(
+      "## Melihat seluruh data (Lihat data)",
+    );
+    expect(bySlug("viewer-lihat-filter-ekspor")?.bodyMarkdown).toContain("## Memperbesar tabel");
+  });
+
   it("frontmatter salah ditolak dengan nama berkas", () => {
     expect(() => parseGuideFile("tanpa frontmatter", "x.md")).toThrow(/x\.md/);
     expect(() =>

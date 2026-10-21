@@ -99,6 +99,11 @@ docker compose -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/a
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
 
+Setelah rilis G-6 (T-064): artikel baru (`lihat-data-seperti-excel`, `data-per-periode`) terbit dengan perintah di
+atas; tiga artikel lama yang ikut diperbarui hanya ditimpa bila diminta, tanpa menyentuh artikel lain:
+`... scripts/seed-guides.ts --update --only lihat-data-seperti-excel,data-per-periode,editor-ubah-dashboard,viewer-lihat-filter-ekspor,ganti-data-pemetaan`
+(menimpa suntingan admin di kelima artikel itu).
+
 ### TLS untuk akses LAN lewat IP (root CA berpembatasan, `deploy/lan-cert.sh`)
 
 Tanpa domain publik, sertifikat dibuat dari **root CA milik perusahaan dengan name constraints**: root

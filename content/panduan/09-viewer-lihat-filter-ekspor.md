@@ -28,6 +28,12 @@ Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyari
 
 Di widget **pivot**, sel kiri atas tabel berisi nama setiap bagian pivot dengan ikon saring (seperti tombol filter PivotTable Excel). Tekan namanya, lalu centang atau lepas centang nilai — total ikut berubah, pengaturan widget tidak. Catatan **Disaring — …** di bawah tabel menyebut saringan yang berlaku; tekan **Hapus saringan** untuk kembali ke semua data.
 
+## Memperbesar tabel
+
+Tekan ikon **Perbesar** di kepala widget tabel untuk membuka tabel itu selebar layar, bergaya lembar kerja: kolom nomor baris dan kepala kolom tetap terlihat saat digulir, dan urutan serta halaman ikut dari widget. Isinya hanya kolom widget itu, dengan filter dashboard yang sedang berlaku — viewer tidak bisa membuka seluruh isi sheet. Tekan **Tutup tampilan besar** atau Esc untuk kembali.
+
+Bila dataset disimpan per periode dan pemilik memasang filter **Periode**, pilih periode di bilah filter (mis. **Periode terbaru**).
+
 ## Mengekspor
 
 - **Satu widget** — tekan ikon ekspor di kepala widget, pilih **CSV** atau **Excel (XLSX)**, lalu tunggu sebentar — file terunduh otomatis (tekan **Unduh lagi** bila perlu). Ekspor mengikuti filter yang sedang aktif.

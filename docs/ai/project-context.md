@@ -9,6 +9,8 @@ Data Dashboard: aplikasi web pengganti dashboard Excel untuk PCP Express. User (
 ## Keputusan arsitektur kunci (lihat docs/adr)
 - File 1 GB TIDAK pernah di-parse di browser atau dimuat utuh ke RAM server. Alur: chunked resumable upload → object storage (MinIO) → worker streaming parse (xlsx/csv) → Parquet per sheet → query via DuckDB.
 - Query dashboard berbasis spesifikasi deklaratif (dimensi, ukuran, filter, agregasi), bukan SQL mentah dari user.
+- Versi dataset = manifest segmen typed imutabel (ADR-0008, D4): data per periode (Bulan/Kuartal/Tahun) menambah periode baru dan mengganti periode yang ada secara utuh tanpa menulis ulang periode lain; hapus/pulihkan periode dan rollback hanya mengganti manifest; objek dihapus GC mark-and-sweep (D15).
+- "Lihat data" (D16): penampil baca-saja gaya Excel untuk pemilik/editor lewat endpoint sheet sendiri (server mengurutkan/menyaring/memotong blok 200 baris, AG Grid Community dipin, ADR-0007); viewer hanya "Perbesar" widget tabel (kolom widget saja).
 - Metadata (user, profil dataset, skema kolom, layout dashboard) di PostgreSQL via Prisma. Data tabular di Parquet, bukan di PostgreSQL.
 - Deploy on-prem VM PCP Express via Docker Compose (app, worker ×2, renderer PDF, PostgreSQL, object storage S3 (RustFS) di subdomain sendiri, Redis, reverse proxy). Zero-capex. Single-tenant: organisasi = semua user aktif instance.
 
@@ -24,6 +26,7 @@ Semua UI lewat plugin frontend-expert (rantai di conventions.md). Fondasi desain
 ## Batasan
 - Maks file 1 GB per upload; format .xlsx dan .csv (xls lama tidak didukung di v1).
 - Registrasi hanya email dengan domain yang di-whitelist (konfigurasi env), verifikasi email wajib.
-- Tiap sheet = raw.parquet (posisional c1..cN VARCHAR, semua baris, dipertahankan) + typed-<schemaRevision>.parquet; header = metadata; koreksi/pemetaan menulis typed revisi baru dari raw, tanpa file asli dan tanpa parse ulang. Acuan alur dan keputusan mengikat D1–D12: docs/flow-kerja.md.
+- Tiap segmen sheet = raw.parquet (posisional c1..cN VARCHAR, semua baris, dipertahankan) + typed-<schemaRevision>.parquet; header = metadata per file typed; koreksi/pemetaan menulis typed revisi baru dari raw (recast per segmen), tanpa file asli dan tanpa parse ulang. Acuan alur dan keputusan mengikat D1–D16: docs/flow-kerja.md.
+- Batas data per periode (bawaan, env admin): 24 periode (maks 60), 10 jt baris/sheet, 16 GiB/dataset, 120 segmen/sheet, kuota 20 GiB/pengguna dari byte nyata; batas dievaluasi per periode utuh sebelum aktivasi, default tolak.
 - Target ingest 1 GB: selesai < 15 menit, puncak RAM worker < 2 GB.
 - Target query widget pada dataset 10 juta baris: p95 < 3 detik.

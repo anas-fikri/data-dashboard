@@ -8,10 +8,21 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  * T-xfzy isi awal panduan: seed (idempoten) menerbitkan content/panduan; user baru melihat artikel
  * Umum dan Pemilik data berurutan sesuai alur kerja; viewer melihat artikel viewer. Video rekaman
  * (demo/guide-videos, tidak di-commit) diperiksa terpisah: lihat catatan task.
+ * T-064: artikel Lihat data dan data per periode (pemilik) + bagian Lihat data/Perbesar di artikel editor
+ * dan viewer terender (tabel tersanitasi), dan artikel pemilik tetap tidak terbuka untuk viewer.
  */
 const N = uniqueEmail("content-new");
 const V = uniqueEmail("content-viewer");
 const OWNER = uniqueEmail("content-owner");
+const E = uniqueEmail("content-editor");
+/** Artikel yang ditambah/diubah T-064: DB dev yang sudah di-seed sebelumnya diperbarui (--update). */
+const T064 = [
+  "lihat-data-seperti-excel",
+  "data-per-periode",
+  "editor-ubah-dashboard",
+  "viewer-lihat-filter-ekspor",
+  "ganti-data-pemetaan",
+];
 const seeded = readdirSync(join(process.cwd(), "content/panduan"))
   .filter((f) => f.endsWith(".md"))
   .sort()
@@ -26,6 +37,7 @@ const titles = (role: string) => seeded.filter((g) => g.role === role).map((g) =
 
 let n: Page;
 let v: Page;
+let e: Page;
 
 /** Judul kartu artikel seed di halaman, dalam urutan tampil. */
 const shown = async (page: Page, role: string) => {
@@ -38,20 +50,23 @@ test.describe("isi panduan (T-xfzy)", () => {
     test.setTimeout(150_000);
     const seed = ["tsx", "--conditions=react-server", "--env-file-if-exists=.env"];
     for (let i = 0; i < 2; i++) execFileSync("npx", [...seed, "scripts/seed-guides.ts"]); // idempoten
+    execFileSync("npx", [...seed, "scripts/seed-guides.ts", "--update", "--only", T064.join(",")]);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
     const setup = await browser.newPage();
-    for (const email of [N, V, OWNER]) {
+    for (const email of [N, V, OWNER, E]) {
       await setup.context().clearCookies();
       await registerAndVerify(setup, request, email);
     }
     await setup.close();
     execFileSync("node", ["scripts/dev-share-fixture.mjs", OWNER, V, "VIEWER"]);
+    execFileSync("node", ["scripts/dev-share-fixture.mjs", OWNER, E, "EDITOR"]);
     n = await pageFor(browser, N);
     v = await pageFor(browser, V);
+    e = await pageFor(browser, E);
   });
 
   test.afterAll(async () => {
-    await Promise.all([n, v].map((p) => p?.context().close()));
+    await Promise.all([n, v, e].map((p) => p?.context().close()));
   });
 
   test("AC1/AC3: artikel Umum dan Pemilik data terbit, urut sesuai alur kerja", async () => {
@@ -73,5 +88,51 @@ test.describe("isi panduan (T-xfzy)", () => {
     // Daftar dirender bersama judul halaman (satu batas loading.tsx): tunggu tampil, lalu baca.
     await expect(v.getByRole("heading", { level: 1 })).toBeVisible();
     expect(await shown(v, "OWNER")).toEqual([]);
+  });
+
+  test("T-064 AC2: Lihat data dan data per periode terbit; editor/viewer mendapat bagian perannya", async () => {
+    const article = (p: Page) => p.getByTestId("guide-markdown");
+    await n.goto("/panduan/lihat-data-seperti-excel");
+    await expect(n.getByRole("heading", { level: 1 })).toHaveText(
+      "Melihat data seperti Excel (Lihat data)",
+    );
+    for (const h of [
+      "Menyalin ke Excel",
+      "Mengunduh tampilan",
+      "Pintasan keyboard",
+      "Yang bisa dan belum bisa",
+    ])
+      await expect(article(n).getByRole("heading", { level: 2, name: h })).toBeVisible();
+    // Tabel markdown terender sebagai tabel (bukan teks mentah dengan "|").
+    await expect(article(n).locator("table")).toHaveCount(3);
+    await expect(article(n)).not.toContainText("| ---");
+
+    await n.goto("/panduan/data-per-periode");
+    for (const h of [
+      "Layar tinjauan",
+      "Batas penyimpanan",
+      "Mengelola periode: unggah ulang, hapus, pulihkan",
+    ])
+      await expect(article(n).getByRole("heading", { level: 2, name: h })).toBeVisible();
+    await expect(article(n).locator("table")).toHaveCount(2);
+    // Kedua artikel ada di tab Pemilik data (urut sesuai berkas: 14 lalu 15).
+    await n.goto("/panduan?peran=pemilik");
+    await expect
+      .poll(async () => (await shown(n, "OWNER")).slice(-2))
+      .toEqual([
+        "Melihat data seperti Excel (Lihat data)",
+        "Mengunggah data per periode (bulanan, kuartalan, tahunan)",
+      ]);
+
+    await e.goto("/panduan/editor-ubah-dashboard");
+    await expect(
+      article(e).getByRole("heading", { level: 2, name: "Melihat seluruh data (Lihat data)" }),
+    ).toBeVisible();
+    await v.goto("/panduan/viewer-lihat-filter-ekspor");
+    await expect(
+      article(v).getByRole("heading", { level: 2, name: "Memperbesar tabel" }),
+    ).toBeVisible();
+    // Artikel pemilik tetap tertutup untuk viewer (slug di luar peran → 404).
+    expect((await v.goto("/panduan/data-per-periode"))?.status()).toBe(404);
   });
 });

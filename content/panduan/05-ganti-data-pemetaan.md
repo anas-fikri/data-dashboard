@@ -7,6 +7,8 @@ context: UPLOAD
 
 Data bulan berikutnya cukup diunggah ke dataset yang sama. Dashboard otomatis memakai data baru setelah versi itu aktif.
 
+Ingin menambah bulan baru tanpa mengunggah ulang seluruh data? Aktifkan **data per periode** — lihat _Mengunggah data per periode_.
+
 ## Mengunggah versi baru
 
 1. Buka halaman dataset → kartu **Data** → **Ganti data dengan file baru** → **Pilih file**.
