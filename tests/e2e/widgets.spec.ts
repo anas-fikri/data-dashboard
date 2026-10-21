@@ -68,6 +68,21 @@ async function addWidget(page: Page, title: string, type: string): Promise<Locat
   return panel;
 }
 
+/**
+ * KPI Rupiah total Omzet (kpi-view/kpi-fit): nilai lengkap "Rp 1.234.568" (spasi U+0020) selalu di title
+ * dan yang dibaca pembaca layar; yang tampil lengkap bila muat, selain itu bentuk ringkas "Rp 1,23 jt"
+ * (kartu 4 kolom di kanvas bersebelahan panel tidak memuat bentuk lengkap — T-1zdf).
+ */
+async function expectRupiahTotal(value: Locator) {
+  // Perbandingan atribut persis: "Rp" diikuti spasi biasa U+0020, bukan NBSP.
+  await expect(value).toHaveAttribute("title", "Rp\u00201.234.568");
+  await expect(value).toMatchAriaSnapshot(`- paragraph: "Rp 1.234.568"`);
+  const shown = await value.evaluate(
+    (el) => (el.querySelector("[aria-hidden]") ?? el).textContent ?? "",
+  );
+  expect(shown).toMatch(/^Rp\u0020(1\.234\.568|1,23\sjt)$/);
+}
+
 async function choose(panel: Locator, label: string, option: string) {
   await panel.getByLabel(label, { exact: true }).click();
   await panel.page().getByRole("option", { name: option, exact: true }).click();
@@ -145,9 +160,7 @@ test.describe("widget", () => {
     const panel = await addWidget(page, "Total omzet", "Angka");
     await choose(panel, "Format angka", "Rupiah (Rp 1.234)");
     await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
-    const value = widgetTitled(page, "Total omzet").getByTestId("kpi-value");
-    await expect(value).toHaveText("Rp 1.234.568");
-    expect(await value.evaluate((el) => el.textContent!.charCodeAt(2))).toBe(0x20);
+    await expectRupiahTotal(widgetTitled(page, "Total omzet").getByTestId("kpi-value"));
 
     // KPI kedua yang tidak memakai Omzet (dipakai AC 4).
     const count = await addWidget(page, "Jumlah transaksi", "Angka");
@@ -161,9 +174,7 @@ test.describe("widget", () => {
     await page.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
     await expect(widgetTitled(page, "Total omzet")).toHaveCount(0);
     await page.getByRole("button", { name: "Urungkan hapus widget" }).click();
-    await expect(widgetTitled(page, "Total omzet").getByTestId("kpi-value")).toHaveText(
-      "Rp 1.234.568",
-    );
+    await expectRupiahTotal(widgetTitled(page, "Total omzet").getByTestId("kpi-value"));
   });
 
   test("AC 3: tabel — 100 baris per halaman, urut kolom lalu pindah halaman", async ({ page }) => {

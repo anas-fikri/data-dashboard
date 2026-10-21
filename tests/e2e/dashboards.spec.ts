@@ -73,6 +73,14 @@ test.describe("dashboard", () => {
       .getByRole("button", { name: "Tambah widget", exact: true });
     await add.click();
     await expect(page.getByTestId("widget")).toHaveCount(1);
+    // Regresi T-1zdf (use-grid-width.ts): kanvas baru muncul setelah widget pertama (dashboard kosong) — grid mengukur
+    // lebarnya sendiri, bukan 1280 px bawaan; kartu baru 4 dari 12 kolom (jarak 16 px).
+    const cardWidth = async () => {
+      const canvas = (await page.getByTestId("canvas").boundingBox())!.width;
+      const card = (await page.getByTestId("widget").first().boundingBox())!.width;
+      return Math.abs(card - (((canvas - 11 * 16) / 12) * 4 + 3 * 16));
+    };
+    await expect.poll(cardWidth).toBeLessThan(2);
     await add.click();
     await expect(page.getByTestId("widget")).toHaveCount(2);
     const [firstId, secondId] = (await page

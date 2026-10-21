@@ -5,7 +5,7 @@ import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
+import ReactGridLayout, { type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
@@ -33,6 +33,7 @@ import {
   useFreshAfterHistory,
   viewCanvasKey,
 } from "./use-dashboard-editor";
+import { useGridWidth } from "./use-grid-width";
 import { useIsCoarsePointer, useIsPhone, useIsTablet, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
 import { WidgetConfigForm } from "./widget-config";
@@ -154,7 +155,7 @@ function Canvas(props: CanvasProps) {
   const tablet = useIsTablet();
   const wide = useIsWide();
   const coarse = useIsCoarsePointer();
-  const { width, containerRef, mounted } = useContainerWidth();
+  const { width, ref: gridRef, containerRef } = useGridWidth();
   const root = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -366,7 +367,7 @@ function Canvas(props: CanvasProps) {
           ) : (
             <div className="flex items-start gap-4">
               <div
-                ref={containerRef}
+                ref={gridRef}
                 className="min-w-0 flex-1"
                 data-testid="canvas"
                 data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
@@ -378,7 +379,7 @@ function Canvas(props: CanvasProps) {
                       return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
                     })}
                   </div>
-                ) : mounted ? (
+                ) : (
                   <ReactGridLayout
                     // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
                     // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
@@ -413,11 +414,6 @@ function Canvas(props: CanvasProps) {
                       return w ? card(w, it) : <div key={it.i} />;
                     })}
                   </ReactGridLayout>
-                ) : (
-                  <div
-                    className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
-                    aria-hidden
-                  />
                 )}
               </div>
               {panelItem && panelWidget ? (
