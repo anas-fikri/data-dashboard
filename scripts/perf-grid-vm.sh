@@ -22,8 +22,12 @@ PERF=(env COMPOSE_PROFILES=db docker compose -p dashboard-perftest --env-file .e
 }
 app=$(sed -n 's/^APP_HOST=//p' .env.perftest)
 scratch=$PERF_DIR/grid
-mkdir -p "$out" "$scratch"
-chmod 777 "$scratch"
+mkdir -p "$out"
+# Scratch milik pengguna host (700); container worker/renderer dijalankan dengan uid:gid yang sama.
+mkdir -p -m 700 "$scratch"
+uid="$(id -u):$(id -g)"
+tag=${IMAGE_TAG:-$(sed -n 's/^IMAGE_TAG=//p' .env.perftest)}
+tag=${tag:-latest}
 out=$(realpath "$out")
 
 (
@@ -35,7 +39,8 @@ out=$(realpath "$out")
   done
 ) >"$out/stats.log" 2>/dev/null &
 sampler=$!
-trap 'kill $sampler 2>/dev/null || true' EXIT
+# Gagal di tengah jalan: hentikan pencatat dan hapus data sementara (± 8 GB).
+trap 'kill $sampler 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 {
   echo "tanggal $(date -Is)"
@@ -47,7 +52,7 @@ trap 'kill $sampler 2>/dev/null || true' EXIT
   uptime
 } >"$out/mesin.txt"
 
-worker() { "${PERF[@]}" run --rm -T --no-deps -v "$scratch:/scratch" "$@"; }
+worker() { "${PERF[@]}" run --rm -T --no-deps --user "$uid" -e HOME=/tmp -v "$scratch:/scratch" "$@"; }
 
 # 1. Jalur server: mesin query produksi di container worker (memori/CPU container = produksi).
 svc() {
@@ -75,11 +80,11 @@ http() {
     scripts/dev-grid-perf-seed.ts --dir /scratch/seed --owner "$owner" --editors "$editors" "$@" |
     tail -1 >"$scratch/seed-$name.json"
   cp "$scratch/seed-$name.json" "$out/"
-  docker run --rm --network host --shm-size 1g -e HOME=/tmp \
+  docker run --rm --network host --user "$uid" --shm-size 1g -e HOME=/tmp \
     -e PERF_BASE="https://$app" -e PERF_USERS=/perf/users.json \
     -v "$PERF_DIR/users.json:/perf/users.json:ro" -v "$scratch:/scratch:ro" \
     -v "$PWD/scripts/perf-grid-http.mjs:/app/perf-grid-http.mjs:ro" \
-    --entrypoint node dashboard-renderer:latest /app/perf-grid-http.mjs "/scratch/seed-$name.json" "$reps" |
+    --entrypoint node "dashboard-renderer:$tag" /app/perf-grid-http.mjs "/scratch/seed-$name.json" "$reps" |
     tee "$out/http-$name.jsonl"
 }
 http 10m --rows 10000000 --segs 24 --name "Perf grid 10 jt"
