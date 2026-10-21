@@ -4,7 +4,7 @@ title: 'Perbaiki e2e kpi-fit halaman cetak: angka KPI noted w4 terpotong 1 px'
 status: in_progress
 profile: standard
 created: "2026-10-21T12:34:26Z"
-updated: "2026-10-21T21:12:54Z"
+updated: "2026-10-21T21:17:36Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -13,28 +13,36 @@ base: 62dfa2b97043bf3ab0c4429f296d7bc00fdb08ee
 evidence:
   check:
     cmd: npm run check
-    exit_code: 2
-    duration_ms: 61753
+    exit_code: 0
+    duration_ms: 197102
     summary: |-
-      > data-dashboard@1.2.0 check
-      > npm run lint && npm run typecheck && npm run test && npm run audit
+      …t":"127.0.0.1","port":46299,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792617411512,"service":"data-dashboard","host":"127.0.0.1","port":38515,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792617411616,"service":"data-dashboard","host":"127.0.0.1","port":36435,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792617411734,"service":"data-dashboard","host":"127.0.0.1","port":39585,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1792617413088,"service":"data-dashboard","datasetId":"t072mvim4fkxds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792617424880,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792617434387,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792617434409,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792617434412,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792617434424,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  225 passed | 1 skipped (226)
+            Tests  3021 passed | 10 skipped (3031)
+         Start at  21:15:16
+         Duration  138.29s (tests 83%, import 14%, transform 3%)
+
+          Isolate  226 workers spawned · ~146ms startup each (spawn + environment, per file)
+                   at least ~10.87s faster with isolate: false — reuses workers across files instead of one per file
 
 
-      > data-dashboard@1.2.0 lint
-      > eslint . && prettier --check .
+      > data-dashboard@1.2.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
 
-      Checking formatting...
-      All matched files use Prettier code style!
-
-      > data-dashboard@1.2.0 typecheck
-      > tsc --noEmit
-
-      tests/components/kpi-line-height.test.ts(14,25): error TS2769: No overload matches this call.
-        The last overload gave the following error.
-          Property 'key' is missing in type '{ label: string; type: "decimal"; }' but required in type 'QueryColumn'.
-    at: "2026-10-21T21:12:29Z"
-    tree: 424dfc2cc41eaece461923384d6bf28e9f904118e2cce0c4fbfb93e547f89c99
-  check_failures: 1
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-21T21:17:36Z"
+    tree: f9480a784dccb1da9af6a9704d003ab568fcc961a1814b3e4e26f5b69ba807e6
   audit:
     at: "2026-10-21T21:12:30Z"
     passed: true

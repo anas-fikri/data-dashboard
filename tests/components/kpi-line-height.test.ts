@@ -11,7 +11,7 @@ import { KpiView } from "@/components/widgets/kpi-view";
 const html = (value: number) =>
   renderToStaticMarkup(
     createElement(KpiView, {
-      data: { columns: [{ label: "Total Omzet", type: "decimal" }], rows: [[value]] },
+      data: { columns: [{ key: "v", label: "Total Omzet", type: "decimal" }], rows: [[value]] },
       format: { style: "rupiah", decimals: 0 },
       title: "Omzet",
       agg: "sum",
