@@ -1233,6 +1233,20 @@ Rollback: `docker compose --env-file .env.prod -f docker-compose.prod.yml down` 
 Validation: aitk check (lint, typecheck, 1733 unit, npm audit 0); e2e penuh 183/183 + e2e health terarah (/api/health/core publik, hanya status); produksi: deploy.sh "Sehat" lewat rantai TLS terverifikasi (--cacert root LAN), check-public-presign (UploadPart 16 MiB 200, metode/path lain 403, nosniff + CSP sandbox), AC4 worker dibunuh saat ingest → READY tanpa objek parsial, ps tanpa kredensial (0), pg-relay menolak jaringan lain, log akses tanpa token/query, latihan restore LULUS (checksum OK, isi per tabel identik — jumlah + md5 tiap baris, produksi tidak berubah selama backup —, daftar objek storage identik, health 200); diagnosa 151 kolom PG14/SQL_ASCII produksi vs PG16/UTF8 hasil restore identik lewat dua jalur (DB kosong dan migrate + restore --clean); review 3 putaran (5 → 2 → 0 temuan blocking). Sisa risiko: DB olympus SQL_ASCII (ILIKE hanya ASCII) dan backup belum disalin off-VM — task lanjutan. Upgrade G-6 (lokal, bukan olympus): build 4 image; migrasi penuh PG14 kosong + DB berbentuk produksi (t_j9j6 + data contoh), migrate diff kosong; simulasi compose produksi hostdb + PG14 role non-superuser 2 putaran preflight→load→migrate→start→rollback (DB identik dump preflight); gerbang negatif teruji; uji regresi backup bucket kosong.
 
 ## Notes
+- **Upgrade G-6 dijalankan di olympus 2026-10-21 (07:03–07:47 UTC)** oleh Claude Code atas izin eksplisit pemilik. Kode `190e216` (diekstrak dengan `git archive`; folder produksi bukan repo git; penanda `.deploy-commit`), image dibangun di VM dengan tag `202610210737`.
+  - **preflight** `20261021T070254Z`: lulus dengan `MIN_FREE_GB=13`. Ruang bebas terukur 14,02 GB; kebutuhan terukur sekitar 1,2 GB backup + dump + build. Sebelumnya tag image `dashboard-*:prev-*` lama dihapus, kecuali `prev-20261019h`.
+  - **Backup:** `dashboard-20261021T071110Z.tar.age` (1,1 GB). Salinan off-VM gagal karena NAS penuh (T-h77x); arsip ditahan di VM.
+  - **Dump:** `db-20261021T070254Z.dump`, 15 tabel. Image lama dicatat sebagai `prev-20261021T070254Z`.
+  - **build:** lulus. Sisa disk minimal 13 GB selama build.
+  - **migrate:** 15 migrasi sampai `20261021110000_t060_period_group`; check-segments 0 selisih (23 sheet); T-gcn8 0 baris; T-049/T-060 0; quota-report tercetak (2 pengguna, lama = baru).
+  - **start:** health ok, `/login` 200 + HSTS, `APP_URL` https, presign 16 MiB lewat proxy ok, allowlist storage 403, admin-restore exit 1, check-segments lulus.
+  - **Verifikasi mandiri:** migrasi gagal 0, 4 versi READY, 0 galat log app/worker 15 menit pertama, 2 worker jalan, health LAN ok.
+- **Belum:**
+  - uji manual pemilik §7 langkah 6 (AC 8);
+  - quota-report kedua setelah pemeriksaan malam 03.00 WIB;
+  - hapus `db-*.dump` setelah backup harian 2026-10-22 terverifikasi;
+  - salinan off-VM (AC 7, menunggu NAS).
+- **Rollback cepat** sampai sekitar 20 jam setelah start (≈ 2026-10-22 03:45 UTC): `bash deploy/upgrade.sh rollback`.
 - 2026-10-11T14:57:00Z Image di-pin per digest; skrip deploy generate semua secret; runbook rotasi AUTH_SECRET (array: tambah baru di depan, hapus lama setelah maxAge); access log redaksi /render/* dan /verify*; CORS MinIO AllowedHeaders terbatas (Content-Type, Content-Length) + MaxAge.
 - 2026-10-11T23:41:06Z Dari T-027: next.config headers() dan experimental.serverActions.allowedOrigins dievaluasi saat BUILD — image produksi wajib dibangun dengan APP_HOST produksi. HSTS dan CSP dipasang proxy saat runtime. Verifikasi pasca-deploy: node scripts/smoke-prod-headers.mjs https://<domain>.
 - 2026-10-11T23:44:44Z Dari review T-027: reverse proxy wajib meneruskan Host atau X-Forwarded-Host asli (Next mencocokkan Origin Server Action dengannya; allowedOrigins tidak dipakai). .dockerignore sudah mengecualikan .env. HSTS memakai includeSubDomains: semua subdomain (termasuk storage.<domain>, D5) wajib https.
