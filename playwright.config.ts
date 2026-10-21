@@ -52,6 +52,7 @@ export default defineConfig({
         /period-query\.spec\.ts$/,
         /period-queue\.spec\.ts$/,
         /period-group\.spec\.ts$/,
+        /period-cycle\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -196,10 +197,16 @@ export default defineConfig({
       testMatch: /period-group\.spec\.ts$/,
       dependencies: ["period-queue"],
     },
+    // period-cycle (T-063): worker sendiri; siklus bulanan ujung-ke-ujung dengan KPI di setiap langkah.
+    {
+      name: "period-cycle",
+      testMatch: /period-cycle\.spec\.ts$/,
+      dependencies: ["period-group"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-group"],
+      dependencies: ["period-cycle"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

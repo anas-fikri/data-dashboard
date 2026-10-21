@@ -471,3 +471,110 @@ untuk jadwal baru (segment-gc, segment-audit, …) di Redis — tidak berbahaya.
   dump baru hanya selama skema lama, STARTED_AT sekali, tag arsip = produksi lama, database/tabel rollback
   tidak cocok. Belum diuji: server
   olympus sungguhan (pemilik), volume data nyata.
+
+## 8. Disk: pertumbuhan data per periode, cache, dan backup (T-063)
+
+VM olympus dipakai bersama aplikasi lain: **jangan** `docker system prune`, `docker volume prune`, atau
+`docker image prune` (ikut menghapus milik aplikasi lain), dan jangan menghapus objek RustFS langsung
+(manifest versi merujuk kunci objek; `segment-audit` malam akan melaporkan kunci hilang). Semua pembersihan
+data lewat aplikasi atau job worker di bawah. Angka ukur: `docs/ai/perf/T-063.md`.
+
+### Apa yang tumbuh dan rumusnya
+
+| Tempat (volume) | Isi | Rumus / batas |
+|---|---|---|
+| RustFS `dashboard_s3data` | parquet segmen (`parquet/<ds>/seg/<id>/raw.parquet` + `typed-<rev>.parquet`), file asli unggahan (`raw/<ds>/<versi>/`), ekspor, media panduan | lihat rumus RustFS di bawah |
+| Cache app `dashboard_app_cache` (`QUERY_CACHE_DIR`, per replika app) | salinan parquet lokal (LRU), cache urutan Lihat data (`order/`), temp DuckDB (`tmp/`) | ≤ `MAX_LOCAL_PARQUET_BYTES` (10 GiB) + `GRID_ORDER_CACHE_BYTES` (1 GiB, TTL 30 menit) + 4 GB temp |
+| Tmp worker `dashboard_worker_cache` (`WORKER_TMP_DIR`) | per job: file sumber + spill sharedStrings/DuckDB; temp ekspor | per job ≤ ukuran unggahan (maks. 1 GiB) + 8 GiB spill; × `WORKER_REPLICAS` (2) → ≤ ± 18 GiB puncak; folder kerja sisa job mati dibersihkan saat worker mulai |
+| Backup `dashboard_backups` | arsip harian `dashboard-<UTC>.tar.age` (+ `.sha256`), folder kerja `.work-*` selama backup | (hari simpan lokal × arsip) + 2 × arsip saat backup berjalan (salinan bucket + dump di `.work-*`, lalu arsip ditulis) |
+| PostgreSQL host | metadata (versi, segmen, manifest, AuditLog) | kecil: ± puluhan KB per unggahan |
+
+**RustFS** ≈ Σ per dataset (P_aktif + P_tersimpan + S_7hari + G_24jam) + ekspor (≤ 1 jam) + media panduan:
+
+- **P_aktif** = parquet semua periode aktif = Σ (raw.parquet + typed parquet) per periode. Unggahan periode
+  hanya menulis segmen periode yang diunggah; periode lain dirujuk ulang (tidak disalin). Contoh terukur:
+  400 rb baris × 12 kolom ≈ 4,1 MB parquet per bulan (CSV-nya 28 MB); 1 jt baris ≈ 10 MB.
+- **P_tersimpan** = parquet periode yang sudah diganti/dilepas/dihapus tetapi masih dirujuk versi tersimpan
+  (3 versi siap terakhir disimpan, termasuk yang aktif) — jadi paling banyak ± 2 unggahan terakhir yang
+  mengganti/melepas periode. Ubah tipe kolom menambah revisi `typed-<rev>` per segmen (± ukuran typed)
+  sampai versi lama yang memakainya terbuang retensi.
+- **S_7hari** = file asli (CSV/XLSX) yang diunggah 7 hari terakhir, utuh (job `raw-retention` tiap jam
+  menghapus yang > 7 hari). CSV bisa ± 7× parquet-nya: inilah bagian terbesar sesaat setelah unggahan.
+- **G_24jam** = segmen yang baru tidak dirujuk versi mana pun: ditandai `segment-gc` (tiap jam), disapu
+  setelah tenggang `SEGMENT_GC_GRACE_HOURS` = 24 jam tidak dirujuk terus-menerus, lalu objeknya dihapus
+  `storage-cleanup` (tiap 15 menit). Ruang dari periode yang dihapus/dilepas baru kembali ± 1–2 hari setelah
+  versi tersimpan yang memuatnya ikut terbuang retensi.
+- Batas atas per dataset: data yang dirujuk versi ≤ `DATASET_MAX_DATA_BYTES` (16 GiB); per pengguna
+  `USER_STORAGE_QUOTA_BYTES` (20 GiB, termasuk file asli 7 hari). Syarat volume tetap: RustFS ≥ Σ kuota
+  pengguna aktif + 20%.
+
+**Backup harian** = `pg_dump` + salinan seluruh bucket (tar → age, tanpa kompresi tambahan; parquet sudah
+terkompresi), jadi arsip ≈ dump + RustFS. Pertambahan arsip karena satu unggahan periode:
+- malam setelah unggahan (file asli belum 7 hari): ≈ file asli + parquet periode itu (+ periode yang
+  diganti/dilepas tetap ada sampai retensi versi + GC);
+- setelah 7 hari: ≈ parquet periode itu saja (± 4 MB per 400 rb baris pada data uji).
+Ruang `dashboard_backups` ≈ `BACKUP_LOCAL_RETENTION_DAYS` × arsip + 2 × arsip; set
+`BACKUP_LOCAL_RETENTION_DAYS=7` bila salinan off-VM aktif.
+
+**Total disk aplikasi** ≈ RustFS + cache app (≤ 15 GiB) + tmp worker (≤ 18 GiB puncak) + backup lokal +
+image (± 4 GB per rilis, plus `prev-*` satu rilis sebelumnya) + log container (≤ 5 × 20 MB per service).
+
+### Cara cek pemakaian (baca-saja, aman di VM bersama)
+
+```bash
+cd /data/docker-data/data-dashboard
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+tag=$(sed -n 's/^IMAGE_TAG=//p' .env.prod | tail -1); tag=${tag:-latest}
+df -h /data /var/lib/docker                                 # sisa ruang disk host
+docker system df                                            # ringkasan Docker (semua aplikasi; jangan prune)
+# Ukuran per volume aplikasi ini (mount read-only, image milik aplikasi ini):
+for v in s3data app_cache worker_cache backups; do
+  printf '%s ' "$v"; docker run --rm --entrypoint du -v "dashboard_$v:/v:ro" "dashboard-backup:$tag" -sh /v
+done
+docker run --rm --entrypoint sh -v dashboard_backups:/v:ro "dashboard-backup:$tag" \
+  -c 'ls -lh /v/dashboard-*.tar.age | tail -7'               # ukuran arsip 7 hari terakhir
+$C run --rm --no-deps worker node scripts/quota-report.mjs  # pemakaian per pengguna (byte tersimpan)
+```
+
+Per dataset (PostgreSQL host, hanya membaca; parquet yang masih tercatat + file asli yang belum dihapus):
+
+```bash
+sudo -u postgres psql -d data_dashboard -c '
+SELECT d.name,
+  pg_size_pretty((SELECT coalesce(sum(g."rawBytes"),0) FROM "Segment" g WHERE g."datasetId" = d.id)
+    + (SELECT coalesce(sum(t."typedBytes"),0) FROM "SegmentTyped" t JOIN "Segment" g ON g.id = t."segmentId"
+       WHERE g."datasetId" = d.id)) AS parquet,
+  pg_size_pretty((SELECT coalesce(sum(v."sizeBytes"),0) FROM "DatasetVersion" v WHERE v."datasetId" = d.id
+    AND v."sourceDeletedAt" IS NULL AND v.status <> '"'"'FAILED'"'"')) AS file_asli
+FROM "Dataset" d ORDER BY 2 DESC LIMIT 20'
+```
+
+Pemeriksaan malam `segment-audit` (03.00 WIB): `$C logs --since 24h worker | grep 'pemeriksaan storage malam'`
+→ `"missing":0` (kunci terujuk yang hilang) dan `"orphans"` (objek yatim yang diserahkan ke pembersihan).
+
+### Membebaskan ruang dengan aman
+
+1. **Data pengguna**: hapus periode (kartu Periode › Hapus) atau dataset lewat aplikasi. Ruang kembali
+   setelah versi tersimpan yang memuatnya terbuang retensi (2 unggahan/perubahan berikutnya) + GC 24 jam.
+   Jangan menghapus objek di RustFS atau baris tabel secara manual.
+2. **File asli**: dihapus otomatis 7 hari setelah diproses. Disk mendesak: tunggu job `raw-retention`
+   (tiap jam); tidak ada cara aman yang lebih cepat selain menghapus versi/dataset lewat aplikasi.
+3. **Cache app**: kecilkan `MAX_LOCAL_PARQUET_BYTES` dan/atau `GRID_ORDER_CACHE_BYTES` (0 = cache urutan
+   mati) di `.env.prod` lalu `$C up -d app`. Isi volume cache boleh dikosongkan hanya saat app berhenti:
+   `$C stop app && docker run --rm -v dashboard_app_cache:/v --entrypoint sh "dashboard-backup:$tag" -c 'rm -rf /v/*' && $C up -d app`
+   (data dibaca ulang dari RustFS, kueri pertama lebih lambat).
+4. **Tmp worker**: folder kerja job yang mati dibersihkan saat worker mulai (`$C restart worker` saat tidak
+   ada unggahan yang diproses; job yang sedang berjalan diulang).
+5. **Backup lokal**: `BACKUP_LOCAL_RETENTION_DAYS=7` (salinan 30 hari tetap di off-VM) lalu
+   `$C up -d --no-deps --force-recreate backup`; arsip lama terbuang pada backup berikutnya. Arsip tertunda
+   (belum tersalin off-VM) sengaja ditahan — perbaiki target off-VM dulu.
+6. **Image lama**: setelah rilis baru stabil, hapus tag `prev-*` milik aplikasi ini saja:
+   `docker image ls 'dashboard-*'` lalu `docker image rm dashboard-<image>:prev-<stamp>`.
+
+### Uji ulang di VM (pemilik)
+
+`bash deploy/perf-stack.sh up 1` → `bash scripts/perf-period-cycle-vm.sh <folder-hasil>` →
+`bash deploy/perf-stack.sh down`. Stack uji terpisah (project `dashboard-perftest`, database + storage +
+backup sendiri); skrip mengunggah 24 × 400 rb + 10 × 1 jt baris, menjalankan backup harian sungguhan di
+beberapa titik, lalu retensi + GC + `segment-audit`. Butuh ± 6 GB ruang sementara di volume stack uji.
+Salin hasilnya ke `docs/ai/perf/T-063-olympus/`.
