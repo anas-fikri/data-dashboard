@@ -44,3 +44,6 @@
 - Baris judul harus disimpan per file typed, bukan per segmen: segmen dipakai bersama antar versi, jadi menulis headerRow ke Segment mengubah judul versi lain diam-diam. <!-- aitk:k date=2026-10-20 task=T-gcn8 -->
 - @duckdb/node-api mem-bind number bulat sebagai BIGINT (gagal di luar int64, lossy di atas 2^53) — kirim angka bulat tak-aman sebagai teks lalu CAST AS DOUBLE/DECIMAL. <!-- aitk:k date=2026-10-20 task=T-rrn1 -->
 - Atur ulang periode memecah setiap segmen sumber sendiri-sendiri (raw tiap segmen punya judul/peta kolom/jenis file berbeda) dan menyatukan bagiannya sebagai kelompok segmen; Tinjau memetakan baris ke segmen lewat rentang _row (rowBase+1..rowBase+maxSrcRow). <!-- aitk:k date=2026-10-20 task=T-qqyx -->
+- useContainerWidth react-grid-layout hanya mengukur saat mount — kontainer yang dirender bersyarat butuh use-grid-width; tes piksel yang lulus sendiri tapi gagal saat suite utuh bisa menandakan lebar grid basi. <!-- aitk:k date=2026-10-21 task=T-1zdf -->
+- Kanvas dashboard dirender server: klik tombol kartu sebelum hidrasi hilang; e2e menunggu [data-testid=dashboard-canvas][data-hydrated] (bukan jeda waktu). <!-- aitk:k date=2026-10-21 task=T-z8y2 -->
+- Klik tombol sesaat setelah goto bisa jatuh sebelum hidrasi React — beri penanda data-hydrated lewat useEffect mount dan tunggu di e2e. <!-- aitk:k date=2026-10-21 task=T-z8y2 -->

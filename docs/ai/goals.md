@@ -8,4 +8,4 @@
 - G-4 [planned] Dashboard builder: widget, chart, filter, sharing, export (under G-1) — 12/12 tasks done
 - G-5 [planned] Operasional: deploy on-prem, refresh data, performa 1 GB terbukti (under G-1) — 4/5 tasks done
 - G-6 [planned] Lihat data gaya Excel (baca-saja) untuk file besar dan data per periode tanpa memotong periode (rencana 2026-10-15) (under G-1) — 25/31 tasks done
-- G-7 [planned] Pivot lanjutan gaya Excel: tampilkan nilai sebagai, field terhitung, pivot tersimpan sebagai sumber widget, batas longgar + Top N (rencana 2026-10-21) (under G-1) — 7/16 tasks done
+- G-7 [planned] Pivot lanjutan gaya Excel: tampilkan nilai sebagai, field terhitung, pivot tersimpan sebagai sumber widget, batas longgar + Top N (rencana 2026-10-21) (under G-1) — 8/16 tasks done

@@ -1,3 +1,6 @@
 # Knowledge: perf
 
 - Isolasi beban grid harus melewati jatah per-user mesin, tidak hanya membatasi slot global; kalau tidak, penggulir membuat widget dashboard-nya sendiri antre — dan antrean slot wajib menghormati AbortSignal agar blok gulir yang dibatalkan tidak memakan jatah in-flight. <!-- aitk:k date=2026-10-20 task=T-042 tags=perf,security -->
+- Blok urut grid ±2 s habis di tahap ambil isi semua kolom untuk 200 _row acak (dekompresi semua row group), jadi cache permutasi saja tidak cukup; di 4 vCPU GRID_MAX_CONCURRENCY=1 menjaga widget ≤ 2× saat penggulir mengurutkan. <!-- aitk:k date=2026-10-21 task=T-061 tags=perf -->
+- Cache permutasi grid hanya cepat untuk gulir lanjutan; lompatan baru tetap ±3 s karena ambil isi = dekompresi semua row group sumber, dan salinan penuh ±1 GB/tampilan melebihi anggaran 1 GiB. <!-- aitk:k date=2026-10-21 task=T-062 tags=perf,query,conditional -->
+- Skrip perf yang memajukan jam wajib membatasi job pemeliharaan (retensi raw, cleanup, GC) ke dataset uji — tanpa itu file sumber dataset lain ikut terhapus lebih awal; backup harian = dump + seluruh bucket, jadi seminggu pertama satu unggahan menambah file asli + parquet. <!-- aitk:k date=2026-10-21 task=T-063 tags=perf,e2e,ops -->
