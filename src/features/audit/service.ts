@@ -49,6 +49,13 @@ export type AuditAction =
    * aktif, meta { from, versionId, period, sourceVersionId, beforeRows, afterRows }.
    */
   | "dataset.period.restore"
+  /**
+   * Pemilik dataset membuat / mengubah (spec dan/atau nama) / menghapus pivot tersimpan (T-072), target
+   * = pivot tersimpan, meta { datasetId, name, revision } (+ renamedFrom, specChanged untuk ubah).
+   */
+  | "savedPivot.create"
+  | "savedPivot.update"
+  | "savedPivot.delete"
   /** Pemilik menghapus dataset beserta dashboard dan share-nya (T-016). */
   | "dataset.delete"
   /** Share dashboard per user: diberikan, perannya diubah, dicabut (T-016). */
@@ -97,7 +104,7 @@ export interface AuditEntry {
   /** null hanya untuk tindakan sistem (tanpa pelaku manusia). */
   actorId: string | null;
   action: AuditAction;
-  targetType: "user" | "dataset" | "dashboard" | "guide" | "system";
+  targetType: "user" | "dataset" | "dashboard" | "savedPivot" | "guide" | "system";
   targetId: string;
   /** Detail tanpa rahasia (tanpa password/token/cookie). */
   meta?: Prisma.InputJsonValue;

@@ -448,7 +448,8 @@ bash deploy/upgrade.sh rollback          # minta ketik ROLLBACK; ROLLBACK_YES=1 
 
 Pemeriksaan dulu (belum ada yang dihentikan/dibuang): nama database sama dengan yang dicatat preflight, dan
 setiap tabel `public` saat ini ada di dump rollback atau termasuk tabel baru rilis ini (`SheetLineage`,
-`Segment`, `SegmentTyped`, `SheetSegment`, `UploadQueue`, `UploadQueueItem`); selain itu rollback dibatalkan.
+`Segment`, `SegmentTyped`, `SheetSegment`, `UploadQueue`, `UploadQueueItem`, `SavedPivot`); selain itu rollback
+dibatalkan.
 Urutan: app + worker berhenti → dump pengaman database saat ini (`db-sebelum-rollback-*.dump`) → database
 dipulihkan dari dump rollback (`DB_DUMP` di `state.env`: `db-migrate-*.dump`, atau `db-<stamp>.dump` bila
 migrate belum jalan) dalam **satu transaksi** (semua tabel + enum skema `public` dibuang lalu dump dimuat;
@@ -489,6 +490,25 @@ Sebelum rollback image, cari widget terdampak
 `SELECT id, "dashboardId" FROM "Widget" WHERE type = 'pivot' AND EXISTS (SELECT 1 FROM jsonb_array_elements(spec->'rows') r WHERE r ? 'topN');`
 lalu set "Tampilkan" ke "Semua" di panel widget itu (atau terima kartu "tidak valid" sampai upgrade
 berikutnya). Rollback lewat `upgrade.sh rollback` (DB dari dump preflight) tidak terdampak.
+
+**Rollback ke versi sebelum pivot tersimpan (T-072, migrasi `20261021170000_t072_saved_pivot`).** Migrasi
+aditif: tabel baru `SavedPivot` + kolom `Widget.savedPivotId` (nullable, FK NO ACTION) + indeksnya; widget
+lama tidak diubah (diuji di PostgreSQL 14: isi kolom lama `Widget` identik sebelum/sesudah migrasi). Kode lama
+tidak membaca keduanya, jadi:
+
+- **Disarankan:** `bash deploy/upgrade.sh rollback` (image `prev-*` + database dari dump pra-upgrade, satu
+  transaksi; `SavedPivot` termasuk `NEW_TABLES` sehingga pemeriksaan tabel lolos). Pivot tersimpan dan
+  perubahan lain sesudah upgrade hilang — ekspor dulu daftar pivot tersimpan bila perlu:
+  `SELECT "datasetId", name, spec FROM "SavedPivot";`.
+- **Ganti image saja (DB tetap):** aman selama belum ada widget yang diikat ke pivot tersimpan (T-073):
+  `SELECT count(*) FROM "Widget" WHERE "savedPivotId" IS NOT NULL;` harus 0. Kode lama mengabaikan tabel dan
+  kolom baru; hapus dataset tetap berjalan (cascade dataset → `SavedPivot`). Prisma lama tidak memakai
+  migrasi yang belum dikenalnya (`migrate` container lama = no-op karena baris `_prisma_migrations` sudah ada).
+- **Membuang skema baru secara manual** (hanya bila memang ingin kembali ke skema lama tanpa dump; pivot
+  tersimpan hilang): dalam satu transaksi `ALTER TABLE "Widget" DROP CONSTRAINT "Widget_savedPivotId_fkey";
+  DROP INDEX "Widget_savedPivotId_idx"; ALTER TABLE "Widget" DROP COLUMN "savedPivotId"; DROP TABLE
+  "SavedPivot"; DELETE FROM _prisma_migrations WHERE migration_name = '20261021170000_t072_saved_pivot';`
+  — backup DB dulu.
 
 ### Bukti uji (container cloud, 2026-10-20)
 

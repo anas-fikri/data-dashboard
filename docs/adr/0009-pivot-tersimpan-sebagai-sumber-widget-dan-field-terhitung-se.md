@@ -114,3 +114,11 @@ Bentuk yang ditetapkan:
   properti). Konstanta di-bind sebagai parameter `$m<i>k<n>` dan di-cast sesuai jenis hasil (DOUBLE;
   DECIMAL(38,6)/HUGEINT pada rumus tepat ± dengan konstanta bulat). Pai hanya menerima field terhitung
   aditif (±Total/Jumlah baris tanpa konstanta). Keputusan lain tidak berubah.
+- **2026-10-21 (T-072)**: model `SavedPivot` + `Widget.savedPivotId` (FK `NO ACTION`) dibuat sesuai bentuk di
+  atas (migrasi `20261021170000_t072_saved_pivot`, aditif). Rincian yang ditetapkan: `revision` mulai 1 dan
+  naik pada setiap simpan **dan** setiap tulis remap aktivasi/rollback (CAS editor yang memegang spec
+  sebelum remap mendapat `CONFLICT`); kode galat baru `IN_USE` dan `CONFLICT` (revisi basi — `STALE` tetap
+  dipakai untuk "versi data berganti sejak validasi", sama dengan widget). Semua tulis pivot tersimpan dan
+  remap-nya mengunci baris `Dataset` (FOR UPDATE, urutan sama dengan aktivasi/hapus dataset). Hapus dataset
+  dengan widget terikat diuji di PostgreSQL: cascade Dashboard → Widget dan SavedPivot dalam satu statement
+  lolos FK `NO ACTION`. AuditLog `targetType` baru `savedPivot`. Keputusan lain tidak berubah.

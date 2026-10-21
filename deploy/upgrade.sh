@@ -27,8 +27,8 @@ ENV_FILE=.env.prod
 STATE_ROOT=${UPGRADE_DIR:-../$(basename "$PWD")-upgrade}
 C=(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml)
 SERVICES=(app worker renderer backup)
-# Tabel yang ditambahkan migrasi rilis ini (T-036…T-060): boleh ada di database tapi tidak di dump lama.
-NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQueueItem"
+# Tabel yang ditambahkan migrasi rilis ini (T-036…T-060, T-072): boleh ada di database tapi tidak di dump lama.
+NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQueueItem SavedPivot"
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
 

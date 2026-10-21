@@ -13,7 +13,7 @@ import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retenti
  * Dataset → advisory lock dashboard (urut id, kunci sama dengan dashboards/service.ts) → tulis widget/
  * versi. Langkah:
  *  1. Dataset.activeVersionId = versi target.
- *  2. Versi yang dibuang retensi ditentukan dulu, lalu spec widget dipetakan ke sheet versi target dan
+ *  2. Versi yang dibuang retensi ditentukan dulu, lalu spec widget (dan pivot tersimpan, T-072) dipetakan ke sheet versi target dan
  *     DISIMPAN (sebelum retensi menghapus sheet lama). Kolom yang tidak ketemu: nama kolomnya dicatat di
  *     Widget.missingColumns; spec dibiarkan di sheet lama (roll-forward memulihkannya), kecuali sheet
  *     lama ikut dibuang — spec dipindah dengan penanda MISSING_COLUMN untuk kolom itu saja.
@@ -130,6 +130,13 @@ const sheetIdOf = (w: StoredWidget): string | null => {
   return c.ok && c.config.type !== "empty" ? c.config.spec.sheetId : null;
 };
 
+/**
+ * Spec widget DAN pivot tersimpan dataset (T-072, ADR-0009) dipetakan ke versi target dengan aturan yang
+ * sama (planWidget — pivot tersimpan diperlakukan sebagai widget pivot). Pivot tersimpan hanya ditulis
+ * di sini dan oleh service-nya, keduanya di bawah lock baris Dataset (FOR UPDATE pemanggil), jadi tidak
+ * ada simpan yang menimpa hasil remap. Setiap tulis remap menaikkan `revision` (CAS editor yang membuka
+ * spec lama mendapat CONFLICT; masukan kunci cache T-073).
+ */
 async function persistWidgets(
   tx: Tx,
   datasetId: string,
@@ -142,7 +149,6 @@ async function persistWidgets(
     orderBy: { id: "asc" },
     select: { id: true },
   });
-  if (!dashboards.length) return;
   // Kunci yang sama dengan lockKey("dashboard", id): tambah/hapus widget dan simpan tata letak
   // menunggu sampai aktivasi selesai.
   for (const d of dashboards) {
@@ -150,11 +156,21 @@ async function persistWidgets(
       Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`dashboard:${d.id}`}))`,
     );
   }
-  const widgets = await tx.widget.findMany({
-    where: { dashboard: { datasetId }, type: { not: "empty" } },
-    select: { id: true, type: true, spec: true, missingColumns: true },
-  });
-  if (!widgets.length) return;
+  const widgets = dashboards.length
+    ? await tx.widget.findMany({
+        where: { dashboard: { datasetId }, type: { not: "empty" } },
+        select: { id: true, type: true, spec: true, missingColumns: true },
+      })
+    : [];
+  const pivots: StoredWidget[] = (
+    await tx.savedPivot.findMany({
+      where: { datasetId },
+      orderBy: { id: "asc" },
+      select: { id: true, spec: true, missingColumns: true },
+    })
+  ).map((p) => ({ ...p, type: "pivot" }));
+  const all = [...widgets, ...pivots];
+  if (!all.length) return;
   // Sheet periode: skema + kolom sistem Periode (T-058), agar widget yang memakainya tetap terpetakan.
   const target: SheetInfo[] = (
     await tx.sheet.findMany({
@@ -175,7 +191,7 @@ async function persistWidgets(
   }));
   const targetIds = new Set(target.map((s) => s.id));
   const oldIds = [
-    ...new Set(widgets.flatMap((w) => sheetIdOf(w) ?? []).filter((id) => !targetIds.has(id))),
+    ...new Set(all.flatMap((w) => sheetIdOf(w) ?? []).filter((id) => !targetIds.has(id))),
   ];
   const oldRows = oldIds.length
     ? await tx.sheet.findMany({
@@ -212,16 +228,24 @@ async function persistWidgets(
       },
     ]),
   );
+  const planOf = (w: StoredWidget) =>
+    planWidget(w, target, olds.get(sheetIdOf(w) ?? ""), victims, sheetMap);
+  const dataOf = (change: WidgetUpdate) => ({
+    missingColumns: change.missingColumns,
+    ...(change.spec === undefined ? {} : { spec: change.spec as Prisma.InputJsonValue }),
+  });
   for (const w of widgets) {
-    const change = planWidget(w, target, olds.get(sheetIdOf(w) ?? ""), victims, sheetMap);
+    const change = planOf(w);
     if (!change) continue;
     // updateMany: widget yang terhapus bersamaan (hapus dashboard) tidak menggagalkan aktivasi.
-    await tx.widget.updateMany({
-      where: { id: w.id },
-      data: {
-        missingColumns: change.missingColumns,
-        ...(change.spec === undefined ? {} : { spec: change.spec as Prisma.InputJsonValue }),
-      },
+    await tx.widget.updateMany({ where: { id: w.id }, data: dataOf(change) });
+  }
+  for (const p of pivots) {
+    const change = planOf(p);
+    if (!change) continue;
+    await tx.savedPivot.updateMany({
+      where: { id: p.id, datasetId },
+      data: { ...dataOf(change), revision: { increment: 1 } },
     });
   }
 }

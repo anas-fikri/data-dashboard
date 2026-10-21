@@ -339,6 +339,14 @@ describe("activateVersionInTx", () => {
         return { count: 1 };
       }),
     },
+    // Pivot tersimpan (T-072): dipetakan dengan aturan widget pivot, revisi naik.
+    savedPivot: {
+      findMany: vi.fn(async (): Promise<unknown[]> => []),
+      updateMany: vi.fn(async (a: { where: { id: string } }) => {
+        order.push(`savedPivot:${a.where.id}`);
+        return { count: 1 };
+      }),
+    },
     sheet: { findMany: vi.fn(), groupBy: vi.fn() },
     storageCleanup: {
       createMany: vi.fn(async (_a: { data: unknown }) => {
@@ -494,9 +502,101 @@ describe("activateVersionInTx", () => {
     expect(order).toEqual(["dataset.update"]);
   });
 
-  it("versi bukan READY milik dataset ini → error (transaksi pemanggil dibatalkan)", async () => {
+  it("versi bukan READY milik dataset ini (mis. AWAITING_CONFIRM) → error; widget dan pivot tersimpan tidak disentuh", async () => {
     tx.datasetVersion.findFirst.mockResolvedValueOnce(null);
     await expect(run()).rejects.toThrow();
     expect(tx.dataset.update).not.toHaveBeenCalled();
+    expect(tx.savedPivot.findMany).not.toHaveBeenCalled();
+    expect(tx.savedPivot.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("T-072: pivot tersimpan dipetakan dengan aturan widget pivot sesudah widget, sebelum retensi; revisi naik", async () => {
+    const pv = {
+      sheetId: SA,
+      rows: [{ column: 1 }],
+      values: [
+        { agg: "sum", column: 2 },
+        {
+          kind: "calc",
+          label: "Bersih",
+          expr: {
+            op: "sub",
+            args: [
+              { agg: "sum", column: 2 },
+              { agg: "sum", column: 3 },
+            ],
+          },
+        },
+      ],
+      sort: "value_desc",
+      format: fmt,
+      totals: true,
+      subtotals: false,
+      filters: [{ column: 1, op: "in", values: ["Jakarta"] }],
+    };
+    const ok = { ...pv, values: [pv.values[0]] };
+    tx.savedPivot.findMany.mockResolvedValueOnce([
+      { id: "p1", spec: ok, missingColumns: [] },
+      { id: "p2", spec: pv, missingColumns: [] },
+      { id: "p3", spec: { rusak: true }, missingColumns: [] },
+    ]);
+    await run();
+    expect(tx.savedPivot.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { datasetId: DS } }),
+    );
+    expect(order).toEqual([
+      "dataset.update",
+      "lock:dashboard:d1",
+      "lock:dashboard:d2",
+      "widget:w1",
+      "widget:w2",
+      "savedPivot:p1",
+      "savedPivot:p2",
+      "versions.delete",
+      "cleanup",
+    ]);
+    // Semua kolom ketemu → spec di sheet target (baris, nilai, Saring ikut dipetakan).
+    expect(tx.savedPivot.updateMany).toHaveBeenCalledWith({
+      where: { id: "p1", datasetId: DS },
+      data: {
+        missingColumns: [],
+        spec: {
+          ...ok,
+          sheetId: SB,
+          rows: [{ column: 2 }],
+          values: [{ agg: "sum", column: 3 }],
+          filters: [{ column: 2, op: "in", values: ["Jakarta"] }],
+        },
+        revision: { increment: 1 },
+      },
+    });
+    // Kolom di field terhitung hilang → nama dicatat, spec dibiarkan (roll-forward memulihkannya).
+    expect(tx.savedPivot.updateMany).toHaveBeenCalledWith({
+      where: { id: "p2", datasetId: DS },
+      data: { missingColumns: ["Diskon"], revision: { increment: 1 } },
+    });
+  });
+
+  it("T-072: tanpa dashboard → pivot tersimpan tetap dipetakan (tanpa lock dashboard)", async () => {
+    tx.dashboard.findMany.mockResolvedValueOnce([]);
+    tx.savedPivot.findMany.mockResolvedValueOnce([
+      {
+        id: "p1",
+        spec: {
+          sheetId: SA,
+          rows: [{ column: 1 }],
+          values: [{ agg: "count" }],
+          sort: "value_desc",
+          format: fmt,
+          totals: false,
+          subtotals: false,
+        },
+        missingColumns: [],
+      },
+    ]);
+    await run();
+    expect(tx.widget.findMany).not.toHaveBeenCalled();
+    expect(order.some((o) => o.startsWith("lock:"))).toBe(false);
+    expect(order).toContain("savedPivot:p1");
   });
 });

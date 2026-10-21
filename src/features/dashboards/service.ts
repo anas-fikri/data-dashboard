@@ -790,7 +790,7 @@ export const COLUMN_UNAVAILABLE_EDITOR = "Kolom yang dipilih tidak tersedia.";
  * mendapat pesan umum — editor bisa mengirim posisi kolom apa pun, jadi nama kolom tersembunyi tidak
  * boleh bisa didaftar lewat jalur tulis ini (review T-016 SEC-1).
  */
-async function checkConfig(
+export async function checkConfig(
   datasetId: string,
   type: unknown,
   spec: unknown,

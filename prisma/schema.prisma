@@ -37,6 +37,8 @@ model User {
   /// Ekspor milik user ini (T-017/T-018); objek exports/<userId>/ dibersihkan job ekspor.
   exports         Export[]
   guideReads      GuideRead[]
+  /// Pivot tersimpan yang dibuat user ini (T-072); SetNull bila akun dihapus.
+  savedPivots     SavedPivot[]        @relation("SavedPivotCreator")
 
   @@index([isActive, isAdmin])
   @@index([emailVerifiedAt, createdAt])
@@ -133,6 +135,8 @@ model Dataset {
   lineages        SheetLineage[]
   segments        Segment[]
   uploadQueues    UploadQueue[]
+  /// Pivot tersimpan dataset ini (T-072, ADR-0009); ikut terhapus bersama dataset.
+  savedPivots     SavedPivot[]
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
@@ -427,20 +431,51 @@ model Dashboard {
 
 /// Isi widget (T-010: kosong; T-011: tabel/KPI/grafik). Posisi ada di Dashboard.layout.
 model Widget {
-  id             String    @id @default(cuid())
+  id             String      @id @default(cuid())
   dashboardId    String
-  dashboard      Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
-  type           String    @default("empty")
-  title          String    @default("")
-  spec           Json      @default("{}")
+  dashboard      Dashboard   @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  type           String      @default("empty")
+  title          String      @default("")
+  spec           Json        @default("{}")
   /// Nama kolom lama yang tidak ditemukan saat versi diaktifkan (T-013): spec dibiarkan menunjuk sheet
   /// lama; setelah sheet itu dihapus retensi, pesan "kolom tidak ada" tetap bisa menyebut namanya.
   /// Kosong = spec cocok dengan versi aktif. Dikosongkan saat user menyimpan pengaturan widget.
-  missingColumns String[]  @default([])
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  missingColumns String[]    @default([])
+  /// Pivot tersimpan yang menjadi sumber widget ini (ADR-0009; diikat T-073). NoAction: dicek di akhir
+  /// statement, jadi hapus dataset yang meng-cascade dashboard → widget dan pivot tersimpan sekaligus
+  /// tidak gagal; hapus pivot tersimpan yang masih dirujuk ditolak aplikasi (IN_USE) dan oleh FK ini.
+  savedPivotId   String?
+  savedPivot     SavedPivot? @relation(fields: [savedPivotId], references: [id], onDelete: NoAction)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
 
   @@index([dashboardId])
+  @@index([savedPivotId])
+}
+
+/// Pivot tersimpan (T-072, ADR-0009): definisi pivot tingkat dataset yang bisa menjadi sumber banyak
+/// widget. Spec = spec widget pivot (skema zod yang sama, kolom c<pos> sheet versi aktif). Baca/tulis
+/// pemilik dataset; editor dashboard dataset itu hanya baca. Dipetakan ulang saat aktivasi/rollback
+/// versi di transaksi yang sama dengan widget (versions/activation.ts).
+model SavedPivot {
+  id             String   @id @default(cuid())
+  datasetId      String
+  dataset        Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  name           String
+  /// Nama ternormalisasi (nameKeyOf): unik per dataset tanpa peka kapital.
+  nameKey        String
+  spec           Json
+  /// Seperti Widget.missingColumns: nama kolom lama yang tidak ditemukan saat versi diaktifkan.
+  missingColumns String[] @default([])
+  /// Naik tiap simpan (juga saat remap versi menulisnya): CAS simpan + masukan kunci cache (T-073).
+  revision       Int      @default(1)
+  createdById    String?
+  createdBy      User?    @relation("SavedPivotCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  widgets        Widget[]
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([datasetId, nameKey])
 }
 
 /// Jejak tindakan sensitif (D14): admin (T-019), berbagi/hapus/ekspor (T-016, T-017). Hanya ditambah,
