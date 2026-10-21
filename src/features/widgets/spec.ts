@@ -7,6 +7,7 @@
  */
 import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
+import { calcExprSchema, calcLabelSchema, calcLeaves, isAdditiveCalc, type CalcExpr } from "./calc";
 
 export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -118,12 +119,61 @@ const shownMeasure = measureBase
   .refine(needsColumn.check, { message: needsColumn.message });
 const dimension = z.object({ column, timeGrain: z.enum(GRAINS).optional() }).strict();
 
-export const kpiSpecSchema = z.object({ sheetId, measure, format: formatSchema }).strict();
+/**
+ * Field terhitung (T-068, ADR-0009): rumus atas ukuran teragregasi (lihat calc.ts), dengan nama tampil
+ * dan format opsional (tanpa format = format widget). `showAs` hanya di pivot/grafik (bukan KPI).
+ */
+const calcBase = z
+  .object({
+    kind: z.literal("calc"),
+    label: calcLabelSchema,
+    expr: calcExprSchema(column),
+    format: formatSchema.optional(),
+  })
+  .strict();
+const calcValue = calcBase.extend({ showAs: z.enum(SHOW_AS).optional() }).strict();
+export type CalcValue = z.infer<typeof calcValue>;
+
+/**
+ * Nilai = ukuran biasa ATAU field terhitung (`kind: "calc"`). Dipilih menurut `kind` agar pesan galat
+ * berasal dari skema yang dimaksud (bukan "Invalid input" union zod). Ukuran tanpa `kind` = bentuk
+ * 1.0.0, tidak berubah.
+ */
+function measureOrCalc<M extends z.ZodTypeAny, C extends z.ZodTypeAny>(m: M, c: C) {
+  return z.unknown().transform((v, ctx): z.output<M> | z.output<C> => {
+    const calc = typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "calc";
+    const r = (calc ? c : m).safeParse(v);
+    if (!r.success) {
+      for (const i of r.error.issues) ctx.addIssue(i);
+      return z.NEVER;
+    }
+    return r.data as z.output<M> | z.output<C>;
+  });
+}
+const kpiValue = measureOrCalc(measure, calcBase);
+const shownValue = measureOrCalc(shownMeasure, calcValue);
+export type MeasureValue = z.infer<typeof shownValue>;
+
+/** Nilai berupa field terhitung. */
+export const isCalcValue = (v: object): v is { kind: "calc"; label: string; expr: CalcExpr } =>
+  (v as { kind?: unknown }).kind === "calc";
+/** Agregasi ukuran biasa; undefined untuk field terhitung. */
+export const aggOf = (v: { agg?: Agg } | { kind: "calc" }): Agg | undefined =>
+  "agg" in v ? v.agg : undefined;
+/** Posisi kolom yang dirujuk satu nilai (daun rumus untuk field terhitung). */
+export function valueColumns(v: { column?: number } | { kind: "calc"; expr: CalcExpr }): number[] {
+  if ("expr" in v) return calcLeaves(v.expr).flatMap((l) => (l.column ? [l.column] : []));
+  return v.column ? [v.column] : [];
+}
+
+export const kpiSpecSchema = z
+  .object({ sheetId, measure: kpiValue, format: formatSchema })
+  .strict();
 export const chartSpecSchema = z
   .object({
     sheetId,
     dimension,
-    measure: shownMeasure,
+    measure: shownValue,
     sort: z.enum(CHART_SORTS),
     topN: z.number().int().min(1).max(1000),
     format: formatSchema,
@@ -187,7 +237,7 @@ export const pivotSpecSchema = z
     rows: z.array(dimension).min(1).max(PIVOT_ROWS_MAX),
     /** Pisahkan per (opsional): satu kolom, mis. tanggal per bulan → satu kolom tabel per periode. */
     column: dimension.optional(),
-    values: z.array(shownMeasure).min(1).max(PIVOT_VALUES_MAX),
+    values: z.array(shownValue).min(1).max(PIVOT_VALUES_MAX),
     /** Urutan baris: nilai pertama (value_*) atau label (label_*); kolom selalu urut naik. */
     sort: z.enum(CHART_SORTS),
     /** Format untuk nilai berupa angka (Total/Rata-rata/Terkecil/Terbesar); jumlah selalu angka biasa. */
@@ -284,7 +334,15 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
               : "% dari total baris/kolom hanya untuk pivot. Pilih cara tampil lain untuk grafik ini.",
         };
       }
-      if (type === "pie" && !(PIE_AGGS as readonly string[]).includes(p.data.measure.agg)) {
+      const m = p.data.measure;
+      if (type === "pie" && isCalcValue(m) && !isAdditiveCalc(m.expr)) {
+        return {
+          ok: false,
+          message:
+            "Grafik pai hanya untuk field terhitung yang menjumlah/mengurangkan Total atau Jumlah baris. Untuk rasio atau perkalian pakai grafik batang.",
+        };
+      }
+      if (type === "pie" && !isCalcValue(m) && !(PIE_AGGS as readonly string[]).includes(m.agg)) {
         return {
           ok: false,
           message:
@@ -320,17 +378,17 @@ export function columnsOf(c: WidgetConfig): number[] {
     case "empty":
       return [];
     case "kpi":
-      return c.spec.measure.column ? [c.spec.measure.column] : [];
+      return valueColumns(c.spec.measure);
     case "table":
       return c.spec.columns;
     case "pivot":
       return [
         ...c.spec.rows.map((d) => d.column),
         ...(c.spec.column ? [c.spec.column.column] : []),
-        ...c.spec.values.flatMap((m) => (m.column ? [m.column] : [])),
+        ...c.spec.values.flatMap(valueColumns),
         ...(c.spec.filters ?? []).map((f) => f.column),
       ];
     default:
-      return [c.spec.dimension.column, ...(c.spec.measure.column ? [c.spec.measure.column] : [])];
+      return [c.spec.dimension.column, ...valueColumns(c.spec.measure)];
   }
 }

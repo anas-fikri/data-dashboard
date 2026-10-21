@@ -9,7 +9,7 @@ import {
   formatMeasure,
 } from "@/features/widgets/format";
 import { isAxisShowAs, valueFormat } from "@/features/widgets/show-as";
-import type { ChartSpec, ChartType } from "@/features/widgets/spec";
+import { aggOf, type ChartSpec, type ChartType } from "@/features/widgets/spec";
 import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { filterKey } from "@/components/dashboards/filters/filter-model";
@@ -147,9 +147,11 @@ export function ChartWidget({
   // "Tampilkan nilai sebagai" (T-067): format dari kolom hasil (persen 1 desimal); total berjalan/
   // selisih tidak pernah mengisi kategori kosong dengan 0 (item pertama selisih = kosong).
   const showAs = measure?.showAs;
-  const format = valueFormat(showAs, spec.format);
+  // Field terhitung (T-068): format sendiri bila ada; kategori kosong tidak diisi 0 (rumus → "–").
+  const format = valueFormat(showAs, measure?.format ?? spec.format);
   const plainSum = !isAxisShowAs(showAs);
-  const blankZero = plainSum && zeroWhenBlank(spec.measure.agg);
+  const agg = aggOf(spec.measure);
+  const blankZero = plainSum && !!agg && zeroWhenBlank(agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   const categories = data.categories ?? labels.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
@@ -200,7 +202,7 @@ export function ChartWidget({
       ? {
           iso: source.map((r) => (r[0] === null ? null : String(r[0]))),
           grain: spec.dimension.timeGrain,
-          empty: plainSum ? emptyBucketValue(spec.measure.agg, spec.sort, cut) : null,
+          empty: plainSum && agg ? emptyBucketValue(agg, spec.sort, cut) : null,
           dimType,
           cut: valueCut(spec.sort, cut),
         }

@@ -5,7 +5,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { configVersion } from "@/components/widgets/body-state";
 import type { WidgetView } from "@/features/dashboards/service";
-import { parseWidgetConfig, type WidgetConfig, type WidgetType } from "@/features/widgets/spec";
+import {
+  isCalcValue,
+  parseWidgetConfig,
+  type WidgetConfig,
+  type WidgetType,
+} from "@/features/widgets/spec";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
 import { PivotFields } from "./pivot-config";
@@ -22,6 +27,7 @@ import {
 } from "./config-sections";
 import {
   GRAIN_LABEL,
+  calcFormulaText,
   defaultConfig,
   isNumeric,
   isTemporal,
@@ -330,19 +336,34 @@ export function WidgetConfigForm({
                 </>
               ) : null}
 
-              <MeasureFields
-                type={draft.type}
-                columns={cols}
-                measure={draft.spec.measure}
-                axis={
-                  draft.type !== "kpi"
-                    ? cols.find((c) => c.pos === draft.spec.dimension.column)?.name
-                    : undefined
-                }
-                onChange={(measure) =>
-                  commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
-                }
-              />
+              {isCalcValue(draft.spec.measure) ? (
+                // Field terhitung (T-068): penyusun rumusnya menyusul (T-069); di sini dibaca saja.
+                <p className="text-sm">
+                  <span className="font-medium">{draft.spec.measure.label}</span>
+                  <span className="text-muted-foreground">
+                    {" "}
+                    ={" "}
+                    {calcFormulaText(
+                      draft.spec.measure.expr,
+                      (pos) => cols.find((c) => c.pos === pos)?.name ?? "kolom",
+                    )}
+                  </span>
+                </p>
+              ) : (
+                <MeasureFields
+                  type={draft.type}
+                  columns={cols}
+                  measure={draft.spec.measure}
+                  axis={
+                    draft.type !== "kpi"
+                      ? cols.find((c) => c.pos === draft.spec.dimension.column)?.name
+                      : undefined
+                  }
+                  onChange={(measure) =>
+                    commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
+                  }
+                />
+              )}
 
               {draft.type !== "kpi" ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">

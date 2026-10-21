@@ -9,6 +9,7 @@ import {
   type NumberFormat,
   type PivotSpec,
   type WidgetConfig,
+  valueColumns,
 } from "@/features/widgets/spec";
 
 /*
@@ -50,7 +51,7 @@ export function defaultPivot(
   if (prev.type === "pivot" && prev.spec.sheetId === sheetId) {
     const { column, ...rest } = prev.spec;
     const rows = rest.rows.filter((d) => has(d.column));
-    const values = rest.values.filter((m) => m.column === undefined || has(m.column));
+    const values = rest.values.filter((m) => valueColumns(m).every(has));
     if (rows.length) {
       return {
         ...rest,
@@ -126,7 +127,7 @@ export const DUPLICATE_TEXT =
 
 /** Nilai untuk "Tambah nilai": Total kolom angka yang belum dipakai, selain itu Jumlah baris. */
 export function defaultMeasureFor(spec: PivotSpec, cols: Column[]): Measure {
-  const used = new Set(spec.values.map((m) => m.column));
+  const used = new Set(spec.values.flatMap(valueColumns));
   const num = cols.find((c) => NUMERIC.includes(c.type) && !used.has(c.pos));
   return num ? { agg: "sum", column: num.pos } : { agg: "count" };
 }

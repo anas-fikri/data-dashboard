@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
-import type { WidgetConfig } from "@/features/widgets/spec";
+import { aggOf, type WidgetConfig } from "@/features/widgets/spec";
 import { AbsentNote } from "./absent-note";
 import {
   bodyState,
@@ -156,7 +156,7 @@ function Loaded({
           data={data}
           format={config.spec.format}
           title={title}
-          agg={config.spec.measure.agg}
+          agg={aggOf(config.spec.measure)}
           fixedHeight={fixedHeight}
         />
       );

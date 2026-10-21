@@ -8,6 +8,7 @@ import { ChartWidget } from "@/components/widgets/chart-widget";
 import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { RenderWidget } from "@/features/exports/render-data";
+import { aggOf } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 import { rowsPx, tableRowsFitPx } from "./print-layout";
 
@@ -100,7 +101,7 @@ function Body({
         data={data}
         format={config.spec.format}
         title={title}
-        agg={config.spec.measure.agg}
+        agg={aggOf(config.spec.measure)}
         fixedHeight
       />
     );

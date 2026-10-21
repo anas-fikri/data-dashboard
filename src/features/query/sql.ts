@@ -8,7 +8,13 @@ import type { ColumnType } from "@/features/ingest/infer";
 import { ident } from "@/lib/duckdb";
 import type { DashClause } from "./filters";
 import { isAxisShowAs, shown } from "@/features/widgets/show-as";
-import type { Plan, PlanFilter } from "./spec";
+import {
+  isPlanCalc,
+  type Plan,
+  type PlanCalcExpr,
+  type PlanFilter,
+  type PlanMeasure,
+} from "./spec";
 
 export interface BuiltSql {
   sql: string;
@@ -244,7 +250,8 @@ export function dimensionExpr(d: Plan["dimensions"][number]): string {
  * Ekspresi agregat satu ukuran. Total seperti SUMIF Excel: grup yang semua nilainya kosong = 0 (bukan
  * NULL), sehingga urutan/top-N ("Terkecil") sama dengan yang digambar grafik (verifikasi T-011 putaran 4).
  */
-export function measureExpr(m: Plan["measures"][number]): string {
+export function measureExpr(m: PlanMeasure): string {
+  if (isPlanCalc(m)) return calcSql(m.calc.expr, m.calc.num);
   const c = m.col ? ident(m.col) : "*";
   return m.agg === "count"
     ? `count(${c})`
@@ -253,6 +260,89 @@ export function measureExpr(m: Plan["measures"][number]): string {
       : m.agg === "sum"
         ? `coalesce(sum(${c}), 0)`
         : `${m.agg}(${c})`;
+}
+
+/**
+ * DOUBLE berhingga: ±Infinity/NaN (pembagian dengan 0, overflow perkalian, data DOUBLE ekstrem) → NULL
+ * ("–"), jadi tidak pernah ada Infinity/NaN di hasil maupun di urutan. Operand ditulis SEKALI: NULLIF/
+ * CASE diuraikan DuckDB menjadi CASE yang menyalin operand, sehingga rumus bertingkat tumbuh
+ * eksponensial di perencana (6 tingkat → query macet); filter daftar satu elemen tidak.
+ */
+const finite = (x: string) => `list_filter([${x}], lambda v: isfinite(v))[1]`;
+
+/**
+ * Field terhitung (T-068, ADR-0009) → SQL atas ekspresi agregat (measureExpr daun), jadi dihitung per
+ * kelompok: sel, subtotal, total, dan urutan memakai rumus atas agregat kelompok itu (margin total =
+ * (Σa − Σb) / Σa, bukan jumlah margin per baris). Hanya identifier c<pos> program (lewat measureExpr),
+ * operator dari enum tertutup, konstanta sebagai parameter `$<param>` (bindCalc). Jenis angka:
+ *  - "integer"/"decimal" (hanya +/−/negatif, konstanta bulat): tepat, daun DECIMAL di-cast
+ *    DECIMAL(38,6) — uang tidak menjadi float;
+ *  - "double": semua daun/konstanta di-cast DOUBLE dan setiap operasi dijaga berhingga (finite); ÷
+ *    dengan penyebut 0/NULL → NULL (hasil IEEE ±Infinity/NaN dibuang finite) — setara
+ *    `CASE WHEN d IS NULL OR d = 0 THEN NULL ELSE n/d END` tanpa menulis penyebut dua kali.
+ */
+export function calcSql(e: PlanCalcExpr, num: "integer" | "decimal" | "double"): string {
+  const go = (n: PlanCalcExpr): string => {
+    if ("param" in n) {
+      const t = num === "double" ? "DOUBLE" : num === "decimal" ? "DECIMAL(38,6)" : "HUGEINT";
+      return `CAST($${n.param} AS ${t})`;
+    }
+    if ("agg" in n) {
+      const a = measureExpr({ key: "", agg: n.agg, col: n.col });
+      if (num === "double") return finite(`CAST(${a} AS DOUBLE)`);
+      return num === "decimal" ? `CAST(${a} AS DECIMAL(38,6))` : a;
+    }
+    if (n.op === "neg") return `(-${go(n.args[0])})`;
+    const [a, b] = [go(n.args[0]), go(n.args[1])];
+    if (num !== "double") return `(${a} ${n.op === "add" ? "+" : "-"} ${b})`;
+    switch (n.op) {
+      case "add":
+        return finite(`(${a} + ${b})`);
+      case "sub":
+        return finite(`(${a} - ${b})`);
+      case "mul":
+        return finite(`(${a} * ${b})`);
+      case "div":
+        // Penyebut 0 → ±Infinity/NaN → NULL lewat finite; NULL → NULL.
+        return finite(`(${a} / ${b})`);
+    }
+  };
+  return go(e);
+}
+
+/** Konstanta semua field terhitung rencana, [nama parameter, nilai]. */
+function calcParams(measures: PlanMeasure[]): [string, number][] {
+  const out: [string, number][] = [];
+  const walk = (n: PlanCalcExpr) => {
+    if ("param" in n) out.push([n.param, n.const]);
+    else if ("op" in n) n.args.forEach(walk);
+  };
+  for (const m of measures) if (isPlanCalc(m)) walk(m.calc.expr);
+  return out;
+}
+
+/**
+ * Ikat konstanta field terhitung yang DIPAKAI teks SQL (DuckDB menolak parameter yang tidak dirujuk,
+ * mis. total grafik tanpa rumus). Nilai selalu angka berhingga hasil validasi.
+ */
+export function bindCalc(built: BuiltSql, measures: PlanMeasure[]): BuiltSql {
+  for (const [name, v] of calcParams(measures)) {
+    if (new RegExp(`\\$${name}(?![A-Za-z0-9_])`).test(built.sql)) built.params[name] = v;
+  }
+  return built;
+}
+
+/** Kolom fisik yang dibaca ukuran (daun rumus untuk field terhitung). */
+export function measureCols(m: PlanMeasure): string[] {
+  if (!isPlanCalc(m)) return m.col ? [m.col] : [];
+  const out: string[] = [];
+  const walk = (n: PlanCalcExpr) => {
+    if ("agg" in n) {
+      if (n.col) out.push(n.col);
+    } else if ("op" in n) n.args.forEach(walk);
+  };
+  walk(m.calc.expr);
+  return out;
 }
 
 export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
@@ -287,7 +377,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
 
   const m0 = plan.measures[0];
   if (plan.measures.length === 1 && plan.dimensions.length === 1 && shown(m0?.showAs)) {
-    return { sql: shownChartSql(plan, m0, select, where, order), params };
+    return bindCalc({ sql: shownChartSql(plan, m0, select, where, order), params }, plan.measures);
   }
   const sql = [
     `SELECT ${select.join(", ")}`,
@@ -299,7 +389,7 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
   ]
     .filter(Boolean)
     .join("\n");
-  return { sql, params };
+  return bindCalc({ sql, params }, plan.measures);
 }
 
 /**
@@ -358,8 +448,13 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   const params: BuiltSql["params"] = { path: parquetPath };
   const where = whereClauses(plan, params);
   const e = groupKey(d);
-  const raw =
-    m.agg === "sum"
+  // Field terhitung: hanya yang aditif (±Total/Jumlah tanpa konstanta) — rumus atas seluruh data =
+  // jumlah nilai kategori; rasio/perkalian tidak punya total yang bisa dijumlahkan (T-068).
+  const raw = isPlanCalc(m)
+    ? m.calc.additive
+      ? measureExpr(m)
+      : "NULL"
+    : m.agg === "sum"
       ? `coalesce(sum(${ident(m.col!)}), 0)`
       : m.agg === "count"
         ? `count(${m.col ? ident(m.col) : "*"})`
@@ -379,7 +474,7 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   ]
     .filter(Boolean)
     .join("\n");
-  return { sql, params };
+  return bindCalc({ sql, params }, plan.measures);
 }
 
 /** Batas daftar nilai slicer (T-012); diambil satu lebih untuk mendeteksi "lebih dari 1000". */

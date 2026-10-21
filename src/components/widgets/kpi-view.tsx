@@ -48,7 +48,8 @@ export function KpiView({
   data: WidgetData;
   format: NumberFormat;
   title: string;
-  agg: Agg;
+  /** Agregasi ukuran; tidak ada untuk field terhitung (T-068: kosong tetap "–", bukan 0). */
+  agg?: Agg;
   /** Tinggi kartu tetap (grid, kertas): angka juga dibatasi tinggi kotak. Tumpukan ponsel: tidak. */
   fixedHeight?: boolean;
 }) {
@@ -61,7 +62,13 @@ export function KpiView({
   const countish = agg === "sum" || agg === "count" || agg === "count_distinct";
   const value = raw === null && countish && !absent ? 0 : raw;
   const label = column?.label ?? "";
-  const { full, options } = kpiTexts(value, column?.type ?? "decimal", format, agg, label);
+  const { full, options } = kpiTexts(
+    value,
+    column?.type ?? "decimal",
+    column?.format ?? format,
+    agg,
+    label,
+  );
   const sameAsTitle = label.trim().toLowerCase() === title.trim().toLowerCase();
   const shown = chooseKpi(
     options,

@@ -2,7 +2,12 @@
 
 import { IconTableOptions } from "@tabler/icons-react";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
-import { PIVOT_COLUMNS_SHOWN, PIVOT_ROWS_SHOWN, type PivotSpec } from "@/features/widgets/spec";
+import {
+  PIVOT_COLUMNS_SHOWN,
+  PIVOT_ROWS_SHOWN,
+  isCalcValue,
+  type PivotSpec,
+} from "@/features/widgets/spec";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
@@ -19,9 +24,9 @@ import {
   splitColumn,
 } from "./pivot-config-model";
 import {
-  AGG_LABEL,
   CHART_SORT_ORDER,
-  COUNT_FILLED_LABEL,
+  calcFormulaText,
+  measureText,
   sortLabel,
   type SourceColumn,
 } from "./widget-config-model";
@@ -46,11 +51,7 @@ export function PivotFields({
   const set = (patch: Partial<PivotSpec>) => onChange({ ...spec, ...patch });
   const name = (pos: number | undefined) => columns.find((c) => c.pos === pos)?.name ?? "kolom";
   const valueLabel = (m: PivotSpec["values"][number]) =>
-    m.agg === "count"
-      ? m.column === undefined
-        ? AGG_LABEL.count
-        : `${COUNT_FILLED_LABEL} ${name(m.column)}`
-      : `${AGG_LABEL[m.agg]} ${name(m.column)}`;
+    isCalcValue(m) ? m.label : measureText(m, name);
   const dup = duplicateField(spec);
   const [row0, row1] = spec.rows;
   const rowType = columns.find((c) => c.pos === row0?.column)?.type;
@@ -146,15 +147,25 @@ export function PivotFields({
                 />
               ) : null}
             </div>
-            <MeasureFields
-              type="pivot"
-              label="Hitung"
-              axis={name((split ?? row1 ?? row0)?.column)}
-              split={!!split}
-              columns={columns}
-              measure={m}
-              onChange={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}
-            />
+            {isCalcValue(m) ? (
+              // Field terhitung (T-068): penyusun rumusnya menyusul (T-069); di sini dibaca saja.
+              <p className="text-sm">
+                <span className="font-medium">{m.label}</span>
+                <span className="text-muted-foreground"> = {calcFormulaText(m.expr, name)}</span>
+              </p>
+            ) : (
+              <MeasureFields
+                type="pivot"
+                label="Hitung"
+                axis={name((split ?? row1 ?? row0)?.column)}
+                split={!!split}
+                columns={columns}
+                measure={m}
+                onChange={(next) =>
+                  set({ values: spec.values.map((x, j) => (j === i ? next : x)) })
+                }
+              />
+            )}
           </div>
         ))}
         {canAddValue(spec) ? (

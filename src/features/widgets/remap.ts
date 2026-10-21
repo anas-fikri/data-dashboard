@@ -10,7 +10,8 @@
  * menyimpan pengaturan widget; T-013/T-014 memindahkannya ke saat aktivasi versi. Murni.
  */
 import type { ColumnSchema } from "@/features/ingest/infer";
-import { MISSING_COLUMN, PERIOD_COLUMN, columnsOf, type WidgetConfig } from "./spec";
+import { mapCalcColumns, type CalcExpr } from "./calc";
+import { MISSING_COLUMN, PERIOD_COLUMN, columnsOf, valueColumns, type WidgetConfig } from "./spec";
 
 export { MISSING_COLUMN };
 
@@ -135,8 +136,13 @@ export function remapConfig(
     if (!missing.includes(label)) missing.push(label);
     return MISSING_COLUMN;
   };
-  const mapMeasure = <M extends { column?: number }>(m: M): M =>
-    m.column === undefined ? m : { ...m, column: pos(m.column) };
+  // Field terhitung (T-068): kolom di setiap daun rumus ikut dipetakan.
+  const mapMeasure = <M extends { column?: number } | { kind: "calc"; expr: CalcExpr }>(m: M): M =>
+    "expr" in m
+      ? { ...m, expr: mapCalcColumns(m.expr, pos) }
+      : m.column === undefined
+        ? m
+        : { ...m, column: pos(m.column) };
 
   switch (config.type) {
     case "kpi":
@@ -208,8 +214,7 @@ export function remapConfig(
 /** Posisi kolom yang dipakai spec (dimensi, ukuran, kolom tabel). */
 function usedColumns(config: Configured): number[] {
   if (config.type === "table" || config.type === "pivot") return columnsOf(config);
-  const m = config.spec.measure.column;
-  const measure = m === undefined ? [] : [m];
+  const measure = valueColumns(config.spec.measure);
   return config.type === "kpi" ? measure : [config.spec.dimension.column, ...measure];
 }
 

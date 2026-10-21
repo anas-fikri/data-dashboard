@@ -16,7 +16,7 @@ import { toJson, type ResolvedWidget } from "@/features/query/service";
 import type { BuiltSql } from "@/features/query/sql";
 import { columnNames, pivotTable, type PivotTableModel } from "@/features/widgets/pivot-table";
 import { isPercentShowAs } from "@/features/widgets/show-as";
-import type { ShowAs } from "@/features/widgets/spec";
+import type { NumberFormat, ShowAs } from "@/features/widgets/spec";
 import { csvHeader, neutraliseCsv, quoteCsv } from "./csv";
 import { writeXlsx, type XlsxColumn, type XlsxKind } from "./xlsx";
 
@@ -26,8 +26,9 @@ export interface PivotGrid {
   rows: unknown[][];
 }
 
-const kindOf = (type: string, showAs?: ShowAs): XlsxKind =>
-  isPercentShowAs(showAs)
+const kindOf = (type: string, showAs?: ShowAs, format?: NumberFormat): XlsxKind =>
+  // Field terhitung berformat persen (T-068) sama dengan cara tampil persen: sel XLSX bertipe persen.
+  isPercentShowAs(showAs) || format?.style === "percent"
     ? "percent"
     : type === "duration" || type === "date" || type === "timestamp"
       ? type
@@ -47,9 +48,12 @@ export function pivotGrid(model: PivotTableModel, rowFields: readonly string[]):
   const names = columnNames(model);
   const columns: XlsxColumn[] = [
     ...rowFields.map((label) => ({ label, kind: "text" as const })),
-    ...model.valueHeads.map((h, i) => ({ label: names[i]!, kind: kindOf(h.type, h.showAs) })),
+    ...model.valueHeads.map((h, i) => ({
+      label: names[i]!,
+      kind: kindOf(h.type, h.showAs, h.format),
+    })),
   ];
-  const kinds = model.valueHeads.map((h) => kindOf(h.type, h.showAs));
+  const kinds = model.valueHeads.map((h) => kindOf(h.type, h.showAs, h.format));
   const values = (vs: unknown[]) => vs.map((v, i) => cellValue(v, kinds[i]!));
   const rows: unknown[][] = [];
   let group = "";

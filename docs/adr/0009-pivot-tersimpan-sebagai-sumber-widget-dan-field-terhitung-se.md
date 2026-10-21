@@ -103,3 +103,14 @@ Bentuk yang ditetapkan:
   kolom turunan di tingkat dataset (luar cakupan G-7).
 * Bad, because pemilik dataset yang mengedit pivot tersimpan mengubah dashboard yang mungkin dibagikan ke
   orang lain; UI wajib menampilkan "Dipakai di N widget pada M dashboard" sebelum menyimpan.
+
+## Amandemen
+
+- **2026-10-21 (T-068)**: pembagian dikompilasi sebagai `n / d` atas operand DOUBLE lalu dibuang bila tidak
+  berhingga — penyebut 0 (±Infinity/NaN IEEE) atau NULL → NULL, sama dengan `CASE WHEN d IS NULL OR d = 0
+  THEN NULL ELSE n/d END`. Setiap operasi DOUBLE dibungkus `list_filter([x], lambda v: isfinite(v))[1]`
+  (overflow → NULL "–"). Bentuk CASE/NULLIF tidak dipakai karena DuckDB menguraikannya menjadi CASE yang
+  menyalin operand: rumus 6 tingkat membuat perencana tumbuh eksponensial (query macet, ditemukan uji
+  properti). Konstanta di-bind sebagai parameter `$m<i>k<n>` dan di-cast sesuai jenis hasil (DOUBLE;
+  DECIMAL(38,6)/HUGEINT pada rumus tepat ± dengan konstanta bulat). Pai hanya menerima field terhitung
+  aditif (±Total/Jumlah baris tanpa konstanta). Keputusan lain tidak berubah.

@@ -7,7 +7,7 @@
 import type { PivotFieldRole } from "@/features/query/filters";
 import type { PivotCell, PivotData } from "@/features/query/pivot";
 import { AUTO_FORMAT, formatCell, formatNumber, type ValueType } from "./format";
-import type { ShowAs } from "./spec";
+import type { NumberFormat, ShowAs } from "./spec";
 
 /** Nilai mentah sebuah label + field-nya (filter silang dari label, T-f4a7). */
 export interface PivotPick {
@@ -58,6 +58,8 @@ export interface PivotTableModel {
     total: boolean;
     pick?: PivotPick;
     showAs?: ShowAs;
+    /** Format sendiri field terhitung (T-068); tanpa field ini = format widget. */
+    format?: NumberFormat;
   }[];
   rows: PivotBodyRow[];
   total: PivotBodyRow | null;
@@ -68,8 +70,11 @@ export interface PivotTableModel {
 }
 
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
-/** Cara tampil nilai ikut ke header kolom datanya (nilai biasa: tanpa field). */
-const as = (v: { showAs?: ShowAs }) => (v.showAs ? { showAs: v.showAs } : {});
+/** Cara tampil + format sendiri nilai ikut ke header kolom datanya (nilai biasa: tanpa field). */
+const as = (v: { showAs?: ShowAs; format?: NumberFormat }) => ({
+  ...(v.showAs ? { showAs: v.showAs } : {}),
+  ...(v.format ? { format: v.format } : {}),
+});
 const label = (v: unknown, f: { type: ValueType; grain?: string }) =>
   formatCell(v, f.type, AUTO_FORMAT, f.grain);
 /** Nilai saringan yang disebut di catatan; sisanya "+N lainnya". */

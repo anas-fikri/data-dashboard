@@ -11,6 +11,7 @@ import {
   TOP_N_DEFAULT,
   TOP_N_MAX,
   columnsOf,
+  isCalcValue,
   type ChartSort,
   type ChartSpec,
   type ChartType,
@@ -18,6 +19,7 @@ import {
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
+import { calcText, type CalcExpr } from "@/features/widgets/calc";
 import { defaultPivot } from "./pivot-config-model";
 
 /*
@@ -57,6 +59,18 @@ export const COUNT_FILLED_LABEL = "Jumlah terisi";
 
 export const aggChoiceOf = (m: { agg: Agg; column?: number }): AggChoice =>
   m.agg === "count" && m.column !== undefined ? "count_filled" : m.agg;
+
+/** Nama ukuran untuk teks panel: "Total Omzet", "Jumlah baris", "Jumlah terisi Resi". */
+export function measureText(m: { agg: Agg; column?: number }, name: (pos: number) => string) {
+  if (m.agg === "count") {
+    return m.column === undefined ? AGG_LABEL.count : `${COUNT_FILLED_LABEL} ${name(m.column)}`;
+  }
+  return `${AGG_LABEL[m.agg]} ${m.column === undefined ? "kolom" : name(m.column)}`;
+}
+
+/** Rumus field terhitung dalam kata (T-068): "(Total Pendapatan − Total Biaya) ÷ Total Pendapatan". */
+export const calcFormulaText = (expr: CalcExpr, name: (pos: number) => string) =>
+  calcText(expr, (l) => measureText(l, name));
 
 /** Opsi "Nilai": "Jumlah terisi" tepat di bawah "Jumlah baris" bila sheet punya kolom. */
 export function aggChoiceOptions(
@@ -241,12 +255,14 @@ export function defaultConfig(
   if (!sheet) return null;
   const cols = sheet.columns;
   const format = prev.type === "empty" ? DEFAULT_FORMAT : prev.spec.format;
-  const prevMeasure =
+  const prevAny =
     prev.type === "pivot"
       ? prev.spec.values[0]
       : prev.type === "kpi" || (prev.type !== "empty" && prev.type !== "table")
-        ? (prev.spec as { measure: Measure }).measure
+        ? prev.spec.measure
         : undefined;
+  // Field terhitung (T-068) tidak dibawa ke jenis/sheet lain: kembali ke ukuran bawaan.
+  const prevMeasure = prevAny && !isCalcValue(prevAny) ? prevAny : undefined;
 
   if (type === "table") {
     const keep =
@@ -346,7 +362,9 @@ export function measureMismatch(config: WidgetConfig, sources: Source[]): boolea
   const measures = config.type === "pivot" ? config.spec.values : [config.spec.measure];
   return measures.some(
     (m) =>
-      cols.some((c) => c.pos === m.column) && measureColumnText(m, cols, config.type) !== undefined,
+      !isCalcValue(m) &&
+      cols.some((c) => c.pos === m.column) &&
+      measureColumnText(m, cols, config.type) !== undefined,
   );
 }
 

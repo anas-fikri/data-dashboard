@@ -85,7 +85,7 @@ export function PivotCells({
             <span className="sr-only">tidak ada data</span>
           </>
         ) : (
-          formatCell(v, head.type, valueFormat(head.showAs, format))
+          formatCell(v, head.type, valueFormat(head.showAs, head.format ?? format))
         )}
       </td>
     );

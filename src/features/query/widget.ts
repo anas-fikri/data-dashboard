@@ -12,10 +12,13 @@ import {
   TABLE_PAGE_SIZE,
   columnsOf,
   sortColumnSchema,
+  isCalcValue,
   type ChartSort,
+  type MeasureValue,
   type ShowAs,
   type WidgetConfig,
 } from "@/features/widgets/spec";
+import { mapCalcColumns } from "@/features/widgets/calc";
 import { isPercentShowAs, showAsTitle, shown } from "@/features/widgets/show-as";
 import {
   PIVOT_FIELDS,
@@ -154,6 +157,21 @@ export function widgetPlan(
     return c.name;
   };
 
+  /**
+   * Nilai spec widget → ukuran QuerySpec (kolom lewat nama). Field terhitung: daun rumus dipetakan
+   * posisi → nama dengan aturan yang sama (tersembunyi/hilang → COLUMN_UNAVAILABLE), lalu resolveSpec
+   * memvalidasi tipe agregasinya (T-068).
+   */
+  const measureOf = (m: MeasureValue): QuerySpec["measures"][number] =>
+    isCalcValue(m)
+      ? {
+          kind: "calc",
+          label: m.label,
+          expr: mapCalcColumns(m.expr, name),
+          ...(m.format ? { format: m.format } : {}),
+        }
+      : { agg: m.agg, ...(m.column ? { column: name(m.column) } : {}) };
+
   const base = { sheetId: config.spec.sheetId };
   const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
@@ -169,10 +187,7 @@ export function widgetPlan(
           column: name(d.column),
           ...(d.timeGrain ? { timeGrain: d.timeGrain } : {}),
         })),
-        measures: p.values.map((m) => ({
-          agg: m.agg,
-          ...(m.column ? { column: name(m.column) } : {}),
-        })),
+        measures: p.values.map(measureOf),
         filters,
         sort: [],
         limit: 1,
@@ -239,7 +254,7 @@ export function widgetPlan(
       spec = {
         ...base,
         dimensions: [],
-        measures: [{ agg: m.agg, ...(m.column ? { column: name(m.column) } : {}) }],
+        measures: [measureOf(m)],
         filters,
         sort: [],
         limit: 1,
@@ -273,11 +288,11 @@ export function widgetPlan(
       // Kolom dulu (tersembunyi/hilang), baru tipenya: tipe kolom tersembunyi tidak boleh mengubah
       // jawaban (review T-016 SEC-1 — editor bisa mencoba posisi kolom apa pun saat menyimpan).
       const dimension = name(d.column);
-      const measure = m.column ? name(m.column) : "";
+      const measure = measureOf(m);
       if (unavailable) return { ok: false, code: "COLUMN_UNAVAILABLE", message: unavailable };
-      const measureType = m.column ? byPos.get(m.column)?.type : undefined;
+      const measureType = !isCalcValue(m) && m.column ? byPos.get(m.column)?.type : undefined;
       const dated = measureType === "date" || measureType === "timestamp";
-      if (dated && (m.agg === "min" || m.agg === "max")) {
+      if (dated && !isCalcValue(m) && (m.agg === "min" || m.agg === "max")) {
         // Grafik hanya menggambar angka; min/maks tanggal tetap bisa lewat KPI atau tabel.
         return {
           ok: false,
@@ -289,7 +304,7 @@ export function widgetPlan(
       spec = {
         ...base,
         dimensions: [{ column: dimension, ...(d.timeGrain ? { timeGrain: d.timeGrain } : {}) }],
-        measures: [{ agg: m.agg, ...(m.column ? { column: measure } : {}) }],
+        measures: [measure],
         filters,
         sort: [SORT[config.spec.sort]],
         limit: config.spec.topN,

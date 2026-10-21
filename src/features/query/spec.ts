@@ -5,7 +5,14 @@
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
-import type { ShowAs } from "@/features/widgets/spec";
+import {
+  calcExprSchema,
+  calcLabelSchema,
+  isCalcConst,
+  isCalcLeaf,
+  type CalcExpr,
+} from "@/features/widgets/calc";
+import type { NumberFormat, ShowAs } from "@/features/widgets/spec";
 import type { DashClause } from "./filters";
 
 export const SPEC_MAX_BYTES = 64 * 1024;
@@ -32,6 +39,39 @@ export type Grain = (typeof GRAINS)[number];
 export type FilterOp = (typeof FILTER_OPS)[number];
 
 const colName = z.string().min(1).max(200);
+
+/** Format angka (sama dengan widgets/spec formatSchema; disalin agar modul ini tidak mengimpor nilai). */
+const numberFormat = z
+  .object({
+    style: z.enum(["auto", "number", "percent", "rupiah"]),
+    decimals: z.number().int().min(0).max(4),
+  })
+  .strict();
+/**
+ * Field terhitung (T-068, ADR-0009): pohon ekspresi atas agregat, kolom lewat nama; divalidasi
+ * calc.ts (operator tertutup, batas node/kedalaman/agregat, konstanta berhingga). Tidak ada teks SQL.
+ */
+const calcMeasure = z
+  .object({
+    kind: z.literal("calc"),
+    label: calcLabelSchema,
+    expr: calcExprSchema(colName),
+    format: numberFormat.optional(),
+  })
+  .strict();
+const aggMeasure = z.object({ column: colName.optional(), agg: z.enum(AGGS) }).strict();
+/** Ukuran: agregat biasa (bentuk lama, tanpa `kind`) atau field terhitung (`kind: "calc"`). */
+const measureSchema = z
+  .unknown()
+  .transform((v, ctx): z.output<typeof aggMeasure> | z.output<typeof calcMeasure> => {
+    const calc = typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "calc";
+    const r = (calc ? calcMeasure : aggMeasure).safeParse(v);
+    if (!r.success) {
+      for (const i of r.error.issues) ctx.addIssue(i);
+      return z.NEVER;
+    }
+    return r.data;
+  });
 // Angka bulat di-bind sebagai BIGINT oleh DuckDB: di luar ±2^53 ditolak 400, bukan 500 (review T-011 L2).
 export const filterScalar = z.union([
   z.string().max(1_000),
@@ -46,10 +86,7 @@ export const specSchema = z
       .array(z.object({ column: colName, timeGrain: z.enum(GRAINS).optional() }).strict())
       .max(3)
       .default([]),
-    measures: z
-      .array(z.object({ column: colName.optional(), agg: z.enum(AGGS) }).strict())
-      .max(10)
-      .default([]),
+    measures: z.array(measureSchema).max(10).default([]),
     filters: z
       .array(
         z
@@ -98,6 +135,8 @@ export interface OutColumn {
   grain?: Grain;
   /** Ukuran widget dengan "Tampilkan nilai sebagai" (T-067); nilai biasa tanpa field ini. */
   showAs?: ShowAs;
+  /** Field terhitung dengan format sendiri (T-068); tanpa field ini = format widget. */
+  format?: NumberFormat;
 }
 
 export interface PlanDimension {
@@ -106,7 +145,7 @@ export interface PlanDimension {
   type: ColumnType;
   grain?: Grain;
 }
-export interface PlanMeasure {
+export interface PlanAggMeasure {
   key: string;
   agg: Agg;
   /** Kolom fisik; tidak ada untuk count(*). */
@@ -117,6 +156,36 @@ export interface PlanMeasure {
    */
   showAs?: ShowAs;
 }
+/** Daun rumus terselesaikan: agregat atas kolom fisik c<pos> + jenis angka hasilnya. */
+export interface PlanCalcLeaf {
+  agg: Agg;
+  col?: string;
+  num: CalcNum;
+}
+/** Konstanta rumus: nilai + nama parameter ($<param>), tidak pernah ditulis ke teks SQL. */
+export interface PlanCalcConst {
+  const: number;
+  param: string;
+}
+export type PlanCalcExpr =
+  | { op: "add" | "sub" | "mul" | "div"; args: [PlanCalcExpr, PlanCalcExpr] }
+  | { op: "neg"; args: [PlanCalcExpr] }
+  | PlanCalcLeaf
+  | PlanCalcConst;
+/**
+ * Jenis angka: "integer" (BIGINT/HUGEINT), "decimal" (DECIMAL(38,6) tepat), "double" (DOUBLE). Hasil
+ * rumus tepat (integer/decimal) hanya bila semua operasi +/−/negatif atas daun tepat dan konstanta
+ * bulat; selain itu DOUBLE (rencana G-7 §3.2).
+ */
+export type CalcNum = "integer" | "decimal" | "double";
+/** Field terhitung (T-068): dikompilasi sql.ts calcSql di atas measureExpr daun-daunnya. */
+export interface PlanCalcMeasure {
+  key: string;
+  calc: { expr: PlanCalcExpr; num: CalcNum; additive: boolean };
+  showAs?: ShowAs;
+}
+export type PlanMeasure = PlanAggMeasure | PlanCalcMeasure;
+export const isPlanCalc = (m: PlanMeasure): m is PlanCalcMeasure => "calc" in m;
 export interface PlanFilter {
   col: string;
   type: ColumnType;
@@ -227,6 +296,18 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
 
   const measures: PlanMeasure[] = [];
   for (const [i, m] of spec.measures.entries()) {
+    if ("kind" in m) {
+      const r = resolveCalc(m.expr, `m${i}`, col);
+      if (!r.ok) return fail(r.message);
+      measures.push({ key: `m${i}`, calc: r.calc });
+      columns.push({
+        key: `m${i}`,
+        label: m.label,
+        type: r.calc.num === "integer" ? "integer" : "decimal",
+        ...(m.format ? { format: m.format } : {}),
+      });
+      continue;
+    }
     if (!m.column) {
       if (m.agg !== "count") return fail(`Agregasi "${m.agg}" membutuhkan kolom.`);
       measures.push({ key: `m${i}`, agg: "count" });
@@ -302,4 +383,70 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
       ...(schema.some((c) => c.system === "period") ? { periodic: true } : {}),
     },
   };
+}
+
+const CALC_LEAF_TYPES: ColumnType[] = NUMERIC;
+
+/**
+ * Pohon field terhitung → rencana: daun dicocokkan dengan skema seperti ukuran biasa (kolom ada dan
+ * tidak tersembunyi, aturan AGG_TYPES) dan harus menghasilkan ANGKA (Terkecil/Terbesar tanggal
+ * ditolak); konstanta diberi nama parameter `<key>k<n>`; jenis angka hasil dihitung (CalcNum).
+ */
+export function resolveCalc(
+  expr: CalcExpr<string>,
+  key: string,
+  col: (name: string) => ColumnSchema | undefined,
+): { ok: true; calc: PlanCalcMeasure["calc"] } | { ok: false; message: string } {
+  let consts = 0;
+  let problem: string | null = null;
+  let exact = true;
+  let additive = true;
+  const nums = new Set<CalcNum>();
+  const go = (e: CalcExpr<string>): PlanCalcExpr => {
+    if (isCalcConst(e)) {
+      if (!Number.isInteger(e.const)) exact = false;
+      additive = false;
+      return { const: e.const, param: `${key}k${++consts}` };
+    }
+    if (isCalcLeaf(e)) {
+      if (e.agg !== "sum" && e.agg !== "count") additive = false;
+      if (!e.column) {
+        if (e.agg !== "count") problem ??= `Agregasi "${e.agg}" membutuhkan kolom.`;
+        nums.add("integer");
+        return { agg: "count", num: "integer" };
+      }
+      const c = col(e.column);
+      if (!c) {
+        problem ??= `Kolom "${e.column}" tidak ada atau disembunyikan.`;
+        return { agg: e.agg, num: "double" };
+      }
+      const allowed = AGG_TYPES[e.agg];
+      if (allowed !== "any" && !allowed.includes(c.type)) {
+        problem ??= `Agregasi "${AGG_LABEL[e.agg]}" tidak bisa dipakai untuk kolom "${c.name}".`;
+      } else if ((e.agg === "min" || e.agg === "max") && !CALC_LEAF_TYPES.includes(c.type)) {
+        problem ??= `Field terhitung hanya bisa memakai ukuran angka ("${AGG_LABEL[e.agg]} ${c.name}").`;
+      }
+      const num: CalcNum =
+        e.agg === "count" || e.agg === "count_distinct"
+          ? "integer"
+          : e.agg === "avg" || (c.type === "decimal" && c.float)
+            ? "double"
+            : c.type === "decimal"
+              ? "decimal"
+              : "integer";
+      nums.add(num);
+      return { agg: e.agg, col: `c${c.pos}`, num };
+    }
+    if (e.op === "mul" || e.op === "div") {
+      exact = false;
+      additive = false;
+    }
+    if (e.op === "neg") return { op: "neg", args: [go(e.args[0])] };
+    return { op: e.op, args: [go(e.args[0]), go(e.args[1])] };
+  };
+  const out = go(expr);
+  if (problem) return { ok: false, message: problem };
+  const num: CalcNum =
+    !exact || nums.has("double") ? "double" : nums.has("decimal") ? "decimal" : "integer";
+  return { ok: true, calc: { expr: out, num, additive } };
 }

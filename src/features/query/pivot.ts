@@ -6,13 +6,20 @@
  * termasuk baris/kolom di luar batas tampilan. Aturan kunci (teks tidak peka huruf besar/kecil, label =
  * variasi paling sering), agregasi, dan filter sama persis dengan grafik (sql.ts). Murni (tanpa I/O).
  */
-import { PIVOT_COLUMNS_SHOWN, PIVOT_ROWS_SHOWN, type ShowAs } from "@/features/widgets/spec";
+import {
+  PIVOT_COLUMNS_SHOWN,
+  PIVOT_ROWS_SHOWN,
+  type NumberFormat,
+  type ShowAs,
+} from "@/features/widgets/spec";
 import { isAxisShowAs, shown } from "@/features/widgets/show-as";
 import { ident } from "@/lib/duckdb";
 import {
   TEXT_COLLATE,
+  bindCalc,
   dimensionExpr,
   groupKey,
+  measureCols,
   measureExpr,
   paramValue,
   textLabel,
@@ -139,7 +146,7 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
     src.push(`${groupKey(col)} AS ${k("kc")}`);
     if (col.type === "text") src.push(`${dimensionExpr(col)} AS ${k("tc")}`);
   }
-  for (const c of new Set(plan.measures.flatMap((m) => (m.col ? [m.col] : [])))) src.push(ident(c));
+  for (const c of new Set(plan.measures.flatMap(measureCols))) src.push(ident(c));
 
   const m0 = measureExpr(plan.measures[0]!);
   const ctes = [
@@ -217,13 +224,16 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   const union = parts.join("\nUNION ALL\n");
   if (!plan.measures.some((m) => shown(m.showAs))) {
     // Tanpa "Tampilkan nilai sebagai": SQL lama persis (spec 1.0.0 identik).
-    return { sql: `WITH ${ctes.join(",\n")}\n${union}`, params };
+    return bindCalc({ sql: `WITH ${ctes.join(",\n")}\n${union}`, params }, plan.measures);
   }
   const shownSql = showAsSql(plan, shape, { rows, col, rowJoin, colJoin, groupJoin, M });
-  return {
-    sql: `WITH ${[...ctes, ...shownSql.ctes, `u AS (${union})`].join(",\n")}\n${shownSql.select}`,
-    params,
-  };
+  return bindCalc(
+    {
+      sql: `WITH ${[...ctes, ...shownSql.ctes, `u AS (${union})`].join(",\n")}\n${shownSql.select}`,
+      params,
+    },
+    plan.measures,
+  );
 }
 
 /** Pembagian aman: penyebut 0/NULL → NULL ("–"), bukan galat/Infinity; hasil DOUBLE. */
@@ -385,6 +395,8 @@ export interface PivotField {
   grain?: Grain;
   /** Nilai: "Tampilkan nilai sebagai" (T-067) — format persen / judul sudah menyebutnya. */
   showAs?: ShowAs;
+  /** Nilai field terhitung dengan format sendiri (T-068); tanpa field ini = format widget. */
+  format?: NumberFormat;
 }
 
 /** Nilai satu sel (satu angka per ukuran, urut nilai) atau null bila tidak ada data. */
@@ -490,9 +502,12 @@ export function shapePivot(raw: unknown[][], plan: Plan, shape: PivotShape): Piv
   return {
     rowFields: plan.dimensions.slice(0, shape.rowFields).map((_, i) => field(i)),
     columnField: shape.column ? field(shape.rowFields) : null,
-    values: plan.columns
-      .slice(plan.dimensions.length)
-      .map((c) => ({ label: c.label, type: c.type, ...(c.showAs ? { showAs: c.showAs } : {}) })),
+    values: plan.columns.slice(plan.dimensions.length).map((c) => ({
+      label: c.label,
+      type: c.type,
+      ...(c.showAs ? { showAs: c.showAs } : {}),
+      ...(c.format ? { format: c.format } : {}),
+    })),
     rows,
     groups,
     columns,

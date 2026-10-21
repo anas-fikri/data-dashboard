@@ -87,7 +87,7 @@ export function kpiTexts(
   value: unknown,
   type: ValueType,
   format: NumberFormat,
-  agg: Agg,
+  agg: Agg | undefined,
   label: string,
 ): { full: string; options: KpiOption[] } {
   // Jumlah baris/unik juga mengikuti format pilihan user.

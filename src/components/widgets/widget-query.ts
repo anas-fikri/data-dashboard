@@ -9,7 +9,7 @@ import type {
 } from "@/components/dashboards/filters/filter-model";
 import type { PivotData } from "@/features/query/pivot";
 import type { ValueType } from "@/features/widgets/format";
-import type { ShowAs } from "@/features/widgets/spec";
+import type { NumberFormat, ShowAs } from "@/features/widgets/spec";
 import { isAccessLost, useAccessLost } from "./access-refresh";
 import { requestFilters } from "./body-state";
 
@@ -33,6 +33,8 @@ export interface QueryColumn {
   grain?: string;
   /** Ukuran dengan "Tampilkan nilai sebagai" (T-067): format persen / tanpa isi 0. */
   showAs?: ShowAs;
+  /** Field terhitung dengan format sendiri (T-068); tanpa field ini = format widget. */
+  format?: NumberFormat;
 }
 export interface WidgetData {
   columns: QueryColumn[];
