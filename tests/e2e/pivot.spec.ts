@@ -785,8 +785,9 @@ test.describe("widget pivot (T-tcjp)", () => {
     await expect(table.locator("tbody tr[data-kind=leaf]")).toHaveCount(24);
 
     // Select kustom "Tampilkan" pada rincian Customer → 5 teratas per Kota Tujuan.
-    await panel.getByTestId("pivot-topn-1").click();
-    await owner.getByRole("option", { name: "5 teratas", exact: true }).click();
+    // Nama aksesibel unik per field baris (review T-071 L2).
+    await expect(panel.getByLabel("Tampilkan Kota Tujuan", { exact: true })).toBeVisible();
+    await pick(owner, panel, "Tampilkan Customer", "5 teratas");
     await saved(panel);
     await expect(panel.getByTestId("pivot-summary")).toContainText(
       "5 teratas per Kota Tujuan, sisanya (Lainnya)",

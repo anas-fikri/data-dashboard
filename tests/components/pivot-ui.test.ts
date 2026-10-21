@@ -482,6 +482,10 @@ describe("T-071: Top N per kelompok + (Lainnya) di panel, tabel, dan PDF", () =>
     expect(html).toContain('data-testid="pivot-topn-by-1"');
     expect(html).not.toContain('data-testid="pivot-topn-by-0"');
     expect(html).toContain("5 teratas per Customer");
+    // Nama kontrol unik per field baris (review L2).
+    expect(html).toContain(">Tampilkan Customer<");
+    expect(html).toContain(">Tampilkan Layanan<");
+    expect(html).toContain(">Teratas menurut — Layanan<");
     expect(html).toContain(`sisanya ${PIVOT_OTHER_LABEL}`);
   });
 

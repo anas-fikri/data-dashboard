@@ -139,6 +139,7 @@ export function PivotFields({
             <TopNFields
               index={i}
               spec={spec}
+              field={name(d.column)}
               parent={i > 0 ? name(spec.rows[i - 1]!.column) : null}
               valueLabel={valueLabel}
               error={axisTop === i ? TOP_N_AXIS_TEXT : undefined}
@@ -338,6 +339,7 @@ export function PivotFields({
 function TopNFields({
   index,
   spec,
+  field,
   parent,
   valueLabel,
   error,
@@ -345,6 +347,8 @@ function TopNFields({
 }: {
   index: number;
   spec: PivotSpec;
+  /** Nama field baris ini: label kontrol unik per baris (mis. "Tampilkan Kota"). */
+  field: string;
   /** Nama field induk (null = baris pertama: teratas di seluruh data). */
   parent: string | null;
   valueLabel: (m: PivotSpec["values"][number]) => string;
@@ -356,7 +360,7 @@ function TopNFields({
     <div className="flex min-w-0 flex-col gap-1.5">
       <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
         <Choice
-          label="Tampilkan"
+          label={`Tampilkan ${field}`}
           testId={`pivot-topn-${index}`}
           value={top ? String(top.n) : "all"}
           options={topNOptions(top?.n)}
@@ -364,7 +368,7 @@ function TopNFields({
         />
         {top && spec.values.length > 1 ? (
           <Choice
-            label="Teratas menurut"
+            label={`Teratas menurut — ${field}`}
             testId={`pivot-topn-by-${index}`}
             value={String(top.by)}
             options={spec.values.map((v, j) => ({
