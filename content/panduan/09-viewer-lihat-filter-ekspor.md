@@ -28,6 +28,13 @@ Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyari
 
 Di widget **pivot**, sel kiri atas tabel berisi nama setiap bagian pivot dengan ikon saring (seperti tombol filter PivotTable Excel). Tekan namanya, lalu centang atau lepas centang nilai — total ikut berubah, pengaturan widget tidak. Catatan **Disaring — …** di bawah tabel menyebut saringan yang berlaku; tekan **Hapus saringan** untuk kembali ke semua data.
 
+## Membaca angka pivot dan grafik
+
+- Judul kolom seperti _% dari total kolom · Total Pendapatan_ atau _Total berjalan · …_ menyebut cara angka itu dihitung. Persen dihitung dari seluruh data yang lolos filter, termasuk baris yang tidak tampil.
+- Baris **(Lainnya)** menggabungkan kelompok di luar N teratas; angkanya dihitung ulang dari data mentah, dan baris ini tidak bisa diklik untuk menyaring widget lain.
+- Tanda **–** berarti tidak ada data atau angkanya tidak bisa dihitung (mis. dibagi nol pada field terhitung seperti margin).
+- Beberapa widget bisa memakai definisi pivot yang sama (pivot tersimpan) sehingga angkanya selalu sama; definisinya diatur pemilik data dan tidak terbuka untuk viewer.
+
 ## Memperbesar tabel
 
 Tekan ikon **Perbesar** di kepala widget tabel untuk membuka tabel itu selebar layar, bergaya lembar kerja: kolom nomor baris dan kepala kolom tetap terlihat saat digulir, dan urutan serta halaman ikut dari widget. Isinya hanya kolom widget itu, dengan filter dashboard yang sedang berlaku — viewer tidak bisa membuka seluruh isi sheet. Tekan **Tutup tampilan besar** atau Esc untuk kembali.

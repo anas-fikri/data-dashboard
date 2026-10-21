@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 date: 2026-10-21
 ---
 
@@ -8,6 +8,9 @@ date: 2026-10-21
 > Status **proposed** 2026-10-21 bersama rencana `docs/ai/plans/2026-10-21-pivot-lanjutan.md` (goal G-7).
 > Menjadi accepted setelah T-068 (pohon ekspresi + SQL) dan T-072 (model `SavedPivot` + migrasi) selesai
 > tanpa mengubah keputusan di bawah; perubahan bentuk dicatat sebagai amandemen di akhir dokumen ini.
+> **Accepted 2026-10-21 (T-076)**: T-068 dan T-072 selesai; keputusan inti tidak berubah, rincian di amandemen
+> T-068, T-072, T-073, dan T-hbcp. Target p95 dingin pivot 4×8 pada 10 jt baris (T-075) belum tercapai di
+> kontainer uji — bukan bagian keputusan ini; ditangani T-hfqf (percepatan atau keputusan target pemilik).
 
 ## Context and Problem Statement
 

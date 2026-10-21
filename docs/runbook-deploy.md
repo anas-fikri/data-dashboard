@@ -109,6 +109,12 @@ atas; tiga artikel lama yang ikut diperbarui hanya ditimpa bila diminta, tanpa m
 `... scripts/seed-guides.ts --update --only lihat-data-seperti-excel,data-per-periode,editor-ubah-dashboard,viewer-lihat-filter-ekspor,ganti-data-pemetaan`
 (menimpa suntingan admin di kelima artikel itu).
 
+Setelah rilis G-7 (T-076, v1.3.0): dua artikel baru (`perhitungan-seperti-pivottable`, `satu-pivot-banyak-widget`)
+terbit dengan perintah seed biasa di atas; empat artikel lama yang ikut diperbarui hanya ditimpa bila diminta:
+`... scripts/seed-guides.ts --update --only widget-pivot,editor-ubah-dashboard,viewer-lihat-filter-ekspor,mengenal-data-dashboard`
+(menimpa suntingan admin di keempat artikel itu; jalankan perintah T-064 di atas lebih dulu bila rilis G-6 belum
+pernah di-seed).
+
 ### TLS untuk akses LAN lewat IP (root CA berpembatasan, `deploy/lan-cert.sh`)
 
 Tanpa domain publik, sertifikat dibuat dari **root CA milik perusahaan dengan name constraints**: root

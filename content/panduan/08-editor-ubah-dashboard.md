@@ -21,6 +21,12 @@ Buka **Dashboard** → bagian **Dibagikan ke saya**. Di kepala dashboard tertuli
 
 Salah pindah, ubah ukuran, tambah, atau hapus widget? Tekan **Urungkan** di bilah atas mode edit untuk membatalkan perubahan tata letak terakhir. Perubahan di panel pengaturan widget (judul, jenis, nilai) tidak ikut diurungkan — kembalikan secara manual.
 
+## Field terhitung dan pivot tersimpan
+
+- Di widget pivot, grafik, dan angka, editor bisa memakai **Tampilkan sebagai** (mis. _% dari total kolom_, _Total berjalan_), **Tambah field terhitung** / **Pakai field terhitung** (mis. margin), dan N teratas dengan **(Lainnya)** — caranya sama dengan pemilik (panduan _Membuat perhitungan seperti PivotTable_).
+- **Pivot tersimpan** dibuat dan diubah oleh pemilik dataset. Editor bisa memilihnya di **Sumber data** → **Pivot tersimpan**, mengatur tampilan widget (jenis, nilai, urutan, total), dan melihat definisinya (_Definisi hanya bisa diubah pemilik dataset (baca-saja)_).
+- **Lepas dari sumber** menyalin pengaturan pivot tersimpan menjadi widget mandiri; perubahan pivot tersimpan berikutnya tidak lagi berlaku di widget itu.
+
 ## Melihat seluruh data (Lihat data)
 
 Tekan **Lihat data** di kepala dashboard untuk membuka seluruh isi sheet dataset dashboard ini dalam bentuk lembar kerja seperti Excel (baca-saja):
@@ -37,5 +43,6 @@ Pengaturan kolom (lebar, bekukan, sembunyikan, format) hanya tersimpan di browse
 - Membagikan dashboard atau mengubah siapa yang punya akses.
 - Mengganti nama, kolom filter, atau menghapus dashboard.
 - Membuka halaman dataset, mengunggah file, mengatur periode, atau mengubah skema (Lihat data tetap bisa dibuka, baca-saja).
+- Membuat, mengubah, mengganti nama, atau menghapus pivot tersimpan.
 
 Butuh perubahan di atas? Hubungi pemilik dashboard (namanya tercantum di kepala dashboard).

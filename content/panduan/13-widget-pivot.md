@@ -9,16 +9,16 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 
 ## Dari PivotTable Excel ke widget Pivot
 
-| Di Excel (PivotTable)                  | Di Data Dashboard                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------- |
-| _Rows_                                 | **Baris** — **Satu baris per**, dan **Dirinci per** bila perlu dua tingkat |
-| _Columns_                              | **Pisahkan per** (opsional)                                                |
-| _Values_                               | **Nilai** (1–3), mis. _Total_, _Rata-rata_, _Jumlah baris_                 |
-| _Subtotals_                            | Sakelar **Subtotal per …**                                                 |
-| _Grand Total_                          | Sakelar **Tampilkan total**                                                |
-| _Filters_                              | Bagian **Saring** di pengaturan pivot                                      |
-| Tombol filter ▾ di _Row/Column Labels_ | Ikon saring di kepala tabel pivot                                          |
-| _Slicer_                               | Bilah **Filter** dashboard                                                 |
+| Di Excel (PivotTable)                  | Di Data Dashboard                                                     |
+| -------------------------------------- | --------------------------------------------------------------------- |
+| _Rows_                                 | **Baris** — **Satu baris per**, lalu **Dirinci per** sampai 4 tingkat |
+| _Columns_                              | **Pisahkan per** (opsional)                                           |
+| _Values_                               | **Nilai** (1–8), mis. _Total_, _Rata-rata_, _Jumlah baris_            |
+| _Subtotals_                            | Sakelar **Subtotal per …** di setiap tingkat induk                    |
+| _Grand Total_                          | Sakelar **Tampilkan total**                                           |
+| _Filters_                              | Bagian **Saring** di pengaturan pivot                                 |
+| Tombol filter ▾ di _Row/Column Labels_ | Ikon saring di kepala tabel pivot                                     |
+| _Slicer_                               | Bilah **Filter** dashboard                                            |
 
 ## Membuat widget Pivot
 
@@ -26,9 +26,9 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 2. Isi **Judul**, lalu pilih jenis tampilan **Pivot**. Isian langsung terisi: kolom teks pertama sebagai baris, kolom tanggal (bila ada) dipisah per bulan, dan total kolom angka pertama.
 3. Baca **kalimat ringkasan** di atas panel, mis. _Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total._ Setiap perubahan langsung terlihat di kartu.
 4. **Baris → Satu baris per**: kolom yang menjadi isi kolom paling kiri. Untuk kolom tanggal, pilih **Rentang waktu** (per hari, minggu, bulan, kuartal, tahun).
-5. **Rinci baris** (opsional): pecah setiap baris per kolom kedua, mis. _Customer_ dirinci per _Layanan_. Baris kelompok berisi **subtotal** dan tampil di atas rinciannya.
+5. **Rinci baris** (opsional): pecah setiap baris per kolom kedua, mis. _Customer_ dirinci per _Layanan_. Tekan **Rinci lagi** untuk tingkat ketiga dan keempat (mis. _Wilayah › Kota › Layanan › Bulan_). Baris kelompok berisi **subtotal** dan tampil di atas rinciannya; setiap tingkat induk punya sakelar **Subtotal per …** sendiri.
 6. **Pisahkan per** (opsional): satu kolom tabel untuk setiap nilai, mis. _Tanggal_ per bulan → _Jan 2026_, _Feb 2026_, …, lalu kolom **Total** di paling kanan.
-7. **Nilai**: pilih cara menghitung (**Hitung**) dan kolomnya. Tekan **Tambah nilai** untuk sampai tiga nilai berdampingan, mis. total paket dan total omzet.
+7. **Nilai**: pilih cara menghitung (**Hitung**) dan kolomnya. Tekan **Tambah nilai** untuk sampai delapan nilai berdampingan, mis. total paket dan total omzet. Setiap nilai punya pilihan **Tampilkan sebagai** (mis. _% dari total kolom_), dan **Tambah field terhitung** membuat rumus seperti margin — lihat panduan _Membuat perhitungan seperti PivotTable_.
 8. Atur **Urutan baris** (nilai terbesar dulu, A–Z, …), **Tampilkan total**, dan **Format angka**. Perlebar kartu lewat **Ukuran** atau dengan menarik sudutnya agar semua kolom terlihat.
 
 9. **Saring** (opsional), seperti area _Filters_ di PivotTable: tekan **Tambah saringan**, pilih **Kolom** (mis. _Layanan_), lalu centang nilai yang dihitung (mis. _Darat_). Untuk "semua kecuali", tekan **Pilih semua** lalu lepas centang nilai yang tidak dihitung. Maksimal tiga kolom; pivot hanya menghitung baris yang cocok dengan semuanya. Selama belum ada nilai yang dicentang, saringan itu belum berlaku.
@@ -41,6 +41,8 @@ Kalau muncul pesan **Kolom ini sudah dipakai di atas dengan rentang waktu yang s
 - Kepala kolom, nama baris, dan baris **Total** tetap terlihat saat tabel digulir. Di ponsel, geser tabel ke samping.
 - Baris kelompok berlatar abu dan tebal adalah **subtotal**; kolom dan baris **Total** juga tebal. Tanda **–** berarti tidak ada data untuk sel itu.
 - Tabel menampilkan paling banyak **200 baris** dan **40 kolom**. Bila lebih, catatan di bawah tabel menyebut berapa yang tampil; total tetap menghitung semua data. Persempit dengan filter dashboard.
+- Satu pivot menampilkan paling banyak **24.000 sel** (baris × kolom × nilai). Dengan banyak baris dan nilai, kolom di kanan tidak ditampilkan dan catatannya berbunyi _Menampilkan N dari M kolom — kurangi nilai atau tambah Saring_.
+- Pilihan **Tampilkan** di bawah setiap field baris (mis. _5 teratas_) menampilkan N kelompok terbesar dan menggabungkan sisanya ke **(Lainnya)**.
 - Filter dashboard dan klik pada grafik lain (filter silang) ikut menyaring pivot.
 
 ## Menyaring dari tabel pivot
@@ -58,7 +60,11 @@ Pilih label baris atau kolom (mis. _Customer 24_ atau _Jan 2026_) untuk menyarin
 
 ## Ekspor dan cetak
 
-- Tombol unduh di kepala kartu mengekspor pivot ke **CSV** atau **Excel (XLSX)**: satu kolom per kolom baris (nama kelompok diulang di setiap baris rincian), baris berlabel _Subtotal_, baris _Total_, dan angka bertipe angka sehingga bisa langsung dijumlah atau dibuat grafik di Excel.
+- Tombol unduh di kepala kartu mengekspor pivot ke **CSV** atau **Excel (XLSX)**: satu kolom per tingkat baris (nama kelompok diulang di setiap baris rincian), baris berlabel _Subtotal_, baris _Total_, dan angka bertipe angka sehingga bisa langsung dijumlah atau dibuat grafik di Excel.
 - Ekspor dan PDF mengikuti saringan pivot yang sedang aktif; di PDF, saringan itu disebut di bawah tabel.
 - **Ekspor PDF** dashboard mencetak baris dan kolom yang muat di kartu, beserta baris Total. Yang tidak muat disebut di catatan bawah — pakai ekspor Excel untuk semua baris dan kolom yang tampil di layar.
 - Ekspor juga mengikuti batas tampil **200 baris × 40 kolom**; bila lebih, baris terakhir file berisi catatannya. Persempit dengan filter (mis. per periode) lalu ekspor per bagian.
+
+## Satu pivot untuk banyak widget
+
+Pivot yang sama dipakai di beberapa dashboard atau sebagai grafik dan angka sekaligus? Simpan sebagai **pivot tersimpan** (tombol **Simpan sebagai pivot tersimpan** di pengaturan widget) agar cukup diubah sekali — lihat panduan _Satu pivot untuk banyak widget_.

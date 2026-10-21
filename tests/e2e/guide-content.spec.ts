@@ -10,6 +10,7 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  * (demo/guide-videos, tidak di-commit) diperiksa terpisah: lihat catatan task.
  * T-064: artikel Lihat data dan data per periode (pemilik) + bagian Lihat data/Perbesar di artikel editor
  * dan viewer terender (tabel tersanitasi), dan artikel pemilik tetap tidak terbuka untuk viewer.
+ * T-076: artikel perhitungan seperti PivotTable dan pivot tersimpan (pemilik) + bagian editor/viewer.
  */
 const N = uniqueEmail("content-new");
 const V = uniqueEmail("content-viewer");
@@ -22,6 +23,13 @@ const T064 = [
   "editor-ubah-dashboard",
   "viewer-lihat-filter-ekspor",
   "ganti-data-pemetaan",
+];
+/** Artikel yang ditambah/diubah T-076 (rilis G-7). */
+const T076 = [
+  "perhitungan-seperti-pivottable",
+  "satu-pivot-banyak-widget",
+  "widget-pivot",
+  "mengenal-data-dashboard",
 ];
 const seeded = readdirSync(join(process.cwd(), "content/panduan"))
   .filter((f) => f.endsWith(".md"))
@@ -50,7 +58,13 @@ test.describe("isi panduan (T-xfzy)", () => {
     test.setTimeout(150_000);
     const seed = ["tsx", "--conditions=react-server", "--env-file-if-exists=.env"];
     for (let i = 0; i < 2; i++) execFileSync("npx", [...seed, "scripts/seed-guides.ts"]); // idempoten
-    execFileSync("npx", [...seed, "scripts/seed-guides.ts", "--update", "--only", T064.join(",")]);
+    execFileSync("npx", [
+      ...seed,
+      "scripts/seed-guides.ts",
+      "--update",
+      "--only",
+      [...T064, ...T076].join(","),
+    ]);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
     const setup = await browser.newPage();
     for (const email of [N, V, OWNER, E]) {
@@ -115,10 +129,10 @@ test.describe("isi panduan (T-xfzy)", () => {
     ])
       await expect(article(n).getByRole("heading", { level: 2, name: h })).toBeVisible();
     await expect(article(n).locator("table")).toHaveCount(2);
-    // Kedua artikel ada di tab Pemilik data (urut sesuai berkas: 14 lalu 15).
+    // Kedua artikel ada di tab Pemilik data (urut sesuai berkas: 14 lalu 15; 16–17 dari T-076 di belakangnya).
     await n.goto("/panduan?peran=pemilik");
     await expect
-      .poll(async () => (await shown(n, "OWNER")).slice(-2))
+      .poll(async () => (await shown(n, "OWNER")).slice(-4, -2))
       .toEqual([
         "Melihat data seperti Excel (Lihat data)",
         "Mengunggah data per periode (bulanan, kuartalan, tahunan)",
@@ -134,5 +148,53 @@ test.describe("isi panduan (T-xfzy)", () => {
     ).toBeVisible();
     // Artikel pemilik tetap tertutup untuk viewer (slug di luar peran → 404).
     expect((await v.goto("/panduan/data-per-periode"))?.status()).toBe(404);
+  });
+
+  test("T-076 AC2: perhitungan seperti PivotTable dan pivot tersimpan terbit; editor/viewer mendapat bagiannya", async () => {
+    const article = (p: Page) => p.getByTestId("guide-markdown");
+    await n.goto("/panduan/perhitungan-seperti-pivottable");
+    await expect(n.getByRole("heading", { level: 1 })).toHaveText(
+      "Membuat perhitungan seperti PivotTable",
+    );
+    for (const h of [
+      "Tampilkan nilai sebagai",
+      "Field terhitung",
+      "Pivot bertingkat: 4 tingkat baris dan 8 nilai",
+      "N teratas dan (Lainnya)",
+    ])
+      await expect(article(n).getByRole("heading", { level: 2, name: h })).toBeVisible();
+    await expect(
+      article(n).getByRole("heading", { level: 3, name: "Menulis angka di rumus" }),
+    ).toBeVisible();
+    // Tabel padanan Excel, Tampilkan sebagai, cara tulis angka, contoh rumus.
+    await expect(article(n).locator("table")).toHaveCount(4);
+    await expect(article(n)).not.toContainText("| ---");
+
+    await n.goto("/panduan/satu-pivot-banyak-widget");
+    for (const h of [
+      "Memakai pivot tersimpan di widget",
+      "Mengubah pivot tersimpan",
+      "Lepas dari sumber",
+      "Menghapus pivot tersimpan",
+      "Siapa bisa apa",
+    ])
+      await expect(article(n).getByRole("heading", { level: 2, name: h })).toBeVisible();
+    await expect(article(n).locator("table")).toHaveCount(2);
+    // Keduanya di tab Pemilik data, urut sesuai berkas (16 lalu 17) setelah artikel T-064.
+    await n.goto("/panduan?peran=pemilik");
+    await expect
+      .poll(async () => (await shown(n, "OWNER")).slice(-2))
+      .toEqual(["Membuat perhitungan seperti PivotTable", "Satu pivot untuk banyak widget"]);
+
+    await e.goto("/panduan/editor-ubah-dashboard");
+    await expect(
+      article(e).getByRole("heading", { level: 2, name: "Field terhitung dan pivot tersimpan" }),
+    ).toBeVisible();
+    await v.goto("/panduan/viewer-lihat-filter-ekspor");
+    await expect(
+      article(v).getByRole("heading", { level: 2, name: "Membaca angka pivot dan grafik" }),
+    ).toBeVisible();
+    // Definisi pivot tersimpan hanya untuk pemilik: artikelnya 404 untuk viewer.
+    expect((await v.goto("/panduan/satu-pivot-banyak-widget"))?.status()).toBe(404);
   });
 });
