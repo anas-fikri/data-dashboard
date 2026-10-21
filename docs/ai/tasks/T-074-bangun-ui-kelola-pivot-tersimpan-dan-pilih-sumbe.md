@@ -11,7 +11,7 @@ depends_on:
   - T-073
   - T-069
 created: "2026-10-21T10:24:15Z"
-updated: "2026-10-21T18:24:20Z"
+updated: "2026-10-21T18:38:29Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 242986
+    duration_ms: 214791
     summary: |-
-      …asetId":"t072mvifwuhpds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792606981856,"service":"data-dashboard","host":"127.0.0.1","port":33113,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792606981912,"service":"data-dashboard","host":"127.0.0.1","port":45199,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792606982015,"service":"data-dashboard","host":"127.0.0.1","port":42035,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792606982117,"service":"data-dashboard","host":"127.0.0.1","port":46763,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792606996041,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792607007174,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792607007196,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792607007203,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792607007219,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …t":"127.0.0.1","port":36533,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792607835340,"service":"data-dashboard","host":"127.0.0.1","port":38153,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792607835447,"service":"data-dashboard","host":"127.0.0.1","port":35745,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1792607835468,"service":"data-dashboard","datasetId":"t072mvigf5jcds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792607835551,"service":"data-dashboard","host":"127.0.0.1","port":34123,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792607847874,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792607856715,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792607856738,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792607856740,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792607856762,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  223 passed | 1 skipped (224)
-            Tests  3007 passed | 10 skipped (3017)
-         Start at  18:21:17
-         Duration  146.98s (tests 83%, import 14%, transform 2%)
+            Tests  3009 passed | 10 skipped (3019)
+         Start at  18:35:32
+         Duration  147.37s (tests 83%, import 14%, transform 3%)
 
           Isolate  224 workers spawned · ~155ms startup each (spawn + environment, per file)
-                   at least ~11.43s faster with isolate: false — reuses workers across files instead of one per file
+                   at least ~11.41s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,12 +48,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T18:23:46Z"
-    tree: 0e3869d8545c6f96da119492560f2a2da2581c066f182b42401cf7c61c87faea
+    at: "2026-10-21T18:38:01Z"
+    tree: 63d9ba6ed25fcb181cb3822e7364e10b411ab70af0f9bd4187a29cf081e7a2f0
   audit:
-    at: "2026-10-21T18:23:49Z"
+    at: "2026-10-21T18:38:02Z"
     passed: true
-    tree: 0e3869d8545c6f96da119492560f2a2da2581c066f182b42401cf7c61c87faea
+    tree: 63d9ba6ed25fcb181cb3822e7364e10b411ab70af0f9bd4187a29cf081e7a2f0
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 528 dirs visited, 4993 inodes visited, 1 Extract calls, 249.036575ms elapsed, 249.036928ms wall time
+          End status: 528 dirs visited, 5018 inodes visited, 1 Extract calls, 250.071915ms elapsed, 250.072134ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -81,24 +81,24 @@ evidence:
 Daftar 'Pivot tersimpan' di halaman dataset, editor pivot tersimpan (baris, kolom, nilai + field terhitung + Tampilkan nilai sebagai, Saring, Top N) dengan pratinjau, simpan dari widget pivot yang ada, dan pilihan 'Sumber: Pivot tersimpan' di panel widget. Lewat frontend-expert. Rencana G-7 §3.3.
 
 ## Acceptance criteria
-- [ ] Given pemilik dataset, when membuka tab 'Pivot tersimpan' di halaman dataset, then tampil daftar Nama | Sheet | Dipakai di (N widget, M dashboard) | Diubah, dengan aksi Ubah, Ganti nama, Duplikat, Hapus (Hapus nonaktif + tooltip daftar dashboard bila dipakai)
-- [ ] Given editor pivot tersimpan, when pemilik mengubah lalu Simpan, then dialog konfirmasi 'Perubahan berlaku di N widget pada M dashboard' muncul bila N > 0; given revisi basi (tab lain menyimpan dulu), then pesan konflik dengan opsi muat ulang, tanpa menimpa
-- [ ] Given widget pivot biasa, when 'Simpan sebagai pivot tersimpan', then pivot tersimpan baru dibuat dan widget langsung terikat; given panel widget bar/line/pie/KPI/tabel, when 'Sumber: Pivot tersimpan' dipilih, then hanya pilihan tampilan yang relevan muncul (dimensi = baris pertama/kolom pemisah, satu nilai; KPI satu nilai) dan 'Lepas dari sumber' menyalin spec menjadi widget mandiri
-- [ ] Given editor dashboard (bukan pemilik dataset), then bisa memilih pivot tersimpan sebagai sumber dan melihat definisinya (baca-saja) tetapi tidak mengubah/menghapus; viewer tidak melihat menu ini sama sekali
+- [x] Given pemilik dataset, when membuka tab 'Pivot tersimpan' di halaman dataset, then tampil daftar Nama | Sheet | Dipakai di (N widget, M dashboard) | Diubah, dengan aksi Ubah, Ganti nama, Duplikat, Hapus (Hapus nonaktif + tooltip daftar dashboard bila dipakai)
+- [x] Given editor pivot tersimpan, when pemilik mengubah lalu Simpan, then dialog konfirmasi 'Perubahan berlaku di N widget pada M dashboard' muncul bila N > 0; given revisi basi (tab lain menyimpan dulu), then pesan konflik dengan opsi muat ulang, tanpa menimpa
+- [x] Given widget pivot biasa, when 'Simpan sebagai pivot tersimpan', then pivot tersimpan baru dibuat dan widget langsung terikat; given panel widget bar/line/pie/KPI/tabel, when 'Sumber: Pivot tersimpan' dipilih, then hanya pilihan tampilan yang relevan muncul (dimensi = baris pertama/kolom pemisah, satu nilai; KPI satu nilai) dan 'Lepas dari sumber' menyalin spec menjadi widget mandiri
+- [x] Given editor dashboard (bukan pemilik dataset), then bisa memilih pivot tersimpan sebagai sumber dan melihat definisinya (baca-saja) tetapi tidak mengubah/menghapus; viewer tidak melihat menu ini sama sekali
 - [ ] Given lebar 360 px dan hanya keyboard, then daftar dan editor bisa dipakai tanpa gulir horizontal, dialog konfirmasi fokus terkunci, ikon Tabler size 20 stroke 1.5; /frontend-expert:audit tanpa Critical/High dan Conventions check terisi
 
 ## Risk
 - Impact: panel widget (semua widget dashboard memakai WidgetSourceSection), halaman dataset (kartu baru), dua halaman baru /datasets/[id]/pivot-tersimpan/{baru,[pivotId]}; pratinjau Saring/field terhitung kini juga lewat query pemilik { datasetId, spec }.
 - Security (STRIDE): Elevation/Info disclosure — tanpa endpoint/aksi baru; tulis tetap lewat Server Action T-072 (pemilik saja, NOT_FOUND), ikat/lepas lewat PATCH T-073 (pivot wajib sedataset). Halaman pivot tersimpan memakai getDataset (pemilik) → 404 untuk editor/viewer. Daftar untuk panel dibaca listSavedPivots (pemilik/editor; viewer tidak pernah sampai mode edit). Tampering — tampilan divalidasi ulang server (effectiveConfig + checkConfig).
 - Rollback: revert commit T-074 (UI saja; tidak ada migrasi). Widget terikat tetap berjalan (T-073) tanpa UI.
-- Validation: unit tests/components/bound-config.test.ts (11) + saved-pivot-ui.test.ts (6) + uji komponen pivot/calc yang ada; e2e tests/e2e/saved-pivot-widgets.spec.ts (8, project widgets); regresi --project=widgets 23 lulus (sebelum tes simpan-sebagai ditambah), --project=pivot 11 lulus.
+- Validation: unit tests/components/bound-config.test.ts (11) + saved-pivot-ui.test.ts (6) + uji komponen pivot/calc yang ada; e2e tests/e2e/saved-pivot-widgets.spec.ts (9, project widgets); regresi --project=widgets 23 lulus (sebelum tes simpan-sebagai ditambah), --project=pivot 11 lulus.
 
 ## Notes
 - Daftar: kartu "Pivot tersimpan" (#pivot-tersimpan) di halaman dataset (halaman ini berupa tumpukan kartu, bukan tab — keputusan standar), tabel Nama | Sheet | Dipakai di | Diubah (≥ 768 px), kartu bertumpuk di ponsel. Hapus pivot yang dipakai: aria-disabled (tetap bisa difokus), title + teks alasan (aria-describedby) menyebut jumlah widget dan nama dashboard (`usage.usedIn` baru di SavedPivotView pemilik).
 - Editor: /datasets/[id]/pivot-tersimpan/baru dan /[pivotId] memakai PivotFields yang sama dengan panel; lingkup query pratinjau digeneralisasi (`query-scope.ts`: { dashboardId } | { datasetId }). Konfirmasi dampak bila widget > 0; CONFLICT/STALE → FormAlert + "Muat ulang" (memuat ulang halaman, editor dipasang ulang per revisi).
 - Asumsi (keputusan standar): pratinjau di editor = kalimat ringkasan bentuk tabel + nilai contoh field terhitung + nilai kolom Saring; tabel pivot penuh belum (butuh mode query pivot pemilik baru di server — di luar UI, task lanjutan T-c6z4). Nilai pratinjau sebenarnya terlihat di widget yang terikat.
 - Panel: "Sumber data" Sheet langsung | Pivot tersimpan. Terikat → BoundConfigForm (tampilan per jenis, cek effectiveConfig sebelum simpan otomatis, simpanan selalu membawa savedPivotId — perbaikan T-073 L4); kartu definisi baca-saja (ringkasan) + "Ubah pivot tersimpan" (pemilik) + "Lepas dari sumber" (konfirmasi; satu-satunya jalan kembali ke sheet langsung, fokus ke pemberitahuan hasil). Widget pivot mandiri pemilik: "Simpan sebagai pivot tersimpan" (buat lalu ikat dengan tampilan yang sama).
-- Urungkan hapus widget terikat memulihkan spec efektif sebagai widget mandiri (perilaku undo lama; dicatat, tidak diubah).
+- Review putaran 1 (diperbaiki): #1 urungkan hapus widget terikat kini memulihkan widget kosong lalu mengikatnya lagi (jenis + tampilan + savedPivotId, `deletedConfig`/`rebind`); pivot tersimpan hilang/tidak cocok → widget kosong + pemberitahuan, tidak pernah mandiri tanpa Saring (unit + e2e); #2 widget yang sumbernya hilang (SOURCE_GONE) memberi tahu di panel sebelum disimpan sebagai sheet langsung; #3 simpanan tampilan tertunda dikirim sebelum dialog Lepas dibuka (juga lewat radio); #4 "Muat ulang" setelah konflik meminta konfirmasi bila ada suntingan. e2e saved-pivot-widgets 9 lulus, --project=widgets 25 lulus.
 - Dilewati: plugin frontend-expert (/frontend-expert:audit) tidak tersedia di sesi cloud — prinsip diterapkan manual (Conventions check). Bagian audit AC5 menunggu orkestrator/pemilik.
 - e2e regresi: dashboards.spec gagal acak "klik Pengaturan setelah muat" = T-z8y2 (sudah ada); sharing.spec:1849 ("Urungkan nanti") juga gagal di HEAD dasar 1ad5b22 tanpa perubahan T-074 (diverifikasi dengan git stash) → task lanjutan T-ev34.
 

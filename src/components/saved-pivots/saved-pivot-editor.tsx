@@ -63,6 +63,8 @@ export function SavedPivotEditor({
   });
   const [pending, setPending] = useState(false);
   const [confirm, setConfirm] = useState(false);
+  // "Muat ulang" setelah konflik membuang suntingan di halaman ini: dikonfirmasi dulu (review T-074 #4).
+  const [reloadAsk, setReloadAsk] = useState(false);
   const [error, setError] = useState<{
     message: string;
     field?: "name" | "spec";
@@ -89,6 +91,9 @@ export function SavedPivotEditor({
     pivotTopNAxisRow(spec) !== null ||
     !parseWidgetConfig("pivot", spec).ok;
   const impact = initial ? impactText(initial.usage) : null;
+  const dirty = initial
+    ? name !== initial.name || JSON.stringify(spec) !== JSON.stringify(initial.spec)
+    : true;
 
   const fail = (e: NonNullable<typeof error>) => {
     setError(e);
@@ -141,7 +146,7 @@ export function SavedPivotEditor({
                 className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
                 leadingIcon={<IconRefresh aria-hidden />}
                 data-testid="saved-pivot-reload"
-                onClick={() => window.location.reload()}
+                onClick={() => (dirty ? setReloadAsk(true) : window.location.reload())}
               >
                 Muat ulang
               </Button>
@@ -244,6 +249,23 @@ export function SavedPivotEditor({
             onClick={() => void save()}
           >
             Simpan
+          </Button>
+        }
+      />
+      <ConfirmDialog
+        open={reloadAsk}
+        onOpenChange={setReloadAsk}
+        title="Buang perubahan yang belum disimpan?"
+        description="Muat ulang menampilkan versi terbaru pivot tersimpan ini. Perubahan Anda di halaman ini akan hilang — catat dulu bila masih diperlukan."
+        data-testid="saved-pivot-reload-confirm"
+        action={
+          <Button
+            variant="destructive"
+            className={DIALOG_CTA}
+            leadingIcon={<IconRefresh aria-hidden />}
+            onClick={() => window.location.reload()}
+          >
+            Buang dan muat ulang
           </Button>
         }
       />

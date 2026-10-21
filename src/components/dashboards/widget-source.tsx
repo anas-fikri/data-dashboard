@@ -61,6 +61,12 @@ export function WidgetSourceSection({
   // Setelah lepas, tombolnya hilang bersama form terikat: fokus pindah ke pemberitahuan hasilnya.
   const noticeRef = useRef<HTMLParagraphElement>(null);
   const detached = useRef(false);
+  // Simpanan tampilan yang masih menunggu jeda dikirim sebelum dialog lepas dibuka (review T-074 #3).
+  const flushBound = useRef<(() => void) | null>(null);
+  const openDetach = () => {
+    flushBound.current?.();
+    setDetachOpen(true);
+  };
   const mode = source || choosing ? "pivot" : "direct";
   const boundName =
     savedPivots.find((p) => p.id === source?.savedPivotId)?.name ?? source?.name ?? "";
@@ -70,7 +76,7 @@ export function WidgetSourceSection({
     setNotice(null);
     if (next === "pivot") return setChoosing(true);
     // Terikat → sheet langsung hanya lewat "Lepas dari sumber" (konfirmasi).
-    if (source) return setDetachOpen(true);
+    if (source) return openDetach();
     setChoosing(false);
   };
 
@@ -162,12 +168,24 @@ export function WidgetSourceSection({
             datasetId={isOwner ? datasetId : null}
             saveError={saveError}
             onSave={(type: BoundType, display, id) => onSave(type, display, id)}
-            onDetach={() => setDetachOpen(true)}
+            onDetach={openDetach}
+            flushRef={flushBound}
             onCancel={() => setChoosing(false)}
           />
         )
       ) : (
         <>
+          {widget.sourceError && !source ? (
+            <p
+              role="status"
+              className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
+              data-testid="widget-source-gone"
+            >
+              Sumber pivot tersimpan tidak ada lagi — widget akan disimpan sebagai sheet langsung
+              setelah Anda memilih isinya di bawah, atau pilih “Pivot tersimpan” untuk mengikat ke
+              pivot tersimpan lain.
+            </p>
+          ) : null}
           <WidgetConfigForm
             dashboardId={dashboardId}
             widget={widget}

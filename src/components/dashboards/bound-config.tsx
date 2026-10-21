@@ -61,6 +61,7 @@ export function BoundConfigForm({
   onSave,
   onDetach,
   onCancel,
+  flushRef,
 }: {
   /** Ikatan tersimpan (atau yang sedang dikirim); null = baru memilih pivot tersimpan. */
   initial: { savedPivotId: string; type: string; display: unknown } | null;
@@ -76,6 +77,8 @@ export function BoundConfigForm({
   onDetach: () => void;
   /** Batal memilih pivot tersimpan (widget belum pernah terikat). */
   onCancel: () => void;
+  /** Pemanggil bisa mengirim simpanan tertunda sekarang (mis. sebelum dialog Lepas dari sumber). */
+  flushRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const startType: BoundType = isBoundType(initial?.type)
     ? initial.type
@@ -111,6 +114,13 @@ export function BoundConfigForm({
   }, []);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flush, flushRef]);
 
   const pivotOf = (id: string | undefined) => savedPivots.find((p) => p.id === id);
   const current = pivotOf(draft?.savedPivotId);

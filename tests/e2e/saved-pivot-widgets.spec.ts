@@ -248,6 +248,10 @@ test.describe("UI pivot tersimpan (T-074)", () => {
       .click();
     await expect(page.getByTestId("form-alert")).toContainText("baru saja diubah");
     await page.getByTestId("saved-pivot-reload").click();
+    // Suntingan yang belum disimpan tidak dibuang tanpa konfirmasi (review T-074 #4).
+    const ask = page.getByTestId("saved-pivot-reload-confirm");
+    await expect(ask.getByRole("button", { name: "Batal" })).toBeFocused();
+    await ask.getByRole("button", { name: "Buang dan muat ulang" }).click();
     await expect(page.getByRole("textbox", { name: "Nama", exact: true })).toHaveValue(NAME);
   });
 
@@ -281,6 +285,27 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await dialog.getByRole("button", { name: "Hapus", exact: true }).click();
     await expect(row(page, "Cadangan laba")).toHaveCount(0);
     await expect(row(page, NAME)).toBeVisible();
+  });
+
+  test("Urungkan hapus widget terikat memulihkan ikatannya, bukan spec efektif mandiri", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await apiLogin(page, OWNER);
+    await page.goto(`/dashboards/${dashA}?mode=edit`);
+    const panel = await openPanel(page, "Batang terikat");
+    await panel.getByRole("button", { name: "Hapus widget" }).click();
+    await expect(card(page, "Batang terikat")).toHaveCount(0);
+    await page.getByRole("button", { name: "Urungkan hapus widget" }).click();
+    await expect(card(page, "Batang terikat")).toHaveCount(1);
+    await expect(page.getByTestId("canvas-toolbar")).toContainText("Semua perubahan tersimpan");
+    const again = await openPanel(page, "Batang terikat");
+    await expect(again.getByTestId("bound-source")).toContainText(NAME);
+    await page.goto(`/datasets/${datasetId}`);
+    await expect(row(page, NAME).getByTestId("saved-pivot-usage")).toContainText(
+      "3 widget, 1 dashboard",
+    );
   });
 
   test("AC3: Lepas dari sumber menyalin spec menjadi widget mandiri", async ({ page }) => {

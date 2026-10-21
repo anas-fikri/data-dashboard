@@ -183,10 +183,37 @@ export const viewCanvasKey = (
 type Undo =
   | { kind: "layout"; layout: LayoutItem[] }
   | { kind: "add"; widgetId: string }
-  | { kind: "delete"; title: string; item: LayoutItem; type: string; spec: unknown };
+  | ({ kind: "delete"; title: string; item: LayoutItem } & DeletedConfig);
 type Failure = Extract<ApiResult<unknown>, { ok: false }>;
 
 const SAVE_DELAY_MS = 500;
+
+/**
+ * Isi widget yang dihapus untuk "Urungkan hapus". Widget terikat pivot tersimpan (review T-074 #1)
+ * TIDAK dipulihkan dari spec efektifnya (itu menjadikannya mandiri dan membuang Saring pivot tersimpan
+ * pada grafik/KPI): dipulihkan kosong lalu diikat lagi dengan jenis + tampilan + savedPivotId yang
+ * sama. Murni.
+ */
+export type DeletedConfig = {
+  type: string;
+  spec: unknown;
+  bound?: { savedPivotId: string; name: string; type: string; display: unknown };
+};
+export function deletedConfig(w: WidgetView | undefined): DeletedConfig {
+  if (w?.source) {
+    const { savedPivotId, name, type, display } = w.source;
+    return { type: "empty", spec: {}, bound: { savedPivotId, name, type, display } };
+  }
+  return {
+    type: w?.type ?? "empty",
+    // Spec widget yang dialihkan hanya tampilan (T-013): tidak valid → dipulihkan kosong.
+    spec: w?.retargeted ? null : (w?.spec ?? {}),
+  };
+}
+
+/** Pemberitahuan bila ikatan widget yang dipulihkan tidak bisa dibuat lagi. */
+export const rebindFailedNotice = (name: string) =>
+  `Widget dipulihkan kosong: pivot tersimpan “${name}” sumbernya sudah dihapus atau tidak cocok lagi dengan tampilannya. Atur ulang lewat tombol pengaturan.`;
 
 export function useDashboardEditor(o: {
   dashboardId: string;
@@ -349,9 +376,7 @@ export function useDashboardEditor(o: {
                 kind: "delete",
                 title,
                 item,
-                type: gone?.type ?? "empty",
-                // Spec widget yang dialihkan hanya tampilan (T-013): tidak valid → dipulihkan kosong.
-                spec: gone?.retargeted ? null : (gone?.spec ?? {}),
+                ...deletedConfig(gone),
               }
             : null,
         );
@@ -508,6 +533,47 @@ export function useDashboardEditor(o: {
     });
   }, [run, saves, sendConfig, saveNow]);
 
+  /**
+   * Ikat lagi widget terikat yang dipulihkan (review T-074 #1). Pivot tersimpan sudah dihapus /
+   * tampilannya tidak cocok lagi (NOT_FOUND/INVALID): widget tetap kosong dengan pemberitahuan yang
+   * jelas — tidak pernah dipulihkan diam-diam sebagai widget mandiri tanpa Saring sumbernya.
+   */
+  const rebind = useCallback(
+    (widgetId: string, b: NonNullable<DeletedConfig["bound"]>) =>
+      run(async () => {
+        if (stale.current) return false;
+        const r = await api.configureWidget(
+          id,
+          widgetId,
+          b.type,
+          b.display,
+          versionOf(widgetId),
+          b.savedPivotId,
+        );
+        if (!r.ok) {
+          if (r.code === "NOT_FOUND" || r.code === "INVALID") {
+            setNotice(rebindFailedNotice(b.name));
+            return false;
+          }
+          failed(r);
+          return false;
+        }
+        setWidgets(
+          patchWidget(widgetsNow.current, widgetId, {
+            type: r.data.type,
+            spec: r.data.spec,
+            version: r.data.version,
+            source: r.data.source,
+            sourceError: undefined,
+          }),
+        );
+        settled();
+        commitLayout(latest.current, false);
+        return true;
+      }),
+    [id, run, failed, setWidgets, settled, commitLayout, versionOf],
+  );
+
   const undoLast = useCallback(async () => {
     const u = undo;
     if (!u || stale.current) return;
@@ -516,9 +582,10 @@ export function useDashboardEditor(o: {
     else if (u.kind === "add") await removeWidget(u.widgetId, false);
     else {
       const { i: _i, ...at } = u.item;
-      await addWidget({ title: u.title, at, type: u.type, spec: u.spec });
+      const restored = await addWidget({ title: u.title, at, type: u.type, spec: u.spec });
+      if (restored && u.bound) await rebind(restored, u.bound);
     }
-  }, [undo, commitLayout, removeWidget, addWidget]);
+  }, [undo, commitLayout, removeWidget, addWidget, rebind]);
 
   // Perubahan yang belum tersimpan: peringatkan sebelum meninggalkan halaman. Penjaga selalu terpasang
   // agar navigasi unduhan ekspor (302 lintas origin → attachment) memakai tandanya sendiri, juga saat

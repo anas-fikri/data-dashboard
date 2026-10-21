@@ -14,6 +14,7 @@ import {
 } from "@/components/dashboards/bound-config-model";
 import { withUnsaved } from "@/components/dashboards/config-saves";
 import type { Source } from "@/components/dashboards/widget-config-model";
+import { deletedConfig, rebindFailedNotice } from "@/components/dashboards/use-dashboard-editor";
 import { WidgetSourceSection } from "@/components/dashboards/widget-source";
 import type { WidgetView } from "@/features/dashboards/service";
 import { effectiveConfig } from "@/features/widgets/bound";
@@ -228,5 +229,41 @@ describe("markup panel sumber", () => {
     expect(html).toContain('data-testid="bound-value"');
     expect(html).not.toContain('data-testid="bound-dimension"');
     expect(html).toContain("Format angka");
+  });
+});
+
+describe("review T-074: urungkan hapus, sumber hilang", () => {
+  it("widget terikat dihapus → dipulihkan kosong lalu diikat lagi (bukan spec efektif mandiri)", () => {
+    expect(deletedConfig(boundWidget)).toEqual({
+      type: "empty",
+      spec: {},
+      bound: { savedPivotId: option.id, name: option.name, type: "kpi", display: { value: 0 } },
+    });
+    const plain: WidgetView = { ...boundWidget, source: undefined };
+    expect(deletedConfig(plain)).toEqual({ type: "kpi", spec: plain.spec });
+    expect(rebindFailedNotice("X")).toContain("“X”");
+  });
+
+  it("sumber pivot tersimpan hilang: panel memberi tahu sebelum menyimpan sebagai sheet langsung", () => {
+    const gone: WidgetView = {
+      ...boundWidget,
+      source: undefined,
+      sourceError: "Sumber data widget ini tidak tersedia.",
+    };
+    const html = renderToStaticMarkup(
+      createElement(WidgetSourceSection, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        widget: gone,
+        sources,
+        datasetId: "cmv4kljx40009oczvdmpudata0",
+        isOwner: true,
+        savedPivots: [option],
+        onSave: () => Promise.resolve(true),
+        onDetach: () => Promise.resolve(null),
+        onCreated: () => {},
+      }),
+    );
+    expect(html).toContain('data-testid="widget-source-gone"');
+    expect(html).toContain("widget akan disimpan sebagai sheet langsung");
   });
 });
