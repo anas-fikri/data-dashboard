@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
   "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
 
+## [1.3.0] - 2026-10-21
+
+### Added
+
+- **pivot:** UI kelola pivot tersimpan dan pilih sumber di panel widget (T-074) (594ca78)
+- **pivot:** ikat widget ke pivot tersimpan dengan query aman D6 dan invalidasi cache (T-073) (61111df)
+- **pivot:** model SavedPivot, CRUD pemilik dengan CAS, IN_USE, dan remap versi (T-072) (f1bd517)
+
+### Fixed
+
+- **dashboards:** cegah urungkan bawaan peramban mengosongkan judul widget (T-ev34) (ee2a976)
+- **pivot:** perbaikan review T-074 (urungkan hapus widget terikat, sumber hilang, flush sebelum lepas, konfirmasi muat ulang) (c7bb4f1)
+- **pivot:** perbaikan review keamanan T-073 (kunci ekspor, body PATCH tertutup, pesan viewer, tanpa remap riwayat) (5f3cb82)
+- **pivot:** rate limit aksi pivot tersimpan, sheet hilang → NOT_FOUND, catatan rollback image (T-072) (eb70260)
+- **render:** petunjuk perbesar kartu saat pivot bertingkat cetak tanpa baris data (T-7ykh) (62dfa2b)
+- **widgets:** leading-tight angka KPI tidak lagi dibuang tailwind-merge (T-w764) (21e6bd7)
+- **widgets:** tabel terikat tetap tampil saat total berjalan bertemu Top N baris terdalam (T-hbcp) (3f0008e)
+
 ## [1.2.0] - 2026-10-21
 
 ### Added
