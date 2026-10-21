@@ -6,6 +6,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-21
+
+### Added
+
+- **ops:** tampilkan versi aplikasi dan tag image dengan versi (T-066) (60920fa)
+- **pivot:** tampilkan nilai sebagai pada pivot dan grafik (T-067) (f9bd2d5)
+
+### Fixed
+
+- **pivot:** petunjuk dan pilihan Tampilkan sebagai sesuai agregasi dan pemisah (T-067) (20985af)
+
 ## [1.0.0] - 2026-10-21
 
 ### Added
