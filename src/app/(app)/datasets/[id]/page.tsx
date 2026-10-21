@@ -1,4 +1,4 @@
-import { IconCalendarStats } from "@tabler/icons-react";
+import { IconCalendarStats, IconPlus } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DatasetActivityProvider } from "@/components/datasets/dataset-activity";
@@ -7,6 +7,7 @@ import { DatasetForm } from "@/components/datasets/dataset-form";
 import { DeleteDataset } from "@/components/datasets/delete-dataset";
 import { PeriodList } from "@/components/datasets/period-list";
 import { PeriodCapacityNotice } from "@/components/datasets/period-usage";
+import { SavedPivotList } from "@/components/saved-pivots/saved-pivot-list";
 import { StatusBadge } from "@/components/datasets/status-badge";
 import { UploadPanel } from "@/components/datasets/upload-panel";
 import { VersionHistory } from "@/components/datasets/version-history";
@@ -17,11 +18,13 @@ import { FocusNotice } from "@/components/ui/focus-notice";
 import { GuideHelp } from "@/components/guides/guide-help";
 import { PageHeader } from "@/components/ui/page-header";
 import { requireUser } from "@/features/auth/session";
+import { getDatasetSources } from "@/features/dashboards/service";
 import { datasetShareImpact, getDataset } from "@/features/datasets/service";
 import { GRAIN_LABEL } from "@/features/ingest/period-setup-plan";
 import { prismaSchemaRepo } from "@/features/schema/runtime";
 import type { IngestStatus } from "@/features/schema/service";
 import { getUploadQueue } from "@/features/uploads/queue";
+import { listSavedPivots } from "@/features/saved-pivots/service";
 import { getPendingUpload } from "@/features/uploads/service";
 import { mappingJobId } from "@/features/versions/mapping";
 import { periodOverview } from "@/features/versions/period-manage";
@@ -39,6 +42,8 @@ type Search = Promise<{
   cancelled?: string;
   /** "Unggah ulang" di kartu Periode (T-056): awal periode yang diisikan ke panel unggah. */
   unggah?: string;
+  /** Kembali dari editor pivot tersimpan (T-074): "dibuat" / "diubah". */
+  pivot?: string;
 }>;
 
 export async function generateMetadata({ params }: { params: Params }) {
@@ -73,7 +78,7 @@ export default async function DatasetDetailPage({
   const busy = activationBusy(badge);
   // Riwayat versi terpisah dari ringkasan agar daftar dataset tetap ringan.
   const awaiting = badge?.kind === "awaiting_mapping";
-  const [pending, versions, mappingJob, shareImpact, periodUpload, periods, queue] =
+  const [pending, versions, mappingJob, shareImpact, periodUpload, periods, queue, pivots, sheets] =
     await Promise.all([
       processing ? null : getPendingUpload(user.id, dataset.id),
       listVersions(user.id, dataset.id),
@@ -87,7 +92,11 @@ export default async function DatasetDetailPage({
       active?.periodGrain ? periodOverview(user.id, dataset.id) : null,
       // Antrean unggah banyak file (T-059): berjalan, atau ringkasan terakhir yang belum ditutup.
       getUploadQueue(user.id, dataset.id),
+      // Pivot tersimpan (T-074): daftar + nama sheet versi aktif untuk kolom Sheet.
+      active ? listSavedPivots(user.id, dataset.id) : null,
+      active ? getDatasetSources(user.id, dataset.id) : [],
     ]);
+  const sheetNames = Object.fromEntries(sheets.map((s) => [s.id, s.name]));
   // "Unggah ulang" hanya untuk periode yang memang ada di data aktif (selain itu diabaikan).
   const reuploadRow =
     typeof search.unggah === "string"
@@ -255,6 +264,47 @@ export default async function DatasetDetailPage({
                 <Link href={`/datasets/${dataset.id}/periode`} data-testid="period-link">
                   <IconCalendarStats aria-hidden />
                   {active.periodGrain ? "Pengaturan periode" : "Atur periode"}
+                </Link>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {active ? (
+          <Card id="pivot-tersimpan" className="scroll-mt-20" data-testid="saved-pivot-card">
+            <CardHeader>
+              <CardTitle>Pivot tersimpan</CardTitle>
+              <CardDescription>
+                Definisi pivot yang dipakai bersama widget di dashboard dataset ini: ubah sekali,
+                semua widget yang memakainya ikut berubah.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              {search.pivot === "dibuat" || search.pivot === "diubah" ? (
+                <div data-testid="saved-pivot-done">
+                  <FocusNotice>
+                    {search.pivot === "dibuat"
+                      ? "Pivot tersimpan dibuat. Pilih sebagai sumber di panel widget dashboard."
+                      : "Perubahan pivot tersimpan disimpan dan berlaku di semua widget yang memakainya."}
+                  </FocusNotice>
+                </div>
+              ) : null}
+              <SavedPivotList
+                datasetId={dataset.id}
+                pivots={pivots?.ok ? pivots.data : []}
+                sheetNames={sheetNames}
+              />
+              <Button
+                asChild
+                variant="outline"
+                className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
+              >
+                <Link
+                  href={`/datasets/${dataset.id}/pivot-tersimpan/baru`}
+                  data-testid="saved-pivot-new"
+                >
+                  <IconPlus aria-hidden />
+                  Buat pivot tersimpan
                 </Link>
               </Button>
             </CardContent>

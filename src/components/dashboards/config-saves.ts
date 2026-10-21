@@ -9,7 +9,12 @@ import type { WidgetView } from "@/features/dashboards/service";
  *   widgetnya dihapus.
  * Murni (tanpa React) agar bisa diuji; editor memegang satu instans selama halaman terbuka.
  */
-export type ConfigSave = { type: string; spec: unknown };
+export type ConfigSave = {
+  type: string;
+  spec: unknown;
+  /** Widget terikat pivot tersimpan (T-074): `spec` = tampilan saja. Tanpa = widget mandiri. */
+  savedPivotId?: string;
+};
 
 export function createConfigSaves() {
   const sending = new Map<string, ConfigSave>();
@@ -45,8 +50,34 @@ export function createConfigSaves() {
   };
 }
 
-/** Widget untuk form panel: spec yang belum tersimpan menggantikan spec kartu (yang dikirim = dipilih). */
-export const withUnsaved = (w: WidgetView, save: ConfigSave | undefined): WidgetView =>
-  save
-    ? { ...w, type: save.type, spec: save.spec, retargeted: undefined, sourceError: undefined }
-    : w;
+/**
+ * Widget untuk form panel: spec yang belum tersimpan menggantikan spec kartu (yang dikirim = dipilih).
+ * Simpanan terikat (T-074) menggantikan sumber (jenis + tampilan) dan membiarkan spec efektif kartu;
+ * simpanan mandiri melepas sumber dari tampilan panel.
+ */
+export const withUnsaved = (w: WidgetView, save: ConfigSave | undefined): WidgetView => {
+  if (!save) return w;
+  if (save.savedPivotId) {
+    const same = w.source?.savedPivotId === save.savedPivotId;
+    return {
+      ...w,
+      retargeted: undefined,
+      sourceError: undefined,
+      source: {
+        savedPivotId: save.savedPivotId,
+        name: same ? w.source!.name : "",
+        revision: same ? w.source!.revision : 0,
+        type: save.type,
+        display: save.spec,
+      },
+    };
+  }
+  return {
+    ...w,
+    type: save.type,
+    spec: save.spec,
+    retargeted: undefined,
+    sourceError: undefined,
+    source: undefined,
+  };
+};

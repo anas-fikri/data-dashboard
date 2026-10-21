@@ -255,7 +255,7 @@ describe("ganti jenis membawa field terhitung (T-068 L3)", () => {
 
 describe("markup editor", () => {
   const props = {
-    dashboardId: "d",
+    scope: { dashboardId: "d" },
     sheetId: S1,
     columns: cols,
     widgetFormat: fmt,

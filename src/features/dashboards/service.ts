@@ -859,13 +859,26 @@ export async function getDashboardSources(
   dashboardId: unknown,
 ): Promise<SourceSheet[]> {
   if (!isIdShape(dashboardId)) return [];
+  return sourceSheets({
+    activeFor: { dashboards: { some: { id: dashboardId, ...canEditWhere(userId) } } },
+  });
+}
+
+/**
+ * Sumber data editor pivot tersimpan di halaman dataset (T-074): sheet versi aktif dataset milik user
+ * (pemilik saja; selain itu kosong — halamannya sendiri sudah 404).
+ */
+export async function getDatasetSources(
+  userId: string,
+  datasetId: unknown,
+): Promise<SourceSheet[]> {
+  if (!isIdShape(datasetId)) return [];
+  return sourceSheets({ activeFor: { id: datasetId, ownerId: userId } });
+}
+
+async function sourceSheets(version: Prisma.DatasetVersionWhereInput): Promise<SourceSheet[]> {
   const sheets = await prisma.sheet.findMany({
-    where: {
-      typedKey: { not: null },
-      version: {
-        activeFor: { dashboards: { some: { id: dashboardId, ...canEditWhere(userId) } } },
-      },
-    },
+    where: { typedKey: { not: null }, version },
     orderBy: { index: "asc" },
     select: { id: true, name: true, schema: true, ...PERIOD_SHEET_SELECT },
   });

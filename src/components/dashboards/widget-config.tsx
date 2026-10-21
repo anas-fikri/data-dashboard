@@ -17,6 +17,7 @@ import { CalcField } from "./calc-editor";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
 import { PivotFields } from "./pivot-config";
+import type { QueryScope } from "./query-scope";
 import { duplicateField } from "./pivot-config-model";
 import {
   CrossFilterField,
@@ -80,6 +81,7 @@ export function WidgetConfigForm({
   onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
+  const scope: QueryScope = { dashboardId };
   const [draft, setDraft] = useState<WidgetConfig>(parsed.ok ? parsed.config : EMPTY);
   // reloads: simpanan terakhir mengubah data widget (bukan hanya sakelar filter silang, yang tidak
   // memuat ulang) — teks status tidak menjanjikan "memuat data terbaru" yang tidak terjadi.
@@ -313,7 +315,7 @@ export function WidgetConfigForm({
             />
           ) : draft.type === "pivot" ? (
             <PivotFields
-              dashboardId={dashboardId}
+              scope={scope}
               spec={draft.spec}
               columns={cols}
               onChange={(spec) => commit({ type: "pivot", spec })}
@@ -383,7 +385,7 @@ export function WidgetConfigForm({
               )}
               {/* Satu instans untuk kedua keadaan: fokus kembali ke tombolnya setelah editor ditutup. */}
               <CalcField
-                dashboardId={dashboardId}
+                scope={scope}
                 sheetId={draft.spec.sheetId}
                 type={draft.type}
                 columns={cols}

@@ -20,6 +20,7 @@ import { ExportUserProvider } from "@/components/widgets/export-user";
 import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
 import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
+import { listSavedPivots } from "@/features/saved-pivots/service";
 import { recordDashboardOpen } from "@/features/sharing/service";
 import { env } from "@/lib/env";
 
@@ -68,6 +69,18 @@ export default async function DashboardPage({
   after(() => recordDashboardOpen(user.id, d.id, d.role, ip));
   // Sumber data panel konfigurasi hanya untuk mode edit (pemilik/editor; viewer sudah dialihkan).
   const sources = editing ? await getDashboardSources(user.id, d.id) : [];
+  // Pivot tersimpan dataset untuk pilihan "Sumber data" panel (T-074): pemilik/editor saja (service
+  // menolak selain itu); viewer tidak pernah sampai mode edit.
+  const saved = editing ? await listSavedPivots(user.id, d.dataset.id) : null;
+  const savedPivots = saved?.ok
+    ? saved.data.map((p) => ({
+        id: p.id,
+        name: p.name,
+        spec: p.spec,
+        revision: p.revision,
+        canEdit: p.canEdit,
+      }))
+    : [];
   // Aksi kepala: Ekspor PDF (T-018) mode lihat untuk semua peran bila ada widget; Bagikan pemilik
   // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot. Tanpa tombol
   // (mode edit), PDF yang sedang dibuat tetap dipantau dan diunduh otomatis (DashboardPdfWatch).
@@ -180,6 +193,7 @@ export default async function DashboardPage({
           editing={editing}
           datasetId={d.dataset.id}
           sources={sources}
+          savedPivots={savedPivots}
           filterColumns={d.filterColumns}
           crossFilterColumns={d.crossFilterColumns}
         />

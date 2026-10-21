@@ -36,9 +36,10 @@ import {
 import { useGridWidth } from "./use-grid-width";
 import { useIsCoarsePointer, useIsPhone, useIsTablet, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
-import { WidgetConfigForm } from "./widget-config";
 import { WidgetPanel } from "./widget-panel";
 import { WidgetPanelFrame } from "./widget-panel-frame";
+import { WidgetSourceSection } from "./widget-source";
+import type { SavedPivotOption } from "./bound-config-model";
 
 /*
  * Kanvas dashboard (T-010). ≥ 1024 px: grid 12 kolom (react-grid-layout) — mode edit menyeret lewat
@@ -122,6 +123,8 @@ type CanvasProps = {
   datasetId: string;
   /** Sheet + kolom untuk panel konfigurasi (hanya mode edit). */
   sources: SourceSheet[];
+  /** Pivot tersimpan dataset untuk "Sumber data" panel (mode edit pemilik/editor, T-074). */
+  savedPivots?: SavedPivotOption[];
   /** Filter dashboard (T-012): kolom filter dan kolom filter silang (server); status dari ?f=. */
   filterColumns: FilterColumnView[];
   crossFilterColumns: string[];
@@ -161,6 +164,8 @@ function Canvas(props: CanvasProps) {
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [announce, setAnnounce] = useState("");
+  // Pivot tersimpan yang bisa dipilih panel; "Simpan sebagai pivot tersimpan" menambahkannya di sini.
+  const [savedPivots, setSavedPivots] = useState(props.savedPivots ?? []);
   /** Selektor yang difokus setelah commit berikutnya (elemen pertama yang ada menang). */
   const focusTo = useRef<string[] | null>(null);
   /** Widget yang digulir ke dalam pandangan setelah commit berikutnya (panel dibuka / digeser). */
@@ -429,15 +434,27 @@ function Canvas(props: CanvasProps) {
                     }}
                     onDelete={() => void remove(panelItem.i)}
                   >
-                    <WidgetConfigForm
+                    <WidgetSourceSection
                       dashboardId={dashboardId}
                       // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
                       // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
                       widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
                       saveError={ed.configError(panelItem.i)}
                       sources={props.sources}
-                      datasetId={isOwner ? props.datasetId : null}
-                      onSave={(type, spec) => ed.configureWidget(panelItem.i, type, spec)}
+                      datasetId={props.datasetId}
+                      isOwner={isOwner}
+                      savedPivots={savedPivots}
+                      onSave={(type, spec, savedPivotId) =>
+                        ed.configureWidget(panelItem.i, type, spec, savedPivotId)
+                      }
+                      onDetach={() => ed.detachWidget(panelItem.i)}
+                      onCreated={(p) =>
+                        setSavedPivots((list) =>
+                          [...list.filter((x) => x.id !== p.id), p].sort((a, b) =>
+                            a.name.localeCompare(b.name, "id"),
+                          ),
+                        )
+                      }
                     />
                   </WidgetPanel>
                 </WidgetPanelFrame>

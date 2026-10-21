@@ -399,7 +399,14 @@ export function useDashboardEditor(o: {
         saves.finish(widgetId, c, null);
         return true;
       }
-      const r = await api.configureWidget(id, widgetId, c.type, c.spec, versionOf(widgetId));
+      const r = await api.configureWidget(
+        id,
+        widgetId,
+        c.type,
+        c.spec,
+        versionOf(widgetId),
+        c.savedPivotId,
+      );
       // Gagal biasa: diingat untuk dikirim ulang; alasannya juga untuk baris status panel (di layar
       // < 1280 px pesan kanvas tertutup panel). Pengaturan tidak valid: alasan tetap tampil, tidak dikirim
       // ulang, tidak menahan "Selesai". STALE / akses berubah / sudah dihapus di tempat lain (freezeOf):
@@ -434,14 +441,50 @@ export function useDashboardEditor(o: {
     [id, saves, failed, setWidgets, settled, commitLayout, versionOf],
   );
 
-  /** Atur jenis + isi widget (T-011). Tercatat "dikirim" sejak masuk antrean (panel yang dibuka ulang). */
+  /**
+   * Atur jenis + isi widget (T-011). Tercatat "dikirim" sejak masuk antrean (panel yang dibuka ulang).
+   * `savedPivotId` (T-074): widget terikat pivot tersimpan, `spec` = tampilan.
+   */
   const configureWidget = useCallback(
-    (widgetId: string, type: string, spec: unknown) => {
-      const c = { type, spec };
+    (widgetId: string, type: string, spec: unknown, savedPivotId?: string) => {
+      const c = savedPivotId ? { type, spec, savedPivotId } : { type, spec };
       saves.start(widgetId, c);
       return run(() => sendConfig(widgetId, c));
     },
     [run, saves, sendConfig],
+  );
+
+  /**
+   * Lepas widget dari pivot tersimpan (T-074) — hanya lewat aksi eksplisit di panel. Masuk antrean
+   * setelah simpanan panel yang tertunda; hasil = spec mandiri baru (atau null bila gagal; pesannya di
+   * bilah kanvas). `filtersDropped`: Saring pivot tersimpan tidak ikut ke grafik/KPI mandiri.
+   */
+  const detachWidget = useCallback(
+    (widgetId: string) =>
+      run(async () => {
+        if (stale.current) return null;
+        const r = await api.detachWidget(id, widgetId, versionOf(widgetId));
+        if (!r.ok) {
+          failed(r);
+          return null;
+        }
+        saves.forget(widgetId);
+        setConfigErrors(saves.errors());
+        setWidgets(
+          patchWidget(widgetsNow.current, widgetId, {
+            type: r.data.type,
+            spec: r.data.spec,
+            version: r.data.version,
+            retargeted: undefined,
+            source: undefined,
+            sourceError: undefined,
+          }),
+        );
+        settled();
+        setNotice(null);
+        return { filtersDropped: r.data.filtersDropped === true };
+      }),
+    [id, run, failed, saves, setWidgets, settled, versionOf],
   );
 
   /** Simpan semua yang belum tersimpan ("Coba lagi", "Selesai"): pengaturan widget yang gagal dulu. */
@@ -529,6 +572,7 @@ export function useDashboardEditor(o: {
     removeWidget,
     renameWidget,
     configureWidget,
+    detachWidget,
     /** Spec widget yang sedang dikirim atau gagal: panel yang dibuka ulang mulai dari sini. */
     unsavedConfig: saves.unsaved,
     configError: (widgetId: string) => configErrors[widgetId],

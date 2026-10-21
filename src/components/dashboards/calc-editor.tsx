@@ -36,6 +36,7 @@ import {
   type CalcWidgetType,
 } from "./calc-editor-model";
 import { Choice, ColumnChoice, FORMAT_OPTIONS } from "./config-fields";
+import { scopeKey, scopeOf, type QueryScope } from "./query-scope";
 import { aggChoiceOf, type SourceColumn } from "./widget-config-model";
 
 /*
@@ -45,14 +46,16 @@ import { aggChoiceOf, type SourceColumn } from "./widget-config-model";
  * Keyboard: Tab ke daftar token, panah kiri/kanan memilih token, Backspace/Delete menghapusnya; tombol
  * penyusun memakai Enter/Spasi. Galat tampil di bawah rumus, terhubung ke token yang salah
  * (aria-describedby) dan diumumkan (aria-live) sebelum simpan. Pratinjau: teks rumus + nilai contoh
- * total keseluruhan (query editor { dashboardId, spec }, D6 tidak berubah).
+ * total keseluruhan (query editor { dashboardId, spec } atau, di editor pivot tersimpan, query pemilik
+ * { datasetId, spec } — D6 tidak berubah).
  */
 const TOUCH = "h-(--control-h-lg) md:h-(--control-h)";
 const OPS: CalcBinOp[] = ["add", "sub", "mul", "div"];
 const PREVIEW_DELAY_MS = 400;
 
 type Props = {
-  dashboardId: string;
+  /** Lingkup query pratinjau (dashboard atau dataset, T-074). */
+  scope: QueryScope;
   sheetId: string;
   type: CalcWidgetType;
   columns: SourceColumn[];
@@ -208,7 +211,7 @@ export function CalcField({
 
 /** Penyusun rumus. `value` kosong = field baru. */
 export function CalcEditor({
-  dashboardId,
+  scope,
   sheetId,
   type,
   columns,
@@ -258,7 +261,7 @@ export function CalcEditor({
     : tokens.map((t) => tokenText(t, leafName)).join(" ");
   // Nama field tidak ikut kunci pratinjau: mengetik nama tidak menembak query baru.
   const preview = useCalcPreview(
-    dashboardId,
+    scope,
     !formulaError && parsed.ok
       ? calcPreviewSpec(sheetId, { label: "Pratinjau", expr: parsed.expr }, columns)
       : null,
@@ -634,11 +637,12 @@ type Preview =
 
 /**
  * Nilai contoh rumus atas seluruh data sheet (satu agregat, murah), lewat query editor
- * { dashboardId, spec } — server memvalidasi rumus (resolveCalc) dan jawabannya menjadi penentu:
+ * { dashboardId, spec } / { datasetId, spec } — server memvalidasi rumus (resolveCalc) dan jawabannya menjadi penentu:
  * INVALID menonaktifkan Simpan. Ditunda sebentar agar tidak menembak per token.
  */
-function useCalcPreview(dashboardId: string, spec: object | null): Preview {
+function useCalcPreview(scope: QueryScope, spec: object | null): Preview {
   const key = spec ? JSON.stringify(spec) : "";
+  const where = scopeKey(scope);
   const [res, setRes] = useState<{ key: string; preview: Preview }>({
     key: "",
     preview: { status: "idle" },
@@ -650,7 +654,7 @@ function useCalcPreview(dashboardId: string, spec: object | null): Preview {
       fetch("/api/query", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ dashboardId, spec: JSON.parse(key) }),
+        body: JSON.stringify({ ...scopeOf(where), spec: JSON.parse(key) }),
         signal: ctl.signal,
       })
         .then((r) => r.json().catch(() => null))
@@ -687,7 +691,7 @@ function useCalcPreview(dashboardId: string, spec: object | null): Preview {
       clearTimeout(timer);
       ctl.abort();
     };
-  }, [dashboardId, key]);
+  }, [where, key]);
   if (!key) return { status: "idle" };
   return res.key === key ? res.preview : { status: "loading" };
 }

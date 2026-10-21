@@ -82,10 +82,25 @@ export const api = {
     call<{ filterColumns: FilterColumnView[] }>(`${base(id)}/filter-columns`, "PATCH", {
       filterColumns,
     }),
-  configureWidget: (id: string, widgetId: string, type: string, spec: unknown, version?: string) =>
+  /** `savedPivotId` (T-074): ikat ke pivot tersimpan — `spec` = tampilan saja. */
+  configureWidget: (
+    id: string,
+    widgetId: string,
+    type: string,
+    spec: unknown,
+    version?: string,
+    savedPivotId?: string,
+  ) =>
     call<{ type: string; spec: unknown; version: string; source?: WidgetView["source"] }>(
       `${base(id)}/widgets/${widgetId}`,
       "PATCH",
-      { type, spec, version },
+      savedPivotId ? { type, spec, version, savedPivotId } : { type, spec, version },
+    ),
+  /** Lepas dari pivot tersimpan (T-073/T-074): spec efektif disalin menjadi widget mandiri. */
+  detachWidget: (id: string, widgetId: string, version?: string) =>
+    call<{ type: string; spec: unknown; version: string; filtersDropped?: true }>(
+      `${base(id)}/widgets/${widgetId}`,
+      "PATCH",
+      { detach: true, version },
     ),
 };

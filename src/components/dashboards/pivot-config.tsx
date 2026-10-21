@@ -21,6 +21,7 @@ import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
 import { PivotSavedFilters } from "./pivot-saved-filters";
+import type { QueryScope } from "./query-scope";
 import {
   DUPLICATE_TEXT,
   canAddRow,
@@ -51,12 +52,13 @@ const ROW_LABEL = ["Satu baris per", "Dirinci per", "Lalu dirinci per"];
 const COUNT = { style: "number", decimals: 0 } as const;
 
 export function PivotFields({
-  dashboardId,
+  scope,
   spec,
   columns,
   onChange,
 }: {
-  dashboardId: string;
+  /** Lingkup query pratinjau (dashboard di panel widget, dataset di editor pivot tersimpan). */
+  scope: QueryScope;
   spec: PivotSpec;
   columns: SourceColumn[];
   onChange: (spec: PivotSpec) => void;
@@ -222,7 +224,7 @@ export function PivotFields({
             </div>
             {isCalcValue(m) ? (
               <CalcField
-                dashboardId={dashboardId}
+                scope={scope}
                 sheetId={spec.sheetId}
                 type="pivot"
                 columns={columns}
@@ -266,7 +268,7 @@ export function PivotFields({
               Tambah nilai
             </AddButton>
             <CalcField
-              dashboardId={dashboardId}
+              scope={scope}
               sheetId={spec.sheetId}
               type="pivot"
               columns={columns}
@@ -282,7 +284,7 @@ export function PivotFields({
       </fieldset>
 
       <PivotSavedFilters
-        dashboardId={dashboardId}
+        scope={scope}
         spec={spec}
         columns={columns}
         onChange={(filters) => onChange(filters ? { ...spec, filters } : withoutFilters)}

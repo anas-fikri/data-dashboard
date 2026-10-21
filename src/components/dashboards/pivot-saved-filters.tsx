@@ -13,6 +13,7 @@ import {
 import { searchOptions } from "@/lib/search";
 import { ColumnChoice } from "./config-fields";
 import { AddButton, RemoveButton } from "./pivot-config-fields";
+import { scopeKey, scopeOf, type QueryScope } from "./query-scope";
 import type { SourceColumn } from "./widget-config-model";
 
 /*
@@ -20,18 +21,18 @@ import type { SourceColumn } from "./widget-config-model";
  * kolom dengan nilai yang dihitung (centang + cari; "Pilih semua" lalu lepas = semua kecuali). Pivot
  * hanya menghitung baris yang cocok semua saringan; tersimpan di pengaturan widget (pembaca melihatnya
  * di catatan bawah tabel). Nilai dari data sheet ini lewat query editor (/api/query { dashboardId,
- * spec }, maks. 500, dicari di browser). Kolom tanpa nilai tercentang hanya draf di panel (spec butuh
+ * spec } atau, di editor pivot tersimpan, { datasetId, spec }, maks. 500, dicari di browser). Kolom tanpa nilai tercentang hanya draf di panel (spec butuh
  * ≥ 1 nilai), jadi pivot tidak berubah sampai ada nilai yang dipilih.
  */
 type Loaded = { values: FilterValue[]; truncated: boolean };
 
 export function PivotSavedFilters({
-  dashboardId,
+  scope,
   spec,
   columns,
   onChange,
 }: {
-  dashboardId: string;
+  scope: QueryScope;
   spec: PivotSpec;
   columns: SourceColumn[];
   onChange: (filters: PivotSavedFilter[] | undefined) => void;
@@ -58,7 +59,7 @@ export function PivotSavedFilters({
         <SavedFilterRow
           key={col}
           index={i}
-          dashboardId={dashboardId}
+          scope={scope}
           sheetId={spec.sheetId}
           column={col}
           filter={saved.find((f) => f.column === col)}
@@ -99,7 +100,7 @@ export function PivotSavedFilters({
 
 function SavedFilterRow({
   index,
-  dashboardId,
+  scope,
   sheetId,
   column,
   filter,
@@ -109,7 +110,7 @@ function SavedFilterRow({
   onRemove,
 }: {
   index: number;
-  dashboardId: string;
+  scope: QueryScope;
   sheetId: string;
   column: number;
   filter: PivotSavedFilter | undefined;
@@ -121,7 +122,7 @@ function SavedFilterRow({
   const col = columns.find((c) => c.pos === column);
   const [query, setQuery] = useState("");
   const [allMode, setAllMode] = useState(false);
-  const loaded = useColumnValues(dashboardId, sheetId, col?.name);
+  const loaded = useColumnValues(scope, sheetId, col?.name);
   const all = loaded.data?.values ?? [];
   const q = query.trim();
   const type = col?.type ?? "text";
@@ -186,9 +187,9 @@ function SavedFilterRow({
 }
 
 /** Nilai unik satu kolom sheet untuk editor (query pratinjau dashboard), urut naik. */
-function useColumnValues(dashboardId: string, sheetId: string, column: string | undefined) {
+function useColumnValues(scope: QueryScope, sheetId: string, column: string | undefined) {
   const [attempt, setAttempt] = useState(0);
-  const key = column ? JSON.stringify([dashboardId, sheetId, column, attempt]) : "";
+  const key = column ? JSON.stringify([scopeKey(scope), sheetId, column, attempt]) : "";
   const [res, setRes] = useState<{ key: string; data: Loaded | null; error: string | null }>({
     key: "",
     data: null,
@@ -208,7 +209,7 @@ function useColumnValues(dashboardId: string, sheetId: string, column: string | 
     fetch("/api/query", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ dashboardId: d, spec }),
+      body: JSON.stringify({ ...scopeOf(d), spec }),
       signal: ctl.signal,
     })
       .then((r) => r.json().catch(() => null))

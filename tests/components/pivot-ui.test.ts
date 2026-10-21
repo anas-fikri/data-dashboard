@@ -500,7 +500,7 @@ describe("T-071: Top N per kelompok + (Lainnya) di panel, tabel, dan PDF", () =>
     // Draf panel (belum tersimpan) tetap tampil dengan pesan di field-nya.
     const html = renderToStaticMarkup(
       createElement(PivotFields, {
-        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        scope: { dashboardId: "cmv4kljx40009oczvdmpudash0" },
         spec: s,
         columns: cols,
         onChange: () => {},

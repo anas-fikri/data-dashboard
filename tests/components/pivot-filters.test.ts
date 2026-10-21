@@ -289,7 +289,7 @@ describe("panel Saring (pengaturan pivot)", () => {
   const render = (spec: PivotSpec) =>
     renderToStaticMarkup(
       createElement(PivotFields, {
-        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        scope: { dashboardId: "cmv4kljx40009oczvdmpudash0" },
         spec,
         columns,
         onChange: () => {},

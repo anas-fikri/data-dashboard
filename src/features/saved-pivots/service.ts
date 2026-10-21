@@ -63,8 +63,11 @@ export interface SavedPivotView {
   revision: number;
   /** Pemilik dataset (boleh mengubah); editor dashboard hanya membaca. */
   canEdit: boolean;
-  /** Pemakaian (pemilik saja; null untuk editor): widget dan dashboard yang merujuknya. */
-  usage: { widgets: number; dashboards: number } | null;
+  /**
+   * Pemakaian (pemilik saja; null untuk editor): widget dan dashboard yang merujuknya, plus dashboard
+   * itu sendiri (urut nama) untuk tooltip hapus dan konfirmasi ubah (T-074).
+   */
+  usage: { widgets: number; dashboards: number; usedIn: InUseDashboard[] } | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -183,8 +186,14 @@ const VIEW_SELECT = {
   createdAt: true,
   updatedAt: true,
   dataset: { select: { ownerId: true } },
-  widgets: { select: { dashboardId: true } },
+  widgets: { select: { dashboard: { select: { id: true, name: true } } } },
 } satisfies Prisma.SavedPivotSelect;
+
+/** Dashboard unik yang memakai pivot tersimpan, urut nama (aturan sama dengan pesan IN_USE). */
+const dashboardsOf = (widgets: { dashboard: InUseDashboard }[]): InUseDashboard[] =>
+  [...new Map(widgets.map((w) => [w.dashboard.id, w.dashboard])).values()].sort(
+    (a, b) => a.name.localeCompare(b.name, "id") || a.id.localeCompare(b.id),
+  );
 
 function toView(userId: string, row: Prisma.SavedPivotGetPayload<{ select: typeof VIEW_SELECT }>) {
   const owner = row.dataset.ownerId === userId;
@@ -197,10 +206,10 @@ function toView(userId: string, row: Prisma.SavedPivotGetPayload<{ select: typeo
     revision: row.revision,
     canEdit: owner,
     usage: owner
-      ? {
-          widgets: row.widgets.length,
-          dashboards: new Set(row.widgets.map((w) => w.dashboardId)).size,
-        }
+      ? (() => {
+          const usedIn = dashboardsOf(row.widgets);
+          return { widgets: row.widgets.length, dashboards: usedIn.length, usedIn };
+        })()
       : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -433,13 +442,7 @@ export async function deleteSavedPivot(
         where: { savedPivotId: id },
         select: { dashboard: { select: { id: true, name: true } } },
       });
-      if (users.length) {
-        const byId = new Map(users.map((w) => [w.dashboard.id, w.dashboard]));
-        const dashboards = [...byId.values()].sort(
-          (a, b) => a.name.localeCompare(b.name, "id") || a.id.localeCompare(b.id),
-        );
-        return { inUse: dashboards, widgets: users.length };
-      }
+      if (users.length) return { inUse: dashboardsOf(users), widgets: users.length };
       const d = await tx.savedPivot.deleteMany({ where: { id, datasetId } });
       if (d.count !== 1) return "NOT_FOUND" as const;
       await recordAudit(tx, {
