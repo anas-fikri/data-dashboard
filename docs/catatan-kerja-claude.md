@@ -54,22 +54,16 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
-## Posisi terakhir (2026-10-20, checkpoint)
+## Posisi terakhir (2026-10-21, sesi cloud)
 
-- Task aktif: **T-040** (recast per segmen), status in_progress. Kode + perbaikan review putaran 1 sudah
-  di-commit dan di-push (commit "fix(T-040): review putaran 1 …").
-  - Bukti: `aitk check` lulus; unit ingest/schema/versions 324 lulus; e2e `recast-segments` 1/1 (log
-    worker: satu "yield" lalu "done"); `schema` 7/7, `ingest` 4/4, `mapping` 4/4, `versions` 7/7
-    (sebelum perbaikan).
-  - Review putaran 1 sudah dicatat (claude-reviewer-subagent, 3 temuan fungsional M1–M3, semuanya
-    diperbaiki bersama L1/L2/L5/L6a; rincian di Notes task).
-- **Langkah berikutnya untuk menutup T-040:**
-  1. `aitk brief`, lalu baca diff commit perbaikan review putaran 1.
-  2. Bila tidak ada temuan Critical/High/fungsional: `AITK_TOOL=claude-code aitk review pass --findings 0`.
-  3. `aitk task update T-040 --ac-done 1,2,3,4`, isi `aitk security checklist`, `aitk audit`,
-     `aitk check`, lalu `aitk close --summary "…" --knowledge "…"`.
-  4. Commit "chore(aitk): T-040 selesai", lalu push (cek 404 dulu).
-- Task lanjutan baru: **T-gcn8** (baris judul + peta kolom per segmen, hasil review L3/L4) — kerjakan
-  sebelum unggahan periode (T-052).
-- Setelah T-040: G-6 lanjut T-041…T-064, lalu T-rrn1. Produksi masih tertinggal (deploy14 + migrasi
-  T-036…T-040 belum dijalankan; perlu backup DB, `check-segments.mjs`, `quota-report.mjs`).
+- G-6 dikerjakan dari sesi Claude Code cloud (branch `claude/intelligent-albattani-fd1va8`, Node 22.23.3 —
+  Node 22.22 merusak worker thread xlsx). Selesai: T-040, T-gcn8, T-rrn1, T-041, T-042, T-044–T-047,
+  T-049–T-060, T-qqyx. Tiap task: implementasi → review subagent → perbaikan → aitk close.
+- Blocked menunggu pemilik (rinci di docs/ai/uat/T-064.md bagian D1–D6):
+  - T-043/T-048: uji NVDA/VoiceOver + /frontend-expert:audit; keputusan aria-rowcount (total+2, ADR-0007).
+  - T-023: jalankan upgrade di olympus — `deploy/upgrade.sh` + docs/runbook-deploy.md §7 (backup dulu).
+  - T-061/T-063: ukur performa dan backup di VM (scripts/perf-grid-vm.sh, scripts/perf-period-cycle-vm.sh).
+  - T-062: keputusan target lompatan (terima gulir lanjutan / row group ingest lebih kecil / anggaran).
+  - T-064: UAT pemilik (docs/ai/uat/T-064.md); jangan diterima atas nama pemilik.
+  - T-h77x: tetap dikecualikan (NAS).
+- Rekomendasi produksi 4 vCPU: GRID_MAX_CONCURRENCY=1; jangan naikkan PERIOD_SHEET_MAX_ROWS.
