@@ -34,6 +34,12 @@
       "parent": "G-1",
       "status": "planned",
       "title": "Lihat data gaya Excel (baca-saja) untuk file besar dan data per periode tanpa memotong periode (rencana 2026-10-15)"
+    },
+    {
+      "id": "G-7",
+      "parent": "G-1",
+      "status": "planned",
+      "title": "Pivot lanjutan gaya Excel: tampilkan nilai sebagai, field terhitung, pivot tersimpan sebagai sumber widget, batas longgar + Top N (rencana 2026-10-21)"
     }
   ],
   "project": {

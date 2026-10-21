@@ -12,3 +12,4 @@ Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 - ADR-0006 [accepted] Renderer PDF: dipanggil worker, jaringan render, token → cookie — ../../docs/adr/0006-renderer-pdf-dipanggil-worker-jaringan-render-token-cookie.md
 - ADR-0007 [proposed] Komponen grid "Lihat data": AG Grid Community 36.2.0 (dipin) dengan mitigasi stretching — ../../docs/adr/0007-komponen-grid-lihat-data-ag-grid-community-36-2-0-dipin-deng.md
 - ADR-0008 [accepted] Model data periode: segmen typed per periode + manifest versi, dibaca sebagai daftar parquet dengan proyeksi eksplisit — ../../docs/adr/0008-model-data-periode-segmen-typed-per-periode-dengan-manifest.md
+- ADR-0009 [proposed] Pivot tersimpan sebagai sumber widget dan field terhitung sebagai pohon ekspresi tervalidasi — ../../docs/adr/0009-pivot-tersimpan-sebagai-sumber-widget-dan-field-terhitung-se.md
