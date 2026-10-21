@@ -1,8 +1,8 @@
 ---
 id: T-075
 title: Uji e2e dan performa pivot lanjutan, ekspor PDF, dan ponsel
-status: in_progress
-profile: standard
+status: blocked
+profile: strict
 profile_pinned: true
 goal: G-7
 tags:
@@ -11,36 +11,112 @@ tags:
 depends_on:
   - T-074
 created: "2026-10-21T10:24:16Z"
-updated: "2026-10-21T20:02:46Z"
+updated: "2026-10-21T20:16:34Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: bb5381247e03ac71708efc923797f0bc0297bca6
+paths:
+  - deploy/upgrade.sh
+  - docs/runbook-deploy.md
+  - playwright.config.ts
+  - prisma/migrations/20261021170000_t072_saved_pivot/migration.sql
+  - prisma/schema.prisma
+  - scripts/dev-saved-pivot-fixture.mjs
+  - scripts/perf-pivot-advanced.ts
+  - scripts/perf.mjs
+  - src/app/(app)/dashboards/[id]/page.tsx
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/[id]/pivot-tersimpan/[pivotId]/page.tsx
+  - src/app/(app)/datasets/[id]/pivot-tersimpan/baru/page.tsx
+  - src/components/dashboards/bound-config-model.ts
+  - src/components/dashboards/bound-config.tsx
+  - src/components/dashboards/calc-editor.tsx
+  - src/components/dashboards/config-saves.ts
+  - src/components/dashboards/dashboard-api.ts
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/pivot-config.tsx
+  - src/components/dashboards/pivot-saved-filters.tsx
+  - src/components/dashboards/query-scope.ts
+  - src/components/dashboards/use-dashboard-editor.ts
+  - src/components/dashboards/widget-card.tsx
+  - src/components/dashboards/widget-config.tsx
+  - src/components/dashboards/widget-source.tsx
+  - src/components/saved-pivots/saved-pivot-editor.tsx
+  - src/components/saved-pivots/saved-pivot-list.tsx
+  - src/components/saved-pivots/saved-pivot-page.tsx
+  - src/components/ui/page-header.tsx
+  - src/features/audit/service.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/dashboards/http.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/job.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/query/runtime.ts
+  - src/features/query/service.ts
+  - src/features/query/widget.ts
+  - src/features/saved-pivots/actions.ts
+  - src/features/saved-pivots/service.ts
+  - src/features/versions/activation.ts
+  - src/features/widgets/bound.ts
+  - tests/components/bound-config.test.ts
+  - tests/components/calc-editor.test.ts
+  - tests/components/page-header.test.ts
+  - tests/components/pivot-filters.test.ts
+  - tests/components/pivot-ui.test.ts
+  - tests/components/saved-pivot-ui.test.ts
+  - tests/e2e/bound-widgets.spec.ts
+  - tests/e2e/dashboards.spec.ts
+  - tests/e2e/pivot-lanjutan.spec.ts
+  - tests/e2e/saved-pivot-widgets.spec.ts
+  - tests/features/dashboards/dashboards.test.ts
+  - tests/features/dashboards/http.test.ts
+  - tests/features/exports/bound-export.test.ts
+  - tests/features/query/__snapshots__/bound-legacy.test.ts.snap
+  - tests/features/query/bound-legacy.test.ts
+  - tests/features/query/bound-widgets.test.ts
+  - tests/features/query/sharing-repo.test.ts
+  - tests/features/saved-pivots/actions.test.ts
+  - tests/features/saved-pivots/binding.db.test.ts
+  - tests/features/saved-pivots/service.db.test.ts
+  - tests/features/versions/activation.test.ts
+  - tests/features/widgets/bound.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T20:11:53Z"
+      findings: 3
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T20:11:55Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 217130
+    duration_ms: 253371
     summary: |-
-      …asetId":"t072mvij8sxcds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792612578396,"service":"data-dashboard","host":"127.0.0.1","port":33037,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612578452,"service":"data-dashboard","host":"127.0.0.1","port":44845,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792612578555,"service":"data-dashboard","host":"127.0.0.1","port":38477,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612578687,"service":"data-dashboard","host":"127.0.0.1","port":40527,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612590954,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792612597884,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792612597907,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792612597911,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792612597922,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …asetId":"t072mvijxk3gds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792613733408,"service":"data-dashboard","host":"127.0.0.1","port":41219,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792613733459,"service":"data-dashboard","host":"127.0.0.1","port":38457,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792613733564,"service":"data-dashboard","host":"127.0.0.1","port":45867,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792613733664,"service":"data-dashboard","host":"127.0.0.1","port":35781,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792613742889,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792613750814,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792613750836,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792613750838,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792613750849,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  223 passed | 1 skipped (224)
             Tests  3010 passed | 10 skipped (3020)
-         Start at  19:54:35
-         Duration  149.03s (tests 83%, import 14%, transform 3%)
+         Start at  20:13:24
+         Duration  163.81s (tests 86%, import 11%, transform 2%)
 
-          Isolate  224 workers spawned · ~162ms startup each (spawn + environment, per file)
-                   at least ~11.97s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  224 workers spawned · ~148ms startup each (spawn + environment, per file)
+                   at least ~10.92s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,10 +124,52 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T19:57:06Z"
+    at: "2026-10-21T20:16:09Z"
     tree: d2c05f1f463ff809baa0d7a65f8ec519e9306ac33de79885654a369d916f874f
+  commits:
+    - 07b7bf2
+    - 0a6567a
+    - 14e93e4
+    - 17cb5cc
+    - 1ad5b22
+    - 20985af
+    - 3f15210
+    - 4115c8d
+    - 460a7f3
+    - 468e913
+    - 52486eb
+    - 594ca78
+    - 5f3cb82
+    - 60920fa
+    - 61111df
+    - 693edf2
+    - 6f54377
+    - 764bbce
+    - 7ccff4c
+    - 864037d
+    - 8ce72cf
+    - a4869d3
+    - a80b5ae
+    - a821c13
+    - b5206c2
+    - bb53812
+    - c4a56e5
+    - c7bb4f1
+    - ccb8465
+    - d13f79e
+    - d23d4b2
+    - d76daf2
+    - e2c6cf1
+    - eb70260
+    - eb97953
+    - ec22d22
+    - f1bd517
+    - f9bd2d5
+  acceptance:
+    total: 4
+    done: 1
   audit:
-    at: "2026-10-21T19:57:11Z"
+    at: "2026-10-21T20:16:09Z"
     passed: true
     tree: d2c05f1f463ff809baa0d7a65f8ec519e9306ac33de79885654a369d916f874f
     results:
@@ -61,7 +179,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 528 dirs visited, 5058 inodes visited, 1 Extract calls, 255.277852ms elapsed, 255.278132ms wall time
+          End status: 528 dirs visited, 5133 inodes visited, 1 Extract calls, 271.491173ms elapsed, 271.491429ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -137,3 +255,11 @@ pada 10 jt baris); uji unit page-header; aitk check.
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada unggahan/berkas baru di aplikasi; fixture perf di folder gitignored.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: tidak ada API baru; skema body widget tetap strict (diuji e2e).
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak ada konfigurasi/header baru; setelan perf mengikuti bawaan produksi.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T20:16:09Z (253371 ms)
+- Acceptance criteria: 1/4 satisfied
+- Commits: 07b7bf2, 0a6567a, 14e93e4, 17cb5cc, 1ad5b22, 20985af, 3f15210, 4115c8d, 460a7f3, 468e913, 52486eb, 594ca78, 5f3cb82, 60920fa, 61111df, 693edf2, 6f54377, 764bbce, 7ccff4c, 864037d, 8ce72cf, a4869d3, a80b5ae, a821c13, b5206c2, bb53812, c4a56e5, c7bb4f1, ccb8465, d13f79e, d23d4b2, d76daf2, e2c6cf1, eb70260, eb97953, ec22d22, f1bd517, f9bd2d5
+- Review pass 1 by claude-reviewer-subagent: 3 findings
+- Review pass 2 by claude-code: 0 findings
