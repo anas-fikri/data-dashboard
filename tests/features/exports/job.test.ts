@@ -1,6 +1,7 @@
 import { copyFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import yauzl from "yauzl";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   removeStaleExportDirs,
@@ -318,6 +319,84 @@ describe("runExportJob", () => {
       expect(Number(lines[1]![3])).toBeCloseTo(feb! + mar!, 4);
       expect(lines[2]![0]).toBe("Total");
       expect(Number(lines[2]![3])).toBeCloseTo(feb! + mar!, 4);
+    });
+  });
+
+  describe("T-067: Tampilkan nilai sebagai", () => {
+    // Fixture: Cabang × bulan, % dari total kolom; batang % dari total keseluruhan.
+    const cells = new Map<string, number[]>();
+    const perMonth = [0, 0, 0];
+    let all = 0;
+    for (let i = 0; i < ROWS; i++) {
+      const c = cells.get(cabangOf(i)) ?? [0, 0, 0];
+      c[tanggalOf(i).getUTCMonth()]! += omzetOf(i);
+      cells.set(cabangOf(i), c);
+      perMonth[tanggalOf(i).getUTCMonth()]! += omzetOf(i);
+      all += omzetOf(i);
+    }
+    const sheetXml = (path: string) =>
+      new Promise<string>((resolve, reject) =>
+        yauzl.open(path, { lazyEntries: true }, (err, zip) => {
+          if (err || !zip) return reject(err ?? new Error("zip"));
+          zip.on("entry", (e: yauzl.Entry) => {
+            if (e.fileName !== "xl/worksheets/sheet1.xml") return zip.readEntry();
+            zip.openReadStream(e, (er, st) => {
+              if (er || !st) return reject(er ?? new Error("stream"));
+              let text = "";
+              st.on("data", (b: Buffer) => (text += b.toString("utf8")));
+              st.on("end", () => resolve(text));
+            });
+          });
+          zip.on("error", reject);
+          zip.readEntry();
+        }),
+      );
+
+    it("pivot CSV: judul menyebut cara tampil, nilai = rasio yang tampil, Total kolom = 1", async () => {
+      const t = setup({ widget: "ppct" });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done" });
+      const lines = parseCsv(
+        readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
+      );
+      expect(lines[0]![4]).toBe("% dari total kolom · Total Omzet");
+      const row = lines.find((l) => l[0] === "Cabang 2")!;
+      cells
+        .get("Cabang 2")!
+        .forEach((v, m) => expect(Number(row[m + 1])).toBeCloseTo(v / perMonth[m]!, 9));
+      const total = lines.find((l) => l[0] === "Total")!;
+      expect(total.slice(1, 4).map(Number)).toEqual([1, 1, 1]);
+    });
+
+    it("pivot XLSX: sel angka bergaya persen (numFmt 0.0%)", async () => {
+      const t = setup({ widget: "ppct", format: "XLSX" });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done" });
+      const path = t.objects.get(`exports/${OWNER}/${EXPORT_ID}.xlsx`)!;
+      const rows: RawValue[][] = [];
+      await createSaxParser().parse(
+        path,
+        { sheetNames: [WIDGETS.ppct!.title], tmpDir: root },
+        (_s, _n, v) => rows.push([...v]),
+      );
+      const row = rows.find((r) => r[0] === "Cabang 2")!;
+      expect(row[1] as number).toBeCloseTo(cells.get("Cabang 2")![0]! / perMonth[0]!, 9);
+      expect(await sheetXml(path)).toMatch(/<c r="B2" s="5"><v>0\.\d+/);
+    });
+
+    it("grafik XLSX: kolom nilai berjudul cara tampil dan bergaya persen", async () => {
+      const t = setup({ widget: "bpct", format: "XLSX" });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 3 });
+      const path = t.objects.get(`exports/${OWNER}/${EXPORT_ID}.xlsx`)!;
+      const rows: RawValue[][] = [];
+      await createSaxParser().parse(
+        path,
+        { sheetNames: [WIDGETS.bpct!.title], tmpDir: root },
+        (_s, _n, v) => rows.push([...v]),
+      );
+      expect(rows[0]).toEqual(["Cabang", "% dari total keseluruhan · Total Omzet"]);
+      const c0 = [...cells.get("Cabang 0")!].reduce((a, b) => a + b, 0);
+      expect(rows[1]![0]).toBe("Cabang 0");
+      expect(rows[1]![1] as number).toBeCloseTo(c0 / all, 9);
+      expect(await sheetXml(path)).toMatch(/<c r="B2" s="5">/);
     });
   });
 

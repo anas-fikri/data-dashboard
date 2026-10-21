@@ -12,10 +12,13 @@ import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
+import { SHOW_AS_LABEL, isAxisShowAs } from "@/features/widgets/show-as";
 import {
+  SHOW_AS_FOR,
   TABLE_COLUMNS_MAX,
   TOP_N_MAX,
   type ChartType,
+  type ShowAs,
   type WidgetType,
 } from "@/features/widgets/spec";
 import { Choice, ColumnChoice } from "./config-fields";
@@ -198,20 +201,42 @@ export function TableColumns({
 }
 
 /** Agregasi + kolomnya. Pai hanya Total/Jumlah baris/Jumlah terisi (bagian dari keseluruhan). */
+type ShownMeasure = { agg: Agg; column?: number; showAs?: ShowAs };
+
+/** Ukuran berupa angka (jumlah, atau agregat kolom angka/durasi): boleh "Tampilkan nilai sebagai". */
+function numericMeasure(m: ShownMeasure, columns: SourceColumn[]): boolean {
+  if (m.agg === "count" || m.agg === "count_distinct") return true;
+  const t = columns.find((c) => c.pos === m.column)?.type;
+  return t === "integer" || t === "decimal" || t === "duration";
+}
+
 export function MeasureFields({
   type,
   columns,
   measure,
   onChange,
   label = "Nilai",
+  axis,
 }: {
   type: WidgetType;
   columns: SourceColumn[];
-  measure: { agg: Agg; column?: number };
-  onChange: (m: { agg: Agg; column?: number }) => void;
+  measure: ShownMeasure;
+  onChange: (m: ShownMeasure) => void;
   /** Label pilihan agregasi (pivot: "Hitung" di dalam kelompok "Nilai 1"). */
   label?: string;
+  /** Nama field acuan total berjalan/selisih (pivot: kolom pemisah atau baris terdalam). */
+  axis?: string;
 }) {
+  const options =
+    type === "pivot" || type === "bar" || type === "line" || type === "pie"
+      ? SHOW_AS_FOR[type]
+      : null;
+  // Cara tampil ikut ukuran baru selama masih angka; selain itu kembali ke nilai biasa.
+  const change = (next: { agg: Agg; column?: number }) => {
+    const keep = measure.showAs && numericMeasure(next, columns);
+    onChange(keep ? { ...next, showAs: measure.showAs } : next);
+  };
+  const showAs = measure.showAs ?? "none";
   return (
     <div className="grid min-w-0 grid-cols-1 gap-2">
       <Choice
@@ -219,7 +244,7 @@ export function MeasureFields({
         testId="config-agg"
         value={aggChoiceOf(measure)}
         options={aggChoiceOptions(type, columns)}
-        onChange={(choice) => onChange(measureForChoice(choice, measure, columns, type))}
+        onChange={(choice) => change(measureForChoice(choice, measure, columns, type))}
       />
       {/* Jumlah baris = semua baris (tanpa kolom); agregasi lain termasuk Jumlah terisi memakai kolom. */}
       {measure.agg !== "count" || measure.column !== undefined ? (
@@ -229,8 +254,29 @@ export function MeasureFields({
           value={measure.column}
           columns={columnsForAgg(measure.agg, columns, type)}
           invalidText={measureColumnText(measure, columns, type)}
-          onChange={(column) => onChange({ ...measure, column })}
+          onChange={(column) => change({ agg: measure.agg, column })}
         />
+      ) : null}
+      {options && (numericMeasure(measure, columns) || showAs !== "none") ? (
+        <>
+          <Choice
+            label="Tampilkan sebagai"
+            testId="config-show-as"
+            value={showAs}
+            options={options.map((v) => ({ value: v, label: SHOW_AS_LABEL[v] }))}
+            onChange={(v) => {
+              const { showAs: _, ...rest } = measure;
+              onChange(v === "none" ? rest : { ...rest, showAs: v });
+            }}
+          />
+          {showAs !== "none" ? (
+            <p className="text-xs text-muted-foreground" data-testid="config-show-as-hint">
+              {isAxisShowAs(showAs)
+                ? `Dihitung urut ${axis ?? "label"} naik, termasuk item yang tidak tampil${type === "pivot" ? "; sel total dan subtotal dikosongkan" : ""}.`
+                : "Dibagi total seluruh data yang lolos filter, termasuk yang tidak tampil."}
+            </p>
+          ) : null}
+        </>
       ) : null}
       {type === "pie" ? (
         <p className="text-xs text-muted-foreground">

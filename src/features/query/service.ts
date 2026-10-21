@@ -1004,6 +1004,11 @@ async function widgetResult(
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
+  // "Tampilkan nilai sebagai" (T-067) tidak ada di QuerySpec: masuk kunci hanya bila dipakai, jadi
+  // kunci widget lama tidak berubah.
+  const show = planned.plan.measures.some((m) => m.showAs && m.showAs !== "none")
+    ? { show: planned.plan.measures.map((m) => m.showAs ?? "none") }
+    : {};
   // Pemangkasan segmen (T-058): hanya segmen yang beririsan dengan filter dashboard yang disewa.
   const source = widgetSource(resolved);
   if (planned.kind === "pivot" && planned.pivot.list !== undefined) {
@@ -1028,7 +1033,7 @@ async function widgetResult(
         userId,
         resultKey({
           ...keyParts,
-          spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey },
+          spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey, ...show },
         }),
         source,
         { ...planned.plan, dash: dash.clauses },
@@ -1046,7 +1051,7 @@ async function widgetResult(
         resultKey({
           ...keyParts,
           spec: planned.plan.totals
-            ? { chart: planned.spec, dash: dashKey }
+            ? { chart: planned.spec, dash: dashKey, ...show }
             : { ...planned.spec, dash: dashKey },
         }),
         source,

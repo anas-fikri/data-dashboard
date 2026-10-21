@@ -7,6 +7,7 @@
 import type { PivotFieldRole } from "@/features/query/filters";
 import type { PivotCell, PivotData } from "@/features/query/pivot";
 import { AUTO_FORMAT, formatCell, formatNumber, type ValueType } from "./format";
+import type { ShowAs } from "./spec";
 
 /** Nilai mentah sebuah label + field-nya (filter silang dari label, T-f4a7). */
 export interface PivotPick {
@@ -47,8 +48,17 @@ export interface PivotTableModel {
   fields: PivotField[];
   /** Baris header pertama bila ada pemisah kolom; null bila tanpa pemisah. */
   columnHeads: PivotHeadCell[] | null;
-  /** Header kolom data terdalam (label nilai, atau label periode bila hanya satu nilai). */
-  valueHeads: { label: string; type: ValueType; total: boolean; pick?: PivotPick }[];
+  /**
+   * Header kolom data terdalam (label nilai, atau label periode bila hanya satu nilai); `showAs`
+   * nilai itu (T-067) menentukan format sel (persen 1 desimal).
+   */
+  valueHeads: {
+    label: string;
+    type: ValueType;
+    total: boolean;
+    pick?: PivotPick;
+    showAs?: ShowAs;
+  }[];
   rows: PivotBodyRow[];
   total: PivotBodyRow | null;
   /** "Menampilkan 200 dari 1.000 baris …" bila ada yang tidak tampil; null bila semua tampil. */
@@ -58,6 +68,8 @@ export interface PivotTableModel {
 }
 
 const count = (n: number) => formatNumber(n, { style: "number", decimals: 0 });
+/** Cara tampil nilai ikut ke header kolom datanya (nilai biasa: tanpa field). */
+const as = (v: { showAs?: ShowAs }) => (v.showAs ? { showAs: v.showAs } : {});
 const label = (v: unknown, f: { type: ValueType; grain?: string }) =>
   formatCell(v, f.type, AUTO_FORMAT, f.grain);
 /** Nilai saringan yang disebut di catatan; sisanya "+N lainnya". */
@@ -85,13 +97,19 @@ export function pivotTable(p: PivotData): PivotTableModel {
   let columnHeads: PivotHeadCell[] | null = null;
   let valueHeads: PivotTableModel["valueHeads"];
   if (!split) {
-    valueHeads = p.values.map((v) => ({ label: v.label, type: v.type, total: false }));
+    valueHeads = p.values.map((v) => ({ label: v.label, type: v.type, total: false, ...as(v) }));
   } else if (nv === 1) {
     // Satu nilai: header langsung periode, kolom kanan = nama nilai (mis. "Total No.").
     const v = p.values[0]!;
     valueHeads = [
-      ...colLabels.map((l, i) => ({ label: l, type: v.type, total: false, pick: colPick(i) })),
-      ...(withTotal ? [{ label: v.label, type: v.type, total: true }] : []),
+      ...colLabels.map((l, i) => ({
+        label: l,
+        type: v.type,
+        total: false,
+        pick: colPick(i),
+        ...as(v),
+      })),
+      ...(withTotal ? [{ label: v.label, type: v.type, total: true, ...as(v) }] : []),
     ];
   } else {
     columnHeads = [
@@ -103,6 +121,7 @@ export function pivotTable(p: PivotData): PivotTableModel {
         label: v.label,
         type: v.type,
         total: withTotal && i === all.length - 1,
+        ...as(v),
       })),
     );
   }

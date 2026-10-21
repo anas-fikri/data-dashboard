@@ -15,6 +15,8 @@ import { buildPivotSql, pivotOutTypes, shapePivot } from "@/features/query/pivot
 import { toJson, type ResolvedWidget } from "@/features/query/service";
 import type { BuiltSql } from "@/features/query/sql";
 import { columnNames, pivotTable, type PivotTableModel } from "@/features/widgets/pivot-table";
+import { isPercentShowAs } from "@/features/widgets/show-as";
+import type { ShowAs } from "@/features/widgets/spec";
 import { csvHeader, neutraliseCsv, quoteCsv } from "./csv";
 import { writeXlsx, type XlsxColumn, type XlsxKind } from "./xlsx";
 
@@ -24,12 +26,14 @@ export interface PivotGrid {
   rows: unknown[][];
 }
 
-const kindOf = (type: string): XlsxKind =>
-  type === "duration" || type === "date" || type === "timestamp"
-    ? type
-    : type === "integer" || type === "decimal"
-      ? "number"
-      : "text";
+const kindOf = (type: string, showAs?: ShowAs): XlsxKind =>
+  isPercentShowAs(showAs)
+    ? "percent"
+    : type === "duration" || type === "date" || type === "timestamp"
+      ? type
+      : type === "integer" || type === "decimal"
+        ? "number"
+        : "text";
 
 /** Nilai sel: Terkecil/Terbesar kolom tanggal (teks ISO naif dari toJson) → Date UTC untuk XLSX/CSV. */
 const cellValue = (v: unknown, kind: XlsxKind): unknown =>
@@ -43,9 +47,9 @@ export function pivotGrid(model: PivotTableModel, rowFields: readonly string[]):
   const names = columnNames(model);
   const columns: XlsxColumn[] = [
     ...rowFields.map((label) => ({ label, kind: "text" as const })),
-    ...model.valueHeads.map((h, i) => ({ label: names[i]!, kind: kindOf(h.type) })),
+    ...model.valueHeads.map((h, i) => ({ label: names[i]!, kind: kindOf(h.type, h.showAs) })),
   ];
-  const kinds = model.valueHeads.map((h) => kindOf(h.type));
+  const kinds = model.valueHeads.map((h) => kindOf(h.type, h.showAs));
   const values = (vs: unknown[]) => vs.map((v, i) => cellValue(v, kinds[i]!));
   const rows: unknown[][] = [];
   let group = "";

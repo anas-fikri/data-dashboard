@@ -13,8 +13,10 @@ import {
   columnsOf,
   sortColumnSchema,
   type ChartSort,
+  type ShowAs,
   type WidgetConfig,
 } from "@/features/widgets/spec";
+import { isPercentShowAs, showAsTitle, shown } from "@/features/widgets/show-as";
 import {
   PIVOT_FIELDS,
   dashFiltersSchema,
@@ -297,6 +299,15 @@ export function widgetPlan(
   if (unavailable) return { ok: false, code: "COLUMN_UNAVAILABLE", message: unavailable };
   const resolved = resolveSpec(spec, schema);
   if (!resolved.ok) return { ok: false, code: "INVALID", message: resolved.message };
+  const shows =
+    config.type === "pivot"
+      ? config.spec.values.map((v) => v.showAs)
+      : config.type === "kpi" || config.type === "table"
+        ? []
+        : [config.spec.measure.showAs];
+  const withShow = applyShowAs(resolved.plan, shows);
+  if (!withShow.ok) return withShow;
+  resolved.plan = withShow.plan;
   if (pivot) return { ok: true, kind: "pivot", spec, plan: resolved.plan, pivot };
   if (table) {
     return {
@@ -311,6 +322,40 @@ export function widgetPlan(
   // Grafik: sertakan jumlah kategori + total (irisan "Lainnya", "N teratas dari M").
   const totals = config.type !== "kpi";
   return { ok: true, kind: "agg", spec, plan: { ...resolved.plan, totals } };
+}
+
+/**
+ * "Tampilkan nilai sebagai" (T-067) pada rencana: ukuran membawa showAs (dibaca pembangun SQL), kolom
+ * keluarannya berjudul cara tampil ("% dari total kolom · Total Omzet") dan bertipe desimal untuk
+ * persen. Hanya untuk nilai angka: Terkecil/Terbesar kolom tanggal → INVALID. Tanpa showAs rencana
+ * tidak berubah (spec lama identik).
+ */
+function applyShowAs(
+  plan: Plan,
+  shows: (ShowAs | undefined)[],
+): { ok: true; plan: Plan } | { ok: false; code: "INVALID"; message: string } {
+  if (!shows.some(shown)) return { ok: true, plan };
+  const nd = plan.dimensions.length;
+  const measures = plan.measures.map((m, i) => (shown(shows[i]) ? { ...m, showAs: shows[i] } : m));
+  const columns = [...plan.columns];
+  for (const [i, s] of shows.entries()) {
+    if (!shown(s)) continue;
+    const c = columns[nd + i]!;
+    if (c.type === "date" || c.type === "timestamp" || c.type === "text" || c.type === "boolean") {
+      return {
+        ok: false,
+        code: "INVALID",
+        message: `"Tampilkan nilai sebagai" hanya untuk nilai angka ("${c.label}"). Pilih "Nilai biasa" atau ukuran angka.`,
+      };
+    }
+    columns[nd + i] = {
+      ...c,
+      label: showAsTitle(s, c.label),
+      type: isPercentShowAs(s) ? "decimal" : c.type,
+      showAs: s,
+    };
+  }
+  return { ok: true, plan: { ...plan, measures, columns } };
 }
 
 /**

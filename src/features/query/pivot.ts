@@ -6,7 +6,8 @@
  * termasuk baris/kolom di luar batas tampilan. Aturan kunci (teks tidak peka huruf besar/kecil, label =
  * variasi paling sering), agregasi, dan filter sama persis dengan grafik (sql.ts). Murni (tanpa I/O).
  */
-import { PIVOT_COLUMNS_SHOWN, PIVOT_ROWS_SHOWN } from "@/features/widgets/spec";
+import { PIVOT_COLUMNS_SHOWN, PIVOT_ROWS_SHOWN, type ShowAs } from "@/features/widgets/spec";
+import { isAxisShowAs, shown } from "@/features/widgets/show-as";
 import { ident } from "@/lib/duckdb";
 import {
   TEXT_COLLATE,
@@ -213,7 +214,149 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   }
   if (shape.totals) parts.push(`${select({ kind: "'grand'" }, M)} FROM src s`);
 
-  return { sql: `WITH ${ctes.join(",\n")}\n${parts.join("\nUNION ALL\n")}`, params };
+  const union = parts.join("\nUNION ALL\n");
+  if (!plan.measures.some((m) => shown(m.showAs))) {
+    // Tanpa "Tampilkan nilai sebagai": SQL lama persis (spec 1.0.0 identik).
+    return { sql: `WITH ${ctes.join(",\n")}\n${union}`, params };
+  }
+  const shownSql = showAsSql(plan, shape, { rows, col, rowJoin, colJoin, groupJoin, M });
+  return {
+    sql: `WITH ${[...ctes, ...shownSql.ctes, `u AS (${union})`].join(",\n")}\n${shownSql.select}`,
+    params,
+  };
+}
+
+/** Pembagian aman: penyebut 0/NULL → NULL ("–"), bukan galat/Infinity; hasil DOUBLE. */
+const ratio = (a: string, b: string) =>
+  `CASE WHEN ${b} IS NULL OR ${b} = 0 THEN NULL ELSE CAST(${a} AS DOUBLE) / CAST(${b} AS DOUBLE) END`;
+
+/**
+ * "Tampilkan nilai sebagai" (T-067) di atas hasil pivot biasa (`u`, kolom META + m0..): setiap ukuran
+ * diganti menurut cara tampilnya, dengan pembanding yang dihitung dari SELURUH data yang lolos filter
+ * (bukan hanya baris/kolom yang tampil), walau sakelar Total mati:
+ *  - `gt` total keseluruhan; `rt` total per baris tampil dan `st` per kelompok (lintas semua kolom);
+ *    `ct` total per kolom tampil (lintas semua baris);
+ *  - `ax` total berjalan + nilai sebelumnya (window function) sepanjang kolom pemisah, selain itu
+ *    sepanjang baris terdalam di dalam kelompok induknya, urut label naik — termasuk item yang tidak
+ *    tampil (urut nilai/potongan 200 baris tidak mengubah item "sebelumnya").
+ * Sel total/subtotal: persen dihitung; total berjalan/selisih NULL. Hanya identifier program.
+ */
+function showAsSql(
+  plan: Plan,
+  shape: PivotShape,
+  q: {
+    rows: Dim[];
+    col: Dim | undefined;
+    rowJoin: string;
+    colJoin: string;
+    groupJoin: string;
+    M: string[];
+  },
+): { ctes: string[]; select: string } {
+  const shows = plan.measures.map((m) => m.showAs ?? "none");
+  const has = (...s: ShowAs[]) => shows.some((x) => s.includes(x));
+  const m = (i: number) => ident(plan.measures[i]!.key);
+  const two = shape.rowFields === 2;
+  const sub = shape.subtotals && two;
+  const ctes: string[] = [];
+  const joins: string[] = [];
+
+  if (has("pct_grand", "pct_row", "pct_col")) {
+    ctes.push(`gt AS MATERIALIZED (SELECT ${q.M.join(", ")} FROM src s)`);
+    joins.push("CROSS JOIN gt");
+  }
+  if (q.col && has("pct_row")) {
+    ctes.push(
+      `rt AS MATERIALIZED (SELECT r.ri, ${q.M.join(", ")} FROM src s ${q.rowJoin} GROUP BY r.ri)`,
+    );
+    joins.push("LEFT JOIN rt ON u.kind = 'cell' AND rt.ri = u.ri");
+    if (sub) {
+      ctes.push(
+        `st AS MATERIALIZED (SELECT g.gi, ${q.M.join(", ")} FROM src s ${q.groupJoin} GROUP BY g.gi)`,
+      );
+      joins.push("LEFT JOIN st ON u.kind = 'sub' AND st.gi = u.gi");
+    }
+  }
+  if (q.col && has("pct_col")) {
+    ctes.push(
+      `ct AS MATERIALIZED (SELECT x.ci, ${q.M.join(", ")} FROM src s ${q.colJoin} GROUP BY x.ci)`,
+    );
+    joins.push("LEFT JOIN ct ON u.kind IN ('cell', 'sub') AND ct.ci = u.ci");
+  }
+  const axis = shows.flatMap((s, i) => (isAxisShowAs(s) ? [i] : []));
+  if (axis.length) {
+    const a = (p: string, i: number) => ident(`${p}${i}`);
+    const wins = axis.flatMap((i) => [
+      `${m(i)} AS ${a("a", i)}`,
+      `sum(${m(i)}) OVER w AS ${a("r", i)}`,
+      `lag(${m(i)}) OVER w AS ${a("p", i)}`,
+    ]);
+    const keep = axis.flatMap((i) => ["a", "r", "p"].map((p) => `w.${a(p, i)}`));
+    const raw = axis.map((i) => q.M[i]!);
+    let body: string;
+    if (q.col) {
+      // Sepanjang kolom pemisah, per baris tampil; kolom di luar 40 tampil tetap dihitung.
+      body =
+        `SELECT w.ri, x.ci, ${keep.join(", ")} FROM (SELECT ri, kc, ${wins.join(", ")} ` +
+        `FROM (SELECT r.ri, s.kc, ${raw.join(", ")} FROM src s ${q.rowJoin} GROUP BY r.ri, s.kc) ` +
+        `WINDOW w AS (PARTITION BY ri ORDER BY ${keyOrder("kc", q.col, "ASC")} ` +
+        `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) w ` +
+        `JOIN cols x ON x.kc IS NOT DISTINCT FROM w.kc`;
+    } else {
+      // Sepanjang baris terdalam di dalam kelompok induknya, termasuk baris di luar 200 tampil.
+      const keys = two ? "k0, k1" : "k0";
+      const inner = two ? "k1" : "k0";
+      const leaf = q.rows[two ? 1 : 0]!;
+      body =
+        `SELECT r.ri, NULL AS ci, ${keep.join(", ")} FROM (SELECT ${keys}, ${wins.join(", ")} ` +
+        `FROM (SELECT ${keys}, ${raw.join(", ")} FROM src s GROUP BY ${keys}) ` +
+        `WINDOW w AS (${two ? "PARTITION BY k0 " : ""}ORDER BY ${keyOrder(inner, leaf, "ASC")} ` +
+        `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) w ` +
+        `JOIN rws r ON r.k0 IS NOT DISTINCT FROM w.k0${two ? " AND r.k1 IS NOT DISTINCT FROM w.k1" : ""}`;
+    }
+    ctes.push(`ax AS MATERIALIZED (${body})`);
+    joins.push(
+      "LEFT JOIN ax ON u.kind = 'cell' AND ax.ri = u.ri AND ax.ci IS NOT DISTINCT FROM u.ci",
+    );
+  }
+
+  const value = (s: ShowAs, i: number): string => {
+    const v = `u.${m(i)}`;
+    const g = `gt.${m(i)}`;
+    const a = (p: string) => `ax.${ident(`${p}${i}`)}`;
+    switch (s) {
+      case "pct_grand":
+        return ratio(v, g);
+      case "pct_row":
+        // Baris "Total" (coltot/grand) dibagi total keseluruhan; total baris = 100%.
+        return q.col
+          ? ratio(
+              v,
+              `CASE u.kind WHEN 'cell' THEN rt.${m(i)} WHEN 'sub' THEN ${sub ? `st.${m(i)}` : "NULL"} ` +
+                `WHEN 'coltot' THEN ${g} WHEN 'grand' THEN ${g} ELSE ${v} END`,
+            )
+          : ratio(v, `CASE WHEN u.kind = 'grand' THEN ${g} ELSE ${v} END`);
+      case "pct_col":
+        return q.col
+          ? ratio(
+              v,
+              `CASE u.kind WHEN 'cell' THEN ct.${m(i)} WHEN 'sub' THEN ct.${m(i)} ` +
+                `WHEN 'coltot' THEN ${v} ELSE ${g} END`,
+            )
+          : ratio(v, g);
+      case "running":
+        return a("r");
+      case "diff_prev":
+        return `${a("a")} - ${a("p")}`;
+      case "pct_diff_prev":
+        return ratio(`${a("a")} - ${a("p")}`, a("p"));
+      default:
+        return v;
+    }
+  };
+  const meta = META.map((c) => `u.${ident(c)}`);
+  const vals = shows.map((s, i) => `${value(s, i)} AS ${m(i)}`);
+  return { ctes, select: `SELECT ${[...meta, ...vals].join(", ")} FROM u ${joins.join(" ")}` };
 }
 
 /** Tipe setiap kolom keluaran buildPivotSql (untuk toJson): indeks/jumlah = count, label sesuai dimensi. */
@@ -240,6 +383,8 @@ export interface PivotField {
   label: string;
   type: OutColumn["type"];
   grain?: Grain;
+  /** Nilai: "Tampilkan nilai sebagai" (T-067) — format persen / judul sudah menyebutnya. */
+  showAs?: ShowAs;
 }
 
 /** Nilai satu sel (satu angka per ukuran, urut nilai) atau null bila tidak ada data. */
@@ -347,7 +492,7 @@ export function shapePivot(raw: unknown[][], plan: Plan, shape: PivotShape): Piv
     columnField: shape.column ? field(shape.rowFields) : null,
     values: plan.columns
       .slice(plan.dimensions.length)
-      .map((c) => ({ label: c.label, type: c.type })),
+      .map((c) => ({ label: c.label, type: c.type, ...(c.showAs ? { showAs: c.showAs } : {}) })),
     rows,
     groups,
     columns,

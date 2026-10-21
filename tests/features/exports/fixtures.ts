@@ -135,6 +135,33 @@ export const WIDGETS: Record<string, { type: string; spec: unknown; title: strin
       subtotals: false,
     },
   },
+  // T-067: "Tampilkan nilai sebagai" — pivot % dari total kolom, grafik total berjalan.
+  ppct: {
+    type: "pivot",
+    title: "Porsi omzet per bulan",
+    spec: {
+      sheetId: SHEET,
+      rows: [{ column: 1 }],
+      column: { column: 3, timeGrain: "month" },
+      values: [{ agg: "sum", column: 2, showAs: "pct_col" }],
+      sort: "label_asc",
+      format: fmt,
+      totals: true,
+      subtotals: false,
+    },
+  },
+  bpct: {
+    type: "bar",
+    title: "Porsi omzet per cabang",
+    spec: {
+      sheetId: SHEET,
+      dimension: { column: 1 },
+      measure: { agg: "sum", column: 2, showAs: "pct_grand" },
+      sort: "label_asc",
+      topN: 3,
+      format: fmt,
+    },
+  },
   hidden: {
     type: "table",
     title: "Rahasia",

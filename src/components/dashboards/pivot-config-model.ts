@@ -1,7 +1,7 @@
 import { valuesText } from "@/components/dashboards/filters/filter-text";
 import type { SourceSheet } from "@/features/dashboards/service";
 import type { ColumnType } from "@/features/ingest/infer";
-import type { Agg, Grain } from "@/features/query/spec";
+import type { Grain } from "@/features/query/spec";
 import {
   MISSING_COLUMN,
   PIVOT_ROWS_MAX,
@@ -19,7 +19,7 @@ import {
  */
 type Column = SourceSheet["columns"][number];
 type Dimension = PivotSpec["rows"][number];
-type Measure = { agg: Agg; column?: number };
+type Measure = PivotSpec["values"][number];
 
 const TEMPORAL: ColumnType[] = ["date", "timestamp"];
 const NUMERIC: ColumnType[] = ["integer", "decimal", "duration"];

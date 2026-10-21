@@ -9,6 +9,7 @@ import type {
 } from "@/components/dashboards/filters/filter-model";
 import type { PivotData } from "@/features/query/pivot";
 import type { ValueType } from "@/features/widgets/format";
+import type { ShowAs } from "@/features/widgets/spec";
 import { isAccessLost, useAccessLost } from "./access-refresh";
 import { requestFilters } from "./body-state";
 
@@ -30,6 +31,8 @@ export interface QueryColumn {
   type: ValueType;
   /** Kolom sistem Periode (T-058): satuan periode untuk label sel ("Mar 2026"). */
   grain?: string;
+  /** Ukuran dengan "Tampilkan nilai sebagai" (T-067): format persen / tanpa isi 0. */
+  showAs?: ShowAs;
 }
 export interface WidgetData {
   columns: QueryColumn[];

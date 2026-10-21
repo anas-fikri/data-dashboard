@@ -334,6 +334,11 @@ export function WidgetConfigForm({
                 type={draft.type}
                 columns={cols}
                 measure={draft.spec.measure}
+                axis={
+                  draft.type !== "kpi"
+                    ? cols.find((c) => c.pos === draft.spec.dimension.column)?.name
+                    : undefined
+                }
                 onChange={(measure) =>
                   commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
                 }

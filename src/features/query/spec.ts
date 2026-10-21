@@ -5,6 +5,7 @@
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
+import type { ShowAs } from "@/features/widgets/spec";
 import type { DashClause } from "./filters";
 
 export const SPEC_MAX_BYTES = 64 * 1024;
@@ -95,6 +96,8 @@ export interface OutColumn {
    * awal periode. Kolom lain tanpa field ini.
    */
   grain?: Grain;
+  /** Ukuran widget dengan "Tampilkan nilai sebagai" (T-067); nilai biasa tanpa field ini. */
+  showAs?: ShowAs;
 }
 
 export interface PlanDimension {
@@ -108,6 +111,11 @@ export interface PlanMeasure {
   agg: Agg;
   /** Kolom fisik; tidak ada untuk count(*). */
   col?: string;
+  /**
+   * "Tampilkan nilai sebagai" (T-067): hanya dari spec widget tersimpan (widgetPlan), tidak pernah
+   * dari spec query bebas klien. Tidak ada / "none" = agregat biasa (SQL lama, identik).
+   */
+  showAs?: ShowAs;
 }
 export interface PlanFilter {
   col: string;

@@ -5,6 +5,7 @@ import { MISSING_COLUMN } from "@/features/widgets/remap";
 import {
   DEFAULT_FORMAT,
   PIE_AGGS,
+  SHOW_AS_FOR,
   SORT_DEFAULT,
   TABLE_COLUMNS_MAX,
   TOP_N_DEFAULT,
@@ -13,6 +14,7 @@ import {
   type ChartSort,
   type ChartSpec,
   type ChartType,
+  type ShowAs,
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
@@ -254,10 +256,15 @@ export function defaultConfig(
       : cols.slice(0, Math.min(6, TABLE_COLUMNS_MAX)).map((c) => c.pos);
     return { type, spec: { sheetId: sheet.id, columns, format } };
   }
-  const measure = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
+  const kept = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
+  // "Tampilkan nilai sebagai" (T-067) hanya ikut ke jenis yang mendukung cara itu (KPI tidak; pai
+  // hanya % keseluruhan; grafik tanpa % baris/kolom).
+  const { showAs, ...measure } = kept as Measure & { showAs?: ShowAs };
   if (type === "kpi") return { type, spec: { sheetId: sheet.id, measure, format } };
+  const shownMeasure =
+    showAs && SHOW_AS_FOR[type].includes(showAs) ? { ...measure, showAs } : measure;
   if (type === "pivot") {
-    const spec = defaultPivot(sheet.id, cols, prev, measure, format);
+    const spec = defaultPivot(sheet.id, cols, prev, shownMeasure, format);
     return spec ? { type, spec } : null;
   }
 
@@ -270,7 +277,7 @@ export function defaultConfig(
     spec: {
       sheetId: sheet.id,
       dimension,
-      measure,
+      measure: shownMeasure,
       // Jenis sama (mis. ganti sheet): pertahankan urutan/jumlah; jenis baru: bawaan jenis itu.
       sort: prev.type === type ? prevChart!.sort : SORT_DEFAULT[type],
       topN: prev.type === type ? Math.min(prevChart!.topN, TOP_N_MAX[type]) : TOP_N_DEFAULT[type],

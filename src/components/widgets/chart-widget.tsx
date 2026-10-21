@@ -8,6 +8,7 @@ import {
   formatLabelNumber,
   formatMeasure,
 } from "@/features/widgets/format";
+import { isAxisShowAs, valueFormat } from "@/features/widgets/show-as";
 import type { ChartSpec, ChartType } from "@/features/widgets/spec";
 import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
@@ -143,7 +144,12 @@ export function ChartWidget({
       : formatCell(r[0], dimType, { style: "auto", decimals: 0 }, spec.dimension.timeGrain),
   );
   // Total/jumlah: kategori yang semua nilainya kosong = 0 (SUMIF Excel, sama dengan KPI).
-  const blankZero = zeroWhenBlank(spec.measure.agg);
+  // "Tampilkan nilai sebagai" (T-067): format dari kolom hasil (persen 1 desimal); total berjalan/
+  // selisih tidak pernah mengisi kategori kosong dengan 0 (item pertama selisih = kosong).
+  const showAs = measure?.showAs;
+  const format = valueFormat(showAs, spec.format);
+  const plainSum = !isAxisShowAs(showAs);
+  const blankZero = plainSum && zeroWhenBlank(spec.measure.agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   const categories = data.categories ?? labels.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
@@ -194,7 +200,7 @@ export function ChartWidget({
       ? {
           iso: source.map((r) => (r[0] === null ? null : String(r[0]))),
           grain: spec.dimension.timeGrain,
-          empty: emptyBucketValue(spec.measure.agg, spec.sort, cut),
+          empty: plainSum ? emptyBucketValue(spec.measure.agg, spec.sort, cut) : null,
           dimType,
           cut: valueCut(spec.sort, cut),
         }
@@ -208,7 +214,7 @@ export function ChartWidget({
           room.width,
           order.map((k) => ({
             label: rows[k]!.label,
-            tail: `${formatMeasure(rows[k]!.value, valueType, spec.format)} ${shares[k]}%`,
+            tail: `${formatMeasure(rows[k]!.value, valueType, format)} ${shares[k]}%`,
           })),
           printMeasure
             ? (t) => (printMeasure(t.replace(/\d/g, "0"), false) ?? [...t].length * 7) + 1
@@ -262,7 +268,7 @@ export function ChartWidget({
         dimensionLabel={dim!.label}
         measureLabel={measure!.label}
         valueType={valueType}
-        format={spec.format}
+        format={format}
         describedBy={pickAt ? CROSS_HINT_ID : undefined}
         label={`Data ${name}`}
         width={width}
@@ -304,7 +310,7 @@ export function ChartWidget({
     const unsure = partial && !list.some((r) => r.others);
     // Yang tidak muat hanya periode lama — kecuali server memotong N terlama/menurut nilai.
     const olderOnly = newestFirst && (!knownCut || spec.sort === "label_desc") && !unsure;
-    const text = (v: number | null) => formatMeasure(v, valueType, spec.format, true);
+    const text = (v: number | null) => formatMeasure(v, valueType, format, true);
     // Lebar terukur (canvas, teks 12 px). Halaman memakai angka tabular (tnum) yang tidak dikenal
     // canvas: label dan nilai diukur dengan semua angka = "0" (selebar angka tabular) — nilai yang hanya
     // beda angka memberi ruang label yang sama, baris satu daftar dipendekkan dengan cara yang sama.
@@ -462,7 +468,7 @@ export function ChartWidget({
         valueType={valueType}
         measureLabel={measure!.label}
         dimensionLabel={dim!.label}
-        format={spec.format}
+        format={format}
         categories={categories}
         limit={visible}
         partial={partial}
@@ -542,7 +548,7 @@ export function ChartWidget({
                         className={cn("shrink-0 tabular-nums", legend?.stack && "ml-4")}
                         data-testid="pie-legend-value"
                       >
-                        {formatMeasure(r.value, valueType, spec.format)}
+                        {formatMeasure(r.value, valueType, format)}
                       </span>
                     ) : null}
                     <span className="shrink-0 tabular-nums text-muted-foreground">

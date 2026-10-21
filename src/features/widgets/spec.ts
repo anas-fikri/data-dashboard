@@ -81,12 +81,41 @@ export const formatSchema = z
 export type NumberFormat = z.infer<typeof formatSchema>;
 export const DEFAULT_FORMAT: NumberFormat = { style: "auto", decimals: 0 };
 
-const measure = z
-  .object({ agg: z.enum(AGGS), column: column.optional() })
+const needsColumn = {
+  check: (m: { agg: Agg; column?: number }) => m.agg === "count" || m.column !== undefined,
+  message: "Agregasi ini membutuhkan kolom",
+};
+const measureBase = z.object({ agg: z.enum(AGGS), column: column.optional() }).strict();
+const measure = measureBase.refine(needsColumn.check, { message: needsColumn.message });
+
+/**
+ * "Tampilkan nilai sebagai" (T-067, rencana G-7 §3.1), seperti Show Values As Excel. Tidak ada /
+ * "none" = nilai biasa (spec lama). Persen terhadap total SELURUH data yang lolos filter; total
+ * berjalan/selisih sepanjang kolom pemisah, selain itu baris terdalam per kelompok, urut label naik.
+ * Dihitung server (DuckDB), bukan dari baris yang tampil.
+ */
+export const SHOW_AS = [
+  "none",
+  "pct_grand",
+  "pct_row",
+  "pct_col",
+  "running",
+  "diff_prev",
+  "pct_diff_prev",
+] as const;
+export type ShowAs = (typeof SHOW_AS)[number];
+/** Cara tampil per jenis widget: grafik satu dimensi tanpa % baris/kolom; pai hanya % keseluruhan. */
+export const SHOW_AS_FOR: Record<"pivot" | ChartType, readonly ShowAs[]> = {
+  pivot: SHOW_AS,
+  bar: ["none", "pct_grand", "running", "diff_prev", "pct_diff_prev"],
+  line: ["none", "pct_grand", "running", "diff_prev", "pct_diff_prev"],
+  pie: ["none", "pct_grand"],
+};
+/** Ukuran grafik/pivot: ukuran biasa + cara tampil opsional. */
+const shownMeasure = measureBase
+  .extend({ showAs: z.enum(SHOW_AS).optional() })
   .strict()
-  .refine((m) => m.agg === "count" || m.column !== undefined, {
-    message: "Agregasi ini membutuhkan kolom",
-  });
+  .refine(needsColumn.check, { message: needsColumn.message });
 const dimension = z.object({ column, timeGrain: z.enum(GRAINS).optional() }).strict();
 
 export const kpiSpecSchema = z.object({ sheetId, measure, format: formatSchema }).strict();
@@ -94,7 +123,7 @@ export const chartSpecSchema = z
   .object({
     sheetId,
     dimension,
-    measure,
+    measure: shownMeasure,
     sort: z.enum(CHART_SORTS),
     topN: z.number().int().min(1).max(1000),
     format: formatSchema,
@@ -158,7 +187,7 @@ export const pivotSpecSchema = z
     rows: z.array(dimension).min(1).max(PIVOT_ROWS_MAX),
     /** Pisahkan per (opsional): satu kolom, mis. tanggal per bulan → satu kolom tabel per periode. */
     column: dimension.optional(),
-    values: z.array(measure).min(1).max(PIVOT_VALUES_MAX),
+    values: z.array(shownMeasure).min(1).max(PIVOT_VALUES_MAX),
     /** Urutan baris: nilai pertama (value_*) atau label (label_*); kolom selalu urut naik. */
     sort: z.enum(CHART_SORTS),
     /** Format untuk nilai berupa angka (Total/Rata-rata/Terkecil/Terbesar); jumlah selalu angka biasa. */
@@ -244,6 +273,16 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
       if (!p.success) return bad(p.error);
       if (p.data.topN > TOP_N_MAX[type]) {
         return { ok: false, message: `Maksimal ${TOP_N_MAX[type]} kategori untuk grafik ini.` };
+      }
+      const showAs = p.data.measure.showAs ?? "none";
+      if (!SHOW_AS_FOR[type].includes(showAs)) {
+        return {
+          ok: false,
+          message:
+            type === "pie"
+              ? "Grafik pai hanya bisa menampilkan nilai biasa atau % dari total keseluruhan."
+              : "% dari total baris/kolom hanya untuk pivot. Pilih cara tampil lain untuk grafik ini.",
+        };
       }
       if (type === "pie" && !(PIE_AGGS as readonly string[]).includes(p.data.measure.agg)) {
         return {

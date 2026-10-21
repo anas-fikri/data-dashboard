@@ -7,6 +7,7 @@ import type { DuckDBValue } from "@duckdb/node-api";
 import type { ColumnType } from "@/features/ingest/infer";
 import { ident } from "@/lib/duckdb";
 import type { DashClause } from "./filters";
+import { isAxisShowAs, shown } from "@/features/widgets/show-as";
 import type { Plan, PlanFilter } from "./spec";
 
 export interface BuiltSql {
@@ -284,6 +285,10 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     ...plan.sort.filter((x) => textKeys.has(x.key)).map((x) => `${ident(x.key)} ASC`),
   ];
 
+  const m0 = plan.measures[0];
+  if (plan.measures.length === 1 && plan.dimensions.length === 1 && shown(m0?.showAs)) {
+    return { sql: shownChartSql(plan, m0, select, where, order), params };
+  }
   const sql = [
     `SELECT ${select.join(", ")}`,
     `FROM read_parquet($path)`,
@@ -295,6 +300,49 @@ export function buildSql(plan: Plan, parquetPath: string): BuiltSql {
     .filter(Boolean)
     .join("\n");
   return { sql, params };
+}
+
+/**
+ * Grafik satu dimensi dengan "Tampilkan nilai sebagai" (T-067): nilai dihitung atas SEMUA kategori
+ * sebelum N teratas dipotong — total berjalan/selisih urut label naik (garis N periode terbaru: titik
+ * pertama yang tampil sudah memuat periode sebelumnya), persen terhadap total seluruh data yang lolos
+ * filter. Urutan dan LIMIT = query biasa, atas nilai yang tampil. Hanya identifier program.
+ */
+function shownChartSql(
+  plan: Plan,
+  m: Plan["measures"][number],
+  select: string[],
+  where: string[],
+  order: string[],
+): string {
+  const d = plan.dimensions[0]!;
+  const w = where.length ? ` WHERE ${where.join(" AND ")}` : "";
+  const k = groupKey(d);
+  const key = ident(d.key);
+  const mk = ident(m.key);
+  const keyOrder =
+    d.type === "text" ? `k ${TEXT_COLLATE} ASC NULLS LAST, k ASC` : `k ASC NULLS LAST`;
+  const ratio = (a: string, b: string) =>
+    `CASE WHEN ${b} IS NULL OR ${b} = 0 THEN NULL ELSE CAST(${a} AS DOUBLE) / CAST(${b} AS DOUBLE) END`;
+  const value =
+    m.showAs === "running"
+      ? "r"
+      : m.showAs === "diff_prev"
+        ? "a - p"
+        : m.showAs === "pct_diff_prev"
+          ? ratio("a - p", "p")
+          : ratio("a", "t");
+  return [
+    `SELECT ${key}, ${value} AS ${mk} FROM (`,
+    `  SELECT ${key}, ${mk} AS a, sum(${mk}) OVER w AS r, lag(${mk}) OVER w AS p FROM (`,
+    `    SELECT ${select.join(", ")}, ${k} AS k FROM read_parquet($path)${w} GROUP BY ${k}`,
+    `  ) WINDOW w AS (ORDER BY ${keyOrder} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)`,
+    `)${!isAxisShowAs(m.showAs) ? ` CROSS JOIN (SELECT ${measureExpr(m)} AS t FROM read_parquet($path)${w})` : ""}`,
+    order.length ? `ORDER BY ${order.join(", ")}` : "",
+    `LIMIT ${Math.trunc(plan.limit)}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 /**
@@ -310,12 +358,19 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
   const params: BuiltSql["params"] = { path: parquetPath };
   const where = whereClauses(plan, params);
   const e = groupKey(d);
-  const grand =
+  const raw =
     m.agg === "sum"
       ? `coalesce(sum(${ident(m.col!)}), 0)`
       : m.agg === "count"
         ? `count(${m.col ? ident(m.col) : "*"})`
         : "NULL";
+  // T-067: % dari total keseluruhan → total seluruh kategori = 100% (irisan "Lainnya" pai = sisa
+  // persen); total berjalan/selisih tidak punya total yang bisa dijumlahkan.
+  const grand = !shown(m.showAs)
+    ? raw
+    : m.showAs === "pct_grand" && raw !== "NULL"
+      ? `CASE WHEN ${raw} = 0 THEN NULL ELSE 1.0 END`
+      : "NULL";
   const sql = [
     `SELECT count(DISTINCT ${e}) + coalesce(max(CASE WHEN ${e} IS NULL THEN 1 ELSE 0 END), 0) AS n,`,
     `  ${grand} AS t`,

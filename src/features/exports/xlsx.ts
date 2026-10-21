@@ -18,7 +18,9 @@ import { PassThrough, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import yazl from "yazl";
 
-export type XlsxKind = "text" | "number" | "boolean" | "date" | "timestamp" | "duration";
+/** percent: angka rasio (0,125) bergaya persen 1 desimal ("12,5%"), "Tampilkan nilai sebagai" T-067. */
+export type XlsxKind =
+  "text" | "number" | "percent" | "boolean" | "date" | "timestamp" | "duration";
 
 export interface XlsxColumn {
   label: string;
@@ -35,7 +37,7 @@ const NS_CT = "http://schemas.openxmlformats.org/package/2006/content-types";
 const HEAD = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
 
 /** Indeks cellXfs di styles.xml. */
-const STYLE = { header: 1, date: 2, timestamp: 3, duration: 4 } as const;
+const STYLE = { header: 1, date: 2, timestamp: 3, duration: 4, percent: 5 } as const;
 
 const CONTENT_TYPES = `${HEAD}<Types xmlns="${NS_CT}"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`;
 const ROOT_RELS = `${HEAD}<Relationships xmlns="${NS_PKG_REL}"><Relationship Id="rId1" Type="${NS_REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`;
@@ -43,7 +45,7 @@ const WORKBOOK_RELS = `${HEAD}<Relationships xmlns="${NS_PKG_REL}"><Relationship
 /** cellXfs: 0 umum, 1 header tebal, 2 tanggal (14), 3 tanggal-waktu (22), 4 durasi [h]:mm:ss. */
 const xf = (numFmtId: number, fontId = 0) =>
   `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="0" borderId="0" xfId="0"${fontId ? ' applyFont="1"' : ""}${numFmtId ? ' applyNumberFormat="1"' : ""}/>`;
-const STYLES = `${HEAD}<styleSheet xmlns="${NS_MAIN}"><numFmts count="1"><numFmt numFmtId="164" formatCode="[h]:mm:ss"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="5">${xf(0)}${xf(0, 1)}${xf(14)}${xf(22)}${xf(164)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
+const STYLES = `${HEAD}<styleSheet xmlns="${NS_MAIN}"><numFmts count="2"><numFmt numFmtId="164" formatCode="[h]:mm:ss"/><numFmt numFmtId="165" formatCode="0.0%"/></numFmts><fonts count="2"><font><sz val="11"/><name val="Calibri"/><family val="2"/></font><font><b/><sz val="11"/><name val="Calibri"/><family val="2"/></font></fonts><fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills><borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="6">${xf(0)}${xf(0, 1)}${xf(14)}${xf(22)}${xf(164)}${xf(165)}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 
 const escapeXml = (s: string) =>
   s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
@@ -137,8 +139,9 @@ function cell(ref: string, v: unknown, kind: XlsxKind): string {
       const serial = Number(v) / 86_400;
       return Number.isFinite(serial) ? numberCell(ref, String(serial), STYLE.duration) : "";
     }
-    if (typeof v === "bigint") return numberCell(ref, v.toString());
-    return Number.isFinite(v) ? numberCell(ref, String(v)) : "";
+    const style = kind === "percent" ? STYLE.percent : 0;
+    if (typeof v === "bigint") return numberCell(ref, v.toString(), style);
+    return Number.isFinite(v) ? numberCell(ref, String(v), style) : "";
   }
   return stringCell(ref, String(v));
 }

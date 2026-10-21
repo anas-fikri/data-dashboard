@@ -31,6 +31,7 @@ import {
 import { sourceKeys, withSegments, type ParquetSource } from "@/features/query/source";
 import type { BuiltSql } from "@/features/query/sql";
 import type { OutColumn } from "@/features/query/spec";
+import { isPercentShowAs } from "@/features/widgets/show-as";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
 import { exportKey } from "@/lib/storage/exports";
 import { writeCsv } from "./csv";
@@ -157,7 +158,9 @@ const HEAVY_MESSAGE =
   "Ekspor terlalu berat untuk diproses. Persempit filter atau kurangi kolom, lalu ekspor lagi.";
 
 /** Jenis sel XLSX per tipe kolom keluaran. */
-export function xlsxColumn(c: Pick<OutColumn, "label" | "type">): XlsxColumn {
+export function xlsxColumn(c: Pick<OutColumn, "label" | "type" | "showAs">): XlsxColumn {
+  // "Tampilkan nilai sebagai" persen (T-067): rasio bergaya persen, sama dengan tampilan.
+  if (isPercentShowAs(c.showAs)) return { label: c.label, kind: "percent" };
   switch (c.type) {
     case "text":
       return { label: c.label, kind: "text" };
@@ -232,7 +235,7 @@ type Producer =
         paths: string[],
         maxRows: number,
       ): BuiltSql;
-      cols: Pick<OutColumn, "key" | "label" | "type">[];
+      cols: Pick<OutColumn, "key" | "label" | "type" | "showAs">[];
       tooLarge(n: number, max: number): string;
     };
 

@@ -2,6 +2,7 @@
 
 import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import { formatCell } from "@/features/widgets/format";
+import { valueFormat } from "@/features/widgets/show-as";
 import type { PivotBodyRow, PivotPick, PivotTableModel } from "@/features/widgets/pivot-table";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
@@ -84,7 +85,7 @@ export function PivotCells({
             <span className="sr-only">tidak ada data</span>
           </>
         ) : (
-          formatCell(v, head.type, format)
+          formatCell(v, head.type, valueFormat(head.showAs, format))
         )}
       </td>
     );

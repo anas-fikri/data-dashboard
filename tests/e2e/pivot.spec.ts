@@ -565,4 +565,46 @@ test.describe("widget pivot (T-tcjp)", () => {
     await expect(kpi).toHaveAttribute("title", "180.864");
     await expect(chip).toHaveCount(0);
   });
+  test("T-067: Tampilkan sebagai — % dari total kolom dan total berjalan dari panel, kembali ke nilai biasa", async () => {
+    test.setTimeout(120_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    const panel = owner.getByTestId("widget-panel");
+    await openPanel(owner, panel);
+    const table = card(owner).getByTestId("widget-pivot");
+    const group = table.locator("tbody tr[data-kind=group]").first();
+    const leaf = table.locator("tbody tr").nth(1);
+    await expect(group.locator("th")).toHaveText("Customer 24");
+
+    // % dari total kolom: Customer 24 Jan 4.810 / 60.240; baris Total = 100%.
+    await pick(owner, panel, "Tampilkan sebagai", "% dari total kolom");
+    await saved(panel);
+    await expect(panel.getByTestId("config-show-as-hint")).toContainText(
+      "termasuk yang tidak tampil",
+    );
+    await expect(table.locator("thead th").last()).toHaveText("% dari total kolom · Total No.");
+    await expect(table.locator("tfoot td")).toHaveText(["100,0%", "100,0%", "100,0%", "100,0%"]);
+    await expect(group.locator("td").first()).toHaveText("8,0%");
+
+    // Total berjalan sepanjang bulan (Udara 2.410, 2.411, 2.412); subtotal dan Total kosong.
+    await pick(owner, panel, "Tampilkan sebagai", "Total berjalan");
+    await saved(panel);
+    await expect(panel.getByTestId("config-show-as-hint")).toContainText(
+      "Dihitung urut Tanggal naik",
+    );
+    await expect(leaf.locator("th")).toHaveText("Udara");
+    await expect(leaf.locator("td")).toHaveText([
+      /^Rp\s?2\.410$/,
+      /^Rp\s?4\.821$/,
+      /^Rp\s?7\.233$/,
+      "–tidak ada data",
+    ]);
+    await expect(group.locator("td").first()).toHaveText("–tidak ada data");
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-show-as-1440.png") });
+
+    await pick(owner, panel, "Tampilkan sebagai", "Nilai biasa");
+    await saved(panel);
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+    await expect(panel.getByTestId("config-show-as-hint")).toHaveCount(0);
+  });
 });

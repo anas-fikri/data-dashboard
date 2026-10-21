@@ -139,6 +139,7 @@ export function PivotFields({
             <MeasureFields
               type="pivot"
               label="Hitung"
+              axis={name((split ?? row1 ?? row0)?.column)}
               columns={columns}
               measure={m}
               onChange={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}
