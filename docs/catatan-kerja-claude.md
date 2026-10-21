@@ -62,7 +62,10 @@ dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per projec
   T-049–T-060, T-qqyx. Tiap task: implementasi → review subagent → perbaikan → aitk close.
 - Blocked menunggu pemilik (rinci di docs/ai/uat/T-064.md bagian D1–D6):
   - T-043/T-048: uji NVDA/VoiceOver + /frontend-expert:audit; keputusan aria-rowcount (total+2, ADR-0007).
-  - T-023: jalankan upgrade di olympus — `deploy/upgrade.sh` + docs/runbook-deploy.md §7 (backup dulu).
+  - T-023: **upgrade produksi SUDAH dijalankan 2026-10-21** (kode `190e216`, image `202610210737`, migrasi
+    s.d. `t060_period_group`, semua gerbang lulus — rincian di Notes T-023). Sisa: uji manual pemilik §7
+    langkah 6, quota-report kedua setelah 03.00 WIB, hapus `db-*.dump` setelah backup harian terverifikasi,
+    salinan off-VM (NAS). Jangan jalankan upgrade lagi.
   - T-061/T-063: ukur performa dan backup di VM (scripts/perf-grid-vm.sh, scripts/perf-period-cycle-vm.sh).
   - T-062: keputusan target lompatan (terima gulir lanjutan / row group ingest lebih kecil / anggaran).
   - T-064: UAT pemilik (docs/ai/uat/T-064.md); jangan diterima atas nama pemilik.
