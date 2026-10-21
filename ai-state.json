@@ -37,7 +37,8 @@
     }
   ],
   "project": {
-    "name": "data-dashboard"
+    "name": "data-dashboard",
+    "version": "1.0.0"
   },
   "schema_version": 2
 }
