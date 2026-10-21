@@ -168,9 +168,25 @@ async function stateOf(t: CleanupTarget, prefix: string): Promise<CleanupState> 
 }
 
 /** Satu putaran storage-cleanup (≤ 50 baris jatuh tempo, terlama dulu). */
-export async function runStorageCleanup(deps: CleanupDeps = storage, now = new Date()) {
+export async function runStorageCleanup(
+  deps: CleanupDeps = storage,
+  now = new Date(),
+  /** Hanya prefix satu dataset (skrip perf T-063 yang memajukan jam); job worker tanpa batas. */
+  datasetId?: string,
+) {
   const rows = await prisma.storageCleanup.findMany({
-    where: { notBefore: { lte: now }, attempts: { lt: CLEANUP_MAX_ATTEMPTS } },
+    where: {
+      notBefore: { lte: now },
+      attempts: { lt: CLEANUP_MAX_ATTEMPTS },
+      ...(datasetId
+        ? {
+            OR: [
+              { prefix: { startsWith: `raw/${datasetId}/` } },
+              { prefix: { startsWith: `parquet/${datasetId}/` } },
+            ],
+          }
+        : {}),
+    },
     orderBy: { createdAt: "asc" },
     take: CLEANUP_BATCH,
     select: { id: true, prefix: true, attempts: true },
@@ -242,9 +258,11 @@ export async function runStorageCleanup(deps: CleanupDeps = storage, now = new D
 export async function runRawRetention(
   deps: Pick<CleanupDeps, "deletePrefix"> = storage,
   now = new Date(),
+  /** Hanya versi satu dataset (skrip perf T-063 yang memajukan jam); job worker tanpa batas. */
+  datasetId?: string,
 ) {
   const versions = await prisma.datasetVersion.findMany({
-    where: rawRetentionWhere(now),
+    where: { ...rawRetentionWhere(now), ...(datasetId ? { datasetId } : {}) },
     orderBy: { createdAt: "asc" },
     take: RAW_BATCH,
     select: { id: true, datasetId: true },

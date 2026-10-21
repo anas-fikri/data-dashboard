@@ -383,6 +383,18 @@ describe("runSegmentGc (Prisma)", () => {
     prisma.dataset.findMany.mockResolvedValueOnce([{ id: DS }]);
     expect((await runSegmentGc(NOW)).datasets).toBe(0);
     expect(tx.segment.deleteMany).not.toHaveBeenCalled();
+
+    // T-063: dibatasi satu dataset → daftar dataset hanya id itu; tanpa batas → semua.
+    vi.clearAllMocks();
+    prisma.dataset.findMany.mockResolvedValueOnce([]);
+    await runSegmentGc(NOW, 0, DS);
+    expect(prisma.dataset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: DS }) }),
+    );
+    prisma.dataset.findMany.mockResolvedValueOnce([]);
+    await runSegmentGc(NOW);
+    const all = prisma.dataset.findMany.mock.calls[1]![0] as { where: object };
+    expect(all.where).not.toHaveProperty("id");
   });
 });
 

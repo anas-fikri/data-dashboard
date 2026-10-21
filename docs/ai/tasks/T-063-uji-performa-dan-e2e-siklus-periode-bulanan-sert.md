@@ -17,7 +17,7 @@ depends_on:
   - T-023
   - T-024
 created: "2026-10-15T02:30:59Z"
-updated: "2026-10-21T03:15:19Z"
+updated: "2026-10-21T03:23:11Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -27,26 +27,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 198651
+    duration_ms: 203417
     summary: |-
-      …r: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792552479305,"service":"data-dashboard","host":"127.0.0.1","port":43959,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792552479368,"service":"data-dashboard","host":"127.0.0.1","port":37757,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792552479471,"service":"data-dashboard","host":"127.0.0.1","port":39539,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792552479582,"service":"data-dashboard","host":"127.0.0.1","port":37045,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792552487344,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792552494395,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792552494418,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792552494422,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792552494432,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …: disk penuh","msg":"cache urutan grid gagal dibangun"}
+      {"level":40,"time":1792552920213,"service":"data-dashboard","host":"127.0.0.1","port":44671,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792552920268,"service":"data-dashboard","host":"127.0.0.1","port":39511,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792552920379,"service":"data-dashboard","host":"127.0.0.1","port":39979,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792552920511,"service":"data-dashboard","host":"127.0.0.1","port":45361,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792552930200,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792552937702,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792552937724,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792552937731,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792552937741,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  204 passed | 1 skipped (205)
-            Tests  2686 passed | 10 skipped (2696)
-         Start at  03:12:58
-         Duration  138.77s (tests 85%, import 12%, transform 2%)
+            Tests  2688 passed | 10 skipped (2698)
+         Start at  03:20:20
+         Duration  137.94s (tests 85%, import 13%, transform 3%)
 
-          Isolate  205 workers spawned · ~147ms startup each (spawn + environment, per file)
-                   at least ~9.89s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  205 workers spawned · ~150ms startup each (spawn + environment, per file)
+                   at least ~10.07s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -54,12 +54,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T03:15:19Z"
-    tree: 21deef670696f430874b02c9ea45757d06a287f49857960f1ff03f3a651a9da7
+    at: "2026-10-21T03:22:39Z"
+    tree: b717f5d5cd3dfb19aa2d2c1c66b08bb0e018481d6038a9eb28d1b73443403af8
   audit:
-    at: "2026-10-21T03:09:33Z"
+    at: "2026-10-21T03:22:46Z"
     passed: true
-    tree: c89bc1f6785a0d05cdcfe6936c11717993c78842813357212bbf2f18c91c48d5
+    tree: b717f5d5cd3dfb19aa2d2c1c66b08bb0e018481d6038a9eb28d1b73443403af8
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -67,7 +67,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 518 dirs visited, 4004 inodes visited, 1 Extract calls, 239.05963ms elapsed, 239.060019ms wall time
+          End status: 518 dirs visited, 4025 inodes visited, 1 Extract calls, 232.849001ms elapsed, 232.849635ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -124,7 +124,12 @@ Hasil (container cloud, 4 vCPU, bukan VM — docs/ai/perf/T-063.md):
 - Skrip: scripts/perf-period-cycle.ts (diuji dengan dijalankan penuh), scripts/perf-period-cycle-vm.sh
   (tests/scripts/perf-period-cycle-vm.test.ts dengan docker tiruan).
 - Data perf dihapus di akhir putaran (dataset dihapus lewat deleteDataset); akun dev perf-cycle@ tetap
-  (dev saja). Data 10 jt T-061 tidak disentuh.
+  (dev saja).
+- Review putaran 1 (0 blocking): M1 job pemeliharaan berjam-maju di skrip perf mencakup semua dataset →
+  runStorageCleanup/runRawRetention/runSegmentGc diberi parameter opsional `datasetId` (unit test), skrip
+  memakainya; dampak putaran penuh di dev diperiksa: hanya dataset perf + T-061 ada, T-061 tanpa file asli
+  dan segmennya tidak ditandai → tidak terdampak (rincian docs/ai/perf/T-063.md). L1 container siklus VM
+  bernama dan dibuang di trap (diuji). L2 runbook §8 memeriksa volume sebelum `docker run -v`.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

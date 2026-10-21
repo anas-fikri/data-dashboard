@@ -32,7 +32,7 @@ scratch=""
 while [ $# -gt 0 ]; do
   case $1 in
     --rm | --no-deps | -T) shift ;;
-    --user | -e | --entrypoint) shift 2 ;;
+    --user | -e | --entrypoint | --name) shift 2 ;;
     -v) case $2 in *:/scratch) scratch=\${2%%:/scratch} ;; esac; shift 2 ;;
     *) break ;;
   esac
@@ -118,6 +118,9 @@ describe("perf-period-cycle-vm.sh", () => {
     expect(cycle).toContain("--owner perf1@contoh.id");
     expect(cycle).toContain("--checkpoints 0,1,end");
     expect(compose.filter((c) => c.endsWith("backup backup.sh"))).toHaveLength(3);
+    // Container siklus bernama; saat keluar (normal/gagal) container itu dibuang.
+    const name = /--name (dashboard-perftest-cycle-\d+)/.exec(cycle)![1];
+    expect(calls).toContain(`rm -f ${name}`);
   });
 
   it("tanpa stack uji → berhenti dengan arahan, tanpa memanggil docker compose", () => {

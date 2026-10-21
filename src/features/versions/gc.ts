@@ -228,6 +228,8 @@ async function collectDataset(datasetId: string, now: Date, graceMs: number, out
 export async function runSegmentGc(
   now = new Date(),
   graceMs = SEGMENT_GC_GRACE_MS,
+  /** Hanya satu dataset (skrip perf T-063 yang melompati tenggang); job worker tanpa batas. */
+  datasetId?: string,
 ): Promise<GcResult> {
   const out: GcResult = {
     datasets: 0,
@@ -240,7 +242,10 @@ export async function runSegmentGc(
   let cursor: string | undefined;
   for (;;) {
     const page = await prisma.dataset.findMany({
-      where: { OR: [{ segments: { some: {} } }, { lineages: { some: {} } }] },
+      where: {
+        OR: [{ segments: { some: {} } }, { lineages: { some: {} } }],
+        ...(datasetId ? { id: datasetId } : {}),
+      },
       orderBy: { id: "asc" },
       take: DATASET_PAGE,
       ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),

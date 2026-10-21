@@ -201,6 +201,23 @@ describe("runStorageCleanup", () => {
     );
   });
 
+  it("T-063: dibatasi satu dataset → hanya prefix raw/<ds>/ dan parquet/<ds>/ yang dipilih", async () => {
+    prisma.storageCleanup.findMany.mockResolvedValueOnce([]);
+    await runStorageCleanup(deps, NOW, DS);
+    expect(prisma.storageCleanup.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          notBefore: { lte: NOW },
+          attempts: { lt: 8 },
+          OR: [
+            { prefix: { startsWith: `raw/${DS}/` } },
+            { prefix: { startsWith: `parquet/${DS}/` } },
+          ],
+        },
+      }),
+    );
+  });
+
   it("raw versi yang sudah dihapus: abort multipart → hapus prefix → hapus baris", async () => {
     prisma.storageCleanup.findMany.mockResolvedValueOnce([row("c1", `raw/${DS}/${VER}/`)]);
     prisma.datasetVersion.findUnique.mockResolvedValueOnce(null);
@@ -299,6 +316,17 @@ describe("runRawRetention", () => {
     expect(prisma.datasetVersion.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ take: 100, orderBy: { createdAt: "asc" } }),
     );
+  });
+
+  it("T-063: dibatasi satu dataset → filter retensi + datasetId; tanpa batas → semua dataset", async () => {
+    prisma.datasetVersion.findMany.mockResolvedValue([]);
+    await runRawRetention(deps, NOW, DS);
+    const scoped = prisma.datasetVersion.findMany.mock.calls[0]![0] as { where: object };
+    expect(scoped.where).toMatchObject({ datasetId: DS, sourceKey: { not: null } });
+    await runRawRetention(deps, NOW);
+    const all = prisma.datasetVersion.findMany.mock.calls[1]![0] as { where: object };
+    expect(all.where).not.toHaveProperty("datasetId");
+    prisma.datasetVersion.findMany.mockReset();
   });
 
   it("id versi tidak berbentuk cuid → tidak pernah menghapus", async () => {

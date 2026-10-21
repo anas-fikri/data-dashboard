@@ -10,8 +10,8 @@
  *      storage (sumber, raw/typed segmen) vs byte parquet periodenya (metadata Segment/SegmentTyped), dan
  *      objek lama yang berubah/hilang (harus 0);
  *   4. setelah semua: retensi versi (+ tenggang 1 jam dilompati), retensi file asli (7 hari dilompati),
- *      GC segmen (tenggang 24 jam dilompati untuk dataset ini saja), storage-cleanup, lalu job invarian
- *      segment-audit; total storage dataset dibandingkan dengan byte data aktif dan byte yang masih
+ *      GC segmen (tenggang 24 jam dilompati), storage-cleanup — semuanya DIBATASI ke dataset perf (data
+ *      lain di database yang sama tidak tersentuh) — lalu job invarian segment-audit; total storage dataset dibandingkan dengan byte data aktif dan byte yang masih
  *      dirujuk versi tersimpan.
  * Worker harus menyala (dev: `npm run worker`; stack uji: service worker). Satu dataset per putaran.
  *
@@ -40,7 +40,7 @@ import { ListObjectsV2Command, UploadPartCommand } from "@aws-sdk/client-s3";
 import { deleteDataset } from "@/features/datasets/service";
 import { completeUpload, initUpload } from "@/features/uploads/service";
 import { runRawRetention, runStorageCleanup } from "@/features/versions/cleanup";
-import { runSegmentGc } from "@/features/versions/gc";
+import { runSegmentGc, SEGMENT_GC_GRACE_MS } from "@/features/versions/gc";
 import { runStorageAudit } from "@/features/versions/integrity";
 import { applyPeriodSetup, previewPeriodSetup } from "@/features/versions/period-setup";
 import { confirmPeriodUpload, reviewPeriodUpload } from "@/features/versions/period-upload";
@@ -321,41 +321,41 @@ async function newSegmentBytes(versionId: string) {
   };
 }
 
+/**
+ * Pemeliharaan dengan jam dimajukan, HANYA untuk dataset perf (job dibatasi `datasetId`): data lain di
+ * database yang sama tidak ikut dihapus lebih awal. segment-audit dijalankan apa adanya (job malam yang
+ * sama: membaca semua kunci, menyerahkan yatim > 24 jam ke pembersihan seperti biasa).
+ */
 async function maintenance(datasetId: string) {
   const now = new Date();
   const later = (ms: number) => new Date(now.getTime() + ms);
   const drain = async (at: Date) => {
     let n = 0;
     for (let i = 0; i < 50; i++) {
-      const r = await runStorageCleanup(undefined, at);
+      const r = await runStorageCleanup(undefined, at, datasetId);
       n += r.deleted;
-      const due = await prisma.storageCleanup.count({
-        where: { notBefore: { lte: at }, attempts: { lt: 8 }, prefix: { contains: datasetId } },
-      });
-      if (!due) break;
+      if (r.deleted + r.skipped + r.failed === 0) break;
     }
     return n;
   };
   // 1. Retensi versi (3 versi siap terakhir) sudah dijadwalkan saat aktivasi dengan tenggang 1 jam.
-  await drain(later(2 * 60 * 60 * 1000));
+  const retention = await drain(later(2 * 60 * 60 * 1000));
   // 2. File asli > 7 hari (semua unggahan putaran ini dianggap sudah lewat seminggu).
-  const raw = await runRawRetention(undefined, later(8 * 24 * 60 * 60 * 1000));
-  // 3. GC segmen: tandai, lompati tenggang 24 jam untuk dataset ini saja, sapu, bersihkan objek.
-  const gc1 = await runSegmentGc(now);
-  const past = new Date(now.getTime() - 25 * 60 * 60 * 1000);
-  await prisma.segment.updateMany({
-    where: { datasetId, unreferencedAt: { not: null } },
-    data: { unreferencedAt: past },
-  });
-  await prisma.segmentTyped.updateMany({
-    where: { segment: { datasetId }, unreferencedAt: { not: null } },
-    data: { unreferencedAt: past },
-  });
-  const gc2 = await runSegmentGc(now);
-  await drain(later(60 * 1000));
+  const raw = await runRawRetention(undefined, later(8 * 24 * 60 * 60 * 1000), datasetId);
+  // 3. GC segmen: tandai, lalu sapu tanpa tenggang 24 jam (dataset ini saja), lalu hapus objeknya.
+  const gcMark = await runSegmentGc(now, SEGMENT_GC_GRACE_MS, datasetId);
+  const gcSweep = await runSegmentGc(now, 0, datasetId);
+  const swept = await drain(later(60 * 1000));
   // 4. Job invarian malam (semua kunci terujuk ada, yatim diserahkan ke pembersihan).
   const audit = await runStorageAudit(undefined, now);
-  return { rawRetention: raw, gcMark: gc1, gcSweep: gc2, audit };
+  return {
+    retentionDeleted: retention,
+    rawRetention: raw,
+    gcMark,
+    gcSweep,
+    gcDeleted: swept,
+    audit,
+  };
 }
 
 /** Titik sinkron dengan pemanggil (backup sungguhan di VM): tulis status, tunggu tanda selesai. */

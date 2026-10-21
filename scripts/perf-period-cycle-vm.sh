@@ -39,7 +39,10 @@ points=${CHECKPOINTS:-0,1,2,3,24,34,end}
 ) >"$out/stats.log" 2>/dev/null &
 sampler=$!
 runner=""
-trap 'kill $sampler $runner 2>/dev/null || true; rm -rf "$scratch"' EXIT
+# Nama container siklus tetap: bila skrip ini dihentikan/gagal, container worker uji ikut dibuang (klien
+# `compose run` yang dibunuh tidak menghentikan container-nya).
+cname=dashboard-perftest-cycle-$$
+trap 'kill $sampler $runner 2>/dev/null || true; docker rm -f "$cname" >/dev/null 2>&1 || true; rm -rf "$scratch"' EXIT
 
 {
   echo "tanggal $(date -Is)"
@@ -54,7 +57,7 @@ trap 'kill $sampler $runner 2>/dev/null || true; rm -rf "$scratch"' EXIT
 
 # Siklus di container worker stack uji (NODE_ENV=test: skrip menolak produksi); worker stack uji yang
 # memproses antrean. Skrip dipasang dari folder ini, sehingga image yang sudah ada cukup (≥ T-060).
-"${PERF[@]}" run --rm -T --no-deps --user "$uid" -e HOME=/tmp -e NODE_ENV=test -e LOG_LEVEL=warn \
+"${PERF[@]}" run --rm -T --no-deps --name "$cname" --user "$uid" -e HOME=/tmp -e NODE_ENV=test -e LOG_LEVEL=warn \
   -v "$scratch:/scratch" -v "$PWD/scripts/perf-period-cycle.ts:/app/scripts/perf-period-cycle.ts:ro" \
   worker node_modules/.bin/tsx --conditions=react-server scripts/perf-period-cycle.ts \
   --owner "$owner" --dir /scratch --out /scratch/cycle.json --checkpoints "$points" "$@" \

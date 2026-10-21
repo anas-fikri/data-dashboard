@@ -474,6 +474,8 @@ untuk jadwal baru (segment-gc, segment-audit, …) di Redis — tidak berbahaya.
 
 ## 8. Disk: pertumbuhan data per periode, cache, dan backup (T-063)
 
+`docker run -v <nama>:…` membuat volume kosong baru bila namanya salah — selalu `docker volume inspect`
+dulu (perintah di bawah sudah melakukannya; nama project bawaan `dashboard`).
 VM olympus dipakai bersama aplikasi lain: **jangan** `docker system prune`, `docker volume prune`, atau
 `docker image prune` (ikut menghapus milik aplikasi lain), dan jangan menghapus objek RustFS langsung
 (manifest versi merujuk kunci objek; `segment-audit` malam akan melaporkan kunci hilang). Semua pembersihan
@@ -529,8 +531,10 @@ df -h /data /var/lib/docker                                 # sisa ruang disk ho
 docker system df                                            # ringkasan Docker (semua aplikasi; jangan prune)
 # Ukuran per volume aplikasi ini (mount read-only, image milik aplikasi ini):
 for v in s3data app_cache worker_cache backups; do
+  docker volume inspect "dashboard_$v" >/dev/null 2>&1 || { echo "$v: volume tidak ada (nama project?)"; continue; }
   printf '%s ' "$v"; docker run --rm --entrypoint du -v "dashboard_$v:/v:ro" "dashboard-backup:$tag" -sh /v
 done
+docker volume inspect dashboard_backups >/dev/null && \
 docker run --rm --entrypoint sh -v dashboard_backups:/v:ro "dashboard-backup:$tag" \
   -c 'ls -lh /v/dashboard-*.tar.age | tail -7'               # ukuran arsip 7 hari terakhir
 $C run --rm --no-deps worker node scripts/quota-report.mjs  # pemakaian per pengguna (byte tersimpan)
