@@ -1,7 +1,7 @@
 ---
 id: T-073
 title: Ikat widget ke pivot tersimpan dengan query aman D6 dan invalidasi cache
-status: in_progress
+status: done
 profile: strict
 profile_pinned: true
 goal: G-7
@@ -11,36 +11,84 @@ tags:
 depends_on:
   - T-072
 created: "2026-10-21T10:24:14Z"
-updated: "2026-10-21T17:16:45Z"
+updated: "2026-10-21T17:21:09Z"
+closed: "2026-10-21T17:21:09Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: e2c6cf110cb9a71a964bf7b37a669a03a8678a5f
+paths:
+  - deploy/upgrade.sh
+  - docs/runbook-deploy.md
+  - prisma/migrations/20261021170000_t072_saved_pivot/migration.sql
+  - prisma/schema.prisma
+  - scripts/dev-saved-pivot-fixture.mjs
+  - src/components/dashboards/config-saves.ts
+  - src/components/dashboards/dashboard-api.ts
+  - src/components/dashboards/use-dashboard-editor.ts
+  - src/components/dashboards/widget-card.tsx
+  - src/features/audit/service.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/dashboards/http.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/job.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/query/runtime.ts
+  - src/features/query/service.ts
+  - src/features/query/widget.ts
+  - src/features/saved-pivots/actions.ts
+  - src/features/saved-pivots/service.ts
+  - src/features/versions/activation.ts
+  - src/features/widgets/bound.ts
+  - tests/e2e/bound-widgets.spec.ts
+  - tests/features/dashboards/dashboards.test.ts
+  - tests/features/dashboards/http.test.ts
+  - tests/features/exports/bound-export.test.ts
+  - tests/features/query/__snapshots__/bound-legacy.test.ts.snap
+  - tests/features/query/bound-legacy.test.ts
+  - tests/features/query/bound-widgets.test.ts
+  - tests/features/query/sharing-repo.test.ts
+  - tests/features/saved-pivots/actions.test.ts
+  - tests/features/saved-pivots/binding.db.test.ts
+  - tests/features/saved-pivots/service.db.test.ts
+  - tests/features/versions/activation.test.ts
+  - tests/features/widgets/bound.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T17:17:04Z"
+      findings: 5
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T17:17:05Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 210570
+    duration_ms: 210846
     summary: |-
-      …asetId":"t072mvidhzh8ds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792602929160,"service":"data-dashboard","host":"127.0.0.1","port":42649,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602929215,"service":"data-dashboard","host":"127.0.0.1","port":32943,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792602929315,"service":"data-dashboard","host":"127.0.0.1","port":37553,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602929421,"service":"data-dashboard","host":"127.0.0.1","port":42107,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602939084,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792602952545,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792602952567,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792602952572,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792602952589,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …asetId":"t072mvidnkhxds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792603190528,"service":"data-dashboard","host":"127.0.0.1","port":42497,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792603190588,"service":"data-dashboard","host":"127.0.0.1","port":37019,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792603190691,"service":"data-dashboard","host":"127.0.0.1","port":42793,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792603190800,"service":"data-dashboard","host":"127.0.0.1","port":40633,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792603199394,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792603214985,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792603215008,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792603215013,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792603215023,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  221 passed | 1 skipped (222)
             Tests  2990 passed | 10 skipped (3000)
-         Start at  17:13:49
-         Duration  143.16s (tests 84%, import 13%, transform 2%)
+         Start at  17:18:08
+         Duration  146.05s (tests 83%, import 14%, transform 3%)
 
-          Isolate  222 workers spawned · ~151ms startup each (spawn + environment, per file)
-                   at least ~11.01s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  222 workers spawned · ~157ms startup each (spawn + environment, per file)
+                   at least ~11.50s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,10 +96,44 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T17:16:13Z"
+    at: "2026-10-21T17:20:36Z"
     tree: eda3f139bf1b7f8ec34f56447ace9a02973e8977132378c133ef6bc2110f7402
+  commits:
+    - 07b7bf2
+    - 14e93e4
+    - 17cb5cc
+    - 20985af
+    - 3f15210
+    - 4115c8d
+    - 468e913
+    - 52486eb
+    - 5f3cb82
+    - 60920fa
+    - 61111df
+    - 693edf2
+    - 6f54377
+    - 764bbce
+    - 7ccff4c
+    - 864037d
+    - 8ce72cf
+    - a4869d3
+    - a80b5ae
+    - a821c13
+    - b5206c2
+    - c4a56e5
+    - d13f79e
+    - d23d4b2
+    - d76daf2
+    - e2c6cf1
+    - eb70260
+    - ec22d22
+    - f1bd517
+    - f9bd2d5
+  acceptance:
+    total: 5
+    done: 5
   audit:
-    at: "2026-10-21T17:16:14Z"
+    at: "2026-10-21T17:20:37Z"
     passed: true
     tree: eda3f139bf1b7f8ec34f56447ace9a02973e8977132378c133ef6bc2110f7402
     results:
@@ -61,7 +143,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 524 dirs visited, 4866 inodes visited, 1 Extract calls, 242.124791ms elapsed, 242.125078ms wall time
+          End status: 524 dirs visited, 4897 inodes visited, 1 Extract calls, 280.257403ms elapsed, 280.257715ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -117,3 +199,11 @@ Widget pivot/bar/line/pie/KPI/tabel bisa memakai pivot tersimpan sebagai sumber:
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada unggahan/file baru.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: PATCH widget menerima bentuk tertutup ({detach:true} tidak boleh dicampur → 400), rate limit dashboardEdit lama berlaku; body /api/query dan /api/exports tetap strict.
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak mengubah konfigurasi.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T17:20:36Z (210846 ms)
+- Acceptance criteria: 5/5 satisfied
+- Commits: 07b7bf2, 14e93e4, 17cb5cc, 20985af, 3f15210, 4115c8d, 468e913, 52486eb, 5f3cb82, 60920fa, 61111df, 693edf2, 6f54377, 764bbce, 7ccff4c, 864037d, 8ce72cf, a4869d3, a80b5ae, a821c13, b5206c2, c4a56e5, d13f79e, d23d4b2, d76daf2, e2c6cf1, eb70260, ec22d22, f1bd517, f9bd2d5
+- Review pass 1 by claude-reviewer-subagent: 5 findings
+- Review pass 2 by claude-code: 0 findings
