@@ -9,6 +9,7 @@ import {
   PIE_AGGS,
   isCalcValue,
   parseWidgetConfig,
+  pivotTopNAxisRow,
   type WidgetConfig,
   type WidgetType,
 } from "@/features/widgets/spec";
@@ -211,8 +212,11 @@ export function WidgetConfigForm({
   // Tanpa sheet atau sheet tanpa kolom terlihat: tidak ada kolom pengganti yang bisa dipilih.
   const noColumns = noSheet || (!!sheet && !sheet.columns.length);
   const missing = noColumns ? [] : missingColumns(draft, sources);
-  // Pivot dengan isian dobel ditolak server: isian itu sendiri memberi tahu alasannya.
-  const pivotDup = draft.type === "pivot" && duplicateField(draft.spec) !== null;
+  // Pivot dengan isian dobel atau Top N di sumbu total berjalan (T-071) ditolak server: isian itu
+  // sendiri memberi tahu alasannya.
+  const pivotDup =
+    draft.type === "pivot" &&
+    (duplicateField(draft.spec) !== null || pivotTopNAxisRow(draft.spec) !== null);
   const unsaved = noColumns || missing.length > 0 || measureMismatch(draft, sources) || pivotDup;
   // Baris status berisi alasan gagal simpan (draf yang belum bisa disimpan didahulukan).
   const saveFailed = status === "error" && !unsaved;

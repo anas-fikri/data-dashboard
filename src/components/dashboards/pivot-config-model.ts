@@ -4,7 +4,9 @@ import type { ColumnType } from "@/features/ingest/infer";
 import type { Grain } from "@/features/query/spec";
 import {
   MISSING_COLUMN,
+  PIVOT_OTHER_LABEL,
   PIVOT_ROWS_MAX,
+  PIVOT_TOP_N_MAX,
   PIVOT_VALUES_MAX,
   pivotSubtotalLevels,
   type NumberFormat,
@@ -54,9 +56,13 @@ export function defaultPivot(
     const rows = rest.rows.filter((d) => has(d.column));
     const values = rest.values.filter((m) => valueColumns(m).every(has));
     if (rows.length) {
+      // Top N (T-071) yang memakai nilai yang tidak terbawa: peringkat menurut Nilai 1.
+      const kept = values.length || 1;
       return {
         ...rest,
-        rows,
+        rows: rows.map((d) =>
+          d.topN && d.topN.by >= kept ? { ...d, topN: { ...d.topN, by: 0 } } : d,
+        ),
         ...(column && has(column.column) ? { column } : {}),
         values: values.length ? values : [measure],
         format,
@@ -159,6 +165,47 @@ export function toggleSubtotal(spec: PivotSpec, level: number, on: boolean): Piv
   );
 }
 
+/** Pilihan Top N (T-071) di panel; spec boleh 1–50 (nilai lain yang tersimpan tetap ditawarkan). */
+export const TOP_N_PRESETS = [3, 5, 10, 20, PIVOT_TOP_N_MAX] as const;
+
+/** Pilihan "Tampilkan" satu field baris: "all" atau jumlah kelompok teratas (teks angka). */
+export function topNOptions(current: number | undefined): { value: string; label: string }[] {
+  const ns = [...new Set([...TOP_N_PRESETS, ...(current ? [current] : [])])].sort((a, b) => a - b);
+  return [
+    { value: "all", label: "Semua" },
+    ...ns.map((n) => ({ value: String(n), label: `${n} teratas` })),
+  ];
+}
+
+/** Ganti Top N field baris ke-`row` (undefined = semua); peringkat bawaan Nilai 1. */
+export function withTopN(
+  spec: PivotSpec,
+  row: number,
+  n: number | undefined,
+  by?: number,
+): PivotSpec {
+  return {
+    ...spec,
+    rows: spec.rows.map((d, i) => {
+      if (i !== row) return d;
+      const { topN: prev, ...rest } = d;
+      return n === undefined ? rest : { ...rest, topN: { n, by: by ?? prev?.by ?? 0 } };
+    }),
+  };
+}
+
+/** Hapus nilai ke-`index`; Top N yang memeringkat dengannya pindah ke Nilai 1, indeks lain bergeser. */
+export function withoutValue(spec: PivotSpec, index: number): PivotSpec {
+  return {
+    ...spec,
+    values: spec.values.filter((_, j) => j !== index),
+    rows: spec.rows.map((d) => {
+      if (!d.topN || d.topN.by < index) return d;
+      return { ...d, topN: { ...d.topN, by: d.topN.by === index ? 0 : d.topN.by - 1 } };
+    }),
+  };
+}
+
 export const DUPLICATE_TEXT =
   "Kolom ini sudah dipakai di atas dengan rentang waktu yang sama — pilih kolom atau rentang waktu lain.";
 
@@ -197,12 +244,21 @@ export function pivotSummary(
   valueLabel: (m: Measure) => string,
 ): { text: string; strong?: boolean }[] {
   const out: { text: string; strong?: boolean }[] = [{ text: "Satu baris per " }];
+  // Top N (T-071): "(5 teratas per Wilayah, sisanya (Lainnya))".
+  const top = (i: number) => {
+    const t = spec.rows[i]!.topN;
+    if (!t) return;
+    const parent = i ? ` per ${dimensionText(spec.rows[i - 1]!, cols)}` : "";
+    out.push({ text: ` (${t.n} teratas${parent}, sisanya ${PIVOT_OTHER_LABEL})` });
+  };
   out.push({ text: dimensionText(spec.rows[0]!, cols), strong: true });
+  top(0);
   spec.rows.slice(1).forEach((d, i) => {
     out.push(
       { text: i ? ", lalu per " : ", dirinci per " },
       { text: dimensionText(d, cols), strong: true },
     );
+    top(i + 1);
   });
   if (spec.column) {
     out.push(

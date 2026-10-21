@@ -8,9 +8,12 @@ import {
   PIVOT_CELLS_MAX,
   PIVOT_COLUMNS_SHOWN,
   PIVOT_ROWS_MAX,
+  PIVOT_OTHER_LABEL,
   PIVOT_ROWS_SHOWN,
+  TOP_N_AXIS_TEXT,
   isCalcValue,
   pivotSubtotalLevels,
+  pivotTopNAxisRow,
   type PivotSpec,
 } from "@/features/widgets/spec";
 import { CalcField } from "./calc-editor";
@@ -29,7 +32,10 @@ import {
   pivotSummary,
   splitColumn,
   toggleSubtotal,
+  topNOptions,
   withRows,
+  withTopN,
+  withoutValue,
 } from "./pivot-config-model";
 import { CHART_SORT_ORDER, measureText, sortLabel, type SourceColumn } from "./widget-config-model";
 
@@ -60,6 +66,8 @@ export function PivotFields({
   const valueLabel = (m: PivotSpec["values"][number]) =>
     isCalcValue(m) ? m.label : measureText(m, name);
   const dup = duplicateField(spec);
+  // Top N baris terdalam yang menjadi sumbu total berjalan/selisih (T-071): ditolak server.
+  const axisTop = pivotTopNAxisRow(spec);
   const row0 = spec.rows[0];
   // Sumbu total berjalan/selisih tanpa pemisah: baris terdalam (T-070: hingga baris ke-4).
   const inner = spec.rows.at(-1);
@@ -98,29 +106,45 @@ export function PivotFields({
       <fieldset className="flex min-w-0 flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Baris</legend>
         {spec.rows.map((d, i) => (
-          <DimensionField
-            key={i}
-            label={ROW_LABEL[i] ?? ROW_LABEL[ROW_LABEL.length - 1]!}
-            testId={`pivot-row-${i}`}
-            value={d}
-            columns={columns}
-            error={i > 0 && dup === `row${i}` ? DUPLICATE_TEXT : undefined}
-            onChange={(next) => set({ rows: spec.rows.map((x, j) => (j === i ? next : x)) })}
-            remove={
-              i > 0
-                ? {
-                    label: i === 1 ? "Hapus rincian baris" : `Hapus rincian baris ke-${i}`,
-                    onRemove: () =>
-                      onChange(
-                        withRows(
-                          spec,
-                          spec.rows.filter((_, j) => j !== i),
+          <div key={i} className="flex min-w-0 flex-col gap-2">
+            <DimensionField
+              label={ROW_LABEL[i] ?? ROW_LABEL[ROW_LABEL.length - 1]!}
+              testId={`pivot-row-${i}`}
+              value={d}
+              columns={columns}
+              error={i > 0 && dup === `row${i}` ? DUPLICATE_TEXT : undefined}
+              // Ganti kolom/rentang waktu: Top N field ini tetap.
+              onChange={(next) =>
+                set({
+                  rows: spec.rows.map((x, j) =>
+                    j === i ? { ...next, ...(x.topN ? { topN: x.topN } : {}) } : x,
+                  ),
+                })
+              }
+              remove={
+                i > 0
+                  ? {
+                      label: i === 1 ? "Hapus rincian baris" : `Hapus rincian baris ke-${i}`,
+                      onRemove: () =>
+                        onChange(
+                          withRows(
+                            spec,
+                            spec.rows.filter((_, j) => j !== i),
+                          ),
                         ),
-                      ),
-                  }
-                : undefined
-            }
-          />
+                    }
+                  : undefined
+              }
+            />
+            <TopNFields
+              index={i}
+              spec={spec}
+              parent={i > 0 ? name(spec.rows[i - 1]!.column) : null}
+              valueLabel={valueLabel}
+              error={axisTop === i ? TOP_N_AXIS_TEXT : undefined}
+              onChange={onChange}
+            />
+          </div>
         ))}
         {canAddRow(spec) && nextRowColumn(spec, columns) ? (
           <AddButton
@@ -190,7 +214,7 @@ export function PivotFields({
                       index: Math.min(i, spec.values.length - 2),
                       targets: ['[aria-label^="Hapus nilai"]', ...FIRST_CONTROL],
                     };
-                    set({ values: spec.values.filter((_, j) => j !== i) });
+                    onChange(withoutValue(spec, i));
                   }}
                 />
               ) : null}
@@ -303,6 +327,69 @@ export function PivotFields({
         onChange={(on) => onChange(on ? { ...withoutCross, crossFilter: true } : withoutCross)}
         testId="widget-crossfilter-switch"
       />
+    </div>
+  );
+}
+
+/**
+ * Top N satu field baris (T-071): "Tampilkan" Semua / N teratas (per kelompok induk) dan "Menurut"
+ * nilai mana (bila nilai > 1). Sisanya digabung ke "(Lainnya)" yang dihitung ulang dari data mentah.
+ */
+function TopNFields({
+  index,
+  spec,
+  parent,
+  valueLabel,
+  error,
+  onChange,
+}: {
+  index: number;
+  spec: PivotSpec;
+  /** Nama field induk (null = baris pertama: teratas di seluruh data). */
+  parent: string | null;
+  valueLabel: (m: PivotSpec["values"][number]) => string;
+  error?: string;
+  onChange: (spec: PivotSpec) => void;
+}) {
+  const top = spec.rows[index]!.topN;
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+        <Choice
+          label="Tampilkan"
+          testId={`pivot-topn-${index}`}
+          value={top ? String(top.n) : "all"}
+          options={topNOptions(top?.n)}
+          onChange={(v) => onChange(withTopN(spec, index, v === "all" ? undefined : Number(v)))}
+        />
+        {top && spec.values.length > 1 ? (
+          <Choice
+            label="Teratas menurut"
+            testId={`pivot-topn-by-${index}`}
+            value={String(top.by)}
+            options={spec.values.map((v, j) => ({
+              value: String(j),
+              label: `Nilai ${j + 1}: ${valueLabel(v)}`,
+            }))}
+            onChange={(v) => onChange(withTopN(spec, index, top.n, Number(v)))}
+          />
+        ) : null}
+      </div>
+      {error ? (
+        <p
+          role="alert"
+          className="text-xs text-destructive"
+          data-testid={`pivot-topn-error-${index}`}
+        >
+          {error}
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {top
+            ? `${top.n} teratas ${parent ? `per ${parent}` : "dari seluruh data"} menurut nilai dasar; sisanya digabung ke ${PIVOT_OTHER_LABEL}. Subtotal dan total tetap mencakup semua.`
+            : `Pilih N teratas untuk menggabungkan sisanya ke ${PIVOT_OTHER_LABEL}.`}
+        </p>
+      )}
     </div>
   );
 }

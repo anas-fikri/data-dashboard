@@ -39,23 +39,39 @@ const META = ["kind", "ri", "gi", "ci", "d0", "d1", "dc", "n"] as const;
  * kelompok level 2–3 per baris tampil, dan label baris 3–4. Baris ≤ 2 kolom tetap META (SQL 1.0.0).
  */
 const META_NESTED = [...META, "lv", "g2", "g3", "d2", "d3"] as const;
-type Meta = (typeof META_NESTED)[number];
-const metaOf = (shape: PivotShape): readonly Meta[] => (shape.rowFields > 2 ? META_NESTED : META);
+/**
+ * Top N (T-071): META_NESTED + `ox` = bit level baris (bit 0 = baris pertama) yang berisi kelompok
+ * "(Lainnya)" pada baris tampil itu. Hanya untuk spec ber-Top N (bentuk lain tidak berubah).
+ */
+const META_TOP = [...META_NESTED, "ox"] as const;
+type Meta = (typeof META_TOP)[number];
+const hasTop = (shape: PivotShape) => !!shape.top?.length;
+const metaOf = (shape: PivotShape): readonly Meta[] =>
+  hasTop(shape) ? META_TOP : shape.rowFields > 2 ? META_NESTED : META;
+/** Level baris (0-based, naik) ber-Top N: kuncinya ditambah penanda x<level> ("(Lainnya)"). */
+const topLevels = (shape: PivotShape) =>
+  (shape.top ?? []).map((t) => t.level).sort((a, b) => a - b);
 /** Kolom indeks kelompok level induk L (1 = kelompok baris pertama). */
 const groupCol = (level: number): Meta => (level === 1 ? "gi" : (`g${level}` as Meta));
 /** Level induk ber-subtotal (1-based, naik); baris 2 kolom: kelompok pertama bila subtotal. */
 export const subtotalLevelsOf = (shape: PivotShape): number[] =>
   shape.rowFields > 2 ? (shape.levels ?? []) : shape.subtotals && shape.rowFields === 2 ? [1] : [];
-/** Kunci baris k0..k<m-1>. */
-const keysOf = (m: number) => Array.from({ length: m }, (_, i) => `k${i}`);
+/**
+ * Kunci baris k0..k<m-1>, lalu penanda "(Lainnya)" x<i> level ber-Top N di bawah m (T-071): kelompok
+ * sisa berkunci NULL + x<i> = true, jadi tidak tertukar dengan kelompok (kosong) sungguhan.
+ */
+const keysOf = (m: number, x: readonly number[] = []) => [
+  ...Array.from({ length: m }, (_, i) => `k${i}`),
+  ...x.filter((i) => i < m).map((i) => `x${i}`),
+];
 /** Kesetaraan kunci k0..k<m-1> antara dua alias (NULL = NULL, seperti GROUP BY). */
-const keysOn = (a: string, b: string, m: number) =>
-  keysOf(m)
-    .map((x) => `${a}.${x} IS NOT DISTINCT FROM ${b}.${x}`)
+const keysOn = (a: string, b: string, m: number, x: readonly number[] = []) =>
+  keysOf(m, x)
+    .map((c) => `${a}.${c} IS NOT DISTINCT FROM ${b}.${c}`)
     .join(" AND ");
 /** Kelompok level L yang tampil (indeks di kolom gi) digabung ke data mentah `s`. */
-const groupJoinOf = (level: number, alias = "g") =>
-  `JOIN (SELECT DISTINCT ${keysOf(level).join(", ")}, ${groupCol(level)}${level > 1 ? " AS gi" : ""} FROM rws) ${alias} ON ${keysOn(alias, "s", level)}`;
+const groupJoinOf = (level: number, alias = "g", x: readonly number[] = []) =>
+  `JOIN (SELECT DISTINCT ${keysOf(level, x).join(", ")}, ${groupCol(level)}${level > 1 ? " AS gi" : ""} FROM rws) ${alias} ON ${keysOn(alias, "s", level, x)}`;
 /**
  * Pasangan (baris tampil, kolom tampil) paling banyak bila hanya satu nilai: anggaran sel saja (24.000
  * pasangan) bisa melewati batas hasil 5 MB; 16.000 = batas 1.0.0 (200 baris + 200 subtotal × 40).
@@ -153,6 +169,47 @@ export function buildPivotValuesSql(
   };
 }
 
+/**
+ * Top N per kelompok induk (T-071): rantai CTE dari data mentah tersaring (`base`) sampai `src`. Per
+ * level ber-Top N (naik): `top<j>` = N kunci teratas di dalam kunci induknya (termasuk penanda level
+ * di atasnya) menurut agregat nilai ke-`by` (nilai dasar, bukan cara tampil), seri dipecah label naik;
+ * baris mentah di luar itu diberi kunci (dan label teks) NULL + penanda `x<level>` = true. Semua
+ * agregat sesudahnya (sel, subtotal, total, Tampilkan nilai sebagai) dihitung ulang dari baris mentah
+ * kelompok "(Lainnya)" — rata-rata/jumlah unik/min/maks/field terhitung tetap benar; kunci induk tidak
+ * berubah sehingga subtotal dan total sama dengan tanpa Top N. N = bilangan bulat tervalidasi zod.
+ */
+function topCtes(plan: Plan, shape: PivotShape, rows: Dim[], base: string): string[] {
+  const top = [...(shape.top ?? [])].sort((a, b) => a.level - b.level);
+  const ctes = [`s0 AS NOT MATERIALIZED (${base})`];
+  top.forEach((t, j) => {
+    const i = t.level;
+    const d = rows[i]!;
+    const prev = `s${j}`;
+    const next = j === top.length - 1 ? "src" : `s${j + 1}`;
+    const parent = keysOf(
+      i,
+      top.slice(0, j).map((u) => u.level),
+    );
+    const keys = [...parent, `k${i}`];
+    const m = plan.measures[t.by] ?? plan.measures[0]!;
+    const part = parent.length ? `PARTITION BY ${parent.join(", ")} ` : "";
+    ctes.push(
+      `top${j} AS MATERIALIZED (SELECT ${keys.join(", ")}, true AS hit FROM ` +
+        `(SELECT ${keys.join(", ")}, ${measureExpr(m)} AS v FROM ${prev} GROUP BY ${keys.join(", ")}) ` +
+        `QUALIFY row_number() OVER (${part}ORDER BY v DESC NULLS LAST, ${keyOrder(`k${i}`, d, "ASC")}) <= ${Math.trunc(t.n)})`,
+    );
+    const keep = [
+      `CASE WHEN t.hit THEN s.k${i} END AS k${i}`,
+      ...(d.type === "text" ? [`CASE WHEN t.hit THEN s.t${i} END AS t${i}`] : []),
+    ];
+    ctes.push(
+      `${next} AS NOT MATERIALIZED (SELECT s.* REPLACE (${keep.join(", ")}), t.hit IS NULL AS x${i} ` +
+        `FROM ${prev} s LEFT JOIN top${j} t ON ${keys.map((c) => `t.${c} IS NOT DISTINCT FROM s.${c}`).join(" AND ")})`,
+    );
+  });
+  return ctes;
+}
+
 export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
   const where = pivotWhere(plan, shape, params);
@@ -163,9 +220,18 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   const levels = subtotalLevelsOf(shape);
   const meta = metaOf(shape);
   const nv = plan.measures.length;
-  // Bentuk baru T-070 (> 2 baris atau > 3 nilai): anggaran sel + satu pindaian agregat. Spec 1.0.0
-  // tidak pernah masuk sini, jadi SQL dan kunci cache-nya tidak berubah.
-  const fresh = nested || nv > 3;
+  // Top N (T-071): penanda "(Lainnya)" per level ber-Top N ikut di setiap kunci kelompok.
+  const tops = topLevels(shape);
+  const K = (m: number) => keysOf(m, tops);
+  const on = (a: string, b: string, m: number) => keysOn(a, b, m, tops);
+  const gj = (level: number, alias?: string) => groupJoinOf(level, alias, tops);
+  // Bentuk baru T-070 (> 2 baris atau > 3 nilai) dan Top N: anggaran sel + satu pindaian agregat. Spec
+  // 1.0.0 tidak pernah masuk sini, jadi SQL dan kunci cache-nya tidak berubah.
+  const fresh = nested || nv > 3 || tops.length > 0;
+  // Kolom `lv` (level subtotal) ada di META_NESTED/META_TOP.
+  const wide = meta.includes("lv");
+  /** "(Lainnya)" di urutan level i: selalu terakhir di dalam induknya (false < true). */
+  const otherLast = (alias: string, i: number) => (tops.includes(i) ? `${alias}x${i}, ` : "");
   const k = (name: string) => ident(name);
   // Label tampil dalam kueri yang dikelompokkan per kunci: teks = variasi paling sering, lainnya kunci.
   const display = (d: Dim, key: string, text: string) =>
@@ -183,10 +249,11 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   for (const c of new Set(plan.measures.flatMap(measureCols))) src.push(ident(c));
 
   const m0 = measureExpr(plan.measures[0]!);
-  const ctes = [
-    // Inline (bukan materialized): data mentah tidak ditahan di memori; parquet dibaca per cabang.
-    `${k("src")} AS NOT MATERIALIZED (SELECT ${src.join(", ")} FROM read_parquet($path)${where})`,
-  ];
+  const base = `SELECT ${src.join(", ")} FROM read_parquet($path)${where}`;
+  // Inline (bukan materialized): data mentah tidak ditahan di memori; parquet dibaca per cabang.
+  const ctes = tops.length
+    ? topCtes(plan, shape, rows, base)
+    : [`${k("src")} AS NOT MATERIALIZED (${base})`];
   if (n > 1) {
     // Kelompok per level induk (g1 = baris pertama, g2 = dua baris pertama, …) lalu baris terdalam;
     // urutan tampil: urutan kelompok level demi level, lalu baris terdalam di dalam kelompoknya.
@@ -198,18 +265,18 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
       // level itu (induk lalu nilai/label) — rws cukup mengurutkan baris terdalam per `r` induk, tanpa
       // jendela dense_rank per level atas semua baris terdalam (mahal pada 4 tingkat × ribuan baris).
       for (let l = 1; l < n; l++) {
-        const keys = keysOf(l).join(", ");
+        const keys = K(l).join(", ");
         const d = rows[l - 1]!;
         const inner = `SELECT ${keys}, ${display(d, `k${l - 1}`, `t${l - 1}`)} AS d${l - 1}, ${m0} AS v FROM src GROUP BY ${keys}`;
-        const own = rowOrder(shape.sort, "g.v", `g.k${l - 1}`, d);
+        const own = otherLast("g.", l - 1) + rowOrder(shape.sort, "g.v", `g.k${l - 1}`, d);
         ctes.push(
           l === 1
             ? `g1 AS MATERIALIZED (SELECT g.*, row_number() OVER (ORDER BY ${own}) AS r FROM (${inner}) g)`
             : `g${l} AS MATERIALIZED (SELECT g.*, row_number() OVER (ORDER BY p.r, ${own}) AS r ` +
-                `FROM (${inner}) g JOIN g${l - 1} p ON ${keysOn("p", "g", l - 1)})`,
+                `FROM (${inner}) g JOIN g${l - 1} p ON ${on("p", "g", l - 1)})`,
         );
         ranks.push(`g${l}.r AS ${groupCol(l)}`);
-        joins.push(`JOIN g${l} ON ${keysOn(`g${l}`, "lf", l)}`);
+        joins.push(`JOIN g${l} ON ${on(`g${l}`, "lf", l)}`);
       }
       orders.push(`g${n - 1}.r`);
     } else {
@@ -225,7 +292,7 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
       }
     }
     const leaf = rows[n - 1]!;
-    const keys = keysOf(n).join(", ");
+    const keys = K(n).join(", ");
     // T-070: label teks baris terdalam (histogram) hanya untuk ≤ 200 baris yang tampil, bukan semua
     // baris terdalam (4 tingkat bisa puluhan ribu) — satu pindaian kunci tambahan yang tersaring.
     const lateLabel = fresh && leaf.type === "text";
@@ -238,30 +305,32 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
         ? [`lf.k${i}`, `g${i + 1}.d${i}`]
         : [`lf.k${i}`, ...(lateLabel ? [] : [`lf.d${i}`])],
     );
+    cols.push(...tops.map((i) => `lf.x${i}`));
     const body =
       `SELECT ${cols.join(", ")}, ` +
-      `row_number() OVER (ORDER BY ${[...orders, rowOrder(shape.sort, "lf.v", `lf.k${n - 1}`, leaf)].join(", ")}) AS ri, ` +
+      `row_number() OVER (ORDER BY ${[...orders, otherLast("lf.", n - 1) + rowOrder(shape.sort, "lf.v", `lf.k${n - 1}`, leaf)].join(", ")}) AS ri, ` +
       `${ranks.join(", ")}, count(*) OVER () AS n ` +
       `FROM lf ${joins.join(" ")} QUALIFY ri <= ${PIVOT_ROWS_SHOWN}`;
     if (lateLabel) {
       ctes.push(
         `rw0 AS MATERIALIZED (${body})`,
-        `rws AS MATERIALIZED (SELECT rw0.*, l.d${n - 1} FROM rw0 JOIN (SELECT ${keysOf(n)
-          .map((x) => `s.${x}`)
+        `rws AS MATERIALIZED (SELECT rw0.*, l.d${n - 1} FROM rw0 JOIN (SELECT ${K(n)
+          .map((c) => `s.${c}`)
           .join(", ")}, ` +
-          `${textLabel(`s.${k(`t${n - 1}`)}`)} AS d${n - 1} FROM src s JOIN rw0 w ON ${keysOn("w", "s", n)} ` +
-          `GROUP BY ${keysOf(n)
-            .map((x) => `s.${x}`)
-            .join(", ")}) l ON ${keysOn("l", "rw0", n)})`,
+          `${textLabel(`s.${k(`t${n - 1}`)}`)} AS d${n - 1} FROM src s JOIN rw0 w ON ${on("w", "s", n)} ` +
+          `GROUP BY ${K(n)
+            .map((c) => `s.${c}`)
+            .join(", ")}) l ON ${on("l", "rw0", n)})`,
       );
     } else {
       ctes.push(`rws AS MATERIALIZED (${body})`);
     }
   } else {
     const r0 = rows[0]!;
+    const keys = K(1).join(", ");
     ctes.push(
-      `lf AS MATERIALIZED (SELECT k0, ${display(r0, "k0", "t0")} AS d0, ${m0} AS v FROM src GROUP BY k0)`,
-      `rws AS MATERIALIZED (SELECT k0, d0, row_number() OVER (ORDER BY ${rowOrder(shape.sort, "v", "k0", r0)}) AS ri, ` +
+      `lf AS MATERIALIZED (SELECT ${keys}, ${display(r0, "k0", "t0")} AS d0, ${m0} AS v FROM src GROUP BY ${keys})`,
+      `rws AS MATERIALIZED (SELECT ${keys}, d0, row_number() OVER (ORDER BY ${otherLast("", 0)}${rowOrder(shape.sort, "v", "k0", r0)}) AS ri, ` +
         `count(*) OVER () AS n FROM lf QUALIFY ri <= ${PIVOT_ROWS_SHOWN})`,
     );
   }
@@ -288,7 +357,7 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   const noM = plan.measures.map((m) => `NULL AS ${ident(m.key)}`);
   const select = (o: Partial<Record<Meta, string>>, measures: string[]) =>
     `SELECT ${meta.map((c) => `${o[c] ?? "NULL"} AS ${ident(c)}`).join(", ")}, ${measures.join(", ")}`;
-  const rowJoin = `JOIN rws r ON ${keysOn("r", "s", n)}`;
+  const rowJoin = `JOIN rws r ON ${on("r", "s", n)}`;
   const colJoin = "JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc";
 
   const rowMeta: Partial<Record<Meta, string>> = { kind: "'row'", ri: "ri", n: "n" };
@@ -296,6 +365,9 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
     rowMeta[`d${i}` as Meta] = `d${i}`;
     if (i) rowMeta[groupCol(i)] = groupCol(i);
   });
+  // Bit level yang berisi "(Lainnya)" (T-071).
+  if (tops.length)
+    rowMeta.ox = tops.map((i) => `CASE WHEN x${i} THEN ${2 ** i} ELSE 0 END`).join(" + ");
   const parts = [`${select(rowMeta, noM)} FROM rws`];
   if (col) parts.push(`${select({ kind: "'col'", ci: "ci", dc: "dc", n: "n" }, noM)} FROM cols`);
 
@@ -318,8 +390,8 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
   ];
   for (const l of levels) {
     // Subtotal kelompok level l (indeks kelompoknya di gi; baris ≥ 3 kolom: level di lv).
-    const lv = nested ? { lv: String(l) } : {};
-    const groupJoin = groupJoinOf(l);
+    const lv = wide ? { lv: String(l) } : {};
+    const groupJoin = gj(l);
     sets.push(
       col
         ? {
@@ -365,11 +437,11 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
     // semua kolom nilai dari parquet; dengan 4 tingkat × 8 nilai itu yang paling mahal. Baris/kolom/
     // kelompok yang tidak tampil bergabung NULL dan disaring per kelompok (total tetap seluruh data).
     const expr: Record<string, string> = { ri: "r.ri", ci: "x.ci" };
-    const joins = [`LEFT JOIN rws r ON ${keysOn("r", "s", n)}`];
+    const joins = [`LEFT JOIN rws r ON ${on("r", "s", n)}`];
     if (col) joins.push("LEFT JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc");
     for (const l of levels) {
       expr[`s${l}`] = `g${l}x.gi`;
-      joins.push(groupJoinOf(l, `g${l}x`).replace(/^JOIN/, "LEFT JOIN"));
+      joins.push(gj(l, `g${l}x`).replace(/^JOIN/, "LEFT JOIN"));
     }
     const by = Object.keys(expr).filter((c) => sets.some((x) => x.by.includes(c)));
     // GROUPING(a, b, …): bit 1 = kolom itu tidak dikelompokkan; kolom pertama = bit tertinggi.
@@ -399,7 +471,7 @@ export function buildPivotSql(plan: Plan, shape: PivotShape, parquetPath: string
     // Tanpa "Tampilkan nilai sebagai": SQL lama persis (spec 1.0.0 identik).
     return bindCalc({ sql: `WITH ${ctes.join(",\n")}\n${union}`, params }, plan.measures);
   }
-  const shownSql = showAsSql(plan, shape, { rows, col, rowJoin, colJoin, M });
+  const shownSql = showAsSql(plan, shape, { rows, col, rowJoin, colJoin, M, tops });
   return bindCalc(
     {
       sql: `WITH ${[...ctes, ...shownSql.ctes, `u AS (${union})`].join(",\n")}\n${shownSql.select}`,
@@ -433,6 +505,8 @@ function showAsSql(
     rowJoin: string;
     colJoin: string;
     M: string[];
+    /** Level baris ber-Top N (penanda "(Lainnya)" di kunci), T-071. */
+    tops: readonly number[];
   },
 ): { ctes: string[]; select: string } {
   const shows = plan.measures.map((m) => m.showAs ?? "none");
@@ -455,14 +529,14 @@ function showAsSql(
     joins.push("LEFT JOIN rt ON u.kind = 'cell' AND rt.ri = u.ri");
     if (sub && n <= 2) {
       ctes.push(
-        `st AS MATERIALIZED (SELECT g.gi, ${q.M.join(", ")} FROM src s ${groupJoinOf(1)} GROUP BY g.gi)`,
+        `st AS MATERIALIZED (SELECT g.gi, ${q.M.join(", ")} FROM src s ${groupJoinOf(1, "g", q.tops)} GROUP BY g.gi)`,
       );
       joins.push("LEFT JOIN st ON u.kind = 'sub' AND st.gi = u.gi");
     } else if (sub) {
       // Baris ≥ 3 kolom (T-070): penyebut subtotal = total baris kelompok itu di levelnya sendiri.
       const per = levels.map(
         (l) =>
-          `SELECT ${l} AS lv, g.gi, ${q.M.join(", ")} FROM src s ${groupJoinOf(l)} GROUP BY g.gi`,
+          `SELECT ${l} AS lv, g.gi, ${q.M.join(", ")} FROM src s ${groupJoinOf(l, "g", q.tops)} GROUP BY g.gi`,
       );
       ctes.push(`st AS MATERIALIZED (${per.join(" UNION ALL ")})`);
       joins.push("LEFT JOIN st ON u.kind = 'sub' AND st.lv = u.lv AND st.gi = u.gi");
@@ -496,14 +570,14 @@ function showAsSql(
     } else {
       // Sepanjang baris terdalam di dalam kelompok induknya (semua level induk), termasuk baris di
       // luar 200 tampil.
-      const keys = keysOf(n).join(", ");
+      const keys = keysOf(n, q.tops).join(", ");
       const leaf = q.rows[n - 1]!;
       body =
         `SELECT r.ri, NULL AS ci, ${keep.join(", ")} FROM (SELECT ${keys}, ${wins.join(", ")} ` +
         `FROM (SELECT ${keys}, ${raw.join(", ")} FROM src s GROUP BY ${keys}) ` +
-        `WINDOW w AS (${n > 1 ? `PARTITION BY ${keysOf(n - 1).join(", ")} ` : ""}ORDER BY ${keyOrder(`k${n - 1}`, leaf, "ASC")} ` +
+        `WINDOW w AS (${n > 1 ? `PARTITION BY ${keysOf(n - 1, q.tops).join(", ")} ` : ""}ORDER BY ${keyOrder(`k${n - 1}`, leaf, "ASC")} ` +
         `ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)) w ` +
-        `JOIN rws r ON ${keysOn("r", "w", n)}`;
+        `JOIN rws r ON ${keysOn("r", "w", n, q.tops)}`;
     }
     ctes.push(`ax AS MATERIALIZED (${body})`);
     joins.push(
@@ -557,10 +631,12 @@ export function pivotOutTypes(plan: Plan, shape: PivotShape): OutColumn["type"][
   const rows = plan.dimensions.slice(0, shape.rowFields);
   const col = shape.column ? plan.dimensions[shape.rowFields] : undefined;
   const measures = plan.columns.filter((c) => c.key.startsWith("m")).map((c) => c.type);
+  const meta = metaOf(shape);
   const nested: OutColumn["type"][] =
-    shape.rowFields > 2
+    meta.length > META.length
       ? ["count", "count", "count", dimType(rows[2]), dimType(rows[3])] // lv, g2, g3, d2, d3
       : [];
+  if (meta.length > META_NESTED.length) nested.push("count"); // ox (Top N, T-071)
   return [
     "text",
     "count",
@@ -592,8 +668,12 @@ export interface PivotData {
   rowFields: PivotField[];
   columnField: PivotField | null;
   values: PivotField[];
-  /** Baris terdalam yang tampil, urut: label per kolom baris + kelompok pertama (indeks `groups`). */
-  rows: { labels: unknown[]; group: number | null }[];
+  /**
+   * Baris terdalam yang tampil, urut: label per kolom baris + kelompok pertama (indeks `groups`).
+   * `other` (Top N, T-071): bit level (bit 0 = baris pertama) yang berisi kelompok "(Lainnya)" —
+   * labelnya null, bukan data (tidak bisa jadi filter silang).
+   */
+  rows: { labels: unknown[]; group: number | null; other?: number }[];
   /** Label kelompok baris pertama (untuk baris subtotal), bila baris 2 kolom. */
   groups: unknown[];
   /** Nilai kolom pemisah yang tampil (mis. periode), urut naik; [] bila tanpa pemisah. */
@@ -661,9 +741,11 @@ export function shapePivot(raw: unknown[][], plan: Plan, shape: PivotShape): Piv
     const i = idx(r[at("ri")]);
     const path = Array.from({ length: n - 1 }, (_, l) => idx(r[at(groupCol(l + 1))]));
     const g = path[0] ?? -1;
+    const other = at("ox") >= 0 ? Number(r[at("ox")] ?? 0) : 0;
     rows[i] = {
       labels: Array.from({ length: n }, (_, j) => r[at(`d${j}` as Meta)]),
       group: g >= 0 ? g : null,
+      ...(other ? { other } : {}),
     };
     paths[i] = path;
     path.forEach((p, l) => {

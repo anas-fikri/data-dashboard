@@ -482,6 +482,14 @@ upgrade berikutnya), dan bagikan ulang tautan tanpa saringan tingkat 3–4. Roll
 rollback` (DB dipulihkan dari dump preflight) membuang perubahan widget sesudah upgrade sekaligus, jadi
 tidak terdampak.
 
+**Rollback ke versi sebelum Top N pivot (T-071).** Sama seperti T-070 (tanpa migrasi DB): widget pivot yang
+memakai **Top N per baris** (`topN` di field baris) ditolak zod versi lama → kartu "Pengaturan widget tidak
+valid (rows.…: …)", ekspor/PDF widget itu gagal; spec di DB tetap dan kembali normal setelah upgrade lagi.
+Sebelum rollback image, cari widget terdampak
+`SELECT id, "dashboardId" FROM "Widget" WHERE type = 'pivot' AND EXISTS (SELECT 1 FROM jsonb_array_elements(spec->'rows') r WHERE r ? 'topN');`
+lalu set "Tampilkan" ke "Semua" di panel widget itu (atau terima kartu "tidak valid" sampai upgrade
+berikutnya). Rollback lewat `upgrade.sh rollback` (DB dari dump preflight) tidak terdampak.
+
 ### Bukti uji (container cloud, 2026-10-20)
 
 - Build 4 image produksi dari commit rilis (`docker buildx`, target app/worker + renderer + backup): lulus;

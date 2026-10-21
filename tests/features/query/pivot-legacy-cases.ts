@@ -166,6 +166,55 @@ export const LEGACY_CASES: Case[] = [
   ],
 ];
 
+/**
+ * Bentuk T-070 (3–4 baris, > 3 nilai) tanpa Top N — golden di pivot-topn.test.ts dihitung dari HEAD
+ * 3f15210 (sebelum T-071): Top N tidak boleh mengubah SQL/kunci cache pivot yang tidak memakainya.
+ */
+export const T070_CASES: Case[] = [
+  [
+    "4 baris + kolom, 8 nilai, subtotal level 2",
+    {
+      ...base,
+      rows: [{ column: 1 }, { column: 2 }, { column: 6 }, { column: 3, timeGrain: "quarter" }],
+      column: { column: 3, timeGrain: "month" },
+      values: [
+        { agg: "sum", column: 4 },
+        { agg: "count" },
+        { agg: "avg", column: 4 },
+        { agg: "count_distinct", column: 2 },
+        { agg: "min", column: 4 },
+        { agg: "max", column: 4 },
+        { agg: "sum", column: 5, showAs: "pct_row" },
+        margin,
+      ],
+      subtotalLevels: [2],
+    },
+  ],
+  [
+    "3 baris tanpa kolom, total berjalan, urut label",
+    {
+      ...base,
+      sort: "label_asc",
+      rows: [{ column: 1 }, { column: 2 }, { column: 3, timeGrain: "month" }],
+      values: [{ agg: "sum", column: 4, showAs: "running" }, { agg: "count" }],
+    },
+  ],
+  [
+    "1 baris, 5 nilai",
+    {
+      ...base,
+      rows: [{ column: 2 }],
+      values: [
+        { agg: "sum", column: 4 },
+        { agg: "count" },
+        { agg: "avg", column: 5 },
+        { agg: "min", column: 5 },
+        { agg: "max", column: 5, showAs: "pct_grand" },
+      ],
+    },
+  ],
+];
+
 const sha = (v: unknown) => createHash("sha256").update(JSON.stringify(v)).digest("hex");
 
 /** [kunci cache widget, hash SQL + parameter] satu spec lama — sama dengan service.ts runWidget. */

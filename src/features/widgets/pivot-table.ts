@@ -7,7 +7,7 @@
 import type { PivotFieldRole } from "@/features/query/filters";
 import type { PivotCell, PivotData } from "@/features/query/pivot";
 import { AUTO_FORMAT, formatCell, formatNumber, type ValueType } from "./format";
-import { PIVOT_COLUMNS_SHOWN, type NumberFormat, type ShowAs } from "./spec";
+import { PIVOT_COLUMNS_SHOWN, PIVOT_OTHER_LABEL, type NumberFormat, type ShowAs } from "./spec";
 
 /** Nilai mentah sebuah label + field-nya (filter silang dari label, T-f4a7). */
 export interface PivotPick {
@@ -31,8 +31,10 @@ export interface PivotBodyRow {
   depth: 0 | 1 | 2 | 3;
   /** Satu nilai per kolom data, urut header; null = tidak ada data. Kelompok tanpa subtotal: []. */
   values: unknown[];
-  /** Label baris/kelompok (bukan Total). */
+  /** Label baris/kelompok (bukan Total). Tidak ada untuk "(Lainnya)": bukan nilai data, tidak bisa disaring. */
   pick?: PivotPick;
+  /** Kelompok sisa Top N "(Lainnya)" (T-071), bukan kategori data. */
+  other?: true;
 }
 
 export interface PivotField {
@@ -151,6 +153,15 @@ export function pivotTable(p: PivotData): PivotTableModel {
   let last: (number | null)[] = [];
   p.rows.forEach((r, ri) => {
     const path = pathOf(ri);
+    // Level l baris ini kelompok "(Lainnya)" (Top N, T-071): label sistem, tanpa filter silang.
+    const isOther = (l: number) => (((r.other ?? 0) >> l) & 1) === 1;
+    const named = (l: number, raw: unknown) =>
+      isOther(l)
+        ? { label: PIVOT_OTHER_LABEL, other: true as const }
+        : {
+            label: label(raw, p.rowFields[l]!),
+            pick: { field: `row${l}` as PivotFieldRole, raw },
+          };
     // Kepala kelompok setiap level yang berganti (dan semua level di bawahnya), seperti Excel.
     let changed = false;
     path.forEach((g, l) => {
@@ -159,20 +170,18 @@ export function pivotTable(p: PivotData): PivotTableModel {
       const lv = levels[l]!;
       rows.push({
         kind: "group",
-        label: label(lv.labels[g], p.rowFields[l]!),
         depth: l as PivotBodyRow["depth"],
         values: lv.subtotals ? flat(lv.subtotals[g] ?? [], lv.totals?.[g], !!lv.totals) : [],
-        pick: { field: `row${l}` as PivotFieldRole, raw: lv.labels[g] },
+        ...named(l, lv.labels[g]),
       });
     });
     last = path;
     const leaf = n - 1;
     rows.push({
       kind: "leaf",
-      label: label(r.labels[leaf], p.rowFields[leaf]!),
       depth: leaf as PivotBodyRow["depth"],
       values: flat(p.cells[ri] ?? [], p.rowTotals?.[ri], withTotal),
-      pick: { field: `row${leaf}` as PivotFieldRole, raw: r.labels[leaf] },
+      ...named(leaf, r.labels[leaf]),
     });
   });
 

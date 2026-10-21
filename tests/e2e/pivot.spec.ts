@@ -19,6 +19,9 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  *        Escape mengembalikan fokus ke pemicu, jumlah hasil diumumkan.
  *   T-070: 4 tingkat baris × 8 nilai dari panel, sakelar subtotal per level, 360 px (gulir di kartu,
  *        kolom label beku, indentasi), halaman cetak tanpa teks bertumpuk.
+ *   T-071: Kota Tujuan › Customer, Top 5 Customer per kota dari panel → "(Lainnya)" berisi sisa
+ *        customer (Surabaya: customer genap 2–14 = 33.852), subtotal/total tetap, "(Lainnya)" tidak bisa
+ *        jadi filter silang, ikut di ekspor CSV dan halaman cetak.
  * E2E_SHOTS=<folder> menyimpan tangkapan layar untuk review desain.
  */
 test.describe.configure({ mode: "serial" });
@@ -35,6 +38,7 @@ let owner: Page;
 let d = "";
 let widgetId = "";
 let revision = NaN;
+let sheetId = "";
 
 async function workbook(): Promise<string> {
   const wb = new ExcelJS.Workbook();
@@ -494,6 +498,7 @@ test.describe("widget pivot (T-tcjp)", () => {
       spec: { sheetId: string; filters?: unknown };
     };
     expect(body.spec.filters).toEqual([{ column: 4, op: "in", values: ["Darat"] }]);
+    sheetId = body.spec.sheetId;
     await expect(total(owner)).toHaveText(/^Rp\s?90\.072$/);
     await expect(card(owner).getByTestId("pivot-filter-note")).toContainText(
       "Layanan: Darat (pengaturan widget)",
@@ -744,6 +749,91 @@ test.describe("widget pivot (T-tcjp)", () => {
         rightInside: true,
       });
       if (SHOTS) await page.screenshot({ path: join(SHOTS, "pivot-levels-print.png") });
+    } finally {
+      await ctx.close();
+      execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);
+    }
+  });
+  test("T-071: Top N per kelompok dari panel — (Lainnya), subtotal tetap, tanpa filter silang, ekspor + cetak", async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    // Bentuk awal lewat API (lanjutan uji sebelumnya berisi 4 tingkat × 8 nilai).
+    const r = await owner.request.patch(`/api/dashboards/${d}/widgets/${widgetId}`, {
+      headers,
+      data: {
+        type: "pivot",
+        spec: {
+          sheetId,
+          rows: [{ column: 6 }, { column: 1 }],
+          column: { column: 2, timeGrain: "month" },
+          values: [{ agg: "sum", column: 3 }],
+          sort: "value_desc",
+          format: { style: "rupiah", decimals: 0 },
+          totals: true,
+          subtotals: true,
+          crossFilter: true,
+        },
+      },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    const panel = owner.getByTestId("widget-panel");
+    await openPanel(owner, panel);
+    const table = card(owner).getByTestId("widget-pivot");
+    await expect(table.locator("tbody tr[data-kind=leaf]")).toHaveCount(24);
+
+    // Select kustom "Tampilkan" pada rincian Customer → 5 teratas per Kota Tujuan.
+    await panel.getByTestId("pivot-topn-1").click();
+    await owner.getByRole("option", { name: "5 teratas", exact: true }).click();
+    await saved(panel);
+    await expect(panel.getByTestId("pivot-summary")).toContainText(
+      "5 teratas per Kota Tujuan, sisanya (Lainnya)",
+    );
+    const others = table.locator("tbody tr[data-kind=leaf]").filter({ hasText: "(Lainnya)" });
+    await expect(others).toHaveCount(2);
+    await expect(table.locator("tbody tr[data-kind=leaf]")).toHaveCount(12);
+    // Surabaya (customer genap) dulu: subtotal tetap 94.032, (Lainnya) = customer 2–14.
+    const groups = table.locator("tbody tr[data-kind=group]");
+    await expect(groups.first().locator("th")).toHaveText("Surabaya");
+    await expect(groups.first().locator("td").last()).toHaveText(/^Rp\s?94\.032$/);
+    await expect(others.first().locator("td").last()).toHaveText(/^Rp\s?33\.852$/);
+    await expect(others.first().locator("th")).toHaveAttribute("data-other", "");
+    await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
+
+    // Filter silang: label data bisa diklik, "(Lainnya)" tidak (bukan tombol).
+    await owner.goto(`/dashboards/${d}`);
+    const items = card(owner).getByTestId("crossfilter-item");
+    await expect(items.filter({ hasText: /^Customer 24$/ })).toHaveCount(1);
+    await expect(items.filter({ hasText: "(Lainnya)" })).toHaveCount(0);
+    await expect(
+      card(owner).locator("tbody th[data-other]").first().getByRole("button"),
+    ).toHaveCount(0);
+
+    // Ekspor CSV: label sama, angka sisa.
+    const lines = await exportCsv(owner, "pivot-topn.csv");
+    expect(lines).toContain('"Surabaya","(Lainnya)",11270,11284,11298,33852');
+    expect(lines.at(-1)).toBe('"Total",,60240,60288,60336,180864');
+
+    // Halaman cetak (jalur PDF): "(Lainnya)" dengan label yang sama.
+    const { token, exportId } = JSON.parse(
+      execFileSync("node", ["scripts/dev-render-token.mjs", "mint", OWNER, d]).toString(),
+    ) as { token: string; exportId: string };
+    const ctx = await browser.newContext({
+      viewport: { width: 1047, height: 740 },
+      locale: "id-ID",
+    });
+    try {
+      const page = await ctx.newPage();
+      await page.emulateMedia({ media: "print" });
+      expect((await page.goto(`/render/${token}`))?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("data-render-ready", "1", {
+        timeout: 120_000,
+      });
+      const printed = page.getByTestId("print-widget").getByTestId("widget-pivot");
+      await expect(printed.locator("tbody th[data-other]").first()).toHaveText("(Lainnya)");
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, "pivot-topn-print.png") });
     } finally {
       await ctx.close();
       execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);

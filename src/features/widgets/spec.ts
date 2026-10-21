@@ -224,6 +224,49 @@ export const PIVOT_CELLS_MAX = 24_000;
 
 const dimKey = (d: { column: number; timeGrain?: string }) => `${d.column}:${d.timeGrain ?? ""}`;
 
+/**
+ * Top N per kelompok induk (T-071, rencana G-7 §3.4): per field baris, hanya N kelompok teratas di
+ * dalam induknya menurut nilai ke-`by` (nilai dasar: agregat atau field terhitung, bukan hasil
+ * "Tampilkan nilai sebagai"; seri dipecah label naik); sisanya digabung menjadi satu kelompok
+ * PIVOT_OTHER_LABEL yang dihitung ulang dari baris mentahnya. Subtotal/total tidak berubah.
+ */
+export const PIVOT_TOP_N_MAX = 50;
+/** Label kelompok sisa Top N (sistem, bukan data): berkurung agar beda dari kategori bernama "Lainnya". */
+export const PIVOT_OTHER_LABEL = "(Lainnya)";
+const pivotTopN = z
+  .object({
+    n: z.number().int().min(1).max(PIVOT_TOP_N_MAX),
+    /** Indeks nilai (0 = Nilai 1) yang menentukan peringkat. */
+    by: z
+      .number()
+      .int()
+      .min(0)
+      .max(PIVOT_VALUES_MAX - 1),
+  })
+  .strict();
+export type PivotTopN = z.infer<typeof pivotTopN>;
+const pivotRow = z
+  .object({ column, timeGrain: z.enum(GRAINS).optional(), topN: pivotTopN.optional() })
+  .strict();
+/** Cara tampil yang berjalan sepanjang sumbu (item "sebelumnya"), lihat show-as.ts isAxisShowAs. */
+const AXIS_SHOW_AS: readonly ShowAs[] = ["running", "diff_prev", "pct_diff_prev"];
+
+/**
+ * Field baris ber-Top N yang menjadi sumbu total berjalan/selisih (baris terdalam tanpa kolom
+ * pemisah): item "sebelumnya" akan tergabung ke "(Lainnya)", jadi ditolak. Indeks baris itu atau null.
+ */
+export function pivotTopNAxisRow(p: {
+  rows: readonly { topN?: unknown }[];
+  column?: unknown;
+  values: readonly { showAs?: ShowAs }[];
+}): number | null {
+  const last = p.rows.length - 1;
+  if (p.column || !p.rows[last]?.topN) return null;
+  return p.values.some((v) => AXIS_SHOW_AS.includes(v.showAs ?? "none")) ? last : null;
+}
+export const TOP_N_AXIS_TEXT =
+  "Top N tidak bisa dipakai pada baris terdalam bersama Total berjalan atau Selisih tanpa Pisahkan per: item sebelumnya akan tergabung ke (Lainnya). Hapus Top N, ganti cara tampil, atau tambahkan Pisahkan per.";
+
 /** Bagian Saring pivot (T-f4a7, seperti Filters di PivotTable): batas kolom dan nilai per kolom. */
 export const PIVOT_FILTERS_MAX = 3;
 export const PIVOT_FILTER_VALUES_MAX = 500;
@@ -241,7 +284,8 @@ export type PivotSavedFilter = z.infer<typeof pivotSavedFilter>;
 export const pivotSpecSchema = z
   .object({
     sheetId,
-    rows: z.array(dimension).min(1).max(PIVOT_ROWS_MAX),
+    /** Field baris; masing-masing boleh Top N per kelompok induk (T-071). */
+    rows: z.array(pivotRow).min(1).max(PIVOT_ROWS_MAX),
     /** Pisahkan per (opsional): satu kolom, mis. tanggal per bulan → satu kolom tabel per periode. */
     column: dimension.optional(),
     values: z.array(shownValue).min(1).max(PIVOT_VALUES_MAX),
@@ -298,7 +342,22 @@ export const pivotSpecSchema = z
       return new Set(keys).size === keys.length;
     },
     { message: "Kolom yang sama tidak boleh dipakai dua kali dengan pengelompokan yang sama" },
-  );
+  )
+  .superRefine((p, ctx) => {
+    p.rows.forEach((r, i) => {
+      if (r.topN && r.topN.by >= p.values.length) {
+        ctx.addIssue({
+          code: "custom",
+          message: "Top N memakai nilai yang tidak ada. Pilih nilai lain.",
+          path: ["rows", i, "topN", "by"],
+        });
+      }
+    });
+    const axis = pivotTopNAxisRow(p);
+    if (axis !== null) {
+      ctx.addIssue({ code: "custom", message: TOP_N_AXIS_TEXT, path: ["rows", axis, "topN"] });
+    }
+  });
 
 /**
  * Level induk (1-based, naik) yang mendapat baris subtotal: [] bila subtotal mati atau baris 1 kolom;

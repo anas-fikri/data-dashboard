@@ -76,6 +76,11 @@ export interface PivotShape {
    * kolom, jadi bentuk (dan kunci cache) pivot 1.0.0 tidak berubah.
    */
   levels?: number[];
+  /**
+   * Top N per kelompok induk (T-071): level baris (0-based), jumlah kelompok, dan indeks nilai
+   * peringkatnya. Tidak ada bila tidak dipakai, jadi bentuk (dan kunci cache) pivot lain tidak berubah.
+   */
+  top?: { level: number; n: number; by: number }[];
   /** Saringan pembaca per dimensi pivot (indeks plan.dimensions), T-f4a7. */
   local?: PivotLocal[];
   /** Bagian Saring tersimpan (T-f4a7): klausa nilai kolom, di-AND dengan filter dashboard. */
@@ -247,6 +252,9 @@ export function widgetPlan(
       });
       const nested = p.rows.length > 2;
       const levels = pivotSubtotalLevels(p);
+      const top = p.rows.flatMap((d, level) =>
+        d.topN ? [{ level, n: d.topN.n, by: d.topN.by }] : [],
+      );
       pivot = {
         rowFields: p.rows.length as PivotShape["rowFields"],
         column: !!p.column,
@@ -256,6 +264,7 @@ export function widgetPlan(
         // subtotalLevels) tetap `subtotals && 2 baris` → bentuk dan kunci cache tidak berubah.
         subtotals: levels.length > 0,
         ...(nested ? { levels } : {}),
+        ...(top.length ? { top } : {}),
         ...(local.length ? { local } : {}),
         ...(saved.length ? { saved } : {}),
         ...(list !== undefined ? { list } : {}),

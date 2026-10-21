@@ -7,8 +7,12 @@ import {
   pivotSummary,
   splitColumn,
   toggleSubtotal,
+  topNOptions,
   withRows,
+  withTopN,
+  withoutValue,
 } from "@/components/dashboards/pivot-config-model";
+import { PivotFields } from "@/components/dashboards/pivot-config";
 import { WidgetConfigForm } from "@/components/dashboards/widget-config";
 import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
 import { fittingPivotRows, printPivotNote } from "@/components/render/print-pivot";
@@ -17,6 +21,8 @@ import type { PivotData } from "@/features/query/pivot";
 import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-table";
 import {
   MISSING_COLUMN,
+  PIVOT_OTHER_LABEL,
+  TOP_N_AXIS_TEXT,
   parseWidgetConfig,
   pivotSubtotalLevels,
   type PivotSpec,
@@ -416,5 +422,109 @@ describe("T-070: 4 tingkat baris, subtotal per level, 8 nilai", () => {
       createElement(PivotTableMarkup, { model: m, format: fmt, variant: "print" }),
     );
     expect(print).not.toContain("line-clamp");
+  });
+});
+
+describe("T-071: Top N per kelompok + (Lainnya) di panel, tabel, dan PDF", () => {
+  const spec = (over: Partial<PivotSpec> = {}): PivotSpec => ({
+    ...(defaultConfig("pivot", sources, empty) as { spec: PivotSpec }).spec,
+    ...over,
+  });
+  const form = (s: PivotSpec) =>
+    renderToStaticMarkup(
+      createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        widget: { id: "w", type: "pivot", title: "", spec: s, version: "v1" },
+        sources,
+        datasetId: "ds",
+        onSave: () => Promise.resolve(true as const),
+      }),
+    );
+
+  it("pilihan Top N: Semua + preset (nilai tersimpan non-preset tetap ada)", () => {
+    expect(topNOptions(undefined).map((o) => o.value)).toEqual(["all", "3", "5", "10", "20", "50"]);
+    expect(topNOptions(7).map((o) => o.label)).toContain("7 teratas");
+  });
+
+  it("withTopN/withoutValue: Top N ikut field-nya, indeks nilai peringkat bergeser", () => {
+    const two = spec({
+      rows: [{ column: 1 }, { column: 4 }],
+      values: [{ agg: "sum", column: 3 }, { agg: "count" }, { agg: "max", column: 3 }],
+    });
+    const t = withTopN(two, 1, 5, 2);
+    expect(t.rows[1]).toEqual({ column: 4, topN: { n: 5, by: 2 } });
+    expect(parseWidgetConfig("pivot", t).ok).toBe(true);
+    // Hapus nilai sebelum nilai peringkat: indeks turun; hapus nilai peringkat: kembali ke Nilai 1.
+    expect(withoutValue(t, 0).rows[1]!.topN).toEqual({ n: 5, by: 1 });
+    expect(withoutValue(t, 2).rows[1]!.topN).toEqual({ n: 5, by: 0 });
+    expect(withTopN(t, 1, 10).rows[1]!.topN).toEqual({ n: 10, by: 2 });
+    expect(withTopN(t, 1, undefined).rows[1]).toEqual({ column: 4 });
+    // Hapus baris: Top N ikut field yang tersisa.
+    const three = withRows(t, [...t.rows, { column: 2, timeGrain: "month" }]);
+    expect(withRows(three, [three.rows[0]!, three.rows[1]!]).rows[1]!.topN).toEqual({
+      n: 5,
+      by: 2,
+    });
+  });
+
+  it("panel: select kustom Tampilkan/Teratas menurut per baris, ringkasan menyebut (Lainnya)", () => {
+    const s = withTopN(
+      spec({
+        rows: [{ column: 1 }, { column: 4 }],
+        values: [{ agg: "sum", column: 3 }, { agg: "count" }],
+      }),
+      1,
+      5,
+    );
+    const html = form(s);
+    expect(html).toContain('data-testid="pivot-topn-0"');
+    expect(html).toContain('data-testid="pivot-topn-1"');
+    expect(html).toContain('data-testid="pivot-topn-by-1"');
+    expect(html).not.toContain('data-testid="pivot-topn-by-0"');
+    expect(html).toContain("5 teratas per Customer");
+    expect(html).toContain(`sisanya ${PIVOT_OTHER_LABEL}`);
+  });
+
+  it("panel: Top N baris terdalam + total berjalan tanpa pemisah → pesan alasan", () => {
+    const { column: _c, ...noSplit } = spec({ rows: [{ column: 1 }, { column: 4 }] });
+    const s = withTopN(
+      { ...noSplit, values: [{ agg: "sum", column: 3, showAs: "running" }] } as PivotSpec,
+      1,
+      5,
+    );
+    expect(parseWidgetConfig("pivot", s).ok).toBe(false);
+    // Draf panel (belum tersimpan) tetap tampil dengan pesan di field-nya.
+    const html = renderToStaticMarkup(
+      createElement(PivotFields, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        spec: s,
+        columns: cols,
+        onChange: () => {},
+      }),
+    );
+    expect(html).toContain('data-testid="pivot-topn-error-1"');
+    expect(html).toContain(TOP_N_AXIS_TEXT);
+  });
+
+  it("tabel/PDF: (Lainnya) miring, tanpa tombol filter silang; kategori data tetap bisa", () => {
+    const m = pivotTable(
+      data({
+        rows: [
+          { labels: ["Lainnya"], group: null },
+          { labels: [null], group: null, other: 1 },
+        ],
+      }),
+    );
+    expect(m.rows.map((r) => r.label)).toEqual(["Lainnya", PIVOT_OTHER_LABEL]);
+    const picker = () => ({ pressed: false, onPick: () => {} });
+    const html = renderToStaticMarkup(
+      createElement(PivotTableMarkup, { model: m, format: fmt, variant: "screen", picker }),
+    );
+    expect(html.match(/data-testid="crossfilter-item"/g)).toHaveLength(1 + 2 /* kolom */);
+    expect(html).toContain("data-other");
+    const print = renderToStaticMarkup(
+      createElement(PivotTableMarkup, { model: m, format: fmt, variant: "print" }),
+    );
+    expect(print).toContain(PIVOT_OTHER_LABEL);
   });
 });

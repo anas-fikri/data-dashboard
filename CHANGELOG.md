@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   > 3 nilai, atau subtotal per level tampil "Pengaturan widget tidak valid", dan status filter URL dengan
   saringan pivot tingkat 3–4 (`row2`/`row3`) diabaikan seluruhnya (PDF ditolak). Kurangi baris/nilai
   widget sebelum rollback image, atau terima sampai upgrade berikutnya (runbook-deploy §7 R).
+- **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
+  "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
 
 ## [1.1.0] - 2026-10-21
 

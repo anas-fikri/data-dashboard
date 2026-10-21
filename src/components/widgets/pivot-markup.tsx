@@ -198,7 +198,10 @@ export function PivotTableMarkup({
         screen && "max-sm:min-w-[7rem]",
         INDENT[r.depth],
         r.kind !== "leaf" && "font-semibold",
+        // Kelompok sisa Top N (T-071): label sistem, miring agar beda dari kategori data.
+        r.other && "italic",
       )}
+      data-other={r.other ? "" : undefined}
     >
       <div className={labelBox}>
         <PickLabel text={r.label} pick={r.pick} picker={picker} compact={screen && r.depth >= 2} />
