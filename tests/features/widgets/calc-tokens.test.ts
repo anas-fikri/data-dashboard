@@ -139,6 +139,16 @@ describe("parseCalcTokens", () => {
     expect(text(short.expr)).toBe("Total Pendapatan − Total Biaya + Total Pendapatan");
   });
 
+  it("rantai × ÷ ≥ 6 operasi tanpa kurung: pesan meminta kurung", () => {
+    const tokens: CalcToken[] = [m(1)];
+    for (let k = 2; k <= 7; k++) tokens.push(op(k % 2 ? "div" : "mul"), m(k));
+    const p = parseCalcTokens(tokens);
+    expect(p).toMatchObject({ ok: false, at: null });
+    if (!p.ok) expect(p.message).toMatch(/kali\/bagi berurutan — kelompokkan dengan kurung/);
+    // 5 operasi berurutan masih boleh.
+    expect(parseCalcTokens(tokens.slice(0, 11)).ok).toBe(true);
+  });
+
   it("pohon → token → pohon bolak-balik (kurung hanya bila perlu)", () => {
     const trees: CalcExpr[] = [
       {
@@ -180,6 +190,19 @@ describe("parseConstText", () => {
     ["0.5", 0.5],
     ["1.000", 1000],
     ["1.000,25", 1000.25],
+    // Review T-069: titik desimal untuk "0.xxx" (bukan ribuan); gaya Indonesia untuk ribuan.
+    ["0.125", 0.125],
+    ["0,125", 0.125],
+    ["1.250", 1250],
+    ["1,25", 1.25],
+    ["1.250.000", 1250000],
+    ["-0.25", -0.25],
+    ["0.500", 0.5],
+    ["-0.250", -0.25],
+    ["1.25", 1.25],
+    ["01.250", 1.25],
+    ["1,2,3", null],
+    ["12.34,5", null],
     ["-2", -2],
     ["−3", -3],
     ["", null],

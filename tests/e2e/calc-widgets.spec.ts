@@ -183,6 +183,8 @@ test.describe("field terhitung (T-069)", () => {
     await save.click();
 
     await expect(panel.getByTestId("calc-editor")).toHaveCount(0);
+    // Fokus pindah ke "Ubah rumus" kartu baru (bukan ke <body>).
+    await expect(panel.getByRole("button", { name: "Ubah rumus Margin" })).toBeFocused();
     await expect(panel.getByTestId("calc-formula")).toHaveText(
       "Margin = (Total Pendapatan − Total Biaya) ÷ Total Pendapatan",
     );
@@ -386,6 +388,8 @@ test.describe("field terhitung (T-069)", () => {
     await page.goto(`/dashboards/${dashboardId}?mode=edit`);
     let panel = await openSettings(page, PIVOT);
     await panel.getByRole("button", { name: "Hapus nilai 2" }).click();
+    // Satu nilai tersisa: fokus ke pilihan "Hitung"-nya.
+    await expect(panel.getByLabel("Hitung", { exact: true })).toBeFocused();
     await saved(panel);
     await expect(panel.getByTestId("calc-formula")).toHaveCount(0);
     const pivot = card(page, PIVOT).getByTestId("widget-pivot");

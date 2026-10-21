@@ -282,7 +282,7 @@ export function CalcEditor({
   const addConst = () => {
     const n = parseConstText(constText);
     if (n === null) {
-      setConstError("Isi angka biasa, mis. 100 atau 0,5 (maks. 1.000.000.000.000.000).");
+      setConstError("Isi angka biasa, mis. 100, 1.250, atau 0,5 (maks. 1.000.000.000.000.000).");
       return;
     }
     setConstError(null);
@@ -492,7 +492,7 @@ export function CalcEditor({
               value={constText}
               placeholder="mis. 100"
               invalid={!!constError}
-              aria-describedby={constError ? `${id}-const-error` : undefined}
+              aria-describedby={`${id}-const-hint${constError ? ` ${id}-const-error` : ""}`}
               className={TOUCH}
               onChange={(e) => setConstText(e.target.value)}
               onKeyDown={(e) => {
@@ -513,6 +513,9 @@ export function CalcEditor({
           >
             Tambah angka
           </Button>
+          <p id={`${id}-const-hint`} className="col-span-2 text-xs text-muted-foreground">
+            Titik = ribuan, koma = desimal: 1.250 = seribu dua ratus lima puluh, 0,5 = setengah.
+          </p>
           {constError ? (
             <p
               id={`${id}-const-error`}

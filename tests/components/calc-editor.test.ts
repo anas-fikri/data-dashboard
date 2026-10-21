@@ -196,6 +196,49 @@ describe("ganti jenis membawa field terhitung (T-068 L3)", () => {
     valid(laba);
   });
 
+  it("pivot dengan beberapa field terhitung: semua ikut ke pivot, grafik ambil yang cocok, sisanya disebut", () => {
+    const pivot: WidgetConfig = {
+      type: "pivot",
+      spec: {
+        sheetId: S1,
+        rows: [{ column: 1 }],
+        values: [{ agg: "sum", column: 2 }, MARGIN, LABA],
+        sort: "value_desc",
+        format: fmt,
+        totals: true,
+        subtotals: true,
+      },
+    };
+    const pie = {
+      type: "pie",
+      spec: {
+        sheetId: S1,
+        dimension: { column: 1 },
+        measure: { agg: "sum", column: 2 },
+        sort: "value_desc",
+        topN: 5,
+        format: fmt,
+      },
+    } as WidgetConfig;
+    const nextPie = carryCalc(pivot, pie);
+    expect(nextPie).toMatchObject({ spec: { measure: LABA } });
+    expect(droppedCalcNotice(pivot, nextPie)).toBe(
+      "Field terhitung tidak dipakai di sini: “Margin” karena pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris. Kembali ke jenis sebelumnya untuk memakainya lagi.",
+    );
+    const nextKpi = carryCalc(pivot, kpiPlain);
+    expect(nextKpi).toMatchObject({ spec: { measure: MARGIN } });
+    expect(droppedCalcNotice(pivot, nextKpi)).toMatch(
+      /“Laba” karena jenis ini hanya menampilkan satu nilai/,
+    );
+    const table: WidgetConfig = { type: "table", spec: { sheetId: S1, columns: [1], format: fmt } };
+    expect(droppedCalcNotice(pivot, table)).toMatch(/“Margin”, “Laba” karena tabel/);
+    const back = carryCalc(pivot, {
+      ...pivot,
+      spec: { ...pivot.spec, values: [{ agg: "count" }] },
+    });
+    expect(back.type === "pivot" && back.spec.values).toEqual([MARGIN, LABA, { agg: "count" }]);
+  });
+
   it("tabel dan sheet lain tidak membawa rumus — diberi tahu alasannya", () => {
     const table: WidgetConfig = {
       type: "table",

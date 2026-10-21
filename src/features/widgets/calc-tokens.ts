@@ -134,12 +134,42 @@ export function parseCalcTokens(tokens: CalcToken[]): TokenParse {
   }
   expr = balanceSums(expr);
   const checked = parseCalcExpr(expr, z.number().int());
-  if (!checked.ok) return { ok: false, message: checked.message, at: null };
+  if (!checked.ok) {
+    // Rantai × ÷ tanpa kurung diurai bertingkat (tidak disusun ulang: ÷0 di tempat lain mengubah
+    // hasil kosong) — pesan kedalaman umum membingungkan untuk rumus yang tampak datar.
+    if (depth(expr) > CALC_DEPTH_MAX && mulChain(expr) >= CALC_DEPTH_MAX) {
+      return {
+        ok: false,
+        message: `Rumus terlalu panjang: maksimal ${CALC_DEPTH_MAX - 1} operasi kali/bagi berurutan — kelompokkan dengan kurung.`,
+        at: null,
+      };
+    }
+    return { ok: false, message: checked.message, at: null };
+  }
   return { ok: true, expr: checked.expr };
 }
 
 const depth = (e: CalcExpr): number =>
   isCalcLeaf(e) || isCalcConst(e) ? 1 : 1 + Math.max(...e.args.map(depth));
+
+/** Operasi × ÷ berurutan terpanjang (rantai kiri) di pohon. */
+function mulChain(e: CalcExpr): number {
+  if (isCalcLeaf(e) || isCalcConst(e)) return 0;
+  const own =
+    e.op === "mul" || e.op === "div"
+      ? 1 +
+        (() => {
+          let n = 0;
+          let cur = e.args[0];
+          while (!isCalcLeaf(cur) && !isCalcConst(cur) && (cur.op === "mul" || cur.op === "div")) {
+            n++;
+            cur = cur.args[0];
+          }
+          return n;
+        })()
+      : 0;
+  return Math.max(own, ...e.args.map(mulChain));
+}
 
 /**
  * Rantai + − panjang (a + b + c + … ) diurai kiri-ke-kanan menjadi pohon sedalam jumlah suku, sehingga
@@ -219,9 +249,15 @@ export function tokenText(tok: CalcToken, leaf: (l: CalcLeaf) => string): string
 export function parseConstText(text: string): number | null {
   let s = text.trim().replace(/\s/g, "").replace("−", "-");
   if (!/^-?[\d.,]+$/.test(s)) return null;
-  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
-  // "1.000" (ribuan gaya Indonesia) vs "0.5": titik diikuti tepat 3 digit di setiap kelompok = ribuan.
-  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+  // Gaya Indonesia: titik = ribuan, koma = desimal ("1.250" = 1250, "1,25" = 1,25). Tanpa koma, titik
+  // hanya dibaca ribuan bila kelompoknya sah dan diawali 1–9 ("1.250.000"); selain itu titik desimal
+  // ("0.125", "-0.25", "1.25"). Chip menampilkan angka hasil tafsiran dalam format id-ID.
+  if (s.includes(",")) {
+    if (s.indexOf(",") !== s.lastIndexOf(",")) return null;
+    const [int, frac] = s.split(",") as [string, string];
+    if (int.includes(".") && !/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(int)) return null;
+    s = `${int.replace(/\./g, "")}.${frac}`;
+  } else if (/^-?[1-9]\d{0,2}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
   if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
   const n = Number(s);
   return Number.isFinite(n) && Math.abs(n) <= CALC_CONST_MAX ? n : null;

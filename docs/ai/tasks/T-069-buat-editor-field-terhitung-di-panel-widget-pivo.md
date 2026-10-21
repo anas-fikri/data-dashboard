@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-068
 created: "2026-10-21T10:24:08Z"
-updated: "2026-10-21T13:57:55Z"
+updated: "2026-10-21T14:10:07Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,26 +20,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 226301
+    duration_ms: 226351
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792591028342,"service":"data-dashboard","host":"127.0.0.1","port":40529,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792591028405,"service":"data-dashboard","host":"127.0.0.1","port":46665,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792591028503,"service":"data-dashboard","host":"127.0.0.1","port":46485,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792591028625,"service":"data-dashboard","host":"127.0.0.1","port":37131,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792591041358,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792591045383,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792591045406,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792591045409,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792591045420,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792591761735,"service":"data-dashboard","host":"127.0.0.1","port":41723,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591761796,"service":"data-dashboard","host":"127.0.0.1","port":38333,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792591761893,"service":"data-dashboard","host":"127.0.0.1","port":37097,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591761997,"service":"data-dashboard","host":"127.0.0.1","port":45767,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591772380,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792591789116,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792591789139,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792591789145,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792591789160,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  212 passed | 1 skipped (213)
-            Tests  2826 passed | 10 skipped (2836)
-         Start at  13:55:15
-         Duration  157.45s (tests 83%, import 13%, transform 3%)
+            Tests  2840 passed | 10 skipped (2850)
+         Start at  14:07:29
+         Duration  156.45s (tests 84%, import 13%, transform 3%)
 
-          Isolate  213 workers spawned · ~170ms startup each (spawn + environment, per file)
-                   at least ~11.93s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  213 workers spawned · ~168ms startup each (spawn + environment, per file)
+                   at least ~11.79s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -47,8 +47,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T13:57:55Z"
-    tree: 19693c05e96e778016c43708efed13ca4aee08c734a68c504d4e04cb79a61428
+    at: "2026-10-21T14:10:07Z"
+    tree: 2c8413f072adde989252660feef066a9944cfac7a18cc6397b57a9805da55119
   audit:
     at: "2026-10-21T13:52:28Z"
     passed: true
@@ -99,6 +99,7 @@ UI untuk menyusun field terhitung tanpa mengetik SQL: pilih ukuran (agregat + ko
 - T-068 L3: `carryCalc` membawa field terhitung saat ganti jenis (termasuk pengaturan jenis yang diingat panel); pai hanya rumus aditif; tabel/sheet lain → pemberitahuan `config-calc-dropped`.
 - Pai: peringatan nilai negatif memakai `pie-negative` yang sudah ada (e2e: rumus Biaya − Pendapatan).
 - Dilewati: plugin frontend-expert (/frontend-expert:audit) tidak tersedia di sesi cloud — prinsip diterapkan manual (lihat Conventions check). AC4 bagian audit menunggu orkestrator/pemilik.
+- Review putaran 1 (diperbaiki): angka "0.125" dibaca 125 → titik hanya ribuan bila kelompok sah diawali 1–9, koma = desimal (uji 0.125, 0,125, 1.250, 1,25, 1.250.000, -0.25) + petunjuk di isian Angka; rantai × ÷ > 5 operasi → pesan minta kurung; carryCalc/droppedCalcNotice memeriksa semua nilai pivot dan menyebut setiap field yang dibuang; fokus setelah kartu nilai pivot hilang/berganti (simpan field baru, "Ganti dengan ukuran biasa", "Hapus nilai").
 - e2e: `tests/e2e/calc-widgets.spec.ts` (cocok project `widgets`): 6 tes lulus; regresi `--project=widgets` 13 lulus, `--project=pivot` 9 lulus.
 
 ## Conventions check

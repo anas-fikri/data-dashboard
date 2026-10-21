@@ -1,6 +1,7 @@
 "use client";
 
 import { IconTableOptions } from "@tabler/icons-react";
+import { useLayoutEffect, useRef } from "react";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
 import {
   PIVOT_COLUMNS_SHOWN,
@@ -53,6 +54,21 @@ export function PivotFields({
   const { column: split, ...withoutSplit } = spec;
   const { filters: _f, ...withoutFilters } = spec;
   const { crossFilter: _c, ...withoutCross } = spec;
+  // Fokus setelah kartu nilai berganti/hilang (T-069): kontrol yang dilepas tidak boleh meninggalkan
+  // fokus di <body> (FocusScope panel menariknya ke kontainer). Urutan target per kartu.
+  const valuesRef = useRef<HTMLFieldSetElement>(null);
+  const focusCard = useRef<{ index: number; targets: string[] } | null>(null);
+  useLayoutEffect(() => {
+    const f = focusCard.current;
+    if (!f) return;
+    focusCard.current = null;
+    const card = valuesRef.current?.querySelector(`[data-value-card="${f.index}"]`);
+    for (const sel of f.targets) {
+      const el = card?.querySelector<HTMLElement>(sel);
+      if (el) return el.focus();
+    }
+  });
+  const FIRST_CONTROL = ["[data-testid=calc-edit]", "[role=combobox]"];
 
   return (
     <div className="flex min-w-0 flex-col gap-4" data-testid="pivot-config">
@@ -129,16 +145,27 @@ export function PivotFields({
         </p>
       </fieldset>
 
-      <fieldset className="flex min-w-0 flex-col gap-3">
+      <fieldset ref={valuesRef} className="flex min-w-0 flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Nilai</legend>
         {spec.values.map((m, i) => (
-          <div key={i} className="flex min-w-0 flex-col gap-2 rounded-md border p-3">
+          <div
+            key={i}
+            data-value-card={i}
+            className="flex min-w-0 flex-col gap-2 rounded-md border p-3"
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-sm font-medium">Nilai {i + 1}</span>
               {spec.values.length > 1 ? (
                 <RemoveButton
                   label={`Hapus nilai ${i + 1}`}
-                  onClick={() => set({ values: spec.values.filter((_, j) => j !== i) })}
+                  onClick={() => {
+                    // Kartu berikutnya menempati posisi ini (atau kartu sebelumnya bila terakhir).
+                    focusCard.current = {
+                      index: Math.min(i, spec.values.length - 2),
+                      targets: ['[aria-label^="Hapus nilai"]', ...FIRST_CONTROL],
+                    };
+                    set({ values: spec.values.filter((_, j) => j !== i) });
+                  }}
                 />
               ) : null}
             </div>
@@ -156,7 +183,11 @@ export function PivotFields({
                 // Satu-satunya nilai: tidak bisa dihapus, tetapi bisa kembali ke ukuran biasa.
                 onRemove={
                   spec.values.length === 1
-                    ? () => set({ values: [defaultMeasureFor({ ...spec, values: [] }, columns)] })
+                    ? () => {
+                        // Kartu ini kini berisi ukuran biasa: fokus ke pilihan "Hitung".
+                        focusCard.current = { index: 0, targets: FIRST_CONTROL };
+                        set({ values: [defaultMeasureFor({ ...spec, values: [] }, columns)] });
+                      }
                     : undefined
                 }
                 removeLabel="Ganti dengan ukuran biasa"
@@ -189,7 +220,11 @@ export function PivotFields({
               type="pivot"
               columns={columns}
               widgetFormat={spec.format}
-              onSave={(v) => set({ values: [...spec.values, v] })}
+              onSave={(v) => {
+                // Fokus ke "Ubah rumus" kartu baru (tombol tambah bisa hilang saat nilai penuh).
+                focusCard.current = { index: spec.values.length, targets: FIRST_CONTROL };
+                set({ values: [...spec.values, v] });
+              }}
             />
           </div>
         ) : null}
