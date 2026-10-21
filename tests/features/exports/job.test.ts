@@ -382,6 +382,44 @@ describe("runExportJob", () => {
       expect(await sheetXml(path)).toMatch(/<c r="B2" s="5"><v>0\.\d+/);
     });
 
+    it("T-068: grafik + KPI field terhitung berformat persen → sel persen; Rupiah → angka biasa", async () => {
+      const read = async (widget: string) => {
+        const t = setup({ widget, format: "XLSX" });
+        expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done" });
+        const path = t.objects.get(`exports/${OWNER}/${EXPORT_ID}.xlsx`)!;
+        const rows: RawValue[][] = [];
+        await createSaxParser().parse(
+          path,
+          { sheetNames: [WIDGETS[widget]!.title], tmpDir: root },
+          (_s, _n, v) => rows.push([...v]),
+        );
+        return { rows, xml: await sheetXml(path) };
+      };
+      const n0 = Array.from({ length: ROWS }, (_, i) => i).filter(
+        (i) => cabangOf(i) === "Cabang 0",
+      );
+      const bar = await read("bcalc");
+      expect(bar.rows[0]).toEqual(["Cabang", "Omzet per 1000 baris"]);
+      expect(bar.rows[1]![1] as number).toBeCloseTo(
+        n0.reduce((a, i) => a + omzetOf(i), 0) / (n0.length * 1000),
+        9,
+      );
+      expect(bar.xml).toMatch(/<c r="B2" s="5">/);
+      const k = await read("kcalc");
+      expect(k.rows[1]![0] as number).toBeCloseTo(all / (ROWS * 1000), 9);
+      expect(k.xml).toMatch(/<c r="A2" s="5">/);
+      const rp = await read("krup");
+      expect(rp.rows[1]![0] as number).toBeCloseTo(all - ROWS, 6);
+      expect(rp.xml).toMatch(/<c r="A2"( s="0")?><v>/);
+      // CSV: angka mentah yang sama (tanpa simbol persen/Rupiah).
+      const t = setup({ widget: "kcalc" });
+      expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done" });
+      const csv = parseCsv(
+        readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
+      );
+      expect(Number(csv[1]![0])).toBeCloseTo(all / (ROWS * 1000), 9);
+    });
+
     it("grafik XLSX: kolom nilai berjudul cara tampil dan bergaya persen", async () => {
       const t = setup({ widget: "bpct", format: "XLSX" });
       expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 3 });

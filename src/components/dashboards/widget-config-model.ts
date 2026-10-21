@@ -272,7 +272,17 @@ export function defaultConfig(
       : cols.slice(0, Math.min(6, TABLE_COLUMNS_MAX)).map((c) => c.pos);
     return { type, spec: { sheetId: sheet.id, columns, format } };
   }
-  const kept = defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
+  // Batang ↔ garis di sheet yang sama: field terhitung ikut (rumus dan cara tampilnya berlaku sama).
+  const keepCalc =
+    prevAny &&
+    isCalcValue(prevAny) &&
+    (type === "bar" || type === "line") &&
+    (prev.type === "bar" || prev.type === "line") &&
+    prev.spec.sheetId === sheet.id
+      ? prevAny
+      : undefined;
+  const kept =
+    keepCalc ?? defaultMeasure(cols, prevMeasure, type === "pie" ? PIE_AGGS : AGG_ORDER, type);
   // "Tampilkan nilai sebagai" (T-067) hanya ikut ke jenis yang mendukung cara itu (KPI tidak; pai
   // hanya % keseluruhan; grafik tanpa % baris/kolom).
   const { showAs, ...measure } = kept as Measure & { showAs?: ShowAs };

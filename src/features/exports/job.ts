@@ -158,9 +158,12 @@ const HEAVY_MESSAGE =
   "Ekspor terlalu berat untuk diproses. Persempit filter atau kurangi kolom, lalu ekspor lagi.";
 
 /** Jenis sel XLSX per tipe kolom keluaran. */
-export function xlsxColumn(c: Pick<OutColumn, "label" | "type" | "showAs">): XlsxColumn {
-  // "Tampilkan nilai sebagai" persen (T-067): rasio bergaya persen, sama dengan tampilan.
-  if (isPercentShowAs(c.showAs)) return { label: c.label, kind: "percent" };
+export function xlsxColumn(c: Pick<OutColumn, "label" | "type" | "showAs" | "format">): XlsxColumn {
+  // "Tampilkan nilai sebagai" persen (T-067) dan field terhitung berformat persen (T-068): rasio
+  // bergaya persen, sama dengan tampilan (pivot: kindOf di exports/pivot.ts). Rupiah/angka tetap angka.
+  if (isPercentShowAs(c.showAs) || c.format?.style === "percent") {
+    return { label: c.label, kind: "percent" };
+  }
   switch (c.type) {
     case "text":
       return { label: c.label, kind: "text" };

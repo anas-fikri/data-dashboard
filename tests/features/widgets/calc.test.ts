@@ -14,6 +14,7 @@ import {
 import { MISSING_COLUMN, markerNames, remapConfig, type SheetInfo } from "@/features/widgets/remap";
 import { columnsOf, parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 import { z } from "zod";
+import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
 
 /*
  * T-068 field terhitung: validasi pohon ekspresi (bentuk, operator, batas, konstanta), aturan tipe
@@ -40,6 +41,7 @@ const SCHEMA = [
   col(3, "Biaya", "decimal"),
   col(4, "Tanggal", "date"),
   col(5, "Rahasia", "decimal", true),
+  col(6, "Durasi", "duration"),
 ];
 
 const sum = (column: number) => ({ agg: "sum", column });
@@ -226,6 +228,7 @@ describe("AC 3: resolve terhadap skema — tipe daun dan kolom tersembunyi", () 
       "tidak bisa dipakai",
     ],
     ["Terkecil tanggal", op("add", { agg: "min", column: 4 }, sum(2)), "INVALID", "ukuran angka"],
+    ["Total durasi", op("div", sum(6), sum(2)), "INVALID", "kolom durasi"],
     ["kolom tersembunyi", op("div", sum(5), sum(2)), "COLUMN_UNAVAILABLE", "disembunyikan"],
     ["kolom tidak ada", op("div", sum(9), sum(2)), "COLUMN_UNAVAILABLE", "tidak ada di data"],
   ])("%s → %s", (_n, expr, code, text) => {
@@ -338,5 +341,43 @@ describe("teks rumus untuk panel", () => {
       "sum2 ÷ sum3 × 1.234,5",
     );
     expect(t(op("neg", op("add", sum(2), sum(3))))).toBe("−(sum2 + sum3)");
+  });
+});
+
+describe("panel: ganti jenis grafik", () => {
+  const sources = [
+    {
+      id: SHEET,
+      name: "Penjualan",
+      columns: [
+        { pos: 1, name: "Wilayah", type: "text" },
+        { pos: 2, name: "Pendapatan", type: "decimal" },
+        { pos: 3, name: "Biaya", type: "decimal" },
+      ],
+    },
+  ] as unknown as Source[];
+  const bar = parseWidgetConfig("bar", {
+    sheetId: SHEET,
+    dimension: { column: 1 },
+    measure: calc(MARGIN, { showAs: "diff_prev" }),
+    sort: "value_desc",
+    topN: 10,
+    format: fmt,
+  });
+
+  it("batang → garis mempertahankan field terhitung; ke pai/KPI kembali ke ukuran bawaan", () => {
+    if (!bar.ok) throw new Error(bar.message);
+    const line = defaultConfig("line", sources, bar.config);
+    expect(line).toMatchObject({
+      type: "line",
+      spec: { measure: calc(MARGIN, { showAs: "diff_prev" }) },
+    });
+    expect(parseWidgetConfig(line!.type, line!.spec).ok).toBe(true);
+    expect(defaultConfig("pie", sources, bar.config)).toMatchObject({
+      spec: { measure: { agg: "sum", column: 2 } },
+    });
+    expect(defaultConfig("kpi", sources, bar.config)).toMatchObject({
+      spec: { measure: { agg: "sum", column: 2 } },
+    });
   });
 });

@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-067
 created: "2026-10-21T10:24:07Z"
-updated: "2026-10-21T13:12:47Z"
+updated: "2026-10-21T13:23:44Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 219925
+    duration_ms: 224323
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792588269865,"service":"data-dashboard","host":"127.0.0.1","port":43631,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792588269928,"service":"data-dashboard","host":"127.0.0.1","port":46029,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792588270027,"service":"data-dashboard","host":"127.0.0.1","port":42493,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792588270137,"service":"data-dashboard","host":"127.0.0.1","port":36737,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792588279462,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792588295421,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792588295443,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792588295448,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792588295458,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792588950149,"service":"data-dashboard","host":"127.0.0.1","port":44575,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792588950212,"service":"data-dashboard","host":"127.0.0.1","port":42445,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792588950319,"service":"data-dashboard","host":"127.0.0.1","port":43695,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792588950426,"service":"data-dashboard","host":"127.0.0.1","port":39095,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792588960437,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792588978015,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792588978038,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792588978041,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792588978053,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  210 passed | 1 skipped (211)
-            Tests  2786 passed | 10 skipped (2796)
-         Start at  13:09:20
-         Duration  153.61s (tests 84%, import 13%, transform 3%)
+            Tests  2789 passed | 10 skipped (2799)
+         Start at  13:20:40
+         Duration  154.53s (tests 84%, import 13%, transform 2%)
 
-          Isolate  211 workers spawned · ~166ms startup each (spawn + environment, per file)
-                   at least ~11.54s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  211 workers spawned · ~167ms startup each (spawn + environment, per file)
+                   at least ~11.60s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -48,12 +48,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T13:11:55Z"
-    tree: e954c42646730a322ea495e5e2affd0f1e94a79290bab475122727d06305d66b
+    at: "2026-10-21T13:23:16Z"
+    tree: ec32cfd4064c73e6543d8a0947f660d491ed087fbd92413ae71a137d3ff0e914
   audit:
-    at: "2026-10-21T13:12:20Z"
+    at: "2026-10-21T13:23:17Z"
     passed: true
-    tree: e954c42646730a322ea495e5e2affd0f1e94a79290bab475122727d06305d66b
+    tree: ec32cfd4064c73e6543d8a0947f660d491ed087fbd92413ae71a137d3ff0e914
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 519 dirs visited, 4398 inodes visited, 1 Extract calls, 260.387734ms elapsed, 260.387911ms wall time
+          End status: 519 dirs visited, 4442 inodes visited, 1 Extract calls, 252.702417ms elapsed, 252.702804ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -81,11 +81,11 @@ evidence:
 Field terhitung antar ukuran teragregasi disimpan sebagai pohon ekspresi JSON tervalidasi (ADR-0009), bukan teks SQL; dikompilasi server di atas measureExpr dengan pembagian aman. Dipakai pivot, grafik, KPI, dan (lewat pivot tersimpan) tabel. Rencana G-7 §3.2, §4.1.
 
 ## Acceptance criteria
-- [ ] Given nilai {kind:'calc', label:'Margin', expr: div(sub(sum Pendapatan, sum Biaya), sum Pendapatan)} pada pivot Wilayah, when dimuat, then sel, subtotal, total baris/kolom, dan total keseluruhan = (Σpendapatan − Σbiaya)/Σpendapatan dari agregat masing-masing (bukan jumlah margin per baris), teruji terhadap fixture kecil dengan nilai yang dihitung manual
-- [ ] Given pembagi 0 atau NULL di sel mana pun (mis. rata-rata per kiriman = sum(pendapatan)/count(kiriman) pada kelompok tanpa kiriman), then sel bernilai NULL (tampil '–'), tidak ada error DuckDB, tidak ada Infinity/NaN di JSON, dan sel lain tetap benar
-- [ ] Given body/spec dengan teks SQL, operator di luar enum (add, sub, mul, div, neg), > 32 node, kedalaman > 6, > 8 agregat unik, konstanta tidak berhingga atau |x| > 1e15, agregat tidak cocok tipe kolom (sum teks), atau kolom tersembunyi, when disimpan/di-query, then ditolak zod/resolve dengan pesan Indonesia (400/INVALID), konstanta selalu di-bind parameter, identifier hanya c<pos> dari skema; test injeksi (nama kolom berisi kutip/;--) lolos
-- [ ] Given field terhitung yang semua daunnya DECIMAL dan hanya +/− , then hasil DECIMAL(38,6) tanpa float; dengan ÷ atau × konstanta non-bulat, then DOUBLE; showAs T-067 berlaku pada field terhitung; urut value_* dan Top N memakai nilai terhitung
-- [ ] Given remap versi (widgets/remap.ts, columnsOf) dan aktivasi/rollback, then kolom di dalam ekspresi ikut dipetakan; kolom yang hilang → MISSING_COLUMN dan pesan 'kolom tidak ada di data terbaru' per widget; checklist ASVS V5 (validasi input) dan review keamanan tercatat
+- [x] Given nilai {kind:'calc', label:'Margin', expr: div(sub(sum Pendapatan, sum Biaya), sum Pendapatan)} pada pivot Wilayah, when dimuat, then sel, subtotal, total baris/kolom, dan total keseluruhan = (Σpendapatan − Σbiaya)/Σpendapatan dari agregat masing-masing (bukan jumlah margin per baris), teruji terhadap fixture kecil dengan nilai yang dihitung manual
+- [x] Given pembagi 0 atau NULL di sel mana pun (mis. rata-rata per kiriman = sum(pendapatan)/count(kiriman) pada kelompok tanpa kiriman), then sel bernilai NULL (tampil '–'), tidak ada error DuckDB, tidak ada Infinity/NaN di JSON, dan sel lain tetap benar
+- [x] Given body/spec dengan teks SQL, operator di luar enum (add, sub, mul, div, neg), > 32 node, kedalaman > 6, > 8 agregat unik, konstanta tidak berhingga atau |x| > 1e15, agregat tidak cocok tipe kolom (sum teks), atau kolom tersembunyi, when disimpan/di-query, then ditolak zod/resolve dengan pesan Indonesia (400/INVALID), konstanta selalu di-bind parameter, identifier hanya c<pos> dari skema; test injeksi (nama kolom berisi kutip/;--) lolos
+- [x] Given field terhitung yang semua daunnya DECIMAL dan hanya +/− , then hasil DECIMAL(38,6) tanpa float; dengan ÷ atau × konstanta non-bulat, then DOUBLE; showAs T-067 berlaku pada field terhitung; urut value_* dan Top N memakai nilai terhitung
+- [x] Given remap versi (widgets/remap.ts, columnsOf) dan aktivasi/rollback, then kolom di dalam ekspresi ikut dipetakan; kolom yang hilang → MISSING_COLUMN dan pesan 'kolom tidak ada di data terbaru' per widget; checklist ASVS V5 (validasi input) dan review keamanan tercatat
 
 ## Risk
 Impact: jalur query widget (pivot/grafik/KPI) — measureExpr, buildSql/buildTotalsSql/buildPivotSql, widgetPlan, resolveSpec, remap versi, render nilai (format per nilai). Spec lama tanpa `kind` tidak berubah: SQL, rencana, dan kunci cache identik dengan HEAD 693edf2 (golden di tests/features/query/calc.test.ts).
@@ -97,7 +97,10 @@ Validation: tests/features/widgets/calc.test.ts (validasi, resolve, remap, teks 
 - Keputusan: pembagian dikompilasi `n / d` (DOUBLE) lalu dijaga berhingga `list_filter([x], lambda v: isfinite(v))[1]` → penyebut 0/NULL dan overflow = NULL. NULLIF/CASE tidak dipakai: DuckDB menguraikannya menjadi CASE yang menyalin operand sehingga rumus 6 tingkat macet di perencana (ditemukan uji properti; ada uji regresi). Dicatat sebagai amandemen ADR-0009.
 - Jenis hasil: hanya +/−/negatif atas daun tepat (DECIMAL tidak-float, bilangan bulat) dengan konstanta bulat → tepat (DECIMAL(38,6) atau bilangan bulat); ÷, ×, konstanta pecahan, rata-rata, kolom DOUBLE → DOUBLE.
 - showAs berlaku pada field terhitung (semua cara, seperti Excel); KPI tanpa showAs. Pai hanya untuk rumus aditif (±Total/Jumlah baris tanpa konstanta) agar irisan "Lainnya" benar; total grafik "N teratas dari M" untuk rumus non-aditif = kosong (seperti rata-rata).
-- Format per nilai (`format` opsional pada field terhitung) dipakai pivot, grafik, KPI, ekspor (persen → sel XLSX persen).
+- Format per nilai (`format` opsional pada field terhitung) dipakai pivot, grafik, KPI, ekspor (persen → sel XLSX persen untuk pivot, grafik, dan KPI; Rupiah → angka biasa seperti ukuran biasa).
+- Kolom durasi ditolak sebagai daun rumus (kecuali jumlah terisi/unik) dengan pesan jelas — hasil rumus tampil sebagai angka, detik mentah menyesatkan.
+- Ganti jenis batang ↔ garis di sheet yang sama mempertahankan field terhitung; ke pai/KPI/pivot/tabel kembali ke ukuran bawaan (penyusun rumus T-069).
+- Review putaran 1: 0 blokir; M1 (format XLSX grafik/KPI), L2 (durasi), L3 (batang↔garis) diperbaiki.
 - Tabel: widget tabel baris mentah tidak punya ukuran; field terhitung di tabel teragregasi datang lewat pivot tersimpan (T-073).
 - UI: panel hanya menampilkan rumus (baca-saja) + hapus nilai; penyusun rumus = T-069.
 

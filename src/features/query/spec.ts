@@ -425,6 +425,9 @@ export function resolveCalc(
         problem ??= `Agregasi "${AGG_LABEL[e.agg]}" tidak bisa dipakai untuk kolom "${c.name}".`;
       } else if ((e.agg === "min" || e.agg === "max") && !CALC_LEAF_TYPES.includes(c.type)) {
         problem ??= `Field terhitung hanya bisa memakai ukuran angka ("${AGG_LABEL[e.agg]} ${c.name}").`;
+      } else if (c.type === "duration" && e.agg !== "count" && e.agg !== "count_distinct") {
+        // Hasil rumus tampil sebagai angka biasa, bukan j:mm:dd — detik mentah menyesatkan.
+        problem ??= `Field terhitung belum bisa memakai kolom durasi ("${AGG_LABEL[e.agg]} ${c.name}"). Pakai ukuran biasa untuk durasi.`;
       }
       const num: CalcNum =
         e.agg === "count" || e.agg === "count_distinct"

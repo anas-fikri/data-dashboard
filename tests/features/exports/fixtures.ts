@@ -162,6 +162,64 @@ export const WIDGETS: Record<string, { type: string; spec: unknown; title: strin
       format: fmt,
     },
   },
+  // T-068: field terhitung berformat sendiri (persen → sel persen, Rupiah → angka biasa).
+  bcalc: {
+    type: "bar",
+    title: "Omzet per baris",
+    spec: {
+      sheetId: SHEET,
+      dimension: { column: 1 },
+      measure: {
+        kind: "calc",
+        label: "Omzet per 1000 baris",
+        expr: {
+          op: "div",
+          args: [
+            { agg: "sum", column: 2 },
+            { op: "mul", args: [{ agg: "count" }, { const: 1000 }] },
+          ],
+        },
+        format: { style: "percent", decimals: 1 },
+      },
+      sort: "label_asc",
+      topN: 3,
+      format: fmt,
+    },
+  },
+  kcalc: {
+    type: "kpi",
+    title: "Rasio omzet",
+    spec: {
+      sheetId: SHEET,
+      measure: {
+        kind: "calc",
+        label: "Omzet per 1000 baris",
+        expr: {
+          op: "div",
+          args: [
+            { agg: "sum", column: 2 },
+            { op: "mul", args: [{ agg: "count" }, { const: 1000 }] },
+          ],
+        },
+        format: { style: "percent", decimals: 1 },
+      },
+      format: fmt,
+    },
+  },
+  krup: {
+    type: "kpi",
+    title: "Omzet bersih",
+    spec: {
+      sheetId: SHEET,
+      measure: {
+        kind: "calc",
+        label: "Omzet − baris",
+        expr: { op: "sub", args: [{ agg: "sum", column: 2 }, { agg: "count" }] },
+        format: { style: "rupiah", decimals: 0 },
+      },
+      format: fmt,
+    },
+  },
   hidden: {
     type: "table",
     title: "Rahasia",
