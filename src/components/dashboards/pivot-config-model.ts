@@ -6,6 +6,7 @@ import {
   MISSING_COLUMN,
   PIVOT_ROWS_MAX,
   PIVOT_VALUES_MAX,
+  pivotSubtotalLevels,
   type NumberFormat,
   type PivotSpec,
   type WidgetConfig,
@@ -110,16 +111,49 @@ const dimKey = (d: Dimension) => `${d.column}:${d.timeGrain ?? ""}`;
 
 /**
  * Isian yang mengulang kolom + rentang waktu yang sudah dipakai di atasnya (server menolaknya): "row1"
- * (rincian = baris pertama) atau "column" (pemisah = salah satu baris). null bila tidak ada.
+ * … "row3" (rincian = baris di atasnya) atau "column" (pemisah = salah satu baris). null bila tidak ada.
  */
-export function duplicateField(spec: PivotSpec): "row1" | "column" | null {
+export function duplicateField(spec: PivotSpec): `row${1 | 2 | 3}` | "column" | null {
   // Kolom hilang (penanda MISSING_COLUMN) diberi tahu MissingNotice, bukan sebagai dobel.
   const same = (a: Dimension, b: Dimension) =>
     a.column !== MISSING_COLUMN && dimKey(a) === dimKey(b);
-  const [r0, r1] = spec.rows;
-  if (r0 && r1 && same(r0, r1)) return "row1";
+  const i = spec.rows.findIndex((r, i) => i > 0 && spec.rows.slice(0, i).some((u) => same(u, r)));
+  if (i > 0) return `row${i as 1 | 2 | 3}`;
   if (spec.column && spec.rows.some((r) => same(r, spec.column!))) return "column";
   return null;
+}
+
+/**
+ * Ganti daftar baris dengan subtotal yang tetap masuk akal (T-070): level induk baru ikut sakelar
+ * Subtotal yang ada; baris ≤ 2 kolom kembali ke bentuk 1.0.0 (`subtotals` saja); semua level aktif →
+ * tanpa `subtotalLevels`.
+ */
+export function withRows(spec: PivotSpec, rows: PivotSpec["rows"]): PivotSpec {
+  const on = pivotSubtotalLevels(spec);
+  const levels = Array.from({ length: rows.length - 1 }, (_, i) => i + 1).filter((l) =>
+    l < spec.rows.length ? on.includes(l) : spec.subtotals,
+  );
+  return withSubtotals({ ...spec, rows }, levels);
+}
+
+/** Spec dengan level subtotal `levels` (1-based) dalam bentuk paling ringkas. */
+function withSubtotals(spec: PivotSpec, levels: number[]): PivotSpec {
+  const { subtotalLevels: _l, ...rest } = spec;
+  const parents = spec.rows.length - 1;
+  // Baris 1 kolom: tidak ada kelompok — sakelar disimpan apa adanya (dipakai lagi saat dirinci).
+  if (parents < 1) return rest;
+  if (levels.length === parents) return { ...rest, subtotals: true };
+  if (!levels.length) return { ...rest, subtotals: false };
+  return { ...rest, subtotals: true, subtotalLevels: levels };
+}
+
+/** Sakelar "Subtotal per …" satu level induk (1-based). */
+export function toggleSubtotal(spec: PivotSpec, level: number, on: boolean): PivotSpec {
+  const cur = pivotSubtotalLevels(spec).filter((l) => l !== level);
+  return withSubtotals(
+    spec,
+    (on ? [...cur, level] : cur).sort((a, b) => a - b),
+  );
 }
 
 export const DUPLICATE_TEXT =
@@ -161,9 +195,12 @@ export function pivotSummary(
 ): { text: string; strong?: boolean }[] {
   const out: { text: string; strong?: boolean }[] = [{ text: "Satu baris per " }];
   out.push({ text: dimensionText(spec.rows[0]!, cols), strong: true });
-  if (spec.rows[1]) {
-    out.push({ text: ", dirinci per " }, { text: dimensionText(spec.rows[1], cols), strong: true });
-  }
+  spec.rows.slice(1).forEach((d, i) => {
+    out.push(
+      { text: i ? ", lalu per " : ", dirinci per " },
+      { text: dimensionText(d, cols), strong: true },
+    );
+  });
   if (spec.column) {
     out.push(
       { text: ", satu kolom per " },
@@ -177,7 +214,16 @@ export function pivotSummary(
   });
   if (spec.totals)
     out.push({ text: spec.column ? ", dengan kolom dan baris Total" : ", dengan baris Total" });
-  if (spec.subtotals && spec.rows[1]) out.push({ text: " serta subtotal per kelompok" });
+  const subs = pivotSubtotalLevels(spec);
+  if (subs.length) {
+    out.push(
+      spec.rows.length > 2 && subs.length < spec.rows.length - 1
+        ? {
+            text: ` serta subtotal per ${subs.map((l) => dimensionText(spec.rows[l - 1]!, cols)).join(" dan ")}`,
+          }
+        : { text: " serta subtotal per kelompok" },
+    );
+  }
   for (const f of spec.filters ?? []) {
     if (f.column === MISSING_COLUMN) continue;
     const col = cols.find((c) => c.pos === f.column);

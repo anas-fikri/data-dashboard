@@ -7,7 +7,7 @@
 import type { PivotFieldRole } from "@/features/query/filters";
 import type { PivotCell, PivotData } from "@/features/query/pivot";
 import { AUTO_FORMAT, formatCell, formatNumber, type ValueType } from "./format";
-import type { NumberFormat, ShowAs } from "./spec";
+import { PIVOT_COLUMNS_SHOWN, type NumberFormat, type ShowAs } from "./spec";
 
 /** Nilai mentah sebuah label + field-nya (filter silang dari label, T-f4a7). */
 export interface PivotPick {
@@ -25,9 +25,10 @@ export interface PivotHeadCell {
 
 export interface PivotBodyRow {
   kind: "group" | "leaf" | "total";
-  /** Label baris (sudah teks); kelompok = label kelompok pertama. */
+  /** Label baris (sudah teks); kelompok = label kelompok di levelnya. */
   label: string;
-  depth: 0 | 1;
+  /** Level baris (0 = baris pertama … 3 = baris keempat, T-070); kelompok = level induknya. */
+  depth: 0 | 1 | 2 | 3;
   /** Satu nilai per kolom data, urut header; null = tidak ada data. Kelompok tanpa subtotal: []. */
   values: unknown[];
   /** Label baris/kelompok (bukan Total). */
@@ -44,7 +45,7 @@ export interface PivotField {
 export interface PivotTableModel {
   /** Judul kolom baris, mis. "Cabang › Layanan". */
   rowHeader: string;
-  /** Field pivot (baris 1, baris 2, kolom pemisah) untuk menu saring dan filter silang. */
+  /** Field pivot (baris 1–4, kolom pemisah) untuk menu saring dan filter silang. */
   fields: PivotField[];
   /** Baris header pertama bila ada pemisah kolom; null bila tanpa pemisah. */
   columnHeads: PivotHeadCell[] | null;
@@ -63,7 +64,10 @@ export interface PivotTableModel {
   }[];
   rows: PivotBodyRow[];
   total: PivotBodyRow | null;
-  /** "Menampilkan 200 dari 1.000 baris …" bila ada yang tidak tampil; null bila semua tampil. */
+  /**
+   * "Menampilkan 200 dari 1.000 baris …" bila ada yang tidak tampil; anggaran sel (T-070): "Menampilkan
+   * N dari M kolom — kurangi nilai atau tambah Saring; …". null bila semua tampil.
+   */
   note: string | null;
   /** "Disaring — Cabang: Bandung, Jakarta; …" bila ada saringan pivot; null bila tidak ada. */
   filterNote: string | null;
@@ -136,29 +140,39 @@ export function pivotTable(p: PivotData): PivotTableModel {
     ...(hasTotal ? Array.from({ length: nv }, (_, m) => tot?.[m] ?? null) : []),
   ];
 
+  // Kelompok per level induk: baris 3–4 kolom dari `nest` (T-070), baris 2 kolom dari groups/subtotals.
+  const n = p.rowFields.length;
+  const levels: NonNullable<PivotData["nest"]>["levels"] =
+    p.nest?.levels ??
+    (n === 2 ? [{ labels: p.groups, subtotals: p.subtotals, totals: p.subtotalTotals }] : []);
+  const pathOf = (ri: number): (number | null)[] =>
+    p.nest?.paths[ri] ?? (n === 2 ? [p.rows[ri]!.group] : []);
   const rows: PivotBodyRow[] = [];
-  const two = p.rowFields.length === 2;
-  let lastGroup: number | null = null;
+  let last: (number | null)[] = [];
   p.rows.forEach((r, ri) => {
-    if (two && r.group !== null && r.group !== lastGroup) {
-      lastGroup = r.group;
-      const g = r.group;
+    const path = pathOf(ri);
+    // Kepala kelompok setiap level yang berganti (dan semua level di bawahnya), seperti Excel.
+    let changed = false;
+    path.forEach((g, l) => {
+      changed ||= g !== last[l];
+      if (!changed || g === null || g < 0) return;
+      const lv = levels[l]!;
       rows.push({
         kind: "group",
-        label: label(p.groups[g], p.rowFields[0]!),
-        depth: 0,
-        values: p.subtotals
-          ? flat(p.subtotals[g] ?? [], p.subtotalTotals?.[g], !!p.subtotalTotals)
-          : [],
-        pick: { field: "row0", raw: p.groups[g] },
+        label: label(lv.labels[g], p.rowFields[l]!),
+        depth: l as PivotBodyRow["depth"],
+        values: lv.subtotals ? flat(lv.subtotals[g] ?? [], lv.totals?.[g], !!lv.totals) : [],
+        pick: { field: `row${l}` as PivotFieldRole, raw: lv.labels[g] },
       });
-    }
+    });
+    last = path;
+    const leaf = n - 1;
     rows.push({
       kind: "leaf",
-      label: label(r.labels[two ? 1 : 0], p.rowFields[two ? 1 : 0]!),
-      depth: two ? 1 : 0,
+      label: label(r.labels[leaf], p.rowFields[leaf]!),
+      depth: leaf as PivotBodyRow["depth"],
       values: flat(p.cells[ri] ?? [], p.rowTotals?.[ri], withTotal),
-      pick: { field: two ? "row1" : "row0", raw: r.labels[two ? 1 : 0] },
+      pick: { field: `row${leaf}` as PivotFieldRole, raw: r.labels[leaf] },
     });
   });
 
@@ -177,15 +191,20 @@ export function pivotTable(p: PivotData): PivotTableModel {
   if (p.rowCount > p.rows.length) {
     parts.push(`${count(p.rows.length)} dari ${count(p.rowCount)} baris`);
   }
+  // Anggaran sel (T-070): kolom dipangkas di bawah batas 40 karena banyak baris × nilai.
+  const budgetCut = split && p.columns.length < Math.min(p.columnCount, PIVOT_COLUMNS_SHOWN);
   if (p.columnCount > p.columns.length) {
     parts.push(`${count(p.columns.length)} dari ${count(p.columnCount)} kolom`);
   }
-  const note = parts.length
-    ? `Menampilkan ${parts.join(" dan ")}. Persempit dengan filter; total tetap mencakup semua data.`
-    : null;
+  const shownText = `Menampilkan ${parts.join(" dan ")}`;
+  const note = !parts.length
+    ? null
+    : budgetCut
+      ? `${shownText} — kurangi nilai atau tambah Saring; total tetap mencakup semua baris dan kolom.`
+      : `${shownText}. Persempit dengan filter; total tetap mencakup semua data.`;
 
   const fields: PivotField[] = [
-    ...p.rowFields.map((f, i) => ({ role: i ? "row1" : "row0", ...f }) as PivotField),
+    ...p.rowFields.map((f, i) => ({ role: `row${i}`, ...f }) as PivotField),
     ...(p.columnField ? [{ role: "column" as const, ...p.columnField }] : []),
   ];
   return {

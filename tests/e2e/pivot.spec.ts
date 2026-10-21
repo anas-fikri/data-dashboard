@@ -17,6 +17,8 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  *   AC3: halaman cetak (/render, media print) — pivot dengan subtotal dan baris Total.
  *   T-jwhc: pilihan kolom (9 kolom) berkotak cari pintar — ketik di pemicu, singkatan, panah + Enter,
  *        Escape mengembalikan fokus ke pemicu, jumlah hasil diumumkan.
+ *   T-070: 4 tingkat baris × 8 nilai dari panel, sakelar subtotal per level, 360 px (gulir di kartu,
+ *        kolom label beku, indentasi), halaman cetak tanpa teks bertumpuk.
  * E2E_SHOTS=<folder> menyimpan tangkapan layar untuk review desain.
  */
 test.describe.configure({ mode: "serial" });
@@ -606,5 +608,145 @@ test.describe("widget pivot (T-tcjp)", () => {
     await saved(panel);
     await expect(total(owner)).toHaveText(/^Rp\s?180\.864$/);
     await expect(panel.getByTestId("config-show-as-hint")).toHaveCount(0);
+  });
+  test("T-070: 4 tingkat baris × 8 nilai — panel, subtotal per level, 360 px, halaman cetak", async ({
+    browser,
+  }) => {
+    test.setTimeout(300_000);
+    await owner.setViewportSize({ width: 1440, height: 900 });
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    const panel = owner.getByTestId("widget-panel");
+    await openPanel(owner, panel);
+    const table = card(owner).getByTestId("widget-pivot");
+    // Customer › Layanan → + Kota Asal → + Kota Tujuan (kolom teks yang belum dipakai).
+    for (const n of [3, 4]) {
+      await panel.getByRole("button", { name: "Rinci lagi" }).click();
+      await saved(panel);
+      await expect(panel.getByTestId(`pivot-row-${n - 1}`)).toBeVisible();
+    }
+    await expect(panel.getByRole("button", { name: "Rinci lagi" })).toHaveCount(0);
+    for (const id of ["pivot-subtotals", "pivot-subtotals-2", "pivot-subtotals-3"]) {
+      await expect(panel.getByTestId(id)).toBeChecked();
+    }
+    // Nilai 2–8 lewat "Tambah nilai"; tombolnya hilang di nilai ke-8.
+    for (let i = 2; i <= 8; i++) {
+      await panel.getByRole("button", { name: "Tambah nilai" }).click();
+      await saved(panel);
+      await expect(panel.getByText(`Nilai ${i}`, { exact: true })).toBeVisible();
+    }
+    await expect(panel.getByRole("button", { name: "Tambah nilai" })).toHaveCount(0);
+    await expect(table.locator("thead tr").last().locator("th")).toHaveCount(8 * 4);
+    // 24 customer × 2 layanan × 1 kota asal × 1 kota tujuan; kepala kelompok tiap level bersubtotal.
+    await expect(table.locator("tbody tr[data-kind=leaf][data-depth='3']")).toHaveCount(48);
+    await expect(table.locator("tbody tr[data-kind=group][data-depth='0']")).toHaveCount(24);
+    await expect(table.locator("tbody tr[data-kind=group][data-depth='2']")).toHaveCount(48);
+    await expect(table.locator("tfoot td").nth(3 * 8)).toHaveText(/^Rp\s?180\.864$/);
+
+    // Subtotal level 2 dimatikan: kepala kelompok Layanan tanpa angka, level lain tetap.
+    await panel.getByTestId("pivot-subtotals-2").click();
+    await saved(panel);
+    await expect(
+      table.locator("tbody tr[data-kind=group][data-depth='1']").first().locator("td"),
+    ).toHaveCount(1);
+    await expect(
+      table.locator("tbody tr[data-kind=group][data-depth='0']").first().locator("td"),
+    ).toHaveCount(8 * 4);
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-levels-1440.png") });
+
+    // 360 px: tabel bergulir di dalam kartu, kolom label beku, level 4 diindentasi; panel muat.
+    await owner.setViewportSize({ width: 360, height: 780 });
+    await owner.goto(`/dashboards/${d}`);
+    const region = card(owner).getByRole("region", { name: TITLE });
+    await expect(region.locator("tbody tr[data-kind=leaf]")).toHaveCount(48);
+    const page360 = await owner.evaluate(() => ({
+      page: document.documentElement.scrollWidth <= window.innerWidth,
+    }));
+    expect(page360.page, "halaman tidak bergulir ke samping").toBe(true);
+    const geo = await region.evaluate((el) => {
+      el.scrollLeft = 400;
+      const box = el.getBoundingClientRect();
+      const th = (sel: string) => el.querySelector<HTMLElement>(sel)!;
+      const g0 = th("tbody tr[data-depth='0'] th");
+      const l3 = th("tbody tr[data-depth='3'] th");
+      return {
+        scrolls: el.scrollWidth > el.clientWidth,
+        left: g0.getBoundingClientRect().left - box.left,
+        indent:
+          parseFloat(getComputedStyle(l3).paddingLeft) -
+          parseFloat(getComputedStyle(g0).paddingLeft),
+        labelWidth: l3.getBoundingClientRect().width,
+        cardWidth: box.width,
+      };
+    });
+    expect(geo.scrolls).toBe(true);
+    expect(Math.abs(geo.left)).toBeLessThanOrEqual(1);
+    expect(geo.indent).toBeGreaterThanOrEqual(24);
+    expect(geo.labelWidth).toBeLessThanOrEqual(geo.cardWidth * 0.6);
+    if (SHOTS) await owner.screenshot({ path: join(SHOTS, "pivot-levels-360.png") });
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    await openPanel(owner, panel);
+    const fits = await panel.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return (
+        r.left >= -1 && r.right <= window.innerWidth + 1 && el.scrollWidth <= el.clientWidth + 1
+      );
+    });
+    expect(fits, "panel muat di 360 px").toBe(true);
+    await expect(panel.getByTestId("pivot-row-3")).toBeVisible();
+    await owner.setViewportSize({ width: 1440, height: 900 });
+
+    // Halaman cetak (jalur PDF): baris/kolom yang muat, catatan terpotong, tanpa teks bertumpuk.
+    const { token, exportId } = JSON.parse(
+      execFileSync("node", ["scripts/dev-render-token.mjs", "mint", OWNER, d]).toString(),
+    ) as { token: string; exportId: string };
+    const ctx = await browser.newContext({
+      viewport: { width: 1047, height: 740 },
+      locale: "id-ID",
+    });
+    try {
+      const page = await ctx.newPage();
+      await page.emulateMedia({ media: "print" });
+      expect((await page.goto(`/render/${token}`))?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("data-render-ready", "1", {
+        timeout: 120_000,
+      });
+      const printed = page.getByTestId("print-widget").getByTestId("widget-pivot");
+      await expect(printed.locator("tbody tr[data-depth='0']").first()).toContainText(
+        "Customer 24",
+      );
+      await expect(page.getByTestId("print-pivot-note")).toContainText("dari 48 baris");
+      await expect(page.getByTestId("print-pivot-note")).toContainText("kolom tidak muat");
+      const pivotCard = page
+        .getByTestId("print-widget")
+        .filter({ has: page.getByTestId("widget-pivot") });
+      const layout = await pivotCard.evaluate((el) => {
+        const box = el.getBoundingClientRect();
+        const rows = [...el.querySelectorAll("tbody tr, tfoot tr")].map((r) =>
+          r.getBoundingClientRect(),
+        );
+        const heads = [...el.querySelectorAll("thead tr:last-child th")].map((h) =>
+          h.getBoundingClientRect(),
+        );
+        const cells = [...el.querySelectorAll("tbody th, tbody td")] as HTMLElement[];
+        return {
+          rowsStack: rows.every((r, i) => i === 0 || r.top >= rows[i - 1]!.bottom - 0.5),
+          headsSide: heads.every((h, i) => i === 0 || h.left >= heads[i - 1]!.right - 0.5),
+          noOverflow: cells.every((c) => c.scrollWidth <= c.clientWidth + 1),
+          footInside: rows.at(-1)!.bottom <= box.bottom + 1,
+          rightInside: Math.max(...heads.map((h) => h.right)) <= box.right + 1,
+        };
+      });
+      expect(layout).toEqual({
+        rowsStack: true,
+        headsSide: true,
+        noOverflow: true,
+        footInside: true,
+        rightInside: true,
+      });
+      if (SHOTS) await page.screenshot({ path: join(SHOTS, "pivot-levels-print.png") });
+    } finally {
+      await ctx.close();
+      execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);
+    }
   });
 });

@@ -206,14 +206,21 @@ export const tableSpecSchema = z
   });
 
 /**
- * Pivot (seperti PivotTable Excel): baris 1–2 kolom, kolom pemisah opsional (mis. periode per bulan),
- * nilai 1–3. Batas tampilan: PIVOT_ROWS_SHOWN baris terdalam × PIVOT_COLUMNS_SHOWN nilai kolom; total
- * dan subtotal tetap dihitung dari seluruh data (termasuk yang tidak tampil).
+ * Pivot (seperti PivotTable Excel): baris 1–4 kolom (T-070; 1.0.0: 1–2), kolom pemisah opsional (mis.
+ * periode per bulan), nilai 1–8 (1.0.0: 1–3). Batas tampilan: PIVOT_ROWS_SHOWN baris terdalam ×
+ * PIVOT_COLUMNS_SHOWN nilai kolom, dan anggaran sel PIVOT_CELLS_MAX (baris tampil × kolom tampil ×
+ * nilai; baris tampil = baris terdalam + baris subtotal): bila lewat, kolom tampil dipangkas (min. 1).
+ * Total dan subtotal tetap dihitung dari seluruh data (termasuk yang tidak tampil).
  */
-export const PIVOT_ROWS_MAX = 2;
-export const PIVOT_VALUES_MAX = 3;
+export const PIVOT_ROWS_MAX = 4;
+export const PIVOT_VALUES_MAX = 8;
 export const PIVOT_ROWS_SHOWN = 200;
 export const PIVOT_COLUMNS_SHOWN = 40;
+/**
+ * Anggaran sel (rencana G-7 §3.4) = 200 × 40 × 3, batas efektif 1.0.0: spec lama (≤ 2 baris, ≤ 3
+ * nilai) tidak pernah melewatinya dihitung per baris terdalam, jadi SQL-nya tidak berubah.
+ */
+export const PIVOT_CELLS_MAX = 24_000;
 
 const dimKey = (d: { column: number; timeGrain?: string }) => `${d.column}:${d.timeGrain ?? ""}`;
 
@@ -244,8 +251,26 @@ export const pivotSpecSchema = z
     format: formatSchema,
     /** Kolom "Total" di kanan dan baris "Total" di bawah. */
     totals: z.boolean(),
-    /** Baris subtotal per kelompok baris pertama (hanya bila baris 2 kolom). */
+    /**
+     * Baris subtotal per kelompok induk. Baris 2 kolom: kelompok baris pertama. Baris 3–4 kolom
+     * (T-070): semua level induk, kecuali `subtotalLevels` memilih sebagian.
+     */
     subtotals: z.boolean(),
+    /**
+     * Level induk yang diberi subtotal (1 = kelompok baris pertama … 3), bila tidak semua (T-070);
+     * hanya bermakna untuk baris ≥ 3 kolom. Tidak ada = semua level (bentuk 1.0.0).
+     */
+    subtotalLevels: z
+      .array(
+        z
+          .number()
+          .int()
+          .min(1)
+          .max(PIVOT_ROWS_MAX - 1),
+      )
+      .max(PIVOT_ROWS_MAX - 1)
+      .refine((l) => new Set(l).size === l.length, { message: "Level subtotal tidak boleh ganda" })
+      .optional(),
     /** Saring (opsional): pivot hanya menghitung baris yang cocok semua kolom ini. */
     filters: z.array(pivotSavedFilter).max(PIVOT_FILTERS_MAX).optional(),
     /**
@@ -274,6 +299,16 @@ export const pivotSpecSchema = z
     },
     { message: "Kolom yang sama tidak boleh dipakai dua kali dengan pengelompokan yang sama" },
   );
+
+/**
+ * Level induk (1-based, naik) yang mendapat baris subtotal: [] bila subtotal mati atau baris 1 kolom;
+ * `subtotalLevels` di luar jumlah baris diabaikan (spec tetap valid setelah baris dihapus).
+ */
+export function pivotSubtotalLevels(p: Pick<PivotSpec, "rows" | "subtotals" | "subtotalLevels">) {
+  if (!p.subtotals) return [];
+  const all = Array.from({ length: p.rows.length - 1 }, (_, i) => i + 1);
+  return p.subtotalLevels ? all.filter((l) => p.subtotalLevels!.includes(l)) : all;
+}
 
 export type KpiSpec = z.infer<typeof kpiSpecSchema>;
 export type ChartSpec = z.infer<typeof chartSpecSchema>;

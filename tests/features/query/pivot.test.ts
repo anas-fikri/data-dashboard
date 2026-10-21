@@ -500,14 +500,21 @@ describe("T-f4a7: saringan pivot dari pembaca, daftar nilai, dan bagian Saring",
 
 describe("validasi spec pivot", () => {
   const ok = (spec: unknown) => parseWidgetConfig("pivot", spec).ok;
-  it("baris 1–2, nilai 1–3, kolom sama hanya boleh dengan pengelompokan waktu berbeda", () => {
+  it("baris 1–4, nilai 1–8 (T-070), kolom sama hanya boleh dengan pengelompokan waktu berbeda", () => {
     expect(ok({ ...WIDGETS.bulan, sheetId: SHEET })).toBe(true);
     expect(ok({ ...WIDGETS.bulan, rows: [] })).toBe(false);
     expect(ok({ ...WIDGETS.bulan, rows: [{ column: 1 }, { column: 2 }, { column: 5 }] })).toBe(
-      false,
+      true,
     );
+    expect(
+      ok({
+        ...WIDGETS.bulan,
+        rows: [1, 2, 5, 6, 4].map((column) => ({ column })),
+      }),
+    ).toBe(false);
     expect(ok({ ...WIDGETS.bulan, values: [] })).toBe(false);
-    expect(ok({ ...WIDGETS.bulan, values: Array(4).fill({ agg: "count" }) })).toBe(false);
+    expect(ok({ ...WIDGETS.bulan, values: Array(8).fill({ agg: "count" }) })).toBe(true);
+    expect(ok({ ...WIDGETS.bulan, values: Array(9).fill({ agg: "count" }) })).toBe(false);
     expect(ok({ ...WIDGETS.bulan, column: { column: 1 } })).toBe(false);
     // Tahun di baris × bulan di kolom dari kolom tanggal yang sama: sah.
     expect(

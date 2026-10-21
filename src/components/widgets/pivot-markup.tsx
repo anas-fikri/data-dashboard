@@ -8,8 +8,8 @@ import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
 
 /*
- * Tabel pivot (T-tcjp), seperti PivotTable Excel: kolom baris (kiri) dan kepala kolom menempel saat
- * digulir, baris Total menempel di bawah; kelompok/subtotal berlatar abu dan tebal, kolom/baris Total
+ * Tabel pivot (T-tcjp), seperti PivotTable Excel: kolom baris (kiri, level 1–4 diindentasi, T-070) dan
+ * kepala kolom menempel saat digulir, baris Total menempel di bawah; kelompok/subtotal berlatar abu dan tebal, kolom/baris Total
  * tebal dengan garis pemisah. Angka rata kanan tabular; sel tanpa data "–" (dibacakan "tidak ada data").
  * `variant="print"`: tanpa gulir/menempel, untuk PDF (baris dibatasi pemanggil).
  * Layar (T-f4a7): sel pojok bisa berisi menu saring field (`corner`), dan label baris/kolom menjadi
@@ -33,13 +33,23 @@ function PickLabel({
   text,
   pick,
   picker,
+  compact = false,
 }: {
   text: string;
   pick?: PivotPick;
   picker?: PivotPicker;
+  /** Label ringkas di layar sempit (level 3–4, T-070): maks. 2 baris, teks utuh tetap dibacakan. */
+  compact?: boolean;
 }) {
   const p = pick && picker?.(pick);
-  if (!p) return text;
+  const shown = compact ? (
+    <span className="max-sm:line-clamp-2" title={text}>
+      {text}
+    </span>
+  ) : (
+    text
+  );
+  if (!p) return shown;
   return (
     <button
       type="button"
@@ -55,10 +65,21 @@ function PickLabel({
         "aria-pressed:bg-primary/10 aria-pressed:font-semibold forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight]",
       )}
     >
-      {text}
+      {shown}
     </button>
   );
 }
+
+/**
+ * Indentasi label per level baris (T-070: 4 level). Layar sempit: langkah lebih kecil agar kolom label
+ * yang beku tidak menelan kartu.
+ */
+const INDENT: Record<PivotBodyRow["depth"], string> = {
+  0: "",
+  1: "pl-7",
+  2: "pl-11 max-sm:pl-9",
+  3: "pl-[3.75rem] max-sm:pl-11",
+};
 
 export function PivotCells({
   row,
@@ -113,6 +134,9 @@ export function PivotTableMarkup({
   // Sel menempel harus berlatar padat agar isi yang tergulir tidak tembus.
   const stickLeft = screen ? "sticky left-0 z-[5]" : "";
   const twoHead = !!model.columnHeads;
+  // Lebar kolom label dibatasi lewat isinya (max-width sel tabel diabaikan pada tabel w-max): judul
+  // "A › B › C › D" dan label panjang membungkus, kolom beku tidak menelan kartu di ponsel (T-070).
+  const labelBox = cn("max-w-[18rem]", screen && "max-sm:max-w-[8rem]");
   const head = (
     <thead className={cn(screen ? `sticky top-0 z-10 ${HEAD_LINE}` : "[&_th]:border-b", "bg-card")}>
       <tr>
@@ -128,7 +152,7 @@ export function PivotTableMarkup({
             corner !== undefined && "px-2 py-1",
           )}
         >
-          {corner ?? model.rowHeader}
+          <div className={labelBox}>{corner ?? model.rowHeader}</div>
         </th>
         {(model.columnHeads ?? model.valueHeads).map((h, i) => (
           <th
@@ -171,11 +195,14 @@ export function PivotTableMarkup({
         screen && (r.kind === "total" ? TOTAL_LINE : SIDE_LINE),
         bg,
         "min-w-[8rem] max-w-[18rem] px-3 py-1.5 text-left font-normal [overflow-wrap:anywhere]",
-        r.depth === 1 && "pl-7",
+        screen && "max-sm:min-w-[7rem]",
+        INDENT[r.depth],
         r.kind !== "leaf" && "font-semibold",
       )}
     >
-      <PickLabel text={r.label} pick={r.pick} picker={picker} />
+      <div className={labelBox}>
+        <PickLabel text={r.label} pick={r.pick} picker={picker} compact={screen && r.depth >= 2} />
+      </div>
     </th>
   );
   return (
@@ -191,6 +218,7 @@ export function PivotTableMarkup({
             <tr
               key={i}
               data-kind={r.kind}
+              data-depth={r.depth}
               className={cn(
                 "border-b last:border-b-0",
                 r.kind === "group" && "bg-muted font-semibold",

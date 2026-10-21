@@ -6,6 +6,8 @@ import {
   duplicateField,
   pivotSummary,
   splitColumn,
+  toggleSubtotal,
+  withRows,
 } from "@/components/dashboards/pivot-config-model";
 import { WidgetConfigForm } from "@/components/dashboards/widget-config";
 import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
@@ -16,6 +18,7 @@ import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-t
 import {
   MISSING_COLUMN,
   parseWidgetConfig,
+  pivotSubtotalLevels,
   type PivotSpec,
   type WidgetConfig,
 } from "@/features/widgets/spec";
@@ -279,5 +282,123 @@ describe("pivot cetak PDF", () => {
     expect(printPivotNote(data({ columnCount: 55 }), 2, [])).toBe(
       "2 dari 55 kolom Tanggal · Total mencakup semua data",
     );
+  });
+});
+
+describe("T-070: 4 tingkat baris, subtotal per level, 8 nilai", () => {
+  const spec = (over: Partial<PivotSpec> = {}): PivotSpec => ({
+    ...(defaultConfig("pivot", sources, empty) as { spec: PivotSpec }).spec,
+    ...over,
+  });
+  const four = [{ column: 1 }, { column: 4 }, { column: 3 }, { column: 2 }];
+  const form = (s: PivotSpec) =>
+    renderToStaticMarkup(
+      createElement(WidgetConfigForm, {
+        dashboardId: "cmv4kljx40009oczvdmpudash0",
+        widget: { id: "w", type: "pivot", title: "", spec: s, version: "v1" },
+        sources,
+        datasetId: "ds",
+        onSave: () => Promise.resolve(true as const),
+      }),
+    );
+
+  it("isian dobel di baris ke-3/ke-4 ditandai per barisnya", () => {
+    expect(duplicateField(spec({ rows: [{ column: 1 }, { column: 4 }, { column: 1 }] }))).toBe(
+      "row2",
+    );
+    expect(
+      duplicateField(spec({ rows: [{ column: 1 }, { column: 4 }, { column: 3 }, { column: 4 }] })),
+    ).toBe("row3");
+  });
+
+  it("rinci/hapus baris menjaga bentuk subtotal: ≤ 2 baris = bentuk 1.0.0", () => {
+    const two = withRows(spec({ subtotals: true }), [{ column: 1 }, { column: 4 }]);
+    expect(two.subtotals).toBe(true);
+    expect(two).not.toHaveProperty("subtotalLevels");
+    const three = withRows(two, [...two.rows, { column: 3 }]);
+    expect(pivotSubtotalLevels(three)).toEqual([1, 2]);
+    expect(three).not.toHaveProperty("subtotalLevels");
+    const off2 = toggleSubtotal(three, 2, false);
+    expect(off2).toMatchObject({ subtotals: true, subtotalLevels: [1] });
+    expect(toggleSubtotal(toggleSubtotal(off2, 1, false), 2, true)).toMatchObject({
+      subtotalLevels: [2],
+    });
+    expect(toggleSubtotal(toggleSubtotal(off2, 1, false), 1, false)).toMatchObject({
+      subtotals: false,
+    });
+    // Kembali ke 2 baris: level 1 mengikuti sakelarnya, subtotalLevels hilang.
+    const back = withRows(off2, off2.rows.slice(0, 2));
+    expect(back).toMatchObject({ subtotals: true });
+    expect(back).not.toHaveProperty("subtotalLevels");
+    expect(parseWidgetConfig("pivot", off2).ok).toBe(true);
+  });
+
+  it("ringkasan menyebut semua tingkat dan subtotal yang dipilih", () => {
+    const s = toggleSubtotal(spec({ rows: four, subtotals: true }), 1, false);
+    const text = pivotSummary(s, cols, () => "Total No.")
+      .map((p) => p.text)
+      .join("");
+    expect(text).toBe(
+      "Satu baris per Customer, dirinci per Layanan, lalu per No., lalu per Tanggal, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total serta subtotal per Layanan dan No..",
+    );
+  });
+
+  it("panel: satu sakelar subtotal per level induk, tombol Rinci lagi sampai 4 tingkat", () => {
+    const { column: _split, ...noSplit } = spec({ rows: four.slice(0, 3) });
+    const html = form(noSplit);
+    expect(html).toContain('data-testid="pivot-subtotals"');
+    expect(html).toContain('data-testid="pivot-subtotals-2"');
+    expect(html).not.toContain('data-testid="pivot-subtotals-3"');
+    expect(html).toContain("Lalu dirinci per");
+    expect(html).toContain("Rinci lagi");
+    expect(html).toContain("Hapus rincian baris ke-2");
+    const full = form(spec({ rows: four, values: Array(8).fill({ agg: "count" }) }));
+    expect(full).toContain('data-testid="pivot-subtotals-3"');
+    expect(full).not.toContain("Rinci lagi");
+    expect(full).not.toContain(">Tambah nilai<");
+    expect(full).toContain("maks. 24.000 sel");
+  });
+
+  it("markup: level 3–4 diindentasi, label ringkas di layar sempit dengan teks utuh", () => {
+    const m = pivotTable(
+      data({
+        rowFields: ["A", "B", "C", "D"].map((label) => ({ label, type: "text" as const })),
+        columnField: null,
+        rows: [{ labels: ["a", "b", "c", "Nama cabang yang sangat panjang sekali"], group: 0 }],
+        groups: ["a"],
+        columns: [],
+        cells: [[[1]]],
+        subtotals: [[[1]]],
+        rowTotals: null,
+        columnTotals: null,
+        grandTotal: [1],
+        nest: {
+          paths: [[0, 0, 0]],
+          levels: [
+            { labels: ["a"], subtotals: [[[1]]], totals: null },
+            { labels: ["b"], subtotals: null, totals: null },
+            { labels: ["c"], subtotals: [[[1]]], totals: null },
+          ],
+        },
+      }),
+    );
+    expect(m.rows.map((r) => [r.kind, r.depth, r.values])).toEqual([
+      ["group", 0, [1]],
+      ["group", 1, []],
+      ["group", 2, [1]],
+      ["leaf", 3, [1]],
+    ]);
+    expect(m.fields.map((f) => f.role)).toEqual(["row0", "row1", "row2", "row3"]);
+    const html = renderToStaticMarkup(
+      createElement(PivotTableMarkup, { model: m, format: fmt, variant: "screen" }),
+    );
+    expect(html).toContain('data-depth="3"');
+    expect(html).toContain("pl-[3.75rem]");
+    expect(html).toContain('title="Nama cabang yang sangat panjang sekali"');
+    expect(html).toContain("max-sm:line-clamp-2");
+    const print = renderToStaticMarkup(
+      createElement(PivotTableMarkup, { model: m, format: fmt, variant: "print" }),
+    );
+    expect(print).not.toContain("line-clamp");
   });
 });

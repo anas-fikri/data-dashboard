@@ -8,6 +8,8 @@ const scenario = process.argv[2];
 const scenarios = {
   // "Lihat data" (T-041/T-042/T-061): jendela baris, urut/saring/cari/periode, beban + widget.
   grid: "scripts/perf-grid.ts",
+  // Pivot 4 tingkat × 8 nilai vs 2 × 3 (T-070).
+  pivot: "scripts/perf-pivot-levels.ts",
 };
 
 if (!scenario || !(scenario in scenarios)) {

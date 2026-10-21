@@ -47,8 +47,8 @@ export interface CrossFilter {
   widgetId: string;
   filter: DashFilter;
 }
-/** Field pivot yang disaring pembaca (T-f4a7): baris 1, baris 2, atau kolom pemisah. */
-export type PivotFieldRole = "row0" | "row1" | "column";
+/** Field pivot yang disaring pembaca (T-f4a7): baris 1–4 (T-070) atau kolom pemisah. */
+export type PivotFieldRole = "row0" | "row1" | "row2" | "row3" | "column";
 export interface PivotFilter {
   field: PivotFieldRole;
   /** Nama kolom + grain field saat saringan dibuat (field yang sudah diganti → dilewati server). */
@@ -87,7 +87,7 @@ const filterSchema = z.union([
 const widgetId = z.string().regex(/^[a-z0-9]{20,32}$/);
 const pivotFilterSchema = z
   .object({
-    field: z.enum(["row0", "row1", "column"]),
+    field: z.enum(["row0", "row1", "row2", "row3", "column"]),
     column: name,
     grain: z.enum(GRAINS).optional(),
     op: z.enum(["in", "not_in"]),
@@ -98,7 +98,7 @@ const stateSchema = z
   .object({
     filters: z.array(filterSchema).max(20).default([]),
     cross: z.object({ widgetId, filter: filterSchema }).strict().optional(),
-    pivot: z.record(widgetId, z.array(pivotFilterSchema).max(3)).optional(),
+    pivot: z.record(widgetId, z.array(pivotFilterSchema).max(5)).optional(),
   })
   .strict();
 

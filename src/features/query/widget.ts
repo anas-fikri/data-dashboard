@@ -13,6 +13,7 @@ import {
   columnsOf,
   sortColumnSchema,
   isCalcValue,
+  pivotSubtotalLevels,
   type ChartSort,
   type MeasureValue,
   type ShowAs,
@@ -62,13 +63,19 @@ export const widgetBodySchema = z
   .strict();
 export type WidgetQueryBody = z.infer<typeof widgetBodySchema>;
 
-/** Bentuk pivot di atas rencana: dimensi = baris (1–2) lalu kolom pemisah (opsional), ukuran = nilai. */
+/** Bentuk pivot di atas rencana: dimensi = baris (1–4) lalu kolom pemisah (opsional), ukuran = nilai. */
 export interface PivotShape {
-  rowFields: 1 | 2;
+  rowFields: 1 | 2 | 3 | 4;
   column: boolean;
   sort: ChartSort;
   totals: boolean;
+  /** Baris 2 kolom: subtotal kelompok pertama. Baris ≥ 3 kolom: ada level di `levels`. */
   subtotals: boolean;
+  /**
+   * Baris ≥ 3 kolom (T-070): level induk ber-subtotal (1-based, naik). Tidak ada untuk baris ≤ 2
+   * kolom, jadi bentuk (dan kunci cache) pivot 1.0.0 tidak berubah.
+   */
+  levels?: number[];
   /** Saringan pembaca per dimensi pivot (indeks plan.dimensions), T-f4a7. */
   local?: PivotLocal[];
   /** Bagian Saring tersimpan (T-f4a7): klausa nilai kolom, di-AND dengan filter dashboard. */
@@ -196,7 +203,9 @@ export function widgetPlan(
       // dilewati, bukan gagal.
       const at = {
         row0: 0,
-        row1: p.rows.length === 2 ? 1 : -1,
+        row1: p.rows.length >= 2 ? 1 : -1,
+        row2: p.rows.length >= 3 ? 2 : -1,
+        row3: p.rows.length >= 4 ? 3 : -1,
         column: p.column ? p.rows.length : -1,
       };
       const notes: PivotNote[] = [];
@@ -236,12 +245,15 @@ export function widgetPlan(
         });
         return [{ dim, op: f.op, values: f.values }];
       });
+      const nested = p.rows.length > 2;
+      const levels = pivotSubtotalLevels(p);
       pivot = {
-        rowFields: p.rows.length === 2 ? 2 : 1,
+        rowFields: p.rows.length as PivotShape["rowFields"],
         column: !!p.column,
         sort: p.sort,
         totals: p.totals,
-        subtotals: p.subtotals && p.rows.length === 2,
+        subtotals: nested ? levels.length > 0 : p.subtotals && p.rows.length === 2,
+        ...(nested ? { levels } : {}),
         ...(local.length ? { local } : {}),
         ...(saved.length ? { saved } : {}),
         ...(list !== undefined ? { list } : {}),

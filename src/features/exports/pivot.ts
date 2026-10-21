@@ -2,8 +2,8 @@
  * Ekspor CSV/XLSX widget pivot (T-9bc2): query pivot yang sama dengan layar (buildPivotSql atas parquet
  * kerja, filter dashboard ikut) → PivotData → model tabel layar (pivotTable) → grid berbentuk tabel biasa
  * yang mudah disaring di Excel:
- *  - kolom label per kolom baris (2 kolom baris → "Customer", "Layanan"; label kelompok diulang di setiap
- *    baris rincian, baris subtotal berlabel "Subtotal"), lalu satu kolom per kolom data dengan nama header
+ *  - kolom label per kolom baris (1–4; 2 kolom baris → "Customer", "Layanan"; label kelompok diulang di
+ *    setiap baris rincian, baris subtotal berlabel "Subtotal"), lalu satu kolom per kolom data dengan nama header
  *    layar ("Jan 2026", "Total No.", atau "Jan 2026 · Total No." bila banyak nilai);
  *  - baris Total di bawah; catatan batas tampil (200 baris × 40 kolom) sebagai baris terakhir.
  * Nilai tetap angka (XLSX bertipe angka, CSV angka tanpa kutip); teks lewat netralisasi formula yang sama
@@ -42,9 +42,13 @@ const cellValue = (v: unknown, kind: XlsxKind): unknown =>
     ? new Date(`${v.length === 10 ? `${v}T00:00:00` : v}Z`)
     : v;
 
-/** Grid ekspor dari model tabel pivot. Murni. */
+/**
+ * Grid ekspor dari model tabel pivot. Murni. Satu kolom label per kolom baris (1–4, T-070): label
+ * kelompok diulang di setiap baris rinciannya; baris subtotal level L berisi label induknya, "Subtotal",
+ * lalu kosong.
+ */
 export function pivotGrid(model: PivotTableModel, rowFields: readonly string[]): PivotGrid {
-  const two = rowFields.length === 2;
+  const n = rowFields.length;
   const names = columnNames(model);
   const columns: XlsxColumn[] = [
     ...rowFields.map((label) => ({ label, kind: "text" as const })),
@@ -55,18 +59,20 @@ export function pivotGrid(model: PivotTableModel, rowFields: readonly string[]):
   ];
   const kinds = model.valueHeads.map((h) => kindOf(h.type, h.showAs, h.format));
   const values = (vs: unknown[]) => vs.map((v, i) => cellValue(v, kinds[i]!));
+  const pad = (labels: unknown[]) => [...labels, ...Array<null>(n - labels.length).fill(null)];
   const rows: unknown[][] = [];
-  let group = "";
+  const groups: string[] = [];
   for (const r of model.rows) {
     if (r.kind === "group") {
-      group = r.label;
+      groups.length = r.depth;
+      groups.push(r.label);
       // Tanpa subtotal baris kelompok tidak berisi angka: labelnya cukup di baris rinciannya.
-      if (r.values.length) rows.push([group, "Subtotal", ...values(r.values)]);
+      if (r.values.length) rows.push([...pad([...groups, "Subtotal"]), ...values(r.values)]);
     } else {
-      rows.push([...(two ? [group] : []), r.label, ...values(r.values)]);
+      rows.push([...groups.slice(0, r.depth), r.label, ...values(r.values)]);
     }
   }
-  if (model.total) rows.push(["Total", ...(two ? [null] : []), ...values(model.total.values)]);
+  if (model.total) rows.push([...pad(["Total"]), ...values(model.total.values)]);
   if (model.note) rows.push([model.note]);
   return { columns, rows };
 }

@@ -3,10 +3,14 @@
 import { IconTableOptions } from "@tabler/icons-react";
 import { useLayoutEffect, useRef } from "react";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
+import { formatNumber } from "@/features/widgets/format";
 import {
+  PIVOT_CELLS_MAX,
   PIVOT_COLUMNS_SHOWN,
+  PIVOT_ROWS_MAX,
   PIVOT_ROWS_SHOWN,
   isCalcValue,
+  pivotSubtotalLevels,
   type PivotSpec,
 } from "@/features/widgets/spec";
 import { CalcField } from "./calc-editor";
@@ -24,15 +28,22 @@ import {
   nextRowColumn,
   pivotSummary,
   splitColumn,
+  toggleSubtotal,
+  withRows,
 } from "./pivot-config-model";
 import { CHART_SORT_ORDER, measureText, sortLabel, type SourceColumn } from "./widget-config-model";
 
 /*
  * Bagian panel untuk widget pivot (T-tcjp), disusun seperti cara orang membaca PivotTable Excel:
  * ringkasan kalimat bentuk tabelnya dulu, lalu Baris (+ rincian opsional), "Pisahkan per" (opsional,
- * mis. per bulan → satu kolom per periode di kiri kolom Total), Nilai (1–3), urutan, Total, Subtotal.
+ * mis. per bulan → satu kolom per periode di kiri kolom Total), Nilai (1–8), urutan, Total, Subtotal
+ * per level induk (T-070: baris 1–4).
  * Perubahan langsung tersimpan dan widget di kanvas memuat ulang (pratinjau sungguhan).
  */
+/** Label pilihan baris per tingkat. */
+const ROW_LABEL = ["Satu baris per", "Dirinci per", "Lalu dirinci per"];
+const COUNT = { style: "number", decimals: 0 } as const;
+
 export function PivotFields({
   dashboardId,
   spec,
@@ -49,7 +60,10 @@ export function PivotFields({
   const valueLabel = (m: PivotSpec["values"][number]) =>
     isCalcValue(m) ? m.label : measureText(m, name);
   const dup = duplicateField(spec);
-  const [row0, row1] = spec.rows;
+  const row0 = spec.rows[0];
+  // Sumbu total berjalan/selisih tanpa pemisah: baris terdalam (T-070: hingga baris ke-4).
+  const inner = spec.rows.at(-1);
+  const subtotalLevels = pivotSubtotalLevels(spec);
   const rowType = columns.find((c) => c.pos === row0?.column)?.type;
   const { column: split, ...withoutSplit } = spec;
   const { filters: _f, ...withoutFilters } = spec;
@@ -83,32 +97,43 @@ export function PivotFields({
 
       <fieldset className="flex min-w-0 flex-col gap-3">
         <legend className="mb-1 text-sm font-medium">Baris</legend>
-        <DimensionField
-          label="Satu baris per"
-          testId="pivot-row-0"
-          value={row0!}
-          columns={columns}
-          onChange={(d) => set({ rows: [d, ...spec.rows.slice(1)] })}
-        />
-        {row1 ? (
+        {spec.rows.map((d, i) => (
           <DimensionField
-            label="Dirinci per"
-            testId="pivot-row-1"
-            value={row1}
+            key={i}
+            label={ROW_LABEL[i] ?? ROW_LABEL[ROW_LABEL.length - 1]!}
+            testId={`pivot-row-${i}`}
+            value={d}
             columns={columns}
-            error={dup === "row1" ? DUPLICATE_TEXT : undefined}
-            onChange={(d) => set({ rows: [row0!, d] })}
-            remove={{ label: "Hapus rincian baris", onRemove: () => set({ rows: [row0!] }) }}
+            error={i > 0 && dup === `row${i}` ? DUPLICATE_TEXT : undefined}
+            onChange={(next) => set({ rows: spec.rows.map((x, j) => (j === i ? next : x)) })}
+            remove={
+              i > 0
+                ? {
+                    label: i === 1 ? "Hapus rincian baris" : `Hapus rincian baris ke-${i}`,
+                    onRemove: () =>
+                      onChange(
+                        withRows(
+                          spec,
+                          spec.rows.filter((_, j) => j !== i),
+                        ),
+                      ),
+                  }
+                : undefined
+            }
           />
-        ) : canAddRow(spec) && nextRowColumn(spec, columns) ? (
+        ))}
+        {canAddRow(spec) && nextRowColumn(spec, columns) ? (
           <AddButton
-            onClick={() => set({ rows: [row0!, dimensionFor(nextRowColumn(spec, columns)!)] })}
+            onClick={() =>
+              onChange(withRows(spec, [...spec.rows, dimensionFor(nextRowColumn(spec, columns)!)]))
+            }
           >
-            Rinci baris (mis. per layanan)
+            {spec.rows.length === 1 ? "Rinci baris (mis. per layanan)" : "Rinci lagi"}
           </AddButton>
         ) : null}
         <p className="text-xs text-muted-foreground">
-          Maks. {PIVOT_ROWS_SHOWN} baris tampil; total tetap mencakup semua data.
+          Maks. {PIVOT_ROWS_MAX} tingkat baris dan {PIVOT_ROWS_SHOWN} baris tampil; total tetap
+          mencakup semua data.
         </p>
       </fieldset>
 
@@ -141,7 +166,8 @@ export function PivotFields({
         ) : null}
         <p className="text-xs text-muted-foreground">
           Satu kolom tabel untuk setiap nilai, mis. per bulan, di kiri kolom Total. Maks.{" "}
-          {PIVOT_COLUMNS_SHOWN} kolom tampil.
+          {PIVOT_COLUMNS_SHOWN} kolom tampil; dengan banyak baris dan nilai kolom tampil dikurangi
+          agar tabel tetap ringan (maks. {formatNumber(PIVOT_CELLS_MAX, COUNT)} sel).
         </p>
       </fieldset>
 
@@ -178,7 +204,7 @@ export function PivotFields({
                 widgetFormat={spec.format}
                 value={m}
                 split={!!split}
-                axis={name((split ?? row1 ?? row0)?.column)}
+                axis={name((split ?? inner)?.column)}
                 onSave={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}
                 // Satu-satunya nilai: tidak bisa dihapus, tetapi bisa kembali ke ukuran biasa.
                 onRemove={
@@ -196,7 +222,7 @@ export function PivotFields({
               <MeasureFields
                 type="pivot"
                 label="Hitung"
-                axis={name((split ?? row1 ?? row0)?.column)}
+                axis={name((split ?? inner)?.column)}
                 split={!!split}
                 columns={columns}
                 measure={m}
@@ -259,15 +285,17 @@ export function PivotFields({
         onChange={(totals) => set({ totals })}
         testId="pivot-totals"
       />
-      {row1 ? (
+      {spec.rows.slice(0, -1).map((d, i) => (
+        // Satu sakelar per level induk (T-070); level 1 tetap "pivot-subtotals".
         <ToggleField
-          label={`Subtotal per ${name(row0?.column)}`}
+          key={i}
+          label={`Subtotal per ${name(d.column)}`}
           hint="Baris ringkasan di atas setiap kelompok."
-          checked={spec.subtotals}
-          onChange={(subtotals) => set({ subtotals })}
-          testId="pivot-subtotals"
+          checked={subtotalLevels.includes(i + 1)}
+          onChange={(on) => onChange(toggleSubtotal(spec, i + 1, on))}
+          testId={i === 0 ? "pivot-subtotals" : `pivot-subtotals-${i + 1}`}
         />
-      ) : null}
+      ))}
       <ToggleField
         label={PIVOT_CROSS_FILTER_LABEL}
         hint="Label baris atau kolom yang dipilih jadi filter untuk semua widget lain di dashboard ini."

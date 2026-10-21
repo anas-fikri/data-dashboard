@@ -93,13 +93,13 @@ export type DashValue = string | number | boolean | null;
 export const dashFiltersSchema = z.array(dashFilterSchema).max(DASH_FILTERS_MAX);
 
 /**
- * Saringan pivot dinamis (T-f4a7): pembaca memilih nilai field yang SUDAH dipakai pivot itu (baris 1,
- * baris 2, kolom pemisah) — dirujuk lewat perannya, bukan kolom bebas, jadi tidak membuka kolom lain
+ * Saringan pivot dinamis (T-f4a7): pembaca memilih nilai field yang SUDAH dipakai pivot itu (baris 1–4
+ * (T-070), kolom pemisah) — dirujuk lewat perannya, bukan kolom bebas, jadi tidak membuka kolom lain
  * (D6). Berlaku hanya untuk widget itu; nilai = label mentah pivot (teks, angka, boolean, awal periode).
  * `column` + `grain` = field saat saringan dibuat: field yang sudah diganti di pengaturan (URL/ekspor
  * lama) tidak menerima nilai field lama (review T-f4a7 M2).
  */
-export const PIVOT_FIELDS = ["row0", "row1", "column"] as const;
+export const PIVOT_FIELDS = ["row0", "row1", "row2", "row3", "column"] as const;
 export type PivotFieldRole = (typeof PIVOT_FIELDS)[number];
 export const pivotFilterSchema = z
   .object({

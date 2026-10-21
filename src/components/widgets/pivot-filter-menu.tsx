@@ -29,7 +29,13 @@ import { fetchWidget, type WidgetRequest } from "./widget-query";
  */
 const VALUES_MAX = 500;
 const num = (n: number) => n.toLocaleString("id-ID");
-const ROLE_TEXT: Record<PivotFieldRole, string> = { row0: "baris", row1: "baris", column: "kolom" };
+const ROLE_TEXT: Record<PivotFieldRole, string> = {
+  row0: "baris",
+  row1: "baris",
+  row2: "baris",
+  row3: "baris",
+  column: "kolom",
+};
 
 type Edit = NonNullable<WidgetFilters["pivotEdit"]>;
 
