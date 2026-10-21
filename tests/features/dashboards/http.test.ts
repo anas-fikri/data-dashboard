@@ -12,6 +12,7 @@ const { requireUser, hit, service } = vi.hoisted(() => ({
     addWidget: vi.fn(),
     configureWidget: vi.fn(),
     deleteWidget: vi.fn(),
+    detachWidget: vi.fn(),
     renameWidget: vi.fn(),
     saveLayout: vi.fn(),
     setDashboardFilterColumns: vi.fn(),
@@ -106,7 +107,7 @@ describe("status HTTP per kode (T-016)", () => {
     );
     expect(r.status).toBe(200);
     expect(await r.json()).toEqual({ ok: true, data: { title: "X", version: V3 } });
-    expect(service.configureWidget).toHaveBeenCalledWith("u1", D, W, "kpi", {}, V);
+    expect(service.configureWidget).toHaveBeenCalledWith("u1", D, W, "kpi", {}, V, undefined);
     expect(service.renameWidget).toHaveBeenCalledWith("u1", D, W, "X", V2);
 
     const STALE = { ok: false, code: "STALE", message: "Widget ini sudah diubah." };
@@ -124,5 +125,44 @@ describe("status HTTP per kode (T-016)", () => {
     service.renameWidget.mockResolvedValueOnce({ ok: true, data: { title: "Z", version: V3 } });
     await http.updateWidgetRoute(req("PATCH", { type: "kpi", spec: {}, title: "Z" }), D, W);
     expect(service.renameWidget).toHaveBeenLastCalledWith("u1", D, W, "Z", undefined);
+  });
+});
+
+describe("T-073: ikat/lepas pivot tersimpan lewat PATCH widget", () => {
+  const V = "2026-10-15T01:02:03.004Z";
+  const SP = "cmv4kljx40009oczvdmpusp01";
+
+  it("{ type, spec, savedPivotId } diteruskan ke configureWidget", async () => {
+    service.configureWidget.mockResolvedValueOnce({
+      ok: true,
+      data: { type: "kpi", spec: {}, version: V },
+    });
+    const r = await http.updateWidgetRoute(
+      req("PATCH", { type: "kpi", spec: { value: 0 }, savedPivotId: SP, version: V }),
+      D,
+      W,
+    );
+    expect(r.status).toBe(200);
+    expect(service.configureWidget).toHaveBeenCalledWith("u1", D, W, "kpi", { value: 0 }, V, SP);
+  });
+
+  it("{ detach: true } → detachWidget; campuran dengan type/title atau detach bukan true → 400", async () => {
+    service.detachWidget.mockResolvedValueOnce({
+      ok: true,
+      data: { type: "kpi", spec: {}, version: V },
+    });
+    const r = await http.updateWidgetRoute(req("PATCH", { detach: true, version: V }), D, W);
+    expect(r.status).toBe(200);
+    expect(service.detachWidget).toHaveBeenCalledWith("u1", D, W, V);
+    for (const body of [
+      { detach: true, type: "kpi", spec: {} },
+      { detach: true, title: "X" },
+      { detach: "ya" },
+    ]) {
+      const bad = await http.updateWidgetRoute(req("PATCH", body), D, W);
+      expect(bad.status).toBe(400);
+    }
+    expect(service.detachWidget).toHaveBeenCalledTimes(1);
+    expect(service.configureWidget).not.toHaveBeenCalled();
   });
 });

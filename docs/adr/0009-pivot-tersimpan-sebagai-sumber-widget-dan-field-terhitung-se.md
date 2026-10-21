@@ -122,3 +122,19 @@ Bentuk yang ditetapkan:
   remap-nya mengunci baris `Dataset` (FOR UPDATE, urutan sama dengan aktivasi/hapus dataset). Hapus dataset
   dengan widget terikat diuji di PostgreSQL: cascade Dashboard → Widget dan SavedPivot dalam satu statement
   lolos FK `NO ACTION`. AuditLog `targetType` baru `savedPivot`. Keputusan lain tidak berubah.
+- **2026-10-21 (T-073)**: pengikatan widget dibuat sesuai bentuk di atas. Rincian yang ditetapkan:
+  `Widget.spec` widget terikat = tampilan saja (`widgets/bound.ts`: pivot {urut, total, subtotal,
+  filterSilang?, format?}; bar/line/pie {dimensi "row"|"column", value, urut, topN, format?,
+  filterSilang?}; KPI {value, format?}; tabel {urut, total, format?}); spec efektif disusun murni lalu
+  divalidasi `parseWidgetConfig` (tidak ada cabang SQL kedua). **Tabel terikat = pivot rata** (baris +
+  nilai, tanpa kolom pemisah/subtotal, batas tampil pivot 200 baris) — bukan tabel berhalaman 100: tabel
+  baris mentah tidak punya agregat, dan jalur pivot sudah membawa field terhitung, "Tampilkan nilai
+  sebagai", Top N, total, ekspor, dan PDF. Saring pivot tersimpan berlaku juga untuk grafik/KPI terikat
+  (klausa nilai kolom di-AND dengan filter dashboard). Filter silang TIDAK diwarisi dari pivot tersimpan
+  (tampilan widget yang menyalakannya, D6). Kunci cache hasil memuat `src: [savedPivotId, revision]`
+  hanya untuk widget terikat (kunci widget mandiri byte-identik, uji snapshot); kunci sumber filter
+  memuat cap `id@revisi` pivot tersimpan dashboard. Ekspor CSV/XLSX dikunci ke revisi saat diminta
+  (`Export.params.sourceRevision`; berubah → `VERSION_CHANGED`). Ikat lewat PATCH widget
+  `{ type, spec: tampilan, savedPivotId }` (pemilik/editor dashboard; pivot tersimpan dataset lain →
+  NOT_FOUND, dikunci `FOR KEY SHARE` sampai commit), lepas lewat `{ detach: true }` (spec efektif revisi
+  terbaru disalin; grafik/KPI kehilangan Saring → `filtersDropped`). Keputusan lain tidak berubah.

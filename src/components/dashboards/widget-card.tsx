@@ -8,6 +8,7 @@ import type { ChartBadge } from "@/components/widgets/chart-widget";
 import { StaleLabel } from "@/components/widgets/stale-label";
 import { TableExpand } from "@/components/widgets/table-expand";
 import { WidgetBody } from "@/components/widgets/widget-body";
+import { WidgetError } from "@/components/widgets/widget-error";
 import type { WidgetRequest } from "@/components/widgets/widget-query";
 import type { WidgetView } from "@/features/dashboards/service";
 import { cn } from "@/lib/utils";
@@ -77,7 +78,8 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
 ) {
   const title = widget.title || "Widget tanpa judul";
   const handle = editing && draggable;
-  const config = cardConfig(widget.type, widget.spec);
+  // Widget terikat yang tampilannya tidak cocok lagi dengan pivot tersimpan (T-073): pesan per widget.
+  const config = widget.sourceError ? null : cardConfig(widget.type, widget.spec);
   const chart = config ? chartOf(config.type) : null;
   // Nilai grafik sebagai tabel: tombol di kepala kartu (tidak ikut terpotong di kartu pendek/sempit).
   const [showData, setShowData] = useState(false);
@@ -213,6 +215,14 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
           onRequest={onRequest}
           onBadge={setBadge}
         />
+      ) : widget.sourceError ? (
+        <WidgetError
+          title={widget.title}
+          code="INVALID"
+          message={widget.sourceError}
+          editing={editing}
+          onRetry={noRetry}
+        />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
           <IconChartBar
@@ -232,3 +242,6 @@ export const WidgetCard = forwardRef<HTMLDivElement, Props>(function WidgetCard(
     </div>
   );
 });
+
+/** Pesan sumber widget bukan gangguan sementara: tidak ada "Coba lagi" (WidgetError, kode INVALID). */
+const noRetry = () => {};

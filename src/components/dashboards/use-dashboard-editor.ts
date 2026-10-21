@@ -52,7 +52,12 @@ export function freezeOf(code: string): { state: "stale" | "denied"; message?: s
 export const patchWidget = (
   widgets: WidgetView[],
   widgetId: string,
-  patch: Partial<Pick<WidgetView, "type" | "spec" | "title" | "version" | "retargeted">>,
+  patch: Partial<
+    Pick<
+      WidgetView,
+      "type" | "spec" | "title" | "version" | "retargeted" | "source" | "sourceError"
+    >
+  >,
 ): WidgetView[] => widgets.map((w) => (w.id === widgetId ? { ...w, ...patch } : w));
 
 /*
@@ -415,6 +420,9 @@ export function useDashboardEditor(o: {
           spec: r.data.spec,
           version: r.data.version,
           retargeted: undefined,
+          // Simpanan panel menggantikan sumber/galat sumber dari muat halaman (T-073).
+          source: r.data.source,
+          sourceError: undefined,
         }),
       );
       settled();

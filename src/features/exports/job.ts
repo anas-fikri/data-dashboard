@@ -263,6 +263,10 @@ export function sheetTooLargeMessage(n: number, max: number, ext: ExportFormatIn
   return `Tampilan ini ${f(n)} baris, melebihi batas unduhan ${f(max)} baris.${excel} Saring data dulu lalu unduh lagi; file tidak pernah dipotong.`;
 }
 
+/** Pivot tersimpan sumber widget berubah antara permintaan ekspor dan job (T-073). */
+export const SOURCE_CHANGED =
+  "Pivot tersimpan sumber widget ini diubah setelah ekspor diminta. Muat ulang dashboard lalu ekspor lagi.";
+
 /** Ekspor widget (T-017): akses dicek ulang dengan peran SEKARANG + resolver /api/query. */
 async function prepareWidget(
   row: ExportJobRow & { widgetId: string; dashboardId: string },
@@ -289,6 +293,11 @@ async function prepareWidget(
   if (!resolved.ok) {
     const f = forRole(w.role, resolved);
     return { ok: false, code: exportCodeOf(f.code), message: f.message };
+  }
+  // Widget terikat (T-073): definisi = revisi pivot tersimpan saat ekspor diminta (sama dengan yang
+  // dilihat peminta). Berubah, terikat, atau terlepas sejak itu → tidak diekspor dengan definisi lain.
+  if ((params.data.sourceRevision ?? null) !== (resolved.source?.revision ?? null)) {
+    return { ok: false, code: EXPORT_CODES.VERSION_CHANGED, message: SOURCE_CHANGED };
   }
   const producer: Producer =
     resolved.planned.kind === "pivot"

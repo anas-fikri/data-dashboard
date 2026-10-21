@@ -15,8 +15,14 @@ import {
   roleSelect,
   type DashboardAccessRole,
 } from "@/features/sharing/access";
+import { effectiveConfig, type EffectiveConfig } from "@/features/widgets/bound";
 import { matchSheet, remapConfig } from "@/features/widgets/remap";
-import { CHART_TYPES, parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
+import {
+  CHART_TYPES,
+  parseWidgetConfig,
+  pivotSpecSchema,
+  type WidgetConfig,
+} from "@/features/widgets/spec";
 import { prisma } from "@/lib/db";
 import { cleanName as cleanUserName } from "@/lib/text";
 import {
@@ -81,6 +87,24 @@ export interface WidgetView {
    * menyimpannya (R3-CC-2). Tidak pernah ada di widget biasa.
    */
   retargeted?: true;
+  /**
+   * Widget terikat pivot tersimpan (T-073, ADR-0009): `type`/`spec` di atas = spec EFEKTIF (pivot
+   * tersimpan + tampilan; tabel terikat = pivot rata), jadi kartu, filter silang, dan PDF memakainya
+   * seperti widget biasa. Rincian sumber hanya untuk pemilik/editor (viewer tidak menerimanya):
+   * jenis widget tersimpan + tampilan (Widget.spec) + pivot tersimpan yang dipakai.
+   */
+  source?: {
+    savedPivotId: string;
+    name: string;
+    revision: number;
+    type: string;
+    display: unknown;
+  };
+  /**
+   * Widget terikat yang tampilannya tidak cocok lagi dengan sumbernya (mis. nilai yang dipilih sudah
+   * dihapus): pesan per widget, kartu menampilkannya alih-alih isi. `spec` = tampilan tersimpan.
+   */
+  sourceError?: string;
 }
 
 /** Sumber data panel konfigurasi widget: sheet siap di versi aktif + kolom yang tampil. */
@@ -97,9 +121,73 @@ export interface SourceSheet {
 }
 
 const WIDGET_SELECT = { id: true, type: true, title: true, spec: true, updatedAt: true } as const;
-/** Widget tersimpan + kolom yang hilang saat aktivasi versi (T-013); dipetakan oleh remapToActive. */
-const STORED_WIDGET_SELECT = { ...WIDGET_SELECT, missingColumns: true } as const;
+/** Pivot tersimpan sumber widget (T-073). */
+const SOURCE_SELECT = {
+  savedPivotId: true,
+  savedPivot: {
+    select: {
+      id: true,
+      datasetId: true,
+      name: true,
+      spec: true,
+      revision: true,
+      missingColumns: true,
+    },
+  },
+} as const;
+/**
+ * Widget tersimpan + kolom yang hilang saat aktivasi versi (T-013) + pivot tersimpan sumbernya (T-073);
+ * disusun oleh withSources lalu dipetakan oleh remapToActive.
+ */
+const STORED_WIDGET_SELECT = { ...WIDGET_SELECT, missingColumns: true, ...SOURCE_SELECT } as const;
+type StoredRow = Prisma.WidgetGetPayload<{ select: typeof STORED_WIDGET_SELECT }>;
 type StoredWidget = Omit<WidgetView, "version"> & { updatedAt: Date; missingColumns?: string[] };
+
+/** Sumber widget tidak bisa dipakai (pivot tersimpan dataset lain/tidak ada): tanpa rinciannya. */
+const SOURCE_GONE =
+  "Sumber data widget ini tidak tersedia. Atur ulang widget lewat tombol pengaturan.";
+
+/** Spec efektif widget terikat dari baris pivot tersimpan (widgets/bound.ts). */
+function effectiveOf(type: string, display: unknown, savedSpec: unknown): EffectiveConfig {
+  const pivot = pivotSpecSchema.safeParse(savedSpec);
+  if (!pivot.success) {
+    return {
+      ok: false,
+      message: "Pivot tersimpan sumber widget ini tidak valid. Atur ulang pivot tersimpannya.",
+    };
+  }
+  return effectiveConfig(type, display, pivot.data);
+}
+
+/**
+ * Widget terikat → spec efektif (T-073): pivot tersimpan HARUS milik dataset dashboard (DB tidak
+ * menjaminnya; lain → SOURCE_GONE tanpa rincian, query widget itu NOT_FOUND). Kolom hilang = catatan
+ * pivot tersimpan. Widget mandiri tidak berubah.
+ */
+function withSources(datasetId: string, rows: StoredRow[]): StoredWidget[] {
+  return rows.map(({ savedPivotId, savedPivot: sp, ...w }) => {
+    if (!savedPivotId) return w;
+    if (!sp || sp.id !== savedPivotId || sp.datasetId !== datasetId) {
+      return { ...w, missingColumns: [], sourceError: SOURCE_GONE };
+    }
+    const source = {
+      savedPivotId: sp.id,
+      name: sp.name,
+      revision: sp.revision,
+      type: w.type,
+      display: w.spec,
+    };
+    const eff = effectiveOf(w.type, w.spec, sp.spec);
+    if (!eff.ok) return { ...w, missingColumns: [], source, sourceError: eff.message };
+    return {
+      ...w,
+      type: eff.config.type,
+      spec: eff.config.spec,
+      missingColumns: sp.missingColumns,
+      source,
+    };
+  });
+}
 
 export type { FilterColumnView } from "./filter-columns";
 
@@ -476,7 +564,14 @@ export const getDashboard = cache(async function getDashboard(
   const role = d && roleOf(userId, d);
   if (!d || !role) return null;
   const { activeVersionId } = d.dataset;
-  const widgets = await remapToActive(d.dataset.id, activeVersionId, d.widgets);
+  const mapped = await remapToActive(
+    d.dataset.id,
+    activeVersionId,
+    withSources(d.dataset.id, d.widgets),
+  );
+  // Rincian pivot tersimpan sumber (nama, tampilan) hanya untuk pemilik/editor (D6, ADR-0009).
+  const widgets =
+    role === "OWNER" || role === "EDITOR" ? mapped : mapped.map(({ source: _, ...w }) => w);
   const stored = storedFilterColumns(d.filterColumns);
   // Skema versi aktif hanya dibaca bila ada kolom filter atau sumber cross-filter (grafik/pivot).
   const sheets =
@@ -549,7 +644,7 @@ export async function filterSourcesFor(dashboardId: string): Promise<FilterSourc
   if (!versionId || (!stored.length && !d.widgets.length)) {
     return stored.map((f) => ({ name: f.column, type: null }));
   }
-  const widgets = await remapToActive(d.datasetId, versionId, d.widgets);
+  const widgets = await remapToActive(d.datasetId, versionId, withSources(d.datasetId, d.widgets));
   // Kolom filter dicocokkan lewat nama sheet → semua sheet aktif; tanpa kolom filter cukup sheet sumber.
   const ids = stored.length
     ? undefined
@@ -581,7 +676,7 @@ export async function filterOverlapFor(dashboardId: string): Promise<string[]> {
   });
   const versionId = d?.dataset.activeVersionId;
   if (!d || !versionId) return [];
-  const widgets = await remapToActive(d.datasetId, versionId, d.widgets);
+  const widgets = await remapToActive(d.datasetId, versionId, withSources(d.datasetId, d.widgets));
   return overlappingFilterColumns(
     storedFilterColumns(d.filterColumns),
     widgets,
@@ -1138,7 +1233,13 @@ export async function renameWidget(
   return { ok: true, data: { title, version: version.toISOString() } };
 }
 
-/** Atur tipe dan isi widget (T-011). Divalidasi terhadap data aktif; tidak menyentuh tata letak. */
+/**
+ * Atur tipe dan isi widget (T-011). Divalidasi terhadap data aktif; tidak menyentuh tata letak.
+ * T-073: `savedPivotId` (id) = ikat ke pivot tersimpan — `spec` berisi TAMPILAN saja (widgets/bound.ts),
+ * pivot tersimpan wajib milik dataset dashboard ini (lain/tidak ada → NOT_FOUND) dan spec efektifnya
+ * divalidasi seperti spec biasa. Tanpa `savedPivotId` (atau null) = widget mandiri: ikatan lama lepas.
+ * Hasil `spec` = spec efektif (yang dipakai kartu), `source` = rincian sumber bila terikat.
+ */
 export async function configureWidget(
   userId: string,
   dashboardId: unknown,
@@ -1146,21 +1247,41 @@ export async function configureWidget(
   type: unknown,
   spec: unknown,
   versionRaw?: unknown,
-): Promise<DashboardResult<{ type: string; spec: unknown; version: string }>> {
+  savedPivotIdRaw?: unknown,
+): Promise<
+  DashboardResult<{ type: string; spec: unknown; version: string; source?: WidgetView["source"] }>
+> {
   if (!isIdShape(dashboardId)) return notFound();
   if (!isIdShape(widgetId)) return widgetNotFound();
   const base = parseWidgetVersion(versionRaw);
   if (!base.ok) return invalidVersion();
+  const bind = savedPivotIdRaw !== undefined && savedPivotIdRaw !== null;
+  if (bind && !isIdShape(savedPivotIdRaw)) return savedPivotNotFound();
   const where = editableWidget(userId, dashboardId, widgetId);
   const w = await prisma.widget.findFirst({
     where,
     select: { dashboard: { select: { datasetId: true, ...roleSelect(userId) } } },
   });
   if (!w) return denied(userId, dashboardId, "edit", widgetNotFound);
+  const datasetId = w.dashboard.datasetId;
+  // Pivot tersimpan sumber: dataset dashboard ini saja (editor boleh memilih, tidak mengubahnya).
+  const sp = bind
+    ? await prisma.savedPivot.findFirst({
+        where: { id: savedPivotIdRaw as string, datasetId },
+        select: { id: true, name: true, spec: true, revision: true },
+      })
+    : null;
+  if (bind && !sp) return savedPivotNotFound();
+  let effective: { type: unknown; spec: unknown } = { type, spec };
+  if (sp) {
+    const eff = effectiveOf(String(type), spec, sp.spec);
+    if (!eff.ok) return fail("INVALID", eff.message);
+    effective = eff.config;
+  }
   // Versi dibandingkan di CAS penulisan (di bawah lock), setelah validasi: sheet versi data lama tetap
   // mendapat pesan "berganti versi" yang lebih jelas (aktivasi T-013 juga mengubah spec + versinya).
   const owner = roleOf(userId, w.dashboard) === "OWNER";
-  const checked = await checkConfig(w.dashboard.datasetId, type, spec, owner);
+  const checked = await checkConfig(datasetId, effective.type, effective.spec, owner);
   if (!checked.ok) {
     // Sheet versi lain dataset ini: versi aktif berganti saat panel terbuka → minta muat ulang.
     if (checked.stale) return versionChanged();
@@ -1171,14 +1292,24 @@ export async function configureWidget(
   const version = nextVersion(base.value);
   const r = await locked(async (tx) => {
     await lockDashboard(tx, dashboardId);
-    if (!(await onActiveVersion(tx, w.dashboard.datasetId, config))) return "STALE" as const;
+    if (!(await onActiveVersion(tx, datasetId, config))) return "STALE" as const;
+    // Ikatan: pivot tersimpan dikunci (FOR KEY SHARE) sampai commit — hapus bersamaan menunggu lalu
+    // ditolak FK (IN_USE), atau sudah terhapus → NOT_FOUND. Revisi berganti sejak validasi → STALE.
+    if (sp) {
+      const live = await tx.$queryRaw<{ revision: number }[]>`
+        SELECT "revision" FROM "SavedPivot" WHERE "id" = ${sp.id} AND "datasetId" = ${datasetId} FOR KEY SHARE`;
+      if (!live[0]) return "NO_SOURCE" as const;
+      if (live[0].revision !== sp.revision) return "SOURCE_STALE" as const;
+    }
     const u = await tx.widget.updateMany({
       // CAS pada versi yang dilihat klien (bila dikirim): simpan bersamaan dari tab lain tidak tertimpa.
       where: base.value ? { ...where, updatedAt: base.value } : where,
-      // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013).
+      // Pengaturan baru menggantikan catatan kolom hilang dari aktivasi versi (T-013). Widget terikat
+      // menyimpan jenis + tampilan saja; widget mandiri melepas ikatan lama.
       data: {
-        type: config.type,
-        spec: config.spec as unknown as Prisma.InputJsonValue,
+        type: sp ? String(type) : config.type,
+        spec: (sp ? spec : config.spec) as unknown as Prisma.InputJsonValue,
+        savedPivotId: sp ? sp.id : null,
         missingColumns: [],
         updatedAt: version,
       },
@@ -1195,9 +1326,104 @@ export async function configureWidget(
   // berganti sejak cek awal.
   if (r === null) return denied(userId, dashboardId, "edit", staleOrGone(where, base.value));
   if (r === "STALE") return versionChanged();
+  if (r === "NO_SOURCE") return savedPivotNotFound();
+  if (r === "SOURCE_STALE") return sourceChanged();
   return {
     ok: true,
-    data: { type: config.type, spec: config.spec, version: version.toISOString() },
+    data: {
+      type: config.type,
+      spec: config.spec,
+      version: version.toISOString(),
+      ...(sp
+        ? {
+            source: {
+              savedPivotId: sp.id,
+              name: sp.name,
+              revision: sp.revision,
+              type: String(type),
+              display: spec,
+            },
+          }
+        : {}),
+    },
+  };
+}
+
+const savedPivotNotFound = <T>() => fail<T>("NOT_FOUND", "Pivot tersimpan tidak ditemukan.");
+const sourceChanged = <T>() =>
+  fail<T>(
+    "STALE",
+    "Pivot tersimpan sumber widget ini baru saja diubah. Muat ulang halaman, lalu ulangi perubahan.",
+  );
+
+/**
+ * Lepas dari sumber (T-073, rencana G-7 §3.3): spec efektif SAAT INI (pivot tersimpan revisi terbaru +
+ * tampilan) disalin menjadi spec widget mandiri, jadi widget tetap tampil sama tanpa sumber. Dibaca dan
+ * ditulis di bawah lock dashboard dengan CAS versi widget (bila dikirim). Tabel terikat menjadi widget
+ * pivot (bentuk efektifnya). Grafik/KPI tidak punya bagian Saring: Saring pivot tersimpan tidak ikut —
+ * `filtersDropped` memberi tahu klien. Kolom hilang pivot tersimpan ikut dicatat di widget.
+ */
+export async function detachWidget(
+  userId: string,
+  dashboardId: unknown,
+  widgetId: unknown,
+  versionRaw?: unknown,
+): Promise<
+  DashboardResult<{ type: string; spec: unknown; version: string; filtersDropped?: true }>
+> {
+  if (!isIdShape(dashboardId)) return notFound();
+  if (!isIdShape(widgetId)) return widgetNotFound();
+  const base = parseWidgetVersion(versionRaw);
+  if (!base.ok) return invalidVersion();
+  const where = editableWidget(userId, dashboardId, widgetId);
+  const version = nextVersion(base.value);
+  const r = await locked(async (tx) => {
+    await lockDashboard(tx, dashboardId);
+    const w = await tx.widget.findFirst({
+      where: base.value ? { ...where, updatedAt: base.value } : where,
+      select: {
+        type: true,
+        spec: true,
+        dashboard: { select: { datasetId: true } },
+        ...SOURCE_SELECT,
+      },
+    });
+    if (!w) return null;
+    const sp = w.savedPivot;
+    if (!w.savedPivotId) return "UNBOUND" as const;
+    if (!sp || sp.datasetId !== w.dashboard.datasetId) return "NO_SOURCE" as const;
+    const eff = effectiveOf(w.type, w.spec, sp.spec);
+    if (!eff.ok) return { invalid: eff.message };
+    if (!(await onActiveVersion(tx, w.dashboard.datasetId, eff.config))) return "STALE" as const;
+    const u = await tx.widget.updateMany({
+      where: { id: widgetId, dashboardId, savedPivotId: sp.id },
+      data: {
+        type: eff.config.type,
+        spec: eff.config.spec as unknown as Prisma.InputJsonValue,
+        savedPivotId: null,
+        missingColumns: sp.missingColumns,
+        updatedAt: version,
+      },
+    });
+    if (u.count !== 1) return null;
+    await tx.dashboard.updateMany({ where: { id: dashboardId }, data: { updatedAt: new Date() } });
+    return { config: eff.config, filtersDropped: Boolean(eff.filters?.length) };
+  });
+  if (r === "BUSY") return busy();
+  if (r === null) return denied(userId, dashboardId, "edit", staleOrGone(where, base.value));
+  if (r === "STALE") return versionChanged();
+  if (r === "UNBOUND") return fail("INVALID", "Widget ini tidak memakai pivot tersimpan.");
+  // Pivot tersimpan sumber tidak sah (lintas dataset): tanpa rincian, seperti widget tanpa sumber.
+  if (r === "NO_SOURCE") return fail("INVALID", SOURCE_GONE);
+  if ("invalid" in r) return fail("INVALID", r.invalid ?? SOURCE_GONE);
+  return {
+    ok: true,
+    data: {
+      type: r.config.type,
+      spec: r.config.spec,
+      version: version.toISOString(),
+      ...(r.filtersDropped ? { filtersDropped: true as const } : {}),
+    },
   };
 }
 

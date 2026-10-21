@@ -1,0 +1,376 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > bar {"dashboardFilters":[{"column":"Cabang","op":"in","values":["Bandung",null]}]} 1`] = `
+{
+  "keys": [
+    "c84542c979dab93e3e711ac8964665672c9c828b4839fc0e7e366d1d24cb1bf7",
+  ],
+  "sql": [
+    {
+      "params": {
+        "f1": "Bandung",
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT list_sort(list_transform(map_entries(histogram(left("c1", 500))), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS "d0", coalesce(sum("c2"), 0) AS "m0"
+FROM read_parquet($path)
+WHERE (lower("c1") IN (lower($f1)) OR "c1" IS NULL)
+GROUP BY lower(left("c1", 500))
+ORDER BY "m0" DESC NULLS LAST, "d0" ASC NULLS LAST
+LIMIT 12",
+    },
+    {
+      "params": {
+        "f1": "Bandung",
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(DISTINCT lower(left("c1", 500))) + coalesce(max(CASE WHEN lower(left("c1", 500)) IS NULL THEN 1 ELSE 0 END), 0) AS n,
+  coalesce(sum("c2"), 0) AS t
+FROM read_parquet($path)
+WHERE (lower("c1") IN (lower($f1)) OR "c1" IS NULL)",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > bar {} 1`] = `
+{
+  "keys": [
+    "6e8263dfeca9d2f7e3c4579b960a9fdc8bd18dd5270a482ec9e1bdf7bf290f7e",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT list_sort(list_transform(map_entries(histogram(left("c1", 500))), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS "d0", coalesce(sum("c2"), 0) AS "m0"
+FROM read_parquet($path)
+GROUP BY lower(left("c1", 500))
+ORDER BY "m0" DESC NULLS LAST, "d0" ASC NULLS LAST
+LIMIT 12",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(DISTINCT lower(left("c1", 500))) + coalesce(max(CASE WHEN lower(left("c1", 500)) IS NULL THEN 1 ELSE 0 END), 0) AS n,
+  coalesce(sum("c2"), 0) AS t
+FROM read_parquet($path)",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > barshow {} 1`] = `
+{
+  "keys": [
+    "3f2360e518161f1a2f32817b0427095bcd52bf5e61d0a060c90103242a1eec89",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT "d0", r AS "m0" FROM (
+  SELECT "d0", "m0" AS a, sum("m0") OVER w AS r, lag("m0") OVER w AS p FROM (
+    SELECT list_sort(list_transform(map_entries(histogram(left("c1", 500))), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS "d0", coalesce(sum("c2"), 0) AS "m0", lower(left("c1", 500)) AS k FROM read_parquet($path) GROUP BY lower(left("c1", 500))
+  ) WINDOW w AS (ORDER BY k COLLATE "nocase.noaccent" ASC NULLS LAST, k ASC ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+)
+ORDER BY "m0" DESC NULLS LAST, "d0" ASC NULLS LAST
+LIMIT 12",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(DISTINCT lower(left("c1", 500))) + coalesce(max(CASE WHEN lower(left("c1", 500)) IS NULL THEN 1 ELSE 0 END), 0) AS n,
+  NULL AS t
+FROM read_parquet($path)",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > kpi {} 1`] = `
+{
+  "keys": [
+    "960bbf3c3c0f9ea6f428c8703052d4e5468ec3a93770cedf1b4bd865e200cb9e",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m0"
+FROM read_parquet($path)
+LIMIT 1",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > kpisum {} 1`] = `
+{
+  "keys": [
+    "93ae1506628b4301bd44908f7f099b3c4fefc47795f1b73cee02f71a9dae8f4e",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT coalesce(sum("c2"), 0) AS "m0"
+FROM read_parquet($path)
+LIMIT 1",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > line {} 1`] = `
+{
+  "keys": [
+    "64f88f952cadffae017982f31384a0432dec28101e1401e55e64e3cab51e8997",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT date_trunc('month', "c4") AS "d0", coalesce(sum("c2"), 0) AS "m0"
+FROM read_parquet($path)
+GROUP BY date_trunc('month', "c4")
+ORDER BY "d0" DESC NULLS LAST
+LIMIT 12",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(DISTINCT date_trunc('month', "c4")) + coalesce(max(CASE WHEN date_trunc('month', "c4") IS NULL THEN 1 ELSE 0 END), 0) AS n,
+  coalesce(sum("c2"), 0) AS t
+FROM read_parquet($path)",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > pie {} 1`] = `
+{
+  "keys": [
+    "d18269af2f224cea46e0bfdbcdd3a7f4140873e7053a6cb3a8ed1e39ff792c5c",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT list_sort(list_transform(map_entries(histogram(left("c1", 500))), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS "d0", count(*) AS "m0"
+FROM read_parquet($path)
+GROUP BY lower(left("c1", 500))
+ORDER BY "m0" DESC NULLS LAST, "d0" ASC NULLS LAST
+LIMIT 5",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(DISTINCT lower(left("c1", 500))) + coalesce(max(CASE WHEN lower(left("c1", 500)) IS NULL THEN 1 ELSE 0 END), 0) AS n,
+  count(*) AS t
+FROM read_parquet($path)",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > pivot {"dashboardFilters":[{"column":"Cabang","op":"in","values":["Jakarta"]}]} 1`] = `
+{
+  "keys": [
+    "32c05f58ffc54bdcae84eab7c460b1057af7146e0b01f5e979a8af470a567651",
+  ],
+  "sql": [
+    {
+      "params": {
+        "f1": "Reguler",
+        "f2": "Jakarta",
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "WITH s0 AS NOT MATERIALIZED (SELECT lower(left("c1", 500)) AS "k0", left("c1", 500) AS "t0", lower(left("c5", 500)) AS "k1", left("c5", 500) AS "t1", date_trunc('month', "c4") AS "kc", "c2", "c3" FROM read_parquet($path) WHERE (lower("c5") IN (lower($f1)) OR "c5" IS NULL) AND (lower("c1") IN (lower($f2)))),
+top0 AS MATERIALIZED (SELECT k0, true AS hit FROM (SELECT k0, coalesce(sum("c2"), 0) AS v FROM s0 GROUP BY k0) QUALIFY row_number() OVER (ORDER BY v DESC NULLS LAST, k0 COLLATE "nocase.noaccent" ASC NULLS LAST, k0 ASC) <= 3),
+src AS NOT MATERIALIZED (SELECT s.* REPLACE (CASE WHEN t.hit THEN s.k0 END AS k0, CASE WHEN t.hit THEN s.t0 END AS t0), t.hit IS NULL AS x0 FROM s0 s LEFT JOIN top0 t ON t.k0 IS NOT DISTINCT FROM s.k0),
+g1 AS MATERIALIZED (SELECT g.*, row_number() OVER (ORDER BY g.x0, g.v DESC NULLS LAST, g.k0 COLLATE "nocase.noaccent" ASC NULLS LAST, g.k0 ASC) AS r FROM (SELECT k0, x0, list_sort(list_transform(map_entries(histogram("t0")), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS d0, coalesce(sum("c2"), 0) AS v FROM src GROUP BY k0, x0) g),
+lf AS MATERIALIZED (SELECT k0, k1, x0, coalesce(sum("c2"), 0) AS v FROM src GROUP BY k0, k1, x0),
+rw0 AS MATERIALIZED (SELECT lf.k0, g1.d0, lf.k1, lf.x0, row_number() OVER (ORDER BY g1.r, lf.v DESC NULLS LAST, lf.k1 COLLATE "nocase.noaccent" ASC NULLS LAST, lf.k1 ASC) AS ri, g1.r AS gi, count(*) OVER () AS n FROM lf JOIN g1 ON g1.k0 IS NOT DISTINCT FROM lf.k0 AND g1.x0 IS NOT DISTINCT FROM lf.x0 QUALIFY ri <= 200),
+rws AS MATERIALIZED (SELECT rw0.*, l.d1 FROM rw0 JOIN (SELECT s.k0, s.k1, s.x0, list_sort(list_transform(map_entries(histogram(s."t1")), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS d1 FROM src s JOIN rw0 w ON w.k0 IS NOT DISTINCT FROM s.k0 AND w.k1 IS NOT DISTINCT FROM s.k1 AND w.x0 IS NOT DISTINCT FROM s.x0 GROUP BY s.k0, s.k1, s.x0) l ON l.k0 IS NOT DISTINCT FROM rw0.k0 AND l.k1 IS NOT DISTINCT FROM rw0.k1 AND l.x0 IS NOT DISTINCT FROM rw0.x0),
+bud AS MATERIALIZED (SELECT greatest(1, count(*) + count(DISTINCT gi)) AS b FROM rws),
+cols AS MATERIALIZED (SELECT kc, "kc" AS dc, row_number() OVER (ORDER BY kc ASC NULLS LAST) AS ci, count(*) OVER () AS n FROM src GROUP BY kc QUALIFY ci <= (SELECT greatest(1, least(40, 24000 // (b * 2), 16000 // b)) FROM bud)),
+agg AS MATERIALIZED (SELECT r.ri AS ri, x.ci AS ci, g1x.gi AS s1, GROUPING(r.ri, x.ci, g1x.gi) AS gid, coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s LEFT JOIN rws r ON r.k0 IS NOT DISTINCT FROM s.k0 AND r.k1 IS NOT DISTINCT FROM s.k1 AND r.x0 IS NOT DISTINCT FROM s.x0 LEFT JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc LEFT JOIN (SELECT DISTINCT k0, x0, gi FROM rws) g1x ON g1x.k0 IS NOT DISTINCT FROM s.k0 AND g1x.x0 IS NOT DISTINCT FROM s.x0 GROUP BY GROUPING SETS ((r.ri, x.ci), (g1x.gi, x.ci), (g1x.gi), (r.ri), (x.ci), ())),
+gt AS MATERIALIZED (SELECT coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s),
+ct AS MATERIALIZED (SELECT x.ci, coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc GROUP BY x.ci),
+u AS (SELECT 'row' AS "kind", ri AS "ri", gi AS "gi", NULL AS "ci", d0 AS "d0", d1 AS "d1", NULL AS "dc", n AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", CASE WHEN x0 THEN 1 ELSE 0 END AS "ox", NULL AS "m0", NULL AS "m1" FROM rws
+UNION ALL
+SELECT 'col' AS "kind", NULL AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", dc AS "dc", n AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", NULL AS "m0", NULL AS "m1" FROM cols
+UNION ALL
+SELECT 'cell' AS "kind", ri AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 1 AND ri IS NOT NULL AND ci IS NOT NULL
+UNION ALL
+SELECT 'sub' AS "kind", NULL AS "ri", s1 AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", 1 AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 4 AND s1 IS NOT NULL AND ci IS NOT NULL
+UNION ALL
+SELECT 'subtot' AS "kind", NULL AS "ri", s1 AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", 1 AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 6 AND s1 IS NOT NULL
+UNION ALL
+SELECT 'rowtot' AS "kind", ri AS "ri", NULL AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 3 AND ri IS NOT NULL
+UNION ALL
+SELECT 'coltot' AS "kind", NULL AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 5 AND ci IS NOT NULL
+UNION ALL
+SELECT 'grand' AS "kind", NULL AS "ri", NULL AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 7)
+SELECT u."kind", u."ri", u."gi", u."ci", u."d0", u."d1", u."dc", u."n", u."lv", u."g2", u."g3", u."d2", u."d3", u."ox", u."m0" AS "m0", CASE WHEN CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END IS NULL OR CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END = 0 THEN NULL ELSE CAST(u."m1" AS DOUBLE) / CAST(CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END AS DOUBLE) END AS "m1" FROM u CROSS JOIN gt LEFT JOIN ct ON u.kind IN ('cell', 'sub') AND ct.ci = u.ci",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > pivot {"pivotValues":"row1"} 1`] = `
+{
+  "keys": [
+    "f3c7536d3b4ad7d2b3cb3c0015b2a3ad910bc13593f9f53a679211b4426d7608",
+  ],
+  "sql": [
+    {
+      "params": {
+        "f1": "Reguler",
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT list_sort(list_transform(map_entries(histogram(left("c5", 500))), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS v FROM read_parquet($path) WHERE (lower("c5") IN (lower($f1)) OR "c5" IS NULL) GROUP BY lower(left("c5", 500)) ORDER BY lower(left("c5", 500)) COLLATE "nocase.noaccent" ASC NULLS LAST, lower(left("c5", 500)) ASC LIMIT 501",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > pivot {} 1`] = `
+{
+  "keys": [
+    "d1a3db130200513a472f0e8abb26237f073f027da8fe81234ae530c40c0a918f",
+  ],
+  "sql": [
+    {
+      "params": {
+        "f1": "Reguler",
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "WITH s0 AS NOT MATERIALIZED (SELECT lower(left("c1", 500)) AS "k0", left("c1", 500) AS "t0", lower(left("c5", 500)) AS "k1", left("c5", 500) AS "t1", date_trunc('month', "c4") AS "kc", "c2", "c3" FROM read_parquet($path) WHERE (lower("c5") IN (lower($f1)) OR "c5" IS NULL)),
+top0 AS MATERIALIZED (SELECT k0, true AS hit FROM (SELECT k0, coalesce(sum("c2"), 0) AS v FROM s0 GROUP BY k0) QUALIFY row_number() OVER (ORDER BY v DESC NULLS LAST, k0 COLLATE "nocase.noaccent" ASC NULLS LAST, k0 ASC) <= 3),
+src AS NOT MATERIALIZED (SELECT s.* REPLACE (CASE WHEN t.hit THEN s.k0 END AS k0, CASE WHEN t.hit THEN s.t0 END AS t0), t.hit IS NULL AS x0 FROM s0 s LEFT JOIN top0 t ON t.k0 IS NOT DISTINCT FROM s.k0),
+g1 AS MATERIALIZED (SELECT g.*, row_number() OVER (ORDER BY g.x0, g.v DESC NULLS LAST, g.k0 COLLATE "nocase.noaccent" ASC NULLS LAST, g.k0 ASC) AS r FROM (SELECT k0, x0, list_sort(list_transform(map_entries(histogram("t0")), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS d0, coalesce(sum("c2"), 0) AS v FROM src GROUP BY k0, x0) g),
+lf AS MATERIALIZED (SELECT k0, k1, x0, coalesce(sum("c2"), 0) AS v FROM src GROUP BY k0, k1, x0),
+rw0 AS MATERIALIZED (SELECT lf.k0, g1.d0, lf.k1, lf.x0, row_number() OVER (ORDER BY g1.r, lf.v DESC NULLS LAST, lf.k1 COLLATE "nocase.noaccent" ASC NULLS LAST, lf.k1 ASC) AS ri, g1.r AS gi, count(*) OVER () AS n FROM lf JOIN g1 ON g1.k0 IS NOT DISTINCT FROM lf.k0 AND g1.x0 IS NOT DISTINCT FROM lf.x0 QUALIFY ri <= 200),
+rws AS MATERIALIZED (SELECT rw0.*, l.d1 FROM rw0 JOIN (SELECT s.k0, s.k1, s.x0, list_sort(list_transform(map_entries(histogram(s."t1")), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS d1 FROM src s JOIN rw0 w ON w.k0 IS NOT DISTINCT FROM s.k0 AND w.k1 IS NOT DISTINCT FROM s.k1 AND w.x0 IS NOT DISTINCT FROM s.x0 GROUP BY s.k0, s.k1, s.x0) l ON l.k0 IS NOT DISTINCT FROM rw0.k0 AND l.k1 IS NOT DISTINCT FROM rw0.k1 AND l.x0 IS NOT DISTINCT FROM rw0.x0),
+bud AS MATERIALIZED (SELECT greatest(1, count(*) + count(DISTINCT gi)) AS b FROM rws),
+cols AS MATERIALIZED (SELECT kc, "kc" AS dc, row_number() OVER (ORDER BY kc ASC NULLS LAST) AS ci, count(*) OVER () AS n FROM src GROUP BY kc QUALIFY ci <= (SELECT greatest(1, least(40, 24000 // (b * 2), 16000 // b)) FROM bud)),
+agg AS MATERIALIZED (SELECT r.ri AS ri, x.ci AS ci, g1x.gi AS s1, GROUPING(r.ri, x.ci, g1x.gi) AS gid, coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s LEFT JOIN rws r ON r.k0 IS NOT DISTINCT FROM s.k0 AND r.k1 IS NOT DISTINCT FROM s.k1 AND r.x0 IS NOT DISTINCT FROM s.x0 LEFT JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc LEFT JOIN (SELECT DISTINCT k0, x0, gi FROM rws) g1x ON g1x.k0 IS NOT DISTINCT FROM s.k0 AND g1x.x0 IS NOT DISTINCT FROM s.x0 GROUP BY GROUPING SETS ((r.ri, x.ci), (g1x.gi, x.ci), (g1x.gi), (r.ri), (x.ci), ())),
+gt AS MATERIALIZED (SELECT coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s),
+ct AS MATERIALIZED (SELECT x.ci, coalesce(sum("c2"), 0) AS "m0", list_filter([(list_filter([(list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1] - list_filter([CAST(coalesce(sum("c3"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] / list_filter([CAST(coalesce(sum("c2"), 0) AS DOUBLE)], lambda v: isfinite(v))[1])], lambda v: isfinite(v))[1] AS "m1" FROM src s JOIN cols x ON x.kc IS NOT DISTINCT FROM s.kc GROUP BY x.ci),
+u AS (SELECT 'row' AS "kind", ri AS "ri", gi AS "gi", NULL AS "ci", d0 AS "d0", d1 AS "d1", NULL AS "dc", n AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", CASE WHEN x0 THEN 1 ELSE 0 END AS "ox", NULL AS "m0", NULL AS "m1" FROM rws
+UNION ALL
+SELECT 'col' AS "kind", NULL AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", dc AS "dc", n AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", NULL AS "m0", NULL AS "m1" FROM cols
+UNION ALL
+SELECT 'cell' AS "kind", ri AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 1 AND ri IS NOT NULL AND ci IS NOT NULL
+UNION ALL
+SELECT 'sub' AS "kind", NULL AS "ri", s1 AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", 1 AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 4 AND s1 IS NOT NULL AND ci IS NOT NULL
+UNION ALL
+SELECT 'subtot' AS "kind", NULL AS "ri", s1 AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", 1 AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 6 AND s1 IS NOT NULL
+UNION ALL
+SELECT 'rowtot' AS "kind", ri AS "ri", NULL AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 3 AND ri IS NOT NULL
+UNION ALL
+SELECT 'coltot' AS "kind", NULL AS "ri", NULL AS "gi", ci AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 5 AND ci IS NOT NULL
+UNION ALL
+SELECT 'grand' AS "kind", NULL AS "ri", NULL AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", NULL AS "lv", NULL AS "g2", NULL AS "g3", NULL AS "d2", NULL AS "d3", NULL AS "ox", "m0", "m1" FROM agg WHERE gid = 7)
+SELECT u."kind", u."ri", u."gi", u."ci", u."d0", u."d1", u."dc", u."n", u."lv", u."g2", u."g3", u."d2", u."d3", u."ox", u."m0" AS "m0", CASE WHEN CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END IS NULL OR CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END = 0 THEN NULL ELSE CAST(u."m1" AS DOUBLE) / CAST(CASE u.kind WHEN 'cell' THEN ct."m1" WHEN 'sub' THEN ct."m1" WHEN 'coltot' THEN u."m1" ELSE gt."m1" END AS DOUBLE) END AS "m1" FROM u CROSS JOIN gt LEFT JOIN ct ON u.kind IN ('cell', 'sub') AND ct.ci = u.ci",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > plain {} 1`] = `
+{
+  "keys": [
+    "ca269d9a4de0804399c8b496f71eeeaa1e8136b759e564d296ae84fa92cf2b6e",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "WITH "src" AS NOT MATERIALIZED (SELECT lower(left("c1", 500)) AS "k0", left("c1", 500) AS "t0" FROM read_parquet($path)),
+lf AS MATERIALIZED (SELECT k0, list_sort(list_transform(map_entries(histogram("t0")), lambda x: {'n': -CAST(x.value AS BIGINT), 'k': x.key}))[1].k AS d0, count(*) AS v FROM src GROUP BY k0),
+rws AS MATERIALIZED (SELECT k0, d0, row_number() OVER (ORDER BY k0 COLLATE "nocase.noaccent" ASC NULLS LAST, k0 ASC) AS ri, count(*) OVER () AS n FROM lf QUALIFY ri <= 200)
+SELECT 'row' AS "kind", ri AS "ri", NULL AS "gi", NULL AS "ci", d0 AS "d0", NULL AS "d1", NULL AS "dc", n AS "n", NULL AS "m0" FROM rws
+UNION ALL
+SELECT 'cell' AS "kind", r.ri AS "ri", NULL AS "gi", NULL AS "ci", NULL AS "d0", NULL AS "d1", NULL AS "dc", NULL AS "n", count(*) AS "m0" FROM src s JOIN rws r ON r.k0 IS NOT DISTINCT FROM s.k0 GROUP BY r.ri",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > table {"page":2,"sort":{"column":2,"dir":"desc"}} 1`] = `
+{
+  "keys": [
+    "9908c67e8543777b8d39542937c82eed1c5eec053dd4134f304cbc65355f6eb0",
+    "cdf6ead3c084e09d2678154a413504560c965bff7b51a499d40b35cbc3cc3223",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(*) AS n
+FROM read_parquet($path)",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "WITH ids AS (
+  SELECT "_row" FROM read_parquet($path)
+  
+  ORDER BY "c2" DESC NULLS LAST, "_row" ASC
+  LIMIT 100 OFFSET 200
+)
+SELECT left("c1", 500) AS "d0", "c2" AS "d1", "c4" AS "d2"
+FROM read_parquet($path)
+WHERE "_row" IN (SELECT "_row" FROM ids)
+ORDER BY "c2" DESC NULLS LAST, "_row" ASC",
+    },
+  ],
+}
+`;
+
+exports[`T-073: widget tanpa pivot tersimpan tidak berubah (SQL + kunci cache) > table {} 1`] = `
+{
+  "keys": [
+    "9908c67e8543777b8d39542937c82eed1c5eec053dd4134f304cbc65355f6eb0",
+    "21148794101bde931b5bfb8664a90bba027c130533d13fb5f197937bc6e05203",
+  ],
+  "sql": [
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "SELECT count(*) AS n
+FROM read_parquet($path)",
+    },
+    {
+      "params": {
+        "path": "/tmp/t073-legacy.parquet",
+      },
+      "sql": "WITH ids AS (
+  SELECT "_row" FROM read_parquet($path)
+  
+  ORDER BY "_row" ASC
+  LIMIT 100 OFFSET 0
+)
+SELECT left("c1", 500) AS "d0", "c2" AS "d1", "c4" AS "d2"
+FROM read_parquet($path)
+WHERE "_row" IN (SELECT "_row" FROM ids)
+ORDER BY "_row" ASC",
+    },
+  ],
+}
+`;

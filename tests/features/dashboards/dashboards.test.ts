@@ -438,7 +438,13 @@ describe("T-011: atur isi widget dan pulihkan tipe/spec", () => {
     // (T-016) ada di where penulisan di dalam transaksi lock.
     expect(prisma.widget.updateMany).toHaveBeenCalledWith({
       where: { id: WA, dashboardId: DB, dashboard: canEditWhere(OWNER) },
-      data: { type: "bar", spec: bar, missingColumns: [], updatedAt: expect.any(Date) },
+      data: {
+        type: "bar",
+        spec: bar,
+        savedPivotId: null,
+        missingColumns: [],
+        updatedAt: expect.any(Date),
+      },
     });
   });
 

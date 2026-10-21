@@ -36,8 +36,11 @@ const widgetRow = (opts: { owner?: string; shares?: ("VIEWER" | "EDITOR")[]; org
   type: "kpi",
   spec: { sheetId: "s" },
   missingColumns: [],
+  savedPivotId: null,
+  savedPivot: null,
   dashboard: {
     id: D,
+    widgets: [],
     datasetId: DS,
     filterColumns: [],
     updatedAt: UPDATED,
@@ -88,7 +91,44 @@ describe("prismaQueryRepo.widget (T-016)", () => {
       filterColumns: [],
       dashboardUpdatedAt: UPDATED,
       schemaStamp: 5,
+      savedPivotId: null,
+      savedPivot: null,
       role,
+    });
+  });
+
+  it("T-073: widget terikat → pivot tersimpan dibaca bersama widget + cap revisi semua pivot tersimpan dashboard", async () => {
+    const sp = { id: "sp-b", datasetId: DS, spec: {}, revision: 4, missingColumns: [] };
+    const row = widgetRow({ owner: U });
+    widgetFind.mockResolvedValueOnce({
+      ...row,
+      savedPivotId: "sp-b",
+      savedPivot: sp,
+      dashboard: {
+        ...row.dashboard,
+        widgets: [
+          { savedPivot: { id: "sp-b", revision: 4 } },
+          { savedPivot: { id: "sp-a", revision: 9 } },
+          { savedPivot: { id: "sp-b", revision: 4 } },
+        ],
+      },
+    });
+    expect(await prismaQueryRepo.widget(U, W)).toMatchObject({
+      savedPivotId: "sp-b",
+      savedPivot: sp,
+      sourceStamp: "sp-a@9,sp-b@4",
+    });
+    const arg = widgetFind.mock.calls[0]![0];
+    expect(arg.select.savedPivot.select).toEqual({
+      id: true,
+      datasetId: true,
+      spec: true,
+      revision: true,
+      missingColumns: true,
+    });
+    expect(arg.select.dashboard.select.widgets).toEqual({
+      where: { savedPivotId: { not: null } },
+      select: { savedPivot: { select: { id: true, revision: true } } },
     });
   });
 
@@ -105,6 +145,12 @@ describe("prismaQueryRepo.widget (T-016)", () => {
     expect(filterSourcesFor).toHaveBeenCalledTimes(1);
     await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 6 });
     expect(filterSourcesFor).toHaveBeenCalledTimes(2);
+    // T-073: revisi pivot tersimpan dashboard naik (edit) → dibaca ulang tanpa menunggu umur cache.
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 6, sourceStamp: "sp@1" });
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 6, sourceStamp: "sp@1" });
+    expect(filterSourcesFor).toHaveBeenCalledTimes(3);
+    await prismaQueryRepo.filterSources!({ ...base, schemaStamp: 6, sourceStamp: "sp@2" });
+    expect(filterSourcesFor).toHaveBeenCalledTimes(4);
   });
 });
 

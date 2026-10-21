@@ -33,7 +33,14 @@ import {
   remapConfig,
   type SheetInfo,
 } from "@/features/widgets/remap";
-import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
+import { effectiveConfig } from "@/features/widgets/bound";
+import {
+  MISSING_COLUMN,
+  parseWidgetConfig,
+  pivotSpecSchema,
+  type PivotSavedFilter,
+  type WidgetConfig,
+} from "@/features/widgets/spec";
 import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import {
@@ -238,6 +245,24 @@ export interface QueryRepo {
      * kolom yang baru disembunyikan langsung tidak diizinkan lagi (review T-016 R3 SEC-1).
      */
     schemaStamp?: number;
+    /**
+     * Pivot tersimpan sumber widget ini (T-073, ADR-0009): `spec` widget = tampilan saja. Dibaca di
+     * query yang sama dengan widget (tanpa cache); datasetId WAJIB = dataset dashboard (DB tidak
+     * menjaminnya) — lain → NOT_FOUND (boundSourceOk).
+     */
+    savedPivotId?: string | null;
+    savedPivot?: {
+      id: string;
+      datasetId: string;
+      spec: unknown;
+      revision: number;
+      missingColumns: string[];
+    } | null;
+    /**
+     * Pivot tersimpan yang dipakai widget mana pun di dashboard ini ("id@revisi", urut): bagian kunci
+     * cache sumber filter, agar edit pivot tersimpan langsung mengubah kolom filter silang (T-073).
+     */
+    sourceStamp?: string;
   } | null>;
   /**
    * Sumber filter dashboard (T-012, D6): kolom filter tersimpan + dimensi grafik yang cross-filter-nya
@@ -250,6 +275,7 @@ export interface QueryRepo {
     activeVersionId: string | null;
     updatedAt?: Date;
     schemaStamp?: number;
+    sourceStamp?: string;
   }): Promise<FilterSource[]>;
   /**
    * Dashboard yang boleh dilihat user (pemilik/editor/viewer, T-016) untuk daftar nilai slicer (T-012):
@@ -810,6 +836,7 @@ function dashboardSources(w: AuthorizedWidget, repo: QueryRepo): Promise<FilterS
       activeVersionId: w.activeVersionId,
       updatedAt: w.dashboardUpdatedAt,
       schemaStamp: w.schemaStamp,
+      ...(w.sourceStamp ? { sourceStamp: w.sourceStamp } : {}),
     });
   }
   return Promise.resolve(
@@ -841,7 +868,7 @@ export async function runWidgetQuery(
     );
   }
   const w = await deps.repo.widget(userId, parsed.data.widgetId);
-  if (!w) return fail("NOT_FOUND", "Widget tidak ditemukan.");
+  if (!w || !boundSourceOk(w)) return fail("NOT_FOUND", "Widget tidak ditemukan.");
   const r = forRole(w.role, await widgetResult(userId, w, parsed.data, deps, t0));
   // Versi spec yang benar-benar dipakai (dibaca bersama widget), bukan bagian nilai cache hasil; juga
   // di jawaban gagal agar klien bisa membedakan error dari pengaturan lokal yang basi (R2 CL-2).
@@ -871,6 +898,18 @@ export interface ResolvedWidget {
   dash: { clauses: DashClause[]; skipped: string[] };
   /** Nama tampil kolom kosong (absent, T-014) yang dipakai widget. */
   absent: string[];
+  /** Widget terikat (T-073): pivot tersimpan + revisi yang dipakai (kunci cache, ekspor). */
+  source?: { id: string; revision: number };
+}
+
+/**
+ * Widget terikat hanya boleh memakai pivot tersimpan DATASET DASHBOARD-nya (ADR-0009, D6): FK tidak
+ * menjaminnya, jadi pasangan lintas dataset diperlakukan seperti widget yang tidak ada (NOT_FOUND).
+ */
+export function boundSourceOk(w: AuthorizedWidget): boolean {
+  if (!w.savedPivotId) return true;
+  const sp = w.savedPivot;
+  return !!sp && sp.id === w.savedPivotId && sp.datasetId === w.datasetId;
 }
 
 /**
@@ -899,17 +938,28 @@ export async function resolveWidget(
     .filter((x) => x.type !== null || w.role === "OWNER" || !typed)
     .map((x) => x.name);
   if (disallowedFilter(dashFilters, allowed)) return fail("INVALID", NOT_ALLOWED);
-  const cfg = parseWidgetConfig(w.type, w.spec);
-  if (!cfg.ok) return fail("INVALID", cfg.message);
-  if (cfg.config.type === "empty") return fail("INVALID", "Widget ini belum diatur.");
-  let config = cfg.config;
+  const eff = configOf(w);
+  if (!eff.ok) return eff;
+  let config = eff.config;
+  const { savedFilters, source } = eff;
+  const missing = eff.missing;
   if (!w.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
   let sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
   // Spec di sheet aktif dengan penanda MISSING_COLUMN (disimpan saat aktivasi, T-013): nama kolom lama
   // dari catatan aktivasi, tanpa SQL. Tanpa catatan nama → pesan umum widgetPlan (juga tanpa SQL).
-  const marked = sheet?.schema ? markerNames(config, sheet.schema, w.missingColumns ?? []) : [];
+  // Widget terikat (T-073): catatan pivot tersimpan; Saring sumber grafik/KPI ikut diperiksa.
+  let marked = sheet?.schema ? markerNames(config, sheet.schema, missing) : [];
+  if (!marked.length && sheet?.schema && savedFilters?.some((f) => f.column === MISSING_COLUMN)) {
+    const present = new Set(sheet.schema.map((c) => c.name));
+    marked = missing.filter((n) => !present.has(n));
+  }
   if (marked.length) return fail("COLUMN_UNAVAILABLE", missingMessage(marked));
-  if (!sheet && deps.repo.sheetHistory) {
+  // Pivot tersimpan dipetakan di transaksi aktivasi (T-072): sheet yang tidak ada di versi aktif =
+  // tanpa pasangan → kolom hilang tercatat, tanpa pemetaan lewat riwayat (Saring tidak ikut terpetakan).
+  if (!sheet && source && missing.length) {
+    return fail("COLUMN_UNAVAILABLE", missingMessage(missing));
+  }
+  if (!sheet && !source && deps.repo.sheetHistory) {
     // Data diganti (versi baru aktif): petakan sheet + kolom lewat nama ke versi aktif.
     const h = await deps.repo.sheetHistory(w.datasetId, w.activeVersionId, config.spec.sheetId);
     // Sheet lama sudah dihapus retensi: kolom yang hilang tercatat saat aktivasi (T-013).
@@ -938,9 +988,14 @@ export async function resolveWidget(
     );
   }
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
-  const planned = widgetPlan(config, sheet.schema, body);
+  const planned = widgetPlan(
+    config,
+    sheet.schema,
+    body,
+    savedFilters ? { filters: savedFilters } : {},
+  );
   if (!planned.ok) return fail(planned.code, planned.message);
-  const dash = dashFilters.length
+  const applied = dashFilters.length
     ? applyDashFilters(
         dashFilters,
         sheet.schema,
@@ -948,6 +1003,10 @@ export async function resolveWidget(
         sourceFamilies(sources),
       )
     : { clauses: [] as DashClause[], skipped: [] as string[] };
+  // Saring pivot tersimpan sumber grafik/KPI (T-073) di-AND dengan filter dashboard: masuk SQL, kunci
+  // cache, pemangkasan segmen, dan ekspor lewat jalur klausa yang sama. Widget mandiri: tidak ada.
+  const saved = planned.kind === "agg" ? (planned.saved ?? []) : [];
+  const dash = saved.length ? { ...applied, clauses: [...saved, ...applied.clauses] } : applied;
   return {
     ok: true,
     versionId: w.activeVersionId,
@@ -962,6 +1021,46 @@ export async function resolveWidget(
     planned,
     dash,
     absent: absentNames(config, sheet.schema),
+    ...(source ? { source } : {}),
+  };
+}
+
+/**
+ * Konfigurasi yang dijalankan: spec widget mandiri, atau spec efektif widget terikat (pivot tersimpan +
+ * tampilan, widgets/bound.ts) beserta Saring sumber grafik/KPI dan catatan kolom hilang pivot tersimpan.
+ */
+function configOf(w: AuthorizedWidget):
+  | {
+      ok: true;
+      config: Exclude<WidgetConfig, { type: "empty" }>;
+      savedFilters?: PivotSavedFilter[];
+      missing: string[];
+      source?: { id: string; revision: number };
+    }
+  | QueryFailure {
+  if (!w.savedPivotId) {
+    const cfg = parseWidgetConfig(w.type, w.spec);
+    if (!cfg.ok) return fail("INVALID", cfg.message);
+    if (cfg.config.type === "empty") return fail("INVALID", "Widget ini belum diatur.");
+    return { ok: true, config: cfg.config, missing: w.missingColumns ?? [] };
+  }
+  const sp = w.savedPivot;
+  if (!sp || !boundSourceOk(w)) return fail("NOT_FOUND", "Widget tidak ditemukan.");
+  const pivot = pivotSpecSchema.safeParse(sp.spec);
+  if (!pivot.success) {
+    return fail(
+      "INVALID",
+      "Pivot tersimpan sumber widget ini tidak valid. Atur ulang pivot tersimpannya.",
+    );
+  }
+  const eff = effectiveConfig(w.type, w.spec, pivot.data);
+  if (!eff.ok) return fail("INVALID", eff.message);
+  return {
+    ok: true,
+    config: eff.config,
+    ...(eff.filters ? { savedFilters: eff.filters } : {}),
+    missing: sp.missingColumns,
+    source: { id: sp.id, revision: sp.revision },
   };
 }
 
@@ -1004,6 +1103,9 @@ async function widgetResult(
     sheetId: config.spec.sheetId,
     schemaRevision: sheet.schemaRevision,
   };
+  // Widget terikat (T-073): pivot tersimpan + revisinya masuk kunci hasil, jadi edit pivot tersimpan
+  // langsung miss tanpa menunggu TTL. Widget mandiri: tidak ada, kunci tidak berubah.
+  const src = resolved.source ? { src: [resolved.source.id, resolved.source.revision] } : {};
   // "Tampilkan nilai sebagai" (T-067) tidak ada di QuerySpec: masuk kunci hanya bila dipakai, jadi
   // kunci widget lama tidak berubah.
   const show = planned.plan.measures.some((m) => m.showAs && m.showAs !== "none")
@@ -1017,7 +1119,7 @@ async function widgetResult(
         userId,
         resultKey({
           ...keyParts,
-          spec: { pivotValues: planned.spec, shape: planned.pivot, dash: dashKey },
+          spec: { pivotValues: planned.spec, shape: planned.pivot, dash: dashKey, ...src },
         }),
         source,
         { ...planned.plan, dash: dash.clauses },
@@ -1033,7 +1135,7 @@ async function widgetResult(
         userId,
         resultKey({
           ...keyParts,
-          spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey, ...show },
+          spec: { pivot: planned.spec, shape: planned.pivot, dash: dashKey, ...show, ...src },
         }),
         source,
         { ...planned.plan, dash: dash.clauses },
@@ -1051,8 +1153,8 @@ async function widgetResult(
         resultKey({
           ...keyParts,
           spec: planned.plan.totals
-            ? { chart: planned.spec, dash: dashKey, ...show }
-            : { ...planned.spec, dash: dashKey },
+            ? { chart: planned.spec, dash: dashKey, ...show, ...src }
+            : { ...planned.spec, dash: dashKey, ...src },
         }),
         source,
         { ...planned.plan, dash: dash.clauses },
@@ -1064,7 +1166,10 @@ async function widgetResult(
 
   const { sort, page } = planned;
   const plan = { ...planned.plan, dash: dash.clauses };
-  const key = resultKey({ ...keyParts, spec: { table: planned.spec, sort, page, dash: dashKey } });
+  const key = resultKey({
+    ...keyParts,
+    spec: { table: planned.spec, sort, page, dash: dashKey, ...src },
+  });
   const hit = deps.cache?.get(key);
   if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
   if (hit && "total" in hit) {
@@ -1074,7 +1179,7 @@ async function widgetResult(
   // hanya menjalankan query halaman.
   const countKey = resultKey({
     ...keyParts,
-    spec: { tableCount: planned.spec.filters, dash: dashKey },
+    spec: { tableCount: planned.spec.filters, dash: dashKey, ...src },
   });
   const countHit = deps.cache?.get(countKey);
   const knownTotal =

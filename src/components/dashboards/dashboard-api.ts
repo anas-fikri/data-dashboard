@@ -83,7 +83,7 @@ export const api = {
       filterColumns,
     }),
   configureWidget: (id: string, widgetId: string, type: string, spec: unknown, version?: string) =>
-    call<{ type: string; spec: unknown; version: string }>(
+    call<{ type: string; spec: unknown; version: string; source?: WidgetView["source"] }>(
       `${base(id)}/widgets/${widgetId}`,
       "PATCH",
       { type, spec, version },

@@ -30,6 +30,11 @@ export const exportParamsSchema = z
     pivotFilters: pivotFiltersSchema.optional(),
     sort: sortSchema.optional(),
     requestedAt: z.string().datetime(),
+    /**
+     * Widget terikat (T-073): revisi pivot tersimpan saat ekspor diminta. Job memakai definisi revisi
+     * itu saja — sumber berubah/terlepas sebelum job berjalan → VERSION_CHANGED (ekspor ulang).
+     */
+    sourceRevision: z.number().int().min(1).optional(),
   })
   .strict();
 export type ExportParams = z.infer<typeof exportParamsSchema>;

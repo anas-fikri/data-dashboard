@@ -8,6 +8,7 @@ import {
   addWidget,
   configureWidget,
   deleteWidget,
+  detachWidget,
   renameWidget,
   saveLayout,
   setDashboardFilterColumns,
@@ -85,7 +86,8 @@ export const deleteWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
 /**
  * PATCH widget: { title } ganti judul, atau { type, spec } atur isi widget (T-011). `version` opsional
  * (review T-016 DI-1): versi pengaturan yang dilihat klien; sudah berganti → 409 STALE. Sukses membawa
- * `version` baru.
+ * `version` baru. T-073: { type, spec, savedPivotId } ikat ke pivot tersimpan (spec = tampilan);
+ * { detach: true } lepas dari sumber (spec efektif disalin ke widget).
  */
 export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetId: string) =>
   mutation(req, "ubah widget gagal", async (userId, body) => {
@@ -94,7 +96,15 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
       type?: unknown;
       spec?: unknown;
       version?: unknown;
+      savedPivotId?: unknown;
+      detach?: unknown;
     };
+    if (b.detach !== undefined) {
+      if (b.detach !== true || b.type !== undefined || b.title !== undefined) {
+        return json({ ok: false, code: "INVALID", message: "Permintaan tidak valid." }, 400);
+      }
+      return reply(await detachWidget(userId, dashboardId, widgetId, b.version));
+    }
     if (b.type === undefined)
       return reply(await renameWidget(userId, dashboardId, widgetId, b.title, b.version));
     // Keduanya dikirim: judul diperiksa dulu, isi disimpan, lalu judul — tidak ada bagian yang
@@ -111,6 +121,7 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
       b.type,
       b.spec,
       b.version,
+      b.savedPivotId,
     );
     if (!configured.ok || b.title === undefined) return reply(configured);
     // Judul di atas versi yang baru saja ditulis (CAS berantai bila klien mengirim versi).

@@ -407,6 +407,12 @@ describe("activateVersionInTx", () => {
     expect(tx.dashboard.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { datasetId: DS }, orderBy: { id: "asc" } }),
     );
+    // T-073: widget terikat pivot tersimpan (spec = tampilan) tidak dipetakan; pivot tersimpannya yang dipetakan.
+    expect(tx.widget.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { dashboard: { datasetId: DS }, type: { not: "empty" }, savedPivotId: null },
+      }),
+    );
     expect(tx.widget.updateMany).toHaveBeenCalledWith({
       where: { id: "w1" },
       data: {

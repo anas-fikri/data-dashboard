@@ -16,6 +16,7 @@ import {
   pivotSubtotalLevels,
   type ChartSort,
   type MeasureValue,
+  type PivotSavedFilter,
   type ShowAs,
   type WidgetConfig,
 } from "@/features/widgets/spec";
@@ -121,7 +122,17 @@ function localValueOk(type: ColumnSchema["type"], grained: boolean, v: unknown):
 }
 
 export type WidgetPlan =
-  | { ok: true; kind: "agg"; spec: QuerySpec; plan: Plan }
+  | {
+      ok: true;
+      kind: "agg";
+      spec: QuerySpec;
+      plan: Plan;
+      /**
+       * Grafik/KPI terikat pivot tersimpan (T-073): Saring pivot tersimpan sebagai klausa nilai kolom,
+       * di-AND dengan filter dashboard oleh service. Tidak ada untuk widget mandiri.
+       */
+      saved?: DashClause[];
+    }
   | { ok: true; kind: "pivot"; spec: QuerySpec; plan: Plan; pivot: PivotShape }
   | {
       ok: true;
@@ -149,6 +160,8 @@ export function widgetPlan(
   schema: ColumnSchema[],
   body: Pick<WidgetQueryBody, "page" | "sort"> &
     Partial<Pick<WidgetQueryBody, "pivotFilters" | "pivotValues">>,
+  /** Widget terikat (T-073): Saring pivot tersimpan untuk grafik/KPI (lihat widgets/bound.ts). */
+  extra: { filters?: readonly PivotSavedFilter[] } = {},
 ): WidgetPlan {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   let unavailable: string | null = null;
@@ -184,6 +197,22 @@ export function widgetPlan(
         }
       : { agg: m.agg, ...(m.column ? { column: name(m.column) } : {}) };
 
+  /**
+   * Bagian Saring (pivot, atau pivot tersimpan sumber grafik/KPI): klausa nilai kolom; kolom
+   * tersembunyi/hilang → COLUMN_UNAVAILABLE, nilai yang tidak cocok lagi dengan tipe kolom → pesan.
+   */
+  const savedClauses = (fs: readonly PivotSavedFilter[], notes?: PivotNote[]) =>
+    fs.flatMap((f): DashClause[] => {
+      if (!name(f.column)) return [];
+      const c = byPos.get(f.column)!;
+      const cl = valuesClause(f.op, f.values, c);
+      unavailable ??= cl
+        ? null
+        : `Nilai di bagian Saring tidak cocok lagi dengan kolom "${c.name}". Atur ulang bagian Saring widget ini.`;
+      if (cl) notes?.push({ label: c.name, type: c.type, op: f.op, values: f.values, saved: true });
+      return cl ? [cl] : [];
+    });
+  let aggSaved: DashClause[] = [];
   const base = { sheetId: config.spec.sheetId };
   const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
@@ -214,17 +243,7 @@ export function widgetPlan(
         column: p.column ? p.rows.length : -1,
       };
       const notes: PivotNote[] = [];
-      const saved = (p.filters ?? []).flatMap((f): DashClause[] => {
-        if (!name(f.column)) return [];
-        const c = byPos.get(f.column)!;
-        const cl = valuesClause(f.op, f.values, c);
-        unavailable ??= cl
-          ? null
-          : `Nilai di bagian Saring tidak cocok lagi dengan kolom "${c.name}". Atur ulang bagian Saring widget ini.`;
-        if (cl)
-          notes.push({ label: c.name, type: c.type, op: f.op, values: f.values, saved: true });
-        return cl ? [cl] : [];
-      });
+      const saved = savedClauses(p.filters ?? [], notes);
       const list = body.pivotValues ? at[body.pivotValues] : undefined;
       if (list !== undefined && !dims[list]) {
         return {
@@ -273,6 +292,7 @@ export function widgetPlan(
       break;
     }
     case "kpi": {
+      aggSaved = savedClauses(extra.filters ?? []);
       const m = config.spec.measure;
       spec = {
         ...base,
@@ -308,6 +328,7 @@ export function widgetPlan(
     }
     default: {
       const { dimension: d, measure: m } = config.spec;
+      aggSaved = savedClauses(extra.filters ?? []);
       // Kolom dulu (tersembunyi/hilang), baru tipenya: tipe kolom tersembunyi tidak boleh mengubah
       // jawaban (review T-016 SEC-1 — editor bisa mencoba posisi kolom apa pun saat menyimpan).
       const dimension = name(d.column);
@@ -359,7 +380,13 @@ export function widgetPlan(
   }
   // Grafik: sertakan jumlah kategori + total (irisan "Lainnya", "N teratas dari M").
   const totals = config.type !== "kpi";
-  return { ok: true, kind: "agg", spec, plan: { ...resolved.plan, totals } };
+  return {
+    ok: true,
+    kind: "agg",
+    spec,
+    plan: { ...resolved.plan, totals },
+    ...(aggSaved.length ? { saved: aggSaved } : {}),
+  };
 }
 
 /**

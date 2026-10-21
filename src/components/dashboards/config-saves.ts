@@ -47,4 +47,6 @@ export function createConfigSaves() {
 
 /** Widget untuk form panel: spec yang belum tersimpan menggantikan spec kartu (yang dikirim = dipilih). */
 export const withUnsaved = (w: WidgetView, save: ConfigSave | undefined): WidgetView =>
-  save ? { ...w, type: save.type, spec: save.spec, retargeted: undefined } : w;
+  save
+    ? { ...w, type: save.type, spec: save.spec, retargeted: undefined, sourceError: undefined }
+    : w;

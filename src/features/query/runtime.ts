@@ -71,6 +71,24 @@ async function loadSheetHistory(
   };
 }
 
+/**
+ * Cap pivot tersimpan dashboard (T-073): "id@revisi" unik urut id. Revisi hanya naik (simpan + remap
+ * aktivasi), dan ikat/lepas widget mengubah Dashboard.updatedAt, jadi setiap perubahan definisi yang
+ * dipakai dashboard menghasilkan kunci sumber filter baru. Tanpa widget terikat: tidak ada.
+ */
+function sourceStampOf(widgets: { savedPivot: { id: string; revision: number } | null }[]): {
+  sourceStamp?: string;
+} {
+  const ids = new Map<string, number>();
+  for (const w of widgets) if (w.savedPivot) ids.set(w.savedPivot.id, w.savedPivot.revision);
+  if (!ids.size) return {};
+  const stamp = [...ids]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([id, rev]) => `${id}@${rev}`)
+    .join(",");
+  return { sourceStamp: stamp };
+}
+
 export const prismaQueryRepo: QueryRepo = {
   ownedDataset: (userId, datasetId) =>
     prisma.dataset.findFirst({
@@ -151,12 +169,23 @@ export const prismaQueryRepo: QueryRepo = {
         spec: true,
         updatedAt: true,
         missingColumns: true,
+        // Pivot tersimpan sumber (T-073): dibaca bersama widget, tanpa cache; service memeriksa
+        // datasetId = dataset dashboard sebelum apa pun (boundSourceOk).
+        savedPivotId: true,
+        savedPivot: {
+          select: { id: true, datasetId: true, spec: true, revision: true, missingColumns: true },
+        },
         dashboard: {
           select: {
             id: true,
             datasetId: true,
             filterColumns: true,
             updatedAt: true,
+            // Revisi semua pivot tersimpan yang dipakai dashboard ini: kunci cache sumber filter.
+            widgets: {
+              where: { savedPivotId: { not: null } },
+              select: { savedPivot: { select: { id: true, revision: true } } },
+            },
             ...roleSelect(userId),
             dataset: {
               select: {
@@ -186,13 +215,17 @@ export const prismaQueryRepo: QueryRepo = {
           (sum, s) => sum + s.schemaRevision,
           0,
         ),
+        savedPivotId: w.savedPivotId,
+        savedPivot: w.savedPivot,
+        ...sourceStampOf(w.dashboard.widgets),
         role,
       }
     );
   },
-  filterSources({ dashboardId, activeVersionId, updatedAt, schemaStamp }) {
+  filterSources({ dashboardId, activeVersionId, updatedAt, schemaStamp, sourceStamp }) {
+    // Tanpa widget terikat kunci sama persis dengan sebelum T-073.
     return filterSourceCache.get(
-      `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}:${schemaStamp ?? 0}`,
+      `${dashboardId}:${activeVersionId ?? "-"}:${updatedAt?.getTime() ?? 0}:${schemaStamp ?? 0}${sourceStamp ? `:${sourceStamp}` : ""}`,
       () => filterSourcesFor(dashboardId),
     );
   },

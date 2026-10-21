@@ -158,7 +158,9 @@ async function persistWidgets(
   }
   const widgets = dashboards.length
     ? await tx.widget.findMany({
-        where: { dashboard: { datasetId }, type: { not: "empty" } },
+        // Widget terikat pivot tersimpan (T-073) hanya menyimpan tampilan (tanpa sheet/kolom): yang
+        // dipetakan pivot tersimpannya di bawah ini.
+        where: { dashboard: { datasetId }, type: { not: "empty" }, savedPivotId: null },
         select: { id: true, type: true, spec: true, missingColumns: true },
       })
     : [];
