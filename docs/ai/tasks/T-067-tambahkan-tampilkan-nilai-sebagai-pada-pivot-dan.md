@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-066
 created: "2026-10-21T10:24:05Z"
-updated: "2026-10-21T11:22:50Z"
+updated: "2026-10-21T11:35:00Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,23 +21,23 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 218772
+    duration_ms: 217832
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792581724454,"service":"data-dashboard","host":"127.0.0.1","port":40049,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792581724513,"service":"data-dashboard","host":"127.0.0.1","port":38281,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792581724615,"service":"data-dashboard","host":"127.0.0.1","port":36065,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792581724730,"service":"data-dashboard","host":"127.0.0.1","port":34455,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792581734764,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792581747964,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792581747988,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792581747994,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792581748010,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792582454101,"service":"data-dashboard","host":"127.0.0.1","port":33921,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582454156,"service":"data-dashboard","host":"127.0.0.1","port":38535,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792582454251,"service":"data-dashboard","host":"127.0.0.1","port":41055,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582454353,"service":"data-dashboard","host":"127.0.0.1","port":39631,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582466710,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792582472747,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792582472769,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792582472772,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792582472789,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  208 passed | 1 skipped (209)
-            Tests  2728 passed | 10 skipped (2738)
-         Start at  11:20:15
-         Duration  152.74s (tests 84%, import 13%, transform 2%)
+            Tests  2729 passed | 10 skipped (2739)
+         Start at  11:32:26
+         Duration  152.20s (tests 84%, import 13%, transform 3%)
 
           Isolate  209 workers spawned · ~167ms startup each (spawn + environment, per file)
                    at least ~11.49s faster with isolate: false — reuses workers across files instead of one per file
@@ -48,8 +48,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T11:22:50Z"
-    tree: 5c8065396bbc17449187bea395c8713e5d6b06beb52a9b1422a218d6cf674a74
+    at: "2026-10-21T11:35:00Z"
+    tree: ef8f19a7e4e928555b2d50f903a9854dae9d6aa3177f2ca7a15a6843af274d9f
   audit:
     at: "2026-10-21T11:18:35Z"
     passed: true
@@ -97,8 +97,10 @@ Setara 'Show Values As' Excel: % dari total keseluruhan, % dari total baris, % d
 - Keputusan (default aman, sesuai Q5): sumbu total berjalan/selisih otomatis = kolom pemisah, selain itu baris terdalam per kelompok induk; urut label naik (kunci kelompok, teks nocase.noaccent seperti urutan kolom).
 - Urutan baris pivot "nilai terbesar/terkecil" tetap menurut agregat mentah Nilai 1 (bukan nilai yang ditampilkan); untuk % keseluruhan/kolom urutannya sama. Grafik mengurutkan dan memotong N teratas menurut nilai yang tampil.
 - % selisih = (nilai − sebelumnya) / sebelumnya seperti Excel (tanpa abs); sebelumnya 0/NULL → kosong.
-- Total berjalan pada sel tanpa data (nilai kosong) tetap kosong; total berjalan sesudahnya melewati item kosong (item "sebelumnya" = item yang ada).
-- CSV menulis rasio mentah (0.125) dengan judul kolom yang menyebut cara tampil; XLSX angka bergaya 0.0%.
+- Item "sebelumnya" = kelompok yang ada di data sebelumnya (kombinasi tanpa baris sama sekali dilewati). Kelompok yang ada tetapi nilainya kosong (mis. rata-rata atas sel kosong semua): total berjalan meneruskan angka sebelumnya (contoh uji: Apr kosong → 15), selisih/% selisih sel itu kosong, dan selisih item sesudahnya juga kosong karena sebelumnya NULL (bukan melompat ke item berisi terakhir).
+- Pivot tanpa kolom pemisah tidak menawarkan "% dari total baris" (selalu 100%); menghapus pemisah mengembalikan nilai ber-% baris ke nilai biasa. Spec lama ber-pct_row tanpa pemisah tetap valid di server (100%).
+- Petunjuk panel untuk % pada rata-rata/min/maks/jumlah unik: "dibagi <agregat> yang sama atas seluruh data", bukan "total".
+- CSV menulis rasio mentah (0.125) dengan judul kolom yang menyebut cara tampil ("% dari total kolom · Total Omzet", diuji job.test.ts); XLSX angka bergaya 0.0%.
 - Grafik: total untuk "Lainnya" pai = 100% (pct_grand); total berjalan/selisih tanpa "Lainnya" dan tanpa isi-0 periode kosong.
 - Dilewati: rantai plugin frontend-expert dan /frontend-expert:audit tidak tersedia di sesi cloud ini — kontrol baru memakai komponen Choice yang sudah ada (pola sama dengan "Urutan"/"Rentang waktu"), tanpa ikon baru. e2e grafik showAs tidak ditambah (dicakup uji DuckDB + chart-polish regresi).
 - Temuan di luar cakupan: e2e `widgets` AC 2 (KPI Rp) sudah gagal di base a4869d3 saat dijalankan sebagai suite (teks ringkas + lengkap), lolos sendiri — bukan dari task ini.

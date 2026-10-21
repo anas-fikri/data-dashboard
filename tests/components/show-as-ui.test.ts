@@ -7,7 +7,7 @@ import { PivotTableMarkup } from "@/components/widgets/pivot-markup";
 import type { PivotData } from "@/features/query/pivot";
 import { formatCell } from "@/features/widgets/format";
 import { pivotTable } from "@/features/widgets/pivot-table";
-import { showAsTitle, valueFormat } from "@/features/widgets/show-as";
+import { showAsChoices, showAsTitle, valueFormat } from "@/features/widgets/show-as";
 import {
   parseWidgetConfig,
   type ChartSpec,
@@ -135,6 +135,29 @@ describe("panel", () => {
     expect(pieHtml).toContain("Tampilkan sebagai");
     const kpi = defaultConfig("kpi", sources, { type: "empty", spec: {} })!;
     expect(form("kpi", kpi.spec)).not.toContain("Tampilkan sebagai");
+  });
+
+  it("pivot tanpa pemisah tidak menawarkan % baris; % rata-rata dijelaskan bukan sebagai total", () => {
+    const base = (
+      defaultConfig("pivot", sources, { type: "empty", spec: {} }) as {
+        spec: PivotSpec;
+      }
+    ).spec;
+    const { column: _c, ...noSplit } = base;
+    expect(showAsChoices("pivot", true, undefined)).toContain("pct_row");
+    expect(showAsChoices("pivot", false, undefined)).not.toContain("pct_row");
+    expect(showAsChoices("pivot", false, undefined)).toContain("pct_col");
+    // Pilihan tersimpan lama tetap tampil agar bisa diganti.
+    expect(showAsChoices("pivot", false, "pct_row")).toContain("pct_row");
+    expect(showAsChoices("pie", false, undefined)).toEqual(["none", "pct_grand"]);
+    expect(form("pivot", noSplit)).toContain("Tampilkan sebagai");
+    const avg = form("pivot", {
+      ...base,
+      values: [{ agg: "avg", column: 3, showAs: "pct_grand" }],
+    });
+    expect(avg).toContain("Dibagi rata-rata yang sama atas seluruh data");
+    const sum = form("pivot", { ...base, values: [{ ...base.values[0]!, showAs: "pct_grand" }] });
+    expect(sum).toContain("Dibagi total seluruh data");
   });
 
   it("ganti jenis: % baris pivot tidak terbawa ke grafik/KPI; % keseluruhan terbawa ke pai", () => {

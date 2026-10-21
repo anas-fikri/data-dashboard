@@ -110,7 +110,17 @@ export function PivotFields({
             columns={columns}
             error={dup === "column" ? DUPLICATE_TEXT : undefined}
             onChange={(column) => set({ column })}
-            remove={{ label: "Hapus pemisah kolom", onRemove: () => onChange(withoutSplit) }}
+            remove={{
+              label: "Hapus pemisah kolom",
+              onRemove: () =>
+                // Tanpa pemisah "% dari total baris" selalu 100%: kembali ke nilai biasa.
+                onChange({
+                  ...withoutSplit,
+                  values: spec.values.map(({ showAs, ...v }) =>
+                    showAs === "pct_row" ? v : { ...v, ...(showAs ? { showAs } : {}) },
+                  ),
+                }),
+            }}
           />
         ) : splitColumn(spec, columns) ? (
           <AddButton onClick={() => set({ column: dimensionFor(splitColumn(spec, columns)!) })}>
@@ -140,6 +150,7 @@ export function PivotFields({
               type="pivot"
               label="Hitung"
               axis={name((split ?? row1 ?? row0)?.column)}
+              split={!!split}
               columns={columns}
               measure={m}
               onChange={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}

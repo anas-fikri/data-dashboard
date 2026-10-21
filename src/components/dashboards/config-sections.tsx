@@ -12,9 +12,8 @@ import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
-import { SHOW_AS_LABEL, isAxisShowAs } from "@/features/widgets/show-as";
+import { SHOW_AS_LABEL, isAxisShowAs, showAsChoices } from "@/features/widgets/show-as";
 import {
-  SHOW_AS_FOR,
   TABLE_COLUMNS_MAX,
   TOP_N_MAX,
   type ChartType,
@@ -25,6 +24,7 @@ import { Choice, ColumnChoice } from "./config-fields";
 import { CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { deferredTask } from "./config-focus";
 import {
+  AGG_LABEL,
   TYPE_OPTIONS,
   aggChoiceOf,
   aggChoiceOptions,
@@ -217,6 +217,7 @@ export function MeasureFields({
   onChange,
   label = "Nilai",
   axis,
+  split = false,
 }: {
   type: WidgetType;
   columns: SourceColumn[];
@@ -226,10 +227,12 @@ export function MeasureFields({
   label?: string;
   /** Nama field acuan total berjalan/selisih (pivot: kolom pemisah atau baris terdalam). */
   axis?: string;
+  /** Pivot: ada kolom pemisah (tanpa itu "% dari total baris" tidak ditawarkan). */
+  split?: boolean;
 }) {
   const options =
     type === "pivot" || type === "bar" || type === "line" || type === "pie"
-      ? SHOW_AS_FOR[type]
+      ? showAsChoices(type, split, measure.showAs)
       : null;
   // Cara tampil ikut ukuran baru selama masih angka; selain itu kembali ke nilai biasa.
   const change = (next: { agg: Agg; column?: number }) => {
@@ -273,7 +276,9 @@ export function MeasureFields({
             <p className="text-xs text-muted-foreground" data-testid="config-show-as-hint">
               {isAxisShowAs(showAs)
                 ? `Dihitung urut ${axis ?? "label"} naik, termasuk item yang tidak tampil${type === "pivot" ? "; sel total dan subtotal dikosongkan" : ""}.`
-                : "Dibagi total seluruh data yang lolos filter, termasuk yang tidak tampil."}
+                : measure.agg === "sum" || measure.agg === "count"
+                  ? "Dibagi total seluruh data yang lolos filter, termasuk yang tidak tampil."
+                  : `Dibagi ${AGG_LABEL[measure.agg].toLowerCase()} yang sama atas seluruh data yang lolos filter (bukan jumlah sel).`}
             </p>
           ) : null}
         </>

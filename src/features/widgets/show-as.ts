@@ -3,7 +3,7 @@
  * (judul kolom hasil/ekspor) dan klien (panel, sel pivot, grafik). Perhitungannya di DuckDB
  * (features/query/pivot.ts, sql.ts) — klien hanya memformat nilai yang sudah jadi.
  */
-import type { NumberFormat, ShowAs } from "./spec";
+import { SHOW_AS_FOR, type ChartType, type NumberFormat, type ShowAs } from "./spec";
 
 export const SHOW_AS_LABEL: Record<ShowAs, string> = {
   none: "Nilai biasa",
@@ -35,3 +35,17 @@ export const valueFormat = (s: ShowAs | undefined, format: NumberFormat): Number
 /** Judul kolom nilai: "% dari total kolom · Total Pendapatan"; nilai biasa tetap labelnya. */
 export const showAsTitle = (s: ShowAs | undefined, label: string): string =>
   shown(s) ? `${SHOW_AS_LABEL[s]} · ${label}` : label;
+
+/**
+ * Pilihan panel per jenis widget. Pivot tanpa kolom pemisah: tanpa "% dari total baris" (selalu
+ * 100%); pilihan tersimpan tetap ditampilkan agar bisa diganti.
+ */
+export function showAsChoices(
+  type: "pivot" | ChartType,
+  split: boolean,
+  current: ShowAs | undefined,
+): readonly ShowAs[] {
+  return SHOW_AS_FOR[type].filter(
+    (v) => v === current || !(type === "pivot" && !split && v === "pct_row"),
+  );
+}
