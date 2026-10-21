@@ -145,9 +145,12 @@ test.describe("widget", () => {
     const panel = await addWidget(page, "Total omzet", "Angka");
     await choose(panel, "Format angka", "Rupiah (Rp 1.234)");
     await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    // Kartu 4 kolom di samping panel pengaturan (~260 px) menampilkan bentuk ringkas "Rp 1,23 jt"; nilai
+    // lengkap selalu di title dan teks pembaca layar (kpi-view), jadi format diuji di sana.
     const value = widgetTitled(page, "Total omzet").getByTestId("kpi-value");
-    await expect(value).toHaveText("Rp 1.234.568");
-    expect(await value.evaluate((el) => el.textContent!.charCodeAt(2))).toBe(0x20);
+    await expect(value).toHaveAttribute("title", "Rp 1.234.568");
+    await expect(value).toContainText("Rp 1.234.568");
+    expect(await value.evaluate((el) => el.getAttribute("title")!.charCodeAt(2))).toBe(0x20);
 
     // KPI kedua yang tidak memakai Omzet (dipakai AC 4).
     const count = await addWidget(page, "Jumlah transaksi", "Angka");
@@ -161,7 +164,8 @@ test.describe("widget", () => {
     await page.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
     await expect(widgetTitled(page, "Total omzet")).toHaveCount(0);
     await page.getByRole("button", { name: "Urungkan hapus widget" }).click();
-    await expect(widgetTitled(page, "Total omzet").getByTestId("kpi-value")).toHaveText(
+    await expect(widgetTitled(page, "Total omzet").getByTestId("kpi-value")).toHaveAttribute(
+      "title",
       "Rp 1.234.568",
     );
   });
