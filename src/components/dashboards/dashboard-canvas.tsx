@@ -160,6 +160,11 @@ function Canvas(props: CanvasProps) {
   const coarse = useIsCoarsePointer();
   const { width, ref: gridRef, containerRef } = useGridWidth();
   const root = useRef<HTMLDivElement>(null);
+  // Penanda hidrasi (T-z8y2): kanvas dirender server, jadi tombol kartu sudah terlihat sebelum handler
+  // React terpasang; klik di jendela itu hilang. Uji (dan alat bantu) menunggu atribut ini.
+  useEffect(() => {
+    root.current?.setAttribute("data-hydrated", "");
+  }, []);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
@@ -323,6 +328,7 @@ function Canvas(props: CanvasProps) {
       >
         <div
           ref={root}
+          data-testid="dashboard-canvas"
           // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
           className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
         >

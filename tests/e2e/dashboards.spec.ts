@@ -19,6 +19,15 @@ async function createDashboard(page: Page, name: string) {
   await page.getByRole("button", { name: "Buat dashboard" }).click();
 }
 
+/**
+ * Buka kanvas mode edit dan tunggu hidrasi (T-z8y2): kartu dirender server, jadi tombol Pengaturan sudah
+ * terlihat sebelum handler React terpasang — klik di jendela itu (dev server: ± 1–3 s) hilang.
+ */
+async function openEdit(page: Page, url: string) {
+  await page.goto(url);
+  await expect(page.getByTestId("dashboard-canvas")).toHaveAttribute("data-hydrated", "");
+}
+
 /** Posisi/ukuran tiap widget (id → "x,y,w,h" dalam satuan grid) — yang disimpan, bukan piksel. */
 const geometry = (page: Page) =>
   page
@@ -122,7 +131,7 @@ test.describe("dashboard", () => {
   test("urungkan satu langkah dan ubah posisi tanpa menyeret (tombol di pengaturan)", async ({
     page,
   }) => {
-    await page.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(page, `${dashboardUrl}?mode=edit`);
     await expect(page.getByTestId("widget")).toHaveCount(2);
     const before = await geometry(page);
     await settingsOf(page).click();
@@ -170,7 +179,7 @@ test.describe("dashboard", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 800 });
-    await page.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(page, `${dashboardUrl}?mode=edit`);
     const settings = settingsOf(page);
     await settings.click();
     const sheet = page.getByRole("dialog", { name: "Pengaturan widget" });
@@ -194,7 +203,7 @@ test.describe("dashboard", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
-    await page.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(page, `${dashboardUrl}?mode=edit`);
     const before = await page.getByTestId("widget").count();
     await page
       .getByTestId("canvas-toolbar")
@@ -229,7 +238,7 @@ test.describe("dashboard", () => {
       [1024, "Retur per kurir"],
     ] as const) {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto(`${dashboardUrl}?mode=edit`);
+      await openEdit(page, `${dashboardUrl}?mode=edit`);
       await settingsOf(page).click();
       const panel = page.getByTestId("widget-panel");
       await panel.getByLabel("Judul", { exact: true }).fill(title);
@@ -246,7 +255,7 @@ test.describe("dashboard", () => {
   });
 
   test("hapus dari panel → fokus ke Urungkan; urungkan mengembalikan widget", async ({ page }) => {
-    await page.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(page, `${dashboardUrl}?mode=edit`);
     const widgets = page.getByTestId("widget");
     await expect(widgets).toHaveCount(2);
     const before = await geometry(page);
@@ -269,10 +278,10 @@ test.describe("dashboard", () => {
   test("tab lain mengubah dashboard → STALE: tidak menimpa, edit dibekukan, muat ulang", async ({
     page,
   }) => {
-    await page.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(page, `${dashboardUrl}?mode=edit`);
     await expect(page.getByTestId("widget")).toHaveCount(2);
     const other = await page.context().newPage();
-    await other.goto(`${dashboardUrl}?mode=edit`);
+    await openEdit(other, `${dashboardUrl}?mode=edit`);
     await other
       .getByTestId("canvas-toolbar")
       .getByRole("button", { name: "Tambah widget", exact: true })
@@ -359,7 +368,7 @@ test.describe("dashboard", () => {
     page.on("request", (r) => {
       if (r.method() === "PUT" && r.url().endsWith("/layout")) layoutPuts.push(r.url());
     });
-    await page.goto(`/dashboards/${id}?mode=edit`);
+    await openEdit(page, `/dashboards/${id}?mode=edit`);
     const before = await geometry(page);
     expect(Object.values(before)).toEqual(ids.map((_, k) => `${k * 2},0,2,4`));
     for (const width of [768, 1023]) {
