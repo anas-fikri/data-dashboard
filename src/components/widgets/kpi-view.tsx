@@ -107,9 +107,13 @@ export function KpiView({
         className={cn(
           // shrink-0: kotak pendek (kartu sempit di tablet sentuh) tidak memotong angka di dalam barisnya
           // sendiri — angka boleh memakai padding bawah.
-          "shrink-0 leading-tight font-semibold tabular-nums tracking-tight",
+          "shrink-0 font-semibold tabular-nums tracking-tight",
           // Ukuran inline (kotak bertinggi tetap) menggantikan text-sm — tinggi baris 1,25rem-nya tetap.
           shown.small && shown.px === null ? "text-sm" : "text-[clamp(1.125rem,15cqi,2.25rem)]",
+          // SESUDAH kelas ukuran huruf: tailwind-merge membuang leading-* yang mendahului text-* (text-*
+          // membawa tinggi baris), lalu tinggi baris jatuh ke 1,5 warisan body dan kpiHeightPx (1,25)
+          // meleset — angka terpotong di bawah (T-w764).
+          "leading-tight",
           // Belum diukur: satu baris (title tetap lengkap). Tidak ada yang muat: boleh pindah baris.
           shown.wrap ? "[overflow-wrap:anywhere]" : "truncate whitespace-nowrap",
         )}
