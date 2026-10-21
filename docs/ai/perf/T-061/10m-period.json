@@ -1,0 +1,227 @@
+{
+  "rows": 10000000,
+  "segs": 24,
+  "layout": "period",
+  "cols": 30,
+  "reps": 30,
+  "cpus": 4,
+  "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "memGB": 16,
+  "node": "v22.23.3",
+  "load1Start": 0.94,
+  "scenarios": {
+    "ujung (rows-200)": {
+      "n": 30,
+      "p50": 25,
+      "p95": 31,
+      "max": 42,
+      "maxLeased": 1
+    },
+    "acak": {
+      "n": 30,
+      "p50": 43,
+      "p95": 53,
+      "max": 54,
+      "maxLeased": 1
+    },
+    "lintas batas segmen": {
+      "n": 30,
+      "p50": 41,
+      "p95": 48,
+      "max": 58,
+      "maxLeased": 2
+    },
+    "ke baris 9.000.000 (2 blok)": {
+      "n": 30,
+      "p50": 43,
+      "p95": 60,
+      "max": 60
+    },
+    "urut angka pertama": {
+      "n": 30,
+      "p50": 2348,
+      "p95": 2623,
+      "max": 2647,
+      "maxLeased": 24
+    },
+    "urut angka dalam": {
+      "n": 30,
+      "p50": 4327,
+      "p95": 4683,
+      "max": 4888,
+      "maxLeased": 24
+    },
+    "urut teks pertama": {
+      "n": 30,
+      "p50": 2685,
+      "p95": 2847,
+      "max": 2904,
+      "maxLeased": 24
+    },
+    "urut teks dalam": {
+      "n": 30,
+      "p50": 5476,
+      "p95": 6032,
+      "max": 6033,
+      "maxLeased": 24
+    },
+    "saring pertama": {
+      "n": 30,
+      "p50": 277,
+      "p95": 328,
+      "max": 329,
+      "maxLeased": 24
+    },
+    "saring dalam": {
+      "n": 30,
+      "p50": 374,
+      "p95": 428,
+      "max": 430,
+      "maxLeased": 24
+    },
+    "saring + urut teks pertama": {
+      "n": 30,
+      "p50": 2706,
+      "p95": 3016,
+      "max": 3113,
+      "maxLeased": 24
+    },
+    "cari 10 kolom pertama": {
+      "n": 30,
+      "p50": 1623,
+      "p95": 1776,
+      "max": 1910,
+      "maxLeased": 24
+    },
+    "periode 1 bulan, acak": {
+      "n": 30,
+      "p50": 43,
+      "p95": 65,
+      "max": 69,
+      "maxLeased": 1
+    },
+    "periode 3 bulan, urut teks pertama": {
+      "n": 30,
+      "p50": 355,
+      "p95": 418,
+      "max": 423,
+      "maxLeased": 3
+    },
+    "daftar nilai teks (pelanggan, cari)": {
+      "n": 30,
+      "p50": 917,
+      "p95": 1361,
+      "max": 1371
+    },
+    "ringkasan kolom (tanpa saring)": {
+      "n": 30,
+      "p50": 189,
+      "p95": 287,
+      "max": 301
+    },
+    "ringkasan kolom (saring)": {
+      "n": 30,
+      "p50": 341,
+      "p95": 414,
+      "max": 468
+    }
+  },
+  "counts": {
+    "sortedTotal": 10000000,
+    "filtered": 1000023,
+    "search": 3602508
+  },
+  "load": {
+    "polos": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 285,
+          "p95": 608,
+          "max": 686
+        },
+        "dash": {
+          "n": 30,
+          "p50": 579,
+          "p95": 668,
+          "max": 686
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 361,
+          "p95": 736,
+          "max": 823
+        },
+        "dash": {
+          "n": 30,
+          "p50": 714,
+          "p95": 812,
+          "max": 823
+        }
+      },
+      "ratioWidgetP95": 1.21,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 717,
+        "busy": 0,
+        "timeout": 0,
+        "ms": {
+          "n": 717,
+          "p50": 307,
+          "p95": 389,
+          "max": 588
+        }
+      },
+      "load1": 2.22
+    },
+    "urutTeks": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 287,
+          "p95": 601,
+          "max": 693
+        },
+        "dash": {
+          "n": 30,
+          "p50": 573,
+          "p95": 691,
+          "max": 693
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 526,
+          "p95": 1306,
+          "max": 1541
+        },
+        "dash": {
+          "n": 30,
+          "p50": 1264,
+          "p95": 1520,
+          "max": 1541
+        }
+      },
+      "ratioWidgetP95": 2.17,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 12,
+        "busy": 24,
+        "timeout": 0,
+        "ms": {
+          "n": 12,
+          "p50": 16454,
+          "p95": 20007,
+          "max": 20007
+        }
+      },
+      "load1": 3.18
+    }
+  },
+  "load1End": 3.54
+}

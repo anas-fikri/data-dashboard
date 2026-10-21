@@ -1,0 +1,113 @@
+{
+  "rows": 10000000,
+  "segs": 24,
+  "layout": "period",
+  "cols": 30,
+  "reps": 30,
+  "gridSlots": 1,
+  "cpus": 4,
+  "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "memGB": 16,
+  "node": "v22.23.3",
+  "load1Start": 1.4,
+  "dataMb": 915,
+  "scenarios": {},
+  "counts": {
+    "sortedTotal": 10000000,
+    "filtered": 1000023,
+    "search": 3602508
+  },
+  "load": {
+    "polos": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 295,
+          "p95": 619,
+          "max": 679
+        },
+        "dash": {
+          "n": 30,
+          "p50": 598,
+          "p95": 669,
+          "max": 679
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 309,
+          "p95": 642,
+          "max": 751
+        },
+        "dash": {
+          "n": 30,
+          "p50": 621,
+          "p95": 714,
+          "max": 751
+        }
+      },
+      "ratioWidgetP95": 1.04,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 387,
+        "busy": 0,
+        "timeout": 0,
+        "ms": {
+          "n": 387,
+          "p50": 499,
+          "p95": 587,
+          "max": 705
+        }
+      },
+      "load1": 1.73
+    },
+    "urutTeks": {
+      "base": {
+        "widget": {
+          "n": 180,
+          "p50": 291,
+          "p95": 643,
+          "max": 824
+        },
+        "dash": {
+          "n": 30,
+          "p50": 583,
+          "p95": 689,
+          "max": 824
+        }
+      },
+      "loaded": {
+        "widget": {
+          "n": 180,
+          "p50": 403,
+          "p95": 1073,
+          "max": 1358
+        },
+        "dash": {
+          "n": 30,
+          "p50": 994,
+          "p95": 1290,
+          "max": 1358
+        }
+      },
+      "ratioWidgetP95": 1.67,
+      "widgetBusy": 0,
+      "widgetTimeout": 0,
+      "grid": {
+        "ok": 6,
+        "busy": 24,
+        "timeout": 0,
+        "ms": {
+          "n": 6,
+          "p50": 12297,
+          "p95": 14579,
+          "max": 14579
+        }
+      },
+      "load1": 3.21
+    }
+  },
+  "load1End": 3.29
+}

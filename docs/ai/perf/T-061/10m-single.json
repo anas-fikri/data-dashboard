@@ -1,0 +1,123 @@
+{
+  "rows": 10000000,
+  "segs": 1,
+  "layout": "single",
+  "cols": 30,
+  "reps": 30,
+  "gridSlots": 2,
+  "cpus": 4,
+  "cpuModel": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "memGB": 16,
+  "node": "v22.23.3",
+  "load1Start": 3.18,
+  "dataMb": 947,
+  "scenarios": {
+    "ujung (rows-200)": {
+      "n": 30,
+      "p50": 36,
+      "p95": 45,
+      "max": 49,
+      "maxLeased": 1
+    },
+    "acak": {
+      "n": 30,
+      "p50": 57,
+      "p95": 74,
+      "max": 80,
+      "maxLeased": 1
+    },
+    "lintas batas segmen": {
+      "n": 30,
+      "p50": 56,
+      "p95": 71,
+      "max": 73,
+      "maxLeased": 1
+    },
+    "ke baris 9.000.000 (2 blok)": {
+      "n": 30,
+      "p50": 57,
+      "p95": 69,
+      "max": 70
+    },
+    "urut angka pertama": {
+      "n": 30,
+      "p50": 2286,
+      "p95": 2469,
+      "max": 2513,
+      "maxLeased": 1
+    },
+    "urut angka dalam": {
+      "n": 30,
+      "p50": 3942,
+      "p95": 4323,
+      "max": 4414,
+      "maxLeased": 1
+    },
+    "urut teks pertama": {
+      "n": 30,
+      "p50": 2542,
+      "p95": 2912,
+      "max": 2974,
+      "maxLeased": 1
+    },
+    "urut teks dalam": {
+      "n": 30,
+      "p50": 5291,
+      "p95": 5678,
+      "max": 5796,
+      "maxLeased": 1
+    },
+    "saring pertama": {
+      "n": 30,
+      "p50": 277,
+      "p95": 319,
+      "max": 339,
+      "maxLeased": 1
+    },
+    "saring dalam": {
+      "n": 30,
+      "p50": 339,
+      "p95": 377,
+      "max": 392,
+      "maxLeased": 1
+    },
+    "saring + urut teks pertama": {
+      "n": 30,
+      "p50": 2631,
+      "p95": 2767,
+      "max": 2816,
+      "maxLeased": 1
+    },
+    "cari 10 kolom pertama": {
+      "n": 30,
+      "p50": 1554,
+      "p95": 1725,
+      "max": 1768,
+      "maxLeased": 1
+    },
+    "daftar nilai teks (pelanggan, cari)": {
+      "n": 30,
+      "p50": 898,
+      "p95": 1175,
+      "max": 1580
+    },
+    "ringkasan kolom (tanpa saring)": {
+      "n": 30,
+      "p50": 179,
+      "p95": 234,
+      "max": 237
+    },
+    "ringkasan kolom (saring)": {
+      "n": 30,
+      "p50": 335,
+      "p95": 396,
+      "max": 397
+    }
+  },
+  "counts": {
+    "sortedTotal": 10000000,
+    "filtered": 1000023,
+    "search": 3602508
+  },
+  "load1End": 2.31
+}

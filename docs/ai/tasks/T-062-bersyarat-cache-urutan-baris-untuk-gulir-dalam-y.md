@@ -26,3 +26,8 @@ Bagian rencana docs/ai/plans/2026-10-15-tampilan-excel-dan-data-periode.md — P
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+- 2026-10-21 (T-061): **diaktifkan** — blok dalam urut teks p95 6,0 s (10 jt) / 7,9 s (13 jt) > 2 s
+  (docs/ai/perf/T-061.md). Perhatian: dari ±5,5 s itu hanya ±3–3,5 s tahap urut `ids`; tahap ambil isi
+  `WHERE _row IN (ids)` ±2 s (dekompresi 30 kolom di hampir semua row group untuk 200 baris acak) tetap ada
+  walau permutasi di-cache, jadi target ≤ 500 ms butuh juga memangkas kolom yang diambil (mis. hanya kolom di
+  viewport) atau menyimpan baris hasil dalam urutan permutasi. Ukur dengan `npm run perf -- grid --only "urut teks dalam"`.
