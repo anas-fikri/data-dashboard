@@ -10,7 +10,7 @@ tags:
 depends_on:
   - T-068
 created: "2026-10-21T10:24:08Z"
-updated: "2026-10-21T13:52:56Z"
+updated: "2026-10-21T13:57:55Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,26 +20,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 231886
+    duration_ms: 226301
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792590699858,"service":"data-dashboard","host":"127.0.0.1","port":44063,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792590699920,"service":"data-dashboard","host":"127.0.0.1","port":45651,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792590700031,"service":"data-dashboard","host":"127.0.0.1","port":35261,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792590700150,"service":"data-dashboard","host":"127.0.0.1","port":33133,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792590709286,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792590728112,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792590728136,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792590728139,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792590728181,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792591028342,"service":"data-dashboard","host":"127.0.0.1","port":40529,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591028405,"service":"data-dashboard","host":"127.0.0.1","port":46665,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792591028503,"service":"data-dashboard","host":"127.0.0.1","port":46485,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591028625,"service":"data-dashboard","host":"127.0.0.1","port":37131,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792591041358,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792591045383,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792591045406,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792591045409,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792591045420,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  212 passed | 1 skipped (213)
             Tests  2826 passed | 10 skipped (2836)
-         Start at  13:49:43
-         Duration  160.24s (tests 84%, import 13%, transform 3%)
+         Start at  13:55:15
+         Duration  157.45s (tests 83%, import 13%, transform 3%)
 
-          Isolate  213 workers spawned · ~166ms startup each (spawn + environment, per file)
-                   at least ~11.65s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  213 workers spawned · ~170ms startup each (spawn + environment, per file)
+                   at least ~11.93s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -47,8 +47,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T13:52:25Z"
-    tree: e1602ee81c928b3ba1cc207fd4dd380a6a4f4a08cae00cd5f027c32a20e1ee27
+    at: "2026-10-21T13:57:55Z"
+    tree: 19693c05e96e778016c43708efed13ca4aee08c734a68c504d4e04cb79a61428
   audit:
     at: "2026-10-21T13:52:28Z"
     passed: true
