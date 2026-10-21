@@ -26,8 +26,9 @@ terakhir. Tanpa rahasia — nilai `.env`/`.env.prod`, password, dan kunci tidak 
 - Jangan mencetak isi `.env`/`.env.prod` dan jangan menyimpan rahasia di memori/repo/tes (tanpa password
   asli di tes).
 - Push (keputusan pemilik 2026-10-20): pengembangan dilanjutkan dari sesi Claude Code cloud; push ke
-  branch sesi `claude/intelligent-albattani-fd1va8` lewat remote `origin` sesi (bukan main/master, tanpa
-  force-push, tanpa merge). Dari Mac tetap `worktree-t-001-scaffold` lewat SSH. Repo dibuat publik oleh
+  branch sesi `claude/intelligent-albattani-fd1va8` lewat remote `origin` sesi (tanpa force-push). Keputusan
+  pemilik 2026-10-21: `main` dibuat dari branch sesi dan `worktree-t-001-scaffold` dimajukan (fast-forward)
+  ke commit yang sama; selanjutnya `main` = cabang utama. Dari Mac tetap `worktree-t-001-scaffold` lewat SSH. Repo dibuat publik oleh
   pemilik 2026-10-20, jadi syarat cek 404 tidak berlaku lagi — tetap jangan commit rahasia (`aitk audit`
   memindai file terlacak).
 - Deploy produksi dijalankan pemilik: siapkan skrip/perintah, minta pemilik menjalankannya. Selalu backup
