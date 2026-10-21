@@ -6,6 +6,8 @@
 //       ("column": "Pendapatan"), dipetakan ke posisi skema di sini. Cetak { savedPivotId, revision }.
 //   node scripts/dev-saved-pivot-fixture.mjs edit <savedPivotId> <specJson>
 //     → ganti spec + revisi naik (seperti simpan pemilik). Cetak { revision }.
+//   node scripts/dev-saved-pivot-fixture.mjs show <savedPivotId>
+//     → cetak { spec, revision } apa adanya (kolom berupa posisi), mis. uji simpan ulang editor (T-075).
 // Data ikut terhapus bersama dataset (cascade) oleh dev-purge-test-data.
 import { readFileSync, existsSync } from "node:fs";
 import { PrismaClient } from "@prisma/client";
@@ -21,8 +23,10 @@ if (process.env.NODE_ENV === "production") {
   process.exit(1);
 }
 const [mode, target, specJson] = process.argv.slice(2);
-if (!["create", "edit"].includes(mode) || !target || !specJson) {
-  console.error("pakai: node scripts/dev-saved-pivot-fixture.mjs <create|edit> <id> <specJson>");
+if (!["create", "edit", "show"].includes(mode) || !target || (mode !== "show" && !specJson)) {
+  console.error(
+    "pakai: node scripts/dev-saved-pivot-fixture.mjs <create|edit> <id> <specJson> | show <id>",
+  );
   process.exit(1);
 }
 
@@ -45,6 +49,15 @@ function byName(value, schema) {
 
 const prisma = new PrismaClient();
 try {
+  if (mode === "show") {
+    const p = await prisma.savedPivot.findUniqueOrThrow({ where: { id: target } });
+    console.log(JSON.stringify({ spec: p.spec, revision: p.revision }));
+  } else await write();
+} finally {
+  await prisma.$disconnect();
+}
+
+async function write() {
   const datasetId =
     mode === "create"
       ? target
@@ -68,6 +81,4 @@ try {
     });
     console.log(JSON.stringify({ revision: p.revision }));
   }
-} finally {
-  await prisma.$disconnect();
 }

@@ -10,7 +10,11 @@ const scenarios = {
   grid: "scripts/perf-grid.ts",
   // Pivot 4 tingkat × 8 nilai vs 2 × 3 (T-070).
   pivot: "scripts/perf-pivot-levels.ts",
+  // Pivot lanjutan G-7 lewat query widget sungguhan + dashboard 6 widget terikat (T-075).
+  "pivot-lanjutan": "scripts/perf-pivot-advanced.ts",
 };
+/** Skenario yang mengimpor modul server (import "server-only") butuh kondisi react-server. */
+const reactServer = new Set(["pivot-lanjutan"]);
 
 if (!scenario || !(scenario in scenarios)) {
   console.log("Skenario perf tersedia:", Object.keys(scenarios));
@@ -21,7 +25,12 @@ if (!scenario || !(scenario in scenarios)) {
 }
 const r = spawnSync(
   process.execPath,
-  ["node_modules/tsx/dist/cli.mjs", scenarios[scenario], ...process.argv.slice(3)],
+  [
+    "node_modules/tsx/dist/cli.mjs",
+    ...(reactServer.has(scenario) ? ["--conditions=react-server"] : []),
+    scenarios[scenario],
+    ...process.argv.slice(3),
+  ],
   { stdio: "inherit" },
 );
 process.exit(r.status ?? 1);

@@ -42,6 +42,7 @@ export default defineConfig({
         /kpi-fit\.spec\.ts$/,
         /chart-polish\.spec\.ts$/,
         /pivot\.spec\.ts$/,
+        /pivot-lanjutan\.spec\.ts$/,
         /guide-roles\.spec\.ts$/,
         /period-setup\.spec\.ts$/,
         /period-upload\.spec\.ts$/,
@@ -141,8 +142,19 @@ export default defineConfig({
     { name: "chart-polish", testMatch: /chart-polish\.spec\.ts$/, dependencies: ["kpi-fit"] },
     // pivot (T-tcjp, T-jwhc): worker sendiri (24 customer × 2 layanan × 3 bulan); panel, gulir, cetak.
     { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
+    // pivot-lanjutan (T-075): worker sendiri; pivot tersimpan 3–4 tingkat × 5 nilai (terhitung, % kolom,
+    // Top N) → 4 widget terikat, viewer, ekspor CSV/XLSX = layar, halaman cetak, 360/768 px + axe.
+    {
+      name: "pivot-lanjutan",
+      testMatch: /pivot-lanjutan\.spec\.ts$/,
+      dependencies: ["pivot"],
+    },
     // period-setup (T-051): worker sendiri; Atur periode → versi PERIOD_SETUP aktif → rollback.
-    { name: "period-setup", testMatch: /period-setup\.spec\.ts$/, dependencies: ["pivot"] },
+    {
+      name: "period-setup",
+      testMatch: /period-setup\.spec\.ts$/,
+      dependencies: ["pivot-lanjutan"],
+    },
     // period-upload (T-052): worker sendiri; unggahan periode → aktif otomatis / menunggu konfirmasi.
     {
       name: "period-upload",

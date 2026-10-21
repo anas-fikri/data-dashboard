@@ -578,14 +578,15 @@ export function CalcEditor({
         className="flex min-w-0 flex-col gap-1 rounded-md bg-muted px-3 py-2 text-sm"
         data-testid="calc-preview"
       >
+        {/* Label tanpa muted-foreground: di atas bg-muted hanya 4,39:1 < AA (axe, T-075; pola T-048). */}
         <p className="break-words">
-          <span className="text-muted-foreground">Pratinjau: </span>
+          <span>Pratinjau: </span>
           <span data-testid="calc-preview-text">
             {label.trim() || "Field"} = {formulaText || "…"}
           </span>
         </p>
         <p aria-live="polite" className="break-words" data-testid="calc-sample">
-          <span className="text-muted-foreground">Total keseluruhan (seluruh data): </span>
+          <span>Total keseluruhan (seluruh data): </span>
           <span
             className={
               serverInvalid || preview.status === "error" ? "text-destructive" : "font-medium"

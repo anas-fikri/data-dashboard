@@ -48,7 +48,7 @@ export function PageHeader({
         // bantuan) — wadah kosong tidak boleh menambah celah di bawah judul (T-exfc).
         <div
           data-slot="page-actions"
-          className="flex flex-col gap-2 empty:hidden md:flex-row md:items-center [&>*]:w-full md:[&>*]:w-auto"
+          className="flex flex-col gap-2 empty:hidden md:flex-row md:flex-wrap md:items-center [&>*]:w-full md:[&>*]:w-auto"
         >
           {actions}
         </div>

@@ -23,4 +23,11 @@ describe("PageHeader: wadah aksi (T-exfc)", () => {
       /data-slot="page-actions"[^>]*><button>Bantuan<\/button><\/div>/,
     );
   });
+  it("≥ 768 px aksi berbaris dan boleh turun baris (T-075: 5 aksi dashboard meluap 195 px di 768 px)", () => {
+    const box = /data-slot="page-actions" class="([^"]*)"/.exec(
+      html(createElement("button", null, "Bantuan")),
+    );
+    expect(box?.[1]).toContain("md:flex-row");
+    expect(box?.[1]).toContain("md:flex-wrap");
+  });
 });
