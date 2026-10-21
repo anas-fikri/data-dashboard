@@ -15,6 +15,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
   "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
 
+## [1.2.0] - 2026-10-21
+
+### Added
+
+- **pivot:** 4 tingkat baris, 8 nilai, subtotal per level, dan anggaran sel 24.000 (T-070) (4115c8d)
+- **pivot:** Top N per kelompok dengan (Lainnya) dihitung ulang dari baris mentah (T-071) (7ccff4c)
+- **query:** field terhitung sebagai pohon ekspresi tervalidasi dan SQL aman (T-068) (6f54377)
+- **widgets:** editor field terhitung berbasis token di panel pivot, grafik, dan KPI (T-069) (a80b5ae)
+
+### Fixed
+
+- **dashboard:** grid mengukur kanvas yang muncul setelah widget pertama; tes KPI Rupiah sesuai kontrak (T-1zdf) (c4a56e5)
+- **exports:** format persen field terhitung di XLSX grafik/KPI; tolak durasi di rumus; batang↔garis pertahankan rumus (T-068) (17cb5cc)
+- **pivot:** nama aksesibel Top N unik per field baris; task lanjutan T-tpw2 (T-071) (764bbce)
+- **pivot:** subtotal per field saat hapus baris, level efektif server = panel, catatan rollback (T-070) (d13f79e)
+- **widgets:** angka 0.125 tidak lagi dibaca ribuan, pesan rantai kali/bagi, semua field terhitung pivot ikut, fokus kartu nilai (T-069) (a821c13)
+
 ## [1.1.0] - 2026-10-21
 
 ### Added
