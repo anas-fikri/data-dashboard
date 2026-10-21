@@ -333,6 +333,22 @@ describe("T-070: 4 tingkat baris, subtotal per level, 8 nilai", () => {
     expect(parseWidgetConfig("pivot", off2).ok).toBe(true);
   });
 
+  it("hapus baris tengah: sakelar subtotal tetap pada field-nya, bukan posisinya", () => {
+    // Customer (on) › Layanan (off) › No. (on) › Tanggal.
+    const s = toggleSubtotal(spec({ rows: four, subtotals: true }), 2, false);
+    expect(pivotSubtotalLevels(s)).toEqual([1, 3]);
+    const cut = withRows(
+      s,
+      s.rows.filter((_, i) => i !== 1),
+    );
+    expect(cut.rows.map((d) => d.column)).toEqual([1, 3, 2]);
+    // Customer dan No. tetap on (dulu: level 2 = No. mewarisi "off" milik Layanan).
+    expect(pivotSubtotalLevels(cut)).toEqual([1, 2]);
+    const s2 = toggleSubtotal(spec({ rows: four, subtotals: true }), 1, false);
+    expect(pivotSubtotalLevels(withRows(s2, s2.rows.slice(1)))).toEqual([1, 2]);
+    expect(pivotSubtotalLevels(withRows(s2, [s2.rows[0]!, s2.rows[2]!, s2.rows[3]!]))).toEqual([2]);
+  });
+
   it("ringkasan menyebut semua tingkat dan subtotal yang dipilih", () => {
     const s = toggleSubtotal(spec({ rows: four, subtotals: true }), 1, false);
     const text = pivotSummary(s, cols, () => "Total No.")

@@ -464,6 +464,24 @@ laptop admin). Objek yang ditulis rilis baru (`parquet/<dataset>/seg/…`) terti
 rollback — aman, bisa dibersihkan manual nanti. Worker lama mencatat peringatan "job maintenance tidak dikenal"
 untuk jadwal baru (segment-gc, segment-audit, …) di Redis — tidak berbahaya.
 
+**Rollback ke versi sebelum pivot 4 tingkat × 8 nilai (T-070, rilis setelah 1.1.0).** Rilis ini tanpa
+migrasi DB, jadi rollback bisa berupa ganti image saja (`IMAGE_TAG` lama, DB tetap) — maka data yang dibuat di
+rilis baru tetap ada dan versi lama memperlakukannya sebagai berikut:
+
+- Widget pivot dengan **> 2 tingkat baris, > 3 nilai, atau `subtotalLevels`**: spec ditolak zod versi lama →
+  kartu menampilkan "Pengaturan widget tidak valid (rows/values: …)" (query `INVALID`), juga untuk viewer;
+  ekspor/PDF widget itu gagal. Data dan spec di DB tidak dihapus; widget kembali normal setelah upgrade lagi.
+- Tautan/status filter `?f=` yang memuat saringan pivot `row2`/`row3`: klien lama menganggap seluruh status
+  tidak valid → **semua** filter dashboard di URL itu diabaikan diam-diam (dashboard tampil tanpa filter);
+  ekspor PDF dengan status itu ditolak (filter tidak valid), bukan dicetak tanpa filter.
+
+Langkah sebelum rollback image (pemilik): cari widget terdampak
+`SELECT id, "dashboardId" FROM "Widget" WHERE type = 'pivot' AND (jsonb_array_length(spec->'rows') > 2 OR jsonb_array_length(spec->'values') > 3 OR spec ? 'subtotalLevels');`
+lalu **kurangi baris/nilai widget itu di panel sebelum rollback** (atau terima kartu "tidak valid" sampai
+upgrade berikutnya), dan bagikan ulang tautan tanpa saringan tingkat 3–4. Rollback lewat `upgrade.sh
+rollback` (DB dipulihkan dari dump preflight) membuang perubahan widget sesudah upgrade sekaligus, jadi
+tidak terdampak.
+
 ### Bukti uji (container cloud, 2026-10-20)
 
 - Build 4 image produksi dari commit rilis (`docker buildx`, target app/worker + renderer + backup): lulus;

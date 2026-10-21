@@ -6,6 +6,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Notes
+
+- **pivot (T-070):** rollback ke versi sebelum rilis ini membuat widget pivot dengan > 2 tingkat baris,
+  > 3 nilai, atau subtotal per level tampil "Pengaturan widget tidak valid", dan status filter URL dengan
+  saringan pivot tingkat 3–4 (`row2`/`row3`) diabaikan seluruhnya (PDF ditolak). Kurangi baris/nilai
+  widget sebelum rollback image, atau terima sampai upgrade berikutnya (runbook-deploy §7 R).
+
 ## [1.1.0] - 2026-10-21
 
 ### Added

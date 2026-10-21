@@ -129,10 +129,13 @@ export function duplicateField(spec: PivotSpec): `row${1 | 2 | 3}` | "column" | 
  * tanpa `subtotalLevels`.
  */
 export function withRows(spec: PivotSpec, rows: PivotSpec["rows"]): PivotSpec {
-  const on = pivotSubtotalLevels(spec);
-  const levels = Array.from({ length: rows.length - 1 }, (_, i) => i + 1).filter((l) =>
-    l < spec.rows.length ? on.includes(l) : spec.subtotals,
-  );
+  // Sakelar mengikuti field-nya, bukan posisinya: hapus baris tengah tidak menggeser subtotal.
+  const on = new Set(pivotSubtotalLevels(spec).map((l) => spec.rows[l - 1]!));
+  const parents = new Set(spec.rows.slice(0, -1));
+  const levels = Array.from({ length: rows.length - 1 }, (_, i) => i + 1).filter((l) => {
+    const d = rows[l - 1]!;
+    return parents.has(d) ? on.has(d) : spec.subtotals;
+  });
   return withSubtotals({ ...spec, rows }, levels);
 }
 

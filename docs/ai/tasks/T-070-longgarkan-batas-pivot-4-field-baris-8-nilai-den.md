@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-068
 created: "2026-10-21T10:24:09Z"
-updated: "2026-10-21T15:06:30Z"
+updated: "2026-10-21T15:16:15Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 227641
+    duration_ms: 225460
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792595019938,"service":"data-dashboard","host":"127.0.0.1","port":43447,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595019996,"service":"data-dashboard","host":"127.0.0.1","port":41647,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792595020099,"service":"data-dashboard","host":"127.0.0.1","port":44155,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595020217,"service":"data-dashboard","host":"127.0.0.1","port":35779,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595030537,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792595042678,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792595042701,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792595042708,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792595042729,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792595730088,"service":"data-dashboard","host":"127.0.0.1","port":43247,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792595730144,"service":"data-dashboard","host":"127.0.0.1","port":36761,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792595730247,"service":"data-dashboard","host":"127.0.0.1","port":44163,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792595730361,"service":"data-dashboard","host":"127.0.0.1","port":37621,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792595742864,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792595749562,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792595749585,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792595749592,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792595749605,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  213 passed | 1 skipped (214)
-            Tests  2886 passed | 10 skipped (2896)
-         Start at  15:01:44
-         Duration  158.43s (tests 84%, import 13%, transform 3%)
+            Tests  2891 passed | 10 skipped (2901)
+         Start at  15:13:37
+         Duration  156.33s (tests 84%, import 13%, transform 3%)
 
-          Isolate  214 workers spawned · ~166ms startup each (spawn + environment, per file)
-                   at least ~11.68s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  214 workers spawned · ~163ms startup each (spawn + environment, per file)
+                   at least ~11.47s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -48,8 +48,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T15:04:24Z"
-    tree: b49649eb56912c02afc6f21a15119a8867e10b824ad3a89c050ad92f0c888dc1
+    at: "2026-10-21T15:16:15Z"
+    tree: d30a8fc83037d23daf33e99759536b803c542271d2f1e6e4454ebecb5fd174cc
   audit:
     at: "2026-10-21T15:04:28Z"
     passed: true
@@ -100,6 +100,7 @@ Pivot baris 1–4 (kini 2) dan nilai 1–8 (kini 3), subtotal per level, dengan 
 - Catatan anggaran: "Menampilkan N dari M kolom — kurangi nilai atau tambah Saring; total tetap mencakup semua baris dan kolom." (kartu + baris catatan ekspor); PDF memakai `printPivotNote` yang sudah ada ("N dari M kolom …").
 - 360 px: kolom label dibatasi lewat kotak isi (`max-w-[18rem]`, ponsel 8rem — max-width sel tabel diabaikan pada tabel `w-max`), indentasi per level (ponsel lebih kecil), label level 3–4 maks. 2 baris di layar sempit dengan `title` teks utuh (DOM tetap teks utuh untuk pembaca layar).
 - Perf (AC5): 4×8 p95 = 1,96× / 1,99× (dua putaran) — lulus tipis; biaya terbesar Jumlah unik. Batas tetap 8; bila T-075 (10 jt, VM) > 2× turunkan ke 6 (4×6 = 1,45×). Rincian `docs/ai/perf/T-070.md`, skrip `npm run perf -- pivot`.
+- Review putaran 1 (0 blokir) diperbaiki: M1 catatan rollback (runbook-deploy §7 R + CHANGELOG [Unreleased]: versi lama menolak widget > 2 baris/> 3 nilai/subtotalLevels sebagai "tidak valid" dan mengabaikan seluruh `?f=` bila ada saringan row2/row3, PDF ditolak); L2 `withRows` memetakan sakelar subtotal per field (hapus baris tengah tidak menggeser); L3 widget.ts memakai `pivotSubtotalLevels` untuk semua bentuk (2 baris: sama dengan panel; spec lama identik); uji tambahan baris terdalam > 200 untuk 3–4 tingkat (subtotal kelompok terpotong = seluruh kelompok).
 - Dilewati: /frontend-expert:audit (plugin tidak tersedia di sesi cloud) — AC4 bagian audit menunggu pemilik/orkestrator; prinsip diterapkan manual (Conventions check).
 
 ## Conventions check

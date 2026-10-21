@@ -252,7 +252,9 @@ export function widgetPlan(
         column: !!p.column,
         sort: p.sort,
         totals: p.totals,
-        subtotals: nested ? levels.length > 0 : p.subtotals && p.rows.length === 2,
+        // Level efektif sama dengan panel (pivotSubtotalLevels) untuk semua bentuk; spec 1.0.0 (tanpa
+        // subtotalLevels) tetap `subtotals && 2 baris` → bentuk dan kunci cache tidak berubah.
+        subtotals: levels.length > 0,
         ...(nested ? { levels } : {}),
         ...(local.length ? { local } : {}),
         ...(saved.length ? { saved } : {}),

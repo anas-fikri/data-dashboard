@@ -369,6 +369,46 @@ describe("AC 1: 4 field baris × kolom pemisah × 8 nilai = GROUP BY acuan", () 
   });
 });
 
+describe("baris terdalam > 200 tampil: subtotal tetap seluruh kelompok", () => {
+  it.each([
+    [[1, 2, 8], true],
+    [[1, 2, 5, 8], true],
+    [[1, 2, 5, 8], false],
+  ])("baris %j, pemisah %s", async (rowCols, split) => {
+    const spec = {
+      ...base,
+      sort: "label_asc",
+      rows: rowCols.map((column) => ({ column })),
+      ...(split ? { column: { column: 6, timeGrain: "month" } } : {}),
+      values: EIGHT.slice(0, 3),
+    };
+    const { data: p } = await run(spec);
+    expect(p.rows).toHaveLength(200);
+    expect(p.rowCount).toBeGreaterThan(200);
+    const refValues = REF_VALUES.slice(0, 3);
+    const n = rowCols.length;
+    for (let l = 0; l < n - 1; l++) {
+      const lv = p.nest!.levels[l]!;
+      const whole = await ref(rowCols.slice(0, l + 1), refValues);
+      const leaves = await ref(rowCols, refValues);
+      let partial = false;
+      lv.labels.forEach((_, g) => {
+        const shown = p.nest!.paths.filter((path) => path[l] === g).length;
+        const ri = p.nest!.paths.findIndex((path) => path[l] === g);
+        const lab = p.rows[ri]!.labels.slice(0, l + 1);
+        const all = [...leaves.keys()].filter((key) =>
+          key.startsWith(keyJson(lab).slice(0, -1) + ","),
+        ).length;
+        if (shown < all) partial = true;
+        const total = split ? lv.totals![g] : lv.subtotals![g]![0];
+        expectClose(total, whole.get(keyJson(lab)));
+      });
+      // Kelompok terakhir yang tampil terpotong: subtotalnya tetap seluruh kelompok.
+      expect(partial).toBe(true);
+    }
+  });
+});
+
 describe("AC 2: anggaran sel 24.000", () => {
   // 250 resi per tanggal harian (120 hari → 40 kolom) × 8 nilai: 200 baris × 40 × 8 > 24.000.
   const wide = {
@@ -547,6 +587,16 @@ describe("validasi dan spec lama", () => {
     expect(pivotSubtotalLevels({ rows: r(4), subtotals: true })).toEqual([1, 2, 3]);
     expect(pivotSubtotalLevels({ rows: r(2), subtotals: true, subtotalLevels: [3] })).toEqual([]);
     expect(pivotSubtotalLevels({ rows: r(3), subtotals: false, subtotalLevels: [1] })).toEqual([]);
+  });
+  it("subtotal baris 2 kolom mengikuti pivotSubtotalLevels (panel = server), spec lama tetap", () => {
+    const two = { ...base, rows: r(2), values: EIGHT.slice(0, 1) };
+    expect(planOf(two).pivot).toEqual(planOf({ ...two, subtotalLevels: [1] }).pivot);
+    expect(planOf(two).pivot).not.toHaveProperty("levels");
+    expect(planOf({ ...two, subtotalLevels: [] }).pivot.subtotals).toBe(false);
+    expect(planOf({ ...two, subtotals: false }).pivot.subtotals).toBe(false);
+    expect(
+      planOf({ ...base, rows: r(3), values: EIGHT.slice(0, 1), subtotalLevels: [2] }).pivot,
+    ).toMatchObject({ subtotals: true, levels: [2] });
   });
   it("saringan pembaca baris 3–4 diterapkan", async () => {
     const spec = {
