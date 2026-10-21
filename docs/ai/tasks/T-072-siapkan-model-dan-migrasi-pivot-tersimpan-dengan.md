@@ -1,7 +1,7 @@
 ---
 id: T-072
 title: Siapkan model dan migrasi pivot tersimpan dengan perlindungan hapus dan remap versi
-status: in_progress
+status: done
 profile: strict
 profile_pinned: true
 goal: G-7
@@ -11,36 +11,69 @@ tags:
 depends_on:
   - T-071
 created: "2026-10-21T10:24:12Z"
-updated: "2026-10-21T16:27:01Z"
+updated: "2026-10-21T16:35:28Z"
+closed: "2026-10-21T16:35:28Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: b5206c20c8288e6a26d89f2ad1e093d1bf55a80a
+paths:
+  - deploy/upgrade.sh
+  - docs/runbook-deploy.md
+  - prisma/migrations/20261021170000_t072_saved_pivot/migration.sql
+  - prisma/schema.prisma
+  - src/features/audit/service.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/dashboards/service.ts
+  - src/features/saved-pivots/actions.ts
+  - src/features/saved-pivots/service.ts
+  - src/features/versions/activation.ts
+  - tests/features/saved-pivots/actions.test.ts
+  - tests/features/saved-pivots/service.db.test.ts
+  - tests/features/versions/activation.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T16:27:22Z"
+      findings: 3
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T16:27:23Z"
+      findings: 0
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-10-21T16:31:14Z"
+      findings: 3
+    - "n": 4
+      by: claude-code
+      at: "2026-10-21T16:31:15Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 219103
+    duration_ms: 220739
     summary: |-
-      …t":"127.0.0.1","port":46243,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792599975684,"service":"data-dashboard","host":"127.0.0.1","port":39323,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792599975799,"service":"data-dashboard","host":"127.0.0.1","port":37523,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792599975906,"service":"data-dashboard","host":"127.0.0.1","port":44337,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":30,"time":1792599977256,"service":"data-dashboard","datasetId":"t072mvibqpxqds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792599986251,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792599996733,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792599996756,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792599996759,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792599996768,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …asetId":"t072mvic0veods000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792600450978,"service":"data-dashboard","host":"127.0.0.1","port":40149,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792600451038,"service":"data-dashboard","host":"127.0.0.1","port":46855,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792600451139,"service":"data-dashboard","host":"127.0.0.1","port":36307,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792600451259,"service":"data-dashboard","host":"127.0.0.1","port":46155,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792600461624,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792600476817,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792600476843,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792600476856,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792600476876,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  216 passed | 1 skipped (217)
             Tests  2936 passed | 10 skipped (2946)
-         Start at  16:24:28
-         Duration  151.51s (tests 84%, import 13%, transform 3%)
+         Start at  16:32:23
+         Duration  151.68s (tests 84%, import 13%, transform 2%)
 
-          Isolate  217 workers spawned · ~163ms startup each (spawn + environment, per file)
-                   at least ~11.66s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  217 workers spawned · ~161ms startup each (spawn + environment, per file)
+                   at least ~11.51s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,10 +81,40 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T16:27:01Z"
+    at: "2026-10-21T16:34:56Z"
     tree: 64e74573516e5a8076274d1a6a146392d0d59cd02478ba9b919f5605cff8b7b0
+  commits:
+    - 14e93e4
+    - 17cb5cc
+    - 20985af
+    - 3f15210
+    - 4115c8d
+    - 468e913
+    - 52486eb
+    - 60920fa
+    - 693edf2
+    - 6f54377
+    - 764bbce
+    - 7ccff4c
+    - 864037d
+    - 8ce72cf
+    - a4869d3
+    - a80b5ae
+    - a821c13
+    - b5206c2
+    - c4a56e5
+    - d13f79e
+    - d23d4b2
+    - d76daf2
+    - eb70260
+    - ec22d22
+    - f1bd517
+    - f9bd2d5
+  acceptance:
+    total: 5
+    done: 5
   audit:
-    at: "2026-10-21T16:22:55Z"
+    at: "2026-10-21T16:34:57Z"
     passed: true
     tree: 64e74573516e5a8076274d1a6a146392d0d59cd02478ba9b919f5605cff8b7b0
     results:
@@ -61,7 +124,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 523 dirs visited, 4761 inodes visited, 1 Extract calls, 420.90014ms elapsed, 420.900397ms wall time
+          End status: 523 dirs visited, 4780 inodes visited, 1 Extract calls, 256.513231ms elapsed, 256.513661ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -117,3 +180,13 @@ Model SavedPivot tingkat dataset (ADR-0009): spec pivot tervalidasi (skema zod s
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada file/unggahan.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action hanya meneruskan field yang dikenal (uji actions.test.ts); rate limit per user `RULES.savedPivot` (60/10 menit, RATE_LIMITED; Redis mati → fail-open + log) pada buat/ubah/hapus (uji actions.test.ts); belum ada Route Handler baru (endpoint baca untuk UI menyusul T-074).
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak mengubah konfigurasi; migrasi aditif.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T16:34:56Z (220739 ms)
+- Acceptance criteria: 5/5 satisfied
+- Commits: 14e93e4, 17cb5cc, 20985af, 3f15210, 4115c8d, 468e913, 52486eb, 60920fa, 693edf2, 6f54377, 764bbce, 7ccff4c, 864037d, 8ce72cf, a4869d3, a80b5ae, a821c13, b5206c2, c4a56e5, d13f79e, d23d4b2, d76daf2, eb70260, ec22d22, f1bd517, f9bd2d5
+- Review pass 1 by claude-reviewer-subagent: 3 findings
+- Review pass 2 by claude-code: 0 findings
+- Review pass 3 by claude-reviewer-subagent: 3 findings
+- Review pass 4 by claude-code: 0 findings
