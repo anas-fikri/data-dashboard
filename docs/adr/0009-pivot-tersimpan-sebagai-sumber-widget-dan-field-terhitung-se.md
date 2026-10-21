@@ -138,3 +138,10 @@ Bentuk yang ditetapkan:
   `{ type, spec: tampilan, savedPivotId }` (pemilik/editor dashboard; pivot tersimpan dataset lain →
   NOT_FOUND, dikunci `FOR KEY SHARE` sampai commit), lepas lewat `{ detach: true }` (spec efektif revisi
   terbaru disalin; grafik/KPI kehilangan Saring → `filtersDropped`). Keputusan lain tidak berubah.
+- **2026-10-21 (T-hbcp)**: tabel terikat membuang kolom pemisah, jadi sumbu Total berjalan/Selisih/%
+  selisih pindah ke baris terdalam. Bila baris itu ber-Top N (kombinasi yang ditolak untuk pivot,
+  `TOP_N_AXIS_TEXT`), spec efektif tabel memakai nilai biasa untuk cara tampil sumbu tersebut dan hasil
+  query membawa `ignoredShowAs` (label cara tampil; tidak ikut cache hasil) yang tampil sebagai catatan di
+  kartu, tabel diperbesar, dan PDF. Dipilih daripada menolak saat menyimpan pivot tersimpan: definisinya
+  sah untuk pivot/grafik yang memakainya, dan tabel tidak punya pilihan nilai untuk "dipilih ulang".
+  Cara tampil lain dan widget jenis lain tidak berubah.

@@ -1,9 +1,15 @@
 "use client";
 
-import { IconAlertTriangle, IconChartBar, IconCircleOff, IconFilterOff } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconChartBar,
+  IconCircleOff,
+  IconFilterOff,
+  IconInfoCircle,
+} from "@tabler/icons-react";
 import type { CSSProperties, ReactNode } from "react";
 import { cardConfig, type CardConfig } from "@/components/dashboards/widget-card-model";
-import { absentText } from "@/components/widgets/body-state";
+import { absentText, ignoredShowAsText } from "@/components/widgets/body-state";
 import { ChartWidget } from "@/components/widgets/chart-widget";
 import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
@@ -144,7 +150,11 @@ export function PrintCard({
   const title = widget.title || "Widget tanpa judul";
   const config = cardConfig(widget.type, widget.spec);
   const r = widget.result;
-  const notes = r.ok ? (r.absent?.length ? 1 : 0) + (r.skippedFilters?.length ? 1 : 0) : 0;
+  const notes = r.ok
+    ? (r.absent?.length ? 1 : 0) +
+      (r.skippedFilters?.length ? 1 : 0) +
+      (r.ignoredShowAs?.length ? 1 : 0)
+    : 0;
   let content: ReactNode;
   if (!config) {
     content = (
@@ -176,6 +186,11 @@ export function PrintCard({
         {r.absent?.length ? (
           <Note icon={<IconCircleOff size={14} stroke={1.5} aria-hidden className="shrink-0" />}>
             {absentText(r.absent)}
+          </Note>
+        ) : null}
+        {r.ignoredShowAs?.length ? (
+          <Note icon={<IconInfoCircle size={14} stroke={1.5} aria-hidden className="shrink-0" />}>
+            {ignoredShowAsText(r.ignoredShowAs)}
           </Note>
         ) : null}
         {r.skippedFilters?.length ? (

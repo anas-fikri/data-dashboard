@@ -46,6 +46,8 @@ export interface WidgetData {
   skippedFilters?: string[];
   /** Kolom yang dipakai widget dan kosong di versi data ini (kolom absent hasil pemetaan, T-014). */
   absent?: string[];
+  /** Tabel terikat (T-hbcp): cara tampil pivot tersimpan yang tidak berlaku (label). */
+  ignoredShowAs?: string[];
   /** Hanya tabel. */
   total?: number;
   page?: number;

@@ -104,3 +104,15 @@ export const configVersion = (config: { type: string; spec: unknown }) => {
       : config.spec;
   return `${config.type}:${JSON.stringify(spec)}`;
 };
+
+/**
+ * Tabel terikat (T-hbcp): cara tampil sumbu pivot tersimpan yang tidak berlaku karena tabel tanpa
+ * Pisahkan per dan baris terdalamnya ber-Top N. Murni.
+ */
+export function ignoredShowAsText(labels: string[]): string {
+  const list =
+    labels.length <= 1
+      ? labels.join("")
+      : `${labels.slice(0, -1).join(", ")} dan ${labels[labels.length - 1]}`;
+  return `${list} tidak berlaku di tabel ini (tanpa Pisahkan per, baris terdalam memakai Top N): nilainya tampil sebagai nilai biasa.`;
+}

@@ -117,6 +117,11 @@ export interface QueryData {
    * pemetaan T-014). Hanya ada bila tidak kosong; tidak ikut cache hasil.
    */
   absent?: string[];
+  /**
+   * Tabel terikat (T-hbcp): cara tampil pivot tersimpan yang tidak berlaku di tabel ini (label, mis.
+   * "Total berjalan") — nilainya tampil sebagai nilai biasa. Tidak ikut cache hasil.
+   */
+  ignoredShowAs?: string[];
   /** Widget pivot (T-686n): tabel tersusun; `rows` kosong. */
   pivot?: PivotData;
   /** Widget pivot mode pivotValues (T-f4a7): nilai unik satu field (maks. 500); `rows` kosong. */
@@ -900,6 +905,8 @@ export interface ResolvedWidget {
   absent: string[];
   /** Widget terikat (T-073): pivot tersimpan + revisi yang dipakai (kunci cache, ekspor). */
   source?: { id: string; revision: number };
+  /** Tabel terikat (T-hbcp): cara tampil yang tidak berlaku (catatan kartu/PDF). */
+  ignoredShowAs?: string[];
 }
 
 /**
@@ -941,7 +948,7 @@ export async function resolveWidget(
   const eff = configOf(w);
   if (!eff.ok) return eff;
   let config = eff.config;
-  const { savedFilters, source } = eff;
+  const { savedFilters, source, ignoredShowAs } = eff;
   const missing = eff.missing;
   if (!w.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
   let sheet = await deps.repo.sheet(w.activeVersionId, config.spec.sheetId);
@@ -1022,6 +1029,7 @@ export async function resolveWidget(
     dash,
     absent: absentNames(config, sheet.schema),
     ...(source ? { source } : {}),
+    ...(ignoredShowAs ? { ignoredShowAs } : {}),
   };
 }
 
@@ -1036,6 +1044,7 @@ function configOf(w: AuthorizedWidget):
       savedFilters?: PivotSavedFilter[];
       missing: string[];
       source?: { id: string; revision: number };
+      ignoredShowAs?: string[];
     }
   | QueryFailure {
   if (!w.savedPivotId) {
@@ -1063,6 +1072,7 @@ function configOf(w: AuthorizedWidget):
     ok: true,
     config: eff.config,
     ...(eff.filters ? { savedFilters: eff.filters } : {}),
+    ...(eff.ignoredShowAs ? { ignoredShowAs: eff.ignoredShowAs } : {}),
     missing: sp.missingColumns,
     source: { id: sp.id, revision: sp.revision },
   };
@@ -1087,17 +1097,19 @@ async function widgetResult(
 ): Promise<WidgetQueryResult> {
   const resolved = await resolveWidget(w, body, deps);
   if (!resolved.ok) return resolved;
-  const { versionId, config, sheet, planned, dash, absent } = resolved;
+  const { versionId, config, sheet, planned, dash, absent, ignoredShowAs } = resolved;
   // Klausa kanonik (unik, terurut, preset sudah jadi tanggal) masuk kunci cache; tanpa filter
   // dashboard kunci tetap sama dengan sebelum T-012.
   const dashKey = dash.clauses.length ? dash.clauses : undefined;
-  // Catatan per permintaan (bukan bagian hasil yang di-cache): filter yang dilewati + kolom kosong.
+  // Catatan per permintaan (bukan bagian hasil yang di-cache): filter yang dilewati, kolom kosong, dan
+  // cara tampil yang tidak berlaku di tabel terikat (T-hbcp).
   const withNotes = <R extends WidgetQueryResult>(r: R): R =>
-    r.ok && (dash.skipped.length || absent.length)
+    r.ok && (dash.skipped.length || absent.length || ignoredShowAs?.length)
       ? {
           ...r,
           ...(dash.skipped.length ? { skippedFilters: dash.skipped } : {}),
           ...(absent.length ? { absent } : {}),
+          ...(ignoredShowAs?.length ? { ignoredShowAs } : {}),
         }
       : r;
 

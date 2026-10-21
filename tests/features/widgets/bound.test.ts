@@ -181,6 +181,81 @@ describe("effectiveConfig: enam jenis widget dari satu pivot tersimpan", () => {
   });
 });
 
+describe("T-hbcp: tabel dari pivot tersimpan kolom pemisah + Top N baris terdalam + total berjalan", () => {
+  const saved = (showAs: string[]) => {
+    const p = parseWidgetConfig("pivot", {
+      sheetId: SHEET,
+      rows: [{ column: 1 }, { column: 5, topN: { n: 3, by: 0 } }],
+      column: { column: 4, timeGrain: "month" },
+      values: [
+        ...showAs.map((s) => ({ agg: "sum", column: 2, showAs: s })),
+        { agg: "avg", column: 3 },
+      ],
+      sort: "label_asc",
+      format: fmt,
+      totals: true,
+      subtotals: false,
+    });
+    // Sah sebagai pivot: sumbu total berjalan = kolom pemisah.
+    if (!p.ok || p.config.type !== "pivot") throw new Error(JSON.stringify(p));
+    return p.config.spec;
+  };
+
+  it("tabel tampil (bukan galat): cara tampil sumbu jadi nilai biasa + ignoredShowAs untuk catatan", () => {
+    const pivot = saved(["running", "diff_prev", "running"]);
+    const r = effectiveConfig("table", { sort: "label_asc", totals: true }, pivot);
+    expect(r.ok).toBe(true);
+    if (!r.ok || r.config.type !== "pivot") return;
+    expect(r.config.spec.column).toBeUndefined();
+    expect(r.config.spec.rows).toEqual(pivot.rows);
+    expect(r.config.spec.values).toEqual([
+      { agg: "sum", column: 2 },
+      { agg: "sum", column: 2 },
+      { agg: "sum", column: 2 },
+      { agg: "avg", column: 3 },
+    ]);
+    expect(r.ignoredShowAs).toEqual(["Total berjalan", "Selisih dari sebelumnya"]);
+    // Pivot tersimpan tidak diubah (murni).
+    expect(pivot.values[0]).toEqual({ agg: "sum", column: 2, showAs: "running" });
+  });
+
+  it("cara tampil lain (% dari total keseluruhan) tetap; widget pivot terikat tetap memakai total berjalan", () => {
+    const r = effectiveConfig(
+      "table",
+      { sort: "label_asc", totals: true },
+      saved(["pct_diff_prev", "pct_grand"]),
+    );
+    expect(
+      r.ok &&
+        r.config.type === "pivot" &&
+        r.config.spec.values.map((v) => ("showAs" in v ? v.showAs : undefined)),
+    ).toEqual([undefined, "pct_grand", undefined]);
+    expect(r.ok && r.ignoredShowAs).toEqual(["% selisih dari sebelumnya"]);
+    const p = effectiveConfig(
+      "pivot",
+      { sort: "label_asc", totals: true, subtotals: false },
+      saved(["running"]),
+    );
+    expect(p.ok && p.config.type === "pivot" && p.config.spec.values[0]).toEqual({
+      agg: "sum",
+      column: 2,
+      showAs: "running",
+    });
+    expect(p.ok && p.ignoredShowAs).toBeUndefined();
+  });
+
+  it("tanpa Top N di baris terdalam: total berjalan tetap berlaku di tabel, tanpa catatan", () => {
+    const pivot = { ...saved(["running"]), rows: [{ column: 1 }, { column: 5 }] } as PivotSpec;
+    const r = effectiveConfig("table", { sort: "label_asc", totals: true }, pivot);
+    expect(r.ok && r.config.type === "pivot" && r.config.spec.values[0]).toEqual({
+      agg: "sum",
+      column: 2,
+      showAs: "running",
+    });
+    expect(r.ok && r.ignoredShowAs).toBeUndefined();
+  });
+});
+
 describe("AC4: tampilan tidak cocok lagi dengan sumber → pesan 'Pilih ulang nilai'", () => {
   it("nilai ke-N yang sudah dihapus dari pivot tersimpan", () => {
     for (const [type, display] of [

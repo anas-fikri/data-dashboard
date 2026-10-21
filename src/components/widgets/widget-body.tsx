@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { aggOf, type WidgetConfig } from "@/features/widgets/spec";
-import { AbsentNote } from "./absent-note";
+import { AbsentNote, IgnoredShowAsNote } from "./absent-note";
 import {
   bodyState,
   configVersion,
@@ -228,6 +228,7 @@ function Loaded({
       ) : null}
       {content}
       <AbsentNote names={data.absent} />
+      <IgnoredShowAsNote labels={data.ignoredShowAs} />
       <SkippedNote names={data.skippedFilters} />
     </div>
   );

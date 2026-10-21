@@ -408,6 +408,27 @@ describe("AC4: kolom hilang dan tampilan yang tidak cocok — pesan per widget",
     }
   });
 
+  it("T-hbcp: kolom pemisah + Top N baris terdalam + Total berjalan → tabel tampil dengan catatan ignoredShowAs (juga viewer)", async () => {
+    const { state, deps } = setup();
+    state.saved = {
+      ...state.saved,
+      spec: pivotSpec({
+        rows: [{ column: 1, topN: { n: 2, by: 0 } }],
+        values: [{ agg: "sum", column: 2, showAs: "running" }],
+      }),
+      revision: 2,
+    };
+    for (const user of [OWNER, VIEWER]) {
+      const r = await run(deps, "table", {}, user);
+      expect(r, user).toMatchObject({ ok: true, ignoredShowAs: ["Total berjalan"] });
+      expect(r.ok && r.pivot?.rows.length).toBeGreaterThan(0);
+    }
+    // Widget pivot terikat memakai total berjalan sepanjang kolom pemisah, tanpa catatan.
+    const p = await run(deps, "pivot");
+    expect(p).toMatchObject({ ok: true });
+    expect(p.ok && p.ignoredShowAs).toBeUndefined();
+  });
+
   it("tampilan memilih nilai yang sudah dihapus → INVALID 'Pilih ulang nilai di pengaturan widget'", async () => {
     const { deps } = setup();
     const r = await run(deps, "stale", {}, VIEWER);

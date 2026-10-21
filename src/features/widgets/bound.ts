@@ -10,7 +10,9 @@
  *    `filters`, diterapkan service seperti Saring pivot);
  *  - kpi: SATU nilai (total keseluruhan, tanpa cara tampil), format; Saring tetap berlaku;
  *  - table: tabel teragregasi = pivot rata (baris + nilai, tanpa kolom pemisah dan subtotal) dengan
- *    total/urut/format tampilan; hasil dan ekspornya berbentuk pivot.
+ *    total/urut/format tampilan; hasil dan ekspornya berbentuk pivot. Tanpa kolom pemisah, total
+ *    berjalan/selisih berjalan di baris terdalam; bila baris itu ber-Top N (ditolak untuk pivot,
+ *    TOP_N_AXIS_TEXT) nilainya tampil sebagai nilai biasa dan `ignoredShowAs` menyebutnya (T-hbcp).
  * Tampilan yang tidak cocok lagi dengan sumber (nilai ke-6 dihapus, cara tampil yang tidak bisa dipakai
  * grafik, kolom pemisah dihapus) → pesan "Pilih ulang … di pengaturan widget", per widget.
  */
@@ -23,10 +25,12 @@ import {
   formatSchema,
   isCalcValue,
   parseWidgetConfig,
+  pivotTopNAxisRow,
   type PivotSavedFilter,
   type PivotSpec,
   type WidgetConfig,
 } from "./spec";
+import { SHOW_AS_LABEL, isAxisShowAs } from "./show-as";
 
 /** Jenis widget yang bisa memakai pivot tersimpan sebagai sumber. */
 export const BOUND_TYPES = ["pivot", "bar", "line", "pie", "kpi", "table"] as const;
@@ -141,6 +145,11 @@ export type EffectiveConfig =
       config: Exclude<WidgetConfig, { type: "empty" }>;
       /** Grafik/KPI: Saring pivot tersimpan (pivot/tabel membawanya di config). */
       filters?: PivotSavedFilter[];
+      /**
+       * Tabel (T-hbcp): cara tampil sumbu (Total berjalan/Selisih) yang tidak berlaku karena kolom
+       * pemisah dibuang dan baris terdalam ber-Top N — label cara tampil, untuk catatan di kartu/PDF.
+       */
+      ignoredShowAs?: string[];
     }
   | { ok: false; message: string };
 
@@ -160,6 +169,7 @@ export function effectiveConfig(
   const format = bound.display.format ?? pivot.format;
   let built: { type: string; spec: unknown };
   let filters: PivotSavedFilter[] | undefined;
+  let ignored: string[] | undefined;
   switch (bound.type) {
     case "pivot": {
       const d = bound.display;
@@ -182,6 +192,18 @@ export function effectiveConfig(
       // Tabel teragregasi: pivot rata (tanpa kolom pemisah/subtotal), bukan sumber filter silang.
       const d = bound.display;
       const { subtotalLevels: _l, crossFilter: _c, column: _k, ...base } = pivot;
+      // Sumbu total berjalan/selisih pindah dari kolom pemisah ke baris terdalam; ber-Top N, item
+      // "sebelumnya" bisa tergabung ke "(Lainnya)" → cara tampil itu diganti nilai biasa + catatan.
+      if (pivotTopNAxisRow(base) !== null) {
+        const dropped = new Set<string>();
+        base.values = base.values.map((v) => {
+          if (!isAxisShowAs(v.showAs)) return v;
+          dropped.add(SHOW_AS_LABEL[v.showAs!]);
+          const { showAs: _s, ...plain } = v;
+          return plain as typeof v;
+        });
+        ignored = [...dropped];
+      }
       built = {
         type: "pivot",
         spec: { ...base, sort: d.sort, totals: d.totals, subtotals: false, format },
@@ -234,7 +256,12 @@ export function effectiveConfig(
   const config = parseWidgetConfig(built.type, built.spec);
   if (!config.ok) return { ok: false, message: `${config.message} ${REPICK_VALUE}` };
   if (config.config.type === "empty") return { ok: false, message: missingValue };
-  return { ok: true, config: config.config, ...(filters?.length ? { filters } : {}) };
+  return {
+    ok: true,
+    config: config.config,
+    ...(filters?.length ? { filters } : {}),
+    ...(ignored?.length ? { ignoredShowAs: ignored } : {}),
+  };
 }
 
 const missingValue = `Nilai yang dipilih widget ini sudah tidak ada di pivot tersimpan. ${REPICK_VALUE}`;

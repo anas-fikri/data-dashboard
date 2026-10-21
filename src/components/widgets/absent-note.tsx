@@ -1,5 +1,5 @@
-import { IconCircleOff } from "@tabler/icons-react";
-import { absentText } from "./body-state";
+import { IconCircleOff, IconInfoCircle } from "@tabler/icons-react";
+import { absentText, ignoredShowAsText } from "./body-state";
 
 /*
  * Kolom yang dipakai widget ini kosong di versi data aktif (T-014: tidak ada di file baru dan
@@ -15,6 +15,20 @@ export function AbsentNote({ names }: { names?: string[] }) {
     >
       <IconCircleOff size={14} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
       <span className="min-w-0 break-words">{absentText(names)}</span>
+    </p>
+  );
+}
+
+/** Tabel terikat (T-hbcp): cara tampil pivot tersimpan yang tidak berlaku di tabel ini. */
+export function IgnoredShowAsNote({ labels }: { labels?: string[] }) {
+  if (!labels?.length) return null;
+  return (
+    <p
+      className="flex shrink-0 items-start gap-1 border-t px-2 py-1 text-xs text-muted-foreground"
+      data-testid="widget-ignored-show-as"
+    >
+      <IconInfoCircle size={14} stroke={1.5} aria-hidden className="mt-0.5 shrink-0" />
+      <span className="min-w-0 break-words">{ignoredShowAsText(labels)}</span>
     </p>
   );
 }

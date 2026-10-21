@@ -7,7 +7,7 @@ import { useState } from "react";
 import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { Button } from "@/components/ui/button";
 import type { WidgetConfig } from "@/features/widgets/spec";
-import { AbsentNote } from "./absent-note";
+import { AbsentNote, IgnoredShowAsNote } from "./absent-note";
 import { configVersion, requestFilters, widgetRequest, withChangeCheck } from "./body-state";
 import { SkippedNote } from "./skipped-note";
 import { TableView, type TableSort } from "./table-view";
@@ -169,6 +169,7 @@ function Expanded({
       {data ? (
         <>
           <AbsentNote names={data.absent} />
+          <IgnoredShowAsNote labels={data.ignoredShowAs} />
           <SkippedNote names={data.skippedFilters} />
         </>
       ) : null}

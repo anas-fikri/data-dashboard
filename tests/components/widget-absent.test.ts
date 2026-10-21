@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { absentText, bodyState, chartEmpty } from "@/components/widgets/body-state";
+import {
+  absentText,
+  bodyState,
+  chartEmpty,
+  ignoredShowAsText,
+} from "@/components/widgets/body-state";
 import type { WidgetData } from "@/components/widgets/widget-query";
 
 /*
@@ -19,6 +24,17 @@ describe("absentText", () => {
       "Kolom “Diskon” dan “Kantor” kosong di versi data ini.",
     );
     expect(absentText(["A", "B", "C"])).toBe("Kolom “A”, “B”, dan “C” kosong di versi data ini.");
+  });
+});
+
+describe("ignoredShowAsText (T-hbcp)", () => {
+  it("satu dan dua cara tampil", () => {
+    expect(ignoredShowAsText(["Total berjalan"])).toBe(
+      "Total berjalan tidak berlaku di tabel ini (tanpa Pisahkan per, baris terdalam memakai Top N): nilainya tampil sebagai nilai biasa.",
+    );
+    expect(ignoredShowAsText(["Total berjalan", "Selisih dari sebelumnya"])).toMatch(
+      /^Total berjalan dan Selisih dari sebelumnya tidak berlaku/,
+    );
   });
 });
 
