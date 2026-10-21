@@ -15,7 +15,11 @@ import {
   roleSelect,
   type DashboardAccessRole,
 } from "@/features/sharing/access";
-import { effectiveConfig, type EffectiveConfig } from "@/features/widgets/bound";
+import {
+  SOURCE_MISMATCH_VIEWER,
+  effectiveConfig,
+  type EffectiveConfig,
+} from "@/features/widgets/bound";
 import { matchSheet, remapConfig } from "@/features/widgets/remap";
 import {
   CHART_TYPES,
@@ -570,8 +574,15 @@ export const getDashboard = cache(async function getDashboard(
     withSources(d.dataset.id, d.widgets),
   );
   // Rincian pivot tersimpan sumber (nama, tampilan) hanya untuk pemilik/editor (D6, ADR-0009).
+  // Viewer: pesan sumber yang tidak cocok juga umum (review keamanan T-073 L3).
   const widgets =
-    role === "OWNER" || role === "EDITOR" ? mapped : mapped.map(({ source: _, ...w }) => w);
+    role === "OWNER" || role === "EDITOR"
+      ? mapped
+      : mapped.map(({ source: _, ...w }) =>
+          w.sourceError && w.sourceError !== SOURCE_GONE
+            ? { ...w, sourceError: SOURCE_MISMATCH_VIEWER }
+            : w,
+        );
   const stored = storedFilterColumns(d.filterColumns);
   // Skema versi aktif hanya dibaca bila ada kolom filter atau sumber cross-filter (grafik/pivot).
   const sheets =
@@ -745,9 +756,11 @@ async function remapToActive(
 ): Promise<WidgetView[]> {
   const widgets = stored.map(toView);
   if (!activeVersionId) return widgets;
+  // Widget terikat (T-073): spec efektif TIDAK dipetakan lewat riwayat — pivot tersimpan dipetakan di
+  // transaksi aktivasi, dan jalur query juga tidak memetakannya (tampilan = yang di-query).
   const parsed = stored.map((w) => ({
     w: toView(w),
-    c: parseWidgetConfig(w.type, w.spec),
+    c: w.source ? ({ ok: false, message: "" } as const) : parseWidgetConfig(w.type, w.spec),
     m: w.missingColumns,
   }));
   const sheetIds = [

@@ -129,6 +129,11 @@ export function parseBoundDisplay(
 
 /** Akhiran pesan tampilan yang tidak cocok lagi dengan pivot tersimpan (AC4 T-073). */
 export const REPICK_VALUE = "Pilih ulang nilai di pengaturan widget.";
+/**
+ * Pesan yang sama untuk viewer (review keamanan T-073 L3): tanpa menyebut pivot tersimpan atau rincian
+ * definisinya; pemilik/editor tetap mendapat pesan rinci.
+ */
+export const SOURCE_MISMATCH_VIEWER = `Pengaturan widget ini tidak cocok lagi dengan sumber datanya. ${REPICK_VALUE}`;
 
 export type EffectiveConfig =
   | {

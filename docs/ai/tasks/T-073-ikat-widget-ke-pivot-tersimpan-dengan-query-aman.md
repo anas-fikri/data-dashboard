@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-072
 created: "2026-10-21T10:24:14Z"
-updated: "2026-10-21T17:06:53Z"
+updated: "2026-10-21T17:16:45Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 219989
+    duration_ms: 210570
     summary: |-
-      …asetId":"t072mvid5y3vds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792602367909,"service":"data-dashboard","host":"127.0.0.1","port":38057,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602367964,"service":"data-dashboard","host":"127.0.0.1","port":34647,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792602368063,"service":"data-dashboard","host":"127.0.0.1","port":32811,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602368175,"service":"data-dashboard","host":"127.0.0.1","port":39335,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602383086,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792602391374,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792602391396,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792602391401,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792602391412,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …asetId":"t072mvidhzh8ds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792602929160,"service":"data-dashboard","host":"127.0.0.1","port":42649,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602929215,"service":"data-dashboard","host":"127.0.0.1","port":32943,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792602929315,"service":"data-dashboard","host":"127.0.0.1","port":37553,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602929421,"service":"data-dashboard","host":"127.0.0.1","port":42107,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602939084,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792602952545,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792602952567,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792602952572,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792602952589,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  221 passed | 1 skipped (222)
-            Tests  2989 passed | 10 skipped (2999)
-         Start at  17:04:21
-         Duration  150.38s (tests 84%, import 13%, transform 3%)
+            Tests  2990 passed | 10 skipped (3000)
+         Start at  17:13:49
+         Duration  143.16s (tests 84%, import 13%, transform 2%)
 
-          Isolate  222 workers spawned · ~156ms startup each (spawn + environment, per file)
-                   at least ~11.37s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  222 workers spawned · ~151ms startup each (spawn + environment, per file)
+                   at least ~11.01s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,12 +48,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T17:06:53Z"
-    tree: 4ad8c9933c21eafcbf9522d841b53f6fc0ed635507a1f74032b591bc83fc92ee
+    at: "2026-10-21T17:16:13Z"
+    tree: eda3f139bf1b7f8ec34f56447ace9a02973e8977132378c133ef6bc2110f7402
   audit:
-    at: "2026-10-21T17:02:39Z"
+    at: "2026-10-21T17:16:14Z"
     passed: true
-    tree: 4ad8c9933c21eafcbf9522d841b53f6fc0ed635507a1f74032b591bc83fc92ee
+    tree: eda3f139bf1b7f8ec34f56447ace9a02973e8977132378c133ef6bc2110f7402
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 524 dirs visited, 4860 inodes visited, 1 Extract calls, 262.650576ms elapsed, 262.65083ms wall time
+          End status: 524 dirs visited, 4866 inodes visited, 1 Extract calls, 242.124791ms elapsed, 242.125078ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -85,7 +85,7 @@ Widget pivot/bar/line/pie/KPI/tabel bisa memakai pivot tersimpan sebagai sumber:
 - [x] Given viewer dashboard bersama, when POST /api/query dengan {widgetId, dashboardFilters} untuk widget terikat, then hasil benar; given body memuat savedPivotId, spec, atau field lain, then 400 INVALID; given widgetId dari dashboard lain atau pivot tersimpan dataset lain, then 404 NOT_FOUND; endpoint definisi pivot tersimpan tidak bisa dipanggil viewer (NOT_FOUND)
 - [x] Given kolom cross-filter yang diizinkan dashboard, then diturunkan dari spec efektif (baris/kolom pivot tersimpan + tampilan widget, crossFilter === true) sehingga viewer tidak bisa memfilter kolom yang tidak tampil di widget mana pun; uji D6 regresi (tests/features/query) hijau
 - [x] Given pivot tersimpan berisi MISSING_COLUMN setelah aktivasi versi, then setiap widget terikat menampilkan pesan kolom hilang per widget (bukan error dashboard) dan ekspor/PDF widget itu melewatinya dengan catatan; given tampilan widget tidak cocok sumber (mis. grafik memilih nilai ke-6 yang sudah dihapus), then pesan 'Pilih ulang nilai di pengaturan widget'
-- [ ] Given ekspor CSV/XLSX widget terikat dan PDF dashboard, then memakai spec efektif yang sama dengan tampilan (job ekspor membaca revisi saat job dibuat) dan AuditLog ekspor tetap tercatat; checklist ASVS V4 dan review keamanan tanpa Critical/High
+- [x] Given ekspor CSV/XLSX widget terikat dan PDF dashboard, then memakai spec efektif yang sama dengan tampilan (job ekspor membaca revisi saat job dibuat) dan AuditLog ekspor tetap tercatat; checklist ASVS V4 dan review keamanan tanpa Critical/High
 
 ## Risk
 - Impact: jalur query widget (/api/query), halaman dashboard (getDashboard → spec efektif), sumber filter silang (D6), ekspor CSV/XLSX + PDF, PATCH widget (ikat/lepas), aktivasi versi (widget terikat dilewati). Widget mandiri tidak berubah: SQL, parameter, dan kunci cache hasil byte-identik dengan e2c6cf1 (snapshot `tests/features/query/bound-legacy.test.ts`, 13 kasus pivot/grafik/KPI/tabel/filter dashboard/pivotValues); kunci sumber filter sama persis bila dashboard tanpa widget terikat. Tanpa migrasi (kolom `Widget.savedPivotId` sudah ada dari T-072).
@@ -97,6 +97,7 @@ Widget pivot/bar/line/pie/KPI/tabel bisa memakai pivot tersimpan sebagai sumber:
 - Implementasi: `src/features/widgets/bound.ts` (skema tampilan + `effectiveConfig` murni), `query/service.ts` (`configOf`/`boundSourceOk`, Saring sumber grafik/KPI → klausa dashboard, `src` di kunci cache), `query/widget.ts` (`widgetPlan(..., {filters})` untuk grafik/KPI), `query/runtime.ts` (pivot tersimpan dibaca bersama widget + `sourceStamp` untuk kunci sumber filter), `dashboards/service.ts` (`withSources` di getDashboard/filterSourcesFor/filterOverlapFor, `configureWidget(..., savedPivotId)`, `detachWidget`), `dashboards/http.ts` (PATCH `{type,spec,savedPivotId}` / `{detach:true}`), `exports` (`sourceRevision`), `versions/activation.ts` (widget terikat dilewati), kartu `sourceError`. Amandemen ADR-0009 (T-073).
 - Asumsi (keputusan standar, dicatat di ADR): tabel terikat = pivot rata (bukan tabel berhalaman 100); grafik/KPI memakai satu nilai (Q6) beserta cara tampilnya bila diizinkan jenis grafik, KPI tanpa cara tampil; Top N per baris pivot tersimpan tidak dipakai grafik (grafik punya N teratas sendiri); lepas dari sumber pada grafik/KPI membuang Saring (`filtersDropped: true` agar UI T-074 memperingatkan); ekspor dikunci ke revisi saat diminta (berubah → VERSION_CHANGED).
 - Untuk T-074: UI ikat/lepas memakai PATCH di atas; WidgetView membawa `source` (pemilik/editor) dan `sourceError`. Panel lama menyimpan spec efektif sebagai widget mandiri (melepas ikatan) dan "urungkan hapus" widget terikat memulihkannya sebagai salinan mandiri — perlu ditangani UI T-074. Kartu belum mendeteksi edit pivot tersimpan di tengah sesi (berlaku pada muat berikutnya, sesuai AC1).
+- Review keamanan orkestrator `e2c6cf1..07b7bf2`: 0 Critical/High. Low diperbaiki: L1 ekspor dikunci ke `sourceId` + `sourceRevision` (ikat ulang ke pivot lain berrevisi sama → VERSION_CHANGED, diuji); L2 body PATCH widget tertutup (judul saja / atur-ikat type+spec[+savedPivotId] / detach saja; campuran/sebagian → 400, diuji); L3 pesan sumber tidak cocok untuk viewer umum tanpa menyebut pivot tersimpan (halaman + query, diuji); L5 spec efektif widget terikat tidak dipetakan lewat riwayat di getDashboard, sama dengan jalur query (uji PostgreSQL). L4 (panel/urungkan hapus) → T-074.
 - e2e menyiapkan pivot tersimpan lewat `scripts/dev-saved-pivot-fixture.mjs` (dev saja) sampai UI T-074 ada.
 - `aitk impact` menandai `src/features/exports/job.ts` tanpa uji — sebenarnya dicakup `tests/features/exports/job.test.ts` dan `bound-export.test.ts` (resolusi impor alias).
 

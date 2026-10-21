@@ -89,9 +89,30 @@ export const deleteWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
  * `version` baru. T-073: { type, spec, savedPivotId } ikat ke pivot tersimpan (spec = tampilan);
  * { detach: true } lepas dari sumber (spec efektif disalin ke widget).
  */
+/**
+ * Bentuk body PATCH widget (T-073, tertutup): ganti judul { title, version? }; atur/ikat isi
+ * { type, spec, title?, version?, savedPivotId? }; lepas { detach: true, version? }. Kunci lain, bentuk
+ * campuran, atau sebagian (mis. savedPivotId tanpa type/spec) → null (400 INVALID).
+ */
+function bodyShape(b: Record<string, unknown>): "rename" | "configure" | "detach" | null {
+  const keys = Object.keys(b).filter((k) => b[k] !== undefined);
+  const only = (allowed: string[]) => keys.every((k) => allowed.includes(k));
+  if ("detach" in b && b.detach !== undefined) {
+    return b.detach === true && only(["detach", "version"]) ? "detach" : null;
+  }
+  if (b.type !== undefined || b.spec !== undefined || b.savedPivotId !== undefined) {
+    return b.type !== undefined &&
+      "spec" in b &&
+      only(["type", "spec", "title", "version", "savedPivotId"])
+      ? "configure"
+      : null;
+  }
+  return b.title !== undefined && only(["title", "version"]) ? "rename" : null;
+}
+
 export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetId: string) =>
   mutation(req, "ubah widget gagal", async (userId, body) => {
-    const b = (body && typeof body === "object" ? body : {}) as {
+    const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as {
       title?: unknown;
       type?: unknown;
       spec?: unknown;
@@ -99,13 +120,14 @@ export const updateWidgetRoute = (req: NextRequest, dashboardId: string, widgetI
       savedPivotId?: unknown;
       detach?: unknown;
     };
-    if (b.detach !== undefined) {
-      if (b.detach !== true || b.type !== undefined || b.title !== undefined) {
-        return json({ ok: false, code: "INVALID", message: "Permintaan tidak valid." }, 400);
-      }
+    const shape = bodyShape(b);
+    if (!shape) {
+      return json({ ok: false, code: "INVALID", message: "Permintaan tidak valid." }, 400);
+    }
+    if (shape === "detach") {
       return reply(await detachWidget(userId, dashboardId, widgetId, b.version));
     }
-    if (b.type === undefined)
+    if (shape === "rename")
       return reply(await renameWidget(userId, dashboardId, widgetId, b.title, b.version));
     // Keduanya dikirim: judul diperiksa dulu, isi disimpan, lalu judul — tidak ada bagian yang
     // tersimpan bila yang lain ditolak validasi (review keamanan T-011).

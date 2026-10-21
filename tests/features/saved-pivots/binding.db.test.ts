@@ -26,6 +26,8 @@ const STRANGER = id("stranger");
 const DS = id("ds");
 const DS_OTHER = id("dsother");
 const V1 = id("v1");
+const V2 = id("v2");
+const S2 = id("s2");
 const V_OTHER = id("vother");
 const S1 = id("s1");
 const S_OTHER = id("sother");
@@ -307,6 +309,25 @@ describe.skipIf(!probe)("widget terikat pivot tersimpan (integrasi PostgreSQL, T
     expect(await dash.filterSourcesFor(D1)).toEqual([{ name: "Cabang", type: "text" }]);
   });
 
+  it("review L5: spec efektif widget terikat tidak dipetakan lewat riwayat di halaman (sama dengan query)", async () => {
+    // Versi baru aktif TANPA aktivasi (pivot tersimpan belum dipetakan, masih menunjuk S1).
+    await version(V2, DS, S2);
+    await prisma.dataset.update({ where: { id: DS }, data: { activeVersionId: V2 } });
+    try {
+      const d = await dash.getDashboard(OWNER, D1);
+      const bar = d!.widgets.find((w) => w.id === W("bar"))!;
+      expect(bar).toMatchObject({ type: "bar", spec: { sheetId: S1 } });
+      expect(bar.retargeted).toBeUndefined();
+      const { deps } = queryDeps();
+      expect(await runWidgetQuery(OWNER, { widgetId: W("bar") }, deps)).toMatchObject({
+        ok: false,
+        code: "SHEET_UNAVAILABLE",
+      });
+    } finally {
+      await prisma.dataset.update({ where: { id: DS }, data: { activeVersionId: V1 } });
+    }
+  });
+
   it("AC2/AC3: viewer {widgetId, dashboardFilters} → hasil; kolom yang tidak tampil di widget mana pun → INVALID", async () => {
     const { deps, exec } = queryDeps();
     const ok = await runWidgetQuery(
@@ -362,6 +383,11 @@ describe.skipIf(!probe)("widget terikat pivot tersimpan (integrasi PostgreSQL, T
     const d = await dash.getDashboard(OWNER, D1);
     const kpi = d!.widgets.find((w) => w.id === W("kpi"))!;
     expect(kpi.sourceError).toContain("Pilih ulang nilai di pengaturan widget.");
+    // Viewer: pesan umum tanpa menyebut pivot tersimpan (review T-073 L3).
+    const dv = await dash.getDashboard(VIEWER, D1);
+    const vk = dv!.widgets.find((w) => w.id === W("kpi"))!;
+    expect(vk.sourceError).toContain("Pilih ulang nilai di pengaturan widget.");
+    expect(vk.sourceError).not.toContain("pivot tersimpan");
     expect(d!.widgets.find((w) => w.id === W("bar"))!.sourceError).toBeUndefined();
     const { deps } = queryDeps();
     expect(await runWidgetQuery(VIEWER, { widgetId: W("kpi") }, deps)).toMatchObject({

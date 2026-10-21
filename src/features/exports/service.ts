@@ -271,7 +271,9 @@ export async function createExport(
     ...(pivotFilters?.length ? { pivotFilters } : {}),
     ...(sort ? { sort } : {}),
     requestedAt: now.toISOString(),
-    ...(resolved.source ? { sourceRevision: resolved.source.revision } : {}),
+    ...(resolved.source
+      ? { sourceId: resolved.source.id, sourceRevision: resolved.source.revision }
+      : {}),
   };
   const created = await deps.repo.createIfRoom(
     {

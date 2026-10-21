@@ -157,7 +157,16 @@ describe("T-073: ikat/lepas pivot tersimpan lewat PATCH widget", () => {
     for (const body of [
       { detach: true, type: "kpi", spec: {} },
       { detach: true, title: "X" },
+      { detach: true, savedPivotId: SP },
       { detach: "ya" },
+      // Review T-073 L2: bentuk sebagian/campuran/tak dikenal.
+      { savedPivotId: SP },
+      { savedPivotId: SP, type: "kpi" },
+      { spec: { value: 0 }, savedPivotId: SP },
+      { title: "X", savedPivotId: SP },
+      { title: "X", extra: 1 },
+      { type: "kpi", spec: {}, sql: "x" },
+      {},
     ]) {
       const bad = await http.updateWidgetRoute(req("PATCH", body), D, W);
       expect(bad.status).toBe(400);

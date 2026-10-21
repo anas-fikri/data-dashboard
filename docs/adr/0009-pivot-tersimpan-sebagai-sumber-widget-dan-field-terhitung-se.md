@@ -134,7 +134,7 @@ Bentuk yang ditetapkan:
   (tampilan widget yang menyalakannya, D6). Kunci cache hasil memuat `src: [savedPivotId, revision]`
   hanya untuk widget terikat (kunci widget mandiri byte-identik, uji snapshot); kunci sumber filter
   memuat cap `id@revisi` pivot tersimpan dashboard. Ekspor CSV/XLSX dikunci ke revisi saat diminta
-  (`Export.params.sourceRevision`; berubah → `VERSION_CHANGED`). Ikat lewat PATCH widget
+  (`Export.params.sourceId` + `sourceRevision`; berubah/diikat ulang → `VERSION_CHANGED`). Ikat lewat PATCH widget
   `{ type, spec: tampilan, savedPivotId }` (pemilik/editor dashboard; pivot tersimpan dataset lain →
   NOT_FOUND, dikunci `FOR KEY SHARE` sampai commit), lepas lewat `{ detach: true }` (spec efektif revisi
   terbaru disalin; grafik/KPI kehilangan Saring → `filtersDropped`). Keputusan lain tidak berubah.

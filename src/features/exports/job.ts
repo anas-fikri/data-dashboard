@@ -296,7 +296,11 @@ async function prepareWidget(
   }
   // Widget terikat (T-073): definisi = revisi pivot tersimpan saat ekspor diminta (sama dengan yang
   // dilihat peminta). Berubah, terikat, atau terlepas sejak itu → tidak diekspor dengan definisi lain.
-  if ((params.data.sourceRevision ?? null) !== (resolved.source?.revision ?? null)) {
+  const asked = params.data;
+  if (
+    (asked.sourceRevision ?? null) !== (resolved.source?.revision ?? null) ||
+    (asked.sourceId ?? null) !== (resolved.source?.id ?? null)
+  ) {
     return { ok: false, code: EXPORT_CODES.VERSION_CHANGED, message: SOURCE_CHANGED };
   }
   const producer: Producer =

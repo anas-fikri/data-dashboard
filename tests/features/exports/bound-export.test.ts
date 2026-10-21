@@ -175,6 +175,7 @@ describe("AC5: ekspor widget terikat = spec efektif revisi saat diminta", () => 
       });
       expect(created[0]!.params).toEqual({
         requestedAt: "2026-03-15T05:00:00.000Z",
+        sourceId: SP,
         sourceRevision: 4,
       });
       expect(
@@ -199,7 +200,7 @@ describe("AC5: ekspor widget terikat = spec efektif revisi saat diminta", () => 
   });
 
   it("CSV grafik terikat: Saring pivot tersimpan berlaku (hanya Cabang 1 dan 2), nilai = Total Omzet", async () => {
-    const t = job(BAR, { sourceRevision: 2 }, { revision: 2 });
+    const t = job(BAR, { sourceId: SP, sourceRevision: 2 }, { revision: 2 });
     expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 2 });
     const lines = parseCsv(
       readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
@@ -211,7 +212,7 @@ describe("AC5: ekspor widget terikat = spec efektif revisi saat diminta", () => 
   });
 
   it("CSV tabel terikat: pivot rata (baris + semua nilai + Total)", async () => {
-    const t = job(TABLE, { sourceRevision: 1 }, { revision: 1 });
+    const t = job(TABLE, { sourceId: SP, sourceRevision: 1 }, { revision: 1 });
     expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "done", rows: 3 });
     const lines = parseCsv(
       readFileSync(t.objects.get(`exports/${OWNER}/${EXPORT_ID}.csv`)!, "utf8").slice(1),
@@ -222,8 +223,10 @@ describe("AC5: ekspor widget terikat = spec efektif revisi saat diminta", () => 
 
   it("pivot tersimpan berubah, terikat, atau terlepas setelah diminta → FAILED VERSION_CHANGED tanpa file", async () => {
     for (const [params, revision] of [
-      [{ sourceRevision: 1 }, 2],
+      [{ sourceId: SP, sourceRevision: 1 }, 2],
       [{}, 1],
+      // Review T-073 L1: diikat ulang ke pivot tersimpan LAIN yang kebetulan berrevisi sama.
+      [{ sourceId: "cmv4kljx40009oczvdmpusp99", sourceRevision: 1 }, 1],
     ] as const) {
       const t = job(BAR, params, { revision });
       expect(await runExportJob(EXPORT_ID, t.deps)).toMatchObject({ outcome: "failed" });
@@ -231,7 +234,11 @@ describe("AC5: ekspor widget terikat = spec efektif revisi saat diminta", () => 
       expect(t.objects.size).toBe(0);
     }
     // Diminta saat masih terikat, kini widget mandiri (tanpa sumber).
-    const t = job("cmv4kljx40009oczvdmpukpix0", { sourceRevision: 1 }, { revision: 1 });
+    const t = job(
+      "cmv4kljx40009oczvdmpukpix0",
+      { sourceId: SP, sourceRevision: 1 },
+      { revision: 1 },
+    );
     await runExportJob(EXPORT_ID, t.deps);
     expect(t.status.failed).toEqual({ code: "VERSION_CHANGED", message: SOURCE_CHANGED });
   });

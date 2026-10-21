@@ -13,7 +13,7 @@ import {
   type QueryRepo,
 } from "@/features/query/service";
 import type { DashboardAccessRole } from "@/features/sharing/access";
-import { REPICK_VALUE } from "@/features/widgets/bound";
+import { REPICK_VALUE, SOURCE_MISMATCH_VIEWER } from "@/features/widgets/bound";
 import { MISSING_COLUMN, missingMessage } from "@/features/widgets/remap";
 import { QueryEngine } from "@/lib/duckdb/engine";
 import { ParquetCache } from "@/lib/duckdb/parquet-cache";
@@ -411,7 +411,11 @@ describe("AC4: kolom hilang dan tampilan yang tidak cocok — pesan per widget",
   it("tampilan memilih nilai yang sudah dihapus → INVALID 'Pilih ulang nilai di pengaturan widget'", async () => {
     const { deps } = setup();
     const r = await run(deps, "stale", {}, VIEWER);
-    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    // Viewer: pesan umum tanpa menyebut pivot tersimpan (review T-073 L3); pemilik: rinci.
+    expect(r).toMatchObject({ ok: false, code: "INVALID", message: SOURCE_MISMATCH_VIEWER });
     expect(!r.ok && r.message.endsWith(REPICK_VALUE)).toBe(true);
+    expect(!r.ok && r.message).not.toContain("pivot tersimpan");
+    const o = await run(deps, "stale");
+    expect(!o.ok && o.message).toContain("pivot tersimpan");
   });
 });

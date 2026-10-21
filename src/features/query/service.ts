@@ -33,7 +33,7 @@ import {
   remapConfig,
   type SheetInfo,
 } from "@/features/widgets/remap";
-import { effectiveConfig } from "@/features/widgets/bound";
+import { SOURCE_MISMATCH_VIEWER, effectiveConfig } from "@/features/widgets/bound";
 import {
   MISSING_COLUMN,
   parseWidgetConfig,
@@ -1046,15 +1046,19 @@ function configOf(w: AuthorizedWidget):
   }
   const sp = w.savedPivot;
   if (!sp || !boundSourceOk(w)) return fail("NOT_FOUND", "Widget tidak ditemukan.");
+  // Viewer: pesan umum tanpa rincian sumber (review keamanan T-073 L3).
+  const detailed = w.role === "OWNER" || w.role === "EDITOR";
   const pivot = pivotSpecSchema.safeParse(sp.spec);
   if (!pivot.success) {
     return fail(
       "INVALID",
-      "Pivot tersimpan sumber widget ini tidak valid. Atur ulang pivot tersimpannya.",
+      detailed
+        ? "Pivot tersimpan sumber widget ini tidak valid. Atur ulang pivot tersimpannya."
+        : SOURCE_MISMATCH_VIEWER,
     );
   }
   const eff = effectiveConfig(w.type, w.spec, pivot.data);
-  if (!eff.ok) return fail("INVALID", eff.message);
+  if (!eff.ok) return fail("INVALID", detailed ? eff.message : SOURCE_MISMATCH_VIEWER);
   return {
     ok: true,
     config: eff.config,

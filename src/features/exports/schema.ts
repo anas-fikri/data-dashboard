@@ -35,6 +35,8 @@ export const exportParamsSchema = z
      * itu saja — sumber berubah/terlepas sebelum job berjalan → VERSION_CHANGED (ekspor ulang).
      */
     sourceRevision: z.number().int().min(1).optional(),
+    /** Pivot tersimpan sumber saat diminta (ikat ulang ke pivot lain berrevisi sama → VERSION_CHANGED). */
+    sourceId: cuid.optional(),
   })
   .strict();
 export type ExportParams = z.infer<typeof exportParamsSchema>;
