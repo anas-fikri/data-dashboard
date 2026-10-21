@@ -1,10 +1,11 @@
 ---
 id: T-z8y2
 title: 'Stabilkan e2e dashboards: klik Pengaturan sesaat setelah muat halaman tidak membuka panel'
-status: in_review
+status: done
 profile: strict
 created: "2026-10-21T12:34:25Z"
-updated: "2026-10-21T20:02:29Z"
+updated: "2026-10-21T20:11:39Z"
+closed: "2026-10-21T20:11:39Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -76,30 +77,40 @@ paths:
   - tests/features/saved-pivots/service.db.test.ts
   - tests/features/versions/activation.test.ts
   - tests/features/widgets/bound.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T20:04:25Z"
+      findings: 1
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T20:04:26Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 220257
+    duration_ms: 255604
     summary: |-
-      …t":"127.0.0.1","port":40629,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612864853,"service":"data-dashboard","host":"127.0.0.1","port":39639,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":30,"time":1792612864910,"service":"data-dashboard","datasetId":"t072mvijey8eds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792612864968,"service":"data-dashboard","host":"127.0.0.1","port":41245,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612865079,"service":"data-dashboard","host":"127.0.0.1","port":41305,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792612879705,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792612892836,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792612892859,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792612892863,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792612892878,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …t":"127.0.0.1","port":35149,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792613273138,"service":"data-dashboard","host":"127.0.0.1","port":35987,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792613273247,"service":"data-dashboard","host":"127.0.0.1","port":46781,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792613273362,"service":"data-dashboard","host":"127.0.0.1","port":46437,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1792613274739,"service":"data-dashboard","datasetId":"t072mvijnqa5ds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792613287910,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792613296680,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792613296701,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792613296706,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792613296720,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  223 passed | 1 skipped (224)
             Tests  3010 passed | 10 skipped (3020)
-         Start at  19:59:17
-         Duration  153.00s (tests 83%, import 14%, transform 3%)
+         Start at  20:05:52
+         Duration  168.25s (tests 84%, import 13%, transform 3%)
 
-          Isolate  224 workers spawned · ~160ms startup each (spawn + environment, per file)
-                   at least ~11.76s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  224 workers spawned · ~169ms startup each (spawn + environment, per file)
+                   at least ~12.42s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -107,7 +118,7 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T20:01:52Z"
+    at: "2026-10-21T20:08:42Z"
     tree: d2c05f1f463ff809baa0d7a65f8ec519e9306ac33de79885654a369d916f874f
   commits:
     - 07b7bf2
@@ -132,6 +143,7 @@ evidence:
     - bb53812
     - c4a56e5
     - c7bb4f1
+    - ccb8465
     - d13f79e
     - d76daf2
     - e2c6cf1
@@ -143,7 +155,7 @@ evidence:
     total: 1
     done: 1
   audit:
-    at: "2026-10-21T20:02:02Z"
+    at: "2026-10-21T20:08:43Z"
     passed: true
     tree: d2c05f1f463ff809baa0d7a65f8ec519e9306ac33de79885654a369d916f874f
     results:
@@ -153,7 +165,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 528 dirs visited, 5102 inodes visited, 1 Extract calls, 426.339159ms elapsed, 426.339458ms wall time
+          End status: 528 dirs visited, 5119 inodes visited, 1 Extract calls, 248.623899ms elapsed, 248.62428ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -210,6 +222,8 @@ gagal 2/2 pada tes "urungkan satu langkah" (fokus heading panel tidak pernah ter
 
 ## Evidence
 <!-- Generated by aitk close. -->
-- Check: `npm run check` → exit 0 at 2026-10-21T20:01:52Z (220257 ms)
+- Check: `npm run check` → exit 0 at 2026-10-21T20:08:42Z (255604 ms)
 - Acceptance criteria: 1/1 satisfied
-- Commits: 07b7bf2, 17cb5cc, 1ad5b22, 3f15210, 4115c8d, 460a7f3, 468e913, 52486eb, 594ca78, 5f3cb82, 61111df, 693edf2, 6f54377, 764bbce, 7ccff4c, 864037d, a80b5ae, a821c13, b5206c2, bb53812, c4a56e5, c7bb4f1, d13f79e, d76daf2, e2c6cf1, eb70260, eb97953, ec22d22, f1bd517
+- Commits: 07b7bf2, 17cb5cc, 1ad5b22, 3f15210, 4115c8d, 460a7f3, 468e913, 52486eb, 594ca78, 5f3cb82, 61111df, 693edf2, 6f54377, 764bbce, 7ccff4c, 864037d, a80b5ae, a821c13, b5206c2, bb53812, c4a56e5, c7bb4f1, ccb8465, d13f79e, d76daf2, e2c6cf1, eb70260, eb97953, ec22d22, f1bd517
+- Review pass 1 by claude-reviewer-subagent: 1 findings
+- Review pass 2 by claude-code: 0 findings
