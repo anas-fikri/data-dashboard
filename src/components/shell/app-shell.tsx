@@ -26,6 +26,8 @@ interface AppShellProps {
   user: SessionUser | null;
   /** Pemberitahuan di atas konten setiap halaman (mis. backup bermasalah untuk admin, T-7psf). */
   notice?: ReactNode;
+  /** Versi aplikasi dari package.json (dibaca server, T-066); tampil di bagian bawah menu akun. */
+  appVersion?: string;
   children: ReactNode;
 }
 
@@ -33,7 +35,7 @@ interface AppShellProps {
  * Kromo aplikasi: topbar (burger <768, brand, utilities: bantuan + tema + akun) dan sidebar
  * (rail persisten ≥768 yang bisa diciutkan ke ikon; drawer + backdrop <768). Konten di <main>.
  */
-export function AppShell({ user, notice, children }: AppShellProps) {
+export function AppShell({ user, notice, appVersion, children }: AppShellProps) {
   const [collapsed, setCollapsed] = usePersistedBoolean(COLLAPSE_KEY);
   const pathname = usePathname();
   // Drawer terbuka hanya untuk path tempat ia dibuka: berpindah halaman otomatis menutupnya
@@ -159,7 +161,7 @@ export function AppShell({ user, notice, children }: AppShellProps) {
               </Link>
             </Button>
             <ThemeToggle />
-            <AccountMenu user={user} />
+            <AccountMenu user={user} appVersion={appVersion} />
           </div>
         </header>
 

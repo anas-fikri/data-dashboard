@@ -47,6 +47,9 @@ ENV HOSTNAME=0.0.0.0 PORT=3100 QUERY_CACHE_DIR=/var/cache/dashboard/query BACKUP
 COPY --from=build /app/.next/standalone ./
 # Pemulihan admin darurat (T-019): docker compose exec app node scripts/admin-restore.mjs <email>.
 COPY --from=build /app/scripts/admin-restore.mjs ./scripts/admin-restore.mjs
+# Commit pendek untuk /health admin (T-066); di akhir stage agar tidak membatalkan cache lapisan di atas.
+ARG APP_COMMIT=
+ENV APP_COMMIT=${APP_COMMIT}
 USER app
 EXPOSE 3100
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
@@ -62,5 +65,8 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/content ./content
 COPY --from=build /app/deploy ./deploy
+# Commit pendek di log start worker (T-066); versi dibaca dari package.json di atas.
+ARG APP_COMMIT=
+ENV APP_COMMIT=${APP_COMMIT}
 USER app
 CMD ["node_modules/.bin/tsx", "--conditions=react-server", "src/worker/index.ts"]

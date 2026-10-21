@@ -14,7 +14,8 @@
 # rahasia), dump database PLAINTEXT (hapus setelah backup harian berikutnya terverifikasi), arsip kode lama,
 # log pemeriksaan. Secret tidak pernah dicetak; kredensial DB hanya lewat env di container backup (pgenv.sh).
 # Variabel: UPGRADE_DIR (folder status), MIN_FREE_GB (bawaan 15), FORCE=1 (abaikan job aktif di preflight),
-# ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start).
+# ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
+# (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
 
 DIE_HINT=""
@@ -202,7 +203,7 @@ SQL
 
 PREFLIGHT LULUS ($stamp). Produksi belum diubah. Berikutnya:
   1. sinkron kode rilis baru ke folder ini (git pull / ekstrak arsip rilis)
-  2. bash deploy/upgrade.sh load <arsip-image.tar.gz>…   (atau: bash deploy/upgrade.sh build)
+  2. bash deploy/upgrade.sh load <arsip-image.tar.gz>…   (atau: bash deploy/upgrade.sh build → tag v<versi>)
   3. bash deploy/upgrade.sh migrate
 EOF
 }
@@ -232,14 +233,27 @@ load_images() {
   set_tag "$tag"
 }
 
+# v<version> dari package.json kode rilis (T-066, sama dengan deploy/images.sh); kosong bila tidak sah.
+release_tag() {
+  local v
+  v=$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json 2>/dev/null | head -1)
+  if [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then echo "v$v"; fi
+}
+
 build_images() {
   load_state
-  local tag
-  tag=$(git rev-parse --short HEAD 2>/dev/null || date -u +%Y%m%d%H%M)
-  [ "$tag" != "$OLD_TAG" ] || die "tag build ($tag) sama dengan produksi — sinkron kode rilis baru dulu"
+  local tag commit
+  # IMAGE_TAG eksplisit di env menang; bawaan v<versi package.json> (rilis per tonggak: aitk release).
+  tag=${IMAGE_TAG:-$(release_tag)}
+  [ -n "$tag" ] || die "versi package.json tidak terbaca — IMAGE_TAG=<tag> bash deploy/upgrade.sh build"
+  case "$tag" in prev-*) die "tag $tag adalah cadangan rollback" ;; esac
+  # Image store dipakai bersama produksi: build bertag produksi memindahkan tag yang sedang dipakai.
+  [ "$tag" != "$OLD_TAG" ] ||
+    die "tag build ($tag) sama dengan produksi — naikkan versi (aitk release) atau IMAGE_TAG=$tag-<commit>"
+  commit=$(git rev-parse --short HEAD 2>/dev/null || true)
   setenv IMAGE_TAG "$tag"
-  info "build image bertag $tag di VM (lambat; disarankan deploy/images.sh di mesin build)"
-  "${C[@]}" build
+  info "build image bertag $tag (commit ${commit:-?}) di VM (lambat; disarankan deploy/images.sh di mesin build)"
+  IMAGE_TAG=$tag APP_COMMIT=$commit "${C[@]}" build
   set_tag "$tag"
 }
 

@@ -12,6 +12,11 @@ ENV NODE_ENV=production HOME=/tmp XDG_CACHE_HOME=/tmp/.cache XDG_CONFIG_HOME=/tm
 COPY renderer ./renderer
 RUN npm install --no-save --no-audit --no-fund --ignore-scripts playwright-core@1.64.0 zod@3.25.76 \
   && rm -rf /root/.npm
+# Versi rilis untuk log start (T-066): package.json akar repo, disalin SETELAH npm install agar npm tidak
+# memasang dependensi app. Commit pendek dari build arg.
+COPY package.json ./package.json
+ARG APP_COMMIT=
+ENV APP_COMMIT=${APP_COMMIT}
 USER pwuser
 EXPOSE 3200
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \

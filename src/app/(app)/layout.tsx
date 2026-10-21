@@ -9,6 +9,7 @@ import { currentBackupAlert } from "@/features/backup/service";
 import { currentQuotaAlert } from "@/features/uploads/quota";
 import { currentIntegrityAlert } from "@/features/versions/integrity-status";
 import { logger } from "@/lib/logger";
+import { APP_VERSION } from "@/lib/version";
 
 /** Semua halaman produk memakai shell. Halaman auth (login/register) berada di luar grup ini. */
 export default async function AppLayout({ children }: { children: ReactNode }) {
@@ -40,7 +41,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       </>
     ) : null;
   return (
-    <AppShell user={user} notice={notice}>
+    <AppShell user={user} notice={notice} appVersion={APP_VERSION}>
       {children}
     </AppShell>
   );

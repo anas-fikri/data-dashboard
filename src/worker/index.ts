@@ -71,6 +71,7 @@ import { expireAwaitingConfirm } from "@/features/versions/service";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { versionInfo } from "@/lib/version";
 import { redisLockStore } from "@/lib/lock";
 import { redisReady } from "@/lib/redis";
 import {
@@ -169,6 +170,8 @@ async function sweepUploaded(queue: Queue<IngestJobData>): Promise<number> {
 }
 
 async function main() {
+  // Baris log pertama: versi rilis yang berjalan (T-066), sama dengan menu akun dan /health admin.
+  logger.info(versionInfo(), "worker mulai");
   const connection = () => new Redis(env().REDIS_URL, { maxRetriesPerRequest: null });
   const tmpRoot = env().WORKER_TMP_DIR ?? join(tmpdir(), "dd-worker");
   mkdirSync(tmpRoot, { recursive: true });

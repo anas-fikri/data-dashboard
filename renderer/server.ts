@@ -8,6 +8,7 @@ import { chromium } from "playwright-core";
 import { parseRendererEnv } from "./env";
 import { browserArgs, browserEnv } from "./render";
 import { createRenderer } from "./renderer";
+import { rendererVersionInfo } from "./version";
 
 function logLine(level: "info" | "fatal", msg: string, extra: Record<string, unknown> = {}) {
   const stream = level === "fatal" ? process.stderr : process.stdout;
@@ -15,6 +16,8 @@ function logLine(level: "info" | "fatal", msg: string, extra: Record<string, unk
 }
 
 async function main(): Promise<void> {
+  // Baris log pertama: versi rilis (T-066), sama dengan app dan worker.
+  logLine("info", "renderer mulai", { ...rendererVersionInfo() });
   const env = parseRendererEnv(process.env);
   const renderer = createRenderer(env, () =>
     chromium.launch({

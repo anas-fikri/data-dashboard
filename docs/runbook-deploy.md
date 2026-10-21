@@ -55,14 +55,19 @@ sekali di mesin build (CPU/disk cepat, Docker buildx), lalu muat di VM:
 
 ```bash
 # mesin build (folder repo, commit yang akan dirilis)
-bash deploy/images.sh build              # 4 image linux/amd64 bertag commit (mis. ab88b55)
+bash deploy/images.sh build              # 4 image linux/amd64 bertag v<versi package.json> (mis. v1.0.0)
 bash deploy/images.sh save dashboard-images.tar.gz
 scp dashboard-images.tar.gz <server>:/tmp/
 # VM (folder aplikasi, kode commit yang sama)
-bash deploy/images.sh load /tmp/dashboard-images.tar.gz
-echo IMAGE_TAG=ab88b55 >> .env.prod      # atau ubah baris IMAGE_TAG yang ada
+bash deploy/images.sh load /tmp/dashboard-images.tar.gz   # mencetak IMAGE_TAG yang dimuat
+echo IMAGE_TAG=v1.0.0 >> .env.prod       # atau ubah baris IMAGE_TAG yang ada
 bash deploy/deploy.sh --no-build         # migrasi + up + tunggu sehat, tanpa build
 ```
+
+Tag image bawaan = `v` + `version` di `package.json` (T-066); tag eksplisit (`images.sh build <tag>` atau env
+`IMAGE_TAG`) selalu menang. `images.sh build` menolak tag yang dipakai container berjalan dan tidak menimpa
+tag rilis bawaan yang sudah ada di image store (naikkan versi, atau beri tag eksplisit mis. `v1.0.0-<commit>`).
+Commit pendek ikut sebagai build arg `APP_COMMIT` dan tampil di `/health` admin serta log start.
 
 Disk mesin build sempit: alirkan langsung ke server tanpa berkas lokal —
 `bash deploy/images.sh save - <tag> | ssh <server> 'cat > /tmp/dashboard-images.tar.gz'`.
@@ -587,3 +592,29 @@ Pemeriksaan malam `segment-audit` (03.00 WIB): `$C logs --since 24h worker | gre
 backup sendiri); skrip mengunggah 24 × 400 rb + 10 × 1 jt baris, menjalankan backup harian sungguhan di
 beberapa titik, lalu retensi + GC + `segment-audit`. Butuh ± 6 GB ruang sementara di volume stack uji.
 Salin hasilnya ke `docs/ai/perf/T-063-olympus/`.
+
+## 9. Versi aplikasi dan rilis per tonggak (T-066)
+
+**Satu sumber versi**: `version` di `package.json`, dinaikkan hanya lewat `aitk release` (`aitk.toml
+[release]`, `CHANGELOG.md`). Versi itu tampil di menu akun pengguna yang masuk ("Versi 1.0.0"), di detail
+admin `/health` + `GET /api/health` (`version`, `commit`; tanpa sesi admin hanya `status` + `checkedAt`), dan
+di baris log pertama worker (`"worker mulai"`) serta renderer (`"renderer mulai"`). Cek versi yang berjalan:
+`$C logs worker | grep -m1 'worker mulai'` atau buka `/health` sebagai admin.
+
+**Alur rilis per tonggak** (G-7: satu versi minor per tonggak, mis. v1.1.0 → v1.2.0 → v1.3.0; rencana
+`docs/ai/plans/2026-10-21-pivot-lanjutan.md` §7.2):
+
+1. Di `main` setelah task tonggak selesai: `aitk release --bump minor --tag` → `package.json` +
+   `CHANGELOG.md` naik ke versi baru, di-commit, tag git `v<versi>` (tidak di-push otomatis). Pre-rilis
+   (`--pre rc` → `1.1.0-rc.1`) juga sah sebagai tag image; versi dengan `+build` tidak (beri `IMAGE_TAG`).
+2. Mesin build (commit rilis): `bash deploy/images.sh build` → image `dashboard-*:v<versi>`;
+   `bash deploy/images.sh save - | ssh olympus 'cat > /tmp/dashboard-images.tar.gz'`.
+3. Server: `deploy/upgrade.sh` (§7: preflight dengan kode lama → sinkron kode → `load` → `migrate` →
+   `start`). `upgrade.sh build` (build di VM) juga memakai tag bawaan `v<versi>`; `IMAGE_TAG=<tag>` eksplisit
+   menang. Tag rilis = tag produksi lama ditolak (versi belum dinaikkan): naikkan versi atau beri tag lain.
+4. **Rollback**: tag rilis lama (`dashboard-*:v<versi lama>`) tidak dihapus dan preflight menambah
+   `dashboard-*:prev-<stamp>`; `upgrade.sh rollback` memakai `prev-<stamp>` (§7 R). Hapus image rilis lama
+   hanya setelah rilis baru stabil dan backup harian terverifikasi (`docker image rm dashboard-<s>:v<lama>`).
+
+`docker-compose.prod.yml` tetap `image: dashboard-*:${IMAGE_TAG:-latest}`: tanpa `IMAGE_TAG` di `.env.prod`
+compose memakai `latest` seperti sebelumnya.

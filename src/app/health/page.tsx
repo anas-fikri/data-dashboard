@@ -8,7 +8,7 @@ export const metadata = { title: "Kesehatan sistem" };
 
 /**
  * Halaman status layanan. Tanpa sesi admin hanya status keseluruhan (tanpa nama layanan
- * internal); admin melihat detail per layanan (T-027).
+ * internal); admin melihat detail per layanan (T-027) dan versi aplikasi (T-066).
  */
 export default async function HealthPage() {
   const report = await cachedHealthReport(infraChecks());
@@ -33,25 +33,31 @@ export default async function HealthPage() {
       </p>
 
       {isDetailed(view) ? (
-        <ul className="mt-6 divide-y rounded-md border">
-          {view.items.map((item) => (
-            <li
-              key={item.name}
-              data-check={item.name}
-              data-status={item.status}
-              className="flex items-start justify-between gap-4 px-4 py-3"
-            >
-              <div>
-                <p className="font-medium">{item.name}</p>
-                <p className="text-sm text-muted-foreground">{item.detail}</p>
-              </div>
-              <div className="text-right text-sm">
-                <p className="font-semibold uppercase">{item.status === "ok" ? "OK" : "Gagal"}</p>
-                <p className="text-muted-foreground">{item.latencyMs} ms</p>
-              </div>
-            </li>
-          ))}
-        </ul>
+        <>
+          <p className="mt-4 text-sm text-muted-foreground" data-testid="health-version">
+            Versi {view.version}
+            {view.commit ? ` · commit ${view.commit}` : null}
+          </p>
+          <ul className="mt-4 divide-y rounded-md border">
+            {view.items.map((item) => (
+              <li
+                key={item.name}
+                data-check={item.name}
+                data-status={item.status}
+                className="flex items-start justify-between gap-4 px-4 py-3"
+              >
+                <div>
+                  <p className="font-medium">{item.name}</p>
+                  <p className="text-sm text-muted-foreground">{item.detail}</p>
+                </div>
+                <div className="text-right text-sm">
+                  <p className="font-semibold uppercase">{item.status === "ok" ? "OK" : "Gagal"}</p>
+                  <p className="text-muted-foreground">{item.latencyMs} ms</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
       ) : (
         <p className="mt-4 text-sm text-muted-foreground">
           Detail per layanan hanya untuk admin yang sudah masuk.

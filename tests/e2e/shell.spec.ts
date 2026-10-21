@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import { apiLogin, registerAndVerify, uniqueEmail } from "./helpers";
 
@@ -41,6 +42,19 @@ test.describe("app shell (masuk)", () => {
       await page.screenshot({ path: `test-results/shell-${width}.png`, fullPage: false });
     });
   }
+
+  test("menu akun: versi aplikasi dari package.json di bagian bawah (T-066)", async ({ page }) => {
+    const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/");
+    await page.getByTestId("account-menu-trigger").click();
+    const label = page.getByTestId("app-version");
+    await expect(label).toHaveText(`Versi ${version}`);
+    // Teks informasi, bukan item menu; terakhir di menu (di bawah Keluar).
+    await expect(page.getByRole("menuitem", { name: /Versi/ })).toHaveCount(0);
+    const last = page.getByRole("menu").locator(":scope > *").last();
+    await expect(last).toHaveAttribute("data-testid", "app-version");
+  });
 
   test("ponsel: drawer dengan backdrop, tertutup saat navigasi", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });

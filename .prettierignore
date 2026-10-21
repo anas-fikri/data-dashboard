@@ -10,6 +10,8 @@ prisma/migrations
 # Dikelola aitk / adapter AI tools, bukan kode
 docs
 ai-state.json
+# Ditulis aitk release (T-066: format bawaan aitk, bukan Prettier)
+CHANGELOG.md
 AGENTS.md
 CLAUDE.md
 .claude

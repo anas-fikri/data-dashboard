@@ -19,10 +19,12 @@ import type { SessionUser } from "@/features/auth/session";
 
 interface AccountMenuProps {
   user: SessionUser | null;
+  /** Versi aplikasi (package.json saat build); hanya untuk pengguna yang sudah masuk (T-066). */
+  appVersion?: string;
 }
 
 /** Avatar saja di topbar (semua breakpoint); nama/email hidup di dalam menu. */
-export function AccountMenu({ user }: AccountMenuProps) {
+export function AccountMenu({ user, appVersion }: AccountMenuProps) {
   if (!user) {
     return (
       <Button asChild variant="outline">
@@ -33,10 +35,10 @@ export function AccountMenu({ user }: AccountMenuProps) {
       </Button>
     );
   }
-  return <SignedInMenu user={user} />;
+  return <SignedInMenu user={user} appVersion={appVersion} />;
 }
 
-function SignedInMenu({ user }: { user: SessionUser }) {
+function SignedInMenu({ user, appVersion }: { user: SessionUser; appVersion?: string }) {
   const [pending, startTransition] = useTransition();
   const display = user.name ?? user.email;
   return (
@@ -82,6 +84,17 @@ function SignedInMenu({ user }: { user: SessionUser }) {
           <IconLogout aria-hidden />
           Keluar
         </DropdownMenuItem>
+        {appVersion ? (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuLabel
+              className="py-1 text-xs font-normal text-muted-foreground"
+              data-testid="app-version"
+            >
+              Versi {appVersion}
+            </DropdownMenuLabel>
+          </>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

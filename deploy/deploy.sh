@@ -104,6 +104,9 @@ if [ -n "$NO_BUILD" ]; then
       { echo "image dashboard-$i:${tag:-latest} belum dimuat (deploy/images.sh load)" >&2; exit 1; }
   done
 else
+  # Commit pendek untuk /health admin + log start (T-066); tag image tetap IMAGE_TAG .env.prod / latest.
+  APP_COMMIT=${APP_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || true)}
+  export APP_COMMIT
   "${COMPOSE[@]}" build
 fi
 "${COMPOSE[@]}" up -d --no-build --wait --wait-timeout 600

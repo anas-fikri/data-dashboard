@@ -112,9 +112,20 @@ describe("publicView", () => {
     const pub = publicView(report, false);
     expect(pub).toEqual({ status: "fail", checkedAt: "2026-10-11T00:00:00Z" });
     expect(isDetailed(pub)).toBe(false);
-    const admin = publicView(report, true);
-    expect(admin).toBe(report);
+    const admin = publicView(report, true, { version: "1.2.3", commit: "abc1234" });
+    expect(admin).toEqual({ ...report, version: "1.2.3", commit: "abc1234" });
     expect(isDetailed(admin)).toBe(true);
+  });
+
+  it("versi + commit hanya di detail admin (T-066, rencana G-7 R11)", () => {
+    const report = { status: "ok" as const, checkedAt: "2026-10-21T00:00:00Z", items: [] };
+    const pub = publicView(report, false, { version: "1.2.3", commit: "abc1234" });
+    expect(Object.keys(pub).sort()).toEqual(["checkedAt", "status"]);
+    expect(JSON.stringify(pub)).not.toContain("1.2.3");
+    const admin = publicView(report, true);
+    expect(admin).toMatchObject({ version: expect.stringMatching(/^\d+\.\d+\.\d+/) });
+    // Laporan cache bersama tidak diubah oleh tampilan admin.
+    expect(report).not.toHaveProperty("version");
   });
 });
 

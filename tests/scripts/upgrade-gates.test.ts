@@ -42,6 +42,7 @@ sub=$1; shift
 case $sub in
   ps) echo cid; exit 0 ;;
   stop | start | up) exit 0 ;;
+  build) echo "build-env IMAGE_TAG=$IMAGE_TAG APP_COMMIT=$APP_COMMIT" >>"$FAKE/calls.log"; exit 0 ;;
 esac
 # run [--rm] [--no-deps] [-T] [-v host:ctr]... <service> <cmd...>
 out=""
@@ -92,11 +93,17 @@ function lastValue(key: string): string | undefined {
 }
 
 function run(cmd: string, ...args: string[]) {
+  return runWith({}, cmd, ...args);
+}
+
+function runWith(extra: Record<string, string>, cmd: string, ...args: string[]) {
+  const { IMAGE_TAG: _ignored, APP_COMMIT: _ignored2, ...base } = process.env;
   const r = spawnSync("bash", ["deploy/upgrade.sh", cmd, ...args], {
     cwd: app(),
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...base,
+      ...extra,
       PATH: `${join(root, "bin")}:${process.env.PATH}`,
       FAKE: root,
       UPGRADE_DIR: join(root, "upgrade"),
@@ -268,5 +275,58 @@ describe("upgrade.sh rollback", { timeout: 60_000 }, () => {
     const r = run("rollback");
     expect(r.out).toContain("tabel ⊆ dump");
     expect(calls()).toContain("stop app worker");
+  });
+});
+
+describe("upgrade.sh build (T-066: tag bawaan v<versi package.json>)", { timeout: 60_000 }, () => {
+  function pkg(version: string) {
+    writeFileSync(
+      join(app(), "package.json"),
+      `{\n  "name": "data-dashboard",\n  "version": "${version}",\n  "dependencies": {\n    "x": "1.0.0"\n  }\n}\n`,
+    );
+  }
+  const envTag = () =>
+    /^IMAGE_TAG=(.*)$/m.exec(readFileSync(join(app(), ".env.prod"), "utf8"))?.[1];
+
+  it("tanpa IMAGE_TAG: build bertag v<versi> dan IMAGE_TAG di .env.prod diisi tag itu", () => {
+    pkg("1.2.0");
+    const r = run("build");
+    expect(r.code, r.out).toBe(0);
+    expect(calls()).toContain("build-env IMAGE_TAG=v1.2.0 ");
+    expect(envTag()).toBe("v1.2.0");
+    expect(lastValue("NEW_TAG")).toBe("v1.2.0");
+  });
+
+  it("IMAGE_TAG eksplisit menang atas versi package.json", () => {
+    pkg("1.2.0");
+    const r = runWith({ IMAGE_TAG: "v1.2.0-hotfix1" }, "build");
+    expect(r.code, r.out).toBe(0);
+    expect(calls()).toContain("build-env IMAGE_TAG=v1.2.0-hotfix1 ");
+    expect(envTag()).toBe("v1.2.0-hotfix1");
+  });
+
+  it("versi belum dinaikkan (tag = produksi) → ditolak sebelum build, .env.prod tidak berubah", () => {
+    pkg("1.0.0");
+    writeFileSync(join(stateDir(), "state.env"), state().replace("OLD_TAG=lama", "OLD_TAG=v1.0.0"));
+    const r = run("build");
+    expect(r.code, r.out).toBe(1);
+    expect(r.out).toContain("sama dengan produksi");
+    expect(calls()).not.toContain("build-env");
+    expect(envTag()).toBe("baru");
+  });
+
+  it("tag cadangan rollback prev-* ditolak", () => {
+    pkg("1.2.0");
+    const r = runWith({ IMAGE_TAG: "prev-20261020T000000Z" }, "build");
+    expect(r.code, r.out).toBe(1);
+    expect(calls()).not.toContain("build-env");
+  });
+
+  it("versi package.json tidak sah sebagai tag → berhenti dengan petunjuk IMAGE_TAG", () => {
+    pkg("1.2.0+build.5");
+    const r = run("build");
+    expect(r.code, r.out).toBe(1);
+    expect(r.out).toContain("IMAGE_TAG=<tag>");
+    expect(calls()).not.toContain("build-env");
   });
 });

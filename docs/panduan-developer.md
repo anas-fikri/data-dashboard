@@ -337,7 +337,14 @@ Letak tes mengikuti `src/`: `tests/features/<domain>/`, `tests/components/`, `te
    - sinkron kode (`git pull` atau `git archive` → ekstrak di server) lalu `bash deploy/deploy.sh` (build di
      VM, migrasi, `up --wait`, health hijau) — atau build image di luar VM (`deploy/images.sh`, `IMAGE_TAG`);
    - artikel panduan berubah → `seed-guides.ts --update --only <slug>` di container worker.
-4. **Rollback cepat** (runbook §6 "Rollback cepat"): ekstrak arsip kode lama, kembalikan tag image
+4. **Versi & rilis per tonggak** (T-066, runbook §9): versi hanya di `package.json`, dinaikkan `aitk release`
+   (G-7: minor per tonggak, v1.1.0 → v1.2.0 → v1.3.0). Kode server membaca `APP_VERSION`/`versionInfo()` dari
+   `src/lib/version.ts` (server-only; komponen klien menerima versi lewat props — menu akun lewat
+   `AppShell appVersion`), renderer dari `renderer/version.ts`. Commit pendek = build arg `APP_COMMIT`.
+   Alur: `aitk release` → `deploy/images.sh build` (tag bawaan `v<versi>`, tag eksplisit menang) →
+   `deploy/upgrade.sh` (preflight → load → migrate → start). Tag rilis lama + `prev-<stamp>` tetap untuk
+   rollback. Versi hanya untuk pengguna yang masuk dan admin `/health`; publik tidak melihatnya.
+5. **Rollback cepat** (runbook §6 "Rollback cepat"): ekstrak arsip kode lama, kembalikan tag image
    `prev-<stamp>` ke tag yang dipakai compose (`IMAGE_TAG` di `.env.prod`, bawaan `latest`), `up -d`, lalu
    buat ulang `proxy` + `backup`. Migrasi DB tidak dibalik otomatis — pulihkan dari backup (runbook §5) bila
    skema baru tidak kompatibel.

@@ -1,4 +1,5 @@
 import { logger } from "@/lib/logger";
+import { versionInfo, type VersionInfo } from "@/lib/version";
 
 export type HealthStatus = "ok" | "fail";
 
@@ -121,13 +122,23 @@ export interface PublicHealth {
   checkedAt: string;
 }
 
-/** Admin melihat laporan lengkap; selain itu hanya status (tanpa nama/latensi layanan). */
-export function publicView(report: HealthReport, isAdmin: boolean): HealthReport | PublicHealth {
-  if (isAdmin) return report;
+/** Detail admin: laporan lengkap + versi aplikasi dan commit pendek (T-066). */
+export type AdminHealth = HealthReport & VersionInfo;
+
+/**
+ * Admin melihat laporan lengkap beserta versi; selain itu hanya status (tanpa nama/latensi layanan dan
+ * tanpa versi/commit: sidik jari rilis tidak dibuka ke publik, rencana G-7 R11).
+ */
+export function publicView(
+  report: HealthReport,
+  isAdmin: boolean,
+  version: VersionInfo = versionInfo(),
+): AdminHealth | PublicHealth {
+  if (isAdmin) return { ...report, version: version.version, commit: version.commit };
   return { status: report.status, checkedAt: report.checkedAt };
 }
 
-export function isDetailed(view: HealthReport | PublicHealth): view is HealthReport {
+export function isDetailed(view: AdminHealth | PublicHealth): view is AdminHealth {
   return "items" in view;
 }
 

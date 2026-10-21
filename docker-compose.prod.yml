@@ -104,7 +104,11 @@ services:
   app:
     image: dashboard-app:${IMAGE_TAG:-latest}
     # NEXT_BUILD_CPUS: pekerja build Next (bawaan 2 untuk VM 2 vCPU; naikkan bila CPU/RAM VM lebih).
-    build: { context: ., target: app, args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}" } }
+    build:
+      context: .
+      target: app
+      # APP_COMMIT: commit pendek untuk /health admin + log start (T-066; diisi deploy/upgrade.sh build).
+      args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}", APP_COMMIT: "${APP_COMMIT:-}" }
     restart: unless-stopped
     environment: *app-env
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -128,7 +132,11 @@ services:
 
   worker:
     image: dashboard-worker:${IMAGE_TAG:-latest}
-    build: { context: ., target: worker, args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}" } }
+    build:
+      context: .
+      target: worker
+      # APP_COMMIT: commit pendek untuk /health admin + log start (T-066; diisi deploy/upgrade.sh build).
+      args: { NEXT_BUILD_CPUS: "${NEXT_BUILD_CPUS:-2}", APP_COMMIT: "${APP_COMMIT:-}" }
     restart: unless-stopped
     environment: *app-env
     extra_hosts: ["host.docker.internal:host-gateway"]
@@ -151,7 +159,7 @@ services:
 
   renderer:
     image: dashboard-renderer:${IMAGE_TAG:-latest}
-    build: { context: ., dockerfile: renderer/Dockerfile }
+    build: { context: ., dockerfile: renderer/Dockerfile, args: { APP_COMMIT: "${APP_COMMIT:-}" } }
     restart: unless-stopped
     init: true
     environment:
