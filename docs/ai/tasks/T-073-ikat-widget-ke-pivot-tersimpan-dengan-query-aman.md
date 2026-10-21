@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-072
 created: "2026-10-21T10:24:14Z"
-updated: "2026-10-21T17:02:31Z"
+updated: "2026-10-21T17:06:53Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 224135
+    duration_ms: 219989
     summary: |-
-      …asetId":"t072mvicy584ds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792602005073,"service":"data-dashboard","host":"127.0.0.1","port":36471,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602005129,"service":"data-dashboard","host":"127.0.0.1","port":42793,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792602005239,"service":"data-dashboard","host":"127.0.0.1","port":41181,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602005341,"service":"data-dashboard","host":"127.0.0.1","port":44877,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792602016113,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792602024819,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792602024841,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792602024846,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792602024861,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …asetId":"t072mvid5y3vds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792602367909,"service":"data-dashboard","host":"127.0.0.1","port":38057,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602367964,"service":"data-dashboard","host":"127.0.0.1","port":34647,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792602368063,"service":"data-dashboard","host":"127.0.0.1","port":32811,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602368175,"service":"data-dashboard","host":"127.0.0.1","port":39335,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792602383086,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792602391374,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792602391396,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792602391401,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792602391412,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  221 passed | 1 skipped (222)
             Tests  2989 passed | 10 skipped (2999)
-         Start at  16:58:15
-         Duration  154.17s (tests 84%, import 14%, transform 2%)
+         Start at  17:04:21
+         Duration  150.38s (tests 84%, import 13%, transform 3%)
 
-          Isolate  222 workers spawned · ~165ms startup each (spawn + environment, per file)
-                   at least ~12.02s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  222 workers spawned · ~156ms startup each (spawn + environment, per file)
+                   at least ~11.37s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,10 +48,10 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T17:00:51Z"
+    at: "2026-10-21T17:06:53Z"
     tree: 4ad8c9933c21eafcbf9522d841b53f6fc0ed635507a1f74032b591bc83fc92ee
   audit:
-    at: "2026-10-21T17:02:04Z"
+    at: "2026-10-21T17:02:39Z"
     passed: true
     tree: 4ad8c9933c21eafcbf9522d841b53f6fc0ed635507a1f74032b591bc83fc92ee
     results:
@@ -61,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 524 dirs visited, 4805 inodes visited, 1 Extract calls, 255.61914ms elapsed, 255.619382ms wall time
+          End status: 524 dirs visited, 4860 inodes visited, 1 Extract calls, 262.650576ms elapsed, 262.65083ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
