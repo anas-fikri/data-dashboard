@@ -218,6 +218,15 @@ describe.skipIf(!probe)("pivot tersimpan (integrasi PostgreSQL, T-072)", () => {
       IP,
     );
     expect(cross).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    // Sheet yang tidak ada di mana pun → NOT_FOUND juga (tanpa oracle keberadaan sheet).
+    const gone = await svc.createSavedPivot(
+      OWNER,
+      DS,
+      { name: "Hilang", spec: pivot(id("sheetgone")) },
+      IP,
+    );
+    expect(gone).toMatchObject({ ok: false, code: "NOT_FOUND", message: "Sheet tidak ditemukan." });
+    expect(foreign).toEqual(gone);
     expect(await prisma.savedPivot.count({ where: { datasetId: { in: [DS, DS_OTHER] } } })).toBe(1);
   });
 

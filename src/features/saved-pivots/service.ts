@@ -35,7 +35,8 @@ export type SavedPivotCode =
   | "CONFLICT"
   | "IN_USE"
   | "STALE"
-  | "BUSY";
+  | "BUSY"
+  | "RATE_LIMITED";
 
 export interface InUseDashboard {
   id: string;
@@ -162,7 +163,7 @@ async function checkSpec(
 ): Promise<{ ok: true; spec: PivotSpec } | { ok: false; result: SavedPivotResult<never> }> {
   const checked = await checkConfig(datasetId, "pivot", spec, true);
   if (checked.ok && checked.config.type === "pivot") return { ok: true, spec: checked.config.spec };
-  if (!checked.ok && checked.outside === "foreign") {
+  if (!checked.ok && checked.outside) {
     return { ok: false, result: fail("NOT_FOUND", "Sheet tidak ditemukan.", { field: "spec" }) };
   }
   if (!checked.ok && checked.stale) return { ok: false, result: stale() };

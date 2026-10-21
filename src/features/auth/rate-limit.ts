@@ -53,6 +53,11 @@ export const RULES = {
   admin: { name: "admin:user", limit: 60, windowSec: 60 },
   /** Aktifkan (rollback) / buang versi dataset per pemilik (T-013); tiap aktivasi menulis ulang widget. */
   versionChange: { name: "version-change:user", limit: 30, windowSec: 10 * 60 },
+  /**
+   * Buat/ubah/hapus pivot tersimpan per user (T-072): tiap tulis mengunci baris Dataset dan menulis
+   * AuditLog, jadi pengulangan otomatis dibatasi.
+   */
+  savedPivot: { name: "saved-pivot:user", limit: 60, windowSec: 10 * 60 },
   /** Ubah akses dashboard (beri/ubah peran/cabut, share organisasi) per pemilik (T-016). */
   share: { name: "share:user", limit: 60, windowSec: 10 * 60 },
   /**

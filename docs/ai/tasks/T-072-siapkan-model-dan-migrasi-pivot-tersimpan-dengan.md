@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-071
 created: "2026-10-21T10:24:12Z"
-updated: "2026-10-21T16:12:07Z"
+updated: "2026-10-21T16:27:01Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,26 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 223792
+    duration_ms: 219103
     summary: |-
-      …t":"127.0.0.1","port":34513,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792599082720,"service":"data-dashboard","host":"127.0.0.1","port":43807,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792599082835,"service":"data-dashboard","host":"127.0.0.1","port":36503,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792599082946,"service":"data-dashboard","host":"127.0.0.1","port":34679,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":30,"time":1792599083498,"service":"data-dashboard","datasetId":"t072mvib7kbqds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792599093249,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792599106225,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792599106248,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792599106252,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792599106264,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …t":"127.0.0.1","port":46243,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792599975684,"service":"data-dashboard","host":"127.0.0.1","port":39323,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792599975799,"service":"data-dashboard","host":"127.0.0.1","port":37523,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792599975906,"service":"data-dashboard","host":"127.0.0.1","port":44337,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1792599977256,"service":"data-dashboard","datasetId":"t072mvibqpxqds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792599986251,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792599996733,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792599996756,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792599996759,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792599996768,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  216 passed | 1 skipped (217)
-            Tests  2934 passed | 10 skipped (2944)
-         Start at  16:09:30
-         Duration  155.34s (tests 83%, import 13%, transform 3%)
+            Tests  2936 passed | 10 skipped (2946)
+         Start at  16:24:28
+         Duration  151.51s (tests 84%, import 13%, transform 3%)
 
-          Isolate  217 workers spawned · ~162ms startup each (spawn + environment, per file)
-                   at least ~11.58s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  217 workers spawned · ~163ms startup each (spawn + environment, per file)
+                   at least ~11.66s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -48,12 +48,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T16:12:07Z"
-    tree: 88bd2d6ac86e8f45d5c03ccb76fa3e7eab88948e0f6180c5fc0ca8b0ed63832c
+    at: "2026-10-21T16:27:01Z"
+    tree: 64e74573516e5a8076274d1a6a146392d0d59cd02478ba9b919f5605cff8b7b0
   audit:
-    at: "2026-10-21T16:07:53Z"
+    at: "2026-10-21T16:22:55Z"
     passed: true
-    tree: 88bd2d6ac86e8f45d5c03ccb76fa3e7eab88948e0f6180c5fc0ca8b0ed63832c
+    tree: 64e74573516e5a8076274d1a6a146392d0d59cd02478ba9b919f5605cff8b7b0
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 523 dirs visited, 4739 inodes visited, 1 Extract calls, 263.277397ms elapsed, 263.277935ms wall time
+          End status: 523 dirs visited, 4761 inodes visited, 1 Extract calls, 420.90014ms elapsed, 420.900397ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -85,7 +85,7 @@ Model SavedPivot tingkat dataset (ADR-0009): spec pivot tervalidasi (skema zod s
 - [x] Given pemilik dataset, when membuat/mengubah/mengganti nama pivot tersimpan lewat Server Action, then spec divalidasi terhadap skema sheet aktif, revision naik tiap simpan (CAS: revisi basi → CONFLICT, tidak menimpa), maks 50 per dataset (LIMIT_REACHED), AuditLog savedPivot.create/update/delete tercatat; non-pemilik (editor/viewer/orang lain) → NOT_FOUND
 - [x] Given pivot tersimpan dipakai 3 widget di 2 dashboard, when pemilik menghapusnya, then ditolak IN_USE dengan daftar dashboard; given tidak dipakai, then terhapus; given dataset dihapus, then dashboard, widget, dan pivot tersimpan terhapus dalam satu transaksi tanpa galat FK
 - [x] Given versi baru diaktifkan atau rollback dengan kolom berganti nama/hilang, then spec pivot tersimpan dipetakan dalam transaksi aktivasi yang sama dengan remap widget (sheet + kolom, termasuk kolom di field terhitung dan Saring); kolom tak ketemu → MISSING_COLUMN + missingColumns; versi yang hanya dipratinjau (AWAITING_CONFIRM) tidak mengubahnya
-- [ ] Given checklist ASVS (V4 akses, V5 validasi, V7 log) dan aitk audit, then hijau; review keamanan fokus IDOR (savedPivotId lintas dataset/pemilik) tanpa temuan Critical/High
+- [x] Given checklist ASVS (V4 akses, V5 validasi, V7 log) dan aitk audit, then hijau; review keamanan fokus IDOR (savedPivotId lintas dataset/pemilik) tanpa temuan Critical/High
 
 ## Risk
 - Impact: skema DB (tabel baru `SavedPivot`, kolom `Widget.savedPivotId` + FK NO ACTION + indeks), aktivasi/rollback versi (`versions/activation.ts` kini juga memetakan pivot tersimpan di transaksi yang sama), hapus dataset (cascade tambahan). Belum ada UI/binding widget (T-073/T-074), jadi widget lama dan jalur query tidak berubah.
@@ -99,7 +99,7 @@ Model SavedPivot tingkat dataset (ADR-0009): spec pivot tervalidasi (skema zod s
 - Untuk T-073: pengikatan widget harus menulis `Widget.savedPivotId` dengan pivot tersimpan ber-`datasetId` = dataset dashboard (dicek di transaksi lock dashboard). Hapus pivot tersimpan bersaing dengan pengikatan → FK NO ACTION menolak (P2003) dan service membalas `IN_USE`. `revision` siap dipakai di kunci cache (naik juga saat remap).
 - Bukti migrasi PG14 (container `postgres:14-alpine`, 2026-10-21): rantai migrasi sampai t060 → isi widget pivot/kpi → migrasi T-072 → md5 kolom lama Widget sebelum = sesudah (`d3b407a6…`), semua `savedPivotId` NULL, `prisma migrate diff` kosong; `migrate deploy` kode lama (tanpa folder T-072) = "No pending migrations" (ganti image saja aman).
 - Uji: `npm run check` hijau (216 file, 2934 uji, termasuk 9 uji integrasi PostgreSQL); e2e terarah `versions` 7/7 dan `mapping` 7/7 (aktivasi/rollback/pemetaan lewat UI). Catatan: `next dev` yang sudah berjalan sebelum `prisma generate` memegang Prisma Client lama (`tx.savedPivot` undefined → rollback UI "Terjadi kesalahan"); hentikan dev server setelah migrasi baru sebelum e2e.
-- AC5: checklist ASVS terisi, `aitk audit` hijau; review keamanan (IDOR) menunggu reviewer orkestrator.
+- AC5: checklist ASVS terisi, `aitk audit` hijau; review keamanan orkestrator `b5206c2..f1bd517`: 0 Critical/High. Low diperbaiki: L1 rate limit Server Action (`RULES.savedPivot`), L2 sheet yang tidak ada di mana pun (`gone`) kini NOT_FOUND seperti sheet dataset lain (tanpa oracle keberadaan; uji integrasi), L3 runbook: rollback ganti image saja tidak me-remap SavedPivot → mungkin perlu disimpan ulang setelah upgrade lagi.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
@@ -115,5 +115,5 @@ Model SavedPivot tingkat dataset (ADR-0009): spec pivot tervalidasi (skema zod s
 - [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — diverifikasi: tanpa dependency baru; aitk audit hijau.
 - [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — diverifikasi: maks 50 per dataset dihitung di bawah lock Dataset; CAS revisi (basi → CONFLICT tanpa menimpa); simpan setelah aktivasi → STALE; hapus vs pengikatan bersamaan dijaga FK NO ACTION → IN_USE.
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak ada file/unggahan.
-- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action hanya meneruskan field yang dikenal (uji actions.test.ts); belum ada Route Handler baru (endpoint baca untuk UI menyusul T-074).
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Server Action hanya meneruskan field yang dikenal (uji actions.test.ts); rate limit per user `RULES.savedPivot` (60/10 menit, RATE_LIMITED; Redis mati → fail-open + log) pada buat/ubah/hapus (uji actions.test.ts); belum ada Route Handler baru (endpoint baca untuk UI menyusul T-074).
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak mengubah konfigurasi; migrasi aditif.

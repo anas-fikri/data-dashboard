@@ -504,6 +504,9 @@ tidak membaca keduanya, jadi:
   `SELECT count(*) FROM "Widget" WHERE "savedPivotId" IS NOT NULL;` harus 0. Kode lama mengabaikan tabel dan
   kolom baru; hapus dataset tetap berjalan (cascade dataset → `SavedPivot`). Prisma lama tidak memakai
   migrasi yang belum dikenalnya (`migrate` container lama = no-op karena baris `_prisma_migrations` sudah ada).
+  Selama berjalan dengan image lama, aktivasi/rollback versi **tidak** memetakan ulang `SavedPivot` (kode
+  lama tidak mengenalnya), jadi setelah upgrade lagi pivot tersimpan bisa menunjuk sheet yang sudah dihapus
+  retensi dan perlu disimpan ulang oleh pemilik dataset (pilih kolom lagi di editornya).
 - **Membuang skema baru secara manual** (hanya bila memang ingin kembali ke skema lama tanpa dump; pivot
   tersimpan hilang): dalam satu transaksi `ALTER TABLE "Widget" DROP CONSTRAINT "Widget_savedPivotId_fkey";
   DROP INDEX "Widget_savedPivotId_idx"; ALTER TABLE "Widget" DROP COLUMN "savedPivotId"; DROP TABLE
