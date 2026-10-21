@@ -1,8 +1,8 @@
 ---
 id: T-067
 title: Tambahkan Tampilkan nilai sebagai pada pivot dan grafik
-status: in_progress
-profile: standard
+status: done
+profile: strict
 profile_pinned: true
 goal: G-7
 tags:
@@ -11,36 +11,96 @@ tags:
 depends_on:
   - T-066
 created: "2026-10-21T10:24:05Z"
-updated: "2026-10-21T11:35:00Z"
+updated: "2026-10-21T11:39:35Z"
+closed: "2026-10-21T11:39:35Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: a4869d3237d790f51047e944cbbb789feb030082
+paths:
+  - .prettierignore
+  - Dockerfile
+  - deploy/deploy.sh
+  - deploy/images.sh
+  - deploy/upgrade.sh
+  - docker-compose.prod.yml
+  - docs/panduan-developer.md
+  - docs/runbook-deploy.md
+  - renderer/Dockerfile
+  - renderer/server.ts
+  - renderer/version.ts
+  - src/app/(app)/layout.tsx
+  - src/app/health/page.tsx
+  - src/components/dashboards/config-sections.tsx
+  - src/components/dashboards/pivot-config-model.ts
+  - src/components/dashboards/pivot-config.tsx
+  - src/components/dashboards/widget-config-model.ts
+  - src/components/dashboards/widget-config.tsx
+  - src/components/shell/account-menu.tsx
+  - src/components/shell/app-shell.tsx
+  - src/components/widgets/chart-widget.tsx
+  - src/components/widgets/pivot-markup.tsx
+  - src/components/widgets/widget-query.ts
+  - src/features/exports/job.ts
+  - src/features/exports/pivot.ts
+  - src/features/exports/xlsx.ts
+  - src/features/query/pivot.ts
+  - src/features/query/service.ts
+  - src/features/query/spec.ts
+  - src/features/query/sql.ts
+  - src/features/query/widget.ts
+  - src/features/widgets/pivot-table.ts
+  - src/features/widgets/show-as.ts
+  - src/features/widgets/spec.ts
+  - src/lib/health/index.ts
+  - src/lib/version.ts
+  - src/worker/index.ts
+  - tests/components/show-as-ui.test.ts
+  - tests/e2e/health.spec.ts
+  - tests/e2e/pivot.spec.ts
+  - tests/e2e/shell.spec.ts
+  - tests/features/exports/fixtures.ts
+  - tests/features/exports/job.test.ts
+  - tests/features/query/show-as.test.ts
+  - tests/lib/health.test.ts
+  - tests/lib/version.test.ts
+  - tests/scripts/images-tag.test.ts
+  - tests/scripts/upgrade-gates.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T11:35:22Z"
+      findings: 4
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T11:35:23Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 217832
+    duration_ms: 223668
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792582454101,"service":"data-dashboard","host":"127.0.0.1","port":33921,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792582454156,"service":"data-dashboard","host":"127.0.0.1","port":38535,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792582454251,"service":"data-dashboard","host":"127.0.0.1","port":41055,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792582454353,"service":"data-dashboard","host":"127.0.0.1","port":39631,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792582466710,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792582472747,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792582472769,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792582472772,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792582472789,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792582700761,"service":"data-dashboard","host":"127.0.0.1","port":34947,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582700812,"service":"data-dashboard","host":"127.0.0.1","port":37987,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792582700911,"service":"data-dashboard","host":"127.0.0.1","port":36199,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582701045,"service":"data-dashboard","host":"127.0.0.1","port":40987,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792582710623,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792582724016,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792582724040,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792582724043,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792582724058,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  208 passed | 1 skipped (209)
             Tests  2729 passed | 10 skipped (2739)
-         Start at  11:32:26
-         Duration  152.20s (tests 84%, import 13%, transform 3%)
+         Start at  11:36:28
+         Duration  157.32s (tests 84%, import 13%, transform 3%)
 
-          Isolate  209 workers spawned · ~167ms startup each (spawn + environment, per file)
-                   at least ~11.49s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  209 workers spawned · ~168ms startup each (spawn + environment, per file)
+                   at least ~11.54s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.0.0 audit
@@ -48,12 +108,21 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T11:35:00Z"
+    at: "2026-10-21T11:39:07Z"
     tree: ef8f19a7e4e928555b2d50f903a9854dae9d6aa3177f2ca7a15a6843af274d9f
+  commits:
+    - 14e93e4
+    - 20985af
+    - 60920fa
+    - a4869d3
+    - f9bd2d5
+  acceptance:
+    total: 5
+    done: 5
   audit:
-    at: "2026-10-21T11:18:35Z"
+    at: "2026-10-21T11:39:08Z"
     passed: true
-    tree: 5c8065396bbc17449187bea395c8713e5d6b06beb52a9b1422a218d6cf674a74
+    tree: ef8f19a7e4e928555b2d50f903a9854dae9d6aa3177f2ca7a15a6843af274d9f
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +130,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 519 dirs visited, 4308 inodes visited, 1 Extract calls, 259.348699ms elapsed, 259.349248ms wall time
+          End status: 519 dirs visited, 4337 inodes visited, 1 Extract calls, 228.157419ms elapsed, 228.157781ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -121,3 +190,11 @@ Setara 'Show Values As' Excel: % dari total keseluruhan, % dari total baris, % d
 - [x] V12 Files and resources: N/A — tidak ada unggahan/path baru; XLSX hanya gaya numFmt baru
 - [x] V13 API and web service: verified — skema body /api/query dan ekspor tidak berubah; spec widget divalidasi zod di server
 - [x] V14 Configuration: verified — tanpa konfigurasi/env baru; npm audit hijau
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T11:39:07Z (223668 ms)
+- Acceptance criteria: 5/5 satisfied
+- Commits: 14e93e4, 20985af, 60920fa, a4869d3, f9bd2d5
+- Review pass 1 by claude-reviewer-subagent: 4 findings
+- Review pass 2 by claude-code: 0 findings
