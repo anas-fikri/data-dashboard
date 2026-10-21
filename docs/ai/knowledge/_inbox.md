@@ -20,3 +20,4 @@
 - Kanvas dashboard dirender server: klik tombol kartu sebelum hidrasi hilang; e2e menunggu [data-testid=dashboard-canvas][data-hydrated] (bukan jeda waktu). <!-- aitk:k date=2026-10-21 task=T-z8y2 -->
 - Klik tombol sesaat setelah goto bisa jatuh sebelum hidrasi React — beri penanda data-hydrated lewat useEffect mount dan tunggu di e2e. <!-- aitk:k date=2026-10-21 task=T-z8y2 -->
 - Pivot 10 jt baris tanpa cache 4,6–10,6 s di 4 vCPU; Top N +25–33 %, calc/showAs ≈ gratis; cache hit 2–6 ms. <!-- aitk:k date=2026-10-21 task=T-075 tags=test,perf -->
+- Ctrl+Z bawaan Chrome berlaku untuk seluruh dokumen dan mengubah input yang tidak difokus. <!-- aitk:k date=2026-10-21 task=T-ev34 tags=e2e -->

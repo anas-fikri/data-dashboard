@@ -1,41 +1,129 @@
 ---
 id: T-ev34
 title: 'Perbaiki e2e sharing: urungkan setelah dialog Bagikan menutup kanvas mode edit'
-status: in_progress
-profile: standard
+status: done
+profile: strict
 tags:
   - e2e
 created: "2026-10-21T18:24:30Z"
-updated: "2026-10-21T20:42:17Z"
+updated: "2026-10-21T21:22:55Z"
+closed: "2026-10-21T21:22:55Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: e0ec8e7649c72fc3d704a97b6aacd01ddaba4101
+paths:
+  - deploy/upgrade.sh
+  - docs/runbook-deploy.md
+  - playwright.config.ts
+  - prisma/migrations/20261021170000_t072_saved_pivot/migration.sql
+  - prisma/schema.prisma
+  - scripts/dev-saved-pivot-fixture.mjs
+  - scripts/perf-pivot-advanced.ts
+  - scripts/perf.mjs
+  - src/app/(app)/dashboards/[id]/page.tsx
+  - src/app/(app)/datasets/[id]/page.tsx
+  - src/app/(app)/datasets/[id]/pivot-tersimpan/[pivotId]/page.tsx
+  - src/app/(app)/datasets/[id]/pivot-tersimpan/baru/page.tsx
+  - src/components/dashboards/bound-config-model.ts
+  - src/components/dashboards/bound-config.tsx
+  - src/components/dashboards/calc-editor.tsx
+  - src/components/dashboards/config-saves.ts
+  - src/components/dashboards/dashboard-api.ts
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/pivot-config.tsx
+  - src/components/dashboards/pivot-saved-filters.tsx
+  - src/components/dashboards/query-scope.ts
+  - src/components/dashboards/use-dashboard-editor.ts
+  - src/components/dashboards/widget-card.tsx
+  - src/components/dashboards/widget-config.tsx
+  - src/components/dashboards/widget-source.tsx
+  - src/components/render/print-card.tsx
+  - src/components/render/print-pivot.tsx
+  - src/components/saved-pivots/saved-pivot-editor.tsx
+  - src/components/saved-pivots/saved-pivot-list.tsx
+  - src/components/saved-pivots/saved-pivot-page.tsx
+  - src/components/ui/page-header.tsx
+  - src/components/widgets/absent-note.tsx
+  - src/components/widgets/body-state.ts
+  - src/components/widgets/kpi-view.tsx
+  - src/components/widgets/table-expand.tsx
+  - src/components/widgets/widget-body.tsx
+  - src/components/widgets/widget-query.ts
+  - src/features/audit/service.ts
+  - src/features/auth/rate-limit.ts
+  - src/features/dashboards/http.ts
+  - src/features/dashboards/service.ts
+  - src/features/exports/job.ts
+  - src/features/exports/schema.ts
+  - src/features/exports/service.ts
+  - src/features/query/runtime.ts
+  - src/features/query/service.ts
+  - src/features/query/widget.ts
+  - src/features/saved-pivots/actions.ts
+  - src/features/saved-pivots/service.ts
+  - src/features/versions/activation.ts
+  - src/features/widgets/bound.ts
+  - tests/components/bound-config.test.ts
+  - tests/components/calc-editor.test.ts
+  - tests/components/kpi-line-height.test.ts
+  - tests/components/native-undo-guard.test.ts
+  - tests/components/page-header.test.ts
+  - tests/components/pivot-filters.test.ts
+  - tests/components/pivot-ui.test.ts
+  - tests/components/saved-pivot-ui.test.ts
+  - tests/components/widget-absent.test.ts
+  - tests/e2e/bound-widgets.spec.ts
+  - tests/e2e/dashboards.spec.ts
+  - tests/e2e/pivot-lanjutan.spec.ts
+  - tests/e2e/saved-pivot-widgets.spec.ts
+  - tests/features/dashboards/dashboards.test.ts
+  - tests/features/dashboards/http.test.ts
+  - tests/features/exports/bound-export.test.ts
+  - tests/features/query/__snapshots__/bound-legacy.test.ts.snap
+  - tests/features/query/bound-legacy.test.ts
+  - tests/features/query/bound-widgets.test.ts
+  - tests/features/query/sharing-repo.test.ts
+  - tests/features/saved-pivots/actions.test.ts
+  - tests/features/saved-pivots/binding.db.test.ts
+  - tests/features/saved-pivots/service.db.test.ts
+  - tests/features/versions/activation.test.ts
+  - tests/features/widgets/bound.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T21:19:10Z"
+      findings: 1
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T21:19:10Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 204795
+    duration_ms: 198767
     summary: |-
-      …t":"127.0.0.1","port":45481,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792615260832,"service":"data-dashboard","host":"127.0.0.1","port":42215,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792615260931,"service":"data-dashboard","host":"127.0.0.1","port":40627,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792615261041,"service":"data-dashboard","host":"127.0.0.1","port":35887,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":30,"time":1792615262348,"service":"data-dashboard","datasetId":"t072mvikuc4xds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792615276039,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792615286291,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792615286313,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792615286316,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792615286333,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …t":"127.0.0.1","port":39267,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792617706376,"service":"data-dashboard","host":"127.0.0.1","port":39651,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792617706483,"service":"data-dashboard","host":"127.0.0.1","port":33855,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792617706585,"service":"data-dashboard","host":"127.0.0.1","port":39309,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1792617707185,"service":"data-dashboard","datasetId":"t072mvimaqieds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792617718854,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792617731165,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792617731188,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792617731197,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792617731207,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
-       Test Files  224 passed | 1 skipped (225)
-            Tests  3014 passed | 10 skipped (3024)
-         Start at  20:39:24
-         Duration  138.96s (tests 83%, import 14%, transform 3%)
+       Test Files  225 passed | 1 skipped (226)
+            Tests  3021 passed | 10 skipped (3031)
+         Start at  21:20:11
+         Duration  137.53s (tests 83%, import 14%, transform 3%)
 
-          Isolate  225 workers spawned · ~142ms startup each (spawn + environment, per file)
-                   at least ~10.53s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  226 workers spawned · ~144ms startup each (spawn + environment, per file)
+                   at least ~10.68s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.2.0 audit
@@ -43,12 +131,29 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T20:41:44Z"
-    tree: 758c3436bed73fe182ae4b1eb55a7c3d595cbc1c821dea4d255442bf916e713b
+    at: "2026-10-21T21:22:30Z"
+    tree: f9480a784dccb1da9af6a9704d003ab568fcc961a1814b3e4e26f5b69ba807e6
+  commits:
+    - 0a6567a
+    - 21e6bd7
+    - 3f0008e
+    - 460a7f3
+    - 594ca78
+    - 62dfa2b
+    - bb53812
+    - c7bb4f1
+    - ccb8465
+    - e0ec8e7
+    - e435538
+    - eb97953
+    - ee2a976
+  acceptance:
+    total: 1
+    done: 1
   audit:
-    at: "2026-10-21T20:41:48Z"
+    at: "2026-10-21T21:22:31Z"
     passed: true
-    tree: 758c3436bed73fe182ae4b1eb55a7c3d595cbc1c821dea4d255442bf916e713b
+    tree: f9480a784dccb1da9af6a9704d003ab568fcc961a1814b3e4e26f5b69ba807e6
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -56,7 +161,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 528 dirs visited, 5148 inodes visited, 1 Extract calls, 231.927037ms elapsed, 231.927279ms wall time
+          End status: 528 dirs visited, 5237 inodes visited, 1 Extract calls, 224.809639ms elapsed, 224.809921ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -126,3 +231,11 @@ Validation: uji unit tests/components/native-undo-guard.test.ts; e2e --project=s
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: hanya penanganan tombol keyboard di klien (mencegah urungkan bawaan peramban); tidak ada input, data, endpoint, atau konfigurasi baru.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — N/A: hanya penanganan tombol keyboard di klien (mencegah urungkan bawaan peramban); tidak ada input, data, endpoint, atau konfigurasi baru.
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: hanya penanganan tombol keyboard di klien (mencegah urungkan bawaan peramban); tidak ada input, data, endpoint, atau konfigurasi baru.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T21:22:30Z (198767 ms)
+- Acceptance criteria: 1/1 satisfied
+- Commits: 0a6567a, 21e6bd7, 3f0008e, 460a7f3, 594ca78, 62dfa2b, bb53812, c7bb4f1, ccb8465, e0ec8e7, e435538, eb97953, ee2a976
+- Review pass 1 by claude-reviewer-subagent: 1 findings
+- Review pass 2 by claude-code: 0 findings
