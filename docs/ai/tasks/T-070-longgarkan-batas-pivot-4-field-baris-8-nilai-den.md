@@ -1,8 +1,8 @@
 ---
 id: T-070
 title: 'Longgarkan batas pivot: 4 field baris, 8 nilai, dengan anggaran sel'
-status: in_progress
-profile: standard
+status: blocked
+profile: strict
 profile_pinned: true
 goal: G-7
 tags:
@@ -11,36 +11,94 @@ tags:
 depends_on:
   - T-068
 created: "2026-10-21T10:24:09Z"
-updated: "2026-10-21T15:16:15Z"
+updated: "2026-10-21T15:21:07Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 52486eb4002b86e8dd134e0788d8022fd3ae959a
+paths:
+  - CHANGELOG.md
+  - docs/runbook-deploy.md
+  - scripts/perf-pivot-levels.ts
+  - scripts/perf.mjs
+  - src/components/dashboards/calc-editor-model.ts
+  - src/components/dashboards/calc-editor.tsx
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/filters/filter-model.ts
+  - src/components/dashboards/pivot-config-model.ts
+  - src/components/dashboards/pivot-config.tsx
+  - src/components/dashboards/use-grid-width.ts
+  - src/components/dashboards/widget-config-model.ts
+  - src/components/dashboards/widget-config.tsx
+  - src/components/render/print-card.tsx
+  - src/components/widgets/chart-widget.tsx
+  - src/components/widgets/kpi-fit.ts
+  - src/components/widgets/kpi-view.tsx
+  - src/components/widgets/pivot-filter-menu.tsx
+  - src/components/widgets/pivot-markup.tsx
+  - src/components/widgets/widget-body.tsx
+  - src/components/widgets/widget-query.ts
+  - src/features/exports/job.ts
+  - src/features/exports/pivot.ts
+  - src/features/query/filters.ts
+  - src/features/query/pivot.ts
+  - src/features/query/spec.ts
+  - src/features/query/sql.ts
+  - src/features/query/widget.ts
+  - src/features/widgets/calc-tokens.ts
+  - src/features/widgets/calc.ts
+  - src/features/widgets/pivot-table.ts
+  - src/features/widgets/remap.ts
+  - src/features/widgets/spec.ts
+  - tests/components/calc-editor.test.ts
+  - tests/components/pivot-ui.test.ts
+  - tests/e2e/calc-widgets.spec.ts
+  - tests/e2e/dashboards.spec.ts
+  - tests/e2e/pivot.spec.ts
+  - tests/e2e/widgets.spec.ts
+  - tests/features/exports/fixtures.ts
+  - tests/features/exports/job.test.ts
+  - tests/features/query/calc.test.ts
+  - tests/features/query/pivot-legacy-cases.ts
+  - tests/features/query/pivot-levels.test.ts
+  - tests/features/query/pivot.test.ts
+  - tests/features/widgets/calc-tokens.test.ts
+  - tests/features/widgets/calc.test.ts
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-21T15:16:48Z"
+      findings: 3
+    - "n": 2
+      by: claude-code
+      at: "2026-10-21T15:16:49Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 225460
+    duration_ms: 228595
     summary: |-
       …: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792595730088,"service":"data-dashboard","host":"127.0.0.1","port":43247,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595730144,"service":"data-dashboard","host":"127.0.0.1","port":36761,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792595730247,"service":"data-dashboard","host":"127.0.0.1","port":44163,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595730361,"service":"data-dashboard","host":"127.0.0.1","port":37621,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792595742864,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792595749562,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792595749585,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792595749592,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792595749605,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792595993193,"service":"data-dashboard","host":"127.0.0.1","port":39687,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792595993252,"service":"data-dashboard","host":"127.0.0.1","port":34953,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792595993356,"service":"data-dashboard","host":"127.0.0.1","port":33663,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792595993475,"service":"data-dashboard","host":"127.0.0.1","port":33747,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792596005345,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792596016295,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792596016319,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792596016321,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792596016334,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  213 passed | 1 skipped (214)
             Tests  2891 passed | 10 skipped (2901)
-         Start at  15:13:37
-         Duration  156.33s (tests 84%, import 13%, transform 3%)
+         Start at  15:17:57
+         Duration  159.53s (tests 84%, import 13%, transform 3%)
 
-          Isolate  214 workers spawned · ~163ms startup each (spawn + environment, per file)
-                   at least ~11.47s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  214 workers spawned · ~165ms startup each (spawn + environment, per file)
+                   at least ~11.61s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.1.0 audit
@@ -48,12 +106,35 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T15:16:15Z"
+    at: "2026-10-21T15:20:38Z"
     tree: d30a8fc83037d23daf33e99759536b803c542271d2f1e6e4454ebecb5fd174cc
+  commits:
+    - 14e93e4
+    - 17cb5cc
+    - 20985af
+    - 4115c8d
+    - 468e913
+    - 52486eb
+    - 60920fa
+    - 693edf2
+    - 6f54377
+    - 864037d
+    - 8ce72cf
+    - a4869d3
+    - a80b5ae
+    - a821c13
+    - c4a56e5
+    - d13f79e
+    - d23d4b2
+    - d76daf2
+    - f9bd2d5
+  acceptance:
+    total: 5
+    done: 4
   audit:
-    at: "2026-10-21T15:04:28Z"
+    at: "2026-10-21T15:20:39Z"
     passed: true
-    tree: b49649eb56912c02afc6f21a15119a8867e10b824ad3a89c050ad92f0c888dc1
+    tree: d30a8fc83037d23daf33e99759536b803c542271d2f1e6e4454ebecb5fd174cc
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -61,7 +142,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 520 dirs visited, 4560 inodes visited, 1 Extract calls, 269.380126ms elapsed, 269.380408ms wall time
+          End status: 520 dirs visited, 4627 inodes visited, 1 Extract calls, 260.918887ms elapsed, 260.919377ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -127,3 +208,11 @@ Pivot baris 1–4 (kini 2) dan nilai 1–8 (kini 3), subtotal per level, dengan 
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa berkas
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — terverifikasi: pivotFiltersSchema strict (enum peran diperluas, maks. = jumlah peran), body /api/query tetap strict
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tanpa perubahan konfigurasi
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-21T15:20:38Z (228595 ms)
+- Acceptance criteria: 4/5 satisfied
+- Commits: 14e93e4, 17cb5cc, 20985af, 4115c8d, 468e913, 52486eb, 60920fa, 693edf2, 6f54377, 864037d, 8ce72cf, a4869d3, a80b5ae, a821c13, c4a56e5, d13f79e, d23d4b2, d76daf2, f9bd2d5
+- Review pass 1 by claude-reviewer-subagent: 3 findings
+- Review pass 2 by claude-code: 0 findings
