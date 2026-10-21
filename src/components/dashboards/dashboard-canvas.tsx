@@ -5,7 +5,7 @@ import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import ReactGridLayout, { useContainerWidth, type Layout } from "react-grid-layout";
+import ReactGridLayout, { type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { IconRefresh } from "@tabler/icons-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import {
   TABLET_COLS,
   tabletLayout,
 } from "./layout-ops";
+import { useCanvasWidth } from "./use-canvas-width";
 import {
   isFrozen,
   useDashboardEditor,
@@ -154,7 +155,7 @@ function Canvas(props: CanvasProps) {
   const tablet = useIsTablet();
   const wide = useIsWide();
   const coarse = useIsCoarsePointer();
-  const { width, containerRef, mounted } = useContainerWidth();
+  const { width, containerRef, ref: canvasRef } = useCanvasWidth();
   const root = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -185,7 +186,7 @@ function Canvas(props: CanvasProps) {
   function revealWidget(id: string) {
     const card = root.current?.querySelector<HTMLElement>(`[data-widget-id="${id}"]`);
     const item = (shown ?? ed.layout).find((it) => it.i === id);
-    const grid = containerRef.current;
+    const grid = canvasRef.current;
     if (!card || !item) return;
     if (phone || !grid) return card.scrollIntoView({ block: "start" });
     const gap = parseFloat(getComputedStyle(card).scrollMarginTop) || 0; // topbar + 0.5rem (sama dengan scroll-padding-top global)
@@ -378,7 +379,7 @@ function Canvas(props: CanvasProps) {
                       return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
                     })}
                   </div>
-                ) : mounted ? (
+                ) : (
                   <ReactGridLayout
                     // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
                     // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
@@ -413,11 +414,6 @@ function Canvas(props: CanvasProps) {
                       return w ? card(w, it) : <div key={it.i} />;
                     })}
                   </ReactGridLayout>
-                ) : (
-                  <div
-                    className="h-64 animate-pulse rounded-lg bg-muted motion-reduce:animate-none"
-                    aria-hidden
-                  />
                 )}
               </div>
               {panelItem && panelWidget ? (
