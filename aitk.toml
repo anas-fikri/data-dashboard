@@ -18,3 +18,7 @@ scanners = [
   { name = "osv-scanner (dependencies, offline db)", cmd = "osv-scanner scan source --recursive --offline-vulnerabilities --download-offline-databases ." },
   { name = "npm audit (prod high, dev critical)", cmd = "npm run audit" },
 ]
+
+[release]
+# Rilis pertama (G-6 selesai, siap produksi) = 1.0.0; berikutnya SemVer dari Conventional Commits.
+initial_version = "1.0.0"
