@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -31,12 +31,36 @@ const cache = (maxBytes = 1_000, ttlMs = 30 * 60 * 1000) =>
   new OrderCache({ dir, maxBytes, ttlMs, now: () => now });
 
 describe("OrderCache", () => {
-  it("direktori dikosongkan saat dibuat (indeks hanya di memori)", () => {
+  it("subdirektori per proses: proses mati dibersihkan, proses lain yang hidup tidak disentuh (L4)", () => {
+    mkdirSync(join(dir, "999999999-dead"), { recursive: true });
+    writeFileSync(join(dir, "999999999-dead", "perm.parquet"), "x");
+    // pid 1 selalu hidup: milik "proses lain" yang berbagi QUERY_CACHE_DIR.
+    mkdirSync(join(dir, "1-other"), { recursive: true });
+    writeFileSync(join(dir, "1-other", "perm.parquet"), "x");
     const c1 = cache();
-    writeFileSync(join(dir, "sisa.parquet"), "x");
-    cache();
-    expect(readdirSync(dir)).toEqual([]);
-    expect(c1.size).toBe(0);
+    const c2 = cache();
+    expect(existsSync(join(dir, "999999999-dead"))).toBe(false);
+    expect(existsSync(join(dir, "1-other", "perm.parquet"))).toBe(true);
+    expect(c1.dir).not.toBe(c2.dir);
+    expect(existsSync(c1.dir)).toBe(true);
+    expect(c1.dir.startsWith(join(dir, `${process.pid}-`))).toBe(true);
+  });
+
+  it("gagal bangun dijeda (L5): failed() benar sampai jeda lewat", async () => {
+    const c = cache();
+    expect(c.failed("k")).toBe(false);
+    c.markFailed("k", 1_000);
+    expect(c.failed("k")).toBe(true);
+    now += 1_001;
+    expect(c.failed("k")).toBe(false);
+    await expect(
+      c.buildPerm("err", meta(), 10, async () => {
+        throw new Error("x");
+      }),
+    ).rejects.toThrow();
+    expect(c.failed("err")).toBe(true);
+    now += 5 * 60 * 1000 + 1;
+    expect(c.failed("err")).toBe(false);
   });
 
   it("perm dibangun sekali (single-flight) dan dicatat byte-nya", async () => {
@@ -69,7 +93,7 @@ describe("OrderCache", () => {
     expect(c.lookup("a")).toBe(a);
     expect(c.lookup("c")).not.toBeNull();
     expect(c.bytes).toBe(200);
-    expect(readdirSync(dir)).toHaveLength(2);
+    expect(readdirSync(c.dir)).toHaveLength(2);
   });
 
   it("entri yang sedang dibaca tidak dibuang; potongan tanpa pin dibuang dulu", async () => {
@@ -137,7 +161,7 @@ describe("OrderCache", () => {
     c.invalidate("s2", null);
     expect(c.size).toBe(0);
     expect(c.bytes).toBe(0);
-    expect(readdirSync(dir)).toEqual([]);
+    expect(readdirSync(c.dir)).toEqual([]);
   });
 
   it("entri yang dibuang selagi dibaca: berkas dihapus setelah pin terakhir dilepas", async () => {
@@ -183,7 +207,7 @@ describe("OrderCache", () => {
     ).rejects.toThrow("duckdb");
     expect(await c.buildPerm("sibuk", meta(), 10, async () => null)).toBeNull();
     expect(c.size).toBe(0);
-    expect(readdirSync(dir)).toEqual([]);
+    expect(readdirSync(c.dir)).toEqual([]);
     expect(c.buildingPerm).toBe(false);
   });
 });

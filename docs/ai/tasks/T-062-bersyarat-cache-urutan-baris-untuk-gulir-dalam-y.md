@@ -11,7 +11,7 @@ tags:
 depends_on:
   - T-061
 created: "2026-10-15T02:30:59Z"
-updated: "2026-10-21T02:03:20Z"
+updated: "2026-10-21T02:16:46Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -21,31 +21,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 190066
+    duration_ms: 196829
     summary: |-
-      …t
-      > vitest run
-
-
-       RUN  v5.0.3 /home/user/data-dashboard
-
-      {"level":40,"time":1792548160112,"service":"data-dashboard","host":"127.0.0.1","port":37793,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792548160170,"service":"data-dashboard","host":"127.0.0.1","port":34719,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792548160267,"service":"data-dashboard","host":"127.0.0.1","port":33145,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792548160377,"service":"data-dashboard","host":"127.0.0.1","port":33493,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792548167720,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792548181409,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792548181432,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792548181438,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792548181447,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …r: disk penuh","msg":"cache urutan grid gagal dibangun"}
+      {"level":40,"time":1792548940645,"service":"data-dashboard","host":"127.0.0.1","port":37645,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792548940700,"service":"data-dashboard","host":"127.0.0.1","port":45863,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792548940795,"service":"data-dashboard","host":"127.0.0.1","port":46717,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792548940897,"service":"data-dashboard","host":"127.0.0.1","port":44917,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792548950562,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792548958102,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792548958125,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792548958132,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792548958142,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  203 passed | 1 skipped (204)
-            Tests  2680 passed | 10 skipped (2690)
-         Start at  02:01:06
-         Duration  131.94s (tests 85%, import 13%, transform 2%)
+            Tests  2684 passed | 10 skipped (2694)
+         Start at  02:14:06
+         Duration  132.36s (tests 85%, import 13%, transform 2%)
 
-          Isolate  204 workers spawned · ~147ms startup each (spawn + environment, per file)
-                   at least ~9.83s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  204 workers spawned · ~142ms startup each (spawn + environment, per file)
+                   at least ~9.51s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@0.1.0 audit
@@ -53,12 +48,12 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-21T02:03:20Z"
-    tree: a2f2dde6e2b74565b37e17ab042d5d3cacfa859ad117c8ecd0ee3f9fbb913a2c
+    at: "2026-10-21T02:16:20Z"
+    tree: b50a594f0b925050d17d4417d0ead64f449693ae29032798edec788f04fa118b
   audit:
-    at: "2026-10-21T01:59:39Z"
+    at: "2026-10-21T02:16:21Z"
     passed: true
-    tree: a2f2dde6e2b74565b37e17ab042d5d3cacfa859ad117c8ecd0ee3f9fbb913a2c
+    tree: b50a594f0b925050d17d4417d0ead64f449693ae29032798edec788f04fa118b
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -66,7 +61,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
-          End status: 517 dirs visited, 3917 inodes visited, 1 Extract calls, 252.509577ms elapsed, 252.510175ms wall time
+          End status: 517 dirs visited, 3971 inodes visited, 1 Extract calls, 218.62536ms elapsed, 218.625656ms wall time
           Loaded npm local db from /root/.cache/osv-scalibr/npm/all.zip
 
           No issues found
@@ -125,6 +120,23 @@ cache) dan T-017/T-046 (ekspor tidak memakai cache) tidak berubah.
   menembusnya butuh salinan ±1 GB per tampilan (di atas anggaran 1 GiB) atau row group typed lebih kecil
   (perubahan ingest, di luar rencana) — perlu keputusan pemilik. Beban stres urut + cache: rasio widget 2,17
   (tanpa cache 2,20), blok grid selesai 2,7× lebih banyak. AC2 dibuktikan uji unit/integrasi. Angka VM belum.
+- 2026-10-21 review putaran 1 (0 blocking) diperbaiki: M1 potongan bersama yang gagal karena peminta pertama
+  membatalkan → penunggu mencoba lagi sekali dengan gerbang/sinyalnya sendiri (uji M1); L2 VERSION_CHANGED hanya
+  membuang entri sheet yang versinya bukan versi aktif; L3 batas byte lunak didokumentasikan (bisa sesaat lewat
+  sebesar satu berkas yang sedang ditulis — perm ±37 MB / potongan ±5 MB pada 10 jt × 30 kolom — ditambah
+  entri yang sedang dibaca; dibuang begitu pin dilepas); L4 berkas di subdirektori per proses
+  (`order/<pid>-<acak>`), hanya sisa proses mati yang dibersihkan; L5 permutasi gagal dijeda per kunci (sibuk
+  30 s, lainnya 5 menit).
+- **AC1 — keputusan pemilik (dibiarkan belum dicentang).** Angka 10 jt × 30 kolom, 4 vCPU: blok berikutnya
+  (gulir lanjutan) p95 24 ms; lompatan ke wilayah baru p95 3,3 s (tanpa cache 6,5 s). Pilihan:
+  1. **Terima rumusan "gulir lanjutan"** (blok sesudah blok yang sudah dimuat) sebagai AC1 → selesai tanpa
+     biaya tambahan; lompatan jauh tetap ±3 s (masih ≤ 3 s target blok pertama).
+  2. **Row group typed lebih kecil di ingest** (mis. 4.096 baris): ambil 200 `_row` acak turun ±2,4 → ±0,5 s
+     (eksperimen; salinan 961 MB), sehingga lompatan perkiraan ±0,6–1 s (belum diukur ujung-ke-ujung); berlaku untuk data baru/recast, berkas sedikit
+     lebih besar, scan widget sedikit lebih lambat — perubahan ingest di luar rencana P-30, perlu ADR + ukur.
+  3. **Anggaran lebih besar** (`GRID_ORDER_CACHE_BYTES` ≥ ±1,2 GB per tampilan aktif) untuk salinan terurut
+     penuh: lompatan ±0,2 s, tetapi bangun 49 s CPU per tampilan (Out of Memory pada varian berpartisi di
+     1 GB) dan disk ±1,06 GB per urutan — tidak disarankan di 4 vCPU.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

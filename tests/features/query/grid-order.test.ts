@@ -280,6 +280,67 @@ describe("T-062 AC1: cache urutan memberi baris yang sama dengan jalur tanpa cac
     order.cache.clear();
   });
 
+  it("M1: peminta pertama membatalkan potongan bersama → penunggu mencoba lagi dengan gerbangnya sendiri", async () => {
+    const order = newOrder(40);
+    const view = { sort: [{ pos: 5, dir: "asc" as const }] };
+    await rows(body(view), deps(undefined, order));
+    await order.cache.idle();
+    let hold!: () => void;
+    const held = new Promise<void>((r) => (hold = r));
+    let started!: () => void;
+    const copyStarted = new Promise<void>((r) => (started = r));
+    let copies = 0;
+    const gated: GridDeps["engine"] = {
+      withSlot: (u, fn) => engine.withSlot(u, fn),
+      exec: async (sql, params, ms, signal) => {
+        if (sql.startsWith("COPY") && copies++ === 0) {
+          started();
+          await held;
+        }
+        return engine.exec(sql, params, ms, signal);
+      },
+    };
+    const ctl = new AbortController();
+    const a = runGridRows(OWNER, SHEET, body({ ...view, rowStart: 100, rowCount: 10 }), {
+      ...deps(undefined, order),
+      engine: gated,
+      signal: ctl.signal,
+    });
+    await copyStarted;
+    const bBody = body({ ...view, rowStart: 110, rowCount: 10 });
+    const b = runGridRows(OWNER, SHEET, bBody, { ...deps(undefined, order), engine: gated });
+    await new Promise((r) => setTimeout(r, 50)); // b menunggu pekerjaan bersama
+    ctl.abort();
+    hold();
+    expect((await a).ok).toBe(false);
+    expect(await b).toEqual(await rows(bBody, deps()));
+    expect(copies).toBe(2);
+    order.cache.clear();
+  });
+
+  it("L5: permutasi yang gagal dibangun tidak dijadwalkan ulang di permintaan berikutnya", async () => {
+    const order = newOrder();
+    let attempts = 0;
+    order.background = {
+      ...order.background,
+      engine: {
+        withSlot: (u, fn) => engine.withSlot(u, fn),
+        exec: async () => {
+          attempts++;
+          throw new Error("disk penuh");
+        },
+      },
+    };
+    const cached = deps(undefined, order);
+    const view = { sort: [{ pos: 2, dir: "desc" as const }] };
+    await rows(body(view), cached);
+    await order.cache.idle();
+    await rows(body({ ...view, rowStart: 50 }), cached);
+    await order.cache.idle();
+    expect(attempts).toBe(1);
+    expect(order.cache.size).toBe(0);
+  });
+
   it("tampilan kecil (< minRows) dan jalur polos tidak membangun cache", async () => {
     const order = { ...newOrder(), minRows: ORDER_MIN_ROWS };
     const cached = deps(undefined, order);
@@ -307,13 +368,13 @@ describe("T-062 AC2: versi/revisi berganti → entri lama dibuang, tidak dipakai
     await rows(body(view), cached);
     await order.cache.idle();
     expect(order.cache.size).toBe(1);
-    const dirs = readdirSync(join(root, "order"));
+    const dirs = readdirSync(order.cache.dir);
     rev = 2;
     sqlLog.length = 0;
     await rows(body({ ...view, rowStart: 60 }), cached);
     // Jawaban dari jalur tanpa cache; permutasi revisi baru dijadwalkan.
     expect(sqlLog.some((s) => s.includes("_pos BETWEEN"))).toBe(false);
-    for (const d of dirs) expect(existsSync(join(root, "order", d))).toBe(false);
+    for (const d of dirs) expect(existsSync(join(order.cache.dir, d))).toBe(false);
     await order.cache.idle();
     expect(order.cache.size).toBe(1);
     order.cache.clear();
@@ -331,7 +392,19 @@ describe("T-062 AC2: versi/revisi berganti → entri lama dibuang, tidak dipakai
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.code).toBe("VERSION_CHANGED");
     expect(order.cache.size).toBe(0);
-    expect(readdirSync(join(root, "order"))).toEqual([]);
+    expect(readdirSync(order.cache.dir)).toEqual([]);
+  });
+
+  it("L2: permintaan versi basi tidak membuang entri versi aktif", async () => {
+    const order = newOrder();
+    const s = () => sheet({ versionId: VER2, activeVersionId: VER2 });
+    const cached = deps(s, order);
+    await rows(body({ ...view, versionId: VER2 }), cached);
+    await order.cache.idle();
+    const r = await runGridRows(OWNER, SHEET, body(view), cached);
+    expect(r.ok).toBe(false);
+    expect(order.cache.size).toBe(1);
+    order.cache.clear();
   });
 
   it("versi lain dengan id sheet yang sama tidak pernah membaca entri versi lama", async () => {

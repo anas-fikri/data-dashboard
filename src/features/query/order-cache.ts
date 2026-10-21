@@ -10,10 +10,19 @@
  * Batas: total byte ≤ maxBytes (GRID_ORDER_CACHE_BYTES; entri yang paling lama tidak dipakai dibuang
  * dulu, yang sedang dibaca tidak pernah), entri tidak dipakai > ttlMs (30 menit) dibuang. Kunci memuat
  * versi + revisi, dan invalidate() membuang entri sheet yang versi/revisinya sudah berganti — entri
- * tidak pernah dipakai untuk versi lain. Direktori dikosongkan saat cache dibuat (indeks hanya di memori,
- * satu proses per direktori cache seperti ParquetCache).
+ * tidak pernah dipakai untuk versi lain.
+ * Batas byte bersifat lunak (review T-062 L3): ukuran berkas baru diketahui setelah DuckDB menulisnya,
+ * jadi pemakaian bisa sesaat melewati maxBytes sebesar berkas yang sedang ditulis (perm ±4 B/baris,
+ * potongan ±5 MB) ditambah entri/potongan yang sedang dibaca (dipin, tidak bisa dibuang); kelebihan dibuang
+ * begitu pin dilepas. Perm yang sendirian lebih besar dari maxBytes tidak disimpan.
+ * Direktori: subdirektori milik proses ini `<dir>/<pid>-<acak>` (indeks hanya di memori); saat dibuat,
+ * subdirektori proses yang sudah mati dibersihkan — proses lain yang berbagi QUERY_CACHE_DIR bawaan
+ * (dev server, e2e, perf) tidak pernah terhapus berkasnya (review T-062 L4).
+ * Pembangunan permutasi yang gagal (sibuk/batas waktu/terlalu besar) dicatat sebentar (failUntil) agar
+ * tampilan yang sama tidak membangun ulang tiap permintaan (review T-062 L5).
  */
-import { mkdirSync, rmSync, statSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 /** Identitas data di balik satu entri (untuk invalidasi). */
@@ -59,6 +68,18 @@ export interface OrderCacheOptions {
 
 /** TTL bawaan entri (rencana G-6 §5.2). */
 export const ORDER_CACHE_TTL_MS = 30 * 60 * 1000;
+/** Jeda sebelum permutasi yang gagal dibangun dicoba lagi (bawaan; sibuk memakai jeda lebih pendek). */
+export const ORDER_FAIL_MS = 5 * 60 * 1000;
+
+/** Proses `pid` masih hidup (EPERM = hidup milik pengguna lain). */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
 
 const fileBytes = (f: string) => {
   try {
@@ -72,14 +93,44 @@ export class OrderCache {
   private readonly entries = new Map<string, OrderEntry>();
   /** Pekerjaan yang sedang berjalan per kunci (perm) atau kunci+potongan (single-flight). */
   private readonly jobs = new Map<string, Promise<unknown>>();
+  /** Kunci → waktu sampai pembangunan permutasi boleh dicoba lagi. */
+  private readonly failUntil = new Map<string, number>();
   private used = 0;
   private seq = 0;
   private readonly now: () => number;
+  /** Subdirektori milik proses ini. */
+  readonly dir: string;
 
   constructor(readonly o: OrderCacheOptions) {
     this.now = o.now ?? Date.now;
-    rmSync(o.dir, { recursive: true, force: true });
     mkdirSync(o.dir, { recursive: true });
+    for (const d of readdirSync(o.dir)) {
+      const pid = Number(/^(\d+)-/.exec(d)?.[1]);
+      if (pid && pid !== process.pid && !alive(pid)) {
+        rmSync(join(o.dir, d), { recursive: true, force: true });
+      }
+    }
+    this.dir = join(o.dir, `${process.pid}-${randomBytes(6).toString("hex")}`);
+    mkdirSync(this.dir, { recursive: true });
+  }
+
+  /** Pembangunan permutasi untuk kunci ini baru saja gagal (jangan dijadwalkan dulu). */
+  failed(key: string): boolean {
+    const t = this.failUntil.get(key);
+    if (t === undefined) return false;
+    if (t > this.now()) return true;
+    this.failUntil.delete(key);
+    return false;
+  }
+
+  /** Catat gagal bangun: kunci ini tidak dibangun ulang selama `ms`. */
+  markFailed(key: string, ms = ORDER_FAIL_MS) {
+    // Peta dibatasi: entri kedaluwarsa dibuang dulu.
+    if (this.failUntil.size > 1_000) {
+      const t = this.now();
+      for (const [k, until] of this.failUntil) if (until <= t) this.failUntil.delete(k);
+    }
+    this.failUntil.set(key, this.now() + ms);
   }
 
   /** Total byte berkas yang tercatat. */
@@ -146,20 +197,25 @@ export class OrderCache {
     const running = this.jobs.get(key) as Promise<OrderEntry | null> | undefined;
     if (running) return running;
     const job = (async () => {
-      const dir = join(this.o.dir, `${key.slice(0, 32)}-${++this.seq}`);
+      const dir = join(this.dir, `${key.slice(0, 32)}-${++this.seq}`);
       mkdirSync(dir, { recursive: true });
       const perm = join(dir, "perm.parquet");
       let r: { rows: number; total: number } | null = null;
       try {
         r = await build(perm);
+      } catch (err) {
+        this.markFailed(key);
+        throw err;
       } finally {
         if (!r) rmSync(dir, { recursive: true, force: true });
       }
+      // null: pemanggil sudah memutuskan (dan mencatat jeda bila perlu).
       if (!r) return null;
       const bytes = fileBytes(perm);
-      // Lebih besar dari seluruh anggaran: tidak disimpan.
+      // Lebih besar dari seluruh anggaran: tidak disimpan (dan tidak dibangun ulang dulu).
       if (bytes > this.o.maxBytes) {
         rmSync(dir, { recursive: true, force: true });
+        this.markFailed(key);
         return null;
       }
       const old = this.entries.get(key);

@@ -272,7 +272,7 @@ async function build(): Promise<Runtime> {
 }
 
 /**
- * Cache urutan (T-062): berkas di QUERY_CACHE_DIR/order (dikosongkan saat proses mulai). Permutasi
+ * Cache urutan (T-062): berkas di QUERY_CACHE_DIR/order (subdirektori per proses, sisa proses mati dibersihkan). Permutasi
  * dibangun di belakang lewat gerbang grid yang sama (slot grid → widget tetap kebagian) tanpa sinyal
  * permintaan; entri kedaluwarsa disapu tiap menit.
  */

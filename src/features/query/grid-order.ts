@@ -34,6 +34,8 @@ export interface GridOrder {
 
 /** Pengguna semu gerbang grid untuk pembangunan permutasi di belakang. */
 export const ORDER_BUILD_USER = "grid-order-cache";
+/** Permutasi gagal karena slot sibuk: dicoba lagi setelah jeda pendek ini. */
+export const ORDER_BUSY_RETRY_MS = 30_000;
 /** Tampilan kecil cukup dilayani jalur tanpa cache. */
 export const ORDER_MIN_ROWS = 1_000;
 
@@ -189,9 +191,14 @@ export async function orderWindow(
     const parts: { c: OrderChunk; from: number; to: number }[] = [];
     for (let k = Math.floor(plan.rowStart / C); k <= Math.floor((end - 1) / C); k++) {
       let c = cache.chunk(e, k, cols);
-      if (!c) {
+      // Single-flight: pekerjaan bersama berjalan di bawah gerbang/sinyal/batas waktu peminta pertama.
+      // Bila gagal dan bukan pekerjaan kita sendiri (mis. peminta pertama membatalkan), kita mencoba
+      // sekali lagi dengan gerbang dan sinyal kita sendiri (review T-062 M1).
+      for (let attempt = 0; !c; attempt++) {
+        let mine = false;
         try {
           c = await cache.buildChunk(e, k, cols, async (file) => {
+            mine = true;
             const r = await runOnParquet(userId, source, deps, (path, exec) =>
               exec(
                 buildOrderChunkSql(
@@ -207,8 +214,9 @@ export async function orderWindow(
             if (!r.ok) throw new ChunkFailed(r);
           });
         } catch (err) {
-          if (err instanceof ChunkFailed) return err.failure;
-          throw err;
+          if (!(err instanceof ChunkFailed)) throw err;
+          if (mine || attempt > 0 || deps.signal?.aborted) return err.failure;
+          continue;
         }
         // Entri dibuang selagi membangun (versi/revisi berganti, anggaran): jalur tanpa cache.
         if (!c) return null;
@@ -233,7 +241,7 @@ export async function orderWindow(
 /**
  * Jadwalkan permutasi untuk tampilan ini di belakang (tidak ditunggu): tidak bila tampilan kecil, sudah
  * ada/sedang dibangun, atau permutasi lain sedang dibangun (satu per proses — CPU tetap untuk widget).
- * Gagal (sibuk/batas waktu) → tidak ada entri; permintaan berikutnya menjadwalkan ulang.
+ * Gagal (sibuk/batas waktu/galat) → tidak ada entri; kunci itu dijeda (30 s sibuk, 5 menit lainnya).
  */
 export function scheduleOrder(
   key: string,
@@ -246,16 +254,24 @@ export function scheduleOrder(
 ): Promise<unknown> | null {
   const { cache } = order;
   if (counts.filteredTotal < (order.minRows ?? ORDER_MIN_ROWS)) return null;
-  if (cache.pending(key) || cache.buildingPerm || cache.lookup(key)) return null;
+  if (cache.failed(key) || cache.pending(key) || cache.buildingPerm || cache.lookup(key))
+    return null;
   return cache
     .buildPerm(key, meta, chunkRows, async (file) => {
       const r = await runOnParquet(ORDER_BUILD_USER, source, order.background, (path, exec) =>
         exec(buildOrderPermSql(plan, path, file)),
       );
-      if (!r.ok) return null;
+      // Gagal → jeda sebelum dicoba lagi (review T-062 L5): sibuk sebentar, lainnya ORDER_FAIL_MS.
+      if (!r.ok) {
+        cache.markFailed(key, r.code === "QUERY_BUSY" ? ORDER_BUSY_RETRY_MS : undefined);
+        return null;
+      }
       const rows = Number(r.value.rows[0]?.[0]);
       // Data berubah di antara dua query tidak mungkin (file typed imutabel); jaga-jaga saja.
-      if (!Number.isSafeInteger(rows) || rows !== counts.filteredTotal) return null;
+      if (!Number.isSafeInteger(rows) || rows !== counts.filteredTotal) {
+        cache.markFailed(key);
+        return null;
+      }
       return { rows, total: counts.total };
     })
     .catch((err: unknown) => {

@@ -315,9 +315,12 @@ export async function runGridRows(
   const parsed = rowsBodySchema.safeParse(body);
   if (!parsed.success) return invalid();
   const auth = await authorizeGrid(userId, sheetId, parsed.data.versionId, deps.repo);
-  // Versi/revisi berganti (T-062 AC2): entri cache urutan sheet ini yang lama dibuang.
+  // Versi/revisi berganti (T-062 AC2): entri cache urutan sheet ini dari versi/revisi lama dibuang.
   if (!auth.ok) {
-    if (auth.code === "VERSION_CHANGED") deps.order?.cache.invalidate(sheetId, null);
+    // Hanya entri versi yang bukan lagi versi aktif sheet ini (review T-062 L2), bukan semua entri sheet.
+    if (auth.code === "VERSION_CHANGED") {
+      deps.order?.cache.invalidate(sheetId, auth.activeVersionId ?? null);
+    }
     return auth;
   }
   deps.order?.cache.invalidate(sheetId, auth.sheet.versionId, auth.sheet.schemaRevision);
