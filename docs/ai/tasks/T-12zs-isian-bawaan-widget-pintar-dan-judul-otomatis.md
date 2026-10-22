@@ -6,12 +6,40 @@ profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:56Z"
-updated: "2026-10-22T03:33:34Z"
+updated: "2026-10-22T04:07:47Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 829d5bab56ef4100795313a3613e2ae81694285c
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 269061
+    summary: |-
+      …sg":"health check gagal"}
+      {"level":40,"time":1792641935456,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792641945325,"service":"data-dashboard","host":"127.0.0.1","port":34929,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792641945389,"service":"data-dashboard","host":"127.0.0.1","port":43403,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792641945488,"service":"data-dashboard","host":"127.0.0.1","port":34995,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792641945587,"service":"data-dashboard","host":"127.0.0.1","port":33073,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792641966371,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792641966388,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+
+       Test Files  224 passed | 3 skipped (227)
+            Tests  3022 passed | 29 skipped (3051)
+         Start at  04:04:41
+         Duration  184.08s (tests 82%, import 14%, transform 3%)
+
+
+      > data-dashboard@1.3.1 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-22T04:07:47Z"
+    tree: 86b347a13b6d3dc867ededaef870116bda7662292799db2b67011bf870a52b46
 ---
 
 ## Objective
