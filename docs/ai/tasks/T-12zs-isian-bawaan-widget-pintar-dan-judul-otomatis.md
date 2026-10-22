@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:56Z"
-updated: "2026-10-22T05:13:35Z"
+updated: "2026-10-22T05:16:55Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -38,24 +38,24 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 199983
+    duration_ms: 197208
     summary: |-
       …olak NAS"}
-      {"level":40,"time":1792644292834,"service":"data-dashboard","host":"127.0.0.1","port":38519,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792644310203,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792644310224,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792644310227,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792644310236,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792644322050,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792644322068,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+      {"level":40,"time":1792646156862,"service":"data-dashboard","host":"127.0.0.1","port":35455,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792646170939,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792646170962,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792646170970,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792646170984,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792646186295,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792646186313,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
        Test Files  224 passed | 3 skipped (227)
             Tests  3024 passed | 29 skipped (3053)
-         Start at  04:43:21
-         Duration  142.28s (tests 84%, import 13%, transform 3%)
+         Start at  05:14:38
+         Duration  134.86s (tests 83%, import 14%, transform 3%)
 
-          Isolate  227 workers spawned · ~110ms startup each (spawn + environment, per file)
-                   at least ~8.20s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  227 workers spawned · ~109ms startup each (spawn + environment, per file)
+                   at least ~8.10s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.3.1 audit
@@ -63,8 +63,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-22T04:45:45Z"
-    tree: d1d6f81bc2e0a9556999c1ed650c37317f416d19f64d504e86e0370b1cf5aee9
+    at: "2026-10-22T05:16:55Z"
+    tree: 367099cced463996bcee5740ab94170072ed06f0ae6ac3502f320bbe263c944b
 ---
 
 ## Objective
