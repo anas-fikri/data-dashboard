@@ -1,50 +1,67 @@
 ---
 id: T-c6z4
 title: Tampilkan pratinjau tabel pivot penuh di editor pivot tersimpan
-status: in_progress
+status: in_review
 profile: standard
 goal: G-7
 tags:
   - ui
   - security
 created: "2026-10-21T18:24:32Z"
-updated: "2026-10-22T02:58:15Z"
+updated: "2026-10-22T03:19:39Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: c04ac2b8909056f6ba6c29568877fe13b425d514
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-22T03:11:23Z"
+      findings: 3
+    - "n": 2
+      by: claude-code
+      at: "2026-10-22T03:11:23Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
-    exit_code: 124
-    duration_ms: 600011
+    exit_code: 1
+    duration_ms: 494697
     summary: |-
-      …ime":1792636914137,"service":"data-dashboard","host":"127.0.0.1","port":44853,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792636914192,"service":"data-dashboard","host":"127.0.0.1","port":36565,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792636914295,"service":"data-dashboard","host":"127.0.0.1","port":34943,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792636914429,"service":"data-dashboard","host":"127.0.0.1","port":46043,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":30,"time":1792636914660,"service":"data-dashboard","datasetId":"t072mvixqexzds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792636925258,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792636937280,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792636937306,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792636937310,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792636937322,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …1","port":42197,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792638824761,"service":"data-dashboard","host":"127.0.0.1","port":34309,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792638837919,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792638843444,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792638843466,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792638843473,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792638843490,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  225 passed | 1 skipped (226)
             Tests  3031 passed | 10 skipped (3041)
-         Start at  02:40:32
-         Duration  137.89s (tests 83%, import 14%, transform 3%)
+         Start at  03:12:24
+         Duration  133.20s (tests 83%, import 14%, transform 3%)
 
-          Isolate  226 workers spawned · ~120ms startup each (spawn + environment, per file)
-                   at least ~8.90s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  226 workers spawned · ~112ms startup each (spawn + environment, per file)
+                   at least ~8.34s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.3.1 audit
       > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
-    at: "2026-10-22T02:49:30Z"
+
+      npm notice This endpoint is being retired. Use the bulk advisory endpoint instead. See the following docs for more info: https://api-docs.npmjs.com/#tag/Audit
+      npm warn audit 400 Bad Request - POST https://registry.npmjs.org/-/npm/v1/security/audits/quick - Bad Request
+      {
+        statusCode: 400,
+        error: 'Bad Request',
+        message: 'Invalid package tree, run  npm install  to rebuild your package-lock.json'
+      }
+      npm error audit endpoint returned an error
+      npm error A complete log of this run can be found in: /root/.npm/_logs/2026-10-22T03_14_38_224Z-debug-0.log
+    at: "2026-10-22T03:19:39Z"
     tree: 7027007aef07d1fc380d0547adcee845efae418cb1b179e3c3ac1d0c7470f043
-  check_failures: 1
+  check_failures: 2
 ---
 
 ## Objective
