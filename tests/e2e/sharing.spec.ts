@@ -1266,7 +1266,8 @@ test.describe("berbagi dashboard", () => {
 
   test("Back setelah masuk lewat navigasi klien (lead review R4): viewer /dashboards → baris → pindah halaman → Back = kerangka + refresh; isi baru tanpa 'sudah diubah'; posisi gulir pulih (R4-CL-2)", async () => {
     const viewport = b.viewportSize()!;
-    await b.setViewportSize({ width: 1280, height: 560 });
+    // Layar pendek agar halaman bisa digulir > 200 px (widget baru mengisi baris, T-1k96).
+    await b.setViewportSize({ width: 1280, height: 400 });
     try {
       // Masuk lewat klik baris (navigasi klien): modul kanvas dimuat SETELAH router memasang popstate.
       await b.goto("/dashboards");

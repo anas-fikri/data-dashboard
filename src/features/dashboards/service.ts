@@ -47,7 +47,7 @@ import {
   DEFAULT_WIDGET_SIZE,
   WIDGET_TITLE_MAX,
   WIDGETS_PER_DASHBOARD,
-  bottomOf,
+  newWidgetSlot,
   cleanName,
   compactLayout,
   fitMinSizes,
@@ -1146,13 +1146,16 @@ export async function addWidget(
     });
     const item: LayoutItem = at?.success
       ? { i: widget.id, ...at.data }
-      : { i: widget.id, x: 0, y: bottomOf(current), ...DEFAULT_WIDGET_SIZE };
+      : { i: widget.id, ...newWidgetSlot(current), ...DEFAULT_WIDGET_SIZE };
     // Dipulihkan ke posisi semula: didahulukan agar widget yang sempat naik mengisi tempatnya
     // (setelah hapus + pemadatan) yang bergeser turun, bukan widget yang dipulihkan.
     // Ukuran minimum per jenis juga untuk widget yang dipulihkan (posisi dari klien).
     const types = typesOf([...d.widgets, { id: widget.id, type: widget.type }]);
     const layout = fitMinSizes(
-      compactLayout(at?.success ? [item, ...current] : [...current, item]),
+      compactLayout(
+        at?.success ? [item, ...current] : [...current, item],
+        at?.success ? widget.id : undefined,
+      ),
       types,
     );
     const layoutRevision = d.layoutRevision + 1;

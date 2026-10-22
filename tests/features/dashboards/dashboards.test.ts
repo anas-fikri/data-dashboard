@@ -8,6 +8,7 @@ import {
   cleanName,
   compactLayout,
   layoutBodySchema,
+  newWidgetSlot,
   reconcileLayout,
 } from "@/features/dashboards/validation";
 
@@ -173,6 +174,42 @@ describe("validasi tata letak", () => {
   });
 });
 
+describe("T-1k96: posisi widget baru mengisi baris", () => {
+  const at = (x: number, y: number, w = 4, h = 4, i = `w${x}-${y}`) => ({ i, x, y, w, h });
+
+  it("tiga kali tambah pada dashboard kosong → x = 0, 4, 8 di baris yang sama; keempat turun", () => {
+    const layout: ReturnType<typeof at>[] = [];
+    const placed = [];
+    for (let n = 0; n < 4; n++) {
+      const slot = newWidgetSlot(layout);
+      placed.push(slot);
+      layout.push(at(slot.x, slot.y));
+    }
+    expect(placed).toEqual([
+      { x: 0, y: 0 },
+      { x: 4, y: 0 },
+      { x: 8, y: 0 },
+      { x: 0, y: 4 },
+    ]);
+  });
+
+  it("mengisi celah di samping widget terakhir, tidak lubang di atas pita baris terbawah", () => {
+    // Tinggi di kiri, dua pendek di kanan atas: celah (4..11, y 2..) di samping widget tinggi.
+    expect(newWidgetSlot([at(0, 0, 4, 8), at(4, 0, 8, 2)])).toEqual({ x: 4, y: 4 });
+    // Widget lebar penuh di bawah: lubang di atasnya tidak diisi.
+    expect(newWidgetSlot([at(0, 0, 4, 4), at(0, 4, 12, 4)])).toEqual({ x: 0, y: 8 });
+    // Dipulihkan (dipaku): widget lain yang naik ke tempatnya bergeser turun, walau x-nya lebih kecil.
+    expect(compactLayout([at(7, 0, 4, 4, "A"), at(4, 0, 8, 24, "B")], "A")).toEqual([
+      at(7, 0, 4, 4, "A"),
+      at(4, 4, 8, 24, "B"),
+    ]);
+    // Dipaku tetap dipadatkan ke atas bila tidak ada yang menghalangi.
+    expect(compactLayout([at(6, 2, 6, 3, "A")], "A")).toEqual([at(6, 0, 6, 3, "A")]);
+    // Ukuran lain (mis. 6 kolom) tetap muat di samping.
+    expect(newWidgetSlot([at(0, 0, 6, 4)], { w: 6, h: 4 })).toEqual({ x: 6, y: 0 });
+  });
+});
+
 describe("AC 4: batas dashboard per dataset", () => {
   it("dataset sudah punya 10 dashboard → LIMIT_REACHED tanpa membuat", async () => {
     tx.dataset.findFirst.mockResolvedValueOnce({ _count: { dashboards: DASHBOARDS_PER_DATASET } });
@@ -304,6 +341,22 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     prisma.$transaction.mockRejectedValueOnce(known("P2003"));
     expect(await svc.addWidget(OWNER, DB, { baseRevision: 5 })).toMatchObject({
       code: "NOT_FOUND",
+    });
+  });
+
+  it("T-1k96: widget baru di samping widget terakhir bila baris masih muat", async () => {
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash([{ i: WA, x: 0, y: 0, w: 4, h: 4 }], 3, [WA]),
+    );
+    tx.widget.create.mockResolvedValueOnce({ id: WB, type: "empty", title: "", updatedAt: AT });
+    expect(await svc.addWidget(OWNER, DB, { baseRevision: 3 })).toMatchObject({
+      ok: true,
+      data: {
+        layout: [
+          { i: WA, x: 0, y: 0, w: 4, h: 4 },
+          { i: WB, x: 4, y: 0, w: 4, h: 4 },
+        ],
+      },
     });
   });
 

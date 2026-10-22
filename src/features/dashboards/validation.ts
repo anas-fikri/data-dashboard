@@ -138,18 +138,50 @@ export function fitMinSizes(items: LayoutItem[], types: ReadonlyMap<string, stri
   return grown ? compactLayout(next) : items;
 }
 
-/** Baris pertama yang kosong di bawah semua widget (tempat widget baru). */
+/** Baris pertama yang kosong di bawah semua widget. */
 export function bottomOf(layout: LayoutItem[]): number {
   return layout.reduce((m, it) => Math.max(m, it.y + it.h), 0);
 }
 
 /**
+ * Posisi widget baru (T-1k96): tempat kosong pertama (baris lalu kolom) setinggi widget baru di pita
+ * baris terbawah — di samping widget-widget terakhir — sehingga Tambah widget berturut-turut mengisi
+ * baris (x = 0, 4, 8) sebelum turun ke baris baru. Lubang di atas pita itu tidak diisi: widget baru
+ * tidak "menghilang" di tengah dashboard panjang. Tidak ada tempat → di bawah semua widget, x = 0.
+ */
+export function newWidgetSlot(
+  layout: LayoutItem[],
+  size: { w: number; h: number } = DEFAULT_WIDGET_SIZE,
+): { x: number; y: number } {
+  const bottom = bottomOf(layout);
+  const free = (x: number, y: number) =>
+    layout.every(
+      (it) => x + size.w <= it.x || it.x + it.w <= x || y + size.h <= it.y || it.y + it.h <= y,
+    );
+  for (let y = Math.max(0, bottom - size.h); y < bottom; y++) {
+    for (let x = 0; x + size.w <= GRID_COLS; x++) {
+      if (free(x, y)) return { x, y };
+    }
+  }
+  return { x: 0, y: bottom };
+}
+
+/**
  * Padatkan vertikal (algoritma react-grid-layout): tanpa lubang dan tanpa tumpang tindih; urutan item
  * dipertahankan. Tinggi total ≤ jumlah tinggi widget (≤ 50 × 40 = LAYOUT_Y_MAX), jadi y tetap valid.
+ * `pinned` (widget yang dipulihkan, T-1k96): pemadat mendahulukan item menurut (y, x), bukan urutan
+ * daftar — item itu dipaku dulu di posisinya agar widget lain yang menempati tempatnya yang bergeser,
+ * lalu semuanya dipadatkan biasa (celah di atasnya tetap tertutup).
  */
-export function compactLayout(items: LayoutItem[]): LayoutItem[] {
+export function compactLayout(items: LayoutItem[], pinned?: string): LayoutItem[] {
+  const placed = pinned
+    ? verticalCompactor.compact(
+        items.map((it) => ({ ...it, static: it.i === pinned })),
+        GRID_COLS,
+      )
+    : items;
   const compacted = verticalCompactor.compact(
-    items.map((it) => ({ ...it })),
+    placed.map(({ i, x, y, w, h }) => ({ i, x, y, w, h })),
     GRID_COLS,
   );
   const byId = new Map(compacted.map((it) => [it.i, it]));
