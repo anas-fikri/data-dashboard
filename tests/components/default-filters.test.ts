@@ -147,6 +147,30 @@ describe("storedFilterColumns / filterColumnViews: bawaan", () => {
     ).toEqual([{ sheet: "Penjualan", column: "Cabang" }]);
   });
 
+  it("bawaan yang tidak cocok lagi (tipe kolom diubah) tidak dikirim; kolom lain tetap bisa disimpan", () => {
+    const stored = [
+      {
+        sheet: "Penjualan",
+        column: "Tanggal",
+        default: { column: "Tanggal", op: "in" as const, values: ["Jakarta"] },
+      },
+      { sheet: "Penjualan", column: "Cabang", default: jakarta },
+    ];
+    const views = filterColumnViews(stored, SHEETS);
+    expect(views[0]).not.toHaveProperty("default");
+    expect(views[1]).toMatchObject({ default: jakarta });
+    // Klien mengirim ulang tampilan (tanpa bawaan basi) + kolom baru → diterima.
+    const resend = [
+      ...views.map((v) => ({
+        sheet: v.sheet,
+        column: v.column,
+        ...(v.default ? { default: v.default } : {}),
+      })),
+      { sheet: "Penjualan", column: "Omzet" },
+    ];
+    expect(checkFilterColumns(resend, SHEETS)).toMatchObject({ ok: true });
+  });
+
   it("tampilan membawa bawaan dengan nama kolom terkini", () => {
     const [v] = filterColumnViews(
       [{ sheet: "Penjualan", column: "cabang", default: { ...jakarta, column: "cabang" } }],
@@ -200,6 +224,15 @@ describe("status bawaan di klien", () => {
     );
     // Tanpa bawaan: perilaku lama (kosong = tanpa f).
     expect(filterUrlValue({ filters: [] }, { filters: [] })).toBe("");
+  });
+
+  it("filterUrlValue: bawaan + saringan pivot → f tetap ditulis (pivot tidak hilang)", () => {
+    const pivot = {
+      ["p".repeat(24)]: [
+        { field: "row0" as const, column: "Cabang", op: "in" as const, values: ["A"] },
+      ],
+    };
+    expect(filterUrlValue({ filters: [thisMonth, jakarta], pivot }, defaults)).not.toBe("");
   });
 
   it("isDefaultState: filter silang membuat status berbeda dari bawaan", () => {

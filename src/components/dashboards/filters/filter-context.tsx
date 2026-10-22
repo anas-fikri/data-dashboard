@@ -48,7 +48,7 @@ interface FiltersApi {
   applied: FilterState;
   /** Filter bawaan kolom filter (T-vb7q); filters kosong = tanpa bawaan. */
   defaults: FilterState;
-  /** Status filter dashboard sama dengan bawaan (tanpa filter silang/pivot). */
+  /** Filter dashboard sama dengan bawaan, tanpa filter silang (saringan pivot tidak dihitung). */
   atDefaults: boolean;
   /** Kembali ke filter bawaan (filter silang dilepas; saringan pivot tetap). */
   restoreDefaults: () => void;
@@ -114,8 +114,10 @@ export function DashboardFiltersProvider({
   }, [key, applied.key]);
   usePublishApplied(dashboardId, applied.state); // tombol PDF di kepala halaman (T-018 D9)
 
-  const urlTooLong = (encodeFilterParam(state)?.length ?? 0) > URL_PARAM_MAX;
-  const atDefaults = isDefaultState(state, defaults);
+  // Tombol "Kembalikan filter bawaan" (saringan pivot tidak ikut dikembalikan, jadi tidak dibandingkan).
+  const atDefaults = isDefaultState({ filters: state.filters, cross: state.cross }, defaults);
+  const urlTooLong =
+    !isDefaultState(state, defaults) && (encodeFilterParam(state)?.length ?? 0) > URL_PARAM_MAX;
   const [allMode, setAllMode] = useState<ReadonlySet<string>>(() => new Set());
   const [stale] = useState(createStaleStore);
   /** Perubahan pengguna: status baru + URL (di handler, bukan effect — status basi tidak ditulis). */

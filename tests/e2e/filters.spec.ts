@@ -491,6 +491,12 @@ test.describe("filter dashboard", () => {
     await expect(warning).toHaveCount(0);
   });
 
+  let cleanup: (() => Promise<unknown>) | null = null;
+  test.afterEach(async () => {
+    await cleanup?.();
+    cleanup = null;
+  });
+
   test("T-vb7q: filter bawaan — disimpan di mode edit, aktif tanpa ?f= (label bawaan, dikirim sebagai dashboardFilters); Hapus semua = f={} tetap tanpa filter saat dimuat ulang; Kembalikan bawaan", async ({
     page,
   }) => {
@@ -510,6 +516,18 @@ test.describe("filter dashboard", () => {
     await page.getByTestId("filter-save-defaults").click();
     const res = await saved;
     expect(res.status(), await res.text()).toBe(200);
+    // Bawaan dibersihkan lewat API bila tes gagal di tengah (dashboard dipakai bersama).
+    const plain = (
+      res.request().postDataJSON().filterColumns as { sheet: string; column: string }[]
+    ).map(({ sheet, column }) => ({ sheet, column }));
+    cleanup = () =>
+      page.request.patch(
+        `${new URL(dashboardUrl).pathname.replace("/dashboards/", "/api/dashboards/")}/filter-columns`,
+        {
+          data: { filterColumns: plain },
+          headers: { origin: new URL(dashboardUrl).origin },
+        },
+      );
     expect(res.request().postDataJSON().filterColumns[0]).toEqual({
       sheet: expect.any(String),
       column: "Cabang",

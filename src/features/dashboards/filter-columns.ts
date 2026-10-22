@@ -114,7 +114,11 @@ export function filterColumnViews(
       type: a?.col.type ?? "text",
       available: !!a,
       ...(a?.col.system === "period" ? { period: true as const } : {}),
-      ...(f.default ? { default: { ...f.default, column: a?.col.name ?? f.column } } : {}),
+      // Bawaan yang tidak lagi cocok (tipe kolom diubah) tidak dikirim: tidak berlaku di layar dan tidak
+      // ikut dikirim ulang saat kolom lain ditambah/dihapus (simpanan itu akan ditolak).
+      ...(f.default && (!a || defaultFits(f.default, a.col))
+        ? { default: { ...f.default, column: a?.col.name ?? f.column } }
+        : {}),
     };
   });
 }

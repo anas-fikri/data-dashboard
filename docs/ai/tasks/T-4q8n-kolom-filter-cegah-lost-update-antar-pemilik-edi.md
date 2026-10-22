@@ -7,7 +7,7 @@ tags:
   - security
   - ui
 created: "2026-10-22T10:45:53Z"
-updated: "2026-10-22T10:45:53Z"
+updated: "2026-10-22T11:20:08Z"
 created_by: claude-code
 ---
 
@@ -20,6 +20,8 @@ Lanjutan review T-k2ec (temuan non-blokir). Simpan kolom filter memakai revisi/l
 - [ ] Penghitung/batas penuh editor menghitung kolom tersembunyi yang dipertahankan (review T-k2ec #3)
 - [ ] Pemilik bisa menambah kolom walau ada kolom tersimpan tidak tersedia yang tidak diubah (review T-k2ec #4)
 - [ ] Editor diberi tahu bila kolom filter yang ditambahkan menyaring lebih dari satu sheet (review T-k2ec #6)
+- [ ] Pemilik bisa menyimpan filter bawaan walau ada kolom filter tidak tersedia (review T-vb7q #2)
+- [ ] Cadangan PDF saat status filter belum diterbitkan memakai filter bawaan (review T-vb7q #3)
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)

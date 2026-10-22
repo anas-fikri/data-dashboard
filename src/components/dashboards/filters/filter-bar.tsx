@@ -54,7 +54,8 @@ export function FilterBar({
   /** Kolom filter (server) + sumber data untuk "Atur kolom filter" (mode edit pemilik/editor). */
   manage: { dashboardId: string; columns: FilterColumnView[]; sources: SourceSheet[] } | null;
 }) {
-  const { columns, state, urlTooLong, widgetTitle, widgetGrain, stale } = useDashboardFilters();
+  const { columns, state, defaults, urlTooLong, widgetTitle, widgetGrain, stale } =
+    useDashboardFilters();
   const panelId = useId();
   const [managing, setManaging] = useState(false);
   const sheetButton = useRef<HTMLButtonElement>(null);
@@ -188,7 +189,8 @@ export function FilterBar({
         {urlTooLong ? (
           <p className="text-xs text-muted-foreground">
             Pilihan filter terlalu panjang untuk disimpan di alamat halaman — filter tetap berlaku,
-            tetapi hilang bila halaman dimuat ulang.
+            tetapi {defaults.filters.length ? "kembali ke filter bawaan" : "hilang"} bila halaman
+            dimuat ulang.
           </p>
         ) : null}
         <CrossFilterHint editing={editing} />

@@ -1,18 +1,24 @@
 ---
 id: T-vb7q
 title: Filter bawaan per kolom filter dashboard
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
   - security
 created: "2026-10-22T03:20:00Z"
-updated: "2026-10-22T11:14:16Z"
+updated: "2026-10-22T11:20:08Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 625cf78cea1d5ee89632a4a96f2be84db34fd163
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-22T11:20:08Z"
+      findings: 6
 evidence:
   check:
     cmd: npm run check
