@@ -1,19 +1,47 @@
 ---
 id: T-c6z4
 title: Tampilkan pratinjau tabel pivot penuh di editor pivot tersimpan
-status: in_review
-profile: standard
+status: done
+profile: strict
 goal: G-7
 tags:
   - ui
   - security
 created: "2026-10-21T18:24:32Z"
-updated: "2026-10-22T03:19:39Z"
+updated: "2026-10-22T06:24:25Z"
+closed: "2026-10-22T06:24:25Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: c04ac2b8909056f6ba6c29568877fe13b425d514
+paths:
+  - content/panduan/06-susun-dashboard.md
+  - content/panduan/13-widget-pivot.md
+  - docs/catatan-kerja-claude.md
+  - src/app/api/query/route.ts
+  - src/components/dashboards/auto-title.ts
+  - src/components/dashboards/dashboard-canvas.tsx
+  - src/components/dashboards/pivot-config-model.ts
+  - src/components/dashboards/smart-defaults.ts
+  - src/components/dashboards/use-dashboard-editor.ts
+  - src/components/dashboards/widget-config-model.ts
+  - src/components/dashboards/widget-panel.tsx
+  - src/components/saved-pivots/saved-pivot-editor.tsx
+  - src/components/saved-pivots/saved-pivot-preview.tsx
+  - src/components/widgets/widget-query.ts
+  - src/features/dashboards/service.ts
+  - src/features/query/http.ts
+  - src/features/query/service.ts
+  - src/features/query/widget.ts
+  - tests/components/pivot-ui.test.ts
+  - tests/components/smart-defaults.test.ts
+  - tests/e2e/pivot.spec.ts
+  - tests/e2e/saved-pivot-widgets.spec.ts
+  - tests/e2e/widgets.spec.ts
+  - tests/features/dashboards/roles.test.ts
+  - tests/features/query/bound-widgets.test.ts
+  - tests/features/query/query-http.test.ts
 review:
   passes:
     - "n": 1
@@ -27,41 +55,102 @@ review:
 evidence:
   check:
     cmd: npm run check
-    exit_code: 1
-    duration_ms: 494697
+    exit_code: 0
+    duration_ms: 200259
     summary: |-
-      …1","port":42197,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792638824761,"service":"data-dashboard","host":"127.0.0.1","port":34309,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792638837919,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792638843444,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792638843466,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792638843473,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792638843490,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …olak NAS"}
+      {"level":40,"time":1792649955482,"service":"data-dashboard","host":"127.0.0.1","port":36235,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792649971363,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792649971385,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792649971390,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792649971406,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792649987350,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792649987365,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
-       Test Files  225 passed | 1 skipped (226)
-            Tests  3031 passed | 10 skipped (3041)
-         Start at  03:12:24
-         Duration  133.20s (tests 83%, import 14%, transform 3%)
+       Test Files  224 passed | 3 skipped (227)
+            Tests  3024 passed | 29 skipped (3053)
+         Start at  06:17:55
+         Duration  134.38s (tests 83%, import 14%, transform 3%)
 
-          Isolate  226 workers spawned · ~112ms startup each (spawn + environment, per file)
-                   at least ~8.34s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  227 workers spawned · ~113ms startup each (spawn + environment, per file)
+                   at least ~8.42s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.3.1 audit
       > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
 
-      npm notice This endpoint is being retired. Use the bulk advisory endpoint instead. See the following docs for more info: https://api-docs.npmjs.com/#tag/Audit
-      npm warn audit 400 Bad Request - POST https://registry.npmjs.org/-/npm/v1/security/audits/quick - Bad Request
-      {
-        statusCode: 400,
-        error: 'Bad Request',
-        message: 'Invalid package tree, run  npm install  to rebuild your package-lock.json'
-      }
-      npm error audit endpoint returned an error
-      npm error A complete log of this run can be found in: /root/.npm/_logs/2026-10-22T03_14_38_224Z-debug-0.log
-    at: "2026-10-22T03:19:39Z"
-    tree: 7027007aef07d1fc380d0547adcee845efae418cb1b179e3c3ac1d0c7470f043
-  check_failures: 2
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-22T06:20:11Z"
+    tree: 367099cced463996bcee5740ab94170072ed06f0ae6ac3502f320bbe263c944b
+  commits:
+    - 0a6567a
+    - 14b219f
+    - 21e6bd7
+    - 3a16a5e
+    - 3b83c4e
+    - 3d38afd
+    - 3f0008e
+    - 43e0d50
+    - 460a7f3
+    - 4d95c0d
+    - 594ca78
+    - 5cf7246
+    - 62dfa2b
+    - 7062ff7
+    - "7266741"
+    - 7f14236
+    - 829d5ba
+    - 95344b2
+    - 974c1b6
+    - 9b36c7d
+    - ad5caec
+    - bb53812
+    - bb7eb29
+    - bf962e6
+    - c04ac2b
+    - c7bb4f1
+    - cb1f89f
+    - ccb8465
+    - cff3c8d
+    - d16ff25
+    - d3820d7
+    - d55a8d0
+    - e0ec8e7
+    - e435538
+    - e69d344
+    - eb97953
+    - ee2a976
+    - ef4acc2
+    - f5805f9
+    - f890322
+  acceptance:
+    total: 2
+    done: 2
+  audit:
+    at: "2026-10-22T06:20:18Z"
+    passed: true
+    tree: 367099cced463996bcee5740ab94170072ed06f0ae6ac3502f320bbe263c944b
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 836 packages
+          End status: 346 dirs visited, 2027 inodes visited, 1 Extract calls, 47.412725ms elapsed, 47.412893ms wall time
+          Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@1.3.1 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
@@ -99,3 +188,11 @@ T-074 memakai pratinjau ringkas di editor pivot tersimpan (kalimat bentuk tabel,
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A — tidak ada unggahan/file baru; parquet dipilih server dari sheet versi aktif.
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — diverifikasi: Origin = APP_URL, body ≤ 64 KB JSON strict, rate limit query:user yang sama (query-http.test), { dashboardId, pivot } → 400.
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A — tidak mengubah konfigurasi.
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-10-22T06:20:11Z (200259 ms)
+- Acceptance criteria: 2/2 satisfied
+- Commits: 0a6567a, 14b219f, 21e6bd7, 3a16a5e, 3b83c4e, 3d38afd, 3f0008e, 43e0d50, 460a7f3, 4d95c0d, 594ca78, 5cf7246, 62dfa2b, 7062ff7, 7266741, 7f14236, 829d5ba, 95344b2, 974c1b6, 9b36c7d, ad5caec, bb53812, bb7eb29, bf962e6, c04ac2b, c7bb4f1, cb1f89f, ccb8465, cff3c8d, d16ff25, d3820d7, d55a8d0, e0ec8e7, e435538, e69d344, eb97953, ee2a976, ef4acc2, f5805f9, f890322
+- Review pass 1 by claude-reviewer-subagent: 3 findings
+- Review pass 2 by claude-code: 0 findings
