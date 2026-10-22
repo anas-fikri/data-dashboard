@@ -57,6 +57,19 @@ const goodCategories = (cols: SourceSheet["columns"]) =>
     (c) => c.distinct === undefined || (c.distinct >= CATEGORY_MIN && c.distinct <= CATEGORY_MAX),
   );
 
+/**
+ * Susun ulang lebar per baris (y sama) setelah sebagian widget dibuang validasi server: sisa widget
+ * berbagi baris itu lagi, tanpa lubang mendatar.
+ */
+export function relayout(widgets: StarterWidget[]): StarterWidget[] {
+  const ys = [...new Set(widgets.map((w) => w.layout.y))];
+  return ys.flatMap((y) => {
+    const inRow = widgets.filter((w) => w.layout.y === y);
+    const slots = row(inRow.length, y, inRow[0]!.layout.h);
+    return inRow.map((w, k) => ({ ...w, layout: slots[k]! }));
+  });
+}
+
 export function starterPlan(sources: SourceSheet[]): StarterPlan {
   const sheet = sources.find((s) => s.columns.length);
   if (!sheet) return { widgets: [], filterColumns: [] };

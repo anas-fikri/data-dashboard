@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SourceSheet } from "@/features/dashboards/service";
-import { starterPlan } from "@/features/dashboards/starter";
+import { relayout, starterPlan } from "@/features/dashboards/starter";
 import { GRID_COLS } from "@/features/dashboards/validation";
 
 /*
@@ -96,5 +96,12 @@ describe("starterPlan", () => {
       widgets: [],
       filterColumns: [],
     });
+  });
+
+  it("relayout: widget yang dibuang validasi tidak meninggalkan lubang mendatar di barisnya", () => {
+    const plan = starterPlan([FULL]);
+    const withoutLine = relayout(plan.widgets.filter((w) => w.type !== "line"));
+    const bar = withoutLine.find((w) => w.type === "bar")!;
+    expect(bar.layout).toMatchObject({ x: 0, w: GRID_COLS });
   });
 });

@@ -38,10 +38,11 @@ import {
   overlappingFilterColumns,
   storedFilterColumns,
   type ActiveSheet,
+  type FilterColumn,
   type FilterColumnView,
   type FilterSourceColumn,
 } from "./filter-columns";
-import { starterPlan, type StarterPlan } from "./starter";
+import { relayout, starterPlan, type StarterPlan } from "./starter";
 import { isTxConflict } from "./tx-conflict";
 import {
   DASHBOARD_NAME_MAX,
@@ -451,7 +452,7 @@ export async function createDashboard(
       await tx.$executeRaw(lockKey("dashboards", datasetId));
       const ds = await tx.dataset.findFirst({
         where: { id: datasetId, ownerId },
-        select: { _count: { select: { dashboards: true } } },
+        select: { activeVersionId: true, _count: { select: { dashboards: true } } },
       });
       if (!ds) return "NOT_FOUND" as const;
       if (ds._count.dashboards >= DASHBOARDS_PER_DATASET) return "LIMIT_REACHED" as const;
@@ -459,7 +460,13 @@ export async function createDashboard(
         data: { datasetId, name: name.value, nameKey: nameKeyOf(name.value) },
         select: { id: true },
       });
-      if (plan?.widgets.length || plan?.filterColumns.length) {
+      // Versi aktif berganti sejak rencana divalidasi: dashboard dibuat kosong (aktivasi tidak akan
+      // memetakan widget yang ditulis sesudahnya).
+      if (
+        plan &&
+        plan.versionId === ds.activeVersionId &&
+        (plan.widgets.length || plan.filterColumns.length)
+      ) {
         await writeStarter(tx, created.id, plan);
       }
       return created;
@@ -487,7 +494,10 @@ export async function createDashboard(
  * sama dengan jalur simpan biasa (checkConfig per widget, checkFilterColumns). Dataset bukan milik
  * user / belum ada data → rencana kosong (dashboard dibuat kosong; NOT_FOUND tetap dari transaksi).
  */
-async function validStarter(ownerId: string, datasetId: string): Promise<StarterPlan> {
+async function validStarter(
+  ownerId: string,
+  datasetId: string,
+): Promise<StarterPlan & { versionId: string | null }> {
   const sources = await getDatasetSources(ownerId, datasetId);
   const plan = starterPlan(sources);
   const widgets: StarterPlan["widgets"] = [];
@@ -499,9 +509,15 @@ async function validStarter(ownerId: string, datasetId: string): Promise<Starter
     where: { id: datasetId, ownerId },
     select: { activeVersionId: true },
   });
-  const sheets = ds?.activeVersionId ? await activeSheets(ds.activeVersionId) : [];
-  const checked = checkFilterColumns(plan.filterColumns, sheets);
-  return { widgets, filterColumns: checked.ok ? checked.columns : [] };
+  const versionId = ds?.activeVersionId ?? null;
+  const sheets = versionId ? await activeSheets(versionId) : [];
+  // Per kolom: satu kolom yang ditolak (mis. nama ganda setelah dinormalkan) tidak membuang yang lain.
+  let filterColumns: FilterColumn[] = [];
+  for (const c of plan.filterColumns) {
+    const checked = checkFilterColumns([...filterColumns, c], sheets);
+    if (checked.ok) filterColumns = checked.columns;
+  }
+  return { widgets: relayout(widgets), filterColumns, versionId };
 }
 
 async function writeStarter(tx: Tx, dashboardId: string, plan: StarterPlan) {
