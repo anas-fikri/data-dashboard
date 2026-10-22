@@ -11,6 +11,7 @@ import { normName } from "@/features/widgets/remap";
 import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { AddFilterColumnMenu } from "./add-filter-column-menu";
 import { api } from "./dashboard-api";
+import { filterText } from "./filters/filter-text";
 
 /** Jangkar bagian "Kolom filter" di kartu pengaturan pemilik (tautan peringatan dialog share). */
 export const FILTER_SETTINGS_ID = "kolom-filter";
@@ -93,7 +94,12 @@ export function FilterColumnsSettings({
     setResult(null);
     const r = await api.setFilterColumns(
       dashboardId,
-      next.map((c) => ({ sheet: c.sheet, column: c.column })),
+      // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya.
+      next.map((c) => ({
+        sheet: c.sheet,
+        column: c.column,
+        ...(c.default ? { default: c.default } : {}),
+      })),
     );
     setPending(false);
     if (r.ok) {
@@ -159,6 +165,11 @@ export function FilterColumnsSettings({
                   {c.available ? TYPE_LABEL[c.type] : null}
                   {multiSheet ? `${c.available ? " · " : ""}Sheet ${c.sheet}` : null}
                 </span>
+                {c.default ? (
+                  <span className="block truncate text-xs" data-testid="filter-column-default">
+                    Bawaan: {filterText(c.default, c.type)}
+                  </span>
+                ) : null}
                 {!c.available ? (
                   <span className="mt-0.5 flex items-start gap-1 text-xs">
                     <IconAlertTriangle

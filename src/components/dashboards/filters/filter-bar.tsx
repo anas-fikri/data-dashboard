@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { FilterColumnsSettings } from "../filter-columns-settings";
 import { CrossFilterHint } from "./cross-hint";
+import { DefaultFilters } from "./default-filters";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
@@ -183,6 +184,7 @@ export function FilterBar({
           </div>
         ) : null}
         <FilterChips onEmpty={focusFirst} />
+        {columns.length ? <DefaultFilters manage={editing ? manage : null} /> : null}
         {urlTooLong ? (
           <p className="text-xs text-muted-foreground">
             Pilihan filter terlalu panjang untuk disimpan di alamat halaman — filter tetap berlaku,

@@ -490,4 +490,88 @@ test.describe("filter dashboard", () => {
     expect([...shown].sort()).toEqual([...matches].sort());
     await expect(warning).toHaveCount(0);
   });
+
+  test("T-vb7q: filter bawaan — disimpan di mode edit, aktif tanpa ?f= (label bawaan, dikirim sebagai dashboardFilters); Hapus semua = f={} tetap tanpa filter saat dimuat ulang; Kembalikan bawaan", async ({
+    page,
+  }) => {
+    const medan = countWhere((r) => r.cabang === "Medan");
+    const state = { filters: [{ column: "Cabang", op: "in", values: ["Medan"] }] };
+    const hydrated = () =>
+      expect(page.locator("[data-testid=dashboard-canvas][data-hydrated]")).toHaveCount(1);
+    const chip = page.locator('[data-testid=filter-chip][data-column="Cabang"]');
+
+    // Mode edit dengan filter aktif Medan → simpan sebagai bawaan.
+    await page.goto(`${dashboardUrl}?mode=edit&f=${encodeURIComponent(JSON.stringify(state))}`);
+    await hydrated();
+    await expectKpi(page, medan);
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await page.getByTestId("filter-save-defaults").click();
+    const res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    expect(res.request().postDataJSON().filterColumns[0]).toEqual({
+      sheet: expect.any(String),
+      column: "Cabang",
+      default: state.filters[0],
+    });
+    await expect(page.getByText("Filter bawaan tersimpan.")).toBeVisible();
+    await expect(page.getByTestId("filter-save-defaults")).toHaveAttribute("aria-disabled", "true");
+
+    // Mode lihat tanpa ?f= → bawaan aktif, chip berlabel, widget menerima dashboardFilters Medan.
+    const query = page.waitForRequest(
+      (r) => r.url().endsWith("/api/query") && r.method() === "POST",
+    );
+    await page.goto(dashboardUrl);
+    expect((await query).postDataJSON().dashboardFilters).toEqual(state.filters);
+    await hydrated();
+    await expectKpi(page, medan);
+    await expect(chip.getByTestId("chip-default")).toHaveText("bawaan");
+    expect(urlFilters(page)).toBeNull();
+    await expect(page.getByTestId("filter-restore-defaults")).toHaveCount(0);
+    // PDF memakai filter aktif yang sama (body POST; renderer tidak diuji di sini).
+    await page.getByTestId("dashboard-pdf-export").click();
+    const pdf = page.waitForRequest(
+      (r) => r.url().endsWith("/api/exports") && r.method() === "POST",
+    );
+    await page.getByTestId("export-pdf").click();
+    expect(JSON.parse((await pdf).postDataJSON().f)).toEqual(state);
+    await page.keyboard.press("Escape");
+
+    // Hapus semua → seluruh data, f={} di URL, tetap tanpa filter setelah muat ulang.
+    await page.getByTestId("filter-clear-all").click();
+    await expectKpi(page, ROWS);
+    await expect.poll(() => urlFilters(page)).toEqual({});
+    await page.reload();
+    await hydrated();
+    await expectKpi(page, ROWS);
+    await expect(chip).toHaveCount(0);
+
+    // Kembalikan bawaan → Medan lagi, URL tanpa f.
+    await page.getByTestId("filter-restore-defaults").click();
+    await expectKpi(page, medan);
+    await expect.poll(() => urlFilters(page)).toBeNull();
+
+    // Pilihan lain di kolom berbawaan: chip tanpa label bawaan.
+    await page.goto(
+      `${dashboardUrl}?f=${encodeURIComponent(JSON.stringify({ filters: [{ column: "Cabang", op: "in", values: ["Bandung"] }] }))}`,
+    );
+    await hydrated();
+    await expect(chip).toBeVisible();
+    await expect(chip.getByTestId("chip-default")).toHaveCount(0);
+
+    // Hapus bawaan dari mode edit (tanpa filter aktif) → dibuka tanpa filter.
+    await page.goto(`${dashboardUrl}?mode=edit&f=%7B%7D`);
+    await hydrated();
+    await expect(page.getByTestId("filter-save-defaults")).toHaveText("Hapus filter bawaan");
+    const cleared = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await page.getByTestId("filter-save-defaults").click();
+    expect((await cleared).status()).toBe(200);
+    await page.goto(dashboardUrl);
+    await hydrated();
+    await expectKpi(page, ROWS);
+    await expect(chip).toHaveCount(0);
+  });
 });

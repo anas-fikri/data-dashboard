@@ -5,8 +5,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { usePublishApplied } from "./applied-store";
 import {
+  defaultState,
   encodeFilterParam,
   filterKey,
+  filterUrlValue,
+  isDefaultState,
   filtersFor,
   normName,
   oneControlPerName,
@@ -29,6 +32,9 @@ import { createStaleStore, type StaleStore } from "./stale-store";
  * cache router): perubahan pengguna ditulis dengan history.replaceState (tanpa perjalanan ke server,
  * riwayat tidak dibanjiri tiap centang), dan URL yang berubah dari luar — Back/Forward, tautan ganti
  * mode — diikuti. Pindah halaman lalu Back memulihkan filter dari URL entri itu.
+ * Filter bawaan (T-vb7q): tanpa ?f= status = bawaan kolom filter; status yang sama dengan bawaan tidak
+ * menulis ?f=, status kosong padahal ada bawaan menulis f={} ("Hapus semua" tetap kosong saat dimuat
+ * ulang). Widget tetap menerima filter lewat dashboardFilters — server tidak mengenal bawaan.
  */
 const APPLY_DELAY_MS = 150;
 
@@ -40,6 +46,12 @@ interface FiltersApi {
   state: FilterState;
   /** Status yang sudah diterapkan ke widget (setelah jeda). */
   applied: FilterState;
+  /** Filter bawaan kolom filter (T-vb7q); filters kosong = tanpa bawaan. */
+  defaults: FilterState;
+  /** Status filter dashboard sama dengan bawaan (tanpa filter silang/pivot). */
+  atDefaults: boolean;
+  /** Kembali ke filter bawaan (filter silang dilepas; saringan pivot tetap). */
+  restoreDefaults: () => void;
   /** Filter terlalu panjang untuk URL: berlaku, tetapi hilang bila halaman dimuat ulang. */
   urlTooLong: boolean;
   widgetTitle: (id: string) => string;
@@ -61,12 +73,6 @@ interface FiltersApi {
 
 const FiltersContext = createContext<FiltersApi | null>(null);
 
-/** Nilai ?f= yang ditulis untuk status ini ("" = tanpa f: kosong, atau terlalu panjang untuk URL). */
-function urlValue(state: FilterState): string {
-  const encoded = encodeFilterParam(state);
-  return encoded && encoded.length <= URL_PARAM_MAX ? encoded : "";
-}
-
 export function DashboardFiltersProvider({
   dashboardId,
   columns: allColumns,
@@ -81,8 +87,10 @@ export function DashboardFiltersProvider({
   children: React.ReactNode;
 }) {
   const columns = useMemo(() => oneControlPerName(allColumns), [allColumns]);
+  const defaults = useMemo(() => defaultState(columns), [columns]);
   const urlF = useSearchParams().get("f") ?? "";
-  const [raw, setRaw] = useState(() => parseFilterParam(urlF));
+  const fromUrl = (f: string) => (f ? parseFilterParam(f) : defaults);
+  const [raw, setRaw] = useState(() => fromUrl(urlF));
   const ids = widgets.map((w) => w.id).join(",");
   const state = useMemo(
     () => sanitize(raw, { columns, crossColumns, widgetIds: ids.split(",") }),
@@ -92,7 +100,7 @@ export function DashboardFiltersProvider({
   const [seenUrl, setSeenUrl] = useState(urlF);
   if (seenUrl !== urlF) {
     setSeenUrl(urlF);
-    if (urlF !== urlValue(state)) setRaw(parseFilterParam(urlF));
+    if (urlF !== filterUrlValue(state, defaults)) setRaw(fromUrl(urlF));
   }
   const key = JSON.stringify(state);
   const [applied, setApplied] = useState({ key, state });
@@ -106,13 +114,17 @@ export function DashboardFiltersProvider({
   }, [key, applied.key]);
   usePublishApplied(dashboardId, applied.state); // tombol PDF di kepala halaman (T-018 D9)
 
-  const urlTooLong = !!encodeFilterParam(state) && !urlValue(state);
+  const urlTooLong = (encodeFilterParam(state)?.length ?? 0) > URL_PARAM_MAX;
+  const atDefaults = isDefaultState(state, defaults);
   const [allMode, setAllMode] = useState<ReadonlySet<string>>(() => new Set());
   const [stale] = useState(createStaleStore);
   /** Perubahan pengguna: status baru + URL (di handler, bukan effect — status basi tidak ditulis). */
   const update = (next: FilterState) => {
     setRaw(next);
-    const f = urlValue(sanitize(next, { columns, crossColumns, widgetIds: ids.split(",") }));
+    const f = filterUrlValue(
+      sanitize(next, { columns, crossColumns, widgetIds: ids.split(",") }),
+      defaults,
+    );
     const url = new URL(window.location.href);
     if (f) url.searchParams.set("f", f);
     else url.searchParams.delete("f");
@@ -132,6 +144,9 @@ export function DashboardFiltersProvider({
     crossColumns,
     state,
     applied: applied.state,
+    defaults,
+    atDefaults,
+    restoreDefaults: () => update(keep(defaults.filters)),
     urlTooLong,
     widgetTitle: (id) => widgets.find((w) => w.id === id)?.title || "Widget tanpa judul",
     widgetGrain: (id) => {

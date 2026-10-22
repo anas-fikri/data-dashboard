@@ -28,6 +28,7 @@ Editor juga bisa menentukan kolom yang bisa disaring di bilah **Filter**:
 1. Di mode edit, tekan **Atur kolom filter** di bilah filter di atas widget.
 2. Tekan **Tambah kolom filter** lalu pilih kolomnya (mis. _Cabang_, _Tanggal_) — paling banyak 8 kolom.
 3. Hapus kolom dengan tombol **×** di barisnya. Setiap perubahan langsung tersimpan dan berlaku untuk semua yang membuka dashboard.
+4. Untuk filter bawaan (aktif saat dashboard dibuka), pilih filternya lalu tekan **Jadikan filter aktif sebagai bawaan**.
 
 ## Field terhitung dan pivot tersimpan
 
