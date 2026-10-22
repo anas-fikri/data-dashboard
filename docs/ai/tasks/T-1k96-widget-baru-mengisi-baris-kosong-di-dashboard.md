@@ -1,17 +1,23 @@
 ---
 id: T-1k96
 title: Widget baru mengisi baris kosong di dashboard
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:57Z"
-updated: "2026-10-22T07:04:16Z"
+updated: "2026-10-22T07:05:46Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 925c090568dd5fffe172c5258c98c4b5a92ad8f0
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-22T07:05:46Z"
+      findings: 3
 evidence:
   check:
     cmd: npm run check

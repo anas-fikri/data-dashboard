@@ -146,8 +146,9 @@ export function bottomOf(layout: LayoutItem[]): number {
 /**
  * Posisi widget baru (T-1k96): tempat kosong pertama (baris lalu kolom) setinggi widget baru di pita
  * baris terbawah — di samping widget-widget terakhir — sehingga Tambah widget berturut-turut mengisi
- * baris (x = 0, 4, 8) sebelum turun ke baris baru. Lubang di atas pita itu tidak diisi: widget baru
- * tidak "menghilang" di tengah dashboard panjang. Tidak ada tempat → di bawah semua widget, x = 0.
+ * baris (x = 0, 4, 8) sebelum turun ke baris baru. Lubang di atas pita itu tidak dicari; pemadatan
+ * sesudahnya tetap bisa menaikkan widget ke celah di bawah widget pendek (kanvas menggulir ke widget
+ * baru). Tidak ada tempat → di bawah semua widget, x = 0.
  */
 export function newWidgetSlot(
   layout: LayoutItem[],

@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
-import type { LayoutItem } from "@/features/dashboards/validation";
+import { compactLayout, type LayoutItem } from "@/features/dashboards/validation";
 import { unloadGuard } from "@/lib/download-navigation";
 import { autoTitle, followTitle } from "./auto-title";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
@@ -346,7 +346,9 @@ export function useDashboardEditor(o: {
         setWidgets([...widgetsNow.current, widget]);
         // Digeser selama permintaan berjalan: posisi lokal dipertahankan, simpan otomatis menyusul.
         const added = server.find((it) => it.i === widget.id);
-        setLayout(dirty.current && added ? [...latest.current, added] : server);
+        // Tempat widget baru bisa di samping widget lain (T-1k96): dipadatkan agar tidak menimpa posisi
+        // lokal yang belum tersimpan.
+        setLayout(dirty.current && added ? compactLayout([...latest.current, added]) : server);
         setUndo(restore ? null : { kind: "add", widgetId: widget.id });
         setNotice(
           r.data.configDropped

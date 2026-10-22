@@ -360,6 +360,23 @@ describe("tambah dan hapus widget (revisi wajib)", () => {
     });
   });
 
+  it("T-1k96: pulihkan dipaku — widget lain yang naik ke tempatnya bergeser turun", async () => {
+    tx.dashboard.findFirst.mockResolvedValueOnce(
+      dash([{ i: WB, x: 4, y: 0, w: 8, h: 24 }], 2, [WB]),
+    );
+    tx.widget.create.mockResolvedValueOnce({ id: WA, type: "empty", title: "", updatedAt: AT });
+    const r = await svc.addWidget(OWNER, DB, { baseRevision: 2, at: { x: 7, y: 0, w: 4, h: 4 } });
+    expect(r).toMatchObject({
+      ok: true,
+      data: {
+        layout: [
+          { i: WA, x: 7, y: 0, w: 4, h: 4 },
+          { i: WB, x: 4, y: 4, w: 8, h: 24 },
+        ],
+      },
+    });
+  });
+
   it("pulihkan di posisi semula (urungkan hapus); posisi rusak → INVALID; 50 widget → LIMIT_REACHED", async () => {
     tx.dashboard.findFirst.mockResolvedValueOnce(dash([], 1, []));
     tx.widget.create.mockResolvedValueOnce({
