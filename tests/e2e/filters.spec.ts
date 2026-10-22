@@ -493,8 +493,9 @@ test.describe("filter dashboard", () => {
 
   let cleanup: (() => Promise<unknown>) | null = null;
   test.afterEach(async () => {
-    await cleanup?.();
+    const res = (await cleanup?.()) as { ok(): boolean; status(): number } | undefined;
     cleanup = null;
+    if (res) expect(res.ok(), `pembersihan bawaan: HTTP ${res.status()}`).toBe(true);
   });
 
   test("T-vb7q: filter bawaan — disimpan di mode edit, aktif tanpa ?f= (label bawaan, dikirim sebagai dashboardFilters); Hapus semua = f={} tetap tanpa filter saat dimuat ulang; Kembalikan bawaan", async ({

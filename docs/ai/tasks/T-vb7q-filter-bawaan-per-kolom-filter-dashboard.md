@@ -7,7 +7,7 @@ tags:
   - ui
   - security
 created: "2026-10-22T03:20:00Z"
-updated: "2026-10-22T11:20:08Z"
+updated: "2026-10-22T11:22:46Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -19,6 +19,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-22T11:20:08Z"
       findings: 6
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-10-22T11:22:46Z"
+      findings: 2
 evidence:
   check:
     cmd: npm run check
@@ -53,7 +57,7 @@ evidence:
 ---
 
 ## Objective
-(describe the outcome in one paragraph)
+Pemilik/editor menyimpan filter yang sedang aktif sebagai filter bawaan per kolom filter (Dashboard.filterColumns[].default, tanpa migrasi). Dashboard yang dibuka tanpa ?f= langsung memakai bawaan (chip berlabel "bawaan"); "Hapus semua filter" menulis f={} sehingga muat ulang tetap tanpa filter; "Kembalikan filter bawaan" memulihkan. Widget, ekspor, dan PDF tetap memakai status aktif yang dikirim sebagai dashboardFilters — server query tidak mengenal bawaan.
 
 ## Acceptance criteria
 - [ ] Pemilik/editor bisa memasang nilai bawaan per kolom filter (tanggal: preset mis. Bulan ini; kategori: nilai terpilih)
@@ -61,6 +65,23 @@ evidence:
 - [ ] Ekspor dan PDF memakai filter aktif yang sama
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: bentuk JSON Dashboard.filterColumns bertambah field opsional `default`; status filter klien (URL ?f=). Security (STRIDE): Tampering — default divalidasi zod (dashFilterSchema strict) + defaultFits + ≤ 100 nilai, body ≤ 64 KB; Information disclosure — non-pemilik tetap tidak menerima kolom tidak tersedia beserta bawaannya; Elevation — tulis lewat jalur kolom filter (canEditWhere, viewer 403). Rollback: revert commit (field opsional diabaikan kode lama: storedFilterColumns strict lama membuang entri ber-default → kolom filter berbawaan hilang di versi lama; hapus bawaan dulu sebelum rollback). Validation: aitk check, unit default-filters, e2e filters 7/7, review subagen.
 
 ## Notes
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak mengubah autentikasi
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak mengubah sesi
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tanpa kriptografi
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tanpa komunikasi eksternal baru
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tanpa file/upload
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tanpa perubahan konfigurasi/dependensi
