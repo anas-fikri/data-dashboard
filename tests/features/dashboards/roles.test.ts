@@ -5,7 +5,7 @@ import { SEED_WIDGET_AT, col, cuid, fakeShareDb, userRow } from "../sharing/fake
  * T-016: peran per dashboard di service dashboard, dengan Prisma palsu yang MENGEVALUASI predikat akses.
  * Widget/tata letak: OWNER dan EDITOR; VIEWER (share atau organisasi) → FORBIDDEN tanpa menulis;
  * tanpa akses → NOT_FOUND — termasuk pemegang share dashboard LAIN di dataset yang sama (akses per
- * dashboard, bukan per dataset). Nama, kolom filter, hapus: pemilik saja (editor → FORBIDDEN). Sheet di
+ * dashboard, bukan per dataset). Nama, hapus: pemilik saja (editor → FORBIDDEN); kolom filter: pemilik dan editor (T-k2ec). Sheet di
  * luar dataset dashboard → NOT_FOUND (AC6). Server Action edit → code FORBIDDEN (AC1).
  */
 const fake = fakeShareDb();

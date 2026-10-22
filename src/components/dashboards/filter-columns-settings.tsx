@@ -59,6 +59,10 @@ export function FilterColumnsSettings({
   }
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  const latest = useRef(columns);
+  useEffect(() => {
+    latest.current = columns;
+  }, [columns]);
   const focusAt = useRef<number | null>(null);
   const multiSheet = sources.length > 1;
   const full = list.length >= FILTER_COLUMNS_MAX;
@@ -82,6 +86,7 @@ export function FilterColumnsSettings({
     // Satu simpan sekaligus (tombol tidak dinonaktifkan: fokus tidak boleh hilang ke <body>).
     if (pending) return;
     const before = list;
+    const columnsAtSave = latest.current;
     if (focus !== undefined) focusAt.current = focus;
     setList(next);
     setPending(true);
@@ -96,7 +101,8 @@ export function FilterColumnsSettings({
       setResult({ ok: true, message: "Kolom filter tersimpan." });
       router.refresh();
     } else {
-      setList(before);
+      // Refresh yang tiba selama simpan berjalan menang atas daftar sebelum simpan.
+      setList(latest.current === columnsAtSave ? before : latest.current);
       setResult({ ok: false, message: r.message });
     }
   }

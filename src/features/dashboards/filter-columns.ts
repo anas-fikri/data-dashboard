@@ -221,7 +221,7 @@ export type CheckedFilterColumns =
   { ok: true; columns: FilterColumn[] } | { ok: false; message: string };
 
 /**
- * Validasi daftar kolom filter dari pemilik: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
+ * Validasi daftar kolom filter dari pemilik/editor: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
  * kontrol per nama), dan setiap kolom ada serta tidak disembunyikan di versi aktif. Yang disimpan
  * adalah nama terkini dari skema.
  */

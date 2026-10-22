@@ -1,18 +1,24 @@
 ---
 id: T-k2ec
 title: Editor dashboard boleh mengatur kolom filter dari bilah filter
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
   - security
 created: "2026-10-22T03:19:58Z"
-updated: "2026-10-22T10:33:12Z"
+updated: "2026-10-22T10:45:54Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 68fde9f7659a6526e4e6ad1512dde1195d7f0d25
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-22T10:45:54Z"
+      findings: 8
 evidence:
   check:
     cmd: npm run check
@@ -56,3 +62,20 @@ evidence:
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [ ] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change
+- [ ] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets
+- [ ] V3 Session management: session tokens are random, protected, invalidated on logout and expiry
+- [ ] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR)
+- [ ] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template)
+- [ ] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code
+- [ ] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets
+- [ ] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable
+- [ ] V9 Communication: TLS for all external traffic; certificates validated
+- [ ] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted
+- [ ] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions)
+- [ ] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF
+- [ ] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate
+- [ ] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date
