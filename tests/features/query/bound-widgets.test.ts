@@ -7,6 +7,7 @@ import type { ColumnSchema } from "@/features/ingest/infer";
 import { ResultCache } from "@/features/query/cache";
 import {
   COLUMN_UNAVAILABLE_VIEWER,
+  runPivotPreview,
   runWidgetQuery,
   type CachedQuery,
   type QueryDeps,
@@ -438,5 +439,94 @@ describe("AC4: kolom hilang dan tampilan yang tidak cocok — pesan per widget",
     expect(!r.ok && r.message).not.toContain("pivot tersimpan");
     const o = await run(deps, "stale");
     expect(!o.ok && o.message).toContain("pivot tersimpan");
+  });
+});
+
+describe("T-c6z4: pratinjau pivot tersimpan { datasetId, pivot } (pemilik dataset saja)", () => {
+  const owned = (deps: QueryDeps) => {
+    deps.repo.ownedDataset = vi.fn(async (userId: string, datasetId: string) =>
+      userId === OWNER && datasetId === DS ? { activeVersionId: VER } : null,
+    );
+    return deps.repo.ownedDataset as ReturnType<typeof vi.fn>;
+  };
+
+  it("AC1: tabel pratinjau = tabel widget pivot terikat; ubah nilai → pratinjau memakai definisi baru", async () => {
+    const { state, deps } = setup();
+    owned(deps);
+    const bound = await run(deps, "pivot");
+    const preview = await runPivotPreview(OWNER, { datasetId: DS, pivot: state.saved.spec }, deps);
+    expect(preview).toMatchObject({ ok: true });
+    expect(preview.ok && preview.pivot).toEqual(bound.ok && bound.pivot);
+    expect(preview.ok && preview.columns).toEqual(bound.ok && bound.columns);
+
+    // Nilai diganti Biaya (belum disimpan): Total per cabang = Σ Biaya, tanpa menyentuh widget.
+    const pivot = pivotSpec({ column: undefined, values: [{ agg: "sum", column: 3 }] });
+    const next = await runPivotPreview(OWNER, { datasetId: DS, pivot }, deps);
+    expect(next).toMatchObject({ ok: true, cached: false });
+    const p = next.ok ? next.pivot! : null;
+    expect(p?.values).toHaveLength(1);
+    const biaya = sumBy(cabangOf, biayaOf);
+    expect(next.ok && next.columns.map((c) => c.label)).toEqual(["Cabang", "Total Biaya"]);
+    expect(new Map(p?.rows.map((r, i) => [r.labels[0], Number(p.cells[i]![0]![0])]))).toEqual(
+      biaya,
+    );
+    // Muat ulang dengan spec sama: dari cache hasil (kunci = widget pivot mandiri yang sama).
+    expect(await runPivotPreview(OWNER, { datasetId: DS, pivot }, deps)).toMatchObject({
+      cached: true,
+    });
+  });
+
+  it("AC2: editor/viewer/orang lain, dataset lain, dan sheet dataset lain → NOT_FOUND tanpa DuckDB", async () => {
+    const { state, deps, exec } = setup();
+    const ownedDataset = owned(deps);
+    exec.mockClear();
+    const body = { datasetId: DS, pivot: state.saved.spec };
+    for (const user of [VIEWER, "u-editor", "u-asing"]) {
+      expect(await runPivotPreview(user, body, deps)).toMatchObject({
+        ok: false,
+        code: "NOT_FOUND",
+      });
+    }
+    expect(
+      await runPivotPreview(OWNER, { datasetId: DS_OTHER, pivot: state.saved.spec }, deps),
+    ).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    const foreign = { ...(state.saved.spec as object), sheetId: "cmv4kljx40009oczvdmpurryy" };
+    expect(await runPivotPreview(OWNER, { datasetId: DS, pivot: foreign }, deps)).toEqual({
+      ok: false,
+      code: "NOT_FOUND",
+      message: "Sheet tidak ditemukan.",
+    });
+    expect(exec).not.toHaveBeenCalled();
+    expect(ownedDataset).toHaveBeenCalledTimes(5);
+  });
+
+  it("spec divalidasi seperti simpan pivot tersimpan: body/field salah → INVALID sebelum otorisasi", async () => {
+    const { state, deps, exec } = setup();
+    const ownedDataset = owned(deps);
+    exec.mockClear();
+    const spec = state.saved.spec as Record<string, unknown>;
+    for (const body of [
+      { datasetId: DS },
+      { datasetId: DS, pivot: spec, widgetId: "x" },
+      { datasetId: "bukan-id", pivot: spec },
+      { datasetId: DS, pivot: { ...spec, rows: [] } },
+      { datasetId: DS, pivot: { ...spec, sql: "SELECT 1" } },
+      // Kolom yang sama dua kali (aturan pivotSpecSchema yang sama dengan simpan).
+      { datasetId: DS, pivot: { ...spec, rows: [{ column: 1 }, { column: 1 }] } },
+    ]) {
+      expect(await runPivotPreview(OWNER, body, deps)).toMatchObject({
+        ok: false,
+        code: "INVALID",
+      });
+    }
+    expect(ownedDataset).not.toHaveBeenCalled();
+    // Lolos skema tetapi kolom tidak ada di sheet: widgetPlan (sama dengan checkConfig saat simpan).
+    const r = await runPivotPreview(
+      OWNER,
+      { datasetId: DS, pivot: { ...spec, rows: [{ column: 99 }] } },
+      deps,
+    );
+    expect(r).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    expect(exec).not.toHaveBeenCalled();
   });
 });
