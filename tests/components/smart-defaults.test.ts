@@ -150,6 +150,16 @@ describe("isian bawaan widget baru", () => {
       expect(isIdLike({ pos: 9, name, type: "integer", ...stats(9_900) }), name).toBe(false);
     }
     expect(isIdLike({ pos: 9, name: "Jam Lembur", type: "integer", ...stats(30) })).toBe(false);
+    // Nomor/kode ditulis menyatu tetap ID (review pass 3).
+    for (const name of ["NoTagihan", "KodeBayar", "NOSETORAN", "IdTransaksiBayar"]) {
+      expect(isIdLike({ pos: 9, name, type: "integer", ...stats(9_900) }), name).toBe(true);
+    }
+    // Nama memuat bagian tanggal kalah dari ukuran lain.
+    const mixed = [
+      { pos: 1, name: "Bulan Kirim", type: "integer" as const, ...stats(12) },
+      { pos: 2, name: "Selisih", type: "decimal" as const, ...stats(500) },
+    ];
+    expect(measureCandidates(mixed).map((c) => c.pos)).toEqual([2, 1]);
   });
 
   it("ganti Nilai dari Jumlah baris ke Total: kolom bukan ID (review)", () => {

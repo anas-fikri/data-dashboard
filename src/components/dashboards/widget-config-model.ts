@@ -98,9 +98,10 @@ export function measureForChoice(
   const allowed = columnsForAgg(agg, columns, type);
   const keep = allowed.some((c) => c.pos === prev.column);
   // Kolom baru (T-12zs — bukan "Total No."/"Total Tahun"): Total/Rata-rata/… kolom besaran bila ada;
-  // Jumlah terisi (cocok untuk teks) kolom pertama yang bukan ID/nomor urut.
+  // Jumlah terisi / Jumlah nilai unik (cocok untuk teks) kolom pertama yang bukan ID/nomor urut.
+  const counts = choice === "count_filled" || choice === "count_distinct";
   const pick =
-    (choice === "count_filled" ? undefined : measureCandidates(allowed)[0]) ??
+    (counts ? undefined : measureCandidates(allowed)[0]) ??
     allowed.find((c) => !isIdLike(c)) ??
     allowed[0]!;
   return { agg, column: keep ? prev.column! : pick.pos };

@@ -103,6 +103,8 @@ const UNIQUE_MIN_ROWS = 20;
 
 const words = (name: string) =>
   name
+    // camelCase dipisah: "NoTagihan" → "No Tagihan".
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter(Boolean);
@@ -110,17 +112,29 @@ const words = (name: string) =>
 /** Nama seperti "No", "No.", "Nomor Resi", "ID Pelanggan", "Kode Cabang" (tidak "Nominal"). */
 export const isIdName = (name: string) => words(name).some((w) => ID_WORDS.has(w));
 
-/** Kata besaran ≥ 4 huruf juga di tengah kata (Pembayaran, Setoran); yang pendek awal kata saja. */
+/** Awalan kata nomor/kode yang ditulis menyatu (NOSETORAN, kdbayar). */
+const ID_PREFIX = /^(no|nomor|nomer|id|kode|kd|ref)/;
+
+/**
+ * Kata besaran di awal kata; yang ≥ 4 huruf juga di tengah kata (Pembayaran, Setoran) — kecuali
+ * kata itu diawali nomor/kode yang ditulis menyatu (NOSETORAN, KDBAYAR tetap nomor).
+ */
 const isMeasureName = (name: string) =>
   words(name).some((w) =>
-    MEASURE_WORDS.some((m) => w.startsWith(m) || (m.length >= 4 && w.includes(m))),
+    MEASURE_WORDS.some(
+      (m) => w.startsWith(m) || (m.length >= 4 && w.includes(m) && !ID_PREFIX.test(w)),
+    ),
   );
 
-/** Nama yang seluruhnya bagian tanggal ("Tahun", "Bulan Kirim" tidak; "Jam Lembur" tidak). */
+/** Nama yang seluruhnya bagian tanggal ("Tahun", "Bulan"; bukan "Bulan Kirim" atau "Jam Lembur"). */
 const isDatePartName = (name: string) => {
   const ws = words(name);
   return ws.length > 0 && ws.every((w) => DATE_PART_WORDS.has(w));
 };
+
+/** Nama memuat bagian tanggal tanpa kata besaran ("Bulan Kirim", "Tahun Anggaran"). */
+const hasDatePart = (name: string) =>
+  words(name).some((w) => DATE_PART_WORDS.has(w)) && !isMeasureName(name);
 
 /**
  * Kolom angka yang sebenarnya ID/nomor urut: namanya No./ID/Kode/Nomor, atau bilangan bulat yang
@@ -143,13 +157,14 @@ const byScore = <T extends Column>(cols: T[], score: (c: T) => number): T[] =>
 
 /**
  * Kolom ukuran (Total) urut kecocokan: angka bukan ID dan bukan bagian tanggal (Tahun, Bulan, …);
- * yang banyak kosong belakangan, di antara sisanya nama besaran (Omzet, Harga, …) didahulukan.
+ * nama yang memuat bagian tanggal (Bulan Kirim) paling akhir, lalu yang banyak kosong; di antara
+ * sisanya nama besaran (Omzet, Harga, …) didahulukan.
  * Kolom yang dilewati tetap bisa dipilih pengguna di panel.
  */
 export function measureCandidates(cols: Column[]): Column[] {
   return byScore(
     cols.filter((c) => NUMERIC.includes(c.type) && !isIdLike(c) && !isDatePartName(c.name)),
-    (c) => (sparse(c) ? 2 : 0) + (isMeasureName(c.name) ? 0 : 1),
+    (c) => (hasDatePart(c.name) ? 4 : 0) + (sparse(c) ? 2 : 0) + (isMeasureName(c.name) ? 0 : 1),
   );
 }
 
