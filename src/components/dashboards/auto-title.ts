@@ -51,15 +51,17 @@ export function autoTitle(w: WidgetLike, sources: Source[]): string {
 /**
  * Judul baru setelah pengaturan widget berganti dari `before` ke `after`, atau null bila judul tidak
  * perlu diubah: judul sekarang diketik pengguna (bukan kosong dan bukan judul turunan sebelumnya), atau
- * judul turunan baru sama/kosong.
+ * judul turunan baru sama/kosong. `stale`: judul turunan lama yang gagal diganti (mis. jaringan putus)
+ * — tetap dianggap judul otomatis.
  */
 export function followTitle(
   title: string,
   before: WidgetLike,
   after: WidgetLike,
   sources: Source[],
+  stale?: string,
 ): string | null {
-  const auto = title === "" || title === autoTitle(before, sources);
+  const auto = title === "" || title === stale || title === autoTitle(before, sources);
   if (!auto) return null;
   const next = autoTitle(after, sources);
   return next && next !== title ? next : null;

@@ -76,13 +76,16 @@ export function WidgetPanel({
   async function saveTitle(e?: React.FormEvent) {
     e?.preventDefault();
     if (typed === null) return;
-    // Dikosongkan: kembali ke judul otomatis (yang lalu mengikuti pengaturan lagi).
-    const next = normalizeName(typed) || autoTitle;
-    if (next === widget.title) return setTyped(null);
+    // Dikosongkan: kembali ke judul otomatis (dihitung editor saat giliran simpan, dari pengaturan
+    // terbaru — yang lalu mengikuti pengaturan lagi).
+    const sent = typed;
+    const next = normalizeName(sent);
+    if ((next || autoTitle) === widget.title) return setTyped(null);
     setPending(true);
     const ok = await onRename(next);
     setPending(false);
-    if (ok) setTyped(null);
+    // Ketikan baru selama menyimpan tetap dipertahankan.
+    if (ok) setTyped((t) => (t === sent ? null : t));
   }
 
   const step = (key: StepKey, text: string, icon: React.ReactNode) => (

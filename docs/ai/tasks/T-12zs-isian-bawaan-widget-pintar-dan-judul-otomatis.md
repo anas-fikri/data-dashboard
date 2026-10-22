@@ -1,17 +1,23 @@
 ---
 id: T-12zs
 title: Isian bawaan widget pintar dan judul otomatis
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:56Z"
-updated: "2026-10-22T04:07:47Z"
+updated: "2026-10-22T04:22:15Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 829d5bab56ef4100795313a3613e2ae81694285c
+review:
+  passes:
+    - "n": 1
+      by: claude-code
+      at: "2026-10-22T04:22:15Z"
+      findings: 7
 evidence:
   check:
     cmd: npm run check

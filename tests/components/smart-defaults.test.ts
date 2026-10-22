@@ -6,7 +6,11 @@ import {
   isIdName,
   measureCandidates,
 } from "@/components/dashboards/smart-defaults";
-import { defaultConfig, type Source } from "@/components/dashboards/widget-config-model";
+import {
+  defaultConfig,
+  measureForChoice,
+  type Source,
+} from "@/components/dashboards/widget-config-model";
 import { parseWidgetConfig, type WidgetConfig } from "@/features/widgets/spec";
 
 /*
@@ -116,6 +120,32 @@ describe("isian bawaan widget baru", () => {
     expect(l2.type === "line" && l2.spec.dimension).toEqual({ column: 2, timeGrain: "month" });
   });
 
+  it("ukuran: bagian tanggal (Tahun/Bulan) paling akhir, nama besaran didahulukan (review)", () => {
+    const year: Source[] = [
+      {
+        ...sources[0]!,
+        columns: [
+          { pos: 1, name: "No.", type: "integer", ...stats(ROWS) },
+          { pos: 2, name: "Tahun", type: "integer", ...stats(2) },
+          { pos: 3, name: "Bulan", type: "integer", ...stats(12) },
+          { pos: 4, name: "Cabang", type: "text", ...stats(12) },
+          { pos: 5, name: "Koreksi", type: "decimal", ...stats(50) },
+          { pos: 6, name: "Nominal", type: "integer", ...stats(9_800) },
+        ],
+      },
+    ];
+    // Nominal hampir semuanya unik tetapi nama besaran → bukan ID; Tahun/Bulan paling akhir.
+    expect(measureCandidates(year[0]!.columns).map((c) => c.pos)).toEqual([6, 5, 2, 3]);
+    expect(autoTitle(defaultConfig("bar", year, empty)!, year)).toBe("Total Nominal per Cabang");
+  });
+
+  it("ganti Nilai dari Jumlah baris ke Total: kolom bukan ID (review)", () => {
+    expect(measureForChoice("sum", { agg: "count" }, cols, "bar")).toEqual({
+      agg: "sum",
+      column: 8,
+    });
+  });
+
   it("tanpa kolom besaran: Jumlah baris", () => {
     const onlyIds: Source[] = [{ ...sources[0]!, columns: cols.filter((c) => c.pos <= 6) }];
     const kpi = defaultConfig("kpi", onlyIds, empty)!;
@@ -168,6 +198,11 @@ describe("judul otomatis", () => {
     expect(followTitle("Omzet cabang Q3", bar, line, sources)).toBeNull();
     expect(followTitle("Total Omzet per Cabang", bar, bar, sources)).toBeNull();
     expect(followTitle("", bar, empty, sources)).toBeNull();
+    // Judul otomatis lama yang gagal diganti tetap dianggap otomatis.
+    expect(followTitle("Total Omzet", bar, line, sources)).toBeNull();
+    expect(followTitle("Total Omzet", bar, line, sources, "Total Omzet")).toBe(
+      "Total Omzet per Tanggal (per bulan)",
+    );
   });
 
   it("judul panjang dipotong ke batas judul widget", () => {

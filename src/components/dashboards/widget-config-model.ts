@@ -23,7 +23,7 @@ import {
 } from "@/features/widgets/spec";
 import { isAdditiveCalc } from "@/features/widgets/calc";
 import { defaultPivot } from "./pivot-config-model";
-import { categoryCandidates, dateCandidates, measureCandidates } from "./smart-defaults";
+import { categoryCandidates, dateCandidates, isIdLike, measureCandidates } from "./smart-defaults";
 
 /*
  * Model panel konfigurasi widget (T-011): pilihan yang ditawarkan dan nilai awal yang masuk akal
@@ -97,7 +97,9 @@ export function measureForChoice(
   const agg: Agg = choice === "count_filled" ? "count" : choice;
   const allowed = columnsForAgg(agg, columns, type);
   const keep = allowed.some((c) => c.pos === prev.column);
-  return { agg, column: keep ? prev.column! : allowed[0]!.pos };
+  // Kolom baru: bukan kolom ID/nomor urut bila ada (T-12zs — bukan "Total No.").
+  const pick = allowed.find((c) => !isIdLike(c)) ?? allowed[0]!;
+  return { agg, column: keep ? prev.column! : pick.pos };
 }
 
 export const GRAIN_LABEL = {

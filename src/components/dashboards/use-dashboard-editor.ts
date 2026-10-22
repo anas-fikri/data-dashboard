@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import { unloadGuard } from "@/lib/download-navigation";
-import { followTitle } from "./auto-title";
+import { autoTitle, followTitle } from "./auto-title";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
 import { api, type ApiResult } from "./dashboard-api";
 import { fitToWidgets, sameLayout } from "./layout-ops";
@@ -227,6 +227,8 @@ export function useDashboardEditor(o: {
   sources?: SourceSheet[];
 }) {
   const sourcesNow = useRef(o.sources ?? []);
+  /** Judul otomatis yang gagal diganti per widget: tetap dianggap otomatis pada simpanan berikutnya. */
+  const staleAuto = useRef(new Map<string, string>());
   useEffect(() => {
     sourcesNow.current = o.sources ?? [];
   });
@@ -401,14 +403,19 @@ export function useDashboardEditor(o: {
   );
 
   const renameWidget = useCallback(
-    (widgetId: string, title: string) =>
+    (widgetId: string, typed: string) =>
       run(async () => {
+        // Dikosongkan: judul otomatis dari pengaturan terbaru saat giliran ini (simpanan pengaturan
+        // sebelumnya di antrean sudah selesai), bukan dari pengaturan yang tampil saat diketik.
+        const w = widgetsNow.current.find((x) => x.id === widgetId);
+        const title = typed || (w ? autoTitle(w, sourcesNow.current) : "");
         const r = await api.renameWidget(id, widgetId, title, versionOf(widgetId));
         if (!r.ok) {
           // STALE (diubah di tab lain) membekukan editor seperti tata letak: pesan server + "Muat ulang".
           failed(r);
           return false;
         }
+        staleAuto.current.delete(widgetId);
         setWidgets(
           patchWidget(widgetsNow.current, widgetId, {
             title: r.data.title,
@@ -467,16 +474,21 @@ export function useDashboardEditor(o: {
       );
       // Judul otomatis (T-12zs): judul kosong / masih judul turunan mengikuti pengaturan baru; judul
       // yang diketik pengguna tidak disentuh. Gagal mengganti judul tidak menggagalkan simpanan.
-      const title = before && followTitle(before.title, before, r.data, sourcesNow.current);
-      if (title) {
+      const stale = staleAuto.current.get(widgetId);
+      const title = before && followTitle(before.title, before, r.data, sourcesNow.current, stale);
+      if (title && before) {
         const t = await api.renameWidget(id, widgetId, title, r.data.version);
         if (t.ok) {
+          staleAuto.current.delete(widgetId);
           setWidgets(
             patchWidget(widgetsNow.current, widgetId, {
               title: t.data.title,
               version: t.data.version,
             }),
           );
+        } else if (before.title) {
+          // Judul lama tetap otomatis: simpanan berikutnya mencoba lagi (bukan dianggap judul ketikan).
+          staleAuto.current.set(widgetId, before.title);
         }
       }
       settled();

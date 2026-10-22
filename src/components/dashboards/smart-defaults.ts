@@ -57,7 +57,40 @@ const MEASURE_WORDS = [
   "kg",
   "koli",
   "pcs",
+  "nominal",
+  "rp",
+  "rupiah",
+  "pajak",
+  "ppn",
+  "gaji",
+  "debit",
+  "kredit",
+  "premi",
+  "denda",
 ];
+/** Kata nama kolom bagian tanggal (Tahun, Bulan, …): angka, tetapi tidak masuk akal dijumlah. */
+const DATE_PART_WORDS = new Set([
+  "tahun",
+  "thn",
+  "bulan",
+  "bln",
+  "minggu",
+  "pekan",
+  "hari",
+  "tanggal",
+  "tgl",
+  "periode",
+  "kuartal",
+  "triwulan",
+  "semester",
+  "jam",
+  "year",
+  "month",
+  "week",
+  "day",
+  "quarter",
+  "hour",
+]);
 /** Rentang nilai unik kategori yang enak dibaca di grafik/pivot. */
 export const CATEGORY_MIN = 2;
 export const CATEGORY_MAX = 50;
@@ -78,6 +111,8 @@ export const isIdName = (name: string) => words(name).some((w) => ID_WORDS.has(w
 const isMeasureName = (name: string) =>
   words(name).some((w) => MEASURE_WORDS.some((m) => w === m || w.startsWith(m)));
 
+const isDatePartName = (name: string) => words(name).some((w) => DATE_PART_WORDS.has(w));
+
 /**
  * Kolom angka yang sebenarnya ID/nomor urut: namanya No./ID/Kode/Nomor, atau bilangan bulat yang
  * hampir semua nilainya berbeda (≥ 95% sel terisi) — kecuali namanya jelas besaran (Omzet, Harga, …).
@@ -97,11 +132,17 @@ const sparse = (c: Column) => (c.nullPct ?? 0) > 0.5;
 const byScore = <T extends Column>(cols: T[], score: (c: T) => number): T[] =>
   [...cols].sort((a, b) => score(a) - score(b) || a.pos - b.pos);
 
-/** Kolom ukuran (Total) urut kecocokan: angka bukan ID, yang jarang kosong dulu. */
+/**
+ * Kolom ukuran (Total) urut kecocokan: angka bukan ID; bagian tanggal (Tahun, Bulan, …) paling akhir,
+ * lalu yang banyak kosong; di antara sisanya nama besaran (Omzet, Harga, …) didahulukan.
+ */
 export function measureCandidates(cols: Column[]): Column[] {
   return byScore(
     cols.filter((c) => NUMERIC.includes(c.type) && !isIdLike(c)),
-    (c) => (sparse(c) ? 1 : 0),
+    (c) =>
+      (isDatePartName(c.name) && !isMeasureName(c.name) ? 4 : 0) +
+      (sparse(c) ? 2 : 0) +
+      (isMeasureName(c.name) ? 0 : 1),
   );
 }
 
