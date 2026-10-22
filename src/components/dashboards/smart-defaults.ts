@@ -67,6 +67,8 @@ const MEASURE_WORDS = [
   "kredit",
   "premi",
   "denda",
+  "cod",
+  "setor",
 ];
 /** Kata nama kolom bagian tanggal (Tahun, Bulan, …): angka, tetapi tidak masuk akal dijumlah. */
 const DATE_PART_WORDS = new Set([
@@ -108,10 +110,17 @@ const words = (name: string) =>
 /** Nama seperti "No", "No.", "Nomor Resi", "ID Pelanggan", "Kode Cabang" (tidak "Nominal"). */
 export const isIdName = (name: string) => words(name).some((w) => ID_WORDS.has(w));
 
+/** Kata besaran ≥ 4 huruf juga di tengah kata (Pembayaran, Setoran); yang pendek awal kata saja. */
 const isMeasureName = (name: string) =>
-  words(name).some((w) => MEASURE_WORDS.some((m) => w === m || w.startsWith(m)));
+  words(name).some((w) =>
+    MEASURE_WORDS.some((m) => w.startsWith(m) || (m.length >= 4 && w.includes(m))),
+  );
 
-const isDatePartName = (name: string) => words(name).some((w) => DATE_PART_WORDS.has(w));
+/** Nama yang seluruhnya bagian tanggal ("Tahun", "Bulan Kirim" tidak; "Jam Lembur" tidak). */
+const isDatePartName = (name: string) => {
+  const ws = words(name);
+  return ws.length > 0 && ws.every((w) => DATE_PART_WORDS.has(w));
+};
 
 /**
  * Kolom angka yang sebenarnya ID/nomor urut: namanya No./ID/Kode/Nomor, atau bilangan bulat yang
@@ -133,16 +142,14 @@ const byScore = <T extends Column>(cols: T[], score: (c: T) => number): T[] =>
   [...cols].sort((a, b) => score(a) - score(b) || a.pos - b.pos);
 
 /**
- * Kolom ukuran (Total) urut kecocokan: angka bukan ID; bagian tanggal (Tahun, Bulan, …) paling akhir,
- * lalu yang banyak kosong; di antara sisanya nama besaran (Omzet, Harga, …) didahulukan.
+ * Kolom ukuran (Total) urut kecocokan: angka bukan ID dan bukan bagian tanggal (Tahun, Bulan, …);
+ * yang banyak kosong belakangan, di antara sisanya nama besaran (Omzet, Harga, …) didahulukan.
+ * Kolom yang dilewati tetap bisa dipilih pengguna di panel.
  */
 export function measureCandidates(cols: Column[]): Column[] {
   return byScore(
-    cols.filter((c) => NUMERIC.includes(c.type) && !isIdLike(c)),
-    (c) =>
-      (isDatePartName(c.name) && !isMeasureName(c.name) ? 4 : 0) +
-      (sparse(c) ? 2 : 0) +
-      (isMeasureName(c.name) ? 0 : 1),
+    cols.filter((c) => NUMERIC.includes(c.type) && !isIdLike(c) && !isDatePartName(c.name)),
+    (c) => (sparse(c) ? 2 : 0) + (isMeasureName(c.name) ? 0 : 1),
   );
 }
 

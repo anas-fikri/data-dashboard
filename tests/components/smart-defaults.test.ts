@@ -134,9 +134,22 @@ describe("isian bawaan widget baru", () => {
         ],
       },
     ];
-    // Nominal hampir semuanya unik tetapi nama besaran → bukan ID; Tahun/Bulan paling akhir.
-    expect(measureCandidates(year[0]!.columns).map((c) => c.pos)).toEqual([6, 5, 2, 3]);
+    // Nominal hampir semuanya unik tetapi nama besaran → bukan ID; Tahun/Bulan tidak dijumlah.
+    expect(measureCandidates(year[0]!.columns).map((c) => c.pos)).toEqual([6, 5]);
     expect(autoTitle(defaultConfig("bar", year, empty)!, year)).toBe("Total Nominal per Cabang");
+    // Ganti Nilai ke Total: kolom besaran, bukan Tahun.
+    expect(measureForChoice("sum", { agg: "count" }, year[0]!.columns, "kpi").column).toBe(6);
+    // Tanpa kolom besaran (hanya No./Tahun/Bulan): Jumlah baris, bukan "Total Tahun".
+    const noMeasure: Source[] = [
+      { ...year[0]!, columns: year[0]!.columns.filter((c) => c.pos <= 4) },
+    ];
+    const kpi = defaultConfig("kpi", noMeasure, empty)!;
+    expect(kpi.type === "kpi" && kpi.spec.measure).toEqual({ agg: "count" });
+    // Nama besaran di tengah kata / singkatan uang: bukan ID walau hampir semuanya unik.
+    for (const name of ["Pembayaran", "COD", "Setoran", "Total Bayar"]) {
+      expect(isIdLike({ pos: 9, name, type: "integer", ...stats(9_900) }), name).toBe(false);
+    }
+    expect(isIdLike({ pos: 9, name: "Jam Lembur", type: "integer", ...stats(30) })).toBe(false);
   });
 
   it("ganti Nilai dari Jumlah baris ke Total: kolom bukan ID (review)", () => {
