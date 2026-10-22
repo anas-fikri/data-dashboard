@@ -452,7 +452,7 @@ export async function createDashboard(
       await tx.$executeRaw(lockKey("dashboards", datasetId));
       const ds = await tx.dataset.findFirst({
         where: { id: datasetId, ownerId },
-        select: { activeVersionId: true, _count: { select: { dashboards: true } } },
+        select: { _count: { select: { dashboards: true } } },
       });
       if (!ds) return "NOT_FOUND" as const;
       if (ds._count.dashboards >= DASHBOARDS_PER_DATASET) return "LIMIT_REACHED" as const;
@@ -461,13 +461,12 @@ export async function createDashboard(
         select: { id: true },
       });
       // Versi aktif berganti sejak rencana divalidasi: dashboard dibuat kosong (aktivasi tidak akan
-      // memetakan widget yang ditulis sesudahnya).
-      if (
-        plan &&
-        plan.versionId === ds.activeVersionId &&
-        (plan.widgets.length || plan.filterColumns.length)
-      ) {
-        await writeStarter(tx, created.id, plan);
+      // memetakan widget yang ditulis sesudahnya). FOR SHARE menunggu aktivasi yang sedang berjalan
+      // (memegang baris Dataset FOR UPDATE) sehingga versi yang dibaca sudah final.
+      if (plan && (plan.widgets.length || plan.filterColumns.length)) {
+        const [v] = await tx.$queryRaw<{ activeVersionId: string | null }[]>`
+          SELECT "activeVersionId" FROM "Dataset" WHERE "id" = ${datasetId} FOR SHARE`;
+        if (v && v.activeVersionId === plan.versionId) await writeStarter(tx, created.id, plan);
       }
       return created;
     });
@@ -498,6 +497,12 @@ async function validStarter(
   ownerId: string,
   datasetId: string,
 ): Promise<StarterPlan & { versionId: string | null }> {
+  // Versi dibaca DULU: aktivasi sesudahnya membuat rencana basi dan ditolak di transaksi.
+  const ds = await prisma.dataset.findFirst({
+    where: { id: datasetId, ownerId },
+    select: { activeVersionId: true },
+  });
+  const versionId = ds?.activeVersionId ?? null;
   const sources = await getDatasetSources(ownerId, datasetId);
   const plan = starterPlan(sources);
   const widgets: StarterPlan["widgets"] = [];
@@ -505,11 +510,6 @@ async function validStarter(
     const c = await checkConfig(datasetId, w.type, w.spec, true);
     if (c.ok && c.config.type !== "empty") widgets.push({ ...w, spec: c.config.spec });
   }
-  const ds = await prisma.dataset.findFirst({
-    where: { id: datasetId, ownerId },
-    select: { activeVersionId: true },
-  });
-  const versionId = ds?.activeVersionId ?? null;
   const sheets = versionId ? await activeSheets(versionId) : [];
   // Per kolom: satu kolom yang ditolak (mis. nama ganda setelah dinormalkan) tidak membuang yang lain.
   let filterColumns: FilterColumn[] = [];
