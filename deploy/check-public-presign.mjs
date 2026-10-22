@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Verifikasi pasca-deploy storage publik (T-023 AC2 + AC6), dijalankan di container worker:
-//   docker compose -f docker-compose.prod.yml run --rm --add-host <STORAGE_HOST>:host-gateway \
+//   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm --add-host <STORAGE_HOST>:host-gateway \
 //     worker node deploy/check-public-presign.mjs [--insecure]
 // 1. UploadPart 16 MiB presigned dengan endpoint PUBLIK lewat reverse proxy → 200 + ETag
 //    (bukan 403 SignatureDoesNotMatch / 413), lalu multipart di-abort.

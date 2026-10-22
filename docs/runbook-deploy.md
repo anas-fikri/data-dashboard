@@ -92,15 +92,15 @@ arsip (1,5 GB) 54 dtk + deploy sampai hijau 34 dtk = **88 dtk**. `deploy.sh` men
 ### Admin pertama
 
 1. Daftar lewat `https://<APP_HOST>/register` dengan email perusahaan, lalu aktifkan dari email.
-2. `docker compose -f docker-compose.prod.yml exec app node scripts/admin-restore.mjs <email> --confirm`
+2. `docker compose --env-file .env.prod -f docker-compose.prod.yml exec app node scripts/admin-restore.mjs <email> --confirm`
 
 ### Isi panduan
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm worker \
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
   node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts
 # video rekaman (dari mesin yang menyimpan demo/guide-videos):
-docker compose -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/app/demo/guide-videos:ro" \
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/app/demo/guide-videos:ro" \
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
 
