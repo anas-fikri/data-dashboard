@@ -687,3 +687,42 @@ di baris log pertama worker (`"worker mulai"`) serta renderer (`"renderer mulai"
 
 `docker-compose.prod.yml` tetap `image: dashboard-*:${IMAGE_TAG:-latest}`: tanpa `IMAGE_TAG` di `.env.prod`
 compose memakai `latest` seperti sebelumnya.
+
+## 10. Rilis v1.4.0 (T-c6z4 + batch dashboard/filter: T-12zs, T-1k96, T-k2ec, T-vb7q, T-zm9k)
+
+Dijalankan **pemilik** di olympus (folder `/data/docker-data/data-dashboard`); sesi cloud tidak men-deploy.
+Isi rilis: pratinjau pivot penuh di editor pivot tersimpan, isian bawaan pintar + judul otomatis widget,
+widget baru mengisi baris kosong, editor boleh mengatur kolom filter dari bilah filter, filter bawaan per
+kolom filter, dan "Mulai dengan dashboard contoh". **Tanpa migrasi database baru** sejak v1.3.1 (`prisma
+migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabel lingkungan baru.
+
+1. **Tag** (mesin pemilik; push tag dari sesi cloud ditolak 403):
+   ```bash
+   git fetch origin && git checkout main && git pull   # setelah PR rilis digabung
+   git tag -a v1.4.0 -m "v1.4.0" <commit "chore(release): v1.4.0"> && git push origin v1.4.0
+   ```
+2. **Image** (mesin build, commit rilis): `bash deploy/images.sh build` →
+   `bash deploy/images.sh save - | ssh olympus 'cat > /tmp/dashboard-images.tar.gz'`;
+   `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+3. **Backup dulu** — preflight dengan kode LAMA membuat backup terenkripsi lengkap + dump `pg_dump -Fc`
+   terverifikasi dan harus berakhir `PREFLIGHT LULUS`; jangan lanjut bila gagal:
+   ```bash
+   bash /tmp/upgrade.sh preflight
+   ```
+4. **Sinkron kode** (`git pull` ke commit rilis), lalu `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz`
+   → `bash deploy/upgrade.sh migrate` → `bash deploy/upgrade.sh start` (§7, §9). Cek versi: `/health` sebagai
+   admin = 1.4.0, `$C logs worker | grep -m1 'worker mulai'`.
+5. **Panduan yang berubah** (menimpa suntingan admin di artikel ini saja):
+   ```bash
+   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+     node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts \
+     --update --only susun-dashboard,widget-pivot,editor-ubah-dashboard,viewer-lihat-filter-ekspor
+   ```
+6. **Uji singkat pemilik**: buat dashboard dengan **Mulai dengan dashboard contoh** (≥ 4 widget + kolom
+   filter); di mode edit **Atur kolom filter** dan **Jadikan filter aktif sebagai bawaan**; buka sebagai viewer
+   tanpa `?f=` (chip _bawaan_), **Hapus semua filter**, **Kembalikan filter bawaan**, lalu Ekspor PDF.
+
+**Rollback**: `bash deploy/upgrade.sh rollback` (image `prev-<stamp>`; §7 R). Karena tanpa migrasi, database
+tidak perlu dipulihkan. Satu catatan: kode v1.3.1 menolak entri kolom filter yang membawa filter bawaan
+(`default`, T-vb7q) — kolom filter berbawaan **tidak tampil** di v1.3.1 sampai upgrade lagi (data di DB tetap).
+Bila rollback akan lama, hapus bawaan dulu (mode edit → hapus semua filter → **Hapus filter bawaan**).
