@@ -21,6 +21,14 @@ Buka **Dashboard** → bagian **Dibagikan ke saya**. Di kepala dashboard tertuli
 
 Salah pindah, ubah ukuran, tambah, atau hapus widget? Tekan **Urungkan** di bilah atas mode edit untuk membatalkan perubahan tata letak terakhir. Perubahan di panel pengaturan widget (judul, jenis, nilai) tidak ikut diurungkan — kembalikan secara manual.
 
+## Mengatur kolom filter
+
+Editor juga bisa menentukan kolom yang bisa disaring di bilah **Filter**:
+
+1. Di mode edit, tekan **Atur kolom filter** di bilah filter di atas widget.
+2. Tekan **Tambah kolom filter** lalu pilih kolomnya (mis. _Cabang_, _Tanggal_) — paling banyak 8 kolom.
+3. Hapus kolom dengan tombol **×** di barisnya. Setiap perubahan langsung tersimpan dan berlaku untuk semua yang membuka dashboard.
+
 ## Field terhitung dan pivot tersimpan
 
 - Di widget pivot, grafik, dan angka, editor bisa memakai **Tampilkan sebagai** (mis. _% dari total kolom_, _Total berjalan_), **Tambah field terhitung** / **Pakai field terhitung** (mis. margin), dan N teratas dengan **(Lainnya)** — caranya sama dengan pemilik (panduan [Perhitungan seperti PivotTable untuk editor](/panduan/editor-perhitungan-pivot)).
@@ -41,7 +49,7 @@ Pengaturan kolom (lebar, bekukan, sembunyikan, format) hanya tersimpan di browse
 ## Yang tidak bisa dilakukan editor
 
 - Membagikan dashboard atau mengubah siapa yang punya akses.
-- Mengganti nama, kolom filter, atau menghapus dashboard.
+- Mengganti nama atau menghapus dashboard.
 - Membuka halaman dataset, mengunggah file, mengatur periode, atau mengubah skema (Lihat data tetap bisa dibuka, baca-saja).
 - Membuat, mengubah, mengganti nama, atau menghapus pivot tersimpan.
 

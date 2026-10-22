@@ -32,4 +32,4 @@ Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada bat
 
 ## Filter dashboard
 
-Di kartu **Pengaturan dashboard** (mode edit), tambahkan **Kolom filter** (mis. _Cabang_, _Tanggal_). Pembaca dashboard bisa memilih nilai, periode, atau rentang angka di bilah **Filter**.
+Di mode edit, tekan **Atur kolom filter** di bilah filter (atau buka kartu **Pengaturan dashboard**), lalu tambahkan **Kolom filter** (mis. _Cabang_, _Tanggal_). Editor dashboard juga bisa mengaturnya. Pembaca dashboard bisa memilih nilai, periode, atau rentang angka di bilah **Filter**.

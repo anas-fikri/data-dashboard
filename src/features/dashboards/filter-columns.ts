@@ -104,6 +104,28 @@ export function filterColumnViews(
 }
 
 /**
+ * Simpanan non-pemilik (editor, T-k2ec): editor tidak pernah menerima kolom filter tersimpan yang kini
+ * hilang/disembunyikan (namanya tidak dikirim), jadi kolom itu dipertahankan di belakang pilihan editor —
+ * kecuali namanya sudah dipilih — agar tidak terhapus diam-diam saat kolomnya ditampilkan lagi.
+ * Melebihi batas → pesan galat.
+ */
+export function keepUnavailable(
+  chosen: FilterColumn[],
+  stored: FilterColumn[],
+  sheets: Pick<ActiveSheet, "name" | "schema">[],
+): { ok: true; columns: FilterColumn[] } | { ok: false; message: string } {
+  const names = new Set(chosen.map((c) => normName(c.column)));
+  const kept = stored.filter((f) => !availableColumn(f, sheets) && !names.has(normName(f.column)));
+  if (chosen.length + kept.length > FILTER_COLUMNS_MAX) {
+    return {
+      ok: false,
+      message: `Maksimal ${FILTER_COLUMNS_MAX} kolom filter per dashboard, termasuk ${kept.length} kolom yang sedang tidak tersedia di data terbaru (hanya pemilik dataset yang bisa menghapusnya).`,
+    };
+  }
+  return { ok: true, columns: [...chosen, ...kept] };
+}
+
+/**
  * Kolom dimensi grafik (batang/garis/pai) dan field baris/kolom pivot (T-f4a7) yang cross-filter-nya
  * aktif, dari widget yang SUDAH dipetakan ke versi aktif; kolom yang hilang/disembunyikan tidak ikut.
  */

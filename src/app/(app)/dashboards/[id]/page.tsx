@@ -39,8 +39,8 @@ export async function generateMetadata({ params }: { params: Params }) {
 /**
  * Dashboard: mode lihat (statis) atau mode edit (?mode=edit). Tanpa akses (bukan pemilik, tanpa share
  * user/organisasi) → 404 (T-010, T-016). Viewer tidak punya mode edit: ?mode=edit dialihkan ke URL
- * lihat di server sebelum sumber data dimuat. Editor mengedit widget/tata letak, tetapi nama, kolom
- * filter, hapus, berbagi, dan halaman dataset tetap milik pemilik. Filter aktif di ?f= (JSON, T-012)
+ * lihat di server sebelum sumber data dimuat. Editor mengedit widget/tata letak dan kolom filter (bilah
+ * filter, T-k2ec), tetapi nama, hapus, berbagi, dan halaman dataset tetap milik pemilik. Filter aktif di ?f= (JSON, T-012)
  * dibaca di klien dari URL (useSearchParams): rusak → diabaikan; disaring terhadap kolom yang diizinkan.
  */
 export default async function DashboardPage({
@@ -197,7 +197,7 @@ export default async function DashboardPage({
           filterColumns={d.filterColumns}
           crossFilterColumns={d.crossFilterColumns}
         />
-        {/* Nama, kolom filter (D6), dan hapus: pemilik saja; editor hanya widget dan tata letak. */}
+        {/* Nama, kolom filter (D6), dan hapus: pemilik saja; editor mengatur kolom filter di bilah filter. */}
         {editing && isOwner ? (
           <DashboardSettings
             id={d.id}

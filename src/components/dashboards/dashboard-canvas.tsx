@@ -401,7 +401,16 @@ function Canvas(props: CanvasProps) {
             </FormAlert>
           ) : null}
 
-          {ed.widgets.length ? <FilterBar editing={editing} columnSettings={isOwner} /> : null}
+          {ed.widgets.length ? (
+            <FilterBar
+              editing={editing}
+              manage={
+                canEdit
+                  ? { dashboardId, columns: props.filterColumns, sources: props.sources }
+                  : null
+              }
+            />
+          ) : null}
 
           {ed.widgets.length === 0 ? (
             <CanvasEmpty

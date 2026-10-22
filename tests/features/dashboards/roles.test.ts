@@ -168,12 +168,13 @@ const editOps = {
   deleteWidget: (u: string, d: string) => svc.deleteWidget(u, d, widgetOf[d], 1),
   renameWidget: (u: string, d: string) => svc.renameWidget(u, d, widgetOf[d], "Judul baru"),
   configureWidget: (u: string, d: string) => svc.configureWidget(u, d, widgetOf[d], "bar", bar(S1)),
+  // T-k2ec (keputusan pemilik 2026-10-22): editor boleh mengatur kolom filter.
+  setDashboardFilterColumns: (u: string, d: string) =>
+    svc.setDashboardFilterColumns(u, d, [{ sheet: "Penjualan", column: "Omzet" }]),
 };
 const ownerOps = {
   renameDashboard: (u: string, d: string) => svc.renameDashboard(u, d, "Nama baru"),
   deleteDashboard: (u: string, d: string) => svc.deleteDashboard(u, d, "198.51.100.7"),
-  setDashboardFilterColumns: (u: string, d: string) =>
-    svc.setDashboardFilterColumns(u, d, [{ sheet: "Penjualan", column: "Omzet" }]),
 };
 
 /** Tidak ada satu pun tulisan ke dashboard/widget yang tersimpan. */
@@ -282,7 +283,7 @@ describe("widget dan tata letak: OWNER/EDITOR boleh, VIEWER FORBIDDEN, tanpa aks
   });
 });
 
-describe("pemilik saja: nama, hapus, kolom filter", () => {
+describe("pemilik saja: nama dan hapus", () => {
   const cases = Object.entries(ownerOps);
 
   it.each(cases)("%s: pemilik berhasil", async (_name, op) => {
@@ -305,6 +306,31 @@ describe("pemilik saja: nama, hapus, kolom filter", () => {
       expect(fake.state.dashboards).toHaveLength(3);
     },
   );
+});
+
+describe("T-k2ec: kolom filter oleh editor", () => {
+  const stored = () => fake.state.dashboards.find((d) => d.id === D1)!.filterColumns;
+
+  it("kolom tersimpan yang disembunyikan dipertahankan; namanya tidak dikirim ke editor", async () => {
+    const r = await svc.setDashboardFilterColumns(EDITOR, D1, [
+      { sheet: "Penjualan", column: "Omzet" },
+    ]);
+    expect(r).toMatchObject({ ok: true });
+    if (!r.ok) return;
+    expect(r.data.filterColumns.map((f) => f.column)).toEqual(["Omzet"]);
+    // "Cabang" (tersedia) dihapus editor; "Gaji" (disembunyikan, tidak pernah terlihat) tetap.
+    expect(stored()).toEqual([
+      { sheet: "Penjualan", column: "Omzet" },
+      { sheet: "Penjualan", column: "Gaji" },
+    ]);
+  });
+
+  it("pemilik menyimpan apa adanya (kolom tersembunyi ikut terhapus bila tidak dikirim)", async () => {
+    expect(
+      await svc.setDashboardFilterColumns(OWNER, D1, [{ sheet: "Penjualan", column: "Omzet" }]),
+    ).toMatchObject({ ok: true, data: { filterColumns: [{ column: "Omzet", available: true }] } });
+    expect(stored()).toEqual([{ sheet: "Penjualan", column: "Omzet" }]);
+  });
 });
 
 describe("AC1: Server Action edit dashboard → code FORBIDDEN untuk viewer/editor", () => {
