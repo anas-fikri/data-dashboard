@@ -110,19 +110,22 @@ const words = (name: string) =>
     .filter(Boolean);
 
 /** Nama seperti "No", "No.", "Nomor Resi", "ID Pelanggan", "Kode Cabang" (tidak "Nominal"). */
-export const isIdName = (name: string) => words(name).some((w) => ID_WORDS.has(w));
+export const isIdName = (name: string) =>
+  words(name).some((w, i, ws) => ID_WORDS.has(w) && !(w === "no" && ws[i + 1] === "of"));
 
-/** Awalan kata nomor/kode yang ditulis menyatu (NOSETORAN, kdbayar). */
-const ID_PREFIX = /^(no|nomor|nomer|id|kode|kd|ref)/;
+/** Awalan nomor/kode yang ditulis menyatu dengan kata besaran (NOSETORAN, kdbayar), terpanjang dulu. */
+const ID_PREFIXES = ["nomor", "nomer", "kode", "ref", "no", "id", "kd"];
+const idCompound = (w: string, m: string) =>
+  ID_PREFIXES.some((p) => w.startsWith(p) && w.slice(p.length).startsWith(m));
 
 /**
  * Kata besaran di awal kata; yang ≥ 4 huruf juga di tengah kata (Pembayaran, Setoran) — kecuali
- * kata itu diawali nomor/kode yang ditulis menyatu (NOSETORAN, KDBAYAR tetap nomor).
+ * tepat setelah nomor/kode yang ditulis menyatu (NOSETORAN, KDBAYAR tetap nomor; IDRAMOUNT besaran).
  */
 const isMeasureName = (name: string) =>
   words(name).some((w) =>
     MEASURE_WORDS.some(
-      (m) => w.startsWith(m) || (m.length >= 4 && w.includes(m) && !ID_PREFIX.test(w)),
+      (m) => w.startsWith(m) || (m.length >= 4 && w.includes(m) && !idCompound(w, m)),
     ),
   );
 

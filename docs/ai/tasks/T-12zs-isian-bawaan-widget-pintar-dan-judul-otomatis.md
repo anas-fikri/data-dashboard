@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:56Z"
-updated: "2026-10-22T04:34:53Z"
+updated: "2026-10-22T04:42:13Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -26,25 +26,32 @@ review:
       by: claude-code
       at: "2026-10-22T04:34:53Z"
       findings: 3
+    - "n": 4
+      by: claude-code
+      at: "2026-10-22T04:42:13Z"
+      findings: 2
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 269061
+    duration_ms: 192692
     summary: |-
-      …sg":"health check gagal"}
-      {"level":40,"time":1792641935456,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792641945325,"service":"data-dashboard","host":"127.0.0.1","port":34929,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792641945389,"service":"data-dashboard","host":"127.0.0.1","port":43403,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792641945488,"service":"data-dashboard","host":"127.0.0.1","port":34995,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792641945587,"service":"data-dashboard","host":"127.0.0.1","port":33073,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792641966371,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792641966388,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+      …olak NAS"}
+      {"level":40,"time":1792643981986,"service":"data-dashboard","host":"127.0.0.1","port":40209,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792644000425,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792644000447,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792644000451,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792644000465,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792644015933,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792644015963,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
        Test Files  224 passed | 3 skipped (227)
-            Tests  3022 passed | 29 skipped (3051)
-         Start at  04:04:41
-         Duration  184.08s (tests 82%, import 14%, transform 3%)
+            Tests  3024 passed | 29 skipped (3053)
+         Start at  04:38:24
+         Duration  135.32s (tests 83%, import 14%, transform 3%)
+
+          Isolate  227 workers spawned · ~114ms startup each (spawn + environment, per file)
+                   at least ~8.52s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.3.1 audit
@@ -52,8 +59,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-22T04:07:47Z"
-    tree: 86b347a13b6d3dc867ededaef870116bda7662292799db2b67011bf870a52b46
+    at: "2026-10-22T04:40:41Z"
+    tree: 7812f5e1c5f972c036dce4e71b03867f1ae3a85eea2d06508ec95ff6d4e96f6e
 ---
 
 ## Objective

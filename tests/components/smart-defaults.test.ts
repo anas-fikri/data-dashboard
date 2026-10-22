@@ -154,6 +154,13 @@ describe("isian bawaan widget baru", () => {
     for (const name of ["NoTagihan", "KodeBayar", "NOSETORAN", "IdTransaksiBayar"]) {
       expect(isIdLike({ pos: 9, name, type: "integer", ...stats(9_900) }), name).toBe(true);
     }
+    // Besaran yang kebetulan diawali huruf no/id/ref, dan "No of …" (banyaknya), bukan ID.
+    for (const name of ["IDRAMOUNT", "REFUNDAMOUNT", "NORMALPRICE"]) {
+      expect(isIdLike({ pos: 9, name, type: "integer", ...stats(9_900) }), name).toBe(false);
+    }
+    for (const name of ["NoOfPieces", "No of Koli"]) {
+      expect(isIdLike({ pos: 9, name, type: "integer", ...stats(10) }), name).toBe(false);
+    }
     // Nama memuat bagian tanggal kalah dari ukuran lain.
     const mixed = [
       { pos: 1, name: "Bulan Kirim", type: "integer" as const, ...stats(12) },
