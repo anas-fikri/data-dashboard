@@ -41,6 +41,7 @@ import {
   type FilterColumnView,
   type FilterSourceColumn,
 } from "./filter-columns";
+import { starterPlan, type StarterPlan } from "./starter";
 import { isTxConflict } from "./tx-conflict";
 import {
   DASHBOARD_NAME_MAX,
@@ -437,10 +438,13 @@ export async function createDashboard(
   ownerId: string,
   datasetId: unknown,
   nameRaw: unknown,
+  starter = false,
 ): Promise<DashboardResult<{ id: string }>> {
   if (!isIdShape(datasetId)) return fail("INVALID", "Pilih dataset.", "datasetId");
   const name = cleanName(nameRaw, DASHBOARD_NAME_MAX, "dashboard");
   if (!name.ok) return fail("INVALID", name.message, "name");
+  // Dashboard contoh (T-zm9k): direncanakan + divalidasi di luar transaksi (baca skema saja).
+  const plan = starter ? await validStarter(ownerId, datasetId) : null;
   try {
     // Hitung + buat di bawah lock per dataset: permintaan paralel tidak bisa menembus batas.
     const row = await prisma.$transaction(async (tx) => {
@@ -451,10 +455,14 @@ export async function createDashboard(
       });
       if (!ds) return "NOT_FOUND" as const;
       if (ds._count.dashboards >= DASHBOARDS_PER_DATASET) return "LIMIT_REACHED" as const;
-      return tx.dashboard.create({
+      const created = await tx.dashboard.create({
         data: { datasetId, name: name.value, nameKey: nameKeyOf(name.value) },
         select: { id: true },
       });
+      if (plan?.widgets.length || plan?.filterColumns.length) {
+        await writeStarter(tx, created.id, plan);
+      }
+      return created;
     });
     if (row === "NOT_FOUND") return fail("NOT_FOUND", "Dataset tidak ditemukan.", "datasetId");
     if (row === "LIMIT_REACHED") {
@@ -472,6 +480,54 @@ export async function createDashboard(
     if (isLockTimeout(e)) return busy();
     throw e;
   }
+}
+
+/**
+ * Rencana dashboard contoh (T-zm9k) dari versi data aktif, hanya bagian yang lolos validasi server yang
+ * sama dengan jalur simpan biasa (checkConfig per widget, checkFilterColumns). Dataset bukan milik
+ * user / belum ada data → rencana kosong (dashboard dibuat kosong; NOT_FOUND tetap dari transaksi).
+ */
+async function validStarter(ownerId: string, datasetId: string): Promise<StarterPlan> {
+  const sources = await getDatasetSources(ownerId, datasetId);
+  const plan = starterPlan(sources);
+  const widgets: StarterPlan["widgets"] = [];
+  for (const w of plan.widgets) {
+    const c = await checkConfig(datasetId, w.type, w.spec, true);
+    if (c.ok && c.config.type !== "empty") widgets.push({ ...w, spec: c.config.spec });
+  }
+  const ds = await prisma.dataset.findFirst({
+    where: { id: datasetId, ownerId },
+    select: { activeVersionId: true },
+  });
+  const sheets = ds?.activeVersionId ? await activeSheets(ds.activeVersionId) : [];
+  const checked = checkFilterColumns(plan.filterColumns, sheets);
+  return { widgets, filterColumns: checked.ok ? checked.columns : [] };
+}
+
+async function writeStarter(tx: Tx, dashboardId: string, plan: StarterPlan) {
+  const items: LayoutItem[] = [];
+  const types = new Map<string, string>();
+  for (const w of plan.widgets) {
+    const widget = await tx.widget.create({
+      data: {
+        dashboardId,
+        title: w.title,
+        type: w.type,
+        spec: w.spec as Prisma.InputJsonValue,
+      },
+      select: { id: true },
+    });
+    items.push({ i: widget.id, ...w.layout });
+    types.set(widget.id, w.type);
+  }
+  await tx.dashboard.update({
+    where: { id: dashboardId },
+    data: {
+      layout: fitMinSizes(compactLayout(items), types) as unknown as Prisma.InputJsonValue,
+      layoutRevision: 1,
+      filterColumns: plan.filterColumns as unknown as Prisma.InputJsonValue,
+    },
+  });
 }
 
 /** Ganti nama dashboard: pemilik saja (editor → FORBIDDEN). */

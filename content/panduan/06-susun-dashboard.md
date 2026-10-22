@@ -10,7 +10,7 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 ## Membuat dashboard
 
 1. Buka **Dashboard** → **Buat dashboard**.
-2. Pilih **Dataset**, isi **Nama dashboard**, lalu tekan **Buat dashboard**.
+2. Pilih **Dataset**, isi **Nama dashboard**, lalu tekan **Buat dashboard**. Centang **Mulai dengan dashboard contoh** agar widget awal langsung tersusun dari kolom data: angka total dan jumlah baris, grafik garis per tanggal, grafik batang per kategori, tabel data, serta kolom filter tanggal dan kategori. Semuanya bisa diubah atau dihapus. Dataset tanpa kolom angka atau tanggal tetap mendapat angka _Jumlah baris_ dan tabel.
 3. Dashboard baru langsung terbuka dalam mode edit. Untuk dashboard yang sudah ada, tekan **Ubah tata letak**.
 
 ## Menambah widget

@@ -39,6 +39,7 @@ const CABANG_CYCLE = [
 const dir = mkdtempSync(join(tmpdir(), "dd-e2e-filter-"));
 let worker: ChildProcess | null = null;
 let dashboardUrl = "";
+let datasetIdShared = "";
 
 /** Hari ini di Asia/Jakarta sebagai YYYY-MM-DD (cara yang sama dengan todayJakarta di server). */
 function todayJakarta(): string {
@@ -196,6 +197,7 @@ test.describe("filter dashboard", () => {
     await p.getByRole("button", { name: "Buat dataset" }).click();
     await expect(p).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
     const datasetId = new URL(p.url()).pathname.split("/").pop()!;
+    datasetIdShared = datasetId;
     await p.getByTestId("upload-input").setInputFiles(fixtureCsv());
     await expect(p.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 120_000 });
 
@@ -592,5 +594,34 @@ test.describe("filter dashboard", () => {
     await hydrated();
     await expectKpi(page, ROWS);
     await expect(chip).toHaveCount(0);
+  });
+
+  test("T-zm9k: 'Mulai dengan dashboard contoh' → ≥ 4 widget berisi data + ≥ 2 kolom filter tanpa langkah tambahan", async ({
+    page,
+  }) => {
+    await page.goto(`/dashboards/baru?dataset=${datasetIdShared}`);
+    await page.getByLabel("Nama dashboard").fill("Contoh otomatis");
+    await page.getByTestId("dashboard-starter").check();
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\?mode=edit$/);
+    const widgets = page.getByTestId("widget");
+    await expect(widgets).toHaveCount(5);
+    await expect(page.getByRole("heading", { name: "Total Omzet", exact: true })).toBeVisible();
+    await expect(widgetTitled(page, "Jumlah baris").getByTestId("kpi-value")).toHaveAttribute(
+      "title",
+      /5\.000/,
+    );
+    await expect(page.getByTestId("widget-error")).toHaveCount(0);
+    // Kolom filter: Tanggal + Cabang (Kode 5.000 nilai unik tidak dipilih).
+    const bar = page.getByTestId("filter-bar");
+    await expect(bar.locator("[data-testid=filter-slicer][data-column=Cabang]")).toHaveCount(1);
+    await expect(bar.getByRole("button", { name: /^Tanggal/ })).toHaveCount(1);
+    await expect(bar.locator("[data-column=Kode]")).toHaveCount(0);
+    // Tanpa centang: dashboard kosong seperti sebelumnya.
+    await page.goto(`/dashboards/baru?dataset=${datasetIdShared}`);
+    await page.getByLabel("Nama dashboard").fill("Kosong");
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\?mode=edit$/);
+    await expect(page.getByTestId("widget")).toHaveCount(0);
   });
 });

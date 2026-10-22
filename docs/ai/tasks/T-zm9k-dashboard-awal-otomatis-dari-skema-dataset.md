@@ -1,13 +1,17 @@
 ---
 id: T-zm9k
 title: Dashboard awal otomatis dari skema dataset
-status: todo
+status: in_progress
 profile: standard
 tags:
   - ui
 created: "2026-10-22T03:20:01Z"
-updated: "2026-10-22T03:20:01Z"
+updated: "2026-10-22T11:32:06Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/intelligent-albattani-fd1va8
+base: 09e9b98154342f3d671ecec0ffead272d341a1a4
 ---
 
 ## Objective
