@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   widget sebelum rollback image, atau terima sampai upgrade berikutnya (runbook-deploy §7 R).
 - **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
   "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
+- **filter bawaan (T-vb7q):** rollback ke v1.3.1 membuat kolom filter yang membawa filter bawaan tidak tampil
+  (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
+  (runbook-deploy §10).
 
 ## [1.3.1] - 2026-10-22
 
