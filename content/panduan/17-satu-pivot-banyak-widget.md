@@ -2,7 +2,7 @@
 title: Satu pivot untuk banyak widget
 slug: satu-pivot-banyak-widget
 role: OWNER
-context:
+context: SAVED_PIVOT
 ---
 
 **Pivot tersimpan** adalah satu definisi pivot (baris, kolom pemisah, nilai, field terhitung, **Tampilkan sebagai**, **Saring**, dan N teratas) yang disimpan di dataset dan dipakai bersama oleh banyak widget di banyak dashboard. Ubah definisinya sekali, semua widget yang memakainya ikut berubah — tidak ada lagi angka berbeda di dua dashboard karena salah satunya lupa diperbarui.

@@ -23,8 +23,8 @@ Salah pindah, ubah ukuran, tambah, atau hapus widget? Tekan **Urungkan** di bila
 
 ## Field terhitung dan pivot tersimpan
 
-- Di widget pivot, grafik, dan angka, editor bisa memakai **Tampilkan sebagai** (mis. _% dari total kolom_, _Total berjalan_), **Tambah field terhitung** / **Pakai field terhitung** (mis. margin), dan N teratas dengan **(Lainnya)** — caranya sama dengan pemilik (panduan _Membuat perhitungan seperti PivotTable_).
-- **Pivot tersimpan** dibuat dan diubah oleh pemilik dataset. Editor bisa memilihnya di **Sumber data** → **Pivot tersimpan**, mengatur tampilan widget (jenis, nilai, urutan, total), dan melihat definisinya (_Definisi hanya bisa diubah pemilik dataset (baca-saja)_).
+- Di widget pivot, grafik, dan angka, editor bisa memakai **Tampilkan sebagai** (mis. _% dari total kolom_, _Total berjalan_), **Tambah field terhitung** / **Pakai field terhitung** (mis. margin), dan N teratas dengan **(Lainnya)** — caranya sama dengan pemilik (panduan [Perhitungan seperti PivotTable untuk editor](/panduan/editor-perhitungan-pivot)).
+- **Pivot tersimpan** dibuat dan diubah oleh pemilik dataset. Editor bisa memilihnya di **Sumber data** → **Pivot tersimpan**, mengatur tampilan widget (jenis, nilai, urutan, total), dan melihat definisinya (_Definisi hanya bisa diubah pemilik dataset (baca-saja)_) — lihat [Memakai pivot tersimpan sebagai editor](/panduan/editor-pakai-pivot-tersimpan).
 - **Lepas dari sumber** menyalin pengaturan pivot tersimpan menjadi widget mandiri; perubahan pivot tersimpan berikutnya tidak lagi berlaku di widget itu.
 
 ## Melihat seluruh data (Lihat data)

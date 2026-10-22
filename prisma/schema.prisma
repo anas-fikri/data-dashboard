@@ -586,6 +586,8 @@ enum GuideContext {
   UPLOAD
   SCHEMA
   BUILDER
+  /// Halaman pivot tersimpan (buat/ubah) + halaman dataset (T-7rw4).
+  SAVED_PIVOT
 }
 
 enum GuideStatus {

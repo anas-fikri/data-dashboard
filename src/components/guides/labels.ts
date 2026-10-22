@@ -14,4 +14,5 @@ export const CONTEXT_LABEL: Record<GuideContextValue, string> = {
   UPLOAD: "Unggah data",
   SCHEMA: "Skema dataset",
   BUILDER: "Penyusun dashboard",
+  SAVED_PIVOT: "Pivot tersimpan",
 };

@@ -4,7 +4,7 @@ import { z } from "zod";
 export const GUIDE_ROLES = ["OWNER", "EDITOR", "VIEWER", "ADMIN", "ALL"] as const;
 export type GuideRoleValue = (typeof GUIDE_ROLES)[number];
 /** Halaman bantuan kontekstual (enum Prisma GuideContext). */
-export const GUIDE_CONTEXTS = ["UPLOAD", "SCHEMA", "BUILDER"] as const;
+export const GUIDE_CONTEXTS = ["UPLOAD", "SCHEMA", "BUILDER", "SAVED_PIVOT"] as const;
 export type GuideContextValue = (typeof GUIDE_CONTEXTS)[number];
 
 export const GUIDE_TITLE_MAX = 120;

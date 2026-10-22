@@ -86,7 +86,7 @@ _Rata-rata per kiriman_ memakai **Jumlah unik** agar satu kiriman yang tercatat 
 - Penjumlahan dan pengurangan uang tetap tepat sampai sen; hasil pembagian dibulatkan sesuai **Format nilai**.
 - Field terhitung bisa dipakai untuk **Urutan baris**, **Top N**, dan **Tampilkan sebagai**, sama seperti nilai biasa.
 - Grafik **Pai** hanya menerima rumus yang menjumlah atau mengurangkan **Total** atau **Jumlah baris** (tanpa × ÷ atau angka) — untuk rasio pakai grafik batang.
-- Widget **Tabel** baris mentah tidak punya field terhitung. Butuh tabel berisi rumus? Pakai tabel yang bersumber dari **pivot tersimpan** (lihat _Satu pivot untuk banyak widget_).
+- Widget **Tabel** baris mentah tidak punya field terhitung. Butuh tabel berisi rumus? Pakai tabel yang bersumber dari **pivot tersimpan** (lihat [Satu pivot untuk banyak widget](/panduan/satu-pivot-banyak-widget)).
 
 ## Pivot bertingkat: 4 tingkat baris dan 8 nilai
 
@@ -110,7 +110,7 @@ Batasan:
 
 ## Yang belum bisa
 
-- Rumus per baris sebelum dijumlah, mis. Σ(qty × harga) — buat kolomnya di file Excel sebelum diunggah.
+- Rumus per baris sebelum dijumlah, mis. Σ(qty × harga) — kolom itu perlu dibuat di file Excel sebelum diunggah.
 - Fungsi seperti IF, ROUND, atau ABS, dan rumus yang diketik sebagai teks.
 - **% dari induk**, peringkat (_rank_), dan indeks.
 - N teratas pada kolom **Pisahkan per** (kolom tetap urut naik, maks. 40).

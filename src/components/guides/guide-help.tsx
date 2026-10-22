@@ -12,14 +12,15 @@ import { GuideVideoPlayer } from "./video-player";
  * untuk peran user DI HALAMAN INI (+ Semua peran). `as` ditetapkan halaman server yang sudah menjaga
  * aksesnya (dataset/skema: pemilik; dashboard: pemilik atau editor), bukan dari input user — artikel
  * peran lain milik user (mis. Viewer dari share organisasi) tidak relevan di sini. Tanpa artikel →
- * tidak ada tombol.
+ * tidak ada tombol. Halaman dengan beberapa bagian (dataset: unggah + pivot tersimpan) memberi beberapa
+ * konteks.
  */
 export async function GuideHelp({
   context,
   page,
   as,
 }: {
-  context: GuideContext;
+  context: GuideContext | readonly GuideContext[];
   page: string;
   as: GuideRole;
 }) {

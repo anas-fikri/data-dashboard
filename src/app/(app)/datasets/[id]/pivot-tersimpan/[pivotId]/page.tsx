@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { GuideHelp } from "@/components/guides/guide-help";
 import { SavedPivotEditorPage } from "@/components/saved-pivots/saved-pivot-page";
 import { requireUser } from "@/features/auth/session";
 import { getDatasetSources } from "@/features/dashboards/service";
@@ -26,6 +27,7 @@ export default async function EditSavedPivotPage({ params }: { params: Params })
     <SavedPivotEditorPage
       dataset={{ id: dataset.id, name: dataset.name }}
       sources={sources}
+      help={<GuideHelp context="SAVED_PIVOT" page="Pivot tersimpan" as="OWNER" />}
       initial={{ id: p.id, name: p.name, spec: p.spec, revision: p.revision, usage: p.usage }}
     />
   );

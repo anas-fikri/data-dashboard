@@ -173,10 +173,16 @@ async function visibleVideo(user: { id: string; isAdmin: boolean }, id: string) 
   };
 }
 
-/** Artikel bantuan untuk satu halaman (konteks), sesuai peran user. */
-export function contextGuides(roles: readonly GuideRole[], context: GuideContext) {
+/** Artikel bantuan untuk satu halaman (satu atau beberapa konteks), sesuai peran user. */
+export function contextGuides(
+  roles: readonly GuideRole[],
+  context: GuideContext | readonly GuideContext[],
+) {
   return prisma.guideArticle.findMany({
-    where: { ...visible(roles), contextKey: context },
+    where: {
+      ...visible(roles),
+      contextKey: { in: typeof context === "string" ? [context] : [...context] },
+    },
     orderBy: ORDER,
     take: 5,
   });

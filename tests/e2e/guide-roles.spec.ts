@@ -9,6 +9,7 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  *   AC2 N: tab Pemilik data + Umum; kartu "Mulai di sini" di Beranda hilang setelah satu artikel dibaca;
  *   AC3 A di halaman skema: Bantuan → panel samping berisi artikel konteks skema untuk perannya saja;
  *   AC4 cari "upload": hanya artikel yang boleh dilihat user (wildcard LIKE tidak berlaku).
+ * T-7rw4: halaman pivot tersimpan baru → Bantuan konteks Pivot tersimpan sesuai peran (pemilik).
  * T-exfc: P = pemilik lain yang membagikan dashboard ke A sebagai editor dan viewer → A punya 5 tab.
  *   AC1 A di 320 px: tab aktif (Umum, paling kanan) tergulir ke layar; pindah tab memberi tanda memuat;
  *       jumlah hasil cari diumumkan (wilayah status diisi setelah halaman tampil);
@@ -28,6 +29,8 @@ const V1 = `Membaca dashboard bersama ${TAG}`;
 const S1 = `Memeriksa skema ${TAG}`;
 const S2 = `Skema untuk viewer ${TAG}`;
 const E1 = `Upload widget untuk editor ${TAG}`;
+const P1 = `Pivot tersimpan pemilik ${TAG}`;
+const P2 = `Pivot tersimpan editor ${TAG}`;
 const slugs: Record<string, string> = {};
 let a: Page;
 let v: Page;
@@ -89,6 +92,8 @@ test.describe("panduan per peran (T-022)", () => {
     await publish(a, S1, "Pemilik data", "Periksa tipe kolom.", "Skema dataset");
     await publish(a, S2, "Viewer", "Viewer tidak membuka skema.", "Skema dataset");
     await publish(a, E1, "Editor", "Editor tidak perlu upload file.");
+    await publish(a, P1, "Pemilik data", "Buat pivot tersimpan.", "Pivot tersimpan");
+    await publish(a, P2, "Editor", "Editor tidak membuka halaman ini.", "Pivot tersimpan");
   });
 
   test.afterAll(async () => {
@@ -164,6 +169,20 @@ test.describe("panduan per peran (T-022)", () => {
     await a.keyboard.press("Escape");
     await expect(panel).toHaveCount(0);
     await expect(open).toBeFocused();
+  });
+
+  test("T-7rw4: halaman pivot tersimpan → Bantuan berisi artikel konteks pivot tersimpan untuk pemilik saja", async () => {
+    await a.goto(`/datasets/${datasetId}/pivot-tersimpan/baru`);
+    const panel = a.getByTestId("help-panel");
+    // Klik sebelum hidrasi hilang: ulangi sampai panel terbuka.
+    await expect(async () => {
+      await a.getByRole("button", { name: "Bantuan" }).click();
+      await expect(panel).toBeVisible({ timeout: 2_000 });
+    }).toPass();
+    await expect(panel.getByRole("heading", { name: "Bantuan: Pivot tersimpan" })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: P1 })).toBeVisible();
+    await expect(panel.getByRole("heading", { name: P2 })).toHaveCount(0); // peran editor
+    await expect(panel.getByRole("heading", { name: O1 })).toHaveCount(0); // konteks unggah
   });
 
   test("AC4: cari 'upload' → hanya artikel yang boleh dilihat user; % tidak menjadi wildcard", async () => {

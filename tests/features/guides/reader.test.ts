@@ -1,8 +1,28 @@
 import { describe, expect, it, vi } from "vitest";
 
-vi.mock("@/lib/db", () => ({ prisma: {} }));
-const { excerptOf, isNewcomer, searchQuery, searchStatus } =
+const db = vi.hoisted(() => ({ guideArticle: { findMany: vi.fn(async () => []) } }));
+vi.mock("@/lib/db", () => ({ prisma: db }));
+const { contextGuides, excerptOf, isNewcomer, searchQuery, searchStatus } =
   await import("@/features/guides/reader");
+
+/* T-7rw4: Bantuan halaman dataset = beberapa konteks; peran tetap disaring (ALL ikut). */
+describe("contextGuides (T-7rw4)", () => {
+  it("satu konteks atau beberapa konteks → contextKey IN, artikel terbit untuk peran halaman + ALL", async () => {
+    await contextGuides(["OWNER"], "SAVED_PIVOT");
+    await contextGuides(["EDITOR"], ["UPLOAD", "SAVED_PIVOT"]);
+    const where = db.guideArticle.findMany.mock.calls.map(
+      (c) => (c as unknown as [{ where: unknown }])[0].where,
+    );
+    expect(where).toEqual([
+      { status: "PUBLISHED", role: { in: ["OWNER", "ALL"] }, contextKey: { in: ["SAVED_PIVOT"] } },
+      {
+        status: "PUBLISHED",
+        role: { in: ["EDITOR", "ALL"] },
+        contextKey: { in: ["UPLOAD", "SAVED_PIVOT"] },
+      },
+    ]);
+  });
+});
 
 /* T-022: cuplikan daftar panduan = teks polos tanpa sintaks markdown. */
 describe("excerptOf (T-022)", () => {

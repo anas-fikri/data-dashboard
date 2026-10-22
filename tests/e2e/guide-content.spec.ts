@@ -11,6 +11,8 @@ import { pageFor, registerAndVerify, uniqueEmail } from "./helpers";
  * T-064: artikel Lihat data dan data per periode (pemilik) + bagian Lihat data/Perbesar di artikel editor
  * dan viewer terender (tabel tersanitasi), dan artikel pemilik tetap tidak terbuka untuk viewer.
  * T-076: artikel perhitungan seperti PivotTable dan pivot tersimpan (pemilik) + bagian editor/viewer.
+ * T-7rw4: editor tanpa dataset membuka padanan editor artikel 16/17 dari artikel 08 dan dari Bantuan mode
+ * edit; pemilik mendapat artikel 17 di Bantuan halaman pivot tersimpan dan dataset; viewer tetap 404.
  */
 const N = uniqueEmail("content-new");
 const V = uniqueEmail("content-viewer");
@@ -31,6 +33,14 @@ const T076 = [
   "widget-pivot",
   "mengenal-data-dashboard",
 ];
+/** Artikel yang ditambah/diubah T-7rw4 (padanan editor + konteks Bantuan pivot tersimpan). */
+const T7RW4 = [
+  "perhitungan-seperti-pivottable",
+  "satu-pivot-banyak-widget",
+  "editor-ubah-dashboard",
+  "editor-perhitungan-pivot",
+  "editor-pakai-pivot-tersimpan",
+];
 const seeded = readdirSync(join(process.cwd(), "content/panduan"))
   .filter((f) => f.endsWith(".md"))
   .sort()
@@ -46,6 +56,8 @@ const titles = (role: string) => seeded.filter((g) => g.role === role).map((g) =
 let n: Page;
 let v: Page;
 let e: Page;
+let o: Page;
+let shared = { datasetId: "", dashboardId: "" };
 
 /** Judul kartu artikel seed di halaman, dalam urutan tampil. */
 const shown = async (page: Page, role: string) => {
@@ -63,7 +75,7 @@ test.describe("isi panduan (T-xfzy)", () => {
       "scripts/seed-guides.ts",
       "--update",
       "--only",
-      [...T064, ...T076].join(","),
+      [...new Set([...T064, ...T076, ...T7RW4])].join(","),
     ]);
     execFileSync("node", ["scripts/dev-reset-ratelimit.mjs", "register:ip", "verify:ip"]);
     const setup = await browser.newPage();
@@ -73,14 +85,17 @@ test.describe("isi panduan (T-xfzy)", () => {
     }
     await setup.close();
     execFileSync("node", ["scripts/dev-share-fixture.mjs", OWNER, V, "VIEWER"]);
-    execFileSync("node", ["scripts/dev-share-fixture.mjs", OWNER, E, "EDITOR"]);
+    shared = JSON.parse(
+      execFileSync("node", ["scripts/dev-share-fixture.mjs", OWNER, E, "EDITOR"]).toString(),
+    );
     n = await pageFor(browser, N);
     v = await pageFor(browser, V);
     e = await pageFor(browser, E);
+    o = await pageFor(browser, OWNER);
   });
 
   test.afterAll(async () => {
-    await Promise.all([n, v, e].map((p) => p?.context().close()));
+    await Promise.all([n, v, e, o].map((p) => p?.context().close()));
   });
 
   test("AC1/AC3: artikel Umum dan Pemilik data terbit, urut sesuai alur kerja", async () => {
@@ -196,5 +211,52 @@ test.describe("isi panduan (T-xfzy)", () => {
     ).toBeVisible();
     // Definisi pivot tersimpan hanya untuk pemilik: artikelnya 404 untuk viewer.
     expect((await v.goto("/panduan/satu-pivot-banyak-widget"))?.status()).toBe(404);
+  });
+
+  test("T-7rw4: editor tanpa dataset membuka padanan artikel 16/17; Bantuan menawarkannya sesuai halaman", async () => {
+    const article = (p: Page) => p.getByTestId("guide-markdown");
+    /** Buka Bantuan (tunggu hidrasi: klik sebelum hidrasi hilang) dan kembalikan judul artikelnya. */
+    const help = async (p: Page) => {
+      await expect(async () => {
+        await p.getByTestId("help-open").click();
+        await expect(p.getByTestId("help-panel")).toBeVisible({ timeout: 2_000 });
+      }).toPass();
+      return p.getByTestId("help-article").getByRole("heading", { level: 3 }).allTextContents();
+    };
+    // Rujukan dari artikel 08 terbuka (bukan 404) untuk editor yang tidak punya dataset.
+    await e.goto("/panduan/editor-ubah-dashboard");
+    await article(e)
+      .getByRole("link", { name: "Perhitungan seperti PivotTable untuk editor" })
+      .click();
+    await expect(e).toHaveURL(/\/panduan\/editor-perhitungan-pivot$/);
+    await expect(
+      article(e).getByRole("heading", { level: 2, name: "Field terhitung" }),
+    ).toBeVisible();
+    await e.goto("/panduan/editor-ubah-dashboard");
+    await article(e).getByRole("link", { name: "Memakai pivot tersimpan sebagai editor" }).click();
+    await expect(e).toHaveURL(/\/panduan\/editor-pakai-pivot-tersimpan$/);
+    await expect(
+      article(e).getByRole("heading", { level: 2, name: "Siapa bisa apa" }),
+    ).toBeVisible();
+    // Artikel pemilik tetap tertutup untuk editor tanpa dataset.
+    expect((await e.goto("/panduan/satu-pivot-banyak-widget"))?.status()).toBe(404);
+
+    // Bantuan penyusun dashboard (editor): artikel 08 + kedua padanan editor, tanpa artikel pemilik.
+    await e.goto(`/dashboards/${shared.dashboardId}`);
+    expect(await help(e)).toEqual([
+      "Mengubah dashboard yang dibagikan kepada Anda",
+      "Perhitungan seperti PivotTable untuk editor",
+      "Memakai pivot tersimpan sebagai editor",
+    ]);
+
+    // Pemilik: artikel 17 di Bantuan halaman pivot tersimpan dan halaman dataset.
+    await o.goto(`/datasets/${shared.datasetId}/pivot-tersimpan/baru`);
+    expect(await help(o)).toEqual(["Satu pivot untuk banyak widget"]);
+    await o.goto(`/datasets/${shared.datasetId}`);
+    expect(await help(o)).toContain("Satu pivot untuk banyak widget");
+
+    // Viewer tidak melihat artikel editor.
+    for (const slug of ["editor-perhitungan-pivot", "editor-pakai-pivot-tersimpan"])
+      expect((await v.goto(`/panduan/${slug}`))?.status()).toBe(404);
   });
 });

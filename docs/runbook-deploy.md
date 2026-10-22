@@ -115,6 +115,14 @@ terbit dengan perintah seed biasa di atas; empat artikel lama yang ikut diperbar
 (menimpa suntingan admin di keempat artikel itu; jalankan perintah T-064 di atas lebih dulu bila rilis G-6 belum
 pernah di-seed).
 
+Setelah T-7rw4 (padanan editor artikel pivot + konteks Bantuan **Pivot tersimpan**; butuh migrasi
+`t7rw4_guide_context_saved_pivot`, yang dijalankan upgrade biasa): dua artikel editor baru
+(`editor-perhitungan-pivot`, `editor-pakai-pivot-tersimpan`) terbit dengan perintah seed biasa di atas; tiga
+artikel lama yang berubah (isi, tautan, atau konteks) hanya ditimpa bila diminta:
+`... scripts/seed-guides.ts --update --only perhitungan-seperti-pivottable,satu-pivot-banyak-widget,editor-ubah-dashboard`
+(menimpa suntingan admin di ketiga artikel itu; jalankan sesudah perintah G-7 di atas bila keduanya belum pernah
+dijalankan). Tanpa langkah ini artikel 17 tetap tanpa konteks dan artikel 08 tetap merujuk tanpa tautan.
+
 ### TLS untuk akses LAN lewat IP (root CA berpembatasan, `deploy/lan-cert.sh`)
 
 Tanpa domain publik, sertifikat dibuat dari **root CA milik perusahaan dengan name constraints**: root

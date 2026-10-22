@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseGuideFile } from "@/features/guides/content";
-import { GUIDE_ROLES } from "@/features/guides/validation";
+import { GUIDE_CONTEXTS, GUIDE_ROLES } from "@/features/guides/validation";
 
 /* T-xfzy AC1/AC3: isi awal panduan valid (skema + batas struktur), slug unik, semua peran tercakup. */
 const DIR = join(process.cwd(), "content/panduan");
@@ -29,8 +29,8 @@ describe("isi panduan content/panduan (T-xfzy)", () => {
       ).toBe(true);
   });
 
-  it("setiap konteks bantuan (unggah, skema, penyusun) punya artikel pemilik", () => {
-    for (const ctx of ["UPLOAD", "SCHEMA", "BUILDER"] as const)
+  it("setiap konteks bantuan (unggah, skema, penyusun, pivot tersimpan) punya artikel pemilik", () => {
+    for (const ctx of GUIDE_CONTEXTS)
       expect(
         guides.some((g) => g.contextKey === ctx && g.role === "OWNER"),
         ctx,
@@ -97,6 +97,56 @@ describe("isi panduan content/panduan (T-xfzy)", () => {
       "## Membaca angka pivot dan grafik",
     );
     expect(bySlug("mengenal-data-dashboard")?.bodyMarkdown).toContain("**Versi**");
+  });
+
+  it("T-7rw4: tautan /panduan/<slug> di artikel menuju artikel yang terlihat oleh peran pembacanya", () => {
+    // Artikel di luar peran user = 404 (reader.ts): rujukan harus ke peran yang sama atau Semua peran.
+    for (const g of guides)
+      for (const [, slug] of g.bodyMarkdown.matchAll(/\]\(\/panduan\/([a-z0-9-]+)\)/g)) {
+        const target = guides.find((t) => t.slug === slug);
+        expect(target, `${g.file} → ${slug}`).toBeDefined();
+        expect([g.role, "ALL"], `${g.file} → ${slug}`).toContain(target!.role);
+      }
+  });
+
+  it("T-7rw4: editor mendapat padanan artikel 16/17 di Bantuan penyusun; pivot tersimpan pemilik di Bantuan halamannya", () => {
+    const bySlug = (slug: string) => guides.find((g) => g.slug === slug);
+    const calc = bySlug("perhitungan-seperti-pivottable")!;
+    const editorCalc = bySlug("editor-perhitungan-pivot");
+    const editorSaved = bySlug("editor-pakai-pivot-tersimpan");
+    expect(bySlug("satu-pivot-banyak-widget")).toMatchObject({
+      role: "OWNER",
+      contextKey: "SAVED_PIVOT",
+    });
+    expect(editorCalc).toMatchObject({ role: "EDITOR", contextKey: "BUILDER" });
+    expect(editorSaved).toMatchObject({ role: "EDITOR", contextKey: "BUILDER" });
+    // Isi perhitungan editor = artikel pemilik (tidak boleh menyimpang), kecuali rujukan pivot tersimpan.
+    expect(editorCalc?.bodyMarkdown).toBe(
+      calc.bodyMarkdown.replace(
+        "[Satu pivot untuk banyak widget](/panduan/satu-pivot-banyak-widget)",
+        "[Memakai pivot tersimpan sebagai editor](/panduan/editor-pakai-pivot-tersimpan)",
+      ),
+    );
+    // Artikel pivot tersimpan editor tidak mengajarkan aksi khusus pemilik.
+    for (const owner of [
+      "**Buat pivot tersimpan**",
+      "**Simpan sebagai pivot tersimpan**",
+      "**Ubah pivot tersimpan**",
+      "**Ganti nama**",
+      "**Duplikat**",
+      "**Simpan perubahan**",
+    ])
+      expect(editorSaved?.bodyMarkdown).not.toContain(owner);
+    for (const text of [
+      "## Memakai pivot tersimpan di widget",
+      "**Lepas dari sumber**",
+      "baca-saja",
+    ])
+      expect(editorSaved?.bodyMarkdown).toContain(text);
+    // Artikel 08 merujuk padanan editor (bukan artikel pemilik yang 404 bagi editor tanpa dataset).
+    const editor = bySlug("editor-ubah-dashboard")!.bodyMarkdown;
+    expect(editor).toContain("](/panduan/editor-perhitungan-pivot)");
+    expect(editor).toContain("](/panduan/editor-pakai-pivot-tersimpan)");
   });
 
   it("frontmatter salah ditolak dengan nama berkas", () => {

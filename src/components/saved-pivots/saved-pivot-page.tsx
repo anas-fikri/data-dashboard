@@ -1,5 +1,6 @@
 import { IconArrowLeft, IconTableShare } from "@tabler/icons-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { SavedPivotEditor, type SavedPivotEditorInitial } from "./saved-pivot-editor";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,16 +10,19 @@ import type { SourceSheet } from "@/features/dashboards/service";
 
 /**
  * Kerangka halaman buat/ubah pivot tersimpan (T-074): breadcrumb Dataset / nama dataset, tombol
- * kembali, dan editor. Dataset tanpa data siap → keadaan kosong.
+ * kembali, dan editor. Dataset tanpa data siap → keadaan kosong. `help`: tombol Bantuan (GuideHelp,
+ * komponen server) dari halaman.
  */
 export function SavedPivotEditorPage({
   dataset,
   sources,
   initial,
+  help,
 }: {
   dataset: { id: string; name: string };
   sources: SourceSheet[];
   initial: SavedPivotEditorInitial | null;
+  help?: ReactNode;
 }) {
   const back = (
     <Button
@@ -55,7 +59,12 @@ export function SavedPivotEditorPage({
         }
         title={initial ? `Ubah “${initial.name}”` : "Pivot tersimpan baru"}
         description="Definisi pivot yang dipakai bersama widget pivot, grafik, angka, dan tabel di dashboard dataset ini."
-        actions={back}
+        actions={
+          <>
+            {help}
+            {back}
+          </>
+        }
       />
       {usable ? (
         <Card>
