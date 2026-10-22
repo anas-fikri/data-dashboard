@@ -55,6 +55,39 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Serah-terima kedua (2026-10-22 siang, PAUSE)
+
+Sesi rekan (akun Claude kedua) dijeda; diteruskan rekan berikutnya. Branch kerja tetap
+`claude/intelligent-albattani-fd1va8` (posisi paling baru; `main` tertinggal). PR ke `main` belum dibuka.
+
+**Selesai di sesi ini (status aitk done):** T-12zs (isian bawaan pintar + judul otomatis; review 6
+putaran), T-c6z4 (npm audit sudah pulih), T-1k96 (widget baru mengisi baris; bug lama urungkan hapus
+diperbaiki). Task lanjutan baru: **T-d1ns** (temuan Low judul otomatis).
+
+**Antre (urut):** T-k2ec (editor atur kolom filter dari bilah filter — `setDashboardFilterColumns` di
+src/features/dashboards/service.ts saat ini pemilik saja → `canEditWhere` + `denied(..., "edit")`; UI di
+filters/filter-bar.tsx memakai ulang logika filter-columns-settings.tsx; tes sharing.spec.ts ±baris 1044
+mengharapkan 403 untuk editor → ubah ke 200; panduan 08), T-vb7q (filter bawaan: simpan `default` per
+entri Dashboard.filterColumns tanpa migrasi; tanpa ?f → bawaan, "Hapus semua" tulis `f={}`; cek alur
+PDF/ekspor), T-zm9k (checkbox "Mulai dengan dashboard contoh" di dashboard-form.tsx; widget dibuat
+server-side di createDashboard memakai smart-defaults.ts + checkConfig), lalu rilis v1.4.0 (T-c6z4) dan
+v1.5.0 (batch) lewat `aitk release --tag` (push tag dari cloud ditolak → pemilik), PR ke `main`.
+
+**Catatan lingkungan cloud (container baru):**
+- Node 22.23.3: unduh dari nodejs.org dan ganti biner `node` di PATH (22.22 merusak worker xlsx).
+- aitk: `git clone https://github.com/innaka-tech/ai-toolkit` (publik) lalu `go build -o /usr/local/bin/aitk ./cmd/aitk`.
+- osv-scanner (wajib `aitk audit`): `GOBIN=/usr/local/bin go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.2.2`.
+- Docker: jalankan `dockerd` dulu; lalu `npm run secrets:dev`, `npm run compose:up`, `npx prisma migrate deploy`.
+- Dev server: jalankan terlepas (`setsid nohup npm run dev ... &`) — tugas latar belakang dihentikan setelah 2 jam.
+- Playwright 1.64 butuh chromium_headless_shell-1248; VM punya 1194 → buat folder 1248 berisi symlink
+  (`cp -as` dari 1194 + `chrome-headless-shell` → `headless_shell`). Firefox/WebKit tidak ada (proyek
+  data-view-scroll-firefox/webkit dilewati); renderer PDF menolak jalan sebagai root (e2e pdf dilewati).
+- Suite penuh: jalankan per proyek dengan `--no-deps` berurutan (rantai dependensi berhenti di Firefox).
+- Review: subagen independen dicatat `AITK_TOOL=claude-reviewer-subagent aitk review pass <id> --findings N`
+  (task strict butuh satu pass dari "alat" selain pengerja); task strict juga butuh `aitk security
+  checklist <id>` diisi dan `aitk audit` hijau sebelum close.
+- Produksi: tetap hanya pemilik (Anas). Tidak ada deploy dari sesi ini.
+
 ## Serah-terima ke akun Claude lain (2026-10-22, PAUSE)
 
 Pemilik menjeda sesi cloud ini dan pekerjaan diteruskan rekan pemilik dengan akun Claude sendiri.
