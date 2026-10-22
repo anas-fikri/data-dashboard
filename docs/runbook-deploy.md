@@ -104,6 +104,12 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm -v "$PWD
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
 
+Video satu artikel tanpa mengganti video lain (T-1tzp, mis. `satu-pivot-banyak-widget`): paling mudah lewat UI —
+masuk sebagai admin → **Admin → Panduan** → **Ubah** artikelnya → **Video panduan**: isi judul, pilih `.webm`, **Unggah
+video** (durasi + poster otomatis), lalu **Tambah takarir** dengan `.vtt`-nya, dan terbitkan. Lewat seed: salin folder
+berisi `videos.json` (hanya entri artikel itu) + `.webm`/`.vtt`/`.poster.png` ke VM, lalu jalankan perintah video di atas
+dengan `-v "<folder>:/app/demo/guide-videos:ro"` dan tambahan `--only <slug>`.
+
 Setelah rilis G-6 (T-064): artikel baru (`lihat-data-seperti-excel`, `data-per-periode`) terbit dengan perintah di
 atas; tiga artikel lama yang ikut diperbarui hanya ditimpa bila diminta, tanpa menyentuh artikel lain:
 `... scripts/seed-guides.ts --update --only lihat-data-seperti-excel,data-per-periode,editor-ubah-dashboard,viewer-lihat-filter-ekspor,ganti-data-pemetaan`

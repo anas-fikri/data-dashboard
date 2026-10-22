@@ -297,6 +297,84 @@
         "caption": "File siap diunduh dalam beberapa detik.",
         "voice": "File siap diunduh dalam beberapa detik."
       }
+    ],
+    "pemilik-pivot-tersimpan": [
+      {
+        "caption": "Pivot tersimpan: satu perhitungan untuk banyak widget.",
+        "voice": "Pivot tersimpan adalah satu perhitungan yang bisa dipakai banyak widget sekaligus. Kita mulai dari halaman dataset."
+      },
+      {
+        "caption": "Beri nama pivot tersimpan.",
+        "voice": "Tekan Buat [en:pivot] tersimpan, lalu beri nama yang mudah dikenali, misalnya Omzet per paket per cabang."
+      },
+      {
+        "caption": "Ringkasan bentuk tabel pivot.",
+        "voice": "Kalimat ringkasan ini menjelaskan bentuk tabelnya: baris apa yang dipakai, dan nilai apa yang dihitung."
+      },
+      {
+        "caption": "Tambah field terhitung (rumus sendiri).",
+        "voice": "Sekarang kita buat rumus sendiri, seperti [en:Calculated Field] di [en:Excel]. Tekan Tambah field terhitung."
+      },
+      {
+        "caption": "Nama field: Omzet per paket.",
+        "voice": "Isi nama fieldnya, Omzet per paket."
+      },
+      {
+        "caption": "Ukuran: Total dari kolom Omzet → Tambah.",
+        "voice": "Rumus disusun dari potongan, jadi tidak bisa salah ketik. Pilih ukuran Total dari kolom Omzet, lalu tekan Tambah."
+      },
+      {
+        "caption": "Tekan ÷, lalu tambahkan Total Jumlah paket.",
+        "voice": "Tekan tombol bagi, lalu tambahkan Total Jumlah paket dengan cara yang sama."
+      },
+      {
+        "caption": "Pratinjau: rumus lengkap + nilai contoh.",
+        "voice": "Pratinjau menampilkan rumus lengkap, beserta nilai contoh yang dihitung dari seluruh data."
+      },
+      {
+        "caption": "Format nilai: Rupiah → Simpan field.",
+        "voice": "Karena hasilnya uang, pilih format Rupiah, lalu tekan Simpan field."
+      },
+      {
+        "caption": "Simpan pivot tersimpan.",
+        "voice": "Field terhitung kini menjadi nilai baru di [en:pivot]. Tekan Simpan [en:pivot] tersimpan."
+      },
+      {
+        "caption": "Muncul di daftar: belum dipakai widget.",
+        "voice": "Pivot tersimpan muncul di daftar dataset, dan belum dipakai widget mana pun."
+      },
+      {
+        "caption": "Tambah widget → Sumber data: Pivot tersimpan.",
+        "voice": "Sekarang kita pakai di [en:dashboard]. Tambah widget, lalu pada Sumber data pilih Pivot tersimpan, dan pilih [en:pivot] yang tadi dibuat."
+      },
+      {
+        "caption": "Nilai yang ditampilkan: Omzet per paket.",
+        "voice": "Untuk grafik, pilih satu nilai yang ditampilkan, yaitu field terhitung Omzet per paket."
+      },
+      {
+        "caption": "Widget kedua: Angka dari pivot yang sama.",
+        "voice": "Widget kedua memakai [en:pivot] yang sama, kali ini sebagai Angka. Hasilnya total keseluruhan dari rumus tadi."
+      },
+      {
+        "caption": "Widget ketiga: tabel Pivot dari pivot yang sama.",
+        "voice": "Widget ketiga menampilkannya sebagai tabel [en:pivot], lengkap dengan kolom Omzet per paket di setiap cabang."
+      },
+      {
+        "caption": "Tiga visual, satu perhitungan.",
+        "voice": "Grafik, angka, dan tabel kini bersumber dari satu perhitungan yang sama."
+      },
+      {
+        "caption": "Ubah sekali: saring hanya layanan Kilat.",
+        "voice": "Bila perhitungannya perlu diubah, cukup ubah [en:pivot] tersimpannya. Misalnya, tambahkan saringan agar hanya menghitung layanan Kilat."
+      },
+      {
+        "caption": "Konfirmasi: berlaku di 3 widget.",
+        "voice": "Saat disimpan, aplikasi menyebut berapa widget dan [en:dashboard] yang ikut berubah. Tekan Simpan."
+      },
+      {
+        "caption": "Semua widget yang memakainya ikut berubah.",
+        "voice": "Semua widget yang memakainya langsung menampilkan hasil baru, tanpa perlu diubah satu per satu."
+      }
     ]
   }
 }

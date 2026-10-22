@@ -33,6 +33,10 @@ const DATA = join(OUT, "pengiriman-cabang-2026.csv");
 const DATASET = "Pengiriman cabang 2026";
 const DASHBOARD = "Kinerja pengiriman";
 const PIVOT = "Paket per cabang per bulan";
+const SAVED_PIVOT = "Omzet per paket per cabang";
+const SAVED_CHART = "Omzet per paket per cabang";
+const SAVED_KPI = "Omzet per paket (semua cabang)";
+const SAVED_TABLE = "Tabel omzet per paket";
 const ONLY = (() => {
   const i = process.argv.indexOf("--only");
   return i > 0 ? new Set(process.argv[i + 1]!.split(",")) : null;
@@ -540,6 +544,184 @@ async function main() {
         await expect(p.getByTestId("export-download").first()).toBeVisible({ timeout: 60_000 });
         await s.step(2000);
         await p.keyboard.press("Escape");
+      },
+    );
+
+    await record(
+      browser,
+      "pemilik-pivot-tersimpan",
+      { slug: "satu-pivot-banyak-widget", title: "Pivot tersimpan dan field terhitung" },
+      "owner",
+      async (s) => {
+        const p = s.page;
+        const d = await prisma.dataset.findFirstOrThrow({ where: { name: DATASET, ...demoOwned } });
+        const dash = await prisma.dashboard.findFirstOrThrow({
+          where: { name: DASHBOARD, dataset: demoOwned },
+        });
+        // Rekaman bisa diulang: widget adegan ini, item tata letaknya, dan pivot tersimpannya dibuang.
+        const old = await prisma.widget.findMany({
+          where: { dashboardId: dash.id, title: { in: [SAVED_CHART, SAVED_KPI, SAVED_TABLE] } },
+        });
+        const gone = new Set(old.map((w) => w.id));
+        await prisma.$transaction([
+          prisma.widget.deleteMany({ where: { id: { in: [...gone] } } }),
+          prisma.dashboard.update({
+            where: { id: dash.id },
+            data: {
+              layout: (dash.layout as { i: string }[]).filter((it) => !gone.has(it.i)),
+              layoutRevision: { increment: 1 },
+            },
+          }),
+          prisma.savedPivot.deleteMany({ where: { datasetId: d.id, name: SAVED_PIVOT } }),
+        ]);
+        const opButton = (scope: Locator, symbol: string) =>
+          scope
+            .getByTestId("calc-operators")
+            .getByRole("button", { name: new RegExp(`^\\${symbol} `) });
+        const addMeasure = async (editor: Locator, column: string) => {
+          await s.choose(editor.getByLabel("Ukuran", { exact: true }), "Total");
+          await s.choose(editor.getByLabel("dari kolom", { exact: true }), column);
+          await s.click(editor.getByTestId("calc-add-measure"), 700);
+        };
+
+        // Opsi nilai widget terikat berlabel "Nilai <n>: <nama>": pilih field terhitung lewat namanya.
+        const pickCalc = async (panel: Locator) => {
+          await s.click(panel.getByLabel("Nilai", { exact: true }), 400);
+          await s.click(p.getByRole("option", { name: /: Omzet per paket$/ }), 600);
+        };
+
+        // 1. Buat pivot tersimpan + field terhitung di halaman dataset.
+        await p.goto(`/datasets/${d.id}`);
+        const card = p.getByTestId("saved-pivot-card");
+        await card.scrollIntoViewIfNeeded();
+        await s.talk();
+        await s.talk();
+        await s.click(card.getByTestId("saved-pivot-new"), 1200);
+        await s.type(p.getByRole("textbox", { name: "Nama", exact: true }), SAVED_PIVOT);
+        const editorPage = p.getByTestId("saved-pivot-editor");
+        const summary = editorPage.getByTestId("pivot-summary");
+        await summary.scrollIntoViewIfNeeded();
+        await s.step(1500);
+        await s.talk();
+        await s.click(editorPage.getByTestId("calc-add"), 900);
+        const calc = editorPage.getByTestId("calc-editor");
+        await s.talk();
+        await s.type(calc.getByTestId("calc-label"), "Omzet per paket");
+        await s.talk();
+        await addMeasure(calc, "Omzet (Rp)");
+        await s.talk();
+        await s.click(opButton(calc, "÷"), 700);
+        await addMeasure(calc, "Jumlah paket");
+        await calc.getByTestId("calc-preview-text").scrollIntoViewIfNeeded();
+        await expect(calc.getByTestId("calc-sample-value")).not.toHaveText("");
+        await s.step(1500);
+        await s.talk();
+        await s.choose(calc.getByLabel("Format nilai", { exact: true }), "Rupiah (Rp 1.234)");
+        await s.idle(800);
+        await s.click(calc.getByTestId("calc-save"), 1200);
+        await expect(editorPage.getByTestId("calc-formula").last()).toBeVisible();
+        await editorPage.getByTestId("calc-formula").last().scrollIntoViewIfNeeded();
+        await s.talk();
+        await s.click(editorPage.getByTestId("saved-pivot-save"), 1500);
+        await p.waitForURL(/\?pivot=dibuat/);
+        const row = p.getByTestId("saved-pivot-row").and(p.locator(`[data-name="${SAVED_PIVOT}"]`));
+        await row.scrollIntoViewIfNeeded();
+        await s.step(1800);
+
+        // 2. Dua widget di dashboard memakai pivot yang sama (grafik + angka).
+        await p.goto(`/dashboards/${dash.id}?mode=edit`);
+        const bind = async (title: string, type: string) => {
+          await s.click(
+            p
+              .getByTestId("canvas-toolbar")
+              .getByRole("button", { name: "Tambah widget", exact: true }),
+          );
+          const panel = p.getByTestId("widget-panel");
+          await expect(panel.getByRole("heading", { name: "Pengaturan widget" })).toBeVisible();
+          const judul = panel.getByLabel("Judul", { exact: true });
+          await judul.fill("");
+          await s.type(judul, title);
+          await judul.press("Enter");
+          await s.click(panel.getByTestId("widget-source").getByText("Pivot tersimpan"), 700);
+          await s.click(panel.getByText(type, { exact: true }), 700);
+          await s.choose(
+            panel.getByLabel("Pivot tersimpan yang dipakai", { exact: true }),
+            SAVED_PIVOT,
+          );
+          await expect(panel.getByTestId("bound-source")).toContainText(SAVED_PIVOT);
+          return panel;
+        };
+        await s.talk();
+        let panel = await bind(SAVED_CHART, "Batang");
+        await s.talk();
+        await pickCalc(panel);
+        await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+        await s.idle(800);
+        await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }).first(), 800);
+        await s.talk();
+        panel = await bind(SAVED_KPI, "Angka");
+        await pickCalc(panel);
+        await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+        await s.idle(800);
+        await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }).first(), 800);
+        await s.talk();
+        panel = await bind(SAVED_TABLE, "Pivot");
+        await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+        // Lebar penuh: kolom nilai + Omzet per paket muat tanpa digeser.
+        for (let i = 0; i < 8; i++)
+          await s.click(panel.getByRole("button", { name: `Perlebar ${SAVED_TABLE}` }), 250);
+        await s.click(panel.getByRole("button", { name: "Tutup pengaturan" }).first(), 800);
+        await s.click(
+          p.getByTestId("canvas-toolbar").getByRole("button", { name: "Selesai" }),
+          1500,
+        );
+        const kpi = widgetTitled(p, SAVED_KPI);
+        await expect(kpi.getByTestId("kpi-value")).toHaveText(/Rp/, { timeout: 60_000 });
+        await widgetTitled(p, SAVED_CHART).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -72);
+        });
+        await s.step(2000);
+        await widgetTitled(p, SAVED_TABLE).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -72);
+        });
+        await wait(2500);
+
+        // 3. Ubah sekali di pivot tersimpan → semua widget pemakainya berubah.
+        await p.goto(`/datasets/${d.id}`);
+        await row.scrollIntoViewIfNeeded();
+        await s.talk();
+        await s.click(row.getByRole("link", { name: `Ubah ${SAVED_PIVOT}` }), 1200);
+        const filters = editorPage.getByTestId("pivot-saved-filters");
+        await filters.scrollIntoViewIfNeeded();
+        await s.click(filters.getByRole("button", { name: "Tambah saringan" }), 700);
+        await s.choose(filters.getByLabel("Kolom", { exact: true }), "Layanan");
+        await s.click(
+          filters.getByTestId("pivot-saved-filter").getByRole("checkbox", { name: "Kilat" }),
+          900,
+        );
+        await s.talk();
+        await s.click(editorPage.getByTestId("saved-pivot-save"), 1000);
+        const confirm = p.getByTestId("saved-pivot-confirm");
+        await expect(confirm).toContainText("3 widget");
+        await s.idle(1200);
+        await s.click(confirm.getByRole("button", { name: "Simpan", exact: true }), 1200);
+        await p.waitForURL(/\?pivot=diubah/);
+        await p.goto(`/dashboards/${dash.id}`);
+        await expect(widgetTitled(p, SAVED_KPI).getByTestId("kpi-value")).toHaveText(/Rp/, {
+          timeout: 60_000,
+        });
+        await widgetTitled(p, SAVED_CHART).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -72);
+        });
+        await wait(2500);
+        await widgetTitled(p, SAVED_TABLE).evaluate((el) => {
+          el.scrollIntoView({ block: "start" });
+          window.scrollBy(0, -72);
+        });
+        await s.step(2500);
       },
     );
 
