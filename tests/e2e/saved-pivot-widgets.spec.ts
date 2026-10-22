@@ -395,7 +395,16 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await panel.getByTestId("save-as-saved-pivot").click();
     const dialog = page.getByRole("dialog", { name: "Simpan sebagai pivot tersimpan" });
     await dialog.getByRole("textbox", { name: "Nama pivot tersimpan" }).fill("Pivot dari widget");
+    // Panel langsung tampil terikat (simpanan yang belum terkirim) dan toolbar hanya melacak tata
+    // letak: tunggu simpanan ikatan selesai sebelum pindah halaman.
+    const bound = page.waitForResponse(
+      (r) =>
+        r.request().method() === "PATCH" &&
+        /\/widgets\/[a-z0-9]+$/.test(new URL(r.url()).pathname) &&
+        (r.request().postData() ?? "").includes("savedPivotId"),
+    );
     await dialog.getByRole("button", { name: "Simpan", exact: true }).click();
+    expect((await bound).status()).toBe(200);
     await expect(dialog).toHaveCount(0);
     await expect(panel.getByTestId("bound-source")).toContainText("Pivot dari widget");
     await expect(page.getByTestId("canvas-toolbar")).toContainText("Semua perubahan tersimpan");

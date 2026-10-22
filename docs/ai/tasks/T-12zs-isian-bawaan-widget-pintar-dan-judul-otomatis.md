@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-22T03:19:56Z"
-updated: "2026-10-22T04:42:13Z"
+updated: "2026-10-22T05:13:35Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -30,28 +30,32 @@ review:
       by: claude-code
       at: "2026-10-22T04:42:13Z"
       findings: 2
+    - "n": 5
+      by: claude-code
+      at: "2026-10-22T05:13:28Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 192692
+    duration_ms: 199983
     summary: |-
       …olak NAS"}
-      {"level":40,"time":1792643981986,"service":"data-dashboard","host":"127.0.0.1","port":40209,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792644000425,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792644000447,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792644000451,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792644000465,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792644015933,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1792644015963,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+      {"level":40,"time":1792644292834,"service":"data-dashboard","host":"127.0.0.1","port":38519,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792644310203,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792644310224,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792644310227,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792644310236,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1792644322050,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792644322068,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
 
        Test Files  224 passed | 3 skipped (227)
             Tests  3024 passed | 29 skipped (3053)
-         Start at  04:38:24
-         Duration  135.32s (tests 83%, import 14%, transform 3%)
+         Start at  04:43:21
+         Duration  142.28s (tests 84%, import 13%, transform 3%)
 
-          Isolate  227 workers spawned · ~114ms startup each (spawn + environment, per file)
-                   at least ~8.52s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  227 workers spawned · ~110ms startup each (spawn + environment, per file)
+                   at least ~8.20s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.3.1 audit
@@ -59,8 +63,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-22T04:40:41Z"
-    tree: 7812f5e1c5f972c036dce4e71b03867f1ae3a85eea2d06508ec95ff6d4e96f6e
+    at: "2026-10-22T04:45:45Z"
+    tree: d1d6f81bc2e0a9556999c1ed650c37317f416d19f64d504e86e0370b1cf5aee9
 ---
 
 ## Objective
@@ -74,9 +78,9 @@ mengikuti judul turunan ("Total Omzet per Cabang") dan tersimpan, berhenti mengi
 mengetik judul sendiri. Tanpa migrasi DB. Panduan 06 dan 13 disesuaikan.
 
 ## Acceptance criteria
-- [ ] Widget baru Batang/Garis/Pai/Pivot/Angka/Tabel tidak memakai kolom ID/nomor urut (distinctCount ≈ jumlah baris atau nama No./ID/Kode) sebagai ukuran, dan memilih dimensi kategori 2–50 nilai unik serta kolom tanggal untuk Garis
-- [ ] Judul kosong tampil dan tersimpan sebagai judul turunan (mis. Total Omzet per Cabang) sampai pengguna mengetik judul sendiri
-- [ ] Panduan 06/13 disesuaikan (panel terbuka otomatis, contoh tidak lagi Total No.)
+- [x] Widget baru Batang/Garis/Pai/Pivot/Angka/Tabel tidak memakai kolom ID/nomor urut (distinctCount ≈ jumlah baris atau nama No./ID/Kode) sebagai ukuran, dan memilih dimensi kategori 2–50 nilai unik serta kolom tanggal untuk Garis
+- [x] Judul kosong tampil dan tersimpan sebagai judul turunan (mis. Total Omzet per Cabang) sampai pengguna mengetik judul sendiri
+- [x] Panduan 06/13 disesuaikan (panel terbuka otomatis, contoh tidak lagi Total No.)
 
 ## Risk
 Impact: hanya isian AWAL widget baru / pindah jenis (widget tersimpan tidak berubah) dan judul widget
@@ -100,6 +104,7 @@ widgets.spec.ts "T-12zs …", pivot.spec.ts (fixture No. → Ongkir), suite e2e 
   sel terisi tidak dinilai. Beralih ke Garis dari batang/pai berkategori kini memakai kolom tanggal.
   Mengosongkan judul = kembali ke judul otomatis. Widget lama tanpa judul baru mendapat judul otomatis
   saat pengaturannya diubah (kolom Judul menampilkannya sebagai contoh).
+- 2026-10-22T05:13:35Z Review 5 putaran (subagen): 7/4/3/2/0 temuan; semua Critical/High 0; temuan fungsional diperbaiki; Low (gagal ganti judul otomatis, widget lama tanpa judul, konflik sesaat) → T-d1ns. Tes e2e saved-pivot-widgets AC3 diperbaiki (menunggu PATCH ikatan, sebelumnya balapan dengan toolbar tata letak). e2e dijalankan dengan Chromium 1194 (symlink) karena 1248 tidak tersedia di VM.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
