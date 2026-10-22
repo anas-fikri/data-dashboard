@@ -55,6 +55,19 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-10-22 sore, sesi rekan)
+
+- Batch selesai (done): **T-k2ec** (editor atur kolom filter dari bilah filter), **T-vb7q** (filter bawaan per
+  kolom filter), **T-zm9k** (dashboard contoh otomatis). Masing-masing review subagen sampai 0 temuan; suite e2e
+  penuh per proyek lulus (Firefox/WebKit/pdf dilewati di VM).
+- Rilis **v1.4.0** (satu rilis untuk T-c6z4 + batch; pemisahan v1.4.0/v1.5.0 tidak bisa dibuat bersih karena
+  commit bercampur): commit `chore(release): v1.4.0` ada di branch, **tag belum di-push** (403 dari cloud) →
+  pemilik membuat/push tag dari Mac (runbook-deploy §10). PR branch sesi → `main` dibuka.
+- Task lanjutan: **T-4q8n** (lost update kolom filter + temuan Low review T-k2ec/T-vb7q), **T-d1ns**, **T-md84**.
+- Lingkungan cloud: Docker Hub 429 → tarik image lewat `mirror.gcr.io/...` lalu `docker tag` ke nama asli;
+  rustfs ber-digest → override compose sementara (`image: rustfs/rustfs:pinned`) di luar repo. Jangan jalankan
+  `npm run worker` terpisah saat e2e (spec menyalakan worker sendiri).
+
 ## Serah-terima kedua (2026-10-22 siang, PAUSE)
 
 Sesi rekan (akun Claude kedua) dijeda; diteruskan rekan berikutnya. Branch kerja tetap
