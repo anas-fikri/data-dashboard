@@ -22,9 +22,9 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 
 ## Membuat widget Pivot
 
-1. Buka dashboard dalam mode edit (**Ubah tata letak**), tekan **Tambah widget**, lalu buka pengaturannya.
-2. Isi **Judul**, lalu pilih jenis tampilan **Pivot**. Isian langsung terisi: kolom teks pertama sebagai baris, kolom tanggal (bila ada) dipisah per bulan, dan total kolom angka pertama.
-3. Baca **kalimat ringkasan** di atas panel, mis. _Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total._ Setiap perubahan langsung terlihat di kartu.
+1. Buka dashboard dalam mode edit (**Ubah tata letak**), lalu tekan **Tambah widget**. Panel pengaturannya langsung terbuka.
+2. Pilih jenis tampilan **Pivot**. Isian langsung terisi: kolom kategori (2–50 nilai berbeda, mis. _Customer_) sebagai baris, kolom tanggal (bila ada) dipisah per bulan, dan total kolom besaran (mis. _Omzet_) — kolom nomor urut atau kode seperti _No._, _ID_, _Kode_ tidak dijumlahkan; bila tidak ada kolom besaran, isinya _Jumlah baris_. **Judul** terisi otomatis (mis. _Total Omzet per Customer_) sampai Anda mengetik judul sendiri.
+3. Baca **kalimat ringkasan** di atas panel, mis. _Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total Omzet, dengan kolom dan baris Total._ Setiap perubahan langsung terlihat di kartu.
 4. **Baris → Satu baris per**: kolom yang menjadi isi kolom paling kiri. Untuk kolom tanggal, pilih **Rentang waktu** (per hari, minggu, bulan, kuartal, tahun).
 5. **Rinci baris** (opsional): pecah setiap baris per kolom kedua, mis. _Customer_ dirinci per _Layanan_. Tekan **Rinci lagi** untuk tingkat ketiga dan keempat (mis. _Wilayah › Kota › Layanan › Bulan_). Baris kelompok berisi **subtotal** dan tampil di atas rinciannya; setiap tingkat induk punya sakelar **Subtotal per …** sendiri.
 6. **Pisahkan per** (opsional): satu kolom tabel untuk setiap nilai, mis. _Tanggal_ per bulan → _Jan 2026_, _Feb 2026_, …, lalu kolom **Total** di paling kanan.

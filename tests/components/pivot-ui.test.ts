@@ -51,13 +51,14 @@ const empty: WidgetConfig = { type: "empty", spec: {} };
 const fmt = { style: "number", decimals: 0 } as const;
 
 describe("panel pivot", () => {
-  it("nilai awal: baris = kolom teks, pemisah per bulan, Total No., sah di server", () => {
+  // T-12zs: kolom "No." adalah nomor urut, bukan besaran — nilai awal Jumlah baris (bukan Total No.).
+  it("nilai awal: baris = kolom teks, pemisah per bulan, Jumlah baris (bukan Total No.), sah di server", () => {
     const c = defaultConfig("pivot", sources, empty);
     expect(c?.type).toBe("pivot");
     const spec = (c as { spec: PivotSpec }).spec;
     expect(spec.rows).toEqual([{ column: 1 }]);
     expect(spec.column).toEqual({ column: 2, timeGrain: "month" });
-    expect(spec.values).toEqual([{ agg: "sum", column: 3 }]);
+    expect(spec.values).toEqual([{ agg: "count" }]);
     expect(spec.totals).toBe(true);
     expect(parseWidgetConfig("pivot", spec).ok).toBe(true);
   });
@@ -80,12 +81,13 @@ describe("panel pivot", () => {
     expect(splitColumn({ ...base, rows: [{ column: 1 }] }, cols)?.pos).toBe(2);
   });
 
-  it("Tambah nilai: kolom angka yang belum dipakai, lalu Jumlah baris", () => {
+  it("Tambah nilai: kolom besaran yang belum dipakai, lalu Jumlah baris (No. tidak dijumlah)", () => {
     const spec = (defaultConfig("pivot", sources, empty) as { spec: PivotSpec }).spec;
     expect(defaultMeasureFor(spec, cols)).toEqual({ agg: "count" });
-    expect(defaultMeasureFor({ ...spec, values: [{ agg: "count" }] }, cols)).toEqual({
-      agg: "sum",
-      column: 3,
+    const withBerat = [...cols, { pos: 5, name: "Berat", type: "decimal" as const }];
+    expect(defaultMeasureFor(spec, withBerat)).toEqual({ agg: "sum", column: 5 });
+    expect(defaultMeasureFor({ ...spec, values: [{ agg: "sum", column: 5 }] }, withBerat)).toEqual({
+      agg: "count",
     });
   });
 

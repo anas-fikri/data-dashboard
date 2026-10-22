@@ -1,5 +1,6 @@
 import type { FilterColumnView, WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
+import type { DashFilter } from "@/features/query/filters";
 
 /* Panggilan API kanvas dari browser (T-010). Semua mengembalikan hasil berbentuk tetap, tidak melempar. */
 
@@ -78,7 +79,10 @@ export const api = {
       version,
     }),
   /** Kolom filter global (T-012); hasil = tampilan kolom filter yang baru. */
-  setFilterColumns: (id: string, filterColumns: { sheet: string; column: string }[]) =>
+  setFilterColumns: (
+    id: string,
+    filterColumns: { sheet: string; column: string; default?: DashFilter }[],
+  ) =>
     call<{ filterColumns: FilterColumnView[] }>(`${base(id)}/filter-columns`, "PATCH", {
       filterColumns,
     }),

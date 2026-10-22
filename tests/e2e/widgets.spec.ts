@@ -330,4 +330,62 @@ test.describe("widget", () => {
     }
     await expect(widgetTitled(page, "Jumlah transaksi").getByTestId("kpi-value")).toHaveText("40");
   });
+
+  test("T-12zs: widget baru tanpa judul — ukuran bukan No./Resi, kategori Cabang, judul otomatis sampai diketik", async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    // Dataset sendiri: No. (nomor urut) dan Resi (unik) di depan, seperti ekspor Excel umum.
+    const lines = ["No.;Resi;Cabang;Tanggal;Omzet"];
+    for (let i = 1; i <= 60; i++) {
+      const day = String((i % 28) + 1).padStart(2, "0");
+      const month = String((i % 3) + 7).padStart(2, "0");
+      lines.push(
+        `${i};R${String(i).padStart(5, "0")};${CABANG[i % 4]};${day}-${month}-2026;${(i % 7) * 1000 + 500}`,
+      );
+    }
+    const path = join(dir, "nomor-urut.csv");
+    writeFileSync(path, lines.join("\n"));
+    await page.goto("/datasets/baru");
+    await page.getByLabel("Nama dataset").fill(`Nomor urut ${Date.now()}`);
+    await page.getByRole("button", { name: "Buat dataset" }).click();
+    await expect(page).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
+    const id = new URL(page.url()).pathname.split("/").pop()!;
+    await page.getByTestId("upload-input").setInputFiles(path);
+    await expect(page.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 90_000 });
+    await page.goto(`/dashboards/baru?dataset=${id}`);
+    await page.getByLabel("Nama dashboard").fill("Isian bawaan");
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\?mode=edit$/);
+
+    await page
+      .getByTestId("canvas-toolbar")
+      .getByRole("button", { name: "Tambah widget", exact: true })
+      .click();
+    const panel = page.getByTestId("widget-panel");
+    await expect(panel.getByRole("heading", { name: "Pengaturan widget" })).toBeFocused();
+    const title = panel.getByLabel("Judul", { exact: true });
+    await panel.getByText("Batang", { exact: true }).click();
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    await expect(panel.getByLabel("Kelompokkan menurut", { exact: true })).toContainText("Cabang");
+    await expect(panel.getByLabel("dari kolom", { exact: true })).toContainText("Omzet");
+    await expect(title).toHaveValue("Total Omzet per Cabang");
+    await expect(widgetTitled(page, "Total Omzet per Cabang")).toHaveCount(1);
+
+    // Masih judul otomatis: ikut berganti dengan pengaturan (garis = tanggal per bulan).
+    await panel.getByText("Garis", { exact: true }).click();
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    await expect(title).toHaveValue("Total Omzet per Tanggal (per bulan)");
+    await expect(widgetTitled(page, "Total Omzet per Tanggal (per bulan)")).toHaveCount(1);
+
+    // Judul ketikan pengguna tidak ditimpa lagi.
+    await title.fill("Tren omzet");
+    await title.press("Enter");
+    await expect(widgetTitled(page, "Tren omzet")).toHaveCount(1);
+    await panel.getByText("Batang", { exact: true }).click();
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    await expect(title).toHaveValue("Tren omzet");
+    await page.reload();
+    await expect(widgetTitled(page, "Tren omzet")).toHaveCount(1);
+  });
 });

@@ -1,8 +1,12 @@
 "use client";
 
-import { IconFilter } from "@tabler/icons-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { IconChevronDown, IconFilter, IconFilterCog } from "@tabler/icons-react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { Button } from "@/components/ui/button";
+import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
+import { FilterColumnsSettings } from "../filter-columns-settings";
 import { CrossFilterHint } from "./cross-hint";
+import { DefaultFilters } from "./default-filters";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
@@ -16,13 +20,15 @@ import { FilterSheet } from "./filter-sheet";
  * (popover); lebih sempit: tombol "Filter (n)" yang membuka lembar, jadi tidak ada pemicu + chip
  * ganda yang menumpuk. Di bawahnya chip filter aktif + filter silang. Tanpa kolom filter: di mode lihat
  * hanya muncul saat ada filter silang; di mode edit memberi tahu tempat menambah kolom filter.
+ * Mode edit (pemilik dan editor, T-k2ec): tombol "Atur kolom filter" membuka pengaturan kolom filter
+ * langsung di bilah (disclosure, bukan popover — menu tambah kolom sendiri sudah berupa popover).
  * Petunjuk filter silang (satu untuk seluruh dashboard) di baris terakhir bilah, atau sendiri di atas
  * kanvas bila bilah tidak tampil.
  * Perubahan (termasuk nilai) diumumkan sopan ke pembaca layar — tidak ada pengumuman saat dimuat.
  * Kartu yang masih menampilkan angka filter lama > 0,4 s ("Memperbarui…") diumumkan SEKALI untuk
  * semuanya ("Memperbarui 8 widget…"), lalu dikosongkan setelah semua kartu diperbarui.
  */
-export const FILTER_SETTINGS_ID = "kolom-filter";
+export { FILTER_SETTINGS_ID } from "../filter-columns-settings";
 /** Timer basi semua kartu berjalan bersamaan: tunggu laporan semuanya, lalu umumkan satu kali. */
 const STALE_SETTLE_MS = 100;
 
@@ -42,13 +48,16 @@ function focusCrossSource(widgetId: string) {
 
 export function FilterBar({
   editing,
-  columnSettings,
+  manage,
 }: {
   editing: boolean;
-  /** Pengaturan "Kolom filter" ada di halaman (pemilik saja, T-016); editor tidak bisa mengubahnya. */
-  columnSettings: boolean;
+  /** Kolom filter (server) + sumber data untuk "Atur kolom filter" (mode edit pemilik/editor). */
+  manage: { dashboardId: string; columns: FilterColumnView[]; sources: SourceSheet[] } | null;
 }) {
-  const { columns, state, urlTooLong, widgetTitle, widgetGrain, stale } = useDashboardFilters();
+  const { columns, state, defaults, urlTooLong, widgetTitle, widgetGrain, stale } =
+    useDashboardFilters();
+  const panelId = useId();
+  const [managing, setManaging] = useState(false);
   const sheetButton = useRef<HTMLButtonElement>(null);
   const desktop = useRef<HTMLDivElement>(null);
   const active = state.filters.length + (state.cross ? 1 : 0);
@@ -140,27 +149,48 @@ export function FilterBar({
         ) : editing ? (
           <p className="flex items-start gap-2 text-sm text-muted-foreground">
             <IconFilter size={18} stroke={1.5} aria-hidden className="mt-px shrink-0" />
-            {columnSettings ? (
-              <span>
-                Belum ada kolom filter. Tambahkan lewat{" "}
-                <a
-                  href={`#${FILTER_SETTINGS_ID}`}
-                  className="font-medium text-foreground underline underline-offset-4"
-                >
-                  Kolom filter
-                </a>{" "}
-                di pengaturan dashboard.
-              </span>
-            ) : (
-              <span>Belum ada kolom filter. Kolom filter dipilih oleh pemilik dataset.</span>
-            )}
+            <span>
+              Belum ada kolom filter.
+              {manage ? " Tambahkan lewat Atur kolom filter." : null}
+            </span>
           </p>
         ) : null}
+        {editing && manage ? (
+          <div className="flex flex-col gap-3">
+            <Button
+              variant="outline"
+              aria-expanded={managing}
+              aria-controls={panelId}
+              data-testid="filter-bar-manage"
+              leadingIcon={<IconFilterCog aria-hidden />}
+              onClick={() => setManaging((m) => !m)}
+              className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto md:self-start"
+            >
+              Atur kolom filter
+              <IconChevronDown
+                aria-hidden
+                className={`motion-safe:transition-transform ${managing ? "rotate-180" : ""}`}
+              />
+            </Button>
+            <div id={panelId} hidden={!managing} className="border-t pt-3">
+              {managing ? (
+                <FilterColumnsSettings
+                  dashboardId={manage.dashboardId}
+                  columns={manage.columns}
+                  sources={manage.sources}
+                  embedded
+                />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
         <FilterChips onEmpty={focusFirst} />
+        {columns.length ? <DefaultFilters manage={editing ? manage : null} /> : null}
         {urlTooLong ? (
           <p className="text-xs text-muted-foreground">
             Pilihan filter terlalu panjang untuk disimpan di alamat halaman — filter tetap berlaku,
-            tetapi hilang bila halaman dimuat ulang.
+            tetapi {defaults.filters.length ? "kembali ke filter bawaan" : "hilang"} bila halaman
+            dimuat ulang.
           </p>
         ) : null}
         <CrossFilterHint editing={editing} />

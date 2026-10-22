@@ -14,6 +14,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   widget sebelum rollback image, atau terima sampai upgrade berikutnya (runbook-deploy §7 R).
 - **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
   "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
+- **filter bawaan (T-vb7q):** rollback ke v1.3.1 membuat kolom filter yang membawa filter bawaan tidak tampil
+  (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
+  (runbook-deploy §10).
+
+## [1.4.0] - 2026-10-22
+
+### Added
+
+- **T-1k96:** widget baru mengisi baris kosong; urungkan hapus tepat di posisi semula (f09d71f)
+- **T-k2ec:** editor dashboard mengatur kolom filter dari bilah filter (5133eac)
+- **T-vb7q:** filter bawaan per kolom filter dashboard (8e808c9)
+- **T-zm9k:** dashboard contoh otomatis dari skema dataset (de9b9f2)
+- **pivot:** pratinjau tabel pivot penuh di editor pivot tersimpan (T-c6z4) (3a16a5e)
+
+### Fixed
+
+- **T-12zs:** awalan nomor hanya ID bila menempel kata besaran; No of bukan ID (f5805f9)
+- **T-12zs:** kolom bagian tanggal tidak dijumlah, nama besaran di tengah kata (95344b2)
+- **T-12zs:** nomor/kode menyatu tetap ID, bagian tanggal di nama kalah (ad5caec)
+- **T-12zs:** perbaikan review isian bawaan dan judul otomatis (e69d344)
+- **T-1k96:** padatkan widget baru di tata letak lokal yang belum tersimpan; uji pemulihan dipaku (4af631d)
+- **T-k2ec:** daftar kolom filter memakai refresh terbaru saat simpan gagal; komentar diperbarui (ca19b21)
+- **T-vb7q:** bawaan basi tidak dikirim/menghalangi simpan; tombol kembalikan abaikan pivot; pembersihan e2e (7deab10)
+- **T-zm9k:** cek versi aktif di transaksi, tata letak setelah validasi, filter per kolom, label checkbox (0de3280)
+- **T-zm9k:** versi aktif dibaca sebelum skema; transaksi menunggu aktivasi lewat FOR SHARE (1782e3e)
 
 ## [1.3.1] - 2026-10-22
 

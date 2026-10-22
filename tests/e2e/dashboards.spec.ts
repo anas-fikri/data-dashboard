@@ -222,7 +222,13 @@ test.describe("dashboard", () => {
       return w.y >= 56 && w.y + w.height <= 900 && !overlap;
     };
     await expect.poll(inView).toBe(true);
-    await sheet.getByRole("button", { name: /ke atas$/ }).click();
+    // Widget baru mengisi baris yang masih muat (T-1k96), jadi arah yang bisa digeser bergantung pada
+    // susunan: pakai tombol geser pertama yang aktif.
+    await sheet
+      .getByRole("button", { name: /ke (atas|bawah|kiri|kanan)$/ })
+      .and(page.locator(":not([aria-disabled])"))
+      .first()
+      .click();
     await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
     await expect.poll(inView).toBe(true);
     // Rapikan: widget tambahan dihapus agar tes berikutnya tetap mulai dari 2 widget.
@@ -311,12 +317,43 @@ test.describe("dashboard", () => {
     await other.close();
   });
 
+  test("T-1k96: tiga kali Tambah widget mengisi satu baris; urungkan hapus memulihkan", async ({
+    page,
+  }) => {
+    await createDashboard(page, "Satu baris");
+    await expect(page).toHaveURL(/\?mode=edit$/);
+    const add = page
+      .getByTestId("canvas-toolbar")
+      .getByRole("button", { name: "Tambah widget", exact: true });
+    const widgets = page.getByTestId("widget");
+    for (let n = 1; n <= 3; n++) {
+      await add.click();
+      await expect(widgets).toHaveCount(n);
+    }
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    const before = await geometry(page);
+    expect(Object.values(before).sort()).toEqual(["0,0,4,4", "4,0,4,4", "8,0,4,4"]);
+    // Hapus widget tengah lalu urungkan: kembali ke x = 4 di baris yang sama.
+    const middle = Object.keys(before).find((id) => before[id] === "4,0,4,4")!;
+    await page
+      .locator(`[data-widget-id="${middle}"]`)
+      .getByRole("button", { name: /^Pengaturan/ })
+      .click();
+    await page.getByTestId("widget-panel").getByRole("button", { name: "Hapus widget" }).click();
+    await expect(widgets).toHaveCount(2);
+    await page.getByRole("button", { name: "Urungkan hapus widget" }).click();
+    await expect(widgets).toHaveCount(3);
+    await expect(page.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
+    expect(Object.values(await geometry(page)).sort()).toEqual(Object.values(before).sort());
+  });
+
   test("AC 4: dashboard ke-11 untuk dataset yang sama ditolak (LIMIT_REACHED)", async ({
     page,
   }) => {
-    // 10 kali buat dashboard lewat UI: di suite paralel bisa > 30 dtk bawaan.
+    // 10 kali buat dashboard lewat UI: di suite paralel bisa > 30 dtk bawaan. Dashboard 1 dan
+    // "Satu baris" (T-1k96) sudah ada.
     test.setTimeout(90_000);
-    for (let n = 2; n <= 10; n++) {
+    for (let n = 3; n <= 10; n++) {
       await createDashboard(page, `Dashboard ${n}`);
       await expect(page).toHaveURL(/\?mode=edit$/);
     }

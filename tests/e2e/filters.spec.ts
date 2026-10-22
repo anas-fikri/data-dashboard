@@ -39,6 +39,7 @@ const CABANG_CYCLE = [
 const dir = mkdtempSync(join(tmpdir(), "dd-e2e-filter-"));
 let worker: ChildProcess | null = null;
 let dashboardUrl = "";
+let datasetIdShared = "";
 
 /** Hari ini di Asia/Jakarta sebagai YYYY-MM-DD (cara yang sama dengan todayJakarta di server). */
 function todayJakarta(): string {
@@ -196,6 +197,7 @@ test.describe("filter dashboard", () => {
     await p.getByRole("button", { name: "Buat dataset" }).click();
     await expect(p).toHaveURL(/\/datasets\/[a-z0-9]{20,32}\?created=1$/);
     const datasetId = new URL(p.url()).pathname.split("/").pop()!;
+    datasetIdShared = datasetId;
     await p.getByTestId("upload-input").setInputFiles(fixtureCsv());
     await expect(p.getByTestId("dataset-schema-link")).toBeVisible({ timeout: 120_000 });
 
@@ -489,5 +491,137 @@ test.describe("filter dashboard", () => {
     expect(shown.every((v) => v.includes(q))).toBe(true);
     expect([...shown].sort()).toEqual([...matches].sort());
     await expect(warning).toHaveCount(0);
+  });
+
+  let cleanup: (() => Promise<unknown>) | null = null;
+  test.afterEach(async () => {
+    const res = (await cleanup?.()) as { ok(): boolean; status(): number } | undefined;
+    cleanup = null;
+    if (res) expect(res.ok(), `pembersihan bawaan: HTTP ${res.status()}`).toBe(true);
+  });
+
+  test("T-vb7q: filter bawaan — disimpan di mode edit, aktif tanpa ?f= (label bawaan, dikirim sebagai dashboardFilters); Hapus semua = f={} tetap tanpa filter saat dimuat ulang; Kembalikan bawaan", async ({
+    page,
+  }) => {
+    const medan = countWhere((r) => r.cabang === "Medan");
+    const state = { filters: [{ column: "Cabang", op: "in", values: ["Medan"] }] };
+    const hydrated = () =>
+      expect(page.locator("[data-testid=dashboard-canvas][data-hydrated]")).toHaveCount(1);
+    const chip = page.locator('[data-testid=filter-chip][data-column="Cabang"]');
+
+    // Mode edit dengan filter aktif Medan → simpan sebagai bawaan.
+    await page.goto(`${dashboardUrl}?mode=edit&f=${encodeURIComponent(JSON.stringify(state))}`);
+    await hydrated();
+    await expectKpi(page, medan);
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await page.getByTestId("filter-save-defaults").click();
+    const res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    // Bawaan dibersihkan lewat API bila tes gagal di tengah (dashboard dipakai bersama).
+    const plain = (
+      res.request().postDataJSON().filterColumns as { sheet: string; column: string }[]
+    ).map(({ sheet, column }) => ({ sheet, column }));
+    cleanup = () =>
+      page.request.patch(
+        `${new URL(dashboardUrl).pathname.replace("/dashboards/", "/api/dashboards/")}/filter-columns`,
+        {
+          data: { filterColumns: plain },
+          headers: { origin: new URL(dashboardUrl).origin },
+        },
+      );
+    expect(res.request().postDataJSON().filterColumns[0]).toEqual({
+      sheet: expect.any(String),
+      column: "Cabang",
+      default: state.filters[0],
+    });
+    await expect(page.getByText("Filter bawaan tersimpan.")).toBeVisible();
+    await expect(page.getByTestId("filter-save-defaults")).toHaveAttribute("aria-disabled", "true");
+
+    // Mode lihat tanpa ?f= → bawaan aktif, chip berlabel, widget menerima dashboardFilters Medan.
+    const query = page.waitForRequest(
+      (r) => r.url().endsWith("/api/query") && r.method() === "POST",
+    );
+    await page.goto(dashboardUrl);
+    expect((await query).postDataJSON().dashboardFilters).toEqual(state.filters);
+    await hydrated();
+    await expectKpi(page, medan);
+    await expect(chip.getByTestId("chip-default")).toHaveText("bawaan");
+    expect(urlFilters(page)).toBeNull();
+    await expect(page.getByTestId("filter-restore-defaults")).toHaveCount(0);
+    // PDF memakai filter aktif yang sama (body POST; renderer tidak diuji di sini).
+    await page.getByTestId("dashboard-pdf-export").click();
+    const pdf = page.waitForRequest(
+      (r) => r.url().endsWith("/api/exports") && r.method() === "POST",
+    );
+    await page.getByTestId("export-pdf").click();
+    expect(JSON.parse((await pdf).postDataJSON().f)).toEqual(state);
+    await page.keyboard.press("Escape");
+
+    // Hapus semua → seluruh data, f={} di URL, tetap tanpa filter setelah muat ulang.
+    await page.getByTestId("filter-clear-all").click();
+    await expectKpi(page, ROWS);
+    await expect.poll(() => urlFilters(page)).toEqual({});
+    await page.reload();
+    await hydrated();
+    await expectKpi(page, ROWS);
+    await expect(chip).toHaveCount(0);
+
+    // Kembalikan bawaan → Medan lagi, URL tanpa f.
+    await page.getByTestId("filter-restore-defaults").click();
+    await expectKpi(page, medan);
+    await expect.poll(() => urlFilters(page)).toBeNull();
+
+    // Pilihan lain di kolom berbawaan: chip tanpa label bawaan.
+    await page.goto(
+      `${dashboardUrl}?f=${encodeURIComponent(JSON.stringify({ filters: [{ column: "Cabang", op: "in", values: ["Bandung"] }] }))}`,
+    );
+    await hydrated();
+    await expect(chip).toBeVisible();
+    await expect(chip.getByTestId("chip-default")).toHaveCount(0);
+
+    // Hapus bawaan dari mode edit (tanpa filter aktif) → dibuka tanpa filter.
+    await page.goto(`${dashboardUrl}?mode=edit&f=%7B%7D`);
+    await hydrated();
+    await expect(page.getByTestId("filter-save-defaults")).toHaveText("Hapus filter bawaan");
+    const cleared = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await page.getByTestId("filter-save-defaults").click();
+    expect((await cleared).status()).toBe(200);
+    await page.goto(dashboardUrl);
+    await hydrated();
+    await expectKpi(page, ROWS);
+    await expect(chip).toHaveCount(0);
+  });
+
+  test("T-zm9k: 'Mulai dengan dashboard contoh' → ≥ 4 widget berisi data + ≥ 2 kolom filter tanpa langkah tambahan", async ({
+    page,
+  }) => {
+    await page.goto(`/dashboards/baru?dataset=${datasetIdShared}`);
+    await page.getByLabel("Nama dashboard").fill("Contoh otomatis");
+    await page.getByTestId("dashboard-starter").check();
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\?mode=edit$/);
+    const widgets = page.getByTestId("widget");
+    await expect(widgets).toHaveCount(5);
+    await expect(page.getByRole("heading", { name: "Total Omzet", exact: true })).toBeVisible();
+    await expect(widgetTitled(page, "Jumlah baris").getByTestId("kpi-value")).toHaveAttribute(
+      "title",
+      /5\.000/,
+    );
+    await expect(page.getByTestId("widget-error")).toHaveCount(0);
+    // Kolom filter: Tanggal + Cabang (Kode 5.000 nilai unik tidak dipilih).
+    const bar = page.getByTestId("filter-bar");
+    await expect(bar.locator("[data-testid=filter-slicer][data-column=Cabang]")).toHaveCount(1);
+    await expect(bar.getByRole("button", { name: /^Tanggal/ })).toHaveCount(1);
+    await expect(bar.locator("[data-column=Kode]")).toHaveCount(0);
+    // Tanpa centang: dashboard kosong seperti sebelumnya.
+    await page.goto(`/dashboards/baru?dataset=${datasetIdShared}`);
+    await page.getByLabel("Nama dashboard").fill("Kosong");
+    await page.getByRole("button", { name: "Buat dashboard" }).click();
+    await expect(page).toHaveURL(/\?mode=edit$/);
+    await expect(page.getByTestId("widget")).toHaveCount(0);
   });
 });

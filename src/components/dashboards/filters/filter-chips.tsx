@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useDashboardFilters } from "./filter-context";
-import { normName } from "./filter-model";
+import { isDefaultFilter, normName } from "./filter-model";
 import { filterText } from "./filter-text";
 
 /*
@@ -16,6 +16,7 @@ import { filterText } from "./filter-text";
  * menghapus, fokus pindah ke chip berikutnya (atau sebelumnya); chip terakhir → `onEmpty` dipanggil
  * SEBELUM status berubah (pemanggil memfokuskan kontrol filter pertama atau sumber filter silang —
  * bilah bisa hilang bersama chip), agar fokus tidak jatuh ke <body>.
+ * Filter yang sama dengan bawaan kolomnya (T-vb7q) diberi label "bawaan".
  */
 const CHIP =
   "inline-flex min-h-8 max-w-full items-center gap-1 rounded-full border bg-muted pl-3 text-sm";
@@ -55,7 +56,8 @@ export function FilterChips({ onEmpty }: { onEmpty: () => void }) {
         {state.filters.map((f, i) => {
           const col = columns.find((c) => normName(c.column) === normName(f.column));
           const value = filterText(f, col?.type);
-          const text = `${f.column}: ${value}`;
+          const byDefault = isDefaultFilter(f, columns);
+          const text = `${f.column}: ${value}${byDefault ? " (bawaan)" : ""}`;
           return (
             <li key={f.column} className={CHIP} data-testid="filter-chip" data-column={f.column}>
               <span className="sr-only">{text}</span>
@@ -64,6 +66,14 @@ export function FilterChips({ onEmpty }: { onEmpty: () => void }) {
                 <span className="max-w-[calc(100%-4ch)] shrink-0 truncate font-medium">
                   {value}
                 </span>
+                {byDefault ? (
+                  <span
+                    className="shrink-0 text-xs text-muted-foreground"
+                    data-testid="chip-default"
+                  >
+                    bawaan
+                  </span>
+                ) : null}
               </span>
               <Button
                 size="icon-sm"

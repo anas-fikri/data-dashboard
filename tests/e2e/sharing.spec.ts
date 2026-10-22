@@ -1017,14 +1017,14 @@ test.describe("berbagi dashboard", () => {
     );
   });
 
-  test("AC6: editor menambah + mengganti judul widget dan menyimpan tata letak; kolom filter 403; tanpa Bagikan", async () => {
+  test("AC6: editor menambah + mengganti judul widget dan menyimpan tata letak; kolom filter dari bilah filter (T-k2ec); tanpa Bagikan", async () => {
     expect((await e.goto(d1Path()))?.status()).toBe(200);
     await expect(e.getByText("Editor", { exact: true })).toBeVisible();
     await expect(e.getByTestId("share-open")).toHaveCount(0);
     await e.getByTestId("edit-dashboard").click();
     await expect(e).toHaveURL(/\?mode=edit/);
     await expect(e.getByTestId("canvas-toolbar")).toBeVisible();
-    // Nama, kolom filter, hapus, berbagi: pemilik saja.
+    // Nama, hapus, berbagi: pemilik saja (kartu pengaturan tidak ada untuk editor).
     await expect(e.getByTestId("dashboard-filter-columns")).toHaveCount(0);
     await expect(e.getByLabel("Nama dashboard")).toHaveCount(0);
     await expect(e.getByTestId("share-open")).toHaveCount(0);
@@ -1040,11 +1040,33 @@ test.describe("berbagi dashboard", () => {
     expect(put.status(), await put.text()).toBe(200);
     await expect(e.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
 
-    await expectStatus(
-      await api(e, "PATCH", `/api/dashboards/${d1}/filter-columns`, { filterColumns: [] }),
-      403,
-      "FORBIDDEN",
+    // T-k2ec: editor menambah lalu menghapus kolom filter dari bilah filter (D1 kembali ke Cabang).
+    const manage = e.getByTestId("filter-bar-manage");
+    await expect(manage).toHaveAttribute("aria-expanded", "false");
+    await manage.click();
+    await expect(manage).toHaveAttribute("aria-expanded", "true");
+    const cols = e.getByTestId("filter-bar-columns");
+    const items = cols.getByRole("list", { name: "Kolom filter" }).getByRole("listitem");
+    await expect(items).toHaveCount(1);
+    const patched = () =>
+      e.waitForResponse(
+        (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+      );
+    let saved = patched();
+    await cols.getByRole("button", { name: "Tambah kolom filter" }).click();
+    await e.getByRole("menuitem", { name: /^Tanggal/ }).click();
+    let res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    await expect(items).toHaveCount(2);
+    // Kontrol baru langsung muncul di bilah filter (refresh server).
+    await expect(e.getByTestId("filter-bar").getByRole("button", { name: /^Tanggal/ })).toHaveCount(
+      1,
     );
+    saved = patched();
+    await cols.getByRole("button", { name: "Hapus kolom filter Tanggal" }).click();
+    res = await saved;
+    expect(res.status(), await res.text()).toBe(200);
+    await expect(items).toHaveCount(1);
     expect(await replay(e, renameAction, D1_NAME, HACKED)).toContain('"code":"FORBIDDEN"');
     expect(await replay(e, grantAction, ids[B]!, ids[X]!)).toContain('"code":"FORBIDDEN"');
 
@@ -1266,7 +1288,8 @@ test.describe("berbagi dashboard", () => {
 
   test("Back setelah masuk lewat navigasi klien (lead review R4): viewer /dashboards → baris → pindah halaman → Back = kerangka + refresh; isi baru tanpa 'sudah diubah'; posisi gulir pulih (R4-CL-2)", async () => {
     const viewport = b.viewportSize()!;
-    await b.setViewportSize({ width: 1280, height: 560 });
+    // Layar pendek agar halaman bisa digulir > 200 px (widget baru mengisi baris, T-1k96).
+    await b.setViewportSize({ width: 1280, height: 400 });
     try {
       // Masuk lewat klik baris (navigasi klien): modul kanvas dimuat SETELAH router memasang popstate.
       await b.goto("/dashboards");

@@ -17,7 +17,10 @@ import {
 import { createDashboardAction, type DashboardFormState } from "@/features/dashboards/actions";
 import { DASHBOARD_NAME_MAX, DASHBOARDS_PER_DATASET } from "@/features/dashboards/validation";
 
-/** Form buat dashboard: pilih dataset (Select kustom) + nama. Isian dipertahankan saat gagal. */
+/**
+ * Form buat dashboard: pilih dataset (Select kustom) + nama + "Mulai dengan dashboard contoh" (T-zm9k).
+ * Isian dipertahankan saat gagal.
+ */
 export function DashboardForm({
   datasets,
   defaultDatasetId,
@@ -125,6 +128,24 @@ export function DashboardForm({
           className="h-(--control-h-lg) md:h-(--control-h)"
         />
       </Field>
+      <div className="grid grid-cols-[auto_1fr] items-start gap-x-3 gap-y-0.5 rounded-md border px-3 py-2.5">
+        <input
+          id="starter"
+          type="checkbox"
+          name="starter"
+          defaultChecked={error?.values.starter ?? false}
+          aria-describedby="starter-hint"
+          className="row-span-2 mt-0.5 size-4 shrink-0 accent-[hsl(var(--primary))]"
+          data-testid="dashboard-starter"
+        />
+        <label htmlFor="starter" className="cursor-pointer text-sm font-medium">
+          Mulai dengan dashboard contoh
+        </label>
+        <p id="starter-hint" className="col-start-2 text-sm text-muted-foreground">
+          Widget angka, grafik, dan tabel serta kolom filter disusun otomatis dari kolom data.
+          Semuanya bisa diubah atau dihapus. Dataset yang belum punya data siap tetap dibuat kosong.
+        </p>
+      </div>
       <Button
         type="submit"
         pending={pending}

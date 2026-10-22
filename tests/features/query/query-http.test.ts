@@ -6,6 +6,7 @@ import {
   EDITOR,
   FOREIGN_SHEET,
   OWNER,
+  SHEET,
   SPEC,
   STRANGER,
   VIEWER,
@@ -184,5 +185,63 @@ describe("/api/query mode bebas dan pemilihan mode", () => {
       { userId: EDITOR, mode: "dashboard", err: "koneksi DB putus" },
       "query gagal",
     );
+  });
+});
+
+describe("/api/query { datasetId, pivot } pratinjau pivot tersimpan (T-c6z4)", () => {
+  const PIVOT = {
+    sheetId: SHEET,
+    rows: [{ column: 1 }],
+    values: [{ agg: "sum", column: 2 }],
+    sort: "label_asc",
+    format: { style: "number", decimals: 0 },
+    totals: true,
+    subtotals: false,
+  };
+
+  it("AC2: editor/viewer/orang asing dan dataset lain → 404 tanpa DuckDB; rate limit query yang sama", async () => {
+    for (const user of [VIEWER, EDITOR, STRANGER]) {
+      expect(await call(user, { datasetId: DS, pivot: PIVOT })).toMatchObject({
+        status: 404,
+        json: { ok: false, code: "NOT_FOUND" },
+      });
+    }
+    expect(
+      (await call(OWNER, { datasetId: "cmv4klj5r0007oczvgiofocpo", pivot: PIVOT })).status,
+    ).toBe(404);
+    expect(
+      (await call(OWNER, { datasetId: DS, pivot: { ...PIVOT, sheetId: FOREIGN_SHEET } })).status,
+    ).toBe(404);
+    expect(current.exec).not.toHaveBeenCalled();
+    expect(current.repo.dashboardAccess).not.toHaveBeenCalled();
+    expect(current.repo.widget).not.toHaveBeenCalled();
+    expect(hit).toHaveBeenCalledWith(expect.anything(), RULES.query, VIEWER);
+  });
+
+  it("pemilik → mode pivot dijalankan (DuckDB dipanggil); body salah → 400 sebelum otorisasi", async () => {
+    current.exec.mockResolvedValueOnce({ columns: [], rows: [] });
+    const owner = await call(OWNER, { datasetId: DS, pivot: PIVOT });
+    expect(owner.status).toBe(200);
+    expect(owner.json).toMatchObject({ ok: true, pivot: expect.any(Object) });
+    expect(current.exec).toHaveBeenCalledTimes(1);
+    for (const body of [
+      { datasetId: DS, pivot: { ...PIVOT, rows: [] } },
+      { datasetId: DS, pivot: PIVOT, spec: SPEC },
+      { datasetId: DS, pivot: { ...PIVOT, values: [{ agg: "sum", column: 3, sql: "1" }] } },
+    ]) {
+      expect((await call(STRANGER, body)).status).toBe(400);
+    }
+    // dashboardId menang atas pivot: body strict mode editor → 400 (tidak ada jalur pivot editor).
+    expect((await call(EDITOR, { dashboardId: DASH, pivot: PIVOT })).status).toBe(400);
+    expect(current.repo.ownedDataset).toHaveBeenCalledTimes(1);
+  });
+
+  it("kolom tersembunyi → 409 COLUMN_UNAVAILABLE (aturan widgetPlan yang sama dengan simpan)", async () => {
+    const r = await call(OWNER, {
+      datasetId: DS,
+      pivot: { ...PIVOT, values: [{ agg: "sum", column: 3 }] },
+    });
+    expect(r).toMatchObject({ status: 409, json: { ok: false, code: "COLUMN_UNAVAILABLE" } });
+    expect(current.exec).not.toHaveBeenCalled();
   });
 });

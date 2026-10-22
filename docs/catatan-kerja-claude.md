@@ -55,6 +55,93 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-10-22 sore, sesi rekan)
+
+- Batch selesai (done): **T-k2ec** (editor atur kolom filter dari bilah filter), **T-vb7q** (filter bawaan per
+  kolom filter), **T-zm9k** (dashboard contoh otomatis). Masing-masing review subagen sampai 0 temuan; suite e2e
+  penuh per proyek lulus (Firefox/WebKit/pdf dilewati di VM).
+- Rilis **v1.4.0** (satu rilis untuk T-c6z4 + batch; pemisahan v1.4.0/v1.5.0 tidak bisa dibuat bersih karena
+  commit bercampur): commit `chore(release): v1.4.0` ada di branch, **tag belum di-push** (403 dari cloud) →
+  pemilik membuat/push tag dari Mac (runbook-deploy §10). PR branch sesi → `main` dibuka.
+- Task lanjutan: **T-4q8n** (lost update kolom filter + temuan Low review T-k2ec/T-vb7q), **T-d1ns**, **T-md84**.
+- Lingkungan cloud: Docker Hub 429 → tarik image lewat `mirror.gcr.io/...` lalu `docker tag` ke nama asli;
+  rustfs ber-digest → override compose sementara (`image: rustfs/rustfs:pinned`) di luar repo. Jangan jalankan
+  `npm run worker` terpisah saat e2e (spec menyalakan worker sendiri).
+
+## Serah-terima kedua (2026-10-22 siang, PAUSE)
+
+Sesi rekan (akun Claude kedua) dijeda; diteruskan rekan berikutnya. Branch kerja tetap
+`claude/intelligent-albattani-fd1va8` (posisi paling baru; `main` tertinggal). PR ke `main` belum dibuka.
+
+**Selesai di sesi ini (status aitk done):** T-12zs (isian bawaan pintar + judul otomatis; review 6
+putaran), T-c6z4 (npm audit sudah pulih), T-1k96 (widget baru mengisi baris; bug lama urungkan hapus
+diperbaiki). Task lanjutan baru: **T-d1ns** (temuan Low judul otomatis).
+
+**Antre (urut):** T-k2ec (editor atur kolom filter dari bilah filter — `setDashboardFilterColumns` di
+src/features/dashboards/service.ts saat ini pemilik saja → `canEditWhere` + `denied(..., "edit")`; UI di
+filters/filter-bar.tsx memakai ulang logika filter-columns-settings.tsx; tes sharing.spec.ts ±baris 1044
+mengharapkan 403 untuk editor → ubah ke 200; panduan 08), T-vb7q (filter bawaan: simpan `default` per
+entri Dashboard.filterColumns tanpa migrasi; tanpa ?f → bawaan, "Hapus semua" tulis `f={}`; cek alur
+PDF/ekspor), T-zm9k (checkbox "Mulai dengan dashboard contoh" di dashboard-form.tsx; widget dibuat
+server-side di createDashboard memakai smart-defaults.ts + checkConfig), lalu rilis v1.4.0 (T-c6z4) dan
+v1.5.0 (batch) lewat `aitk release --tag` (push tag dari cloud ditolak → pemilik), PR ke `main`.
+
+**Catatan lingkungan cloud (container baru):**
+- Node 22.23.3: unduh dari nodejs.org dan ganti biner `node` di PATH (22.22 merusak worker xlsx).
+- aitk: `git clone https://github.com/innaka-tech/ai-toolkit` (publik) lalu `go build -o /usr/local/bin/aitk ./cmd/aitk`.
+- osv-scanner (wajib `aitk audit`): `GOBIN=/usr/local/bin go install github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.2.2`.
+- Docker: jalankan `dockerd` dulu; lalu `npm run secrets:dev`, `npm run compose:up`, `npx prisma migrate deploy`.
+- Dev server: jalankan terlepas (`setsid nohup npm run dev ... &`) — tugas latar belakang dihentikan setelah 2 jam.
+- Playwright 1.64 butuh chromium_headless_shell-1248; VM punya 1194 → buat folder 1248 berisi symlink
+  (`cp -as` dari 1194 + `chrome-headless-shell` → `headless_shell`). Firefox/WebKit tidak ada (proyek
+  data-view-scroll-firefox/webkit dilewati); renderer PDF menolak jalan sebagai root (e2e pdf dilewati).
+- Suite penuh: jalankan per proyek dengan `--no-deps` berurutan (rantai dependensi berhenti di Firefox).
+- Review: subagen independen dicatat `AITK_TOOL=claude-reviewer-subagent aitk review pass <id> --findings N`
+  (task strict butuh satu pass dari "alat" selain pengerja); task strict juga butuh `aitk security
+  checklist <id>` diisi dan `aitk audit` hijau sebelum close.
+- Produksi: tetap hanya pemilik (Anas). Tidak ada deploy dari sesi ini.
+
+## Serah-terima ke akun Claude lain (2026-10-22, PAUSE)
+
+Pemilik menjeda sesi cloud ini dan pekerjaan diteruskan rekan pemilik dengan akun Claude sendiri.
+
+**Mulai dari sini (rekan):**
+1. Klon repo, `git checkout main && git pull`, lalu `git merge origin/claude/intelligent-albattani-fd1va8`
+   (branch sesi lama = posisi paling baru, termasuk WIP T-12zs). Kerjakan di branch sendiri dan buka PR
+   (pull request) ke `main`; pemilik yang menggabungkan. Tanpa force-push ke branch orang lain.
+2. Node **22.23.3** (bukan 22.22 — worker xlsx rusak), `npm ci`, `aitk` (build dari repo
+   `innaka-tech/ai-toolkit`: `go build -o /usr/local/bin/aitk ./cmd/aitk` — minta akses ke pemilik bila
+   privat), layanan dev `docker compose -f docker-compose.dev.yml up -d`, `.env` lewat
+   `npm run secrets:dev` (nilai rahasia tidak pernah dibagikan/di-commit), `npx prisma migrate deploy`.
+3. Jalankan `aitk brief` dan ikuti. Aturan kerja + keamanan di atas tetap berlaku. **Produksi (olympus)
+   hanya pemilik**: rekan menyiapkan perintah, pemilik menjalankan.
+
+**Status saat dijeda:**
+- **T-12zs** (isian bawaan pintar + judul otomatis) — status `in_progress`, kode WIP di-commit
+  `wip(T-12zs)`: implementasi + uji unit `tests/components/smart-defaults.test.ts` + e2e disesuaikan
+  sudah ditulis, Objective/Risk/Notes/checklist terisi, tetapi **`aitk check` dan e2e belum dipastikan
+  lulus** dan belum direview. Langkah: `aitk check`, e2e `widgets` + `pivot` (`npx playwright test
+  --project=<nama> --no-deps`), review, perbaiki, `aitk close`.
+- Antre (urut): **T-1k96** widget baru mengisi baris; **T-k2ec** editor boleh mengatur kolom filter dari
+  bilah filter (**keputusan pemilik 2026-10-22: editor dashboard boleh menambah filter**); **T-vb7q**
+  filter bawaan per kolom; **T-zm9k** dashboard awal otomatis (setelah T-12zs). Latar belakang: analisa
+  di task masing-masing + ringkasan di bawah.
+- **T-c6z4** (pratinjau tabel pivot penuh di editor pivot tersimpan) — kode + review (0 blokir) +
+  tes selesai (`3a16a5e`), status `in_review`; belum ditutup hanya karena `npm audit` di `aitk check`
+  gagal (endpoint advisori npm membalas 503 — gangguan npm, dependensi tidak berubah). Saat npm pulih:
+  `aitk check` lalu `aitk close`. Temuan Low → **T-md84**.
+- **T-1tzp** selesai: video panduan `satu-pivot-banyak-widget` (adegan `pemilik-pivot-tersimpan` di
+  scripts/record-guide-videos.ts). File video tidak di-commit; pemilik mengunggah lewat Admin → Panduan.
+- Rilis berikutnya: **v1.4.0** (T-c6z4) dan **v1.5.0** (batch dashboard/filter) lewat
+  `aitk release --tag` — tag tidak bisa di-push dari sesi cloud (403), pemilik mem-push tag dari Mac.
+- Produksi saat dijeda: v1.3.0 → v1.3.1 sedang di-deploy pemilik (preflight lulus 2026-10-22); lalu seed
+  panduan dengan `docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker ...`
+  (runbook "Isi panduan").
+- Ringkasan analisa penyederhanaan dashboard/filter: dashboard baru selalu kosong (±40 aksi untuk 3
+  widget), isian bawaan "kolom pertama" (contoh "Total No."), judul tidak otomatis, widget menumpuk di
+  kiri, panel ±15 isian, tidak ada filter bawaan, kolom filter jauh dari bilah filter, 5 istilah "saring".
+  Usulan berikutnya setelah batch: panel dasar/lanjutan, duplikat dashboard, peta cakupan filter.
+
 ## Posisi terakhir (2026-10-21, sesi cloud)
 
 - G-6 dikerjakan dari sesi Claude Code cloud (branch `claude/intelligent-albattani-fd1va8`, Node 22.23.3 —

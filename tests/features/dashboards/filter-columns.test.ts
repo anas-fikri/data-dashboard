@@ -4,6 +4,7 @@ import {
   filterColumnKey,
   filterColumnViews,
   filterSourcesOf,
+  keepUnavailable,
   overlappingFilterColumns,
   storedFilterColumns,
   type ActiveSheet,
@@ -49,7 +50,9 @@ const SHEETS = [
 ] as ActiveSheet[];
 
 const owned = () =>
-  prisma.dashboard.findFirst.mockResolvedValueOnce({ dataset: { activeVersionId: VER } });
+  prisma.dashboard.findFirst.mockResolvedValueOnce({
+    dataset: { ownerId: OWNER, activeVersionId: VER },
+  });
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -84,7 +87,13 @@ describe("setDashboardFilterColumns", () => {
       },
     });
     expect(prisma.dashboard.updateMany).toHaveBeenCalledWith({
-      where: { id: DB, dataset: { ownerId: OWNER } },
+      where: {
+        id: DB,
+        OR: [
+          { dataset: { ownerId: OWNER } },
+          { shares: { some: { userId: OWNER, role: "EDITOR" } } },
+        ],
+      },
       data: {
         filterColumns: [
           { sheet: "Penjualan", column: "Cabang" },
@@ -150,12 +159,16 @@ describe("setDashboardFilterColumns", () => {
     expect(await svc.setDashboardFilterColumns(OWNER, "../x", [])).toMatchObject({
       code: "NOT_FOUND",
     });
-    prisma.dashboard.findFirst.mockResolvedValueOnce({ dataset: { activeVersionId: null } });
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      dataset: { ownerId: OWNER, activeVersionId: null },
+    });
     expect(
       await svc.setDashboardFilterColumns(OWNER, DB, [{ sheet: "Penjualan", column: "Cabang" }]),
     ).toMatchObject({ code: "INVALID" });
     expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
-    prisma.dashboard.findFirst.mockResolvedValueOnce({ dataset: { activeVersionId: null } });
+    prisma.dashboard.findFirst.mockResolvedValueOnce({
+      dataset: { ownerId: OWNER, activeVersionId: null },
+    });
     prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
     expect(await svc.setDashboardFilterColumns(OWNER, DB, [])).toEqual({
       ok: true,
@@ -348,5 +361,32 @@ describe("peringatan share: kolom filter yang juga menyaring sheet lain (T-016, 
     expect(
       overlappingFilterColumns(stored(["Penjualan", "Cabang"]), [barOn(S1, 1), kpiOn(S2)], sheets),
     ).toEqual(["Cabang"]);
+  });
+});
+
+describe("keepUnavailable (T-k2ec, simpanan editor)", () => {
+  const hidden = { sheet: "Penjualan", column: "Gaji" };
+  const gone = { sheet: "Penjualan", column: "Hilang" };
+
+  it("kolom tersimpan yang tidak tersedia ditambahkan di belakang; yang tersedia tidak", () => {
+    expect(
+      keepUnavailable(
+        [{ sheet: "Target", column: "Wilayah" }],
+        [{ sheet: "Penjualan", column: "Cabang" }, hidden, gone],
+        SHEETS,
+      ),
+    ).toEqual({ ok: true, columns: [{ sheet: "Target", column: "Wilayah" }, hidden, gone] });
+  });
+
+  it("nama yang sudah dipilih tidak digandakan", () => {
+    const chosen = [{ sheet: "Target", column: "hilang" }];
+    expect(keepUnavailable(chosen, [gone], SHEETS)).toEqual({ ok: true, columns: chosen });
+  });
+
+  it("melebihi 8 bersama kolom yang dipertahankan → galat yang menyebut jumlahnya", () => {
+    const chosen = Array.from({ length: 7 }, (_, i) => ({ sheet: "Penjualan", column: `K${i}` }));
+    const r = keepUnavailable(chosen, [hidden, gone], SHEETS);
+    expect(r).toMatchObject({ ok: false });
+    expect(!r.ok && r.message).toContain("2 kolom yang sedang tidak tersedia");
   });
 });

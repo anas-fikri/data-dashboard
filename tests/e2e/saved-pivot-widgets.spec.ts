@@ -18,6 +18,8 @@ import {
  * dampak) → ketiganya berubah; revisi basi → konflik + Muat ulang; hapus diblokir selama dipakai;
  * "Lepas dari sumber" menyalin spec; editor dashboard bisa mengikat tetapi tidak mengubah (definisi
  * baca-saja, halaman ubah 404); viewer hanya melihat nilai. Lebar 360 px tanpa gulir horizontal.
+ * T-c6z4: editor pivot tersimpan menampilkan tabel pivot pratinjau (mode pemilik { datasetId, pivot })
+ * yang sama dengan widget terikat dan memuat ulang saat nilai diubah; editor/viewer → 404.
  * Data: Pendapatan 1000+2000+500 = 3.500; Biaya 600+1500+100 = 2.200.
  */
 test.describe.configure({ mode: "serial" });
@@ -32,6 +34,8 @@ let datasetId = "";
 let dashA = "";
 let dashB = "";
 let pivotId = "";
+/** Body pratinjau pivot tersimpan yang dikirim editor pemilik (T-c6z4), diulang oleh editor/viewer. */
+let previewBody: unknown = null;
 
 const card = (page: Page, title: string) =>
   page.getByTestId("widget").filter({ has: page.getByRole("heading", { name: title }) });
@@ -196,6 +200,56 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     );
   });
 
+  test("T-c6z4: pratinjau tabel di editor = widget pivot terikat; ubah nilai → pratinjau dimuat ulang", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await apiLogin(page, OWNER);
+    await page.goto(`/dashboards/${dashA}`);
+    const widgetTable = card(page, "Pivot terikat").getByRole("table");
+    await expect(widgetTable.getByRole("row", { name: /^Total\b/ })).toContainText("3.500");
+    const rowsOf = (table: Locator) =>
+      table
+        .getByRole("row")
+        .evaluateAll((rows) =>
+          rows.map((r) =>
+            Array.from(r.querySelectorAll("th, td"), (c) => (c.textContent ?? "").trim()).slice(1),
+          ),
+        );
+    // Kolom nilai per baris (tanpa sel label/pojok yang di kartu bisa berisi menu saring).
+    const widgetRows = await rowsOf(widgetTable);
+
+    const previewReq = page.waitForRequest(
+      (r) => r.url().endsWith("/api/query") && (r.postData() ?? "").includes('"pivot"'),
+    );
+    await page.goto(`/datasets/${datasetId}/pivot-tersimpan/${pivotId}`);
+    previewBody = (await previewReq).postDataJSON();
+    expect(previewBody).toMatchObject({ datasetId, pivot: { sheetId: expect.any(String) } });
+    const preview = page.getByTestId("saved-pivot-preview");
+    await expect(preview).toHaveAttribute("data-state", "ok");
+    // Ringkasan kalimat tetap ada di atas pengaturan.
+    await expect(page.getByTestId("pivot-summary")).toContainText("Wilayah");
+    const table = preview.getByRole("table");
+    await expect(table.getByRole("columnheader", { name: "Total Pendapatan" })).toBeVisible();
+    await expect(table.getByRole("row", { name: /^Total\b/ })).toContainText("3.500");
+    expect(await rowsOf(table)).toEqual(widgetRows);
+
+    // Ubah nilai (belum disimpan) → pratinjau memuat ulang dengan Biaya: 600+1500+100 = 2.200.
+    const editor = page.getByTestId("saved-pivot-editor");
+    await pick(page, editor, "dari kolom", "Biaya · Bilangan bulat");
+    await expect(preview).toHaveAttribute("data-state", "ok");
+    await expect(table.getByRole("columnheader", { name: "Total Biaya" })).toBeVisible();
+    await expect(table.getByRole("row", { name: /^Total\b/ })).toContainText("2.200");
+    await expect(table.getByRole("row", { name: /Wilayah B/ })).toContainText("1.500");
+
+    // Mode pemilik dijalankan server: pemilik 200, dataset lain/kunci asing ditolak.
+    const headers = { origin: new URL(page.url()).origin, "content-type": "application/json" };
+    const ok = await page.request.post("/api/query", { headers, data: previewBody });
+    expect(ok.status()).toBe(200);
+    expect(await ok.json()).toMatchObject({ ok: true, pivot: expect.any(Object) });
+  });
+
   test("AC2: ubah pivot tersimpan → konfirmasi dampak, ketiga widget berubah; revisi basi → konflik", async ({
     page,
   }) => {
@@ -341,7 +395,16 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await panel.getByTestId("save-as-saved-pivot").click();
     const dialog = page.getByRole("dialog", { name: "Simpan sebagai pivot tersimpan" });
     await dialog.getByRole("textbox", { name: "Nama pivot tersimpan" }).fill("Pivot dari widget");
+    // Panel langsung tampil terikat (simpanan yang belum terkirim) dan toolbar hanya melacak tata
+    // letak: tunggu simpanan ikatan selesai sebelum pindah halaman.
+    const bound = page.waitForResponse(
+      (r) =>
+        r.request().method() === "PATCH" &&
+        /\/widgets\/[a-z0-9]+$/.test(new URL(r.url()).pathname) &&
+        (r.request().postData() ?? "").includes("savedPivotId"),
+    );
     await dialog.getByRole("button", { name: "Simpan", exact: true }).click();
+    expect((await bound).status()).toBe(200);
     await expect(dialog).toHaveCount(0);
     await expect(panel.getByTestId("bound-source")).toContainText("Pivot dari widget");
     await expect(page.getByTestId("canvas-toolbar")).toContainText("Semua perubahan tersimpan");
@@ -369,6 +432,17 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await expect(panel.getByTestId("save-as-saved-pivot")).toHaveCount(0);
     await editor.goto(`/datasets/${datasetId}/pivot-tersimpan/${pivotId}`);
     await expect(editor.getByRole("heading", { name: "Halaman tidak ditemukan" })).toBeVisible();
+    // T-c6z4 AC2: mode pratinjau pivot pemilik { datasetId, pivot } → 404 untuk editor/viewer.
+    const asOthers = async (p: Page) => {
+      const r = await p.request.post("/api/query", {
+        headers: { origin: new URL(p.url()).origin, "content-type": "application/json" },
+        data: previewBody,
+      });
+      expect(r.status()).toBe(404);
+      expect(await r.json()).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    };
+    expect(previewBody).not.toBeNull();
+    await asOthers(editor);
     await editor.context().close();
 
     const viewer = await pageFor(browser, VIEWER);
@@ -384,6 +458,7 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await expect(viewer.getByTestId("widget-source")).toHaveCount(0);
     await viewer.goto(`/datasets/${datasetId}/pivot-tersimpan/${pivotId}`);
     await expect(viewer.getByRole("heading", { name: "Halaman tidak ditemukan" })).toBeVisible();
+    await asOthers(viewer);
     await viewer.context().close();
   });
 
@@ -396,7 +471,15 @@ test.describe("UI pivot tersimpan (T-074)", () => {
     await noHorizontalScroll(page);
     await page.goto(`/datasets/${datasetId}/pivot-tersimpan/${pivotId}`);
     await expect(page.getByTestId("saved-pivot-editor")).toBeVisible();
+    // Pratinjau tabel (T-c6z4) menggulir di wilayahnya sendiri, bukan halaman.
+    const preview = page.getByTestId("saved-pivot-preview");
+    await expect(preview).toHaveAttribute("data-state", "ok");
+    await expect(preview.getByRole("table")).toBeVisible();
     await noHorizontalScroll(page);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(preview.getByRole("table")).toBeVisible();
+    await noHorizontalScroll(page);
+    await page.emulateMedia({ colorScheme: "light" });
     await page.goto(`/dashboards/${dashA}?mode=edit`);
     const panel = await openPanel(page, "Batang terikat");
     await expect(panel.getByTestId("bound-source")).toBeVisible();
