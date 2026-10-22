@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import type { WidgetView } from "@/features/dashboards/service";
+import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import { unloadGuard } from "@/lib/download-navigation";
+import { followTitle } from "./auto-title";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
 import { api, type ApiResult } from "./dashboard-api";
 import { fitToWidgets, sameLayout } from "./layout-ops";
@@ -222,7 +223,13 @@ export function useDashboardEditor(o: {
   revision: number;
   /** Mode edit: state lokal tidak pernah diganti props server (lihat viewCanvasKey). */
   editing?: boolean;
+  /** Sumber data panel (nama kolom untuk judul otomatis, T-12zs). */
+  sources?: SourceSheet[];
 }) {
+  const sourcesNow = useRef(o.sources ?? []);
+  useEffect(() => {
+    sourcesNow.current = o.sources ?? [];
+  });
   const [widgets, setWidgetsState] = useState(o.widgets);
   const [layout, setLayoutState] = useState(() => fitToWidgets(o.layout, o.widgets));
   // Mode lihat (review T-016 R5-CL-2): props server baru diisi ulang saat render — bukan dengan memasang
@@ -445,6 +452,7 @@ export function useDashboardEditor(o: {
         if (invalid) settled();
         return false;
       }
+      const before = widgetsNow.current.find((w) => w.id === widgetId);
       setWidgets(
         // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
         patchWidget(widgetsNow.current, widgetId, {
@@ -457,6 +465,20 @@ export function useDashboardEditor(o: {
           sourceError: undefined,
         }),
       );
+      // Judul otomatis (T-12zs): judul kosong / masih judul turunan mengikuti pengaturan baru; judul
+      // yang diketik pengguna tidak disentuh. Gagal mengganti judul tidak menggagalkan simpanan.
+      const title = before && followTitle(before.title, before, r.data, sourcesNow.current);
+      if (title) {
+        const t = await api.renameWidget(id, widgetId, title, r.data.version);
+        if (t.ok) {
+          setWidgets(
+            patchWidget(widgetsNow.current, widgetId, {
+              title: t.data.title,
+              version: t.data.version,
+            }),
+          );
+        }
+      }
       settled();
       // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
       commitLayout(latest.current, false);

@@ -55,6 +55,47 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Serah-terima ke akun Claude lain (2026-10-22, PAUSE)
+
+Pemilik menjeda sesi cloud ini dan pekerjaan diteruskan rekan pemilik dengan akun Claude sendiri.
+
+**Mulai dari sini (rekan):**
+1. Klon repo, `git checkout main && git pull`, lalu `git merge origin/claude/intelligent-albattani-fd1va8`
+   (branch sesi lama = posisi paling baru, termasuk WIP T-12zs). Kerjakan di branch sendiri dan buka PR
+   (pull request) ke `main`; pemilik yang menggabungkan. Tanpa force-push ke branch orang lain.
+2. Node **22.23.3** (bukan 22.22 — worker xlsx rusak), `npm ci`, `aitk` (build dari repo
+   `innaka-tech/ai-toolkit`: `go build -o /usr/local/bin/aitk ./cmd/aitk` — minta akses ke pemilik bila
+   privat), layanan dev `docker compose -f docker-compose.dev.yml up -d`, `.env` lewat
+   `npm run secrets:dev` (nilai rahasia tidak pernah dibagikan/di-commit), `npx prisma migrate deploy`.
+3. Jalankan `aitk brief` dan ikuti. Aturan kerja + keamanan di atas tetap berlaku. **Produksi (olympus)
+   hanya pemilik**: rekan menyiapkan perintah, pemilik menjalankan.
+
+**Status saat dijeda:**
+- **T-12zs** (isian bawaan pintar + judul otomatis) — status `in_progress`, kode WIP di-commit
+  `wip(T-12zs)`: implementasi + uji unit `tests/components/smart-defaults.test.ts` + e2e disesuaikan
+  sudah ditulis, Objective/Risk/Notes/checklist terisi, tetapi **`aitk check` dan e2e belum dipastikan
+  lulus** dan belum direview. Langkah: `aitk check`, e2e `widgets` + `pivot` (`npx playwright test
+  --project=<nama> --no-deps`), review, perbaiki, `aitk close`.
+- Antre (urut): **T-1k96** widget baru mengisi baris; **T-k2ec** editor boleh mengatur kolom filter dari
+  bilah filter (**keputusan pemilik 2026-10-22: editor dashboard boleh menambah filter**); **T-vb7q**
+  filter bawaan per kolom; **T-zm9k** dashboard awal otomatis (setelah T-12zs). Latar belakang: analisa
+  di task masing-masing + ringkasan di bawah.
+- **T-c6z4** (pratinjau tabel pivot penuh di editor pivot tersimpan) — kode + review (0 blokir) +
+  tes selesai (`3a16a5e`), status `in_review`; belum ditutup hanya karena `npm audit` di `aitk check`
+  gagal (endpoint advisori npm membalas 503 — gangguan npm, dependensi tidak berubah). Saat npm pulih:
+  `aitk check` lalu `aitk close`. Temuan Low → **T-md84**.
+- **T-1tzp** selesai: video panduan `satu-pivot-banyak-widget` (adegan `pemilik-pivot-tersimpan` di
+  scripts/record-guide-videos.ts). File video tidak di-commit; pemilik mengunggah lewat Admin → Panduan.
+- Rilis berikutnya: **v1.4.0** (T-c6z4) dan **v1.5.0** (batch dashboard/filter) lewat
+  `aitk release --tag` — tag tidak bisa di-push dari sesi cloud (403), pemilik mem-push tag dari Mac.
+- Produksi saat dijeda: v1.3.0 → v1.3.1 sedang di-deploy pemilik (preflight lulus 2026-10-22); lalu seed
+  panduan dengan `docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker ...`
+  (runbook "Isi panduan").
+- Ringkasan analisa penyederhanaan dashboard/filter: dashboard baru selalu kosong (±40 aksi untuk 3
+  widget), isian bawaan "kolom pertama" (contoh "Total No."), judul tidak otomatis, widget menumpuk di
+  kiri, panel ±15 isian, tidak ada filter bawaan, kolom filter jauh dari bilah filter, 5 istilah "saring".
+  Usulan berikutnya setelah batch: panel dasar/lanjutan, duplikat dashboard, peta cakupan filter.
+
 ## Posisi terakhir (2026-10-21, sesi cloud)
 
 - G-6 dikerjakan dari sesi Claude Code cloud (branch `claude/intelligent-albattani-fd1va8`, Node 22.23.3 —

@@ -121,6 +121,13 @@ export interface SourceSheet {
     type: ColumnType;
     /** Kolom sistem Periode (T-058): satuan periode sheet (grain bawaan dimensi). */
     period?: "month" | "quarter" | "year";
+    /**
+     * Statistik skema (T-12zs) untuk isian bawaan widget: nilai unik, proporsi kosong, sel terisi.
+     * Tidak ada pada skema lama/kolom sistem — panel kembali ke kolom pertama.
+     */
+    distinct?: number;
+    nullPct?: number;
+    filled?: number;
   }[];
 }
 
@@ -876,6 +883,20 @@ export async function getDatasetSources(
   return sourceSheets({ activeFor: { id: datasetId, ownerId: userId } });
 }
 
+const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
+
+/** Statistik skema untuk isian bawaan (kolom sistem Periode tidak punya statistik nyata). */
+function columnStats(
+  c: ColumnSchema,
+): Pick<SourceSheet["columns"][number], "distinct" | "nullPct" | "filled"> {
+  if (c.system) return {};
+  return {
+    ...(finite(c.distinctCount) ? { distinct: c.distinctCount } : {}),
+    ...(finite(c.nullPct) ? { nullPct: c.nullPct } : {}),
+    ...(finite(c.nonEmpty) ? { filled: c.nonEmpty } : {}),
+  };
+}
+
 async function sourceSheets(version: Prisma.DatasetVersionWhereInput): Promise<SourceSheet[]> {
   const sheets = await prisma.sheet.findMany({
     where: { typedKey: { not: null }, version },
@@ -893,6 +914,7 @@ async function sourceSheets(version: Prisma.DatasetVersionWhereInput): Promise<S
         name: c.name,
         type: c.type,
         ...(c.periodGrain ? { period: c.periodGrain } : {}),
+        ...columnStats(c),
       })),
   }));
 }

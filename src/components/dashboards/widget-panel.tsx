@@ -43,6 +43,7 @@ export function WidgetPanel({
   widget,
   item,
   can,
+  autoTitle = "",
   onRename,
   onStep,
   onDelete,
@@ -52,6 +53,8 @@ export function WidgetPanel({
   item: LayoutItem;
   /** Langkah mana yang masih mengubah sesuatu (dihitung pemanggil dari algoritma tata letak). */
   can: Record<StepKey, boolean>;
+  /** Judul turunan pengaturan (T-12zs): contoh di kolom kosong, dan disimpan bila judul dikosongkan. */
+  autoTitle?: string;
   onRename: (title: string) => Promise<boolean>;
   onStep: (key: StepKey) => void;
   onDelete: () => void;
@@ -59,7 +62,10 @@ export function WidgetPanel({
   children?: React.ReactNode;
 }) {
   const id = useId();
-  const [title, setTitle] = useState(widget.title);
+  // Ketikan pengguna yang belum tersimpan; null = ikut judul tersimpan (juga judul otomatis yang
+  // diperbarui editor setelah pengaturan berganti, T-12zs).
+  const [typed, setTyped] = useState<string | null>(null);
+  const title = typed ?? widget.title;
   const [pending, setPending] = useState(false);
   const [edge, setEdge] = useState<string | null>(null);
   const phone = useIsPhone();
@@ -69,11 +75,14 @@ export function WidgetPanel({
 
   async function saveTitle(e?: React.FormEvent) {
     e?.preventDefault();
-    const next = normalizeName(title);
-    if (next === widget.title) return;
+    if (typed === null) return;
+    // Dikosongkan: kembali ke judul otomatis (yang lalu mengikuti pengaturan lagi).
+    const next = normalizeName(typed) || autoTitle;
+    if (next === widget.title) return setTyped(null);
     setPending(true);
-    await onRename(next);
+    const ok = await onRename(next);
     setPending(false);
+    if (ok) setTyped(null);
   }
 
   const step = (key: StepKey, text: string, icon: React.ReactNode) => (
@@ -104,14 +113,16 @@ export function WidgetPanel({
           id={`${id}-title`}
           value={title}
           maxLength={WIDGET_TITLE_MAX}
-          placeholder="Mis. Omzet per cabang"
+          placeholder={autoTitle || "Mis. Omzet per cabang"}
           className="h-(--control-h-lg) md:h-(--control-h)"
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => setTyped(e.target.value)}
           onBlur={() => void saveTitle()}
           aria-busy={pending || undefined}
         />
         <p className="text-xs text-muted-foreground">
-          Tersimpan saat kolom ditinggalkan atau Enter.
+          {autoTitle && (widget.title === "" || widget.title === autoTitle)
+            ? "Otomatis mengikuti pengaturan sampai Anda mengetik judul sendiri."
+            : "Tersimpan saat kolom ditinggalkan atau Enter."}
         </p>
       </form>
 

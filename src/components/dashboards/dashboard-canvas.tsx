@@ -37,6 +37,7 @@ import { useGridWidth } from "./use-grid-width";
 import { useIsCoarsePointer, useIsPhone, useIsTablet, useIsWide } from "./use-media-query";
 import { DRAG_HANDLE, GRIP_HANDLE, SETTINGS_ATTR, WidgetCard } from "./widget-card";
 import { WidgetPanel } from "./widget-panel";
+import { autoTitle } from "./auto-title";
 import { WidgetPanelFrame } from "./widget-panel-frame";
 import { WidgetSourceSection } from "./widget-source";
 import type { SavedPivotOption } from "./bound-config-model";
@@ -466,6 +467,7 @@ function Canvas(props: CanvasProps) {
                     widget={panelWidget}
                     item={panelItem}
                     can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
+                    autoTitle={autoTitle(panelWidget, props.sources)}
                     onRename={(t) => ed.renameWidget(panelItem.i, t)}
                     onStep={(k) => {
                       reveal.current = panelItem.i;

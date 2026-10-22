@@ -8,7 +8,7 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
 
 /*
  * T-tcjp: widget pivot lewat panel sungguhan. Workbook 24 customer × 2 layanan × 3 bulan (1 baris per
- * kombinasi, No. = customer·100 + layanan·10 + bulan) → total bisa dihitung di kepala:
+ * kombinasi, Ongkir = customer·100 + layanan·10 + bulan) → total bisa dihitung di kepala:
  *   Customer 24: Jan 4.810, Total 14.436; total keseluruhan 180.864.
  *   AC1: pilih Pivot → ringkasan + tabel periode + kolom Total tersimpan; rincian Layanan → subtotal;
  *        isian dobel dijelaskan dan tidak tersimpan; format Rupiah.
@@ -47,7 +47,7 @@ async function workbook(): Promise<string> {
   ws.addRow([
     "Customer",
     "Tanggal",
-    "No.",
+    "Ongkir",
     "Layanan",
     "Kota Asal",
     "Kota Tujuan",
@@ -143,7 +143,7 @@ test.describe("widget pivot (T-tcjp)", () => {
     expect(widgetId).not.toBe("");
 
     await expect(panel.getByTestId("pivot-summary")).toHaveText(
-      "Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total.",
+      "Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total Ongkir, dengan kolom dan baris Total.",
     );
     const table = card(owner).getByTestId("widget-pivot");
     // Sel pojok juga berisi menu saring (T-f4a7): teksnya diawali tombol kolom pemisah.
@@ -152,7 +152,7 @@ test.describe("widget pivot (T-tcjp)", () => {
       "Jan 2026",
       "Feb 2026",
       "Mar 2026",
-      "Total No.",
+      "Total Ongkir",
     ]);
     // Urut nilai terbesar: Customer 24 di atas.
     const first = table.locator("tbody tr").first();
@@ -292,7 +292,7 @@ test.describe("widget pivot (T-tcjp)", () => {
     const text = readFileSync(path, "utf8");
     expect(text.startsWith("\uFEFF")).toBe(true);
     const lines = text.slice(1).trimEnd().split("\n");
-    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Feb 2026","Mar 2026","Total No."');
+    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Feb 2026","Mar 2026","Total Ongkir"');
     expect(lines[1]).toBe('"Customer 24","Subtotal",4810,4812,4814,14436');
     expect(lines[2]).toBe('"Customer 24","Udara",2410,2411,2412,7233');
     expect(lines.at(-1)).toBe('"Total",,60240,60288,60336,180864');
@@ -347,7 +347,7 @@ test.describe("widget pivot (T-tcjp)", () => {
         timeout: 120_000,
       });
       const printed = page.getByTestId("print-widget").getByTestId("widget-pivot");
-      await expect(printed.locator("thead th").last()).toHaveText("Total No.");
+      await expect(printed.locator("thead th").last()).toHaveText("Total Ongkir");
       await expect(printed.locator("tbody tr[data-kind=group]").first()).toContainText(
         "Customer 24",
       );
@@ -433,12 +433,12 @@ test.describe("widget pivot (T-tcjp)", () => {
     await expect(bulan.getByTestId("filter-slicer-option")).toHaveText(["Jan 2026"]);
     await bulan.getByRole("checkbox", { name: "Jan 2026" }).check();
     await owner.keyboard.press("Escape");
-    await expect(table.locator("thead th")).toHaveText([/Customer/, "Jan 2026", "Total No."]);
+    await expect(table.locator("thead th")).toHaveText([/Customer/, "Jan 2026", "Total Ongkir"]);
     await expect(total(owner)).toHaveText(/^Rp\s?30\.000$/);
 
     // AC4: ekspor CSV mengikuti saringan yang sama (subtotal dan total ikut).
     const lines = await exportCsv(owner, "pivot-saring.csv");
-    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Total No."');
+    expect(lines[0]).toBe('"Customer","Layanan","Jan 2026","Total Ongkir"');
     expect(lines[1]).toBe('"Customer 24","Subtotal",2400,2400');
     expect(lines.at(-1)).toBe('"Total",,30000,30000');
     expect(lines).toHaveLength(1 + 24 + 24 + 1);
@@ -589,7 +589,7 @@ test.describe("widget pivot (T-tcjp)", () => {
     await expect(panel.getByTestId("config-show-as-hint")).toContainText(
       "termasuk yang tidak tampil",
     );
-    await expect(table.locator("thead th").last()).toHaveText("% dari total kolom · Total No.");
+    await expect(table.locator("thead th").last()).toHaveText("% dari total kolom · Total Ongkir");
     await expect(table.locator("tfoot td")).toHaveText(["100,0%", "100,0%", "100,0%", "100,0%"]);
     await expect(group.locator("td").first()).toHaveText("8,0%");
 

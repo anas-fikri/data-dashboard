@@ -23,6 +23,7 @@ import {
 } from "@/features/widgets/spec";
 import { isAdditiveCalc } from "@/features/widgets/calc";
 import { defaultPivot } from "./pivot-config-model";
+import { categoryCandidates, dateCandidates, measureCandidates } from "./smart-defaults";
 
 /*
  * Model panel konfigurasi widget (T-011): pilihan yang ditawarkan dan nilai awal yang masuk akal
@@ -207,7 +208,9 @@ export function defaultMeasure(
     }
     if (columnsForAgg(prev.agg, columns, type).some((c) => c.pos === prev.column)) return prev;
   }
-  const num = columns.find((c) => isNumeric(c.type));
+  // Bukan "kolom angka pertama" (sering No./ID → "Total No."): kolom besaran terbaik (T-12zs); tanpa
+  // kolom besaran: Jumlah baris.
+  const num = measureCandidates(columns)[0];
   return num ? { agg: "sum", column: num.pos } : { agg: "count" };
 }
 
@@ -222,13 +225,16 @@ function defaultDimension(
   columns: SourceColumn[],
   prev?: ChartSpec["dimension"],
 ): ChartSpec["dimension"] | null {
+  // Garis: kolom tanggal per bulan — juga saat beralih dari batang/pai berkategori (T-12zs); selain
+  // itu kategori 2–50 nilai unik yang jarang kosong.
+  const date = dateCandidates(columns)[0];
   if (prev) {
     const c = columns.find((x) => x.pos === prev.column);
-    if (c) return isTemporal(c.type) ? prev : { column: c.pos };
+    if (c && isTemporal(c.type)) return prev;
+    if (c && !(type === "line" && date)) return { column: c.pos };
   }
-  const date = columns.find((c) => isTemporal(c.type));
   if (type === "line" && date) return { column: date.pos, timeGrain: defaultGrain(date) };
-  const text = columns.find((c) => c.type === "text") ?? columns.find((c) => !isNumeric(c.type));
+  const text = categoryCandidates(columns)[0] ?? columns.find((c) => !isNumeric(c.type));
   const pick = text ?? columns[0];
   if (!pick) return null;
   return isTemporal(pick.type)

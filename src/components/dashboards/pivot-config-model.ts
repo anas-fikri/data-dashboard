@@ -14,11 +14,12 @@ import {
   type WidgetConfig,
   valueColumns,
 } from "@/features/widgets/spec";
+import { categoryCandidates, dateCandidates, measureCandidates } from "./smart-defaults";
 
 /*
  * Model panel widget pivot (T-tcjp). Nilai awal langsung berguna, seperti contoh pengguna: baris = kolom
- * teks pertama (mis. customer), dipisahkan per bulan bila sheet punya kolom tanggal, isi = Total kolom
- * angka pertama, urut nilai terbesar, dengan Total. Ringkasan kalimat menjelaskan bentuk tabel dalam
+ * kategori (mis. customer), dipisahkan per bulan bila sheet punya kolom tanggal, isi = Total kolom
+ * besaran (bukan No./ID; smart-defaults T-12zs), urut nilai terbesar, dengan Total. Ringkasan kalimat menjelaskan bentuk tabel dalam
  * bahasa sehari-hari. Murni.
  */
 type Column = SourceSheet["columns"][number];
@@ -35,11 +36,18 @@ export const dimensionFor = (c: Column): Dimension =>
       { column: c.pos, timeGrain: c.period ?? "month" }
     : { column: c.pos };
 
-/** Pilihan kolom baris: teks dulu (kategori), lalu tanggal, lalu sisanya. */
+/**
+ * Pilihan kolom baris: teks dulu (kategori 2–50 nilai unik yang jarang kosong lebih dulu, T-12zs), lalu
+ * tanggal, lalu sisanya.
+ */
 function rowCandidates(cols: Column[]): Column[] {
-  const rank = (c: Column) =>
-    c.type === "text" ? 0 : TEMPORAL.includes(c.type) ? 1 : NUMERIC.includes(c.type) ? 3 : 2;
-  return [...cols].sort((a, b) => rank(a) - rank(b) || a.pos - b.pos);
+  const rest = cols.filter((c) => c.type !== "text" && !TEMPORAL.includes(c.type));
+  const rank = (c: Column) => (NUMERIC.includes(c.type) ? 1 : 0);
+  return [
+    ...categoryCandidates(cols),
+    ...dateCandidates(cols),
+    ...rest.sort((a, b) => rank(a) - rank(b) || a.pos - b.pos),
+  ];
 }
 
 export function defaultPivot(
@@ -76,7 +84,7 @@ export function defaultPivot(
       : undefined;
   const row = fromChart ?? rowCandidates(cols)[0];
   if (!row) return null;
-  const date = cols.find((c) => TEMPORAL.includes(c.type) && c.pos !== row.pos);
+  const date = dateCandidates(cols).find((c) => c.pos !== row.pos);
   // Pivot baru: label menyaring widget lain (seperti grafik), kecuali grafik asalnya mematikannya.
   const chartOff =
     (prev.type === "bar" || prev.type === "line" || prev.type === "pie") &&
@@ -209,10 +217,13 @@ export function withoutValue(spec: PivotSpec, index: number): PivotSpec {
 export const DUPLICATE_TEXT =
   "Kolom ini sudah dipakai di atas dengan rentang waktu yang sama — pilih kolom atau rentang waktu lain.";
 
-/** Nilai untuk "Tambah nilai": Total kolom angka yang belum dipakai, selain itu Jumlah baris. */
+/**
+ * Nilai untuk "Tambah nilai": Total kolom besaran (bukan ID/nomor, T-12zs) yang belum dipakai, selain
+ * itu Jumlah baris.
+ */
 export function defaultMeasureFor(spec: PivotSpec, cols: Column[]): Measure {
   const used = new Set(spec.values.flatMap(valueColumns));
-  const num = cols.find((c) => NUMERIC.includes(c.type) && !used.has(c.pos));
+  const num = measureCandidates(cols).find((c) => !used.has(c.pos));
   return num ? { agg: "sum", column: num.pos } : { agg: "count" };
 }
 

@@ -392,21 +392,23 @@ describe("baca: getDashboard, sumber panel, daftar", () => {
   });
 
   it("sumber panel: pemilik dan editor mendapat kolom tampil dataset dashboard; viewer/organisasi/tanpa akses → []", async () => {
+    // Statistik skema ikut untuk isian bawaan widget (T-12zs); fixture menyimpan 0.
+    const ZERO_STATS = { distinct: 0, nullPct: 0 };
     const expected = [
       {
         id: S1,
         name: "Penjualan",
         columns: [
-          { pos: 1, name: "Cabang", type: "text" },
-          { pos: 2, name: "Omzet", type: "decimal" },
+          { pos: 1, name: "Cabang", type: "text", ...ZERO_STATS },
+          { pos: 2, name: "Omzet", type: "decimal", ...ZERO_STATS },
         ],
       },
       {
         id: S2,
         name: "Stok",
         columns: [
-          { pos: 1, name: "Cabang", type: "text" },
-          { pos: 2, name: "Qty", type: "integer" },
+          { pos: 1, name: "Cabang", type: "text", ...ZERO_STATS },
+          { pos: 2, name: "Qty", type: "integer", ...ZERO_STATS },
         ],
       },
     ];
