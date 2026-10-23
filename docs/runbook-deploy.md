@@ -795,15 +795,28 @@ git checkout main && git pull --ff-only origin main
 bash deploy/release.sh --quick --seed <slug,…>    # --quick: rilis TANPA migrasi; --seed: panduan yang berubah
 ```
 
-Skrip berhenti di langkah pertama yang gagal (urutan lengkap di kepala `deploy/release.sh`): cek lokal + tag
-→ build image (bila belum ada) → kirim arsip + `upgrade.sh` → **preflight di server (backup DB dulu)** →
-sinkron kode (`git archive`) → `load` → `migrate` → `start` → seed panduan. Password/kunci SSH diminta sekali
-(koneksi dipakai ulang). Produksi baru berubah di langkah `load/migrate/start`.
+Skrip berhenti di langkah pertama yang gagal (urutan lengkap di kepala `deploy/release.sh`):
+
+1. cek lokal: `main` bersih dan sama dengan `origin/main`; tag `v<versi>` dibuat di commit
+   `chore(release): v<versi>` lalu di-push (bila belum ada);
+2. image dari **tag** (bukan dari folder kerja): bila image belum ada atau dibangun dari commit lain, skrip
+   membangun ulang di worktree sementara dari tag — PR lain yang digabung sesudah rilis tidak ikut;
+3. kirim arsip image + `upgrade.sh` versi tag ke folder sementara baru di server (`/tmp/dashboard-rilis.*`);
+4. **preflight di server dengan kode lama (backup DB dulu)** — gagal di sini = produksi tidak diubah;
+5. `load` image (produksi masih image lama);
+6. sinkron kode tag ke folder aplikasi (`git archive`), versi `package.json` di server dicek;
+7. `migrate` → `start` (jeda layanan ± 2–5 menit);
+8. seed panduan (`--seed`).
+
+Password/kunci SSH diminta sekali (koneksi dipakai ulang, aman untuk fail2ban). Folder sementara di server
+dan arsip lokal dihapus setelah selesai.
 
 - **`--quick`** memakai backup harian terverifikasi (checksum cocok) yang umurnya ≤ 26 jam alih-alih backup
-  lengkap baru (±25 menit, memakan disk ± 3 × ukuran arsip); dump database tetap dibuat baru. Pakai hanya
-  untuk rilis **tanpa migrasi** (lihat CHANGELOG/PR). Tanpa backup harian yang cukup baru, preflight otomatis
-  membuat backup lengkap.
-- Gagal di preflight: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
-- Gagal setelah `load` dimulai: **jangan** ulangi skrip; ikuti pesan `upgrade.sh` (rollback rilis tanpa
-  migrasi = ganti `IMAGE_TAG` ke `prev-<stamp>`, §11; Redis rusak = §12).
+  lengkap baru (±25 menit, memakan disk ± 2 × ukuran arsip); dump database tetap dibuat baru. Skrip
+  **menolak** `--quick` bila ada file baru di `prisma/migrations` sejak tag sebelumnya — jalankan tanpa
+  `--quick`. Tanpa backup harian yang cukup baru, preflight otomatis membuat backup lengkap; bila belum ada
+  arsip backup sama sekali, preflight meminta perkiraan ukuran lewat `BACKUP_EST_GB=<GB>`.
+- Gagal di langkah 1–4: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
+- Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
+  ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke
+  `prev-<stamp>` (§11); Redis rusak = §12.
