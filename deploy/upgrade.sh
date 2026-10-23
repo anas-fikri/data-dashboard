@@ -122,7 +122,7 @@ not_rolled_back() {
 preflight() {
   local v
   for v in MIN_FREE_GB REUSE_BACKUP_HOURS BACKUP_EST_GB; do
-    case ${!v:-} in *[!0-9]*) die "$v harus angka bulat (sekarang: ${!v})" ;; esac
+    case ${!v:-} in *[!0-9]* | 0?*) die "$v harus angka bulat tanpa nol di depan (sekarang: ${!v})" ;; esac
   done
   case ${EXPECT_MIGRATION:-} in *[!0-9a-z_]*) die "EXPECT_MIGRATION tidak sah" ;; esac
   local stamp tag root sz fdock fstate n busy exp failed last db tables out archive

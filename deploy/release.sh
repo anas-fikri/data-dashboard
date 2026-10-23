@@ -47,7 +47,7 @@ fwd=""
 for v in FORCE MIN_FREE_GB BACKUP_EST_GB; do
   val=$(eval "printf %s \"\${$v:-}\"")
   [ -n "$val" ] || continue
-  case $val in *[!0-9]*) die "$v harus angka bulat" ;; esac
+  case $val in *[!0-9]* | 0?*) die "$v harus angka bulat (tanpa nol di depan)" ;; esac
   fwd="$fwd $v=$val"
 done
 

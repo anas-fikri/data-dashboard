@@ -51,6 +51,8 @@ case "$cmd" in
     cpus=${NEXT_BUILD_CPUS:-4}
     # Commit pendek untuk /health admin + log start (kosong di luar git).
     commit=$(git rev-parse --short HEAD 2>/dev/null || true)
+    # Perubahan belum di-commit ikut ke image → ditandai, agar release.sh tidak memakainya sebagai image tag.
+    if [ -n "$commit" ] && [ -n "$(git status --porcelain 2>/dev/null)" ]; then commit="$commit-dirty"; fi
     b=(docker buildx build --platform linux/amd64 --load --build-arg APP_COMMIT="$commit")
     "${b[@]}" --target app --build-arg NEXT_BUILD_CPUS="$cpus" -t "dashboard-app:$tag" .
     "${b[@]}" --target worker --build-arg NEXT_BUILD_CPUS="$cpus" -t "dashboard-worker:$tag" .
