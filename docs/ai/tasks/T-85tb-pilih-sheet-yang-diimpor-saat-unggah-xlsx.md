@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-23T11:22:17Z"
-updated: "2026-10-23T15:57:48Z"
+updated: "2026-10-23T16:02:31Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -26,6 +26,39 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-23T15:57:47Z"
       findings: 0
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 265015
+    summary: |-
+      …t":"127.0.0.1","port":46379,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792771292039,"service":"data-dashboard","host":"127.0.0.1","port":37785,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792771292153,"service":"data-dashboard","host":"127.0.0.1","port":42033,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792771292272,"service":"data-dashboard","host":"127.0.0.1","port":44797,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792771304722,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792771310845,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792771310868,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792771310872,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792771310883,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":30,"time":1792771349176,"service":"data-dashboard","datasetId":"t072mvl5rth9ds000000","msg":"dataset dihapus"}
+
+       Test Files  230 passed | 1 skipped (231)
+            Tests  3104 passed | 10 skipped (3114)
+         Start at  15:59:31
+         Duration  177.59s (tests 83%, import 14%, transform 3%)
+
+          Isolate  231 workers spawned · ~155ms startup each (spawn + environment, per file)
+                   at least ~11.78s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@1.4.1 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-10-23T16:02:31Z"
+    tree: ce001c923770b8f3645add0c255dc807a460f8741395de168167267c0fe34eba
 ---
 
 ## Objective
