@@ -2315,6 +2315,9 @@ test.describe("berbagi dashboard", () => {
     await a.keyboard.press("Enter");
     const listbox = a.getByRole("listbox");
     await expect(listbox).toBeVisible();
+    // T-pxnn: fokus di kotak cari dulu; ↓ ke pilihan saat ini (Hanya lihat), ↓ lagi ke Bisa mengedit.
+    await expect(a.getByTestId("select-search")).toBeFocused();
+    await a.keyboard.press("ArrowDown");
     await expect(listbox.getByRole("option", { name: "Hanya lihat" })).toBeFocused();
     await a.keyboard.press("ArrowDown");
     await expect(listbox.getByRole("option", { name: "Bisa mengedit widget" })).toBeFocused();
