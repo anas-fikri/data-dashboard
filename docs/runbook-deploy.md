@@ -722,10 +722,15 @@ migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabe
    filter); di mode edit **Atur kolom filter** dan **Jadikan filter aktif sebagai bawaan**; buka sebagai viewer
    tanpa `?f=` (chip _bawaan_), **Hapus semua filter**, **Kembalikan filter bawaan**, lalu Ekspor PDF.
 
-**Rollback**: `bash deploy/upgrade.sh rollback` (image `prev-<stamp>`; §7 R). Karena tanpa migrasi, database
-tidak perlu dipulihkan. Satu catatan: kode v1.3.1 menolak entri kolom filter yang membawa filter bawaan
-(`default`, T-vb7q) — kolom filter berbawaan **tidak tampil** di v1.3.1 sampai upgrade lagi (data di DB tetap).
-Bila rollback akan lama, hapus bawaan dulu (mode edit → hapus semua filter → **Hapus filter bawaan**).
+**Rollback** (rilis ini tanpa migrasi):
+- **Disarankan — ganti image saja, data tetap:** di `.env.prod` ganti `IMAGE_TAG=prev-<stamp>` (stamp dari
+  preflight), lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`. Kode v1.3.1
+  menolak entri kolom filter yang membawa filter bawaan (`default`, T-vb7q) — kolom filter berbawaan **tidak
+  tampil** sampai upgrade lagi (data di DB tetap). Bila rollback akan lama, hapus bawaan dulu (mode edit →
+  hapus semua filter → **Hapus filter bawaan**).
+- `bash deploy/upgrade.sh rollback` memulihkan image lama **dan database dari dump preflight**: semua data
+  sesudah preflight (unggahan, dashboard, pengguna) hilang dari DB. Skrip meminta ketik `ROLLBACK` dan menyimpan
+  `db-sebelum-rollback-*.dump` dulu. Pakai hanya bila database memang perlu dikembalikan.
 
 ## 11. Rilis v1.4.1 (hotfix keamanan Next.js, T-cfd7)
 
@@ -745,5 +750,7 @@ Langkah (urut; perintah Mac dan server bergantian):
 4. **Server**: `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` →
    `bash deploy/upgrade.sh start`. Cek `/health` (admin) = 1.4.1. Tanpa seed panduan.
 
-**Rollback**: `bash deploy/upgrade.sh rollback` (image `prev-<stamp>`, §7 R); tanpa migrasi, database tidak
-perlu dipulihkan — tetapi versi lama kembali rentan, jadi hanya sementara.
+**Rollback** (hanya sementara — versi lama kembali rentan): ganti image saja, data tetap — di `.env.prod`
+ganti `IMAGE_TAG=prev-<stamp>` lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`.
+Jangan pakai `upgrade.sh rollback` untuk hotfix ini: skrip itu juga memulihkan database dari dump preflight
+(data sesudah preflight hilang).
