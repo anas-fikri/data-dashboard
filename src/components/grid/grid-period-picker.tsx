@@ -3,6 +3,7 @@
 import { IconCalendarMonth, IconCheck, IconChevronDown } from "@tabler/icons-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Highlighted, MenuSearch, useMenuSearch } from "@/components/ui/menu-search";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,7 +15,7 @@ import {
  * Pemilih "Periode: Semua ▾" di Lihat data (T-058, rencana G-6 §3.1): sheet periode bisa dibatasi ke
  * satu periode. Pilihan = navigasi (?periode=<kunci>, bisa dimuat ulang/dibagikan); grid dimuat ulang
  * dengan manifest periode itu saja, jadi jumlah baris di status grid = baris periode di metadata
- * (ditampilkan juga di sini). Daftar urut kronologis.
+ * (ditampilkan juga di sini). Daftar urut kronologis; kotak cari pintar (T-pxnn, ui/menu-search).
  */
 export interface PeriodOption {
   /** null = semua periode. */
@@ -35,8 +36,10 @@ export function GridPeriodPicker({
   current: string | null;
 }) {
   const active = options.find((o) => o.key === current) ?? options[0];
+  const { open, onOpenChange, query, setQuery, inputRef, contentRef, filter } = useMenuSearch();
+  const results = filter(options);
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
@@ -51,36 +54,49 @@ export function GridPeriodPicker({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
+        ref={contentRef}
         align="start"
         className="max-h-(--radix-dropdown-menu-content-available-height) w-72 overflow-y-auto"
       >
-        {options.map((o) => {
-          const on = o.key === (active?.key ?? null);
-          return (
-            <DropdownMenuItem
-              key={o.key ?? "semua"}
-              asChild
-              className="h-auto min-h-11 py-1.5 md:min-h-9"
-            >
-              <Link
-                href={o.href}
-                scroll={false}
-                aria-current={on ? "true" : undefined}
-                data-testid="grid-period-option"
-                data-period={o.key ?? ""}
+        <MenuSearch
+          inputRef={inputRef}
+          contentRef={contentRef}
+          query={query}
+          setQuery={setQuery}
+          label="Cari periode"
+          count={results ? results.length : null}
+        />
+        {(results ?? options.map((option) => ({ option, hits: [] as number[] }))).map(
+          ({ option: o, hits }) => {
+            const on = o.key === (active?.key ?? null);
+            return (
+              <DropdownMenuItem
+                key={o.key ?? "semua"}
+                asChild
+                className="h-auto min-h-11 py-1.5 md:min-h-9"
               >
-                <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
-                  {on ? <IconCheck size={20} stroke={1.5} /> : null}
-                </span>
-                <span className="min-w-0 flex-1 truncate">{o.label}</span>
-                {/* Baris disorot (latar accent): teks bantu ikut gelap agar kontras tetap ≥ 4,5:1. */}
-                <span className="shrink-0 text-xs tabular-nums text-muted-foreground in-data-highlighted:text-accent-foreground">
-                  {rowsText(o.rows)}
-                </span>
-              </Link>
-            </DropdownMenuItem>
-          );
-        })}
+                <Link
+                  href={o.href}
+                  scroll={false}
+                  aria-current={on ? "true" : undefined}
+                  data-testid="grid-period-option"
+                  data-period={o.key ?? ""}
+                >
+                  <span className="flex size-5 shrink-0 items-center justify-center" aria-hidden>
+                    {on ? <IconCheck size={20} stroke={1.5} /> : null}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    <Highlighted text={o.label} hits={hits} />
+                  </span>
+                  {/* Baris disorot (latar accent): teks bantu ikut gelap agar kontras tetap ≥ 4,5:1. */}
+                  <span className="shrink-0 text-xs tabular-nums text-muted-foreground in-data-highlighted:text-accent-foreground">
+                    {rowsText(o.rows)}
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+            );
+          },
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

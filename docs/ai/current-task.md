@@ -4,6 +4,7 @@
 
 - T-85tb [todo] Pilih sheet yang diimpor saat unggah xlsx — docs/ai/tasks/T-85tb-pilih-sheet-yang-diimpor-saat-unggah-xlsx.md
 - T-tzxt [todo] Tampilkan versi aplikasi di footer — docs/ai/tasks/T-tzxt-tampilkan-versi-aplikasi-di-footer.md
+- T-pxnn [in_progress] Kotak cari pintar di menu Tambah kolom filter — docs/ai/tasks/T-pxnn-kotak-cari-pintar-di-menu-tambah-kolom-filter.md ← active in this worktree
 - T-4q8n [todo] Kolom filter: cegah lost update antar pemilik/editor + rapikan batas editor — docs/ai/tasks/T-4q8n-kolom-filter-cegah-lost-update-antar-pemilik-edi.md
 - T-d1ns [todo] Judul otomatis: tangani gagal ganti judul dan widget lama tanpa judul — docs/ai/tasks/T-d1ns-judul-otomatis-tangani-gagal-ganti-judul-dan-wid.md
 - T-md84 [todo] Rapikan pratinjau pivot tersimpan: batalkan query server saat dibatalkan, catatan beda tampilan widget terikat, Coba la… — docs/ai/tasks/T-md84-rapikan-pratinjau-pivot-tersimpan-batalkan-query.md
