@@ -255,6 +255,8 @@ export function UploadPanel({
       setEta(null);
       setPicking(null);
       setSheetPick(null);
+      // Pembacaan daftar sheet yang masih berjalan tidak boleh membuka pemilih di atas unggahan ini.
+      sheetRead.current++;
       // File baru → perkiraan lama tidak berlaku; melanjutkan versi yang sama mempertahankannya.
       if (!versionId) setEstimate(null);
       setState({

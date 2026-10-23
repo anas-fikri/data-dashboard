@@ -182,7 +182,14 @@ export function validateInit(
       !Array.isArray(raw) ||
       raw.length < 1 ||
       raw.length > SELECTED_SHEETS_MAX ||
-      !raw.every((n) => typeof n === "string" && n.length >= 1 && n.length <= SHEET_NAME_MAX) ||
+      !raw.every(
+        (n) =>
+          typeof n === "string" &&
+          n.length >= 1 &&
+          n.length <= SHEET_NAME_MAX &&
+          // eslint-disable-next-line no-control-regex
+          !/[\u0000-\u001f]/.test(n),
+      ) ||
       new Set(raw).size !== raw.length
     ) {
       return fail("INVALID", "Pilihan sheet tidak valid. Pilih sheetnya lagi.");

@@ -99,11 +99,16 @@ async function centralDirectory(file: Blob): Promise<Map<string, Entry>> {
       const len = cd.getUint16(x + 2, true);
       if (id === 0x0001) {
         let q = x + 4;
-        if (uncompressed === 0xffffffff && q + 8 <= x + 4 + len)
-          ((uncompressed = u64(cd, q)), (q += 8));
-        if (compressed === 0xffffffff && q + 8 <= x + 4 + len)
-          ((compressed = u64(cd, q)), (q += 8));
-        if (offset === 0xffffffff && q + 8 <= x + 4 + len) offset = u64(cd, q);
+        const end = x + 4 + len;
+        if (uncompressed === 0xffffffff && q + 8 <= end) {
+          uncompressed = u64(cd, q);
+          q += 8;
+        }
+        if (compressed === 0xffffffff && q + 8 <= end) {
+          compressed = u64(cd, q);
+          q += 8;
+        }
+        if (offset === 0xffffffff && q + 8 <= end) offset = u64(cd, q);
       }
       x += 4 + len;
     }
@@ -114,7 +119,7 @@ async function centralDirectory(file: Blob): Promise<Map<string, Entry>> {
 }
 
 async function entryText(file: Blob, e: Entry): Promise<string> {
-  if (e.uncompressed > MAX_XML_BYTES) throw new Bad("xml besar");
+  if (e.uncompressed > MAX_XML_BYTES || e.compressed > MAX_XML_BYTES) throw new Bad("xml besar");
   const loc = await bytes(file, e.offset, e.offset + 30);
   if (loc.getUint32(0, true) !== LOC_SIG) throw new Bad("loc");
   const start = e.offset + 30 + loc.getUint16(26, true) + loc.getUint16(28, true);

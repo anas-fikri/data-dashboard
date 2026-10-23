@@ -4,7 +4,9 @@ import { IconFileSpreadsheet, IconInfoCircle, IconUpload, IconX } from "@tabler/
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
+  SHEET_SELECT_MAX,
   SHEETS_REQUIRED,
+  SHEETS_TOO_MANY,
   defaultSelection,
   selectable,
   sheetNote,
@@ -67,8 +69,8 @@ export function UploadSheetPicker({
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
-        if (count === 0) {
-          setError(SHEETS_REQUIRED);
+        if (count === 0 || count > SHEET_SELECT_MAX) {
+          setError(count === 0 ? SHEETS_REQUIRED : SHEETS_TOO_MANY);
           return;
         }
         onSubmit(picked);

@@ -62,7 +62,7 @@ export async function xlsxSheetsParallel(
   // Sheet pilihan unggah (T-85tb), urut workbook; indeks i rapat, bookIndex[i] = indeks di workbook.
   let names: string[];
   try {
-    names = wantedSheets(shared.book.sheets, only);
+    names = wantedSheets(shared.book.sheets, only, limits.maxSheets);
   } catch (e) {
     shared.close();
     throw e;

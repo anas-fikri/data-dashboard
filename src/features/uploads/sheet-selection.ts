@@ -10,6 +10,7 @@ import type { XlsxSheetInfo } from "./xlsx-sheets";
 export const SHEET_SELECT_MAX = 50;
 
 export const SHEETS_REQUIRED = "Pilih minimal satu sheet.";
+export const SHEETS_TOO_MANY = `Pilih paling banyak ${SHEET_SELECT_MAX} sheet.`;
 
 export function selectable(s: XlsxSheetInfo): boolean {
   return s.kind === "worksheet" && s.name.length > 0;
@@ -42,7 +43,8 @@ export function selectionToSend(
 ): string[] {
   const ok = sheets.filter(selectable);
   const names = ok.filter((s) => picked.has(s.name)).map((s) => s.name);
-  if (names.length === ok.length) return [];
+  // Semua dipilih dan masih dalam batas = perilaku lama; > batas tetap dikirim (ditolak picker/server).
+  if (names.length === ok.length && ok.length <= SHEET_SELECT_MAX) return [];
   return names;
 }
 

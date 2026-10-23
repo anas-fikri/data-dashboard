@@ -184,6 +184,9 @@ describe("pilihan sheet", () => {
       "Data",
       "Data 2",
     ]);
+    // > 50 worksheet: "semua" tidak boleh menjadi [] (worker menolak buku > 50 sheet tanpa pilihan).
+    const many = Array.from({ length: 51 }, (_, i) => info(`S${i}`));
+    expect(selectionToSend(many, new Set(many.map((x) => x.name)))).toHaveLength(51);
   });
 
   it("keterangan alasan tidak dicentang", () => {

@@ -97,6 +97,7 @@ describe("validasi init", () => {
       ["A", "A"],
       [""],
       ["x".repeat(256)],
+      ["a\u0000b"],
       "A",
       [1],
       Array(51).fill(0).map(String),

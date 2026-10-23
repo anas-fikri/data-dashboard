@@ -342,6 +342,26 @@ describe("sheet paralel: urutan, progres, galat", () => {
     par.raw.forEach((b, i) => expect(b.equals(seq.raw[i]!)).toBe(true));
   }, 60_000);
 
+  it("> 50 sheet di buku kerja: pilih 3 → lulus; tanpa pilihan → FAILED dengan saran memilih sheet", async () => {
+    const fx = t.file(
+      "enam-puluh.xlsx",
+      await buildXlsx(
+        Array.from({ length: 60 }, (_, i) => ({ name: `S${i + 1}`, xml: plainRows(3, `S${i}`) })),
+      ),
+    );
+    for (const extra of [{}, PARALLEL]) {
+      const s = t.setup(fx);
+      s.repo.selectedSheets = ["S60", "S2", "S31"];
+      const r = await runIngest(VID, s.repo, s.storage, { ...s.opts, ...extra });
+      expect(r).toEqual({ outcome: "done", sheets: 3 });
+      expect(s.repo.byIndex().map((x) => x.name)).toEqual(["S2", "S31", "S60"]);
+    }
+    const s = t.setup(fx);
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r).toMatchObject({ outcome: "failed" });
+    expect(s.repo.error).toMatch(/lebih dari 50 sheet.*pilih sheet/);
+  }, 120_000);
+
   it("sheet pilihan yang tidak ada di file → FAILED dengan nama sheet-nya (berurutan dan paralel)", async () => {
     const fx = t.file(
       "pilih-hilang.xlsx",
