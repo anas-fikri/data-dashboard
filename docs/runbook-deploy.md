@@ -812,10 +812,17 @@ Password/kunci SSH diminta sekali (koneksi dipakai ulang, aman untuk fail2ban). 
 dan arsip lokal dihapus setelah selesai.
 
 - **`--quick`** memakai backup harian terverifikasi (checksum cocok) yang umurnya ≤ 26 jam alih-alih backup
-  lengkap baru (±25 menit, memakan disk ± 2 × ukuran arsip); dump database tetap dibuat baru. Skrip
-  **menolak** `--quick` bila ada file baru di `prisma/migrations` sejak tag sebelumnya — jalankan tanpa
-  `--quick`. Tanpa backup harian yang cukup baru, preflight otomatis membuat backup lengkap; bila belum ada
-  arsip backup sama sekali, preflight meminta perkiraan ukuran lewat `BACKUP_EST_GB=<GB>`.
+  lengkap baru (±25 menit, memakan disk ± 2 × ukuran arsip); dump database tetap dibuat baru. Aman dipakai
+  selalu: preflight membandingkan migrasi terakhir rilis dengan migrasi terakhir **database produksi** — bila
+  rilis bermigrasi, backup harian tidak dipakai dan backup lengkap tetap dibuat (skrip juga menolak `--quick`
+  lebih awal bila `prisma/migrations` berubah sejak tag sebelumnya). Tanpa backup harian yang cukup baru,
+  preflight otomatis membuat backup lengkap.
+- Variabel preflight diteruskan dari Mac bila diisi (angka saja): `FORCE=1` (job aktif diabaikan),
+  `MIN_FREE_GB=<GB>`, `BACKUP_EST_GB=<GB>` (perkiraan ukuran backup bila belum ada arsip), mis.
+  `BACKUP_EST_GB=8 bash deploy/release.sh`.
+- Image dipakai ulang hanya bila keempatnya ada dan app/worker dibangun dari commit tag; selain itu tag lama
+  dilepas lalu dibangun ulang. Arsip `~/dashboard-v<versi>.tar.gz` dipakai ulang hanya bila ID image-nya
+  sama (`.ids`).
 - Gagal di langkah 1–4: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
 - Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
   ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke

@@ -15,8 +15,9 @@
 # log pemeriksaan. Secret tidak pernah dicetak; kredensial DB hanya lewat env di container backup (pgenv.sh).
 # Variabel: UPGRADE_DIR (folder status), MIN_FREE_GB (bawaan 15), FORCE=1 (abaikan job aktif di preflight),
 # REUSE_BACKUP_HOURS=N (preflight memakai backup terverifikasi yang umurnya ≤ N jam alih-alih backup lengkap
-# baru — rilis tanpa migrasi; dump database tetap dibuat baru), BACKUP_EST_GB (perkiraan ukuran backup bila
-# belum ada arsip),
+# baru — rilis tanpa migrasi; dump database tetap dibuat baru; hanya berlaku bila EXPECT_MIGRATION = migrasi
+# terakhir produksi, selain itu backup lengkap), EXPECT_MIGRATION (migrasi terakhir rilis baru, diisi
+# release.sh), BACKUP_EST_GB (perkiraan ukuran backup bila belum ada arsip),
 # ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
 # (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
@@ -119,6 +120,11 @@ not_rolled_back() {
 
 # ---------------------------------------------------------------------------------------------------
 preflight() {
+  local v
+  for v in MIN_FREE_GB REUSE_BACKUP_HOURS BACKUP_EST_GB; do
+    case ${!v:-} in *[!0-9]*) die "$v harus angka bulat (sekarang: ${!v})" ;; esac
+  done
+  case ${EXPECT_MIGRATION:-} in *[!0-9a-z_]*) die "EXPECT_MIGRATION tidak sah" ;; esac
   local stamp tag root sz fdock fstate n busy exp failed last db tables out archive
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   tag=$(envval IMAGE_TAG); tag=${tag:-latest}
@@ -211,6 +217,12 @@ SQL
     2>/dev/null) || latest=""
   read -r archive age gb ok <<<"${latest:-}"
   [ -z "$archive" ] || [ "${ok:-0}" = 1 ] || warn "checksum arsip backup terbaru $archive TIDAK cocok — periksa backup harian"
+  # Backup harian hanya cukup untuk rilis TANPA migrasi: dicek terhadap database produksi sungguhan
+  # (bukan tag git sebelumnya — rilis yang tidak pernah di-deploy/di-rollback tidak mengelabuinya).
+  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ "${EXPECT_MIGRATION:-}" != "$last" ]; then
+    warn "rilis baru bermigrasi (${EXPECT_MIGRATION:-tidak diketahui} ≠ produksi $last) — backup harian TIDAK dipakai, backup lengkap dibuat"
+    REUSE_BACKUP_HOURS=""
+  fi
   if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ -n "$archive" ] && [ "${ok:-0}" = 1 ] &&
     [ "${age:-x}" -le $((REUSE_BACKUP_HOURS * 3600)) ] 2>/dev/null; then
     echo "   memakai backup terverifikasi $archive (umur $((age / 3600)) jam ≤ $REUSE_BACKUP_HOURS jam, checksum cocok)"
@@ -222,7 +234,7 @@ SQL
     gb=${gb:-${BACKUP_EST_GB:-0}}
     need=$((gb * 2 + 5 + ${MIN_FREE_GB:-15}))
     [ "$fdock" -ge "$need" ] || {
-      DIE_HINT="Kosongkan ruang (image lama: docker rmi dashboard-<s>:<tag lama>; JANGAN prune) atau, untuk rilis tanpa migrasi, REUSE_BACKUP_HOURS=26 (release.sh --quick). MIN_FREE_GB menurunkan minimum."
+      DIE_HINT="Kosongkan ruang (image lama: docker rmi dashboard-<s>:<tag lama>; JANGAN prune) atau, untuk rilis tanpa migrasi, release.sh --quick. MIN_FREE_GB menurunkan minimum."
       die "ruang disk ${fdock} GB kurang untuk backup lengkap (perlu ± ${need} GB: 2 × ${gb} GB arsip + 5 + minimum ${MIN_FREE_GB:-15})"
     }
     out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }

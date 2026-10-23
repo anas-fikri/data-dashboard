@@ -235,7 +235,7 @@ describe(
 
     it("REUSE_BACKUP_HOURS + backup terverifikasi yang baru → tanpa backup lengkap; dump tetap baru", () => {
       writeFileSync(join(root, "recent-backup"), "");
-      const r = pre({ REUSE_BACKUP_HOURS: "24" });
+      const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: PRE_G6 });
       expect(r.code, r.out).toBe(0);
       expect(r.out).toContain("memakai backup terverifikasi dashboard-20261022T190000Z.tar.age");
       expect(r.out).toContain("PREFLIGHT LULUS");
@@ -254,7 +254,7 @@ describe(
     it("checksum arsip terbaru tidak cocok → peringatan, tidak dipakai ulang, backup lengkap", () => {
       writeFileSync(join(root, "recent-backup"), "");
       writeFileSync(join(root, "bad-checksum"), "");
-      const r = pre({ REUSE_BACKUP_HOURS: "24" });
+      const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: PRE_G6 });
       expect(r.code, r.out).toBe(0);
       expect(r.out).toContain("TIDAK cocok");
       expect(calls()).toContain("backup.sh");
@@ -277,9 +277,25 @@ describe(
 
     it("backup yang ada lebih tua dari REUSE_BACKUP_HOURS → backup lengkap", () => {
       writeFileSync(join(root, "recent-backup"), "");
-      const r = pre({ REUSE_BACKUP_HOURS: "0" });
+      const r = pre({ REUSE_BACKUP_HOURS: "0", EXPECT_MIGRATION: PRE_G6 });
       expect(r.code, r.out).toBe(0);
       expect(calls()).toContain("backup.sh");
+    });
+
+    it("rilis bermigrasi (EXPECT_MIGRATION ≠ produksi) atau tidak diketahui → REUSE diabaikan, backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      for (const expect_ of ["29991231000000_rilis_baru", ""]) {
+        const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: expect_ });
+        expect(r.code, r.out).toBe(0);
+        expect(r.out).toContain("backup harian TIDAK dipakai");
+        expect(calls()).toContain("backup.sh");
+      }
+    });
+
+    it("variabel angka tidak sah → berhenti dengan pesan jelas", () => {
+      const r = pre({ BACKUP_EST_GB: "5;rm" });
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("BACKUP_EST_GB harus angka");
     });
   },
 );

@@ -43,6 +43,10 @@ function bin(name: string, body: string) {
 }
 
 function run(...args: string[]) {
+  return runEnv({}, ...args);
+}
+
+function runEnv(extra: Record<string, string>, ...args: string[]) {
   const r = spawnSync("bash", ["deploy/release.sh", ...args], {
     cwd: repo(),
     encoding: "utf8",
@@ -52,6 +56,7 @@ function run(...args: string[]) {
       HOME: join(root, "home"),
       FAKE: root,
       APP_DIR: server(),
+      ...extra,
     },
   });
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
@@ -82,17 +87,20 @@ case "$*" in *Config.Env*) echo "APP_COMMIT=$(cat "$FAKE/image-commit")" ;; esac
   );
   writeFileSync(
     join(repo(), "deploy/images.sh"),
-    `echo "images.sh: $* cwd=\${PWD##*/}" >>"$FAKE/calls.log"; [ "$1" = save ] && echo arsip | gzip >"$2"; exit 0\n`,
+    `echo "images.sh: $* cwd=\${PWD##*/}" >>"$FAKE/calls.log"; [ "$1" = build ] && rm -f "$FAKE/image-missing"; [ "$1" = save ] && echo arsip | gzip >"$2"; exit 0\n`,
   );
   writeFileSync(
     join(repo(), "deploy/upgrade.sh"),
-    `echo "upgrade.sh: $* REUSE=\${REUSE_BACKUP_HOURS:-}" >>"$FAKE/calls.log"
+    `echo "upgrade.sh: $* REUSE=\${REUSE_BACKUP_HOURS:-} EXPECT=\${EXPECT_MIGRATION:-} EST=\${BACKUP_EST_GB:-}" >>"$FAKE/calls.log"
 [ "$1" = preflight ] && [ -f "$FAKE/preflight-fail" ] && exit 1
 [ "$1" = load ] && [ -f "$FAKE/load-fail" ] && exit 1; exit 0\n`,
   );
   copyFileSync(SCRIPT, join(repo(), "deploy/release.sh"));
   writeFileSync(join(repo(), "package.json"), '{\n  "version": "9.9.9"\n}\n');
   writeFileSync(join(server(), "package.json"), '{\n  "version": "9.9.8"\n}\n');
+  mkdirSync(join(repo(), "prisma/migrations/20260101000000_awal"), { recursive: true });
+  writeFileSync(join(repo(), "prisma/migrations/20260101000000_awal/migration.sql"), "SELECT 1;\n");
+  writeFileSync(join(repo(), "prisma/migrations/migration_lock.toml"), 'provider = "postgresql"\n');
   git("init", "-q", "-b", "main");
   git("add", "-A");
   git("commit", "-q", "-m", "chore(release): v9.9.9");
@@ -162,14 +170,14 @@ describe("deploy/release.sh", { timeout: 60_000 }, () => {
     writeFileSync(join(root, "image-missing"), "");
     const r = run("--quick");
     expect(r.code, r.out).toBe(0);
-    expect(log()).toContain("upgrade.sh: preflight REUSE=26");
+    expect(log()).toContain("upgrade.sh: preflight REUSE=26 EXPECT=20260101000000_awal");
     expect(log()).toContain("images.sh: build v9.9.9");
   });
 
   it("--quick ditolak bila rilis berisi migrasi database sejak tag sebelumnya", () => {
     git("tag", "-a", "v9.9.8", "-m", "v9.9.8", "HEAD~1");
-    mkdirSync(join(repo(), "prisma/migrations/x"), { recursive: true });
-    writeFileSync(join(repo(), "prisma/migrations/x/migration.sql"), "SELECT 1;\n");
+    mkdirSync(join(repo(), "prisma/migrations/20260202000000_x"), { recursive: true });
+    writeFileSync(join(repo(), "prisma/migrations/20260202000000_x/migration.sql"), "SELECT 1;\n");
     writeFileSync(join(repo(), "package.json"), '{\n  "version": "9.9.10"\n}\n');
     git("add", "-A");
     git("commit", "-q", "-m", "chore(release): v9.9.10");
@@ -186,6 +194,28 @@ describe("deploy/release.sh", { timeout: 60_000 }, () => {
     expect(r.code, r.out).toBe(1);
     expect(r.out).toContain("perubahan lokal");
     expect(log()).toBe("");
+  });
+
+  it("BACKUP_EST_GB diteruskan ke preflight; nilai bukan angka ditolak sebelum apa pun dikirim", () => {
+    const ok = runEnv({ BACKUP_EST_GB: "8" });
+    expect(ok.code, ok.out).toBe(0);
+    expect(log()).toContain("upgrade.sh: preflight REUSE= EXPECT=20260101000000_awal EST=8");
+    rmSync(join(root, "calls.log"), { force: true });
+    const bad = runEnv({ BACKUP_EST_GB: "8;touch x" });
+    expect(bad.code, bad.out).toBe(1);
+    expect(bad.out).toContain("BACKUP_EST_GB harus angka");
+    expect(log()).toBe("");
+  });
+
+  it("image app dari commit lain → semua tag dilepas lalu dibangun ulang", () => {
+    writeFileSync(join(root, "image-commit"), "deadbee");
+    const r = run();
+    expect(r.code, r.out).toBe(0);
+    const calls = log();
+    expect(calls).toContain("docker: image rm dashboard-backup:v9.9.9");
+    expect(calls.indexOf("docker: image rm dashboard-app:v9.9.9")).toBeLessThan(
+      calls.indexOf("images.sh: build"),
+    );
   });
 
   it("--seed hanya menerima slug (tanpa injeksi perintah)", () => {

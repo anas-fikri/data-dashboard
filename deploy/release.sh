@@ -19,7 +19,9 @@
 # Gagal SETELAH langkah 4 lulus: jangan jalankan ulang skrip (preflight baru akan mengarsipkan kode yang
 # mungkin sudah tercampur); pesan galat menyebut perintah lanjutan yang tepat. Satu koneksi SSH dipakai ulang
 # (ControlMaster): password/kunci diminta sekali (fail2ban). Kompatibel bash 3.2 (macOS).
-# Variabel: SERVER (bawaan olympus), APP_DIR (bawaan /data/docker-data/data-dashboard).
+# Variabel: SERVER (bawaan olympus), APP_DIR (bawaan /data/docker-data/data-dashboard); FORCE, MIN_FREE_GB,
+# BACKUP_EST_GB diteruskan ke preflight server bila diisi (petunjuk galat preflight), mis.
+#   BACKUP_EST_GB=8 bash deploy/release.sh
 set -euo pipefail
 
 SERVER=${SERVER:-olympus}
@@ -40,6 +42,14 @@ step() { printf '\n== %s\n' "$*"; }
 
 case $APP_DIR in *[!A-Za-z0-9/_.-]*) die "APP_DIR hanya boleh huruf, angka, / _ . -" ;; esac
 case $SEED in *[!a-z0-9,-]*) die "--seed hanya slug (huruf kecil, angka, -, koma)" ;; esac
+# Variabel preflight yang diteruskan ke server (hanya angka: aman disisipkan ke perintah jarak jauh).
+fwd=""
+for v in FORCE MIN_FREE_GB BACKUP_EST_GB; do
+  val=$(eval "printf %s \"\${$v:-}\"")
+  [ -n "$val" ] || continue
+  case $val in *[!0-9]*) die "$v harus angka bulat" ;; esac
+  fwd="$fwd $v=$val"
+done
 
 cd "$(dirname "$0")/.."
 ver=$(node -p 'require("./package.json").version')
@@ -66,9 +76,15 @@ if [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
   git push -q origin "$tag" || die "push tag $tag gagal"
   echo "   tag $tag di-push"
 fi
-tagc=$(git rev-parse --short "$tag^{commit}")
+tagc=$(git rev-parse "$tag^{commit}")
 git merge-base --is-ancestor "$tagc" HEAD || die "tag $tag ($tagc) bukan bagian dari main"
-echo "   tag $tag = $tagc"
+echo "   tag $tag = $(git rev-parse --short "$tagc")"
+[ "$(git show "$tag:package.json" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>console.log(JSON.parse(s).version))')" = "$ver" ] ||
+  die "package.json di tag $tag bukan versi $ver — tag salah tempat (git tag -d $tag, lalu ulangi)"
+# Migrasi terakhir rilis ini: preflight server hanya memakai backup harian (--quick) bila sama dengan
+# migrasi terakhir database produksi (rilis tanpa migrasi).
+expect=$(git ls-tree --name-only "$tag:prisma/migrations" | grep -v '\.toml$' | sort | tail -n1)
+case $expect in "" | *[!0-9a-z_]*) die "migrasi terakhir di tag $tag tidak terbaca" ;; esac
 if [ -n "$QUICK" ]; then
   prev=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
   if [ -n "$prev" ] && [ -n "$(git diff --name-only "$prev" "$tag" -- prisma/migrations)" ]; then
@@ -77,31 +93,49 @@ if [ -n "$QUICK" ]; then
 fi
 
 step "2/8 image $tag dari tag"
-img_commit=$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "dashboard-app:$tag" 2>/dev/null |
-  sed -n 's/^APP_COMMIT=//p' | head -n1 || true)
+IMAGES="app worker renderer backup"
+# Commit pendek di image (APP_COMMIT, app + worker) harus awalan commit tag; keempat image harus ada.
+commit_of() {
+  docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "dashboard-$1:$tag" 2>/dev/null |
+    sed -n 's/^APP_COMMIT=//p' | head -n1 || true
+}
 have=1
-for s in app worker renderer backup; do
-  docker image inspect "dashboard-$s:$tag" >/dev/null 2>&1 || have=""
+for s in $IMAGES; do docker image inspect "dashboard-$s:$tag" >/dev/null 2>&1 || have=""; done
+for s in app worker; do
+  c=$(commit_of "$s")
+  [ ${#c} -ge 7 ] || have=""
+  case $tagc in "$c"*) ;; *) have="" ;; esac
 done
-if [ -n "$have" ] && [ "$img_commit" = "$tagc" ]; then
-  echo "   image dashboard-*:$tag sudah ada (commit $tagc)"
+if [ -n "$have" ]; then
+  echo "   image dashboard-*:$tag sudah ada (commit $(git rev-parse --short "$tagc"))"
 else
-  wt="$(mktemp -d)/rilis-$tag"
+  # Tag lama dilepas dulu: build yang gagal di tengah tidak meninggalkan campuran image commit lain.
+  for s in $IMAGES; do docker image rm "dashboard-$s:$tag" >/dev/null 2>&1 || true; done
+  wtp=$(mktemp -d)
+  wt="$wtp/rilis-$tag"
   git worktree add -q --detach "$wt" "$tag"
-  (cd "$wt" && bash deploy/images.sh build "$tag") || { git worktree remove --force "$wt"; die "build image gagal"; }
+  (cd "$wt" && bash deploy/images.sh build "$tag") || {
+    git worktree remove --force "$wt"; rm -rf "$wtp"; die "build image gagal"
+  }
   git worktree remove --force "$wt"
-  rm -f "$archive"
+  rm -rf "$wtp"
 fi
-if [ -s "$archive" ] && gzip -t "$archive" 2>/dev/null; then
+# Arsip dipakai ulang hanya bila dibuat dari image yang sama persis (ID keempat image dicatat di .ids).
+ids=$(for s in $IMAGES; do docker image inspect -f '{{.Id}}' "dashboard-$s:$tag"; done)
+if [ -s "$archive" ] && [ "$(cat "$archive.ids" 2>/dev/null)" = "$ids" ] && gzip -t "$archive" 2>/dev/null; then
   echo "   arsip $archive sudah ada ($(du -h "$archive" | cut -f1))"
 else
-  rm -f "$archive"
+  rm -f "$archive" "$archive.ids"
   bash deploy/images.sh save "$archive" "$tag"
+  printf '%s\n' "$ids" >"$archive.ids"
 fi
 
 step "3/8 kirim arsip + upgrade.sh ke $SERVER (password/kunci SSH diminta sekali di sini)"
 rssh true || die "tidak bisa masuk ke $SERVER — cek jaringan/VPN (jangan ulangi login berkali-kali)"
 rdir=$(rssh 'mktemp -d /tmp/dashboard-rilis.XXXXXX') || die "folder sementara di server gagal dibuat"
+case $rdir in /tmp/dashboard-rilis.[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]) ;;
+  *) die "folder sementara di server tidak terduga: $rdir" ;;
+esac
 git show "$tag:deploy/upgrade.sh" >"$HOME/.dashboard-upgrade-$tag.sh"
 scp "${SSH_OPTS[@]}" -q "$archive" "$SERVER:$rdir/images.tar.gz" || die "kirim arsip gagal (produksi tidak diubah)"
 scp "${SSH_OPTS[@]}" -q "$HOME/.dashboard-upgrade-$tag.sh" "$SERVER:$rdir/upgrade.sh" || die "kirim upgrade.sh gagal"
@@ -111,7 +145,7 @@ echo "   terkirim ke $SERVER:$rdir"
 step "4/8 preflight di server (kode lama; produksi belum diubah)"
 reuse=""
 [ -z "$QUICK" ] || reuse="REUSE_BACKUP_HOURS=26"
-rssh -t "cd $APP_DIR && $reuse bash $rdir/upgrade.sh preflight" ||
+rssh -t "cd $APP_DIR && $reuse EXPECT_MIGRATION=$expect$fwd bash $rdir/upgrade.sh preflight" ||
   die "preflight gagal — produksi TIDAK diubah; perbaiki sesuai pesan di atas lalu jalankan ulang skrip ini"
 
 # Mulai di sini skrip tidak boleh dijalankan ulang: setiap galat menyebut lanjutan yang tepat.
@@ -159,5 +193,5 @@ else
 fi
 
 rssh "rm -rf $rdir" || true
-rm -f "$archive"
+rm -f "$archive" "$archive.ids"
 printf '\nRILIS %s SELESAI. Cek /health sebagai admin (versi %s).\n' "$tag" "$ver"
