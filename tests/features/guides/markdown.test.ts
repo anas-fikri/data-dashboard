@@ -8,9 +8,10 @@ import { guideBodyProblem, guideInputSchema } from "@/features/guides/validation
 /**
  * Batas waktu render uji DoS: regresi yang dicari 1,4–5 s (kuadratik); render normal ≈ 60 ms. Diukur
  * sebagai waktu CPU proses (pool forks = satu proses per file), bukan waktu dinding yang membengkak
- * > 1 s saat mesin sibuk (load ±30) sehingga uji ini sempat flaky.
+ * > 1 s saat mesin sibuk (load ±30) sehingga uji ini sempat flaky. Waktu CPU pun bisa ±1,1 s di VM yang
+ * sibuk (JIT/GC; T-tpfh, keputusan pemilik 2026-10-23): batas 1,3 s — tetap di bawah regresi terkecil 1,4 s.
  */
-const RENDER_MAX_MS = 1_000;
+const RENDER_MAX_MS = 1_300;
 const cpuMs = (fn: () => void) => {
   const t = process.cpuUsage();
   fn();

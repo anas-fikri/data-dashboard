@@ -144,13 +144,14 @@ export const prismaIngestRepo: IngestRepo = {
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: { datasetId: true, sourceKey: true, dataset: activeSelect },
+      select: { datasetId: true, sourceKey: true, selectedSheets: true, dataset: activeSelect },
     });
     if (!v?.sourceKey) return null;
     return {
       datasetId: v.datasetId,
       sourceKey: v.sourceKey,
       active: snapshotOf(v.dataset.activeVersion, versionId),
+      selectedSheets: v.selectedSheets,
     };
   },
 

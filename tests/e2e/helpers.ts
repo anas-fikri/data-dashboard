@@ -116,12 +116,14 @@ export async function login(page: Page, email: string, password = PASSWORD) {
   await page.getByLabel("Email perusahaan").fill(email);
   await page.locator("input[name=password]").fill(password);
   await page.getByRole("button", { name: "Masuk" }).click();
+  await autoConfirmSheets(page);
 }
 
 /** Login lewat route JSON; cookie sesi tersimpan di konteks browser halaman. */
 export async function apiLogin(page: Page, email: string, password = PASSWORD) {
   const res = await page.request.post("/api/auth/login", { data: { email, password } });
   expect(res.status(), await res.text()).toBe(200);
+  await autoConfirmSheets(page);
 }
 
 /** Satu konteks browser (cookie terpisah) per pengguna, sudah login; tutup lewat page.context(). */
@@ -300,4 +302,28 @@ export async function stopWorker(w: ChildProcess | null | undefined): Promise<vo
       /* sudah berhenti */
     }
   }
+}
+
+/** Locator pemilih sheet (dipakai juga untuk melepas handler di spec yang mengujinya). */
+export const SHEET_PICKER = (page: Page) => page.getByTestId("upload-sheet-picker");
+const sheetHandled = new WeakSet<Page>();
+
+/**
+ * Pemilih sheet xlsx (T-85tb) dikonfirmasi otomatis dengan pilihan bawaan setiap kali muncul. Dipasang
+ * login()/apiLogin() untuk semua spec yang mengunggah file multi-sheet tanpa menguji pemilih itu; spec
+ * yang mengujinya melepasnya dengan page.removeLocatorHandler(SHEET_PICKER(page)).
+ */
+export async function autoConfirmSheets(page: Page): Promise<void> {
+  if (sheetHandled.has(page)) return;
+  sheetHandled.add(page);
+  await page.addLocatorHandler(SHEET_PICKER(page), async (picker) => {
+    await picker.getByTestId("upload-sheet-submit").click();
+  });
+}
+
+/** Lepas konfirmasi otomatis (spec yang menguji pemilih sheet). */
+export async function manualSheets(page: Page): Promise<void> {
+  if (!sheetHandled.has(page)) return;
+  sheetHandled.delete(page);
+  await page.removeLocatorHandler(SHEET_PICKER(page));
 }

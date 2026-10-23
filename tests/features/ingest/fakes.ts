@@ -120,12 +120,19 @@ export class FakeRepo implements IngestRepo {
   cleanups: string[] = [];
   /** Versi aktif dataset (null = versi pertama); load memberi salinan seperti baris DB. */
   active: ActiveSnapshot | null = null;
+  /** Sheet pilihan saat unggah (T-85tb); [] = semua. */
+  selectedSheets: string[] = [];
   activated = false;
   private n = 0;
   constructor(readonly sourceKey: string) {}
   async load() {
     if (!this.alive()) return null;
-    return { datasetId: DS, sourceKey: this.sourceKey, active: structuredClone(this.active) };
+    return {
+      datasetId: DS,
+      sourceKey: this.sourceKey,
+      active: structuredClone(this.active),
+      selectedSheets: [...this.selectedSheets],
+    };
   }
   async begin() {
     if (!["UPLOADED", "INGESTING"].includes(this.status)) return false;

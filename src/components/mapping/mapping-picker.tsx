@@ -73,7 +73,7 @@ export function MappingPicker({
               <SelectItem
                 key={c.pos}
                 value={String(c.pos)}
-                textValue={c.original}
+                textValue={c.original || `Kolom ${c.pos}`}
                 disabled={takenBy !== null}
                 className="group"
               >

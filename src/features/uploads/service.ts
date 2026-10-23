@@ -61,7 +61,13 @@ export interface InitInput {
   label?: unknown;
   /** Versi aktif yang dilihat pemilik (wajib untuk mode PERIOD). */
   baseVersionId?: unknown;
+  /** Sheet xlsx yang diimpor (T-85tb, mode REPLACE); tidak ada/null = semua sheet. */
+  sheets?: unknown;
 }
+
+/** Batas pilihan sheet (= batas sheet parser per file). */
+export const SELECTED_SHEETS_MAX = 50;
+const SHEET_NAME_MAX = 255;
 
 export type UploadMode = "REPLACE" | "PERIOD";
 
@@ -122,6 +128,8 @@ export function validateInit(
       mode: UploadMode;
       label: string | null;
       baseVersionId: string | null;
+      /** Sheet pilihan (urut masukan, unik); [] = semua sheet. */
+      sheets: string[];
     }
   | { ok: false; code: UploadCode; message: string } {
   if (typeof input.datasetId !== "string" || !isIdShape(input.datasetId)) return notFound();
@@ -164,6 +172,30 @@ export function validateInit(
     }
     baseVersionId = input.baseVersionId;
   }
+  let sheets: string[] = [];
+  if (input.sheets !== undefined && input.sheets !== null) {
+    const raw = input.sheets;
+    if (ext !== "xlsx" || mode !== "REPLACE") {
+      return fail("INVALID", "Pilihan sheet hanya untuk file .xlsx yang mengganti semua data.");
+    }
+    if (
+      !Array.isArray(raw) ||
+      raw.length < 1 ||
+      raw.length > SELECTED_SHEETS_MAX ||
+      !raw.every(
+        (n) =>
+          typeof n === "string" &&
+          n.length >= 1 &&
+          n.length <= SHEET_NAME_MAX &&
+          // eslint-disable-next-line no-control-regex
+          !/[\u0000-\u001f]/.test(n),
+      ) ||
+      new Set(raw).size !== raw.length
+    ) {
+      return fail("INVALID", "Pilihan sheet tidak valid. Pilih sheetnya lagi.");
+    }
+    sheets = raw as string[];
+  }
   return {
     ok: true,
     datasetId: input.datasetId,
@@ -174,7 +206,15 @@ export function validateInit(
     mode,
     label,
     baseVersionId,
+    sheets,
   };
+}
+
+/** Pilihan sheet sama (urutan tidak penting). */
+function sameSheets(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const set = new Set(a);
+  return b.every((n) => set.has(n));
 }
 
 /** Penolakan init setelah unggahan lama dihapus di transaksi yang sama → transaksi dibatalkan. */
@@ -353,12 +393,15 @@ export async function initUpload(
           partCount: true,
           mode: true,
           periodLabel: true,
+          selectedSheets: true,
         },
       });
-      // Resume hanya untuk pilihan yang sama (mode + label, R20): pilihan lain tidak pernah memakai
+      // Resume hanya untuk pilihan yang sama (mode + label + sheet, R20): pilihan lain tidak pernah memakai
       // versi lama diam-diam — versi lama (belum berisi data) dibuang dan unggahan dimulai baru.
       const sameChoice =
-        own?.mode === v.mode && (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label;
+        own?.mode === v.mode &&
+        (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label &&
+        sameSheets(own.selectedSheets ?? [], v.sheets);
       const resumable = own && sameChoice ? own : null;
       if (own && !sameChoice) {
         // Sama dengan cancelUpload: tidak boleh saat complete sedang berjalan (klaim completingAt).
@@ -483,6 +526,7 @@ export async function initUpload(
           partSize: PART_SIZE,
           partCount,
           mode: v.mode,
+          selectedSheets: v.sheets,
           ...(v.mode === "PERIOD"
             ? {
                 periodGrain: grain,
@@ -942,6 +986,8 @@ export interface PendingUpload {
   /** Pilihan saat unggahan dimulai (T-053): melanjutkan hanya dengan mode + label yang sama (R20). */
   mode: UploadMode;
   label: string | null;
+  /** Sheet pilihan saat unggahan dimulai (T-85tb); [] = semua. Melanjutkan memakai pilihan yang sama. */
+  sheets: string[];
 }
 
 /** Unggahan milik user yang belum selesai di dataset ini (untuk ajakan melanjutkan). */
@@ -970,6 +1016,7 @@ export async function getPendingUpload(
       partCount: true,
       mode: true,
       periodLabel: true,
+      selectedSheets: true,
     },
   });
   if (!v?.sourceKey || !v.uploadId || v.sizeBytes === null || !v.partSize || !v.partCount)
@@ -996,5 +1043,6 @@ export async function getPendingUpload(
     uploadedBytes,
     mode: v.mode === "PERIOD" ? "PERIOD" : "REPLACE",
     label: v.mode === "PERIOD" && v.periodLabel ? v.periodLabel.toISOString().slice(0, 10) : null,
+    sheets: v.selectedSheets ?? [],
   };
 }

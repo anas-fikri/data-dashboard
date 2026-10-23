@@ -56,6 +56,23 @@ test.describe("app shell (masuk)", () => {
     await expect(last).toHaveAttribute("data-testid", "app-version");
   });
 
+  test("footer: versi aplikasi di setiap halaman (T-tzxt), tanpa scroll horizontal di ponsel", async ({
+    page,
+  }) => {
+    const { version } = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
+    for (const width of [360, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      for (const path of ["/", "/datasets", "/panduan"]) {
+        await page.goto(path);
+        await expect(page.getByTestId("app-footer")).toHaveText(
+          `Data Dashboard · Versi ${version}`,
+        );
+        await expect(page.getByRole("contentinfo")).toHaveCount(1);
+        await noHorizontalScroll(page);
+      }
+    }
+  });
+
   test("ponsel: drawer dengan backdrop, tertutup saat navigasi", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await page.goto("/");

@@ -9,6 +9,7 @@ export type RawValue = string | number | boolean | Date | null | undefined;
 export type OnRow = (sheet: number, rowNumber: number, values: RawValue[]) => void;
 
 export interface ParseOptions {
+  /** Sheet yang dibaca (dibaca urut workbook; kosong = semua; nama tak ada → XlsxLimitError). */
   sheetNames: string[];
   /** Direktori sementara (spill), dibersihkan pemanggil. */
   tmpDir: string;

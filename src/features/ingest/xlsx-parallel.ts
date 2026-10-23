@@ -13,7 +13,7 @@ import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { ident, type Duck } from "@/lib/duckdb";
 import { readSheetInWorker, WorkerStartError, type SheetJob } from "@/lib/xlsx/parallel";
-import { openSharedBook, type SaxLimits } from "@/lib/xlsx/parser";
+import { openSharedBook, wantedSheets, type SaxLimits } from "@/lib/xlsx/parser";
 import { columnNames, guessHeaderRow } from "./header";
 import type { IngestOptions, IngestProgress, SheetRecord } from "./ingest";
 import { previewOf } from "./preview";
@@ -56,9 +56,19 @@ export async function xlsxSheetsParallel(
   ensureAlive: () => Promise<void>,
   opts: Pick<IngestOptions, "batchRows" | "afterBatch">,
   at: { row: number },
+  only: readonly string[] = [],
 ): Promise<{ rec: SheetRecord; path: string }[]> {
   const shared = await openSharedBook(src, work, limits);
-  const { sheets } = shared.book;
+  // Sheet pilihan unggah (T-85tb), urut workbook; indeks i rapat, bookIndex[i] = indeks di workbook.
+  let names: string[];
+  try {
+    names = wantedSheets(shared.book.sheets, only, limits.maxSheets);
+  } catch (e) {
+    shared.close();
+    throw e;
+  }
+  const bookIndex = names.map((n) => shared.book.sheets.findIndex((s) => s.name === n));
+  const sheets = names.map((name) => ({ name }));
   const st = sheets.map(() => ({ rows: 0, fraction: 0, row: 0, done: false }));
   const out: { rec: SheetRecord; path: string }[] = [];
   const writers = new Set<RawSheetWriter>();
@@ -102,7 +112,7 @@ export async function xlsxSheetsParallel(
     writers.add(w);
     tables.push(i);
     check();
-    const job = readSheetInWorker(shared.book, i, (rows, fraction) =>
+    const job = readSheetInWorker(shared.book, bookIndex[i]!, (rows, fraction) =>
       db(async () => {
         check();
         rowsSeen = true;

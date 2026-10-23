@@ -624,4 +624,67 @@ test.describe("filter dashboard", () => {
     await expect(page).toHaveURL(/\?mode=edit$/);
     await expect(page.getByTestId("widget")).toHaveCount(0);
   });
+
+  test("T-pxnn: kotak cari pintar — menu Tambah kolom filter (Enter menambah hasil pertama) dan Select di panel widget", async ({
+    page,
+  }) => {
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    await expect(page.locator("[data-testid=dashboard-canvas][data-hydrated]")).toHaveCount(1);
+
+    // Menu Tambah kolom filter (kartu pengaturan): kotak cari langsung fokus; "omz" → hanya Omzet.
+    const section = page.getByTestId("dashboard-filter-columns");
+    await section.getByRole("button", { name: "Tambah kolom filter" }).click();
+    const box = page.getByTestId("menu-search");
+    await expect(box).toBeFocused();
+    await box.pressSequentially("omz");
+    await expect(page.getByRole("menuitem")).toHaveCount(1);
+    await expect(page.getByRole("menuitem")).toContainText("Omzet");
+    const saved = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await box.press("Enter");
+    expect((await saved).status()).toBe(200);
+    const items = section.getByRole("list", { name: "Kolom filter" }).getByRole("listitem");
+    await expect(items.filter({ hasText: "Omzet" })).toHaveCount(1);
+    // Tanpa hasil → pesan; Esc menutup.
+    await section.getByRole("button", { name: "Tambah kolom filter" }).click();
+    await expect(box).toBeFocused();
+    await box.pressSequentially("zzz");
+    await expect(page.getByText("Tidak ada yang cocok dengan “zzz”.")).toBeVisible();
+    await box.press("Escape");
+    await expect(box).toHaveCount(0);
+    // Pulihkan kolom filter fixture.
+    const removed = page.waitForResponse(
+      (r) => r.url().endsWith("/filter-columns") && r.request().method() === "PATCH",
+    );
+    await section.getByRole("button", { name: "Hapus kolom filter Omzet" }).click();
+    expect((await removed).status()).toBe(200);
+
+    // Select biasa (Nilai di panel KPI): kotak cari fokus, "baris" menyaring, Enter memilih.
+    await page.getByRole("button", { name: `Pengaturan ${KPI}` }).click();
+    const panel = page.getByTestId("widget-panel");
+    const nilai = panel.getByLabel("Nilai", { exact: true });
+    const before = (await nilai.textContent())?.trim();
+    await nilai.click();
+    const search = page.getByTestId("select-search");
+    await expect(search).toBeFocused();
+    // Enter tanpa kata kunci tidak mengganti nilai (review T-pxnn F1): hanya menyorot pilihan saat ini.
+    await search.press("Enter");
+    await expect(page.getByRole("option", { name: before! })).toBeFocused();
+    // Mengetik saat fokus di item tetap mengisi kotak cari; ↑ di item pertama kembali ke kotak cari.
+    await page.keyboard.type("bar");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("bar");
+    await search.press("ArrowDown");
+    await page.keyboard.press("ArrowUp");
+    await expect(search).toBeFocused();
+    await search.fill("");
+    await search.pressSequentially("baris");
+    await expect(page.getByRole("option", { name: "Jumlah baris", exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^Total/ })).toHaveCount(0);
+    await search.press("Enter");
+    await expect(search).toHaveCount(0);
+    await expect(panel.getByLabel("Nilai", { exact: true })).toContainText("Jumlah baris");
+    await expectKpi(page, ROWS);
+  });
 });

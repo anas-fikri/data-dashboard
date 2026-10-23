@@ -760,3 +760,70 @@ Catatan T-cfd7: `upgrade.sh migrate`/`start` kini melewati `check-segments.mjs` 
 non-periode" bila produksi sudah di G-6 (`OLD_MIGRATION` ≥ `20261019140000_t036_segments`) — sebelumnya gerbang
 itu gagal begitu ada satu dataset per periode. Salin `deploy/upgrade.sh` rilis ini ke server (`scp` di langkah 1)
 sebelum preflight.
+
+## 12. Redis tidak sehat (AOF rusak, mis. setelah disk penuh)
+
+Gejala: `upgrade.sh preflight` berhenti "redis tidak sehat", atau `start` gagal "container dashboard-redis-1
+is unhealthy"; `docker logs dashboard-redis-1` berisi "Bad file format reading the append only file". Antrean
+BullMQ (ingest/ekspor) tidak jalan selama Redis mati. Data dashboard/dataset (PostgreSQL + storage) tidak
+terpengaruh. Di server (folder aplikasi):
+
+```bash
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+$C stop redis
+B=/data/docker-data/data-dashboard-upgrade/redis-aof-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
+docker run --rm -v dashboard_redisdata:/data:ro -v /data/docker-data/data-dashboard-upgrade:/out alpine \
+  tar -czf "/out/$(basename "$B")" -C /data appendonlydir dump.rdb          # salinan dulu
+IMG=$(docker inspect --format '{{.Config.Image}}' dashboard-redis-1)
+docker run --rm --user 999:1000 -v dashboard_redisdata:/data -w /data/appendonlydir "$IMG" \
+  sh -c 'echo y | redis-check-aof --fix appendonly.aof.manifest'
+$C up -d redis        # atau: bash deploy/upgrade.sh start (di tengah upgrade)
+```
+
+Job antrean yang tercatat setelah titik rusak hilang: dataset yang tertahan "Memproses" diunggah ulang.
+Kejadian 2026-10-23: preflight pertama kehabisan disk saat backup lengkap → AOF terpotong → `start` v1.4.1
+gagal; diperbaiki dengan langkah di atas. Preflight kini memeriksa Redis sehat dan ruang untuk backup lengkap.
+
+## 13. Rilis satu perintah dari Mac (`deploy/release.sh`)
+
+Cara rilis biasa mulai v1.4.2 — menggantikan langkah manual §10/§11. Syarat: PR rilis (berisi commit
+`chore(release): v<versi>` dari `aitk release`) sudah digabung ke `main`; Mac di jaringan kantor/VPN.
+
+```bash
+cd ~/Documents/Projects/pcpexpress/data-dashboard
+git checkout main && git pull --ff-only origin main
+bash deploy/release.sh --quick --seed <slug,…>    # --quick: rilis TANPA migrasi; --seed: panduan yang berubah
+```
+
+Skrip berhenti di langkah pertama yang gagal (urutan lengkap di kepala `deploy/release.sh`):
+
+1. cek lokal: `main` bersih dan sama dengan `origin/main`; tag `v<versi>` dibuat di commit
+   `chore(release): v<versi>` lalu di-push (bila belum ada);
+2. image dari **tag** (bukan dari folder kerja): bila image belum ada atau dibangun dari commit lain, skrip
+   membangun ulang di worktree sementara dari tag — PR lain yang digabung sesudah rilis tidak ikut;
+3. kirim arsip image + `upgrade.sh` versi tag ke folder sementara baru di server (`/tmp/dashboard-rilis.*`);
+4. **preflight di server dengan kode lama (backup DB dulu)** — gagal di sini = produksi tidak diubah;
+5. `load` image (produksi masih image lama);
+6. sinkron kode tag ke folder aplikasi (`git archive`), versi `package.json` di server dicek;
+7. `migrate` → `start` (jeda layanan ± 2–5 menit);
+8. seed panduan (`--seed`).
+
+Password/kunci SSH diminta sekali (koneksi dipakai ulang, aman untuk fail2ban). Folder sementara di server
+dan arsip lokal dihapus setelah selesai.
+
+- **`--quick`** memakai backup harian terverifikasi (checksum cocok) yang umurnya ≤ 26 jam alih-alih backup
+  lengkap baru (±25 menit, memakan disk ± 2 × ukuran arsip); dump database tetap dibuat baru. Aman dipakai
+  selalu: preflight membandingkan migrasi terakhir rilis dengan migrasi terakhir **database produksi** — bila
+  rilis bermigrasi, backup harian tidak dipakai dan backup lengkap tetap dibuat (skrip juga menolak `--quick`
+  lebih awal bila `prisma/migrations` berubah sejak tag sebelumnya). Tanpa backup harian yang cukup baru,
+  preflight otomatis membuat backup lengkap.
+- Variabel preflight diteruskan dari Mac bila diisi (angka saja): `FORCE=1` (job aktif diabaikan),
+  `MIN_FREE_GB=<GB>`, `BACKUP_EST_GB=<GB>` (perkiraan ukuran backup bila belum ada arsip), mis.
+  `BACKUP_EST_GB=8 bash deploy/release.sh`.
+- Image dipakai ulang hanya bila keempatnya ada dan app/worker dibangun dari commit tag; selain itu tag lama
+  dilepas lalu dibangun ulang. Arsip `~/dashboard-v<versi>.tar.gz` dipakai ulang hanya bila ID image-nya
+  sama (`.ids`).
+- Gagal di langkah 1–4: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
+- Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
+  ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke
+  `prev-<stamp>` (§11); Redis rusak = §12.

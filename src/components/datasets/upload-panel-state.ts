@@ -10,7 +10,9 @@ import type { UploadProgress } from "@/features/uploads/client";
  * periode untuk sheet bersumber label). Dibawa bersama file agar "Coba lagi"/"Lanjutkan" memakai
  * pilihan yang sama — server hanya melanjutkan versi dengan mode + label yang sama.
  */
-export type UploadChoice = { mode: "REPLACE" } | { mode: "PERIOD"; label: string | null };
+export type UploadChoice =
+  /** `sheets` = sheet xlsx yang diimpor (T-85tb); tanpa/kosong = semua sheet. */
+  { mode: "REPLACE"; sheets?: string[] } | { mode: "PERIOD"; label: string | null };
 
 export const REPLACE_CHOICE: UploadChoice = { mode: "REPLACE" };
 
@@ -177,9 +179,15 @@ export function periodRequest(
   choice: UploadChoice,
   period: { baseVersionId: string } | null,
 ):
-  | { ok: true; period?: { baseVersionId: string; label: string | null } }
+  | {
+      ok: true;
+      period?: { baseVersionId: string; label: string | null };
+      sheets?: string[];
+    }
   | { ok: false; message: string } {
-  if (choice.mode === "REPLACE") return { ok: true };
+  if (choice.mode === "REPLACE") {
+    return choice.sheets?.length ? { ok: true, sheets: choice.sheets } : { ok: true };
+  }
   if (!period) return { ok: false, message: PERIOD_GONE };
   return { ok: true, period: { baseVersionId: period.baseVersionId, label: choice.label } };
 }

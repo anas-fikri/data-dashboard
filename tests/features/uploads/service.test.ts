@@ -86,6 +86,30 @@ describe("validasi init", () => {
     expect(validateInit({ ...base, size: 1.5 }, 100)).toMatchObject({ code: "INVALID" });
     expect(validateInit({ ...base, datasetId: "../x" }, 100)).toMatchObject({ code: "NOT_FOUND" });
     expect(validateInit(base, 100)).toMatchObject({ ok: true, ext: "xlsx" });
+    // Pilihan sheet (T-85tb): hanya xlsx + ganti semua data; 1–50 nama unik ≤ 255 karakter.
+    expect(validateInit({ ...base, sheets: ["A", "B"] }, 100)).toMatchObject({
+      ok: true,
+      sheets: ["A", "B"],
+    });
+    expect(validateInit(base, 100)).toMatchObject({ ok: true, sheets: [] });
+    for (const sheets of [
+      [],
+      ["A", "A"],
+      [""],
+      ["x".repeat(256)],
+      ["a\u0000b"],
+      "A",
+      [1],
+      Array(51).fill(0).map(String),
+    ]) {
+      expect(validateInit({ ...base, sheets }, 100)).toMatchObject({ code: "INVALID" });
+    }
+    expect(validateInit({ ...base, name: "a.csv", sheets: ["A"] }, 100)).toMatchObject({
+      code: "INVALID",
+    });
+    expect(
+      validateInit({ ...base, mode: "PERIOD", baseVersionId: VID, sheets: ["A"] }, 100),
+    ).toMatchObject({ code: "INVALID" });
     expect(cleanFileName("C:\\data\\laporan\u202e.xlsx")).toBe("laporan.xlsx");
     expect(cleanFileName("a".repeat(300))).toBeNull();
   });

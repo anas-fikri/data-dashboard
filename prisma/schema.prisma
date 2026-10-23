@@ -171,6 +171,10 @@ model DatasetVersion {
   /// SheetSchemaChange[] } — sheet file yang tidak disimpan (dipakai lagi setelah pemetaan) dan
   /// perubahan skema sheet (kolom tersembunyi baru, alias judul) yang dibawa ke versi ini saat commit.
   periodMeta       Json?
+  /// Sheet xlsx yang dipilih pemilik saat unggah (T-85tb), nama persis; kosong = semua sheet (perilaku
+  /// lama, CSV, mode PERIOD). Worker hanya membaca sheet ini; sheet aktif yang tidak dipilih masuk
+  /// alur pemetaan biasa (tidak dipakai lagi).
+  selectedSheets   String[]      @default([])
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?
