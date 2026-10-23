@@ -923,7 +923,7 @@ export function wantedSheets(
   if (!names.length) {
     if (sheets.length > maxSheets) {
       throw new XlsxLimitError(
-        `file berisi lebih dari ${maxSheets} sheet; maksimal ${maxSheets}. Unggah ulang dan pilih sheet yang berisi data.`,
+        `file berisi lebih dari ${maxSheets} sheet; maksimal ${maxSheets}. Hapus sheet yang tidak dipakai lalu unggah lagi, atau pilih sheet berisi data saat mengganti semua data.`,
       );
     }
     return sheets.map((s) => s.name);

@@ -18,7 +18,9 @@ export function selectable(s: XlsxSheetInfo): boolean {
 
 /** Pemilih ditampilkan bila ada ≥ 2 worksheet yang bisa dipilih (1 sheet = tidak ada yang dipilih). */
 export function needsPicker(sheets: readonly XlsxSheetInfo[] | null): boolean {
-  return (sheets ?? []).filter(selectable).length >= 2;
+  const ok = (sheets ?? []).filter(selectable).length;
+  // > batas sheet per file (dihitung worker atas SEMUA sheet, termasuk grafik): pilihan wajib dikirim.
+  return ok >= 2 || (ok >= 1 && (sheets ?? []).length > SHEET_SELECT_MAX);
 }
 
 export function defaultSelection(
@@ -44,7 +46,8 @@ export function selectionToSend(
   const ok = sheets.filter(selectable);
   const names = ok.filter((s) => picked.has(s.name)).map((s) => s.name);
   // Semua dipilih dan masih dalam batas = perilaku lama; > batas tetap dikirim (ditolak picker/server).
-  if (names.length === ok.length && ok.length <= SHEET_SELECT_MAX) return [];
+  // Batas dihitung atas semua sheet buku kerja (sama dengan worker), bukan hanya worksheet.
+  if (names.length === ok.length && sheets.length <= SHEET_SELECT_MAX) return [];
   return names;
 }
 

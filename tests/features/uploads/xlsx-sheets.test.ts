@@ -187,6 +187,19 @@ describe("pilihan sheet", () => {
     // > 50 worksheet: "semua" tidak boleh menjadi [] (worker menolak buku > 50 sheet tanpa pilihan).
     const many = Array.from({ length: 51 }, (_, i) => info(`S${i}`));
     expect(selectionToSend(many, new Set(many.map((x) => x.name)))).toHaveLength(51);
+    // 45 worksheet + 10 grafik = 55 sheet buku kerja: "semua" dikirim eksplisit (worker menghitung semua).
+    const mixed = [
+      ...Array.from({ length: 45 }, (_, i) => info(`W${i}`)),
+      ...Array.from({ length: 10 }, (_, i) => info(`G${i}`, { kind: "chartsheet" })),
+    ];
+    expect(selectionToSend(mixed, new Set(mixed.map((x) => x.name)))).toHaveLength(45);
+    // 1 worksheet + 50 grafik: pemilih tetap muncul agar pilihan terkirim.
+    expect(
+      needsPicker([
+        info("W"),
+        ...Array.from({ length: 50 }, (_, i) => info(`G${i}`, { kind: "chartsheet" })),
+      ]),
+    ).toBe(true);
   });
 
   it("keterangan alasan tidak dicentang", () => {
