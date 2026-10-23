@@ -26,7 +26,7 @@ interface AppShellProps {
   user: SessionUser | null;
   /** Pemberitahuan di atas konten setiap halaman (mis. backup bermasalah untuk admin, T-7psf). */
   notice?: ReactNode;
-  /** Versi aplikasi dari package.json (dibaca server, T-066); tampil di bagian bawah menu akun. */
+  /** Versi aplikasi dari package.json (dibaca server, T-066); tampil di menu akun dan footer (T-tzxt). */
   appVersion?: string;
   children: ReactNode;
 }
@@ -173,6 +173,15 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
           {notice}
           {children}
         </main>
+        {/* Versi di footer setiap halaman (T-tzxt): sama dengan menu akun dan /health. */}
+        {appVersion ? (
+          <footer
+            className="mx-auto w-full max-w-(--content-max) px-4 pb-4 text-xs text-muted-foreground sm:px-6"
+            data-testid="app-footer"
+          >
+            Data Dashboard · Versi {appVersion}
+          </footer>
+        ) : null}
       </div>
     </div>
   );
