@@ -5,7 +5,7 @@ role: OWNER
 context: UPLOAD
 ---
 
-Dataset adalah wadah data Anda. Satu dataset bisa berisi satu file Excel (semua sheet ikut terbaca) atau satu file CSV, dan bisa diganti dengan file baru kapan saja.
+Dataset adalah wadah data Anda. Satu dataset bisa berisi satu file Excel (sheet yang Anda pilih) atau satu file CSV, dan bisa diganti dengan file baru kapan saja.
 
 ## Membuat dataset
 
@@ -17,8 +17,9 @@ Dataset adalah wadah data Anda. Satu dataset bisa berisi satu file Excel (semua 
 
 1. Di kartu **Data**, tekan **Pilih file** atau seret file ke kotak unggah.
 2. Format yang diterima: **.xlsx** dan **.csv**, ukuran maksimal **1 GB**.
-3. Selama mengunggah, progres dan perkiraan waktu tampil. Anda bisa menekan **Jeda** lalu **Lanjutkan**.
-4. Koneksi terputus atau halaman tertutup? Pilih **file yang sama** lagi — unggahan dilanjutkan dari bagian terakhir (**Lanjutkan unggahan**).
+3. File Excel dengan dua sheet atau lebih: pilih **Sheet yang diimpor** lalu tekan **Unggah file**. Disarankan hanya memilih sheet berisi data — sheet ringkasan, pivot, atau grafik tidak perlu diimpor. Sheet tersembunyi dan sheet berisi PivotTable tidak dicentang bawaan; **Pilih semua** mencentang semuanya.
+4. Selama mengunggah, progres dan perkiraan waktu tampil. Anda bisa menekan **Jeda** lalu **Lanjutkan**.
+5. Koneksi terputus atau halaman tertutup? Pilih **file yang sama** lagi — unggahan dilanjutkan dari bagian terakhir (**Lanjutkan unggahan**) dengan pilihan sheet yang sama.
 
 ## Setelah file terunggah
 

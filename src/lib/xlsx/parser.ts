@@ -901,6 +901,22 @@ async function readSheet(
   await opts.drain?.();
 }
 
+/**
+ * Sheet yang dibaca, urut workbook (indeks rapat 0..n-1 = urutan pilihan dalam workbook). Pilihan kosong
+ * = semua sheet; nama yang tidak ada di file → XlsxLimitError (pilihan pemilik saat unggah, T-85tb).
+ */
+export function wantedSheets(sheets: BookSheet[], names: readonly string[]): string[] {
+  if (!names.length) return sheets.map((s) => s.name);
+  const pick = new Set(names);
+  for (const n of pick) {
+    if (!sheets.some((s) => s.name === n)) {
+      throw new XlsxLimitError(`sheet "${n}" yang dipilih saat unggah tidak ada di file`);
+    }
+  }
+  const seen = new Set<string>();
+  return sheets.map((s) => s.name).filter((n) => pick.has(n) && !seen.has(n) && seen.add(n));
+}
+
 /** drain yang menandai error konsumen (DB/storage/dataset dihapus) agar diteruskan apa adanya. */
 function markedDrain(
   drain: (() => Promise<void>) | undefined,
@@ -949,7 +965,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
     try {
       const entries = await listEntries(zip, limits, fileSize);
       const book = await openBook(zip, entries, limits, sst);
-      const wanted = opts.sheetNames.length ? opts.sheetNames : book.sheets.map((s) => s.name);
+      const wanted = wantedSheets(book.sheets, opts.sheetNames);
       for (let si = 0; si < wanted.length; si++) {
         await readSheet(zip, entries, book, limits, si, wanted[si]!, opts, onRow, summary);
       }

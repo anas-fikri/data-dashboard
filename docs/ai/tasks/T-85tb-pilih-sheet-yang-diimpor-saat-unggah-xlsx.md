@@ -1,13 +1,17 @@
 ---
 id: T-85tb
 title: Pilih sheet yang diimpor saat unggah xlsx
-status: todo
+status: in_progress
 profile: standard
 tags:
   - ui
 created: "2026-10-23T11:22:17Z"
-updated: "2026-10-23T12:01:42Z"
+updated: "2026-10-23T15:07:49Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/intelligent-albattani-fd1va8
+base: 9c9b2f28c09b11e0d5f878e895a158ef3714a1c2
 ---
 
 ## Objective

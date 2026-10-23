@@ -131,6 +131,8 @@ export interface UploadOptions {
    * `label` = awal periode untuk sheet bersumber label. Tanpa ini = ganti semua data.
    */
   period?: { baseVersionId: string; label: string | null };
+  /** Sheet xlsx yang diimpor (T-85tb, hanya ganti semua data); tanpa ini = semua sheet. */
+  sheets?: string[];
   /** Perkiraan batas periode dari ukuran file (T-055) segera setelah init; hanya peringatan. */
   onEstimate?: (e: UploadEstimate | null) => void;
 }
@@ -170,7 +172,7 @@ export async function precheck(file: File, maxBytes: number): Promise<void> {
 export async function uploadFile(
   opts: UploadOptions,
 ): Promise<{ versionId: string; mode: "REPLACE" | "PERIOD"; label: string | null }> {
-  const { file, datasetId, maxBytes, signal, onProgress, period, onEstimate } = opts;
+  const { file, datasetId, maxBytes, signal, onProgress, period, onEstimate, sheets } = opts;
   onProgress({ phase: "checking", loaded: 0, total: file.size, resumed: false });
   await precheck(file, maxBytes);
 
@@ -185,6 +187,7 @@ export async function uploadFile(
       ...(period
         ? { mode: "PERIOD", baseVersionId: period.baseVersionId, label: period.label }
         : {}),
+      ...(sheets?.length && !period ? { sheets } : {}),
     },
     signal,
   );

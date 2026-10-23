@@ -308,6 +308,58 @@ describe("sheet paralel: urutan, progres, galat", () => {
     expect(seen.some((p) => p.sheet === 0 && p.rows === 6_001 && p.fraction === 1)).toBe(true);
   }, 60_000);
 
+  it("pilihan sheet saat unggah (T-85tb): sheet tak dipilih tidak dibaca; paralel = berurutan, indeks rapat", async () => {
+    const fx = t.file(
+      "pilih.xlsx",
+      await buildXlsx([
+        { name: "Satu", xml: plainRows(300, "S") },
+        // Sheet rusak yang tidak dipilih: XML-nya tidak pernah dibaca, jadi ingest tetap lulus.
+        { name: "Rusak", xml: `<row r="5"><c><v>1</v></c></row><row r="2"><c><v>2</v></c></row>` },
+        { name: "Tiga", xml: plainRows(200, "T") },
+      ]),
+    );
+    const one = async (extra: Partial<IngestOptions>) => {
+      const s = t.setup(fx);
+      s.repo.selectedSheets = ["Tiga", "Satu"];
+      const r = await runIngest(VID, s.repo, s.storage, { ...s.opts, batchRows: 50, ...extra });
+      const sheets = s.repo.byIndex();
+      return {
+        r,
+        meta: sheets.map(({ rawKey: _r, typedKey: _t, segmentId: _g, ...rest }) => rest),
+        raw: sheets.map((x) => readFileSync(join(s.storage.dir, x.rawKey!))),
+      };
+    };
+    inWorker.sheets = 0;
+    const seq = await one({});
+    expect(seq.r).toEqual({ outcome: "done", sheets: 2 });
+    expect(seq.meta.map((m) => [m.index, m.name, m.rawRows])).toEqual([
+      [0, "Satu", 301],
+      [1, "Tiga", 201],
+    ]);
+    const par = await one(PARALLEL);
+    expect(inWorker.sheets).toBe(2);
+    expect(par.meta).toEqual(seq.meta);
+    par.raw.forEach((b, i) => expect(b.equals(seq.raw[i]!)).toBe(true));
+  }, 60_000);
+
+  it("sheet pilihan yang tidak ada di file → FAILED dengan nama sheet-nya (berurutan dan paralel)", async () => {
+    const fx = t.file(
+      "pilih-hilang.xlsx",
+      await buildXlsx([
+        { name: "Satu", xml: plainRows(10, "S") },
+        { name: "Dua", xml: plainRows(10, "D") },
+      ]),
+    );
+    for (const extra of [{}, PARALLEL]) {
+      const s = t.setup(fx);
+      s.repo.selectedSheets = ["Satu", "Hilang"];
+      const r = await runIngest(VID, s.repo, s.storage, { ...s.opts, ...extra });
+      expect(r).toMatchObject({ outcome: "failed" });
+      expect(s.repo.error).toMatch(/"Hilang"/);
+      expect(s.storage.parquetKeys()).toEqual([]);
+    }
+  }, 60_000);
+
   it("galat parse di satu sheet → sheet lain dihentikan, FAILED dengan nama sheet, tanpa objek", async () => {
     inWorker.sheets = 0;
     const fx = t.file(

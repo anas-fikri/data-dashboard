@@ -129,10 +129,16 @@ export interface SegmentRecord {
 }
 
 export interface IngestRepo {
-  /** `active` = versi aktif dataset (selain versi ini) beserta skema sheet-nya; null = versi pertama. */
-  load(
-    versionId: string,
-  ): Promise<{ datasetId: string; sourceKey: string; active: ActiveSnapshot | null } | null>;
+  /**
+   * `active` = versi aktif dataset (selain versi ini) beserta skema sheet-nya; null = versi pertama.
+   * `selectedSheets` = sheet xlsx pilihan saat unggah (T-85tb); kosong/tidak ada = semua sheet.
+   */
+  load(versionId: string): Promise<{
+    datasetId: string;
+    sourceKey: string;
+    active: ActiveSnapshot | null;
+    selectedSheets?: string[];
+  } | null>;
   /** UPLOADED|INGESTING → INGESTING (progress direset). false = versi tidak layak diproses. */
   begin(versionId: string): Promise<boolean>;
   /** Versi dan datasetnya masih ada. */
@@ -420,6 +426,7 @@ export async function runIngest(
             ensureAlive,
             opts,
             at,
+            v.selectedSheets ?? [],
           )
         : [
             await csvToParquet(
@@ -607,6 +614,7 @@ export async function xlsxSheets(
   ensureAlive: () => Promise<void>,
   opts: IngestOptions,
   at: { row: number },
+  only: readonly string[] = [],
 ): Promise<{ rec: SheetRecord; path: string }[]> {
   const threads = opts.sheetThreads ?? 1;
   if (threads > 1) {
@@ -624,6 +632,7 @@ export async function xlsxSheets(
           ensureAlive,
           opts,
           at,
+          only,
         );
       } catch (e) {
         // Worker thread tidak bisa dimulai (loader/izin/lingkungan): file ini dibaca berurutan.
@@ -678,7 +687,7 @@ export async function xlsxSheets(
     const summary = await createSaxParser(limits).parse(
       src,
       {
-        sheetNames: [],
+        sheetNames: [...only],
         tmpDir: work,
         onSheetStart: (sheet, n) => queue.push({ k: "start", sheet, name: n }),
         onSheetEnd: (sheet) => queue.push({ k: "end", sheet }),

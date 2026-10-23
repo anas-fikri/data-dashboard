@@ -216,6 +216,7 @@ export default async function DatasetDetailPage({
               period={periodUpload}
               reupload={reuploadRow ? { start: reuploadRow.start, label: reuploadRow.label } : null}
               queue={queue}
+              activeSheets={sheets.map((s) => s.name)}
               setupHref={`/datasets/${dataset.id}/periode`}
               processing={
                 ingest
