@@ -44,7 +44,8 @@ export function selectionToSend(
   picked: ReadonlySet<string>,
 ): string[] {
   const ok = sheets.filter(selectable);
-  const names = ok.filter((s) => picked.has(s.name)).map((s) => s.name);
+  // Nama ganda (file buatan non-Excel) dikirim sekali: server menolak daftar bernama ganda.
+  const names = [...new Set(ok.filter((s) => picked.has(s.name)).map((s) => s.name))];
   // Semua dipilih dan masih dalam batas = perilaku lama; > batas tetap dikirim (ditolak picker/server).
   // Batas dihitung atas semua sheet buku kerja (sama dengan worker), bukan hanya worksheet.
   if (names.length === ok.length && sheets.length <= SHEET_SELECT_MAX) return [];
