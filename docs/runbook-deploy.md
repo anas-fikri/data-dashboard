@@ -733,13 +733,17 @@ Next.js 16.4.0 → **16.4.2**: menutup GHSA-2464-fhr4-w9xw (RCE lewat Image Opti
 GHSA-p3m5-59mp-jv5r (DoS Server Actions), GHSA-673q-mjm6-r5xr (RCE `use cache`). Tanpa perubahan kode
 aplikasi, migrasi, env, atau panduan. **Segera** deploy; v1.4.0 dan sebelumnya rentan.
 
-Mac (folder repo): `git pull --ff-only origin main` (setelah PR hotfix digabung) →
-`git tag -a v1.4.1 -m v1.4.1 <commit "chore(release): v1.4.1"> && git push origin v1.4.1` →
-`npm ci` → `bash deploy/images.sh build` → `bash deploy/images.sh save ~/dashboard-v1.4.1.tar.gz` →
-`scp ~/dashboard-v1.4.1.tar.gz olympus:/tmp/dashboard-images.tar.gz` → `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`
-→ `git archive v1.4.1 | ssh olympus 'tar -x -C /data/docker-data/data-dashboard'` **setelah** preflight lulus.
+Langkah (urut; perintah Mac dan server bergantian):
 
-Server (`/data/docker-data/data-dashboard`): `bash /tmp/upgrade.sh preflight` (backup DB dulu; harus
-`PREFLIGHT LULUS`) → sinkron kode (perintah `git archive` di atas dari Mac) → `bash deploy/upgrade.sh load
-/tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` → `bash deploy/upgrade.sh start`. Cek `/health`
-(admin) = 1.4.1. Tanpa seed panduan.
+1. **Mac** (folder repo, setelah PR hotfix digabung): `git pull --ff-only origin main` → `git tag -a v1.4.1
+   -m v1.4.1 <commit "chore(release): v1.4.1"> && git push origin v1.4.1` → `npm ci` → `bash deploy/images.sh
+   build` → `bash deploy/images.sh save ~/dashboard-v1.4.1.tar.gz` → `scp ~/dashboard-v1.4.1.tar.gz
+   olympus:/tmp/dashboard-images.tar.gz` → `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+2. **Server** (`/data/docker-data/data-dashboard`): `bash /tmp/upgrade.sh preflight` — backup DB dulu, dengan
+   kode LAMA; harus berakhir `PREFLIGHT LULUS`. Jangan lanjut bila gagal.
+3. **Mac**, baru sesudah langkah 2 lulus: `git archive v1.4.1 | ssh olympus 'tar -x -C /data/docker-data/data-dashboard'`.
+4. **Server**: `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` →
+   `bash deploy/upgrade.sh start`. Cek `/health` (admin) = 1.4.1. Tanpa seed panduan.
+
+**Rollback**: `bash deploy/upgrade.sh rollback` (image `prev-<stamp>`, §7 R); tanpa migrasi, database tidak
+perlu dipulihkan — tetapi versi lama kembali rentan, jadi hanya sementara.

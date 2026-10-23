@@ -1,18 +1,24 @@
 ---
 id: T-cfd7
 title: 'Hotfix keamanan: naikkan Next.js 16.4.0 → 16.4.2 (GHSA-2464-fhr4-w9xw, GHSA-p3m5-59mp-jv5r, GHSA-673q-mjm6-r5xr)'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 tags:
   - security
 created: "2026-10-23T01:35:50Z"
-updated: "2026-10-23T01:43:44Z"
+updated: "2026-10-23T02:36:01Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: f21a6ecbde85af8c204e98d04e3b0df5ae7e4abd
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-23T02:36:01Z"
+      findings: 4
 evidence:
   check:
     cmd: npm run check
