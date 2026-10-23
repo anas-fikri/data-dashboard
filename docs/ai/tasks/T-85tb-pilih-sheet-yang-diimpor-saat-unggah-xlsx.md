@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-23T11:22:17Z"
-updated: "2026-10-23T15:56:08Z"
+updated: "2026-10-23T15:57:48Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -22,16 +22,20 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-23T15:56:08Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-10-23T15:57:47Z"
+      findings: 0
 ---
 
 ## Objective
 Saat mengunggah xlsx berisi ≥ 2 worksheet (ganti semua data), pemilik memilih sheet yang diimpor sebelum file dikirim; sheet ringkasan/pivot/grafik tidak lagi ikut terimpor (contoh nyata: sheet "Pivot" menghasilkan kolom_1, kolom_3, …). Worker hanya membaca sheet terpilih; sheet data aktif yang tidak dipilih masuk alur pemetaan biasa (tidak pernah hilang diam-diam).
 
 ## Acceptance criteria
-- [ ] Setelah file xlsx diunggah, pemilik memilih sheet yang diimpor (centang per sheet + Pilih semua) dengan saran: pilih hanya sheet berisi data (bukan ringkasan/pivot/grafik)
-- [ ] Sheet yang tidak dipilih tidak di-ingest (hemat waktu dan kuota); versi pengganti tetap memetakan widget ke sheet yang dipilih
-- [ ] CSV tidak berubah (satu sheet)
-- [ ] CSV, mode per periode, dan antrean banyak file tidak berubah (pilihan kosong = semua sheet)
+- [x] Setelah file xlsx diunggah, pemilik memilih sheet yang diimpor (centang per sheet + Pilih semua) dengan saran: pilih hanya sheet berisi data (bukan ringkasan/pivot/grafik)
+- [x] Sheet yang tidak dipilih tidak di-ingest (hemat waktu dan kuota); versi pengganti tetap memetakan widget ke sheet yang dipilih
+- [x] CSV tidak berubah (satu sheet)
+- [x] CSV, mode per periode, dan antrean banyak file tidak berubah (pilihan kosong = semua sheet)
 
 ## Risk
 Impact: panel unggah dataset (alur ganti data), init unggah, ingest xlsx (berurutan + paralel), skema (kolom aditif `DatasetVersion.selectedSheets TEXT[] DEFAULT '{}'`, tanpa backfill). Pilihan kosong = perilaku lama (semua sheet), jadi CSV, mode periode, antrean, dan unggahan lama tidak berubah. Bawaan centang = worksheet tampil tanpa PivotTable + sheet aktif yang cocok; sheet aktif yang dilepas → AWAITING_MAPPING (perilaku pemetaan yang ada).
