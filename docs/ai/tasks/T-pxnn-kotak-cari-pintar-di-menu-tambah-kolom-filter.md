@@ -1,17 +1,23 @@
 ---
 id: T-pxnn
 title: Kotak cari pintar di menu Tambah kolom filter
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
 created: "2026-10-23T01:28:45Z"
-updated: "2026-10-23T01:28:45Z"
+updated: "2026-10-23T12:01:18Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: f21a6ecbde85af8c204e98d04e3b0df5ae7e4abd
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-23T12:01:18Z"
+      findings: 9
 ---
 
 ## Objective

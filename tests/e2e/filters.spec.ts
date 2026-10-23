@@ -663,9 +663,22 @@ test.describe("filter dashboard", () => {
     // Select biasa (Nilai di panel KPI): kotak cari fokus, "baris" menyaring, Enter memilih.
     await page.getByRole("button", { name: `Pengaturan ${KPI}` }).click();
     const panel = page.getByTestId("widget-panel");
-    await panel.getByLabel("Nilai", { exact: true }).click();
+    const nilai = panel.getByLabel("Nilai", { exact: true });
+    const before = (await nilai.textContent())?.trim();
+    await nilai.click();
     const search = page.getByTestId("select-search");
     await expect(search).toBeFocused();
+    // Enter tanpa kata kunci tidak mengganti nilai (review T-pxnn F1): hanya menyorot pilihan saat ini.
+    await search.press("Enter");
+    await expect(page.getByRole("option", { name: before! })).toBeFocused();
+    // Mengetik saat fokus di item tetap mengisi kotak cari; ↑ di item pertama kembali ke kotak cari.
+    await page.keyboard.type("bar");
+    await expect(search).toBeFocused();
+    await expect(search).toHaveValue("bar");
+    await search.press("ArrowDown");
+    await page.keyboard.press("ArrowUp");
+    await expect(search).toBeFocused();
+    await search.fill("");
     await search.pressSequentially("baris");
     await expect(page.getByRole("option", { name: "Jumlah baris", exact: true })).toBeVisible();
     await expect(page.getByRole("option", { name: /^Total/ })).toHaveCount(0);

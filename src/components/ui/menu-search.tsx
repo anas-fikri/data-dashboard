@@ -18,7 +18,8 @@ export function useMenuSearch() {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    if (!open) return;
+    // Layar sentuh: tanpa fokus otomatis (keyboard layar menutupi menu); kotak cari tetap bisa diketuk.
+    if (!open || window.matchMedia?.("(pointer: coarse)").matches) return;
     const id = requestAnimationFrame(() => inputRef.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
@@ -50,7 +51,7 @@ export function MenuSearch({
   inputRef: React.RefObject<HTMLInputElement | null>;
   contentRef: React.RefObject<HTMLDivElement | null>;
   query: string;
-  setQuery: (q: string) => void;
+  setQuery: React.Dispatch<React.SetStateAction<string>>;
   /** Mis. "Cari kolom". */
   label: string;
   /** Jumlah hasil saat ada kata kunci (null tanpa kata kunci). */
@@ -58,13 +59,40 @@ export function MenuSearch({
   /** Enter: pilih hasil pertama yang bisa dipakai; tanpa ini, item pertama di menu yang diklik. */
   onEnter?: () => void;
 }) {
+  // Fokus di item (setelah ↓ atau kursor mouse): huruf/Backspace tetap mengisi kotak cari, ↑ di item
+  // pertama kembali ke kotak cari — bukan ketik-cepat menu yang memindah sorotan.
+  React.useEffect(() => {
+    const root = contentRef.current;
+    if (!root) return;
+    const onKey = (e: KeyboardEvent) => {
+      const box = inputRef.current;
+      if (!box || e.target === box) return;
+      const printable =
+        e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey;
+      if (printable || e.key === "Backspace") {
+        e.preventDefault();
+        e.stopPropagation();
+        setQuery((q) => (printable ? q + e.key : q.slice(0, -1)));
+        box.focus();
+      } else if (e.key === "ArrowUp" && firstItem(root) === e.target) {
+        e.preventDefault();
+        e.stopPropagation();
+        box.focus();
+      }
+    };
+    root.addEventListener("keydown", onKey, true);
+    return () => root.removeEventListener("keydown", onKey, true);
+  }, [contentRef, inputRef, setQuery]);
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       firstItem(contentRef.current)?.focus();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      if (onEnter) onEnter();
+      // Tanpa kata kunci Enter hanya menyorot item pertama (tidak memilih/menambah apa pun).
+      if (!query.trim()) firstItem(contentRef.current)?.focus();
+      else if (onEnter) onEnter();
       else firstItem(contentRef.current)?.click();
     }
     if (e.key !== "Escape" && e.key !== "Tab") e.stopPropagation();

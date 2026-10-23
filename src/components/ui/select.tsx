@@ -82,7 +82,11 @@ export const SelectTrigger = React.forwardRef<
 export const SelectContent = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof SelectPrimitive.Content>
->(function SelectContent({ className, children, position = "popper", ...props }, ref) {
+>(function SelectContent(
+  { className, children, position = "popper", onKeyDownCapture, ...props },
+  ref,
+) {
+  const ctx = React.useContext(SearchContext);
   return (
     <SelectPrimitive.Portal>
       <SelectPrimitive.Content
@@ -90,17 +94,59 @@ export const SelectContent = React.forwardRef<
         position={position}
         className={cn(
           // Tidak lebih lebar/tinggi dari ruang layar yang tersedia (review desain T-011 H6).
-          "z-50 max-h-[min(18rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) max-w-(--radix-select-content-available-width) overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
+          "z-50 flex max-h-[min(18rem,var(--radix-select-content-available-height))] min-w-(--radix-select-trigger-width) max-w-(--radix-select-content-available-width) flex-col overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md",
           className,
         )}
+        // Kotak cari + daftar: kontennya dialog, daftarnya listbox (input tidak boleh di dalam listbox).
+        role="dialog"
+        aria-label="Pilihan"
+        onKeyDownCapture={(e) => {
+          onKeyDownCapture?.(e);
+          if (ctx) toSearch(e, ctx);
+        }}
         {...props}
       >
         <SelectSearch />
-        <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
+        <SelectPrimitive.Viewport
+          role="listbox"
+          aria-label="Pilihan"
+          className="min-h-0 flex-1 p-1"
+        >
+          {children}
+        </SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
   );
 });
+
+const SEARCH_INPUT = "[data-select-search]";
+const options = (root: Element | null) =>
+  Array.from(root?.querySelectorAll<HTMLElement>("[role=option]:not([data-disabled])") ?? []);
+
+/**
+ * Fokus di item (setelah ↓ atau kursor mouse melewati daftar): huruf/Backspace tetap mengisi kotak cari,
+ * ↑ di item pertama kembali ke kotak cari — bukan ketik-cepat Radix yang memindah sorotan.
+ */
+function toSearch(e: React.KeyboardEvent<HTMLElement>, ctx: SearchState) {
+  const target = e.target as HTMLElement;
+  const input = e.currentTarget.querySelector<HTMLInputElement>(SEARCH_INPUT);
+  if (!input || target === input) return;
+  const printable = e.key.length === 1 && e.key !== " " && !e.ctrlKey && !e.metaKey && !e.altKey;
+  if (printable || e.key === "Backspace") {
+    e.preventDefault();
+    e.stopPropagation();
+    ctx.setQuery(printable ? ctx.query + e.key : ctx.query.slice(0, -1));
+    input.focus();
+  } else if (e.key === "ArrowUp" && options(e.currentTarget)[0] === target) {
+    e.preventDefault();
+    e.stopPropagation();
+    input.focus();
+  }
+}
+
+/** Layar sentuh: kotak cari tidak difokus otomatis (keyboard layar menutup daftar). */
+const coarsePointer = () =>
+  typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches;
 
 /** Kotak cari di atas daftar (T-pxnn); fokus berpindah ke sini setelah Radix memfokus daftarnya. */
 function SelectSearch() {
@@ -110,44 +156,48 @@ function SelectSearch() {
   const open = ctx?.open ?? false;
   const query = ctx?.query ?? "";
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || coarsePointer()) return;
     const id = requestAnimationFrame(() => input.current?.focus());
     return () => cancelAnimationFrame(id);
   }, [open]);
   // Jumlah hasil (pesan "tidak ada" + pengumuman) dibaca dari DOM setelah item menyaring dirinya.
   React.useLayoutEffect(() => {
-    const list =
-      input.current?.closest("[role=listbox]") ?? input.current?.parentElement?.parentElement;
+    const root = input.current?.closest("[role=dialog]");
     setCount(
-      query.trim() && list
-        ? list.querySelectorAll("[role=option]:not([data-search-hidden])").length
+      query.trim() && root
+        ? root.querySelectorAll("[role=option]:not([data-search-hidden])").length
         : null,
     );
   }, [query]);
   if (!ctx) return null;
-  const items = () =>
-    Array.from(
-      input.current
-        ?.closest("[data-radix-popper-content-wrapper], [role=listbox]")
-        ?.querySelectorAll<HTMLElement>("[role=option]:not([data-disabled])") ?? [],
-    );
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    const root = input.current?.closest("[role=dialog]") ?? null;
+    const items = options(root);
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      items()[0]?.focus();
+      items[0]?.focus();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      const first = items()[0];
-      if (first) {
-        first.focus();
-        first.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      if (!query.trim()) {
+        // Tanpa kata kunci Enter tidak mengganti nilai: sorot pilihan saat ini (atau yang pertama).
+        (items.find((el) => el.dataset.state === "checked") ?? items[0])?.focus();
+      } else {
+        // Hasil paling cocok (peringkat src/lib/search, sama dengan menu), bukan sekadar urutan daftar.
+        const best = searchOptions(
+          items.map((el) => ({ label: el.dataset.searchLabel ?? "", el })),
+          query,
+        )[0]?.option.el;
+        if (best) {
+          best.focus();
+          best.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        }
       }
     }
     // Esc/Tab tetap ke daftar (menutup); huruf dan panah lain milik kotak cari, bukan ketik-cepat Radix.
     if (e.key !== "Escape" && e.key !== "Tab") e.stopPropagation();
   };
   return (
-    <div className="flex items-center gap-2 border-b px-3">
+    <div className="flex shrink-0 items-center gap-2 border-b px-3">
       <IconSearch size={18} stroke={1.5} aria-hidden className="shrink-0 text-muted-foreground" />
       <input
         ref={input}
@@ -159,6 +209,7 @@ function SelectSearch() {
         value={query}
         onChange={(e) => ctx.setQuery(e.target.value)}
         onKeyDown={onKeyDown}
+        data-select-search=""
         data-testid="select-search"
         className="h-(--control-h-lg) w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted-foreground md:h-(--control-h) md:text-sm"
       />
@@ -187,6 +238,7 @@ export const SelectItem = React.forwardRef<
       disabled={disabled || hidden}
       textValue={label}
       data-search-hidden={hidden || undefined}
+      data-search-label={label}
       {...props}
     >
       <span className="absolute left-2 flex size-5 items-center justify-center">
