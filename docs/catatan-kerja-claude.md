@@ -55,6 +55,16 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-10-23 malam, sesi cloud)
+
+- Selesai (done): **T-pxnn** (kotak cari pintar di semua daftar pilihan), **T-tzxt** (versi di footer), **T-tpfh**
+  (batas uji kinerja panduan 1300 ms), **T-qqrd** (rilis satu perintah `deploy/release.sh` dari Mac, runbook
+  §12–§13), **T-85tb** (pilih sheet saat unggah xlsx; migrasi `t85tb_selected_sheets`).
+- Rilis **v1.5.0**: commit `chore(release): v1.5.0` di branch sesi; tag dibuat/di-push oleh `release.sh` dari Mac.
+  Rilis ini bermigrasi → jalankan `bash deploy/release.sh` **tanpa** `--quick` (preflight tetap memaksa backup
+  lengkap bila migrasi berbeda).
+- Task lanjutan: **T-2myj** (temuan Low T-85tb), T-4q8n, T-d1ns, T-md84, T-yabt.
+
 ## Posisi terakhir (2026-10-22 sore, sesi rekan)
 
 - Batch selesai (done): **T-k2ec** (editor atur kolom filter dari bilah filter), **T-vb7q** (filter bawaan per
