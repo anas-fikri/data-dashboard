@@ -22,6 +22,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * dan rollback menolak database/tabel yang tidak cocok sebelum membuang apa pun.
  */
 const SCRIPT = join(process.cwd(), "deploy/upgrade.sh");
+/** Migrasi terakhir sebelum G-6 (produksi sebelum T-036). */
+const PRE_G6 = "20261017104143_t_j9j6_guide_video_caption";
 const OLD_TABLES = ["Dataset", "DatasetVersion", "Export", "Sheet", "User", "_prisma_migrations"];
 
 const DOCKER = `#!/usr/bin/env bash
@@ -133,7 +135,7 @@ beforeEach(() => {
     [
       "STAMP=20261020T000000Z",
       "OLD_TAG=lama",
-      "OLD_MIGRATION=m_lama",
+      `OLD_MIGRATION=${PRE_G6}`,
       "OLD_DB=data_dashboard",
       "OLD_IMAGE_WORKER=sha256:lama",
       "BACKUP_ARCHIVE=dashboard-x.tar.age",
@@ -143,7 +145,7 @@ beforeEach(() => {
     ].join("\n"),
   );
   writeFileSync(join(root, "dbname"), "data_dashboard\n");
-  writeFileSync(join(root, "migration"), "m_lama\n");
+  writeFileSync(join(root, "migration"), `${PRE_G6}\n`);
   writeFileSync(join(root, "tables"), `${OLD_TABLES.join("\n")}\n`);
   writeFileSync(
     join(root, "dumplist"),
@@ -184,8 +186,23 @@ describe("upgrade.sh migrate", { timeout: 60_000 }, () => {
     expect(r.out).toContain("pemeriksaan pasca-migrasi gagal");
   });
 
+  it("T-cfd7: produksi sudah di G-6 → check-segments dan cek data non-periode dilewati (data per periode sah)", () => {
+    const post = "20261021110000_t060_period_group";
+    writeFileSync(join(root, "migration"), `${post}\n`);
+    writeFileSync(
+      join(stateDir(), "state.env"),
+      state().replace(`OLD_MIGRATION=${PRE_G6}`, `OLD_MIGRATION=${post}`),
+    );
+    writeFileSync(join(root, "segments-fail"), "");
+    const r = run("migrate");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("check-segments.mjs: dilewati");
+    expect(r.out).toContain("T-049/T-060: dilewati");
+    expect(calls()).not.toContain("check-segments");
+  });
+
   it("diulang setelah skema baru → dump rollback tetap yang lama (skema lama)", () => {
-    writeFileSync(join(root, "migration"), "m_baru\n");
+    writeFileSync(join(root, "migration"), "20261021110000_t060_period_group\n");
     const r = run("migrate");
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("dump rollback tetap db-20261020T000000Z.dump");

@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.4.1] - 2026-10-23
+
+### Fixed
+
+- **deploy:** gerbang G-6 di upgrade.sh hanya saat upgrade melewati T-036 (T-cfd7) (a19d688)
+
+### Security
+
+- **security:** naikkan Next.js 16.4.0 → 16.4.2 (T-cfd7) (1b4b6f3)
+
 ## [1.4.0] - 2026-10-22
 
 ### Added

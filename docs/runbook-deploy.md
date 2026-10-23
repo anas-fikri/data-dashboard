@@ -722,7 +722,41 @@ migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabe
    filter); di mode edit **Atur kolom filter** dan **Jadikan filter aktif sebagai bawaan**; buka sebagai viewer
    tanpa `?f=` (chip _bawaan_), **Hapus semua filter**, **Kembalikan filter bawaan**, lalu Ekspor PDF.
 
-**Rollback**: `bash deploy/upgrade.sh rollback` (image `prev-<stamp>`; §7 R). Karena tanpa migrasi, database
-tidak perlu dipulihkan. Satu catatan: kode v1.3.1 menolak entri kolom filter yang membawa filter bawaan
-(`default`, T-vb7q) — kolom filter berbawaan **tidak tampil** di v1.3.1 sampai upgrade lagi (data di DB tetap).
-Bila rollback akan lama, hapus bawaan dulu (mode edit → hapus semua filter → **Hapus filter bawaan**).
+**Rollback** (rilis ini tanpa migrasi):
+- **Disarankan — ganti image saja, data tetap:** di `.env.prod` ganti `IMAGE_TAG=prev-<stamp>` (stamp dari
+  preflight), lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`. Kode v1.3.1
+  menolak entri kolom filter yang membawa filter bawaan (`default`, T-vb7q) — kolom filter berbawaan **tidak
+  tampil** sampai upgrade lagi (data di DB tetap). Bila rollback akan lama, hapus bawaan dulu (mode edit →
+  hapus semua filter → **Hapus filter bawaan**).
+- `bash deploy/upgrade.sh rollback` memulihkan image lama **dan database dari dump rollback** (`db-migrate-*`,
+  diambil saat `migrate` setelah app/worker berhenti): semua data sesudah langkah `migrate` (unggahan, dashboard,
+  pengguna) hilang dari DB. Skrip meminta ketik `ROLLBACK` dan menyimpan
+  `db-sebelum-rollback-*.dump` dulu. Pakai hanya bila database memang perlu dikembalikan.
+
+## 11. Rilis v1.4.1 (hotfix keamanan Next.js, T-cfd7)
+
+Next.js 16.4.0 → **16.4.2**: menutup GHSA-2464-fhr4-w9xw (RCE lewat Image Optimization + SVG),
+GHSA-p3m5-59mp-jv5r (DoS Server Actions), GHSA-673q-mjm6-r5xr (RCE `use cache`). Tanpa perubahan kode
+aplikasi, migrasi, env, atau panduan. **Segera** deploy; v1.4.0 dan sebelumnya rentan.
+
+Langkah (urut; perintah Mac dan server bergantian):
+
+1. **Mac** (folder repo, setelah PR hotfix digabung): `git pull --ff-only origin main` → `git tag -a v1.4.1
+   -m v1.4.1 <commit "chore(release): v1.4.1"> && git push origin v1.4.1` → `npm ci` → `bash deploy/images.sh
+   build` → `bash deploy/images.sh save ~/dashboard-v1.4.1.tar.gz` → `scp ~/dashboard-v1.4.1.tar.gz
+   olympus:/tmp/dashboard-images.tar.gz` → `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+2. **Server** (`/data/docker-data/data-dashboard`): `bash /tmp/upgrade.sh preflight` — backup DB dulu, dengan
+   kode LAMA; harus berakhir `PREFLIGHT LULUS`. Jangan lanjut bila gagal.
+3. **Mac**, baru sesudah langkah 2 lulus: `git archive v1.4.1 | ssh olympus 'tar -x -C /data/docker-data/data-dashboard'`.
+4. **Server**: `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` →
+   `bash deploy/upgrade.sh start`. Cek `/health` (admin) = 1.4.1. Tanpa seed panduan.
+
+**Rollback** (hanya sementara — versi lama kembali rentan): ganti image saja, data tetap — di `.env.prod`
+ganti `IMAGE_TAG=prev-<stamp>` lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`.
+Jangan pakai `upgrade.sh rollback` untuk hotfix ini: skrip itu juga memulihkan database dari dump rollback
+(`db-migrate-*`; data sesudah langkah `migrate` hilang).
+
+Catatan T-cfd7: `upgrade.sh migrate`/`start` kini melewati `check-segments.mjs` dan pemeriksaan "data lama tetap
+non-periode" bila produksi sudah di G-6 (`OLD_MIGRATION` ≥ `20261019140000_t036_segments`) — sebelumnya gerbang
+itu gagal begitu ada satu dataset per periode. Salin `deploy/upgrade.sh` rilis ini ke server (`scp` di langkah 1)
+sebelum preflight.
