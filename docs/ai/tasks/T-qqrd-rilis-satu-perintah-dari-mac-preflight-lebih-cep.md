@@ -1,13 +1,17 @@
 ---
 id: T-qqrd
 title: Rilis satu perintah dari Mac + preflight lebih cepat dan aman
-status: todo
+status: in_progress
 profile: standard
 tags:
   - ops
 created: "2026-10-23T11:51:15Z"
-updated: "2026-10-23T11:51:15Z"
+updated: "2026-10-23T14:24:49Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/intelligent-albattani-fd1va8
+base: 4a32c9efaf5063b9b971924ea2fad51d649ff2b6
 ---
 
 ## Objective
