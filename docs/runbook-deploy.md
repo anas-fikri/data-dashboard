@@ -760,3 +760,50 @@ Catatan T-cfd7: `upgrade.sh migrate`/`start` kini melewati `check-segments.mjs` 
 non-periode" bila produksi sudah di G-6 (`OLD_MIGRATION` ≥ `20261019140000_t036_segments`) — sebelumnya gerbang
 itu gagal begitu ada satu dataset per periode. Salin `deploy/upgrade.sh` rilis ini ke server (`scp` di langkah 1)
 sebelum preflight.
+
+## 12. Redis tidak sehat (AOF rusak, mis. setelah disk penuh)
+
+Gejala: `upgrade.sh preflight` berhenti "redis tidak sehat", atau `start` gagal "container dashboard-redis-1
+is unhealthy"; `docker logs dashboard-redis-1` berisi "Bad file format reading the append only file". Antrean
+BullMQ (ingest/ekspor) tidak jalan selama Redis mati. Data dashboard/dataset (PostgreSQL + storage) tidak
+terpengaruh. Di server (folder aplikasi):
+
+```bash
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+$C stop redis
+B=/data/docker-data/data-dashboard-upgrade/redis-aof-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
+docker run --rm -v dashboard_redisdata:/data:ro -v /data/docker-data/data-dashboard-upgrade:/out alpine \
+  tar -czf "/out/$(basename "$B")" -C /data appendonlydir dump.rdb          # salinan dulu
+IMG=$(docker inspect --format '{{.Config.Image}}' dashboard-redis-1)
+docker run --rm --user 999:1000 -v dashboard_redisdata:/data -w /data/appendonlydir "$IMG" \
+  sh -c 'echo y | redis-check-aof --fix appendonly.aof.manifest'
+$C up -d redis        # atau: bash deploy/upgrade.sh start (di tengah upgrade)
+```
+
+Job antrean yang tercatat setelah titik rusak hilang: dataset yang tertahan "Memproses" diunggah ulang.
+Kejadian 2026-10-23: preflight pertama kehabisan disk saat backup lengkap → AOF terpotong → `start` v1.4.1
+gagal; diperbaiki dengan langkah di atas. Preflight kini memeriksa Redis sehat dan ruang untuk backup lengkap.
+
+## 13. Rilis satu perintah dari Mac (`deploy/release.sh`)
+
+Cara rilis biasa mulai v1.4.2 — menggantikan langkah manual §10/§11. Syarat: PR rilis (berisi commit
+`chore(release): v<versi>` dari `aitk release`) sudah digabung ke `main`; Mac di jaringan kantor/VPN.
+
+```bash
+cd ~/Documents/Projects/pcpexpress/data-dashboard
+git checkout main && git pull --ff-only origin main
+bash deploy/release.sh --quick --seed <slug,…>    # --quick: rilis TANPA migrasi; --seed: panduan yang berubah
+```
+
+Skrip berhenti di langkah pertama yang gagal (urutan lengkap di kepala `deploy/release.sh`): cek lokal + tag
+→ build image (bila belum ada) → kirim arsip + `upgrade.sh` → **preflight di server (backup DB dulu)** →
+sinkron kode (`git archive`) → `load` → `migrate` → `start` → seed panduan. Password/kunci SSH diminta sekali
+(koneksi dipakai ulang). Produksi baru berubah di langkah `load/migrate/start`.
+
+- **`--quick`** memakai backup harian terverifikasi (checksum cocok) yang umurnya ≤ 26 jam alih-alih backup
+  lengkap baru (±25 menit, memakan disk ± 3 × ukuran arsip); dump database tetap dibuat baru. Pakai hanya
+  untuk rilis **tanpa migrasi** (lihat CHANGELOG/PR). Tanpa backup harian yang cukup baru, preflight otomatis
+  membuat backup lengkap.
+- Gagal di preflight: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
+- Gagal setelah `load` dimulai: **jangan** ulangi skrip; ikuti pesan `upgrade.sh` (rollback rilis tanpa
+  migrasi = ganti `IMAGE_TAG` ke `prev-<stamp>`, §11; Redis rusak = §12).

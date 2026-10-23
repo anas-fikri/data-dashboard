@@ -14,6 +14,8 @@
 # rahasia), dump database PLAINTEXT (hapus setelah backup harian berikutnya terverifikasi), arsip kode lama,
 # log pemeriksaan. Secret tidak pernah dicetak; kredensial DB hanya lewat env di container backup (pgenv.sh).
 # Variabel: UPGRADE_DIR (folder status), MIN_FREE_GB (bawaan 15), FORCE=1 (abaikan job aktif di preflight),
+# REUSE_BACKUP_HOURS=N (preflight memakai backup terverifikasi yang umurnya ≤ N jam alih-alih backup lengkap
+# baru — rilis tanpa migrasi; dump database tetap dibuat baru),
 # ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
 # (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
@@ -133,6 +135,15 @@ preflight() {
   for s in app worker backup; do
     [ -n "$("${C[@]}" ps -q "$s" 2>/dev/null | head -1)" ] || die "service $s tidak berjalan — preflight dibuat untuk produksi yang hidup"
   done
+  # Redis yang rusak (mis. AOF terpotong saat disk penuh) baru ketahuan di `start` setelah app/worker berhenti.
+  local rcid rh
+  rcid=$("${C[@]}" ps -q redis 2>/dev/null | head -1)
+  rh=$([ -z "$rcid" ] || docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$rcid")
+  echo "   redis: ${rh:-tidak berjalan}"
+  [ "$rh" = healthy ] || {
+    DIE_HINT="Perbaiki Redis dulu (docs/runbook-deploy.md §12: salin appendonlydir, redis-check-aof --fix)."
+    die "redis tidak sehat"
+  }
 
   info "2/7 pemeriksaan SQL pra-deploy"
   failed=$(sql_count "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;") ||
@@ -188,11 +199,28 @@ SQL
   if git rev-parse --short HEAD >/dev/null 2>&1; then record OLD_COMMIT "$(git rev-parse HEAD)"; fi
   echo "   $STATE/kode-lama.tar.gz ($(du -h "$STATE/kode-lama.tar.gz" | cut -f1))"
 
-  info "6/7 backup terenkripsi lengkap (database + storage, backup.sh)"
-  out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }
-  echo "$out" | sed 's/^/   /'
-  archive=$(echo "$out" | sed -n 's/.*arsip: \(dashboard-[0-9TZ]*\.tar\.age\).*/\1/p' | tail -1)
-  [ -n "$archive" ] || die "nama arsip backup tidak terbaca dari log backup.sh"
+  info "6/7 backup terenkripsi (database + storage)"
+  # Arsip terbaru + umurnya (detik) + ukurannya (GB, dibulatkan ke atas); checksum wajib cocok.
+  local latest age gb=0
+  latest=$("${C[@]}" run --rm --no-deps -T backup sh -c 'cd /backups &&
+    f=$(ls -1t dashboard-*.tar.age 2>/dev/null | head -n1) && [ -n "$f" ] &&
+    sha256sum -c "$f.sha256" >/dev/null 2>&1 &&
+    echo "$f $(( $(date +%s) - $(stat -c %Y "$f") )) $(( ($(stat -c %s "$f") + 1073741823) / 1073741824 ))"' \
+    2>/dev/null) || latest=""
+  read -r archive age gb <<<"${latest:-}"
+  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ -n "$archive" ] && [ "${age:-x}" -le $((REUSE_BACKUP_HOURS * 3600)) ] 2>/dev/null; then
+    echo "   memakai backup terverifikasi $archive (umur $((age / 3600)) jam ≤ $REUSE_BACKUP_HOURS jam, checksum cocok)"
+  else
+    # Backup lengkap menyalin seluruh storage ke folder kerja di volume backup sebelum dikemas: butuh
+    # kira-kira 3 × ukuran arsip terakhir (salinan + tar + age) di luar minimum biasa.
+    if [ "$((gb * 3 + ${MIN_FREE_GB:-15}))" -gt "$fdock" ]; then
+      die "ruang disk ${fdock} GB kurang untuk backup lengkap (perkiraan $((gb * 3)) GB + minimum ${MIN_FREE_GB:-15} GB)"
+    fi
+    out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }
+    echo "$out" | sed 's/^/   /'
+    archive=$(echo "$out" | sed -n 's/.*arsip: \(dashboard-[0-9TZ]*\.tar\.age\).*/\1/p' | tail -1)
+    [ -n "$archive" ] || die "nama arsip backup tidak terbaca dari log backup.sh"
+  fi
   record BACKUP_ARCHIVE "$archive"
 
   info "7/7 dump database pra-upgrade (pg_dump custom) + verifikasi"

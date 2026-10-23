@@ -32,7 +32,10 @@ flag() { [ -f "$FAKE/$1" ]; }
 if [ "$1" = info ]; then echo "$FAKE"; exit 0; fi
 if [ "$1" = tag ]; then exit 0; fi
 if [ "$1" = load ]; then cat >/dev/null; echo "Loaded image: dashboard-app:baru"; exit 0; fi
-if [ "$1" = inspect ]; then echo "sha256:lama"; exit 0; fi
+if [ "$1" = inspect ]; then
+  case "$*" in *Health*) flag redis-unhealthy && echo unhealthy || echo healthy ;; *) echo "sha256:lama" ;; esac
+  exit 0
+fi
 if [ "$1" = image ]; then
   for a; do last=$a; done
   case "$*" in *"{{.Id}}"*) echo "sha256:$last" ;; esac
@@ -62,6 +65,8 @@ case "$svc:$*" in
   worker:*check-segments*) flag segments-fail && { echo "selisih: 1"; exit 1; }; echo "sheets: 1"; exit 0 ;;
   worker:*) echo ok; exit 0 ;;
   backup:pg_restore*) cat "$FAKE/dumplist"; exit 0 ;;
+  backup:backup.sh*) echo "arsip: dashboard-20261023T000000Z.tar.age"; exit 0 ;;
+  "backup:sh -c"*) flag recent-backup && echo "dashboard-20261022T190000Z.tar.age 3600 1"; exit 0 ;;
   backup:*pg_dump*)
     for a; do name=$a; done
     echo dump >"$out/$name"; wc -l <"$FAKE/tables" | tr -d ' '; exit 0 ;;
@@ -210,6 +215,50 @@ describe("upgrade.sh migrate", { timeout: 60_000 }, () => {
     expect(calls()).not.toContain("pg_dump");
   });
 });
+
+describe(
+  "upgrade.sh preflight (T-cfd7: Redis sehat, pakai ulang backup)",
+  { timeout: 60_000 },
+  () => {
+    const pre = (extra: Record<string, string> = {}) =>
+      runWith({ MIN_FREE_GB: "0", ...extra }, "preflight");
+
+    it("Redis tidak sehat → berhenti sebelum backup/dump, dengan petunjuk perbaikan", () => {
+      writeFileSync(join(root, "redis-unhealthy"), "");
+      const r = pre();
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("redis tidak sehat");
+      expect(r.out).toContain("redis-check-aof");
+      expect(calls()).not.toContain("backup.sh");
+      expect(calls()).not.toContain("pg_dump");
+    });
+
+    it("REUSE_BACKUP_HOURS + backup terverifikasi yang baru → tanpa backup lengkap; dump tetap baru", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "24" });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("memakai backup terverifikasi dashboard-20261022T190000Z.tar.age");
+      expect(r.out).toContain("PREFLIGHT LULUS");
+      expect(calls()).not.toContain("backup.sh");
+      expect(calls()).toContain("pg_dump");
+    });
+
+    it("tanpa REUSE_BACKUP_HOURS → backup lengkap tetap dibuat", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre();
+      expect(r.code, r.out).toBe(0);
+      expect(calls()).toContain("backup.sh");
+      expect(r.out).toContain("PREFLIGHT LULUS");
+    });
+
+    it("backup yang ada lebih tua dari REUSE_BACKUP_HOURS → backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "0" });
+      expect(r.code, r.out).toBe(0);
+      expect(calls()).toContain("backup.sh");
+    });
+  },
+);
 
 describe("upgrade.sh status preflight", { timeout: 60_000 }, () => {
   it("preflight yang tidak selesai (tanpa PREFLIGHT_AT) tidak bisa dilanjutkan", () => {
