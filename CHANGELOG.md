@@ -18,6 +18,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.5.0] - 2026-10-23
+
+### Added
+
+- **T-pxnn:** kotak cari pintar di semua daftar pilihan (e675445)
+- **T-tzxt:** versi aplikasi di footer setiap halaman (083808b)
+- **deploy:** rilis satu perintah dari Mac + preflight cek Redis, ruang backup, pakai ulang backup harian (d0d1fdf)
+
+### Fixed
+
+- **T-85tb:** batas 50 dihitung atas semua sheet buku kerja (termasuk grafik), pesan worker bisa ditindaklanjuti (e1414ab)
+- **T-85tb:** batas 50 sheet berlaku pada pilihan (buku kerja s.d. 200), picker menolak > 50, pembacaan sheet basi tidak membuka picker (3ba900a)
+- **T-85tb:** nama sheet ganda dikirim sekali (dd070f5)
+- **T-pxnn:** Enter tanpa kata kunci tidak mengganti nilai; ketik dari item kembali ke kotak cari; ARIA dialog+listbox; tanpa fokus otomatis di layar sentuh; kotak cari Kolom yang ditampilkan (a085d62)
+- **T-pxnn:** ↓ dari kotak cari kosong ke pilihan saat ini (d97c497)
+- **T-qqrd:** image dari tree kotor ditandai -dirty; angka preflight berawalan nol ditolak (f3beaef)
+- **T-qqrd:** image/arsip pasti dari tag, --quick dicek ke migrasi produksi, variabel preflight diteruskan (c2d9cee)
+- **T-tzxt:** versi di footer hanya untuk pengguna yang sudah masuk (T-066); uji landmark + scroll per halaman (e785231)
+
 ## [1.4.1] - 2026-10-23
 
 ### Fixed
