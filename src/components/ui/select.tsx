@@ -175,7 +175,11 @@ function SelectSearch() {
     const items = options(root);
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      items[0]?.focus();
+      // Tanpa kata kunci: ke pilihan saat ini (seperti Select tanpa kotak cari); dengan kata kunci: hasil pertama.
+      (query.trim()
+        ? items[0]
+        : (items.find((el) => el.dataset.state === "checked") ?? items[0])
+      )?.focus();
     } else if (e.key === "Enter") {
       e.preventDefault();
       if (!query.trim()) {
