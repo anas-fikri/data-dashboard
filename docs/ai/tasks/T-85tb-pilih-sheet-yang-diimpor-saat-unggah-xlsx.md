@@ -6,7 +6,7 @@ profile: standard
 tags:
   - ui
 created: "2026-10-23T11:22:17Z"
-updated: "2026-10-23T11:22:17Z"
+updated: "2026-10-23T12:01:42Z"
 created_by: claude-code
 ---
 
@@ -22,3 +22,5 @@ created_by: claude-code
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-10-23T12:01:42Z Rencana: docs/ai/plans/2026-10-23-pilih-sheet-unggah.md (baca daftar sheet di browser, kolom selectedSheets, worker onlySheets, picker; mode periode di luar v1).
