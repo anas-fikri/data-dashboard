@@ -726,3 +726,20 @@ migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabe
 tidak perlu dipulihkan. Satu catatan: kode v1.3.1 menolak entri kolom filter yang membawa filter bawaan
 (`default`, T-vb7q) — kolom filter berbawaan **tidak tampil** di v1.3.1 sampai upgrade lagi (data di DB tetap).
 Bila rollback akan lama, hapus bawaan dulu (mode edit → hapus semua filter → **Hapus filter bawaan**).
+
+## 11. Rilis v1.4.1 (hotfix keamanan Next.js, T-cfd7)
+
+Next.js 16.4.0 → **16.4.2**: menutup GHSA-2464-fhr4-w9xw (RCE lewat Image Optimization + SVG),
+GHSA-p3m5-59mp-jv5r (DoS Server Actions), GHSA-673q-mjm6-r5xr (RCE `use cache`). Tanpa perubahan kode
+aplikasi, migrasi, env, atau panduan. **Segera** deploy; v1.4.0 dan sebelumnya rentan.
+
+Mac (folder repo): `git pull --ff-only origin main` (setelah PR hotfix digabung) →
+`git tag -a v1.4.1 -m v1.4.1 <commit "chore(release): v1.4.1"> && git push origin v1.4.1` →
+`npm ci` → `bash deploy/images.sh build` → `bash deploy/images.sh save ~/dashboard-v1.4.1.tar.gz` →
+`scp ~/dashboard-v1.4.1.tar.gz olympus:/tmp/dashboard-images.tar.gz` → `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`
+→ `git archive v1.4.1 | ssh olympus 'tar -x -C /data/docker-data/data-dashboard'` **setelah** preflight lulus.
+
+Server (`/data/docker-data/data-dashboard`): `bash /tmp/upgrade.sh preflight` (backup DB dulu; harus
+`PREFLIGHT LULUS`) → sinkron kode (perintah `git archive` di atas dari Mac) → `bash deploy/upgrade.sh load
+/tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` → `bash deploy/upgrade.sh start`. Cek `/health`
+(admin) = 1.4.1. Tanpa seed panduan.
