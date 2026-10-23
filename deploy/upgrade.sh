@@ -15,7 +15,8 @@
 # log pemeriksaan. Secret tidak pernah dicetak; kredensial DB hanya lewat env di container backup (pgenv.sh).
 # Variabel: UPGRADE_DIR (folder status), MIN_FREE_GB (bawaan 15), FORCE=1 (abaikan job aktif di preflight),
 # REUSE_BACKUP_HOURS=N (preflight memakai backup terverifikasi yang umurnya ≤ N jam alih-alih backup lengkap
-# baru — rilis tanpa migrasi; dump database tetap dibuat baru),
+# baru — rilis tanpa migrasi; dump database tetap dibuat baru), BACKUP_EST_GB (perkiraan ukuran backup bila
+# belum ada arsip),
 # ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
 # (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
@@ -200,22 +201,30 @@ SQL
   echo "   $STATE/kode-lama.tar.gz ($(du -h "$STATE/kode-lama.tar.gz" | cut -f1))"
 
   info "6/7 backup terenkripsi (database + storage)"
-  # Arsip terbaru + umurnya (detik) + ukurannya (GB, dibulatkan ke atas); checksum wajib cocok.
-  local latest age gb=0
+  # Arsip terbaru: nama, umur (detik), ukuran (GB, dibulatkan ke atas), checksum cocok (1/0). Ukuran dibaca
+  # terlepas dari checksum: arsip rusak tetap memberi perkiraan ruang (dan diberi peringatan).
+  local latest age gb ok need
   latest=$("${C[@]}" run --rm --no-deps -T backup sh -c 'cd /backups &&
     f=$(ls -1t dashboard-*.tar.age 2>/dev/null | head -n1) && [ -n "$f" ] &&
-    sha256sum -c "$f.sha256" >/dev/null 2>&1 &&
-    echo "$f $(( $(date +%s) - $(stat -c %Y "$f") )) $(( ($(stat -c %s "$f") + 1073741823) / 1073741824 ))"' \
+    if sha256sum -c "$f.sha256" >/dev/null 2>&1; then ok=1; else ok=0; fi &&
+    echo "$f $(( $(date +%s) - $(stat -c %Y "$f") )) $(( ($(stat -c %s "$f") + 1073741823) / 1073741824 )) $ok"' \
     2>/dev/null) || latest=""
-  read -r archive age gb <<<"${latest:-}"
-  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ -n "$archive" ] && [ "${age:-x}" -le $((REUSE_BACKUP_HOURS * 3600)) ] 2>/dev/null; then
+  read -r archive age gb ok <<<"${latest:-}"
+  [ -z "$archive" ] || [ "${ok:-0}" = 1 ] || warn "checksum arsip backup terbaru $archive TIDAK cocok — periksa backup harian"
+  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ -n "$archive" ] && [ "${ok:-0}" = 1 ] &&
+    [ "${age:-x}" -le $((REUSE_BACKUP_HOURS * 3600)) ] 2>/dev/null; then
     echo "   memakai backup terverifikasi $archive (umur $((age / 3600)) jam ≤ $REUSE_BACKUP_HOURS jam, checksum cocok)"
   else
-    # Backup lengkap menyalin seluruh storage ke folder kerja di volume backup sebelum dikemas: butuh
-    # kira-kira 3 × ukuran arsip terakhir (salinan + tar + age) di luar minimum biasa.
-    if [ "$((gb * 3 + ${MIN_FREE_GB:-15}))" -gt "$fdock" ]; then
-      die "ruang disk ${fdock} GB kurang untuk backup lengkap (perkiraan $((gb * 3)) GB + minimum ${MIN_FREE_GB:-15} GB)"
-    fi
+    # Backup lengkap: salinan storage di folder kerja volume backup + arsip .part (tar | age streaming):
+    # puncak ± 2 × ukuran arsip terakhir, ditambah margin 5 GB dan minimum biasa.
+    [ -n "$archive" ] || [ -n "${BACKUP_EST_GB:-}" ] ||
+      die "ukuran backup tidak terbaca (belum ada arsip di volume backup) — isi BACKUP_EST_GB=<perkiraan GB> lalu ulangi"
+    gb=${gb:-${BACKUP_EST_GB:-0}}
+    need=$((gb * 2 + 5 + ${MIN_FREE_GB:-15}))
+    [ "$fdock" -ge "$need" ] || {
+      DIE_HINT="Kosongkan ruang (image lama: docker rmi dashboard-<s>:<tag lama>; JANGAN prune) atau, untuk rilis tanpa migrasi, REUSE_BACKUP_HOURS=26 (release.sh --quick). MIN_FREE_GB menurunkan minimum."
+      die "ruang disk ${fdock} GB kurang untuk backup lengkap (perlu ± ${need} GB: 2 × ${gb} GB arsip + 5 + minimum ${MIN_FREE_GB:-15})"
+    }
     out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }
     echo "$out" | sed 's/^/   /'
     archive=$(echo "$out" | sed -n 's/.*arsip: \(dashboard-[0-9TZ]*\.tar\.age\).*/\1/p' | tail -1)

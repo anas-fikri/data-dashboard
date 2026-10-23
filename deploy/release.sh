@@ -2,22 +2,23 @@
 # Rilis ke produksi dengan SATU perintah dari mesin pemilik (Mac), runbook-deploy §13:
 #
 #   bash deploy/release.sh            rilis versi package.json (main harus sudah memuat commit rilisnya)
-#   bash deploy/release.sh --quick    + pakai backup harian terverifikasi ≤ 26 jam (rilis TANPA migrasi)
+#   bash deploy/release.sh --quick    + pakai backup harian terverifikasi ≤ 26 jam (ditolak bila rilis bermigrasi)
 #   bash deploy/release.sh --seed susun-dashboard,widget-pivot   + perbarui artikel panduan itu
 #
-# Urutan (berhenti di langkah pertama yang gagal; produksi baru diubah di langkah 6):
-#   1. lokal: branch main bersih = origin/main; tag v<versi> di commit "chore(release): v<versi>"
-#      (dibuat + di-push bila belum ada)
-#   2. image: build bila belum ada di Docker lokal; arsip ~/dashboard-v<versi>.tar.gz bila belum ada
-#   3. kirim arsip + deploy/upgrade.sh rilis ini ke server (/tmp)
+# Semua yang dikirim berasal dari TAG v<versi> (bukan HEAD main): image dibangun dari worktree tag, dan
+# kode + deploy/upgrade.sh juga dari tag — PR lain yang sudah digabung sesudah rilis tidak ikut.
+# Urutan (berhenti di langkah pertama yang gagal; produksi baru berubah di langkah 7):
+#   1. lokal: main bersih = origin/main; tag v<versi> di commit "chore(release): v<versi>" (dibuat/di-push)
+#   2. image dari tag (dibangun ulang bila belum ada / commit-nya beda); arsip ~/dashboard-v<versi>.tar.gz
+#   3. kirim arsip + upgrade.sh tag ke folder sementara baru di server
 #   4. server: preflight dengan kode LAMA (backup + dump database; --quick memakai backup harian)
-#   5. sinkron kode: git archive v<versi> → folder aplikasi di server
-#   6. server: load → migrate → start (jeda layanan ± 2–5 menit)
-#   7. (opsional) seed panduan --update --only <slug>
-#
-# Satu koneksi SSH dipakai ulang (ControlMaster): password/kunci diminta sekali, tidak ada login berulang
-# (fail2ban). Gagal sesudah langkah 6 dimulai: JANGAN ulangi skrip — baca pesan upgrade.sh (rollback =
-# ganti IMAGE_TAG ke prev-<stamp>, §11). Kompatibel bash 3.2 (macOS).
+#   5. server: load image (produksi masih image lama)
+#   6. sinkron kode tag → folder aplikasi
+#   7. server: migrate → start (jeda layanan ± 2–5 menit)
+#   8. (opsional) seed panduan --update --only <slug>
+# Gagal SETELAH langkah 4 lulus: jangan jalankan ulang skrip (preflight baru akan mengarsipkan kode yang
+# mungkin sudah tercampur); pesan galat menyebut perintah lanjutan yang tepat. Satu koneksi SSH dipakai ulang
+# (ControlMaster): password/kunci diminta sekali (fail2ban). Kompatibel bash 3.2 (macOS).
 # Variabel: SERVER (bawaan olympus), APP_DIR (bawaan /data/docker-data/data-dashboard).
 set -euo pipefail
 
@@ -29,78 +30,134 @@ while [ $# -gt 0 ]; do
   case $1 in
     --quick) QUICK=1 ;;
     --seed) SEED=${2:?--seed butuh daftar slug, mis. susun-dashboard,widget-pivot}; shift ;;
-    *) sed -n '2,24p' "$0" >&2; exit 1 ;;
+    *) sed -n '2,25p' "$0" >&2; exit 1 ;;
   esac
   shift
 done
 
-die() { echo "GAGAL: $*" >&2; exit 1; }
+die() { printf 'GAGAL: %s\n' "$*" >&2; exit 1; }
 step() { printf '\n== %s\n' "$*"; }
+
+case $APP_DIR in *[!A-Za-z0-9/_.-]*) die "APP_DIR hanya boleh huruf, angka, / _ . -" ;; esac
+case $SEED in *[!a-z0-9,-]*) die "--seed hanya slug (huruf kecil, angka, -, koma)" ;; esac
 
 cd "$(dirname "$0")/.."
 ver=$(node -p 'require("./package.json").version')
 tag="v$ver"
 archive="$HOME/dashboard-$tag.tar.gz"
 mkdir -p "$HOME/.ssh"
-SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-dashboard-%r@%h:%p" -o ControlPersist=20m)
+# %C = hash koneksi: path socket pendek (batas 104 byte di macOS), multiplexing tidak mati diam-diam.
+SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=$HOME/.ssh/cm-dash-%C" -o ControlPersist=20m)
 rssh() { ssh "${SSH_OPTS[@]}" "$SERVER" "$@"; }
 
-step "1/7 cek lokal ($tag)"
+step "1/8 cek lokal ($tag)"
 [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || die "jalankan dari branch main (git checkout main)"
 [ -z "$(git status --porcelain)" ] || die "ada perubahan lokal yang belum di-commit (git status)"
-git fetch -q origin main --tags
+git fetch -q origin main || die "git fetch origin main gagal (jaringan?)"
+git fetch -q origin --tags || die "git fetch --tags gagal — tag lokal bentrok dengan origin? (git tag -d <tag>)"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] || die "main lokal beda dengan origin/main (git pull --ff-only origin main)"
 if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   rel=$(git log --format=%H --grep="^chore(release): $tag\$" -1)
   [ -n "$rel" ] || die "commit \"chore(release): $tag\" tidak ada di main — rilis dulu (aitk release) dan gabungkan PR-nya"
   git tag -a "$tag" -m "$tag" "$rel"
-  git push -q origin "$tag"
-  echo "   tag $tag dibuat di $(git rev-parse --short "$rel") dan di-push"
-else
-  echo "   tag $tag sudah ada ($(git rev-parse --short "$tag^{commit}"))"
+  echo "   tag $tag dibuat di $(git rev-parse --short "$rel")"
+fi
+if [ -z "$(git ls-remote --tags origin "refs/tags/$tag")" ]; then
+  git push -q origin "$tag" || die "push tag $tag gagal"
+  echo "   tag $tag di-push"
+fi
+tagc=$(git rev-parse --short "$tag^{commit}")
+git merge-base --is-ancestor "$tagc" HEAD || die "tag $tag ($tagc) bukan bagian dari main"
+echo "   tag $tag = $tagc"
+if [ -n "$QUICK" ]; then
+  prev=$(git describe --tags --abbrev=0 "$tag^" 2>/dev/null || true)
+  if [ -n "$prev" ] && [ -n "$(git diff --name-only "$prev" "$tag" -- prisma/migrations)" ]; then
+    die "rilis $tag berisi migrasi database (sejak $prev) — jalankan tanpa --quick (backup lengkap)"
+  fi
 fi
 
-step "2/7 image $tag"
-if docker image inspect "dashboard-app:$tag" >/dev/null 2>&1; then
-  echo "   image dashboard-*:$tag sudah ada di Docker lokal"
+step "2/8 image $tag dari tag"
+img_commit=$(docker image inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "dashboard-app:$tag" 2>/dev/null |
+  sed -n 's/^APP_COMMIT=//p' | head -n1 || true)
+have=1
+for s in app worker renderer backup; do
+  docker image inspect "dashboard-$s:$tag" >/dev/null 2>&1 || have=""
+done
+if [ -n "$have" ] && [ "$img_commit" = "$tagc" ]; then
+  echo "   image dashboard-*:$tag sudah ada (commit $tagc)"
 else
-  bash deploy/images.sh build "$tag"
+  wt="$(mktemp -d)/rilis-$tag"
+  git worktree add -q --detach "$wt" "$tag"
+  (cd "$wt" && bash deploy/images.sh build "$tag") || { git worktree remove --force "$wt"; die "build image gagal"; }
+  git worktree remove --force "$wt"
+  rm -f "$archive"
 fi
-if [ -s "$archive" ]; then
+if [ -s "$archive" ] && gzip -t "$archive" 2>/dev/null; then
   echo "   arsip $archive sudah ada ($(du -h "$archive" | cut -f1))"
 else
+  rm -f "$archive"
   bash deploy/images.sh save "$archive" "$tag"
 fi
 
-step "3/7 kirim arsip + upgrade.sh ke $SERVER (password/kunci SSH diminta sekali di sini)"
+step "3/8 kirim arsip + upgrade.sh ke $SERVER (password/kunci SSH diminta sekali di sini)"
 rssh true || die "tidak bisa masuk ke $SERVER — cek jaringan/VPN (jangan ulangi login berkali-kali)"
-scp "${SSH_OPTS[@]}" -q "$archive" "$SERVER:/tmp/dashboard-images.tar.gz"
-scp "${SSH_OPTS[@]}" -q deploy/upgrade.sh "$SERVER:/tmp/upgrade.sh"
-echo "   terkirim"
+rdir=$(rssh 'mktemp -d /tmp/dashboard-rilis.XXXXXX') || die "folder sementara di server gagal dibuat"
+git show "$tag:deploy/upgrade.sh" >"$HOME/.dashboard-upgrade-$tag.sh"
+scp "${SSH_OPTS[@]}" -q "$archive" "$SERVER:$rdir/images.tar.gz" || die "kirim arsip gagal (produksi tidak diubah)"
+scp "${SSH_OPTS[@]}" -q "$HOME/.dashboard-upgrade-$tag.sh" "$SERVER:$rdir/upgrade.sh" || die "kirim upgrade.sh gagal"
+rm -f "$HOME/.dashboard-upgrade-$tag.sh"
+echo "   terkirim ke $SERVER:$rdir"
 
-step "4/7 preflight di server (kode lama; produksi belum diubah)"
+step "4/8 preflight di server (kode lama; produksi belum diubah)"
 reuse=""
 [ -z "$QUICK" ] || reuse="REUSE_BACKUP_HOURS=26"
-rssh -t "cd '$APP_DIR' && $reuse bash /tmp/upgrade.sh preflight" ||
+rssh -t "cd $APP_DIR && $reuse bash $rdir/upgrade.sh preflight" ||
   die "preflight gagal — produksi TIDAK diubah; perbaiki sesuai pesan di atas lalu jalankan ulang skrip ini"
 
-step "5/7 sinkron kode $tag ke $APP_DIR"
-git archive "$tag" | rssh "tar -x -C '$APP_DIR'"
-got=$(rssh "grep -m1 '\"version\"' '$APP_DIR/package.json'")
-case $got in *"\"$ver\""*) echo "   package.json di server: $got" ;; *) die "versi di server ($got) ≠ $ver setelah sinkron" ;; esac
+# Mulai di sini skrip tidak boleh dijalankan ulang: setiap galat menyebut lanjutan yang tepat.
+cont() { printf '\nLanjutkan manual (JANGAN jalankan ulang skrip):\n%s\n' "$*" >&2; }
 
-step "6/7 load → migrate → start (jeda layanan dimulai)"
-rssh -t "cd '$APP_DIR' && bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz &&
-  bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start" ||
-  die "upgrade berhenti — JANGAN ulangi skrip; ikuti pesan upgrade.sh di atas (runbook-deploy §11/§12)"
-
-if [ -n "$SEED" ]; then
-  step "7/7 perbarui panduan: $SEED"
-  rssh "cd '$APP_DIR' && docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
-    node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only '$SEED'"
-else
-  step "7/7 panduan: tidak ada yang diperbarui (pakai --seed <slug,…> bila rilis mengubah panduan)"
+step "5/8 muat image $tag di server (produksi masih image lama)"
+if ! rssh -t "cd $APP_DIR && bash $rdir/upgrade.sh load $rdir/images.tar.gz"; then
+  cont "  produksi masih berjalan dengan image + kode lama. Perbaiki penyebab (lihat di atas), lalu di server:
+    cd $APP_DIR && bash $rdir/upgrade.sh load $rdir/images.tar.gz
+  lalu dari Mac:  git archive $tag | ssh $SERVER 'tar -x -C $APP_DIR'
+  lalu di server: bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start"
+  die "load image gagal"
 fi
 
+step "6/8 sinkron kode $tag ke $APP_DIR"
+if ! git archive "$tag" | rssh "tar -x -C $APP_DIR"; then
+  cont "  produksi masih berjalan dengan image lama; kode di server mungkin sebagian baru. Dari Mac ulangi HANYA:
+    git archive $tag | ssh $SERVER 'tar -x -C $APP_DIR'
+  lalu di server: cd $APP_DIR && bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start"
+  die "sinkron kode gagal"
+fi
+got=$(rssh "grep -m1 '\"version\"' $APP_DIR/package.json" || true)
+case $got in
+  *"\"$ver\""*) echo "   package.json di server: $got" ;;
+  *) cont "  periksa $APP_DIR/package.json di server, ulangi: git archive $tag | ssh $SERVER 'tar -x -C $APP_DIR'
+  lalu: bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start"
+     die "versi di server ($got) ≠ $ver setelah sinkron" ;;
+esac
+
+step "7/8 migrate → start (jeda layanan dimulai)"
+if ! rssh -t "cd $APP_DIR && bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start"; then
+  cont "  ikuti pesan upgrade.sh di atas: migrate/start bisa diulang di server
+    (cd $APP_DIR && bash deploy/upgrade.sh migrate && bash deploy/upgrade.sh start);
+  rollback rilis tanpa migrasi = ganti IMAGE_TAG ke prev-<stamp> (runbook §11); Redis rusak = §12."
+  die "upgrade berhenti"
+fi
+
+if [ -n "$SEED" ]; then
+  step "8/8 perbarui panduan: $SEED"
+  rssh "cd $APP_DIR && docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+    node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only $SEED" ||
+    die "RILIS $tag SUDAH TERPASANG, hanya seed panduan yang gagal — ulangi perintah seed (runbook 'Isi panduan')"
+else
+  step "8/8 panduan: tidak ada yang diperbarui (pakai --seed <slug,…> bila rilis mengubah panduan)"
+fi
+
+rssh "rm -rf $rdir" || true
 rm -f "$archive"
-printf '\nRILIS %s SELESAI. Cek /health sebagai admin (versi %s). Arsip lokal dihapus.\n' "$tag" "$ver"
+printf '\nRILIS %s SELESAI. Cek /health sebagai admin (versi %s).\n' "$tag" "$ver"

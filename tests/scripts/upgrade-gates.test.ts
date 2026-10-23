@@ -66,7 +66,7 @@ case "$svc:$*" in
   worker:*) echo ok; exit 0 ;;
   backup:pg_restore*) cat "$FAKE/dumplist"; exit 0 ;;
   backup:backup.sh*) echo "arsip: dashboard-20261023T000000Z.tar.age"; exit 0 ;;
-  "backup:sh -c"*) flag recent-backup && echo "dashboard-20261022T190000Z.tar.age 3600 1"; exit 0 ;;
+  "backup:sh -c"*) flag recent-backup && echo "dashboard-20261022T190000Z.tar.age 3600 1 $(flag bad-checksum && echo 0 || echo 1)"; exit 0 ;;
   backup:*pg_dump*)
     for a; do name=$a; done
     echo dump >"$out/$name"; wc -l <"$FAKE/tables" | tr -d ' '; exit 0 ;;
@@ -249,6 +249,30 @@ describe(
       expect(r.code, r.out).toBe(0);
       expect(calls()).toContain("backup.sh");
       expect(r.out).toContain("PREFLIGHT LULUS");
+    });
+
+    it("checksum arsip terbaru tidak cocok → peringatan, tidak dipakai ulang, backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      writeFileSync(join(root, "bad-checksum"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "24" });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("TIDAK cocok");
+      expect(calls()).toContain("backup.sh");
+    });
+
+    it("belum ada arsip backup dan tanpa BACKUP_EST_GB → berhenti sebelum backup (ruang tidak bisa diperkirakan)", () => {
+      const r = pre();
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("BACKUP_EST_GB");
+      expect(calls()).not.toContain("backup.sh");
+    });
+
+    it("ruang disk kurang untuk backup lengkap → berhenti dengan petunjuk --quick/MIN_FREE_GB", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ MIN_FREE_GB: "999999" });
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("ruang");
+      expect(calls()).not.toContain("backup.sh");
     });
 
     it("backup yang ada lebih tua dari REUSE_BACKUP_HOURS → backup lengkap", () => {
