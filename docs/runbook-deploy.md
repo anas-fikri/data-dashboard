@@ -728,8 +728,9 @@ migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabe
   menolak entri kolom filter yang membawa filter bawaan (`default`, T-vb7q) — kolom filter berbawaan **tidak
   tampil** sampai upgrade lagi (data di DB tetap). Bila rollback akan lama, hapus bawaan dulu (mode edit →
   hapus semua filter → **Hapus filter bawaan**).
-- `bash deploy/upgrade.sh rollback` memulihkan image lama **dan database dari dump preflight**: semua data
-  sesudah preflight (unggahan, dashboard, pengguna) hilang dari DB. Skrip meminta ketik `ROLLBACK` dan menyimpan
+- `bash deploy/upgrade.sh rollback` memulihkan image lama **dan database dari dump rollback** (`db-migrate-*`,
+  diambil saat `migrate` setelah app/worker berhenti): semua data sesudah langkah `migrate` (unggahan, dashboard,
+  pengguna) hilang dari DB. Skrip meminta ketik `ROLLBACK` dan menyimpan
   `db-sebelum-rollback-*.dump` dulu. Pakai hanya bila database memang perlu dikembalikan.
 
 ## 11. Rilis v1.4.1 (hotfix keamanan Next.js, T-cfd7)
@@ -752,5 +753,10 @@ Langkah (urut; perintah Mac dan server bergantian):
 
 **Rollback** (hanya sementara — versi lama kembali rentan): ganti image saja, data tetap — di `.env.prod`
 ganti `IMAGE_TAG=prev-<stamp>` lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`.
-Jangan pakai `upgrade.sh rollback` untuk hotfix ini: skrip itu juga memulihkan database dari dump preflight
-(data sesudah preflight hilang).
+Jangan pakai `upgrade.sh rollback` untuk hotfix ini: skrip itu juga memulihkan database dari dump rollback
+(`db-migrate-*`; data sesudah langkah `migrate` hilang).
+
+Catatan T-cfd7: `upgrade.sh migrate`/`start` kini melewati `check-segments.mjs` dan pemeriksaan "data lama tetap
+non-periode" bila produksi sudah di G-6 (`OLD_MIGRATION` ≥ `20261019140000_t036_segments`) — sebelumnya gerbang
+itu gagal begitu ada satu dataset per periode. Salin `deploy/upgrade.sh` rilis ini ke server (`scp` di langkah 1)
+sebelum preflight.

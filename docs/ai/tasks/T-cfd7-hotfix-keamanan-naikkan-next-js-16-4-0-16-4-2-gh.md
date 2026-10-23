@@ -7,7 +7,7 @@ profile_pinned: true
 tags:
   - security
 created: "2026-10-23T01:35:50Z"
-updated: "2026-10-23T02:37:15Z"
+updated: "2026-10-23T02:42:58Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -23,28 +23,34 @@ review:
       by: claude-reviewer-subagent
       at: "2026-10-23T02:37:15Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-10-23T02:42:58Z"
+      findings: 2
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 288306
+    duration_ms: 209925
     summary: |-
-      …:"t072mvkay18sds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1792719584566,"service":"data-dashboard","sheetId":"cmv4kljx40009oczvdgrdord1","versionId":"cmv4kljx40009oczvdgrdorv1","err":"Error: disk penuh","msg":"cache urutan grid gagal dibangun"}
-      {"level":40,"time":1792719599162,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1792719599184,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1792719599189,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1792719599200,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1792719610151,"service":"data-dashboard","host":"127.0.0.1","port":44945,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792719610207,"service":"data-dashboard","host":"127.0.0.1","port":40713,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1792719610302,"service":"data-dashboard","host":"127.0.0.1","port":42241,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792719610424,"service":"data-dashboard","host":"127.0.0.1","port":44119,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1792719632961,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      …tasetId":"t072mvkd6m1vds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1792723331339,"service":"data-dashboard","host":"127.0.0.1","port":45303,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792723331391,"service":"data-dashboard","host":"127.0.0.1","port":41803,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1792723331490,"service":"data-dashboard","host":"127.0.0.1","port":44753,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792723331596,"service":"data-dashboard","host":"127.0.0.1","port":38127,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1792723342215,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1792723353742,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1792723353763,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1792723353768,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1792723353781,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  228 passed | 1 skipped (229)
-            Tests  3074 passed | 10 skipped (3084)
-         Start at  01:38:55
-         Duration  189.48s (tests 81%, import 15%, transform 3%)
+            Tests  3075 passed | 10 skipped (3085)
+         Start at  02:40:52
+         Duration  123.70s (tests 81%, import 15%, transform 3%)
+
+          Isolate  229 workers spawned · ~120ms startup each (spawn + environment, per file)
+                   at least ~9.01s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.4.0 audit
@@ -52,8 +58,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-10-23T01:42:06Z"
-    tree: 4c6b7047eea90651ba2a3d588d0984d2f071ea104926b930392d57a661faa988
+    at: "2026-10-23T02:42:57Z"
+    tree: baf74f6472b135b3a740062a134478374089e8d1a65a37abab0a982e810e4f7d
 ---
 
 ## Objective

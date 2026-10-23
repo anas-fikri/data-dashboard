@@ -338,15 +338,29 @@ EOF
   exit 1
 }
 
+# Migrasi pertama rilis G-6 (T-036). Pemeriksaan "data lama tetap non-periode" dan check-segments (satu segmen
+# legacy per sheet) hanya bermakna untuk upgrade yang MELEWATI G-6: sesudahnya produksi sah punya data per
+# periode (versi non-REPLACE, manifest > 1 segmen) dan gerbang itu akan selalu gagal (T-cfd7).
+G6_FIRST_MIGRATION=20261019140000_t036_segments
+crosses_g6() {
+  local old=${OLD_MIGRATION:-}
+  [ "$old" != "$G6_FIRST_MIGRATION" ] &&
+    [ "$(printf '%s\n%s\n' "$old" "$G6_FIRST_MIGRATION" | LC_ALL=C sort | head -n1)" = "$old" ]
+}
+
 post_migrate_checks() {
   # Setiap gerbang memeriksa status keluarnya sendiri: fungsi ini dipanggil dalam konteks if/||, di mana
   # set -e mati — tanpa itu kueri yang error menghasilkan teks kosong dan terbaca "0 baris" (lulus).
   local ok=0 rows
-  echo "-- check-segments.mjs (T-036, model segmen)"
-  if ! "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >"$STATE/check-segments.log" 2>&1; then
-    ok=1; echo "   GAGAL (exit bukan 0)"
+  if crosses_g6; then
+    echo "-- check-segments.mjs (T-036, model segmen)"
+    if ! "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >"$STATE/check-segments.log" 2>&1; then
+      ok=1; echo "   GAGAL (exit bukan 0)"
+    fi
+    sed 's/^/   /' "$STATE/check-segments.log"
+  else
+    echo "-- check-segments.mjs: dilewati (produksi sudah di G-6: $OLD_MIGRATION)"
   fi
-  sed 's/^/   /' "$STATE/check-segments.log"
   echo "-- T-gcn8: baris judul per file typed = baris judul sheet yang merujuknya (wajib 0 baris)"
   if rows=$(psql_q <<'SQL'
 SELECT t.id FROM "SegmentTyped" t
@@ -364,13 +378,17 @@ SQL
   else
     ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
   fi
-  echo "-- T-049/T-060: data lama tetap non-periode (wajib 0)"
-  if rows=$(sql_count "SELECT (SELECT count(*) FROM \"DatasetVersion\" WHERE mode <> 'REPLACE'
-      OR status = 'AWAITING_CONFIRM' OR \"periodGrain\" IS NOT NULL) + (SELECT count(*) FROM \"Segment\"
-      WHERE \"periodKey\" IS NOT NULL OR \"groupId\" IS NOT NULL OR cardinality(\"colMap\") > 0);"); then
-    echo "   $rows"; [ "$rows" = 0 ] || ok=1
+  if crosses_g6; then
+    echo "-- T-049/T-060: data lama tetap non-periode (wajib 0)"
+    if rows=$(sql_count "SELECT (SELECT count(*) FROM \"DatasetVersion\" WHERE mode <> 'REPLACE'
+        OR status = 'AWAITING_CONFIRM' OR \"periodGrain\" IS NOT NULL) + (SELECT count(*) FROM \"Segment\"
+        WHERE \"periodKey\" IS NOT NULL OR \"groupId\" IS NOT NULL OR cardinality(\"colMap\") > 0);"); then
+      echo "   $rows"; [ "$rows" = 0 ] || ok=1
+    else
+      ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+    fi
   else
-    ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+    echo "-- T-049/T-060: dilewati (data per periode sah setelah G-6)"
   fi
   echo "-- quota-report.mjs (T-039; bandingkan dengan kuota-sebelum.txt)"
   if ! "${C[@]}" run --rm --no-deps -T worker node scripts/quota-report.mjs >"$STATE/quota-report.log" 2>&1; then
@@ -425,8 +443,10 @@ start() {
   else
     echo "   exit 1 (benar)"
   fi
-  echo "-- check-segments.mjs setelah start"
-  "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >/dev/null || rc=1
+  if crosses_g6; then
+    echo "-- check-segments.mjs setelah start"
+    "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >/dev/null || rc=1
+  fi
   "${C[@]}" ps
   [ $rc = 0 ] || gate_fail "verifikasi pasca-deploy ada yang gagal (lihat di atas)"
   record VERIFIED_AT "$(date -u +%s)"
