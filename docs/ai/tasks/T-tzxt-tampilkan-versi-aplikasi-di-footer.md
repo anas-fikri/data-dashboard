@@ -1,17 +1,23 @@
 ---
 id: T-tzxt
 title: Tampilkan versi aplikasi di footer
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
 created: "2026-10-23T11:22:16Z"
-updated: "2026-10-23T13:37:50Z"
+updated: "2026-10-23T13:41:54Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/intelligent-albattani-fd1va8
 base: 96102f23dd68e2dbff5959b955f7112f94450ec3
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-10-23T13:41:54Z"
+      findings: 2
 ---
 
 ## Objective

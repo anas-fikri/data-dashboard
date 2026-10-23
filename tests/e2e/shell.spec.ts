@@ -67,8 +67,9 @@ test.describe("app shell (masuk)", () => {
         await expect(page.getByTestId("app-footer")).toHaveText(
           `Data Dashboard · Versi ${version}`,
         );
+        await expect(page.getByRole("contentinfo")).toHaveCount(1);
+        await noHorizontalScroll(page);
       }
-      await noHorizontalScroll(page);
     }
   });
 

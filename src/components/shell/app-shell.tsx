@@ -173,8 +173,9 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
           {notice}
           {children}
         </main>
-        {/* Versi di footer setiap halaman (T-tzxt): sama dengan menu akun dan /health. */}
-        {appVersion ? (
+        {/* Versi di footer setiap halaman (T-tzxt), seperti menu akun: hanya untuk pengguna yang sudah
+          masuk (T-066) — shell juga dirender dengan user null (sesi tidak sah, DB mati). */}
+        {user && appVersion ? (
           <footer
             className="mx-auto w-full max-w-(--content-max) px-4 pb-4 text-xs text-muted-foreground sm:px-6"
             data-testid="app-footer"
