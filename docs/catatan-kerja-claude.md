@@ -55,6 +55,14 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-10-24 dini hari, sesi cloud)
+
+- Deploy v1.5.0 (23:22Z) berhenti di gerbang pasca-migrasi T-gcn8 (salah alarm: `SegmentTyped.headerRow` NULL =
+  baris judul segmen) → pemilik rollback ke v1.4.1 (tanpa kehilangan data). Perbaikan **T-7czr** + nodemailer
+  10.2.1 → rilis **v1.5.1**; deploy ulang `bash deploy/release.sh` (tanpa `--quick`).
+- Advisori zod (high, semua 3.x) → **T-fnvm** migrasi zod 4 berikutnya (keputusan pemilik: rilis v1.5.1 dulu).
+  `aitk check` merah karena npm audit sampai T-fnvm selesai; T-7czr ditutup setelahnya.
+
 ## Posisi terakhir (2026-10-23 malam, sesi cloud)
 
 - Selesai (done): **T-pxnn** (kotak cari pintar di semua daftar pilihan), **T-tzxt** (versi di footer), **T-tpfh**

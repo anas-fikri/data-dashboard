@@ -35,6 +35,9 @@ describe("ingest raw: xlsx", () => {
     const m = manifest(fx);
     const sheets = repo.byIndex();
     expect(sheets.map((s) => s.name)).toEqual(m.sheets.map((s) => s.name));
+    // T-7czr: file typed mencatat baris judulnya sendiri (bukan NULL → gerbang upgrade T-gcn8 lolos).
+    for (const [id, sh] of repo.sheets) expect(repo.typedHeaderRows.get(id)).toBe(sh.headerRow);
+    expect(repo.typedHeaderRows.size).toBe(3);
     for (const [i, s] of sheets.entries()) {
       expect(s.headerRow).toBe(4);
       // raw = semua baris terisi: baris data + judul/keterangan di atas header + header itu sendiri

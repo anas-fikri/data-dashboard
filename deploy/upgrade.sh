@@ -411,12 +411,15 @@ post_migrate_checks() {
     echo "-- check-segments.mjs: dilewati (produksi sudah di G-6: $OLD_MIGRATION)"
   fi
   echo "-- T-gcn8: baris judul per file typed = baris judul sheet yang merujuknya (wajib 0 baris)"
+  # SegmentTyped.headerRow NULL = baris judul segmen (file sebelum T-gcn8, dan ingest pertama v1.4.x):
+  # dibandingkan nilai efektifnya, sama dengan pembaca data (recast/period-setup).
   if rows=$(psql_q <<'SQL'
 SELECT t.id FROM "SegmentTyped" t
+JOIN "Segment" g ON g.id = t."segmentId"
 JOIN "SheetSegment" m ON m."segmentTypedId" = t.id
 JOIN "Sheet" s ON s.id = m."sheetId"
 WHERE (SELECT count(*) FROM "SheetSegment" m2 WHERE m2."sheetId" = s.id) = 1
-  AND t."headerRow" IS DISTINCT FROM s."headerRow"
+  AND COALESCE(t."headerRow", g."headerRow") IS DISTINCT FROM s."headerRow"
 UNION
 SELECT m."segmentTypedId" FROM "SheetSegment" m JOIN "Sheet" s ON s.id = m."sheetId"
 GROUP BY m."segmentTypedId" HAVING count(DISTINCT s."headerRow") > 1;

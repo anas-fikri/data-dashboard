@@ -178,6 +178,8 @@ export interface IngestRepo {
       typedBytes: number;
       /** Profil raw (T-040): recast tidak memindai ulang raw. */
       profile: StoredProfile;
+      /** Baris judul file typed ini (T-gcn8); dicatat eksplisit agar tidak bergantung pada segmen. */
+      headerRow: number;
     },
   ): Promise<void>;
   /** Manifest versi untuk gerbang integritas (T-038); null = versi tidak ada. */
@@ -523,6 +525,7 @@ export async function runIngest(
         dataRows: typed.dataRows,
         typedBytes: statSync(typedPath).size,
         profile: typed.profile,
+        headerRow: s.rec.headerRow,
       });
       rmSync(typedPath, { force: true });
       await ensureAlive();
