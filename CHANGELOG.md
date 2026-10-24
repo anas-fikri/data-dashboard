@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.5.1] - 2026-10-24
+
+### Fixed
+
+- **T-7czr:** gerbang T-gcn8 membandingkan baris judul efektif (NULL = segmen); ingest pertama mencatat headerRow typed (b980c2c)
+- **deps:** nodemailer 10.2.1 (GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h) (a1818c4)
+
 ## [1.5.0] - 2026-10-23
 
 ### Added
