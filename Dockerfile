@@ -31,7 +31,9 @@ RUN npm run build \
   && cp -R node_modules/.prisma/client .next/standalone/node_modules/.prisma/ \
   && cp -R node_modules/@prisma .next/standalone/node_modules/ \
   && cp -R .next/static .next/standalone/.next/static \
-  && cp -R public .next/standalone/public
+  # Isi public/, bukan foldernya: standalone sudah membuat public/ berisi aset yang di-trace nft, jadi
+  # `cp -R public <tujuan>` menyalin ke public/public dan favicon/ikon/mark.png jadi 404 (v1.6.1).
+  && mkdir -p .next/standalone/public && cp -R public/. .next/standalone/public/
 
 FROM ${NODE_IMAGE} AS runtime-base
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1
