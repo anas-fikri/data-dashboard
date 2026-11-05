@@ -387,6 +387,21 @@ EOF
   exit 1
 }
 
+# Gagal SETELAH rilis baru menyala: app/worker berjalan (berbeda dengan gate_fail, yang dipakai saat
+# app/worker masih berhenti).
+verify_fail() {
+  cat >&2 <<EOF
+
+GAGAL: verifikasi pasca-deploy ada yang gagal (lihat di atas).
+Rilis baru SUDAH BERJALAN (app/worker menyala). Periksa butir yang gagal dulu:
+  - check-public-presign timeout ke domain storage dari VM ini = hairpin NAT, bukan bug rilis:
+    isi STORAGE_RESOLVE_IP=<IP reverse proxy LAN> di $ENV_FILE lalu ulangi: bash deploy/upgrade.sh start
+  - butir lain (health, /login, admin-restore): kirim $STATE/*.log ke pengembang; bila aplikasi rusak,
+    kembalikan produksi lama: bash deploy/upgrade.sh rollback
+EOF
+  exit 1
+}
+
 # Migrasi pertama rilis G-6 (T-036). Pemeriksaan "data lama tetap non-periode" dan check-segments (satu segmen
 # legacy per sheet) hanya bermakna untuk upgrade yang MELEWATI G-6: sesudahnya produksi sah punya data per
 # periode (versi non-REPLACE, manifest > 1 segmen) dan gerbang itu akan selalu gagal (T-cfd7).
@@ -478,15 +493,26 @@ start() {
   grep -q 'APP_URL: https://' docker-compose.prod.yml && echo "-- APP_URL https (secure context)" || rc=1
 
   echo "-- check-public-presign.mjs (unggah 16 MiB lewat proxy, allowlist storage)"
-  local presign=(node deploy/check-public-presign.mjs)
+  local presign=(node deploy/check-public-presign.mjs) cr=("${C[@]}") sres spub override=""
+  # VM yang tidak bisa menjangkau IP publiknya sendiri (hairpin NAT): STORAGE_RESOLVE_IP=<IP reverse proxy
+  # di LAN> di .env.prod memetakan STORAGE_PUBLIC_HOST ke IP itu khusus untuk container uji ini.
+  sres=$(envval STORAGE_RESOLVE_IP); spub=$(envval STORAGE_PUBLIC_HOST)
+  if [ -n "$sres" ] && [ -n "$spub" ]; then
+    case "$sres$spub" in *[!A-Za-z0-9.:-]*) die "STORAGE_RESOLVE_IP/STORAGE_PUBLIC_HOST tidak valid" ;; esac
+    override=$(mktemp)
+    printf 'services:\n  worker:\n    extra_hosts:\n      - "%s:%s"\n' "$spub" "$sres" >"$override"
+    cr+=(-f "$override")
+    echo "   $spub → $sres (STORAGE_RESOLVE_IP)"
+  fi
   if [ -f deploy/certs/root.crt ]; then
-    "${C[@]}" run --rm --no-deps -T -v "$PWD/deploy/certs/root.crt:/run/root.crt:ro" \
+    "${cr[@]}" run --rm --no-deps -T -v "$PWD/deploy/certs/root.crt:/run/root.crt:ro" \
       -e NODE_EXTRA_CA_CERTS=/run/root.crt worker "${presign[@]}" || rc=1
   elif grep -q '^CADDY_TLS=internal' "$ENV_FILE"; then
-    "${C[@]}" run --rm --no-deps -T worker "${presign[@]}" --insecure || rc=1
+    "${cr[@]}" run --rm --no-deps -T worker "${presign[@]}" --insecure || rc=1
   else
-    "${C[@]}" run --rm --no-deps -T worker "${presign[@]}" || rc=1
+    "${cr[@]}" run --rm --no-deps -T worker "${presign[@]}" || rc=1
   fi
+  [ -z "$override" ] || rm -f "$override"
 
   echo "-- admin-restore.mjs dengan email tak dikenal (wajib exit 1, tanpa perubahan)"
   domain=$(envval ALLOWED_EMAIL_DOMAINS); domain=${domain%%,*}
@@ -500,7 +526,7 @@ start() {
     "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >/dev/null || rc=1
   fi
   "${C[@]}" ps
-  [ $rc = 0 ] || gate_fail "verifikasi pasca-deploy ada yang gagal (lihat di atas)"
+  [ $rc = 0 ] || verify_fail
   record VERIFIED_AT "$(date -u +%s)"
   cat <<EOF
 

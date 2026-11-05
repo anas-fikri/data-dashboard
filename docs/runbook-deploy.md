@@ -169,6 +169,11 @@ LAN Caddy tidak perlu diverifikasi proxy). Di `.env.prod`:
 - `STORAGE_PUBLIC_HOST=<domain storage>` — perlu proxy host kedua ke `:8444` (Host diteruskan apa adanya,
   body ≥ 32 MB) agar unggah/unduh dari luar LAN dan tanpa CA LAN berjalan; tanpa ini URL unggah tetap
   `STORAGE_HOST` (IP).
+  Proxy host storage di NPM: Scheme **https** ke `<ip-vm>:8444` (http → Caddy membalas 400 "Client sent an
+  HTTP request to an HTTPS server"), Advanced `client_max_body_size 64m; proxy_request_buffering off;`.
+- `STORAGE_RESOLVE_IP=<ip proxy di LAN>` (opsional; olympus: `10.3.3.56`) — VM tidak bisa menjangkau IP publik
+  kantornya sendiri (hairpin NAT), sehingga uji `check-public-presign` di `upgrade.sh start` timeout ke domain
+  storage. Nilai ini memetakan `STORAGE_PUBLIC_HOST` ke proxy LAN khusus untuk container uji itu.
 
 Setelah mengubahnya: `$C run --rm --no-deps storage-init` (CORS mengizinkan domain + IP) lalu
 `$C up -d --no-deps --force-recreate proxy app worker`. Pengguna di kantor yang membuka domain lewat IP
