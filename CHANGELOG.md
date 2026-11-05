@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.6.1] - 2026-11-05
+
+### Fixed
+
+- **docker:** isi `public/` disalin ke output standalone (bukan ke `public/public`): favicon, ikon aplikasi, dan logo tema terang tidak lagi 404 (88ad754)
+
 ## [1.6.0] - 2026-11-05
 
 ### Added
