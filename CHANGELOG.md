@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.6.2] - 2026-11-05
+
+### Fixed
+
+- **uploads:** unggah tidak lagi gagal "Koneksi terputus" pada gangguan jaringan sesaat: part, minta URL part, dan complete diulang ±1,5 menit dan menunggu browser online (5448b90)
+- **deploy:** pesan gagal verifikasi pasca-deploy menyebut rilis sudah berjalan; `STORAGE_RESOLVE_IP` untuk uji presign di VM ber-hairpin NAT (4fcedbe)
+
 ## [1.6.1] - 2026-11-05
 
 ### Fixed
