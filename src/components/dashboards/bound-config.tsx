@@ -360,7 +360,11 @@ export function BoundConfigForm({
               toned={
                 draft.type === "pivot"
                   ? current.spec.values.some((v) => !!v.tone)
-                  : !!current.spec.values[Number(display.value ?? 0)]?.tone
+                  : (() => {
+                      const v = current.spec.values[Number(display.value ?? 0)];
+                      // Angka hanya berwarna dengan batas tetap; batang juga dengan arah saja.
+                      return draft.type === "kpi" ? !!(v?.tone && v.target) : !!v?.tone;
+                    })()
               }
               colors={(display.colors as WidgetColors | undefined) ?? current.spec.colors}
               editHref={
@@ -368,7 +372,17 @@ export function BoundConfigForm({
                   ? `/datasets/${datasetId}/pivot-tersimpan/${current.id}`
                   : undefined
               }
-              onColors={(colors) => set({ colors })}
+              // "Lembut" (undefined) di atas template pivot tersimpan lain harus tertulis eksplisit,
+              // kalau tidak tampilan kembali memakai template pivot tersimpan.
+              onColors={(colors) =>
+                set({
+                  colors:
+                    colors ??
+                    (current.spec.colors && current.spec.colors.template !== "soft"
+                      ? { template: "soft" }
+                      : undefined),
+                })
+              }
             />
           )}
           {noValue ? null : <FormatFields value={format} onChange={(f) => set({ format: f })} />}

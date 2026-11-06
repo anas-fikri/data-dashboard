@@ -281,5 +281,21 @@ test.describe("warna status (T-f3tf)", () => {
         { timeout: 20_000 },
       )
       .toBe("rgb(207, 226, 243)");
+    // Kembali ke Lembut walau pivot tersimpan bertemplate Tegas (review: pilihan harus bertahan).
+    await pick(owner, panel, "Template warna", "Lembut (gaya Excel)");
+    await saved(panel);
+    await expect(panel.getByLabel("Template warna", { exact: true })).toHaveText(
+      "Lembut (gaya Excel)",
+    );
+    await expect
+      .poll(
+        () =>
+          table
+            .locator("td[data-status=good]")
+            .first()
+            .evaluate((el) => getComputedStyle(el).backgroundColor),
+        { timeout: 20_000 },
+      )
+      .toBe("rgb(198, 239, 206)");
   });
 });
