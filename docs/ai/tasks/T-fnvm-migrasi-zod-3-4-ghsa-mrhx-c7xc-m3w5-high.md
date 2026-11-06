@@ -1,67 +1,77 @@
 ---
 id: T-fnvm
 title: Migrasi zod 3 → 4 (GHSA-mrhx-c7xc-m3w5, high)
-status: in_progress
-profile: standard
+status: in_review
+profile: strict
 created: "2026-10-24T00:31:02Z"
-updated: "2026-11-06T09:52:41Z"
+updated: "2026-11-06T09:55:26Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 2b332144e9b115ace8b62b0fc7ef57bf9945d8c3
+paths:
+  - .github/workflows/ci.yml
+  - package-lock.json
+  - package.json
+  - src/features/query/spec.ts
+  - src/features/widgets/spec.ts
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 161434
+    duration_ms: 157647
     summary: |-
-      …files instead of one per file
+      …tolak NAS"}
+      {"level":40,"time":1793958883546,"service":"data-dashboard","host":"127.0.0.1","port":32951,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1793958899868,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1793958899891,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1793958899893,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1793958899905,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1793958909364,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1793958909382,"service":"data-dashboard","err":"\nInvalid `db.datasetVersion.findMany()` invocation in\n/home/user/data-dashboard/src/features/uploads/quota.ts:92:23\n\n  89 \n  90 export async function userUsage(db: Db, userId: string): Promise<Usage> {\n  91   const [versions, refs, reserved] = await Promise.all([\n→ 92     db.datasetVersion.findMany(\nerror: Environment variable not found: DATABASE_URL.\n  -->  schema.prisma:9\n   | \n 8 |   provider = \"postgresql\"\n 9 |   url      = env(\"DATABASE_URL\")\n   | \n\nValidation Error Count: 1","msg":"kuota pengguna tidak terbaca"}
+
+       Test Files  232 passed | 3 skipped (235)
+            Tests  3106 passed | 29 skipped (3135)
+         Start at  09:53:35
+         Duration  109.52s (tests 82%, import 16%, transform 2%)
+
+          Isolate  235 workers spawned · ~94ms startup each (spawn + environment, per file)
+                   at least ~7.27s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.7.0 audit
       > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
 
       found 0 vulnerabilities
-      # npm audit report
-
-      minimatch  7.0.0 - 11.0.0
-      Severity: moderate
-      minimatch has potential denial of service via globparts amplification - https://github.com/advisories/GHSA-g3hv-75wg-m249
-      fix available via `npm audit fix --force`
-      Will install typescript-eslint@8.36.0, which is a breaking change
-      node_modules/@typescript-eslint/typescript-estree/node_modules/minimatch
-        @typescript-eslint/typescript-estree  >=6.16.0
-        Depends on vulnerable versions of minimatch
-        node_modules/@typescript-eslint/typescript-estree
-          @typescript-eslint/parser  >=6.16.0
-          Depends on vulnerable versions of @typescript-eslint/typescript-estree
-          node_modules/@typescript-eslint/parser
-            @typescript-eslint/eslint-plugin  >=6.16.0
-            Depends on vulnerable versions of @typescript-eslint/parser
-            Depends on vulnerable versions of @typescript-eslint/type-utils
-            Depends on vulnerable versions of @typescript-eslint/utils
-            node_modules/@typescript-eslint/eslint-plugin
-              typescript-eslint  *
-              Depends on vulnerable versions of @typescript-eslint/eslint-plugin
-              Depends on vulnerable versions of @typescript-eslint/parser
-              Depends on vulnerable versions of @typescript-eslint/typescript-estree
-              Depends on vulnerable versions of @typescript-eslint/utils
-              node_modules/typescript-eslint
-          @typescript-eslint/type-utils  >=6.16.0
-          Depends on vulnerable versions of @typescript-eslint/typescript-estree
-          Depends on vulnerable versions of @typescript-eslint/utils
-          node_modules/@typescript-eslint/type-utils
-          @typescript-eslint/utils  >=6.16.0
-          Depends on vulnerable versions of @typescript-eslint/typescript-estree
-          node_modules/@typescript-eslint/utils
-
-      7 moderate severity vulnerabilities
-
-      To address all issues (including breaking changes), run:
-        npm audit fix --force
-    at: "2026-11-06T09:43:14Z"
-    tree: b258146ac9d4b1877103a5677c097c8c6a046ebf431cec2054978fd40c1cf823
+      found 0 vulnerabilities
+    at: "2026-11-06T09:55:25Z"
+    tree: 36d4b3d0c52cb691d5dd77c90e25eaade8327e75d18f24d5d57bc1ad039687d7
+  commits:
+    - 0b900f3
+    - 2b33214
+    - 3d6b854
+    - 3db23b5
+    - 4fcedbe
+    - 5448b90
+    - 7e996ac
+    - 88ad754
+    - a2d6c0a
+    - b1e545a
+    - b285387
+    - c0fdc24
+    - c9d3a79
+    - ccd8e58
+    - d5d36a3
+    - da9dbbf
+    - ddfd307
+    - def261a
+    - eae474e
+    - ef427f1
+    - f68d56b
+  acceptance:
+    total: 2
+    done: 2
   audit:
     at: "2026-11-06T09:49:16Z"
     passed: true
@@ -121,3 +131,9 @@ Validation: typecheck + 3.106 unit test lulus; npm run audit prod 0 kerentanan; 
 - [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: unggahan tidak berubah
 - [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — skema input API tetap; batas body sebelum validasi tetap
 - [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — dependensi diperbarui: advisori high ditutup, audit prod 0
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-06T09:55:25Z (157647 ms)
+- Acceptance criteria: 2/2 satisfied
+- Commits: 0b900f3, 2b33214, 3d6b854, 3db23b5, 4fcedbe, 5448b90, 7e996ac, 88ad754, a2d6c0a, b1e545a, b285387, c0fdc24, c9d3a79, ccd8e58, d5d36a3, da9dbbf, ddfd307, def261a, eae474e, ef427f1, f68d56b
