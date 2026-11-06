@@ -195,7 +195,8 @@ export function ToneChoice({
 export function StatusUnavailableHint() {
   return (
     <p className="text-xs text-muted-foreground" data-testid="config-tone-unavailable">
-      Warna status (hijau baik, merah perlu perhatian) tersedia di widget Batang, Pivot, dan Angka.
+      Warna status (hijau baik, merah perlu perhatian) tersedia di widget Batang, Pivot, dan Angka —
+      ganti jenis widget di atas untuk memakainya.
     </p>
   );
 }
@@ -282,6 +283,47 @@ export function ColorTemplateFields({
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Widget terikat pivot tersimpan: arah + batas warna milik nilai pivot tersimpan (satu tempat untuk semua
+ * widget yang memakainya); di sini hanya petunjuk ke sana dan pilihan template tampilan ini.
+ */
+export function BoundStatusFields({
+  type,
+  toned,
+  colors,
+  editHref,
+  onColors,
+}: {
+  type: string;
+  /** Nilai yang ditampilkan widget ini punya penilaian warna di pivot tersimpan. */
+  toned: boolean;
+  colors: WidgetColors | undefined;
+  /** Tautan ubah pivot tersimpan (pemilik dataset); tanpa ini teks saja. */
+  editHref?: string;
+  onColors: (colors: WidgetColors | undefined) => void;
+}) {
+  if (type !== "pivot" && type !== "bar" && type !== "kpi") return <StatusUnavailableHint />;
+  return (
+    <div className="flex min-w-0 flex-col gap-2" data-testid="bound-status">
+      <p className="text-xs text-muted-foreground" data-testid="bound-status-hint">
+        {toned
+          ? "Penilaian warna dan batasnya diatur di pivot tersimpan (kartu Nilai); di sini bisa ganti template warna untuk widget ini."
+          : "Warna status (hijau baik, merah perlu perhatian): atur Penilaian warna di pivot tersimpan — kartu Nilai."}{" "}
+        {editHref ? (
+          <a
+            href={editHref}
+            className="underline underline-offset-4"
+            data-testid="bound-status-edit"
+          >
+            Buka pivot tersimpan
+          </a>
+        ) : null}
+      </p>
+      {toned ? <ColorTemplateFields colors={colors} onChange={onColors} /> : null}
     </div>
   );
 }

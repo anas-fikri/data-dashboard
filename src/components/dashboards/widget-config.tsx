@@ -76,6 +76,7 @@ export function WidgetConfigForm({
   datasetId,
   saveError,
   onSave,
+  flushRef,
 }: {
   /** Dashboard widget ini (query pratinjau editor untuk nilai bagian Saring pivot). */
   dashboardId: string;
@@ -86,6 +87,11 @@ export function WidgetConfigForm({
   /** Alasan simpanan widget ini yang gagal, dari editor (ada sampai simpanan widget ini berhasil). */
   saveError?: string;
   onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
+  /**
+   * Kirim simpanan tertunda sekarang (mis. sebelum "Simpan sebagai pivot tersimpan"): tanpa ini simpanan
+   * yang tertunda baru terkirim saat form dilepas — sesudah widget diikat — dan menimpa ikatannya.
+   */
+  flushRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const scope: QueryScope = { dashboardId };
@@ -142,6 +148,13 @@ export function WidgetConfigForm({
   }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flush, flushRef]);
 
   const commit = (next: WidgetConfig | null) => {
     if (!next) return;
@@ -305,21 +318,24 @@ export function WidgetConfigForm({
 
           {/* Tanpa sheet belum ada kolom untuk dipilih: bagian kolom/nilai muncul setelah sheet dipilih. */}
           {noColumns ? null : draft.type === "table" ? (
-            <TableColumns
-              ref={columnsRef}
-              columns={cols}
-              selected={draft.spec.columns}
-              onChange={(columns) =>
-                commit({
-                  ...draft,
-                  spec: {
-                    ...draft.spec,
-                    columns,
-                    formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
-                  },
-                })
-              }
-            />
+            <>
+              <StatusUnavailableHint />
+              <TableColumns
+                ref={columnsRef}
+                columns={cols}
+                selected={draft.spec.columns}
+                onChange={(columns) =>
+                  commit({
+                    ...draft,
+                    spec: {
+                      ...draft.spec,
+                      columns,
+                      formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
+                    },
+                  })
+                }
+              />
+            </>
           ) : draft.type === "pivot" ? (
             <PivotFields
               scope={scope}

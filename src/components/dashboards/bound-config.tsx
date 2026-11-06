@@ -1,5 +1,6 @@
 "use client";
 
+import type { WidgetColors } from "@/features/widgets/tone";
 import { IconAlertCircle, IconPencil, IconTableShare, IconUnlink } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -30,6 +31,7 @@ import { CrossFilterField, TopNField, TypeTiles } from "./config-sections";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { ToggleField } from "./pivot-config-fields";
 import { pivotSummary } from "./pivot-config-model";
+import { BoundStatusFields } from "./status-fields";
 import {
   CHART_SORT_ORDER,
   measureText,
@@ -352,6 +354,23 @@ export function BoundConfigForm({
             </>
           )}
 
+          {noValue || !current ? null : (
+            <BoundStatusFields
+              type={draft.type}
+              toned={
+                draft.type === "pivot"
+                  ? current.spec.values.some((v) => !!v.tone)
+                  : !!current.spec.values[Number(display.value ?? 0)]?.tone
+              }
+              colors={(display.colors as WidgetColors | undefined) ?? current.spec.colors}
+              editHref={
+                current.canEdit && datasetId
+                  ? `/datasets/${datasetId}/pivot-tersimpan/${current.id}`
+                  : undefined
+              }
+              onColors={(colors) => set({ colors })}
+            />
+          )}
           {noValue ? null : <FormatFields value={format} onChange={(f) => set({ format: f })} />}
 
           {check && !check.ok && !noValue ? (

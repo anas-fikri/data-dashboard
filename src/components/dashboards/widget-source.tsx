@@ -63,6 +63,7 @@ export function WidgetSourceSection({
   const detached = useRef(false);
   // Simpanan tampilan yang masih menunggu jeda dikirim sebelum dialog lepas dibuka (review T-074 #3).
   const flushBound = useRef<(() => void) | null>(null);
+  const flushStandalone = useRef<(() => void) | null>(null);
   const openDetach = () => {
     flushBound.current?.();
     setDetachOpen(true);
@@ -193,13 +194,17 @@ export function WidgetSourceSection({
             sources={sources}
             datasetId={isOwner ? datasetId : null}
             onSave={(type: WidgetType, spec) => onSave(type, spec)}
+            flushRef={flushStandalone}
           />
           {isOwner && parsedPivot ? (
             <SaveAsSavedPivot
               datasetId={datasetId}
               spec={parsedPivot}
               defaultName={widget.title}
+              onOpen={() => flushStandalone.current?.()}
               onCreated={async (p) => {
+                // Simpanan mandiri yang (masih) tertunda tidak boleh terkirim sesudah ikatan.
+                flushStandalone.current?.();
                 onCreated(p);
                 setNotice(null);
                 await onSave("pivot", pivotDisplayOf(parsedPivot), p.id);
@@ -243,11 +248,14 @@ function SaveAsSavedPivot({
   spec,
   defaultName,
   onCreated,
+  onOpen,
 }: {
   datasetId: string;
   spec: PivotSpec;
   defaultName: string;
   onCreated: (p: SavedPivotOption) => Promise<void>;
+  /** Dialog dibuka: kirim simpanan tertunda agar pivot tersimpan memakai isi panel terbaru. */
+  onOpen?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -281,6 +289,7 @@ function SaveAsSavedPivot({
         if (pending) return;
         setOpen(o);
         if (o) {
+          onOpen?.();
           setValue(defaultName);
           setError(null);
         }
