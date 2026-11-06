@@ -5,7 +5,7 @@ import {
   type NumberFormat,
 } from "@/features/widgets/spec";
 import { STATUS_LABEL, statusPalette, statusSeries } from "@/features/widgets/status-color";
-import type { Tone, WidgetColors } from "@/features/widgets/tone";
+import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
 import {
   AUTO_FORMAT,
   formatAxis,
@@ -91,7 +91,7 @@ export interface ChartInput {
    */
   print?: boolean;
   /** Warna status batang (v1.7.0): arah nilai + template; tanpa ini batang memakai warna seri. */
-  status?: { tone: Tone; colors?: WidgetColors };
+  status?: { tone: Tone; target?: StatusTarget; scale?: number; colors?: WidgetColors };
 }
 
 export interface ChartSize {
@@ -757,7 +757,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           right: plotRight,
         };
   // Warna status per batang (v1.7.0): tiga tingkat terhadap batang lain di grafik ini.
-  const statuses = i.type === "bar" && i.status ? statusSeries(values, i.status.tone) : null;
+  const statuses =
+    i.type === "bar" && i.status
+      ? statusSeries(values, i.status.tone, i.status.target, i.status.scale)
+      : null;
   const marks = statuses
     ? (() => {
         const pal = statusPalette(i.status!.colors, !!theme.dark);

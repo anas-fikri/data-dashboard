@@ -9,9 +9,10 @@ import {
   STATUS_LABEL,
   pivotStatus,
   statusCssVars,
+  targetScale,
   type Status,
 } from "@/features/widgets/status-color";
-import type { Tone, WidgetColors } from "@/features/widgets/tone";
+import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
 import { cn } from "@/lib/utils";
 
 /*
@@ -142,6 +143,7 @@ export function PivotTableMarkup({
   corner,
   picker,
   tones,
+  targets,
   colors,
 }: {
   model: PivotTableModel;
@@ -154,10 +156,17 @@ export function PivotTableMarkup({
   picker?: PivotPicker;
   /** Arah penilaian per nilai (urut spec) dan template warna status (v1.7.0). */
   tones?: readonly (Tone | undefined)[];
+  /** Batas tetap per nilai (v1.8.0), satuan tampil. */
+  targets?: readonly (StatusTarget | undefined)[];
   colors?: WidgetColors;
 }) {
   const screen = variant === "screen";
-  const status = tones ? pivotStatus(model, tones) : null;
+  const status = tones
+    ? pivotStatus(model, tones, targets, (j) => {
+        const h = model.valueHeads[j];
+        return h ? targetScale(valueFormat(h.showAs, h.format ?? format).style) : 1;
+      })
+    : null;
   // Sel menempel harus berlatar padat agar isi yang tergulir tidak tembus.
   const stickLeft = screen ? "sticky left-0 z-[5]" : "";
   const twoHead = !!model.columnHeads;

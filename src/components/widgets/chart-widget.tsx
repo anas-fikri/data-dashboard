@@ -10,7 +10,13 @@ import {
 } from "@/features/widgets/format";
 import { isAxisShowAs, valueFormat } from "@/features/widgets/show-as";
 import { aggOf, type ChartSpec, type ChartType } from "@/features/widgets/spec";
-import { specStatus } from "@/features/widgets/status-color";
+import {
+  STATUS_LABEL,
+  specStatus,
+  statusCssVars,
+  statusSeries,
+  targetScale,
+} from "@/features/widgets/status-color";
 import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { filterKey } from "@/components/dashboards/filters/filter-model";
@@ -155,9 +161,20 @@ export function ChartWidget({
   const agg = aggOf(spec.measure);
   // Warna status batang (v1.7.0); grafik garis/pai tidak diwarnai menurut status.
   const st = type === "bar" ? specStatus(spec) : undefined;
-  const barStatus = st?.tones[0] ? { tone: st.tones[0], colors: st.colors } : undefined;
+  const barStatus = st?.tones[0]
+    ? {
+        tone: st.tones[0],
+        target: st.targets[0],
+        scale: targetScale(format.style),
+        colors: st.colors,
+      }
+    : undefined;
   const blankZero = plainSum && !!agg && zeroWhenBlank(agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
+  // Daftar batang ringkas (kartu sempit): status per kategori, sama dengan batang grafik.
+  const rankStatus = barStatus
+    ? statusSeries(values, barStatus.tone, barStatus.target, barStatus.scale)
+    : null;
   const categories = data.categories ?? labels.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
   // hanya dari yang tampil; batang/garis: "N terbesar" (bukan "N kategori"); garis N titik menurut
@@ -405,9 +422,11 @@ export function ChartWidget({
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
         data-testid="chart-ranked"
+        style={rankStatus ? (statusCssVars(barStatus?.colors) as React.CSSProperties) : undefined}
       >
         {items.map((r, i) => {
           const layout = cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col");
+          const rs = r.others || r.index === undefined ? null : (rankStatus?.[r.index] ?? null);
           const content = (
             <>
               <span
@@ -416,7 +435,13 @@ export function ChartWidget({
               >
                 <Both visible={shownLabels[i]!} full={r.label} />
               </span>
-              <span className="shrink-0 font-medium tabular-nums">{text(r.value)}</span>
+              <span
+                className={cn("shrink-0 font-medium tabular-nums", rs && "rounded-sm px-1")}
+                data-status={rs ?? undefined}
+                title={rs ? STATUS_LABEL[rs] : undefined}
+              >
+                {text(r.value)}
+              </span>
             </>
           );
           const k = r.others ? undefined : r.index;

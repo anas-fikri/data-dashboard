@@ -87,3 +87,30 @@ describe("skema warna status", () => {
     ).toBe(true);
   });
 });
+
+describe("skema batas warna (v1.8.0)", () => {
+  it("batas butuh arah dan urutan sesuai arah", () => {
+    const v = (x: object) => pivot({}, { agg: "sum", column: 2, ...x });
+    expect(parseWidgetConfig("pivot", v({ tone: "up", target: { good: 95, bad: 90 } })).ok).toBe(
+      true,
+    );
+    expect(parseWidgetConfig("pivot", v({ tone: "down", target: { good: 2, bad: 5 } })).ok).toBe(
+      true,
+    );
+    expect(parseWidgetConfig("pivot", v({ tone: "up", target: { good: 90, bad: 95 } })).ok).toBe(
+      false,
+    );
+    expect(parseWidgetConfig("pivot", v({ target: { good: 95, bad: 90 } })).ok).toBe(false);
+  });
+
+  it("KPI menerima arah + batas + template", () => {
+    expect(
+      parseWidgetConfig("kpi", {
+        sheetId: S1,
+        measure: { agg: "avg", column: 2, tone: "up", target: { good: 95, bad: 90 } },
+        format,
+        colors: { template: "bold" },
+      }).ok,
+    ).toBe(true);
+  });
+});

@@ -1,5 +1,4 @@
 import type { SourceSheet } from "@/features/dashboards/service";
-import type { Tone } from "@/features/widgets/tone";
 import type { ColumnType } from "@/features/ingest/infer";
 import type { Agg } from "@/features/query/spec";
 import { MISSING_COLUMN } from "@/features/widgets/remap";
@@ -298,11 +297,7 @@ export function defaultConfig(
   // "Tampilkan nilai sebagai" (T-067) hanya ikut ke jenis yang mendukung cara itu (KPI tidak; pai
   // hanya % keseluruhan; grafik tanpa % baris/kolom).
   const { showAs, ...measure } = kept as Measure & { showAs?: ShowAs };
-  if (type === "kpi") {
-    // Angka (KPI) satu nilai: tanpa warna status (v1.7.0).
-    const { tone: _t, ...kpiMeasure } = measure as typeof measure & { tone?: Tone };
-    return { type, spec: { sheetId: sheet.id, measure: kpiMeasure, format } };
-  }
+  if (type === "kpi") return { type, spec: { sheetId: sheet.id, measure, format } };
   const shownMeasure =
     showAs && SHOW_AS_FOR[type].includes(showAs) ? { ...measure, showAs } : measure;
   if (type === "pivot") {
@@ -359,10 +354,7 @@ export function carryCalc(prev: WidgetConfig, next: WidgetConfig): WidgetConfig 
   const calc = calcs.find((c) => next.type !== "pie" || isAdditiveCalc(c.expr));
   if (!calc) return next;
   const { showAs, ...plain } = calc as CalcValue & { showAs?: ShowAs };
-  if (next.type === "kpi") {
-    const { tone: _t, ...kpiCalc } = plain as typeof plain & { tone?: Tone };
-    return { ...next, spec: { ...next.spec, measure: kpiCalc } };
-  }
+  if (next.type === "kpi") return { ...next, spec: { ...next.spec, measure: plain } };
   const measure = showAs && SHOW_AS_FOR[next.type].includes(showAs) ? calc : plain;
   return { ...next, spec: { ...next.spec, measure } };
 }

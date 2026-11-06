@@ -102,6 +102,7 @@ export function PrintPivot({
           rows={rows}
           variant="print"
           tones={status?.tones}
+          targets={status?.targets}
           colors={status?.colors}
         />
         {full.rows.length === 0 ? (
@@ -115,7 +116,11 @@ export function PrintPivot({
           <StatusLegend
             variant="print"
             colors={status.colors}
-            items={data.values.map((v, m) => ({ label: v.label, tone: status.tones[m] }))}
+            items={data.values.map((v, m) => ({
+              label: v.label,
+              tone: status.tones[m],
+              target: status.targets[m],
+            }))}
           />
         </div>
       ) : null}

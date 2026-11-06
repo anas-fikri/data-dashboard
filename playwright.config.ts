@@ -54,6 +54,7 @@ export default defineConfig({
         /period-queue\.spec\.ts$/,
         /period-group\.spec\.ts$/,
         /period-cycle\.spec\.ts$/,
+        /status-colors\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -142,6 +143,8 @@ export default defineConfig({
     { name: "chart-polish", testMatch: /chart-polish\.spec\.ts$/, dependencies: ["kpi-fit"] },
     // pivot (T-tcjp, T-jwhc): worker sendiri (24 customer × 2 layanan × 3 bulan); panel, gulir, cetak.
     { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
+    // Warna status (T-f3tf): worker sendiri → setelah pivot.
+    { name: "status-colors", testMatch: /status-colors\.spec\.ts$/, dependencies: ["pivot"] },
     // pivot-lanjutan (T-075): worker sendiri; pivot tersimpan 3–4 tingkat × 5 nilai (terhitung, % kolom,
     // Top N) → 4 widget terikat, viewer, ekspor CSV/XLSX = layar, halaman cetak, 360/768 px + axe.
     {

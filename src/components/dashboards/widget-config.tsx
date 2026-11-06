@@ -1,6 +1,12 @@
 "use client";
 
-import { ColorTemplateFields, ToneChoice, withTone } from "./status-fields";
+import { valueFormat } from "@/features/widgets/show-as";
+import {
+  ColorTemplateFields,
+  StatusUnavailableHint,
+  ToneChoice,
+  withStatus,
+} from "./status-fields";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -405,7 +411,9 @@ export function WidgetConfigForm({
                       ...draft.spec,
                       // Ubah rumus tidak menghapus penilaian warna batang.
                       measure:
-                        draft.type === "bar" ? withTone(measure, draft.spec.measure.tone) : measure,
+                        draft.type === "bar" || draft.type === "kpi"
+                          ? withStatus(measure, draft.spec.measure)
+                          : measure,
                     },
                   } as WidgetConfig)
                 }
@@ -425,16 +433,26 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
-              {/* Warna status hanya untuk grafik batang (v1.7.0); garis/pai/KPI tidak. */}
-              {draft.type === "bar" ? (
+              {/* Warna status: batang (relatif/batas) dan Angka (batas saja); garis/pai hanya petunjuk. */}
+              {draft.type === "line" || draft.type === "pie" ? <StatusUnavailableHint /> : null}
+              {draft.type === "bar" || draft.type === "kpi" ? (
                 <>
                   <ToneChoice
-                    tone={draft.spec.measure.tone}
-                    onChange={(tone) =>
+                    key={draft.type}
+                    kpi={draft.type === "kpi"}
+                    value={draft.spec.measure}
+                    percent={
+                      valueFormat(
+                        "showAs" in draft.spec.measure ? draft.spec.measure.showAs : undefined,
+                        ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
+                          draft.spec.format,
+                      ).style === "percent"
+                    }
+                    onChange={(next) =>
                       commit({
                         ...draft,
-                        spec: { ...draft.spec, measure: withTone(draft.spec.measure, tone) },
-                      })
+                        spec: { ...draft.spec, measure: withStatus(draft.spec.measure, next) },
+                      } as WidgetConfig)
                     }
                   />
                   {draft.spec.measure.tone ? (
@@ -442,7 +460,10 @@ export function WidgetConfigForm({
                       colors={draft.spec.colors}
                       onChange={(colors) => {
                         const { colors: _k, ...spec } = draft.spec;
-                        commit({ ...draft, spec: colors ? { ...spec, colors } : spec });
+                        commit({
+                          ...draft,
+                          spec: colors ? { ...spec, colors } : spec,
+                        } as WidgetConfig);
                       }}
                     />
                   ) : null}

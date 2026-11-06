@@ -3,6 +3,8 @@ import {
   STATUSES,
   contrast,
   pivotStatus,
+  ruleText,
+  targetScale,
   statusCssVars,
   statusOf,
   statusPalette,
@@ -104,5 +106,36 @@ describe("warna status: pivot", () => {
 
   it("tanpa nilai berarah → tidak ada pewarnaan", () => {
     expect(pivotStatus(model, [undefined, undefined])).toBeNull();
+  });
+});
+
+describe("warna status: batas tetap (v1.8.0)", () => {
+  it("makin tinggi makin baik: ≥ 95 baik, < 90 perlu perhatian, sisanya sedang", () => {
+    const t = { good: 95, bad: 90 };
+    expect(statusOf(96, "up", null, t)).toBe("good");
+    expect(statusOf(95, "up", null, t)).toBe("good");
+    expect(statusOf(92, "up", null, t)).toBe("mid");
+    expect(statusOf(89.9, "up", null, t)).toBe("bad");
+  });
+
+  it("makin tinggi makin buruk: ≤ 2 baik, > 5 perlu perhatian", () => {
+    const t = { good: 2, bad: 5 };
+    expect(statusOf(1, "down", null, t)).toBe("good");
+    expect(statusOf(3, "down", null, t)).toBe("mid");
+    expect(statusOf(6, "down", null, t)).toBe("bad");
+  });
+
+  it("format persen: 0,96 tampil 96 % → dibandingkan dengan batas 95", () => {
+    expect(statusOf(0.96, "up", null, { good: 95, bad: 90 }, targetScale("percent"))).toBe("good");
+    expect(statusOf(0.85, "up", null, { good: 95, bad: 90 }, targetScale("percent"))).toBe("bad");
+  });
+
+  it("dengan batas, semua cabang buruk tetap merah (bukan sepertiga teratas hijau)", () => {
+    expect(statusSeries([70, 75, 80], "up", { good: 95, bad: 90 })).toEqual(["bad", "bad", "bad"]);
+  });
+
+  it("teks aturan legenda", () => {
+    expect(ruleText("up", { good: 95, bad: 90 })).toBe("Baik ≥ 95 · Perlu perhatian < 90");
+    expect(ruleText("down")).toBe("makin tinggi makin buruk");
   });
 });

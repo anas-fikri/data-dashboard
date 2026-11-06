@@ -30,3 +30,27 @@ export const colorsSchema = z
     path: ["custom"],
   });
 export type WidgetColors = z.infer<typeof colorsSchema>;
+
+/**
+ * Batas tetap (v1.8.0, opsional): seperti aturan angka Conditional Formatting Excel, mis. SLA tepat waktu
+ * Baik ≥ 95, Perlu perhatian < 90. Angka dalam satuan yang TAMPIL (format persen: 95 = 95 %). Arah "up":
+ * ≥ good = baik, < bad = perlu perhatian; "down": ≤ good = baik, > bad = perlu perhatian; sisanya sedang.
+ * Tanpa batas = tiga tingkat relatif terhadap nilai lain di widget.
+ */
+export const targetSchema = z
+  .object({ good: z.number().finite(), bad: z.number().finite() })
+  .strict();
+export type StatusTarget = z.infer<typeof targetSchema>;
+
+/** Batas butuh arah, dan urutannya harus sesuai arah (up: baik ≥ buruk; down: baik ≤ buruk). */
+export const targetRule = {
+  check: (v: { tone?: Tone; target?: StatusTarget }) =>
+    !v.target ||
+    (v.tone === "up"
+      ? v.target.good >= v.target.bad
+      : v.tone === "down"
+        ? v.target.good <= v.target.bad
+        : false),
+  message: "Batas warna butuh penilaian warna dan urutan yang sesuai arahnya",
+  path: ["target"],
+};

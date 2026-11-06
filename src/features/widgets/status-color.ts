@@ -7,7 +7,7 @@
  *   sepertiga atas → baik (up) / perlu perhatian (down); tengah → sedang; sepertiga bawah → kebalikannya.
  * Satu sumber untuk layar, PDF, dan grafik batang. Murni.
  */
-import type { ColorTemplate, Tone, WidgetColors } from "./tone";
+import type { ColorTemplate, StatusTarget, Tone, WidgetColors } from "./tone";
 
 export type Status = "good" | "mid" | "bad";
 export const STATUSES: readonly Status[] = ["good", "mid", "bad"];
@@ -140,13 +140,24 @@ export function statusRange(values: Iterable<unknown>): { min: number; max: numb
   return max > min ? { min, max } : null;
 }
 
-/** Status satu nilai terhadap rentangnya; null bila bukan angka, tanpa arah, atau rentang datar. */
+/**
+ * Status satu nilai: dengan batas tetap (`target`, satuan tampil; `scale` 100 untuk format persen) bila
+ * ada, selain itu terhadap rentangnya. null bila bukan angka, tanpa arah, atau rentang datar.
+ */
 export function statusOf(
   v: unknown,
   tone: Tone | undefined,
   range: { min: number; max: number } | null,
+  target?: StatusTarget,
+  scale = 1,
 ): Status | null {
-  if (!tone || !range || typeof v !== "number" || !Number.isFinite(v)) return null;
+  if (!tone || typeof v !== "number" || !Number.isFinite(v)) return null;
+  if (target) {
+    const x = v * scale;
+    if (tone === "up") return x >= target.good ? "good" : x < target.bad ? "bad" : "mid";
+    return x <= target.good ? "good" : x > target.bad ? "bad" : "mid";
+  }
+  if (!range) return null;
   const pos = (v - range.min) / (range.max - range.min);
   const high = pos >= 2 / 3;
   const low = pos < 1 / 3;
@@ -158,9 +169,11 @@ export function statusOf(
 export function statusSeries(
   values: readonly unknown[],
   tone: Tone | undefined,
+  target?: StatusTarget,
+  scale = 1,
 ): (Status | null)[] {
-  const range = tone ? statusRange(values) : null;
-  return values.map((v) => statusOf(v, tone, range));
+  const range = tone && !target ? statusRange(values) : null;
+  return values.map((v) => statusOf(v, tone, range, target, scale));
 }
 
 /** Variabel CSS sel berstatus (globals.css memilih terang/gelap); dipasang di elemen pembungkus. */
@@ -191,6 +204,9 @@ export function pivotStatus(
     rows: readonly { kind: string; values: readonly unknown[] }[];
   },
   tones: readonly (Tone | undefined)[],
+  /** Batas tetap per nilai (opsional) dan skala tampil kolom data ke-j (100 = format persen). */
+  targets: readonly (StatusTarget | undefined)[] = [],
+  scaleOf: (j: number) => number = () => 1,
 ): ((row: { kind: string }, value: unknown, j: number) => Status | null) | null {
   const nv = tones.length;
   if (!nv || !tones.some(Boolean)) return null;
@@ -208,13 +224,15 @@ export function pivotStatus(
   return (row, value, j) => {
     if (row.kind !== "leaf" || model.valueHeads[j]?.total) return null;
     const m = j % nv;
-    return statusOf(value, tones[m], ranges[m] ?? null);
+    return statusOf(value, tones[m], ranges[m] ?? null, targets[m], scaleOf(j));
   };
 }
 
 /** Pengaturan warna status widget pivot/grafik; undefined bila tidak ada nilai berarah. */
 export interface WidgetStatus {
   tones: (Tone | undefined)[];
+  /** Batas tetap per nilai (v1.8.0); undefined = relatif. */
+  targets: (StatusTarget | undefined)[];
   colors?: WidgetColors;
 }
 export function specStatus(spec: {
@@ -225,5 +243,18 @@ export function specStatus(spec: {
   const vals = spec.values ?? (spec.measure ? [spec.measure] : []);
   const tones = vals.map((v) => (v as { tone?: Tone }).tone);
   if (!tones.some(Boolean)) return undefined;
-  return { tones, ...(spec.colors ? { colors: spec.colors } : {}) };
+  const targets = vals.map((v) => (v as { target?: StatusTarget }).target);
+  return { tones, targets, ...(spec.colors ? { colors: spec.colors } : {}) };
+}
+
+/** Skala batas: angka diisi dalam satuan tampil — format persen menampilkan 0,95 sebagai 95 %. */
+export const targetScale = (style: string | undefined) => (style === "percent" ? 100 : 1);
+
+/** Teks aturan satu nilai untuk legenda/petunjuk, mis. "Baik ≥ 95 · Perlu perhatian < 90". */
+export function ruleText(tone: Tone, target?: StatusTarget): string {
+  if (!target) return TONE_LABEL[tone].toLowerCase();
+  const n = (x: number) => x.toLocaleString("id-ID");
+  return tone === "up"
+    ? `Baik ≥ ${n(target.good)} · Perlu perhatian < ${n(target.bad)}`
+    : `Baik ≤ ${n(target.good)} · Perlu perhatian > ${n(target.bad)}`;
 }
