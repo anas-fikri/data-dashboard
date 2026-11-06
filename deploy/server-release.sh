@@ -12,6 +12,8 @@
 #   4. build image di VM (± 15–20 menit; produksi tetap jalan dengan image lama)
 #   5. migrate → start (jeda layanan ± 2–5 menit) + verifikasi
 # Variabel: REPO (bawaan anas-fikri/data-dashboard), FORCE / MIN_FREE_GB / BACKUP_EST_GB diteruskan ke preflight.
+# ARCHIVE=/path/kode.tar.gz: server tanpa akses github.com — pakai arsip kode yang disalin dari Mac
+# (curl -L https://github.com/<repo>/archive/refs/heads/main.tar.gz -o kode.tar.gz; scp ke server).
 set -euo pipefail
 
 REPO=${REPO:-anas-fikri/data-dashboard}
@@ -29,20 +31,24 @@ command -v curl >/dev/null && command -v tar >/dev/null || die "butuh curl dan t
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-step "1/5 unduh kode v$ver dari github.com/$REPO"
 ref="refs/tags/v$ver"
-if ! curl -fsSL "https://github.com/$REPO/archive/$ref.tar.gz" -o "$work/src.tar.gz"; then
+if [ -n "${ARCHIVE:-}" ]; then
+  step "1/5 kode v$ver dari arsip lokal $ARCHIVE"
+  [ -f "$ARCHIVE" ] || die "ARCHIVE $ARCHIVE tidak ada"
+  cp "$ARCHIVE" "$work/src.tar.gz"
+  ref="arsip lokal"
+elif ! { step "1/5 unduh kode v$ver dari github.com/$REPO"; curl -fsSL --connect-timeout 15 "https://github.com/$REPO/archive/$ref.tar.gz" -o "$work/src.tar.gz"; }; then
   echo "   tag v$ver belum ada — memakai main (buat tag dari Mac nanti agar riwayat rilis rapi)"
   ref="refs/heads/main"
-  curl -fsSL "https://github.com/$REPO/archive/$ref.tar.gz" -o "$work/src.tar.gz" ||
-    die "unduh gagal (internet dari server? repo publik?)"
+  curl -fsSL --connect-timeout 15 "https://github.com/$REPO/archive/$ref.tar.gz" -o "$work/src.tar.gz" ||
+    die "unduh gagal (server tidak bisa ke github.com?) — salin arsip dari Mac lalu: ARCHIVE=/tmp/kode.tar.gz bash deploy/server-release.sh $ver"
 fi
 mkdir "$work/src"
 tar -xzf "$work/src.tar.gz" -C "$work/src" --strip-components=1
 got=$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' "$work/src/package.json" | head -1)
 [ "$got" = "$ver" ] ||
   die "kode di $ref berversi $got, bukan $ver — PR rilisnya sudah di-merge ke main?"
-commit=$(curl -fsSL "https://api.github.com/repos/$REPO/commits/${ref#refs/*/}" 2>/dev/null |
+commit=$([ -n "${ARCHIVE:-}" ] || curl -fsSL --connect-timeout 10 "https://api.github.com/repos/$REPO/commits/${ref#refs/*/}" 2>/dev/null |
   sed -n 's/^  "sha": "\([0-9a-f]\{7\}\).*/\1/p' | head -1 || true)
 echo "   versi $got (${ref#refs/}${commit:+, commit $commit})"
 cur=$(sed -n 's/^  "version": *"\([^"]*\)".*/\1/p' package.json | head -1)

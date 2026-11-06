@@ -78,7 +78,7 @@ export const chartDisplaySchema = z
   })
   .strict();
 export const kpiDisplaySchema = z
-  .object({ value: valueIndex, format: formatSchema.optional() })
+  .object({ value: valueIndex, format: formatSchema.optional(), colors: colorsSchema.optional() })
   .strict();
 export const tableDisplaySchema = z
   .object({ sort: z.enum(CHART_SORTS), totals: z.boolean(), format: formatSchema.optional() })
@@ -218,9 +218,13 @@ export function effectiveConfig(
     case "kpi": {
       const v = pivot.values[bound.display.value];
       if (!v) return { ok: false, message: missingValue };
-      // KPI = total keseluruhan, tanpa "Tampilkan nilai sebagai" dan tanpa warna status (satu nilai).
-      const { showAs: _s, tone: _t, ...measure } = v;
-      built = { type: "kpi", spec: { sheetId: pivot.sheetId, measure, format } };
+      // KPI = total keseluruhan, tanpa "Tampilkan nilai sebagai"; warna status hanya dengan batas tetap.
+      const { showAs: _s, ...measure } = v;
+      const colors = bound.display.colors ?? pivot.colors;
+      built = {
+        type: "kpi",
+        spec: { sheetId: pivot.sheetId, measure, format, ...(colors ? { colors } : {}) },
+      };
       filters = pivot.filters;
       break;
     }
@@ -243,6 +247,7 @@ export function effectiveConfig(
             ...(v.column ? { column: v.column } : {}),
             ...(v.showAs ? { showAs: v.showAs } : {}),
             ...(v.tone ? { tone: v.tone } : {}),
+            ...(v.target ? { target: v.target } : {}),
           };
       built = {
         type: bound.type,

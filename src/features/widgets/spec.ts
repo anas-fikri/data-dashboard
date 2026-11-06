@@ -8,7 +8,7 @@
 import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
 import { calcExprSchema, calcLabelSchema, calcLeaves, isAdditiveCalc, type CalcExpr } from "./calc";
-import { colorsSchema, toneSchema } from "./tone";
+import { colorsSchema, targetRule, targetSchema, toneSchema } from "./tone";
 
 export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -88,7 +88,6 @@ const needsColumn = {
   message: "Agregasi ini membutuhkan kolom",
 };
 const measureBase = z.object({ agg: z.enum(AGGS), column: column.optional() }).strict();
-const measure = measureBase.refine(needsColumn.check, { message: needsColumn.message });
 
 /**
  * "Tampilkan nilai sebagai" (T-067, rencana G-7 §3.1), seperti Show Values As Excel. Tidak ada /
@@ -115,9 +114,14 @@ export const SHOW_AS_FOR: Record<"pivot" | ChartType, readonly ShowAs[]> = {
 };
 /** Ukuran grafik/pivot: ukuran biasa + cara tampil opsional. */
 const shownMeasure = measureBase
-  .extend({ showAs: z.enum(SHOW_AS).optional(), tone: toneSchema.optional() })
+  .extend({
+    showAs: z.enum(SHOW_AS).optional(),
+    tone: toneSchema.optional(),
+    target: targetSchema.optional(),
+  })
   .strict()
-  .refine(needsColumn.check, { message: needsColumn.message });
+  .refine(needsColumn.check, { message: needsColumn.message })
+  .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
 const dimension = z.object({ column, timeGrain: z.enum(GRAINS).optional() }).strict();
 
 /**
@@ -133,8 +137,13 @@ const calcBase = z
   })
   .strict();
 const calcValue = calcBase
-  .extend({ showAs: z.enum(SHOW_AS).optional(), tone: toneSchema.optional() })
-  .strict();
+  .extend({
+    showAs: z.enum(SHOW_AS).optional(),
+    tone: toneSchema.optional(),
+    target: targetSchema.optional(),
+  })
+  .strict()
+  .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
 export type CalcValue = z.infer<typeof calcValue>;
 
 /**
@@ -147,13 +156,25 @@ function measureOrCalc<M extends z.ZodTypeAny, C extends z.ZodTypeAny>(m: M, c: 
     const calc = typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "calc";
     const r = (calc ? c : m).safeParse(v);
     if (!r.success) {
-      for (const i of r.error.issues) ctx.addIssue(i);
+      // zod 4: issue hasil parse diteruskan apa adanya (pesan + path tetap).
+      for (const i of r.error.issues)
+        ctx.addIssue(i as unknown as Parameters<typeof ctx.addIssue>[0]);
       return z.NEVER;
     }
     return r.data as z.output<M> | z.output<C>;
   });
 }
-const kpiValue = measureOrCalc(measure, calcBase);
+/** KPI (v1.8.0): warna status hanya dengan batas tetap (satu angka tidak punya pembanding). */
+const kpiMeasure = measureBase
+  .extend({ tone: toneSchema.optional(), target: targetSchema.optional() })
+  .strict()
+  .refine(needsColumn.check, { message: needsColumn.message })
+  .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
+const kpiCalc = calcBase
+  .extend({ tone: toneSchema.optional(), target: targetSchema.optional() })
+  .strict()
+  .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
+const kpiValue = measureOrCalc(kpiMeasure, kpiCalc);
 const shownValue = measureOrCalc(shownMeasure, calcValue);
 export type MeasureValue = z.infer<typeof shownValue>;
 
@@ -170,7 +191,7 @@ export function valueColumns(v: { column?: number } | { kind: "calc"; expr: Calc
 }
 
 export const kpiSpecSchema = z
-  .object({ sheetId, measure: kpiValue, format: formatSchema })
+  .object({ sheetId, measure: kpiValue, format: formatSchema, colors: colorsSchema.optional() })
   .strict();
 export const chartSpecSchema = z
   .object({

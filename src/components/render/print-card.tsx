@@ -109,6 +109,7 @@ function Body({
         format={config.spec.format}
         title={title}
         agg={aggOf(config.spec.measure)}
+        status={specStatus(config.spec)}
         fixedHeight
       />
     );

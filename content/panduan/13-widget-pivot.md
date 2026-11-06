@@ -80,8 +80,20 @@ supaya yang bermasalah langsung terlihat — tanpa mengisi angka ambang.
 2. Pilih **Template warna**: _Lembut_ (bawaan, gaya isian Excel), _Tegas_, _Ramah buta warna_ (biru–oranye),
    atau _Warna sendiri_ (tiga warna pilihan Anda).
 
-Setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
+Ada dua **Cara menentukan warna**:
+
+- **Otomatis** — setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu (lihat di bawah).
+- **Pakai batas angka** — untuk target pasti seperti SLA: isi _Baik bila ≥ 95_ dan _Perlu perhatian bila < 90_
+  (untuk "makin tinggi makin buruk": _Baik bila ≤_ dan _Perlu perhatian bila >_). Isi seperti angka yang tampil:
+  format persen 95 % → ketik 95. Di antara kedua batas = **Sedang**. Dengan batas, cabang yang semuanya di bawah
+  target tetap merah — tidak ada yang "otomatis hijau".
+
+Widget **Angka** juga bisa diwarnai, tetapi hanya dengan batas angka (satu angka tidak punya pembanding). Grafik
+garis dan pai tidak diwarnai status. _Warna sendiri_ yang terakhir dipilih diingat browser, jadi widget lain
+langsung memakai warna yang sama.
+
+Pada cara **Otomatis**, setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
 gradasi: **sepertiga teratas**, **tengah**, dan **sepertiga terbawah** rentang terkecil–terbesar. Untuk nilai
 "makin tinggi makin baik", sepertiga teratas berwarna **Baik**; untuk "makin tinggi makin buruk", sepertiga
-teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai. Legenda di bawah
+teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai (juga dengan batas angka: totalnya berskala lain, mis. jumlah klaim semua cabang). Legenda di bawah
 tabel menjelaskan arti warna dan arah tiap nilai, dan warnanya ikut ke ekspor PDF.

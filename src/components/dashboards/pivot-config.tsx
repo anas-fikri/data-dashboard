@@ -19,7 +19,8 @@ import {
 import { CalcField } from "./calc-editor";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
-import { ColorTemplateFields, ToneChoice, withTone } from "./status-fields";
+import { valueFormat } from "@/features/widgets/show-as";
+import { ColorTemplateFields, ToneChoice, withStatus } from "./status-fields";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
 import { PivotSavedFilters } from "./pivot-saved-filters";
 import type { QueryScope } from "./query-scope";
@@ -238,7 +239,7 @@ export function PivotFields({
                 // Ubah rumus tidak menghapus penilaian warna nilai ini.
                 onSave={(next) =>
                   set({
-                    values: spec.values.map((x, j) => (j === i ? withTone(next, m.tone) : x)),
+                    values: spec.values.map((x, j) => (j === i ? withStatus(next, m) : x)),
                   })
                 }
                 // Satu-satunya nilai: tidak bisa dihapus, tetapi bisa kembali ke ukuran biasa.
@@ -267,9 +268,13 @@ export function PivotFields({
               />
             )}
             <ToneChoice
-              tone={m.tone}
-              onChange={(tone) =>
-                set({ values: spec.values.map((x, j) => (j === i ? withTone(x, tone) : x)) })
+              value={m}
+              percent={
+                valueFormat(m.showAs, ("format" in m ? m.format : undefined) ?? spec.format)
+                  .style === "percent"
+              }
+              onChange={(next) =>
+                set({ values: spec.values.map((x, j) => (j === i ? withStatus(x, next) : x)) })
               }
             />
           </div>

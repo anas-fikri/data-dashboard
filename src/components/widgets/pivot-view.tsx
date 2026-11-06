@@ -74,6 +74,7 @@ export function PivotView({
             variant="screen"
             picker={picker}
             tones={status?.tones}
+            targets={status?.targets}
             colors={status?.colors}
             corner={
               edit && request ? (
@@ -111,7 +112,11 @@ export function PivotView({
       {status ? (
         <StatusLegend
           colors={status.colors}
-          items={data.values.map((v, m) => ({ label: v.label, tone: status.tones[m] }))}
+          items={data.values.map((v, m) => ({
+            label: v.label,
+            tone: status.tones[m],
+            target: status.targets[m],
+          }))}
         />
       ) : null}
       {model.note ? (

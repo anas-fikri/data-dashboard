@@ -1,11 +1,11 @@
 import {
   STATUSES,
   STATUS_LABEL,
-  TONE_LABEL,
+  ruleText,
   statusCssVars,
   statusPalette,
 } from "@/features/widgets/status-color";
-import type { Tone, WidgetColors } from "@/features/widgets/tone";
+import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
 import { cn } from "@/lib/utils";
 
 /*
@@ -20,10 +20,13 @@ export function StatusLegend({
 }: {
   colors?: WidgetColors;
   /** Nilai berarah: label nilai + arahnya. */
-  items: { label: string; tone: Tone | undefined }[];
+  items: { label: string; tone: Tone | undefined; target?: StatusTarget }[];
   variant?: "screen" | "print";
 }) {
-  const toned = items.filter((i): i is { label: string; tone: Tone } => !!i.tone);
+  const toned = items.filter(
+    (i): i is { label: string; tone: Tone; target?: StatusTarget } => !!i.tone,
+  );
+  const relative = toned.some((i) => !i.target);
   if (!toned.length) return null;
   const names = statusPalette(colors, false).names;
   return (
@@ -49,8 +52,8 @@ export function StatusLegend({
         </span>
       ))}
       <span>
-        {toned.map((i) => `${i.label}: ${TONE_LABEL[i.tone].toLowerCase()}`).join(" · ")} —
-        dibanding nilai lain di widget ini
+        {toned.map((i) => `${i.label}: ${ruleText(i.tone, i.target)}`).join(" · ")}
+        {relative ? " — dibanding nilai lain di widget ini" : ""}
       </span>
     </div>
   );

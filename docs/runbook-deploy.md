@@ -853,3 +853,26 @@ bash deploy/server-release.sh 1.7.0 --full   # paksa backup lengkap baru
 Gagal di langkah 1–4: produksi tidak berubah; skrip mencetak perintah lanjutan. Gagal di langkah 5: ikuti pesan
 `upgrade.sh` (rollback: `bash deploy/upgrade.sh rollback`). Isi `STORAGE_RESOLVE_IP` (§2, domain publik) agar uji
 presign tidak gagal palsu karena hairpin NAT. Tag dibuat belakangan dari Mac bila memakai `main`.
+
+## 15. Pantauan + email admin (v1.8.0, T-8g53)
+
+Worker menjalankan job `monitor` tiap 15 menit: PostgreSQL, Redis, storage, SMTP, renderer, status backup, dan
+unggahan gagal (≥ 3 dalam 60 menit). Email ke **semua admin aktif** saat daftar masalah berubah, pengingat tiap
+6 jam selama masih ada, dan sekali saat pulih. Database mati tetap terkirim (daftar admin terakhir disimpan di
+Redis). SMTP pengiriman dari `SMTP_URL`/`MAIL_FROM` `.env.prod` (worker tidak membaca pengaturan SMTP Admin ›
+Email karena volume `backup-config` berisi rahasia). Status backup dibaca dari volume `backup-status` (salinan
+`status.json` yang ditulis service backup tiap jalan; muncul setelah backup berikutnya). Cek log:
+`$C logs worker | grep -i pantauan`.
+
+## 16. Rollback v1.8.0 → v1.7.x
+
+Tanpa migrasi: ganti `IMAGE_TAG` ke `prev-<stamp>` (§11). Skema v1.7.x menolak field baru v1.8.0: widget yang
+memakai **batas angka** (target) di nilai, atau widget **Angka** berwarna status, tampil "Pengaturan widget tidak
+valid" sampai roll-forward (data tetap di DB). Hapus batas/warna Angka dulu bila rollback akan lama.
+
+## 17. DNS internal (disarankan)
+
+Arahkan `data-slicer.pcpexpress.com` dan `storage-data-slicer.pcpexpress.com` ke NPM LAN `10.3.3.56` di DNS
+kantor (router/AD/Pi-hole): pengguna kantor tidak lewat IP publik (hairpin NAT), unggah lebih stabil, dan uji
+`check-public-presign` di `upgrade.sh start` lulus tanpa `STORAGE_RESOLVE_IP`. Cek dari laptop kantor:
+`nslookup storage-data-slicer.pcpexpress.com` → `10.3.3.56`.

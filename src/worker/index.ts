@@ -69,6 +69,7 @@ import { runSegmentGc } from "@/features/versions/gc";
 import { runStorageAudit } from "@/features/versions/integrity";
 import { expireAwaitingConfirm } from "@/features/versions/service";
 import { prisma } from "@/lib/db";
+import { runMonitor } from "./monitor-job";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { versionInfo } from "@/lib/version";
@@ -103,6 +104,8 @@ const DELETE_OBJECT = "delete-object";
 const SEGMENT_GC = "segment-gc";
 /** Pemeriksaan malam (T-038): HEAD kunci terujuk (alert) + sapuan objek yatim. */
 const SEGMENT_AUDIT = "segment-audit";
+/** Pantauan + email admin (T-8g53). */
+const MONITOR = "monitor";
 /** Proses StorageCleanup (T-013): prefix versi yang dibuang retensi/pemilik + hapus yang gagal. */
 const STORAGE_CLEANUP = "storage-cleanup";
 /**
@@ -195,6 +198,7 @@ async function main() {
     [RAW_RETENTION, 60 * 60 * 1000],
     [EXPORT_CLEANUP, 5 * 60 * 1000],
     [UPLOAD_QUEUES, 60 * 1000],
+    [MONITOR, 15 * 60 * 1000],
   ];
   schedules.push([SEGMENT_GC, 60 * 60 * 1000]);
   for (const [name, every] of schedules) {
@@ -229,6 +233,7 @@ async function main() {
       }
       if (job.name === SEGMENT_GC) return await runSegmentGc();
       if (job.name === SEGMENT_AUDIT) return await runStorageAudit();
+      if (job.name === MONITOR) return await runMonitor();
       if (job.name === DELETE_OBJECT) {
         const key = String((job.data as { key: string }).key);
         // Masih tercatat (revisi typed menunggu GC, atau sudah dipakai lagi) → GC yang menghapusnya.

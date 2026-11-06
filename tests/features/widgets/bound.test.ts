@@ -319,3 +319,32 @@ describe("parseBoundDisplay: tampilan saja (strict)", () => {
     }
   });
 });
+
+describe("warna status dari pivot tersimpan (v1.8.0)", () => {
+  const toned = {
+    ...PIVOT,
+    values: [
+      { agg: "avg" as const, column: 3, tone: "up" as const, target: { good: 95, bad: 90 } },
+    ],
+    colors: { template: "bold" as const },
+  };
+  it("batang membawa arah + batas nilai biasa dan template pivot", () => {
+    const r = effectiveConfig(
+      "bar",
+      { dimension: "row", value: 0, sort: "value_desc", topN: 10 },
+      toned,
+    );
+    expect(r.ok && r.config.type === "bar" && r.config.spec.measure).toMatchObject({
+      tone: "up",
+      target: { good: 95, bad: 90 },
+    });
+    expect(r.ok && r.config.type === "bar" && r.config.spec.colors).toEqual({ template: "bold" });
+  });
+  it("Angka membawa arah + batas", () => {
+    const r = effectiveConfig("kpi", { value: 0 }, toned);
+    expect(r.ok && r.config.type === "kpi" && r.config.spec.measure).toMatchObject({
+      tone: "up",
+      target: { good: 95, bad: 90 },
+    });
+  });
+});
