@@ -18,6 +18,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.7.0] - 2026-11-06
+
+### Added
+
+- **widgets:** warna status di pivot dan grafik batang — "Penilaian warna" per nilai (makin tinggi makin baik / makin tinggi makin buruk), tiga tingkat bertangga menurut posisi nilai di widget (tanpa angka ambang), template Lembut/Tegas/Ramah buta warna/Warna sendiri, legenda, ikut ke PDF (3d6b854)
+
+### Notes
+
+- **warna status:** tanpa migrasi database. Rollback ke v1.6.2 aman (skema warna sudah diterima, warna tidak
+  tampil). Rollback ke v1.6.1 atau lebih lama membuat widget berwarna tampil "Pengaturan widget tidak valid" —
+  set "Penilaian warna" ke "Tanpa warna" dulu.
+
 ## [1.6.2] - 2026-11-06
 
 ### Added
