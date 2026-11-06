@@ -18,7 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
-## [1.6.2] - 2026-11-05
+## [1.6.2] - 2026-11-06
+
+### Added
+
+- **deploy:** `deploy/server-release.sh <versi>` — rilis satu perintah langsung di server (unduh kode dari GitHub, preflight, build, migrate, start; runbook §14)
+- **widgets:** skema menerima pengaturan warna status (`tone` per nilai, `colors` per widget) tanpa memakainya — rollback dari v1.7.x aman
 
 ### Fixed
 
