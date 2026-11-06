@@ -111,6 +111,8 @@ describe("bound-config-model", () => {
     expect(pivotDisplayOf(colored).colors).toEqual({ template: "bold" });
     const eff = effectiveConfig("pivot", pivotDisplayOf(colored), colored);
     expect(eff.ok && eff.config.spec.colors).toEqual({ template: "bold" });
+    // Widget baru atas pivot tersimpan bertemplate: tetap ikut dashboard.
+    expect(defaultDisplay("pivot", colored)).not.toHaveProperty("colors");
   });
 
   it("pilihan nilai dan dimensi berlabel", () => {
