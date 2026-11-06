@@ -18,6 +18,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.8.0] - 2026-11-06
+
+### Added
+
+- **ops:** pantauan 15 menit + email peringatan admin (T-8g53) (850026f)
+- **widgets:** batas angka (SLA), warna KPI, daftar ringkas, petunjuk garis/pai (T-f3tf) (d271413)
+
+### Fixed
+
+- **deps:** minimatch 11.0.1 untuk typescript-estree (GHSA-g3hv-75wg-m249, dev) (T-fnvm) (b1e545a)
+- **deps:** zod 4.6.7 (GHSA-mrhx-c7xc-m3w5, high) (T-fnvm) (2b33214)
+- **widgets:** panel warna tidak dipasang ulang — fokus keyboard tetap (review v1.8.0 #2b) (95b7bc9)
+- temuan review v1.8.0 (batas hilang, state panel basi, bound, PDF, pantauan, rahasia worker) (9ab9fd1)
+
 ## [1.7.0] - 2026-11-06
 
 ### Added
