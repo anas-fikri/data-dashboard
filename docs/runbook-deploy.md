@@ -885,4 +885,5 @@ tanpa membatalkan migrasi aman: kolom baru diabaikan kode lama. Yang berubah saa
 yang diberi warna status (field `status`/`colors`) dan tampilan tabel terikat pivot tersimpan yang memilih
 template sendiri tampil "Pengaturan widget tidak valid" sampai roll-forward (data tetap di DB); template
 dashboard tidak berlaku (widget kembali ke template sendiri/bawaan). Hapus warna Tabel dulu bila rollback akan
-lama.
+lama: selama di v1.8.x, aktivasi versi data baru melewati widget yang tidak valid itu, dan bila sheet lamanya
+kemudian terhapus retensi, setelah roll-forward widget tersebut tampil "sheet tidak tersedia" (pilih ulang sumber).

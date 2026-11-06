@@ -6,7 +6,7 @@ import { DashboardColorsControl } from "./dashboard-colors-control";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import ReactGridLayout, { type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -191,6 +191,15 @@ function Canvas(props: CanvasProps) {
   const isOwner = props.role === "OWNER";
   const ed = useDashboardEditor(props);
   const [colors, setColors] = useState<WidgetColors | null>(props.colors ?? null);
+  // Nilai server berubah (refresh, rekan mengubah template): ikuti (penyesuaian saat render, tanpa effect).
+  const serverColors = JSON.stringify(props.colors ?? null);
+  const [seenColors, setSeenColors] = useState(serverColors);
+  if (seenColors !== serverColors) {
+    setSeenColors(serverColors);
+    setColors(props.colors ?? null);
+  }
+  // Objek stabil: widget tidak ikut dirender ulang di setiap render kanvas (mis. saat menyeret).
+  const colorsValue = useMemo(() => ({ colors }), [colors]);
   const frozen = isFrozen(ed.save);
   const router = useRouter();
   const phone = useIsPhone();
@@ -356,7 +365,7 @@ function Canvas(props: CanvasProps) {
 
   // Props server (bukan ed.widgets): refresh yang membawa props lain memasang penjaga lagi.
   return (
-    <DashboardColorsContext.Provider value={{ colors }}>
+    <DashboardColorsContext.Provider value={colorsValue}>
       <AccessRefreshProvider
         serverWidgetIds={props.widgets.map((w) => w.id)}
         stateKey={viewCanvasKey(props.widgets, props.revision)}

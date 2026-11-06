@@ -1,7 +1,7 @@
 "use client";
 
 import { IconPalette } from "@tabler/icons-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DashboardColorsContext } from "@/components/widgets/dashboard-colors";
@@ -13,6 +13,8 @@ import { ColorTemplateFields } from "./status-fields";
  * tidak memilih template sendiri (bawaan "Ikuti dashboard") langsung ikut — seragam tanpa mengatur
  * widget satu per satu. Pemilik/editor, mode edit.
  */
+const SAVE_DELAY_MS = 350;
+
 export function DashboardColorsControl({
   dashboardId,
   colors,
@@ -26,25 +28,69 @@ export function DashboardColorsControl({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  async function save(next: WidgetColors | undefined) {
-    const prev = colors;
-    onSaved(next ?? null);
-    setSaving(true);
-    setError(null);
-    try {
-      const r = await fetch(`/api/dashboards/${dashboardId}/colors`, {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ colors: next ?? null }),
-      });
-      if (!r.ok) throw new Error(String(r.status));
-    } catch {
-      onSaved(prev);
-      setError("Template warna belum tersimpan. Coba lagi.");
-    } finally {
+  // Simpan dengan jeda (geser pemilih warna = banyak perubahan), satu permintaan sekaligus, dan yang
+  // terakhir dipilih yang tersimpan. Gagal → kembali ke nilai terakhir yang tersimpan di server.
+  const confirmed = useRef(colors);
+  const seq = useRef(0);
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  const pending = useRef<{ n: number; next: WidgetColors | null } | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const body = (next: WidgetColors | null) => JSON.stringify({ colors: next });
+  const url = `/api/dashboards/${dashboardId}/colors`;
+
+  const flush = () => {
+    const job = pending.current;
+    pending.current = null;
+    if (!job) return;
+    chain.current = chain.current.then(async () => {
+      let ok = false;
+      try {
+        const r = await fetch(url, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: body(job.next),
+        });
+        ok = r.ok;
+      } catch {
+        ok = false;
+      }
+      if (ok) confirmed.current = job.next;
+      if (job.n !== seq.current) return; // pilihan lebih baru menyusul
       setSaving(false);
-    }
+      if (!ok) {
+        onSaved(confirmed.current);
+        setError("Template warna belum tersimpan. Coba lagi.");
+      }
+    });
+  };
+
+  function change(next: WidgetColors | undefined) {
+    const value = next ?? null;
+    onSaved(value);
+    setError(null);
+    setSaving(true);
+    pending.current = { n: ++seq.current, next: value };
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(flush, SAVE_DELAY_MS);
   }
+
+  // Pindah halaman sebelum jeda habis: tetap terkirim (keepalive, tanpa menunggu jawaban).
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+      const job = pending.current;
+      if (job) {
+        void fetch(url, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: body(job.next),
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    },
+    [url],
+  );
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -64,7 +110,7 @@ export function DashboardColorsControl({
         </p>
         {/* Di luar cakupan dashboard: tanpa pilihan "Ikuti dashboard"; Lembut = bawaan (null). */}
         <DashboardColorsContext.Provider value={null}>
-          <ColorTemplateFields colors={colors ?? undefined} onChange={(c) => void save(c)} />
+          <ColorTemplateFields colors={colors ?? undefined} onChange={change} />
         </DashboardColorsContext.Provider>
         <p
           className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"}

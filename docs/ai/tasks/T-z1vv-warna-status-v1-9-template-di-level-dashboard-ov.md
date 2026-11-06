@@ -1,17 +1,23 @@
 ---
 id: T-z1vv
 title: 'Warna status v1.9: template di level dashboard (override per widget) + Tabel, Garis, Pai'
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - ui
 created: "2026-11-06T22:53:38Z"
-updated: "2026-11-06T23:23:49Z"
+updated: "2026-11-06T23:34:24Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 7d1d4e00cf553ff989f29b99c92729da24845843
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-06T23:34:24Z"
+      findings: 8
 ---
 
 ## Objective

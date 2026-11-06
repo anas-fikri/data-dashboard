@@ -66,6 +66,8 @@ export function pivotDisplayOf(spec: PivotSpec): PivotDisplay {
     subtotals: spec.subtotals,
     ...(spec.subtotalLevels ? { subtotalLevels: spec.subtotalLevels } : {}),
     ...(spec.crossFilter !== undefined ? { crossFilter: spec.crossFilter } : {}),
+    // Template warna widget ikut (v1.9.0): widget terikat tidak memakai template pivot tersimpan.
+    ...(spec.colors ? { colors: spec.colors } : {}),
   };
 }
 

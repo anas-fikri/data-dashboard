@@ -158,8 +158,8 @@ export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
   );
 
 /**
- * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan
- * editor (T-k2ec; viewer → 403, tanpa akses → 404).
+ * PATCH { colors: {template, custom?} | null } — template warna status dashboard (v1.9.0), pemilik dan
+ * editor (viewer → 403, tanpa akses → 404); field colors wajib dikirim (null = bawaan).
  */
 export const setColorsRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan template warna gagal", async (userId, body) => {
@@ -167,6 +167,10 @@ export const setColorsRoute = (req: NextRequest, dashboardId: string) =>
     return reply(await setDashboardColors(userId, dashboardId, b.colors));
   });
 
+/**
+ * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan
+ * editor (T-k2ec; viewer → 403, tanpa akses → 404).
+ */
 export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan kolom filter gagal", async (userId, body) => {
     const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };

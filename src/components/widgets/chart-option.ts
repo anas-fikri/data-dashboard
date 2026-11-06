@@ -386,7 +386,14 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   // Warna status (v1.7.0 batang; v1.9.0 garis + pai): tiga tingkat terhadap nilai lain di grafik ini.
   const statusOf = (vals: readonly (number | null)[]) => {
     if (!i.status) return null;
-    const st = statusSeries(vals, i.status.tone, i.status.target, i.status.scale);
+    // Nilai di sini sudah dibagi satuan durasi sumbu (menit/jam); batas dibandingkan dengan nilai asli,
+    // sama dengan legenda, tabel, dan Angka.
+    const st = statusSeries(
+      vals,
+      i.status.tone,
+      i.status.target,
+      (i.status.scale ?? 1) * scale.div,
+    );
     const pal = statusPalette(i.status.colors, !!theme.dark);
     return { st, marks: st.map((s) => (s ? pal[s].mark : null)) };
   };

@@ -393,6 +393,8 @@ export function TableStatusFields({
         value={rule ?? {}}
         percent={percentOf(current.pos)}
         onChange={(next) => {
+          // Tetap di kolom ini (tanpa ini, menghapus warnanya melompat ke kolom berwarna lain → fokus hilang).
+          setPicked(current.pos);
           const others = (status ?? []).filter((s) => s.column !== current.pos);
           const mine = next.tone ? [{ column: current.pos, ...withStatus({}, next) }] : [];
           const order = columns.map((c) => c.pos);
