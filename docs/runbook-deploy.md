@@ -832,3 +832,24 @@ dan arsip lokal dihapus setelah selesai.
 - Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
   ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke
   `prev-<stamp>` (§11); Redis rusak = §12.
+
+## 14. Rilis satu perintah dari server (`deploy/server-release.sh`, mulai v1.6.2)
+
+Alternatif §13 tanpa Mac dan tanpa git: dijalankan langsung di olympus, kode diunduh dari GitHub (repo
+publik). Syarat: PR rilis (commit `chore(release): v<versi>`) sudah di-merge ke `main`.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.7.0          # backup harian ≤ 26 jam dipakai bila rilis tanpa migrasi
+bash deploy/server-release.sh 1.7.0 --full   # paksa backup lengkap baru
+```
+
+1. unduh arsip tag `v<versi>`; bila tag belum ada, arsip `main` (versi `package.json` wajib sama);
+2. preflight dengan kode lama memakai `upgrade.sh` versi rilis (backup, dump DB, catat image rollback);
+3. sinkron kode ke folder aplikasi (`.env.prod`, sertifikat, dan data tidak tersentuh);
+4. `upgrade.sh build` di VM (± 15–20 menit, produksi tetap jalan);
+5. `upgrade.sh migrate` → `start` (jeda ± 2–5 menit) + verifikasi pasca-deploy.
+
+Gagal di langkah 1–4: produksi tidak berubah; skrip mencetak perintah lanjutan. Gagal di langkah 5: ikuti pesan
+`upgrade.sh` (rollback: `bash deploy/upgrade.sh rollback`). Isi `STORAGE_RESOLVE_IP` (§2, domain publik) agar uji
+presign tidak gagal palsu karena hairpin NAT. Tag dibuat belakangan dari Mac bila memakai `main`.

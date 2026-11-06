@@ -299,7 +299,8 @@ build_images() {
   # Image store dipakai bersama produksi: build bertag produksi memindahkan tag yang sedang dipakai.
   [ "$tag" != "$OLD_TAG" ] ||
     die "tag build ($tag) sama dengan produksi — naikkan versi (aitk release) atau IMAGE_TAG=$tag-<commit>"
-  commit=$(git rev-parse --short HEAD 2>/dev/null || true)
+  # APP_COMMIT dari luar (server-release.sh: folder tanpa .git) menang.
+  commit=${APP_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || true)}
   setenv IMAGE_TAG "$tag"
   info "build image bertag $tag (commit ${commit:-?}) di VM (lambat; disarankan deploy/images.sh di mesin build)"
   IMAGE_TAG=$tag APP_COMMIT=$commit "${C[@]}" build
