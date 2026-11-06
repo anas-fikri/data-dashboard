@@ -47,3 +47,8 @@
 - useContainerWidth react-grid-layout hanya mengukur saat mount — kontainer yang dirender bersyarat butuh use-grid-width; tes piksel yang lulus sendiri tapi gagal saat suite utuh bisa menandakan lebar grid basi. <!-- aitk:k date=2026-10-21 task=T-1zdf -->
 - Kanvas dashboard dirender server: klik tombol kartu sebelum hidrasi hilang; e2e menunggu [data-testid=dashboard-canvas][data-hydrated] (bukan jeda waktu). <!-- aitk:k date=2026-10-21 task=T-z8y2 -->
 - Klik tombol sesaat setelah goto bisa jatuh sebelum hidrasi React — beri penanda data-hydrated lewat useEffect mount dan tunggu di e2e. <!-- aitk:k date=2026-10-21 task=T-z8y2 -->
+- Di cn(), leading-* harus ditulis sesudah text-*. <!-- aitk:k date=2026-10-21 task=T-w764 -->
+- Artikel panduan hanya satu peran: rujukan lintas artikel harus ke peran sama/ALL (diuji content.test), materi bersama memakai padanan per peran. <!-- aitk:k date=2026-10-22 task=T-7rw4 -->
+- edge-tts di container cloud butuh CA proxy (certifi.where → /root/.ccr/ca-bundle.crt lewat pembungkus EDGE_TTS_BIN). <!-- aitk:k date=2026-10-22 task=T-1tzp -->
+- Keputusan pemilik 2026-10-23: SEMUA daftar pilihan (dropdown/combobox nilai) wajib punya kotak cari pintar (src/lib/search), termasuk daftar pendek; menu aksi (akun, menu baris admin, menu kepala kolom grid) tidak. <!-- aitk:k date=2026-10-23 task=T-cfd7 source=manual -->
+- Migrasi zod 3→4 di repo ini hanya butuh cast ctx.addIssue(issue) di transform measureOrCalc; .strict()/.refine/z.record dua argumen kompatibel. minimatch 11 bisa dipaksa lewat overrides untuk @typescript-eslint/typescript-estree tanpa merusak lint. <!-- aitk:k date=2026-11-06 task=T-fnvm -->
