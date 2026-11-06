@@ -328,7 +328,7 @@ describe("warna status dari pivot tersimpan (v1.8.0)", () => {
     ],
     colors: { template: "bold" as const },
   };
-  it("batang membawa arah + batas nilai biasa dan template pivot", () => {
+  it("batang membawa arah + batas nilai biasa; template pivot tersimpan tidak ikut (v1.9.0)", () => {
     const r = effectiveConfig(
       "bar",
       { dimension: "row", value: 0, sort: "value_desc", topN: 10 },
@@ -338,7 +338,7 @@ describe("warna status dari pivot tersimpan (v1.8.0)", () => {
       tone: "up",
       target: { good: 95, bad: 90 },
     });
-    expect(r.ok && r.config.type === "bar" && r.config.spec.colors).toEqual({ template: "bold" });
+    expect(r.ok && r.config.type === "bar" && r.config.spec.colors).toBeUndefined();
   });
   it("Angka membawa arah + batas", () => {
     const r = effectiveConfig("kpi", { value: 0 }, toned);

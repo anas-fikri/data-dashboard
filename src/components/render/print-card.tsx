@@ -1,5 +1,6 @@
 "use client";
 
+import { useDashboardColors } from "@/components/widgets/dashboard-colors";
 import {
   IconAlertTriangle,
   IconChartBar,
@@ -102,6 +103,7 @@ function Body({
   heightPx: number;
   notes: number;
 }) {
+  const dashColors = useDashboardColors();
   if (config.type === "kpi") {
     return (
       <KpiView
@@ -109,7 +111,7 @@ function Body({
         format={config.spec.format}
         title={title}
         agg={aggOf(config.spec.measure)}
-        status={specStatus(config.spec)}
+        status={specStatus(config.spec, dashColors)}
         fixedHeight
       />
     );
@@ -121,13 +123,19 @@ function Body({
         positions={config.spec.columns}
         format={config.spec.format}
         formatColumns={config.spec.formatColumns}
+        status={config.spec.status}
+        colors={config.spec.colors ?? dashColors}
         fit={tableRowsFitPx(heightPx, notes)}
       />
     );
   }
   if (config.type === "pivot") {
     return data.pivot ? (
-      <PrintPivot data={data.pivot} format={config.spec.format} status={specStatus(config.spec)} />
+      <PrintPivot
+        data={data.pivot}
+        format={config.spec.format}
+        status={specStatus(config.spec, dashColors)}
+      />
     ) : (
       <Message icon={null}>
         <p className="text-muted-foreground">Tidak ada data untuk ditampilkan.</p>

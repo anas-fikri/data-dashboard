@@ -8,6 +8,7 @@ import {
   TEMPLATE_LABEL,
   statusCssVars,
   statusPalette,
+  type TableColumnStatus,
 } from "@/features/widgets/status-color";
 import {
   COLOR_TEMPLATES,
@@ -15,6 +16,7 @@ import {
   type Tone,
   type WidgetColors,
 } from "@/features/widgets/tone";
+import { useDashboardColorsScope } from "@/components/widgets/dashboard-colors";
 import { cn } from "@/lib/utils";
 import { Choice } from "./config-fields";
 
@@ -60,8 +62,11 @@ export function ToneChoice({
   onChange,
   kpi = false,
   percent = false,
+  label = "Penilaian warna",
 }: {
   value: ValueStatus;
+  /** Label pilihan arah (tabel: "Penilaian warna kolom …"). */
+  label?: string;
   onChange: (next: ValueStatus) => void;
   /** Angka (KPI): satu nilai tanpa pembanding → warna hanya dengan batas. */
   kpi?: boolean;
@@ -111,7 +116,7 @@ export function ToneChoice({
   return (
     <>
       <Choice
-        label="Penilaian warna"
+        label={label}
         testId="config-tone"
         value={tone ?? "none"}
         options={TONE_OPTIONS}
@@ -191,16 +196,6 @@ export function ToneChoice({
   );
 }
 
-/** Petunjuk di jenis yang tidak berwarna status (garis, pai): fitur ada di Batang/Pivot/Angka. */
-export function StatusUnavailableHint() {
-  return (
-    <p className="text-xs text-muted-foreground" data-testid="config-tone-unavailable">
-      Warna status (hijau baik, merah perlu perhatian) tersedia di widget Batang, Pivot, dan Angka —
-      ganti jenis widget di atas untuk memakainya.
-    </p>
-  );
-}
-
 const CUSTOM_KEY = "dd:status-custom";
 const DEFAULT_CUSTOM: [string, string, string] = ["#C00000", "#FFC000", "#00B050"];
 function lastCustom(): [string, string, string] {
@@ -222,7 +217,12 @@ function rememberCustom(c: [string, string, string]) {
   }
 }
 
-/** Template warna widget; tampil hanya bila ada nilai yang diberi penilaian warna. */
+/**
+ * Template warna widget; tampil hanya bila ada nilai yang diberi penilaian warna. Di dalam dashboard
+ * (v1.9.0) pilihan pertama "Ikuti dashboard" (undefined) dan template lain tersimpan eksplisit di widget;
+ * di luar dashboard (editor pivot tersimpan) "Lembut" = bawaan dan tidak disimpan.
+ */
+const FOLLOW = "follow";
 export function ColorTemplateFields({
   colors,
   onChange,
@@ -231,21 +231,38 @@ export function ColorTemplateFields({
   onChange: (colors: WidgetColors | undefined) => void;
 }) {
   const id = useId();
-  const template = colors?.template ?? "soft";
+  const scope = useDashboardColorsScope();
+  const inherited = scope ? (scope.colors ?? undefined) : undefined;
+  const template = colors?.template ?? (scope ? FOLLOW : "soft");
   // Warna sendiri terakhir diingat browser: widget lain langsung memakai warna yang sama (konsisten).
   const custom = colors?.custom ?? lastCustom();
-  const preview = statusPalette(colors, false);
+  const shown = colors ?? inherited;
+  const options = [
+    ...(scope
+      ? [
+          {
+            value: FOLLOW,
+            label: `Ikuti dashboard — ${TEMPLATE_LABEL[inherited?.template ?? "soft"]}`,
+          },
+        ]
+      : []),
+    ...COLOR_TEMPLATES.map((t) => ({ value: t as string, label: TEMPLATE_LABEL[t] })),
+  ];
+  const preview = statusPalette(shown, false);
   return (
     <div className="grid min-w-0 grid-cols-1 gap-2" data-testid="config-colors">
       <Choice
         label="Template warna"
         testId="config-color-template"
         value={template}
-        options={COLOR_TEMPLATES.map((t) => ({ value: t, label: TEMPLATE_LABEL[t] }))}
+        options={options}
         onChange={(t) =>
-          // Lembut = bawaan: tidak disimpan agar spec tetap ringkas.
           onChange(
-            t === "soft" ? undefined : t === "custom" ? { template: t, custom } : { template: t },
+            t === FOLLOW || (t === "soft" && !scope)
+              ? undefined
+              : t === "custom"
+                ? { template: "custom", custom }
+                : { template: t as Exclude<WidgetColors["template"], "custom"> },
           )
         }
       />
@@ -275,7 +292,7 @@ export function ColorTemplateFields({
       <div
         className="flex flex-wrap gap-1.5 text-xs"
         aria-hidden
-        style={statusCssVars(colors) as React.CSSProperties}
+        style={statusCssVars(shown) as React.CSSProperties}
       >
         {STATUSES.map((s) => (
           <span key={s} data-status={s} className="rounded px-2 py-0.5" title={preview.names[s]}>
@@ -292,13 +309,11 @@ export function ColorTemplateFields({
  * widget yang memakainya); di sini hanya petunjuk ke sana dan pilihan template tampilan ini.
  */
 export function BoundStatusFields({
-  type,
   toned,
   colors,
   editHref,
   onColors,
 }: {
-  type: string;
   /** Nilai yang ditampilkan widget ini punya penilaian warna di pivot tersimpan. */
   toned: boolean;
   colors: WidgetColors | undefined;
@@ -306,7 +321,6 @@ export function BoundStatusFields({
   editHref?: string;
   onColors: (colors: WidgetColors | undefined) => void;
 }) {
-  if (type !== "pivot" && type !== "bar" && type !== "kpi") return <StatusUnavailableHint />;
   return (
     <div className="flex min-w-0 flex-col gap-2" data-testid="bound-status">
       <p className="text-xs text-muted-foreground" data-testid="bound-status-hint">
@@ -324,6 +338,71 @@ export function BoundStatusFields({
         ) : null}
       </p>
       {toned ? <ColorTemplateFields colors={colors} onChange={onColors} /> : null}
+    </div>
+  );
+}
+
+/**
+ * Warna status Tabel (v1.9.0): pilih kolom angka, lalu penilaian warnanya (sama dengan widget lain).
+ * Satu kolom diatur sekaligus agar panel tetap pendek; kolom yang sudah berwarna ditandai di daftar.
+ */
+export function TableStatusFields({
+  columns,
+  status,
+  colors,
+  percentOf,
+  onChange,
+  onColors,
+}: {
+  /** Kolom angka yang ditampilkan tabel (urut tabel). */
+  columns: { pos: number; label: string }[];
+  status: TableColumnStatus[] | undefined;
+  colors: WidgetColors | undefined;
+  percentOf: (pos: number) => boolean;
+  onChange: (status: TableColumnStatus[] | undefined) => void;
+  onColors: (colors: WidgetColors | undefined) => void;
+}) {
+  const [picked, setPicked] = useState<number | null>(null);
+  if (!columns.length) {
+    return (
+      <p className="text-xs text-muted-foreground" data-testid="config-table-status-empty">
+        Warna status (hijau baik, merah perlu perhatian) bisa dipakai di kolom angka — tambahkan
+        kolom angka ke tabel untuk memakainya.
+      </p>
+    );
+  }
+  const rules = new Map((status ?? []).map((s) => [s.column, s]));
+  const current =
+    columns.find((c) => c.pos === picked) ?? columns.find((c) => rules.has(c.pos)) ?? columns[0]!;
+  const rule = rules.get(current.pos);
+  return (
+    <div className="grid min-w-0 grid-cols-1 gap-2" data-testid="config-table-status">
+      <Choice
+        label="Kolom yang diwarnai"
+        testId="config-table-status-column"
+        value={String(current.pos)}
+        options={columns.map((c) => ({
+          value: String(c.pos),
+          label: rules.has(c.pos) ? `${c.label} — berwarna` : c.label,
+        }))}
+        onChange={(v) => setPicked(Number(v))}
+      />
+      <ToneChoice
+        key={current.pos}
+        label={`Penilaian warna kolom ${current.label}`}
+        value={rule ?? {}}
+        percent={percentOf(current.pos)}
+        onChange={(next) => {
+          const others = (status ?? []).filter((s) => s.column !== current.pos);
+          const mine = next.tone ? [{ column: current.pos, ...withStatus({}, next) }] : [];
+          const order = columns.map((c) => c.pos);
+          const all = [...others, ...(mine as TableColumnStatus[])].sort(
+            (a, b) => order.indexOf(a.column) - order.indexOf(b.column),
+          );
+          onChange(all.length ? all : undefined);
+        }}
+      />
+      {status?.length ? <ColorTemplateFields colors={colors} onChange={onColors} /> : null}
     </div>
   );
 }

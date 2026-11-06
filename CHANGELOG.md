@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **filter bawaan (T-vb7q):** rollback ke v1.3.1 membuat kolom filter yang membawa filter bawaan tidak tampil
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
+- **warna status v1.9.0 (T-z1vv):** migrasi `Dashboard.colors` (kolom nullable, aman untuk rollback image).
+  Rollback ke v1.8.x membuat widget Tabel berwarna status dan tabel terikat bertemplate sendiri tampil
+  "Pengaturan widget tidak valid" sampai roll-forward; widget terikat pivot tersimpan kini mengikuti template
+  dashboard, bukan template pivot tersimpan (runbook-deploy §18).
 
 ## [1.8.1] - 2026-11-06
 

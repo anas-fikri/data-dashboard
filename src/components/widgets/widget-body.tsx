@@ -1,5 +1,6 @@
 "use client";
 
+import { useDashboardColors } from "@/components/widgets/dashboard-colors";
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { aggOf, type WidgetConfig } from "@/features/widgets/spec";
@@ -86,6 +87,7 @@ function Loaded({
   onRequest,
   onBadge,
 }: Props & { version: string }) {
+  const dashColors = useDashboardColors();
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
   const cross = useWidgetFilters(widgetId);
@@ -158,7 +160,7 @@ function Loaded({
           format={config.spec.format}
           title={title}
           agg={aggOf(config.spec.measure)}
-          status={specStatus(config.spec)}
+          status={specStatus(config.spec, dashColors)}
           fixedHeight={fixedHeight}
         />
       );
@@ -176,6 +178,8 @@ function Loaded({
             positions={config.spec.columns}
             format={config.spec.format}
             formatColumns={config.spec.formatColumns}
+            status={config.spec.status}
+            colors={config.spec.colors ?? dashColors}
             sort={sort}
             busy={state.status === "loading"}
             label={/^tabel\b/i.test(title) ? title : `Tabel ${title || "widget"}`}
@@ -198,7 +202,7 @@ function Loaded({
           request={request}
           cross={cross}
           crossFilter={config.spec.crossFilter === true}
-          status={specStatus(config.spec)}
+          status={specStatus(config.spec, dashColors)}
         />
       ) : null;
       break;

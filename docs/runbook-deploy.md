@@ -876,3 +876,13 @@ Arahkan `data-slicer.pcpexpress.com` dan `storage-data-slicer.pcpexpress.com` ke
 kantor (router/AD/Pi-hole): pengguna kantor tidak lewat IP publik (hairpin NAT), unggah lebih stabil, dan uji
 `check-public-presign` di `upgrade.sh start` lulus tanpa `STORAGE_RESOLVE_IP`. Cek dari laptop kantor:
 `nslookup storage-data-slicer.pcpexpress.com` → `10.3.3.56`.
+
+## 18. Rilis v1.9.0 (migrasi) dan rollback ke v1.8.x
+
+v1.9.0 menambah kolom `Dashboard.colors` (migrasi `20261107000000_dashboard_colors`, hanya `ADD COLUMN` nullable)
+→ `server-release.sh` otomatis membuat backup lengkap (migrasi berbeda dari produksi). Rollback image ke v1.8.x
+tanpa membatalkan migrasi aman: kolom baru diabaikan kode lama. Yang berubah saat rollback: widget **Tabel**
+yang diberi warna status (field `status`/`colors`) dan tampilan tabel terikat pivot tersimpan yang memilih
+template sendiri tampil "Pengaturan widget tidak valid" sampai roll-forward (data tetap di DB); template
+dashboard tidak berlaku (widget kembali ke template sendiri/bawaan). Hapus warna Tabel dulu bila rollback akan
+lama.

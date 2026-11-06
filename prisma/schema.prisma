@@ -421,6 +421,9 @@ model Dashboard {
   /// Kolom filter global (T-012): [{ sheet, column }] dengan nama tampil, ≤ 8, unik. Pengguna dashboard
   /// hanya boleh memfilter kolom ini + dimensi grafik yang cross-filter-nya aktif (D6).
   filterColumns  Json             @default("[]")
+  /// Template warna status dashboard (v1.9.0, tone.ts colorsSchema): widget tanpa template sendiri
+  /// mengikuti ini; null = Lembut.
+  colors         Json?
   /// Dibagikan ke seluruh organisasi (semua user aktif) sebagai VIEWER (T-016; tabel peran flow-kerja).
   orgShared      Boolean          @default(false)
   shares         DashboardShare[]

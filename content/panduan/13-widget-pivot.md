@@ -71,14 +71,21 @@ Pivot yang sama dipakai di beberapa dashboard atau sebagai grafik dan angka seka
 
 ## Warna status: hijau baik, merah perlu perhatian
 
-Seperti _Conditional Formatting_ di Excel, sel pivot (dan batang di grafik **Batang**) bisa diberi warna status
-supaya yang bermasalah langsung terlihat — tanpa mengisi angka ambang.
+Seperti _Conditional Formatting_ di Excel, sel pivot, batang grafik **Batang**, titik grafik **Garis**, irisan
+**Pai**, dan sel kolom angka **Tabel** bisa diberi warna status supaya yang bermasalah langsung terlihat — tanpa
+mengisi angka ambang.
 
 1. Di kartu **Nilai**, pilih **Penilaian warna**:
    - **Makin tinggi makin baik** — mis. _checkpoint tepat waktu_, _pengiriman sukses_.
    - **Makin tinggi makin buruk** — mis. _klaim_, _retur_, _keterlambatan_.
-2. Pilih **Template warna**: _Lembut_ (bawaan, gaya isian Excel), _Tegas_, _Ramah buta warna_ (biru–oranye),
-   atau _Warna sendiri_ (tiga warna pilihan Anda).
+2. **Template warna** bawaannya _Ikuti dashboard_: semua widget memakai satu template yang diatur sekali lewat
+   tombol **Warna dashboard** di bilah atas (mode ubah) — _Lembut_ (bawaan, gaya isian Excel), _Tegas_,
+   _Ramah buta warna_ (biru–oranye), atau _Warna sendiri_ (tiga warna pilihan Anda). Widget yang perlu tampil
+   beda boleh memilih template sendiri; pilihan widget itu yang dipakai.
+
+Di widget **Tabel**, pilih dulu **Kolom yang diwarnai** (kolom angka yang tampil), lalu **Penilaian warna kolom …**.
+Ulangi untuk kolom lain; kolom yang sudah berwarna ditandai _— berwarna_ di daftar. Pada cara Otomatis, sel
+dibandingkan dengan baris lain di halaman tabel yang sedang tampil.
 
 Ada dua **Cara menentukan warna**:
 
@@ -88,9 +95,9 @@ Ada dua **Cara menentukan warna**:
   format persen 95 % → ketik 95. Di antara kedua batas = **Sedang**. Dengan batas, cabang yang semuanya di bawah
   target tetap merah — tidak ada yang "otomatis hijau".
 
-Widget **Angka** juga bisa diwarnai, tetapi hanya dengan batas angka (satu angka tidak punya pembanding). Grafik
-garis dan pai tidak diwarnai status. _Warna sendiri_ yang terakhir dipilih diingat browser, jadi widget lain
-langsung memakai warna yang sama.
+Widget **Angka** juga bisa diwarnai, tetapi hanya dengan batas angka (satu angka tidak punya pembanding). Di
+**Pai**, irisan _Lainnya_ tidak diberi status. Widget yang bersumber dari pivot tersimpan mengikuti template
+dashboard (atau template pilihannya sendiri) — template di halaman pivot tersimpan hanya untuk halaman itu.
 
 Pada cara **Otomatis**, setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
 gradasi: **sepertiga teratas**, **tengah**, dan **sepertiga terbawah** rentang terkecil–terbesar. Untuk nilai

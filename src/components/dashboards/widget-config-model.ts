@@ -2,6 +2,7 @@ import type { SourceSheet } from "@/features/dashboards/service";
 import type { ColumnType } from "@/features/ingest/infer";
 import type { Agg } from "@/features/query/spec";
 import { MISSING_COLUMN } from "@/features/widgets/remap";
+import { keepTableStatus } from "@/features/widgets/status-color";
 import {
   DEFAULT_FORMAT,
   PIE_AGGS,
@@ -475,6 +476,7 @@ export function withoutMissingColumns(
       ...config.spec,
       columns,
       formatColumns: config.spec.formatColumns?.filter((p) => columns.includes(p)),
+      status: keepTableStatus(config.spec.status, columns),
     },
   };
 }

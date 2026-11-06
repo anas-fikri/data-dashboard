@@ -390,3 +390,48 @@ describe("keepUnavailable (T-k2ec, simpanan editor)", () => {
     expect(!r.ok && r.message).toContain("2 kolom yang sedang tidak tersedia");
   });
 });
+
+describe("setDashboardColors (v1.9.0)", () => {
+  it("menyimpan template valid; null = bawaan (DbNull)", async () => {
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.setDashboardColors(OWNER, DB, { template: "bold" })).toEqual({
+      ok: true,
+      data: { colors: { template: "bold" } },
+    });
+    expect(prisma.dashboard.updateMany.mock.calls[0]![0].data).toEqual({
+      colors: { template: "bold" },
+    });
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 1 });
+    expect(await svc.setDashboardColors(OWNER, DB, null)).toEqual({
+      ok: true,
+      data: { colors: null },
+    });
+  });
+
+  it("bentuk salah / id rusak ditolak tanpa menulis", async () => {
+    for (const bad of [
+      { template: "neon" },
+      { template: "custom" },
+      "bold",
+      { template: "soft", x: 1 },
+    ]) {
+      expect(await svc.setDashboardColors(OWNER, DB, bad)).toMatchObject({ code: "INVALID" });
+    }
+    expect(await svc.setDashboardColors(OWNER, "../x", null)).toMatchObject({ code: "NOT_FOUND" });
+    expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+  });
+
+  it("tanpa hak edit → tidak tertulis (NOT_FOUND bila tak terlihat)", async () => {
+    prisma.dashboard.updateMany.mockResolvedValueOnce({ count: 0 });
+    prisma.dashboard.findFirst.mockResolvedValueOnce(null);
+    const r = await svc.setDashboardColors("orang-lain", DB, { template: "bold" });
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("setDashboardColors: body tanpa colors", () => {
+  it("undefined (field tidak dikirim) → INVALID, bukan menghapus template", async () => {
+    expect(await svc.setDashboardColors(OWNER, DB, undefined)).toMatchObject({ code: "INVALID" });
+    expect(prisma.dashboard.updateMany).not.toHaveBeenCalled();
+  });
+});

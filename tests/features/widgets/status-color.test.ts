@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   STATUSES,
+  keepTableStatus,
+  specStatus,
+  tableStatus,
   contrast,
   pivotStatus,
   ruleText,
@@ -137,5 +140,49 @@ describe("warna status: batas tetap (v1.8.0)", () => {
   it("teks aturan legenda", () => {
     expect(ruleText("up", { good: 95, bad: 90 })).toBe("Baik ≥ 95 · Perlu perhatian < 90");
     expect(ruleText("down")).toBe("makin tinggi makin buruk");
+  });
+});
+
+describe("tabel + template dashboard (v1.9.0)", () => {
+  it("tableStatus: hanya kolom berwarna, relatif per kolom, batas memakai skala persen", () => {
+    const rows = [
+      ["A", 100, 0.97],
+      ["B", 350, 0.92],
+      ["C", 600, 0.85],
+    ];
+    const of = tableStatus(
+      rows,
+      [1, 2, 3],
+      [
+        { column: 2, tone: "down" },
+        { column: 3, tone: "up", target: { good: 95, bad: 90 } },
+      ],
+      (pos) => (pos === 3 ? 100 : 1),
+    )!;
+    expect(rows.map((r) => of(r[0], 0))).toEqual([null, null, null]);
+    expect(rows.map((r) => of(r[1], 1))).toEqual(["good", "mid", "bad"]);
+    expect(rows.map((r) => of(r[2], 2))).toEqual(["good", "mid", "bad"]);
+    expect(tableStatus(rows, [1, 2, 3], undefined)).toBeNull();
+    // Kolom berwarna tidak ditampilkan: tidak ada yang diwarnai.
+    expect(tableStatus(rows, [1], [{ column: 2, tone: "up" }])).toBeNull();
+  });
+
+  it("keepTableStatus membuang kolom yang tidak ditampilkan; kosong = undefined", () => {
+    const st = [
+      { column: 2, tone: "up" as const },
+      { column: 4, tone: "down" as const },
+    ];
+    expect(keepTableStatus(st, [1, 2])).toEqual([{ column: 2, tone: "up" }]);
+    expect(keepTableStatus(st, [1])).toBeUndefined();
+    expect(keepTableStatus(undefined, [1])).toBeUndefined();
+  });
+
+  it("specStatus: template widget menang, tanpa itu template dashboard", () => {
+    const spec = { measure: { tone: "up" } };
+    expect(specStatus(spec, { template: "bold" })?.colors).toEqual({ template: "bold" });
+    expect(
+      specStatus({ ...spec, colors: { template: "soft" } }, { template: "bold" })?.colors,
+    ).toEqual({ template: "soft" });
+    expect(specStatus(spec)?.colors).toBeUndefined();
   });
 });

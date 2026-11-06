@@ -1,9 +1,17 @@
 "use client";
 
 import { useLayoutEffect, useRef, useState } from "react";
-import { count, NUMERIC, tableCellText } from "@/components/widgets/table-view";
+import {
+  count,
+  NUMERIC,
+  StatusText,
+  tableCellText,
+  tableStatusView,
+} from "@/components/widgets/table-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { NumberFormat } from "@/features/widgets/spec";
+import type { TableColumnStatus } from "@/features/widgets/status-color";
+import type { WidgetColors } from "@/features/widgets/tone";
 import { cn } from "@/lib/utils";
 import { PRINT_TABLE_ROW_PX } from "./print-layout";
 
@@ -45,12 +53,16 @@ export function PrintTable({
   positions,
   format,
   formatColumns,
+  status,
+  colors,
   fit,
 }: {
   data: WidgetData;
   positions: number[];
   format: NumberFormat;
   formatColumns?: number[];
+  status?: TableColumnStatus[];
+  colors?: WidgetColors;
   fit: number;
 }) {
   const box = useRef<HTMLDivElement>(null);
@@ -76,10 +88,16 @@ export function PrintTable({
   const rows = data.rows.slice(0, shown);
   const columns = data.columns.slice(0, cols);
   const cellText = tableCellText(data, positions, format, formatColumns);
+  // Rentang relatif dari baris halaman pertama (sama dengan layar), bukan hanya yang muat dicetak.
+  const st = tableStatusView(data, positions, format, formatColumns, status, colors, true);
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={box} className="min-h-0 flex-1 overflow-hidden">
-        <table className="w-full border-collapse text-xs" data-testid="print-table">
+        <table
+          className="w-full border-collapse text-xs"
+          data-testid="print-table"
+          style={st?.style}
+        >
           <thead>
             <tr className="h-6 border-b">
               {columns.map((c) => (
@@ -102,13 +120,14 @@ export function PrintTable({
                 {row.slice(0, cols).map((v, i) => (
                   <td
                     key={i}
+                    data-status={st?.of(v, i) ?? undefined}
                     className={cn(
                       "max-w-[16rem] truncate px-2",
                       NUMERIC.has(data.columns[i]!.type) && "text-right tabular-nums",
                       (v === null || v === "") && "text-muted-foreground",
                     )}
                   >
-                    {cellText(v, i)}
+                    <StatusText text={cellText(v, i)} status={st?.of(v, i) ?? null} />
                   </td>
                 ))}
               </tr>
@@ -121,6 +140,7 @@ export function PrintTable({
           </p>
         ) : null}
       </div>
+      {st?.legend}
       <p
         className="flex min-h-6 shrink-0 items-center border-t px-3 py-1 text-xs text-muted-foreground"
         data-testid="print-table-range"

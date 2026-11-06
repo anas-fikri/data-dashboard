@@ -81,7 +81,12 @@ export const kpiDisplaySchema = z
   .object({ value: valueIndex, format: formatSchema.optional(), colors: colorsSchema.optional() })
   .strict();
 export const tableDisplaySchema = z
-  .object({ sort: z.enum(CHART_SORTS), totals: z.boolean(), format: formatSchema.optional() })
+  .object({
+    sort: z.enum(CHART_SORTS),
+    totals: z.boolean(),
+    format: formatSchema.optional(),
+    colors: colorsSchema.optional(),
+  })
   .strict();
 
 export type PivotDisplay = z.infer<typeof pivotDisplaySchema>;
@@ -176,7 +181,9 @@ export function effectiveConfig(
   switch (bound.type) {
     case "pivot": {
       const d = bound.display;
-      const { subtotalLevels: _l, crossFilter: _c, ...base } = pivot;
+      // Template warna: milik widget (tampilan) atau dashboard — template pivot tersimpan hanya untuk
+      // halaman pivot tersimpan itu (v1.9.0), agar semua widget dashboard seragam.
+      const { subtotalLevels: _l, crossFilter: _c, colors: _pc, ...base } = pivot;
       built = {
         type: "pivot",
         spec: {
@@ -186,7 +193,6 @@ export function effectiveConfig(
           subtotals: d.subtotals,
           ...(d.subtotalLevels ? { subtotalLevels: d.subtotalLevels } : {}),
           ...(d.crossFilter !== undefined ? { crossFilter: d.crossFilter } : {}),
-          // Template warna tampilan menimpa template pivot tersimpan (arah tetap per nilai di pivot).
           ...(d.colors ? { colors: d.colors } : {}),
           format,
         },
@@ -196,7 +202,7 @@ export function effectiveConfig(
     case "table": {
       // Tabel teragregasi: pivot rata (tanpa kolom pemisah/subtotal), bukan sumber filter silang.
       const d = bound.display;
-      const { subtotalLevels: _l, crossFilter: _c, column: _k, ...base } = pivot;
+      const { subtotalLevels: _l, crossFilter: _c, column: _k, colors: _pc, ...base } = pivot;
       // Sumbu total berjalan/selisih pindah dari kolom pemisah ke baris terdalam; ber-Top N, item
       // "sebelumnya" bisa tergabung ke "(Lainnya)" → cara tampil itu diganti nilai biasa + catatan.
       if (pivotTopNAxisRow(base) !== null) {
@@ -211,7 +217,14 @@ export function effectiveConfig(
       }
       built = {
         type: "pivot",
-        spec: { ...base, sort: d.sort, totals: d.totals, subtotals: false, format },
+        spec: {
+          ...base,
+          sort: d.sort,
+          totals: d.totals,
+          subtotals: false,
+          format,
+          ...(d.colors ? { colors: d.colors } : {}),
+        },
       };
       break;
     }
@@ -220,7 +233,7 @@ export function effectiveConfig(
       if (!v) return { ok: false, message: missingValue };
       // KPI = total keseluruhan, tanpa "Tampilkan nilai sebagai"; warna status hanya dengan batas tetap.
       const { showAs: _s, ...measure } = v;
-      const colors = bound.display.colors ?? pivot.colors;
+      const colors = bound.display.colors;
       built = {
         type: "kpi",
         spec: { sheetId: pivot.sheetId, measure, format, ...(colors ? { colors } : {}) },
@@ -259,7 +272,7 @@ export function effectiveConfig(
           topN: d.topN,
           format,
           ...(d.crossFilter !== undefined ? { crossFilter: d.crossFilter } : {}),
-          ...((d.colors ?? pivot.colors) ? { colors: d.colors ?? pivot.colors } : {}),
+          ...(d.colors ? { colors: d.colors } : {}),
         },
       };
       filters = pivot.filters;

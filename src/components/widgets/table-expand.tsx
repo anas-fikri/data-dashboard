@@ -1,5 +1,6 @@
 "use client";
 
+import { useDashboardColors } from "@/components/widgets/dashboard-colors";
 import { IconArrowsMaximize, IconRefresh, IconTable, IconX } from "@tabler/icons-react";
 import Link from "next/link";
 import { Dialog } from "radix-ui";
@@ -106,6 +107,7 @@ function Expanded({
 }: Omit<Props, "request" | "className" | "dataHref"> & {
   initial: { page: number; sort: TableSort };
 }) {
+  const dashColors = useDashboardColors();
   const [page, setPage] = useState(initial.page);
   const [sort, setSort] = useState<TableSort>(initial.sort);
   const cross = useWidgetFilters(widgetId);
@@ -149,6 +151,8 @@ function Expanded({
           positions={config.spec.columns}
           format={config.spec.format}
           formatColumns={config.spec.formatColumns}
+          status={config.spec.status}
+          colors={config.spec.colors ?? dashColors}
           sort={sort}
           busy={busy}
           sheet

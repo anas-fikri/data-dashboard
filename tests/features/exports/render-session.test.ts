@@ -115,6 +115,7 @@ describe("loadRenderSession", () => {
     expect(r!.dashboard).toEqual({
       id: DASH,
       name: "Penjualan",
+      colors: null,
       datasetName: "Data penjualan",
       layout: dashboard().layout,
       filterSummary: "Cabang: Cabang 1; Tanggal: Bulan ini; Disaring dari Per kota: Bandung",

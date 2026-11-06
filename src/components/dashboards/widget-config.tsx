@@ -1,12 +1,8 @@
 "use client";
 
+import { keepTableStatus } from "@/features/widgets/status-color";
 import { valueFormat } from "@/features/widgets/show-as";
-import {
-  ColorTemplateFields,
-  StatusUnavailableHint,
-  ToneChoice,
-  withStatus,
-} from "./status-fields";
+import { ColorTemplateFields, TableStatusFields, ToneChoice, withStatus } from "./status-fields";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -319,7 +315,6 @@ export function WidgetConfigForm({
           {/* Tanpa sheet belum ada kolom untuk dipilih: bagian kolom/nilai muncul setelah sheet dipilih. */}
           {noColumns ? null : draft.type === "table" ? (
             <>
-              <StatusUnavailableHint />
               <TableColumns
                 ref={columnsRef}
                 columns={cols}
@@ -331,6 +326,7 @@ export function WidgetConfigForm({
                       ...draft.spec,
                       columns,
                       formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
+                      status: keepTableStatus(draft.spec.status, columns),
                     },
                   })
                 }
@@ -425,11 +421,8 @@ export function WidgetConfigForm({
                     ...draft,
                     spec: {
                       ...draft.spec,
-                      // Ubah rumus tidak menghapus penilaian warna batang.
-                      measure:
-                        draft.type === "bar" || draft.type === "kpi"
-                          ? withStatus(measure, draft.spec.measure)
-                          : measure,
+                      // Ubah rumus tidak menghapus penilaian warna.
+                      measure: withStatus(measure, draft.spec.measure),
                     },
                   } as WidgetConfig)
                 }
@@ -449,42 +442,39 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
-              {/* Warna status: batang (relatif/batas) dan Angka (batas saja); garis/pai hanya petunjuk. */}
-              {draft.type === "line" || draft.type === "pie" ? <StatusUnavailableHint /> : null}
-              {draft.type === "bar" || draft.type === "kpi" ? (
-                <>
-                  <ToneChoice
-                    key={draft.type}
-                    kpi={draft.type === "kpi"}
-                    value={draft.spec.measure}
-                    percent={
-                      valueFormat(
-                        "showAs" in draft.spec.measure ? draft.spec.measure.showAs : undefined,
-                        ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
-                          draft.spec.format,
-                      ).style === "percent"
-                    }
-                    onChange={(next) =>
+              {/* Warna status (v1.9.0): batang/garis/pai relatif atau batas; Angka batas saja. */}
+              <>
+                <ToneChoice
+                  key={draft.type}
+                  kpi={draft.type === "kpi"}
+                  value={draft.spec.measure}
+                  percent={
+                    valueFormat(
+                      "showAs" in draft.spec.measure ? draft.spec.measure.showAs : undefined,
+                      ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
+                        draft.spec.format,
+                    ).style === "percent"
+                  }
+                  onChange={(next) =>
+                    commit({
+                      ...draft,
+                      spec: { ...draft.spec, measure: withStatus(draft.spec.measure, next) },
+                    } as WidgetConfig)
+                  }
+                />
+                {draft.spec.measure.tone ? (
+                  <ColorTemplateFields
+                    colors={draft.spec.colors}
+                    onChange={(colors) => {
+                      const { colors: _k, ...spec } = draft.spec;
                       commit({
                         ...draft,
-                        spec: { ...draft.spec, measure: withStatus(draft.spec.measure, next) },
-                      } as WidgetConfig)
-                    }
+                        spec: colors ? { ...spec, colors } : spec,
+                      } as WidgetConfig);
+                    }}
                   />
-                  {draft.spec.measure.tone ? (
-                    <ColorTemplateFields
-                      colors={draft.spec.colors}
-                      onChange={(colors) => {
-                        const { colors: _k, ...spec } = draft.spec;
-                        commit({
-                          ...draft,
-                          spec: colors ? { ...spec, colors } : spec,
-                        } as WidgetConfig);
-                      }}
-                    />
-                  ) : null}
-                </>
-              ) : null}
+                ) : null}
+              </>
 
               {draft.type !== "kpi" ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">
@@ -553,6 +543,28 @@ export function WidgetConfigForm({
               onChange={(formatColumns) =>
                 commit({ ...draft, spec: { ...draft.spec, formatColumns } })
               }
+            />
+          ) : null}
+          {draft.type === "table" && !noColumns ? (
+            <TableStatusFields
+              columns={draft.spec.columns.flatMap((p) => {
+                const c = cols.find((x) => x.pos === p);
+                return c && isNumeric(c.type) ? [{ pos: p, label: c.name }] : [];
+              })}
+              status={draft.spec.status}
+              colors={draft.spec.colors}
+              percentOf={(p) =>
+                draft.spec.format.style === "percent" &&
+                (!draft.spec.formatColumns || draft.spec.formatColumns.includes(p))
+              }
+              onChange={(status) => {
+                const { status: _s, ...spec } = draft.spec;
+                commit({ ...draft, spec: status ? { ...spec, status } : spec });
+              }}
+              onColors={(colors) => {
+                const { colors: _c, ...spec } = draft.spec;
+                commit({ ...draft, spec: colors ? { ...spec, colors } : spec });
+              }}
             />
           ) : null}
 

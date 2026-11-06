@@ -36,6 +36,7 @@ export function CanvasToolbar({
   onUndo,
   onRetry,
   onDone,
+  colorsControl,
 }: {
   save: SaveState;
   undoKind: keyof typeof UNDO_LABEL | null;
@@ -45,6 +46,8 @@ export function CanvasToolbar({
   onUndo: () => void;
   onRetry: () => void;
   onDone: () => void;
+  /** Tombol "Warna dashboard" (v1.9.0). */
+  colorsControl?: React.ReactNode;
 }) {
   const phone = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
   const frozen = isFrozen(save);
@@ -73,6 +76,7 @@ export function CanvasToolbar({
         >
           {undoKind ? UNDO_LABEL[undoKind] : "Urungkan"}
         </Button>
+        {colorsControl}
       </div>
 
       <p
