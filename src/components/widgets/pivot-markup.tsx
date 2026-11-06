@@ -145,6 +145,7 @@ export function PivotTableMarkup({
   tones,
   targets,
   colors,
+  statusModel,
 }: {
   model: PivotTableModel;
   format: NumberFormat;
@@ -159,11 +160,13 @@ export function PivotTableMarkup({
   /** Batas tetap per nilai (v1.8.0), satuan tampil. */
   targets?: readonly (StatusTarget | undefined)[];
   colors?: WidgetColors;
+  /** Model penuh untuk rentang warna relatif (PDF memotong kolom; warna tetap sama dengan layar). */
+  statusModel?: PivotTableModel;
 }) {
   const screen = variant === "screen";
   const status = tones
-    ? pivotStatus(model, tones, targets, (j) => {
-        const h = model.valueHeads[j];
+    ? pivotStatus(statusModel ?? model, tones, targets, (j) => {
+        const h = (statusModel ?? model).valueHeads[j];
         return h ? targetScale(valueFormat(h.showAs, h.format ?? format).style) : 1;
       })
     : null;

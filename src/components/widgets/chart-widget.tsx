@@ -618,7 +618,7 @@ export function ChartWidget({
       {barStatus && measure ? (
         <StatusLegend
           colors={barStatus.colors}
-          items={[{ label: measure.label, tone: barStatus.tone }]}
+          items={[{ label: measure.label, tone: barStatus.tone, target: barStatus.target }]}
           variant={print ? "print" : "screen"}
         />
       ) : null}

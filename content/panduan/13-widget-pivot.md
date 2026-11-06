@@ -95,5 +95,5 @@ langsung memakai warna yang sama.
 Pada cara **Otomatis**, setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
 gradasi: **sepertiga teratas**, **tengah**, dan **sepertiga terbawah** rentang terkecil–terbesar. Untuk nilai
 "makin tinggi makin baik", sepertiga teratas berwarna **Baik**; untuk "makin tinggi makin buruk", sepertiga
-teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai. Legenda di bawah
+teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai (juga dengan batas angka: totalnya berskala lain, mis. jumlah klaim semua cabang). Legenda di bawah
 tabel menjelaskan arti warna dan arah tiap nilai, dan warnanya ikut ke ekspor PDF.

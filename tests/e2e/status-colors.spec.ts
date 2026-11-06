@@ -167,6 +167,12 @@ test.describe("warna status (T-f3tf)", () => {
     );
     await panel.getByTestId("config-target-good").fill("550");
     await panel.getByTestId("config-target-good").blur();
+
+    // Ganti cara hitung (review v1.8.0 #1): arah + batas tetap tersimpan.
+    await pick(owner, panel, "Hitung", "Rata-rata");
+    await saved(panel);
+    await expect(legend).toContainText("Baik ≥ 550 · Perlu perhatian < 150");
+    await expect(panel.getByTestId("config-target-good")).toHaveValue("550");
   });
 
   test("halaman cetak (PDF) membawa warna dan legenda yang sama", async ({ browser }) => {

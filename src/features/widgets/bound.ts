@@ -247,6 +247,7 @@ export function effectiveConfig(
             ...(v.column ? { column: v.column } : {}),
             ...(v.showAs ? { showAs: v.showAs } : {}),
             ...(v.tone ? { tone: v.tone } : {}),
+            ...(v.target ? { target: v.target } : {}),
           };
       built = {
         type: bound.type,

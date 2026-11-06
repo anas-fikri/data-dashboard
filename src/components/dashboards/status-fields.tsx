@@ -52,6 +52,13 @@ const num = (t: string): number | null | "bad" => {
   return Number.isFinite(n) ? n : "bad";
 };
 
+/**
+ * Kunci remount ToneChoice: isian lokal (cara, batas) disusun ulang saat arah/batas nilai berubah dari
+ * luar (nilai lain dihapus, kembali ke ukuran biasa, ganti jenis) — tidak menulis batas basi.
+ */
+export const toneKey = (v: ValueStatus, scope = "") =>
+  `${scope}:${v.tone ?? ""}:${v.target ? `${v.target.good}/${v.target.bad}` : ""}`;
+
 export function ToneChoice({
   value,
   onChange,
@@ -98,7 +105,8 @@ export function ToneChoice({
         testId="config-tone"
         value={tone ?? "none"}
         options={TONE_OPTIONS}
-        onChange={(v) => onChange(v === "none" ? {} : { tone: v, ...(target ? { target } : {}) })}
+        // Ganti arah: batas lama tidak lagi sesuai urutannya → dikosongkan (isi ulang batas baru).
+        onChange={(v) => onChange(v === "none" ? {} : { tone: v })}
       />
       {tone && !kpi ? (
         <Choice

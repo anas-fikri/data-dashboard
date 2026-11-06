@@ -20,7 +20,7 @@ import { CalcField } from "./calc-editor";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
 import { valueFormat } from "@/features/widgets/show-as";
-import { ColorTemplateFields, ToneChoice, withStatus } from "./status-fields";
+import { ColorTemplateFields, ToneChoice, toneKey, withStatus } from "./status-fields";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
 import { PivotSavedFilters } from "./pivot-saved-filters";
 import type { QueryScope } from "./query-scope";
@@ -268,6 +268,7 @@ export function PivotFields({
               />
             )}
             <ToneChoice
+              key={toneKey(m, String(i))}
               value={m}
               percent={
                 valueFormat(m.showAs, ("format" in m ? m.format : undefined) ?? spec.format)

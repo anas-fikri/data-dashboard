@@ -59,8 +59,9 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
 CMD ["node", "server.js"]
 
 FROM runtime-base AS worker
-# BACKUP_CONFIG_DIR: status backup dibaca job pantauan (T-8g53; volume dipasang read-only).
-ENV WORKER_TMP_DIR=/var/cache/dashboard/tmp QUERY_CACHE_DIR=/var/cache/dashboard/query BACKUP_CONFIG_DIR=/backup-config
+# BACKUP_CONFIG_DIR: hanya salinan status.json backup (volume backup-status, read-only) untuk job pantauan
+# (T-8g53); SMTP worker dari SMTP_URL/MAIL_FROM .env.
+ENV WORKER_TMP_DIR=/var/cache/dashboard/tmp QUERY_CACHE_DIR=/var/cache/dashboard/query BACKUP_CONFIG_DIR=/backup-status
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json /app/tsconfig.json ./
 COPY --from=build /app/src ./src

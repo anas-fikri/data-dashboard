@@ -341,6 +341,10 @@ save_status() {
       lastOffsiteOkAt: ($offOk | n), error: ($err | n), notified: $notified, updatedAt: $now }' \
     >"$tmp"
   chmod 644 "$tmp"
+  # Salinan untuk job pantauan worker (T-8g53): volume terpisah tanpa offsite.json/smtp.json (rahasia).
+  if [ -n "${STATUS_COPY_DIR:-}" ] && [ -d "$STATUS_COPY_DIR" ]; then
+    cp "$tmp" "$STATUS_COPY_DIR/.status.json.tmp" && mv -f "$STATUS_COPY_DIR/.status.json.tmp" "$STATUS_COPY_DIR/status.json" || true
+  fi
   mv -f "$tmp" "$status_file"
 }
 
