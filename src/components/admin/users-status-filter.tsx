@@ -5,6 +5,7 @@ import { DropdownMenu as Primitive } from "radix-ui";
 import { useRouter } from "next/navigation";
 import { useOptimistic, useRef, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Highlighted, MenuSearch, useMenuSearch } from "@/components/ui/menu-search";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +22,7 @@ const isStatus = (v: string): v is UserStatusFilter => USER_STATUSES.some((s) =>
  * non-modal, sehingga halaman di belakangnya tidak di-aria-hidden selagi pilihan terbuka (Radix
  * Select yang modal melakukannya → axe aria-hidden-focus). Berlaku begitu dipilih (navigasi klien,
  * fokus kembali ke pemicu), membawa kata kunci yang sedang diketik, dan kembali ke halaman 1.
+ * Kotak cari pintar seperti semua daftar pilihan (T-pxnn, ui/menu-search).
  */
 export function UsersStatusFilter({
   status,
@@ -33,6 +35,9 @@ export function UsersStatusFilter({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [pending, start] = useTransition();
   const [shown, setShown] = useOptimistic(status);
+  const { open, onOpenChange, query, setQuery, inputRef, contentRef, filter } = useMenuSearch();
+  const options = USER_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }));
+  const results = filter(options);
 
   function change(next: string) {
     if (!isStatus(next) || next === shown) return;
@@ -45,7 +50,7 @@ export function UsersStatusFilter({
   }
 
   return (
-    <DropdownMenu modal={false}>
+    <DropdownMenu modal={false} open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           ref={triggerRef}
@@ -67,25 +72,39 @@ export function UsersStatusFilter({
           <IconChevronDown aria-hidden className="opacity-60" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-(--radix-dropdown-menu-trigger-width)">
+      <DropdownMenuContent
+        ref={contentRef}
+        align="start"
+        className="min-w-(--radix-dropdown-menu-trigger-width)"
+      >
+        <MenuSearch
+          inputRef={inputRef}
+          contentRef={contentRef}
+          query={query}
+          setQuery={setQuery}
+          label="Cari status"
+          count={results ? results.length : null}
+        />
         <Primitive.RadioGroup value={shown} onValueChange={change}>
-          {USER_STATUSES.map((s) => (
-            <Primitive.RadioItem
-              key={s}
-              value={s}
-              className={cn(
-                "relative flex h-11 cursor-default select-none items-center rounded-sm pr-2 pl-8 text-sm outline-none md:h-9",
-                "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
-              )}
-            >
-              <span className="absolute left-2 flex size-5 items-center justify-center">
-                <Primitive.ItemIndicator>
-                  <IconCheck size={16} stroke={2} aria-hidden />
-                </Primitive.ItemIndicator>
-              </span>
-              {STATUS_LABEL[s]}
-            </Primitive.RadioItem>
-          ))}
+          {(results ?? options.map((option) => ({ option, hits: [] as number[] }))).map(
+            ({ option: { value: s, label }, hits }) => (
+              <Primitive.RadioItem
+                key={s}
+                value={s}
+                className={cn(
+                  "relative flex h-11 cursor-default select-none items-center rounded-sm pr-2 pl-8 text-sm outline-none md:h-9",
+                  "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+                )}
+              >
+                <span className="absolute left-2 flex size-5 items-center justify-center">
+                  <Primitive.ItemIndicator>
+                    <IconCheck size={16} stroke={2} aria-hidden />
+                  </Primitive.ItemIndicator>
+                </span>
+                <Highlighted text={label} hits={hits} />
+              </Primitive.RadioItem>
+            ),
+          )}
         </Primitive.RadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>

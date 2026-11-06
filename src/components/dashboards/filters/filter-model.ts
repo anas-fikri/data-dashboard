@@ -218,6 +218,42 @@ export function oneControlPerName(columns: FilterColumnView[]): FilterColumnView
   return [...out.values()];
 }
 
+/**
+ * Filter bawaan (T-vb7q): status saat dashboard dibuka tanpa ?f= — bawaan setiap kolom filter yang
+ * tersedia (satu per nama, `columns` sudah lewat oneControlPerName), disaring seperti status dari URL.
+ */
+export function defaultState(columns: FilterColumnView[]): FilterState {
+  const filters = columns.flatMap((c) =>
+    c.available && c.default ? [{ ...c.default, column: c.column } as DashFilter] : [],
+  );
+  return sanitize({ filters }, { columns, crossColumns: [], widgetIds: [] });
+}
+
+/** Filter sama persis dengan bawaan kolomnya (chip berlabel "bawaan"). */
+export function isDefaultFilter(f: DashFilter, columns: FilterColumnView[]): boolean {
+  const col = columns.find((c) => normName(c.column) === normName(f.column));
+  return (
+    !!col?.default && filterKey({ ...col.default, column: f.column } as DashFilter) === filterKey(f)
+  );
+}
+
+/** Status = bawaan (tanpa filter silang/pivot): URL tanpa ?f=. */
+export function isDefaultState(state: FilterState, defaults: FilterState): boolean {
+  if (state.cross || (state.pivot && Object.keys(state.pivot).length)) return false;
+  const keys = (fs: DashFilter[]) => fs.map(filterKey).sort().join("\n");
+  return keys(state.filters) === keys(defaults.filters);
+}
+
+/**
+ * Nilai ?f= yang ditulis untuk status ini ("" = tanpa f: sama dengan bawaan, atau terlalu panjang untuk
+ * URL); kosong padahal ada bawaan → "{}" (dimuat ulang tetap tanpa filter, T-vb7q).
+ */
+export function filterUrlValue(state: FilterState, defaults: FilterState): string {
+  if (isDefaultState(state, defaults)) return "";
+  const encoded = encodeFilterParam(state) ?? "{}";
+  return encoded.length <= URL_PARAM_MAX ? encoded : "";
+}
+
 /** Filter yang dikirim widget: filter global + filter silang (kecuali widget sumbernya sendiri). */
 export function filtersFor(state: FilterState, widgetId: string): DashFilter[] {
   const out = [...state.filters];

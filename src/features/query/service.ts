@@ -78,6 +78,7 @@ import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
 import {
   absentNames,
+  pivotPreviewBodySchema,
   widgetBodySchema,
   widgetPlan,
   type PivotShape,
@@ -881,6 +882,42 @@ export async function runWidgetQuery(
 }
 
 /**
+ * Pratinjau pivot tersimpan { datasetId, pivot } (T-c6z4): tabel pivot penuh di editor pivot tersimpan
+ * sebelum disimpan. Body divalidasi dulu (400; skema = simpan pivot tersimpan), lalu pemilik dataset
+ * saja — editor/viewer dashboard, orang lain, dan dataset lain NOT_FOUND (D6: non-pemilik tidak pernah
+ * mengirim spec). Sheet harus ada di versi aktif dataset itu (sheet dataset lain/versi lama → NOT_FOUND,
+ * tanpa pemetaan riwayat). Selebihnya persis jalur widget pivot mandiri (resolveWidget → widgetPlan →
+ * runPivotPlan): batas sel, kunci cache, slot DuckDB, dan bentuk jawaban sama dengan kartu pivot.
+ */
+export async function runPivotPreview(
+  userId: string,
+  body: unknown,
+  deps: QueryDeps,
+): Promise<WidgetQueryResult> {
+  const t0 = Date.now();
+  const parsed = pivotPreviewBodySchema.safeParse(body);
+  if (!parsed.success) return invalidSpec(parsed.error.issues[0]);
+  const { datasetId, pivot } = parsed.data;
+  const ds = await deps.repo.ownedDataset(userId, datasetId);
+  if (!ds) return fail("NOT_FOUND", "Dataset tidak ditemukan.");
+  if (!ds.activeVersionId) return fail("NOT_READY", "Data dataset ini belum siap.");
+  if (!(await deps.repo.sheet(ds.activeVersionId, pivot.sheetId))) {
+    return fail("NOT_FOUND", "Sheet tidak ditemukan.");
+  }
+  // Widget pivot mandiri sementara milik pemilik: tanpa dashboard (tanpa filter dashboard) dan tanpa
+  // pivot tersimpan sumber, jadi tidak ada kolom filter/peran lain yang ikut dihitung.
+  const w: AuthorizedWidget = {
+    type: "pivot",
+    spec: pivot,
+    updatedAt: new Date(0),
+    datasetId,
+    activeVersionId: ds.activeVersionId,
+    role: "OWNER",
+  };
+  return widgetResult(userId, w, { page: 0 }, deps, t0);
+}
+
+/**
  * Rencana widget siap dijalankan, tanpa DuckDB: dipakai bersama query widget (/api/query) dan job
  * ekspor (T-017) agar aturan filter, remap, dan rencana persis sama dengan yang tampil di layar.
  */
@@ -1091,7 +1128,7 @@ export const widgetSource = (
 async function widgetResult(
   userId: string,
   w: AuthorizedWidget,
-  body: WidgetQueryBody,
+  body: Parameters<typeof resolveWidget>[1],
   deps: QueryDeps,
   t0: number,
 ): Promise<WidgetQueryResult> {

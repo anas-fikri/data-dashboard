@@ -9,15 +9,22 @@ import { readTextLimited } from "@/lib/http-body";
 import { logger } from "@/lib/logger";
 import { runFilterValues } from "./filter-values";
 import { queryDeps } from "./runtime";
-import { runDashboardQuery, runQuery, runWidgetQuery, type QueryCode } from "./service";
+import {
+  runDashboardQuery,
+  runPivotPreview,
+  runQuery,
+  runWidgetQuery,
+  type QueryCode,
+} from "./service";
 import { SPEC_MAX_BYTES } from "./spec";
 
 /*
  * HTTP /api/query (T-009, T-011, T-016): Origin wajib sama dengan APP_URL (CSRF), body JSON ≤ 64 KB +
- * amplop, status per kode. Tiga bentuk body (dipilih dari kunci, lalu divalidasi strict):
+ * amplop, status per kode. Empat bentuk body (dipilih dari kunci, lalu divalidasi strict):
  * { widgetId, dashboardFilters?, page?, sort? } (widget dashboard: pemilik/editor/viewer),
- * { dashboardId, spec } (pratinjau editor: pemilik/editor dashboard), dan { datasetId, spec } (query
- * bebas: pemilik dataset saja). Tanpa akses → 404. Error tak terduga → 500 tanpa detail internal.
+ * { dashboardId, spec } (pratinjau editor: pemilik/editor dashboard), { datasetId, pivot } (pratinjau
+ * pivot tersimpan, T-c6z4: pemilik dataset saja), dan { datasetId, spec } (query bebas: pemilik dataset
+ * saja). Tanpa akses → 404. Error tak terduga → 500 tanpa detail internal.
  */
 
 const STATUS: Record<QueryCode, number> = {
@@ -70,17 +77,22 @@ export async function runtimeQuery(req: NextRequest, userId: string): Promise<Ne
         ? "widget"
         : "dashboardId" in body
           ? "dashboard"
-          : "free";
+          : "pivot" in body
+            ? "pivot"
+            : "free";
   try {
     // { widgetId, … } = widget dashboard (spec dari DB, T-011); { dashboardId, spec } = editor
-    // (T-016); { datasetId, spec } = query bebas pemilik.
+    // (T-016); { datasetId, pivot } = pratinjau pivot tersimpan (T-c6z4); { datasetId, spec } = query
+    // bebas pemilik.
     const deps = await queryDeps();
     const result =
       mode === "widget"
         ? await runWidgetQuery(userId, body, deps)
         : mode === "dashboard"
           ? await runDashboardQuery(userId, body, deps)
-          : await runQuery(userId, body, deps);
+          : mode === "pivot"
+            ? await runPivotPreview(userId, body, deps)
+            : await runQuery(userId, body, deps);
     return result.ok ? json(result) : json(result, STATUS[result.code]);
   } catch (e) {
     logger.error({ userId, mode, err: e instanceof Error ? e.message : String(e) }, "query gagal");

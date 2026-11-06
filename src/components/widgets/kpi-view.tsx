@@ -1,5 +1,13 @@
 "use client";
 
+import {
+  STATUS_LABEL,
+  ruleText,
+  statusCssVars,
+  statusOf,
+  targetScale,
+  type WidgetStatus,
+} from "@/features/widgets/status-color";
 import { useRef } from "react";
 import type { Agg } from "@/features/query/spec";
 import type { NumberFormat } from "@/features/widgets/spec";
@@ -44,6 +52,7 @@ export function KpiView({
   title,
   agg,
   fixedHeight = false,
+  status,
 }: {
   data: WidgetData;
   format: NumberFormat;
@@ -52,6 +61,8 @@ export function KpiView({
   agg?: Agg;
   /** Tinggi kartu tetap (grid, kertas): angka juga dibatasi tinggi kotak. Tumpukan ponsel: tidak. */
   fixedHeight?: boolean;
+  /** Warna status (v1.8.0): KPI hanya diwarnai dengan batas tetap. */
+  status?: WidgetStatus;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const size = useBoxSize(box);
@@ -70,6 +81,12 @@ export function KpiView({
     label,
   );
   const sameAsTitle = label.trim().toLowerCase() === title.trim().toLowerCase();
+  const tone = status?.tones[0];
+  const target = status?.targets[0];
+  const st =
+    tone && target
+      ? statusOf(value, tone, null, target, targetScale((column?.format ?? format).style))
+      : null;
   const shown = chooseKpi(
     options,
     size?.width ?? null,
@@ -131,6 +148,18 @@ export function KpiView({
           </>
         )}
       </p>
+      {st && tone && target ? (
+        <p
+          className="shrink-0 self-start truncate rounded-sm px-2 py-0.5 text-xs font-medium"
+          style={statusCssVars(status?.colors) as React.CSSProperties}
+          data-status={st}
+          data-testid="kpi-status"
+          title={ruleText(tone, target)}
+        >
+          {STATUS_LABEL[st]}
+          <span className="sr-only"> ({ruleText(tone, target)})</span>
+        </p>
+      ) : null}
     </div>
   );
 }

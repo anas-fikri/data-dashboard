@@ -22,7 +22,7 @@ Di bilah **Filter** di atas dashboard:
   - **Rentang sendiri** dengan tanggal _Dari_ dan _Sampai_.
 - **Angka** — isi _Paling kecil_ / _Paling besar_, lalu **Terapkan**.
 
-Filter aktif tampil sebagai label; tekan **Hapus semua filter** untuk kembali ke semua data. Di ponsel, buka filter lewat tombol **Filter**.
+Filter aktif tampil sebagai label; tekan **Hapus semua filter** untuk kembali ke semua data. Filter berlabel _bawaan_ dipasang pemilik atau editor dashboard dan langsung aktif saat dashboard dibuka; tekan **Kembalikan filter bawaan** untuk memakainya lagi setelah mengubah filter. Di ponsel, buka filter lewat tombol **Filter**.
 
 Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyaring widget lain. Di widget pivot, label baris atau kolom juga bisa dipilih untuk menyaring widget lain.
 

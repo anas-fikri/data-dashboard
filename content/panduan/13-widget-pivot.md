@@ -22,9 +22,9 @@ Widget **Pivot** meringkas data seperti _PivotTable_ di Excel: satu baris untuk 
 
 ## Membuat widget Pivot
 
-1. Buka dashboard dalam mode edit (**Ubah tata letak**), tekan **Tambah widget**, lalu buka pengaturannya.
-2. Isi **Judul**, lalu pilih jenis tampilan **Pivot**. Isian langsung terisi: kolom teks pertama sebagai baris, kolom tanggal (bila ada) dipisah per bulan, dan total kolom angka pertama.
-3. Baca **kalimat ringkasan** di atas panel, mis. _Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total No., dengan kolom dan baris Total._ Setiap perubahan langsung terlihat di kartu.
+1. Buka dashboard dalam mode edit (**Ubah tata letak**), lalu tekan **Tambah widget**. Panel pengaturannya langsung terbuka.
+2. Pilih jenis tampilan **Pivot**. Isian langsung terisi: kolom kategori (2–50 nilai berbeda, mis. _Customer_) sebagai baris, kolom tanggal (bila ada) dipisah per bulan, dan total kolom besaran (mis. _Omzet_) — kolom nomor urut atau kode seperti _No._, _ID_, _Kode_ tidak dijumlahkan; bila tidak ada kolom besaran, isinya _Jumlah baris_. **Judul** terisi otomatis (mis. _Total Omzet per Customer_) sampai Anda mengetik judul sendiri.
+3. Baca **kalimat ringkasan** di atas panel, mis. _Satu baris per Customer, satu kolom per Tanggal (per bulan), berisi Total Omzet, dengan kolom dan baris Total._ Setiap perubahan langsung terlihat di kartu.
 4. **Baris → Satu baris per**: kolom yang menjadi isi kolom paling kiri. Untuk kolom tanggal, pilih **Rentang waktu** (per hari, minggu, bulan, kuartal, tahun).
 5. **Rinci baris** (opsional): pecah setiap baris per kolom kedua, mis. _Customer_ dirinci per _Layanan_. Tekan **Rinci lagi** untuk tingkat ketiga dan keempat (mis. _Wilayah › Kota › Layanan › Bulan_). Baris kelompok berisi **subtotal** dan tampil di atas rinciannya; setiap tingkat induk punya sakelar **Subtotal per …** sendiri.
 6. **Pisahkan per** (opsional): satu kolom tabel untuk setiap nilai, mis. _Tanggal_ per bulan → _Jan 2026_, _Feb 2026_, …, lalu kolom **Total** di paling kanan.
@@ -68,3 +68,32 @@ Pilih label baris atau kolom (mis. _Customer 24_ atau _Jan 2026_) untuk menyarin
 ## Satu pivot untuk banyak widget
 
 Pivot yang sama dipakai di beberapa dashboard atau sebagai grafik dan angka sekaligus? Simpan sebagai **pivot tersimpan** (tombol **Simpan sebagai pivot tersimpan** di pengaturan widget) agar cukup diubah sekali — lihat panduan _Satu pivot untuk banyak widget_.
+
+## Warna status: hijau baik, merah perlu perhatian
+
+Seperti _Conditional Formatting_ di Excel, sel pivot (dan batang di grafik **Batang**) bisa diberi warna status
+supaya yang bermasalah langsung terlihat — tanpa mengisi angka ambang.
+
+1. Di kartu **Nilai**, pilih **Penilaian warna**:
+   - **Makin tinggi makin baik** — mis. _checkpoint tepat waktu_, _pengiriman sukses_.
+   - **Makin tinggi makin buruk** — mis. _klaim_, _retur_, _keterlambatan_.
+2. Pilih **Template warna**: _Lembut_ (bawaan, gaya isian Excel), _Tegas_, _Ramah buta warna_ (biru–oranye),
+   atau _Warna sendiri_ (tiga warna pilihan Anda).
+
+Ada dua **Cara menentukan warna**:
+
+- **Otomatis** — setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu (lihat di bawah).
+- **Pakai batas angka** — untuk target pasti seperti SLA: isi _Baik bila ≥ 95_ dan _Perlu perhatian bila < 90_
+  (untuk "makin tinggi makin buruk": _Baik bila ≤_ dan _Perlu perhatian bila >_). Isi seperti angka yang tampil:
+  format persen 95 % → ketik 95. Di antara kedua batas = **Sedang**. Dengan batas, cabang yang semuanya di bawah
+  target tetap merah — tidak ada yang "otomatis hijau".
+
+Widget **Angka** juga bisa diwarnai, tetapi hanya dengan batas angka (satu angka tidak punya pembanding). Grafik
+garis dan pai tidak diwarnai status. _Warna sendiri_ yang terakhir dipilih diingat browser, jadi widget lain
+langsung memakai warna yang sama.
+
+Pada cara **Otomatis**, setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
+gradasi: **sepertiga teratas**, **tengah**, dan **sepertiga terbawah** rentang terkecil–terbesar. Untuk nilai
+"makin tinggi makin baik", sepertiga teratas berwarna **Baik**; untuk "makin tinggi makin buruk", sepertiga
+teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai (juga dengan batas angka: totalnya berskala lain, mis. jumlah klaim semua cabang). Legenda di bawah
+tabel menjelaskan arti warna dan arah tiap nilai, dan warnanya ikut ke ekspor PDF.

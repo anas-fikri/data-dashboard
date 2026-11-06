@@ -338,7 +338,7 @@ describe("parser SAX: input rusak/berbahaya ditolak dengan pesan", () => {
     await expect(rows(p)).rejects.toThrow(msg);
   });
 
-  it("workbook dengan 2.500 sheet ditolak saat sheet ke-51 dibaca; nama sheet raksasa ditolak", async () => {
+  it("workbook dengan 2.500 sheet ditolak saat sheet ke-201 dibaca (batas buku kerja); nama sheet raksasa ditolak", async () => {
     const zip = new yazl.ZipFile();
     const sheetsXml = Array.from(
       { length: 2_500 },
@@ -361,7 +361,7 @@ describe("parser SAX: input rusak/berbahaya ditolak dengan pesan", () => {
     for await (const c of zip.outputStream) chunks.push(c as Buffer);
     const path = join(tmp, "banyak-sheet.xlsx");
     writeFileSync(path, Buffer.concat(chunks));
-    await expect(rows(path)).rejects.toThrow(/lebih dari 50 sheet/);
+    await expect(rows(path)).rejects.toThrow(/lebih dari 200 sheet/);
 
     const longName = "N".repeat(1_000);
     const zip2 = new yazl.ZipFile();

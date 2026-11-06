@@ -2,6 +2,3 @@
 
 <!-- New entries land here; `aitk knowledge compact` files them by topic. -->
 
-- Di cn(), leading-* harus ditulis sesudah text-*. <!-- aitk:k date=2026-10-21 task=T-w764 -->
-- Artikel panduan baru selalu terbit di urutan terakhir tab peran; e2e yang memeriksa 'dua artikel terakhir' harus digeser setiap rilis panduan (pakai slice relatif). <!-- aitk:k date=2026-10-21 task=T-076 tags=docs -->
-- Artikel panduan hanya satu peran: rujukan lintas artikel harus ke peran sama/ALL (diuji content.test), materi bersama memakai padanan per peran. <!-- aitk:k date=2026-10-22 task=T-7rw4 -->

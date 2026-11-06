@@ -14,6 +14,10 @@
 # rahasia), dump database PLAINTEXT (hapus setelah backup harian berikutnya terverifikasi), arsip kode lama,
 # log pemeriksaan. Secret tidak pernah dicetak; kredensial DB hanya lewat env di container backup (pgenv.sh).
 # Variabel: UPGRADE_DIR (folder status), MIN_FREE_GB (bawaan 15), FORCE=1 (abaikan job aktif di preflight),
+# REUSE_BACKUP_HOURS=N (preflight memakai backup terverifikasi yang umurnya ≤ N jam alih-alih backup lengkap
+# baru — rilis tanpa migrasi; dump database tetap dibuat baru; hanya berlaku bila EXPECT_MIGRATION = migrasi
+# terakhir produksi, selain itu backup lengkap), EXPECT_MIGRATION (migrasi terakhir rilis baru, diisi
+# release.sh), BACKUP_EST_GB (perkiraan ukuran backup bila belum ada arsip),
 # ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
 # (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
@@ -116,6 +120,11 @@ not_rolled_back() {
 
 # ---------------------------------------------------------------------------------------------------
 preflight() {
+  local v
+  for v in MIN_FREE_GB REUSE_BACKUP_HOURS BACKUP_EST_GB; do
+    case ${!v:-} in *[!0-9]* | 0?*) die "$v harus angka bulat tanpa nol di depan (sekarang: ${!v})" ;; esac
+  done
+  case ${EXPECT_MIGRATION:-} in *[!0-9a-z_]*) die "EXPECT_MIGRATION tidak sah" ;; esac
   local stamp tag root sz fdock fstate n busy exp failed last db tables out archive
   stamp=$(date -u +%Y%m%dT%H%M%SZ)
   tag=$(envval IMAGE_TAG); tag=${tag:-latest}
@@ -133,6 +142,15 @@ preflight() {
   for s in app worker backup; do
     [ -n "$("${C[@]}" ps -q "$s" 2>/dev/null | head -1)" ] || die "service $s tidak berjalan — preflight dibuat untuk produksi yang hidup"
   done
+  # Redis yang rusak (mis. AOF terpotong saat disk penuh) baru ketahuan di `start` setelah app/worker berhenti.
+  local rcid rh
+  rcid=$("${C[@]}" ps -q redis 2>/dev/null | head -1)
+  rh=$([ -z "$rcid" ] || docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$rcid")
+  echo "   redis: ${rh:-tidak berjalan}"
+  [ "$rh" = healthy ] || {
+    DIE_HINT="Perbaiki Redis dulu (docs/runbook-deploy.md §12: salin appendonlydir, redis-check-aof --fix)."
+    die "redis tidak sehat"
+  }
 
   info "2/7 pemeriksaan SQL pra-deploy"
   failed=$(sql_count "SELECT count(*) FROM _prisma_migrations WHERE finished_at IS NULL AND rolled_back_at IS NULL;") ||
@@ -188,11 +206,42 @@ SQL
   if git rev-parse --short HEAD >/dev/null 2>&1; then record OLD_COMMIT "$(git rev-parse HEAD)"; fi
   echo "   $STATE/kode-lama.tar.gz ($(du -h "$STATE/kode-lama.tar.gz" | cut -f1))"
 
-  info "6/7 backup terenkripsi lengkap (database + storage, backup.sh)"
-  out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }
-  echo "$out" | sed 's/^/   /'
-  archive=$(echo "$out" | sed -n 's/.*arsip: \(dashboard-[0-9TZ]*\.tar\.age\).*/\1/p' | tail -1)
-  [ -n "$archive" ] || die "nama arsip backup tidak terbaca dari log backup.sh"
+  info "6/7 backup terenkripsi (database + storage)"
+  # Arsip terbaru: nama, umur (detik), ukuran (GB, dibulatkan ke atas), checksum cocok (1/0). Ukuran dibaca
+  # terlepas dari checksum: arsip rusak tetap memberi perkiraan ruang (dan diberi peringatan).
+  local latest age gb ok need
+  latest=$("${C[@]}" run --rm --no-deps -T backup sh -c 'cd /backups &&
+    f=$(ls -1t dashboard-*.tar.age 2>/dev/null | head -n1) && [ -n "$f" ] &&
+    if sha256sum -c "$f.sha256" >/dev/null 2>&1; then ok=1; else ok=0; fi &&
+    echo "$f $(( $(date +%s) - $(stat -c %Y "$f") )) $(( ($(stat -c %s "$f") + 1073741823) / 1073741824 )) $ok"' \
+    2>/dev/null) || latest=""
+  read -r archive age gb ok <<<"${latest:-}"
+  [ -z "$archive" ] || [ "${ok:-0}" = 1 ] || warn "checksum arsip backup terbaru $archive TIDAK cocok — periksa backup harian"
+  # Backup harian hanya cukup untuk rilis TANPA migrasi: dicek terhadap database produksi sungguhan
+  # (bukan tag git sebelumnya — rilis yang tidak pernah di-deploy/di-rollback tidak mengelabuinya).
+  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ "${EXPECT_MIGRATION:-}" != "$last" ]; then
+    warn "rilis baru bermigrasi (${EXPECT_MIGRATION:-tidak diketahui} ≠ produksi $last) — backup harian TIDAK dipakai, backup lengkap dibuat"
+    REUSE_BACKUP_HOURS=""
+  fi
+  if [ -n "${REUSE_BACKUP_HOURS:-}" ] && [ -n "$archive" ] && [ "${ok:-0}" = 1 ] &&
+    [ "${age:-x}" -le $((REUSE_BACKUP_HOURS * 3600)) ] 2>/dev/null; then
+    echo "   memakai backup terverifikasi $archive (umur $((age / 3600)) jam ≤ $REUSE_BACKUP_HOURS jam, checksum cocok)"
+  else
+    # Backup lengkap: salinan storage di folder kerja volume backup + arsip .part (tar | age streaming):
+    # puncak ± 2 × ukuran arsip terakhir, ditambah margin 5 GB dan minimum biasa.
+    [ -n "$archive" ] || [ -n "${BACKUP_EST_GB:-}" ] ||
+      die "ukuran backup tidak terbaca (belum ada arsip di volume backup) — isi BACKUP_EST_GB=<perkiraan GB> lalu ulangi"
+    gb=${gb:-${BACKUP_EST_GB:-0}}
+    need=$((gb * 2 + 5 + ${MIN_FREE_GB:-15}))
+    [ "$fdock" -ge "$need" ] || {
+      DIE_HINT="Kosongkan ruang (image lama: docker rmi dashboard-<s>:<tag lama>; JANGAN prune) atau, untuk rilis tanpa migrasi, release.sh --quick. MIN_FREE_GB menurunkan minimum."
+      die "ruang disk ${fdock} GB kurang untuk backup lengkap (perlu ± ${need} GB: 2 × ${gb} GB arsip + 5 + minimum ${MIN_FREE_GB:-15})"
+    }
+    out=$("${C[@]}" run --rm --no-deps -T backup backup.sh 2>&1) || { echo "$out" >&2; die "backup.sh gagal"; }
+    echo "$out" | sed 's/^/   /'
+    archive=$(echo "$out" | sed -n 's/.*arsip: \(dashboard-[0-9TZ]*\.tar\.age\).*/\1/p' | tail -1)
+    [ -n "$archive" ] || die "nama arsip backup tidak terbaca dari log backup.sh"
+  fi
   record BACKUP_ARCHIVE "$archive"
 
   info "7/7 dump database pra-upgrade (pg_dump custom) + verifikasi"
@@ -250,7 +299,8 @@ build_images() {
   # Image store dipakai bersama produksi: build bertag produksi memindahkan tag yang sedang dipakai.
   [ "$tag" != "$OLD_TAG" ] ||
     die "tag build ($tag) sama dengan produksi — naikkan versi (aitk release) atau IMAGE_TAG=$tag-<commit>"
-  commit=$(git rev-parse --short HEAD 2>/dev/null || true)
+  # APP_COMMIT dari luar (server-release.sh: folder tanpa .git) menang.
+  commit=${APP_COMMIT:-$(git rev-parse --short HEAD 2>/dev/null || true)}
   setenv IMAGE_TAG "$tag"
   info "build image bertag $tag (commit ${commit:-?}) di VM (lambat; disarankan deploy/images.sh di mesin build)"
   IMAGE_TAG=$tag APP_COMMIT=$commit "${C[@]}" build
@@ -338,22 +388,54 @@ EOF
   exit 1
 }
 
+# Gagal SETELAH rilis baru menyala: app/worker berjalan (berbeda dengan gate_fail, yang dipakai saat
+# app/worker masih berhenti).
+verify_fail() {
+  cat >&2 <<EOF
+
+GAGAL: verifikasi pasca-deploy ada yang gagal (lihat di atas).
+Rilis baru SUDAH BERJALAN (app/worker menyala). Periksa butir yang gagal dulu:
+  - check-public-presign timeout ke domain storage dari VM ini = hairpin NAT, bukan bug rilis:
+    isi STORAGE_RESOLVE_IP=<IP reverse proxy LAN> di $ENV_FILE lalu ulangi: bash deploy/upgrade.sh start
+  - butir lain (health, /login, admin-restore): kirim $STATE/*.log ke pengembang; bila aplikasi rusak,
+    kembalikan produksi lama: bash deploy/upgrade.sh rollback
+EOF
+  exit 1
+}
+
+# Migrasi pertama rilis G-6 (T-036). Pemeriksaan "data lama tetap non-periode" dan check-segments (satu segmen
+# legacy per sheet) hanya bermakna untuk upgrade yang MELEWATI G-6: sesudahnya produksi sah punya data per
+# periode (versi non-REPLACE, manifest > 1 segmen) dan gerbang itu akan selalu gagal (T-cfd7).
+G6_FIRST_MIGRATION=20261019140000_t036_segments
+crosses_g6() {
+  local old=${OLD_MIGRATION:-}
+  [ "$old" != "$G6_FIRST_MIGRATION" ] &&
+    [ "$(printf '%s\n%s\n' "$old" "$G6_FIRST_MIGRATION" | LC_ALL=C sort | head -n1)" = "$old" ]
+}
+
 post_migrate_checks() {
   # Setiap gerbang memeriksa status keluarnya sendiri: fungsi ini dipanggil dalam konteks if/||, di mana
   # set -e mati — tanpa itu kueri yang error menghasilkan teks kosong dan terbaca "0 baris" (lulus).
   local ok=0 rows
-  echo "-- check-segments.mjs (T-036, model segmen)"
-  if ! "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >"$STATE/check-segments.log" 2>&1; then
-    ok=1; echo "   GAGAL (exit bukan 0)"
+  if crosses_g6; then
+    echo "-- check-segments.mjs (T-036, model segmen)"
+    if ! "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >"$STATE/check-segments.log" 2>&1; then
+      ok=1; echo "   GAGAL (exit bukan 0)"
+    fi
+    sed 's/^/   /' "$STATE/check-segments.log"
+  else
+    echo "-- check-segments.mjs: dilewati (produksi sudah di G-6: $OLD_MIGRATION)"
   fi
-  sed 's/^/   /' "$STATE/check-segments.log"
   echo "-- T-gcn8: baris judul per file typed = baris judul sheet yang merujuknya (wajib 0 baris)"
+  # SegmentTyped.headerRow NULL = baris judul segmen (file sebelum T-gcn8, dan ingest pertama v1.4.x):
+  # dibandingkan nilai efektifnya, sama dengan pembaca data (recast/period-setup).
   if rows=$(psql_q <<'SQL'
 SELECT t.id FROM "SegmentTyped" t
+JOIN "Segment" g ON g.id = t."segmentId"
 JOIN "SheetSegment" m ON m."segmentTypedId" = t.id
 JOIN "Sheet" s ON s.id = m."sheetId"
 WHERE (SELECT count(*) FROM "SheetSegment" m2 WHERE m2."sheetId" = s.id) = 1
-  AND t."headerRow" IS DISTINCT FROM s."headerRow"
+  AND COALESCE(t."headerRow", g."headerRow") IS DISTINCT FROM s."headerRow"
 UNION
 SELECT m."segmentTypedId" FROM "SheetSegment" m JOIN "Sheet" s ON s.id = m."sheetId"
 GROUP BY m."segmentTypedId" HAVING count(DISTINCT s."headerRow") > 1;
@@ -364,13 +446,17 @@ SQL
   else
     ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
   fi
-  echo "-- T-049/T-060: data lama tetap non-periode (wajib 0)"
-  if rows=$(sql_count "SELECT (SELECT count(*) FROM \"DatasetVersion\" WHERE mode <> 'REPLACE'
-      OR status = 'AWAITING_CONFIRM' OR \"periodGrain\" IS NOT NULL) + (SELECT count(*) FROM \"Segment\"
-      WHERE \"periodKey\" IS NOT NULL OR \"groupId\" IS NOT NULL OR cardinality(\"colMap\") > 0);"); then
-    echo "   $rows"; [ "$rows" = 0 ] || ok=1
+  if crosses_g6; then
+    echo "-- T-049/T-060: data lama tetap non-periode (wajib 0)"
+    if rows=$(sql_count "SELECT (SELECT count(*) FROM \"DatasetVersion\" WHERE mode <> 'REPLACE'
+        OR status = 'AWAITING_CONFIRM' OR \"periodGrain\" IS NOT NULL) + (SELECT count(*) FROM \"Segment\"
+        WHERE \"periodKey\" IS NOT NULL OR \"groupId\" IS NOT NULL OR cardinality(\"colMap\") > 0);"); then
+      echo "   $rows"; [ "$rows" = 0 ] || ok=1
+    else
+      ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+    fi
   else
-    ok=1; echo "   GAGAL: kueri error (gerbang tertutup)"
+    echo "-- T-049/T-060: dilewati (data per periode sah setelah G-6)"
   fi
   echo "-- quota-report.mjs (T-039; bandingkan dengan kuota-sebelum.txt)"
   if ! "${C[@]}" run --rm --no-deps -T worker node scripts/quota-report.mjs >"$STATE/quota-report.log" 2>&1; then
@@ -408,15 +494,26 @@ start() {
   grep -q 'APP_URL: https://' docker-compose.prod.yml && echo "-- APP_URL https (secure context)" || rc=1
 
   echo "-- check-public-presign.mjs (unggah 16 MiB lewat proxy, allowlist storage)"
-  local presign=(node deploy/check-public-presign.mjs)
+  local presign=(node deploy/check-public-presign.mjs) cr=("${C[@]}") sres spub override=""
+  # VM yang tidak bisa menjangkau IP publiknya sendiri (hairpin NAT): STORAGE_RESOLVE_IP=<IP reverse proxy
+  # di LAN> di .env.prod memetakan STORAGE_PUBLIC_HOST ke IP itu khusus untuk container uji ini.
+  sres=$(envval STORAGE_RESOLVE_IP); spub=$(envval STORAGE_PUBLIC_HOST)
+  if [ -n "$sres" ] && [ -n "$spub" ]; then
+    case "$sres$spub" in *[!A-Za-z0-9.:-]*) die "STORAGE_RESOLVE_IP/STORAGE_PUBLIC_HOST tidak valid" ;; esac
+    override=$(mktemp)
+    printf 'services:\n  worker:\n    extra_hosts:\n      - "%s:%s"\n' "$spub" "$sres" >"$override"
+    cr+=(-f "$override")
+    echo "   $spub → $sres (STORAGE_RESOLVE_IP)"
+  fi
   if [ -f deploy/certs/root.crt ]; then
-    "${C[@]}" run --rm --no-deps -T -v "$PWD/deploy/certs/root.crt:/run/root.crt:ro" \
+    "${cr[@]}" run --rm --no-deps -T -v "$PWD/deploy/certs/root.crt:/run/root.crt:ro" \
       -e NODE_EXTRA_CA_CERTS=/run/root.crt worker "${presign[@]}" || rc=1
   elif grep -q '^CADDY_TLS=internal' "$ENV_FILE"; then
-    "${C[@]}" run --rm --no-deps -T worker "${presign[@]}" --insecure || rc=1
+    "${cr[@]}" run --rm --no-deps -T worker "${presign[@]}" --insecure || rc=1
   else
-    "${C[@]}" run --rm --no-deps -T worker "${presign[@]}" || rc=1
+    "${cr[@]}" run --rm --no-deps -T worker "${presign[@]}" || rc=1
   fi
+  [ -z "$override" ] || rm -f "$override"
 
   echo "-- admin-restore.mjs dengan email tak dikenal (wajib exit 1, tanpa perubahan)"
   domain=$(envval ALLOWED_EMAIL_DOMAINS); domain=${domain%%,*}
@@ -425,10 +522,12 @@ start() {
   else
     echo "   exit 1 (benar)"
   fi
-  echo "-- check-segments.mjs setelah start"
-  "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >/dev/null || rc=1
+  if crosses_g6; then
+    echo "-- check-segments.mjs setelah start"
+    "${C[@]}" run --rm --no-deps -T worker node scripts/check-segments.mjs >/dev/null || rc=1
+  fi
   "${C[@]}" ps
-  [ $rc = 0 ] || gate_fail "verifikasi pasca-deploy ada yang gagal (lihat di atas)"
+  [ $rc = 0 ] || verify_fail
   record VERIFIED_AT "$(date -u +%s)"
   cat <<EOF
 

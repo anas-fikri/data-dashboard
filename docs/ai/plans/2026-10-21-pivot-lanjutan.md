@@ -204,6 +204,10 @@ lalu masuk jalur `widgetPlan`/`resolveSpec`/`buildPivotSql` yang sama. Tidak ada
   `crossFilter === true` + kolom filter dashboard). Pivot tersimpan tidak menambah kolom yang tidak tampil.
 - **Definisi pivot tersimpan** (termasuk Saring dan ekspresi): baca/tulis pemilik dataset; editor dashboard
   pada dataset itu hanya baca + pilih sebagai sumber; viewer tidak pernah (semua → `NOT_FOUND`, bukan 403).
+- **Pratinjau pivot tersimpan** (T-c6z4): `/api/query { datasetId, pivot }` strict, pemilik dataset saja
+  (editor/viewer/dataset lain → 404 `NOT_FOUND`), `pivot` divalidasi `pivotSpecSchema` + `widgetPlan` seperti
+  simpan; sheet harus di versi aktif dataset itu. Dijalankan lewat jalur widget pivot mandiri (batas sel,
+  cache, slot DuckDB, rate limit `query:user` sama).
 - **Ekspresi**: tidak ada teks SQL; operator enum tertutup; identifier hanya `c<pos>` dari skema; konstanta
   di-bind parameter `DOUBLE`; batas node/kedalaman/agregat mencegah query raksasa. Uji injeksi lewat nama kolom.
 - **Cache**: kunci hasil dan sumber filter memuat `SavedPivot.revision` → edit/hapus tidak meninggalkan hasil

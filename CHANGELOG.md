@@ -14,6 +14,130 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   widget sebelum rollback image, atau terima sampai upgrade berikutnya (runbook-deploy §7 R).
 - **pivot (T-071):** rollback ke versi sebelum Top N pivot membuat widget pivot ber-Top N tampil
   "Pengaturan widget tidak valid"; set "Tampilkan" ke "Semua" sebelum rollback image (runbook-deploy §7).
+- **filter bawaan (T-vb7q):** rollback ke v1.3.1 membuat kolom filter yang membawa filter bawaan tidak tampil
+  (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
+  (runbook-deploy §10).
+
+## [1.8.1] - 2026-11-06
+
+### Fixed
+
+- **widgets:** template Lembut di widget terikat bertahan di atas template pivot tersimpan (2c75eb4)
+- **widgets:** warna status di widget terikat pivot tersimpan, petunjuk Tabel, ikatan tidak tertimpa (0305653)
+
+## [1.8.0] - 2026-11-06
+
+### Added
+
+- **ops:** pantauan 15 menit + email peringatan admin (T-8g53) (850026f)
+- **widgets:** batas angka (SLA), warna KPI, daftar ringkas, petunjuk garis/pai (T-f3tf) (d271413)
+
+### Fixed
+
+- **deploy:** `server-release.sh` menerima `ARCHIVE=<arsip>` untuk server tanpa akses github.com (fd03bed)
+- **deps:** minimatch 11.0.1 untuk typescript-estree (GHSA-g3hv-75wg-m249, dev) (T-fnvm) (b1e545a)
+- **deps:** zod 4.6.7 (GHSA-mrhx-c7xc-m3w5, high) (T-fnvm) (2b33214)
+- **widgets:** panel warna tidak dipasang ulang — fokus keyboard tetap (review v1.8.0 #2b) (95b7bc9)
+- temuan review v1.8.0 (batas hilang, state panel basi, bound, PDF, pantauan, rahasia worker) (9ab9fd1)
+
+### Notes
+
+- **rollback v1.8.0 → v1.7.x:** widget dengan batas angka atau widget Angka berwarna tampil "Pengaturan widget
+  tidak valid" sampai roll-forward (data tetap); hapus batas/warna Angka dulu bila rollback lama (runbook §16).
+
+## [1.7.0] - 2026-11-06
+
+### Added
+
+- **widgets:** warna status di pivot dan grafik batang — "Penilaian warna" per nilai (makin tinggi makin baik / makin tinggi makin buruk), tiga tingkat bertangga menurut posisi nilai di widget (tanpa angka ambang), template Lembut/Tegas/Ramah buta warna/Warna sendiri, legenda, ikut ke PDF (3d6b854)
+
+### Notes
+
+- **warna status:** tanpa migrasi database. Rollback ke v1.6.2 aman (skema warna sudah diterima, warna tidak
+  tampil). Rollback ke v1.6.1 atau lebih lama membuat widget berwarna tampil "Pengaturan widget tidak valid" —
+  set "Penilaian warna" ke "Tanpa warna" dulu.
+
+## [1.6.2] - 2026-11-06
+
+### Added
+
+- **deploy:** `deploy/server-release.sh <versi>` — rilis satu perintah langsung di server (unduh kode dari GitHub, preflight, build, migrate, start; runbook §14)
+- **widgets:** skema menerima pengaturan warna status (`tone` per nilai, `colors` per widget) tanpa memakainya — rollback dari v1.7.x aman
+
+### Fixed
+
+- **uploads:** unggah tidak lagi gagal "Koneksi terputus" pada gangguan jaringan sesaat: part, minta URL part, dan complete diulang ±1,5 menit dan menunggu browser online (5448b90)
+- **deploy:** pesan gagal verifikasi pasca-deploy menyebut rilis sudah berjalan; `STORAGE_RESOLVE_IP` untuk uji presign di VM ber-hairpin NAT (4fcedbe)
+
+## [1.6.1] - 2026-11-05
+
+### Fixed
+
+- **docker:** isi `public/` disalin ke output standalone (bukan ke `public/public`): favicon, ikon aplikasi, dan logo tema terang tidak lagi 404 (88ad754)
+
+## [1.6.0] - 2026-11-05
+
+### Added
+
+- **ui:** ikon aplikasi & favicon baru (grafik batang biru brand), terlihat di tab terang/gelap dan halaman login (ddfd307)
+
+## [1.5.1] - 2026-10-24
+
+### Fixed
+
+- **T-7czr:** gerbang T-gcn8 membandingkan baris judul efektif (NULL = segmen); ingest pertama mencatat headerRow typed (b980c2c)
+- **deps:** nodemailer 10.2.1 (GHSA-8c8m-p3m8-cjg8, GHSA-m943-m63m-w62w, GHSA-85x2-q946-cp5h) (a1818c4)
+
+## [1.5.0] - 2026-10-23
+
+### Added
+
+- **T-pxnn:** kotak cari pintar di semua daftar pilihan (e675445)
+- **T-tzxt:** versi aplikasi di footer setiap halaman (083808b)
+- **deploy:** rilis satu perintah dari Mac + preflight cek Redis, ruang backup, pakai ulang backup harian (d0d1fdf)
+
+### Fixed
+
+- **T-85tb:** batas 50 dihitung atas semua sheet buku kerja (termasuk grafik), pesan worker bisa ditindaklanjuti (e1414ab)
+- **T-85tb:** batas 50 sheet berlaku pada pilihan (buku kerja s.d. 200), picker menolak > 50, pembacaan sheet basi tidak membuka picker (3ba900a)
+- **T-85tb:** nama sheet ganda dikirim sekali (dd070f5)
+- **T-pxnn:** Enter tanpa kata kunci tidak mengganti nilai; ketik dari item kembali ke kotak cari; ARIA dialog+listbox; tanpa fokus otomatis di layar sentuh; kotak cari Kolom yang ditampilkan (a085d62)
+- **T-pxnn:** ↓ dari kotak cari kosong ke pilihan saat ini (d97c497)
+- **T-qqrd:** image dari tree kotor ditandai -dirty; angka preflight berawalan nol ditolak (f3beaef)
+- **T-qqrd:** image/arsip pasti dari tag, --quick dicek ke migrasi produksi, variabel preflight diteruskan (c2d9cee)
+- **T-tzxt:** versi di footer hanya untuk pengguna yang sudah masuk (T-066); uji landmark + scroll per halaman (e785231)
+
+## [1.4.1] - 2026-10-23
+
+### Fixed
+
+- **deploy:** gerbang G-6 di upgrade.sh hanya saat upgrade melewati T-036 (T-cfd7) (a19d688)
+
+### Security
+
+- **security:** naikkan Next.js 16.4.0 → 16.4.2 (T-cfd7) (1b4b6f3)
+
+## [1.4.0] - 2026-10-22
+
+### Added
+
+- **T-1k96:** widget baru mengisi baris kosong; urungkan hapus tepat di posisi semula (f09d71f)
+- **T-k2ec:** editor dashboard mengatur kolom filter dari bilah filter (5133eac)
+- **T-vb7q:** filter bawaan per kolom filter dashboard (8e808c9)
+- **T-zm9k:** dashboard contoh otomatis dari skema dataset (de9b9f2)
+- **pivot:** pratinjau tabel pivot penuh di editor pivot tersimpan (T-c6z4) (3a16a5e)
+
+### Fixed
+
+- **T-12zs:** awalan nomor hanya ID bila menempel kata besaran; No of bukan ID (f5805f9)
+- **T-12zs:** kolom bagian tanggal tidak dijumlah, nama besaran di tengah kata (95344b2)
+- **T-12zs:** nomor/kode menyatu tetap ID, bagian tanggal di nama kalah (ad5caec)
+- **T-12zs:** perbaikan review isian bawaan dan judul otomatis (e69d344)
+- **T-1k96:** padatkan widget baru di tata letak lokal yang belum tersimpan; uji pemulihan dipaku (4af631d)
+- **T-k2ec:** daftar kolom filter memakai refresh terbaru saat simpan gagal; komentar diperbarui (ca19b21)
+- **T-vb7q:** bawaan basi tidak dikirim/menghalangi simpan; tombol kembalikan abaikan pivot; pembersihan e2e (7deab10)
+- **T-zm9k:** cek versi aktif di transaksi, tata letak setelah validasi, filter per kolom, label checkbox (0de3280)
+- **T-zm9k:** versi aktif dibaca sebelum skema; transaksi menunggu aktivasi lewat FOR SHARE (1782e3e)
 
 ## [1.3.1] - 2026-10-22
 

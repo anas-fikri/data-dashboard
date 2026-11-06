@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import type { WidgetView } from "@/features/dashboards/service";
-import type { LayoutItem } from "@/features/dashboards/validation";
+import type { SourceSheet, WidgetView } from "@/features/dashboards/service";
+import { compactLayout, type LayoutItem } from "@/features/dashboards/validation";
 import { unloadGuard } from "@/lib/download-navigation";
+import { autoTitle, followTitle } from "./auto-title";
 import { createConfigSaves, type ConfigSave } from "./config-saves";
 import { api, type ApiResult } from "./dashboard-api";
 import { fitToWidgets, sameLayout } from "./layout-ops";
@@ -222,7 +223,15 @@ export function useDashboardEditor(o: {
   revision: number;
   /** Mode edit: state lokal tidak pernah diganti props server (lihat viewCanvasKey). */
   editing?: boolean;
+  /** Sumber data panel (nama kolom untuk judul otomatis, T-12zs). */
+  sources?: SourceSheet[];
 }) {
+  const sourcesNow = useRef(o.sources ?? []);
+  /** Judul otomatis yang gagal diganti per widget: tetap dianggap otomatis pada simpanan berikutnya. */
+  const staleAuto = useRef(new Map<string, string>());
+  useEffect(() => {
+    sourcesNow.current = o.sources ?? [];
+  });
   const [widgets, setWidgetsState] = useState(o.widgets);
   const [layout, setLayoutState] = useState(() => fitToWidgets(o.layout, o.widgets));
   // Mode lihat (review T-016 R5-CL-2): props server baru diisi ulang saat render — bukan dengan memasang
@@ -337,7 +346,9 @@ export function useDashboardEditor(o: {
         setWidgets([...widgetsNow.current, widget]);
         // Digeser selama permintaan berjalan: posisi lokal dipertahankan, simpan otomatis menyusul.
         const added = server.find((it) => it.i === widget.id);
-        setLayout(dirty.current && added ? [...latest.current, added] : server);
+        // Tempat widget baru bisa di samping widget lain (T-1k96): dipadatkan agar tidak menimpa posisi
+        // lokal yang belum tersimpan.
+        setLayout(dirty.current && added ? compactLayout([...latest.current, added]) : server);
         setUndo(restore ? null : { kind: "add", widgetId: widget.id });
         setNotice(
           r.data.configDropped
@@ -394,14 +405,19 @@ export function useDashboardEditor(o: {
   );
 
   const renameWidget = useCallback(
-    (widgetId: string, title: string) =>
+    (widgetId: string, typed: string) =>
       run(async () => {
+        // Dikosongkan: judul otomatis dari pengaturan terbaru saat giliran ini (simpanan pengaturan
+        // sebelumnya di antrean sudah selesai), bukan dari pengaturan yang tampil saat diketik.
+        const w = widgetsNow.current.find((x) => x.id === widgetId);
+        const title = typed || (w ? autoTitle(w, sourcesNow.current) : "");
         const r = await api.renameWidget(id, widgetId, title, versionOf(widgetId));
         if (!r.ok) {
           // STALE (diubah di tab lain) membekukan editor seperti tata letak: pesan server + "Muat ulang".
           failed(r);
           return false;
         }
+        staleAuto.current.delete(widgetId);
         setWidgets(
           patchWidget(widgetsNow.current, widgetId, {
             title: r.data.title,
@@ -445,6 +461,7 @@ export function useDashboardEditor(o: {
         if (invalid) settled();
         return false;
       }
+      const before = widgetsNow.current.find((w) => w.id === widgetId);
       setWidgets(
         // Tersimpan → spec sudah di sheet aktif; tanda "dialihkan" (T-013) tidak berlaku lagi.
         patchWidget(widgetsNow.current, widgetId, {
@@ -457,6 +474,25 @@ export function useDashboardEditor(o: {
           sourceError: undefined,
         }),
       );
+      // Judul otomatis (T-12zs): judul kosong / masih judul turunan mengikuti pengaturan baru; judul
+      // yang diketik pengguna tidak disentuh. Gagal mengganti judul tidak menggagalkan simpanan.
+      const stale = staleAuto.current.get(widgetId);
+      const title = before && followTitle(before.title, before, r.data, sourcesNow.current, stale);
+      if (title && before) {
+        const t = await api.renameWidget(id, widgetId, title, r.data.version);
+        if (t.ok) {
+          staleAuto.current.delete(widgetId);
+          setWidgets(
+            patchWidget(widgetsNow.current, widgetId, {
+              title: t.data.title,
+              version: t.data.version,
+            }),
+          );
+        } else if (before.title) {
+          // Judul lama tetap otomatis: simpanan berikutnya mencoba lagi (bukan dianggap judul ketikan).
+          staleAuto.current.set(widgetId, before.title);
+        }
+      }
       settled();
       // Jadi tabel di kartu kecil: diperbesar ke minimum tabel dan disimpan otomatis.
       commitLayout(latest.current, false);

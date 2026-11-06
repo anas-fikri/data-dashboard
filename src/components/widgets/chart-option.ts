@@ -4,6 +4,8 @@ import {
   type ChartType,
   type NumberFormat,
 } from "@/features/widgets/spec";
+import { STATUS_LABEL, statusPalette, statusSeries } from "@/features/widgets/status-color";
+import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
 import {
   AUTO_FORMAT,
   formatAxis,
@@ -46,6 +48,8 @@ export interface ChartTheme {
   card: string;
   /** Font halaman yang sebenarnya (ECharts mengukur label dengan font ini; "inherit" tidak bisa diukur). */
   font: string;
+  /** Tema gelap (warna status batang, v1.7.0). */
+  dark?: boolean;
 }
 
 export interface ChartInput {
@@ -86,6 +90,8 @@ export interface ChartInput {
    * sr-only terpotong saat cetak) dan tanpa animasi. Pai: nilainya di legenda HTML (chart-widget).
    */
   print?: boolean;
+  /** Warna status batang (v1.7.0): arah nilai + template; tanpa ini batang memakai warna seri. */
+  status?: { tone: Tone; target?: StatusTarget; scale?: number; colors?: WidgetColors };
 }
 
 export interface ChartSize {
@@ -750,6 +756,17 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           top: PRINT_TOP,
           right: plotRight,
         };
+  // Warna status per batang (v1.7.0): tiga tingkat terhadap batang lain di grafik ini.
+  const statuses =
+    i.type === "bar" && i.status
+      ? statusSeries(values, i.status.tone, i.status.target, i.status.scale)
+      : null;
+  const marks = statuses
+    ? (() => {
+        const pal = statusPalette(i.status!.colors, !!theme.dark);
+        return statuses.map((s) => (s ? pal[s].mark : null));
+      })()
+    : null;
   return {
     ...base,
     grid: printGrid,
@@ -759,7 +776,8 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         const p = params[0];
         if (!p) return "";
         const shown = filled[p.dataIndex ?? -1] ? gap : value(p.value);
-        return `${plain(p.name)}\n${plain(i.measureLabel)}: ${shown}`;
+        const st = statuses?.[p.dataIndex ?? -1];
+        return `${plain(p.name)}\n${plain(i.measureLabel)}: ${shown}${st ? `\nStatus: ${STATUS_LABEL[st]}` : ""}`;
       },
     },
     // Batang horizontal: nama kategori panjang tetap terbaca; urutan dari atas, semua label tampil.
@@ -771,10 +789,11 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         name: i.measureLabel,
         data: values.map((v, k) => {
           if (i.type === "line") return k === sel ? picked(v) : v;
-          if (sel === undefined) return v;
+          const color = marks?.[k] ? { color: marks[k] } : {};
+          if (sel === undefined) return marks ? { value: v, itemStyle: color } : v;
           return k === sel
-            ? { value: v, itemStyle: { borderColor: theme.text, borderWidth: 1.5 } }
-            : { value: v, itemStyle: { opacity: DIMMED } };
+            ? { value: v, itemStyle: { ...color, borderColor: theme.text, borderWidth: 1.5 } }
+            : { value: v, itemStyle: { ...color, opacity: DIMMED } };
         }),
         ...(i.type === "line"
           ? {

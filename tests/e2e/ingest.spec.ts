@@ -2,7 +2,14 @@ import { execFileSync, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
-import { apiLogin, registerAndVerify, startWorker, stopWorker, uniqueEmail } from "./helpers";
+import {
+  apiLogin,
+  manualSheets,
+  registerAndVerify,
+  startWorker,
+  stopWorker,
+  uniqueEmail,
+} from "./helpers";
 
 /*
  * T-006/T-007: unggah dari UI → worker sungguhan (proses terpisah) → raw.parquet + typed-1.parquet per
@@ -104,6 +111,70 @@ test.describe("ingest", () => {
     // Halaman profil tidak lagi "Memproses": versi aktif siap dipakai.
     await page.reload();
     await expect(page.getByTestId("dataset-status")).toContainText("Siap");
+  });
+
+  test("T-85tb: pilih sheet saat unggah → hanya sheet terpilih diimpor; sheet aktif tak dipilih → pemetaan", async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    await apiLogin(page, OWNER);
+    await manualSheets(page);
+    const id = await createDataset(page, "Ingest Pilih Sheet");
+    const file = "tests/fixtures/tiga-sheet.xlsx";
+    await page.getByTestId("upload-input").setInputFiles(file);
+    const picker = page.getByTestId("upload-sheet-picker");
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText("Disarankan hanya memilih sheet berisi data");
+    // Semua worksheet tampil dicentang bawaan; "Pilih semua" aktif dan mendapat fokus.
+    const all = picker.getByTestId("upload-sheet-all");
+    await expect(all).toBeFocused();
+    await expect(all).toBeChecked();
+    await expect(picker.getByTestId("upload-sheet-count")).toHaveText("3 dari 3 sheet dipilih");
+    // Kosong → galat, tidak ada yang dikirim.
+    await all.uncheck();
+    await picker.getByTestId("upload-sheet-submit").click();
+    await expect(picker.getByRole("alert")).toHaveText("Pilih minimal satu sheet.");
+    await picker.getByRole("checkbox", { name: "Pengiriman 1" }).check();
+    await picker.getByRole("checkbox", { name: "Pengiriman 3" }).check();
+    await expect(picker.getByTestId("upload-sheet-count")).toHaveText("2 dari 3 sheet dipilih");
+    expect(await all.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(true);
+    await picker.getByTestId("upload-sheet-submit").click();
+    await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
+
+    const wait = async (versionId: string, done: string[]) => {
+      let info: Record<string, unknown> = {};
+      await expect
+        .poll(
+          () => {
+            info = fx("ingest", versionId);
+            return done.includes(String(info.status)) ? "selesai" : "proses";
+          },
+          { timeout: 90_000, intervals: [500] },
+        )
+        .toBe("selesai");
+      return info;
+    };
+    const first = await wait(String(fx("latest", id).id), ["READY", "FAILED"]);
+    expect(first.status).toBe("READY");
+    expect((first.sheets as { name: string }[]).map((x) => x.name)).toEqual([
+      "Pengiriman 1",
+      "Pengiriman 3",
+    ]);
+
+    // Ganti data: sheet aktif tercentang bawaan; "Pengiriman 3" dilepas → masuk alur pemetaan.
+    await page.reload();
+    await page.getByTestId("upload-input").setInputFiles(file);
+    await expect(picker.getByRole("checkbox", { name: "Pengiriman 3" })).toBeChecked();
+    await picker.getByRole("checkbox", { name: "Pengiriman 3" }).uncheck();
+    await expect(picker.getByTestId("upload-sheet-missing")).toContainText("Pengiriman 3");
+    await picker.getByTestId("upload-sheet-submit").click();
+    await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
+    const second = await wait(String(fx("latest", id).id), ["READY", "FAILED", "AWAITING_MAPPING"]);
+    expect(second.status).toBe("AWAITING_MAPPING");
+    expect((second.sheets as { name: string }[]).map((x) => x.name)).toEqual([
+      "Pengiriman 1",
+      "Pengiriman 2",
+    ]);
   });
 
   test("CSV Windows-1252 titik koma → satu sheet raw + typed", async ({ page }) => {

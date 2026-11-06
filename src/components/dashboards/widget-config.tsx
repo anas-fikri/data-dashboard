@@ -1,5 +1,12 @@
 "use client";
 
+import { valueFormat } from "@/features/widgets/show-as";
+import {
+  ColorTemplateFields,
+  StatusUnavailableHint,
+  ToneChoice,
+  withStatus,
+} from "./status-fields";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -69,6 +76,7 @@ export function WidgetConfigForm({
   datasetId,
   saveError,
   onSave,
+  flushRef,
 }: {
   /** Dashboard widget ini (query pratinjau editor untuk nilai bagian Saring pivot). */
   dashboardId: string;
@@ -79,6 +87,11 @@ export function WidgetConfigForm({
   /** Alasan simpanan widget ini yang gagal, dari editor (ada sampai simpanan widget ini berhasil). */
   saveError?: string;
   onSave: (type: WidgetType, spec: unknown) => Promise<boolean>;
+  /**
+   * Kirim simpanan tertunda sekarang (mis. sebelum "Simpan sebagai pivot tersimpan"): tanpa ini simpanan
+   * yang tertunda baru terkirim saat form dilepas — sesudah widget diikat — dan menimpa ikatannya.
+   */
+  flushRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const parsed = parseWidgetConfig(widget.type, widget.spec);
   const scope: QueryScope = { dashboardId };
@@ -135,6 +148,13 @@ export function WidgetConfigForm({
   }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
+  useEffect(() => {
+    if (!flushRef) return;
+    flushRef.current = flush;
+    return () => {
+      flushRef.current = null;
+    };
+  }, [flush, flushRef]);
 
   const commit = (next: WidgetConfig | null) => {
     if (!next) return;
@@ -298,21 +318,24 @@ export function WidgetConfigForm({
 
           {/* Tanpa sheet belum ada kolom untuk dipilih: bagian kolom/nilai muncul setelah sheet dipilih. */}
           {noColumns ? null : draft.type === "table" ? (
-            <TableColumns
-              ref={columnsRef}
-              columns={cols}
-              selected={draft.spec.columns}
-              onChange={(columns) =>
-                commit({
-                  ...draft,
-                  spec: {
-                    ...draft.spec,
-                    columns,
-                    formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
-                  },
-                })
-              }
-            />
+            <>
+              <StatusUnavailableHint />
+              <TableColumns
+                ref={columnsRef}
+                columns={cols}
+                selected={draft.spec.columns}
+                onChange={(columns) =>
+                  commit({
+                    ...draft,
+                    spec: {
+                      ...draft.spec,
+                      columns,
+                      formatColumns: draft.spec.formatColumns?.filter((p) => columns.includes(p)),
+                    },
+                  })
+                }
+              />
+            </>
           ) : draft.type === "pivot" ? (
             <PivotFields
               scope={scope}
@@ -398,7 +421,17 @@ export function WidgetConfigForm({
                     : undefined
                 }
                 onSave={(measure) =>
-                  commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
+                  commit({
+                    ...draft,
+                    spec: {
+                      ...draft.spec,
+                      // Ubah rumus tidak menghapus penilaian warna batang.
+                      measure:
+                        draft.type === "bar" || draft.type === "kpi"
+                          ? withStatus(measure, draft.spec.measure)
+                          : measure,
+                    },
+                  } as WidgetConfig)
                 }
                 onRemove={() =>
                   commit({
@@ -416,6 +449,42 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
+              {/* Warna status: batang (relatif/batas) dan Angka (batas saja); garis/pai hanya petunjuk. */}
+              {draft.type === "line" || draft.type === "pie" ? <StatusUnavailableHint /> : null}
+              {draft.type === "bar" || draft.type === "kpi" ? (
+                <>
+                  <ToneChoice
+                    key={draft.type}
+                    kpi={draft.type === "kpi"}
+                    value={draft.spec.measure}
+                    percent={
+                      valueFormat(
+                        "showAs" in draft.spec.measure ? draft.spec.measure.showAs : undefined,
+                        ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
+                          draft.spec.format,
+                      ).style === "percent"
+                    }
+                    onChange={(next) =>
+                      commit({
+                        ...draft,
+                        spec: { ...draft.spec, measure: withStatus(draft.spec.measure, next) },
+                      } as WidgetConfig)
+                    }
+                  />
+                  {draft.spec.measure.tone ? (
+                    <ColorTemplateFields
+                      colors={draft.spec.colors}
+                      onChange={(colors) => {
+                        const { colors: _k, ...spec } = draft.spec;
+                        commit({
+                          ...draft,
+                          spec: colors ? { ...spec, colors } : spec,
+                        } as WidgetConfig);
+                      }}
+                    />
+                  ) : null}
+                </>
+              ) : null}
 
               {draft.type !== "kpi" ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">

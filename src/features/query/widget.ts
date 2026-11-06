@@ -13,6 +13,7 @@ import {
   columnsOf,
   sortColumnSchema,
   isCalcValue,
+  pivotSpecSchema,
   pivotSubtotalLevels,
   type ChartSort,
   type MeasureValue,
@@ -63,6 +64,16 @@ export const widgetBodySchema = z
   })
   .strict();
 export type WidgetQueryBody = z.infer<typeof widgetBodySchema>;
+
+/**
+ * Pratinjau pivot tersimpan (T-c6z4): { datasetId, pivot } untuk PEMILIK dataset saja (D6 tidak
+ * berubah: viewer/editor dashboard tidak pernah mengirim spec). `pivot` divalidasi dengan skema yang
+ * sama dengan simpan pivot tersimpan (pivotSpecSchema lewat parseWidgetConfig + widgetPlan di service);
+ * field lain → INVALID.
+ */
+export const pivotPreviewBodySchema = z
+  .object({ datasetId: cuid, pivot: pivotSpecSchema })
+  .strict();
 
 /** Bentuk pivot di atas rencana: dimensi = baris (1–4) lalu kolom pemisah (opsional), ukuran = nilai. */
 export interface PivotShape {

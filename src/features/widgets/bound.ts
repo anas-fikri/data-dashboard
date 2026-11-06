@@ -30,6 +30,7 @@ import {
   type PivotSpec,
   type WidgetConfig,
 } from "./spec";
+import { colorsSchema } from "./tone";
 import { SHOW_AS_LABEL, isAxisShowAs } from "./show-as";
 
 /** Jenis widget yang bisa memakai pivot tersimpan sebagai sumber. */
@@ -61,6 +62,7 @@ export const pivotDisplaySchema = z
       .optional(),
     crossFilter: z.boolean().optional(),
     format: formatSchema.optional(),
+    colors: colorsSchema.optional(),
   })
   .strict();
 export const chartDisplaySchema = z
@@ -72,10 +74,11 @@ export const chartDisplaySchema = z
     topN: z.number().int().min(1).max(1000),
     format: formatSchema.optional(),
     crossFilter: z.boolean().optional(),
+    colors: colorsSchema.optional(),
   })
   .strict();
 export const kpiDisplaySchema = z
-  .object({ value: valueIndex, format: formatSchema.optional() })
+  .object({ value: valueIndex, format: formatSchema.optional(), colors: colorsSchema.optional() })
   .strict();
 export const tableDisplaySchema = z
   .object({ sort: z.enum(CHART_SORTS), totals: z.boolean(), format: formatSchema.optional() })
@@ -183,6 +186,8 @@ export function effectiveConfig(
           subtotals: d.subtotals,
           ...(d.subtotalLevels ? { subtotalLevels: d.subtotalLevels } : {}),
           ...(d.crossFilter !== undefined ? { crossFilter: d.crossFilter } : {}),
+          // Template warna tampilan menimpa template pivot tersimpan (arah tetap per nilai di pivot).
+          ...(d.colors ? { colors: d.colors } : {}),
           format,
         },
       };
@@ -213,9 +218,13 @@ export function effectiveConfig(
     case "kpi": {
       const v = pivot.values[bound.display.value];
       if (!v) return { ok: false, message: missingValue };
-      // KPI = total keseluruhan, tanpa "Tampilkan nilai sebagai".
+      // KPI = total keseluruhan, tanpa "Tampilkan nilai sebagai"; warna status hanya dengan batas tetap.
       const { showAs: _s, ...measure } = v;
-      built = { type: "kpi", spec: { sheetId: pivot.sheetId, measure, format } };
+      const colors = bound.display.colors ?? pivot.colors;
+      built = {
+        type: "kpi",
+        spec: { sheetId: pivot.sheetId, measure, format, ...(colors ? { colors } : {}) },
+      };
       filters = pivot.filters;
       break;
     }
@@ -237,6 +246,8 @@ export function effectiveConfig(
             agg: v.agg,
             ...(v.column ? { column: v.column } : {}),
             ...(v.showAs ? { showAs: v.showAs } : {}),
+            ...(v.tone ? { tone: v.tone } : {}),
+            ...(v.target ? { target: v.target } : {}),
           };
       built = {
         type: bound.type,
@@ -248,6 +259,7 @@ export function effectiveConfig(
           topN: d.topN,
           format,
           ...(d.crossFilter !== undefined ? { crossFilter: d.crossFilter } : {}),
+          ...((d.colors ?? pivot.colors) ? { colors: d.colors ?? pivot.colors } : {}),
         },
       };
       filters = pivot.filters;

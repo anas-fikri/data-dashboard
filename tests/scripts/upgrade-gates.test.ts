@@ -22,6 +22,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
  * dan rollback menolak database/tabel yang tidak cocok sebelum membuang apa pun.
  */
 const SCRIPT = join(process.cwd(), "deploy/upgrade.sh");
+/** Migrasi terakhir sebelum G-6 (produksi sebelum T-036). */
+const PRE_G6 = "20261017104143_t_j9j6_guide_video_caption";
 const OLD_TABLES = ["Dataset", "DatasetVersion", "Export", "Sheet", "User", "_prisma_migrations"];
 
 const DOCKER = `#!/usr/bin/env bash
@@ -30,7 +32,10 @@ flag() { [ -f "$FAKE/$1" ]; }
 if [ "$1" = info ]; then echo "$FAKE"; exit 0; fi
 if [ "$1" = tag ]; then exit 0; fi
 if [ "$1" = load ]; then cat >/dev/null; echo "Loaded image: dashboard-app:baru"; exit 0; fi
-if [ "$1" = inspect ]; then echo "sha256:lama"; exit 0; fi
+if [ "$1" = inspect ]; then
+  case "$*" in *Health*) flag redis-unhealthy && echo unhealthy || echo healthy ;; *) echo "sha256:lama" ;; esac
+  exit 0
+fi
 if [ "$1" = image ]; then
   for a; do last=$a; done
   case "$*" in *"{{.Id}}"*) echo "sha256:$last" ;; esac
@@ -60,6 +65,8 @@ case "$svc:$*" in
   worker:*check-segments*) flag segments-fail && { echo "selisih: 1"; exit 1; }; echo "sheets: 1"; exit 0 ;;
   worker:*) echo ok; exit 0 ;;
   backup:pg_restore*) cat "$FAKE/dumplist"; exit 0 ;;
+  backup:backup.sh*) echo "arsip: dashboard-20261023T000000Z.tar.age"; exit 0 ;;
+  "backup:sh -c"*) flag recent-backup && echo "dashboard-20261022T190000Z.tar.age 3600 1 $(flag bad-checksum && echo 0 || echo 1)"; exit 0 ;;
   backup:*pg_dump*)
     for a; do name=$a; done
     echo dump >"$out/$name"; wc -l <"$FAKE/tables" | tr -d ' '; exit 0 ;;
@@ -133,7 +140,7 @@ beforeEach(() => {
     [
       "STAMP=20261020T000000Z",
       "OLD_TAG=lama",
-      "OLD_MIGRATION=m_lama",
+      `OLD_MIGRATION=${PRE_G6}`,
       "OLD_DB=data_dashboard",
       "OLD_IMAGE_WORKER=sha256:lama",
       "BACKUP_ARCHIVE=dashboard-x.tar.age",
@@ -143,7 +150,7 @@ beforeEach(() => {
     ].join("\n"),
   );
   writeFileSync(join(root, "dbname"), "data_dashboard\n");
-  writeFileSync(join(root, "migration"), "m_lama\n");
+  writeFileSync(join(root, "migration"), `${PRE_G6}\n`);
   writeFileSync(join(root, "tables"), `${OLD_TABLES.join("\n")}\n`);
   writeFileSync(
     join(root, "dumplist"),
@@ -184,8 +191,23 @@ describe("upgrade.sh migrate", { timeout: 60_000 }, () => {
     expect(r.out).toContain("pemeriksaan pasca-migrasi gagal");
   });
 
+  it("T-cfd7: produksi sudah di G-6 → check-segments dan cek data non-periode dilewati (data per periode sah)", () => {
+    const post = "20261021110000_t060_period_group";
+    writeFileSync(join(root, "migration"), `${post}\n`);
+    writeFileSync(
+      join(stateDir(), "state.env"),
+      state().replace(`OLD_MIGRATION=${PRE_G6}`, `OLD_MIGRATION=${post}`),
+    );
+    writeFileSync(join(root, "segments-fail"), "");
+    const r = run("migrate");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("check-segments.mjs: dilewati");
+    expect(r.out).toContain("T-049/T-060: dilewati");
+    expect(calls()).not.toContain("check-segments");
+  });
+
   it("diulang setelah skema baru → dump rollback tetap yang lama (skema lama)", () => {
-    writeFileSync(join(root, "migration"), "m_baru\n");
+    writeFileSync(join(root, "migration"), "20261021110000_t060_period_group\n");
     const r = run("migrate");
     expect(r.code, r.out).toBe(0);
     expect(r.out).toContain("dump rollback tetap db-20261020T000000Z.dump");
@@ -193,6 +215,90 @@ describe("upgrade.sh migrate", { timeout: 60_000 }, () => {
     expect(calls()).not.toContain("pg_dump");
   });
 });
+
+describe(
+  "upgrade.sh preflight (T-cfd7: Redis sehat, pakai ulang backup)",
+  { timeout: 60_000 },
+  () => {
+    const pre = (extra: Record<string, string> = {}) =>
+      runWith({ MIN_FREE_GB: "0", ...extra }, "preflight");
+
+    it("Redis tidak sehat → berhenti sebelum backup/dump, dengan petunjuk perbaikan", () => {
+      writeFileSync(join(root, "redis-unhealthy"), "");
+      const r = pre();
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("redis tidak sehat");
+      expect(r.out).toContain("redis-check-aof");
+      expect(calls()).not.toContain("backup.sh");
+      expect(calls()).not.toContain("pg_dump");
+    });
+
+    it("REUSE_BACKUP_HOURS + backup terverifikasi yang baru → tanpa backup lengkap; dump tetap baru", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: PRE_G6 });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("memakai backup terverifikasi dashboard-20261022T190000Z.tar.age");
+      expect(r.out).toContain("PREFLIGHT LULUS");
+      expect(calls()).not.toContain("backup.sh");
+      expect(calls()).toContain("pg_dump");
+    });
+
+    it("tanpa REUSE_BACKUP_HOURS → backup lengkap tetap dibuat", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre();
+      expect(r.code, r.out).toBe(0);
+      expect(calls()).toContain("backup.sh");
+      expect(r.out).toContain("PREFLIGHT LULUS");
+    });
+
+    it("checksum arsip terbaru tidak cocok → peringatan, tidak dipakai ulang, backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      writeFileSync(join(root, "bad-checksum"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: PRE_G6 });
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("TIDAK cocok");
+      expect(calls()).toContain("backup.sh");
+    });
+
+    it("belum ada arsip backup dan tanpa BACKUP_EST_GB → berhenti sebelum backup (ruang tidak bisa diperkirakan)", () => {
+      const r = pre();
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("BACKUP_EST_GB");
+      expect(calls()).not.toContain("backup.sh");
+    });
+
+    it("ruang disk kurang untuk backup lengkap → berhenti dengan petunjuk --quick/MIN_FREE_GB", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ MIN_FREE_GB: "999999" });
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("ruang");
+      expect(calls()).not.toContain("backup.sh");
+    });
+
+    it("backup yang ada lebih tua dari REUSE_BACKUP_HOURS → backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      const r = pre({ REUSE_BACKUP_HOURS: "0", EXPECT_MIGRATION: PRE_G6 });
+      expect(r.code, r.out).toBe(0);
+      expect(calls()).toContain("backup.sh");
+    });
+
+    it("rilis bermigrasi (EXPECT_MIGRATION ≠ produksi) atau tidak diketahui → REUSE diabaikan, backup lengkap", () => {
+      writeFileSync(join(root, "recent-backup"), "");
+      for (const expect_ of ["29991231000000_rilis_baru", ""]) {
+        const r = pre({ REUSE_BACKUP_HOURS: "24", EXPECT_MIGRATION: expect_ });
+        expect(r.code, r.out).toBe(0);
+        expect(r.out).toContain("backup harian TIDAK dipakai");
+        expect(calls()).toContain("backup.sh");
+      }
+    });
+
+    it("variabel angka tidak sah → berhenti dengan pesan jelas", () => {
+      const r = pre({ BACKUP_EST_GB: "5;rm" });
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("BACKUP_EST_GB harus angka");
+    });
+  },
+);
 
 describe("upgrade.sh status preflight", { timeout: 60_000 }, () => {
   it("preflight yang tidak selesai (tanpa PREFLIGHT_AT) tidak bisa dilanjutkan", () => {

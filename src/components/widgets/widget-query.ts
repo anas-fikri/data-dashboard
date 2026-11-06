@@ -9,7 +9,7 @@ import type {
 } from "@/components/dashboards/filters/filter-model";
 import type { PivotData } from "@/features/query/pivot";
 import type { ValueType } from "@/features/widgets/format";
-import type { NumberFormat, ShowAs } from "@/features/widgets/spec";
+import type { NumberFormat, PivotSpec, ShowAs } from "@/features/widgets/spec";
 import { isAccessLost, useAccessLost } from "./access-refresh";
 import { requestFilters } from "./body-state";
 
@@ -132,11 +132,20 @@ export interface WidgetRequest {
   pivotValues?: PivotFieldRole;
 }
 
+/** Pratinjau pivot tersimpan (T-c6z4): mode pemilik { datasetId, pivot }, jawaban berbentuk widget pivot. */
+export interface PivotPreviewRequest {
+  datasetId: string;
+  pivot: PivotSpec;
+}
+
 type WidgetResult =
   | { ok: true; data: WidgetData }
   | { ok: false; code: string; message: string; status: number; version?: string };
 
-export async function fetchWidget(body: WidgetRequest, signal: AbortSignal): Promise<WidgetResult> {
+export async function fetchWidget(
+  body: WidgetRequest | PivotPreviewRequest,
+  signal: AbortSignal,
+): Promise<WidgetResult> {
   for (let attempt = 0; ; attempt++) {
     const release = await slot(signal);
     let res: Response;

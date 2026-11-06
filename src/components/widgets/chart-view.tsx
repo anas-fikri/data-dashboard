@@ -60,6 +60,7 @@ function readTheme(): ChartTheme {
     border: css("--border"),
     card: css("--card"),
     font: getComputedStyle(document.body).fontFamily,
+    dark: document.documentElement.classList.contains("dark"),
   };
 }
 

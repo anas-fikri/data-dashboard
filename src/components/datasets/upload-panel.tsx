@@ -34,6 +34,7 @@ import {
   type UploadPanelState,
 } from "@/components/datasets/upload-panel-state";
 import { UploadPeriodPicker } from "@/components/datasets/upload-period-picker";
+import { UploadSheetPicker } from "@/components/datasets/upload-sheet-picker";
 import { UploadQueueDraft, UploadQueuePanel } from "@/components/datasets/upload-queue";
 import { queueUploader } from "@/components/datasets/upload-queue-store";
 import { VersionMappingNotice } from "@/components/datasets/version-history-mapping";
@@ -52,6 +53,8 @@ import {
   type UploadProgress,
 } from "@/features/uploads/client";
 import { guessPeriodFromName } from "@/features/uploads/period-label";
+import { needsPicker, selectionToSend } from "@/features/uploads/sheet-selection";
+import { readXlsxSheets, type XlsxSheetInfo } from "@/features/uploads/xlsx-sheets";
 import type { QueueView } from "@/features/uploads/queue-plan";
 import type { PeriodUploadContext } from "@/features/versions/period-upload";
 import { cn } from "@/lib/utils";
@@ -64,6 +67,8 @@ export interface PendingUploadInfo {
   /** Pilihan saat unggahan dimulai: melanjutkan hanya dengan mode + label yang sama (T-053). */
   mode: "REPLACE" | "PERIOD";
   label: string | null;
+  /** Sheet pilihan unggahan tertunda (T-85tb); melanjutkan memakai pilihan yang sama. */
+  sheets?: string[];
 }
 
 interface UploadPanelProps {
@@ -106,6 +111,8 @@ interface UploadPanelProps {
    * terakhir yang belum ditutup; null = tanpa antrean.
    */
   queue?: QueueView | null;
+  /** Nama sheet data aktif (T-85tb): sheet yang cocok dicentang bawaan di pemilih sheet. */
+  activeSheets?: string[];
 }
 
 /** Keterangan pilihan unggahan di kartu progres/tertunda dataset periode. */
@@ -148,6 +155,7 @@ export function UploadPanel({
   setupHref = null,
   reupload = null,
   queue = null,
+  activeSheets = [],
 }: UploadPanelProps) {
   const router = useRouter();
   const inputId = useId();
@@ -164,16 +172,20 @@ export function UploadPanel({
   const [confirmReplace, setConfirmReplace] = useState<false | "pick" | { file: File }>(false);
   // Banyak file terpilih di dataset periode (T-059): draf antrean, belum ada yang dikirim ke server.
   const [draft, setDraft] = useState<File[] | null>(null);
+  // File xlsx yang menunggu sheet dipilih (T-85tb); belum ada yang dikirim ke server.
+  const [sheetPick, setSheetPick] = useState<{ file: File; sheets: XlsxSheetInfo[] } | null>(null);
+  // Pembacaan daftar sheet terakhir: file lain yang dipilih sesudahnya membatalkan hasil yang lama.
+  const sheetRead = useRef(0);
   const queueOpen = queue?.status === "OPEN";
   const pickButtonRef = useRef<HTMLButtonElement>(null);
   // Batal di pemilih periode/draf antrean → fokus kembali ke "Pilih file" setelah dropzone tampil lagi
   // (review L1).
   const refocusPick = useRef(false);
   useEffect(() => {
-    if (picking || draft || !refocusPick.current) return;
+    if (picking || draft || sheetPick || !refocusPick.current) return;
     refocusPick.current = false;
     pickButtonRef.current?.focus();
-  }, [picking, draft]);
+  }, [picking, draft, sheetPick]);
   const abortRef = useRef<AbortController | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<UploadPanelState>({ kind: "idle" });
@@ -242,6 +254,9 @@ export function UploadPanel({
       let started: { t: number; loaded: number } | null = null;
       setEta(null);
       setPicking(null);
+      setSheetPick(null);
+      // Pembacaan daftar sheet yang masih berjalan tidak boleh membuka pemilih di atas unggahan ini.
+      sheetRead.current++;
       // File baru → perkiraan lama tidak berlaku; melanjutkan versi yang sama mempertahankannya.
       if (!versionId) setEstimate(null);
       setState({
@@ -257,6 +272,7 @@ export function UploadPanel({
           maxBytes,
           signal: controller.signal,
           ...(req.period ? { period: req.period } : {}),
+          ...(req.sheets ? { sheets: req.sheets } : {}),
           onEstimate: (e) => {
             if (!controller.signal.aborted && e) setEstimate(e);
           },
@@ -319,6 +335,35 @@ export function UploadPanel({
     [datasetId, maxBytes, router, period],
   );
 
+  /**
+   * Ganti semua data (T-85tb): file sama dengan unggahan tertunda melanjutkan pilihan sheet-nya; xlsx
+   * dengan ≥ 2 worksheet → pemilih sheet dulu; selain itu (CSV, satu sheet, tidak terbaca) langsung.
+   */
+  const startReplace = (file: File) => {
+    const p = pendingInfo;
+    const seq = ++sheetRead.current;
+    if (p?.mode === "REPLACE" && p.originalName === file.name && p.sizeBytes === file.size) {
+      void start(
+        file,
+        ownVersion,
+        p.sheets?.length ? { mode: "REPLACE", sheets: p.sheets } : REPLACE_CHOICE,
+      );
+      return;
+    }
+    if (!/\.xlsx$/i.test(file.name)) {
+      void start(file, ownVersion, REPLACE_CHOICE);
+      return;
+    }
+    void readXlsxSheets(file).then((list) => {
+      if (seq !== sheetRead.current) return;
+      if (list && needsPicker(list)) {
+        setState({ kind: "idle" });
+        setPicking(null);
+        setSheetPick({ file, sheets: list });
+      } else void start(file, ownVersion, REPLACE_CHOICE);
+    });
+  };
+
   const onFiles = (files: FileList | null) => {
     const file = files?.[0];
     const all = files ? [...files] : [];
@@ -358,14 +403,18 @@ export function UploadPanel({
     }
     // Versi milik tab ini ikut dibawa: file yang sama melanjutkannya; file lain → DATASET_BUSY dan
     // galat tetap menawarkan "Batalkan unggahan" untuk versi itu.
-    void start(file, ownVersion, action.kind === "start" ? action.choice : REPLACE_CHOICE);
+    if (action.kind === "start" && action.choice.mode === "PERIOD") {
+      void start(file, ownVersion, action.choice);
+      return;
+    }
+    startReplace(file);
   };
 
   /** "Ganti semua data…" (dataset periode): file dari input terpisah, selalu REPLACE. */
   const onReplaceFiles = (files: FileList | null) => {
     const file = files?.[0];
     if (replaceRef.current) replaceRef.current.value = "";
-    if (file) void start(file, ownVersion, REPLACE_CHOICE);
+    if (file) startReplace(file);
   };
 
   const pause = () => {
@@ -412,7 +461,7 @@ export function UploadPanel({
 
   const pct = progress ? percentOf(progress) : 0;
   const idleLike = isIdleLike(state);
-  const showDropzone = idleLike && !processing && !picking && !draft && !queueOpen;
+  const showDropzone = idleLike && !processing && !picking && !sheetPick && !draft && !queueOpen;
   const showPending = showsPendingCard(state, pendingInfo?.versionId, ownVersion);
   const pendingText = pendingInfo
     ? choiceText(
@@ -727,6 +776,28 @@ export function UploadPanel({
         />
       ) : null}
 
+      {sheetPick && idleLike && !processing ? (
+        <UploadSheetPicker
+          key={`${sheetPick.file.name}:${sheetPick.file.size}:${sheetPick.file.lastModified}`}
+          fileName={sheetPick.file.name}
+          sheets={sheetPick.sheets}
+          activeSheets={activeSheets}
+          onSubmit={(picked) => {
+            const sheets = selectionToSend(sheetPick.sheets, picked);
+            void start(
+              sheetPick.file,
+              ownVersion,
+              sheets.length ? { mode: "REPLACE", sheets } : REPLACE_CHOICE,
+            );
+          }}
+          onCancel={() => {
+            refocusPick.current = true;
+            setSheetPick(null);
+            setAnnounce("Pemilihan sheet dibatalkan.");
+          }}
+        />
+      ) : null}
+
       {showDropzone && period ? (
         <PeriodCapacityNotice capacity={period.capacity} testId="upload-capacity" />
       ) : null}
@@ -892,7 +963,7 @@ export function UploadPanel({
                 const held = confirmReplace;
                 setConfirmReplace(false);
                 if (typeof held === "object") {
-                  void start(held.file, ownVersion, REPLACE_CHOICE);
+                  startReplace(held.file);
                   return;
                 }
                 // Masih dalam gestur klik pengguna: peramban mengizinkan membuka pemilih file.

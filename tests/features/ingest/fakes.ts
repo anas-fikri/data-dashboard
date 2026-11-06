@@ -120,12 +120,21 @@ export class FakeRepo implements IngestRepo {
   cleanups: string[] = [];
   /** Versi aktif dataset (null = versi pertama); load memberi salinan seperti baris DB. */
   active: ActiveSnapshot | null = null;
+  /** Baris judul yang dicatat untuk file typed per sheet (T-7czr). */
+  typedHeaderRows = new Map<string, number>();
+  /** Sheet pilihan saat unggah (T-85tb); [] = semua. */
+  selectedSheets: string[] = [];
   activated = false;
   private n = 0;
   constructor(readonly sourceKey: string) {}
   async load() {
     if (!this.alive()) return null;
-    return { datasetId: DS, sourceKey: this.sourceKey, active: structuredClone(this.active) };
+    return {
+      datasetId: DS,
+      sourceKey: this.sourceKey,
+      active: structuredClone(this.active),
+      selectedSheets: [...this.selectedSheets],
+    };
   }
   async begin() {
     if (!["UPLOADED", "INGESTING"].includes(this.status)) return false;
@@ -187,8 +196,10 @@ export class FakeRepo implements IngestRepo {
       schemaRevision: number;
       segmentId?: string;
       dataRows?: number;
+      headerRow?: number;
     },
   ) {
+    if (d.headerRow !== undefined) this.typedHeaderRows.set(id, d.headerRow);
     if (!this.alive()) {
       this.sheets.clear();
       throw new DatasetGoneError();

@@ -4,17 +4,26 @@
  * seperti widgets/remap.ts). Pengguna dashboard hanya boleh memfilter kolom ini ditambah dimensi grafik
  * yang cross-filter-nya aktif. Satu nama kolom = satu kontrol filter: nama yang sama dari sheet lain
  * ditolak. Murni (tanpa I/O) — dipakai server dan pengaturan dashboard di klien.
+ * Filter bawaan (T-vb7q): entri boleh membawa `default` (bentuk filter yang sama dengan
+ * dashboardFilters /api/query) yang aktif saat dashboard dibuka tanpa ?f=. Tanpa migrasi (JSON).
  */
 import { z } from "zod";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
-import { typeFamily } from "@/features/query/filters";
+import { dashFilterSchema, typeFamily, type DashFilter } from "@/features/query/filters";
 import { normName } from "@/features/widgets/remap";
 import { crossFilterPositions, parseWidgetConfig } from "@/features/widgets/spec";
 
 export const FILTER_COLUMNS_MAX = 8;
 
+/** Nilai terpilih maksimum filter bawaan (bawaan disimpan di baris Dashboard, bukan di URL). */
+export const DEFAULT_VALUES_MAX = 100;
+
 export const filterColumnSchema = z
-  .object({ sheet: z.string().min(1).max(200), column: z.string().min(1).max(200) })
+  .object({
+    sheet: z.string().min(1).max(200),
+    column: z.string().min(1).max(200),
+    default: dashFilterSchema.optional(),
+  })
   .strict();
 export type FilterColumn = z.infer<typeof filterColumnSchema>;
 
@@ -29,6 +38,8 @@ export interface FilterColumnView {
   available: boolean;
   /** Kolom sistem Periode (T-058): preset "Periode terbaru" ditawarkan. */
   period?: true;
+  /** Filter bawaan (T-vb7q), kolomnya = nama `column` di atas. */
+  default?: DashFilter;
 }
 
 /** Kolom sumber filter dashboard + tipenya di versi aktif (null = tidak ada/disembunyikan). */
@@ -55,7 +66,11 @@ export function storedFilterColumns(json: unknown): FilterColumn[] {
   if (!Array.isArray(json)) return [];
   const out = new Map<string, FilterColumn>();
   for (const item of json) {
-    const p = filterColumnSchema.safeParse(item);
+    // Bawaan rusak tidak membuang kolomnya: kolom tetap, tanpa bawaan.
+    const full = filterColumnSchema.safeParse(item);
+    const p = full.success
+      ? full
+      : filterColumnSchema.safeParse({ ...(item as object), default: undefined });
     if (!p.success) continue;
     const key = normName(p.data.column);
     if (!out.has(key)) out.set(key, p.data);
@@ -99,8 +114,35 @@ export function filterColumnViews(
       type: a?.col.type ?? "text",
       available: !!a,
       ...(a?.col.system === "period" ? { period: true as const } : {}),
+      // Bawaan yang tidak lagi cocok (tipe kolom diubah) tidak dikirim: tidak berlaku di layar dan tidak
+      // ikut dikirim ulang saat kolom lain ditambah/dihapus (simpanan itu akan ditolak).
+      ...(f.default && (!a || defaultFits(f.default, a.col))
+        ? { default: { ...f.default, column: a?.col.name ?? f.column } }
+        : {}),
     };
   });
+}
+
+/**
+ * Simpanan non-pemilik (editor, T-k2ec): editor tidak pernah menerima kolom filter tersimpan yang kini
+ * hilang/disembunyikan (namanya tidak dikirim), jadi kolom itu dipertahankan di belakang pilihan editor —
+ * kecuali namanya sudah dipilih — agar tidak terhapus diam-diam saat kolomnya ditampilkan lagi.
+ * Melebihi batas → pesan galat.
+ */
+export function keepUnavailable(
+  chosen: FilterColumn[],
+  stored: FilterColumn[],
+  sheets: Pick<ActiveSheet, "name" | "schema">[],
+): { ok: true; columns: FilterColumn[] } | { ok: false; message: string } {
+  const names = new Set(chosen.map((c) => normName(c.column)));
+  const kept = stored.filter((f) => !availableColumn(f, sheets) && !names.has(normName(f.column)));
+  if (chosen.length + kept.length > FILTER_COLUMNS_MAX) {
+    return {
+      ok: false,
+      message: `Maksimal ${FILTER_COLUMNS_MAX} kolom filter per dashboard, termasuk ${kept.length} kolom yang sedang tidak tersedia di data terbaru (hanya pemilik dataset yang bisa menghapusnya).`,
+    };
+  }
+  return { ok: true, columns: [...chosen, ...kept] };
 }
 
 /**
@@ -199,7 +241,7 @@ export type CheckedFilterColumns =
   { ok: true; columns: FilterColumn[] } | { ok: false; message: string };
 
 /**
- * Validasi daftar kolom filter dari pemilik: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
+ * Validasi daftar kolom filter dari pemilik/editor: bentuk, ≤ 8, nama kolom unik (juga antar-sheet: satu
  * kontrol per nama), dan setiap kolom ada serta tidak disembunyikan di versi aktif. Yang disimpan
  * adalah nama terkini dari skema.
  */
@@ -237,7 +279,43 @@ export function checkFilterColumns(
         message: `Kolom "${p.data.column}" tidak ada atau disembunyikan di sheet "${sheet.name}".`,
       };
     }
-    columns.push({ sheet: sheet.name, column: col.name });
+    const d = p.data.default;
+    if (d && (d.op === "in" || d.op === "not_in") && d.values.length > DEFAULT_VALUES_MAX) {
+      return {
+        ok: false,
+        message: `Filter bawaan kolom "${col.name}" paling banyak ${DEFAULT_VALUES_MAX} nilai terpilih.`,
+      };
+    }
+    if (d && !defaultFits(d, col)) {
+      return {
+        ok: false,
+        message: `Filter bawaan kolom "${col.name}" tidak cocok dengan kolomnya.`,
+      };
+    }
+    columns.push({
+      sheet: sheet.name,
+      column: col.name,
+      ...(d ? { default: { ...d, column: col.name } } : {}),
+    });
   }
   return { ok: true, columns };
+}
+
+/**
+ * Filter bawaan cocok dengan kolomnya — aturan yang sama dengan kontrol bilah filter (filter-model
+ * `fits`): teks/boolean = pilih nilai, tanggal = rentang tanggal atau preset (Periode terbaru
+ * hanya kolom sistem Periode), angka = rentang angka. Nama kolom harus kolom itu sendiri.
+ */
+function defaultFits(f: DashFilter, col: ColumnSchema): boolean {
+  if (normName(f.column) !== normName(col.name)) return false;
+  const family = typeFamily(col.type);
+  if (f.op === "in" || f.op === "not_in") {
+    return family !== "number" && family !== "time";
+  }
+  if (f.op === "preset") {
+    return family === "time" && (f.preset !== "latest_period" || col.system === "period");
+  }
+  const bounds = [f.gte, f.lte, f.lt].filter((b) => b !== undefined);
+  if (family === "number") return bounds.every((b) => typeof b === "number");
+  return family === "time" && bounds.every((b) => typeof b === "string");
 }

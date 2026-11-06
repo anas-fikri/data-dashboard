@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog, DIALOG_CTA } from "@/components/ui/confirm-dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SavedPivotPreview } from "./saved-pivot-preview";
 import { createSavedPivotAction, updateSavedPivotAction } from "@/features/saved-pivots/actions";
 import {
   parseWidgetConfig,
@@ -30,9 +31,11 @@ import {
  * Editor pivot tersimpan (T-074, rencana G-7 §3.3) di halaman dataset (pemilik saja): nama + penyusun
  * pivot yang sama dengan panel widget (baris, kolom pemisah, nilai + field terhitung + "Tampilkan nilai
  * sebagai", Saring, Top N). Pratinjau: kalimat ringkasan bentuk tabel, nilai contoh field terhitung,
- * dan nilai kolom Saring lewat query pemilik { datasetId, spec } (D6 tidak berubah). Simpan perubahan
- * pivot yang dipakai widget meminta konfirmasi "Perubahan berlaku di N widget pada M dashboard";
- * revisi basi (tab lain menyimpan dulu) → CONFLICT dengan "Muat ulang", tanpa menimpa.
+ * dan nilai kolom Saring lewat query pemilik { datasetId, spec }, plus tabel pivot penuh yang tersusun
+ * ulang setiap definisi berubah (T-c6z4, mode pemilik { datasetId, pivot }; D6 tidak berubah). Layar
+ * lebar: pengaturan kiri, tabel kanan (menempel saat digulir); layar sempit: tabel di bawah pengaturan.
+ * Simpan perubahan pivot yang dipakai widget meminta konfirmasi "Perubahan berlaku di N widget pada M
+ * dashboard"; revisi basi (tab lain menyimpan dulu) → CONFLICT dengan "Muat ulang", tanpa menimpa.
  */
 const EMPTY: WidgetConfig = { type: "empty", spec: {} };
 
@@ -178,35 +181,48 @@ export function SavedPivotEditor({
         </p>
       ) : null}
 
-      {sources.length > 1 || !sheet ? (
-        <Choice
-          label="Sheet"
-          value={sheet ? spec.sheetId : ""}
-          placeholder="Pilih sheet"
-          invalidText={sheet ? undefined : "Sheet pivot ini tidak ada di data aktif — pilih sheet."}
-          options={sources
-            .filter((s) => s.columns.length)
-            .map((s) => ({ value: s.id, label: s.name }))}
-          onChange={(sheetId) => {
-            const c = defaultConfig("pivot", sources, { type: "pivot", spec }, sheetId);
-            if (c?.type === "pivot") setSpec(c.spec);
-          }}
-        />
-      ) : null}
+      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6">
+        <div className="flex min-w-0 flex-col gap-5">
+          {sources.length > 1 || !sheet ? (
+            <Choice
+              label="Sheet"
+              value={sheet ? spec.sheetId : ""}
+              placeholder="Pilih sheet"
+              invalidText={
+                sheet ? undefined : "Sheet pivot ini tidak ada di data aktif — pilih sheet."
+              }
+              options={sources
+                .filter((s) => s.columns.length)
+                .map((s) => ({ value: s.id, label: s.name }))}
+              onChange={(sheetId) => {
+                const c = defaultConfig("pivot", sources, { type: "pivot", spec }, sheetId);
+                if (c?.type === "pivot") setSpec(c.spec);
+              }}
+            />
+          ) : null}
 
-      {missing.length ? (
-        <p
-          role="status"
-          className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
-          data-testid="config-missing"
-        >
-          {missingNotice(missing).replace("widget ini", "pivot ini")} Pilih kolom lain di bawah.
-        </p>
-      ) : null}
+          {missing.length ? (
+            <p
+              role="status"
+              className="rounded-md border border-warning/50 bg-warning/10 px-3 py-2 text-sm"
+              data-testid="config-missing"
+            >
+              {missingNotice(missing).replace("widget ini", "pivot ini")} Pilih kolom lain di bawah.
+            </p>
+          ) : null}
 
-      {sheet ? (
-        <PivotFields scope={{ datasetId }} spec={spec} columns={cols} onChange={setSpec} />
-      ) : null}
+          {sheet ? (
+            <PivotFields scope={{ datasetId }} spec={spec} columns={cols} onChange={setSpec} />
+          ) : null}
+        </div>
+        <div className="min-w-0 lg:sticky lg:top-[calc(var(--topbar-h)+1rem)]">
+          <SavedPivotPreview
+            datasetId={datasetId}
+            spec={blocked ? null : spec}
+            label={`Pratinjau pivot ${name.trim() || "baru"}`}
+          />
+        </div>
+      </div>
 
       <div className="flex flex-col-reverse gap-2 border-t pt-4 md:flex-row md:justify-end">
         <Button

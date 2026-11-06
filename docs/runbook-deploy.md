@@ -92,17 +92,23 @@ arsip (1,5 GB) 54 dtk + deploy sampai hijau 34 dtk = **88 dtk**. `deploy.sh` men
 ### Admin pertama
 
 1. Daftar lewat `https://<APP_HOST>/register` dengan email perusahaan, lalu aktifkan dari email.
-2. `docker compose -f docker-compose.prod.yml exec app node scripts/admin-restore.mjs <email> --confirm`
+2. `docker compose --env-file .env.prod -f docker-compose.prod.yml exec app node scripts/admin-restore.mjs <email> --confirm`
 
 ### Isi panduan
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm worker \
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
   node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts
 # video rekaman (dari mesin yang menyimpan demo/guide-videos):
-docker compose -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/app/demo/guide-videos:ro" \
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm -v "$PWD/demo/guide-videos:/app/demo/guide-videos:ro" \
   worker node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --videos demo/guide-videos
 ```
+
+Video satu artikel tanpa mengganti video lain (T-1tzp, mis. `satu-pivot-banyak-widget`): paling mudah lewat UI —
+masuk sebagai admin → **Admin → Panduan** → **Ubah** artikelnya → **Video panduan**: isi judul, pilih `.webm`, **Unggah
+video** (durasi + poster otomatis), lalu **Tambah takarir** dengan `.vtt`-nya, dan terbitkan. Lewat seed: salin folder
+berisi `videos.json` (hanya entri artikel itu) + `.webm`/`.vtt`/`.poster.png` ke VM, lalu jalankan perintah video di atas
+dengan `-v "<folder>:/app/demo/guide-videos:ro"` dan tambahan `--only <slug>`.
 
 Setelah rilis G-6 (T-064): artikel baru (`lihat-data-seperti-excel`, `data-per-periode`) terbit dengan perintah di
 atas; tiga artikel lama yang ikut diperbarui hanya ditimpa bila diminta, tanpa menyentuh artikel lain:
@@ -163,6 +169,11 @@ LAN Caddy tidak perlu diverifikasi proxy). Di `.env.prod`:
 - `STORAGE_PUBLIC_HOST=<domain storage>` — perlu proxy host kedua ke `:8444` (Host diteruskan apa adanya,
   body ≥ 32 MB) agar unggah/unduh dari luar LAN dan tanpa CA LAN berjalan; tanpa ini URL unggah tetap
   `STORAGE_HOST` (IP).
+  Proxy host storage di NPM: Scheme **https** ke `<ip-vm>:8444` (http → Caddy membalas 400 "Client sent an
+  HTTP request to an HTTPS server"), Advanced `client_max_body_size 64m; proxy_request_buffering off;`.
+- `STORAGE_RESOLVE_IP=<ip proxy di LAN>` (opsional; olympus: `10.3.3.56`) — VM tidak bisa menjangkau IP publik
+  kantornya sendiri (hairpin NAT), sehingga uji `check-public-presign` di `upgrade.sh start` timeout ke domain
+  storage. Nilai ini memetakan `STORAGE_PUBLIC_HOST` ke proxy LAN khusus untuk container uji itu.
 
 Setelah mengubahnya: `$C run --rm --no-deps storage-init` (CORS mengizinkan domain + IP) lalu
 `$C up -d --no-deps --force-recreate proxy app worker`. Pengguna di kantor yang membuka domain lewat IP
@@ -681,3 +692,187 @@ di baris log pertama worker (`"worker mulai"`) serta renderer (`"renderer mulai"
 
 `docker-compose.prod.yml` tetap `image: dashboard-*:${IMAGE_TAG:-latest}`: tanpa `IMAGE_TAG` di `.env.prod`
 compose memakai `latest` seperti sebelumnya.
+
+## 10. Rilis v1.4.0 (T-c6z4 + batch dashboard/filter: T-12zs, T-1k96, T-k2ec, T-vb7q, T-zm9k)
+
+Dijalankan **pemilik** di olympus (folder `/data/docker-data/data-dashboard`); sesi cloud tidak men-deploy.
+Isi rilis: pratinjau pivot penuh di editor pivot tersimpan, isian bawaan pintar + judul otomatis widget,
+widget baru mengisi baris kosong, editor boleh mengatur kolom filter dari bilah filter, filter bawaan per
+kolom filter, dan "Mulai dengan dashboard contoh". **Tanpa migrasi database baru** sejak v1.3.1 (`prisma
+migrate deploy` di langkah `migrate` tidak menerapkan apa pun) dan tanpa variabel lingkungan baru.
+
+1. **Tag** (mesin pemilik; push tag dari sesi cloud ditolak 403):
+   ```bash
+   git fetch origin && git checkout main && git pull   # setelah PR rilis digabung
+   git tag -a v1.4.0 -m "v1.4.0" <commit "chore(release): v1.4.0"> && git push origin v1.4.0
+   ```
+2. **Image** (mesin build, commit rilis): `bash deploy/images.sh build` →
+   `bash deploy/images.sh save - | ssh olympus 'cat > /tmp/dashboard-images.tar.gz'`;
+   `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+3. **Backup dulu** — preflight dengan kode LAMA membuat backup terenkripsi lengkap + dump `pg_dump -Fc`
+   terverifikasi dan harus berakhir `PREFLIGHT LULUS`; jangan lanjut bila gagal:
+   ```bash
+   bash /tmp/upgrade.sh preflight
+   ```
+4. **Sinkron kode** (`git pull` ke commit rilis), lalu `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz`
+   → `bash deploy/upgrade.sh migrate` → `bash deploy/upgrade.sh start` (§7, §9). Cek versi: `/health` sebagai
+   admin = 1.4.0, `$C logs worker | grep -m1 'worker mulai'`.
+5. **Panduan yang berubah** (menimpa suntingan admin di artikel ini saja):
+   ```bash
+   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+     node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts \
+     --update --only susun-dashboard,widget-pivot,editor-ubah-dashboard,viewer-lihat-filter-ekspor
+   ```
+6. **Uji singkat pemilik**: buat dashboard dengan **Mulai dengan dashboard contoh** (≥ 4 widget + kolom
+   filter); di mode edit **Atur kolom filter** dan **Jadikan filter aktif sebagai bawaan**; buka sebagai viewer
+   tanpa `?f=` (chip _bawaan_), **Hapus semua filter**, **Kembalikan filter bawaan**, lalu Ekspor PDF.
+
+**Rollback** (rilis ini tanpa migrasi):
+- **Disarankan — ganti image saja, data tetap:** di `.env.prod` ganti `IMAGE_TAG=prev-<stamp>` (stamp dari
+  preflight), lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`. Kode v1.3.1
+  menolak entri kolom filter yang membawa filter bawaan (`default`, T-vb7q) — kolom filter berbawaan **tidak
+  tampil** sampai upgrade lagi (data di DB tetap). Bila rollback akan lama, hapus bawaan dulu (mode edit →
+  hapus semua filter → **Hapus filter bawaan**).
+- `bash deploy/upgrade.sh rollback` memulihkan image lama **dan database dari dump rollback** (`db-migrate-*`,
+  diambil saat `migrate` setelah app/worker berhenti): semua data sesudah langkah `migrate` (unggahan, dashboard,
+  pengguna) hilang dari DB. Skrip meminta ketik `ROLLBACK` dan menyimpan
+  `db-sebelum-rollback-*.dump` dulu. Pakai hanya bila database memang perlu dikembalikan.
+
+## 11. Rilis v1.4.1 (hotfix keamanan Next.js, T-cfd7)
+
+Next.js 16.4.0 → **16.4.2**: menutup GHSA-2464-fhr4-w9xw (RCE lewat Image Optimization + SVG),
+GHSA-p3m5-59mp-jv5r (DoS Server Actions), GHSA-673q-mjm6-r5xr (RCE `use cache`). Tanpa perubahan kode
+aplikasi, migrasi, env, atau panduan. **Segera** deploy; v1.4.0 dan sebelumnya rentan.
+
+Langkah (urut; perintah Mac dan server bergantian):
+
+1. **Mac** (folder repo, setelah PR hotfix digabung): `git pull --ff-only origin main` → `git tag -a v1.4.1
+   -m v1.4.1 <commit "chore(release): v1.4.1"> && git push origin v1.4.1` → `npm ci` → `bash deploy/images.sh
+   build` → `bash deploy/images.sh save ~/dashboard-v1.4.1.tar.gz` → `scp ~/dashboard-v1.4.1.tar.gz
+   olympus:/tmp/dashboard-images.tar.gz` → `scp deploy/upgrade.sh olympus:/tmp/upgrade.sh`.
+2. **Server** (`/data/docker-data/data-dashboard`): `bash /tmp/upgrade.sh preflight` — backup DB dulu, dengan
+   kode LAMA; harus berakhir `PREFLIGHT LULUS`. Jangan lanjut bila gagal.
+3. **Mac**, baru sesudah langkah 2 lulus: `git archive v1.4.1 | ssh olympus 'tar -x -C /data/docker-data/data-dashboard'`.
+4. **Server**: `bash deploy/upgrade.sh load /tmp/dashboard-images.tar.gz` → `bash deploy/upgrade.sh migrate` →
+   `bash deploy/upgrade.sh start`. Cek `/health` (admin) = 1.4.1. Tanpa seed panduan.
+
+**Rollback** (hanya sementara — versi lama kembali rentan): ganti image saja, data tetap — di `.env.prod`
+ganti `IMAGE_TAG=prev-<stamp>` lalu `docker compose --env-file .env.prod -f docker-compose.prod.yml up -d --no-build --wait --wait-timeout 600`.
+Jangan pakai `upgrade.sh rollback` untuk hotfix ini: skrip itu juga memulihkan database dari dump rollback
+(`db-migrate-*`; data sesudah langkah `migrate` hilang).
+
+Catatan T-cfd7: `upgrade.sh migrate`/`start` kini melewati `check-segments.mjs` dan pemeriksaan "data lama tetap
+non-periode" bila produksi sudah di G-6 (`OLD_MIGRATION` ≥ `20261019140000_t036_segments`) — sebelumnya gerbang
+itu gagal begitu ada satu dataset per periode. Salin `deploy/upgrade.sh` rilis ini ke server (`scp` di langkah 1)
+sebelum preflight.
+
+## 12. Redis tidak sehat (AOF rusak, mis. setelah disk penuh)
+
+Gejala: `upgrade.sh preflight` berhenti "redis tidak sehat", atau `start` gagal "container dashboard-redis-1
+is unhealthy"; `docker logs dashboard-redis-1` berisi "Bad file format reading the append only file". Antrean
+BullMQ (ingest/ekspor) tidak jalan selama Redis mati. Data dashboard/dataset (PostgreSQL + storage) tidak
+terpengaruh. Di server (folder aplikasi):
+
+```bash
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+$C stop redis
+B=/data/docker-data/data-dashboard-upgrade/redis-aof-$(date -u +%Y%m%dT%H%M%SZ).tar.gz
+docker run --rm -v dashboard_redisdata:/data:ro -v /data/docker-data/data-dashboard-upgrade:/out alpine \
+  tar -czf "/out/$(basename "$B")" -C /data appendonlydir dump.rdb          # salinan dulu
+IMG=$(docker inspect --format '{{.Config.Image}}' dashboard-redis-1)
+docker run --rm --user 999:1000 -v dashboard_redisdata:/data -w /data/appendonlydir "$IMG" \
+  sh -c 'echo y | redis-check-aof --fix appendonly.aof.manifest'
+$C up -d redis        # atau: bash deploy/upgrade.sh start (di tengah upgrade)
+```
+
+Job antrean yang tercatat setelah titik rusak hilang: dataset yang tertahan "Memproses" diunggah ulang.
+Kejadian 2026-10-23: preflight pertama kehabisan disk saat backup lengkap → AOF terpotong → `start` v1.4.1
+gagal; diperbaiki dengan langkah di atas. Preflight kini memeriksa Redis sehat dan ruang untuk backup lengkap.
+
+## 13. Rilis satu perintah dari Mac (`deploy/release.sh`)
+
+Cara rilis biasa mulai v1.4.2 — menggantikan langkah manual §10/§11. Syarat: PR rilis (berisi commit
+`chore(release): v<versi>` dari `aitk release`) sudah digabung ke `main`; Mac di jaringan kantor/VPN.
+
+```bash
+cd ~/Documents/Projects/pcpexpress/data-dashboard
+git checkout main && git pull --ff-only origin main
+bash deploy/release.sh --quick --seed <slug,…>    # --quick: rilis TANPA migrasi; --seed: panduan yang berubah
+```
+
+Skrip berhenti di langkah pertama yang gagal (urutan lengkap di kepala `deploy/release.sh`):
+
+1. cek lokal: `main` bersih dan sama dengan `origin/main`; tag `v<versi>` dibuat di commit
+   `chore(release): v<versi>` lalu di-push (bila belum ada);
+2. image dari **tag** (bukan dari folder kerja): bila image belum ada atau dibangun dari commit lain, skrip
+   membangun ulang di worktree sementara dari tag — PR lain yang digabung sesudah rilis tidak ikut;
+3. kirim arsip image + `upgrade.sh` versi tag ke folder sementara baru di server (`/tmp/dashboard-rilis.*`);
+4. **preflight di server dengan kode lama (backup DB dulu)** — gagal di sini = produksi tidak diubah;
+5. `load` image (produksi masih image lama);
+6. sinkron kode tag ke folder aplikasi (`git archive`), versi `package.json` di server dicek;
+7. `migrate` → `start` (jeda layanan ± 2–5 menit);
+8. seed panduan (`--seed`).
+
+Password/kunci SSH diminta sekali (koneksi dipakai ulang, aman untuk fail2ban). Folder sementara di server
+dan arsip lokal dihapus setelah selesai.
+
+- **`--quick`** memakai backup harian terverifikasi (checksum cocok) yang umurnya ≤ 26 jam alih-alih backup
+  lengkap baru (±25 menit, memakan disk ± 2 × ukuran arsip); dump database tetap dibuat baru. Aman dipakai
+  selalu: preflight membandingkan migrasi terakhir rilis dengan migrasi terakhir **database produksi** — bila
+  rilis bermigrasi, backup harian tidak dipakai dan backup lengkap tetap dibuat (skrip juga menolak `--quick`
+  lebih awal bila `prisma/migrations` berubah sejak tag sebelumnya). Tanpa backup harian yang cukup baru,
+  preflight otomatis membuat backup lengkap.
+- Variabel preflight diteruskan dari Mac bila diisi (angka saja): `FORCE=1` (job aktif diabaikan),
+  `MIN_FREE_GB=<GB>`, `BACKUP_EST_GB=<GB>` (perkiraan ukuran backup bila belum ada arsip), mis.
+  `BACKUP_EST_GB=8 bash deploy/release.sh`.
+- Image dipakai ulang hanya bila keempatnya ada dan app/worker dibangun dari commit tag; selain itu tag lama
+  dilepas lalu dibangun ulang. Arsip `~/dashboard-v<versi>.tar.gz` dipakai ulang hanya bila ID image-nya
+  sama (`.ids`).
+- Gagal di langkah 1–4: produksi tidak diubah — perbaiki sesuai pesan, jalankan ulang skrip.
+- Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
+  ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke
+  `prev-<stamp>` (§11); Redis rusak = §12.
+
+## 14. Rilis satu perintah dari server (`deploy/server-release.sh`, mulai v1.6.2)
+
+Alternatif §13 tanpa Mac dan tanpa git: dijalankan langsung di olympus, kode diunduh dari GitHub (repo
+publik). Syarat: PR rilis (commit `chore(release): v<versi>`) sudah di-merge ke `main`.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.7.0          # backup harian ≤ 26 jam dipakai bila rilis tanpa migrasi
+bash deploy/server-release.sh 1.7.0 --full   # paksa backup lengkap baru
+```
+
+1. unduh arsip tag `v<versi>`; bila tag belum ada, arsip `main` (versi `package.json` wajib sama);
+2. preflight dengan kode lama memakai `upgrade.sh` versi rilis (backup, dump DB, catat image rollback);
+3. sinkron kode ke folder aplikasi (`.env.prod`, sertifikat, dan data tidak tersentuh);
+4. `upgrade.sh build` di VM (± 15–20 menit, produksi tetap jalan);
+5. `upgrade.sh migrate` → `start` (jeda ± 2–5 menit) + verifikasi pasca-deploy.
+
+Gagal di langkah 1–4: produksi tidak berubah; skrip mencetak perintah lanjutan. Gagal di langkah 5: ikuti pesan
+`upgrade.sh` (rollback: `bash deploy/upgrade.sh rollback`). Isi `STORAGE_RESOLVE_IP` (§2, domain publik) agar uji
+presign tidak gagal palsu karena hairpin NAT. Tag dibuat belakangan dari Mac bila memakai `main`.
+
+## 15. Pantauan + email admin (v1.8.0, T-8g53)
+
+Worker menjalankan job `monitor` tiap 15 menit: PostgreSQL, Redis, storage, SMTP, renderer, status backup, dan
+unggahan gagal (≥ 3 dalam 60 menit). Email ke **semua admin aktif** saat daftar masalah berubah, pengingat tiap
+6 jam selama masih ada, dan sekali saat pulih. Database mati tetap terkirim (daftar admin terakhir disimpan di
+Redis). SMTP pengiriman dari `SMTP_URL`/`MAIL_FROM` `.env.prod` (worker tidak membaca pengaturan SMTP Admin ›
+Email karena volume `backup-config` berisi rahasia). Status backup dibaca dari volume `backup-status` (salinan
+`status.json` yang ditulis service backup tiap jalan; muncul setelah backup berikutnya). Cek log:
+`$C logs worker | grep -i pantauan`.
+
+## 16. Rollback v1.8.0 → v1.7.x
+
+Tanpa migrasi: ganti `IMAGE_TAG` ke `prev-<stamp>` (§11). Skema v1.7.x menolak field baru v1.8.0: widget yang
+memakai **batas angka** (target) di nilai, atau widget **Angka** berwarna status, tampil "Pengaturan widget tidak
+valid" sampai roll-forward (data tetap di DB). Hapus batas/warna Angka dulu bila rollback akan lama.
+
+## 17. DNS internal (disarankan)
+
+Arahkan `data-slicer.pcpexpress.com` dan `storage-data-slicer.pcpexpress.com` ke NPM LAN `10.3.3.56` di DNS
+kantor (router/AD/Pi-hole): pengguna kantor tidak lewat IP publik (hairpin NAT), unggah lebih stabil, dan uji
+`check-public-presign` di `upgrade.sh start` lulus tanpa `STORAGE_RESOLVE_IP`. Cek dari laptop kantor:
+`nslookup storage-data-slicer.pcpexpress.com` → `10.3.3.56`.

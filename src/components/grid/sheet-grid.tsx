@@ -62,6 +62,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { NumberFormat } from "@/features/widgets/spec";
+import { searchOptions } from "@/lib/search";
 import type { CellTarget } from "./grid-cell-panel";
 import {
   clipCell,
@@ -354,6 +355,8 @@ export default function SheetGrid({
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
   const narrowRef = useRef(narrow);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Kotak cari daftar "Kolom yang ditampilkan" (T-pxnn: semua daftar pilihan berkotak cari).
+  const [colQuery, setColQuery] = useState("");
   const jumped = useRef(false);
 
   const key = settingsKey(sheetId, schemaRevision);
@@ -1523,11 +1526,41 @@ export default function SheetGrid({
       Unduh tampilan
     </Button>
   );
+  const shownColumns = colQuery.trim()
+    ? searchOptions(
+        columns.map((c) => ({ ...c, label: c.name })),
+        colQuery,
+      ).map((h) => h.option)
+    : columns;
   const columnList = (
     <>
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 text-sm font-medium">Kolom yang ditampilkan</legend>
-        {columns.map((c) => {
+        <div className="mb-1 flex items-center gap-2 rounded-md border px-2">
+          <IconSearch
+            size={18}
+            stroke={1.5}
+            aria-hidden
+            className="shrink-0 text-muted-foreground"
+          />
+          <input
+            type="search"
+            aria-label="Cari kolom"
+            placeholder="Ketik untuk mencari kolom…"
+            autoComplete="off"
+            spellCheck={false}
+            value={colQuery}
+            onChange={(e) => setColQuery(e.target.value)}
+            data-testid="grid-columns-search"
+            className="h-(--control-h-lg) w-full min-w-0 bg-transparent text-base outline-none placeholder:text-muted-foreground md:h-(--control-h) md:text-sm"
+          />
+        </div>
+        {shownColumns.length === 0 ? (
+          <p className="px-1 py-2 text-sm text-muted-foreground">
+            Tidak ada kolom yang cocok dengan “{colQuery.trim()}”.
+          </p>
+        ) : null}
+        {shownColumns.map((c) => {
           const id = colIdOf(c.pos);
           const shown = !hidden.has(id);
           return (

@@ -26,7 +26,13 @@ export interface SaxLimits {
   maxCellChars: number;
   maxRows: number;
   maxCols: number;
+  /** Sheet yang dibaca per file (semua sheet, atau sheet pilihan saat unggah, T-85tb). */
   maxSheets: number;
+  /**
+   * Batas keamanan sheet per buku kerja (termasuk yang tidak dipilih); bawaan max(BOOK_SHEETS_MAX,
+   * maxSheets). Sheet yang tidak dipilih hanya dicatat namanya, isinya tidak dibaca.
+   */
+  maxBookSheets?: number;
   /** Jumlah entri sharedStrings (indeks ± 4 byte/string; fixture 1 GB teks-berat: 40 juta). */
   maxSharedStrings: number;
   /**
@@ -41,6 +47,9 @@ export interface SaxLimits {
   /** Batas waktu absolut (epoch ms); lewat → XlsxLimitError. */
   deadline?: number;
 }
+
+/** Batas bawaan sheet per buku kerja (= batas daftar sheet pembaca browser, T-85tb). */
+export const BOOK_SHEETS_MAX = 200;
 
 export const DEFAULT_LIMITS: SaxLimits = {
   maxEntries: 10_000,
@@ -634,9 +643,10 @@ async function openBook(
       open: (n, a) => {
         if (n === "sheet") {
           // Diperiksa saat elemen dibaca, bukan setelah workbook selesai.
-          if (sheets.length >= limits.maxSheets) {
+          const bookMax = limits.maxBookSheets ?? Math.max(BOOK_SHEETS_MAX, limits.maxSheets);
+          if (sheets.length >= bookMax) {
             throw new XlsxLimitError(
-              `file berisi lebih dari ${limits.maxSheets} sheet; maksimal ${limits.maxSheets}`,
+              `file berisi lebih dari ${bookMax} sheet; maksimal ${bookMax}`,
             );
           }
           const name = a.name ?? "";
@@ -901,6 +911,36 @@ async function readSheet(
   await opts.drain?.();
 }
 
+/**
+ * Sheet yang dibaca, urut workbook (indeks rapat 0..n-1 = urutan pilihan dalam workbook). Pilihan kosong
+ * = semua sheet; nama yang tidak ada di file → XlsxLimitError (pilihan pemilik saat unggah, T-85tb).
+ */
+export function wantedSheets(
+  sheets: BookSheet[],
+  names: readonly string[],
+  maxSheets: number,
+): string[] {
+  if (!names.length) {
+    if (sheets.length > maxSheets) {
+      throw new XlsxLimitError(
+        `file berisi lebih dari ${maxSheets} sheet; maksimal ${maxSheets}. Hapus sheet yang tidak dipakai lalu unggah lagi, atau pilih sheet berisi data saat mengganti semua data.`,
+      );
+    }
+    return sheets.map((s) => s.name);
+  }
+  if (new Set(names).size > maxSheets) {
+    throw new XlsxLimitError(`lebih dari ${maxSheets} sheet dipilih; maksimal ${maxSheets}`);
+  }
+  const pick = new Set(names);
+  for (const n of pick) {
+    if (!sheets.some((s) => s.name === n)) {
+      throw new XlsxLimitError(`sheet "${n}" yang dipilih saat unggah tidak ada di file`);
+    }
+  }
+  const seen = new Set<string>();
+  return sheets.map((s) => s.name).filter((n) => pick.has(n) && !seen.has(n) && seen.add(n));
+}
+
 /** drain yang menandai error konsumen (DB/storage/dataset dihapus) agar diteruskan apa adanya. */
 function markedDrain(
   drain: (() => Promise<void>) | undefined,
@@ -949,7 +989,7 @@ export function createSaxParser(limits: SaxLimits = DEFAULT_LIMITS): Parser {
     try {
       const entries = await listEntries(zip, limits, fileSize);
       const book = await openBook(zip, entries, limits, sst);
-      const wanted = opts.sheetNames.length ? opts.sheetNames : book.sheets.map((s) => s.name);
+      const wanted = wantedSheets(book.sheets, opts.sheetNames, limits.maxSheets);
       for (let si = 0; si < wanted.length; si++) {
         await readSheet(zip, entries, book, limits, si, wanted[si]!, opts, onRow, summary);
       }

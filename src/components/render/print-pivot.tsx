@@ -6,6 +6,8 @@ import type { PivotData } from "@/features/query/pivot";
 import { formatNumber } from "@/features/widgets/format";
 import { columnNames, keepColumns, pivotTable } from "@/features/widgets/pivot-table";
 import type { NumberFormat } from "@/features/widgets/spec";
+import type { WidgetStatus } from "@/features/widgets/status-color";
+import { StatusLegend } from "@/components/widgets/status-legend";
 import { fittingColumns } from "./print-table";
 
 /*
@@ -50,7 +52,15 @@ export function fittingPivotRows(
   return k < 0 ? bottoms.length : k;
 }
 
-export function PrintPivot({ data, format }: { data: PivotData; format: NumberFormat }) {
+export function PrintPivot({
+  data,
+  format,
+  status,
+}: {
+  data: PivotData;
+  format: NumberFormat;
+  status?: WidgetStatus;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const full = pivotTable(data);
   const [cols, setCols] = useState(full.valueHeads.length);
@@ -86,13 +96,35 @@ export function PrintPivot({ data, format }: { data: PivotData; format: NumberFo
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div ref={box} className="min-h-0 flex-1 overflow-hidden">
-        <PivotTableMarkup model={model} format={format} rows={rows} variant="print" />
+        <PivotTableMarkup
+          model={model}
+          format={format}
+          rows={rows}
+          variant="print"
+          tones={status?.tones}
+          targets={status?.targets}
+          colors={status?.colors}
+          statusModel={full}
+        />
         {full.rows.length === 0 ? (
           <p className="px-3 py-4 text-center text-sm text-muted-foreground">
             Tidak ada data untuk ditampilkan.
           </p>
         ) : null}
       </div>
+      {status ? (
+        <div className="shrink-0 border-t">
+          <StatusLegend
+            variant="print"
+            colors={status.colors}
+            items={data.values.map((v, m) => ({
+              label: v.label,
+              tone: status.tones[m],
+              target: status.targets[m],
+            }))}
+          />
+        </div>
+      ) : null}
       {/* Saringan pivot (T-f4a7) disebut di kertas: angka tersaring tidak terbaca seolah semua data. */}
       {full.filterNote ? (
         <p

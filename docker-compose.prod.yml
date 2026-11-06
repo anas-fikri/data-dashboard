@@ -146,7 +146,9 @@ services:
     tmpfs: ["/tmp:size=512m"]
     # Temp per job (file sumber + spill sharedStrings ≤ 8 GiB) + cache parquet: ≥ upload maks + 8 GiB per
     # replika (ADR-0005). Nama file per job/versi, jadi replika boleh berbagi volume.
-    volumes: [worker_cache:/var/cache/dashboard]
+    # backup-status read-only: HANYA salinan status.json dari service backup untuk email peringatan admin
+    # (T-8g53) — bukan backup-config (berisi password NAS/SMTP), worker memproses file xlsx tak tepercaya.
+    volumes: [worker_cache:/var/cache/dashboard, "backup-status:/backup-status:ro"]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     stop_grace_period: 60s
@@ -279,6 +281,8 @@ services:
       # Retensi salinan di VM (bawaan = BACKUP_RETENTION_DAYS); pendekkan bila off-VM aktif agar disk VM hemat.
       BACKUP_LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-}
       BACKUP_SCHEDULE: ${BACKUP_SCHEDULE:-0 2 * * *}
+      # Salinan status.json untuk job pantauan worker (T-8g53), tanpa rahasia.
+      STATUS_COPY_DIR: /backup-status
       RCLONE_CONFIG: /config/rclone.conf
       # Email admin saat backup gagal / salinan off-VM tertunda / pulih (T-7psf).
       SMTP_URL: ${SMTP_URL:?}
@@ -296,6 +300,8 @@ services:
       - backups:/backups
       # Target off-VM dari Admin › Backup (app/offsite.json, dibaca) + status.json (ditulis) — T-7psf.
       - backup-config:/backup-config
+      # Salinan status.json untuk job pantauan worker (T-8g53; STATUS_COPY_DIR).
+      - backup-status:/backup-status
     logging: *logging
     networks: [data]
 
@@ -349,3 +355,4 @@ volumes:
   pgdata: {}
   backups: {}
   backup-config: {}
+  backup-status: {}

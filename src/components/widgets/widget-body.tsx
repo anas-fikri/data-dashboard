@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { aggOf, type WidgetConfig } from "@/features/widgets/spec";
+import { specStatus } from "@/features/widgets/status-color";
 import { AbsentNote, IgnoredShowAsNote } from "./absent-note";
 import {
   bodyState,
@@ -157,6 +158,7 @@ function Loaded({
           format={config.spec.format}
           title={title}
           agg={aggOf(config.spec.measure)}
+          status={specStatus(config.spec)}
           fixedHeight={fixedHeight}
         />
       );
@@ -196,6 +198,7 @@ function Loaded({
           request={request}
           cross={cross}
           crossFilter={config.spec.crossFilter === true}
+          status={specStatus(config.spec)}
         />
       ) : null;
       break;

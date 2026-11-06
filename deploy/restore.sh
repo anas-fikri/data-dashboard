@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Restore dari backup T-023 ke deploy ini (VM baru atau sama). Jalankan di service backup dengan kunci
 # PRIVAT age yang dibawa operator (tidak disimpan di VM):
-#   docker compose -f docker-compose.prod.yml run --rm \
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm \
 #     -v /path/kunci-backup.txt:/run/age-key:ro -v /path/folder-arsip:/run/arsip:ro \
 #     backup bash /usr/local/bin/restore.sh /run/arsip/dashboard-<UTC>.tar.age /run/age-key
 # Nama arsip jangan diganti: <arsip>.sha256 merujuk nama aslinya. Kunci "-" = dibaca dari stdin.

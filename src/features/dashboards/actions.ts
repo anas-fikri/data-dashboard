@@ -15,7 +15,7 @@ export type DashboardFormState =
       code: service.DashboardCode;
       message: string;
       field: "name" | "datasetId" | null;
-      values: { name: string; datasetId: string };
+      values: { name: string; datasetId: string; starter: boolean };
     }
   | { status: "success"; message: string };
 
@@ -30,7 +30,11 @@ function toError(
     code: r.code,
     message: r.message,
     field: r.field ?? null,
-    values: { name: str(formData.get("name")), datasetId: str(formData.get("datasetId")) },
+    values: {
+      name: str(formData.get("name")),
+      datasetId: str(formData.get("datasetId")),
+      starter: formData.get("starter") === "on",
+    },
   };
 }
 
@@ -39,7 +43,13 @@ export async function createDashboardAction(
   formData: FormData,
 ): Promise<DashboardFormState> {
   const user = await requireUser();
-  const r = await service.createDashboard(user.id, formData.get("datasetId"), formData.get("name"));
+  // Dashboard contoh (T-zm9k): kotak centang "Mulai dengan dashboard contoh".
+  const r = await service.createDashboard(
+    user.id,
+    formData.get("datasetId"),
+    formData.get("name"),
+    formData.get("starter") === "on",
+  );
   if (!r.ok) return toError(r, formData);
   revalidatePath("/dashboards");
   // Dashboard baru langsung dibuka di mode edit agar widget pertama bisa ditambahkan.

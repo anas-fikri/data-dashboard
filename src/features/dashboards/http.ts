@@ -157,8 +157,8 @@ export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
   );
 
 /**
- * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik saja
- * (editor/viewer → 403).
+ * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan
+ * editor (T-k2ec; viewer → 403, tanpa akses → 404).
  */
 export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan kolom filter gagal", async (userId, body) => {

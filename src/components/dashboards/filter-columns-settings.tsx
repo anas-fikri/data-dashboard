@@ -11,7 +11,10 @@ import { normName } from "@/features/widgets/remap";
 import type { FilterColumnView, SourceSheet } from "@/features/dashboards/service";
 import { AddFilterColumnMenu } from "./add-filter-column-menu";
 import { api } from "./dashboard-api";
-import { FILTER_SETTINGS_ID } from "./filters/filter-bar";
+import { filterText } from "./filters/filter-text";
+
+/** Jangkar bagian "Kolom filter" di kartu pengaturan pemilik (tautan peringatan dialog share). */
+export const FILTER_SETTINGS_ID = "kolom-filter";
 
 /** Fokus ke bagian kolom filter bila URL menunjuk ke sana; true = difokus. */
 export function focusIfTargeted(el: HTMLElement | null, hash: string): boolean {
@@ -31,22 +34,36 @@ export function focusIfTargeted(el: HTMLElement | null, hash: string): boolean {
  * lewat wilayah status yang selalu terpasang (isinya saja yang berganti).
  * Dibuka lewat #kolom-filter (tautan peringatan dialog share, review T-016 R2-UI-6): bagian ini difokus
  * saat terpasang — Next hanya menggulir ke hash, fokus tetap di tombol pemicu di atas halaman (2.4.3).
+ * `embedded` (T-k2ec): versi di bilah filter mode edit untuk pemilik dan editor — tanpa jangkar
+ * #kolom-filter (hanya kartu pengaturan pemilik yang menjadi tujuan tautan). Daftar mengikuti props
+ * baru setelah refresh server, jadi simpanan di satu tempat tidak membuat tempat lain basi.
  */
 export function FilterColumnsSettings({
   dashboardId,
   columns,
   sources,
+  embedded = false,
 }: {
   dashboardId: string;
   columns: FilterColumnView[];
   sources: SourceSheet[];
+  embedded?: boolean;
 }) {
   const id = useId();
   const router = useRouter();
   const [list, setList] = useState(columns);
   const [pending, setPending] = useState(false);
+  const [synced, setSynced] = useState(columns);
+  if (synced !== columns) {
+    setSynced(columns);
+    if (!pending) setList(columns);
+  }
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
   const root = useRef<HTMLDivElement>(null);
+  const latest = useRef(columns);
+  useEffect(() => {
+    latest.current = columns;
+  }, [columns]);
   const focusAt = useRef<number | null>(null);
   const multiSheet = sources.length > 1;
   const full = list.length >= FILTER_COLUMNS_MAX;
@@ -54,8 +71,8 @@ export function FilterColumnsSettings({
   const names = new Set(list.map((c) => normName(c.column)));
 
   useEffect(() => {
-    focusIfTargeted(root.current, window.location.hash);
-  }, []);
+    if (!embedded) focusIfTargeted(root.current, window.location.hash);
+  }, [embedded]);
 
   useEffect(() => {
     const at = focusAt.current;
@@ -70,13 +87,19 @@ export function FilterColumnsSettings({
     // Satu simpan sekaligus (tombol tidak dinonaktifkan: fokus tidak boleh hilang ke <body>).
     if (pending) return;
     const before = list;
+    const columnsAtSave = latest.current;
     if (focus !== undefined) focusAt.current = focus;
     setList(next);
     setPending(true);
     setResult(null);
     const r = await api.setFilterColumns(
       dashboardId,
-      next.map((c) => ({ sheet: c.sheet, column: c.column })),
+      // Bawaan (T-vb7q) ikut agar tambah/hapus kolom lain tidak menghapusnya.
+      next.map((c) => ({
+        sheet: c.sheet,
+        column: c.column,
+        ...(c.default ? { default: c.default } : {}),
+      })),
     );
     setPending(false);
     if (r.ok) {
@@ -84,7 +107,8 @@ export function FilterColumnsSettings({
       setResult({ ok: true, message: "Kolom filter tersimpan." });
       router.refresh();
     } else {
-      setList(before);
+      // Refresh yang tiba selama simpan berjalan menang atas daftar sebelum simpan.
+      setList(latest.current === columnsAtSave ? before : latest.current);
       setResult({ ok: false, message: r.message });
     }
   }
@@ -92,12 +116,16 @@ export function FilterColumnsSettings({
   return (
     <section
       ref={root}
-      id={FILTER_SETTINGS_ID}
+      id={embedded ? undefined : FILTER_SETTINGS_ID}
       aria-labelledby={`${id}-h`}
-      data-testid="dashboard-filter-columns"
+      data-testid={embedded ? "filter-bar-columns" : "dashboard-filter-columns"}
       // Target fokus tautan #kolom-filter (bukan tab stop); cincin hanya untuk fokus keyboard.
-      tabIndex={-1}
-      className="flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col gap-3 rounded-sm border-t pt-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      tabIndex={embedded ? undefined : -1}
+      className={
+        embedded
+          ? "flex flex-col gap-3"
+          : "flex scroll-mt-[calc(var(--topbar-h)+1rem)] flex-col gap-3 rounded-sm border-t pt-5 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      }
     >
       <div className="flex flex-col gap-1">
         <h3 id={`${id}-h`} className="text-sm font-semibold">
@@ -137,6 +165,11 @@ export function FilterColumnsSettings({
                   {c.available ? TYPE_LABEL[c.type] : null}
                   {multiSheet ? `${c.available ? " · " : ""}Sheet ${c.sheet}` : null}
                 </span>
+                {c.default ? (
+                  <span className="block truncate text-xs" data-testid="filter-column-default">
+                    Bawaan: {filterText(c.default, c.type)}
+                  </span>
+                ) : null}
                 {!c.available ? (
                   <span className="mt-0.5 flex items-start gap-1 text-xs">
                     <IconAlertTriangle

@@ -16,7 +16,7 @@ Ingin menambah bulan baru tanpa mengunggah ulang seluruh data? Aktifkan **data p
 
 ## Bila kolom file baru berbeda
 
-Bila sheet atau kolom yang dipakai dataset tidak ditemukan di file baru, atau banyak nilai tidak bisa dibaca dengan tipe kolomnya, versi baru berstatus **Menunggu pemetaan** dan muncul pesan _“nama-file” perlu pemetaan kolom_.
+Bila sheet atau kolom yang dipakai dataset tidak ditemukan di file baru (termasuk sheet data aktif yang tidak Anda centang di **Sheet yang diimpor**), atau banyak nilai tidak bisa dibaca dengan tipe kolomnya, versi baru berstatus **Menunggu pemetaan** dan muncul pesan _“nama-file” perlu pemetaan kolom_.
 
 Kolom **baru** yang sebelumnya tidak ada tidak menghentikan proses: versi tetap aktif dan kolom itu disembunyikan dulu — tampilkan lewat halaman **skema** bila diperlukan.
 
