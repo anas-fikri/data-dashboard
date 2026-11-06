@@ -8,6 +8,7 @@
 import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
 import { calcExprSchema, calcLabelSchema, calcLeaves, isAdditiveCalc, type CalcExpr } from "./calc";
+import { colorsSchema, toneSchema } from "./tone";
 
 export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -114,7 +115,7 @@ export const SHOW_AS_FOR: Record<"pivot" | ChartType, readonly ShowAs[]> = {
 };
 /** Ukuran grafik/pivot: ukuran biasa + cara tampil opsional. */
 const shownMeasure = measureBase
-  .extend({ showAs: z.enum(SHOW_AS).optional() })
+  .extend({ showAs: z.enum(SHOW_AS).optional(), tone: toneSchema.optional() })
   .strict()
   .refine(needsColumn.check, { message: needsColumn.message });
 const dimension = z.object({ column, timeGrain: z.enum(GRAINS).optional() }).strict();
@@ -131,7 +132,9 @@ const calcBase = z
     format: formatSchema.optional(),
   })
   .strict();
-const calcValue = calcBase.extend({ showAs: z.enum(SHOW_AS).optional() }).strict();
+const calcValue = calcBase
+  .extend({ showAs: z.enum(SHOW_AS).optional(), tone: toneSchema.optional() })
+  .strict();
 export type CalcValue = z.infer<typeof calcValue>;
 
 /**
@@ -182,6 +185,8 @@ export const chartSpecSchema = z
      * widget ini (dimensinya tidak lagi termasuk kolom cross-filter yang diizinkan dashboard).
      */
     crossFilter: z.boolean().optional(),
+    /** Template warna status (tone.ts). */
+    colors: colorsSchema.optional(),
   })
   .strict();
 export const tableSpecSchema = z
@@ -323,6 +328,8 @@ export const pivotSpecSchema = z
      * boleh dikirim viewer di dashboard yang sudah dibagikan (D6, review M3).
      */
     crossFilter: z.boolean().optional(),
+    /** Template warna status (tone.ts). */
+    colors: colorsSchema.optional(),
   })
   .strict()
   .refine(

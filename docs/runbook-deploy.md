@@ -169,6 +169,11 @@ LAN Caddy tidak perlu diverifikasi proxy). Di `.env.prod`:
 - `STORAGE_PUBLIC_HOST=<domain storage>` — perlu proxy host kedua ke `:8444` (Host diteruskan apa adanya,
   body ≥ 32 MB) agar unggah/unduh dari luar LAN dan tanpa CA LAN berjalan; tanpa ini URL unggah tetap
   `STORAGE_HOST` (IP).
+  Proxy host storage di NPM: Scheme **https** ke `<ip-vm>:8444` (http → Caddy membalas 400 "Client sent an
+  HTTP request to an HTTPS server"), Advanced `client_max_body_size 64m; proxy_request_buffering off;`.
+- `STORAGE_RESOLVE_IP=<ip proxy di LAN>` (opsional; olympus: `10.3.3.56`) — VM tidak bisa menjangkau IP publik
+  kantornya sendiri (hairpin NAT), sehingga uji `check-public-presign` di `upgrade.sh start` timeout ke domain
+  storage. Nilai ini memetakan `STORAGE_PUBLIC_HOST` ke proxy LAN khusus untuk container uji itu.
 
 Setelah mengubahnya: `$C run --rm --no-deps storage-init` (CORS mengizinkan domain + IP) lalu
 `$C up -d --no-deps --force-recreate proxy app worker`. Pengguna di kantor yang membuka domain lewat IP
@@ -827,3 +832,24 @@ dan arsip lokal dihapus setelah selesai.
 - Gagal di langkah 5–7: **jangan** ulangi skrip; skrip mencetak perintah lanjutan yang tepat (ulang `load`,
   ulang `git archive`, atau `migrate && start`). Rollback rilis tanpa migrasi = ganti `IMAGE_TAG` ke
   `prev-<stamp>` (§11); Redis rusak = §12.
+
+## 14. Rilis satu perintah dari server (`deploy/server-release.sh`, mulai v1.6.2)
+
+Alternatif §13 tanpa Mac dan tanpa git: dijalankan langsung di olympus, kode diunduh dari GitHub (repo
+publik). Syarat: PR rilis (commit `chore(release): v<versi>`) sudah di-merge ke `main`.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.7.0          # backup harian ≤ 26 jam dipakai bila rilis tanpa migrasi
+bash deploy/server-release.sh 1.7.0 --full   # paksa backup lengkap baru
+```
+
+1. unduh arsip tag `v<versi>`; bila tag belum ada, arsip `main` (versi `package.json` wajib sama);
+2. preflight dengan kode lama memakai `upgrade.sh` versi rilis (backup, dump DB, catat image rollback);
+3. sinkron kode ke folder aplikasi (`.env.prod`, sertifikat, dan data tidak tersentuh);
+4. `upgrade.sh build` di VM (± 15–20 menit, produksi tetap jalan);
+5. `upgrade.sh migrate` → `start` (jeda ± 2–5 menit) + verifikasi pasca-deploy.
+
+Gagal di langkah 1–4: produksi tidak berubah; skrip mencetak perintah lanjutan. Gagal di langkah 5: ikuti pesan
+`upgrade.sh` (rollback: `bash deploy/upgrade.sh rollback`). Isi `STORAGE_RESOLVE_IP` (§2, domain publik) agar uji
+presign tidak gagal palsu karena hairpin NAT. Tag dibuat belakangan dari Mac bila memakai `main`.

@@ -8,8 +8,10 @@ import { Button } from "@/components/ui/button";
 import type { PivotData } from "@/features/query/pivot";
 import { pivotTable } from "@/features/widgets/pivot-table";
 import type { NumberFormat } from "@/features/widgets/spec";
+import type { WidgetStatus } from "@/features/widgets/status-color";
 import { PivotFieldFilters } from "./pivot-filter-menu";
 import { PivotTableMarkup, type PivotPicker } from "./pivot-markup";
+import { StatusLegend } from "./status-legend";
 import type { WidgetRequest } from "./widget-query";
 
 /*
@@ -26,6 +28,7 @@ export function PivotView({
   request,
   cross,
   crossFilter = false,
+  status,
 }: {
   data: PivotData;
   format: NumberFormat;
@@ -35,6 +38,8 @@ export function PivotView({
   cross?: WidgetFilters;
   /** Sakelar "Klik label menyaring widget lain" di pengaturan widget (pivot: hanya true = aktif). */
   crossFilter?: boolean;
+  /** Warna status (v1.7.0): arah per nilai + template. */
+  status?: WidgetStatus;
 }) {
   const model = pivotTable(data);
   const edit = cross?.pivotEdit ?? null;
@@ -68,6 +73,8 @@ export function PivotView({
             format={format}
             variant="screen"
             picker={picker}
+            tones={status?.tones}
+            colors={status?.colors}
             corner={
               edit && request ? (
                 <PivotFieldFilters fields={model.fields} request={request} edit={edit} />
@@ -100,6 +107,12 @@ export function PivotView({
             </Button>
           ) : null}
         </p>
+      ) : null}
+      {status ? (
+        <StatusLegend
+          colors={status.colors}
+          items={data.values.map((v, m) => ({ label: v.label, tone: status.tones[m] }))}
+        />
       ) : null}
       {model.note ? (
         <p className="border-t px-3 py-1 text-xs text-muted-foreground" data-testid="pivot-note">

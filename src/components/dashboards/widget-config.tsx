@@ -1,5 +1,6 @@
 "use client";
 
+import { ColorTemplateFields, ToneChoice, withTone } from "./status-fields";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -398,7 +399,15 @@ export function WidgetConfigForm({
                     : undefined
                 }
                 onSave={(measure) =>
-                  commit({ ...draft, spec: { ...draft.spec, measure } } as WidgetConfig)
+                  commit({
+                    ...draft,
+                    spec: {
+                      ...draft.spec,
+                      // Ubah rumus tidak menghapus penilaian warna batang.
+                      measure:
+                        draft.type === "bar" ? withTone(measure, draft.spec.measure.tone) : measure,
+                    },
+                  } as WidgetConfig)
                 }
                 onRemove={() =>
                   commit({
@@ -416,6 +425,29 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
+              {/* Warna status hanya untuk grafik batang (v1.7.0); garis/pai/KPI tidak. */}
+              {draft.type === "bar" ? (
+                <>
+                  <ToneChoice
+                    tone={draft.spec.measure.tone}
+                    onChange={(tone) =>
+                      commit({
+                        ...draft,
+                        spec: { ...draft.spec, measure: withTone(draft.spec.measure, tone) },
+                      })
+                    }
+                  />
+                  {draft.spec.measure.tone ? (
+                    <ColorTemplateFields
+                      colors={draft.spec.colors}
+                      onChange={(colors) => {
+                        const { colors: _k, ...spec } = draft.spec;
+                        commit({ ...draft, spec: colors ? { ...spec, colors } : spec });
+                      }}
+                    />
+                  ) : null}
+                </>
+              ) : null}
 
               {draft.type !== "kpi" ? (
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_6rem] items-start gap-2">

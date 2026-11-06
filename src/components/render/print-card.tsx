@@ -15,6 +15,7 @@ import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import type { RenderWidget } from "@/features/exports/render-data";
 import { aggOf } from "@/features/widgets/spec";
+import { specStatus } from "@/features/widgets/status-color";
 import { cn } from "@/lib/utils";
 import { rowsPx, tableRowsFitPx } from "./print-layout";
 
@@ -125,7 +126,7 @@ function Body({
   }
   if (config.type === "pivot") {
     return data.pivot ? (
-      <PrintPivot data={data.pivot} format={config.spec.format} />
+      <PrintPivot data={data.pivot} format={config.spec.format} status={specStatus(config.spec)} />
     ) : (
       <Message icon={null}>
         <p className="text-muted-foreground">Tidak ada data untuk ditampilkan.</p>

@@ -68,3 +68,20 @@ Pilih label baris atau kolom (mis. _Customer 24_ atau _Jan 2026_) untuk menyarin
 ## Satu pivot untuk banyak widget
 
 Pivot yang sama dipakai di beberapa dashboard atau sebagai grafik dan angka sekaligus? Simpan sebagai **pivot tersimpan** (tombol **Simpan sebagai pivot tersimpan** di pengaturan widget) agar cukup diubah sekali — lihat panduan _Satu pivot untuk banyak widget_.
+
+## Warna status: hijau baik, merah perlu perhatian
+
+Seperti _Conditional Formatting_ di Excel, sel pivot (dan batang di grafik **Batang**) bisa diberi warna status
+supaya yang bermasalah langsung terlihat — tanpa mengisi angka ambang.
+
+1. Di kartu **Nilai**, pilih **Penilaian warna**:
+   - **Makin tinggi makin baik** — mis. _checkpoint tepat waktu_, _pengiriman sukses_.
+   - **Makin tinggi makin buruk** — mis. _klaim_, _retur_, _keterlambatan_.
+2. Pilih **Template warna**: _Lembut_ (bawaan, gaya isian Excel), _Tegas_, _Ramah buta warna_ (biru–oranye),
+   atau _Warna sendiri_ (tiga warna pilihan Anda).
+
+Setiap sel dibandingkan dengan sel lain dari nilai yang sama di widget itu, lalu dibagi tiga tingkat — bukan
+gradasi: **sepertiga teratas**, **tengah**, dan **sepertiga terbawah** rentang terkecil–terbesar. Untuk nilai
+"makin tinggi makin baik", sepertiga teratas berwarna **Baik**; untuk "makin tinggi makin buruk", sepertiga
+teratas berwarna **Perlu perhatian**. Baris subtotal, Total, dan kolom Total tidak diwarnai. Legenda di bawah
+tabel menjelaskan arti warna dan arah tiap nilai, dan warnanya ikut ke ekspor PDF.

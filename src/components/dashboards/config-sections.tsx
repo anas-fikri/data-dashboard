@@ -12,6 +12,7 @@ import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
+import type { Tone } from "@/features/widgets/tone";
 import { SHOW_AS_LABEL, isAxisShowAs, showAsChoices } from "@/features/widgets/show-as";
 import {
   TABLE_COLUMNS_MAX,
@@ -201,7 +202,7 @@ export function TableColumns({
 }
 
 /** Agregasi + kolomnya. Pai hanya Total/Jumlah baris/Jumlah terisi (bagian dari keseluruhan). */
-type ShownMeasure = { agg: Agg; column?: number; showAs?: ShowAs };
+type ShownMeasure = { agg: Agg; column?: number; showAs?: ShowAs; tone?: Tone };
 
 /** Ukuran berupa angka (jumlah, atau agregat kolom angka/durasi): boleh "Tampilkan nilai sebagai". */
 function numericMeasure(m: ShownMeasure, columns: SourceColumn[]): boolean {
@@ -237,7 +238,9 @@ export function MeasureFields({
   // Cara tampil ikut ukuran baru selama masih angka; selain itu kembali ke nilai biasa.
   const change = (next: { agg: Agg; column?: number }) => {
     const keep = measure.showAs && numericMeasure(next, columns);
-    onChange(keep ? { ...next, showAs: measure.showAs } : next);
+    // Penilaian warna (v1.7.0) ikut ukuran baru.
+    const tone = measure.tone ? { tone: measure.tone } : {};
+    onChange(keep ? { ...next, showAs: measure.showAs, ...tone } : { ...next, ...tone });
   };
   const showAs = measure.showAs ?? "none";
   return (

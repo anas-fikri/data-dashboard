@@ -5,6 +5,13 @@ import { formatCell } from "@/features/widgets/format";
 import { valueFormat } from "@/features/widgets/show-as";
 import type { PivotBodyRow, PivotPick, PivotTableModel } from "@/features/widgets/pivot-table";
 import type { NumberFormat } from "@/features/widgets/spec";
+import {
+  STATUS_LABEL,
+  pivotStatus,
+  statusCssVars,
+  type Status,
+} from "@/features/widgets/status-color";
+import type { Tone, WidgetColors } from "@/features/widgets/tone";
 import { cn } from "@/lib/utils";
 
 /*
@@ -81,14 +88,19 @@ const INDENT: Record<PivotBodyRow["depth"], string> = {
   3: "pl-[3.75rem] max-sm:pl-11",
 };
 
+type CellStatus = (row: PivotBodyRow, value: unknown, j: number) => Status | null;
+
 export function PivotCells({
   row,
   model,
   format,
+  status,
 }: {
   row: PivotBodyRow;
   model: PivotTableModel;
   format: NumberFormat;
+  /** Warna status per sel (v1.7.0); tanpa ini sel netral. */
+  status?: CellStatus | null;
 }) {
   if (row.kind === "group" && row.values.length === 0) {
     return <td colSpan={model.valueHeads.length} />;
@@ -96,8 +108,14 @@ export function PivotCells({
   return row.values.map((v, i) => {
     const head = model.valueHeads[i]!;
     const empty = v === null || v === undefined;
+    const st = empty ? null : (status?.(row, v, i) ?? null);
     return (
-      <td key={i} className={cn(NUM, head.total && "border-l font-semibold")}>
+      <td
+        key={i}
+        className={cn(NUM, head.total && "border-l font-semibold")}
+        data-status={st ?? undefined}
+        title={st ? STATUS_LABEL[st] : undefined}
+      >
         {empty ? (
           <>
             <span aria-hidden className="text-muted-foreground">
@@ -106,7 +124,10 @@ export function PivotCells({
             <span className="sr-only">tidak ada data</span>
           </>
         ) : (
-          formatCell(v, head.type, valueFormat(head.showAs, head.format ?? format))
+          <>
+            {formatCell(v, head.type, valueFormat(head.showAs, head.format ?? format))}
+            {st ? <span className="sr-only">, {STATUS_LABEL[st]}</span> : null}
+          </>
         )}
       </td>
     );
@@ -120,6 +141,8 @@ export function PivotTableMarkup({
   variant,
   corner,
   picker,
+  tones,
+  colors,
 }: {
   model: PivotTableModel;
   format: NumberFormat;
@@ -129,8 +152,12 @@ export function PivotTableMarkup({
   /** Isi sel pojok (menu saring field); bawaan judul kolom baris. */
   corner?: React.ReactNode;
   picker?: PivotPicker;
+  /** Arah penilaian per nilai (urut spec) dan template warna status (v1.7.0). */
+  tones?: readonly (Tone | undefined)[];
+  colors?: WidgetColors;
 }) {
   const screen = variant === "screen";
+  const status = tones ? pivotStatus(model, tones) : null;
   // Sel menempel harus berlatar padat agar isi yang tergulir tidak tembus.
   const stickLeft = screen ? "sticky left-0 z-[5]" : "";
   const twoHead = !!model.columnHeads;
@@ -212,6 +239,7 @@ export function PivotTableMarkup({
     <table
       className={cn("w-max min-w-full border-collapse", screen ? "text-sm" : "text-xs")}
       data-testid="widget-pivot"
+      style={status ? (statusCssVars(colors) as React.CSSProperties) : undefined}
     >
       {head}
       <tbody>
@@ -228,7 +256,7 @@ export function PivotTableMarkup({
               )}
             >
               {rowHead(r, bg)}
-              <PivotCells row={r} model={model} format={format} />
+              <PivotCells row={r} model={model} format={format} status={status} />
             </tr>
           );
         })}

@@ -9,7 +9,13 @@ import { SNIFF_BYTES, kindOf, sniff } from "./sniff";
 
 const CONCURRENCY = 4;
 const SIGN_CHUNK = 8;
-const RETRIES = 4;
+/**
+ * Percobaan per permintaan yang gagal jaringan (part, tanda tangan URL, complete). Jeda naik
+ * 1→2→4→8→16→30→30 dtk (+ jitter) ≈ 1,5 menit: WiFi pindah AP/VPN tersambung ulang tidak lagi
+ * menggagalkan unggahan. Saat browser offline, tunggu event "online" dulu (tidak menghabiskan jeda).
+ */
+const RETRIES = 8;
+const MAX_DELAY_MS = 30_000;
 
 export type UploadPhase = "checking" | "uploading" | "finishing";
 
@@ -91,6 +97,42 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
       { once: true },
     );
   });
+}
+
+function waitOnline(signal: AbortSignal): Promise<void> {
+  if (typeof navigator === "undefined" || navigator.onLine !== false) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      window.removeEventListener("online", done);
+      signal.removeEventListener("abort", stop);
+      resolve();
+    };
+    const stop = () => {
+      window.removeEventListener("online", done);
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    window.addEventListener("online", done, { once: true });
+    signal.addEventListener("abort", stop, { once: true });
+  });
+}
+
+/** Jeda sebelum percobaan ke-(attempt+2): eksponensial dibatasi MAX_DELAY_MS, plus jitter. */
+async function backoff(attempt: number, signal: AbortSignal): Promise<void> {
+  await waitOnline(signal);
+  await wait(Math.min(1000 * 2 ** attempt, MAX_DELAY_MS) + Math.random() * 500, signal);
+}
+
+/** Ulangi `fn` hanya untuk galat jaringan (UploadError NETWORK); galat lain dan abort langsung dilempar. */
+async function retryNetwork<T>(fn: () => Promise<T>, signal: AbortSignal): Promise<T> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (signal.aborted) throw e;
+      if (!(e instanceof UploadError) || e.code !== "NETWORK" || attempt >= RETRIES - 1) throw e;
+      await backoff(attempt, signal);
+    }
+  }
 }
 
 /** PUT satu part dengan progres (XHR: fetch belum punya progres unggah). */
@@ -272,7 +314,7 @@ export async function runMultipart(run: MultipartRun): Promise<void> {
         if (signal.aborted) throw e;
         if (e instanceof UploadError && e.code !== "NETWORK") throw e;
         if (attempt === RETRIES - 1) throw new UploadError("NETWORK", NETWORK_MESSAGE, versionId);
-        await wait(1000 * 2 ** attempt, signal);
+        await backoff(attempt, signal);
       }
     }
   };
@@ -280,7 +322,7 @@ export async function runMultipart(run: MultipartRun): Promise<void> {
   const uploadAll = async (numbers: number[]) => {
     for (let i = 0; i < numbers.length; i += SIGN_CHUNK) {
       const chunk = numbers.slice(i, i + SIGN_CHUNK);
-      const urls = await sign(chunk);
+      const urls = await retryNetwork(() => sign(chunk), signal);
       const queue = [...urls];
       await Promise.all(
         Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
@@ -299,7 +341,8 @@ export async function runMultipart(run: MultipartRun): Promise<void> {
   for (let round = 0; ; round++) {
     onProgress({ phase: "finishing", loaded: size, total: size, resumed: init.resumed, versionId });
     try {
-      await api(`${base}/complete`, "POST", completeBody, signal);
+      // Complete idempoten di server: respons yang hilang di jalan aman diulang.
+      await retryNetwork(() => api(`${base}/complete`, "POST", completeBody, signal), signal);
       return;
     } catch (e) {
       const missing = (e as UploadError & { missing?: number[] }).missing;
