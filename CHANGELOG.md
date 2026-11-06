@@ -24,6 +24,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batang berwarna (arah tersimpan diam-diam di v1.8) kini langsung berwarna; matikan lewat "Penilaian warna:
   Tanpa warna" bila tidak diinginkan.
 
+## [1.9.0] - 2026-11-06
+
+### Added
+
+- **widgets:** template warna di level dashboard + warna status Garis, Pai, Tabel (T-z1vv) (3455182)
+
+### Fixed
+
+- **deploy:** images.sh menolak tag rilis yang tidak sesuai versi package.json (T-jd1g) (1dc1a3a)
+- **widgets:** remap warna kolom tabel, simpan template dashboard berjeda, fokus panel tabel (review T-z1vv) (db12a13)
+- **widgets:** widget baru atas pivot tersimpan tidak menyalin template pivot (review T-z1vv L4) (9062618)
+
 ## [1.8.1] - 2026-11-06
 
 ### Fixed
