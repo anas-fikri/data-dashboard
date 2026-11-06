@@ -146,7 +146,8 @@ services:
     tmpfs: ["/tmp:size=512m"]
     # Temp per job (file sumber + spill sharedStrings ≤ 8 GiB) + cache parquet: ≥ upload maks + 8 GiB per
     # replika (ADR-0005). Nama file per job/versi, jadi replika boleh berbagi volume.
-    volumes: [worker_cache:/var/cache/dashboard]
+    # backup-config read-only: job pantauan membaca status backup untuk email peringatan admin (T-8g53).
+    volumes: [worker_cache:/var/cache/dashboard, "backup-config:/backup-config:ro"]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     stop_grace_period: 60s

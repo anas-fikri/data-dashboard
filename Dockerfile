@@ -59,7 +59,8 @@ HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
 CMD ["node", "server.js"]
 
 FROM runtime-base AS worker
-ENV WORKER_TMP_DIR=/var/cache/dashboard/tmp QUERY_CACHE_DIR=/var/cache/dashboard/query
+# BACKUP_CONFIG_DIR: status backup dibaca job pantauan (T-8g53; volume dipasang read-only).
+ENV WORKER_TMP_DIR=/var/cache/dashboard/tmp QUERY_CACHE_DIR=/var/cache/dashboard/query BACKUP_CONFIG_DIR=/backup-config
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json /app/tsconfig.json ./
 COPY --from=build /app/src ./src
