@@ -27,10 +27,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **deploy:** `server-release.sh` menerima `ARCHIVE=<arsip>` untuk server tanpa akses github.com (fd03bed)
 - **deps:** minimatch 11.0.1 untuk typescript-estree (GHSA-g3hv-75wg-m249, dev) (T-fnvm) (b1e545a)
 - **deps:** zod 4.6.7 (GHSA-mrhx-c7xc-m3w5, high) (T-fnvm) (2b33214)
 - **widgets:** panel warna tidak dipasang ulang — fokus keyboard tetap (review v1.8.0 #2b) (95b7bc9)
 - temuan review v1.8.0 (batas hilang, state panel basi, bound, PDF, pantauan, rahasia worker) (9ab9fd1)
+
+### Notes
+
+- **rollback v1.8.0 → v1.7.x:** widget dengan batas angka atau widget Angka berwarna tampil "Pengaturan widget
+  tidak valid" sampai roll-forward (data tetap); hapus batas/warna Angka dulu bila rollback lama (runbook §16).
 
 ## [1.7.0] - 2026-11-06
 
