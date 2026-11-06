@@ -147,7 +147,9 @@ function measureOrCalc<M extends z.ZodTypeAny, C extends z.ZodTypeAny>(m: M, c: 
     const calc = typeof v === "object" && v !== null && (v as { kind?: unknown }).kind === "calc";
     const r = (calc ? c : m).safeParse(v);
     if (!r.success) {
-      for (const i of r.error.issues) ctx.addIssue(i);
+      // zod 4: issue hasil parse diteruskan apa adanya (pesan + path tetap).
+      for (const i of r.error.issues)
+        ctx.addIssue(i as unknown as Parameters<typeof ctx.addIssue>[0]);
       return z.NEVER;
     }
     return r.data as z.output<M> | z.output<C>;
