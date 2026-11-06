@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import {
   STATUSES,
@@ -52,12 +52,8 @@ const num = (t: string): number | null | "bad" => {
   return Number.isFinite(n) ? n : "bad";
 };
 
-/**
- * Kunci remount ToneChoice: isian lokal (cara, batas) disusun ulang saat arah/batas nilai berubah dari
- * luar (nilai lain dihapus, kembali ke ukuran biasa, ganti jenis) — tidak menulis batas basi.
- */
-export const toneKey = (v: ValueStatus, scope = "") =>
-  `${scope}:${v.tone ?? ""}:${v.target ? `${v.target.good}/${v.target.bad}` : ""}`;
+const sameStatus = (a: ValueStatus, b: ValueStatus) =>
+  a.tone === b.tone && a.target?.good === b.target?.good && a.target?.bad === b.target?.bad;
 
 export function ToneChoice({
   value,
@@ -77,6 +73,20 @@ export function ToneChoice({
   const [mode, setMode] = useState<"auto" | "target">(target || kpi ? "target" : "auto");
   const [good, setGood] = useState(target ? String(target.good) : "");
   const [bad, setBad] = useState(target ? String(target.bad) : "");
+  // Nilai terakhir yang dikirim/diterima: isian lokal disusun ulang HANYA bila nilai berubah dari luar
+  // (nilai lain dihapus, kembali ke ukuran biasa) — bukan remount, agar fokus keyboard tidak hilang.
+  const last = useRef<ValueStatus>(value);
+  useEffect(() => {
+    if (sameStatus(value, last.current)) return;
+    last.current = value;
+    setMode(value.target || kpi ? "target" : "auto");
+    setGood(value.target ? String(value.target.good) : "");
+    setBad(value.target ? String(value.target.bad) : "");
+  }, [value, kpi]);
+  const send = (next: ValueStatus) => {
+    last.current = next;
+    onChange(next);
+  };
   const g = num(good);
   const b = num(bad);
   const order = tone === "up" ? "≥" : "≤";
@@ -93,10 +103,10 @@ export function ToneChoice({
     const gn = num(gs);
     const bn = num(bs);
     if (gn === "bad" || bn === "bad" || !tone) return;
-    if (gn === null && bn === null) return onChange({ tone });
+    if (gn === null && bn === null) return send({ tone });
     if (gn === null || bn === null) return;
     if (tone === "up" ? gn < bn : gn > bn) return;
-    onChange({ tone, target: { good: gn, bad: bn } });
+    send({ tone, target: { good: gn, bad: bn } });
   };
   return (
     <>
@@ -106,7 +116,12 @@ export function ToneChoice({
         value={tone ?? "none"}
         options={TONE_OPTIONS}
         // Ganti arah: batas lama tidak lagi sesuai urutannya → dikosongkan (isi ulang batas baru).
-        onChange={(v) => onChange(v === "none" ? {} : { tone: v })}
+        onChange={(v) => {
+          if (v === "none") setMode(kpi ? "target" : "auto");
+          setGood("");
+          setBad("");
+          send(v === "none" ? {} : { tone: v });
+        }}
       />
       {tone && !kpi ? (
         <Choice
@@ -119,7 +134,7 @@ export function ToneChoice({
           ]}
           onChange={(m) => {
             setMode(m);
-            if (m === "auto") onChange({ tone });
+            if (m === "auto") send({ tone });
           }}
         />
       ) : null}

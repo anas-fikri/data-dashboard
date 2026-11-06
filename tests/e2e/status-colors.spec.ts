@@ -108,6 +108,8 @@ test.describe("warna status (T-f3tf)", () => {
 
     await pick(owner, panel, "Penilaian warna", "Makin tinggi makin baik (mis. tepat waktu)");
     await saved(panel);
+    // Fokus kembali ke pemicu pilihan (panel tidak dipasang ulang saat nilai tersimpan).
+    await expect(panel.getByLabel("Penilaian warna", { exact: true })).toBeFocused();
     await expect
       .poll(() => statuses(table), { timeout: 20_000 })
       .toEqual({
@@ -143,8 +145,19 @@ test.describe("warna status (T-f3tf)", () => {
 
     await pick(owner, panel, "Cara menentukan warna", "Pakai batas angka (mis. SLA, target)");
     await panel.getByTestId("config-target-good").fill("550");
+    await panel.getByTestId("config-target-good").press("Tab");
+    await expect(panel.getByTestId("config-target-bad")).toBeFocused();
     await panel.getByTestId("config-target-bad").fill("150");
-    await panel.getByTestId("config-target-bad").blur();
+    await panel.getByTestId("config-target-bad").press("Tab");
+    await saved(panel);
+    // Batas tersimpan → fokus tidak hilang ke <body>.
+    await expect(owner.locator("body")).not.toBeFocused();
+    await panel.getByTestId("config-target-good").fill("560");
+    await panel.getByTestId("config-target-good").press("Tab");
+    await expect(panel.getByTestId("config-target-bad")).toBeFocused();
+    await saved(panel);
+    await panel.getByTestId("config-target-good").fill("550");
+    await panel.getByTestId("config-target-good").press("Tab");
     await saved(panel);
     await expect
       .poll(() => statuses(table), { timeout: 20_000 })

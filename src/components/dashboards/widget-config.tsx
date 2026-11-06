@@ -5,7 +5,6 @@ import {
   ColorTemplateFields,
   StatusUnavailableHint,
   ToneChoice,
-  toneKey,
   withStatus,
 } from "./status-fields";
 import { IconAlertCircle, IconAlertTriangle } from "@tabler/icons-react";
@@ -439,7 +438,7 @@ export function WidgetConfigForm({
               {draft.type === "bar" || draft.type === "kpi" ? (
                 <>
                   <ToneChoice
-                    key={toneKey(draft.spec.measure, draft.type)}
+                    key={draft.type}
                     kpi={draft.type === "kpi"}
                     value={draft.spec.measure}
                     percent={
