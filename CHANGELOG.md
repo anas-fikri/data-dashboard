@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (skema lama menolak field `default`; data di DB tetap). Hapus bawaan dulu bila rollback akan lama
   (runbook-deploy §10).
 
+## [1.8.1] - 2026-11-06
+
+### Fixed
+
+- **widgets:** template Lembut di widget terikat bertahan di atas template pivot tersimpan (2c75eb4)
+- **widgets:** warna status di widget terikat pivot tersimpan, petunjuk Tabel, ikatan tidak tertimpa (0305653)
+
 ## [1.8.0] - 2026-11-06
 
 ### Added
