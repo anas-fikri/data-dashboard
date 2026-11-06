@@ -30,6 +30,7 @@ import {
   type PivotSpec,
   type WidgetConfig,
 } from "./spec";
+import { colorsSchema } from "./tone";
 import { SHOW_AS_LABEL, isAxisShowAs } from "./show-as";
 
 /** Jenis widget yang bisa memakai pivot tersimpan sebagai sumber. */
@@ -61,6 +62,7 @@ export const pivotDisplaySchema = z
       .optional(),
     crossFilter: z.boolean().optional(),
     format: formatSchema.optional(),
+    colors: colorsSchema.optional(),
   })
   .strict();
 export const chartDisplaySchema = z
@@ -72,6 +74,7 @@ export const chartDisplaySchema = z
     topN: z.number().int().min(1).max(1000),
     format: formatSchema.optional(),
     crossFilter: z.boolean().optional(),
+    colors: colorsSchema.optional(),
   })
   .strict();
 export const kpiDisplaySchema = z
