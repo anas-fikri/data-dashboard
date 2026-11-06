@@ -219,4 +219,83 @@ test.describe("warna status (T-f3tf)", () => {
     await panel.getByText("Batang", { exact: true }).click();
     await expect(panel.getByLabel("Penilaian warna", { exact: true })).toBeVisible();
   });
+
+  test("sisir semua jenis widget: di mana pilihan warna tersedia", async () => {
+    const panel = owner.getByTestId("widget-panel");
+    const found: Record<string, string> = {};
+    for (const t of ["Batang", "Garis", "Pai", "Angka", "Tabel", "Pivot"]) {
+      await panel.getByText(t, { exact: true }).click();
+      await saved(panel);
+      const tone = await panel.getByLabel("Penilaian warna", { exact: true }).count();
+      const hint = await panel.getByTestId("config-tone-unavailable").count();
+      found[t] = tone ? "pilihan" : hint ? "petunjuk" : "tidak ada";
+    }
+    expect(found).toEqual({
+      Batang: "pilihan",
+      Garis: "petunjuk",
+      Pai: "petunjuk",
+      Angka: "pilihan",
+      Tabel: "petunjuk",
+      Pivot: "pilihan",
+    });
+  });
+
+  test("widget terikat pivot tersimpan: warna ikut, panel menunjuk ke pivot tersimpan + template", async () => {
+    test.setTimeout(120_000);
+    const panel = owner.getByTestId("widget-panel");
+    const table = card(owner).getByTestId("widget-pivot");
+    if (!(await panel.getByLabel("Cara menentukan warna", { exact: true }).count())) {
+      await pick(owner, panel, "Penilaian warna", "Makin tinggi makin baik (mis. tepat waktu)");
+      await saved(panel);
+    }
+    await panel.getByTestId("save-as-saved-pivot").click();
+    const dialog = owner.getByRole("dialog", { name: "Simpan sebagai pivot tersimpan" });
+    await dialog.getByRole("textbox", { name: "Nama pivot tersimpan" }).fill(`Status ${TAG}`);
+    const bound = owner.waitForResponse(
+      (r) =>
+        r.request().method() === "PATCH" &&
+        /\/widgets\/[a-z0-9]+$/.test(new URL(r.url()).pathname) &&
+        (r.request().postData() ?? "").includes("savedPivotId"),
+    );
+    await dialog.getByRole("button", { name: "Simpan", exact: true }).click();
+    expect((await bound).status()).toBe(200);
+    await expect(dialog).toHaveCount(0);
+    await expect(panel.getByTestId("bound-source")).toBeVisible();
+    // Arah + batas milik pivot tersimpan: warna tetap tampil di widget terikat.
+    await expect(table.locator("td[data-status]").first()).toBeVisible({ timeout: 20_000 });
+    const status = panel.getByTestId("bound-status");
+    await expect(status.getByTestId("bound-status-hint")).toContainText(
+      "diatur di pivot tersimpan",
+    );
+    await expect(status.getByTestId("bound-status-edit")).toBeVisible();
+    await pick(owner, panel, "Template warna", "Ramah buta warna (biru–oranye)");
+    await saved(panel);
+    // #CFE2F3 = biru (baik) template ramah buta warna.
+    await expect
+      .poll(
+        () =>
+          table
+            .locator("td[data-status=good]")
+            .first()
+            .evaluate((el) => getComputedStyle(el).backgroundColor),
+        { timeout: 20_000 },
+      )
+      .toBe("rgb(207, 226, 243)");
+    // Kembali ke Lembut walau pivot tersimpan bertemplate Tegas (review: pilihan harus bertahan).
+    await pick(owner, panel, "Template warna", "Lembut (gaya Excel)");
+    await saved(panel);
+    await expect(panel.getByLabel("Template warna", { exact: true })).toHaveText(
+      "Lembut (gaya Excel)",
+    );
+    await expect
+      .poll(
+        () =>
+          table
+            .locator("td[data-status=good]")
+            .first()
+            .evaluate((el) => getComputedStyle(el).backgroundColor),
+        { timeout: 20_000 },
+      )
+      .toBe("rgb(198, 239, 206)");
+  });
 });
