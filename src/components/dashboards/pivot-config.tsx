@@ -19,6 +19,7 @@ import {
 import { CalcField } from "./calc-editor";
 import { Choice } from "./config-fields";
 import { MeasureFields } from "./config-sections";
+import { ColorTemplateFields, ToneChoice, withTone } from "./status-fields";
 import { AddButton, DimensionField, RemoveButton, ToggleField } from "./pivot-config-fields";
 import { PivotSavedFilters } from "./pivot-saved-filters";
 import type { QueryScope } from "./query-scope";
@@ -78,6 +79,8 @@ export function PivotFields({
   const { column: split, ...withoutSplit } = spec;
   const { filters: _f, ...withoutFilters } = spec;
   const { crossFilter: _c, ...withoutCross } = spec;
+  const { colors: _k, ...withoutColors } = spec;
+  const toned = spec.values.some((v) => !!v.tone);
   // Fokus setelah kartu nilai berganti/hilang (T-069): kontrol yang dilepas tidak boleh meninggalkan
   // fokus di <body> (FocusScope panel menariknya ke kontainer). Urutan target per kartu.
   const valuesRef = useRef<HTMLFieldSetElement>(null);
@@ -232,7 +235,12 @@ export function PivotFields({
                 value={m}
                 split={!!split}
                 axis={name((split ?? inner)?.column)}
-                onSave={(next) => set({ values: spec.values.map((x, j) => (j === i ? next : x)) })}
+                // Ubah rumus tidak menghapus penilaian warna nilai ini.
+                onSave={(next) =>
+                  set({
+                    values: spec.values.map((x, j) => (j === i ? withTone(next, m.tone) : x)),
+                  })
+                }
                 // Satu-satunya nilai: tidak bisa dihapus, tetapi bisa kembali ke ukuran biasa.
                 onRemove={
                   spec.values.length === 1
@@ -258,6 +266,12 @@ export function PivotFields({
                 }
               />
             )}
+            <ToneChoice
+              tone={m.tone}
+              onChange={(tone) =>
+                set({ values: spec.values.map((x, j) => (j === i ? withTone(x, tone) : x)) })
+              }
+            />
           </div>
         ))}
         {canAddValue(spec) ? (
@@ -282,6 +296,13 @@ export function PivotFields({
           </div>
         ) : null}
       </fieldset>
+
+      {toned ? (
+        <ColorTemplateFields
+          colors={spec.colors}
+          onChange={(colors) => onChange(colors ? { ...spec, colors } : withoutColors)}
+        />
+      ) : null}
 
       <PivotSavedFilters
         scope={scope}

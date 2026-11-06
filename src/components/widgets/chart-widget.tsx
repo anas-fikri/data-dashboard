@@ -10,6 +10,7 @@ import {
 } from "@/features/widgets/format";
 import { isAxisShowAs, valueFormat } from "@/features/widgets/show-as";
 import { aggOf, type ChartSpec, type ChartType } from "@/features/widgets/spec";
+import { specStatus } from "@/features/widgets/status-color";
 import { CROSS_HINT_ID } from "@/components/dashboards/filters/cross-hint";
 import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { filterKey } from "@/components/dashboards/filters/filter-model";
@@ -35,6 +36,7 @@ import {
 import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
+import { StatusLegend } from "./status-legend";
 import { useBoxSize } from "./use-box-size";
 import { useScrollFocus } from "./use-scroll-focus";
 import type { WidgetData } from "./widget-query";
@@ -151,6 +153,9 @@ export function ChartWidget({
   const format = valueFormat(showAs, measure?.format ?? spec.format);
   const plainSum = !isAxisShowAs(showAs);
   const agg = aggOf(spec.measure);
+  // Warna status batang (v1.7.0); grafik garis/pai tidak diwarnai menurut status.
+  const st = type === "bar" ? specStatus(spec) : undefined;
+  const barStatus = st?.tones[0] ? { tone: st.tones[0], colors: st.colors } : undefined;
   const blankZero = plainSum && !!agg && zeroWhenBlank(agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   const categories = data.categories ?? labels.length;
@@ -479,6 +484,7 @@ export function ChartWidget({
         onPick={pickAt}
         print={print || undefined}
         onSettled={onSettled}
+        status={barStatus}
       />
     );
     body =
@@ -584,6 +590,13 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+      {barStatus && measure ? (
+        <StatusLegend
+          colors={barStatus.colors}
+          items={[{ label: measure.label, tone: barStatus.tone }]}
+          variant={print ? "print" : "screen"}
+        />
+      ) : null}
       {note ? (
         // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
         <div className="shrink-0 px-3 pb-1">

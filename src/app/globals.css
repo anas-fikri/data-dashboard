@@ -256,3 +256,33 @@
     height: 2.75rem;
   }
 }
+
+/*
+ * Warna status (v1.7.0, status-color.ts): sel berstatus memakai variabel yang dipasang pembungkus
+ * widget (template/custom, terang + gelap). Mode warna paksa: latar hilang, status tetap terbaca dari
+ * teks pembaca layar/tooltip dan legenda.
+ */
+[data-status="good"] {
+  background-color: var(--st-good-bg);
+  color: var(--st-good-fg);
+}
+[data-status="mid"] {
+  background-color: var(--st-mid-bg);
+  color: var(--st-mid-fg);
+}
+[data-status="bad"] {
+  background-color: var(--st-bad-bg);
+  color: var(--st-bad-fg);
+}
+.dark [data-status="good"] {
+  background-color: var(--st-good-bg-d);
+  color: var(--st-good-fg-d);
+}
+.dark [data-status="mid"] {
+  background-color: var(--st-mid-bg-d);
+  color: var(--st-mid-fg-d);
+}
+.dark [data-status="bad"] {
+  background-color: var(--st-bad-bg-d);
+  color: var(--st-bad-fg-d);
+}
