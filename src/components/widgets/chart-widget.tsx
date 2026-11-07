@@ -193,7 +193,8 @@ export function ChartWidget({
   const rankStatus = chartStatus
     ? statusSeries(values, chartStatus.tone, chartStatus.target, chartStatus.scale)
     : null;
-  // Tanpa jumlah dari server: semua baris yang diterima (batang tegak bertanggal sudah dipotong lebar).
+  // Tanpa jumlah dari server: semua baris yang diterima (bukan `labels`, yang untuk batang tegak bertanggal
+  // bisa sudah dipotong selebar kartu).
   const categories = data.categories ?? data.rows.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
   // hanya dari yang tampil; batang/garis: "N terbesar" (bukan "N kategori"); garis N titik menurut

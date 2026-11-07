@@ -66,3 +66,20 @@ describe("verticalBarsShown (review v1.10.0 #2)", () => {
     expect(verticalBarsShown(800, 60, 30)).toBe(30);
   });
 });
+
+describe("verticalBarsShown = potongan chartFit (properti, review v1.10.0 r3)", () => {
+  it("di semua ukuran kartu: daftar ringkas ⇔ semua baris; selain itu sama dengan visible chartFit", () => {
+    for (const print of [false, true]) {
+      for (const rows of [1, 5, 30]) {
+        for (let width = 40; width <= 900; width += 7) {
+          for (let height = 20; height <= 300; height += 4) {
+            const f = fit({ type: "bar", vertical: true, rows, print, room: { width, height } });
+            const shown = verticalBarsShown(width, height, rows, print);
+            if (f.ranked) expect(shown, `${width}×${height}`).toBe(rows);
+            else expect(shown, `${width}×${height}`).toBe(f.visible);
+          }
+        }
+      }
+    }
+  });
+});
