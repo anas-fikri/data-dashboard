@@ -115,6 +115,18 @@ describe("arah batang + garis tren (v1.10.0)", () => {
     expect(d[2]! - d[1]!).toBeCloseTo(2 * (d[1]! - d[0]!), 6);
   });
 
+  it("baris tanpa tanggal di batang tegak tidak ikut tren (sama dengan legenda)", () => {
+    const ms = [0, 1, 2].map((m) => Date.UTC(2026, m, 1));
+    const o = full({
+      vertical: true,
+      values: [10, 20, 30, 1000],
+      trend: { kind: "linear", xs: [...ms, null], grain: "month" },
+    });
+    const d = o.series[1]!.data as (number | null)[];
+    expect(d[3]).toBeNull();
+    expect(d[2]! - d[1]!).toBeCloseTo(10, 6);
+  });
+
   it("batang mendatar mengabaikan tren", () => {
     expect(full({ trend: { kind: "linear" } }).series).toHaveLength(1);
   });

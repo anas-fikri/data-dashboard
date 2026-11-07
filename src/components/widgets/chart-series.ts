@@ -559,6 +559,16 @@ export const barsThatFit = (height: number) => Math.max(1, Math.floor((height - 
 export const columnsThatFit = (width: number) => Math.max(1, Math.floor((width - 56) / 14));
 
 /**
+ * Batang tegak yang tergambar (v1.10.0), sama dengan chartFit: kartu sempit (daftar ringkas) = semua,
+ * selain itu sebanyak yang muat selebar kartu. Dipakai memotong baris (urutan server: N terbesar dst.)
+ * SEBELUM diurutkan menurut waktu, agar yang dibuang bukan periode terbaru.
+ */
+export function verticalBarsShown(width: number, rows: number, print = false): number {
+  if (width < (print ? PRINT_BAR_NARROW : NARROW)) return rows;
+  return Math.min(columnsThatFit(width), rows);
+}
+
+/**
  * Tinggi kotak donat: legenda di samping mulai 448 px (container @md); di bawahnya legenda di bawah
  * donat setinggi isinya (baris 20 px) dan paling banyak 45 % (+ jarak 8 px). Cetak (`printPx`, dari
  * printLegend): legenda selalu utuh — di samping harus muat setinggi kotak, di bawah donat mendapat

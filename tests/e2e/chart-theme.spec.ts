@@ -166,6 +166,21 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
     }
   });
 
+  test("klik batang tegak menyaring menurut periode yang diklik (review v1.10.0 #1)", async () => {
+    await owner.goto(`/dashboards/${d}`);
+    const canvas = card(owner).getByTestId("chart-canvas");
+    await expect(canvas).toHaveAttribute("data-orientation", "vertical");
+    await expect(owner.getByTestId("cross-filter-chip")).toHaveCount(0);
+    const box = (await canvas.boundingBox())!;
+    // Batang terakhir (Jun 2026, tertinggi) di kanan; klik bagian bawahnya (di dalam batang).
+    await owner.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.8);
+    const chip = owner.getByTestId("cross-filter-chip");
+    await expect(chip).toBeVisible();
+    await expect(chip).toContainText("Jun 2026");
+    await owner.getByTestId("cross-filter-clear").click();
+    await expect(chip).toHaveCount(0);
+  });
+
   test("Yang baru: titik penanda sampai halaman dibuka; versi di footer menautkan ke sana", async () => {
     await owner.goto(`/dashboards/${d}`);
     const link = owner.getByTestId("whats-new-link");

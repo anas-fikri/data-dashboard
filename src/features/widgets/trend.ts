@@ -40,7 +40,7 @@ const num = (v: unknown): v is number => typeof v === "number" && Number.isFinit
 
 /** Regresi linear y = a + b·x atas titik berisi; null bila < 2 titik atau x sama semua. */
 export function linearFit(
-  xs: readonly number[],
+  xs: readonly (number | null)[],
   ys: readonly (number | null)[],
 ): { slope: number; intercept: number } | null {
   let n = 0;
@@ -94,13 +94,28 @@ export function movingAverage(ys: readonly (number | null)[], k: number): (numbe
 /** Nilai garis tren di setiap titik (sejajar `ys`); x = waktu (ms) atau urutan titik. */
 export function trendValues(
   kind: Trend,
-  xs: readonly number[],
+  xs: readonly (number | null)[],
   ys: readonly (number | null)[],
 ): (number | null)[] {
   if (kind === "ma3") return movingAverage(ys, 3);
   if (kind === "ma7") return movingAverage(ys, 7);
   const fit = linearFit(xs, ys);
-  return fit ? xs.map((x) => fit.intercept + fit.slope * x) : ys.map(() => null);
+  return fit
+    ? xs.map((x) => (x === null ? null : fit.intercept + fit.slope * x))
+    : ys.map(() => null);
+}
+
+/**
+ * Titik tren dari waktu per titik (ms UTC; null = tanpa tanggal, mis. "(kosong)" → tidak ikut tren) dan
+ * nilainya: x dalam satuan periode (trendX). Satu jalur untuk garis putus-putus dan kalimat legenda.
+ */
+export function trendPoints(
+  ms: readonly (number | null)[],
+  ys: readonly (number | null)[],
+  grain: string | undefined,
+): { xs: (number | null)[]; ys: (number | null)[] } {
+  const xs = ms.map((m) => (m === null ? null : trendX(m, grain)));
+  return { xs, ys: ys.map((y, k) => (xs[k] === null ? null : (y ?? null))) };
 }
 
 /**

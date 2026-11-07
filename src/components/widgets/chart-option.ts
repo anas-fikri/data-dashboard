@@ -11,7 +11,7 @@ import {
   statusSeries,
 } from "@/features/widgets/status-color";
 import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
-import { trendValues, trendX, type Trend } from "@/features/widgets/trend";
+import { trendPoints, trendValues, trendX, type Trend } from "@/features/widgets/trend";
 import {
   AUTO_FORMAT,
   formatAxis,
@@ -889,14 +889,20 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
       // Tren hanya di sumbu waktu mendatar (garis, batang tegak); x = waktu bila ada, selain itu urutan.
       ...(i.trend && !horizontal
         ? (() => {
-            const tx = i.trend.xs;
-            const timed = !!tx && values.every((_, k) => typeof tx[k] === "number");
             const g = i.trend.grain;
-            const xs = periods
-              ? periods.keys.map((ms) => trendX(ms, g))
-              : values.map((_, k) => (timed ? trendX(tx[k] as number, g) : k));
             const ys = values.map((v, k) => (filled[k] ? null : v));
-            return [trendSeries(trendValues(i.trend.kind, xs, ys))];
+            // Per periode: kunci periode; batang: waktu per label (tanpa tanggal tidak ikut, sama dengan
+            // legenda di chart-widget); tanpa waktu sama sekali: urutan titik.
+            const pts = periods
+              ? trendPoints(periods.keys, ys, g)
+              : i.trend.xs
+                ? trendPoints(
+                    values.map((_, k) => i.trend!.xs![k] ?? null),
+                    ys,
+                    g,
+                  )
+                : { xs: values.map((_, k) => k), ys };
+            return [trendSeries(trendValues(i.trend.kind, pts.xs, pts.ys))];
           })()
         : []),
     ],

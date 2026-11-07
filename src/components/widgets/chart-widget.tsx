@@ -33,6 +33,7 @@ import {
   legendOrder,
   isoToUtcMs,
   lineOrder,
+  verticalBarsShown,
   middleTruncate,
   percentShares,
   pieRest,
@@ -44,7 +45,7 @@ import {
 import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
-import { linearFit, trendText, trendX } from "@/features/widgets/trend";
+import { linearFit, trendPoints, trendText } from "@/features/widgets/trend";
 import { StatusLegend } from "./status-legend";
 import { useBoxSize } from "./use-box-size";
 import { useScrollFocus } from "./use-scroll-focus";
@@ -154,10 +155,14 @@ export function ChartWidget({
     type === "bar" &&
     (spec.orientation === "vertical" || (spec.orientation === undefined && temporal));
   // Garis dan batang tegak bertanggal: urut waktu di layar (urutan nilai hanya memilih N yang diambil).
-  const source =
-    type === "line" || (vertical && temporal)
-      ? lineOrder(data.rows, dimType, spec.sort)
+  // Batang tegak bertanggal: yang tergambar dipilih dulu menurut urutan server (N terbesar dst.), baru
+  // diurutkan menurut waktu — periode terbaru tidak terbuang oleh potongan lebar kartu.
+  const timedBars = vertical && temporal;
+  const kept =
+    timedBars && room
+      ? data.rows.slice(0, verticalBarsShown(room.width, data.rows.length, !!print))
       : data.rows;
+  const source = type === "line" || timedBars ? lineOrder(kept, dimType, spec.sort) : data.rows;
   const labels = source.map((r) =>
     typeof r[0] === "number"
       ? formatLabelNumber(r[0])
@@ -187,7 +192,8 @@ export function ChartWidget({
   const rankStatus = chartStatus
     ? statusSeries(values, chartStatus.tone, chartStatus.target, chartStatus.scale)
     : null;
-  const categories = data.categories ?? labels.length;
+  // Tanpa jumlah dari server: semua baris yang diterima (batang tegak bertanggal sudah dipotong lebar).
+  const categories = data.categories ?? data.rows.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
   // hanya dari yang tampil; batang/garis: "N terbesar" (bukan "N kategori"); garis N titik menurut
   // nilai: periode di luar N bukan 0 (celah "di luar N terbesar", bukan nol karangan).
@@ -253,14 +259,11 @@ export function ChartWidget({
     : undefined;
   const trendNote = (() => {
     if (!trendKind || !trendXs) return null;
-    const timed = trendXs.every((x) => x !== null);
+    // Titik yang sama dengan garis putus-putus: baris tanpa tanggal tidak ikut (trendPoints).
     const grain = spec.dimension.timeGrain;
-    const xs = timed
-      ? (trendXs as number[]).map((x) => trendX(x, grain))
-      : trendXs.map((_, k) => k);
-    const fit = trendKind === "linear" ? linearFit(xs, values) : null;
-    const unit = timed ? (grain ?? "day") : "point";
-    return trendText(trendKind, fit, unit, (v) => formatMeasure(v, valueType, format));
+    const pts = trendPoints(trendXs, values, grain);
+    const fit = trendKind === "linear" ? linearFit(pts.xs, pts.ys) : null;
+    return trendText(trendKind, fit, grain ?? "day", (v) => formatMeasure(v, valueType, format));
   })();
   // Pai cetak: legenda utuh (nama + nilai + persen) menentukan apakah donat masih muat. Lebar teks dari
   // canvas; angka tabular (tnum) tidak dikenal canvas → semua angka diukur sebagai "0" (+1 px bulat).
@@ -361,7 +364,7 @@ export function ChartWidget({
     );
   } else if (fit?.ranked && room) {
     // Garis bertanggal: terbaru dulu — yang tidak muat adalah periode lama ("+N sebelumnya").
-    const newestFirst = type === "line" && temporal;
+    const newestFirst = (type === "line" || vertical) && temporal;
     const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
     // Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: daftar tidak boleh tampak
     // lengkap — satu baris dicadangkan untuk "mungkin ada kategori lain" (sama dengan keterangan grafik).
@@ -663,7 +666,8 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
-      {trendNote ? (
+      {/* Hanya bila garis tren tergambar (bukan tabel data/daftar ringkas). */}
+      {trendNote && drawsChart ? (
         <p
           className={cn(
             "shrink-0 text-muted-foreground",

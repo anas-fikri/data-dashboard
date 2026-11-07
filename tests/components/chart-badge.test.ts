@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chartFit, type FitInput } from "@/components/widgets/chart-series";
+import { chartFit, verticalBarsShown, type FitInput } from "@/components/widgets/chart-series";
 
 /* T-032: kartu grafik terlalu pendek untuk keterangan "Menampilkan N dari M" → lencana "N dari M". */
 const fit = (over: Partial<FitInput> & Pick<FitInput, "type" | "room">) =>
@@ -53,5 +53,14 @@ describe("chartFit batang tegak (v1.10.0)", () => {
     expect(wide.visible).toBe(12);
     // Mendatar di kartu pendek tetap dibatasi tinggi.
     expect(fit({ type: "bar", room: { width: 800, height: 120 } }).visible).toBeLessThan(12);
+  });
+});
+
+describe("verticalBarsShown (review v1.10.0 #2)", () => {
+  it("sama dengan chartFit: kartu sempit = semua (daftar ringkas), selain itu selebar kartu", () => {
+    expect(verticalBarsShown(100, 30)).toBe(30);
+    expect(verticalBarsShown(200, 30)).toBe(Math.floor((200 - 56) / 14));
+    expect(verticalBarsShown(800, 6)).toBe(6);
+    expect(verticalBarsShown(180, 30, true)).toBe(30);
   });
 });

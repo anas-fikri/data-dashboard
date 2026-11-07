@@ -155,7 +155,8 @@ export function ChartView(
           }
           const xy = c.convertFromPixel({ seriesIndex: 0 }, [e.offsetX, e.offsetY]);
           if (!Array.isArray(xy)) return null;
-          if (i.type === "bar") return { index: Math.round(xy[1]!) };
+          // Batang mendatar: kategori di sumbu y; batang tegak (v1.10.0): di sumbu x.
+          if (i.type === "bar") return { index: Math.round(i.vertical ? xy[0]! : xy[1]!) };
           return onTimeAxis(i) ? { ms: xy[0]! } : { index: Math.round(xy[0]!) };
         };
         zr.on("click", (e) => {
