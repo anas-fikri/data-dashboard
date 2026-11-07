@@ -64,5 +64,7 @@ describe("titik tren bersama garis dan legenda (review v1.10.0 #3)", () => {
     const line = trendValues("linear", pts.xs, pts.ys);
     expect(line[4]).toBeNull();
     expect(line[3]! - line[2]!).toBeCloseTo(10, 9);
+    // Rata-rata bergerak juga tidak berlanjut ke baris tanpa tanggal.
+    expect(trendValues("ma3", pts.xs, pts.ys)).toEqual([null, null, 20, 30, null]);
   });
 });

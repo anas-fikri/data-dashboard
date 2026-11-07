@@ -57,10 +57,12 @@ describe("chartFit batang tegak (v1.10.0)", () => {
 });
 
 describe("verticalBarsShown (review v1.10.0 #2)", () => {
-  it("sama dengan chartFit: kartu sempit = semua (daftar ringkas), selain itu selebar kartu", () => {
-    expect(verticalBarsShown(100, 30)).toBe(30);
-    expect(verticalBarsShown(200, 30)).toBe(Math.floor((200 - 56) / 14));
-    expect(verticalBarsShown(800, 6)).toBe(6);
-    expect(verticalBarsShown(180, 30, true)).toBe(30);
+  it("sama dengan chartFit: kartu sempit/pendek = semua (daftar ringkas), selain itu selebar kartu", () => {
+    expect(verticalBarsShown(100, 300, 30)).toBe(30);
+    expect(verticalBarsShown(200, 300, 30)).toBe(Math.floor((200 - 56) / 14));
+    expect(verticalBarsShown(800, 300, 6)).toBe(6);
+    expect(verticalBarsShown(180, 300, 30, true)).toBe(30);
+    // Kartu pendek → daftar ringkas: semua baris.
+    expect(verticalBarsShown(800, 60, 30)).toBe(30);
   });
 });

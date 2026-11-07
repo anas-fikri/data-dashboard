@@ -158,9 +158,10 @@ export function ChartWidget({
   // Batang tegak bertanggal: yang tergambar dipilih dulu menurut urutan server (N terbesar dst.), baru
   // diurutkan menurut waktu — periode terbaru tidak terbuang oleh potongan lebar kartu.
   const timedBars = vertical && temporal;
+  // Hanya grafik yang digambar: tabel "Tampilkan data" dan daftar ringkas tetap memuat semua baris.
   const kept =
-    timedBars && room
-      ? data.rows.slice(0, verticalBarsShown(room.width, data.rows.length, !!print))
+    timedBars && room && !showData
+      ? data.rows.slice(0, verticalBarsShown(room.width, room.height, data.rows.length, !!print))
       : data.rows;
   const source = type === "line" || timedBars ? lineOrder(kept, dimType, spec.sort) : data.rows;
   const labels = source.map((r) =>

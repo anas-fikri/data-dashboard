@@ -559,12 +559,18 @@ export const barsThatFit = (height: number) => Math.max(1, Math.floor((height - 
 export const columnsThatFit = (width: number) => Math.max(1, Math.floor((width - 56) / 14));
 
 /**
- * Batang tegak yang tergambar (v1.10.0), sama dengan chartFit: kartu sempit (daftar ringkas) = semua,
+ * Batang tegak yang tergambar (v1.10.0), sama dengan chartFit: kartu sempit/pendek (daftar ringkas) = semua,
  * selain itu sebanyak yang muat selebar kartu. Dipakai memotong baris (urutan server: N terbesar dst.)
  * SEBELUM diurutkan menurut waktu, agar yang dibuang bukan periode terbaru.
  */
-export function verticalBarsShown(width: number, rows: number, print = false): number {
-  if (width < (print ? PRINT_BAR_NARROW : NARROW)) return rows;
+export function verticalBarsShown(
+  width: number,
+  height: number,
+  rows: number,
+  print = false,
+): number {
+  // Kartu sempit atau pendek: daftar ringkas (chartFit ranked) memuat semua baris.
+  if (width < (print ? PRINT_BAR_NARROW : NARROW) || height < PLOT_MIN.bar) return rows;
   return Math.min(columnsThatFit(width), rows);
 }
 

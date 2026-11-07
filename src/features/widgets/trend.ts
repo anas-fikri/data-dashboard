@@ -97,8 +97,10 @@ export function trendValues(
   xs: readonly (number | null)[],
   ys: readonly (number | null)[],
 ): (number | null)[] {
-  if (kind === "ma3") return movingAverage(ys, 3);
-  if (kind === "ma7") return movingAverage(ys, 7);
+  // Titik tanpa waktu (mis. "(kosong)") tidak diberi nilai tren.
+  const timed = (v: number | null, k: number) => (xs[k] === null ? null : v);
+  if (kind === "ma3") return movingAverage(ys, 3).map(timed);
+  if (kind === "ma7") return movingAverage(ys, 7).map(timed);
   const fit = linearFit(xs, ys);
   return fit
     ? xs.map((x) => (x === null ? null : fit.intercept + fit.slope * x))
