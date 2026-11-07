@@ -1,4 +1,5 @@
 import "server-only";
+import { colorsSchema, type WidgetColors } from "@/features/widgets/tone";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { recordAudit } from "@/features/audit/service";
@@ -237,6 +238,8 @@ export interface DashboardView {
    * kolom filter, hanya kolom ini yang boleh dikirim sebagai filter dashboard (D6).
    */
   crossFilterColumns: string[];
+  /** Template warna status dashboard (v1.9.0); widget tanpa template sendiri mengikuti ini. */
+  colors: WidgetColors | null;
 }
 
 export interface DashboardSummary {
@@ -631,6 +634,7 @@ export const getDashboard = cache(async function getDashboard(
       layout: true,
       layoutRevision: true,
       filterColumns: true,
+      colors: true,
       updatedAt: true,
       dataset: {
         select: {
@@ -691,8 +695,36 @@ export const getDashboard = cache(async function getDashboard(
     // non-pemilik tidak menerima namanya sama sekali (review T-016 / catatan T-011).
     filterColumns: role === "OWNER" ? filterColumns : filterColumns.filter((f) => f.available),
     crossFilterColumns: crossFilterColumnsOf(widgets, sheets),
+    colors: parseColors(d.colors),
   };
 });
+
+/** Template tersimpan yang tidak lagi sah (mis. data lama) diperlakukan sebagai tidak diatur. */
+function parseColors(v: unknown): WidgetColors | null {
+  const r = colorsSchema.safeParse(v);
+  return r.success ? r.data : null;
+}
+
+/**
+ * Template warna status dashboard (v1.9.0): pemilik/editor. null = kembali ke bawaan (Lembut); widget
+ * yang memilih template sendiri tidak terpengaruh.
+ */
+export async function setDashboardColors(
+  userId: string,
+  dashboardId: unknown,
+  colors: unknown,
+): Promise<DashboardResult<{ colors: WidgetColors | null }>> {
+  if (!isIdShape(dashboardId)) return notFound();
+  const parsed = colors === null ? null : colorsSchema.safeParse(colors);
+  if (parsed && !parsed.success) return fail("INVALID", "Template warna tidak valid.");
+  const value = parsed ? parsed.data : null;
+  const r = await prisma.dashboard.updateMany({
+    where: { id: dashboardId, ...canEditWhere(userId) },
+    data: { colors: value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue) },
+  });
+  if (r.count !== 1) return denied(userId, dashboardId, "edit");
+  return { ok: true, data: { colors: value } };
+}
 
 /** Jenis widget yang bisa menjadi sumber filter silang: grafik dan pivot (T-f4a7). */
 const CROSS_SOURCES: readonly string[] = [...CHART_TYPES, "pivot"];

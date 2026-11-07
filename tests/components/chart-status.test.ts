@@ -46,9 +46,35 @@ describe("grafik batang: warna status (v1.7.0)", () => {
   it("tanpa penilaian warna: data batang tetap angka biasa (warna seri)", () => {
     expect(bar({}).series[0]!.data).toEqual([100, 50, 0]);
   });
+});
 
-  it("garis tidak diwarnai status", () => {
-    const o = bar({ type: "line", status: { tone: "up" } });
-    expect(o.series[0]!.data.every((d) => typeof d === "number")).toBe(true);
+const colorOf = (d: unknown) => (d as { itemStyle?: { color?: string } }).itemStyle?.color;
+
+describe("garis + pai: warna status (v1.9.0)", () => {
+  it("garis: titik berwarna status, semua titik tampil, tooltip menyebut status", () => {
+    const pal = statusPalette({ template: "bold" }, false);
+    const o = bar({ type: "line", status: { tone: "up", colors: { template: "bold" } } });
+    expect(o.series[0]!.data.map(colorOf)).toEqual([pal.good.mark, pal.mid.mark, pal.bad.mark]);
+    const line = o.series[0] as unknown as { showSymbol: boolean; symbol: string };
+    expect(line.showSymbol).toBe(true);
+    expect(line.symbol).toBe("circle");
+    expect(o.tooltip.formatter([{ name: "Jakarta", value: 50, dataIndex: 1 }])).toContain(
+      "Status: Sedang",
+    );
+  });
+
+  it("garis tanpa penilaian: data tetap angka biasa", () => {
+    expect(bar({ type: "line" }).series[0]!.data).toEqual([100, 50, 0]);
+  });
+
+  it("pai: irisan berwarna status; Lainnya tetap warna netral", () => {
+    const pal = statusPalette(undefined, false);
+    const o = bar({ type: "pie", status: { tone: "down" }, others: 10 });
+    const data = o.series[0]!.data;
+    expect(data.slice(0, 3).map(colorOf)).toEqual([pal.bad.mark, pal.mid.mark, pal.good.mark]);
+    expect(colorOf(data[3])).toBe("c6");
+    expect(o.tooltip.formatter({ name: "Bandung", value: 100, dataIndex: 0 } as unknown)).toContain(
+      "Status: Perlu perhatian",
+    );
   });
 });

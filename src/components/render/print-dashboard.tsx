@@ -1,4 +1,5 @@
 import type { RenderData, RenderWidget } from "@/features/exports/render-data";
+import { DashboardColorsProvider } from "@/components/widgets/dashboard-colors";
 import { cn } from "@/lib/utils";
 import { PrintCard } from "./print-card";
 import {
@@ -57,51 +58,53 @@ export function PrintDashboard({ data }: { data: RenderData }) {
     FIRST_PAGE_ROWS,
   );
   return (
-    <main className="w-[277mm] bg-background text-foreground" data-testid="print-dashboard">
-      <title>{dashboard.name}</title>
-      <header
-        className="flex flex-col gap-1.5 overflow-hidden border-b pb-2"
-        // Tinggi paling banyak ini (nama 2 baris + filter 3 baris muat): halaman pertama tetap memuat
-        // FIRST_PAGE_ROWS baris grid di bawahnya.
-        style={{ maxHeight: PRINT_HEADER_PX - PRINT_GAP_PX }}
-      >
-        <div className="flex items-baseline justify-between gap-6">
-          <h1 className="line-clamp-2 min-w-0 text-xl/tight font-semibold tracking-tight [overflow-wrap:anywhere]">
-            {dashboard.name}
-          </h1>
-          <p className="shrink-0 text-xs text-muted-foreground" data-testid="print-exported">
-            Diekspor {exportedAtText(dashboard.exportedAt)}
-          </p>
-        </div>
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
-          <dt className="text-muted-foreground">Dataset</dt>
-          <dd className="truncate">{dashboard.datasetName}</dd>
-          <dt className="text-muted-foreground">Filter</dt>
-          <dd className="line-clamp-3 [overflow-wrap:anywhere]" data-testid="print-filters">
-            {dashboard.filterSummary}
-          </dd>
-        </dl>
-      </header>
-      {bands.length === 0 ? (
-        <p className="mt-4 text-sm text-muted-foreground">Dashboard ini belum berisi widget.</p>
-      ) : null}
-      {bands.map((band, k) => (
-        <div
-          key={k}
-          className={cn(
-            "overflow-hidden break-inside-avoid",
-            k === 0 ? "mt-4" : "break-before-page",
-          )}
-          style={{ height: rowsPx(band.rows) }}
-          data-testid="print-band"
+    <DashboardColorsProvider colors={dashboard.colors ?? null}>
+      <main className="w-[277mm] bg-background text-foreground" data-testid="print-dashboard">
+        <title>{dashboard.name}</title>
+        <header
+          className="flex flex-col gap-1.5 overflow-hidden border-b pb-2"
+          // Tinggi paling banyak ini (nama 2 baris + filter 3 baris muat): halaman pertama tetap memuat
+          // FIRST_PAGE_ROWS baris grid di bawahnya.
+          style={{ maxHeight: PRINT_HEADER_PX - PRINT_GAP_PX }}
         >
-          <div className="grid w-[277mm] auto-rows-[3.5rem] grid-cols-12 gap-4">
-            {band.items.map((p) => (
-              <PrintSlot key={p.item.i} placement={p} widget={byId.get(p.item.i)!} />
-            ))}
+          <div className="flex items-baseline justify-between gap-6">
+            <h1 className="line-clamp-2 min-w-0 text-xl/tight font-semibold tracking-tight [overflow-wrap:anywhere]">
+              {dashboard.name}
+            </h1>
+            <p className="shrink-0 text-xs text-muted-foreground" data-testid="print-exported">
+              Diekspor {exportedAtText(dashboard.exportedAt)}
+            </p>
           </div>
-        </div>
-      ))}
-    </main>
+          <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">Dataset</dt>
+            <dd className="truncate">{dashboard.datasetName}</dd>
+            <dt className="text-muted-foreground">Filter</dt>
+            <dd className="line-clamp-3 [overflow-wrap:anywhere]" data-testid="print-filters">
+              {dashboard.filterSummary}
+            </dd>
+          </dl>
+        </header>
+        {bands.length === 0 ? (
+          <p className="mt-4 text-sm text-muted-foreground">Dashboard ini belum berisi widget.</p>
+        ) : null}
+        {bands.map((band, k) => (
+          <div
+            key={k}
+            className={cn(
+              "overflow-hidden break-inside-avoid",
+              k === 0 ? "mt-4" : "break-before-page",
+            )}
+            style={{ height: rowsPx(band.rows) }}
+            data-testid="print-band"
+          >
+            <div className="grid w-[277mm] auto-rows-[3.5rem] grid-cols-12 gap-4">
+              {band.items.map((p) => (
+                <PrintSlot key={p.item.i} placement={p} widget={byId.get(p.item.i)!} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </main>
+    </DashboardColorsProvider>
   );
 }

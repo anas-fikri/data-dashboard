@@ -9,6 +9,7 @@
  * dengan nama lamanya dan panel menandainya untuk dipilih ulang. Pemetaan disimpan permanen saat user
  * menyimpan pengaturan widget; T-013/T-014 memindahkannya ke saat aktivasi versi. Murni.
  */
+import { keepTableStatus } from "./status-color";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { mapCalcColumns, type CalcExpr } from "./calc";
 import { MISSING_COLUMN, PERIOD_COLUMN, columnsOf, valueColumns, type WidgetConfig } from "./spec";
@@ -163,14 +164,23 @@ export function remapConfig(
       const formatColumns = config.spec.formatColumns
         ?.map(pos)
         .filter((p) => p !== MISSING_COLUMN && columns.includes(p));
+      // Warna status per kolom (v1.9.0) ikut posisi baru; kolom yang hilang dibuang (spec tetap valid).
+      const status = keepTableStatus(
+        config.spec.status
+          ?.map((s) => ({ ...s, column: pos(s.column) }))
+          .filter((s) => s.column !== MISSING_COLUMN),
+        columns,
+      );
+      const { status: _s, ...rest } = config.spec;
       return {
         config: {
           ...config,
           spec: {
-            ...config.spec,
+            ...rest,
             sheetId: target.id,
             columns,
             ...(formatColumns ? { formatColumns } : {}),
+            ...(status ? { status } : {}),
           },
         },
         missing,

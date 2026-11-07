@@ -16,7 +16,15 @@ import {
 } from "@/features/widgets/format";
 import { idLikeKind, resolveIdLike } from "@/features/widgets/id-like";
 import type { NumberFormat } from "@/features/widgets/spec";
+import {
+  STATUS_LABEL,
+  statusCssVars,
+  tableStatus,
+  type TableColumnStatus,
+} from "@/features/widgets/status-color";
+import type { WidgetColors } from "@/features/widgets/tone";
 import { cn } from "@/lib/utils";
+import { StatusLegend } from "./status-legend";
 import type { WidgetData } from "./widget-query";
 
 /*
@@ -62,11 +70,62 @@ export function tableCellText(
   };
 }
 
+/** Format persen kolom `pos` (batas warna diisi seperti angka yang tampil: 95 = 95 %). */
+const isPercent = (format: NumberFormat, formatColumns: number[] | undefined, pos: number) =>
+  format.style === "percent" && (!formatColumns || formatColumns.includes(pos));
+
+/**
+ * Warna status tabel (v1.9.0) untuk layar dan cetak: status sel, gaya variabel warna, dan legenda.
+ * null bila tidak ada kolom berwarna.
+ */
+export function tableStatusView(
+  data: Pick<WidgetData, "columns" | "rows">,
+  positions: number[],
+  format: NumberFormat,
+  formatColumns: number[] | undefined,
+  status: TableColumnStatus[] | undefined,
+  colors: WidgetColors | undefined,
+  print = false,
+) {
+  const of = tableStatus(data.rows, positions, status, (pos) =>
+    isPercent(format, formatColumns, pos) ? 100 : 1,
+  );
+  if (!of) return null;
+  const label = new Map(positions.map((pos, i) => [pos, data.columns[i]?.label ?? ""]));
+  return {
+    of,
+    style: statusCssVars(colors) as React.CSSProperties,
+    legend: (
+      <StatusLegend
+        colors={colors}
+        items={(status ?? [])
+          .filter((r) => label.has(r.column))
+          .map((r) => ({ label: label.get(r.column)!, tone: r.tone, target: r.target }))}
+        variant={print ? "print" : "screen"}
+      />
+    ),
+  };
+}
+
+/** Isi sel berstatus: teks + nama status untuk pembaca layar (warna bukan satu-satunya penanda). */
+export function StatusText({ text, status }: { text: string; status: string | null }) {
+  return (
+    <>
+      {text}
+      {status ? (
+        <span className="sr-only">, {STATUS_LABEL[status as keyof typeof STATUS_LABEL]}</span>
+      ) : null}
+    </>
+  );
+}
+
 export function TableView({
   data,
   positions,
   format,
   formatColumns,
+  status,
+  colors,
   sort,
   busy,
   label,
@@ -81,6 +140,9 @@ export function TableView({
   format: NumberFormat;
   /** Kolom yang memakai `format`; tanpa daftar (spec lama) = semua kolom angka. */
   formatColumns?: number[];
+  /** Warna status per kolom (v1.9.0) + template (widget atau dashboard). */
+  status?: TableColumnStatus[];
+  colors?: WidgetColors;
   sort: TableSort;
   busy: boolean;
   label: string;
@@ -101,6 +163,7 @@ export function TableView({
   const from = data.rows.length ? page * size + 1 : 0;
   const to = page * size + data.rows.length;
   const cellText = tableCellText(data, positions, format, formatColumns);
+  const st = tableStatusView(data, positions, format, formatColumns, status, colors);
 
   const cycle = (pos: number): TableSort =>
     sort?.column !== pos
@@ -133,7 +196,11 @@ export function TableView({
           // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
           tabIndex={0}
         >
-          <table className="w-full border-collapse text-sm" data-testid="widget-table">
+          <table
+            className="w-full border-collapse text-sm"
+            data-testid="widget-table"
+            style={st?.style}
+          >
             <thead className={cn("sticky top-0 z-10", sheet ? "bg-muted" : "bg-card")}>
               <tr>
                 {sheet ? (
@@ -205,18 +272,22 @@ export function TableView({
                   {row.map((v, i) => {
                     const type = data.columns[i]!.type;
                     const text = cellText(v, i);
+                    const cs = st?.of(v, i) ?? null;
                     return (
                       <td
                         key={i}
+                        data-status={cs ?? undefined}
                         className={cn(
                           "max-w-[24rem] truncate px-3 py-1.5",
                           sheet && "border-r",
                           NUMERIC.has(type) && "text-right tabular-nums",
                           (v === null || v === "") && "text-muted-foreground",
                         )}
-                        title={text.length > 40 ? text : undefined}
+                        title={
+                          cs ? `${text} · ${STATUS_LABEL[cs]}` : text.length > 40 ? text : undefined
+                        }
                       >
-                        {text}
+                        <StatusText text={text} status={cs} />
                       </td>
                     );
                   })}
@@ -231,6 +302,7 @@ export function TableView({
           ) : null}
         </div>
       </div>
+      {st?.legend}
       <div
         className={cn(
           "flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t px-3 py-0.5 text-xs text-muted-foreground",

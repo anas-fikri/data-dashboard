@@ -11,6 +11,7 @@ import {
   detachWidget,
   renameWidget,
   saveLayout,
+  setDashboardColors,
   setDashboardFilterColumns,
   type DashboardCode,
   type DashboardResult,
@@ -155,6 +156,16 @@ export const saveLayoutRoute = (req: NextRequest, dashboardId: string) =>
   mutation(req, "simpan tata letak gagal", async (userId, body) =>
     reply(await saveLayout(userId, dashboardId, body)),
   );
+
+/**
+ * PATCH { colors: {template, custom?} | null } — template warna status dashboard (v1.9.0), pemilik dan
+ * editor (viewer → 403, tanpa akses → 404); field colors wajib dikirim (null = bawaan).
+ */
+export const setColorsRoute = (req: NextRequest, dashboardId: string) =>
+  mutation(req, "simpan template warna gagal", async (userId, body) => {
+    const b = (body && typeof body === "object" ? body : {}) as { colors?: unknown };
+    return reply(await setDashboardColors(userId, dashboardId, b.colors));
+  });
 
 /**
  * PATCH { filterColumns: [{ sheet, column }] } — kolom filter global dashboard (T-012), pemilik dan

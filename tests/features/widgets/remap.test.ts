@@ -129,6 +129,44 @@ describe("remapConfig: kolom lewat judul asli + urutan", () => {
     expect(r.missing).toEqual(["Catatan"]);
   });
 
+  it("tabel: warna status per kolom ikut posisi baru; kolom hilang dibuang, spec tetap valid (v1.9.0)", () => {
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Laba", "Omzet"), col(3, "Catatan")]);
+    const table = (status: { column: number; tone: "up" | "down" }[]) => ({
+      type: "table" as const,
+      spec: { sheetId: OLD, columns: [1, 2, 3], format: fmt, status },
+    });
+    // Kolom baru disisipkan di depan: warna pindah bersama kolomnya.
+    const shifted = sheet(NEW, [
+      col(1, "Baru"),
+      col(2, "Cabang"),
+      col(3, "Omzet"),
+      col(4, "Catatan"),
+    ]);
+    const r = remapConfig(table([{ column: 3, tone: "up" }]), old, shifted);
+    expect(r.config.spec).toMatchObject({
+      columns: [2, 3, 4],
+      status: [{ column: 4, tone: "up" }],
+    });
+    expect(parseWidgetConfig("table", r.config.spec).ok).toBe(true);
+    // Kolom berwarna hilang: aturannya dibuang, sisanya tetap; semua hilang → tanpa field.
+    const next = sheet(NEW, [col(1, "Omzet"), col(2, "Cabang")]);
+    const r2 = remapConfig(
+      table([
+        { column: 2, tone: "down" },
+        { column: 3, tone: "up" },
+      ]),
+      old,
+      next,
+    );
+    expect(r2.config.spec).toMatchObject({
+      columns: [2, 1, MISSING_COLUMN],
+      status: [{ column: 1, tone: "down" }],
+    });
+    expect(parseWidgetConfig("table", r2.config.spec).ok).toBe(true);
+    const r3 = remapConfig(table([{ column: 3, tone: "up" }]), old, next);
+    expect(r3.config.spec).not.toHaveProperty("status");
+  });
+
   it("R2-CC-1b: penanda MISSING_COLUMN tetap penanda, namanya dari catatan tersimpan (bukan 'kolom 16385')", () => {
     const old = sheet(OLD, [col(1, "Cabang"), col(2, "Omzet")]);
     const next = sheet(NEW, [col(1, "Omzet"), col(2, "Cabang")]);

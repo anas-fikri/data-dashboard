@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { chartDisplaySchema, pivotDisplaySchema } from "@/features/widgets/bound";
+import {
+  chartDisplaySchema,
+  pivotDisplaySchema,
+  tableDisplaySchema,
+} from "@/features/widgets/bound";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 
 /*
@@ -111,6 +115,57 @@ describe("skema batas warna (v1.8.0)", () => {
         format,
         colors: { template: "bold" },
       }).ok,
+    ).toBe(true);
+  });
+});
+
+describe("skema warna tabel + widget terikat (v1.9.0)", () => {
+  const table = (extra: object) => ({
+    sheetId: S1,
+    columns: [1, 2],
+    format,
+    ...extra,
+  });
+  it("tabel menerima status per kolom yang ditampilkan + template", () => {
+    expect(
+      parseWidgetConfig(
+        "table",
+        table({
+          status: [{ column: 2, tone: "up", target: { good: 95, bad: 90 } }],
+          colors: { template: "cvd" },
+        }),
+      ).ok,
+    ).toBe(true);
+  });
+  it("menolak kolom status di luar tabel, ganda, atau batas terbalik", () => {
+    expect(parseWidgetConfig("table", table({ status: [{ column: 3, tone: "up" }] })).ok).toBe(
+      false,
+    );
+    expect(
+      parseWidgetConfig(
+        "table",
+        table({
+          status: [
+            { column: 2, tone: "up" },
+            { column: 2, tone: "down" },
+          ],
+        }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseWidgetConfig(
+        "table",
+        table({ status: [{ column: 2, tone: "up", target: { good: 1, bad: 5 } }] }),
+      ).ok,
+    ).toBe(false);
+  });
+  it("tampilan tabel terikat menerima colors", () => {
+    expect(
+      tableDisplaySchema.safeParse({
+        sort: "value_desc",
+        totals: true,
+        colors: { template: "bold" },
+      }).success,
     ).toBe(true);
   });
 });

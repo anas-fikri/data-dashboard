@@ -176,7 +176,10 @@ export function statusSeries(
   return values.map((v) => statusOf(v, tone, range, target, scale));
 }
 
-/** Variabel CSS sel berstatus (globals.css memilih terang/gelap); dipasang di elemen pembungkus. */
+/**
+ * Variabel CSS sel berstatus (globals.css memilih terang/gelap); dipasang di elemen pembungkus. `mark` =
+ * warna grafik (swatch legenda pai, v1.9.0).
+ */
 export function statusCssVars(colors: WidgetColors | undefined): Record<string, string> {
   const vars: Record<string, string> = {};
   for (const [suffix, dark] of [
@@ -187,6 +190,7 @@ export function statusCssVars(colors: WidgetColors | undefined): Record<string, 
     for (const s of STATUSES) {
       vars[`--st-${s}-bg${suffix}`] = p[s].bg;
       vars[`--st-${s}-fg${suffix}`] = p[s].fg;
+      vars[`--st-${s}-mark${suffix}`] = p[s].mark;
     }
   }
   return vars;
@@ -235,16 +239,21 @@ export interface WidgetStatus {
   targets: (StatusTarget | undefined)[];
   colors?: WidgetColors;
 }
-export function specStatus(spec: {
-  values?: readonly object[];
-  measure?: object;
-  colors?: WidgetColors;
-}): WidgetStatus | undefined {
+export function specStatus(
+  spec: {
+    values?: readonly object[];
+    measure?: object;
+    colors?: WidgetColors;
+  },
+  /** Template dashboard (v1.9.0): dipakai bila widget tidak memilih template sendiri. */
+  fallback?: WidgetColors,
+): WidgetStatus | undefined {
   const vals = spec.values ?? (spec.measure ? [spec.measure] : []);
   const tones = vals.map((v) => (v as { tone?: Tone }).tone);
   if (!tones.some(Boolean)) return undefined;
   const targets = vals.map((v) => (v as { target?: StatusTarget }).target);
-  return { tones, targets, ...(spec.colors ? { colors: spec.colors } : {}) };
+  const colors = spec.colors ?? fallback;
+  return { tones, targets, ...(colors ? { colors } : {}) };
 }
 
 /** Skala batas: angka diisi dalam satuan tampil — format persen menampilkan 0,95 sebagai 95 %. */
@@ -257,4 +266,46 @@ export function ruleText(tone: Tone, target?: StatusTarget): string {
   return tone === "up"
     ? `Baik ≥ ${n(target.good)} · Perlu perhatian < ${n(target.bad)}`
     : `Baik ≤ ${n(target.good)} · Perlu perhatian > ${n(target.bad)}`;
+}
+
+/** Aturan warna status satu kolom tabel (v1.9.0, spec.ts tableSpecSchema.status). */
+export interface TableColumnStatus {
+  column: number;
+  tone: Tone;
+  target?: StatusTarget;
+}
+
+/**
+ * Status sel tabel (v1.9.0): kolom ke-i hasil (posisi skema `positions[i]`) dengan aturan berwarna;
+ * relatif = dibandingkan dengan baris lain yang tampil di kolom itu (halaman ini, seperti memilih rentang
+ * kolom di Excel). `scaleOf(pos)` = 100 bila kolom tampil sebagai persen. null bila tanpa aturan.
+ */
+export function tableStatus(
+  rows: readonly (readonly unknown[])[],
+  positions: readonly number[],
+  rules: readonly TableColumnStatus[] | undefined,
+  scaleOf: (pos: number) => number = () => 1,
+): ((value: unknown, i: number) => Status | null) | null {
+  if (!rules?.length) return null;
+  const byPos = new Map(rules.map((r) => [r.column, r]));
+  const cols = positions.map((pos, i) => {
+    const rule = byPos.get(pos);
+    if (!rule) return null;
+    const range = rule.target ? null : statusRange(rows.map((row) => row[i]));
+    return { rule, range, scale: scaleOf(pos) };
+  });
+  if (!cols.some(Boolean)) return null;
+  return (v, i) => {
+    const c = cols[i];
+    return c ? statusOf(v, c.rule.tone, c.range, c.rule.target, c.scale) : null;
+  };
+}
+
+/** Aturan warna kolom tabel yang kolomnya masih ditampilkan; kosong = tanpa field (spec ringkas). */
+export function keepTableStatus(
+  status: TableColumnStatus[] | undefined,
+  columns: readonly number[],
+): TableColumnStatus[] | undefined {
+  const kept = status?.filter((s) => columns.includes(s.column));
+  return kept?.length ? kept : undefined;
 }

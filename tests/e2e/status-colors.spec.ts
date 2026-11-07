@@ -12,7 +12,8 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  *   Otomatis, makin tinggi makin baik: 500/600 Baik, 300/400 Sedang, 100/200 Perlu perhatian.
  *   Batas Baik ≥ 550, Perlu perhatian < 150: 600 Baik, 100 Perlu perhatian, sisanya Sedang.
  *   Template Tegas; legenda menyebut aturannya; halaman cetak (PDF) membawa warna yang sama.
- *   Grafik garis: petunjuk bahwa warna status ada di Batang/Pivot/Angka.
+ *   v1.9.0: Garis (titik + legenda), Pai (irisan + swatch legenda), Tabel (sel kolom Ongkir) berwarna;
+ *   template dashboard dipakai widget yang memilih "Ikuti dashboard", widget bertemplate sendiri menang.
  */
 test.describe.configure({ mode: "serial" });
 
@@ -212,12 +213,55 @@ test.describe("warna status (T-f3tf)", () => {
     }
   });
 
-  test("grafik garis: petunjuk bahwa warna status ada di Batang/Pivot/Angka", async () => {
+  test("garis, pai, dan tabel diberi warna status (v1.9.0)", async () => {
+    test.setTimeout(120_000);
     const panel = owner.getByTestId("widget-panel");
+    const tone = (label: RegExp | string = "Penilaian warna") =>
+      typeof label === "string"
+        ? panel.getByLabel(label, { exact: true })
+        : panel.getByLabel(label);
+    const ensureUp = async (label: RegExp | string = "Penilaian warna") => {
+      if (!(await tone(label).innerText()).includes("Makin tinggi makin baik")) {
+        await tone(label).click();
+        await owner
+          .getByRole("option", { name: "Makin tinggi makin baik (mis. tepat waktu)", exact: true })
+          .click();
+      }
+      await saved(panel);
+    };
+
     await panel.getByText("Garis", { exact: true }).click();
-    await expect(panel.getByTestId("config-tone-unavailable")).toBeVisible();
-    await panel.getByText("Batang", { exact: true }).click();
-    await expect(panel.getByLabel("Penilaian warna", { exact: true })).toBeVisible();
+    await saved(panel);
+    await ensureUp();
+    // Arah + batas nilai ikut saat ganti jenis (pivot → garis); legenda menjelaskan aturannya.
+    await expect(card(owner).getByTestId("status-legend")).toContainText("Ongkir", {
+      timeout: 20_000,
+    });
+
+    await panel.getByText("Pai", { exact: true }).click();
+    await saved(panel);
+    await ensureUp();
+    const swatches = card(owner).getByTestId("pie-legend");
+    await expect(swatches.locator("[data-status-mark=good]").first()).toBeVisible({
+      timeout: 20_000,
+    });
+    await expect(swatches.locator("[data-status-mark=bad]").first()).toBeVisible();
+    await expect(card(owner).getByTestId("status-legend")).toBeVisible();
+
+    await panel.getByText("Tabel", { exact: true }).click();
+    await saved(panel);
+    await expect(panel.getByLabel("Kolom yang diwarnai", { exact: true })).toHaveText("Ongkir");
+    await ensureUp("Penilaian warna kolom Ongkir");
+    const grid = card(owner).getByTestId("widget-table");
+    await expect(grid.locator("td[data-status]")).toHaveCount(6, { timeout: 20_000 });
+    await expect(grid.locator("td[data-status=good]")).toHaveCount(2);
+    await expect(grid.locator("td[data-status=mid]")).toHaveCount(2);
+    await expect(grid.locator("td[data-status=bad]")).toHaveCount(2);
+    await expect(card(owner).getByTestId("status-legend")).toContainText("Ongkir");
+    // Kolom teks tidak ditawarkan; Lembut tetap bawaan.
+    await expect(panel.getByLabel("Template warna", { exact: true })).toContainText(
+      "Ikuti dashboard",
+    );
   });
 
   test("sisir semua jenis widget: di mana pilihan warna tersedia", async () => {
@@ -226,16 +270,15 @@ test.describe("warna status (T-f3tf)", () => {
     for (const t of ["Batang", "Garis", "Pai", "Angka", "Tabel", "Pivot"]) {
       await panel.getByText(t, { exact: true }).click();
       await saved(panel);
-      const tone = await panel.getByLabel("Penilaian warna", { exact: true }).count();
-      const hint = await panel.getByTestId("config-tone-unavailable").count();
-      found[t] = tone ? "pilihan" : hint ? "petunjuk" : "tidak ada";
+      const tone = await panel.getByLabel(/^Penilaian warna/).count();
+      found[t] = tone ? "pilihan" : "tidak ada";
     }
     expect(found).toEqual({
       Batang: "pilihan",
-      Garis: "petunjuk",
-      Pai: "petunjuk",
+      Garis: "pilihan",
+      Pai: "pilihan",
       Angka: "pilihan",
-      Tabel: "petunjuk",
+      Tabel: "pilihan",
       Pivot: "pilihan",
     });
   });
@@ -297,5 +340,68 @@ test.describe("warna status (T-f3tf)", () => {
         { timeout: 20_000 },
       )
       .toBe("rgb(198, 239, 206)");
+  });
+
+  test("template dashboard: widget 'Ikuti dashboard' ikut, widget bertemplate sendiri menang (layar + PDF)", async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const panel = owner.getByTestId("widget-panel");
+    const table = card(owner).getByTestId("widget-pivot");
+    const goodBg = () =>
+      table
+        .locator("td[data-status=good]")
+        .first()
+        .evaluate((el) => getComputedStyle(el).backgroundColor);
+
+    await owner.getByTestId("dashboard-colors").click();
+    const pop = owner.getByTestId("dashboard-colors-panel");
+    // Panel dashboard tidak menawarkan "Ikuti dashboard" (dirinya sendiri).
+    await pop.getByLabel("Template warna", { exact: true }).click();
+    await expect(owner.getByRole("option", { name: /Ikuti dashboard/ })).toHaveCount(0);
+    const savedColors = owner.waitForResponse(
+      (r) => r.request().method() === "PATCH" && r.url().endsWith(`/api/dashboards/${d}/colors`),
+    );
+    await owner.getByRole("option", { name: "Tegas", exact: true }).click();
+    expect((await savedColors).status()).toBe(200);
+    await owner.keyboard.press("Escape");
+
+    // Widget memilih Lembut sendiri (tes sebelumnya): tetap Lembut.
+    await expect.poll(goodBg, { timeout: 20_000 }).toBe("rgb(198, 239, 206)");
+
+    await pick(owner, panel, "Template warna", "Ikuti dashboard — Tegas");
+    await saved(panel);
+    await expect.poll(goodBg, { timeout: 20_000 }).toBe("rgb(0, 115, 60)");
+
+    // Muat ulang: template dashboard tersimpan di server.
+    await owner.reload();
+    await expect.poll(goodBg, { timeout: 30_000 }).toBe("rgb(0, 115, 60)");
+
+    const { token, exportId } = JSON.parse(
+      execFileSync("node", ["scripts/dev-render-token.mjs", "mint", OWNER, d]).toString(),
+    ) as { token: string; exportId: string };
+    const ctx = await browser.newContext({ viewport: { width: 1047, height: 740 } });
+    try {
+      const page = await ctx.newPage();
+      await page.emulateMedia({ media: "print" });
+      expect((await page.goto(`/render/${token}`))?.status()).toBe(200);
+      await expect(page.locator("html")).toHaveAttribute("data-render-ready", "1", {
+        timeout: 120_000,
+      });
+      const printed = page.getByTestId("print-widget").getByTestId("widget-pivot");
+      await expect
+        .poll(
+          () =>
+            printed
+              .locator("td[data-status=good]")
+              .first()
+              .evaluate((el) => getComputedStyle(el).backgroundColor),
+          { timeout: 20_000 },
+        )
+        .toBe("rgb(0, 115, 60)");
+    } finally {
+      await ctx.close();
+      execFileSync("node", ["scripts/dev-render-token.mjs", "close", exportId]);
+    }
   });
 });

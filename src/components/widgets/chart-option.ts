@@ -4,7 +4,12 @@ import {
   type ChartType,
   type NumberFormat,
 } from "@/features/widgets/spec";
-import { STATUS_LABEL, statusPalette, statusSeries } from "@/features/widgets/status-color";
+import {
+  STATUS_LABEL,
+  type Status,
+  statusPalette,
+  statusSeries,
+} from "@/features/widgets/status-color";
 import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
 import {
   AUTO_FORMAT,
@@ -90,7 +95,7 @@ export interface ChartInput {
    * sr-only terpotong saat cetak) dan tanpa animasi. Pai: nilainya di legenda HTML (chart-widget).
    */
   print?: boolean;
-  /** Warna status batang (v1.7.0): arah nilai + template; tanpa ini batang memakai warna seri. */
+  /** Warna status (batang v1.7.0; garis titik + irisan pai v1.9.0): arah nilai + template. */
   status?: { tone: Tone; target?: StatusTarget; scale?: number; colors?: WidgetColors };
 }
 
@@ -378,8 +383,38 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         }
       : {};
 
+  // Warna status (v1.7.0 batang; v1.9.0 garis + pai): tiga tingkat terhadap nilai lain di grafik ini.
+  const statusOf = (vals: readonly (number | null)[]) => {
+    if (!i.status) return null;
+    // Nilai di sini sudah dibagi satuan durasi sumbu (menit/jam); batas dibandingkan dengan nilai asli,
+    // sama dengan legenda, tabel, dan Angka.
+    const st = statusSeries(
+      vals,
+      i.status.tone,
+      i.status.target,
+      (i.status.scale ?? 1) * scale.div,
+    );
+    const pal = statusPalette(i.status.colors, !!theme.dark);
+    return { st, marks: st.map((s) => (s ? pal[s].mark : null)) };
+  };
+  const statusLine = (s: Status | null | undefined) => (s ? `\nStatus: ${STATUS_LABEL[s]}` : "");
+  // Garis berstatus: semua titik tampil dan penuh (warna status di titik; garisnya tetap warna seri).
+  // Periode yang diisi (tanpa data) tetap tanpa titik.
+  const statusSymbols = (filled: readonly boolean[]) => ({
+    showSymbol: true,
+    showAllSymbol: true,
+    symbol: "circle",
+    symbolSize: (_: unknown, p: { dataIndex: number }) => (filled[p.dataIndex] ? 0 : 8),
+  });
+
   if (i.type === "pie") {
-    const data = i.labels.map((name, k) => ({ name, value: i.values[k] ?? 0 }));
+    const pieStatus = statusOf(scaled(i.values));
+    const data = i.labels.map((name, k) => {
+      const mark = pieStatus?.marks[k];
+      return mark
+        ? { name, value: i.values[k] ?? 0, itemStyle: { color: mark } }
+        : { name, value: i.values[k] ?? 0 };
+    });
     if (i.others && i.others > 0) {
       // Irisan sisa memakai warna terakhir palet — tidak tertukar dengan 5 irisan teratas.
       data.push({
@@ -410,7 +445,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         ...tooltip,
         trigger: "item" as const,
         formatter: (p: { name: string; value: unknown; dataIndex: number }) =>
-          `${plain(p.name)}\n${measure(p.value)} (${shares[p.dataIndex] ?? 0}%)`,
+          `${plain(p.name)}\n${measure(p.value)} (${shares[p.dataIndex] ?? 0}%)${statusLine(pieStatus?.st[p.dataIndex])}`,
       },
       series: [
         {
@@ -528,6 +563,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     const day = buckets?.grain === "day" ? buckets : null;
     const { points, filled } = timePoints(i, buckets);
     const ys = scaled(points.map((p) => p[1]));
+    const timeStatus = statusOf(ys.map((v, n) => (filled[n] ? null : v)));
     // Kolom waktu tanpa grain: jam selalu di tooltip; di label sumbu bila rentang < 3 hari (selain
     // itu tick paling rapat sehari — tidak ada "31 Des 2025" kembar).
     const timestamp =
@@ -583,7 +619,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           const p = params[0];
           if (!p) return "";
           const shown = filled[p.dataIndex ?? -1] ? gap : value(p.value[1]);
-          return `${when(p.value[0])}\n${plain(i.measureLabel)}: ${shown}`;
+          return `${when(p.value[0])}\n${plain(i.measureLabel)}: ${shown}${statusLine(timeStatus?.st[p.dataIndex ?? -1])}`;
         },
       },
       xAxis: {
@@ -612,10 +648,17 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         {
           type: "line" as const,
           name: i.measureLabel,
-          data: points.map((p, n) =>
-            selectedPoint(i, p[0]) ? picked([p[0], ys[n] ?? null]) : [p[0], ys[n] ?? null],
-          ),
+          data: points.map((p, n) => {
+            const v: [number, number | null] = [p[0], ys[n] ?? null];
+            const mark = timeStatus?.marks[n];
+            if (selectedPoint(i, p[0])) {
+              const pk = picked(v);
+              return mark ? { ...pk, itemStyle: { ...pk.itemStyle, color: mark } } : pk;
+            }
+            return mark ? { value: v, itemStyle: { color: mark } } : v;
+          }),
           ...symbols(ys, filled),
+          ...(timeStatus ? statusSymbols(filled) : {}),
           ...valueLabel("top", filled, shifts),
           connectNulls: false,
         },
@@ -756,17 +799,10 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           top: PRINT_TOP,
           right: plotRight,
         };
-  // Warna status per batang (v1.7.0): tiga tingkat terhadap batang lain di grafik ini.
-  const statuses =
-    i.type === "bar" && i.status
-      ? statusSeries(values, i.status.tone, i.status.target, i.status.scale)
-      : null;
-  const marks = statuses
-    ? (() => {
-        const pal = statusPalette(i.status!.colors, !!theme.dark);
-        return statuses.map((s) => (s ? pal[s].mark : null));
-      })()
-    : null;
+  // Warna status per batang/titik garis: periode yang diisi (tanpa data) tidak berstatus.
+  const catStatus = statusOf(values.map((v, k) => (filled[k] ? null : v)));
+  const statuses = catStatus?.st ?? null;
+  const marks = catStatus?.marks ?? null;
   return {
     ...base,
     grid: printGrid,
@@ -777,7 +813,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         if (!p) return "";
         const shown = filled[p.dataIndex ?? -1] ? gap : value(p.value);
         const st = statuses?.[p.dataIndex ?? -1];
-        return `${plain(p.name)}\n${plain(i.measureLabel)}: ${shown}${st ? `\nStatus: ${STATUS_LABEL[st]}` : ""}`;
+        return `${plain(p.name)}\n${plain(i.measureLabel)}: ${shown}${statusLine(st)}`;
       },
     },
     // Batang horizontal: nama kategori panjang tetap terbaca; urutan dari atas, semua label tampil.
@@ -788,8 +824,14 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
         type: i.type,
         name: i.measureLabel,
         data: values.map((v, k) => {
-          if (i.type === "line") return k === sel ? picked(v) : v;
           const color = marks?.[k] ? { color: marks[k] } : {};
+          if (i.type === "line") {
+            if (k === sel) {
+              const pk = picked(v);
+              return { ...pk, itemStyle: { ...pk.itemStyle, ...color } };
+            }
+            return marks?.[k] ? { value: v, itemStyle: color } : v;
+          }
           if (sel === undefined) return marks ? { value: v, itemStyle: color } : v;
           return k === sel
             ? { value: v, itemStyle: { ...color, borderColor: theme.text, borderWidth: 1.5 } }
@@ -799,6 +841,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           ? {
               smooth: false,
               ...symbols(values, filled),
+              ...(marks ? statusSymbols(filled) : {}),
               connectNulls: false,
             }
           : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),

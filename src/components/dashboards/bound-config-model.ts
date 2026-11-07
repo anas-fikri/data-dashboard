@@ -66,6 +66,8 @@ export function pivotDisplayOf(spec: PivotSpec): PivotDisplay {
     subtotals: spec.subtotals,
     ...(spec.subtotalLevels ? { subtotalLevels: spec.subtotalLevels } : {}),
     ...(spec.crossFilter !== undefined ? { crossFilter: spec.crossFilter } : {}),
+    // Template warna widget ikut (v1.9.0): widget terikat tidak memakai template pivot tersimpan.
+    ...(spec.colors ? { colors: spec.colors } : {}),
   };
 }
 
@@ -83,8 +85,11 @@ export function defaultDisplay(
     keepFormat && typeof keepFormat === "object" ? { format: keepFormat } : ({} as object);
   const candidates: unknown[] = (() => {
     switch (type) {
-      case "pivot":
-        return [{ ...pivotDisplayOf(pivot), ...format }];
+      case "pivot": {
+        // Widget baru yang memakai pivot tersimpan mengikuti template dashboard, bukan template pivot itu.
+        const { colors: _c, ...display } = pivotDisplayOf(pivot);
+        return [{ ...display, ...format }];
+      }
       case "table":
         return [{ sort: pivot.sort, totals: pivot.totals, ...format }];
       case "kpi":

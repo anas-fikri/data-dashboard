@@ -15,6 +15,7 @@
  * Gagal di langkah 1–4 → null (halaman menjawab 404 polos). Galat satu widget = jawaban galat widget
  * itu (kartu galat di PDF), bukan kegagalan seluruh halaman.
  */
+import type { WidgetColors } from "@/features/widgets/tone";
 import { filtersFor, type PivotFilter } from "@/components/dashboards/filters/filter-model";
 import type { LayoutItem } from "@/features/dashboards/validation";
 import type { WidgetModeResult } from "@/features/query/service";
@@ -42,6 +43,8 @@ export interface RenderData {
     filterSummary: string;
     /** ISO; waktu ekspor diminta (juga jam preset tanggal). Ditampilkan WIB oleh halaman. */
     exportedAt: string;
+    /** Template warna status dashboard (v1.9.0). */
+    colors?: WidgetColors | null;
   };
   widgets: RenderWidget[];
 }
@@ -52,6 +55,7 @@ export interface RenderDashboard extends FilterTarget {
   name: string;
   dataset: { name: string };
   layout: LayoutItem[];
+  colors?: WidgetColors | null;
 }
 
 export interface RenderSessionDeps {
@@ -176,6 +180,7 @@ export async function loadRenderSession(
       layout: d.layout,
       filterSummary: filterSummary(state, d),
       exportedAt: now.toISOString(),
+      colors: d.colors ?? null,
     },
     widgets: d.widgets.map((w, i) => ({
       id: w.id,

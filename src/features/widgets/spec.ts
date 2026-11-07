@@ -210,6 +210,10 @@ export const chartSpecSchema = z
     colors: colorsSchema.optional(),
   })
   .strict();
+const tableColumnStatus = z
+  .object({ column, tone: toneSchema, target: targetSchema.optional() })
+  .strict()
+  .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
 export const tableSpecSchema = z
   .object({
     sheetId,
@@ -224,12 +228,26 @@ export const tableSpecSchema = z
      * dipilih, bukan semua kolom angka.
      */
     formatColumns: z.array(column).max(TABLE_COLUMNS_MAX).optional(),
+    /**
+     * Warna status per kolom angka (v1.9.0): arah penilaian (+ batas opsional); relatif = dibandingkan
+     * dengan baris lain yang tampil di kolom itu.
+     */
+    status: z.array(tableColumnStatus).max(TABLE_COLUMNS_MAX).optional(),
+    /** Template warna status (tone.ts); tanpa ini ikut template dashboard. */
+    colors: colorsSchema.optional(),
   })
   .strict()
   .refine((t) => (t.formatColumns ?? []).every((p) => t.columns.includes(p)), {
     message: "Kolom format harus kolom yang ditampilkan",
     path: ["formatColumns"],
-  });
+  })
+  .refine(
+    (t) => {
+      const cs = (t.status ?? []).map((x) => x.column);
+      return new Set(cs).size === cs.length && cs.every((c) => t.columns.includes(c));
+    },
+    { message: "Kolom warna status harus kolom yang ditampilkan (tanpa ganda)", path: ["status"] },
+  );
 
 /**
  * Pivot (seperti PivotTable Excel): baris 1–4 kolom (T-070; 1.0.0: 1–2), kolom pemisah opsional (mis.

@@ -33,6 +33,21 @@ case "$cmd" in
     explicit=${2:-${IMAGE_TAG:-}}
     tag=$(tag_of "${2:-}")
     case "$tag" in prev-*) echo "tag $tag dicadangkan untuk rollback (upgrade.sh)" >&2; exit 1 ;; esac
+    # Tag rilis eksplisit (v<semver>…) wajib sama dengan versi kode yang dibangun: image "v1.8.1" berisi
+    # kode 1.8.0 (main belum di-pull) pernah terpasang di produksi dan footer menampilkan versi lain.
+    # Boleh berakhiran -<apa saja> (mis. v1.8.1-r2 untuk build ulang); IMAGE_TAG_FORCE=1 bila sengaja.
+    pkg=$(release_tag)
+    if [ -n "$explicit" ] && [ -n "$pkg" ] && [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]] &&
+      [ "${IMAGE_TAG_FORCE:-}" != 1 ]; then
+      case "$tag" in
+        "$pkg" | "$pkg"-*) ;;
+        *)
+          echo "tag $tag tidak sesuai versi kode ($pkg di package.json) — git pull --ff-only origin main" \
+            "dulu, atau IMAGE_TAG_FORCE=1 bila memang sengaja" >&2
+          exit 1
+          ;;
+      esac
+    fi
     # Image store bisa dipakai bersama produksi (build di VM): tag yang dipakai container berjalan tidak
     # boleh dipindahkan, dan tag rilis bawaan yang sudah ada tidak ditimpa diam-diam.
     # Dibaca sekali (bukan pipa ke grep -q: SIGPIPE + pipefail membuat cek ini diam-diam lolos).

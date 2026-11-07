@@ -356,9 +356,8 @@ export function BoundConfigForm({
 
           {noValue || !current ? null : (
             <BoundStatusFields
-              type={draft.type}
               toned={
-                draft.type === "pivot"
+                draft.type === "pivot" || draft.type === "table"
                   ? current.spec.values.some((v) => !!v.tone)
                   : (() => {
                       const v = current.spec.values[Number(display.value ?? 0)];
@@ -366,23 +365,14 @@ export function BoundConfigForm({
                       return draft.type === "kpi" ? !!(v?.tone && v.target) : !!v?.tone;
                     })()
               }
-              colors={(display.colors as WidgetColors | undefined) ?? current.spec.colors}
+              colors={display.colors as WidgetColors | undefined}
               editHref={
                 current.canEdit && datasetId
                   ? `/datasets/${datasetId}/pivot-tersimpan/${current.id}`
                   : undefined
               }
-              // "Lembut" (undefined) di atas template pivot tersimpan lain harus tertulis eksplisit,
-              // kalau tidak tampilan kembali memakai template pivot tersimpan.
-              onColors={(colors) =>
-                set({
-                  colors:
-                    colors ??
-                    (current.spec.colors && current.spec.colors.template !== "soft"
-                      ? { template: "soft" }
-                      : undefined),
-                })
-              }
+              // undefined = ikuti template dashboard (v1.9.0).
+              onColors={(colors) => set({ colors })}
             />
           )}
           {noValue ? null : <FormatFields value={format} onChange={(f) => set({ format: f })} />}

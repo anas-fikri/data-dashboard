@@ -286,3 +286,22 @@
   background-color: var(--st-bad-bg-d);
   color: var(--st-bad-fg-d);
 }
+/* Swatch warna grafik (legenda pai berstatus, v1.9.0). */
+[data-status-mark="good"] {
+  background-color: var(--st-good-mark);
+}
+[data-status-mark="mid"] {
+  background-color: var(--st-mid-mark);
+}
+[data-status-mark="bad"] {
+  background-color: var(--st-bad-mark);
+}
+.dark [data-status-mark="good"] {
+  background-color: var(--st-good-mark-d);
+}
+.dark [data-status-mark="mid"] {
+  background-color: var(--st-mid-mark-d);
+}
+.dark [data-status-mark="bad"] {
+  background-color: var(--st-bad-mark-d);
+}

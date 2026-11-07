@@ -1,9 +1,12 @@
 "use client";
 
+import { DashboardColorsContext } from "@/components/widgets/dashboard-colors";
+import type { WidgetColors } from "@/features/widgets/tone";
+import { DashboardColorsControl } from "./dashboard-colors-control";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import ReactGridLayout, { type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -161,6 +164,8 @@ type CanvasProps = {
   /** Filter dashboard (T-012): kolom filter dan kolom filter silang (server); status dari ?f=. */
   filterColumns: FilterColumnView[];
   crossFilterColumns: string[];
+  /** Template warna status dashboard (v1.9.0); widget tanpa template sendiri mengikuti ini. */
+  colors?: WidgetColors | null;
 };
 
 export function DashboardCanvas(props: CanvasProps) {
@@ -185,6 +190,16 @@ function Canvas(props: CanvasProps) {
   const { dashboardId, editing } = props;
   const isOwner = props.role === "OWNER";
   const ed = useDashboardEditor(props);
+  const [colors, setColors] = useState<WidgetColors | null>(props.colors ?? null);
+  // Nilai server berubah (refresh, rekan mengubah template): ikuti (penyesuaian saat render, tanpa effect).
+  const serverColors = JSON.stringify(props.colors ?? null);
+  const [seenColors, setSeenColors] = useState(serverColors);
+  if (seenColors !== serverColors) {
+    setSeenColors(serverColors);
+    setColors(props.colors ?? null);
+  }
+  // Objek stabil: widget tidak ikut dirender ulang di setiap render kanvas (mis. saat menyeret).
+  const colorsValue = useMemo(() => ({ colors }), [colors]);
   const frozen = isFrozen(ed.save);
   const router = useRouter();
   const phone = useIsPhone();
@@ -348,171 +363,181 @@ function Canvas(props: CanvasProps) {
     ? crossColumnsOf(ed.widgets, props.sources)
     : props.crossFilterColumns;
 
+  // Props server (bukan ed.widgets): refresh yang membawa props lain memasang penjaga lagi.
   return (
-    // Props server (bukan ed.widgets): refresh yang membawa props lain memasang penjaga lagi.
-    <AccessRefreshProvider
-      serverWidgetIds={props.widgets.map((w) => w.id)}
-      stateKey={viewCanvasKey(props.widgets, props.revision)}
-    >
-      <DashboardFiltersProvider
-        dashboardId={dashboardId}
-        columns={props.filterColumns}
-        crossColumns={crossColumns}
-        widgets={ed.widgets}
+    <DashboardColorsContext.Provider value={colorsValue}>
+      <AccessRefreshProvider
+        serverWidgetIds={props.widgets.map((w) => w.id)}
+        stateKey={viewCanvasKey(props.widgets, props.revision)}
       >
-        <div
-          ref={root}
-          data-testid="dashboard-canvas"
-          // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
-          className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
+        <DashboardFiltersProvider
+          dashboardId={dashboardId}
+          columns={props.filterColumns}
+          crossColumns={crossColumns}
+          widgets={ed.widgets}
         >
-          {editing ? (
-            <CanvasToolbar
-              save={ed.save}
-              undoKind={ed.canUndo ? ed.undoKind : null}
-              adding={adding}
-              finishing={finishing}
-              onAdd={() => void add()}
-              onUndo={() => void ed.undo()}
-              onRetry={() => void ed.flush()}
-              onDone={() => void done()}
-            />
-          ) : null}
-          <p className="sr-only" aria-live="polite">
-            {announce}
-          </p>
-          {ed.notice ? (
-            <FormAlert tone="error">
-              <span className="block">{ed.notice}</span>
-              {frozen ? (
-                <Button
-                  className="mt-2 h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
-                  leadingIcon={<IconRefresh aria-hidden />}
-                  onClick={reload}
-                  {...{ [STALE_RELOAD]: "" }}
-                >
-                  Muat ulang
-                </Button>
-              ) : (
-                <Button size="sm" variant="outline" className="mt-2" onClick={ed.dismissNotice}>
-                  Tutup
-                </Button>
-              )}
-            </FormAlert>
-          ) : null}
-
-          {ed.widgets.length ? (
-            <FilterBar
-              editing={editing}
-              manage={
-                canEdit
-                  ? { dashboardId, columns: props.filterColumns, sources: props.sources }
-                  : null
-              }
-            />
-          ) : null}
-
-          {ed.widgets.length === 0 ? (
-            <CanvasEmpty
-              dashboardId={dashboardId}
-              editing={editing}
-              canEdit={props.role !== "VIEWER"}
-            />
-          ) : (
-            <div className="flex items-start gap-4">
-              <div
-                ref={gridRef}
-                className="min-w-0 flex-1"
-                data-testid="canvas"
-                data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
-              >
-                {phone ? (
-                  <div className="flex flex-col gap-4">
-                    {ordered.map((it) => {
-                      const w = byId.get(it.i);
-                      return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
-                    })}
-                  </div>
+          <div
+            ref={root}
+            data-testid="dashboard-canvas"
+            // Lembar pengaturan terbuka: ruang di bawah agar widget paling bawah pun bisa digulir ke atasnya.
+            className={`flex flex-col gap-4 ${panelItem && !wide ? "pb-[55dvh]" : ""}`}
+          >
+            {editing ? (
+              <CanvasToolbar
+                save={ed.save}
+                undoKind={ed.canUndo ? ed.undoKind : null}
+                adding={adding}
+                finishing={finishing}
+                onAdd={() => void add()}
+                onUndo={() => void ed.undo()}
+                onRetry={() => void ed.flush()}
+                onDone={() => void done()}
+                colorsControl={
+                  <DashboardColorsControl
+                    dashboardId={dashboardId}
+                    colors={colors}
+                    onSaved={setColors}
+                    className="h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto"
+                  />
+                }
+              />
+            ) : null}
+            <p className="sr-only" aria-live="polite">
+              {announce}
+            </p>
+            {ed.notice ? (
+              <FormAlert tone="error">
+                <span className="block">{ed.notice}</span>
+                {frozen ? (
+                  <Button
+                    className="mt-2 h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
+                    leadingIcon={<IconRefresh aria-hidden />}
+                    onClick={reload}
+                    {...{ [STALE_RELOAD]: "" }}
+                  >
+                    Muat ulang
+                  </Button>
                 ) : (
-                  <ReactGridLayout
-                    // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
-                    // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
-                    key={tablet ? "tablet" : "grid"}
-                    layout={
-                      shown
-                        ? shown
-                        : ed.layout.map((it) => {
-                            const min = minOf(it.i);
-                            return { ...it, minW: min.w, minH: min.h };
-                          })
-                    }
-                    width={width}
-                    gridConfig={{
-                      cols: tablet ? TABLET_COLS : GRID_COLS,
-                      rowHeight: ROW_HEIGHT,
-                      margin: MARGIN,
-                      containerPadding: [0, 0],
-                    }}
-                    dragConfig={{
-                      enabled: canEdit && !tablet,
-                      // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
-                      handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
-                      cancel: "button",
-                    }}
-                    resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
-                    onDragStop={(l) => !tablet && ed.commitLayout(plain(l))}
-                    onResizeStop={(l) => !tablet && ed.commitLayout(plain(l))}
-                  >
-                    {ordered.map((it) => {
-                      const w = byId.get(it.i);
-                      return w ? card(w, it) : <div key={it.i} />;
-                    })}
-                  </ReactGridLayout>
+                  <Button size="sm" variant="outline" className="mt-2" onClick={ed.dismissNotice}>
+                    Tutup
+                  </Button>
                 )}
+              </FormAlert>
+            ) : null}
+
+            {ed.widgets.length ? (
+              <FilterBar
+                editing={editing}
+                manage={
+                  canEdit
+                    ? { dashboardId, columns: props.filterColumns, sources: props.sources }
+                    : null
+                }
+              />
+            ) : null}
+
+            {ed.widgets.length === 0 ? (
+              <CanvasEmpty
+                dashboardId={dashboardId}
+                editing={editing}
+                canEdit={props.role !== "VIEWER"}
+              />
+            ) : (
+              <div className="flex items-start gap-4">
+                <div
+                  ref={gridRef}
+                  className="min-w-0 flex-1"
+                  data-testid="canvas"
+                  data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
+                >
+                  {phone ? (
+                    <div className="flex flex-col gap-4">
+                      {ordered.map((it) => {
+                        const w = byId.get(it.i);
+                        return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
+                      })}
+                    </div>
+                  ) : (
+                    <ReactGridLayout
+                      // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
+                      // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
+                      key={tablet ? "tablet" : "grid"}
+                      layout={
+                        shown
+                          ? shown
+                          : ed.layout.map((it) => {
+                              const min = minOf(it.i);
+                              return { ...it, minW: min.w, minH: min.h };
+                            })
+                      }
+                      width={width}
+                      gridConfig={{
+                        cols: tablet ? TABLET_COLS : GRID_COLS,
+                        rowHeight: ROW_HEIGHT,
+                        margin: MARGIN,
+                        containerPadding: [0, 0],
+                      }}
+                      dragConfig={{
+                        enabled: canEdit && !tablet,
+                        // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
+                        handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
+                        cancel: "button",
+                      }}
+                      resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
+                      onDragStop={(l) => !tablet && ed.commitLayout(plain(l))}
+                      onResizeStop={(l) => !tablet && ed.commitLayout(plain(l))}
+                    >
+                      {ordered.map((it) => {
+                        const w = byId.get(it.i);
+                        return w ? card(w, it) : <div key={it.i} />;
+                      })}
+                    </ReactGridLayout>
+                  )}
+                </div>
+                {panelItem && panelWidget ? (
+                  <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
+                    <WidgetPanel
+                      widget={panelWidget}
+                      item={panelItem}
+                      can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
+                      autoTitle={autoTitle(panelWidget, props.sources)}
+                      onRename={(t) => ed.renameWidget(panelItem.i, t)}
+                      onStep={(k) => {
+                        reveal.current = panelItem.i;
+                        ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
+                      }}
+                      onDelete={() => void remove(panelItem.i)}
+                    >
+                      <WidgetSourceSection
+                        dashboardId={dashboardId}
+                        // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
+                        // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
+                        widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
+                        saveError={ed.configError(panelItem.i)}
+                        sources={props.sources}
+                        datasetId={props.datasetId}
+                        isOwner={isOwner}
+                        savedPivots={savedPivots}
+                        onSave={(type, spec, savedPivotId) =>
+                          ed.configureWidget(panelItem.i, type, spec, savedPivotId)
+                        }
+                        onDetach={() => ed.detachWidget(panelItem.i)}
+                        onCreated={(p) =>
+                          setSavedPivots((list) =>
+                            [...list.filter((x) => x.id !== p.id), p].sort((a, b) =>
+                              a.name.localeCompare(b.name, "id"),
+                            ),
+                          )
+                        }
+                      />
+                    </WidgetPanel>
+                  </WidgetPanelFrame>
+                ) : null}
               </div>
-              {panelItem && panelWidget ? (
-                <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
-                  <WidgetPanel
-                    widget={panelWidget}
-                    item={panelItem}
-                    can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
-                    autoTitle={autoTitle(panelWidget, props.sources)}
-                    onRename={(t) => ed.renameWidget(panelItem.i, t)}
-                    onStep={(k) => {
-                      reveal.current = panelItem.i;
-                      ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
-                    }}
-                    onDelete={() => void remove(panelItem.i)}
-                  >
-                    <WidgetSourceSection
-                      dashboardId={dashboardId}
-                      // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
-                      // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
-                      widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
-                      saveError={ed.configError(panelItem.i)}
-                      sources={props.sources}
-                      datasetId={props.datasetId}
-                      isOwner={isOwner}
-                      savedPivots={savedPivots}
-                      onSave={(type, spec, savedPivotId) =>
-                        ed.configureWidget(panelItem.i, type, spec, savedPivotId)
-                      }
-                      onDetach={() => ed.detachWidget(panelItem.i)}
-                      onCreated={(p) =>
-                        setSavedPivots((list) =>
-                          [...list.filter((x) => x.id !== p.id), p].sort((a, b) =>
-                            a.name.localeCompare(b.name, "id"),
-                          ),
-                        )
-                      }
-                    />
-                  </WidgetPanel>
-                </WidgetPanelFrame>
-              ) : null}
-            </div>
-          )}
-        </div>
-      </DashboardFiltersProvider>
-    </AccessRefreshProvider>
+            )}
+          </div>
+        </DashboardFiltersProvider>
+      </AccessRefreshProvider>
+    </DashboardColorsContext.Provider>
   );
 }

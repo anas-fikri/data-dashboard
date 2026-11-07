@@ -196,6 +196,7 @@ export default async function DashboardPage({
           savedPivots={savedPivots}
           filterColumns={d.filterColumns}
           crossFilterColumns={d.crossFilterColumns}
+          colors={d.colors}
         />
         {/* Nama, kolom filter (D6), dan hapus: pemilik saja; editor mengatur kolom filter di bilah filter. */}
         {editing && isOwner ? (

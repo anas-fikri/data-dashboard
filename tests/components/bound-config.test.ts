@@ -106,6 +106,15 @@ describe("bound-config-model", () => {
     expect(eff.ok && eff.config.spec).toMatchObject({ rows: pivot.rows, values: pivot.values });
   });
 
+  it("pivotDisplayOf membawa template warna widget (v1.9.0): tampilan tidak berubah saat diikat", () => {
+    const colored = { ...pivot, colors: { template: "bold" as const } };
+    expect(pivotDisplayOf(colored).colors).toEqual({ template: "bold" });
+    const eff = effectiveConfig("pivot", pivotDisplayOf(colored), colored);
+    expect(eff.ok && eff.config.spec.colors).toEqual({ template: "bold" });
+    // Widget baru atas pivot tersimpan bertemplate: tetap ikut dashboard.
+    expect(defaultDisplay("pivot", colored)).not.toHaveProperty("colors");
+  });
+
   it("pilihan nilai dan dimensi berlabel", () => {
     expect(valueOptions(pivot, sources[0]!.columns).map((o) => o.label)).toEqual([
       "Nilai 1: Rata-rata Pendapatan",

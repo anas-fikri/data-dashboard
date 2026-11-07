@@ -1,5 +1,6 @@
 "use client";
 
+import { useDashboardColors } from "@/components/widgets/dashboard-colors";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
 import {
@@ -132,6 +133,7 @@ export function ChartWidget({
   /** Lencana "N dari M" kategori untuk kepala kartu saat keterangan tidak muat (T-032); fungsi stabil. */
   onBadge?: (badge: ChartBadge | null) => void;
 }) {
+  const dashColors = useDashboardColors();
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
   const outer = useRef<HTMLDivElement>(null);
@@ -159,9 +161,9 @@ export function ChartWidget({
   const format = valueFormat(showAs, measure?.format ?? spec.format);
   const plainSum = !isAxisShowAs(showAs);
   const agg = aggOf(spec.measure);
-  // Warna status batang (v1.7.0); grafik garis/pai tidak diwarnai menurut status.
-  const st = type === "bar" ? specStatus(spec) : undefined;
-  const barStatus = st?.tones[0]
+  // Warna status (batang v1.7.0; garis + pai v1.9.0); template widget atau dashboard.
+  const st = specStatus(spec, dashColors);
+  const chartStatus = st?.tones[0]
     ? {
         tone: st.tones[0],
         target: st.targets[0],
@@ -172,8 +174,8 @@ export function ChartWidget({
   const blankZero = plainSum && !!agg && zeroWhenBlank(agg);
   const values = source.map((r) => (typeof r[1] === "number" ? r[1] : blankZero ? 0 : null));
   // Daftar batang ringkas (kartu sempit): status per kategori, sama dengan batang grafik.
-  const rankStatus = barStatus
-    ? statusSeries(values, barStatus.tone, barStatus.target, barStatus.scale)
+  const rankStatus = chartStatus
+    ? statusSeries(values, chartStatus.tone, chartStatus.target, chartStatus.scale)
     : null;
   const categories = data.categories ?? labels.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
@@ -217,6 +219,9 @@ export function ChartWidget({
     ...(rest !== 0 ? [{ label: OTHERS_LABEL, value: rest, others: true }] : []),
   ];
   const shares = percentShares(rows.map((r) => Math.max(0, r.value ?? 0)));
+  // Status irisan pai (v1.9.0): sama dengan warna irisan; "Lainnya" tidak berstatus.
+  const pieStatus = (r: Row) =>
+    type === "pie" && !r.others && r.index !== undefined ? (rankStatus?.[r.index] ?? null) : null;
   // Pai: legenda/peringkat terbesar dulu — irisan terbesar (sering "Lainnya") terlihat lebih dulu.
   const order = type === "pie" ? legendOrder(rows.map((r) => r.value)) : rows.map((_, i) => i);
   const time =
@@ -422,7 +427,7 @@ export function ChartWidget({
       <ol
         className="flex min-h-0 flex-1 flex-col gap-1 overflow-hidden px-2 py-1 text-xs"
         data-testid="chart-ranked"
-        style={rankStatus ? (statusCssVars(barStatus?.colors) as React.CSSProperties) : undefined}
+        style={rankStatus ? (statusCssVars(chartStatus?.colors) as React.CSSProperties) : undefined}
       >
         {items.map((r, i) => {
           const layout = cn("flex min-w-0", inline ? "items-baseline gap-2" : "flex-col");
@@ -509,7 +514,7 @@ export function ChartWidget({
         onPick={pickAt}
         print={print || undefined}
         onSettled={onSettled}
-        status={barStatus}
+        status={chartStatus}
       />
     );
     body =
@@ -533,7 +538,12 @@ export function ChartWidget({
             tabIndex={print ? undefined : legendTab}
             data-testid="pie-legend-region"
           >
-            <ul data-testid="pie-legend">
+            <ul
+              data-testid="pie-legend"
+              style={
+                chartStatus ? (statusCssVars(chartStatus.colors) as React.CSSProperties) : undefined
+              }
+            >
               {order.map((i) => {
                 const r = rows[i]!;
                 return (
@@ -547,11 +557,13 @@ export function ChartWidget({
                     <span
                       aria-hidden
                       data-testid="pie-swatch"
+                      // Irisan berstatus: warna status (sama dengan irisan), bentuk tetap pembeda.
+                      data-status-mark={pieStatus(r) ?? undefined}
                       className={cn(
                         "w-2.5 shrink-0 forced-color-adjust-none",
                         r.others
                           ? [SWATCH[5], OTHERS_SHAPE]
-                          : ["h-2.5", SWATCH[i % 5], SHAPE[i % 5]],
+                          : ["h-2.5", pieStatus(r) ? null : SWATCH[i % 5], SHAPE[i % 5]],
                       )}
                     />
                     {/* Cetak: nama lengkap membungkus di samping nilainya (kertas tanpa tooltip; dua
@@ -587,6 +599,9 @@ export function ChartWidget({
                     <span className="shrink-0 tabular-nums text-muted-foreground">
                       {shares[i]}%
                     </span>
+                    {pieStatus(r) ? (
+                      <span className="sr-only">, {STATUS_LABEL[pieStatus(r)!]}</span>
+                    ) : null}
                   </li>
                 );
               })}
@@ -615,10 +630,10 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
-      {barStatus && measure ? (
+      {chartStatus && measure ? (
         <StatusLegend
-          colors={barStatus.colors}
-          items={[{ label: measure.label, tone: barStatus.tone, target: barStatus.target }]}
+          colors={chartStatus.colors}
+          items={[{ label: measure.label, tone: chartStatus.tone, target: chartStatus.target }]}
           variant={print ? "print" : "screen"}
         />
       ) : null}
