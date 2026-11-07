@@ -29,6 +29,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   dashboard bertema grafik kehilangan template/tema warnanya sementara (data tetap di DB; runbook-deploy
   §19). Batang yang dikelompokkan menurut tanggal kini otomatis tegak dan urut waktu.
 
+## [1.10.0] - 2026-11-07
+
+### Added
+
+- **widgets:** tema warna grafik dashboard, arah batang, garis tren, halaman Yang baru (T-ykyd) (9094f41)
+
+### Fixed
+
+- **widgets:** klik batang tegak, potongan periode terbaru, titik tren legenda = garis (review T-ykyd) (472cdb7)
+- **widgets:** tabel data + daftar ringkas batang tegak tetap memuat semua baris (review T-ykyd r2) (9ebacef)
+
 ## [1.9.0] - 2026-11-06
 
 ### Added
