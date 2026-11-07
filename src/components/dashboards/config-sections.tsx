@@ -13,11 +13,13 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
 import type { StatusTarget, Tone } from "@/features/widgets/tone";
+import { TRENDS, TREND_LABEL, type Trend } from "@/features/widgets/trend";
 import { SHOW_AS_LABEL, isAxisShowAs, showAsChoices } from "@/features/widgets/show-as";
 import {
   TABLE_COLUMNS_MAX,
   TOP_N_MAX,
   type ChartType,
+  type Orientation,
   type ShowAs,
   type WidgetType,
 } from "@/features/widgets/spec";
@@ -427,6 +429,65 @@ export function FormatColumnsField({
  * Filter silang (T-012): klik kategori grafik ini menyaring widget lain di dashboard. Bawaan aktif
  * (spec tanpa crossFilter); dimatikan → crossFilter: false. Tidak memuat ulang data widget.
  */
+/**
+ * Bentuk grafik (v1.10.0): arah batang (Otomatis = tegak untuk tanggal/periode) dan garis tren (hanya
+ * sumbu waktu: Garis, atau Batang tegak berdimensi tanggal/periode). Nilai undefined = bawaan.
+ */
+export function ChartShapeFields({
+  type,
+  temporal,
+  orientation,
+  trend,
+  onChange,
+}: {
+  type: string;
+  /** Kolom pengelompokan bertipe tanggal/periode. */
+  temporal: boolean;
+  orientation: Orientation | undefined;
+  trend: Trend | undefined;
+  onChange: (next: { orientation?: Orientation; trend?: Trend }) => void;
+}) {
+  if (type !== "bar" && type !== "line") return null;
+  const vertical = type === "bar" && (orientation === "vertical" || (!orientation && temporal));
+  const trendable = temporal && (type === "line" || vertical);
+  return (
+    <>
+      {type === "bar" ? (
+        <Choice
+          label="Arah batang"
+          testId="config-orientation"
+          value={orientation ?? "auto"}
+          options={[
+            {
+              value: "auto",
+              label: temporal ? "Otomatis (tegak, karena tanggal/periode)" : "Otomatis (mendatar)",
+            },
+            { value: "horizontal", label: "Mendatar" },
+            { value: "vertical", label: "Tegak (kolom)" },
+          ]}
+          onChange={(v) =>
+            onChange({ orientation: v === "auto" ? undefined : (v as Orientation), trend })
+          }
+        />
+      ) : null}
+      {trendable ? (
+        <Choice
+          label="Garis tren"
+          testId="config-trend"
+          value={trend ?? "none"}
+          options={[
+            { value: "none", label: "Tanpa" },
+            ...TRENDS.map((t) => ({ value: t as string, label: TREND_LABEL[t] })),
+          ]}
+          onChange={(v) =>
+            onChange({ orientation, trend: v === "none" ? undefined : (v as Trend) })
+          }
+        />
+      ) : null}
+    </>
+  );
+}
+
 export function CrossFilterField({
   value,
   onChange,

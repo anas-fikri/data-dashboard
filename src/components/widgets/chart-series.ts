@@ -552,6 +552,11 @@ export const noteLines = (text: string, width: number) =>
 
 /** Bar per 18 px tinggi kartu: lebih dari itu label bertabrakan → tampilkan N teratas saja. */
 export const barsThatFit = (height: number) => Math.max(1, Math.floor((height - 32) / 18));
+/**
+ * Batang tegak per 14 px lebar kartu (dikurangi ±56 px sumbu nilai): lebih rapat dari itu batang jadi
+ * garis tipis. Label sumbu dijarangkan otomatis seperti garis.
+ */
+export const columnsThatFit = (width: number) => Math.max(1, Math.floor((width - 56) / 14));
 
 /**
  * Tinggi kotak donat: legenda di samping mulai 448 px (container @md); di bawahnya legenda di bawah
@@ -643,6 +648,8 @@ export interface FitInput {
   sort?: ChartSort;
   /** Garis per periode dengan periode tanpa data yang diisi: periode di sumbu dan yang berisi data. */
   fill?: { buckets: number; present: number; noun: string };
+  /** Batang tegak (v1.10.0): banyaknya batang ditentukan lebar kartu, bukan tingginya. */
+  vertical?: boolean;
 }
 export interface Fit {
   note: NoteMode;
@@ -702,7 +709,10 @@ export function chartFit(i: FitInput): Fit {
   };
   const plot = (h: number) =>
     i.type === "pie" ? pieChartHeight(width, h, i.legendRows, i.printLegendPx) : h;
-  const visibleAt = (h: number) => (i.type === "bar" ? Math.min(barsThatFit(h), i.rows) : i.rows);
+  const visibleAt = (h: number) =>
+    i.type !== "bar"
+      ? i.rows
+      : Math.min(i.vertical ? columnsThatFit(width) : barsThatFit(h), i.rows);
 
   if (width < (i.print && i.type === "bar" ? PRINT_BAR_NARROW : NARROW)) {
     return {

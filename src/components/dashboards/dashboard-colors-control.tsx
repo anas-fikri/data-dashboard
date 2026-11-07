@@ -5,15 +5,25 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { DashboardColorsContext } from "@/components/widgets/dashboard-colors";
-import type { WidgetColors } from "@/features/widgets/tone";
+import { PALETTE_LABEL } from "@/features/widgets/status-color";
+import {
+  PALETTES,
+  statusColorsOf,
+  type DashboardColors,
+  type Palette,
+  type WidgetColors,
+} from "@/features/widgets/tone";
+import { Choice } from "./config-fields";
 import { ColorTemplateFields } from "./status-fields";
 
 /*
- * "Warna dashboard" (v1.9.0): satu template warna status untuk seluruh dashboard. Semua widget yang
- * tidak memilih template sendiri (bawaan "Ikuti dashboard") langsung ikut — seragam tanpa mengatur
- * widget satu per satu. Pemilik/editor, mode edit.
+ * "Warna dashboard": tema grafik (v1.10.0, warna seri semua Batang/Garis/Pai) dan template warna status
+ * (v1.9.0) untuk seluruh dashboard. Widget yang tidak memilih template sendiri (bawaan "Ikuti
+ * dashboard") langsung ikut — seragam tanpa mengatur widget satu per satu. Pemilik/editor, mode edit.
  */
 const SAVE_DELAY_MS = 350;
+// Kelas utuh (Tailwind tidak membaca nama kelas yang disusun saat runtime).
+const SWATCHES = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4", "bg-chart-5"];
 
 export function DashboardColorsControl({
   dashboardId,
@@ -22,8 +32,8 @@ export function DashboardColorsControl({
   className,
 }: {
   dashboardId: string;
-  colors: WidgetColors | null;
-  onSaved: (colors: WidgetColors | null) => void;
+  colors: DashboardColors | null;
+  onSaved: (colors: DashboardColors | null) => void;
   className?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
@@ -33,9 +43,9 @@ export function DashboardColorsControl({
   const confirmed = useRef(colors);
   const seq = useRef(0);
   const chain = useRef<Promise<void>>(Promise.resolve());
-  const pending = useRef<{ n: number; next: WidgetColors | null } | null>(null);
+  const pending = useRef<{ n: number; next: DashboardColors | null } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const body = (next: WidgetColors | null) => JSON.stringify({ colors: next });
+  const body = (next: DashboardColors | null) => JSON.stringify({ colors: next });
   const url = `/api/dashboards/${dashboardId}/colors`;
 
   const flush = () => {
@@ -64,8 +74,14 @@ export function DashboardColorsControl({
     });
   };
 
-  function change(next: WidgetColors | undefined) {
-    const value = next ?? null;
+  // Gabungan tema grafik + template status; semuanya bawaan → null (kolom kosong).
+  const palette: Palette = colors?.palette ?? "default";
+  const status = statusColorsOf(colors);
+  const merge = (p: Palette, st: WidgetColors | undefined): DashboardColors | null =>
+    p === "default" && !st ? null : { ...(st ?? {}), ...(p !== "default" ? { palette: p } : {}) };
+
+  function change(next: DashboardColors | null) {
+    const value = next;
     onSaved(value);
     setError(null);
     setSaving(true);
@@ -103,15 +119,46 @@ export function DashboardColorsControl({
           Warna dashboard
         </Button>
       </PopoverTrigger>
-      <PopoverContent aria-label="Warna dashboard" data-testid="dashboard-colors-panel">
-        <p className="text-sm">
-          Template warna status untuk semua widget di dashboard ini. Widget yang memilih template
-          sendiri tetap memakai pilihannya.
-        </p>
-        {/* Di luar cakupan dashboard: tanpa pilihan "Ikuti dashboard"; Lembut = bawaan (null). */}
-        <DashboardColorsContext.Provider value={null}>
-          <ColorTemplateFields colors={colors ?? undefined} onChange={change} />
-        </DashboardColorsContext.Provider>
+      <PopoverContent
+        aria-label="Warna dashboard"
+        data-testid="dashboard-colors-panel"
+        className="grid gap-3"
+      >
+        <div className="grid gap-2">
+          <Choice
+            label="Tema grafik"
+            testId="dashboard-palette"
+            value={palette}
+            options={PALETTES.map((p) => ({ value: p, label: PALETTE_LABEL[p] }))}
+            onChange={(p) => change(merge(p, status))}
+          />
+          {/* Contoh 5 warna seri tema terpilih (warna sungguhan dari globals.css). */}
+          <div
+            className="flex gap-1"
+            aria-hidden
+            data-palette={palette === "default" ? undefined : palette}
+            data-testid="dashboard-palette-preview"
+          >
+            {SWATCHES.map((c) => (
+              <span key={c} className={`h-3 w-6 rounded-sm ${c}`} />
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Warna garis, batang, dan irisan pai di semua grafik dashboard ini.
+          </p>
+        </div>
+        <div className="grid gap-2 border-t pt-3">
+          {/* Di luar cakupan dashboard: tanpa pilihan "Ikuti dashboard"; Lembut = bawaan. */}
+          <DashboardColorsContext.Provider value={null}>
+            <ColorTemplateFields colors={status} onChange={(st) => change(merge(palette, st))} />
+          </DashboardColorsContext.Provider>
+          <p className="text-xs text-muted-foreground" data-testid="dashboard-colors-hint">
+            Warna status (hijau baik, merah perlu perhatian) hanya tampil di widget yang diberi{" "}
+            <strong>Penilaian warna</strong> — atur di pengaturan widget masing-masing, karena
+            arahnya beda per angka (checkpoint makin tinggi makin baik, klaim makin tinggi makin
+            buruk).
+          </p>
+        </div>
         <p
           className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"}
           role={error ? "alert" : "status"}

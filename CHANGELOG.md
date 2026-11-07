@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batang berwarna (arah tersimpan diam-diam di v1.8) kini langsung berwarna; matikan lewat "Penilaian warna:
   Tanpa warna" bila tidak diinginkan.
 
+- **v1.10.0 (T-ykyd):** tanpa migrasi. Rollback ke v1.9.0 membuat widget Batang/Garis yang memakai
+  **Arah batang** atau **Garis tren** tampil "Pengaturan widget tidak valid" sampai roll-forward, dan
+  dashboard bertema grafik kehilangan template/tema warnanya sementara (data tetap di DB; runbook-deploy
+  §19). Batang yang dikelompokkan menurut tanggal kini otomatis tegak dan urut waktu.
+
 ## [1.9.0] - 2026-11-06
 
 ### Added

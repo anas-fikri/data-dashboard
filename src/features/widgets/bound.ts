@@ -19,6 +19,7 @@
 import { z } from "zod";
 import {
   CHART_SORTS,
+  ORIENTATIONS,
   PIVOT_ROWS_MAX,
   PIVOT_VALUES_MAX,
   TOP_N_MAX,
@@ -31,6 +32,7 @@ import {
   type WidgetConfig,
 } from "./spec";
 import { colorsSchema } from "./tone";
+import { TRENDS } from "./trend";
 import { SHOW_AS_LABEL, isAxisShowAs } from "./show-as";
 
 /** Jenis widget yang bisa memakai pivot tersimpan sebagai sumber. */
@@ -75,6 +77,8 @@ export const chartDisplaySchema = z
     format: formatSchema.optional(),
     crossFilter: z.boolean().optional(),
     colors: colorsSchema.optional(),
+    orientation: z.enum(ORIENTATIONS).optional(),
+    trend: z.enum(TRENDS).optional(),
   })
   .strict();
 export const kpiDisplaySchema = z
@@ -273,6 +277,8 @@ export function effectiveConfig(
           format,
           ...(d.crossFilter !== undefined ? { crossFilter: d.crossFilter } : {}),
           ...(d.colors ? { colors: d.colors } : {}),
+          ...(d.orientation ? { orientation: d.orientation } : {}),
+          ...(d.trend ? { trend: d.trend } : {}),
         },
       };
       filters = pivot.filters;

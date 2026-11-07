@@ -1,5 +1,5 @@
 import "server-only";
-import { colorsSchema, type WidgetColors } from "@/features/widgets/tone";
+import { dashboardColorsSchema, type DashboardColors } from "@/features/widgets/tone";
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { recordAudit } from "@/features/audit/service";
@@ -239,7 +239,7 @@ export interface DashboardView {
    */
   crossFilterColumns: string[];
   /** Template warna status dashboard (v1.9.0); widget tanpa template sendiri mengikuti ini. */
-  colors: WidgetColors | null;
+  colors: DashboardColors | null;
 }
 
 export interface DashboardSummary {
@@ -700,22 +700,22 @@ export const getDashboard = cache(async function getDashboard(
 });
 
 /** Template tersimpan yang tidak lagi sah (mis. data lama) diperlakukan sebagai tidak diatur. */
-function parseColors(v: unknown): WidgetColors | null {
-  const r = colorsSchema.safeParse(v);
+function parseColors(v: unknown): DashboardColors | null {
+  const r = dashboardColorsSchema.safeParse(v);
   return r.success ? r.data : null;
 }
 
 /**
- * Template warna status dashboard (v1.9.0): pemilik/editor. null = kembali ke bawaan (Lembut); widget
- * yang memilih template sendiri tidak terpengaruh.
+ * Warna dashboard: template warna status (v1.9.0) + tema grafik (v1.10.0), pemilik/editor. null = bawaan
+ * (Lembut, palet aplikasi); widget yang memilih template status sendiri tidak terpengaruh.
  */
 export async function setDashboardColors(
   userId: string,
   dashboardId: unknown,
   colors: unknown,
-): Promise<DashboardResult<{ colors: WidgetColors | null }>> {
+): Promise<DashboardResult<{ colors: DashboardColors | null }>> {
   if (!isIdShape(dashboardId)) return notFound();
-  const parsed = colors === null ? null : colorsSchema.safeParse(colors);
+  const parsed = colors === null ? null : dashboardColorsSchema.safeParse(colors);
   if (parsed && !parsed.success) return fail("INVALID", "Template warna tidak valid.");
   const value = parsed ? parsed.data : null;
   const r = await prisma.dashboard.updateMany({

@@ -64,8 +64,9 @@ test.describe("app shell (masuk)", () => {
       await page.setViewportSize({ width, height: 800 });
       for (const path of ["/", "/datasets", "/panduan"]) {
         await page.goto(path);
+        // v1.10.0: versi menautkan ke halaman Yang baru.
         await expect(page.getByTestId("app-footer")).toHaveText(
-          `Data Dashboard · Versi ${version}`,
+          `Data Dashboard · Versi ${version} · Yang baru`,
         );
         await expect(page.getByRole("contentinfo")).toHaveCount(1);
         await noHorizontalScroll(page);

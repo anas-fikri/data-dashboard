@@ -305,3 +305,57 @@
 .dark [data-status-mark="bad"] {
   background-color: var(--st-bad-mark-d);
 }
+
+/*
+ * Tema grafik dashboard (v1.10.0, tone.ts PALETTES): mengganti --chart-1…6 di dalam [data-palette]
+ * (kanvas dashboard, halaman cetak, contoh di panel). Office = warna tema Office (lebih gelap 25 % agar
+ * ≥ 3:1 terhadap kartu terang); ramah buta warna = Okabe–Ito. --chart-6 tetap abu-abu ("Lainnya").
+ */
+[data-palette="office"] {
+  --chart-1: 218 52% 52%;
+  --chart-2: 24 84% 42%;
+  --chart-3: 96 42% 36%;
+  --chart-4: 45 100% 25%;
+  --chart-5: 274 54% 41%;
+  --chart-6: 0 2% 45%;
+}
+.dark [data-palette="office"] {
+  --chart-1: 219 52% 71%;
+  --chart-2: 24 84% 74%;
+  --chart-3: 96 42% 69%;
+  --chart-4: 45 100% 70%;
+  --chart-5: 257 36% 75%;
+  --chart-6: 0 2% 67%;
+}
+[data-palette="soft"] {
+  --chart-1: 213 43% 50%;
+  --chart-2: 12 42% 50%;
+  --chart-3: 157 38% 40%;
+  --chart-4: 42 54% 39%;
+  --chart-5: 277 21% 52%;
+  --chart-6: 217 5% 50%;
+}
+.dark [data-palette="soft"] {
+  --chart-1: 213 57% 72%;
+  --chart-2: 14 60% 73%;
+  --chart-3: 154 38% 66%;
+  --chart-4: 43 58% 65%;
+  --chart-5: 277 33% 74%;
+  --chart-6: 217 8% 67%;
+}
+[data-palette="cvd"] {
+  --chart-1: 202 100% 35%;
+  --chart-2: 26 100% 38%;
+  --chart-3: 163 100% 26%;
+  --chart-4: 325 42% 52%;
+  --chart-5: 44 100% 28%;
+  --chart-6: 0 0% 43%;
+}
+.dark [data-palette="cvd"] {
+  --chart-1: 202 77% 63%;
+  --chart-2: 41 100% 45%;
+  --chart-3: 166 62% 47%;
+  --chart-4: 325 59% 75%;
+  --chart-5: 56 85% 60%;
+  --chart-6: 0 0% 66%;
+}

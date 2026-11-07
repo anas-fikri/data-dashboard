@@ -12,6 +12,7 @@ import {
   type ChartInput,
   type ChartTheme,
 } from "./chart-option";
+import { useDashboardPalette } from "./dashboard-colors";
 import { useBoxSize } from "./use-box-size";
 
 /*
@@ -50,9 +51,14 @@ function loadECharts(): Promise<ECharts> {
   return loader;
 }
 
-const css = (name: string) =>
-  `hsl(${getComputedStyle(document.documentElement).getPropertyValue(name).trim().replace(/ /g, ", ")})`;
-function readTheme(): ChartTheme {
+// Dibaca dari elemen grafik (bukan <html>): tema grafik dashboard ([data-palette], v1.10.0) mengganti
+// --chart-1…6 di kanvas/halaman cetak.
+const cssOf = (el: Element) => {
+  const style = getComputedStyle(el);
+  return (name: string) => `hsl(${style.getPropertyValue(name).trim().replace(/ /g, ", ")})`;
+};
+function readTheme(el: Element | null): ChartTheme {
+  const css = cssOf(el ?? document.documentElement);
   return {
     colors: [1, 2, 3, 4, 5, 6].map((n) => css(`--chart-${n}`)),
     text: css("--foreground"),
@@ -100,6 +106,7 @@ export function ChartView(
   const [failed, setFailed] = useState(false);
   const size = useBoxSize(box);
   const themeVersion = useThemeVersion();
+  const palette = useDashboardPalette();
   const { categories, limit, partial, sort, onPick, onSettled, ...input } = props;
   const shown =
     limit && limit < input.labels.length
@@ -181,9 +188,9 @@ export function ChartView(
     c.resize();
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
     const parsed = JSON.parse(inputKey) as Omit<ChartInput, "reducedMotion">;
-    c.setOption(chartOption({ ...parsed, reducedMotion }, readTheme(), size), true);
+    c.setOption(chartOption({ ...parsed, reducedMotion }, readTheme(box.current), size), true);
     drawn.current = true;
-  }, [ready, inputKey, themeVersion, size]);
+  }, [ready, inputKey, themeVersion, palette, size]);
 
   if (failed) {
     return (
@@ -195,7 +202,16 @@ export function ChartView(
   return (
     <div className="relative min-h-0 flex-1">
       {/* Grafik untuk mata; ringkasan + tabel data untuk pembaca layar. */}
-      <div ref={box} className="absolute inset-0" aria-hidden />
+      <div
+        ref={box}
+        className="absolute inset-0"
+        aria-hidden
+        data-testid="chart-canvas"
+        data-orientation={
+          input.type === "bar" ? (input.vertical ? "vertical" : "horizontal") : undefined
+        }
+        data-trend={input.trend?.kind}
+      />
       <table className="sr-only" data-testid="chart-data">
         <caption>{chartSummary(input, categories, partial, sort)}</caption>
         <thead>

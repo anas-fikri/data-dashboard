@@ -27,13 +27,14 @@ import {
   type SavedPivotOption,
 } from "./bound-config-model";
 import { Choice, FormatFields } from "./config-fields";
-import { CrossFilterField, TopNField, TypeTiles } from "./config-sections";
+import { ChartShapeFields, CrossFilterField, TopNField, TypeTiles } from "./config-sections";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
 import { ToggleField } from "./pivot-config-fields";
 import { pivotSummary } from "./pivot-config-model";
 import { BoundStatusFields } from "./status-fields";
 import {
   CHART_SORT_ORDER,
+  isTemporal,
   measureText,
   sortLabel,
   sortOptions,
@@ -347,6 +348,22 @@ export function BoundConfigForm({
                   onCommit={(topN) => set({ topN })}
                 />
               </div>
+              <ChartShapeFields
+                type={draft.type}
+                temporal={(() => {
+                  const t = cols.find(
+                    (c) =>
+                      c.pos ===
+                      ((display as ChartDisplay).dimension === "column"
+                        ? current.spec.column?.column
+                        : current.spec.rows[0]?.column),
+                  )?.type;
+                  return !!t && isTemporal(t);
+                })()}
+                orientation={(display as ChartDisplay).orientation}
+                trend={(display as ChartDisplay).trend}
+                onChange={({ orientation, trend }) => set({ orientation, trend })}
+              />
               <CrossFilterField
                 value={(display as ChartDisplay).crossFilter !== false}
                 onChange={(on) => set({ crossFilter: on ? undefined : false })}

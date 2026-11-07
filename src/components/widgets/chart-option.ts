@@ -11,6 +11,7 @@ import {
   statusSeries,
 } from "@/features/widgets/status-color";
 import type { StatusTarget, Tone, WidgetColors } from "@/features/widgets/tone";
+import { trendValues, trendX, type Trend } from "@/features/widgets/trend";
 import {
   AUTO_FORMAT,
   formatAxis,
@@ -97,6 +98,13 @@ export interface ChartInput {
   print?: boolean;
   /** Warna status (batang v1.7.0; garis titik + irisan pai v1.9.0): arah nilai + template. */
   status?: { tone: Tone; target?: StatusTarget; scale?: number; colors?: WidgetColors };
+  /** Batang tegak/kolom (v1.10.0); tanpa ini batang mendatar. */
+  vertical?: boolean;
+  /**
+   * Garis tren (v1.10.0, trend.ts) di Garis/Batang tegak berdimensi waktu. `xs` = waktu (ms) per label
+   * untuk sumbu kategori tanpa periode (batang); garis per periode/hari memakai waktunya sendiri.
+   */
+  trend?: { kind: Trend; xs?: (number | null)[]; grain?: string };
 }
 
 export interface ChartSize {
@@ -399,6 +407,22 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
   };
   const statusLine = (s: Status | null | undefined) => (s ? `\nStatus: ${STATUS_LABEL[s]}` : "");
   // Garis berstatus: semua titik tampil dan penuh (warna status di titik; garisnya tetap warna seri).
+  // Garis tren (v1.10.0): putus-putus warna teks redup, tidak bisa diklik, tanpa titik; nilai kosong di
+  // awal rata-rata bergerak tidak digambar.
+  const trendSeries = (data: unknown[]) => ({
+    type: "line" as const,
+    name: "Tren",
+    data,
+    silent: true,
+    showSymbol: false,
+    connectNulls: true,
+    z: 3,
+    lineStyle: { type: "dashed" as const, width: 1.5, color: theme.text, opacity: 0.6 },
+    itemStyle: { color: theme.text },
+    tooltip: { show: false },
+    label: { show: false },
+    emphasis: { disabled: true },
+  });
   // Periode yang diisi (tanpa data) tetap tanpa titik.
   const statusSymbols = (filled: readonly boolean[]) => ({
     showSymbol: true,
@@ -462,7 +486,7 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
     };
   }
 
-  const horizontal = i.type === "bar";
+  const horizontal = i.type === "bar" && !i.vertical;
   const labelPx = horizontal
     ? Math.round(Math.min(Math.max(size.width * 0.38, 56), 180))
     : Math.round(Math.min(Math.max(size.width / Math.max(i.labels.length, 1), 48), 120));
@@ -662,6 +686,17 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
           ...valueLabel("top", filled, shifts),
           connectNulls: false,
         },
+        ...(i.trend
+          ? (() => {
+              const xs = points.map((p) => p[0]);
+              const tv = trendValues(
+                i.trend.kind,
+                xs.map((x) => trendX(x, i.trend!.grain)),
+                ys.map((v, n) => (filled[n] ? null : (v ?? null))),
+              );
+              return [trendSeries(xs.map((x, n) => [x, tv[n] ?? null]))];
+            })()
+          : []),
       ],
     };
   }
@@ -844,9 +879,26 @@ export function chartOption(i: ChartInput, theme: ChartTheme, size: ChartSize) {
               ...(marks ? statusSymbols(filled) : {}),
               connectNulls: false,
             }
-          : { barMaxWidth: 32, barCategoryGap: "30%", itemStyle: { borderRadius: [0, 4, 4, 0] } }),
+          : {
+              barMaxWidth: 32,
+              barCategoryGap: "30%",
+              itemStyle: { borderRadius: horizontal ? [0, 4, 4, 0] : [4, 4, 0, 0] },
+            }),
         ...valueLabel(horizontal ? "right" : "top", filled, shifts, barCompact),
       },
+      // Tren hanya di sumbu waktu mendatar (garis, batang tegak); x = waktu bila ada, selain itu urutan.
+      ...(i.trend && !horizontal
+        ? (() => {
+            const tx = i.trend.xs;
+            const timed = !!tx && values.every((_, k) => typeof tx[k] === "number");
+            const g = i.trend.grain;
+            const xs = periods
+              ? periods.keys.map((ms) => trendX(ms, g))
+              : values.map((_, k) => (timed ? trendX(tx[k] as number, g) : k));
+            const ys = values.map((v, k) => (filled[k] ? null : v));
+            return [trendSeries(trendValues(i.trend.kind, xs, ys))];
+          })()
+        : []),
     ],
   };
 }

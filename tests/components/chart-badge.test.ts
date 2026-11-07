@@ -44,3 +44,14 @@ describe("chartFit.badgeCompact (T-2nkx)", () => {
     expect(fit({ type: "bar", room: { width: 300, height: 240 } }).badgeCompact).toBe("");
   });
 });
+
+describe("chartFit batang tegak (v1.10.0)", () => {
+  it("jumlah batang tegak ditentukan lebar kartu, bukan tingginya", () => {
+    const narrow = fit({ type: "bar", vertical: true, room: { width: 200, height: 400 } });
+    const wide = fit({ type: "bar", vertical: true, room: { width: 800, height: 400 } });
+    expect(narrow.visible).toBe(Math.floor((200 - 56) / 14));
+    expect(wide.visible).toBe(12);
+    // Mendatar di kartu pendek tetap dibatasi tinggi.
+    expect(fit({ type: "bar", room: { width: 800, height: 120 } }).visible).toBeLessThan(12);
+  });
+});

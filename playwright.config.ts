@@ -55,6 +55,7 @@ export default defineConfig({
         /period-group\.spec\.ts$/,
         /period-cycle\.spec\.ts$/,
         /status-colors\.spec\.ts$/,
+        /chart-theme\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -145,6 +146,8 @@ export default defineConfig({
     { name: "pivot", testMatch: /pivot\.spec\.ts$/, dependencies: ["chart-polish"] },
     // Warna status (T-f3tf): worker sendiri → setelah pivot.
     { name: "status-colors", testMatch: /status-colors\.spec\.ts$/, dependencies: ["pivot"] },
+    // Tema grafik, arah batang, garis tren, Yang baru (v1.10.0): worker sendiri → setelah status-colors.
+    { name: "chart-theme", testMatch: /chart-theme\.spec\.ts$/, dependencies: ["status-colors"] },
     // pivot-lanjutan (T-075): worker sendiri; pivot tersimpan 3–4 tingkat × 5 nilai (terhitung, % kolom,
     // Top N) → 4 widget terikat, viewer, ekspor CSV/XLSX = layar, halaman cetak, 360/768 px + axe.
     {

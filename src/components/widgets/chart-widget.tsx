@@ -31,6 +31,7 @@ import {
   printLegend,
   emptyBucketValue,
   legendOrder,
+  isoToUtcMs,
   lineOrder,
   middleTruncate,
   percentShares,
@@ -43,6 +44,7 @@ import {
 import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
+import { linearFit, trendText, trendX } from "@/features/widgets/trend";
 import { StatusLegend } from "./status-legend";
 import { useBoxSize } from "./use-box-size";
 import { useScrollFocus } from "./use-scroll-focus";
@@ -147,7 +149,15 @@ export function ChartWidget({
   const temporal = dimType === "date" || dimType === "timestamp";
 
   // Garis: urut waktu/label naik di layar (urutan nilai: urutan server), apa pun urutan pengambilan.
-  const source = type === "line" ? lineOrder(data.rows, dimType, spec.sort) : data.rows;
+  // Batang tegak (v1.10.0): otomatis untuk dimensi tanggal/periode, atau dipaksa di panel.
+  const vertical =
+    type === "bar" &&
+    (spec.orientation === "vertical" || (spec.orientation === undefined && temporal));
+  // Garis dan batang tegak bertanggal: urut waktu di layar (urutan nilai hanya memilih N yang diambil).
+  const source =
+    type === "line" || (vertical && temporal)
+      ? lineOrder(data.rows, dimType, spec.sort)
+      : data.rows;
   const labels = source.map((r) =>
     typeof r[0] === "number"
       ? formatLabelNumber(r[0])
@@ -234,6 +244,24 @@ export function ChartWidget({
           cut: valueCut(spec.sort, cut),
         }
       : undefined;
+  // Garis tren (v1.10.0): hanya sumbu waktu (Garis/Batang tegak bertanggal). x = waktu (ms) bila semua
+  // titik bertanggal, selain itu urutan titik — sama dengan chart-option, jadi legenda = garisnya.
+  const trendKind =
+    spec.trend && temporal && (type === "line" || vertical) ? spec.trend : undefined;
+  const trendXs = trendKind
+    ? source.map((r) => (r[0] === null ? null : isoToUtcMs(String(r[0]))))
+    : undefined;
+  const trendNote = (() => {
+    if (!trendKind || !trendXs) return null;
+    const timed = trendXs.every((x) => x !== null);
+    const grain = spec.dimension.timeGrain;
+    const xs = timed
+      ? (trendXs as number[]).map((x) => trendX(x, grain))
+      : trendXs.map((_, k) => k);
+    const fit = trendKind === "linear" ? linearFit(xs, values) : null;
+    const unit = timed ? (grain ?? "day") : "point";
+    return trendText(trendKind, fit, unit, (v) => formatMeasure(v, valueType, format));
+  })();
   // Pai cetak: legenda utuh (nama + nilai + persen) menentukan apakah donat masih muat. Lebar teks dari
   // canvas; angka tabular (tnum) tidak dikenal canvas → semua angka diukur sebagai "0" (+1 px bulat).
   const printMeasure = print && type === "pie" && room ? canvasMeasure(12) : undefined;
@@ -263,6 +291,7 @@ export function ChartWidget({
         partial,
         sort: spec.sort,
         fill: periodFill({ type, values, time }),
+        vertical,
       })
     : null;
   const visible = fit?.visible ?? labels.length;
@@ -515,6 +544,10 @@ export function ChartWidget({
         print={print || undefined}
         onSettled={onSettled}
         status={chartStatus}
+        vertical={vertical || undefined}
+        trend={
+          trendKind ? { kind: trendKind, xs: trendXs, grain: spec.dimension.timeGrain } : undefined
+        }
       />
     );
     body =
@@ -630,6 +663,17 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+      {trendNote ? (
+        <p
+          className={cn(
+            "shrink-0 text-muted-foreground",
+            print ? "px-1 pt-1 text-[10px]" : "border-t px-3 py-1 text-xs",
+          )}
+          data-testid="chart-trend"
+        >
+          {trendNote}
+        </p>
+      ) : null}
       {chartStatus && measure ? (
         <StatusLegend
           colors={chartStatus.colors}

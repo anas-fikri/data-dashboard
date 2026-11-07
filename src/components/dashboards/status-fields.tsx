@@ -12,6 +12,7 @@ import {
 } from "@/features/widgets/status-color";
 import {
   COLOR_TEMPLATES,
+  statusColorsOf,
   type StatusTarget,
   type Tone,
   type WidgetColors,
@@ -232,7 +233,7 @@ export function ColorTemplateFields({
 }) {
   const id = useId();
   const scope = useDashboardColorsScope();
-  const inherited = scope ? (scope.colors ?? undefined) : undefined;
+  const inherited = scope ? statusColorsOf(scope.colors) : undefined;
   const template = colors?.template ?? (scope ? FOLLOW : "soft");
   // Warna sendiri terakhir diingat browser: widget lain langsung memakai warna yang sama (konsisten).
   const custom = colors?.custom ?? lastCustom();
