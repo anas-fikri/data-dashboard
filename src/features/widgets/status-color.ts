@@ -7,7 +7,7 @@
  *   sepertiga atas → baik (up) / perlu perhatian (down); tengah → sedang; sepertiga bawah → kebalikannya.
  * Satu sumber untuk layar, PDF, dan grafik batang. Murni.
  */
-import type { ColorTemplate, StatusTarget, Tone, WidgetColors } from "./tone";
+import type { ColorTemplate, Palette, StatusTarget, Tone, WidgetColors } from "./tone";
 
 export type Status = "good" | "mid" | "bad";
 export const STATUSES: readonly Status[] = ["good", "mid", "bad"];
@@ -27,6 +27,14 @@ export const TEMPLATE_LABEL: Record<ColorTemplate, string> = {
   bold: "Tegas",
   cvd: "Ramah buta warna (biru–oranye)",
   custom: "Warna sendiri",
+};
+
+/** Nama tema grafik dashboard (v1.10.0); warnanya di globals.css [data-palette]. */
+export const PALETTE_LABEL: Record<Palette, string> = {
+  default: "Bawaan aplikasi",
+  office: "Office (gaya Excel)",
+  soft: "Lembut",
+  cvd: "Ramah buta warna",
 };
 
 /** Warna satu status: latar sel, teks sel, dan warna batang grafik. */

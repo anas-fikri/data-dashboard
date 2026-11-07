@@ -17,6 +17,7 @@ import type { SessionUser } from "@/features/auth/session";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "./account-menu";
 import { Brand } from "./brand";
+import { WhatsNewLink } from "./whats-new";
 import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -160,6 +161,7 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
                 <IconHelpCircle aria-hidden />
               </Link>
             </Button>
+            {user ? <WhatsNewLink /> : null}
             <ThemeToggle />
             <AccountMenu user={user} appVersion={appVersion} />
           </div>
@@ -180,7 +182,14 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
             className="mx-auto w-full max-w-(--content-max) px-4 pb-4 text-xs text-muted-foreground sm:px-6"
             data-testid="app-footer"
           >
-            Data Dashboard · Versi {appVersion}
+            Data Dashboard ·{" "}
+            <Link
+              href="/yang-baru"
+              className="underline-offset-4 hover:underline"
+              data-testid="app-version-link"
+            >
+              Versi {appVersion} · Yang baru
+            </Link>
           </footer>
         ) : null}
       </div>

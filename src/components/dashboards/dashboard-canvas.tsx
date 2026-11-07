@@ -1,12 +1,12 @@
 "use client";
 
-import { DashboardColorsContext } from "@/components/widgets/dashboard-colors";
-import type { WidgetColors } from "@/features/widgets/tone";
+import { DashboardColorsProvider } from "@/components/widgets/dashboard-colors";
+import type { DashboardColors } from "@/features/widgets/tone";
 import { DashboardColorsControl } from "./dashboard-colors-control";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import ReactGridLayout, { type Layout } from "react-grid-layout";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -165,7 +165,7 @@ type CanvasProps = {
   filterColumns: FilterColumnView[];
   crossFilterColumns: string[];
   /** Template warna status dashboard (v1.9.0); widget tanpa template sendiri mengikuti ini. */
-  colors?: WidgetColors | null;
+  colors?: DashboardColors | null;
 };
 
 export function DashboardCanvas(props: CanvasProps) {
@@ -190,7 +190,7 @@ function Canvas(props: CanvasProps) {
   const { dashboardId, editing } = props;
   const isOwner = props.role === "OWNER";
   const ed = useDashboardEditor(props);
-  const [colors, setColors] = useState<WidgetColors | null>(props.colors ?? null);
+  const [colors, setColors] = useState<DashboardColors | null>(props.colors ?? null);
   // Nilai server berubah (refresh, rekan mengubah template): ikuti (penyesuaian saat render, tanpa effect).
   const serverColors = JSON.stringify(props.colors ?? null);
   const [seenColors, setSeenColors] = useState(serverColors);
@@ -198,8 +198,6 @@ function Canvas(props: CanvasProps) {
     setSeenColors(serverColors);
     setColors(props.colors ?? null);
   }
-  // Objek stabil: widget tidak ikut dirender ulang di setiap render kanvas (mis. saat menyeret).
-  const colorsValue = useMemo(() => ({ colors }), [colors]);
   const frozen = isFrozen(ed.save);
   const router = useRouter();
   const phone = useIsPhone();
@@ -365,7 +363,7 @@ function Canvas(props: CanvasProps) {
 
   // Props server (bukan ed.widgets): refresh yang membawa props lain memasang penjaga lagi.
   return (
-    <DashboardColorsContext.Provider value={colorsValue}>
+    <DashboardColorsProvider colors={colors}>
       <AccessRefreshProvider
         serverWidgetIds={props.widgets.map((w) => w.id)}
         stateKey={viewCanvasKey(props.widgets, props.revision)}
@@ -538,6 +536,6 @@ function Canvas(props: CanvasProps) {
           </div>
         </DashboardFiltersProvider>
       </AccessRefreshProvider>
-    </DashboardColorsContext.Provider>
+    </DashboardColorsProvider>
   );
 }

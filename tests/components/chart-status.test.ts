@@ -78,3 +78,56 @@ describe("garis + pai: warna status (v1.9.0)", () => {
     );
   });
 });
+
+type Series = {
+  type: string;
+  name?: string;
+  data: unknown[];
+  itemStyle?: { borderRadius?: number[] };
+};
+type Full = { series: Series[]; xAxis: { type: string }; yAxis: { type: string } };
+const full = (extra: Partial<ChartInput>) => bar(extra) as unknown as Full;
+
+describe("arah batang + garis tren (v1.10.0)", () => {
+  it("batang tegak: kategori di sumbu x, sudut atas membulat; bawaan tetap mendatar", () => {
+    const v = full({ vertical: true });
+    expect(v.xAxis.type).toBe("category");
+    expect(v.yAxis.type).toBe("value");
+    expect(v.series[0]!.itemStyle?.borderRadius).toEqual([4, 4, 0, 0]);
+    expect(full({}).xAxis.type).toBe("value");
+  });
+
+  it("tren lurus di batang tegak: seri putus-putus kedua dengan nilai regresi", () => {
+    const o = full({ vertical: true, values: [10, 20, 30], trend: { kind: "linear" } });
+    const t = o.series[1]!;
+    expect(t.name).toBe("Tren");
+    expect(t.data).toEqual([10, 20, 30]);
+  });
+
+  it("tren memakai waktu (ms) bila semua titik bertanggal", () => {
+    const o = full({
+      vertical: true,
+      values: [10, 20, 40],
+      trend: { kind: "linear", xs: [0, 1, 3] },
+    });
+    const d = o.series[1]!.data as number[];
+    // Titik terakhir jauh (x = 3): tren tetap garis lurus terhadap waktu, bukan urutan.
+    expect(d[2]! - d[1]!).toBeCloseTo(2 * (d[1]! - d[0]!), 6);
+  });
+
+  it("baris tanpa tanggal di batang tegak tidak ikut tren (sama dengan legenda)", () => {
+    const ms = [0, 1, 2].map((m) => Date.UTC(2026, m, 1));
+    const o = full({
+      vertical: true,
+      values: [10, 20, 30, 1000],
+      trend: { kind: "linear", xs: [...ms, null], grain: "month" },
+    });
+    const d = o.series[1]!.data as (number | null)[];
+    expect(d[3]).toBeNull();
+    expect(d[2]! - d[1]!).toBeCloseTo(10, 6);
+  });
+
+  it("batang mendatar mengabaikan tren", () => {
+    expect(full({ trend: { kind: "linear" } }).series).toHaveLength(1);
+  });
+});

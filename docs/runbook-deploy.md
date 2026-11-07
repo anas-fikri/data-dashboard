@@ -887,3 +887,15 @@ template sendiri tampil "Pengaturan widget tidak valid" sampai roll-forward (dat
 dashboard tidak berlaku (widget kembali ke template sendiri/bawaan). Hapus warna Tabel dulu bila rollback akan
 lama: selama di v1.8.x, aktivasi versi data baru melewati widget yang tidak valid itu, dan bila sheet lamanya
 kemudian terhapus retensi, setelah roll-forward widget tersebut tampil "sheet tidak tersedia" (pilih ulang sumber).
+
+## 19. Rilis v1.10.0 (tanpa migrasi) dan rollback ke v1.9.0
+
+Tanpa migrasi database: backup harian ≤ 26 jam boleh dipakai (`release.sh --quick` / preflight
+`REUSE_BACKUP_HOURS`). Field baru disimpan di JSON yang sudah ada: `orientation`/`trend` di spec grafik dan
+tampilan terikat, `palette` di `Dashboard.colors`. Rollback image ke v1.9.0: widget yang memakai Arah batang
+atau Garis tren tampil "Pengaturan widget tidak valid" sampai roll-forward (atau kembalikan ke Otomatis/Tanpa
+dulu), dan `Dashboard.colors` bertema grafik ditolak skema lama → template + tema dashboard kembali bawaan
+sementara. Selama di v1.9.0, aktivasi versi data baru melewati widget yang tidak valid itu (setelah
+roll-forward bisa tampil "sheet tidak tersedia" bila sheet lama terhapus retensi — pilih ulang sumber, §18).
+Bersihkan image lama tiap rilis (`docker rmi dashboard-*:<tag lama>`, jangan prune) — disk
+olympus 83 % per 2026-11-07.

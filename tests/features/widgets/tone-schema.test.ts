@@ -5,6 +5,7 @@ import {
   tableDisplaySchema,
 } from "@/features/widgets/bound";
 import { parseWidgetConfig } from "@/features/widgets/spec";
+import { dashboardColorsSchema, statusColorsOf } from "@/features/widgets/tone";
 
 /*
  * v1.6.2 menerima field warna status (tone per nilai, colors per widget) tanpa memakainya, agar
@@ -165,6 +166,46 @@ describe("skema warna tabel + widget terikat (v1.9.0)", () => {
         sort: "value_desc",
         totals: true,
         colors: { template: "bold" },
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("tema grafik + arah + tren (v1.10.0)", () => {
+  it("pengaturan dashboard: tema saja, template saja, atau keduanya; tema tak dikenal ditolak", () => {
+    expect(dashboardColorsSchema.safeParse({ palette: "office" }).success).toBe(true);
+    expect(dashboardColorsSchema.safeParse({ template: "bold", palette: "cvd" }).success).toBe(
+      true,
+    );
+    expect(dashboardColorsSchema.safeParse({}).success).toBe(true);
+    expect(dashboardColorsSchema.safeParse({ palette: "neon" }).success).toBe(false);
+    expect(dashboardColorsSchema.safeParse({ template: "custom" }).success).toBe(false);
+    expect(statusColorsOf({ palette: "office" })).toBeUndefined();
+    expect(statusColorsOf({ template: "bold", palette: "office" })).toEqual({ template: "bold" });
+  });
+
+  it("grafik menerima arah + tren; nilai tak dikenal ditolak; tampilan terikat juga", () => {
+    const spec = {
+      sheetId: S1,
+      dimension: { column: 1 },
+      measure: { agg: "sum", column: 2 },
+      sort: "label_asc",
+      topN: 10,
+      format,
+    };
+    expect(parseWidgetConfig("bar", { ...spec, orientation: "vertical", trend: "ma3" }).ok).toBe(
+      true,
+    );
+    expect(parseWidgetConfig("bar", { ...spec, orientation: "diagonal" }).ok).toBe(false);
+    expect(parseWidgetConfig("line", { ...spec, trend: "ma5" }).ok).toBe(false);
+    expect(
+      chartDisplaySchema.safeParse({
+        dimension: "row",
+        value: 0,
+        sort: "value_desc",
+        topN: 10,
+        orientation: "horizontal",
+        trend: "linear",
       }).success,
     ).toBe(true);
   });

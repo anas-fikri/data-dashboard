@@ -9,6 +9,7 @@ import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
 import { calcExprSchema, calcLabelSchema, calcLeaves, isAdditiveCalc, type CalcExpr } from "./calc";
 import { colorsSchema, targetRule, targetSchema, toneSchema } from "./tone";
+import { TRENDS } from "./trend";
 
 export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
@@ -25,6 +26,9 @@ export const AGGS = [
 ] as const satisfies Agg[];
 export const GRAINS = ["day", "week", "month", "quarter", "year"] as const satisfies Grain[];
 export const CHART_SORTS = ["value_desc", "value_asc", "label_asc", "label_desc"] as const;
+/** Arah batang tersimpan (v1.10.0); tidak ada = otomatis. */
+export const ORIENTATIONS = ["horizontal", "vertical"] as const;
+export type Orientation = (typeof ORIENTATIONS)[number];
 export type ChartSort = (typeof CHART_SORTS)[number];
 
 export const TABLE_PAGE_SIZE = 100;
@@ -208,6 +212,13 @@ export const chartSpecSchema = z
     crossFilter: z.boolean().optional(),
     /** Template warna status (tone.ts). */
     colors: colorsSchema.optional(),
+    /**
+     * Arah batang (v1.10.0, hanya Batang): tidak ada = otomatis (tegak untuk tanggal/periode, mendatar
+     * untuk kategori teks).
+     */
+    orientation: z.enum(ORIENTATIONS).optional(),
+    /** Garis tren (v1.10.0, trend.ts): hanya untuk dimensi tanggal/periode di Garis atau Batang tegak. */
+    trend: z.enum(TRENDS).optional(),
   })
   .strict();
 const tableColumnStatus = z

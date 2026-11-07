@@ -23,6 +23,7 @@ import { PivotFields } from "./pivot-config";
 import type { QueryScope } from "./query-scope";
 import { duplicateField } from "./pivot-config-model";
 import {
+  ChartShapeFields,
   CrossFilterField,
   FormatColumnsField,
   MeasureFields,
@@ -509,6 +510,25 @@ export function WidgetConfigForm({
                     }}
                   />
                 </div>
+              ) : null}
+              {draft.type === "bar" || draft.type === "line" ? (
+                <ChartShapeFields
+                  type={draft.type}
+                  temporal={isTemporal(typeOf(draft.spec.dimension.column) ?? "text")}
+                  orientation={draft.spec.orientation}
+                  trend={draft.spec.trend}
+                  onChange={({ orientation, trend }) => {
+                    const { orientation: _o, trend: _t, ...spec } = draft.spec;
+                    commit({
+                      ...draft,
+                      spec: {
+                        ...spec,
+                        ...(orientation ? { orientation } : {}),
+                        ...(trend ? { trend } : {}),
+                      },
+                    });
+                  }}
+                />
               ) : null}
               {draft.type !== "kpi" ? (
                 <CrossFilterField

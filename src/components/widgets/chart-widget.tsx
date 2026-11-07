@@ -31,7 +31,9 @@ import {
   printLegend,
   emptyBucketValue,
   legendOrder,
+  isoToUtcMs,
   lineOrder,
+  verticalBarsShown,
   middleTruncate,
   percentShares,
   pieRest,
@@ -43,6 +45,7 @@ import {
 import { chartEmpty } from "./body-state";
 import { Both, ChartTable, canvasMeasure } from "./chart-table";
 import { ChartView } from "./chart-view";
+import { linearFit, trendPoints, trendText } from "@/features/widgets/trend";
 import { StatusLegend } from "./status-legend";
 import { useBoxSize } from "./use-box-size";
 import { useScrollFocus } from "./use-scroll-focus";
@@ -147,7 +150,20 @@ export function ChartWidget({
   const temporal = dimType === "date" || dimType === "timestamp";
 
   // Garis: urut waktu/label naik di layar (urutan nilai: urutan server), apa pun urutan pengambilan.
-  const source = type === "line" ? lineOrder(data.rows, dimType, spec.sort) : data.rows;
+  // Batang tegak (v1.10.0): otomatis untuk dimensi tanggal/periode, atau dipaksa di panel.
+  const vertical =
+    type === "bar" &&
+    (spec.orientation === "vertical" || (spec.orientation === undefined && temporal));
+  // Garis dan batang tegak bertanggal: urut waktu di layar (urutan nilai hanya memilih N yang diambil).
+  // Batang tegak bertanggal: yang tergambar dipilih dulu menurut urutan server (N terbesar dst.), baru
+  // diurutkan menurut waktu — periode terbaru tidak terbuang oleh potongan lebar kartu.
+  const timedBars = vertical && temporal;
+  // Hanya grafik yang digambar: tabel "Tampilkan data" dan daftar ringkas tetap memuat semua baris.
+  const kept =
+    timedBars && room && !showData
+      ? data.rows.slice(0, verticalBarsShown(room.width, room.height, data.rows.length, !!print))
+      : data.rows;
+  const source = type === "line" || timedBars ? lineOrder(kept, dimType, spec.sort) : data.rows;
   const labels = source.map((r) =>
     typeof r[0] === "number"
       ? formatLabelNumber(r[0])
@@ -177,7 +193,9 @@ export function ChartWidget({
   const rankStatus = chartStatus
     ? statusSeries(values, chartStatus.tone, chartStatus.target, chartStatus.scale)
     : null;
-  const categories = data.categories ?? labels.length;
+  // Tanpa jumlah dari server: semua baris yang diterima (bukan `labels`, yang untuk batang tegak bertanggal
+  // bisa sudah dipotong selebar kartu).
+  const categories = data.categories ?? data.rows.length;
   // Tanpa total (query total gagal) dan baris sebanyak batas N: kategori lain mungkin ada. Pai: persen
   // hanya dari yang tampil; batang/garis: "N terbesar" (bukan "N kategori"); garis N titik menurut
   // nilai: periode di luar N bukan 0 (celah "di luar N terbesar", bukan nol karangan).
@@ -234,6 +252,21 @@ export function ChartWidget({
           cut: valueCut(spec.sort, cut),
         }
       : undefined;
+  // Garis tren (v1.10.0): hanya sumbu waktu (Garis/Batang tegak bertanggal). x = waktu (ms) bila semua
+  // titik bertanggal, selain itu urutan titik — sama dengan chart-option, jadi legenda = garisnya.
+  const trendKind =
+    spec.trend && temporal && (type === "line" || vertical) ? spec.trend : undefined;
+  const trendXs = trendKind
+    ? source.map((r) => (r[0] === null ? null : isoToUtcMs(String(r[0]))))
+    : undefined;
+  const trendNote = (() => {
+    if (!trendKind || !trendXs) return null;
+    // Titik yang sama dengan garis putus-putus: baris tanpa tanggal tidak ikut (trendPoints).
+    const grain = spec.dimension.timeGrain;
+    const pts = trendPoints(trendXs, values, grain);
+    const fit = trendKind === "linear" ? linearFit(pts.xs, pts.ys) : null;
+    return trendText(trendKind, fit, grain ?? "day", (v) => formatMeasure(v, valueType, format));
+  })();
   // Pai cetak: legenda utuh (nama + nilai + persen) menentukan apakah donat masih muat. Lebar teks dari
   // canvas; angka tabular (tnum) tidak dikenal canvas → semua angka diukur sebagai "0" (+1 px bulat).
   const printMeasure = print && type === "pie" && room ? canvasMeasure(12) : undefined;
@@ -263,6 +296,7 @@ export function ChartWidget({
         partial,
         sort: spec.sort,
         fill: periodFill({ type, values, time }),
+        vertical,
       })
     : null;
   const visible = fit?.visible ?? labels.length;
@@ -332,7 +366,7 @@ export function ChartWidget({
     );
   } else if (fit?.ranked && room) {
     // Garis bertanggal: terbaru dulu — yang tidak muat adalah periode lama ("+N sebelumnya").
-    const newestFirst = type === "line" && temporal;
+    const newestFirst = (type === "line" || vertical) && temporal;
     const list = (newestFirst ? [...order].reverse() : order).map((i) => rows[i]!);
     // Tanpa total keseluruhan (query total gagal) dan baris sebanyak batas N: daftar tidak boleh tampak
     // lengkap — satu baris dicadangkan untuk "mungkin ada kategori lain" (sama dengan keterangan grafik).
@@ -515,6 +549,10 @@ export function ChartWidget({
         print={print || undefined}
         onSettled={onSettled}
         status={chartStatus}
+        vertical={vertical || undefined}
+        trend={
+          trendKind ? { kind: trendKind, xs: trendXs, grain: spec.dimension.timeGrain } : undefined
+        }
       />
     );
     body =
@@ -630,6 +668,18 @@ export function ChartWidget({
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+      {/* Hanya bila garis tren tergambar (bukan tabel data/daftar ringkas). */}
+      {trendNote && drawsChart ? (
+        <p
+          className={cn(
+            "shrink-0 text-muted-foreground",
+            print ? "px-1 pt-1 text-[10px]" : "border-t px-3 py-1 text-xs",
+          )}
+          data-testid="chart-trend"
+        >
+          {trendNote}
+        </p>
+      ) : null}
       {chartStatus && measure ? (
         <StatusLegend
           colors={chartStatus.colors}
