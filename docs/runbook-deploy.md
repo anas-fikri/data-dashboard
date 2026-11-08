@@ -899,3 +899,13 @@ sementara. Selama di v1.9.0, aktivasi versi data baru melewati widget yang tidak
 roll-forward bisa tampil "sheet tidak tersedia" bila sheet lama terhapus retensi — pilih ulang sumber, §18).
 Bersihkan image lama tiap rilis (`docker rmi dashboard-*:<tag lama>`, jangan prune) — disk
 olympus 83 % per 2026-11-07.
+
+## 20. Pembersihan image lama otomatis (T-aw7d, mulai v1.11.0)
+
+`bash deploy/upgrade.sh start` yang lulus verifikasi langsung menjalankan `prune-images`: semua tag
+`dashboard-{app,worker,renderer,backup}` dihapus KECUALI `IMAGE_TAG` aktif, image rollback upgrade terakhir
+(`prev-<STAMP>`), dan image yang dipakai container mana pun. Hanya `docker rmi` per tag (tanpa `-f`, tanpa
+prune) — image aplikasi lain di olympus tidak tersentuh. Jalankan manual kapan saja:
+`bash deploy/upgrade.sh prune-images`; matikan sekali jalan dengan `PRUNE_IMAGES=0 bash deploy/upgrade.sh start`.
+Akibatnya rollback cepat hanya satu rilis ke belakang; lebih jauh = restore backup (§5) atau build ulang dari
+tag git. Berlaku juga untuk `release.sh` (Mac) dan `server-release.sh` karena keduanya memanggil `start`.
