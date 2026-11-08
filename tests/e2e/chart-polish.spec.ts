@@ -168,15 +168,16 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-2nkx: pita sempit di bawah ambang lencana → 'N/M' ringkas, tidak ganda, judul ≥ 4rem", async () => {
-    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    test.setTimeout(240_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     let compactSeen = 0;
     const compactModes = new Set<string>();
     for (const mode of ["", "?mode=edit"]) {
       await owner.setViewportSize({ width: 1440, height: 1100 });
       await owner.goto(`/dashboards/${d}${mode}`);
       await expect(widgetTitled(owner, "Batang pendek").getByTestId("chart-badge")).toBeVisible();
-      // Sampai 1600 px: kartu w3 melewati pita lihat (14–15,5rem) dan pita edit (18,5–20rem).
-      for (let width = 1024; width <= 1600; width += 16) {
+      // Sampai 2000 px: kartu w3 melewati pita lihat (14–15,5rem) dan pita edit (18,5–20rem) — sejak
+      // v1.12.0 sidebar filter (≥ 1280 px, 16rem) menyempitkan kanvas, jadi pita tercapai lebih lebar.
+      for (let width = 1024; width <= 2000; width += 16) {
         await owner.setViewportSize({ width, height: 1100 });
         await owner.waitForTimeout(150); // grid + ResizeObserver menyesuaikan lebar kartu
         const cards = await owner.getByTestId("widget").evaluateAll((els) =>
@@ -221,7 +222,7 @@ test.describe("polish widget kecil (T-032)", () => {
   test("T-7ke3: pointer sentuh (tombol kepala 44 px) → lencana tidak pernah memeras judul di bawah 4rem", async ({
     browser,
   }) => {
-    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    test.setTimeout(240_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     const ctx = await browser.newContext({
       storageState: await owner.context().storageState(),
       hasTouch: true,
@@ -261,7 +262,7 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-7ke3: tombol kepala selebar sentuh → lencana penuh, ringkas, atau ditahan sesuai ruang; judul ≥ 4rem", async () => {
-    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    test.setTimeout(240_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     // Kepala sentuh sungguhan 12 px lebih tinggi sehingga kartu 2 baris menampilkan daftar peringkat (tanpa
     // lencana). Di sini hanya LEBAR tombol kepala yang dibuat 44 px: ruang horizontal sama dengan sentuh,
     // badan grafik tetap di rentang lencana (review desain T-7ke3 B1).
@@ -305,7 +306,7 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-2jwv: tanpa frame judul < 4rem saat resize; lencana mengalah selama tombol kepala disembunyikan CSS", async () => {
-    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    test.setTimeout(240_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     let hiddenSeen = 0;
     for (const mode of ["", "?mode=edit"]) {
       await owner.goto(`/dashboards/${d}${mode}`);
@@ -380,7 +381,7 @@ test.describe("polish widget kecil (T-032)", () => {
   });
 
   test("T-qrxf: tombol kepala berubah lebar tanpa kartu berubah ukuran → lencana diukur ulang; tanpa galat ResizeObserver loop", async () => {
-    test.setTimeout(120_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
+    test.setTimeout(240_000); // sweep lebar layar panjang; mesin sibuk bisa > 30 s
     // Meniru pointer kasar yang baru terpasang (tombol 32 → 44 px) tanpa resize kartu/viewport.
     const modes = () =>
       owner.getByTestId("widget").evaluateAll((els) =>

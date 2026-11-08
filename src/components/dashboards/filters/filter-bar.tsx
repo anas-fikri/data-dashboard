@@ -57,10 +57,14 @@ function focusCrossSource(widgetId: string) {
   heading?.focus();
 }
 
-/** Ada bilah/sidebar filter (bukan hanya petunjuk filter silang)? Sama dengan syarat di FilterBar. */
-function useHasFilterBar(editing: boolean): boolean {
-  const { columns, state } = useDashboardFilters();
-  return columns.length > 0 || state.filters.length > 0 || !!state.cross || editing;
+/**
+ * Sidebar (≥ 1280 px) hanya bila dashboard punya kolom filter atau sedang diubah. Hanya filter silang
+ * (tanpa kolom filter, mode lihat): bilah tetap di atas — grid tidak bergeser di bawah kursor saat
+ * grafik diklik (review v1.12.0).
+ */
+function useFilterSidebar(editing: boolean): boolean {
+  const { columns } = useDashboardFilters();
+  return columns.length > 0 || editing;
 }
 
 /**
@@ -76,7 +80,7 @@ export function FilterLayout({
   filterBar: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const sidebar = useHasFilterBar(editing);
+  const sidebar = useFilterSidebar(editing);
   return (
     <div className={cn("flex flex-col gap-4", sidebar && "xl:flex-row xl:items-start")}>
       {filterBar}
@@ -114,7 +118,8 @@ export function FilterBar({
     setPrevCompact(compact);
     setPeek(false);
   }
-  const collapsed = stored || (compact && !peek);
+  const sidebar = useFilterSidebar(editing);
+  const collapsed = sidebar && (stored || (compact && !peek));
   const railButton = useRef<HTMLButtonElement>(null);
   const collapseButton = useRef<HTMLButtonElement>(null);
   const focusAfter = useRef<"rail" | "collapse" | null>(null);
@@ -203,9 +208,10 @@ export function FilterBar({
         className={cn(
           "@container flex flex-col gap-3 rounded-lg border bg-card p-3",
           // ≥ 1280 px: sidebar kiri yang menempel di bawah topbar dan menggulir sendiri bila panjang.
-          "xl:sticky xl:top-[calc(var(--topbar-h)+1rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-2rem)] xl:shrink-0 xl:overflow-y-auto",
-          // Rel: lebar tetap (container query membuat lebar "auto" = 0).
-          collapsed ? "xl:w-14 xl:items-center xl:p-1.5" : "xl:w-64",
+          sidebar &&
+            "xl:sticky xl:top-[calc(var(--topbar-h)+1rem)] xl:max-h-[calc(100dvh-var(--topbar-h)-2rem)] xl:shrink-0 xl:overflow-x-hidden xl:overflow-y-auto",
+          // Rel: lebar tetap (container query membuat lebar "auto" = 0); 44 px tombol + 2 × 4 px + garis.
+          sidebar && (collapsed ? "xl:w-14 xl:items-center xl:p-1" : "xl:w-64"),
         )}
       >
         {/* Rel saat diciutkan (≥ 1280 px): ikon + jumlah filter aktif. */}
@@ -234,7 +240,7 @@ export function FilterBar({
         ) : null}
         <div className={cn("contents", collapsed && "xl:hidden")}>
           {/* Kepala sidebar (≥ 1280 px): judul + tombol ciutkan. */}
-          <div className="hidden items-center justify-between gap-2 xl:flex">
+          <div className={cn("hidden items-center justify-between gap-2", sidebar && "xl:flex")}>
             <span className="inline-flex items-center gap-1.5 text-sm font-semibold">
               <IconFilter size={18} stroke={1.5} aria-hidden className="text-muted-foreground" />
               Filter{active ? ` (${active})` : ""}
@@ -254,14 +260,22 @@ export function FilterBar({
           </div>
           {columns.length ? (
             <>
-              <div className="@2xl:hidden xl:hidden">
+              <div className={cn("@2xl:hidden", sidebar && "xl:hidden")}>
                 <FilterSheet triggerRef={sheetButton} />
               </div>
               <div
                 ref={desktop}
-                className="hidden min-w-0 @2xl:flex @2xl:flex-wrap @2xl:items-center @2xl:gap-2 xl:flex xl:flex-col xl:flex-nowrap xl:items-stretch"
+                className={cn(
+                  "hidden min-w-0 @2xl:flex @2xl:flex-wrap @2xl:items-center @2xl:gap-2",
+                  sidebar && "xl:flex xl:flex-col xl:flex-nowrap xl:items-stretch xl:gap-2",
+                )}
               >
-                <span className="mr-1 inline-flex items-center gap-1.5 text-sm font-medium xl:hidden">
+                <span
+                  className={cn(
+                    "mr-1 inline-flex items-center gap-1.5 text-sm font-medium",
+                    sidebar && "xl:hidden",
+                  )}
+                >
                   <IconFilter
                     size={18}
                     stroke={1.5}

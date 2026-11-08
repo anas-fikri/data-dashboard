@@ -74,7 +74,7 @@ export function DefaultFilters({
           <Button
             variant="outline"
             size="sm"
-            className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto"
+            className="h-(--control-h-lg) w-full md:h-(--control-h-sm) md:w-auto xl:h-auto xl:min-h-(--control-h-sm) xl:w-full xl:whitespace-normal"
             leadingIcon={<IconPinned aria-hidden />}
             pending={pending}
             aria-disabled={same || undefined}
