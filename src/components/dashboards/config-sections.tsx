@@ -12,7 +12,7 @@ import { useId, useLayoutEffect, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import type { Agg } from "@/features/query/spec";
-import type { StatusTarget, Tone } from "@/features/widgets/tone";
+import type { StatusTarget, ToneSetting } from "@/features/widgets/tone";
 import { TRENDS, TREND_LABEL, type Trend } from "@/features/widgets/trend";
 import { SHOW_AS_LABEL, isAxisShowAs, showAsChoices } from "@/features/widgets/show-as";
 import {
@@ -208,7 +208,7 @@ type ShownMeasure = {
   agg: Agg;
   column?: number;
   showAs?: ShowAs;
-  tone?: Tone;
+  tone?: ToneSetting;
   target?: StatusTarget;
 };
 

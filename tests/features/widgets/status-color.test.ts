@@ -14,6 +14,7 @@ import {
   statusRange,
   statusSeries,
 } from "@/features/widgets/status-color";
+import { effectiveTone } from "@/features/widgets/tone";
 
 describe("warna status: tingkat", () => {
   it("makin tinggi makin baik: sepertiga atas baik, tengah sedang, bawah perlu perhatian", () => {
@@ -184,5 +185,18 @@ describe("tabel + template dashboard (v1.9.0)", () => {
       specStatus({ ...spec, colors: { template: "soft" } }, { template: "bold" })?.colors,
     ).toEqual({ template: "soft" });
     expect(specStatus(spec)?.colors).toBeUndefined();
+  });
+});
+
+describe("penilaian bawaan dashboard (v1.11.0)", () => {
+  it("nilai tanpa penilaian ikut bawaan; 'none' tetap tanpa warna; arah sendiri menang", () => {
+    const spec = {
+      values: [{ agg: "sum" }, { agg: "sum", tone: "none" }, { agg: "sum", tone: "down" }],
+    };
+    expect(specStatus(spec, undefined, "up")?.tones).toEqual(["up", undefined, "down"]);
+    expect(specStatus({ values: [{ agg: "sum" }] })).toBeUndefined();
+    expect(specStatus({ values: [{ agg: "sum", tone: "none" }] }, undefined, "up")).toBeUndefined();
+    expect(effectiveTone(undefined, "down")).toBe("down");
+    expect(effectiveTone("none", "down")).toBeUndefined();
   });
 });

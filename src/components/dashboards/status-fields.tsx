@@ -6,6 +6,7 @@ import {
   STATUSES,
   STATUS_LABEL,
   TEMPLATE_LABEL,
+  TONE_LABEL,
   statusCssVars,
   statusPalette,
   type TableColumnStatus,
@@ -15,9 +16,10 @@ import {
   statusColorsOf,
   type StatusTarget,
   type Tone,
+  type ToneSetting,
   type WidgetColors,
 } from "@/features/widgets/tone";
-import { useDashboardColorsScope } from "@/components/widgets/dashboard-colors";
+import { useDashboardColorsScope, useDashboardTone } from "@/components/widgets/dashboard-colors";
 import { cn } from "@/lib/utils";
 import { Choice } from "./config-fields";
 
@@ -26,14 +28,37 @@ import { Choice } from "./config-fields";
  * warna (otomatis = posisi di antara nilai lain di widget, v1.7.0; atau batas angka seperti SLA, v1.8.0),
  * dan template warna per widget. Bahasa sederhana; batas diisi seperti angka yang tampil.
  */
-const TONE_OPTIONS: { value: Tone | "none"; label: string }[] = [
-  { value: "none", label: "Tanpa warna" },
-  { value: "up", label: "Makin tinggi makin baik (mis. tepat waktu)" },
-  { value: "down", label: "Makin tinggi makin buruk (mis. klaim, retur)" },
-];
+const UP_LABEL = "Makin tinggi makin baik (mis. tepat waktu)";
+const DOWN_LABEL = "Makin tinggi makin buruk (mis. klaim, retur)";
+
+/**
+ * Pilihan penilaian satu nilai (v1.11.0). "inherit" = tidak disimpan: ikut penilaian bawaan dashboard
+ * bila ada (selain itu tanpa warna); "none" = sengaja tanpa warna walau dashboard punya bawaan.
+ */
+function toneOptions(dashTone: Tone | undefined, own: ToneSetting | undefined) {
+  // Tanpa penilaian bawaan (atau Tabel/Angka): pilihan lama — Tanpa warna, naik, turun.
+  return [
+    {
+      value: "inherit",
+      label: dashTone ? `Ikuti dashboard (${TONE_LABEL[dashTone].toLowerCase()})` : "Tanpa warna",
+    },
+    ...(dashTone || own === "none"
+      ? [
+          {
+            value: "none",
+            label: dashTone
+              ? "Tanpa warna"
+              : "Tanpa warna (tetap, walau dashboard diberi penilaian)",
+          },
+        ]
+      : []),
+    { value: "up", label: UP_LABEL },
+    { value: "down", label: DOWN_LABEL },
+  ];
+}
 
 /** Arah + batas warna status satu nilai (tone.ts). */
-export type ValueStatus = { tone?: Tone; target?: StatusTarget };
+export type ValueStatus = { tone?: ToneSetting; target?: StatusTarget };
 
 /** Nilai dengan arah/batas baru (yang kosong dihapus dari spec agar tetap ringkas). */
 export function withStatus<V extends ValueStatus>(v: V, next: ValueStatus): V {
@@ -64,8 +89,14 @@ export function ToneChoice({
   kpi = false,
   percent = false,
   label = "Penilaian warna",
+  noInherit = false,
 }: {
   value: ValueStatus;
+  /**
+   * Tabel (aturan kolom hanya arah) dan Angka (warna hanya dengan batas): tanpa pilihan "Ikuti dashboard"
+   * / "Tanpa warna" eksplisit (v1.11.0).
+   */
+  noInherit?: boolean;
   /** Label pilihan arah (tabel: "Penilaian warna kolom …"). */
   label?: string;
   onChange: (next: ValueStatus) => void;
@@ -75,7 +106,13 @@ export function ToneChoice({
   percent?: boolean;
 }) {
   const id = useId();
-  const { tone, target } = value;
+  const { target } = value;
+  // Arah milik nilai ini (untuk batas angka); "none"/tidak diisi = tanpa arah sendiri.
+  const tone: Tone | undefined =
+    value.tone === "up" || value.tone === "down" ? value.tone : undefined;
+  const scopeTone = useDashboardTone();
+  const dashTone = noInherit ? undefined : scopeTone;
+  const inherited = !value.tone ? dashTone : undefined;
   const [mode, setMode] = useState<"auto" | "target">(target || kpi ? "target" : "auto");
   const [good, setGood] = useState(target ? String(target.good) : "");
   const [bad, setBad] = useState(target ? String(target.bad) : "");
@@ -119,14 +156,14 @@ export function ToneChoice({
       <Choice
         label={label}
         testId="config-tone"
-        value={tone ?? "none"}
-        options={TONE_OPTIONS}
+        value={value.tone ?? "inherit"}
+        options={toneOptions(dashTone, value.tone)}
         // Ganti arah: batas lama tidak lagi sesuai urutannya → dikosongkan (isi ulang batas baru).
         onChange={(v) => {
-          if (v === "none") setMode(kpi ? "target" : "auto");
+          if (v !== "up" && v !== "down") setMode(kpi ? "target" : "auto");
           setGood("");
           setBad("");
-          send(v === "none" ? {} : { tone: v });
+          send(v === "inherit" ? {} : { tone: v as ToneSetting });
         }}
       />
       {tone && !kpi ? (
@@ -191,6 +228,12 @@ export function ToneChoice({
             (mode === "target"
               ? `Di antara kedua batas = Sedang.${percent ? " Isi seperti yang tampil, mis. 95 untuk 95 %." : ""}${kpi ? " Tanpa batas, Angka tidak diwarnai." : ""}`
               : `Sepertiga teratas, tengah, dan sepertiga terbawah rentang nilai. ${tone === "up" ? "Tertinggi = Baik." : "Tertinggi = Perlu perhatian."}`)}
+        </p>
+      ) : inherited ? (
+        <p className="text-xs text-muted-foreground" data-testid="config-tone-hint">
+          {kpi
+            ? "Angka hanya berwarna dengan batas angka — pilih arah sendiri lalu isi batasnya."
+            : "Mengikuti penilaian bawaan dashboard (dibanding nilai lain di widget ini). Pilih arah sendiri untuk memakai batas angka."}
         </p>
       ) : null}
     </>
@@ -389,6 +432,7 @@ export function TableStatusFields({
         onChange={(v) => setPicked(Number(v))}
       />
       <ToneChoice
+        noInherit
         key={current.pos}
         label={`Penilaian warna kolom ${current.label}`}
         value={rule ?? {}}

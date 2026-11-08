@@ -1,5 +1,7 @@
 "use client";
 
+import { useDashboardTone } from "@/components/widgets/dashboard-colors";
+import { effectiveTone } from "@/features/widgets/tone";
 import { keepTableStatus } from "@/features/widgets/status-color";
 import { valueFormat } from "@/features/widgets/show-as";
 import { ColorTemplateFields, TableStatusFields, ToneChoice, withStatus } from "./status-fields";
@@ -145,6 +147,8 @@ export function WidgetConfigForm({
   }, [setStatus, setRetargeted]);
   // Panel ditutup sebelum jeda habis: perubahan terakhir tetap dikirim.
   useEffect(() => () => flush(), [flush]);
+  // Penilaian bawaan dashboard (v1.11.0): nilai tanpa penilaian sendiri ikut berwarna.
+  const dashTone = useDashboardTone();
   useEffect(() => {
     if (!flushRef) return;
     flushRef.current = flush;
@@ -448,6 +452,7 @@ export function WidgetConfigForm({
                 <ToneChoice
                   key={draft.type}
                   kpi={draft.type === "kpi"}
+                  noInherit={draft.type === "kpi"}
                   value={draft.spec.measure}
                   percent={
                     valueFormat(
@@ -463,7 +468,7 @@ export function WidgetConfigForm({
                     } as WidgetConfig)
                   }
                 />
-                {draft.spec.measure.tone ? (
+                {effectiveTone(draft.spec.measure.tone, dashTone) ? (
                   <ColorTemplateFields
                     colors={draft.spec.colors}
                     onChange={(colors) => {

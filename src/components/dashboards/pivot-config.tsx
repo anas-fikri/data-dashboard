@@ -1,5 +1,7 @@
 "use client";
 
+import { useDashboardTone } from "@/components/widgets/dashboard-colors";
+import { effectiveTone } from "@/features/widgets/tone";
 import { IconTableOptions } from "@tabler/icons-react";
 import { useLayoutEffect, useRef } from "react";
 import { PIVOT_CROSS_FILTER_LABEL } from "./filters/filter-model";
@@ -81,7 +83,8 @@ export function PivotFields({
   const { filters: _f, ...withoutFilters } = spec;
   const { crossFilter: _c, ...withoutCross } = spec;
   const { colors: _k, ...withoutColors } = spec;
-  const toned = spec.values.some((v) => !!v.tone);
+  const dashTone = useDashboardTone();
+  const toned = spec.values.some((v) => !!effectiveTone(v.tone, dashTone));
   // Fokus setelah kartu nilai berganti/hilang (T-069): kontrol yang dilepas tidak boleh meninggalkan
   // fokus di <body> (FocusScope panel menariknya ke kontainer). Urutan target per kartu.
   const valuesRef = useRef<HTMLFieldSetElement>(null);

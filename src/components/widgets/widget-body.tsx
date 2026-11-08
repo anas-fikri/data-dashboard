@@ -1,6 +1,6 @@
 "use client";
 
-import { useDashboardColors } from "@/components/widgets/dashboard-colors";
+import { useDashboardColors, useDashboardTone } from "@/components/widgets/dashboard-colors";
 import { useEffect, useState } from "react";
 import { useReportStale, useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { aggOf, type WidgetConfig } from "@/features/widgets/spec";
@@ -88,6 +88,7 @@ function Loaded({
   onBadge,
 }: Props & { version: string }) {
   const dashColors = useDashboardColors();
+  const dashTone = useDashboardTone();
   const [page, setPage] = useState(0);
   const [sort, setSort] = useState<TableSort>(null);
   const cross = useWidgetFilters(widgetId);
@@ -160,7 +161,7 @@ function Loaded({
           format={config.spec.format}
           title={title}
           agg={aggOf(config.spec.measure)}
-          status={specStatus(config.spec, dashColors)}
+          status={specStatus(config.spec, dashColors, dashTone)}
           fixedHeight={fixedHeight}
         />
       );
@@ -202,7 +203,7 @@ function Loaded({
           request={request}
           cross={cross}
           crossFilter={config.spec.crossFilter === true}
-          status={specStatus(config.spec, dashColors)}
+          status={specStatus(config.spec, dashColors, dashTone)}
         />
       ) : null;
       break;

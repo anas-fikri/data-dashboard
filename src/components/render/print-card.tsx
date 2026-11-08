@@ -1,6 +1,6 @@
 "use client";
 
-import { useDashboardColors } from "@/components/widgets/dashboard-colors";
+import { useDashboardColors, useDashboardTone } from "@/components/widgets/dashboard-colors";
 import {
   IconAlertTriangle,
   IconChartBar,
@@ -104,6 +104,7 @@ function Body({
   notes: number;
 }) {
   const dashColors = useDashboardColors();
+  const dashTone = useDashboardTone();
   if (config.type === "kpi") {
     return (
       <KpiView
@@ -111,7 +112,7 @@ function Body({
         format={config.spec.format}
         title={title}
         agg={aggOf(config.spec.measure)}
-        status={specStatus(config.spec, dashColors)}
+        status={specStatus(config.spec, dashColors, dashTone)}
         fixedHeight
       />
     );
@@ -134,7 +135,7 @@ function Body({
       <PrintPivot
         data={data.pivot}
         format={config.spec.format}
-        status={specStatus(config.spec, dashColors)}
+        status={specStatus(config.spec, dashColors, dashTone)}
       />
     ) : (
       <Message icon={null}>
