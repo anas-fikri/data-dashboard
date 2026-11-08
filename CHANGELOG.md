@@ -37,6 +37,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **v1.12.0 (T-5edy):** tanpa migrasi dan tanpa perubahan data — hanya tata letak filter. Rollback ke
   v1.11.0 aman (filter kembali ke bilah di atas dashboard).
 
+## [1.12.0] - 2026-11-08
+
+### Added
+
+- **dashboards:** sidebar filter tetap di samping kanvas (≥ 1280 px), bisa diciutkan (T-5edy) (18843ed)
+
+### Fixed
+
+- **dashboards:** jarak vertikal tombol filter bawaan dua baris di sidebar (review T-5edy r2) (b7efc59)
+- **dashboards:** sidebar filter — tombol bawaan tidak meluber, rel tanpa scrollbar, jarak kontrol, filter silang saja tetap di atas (review T-5edy); Yang baru 1.12 (dce1add)
+
 ## [1.11.0] - 2026-11-08
 
 ### Added
