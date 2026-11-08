@@ -14,6 +14,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.11",
+    date: "2026-11-08",
+    items: [
+      'Penilaian warna bawaan: di Warna dashboard pilih "makin tinggi makin baik" (atau buruk) sekali, semua grafik dan pivot di dashboard itu langsung berwarna hijau–kuning–merah. Widget yang arahnya terbalik (mis. klaim) atau tidak perlu diwarnai bisa diubah sendiri, termasuk pilihan "Tanpa warna".',
+      "Delapan tema grafik baru: Pantai, Klasik, Bumi, Senja, Cerah, Laut, Beri, dan Ungu–biru — warnanya tetap jelas terbaca di tampilan terang maupun gelap.",
+    ],
+  },
+  {
     version: "1.10",
     date: "2026-11-07",
     items: [

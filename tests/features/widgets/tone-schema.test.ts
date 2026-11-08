@@ -210,3 +210,33 @@ describe("tema grafik + arah + tren (v1.10.0)", () => {
     ).toBe(true);
   });
 });
+
+describe("penilaian warna bawaan dashboard + tema tambahan (v1.11.0)", () => {
+  it("nilai boleh 'none' (sengaja tanpa warna); batas dengan 'none' ditolak; aturan kolom tabel hanya arah", () => {
+    expect(parseWidgetConfig("pivot", pivot({}, { agg: "sum", column: 2, tone: "none" })).ok).toBe(
+      true,
+    );
+    expect(
+      parseWidgetConfig(
+        "pivot",
+        pivot({}, { agg: "sum", column: 2, tone: "none", target: { good: 1, bad: 0 } }),
+      ).ok,
+    ).toBe(false);
+    expect(
+      parseWidgetConfig("table", {
+        sheetId: S1,
+        columns: [1, 2],
+        format,
+        status: [{ column: 2, tone: "none" }],
+      }).ok,
+    ).toBe(false);
+  });
+
+  it("dashboard menyimpan penilaian bawaan + tema baru", () => {
+    expect(dashboardColorsSchema.safeParse({ tone: "up", palette: "pantai" }).success).toBe(true);
+    expect(dashboardColorsSchema.safeParse({ tone: "none" }).success).toBe(false);
+    for (const p of ["klasik", "bumi", "senja", "cerah", "laut", "beri", "ungu"]) {
+      expect(dashboardColorsSchema.safeParse({ palette: p }).success).toBe(true);
+    }
+  });
+});

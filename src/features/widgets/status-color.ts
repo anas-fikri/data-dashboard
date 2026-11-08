@@ -7,7 +7,15 @@
  *   sepertiga atas → baik (up) / perlu perhatian (down); tengah → sedang; sepertiga bawah → kebalikannya.
  * Satu sumber untuk layar, PDF, dan grafik batang. Murni.
  */
-import type { ColorTemplate, Palette, StatusTarget, Tone, WidgetColors } from "./tone";
+import {
+  effectiveTone,
+  type ColorTemplate,
+  type Palette,
+  type StatusTarget,
+  type Tone,
+  type ToneSetting,
+  type WidgetColors,
+} from "./tone";
 
 export type Status = "good" | "mid" | "bad";
 export const STATUSES: readonly Status[] = ["good", "mid", "bad"];
@@ -35,6 +43,14 @@ export const PALETTE_LABEL: Record<Palette, string> = {
   office: "Office (gaya Excel)",
   soft: "Lembut",
   cvd: "Ramah buta warna",
+  pantai: "Pantai (biru tua, karang, hijau laut)",
+  klasik: "Klasik (navy, merah, biru)",
+  bumi: "Bumi (zaitun, tembaga, cokelat)",
+  senja: "Senja (biru tua, merah, oranye)",
+  cerah: "Cerah (biru, oranye, ungu, kuning)",
+  laut: "Laut (biru langit, oranye, navy)",
+  beri: "Beri (ungu tua, oranye, magenta)",
+  ungu: "Ungu–biru (indigo, merah muda, toska)",
 };
 
 /** Warna satu status: latar sel, teks sel, dan warna batang grafik. */
@@ -255,9 +271,14 @@ export function specStatus(
   },
   /** Template dashboard (v1.9.0): dipakai bila widget tidak memilih template sendiri. */
   fallback?: WidgetColors,
+  /**
+   * Penilaian bawaan dashboard (v1.11.0): untuk nilai yang tidak memilih penilaian sendiri; "none" di
+   * nilai = sengaja tanpa warna.
+   */
+  fallbackTone?: Tone,
 ): WidgetStatus | undefined {
   const vals = spec.values ?? (spec.measure ? [spec.measure] : []);
-  const tones = vals.map((v) => (v as { tone?: Tone }).tone);
+  const tones = vals.map((v) => effectiveTone((v as { tone?: ToneSetting }).tone, fallbackTone));
   if (!tones.some(Boolean)) return undefined;
   const targets = vals.map((v) => (v as { target?: StatusTarget }).target);
   const colors = spec.colors ?? fallback;

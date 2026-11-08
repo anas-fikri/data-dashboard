@@ -899,3 +899,22 @@ sementara. Selama di v1.9.0, aktivasi versi data baru melewati widget yang tidak
 roll-forward bisa tampil "sheet tidak tersedia" bila sheet lama terhapus retensi — pilih ulang sumber, §18).
 Bersihkan image lama tiap rilis (`docker rmi dashboard-*:<tag lama>`, jangan prune) — disk
 olympus 83 % per 2026-11-07.
+
+## 20. Pembersihan image lama otomatis (T-aw7d, mulai v1.11.0)
+
+`bash deploy/upgrade.sh start` yang lulus verifikasi langsung menjalankan `prune-images`: semua tag
+`dashboard-{app,worker,renderer,backup}` dihapus KECUALI `IMAGE_TAG` aktif, image rollback upgrade terakhir
+(`prev-<STAMP>`), `:latest` (skrip ukur kinerja), dan image yang dipakai container mana pun. Tag rollback
+gaya lama (`prev-<YYYYMMDDHHMM>` dari deploy manual) ikut terhapus. Hanya `docker rmi` per tag (tanpa `-f`, tanpa
+prune) — image aplikasi lain di olympus tidak tersentuh. Jalankan manual kapan saja:
+`bash deploy/upgrade.sh prune-images`; matikan sekali jalan dengan `PRUNE_IMAGES=0 bash deploy/upgrade.sh start`.
+Akibatnya rollback cepat hanya satu rilis ke belakang; lebih jauh = restore backup (§5) atau build ulang dari
+tag git. Berlaku juga untuk `release.sh` (Mac) dan `server-release.sh` karena keduanya memanggil `start`.
+
+## 21. Rilis v1.11.0 (tanpa migrasi) dan rollback ke v1.10.0
+
+Tanpa migrasi: preflight dengan `REUSE_BACKUP_HOURS=26 EXPECT_MIGRATION=20261107000000_dashboard_colors` (atau
+`server-release.sh`/`release.sh` yang mengisinya otomatis). Field baru di JSON yang sudah ada: `tone: "none"` di
+nilai widget, `tone` + tema baru di `Dashboard.colors`. Rollback image ke v1.10.0: widget dengan nilai "Tanpa
+warna" eksplisit tampil "Pengaturan widget tidak valid" sampai roll-forward; `Dashboard.colors` dengan `tone`
+atau tema baru ditolak skema lama → tema/template dashboard kembali bawaan sementara.

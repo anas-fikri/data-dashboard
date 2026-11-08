@@ -172,13 +172,56 @@ test.describe("tema grafik, arah batang, garis tren, Yang baru (v1.10.0)", () =>
     await expect(canvas).toHaveAttribute("data-orientation", "vertical");
     await expect(owner.getByTestId("cross-filter-chip")).toHaveCount(0);
     const box = (await canvas.boundingBox())!;
-    // Batang terakhir (Jun 2026, tertinggi) di kanan; klik bagian bawahnya (di dalam batang).
-    await owner.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.8);
+    // Batang terakhir (Jun 2026, tertinggi) di kanan; klik bagian bawahnya (di dalam batang). Klik sebelum
+    // ECharts selesai menggambar diabaikan grafik → ulangi sampai filter terpasang.
     const chip = owner.getByTestId("cross-filter-chip");
-    await expect(chip).toBeVisible();
+    await expect(async () => {
+      await owner.mouse.click(box.x + box.width * 0.9, box.y + box.height * 0.8);
+      await expect(chip).toBeVisible({ timeout: 1_500 });
+    }).toPass({ timeout: 20_000 });
     await expect(chip).toContainText("Jun 2026");
     await owner.getByTestId("cross-filter-clear").click();
     await expect(chip).toHaveCount(0);
+  });
+
+  test("penilaian warna bawaan dashboard: widget ikut, bisa 'Tanpa warna'; tema Pantai (v1.11.0)", async () => {
+    test.setTimeout(120_000);
+    await owner.goto(`/dashboards/${d}?mode=edit`);
+    const legend = card(owner).getByTestId("status-legend");
+    await expect(legend).toHaveCount(0);
+
+    await owner.getByTestId("dashboard-colors").click();
+    const pop = owner.getByTestId("dashboard-colors-panel");
+    const savedColors = () =>
+      owner.waitForResponse(
+        (r) => r.request().method() === "PATCH" && r.url().endsWith(`/api/dashboards/${d}/colors`),
+      );
+    let saving = savedColors();
+    await pick(owner, pop, "Penilaian warna bawaan", "Makin tinggi makin baik (mis. tepat waktu)");
+    expect((await saving).status()).toBe(200);
+    saving = savedColors();
+    await pick(owner, pop, "Tema grafik", /^Pantai/);
+    expect((await saving).status()).toBe(200);
+    await owner.keyboard.press("Escape");
+    // Batang tanpa penilaian sendiri kini berwarna status + legenda; tema Pantai di grafik.
+    await expect(legend).toContainText("makin tinggi makin baik", { timeout: 20_000 });
+    await expect
+      .poll(() => chartVar(card(owner).getByTestId("chart-canvas")), { timeout: 20_000 })
+      .toBe("197 37% 24%");
+
+    // Panel widget: pilihan "Ikuti dashboard (…)"; pilih "Tanpa warna" → legenda hilang.
+    await card(owner).locator("[data-widget-settings]").click();
+    const panel = owner.getByTestId("widget-panel");
+    await expect(panel.getByLabel("Penilaian warna", { exact: true })).toContainText(
+      "Ikuti dashboard (makin tinggi makin baik)",
+    );
+    await pick(owner, panel, "Penilaian warna", "Tanpa warna");
+    await saved(panel);
+    await expect(legend).toHaveCount(0, { timeout: 20_000 });
+    // Kembali ikut dashboard.
+    await pick(owner, panel, "Penilaian warna", "Ikuti dashboard (makin tinggi makin baik)");
+    await saved(panel);
+    await expect(legend).toBeVisible({ timeout: 20_000 });
   });
 
   test("Yang baru: titik penanda sampai halaman dibuka; versi di footer menautkan ke sana", async () => {

@@ -78,6 +78,10 @@ mengisi angka ambang.
 1. Di kartu **Nilai**, pilih **Penilaian warna**:
    - **Makin tinggi makin baik** — mis. _checkpoint tepat waktu_, _pengiriman sukses_.
    - **Makin tinggi makin buruk** — mis. _klaim_, _retur_, _keterlambatan_.
+     Lebih cepat untuk seluruh dashboard: **Warna dashboard → Penilaian warna bawaan** (mis. _Makin tinggi makin
+     baik_). Semua Batang, Garis, Pai, dan Pivot yang belum memilih penilaian sendiri langsung berwarna; di widget
+     pilihannya tampil sebagai _Ikuti dashboard (…)_. Pilih arah lain atau **Tanpa warna** di widget yang berbeda
+     (mis. klaim). Tabel diwarnai per kolom, Angka hanya dengan batas angka.
 2. **Template warna** bawaannya _Ikuti dashboard_: semua widget memakai satu template yang diatur sekali lewat
    tombol **Warna dashboard** di bilah atas (mode ubah) — _Lembut_ (bawaan, gaya isian Excel), _Tegas_,
    _Ramah buta warna_ (biru–oranye), atau _Warna sendiri_ (tiga warna pilihan Anda). Widget yang perlu tampil

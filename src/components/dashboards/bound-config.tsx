@@ -1,5 +1,7 @@
 "use client";
 
+import { useDashboardTone } from "@/components/widgets/dashboard-colors";
+import { effectiveTone } from "@/features/widgets/tone";
 import type { WidgetColors } from "@/features/widgets/tone";
 import { IconAlertCircle, IconPencil, IconTableShare, IconUnlink } from "@tabler/icons-react";
 import Link from "next/link";
@@ -166,6 +168,7 @@ export function BoundConfigForm({
   };
 
   const sheet = current ? sources.find((s) => s.id === current.spec.sheetId) : undefined;
+  const dashTone = useDashboardTone();
   const cols = sheet?.columns ?? [];
   const name = (pos: number) => cols.find((c) => c.pos === pos)?.name ?? "kolom";
   const set = (patch: Record<string, unknown>) => {
@@ -375,11 +378,13 @@ export function BoundConfigForm({
             <BoundStatusFields
               toned={
                 draft.type === "pivot" || draft.type === "table"
-                  ? current.spec.values.some((v) => !!v.tone)
+                  ? current.spec.values.some((v) => !!effectiveTone(v.tone, dashTone))
                   : (() => {
                       const v = current.spec.values[Number(display.value ?? 0)];
                       // Angka hanya berwarna dengan batas tetap; batang juga dengan arah saja.
-                      return draft.type === "kpi" ? !!(v?.tone && v.target) : !!v?.tone;
+                      return draft.type === "kpi"
+                        ? !!(v?.tone && v.target)
+                        : !!effectiveTone(v?.tone, dashTone);
                     })()
               }
               colors={display.colors as WidgetColors | undefined}

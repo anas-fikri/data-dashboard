@@ -9,6 +9,7 @@
 #   bash deploy/upgrade.sh migrate        4. stop app+worker, migrasi, pemeriksaan pasca-migrasi (gerbang)
 #   bash deploy/upgrade.sh start          5. up + health + verifikasi pasca-deploy
 #   bash deploy/upgrade.sh rollback       (bila gagal) image lama + database dari dump pra-upgrade
+#   bash deploy/upgrade.sh prune-images   hapus image dashboard-* lama (otomatis di akhir start yang lulus)
 #
 # Status per upgrade di ../<folder>-upgrade/<stamp>/ (mode 700, di luar folder aplikasi): state.env (tanpa
 # rahasia), dump database PLAINTEXT (hapus setelah backup harian berikutnya terverifikasi), arsip kode lama,
@@ -18,7 +19,8 @@
 # baru — rilis tanpa migrasi; dump database tetap dibuat baru; hanya berlaku bila EXPECT_MIGRATION = migrasi
 # terakhir produksi, selain itu backup lengkap), EXPECT_MIGRATION (migrasi terakhir rilis baru, diisi
 # release.sh), BACKUP_EST_GB (perkiraan ukuran backup bila belum ada arsip),
-# ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start), IMAGE_TAG
+# ROLLBACK_YES=1 (tanpa konfirmasi), ROLLBACK_LATE=1 (rollback cepat > 20 jam setelah start),
+# PRUNE_IMAGES=0 (start tidak menghapus image lama), IMAGE_TAG
 # (hanya untuk build: tag eksplisit; bawaan v<version package.json>, T-066).
 set -euo pipefail
 
@@ -529,6 +531,12 @@ start() {
   "${C[@]}" ps
   [ $rc = 0 ] || verify_fail
   record VERIFIED_AT "$(date -u +%s)"
+  # Disk VM terbatas (tiap rilis ± 5 GB image): setelah verifikasi lulus, image rilis lama dibuang —
+  # rilis aktif dan image rollback upgrade ini tetap ada (T-aw7d).
+  # Subshell: kegagalan (die) di sini tidak menggagalkan upgrade yang sudah terverifikasi.
+  if [ "${PRUNE_IMAGES:-1}" != 0 ]; then
+    (prune_images) || warn "pembersihan image lama gagal — ulangi: bash deploy/upgrade.sh prune-images"
+  fi
   cat <<EOF
 
 UPGRADE SELESAI. Uji manual (runbook §7 langkah 6): login, buka dashboard, Lihat data + salin ke Excel,
@@ -537,6 +545,41 @@ ekspor PDF, unggah file kecil. Laporan kuota kedua besok setelah pemeriksaan mal
 Rollback cepat hanya sampai ± 20 jam setelah start (sesudahnya: restore.sh dari $BACKUP_ARCHIVE).
 Setelah backup harian berikutnya terverifikasi: hapus $STATE/db-*.dump (dump database tanpa enkripsi).
 EOF
+}
+
+# ---------------------------------------------------------------------------------------------------
+# Image lama (T-aw7d): hapus tag dashboard-{app,worker,renderer,backup} SELAIN IMAGE_TAG aktif, image
+# rollback upgrade terakhir (prev-<STAMP>), :latest, dan image yang dipakai container mana pun. Hanya `docker rmi`
+# per tag (tanpa -f, tanpa prune): image yang masih dipakai ditolak Docker; image aplikasi lain tidak
+# disentuh. Lapisan tanpa tag ikut terhapus oleh rmi. Rollback lebih jauh dari satu rilis = restore backup
+# (runbook §5) atau build ulang dari tag git.
+prune_images() {
+  local keep prev used ref root before after n=0 skipped=0
+  keep=$(envval IMAGE_TAG)
+  [[ "$keep" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || die "IMAGE_TAG di $ENV_FILE kosong/tidak sah — pembersihan dibatalkan"
+  load_state
+  prev="prev-$STAMP"
+  root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)
+  before=$(free_gb "$root")
+  used=$(docker ps -a --format '{{.Image}}') || die "daftar container tidak terbaca — pembersihan dibatalkan"
+  used=$(sort -u <<<"$used")
+  info "hapus image dashboard-* lama (sisakan :$keep dan :$prev)"
+  while read -r ref; do
+    [ -n "$ref" ] || continue
+    # :latest dipakai skrip ukur kinerja (scripts/perf-*.sh) — tidak dihapus.
+    case "$ref" in *":$keep" | *":$prev" | *":latest") continue ;; esac
+    if grep -qxF "$ref" <<<"$used"; then
+      echo "   lewati $ref (dipakai container)"; skipped=$((skipped + 1)); continue
+    fi
+    if docker rmi "$ref" >/dev/null 2>&1; then
+      echo "   hapus $ref"; n=$((n + 1))
+    else
+      echo "   lewati $ref (ditolak Docker)"; skipped=$((skipped + 1))
+    fi
+  done < <(docker images --format '{{.Repository}}:{{.Tag}}' |
+    grep -E '^dashboard-(app|worker|renderer|backup):[A-Za-z0-9._-]+$' | sort -u)
+  after=$(free_gb "$root")
+  echo "   $n tag dihapus, $skipped dilewati; ruang Docker bebas ${before} → ${after} GB"
 }
 
 # ---------------------------------------------------------------------------------------------------
@@ -640,7 +683,8 @@ main() {
     migrate) migrate ;;
     start) start ;;
     rollback) rollback ;;
-    *) sed -n '2,18p' "$0" >&2; exit 1 ;;
+    prune-images) prune_images ;;
+    *) sed -n '2,19p' "$0" >&2; exit 1 ;;
   esac
 }
 

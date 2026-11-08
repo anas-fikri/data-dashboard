@@ -11,6 +11,7 @@ import {
   statusColorsOf,
   type DashboardColors,
   type Palette,
+  type Tone,
   type WidgetColors,
 } from "@/features/widgets/tone";
 import { Choice } from "./config-fields";
@@ -77,8 +78,23 @@ export function DashboardColorsControl({
   // Gabungan tema grafik + template status; semuanya bawaan → null (kolom kosong).
   const palette: Palette = colors?.palette ?? "default";
   const status = statusColorsOf(colors);
-  const merge = (p: Palette, st: WidgetColors | undefined): DashboardColors | null =>
-    p === "default" && !st ? null : { ...(st ?? {}), ...(p !== "default" ? { palette: p } : {}) };
+  const tone: Tone | undefined = colors?.tone;
+  // Gabungan tema + template + penilaian bawaan; semuanya bawaan → null (kolom kosong).
+  const merge = (next: {
+    p?: Palette;
+    st?: WidgetColors | undefined;
+    t?: Tone | undefined;
+  }): DashboardColors | null => {
+    const p = "p" in next ? next.p! : palette;
+    const st = "st" in next ? next.st : status;
+    const t = "t" in next ? next.t : tone;
+    const v: DashboardColors = {
+      ...(st ?? {}),
+      ...(p !== "default" ? { palette: p } : {}),
+      ...(t ? { tone: t } : {}),
+    };
+    return Object.keys(v).length ? v : null;
+  };
 
   function change(next: DashboardColors | null) {
     const value = next;
@@ -130,7 +146,7 @@ export function DashboardColorsControl({
             testId="dashboard-palette"
             value={palette}
             options={PALETTES.map((p) => ({ value: p, label: PALETTE_LABEL[p] }))}
-            onChange={(p) => change(merge(p, status))}
+            onChange={(p) => change(merge({ p }))}
           />
           {/* Contoh 5 warna seri tema terpilih (warna sungguhan dari globals.css). */}
           <div
@@ -149,15 +165,26 @@ export function DashboardColorsControl({
         </div>
         <div className="grid gap-2 border-t pt-3">
           {/* Di luar cakupan dashboard: tanpa pilihan "Ikuti dashboard"; Lembut = bawaan. */}
-          <DashboardColorsContext.Provider value={null}>
-            <ColorTemplateFields colors={status} onChange={(st) => change(merge(palette, st))} />
-          </DashboardColorsContext.Provider>
+          <Choice
+            label="Penilaian warna bawaan"
+            testId="dashboard-tone"
+            value={tone ?? "none"}
+            options={[
+              { value: "none", label: "Tanpa (atur per widget)" },
+              { value: "up", label: "Makin tinggi makin baik (mis. tepat waktu)" },
+              { value: "down", label: "Makin tinggi makin buruk (mis. klaim, retur)" },
+            ]}
+            onChange={(v) => change(merge({ t: v === "none" ? undefined : (v as Tone) }))}
+          />
           <p className="text-xs text-muted-foreground" data-testid="dashboard-colors-hint">
-            Warna status (hijau baik, merah perlu perhatian) hanya tampil di widget yang diberi{" "}
-            <strong>Penilaian warna</strong> — atur di pengaturan widget masing-masing, karena
-            arahnya beda per angka (checkpoint makin tinggi makin baik, klaim makin tinggi makin
-            buruk).
+            Warna status (hijau baik, merah perlu perhatian) untuk semua widget Batang, Garis, Pai,
+            dan Pivot yang belum memilih <strong>Penilaian warna</strong> sendiri. Angka yang
+            arahnya terbalik (mis. klaim) atau tidak perlu diwarnai: ubah di pengaturan widget itu.
+            Tabel diwarnai per kolom di pengaturan Tabel; Angka hanya dengan batas angka.
           </p>
+          <DashboardColorsContext.Provider value={null}>
+            <ColorTemplateFields colors={status} onChange={(st) => change(merge({ st }))} />
+          </DashboardColorsContext.Provider>
         </div>
         <p
           className={error ? "text-sm text-destructive" : "text-xs text-muted-foreground"}

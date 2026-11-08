@@ -8,7 +8,7 @@
 import { z } from "zod";
 import type { Agg, Grain } from "@/features/query/spec";
 import { calcExprSchema, calcLabelSchema, calcLeaves, isAdditiveCalc, type CalcExpr } from "./calc";
-import { colorsSchema, targetRule, targetSchema, toneSchema } from "./tone";
+import { colorsSchema, targetRule, targetSchema, toneSchema, toneSettingSchema } from "./tone";
 import { TRENDS } from "./trend";
 
 export const WIDGET_TYPES = ["empty", "table", "kpi", "bar", "line", "pie", "pivot"] as const;
@@ -120,7 +120,7 @@ export const SHOW_AS_FOR: Record<"pivot" | ChartType, readonly ShowAs[]> = {
 const shownMeasure = measureBase
   .extend({
     showAs: z.enum(SHOW_AS).optional(),
-    tone: toneSchema.optional(),
+    tone: toneSettingSchema.optional(),
     target: targetSchema.optional(),
   })
   .strict()
@@ -143,7 +143,7 @@ const calcBase = z
 const calcValue = calcBase
   .extend({
     showAs: z.enum(SHOW_AS).optional(),
-    tone: toneSchema.optional(),
+    tone: toneSettingSchema.optional(),
     target: targetSchema.optional(),
   })
   .strict()
@@ -170,12 +170,12 @@ function measureOrCalc<M extends z.ZodTypeAny, C extends z.ZodTypeAny>(m: M, c: 
 }
 /** KPI (v1.8.0): warna status hanya dengan batas tetap (satu angka tidak punya pembanding). */
 const kpiMeasure = measureBase
-  .extend({ tone: toneSchema.optional(), target: targetSchema.optional() })
+  .extend({ tone: toneSettingSchema.optional(), target: targetSchema.optional() })
   .strict()
   .refine(needsColumn.check, { message: needsColumn.message })
   .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
 const kpiCalc = calcBase
-  .extend({ tone: toneSchema.optional(), target: targetSchema.optional() })
+  .extend({ tone: toneSettingSchema.optional(), target: targetSchema.optional() })
   .strict()
   .refine(targetRule.check, { message: targetRule.message, path: targetRule.path });
 const kpiValue = measureOrCalc(kpiMeasure, kpiCalc);

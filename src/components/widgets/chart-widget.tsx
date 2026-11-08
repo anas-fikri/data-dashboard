@@ -1,6 +1,6 @@
 "use client";
 
-import { useDashboardColors } from "@/components/widgets/dashboard-colors";
+import { useDashboardColors, useDashboardTone } from "@/components/widgets/dashboard-colors";
 import { IconAlertTriangle } from "@tabler/icons-react";
 import { useEffect, useRef } from "react";
 import {
@@ -137,6 +137,7 @@ export function ChartWidget({
   onBadge?: (badge: ChartBadge | null) => void;
 }) {
   const dashColors = useDashboardColors();
+  const dashTone = useDashboardTone();
   // Semua keputusan tata letak dari kotak luar (grafik + keterangan) — bukan kotak grafik yang
   // mengecil karena keterangan itu (tidak berkedip muncul-hilang).
   const outer = useRef<HTMLDivElement>(null);
@@ -178,7 +179,7 @@ export function ChartWidget({
   const plainSum = !isAxisShowAs(showAs);
   const agg = aggOf(spec.measure);
   // Warna status (batang v1.7.0; garis + pai v1.9.0); template widget atau dashboard.
-  const st = specStatus(spec, dashColors);
+  const st = specStatus(spec, dashColors, dashTone);
   const chartStatus = st?.tones[0]
     ? {
         tone: st.tones[0],

@@ -26,7 +26,7 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 
 **Garis tren** (grafik **Garis**, atau **Batang** tegak menurut tanggal/periode): _Garis tren (lurus)_ menarik garis putus-putus seperti _Trendline_ Excel dan menulis arahnya di bawah grafik, mis. _Tren: naik 100 per bulan_; _Rata-rata 3/7 periode_ meratakan naik-turun bulanan agar arah besarnya terlihat. Periode tanpa data dilewati.
 
-**Warna dashboard** (bilah atas, mode ubah) mengatur dua hal untuk seluruh dashboard sekaligus: **Tema grafik** (warna garis, batang, dan irisan pai semua grafik — _Bawaan_, _Office_, _Lembut_, _Ramah buta warna_) dan **Template warna** status. Warna status (hijau baik, merah perlu perhatian) hanya tampil di widget yang diberi **Penilaian warna** — lihat panduan _Tabel pivot seperti di Excel_, bagian _Warna status_.
+**Warna dashboard** (bilah atas, mode ubah) mengatur tiga hal untuk seluruh dashboard sekaligus: **Tema grafik** (warna garis, batang, dan irisan pai semua grafik — _Bawaan_, _Office_, _Lembut_, _Ramah buta warna_, _Pantai_, _Klasik_, _Bumi_, _Senja_, _Cerah_, _Laut_, _Beri_, _Ungu–biru_), **Penilaian warna bawaan** (warna status untuk semua widget yang belum memilih sendiri), dan **Template warna** status. Tanpa penilaian bawaan, warna status (hijau baik, merah perlu perhatian) hanya tampil di widget yang diberi **Penilaian warna** — lihat panduan _Tabel pivot seperti di Excel_, bagian _Warna status_.
 
 Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada batang/irisan pai menyaring widget lain di dashboard. Matikan bila tidak diperlukan.
 

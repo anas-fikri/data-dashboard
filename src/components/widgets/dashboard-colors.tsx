@@ -5,6 +5,7 @@ import {
   statusColorsOf,
   type DashboardColors,
   type Palette,
+  type Tone,
   type WidgetColors,
 } from "@/features/widgets/tone";
 
@@ -20,6 +21,11 @@ export const DashboardColorsContext = createContext<{ colors: DashboardColors | 
 /** Template status dashboard yang berlaku untuk widget di dalamnya; undefined bila bawaan/di luar. */
 export function useDashboardColors(): WidgetColors | undefined {
   return statusColorsOf(useContext(DashboardColorsContext)?.colors);
+}
+
+/** Penilaian warna bawaan dashboard (v1.11.0); undefined = tidak diatur/di luar dashboard. */
+export function useDashboardTone(): Tone | undefined {
+  return useContext(DashboardColorsContext)?.colors?.tone;
 }
 
 /** Tema grafik dashboard; undefined = palet aplikasi. */

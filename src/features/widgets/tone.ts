@@ -11,6 +11,22 @@ export const TONES = ["up", "down"] as const;
 export type Tone = (typeof TONES)[number];
 export const toneSchema = z.enum(TONES);
 
+/**
+ * Penilaian warna yang disimpan di nilai widget (v1.11.0): arah, atau "none" = sengaja tanpa warna walau
+ * dashboard punya penilaian bawaan. Tidak ada = ikuti penilaian bawaan dashboard (bila diatur).
+ */
+export const TONE_SETTINGS = ["up", "down", "none"] as const;
+export type ToneSetting = (typeof TONE_SETTINGS)[number];
+export const toneSettingSchema = z.enum(TONE_SETTINGS);
+
+/** Arah yang berlaku: milik nilai, atau bawaan dashboard bila nilai tidak memilih; "none" = tanpa warna. */
+export function effectiveTone(
+  own: ToneSetting | undefined,
+  fallback: Tone | undefined,
+): Tone | undefined {
+  return own === "none" ? undefined : (own ?? fallback);
+}
+
 /** Template warna: lembut (gaya isian Excel), tegas, ramah buta warna, atau tiga warna sendiri. */
 export const COLOR_TEMPLATES = ["soft", "bold", "cvd", "custom"] as const;
 export type ColorTemplate = (typeof COLOR_TEMPLATES)[number];
@@ -35,7 +51,21 @@ export type WidgetColors = z.infer<typeof colorsSchema>;
  * Tema warna grafik dashboard (v1.10.0): warna seri Batang/Garis/Pai semua widget. "default" = palet
  * aplikasi (tidak disimpan). Warnanya di globals.css ([data-palette]), terang + gelap, ≥ 3:1 thd kartu.
  */
-export const PALETTES = ["default", "office", "soft", "cvd"] as const;
+export const PALETTES = [
+  "default",
+  "office",
+  "soft",
+  "cvd",
+  // v1.11.0: palet populer (globals.css).
+  "pantai",
+  "klasik",
+  "bumi",
+  "senja",
+  "cerah",
+  "laut",
+  "beri",
+  "ungu",
+] as const;
 export type Palette = (typeof PALETTES)[number];
 
 /**
@@ -47,6 +77,8 @@ export const dashboardColorsSchema = z
     template: z.enum(COLOR_TEMPLATES).optional(),
     custom: z.tuple([hexColorSchema, hexColorSchema, hexColorSchema]).optional(),
     palette: z.enum(PALETTES).optional(),
+    /** Penilaian warna bawaan (v1.11.0) untuk nilai widget yang tidak memilih penilaian sendiri. */
+    tone: toneSchema.optional(),
   })
   .strict()
   .refine((c) => c.template !== "custom" || c.custom !== undefined, {
@@ -76,7 +108,7 @@ export type StatusTarget = z.infer<typeof targetSchema>;
 
 /** Batas butuh arah, dan urutannya harus sesuai arah (up: baik ≥ buruk; down: baik ≤ buruk). */
 export const targetRule = {
-  check: (v: { tone?: Tone; target?: StatusTarget }) =>
+  check: (v: { tone?: ToneSetting; target?: StatusTarget }) =>
     !v.target ||
     (v.tone === "up"
       ? v.target.good >= v.target.bad
