@@ -35,7 +35,20 @@ const DOWN_LABEL = "Makin tinggi makin buruk (mis. klaim, retur)";
  * Pilihan penilaian satu nilai (v1.11.0). "inherit" = tidak disimpan: ikut penilaian bawaan dashboard
  * bila ada (selain itu tanpa warna); "none" = sengaja tanpa warna walau dashboard punya bawaan.
  */
-function toneOptions(dashTone: Tone | undefined, own: ToneSetting | undefined) {
+export function toneOptions(
+  dashTone: Tone | undefined,
+  own: ToneSetting | undefined,
+  /** Di luar dashboard (editor pivot tersimpan): nilai dipakai di banyak dashboard (review v1.11.0 #1). */
+  outside: boolean,
+) {
+  if (outside) {
+    return [
+      { value: "inherit", label: "Ikuti penilaian bawaan dashboard (bila diatur)" },
+      { value: "none", label: "Tanpa warna" },
+      { value: "up", label: UP_LABEL },
+      { value: "down", label: DOWN_LABEL },
+    ];
+  }
   // Tanpa penilaian bawaan (atau Tabel/Angka): pilihan lama — Tanpa warna, naik, turun.
   return [
     {
@@ -111,6 +124,7 @@ export function ToneChoice({
   const tone: Tone | undefined =
     value.tone === "up" || value.tone === "down" ? value.tone : undefined;
   const scopeTone = useDashboardTone();
+  const outside = useDashboardColorsScope() === null && !noInherit;
   const dashTone = noInherit ? undefined : scopeTone;
   const inherited = !value.tone ? dashTone : undefined;
   const [mode, setMode] = useState<"auto" | "target">(target || kpi ? "target" : "auto");
@@ -157,7 +171,7 @@ export function ToneChoice({
         label={label}
         testId="config-tone"
         value={value.tone ?? "inherit"}
-        options={toneOptions(dashTone, value.tone)}
+        options={toneOptions(dashTone, value.tone, outside)}
         // Ganti arah: batas lama tidak lagi sesuai urutannya → dikosongkan (isi ulang batas baru).
         onChange={(v) => {
           if (v !== "up" && v !== "down") setMode(kpi ? "target" : "auto");
@@ -369,7 +383,7 @@ export function BoundStatusFields({
     <div className="flex min-w-0 flex-col gap-2" data-testid="bound-status">
       <p className="text-xs text-muted-foreground" data-testid="bound-status-hint">
         {toned
-          ? "Penilaian warna dan batasnya diatur di pivot tersimpan (kartu Nilai); di sini bisa ganti template warna untuk widget ini."
+          ? "Penilaian warna dan batasnya diatur di pivot tersimpan (kartu Nilai), atau mengikuti penilaian bawaan dashboard; di sini bisa ganti template warna untuk widget ini."
           : "Warna status (hijau baik, merah perlu perhatian): atur Penilaian warna di pivot tersimpan — kartu Nilai."}{" "}
         {editHref ? (
           <a

@@ -468,7 +468,16 @@ export function WidgetConfigForm({
                     } as WidgetConfig)
                   }
                 />
-                {effectiveTone(draft.spec.measure.tone, dashTone) ? (
+                {(
+                  draft.type === "kpi"
+                    ? // Angka hanya berwarna dengan batas angka (tidak mewarisi penilaian bawaan).
+                      !!(
+                        draft.spec.measure.tone &&
+                        draft.spec.measure.tone !== "none" &&
+                        draft.spec.measure.target
+                      )
+                    : effectiveTone(draft.spec.measure.tone, dashTone)
+                ) ? (
                   <ColorTemplateFields
                     colors={draft.spec.colors}
                     onChange={(colors) => {
