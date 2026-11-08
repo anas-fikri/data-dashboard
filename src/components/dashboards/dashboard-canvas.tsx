@@ -19,7 +19,7 @@ import type { DashboardAccessRole } from "@/features/sharing/types";
 import { CanvasEmpty } from "./canvas-empty";
 import { CanvasToolbar, UNDO_ATTR } from "./canvas-toolbar";
 import { withUnsaved } from "./config-saves";
-import { FilterBar } from "./filters/filter-bar";
+import { FilterBar, FilterLayout } from "./filters/filter-bar";
 import { DashboardFiltersProvider } from "./filters/filter-context";
 import { crossColumnsOf, type FilterColumnView } from "./filters/filter-model";
 import {
@@ -423,116 +423,122 @@ function Canvas(props: CanvasProps) {
               </FormAlert>
             ) : null}
 
-            {ed.widgets.length ? (
-              <FilterBar
-                editing={editing}
-                manage={
-                  canEdit
-                    ? { dashboardId, columns: props.filterColumns, sources: props.sources }
-                    : null
-                }
-              />
-            ) : null}
-
-            {ed.widgets.length === 0 ? (
-              <CanvasEmpty
-                dashboardId={dashboardId}
-                editing={editing}
-                canEdit={props.role !== "VIEWER"}
-              />
-            ) : (
-              <div className="flex items-start gap-4">
-                <div
-                  ref={gridRef}
-                  className="min-w-0 flex-1"
-                  data-testid="canvas"
-                  data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
-                >
-                  {phone ? (
-                    <div className="flex flex-col gap-4">
-                      {ordered.map((it) => {
-                        const w = byId.get(it.i);
-                        return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
-                      })}
-                    </div>
-                  ) : (
-                    <ReactGridLayout
-                      // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
-                      // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
-                      key={tablet ? "tablet" : "grid"}
-                      layout={
-                        shown
-                          ? shown
-                          : ed.layout.map((it) => {
-                              const min = minOf(it.i);
-                              return { ...it, minW: min.w, minH: min.h };
-                            })
-                      }
-                      width={width}
-                      gridConfig={{
-                        cols: tablet ? TABLET_COLS : GRID_COLS,
-                        rowHeight: ROW_HEIGHT,
-                        margin: MARGIN,
-                        containerPadding: [0, 0],
-                      }}
-                      dragConfig={{
-                        enabled: canEdit && !tablet,
-                        // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
-                        handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
-                        cancel: "button",
-                      }}
-                      resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
-                      onDragStop={(l) => !tablet && ed.commitLayout(plain(l))}
-                      onResizeStop={(l) => !tablet && ed.commitLayout(plain(l))}
-                    >
-                      {ordered.map((it) => {
-                        const w = byId.get(it.i);
-                        return w ? card(w, it) : <div key={it.i} />;
-                      })}
-                    </ReactGridLayout>
-                  )}
+            <FilterLayout
+              editing={editing && ed.widgets.length > 0}
+              filterBar={
+                ed.widgets.length ? (
+                  <FilterBar
+                    editing={editing}
+                    compact={!!panelItem && wide}
+                    manage={
+                      canEdit
+                        ? { dashboardId, columns: props.filterColumns, sources: props.sources }
+                        : null
+                    }
+                  />
+                ) : null
+              }
+            >
+              {ed.widgets.length === 0 ? (
+                <CanvasEmpty
+                  dashboardId={dashboardId}
+                  editing={editing}
+                  canEdit={props.role !== "VIEWER"}
+                />
+              ) : (
+                <div className="flex items-start gap-4">
+                  <div
+                    ref={gridRef}
+                    className="min-w-0 flex-1"
+                    data-testid="canvas"
+                    data-layout={phone ? "stack" : tablet ? "tablet" : "grid"}
+                  >
+                    {phone ? (
+                      <div className="flex flex-col gap-4">
+                        {ordered.map((it) => {
+                          const w = byId.get(it.i);
+                          return w ? card(w, it, { style: phoneCardStyle(w.type) }) : null;
+                        })}
+                      </div>
+                    ) : (
+                      <ReactGridLayout
+                        // Dipasang ulang saat melintasi 1023/1024 px: seret/ubah ukuran yang sedang berjalan
+                        // batal, tidak pernah menyimpan posisi 6 kolom (review T-031 N1).
+                        key={tablet ? "tablet" : "grid"}
+                        layout={
+                          shown
+                            ? shown
+                            : ed.layout.map((it) => {
+                                const min = minOf(it.i);
+                                return { ...it, minW: min.w, minH: min.h };
+                              })
+                        }
+                        width={width}
+                        gridConfig={{
+                          cols: tablet ? TABLET_COLS : GRID_COLS,
+                          rowHeight: ROW_HEIGHT,
+                          margin: MARGIN,
+                          containerPadding: [0, 0],
+                        }}
+                        dragConfig={{
+                          enabled: canEdit && !tablet,
+                          // Sentuh: hanya ikon pegangan, agar geser jari di kepala kartu tetap menggulir halaman.
+                          handle: `.${coarse ? GRIP_HANDLE : DRAG_HANDLE}`,
+                          cancel: "button",
+                        }}
+                        resizeConfig={{ enabled: canEdit && !tablet, handles: ["se"] }}
+                        onDragStop={(l) => !tablet && ed.commitLayout(plain(l))}
+                        onResizeStop={(l) => !tablet && ed.commitLayout(plain(l))}
+                      >
+                        {ordered.map((it) => {
+                          const w = byId.get(it.i);
+                          return w ? card(w, it) : <div key={it.i} />;
+                        })}
+                      </ReactGridLayout>
+                    )}
+                  </div>
+                  {panelItem && panelWidget ? (
+                    <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
+                      <WidgetPanel
+                        widget={panelWidget}
+                        item={panelItem}
+                        can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
+                        autoTitle={autoTitle(panelWidget, props.sources)}
+                        onRename={(t) => ed.renameWidget(panelItem.i, t)}
+                        onStep={(k) => {
+                          reveal.current = panelItem.i;
+                          ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
+                        }}
+                        onDelete={() => void remove(panelItem.i)}
+                      >
+                        <WidgetSourceSection
+                          dashboardId={dashboardId}
+                          // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
+                          // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
+                          widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
+                          saveError={ed.configError(panelItem.i)}
+                          sources={props.sources}
+                          datasetId={props.datasetId}
+                          isOwner={isOwner}
+                          savedPivots={savedPivots}
+                          onSave={(type, spec, savedPivotId) =>
+                            ed.configureWidget(panelItem.i, type, spec, savedPivotId)
+                          }
+                          onDetach={() => ed.detachWidget(panelItem.i)}
+                          onCreated={(p) =>
+                            setSavedPivots((list) =>
+                              [...list.filter((x) => x.id !== p.id), p].sort((a, b) =>
+                                a.name.localeCompare(b.name, "id"),
+                              ),
+                            )
+                          }
+                        />
+                      </WidgetPanel>
+                    </WidgetPanelFrame>
+                  ) : null}
                 </div>
-                {panelItem && panelWidget ? (
-                  <WidgetPanelFrame key={panelItem.i} docked={wide} onClose={closePanel}>
-                    <WidgetPanel
-                      widget={panelWidget}
-                      item={panelItem}
-                      can={stepAvailability(ed.layout, panelItem.i, minOf(panelItem.i))}
-                      autoTitle={autoTitle(panelWidget, props.sources)}
-                      onRename={(t) => ed.renameWidget(panelItem.i, t)}
-                      onStep={(k) => {
-                        reveal.current = panelItem.i;
-                        ed.commitLayout(applyStep(ed.layout, panelItem.i, k, minOf(panelItem.i)));
-                      }}
-                      onDelete={() => void remove(panelItem.i)}
-                    >
-                      <WidgetSourceSection
-                        dashboardId={dashboardId}
-                        // Dibuka ulang saat simpanan masih berjalan atau gagal: mulai dari perubahan itu,
-                        // bukan spec lama kartu (suntingan berikutnya tidak membatalkannya).
-                        widget={withUnsaved(panelWidget, ed.unsavedConfig(panelItem.i))}
-                        saveError={ed.configError(panelItem.i)}
-                        sources={props.sources}
-                        datasetId={props.datasetId}
-                        isOwner={isOwner}
-                        savedPivots={savedPivots}
-                        onSave={(type, spec, savedPivotId) =>
-                          ed.configureWidget(panelItem.i, type, spec, savedPivotId)
-                        }
-                        onDetach={() => ed.detachWidget(panelItem.i)}
-                        onCreated={(p) =>
-                          setSavedPivots((list) =>
-                            [...list.filter((x) => x.id !== p.id), p].sort((a, b) =>
-                              a.name.localeCompare(b.name, "id"),
-                            ),
-                          )
-                        }
-                      />
-                    </WidgetPanel>
-                  </WidgetPanelFrame>
-                ) : null}
-              </div>
-            )}
+              )}
+            </FilterLayout>
           </div>
         </DashboardFiltersProvider>
       </AccessRefreshProvider>
