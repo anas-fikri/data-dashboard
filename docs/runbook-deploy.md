@@ -904,7 +904,8 @@ olympus 83 % per 2026-11-07.
 
 `bash deploy/upgrade.sh start` yang lulus verifikasi langsung menjalankan `prune-images`: semua tag
 `dashboard-{app,worker,renderer,backup}` dihapus KECUALI `IMAGE_TAG` aktif, image rollback upgrade terakhir
-(`prev-<STAMP>`), dan image yang dipakai container mana pun. Hanya `docker rmi` per tag (tanpa `-f`, tanpa
+(`prev-<STAMP>`), `:latest` (skrip ukur kinerja), dan image yang dipakai container mana pun. Tag rollback
+gaya lama (`prev-<YYYYMMDDHHMM>` dari deploy manual) ikut terhapus. Hanya `docker rmi` per tag (tanpa `-f`, tanpa
 prune) — image aplikasi lain di olympus tidak tersentuh. Jalankan manual kapan saja:
 `bash deploy/upgrade.sh prune-images`; matikan sekali jalan dengan `PRUNE_IMAGES=0 bash deploy/upgrade.sh start`.
 Akibatnya rollback cepat hanya satu rilis ke belakang; lebih jauh = restore backup (§5) atau build ulang dari

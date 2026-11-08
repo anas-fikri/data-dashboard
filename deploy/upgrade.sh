@@ -549,7 +549,7 @@ EOF
 
 # ---------------------------------------------------------------------------------------------------
 # Image lama (T-aw7d): hapus tag dashboard-{app,worker,renderer,backup} SELAIN IMAGE_TAG aktif, image
-# rollback upgrade terakhir (prev-<STAMP>), dan image yang dipakai container mana pun. Hanya `docker rmi`
+# rollback upgrade terakhir (prev-<STAMP>), :latest, dan image yang dipakai container mana pun. Hanya `docker rmi`
 # per tag (tanpa -f, tanpa prune): image yang masih dipakai ditolak Docker; image aplikasi lain tidak
 # disentuh. Lapisan tanpa tag ikut terhapus oleh rmi. Rollback lebih jauh dari satu rilis = restore backup
 # (runbook §5) atau build ulang dari tag git.
@@ -561,11 +561,13 @@ prune_images() {
   prev="prev-$STAMP"
   root=$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker)
   before=$(free_gb "$root")
-  used=$(docker ps -a --format '{{.Image}}' | sort -u)
+  used=$(docker ps -a --format '{{.Image}}') || die "daftar container tidak terbaca — pembersihan dibatalkan"
+  used=$(sort -u <<<"$used")
   info "hapus image dashboard-* lama (sisakan :$keep dan :$prev)"
   while read -r ref; do
     [ -n "$ref" ] || continue
-    case "$ref" in *":$keep" | *":$prev") continue ;; esac
+    # :latest dipakai skrip ukur kinerja (scripts/perf-*.sh) — tidak dihapus.
+    case "$ref" in *":$keep" | *":$prev" | *":latest") continue ;; esac
     if grep -qxF "$ref" <<<"$used"; then
       echo "   lewati $ref (dipakai container)"; skipped=$((skipped + 1)); continue
     fi
