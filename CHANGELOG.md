@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kembali ke warna bawaan sementara (data tetap; runbook-deploy §21). Setelah upgrade, `start` menghapus image
   `dashboard-*` lama otomatis (runbook-deploy §20).
 
+- **v1.12.0 (T-5edy):** tanpa migrasi dan tanpa perubahan data — hanya tata letak filter. Rollback ke
+  v1.11.0 aman (filter kembali ke bilah di atas dashboard).
+
 ## [1.11.0] - 2026-11-08
 
 ### Added

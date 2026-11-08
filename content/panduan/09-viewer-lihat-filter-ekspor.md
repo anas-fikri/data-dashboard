@@ -13,7 +13,12 @@ Buka **Dashboard** → **Dibagikan ke saya**, atau dari **Beranda**. Dashboard y
 
 ## Memakai filter
 
-Di bilah **Filter** di atas dashboard:
+Di layar lebar (laptop/monitor, ≥ 1280 px) **Filter** ada di panel kiri yang tetap terlihat saat halaman digulir —
+tidak perlu naik ke atas untuk mengganti filter. Butuh ruang lebih untuk grafik? Tekan ikon **Ciutkan filter**:
+panel menjadi ikon kecil dengan jumlah filter aktif; tekan ikon itu untuk membukanya lagi (pilihan diingat
+browser). Di layar lebih kecil, **Filter** ada di atas dashboard (ponsel: tombol **Filter**).
+
+Di panel/bilah **Filter**:
 
 - **Nilai** — ketik di **Cari nilai…**, centang satu atau beberapa nilai, atau **Pilih semua**.
 - **Tanggal** — tiga cara:
