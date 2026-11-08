@@ -34,6 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kembali ke warna bawaan sementara (data tetap; runbook-deploy §21). Setelah upgrade, `start` menghapus image
   `dashboard-*` lama otomatis (runbook-deploy §20).
 
+## [1.11.0] - 2026-11-08
+
+### Added
+
+- **deploy:** bersihkan image dashboard-* lama otomatis setelah upgrade lulus (T-aw7d) (6da3590)
+- **widgets:** penilaian warna bawaan dashboard + 8 tema grafik baru (v1.11.0) (491b443)
+
+### Fixed
+
+- **deploy:** prune-images berhenti bila daftar container gagal dibaca; :latest tidak dihapus (review T-aw7d) (428de0e)
+- **widgets:** "Tanpa warna" di editor pivot tersimpan tersimpan sebagai none; KPI tanpa batas tanpa template (review v1.11.0) (022c31b)
+
 ## [1.10.0] - 2026-11-07
 
 ### Added
