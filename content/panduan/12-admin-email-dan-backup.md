@@ -20,7 +20,7 @@ Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap
 
 ## Backup ke NAS Synology
 
-Buka **Admin → Backup ke NAS Synology**. **Status backup** menampilkan backup harian terakhir (02.00 WIB), ukurannya, dan salinan di NAS.
+Buka **Admin → Backup ke NAS Synology**. **Status backup** menampilkan backup harian terakhir (02.00 WIB), ukurannya, salinan di NAS, sisa ruang disk server dan NAS, serta penjelasan galat terakhir dalam bahasa sehari-hari beserta langkah perbaikannya.
 
 Siapkan dulu di DSM (sekali saja, oleh pengelola NAS):
 
@@ -39,3 +39,24 @@ Kunci host mencegah server lain menyamar sebagai NAS: setelah disimpan, koneksi 
 Password tidak pernah ditampilkan lagi. Kosongkan kolom **Password** untuk tetap memakai password yang tersimpan — hanya berlaku bila alamat NAS, port, username, dan kunci host tidak berubah.
 
 Bila NAS tidak terjangkau, backup tetap dibuat dan disimpan sementara di server, dikirim ulang otomatis tiap 30 menit, dan admin menerima email serta pemberitahuan di aplikasi. Pemberitahuan juga muncul bila tidak ada backup baru lebih dari 26 jam.
+
+### Kirim ulang sekarang
+
+Tekan **Kirim ulang sekarang** di kotak **Status backup** untuk mengirim arsip yang tertunda tanpa menunggu jadwal — mis. setelah admin NAS menambah ruang. Pengiriman mulai dalam ± 1 menit (paling sering sekali per 5 menit); halaman memperbarui statusnya sendiri setelah selesai.
+
+Bila NAS **menolak menyimpan** (biasanya ruang atau kuota NAS habis), kirim ulang otomatis dijeda bertahap — 30 menit, 1 jam, 2 jam, lalu tiap 4 jam — agar server tidak mengunggah arsip besar berulang kali dengan sia-sia. Jadwal berikutnya tampil di **Tertunda**. Begitu berhasil, jadwal kembali tiap 30 menit.
+
+**Sisa ruang NAS** adalah ruang volume NAS. Kuota folder atau akun di DSM bisa lebih kecil dan tidak terlihat dari aplikasi: bila galat menyebut NAS menolak menyimpan padahal ruangnya tampak lapang, periksa **Panel Kontrol → Folder Bersama → Edit → Kuota** dan **Panel Kontrol → Pengguna → Kuota**. **Tes koneksi** juga menampilkan sisa ruang bila NAS mendukungnya.
+
+### Arsip di server
+
+Tabel **Arsip di server** mendaftar setiap backup (terbaru di atas), ukurannya, dan apakah sudah ada di NAS (**Sudah di NAS**) atau masih **Menunggu dikirim**.
+
+### Lama simpan arsip
+
+Setiap backup harian adalah salinan lengkap database dan semua file, jadi ruang yang dipakai ± lama simpan × ukuran arsip. Atur di **Lama simpan arsip**:
+
+- **Lama simpan di server** (3–365 hari): arsip yang sudah ada di NAS dihapus dari server setelah sekian hari. Arsip yang belum terkirim tidak dihapus.
+- **Lama simpan di NAS** (7–365 hari): arsip di NAS yang lebih tua dihapus otomatis.
+
+Saran: server 7 hari, NAS 30 hari. Perkiraan ruang tampil di bawah tiap kolom. Tekan **Simpan lama simpan**; pengaturan berlaku dalam ± 1 menit. **Pakai bawaan server** mengembalikan nilai dari pengaturan server.

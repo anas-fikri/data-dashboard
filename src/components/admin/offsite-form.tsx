@@ -9,8 +9,11 @@ import type {
   BackupResult,
   OffsiteField,
   OffsiteInput,
+  OffsiteProbe,
   OffsiteView,
 } from "@/features/backup/types";
+import { lowSpace } from "@/features/backup/display";
+import { formatSize } from "./backup-format";
 import { OffsiteFields, offsiteFieldId as id } from "./offsite-fields";
 import { OffsiteHostKey } from "./offsite-host-key";
 
@@ -22,7 +25,23 @@ const CTA = "h-(--control-h-lg) w-full md:h-(--control-h) md:w-auto";
  * saat ini (belum perlu disimpan) dan mengambil kunci host NAS; password tersimpan tidak pernah dikirim ke
  * browser — kolom kosong = tetap.
  */
-export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
+/** Sisa ruang dari Tes koneksi (T-tsvf); NAS tanpa statvfs → kosong. */
+function spaceNote(space: OffsiteProbe["space"], last: number | null): string {
+  if (!space) return "";
+  const base = ` Sisa ruang volume NAS: ${formatSize(space.freeBytes)} dari ${formatSize(space.totalBytes)} (kuota folder/akun di DSM bisa lebih kecil).`;
+  return lowSpace(space.freeBytes, last)
+    ? `${base} Perhatian: kurang dari 2 × arsip terakhir (${formatSize(last!)}) — minta admin NAS menambah ruang.`
+    : base;
+}
+
+export function OffsiteForm({
+  initial,
+  lastSizeBytes = null,
+}: {
+  initial: OffsiteView | null;
+  /** Ukuran arsip terakhir untuk peringatan ruang NAS. */
+  lastSizeBytes?: number | null;
+}) {
   const [values, setValues] = useState<OffsiteInput>({
     enabled: initial?.enabled ?? true,
     host: initial?.host ?? "",
@@ -79,9 +98,10 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
         finish(res, (data) => {
           setValues((s) => ({ ...s, hostKey: data.hostKey }));
           setFingerprint(data.fingerprint);
+          const note = spaceNote(data.space, lastSizeBytes);
           return input.hostKey
-            ? "Koneksi berhasil: server aplikasi bisa menulis, membaca, dan menghapus di folder NAS ini."
-            : `Koneksi berhasil. Kunci host NAS dicatat (${data.fingerprint}) — tekan Simpan untuk memakainya.`;
+            ? `Koneksi berhasil: server aplikasi bisa menulis, membaca, dan menghapus di folder NAS ini.${note}`
+            : `Koneksi berhasil. Kunci host NAS dicatat (${data.fingerprint}) — tekan Simpan untuk memakainya.${note}`;
         });
         return;
       }
@@ -91,7 +111,7 @@ export function OffsiteForm({ initial }: { initial: OffsiteView | null }) {
         setSavedKey(data.hostKey);
         set("password", "");
         return data.enabled
-          ? "Tersimpan. Backup berikutnya dan kirim ulang tiap 30 menit memakai NAS ini."
+          ? "Tersimpan. Arsip yang tertunda dikirim ke NAS ini dalam ± 1 menit; backup berikutnya juga memakai NAS ini."
           : "Tersimpan. Salinan ke NAS nonaktif: backup hanya tersimpan di server aplikasi.";
       });
     });

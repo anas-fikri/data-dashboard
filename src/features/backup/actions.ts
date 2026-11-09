@@ -8,7 +8,17 @@ import { clientIp } from "@/features/auth/rate-limit";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import * as service from "./service";
-import type { BackupResult, OffsiteInput, OffsiteProbe, OffsiteView } from "./types";
+import type {
+  BackupResult,
+  OffsiteField,
+  OffsiteInput,
+  OffsiteProbe,
+  OffsiteView,
+  RetentionField,
+  RetentionInput,
+  RetentionView,
+  SyncState,
+} from "./types";
 
 /*
  * Server Action Admin › Backup (T-7psf): admin aktif dari DB (selain itu NOT_FOUND, D2), rate limit per
@@ -17,10 +27,10 @@ import type { BackupResult, OffsiteInput, OffsiteProbe, OffsiteView } from "./ty
 
 const NOT_FOUND = { ok: false, code: "NOT_FOUND", message: "Halaman tidak ditemukan." } as const;
 
-async function asAdmin<T>(
+async function asAdmin<T, F extends string = OffsiteField>(
   action: string,
-  run: (actor: { id: string; email: string }, ip: string) => Promise<BackupResult<T>>,
-): Promise<BackupResult<T>> {
+  run: (actor: { id: string; email: string }, ip: string) => Promise<BackupResult<T, F>>,
+): Promise<BackupResult<T, F>> {
   try {
     const actor = await currentAdmin(action);
     if (!actor) return NOT_FOUND;
@@ -45,4 +55,51 @@ export async function saveOffsiteAction(input: OffsiteInput): Promise<BackupResu
     if (r.ok) revalidatePath("/admin/backup");
     return r;
   });
+}
+
+export async function saveRetentionAction(
+  input: RetentionInput,
+): Promise<BackupResult<RetentionView, RetentionField>> {
+  return asAdmin("saveBackupRetention", async (actor, ip) => {
+    const r = await service.saveRetention(actor, input, ip);
+    if (r.ok) revalidatePath("/admin/backup");
+    return r;
+  });
+}
+
+export async function resetRetentionAction(): Promise<BackupResult<null, RetentionField>> {
+  return asAdmin("resetBackupRetention", async (actor, ip) => {
+    const r = await service.resetRetention(actor, ip);
+    if (r.ok) revalidatePath("/admin/backup");
+    return r;
+  });
+}
+
+export async function requestSyncAction(): Promise<BackupResult<SyncState>> {
+  return asAdmin("requestBackupSync", async (actor, ip) => {
+    const r = await service.requestSync(actor, ip);
+    if (r.ok) revalidatePath("/admin/backup");
+    return r;
+  });
+}
+
+/**
+ * Dipantau tombol "Kirim ulang sekarang" selama permintaan/run berjalan. Tanpa rate limit (hanya membaca,
+ * dipanggil berkala), tetap admin aktif saja.
+ */
+export async function syncStateAction(): Promise<
+  BackupResult<{ sync: SyncState; updatedAt: string | null }>
+> {
+  try {
+    const actor = await currentAdmin("backupSyncState");
+    if (!actor) return NOT_FOUND;
+    return { ok: true, data: await service.getSyncState() };
+  } catch (e) {
+    unstable_rethrow(e);
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e) },
+      "status kirim ulang gagal dibaca",
+    );
+    return { ok: false, code: "BUSY", message: "Terjadi kesalahan. Coba lagi beberapa saat lagi." };
+  }
 }

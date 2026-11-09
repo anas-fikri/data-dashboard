@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,8 +27,10 @@ vi.mock("@/features/backup/probe", () => probe);
 
 const config = await import("@/features/backup/config");
 const service = await import("@/features/backup/service");
-const { probeMessage } =
+const { probeMessage, spaceFromStatvfs } =
   await vi.importActual<typeof import("@/features/backup/probe")>("@/features/backup/probe");
+const display = await import("@/features/backup/display");
+const fmt = await import("@/components/admin/backup-format");
 
 const SECRET = "dummy-nas-password-uji";
 const ACTOR = { id: "admin1", email: "admin@pcpexpress.com" };
@@ -100,6 +102,15 @@ describe("backupAlert", () => {
     lastOffsiteOkAt: null,
     error: null,
     updatedAt: new Date().toISOString(),
+    syncFailures: 0,
+    nextSyncAt: null,
+    lastRequestAt: null,
+    retention: null,
+    archives: [],
+    localBytes: null,
+    disk: null,
+    remote: null,
+    nasSpace: null,
   };
 
   it("normal → tanpa peringatan; belum ada status → tanpa peringatan", () => {
@@ -255,7 +266,7 @@ describe("saveOffsite / testOffsite", () => {
     expect(probe.probeOffsite).toHaveBeenCalledWith(expect.objectContaining({ password: SECRET }));
     expect(await service.testOffsite(input({ hostKey: "" }))).toEqual({
       ok: true,
-      data: { hostKey: HOST_KEY, fingerprint: config.fingerprint(HOST_KEY) },
+      data: { hostKey: HOST_KEY, fingerprint: config.fingerprint(HOST_KEY), space: null },
     });
   });
 
@@ -298,5 +309,168 @@ describe("probeMessage", () => {
     [{ level: "aneh" }, c, "", "Tes gagal (aneh)"],
   ])("%j → %s", (err, conf, seen, text) => {
     expect(probeMessage(err, conf, seen)).toContain(text);
+  });
+});
+
+describe("lama simpan, kirim ulang, status baru (T-tsvf)", () => {
+  const exists = (f: string) => existsSync(join(ctx.dir, f));
+
+  it.each([
+    [{ localDays: "", remoteDays: "30" }, "localDays", "harus angka"],
+    [{ localDays: "2", remoteDays: "30" }, "localDays", "minimal 3"],
+    [{ localDays: "7", remoteDays: "6" }, "remoteDays", "minimal 7"],
+    [{ localDays: "3.5", remoteDays: "30" }, "localDays", "bilangan bulat"],
+    [{ localDays: "7", remoteDays: "366" }, "remoteDays", "maksimal 365"],
+    [{ localDays: "7", remoteDays: "abc" }, "remoteDays", "harus angka"],
+  ])("menolak %j di kolom %s", async (value, field, text) => {
+    const r = await service.saveRetention(ACTOR, value, "ip");
+    expect(r).toMatchObject({ ok: false, code: "INVALID", field });
+    expect(r.ok ? "" : r.message).toContain(text);
+    expect(exists("app/retention.json")).toBe(false);
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it("simpan → retention.json 600 + audit + permintaan penerapan; bawaan → file dihapus", async () => {
+    const r = await service.saveRetention(
+      ACTOR,
+      { localDays: " 7 ", remoteDays: "30" },
+      "10.0.0.1",
+    );
+    expect(r).toMatchObject({
+      ok: true,
+      data: { localDays: 7, remoteDays: 30, updatedBy: ACTOR.email },
+    });
+    const file = join(ctx.dir, "app/retention.json");
+    expect(statSync(file).mode & 0o777).toBe(0o600);
+    expect(JSON.parse(readFileSync(file, "utf8"))).toMatchObject({ localDays: 7, remoteDays: 30 });
+    expect(await config.readRetention()).toMatchObject({ localDays: 7, remoteDays: 30 });
+    expect(exists("app/sync-request")).toBe(true);
+    expect((audit.recordAudit.mock.calls[0] as unknown[])[1]).toMatchObject({
+      action: "backup.retention.update",
+      meta: { localDays: 7, remoteDays: 30 },
+      ip: "10.0.0.1",
+    });
+
+    expect(await service.resetRetention(ACTOR, "ip")).toEqual({ ok: true, data: null });
+    expect(exists("app/retention.json")).toBe(false);
+    expect(await config.readRetention()).toBeNull();
+    expect((audit.recordAudit.mock.calls[1] as unknown[])[1]).toMatchObject({
+      action: "backup.retention.reset",
+    });
+  });
+
+  it("kirim ulang sekarang: permintaan ditulis sekali (diaudit sekali) sampai diambil service backup", async () => {
+    expect(await service.requestSync(ACTOR, "ip")).toEqual({
+      ok: true,
+      data: { requested: true, running: null },
+    });
+    expect(await service.requestSync(ACTOR, "ip")).toMatchObject({ ok: true });
+    expect(audit.recordAudit).toHaveBeenCalledTimes(1);
+    expect((audit.recordAudit.mock.calls[0] as unknown[])[1]).toMatchObject({
+      action: "backup.sync.request",
+    });
+    expect((await service.getBackupPage()).sync).toEqual({ requested: true, running: null });
+    rmSync(join(ctx.dir, "app/sync-request"));
+    expect((await service.getSyncState()).sync.requested).toBe(false);
+  });
+
+  it("simpan NAS aktif → permintaan kirim ulang; nonaktif → tanpa permintaan", async () => {
+    await service.saveOffsite(ACTOR, input({ enabled: false }), "ip");
+    expect(exists("app/sync-request")).toBe(false);
+    await service.saveOffsite(ACTOR, input(), "ip");
+    expect(exists("app/sync-request")).toBe(true);
+  });
+
+  it("running.json: run berjalan terbaca; sisa run > 12 jam diabaikan", async () => {
+    const write = (since: string) =>
+      writeFileSync(join(ctx.dir, "running.json"), JSON.stringify({ kind: "sync", since }));
+    write(new Date().toISOString());
+    expect(await config.readRunning()).toMatchObject({ kind: "sync" });
+    write(new Date(Date.now() - 13 * 3600_000).toISOString());
+    expect(await config.readRunning()).toBeNull();
+  });
+
+  it("status baru terbaca utuh; bagian yang rusak jatuh ke bawaan tanpa membuang status", async () => {
+    const base = { state: "pending", pending: 1, updatedAt: "2026-11-09T10:00:00Z" };
+    writeFileSync(
+      join(ctx.dir, "status.json"),
+      JSON.stringify({
+        ...base,
+        syncFailures: 2,
+        nextSyncAt: "2026-11-09T11:00:00Z",
+        retention: { localDays: 7, remoteDays: 30, source: "app" },
+        archives: [{ name: "dashboard-20261109T190000Z.tar.age", sizeBytes: 5, offsite: false }],
+        localBytes: 5,
+        disk: { totalBytes: 100, freeBytes: 40 },
+        remote: { target: "t", count: 1, bytes: 5, oldest: null, newest: null, checkedAt: "x" },
+        nasSpace: { target: "t", totalBytes: 10, freeBytes: 1, checkedAt: "x" },
+      }),
+    );
+    expect(await config.readStatus()).toMatchObject({
+      syncFailures: 2,
+      nextSyncAt: "2026-11-09T11:00:00Z",
+      retention: { source: "app" },
+      archives: [{ sizeBytes: 5 }],
+      disk: { freeBytes: 40 },
+      nasSpace: { freeBytes: 1 },
+    });
+    writeFileSync(
+      join(ctx.dir, "status.json"),
+      JSON.stringify({ ...base, archives: "rusak", disk: { totalBytes: -1 }, syncFailures: "x" }),
+    );
+    expect(await config.readStatus()).toMatchObject({
+      state: "pending",
+      archives: [],
+      disk: null,
+      syncFailures: 0,
+      retention: null,
+    });
+  });
+});
+
+describe("tampilan Admin › Backup (T-tsvf)", () => {
+  it.each([
+    ['Update ReadFrom failed: sftp: "Failure" (SSH_FX_FAILURE)', "ruang penyimpanan NAS penuh"],
+    ["sftp: permission denied", "tidak punya izin"],
+    ["ssh: unable to authenticate, attempted methods [none password]", "username atau password"],
+    ["dial tcp 10.3.3.50:22: i/o timeout", "tidak bisa terhubung"],
+    ["konfigurasi NAS dari aplikasi tidak terbaca", "Pengaturan NAS tidak terbaca"],
+    ["backup gagal di langkah: pg_dump", "log service backup"],
+  ])("errorHint(%s) → %s", (error, text) => {
+    expect(display.errorHint(error)).toContain(text);
+  });
+
+  it("errorHint galat tak dikenal/kosong → null; archiveTime; lowSpace", () => {
+    expect(display.errorHint("sesuatu yang aneh")).toBeNull();
+    expect(display.errorHint(null)).toBeNull();
+    expect(display.archiveTime("dashboard-20261109T190000Z.tar.age")).toBe("2026-11-09T19:00:00Z");
+    expect(display.archiveTime("lain.tar.age")).toBeNull();
+    expect(display.lowSpace(100, 60)).toBe(true);
+    expect(display.lowSpace(120, 60)).toBe(false);
+    expect(display.lowSpace(1, null)).toBe(false);
+  });
+
+  it("spaceFromStatvfs: number/BigInt, f_frsize 0 → f_bsize, isi aneh → null", () => {
+    const st = { f_bsize: 4096, f_frsize: 4096, f_blocks: 1000, f_bavail: 250 };
+    expect(spaceFromStatvfs(st)).toEqual({ totalBytes: 4096000, freeBytes: 1024000 });
+    expect(spaceFromStatvfs({ ...st, f_frsize: 0, f_blocks: 10n, f_bavail: 5n })).toEqual({
+      totalBytes: 40960,
+      freeBytes: 20480,
+    });
+    expect(spaceFromStatvfs({ ...st, f_bavail: 2000 })).toBeNull();
+    expect(spaceFromStatvfs({ f_blocks: "x" })).toBeNull();
+    expect(spaceFromStatvfs(undefined)).toBeNull();
+  });
+
+  it("format WIB dan ukuran sama di server dan browser (tanpa Intl)", () => {
+    expect(fmt.formatWib("2026-11-09T10:05:00Z")).toBe("9 Nov 2026 17.05 WIB");
+    expect(fmt.formatWib("2026-12-31T17:30:00Z")).toBe("1 Jan 2027 00.30 WIB");
+    expect(fmt.formatWib(null)).toBeNull();
+    expect(fmt.formatWibTime("2026-11-09T10:05:00Z")).toBe("17.05 WIB");
+    expect(fmt.formatSize(500)).toBe("1 KB");
+    expect(fmt.formatSize(429 * 1024 ** 2)).toBe("429 MB");
+    expect(fmt.formatSize(1.15 * 1024 ** 3)).toBe("1,1 GB");
+    expect(fmt.formatSize(2 * 1024 ** 3)).toBe("2 GB");
+    expect(fmt.formatSize(4 * 1024 ** 4)).toBe("4 TB");
   });
 });

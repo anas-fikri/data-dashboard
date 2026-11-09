@@ -42,12 +42,14 @@ afterAll(async () => {
 describe("probeOffsite", () => {
   it("berhasil → kunci host NAS dikembalikan, file uji dihapus lagi", async () => {
     const r = await probeOffsite(cfg());
-    expect(r).toEqual({ ok: true, hostKey: nas.hostKey });
+    // Server tiruan tidak mengiklankan statvfs@openssh.com → sisa ruang null tanpa menggagalkan tes (T-tsvf).
+    expect(r).toEqual({ ok: true, hostKey: nas.hostKey, space: null });
     expect(readdirSync(join(root, "backup-data-dashboard"))).toEqual([]);
     // Dengan kunci yang dipin: tetap berhasil.
     expect(await probeOffsite(cfg({ hostKey: nas.hostKey }))).toEqual({
       ok: true,
       hostKey: nas.hostKey,
+      space: null,
     });
   });
 
@@ -142,6 +144,7 @@ describe("probeOffsite", () => {
       expect(await probeOffsite(cfg({ port: dsm.port }))).toEqual({
         ok: true,
         hostKey: dsm.hostKey,
+        space: null,
       });
       expect(readdirSync(join(root, "backup-data-dashboard"))).toEqual([]);
     } finally {

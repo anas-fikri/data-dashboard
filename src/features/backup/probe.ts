@@ -2,6 +2,7 @@ import "server-only";
 import { Client, type ConnectConfig, type SFTPWrapper, type Stats } from "ssh2";
 import { logger } from "@/lib/logger";
 import { fingerprint, type ParsedOffsite } from "./config";
+import type { SpaceInfo } from "./types";
 
 /*
  * Tes koneksi NAS Synology lewat SFTP dari server aplikasi (T-y8qq): periksa folder → daftar → tulis →
@@ -40,6 +41,36 @@ const STEPS = {
   read: "membaca file uji",
   unlink: "menghapus file uji",
 } as const;
+
+/**
+ * Sisa ruang dari balasan statvfs@openssh.com (ssh2: number atau BigInt). Ruang untuk akun biasa (f_bavail),
+ * bukan root. Isi yang tidak masuk akal → null.
+ */
+export function spaceFromStatvfs(st: unknown): SpaceInfo | null {
+  if (!st || typeof st !== "object") return null;
+  const v = st as Record<string, unknown>;
+  const n = (k: string) => {
+    const x = v[k];
+    return typeof x === "bigint" ? Number(x) : typeof x === "number" ? x : NaN;
+  };
+  const unit = n("f_frsize") || n("f_bsize");
+  const totalBytes = n("f_blocks") * unit;
+  const freeBytes = n("f_bavail") * unit;
+  if (![totalBytes, freeBytes].every((x) => Number.isFinite(x) && x >= 0)) return null;
+  if (totalBytes === 0 || freeBytes > totalBytes) return null;
+  return { totalBytes, freeBytes };
+}
+
+/** Sisa ruang folder NAS bila server mendukung statvfs@openssh.com; tidak didukung/gagal → null. */
+async function nasSpace(s: SFTPWrapper, folder: string): Promise<SpaceInfo | null> {
+  try {
+    // Melempar seketika (bukan lewat callback) bila NAS tidak mengiklankan ekstensinya.
+    const st = await call<unknown>((cb) => s.ext_openssh_statvfs(folder, cb));
+    return spaceFromStatvfs(st);
+  } catch {
+    return null;
+  }
+}
 
 /** Galat yang pesannya sudah untuk admin. */
 class ProbeError extends Error {}
@@ -151,7 +182,9 @@ const call = <T>(fn: (cb: (err: Error | null | undefined, v?: T) => void) => voi
 /** Berhasil → kunci host yang dilihat; gagal → pesan untuk admin. */
 export async function probeOffsite(
   c: ParsedOffsite,
-): Promise<{ ok: true; hostKey: string } | { ok: false; message: string }> {
+): Promise<
+  { ok: true; hostKey: string; space: SpaceInfo | null } | { ok: false; message: string }
+> {
   const conn = new Client();
   let seen = "";
   let step = "";
@@ -200,7 +233,8 @@ export async function probeOffsite(
     step = STEPS.unlink;
     await call((cb) => s.unlink(file, cb));
     made.length = 0;
-    return { ok: true, hostKey: seen };
+    step = "";
+    return { ok: true, hostKey: seen, space: await nasSpace(s, c.folder) };
   } catch (e) {
     // File uji yang sempat dibuat jangan tertinggal di NAS (abaikan galat; batas waktu tetap berlaku).
     for (const f of made) {

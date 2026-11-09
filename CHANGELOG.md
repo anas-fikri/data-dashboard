@@ -36,6 +36,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **v1.12.0 (T-5edy):** tanpa migrasi dan tanpa perubahan data — hanya tata letak filter. Rollback ke
   v1.11.0 aman (filter kembali ke bilah di atas dashboard).
+- **v1.13.0 (T-tsvf):** tanpa migrasi database. Image **backup** berubah (cron `--tick` tiap menit untuk
+  "Kirim ulang sekarang") — `release.sh` membangun dan memuatnya seperti biasa. Lama simpan dari Admin › Backup
+  (`app/retention.json`) menggantikan `BACKUP_RETENTION_DAYS`/`BACKUP_LOCAL_RETENTION_DAYS` di `.env.prod`.
+  Rollback ke v1.12.0 aman: `retention.json` dan field baru `status.json` diabaikan (lama simpan kembali ke
+  `.env.prod`), tombol kirim ulang hilang, dan kirim ulang kembali tiap 30 menit tanpa jeda (runbook-deploy §22).
 
 ## [1.12.0] - 2026-11-08
 

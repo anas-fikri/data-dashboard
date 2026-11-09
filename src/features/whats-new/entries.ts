@@ -14,6 +14,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.13",
+    date: "2026-11-09",
+    items: [
+      "Untuk admin — halaman Admin › Backup kini menampilkan daftar arsip backup (sudah di NAS atau belum), sisa ruang disk server dan NAS, serta penjelasan galat dalam bahasa sehari-hari beserta langkah perbaikannya.",
+      "Untuk admin — tombol Kirim ulang sekarang mengirim backup yang tertunda ke NAS tanpa menunggu jadwal, dan lama simpan arsip di server maupun di NAS bisa diatur langsung dari halaman itu.",
+      "Bila NAS penuh, pengiriman ulang otomatis kini dijeda bertahap (sampai tiap 4 jam) agar server tidak mengunggah arsip besar berulang kali dengan sia-sia.",
+    ],
+  },
+  {
     version: "1.12",
     date: "2026-11-08",
     items: [

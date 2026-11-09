@@ -1,10 +1,18 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { sharedConfigDir } from "@/lib/config-dir";
-import type { BackupAlert, BackupStatus, OffsiteField } from "./types";
+import { RETENTION_LIMITS } from "./display";
+import type {
+  BackupAlert,
+  BackupRun,
+  BackupStatus,
+  OffsiteField,
+  RetentionField,
+  RetentionView,
+} from "./types";
 
 /*
  * Target backup off-VM yang diisi admin (T-7psf; NAS Synology lewat SFTP sejak T-y8qq) dan status dari
@@ -16,7 +24,12 @@ import type { BackupAlert, BackupStatus, OffsiteField } from "./types";
 
 const configDir = sharedConfigDir;
 const OFFSITE = join("app", "offsite.json");
+const RETENTION = join("app", "retention.json");
+const SYNC_REQUEST = join("app", "sync-request");
 const STATUS = "status.json";
+const RUNNING = "running.json";
+/** running.json lebih tua dari ini = sisa container yang dimatikan paksa, bukan run yang masih berjalan. */
+const RUN_STALE_MS = 12 * 60 * 60 * 1000;
 /** Backup harian yang lebih tua dari ini dianggap tidak berjalan (jadwal 24 jam + jeda durasi). */
 export const STALE_MS = 26 * 60 * 60 * 1000;
 
@@ -123,13 +136,105 @@ export async function readOffsite(): Promise<StoredOffsite | null> {
 }
 
 /** Tulis atomik (file sementara + rename), hanya bisa dibaca pemilik (user app) dan root (service backup). */
-export async function writeOffsite(value: StoredOffsite): Promise<void> {
+async function writeApp(name: string, content: string): Promise<void> {
   const dir = join(configDir(), "app");
   await mkdir(dir, { recursive: true });
-  const tmp = join(dir, `.offsite.${process.pid}.${Date.now()}.tmp`);
-  await writeFile(tmp, `${JSON.stringify(value)}\n`, { mode: 0o600 });
-  await rename(tmp, join(configDir(), OFFSITE));
+  const tmp = join(dir, `.${name.replace(/^app\//, "")}.${process.pid}.${Date.now()}.tmp`);
+  await writeFile(tmp, content, { mode: 0o600 });
+  await rename(tmp, join(configDir(), name));
 }
+
+export async function writeOffsite(value: StoredOffsite): Promise<void> {
+  await writeApp(OFFSITE, `${JSON.stringify(value)}\n`);
+}
+
+/* Lama simpan arsip (T-tsvf): app/retention.json dibaca backup.sh dengan aturan yang sama (display.ts). */
+
+const days = (label: string, { min, max }: { min: number; max: number }) =>
+  z.coerce
+    .number({ message: `${label} harus angka hari.` })
+    .int(`${label} harus bilangan bulat (hari).`)
+    .min(min, `${label} minimal ${min} hari.`)
+    .max(max, `${label} maksimal ${max} hari.`);
+
+export const retentionSchema = z.object({
+  localDays: days("Lama simpan di server", RETENTION_LIMITS.localDays),
+  remoteDays: days("Lama simpan di NAS", RETENTION_LIMITS.remoteDays),
+});
+
+export function parseRetention(
+  raw: unknown,
+):
+  | { ok: true; data: z.infer<typeof retentionSchema> }
+  | { ok: false; field?: RetentionField; message: string } {
+  // String kosong bukan 0 hari: z.coerce mengubah "" menjadi 0 → pesan "minimal", jadi ditolak lebih dulu.
+  const r = retentionSchema.safeParse(
+    raw && typeof raw === "object"
+      ? Object.fromEntries(
+          Object.entries(raw).map(([k, v]) => [k, typeof v === "string" && !v.trim() ? NaN : v]),
+        )
+      : raw,
+  );
+  if (r.success) return { ok: true, data: r.data };
+  const issue = r.error.issues[0];
+  const field = issue?.path[0];
+  return {
+    ok: false,
+    field: field === "localDays" || field === "remoteDays" ? field : undefined,
+    message: issue?.message ?? "Isian tidak valid.",
+  };
+}
+
+const storedRetentionSchema = z.object({
+  localDays: z.number().int(),
+  remoteDays: z.number().int(),
+  updatedAt: z.string(),
+  updatedBy: z.string(),
+});
+
+export async function readRetention(): Promise<RetentionView | null> {
+  const r = storedRetentionSchema.safeParse(await readJson(RETENTION));
+  return r.success ? r.data : null;
+}
+
+export async function writeRetention(value: RetentionView): Promise<void> {
+  await writeApp(RETENTION, `${JSON.stringify(value)}\n`);
+}
+
+/** Kembali ke bawaan server (.env.prod). */
+export async function clearRetention(): Promise<void> {
+  await rm(join(configDir(), RETENTION), { force: true });
+}
+
+/** "Kirim ulang sekarang": backup.sh --tick (cron tiap menit) hanya melihat keberadaan file ini. */
+export async function writeSyncRequest(): Promise<void> {
+  await writeApp(SYNC_REQUEST, `${new Date().toISOString()}\n`);
+}
+
+export async function syncRequested(): Promise<boolean> {
+  try {
+    await lstat(join(configDir(), SYNC_REQUEST));
+    return true;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw e;
+  }
+}
+
+const runSchema = z.object({ kind: z.enum(["backup", "sync"]), since: z.string() });
+
+export async function readRunning(now = Date.now()): Promise<BackupRun | null> {
+  const r = runSchema.safeParse(await readJson(RUNNING));
+  if (!r.success) return null;
+  const at = Date.parse(r.data.since);
+  return Number.isFinite(at) && now - at < RUN_STALE_MS ? r.data : null;
+}
+
+const space = z.object({
+  totalBytes: z.number().nonnegative(),
+  freeBytes: z.number().nonnegative(),
+});
+const optional = <T extends z.ZodTypeAny>(t: T) => t.nullable().default(null).catch(null);
 
 const statusSchema = z.object({
   state: z.enum(["ok", "pending", "failed", "off"]),
@@ -143,6 +248,34 @@ const statusSchema = z.object({
   lastOffsiteOkAt: z.string().nullable().default(null),
   error: z.string().nullable().default(null),
   updatedAt: z.string(),
+  // T-tsvf: status lama tanpa field ini (atau isi yang tidak dikenal) tetap terbaca.
+  syncFailures: z.number().int().nonnegative().default(0).catch(0),
+  nextSyncAt: optional(z.string()),
+  lastRequestAt: optional(z.string()),
+  retention: optional(
+    z.object({
+      localDays: z.number().int(),
+      remoteDays: z.number().int(),
+      source: z.enum(["app", "env"]),
+    }),
+  ),
+  archives: z
+    .array(z.object({ name: z.string(), sizeBytes: z.number(), offsite: z.boolean() }))
+    .default([])
+    .catch([]),
+  localBytes: optional(z.number()),
+  disk: optional(space),
+  remote: optional(
+    z.object({
+      target: z.string(),
+      count: z.number().int(),
+      bytes: z.number(),
+      oldest: z.string().nullable(),
+      newest: z.string().nullable(),
+      checkedAt: z.string(),
+    }),
+  ),
+  nasSpace: optional(space.extend({ target: z.string(), checkedAt: z.string() })),
 });
 
 export async function readStatus(): Promise<BackupStatus | null> {

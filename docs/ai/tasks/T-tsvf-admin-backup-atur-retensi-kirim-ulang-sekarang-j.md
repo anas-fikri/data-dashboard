@@ -1,0 +1,65 @@
+---
+id: T-tsvf
+title: 'Admin › Backup: atur retensi, kirim ulang sekarang + jeda bertahap, sisa ruang NAS, daftar arsip'
+status: in_progress
+profile: strict
+profile_pinned: true
+tags:
+  - security
+  - backup
+created: "2026-11-09T12:30:24Z"
+updated: "2026-11-09T12:54:45Z"
+created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 3b2fd96e4d421eff4cc11131823355daae87cc31
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 169708
+    summary: |-
+      …st":"127.0.0.1","port":33375,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794228848107,"service":"data-dashboard","host":"127.0.0.1","port":41107,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1794228848206,"service":"data-dashboard","host":"127.0.0.1","port":33919,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794228848309,"service":"data-dashboard","host":"127.0.0.1","port":43835,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1794228848598,"service":"data-dashboard","datasetId":"t072mw99j3crds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1794228858888,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1794228864368,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794228864390,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794228864392,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794228864406,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+
+       Test Files  239 passed | 1 skipped (240)
+            Tests  3222 passed | 10 skipped (3232)
+         Start at  12:52:49
+         Duration  114.50s (tests 82%, import 15%, transform 3%)
+
+          Isolate  240 workers spawned · ~88ms startup each (spawn + environment, per file)
+                   at least ~6.93s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@1.12.0 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-11-09T12:54:45Z"
+    tree: cec7e4a7213d5c83e25a5bea89e99d1ff06d31cbd420885718892965b507208a
+---
+
+## Objective
+Admin mengelola backup sepenuhnya dari Admin › Backup tanpa mengedit .env.prod: mengatur lama simpan arsip di server dan di NAS, meminta kirim ulang ke NAS seketika, melihat daftar arsip (tanggal, ukuran, sudah di NAS atau belum) beserta ruang disk server, melihat sisa ruang NAS dari Tes koneksi, dan membaca petunjuk galat yang bisa ditindak. Saat NAS menolak menyimpan (penuh/kuota habis) kirim ulang dijeda bertahap agar tidak mengunggah GB sia-sia tiap 30 menit.
+
+## Acceptance criteria
+- [ ] Given admin menyimpan retensi server N hari dan NAS M hari di Admin › Backup, when backup harian atau kirim ulang berjalan, then backup.sh memakai nilai itu (divalidasi ulang, NAS minimal 7 hari, arsip tertunda tidak dibuang sebelum max(N,M) hari) dan status menampilkan nilai yang berlaku
+- [ ] Given ada arsip tertunda, when admin menekan Kirim ulang sekarang, then dalam ±1 menit backup.sh --tick menjalankan kirim ulang walau sedang dijeda, permintaan tercatat di audit, dan dibatasi rate limit
+- [ ] Given NAS menolak menyimpan (SSH_FX_FAILURE/penuh), when kirim ulang gagal berturut-turut, then jadwal berikutnya dijeda 30 menit → 1 → 2 → 4 jam (maks 4 jam), status menampilkan jadwal berikutnya, dan berhasil sekali mengembalikan jeda normal
+- [ ] Given halaman Admin › Backup, when status backup terbaca, then tampil daftar arsip di server (tanggal, ukuran, sudah/belum di NAS), total ruang arsip + sisa disk server, ringkasan arsip di NAS, dan petunjuk galat berbahasa awam
+- [ ] Given Tes koneksi berhasil dan NAS mendukung statvfs, when hasil tampil, then sisa ruang volume NAS ditampilkan (dengan catatan kuota DSM) dan diberi peringatan bila kurang dari 2 × arsip terakhir
+
+## Risk
+(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+
+## Notes
