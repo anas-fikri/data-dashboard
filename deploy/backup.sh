@@ -535,8 +535,10 @@ if [ "$mode" = --tick ]; then
   # Tanda "sedang berjalan" DULU, baru permintaan dihapus: halaman yang memantau tidak pernah melihat jeda
   # kosong lalu menganggap kirim ulang sudah selesai.
   mark_running sync
-  # -r: app bisa membuat folder bernama sync-request; rm tidak mengikuti symlink di dalamnya.
-  rm -rf -- "$req"
+  # Tanpa rekursi (root tidak menelusuri pohon milik app): file/symlink dihapus, folder kosong di-rmdir; selain
+  # itu dibiarkan dengan peringatan (permintaan berikutnya tetap dibatasi per 5/30 menit).
+  rm -f -- "$req" 2>/dev/null || rmdir -- "$req" 2>/dev/null ||
+    echo "[$stamp] peringatan: $req tidak bisa dihapus (bukan file biasa)" >&2
   forced=1 mode=--sync
   echo "[$stamp] kirim ulang diminta dari Admin › Backup"
 fi

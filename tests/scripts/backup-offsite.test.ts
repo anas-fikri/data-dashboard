@@ -854,12 +854,23 @@ describe("backup.sh: perbaikan review T-tsvf", { timeout: 60_000 }, () => {
     expect(existsSync(request())).toBe(false);
   });
 
-  it("permintaan berupa folder → dihapus, kirim ulang tetap jalan", () => {
+  it("permintaan berupa folder: kosong → dihapus; berisi → tidak ditelusuri root, kirim ulang tetap jalan", () => {
     enableTarget();
     expect(run().code).toBe(0);
-    mkdirSync(join(request(), "isi"), { recursive: true });
+    mkdirSync(request(), { recursive: true });
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+
+    const keep = join(root, "penting.txt");
+    writeFileSync(keep, "jangan dihapus");
+    mkdirSync(request());
+    symlinkSync(root, join(request(), "tautan"));
+    editStatus({ lastRequestEpoch: 0 });
     const r = run("--tick");
     expect(r.code, r.out).toBe(0);
-    expect(existsSync(request())).toBe(false);
+    expect(r.out).toContain("tidak bisa dihapus");
+    expect(r.out).toContain("kirim ulang diminta");
+    expect(readFileSync(keep, "utf8")).toBe("jangan dihapus");
+    expect(existsSync(join(request(), "tautan"))).toBe(true);
   });
 });
