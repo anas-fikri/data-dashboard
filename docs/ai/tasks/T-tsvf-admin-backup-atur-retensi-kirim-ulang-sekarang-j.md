@@ -8,7 +8,7 @@ tags:
   - security
   - backup
 created: "2026-11-09T12:30:24Z"
-updated: "2026-11-09T13:09:35Z"
+updated: "2026-11-09T13:20:52Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -24,30 +24,34 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-09T13:09:35Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-09T13:10:49Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 169708
+    duration_ms: 166639
     summary: |-
-      …st":"127.0.0.1","port":33375,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1794228848107,"service":"data-dashboard","host":"127.0.0.1","port":41107,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1794228848206,"service":"data-dashboard","host":"127.0.0.1","port":33919,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1794228848309,"service":"data-dashboard","host":"127.0.0.1","port":43835,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":30,"time":1794228848598,"service":"data-dashboard","datasetId":"t072mw99j3crds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1794228858888,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1794228864368,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1794228864390,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1794228864392,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1794228864406,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …st":"127.0.0.1","port":41161,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794230409723,"service":"data-dashboard","host":"127.0.0.1","port":35043,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1794230409818,"service":"data-dashboard","host":"127.0.0.1","port":41711,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794230409924,"service":"data-dashboard","host":"127.0.0.1","port":45375,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1794230411031,"service":"data-dashboard","datasetId":"t072mw9agkv5ds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1794230420656,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1794230428807,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794230428830,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794230428833,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794230428845,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  239 passed | 1 skipped (240)
-            Tests  3222 passed | 10 skipped (3232)
-         Start at  12:52:49
-         Duration  114.50s (tests 82%, import 15%, transform 3%)
+            Tests  3229 passed | 10 skipped (3239)
+         Start at  13:18:56
+         Duration  114.81s (tests 81%, import 16%, transform 3%)
 
-          Isolate  240 workers spawned · ~88ms startup each (spawn + environment, per file)
-                   at least ~6.93s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  240 workers spawned · ~98ms startup each (spawn + environment, per file)
+                   at least ~7.73s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.12.0 audit
@@ -55,19 +59,43 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-09T12:54:45Z"
-    tree: cec7e4a7213d5c83e25a5bea89e99d1ff06d31cbd420885718892965b507208a
+    at: "2026-11-09T13:20:52Z"
+    tree: 5fc51d0d162cf66e5f0384b92a109d2a9046b32f928adab8d5cba1d190374c6a
+  audit:
+    at: "2026-11-09T13:10:53Z"
+    passed: true
+    tree: 5fc51d0d162cf66e5f0384b92a109d2a9046b32f928adab8d5cba1d190374c6a
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
+          End status: 527 dirs visited, 3173 inodes visited, 1 Extract calls, 88.786784ms elapsed, 88.786928ms wall time
+          Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@1.12.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
 Admin mengelola backup sepenuhnya dari Admin › Backup tanpa mengedit .env.prod: mengatur lama simpan arsip di server dan di NAS, meminta kirim ulang ke NAS seketika, melihat daftar arsip (tanggal, ukuran, sudah di NAS atau belum) beserta ruang disk server, melihat sisa ruang NAS dari Tes koneksi, dan membaca petunjuk galat yang bisa ditindak. Saat NAS menolak menyimpan (penuh/kuota habis) kirim ulang dijeda bertahap agar tidak mengunggah GB sia-sia tiap 30 menit.
 
 ## Acceptance criteria
-- [ ] Given admin menyimpan retensi server N hari dan NAS M hari di Admin › Backup, when backup harian atau kirim ulang berjalan, then backup.sh memakai nilai itu (divalidasi ulang, NAS minimal 7 hari, arsip tertunda tidak dibuang sebelum max(N,M) hari) dan status menampilkan nilai yang berlaku
-- [ ] Given ada arsip tertunda, when admin menekan Kirim ulang sekarang, then dalam ±1 menit backup.sh --tick menjalankan kirim ulang walau sedang dijeda, permintaan tercatat di audit, dan dibatasi rate limit
-- [ ] Given NAS menolak menyimpan (SSH_FX_FAILURE/penuh), when kirim ulang gagal berturut-turut, then jadwal berikutnya dijeda 30 menit → 1 → 2 → 4 jam (maks 4 jam), status menampilkan jadwal berikutnya, dan berhasil sekali mengembalikan jeda normal
-- [ ] Given halaman Admin › Backup, when status backup terbaca, then tampil daftar arsip di server (tanggal, ukuran, sudah/belum di NAS), total ruang arsip + sisa disk server, ringkasan arsip di NAS, dan petunjuk galat berbahasa awam
-- [ ] Given Tes koneksi berhasil dan NAS mendukung statvfs, when hasil tampil, then sisa ruang volume NAS ditampilkan (dengan catatan kuota DSM) dan diberi peringatan bila kurang dari 2 × arsip terakhir
+- [x] Given admin menyimpan retensi server N hari dan NAS M hari di Admin › Backup, when backup harian atau kirim ulang berjalan, then backup.sh memakai nilai itu (divalidasi ulang, NAS minimal 7 hari, arsip tertunda tidak dibuang sebelum max(N,M) hari) dan status menampilkan nilai yang berlaku
+- [x] Given ada arsip tertunda, when admin menekan Kirim ulang sekarang, then dalam ±1 menit backup.sh --tick menjalankan kirim ulang walau sedang dijeda, permintaan tercatat di audit, dan dibatasi rate limit
+- [x] Given NAS menolak menyimpan (SSH_FX_FAILURE/penuh), when kirim ulang gagal berturut-turut, then jadwal berikutnya dijeda 30 menit → 1 → 2 → 4 jam (maks 4 jam), status menampilkan jadwal berikutnya, dan berhasil sekali mengembalikan jeda normal
+- [x] Given halaman Admin › Backup, when status backup terbaca, then tampil daftar arsip di server (tanggal, ukuran, sudah/belum di NAS), total ruang arsip + sisa disk server, ringkasan arsip di NAS, dan petunjuk galat berbahasa awam
+- [x] Given Tes koneksi berhasil dan NAS mendukung statvfs, when hasil tampil, then sisa ruang volume NAS ditampilkan (dengan catatan kuota DSM) dan diberi peringatan bila kurang dari 2 × arsip terakhir
 
 ## Risk
 Impact: Admin › Backup (src/features/backup/*, components/admin/backup-*/retention-form/sync-now), deploy/backup.sh (dijalankan root di service backup) dan crontab image backup (--tick tiap menit). Tanpa migrasi DB; status.json bertambah field (pembaca lama mengabaikannya), file baru app/retention.json dan app/sync-request (ditulis app), running.json (ditulis root).
@@ -76,6 +104,8 @@ Rollback: revert commit + deploy ulang; retention.json/sync-request diabaikan ve
 Validation: tests/scripts/backup-offsite.test.ts (38 tes: retensi app/invalid/symlink, jeda 30→240 menit, --tick + batas 5 menit, symlink permintaan, status rusak, isi status), tests/features/backup (validasi lama simpan, audit, permintaan, statvfs, status lama/baru, format), e2e backup (status lengkap, kirim ulang + pemantauan, lama simpan, axe tanpa pelanggaran serius), aitk check hijau.
 
 ## Notes
+
+- 2026-11-09T13:18:04Z Bukti: tests/scripts/backup-offsite.test.ts 45 tes (retensi app/7.0/3E1/invalid/symlink, retensi NAS sebelum salinan + saat diminta n=0, jeda 30→240 menit, --tick + batas 5/30 menit, kunci dipegang, running.json sisa, permintaan symlink/folder), tests/features/backup (lama simpan, audit, permintaan, statvfs, status lama/baru, format), e2e backup 7/7 (status lengkap, kirim ulang + pemantauan, lama simpan, axe). Suite e2e penuh per proyek lulus (chart-polish lulus 9/9 saat diulang; gagal pertama saat src diedit selama run). Review subagen 3 putaran: 8 → 1 → 0 temuan. Belum diverifikasi: rclone 1.66 sungguhan untuk about/lsjson (kode sumber rclone v1.66 dicek: About memakai statvfs@openssh.com bila NAS mendukung) dan cron --tick di image produksi — dicek setelah deploy (runbook §22).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
