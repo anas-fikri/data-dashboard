@@ -48,7 +48,7 @@ export function controlSummary(column: FilterColumnView, value: DashFilter | und
 export function UnavailableColumn({ column }: { column: FilterColumnView }) {
   return (
     <span
-      className="inline-flex min-h-(--control-h) max-w-64 items-center gap-1.5 rounded-md border border-dashed px-3 py-1 text-sm text-muted-foreground"
+      className="inline-flex min-h-(--control-h) max-w-64 items-center gap-1.5 rounded-md border border-dashed px-3 py-1 text-sm text-muted-foreground xl:w-full xl:max-w-none"
       data-testid="filter-unavailable"
       data-column={column.column}
     >
@@ -81,7 +81,8 @@ export function FilterControl({ column }: { column: FilterColumnView }) {
           aria-label={`${column.column}: ${summary}`}
           title={`${column.column}: ${summary}`}
           className={cn(
-            "group max-w-72 justify-between gap-1.5 px-3 font-normal",
+            // ≥ 1280 px di sidebar filter (v1.12.0): selebar sidebar.
+            "group max-w-72 justify-between gap-1.5 px-3 font-normal xl:w-full xl:max-w-none",
             "data-active:border-primary data-active:bg-primary/10",
             "forced-colors:data-active:border-2 forced-colors:data-active:border-[Highlight]",
           )}

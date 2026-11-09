@@ -1041,6 +1041,9 @@ test.describe("berbagi dashboard", () => {
     await expect(e.getByTestId("save-state")).toHaveAttribute("data-state", "saved");
 
     // T-k2ec: editor menambah lalu menghapus kolom filter dari bilah filter (D1 kembali ke Cabang).
+    // v1.12.0: ≥ 1280 px dengan panel widget terbuka, sidebar filter berupa rel → buka dulu.
+    const rail = e.getByTestId("filter-sidebar-expand");
+    if (await rail.isVisible()) await rail.click();
     const manage = e.getByTestId("filter-bar-manage");
     await expect(manage).toHaveAttribute("aria-expanded", "false");
     await manage.click();

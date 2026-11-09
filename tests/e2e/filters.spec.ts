@@ -687,4 +687,70 @@ test.describe("filter dashboard", () => {
     await expect(panel.getByLabel("Nilai", { exact: true })).toContainText("Jumlah baris");
     await expectKpi(page, ROWS);
   });
+  test("v1.12.0: sidebar filter ≥ 1280 px tetap terlihat saat digulir; diciutkan jadi rel (diingat); panel widget → rel; < 1280 px bilah di atas", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 700 });
+    await page.goto(dashboardUrl);
+    const bar = page.getByTestId("filter-bar");
+    const canvas = page.getByTestId("canvas");
+    await expect(bar).toBeVisible();
+    await expect(canvas).toBeVisible();
+    const slicer = bar.locator('[data-testid=filter-slicer][data-column="Cabang"]');
+    // Sidebar di kiri kanvas, selebar 16rem.
+    const b = (await bar.boundingBox())!;
+    const c = (await canvas.boundingBox())!;
+    expect(b.x + b.width).toBeLessThanOrEqual(c.x);
+    expect(Math.round(b.width)).toBe(256);
+
+    // Digulir ke bawah: sidebar tetap di layar dan kontrolnya bisa dipakai.
+    // Dashboard panjang (banyak widget): pengganjal 2000 px di kolom kanvas (setelah hidrasi).
+    await expect(page.locator("[data-testid=dashboard-canvas][data-hydrated]")).toHaveCount(1);
+    await canvas.evaluate((el) => {
+      const pad = document.createElement("div");
+      pad.style.height = "2000px";
+      el.parentElement!.append(pad);
+    });
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(150);
+    const top = await bar.evaluate((el) => el.getBoundingClientRect().top);
+    expect(top).toBeGreaterThanOrEqual(0);
+    expect(top).toBeLessThan(200);
+    await expect(slicer).toBeInViewport();
+
+    // Ciutkan → rel; fokus ke tombol rel; diingat setelah muat ulang.
+    await bar.getByTestId("filter-sidebar-collapse").click();
+    await expect(bar).toHaveAttribute("data-collapsed", "");
+    const rail = bar.getByTestId("filter-sidebar-expand");
+    await expect(rail).toBeFocused();
+    // Rel benar-benar terlihat (bukan kotak kosong): tombol 44 px di rel 56 px.
+    expect(Math.round((await rail.boundingBox())!.width)).toBe(44);
+    expect(Math.round((await bar.boundingBox())!.width)).toBe(56);
+    await expect(slicer).toBeHidden();
+    await page.reload();
+    await expect(page.getByTestId("filter-bar")).toHaveAttribute("data-collapsed", "");
+    await page.getByTestId("filter-sidebar-expand").click();
+    await expect(page.getByTestId("filter-bar")).not.toHaveAttribute("data-collapsed", "");
+    await expect(page.getByTestId("filter-sidebar-collapse")).toBeFocused();
+    await expect(slicer).toBeVisible();
+
+    // Mode edit + panel widget menempel: sidebar otomatis menjadi rel; tutup panel → kembali.
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    await expect(page.locator("[data-testid=dashboard-canvas][data-hydrated]")).toHaveCount(1);
+    await page.locator("[data-widget-settings]").first().click();
+    await expect(page.getByTestId("widget-panel")).toBeVisible();
+    await expect(page.getByTestId("filter-bar")).toHaveAttribute("data-collapsed", "");
+    await page.keyboard.press("Escape");
+    await expect(page.getByTestId("widget-panel")).toHaveCount(0);
+    await expect(page.getByTestId("filter-bar")).not.toHaveAttribute("data-collapsed", "");
+
+    // < 1280 px: bilah di atas kanvas seperti sebelumnya, tanpa tombol ciutkan.
+    await page.setViewportSize({ width: 1024, height: 800 });
+    await page.goto(dashboardUrl);
+    const b2 = (await page.getByTestId("filter-bar").boundingBox())!;
+    const c2 = (await page.getByTestId("canvas").boundingBox())!;
+    expect(b2.y + b2.height).toBeLessThanOrEqual(c2.y);
+    await expect(page.getByTestId("filter-sidebar-collapse")).toBeHidden();
+  });
 });

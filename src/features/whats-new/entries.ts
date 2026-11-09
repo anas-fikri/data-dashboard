@@ -14,6 +14,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.12",
+    date: "2026-11-08",
+    items: [
+      "Filter dashboard kini ada di panel kiri yang tetap terlihat saat halaman digulir (laptop/monitor) — tidak perlu naik ke atas untuk mengganti filter. Tekan ikon Ciutkan filter bila butuh ruang lebih untuk grafik; pilihan itu diingat.",
+    ],
+  },
+  {
     version: "1.11",
     date: "2026-11-08",
     items: [
