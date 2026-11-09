@@ -32,7 +32,7 @@ const STUBS: Record<string, string> = {
   pg_dump: `[ -f "$FAKE/pgdown" ] && { echo "pg_dump: koneksi ditolak" >&2; exit 1; }
 while [ $# -gt 0 ]; do [ "$1" = --file ] && echo dump >"$2"; shift; done`,
   age: `while [ $# -gt 0 ]; do [ "$1" = -o ] && cat >"$2"; shift; done`,
-  flock: "exit 0",
+  flock: '[ -f "$FAKE/locked" ] && exit 1; exit 0',
   rclone: `cmd=$1; shift
 echo "$cmd $*" >>"$FAKE/rclone.log"
 if [ "$cmd" = obscure ]; then
@@ -46,6 +46,7 @@ case $cmd in
   copy)
     case $2 in *:*)
       [ -f "$FAKE/down" ] && { echo "ERROR : dial tcp 10.0.0.9:9000: i/o timeout" >&2; exit 1; }
+      [ -f "$FAKE/full" ] && { echo 'Failed to copy with 2 errors: last error was: Update ReadFrom failed: sftp: "Failure" (SSH_FX_FAILURE)' >&2; exit 1; }
       [ -f "$FAKE/down-silent" ] && exit 1 ;;
     esac
     # rclone sungguhan tidak membuat folder tujuan untuk bucket kosong.
@@ -53,6 +54,17 @@ case $cmd in
     d=$(map "$2"); mkdir -p "$d"
     case $1 in locals3:*) echo obj >"$d/obj" ;; *:*) cp -p "$(map "$1")" "$d/" ;; *) cp -p "$1"/dashboard-* "$d/" ;; esac ;;
   lsf) ls "$(map "$1")" | grep '\\.tar\\.age$' ;;
+  lsjson)
+    [ -f "$FAKE/down" ] && exit 1
+    d=$(map "$1"); sep=""; printf '['
+    for f in "$d"/dashboard-*.tar.age; do
+      [ -f "$f" ] || continue
+      printf '%s{"Name":"%s","Size":%s}' "$sep" "$(basename "$f")" "$(stat -c %s "$f")"; sep=","
+    done
+    printf ']' ;;
+  about)
+    [ -f "$FAKE/down" ] || [ -f "$FAKE/no-about" ] && exit 1
+    echo '{"total":1000000,"used":400000,"free":600000}' ;;
   delete) [ -f "$FAKE/down" ] && exit 1 ;;
 esac
 exit 0`,
@@ -524,5 +536,341 @@ describe("backup.sh: NAS Synology lewat SFTP (T-y8qq)", { timeout: 60_000 }, () 
     const r = runWith({ BACKUP_REMOTE: "offsite:folder" });
     expect(r.code, r.out).toBe(0);
     expect(status()).toMatchObject({ state: "ok", target: "offsite:folder" });
+  });
+});
+
+describe(
+  "backup.sh: Admin › Backup — retensi, kirim ulang, jeda, isi status (T-tsvf)",
+  {
+    timeout: 60_000,
+  },
+  () => {
+    const writeApp = (name: string, value: unknown) => {
+      mkdirSync(join(cfg(), "app"), { recursive: true });
+      writeFileSync(join(cfg(), "app", name), JSON.stringify(value));
+    };
+    const request = () => join(cfg(), "app/sync-request");
+    const rcloneLog = () =>
+      existsSync(join(root, "rclone.log")) ? readFileSync(join(root, "rclone.log"), "utf8") : "";
+    const copies = () =>
+      rcloneLog()
+        .split("\n")
+        .filter((l) => l.startsWith("copy /")).length;
+    /** Majukan waktu: jeda yang tercatat dianggap sudah lewat. */
+    const expireBackoff = () => {
+      const s = status();
+      s.nextSyncEpoch = Math.floor(Date.now() / 1000) - 10;
+      writeFileSync(join(cfg(), "status.json"), JSON.stringify(s));
+    };
+
+    it("retention.json → server 3 hari, NAS 14 hari (menggantikan .env.prod) dan tercatat di status", () => {
+      enableTarget();
+      writeApp("retention.json", { localDays: 3, remoteDays: 14 });
+      oldArchive("dashboard-20260101T000000Z.tar.age", 5);
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      // Sudah tersalin dan > 3 hari → dibuang dari server; retensi NAS memakai 14 hari.
+      expect(local()).not.toContain("dashboard-20260101T000000Z.tar.age");
+      expect(rcloneLog()).toMatch(
+        /^delete appoffsite:\/cadangan-dashboard\/data-dashboard --min-age 14d/m,
+      );
+      expect(status().retention).toEqual({ localDays: 3, remoteDays: 14, source: "app" });
+    });
+
+    it.each([
+      ["NAS di bawah 7 hari", { localDays: 3, remoteDays: 2 }],
+      ["server di bawah 3 hari", { localDays: 1, remoteDays: 30 }],
+      ["bukan bilangan bulat", { localDays: 3.5, remoteDays: 30 }],
+      ["teks", { localDays: "7; rm -rf /", remoteDays: 30 }],
+    ])("retention.json tidak valid (%s) → .env.prod dipakai, backup tetap jalan", (_n, value) => {
+      enableTarget();
+      writeApp("retention.json", value);
+      oldArchive("dashboard-20260101T000000Z.tar.age", 5);
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("retention.json tidak valid");
+      expect(local()).toContain("dashboard-20260101T000000Z.tar.age"); // 5 < 7 hari (.env.prod)
+      expect(status()).toMatchObject({
+        state: "ok",
+        retention: { localDays: 7, remoteDays: 30, source: "env" },
+      });
+    });
+
+    it("angka bulat berbentuk 7.0 / 3E1 (jq menyimpan literalnya) → dipakai sebagai 7 / 30, backup tidak gagal", () => {
+      enableTarget();
+      mkdirSync(join(cfg(), "app"), { recursive: true });
+      writeFileSync(join(cfg(), "app/retention.json"), '{"localDays":7.0,"remoteDays":3E1}');
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      expect(status()).toMatchObject({
+        state: "ok",
+        lastBackupOk: true,
+        retention: { localDays: 7, remoteDays: 30, source: "app" },
+      });
+      expect(rcloneLog()).toContain("--min-age 30d");
+    });
+
+    it("retention.json berupa symlink → tidak dibaca, .env.prod dipakai", () => {
+      mkdirSync(join(cfg(), "app"), { recursive: true });
+      writeFileSync(join(root, "lain.json"), JSON.stringify({ localDays: 3, remoteDays: 7 }));
+      symlinkSync(join(root, "lain.json"), join(cfg(), "app/retention.json"));
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("retention.json tidak terbaca");
+      expect(status().retention).toMatchObject({ source: "env", localDays: 7 });
+    });
+
+    it("status: daftar arsip (terbaru dulu, tanda tersalin), ruang server, ringkasan + sisa ruang NAS", () => {
+      enableTarget();
+      oldArchive("dashboard-20260101T000000Z.tar.age", 1);
+      writeFileSync(join(root, "down"), "");
+      expect(run().code).toBe(0);
+      const s1 = status();
+      expect(s1.archives).toHaveLength(2);
+      expect(s1.archives[1]).toEqual({
+        name: "dashboard-20260101T000000Z.tar.age",
+        sizeBytes: 4,
+        offsite: false,
+      });
+      expect(s1.archives[0].name > s1.archives[1].name).toBe(true);
+      expect(s1.localBytes).toBe(s1.archives[0].sizeBytes + 4);
+      expect(s1.disk.totalBytes).toBeGreaterThan(0);
+      expect(s1.disk.freeBytes).toBeGreaterThan(0);
+      expect(s1.remote).toBeNull();
+      expect(s1.nasSpace).toBeNull();
+
+      rmSync(join(root, "down"));
+      expect(run("--sync").code).toBe(0);
+      const s2 = status();
+      expect(s2.archives.every((a: { offsite: boolean }) => a.offsite)).toBe(true);
+      expect(s2.remote).toMatchObject({
+        target: "dashboard-backup@10.0.0.9:2222/cadangan-dashboard/data-dashboard",
+        count: 2,
+        oldest: "dashboard-20260101T000000Z.tar.age",
+      });
+      expect(s2.remote.bytes).toBe(s2.localBytes);
+      expect(s2.nasSpace).toMatchObject({ totalBytes: 1000000, freeBytes: 600000 });
+      // Tanda "sedang berjalan" hilang setelah run selesai.
+      expect(existsSync(join(cfg(), "running.json"))).toBe(false);
+    });
+
+    it("NAS menolak menyimpan → jeda 30 → 60 → 120 → 240 menit; berhasil → jeda normal lagi", () => {
+      enableTarget();
+      writeFileSync(join(root, "full"), "");
+      const t0 = Math.floor(Date.now() / 1000);
+      expect(run().code).toBe(0);
+      const s1 = status();
+      expect(s1).toMatchObject({ state: "pending", syncFailures: 1 });
+      expect(s1.error).toContain("SSH_FX_FAILURE");
+      expect(s1.nextSyncEpoch - t0).toBeGreaterThanOrEqual(29 * 60 - 5);
+      expect(s1.nextSyncEpoch - t0).toBeLessThanOrEqual(29 * 60 + 60);
+      expect(s1.nextSyncAt).toBe(
+        new Date(s1.nextSyncEpoch * 1000).toISOString().replace(".000", ""),
+      );
+
+      // Masih dalam jeda: cron --sync tidak mengunggah dan tidak mengubah status.
+      const before = copies();
+      expect(run("--sync").code).toBe(0);
+      expect(copies()).toBe(before);
+      expect(status()).toEqual(s1);
+
+      const gaps: number[] = [];
+      for (let i = 0; i < 4; i++) {
+        expireBackoff();
+        const t = Math.floor(Date.now() / 1000);
+        expect(run("--sync").code).toBe(0);
+        gaps.push(Math.round((status().nextSyncEpoch - t + 60) / 60));
+      }
+      expect(gaps).toEqual([60, 120, 240, 240]);
+      expect(status().syncFailures).toBe(5);
+
+      rmSync(join(root, "full"));
+      expireBackoff();
+      expect(run("--sync").code).toBe(0);
+      expect(status()).toMatchObject({
+        state: "ok",
+        syncFailures: 0,
+        nextSyncAt: null,
+        nextSyncEpoch: null,
+      });
+    });
+
+    it("jaringan/NAS mati (gagal cepat) → tanpa jeda, tetap dicoba tiap 30 menit", () => {
+      enableTarget();
+      writeFileSync(join(root, "down"), "");
+      expect(run().code).toBe(0);
+      expect(status()).toMatchObject({ state: "pending", syncFailures: 0, nextSyncAt: null });
+      const before = copies();
+      expect(run("--sync").code).toBe(0);
+      expect(copies()).toBe(before + 1);
+    });
+
+    it("--tick tanpa permintaan → selesai seketika tanpa status dan tanpa rclone", () => {
+      enableTarget();
+      const r = run("--tick");
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toBe("");
+      expect(existsSync(join(cfg(), "status.json"))).toBe(false);
+      expect(rcloneLog()).toBe("");
+    });
+
+    it("Kirim ulang sekarang: --tick menjalankan permintaan walau dijeda, lalu paling sering 1×/5 menit", () => {
+      enableTarget();
+      writeFileSync(join(root, "full"), "");
+      expect(run().code).toBe(0);
+      expect(status().nextSyncEpoch).toBeTruthy();
+      rmSync(join(root, "full"));
+
+      writeFileSync(request(), "");
+      const r = run("--tick");
+      expect(r.code, r.out).toBe(0);
+      expect(r.out).toContain("kirim ulang diminta dari Admin › Backup");
+      expect(existsSync(request())).toBe(false);
+      expect(remote().filter((f) => f.endsWith(".tar.age"))).toHaveLength(1);
+      const s = status();
+      expect(s).toMatchObject({ state: "ok", pending: 0, syncFailures: 0 });
+      expect(s.lastRequestAt).toBeTruthy();
+
+      // Permintaan berikutnya dalam 5 menit: menunggu (file tetap ada, tanpa unggahan).
+      writeFileSync(request(), "");
+      const before = rcloneLog();
+      expect(run("--tick").code).toBe(0);
+      expect(existsSync(request())).toBe(true);
+      expect(rcloneLog()).toBe(before);
+
+      // Lewat 5 menit → dijalankan.
+      const s2 = status();
+      s2.lastRequestEpoch = Math.floor(Date.now() / 1000) - 301;
+      writeFileSync(join(cfg(), "status.json"), JSON.stringify(s2));
+      expect(run("--tick").code).toBe(0);
+      expect(existsSync(request())).toBe(false);
+    });
+
+    it("permintaan berupa symlink → hanya tautannya yang dihapus, file tujuan utuh", () => {
+      enableTarget();
+      expect(run().code).toBe(0);
+      const target = join(root, "penting.txt");
+      writeFileSync(target, "jangan dihapus");
+      symlinkSync(target, request());
+      expect(run("--tick").code).toBe(0);
+      expect(existsSync(request())).toBe(false);
+      expect(readFileSync(target, "utf8")).toBe("jangan dihapus");
+    });
+
+    it("status.json lama/rusak (angka jeda berupa teks) → tidak menggagalkan kirim ulang", () => {
+      enableTarget();
+      writeFileSync(join(root, "down"), "");
+      expect(run().code).toBe(0);
+      const s = status();
+      Object.assign(s, { nextSyncEpoch: "$(reboot)", syncFailures: "x", lastRequestEpoch: [] });
+      writeFileSync(join(cfg(), "status.json"), JSON.stringify(s));
+      rmSync(join(root, "down"));
+      const r = run("--sync");
+      expect(r.code, r.out).toBe(0);
+      expect(status()).toMatchObject({ state: "ok", syncFailures: 0 });
+    });
+  },
+);
+
+describe("backup.sh: perbaikan review T-tsvf", { timeout: 60_000 }, () => {
+  const request = () => join(cfg(), "app/sync-request");
+  const rcloneLog = () =>
+    existsSync(join(root, "rclone.log")) ? readFileSync(join(root, "rclone.log"), "utf8") : "";
+  const editStatus = (over: Record<string, unknown>) =>
+    writeFileSync(join(cfg(), "status.json"), JSON.stringify({ ...status(), ...over }));
+
+  it("NAS penuh: retensi NAS dijalankan SEBELUM salinan (lama simpan lebih pendek memberi ruang)", () => {
+    enableTarget();
+    writeFileSync(join(root, "full"), "");
+    expect(run().code).toBe(0);
+    const lines = rcloneLog()
+      .split("\n")
+      .filter((l) => /^(delete|copy) .*appoffsite/.test(l));
+    expect(lines[0]).toMatch(/^delete appoffsite:.* --min-age 30d/);
+    expect(lines[1]).toMatch(/^copy \//);
+  });
+
+  it("kirim ulang diminta tanpa arsip tertunda → retensi NAS baru + ringkasan + sisa ruang langsung diterapkan", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    mkdirSync(join(cfg(), "app"), { recursive: true });
+    writeFileSync(
+      join(cfg(), "app/retention.json"),
+      JSON.stringify({ localDays: 3, remoteDays: 9 }),
+    );
+    writeFileSync(request(), "");
+    const r = run("--tick");
+    expect(r.code, r.out).toBe(0);
+    expect(rcloneLog()).toMatch(/^delete appoffsite:.* --min-age 9d/m);
+    expect(status()).toMatchObject({
+      pending: 0,
+      retention: { remoteDays: 9, source: "app" },
+      remote: { count: 1 },
+      nasSpace: { freeBytes: 600000 },
+    });
+    expect(existsSync(request())).toBe(false);
+  });
+
+  it("run lain memegang kunci → --tick/--sync keluar tanpa menghapus permintaan atau menyentuh NAS", () => {
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    rmSync(join(root, "down"));
+    const before = rcloneLog();
+    writeFileSync(join(root, "locked"), "");
+    writeFileSync(request(), "");
+    expect(run("--tick").code).toBe(0);
+    expect(run("--sync").code).toBe(0);
+    expect(existsSync(request())).toBe(true);
+    expect(rcloneLog()).toBe(before);
+    rmSync(join(root, "locked"));
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+    expect(status()).toMatchObject({ state: "ok" });
+  });
+
+  it("running.json sisa container yang dimatikan paksa dibuang oleh run berikutnya", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    writeFileSync(
+      join(cfg(), "running.json"),
+      JSON.stringify({ kind: "sync", since: new Date().toISOString() }),
+    );
+    expect(run("--sync").code).toBe(0);
+    expect(existsSync(join(cfg(), "running.json"))).toBe(false);
+  });
+
+  it("selama NAS menolak menyimpan, permintaan kirim ulang paling sering 1×/30 menit", () => {
+    enableTarget();
+    writeFileSync(join(root, "full"), "");
+    expect(run().code).toBe(0);
+    const now = Math.floor(Date.now() / 1000);
+    editStatus({ lastRequestEpoch: now - 600 });
+    writeFileSync(request(), "");
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(true); // 10 menit < 30 menit
+    editStatus({ lastRequestEpoch: now - 1900 });
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+  });
+
+  it("permintaan berupa folder: kosong → dihapus; berisi → tidak ditelusuri root, kirim ulang tetap jalan", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    mkdirSync(request(), { recursive: true });
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+
+    const keep = join(root, "penting.txt");
+    writeFileSync(keep, "jangan dihapus");
+    mkdirSync(request());
+    symlinkSync(root, join(request(), "tautan"));
+    editStatus({ lastRequestEpoch: 0 });
+    const r = run("--tick");
+    expect(r.code, r.out).toBe(0);
+    expect(r.out).toContain("tidak bisa dihapus");
+    expect(r.out).toContain("kirim ulang diminta");
+    expect(readFileSync(keep, "utf8")).toBe("jangan dihapus");
+    expect(existsSync(join(request(), "tautan"))).toBe(true);
   });
 });

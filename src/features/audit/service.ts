@@ -17,6 +17,12 @@ export type AuditAction =
   | "user.delete"
   /** Admin mengubah target backup off-VM (Admin › Backup); meta tanpa secret (T-7psf). */
   | "backup.target.update"
+  /** Admin mengubah lama simpan arsip di server/NAS; meta { localDays, remoteDays } (T-tsvf). */
+  | "backup.retention.update"
+  /** Admin mengembalikan lama simpan ke bawaan server (.env.prod) (T-tsvf). */
+  | "backup.retention.reset"
+  /** Admin menekan "Kirim ulang sekarang" (T-tsvf). */
+  | "backup.sync.request"
   /** Admin mengubah pengaturan SMTP (Admin › Email); meta tanpa password (T-byys). */
   | "smtp.settings.update"
   /** Admin mengirim email uji dengan isian SMTP (tujuan + server, tanpa password) (T-byys). */

@@ -918,3 +918,43 @@ Tanpa migrasi: preflight dengan `REUSE_BACKUP_HOURS=26 EXPECT_MIGRATION=20261107
 nilai widget, `tone` + tema baru di `Dashboard.colors`. Rollback image ke v1.10.0: widget dengan nilai "Tanpa
 warna" eksplisit tampil "Pengaturan widget tidak valid" sampai roll-forward; `Dashboard.colors` dengan `tone`
 atau tema baru ditolak skema lama → tema/template dashboard kembali bawaan sementara.
+
+## 22. Admin › Backup: lama simpan, kirim ulang sekarang, jeda NAS penuh (T-tsvf, v1.13.0)
+
+Tanpa migrasi database; image **backup** ikut berubah (crontab baru), jadi rilis memakai `release.sh` biasa
+(`--quick` boleh). Yang berubah di service backup (`deploy/backup.sh`):
+
+- **Lama simpan dari aplikasi**: `backup-config/app/retention.json` (ditulis Admin › Backup) menggantikan
+  `BACKUP_RETENTION_DAYS` (NAS) dan `BACKUP_LOCAL_RETENTION_DAYS` (server) di `.env.prod`. backup.sh
+  memvalidasi ulang: bilangan bulat, server 3–365, NAS 7–365 hari; file tidak valid/symlink → `.env.prod`
+  dipakai + peringatan di log. Arsip yang belum tersalin tetap tidak dibuang sebelum max(server, NAS) hari.
+  Nilai yang berlaku tercatat di `status.json` (`retention.source` = `app`/`env`).
+- **Kirim ulang sekarang**: tombol menulis `app/sync-request`; cron `backup.sh --tick` (tiap menit, tanpa
+  permintaan langsung selesai) menjalankan kirim ulang walau sedang dijeda, paling sering sekali per 5 menit
+  (30 menit selama NAS menolak menyimpan). Permintaan juga menjalankan retensi NAS + ringkasan + sisa ruang NAS
+  walau tidak ada arsip tertunda. Menyimpan NAS aktif atau lama simpan juga menulis permintaan ini (diterapkan
+  ± 1 menit). Retensi NAS kini dijalankan SEBELUM salinan, jadi memperpendek lama simpan NAS saat NAS penuh
+  langsung memberi ruang.
+- **Jeda bila NAS menolak menyimpan** (`SSH_FX_FAILURE`, "no space", "quota"): kirim ulang otomatis berikutnya
+  30 menit → 1 → 2 → 4 jam (maks), dicatat `syncFailures`/`nextSyncAt` di `status.json`; galat jaringan
+  (gagal cepat) tidak dijeda. Backup harian 02.00 tetap selalu mencoba menyalin.
+- **Isi status baru**: daftar arsip di server (`archives`, `localBytes`), ruang disk volume backup (`disk`),
+  ringkasan arsip di NAS (`remote`, dari `rclone lsjson` setelah salinan berhasil), sisa ruang volume NAS
+  (`nasSpace`, dari `rclone about` = statvfs SFTP; kuota folder/akun DSM tidak selalu terlihat), dan
+  `running.json` selama run berjalan.
+
+Cek setelah deploy (olympus, `C="docker compose --env-file .env.prod -f docker-compose.prod.yml"`):
+
+```bash
+$C exec -T backup cat /etc/crontabs/root
+$C exec -T backup sh -c 'jq "{state, pending, syncFailures, nextSyncAt, retention, nasSpace, disk}" /backup-config/status.json'
+```
+
+Crontab harus memuat baris `--tick`. Field baru muncul setelah kirim ulang/backup berikutnya (atau tekan
+**Kirim ulang sekarang**). `nasSpace` tetap `null` bila NAS tidak mendukung statvfs — tidak memengaruhi
+backup.
+
+Rollback ke v1.12.0: aman. `retention.json` diabaikan (lama simpan kembali ke `.env.prod`), field baru
+`status.json` diabaikan, tombol kirim ulang hilang, kirim ulang kembali tiap 30 menit tanpa jeda. Hapus
+`app/sync-request` sisa bila ada (`$C exec -T backup rm -f /backup-config/app/sync-request`).
+
