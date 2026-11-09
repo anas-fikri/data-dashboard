@@ -20,19 +20,28 @@ function describe(sync: SyncState): string | null {
   if (sync.running)
     return `Sedang mengirim arsip ke NAS sejak ${formatWibTime(sync.running.since)}…`;
   if (sync.requested) {
-    return "Permintaan terkirim. Service backup mulai mengirim dalam ± 1 menit (paling sering sekali per 5 menit).";
+    return "Permintaan terkirim. Service backup mulai mengirim dalam ± 1 menit (paling sering sekali per 5 menit; per 30 menit selama NAS menolak menyimpan).";
   }
   return null;
 }
 
 /**
  * "Kirim ulang sekarang" (T-tsvf): menulis permintaan untuk service backup, lalu memantau sampai permintaan
- * diambil dan run selesai — halaman dimuat ulang (data server) begitu selesai. Induk memberi `key` dari
- * status terakhir sehingga komponen mulai ulang dengan data baru setelah router.refresh().
+ * diambil dan run selesai — halaman dimuat ulang (data server) begitu selesai. Keadaan dari server diikuti
+ * tanpa remount (fokus dan wilayah aria-live tetap, jadi perubahan status diumumkan pembaca layar).
  */
+const signature = (s: SyncState) =>
+  `${s.requested}|${s.running?.kind ?? ""}|${s.running?.since ?? ""}`;
+
 export function SyncNow({ initial }: { initial: SyncState }) {
   const router = useRouter();
   const [sync, setSync] = useState(initial);
+  // Data server baru (router.refresh/revalidatePath) → ikuti, tanpa effect dan tanpa remount.
+  const [seen, setSeen] = useState(() => signature(initial));
+  if (signature(initial) !== seen) {
+    setSeen(signature(initial));
+    setSync(initial);
+  }
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const busy = sync.requested || sync.running !== null;

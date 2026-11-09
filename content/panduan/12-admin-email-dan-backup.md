@@ -42,7 +42,7 @@ Bila NAS tidak terjangkau, backup tetap dibuat dan disimpan sementara di server,
 
 ### Kirim ulang sekarang
 
-Tekan **Kirim ulang sekarang** di kotak **Status backup** untuk mengirim arsip yang tertunda tanpa menunggu jadwal — mis. setelah admin NAS menambah ruang. Pengiriman mulai dalam ± 1 menit (paling sering sekali per 5 menit); halaman memperbarui statusnya sendiri setelah selesai.
+Tekan **Kirim ulang sekarang** di kotak **Status backup** untuk mengirim arsip yang tertunda tanpa menunggu jadwal — mis. setelah admin NAS menambah ruang. Pengiriman mulai dalam ± 1 menit (paling sering sekali per 5 menit, atau per 30 menit selama NAS menolak menyimpan); halaman memperbarui statusnya sendiri setelah selesai. Tombol ini juga langsung menerapkan lama simpan NAS dan memperbarui ringkasan arsip serta sisa ruang NAS.
 
 Bila NAS **menolak menyimpan** (biasanya ruang atau kuota NAS habis), kirim ulang otomatis dijeda bertahap — 30 menit, 1 jam, 2 jam, lalu tiap 4 jam — agar server tidak mengunggah arsip besar berulang kali dengan sia-sia. Jadwal berikutnya tampil di **Tertunda**. Begitu berhasil, jadwal kembali tiap 30 menit.
 
@@ -56,7 +56,7 @@ Tabel **Arsip di server** mendaftar setiap backup (terbaru di atas), ukurannya, 
 
 Setiap backup harian adalah salinan lengkap database dan semua file, jadi ruang yang dipakai ± lama simpan × ukuran arsip. Atur di **Lama simpan arsip**:
 
-- **Lama simpan di server** (3–365 hari): arsip yang sudah ada di NAS dihapus dari server setelah sekian hari. Arsip yang belum terkirim tidak dihapus.
+- **Lama simpan di server** (3–365 hari): arsip yang sudah ada di NAS dihapus dari server setelah sekian hari. Arsip yang belum terkirim tetap disimpan sampai lewat lama simpan NAS — jadi bila NAS bermasalah lama, perbaiki NAS sebelum batas itu.
 - **Lama simpan di NAS** (7–365 hari): arsip di NAS yang lebih tua dihapus otomatis.
 
 Saran: server 7 hari, NAS 30 hari. Perkiraan ruang tampil di bawah tiap kolom. Tekan **Simpan lama simpan**; pengaturan berlaku dalam ± 1 menit. **Pakai bawaan server** mengembalikan nilai dari pengaturan server.

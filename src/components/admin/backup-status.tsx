@@ -155,10 +155,7 @@ export function BackupStatusCard({
       </dl>
       {status.target ? (
         <div className="mt-3 border-t pt-3">
-          <SyncNow
-            key={`${status.updatedAt}|${sync.requested}|${sync.running?.since ?? ""}`}
-            initial={sync}
-          />
+          <SyncNow initial={sync} />
         </div>
       ) : null}
     </section>

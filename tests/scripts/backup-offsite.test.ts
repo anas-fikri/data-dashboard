@@ -32,7 +32,7 @@ const STUBS: Record<string, string> = {
   pg_dump: `[ -f "$FAKE/pgdown" ] && { echo "pg_dump: koneksi ditolak" >&2; exit 1; }
 while [ $# -gt 0 ]; do [ "$1" = --file ] && echo dump >"$2"; shift; done`,
   age: `while [ $# -gt 0 ]; do [ "$1" = -o ] && cat >"$2"; shift; done`,
-  flock: "exit 0",
+  flock: '[ -f "$FAKE/locked" ] && exit 1; exit 0',
   rclone: `cmd=$1; shift
 echo "$cmd $*" >>"$FAKE/rclone.log"
 if [ "$cmd" = obscure ]; then
@@ -596,6 +596,20 @@ describe(
       });
     });
 
+    it("angka bulat berbentuk 7.0 / 3E1 (jq menyimpan literalnya) → dipakai sebagai 7 / 30, backup tidak gagal", () => {
+      enableTarget();
+      mkdirSync(join(cfg(), "app"), { recursive: true });
+      writeFileSync(join(cfg(), "app/retention.json"), '{"localDays":7.0,"remoteDays":3E1}');
+      const r = run();
+      expect(r.code, r.out).toBe(0);
+      expect(status()).toMatchObject({
+        state: "ok",
+        lastBackupOk: true,
+        retention: { localDays: 7, remoteDays: 30, source: "app" },
+      });
+      expect(rcloneLog()).toContain("--min-age 30d");
+    });
+
     it("retention.json berupa symlink → tidak dibaca, .env.prod dipakai", () => {
       mkdirSync(join(cfg(), "app"), { recursive: true });
       writeFileSync(join(root, "lain.json"), JSON.stringify({ localDays: 3, remoteDays: 7 }));
@@ -757,3 +771,95 @@ describe(
     });
   },
 );
+
+describe("backup.sh: perbaikan review T-tsvf", { timeout: 60_000 }, () => {
+  const request = () => join(cfg(), "app/sync-request");
+  const rcloneLog = () =>
+    existsSync(join(root, "rclone.log")) ? readFileSync(join(root, "rclone.log"), "utf8") : "";
+  const editStatus = (over: Record<string, unknown>) =>
+    writeFileSync(join(cfg(), "status.json"), JSON.stringify({ ...status(), ...over }));
+
+  it("NAS penuh: retensi NAS dijalankan SEBELUM salinan (lama simpan lebih pendek memberi ruang)", () => {
+    enableTarget();
+    writeFileSync(join(root, "full"), "");
+    expect(run().code).toBe(0);
+    const lines = rcloneLog()
+      .split("\n")
+      .filter((l) => /^(delete|copy) .*appoffsite/.test(l));
+    expect(lines[0]).toMatch(/^delete appoffsite:.* --min-age 30d/);
+    expect(lines[1]).toMatch(/^copy \//);
+  });
+
+  it("kirim ulang diminta tanpa arsip tertunda → retensi NAS baru + ringkasan + sisa ruang langsung diterapkan", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    mkdirSync(join(cfg(), "app"), { recursive: true });
+    writeFileSync(
+      join(cfg(), "app/retention.json"),
+      JSON.stringify({ localDays: 3, remoteDays: 9 }),
+    );
+    writeFileSync(request(), "");
+    const r = run("--tick");
+    expect(r.code, r.out).toBe(0);
+    expect(rcloneLog()).toMatch(/^delete appoffsite:.* --min-age 9d/m);
+    expect(status()).toMatchObject({
+      pending: 0,
+      retention: { remoteDays: 9, source: "app" },
+      remote: { count: 1 },
+      nasSpace: { freeBytes: 600000 },
+    });
+    expect(existsSync(request())).toBe(false);
+  });
+
+  it("run lain memegang kunci → --tick/--sync keluar tanpa menghapus permintaan atau menyentuh NAS", () => {
+    enableTarget();
+    writeFileSync(join(root, "down"), "");
+    expect(run().code).toBe(0);
+    rmSync(join(root, "down"));
+    const before = rcloneLog();
+    writeFileSync(join(root, "locked"), "");
+    writeFileSync(request(), "");
+    expect(run("--tick").code).toBe(0);
+    expect(run("--sync").code).toBe(0);
+    expect(existsSync(request())).toBe(true);
+    expect(rcloneLog()).toBe(before);
+    rmSync(join(root, "locked"));
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+    expect(status()).toMatchObject({ state: "ok" });
+  });
+
+  it("running.json sisa container yang dimatikan paksa dibuang oleh run berikutnya", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    writeFileSync(
+      join(cfg(), "running.json"),
+      JSON.stringify({ kind: "sync", since: new Date().toISOString() }),
+    );
+    expect(run("--sync").code).toBe(0);
+    expect(existsSync(join(cfg(), "running.json"))).toBe(false);
+  });
+
+  it("selama NAS menolak menyimpan, permintaan kirim ulang paling sering 1×/30 menit", () => {
+    enableTarget();
+    writeFileSync(join(root, "full"), "");
+    expect(run().code).toBe(0);
+    const now = Math.floor(Date.now() / 1000);
+    editStatus({ lastRequestEpoch: now - 600 });
+    writeFileSync(request(), "");
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(true); // 10 menit < 30 menit
+    editStatus({ lastRequestEpoch: now - 1900 });
+    expect(run("--tick").code).toBe(0);
+    expect(existsSync(request())).toBe(false);
+  });
+
+  it("permintaan berupa folder → dihapus, kirim ulang tetap jalan", () => {
+    enableTarget();
+    expect(run().code).toBe(0);
+    mkdirSync(join(request(), "isi"), { recursive: true });
+    const r = run("--tick");
+    expect(r.code, r.out).toBe(0);
+    expect(existsSync(request())).toBe(false);
+  });
+});

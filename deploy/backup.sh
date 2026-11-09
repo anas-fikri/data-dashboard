@@ -64,6 +64,8 @@ if ! flock -n 9; then
   case $mode in --sync | --tick) exit 0 ;; esac
   flock 9
 fi
+# Pemegang kunci tahu tidak ada run lain: running.json yang tersisa (container dimatikan paksa) dibuang.
+rm -f "$running"
 stamp=$(date -u +%Y%m%dT%H%M%SZ)
 now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 now_s=$(date -u +%s)
@@ -94,11 +96,14 @@ retention_from_app() {
     return 0
   fi
   [ -n "$j" ] || return 0
+  local r l
+  # jq menyimpan angka persis seperti ditulis (7.0, 3E1): ambil bentuk bilangan bulatnya (floor), lalu cek
+  # ulang di bash sebelum dipakai di aritmetika/find (nilai aneh tidak boleh menggagalkan backup harian).
   if jq -e '(.remoteDays | type == "number" and . == floor and . >= 7 and . <= 365)
-      and (.localDays | type == "number" and . == floor and . >= 3 and . <= 365)' <<<"$j" >/dev/null 2>&1; then
-    days=$(jq -r .remoteDays <<<"$j")
-    local_days=$(jq -r .localDays <<<"$j")
-    retention_src=app
+      and (.localDays | type == "number" and . == floor and . >= 3 and . <= 365)' <<<"$j" >/dev/null 2>&1 &&
+    r=$(jq -r '.remoteDays | floor' <<<"$j") && l=$(jq -r '.localDays | floor' <<<"$j") &&
+    [[ $r =~ ^[0-9]{1,3}$ && $l =~ ^[0-9]{1,3}$ ]]; then
+    days=$r local_days=$l retention_src=app
   else
     echo "[$stamp] peringatan: retention.json tidak valid, memakai .env.prod" >&2
   fi
@@ -180,18 +185,25 @@ pending_count() {
 last_err() { { grep -v '^[[:space:]]*$' "$errf" || true; } | tail -n 1 | cut -c1-300; }
 
 # Salin semua arsip lokal yang belum ada di target (rclone copy melewati yang sudah ada).
+# Retensi di target (umur = waktu unggah, set_modtime=false). Gagal tidak membuat salinan dianggap gagal
+# (diulang run berikutnya).
+remote_retention() {
+  rclone delete "$remote" --min-age "${days}d" --include '/dashboard-*' "${rflags[@]}" 2>/dev/null ||
+    echo "[$stamp] peringatan: retensi di target gagal" >&2
+}
+
 sync_offsite() {
   local newest
   newest=$(archives | tail -n 1)
   [ -n "$newest" ] || return 0
+  # Retensi DULU: saat NAS penuh, memperpendek lama simpan NAS di Admin › Backup langsung memberi ruang untuk
+  # salinan ini (bukan menunggu salinan berhasil — yang tidak akan terjadi selama NAS penuh).
+  remote_retention
   # Arsip tidak pernah berubah setelah dibuat: yang sudah ada di target dilewati berdasarkan nama (tanpa
   # perbandingan waktu — DSM menolak mengatur waktu/izin file lewat SFTP di folder ber-ACL, set_modtime=false).
   rclone copy "$dir" "$remote" --max-depth 1 --include '/dashboard-*' --ignore-existing "${rflags[@]}" \
     2>"$errf" || return 1
   printf '%s\n%s\n' "$target" "$newest" >"$mark"
-  # Retensi di target: gagal tidak membuat salinan dianggap gagal (diulang run berikutnya).
-  rclone delete "$remote" --min-age "${days}d" --include '/dashboard-*' "${rflags[@]}" 2>/dev/null ||
-    echo "[$stamp] peringatan: retensi di target gagal" >&2
 }
 
 # NAS menolak menyimpan (SFTP FAILURE dari DSM = ruang/kuota habis, atau pesan ruang/kuota lain): mengulang
@@ -514,8 +526,17 @@ fi
 forced=""
 if [ "$mode" = --tick ]; then
   last_req_epoch=$(num "$(prev .lastRequestEpoch)")
-  if [ -n "$last_req_epoch" ] && [ $((now_s - last_req_epoch)) -lt 300 ]; then exit 0; fi
-  rm -f -- "$req"
+  # Selama NAS menolak menyimpan: paling sering sekali per 30 menit (app yang dibobol tidak bisa memaksa
+  # unggahan sia-sia tiap 5 menit melewati jeda bertahap).
+  gap=300
+  f=$(num "$(prev .syncFailures)")
+  [ "${f:-0}" -eq 0 ] || gap=1800
+  if [ -n "$last_req_epoch" ] && [ $((now_s - last_req_epoch)) -lt "$gap" ]; then exit 0; fi
+  # Tanda "sedang berjalan" DULU, baru permintaan dihapus: halaman yang memantau tidak pernah melihat jeda
+  # kosong lalu menganggap kirim ulang sudah selesai.
+  mark_running sync
+  # -r: app bisa membuat folder bernama sync-request; rm tidak mengikuti symlink di dalamnya.
+  rm -rf -- "$req"
   forced=1 mode=--sync
   echo "[$stamp] kirim ulang diminta dari Admin › Backup"
 fi
@@ -541,8 +562,15 @@ if [ "$mode" = --sync ]; then
       echo "[$stamp] kirim ulang ke $target gagal ($n arsip tertunda): $err" >&2
       [ -z "$next_epoch" ] || echo "[$stamp] NAS menolak menyimpan — kirim ulang berikutnya $(date -u -d "@$next_epoch" +%FT%TZ)" >&2
     fi
-  elif [ "$last_ok" != false ] && [ -z "$cfg_broken" ]; then
-    err=""
+  else
+    if [ "$last_ok" != false ] && [ -z "$cfg_broken" ]; then err=""; fi
+    # Diminta admin (mis. setelah mengubah lama simpan): retensi + ringkasan + sisa ruang NAS tanpa menunggu
+    # backup harian.
+    if [ -n "$forced" ] && [ -n "$remote" ]; then
+      remote_retention
+      if summary=$(remote_summary); then remote_info=$summary; fi
+      nas_about || true
+    fi
   fi
   # Retensi juga saat tidak ada yang tertunda: lama simpan baru dari Admin › Backup berlaku tanpa menunggu.
   local_retention

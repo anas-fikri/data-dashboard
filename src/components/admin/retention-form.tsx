@@ -113,7 +113,7 @@ export function RetentionForm({
       f: "localDays",
       label: "Lama simpan di server (hari)",
       hint: nasActive
-        ? `Arsip yang sudah tersalin ke NAS dihapus dari server setelah ini, agar disk server hemat. Arsip yang belum tersalin tetap disimpan. ${RETENTION_LIMITS.localDays.min}–${RETENTION_LIMITS.localDays.max} hari.`
+        ? `Arsip yang sudah tersalin ke NAS dihapus dari server setelah ini, agar disk server hemat. Arsip yang belum tersalin tetap disimpan sampai lewat lama simpan NAS. ${RETENTION_LIMITS.localDays.min}–${RETENTION_LIMITS.localDays.max} hari.`
         : `Salinan ke NAS belum aktif: arsip di server dihapus setelah ini, jadi pakai nilai yang cukup panjang. ${RETENTION_LIMITS.localDays.min}–${RETENTION_LIMITS.localDays.max} hari.`,
     },
     {

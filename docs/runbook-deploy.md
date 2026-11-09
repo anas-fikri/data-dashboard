@@ -930,8 +930,11 @@ Tanpa migrasi database; image **backup** ikut berubah (crontab baru), jadi rilis
   dipakai + peringatan di log. Arsip yang belum tersalin tetap tidak dibuang sebelum max(server, NAS) hari.
   Nilai yang berlaku tercatat di `status.json` (`retention.source` = `app`/`env`).
 - **Kirim ulang sekarang**: tombol menulis `app/sync-request`; cron `backup.sh --tick` (tiap menit, tanpa
-  permintaan langsung selesai) menjalankan kirim ulang walau sedang dijeda, paling sering sekali per 5 menit.
-  Menyimpan NAS aktif atau lama simpan juga menulis permintaan ini (diterapkan ± 1 menit).
+  permintaan langsung selesai) menjalankan kirim ulang walau sedang dijeda, paling sering sekali per 5 menit
+  (30 menit selama NAS menolak menyimpan). Permintaan juga menjalankan retensi NAS + ringkasan + sisa ruang NAS
+  walau tidak ada arsip tertunda. Menyimpan NAS aktif atau lama simpan juga menulis permintaan ini (diterapkan
+  ± 1 menit). Retensi NAS kini dijalankan SEBELUM salinan, jadi memperpendek lama simpan NAS saat NAS penuh
+  langsung memberi ruang.
 - **Jeda bila NAS menolak menyimpan** (`SSH_FX_FAILURE`, "no space", "quota"): kirim ulang otomatis berikutnya
   30 menit → 1 → 2 → 4 jam (maks), dicatat `syncFailures`/`nextSyncAt` di `status.json`; galat jaringan
   (gagal cepat) tidak dijeda. Backup harian 02.00 tetap selalu mencoba menyalin.

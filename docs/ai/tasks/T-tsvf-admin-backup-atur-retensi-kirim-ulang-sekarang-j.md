@@ -1,19 +1,25 @@
 ---
 id: T-tsvf
 title: 'Admin › Backup: atur retensi, kirim ulang sekarang + jeda bertahap, sisa ruang NAS, daftar arsip'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 tags:
   - security
   - backup
 created: "2026-11-09T12:30:24Z"
-updated: "2026-11-09T12:55:16Z"
+updated: "2026-11-09T13:06:07Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 3b2fd96e4d421eff4cc11131823355daae87cc31
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-09T13:06:07Z"
+      findings: 8
 evidence:
   check:
     cmd: npm run check
