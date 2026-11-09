@@ -42,6 +42,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rollback ke v1.12.0 aman: `retention.json` dan field baru `status.json` diabaikan (lama simpan kembali ke
   `.env.prod`), tombol kirim ulang hilang, dan kirim ulang kembali tiap 30 menit tanpa jeda (runbook-deploy §22).
 
+## [1.13.0] - 2026-11-09
+
+### Added
+
+- **backup:** Admin › Backup — lama simpan, kirim ulang sekarang, jeda NAS penuh, daftar arsip + ruang (T-tsvf) (027d640)
+
+### Fixed
+
+- **backup:** perbaikan review T-tsvf — angka lama simpan 7.0/3E1, retensi NAS sebelum salinan + saat diminta, running.json sisa, urutan tanda berjalan, batas 30 menit saat NAS penuh, permintaan berupa folder, SyncNow tanpa remount, teks petunjuk (2b8d5ed)
+- **backup:** permintaan kirim ulang dihapus tanpa rekursi (review T-tsvf r2) (0fca086)
+
 ## [1.12.0] - 2026-11-08
 
 ### Added
