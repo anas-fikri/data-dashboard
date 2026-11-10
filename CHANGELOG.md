@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rollback ke v1.12.0 aman: `retention.json` dan field baru `status.json` diabaikan (lama simpan kembali ke
   `.env.prod`), tombol kirim ulang hilang, dan kirim ulang kembali tiap 30 menit tanpa jeda (runbook-deploy §22).
 
+- **v1.14.0 (T-tf88):** **bermigrasi** — tabel baru `DashboardView` (tampilan tersimpan), tanpa mengubah
+  tabel lama. Rilis TANPA `--quick` (preflight membuat backup lengkap). Rollback image ke v1.13.0 aman: tabel
+  baru diabaikan (tampilan tersimpan tidak tampil sampai roll-forward); mode TV, muat ulang otomatis, cari
+  cepat, dan duplikat hanya kode (runbook-deploy §23).
+
 ## [1.13.0] - 2026-11-09
 
 ### Added

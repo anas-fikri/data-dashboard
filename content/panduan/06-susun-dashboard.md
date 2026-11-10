@@ -41,3 +41,7 @@ Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada bat
 Di mode edit, tekan **Atur kolom filter** di bilah filter (atau buka kartu **Pengaturan dashboard**), lalu tambahkan **Kolom filter** (mis. _Cabang_, _Tanggal_). Editor dashboard juga bisa mengaturnya. Pembaca dashboard bisa memilih nilai, periode, atau rentang angka di bilah **Filter**.
 
 **Filter bawaan**: pilih filter yang ingin langsung aktif saat dashboard dibuka (mis. _Tanggal_ = **Bulan ini**, _Cabang_ = _Jakarta_), lalu tekan **Jadikan filter aktif sebagai bawaan** di bilah filter mode edit. Pembaca melihat label _bawaan_ di filter itu, bisa menekan **Hapus semua filter** untuk melihat seluruh data, dan **Kembalikan filter bawaan** untuk memakainya lagi. Ekspor dan PDF memakai filter yang sedang aktif. Untuk menghapus bawaan, hapus semua filter di mode edit lalu tekan **Hapus filter bawaan**.
+
+## Menduplikat dashboard
+
+Butuh dashboard serupa untuk cabang atau periode lain? Di mode lihat, buka **Lainnya → Duplikat dashboard…**, beri nama (usulan: _nama (salinan)_), lalu tekan **Duplikat**. Salinan berisi semua widget, tata letak, kolom filter, filter bawaan, dan warna dashboard, lalu langsung terbuka. Salinan **tidak** ikut dibagikan — atur **Bagikan** lagi bila perlu — dan mengubah salinan tidak mengubah dashboard asal. Hanya pemilik dataset yang bisa menduplikat; batas 10 dashboard per dataset tetap berlaku.

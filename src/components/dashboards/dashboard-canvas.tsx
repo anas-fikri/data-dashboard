@@ -464,6 +464,7 @@ function Canvas(props: CanvasProps) {
                           ? { dashboardId, columns: props.filterColumns, sources: props.sources }
                           : null
                       }
+                      canShareViews={props.role !== "VIEWER"}
                     />
                   ) : null
                 }

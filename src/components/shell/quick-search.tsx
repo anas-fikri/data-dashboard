@@ -75,6 +75,7 @@ function toItems(r: QuickResults | null, q: string, isAdmin: boolean): Item[] {
 export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const [mac, setMac] = useState(false);
+  const trigger = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     // Label tombol menyesuaikan sistem (⌘K / Ctrl K) setelah hidrasi; server merender "Ctrl K".
@@ -86,6 +87,8 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
       }
     };
     window.addEventListener("keydown", onKey);
+    // Penanda pintasan siap (uji dan alat bantu menunggu ini; sebelum hidrasi Ctrl+K belum ditangkap).
+    trigger.current?.setAttribute("data-ready", "");
     return () => {
       cancelAnimationFrame(id);
       window.removeEventListener("keydown", onKey);
@@ -96,6 +99,7 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <Dialog.Trigger asChild>
         <button
+          ref={trigger}
           type="button"
           className="inline-flex h-(--control-h) items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring"
           aria-keyshortcuts="Control+K Meta+K"

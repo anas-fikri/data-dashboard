@@ -50,3 +50,15 @@ Bila dataset disimpan per periode dan pemilik memasang filter **Periode**, pilih
 
 - **Satu widget** — tekan ikon ekspor di kepala widget, pilih **CSV** atau **Excel (XLSX)**, lalu tunggu sebentar — file terunduh otomatis (tekan **Unduh lagi** bila perlu). Ekspor mengikuti filter yang sedang aktif.
 - **Seluruh dashboard** — tekan **Ekspor PDF** → **Buat PDF**.
+
+## Tampilan tersimpan
+
+Sering memakai kombinasi filter yang sama (mis. _Jakarta – bulan ini_)? Atur filternya, lalu buka **Tampilan → Simpan filter ini sebagai tampilan…** di bilah filter dan beri nama. Lain kali cukup pilih namanya dari menu **Tampilan** — filter langsung terpasang dan namanya tampil di tombol. **Salin tautan filter ini** menyalin alamat halaman beserta filternya untuk dikirim ke rekan yang punya akses.
+
+Tampilan Anda bersifat pribadi. Pemilik dan editor dashboard bisa mencentang **Tampilan bersama** agar terlihat oleh semua yang punya akses. **Kelola tampilan…** untuk mengganti nama, memakai filter yang sedang aktif, atau menghapus. Bila kolom filter dihapus dari dashboard, filter tampilan untuk kolom itu diabaikan.
+
+## Mode TV dan muat ulang otomatis
+
+Untuk monitor di ruang operasional atau gudang, buka **Lainnya → Mode TV (layar penuh)**. Menu dan bilah samping aplikasi disembunyikan, filter yang sedang aktif tetap berlaku, dan data dimuat ulang otomatis (bawaan tiap 5 menit; ubah di **Muat ulang**). Waktu pembaruan terakhir tampil di kanan atas. Tekan **Keluar mode TV** atau Esc untuk kembali. Tautan halaman mode TV (berakhiran _tv=1_) bisa disimpan sebagai bookmark di komputer monitor.
+
+Di tampilan biasa, **Lainnya → Muat ulang otomatis** memilih _Mati_ atau tiap 1, 5, 15, 30 menit; pilihan diingat browser untuk dashboard itu. Bila tab tidak terlihat, pembaruan ditunda sampai tab dibuka lagi, dan bila koneksi putus data terakhir tetap tampil.
