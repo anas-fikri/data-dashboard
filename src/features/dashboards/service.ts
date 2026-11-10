@@ -494,7 +494,11 @@ export async function createDashboard(
 /** Nama salinan yang belum dipakai di dataset dashboard ini ("X (salinan)", …) untuk dialog Duplikat. */
 export async function suggestCopyName(datasetId: string, name: string): Promise<string> {
   const taken = await prisma.dashboard.findMany({ where: { datasetId }, select: { name: true } });
-  return copyName(name, taken.map((d) => d.name), DASHBOARD_NAME_MAX);
+  return copyName(
+    name,
+    taken.map((d) => d.name),
+    DASHBOARD_NAME_MAX,
+  );
 }
 
 /**
@@ -550,7 +554,11 @@ export async function duplicateDashboard(
       let finalName = name?.ok ? name.value : null;
       if (!finalName) {
         const taken = await tx.dashboard.findMany({ where: { datasetId }, select: { name: true } });
-        finalName = copyName(src.name, taken.map((d) => d.name), DASHBOARD_NAME_MAX);
+        finalName = copyName(
+          src.name,
+          taken.map((d) => d.name),
+          DASHBOARD_NAME_MAX,
+        );
       }
       const created = await tx.dashboard.create({
         data: {
