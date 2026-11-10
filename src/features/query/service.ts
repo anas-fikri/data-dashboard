@@ -54,6 +54,7 @@ import {
   bodySchema,
   dashboardBodySchema,
   resolveSpec,
+  type KpiCompareData,
   type OutColumn,
   type Plan,
   type QuerySpec,
@@ -74,7 +75,7 @@ import {
   type SegmentFile,
   type SourcePeriod,
 } from "./source";
-import { buildSql, buildTotalsSql, type BuiltSql } from "./sql";
+import { buildPeriodBoundsSql, buildSql, buildTotalsSql, type BuiltSql } from "./sql";
 import { buildTableCount, buildTablePage } from "./table";
 import {
   absentNames,
@@ -125,6 +126,11 @@ export interface QueryData {
   ignoredShowAs?: string[];
   /** Widget pivot (T-686n): tabel tersusun; `rows` kosong. */
   pivot?: PivotData;
+  /**
+   * KPI dengan pembanding (T-43hv): `rows[0][0]` = nilai periode terakhir; `previous` = nilai periode
+   * pembanding (null = tidak ada data). Periode 'YYYY-MM-DD' (awal); `period` null = tidak ada tanggal.
+   */
+  compare?: KpiCompareData;
   /** Widget pivot mode pivotValues (T-f4a7): nilai unik satu field (maks. 500); `rows` kosong. */
   pivotValues?: { values: DashValue[]; truncated: boolean };
 }
@@ -690,6 +696,109 @@ function toTypedRows(
   return { rows, bytes };
 }
 
+/**
+ * KPI dengan pembanding (T-43hv): batas periode terakhir dari data yang lolos filter (satu query kecil,
+ * di-cache), lalu rencana KPI yang sama dijalankan untuk rentang periode terakhir dan pembanding — rumus
+ * (field terhitung) dan segmen periode memakai jalur biasa. Kolom TIMESTAMP: batas tengah malam penuh.
+ */
+async function runKpiCompare(
+  userId: string,
+  keyParts: { datasetId: string; versionId: string; sheetId: string; schemaRevision: number },
+  planned: Extract<WidgetPlan, { kind: "agg" }>,
+  dash: DashClause[],
+  src: { src?: (string | number)[] },
+  source: ParquetSource,
+  deps: QueryDeps,
+  t0: number,
+): Promise<QueryResult> {
+  const cmp = planned.compare!;
+  const plan = { ...planned.plan, dash };
+  const dashKey = dash.length ? dash : undefined;
+  const boundsKey = resultKey({
+    ...keyParts,
+    spec: {
+      kpiBounds: planned.spec,
+      cmp: { col: cmp.col, grain: cmp.grain, against: cmp.against },
+      dash: dashKey,
+      ...src,
+    },
+  });
+  let row: unknown[] | undefined;
+  let boundsCached = false;
+  const hit = deps.cache?.get(boundsKey);
+  if (hit && "timeout" in hit) return fail("QUERY_TIMEOUT", timeoutMessage(deps.timeoutMs));
+  if (hit && "rows" in hit) {
+    row = hit.rows[0];
+    boundsCached = true;
+  } else {
+    const r = await runOnParquet(userId, source, deps, async (path, exec) =>
+      exec(buildPeriodBoundsSql(plan, cmp, path)),
+    );
+    if (!r.ok) {
+      if (r.code === "QUERY_TIMEOUT") {
+        deps.cache?.set(boundsKey, { timeout: true }, 64, TIMEOUT_CACHE_MS);
+      }
+      return r;
+    }
+    const [b0, b1, b2, b3, n] = r.value.rows[0] ?? [];
+    row = [
+      ...[b0, b1, b2, b3].map((v) => (typeof v === "string" ? v : null)),
+      n === null || n === undefined ? 0 : Number(n),
+    ];
+    deps.cache?.set(boundsKey, { columns: [], rows: [row] }, 128);
+  }
+  const [cs, ce, ps, pe] = (row ?? []) as (string | null)[];
+  const previousRows = Number(row?.[4] ?? 0);
+  const meta = { grain: cmp.grain, against: cmp.against };
+  if (!cs || !ce || !ps || !pe) {
+    return {
+      ok: true,
+      columns: plan.columns,
+      rows: [[null]],
+      compare: { period: null, previousPeriod: null, previous: null, previousRows: 0, ...meta },
+      cached: boundsCached,
+      ms: Date.now() - t0,
+    };
+  }
+  const bound = (d: string) => (cmp.type === "timestamp" ? `${d}T00:00:00` : d);
+  const range = (gte: string, lt: string): DashClause => ({
+    col: cmp.col,
+    type: cmp.type,
+    float: false,
+    op: "range",
+    gte: bound(gte),
+    lt: bound(lt),
+  });
+  const run = (clause: DashClause) => {
+    const clauses = [...dash, clause];
+    return runAggPlan(
+      userId,
+      resultKey({ ...keyParts, spec: { ...planned.spec, dash: clauses, ...src } }),
+      source,
+      { ...plan, dash: clauses },
+      deps,
+      t0,
+    );
+  };
+  const current = await run(range(cs, ce));
+  if (!current.ok) return current;
+  // Periode pembanding tanpa baris: "tidak ada data" (bukan 0 dari COUNT/SUM) — query kedua dilewati.
+  const previous = previousRows > 0 ? await run(range(ps, pe)) : null;
+  if (previous && !previous.ok) return previous;
+  return {
+    ...current,
+    compare: {
+      period: cs,
+      previousPeriod: ps,
+      previous: previous?.rows[0]?.[0] ?? null,
+      previousRows,
+      ...meta,
+    },
+    cached: current.cached && (previous?.cached ?? true) && boundsCached,
+    ms: Date.now() - t0,
+  };
+}
+
 /** Rencana agregat (query bebas dan widget KPI/grafik): cache hasil → DuckDB → cache. */
 async function runAggPlan(
   userId: string,
@@ -1196,6 +1305,11 @@ async function widgetResult(
         deps,
         t0,
       ),
+    );
+  }
+  if (planned.kind === "agg" && planned.compare) {
+    return withNotes(
+      await runKpiCompare(userId, keyParts, planned, dash.clauses, src, source, deps, t0),
     );
   }
   if (planned.kind === "agg") {

@@ -9,6 +9,7 @@
 import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import {
+  type KpiCompareAgainst,
   TABLE_PAGE_SIZE,
   columnsOf,
   sortColumnSchema,
@@ -132,6 +133,14 @@ function localValueOk(type: ColumnSchema["type"], grained: boolean, v: unknown):
   return typeof v === "number" && Number.isFinite(v);
 }
 
+export interface KpiComparePlan {
+  col: string;
+  type: "date" | "timestamp";
+  float: false;
+  grain: Grain;
+  against: KpiCompareAgainst;
+}
+
 export type WidgetPlan =
   | {
       ok: true;
@@ -143,6 +152,11 @@ export type WidgetPlan =
        * di-AND dengan filter dashboard oleh service. Tidak ada untuk widget mandiri.
        */
       saved?: DashClause[];
+      /**
+       * Pembanding KPI (T-43hv): kolom tanggal fisik (c<pos>) + tipenya, periode, dan pembanding. Service
+       * mencari periode terakhir di data yang lolos filter lalu menjalankan rencana ini untuk dua rentang.
+       */
+      compare?: KpiComparePlan;
     }
   | { ok: true; kind: "pivot"; spec: QuerySpec; plan: Plan; pivot: PivotShape }
   | {
@@ -224,6 +238,7 @@ export function widgetPlan(
       return cl ? [cl] : [];
     });
   let aggSaved: DashClause[] = [];
+  let compare: KpiComparePlan | undefined;
   const base = { sheetId: config.spec.sheetId };
   const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
@@ -305,6 +320,24 @@ export function widgetPlan(
     case "kpi": {
       aggSaved = savedClauses(extra.filters ?? []);
       const m = config.spec.measure;
+      const cmp = config.spec.compare;
+      if (cmp && name(cmp.column)) {
+        const c = byPos.get(cmp.column)!;
+        if (c.type !== "date" && c.type !== "timestamp") {
+          return {
+            ok: false,
+            code: "INVALID",
+            message: `Pembanding KPI butuh kolom tanggal ("${c.name}" bukan tanggal). Pilih kolom tanggal di pengaturan widget.`,
+          };
+        }
+        compare = {
+          col: `c${c.pos}`,
+          type: c.type,
+          float: false,
+          grain: cmp.grain,
+          against: cmp.against,
+        };
+      }
       spec = {
         ...base,
         dimensions: [],
@@ -397,6 +430,7 @@ export function widgetPlan(
     spec,
     plan: { ...resolved.plan, totals },
     ...(aggSaved.length ? { saved: aggSaved } : {}),
+    ...(compare ? { compare } : {}),
   };
 }
 

@@ -21,6 +21,7 @@ import {
 import { CalcField } from "./calc-editor";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
+import { KpiCompareFields } from "./kpi-compare-fields";
 import { PivotFields } from "./pivot-config";
 import type { QueryScope } from "./query-scope";
 import { duplicateField } from "./pivot-config-model";
@@ -447,12 +448,23 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
+              {draft.type === "kpi" ? (
+                <KpiCompareFields
+                  value={draft.spec.compare}
+                  columns={cols}
+                  onChange={(compare) => {
+                    const { compare: _c, ...spec } = draft.spec;
+                    commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
+                  }}
+                />
+              ) : null}
               {/* Warna status (v1.9.0): batang/garis/pai relatif atau batas; Angka batas saja. */}
               <>
                 <ToneChoice
                   key={draft.type}
                   kpi={draft.type === "kpi"}
                   noInherit={draft.type === "kpi"}
+                  compare={draft.type === "kpi" && !!draft.spec.compare}
                   value={draft.spec.measure}
                   percent={
                     valueFormat(

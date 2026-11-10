@@ -246,3 +246,36 @@ describe("matchSheet + alias pemetaan (T-014)", () => {
     expect(matchSheet(v3[0]!, v4, 3)).toBeNull();
   });
 });
+
+describe("T-43hv: kolom tanggal pembanding KPI ikut dipetakan", () => {
+  const withCompare = (column: number) =>
+    ({
+      type: "kpi",
+      spec: {
+        ...kpi(2).spec,
+        compare: { column, grain: "month", against: "previous" },
+      },
+    }) as const;
+  const dated = (pos: number, name: string) =>
+    ({ ...col(pos, name), type: "date" }) as ColumnSchema;
+
+  it("kolom tanggal pindah posisi → pembanding ikut; kolom hilang → ditandai", () => {
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Omzet"), dated(3, "Tanggal")]);
+    const moved = sheet(NEW, [dated(1, "Tanggal"), col(2, "Omzet"), col(3, "Cabang")]);
+    const r = remapConfig(withCompare(3), old, moved);
+    expect(r.missing).toEqual([]);
+    expect((r.config.spec as { compare?: { column: number } }).compare).toEqual({
+      column: 1,
+      grain: "month",
+      against: "previous",
+    });
+    expect(parseWidgetConfig(r.config.type, r.config.spec).ok).toBe(true);
+
+    const gone = sheet(NEW, [col(1, "Cabang"), col(2, "Omzet")]);
+    const g = remapConfig(withCompare(3), old, gone);
+    expect(g.missing).toEqual(["Tanggal"]);
+    expect((g.config.spec as { compare?: { column: number } }).compare?.column).toBe(
+      MISSING_COLUMN,
+    );
+  });
+});

@@ -103,6 +103,7 @@ export function ToneChoice({
   percent = false,
   label = "Penilaian warna",
   noInherit = false,
+  compare = false,
 }: {
   value: ValueStatus;
   /**
@@ -117,6 +118,8 @@ export function ToneChoice({
   kpi?: boolean;
   /** Format persen: batas diisi seperti yang tampil (95 = 95 %). */
   percent?: boolean;
+  /** Angka berpembanding (T-43hv): arah juga mewarnai ▲/▼, tanpa batas sekalipun. */
+  compare?: boolean;
 }) {
   const id = useId();
   const { target } = value;
@@ -240,7 +243,7 @@ export function ToneChoice({
         >
           {error ??
             (mode === "target"
-              ? `Di antara kedua batas = Sedang.${percent ? " Isi seperti yang tampil, mis. 95 untuk 95 %." : ""}${kpi ? " Tanpa batas, Angka tidak diwarnai." : ""}`
+              ? `Di antara kedua batas = Sedang.${percent ? " Isi seperti yang tampil, mis. 95 untuk 95 %." : ""}${kpi ? (compare ? " Tanpa batas, Angka tidak diwarnai; ▲/▼ pembanding tetap mengikuti arah ini." : " Tanpa batas, Angka tidak diwarnai.") : ""}`
               : `Sepertiga teratas, tengah, dan sepertiga terbawah rentang nilai. ${tone === "up" ? "Tertinggi = Baik." : "Tertinggi = Perlu perhatian."}`)}
         </p>
       ) : inherited ? (

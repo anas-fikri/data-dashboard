@@ -9,6 +9,7 @@ import type {
   PivotFilter,
 } from "@/components/dashboards/filters/filter-model";
 import type { PivotData } from "@/features/query/pivot";
+import type { KpiCompareData } from "@/features/query/spec";
 import type { ValueType } from "@/features/widgets/format";
 import type { NumberFormat, PivotSpec, ShowAs } from "@/features/widgets/spec";
 import { isAccessLost, useAccessLost } from "./access-refresh";
@@ -59,6 +60,8 @@ export interface WidgetData {
   pivot?: PivotData;
   /** Hanya pivot mode pivotValues (T-f4a7): nilai unik satu field. */
   pivotValues?: { values: FilterValue[]; truncated: boolean };
+  /** Hanya KPI berpembanding (T-43hv); sama dengan KpiCompareData di server. */
+  compare?: KpiCompareData;
 }
 /**
  * `filters`: filter dashboard (JSON) milik `data` — data lama dari filter lain tidak boleh tampil

@@ -150,7 +150,15 @@ export function remapConfig(
       return {
         config: {
           ...config,
-          spec: { ...config.spec, sheetId: target.id, measure: mapMeasure(config.spec.measure) },
+          spec: {
+            ...config.spec,
+            sheetId: target.id,
+            measure: mapMeasure(config.spec.measure),
+            // Pembanding KPI (T-43hv): kolom tanggal ikut dipetakan (hilang → penanda kolom hilang).
+            ...(config.spec.compare
+              ? { compare: { ...config.spec.compare, column: pos(config.spec.compare.column) } }
+              : {}),
+          },
         },
         missing,
       };
@@ -225,7 +233,10 @@ export function remapConfig(
 function usedColumns(config: Configured): number[] {
   if (config.type === "table" || config.type === "pivot") return columnsOf(config);
   const measure = valueColumns(config.spec.measure);
-  return config.type === "kpi" ? measure : [config.spec.dimension.column, ...measure];
+  if (config.type === "kpi") {
+    return config.spec.compare ? [...measure, config.spec.compare.column] : measure;
+  }
+  return [config.spec.dimension.column, ...measure];
 }
 
 /**

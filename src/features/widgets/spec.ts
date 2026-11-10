@@ -194,8 +194,25 @@ export function valueColumns(v: { column?: number } | { kind: "calc"; expr: Calc
   return v.column ? [v.column] : [];
 }
 
+/** Pembanding KPI (v1.15, T-43hv): periode sebelumnya atau periode yang sama tahun lalu. */
+export const KPI_COMPARE = ["previous", "year"] as const;
+export type KpiCompareAgainst = (typeof KPI_COMPARE)[number];
+/**
+ * Pembanding KPI: nilai = agregat periode terakhir (`grain`) pada kolom tanggal `column` di data yang
+ * lolos filter, dibandingkan periode sebelumnya / tahun lalu. Tidak ada = KPI biasa (total).
+ */
+const kpiCompare = z
+  .object({ column, grain: z.enum(GRAINS), against: z.enum(KPI_COMPARE) })
+  .strict();
+export type KpiCompare = z.infer<typeof kpiCompare>;
 export const kpiSpecSchema = z
-  .object({ sheetId, measure: kpiValue, format: formatSchema, colors: colorsSchema.optional() })
+  .object({
+    sheetId,
+    measure: kpiValue,
+    format: formatSchema,
+    colors: colorsSchema.optional(),
+    compare: kpiCompare.optional(),
+  })
   .strict();
 export const chartSpecSchema = z
   .object({
@@ -529,7 +546,7 @@ export function columnsOf(c: WidgetConfig): number[] {
     case "empty":
       return [];
     case "kpi":
-      return valueColumns(c.spec.measure);
+      return [...valueColumns(c.spec.measure), ...(c.spec.compare ? [c.spec.compare.column] : [])];
     case "table":
       return c.spec.columns;
     case "pivot":

@@ -117,6 +117,34 @@ const WIDGETS: Record<string, { type: string; spec: unknown }> = {
     spec: { sheetId: "cmv4kljx40009oczvdmpurrzz", measure: { agg: "count" }, format: fmt },
   },
   empty: { type: "empty", spec: {} },
+  // Pembanding KPI (T-43hv): tanggal Jan–Mar 2026 (i % 90 hari sejak 1 Jan).
+  kcmp: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
+  kyea: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "year" },
+    },
+  },
+  kbad: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 1, grain: "month", against: "previous" },
+    },
+  },
 };
 const WID = (name: string) => `cmv4kljx40009oczvdmpu${name.padEnd(4, "x").slice(0, 4)}0`;
 
@@ -621,5 +649,88 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     expect(healed).toMatchObject({ ok: true, cached: false });
     expect(healed.ok && healed.categories).toBeGreaterThan(0);
     expect(await runWidgetQuery(USER, { widgetId: WID("bar") }, d)).toMatchObject({ cached: true });
+  });
+});
+
+describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
+  const dayOf = (i: number) => new Date(Date.UTC(2026, 0, 1 + (i % 90)));
+  const sumWhere = (pred: (d: Date) => boolean) =>
+    Array.from({ length: ROWS }, (_, i) => i)
+      .filter((i) => pred(dayOf(i)))
+      .reduce((a, i) => a + omzetOf(i), 0);
+
+  it("periode terakhir (Maret) vs sebelumnya (Februari) dari data yang lolos filter", async () => {
+    const r = await runWidgetQuery(USER, { widgetId: WID("kcmp") }, deps());
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    if (!r.ok || !("compare" in r)) throw new Error("tanpa compare");
+    expect(Number(r.rows[0]![0])).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 2),
+      4,
+    );
+    expect(r.compare).toMatchObject({
+      period: "2026-03-01",
+      previousPeriod: "2026-02-01",
+      grain: "month",
+      against: "previous",
+    });
+    expect(Number(r.compare!.previous)).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 1),
+      4,
+    );
+    expect(r.compare!.previousRows).toBe(
+      Array.from({ length: ROWS }, (_, i) => i).filter((i) => dayOf(i).getUTCMonth() === 1).length,
+    );
+  });
+
+  it("filter dashboard ikut menentukan periode terakhir", async () => {
+    // Omzet ≥ 999 hanya baris tertentu: periode terakhir dihitung dari baris yang lolos saja.
+    // Dashboard bertipe (filterSources): Omzet = angka, jadi filternya berlaku di sheet widget ini.
+    const base = deps();
+    const typed: QueryDeps = {
+      ...base,
+      repo: {
+        ...base.repo,
+        widget: async (u, id) => {
+          const w = await base.repo.widget(u, id);
+          return w && { ...w, dashboardId: "cmv4kljx40009oczvdmpurrdb" };
+        },
+        filterSources: async () => [{ name: "Omzet", type: "decimal" }],
+      },
+    };
+    const r = await runWidgetQuery(
+      USER,
+      { widgetId: WID("kcmp"), dashboardFilters: [{ column: "Omzet", op: "range", lte: 100 }] },
+      typed,
+    );
+    expect(r).not.toHaveProperty("skippedFilters");
+    if (!r.ok || !("compare" in r)) throw new Error(JSON.stringify(r));
+    const kept = (i: number) => omzetOf(i) <= 100;
+    const last = Math.max(
+      ...Array.from({ length: ROWS }, (_, i) => i)
+        .filter(kept)
+        .map((i) => dayOf(i).getUTCMonth()),
+    );
+    const sum = (m: number) =>
+      Array.from({ length: ROWS }, (_, i) => i)
+        .filter((i) => kept(i) && dayOf(i).getUTCMonth() === m)
+        .reduce((a, i) => a + omzetOf(i), 0);
+    expect(r.compare!.period).toBe(`2026-0${last + 1}-01`);
+    expect(Number(r.rows[0]![0])).toBeCloseTo(sum(last), 4);
+    expect(Number(r.compare!.previous)).toBeCloseTo(sum(last - 1), 4);
+  });
+
+  it("tahun lalu tanpa data → previous null; kolom bukan tanggal ditolak", async () => {
+    const y = await runWidgetQuery(USER, { widgetId: WID("kyea") }, deps());
+    if (!y.ok || !("compare" in y)) throw new Error(JSON.stringify(y));
+    // COUNT tanpa baris = 0, tetapi periode tanpa data dilaporkan null + previousRows 0 (bukan "0").
+    expect(y.compare).toMatchObject({
+      period: "2026-03-01",
+      previousPeriod: "2025-03-01",
+      previous: null,
+      previousRows: 0,
+    });
+    const bad = await runWidgetQuery(USER, { widgetId: WID("kbad") }, deps());
+    expect(bad).toMatchObject({ ok: false, code: "INVALID" });
+    expect(bad.ok ? "" : bad.message).toContain("butuh kolom tanggal");
   });
 });

@@ -10,6 +10,7 @@ import type { DashClause } from "./filters";
 import { isAxisShowAs, shown } from "@/features/widgets/show-as";
 import {
   isPlanCalc,
+  type Grain,
   type Plan,
   type PlanCalcExpr,
   type PlanFilter,
@@ -501,6 +502,46 @@ export function numberNeedle(q: string): string {
 
 /** Wildcard LIKE (% _) dan karakter escape-nya diperlakukan sebagai huruf biasa. */
 export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
+
+/** Panjang satu periode (interval DuckDB) per grain; minggu = 7 hari (date_trunc minggu = Senin). */
+const GRAIN_INTERVAL: Record<Grain, string> = {
+  day: "INTERVAL 1 DAY",
+  week: "INTERVAL 7 DAY",
+  month: "INTERVAL 1 MONTH",
+  quarter: "INTERVAL 3 MONTH",
+  year: "INTERVAL 1 YEAR",
+};
+
+/**
+ * Batas periode pembanding KPI (T-43hv): periode terakhir = date_trunc(grain, max(kolom tanggal)) di
+ * baris yang lolos semua filter rencana; pembanding = periode sebelumnya atau periode yang sama tahun
+ * lalu. Keluaran 'YYYY-MM-DD' (awal inklusif, akhir eksklusif) + jumlah baris periode pembanding (pn: 0 =
+ * "tidak ada data", bukan 0 dari COUNT); tanpa tanggal → NULL. Identifier program saja; nilai filter
+ * lewat parameter whereClauses.
+ */
+export function buildPeriodBoundsSql(
+  plan: Plan,
+  cmp: { col: string; grain: Grain; against: "previous" | "year" },
+  parquetPath: string,
+): BuiltSql {
+  const params: BuiltSql["params"] = { path: parquetPath };
+  const c = ident(cmp.col);
+  const step = GRAIN_INTERVAL[cmp.grain];
+  const back = cmp.against === "year" ? "INTERVAL 1 YEAR" : step;
+  const where = [...whereClauses(plan, params), `${c} IS NOT NULL`];
+  const day = (e: string) => `strftime(CAST(${e} AS DATE), '%Y-%m-%d')`;
+  return {
+    sql: [
+      `WITH f AS (SELECT ${c} AS d FROM read_parquet($path) WHERE ${where.join(" AND ")}),`,
+      `b AS (SELECT CAST(date_trunc('${cmp.grain}', max(d)) AS DATE) AS cs FROM f)`,
+      `SELECT ${day("cs")} AS cs, ${day(`cs + ${step}`)} AS ce,`,
+      `  ${day(`cs - ${back}`)} AS ps, ${day(`cs - ${back} + ${step}`)} AS pe,`,
+      `  (SELECT count(*) FROM f WHERE d >= cs - ${back} AND d < cs - ${back} + ${step}) AS pn`,
+      `FROM b`,
+    ].join("\n"),
+    params,
+  };
+}
 
 /** Bulan paling banyak di pilihan periode (100 tahun). */
 export const FILTER_MONTHS_LIMIT = 1200;
