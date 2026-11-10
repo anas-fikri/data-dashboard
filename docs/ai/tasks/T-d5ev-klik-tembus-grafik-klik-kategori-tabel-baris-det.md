@@ -1,19 +1,25 @@
 ---
 id: T-d5ev
 title: 'Klik-tembus grafik: klik kategori → tabel baris detail'
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 tags:
   - widgets
   - query
 created: "2026-11-10T04:16:38Z"
-updated: "2026-11-10T04:38:41Z"
+updated: "2026-11-10T04:56:43Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 9ee22e233657afaafd0993f8f54a202bc2ccc4a2
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-10T04:56:43Z"
+      findings: 3
 ---
 
 ## Objective

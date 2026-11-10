@@ -1,18 +1,24 @@
 ---
 id: T-43hv
 title: 'Pembanding KPI: periode terakhir vs periode sebelumnya / tahun lalu'
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - widgets
   - query
 created: "2026-11-10T03:55:58Z"
-updated: "2026-11-10T03:55:59Z"
+updated: "2026-11-10T04:56:42Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 7809c7d015c841c053be1d0020a067f3527ec4d8
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-10T04:56:42Z"
+      findings: 5
 ---
 
 ## Objective
