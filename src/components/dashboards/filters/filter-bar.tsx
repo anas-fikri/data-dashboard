@@ -14,6 +14,7 @@ import type { FilterColumnView, SourceSheet } from "@/features/dashboards/servic
 import { FilterColumnsSettings } from "../filter-columns-settings";
 import { CrossFilterHint } from "./cross-hint";
 import { DefaultFilters } from "./default-filters";
+import { SavedViews } from "./saved-views";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
@@ -329,6 +330,8 @@ export function FilterBar({
           ) : null}
           <FilterChips onEmpty={focusFirst} />
           {columns.length ? <DefaultFilters manage={editing ? manage : null} /> : null}
+          {/* Tampilan tersimpan (T-tf88): mode lihat; bersama hanya pemilik/editor (manage ada). */}
+          {!editing ? <SavedViews canShare={!!manage} /> : null}
           {urlTooLong ? (
             <p className="text-xs text-muted-foreground">
               Pilihan filter terlalu panjang untuk disimpan di alamat halaman — filter tetap

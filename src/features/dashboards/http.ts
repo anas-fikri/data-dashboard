@@ -16,6 +16,7 @@ import {
   type DashboardCode,
   type DashboardResult,
 } from "./service";
+import { createView, deleteView, listViews, updateView, type ViewResult } from "./views";
 
 /*
  * HTTP kanvas dashboard (T-010): tambah/hapus/ganti judul widget dan simpan otomatis tata letak. Semua
@@ -176,3 +177,32 @@ export const setFilterColumnsRoute = (req: NextRequest, dashboardId: string) =>
     const b = (body && typeof body === "object" ? body : {}) as { filterColumns?: unknown };
     return reply(await setDashboardFilterColumns(userId, dashboardId, b.filterColumns));
   });
+
+/*
+ * Tampilan tersimpan (T-tf88): GET daftar (pribadi + bersama), POST { name, state, shared? }, PATCH
+ * { name?, state?, shared? }, DELETE. Mutasi: Origin = APP_URL, body ≤ 64 KB, rate limit yang sama.
+ */
+const replyView = <T>(r: ViewResult<T>) => (r.ok ? json(r) : json(r, STATUS[r.code]));
+
+export const listViewsRoute = (dashboardId: string) =>
+  withUser("daftar tampilan gagal", async (userId) =>
+    replyView(await listViews(userId, dashboardId)),
+  );
+
+export const createViewRoute = (req: NextRequest, dashboardId: string) =>
+  mutation(req, "simpan tampilan gagal", async (userId, body) =>
+    replyView(await createView(userId, dashboardId, body)),
+  );
+
+export const updateViewRoute = (req: NextRequest, dashboardId: string, viewId: string) =>
+  mutation(req, "ubah tampilan gagal", async (userId, body) =>
+    replyView(await updateView(userId, dashboardId, viewId, body)),
+  );
+
+export const deleteViewRoute = (req: NextRequest, dashboardId: string, viewId: string) =>
+  mutation(
+    req,
+    "hapus tampilan gagal",
+    async (userId) => replyView(await deleteView(userId, dashboardId, viewId)),
+    false,
+  );

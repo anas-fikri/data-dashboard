@@ -102,6 +102,17 @@ const stateSchema = z
   })
   .strict();
 
+/**
+ * Status filter dari body JSON (tampilan tersimpan, T-tf88): skema yang sama dengan ?f= dan ≤ panjang URL
+ * saat di-encode; tidak valid → null (bukan kosong diam-diam).
+ */
+export function parseFilterState(value: unknown): FilterState | null {
+  const p = stateSchema.safeParse(value);
+  if (!p.success) return null;
+  const state = p.data as FilterState;
+  return (encodeFilterParam(state) ?? "").length <= URL_PARAM_MAX ? state : null;
+}
+
 /** ?f= (JSON ter-encode) → status; rusak/tidak valid → kosong tanpa pesan. */
 export function parseFilterParam(raw: string | string[] | undefined): FilterState {
   const text = Array.isArray(raw) ? raw[0] : raw;

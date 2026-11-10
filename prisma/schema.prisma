@@ -37,6 +37,8 @@ model User {
   /// Ekspor milik user ini (T-017/T-018); objek exports/<userId>/ dibersihkan job ekspor.
   exports         Export[]
   guideReads      GuideRead[]
+  /// Tampilan tersimpan buatan user ini (T-tf88).
+  dashboardViews  DashboardView[]
   /// Pivot tersimpan yang dibuat user ini (T-072); SetNull bila akun dihapus.
   savedPivots     SavedPivot[]        @relation("SavedPivotCreator")
 
@@ -429,11 +431,37 @@ model Dashboard {
   shares         DashboardShare[]
   widgets        Widget[]
   exports        Export[]
+  /// Tampilan tersimpan (T-tf88): kombinasi filter bernama, pribadi atau bersama.
+  views          DashboardView[]
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
 
   @@unique([datasetId, nameKey])
   @@index([datasetId])
+}
+
+/// Tampilan tersimpan dashboard (T-tf88): status filter bernama (FilterState, filter-model.ts). Pribadi
+/// (shared = false) hanya terlihat pembuatnya; bersama (dibuat pemilik/editor) terlihat semua yang punya
+/// akses dashboard. Nama unik per (dashboard, pembuat). Ikut terhapus bersama dashboard/pembuatnya; tidak
+/// ikut disalin saat dashboard diduplikat (id widget filter silang/pivot berbeda).
+model DashboardView {
+  id          String    @id @default(cuid())
+  dashboardId String
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  /// Nama ternormalisasi (nameKeyOf) untuk keunikan tanpa peka kapital.
+  nameKey     String
+  shared      Boolean   @default(false)
+  /// Status filter yang divalidasi skema yang sama dengan ?f= (≤ batas panjang URL saat di-encode).
+  state       Json
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([dashboardId, userId, nameKey])
+  @@index([dashboardId])
+  @@index([userId])
 }
 
 /// Isi widget (T-010: kosong; T-011: tabel/KPI/grafik). Posisi ada di Dashboard.layout.
