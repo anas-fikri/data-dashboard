@@ -24,8 +24,11 @@ import {
 } from "@/features/widgets/spec";
 import { mapCalcColumns } from "@/features/widgets/calc";
 import { isPercentShowAs, showAsTitle, shown } from "@/features/widgets/show-as";
+import { crossFilterFor } from "@/components/dashboards/filters/filter-text";
 import {
   PIVOT_FIELDS,
+  columnClause,
+  dashFilterSchema,
   dashFiltersSchema,
   pivotFiltersSchema,
   valuesClause,
@@ -57,6 +60,15 @@ export const widgetBodySchema = z
      * dashboard, Saring tersimpan, dan saringan field LAIN (saringan field itu sendiri diabaikan).
      */
     pivotValues: z.enum(PIVOT_FIELDS).optional(),
+    /**
+     * Klik-tembus grafik (T-d5ev): nilai MENTAH kategori yang diklik (null = kosong) → baris data kategori
+     * itu dengan kolom detail widget, berhalaman/berurutan seperti tabel. Klausanya dibangun server dari
+     * dimensi widget sendiri (drillClause), bukan dari filter dashboard kiriman klien.
+     */
+    drill: z
+      .object({ value: z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]) })
+      .strict()
+      .optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
     sort: z
       .object({ column: pos, dir: z.enum(["asc", "desc"]) })
@@ -434,6 +446,28 @@ export function widgetPlan(
   };
 }
 
+const isChart = (c: WidgetConfig): c is Extract<WidgetConfig, { type: "bar" | "line" | "pie" }> =>
+  c.type === "bar" || c.type === "line" || c.type === "pie";
+
+/**
+ * Klausa kategori klik-tembus: sama persis dengan filter silang klik itu (crossFilterFor — kategori
+ * tanggal ber-periode → rentang periode, null → (kosong)), tetapi kolomnya dimensi widget lewat posisi.
+ * null = nilai tidak cocok tipe dimensi / dimensi tidak tersedia.
+ */
+export function drillClause(
+  config: WidgetConfig,
+  schema: ColumnSchema[],
+  value: string | number | boolean | null,
+  now: Date,
+): DashClause | null {
+  if (!isChart(config)) return null;
+  const d = config.spec.dimension;
+  const c = schema.find((x) => x.pos === d.column);
+  if (!c || c.hidden) return null;
+  const f = dashFilterSchema.safeParse(crossFilterFor(c.name, c.type, d.timeGrain, value));
+  return f.success ? columnClause(f.data, c, now) : null;
+}
+
 /**
  * "Tampilkan nilai sebagai" (T-067) pada rencana: ukuran membawa showAs (dibaca pembangun SQL), kolom
  * keluarannya berjudul cara tampil ("% dari total kolom · Total Omzet") dan bertipe desimal untuk
@@ -475,7 +509,12 @@ function applyShowAs(
  */
 export function absentNames(config: WidgetConfig, schema: ColumnSchema[]): string[] {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
-  const names = columnsOf(config).flatMap((p) => {
+  // Kolom klik-tembus bukan isi grafik: catatannya hanya di dialog detail (rencana tabelnya sendiri).
+  const own =
+    "drill" in config.spec && config.spec.drill
+      ? ({ ...config, spec: { ...config.spec, drill: undefined } } as WidgetConfig)
+      : config;
+  const names = columnsOf(own).flatMap((p) => {
     const c = byPos.get(p);
     return c?.absent ? [c.name] : [];
   });

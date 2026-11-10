@@ -44,6 +44,8 @@ export interface ChartTableRow {
   pick?: () => void;
   pressed?: boolean;
   raw?: string;
+  /** Klik-tembus (T-d5ev): tombol membuka dialog baris detail (bukan tombol tekan filter silang). */
+  opens?: boolean;
 }
 
 export function ChartTable({
@@ -196,9 +198,13 @@ export function ChartTable({
                     {r.pick ? (
                       <button
                         type="button"
-                        aria-pressed={!!r.pressed}
-                        aria-describedby={describedBy}
-                        data-testid="crossfilter-item"
+                        {...(r.opens
+                          ? { "aria-haspopup": "dialog" as const, "data-testid": "drill-item" }
+                          : {
+                              "aria-pressed": !!r.pressed,
+                              "aria-describedby": describedBy,
+                              "data-testid": "crossfilter-item",
+                            })}
                         data-value={r.raw}
                         onClick={r.pick}
                         className={cn(

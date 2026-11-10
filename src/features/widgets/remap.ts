@@ -213,19 +213,30 @@ export function remapConfig(
         missing,
       };
     }
-    default:
+    default: {
+      const { drill, ...spec } = config.spec;
+      // Kolom klik-tembus (T-d5ev) bukan bagian grafik: yang hilang dibuang tanpa menandai widget
+      // (grafik tetap tampil); semua hilang → klik-tembus mati.
+      const kept = (drill?.columns ?? []).flatMap((p) => {
+        const before = missing.length;
+        const to = pos(p);
+        missing.length = before;
+        return to === MISSING_COLUMN ? [] : [to];
+      });
       return {
         config: {
           ...config,
           spec: {
-            ...config.spec,
+            ...spec,
             sheetId: target.id,
             dimension: { ...config.spec.dimension, column: pos(config.spec.dimension.column) },
             measure: mapMeasure(config.spec.measure),
+            ...(kept.length ? { drill: { columns: [...new Set(kept)] } } : {}),
           },
         },
         missing,
       };
+    }
   }
 }
 

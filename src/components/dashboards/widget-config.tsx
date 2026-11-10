@@ -28,6 +28,7 @@ import { duplicateField } from "./pivot-config-model";
 import {
   ChartShapeFields,
   CrossFilterField,
+  DrillField,
   FormatColumnsField,
   MeasureFields,
   MissingNotice,
@@ -562,6 +563,23 @@ export function WidgetConfigForm({
                   onChange={(on) => {
                     const { crossFilter: _, ...spec } = draft.spec;
                     commit({ ...draft, spec: on ? spec : { ...spec, crossFilter: false } });
+                  }}
+                />
+              ) : null}
+              {draft.type !== "kpi" ? (
+                <DrillField
+                  value={draft.spec.drill?.columns}
+                  columns={cols}
+                  defaults={[
+                    draft.spec.dimension.column,
+                    ...(!isCalcValue(draft.spec.measure) && draft.spec.measure.column
+                      ? [draft.spec.measure.column]
+                      : []),
+                  ]}
+                  crossFilter={draft.spec.crossFilter !== false}
+                  onChange={(columns) => {
+                    const { drill: _, ...spec } = draft.spec;
+                    commit({ ...draft, spec: columns ? { ...spec, drill: { columns } } : spec });
                   }}
                 />
               ) : null}

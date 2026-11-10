@@ -279,3 +279,36 @@ describe("T-43hv: kolom tanggal pembanding KPI ikut dipetakan", () => {
     );
   });
 });
+
+describe("T-d5ev: kolom klik-tembus dipetakan tanpa mematikan grafik", () => {
+  const bar = (drill: number[]) =>
+    ({
+      type: "bar",
+      spec: {
+        sheetId: OLD,
+        dimension: { column: 1 },
+        measure: { agg: "sum", column: 2 },
+        sort: "value_desc",
+        topN: 10,
+        format: fmt,
+        drill: { columns: drill },
+      },
+    }) as const;
+
+  it("pindah posisi → ikut; hilang → dibuang tanpa menandai widget; semua hilang → mati", () => {
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Omzet"), col(3, "Catatan")]);
+    const moved = sheet(NEW, [col(1, "Catatan"), col(2, "Cabang"), col(3, "Omzet")]);
+    const r = remapConfig(bar([1, 3]), old, moved);
+    expect(r.missing).toEqual([]);
+    expect((r.config.spec as { drill?: { columns: number[] } }).drill).toEqual({ columns: [2, 1] });
+
+    const gone = sheet(NEW, [col(1, "Cabang"), col(2, "Omzet")]);
+    const g = remapConfig(bar([1, 3]), old, gone);
+    expect(g.missing).toEqual([]);
+    expect((g.config.spec as { drill?: { columns: number[] } }).drill).toEqual({ columns: [1] });
+    const none = remapConfig(bar([3]), old, gone);
+    expect(none.missing).toEqual([]);
+    expect(none.config.spec).not.toHaveProperty("drill");
+    expect(parseWidgetConfig(none.config.type, none.config.spec).ok).toBe(true);
+  });
+});

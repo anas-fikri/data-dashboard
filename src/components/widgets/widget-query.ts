@@ -134,6 +134,8 @@ export interface WidgetRequest {
   pivotFilters?: PivotFilter[];
   /** Pivot: minta daftar nilai satu field (menu saring) alih-alih tabel. */
   pivotValues?: PivotFieldRole;
+  /** Grafik klik-tembus (T-d5ev): nilai mentah kategori → baris data kategori itu (tabel). */
+  drill?: { value: string | number | boolean | null };
 }
 
 /** Pratinjau pivot tersimpan (T-c6z4): mode pemilik { datasetId, pivot }, jawaban berbentuk widget pivot. */

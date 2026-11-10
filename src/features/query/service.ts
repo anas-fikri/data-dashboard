@@ -41,7 +41,7 @@ import {
   type PivotSavedFilter,
   type WidgetConfig,
 } from "@/features/widgets/spec";
-import { TABLE_PAGE_SIZE } from "@/features/widgets/spec";
+import { TABLE_PAGE_SIZE, drillTableConfig } from "@/features/widgets/spec";
 import { resultKey, type ResultCache } from "./cache";
 import {
   applyDashFilters,
@@ -79,6 +79,7 @@ import { buildPeriodBoundsSql, buildSql, buildTotalsSql, type BuiltSql } from ".
 import { buildTableCount, buildTablePage } from "./table";
 import {
   absentNames,
+  drillClause,
   pivotPreviewBodySchema,
   widgetBodySchema,
   widgetPlan,
@@ -1076,7 +1077,8 @@ export async function resolveWidget(
   body: Pick<
     WidgetQueryBody,
     "dashboardFilters" | "page" | "sort" | "pivotFilters" | "pivotValues"
-  >,
+  > &
+    Partial<Pick<WidgetQueryBody, "drill">>,
   deps: Pick<QueryDeps, "repo" | "now">,
 ): Promise<ResolvedWidget | QueryFailure> {
   const dashFilters = body.dashboardFilters ?? [];
@@ -1141,6 +1143,18 @@ export async function resolveWidget(
     );
   }
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
+  // Klik-tembus (T-d5ev): grafiknya harus tetap sah (dimensi terlihat), lalu yang dijalankan tabel kolom
+  // detail + klausa kategori yang diklik (dibangun dari dimensi widget, di-AND dengan filter dashboard).
+  let drilled: DashClause | null = null;
+  if (body.drill) {
+    const table = savedFilters ? null : drillTableConfig(config);
+    if (!table) return fail("INVALID", "Widget ini tidak punya klik-tembus.");
+    const chart = widgetPlan(config, sheet.schema, { page: 0 });
+    if (!chart.ok) return fail(chart.code, chart.message);
+    drilled = drillClause(config, sheet.schema, body.drill.value, deps.now?.() ?? new Date());
+    if (!drilled) return fail("INVALID", "Kategori ini tidak bisa dibuka barisnya.");
+    config = table;
+  }
   const planned = widgetPlan(
     config,
     sheet.schema,
@@ -1158,7 +1172,10 @@ export async function resolveWidget(
     : { clauses: [] as DashClause[], skipped: [] as string[] };
   // Saring pivot tersimpan sumber grafik/KPI (T-073) di-AND dengan filter dashboard: masuk SQL, kunci
   // cache, pemangkasan segmen, dan ekspor lewat jalur klausa yang sama. Widget mandiri: tidak ada.
-  const saved = planned.kind === "agg" ? (planned.saved ?? []) : [];
+  const saved = [
+    ...(planned.kind === "agg" ? (planned.saved ?? []) : []),
+    ...(drilled ? [drilled] : []),
+  ];
   const dash = saved.length ? { ...applied, clauses: [...saved, ...applied.clauses] } : applied;
   return {
     ok: true,

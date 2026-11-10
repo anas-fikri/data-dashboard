@@ -214,6 +214,16 @@ export const kpiSpecSchema = z
     compare: kpiCompare.optional(),
   })
   .strict();
+const drillSchema = z
+  .object({
+    columns: z
+      .array(column)
+      .min(1)
+      .max(TABLE_COLUMNS_MAX)
+      .refine((c) => new Set(c).size === c.length, { message: "Kolom tidak boleh ganda" }),
+  })
+  .strict();
+export type DrillSpec = z.infer<typeof drillSchema>;
 export const chartSpecSchema = z
   .object({
     sheetId,
@@ -236,6 +246,11 @@ export const chartSpecSchema = z
     orientation: z.enum(ORIENTATIONS).optional(),
     /** Garis tren (v1.10.0, trend.ts): hanya untuk dimensi tanggal/periode di Garis atau Batang tegak. */
     trend: z.enum(TRENDS).optional(),
+    /**
+     * Klik-tembus (T-d5ev): klik kategori membuka tabel baris data kategori itu dengan kolom ini saja
+     * (termasuk kolom widget yang boleh dibaca viewer, D6). Tidak ada = mati.
+     */
+    drill: drillSchema.optional(),
   })
   .strict();
 const tableColumnStatus = z
@@ -557,6 +572,34 @@ export function columnsOf(c: WidgetConfig): number[] {
         ...(c.spec.filters ?? []).map((f) => f.column),
       ];
     default:
-      return [c.spec.dimension.column, ...valueColumns(c.spec.measure)];
+      return [
+        c.spec.dimension.column,
+        ...valueColumns(c.spec.measure),
+        ...(c.spec.drill?.columns ?? []),
+      ];
   }
+}
+
+/**
+ * Tabel klik-tembus grafik (T-d5ev): kolom detail widget; format grafik hanya untuk kolom ukurannya
+ * (nilai mentah — format "Tampilkan sebagai" persen tidak berlaku untuk baris). null = tanpa klik-tembus.
+ */
+export function drillTableConfig(
+  config: WidgetConfig,
+): Extract<WidgetConfig, { type: "table" }> | null {
+  if (config.type !== "bar" && config.type !== "line" && config.type !== "pie") return null;
+  const { measure: m, drill, format } = config.spec;
+  if (!drill) return null;
+  const col =
+    !isCalcValue(m) && !m.showAs && m.column && drill.columns.includes(m.column)
+      ? m.column
+      : undefined;
+  return {
+    type: "table",
+    spec: {
+      sheetId: config.spec.sheetId,
+      columns: drill.columns,
+      ...(col ? { format, formatColumns: [col] } : { format: { style: "auto", decimals: 0 } }),
+    },
+  };
 }
