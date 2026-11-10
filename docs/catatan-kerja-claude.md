@@ -55,6 +55,16 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-10, sesi cloud)
+
+- Rilis **v1.15.0** (branch `claude/cool-babbage-t5yojt`, PR #17): **T-43hv** pembanding KPI dan **T-d5ev**
+  klik-tembus grafik — tanpa migrasi (`bash deploy/release.sh --quick` boleh; runbook §24).
+- Lanjutan: **T-tyb1** (temuan Low review v1.15), **T-7377** (data-view-a11y AC2 PageDown + AC3 F2 — gagal juga
+  di v1.14).
+- Worktree terpisah (`git worktree add --detach <scratchpad>/wt`) dipakai untuk mengedit selama suite e2e
+  berjalan agar HMR dev server tidak mengganggu; push `HEAD:<branch>`, lalu `git merge --ff-only` di checkout
+  utama setelah suite selesai.
+
 ## Posisi terakhir (2026-10-24 dini hari, sesi cloud)
 
 - Deploy v1.5.0 (23:22Z) berhenti di gerbang pasca-migrasi T-gcn8 (salah alarm: `SegmentTyped.headerRow` NULL =

@@ -7,7 +7,7 @@ tags:
   - data-view
   - a11y
 created: "2026-11-10T02:55:37Z"
-updated: "2026-11-10T02:55:37Z"
+updated: "2026-11-10T05:32:06Z"
 created_by: claude-code
 ---
 
@@ -21,3 +21,5 @@ Uji e2e data-view-a11y AC2 gagal konsisten di main (ditemukan saat suite penuh v
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-11-10T05:32:06Z v1.15 (2026-11-10): AC3 juga gagal — F2 setelah Esc dari dialog saring tidak membuka panel Isi sel (data-view-a11y.spec.ts:298); uji banding di 7809c7d (v1.14) gagal sama → bukan regresi v1.15. AC1 dijalankan terpisah.
