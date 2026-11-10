@@ -2,7 +2,7 @@
 
 import { IconFilter, IconFilterOff, IconRefresh, IconX } from "@tabler/icons-react";
 import { Dialog } from "radix-ui";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { Button } from "@/components/ui/button";
 import { useDashboardColors } from "@/components/widgets/dashboard-colors";
@@ -27,6 +27,8 @@ export interface DrillTarget {
   value: string | number | boolean | null;
   /** Label kategori seperti di grafik ("Okt 2026", "(kosong)"). */
   label: string;
+  /** Elemen yang membuka dialog (tombol kategori): fokus kembali ke sana saat ditutup. */
+  opener?: HTMLElement | null;
 }
 
 export function DrillDialog({
@@ -50,12 +52,26 @@ export function DrillDialog({
   cross?: { pressed: boolean; toggle: () => void };
 }) {
   const heading = target ? `${dimensionLabel}: ${target.label}` : "";
+  // Dialog terkendali tanpa Dialog.Trigger: Radix tidak tahu pembukanya, jadi fokus dikembalikan sendiri
+  // ke tombol kategori (klik grafik di kanvas: tanpa pembuka → perilaku bawaan).
+  const opener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (target) opener.current = target.opener ?? null;
+  }, [target]);
   return (
     <Dialog.Root open={!!target} onOpenChange={(open) => (open ? null : onClose())}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-overlay/50" />
         <Dialog.Content
           data-testid="drill-dialog"
+          onCloseAutoFocus={(e) => {
+            const el = opener.current;
+            opener.current = null;
+            if (el?.isConnected) {
+              e.preventDefault();
+              el.focus();
+            }
+          }}
           className="fixed inset-0 z-50 flex flex-col bg-card text-card-foreground md:inset-4 md:rounded-lg md:border md:shadow-lg"
         >
           <div className="flex items-center gap-2 border-b px-3 py-2 md:px-4">

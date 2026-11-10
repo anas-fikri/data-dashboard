@@ -243,7 +243,13 @@ export function ChartWidget({
           typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean"
             ? raw
             : null;
-        setDrillAt({ value, label: labels[k] ?? "", filter: filterAt(k) });
+        const active = typeof document === "undefined" ? null : document.activeElement;
+        setDrillAt({
+          value,
+          label: labels[k] ?? "",
+          filter: filterAt(k),
+          opener: active instanceof HTMLElement && active !== document.body ? active : null,
+        });
       }
     : pickAt;
   const selectedKey = cross?.selected ? filterKey(cross.selected) : null;
