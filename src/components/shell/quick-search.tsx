@@ -121,8 +121,8 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
           // < 640 px disembunyikan: kepala ponsel sudah penuh (ikon Panduan, Yang baru, tema, akun) dan
           // pintasan Ctrl+K untuk papan ketik; daftar Dashboard/Dataset dan cari Panduan tetap ada di ponsel.
           className="hidden h-(--control-h) items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring sm:inline-flex"
-          // Nama memuat label terlihat "Cari" (WCAG 2.5.3) tetapi tidak sama persis dengan tombol "Cari" lain.
-          aria-label="Cari cepat"
+          // Nama dari isi: "Cari Ctrl K" (≥ 768 px) — sama dengan teks terlihat (WCAG 2.5.3, axe
+          // label-content-name-mismatch) dan berbeda dari tombol "Cari" di halaman Panduan.
           aria-keyshortcuts={mac ? "Meta+K" : "Control+K"}
           data-testid="quick-search-trigger"
         >
