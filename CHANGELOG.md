@@ -53,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baru; data tetap). Matikan Pembanding/Klik-tembus di widget itu dulu bila rollback akan lama
   (runbook-deploy §24). Kolom klik-tembus terbaca semua yang bisa melihat dashboard (D6: kolom widget).
 
+## [1.15.0] - 2026-11-10
+
+### Added
+
+- **kpi:** pembanding periode terakhir vs sebelumnya / tahun lalu (T-43hv) (39f6a65)
+- **widgets:** klik-tembus grafik ke baris detail (T-d5ev) (cd206e3)
+
+### Fixed
+
+- **kpi,widgets:** perbaikan review v1.15 — ekspor KPI berpembanding = periode terakhir, minggu vs tahun lalu 52 minggu, tolak pembanding tanggal terkecil/terbesar, kolom klik-tembus bawaan unik, kategori yang menyaring tetap diumumkan (1d723f8)
+- **kpi,widgets:** temuan Low review v1.15 r2 — panel menyembunyikan pembanding untuk tanggal terkecil/terbesar; kategori yang menyaring diumumkan sekali (data-current + teks sr-only) (b81d108)
+
 ## [1.14.0] - 2026-11-10
 
 ### Added
