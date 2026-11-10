@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { markRefreshFailed, useRefreshTick } from "@/components/dashboards/auto-refresh";
 import type {
   DashFilter,
@@ -204,12 +204,23 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
   // gagal (jaringan putus, server sibuk) tidak menghapus data terakhir yang masih tampil.
   const tick = useRefreshTick();
   const last = useRef("");
+  // Penanda "pembaruan gagal" per pemakai hook (kartu dan tabel besar widget yang sama tidak saling hapus),
+  // hanya bila ada data lama yang tetap ditampilkan; dilepas saat berhasil, ganti permintaan, atau unmount —
+  // bukan tiap tick, agar bilah TV tidak sempat menulis "Diperbarui" di atas angka lama (review v1.14 r2).
+  const hookId = useId();
+  const hasData = useRef(false);
+  useEffect(() => () => markRefreshFailed(hookId, false), [hookId]);
 
   useEffect(() => {
     if (!key) return;
     const run = `${key}|${version}|${attempt}`;
     const background = last.current === run;
     last.current = run;
+    if (!background) {
+      // Permintaan baru (filter/pengaturan berubah): data yang tampil milik permintaan lama.
+      hasData.current = false;
+      markRefreshFailed(hookId, false);
+    }
     // Request diturunkan dari key (string stabil), bukan objek baru tiap render.
     const req = JSON.parse(key) as WidgetRequest;
     const filters = requestFilters(req);
@@ -227,11 +238,13 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
         // Id widget: widget yang sudah hilang dari props server tidak memakai jatah refresh.
         if (isAccessLost(r)) accessLost?.(req.widgetId);
         // Pembaruan latar gagal tetapi data lama ditampilkan → dihitung di bilah TV/keterangan muat ulang.
-        markRefreshFailed(req.widgetId, !r.ok && background);
+        const keepOld = !r.ok && background && hasData.current && !isAccessLost(r);
+        markRefreshFailed(hookId, keepOld);
+        if (r.ok) hasData.current = true;
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }
-            : background && s.data && !isAccessLost(r)
+            : keepOld && s.data
               ? { status: "ok", data: s.data, filters: s.filters }
               : {
                   status: "error",
@@ -245,13 +258,10 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
       },
       () => {},
     );
-    return () => {
-      ctl.abort();
-      markRefreshFailed(req.widgetId, false);
-    };
+    return () => ctl.abort();
     // version (spec disimpan), attempt (tombol coba lagi), dan tick (muat ulang otomatis) memicu query
-    // ulang; accessLost stabil.
-  }, [key, version, attempt, tick, accessLost]);
+    // ulang; accessLost dan hookId stabil.
+  }, [key, version, attempt, tick, accessLost, hookId]);
 
   return { state, retry: () => setAttempt((n) => n + 1) };
 }

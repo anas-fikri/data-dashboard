@@ -89,11 +89,14 @@ const emitFailing = () => {
   for (const fn of failingListeners) fn();
 };
 
-/** Dipanggil useWidgetQuery: pembaruan latar widget gagal (true) atau berhasil/dilepas (false). */
-export function markRefreshFailed(widgetId: string, failed: boolean) {
-  if (failed === failing.has(widgetId)) return;
-  if (failed) failing.add(widgetId);
-  else failing.delete(widgetId);
+/**
+ * Dipanggil useWidgetQuery (kunci = id pemakai hook, bukan id widget): pembaruan latar gagal sementara data
+ * lama tetap tampil (true), atau berhasil/ganti permintaan/unmount (false).
+ */
+export function markRefreshFailed(key: string, failed: boolean) {
+  if (failed === failing.has(key)) return;
+  if (failed) failing.add(key);
+  else failing.delete(key);
   emitFailing();
 }
 

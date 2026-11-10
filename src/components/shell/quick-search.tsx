@@ -91,7 +91,15 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
       const combo = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
       if (!combo || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
       if (e.defaultPrevented || e.isComposing) return;
-      if (!openRef.current && document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      // Radix Dialog tidak memberi aria-modal: dialog terbuka dikenali dari data-state.
+      if (
+        !openRef.current &&
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]',
+        )
+      ) {
+        return;
+      }
       e.preventDefault();
       setOpen((o) => !o);
     };
@@ -110,14 +118,16 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
         <button
           ref={trigger}
           type="button"
-          className="inline-flex h-(--control-h) items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          // < 640 px disembunyikan: kepala ponsel sudah penuh (ikon Panduan, Yang baru, tema, akun) dan
+          // pintasan Ctrl+K untuk papan ketik; daftar Dashboard/Dataset dan cari Panduan tetap ada di ponsel.
+          className="hidden h-(--control-h) items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring sm:inline-flex"
           // Nama memuat label terlihat "Cari" (WCAG 2.5.3) tetapi tidak sama persis dengan tombol "Cari" lain.
           aria-label="Cari cepat"
-          aria-keyshortcuts="Control+K Meta+K"
+          aria-keyshortcuts={mac ? "Meta+K" : "Control+K"}
           data-testid="quick-search-trigger"
         >
           <IconSearch aria-hidden className="size-5 shrink-0 stroke-[1.5]" />
-          <span className="sr-only sm:not-sr-only">Cari</span>
+          <span>Cari</span>
           <kbd className="hidden rounded border bg-muted px-1.5 font-sans text-xs text-foreground md:inline">
             {mac ? "⌘K" : "Ctrl K"}
           </kbd>
