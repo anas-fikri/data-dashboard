@@ -86,8 +86,10 @@ export default async function DashboardPage({
   // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot. Tanpa tombol
   // (mode edit), PDF yang sedang dibuat tetap dipantau dan diunduh otomatis (DashboardPdfWatch).
   const pdf = !editing && d.widgets.length > 0;
-  // Menu "Lainnya" (v1.14): Mode TV + muat ulang otomatis untuk semua peran di mode lihat; Duplikat pemilik.
-  const hasActions = pdf || isOwner || canEdit || !editing;
+  // Menu "Lainnya" (v1.14): Mode TV + muat ulang otomatis untuk semua peran di mode lihat bila ada widget;
+  // Duplikat untuk pemilik (juga dashboard kosong).
+  const more = !editing && (d.widgets.length > 0 || isOwner);
+  const hasActions = pdf || isOwner || canEdit || more;
   // Mode TV (T-nn87): ?tv=1 di mode lihat — tanpa kepala halaman (bilah TV di kanvas jadi judulnya).
   const tv = !editing && first(search.tv) === "1";
   const copy = isOwner && !editing && !tv ? await suggestCopyName(d.dataset.id, d.name) : null;
@@ -184,7 +186,7 @@ export default async function DashboardPage({
                       </Link>
                     </Button>
                   ) : null}
-                  {!editing ? <DashboardMoreMenu dashboardId={d.id} copyName={copy} /> : null}
+                  {more ? <DashboardMoreMenu dashboardId={d.id} copyName={copy} /> : null}
                   {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}
                 </>
               ) : undefined
