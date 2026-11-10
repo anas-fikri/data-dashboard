@@ -6,7 +6,7 @@ profile: standard
 tags:
   - widgets
 created: "2026-11-10T04:56:45Z"
-updated: "2026-11-10T04:57:15Z"
+updated: "2026-11-10T05:01:05Z"
 created_by: claude-code
 ---
 
@@ -23,3 +23,5 @@ Sisa temuan Low review v1.15 (subagen, putaran 1) yang tidak memblokir rilis: ko
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
+
+- 2026-11-10T05:01:05Z Dari review v1.15 r2: file ekspor KPI berpembanding belum menyebut periodenya (tambah kolom/label periode).

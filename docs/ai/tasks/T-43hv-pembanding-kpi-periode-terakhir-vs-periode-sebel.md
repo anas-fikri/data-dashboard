@@ -7,7 +7,7 @@ tags:
   - widgets
   - query
 created: "2026-11-10T03:55:58Z"
-updated: "2026-11-10T04:56:42Z"
+updated: "2026-11-10T05:01:18Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -19,6 +19,14 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-10T04:56:42Z"
       findings: 5
+    - "n": 2
+      by: claude-code
+      at: "2026-11-10T05:01:02Z"
+      findings: 2
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-10T05:01:03Z"
+      findings: 2
 ---
 
 ## Objective
@@ -37,3 +45,5 @@ Rollback: image v1.14.0 — KPI berpembanding tampil 'Pengaturan widget tidak va
 Validation: widget-query.test.ts (Maret vs Februari, filter dashboard menentukan periode, tahun lalu tanpa data, kolom bukan tanggal ditolak), kpi-compare.test.ts, drill.test.ts (KpiView), remap.test.ts, e2e kpi-drill (UI + warna + filter + ponsel/axe), suite e2e per proyek.
 
 ## Notes
+
+- 2026-11-10T05:01:18Z Review pass 2 (by claude-code) tercatat tidak sengaja: perintah dijalankan tanpa AITK_TOOL, isinya duplikat pass 3 (subagen, putaran 2: 2 temuan Low — panel pembanding tanggal terkecil/terbesar diperbaiki, label periode ekspor → T-tyb1). Bukti tidak diubah tangan.
