@@ -31,11 +31,17 @@ export const kpiFontPx = (room: number) => Math.min(36, Math.max(18, room * 0.15
  * judul dua baris atau baris catatan menyisakan kotak rendah — angka selebar kartu terpotong setengah.
  * `height` = tinggi isi kotak; `rem` = ukuran huruf akar (px; pengguna bisa memperbesarnya): angka boleh
  * memakai padding bawah (pb-3, 0,75rem) kecuali 2 px untuk ekor huruf ("p" pada "Rp"); baris label
- * text-sm 1,25rem + gap 0,25rem; tinggi baris angka leading-tight (1,25). Hanya untuk kotak yang
+ * text-sm 1,25rem + gap 0,25rem; baris di bawah angka (`extraRem`); tinggi baris angka leading-tight (1,25). Hanya untuk kotak yang
  * tingginya TIDAK mengikuti isinya (grid, kertas) — kartu yang tumbuh akan berputar mengecil.
  */
-export const kpiHeightPx = (height: number, label: boolean, rem = 16) =>
-  (height + 0.75 * rem - 2 - (label ? 1.5 * rem : 0)) / 1.25;
+export const kpiHeightPx = (height: number, label: boolean, rem = 16, extraRem = 0) =>
+  (height + 0.75 * rem - 2 - (label ? 1.5 * rem : 0) - extraRem * rem) / 1.25;
+/**
+ * Baris tambahan di bawah angka (rem, termasuk gap 0,25rem): pita status (text-xs + py-0.5) dan baris
+ * pembanding KPI (T-43hv, text-xs).
+ */
+export const KPI_STATUS_REM = 1.5;
+export const KPI_COMPARE_REM = 1.25;
 /** Canvas tidak memakai angka tabular (tnum): sisakan ruang agar teks tidak terpotong 1–2 px. */
 const SLACK = 1.06;
 const NUMERIC = new Set<ValueType>(["integer", "decimal", "duration"]);

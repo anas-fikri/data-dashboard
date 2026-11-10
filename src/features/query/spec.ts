@@ -36,6 +36,20 @@ export const FILTER_OPS = [
 ] as const;
 export type Agg = (typeof AGGS)[number];
 export type Grain = (typeof GRAINS)[number];
+
+/**
+ * Pembanding KPI di jawaban query (T-43hv): awal periode terakhir/pembanding ('YYYY-MM-DD'), null bila
+ * data tanpa tanggal. Dipakai server (service) dan browser (KpiView).
+ */
+export interface KpiCompareData {
+  period: string | null;
+  previousPeriod: string | null;
+  /** Nilai periode pembanding; null bila periode itu tanpa baris (previousRows 0). */
+  previous: unknown;
+  previousRows: number;
+  grain: Grain;
+  against: "previous" | "year";
+}
 export type FilterOp = (typeof FILTER_OPS)[number];
 
 const colName = z.string().min(1).max(200);
@@ -213,6 +227,11 @@ export interface Plan {
    * kronologis walau periode lama diunggah belakangan (`_row` naik menurut urutan unggah).
    */
   periodic?: boolean;
+  /**
+   * Hanya periode terakhir (ekspor KPI berpembanding, T-43hv): baris dengan kolom tanggal `col` di
+   * [date_trunc(grain, max), +1 grain) dari baris yang lolos filter yang sama — subquery, satu SQL.
+   */
+  latest?: { col: string; grain: Grain };
 }
 
 export type Resolved = { ok: true; plan: Plan } | { ok: false; message: string };

@@ -21,12 +21,14 @@ import {
 import { CalcField } from "./calc-editor";
 import { Choice, ColumnChoice, FormatFields } from "./config-fields";
 import { useFocusAfterRender } from "./config-focus";
+import { KpiCompareFields } from "./kpi-compare-fields";
 import { PivotFields } from "./pivot-config";
 import type { QueryScope } from "./query-scope";
 import { duplicateField } from "./pivot-config-model";
 import {
   ChartShapeFields,
   CrossFilterField,
+  DrillField,
   FormatColumnsField,
   MeasureFields,
   MissingNotice,
@@ -447,12 +449,29 @@ export function WidgetConfigForm({
                 }
                 removeLabel="Kembali ke ukuran biasa"
               />
+              {draft.type === "kpi" ? (
+                <KpiCompareFields
+                  value={draft.spec.compare}
+                  columns={cols}
+                  dateMeasure={
+                    !isCalcValue(draft.spec.measure) &&
+                    (draft.spec.measure.agg === "min" || draft.spec.measure.agg === "max") &&
+                    !!draft.spec.measure.column &&
+                    isTemporal(typeOf(draft.spec.measure.column) ?? "text")
+                  }
+                  onChange={(compare) => {
+                    const { compare: _c, ...spec } = draft.spec;
+                    commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
+                  }}
+                />
+              ) : null}
               {/* Warna status (v1.9.0): batang/garis/pai relatif atau batas; Angka batas saja. */}
               <>
                 <ToneChoice
                   key={draft.type}
                   kpi={draft.type === "kpi"}
                   noInherit={draft.type === "kpi"}
+                  compare={draft.type === "kpi" && !!draft.spec.compare}
                   value={draft.spec.measure}
                   percent={
                     valueFormat(
@@ -550,6 +569,23 @@ export function WidgetConfigForm({
                   onChange={(on) => {
                     const { crossFilter: _, ...spec } = draft.spec;
                     commit({ ...draft, spec: on ? spec : { ...spec, crossFilter: false } });
+                  }}
+                />
+              ) : null}
+              {draft.type !== "kpi" ? (
+                <DrillField
+                  value={draft.spec.drill?.columns}
+                  columns={cols}
+                  defaults={[
+                    draft.spec.dimension.column,
+                    ...(!isCalcValue(draft.spec.measure) && draft.spec.measure.column
+                      ? [draft.spec.measure.column]
+                      : []),
+                  ]}
+                  crossFilter={draft.spec.crossFilter !== false}
+                  onChange={(columns) => {
+                    const { drill: _, ...spec } = draft.spec;
+                    commit({ ...draft, spec: columns ? { ...spec, drill: { columns } } : spec });
                   }}
                 />
               ) : null}

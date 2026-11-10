@@ -109,6 +109,17 @@ export const WIDGETS: Record<string, { type: string; spec: unknown; title: strin
     title: "Total omzet",
     spec: { sheetId: SHEET, measure: { agg: "sum", column: 2 }, format: fmt },
   },
+  // Pembanding KPI (T-43hv): ekspor = periode terakhir (Maret 2026), sama dengan kartu.
+  kcmp: {
+    type: "kpi",
+    title: "Omzet bulan terakhir",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
   bar: {
     type: "bar",
     title: "Omzet per cabang",

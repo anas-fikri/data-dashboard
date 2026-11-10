@@ -30,6 +30,10 @@ Dashboard berisi widget yang membaca dataset Anda. Setiap perubahan tersimpan ot
 
 Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada batang/irisan pai menyaring widget lain di dashboard. Matikan bila tidak diperlukan.
 
+**Pembanding** (khusus **Angka**): pilih _Periode sebelumnya_ atau _Periode sama tahun lalu_, lalu **Kolom tanggal** dan **Periode** (bawaan _Per bulan_). Angka kini menampilkan periode terakhir yang ada di data (setelah filter), mis. _April 2026_, dan di bawahnya baris seperti **▲ +32,3% vs Mar 2026 (93)**. Warna ▲/▼ mengikuti **Penilaian warna** widget (atau penilaian bawaan dashboard): _makin tinggi makin baik_ → naik hijau, turun merah; tanpa penilaian → abu-abu. Bila periode pembanding tidak punya data, tertulis _Tidak ada data …_; bila nilainya 0, yang tampil selisih angka, bukan persen.
+
+**Klik-tembus ke baris data** (grafik **Batang**, **Garis**, **Pai**): nyalakan, lalu centang **Kolom baris detail** (bawaan: kolom pengelompokan + kolom nilai). Klik kategori di grafik (atau tombol kategori di tabel data grafik) membuka tabel baris data kategori itu — mis. semua kiriman _Bandung_ — 100 baris per halaman, bisa diurutkan, mengikuti filter dashboard. Penyaringan widget lain tetap tersedia lewat tombol **Saring dashboard dengan ini** di tabel itu. Semua yang bisa melihat dashboard bisa membaca kolom yang Anda centang di sini, jadi pilih kolom yang memang boleh dilihat pembaca.
+
 ## Mengatur tata letak
 
 - Layar lebar (≥ 1024 px): seret kepala kartu untuk memindahkan, tarik sudut kanan bawah untuk mengubah ukuran.

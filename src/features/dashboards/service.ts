@@ -24,6 +24,7 @@ import {
 import { matchSheet, remapConfig } from "@/features/widgets/remap";
 import {
   CHART_TYPES,
+  drillTableConfig,
   parseWidgetConfig,
   pivotSpecSchema,
   type WidgetConfig,
@@ -1198,7 +1199,10 @@ export async function checkConfig(
       ? { ok: false, message, stale: true }
       : { ok: false, message, outside: "foreign" };
   }
-  const planned = widgetPlan(config, schema, { page: 0 });
+  // Klik-tembus (T-d5ev): kolom detail juga harus terlihat saat disimpan (dicek seperti kolom tabel).
+  const drill = drillTableConfig(config);
+  const chart = widgetPlan(config, schema, { page: 0 });
+  const planned = chart.ok && drill ? widgetPlan(drill, schema, { page: 0 }) : chart;
   if (planned.ok) return { ok: true, config };
   return {
     ok: false,

@@ -9,6 +9,7 @@
 import { z } from "zod";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import {
+  type KpiCompareAgainst,
   TABLE_PAGE_SIZE,
   columnsOf,
   sortColumnSchema,
@@ -23,8 +24,11 @@ import {
 } from "@/features/widgets/spec";
 import { mapCalcColumns } from "@/features/widgets/calc";
 import { isPercentShowAs, showAsTitle, shown } from "@/features/widgets/show-as";
+import { crossFilterFor } from "@/components/dashboards/filters/filter-text";
 import {
   PIVOT_FIELDS,
+  columnClause,
+  dashFilterSchema,
   dashFiltersSchema,
   pivotFiltersSchema,
   valuesClause,
@@ -56,6 +60,17 @@ export const widgetBodySchema = z
      * dashboard, Saring tersimpan, dan saringan field LAIN (saringan field itu sendiri diabaikan).
      */
     pivotValues: z.enum(PIVOT_FIELDS).optional(),
+    /**
+     * Klik-tembus grafik (T-d5ev): nilai MENTAH kategori yang diklik (null = kosong) → baris data kategori
+     * itu dengan kolom detail widget, berhalaman/berurutan seperti tabel. Klausanya dibangun server dari
+     * dimensi widget sendiri (drillClause), bukan dari filter dashboard kiriman klien.
+     */
+    drill: z
+      .object({
+        value: z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]),
+      })
+      .strict()
+      .optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
     sort: z
       .object({ column: pos, dir: z.enum(["asc", "desc"]) })
@@ -132,6 +147,14 @@ function localValueOk(type: ColumnSchema["type"], grained: boolean, v: unknown):
   return typeof v === "number" && Number.isFinite(v);
 }
 
+export interface KpiComparePlan {
+  col: string;
+  type: "date" | "timestamp";
+  float: false;
+  grain: Grain;
+  against: KpiCompareAgainst;
+}
+
 export type WidgetPlan =
   | {
       ok: true;
@@ -143,6 +166,11 @@ export type WidgetPlan =
        * di-AND dengan filter dashboard oleh service. Tidak ada untuk widget mandiri.
        */
       saved?: DashClause[];
+      /**
+       * Pembanding KPI (T-43hv): kolom tanggal fisik (c<pos>) + tipenya, periode, dan pembanding. Service
+       * mencari periode terakhir di data yang lolos filter lalu menjalankan rencana ini untuk dua rentang.
+       */
+      compare?: KpiComparePlan;
     }
   | { ok: true; kind: "pivot"; spec: QuerySpec; plan: Plan; pivot: PivotShape }
   | {
@@ -224,6 +252,7 @@ export function widgetPlan(
       return cl ? [cl] : [];
     });
   let aggSaved: DashClause[] = [];
+  let compare: KpiComparePlan | undefined;
   const base = { sheetId: config.spec.sheetId };
   const filters: QuerySpec["filters"] = [];
   let spec: QuerySpec;
@@ -305,6 +334,37 @@ export function widgetPlan(
     case "kpi": {
       aggSaved = savedClauses(extra.filters ?? []);
       const m = config.spec.measure;
+      const cmp = config.spec.compare;
+      if (cmp && name(cmp.column)) {
+        const c = byPos.get(cmp.column)!;
+        if (c.type !== "date" && c.type !== "timestamp") {
+          return {
+            ok: false,
+            code: "INVALID",
+            message: `Pembanding KPI butuh kolom tanggal ("${c.name}" bukan tanggal). Pilih kolom tanggal di pengaturan widget.`,
+          };
+        }
+        // Terkecil/terbesar kolom tanggal: nilainya tanggal, tanpa persen perubahan (review v1.15 #3).
+        // Kolom ukuran tersembunyi/hilang: name() mencatatnya, tipenya tidak dibaca.
+        if (!isCalcValue(m) && (m.agg === "min" || m.agg === "max") && m.column && name(m.column)) {
+          const t = byPos.get(m.column)!.type;
+          if (t === "date" || t === "timestamp") {
+            return {
+              ok: false,
+              code: "INVALID",
+              message:
+                "Pembanding KPI hanya untuk nilai angka: tanggal terkecil/terbesar tidak punya persen perubahan. Pilih Tanpa pembanding atau nilai lain.",
+            };
+          }
+        }
+        compare = {
+          col: `c${c.pos}`,
+          type: c.type,
+          float: false,
+          grain: cmp.grain,
+          against: cmp.against,
+        };
+      }
       spec = {
         ...base,
         dimensions: [],
@@ -397,7 +457,30 @@ export function widgetPlan(
     spec,
     plan: { ...resolved.plan, totals },
     ...(aggSaved.length ? { saved: aggSaved } : {}),
+    ...(compare ? { compare } : {}),
   };
+}
+
+const isChart = (c: WidgetConfig): c is Extract<WidgetConfig, { type: "bar" | "line" | "pie" }> =>
+  c.type === "bar" || c.type === "line" || c.type === "pie";
+
+/**
+ * Klausa kategori klik-tembus: sama persis dengan filter silang klik itu (crossFilterFor — kategori
+ * tanggal ber-periode → rentang periode, null → (kosong)), tetapi kolomnya dimensi widget lewat posisi.
+ * null = nilai tidak cocok tipe dimensi / dimensi tidak tersedia.
+ */
+export function drillClause(
+  config: WidgetConfig,
+  schema: ColumnSchema[],
+  value: string | number | boolean | null,
+  now: Date,
+): DashClause | null {
+  if (!isChart(config)) return null;
+  const d = config.spec.dimension;
+  const c = schema.find((x) => x.pos === d.column);
+  if (!c || c.hidden) return null;
+  const f = dashFilterSchema.safeParse(crossFilterFor(c.name, c.type, d.timeGrain, value));
+  return f.success ? columnClause(f.data, c, now) : null;
 }
 
 /**
@@ -441,7 +524,12 @@ function applyShowAs(
  */
 export function absentNames(config: WidgetConfig, schema: ColumnSchema[]): string[] {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
-  const names = columnsOf(config).flatMap((p) => {
+  // Kolom klik-tembus bukan isi grafik: catatannya hanya di dialog detail (rencana tabelnya sendiri).
+  const own =
+    "drill" in config.spec && config.spec.drill
+      ? ({ ...config, spec: { ...config.spec, drill: undefined } } as WidgetConfig)
+      : config;
+  const names = columnsOf(own).flatMap((p) => {
     const c = byPos.get(p);
     return c?.absent ? [c.name] : [];
   });

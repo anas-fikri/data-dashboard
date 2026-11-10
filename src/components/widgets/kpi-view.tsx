@@ -12,7 +12,8 @@ import { useRef } from "react";
 import type { Agg } from "@/features/query/spec";
 import type { NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
-import { chooseKpi, kpiHeightPx, kpiTexts } from "./kpi-fit";
+import { compareArrow, kpiCompareView } from "./kpi-compare";
+import { chooseKpi, KPI_COMPARE_REM, KPI_STATUS_REM, kpiHeightPx, kpiTexts } from "./kpi-fit";
 import { useBoxSize } from "./use-box-size";
 import type { WidgetData } from "./widget-query";
 
@@ -87,12 +88,17 @@ export function KpiView({
     tone && target
       ? statusOf(value, tone, null, target, targetScale((column?.format ?? format).style))
       : null;
+  // Pembanding periode (T-43hv): warna ikut penilaian KPI (atau bawaan dashboard), tanpa batas tetap.
+  const cmp = data.compare
+    ? kpiCompareView(value, data.compare, column?.type ?? "decimal", column?.format ?? format, tone)
+    : null;
+  const extraRem = (st ? KPI_STATUS_REM : 0) + (cmp ? KPI_COMPARE_REM : 0);
   const shown = chooseKpi(
     options,
     size?.width ?? null,
     textWidth,
     // Tinggi kotak hanya membatasi bila kartu tidak tumbuh mengikuti isinya (tumpukan ponsel tumbuh).
-    fixedHeight && size ? (row) => kpiHeightPx(size.height, row, rootPx()) : undefined,
+    fixedHeight && size ? (row) => kpiHeightPx(size.height, row, rootPx(), extraRem) : undefined,
     !sameAsTitle,
     0.875 * rootPx(),
   );
@@ -148,6 +154,32 @@ export function KpiView({
           </>
         )}
       </p>
+      {cmp ? (
+        <p
+          className="flex min-w-0 shrink-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+          style={cmp.status ? (statusCssVars(status?.colors) as React.CSSProperties) : undefined}
+          data-testid="kpi-compare"
+          data-direction={cmp.direction ?? undefined}
+          title={cmp.full}
+        >
+          {cmp.change ? (
+            <span
+              aria-hidden
+              className={cn(
+                "shrink-0 rounded-sm font-medium tabular-nums",
+                cmp.status ? "px-1" : "text-foreground",
+              )}
+              data-status={cmp.status ?? undefined}
+            >
+              {compareArrow(cmp.direction)} {cmp.change}
+            </span>
+          ) : null}
+          <span aria-hidden className="truncate">
+            {cmp.text}
+          </span>
+          <span className="sr-only">{cmp.full}</span>
+        </p>
+      ) : null}
       {st && tone && target ? (
         <p
           className="shrink-0 self-start truncate rounded-sm px-2 py-0.5 text-xs font-medium"

@@ -57,6 +57,7 @@ export default defineConfig({
         /status-colors\.spec\.ts$/,
         /chart-theme\.spec\.ts$/,
         /dashboard-flex\.spec\.ts$/,
+        /kpi-drill\.spec\.ts$/,
       ],
     },
     // guide-roles (T-022, T-exfc): menerbitkan artikel bersamaan dengan guides.spec mengubah urutan daftar
@@ -154,6 +155,8 @@ export default defineConfig({
       testMatch: /dashboard-flex\.spec\.ts$/,
       dependencies: ["chart-theme"],
     },
+    // Pembanding KPI + klik-tembus (v1.15.0): worker sendiri → setelah dashboard-flex.
+    { name: "kpi-drill", testMatch: /kpi-drill\.spec\.ts$/, dependencies: ["dashboard-flex"] },
     // pivot-lanjutan (T-075): worker sendiri; pivot tersimpan 3–4 tingkat × 5 nilai (terhitung, % kolom,
     // Top N) → 4 widget terikat, viewer, ekspor CSV/XLSX = layar, halaman cetak, 360/768 px + axe.
     {

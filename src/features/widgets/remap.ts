@@ -150,7 +150,15 @@ export function remapConfig(
       return {
         config: {
           ...config,
-          spec: { ...config.spec, sheetId: target.id, measure: mapMeasure(config.spec.measure) },
+          spec: {
+            ...config.spec,
+            sheetId: target.id,
+            measure: mapMeasure(config.spec.measure),
+            // Pembanding KPI (T-43hv): kolom tanggal ikut dipetakan (hilang → penanda kolom hilang).
+            ...(config.spec.compare
+              ? { compare: { ...config.spec.compare, column: pos(config.spec.compare.column) } }
+              : {}),
+          },
         },
         missing,
       };
@@ -205,19 +213,30 @@ export function remapConfig(
         missing,
       };
     }
-    default:
+    default: {
+      const { drill, ...spec } = config.spec;
+      // Kolom klik-tembus (T-d5ev) bukan bagian grafik: yang hilang dibuang tanpa menandai widget
+      // (grafik tetap tampil); semua hilang → klik-tembus mati.
+      const kept = (drill?.columns ?? []).flatMap((p) => {
+        const before = missing.length;
+        const to = pos(p);
+        missing.length = before;
+        return to === MISSING_COLUMN ? [] : [to];
+      });
       return {
         config: {
           ...config,
           spec: {
-            ...config.spec,
+            ...spec,
             sheetId: target.id,
             dimension: { ...config.spec.dimension, column: pos(config.spec.dimension.column) },
             measure: mapMeasure(config.spec.measure),
+            ...(kept.length ? { drill: { columns: [...new Set(kept)] } } : {}),
           },
         },
         missing,
       };
+    }
   }
 }
 
@@ -225,7 +244,10 @@ export function remapConfig(
 function usedColumns(config: Configured): number[] {
   if (config.type === "table" || config.type === "pivot") return columnsOf(config);
   const measure = valueColumns(config.spec.measure);
-  return config.type === "kpi" ? measure : [config.spec.dimension.column, ...measure];
+  if (config.type === "kpi") {
+    return config.spec.compare ? [...measure, config.spec.compare.column] : measure;
+  }
+  return [config.spec.dimension.column, ...measure];
 }
 
 /**

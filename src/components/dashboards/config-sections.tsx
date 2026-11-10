@@ -153,18 +153,22 @@ export function TableColumns({
   selected,
   onChange,
   ref,
+  legend = "Kolom ditampilkan",
+  testId,
 }: {
   columns: SourceColumn[];
   selected: number[];
   onChange: (next: number[]) => void;
   /** Target fokus setelah kolom yang hilang dibuang (tabIndex -1: cadangan bila semua dinonaktifkan). */
   ref?: React.Ref<HTMLFieldSetElement>;
+  legend?: string;
+  testId?: string;
 }) {
   const visible = selected.filter((p) => columns.some((c) => c.pos === p));
   return (
-    <fieldset ref={ref} tabIndex={-1} className="flex min-w-0 flex-col gap-2">
+    <fieldset ref={ref} tabIndex={-1} className="flex min-w-0 flex-col gap-2" data-testid={testId}>
       <legend className="mb-1 text-sm font-medium">
-        Kolom ditampilkan{" "}
+        {legend}{" "}
         <span className="font-normal text-muted-foreground">
           ({visible.length} dari maks. {TABLE_COLUMNS_MAX})
         </span>
@@ -513,6 +517,72 @@ export function CrossFilterField({
         aria-describedby={`${id}-hint`}
         data-testid="widget-crossfilter-switch"
       />
+    </div>
+  );
+}
+
+/**
+ * Kolom bawaan saat klik-tembus dinyalakan: dimensi + kolom ukuran yang masih ada, unik (ukuran atas kolom
+ * pengelompokan sendiri, mis. jumlah unik tanggal per bulan, tidak membuat kolom ganda yang ditolak skema
+ * tanpa pesan — review v1.15 #4); tidak ada yang tersisa → kolom pertama.
+ */
+export function drillDefaults(defaults: number[], columns: SourceColumn[]): number[] {
+  const usable = [...new Set(defaults)].filter((p) => columns.some((c) => c.pos === p));
+  return usable.length ? usable : columns.slice(0, 1).map((c) => c.pos);
+}
+
+/**
+ * Klik-tembus grafik (T-d5ev): klik kategori membuka tabel baris datanya dengan kolom pilihan. Kolom itu
+ * ikut terbaca viewer dashboard (D6) — petunjuknya menyebut itu. Bawaan saat dinyalakan: dimensi + kolom
+ * ukuran.
+ */
+export function DrillField({
+  value,
+  columns,
+  defaults,
+  crossFilter,
+  onChange,
+}: {
+  value: number[] | undefined;
+  columns: SourceColumn[];
+  defaults: number[];
+  crossFilter: boolean;
+  onChange: (next: number[] | undefined) => void;
+}) {
+  const id = useId();
+  const on = !!value;
+  return (
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-col gap-0.5 pt-2.5 md:pt-0.5">
+          <label htmlFor={id} className="text-sm font-medium">
+            Klik-tembus ke baris data
+          </label>
+          <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+            {on
+              ? `Klik kategori membuka tabel baris datanya. Semua yang bisa melihat dashboard bisa membaca kolom yang dipilih di bawah.${crossFilter ? " Filter silang tetap lewat tombol di dialog itu." : ""}`
+              : "Klik kategori membuka tabel baris data kategori itu."}
+          </p>
+        </div>
+        <Switch
+          id={id}
+          checked={on}
+          onCheckedChange={(next) => {
+            onChange(next ? drillDefaults(defaults, columns) : undefined);
+          }}
+          aria-describedby={`${id}-hint`}
+          data-testid="widget-drill-switch"
+        />
+      </div>
+      {value ? (
+        <TableColumns
+          legend="Kolom baris detail"
+          testId="config-drill-columns"
+          columns={columns}
+          selected={value}
+          onChange={onChange}
+        />
+      ) : null}
     </div>
   );
 }

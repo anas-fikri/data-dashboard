@@ -117,6 +117,90 @@ const WIDGETS: Record<string, { type: string; spec: unknown }> = {
     spec: { sheetId: "cmv4kljx40009oczvdmpurrzz", measure: { agg: "count" }, format: fmt },
   },
   empty: { type: "empty", spec: {} },
+  // Pembanding KPI (T-43hv): tanggal Jan–Mar 2026 (i % 90 hari sejak 1 Jan).
+  kcmp: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
+  kyea: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "year" },
+    },
+  },
+  kbad: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 1, grain: "month", against: "previous" },
+    },
+  },
+  // Review v1.15: minggu vs tahun lalu = 52 minggu; terkecil/terbesar tanggal tidak berpembanding.
+  kwky: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 3, grain: "week", against: "year" },
+    },
+  },
+  kdmx: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "max", column: 3 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
+  // Klik-tembus (T-d5ev).
+  dril: {
+    type: "bar",
+    spec: {
+      sheetId: SHEET,
+      dimension: { column: 1 },
+      measure: { agg: "sum", column: 2 },
+      sort: "label_asc",
+      topN: 12,
+      format: fmt,
+      drill: { columns: [1, 2, 3] },
+    },
+  },
+  drlm: {
+    type: "line",
+    spec: {
+      sheetId: SHEET,
+      dimension: { column: 3, timeGrain: "month" },
+      measure: { agg: "count" },
+      sort: "label_asc",
+      topN: 12,
+      format: fmt,
+      drill: { columns: [3, 2] },
+    },
+  },
+  drhd: {
+    type: "bar",
+    spec: {
+      sheetId: SHEET,
+      dimension: { column: 1 },
+      measure: { agg: "count" },
+      sort: "label_asc",
+      topN: 12,
+      format: fmt,
+      drill: { columns: [1, 5] },
+    },
+  },
 };
 const WID = (name: string) => `cmv4kljx40009oczvdmpu${name.padEnd(4, "x").slice(0, 4)}0`;
 
@@ -621,5 +705,197 @@ describe("verifikasi T-011 putaran 2: format, data diganti, total grafik", () =>
     expect(healed).toMatchObject({ ok: true, cached: false });
     expect(healed.ok && healed.categories).toBeGreaterThan(0);
     expect(await runWidgetQuery(USER, { widgetId: WID("bar") }, d)).toMatchObject({ cached: true });
+  });
+});
+
+describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
+  const dayOf = (i: number) => new Date(Date.UTC(2026, 0, 1 + (i % 90)));
+  const sumWhere = (pred: (d: Date) => boolean) =>
+    Array.from({ length: ROWS }, (_, i) => i)
+      .filter((i) => pred(dayOf(i)))
+      .reduce((a, i) => a + omzetOf(i), 0);
+
+  it("periode terakhir (Maret) vs sebelumnya (Februari) dari data yang lolos filter", async () => {
+    const r = await runWidgetQuery(USER, { widgetId: WID("kcmp") }, deps());
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+    if (!r.ok || !("compare" in r)) throw new Error("tanpa compare");
+    expect(Number(r.rows[0]![0])).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 2),
+      4,
+    );
+    expect(r.compare).toMatchObject({
+      period: "2026-03-01",
+      previousPeriod: "2026-02-01",
+      grain: "month",
+      against: "previous",
+    });
+    expect(Number(r.compare!.previous)).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 1),
+      4,
+    );
+    expect(r.compare!.previousRows).toBe(
+      Array.from({ length: ROWS }, (_, i) => i).filter((i) => dayOf(i).getUTCMonth() === 1).length,
+    );
+  });
+
+  it("filter dashboard ikut menentukan periode terakhir", async () => {
+    // Omzet ≥ 999 hanya baris tertentu: periode terakhir dihitung dari baris yang lolos saja.
+    // Dashboard bertipe (filterSources): Omzet = angka, jadi filternya berlaku di sheet widget ini.
+    const base = deps();
+    const typed: QueryDeps = {
+      ...base,
+      repo: {
+        ...base.repo,
+        widget: async (u, id) => {
+          const w = await base.repo.widget(u, id);
+          return w && { ...w, dashboardId: "cmv4kljx40009oczvdmpurrdb" };
+        },
+        filterSources: async () => [{ name: "Omzet", type: "decimal" }],
+      },
+    };
+    const r = await runWidgetQuery(
+      USER,
+      { widgetId: WID("kcmp"), dashboardFilters: [{ column: "Omzet", op: "range", lte: 100 }] },
+      typed,
+    );
+    expect(r).not.toHaveProperty("skippedFilters");
+    if (!r.ok || !("compare" in r)) throw new Error(JSON.stringify(r));
+    const kept = (i: number) => omzetOf(i) <= 100;
+    const last = Math.max(
+      ...Array.from({ length: ROWS }, (_, i) => i)
+        .filter(kept)
+        .map((i) => dayOf(i).getUTCMonth()),
+    );
+    const sum = (m: number) =>
+      Array.from({ length: ROWS }, (_, i) => i)
+        .filter((i) => kept(i) && dayOf(i).getUTCMonth() === m)
+        .reduce((a, i) => a + omzetOf(i), 0);
+    expect(r.compare!.period).toBe(`2026-0${last + 1}-01`);
+    expect(Number(r.rows[0]![0])).toBeCloseTo(sum(last), 4);
+    expect(Number(r.compare!.previous)).toBeCloseTo(sum(last - 1), 4);
+  });
+
+  it("tahun lalu tanpa data → previous null; kolom bukan tanggal ditolak", async () => {
+    const y = await runWidgetQuery(USER, { widgetId: WID("kyea") }, deps());
+    if (!y.ok || !("compare" in y)) throw new Error(JSON.stringify(y));
+    // COUNT tanpa baris = 0, tetapi periode tanpa data dilaporkan null + previousRows 0 (bukan "0").
+    expect(y.compare).toMatchObject({
+      period: "2026-03-01",
+      previousPeriod: "2025-03-01",
+      previous: null,
+      previousRows: 0,
+    });
+    const bad = await runWidgetQuery(USER, { widgetId: WID("kbad") }, deps());
+    expect(bad).toMatchObject({ ok: false, code: "INVALID" });
+    expect(bad.ok ? "" : bad.message).toContain("butuh kolom tanggal");
+  });
+
+  it("review v1.15: minggu vs tahun lalu = 52 minggu (Senin); tanggal terbesar berpembanding ditolak", async () => {
+    const w = await runWidgetQuery(USER, { widgetId: WID("kwky") }, deps());
+    if (!w.ok || !("compare" in w)) throw new Error(JSON.stringify(w));
+    // Data 1 Jan–31 Mar 2026: minggu terakhir mulai Senin 30 Mar 2026; −364 hari = Senin 31 Mar 2025.
+    expect(w.compare).toMatchObject({ period: "2026-03-30", previousPeriod: "2025-03-31" });
+    expect(new Date(`${w.compare!.previousPeriod}T00:00:00Z`).getUTCDay()).toBe(1);
+    const d = await runWidgetQuery(USER, { widgetId: WID("kdmx") }, deps());
+    expect(d).toMatchObject({ ok: false, code: "INVALID" });
+    expect(d.ok ? "" : d.message).toContain("hanya untuk nilai angka");
+  });
+});
+
+describe("T-d5ev: klik-tembus grafik", { timeout: 60_000 }, () => {
+  const all = Array.from({ length: ROWS }, (_, i) => i);
+  const dayIdx = (i: number) => i % 90;
+
+  it("kategori teks → baris kategori itu saja (kolom detail, 100/halaman, urut, total)", async () => {
+    const r = await runWidgetQuery(
+      USER,
+      { widgetId: WID("dril"), drill: { value: "Cabang 1" }, sort: { column: 2, dir: "desc" } },
+      deps(),
+    );
+    if (!r.ok || !("total" in r)) throw new Error(JSON.stringify(r));
+    expect(r.columns.map((c) => c.label)).toEqual(["Cabang", "Omzet", "Tanggal"]);
+    const mine = all.filter((i) => cabangOf(i) === "Cabang 1");
+    expect(r.total).toBe(mine.length);
+    expect(r.rows).toHaveLength(100);
+    expect(r.rows.every((row) => row[0] === "Cabang 1")).toBe(true);
+    expect(Number(r.rows[0]![1])).toBeCloseTo(Math.max(...mine.map(omzetOf)), 4);
+  });
+
+  it("filter dashboard ikut; kategori bulan → rentang bulan itu; (kosong) → tanpa baris", async () => {
+    // Dashboard bertipe (filterSources): Omzet = angka, jadi filternya berlaku di sheet widget ini.
+    const base = deps();
+    const typed: QueryDeps = {
+      ...base,
+      repo: {
+        ...base.repo,
+        widget: async (u, id) => {
+          const w = await base.repo.widget(u, id);
+          return w && { ...w, dashboardId: "cmv4kljx40009oczvdmpurrdb" };
+        },
+        filterSources: async () => [{ name: "Omzet", type: "decimal" }],
+      },
+    };
+    const f = await runWidgetQuery(
+      USER,
+      {
+        widgetId: WID("dril"),
+        drill: { value: "Cabang 2" },
+        dashboardFilters: [{ column: "Omzet", op: "range", lte: 100 }],
+      },
+      typed,
+    );
+    if (!f.ok || !("total" in f)) throw new Error(JSON.stringify(f));
+    expect(f).not.toHaveProperty("skippedFilters");
+    expect(f.total).toBe(all.filter((i) => cabangOf(i) === "Cabang 2" && omzetOf(i) <= 100).length);
+
+    const m = await runWidgetQuery(
+      USER,
+      { widgetId: WID("drlm"), drill: { value: "2026-02-01" } },
+      deps(),
+    );
+    if (!m.ok || !("total" in m)) throw new Error(JSON.stringify(m));
+    expect(m.total).toBe(all.filter((i) => dayIdx(i) >= 31 && dayIdx(i) < 59).length);
+    expect(m.rows.every((row) => String(row[0]).startsWith("2026-02"))).toBe(true);
+
+    const n = await runWidgetQuery(USER, { widgetId: WID("dril"), drill: { value: null } }, deps());
+    expect(n).toMatchObject({ ok: true, total: 0, rows: [] });
+  });
+
+  it("ditolak: widget tanpa klik-tembus, nilai beda tipe, tanggal tidak sah, kolom detail tersembunyi", async () => {
+    const plain = await runWidgetQuery(
+      USER,
+      { widgetId: WID("bar"), drill: { value: "Cabang 1" } },
+      deps(),
+    );
+    expect(plain).toMatchObject({ ok: false, code: "INVALID" });
+    const typed = await runWidgetQuery(
+      USER,
+      { widgetId: WID("drlm"), drill: { value: 5 } },
+      deps(),
+    );
+    expect(typed).toMatchObject({ ok: false, code: "INVALID" });
+    const bad = await runWidgetQuery(
+      USER,
+      { widgetId: WID("drlm"), drill: { value: "2026-13-01" } },
+      deps(),
+    );
+    expect(bad).toMatchObject({ ok: false, code: "INVALID" });
+    const hidden = await runWidgetQuery(
+      USER,
+      { widgetId: WID("drhd"), drill: { value: "Cabang 1" } },
+      deps(),
+    );
+    expect(hidden).toMatchObject({ ok: false, code: "COLUMN_UNAVAILABLE" });
+    // Grafiknya sendiri tetap tampil walau kolom detailnya tersembunyi.
+    expect(await runWidgetQuery(USER, { widgetId: WID("drhd") }, deps())).toMatchObject({
+      ok: true,
+    });
+    // Urutan hanya untuk kolom detail.
+    const sort = await runWidgetQuery(
+      USER,
+      { widgetId: WID("dril"), drill: { value: "Cabang 1" }, sort: { column: 4, dir: "asc" } },
+      deps(),
+    );
+    expect(sort).toMatchObject({ ok: false, code: "INVALID" });
   });
 });

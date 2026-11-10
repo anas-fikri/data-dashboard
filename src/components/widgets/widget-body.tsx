@@ -217,6 +217,7 @@ function Loaded({
           title={title}
           cross={cross}
           onBadge={onBadge}
+          drill={editing ? undefined : { widgetId, widgetVersion }}
         />
       );
   }
