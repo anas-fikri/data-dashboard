@@ -162,7 +162,14 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
 
           <div className="ml-auto flex items-center gap-1">
             {user ? <QuickSearch isAdmin={isAdmin} /> : null}
-            <Button asChild variant="ghost" size="icon" aria-label="Panduan penggunaan">
+            {/* Ponsel: ruang kepala sempit sejak tombol Cari (v1.14) — Panduan tetap di laci menu dan cari cepat. */}
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              aria-label="Panduan penggunaan"
+              className="hidden sm:inline-flex"
+            >
               <Link href="/panduan">
                 <IconHelpCircle aria-hidden />
               </Link>

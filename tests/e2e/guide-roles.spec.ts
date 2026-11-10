@@ -195,7 +195,8 @@ test.describe("panduan per peran (T-022)", () => {
     await expect(card(n, O1)).toHaveCount(1);
     await expect(card(n, E1)).toHaveCount(0);
     await n.getByLabel("Cari panduan").fill("%%");
-    await n.getByRole("button", { name: "Cari" }).click();
+    // exact: kepala halaman juga punya tombol "Cari" cepat (Ctrl+K, v1.14).
+    await n.getByRole("button", { name: "Cari", exact: true }).click();
     await expect(n.getByRole("status")).toContainText("0 artikel cocok");
     // Byte NUL di kata kunci dibersihkan (Postgres menolaknya) → bukan galat 500.
     expect((await n.goto("/panduan?q=up%00load"))?.status()).toBe(200);

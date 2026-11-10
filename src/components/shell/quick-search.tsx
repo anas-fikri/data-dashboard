@@ -111,6 +111,8 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
           ref={trigger}
           type="button"
           className="inline-flex h-(--control-h) items-center gap-2 rounded-md border bg-background px-2.5 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-2 focus-visible:outline-ring"
+          // Nama memuat label terlihat "Cari" (WCAG 2.5.3) tetapi tidak sama persis dengan tombol "Cari" lain.
+          aria-label="Cari cepat"
           aria-keyshortcuts="Control+K Meta+K"
           data-testid="quick-search-trigger"
         >
