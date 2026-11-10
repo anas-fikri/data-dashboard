@@ -201,7 +201,7 @@ export function ChartTable({
                         {...(r.opens
                           ? {
                               "aria-haspopup": "dialog" as const,
-                              "aria-current": r.pressed || undefined,
+                              "data-current": r.pressed || undefined,
                               "data-testid": "drill-item",
                             }
                           : {
@@ -215,8 +215,8 @@ export function ChartTable({
                           "block w-full cursor-pointer px-3 text-left underline-offset-4 hover:underline focus-visible:-outline-offset-2",
                           // Ditekan: tebal + latar baris; mode warna paksa: garis Highlight (latar hilang).
                           "aria-pressed:font-semibold forced-colors:aria-pressed:outline forced-colors:aria-pressed:-outline-offset-2 forced-colors:aria-pressed:outline-[Highlight]",
-                          // Klik-tembus: kategori yang sedang menyaring dashboard (aria-current).
-                          "aria-[current=true]:font-semibold forced-colors:aria-[current=true]:outline forced-colors:aria-[current=true]:-outline-offset-2 forced-colors:aria-[current=true]:outline-[Highlight]",
+                          // Klik-tembus: kategori yang sedang menyaring dashboard (data-current + teks sr-only, sekali dibaca).
+                          "data-[current=true]:font-semibold forced-colors:data-[current=true]:outline forced-colors:data-[current=true]:-outline-offset-2 forced-colors:data-[current=true]:outline-[Highlight]",
                           stacked ? "break-words" : "truncate py-1.5",
                         )}
                       >

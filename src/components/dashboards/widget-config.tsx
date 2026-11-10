@@ -453,6 +453,12 @@ export function WidgetConfigForm({
                 <KpiCompareFields
                   value={draft.spec.compare}
                   columns={cols}
+                  dateMeasure={
+                    !isCalcValue(draft.spec.measure) &&
+                    (draft.spec.measure.agg === "min" || draft.spec.measure.agg === "max") &&
+                    !!draft.spec.measure.column &&
+                    isTemporal(typeOf(draft.spec.measure.column) ?? "text")
+                  }
                   onChange={(compare) => {
                     const { compare: _c, ...spec } = draft.spec;
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });

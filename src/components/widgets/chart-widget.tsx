@@ -112,7 +112,7 @@ type Row = {
 };
 /** Tombol kategori yang ditekan (filter silang dari grafik ini): garis + latar, bukan warna saja. */
 const PRESSED =
-  "aria-pressed:bg-primary/10 aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight] aria-[current=true]:bg-primary/10 aria-[current=true]:ring-1 aria-[current=true]:ring-inset aria-[current=true]:ring-primary forced-colors:aria-[current=true]:outline forced-colors:aria-[current=true]:outline-[Highlight]";
+  "aria-pressed:bg-primary/10 aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight] data-[current=true]:bg-primary/10 data-[current=true]:ring-1 data-[current=true]:ring-inset data-[current=true]:ring-primary forced-colors:data-[current=true]:outline forced-colors:data-[current=true]:outline-[Highlight]";
 
 export function ChartWidget({
   type,
@@ -531,7 +531,7 @@ export function ChartWidget({
                   {...(drillConfig
                     ? {
                         "aria-haspopup": "dialog" as const,
-                        "aria-current": k === selected || undefined,
+                        "data-current": k === selected || undefined,
                         "data-testid": "drill-item",
                       }
                     : {
@@ -545,7 +545,7 @@ export function ChartWidget({
                     layout,
                     // Latar disorot/ditekan: label (muted) ikut gelap agar kontras tetap ≥ 4,5:1. Latar
                     // melebar ke padding daftar (-mx-1 px-1): teks tetap di tempat yang diukur.
-                    "-mx-1 flex-1 cursor-pointer rounded-sm px-1 text-left hover:bg-accent hover:*:text-foreground aria-pressed:*:text-foreground aria-[current=true]:*:text-foreground focus-visible:-outline-offset-2",
+                    "-mx-1 flex-1 cursor-pointer rounded-sm px-1 text-left hover:bg-accent hover:*:text-foreground aria-pressed:*:text-foreground data-[current=true]:*:text-foreground focus-visible:-outline-offset-2",
                     PRESSED,
                   )}
                 >

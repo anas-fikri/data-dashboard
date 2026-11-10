@@ -17,17 +17,22 @@ const AGAINST = [
 export function KpiCompareFields({
   value,
   columns,
+  dateMeasure = false,
   onChange,
 }: {
   value: KpiCompare | undefined;
   columns: SourceColumn[];
+  /** Nilai = tanggal terkecil/terbesar: tanpa persen perubahan, pembanding ditolak server (review v1.15). */
+  dateMeasure?: boolean;
   onChange: (next: KpiCompare | undefined) => void;
 }) {
   const dates = columns.filter((c) => isTemporal(c.type));
-  if (!value && !dates.length) {
+  if (!value && (!dates.length || dateMeasure)) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="kpi-compare-none">
-        Pembanding periode butuh kolom tanggal di sheet ini.
+        {dateMeasure
+          ? "Pembanding periode hanya untuk nilai angka (bukan tanggal terkecil/terbesar)."
+          : "Pembanding periode butuh kolom tanggal di sheet ini."}
       </p>
     );
   }
@@ -45,6 +50,11 @@ export function KpiCompareFields({
           );
         }}
       />
+      {value && dateMeasure ? (
+        <p className="text-xs text-destructive" role="alert" data-testid="kpi-compare-invalid">
+          Pembanding hanya untuk nilai angka — pilih Tanpa pembanding atau ubah nilainya.
+        </p>
+      ) : null}
       {value ? (
         <>
           <ColumnChoice
