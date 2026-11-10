@@ -25,6 +25,9 @@ KPI bisa menampilkan nilainya untuk periode terakhir (hari/minggu/bulan/kuartal/
 - [ ] Given kolom tanggal dihapus/diganti saat versi data baru, when diaktifkan, then pembanding ikut dipetakan atau ditandai kolom hilang; kolom bukan tanggal ditolak saat simpan
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: spec KPI compare (spec.ts, remap.ts), widgetPlan kpi (widget.ts: kolom tanggal wajib), buildPeriodBoundsSql (sql.ts), runKpiCompare (service.ts: 3 query kecil, cache per batas/periode), tipe KpiCompareData (query/spec.ts), UI kpi-compare.ts, kpi-view.tsx, kpi-fit.ts (baris tambahan), kpi-compare-fields.tsx, status-fields.tsx (petunjuk).
+Security (STRIDE): kolom tanggal pembanding bagian columnsOf widget (D6, dipilih pemilik/editor); identifier SQL dari program (c<pos>, grain dari enum, INTERVAL tetap), nilai filter tetap berparameter; kunci cache memuat spec + kolom/periode/pembanding + filter dashboard; DoS — +2 query kecil per KPI berpembanding, di antrean DuckDB yang sama.
+Rollback: image v1.14.0 — KPI berpembanding tampil 'Pengaturan widget tidak valid' (skema strict) sampai roll-forward; data tetap; tanpa migrasi.
+Validation: widget-query.test.ts (Maret vs Februari, filter dashboard menentukan periode, tahun lalu tanpa data, kolom bukan tanggal ditolak), kpi-compare.test.ts, drill.test.ts (KpiView), remap.test.ts, e2e kpi-drill (UI + warna + filter + ponsel/axe), suite e2e per proyek.
 
 ## Notes
