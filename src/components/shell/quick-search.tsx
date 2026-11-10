@@ -118,7 +118,7 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
         >
           <IconSearch aria-hidden className="size-5 shrink-0 stroke-[1.5]" />
           <span className="sr-only sm:not-sr-only">Cari</span>
-          <kbd className="hidden rounded border bg-muted px-1.5 font-sans text-xs md:inline">
+          <kbd className="hidden rounded border bg-muted px-1.5 font-sans text-xs text-foreground md:inline">
             {mac ? "⌘K" : "Ctrl K"}
           </kbd>
         </button>
