@@ -134,7 +134,8 @@ test.describe("dashboard lebih luwes (v1.14.0)", () => {
     // Koneksi/server gagal saat pembaruan otomatis: data terakhir tetap tampil, bilah TV memperingatkan
     // (bukan "Diperbarui" di atas angka lama — review v1.14 #2); pulih → kembali normal.
     const firstCard = tv.getByTestId("widget").first();
-    const before = await firstCard.innerText();
+    // textContent: perbandingan toHaveText merapatkan spasi, bukan teks berbaris (innerText).
+    const before = (await firstCard.textContent()) ?? "";
     await tv.route("**/api/query", (r) => r.abort());
     await tv.clock.fastForward("01:05");
     await expect(tv.getByTestId("tv-updated")).toContainText("gagal diperbarui", {
