@@ -47,6 +47,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baru diabaikan (tampilan tersimpan tidak tampil sampai roll-forward); mode TV, muat ulang otomatis, cari
   cepat, dan duplikat hanya kode (runbook-deploy §23).
 
+- **v1.15.0 (T-43hv, T-d5ev):** tanpa migrasi — field JSON baru di spec widget (`compare` di Angka, `drill` di
+  grafik). Rilis boleh `--quick`. Rollback image ke v1.14.0 membuat widget Angka berpembanding dan grafik
+  berklik-tembus tampil "Pengaturan widget tidak valid" sampai roll-forward (skema strict menolak field
+  baru; data tetap). Matikan Pembanding/Klik-tembus di widget itu dulu bila rollback akan lama
+  (runbook-deploy §24). Kolom klik-tembus terbaca semua yang bisa melihat dashboard (D6: kolom widget).
+
 ## [1.14.0] - 2026-11-10
 
 ### Added

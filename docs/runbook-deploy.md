@@ -973,3 +973,21 @@ Cek setelah deploy: buka dashboard → **Lainnya** (Mode TV, Duplikat, Muat ulan
 Rollback image ke v1.13.0: aman. Tabel `DashboardView` dibiarkan (versi lama tidak membacanya); tampilan
 tersimpan muncul lagi setelah roll-forward. Tidak perlu menurunkan migrasi.
 
+## 24. Rilis v1.15.0 (tanpa migrasi) dan rollback ke v1.14.0
+
+Pembanding KPI (T-43hv) dan klik-tembus grafik (T-d5ev) hanya kode + field JSON baru di `Widget.spec`:
+`compare: { column, grain, against }` (widget Angka) dan `drill: { columns }` (Batang/Garis/Pai). Tidak ada
+migrasi, jadi `bash deploy/release.sh --quick` boleh (preflight tetap menolak `--quick` bila ternyata ada
+migrasi berbeda). Jalur data klik-tembus tetap `/api/query` widget (`{ widgetId, drill: { value } }`): server
+membangun klausa kategori dari dimensi widget sendiri dan hanya membaca kolom `drill.columns` (D6).
+
+Beban: KPI berpembanding menjalankan 3 query DuckDB kecil (batas periode + 2 agregat; periode pembanding
+tanpa baris → 2) dan hasilnya di-cache seperti widget lain. Klik-tembus = query tabel berhalaman (100 baris).
+
+Cek setelah deploy: mode ubah → widget Angka → **Pembanding: Periode sebelumnya** → kartu menampilkan
+"▲/▼ … vs <periode>"; grafik Batang → **Klik-tembus ke baris data** → mode lihat → klik batang → tabel baris.
+
+Rollback image ke v1.14.0: widget Angka berpembanding dan grafik berklik-tembus tampil "Pengaturan widget
+tidak valid" (skema lama strict menolak `compare`/`drill`; data di DB tetap) sampai roll-forward. Bila
+rollback akan lama, matikan Pembanding/Klik-tembus di widget itu dulu (atau terima sementara).
+

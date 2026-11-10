@@ -31,6 +31,10 @@ Filter aktif tampil sebagai label; tekan **Hapus semua filter** untuk kembali ke
 
 Pada grafik yang diizinkan pemiliknya, klik batang atau irisan pai untuk menyaring widget lain. Di widget pivot, label baris atau kolom juga bisa dipilih untuk menyaring widget lain.
 
+Grafik yang diberi **klik-tembus** oleh pemiliknya membuka tabel **baris data** kategori yang diklik (mis. semua kiriman _Bandung_ bulan itu) — bisa diurutkan dan berhalaman, mengikuti filter yang sedang aktif. Untuk menyaring widget lain dari grafik seperti itu, tekan **Saring dashboard dengan ini** di tabel tersebut (tekan lagi **Lepas saringan ini** untuk melepas). Dengan keyboard: buka tabel data grafik (ikon tabel di kepala kartu), lalu tekan Enter pada nama kategori.
+
+Widget **Angka** dengan pembanding menampilkan periode terakhir di data (mis. bulan terakhir) dan di bawahnya **▲/▼ persen** dibanding periode sebelumnya atau periode yang sama tahun lalu, beserta nilainya.
+
 Di widget **pivot**, sel kiri atas tabel berisi nama setiap bagian pivot dengan ikon saring (seperti tombol filter PivotTable Excel). Tekan namanya, lalu centang atau lepas centang nilai — total ikut berubah, pengaturan widget tidak. Catatan **Disaring — …** di bawah tabel menyebut saringan yang berlaku; tekan **Hapus saringan** untuk kembali ke semua data.
 
 ## Membaca angka pivot dan grafik

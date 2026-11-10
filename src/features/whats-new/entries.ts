@@ -14,6 +14,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.15",
+    date: "2026-11-10",
+    items: [
+      "Pembanding di widget Angka: tampilkan bulan (atau minggu, kuartal, tahun) terakhir beserta ▲/▼ persen dibanding periode sebelumnya atau periode yang sama tahun lalu, mis. ▲ +32,3% vs Mar 2026. Hijau/merah mengikuti penilaian warna. Atur di pengaturan widget → Pembanding.",
+      "Klik-tembus: klik batang, titik, atau irisan pai untuk melihat baris data di baliknya (mis. semua kiriman Bandung), lengkap dengan urutan dan halaman. Pemilik/editor menyalakannya per grafik dan memilih kolom yang boleh dilihat; menyaring widget lain tetap bisa lewat tombol di tabel itu.",
+    ],
+  },
+  {
     version: "1.14",
     date: "2026-11-10",
     items: [
