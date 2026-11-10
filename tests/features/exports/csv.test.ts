@@ -220,6 +220,25 @@ describe("CSV tabel lewat DuckDB", () => {
     ]);
   });
 
+  it("review v1.15 #1: KPI berpembanding diekspor = periode terakhir (sama dengan kartu), filter ikut", async () => {
+    const march = (keep: (i: number) => boolean) =>
+      Array.from({ length: ROWS }, (_, i) => i)
+        .filter((i) => tanggalOf(i).getUTCMonth() === 2 && keep(i))
+        .reduce((a, i) => a + omzetOf(i), 0);
+    const all = await csvOf(await resolved("kcmp"));
+    expect(parseCsv(all.text.slice(1))).toEqual([["Total Omzet"], [String(march(() => true))]]);
+    // Filter Cabang 1 → periode terakhir dihitung dari baris Cabang 1 saja (tetap Maret di fixture ini).
+    const one = await csvOf(
+      await resolved("kcmp", {
+        page: 0,
+        dashboardFilters: [{ column: "Cabang", op: "in", values: ["Cabang 1"] }],
+      }),
+    );
+    expect(parseCsv(one.text.slice(1))[1]).toEqual([
+      String(march((i) => cabangOf(i) === "Cabang 1")),
+    ]);
+  });
+
   it("DuckDB ekspor tidak bisa membaca/menulis di luar direktori kerja", async () => {
     await expect(duck.conn.run("SELECT * FROM read_csv('/etc/hosts')")).rejects.toThrow(
       /Permission Error|disabled/,

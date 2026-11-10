@@ -227,6 +227,11 @@ export interface Plan {
    * kronologis walau periode lama diunggah belakangan (`_row` naik menurut urutan unggah).
    */
   periodic?: boolean;
+  /**
+   * Hanya periode terakhir (ekspor KPI berpembanding, T-43hv): baris dengan kolom tanggal `col` di
+   * [date_trunc(grain, max), +1 grain) dari baris yang lolos filter yang sama — subquery, satu SQL.
+   */
+  latest?: { col: string; grain: Grain };
 }
 
 export type Resolved = { ok: true; plan: Plan } | { ok: false; message: string };

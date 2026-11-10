@@ -344,6 +344,19 @@ export function widgetPlan(
             message: `Pembanding KPI butuh kolom tanggal ("${c.name}" bukan tanggal). Pilih kolom tanggal di pengaturan widget.`,
           };
         }
+        // Terkecil/terbesar kolom tanggal: nilainya tanggal, tanpa persen perubahan (review v1.15 #3).
+        // Kolom ukuran tersembunyi/hilang: name() mencatatnya, tipenya tidak dibaca.
+        if (!isCalcValue(m) && (m.agg === "min" || m.agg === "max") && m.column && name(m.column)) {
+          const t = byPos.get(m.column)!.type;
+          if (t === "date" || t === "timestamp") {
+            return {
+              ok: false,
+              code: "INVALID",
+              message:
+                "Pembanding KPI hanya untuk nilai angka: tanggal terkecil/terbesar tidak punya persen perubahan. Pilih Tanpa pembanding atau nilai lain.",
+            };
+          }
+        }
         compare = {
           col: `c${c.pos}`,
           type: c.type,

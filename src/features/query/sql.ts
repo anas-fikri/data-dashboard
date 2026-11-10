@@ -209,9 +209,23 @@ export function dashClauses(clauses: DashClause[], params: BuiltSql["params"]): 
   });
 }
 
+/** Panjang satu periode (interval DuckDB) per grain; minggu = 7 hari (date_trunc minggu = Senin). */
+const GRAIN_INTERVAL: Record<Grain, string> = {
+  day: "INTERVAL 1 DAY",
+  week: "INTERVAL 7 DAY",
+  month: "INTERVAL 1 MONTH",
+  quarter: "INTERVAL 3 MONTH",
+  year: "INTERVAL 1 YEAR",
+};
+
 /** Semua klausa WHERE rencana: filter spec/klien (T-009/T-011) + filter dashboard (T-012). */
 export function whereClauses(plan: Plan, params: BuiltSql["params"]): string[] {
-  return [...filterClauses(plan.filters, params), ...dashClauses(plan.dash ?? [], params)];
+  const base = [...filterClauses(plan.filters, params), ...dashClauses(plan.dash ?? [], params)];
+  if (!plan.latest) return base;
+  // Periode terakhir (ekspor KPI berpembanding): awal periode dari baris yang lolos filter yang sama.
+  const c = ident(plan.latest.col);
+  const start = `(SELECT CAST(date_trunc('${plan.latest.grain}', max(${c})) AS DATE) FROM read_parquet($path) WHERE ${[...base, `${c} IS NOT NULL`].join(" AND ")})`;
+  return [...base, `${c} >= ${start}`, `${c} < ${start} + ${GRAIN_INTERVAL[plan.latest.grain]}`];
 }
 
 /**
@@ -503,15 +517,6 @@ export function numberNeedle(q: string): string {
 /** Wildcard LIKE (% _) dan karakter escape-nya diperlakukan sebagai huruf biasa. */
 export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
 
-/** Panjang satu periode (interval DuckDB) per grain; minggu = 7 hari (date_trunc minggu = Senin). */
-const GRAIN_INTERVAL: Record<Grain, string> = {
-  day: "INTERVAL 1 DAY",
-  week: "INTERVAL 7 DAY",
-  month: "INTERVAL 1 MONTH",
-  quarter: "INTERVAL 3 MONTH",
-  year: "INTERVAL 1 YEAR",
-};
-
 /**
  * Batas periode pembanding KPI (T-43hv): periode terakhir = date_trunc(grain, max(kolom tanggal)) di
  * baris yang lolos semua filter rencana; pembanding = periode sebelumnya atau periode yang sama tahun
@@ -527,7 +532,10 @@ export function buildPeriodBoundsSql(
   const params: BuiltSql["params"] = { path: parquetPath };
   const c = ident(cmp.col);
   const step = GRAIN_INTERVAL[cmp.grain];
-  const back = cmp.against === "year" ? "INTERVAL 1 YEAR" : step;
+  // Tahun lalu per minggu: 52 minggu (364 hari) agar pembanding tetap minggu Senin–Minggu, bukan
+  // jendela 7 hari yang bergeser satu hari (review v1.15 #2).
+  const back =
+    cmp.against === "year" ? (cmp.grain === "week" ? "INTERVAL 364 DAY" : "INTERVAL 1 YEAR") : step;
   const where = [...whereClauses(plan, params), `${c} IS NOT NULL`];
   const day = (e: string) => `strftime(CAST(${e} AS DATE), '%Y-%m-%d')`;
   return {

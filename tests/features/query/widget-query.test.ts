@@ -145,6 +145,25 @@ const WIDGETS: Record<string, { type: string; spec: unknown }> = {
       compare: { column: 1, grain: "month", against: "previous" },
     },
   },
+  // Review v1.15: minggu vs tahun lalu = 52 minggu; terkecil/terbesar tanggal tidak berpembanding.
+  kwky: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: fmt,
+      compare: { column: 3, grain: "week", against: "year" },
+    },
+  },
+  kdmx: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "max", column: 3 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
   // Klik-tembus (T-d5ev).
   dril: {
     type: "bar",
@@ -769,6 +788,17 @@ describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
     const bad = await runWidgetQuery(USER, { widgetId: WID("kbad") }, deps());
     expect(bad).toMatchObject({ ok: false, code: "INVALID" });
     expect(bad.ok ? "" : bad.message).toContain("butuh kolom tanggal");
+  });
+
+  it("review v1.15: minggu vs tahun lalu = 52 minggu (Senin); tanggal terbesar berpembanding ditolak", async () => {
+    const w = await runWidgetQuery(USER, { widgetId: WID("kwky") }, deps());
+    if (!w.ok || !("compare" in w)) throw new Error(JSON.stringify(w));
+    // Data 1 Jan–31 Mar 2026: minggu terakhir mulai Senin 30 Mar 2026; −364 hari = Senin 31 Mar 2025.
+    expect(w.compare).toMatchObject({ period: "2026-03-30", previousPeriod: "2025-03-31" });
+    expect(new Date(`${w.compare!.previousPeriod}T00:00:00Z`).getUTCDay()).toBe(1);
+    const d = await runWidgetQuery(USER, { widgetId: WID("kdmx") }, deps());
+    expect(d).toMatchObject({ ok: false, code: "INVALID" });
+    expect(d.ok ? "" : d.message).toContain("hanya untuk nilai angka");
   });
 });
 

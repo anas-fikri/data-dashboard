@@ -20,9 +20,17 @@ export type ExportTarget = "csv" | "xlsx";
 
 type Resolved = Pick<ResolvedWidget, "planned" | "dash">;
 
-/** Rencana dengan filter dashboard (sama seperti widgetResult). */
+/**
+ * Rencana dengan filter dashboard (sama seperti widgetResult). KPI berpembanding (T-43hv): hanya periode
+ * terakhir — angka yang sama dengan kartu, bukan total semua periode (review v1.15 #1).
+ */
 function planOf(r: Resolved): Plan {
-  return { ...r.planned.plan, dash: r.dash.clauses };
+  const cmp = r.planned.kind === "agg" ? r.planned.compare : undefined;
+  return {
+    ...r.planned.plan,
+    dash: r.dash.clauses,
+    ...(cmp ? { latest: { col: cmp.col, grain: cmp.grain } } : {}),
+  };
 }
 
 /** Kolom keluaran file (urutan + label header + tipe), sama dengan kolom hasil query widget. */

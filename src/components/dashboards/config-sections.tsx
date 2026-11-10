@@ -522,6 +522,16 @@ export function CrossFilterField({
 }
 
 /**
+ * Kolom bawaan saat klik-tembus dinyalakan: dimensi + kolom ukuran yang masih ada, unik (ukuran atas kolom
+ * pengelompokan sendiri, mis. jumlah unik tanggal per bulan, tidak membuat kolom ganda yang ditolak skema
+ * tanpa pesan — review v1.15 #4); tidak ada yang tersisa → kolom pertama.
+ */
+export function drillDefaults(defaults: number[], columns: SourceColumn[]): number[] {
+  const usable = [...new Set(defaults)].filter((p) => columns.some((c) => c.pos === p));
+  return usable.length ? usable : columns.slice(0, 1).map((c) => c.pos);
+}
+
+/**
  * Klik-tembus grafik (T-d5ev): klik kategori membuka tabel baris datanya dengan kolom pilihan. Kolom itu
  * ikut terbaca viewer dashboard (D6) — petunjuknya menyebut itu. Bawaan saat dinyalakan: dimensi + kolom
  * ukuran.
@@ -558,10 +568,7 @@ export function DrillField({
           id={id}
           checked={on}
           onCheckedChange={(next) => {
-            const usable = defaults.filter((p) => columns.some((c) => c.pos === p));
-            onChange(
-              next ? (usable.length ? usable : columns.slice(0, 1).map((c) => c.pos)) : undefined,
-            );
+            onChange(next ? drillDefaults(defaults, columns) : undefined);
           }}
           aria-describedby={`${id}-hint`}
           data-testid="widget-drill-switch"

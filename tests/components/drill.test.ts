@@ -118,3 +118,13 @@ describe("KpiView dengan pembanding (T-43hv)", () => {
     expect(kpi()).not.toMatch(/data-status=/);
   });
 });
+
+describe("drillDefaults (review v1.15 #4)", () => {
+  const cols = [1, 2, 3].map((pos) => ({ pos, name: `K${pos}`, type: "text" as const }));
+  it("unik, hanya kolom yang ada; kosong → kolom pertama", async () => {
+    const { drillDefaults } = await import("@/components/dashboards/config-sections");
+    expect(drillDefaults([3, 3], cols as never)).toEqual([3]);
+    expect(drillDefaults([2, 9], cols as never)).toEqual([2]);
+    expect(drillDefaults([9], cols as never)).toEqual([1]);
+  });
+});
