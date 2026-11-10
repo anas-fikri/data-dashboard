@@ -28,7 +28,6 @@ vi.mock("@/features/guides/reader", async (orig) => ({
 }));
 
 const { quickSearch, QUICK_LIMIT } = await import("@/features/search/service");
-const { canViewWhere } = await import("@/features/sharing/access");
 const USER = { id: "u1", isAdmin: false };
 
 beforeEach(() => vi.clearAllMocks());
@@ -40,9 +39,17 @@ describe("quickSearch (T-k6k0)", () => {
     expect(prisma.dataset.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { ownerId: "u1", name }, take: QUICK_LIMIT.datasets }),
     );
+    // Share organisasi hanya dari pemilik aktif (sama dengan halaman Dashboard, review v1.14 #5).
     expect(prisma.dashboard.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { ...canViewWhere("u1"), name },
+        where: {
+          OR: [
+            { dataset: { ownerId: "u1" } },
+            { shares: { some: { userId: "u1" } } },
+            { orgShared: true, dataset: { owner: { isActive: true } } },
+          ],
+          name,
+        },
         take: QUICK_LIMIT.dashboards,
       }),
     );

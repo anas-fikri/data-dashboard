@@ -1,16 +1,25 @@
 import "server-only";
 import { guideRolesFor, searchGuides, searchQuery, SEARCH_MIN } from "@/features/guides/reader";
-import { canViewWhere } from "@/features/sharing/access";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 import { escapeLike } from "@/lib/text";
 
 /*
  * Cari cepat Ctrl+K (T-k6k0): dataset milik user, dashboard yang boleh dilihatnya (milik, dibagikan
- * langsung, atau ke organisasi — aturan yang sama dengan halaman dashboard), dan panduan sesuai perannya.
+ * langsung, atau ke organisasi dari pemilik yang masih aktif — aturan yang sama dengan halaman Dashboard), dan panduan sesuai perannya.
  * Kata kunci kosong → dataset/dashboard terbaru (tanpa panduan). Wildcard LIKE diperlakukan sebagai huruf.
  */
 
 export const QUICK_LIMIT = { datasets: 6, dashboards: 8, guides: 6 } as const;
+
+/** Dashboard yang muncul di cari cepat: sama dengan halaman Dashboard (milik, share langsung, organisasi dari pemilik aktif). */
+const searchableDashboards = (userId: string): Prisma.DashboardWhereInput => ({
+  OR: [
+    { dataset: { ownerId: userId } },
+    { shares: { some: { userId } } },
+    { orgShared: true, dataset: { owner: { isActive: true } } },
+  ],
+});
 
 export interface QuickResults {
   datasets: { id: string; name: string }[];
@@ -32,7 +41,8 @@ export async function quickSearch(
       select: { id: true, name: true },
     }),
     prisma.dashboard.findMany({
-      where: { ...canViewWhere(user.id), ...name },
+      // Aturan daftar dashboard (sharedRanked): share organisasi hanya dari pemilik yang masih aktif.
+      where: { ...searchableDashboards(user.id), ...name },
       orderBy: [{ updatedAt: "desc" }, { id: "asc" }],
       take: QUICK_LIMIT.dashboards,
       select: { id: true, name: true, dataset: { select: { name: true, ownerId: true } } },

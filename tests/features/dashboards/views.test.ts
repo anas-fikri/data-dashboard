@@ -8,14 +8,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  */
 const tx = {
   $executeRaw: vi.fn(async () => 1),
-  dashboardView: { count: vi.fn(async () => 0), create: vi.fn() },
+  dashboardView: {
+    count: vi.fn(async () => 0),
+    create: vi.fn(),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    findFirst: vi.fn(),
+  },
 };
 const prisma = {
   $transaction: vi.fn(async (fn: (t: typeof tx) => unknown) => fn(tx)),
   dashboardView: {
     findMany: vi.fn(),
     findFirst: vi.fn(),
-    update: vi.fn(),
     deleteMany: vi.fn(async () => ({ count: 1 })),
   },
 };
@@ -138,7 +142,7 @@ describe("tampilan tersimpan (T-tf88)", () => {
     });
   });
 
-  it("ubah/hapus: pembuat; bersama juga pemilik/editor; viewer tidak bisa mengubah milik orang lain", async () => {
+  it("ubah/hapus: pembuat; bersama juga pemilik/editor; syarat ikut di WHERE penulisan (review #4)", async () => {
     role("VIEWER");
     prisma.dashboardView.findFirst.mockResolvedValue(row({ shared: true, userId: "pemilik" }));
     expect(await views.updateView("me", D, V, { name: "Baru" })).toMatchObject({
@@ -148,17 +152,29 @@ describe("tampilan tersimpan (T-tf88)", () => {
     expect(prisma.dashboardView.deleteMany).not.toHaveBeenCalled();
 
     role("EDITOR");
-    prisma.dashboardView.update.mockResolvedValue(
+    tx.dashboardView.findFirst.mockResolvedValue(
       row({ name: "Baru", shared: true, userId: "pemilik" }),
     );
     expect(await views.updateView("me", D, V, { name: " Baru " })).toMatchObject({
       ok: true,
-      data: { name: "Baru", canManage: true },
+      data: { name: "Baru", canManage: true, canEditContent: true },
     });
-    expect(prisma.dashboardView.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { name: "Baru", nameKey: "baru" } }),
-    );
+    expect(tx.dashboardView.updateMany).toHaveBeenCalledWith({
+      where: { id: V, OR: [{ userId: "me" }, { shared: true }] },
+      data: { name: "Baru", nameKey: "baru" },
+    });
     expect(await views.deleteView("me", D, V)).toEqual({ ok: true, data: null });
+    expect(prisma.dashboardView.deleteMany).toHaveBeenCalledWith({
+      where: { id: V, OR: [{ userId: "me" }, { shared: true }] },
+    });
+
+    // Pembuat menjadikannya pribadi di antara cek dan tulis → 0 baris → hilang, tidak menimpa.
+    tx.dashboardView.updateMany.mockResolvedValueOnce({ count: 0 });
+    expect(await views.updateView("me", D, V, { name: "Lain" })).toMatchObject({
+      code: "NOT_FOUND",
+    });
+    prisma.dashboardView.deleteMany.mockResolvedValueOnce({ count: 0 });
+    expect(await views.deleteView("me", D, V)).toMatchObject({ code: "NOT_FOUND" });
 
     // Pribadi milik orang lain tidak pernah terbaca (findFirst disaring userId/shared) → NOT_FOUND.
     prisma.dashboardView.findFirst.mockResolvedValue(null);
@@ -166,13 +182,52 @@ describe("tampilan tersimpan (T-tf88)", () => {
     expect(await views.updateView("me", D, "bukan-id", {})).toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("viewer tidak bisa menjadikan tampilan pribadinya bersama; pembuat bisa memperbarui filter", async () => {
+  it("viewer tidak bisa menjadikan tampilan pribadinya bersama; pembuat bisa memperbarui filter (WHERE miliknya)", async () => {
     role("VIEWER");
     prisma.dashboardView.findFirst.mockResolvedValue(row());
     expect(await views.updateView("me", D, V, { shared: true })).toMatchObject({
       code: "FORBIDDEN",
     });
-    prisma.dashboardView.update.mockResolvedValue(row());
+    tx.dashboardView.findFirst.mockResolvedValue(row());
     expect(await views.updateView("me", D, V, { state: STATE })).toMatchObject({ ok: true });
+    expect(tx.dashboardView.updateMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({ where: { id: V, userId: "me" } }),
+    );
+  });
+
+  it("review #1: pribadi → bersama dihitung terhadap batas tampilan bersama di bawah lock", async () => {
+    role("EDITOR");
+    prisma.dashboardView.findFirst.mockResolvedValue(row());
+    tx.dashboardView.count.mockResolvedValueOnce(views.SHARED_VIEWS_PER_DASHBOARD);
+    expect(await views.updateView("me", D, V, { shared: true })).toMatchObject({
+      code: "LIMIT_REACHED",
+    });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.dashboardView.updateMany).not.toHaveBeenCalled();
+    tx.dashboardView.findFirst.mockResolvedValue(row({ shared: true }));
+    expect(await views.updateView("me", D, V, { shared: true })).toMatchObject({
+      ok: true,
+      data: { shared: true },
+    });
+  });
+
+  it("review #3: pembuat tampilan bersama yang bukan lagi editor hanya bisa menjadikannya pribadi atau menghapus", async () => {
+    role("VIEWER");
+    prisma.dashboardView.findFirst.mockResolvedValue(row({ shared: true }));
+    prisma.dashboardView.findMany.mockResolvedValue([row({ shared: true })]);
+    const l = await views.listViews("me", D);
+    expect(l.ok && l.data[0]).toMatchObject({ canManage: true, canEditContent: false });
+    expect(await views.updateView("me", D, V, { name: "Baru" })).toMatchObject({
+      code: "FORBIDDEN",
+    });
+    expect(await views.updateView("me", D, V, { state: STATE })).toMatchObject({
+      code: "FORBIDDEN",
+    });
+    tx.dashboardView.findFirst.mockResolvedValue(row({ shared: false }));
+    expect(await views.updateView("me", D, V, { shared: false })).toMatchObject({
+      ok: true,
+      data: { shared: false },
+    });
+    expect(await views.deleteView("me", D, V)).toEqual({ ok: true, data: null });
   });
 });

@@ -76,15 +76,24 @@ export function QuickSearch({ isAdmin }: { isAdmin: boolean }) {
   const [open, setOpen] = useState(false);
   const [mac, setMac] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
+  const openRef = useRef(open);
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     // Label tombol menyesuaikan sistem (⌘K / Ctrl K) setelah hidrasi; server merender "Ctrl K".
     const id = requestAnimationFrame(() => setMac(isMac()));
+    const mac = isMac();
     const onKey = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setOpen((o) => !o);
-      }
+      // Mac: hanya ⌘K (Ctrl+K di Mac = hapus sampai akhir baris di kolom teks). Komposisi IME dan tombol yang
+      // sudah ditangani komponen lain dilewati; dialog lain yang terbuka tidak ditumpuk dialog cari.
+      const combo = mac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (!combo || e.altKey || e.shiftKey || e.key.toLowerCase() !== "k") return;
+      if (e.defaultPrevented || e.isComposing) return;
+      if (!openRef.current && document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+      e.preventDefault();
+      setOpen((o) => !o);
     };
     window.addEventListener("keydown", onKey);
     // Penanda pintasan siap (uji dan alat bantu menunggu ini; sebelum hidrasi Ctrl+K belum ditangkap).

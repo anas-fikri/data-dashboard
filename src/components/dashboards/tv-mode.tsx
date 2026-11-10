@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   REFRESH_OPTIONS,
   refreshLabel,
+  useRefreshFailures,
   useRefreshMinutes,
   type RefreshMinutes,
 } from "./auto-refresh";
@@ -101,18 +102,25 @@ export function TvBar({
   }, [router, pathname, params]);
 
   const at = lastAt ? formatWibTime(new Date(lastAt).toISOString()) : null;
+  const failures = useRefreshFailures();
   const ctl = "h-(--control-h-sm)";
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b pb-3" data-testid="tv-bar">
       <h1 className="min-w-0 flex-1 truncate text-xl font-semibold" title={name}>
         {name}
       </h1>
-      <p className="text-sm text-muted-foreground" aria-live="polite" data-testid="tv-updated">
-        {minutes > 0
-          ? at
-            ? `Diperbarui ${at}`
-            : `Muat ulang otomatis tiap ${minutes} menit`
-          : "Muat ulang otomatis mati"}
+      <p
+        className={`text-sm ${failures ? "font-medium text-destructive" : "text-muted-foreground"}`}
+        aria-live="polite"
+        data-testid="tv-updated"
+      >
+        {failures
+          ? `${failures} widget gagal diperbarui — menampilkan data terakhir`
+          : minutes > 0
+            ? at
+              ? `Diperbarui ${at}`
+              : `Muat ulang otomatis tiap ${minutes} menit`
+            : "Muat ulang otomatis mati"}
       </p>
       <div className="flex items-center gap-2">
         <label htmlFor={selectId} className="text-sm">

@@ -131,6 +131,20 @@ test.describe("dashboard lebih luwes (v1.14.0)", () => {
     await expect.poll(() => queries, { timeout: 30_000 }).toBeGreaterThanOrEqual(widgetCount);
     await expect(tv.getByTestId("tv-updated")).toContainText("Diperbarui");
 
+    // Koneksi/server gagal saat pembaruan otomatis: data terakhir tetap tampil, bilah TV memperingatkan
+    // (bukan "Diperbarui" di atas angka lama — review v1.14 #2); pulih → kembali normal.
+    const firstCard = tv.getByTestId("widget").first();
+    const before = await firstCard.innerText();
+    await tv.route("**/api/query", (r) => r.abort());
+    await tv.clock.fastForward("01:05");
+    await expect(tv.getByTestId("tv-updated")).toContainText("gagal diperbarui", {
+      timeout: 30_000,
+    });
+    await expect(firstCard).toHaveText(before);
+    await tv.unroute("**/api/query");
+    await tv.clock.fastForward("01:05");
+    await expect(tv.getByTestId("tv-updated")).toContainText("Diperbarui", { timeout: 30_000 });
+
     await bar.getByRole("button", { name: "Keluar mode TV" }).click();
     await expect(tv).not.toHaveURL(/tv=1/);
     await expect(tv.getByTestId("sidebar")).toBeVisible();

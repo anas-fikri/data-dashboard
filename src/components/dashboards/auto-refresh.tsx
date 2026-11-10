@@ -79,6 +79,36 @@ export function useRefreshMinutes(
   return [value, set];
 }
 
+/*
+ * Widget yang pembaruan latarnya gagal (review v1.14 #2): data terakhir tetap tampil, tetapi bilah TV dan
+ * keterangan muat ulang menyebut berapa widget yang basi — bukan "Diperbarui" di atas angka lama.
+ */
+const failing = new Set<string>();
+const failingListeners = new Set<() => void>();
+const emitFailing = () => {
+  for (const fn of failingListeners) fn();
+};
+
+/** Dipanggil useWidgetQuery: pembaruan latar widget gagal (true) atau berhasil/dilepas (false). */
+export function markRefreshFailed(widgetId: string, failed: boolean) {
+  if (failed === failing.has(widgetId)) return;
+  if (failed) failing.add(widgetId);
+  else failing.delete(widgetId);
+  emitFailing();
+}
+
+/** Jumlah widget yang sedang menampilkan data lama karena pembaruan otomatis gagal. */
+export function useRefreshFailures(): number {
+  return useSyncExternalStore(
+    (fn) => {
+      failingListeners.add(fn);
+      return () => failingListeners.delete(fn);
+    },
+    () => failing.size,
+    () => 0,
+  );
+}
+
 const TickContext = createContext(0);
 
 /** Naik setiap muat ulang otomatis: widget mengambil ulang datanya (useWidgetQuery). */
@@ -134,6 +164,7 @@ export function RefreshStatus({
   lastAt: number | null;
   tv: boolean;
 }) {
+  const failures = useRefreshFailures();
   if (tv) return null;
   const at = lastAt ? formatWibTime(new Date(lastAt).toISOString()) : null;
   return (
@@ -143,7 +174,12 @@ export function RefreshStatus({
     >
       <IconRefresh aria-hidden className="size-4 shrink-0" />
       <span>
-        Muat ulang otomatis tiap {minutes} menit{at ? ` · diperbarui ${at}` : ""}
+        Muat ulang otomatis tiap {minutes} menit
+        {failures
+          ? ` · ${failures} widget gagal diperbarui, menampilkan data terakhir`
+          : at
+            ? ` · diperbarui ${at}`
+            : ""}
       </span>
     </p>
   );

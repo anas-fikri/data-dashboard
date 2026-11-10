@@ -31,8 +31,13 @@ export interface SavedView {
   state: FilterState;
   /** Dibuat user ini. */
   mine: boolean;
-  /** Boleh ganti nama/perbarui/hapus. */
+  /** Boleh mengelola (hapus; tampilan pribadi: juga ganti nama/filter). */
   canManage: boolean;
+  /**
+   * Boleh mengganti nama/filter. Tampilan bersama hanya pemilik/editor (pembuat yang tidak lagi editor hanya
+   * bisa menjadikannya pribadi atau menghapusnya — review v1.14 #3).
+   */
+  canEditContent: boolean;
 }
 
 const fail = <T>(code: DashboardCode, message: string, field?: ViewField): ViewResult<T> => ({
@@ -69,8 +74,21 @@ function toView(
     state,
     mine,
     canManage: mine || (row.shared && editor),
+    canEditContent: row.shared ? editor : mine,
   };
 }
+
+/**
+ * Syarat baris yang boleh ditulis, ikut di WHERE penulisan (bukan hanya dicek sebelumnya): status bersama/
+ * pribadi yang berubah di antara cek dan tulis tidak membuat editor menimpa tampilan pribadi orang lain
+ * (review v1.14 #4). Pemilik/editor: miliknya atau yang bersama; selain itu hanya miliknya.
+ */
+const writableWhere = (
+  id: string,
+  userId: string,
+  editor: boolean,
+): Prisma.DashboardViewWhereInput =>
+  editor ? { id, OR: [{ userId }, { shared: true }] } : { id, userId };
 
 /** Tampilan pribadi user + tampilan bersama dashboard; bersama dulu, lalu nama. */
 export async function listViews(
@@ -224,20 +242,43 @@ export async function updateView(
   if (input.shared === true && !m.editor) {
     return fail("FORBIDDEN", "Hanya pemilik atau editor yang bisa membagikan tampilan.");
   }
+  if (m.row.shared && !m.editor && (input.name !== undefined || input.state !== undefined)) {
+    return fail(
+      "FORBIDDEN",
+      "Tampilan bersama hanya bisa diubah pemilik atau editor. Anda bisa menjadikannya pribadi atau menghapusnya.",
+    );
+  }
+  const id = dashboardId as string;
+  const where = writableWhere(m.row.id, userId, m.editor);
+  const data = {
+    ...(input.name ? { name: input.name, nameKey: nameKeyOf(input.name) } : {}),
+    ...(input.state ? { state: input.state as unknown as Prisma.InputJsonValue } : {}),
+    ...(input.shared !== undefined ? { shared: input.shared } : {}),
+  };
   try {
-    const row = await prisma.dashboardView.update({
-      where: { id: m.row.id },
-      data: {
-        ...(input.name ? { name: input.name, nameKey: nameKeyOf(input.name) } : {}),
-        ...(input.state ? { state: input.state as unknown as Prisma.InputJsonValue } : {}),
-        ...(input.shared !== undefined ? { shared: input.shared } : {}),
-      },
-      select: SELECT,
+    const result = await prisma.$transaction(async (tx) => {
+      // Pribadi → bersama: batas tampilan bersama dihitung di bawah lock yang sama dengan buat tampilan
+      // (review v1.14 #1 — tanpa ini 20 tampilan pribadi bisa dijadikan bersama melewati batas).
+      if (input.shared === true && !m.row.shared) {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`views:${id}`}))`;
+        const shared = await tx.dashboardView.count({ where: { dashboardId: id, shared: true } });
+        if (shared >= SHARED_VIEWS_PER_DASHBOARD) return "LIMIT_SHARED" as const;
+      }
+      const n = await tx.dashboardView.updateMany({ where, data });
+      if (n.count === 0) return null;
+      return tx.dashboardView.findFirst({ where: { id: m.row.id }, select: SELECT });
     });
-    return { ok: true, data: toView(row, userId, m.editor)! };
+    if (result === "LIMIT_SHARED") {
+      return fail(
+        "LIMIT_REACHED",
+        `Batas ${SHARED_VIEWS_PER_DASHBOARD} tampilan bersama di dashboard ini tercapai.`,
+      );
+    }
+    if (!result) return viewGone();
+    return { ok: true, data: toView(result, userId, m.editor)! };
   } catch (e) {
     if (isUnique(e)) return nameTaken();
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") return viewGone();
+    if (isLockTimeout(e)) return busy();
     throw e;
   }
 }
@@ -249,6 +290,8 @@ export async function deleteView(
 ): Promise<ViewResult<null>> {
   const m = await manageable(userId, dashboardId, viewId);
   if (!m.ok) return m.error;
-  await prisma.dashboardView.deleteMany({ where: { id: m.row.id } });
-  return { ok: true, data: null };
+  const n = await prisma.dashboardView.deleteMany({
+    where: writableWhere(m.row.id, userId, m.editor),
+  });
+  return n.count === 0 ? viewGone() : { ok: true, data: null };
 }

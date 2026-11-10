@@ -440,40 +440,52 @@ function ManageRow({
   const inputId = useId();
   return (
     <li className="flex flex-col gap-2 rounded-md border p-3" data-testid="manage-view-row">
-      <label htmlFor={inputId} className="text-xs text-muted-foreground">
-        {view.shared ? "Tampilan bersama" : "Tampilan pribadi"}
-      </label>
-      <div className="flex gap-2">
-        <Input
-          id={inputId}
-          value={name}
-          maxLength={NAME_MAX}
-          aria-label={`Nama tampilan ${view.name}`}
-          onChange={(e) => setName(e.target.value)}
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          disabled={!name.trim() || name.trim() === view.name}
-          onClick={() => void onUpdate({ name }, "Nama tampilan disimpan.")}
-        >
-          Simpan nama
-        </Button>
-      </div>
+      {view.canEditContent ? (
+        <label htmlFor={inputId} className="text-xs text-muted-foreground">
+          {view.shared ? "Tampilan bersama" : "Tampilan pribadi"}
+        </label>
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          Tampilan bersama — hanya pemilik/editor yang bisa mengubah isinya
+        </span>
+      )}
+      {view.canEditContent ? (
+        <div className="flex gap-2">
+          <Input
+            id={inputId}
+            value={name}
+            maxLength={NAME_MAX}
+            aria-label={`Nama tampilan ${view.name}`}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!name.trim() || name.trim() === view.name}
+            onClick={() => void onUpdate({ name }, "Nama tampilan disimpan.")}
+          >
+            Simpan nama
+          </Button>
+        </div>
+      ) : (
+        <p className="text-sm font-medium">{view.name}</p>
+      )}
       <div className="flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() =>
-            void onUpdate(
-              { state: currentState },
-              `Tampilan “${view.name}” kini memakai filter yang sedang dipakai.`,
-            )
-          }
-        >
-          Pakai filter saat ini
-        </Button>
-        {canShare && view.mine ? (
+        {view.canEditContent ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              void onUpdate(
+                { state: currentState },
+                `Tampilan “${view.name}” kini memakai filter yang sedang dipakai.`,
+              )
+            }
+          >
+            Pakai filter saat ini
+          </Button>
+        ) : null}
+        {view.mine && (canShare || view.shared) ? (
           <Button
             variant="outline"
             size="sm"

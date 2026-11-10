@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRefreshTick } from "@/components/dashboards/auto-refresh";
+import { markRefreshFailed, useRefreshTick } from "@/components/dashboards/auto-refresh";
 import type {
   DashFilter,
   FilterValue,
@@ -226,6 +226,8 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
         // Akses dashboard dicabut (atau widgetnya dihapus di tempat lain): halaman dari server lagi.
         // Id widget: widget yang sudah hilang dari props server tidak memakai jatah refresh.
         if (isAccessLost(r)) accessLost?.(req.widgetId);
+        // Pembaruan latar gagal tetapi data lama ditampilkan → dihitung di bilah TV/keterangan muat ulang.
+        markRefreshFailed(req.widgetId, !r.ok && background);
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }
@@ -243,7 +245,10 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
       },
       () => {},
     );
-    return () => ctl.abort();
+    return () => {
+      ctl.abort();
+      markRefreshFailed(req.widgetId, false);
+    };
     // version (spec disimpan), attempt (tombol coba lagi), dan tick (muat ulang otomatis) memicu query
     // ulang; accessLost stabil.
   }, [key, version, attempt, tick, accessLost]);
