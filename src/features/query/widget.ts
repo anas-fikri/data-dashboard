@@ -66,7 +66,9 @@ export const widgetBodySchema = z
      * dimensi widget sendiri (drillClause), bukan dari filter dashboard kiriman klien.
      */
     drill: z
-      .object({ value: z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]) })
+      .object({
+        value: z.union([z.string().max(2_000), z.number().finite(), z.boolean(), z.null()]),
+      })
       .strict()
       .optional(),
     page: z.number().int().min(0).max(TABLE_PAGE_MAX).default(0),
