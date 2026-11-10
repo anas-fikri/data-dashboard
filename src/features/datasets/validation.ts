@@ -21,6 +21,20 @@ export function nameKeyOf(name: string): string {
     .toLowerCase();
 }
 
+/**
+ * Nama salinan yang belum dipakai (aturan unik server: nameKeyOf): "X (salinan)", "X (salinan 2)", … dipotong
+ * agar ≤ `max` karakter.
+ */
+export function copyName(name: string, taken: readonly string[], max = 80): string {
+  const used = new Set(taken.map(nameKeyOf));
+  for (let i = 1; i < 1000; i++) {
+    const suffix = i === 1 ? " (salinan)" : ` (salinan ${i})`;
+    const candidate = `${name.slice(0, Math.max(1, max - suffix.length)).trimEnd()}${suffix}`;
+    if (!used.has(nameKeyOf(candidate))) return candidate;
+  }
+  return name.slice(0, max);
+}
+
 export function validateDatasetInput(nameRaw: unknown, descriptionRaw: unknown): ValidationResult {
   const name =
     typeof nameRaw === "string" ? nameRaw.normalize("NFC").trim().replace(/\s+/g, " ") : "";

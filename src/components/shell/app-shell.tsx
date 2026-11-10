@@ -17,6 +17,7 @@ import type { SessionUser } from "@/features/auth/session";
 import { cn } from "@/lib/utils";
 import { AccountMenu } from "./account-menu";
 import { Brand } from "./brand";
+import { QuickSearch } from "./quick-search";
 import { WhatsNewLink } from "./whats-new";
 import { SidebarNav } from "./sidebar-nav";
 import { ThemeToggle } from "./theme-toggle";
@@ -71,6 +72,7 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
       {/* Sidebar desktop */}
       <aside
         data-testid="sidebar"
+        data-shell-chrome=""
         data-collapsed={collapsed}
         className={cn(
           "sticky top-0 hidden h-dvh shrink-0 flex-col border-r bg-sidebar text-sidebar-foreground md:flex",
@@ -111,7 +113,10 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-(--topbar-h) items-center gap-2 border-b bg-background/95 px-3 backdrop-blur sm:px-4">
+        <header
+          data-shell-chrome=""
+          className="sticky top-0 z-30 flex h-(--topbar-h) items-center gap-2 border-b bg-background/95 px-3 backdrop-blur sm:px-4"
+        >
           {/* Drawer ponsel: overlay + backdrop, fokus terkunci (Radix Dialog) */}
           <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
             <Dialog.Trigger asChild>
@@ -156,6 +161,7 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
           </div>
 
           <div className="ml-auto flex items-center gap-1">
+            {user ? <QuickSearch isAdmin={isAdmin} /> : null}
             <Button asChild variant="ghost" size="icon" aria-label="Panduan penggunaan">
               <Link href="/panduan">
                 <IconHelpCircle aria-hidden />
@@ -170,15 +176,20 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
         <main
           id="konten"
           tabIndex={-1}
+          data-shell-main=""
           className="mx-auto w-full max-w-(--content-max) flex-1 px-4 py-6 outline-none sm:px-6"
         >
-          {notice}
+          {/* Mode TV dashboard (T-nn87) menyembunyikan semua yang bertanda data-shell-chrome. */}
+          <div data-shell-chrome="" className="contents">
+            {notice}
+          </div>
           {children}
         </main>
         {/* Versi di footer setiap halaman (T-tzxt), seperti menu akun: hanya untuk pengguna yang sudah
           masuk (T-066) — shell juga dirender dengan user null (sesi tidak sah, DB mati). */}
         {user && appVersion ? (
           <footer
+            data-shell-chrome=""
             className="mx-auto w-full max-w-(--content-max) px-4 pb-4 text-xs text-muted-foreground sm:px-6"
             data-testid="app-footer"
           >

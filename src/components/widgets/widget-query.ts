@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRefreshTick } from "@/components/dashboards/auto-refresh";
 import type {
   DashFilter,
   FilterValue,
@@ -199,9 +200,16 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
   const [attempt, setAttempt] = useState(0);
   const accessLost = useAccessLost();
   const key = request ? JSON.stringify(request) : "";
+  // Muat ulang otomatis (T-nn87): tick naik → ambil ulang. Hanya tick yang berubah = pembaruan latar:
+  // gagal (jaringan putus, server sibuk) tidak menghapus data terakhir yang masih tampil.
+  const tick = useRefreshTick();
+  const last = useRef("");
 
   useEffect(() => {
     if (!key) return;
+    const run = `${key}|${version}|${attempt}`;
+    const background = last.current === run;
+    last.current = run;
     // Request diturunkan dari key (string stabil), bukan objek baru tiap render.
     const req = JSON.parse(key) as WidgetRequest;
     const filters = requestFilters(req);
@@ -221,21 +229,24 @@ export function useWidgetQuery(request: WidgetRequest | null, version: string) {
         setState((s) =>
           r.ok
             ? { status: "ok", data: r.data, filters }
-            : {
-                status: "error",
-                code: r.code,
-                message: r.message,
-                data: s.data,
-                filters: s.filters,
-                version: r.version,
-              },
+            : background && s.data && !isAccessLost(r)
+              ? { status: "ok", data: s.data, filters: s.filters }
+              : {
+                  status: "error",
+                  code: r.code,
+                  message: r.message,
+                  data: s.data,
+                  filters: s.filters,
+                  version: r.version,
+                },
         );
       },
       () => {},
     );
     return () => ctl.abort();
-    // version (spec disimpan) dan attempt (tombol coba lagi) memicu query ulang; accessLost stabil.
-  }, [key, version, attempt, accessLost]);
+    // version (spec disimpan), attempt (tombol coba lagi), dan tick (muat ulang otomatis) memicu query
+    // ulang; accessLost stabil.
+  }, [key, version, attempt, tick, accessLost]);
 
   return { state, retry: () => setAttempt((n) => n + 1) };
 }

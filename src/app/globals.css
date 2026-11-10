@@ -493,3 +493,12 @@
   --chart-5: 276 91% 51%;
   --chart-6: 0 0% 66%;
 }
+
+/* Mode TV dashboard (T-nn87, ?tv=1): tanpa sidebar/header/footer/banner aplikasi, konten selebar layar. */
+:root[data-tv] [data-shell-chrome] {
+  display: none !important;
+}
+:root[data-tv] [data-shell-main] {
+  max-width: none;
+  padding: 0.75rem;
+}
