@@ -28,6 +28,7 @@ vi.mock("@/features/auth/session", () => ({ requireUser: m.requireUser }));
 vi.mock("@/features/dashboards/service", () => ({
   getDashboard: m.getDashboard,
   getDashboardSources: m.getDashboardSources,
+  suggestCopyName: async (_ds: string, name: string) => `${name} (salinan)`,
 }));
 vi.mock("@/features/sharing/service", () => ({ recordDashboardOpen: m.recordDashboardOpen }));
 vi.mock("@/lib/env", () => ({ env: () => ({ TRUST_PROXY: true }) }));
@@ -49,6 +50,9 @@ vi.mock("@/components/dashboards/edit-dashboard-link", () => ({
   EditDashboardLink: marker("edit-dashboard"),
 }));
 vi.mock("@/components/sharing/share-dialog", () => ({ ShareDialog: marker("share-open") }));
+vi.mock("@/components/dashboards/dashboard-more-menu", () => ({
+  DashboardMoreMenu: marker("dashboard-more"),
+}));
 vi.mock("@/components/dashboards/dashboard-pdf-export", () => ({
   DashboardPdfExport: marker("dashboard-pdf-export"),
   DashboardPdfWatch: marker("dashboard-pdf-watch"),
@@ -211,12 +215,36 @@ describe("T-018 D10: Ekspor PDF di kepala halaman", () => {
     }
   });
 
-  it("viewer: slot aksi hanya berisi Ekspor PDF (tanpa edit/Bagikan)", async () => {
+  it("viewer: slot aksi berisi Ekspor PDF + Lainnya tanpa Duplikat (tanpa edit/Bagikan)", async () => {
     m.getDashboard.mockResolvedValue(withWidgets("VIEWER"));
     const out = await render();
     expect(out).toContain(pdf);
+    expect(out).toContain('data-testid="dashboard-more"');
+    expect(out).toContain("&quot;copyName&quot;:null");
     expect(out).not.toContain('data-testid="edit-dashboard"');
     expect(out).not.toContain('data-testid="share-open"');
+  });
+
+  it("v1.14: Lainnya — pemilik mendapat nama salinan (juga dashboard kosong); mode edit tanpa menu", async () => {
+    m.getDashboard.mockResolvedValue(view("OWNER"));
+    const empty = await render();
+    expect(empty).toContain('data-testid="dashboard-more"');
+    expect(empty).toContain("&quot;copyName&quot;:&quot;Penjualan (salinan)&quot;");
+    m.getDashboard.mockResolvedValue(withWidgets("EDITOR"));
+    expect(await render()).toContain("&quot;copyName&quot;:null");
+    expect(await render({ mode: "edit" })).not.toContain('data-testid="dashboard-more"');
+  });
+
+  it("v1.14: ?tv=1 → tanpa kepala halaman (bilah TV di kanvas), kanvas menerima tv + nama", async () => {
+    m.getDashboard.mockResolvedValue(withWidgets("VIEWER"));
+    const out = await render({ tv: "1" });
+    expect(out).not.toContain(pdf);
+    expect(out).not.toContain('data-testid="dashboard-more"');
+    expect(out).toContain("&quot;tv&quot;:true");
+    expect(out).toContain("&quot;name&quot;:&quot;Penjualan&quot;");
+    // Mode edit mengabaikan tv=1.
+    m.getDashboard.mockResolvedValue(withWidgets("OWNER"));
+    expect(await render({ tv: "1", mode: "edit" })).toContain("&quot;tv&quot;:false");
   });
 
   it("disembunyikan di mode edit dan untuk dashboard tanpa widget", async () => {

@@ -83,3 +83,18 @@ export async function deleteDashboardAction(
   revalidatePath("/dashboards");
   redirect("/dashboards?deleted=1");
 }
+
+/**
+ * Duplikat dashboard (T-fcar): pemilik saja (service menolak selain itu). Berhasil → buka salinan di mode
+ * lihat; nama kosong → "X (salinan)".
+ */
+export async function duplicateDashboardAction(
+  _prev: DashboardFormState,
+  formData: FormData,
+): Promise<DashboardFormState> {
+  const user = await requireUser();
+  const r = await service.duplicateDashboard(user.id, formData.get("id"), formData.get("name"));
+  if (!r.ok) return toError(r, formData);
+  revalidatePath("/dashboards");
+  redirect(`/dashboards/${r.data.id}`);
+}

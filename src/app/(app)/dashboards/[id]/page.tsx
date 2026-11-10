@@ -8,6 +8,7 @@ import {
   DashboardPdfExport,
   DashboardPdfWatch,
 } from "@/components/dashboards/dashboard-pdf-export";
+import { DashboardMoreMenu } from "@/components/dashboards/dashboard-more-menu";
 import { DashboardSettings } from "@/components/dashboards/dashboard-settings";
 import { EditDashboardLink } from "@/components/dashboards/edit-dashboard-link";
 import { EmailText } from "@/components/admin/email-text";
@@ -19,13 +20,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { ExportUserProvider } from "@/components/widgets/export-user";
 import { clientIp } from "@/features/auth/rate-limit";
 import { requireUser } from "@/features/auth/session";
-import { getDashboard, getDashboardSources } from "@/features/dashboards/service";
+import { getDashboard, getDashboardSources, suggestCopyName } from "@/features/dashboards/service";
 import { listSavedPivots } from "@/features/saved-pivots/service";
 import { recordDashboardOpen } from "@/features/sharing/service";
 import { env } from "@/lib/env";
 
 type Params = Promise<{ id: string }>;
-type Search = Promise<{ mode?: string | string[]; f?: string | string[] }>;
+type Search = Promise<{ mode?: string | string[]; f?: string | string[]; tv?: string | string[] }>;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
@@ -85,99 +86,113 @@ export default async function DashboardPage({
   // (kedua mode); Ubah tata letak pemilik/editor di mode lihat. Tanpa aksi → tanpa slot. Tanpa tombol
   // (mode edit), PDF yang sedang dibuat tetap dipantau dan diunduh otomatis (DashboardPdfWatch).
   const pdf = !editing && d.widgets.length > 0;
-  const hasActions = pdf || isOwner || canEdit;
+  // Menu "Lainnya" (v1.14): Mode TV + muat ulang otomatis untuk semua peran di mode lihat bila ada widget;
+  // Duplikat untuk pemilik (juga dashboard kosong).
+  const more = !editing && (d.widgets.length > 0 || isOwner);
+  const hasActions = pdf || isOwner || canEdit || more;
+  // Mode TV (T-nn87): ?tv=1 di mode lihat — tanpa kepala halaman (bilah TV di kanvas jadi judulnya).
+  const tv = !editing && first(search.tv) === "1";
+  const copy = isOwner && !editing && !tv ? await suggestCopyName(d.dataset.id, d.name) : null;
 
   return (
     // Ekspor widget dan PDF disimpan per user (review T-017 R2-CL-1): keluar → masuk sebagai user lain
     // tanpa reload tidak mewarisinya. Kepala halaman ikut di dalamnya (tombol Ekspor PDF).
     <ExportUserProvider userId={user.id}>
       <div className="flex flex-col gap-6">
-        <PageHeader
-          eyebrow={
-            <span className="flex min-w-0 flex-wrap gap-x-1">
-              <Link
-                href="/dashboards"
-                className="inline-flex min-h-6 items-center underline-offset-4 hover:underline"
-              >
-                Dashboard
-              </Link>
-              <span aria-hidden>/</span>
-              {/* Halaman dataset hanya untuk pemilik: non-pemilik melihat namanya tanpa tautan (bukan 404)
-                dan membungkus, bukan terpotong — di sini satu-satunya tempat nama lengkapnya terbaca. */}
-              {isOwner ? (
+        {tv ? null : (
+          <PageHeader
+            eyebrow={
+              <span className="flex min-w-0 flex-wrap gap-x-1">
                 <Link
-                  href={`/datasets/${d.dataset.id}`}
-                  className="inline-flex min-h-6 min-w-0 items-center underline-offset-4 hover:underline"
+                  href="/dashboards"
+                  className="inline-flex min-h-6 items-center underline-offset-4 hover:underline"
                 >
-                  <span className="truncate">{d.dataset.name}</span>
+                  Dashboard
                 </Link>
-              ) : (
-                <span className="inline-flex min-h-6 min-w-0 items-center">
-                  <span
-                    className="min-w-0 [overflow-wrap:anywhere]"
-                    data-testid="dashboard-dataset"
+                <span aria-hidden>/</span>
+                {/* Halaman dataset hanya untuk pemilik: non-pemilik melihat namanya tanpa tautan (bukan 404)
+                dan membungkus, bukan terpotong — di sini satu-satunya tempat nama lengkapnya terbaca. */}
+                {isOwner ? (
+                  <Link
+                    href={`/datasets/${d.dataset.id}`}
+                    className="inline-flex min-h-6 min-w-0 items-center underline-offset-4 hover:underline"
                   >
-                    {d.dataset.name}
-                  </span>
-                </span>
-              )}
-            </span>
-          }
-          title={d.name}
-          description={editing ? "Mode edit: perubahan tata letak tersimpan otomatis." : undefined}
-          meta={
-            sharedRole ? (
-              <>
-                <SharedRoleBadge role={sharedRole} />
-                {/* Nama tampilan bisa meniru rekan: email pemilik selalu ikut (review T-016 R3-CC-1). */}
-                <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="dashboard-owner">
-                  Dibagikan oleh{" "}
-                  {d.ownerName ? (
-                    <>
-                      <bdi className="font-medium text-foreground">{d.ownerName}</bdi>
-                      {" ("}
-                      <EmailText email={d.ownerEmail} />
-                      {")"}
-                    </>
-                  ) : (
-                    <span className="font-medium text-foreground">
-                      <EmailText email={d.ownerEmail} />
+                    <span className="truncate">{d.dataset.name}</span>
+                  </Link>
+                ) : (
+                  <span className="inline-flex min-h-6 min-w-0 items-center">
+                    <span
+                      className="min-w-0 [overflow-wrap:anywhere]"
+                      data-testid="dashboard-dataset"
+                    >
+                      {d.dataset.name}
                     </span>
-                  )}
-                </span>
-              </>
-            ) : undefined
-          }
-          actions={
-            hasActions ? (
-              <>
-                {canEdit ? (
-                  <GuideHelp
-                    context="BUILDER"
-                    page="Penyusun dashboard"
-                    as={isOwner ? "OWNER" : "EDITOR"}
-                  />
-                ) : null}
-                {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
-                {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
-                {canEdit && !editing ? (
-                  // Lihat data (T-043): seluruh sheet dataset untuk pemilik/editor; viewer tidak.
-                  <Button
-                    asChild
-                    variant="outline"
-                    className="h-(--control-h-lg) md:h-(--control-h)"
-                  >
-                    <Link href={`/datasets/${d.dataset.id}/data`} data-testid="dashboard-data-link">
-                      <IconTable aria-hidden />
-                      Lihat data
-                    </Link>
-                  </Button>
-                ) : null}
-                {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}
-              </>
-            ) : undefined
-          }
-        />
+                  </span>
+                )}
+              </span>
+            }
+            title={d.name}
+            description={
+              editing ? "Mode edit: perubahan tata letak tersimpan otomatis." : undefined
+            }
+            meta={
+              sharedRole ? (
+                <>
+                  <SharedRoleBadge role={sharedRole} />
+                  {/* Nama tampilan bisa meniru rekan: email pemilik selalu ikut (review T-016 R3-CC-1). */}
+                  <span className="min-w-0 [overflow-wrap:anywhere]" data-testid="dashboard-owner">
+                    Dibagikan oleh{" "}
+                    {d.ownerName ? (
+                      <>
+                        <bdi className="font-medium text-foreground">{d.ownerName}</bdi>
+                        {" ("}
+                        <EmailText email={d.ownerEmail} />
+                        {")"}
+                      </>
+                    ) : (
+                      <span className="font-medium text-foreground">
+                        <EmailText email={d.ownerEmail} />
+                      </span>
+                    )}
+                  </span>
+                </>
+              ) : undefined
+            }
+            actions={
+              hasActions ? (
+                <>
+                  {canEdit ? (
+                    <GuideHelp
+                      context="BUILDER"
+                      page="Penyusun dashboard"
+                      as={isOwner ? "OWNER" : "EDITOR"}
+                    />
+                  ) : null}
+                  {pdf ? <DashboardPdfExport dashboardId={d.id} /> : null}
+                  {isOwner ? <ShareDialog dashboardId={d.id} dashboardName={d.name} /> : null}
+                  {canEdit && !editing ? (
+                    // Lihat data (T-043): seluruh sheet dataset untuk pemilik/editor; viewer tidak.
+                    <Button
+                      asChild
+                      variant="outline"
+                      className="h-(--control-h-lg) md:h-(--control-h)"
+                    >
+                      <Link
+                        href={`/datasets/${d.dataset.id}/data`}
+                        data-testid="dashboard-data-link"
+                      >
+                        <IconTable aria-hidden />
+                        Lihat data
+                      </Link>
+                    </Button>
+                  ) : null}
+                  {more ? <DashboardMoreMenu dashboardId={d.id} copyName={copy} /> : null}
+                  {canEdit && !editing ? <EditDashboardLink id={d.id} /> : null}
+                </>
+              ) : undefined
+            }
+          />
+        )}
         {pdf ? null : <DashboardPdfWatch dashboardId={d.id} />}
         {/* Tanpa revisi di key: refresh server (mis. ganti nama) tidak me-mount ulang editor dan
           membuang perubahan yang belum terkirim. Pindah mode = mount baru dengan data terbaru. Mode
@@ -197,6 +212,8 @@ export default async function DashboardPage({
           filterColumns={d.filterColumns}
           crossFilterColumns={d.crossFilterColumns}
           colors={d.colors}
+          tv={tv}
+          name={d.name}
         />
         {/* Nama, kolom filter (D6), dan hapus: pemilik saja; editor mengatur kolom filter di bilah filter. */}
         {editing && isOwner ? (

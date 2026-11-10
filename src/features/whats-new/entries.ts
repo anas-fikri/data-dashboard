@@ -14,6 +14,16 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.14",
+    date: "2026-11-10",
+    items: [
+      "Cari cepat: tekan Ctrl+K (Mac: ⌘K) atau tombol Cari di kanan atas untuk langsung membuka dashboard, dataset, atau panduan tanpa menelusuri menu.",
+      "Tampilan tersimpan: simpan kombinasi filter yang sering dipakai (mis. Jakarta – bulan ini) dari menu Tampilan di bilah filter, lalu pilih kembali dengan satu klik. Pemilik/editor bisa membuat tampilan bersama untuk semua yang punya akses.",
+      "Mode TV untuk monitor di ruang operasional: buka Lainnya → Mode TV. Dashboard tampil penuh layar tanpa menu dan datanya diperbarui otomatis (bisa juga diatur di tampilan biasa: Lainnya → Muat ulang otomatis).",
+      "Duplikat dashboard: buka Lainnya → Duplikat dashboard untuk menyalin dashboard beserta widget, filter, dan warnanya — cocok dijadikan contoh untuk cabang atau periode lain.",
+    ],
+  },
+  {
     version: "1.13",
     date: "2026-11-09",
     items: [

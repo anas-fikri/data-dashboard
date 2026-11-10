@@ -12,7 +12,6 @@ import {
   isCalcValue,
   type PivotSpec,
 } from "@/features/widgets/spec";
-import { nameKeyOf } from "@/features/datasets/validation";
 import { dimensionText } from "./pivot-config-model";
 import { measureText, type SourceColumn } from "./widget-config-model";
 
@@ -130,16 +129,5 @@ export function impactText(u: { widgets: number; dashboards: number } | null): s
   return `Perubahan berlaku di ${u.widgets} widget pada ${u.dashboards} dashboard.`;
 }
 
-/**
- * Nama salinan yang belum dipakai (aturan unik server: nameKeyOf): "X (salinan)", "X (salinan 2)", … dipotong
- * agar ≤ `max` karakter.
- */
-export function copyName(name: string, taken: readonly string[], max = 80): string {
-  const used = new Set(taken.map(nameKeyOf));
-  for (let i = 1; i < 1000; i++) {
-    const suffix = i === 1 ? " (salinan)" : ` (salinan ${i})`;
-    const candidate = `${name.slice(0, Math.max(1, max - suffix.length)).trimEnd()}${suffix}`;
-    if (!used.has(nameKeyOf(candidate))) return candidate;
-  }
-  return name.slice(0, max);
-}
+/** Nama salinan yang belum dipakai (dipindah ke datasets/validation agar bisa dipakai server, T-fcar). */
+export { copyName } from "@/features/datasets/validation";

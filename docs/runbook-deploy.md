@@ -958,3 +958,18 @@ Rollback ke v1.12.0: aman. `retention.json` diabaikan (lama simpan kembali ke `.
 `status.json` diabaikan, tombol kirim ulang hilang, kirim ulang kembali tiap 30 menit tanpa jeda. Hapus
 `app/sync-request` sisa bila ada (`$C exec -T backup rm -f /backup-config/app/sync-request`).
 
+## 23. Rilis v1.14.0 (migrasi tabel baru) dan rollback ke v1.13.0
+
+Migrasi `20261110000000_dashboard_views` membuat tabel `DashboardView` (tampilan tersimpan: status filter
+bernama per dashboard, pribadi/bersama) tanpa menyentuh tabel lain. Karena ada migrasi, jalankan
+`bash deploy/release.sh` **tanpa** `--quick` (preflight membuat backup lengkap + dump database; `release.sh`
+juga menolak `--quick` untuk rilis bermigrasi). Fitur lain v1.14.0 hanya kode: duplikat dashboard (pemilik,
+`duplicateDashboard`), mode TV (`?tv=1`, tanpa chrome aplikasi), muat ulang otomatis (interval di
+localStorage per dashboard), dan cari cepat Ctrl+K (`GET /api/search`).
+
+Cek setelah deploy: buka dashboard → **Lainnya** (Mode TV, Duplikat, Muat ulang otomatis), bilah filter →
+**Tampilan → Simpan filter ini sebagai tampilan…**, dan Ctrl+K di halaman mana pun.
+
+Rollback image ke v1.13.0: aman. Tabel `DashboardView` dibiarkan (versi lama tidak membacanya); tampilan
+tersimpan muncul lagi setelah roll-forward. Tidak perlu menurunkan migrasi.
+

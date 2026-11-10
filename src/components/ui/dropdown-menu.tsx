@@ -1,5 +1,6 @@
 "use client";
 
+import { IconCheck } from "@tabler/icons-react";
 import { DropdownMenu as Primitive } from "radix-ui";
 import * as React from "react";
 import { cn } from "@/lib/utils";
@@ -71,5 +72,33 @@ export const DropdownMenuSeparator = React.forwardRef<
       className={cn("-mx-1 my-1 h-px bg-border", className)}
       {...props}
     />
+  );
+});
+
+export const DropdownMenuRadioGroup = Primitive.RadioGroup;
+
+/** Pilihan tunggal di menu (mis. interval muat ulang): tanda centang untuk yang aktif. */
+export const DropdownMenuRadioItem = React.forwardRef<
+  React.ComponentRef<typeof Primitive.RadioItem>,
+  React.ComponentPropsWithoutRef<typeof Primitive.RadioItem>
+>(function DropdownMenuRadioItem({ className, children, ...props }, ref) {
+  return (
+    <Primitive.RadioItem
+      ref={ref}
+      className={cn(
+        "relative flex h-9 cursor-default select-none items-center gap-2 rounded-sm pl-8 pr-2 text-sm outline-none",
+        "data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+        "data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        className,
+      )}
+      {...props}
+    >
+      <span className="absolute left-2 inline-flex size-4 items-center justify-center" aria-hidden>
+        <Primitive.ItemIndicator>
+          <IconCheck className="size-4 stroke-2" />
+        </Primitive.ItemIndicator>
+      </span>
+      {children}
+    </Primitive.RadioItem>
   );
 });

@@ -42,6 +42,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Rollback ke v1.12.0 aman: `retention.json` dan field baru `status.json` diabaikan (lama simpan kembali ke
   `.env.prod`), tombol kirim ulang hilang, dan kirim ulang kembali tiap 30 menit tanpa jeda (runbook-deploy §22).
 
+- **v1.14.0 (T-tf88):** **bermigrasi** — tabel baru `DashboardView` (tampilan tersimpan), tanpa mengubah
+  tabel lama. Rilis TANPA `--quick` (preflight membuat backup lengkap). Rollback image ke v1.13.0 aman: tabel
+  baru diabaikan (tampilan tersimpan tidak tampil sampai roll-forward); mode TV, muat ulang otomatis, cari
+  cepat, dan duplikat hanya kode (runbook-deploy §23).
+
+## [1.14.0] - 2026-11-10
+
+### Added
+
+- **dashboards:** duplikat dashboard, mode TV + muat ulang otomatis, cari cepat Ctrl+K (T-fcar, T-nn87, T-k6k0) (353960b)
+- **dashboards:** tampilan tersimpan — simpan kombinasi filter dengan nama, pribadi/bersama (T-tf88) (b7ddea3)
+
+### Fixed
+
+- **dashboards,shell:** temuan Low review v1.14 r2 — penanda gagal muat ulang per pemakai hook dan tidak reset tiap tick, hanya bila data lama tampil; Ctrl+K kenali dialog Radix terbuka; tombol Cari disembunyikan di ponsel (ikon Panduan kembali) (355944b)
+- **dashboards:** menu Lainnya hanya bila ada widget atau pemilik; uji halaman dashboard untuk Lainnya + mode TV (CI unit) (0f62982)
+- **dashboards:** perbaikan review v1.14 — batas tampilan bersama saat dijadikan bersama, data basi di mode TV ditandai, mantan editor, syarat tulis di WHERE, cari cepat organisasi aktif, Ctrl+K di Mac (c09567f)
+- **shell:** kontras label Ctrl K di tombol Cari cepat (axe color-contrast) (d7bc81b)
+- **shell:** nama tombol Cari cepat dari isinya (axe label-content-name-mismatch) (99eea5c)
+- **shell:** tombol Cari cepat tidak membuat kepala ponsel meluap; nama tombol unik (e2e shell, guide-roles) (a725c7b)
+
 ## [1.13.0] - 2026-11-09
 
 ### Added

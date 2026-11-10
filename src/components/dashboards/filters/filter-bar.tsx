@@ -14,6 +14,7 @@ import type { FilterColumnView, SourceSheet } from "@/features/dashboards/servic
 import { FilterColumnsSettings } from "../filter-columns-settings";
 import { CrossFilterHint } from "./cross-hint";
 import { DefaultFilters } from "./default-filters";
+import { SavedViews } from "./saved-views";
 import { FilterChips } from "./filter-chips";
 import { FilterControl } from "./filter-control";
 import { useDashboardFilters } from "./filter-context";
@@ -95,12 +96,15 @@ export function FilterBar({
   editing,
   manage,
   compact = false,
+  canShareViews = false,
 }: {
   editing: boolean;
   /** Kolom filter (server) + sumber data untuk "Atur kolom filter" (mode edit pemilik/editor). */
   manage: { dashboardId: string; columns: FilterColumnView[]; sources: SourceSheet[] } | null;
   /** Panel pengaturan widget menempel di kanan (≥ 1280 px): sidebar menjadi rel agar kanvas lebar. */
   compact?: boolean;
+  /** Pemilik/editor: boleh membuat tampilan tersimpan bersama (T-tf88). */
+  canShareViews?: boolean;
 }) {
   const { columns, state, defaults, urlTooLong, widgetTitle, widgetGrain, stale } =
     useDashboardFilters();
@@ -329,6 +333,8 @@ export function FilterBar({
           ) : null}
           <FilterChips onEmpty={focusFirst} />
           {columns.length ? <DefaultFilters manage={editing ? manage : null} /> : null}
+          {/* Tampilan tersimpan (T-tf88): mode lihat; bersama hanya pemilik/editor. */}
+          {!editing ? <SavedViews canShare={canShareViews} /> : null}
           {urlTooLong ? (
             <p className="text-xs text-muted-foreground">
               Pilihan filter terlalu panjang untuk disimpan di alamat halaman — filter tetap

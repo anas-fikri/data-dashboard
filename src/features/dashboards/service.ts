@@ -3,7 +3,7 @@ import { dashboardColorsSchema, type DashboardColors } from "@/features/widgets/
 import { Prisma } from "@prisma/client";
 import { cache } from "react";
 import { recordAudit } from "@/features/audit/service";
-import { isIdShape, nameKeyOf } from "@/features/datasets/validation";
+import { copyName, isIdShape, nameKeyOf } from "@/features/datasets/validation";
 import type { ColumnSchema, ColumnType } from "@/features/ingest/infer";
 import { PERIOD_SHEET_SELECT, periodOf, withPeriodColumn } from "@/features/query/period-column";
 import { widgetPlan } from "@/features/query/widget";
@@ -479,6 +479,127 @@ export async function createDashboard(
         "LIMIT_REACHED",
         `Batas ${DASHBOARDS_PER_DATASET} dashboard per dataset tercapai. Hapus dashboard yang tidak dipakai.`,
         "datasetId",
+      );
+    }
+    return { ok: true, data: row };
+  } catch (e) {
+    if (isUnique(e)) {
+      return fail("NAME_TAKEN", "Dataset ini sudah punya dashboard dengan nama itu.", "name");
+    }
+    if (isLockTimeout(e)) return busy();
+    throw e;
+  }
+}
+
+/** Nama salinan yang belum dipakai di dataset dashboard ini ("X (salinan)", …) untuk dialog Duplikat. */
+export async function suggestCopyName(datasetId: string, name: string): Promise<string> {
+  const taken = await prisma.dashboard.findMany({ where: { datasetId }, select: { name: true } });
+  return copyName(
+    name,
+    taken.map((d) => d.name),
+    DASHBOARD_NAME_MAX,
+  );
+}
+
+/**
+ * Duplikat dashboard (T-fcar): pemilik saja — dashboard selalu berada di dataset pemiliknya, jadi editor/
+ * viewer tidak bisa membuat salinan di dataset orang lain. Salinan berisi widget (pengaturan, judul, sumber
+ * pivot tersimpan, kolom yang hilang), tata letak, kolom filter + filter bawaan, dan warna; TIDAK ikut
+ * berbagi (orgShared/share) dan tanpa riwayat ekspor. Nama kosong → "X (salinan)" yang belum dipakai.
+ */
+export async function duplicateDashboard(
+  userId: string,
+  id: unknown,
+  nameRaw: unknown,
+): Promise<DashboardResult<{ id: string }>> {
+  if (!isIdShape(id)) return notFound();
+  const typed = typeof nameRaw === "string" && nameRaw.trim() !== "";
+  const name = typed ? cleanName(nameRaw, DASHBOARD_NAME_MAX, "dashboard") : null;
+  if (name && !name.ok) return fail("INVALID", name.message, "name");
+  const src0 = await prisma.dashboard.findFirst({
+    where: { id, ...ownedWhere(userId) },
+    select: { datasetId: true },
+  });
+  if (!src0) return denied(userId, id, "owner");
+  const datasetId = src0.datasetId;
+  try {
+    const row = await prisma.$transaction(async (tx) => {
+      // Lock yang sama dengan createDashboard: batas per dataset tidak bisa ditembus permintaan paralel.
+      await tx.$executeRaw(lockKey("dashboards", datasetId));
+      // FOR SHARE menunggu aktivasi versi yang sedang berjalan (memegang baris Dataset FOR UPDATE): widget
+      // yang disalin sudah dipetakan ke versi aktif yang final, bukan setengah jalan.
+      await tx.$queryRaw`SELECT 1 FROM "Dataset" WHERE "id" = ${datasetId} FOR SHARE`;
+      const src = await tx.dashboard.findFirst({
+        where: { id, ...ownedWhere(userId) },
+        select: {
+          name: true,
+          layout: true,
+          filterColumns: true,
+          colors: true,
+          widgets: {
+            select: {
+              id: true,
+              type: true,
+              title: true,
+              spec: true,
+              missingColumns: true,
+              savedPivotId: true,
+            },
+          },
+          dataset: { select: { _count: { select: { dashboards: true } } } },
+        },
+      });
+      if (!src) return "NOT_FOUND" as const;
+      if (src.dataset._count.dashboards >= DASHBOARDS_PER_DATASET) return "LIMIT_REACHED" as const;
+      let finalName = name?.ok ? name.value : null;
+      if (!finalName) {
+        const taken = await tx.dashboard.findMany({ where: { datasetId }, select: { name: true } });
+        finalName = copyName(
+          src.name,
+          taken.map((d) => d.name),
+          DASHBOARD_NAME_MAX,
+        );
+      }
+      const created = await tx.dashboard.create({
+        data: {
+          datasetId,
+          name: finalName,
+          nameKey: nameKeyOf(finalName),
+          filterColumns: src.filterColumns as Prisma.InputJsonValue,
+          ...(src.colors === null ? {} : { colors: src.colors as Prisma.InputJsonValue }),
+        },
+        select: { id: true },
+      });
+      const ids = new Map<string, string>();
+      for (const w of src.widgets) {
+        const copy = await tx.widget.create({
+          data: {
+            dashboardId: created.id,
+            type: w.type,
+            title: w.title,
+            spec: w.spec as Prisma.InputJsonValue,
+            missingColumns: w.missingColumns,
+            savedPivotId: w.savedPivotId,
+          },
+          select: { id: true },
+        });
+        ids.set(w.id, copy.id);
+      }
+      // Tata letak menunjuk id widget: dipetakan ke salinan; item tanpa widget (rusak) dibuang.
+      const layout = (Array.isArray(src.layout) ? (src.layout as unknown as LayoutItem[]) : [])
+        .filter((it) => it && typeof it === "object" && ids.has(it.i))
+        .map((it) => ({ ...it, i: ids.get(it.i)! }));
+      await tx.dashboard.update({
+        where: { id: created.id },
+        data: { layout: layout as unknown as Prisma.InputJsonValue, layoutRevision: 1 },
+      });
+      return created;
+    });
+    if (row === "NOT_FOUND") return notFound();
+    if (row === "LIMIT_REACHED") {
+      return fail(
+        "LIMIT_REACHED",
+        `Batas ${DASHBOARDS_PER_DATASET} dashboard per dataset tercapai. Hapus dashboard yang tidak dipakai.`,
       );
     }
     return { ok: true, data: row };

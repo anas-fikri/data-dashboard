@@ -67,6 +67,13 @@ interface FiltersApi {
   clearAll: () => void;
   /** Ganti seluruh saringan satu pivot (T-f4a7); [] = lepas semua. */
   setPivot: (widgetId: string, list: PivotFilter[]) => void;
+  /**
+   * Terapkan seluruh status (tampilan tersimpan, T-tf88): disaring terhadap kolom/widget yang ada (kolom
+   * yang sudah dihapus diabaikan) lalu ditulis ke URL seperti perubahan lain.
+   */
+  applyState: (next: FilterState) => void;
+  /** Id widget dashboard (menyaring status tampilan tersimpan seperti saat diterapkan). */
+  widgetIds: string[];
   /** Kartu yang menampilkan angka basi ("Memperbarui…"): satu pengumuman di bilah filter. */
   stale: StaleStore;
 }
@@ -183,6 +190,9 @@ export function DashboardFiltersProvider({
     clearCross: () => update(keep(state.filters)),
     clearAll: () => update(keep([])),
     setPivot: (widgetId, list) => update({ ...state, pivot: { ...state.pivot, [widgetId]: list } }),
+    applyState: (next) =>
+      update(sanitize(next, { columns, crossColumns, widgetIds: ids.split(",") })),
+    widgetIds: ids ? ids.split(",") : [],
     stale,
   };
   return <FiltersContext.Provider value={api}>{children}</FiltersContext.Provider>;
