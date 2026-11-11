@@ -91,6 +91,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+## [1.18.0] - 2026-11-11
+
+### Added
+
+- **deploy:** profil compose monitor (node-exporter + metrics-relay), runbook §29, panduan + Yang baru 1.18 (T-ee46) (957a6dd)
+- **metrics:** inti monitor sumber daya — parser node_exporter, titik host, Redis 1 jam/24 jam, sampler app, cgroup app/worker (T-ee46) (9803850)
+- **metrics:** kartu Server di sidebar, halaman Admin › Sumber daya, API ringkasan/admin (T-ee46) (7e67256)
+- **metrics:** perkiraan pemakaian per akun di Admin › Sumber daya (T-qed9) (914b030)
+
+### Fixed
+
+- **metrics:** laporan layanan/per akun hanya saat monitor aktif + TTL hash layanan (review L2); dokumen per akun (53b72de)
+- **metrics:** status kartu Server pakai aria-live, bukan role=status global (6237d6d)
+- **metrics:** temuan Low review putaran 2 (T-ee46/T-qed9) (e4b98f0)
+- **metrics:** temuan review T-ee46 — status pemroses lepas dari exporter, ambang CPU 5 menit, a11y, log (a04e7fb)
+- **metrics:** temuan verifikasi T-qed9 — storage per akun gagal tidak menjatuhkan tabel, uji accountRows (5a2674d)
+
 ## [1.17.1] - 2026-11-11
 
 ### Added
