@@ -1,15 +1,21 @@
 ---
 id: T-bwza
 title: 'Ukuran Jumlah kosong (COUNTBLANK): hitung baris yang kolomnya tidak terisi'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-11T06:12:26Z"
-updated: "2026-11-11T07:31:12Z"
+updated: "2026-11-11T07:46:41Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 06f26ffd5a819da4a20a1e24ed13a263c5ec7dcb
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T07:46:41Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
