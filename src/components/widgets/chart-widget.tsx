@@ -238,6 +238,7 @@ export function ChartWidget({
   const [drillAt, setDrillAt] = useState<(DrillTarget & { filter: DashFilter | null }) | null>(
     null,
   );
+  const drillBarEl = useRef<HTMLDivElement>(null);
   const drillTo = drillConfig
     ? (k: number) => {
         const raw = source[k]?.[0];
@@ -714,11 +715,20 @@ export function ChartWidget({
 
   // Bilah klik-tembus (filter silang aktif): tombol untuk kategori terpilih, atau petunjuk singkat.
   const picked = drillTo && pickAt && selected >= 0 ? selected : -1;
+  // Di luar kotak yang diukur (outer): tata letak grafik/daftar ringkas memakai sisa tinggi sesungguhnya.
+  // Tinggi sama di kedua keadaan (tanpa lompatan saat kategori dipilih); tabIndex -1 = sasaran fokus bila
+  // tombol hilang setelah "Lepas saringan ini" (review v1.15.1 #3); aria-live mengumumkan tombol yang muncul.
+  const hint = "Klik kategori, lalu lihat baris datanya di sini.";
   const drillBar =
     drillTo && pickAt && !chartEmpty(data) ? (
       <div
-        className="flex min-h-7 shrink-0 items-center gap-1 border-b px-2 text-xs text-muted-foreground"
+        ref={drillBarEl}
+        tabIndex={-1}
+        aria-live="polite"
+        className="flex min-h-7 shrink-0 items-center gap-1 border-b px-2 text-xs text-muted-foreground focus-visible:-outline-offset-2 any-pointer-coarse:min-h-11"
         data-testid="drill-bar"
+        // Mode TV: petunjuk disembunyikan (layar dinding tidak diklik; globals.css).
+        data-drill-hint={picked >= 0 ? undefined : ""}
       >
         <IconListDetails aria-hidden className="size-4 shrink-0" />
         {picked >= 0 ? (
@@ -733,75 +743,80 @@ export function ChartWidget({
             Lihat baris data “{labels[picked]}”
           </button>
         ) : (
-          <span className="min-w-0 truncate">Klik kategori, lalu lihat baris datanya di sini.</span>
+          <span className="min-w-0 truncate" title={hint}>
+            {hint}
+          </span>
         )}
       </div>
     ) : null;
 
   return (
-    <div ref={outer} className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col">
       {drillBar}
-      <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
-      {drill && drillConfig && dim ? (
-        <DrillDialog
-          widgetId={drill.widgetId}
-          widgetVersion={drill.widgetVersion}
-          config={drillConfig}
-          title={title}
-          dimensionLabel={dim.label}
-          target={drillAt}
-          onClose={() => setDrillAt(null)}
-          cross={
-            pickAt && drillAt?.filter
-              ? {
-                  pressed: !!selectedKey && filterKey(drillAt.filter) === selectedKey,
-                  toggle: () => cross!.pick!(drillAt.filter!),
-                }
-              : undefined
-          }
-        />
-      ) : null}
-      {/* Hanya bila garis tren tergambar (bukan tabel data/daftar ringkas). */}
-      {trendNote && drawsChart ? (
-        <p
-          className={cn(
-            "shrink-0 text-muted-foreground",
-            print ? "px-1 pt-1 text-[10px]" : "border-t px-3 py-1 text-xs",
-          )}
-          data-testid="chart-trend"
-        >
-          {trendNote}
-        </p>
-      ) : null}
-      {chartStatus && measure ? (
-        <StatusLegend
-          colors={chartStatus.colors}
-          items={[{ label: measure.label, tone: chartStatus.tone, target: chartStatus.target }]}
-          variant={print ? "print" : "screen"}
-        />
-      ) : null}
-      {note ? (
-        // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
-        <div className="shrink-0 px-3 pb-1">
+      <div ref={outer} className="flex min-h-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
+        {drill && drillConfig && dim ? (
+          <DrillDialog
+            widgetId={drill.widgetId}
+            widgetVersion={drill.widgetVersion}
+            config={drillConfig}
+            title={title}
+            dimensionLabel={dim.label}
+            target={drillAt}
+            onClose={() => setDrillAt(null)}
+            fallbackFocus={() => drillBarEl.current}
+            cross={
+              pickAt && drillAt?.filter
+                ? {
+                    pressed: !!selectedKey && filterKey(drillAt.filter) === selectedKey,
+                    toggle: () => cross!.pick!(drillAt.filter!),
+                  }
+                : undefined
+            }
+          />
+        ) : null}
+        {/* Hanya bila garis tren tergambar (bukan tabel data/daftar ringkas). */}
+        {trendNote && drawsChart ? (
           <p
             className={cn(
-              "text-xs text-muted-foreground",
-              note.note === "full" ? "line-clamp-2" : "line-clamp-1",
+              "shrink-0 text-muted-foreground",
+              print ? "px-1 pt-1 text-[10px]" : "border-t px-3 py-1 text-xs",
             )}
-            title={note.full}
-            data-testid="chart-note"
+            data-testid="chart-trend"
           >
-            {note.shown === note.full ? (
-              note.full
-            ) : (
-              <>
-                <span aria-hidden>{note.shown}</span>
-                <span className="sr-only">{note.full}</span>
-              </>
-            )}
+            {trendNote}
           </p>
-        </div>
-      ) : null}
+        ) : null}
+        {chartStatus && measure ? (
+          <StatusLegend
+            colors={chartStatus.colors}
+            items={[{ label: measure.label, tone: chartStatus.tone, target: chartStatus.target }]}
+            variant={print ? "print" : "screen"}
+          />
+        ) : null}
+        {note ? (
+          // Jarak bawah di pembungkus: kotak yang dipotong line-clamp tidak memperlihatkan sisa baris.
+          <div className="shrink-0 px-3 pb-1">
+            <p
+              className={cn(
+                "text-xs text-muted-foreground",
+                note.note === "full" ? "line-clamp-2" : "line-clamp-1",
+              )}
+              title={note.full}
+              data-testid="chart-note"
+            >
+              {note.shown === note.full ? (
+                note.full
+              ) : (
+                <>
+                  <span aria-hidden>{note.shown}</span>
+                  <span className="sr-only">{note.full}</span>
+                </>
+              )}
+            </p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

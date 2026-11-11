@@ -377,7 +377,7 @@ describe("upgrade.sh rollback", { timeout: 60_000 }, () => {
     mkdirSync(join(app(), "prisma/migrations/20991231000000_baru"), { recursive: true });
     writeFileSync(
       join(app(), "prisma/migrations/20991231000000_baru/migration.sql"),
-      '-- tabel baru\nCREATE TABLE "TabelBaruRilis" (\n  "id" TEXT NOT NULL\n);\n',
+      '-- tabel baru\nCREATE TABLE "TabelBaruRilis" (\n  "id" TEXT NOT NULL\n);\nCREATE TABLE IF NOT EXISTS "public"."TabelSkema" ("id" TEXT);\n',
     );
     writeFileSync(
       join(root, "tables"),
@@ -390,7 +390,7 @@ describe("upgrade.sh rollback", { timeout: 60_000 }, () => {
 
     writeFileSync(
       join(root, "tables"),
-      `${[...OLD_TABLES, "DashboardView", "TabelBaruRilis"].join("\n")}\n`,
+      `${[...OLD_TABLES, "DashboardView", "TabelBaruRilis", "TabelSkema"].join("\n")}\n`,
     );
     const r = run("rollback");
     expect(r.out).toContain("tabel ⊆ dump");

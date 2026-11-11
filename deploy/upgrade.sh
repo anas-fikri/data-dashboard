@@ -41,7 +41,8 @@ NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQue
 # membuat rollback ditolak karena daftar di atas lupa diperbarui (v1.15.0: DashboardView).
 release_tables() {
   cat prisma/migrations/*/migration.sql 2>/dev/null |
-    sed -n 's/^[[:space:]]*CREATE TABLE \(IF NOT EXISTS \)\{0,1\}"\([A-Za-z0-9_]*\)".*/\2/p' | sort -u
+    sed -n 's/^[[:space:]]*CREATE TABLE \(IF NOT EXISTS \)\{0,1\}\("public"\.\)\{0,1\}"\([A-Za-z0-9_]*\)".*/\3/p' |
+    sort -u
 }
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }

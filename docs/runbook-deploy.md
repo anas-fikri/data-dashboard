@@ -1017,11 +1017,15 @@ Pelajaran deploy 2026-11-10 (v1.13.0 → v1.15.0):
    emulasi. Bila terjadi, hentikan (produksi belum berubah sebelum langkah 4/8) dan pakai §14
    `server-release.sh` — build native di VM (± 15–20 menit, produksi tetap jalan).
 2. **Preflight "ruang disk kurang untuk backup lengkap"** — bebaskan ruang hanya dengan:
-   `docker rmi dashboard-<s>:prev-<stamp lama>` (sisakan image yang sedang berjalan dan `prev-` terbaru) dan
-   `docker builder prune --filter until=24h` (cache build; image/container/volume aplikasi lain tidak
-   tersentuh). **Jangan** `docker system prune`, jangan turunkan `MIN_FREE_GB`.
+   `docker rmi dashboard-<s>:prev-<stamp lama>` (sisakan image yang sedang berjalan dan `prev-` terbaru;
+   `bash deploy/upgrade.sh prune-images` melakukan hal yang sama, tetapi hanya setelah preflight lulus) dan
+   `docker builder prune --filter until=24h` (cache build **seluruh** daemon Docker: image, container, dan volume
+   aplikasi lain tidak tersentuh, tetapi build mereka berikutnya lebih lama). **Jangan** `docker system prune`,
+   jangan turunkan `MIN_FREE_GB`.
 3. **Preflight lama di "6/7 backup terenkripsi" tanpa keluaran:** keluaran `backup.sh` baru dicetak setelah selesai
    (normal beberapa menit). Bila > 15 menit dan NAS penuh, `backup.sh` sedang mencoba mengunggah ke NAS: matikan
    target NAS sementara di Admin › Backup, lalu
-   `for c in $(docker ps --format '{{.Names}}' | grep backup); do docker exec "$c" pkill -f 'rclone copy /backups'; done`
+   `for c in $(docker ps -q --filter label=com.docker.compose.project=dashboard --filter label=com.docker.compose.service=backup); do docker exec "$c" pkill -f 'rclone copy /backups'; done`
+   (hanya container service `backup` proyek compose `dashboard`, termasuk run sementara preflight — bukan
+   container "backup" aplikasi lain)
    — arsip tetap di VM, preflight lanjut. Nyalakan lagi NAS setelah admin DSM mengosongkannya.

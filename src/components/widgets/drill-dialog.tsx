@@ -41,6 +41,7 @@ export function DrillDialog({
   target,
   onClose,
   cross,
+  fallbackFocus,
 }: {
   widgetId: string;
   widgetVersion?: string;
@@ -51,6 +52,8 @@ export function DrillDialog({
   onClose: () => void;
   /** Filter silang kategori ini (widget dengan filter silang aktif); pressed = sedang menyaring. */
   cross?: { pressed: boolean; toggle: () => void };
+  /** Sasaran fokus bila pembukanya hilang saat ditutup (mis. tombol lenyap setelah "Lepas saringan ini"). */
+  fallbackFocus?: () => HTMLElement | null;
 }) {
   const heading = target ? `${dimensionLabel}: ${target.label}` : "";
   // Dialog terkendali tanpa Dialog.Trigger: Radix tidak tahu pembukanya, jadi fokus dikembalikan sendiri
@@ -68,9 +71,10 @@ export function DrillDialog({
           onCloseAutoFocus={(e) => {
             const el = opener.current;
             opener.current = null;
-            if (el?.isConnected) {
+            const to = el?.isConnected ? el : fallbackFocus?.();
+            if (to?.isConnected) {
               e.preventDefault();
-              el.focus();
+              to.focus();
             }
           }}
           className="fixed inset-0 z-50 flex flex-col bg-card text-card-foreground md:inset-4 md:rounded-lg md:border md:shadow-lg"

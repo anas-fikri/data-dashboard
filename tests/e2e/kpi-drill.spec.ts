@@ -218,6 +218,8 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     await expect(dialog).toHaveCount(0);
     await expect(kpiValue).toHaveText("123");
     await expect(open).toHaveCount(0);
+    // Tombol lenyap: fokus ke bilah klik-tembus, bukan kembali ke awal halaman (review v1.15.1 #3).
+    await expect(bar.getByTestId("drill-bar")).toBeFocused();
 
     // Filter silang widget dimatikan → klik kategori langsung membuka baris (tanpa bilah).
     const p2 = await settings(owner, BAR);
