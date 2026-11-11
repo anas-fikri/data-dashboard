@@ -1,7 +1,7 @@
 "use client";
 
 import { useDashboardColors, useDashboardTone } from "@/components/widgets/dashboard-colors";
-import { IconAlertTriangle } from "@tabler/icons-react";
+import { IconAlertTriangle, IconListDetails } from "@tabler/icons-react";
 import { useEffect, useRef, useState } from "react";
 import {
   dateLabelForms,
@@ -112,7 +112,7 @@ type Row = {
 };
 /** Tombol kategori yang ditekan (filter silang dari grafik ini): garis + latar, bukan warna saja. */
 const PRESSED =
-  "aria-pressed:bg-primary/10 aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight] data-[current=true]:bg-primary/10 data-[current=true]:ring-1 data-[current=true]:ring-inset data-[current=true]:ring-primary forced-colors:data-[current=true]:outline forced-colors:data-[current=true]:outline-[Highlight]";
+  "aria-pressed:bg-primary/10 aria-pressed:ring-1 aria-pressed:ring-inset aria-pressed:ring-primary forced-colors:aria-pressed:outline forced-colors:aria-pressed:outline-[Highlight]";
 
 export function ChartWidget({
   type,
@@ -230,13 +230,15 @@ export function ChartWidget({
         if (f) cross!.pick!(f);
       }
     : undefined;
-  // Klik-tembus: kategori nyata (bukan "Lainnya") → dialog baris detail; nilai + label dicatat saat klik.
+  // Klik-tembus (T-d5ev, alur v1.15.1 T-j25e): klik kategori tetap filter silang; baris data kategori yang
+  // sedang dipilih dibuka lewat tombol "Lihat baris data" di atas grafik. Filter silang widget ini mati →
+  // klik langsung membuka baris. Nilai + label dicatat saat membuka (data bisa berganti selama dialog terbuka).
   const drillConfig =
     drill && !print && dim ? drillTableConfig({ type, spec } as WidgetConfig) : null;
   const [drillAt, setDrillAt] = useState<(DrillTarget & { filter: DashFilter | null }) | null>(
     null,
   );
-  const openAt = drillConfig
+  const drillTo = drillConfig
     ? (k: number) => {
         const raw = source[k]?.[0];
         const value =
@@ -251,7 +253,10 @@ export function ChartWidget({
           opener: active instanceof HTMLElement && active !== document.body ? active : null,
         });
       }
-    : pickAt;
+    : undefined;
+  // Klik kategori: filter silang bila boleh; selain itu klik-tembus langsung (bila diatur).
+  const direct = !pickAt && !!drillTo;
+  const openAt = pickAt ?? drillTo;
   const selectedKey = cross?.selected ? filterKey(cross.selected) : null;
   const selected = selectedKey
     ? source.findIndex((_, k) => {
@@ -361,7 +366,7 @@ export function ChartWidget({
                 pick: () => openAt(r.index!),
                 pressed: r.index === selected,
                 raw: rawText(r.index),
-                ...(drillConfig ? { opens: true } : {}),
+                ...(direct ? { opens: true } : {}),
               }
             : r,
         )}
@@ -369,7 +374,7 @@ export function ChartWidget({
         measureLabel={measure!.label}
         valueType={valueType}
         format={format}
-        describedBy={pickAt && !drillConfig ? CROSS_HINT_ID : undefined}
+        describedBy={pickAt ? CROSS_HINT_ID : undefined}
         label={`Data ${name}`}
         width={width}
         height={room?.height ?? null}
@@ -525,15 +530,11 @@ export function ChartWidget({
             <li key={i} className={openAt && k !== undefined ? "flex min-w-0" : layout}>
               {openAt && k !== undefined ? (
                 // Kategori sebagai tombol tekan: filter silang dengan keyboard (grafik aria-hidden);
-                // klik-tembus: tombol pembuka dialog baris detail.
+                // filter silang mati + klik-tembus: tombol pembuka dialog baris detail.
                 <button
                   type="button"
-                  {...(drillConfig
-                    ? {
-                        "aria-haspopup": "dialog" as const,
-                        "data-current": k === selected || undefined,
-                        "data-testid": "drill-item",
-                      }
+                  {...(direct
+                    ? { "aria-haspopup": "dialog" as const, "data-testid": "drill-item" }
                     : {
                         "aria-pressed": k === selected,
                         "aria-describedby": CROSS_HINT_ID,
@@ -545,14 +546,11 @@ export function ChartWidget({
                     layout,
                     // Latar disorot/ditekan: label (muted) ikut gelap agar kontras tetap ≥ 4,5:1. Latar
                     // melebar ke padding daftar (-mx-1 px-1): teks tetap di tempat yang diukur.
-                    "-mx-1 flex-1 cursor-pointer rounded-sm px-1 text-left hover:bg-accent hover:*:text-foreground aria-pressed:*:text-foreground data-[current=true]:*:text-foreground focus-visible:-outline-offset-2",
+                    "-mx-1 flex-1 cursor-pointer rounded-sm px-1 text-left hover:bg-accent hover:*:text-foreground aria-pressed:*:text-foreground focus-visible:-outline-offset-2",
                     PRESSED,
                   )}
                 >
                   {content}
-                  {drillConfig && k === selected ? (
-                    <span className="sr-only"> (menyaring dashboard)</span>
-                  ) : null}
                 </button>
               ) : (
                 content
@@ -714,8 +712,35 @@ export function ChartWidget({
   );
   useEffect(() => () => onBadge?.(null), [onBadge]);
 
+  // Bilah klik-tembus (filter silang aktif): tombol untuk kategori terpilih, atau petunjuk singkat.
+  const picked = drillTo && pickAt && selected >= 0 ? selected : -1;
+  const drillBar =
+    drillTo && pickAt && !chartEmpty(data) ? (
+      <div
+        className="flex min-h-7 shrink-0 items-center gap-1 border-b px-2 text-xs text-muted-foreground"
+        data-testid="drill-bar"
+      >
+        <IconListDetails aria-hidden className="size-4 shrink-0" />
+        {picked >= 0 ? (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            data-testid="drill-open"
+            onClick={() => drillTo(picked)}
+            className="min-h-6 min-w-0 truncate rounded-sm px-1 font-medium text-primary underline-offset-4 hover:underline focus-visible:-outline-offset-2 any-pointer-coarse:min-h-11"
+            title={`Lihat baris data “${labels[picked] ?? ""}”`}
+          >
+            Lihat baris data “{labels[picked]}”
+          </button>
+        ) : (
+          <span className="min-w-0 truncate">Klik kategori, lalu lihat baris datanya di sini.</span>
+        )}
+      </div>
+    ) : null;
+
   return (
     <div ref={outer} className="flex min-h-0 flex-1 flex-col">
+      {drillBar}
       <div className="relative flex min-h-0 flex-1 flex-col">{body}</div>
       {drill && drillConfig && dim ? (
         <DrillDialog

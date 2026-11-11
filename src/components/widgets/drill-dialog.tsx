@@ -17,8 +17,9 @@ import { useWidgetQuery, type WidgetRequest } from "./widget-query";
  * Klik-tembus grafik (T-d5ev): klik kategori → dialog tabel baris data kategori itu. Data lewat jalur
  * widget /api/query { widgetId, drill: { value }, page, sort, dashboardFilters } — server membangun
  * klausa kategori dari dimensi widget sendiri dan hanya membaca kolom detail widget (D6), jadi viewer
- * tidak pernah mengirim kolom/spec. Filter silang tetap tersedia lewat tombol "Saring dashboard dengan
- * ini" (klik grafik kini membuka dialog). Filter dashboard berubah selama terbuka → halaman pertama.
+ * tidak pernah mengirim kolom/spec. Dibuka dari tombol "Lihat baris data" kategori terpilih (klik grafik tetap
+ * filter silang, v1.15.1) atau langsung dari klik bila filter silang widget mati; tombol "Lepas saringan ini" /
+ * "Saring dashboard dengan ini" di sini. Filter dashboard berubah selama terbuka → halaman pertama.
  */
 type TableConfig = Extract<WidgetConfig, { type: "table" }>;
 
