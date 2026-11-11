@@ -1066,7 +1066,11 @@ Batasan (sengaja, pesan jelas ke pengguna):
 - Versi gabungan yang **tidak cocok dengan data aktif** (butuh pemetaan) → FAILED dengan saran unggah tanpa
   gabung; data aktif tidak berubah. Pemetaan masih menulis ulang satu segmen per sheet.
 - **Baris judul** sheet gabungan tidak bisa diganti di halaman skema (pesan `MULTI_HEADER`); unggah ulang file.
-- Unggah ulang data yang dulu digabung: pilihan gabung tercentang bawaan agar sheet tidak terpecah lagi.
+- Unggah ulang data yang dulu digabung: pilihan gabung tercentang bawaan agar sheet tidak terpecah lagi
+  (dilepas → peringatan di pemilih).
+- Dataset lama dengan sheet terpisah ("Data 1", "Data 2") yang diunggah ulang dengan gabung: sheet aktif yang
+  kini menjadi anggota kelompok bukan "sheet hilang" — `sheetMap` memindahkan widget-nya ke sheet gabungan
+  (kolom dicocokkan per nama seperti sheet ganti nama).
 
 Cek setelah deploy: dataset uji → unggah xlsx dengan 2 sheet berjudul kolom sama → centang gabung → satu sheet,
 jumlah baris = total kedua sheet di **Lihat data**.
@@ -1074,4 +1078,6 @@ jumlah baris = total kedua sheet di **Lihat data**.
 Rollback **image saja** ke v1.15.x (database dibiarkan): aman. Kolom `mergeSheets` diabaikan versi lama (kolom
 ber-DEFAULT, Prisma lama tidak memilihnya); sheet gabungan yang sudah ada tetap terbaca semua segmennya; pilihan
 gabung hilang sampai roll-forward. `bash deploy/upgrade.sh rollback` (image lama + database dari dump pra-upgrade)
-juga aman, tetapi seperti biasa unggahan setelah upgrade ikut hilang.
+juga aman, tetapi seperti biasa unggahan setelah upgrade ikut hilang. Unggahan bertanda gabung yang belum selesai
+diproses saat rollback image akan diproses worker v1.15 sebagai sheet terpisah (tanda diabaikan) — tunggu antrean
+kosong sebelum rollback image saja, atau unggah ulang setelah roll-forward.

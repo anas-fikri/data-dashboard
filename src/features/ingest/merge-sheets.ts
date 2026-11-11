@@ -57,7 +57,7 @@ export class MergeError extends Error {
 }
 
 export const MERGE_NEEDS_MAPPING =
-  "Sheet yang digabung tidak cocok dengan kolom data aktif, jadi versi ini tidak bisa dicocokkan otomatis. Unggah lagi tanpa pilihan “Gabungkan sheet” untuk mencocokkan kolom lebih dulu, atau samakan judul kolom file dengan data aktif.";
+  "File ini tidak cocok otomatis dengan data aktif, dan versi berisi sheet gabungan belum bisa dicocokkan lewat halaman pemetaan. Samakan nama sheet/judul kolom file dengan data aktif lalu unggah lagi, atau unggah tanpa pilihan “Gabungkan sheet” untuk mencocokkan lewat pemetaan.";
 
 export const mergeHeaderDrift = (sheet: string, lead: string) =>
   `Sheet “${sheet}” tidak bisa digabung dengan “${lead}”: setelah baris judul data aktif diterapkan, judul kolomnya berbeda. Unggah lagi tanpa pilihan “Gabungkan sheet”.`;

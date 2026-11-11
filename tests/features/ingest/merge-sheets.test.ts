@@ -226,6 +226,38 @@ describe("ingest: gabungkan sheet berkolom sama", () => {
     expect(s.storage.parquetKeys()).toEqual([]);
   });
 
+  it("data aktif lama dengan sheet terpisah → unggah tergabung aktif; sheet anggota lama dipetakan ke sheet gabungan", async () => {
+    const first = t.setup(await book());
+    await runIngest(VID, first.repo, first.storage, first.opts);
+    const sh = first.repo.byIndex();
+    expect(sh.map((x) => x.name)).toEqual(["Jan", "Rute", "Feb"]);
+    const active = {
+      versionId: "aktif0000000000000001",
+      sheets: sh.map((x, i) => ({
+        id: `sheetaktif0000000000${i}`,
+        name: x.name,
+        index: x.index,
+        headerRow: x.headerRow,
+        schemaRevision: 1,
+        schema: x.schema!,
+        lineageId: x.lineageId!,
+      })),
+    } as ActiveSnapshot;
+    const s = t.setup(await book());
+    s.repo.mergeSheets = true;
+    s.repo.active = active;
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r).toEqual({ outcome: "done", sheets: 2 });
+    expect(s.repo.status).toBe("READY");
+    const ids = [...s.repo.sheets.keys()];
+    // "Feb" bukan sheet hilang: widget-nya ikut sheet gabungan "Jan".
+    expect(s.repo.sheetMap).toEqual({
+      sheetaktif00000000000: ids[0],
+      sheetaktif00000000001: ids[1],
+      sheetaktif00000000002: ids[0],
+    });
+  });
+
   it("versi refresh gabungan yang cocok → aktif, sheet logis dibawa dari pasangan aktif", async () => {
     const first = t.setup(await book());
     first.repo.mergeSheets = true;

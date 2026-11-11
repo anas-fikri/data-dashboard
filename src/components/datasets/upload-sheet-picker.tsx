@@ -1,6 +1,12 @@
 "use client";
 
-import { IconFileSpreadsheet, IconInfoCircle, IconUpload, IconX } from "@tabler/icons-react";
+import {
+  IconAlertTriangle,
+  IconFileSpreadsheet,
+  IconInfoCircle,
+  IconUpload,
+  IconX,
+} from "@tabler/icons-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -174,6 +180,15 @@ export function UploadSheetPicker({
             ditumpuk menjadi satu sheet bernama sheet pertama; sheet dengan kolom berbeda tetap
             terpisah.
           </p>
+          {defaultMerge && !merge ? (
+            <p className="flex gap-1.5 pl-6 text-sm" data-testid="upload-sheet-merge-off">
+              <IconAlertTriangle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+              <span>
+                Data aktif hasil gabungan: tanpa centang ini sheet berikutnya menjadi sheet
+                terpisah, dan widget hanya membaca baris sheet pertama.
+              </span>
+            </p>
+          ) : null}
         </div>
       ) : null}
       {missing.length && count > 0 ? (

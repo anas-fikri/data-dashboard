@@ -64,7 +64,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Lihat data, ekspor, recast, dan atur periode sejak T-037/T-qqyx. Rollback image ke v1.15.x aman: kolom baru
   diabaikan; sheet gabungan tetap terbaca (semua segmen), hanya pilihan "Gabungkan sheet" yang hilang.
   Batasan: unggahan mode periode tidak menggabung sheet; versi gabungan yang tidak cocok dengan data aktif
-  gagal dengan saran (tidak masuk pemetaan); baris judul sheet gabungan tidak bisa diganti (runbook-deploy §26).
+  gagal dengan saran (tidak masuk pemetaan); baris judul sheet gabungan tidak bisa diganti. Dataset lama dengan
+  sheet terpisah bisa beralih ke gabungan (widget sheet anggota dipindah lewat `sheetMap`; runbook-deploy §26).
 
 ## [1.15.1] - 2026-11-11
 

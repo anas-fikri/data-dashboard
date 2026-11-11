@@ -49,6 +49,7 @@ import {
   type ManifestSheet,
 } from "@/features/versions/integrity-check";
 import { newSegmentId, segmentPrefix } from "@/features/versions/segment-keys";
+import { normName } from "@/features/widgets/remap";
 import type { StoredProfile } from "./profile";
 import { mergeProfiles, packProfile, type RawProfile } from "./profile";
 import {
@@ -483,7 +484,19 @@ export async function runIngest(
           v.active.sheets,
         )
       : null;
-    const issues = (plan?.missing ?? []).map(missingSheetIssue);
+    // Sheet aktif yang kini menjadi anggota (bukan pemimpin) kelompok gabungan (T-0gmm; mis. data lama
+    // "Data 2" yang dulu terpisah): bukan sheet hilang — widget-nya dipindah ke sheet gabungan lewat sheetMap
+    // (kolom dicocokkan per nama saat aktivasi, sama seperti sheet ganti nama).
+    const absorbed = new Map<string, number>();
+    const missing = (plan?.missing ?? []).filter((a) => {
+      const i = units.findIndex(
+        (u) => u.length > 1 && u.slice(1).some((m) => normName(m.rec.name) === normName(a.name)),
+      );
+      if (i < 0) return true;
+      absorbed.set(a.id, i);
+      return false;
+    });
+    const issues = missing.map(missingSheetIssue);
     const sheetMap: Record<string, string> = {};
 
     // Per sheet: tipe kolom (typed-1) lalu unggah raw + typed + metadata.
@@ -517,6 +530,7 @@ export async function runIngest(
           : s.rec;
       const sheetId = await repo.createSheet(versionId, sheetRec, lineageId);
       if (active) sheetMap[active.id] = sheetId;
+      for (const [id, unit] of absorbed) if (unit === i) sheetMap[id] = sheetId;
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
       // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang
@@ -686,8 +700,9 @@ export async function runIngest(
       throw e; // BullMQ mengulang dari awal (mulai bersih)
     }
     // Gerbang integritas menyebut sheet/kunci sendiri: bukan "Sheet <terakhir diproses>".
+    // Gerbang integritas dan pesan gabungan (T-0gmm) menyebut sheet-nya sendiri: tanpa "Sheet <terakhir>".
     const located =
-      e instanceof IntegrityError
+      e instanceof IntegrityError || e instanceof MergeError
         ? message
         : failureMessage(message, current, {
             row: at.row,
