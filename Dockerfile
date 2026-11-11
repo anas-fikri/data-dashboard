@@ -8,6 +8,19 @@
 
 ARG NODE_IMAGE=node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
+# Manifest tanpa versi rilis (v1.15.1): `aitk release` menaikkan "version" package.json di setiap rilis, jadi
+# tanpa ini lapisan npm ci (± 730 paket, unduhan ± 350 MB) selalu dibangun ulang walau dependensi sama.
+# Tahap kecil ini selalu jalan (± 1 dtk), tetapi hasilnya identik selama dependensi sama → COPY --from di
+# tahap deps tetap cache-hit. Tanpa fitur khusus BuildKit: build lama (docker compose build di VM) juga bisa.
+FROM ${NODE_IMAGE} AS manifest
+WORKDIR /m
+COPY package.json package-lock.json ./
+RUN node -e 'const fs = require("fs"); \
+  for (const f of ["package.json", "package-lock.json"]) { \
+    const j = JSON.parse(fs.readFileSync(f, "utf8")); j.version = "0.0.0"; \
+    if (j.packages && j.packages[""]) j.packages[""].version = "0.0.0"; \
+    fs.writeFileSync(f, JSON.stringify(j, null, 2) + "\n"); }'
+
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -15,7 +28,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # ia menebak 1.1.x, yang gagal dimuat di bookworm/OpenSSL 3).
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json .npmrc ./
+# Versi asli package.json masuk lagi di tahap build (COPY . .) — dibaca footer/health dan worker.
+COPY --from=manifest /m/package.json /m/package-lock.json ./
+COPY .npmrc ./
 COPY prisma ./prisma
 RUN npm ci --no-audit --no-fund && npx prisma generate
 

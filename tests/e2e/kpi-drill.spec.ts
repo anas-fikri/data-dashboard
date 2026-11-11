@@ -10,8 +10,9 @@ import { pageFor, registerAndVerify, startWorker, stopWorker, uniqueEmail } from
  * v1.15.0 lewat UI sungguhan, pada dashboard contoh (T-zm9k: KPI "Total Kiriman", batang per Kota):
  *   T-43hv pembanding KPI — April 2026 (10+11+12 … per bulan: Jan 33, Feb 63, Mar 93, Apr 123) vs Maret,
  *     warna ▲ mengikuti penilaian, tahun lalu tanpa data, filter dashboard ikut menentukan periode;
- *   T-d5ev klik-tembus — tombol kategori di tabel data grafik membuka dialog baris Bandung (4 baris,
- *     kolom detail saja), "Saring dashboard dengan ini" = filter silang; viewer bisa membuka klik-tembus
+ *   T-d5ev klik-tembus (alur v1.15.1 T-j25e) — klik kategori tetap filter silang; tombol "Lihat baris data"
+ *     kategori terpilih membuka dialog baris Bandung (4 baris, kolom detail saja), "Lepas saringan ini" dari
+ *     dialog; filter silang widget mati → klik langsung membuka baris; viewer bisa membuka klik-tembus
  *     tetapi tidak membaca kolom di luar kolom detail, dan tidak bisa klik-tembus widget lain.
  */
 test.describe.configure({ mode: "serial" });
@@ -185,10 +186,17 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
 
     await owner.goto(`/dashboards/${d}`);
     const bar = card(owner, BAR);
+    const kpiValue = card(owner, KPI).getByTestId("kpi-value");
+    // Belum ada kategori terpilih: bilah memberi petunjuk, klik tetap filter silang (v1.15.1).
+    await expect(bar.getByTestId("drill-bar")).toContainText("Klik kategori");
     await bar.getByTestId("widget-data-toggle").click();
-    const item = bar.locator("[data-testid=drill-item][data-value=Bandung]");
-    await expect(item).toHaveAttribute("aria-haspopup", "dialog");
+    const item = bar.locator("[data-testid=crossfilter-item][data-value=Bandung]");
     await item.click();
+    await expect(item).toHaveAttribute("aria-pressed", "true");
+    await expect(kpiValue).toHaveText("41");
+    const open = bar.getByTestId("drill-open");
+    await expect(open).toHaveText("Lihat baris data “Bandung”");
+    await open.click();
     const dialog = owner.getByTestId("drill-dialog");
     await expect(dialog.getByRole("heading", { name: "Kota: Bandung" })).toBeVisible();
     const table = dialog.getByTestId("widget-table");
@@ -198,20 +206,37 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     await expect(table.locator("tbody")).not.toContainText("Jakarta");
     await expect(table.locator("tbody")).toContainText("41");
 
-    // Esc menutup; fokus kembali ke tombol kategori.
+    // Esc menutup; fokus kembali ke tombol Lihat baris data.
     await owner.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(item).toBeFocused();
+    await expect(open).toBeFocused();
 
-    // Filter silang dari dialog: KPI kini Bandung saja (Apr 41).
-    await item.press("Enter");
-    await dialog.getByTestId("drill-cross").click();
-    await expect(dialog).toHaveCount(0);
-    await expect(card(owner, KPI).getByTestId("kpi-value")).toHaveText("41");
-    await item.click();
+    // Lepas saringan dari dialog: KPI kembali semua kota, bilah kembali ke petunjuk.
+    await open.press("Enter");
     await expect(dialog.getByTestId("drill-cross")).toContainText("Lepas saringan ini");
     await dialog.getByTestId("drill-cross").click();
-    await expect(card(owner, KPI).getByTestId("kpi-value")).toHaveText("123");
+    await expect(dialog).toHaveCount(0);
+    await expect(kpiValue).toHaveText("123");
+    await expect(open).toHaveCount(0);
+    // Tombol lenyap: fokus ke bilah klik-tembus, bukan kembali ke awal halaman (review v1.15.1 #3).
+    await expect(bar.getByTestId("drill-bar")).toBeFocused();
+
+    // Filter silang widget dimatikan → klik kategori langsung membuka baris (tanpa bilah).
+    const p2 = await settings(owner, BAR);
+    await savedAfter(owner, p2, () => p2.getByTestId("widget-crossfilter-switch").click());
+    await owner.goto(`/dashboards/${d}`);
+    await expect(bar.getByTestId("drill-bar")).toHaveCount(0);
+    await bar.getByTestId("widget-data-toggle").click();
+    const direct = bar.locator("[data-testid=drill-item][data-value=Surabaya]");
+    await expect(direct).toHaveAttribute("aria-haspopup", "dialog");
+    await direct.click();
+    await expect(dialog.getByRole("heading", { name: "Kota: Surabaya" })).toBeVisible();
+    await expect(dialog.getByTestId("drill-cross")).toHaveCount(0);
+    await owner.keyboard.press("Escape");
+    await expect(direct).toBeFocused();
+    await expect(kpiValue).toHaveText("123");
+    const p3 = await settings(owner, BAR);
+    await savedAfter(owner, p3, () => p3.getByTestId("widget-crossfilter-switch").click());
   });
 
   test("ponsel 360 px: baris pembanding utuh, dialog baris detail layar penuh; axe tanpa pelanggaran serius", async ({
@@ -234,15 +259,14 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     const bar = card(phone, BAR);
     await bar.scrollIntoViewIfNeeded();
     await bar.getByTestId("widget-data-toggle").click();
-    await bar.locator("[data-testid=drill-item][data-value=Jakarta]").click();
+    await bar.locator("[data-testid=crossfilter-item][data-value=Jakarta]").click();
+    await bar.getByTestId("drill-open").click();
     const dialog = phone.getByTestId("drill-dialog");
     await expect(dialog.getByTestId("widget-table").locator("tbody tr")).toHaveCount(4);
     const box = (await dialog.boundingBox())!;
     expect(box.width).toBeLessThanOrEqual(360);
     // Tombol saring tetap terbaca pembaca layar walau labelnya disembunyikan di layar sempit.
-    await expect(dialog.getByTestId("drill-cross")).toHaveAccessibleName(
-      "Saring dashboard dengan ini",
-    );
+    await expect(dialog.getByTestId("drill-cross")).toHaveAccessibleName("Lepas saringan ini");
     expect(await axeSerious(phone)).toEqual([]);
     await phone.context().close();
   });
@@ -270,7 +294,8 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     await viewer.goto(`/dashboards/${d}`);
     const bar = card(viewer, BAR);
     await bar.getByTestId("widget-data-toggle").click();
-    await bar.locator("[data-testid=drill-item][data-value=Surabaya]").click();
+    await bar.locator("[data-testid=crossfilter-item][data-value=Surabaya]").click();
+    await bar.getByTestId("drill-open").click();
     const table = viewer.getByTestId("drill-dialog").getByTestId("widget-table");
     await expect(table.locator("tbody tr")).toHaveCount(4);
     await expect(table.locator("thead")).not.toContainText("Catatan");

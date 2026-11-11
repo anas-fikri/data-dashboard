@@ -502,3 +502,7 @@
   max-width: none;
   padding: 0.75rem;
 }
+/* Petunjuk klik-tembus tidak berguna di layar dinding (tidak diklik): ruang untuk grafik (v1.15.1). */
+:root[data-tv] [data-drill-hint] {
+  display: none;
+}

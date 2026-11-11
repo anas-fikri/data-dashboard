@@ -532,9 +532,9 @@ export function drillDefaults(defaults: number[], columns: SourceColumn[]): numb
 }
 
 /**
- * Klik-tembus grafik (T-d5ev): klik kategori membuka tabel baris datanya dengan kolom pilihan. Kolom itu
- * ikut terbaca viewer dashboard (D6) — petunjuknya menyebut itu. Bawaan saat dinyalakan: dimensi + kolom
- * ukuran.
+ * Klik-tembus grafik (T-d5ev, alur v1.15.1): tombol "Lihat baris data" untuk kategori terpilih (klik tetap
+ * filter silang; filter silang mati → klik langsung) membuka baris datanya dengan kolom pilihan. Kolom itu ikut
+ * terbaca viewer (D6) — petunjuknya menyebut itu. Bawaan saat dinyalakan: dimensi + kolom ukuran.
  */
 export function DrillField({
   value,
@@ -560,8 +560,10 @@ export function DrillField({
           </label>
           <p id={`${id}-hint`} className="text-xs text-muted-foreground">
             {on
-              ? `Klik kategori membuka tabel baris datanya. Semua yang bisa melihat dashboard bisa membaca kolom yang dipilih di bawah.${crossFilter ? " Filter silang tetap lewat tombol di dialog itu." : ""}`
-              : "Klik kategori membuka tabel baris data kategori itu."}
+              ? `${crossFilter ? "Klik kategori tetap menyaring widget lain; tombol Lihat baris data di atas grafik membuka baris kategori yang dipilih." : "Klik kategori membuka tabel baris datanya."} Semua yang bisa melihat dashboard bisa membaca kolom yang dipilih di bawah.`
+              : crossFilter
+                ? "Tombol Lihat baris data di atas grafik membuka baris kategori yang sedang dipilih."
+                : "Klik kategori membuka tabel baris data kategori itu."}
           </p>
         </div>
         <Switch

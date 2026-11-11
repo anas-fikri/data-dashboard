@@ -120,6 +120,10 @@ services:
     volumes: [app_cache:/var/cache/dashboard, backup-config:/backup-config]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
+    # Perintah tes dari image (Dockerfile). Masa mulai 120 dtk: start pertama setelah backup + build di VM
+    # bisa > 75 dtk (30 + 3 × 15) sebelum /api/health/core lulus → proxy (depends_on app sehat) dan
+    # "up --wait" gagal padahal app sehat sendiri (v1.15.0, 2026-11-10). Kegagalan dalam masa ini tidak dihitung.
+    healthcheck: { start_period: 120s }
     depends_on:
       migrate: { condition: service_completed_successfully }
       storage-init: { condition: service_completed_successfully }

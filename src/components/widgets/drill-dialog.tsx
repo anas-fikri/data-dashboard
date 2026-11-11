@@ -17,8 +17,9 @@ import { useWidgetQuery, type WidgetRequest } from "./widget-query";
  * Klik-tembus grafik (T-d5ev): klik kategori → dialog tabel baris data kategori itu. Data lewat jalur
  * widget /api/query { widgetId, drill: { value }, page, sort, dashboardFilters } — server membangun
  * klausa kategori dari dimensi widget sendiri dan hanya membaca kolom detail widget (D6), jadi viewer
- * tidak pernah mengirim kolom/spec. Filter silang tetap tersedia lewat tombol "Saring dashboard dengan
- * ini" (klik grafik kini membuka dialog). Filter dashboard berubah selama terbuka → halaman pertama.
+ * tidak pernah mengirim kolom/spec. Dibuka dari tombol "Lihat baris data" kategori terpilih (klik grafik tetap
+ * filter silang, v1.15.1) atau langsung dari klik bila filter silang widget mati; tombol "Lepas saringan ini" /
+ * "Saring dashboard dengan ini" di sini. Filter dashboard berubah selama terbuka → halaman pertama.
  */
 type TableConfig = Extract<WidgetConfig, { type: "table" }>;
 
@@ -40,6 +41,7 @@ export function DrillDialog({
   target,
   onClose,
   cross,
+  fallbackFocus,
 }: {
   widgetId: string;
   widgetVersion?: string;
@@ -50,6 +52,8 @@ export function DrillDialog({
   onClose: () => void;
   /** Filter silang kategori ini (widget dengan filter silang aktif); pressed = sedang menyaring. */
   cross?: { pressed: boolean; toggle: () => void };
+  /** Sasaran fokus bila pembukanya hilang saat ditutup (mis. tombol lenyap setelah "Lepas saringan ini"). */
+  fallbackFocus?: () => HTMLElement | null;
 }) {
   const heading = target ? `${dimensionLabel}: ${target.label}` : "";
   // Dialog terkendali tanpa Dialog.Trigger: Radix tidak tahu pembukanya, jadi fokus dikembalikan sendiri
@@ -67,9 +71,10 @@ export function DrillDialog({
           onCloseAutoFocus={(e) => {
             const el = opener.current;
             opener.current = null;
-            if (el?.isConnected) {
+            const to = el?.isConnected ? el : fallbackFocus?.();
+            if (to?.isConnected) {
               e.preventDefault();
-              el.focus();
+              to.focus();
             }
           }}
           className="fixed inset-0 z-50 flex flex-col bg-card text-card-foreground md:inset-4 md:rounded-lg md:border md:shadow-lg"

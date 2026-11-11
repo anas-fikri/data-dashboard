@@ -53,6 +53,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baru; data tetap). Matikan Pembanding/Klik-tembus di widget itu dulu bila rollback akan lama
   (runbook-deploy §24). Kolom klik-tembus terbaca semua yang bisa melihat dashboard (D6: kolom widget).
 
+- **v1.15.1 (T-xp28, T-j25e):** tanpa migrasi (`--quick` boleh bila produksi sudah v1.15.0). Klik grafik kembali
+  menjadi filter silang; klik-tembus lewat tombol **Lihat baris data** untuk kategori terpilih. `upgrade.sh
+  rollback` mengenali `DashboardView` + tabel dari migrasi rilis; masa tunggu sehat app 120 dtk; lapisan
+  `npm ci` di Dockerfile ter-cache walau versi naik (runbook-deploy §25).
+
+## [1.15.1] - 2026-11-11
+
+### Fixed
+
+- **deploy:** rollback mengenali tabel rilis, masa tunggu sehat app 120 dtk, npm ci ter-cache walau versi naik (T-xp28) (51fa41a)
+- **widgets,deploy:** temuan review v1.15.1 — pkill runbook hanya container backup proyek dashboard, bilah klik-tembus di luar ruang grafik yang diukur + tinggi tetap, fokus ke bilah setelah Lepas saringan, diumumkan pembaca layar, petunjuk disembunyikan di mode TV, regex tabel rilis menerima "public"."X" (e82f68a)
+- **widgets:** klik grafik kembali menjadi filter silang; klik-tembus lewat tombol Lihat baris data (T-j25e) (63a7f03)
+- **widgets:** temuan Low review v1.15.1 r2 — bilah klik-tembus role group + kabar sr-only (tanpa bacaan ganda), fokus cadangan dilewati bila bilah tersembunyi (mode TV) (1892c10)
+
 ## [1.15.0] - 2026-11-10
 
 ### Added

@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ChartWidget } from "@/components/widgets/chart-widget";
+import type { WidgetFilters } from "@/components/dashboards/filters/filter-context";
 import { KpiView } from "@/components/widgets/kpi-view";
 import type { WidgetData } from "@/components/widgets/widget-query";
 import { drillTableConfig, type ChartSpec } from "@/features/widgets/spec";
@@ -33,7 +34,7 @@ const data: WidgetData = {
     ["Bandung", 20],
   ],
 };
-const html = (s: ChartSpec, drill?: { widgetId: string }) =>
+const html = (s: ChartSpec, drill?: { widgetId: string }, cross?: WidgetFilters) =>
   renderToStaticMarkup(
     createElement(ChartWidget, {
       type: "bar",
@@ -42,11 +43,51 @@ const html = (s: ChartSpec, drill?: { widgetId: string }) =>
       showData: true,
       title: "Kiriman",
       drill,
+      cross,
     }),
   );
+/** Filter dashboard widget dengan filter silang aktif; `selected` = kategori yang sedang dipilih. */
+const crossOf = (selected: string | null): WidgetFilters => ({
+  filters: [],
+  selected: selected ? { column: "Kota", op: "in", values: [selected] } : null,
+  pick: () => {},
+  canPick: () => true,
+  pivot: [],
+  pivotEdit: null,
+});
 
 describe("klik-tembus di tabel data grafik", () => {
-  it("dengan spec.drill + widgetId → tombol pembuka dialog per kategori", () => {
+  it("v1.15.1: filter silang aktif → klik tetap menyaring; tombol Lihat baris data untuk kategori terpilih", () => {
+    const drilled = spec({ drill: { columns: [1, 2, 3] } });
+    const picked = html(drilled, { widgetId: "w1" }, crossOf("Bandung"));
+    expect(picked.match(/data-testid="crossfilter-item"/g)).toHaveLength(2);
+    expect(picked).toMatch(
+      /aria-pressed="true"[^>]*data-testid="crossfilter-item"[^>]*data-value="Bandung"/,
+    );
+    expect(picked).not.toContain('data-testid="drill-item"');
+    expect(picked).toMatch(
+      /aria-haspopup="dialog"[^>]*data-testid="drill-open"[^>]*>Lihat baris data “Bandung”/,
+    );
+    // Belum ada pilihan → petunjuk, tanpa tombol.
+    const none = html(drilled, { widgetId: "w1" }, crossOf(null));
+    expect(none).toContain('data-testid="drill-bar"');
+    expect(none).toContain("Klik kategori, lalu lihat baris datanya di sini.");
+    expect(none).not.toContain("drill-open");
+    // Tanpa klik-tembus: tidak ada bilah sama sekali.
+    expect(html(spec(), { widgetId: "w1" }, crossOf("Bandung"))).not.toContain("drill-bar");
+  });
+
+  it("filter silang widget dimatikan → klik langsung membuka baris (tanpa bilah)", () => {
+    const out = html(
+      spec({ crossFilter: false, drill: { columns: [1, 2] } }),
+      { widgetId: "w1" },
+      crossOf(null),
+    );
+    expect(out.match(/data-testid="drill-item"/g)).toHaveLength(2);
+    expect(out).not.toContain("drill-bar");
+  });
+
+  it("dengan spec.drill + widgetId tanpa filter silang → tombol pembuka dialog per kategori", () => {
     const out = html(spec({ drill: { columns: [1, 2, 3] } }), { widgetId: "w1" });
     expect(out.match(/data-testid="drill-item"/g)).toHaveLength(2);
     expect(out).toMatch(
