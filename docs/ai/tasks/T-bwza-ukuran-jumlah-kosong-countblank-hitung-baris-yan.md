@@ -4,7 +4,7 @@ title: 'Ukuran Jumlah kosong (COUNTBLANK): hitung baris yang kolomnya tidak teri
 status: in_review
 profile: strict
 created: "2026-11-11T06:12:26Z"
-updated: "2026-11-11T08:38:27Z"
+updated: "2026-11-11T08:42:12Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -46,6 +46,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-11T07:50:33Z"
       findings: 3
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-11T08:42:12Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
@@ -148,6 +152,7 @@ uji panel; e2e widgets T-bwza.
 - 2026-11-11T06:16:40Z Keputusan pemilik 2026-11-11: v1.16 dulu, Jumlah kosong di v1.17.
 - 2026-11-11T07:50:46Z Review 2 putaran (claude-reviewer-subagent): r1 M1 (kolom absent) + M2 (pembanding kolom sama) + 3 Low diperbaiki; r2 0 blokir, L-a/L-c diperbaiki, L-b → T-jdmk.
 - 2026-11-11T08:31:19Z e2e penuh per proyek (e9978ed): 38 proyek lulus; filters T-pxnn gagal karena Nilai kini 8 pilihan (SearchSelect) → uji diarahkan ke Format angka + combobox Nilai, proyek filters 10/10 lulus ulang (84ba18e); data-view-a11y AC2 = T-7377 (sudah gagal di main), AC1 lulus terpisah. Firefox/WebKit/PDF tidak tersedia di VM.
+- 2026-11-11T08:42:11Z Review 3 putaran (claude-reviewer-subagent): r1 2 Medium + 3 Low diperbaiki; r2 0 blokir, 2 Low diperbaiki + 1 → T-jdmk; r3 0 blokir, L1 (uji Enter pilih hasil cari) diperbaiki di commit ini, L2 (fokus kotak cari di ponsel) → T-jdmk. Sisa temuan untuk task ini: 0 (gerbang review: Low → task lanjutan).
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

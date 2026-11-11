@@ -686,6 +686,13 @@ test.describe("filter dashboard", () => {
     await search.press("Escape");
     await expect(search).toHaveCount(0);
     await expect(format).toContainText(before!);
+    // Enter dengan kata kunci memilih hasil paling cocok (jalur keydown sintetis select.tsx, review T-bwza r3).
+    await format.click();
+    await expect(search).toBeFocused();
+    await search.pressSequentially("angka");
+    await search.press("Enter");
+    await expect(search).toHaveCount(0);
+    await expect(format).toContainText("Angka (1.234)");
 
     // Daftar ≥ 8 pilihan (Nilai, sejak "Jumlah kosong" v1.17) memakai kotak cari combobox (T-jwhc):
     // "baris" menyaring, Enter memilih hasil paling cocok.
