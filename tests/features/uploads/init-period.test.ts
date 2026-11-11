@@ -244,6 +244,23 @@ describe("resume (AC6)", () => {
     expect(r).toMatchObject({ ok: true, versionId: OLD, resumed: true, mode: "REPLACE" });
   });
 
+  it("T-0gmm: xlsx dipilih ulang dengan pilihan gabung lain → tidak dilanjutkan; pilihan sama → dilanjutkan; versi baru menyimpan pilihannya", async () => {
+    const xlsx = { ...file, name: "april.xlsx" };
+    const own = (merge: boolean) => ({ ...ownUploading("REPLACE", null), mergeSheets: merge });
+    tx.datasetVersion.findFirst.mockResolvedValueOnce(own(true));
+    expect(await initUpload("u1", { ...xlsx, mergeSheets: true }, storage())).toMatchObject({
+      ok: true,
+      versionId: OLD,
+      resumed: true,
+    });
+    tx.datasetVersion.findFirst.mockResolvedValueOnce(own(false)).mockResolvedValueOnce(null);
+    const r = await initUpload("u1", { ...xlsx, mergeSheets: true }, storage());
+    expect(r).toMatchObject({ ok: true, resumed: false });
+    expect(tx.datasetVersion.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ mergeSheets: true }) }),
+    );
+  });
+
   it("T-055: batas periode pasti terlewati (mode label) → PERIOD_LIMIT sebelum versi/multipart dibuat", async () => {
     tx.dataset.findUnique.mockResolvedValue(periodDataset("LABEL"));
     periodInitCheck.mockResolvedValueOnce({

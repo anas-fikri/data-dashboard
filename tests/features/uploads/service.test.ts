@@ -110,6 +110,30 @@ describe("validasi init", () => {
     expect(
       validateInit({ ...base, mode: "PERIOD", baseVersionId: VID, sheets: ["A"] }, 100),
     ).toMatchObject({ code: "INVALID" });
+    // Gabungkan sheet (T-0gmm): hanya true/false, xlsx ganti semua data, bukan satu sheet terpilih.
+    expect(validateInit(base, 100)).toMatchObject({ ok: true, mergeSheets: false });
+    expect(validateInit({ ...base, mergeSheets: false }, 100)).toMatchObject({
+      ok: true,
+      mergeSheets: false,
+    });
+    expect(validateInit({ ...base, mergeSheets: true }, 100)).toMatchObject({
+      ok: true,
+      mergeSheets: true,
+      sheets: [],
+    });
+    expect(validateInit({ ...base, sheets: ["A", "B"], mergeSheets: true }, 100)).toMatchObject({
+      ok: true,
+      mergeSheets: true,
+    });
+    for (const bad of [
+      { mergeSheets: "true" },
+      { mergeSheets: 1 },
+      { sheets: ["A"], mergeSheets: true },
+      { name: "a.csv", mergeSheets: true },
+      { mode: "PERIOD", baseVersionId: VID, mergeSheets: true },
+    ]) {
+      expect(validateInit({ ...base, ...bad }, 100)).toMatchObject({ code: "INVALID" });
+    }
     expect(cleanFileName("C:\\data\\laporan\u202e.xlsx")).toBe("laporan.xlsx");
     expect(cleanFileName("a".repeat(300))).toBeNull();
   });

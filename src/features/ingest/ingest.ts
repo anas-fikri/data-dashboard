@@ -32,6 +32,7 @@ import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import {
   carriedAlias,
   chooseHeader,
+  columnRef,
   missingSheetIssue,
   planColumns,
   planSheets,
@@ -49,8 +50,25 @@ import {
   type ManifestSheet,
 } from "@/features/versions/integrity-check";
 import { newSegmentId, segmentPrefix } from "@/features/versions/segment-keys";
+import { normName } from "@/features/widgets/remap";
 import type { StoredProfile } from "./profile";
-import { headerColumns, maxSourceRow, typedFileProblems, writeTyped } from "./typed";
+import { mergeProfiles, packProfile, type RawProfile } from "./profile";
+import {
+  MERGE_NEEDS_MAPPING,
+  MergeError,
+  columnsKey,
+  mergeHeaderDrift,
+  sheetGroups,
+} from "./merge-sheets";
+import {
+  copyTyped,
+  headerColumns,
+  maxSourceRow,
+  profileRaw,
+  typedFileProblems,
+  typedSchema,
+  writeTyped,
+} from "./typed";
 import { PARALLEL_MIN_SHEET_BYTES, sheetRecord, xlsxSheetsParallel } from "./xlsx-parallel";
 
 export const INGEST_DEADLINE_MS = 60 * 60 * 1000;
@@ -126,6 +144,8 @@ export interface SegmentRecord {
   sha256?: string;
   /** Jenis file asal (T-049). */
   sourceKind?: "xlsx" | "csv";
+  /** Nama asal segmen; tidak ada = nama file versi. Sheet gabungan (T-0gmm): "file (sheet X)". */
+  originalName?: string;
 }
 
 export interface IngestRepo {
@@ -138,6 +158,10 @@ export interface IngestRepo {
     sourceKey: string;
     active: ActiveSnapshot | null;
     selectedSheets?: string[];
+    /** Gabungkan sheet berkolom sama menjadi satu sheet (T-0gmm, xlsx REPLACE). */
+    mergeSheets?: boolean;
+    /** Nama file asal (nama asal segmen sheet gabungan). */
+    originalName?: string | null;
   } | null>;
   /** UPLOADED|INGESTING → INGESTING (progress direset). false = versi tidak layak diproses. */
   begin(versionId: string): Promise<boolean>;
@@ -164,7 +188,8 @@ export interface IngestRepo {
   setSheetKey(sheetId: string, rawKey: string): Promise<void>;
   /**
    * Typed-1 + skema hasil inferensi, dicatat sebagai file typed segmen `segmentId` dan manifest sheet
-   * (ordinal 0); melempar DatasetGoneError bila baris sheet sudah hilang.
+   * (`ordinal`, default 0; sheet gabungan T-0gmm: satu per sheet asal, berurutan — hanya ordinal 0 yang
+   * menulis pointer typedKey sheet); melempar DatasetGoneError bila baris sheet sudah hilang.
    */
   setTyped(
     sheetId: string,
@@ -180,6 +205,8 @@ export interface IngestRepo {
       profile: StoredProfile;
       /** Baris judul file typed ini (T-gcn8); dicatat eksplisit agar tidak bergantung pada segmen. */
       headerRow: number;
+      /** Urutan di manifest sheet (T-0gmm); tidak ada = 0. */
+      ordinal?: number;
     },
   ): Promise<void>;
   /** Manifest versi untuk gerbang integritas (T-038); null = versi tidak ada. */
@@ -276,6 +303,7 @@ export function permanentMessage(e: unknown): string | null {
   ) {
     return e.message;
   }
+  if (e instanceof MergeError) return e.message;
   if (e instanceof DeadlineError) {
     return "Pemrosesan file melebihi 60 menit. Pecah file menjadi beberapa bagian lalu unggah lagi.";
   }
@@ -442,93 +470,207 @@ export async function runIngest(
           ];
     await ensureAlive();
 
+    // Sheet berkolom sama digabung (T-0gmm): satu unit = sheet logis; anggota > 1 = satu segmen per sheet
+    // asal. Tanpa pilihan gabung setiap sheet unitnya sendiri (perilaku lama).
+    const units = sheetGroups(
+      sheets.map((s) => s.rec),
+      ext === "xlsx" && v.mergeSheets === true,
+    ).map((g) => g.map((i) => sheets[i]!));
+    const merged = units.some((u) => u.length > 1);
+
     // Versi refresh: pasangan sheet aktif per sheet baru; sheet aktif yang hilang = tidak cocok.
     const plan = v.active
       ? planSheets(
-          sheets.map((s) => s.rec),
+          units.map((u) => u[0]!.rec),
           v.active.sheets,
         )
       : null;
-    const issues = (plan?.missing ?? []).map(missingSheetIssue);
+    // Sheet aktif yang kini menjadi anggota (bukan pemimpin) kelompok gabungan (T-0gmm; mis. data lama
+    // "Data 2" yang dulu terpisah): bukan sheet hilang — widget-nya dipindah ke sheet gabungan lewat sheetMap
+    // (kolom dicocokkan per nama saat aktivasi, sama seperti sheet ganti nama).
+    const absorbed = new Map<string, number>();
+    const missing = (plan?.missing ?? []).filter((a) => {
+      const i = units.findIndex(
+        (u) => u.length > 1 && u.slice(1).some((m) => normName(m.rec.name) === normName(a.name)),
+      );
+      if (i < 0) return true;
+      absorbed.set(a.id, i);
+      return false;
+    });
+    const issues = missing.map(missingSheetIssue);
     const sheetMap: Record<string, string> = {};
 
     // Per sheet: tipe kolom (typed-1) lalu unggah raw + typed + metadata.
-    for (const [i, s] of sheets.entries()) {
+    for (const [i, members] of units.entries()) {
+      const s = members[0]!;
       const active = plan?.pairs[i] ?? null;
       // Baris header aktif (bisa hasil koreksi user) dicoba lebih dulu; yang dipilih disimpan.
       if (active) {
-        Object.assign(s.rec, await refreshHeader(duck, s, active));
+        for (const m of members) Object.assign(m.rec, await refreshHeader(duck, m, active));
         s.rec.aliasName = carriedAlias(s.rec.name, active);
+        const key = columnsKey(s.rec);
+        const drift = members.find((m) => columnsKey(m.rec) !== key);
+        if (drift) throw new MergeError(mergeHeaderDrift(drift.rec.name, s.rec.name));
       }
       const cols = active ? planColumns(s.rec.columns, active.schema) : null;
-      const at = { sheet: s.rec.index, sheetName: s.rec.name, rows: s.rec.rawRows, fraction: 1 };
+      const at = {
+        sheet: s.rec.index,
+        sheetName: s.rec.name,
+        rows: members.reduce((n, m) => n + m.rec.rawRows, 0),
+        fraction: 1,
+      };
       // Sheet logis dibawa dari pasangan aktif (ADR-0008); `_row` segmen ini diambil dari lineage-nya.
       const lineageId = active?.lineageId ?? (await repo.createLineage(versionId));
-      const sheetId = await repo.createSheet(versionId, s.rec, lineageId);
+      const sheetRec: SheetRecord =
+        members.length > 1
+          ? {
+              ...s.rec,
+              rawRows: at.rows,
+              truncatedCells: members.reduce((n, m) => n + m.rec.truncatedCells, 0),
+            }
+          : s.rec;
+      const sheetId = await repo.createSheet(versionId, sheetRec, lineageId);
       if (active) sheetMap[active.id] = sheetId;
-      const maxSrcRow = await maxSourceRow(duck, s.path);
-      const rowBase = await repo.allocateRows(lineageId, maxSrcRow);
+      for (const [id, unit] of absorbed) {
+        if (unit !== i) continue;
+        sheetMap[id] = sheetId;
+        // Kolom terlihat sheet yang diserap harus ada di file juga (seperti sheet berpasangan): kolom hilang
+        // → masalah verdict → versi gabungan gagal dengan saran, bukan widget diam-diam rusak.
+        const a = v.active!.sheets.find((x) => x.id === id)!;
+        issues.push(
+          ...planColumns(s.rec.columns, a.schema).missing.map(
+            (c) => `${columnRef(c, a.name)} tidak ada di file baru.`,
+          ),
+        );
+      }
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
       // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang
-      // tetap tidak ada di file ditulis ulang kosong tanpa menunggu pemetaan.
+      // tetap tidak ada di file ditulis ulang kosong tanpa menunggu pemetaan. Sheet gabungan: tipe dari
+      // gabungan profil semua sheet asal (mergeProfiles), lalu satu file typed per sheet asal.
       setProgress({ stage: "tipe", refresh: active !== null, ...at });
-      const typedPath = join(work, `typed-${s.rec.index}.parquet`);
-      const typed = await writeTyped(duck, {
-        rawPath: s.path,
-        outPath: typedPath,
+      const typedInput = {
         source: ext,
-        headerRow: s.rec.headerRow,
         colCount: s.rec.colCount,
         columns: s.rec.columns,
         overrides: cols?.overrides,
         absent: cols?.absent,
-        watch: ensureAlive,
-        rowBase,
-      });
-      if (active && cols) {
-        const label = v.active!.sheets.length > 1 ? active.name : null;
-        issues.push(...sheetIssues(label, cols, typed.schema, typed.nonEmpty));
+      } as const;
+      const profiles: RawProfile[] = [];
+      if (members.length > 1) {
+        for (const m of members) {
+          profiles.push(
+            await profileRaw(duck, {
+              rawPath: m.path,
+              headerRow: m.rec.headerRow,
+              colCount: m.rec.colCount,
+              watch: ensureAlive,
+            }),
+          );
+        }
       }
-      const bad = await typedFileProblems(duck, typedPath, typed.dataRows, `sheet "${s.rec.name}"`);
-      if (bad.length) throw new IntegrityError(bad);
-      setProgress({ stage: "simpan", ...at });
-      // Segmen imutabel di seg/<id>/ (T-038). Barisnya ditulis SEBELUM objek diunggah: percobaan
-      // ulang/kegagalan selalu tahu objek mana miliknya (tidak ada objek tanpa pemilik tercatat).
-      const segmentId = newSegmentId();
-      const seg = segmentPrefix(v.datasetId, segmentId);
-      const key = `${seg}raw.parquet`;
-      await repo.createSegment(versionId, {
-        id: segmentId,
-        lineageId,
-        rawKey: key,
-        rawBytes: statSync(s.path).size,
-        rawRows: s.rec.rawRows,
-        headerRow: s.rec.headerRow,
-        colCount: s.rec.colCount,
-        rowBase,
-        maxSrcRow,
-        sha256: dl.sha256,
-        sourceKind: ext,
-      });
-      created.push(segmentId);
-      await storage.upload(key, s.path, PARQUET);
-      await repo.setSheetKey(sheetId, key);
-      await ensureAlive();
-      const typedKey = `${seg}typed-1.parquet`;
-      await storage.upload(typedKey, typedPath, PARQUET);
-      await repo.setTyped(sheetId, {
-        typedKey,
-        schema: typed.schema,
-        schemaRevision: 1,
-        segmentId,
-        dataRows: typed.dataRows,
-        typedBytes: statSync(typedPath).size,
-        profile: typed.profile,
-        headerRow: s.rec.headerRow,
-      });
-      rmSync(typedPath, { force: true });
-      await ensureAlive();
+      const groupSchema =
+        members.length > 1 ? typedSchema(mergeProfiles(profiles), typedInput) : null;
+
+      for (const [k, m] of members.entries()) {
+        const maxSrcRow = await maxSourceRow(duck, m.path);
+        const rowBase = await repo.allocateRows(lineageId, maxSrcRow);
+        const typedPath = join(work, `typed-${m.rec.index}.parquet`);
+        let typed: { schema: ColumnSchema[]; dataRows: number; profile: StoredProfile };
+        if (groupSchema) {
+          const prof = profiles[k]!;
+          const chars = [...prof.profiles.values()].reduce((sum, p) => sum + p.chars, 0);
+          await copyTyped(duck, {
+            rawPath: m.path,
+            outPath: typedPath,
+            source: ext,
+            headerRow: m.rec.headerRow,
+            watch: ensureAlive,
+            rowBase,
+            rawCols: m.rec.colCount,
+            schema: groupSchema,
+            charsPerRow: prof.dataRows > 0 ? chars / prof.dataRows : 0,
+          });
+          typed = {
+            schema: groupSchema,
+            dataRows: prof.dataRows,
+            profile: packProfile(m.rec.headerRow, prof),
+          };
+        } else {
+          const one = await writeTyped(duck, {
+            ...typedInput,
+            rawPath: m.path,
+            outPath: typedPath,
+            headerRow: m.rec.headerRow,
+            watch: ensureAlive,
+            rowBase,
+          });
+          typed = one;
+          if (active && cols) {
+            const label = v.active!.sheets.length > 1 ? active.name : null;
+            issues.push(...sheetIssues(label, cols, one.schema, one.nonEmpty));
+          }
+        }
+        const bad = await typedFileProblems(
+          duck,
+          typedPath,
+          typed.dataRows,
+          `sheet "${m.rec.name}"`,
+        );
+        if (bad.length) throw new IntegrityError(bad);
+        setProgress({ stage: "simpan", ...at });
+        // Segmen imutabel di seg/<id>/ (T-038). Barisnya ditulis SEBELUM objek diunggah: percobaan
+        // ulang/kegagalan selalu tahu objek mana miliknya (tidak ada objek tanpa pemilik tercatat).
+        const segmentId = newSegmentId();
+        const seg = segmentPrefix(v.datasetId, segmentId);
+        const key = `${seg}raw.parquet`;
+        await repo.createSegment(versionId, {
+          id: segmentId,
+          lineageId,
+          rawKey: key,
+          rawBytes: statSync(m.path).size,
+          rawRows: m.rec.rawRows,
+          headerRow: m.rec.headerRow,
+          colCount: m.rec.colCount,
+          rowBase,
+          maxSrcRow,
+          sha256: dl.sha256,
+          sourceKind: ext,
+          ...(members.length > 1
+            ? { originalName: `${v.originalName ?? "file"} (sheet ${m.rec.name})` }
+            : {}),
+        });
+        created.push(segmentId);
+        await storage.upload(key, m.path, PARQUET);
+        if (k === 0) await repo.setSheetKey(sheetId, key);
+        await ensureAlive();
+        const typedKey = `${seg}typed-1.parquet`;
+        await storage.upload(typedKey, typedPath, PARQUET);
+        await repo.setTyped(sheetId, {
+          typedKey,
+          schema: typed.schema,
+          schemaRevision: 1,
+          segmentId,
+          dataRows: typed.dataRows,
+          typedBytes: statSync(typedPath).size,
+          profile: typed.profile,
+          headerRow: m.rec.headerRow,
+          ...(k > 0 ? { ordinal: k } : {}),
+        });
+        rmSync(typedPath, { force: true });
+        await ensureAlive();
+      }
+      if (groupSchema && active && cols) {
+        const label = v.active!.sheets.length > 1 ? active.name : null;
+        issues.push(
+          ...sheetIssues(
+            label,
+            cols,
+            groupSchema,
+            groupSchema.map((c) => c.nonEmpty ?? 0),
+          ),
+        );
+      }
     }
     // Gerbang integritas (fail-closed) sebelum aktivasi: manifest + semua kunci ada di storage.
     const problems = await verifyVersionIntegrity(versionId, {
@@ -537,6 +679,9 @@ export async function runIngest(
     });
     if (problems.length) throw new IntegrityError(problems);
     const verdict = verdictOf(issues);
+    // Pemetaan (mapping.ts) menulis ulang satu segmen per sheet: versi dengan sheet gabungan yang butuh
+    // pemetaan gagal dengan pesan jelas, bukan diam-diam kehilangan sheet asal berikutnya.
+    if (merged && !verdict.ok) throw new MergeError(`${MERGE_NEEDS_MAPPING} (${verdict.reason})`);
     const done = await repo.finish(versionId, {
       sha256: dl.sha256,
       verdict,
@@ -547,8 +692,8 @@ export async function runIngest(
     if (done === "stale") throw new StaleSnapshotError();
     await repo.progress(versionId, current).catch(() => {});
     return verdict.ok
-      ? { outcome: "done", sheets: sheets.length }
-      : { outcome: "awaiting", sheets: sheets.length, message: verdict.reason };
+      ? { outcome: "done", sheets: units.length }
+      : { outcome: "awaiting", sheets: units.length, message: verdict.reason };
   } catch (e) {
     if (e instanceof DatasetGoneError) {
       await cleanupPrefix(repo, storage, prefix, "dataset dihapus saat ingest");
@@ -567,8 +712,9 @@ export async function runIngest(
       throw e; // BullMQ mengulang dari awal (mulai bersih)
     }
     // Gerbang integritas menyebut sheet/kunci sendiri: bukan "Sheet <terakhir diproses>".
+    // Gerbang integritas dan pesan gabungan (T-0gmm) menyebut sheet-nya sendiri: tanpa "Sheet <terakhir>".
     const located =
-      e instanceof IntegrityError
+      e instanceof IntegrityError || e instanceof MergeError
         ? message
         : failureMessage(message, current, {
             row: at.row,

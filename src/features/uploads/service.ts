@@ -63,6 +63,8 @@ export interface InitInput {
   baseVersionId?: unknown;
   /** Sheet xlsx yang diimpor (T-85tb, mode REPLACE); tidak ada/null = semua sheet. */
   sheets?: unknown;
+  /** Gabungkan sheet terpilih yang judul kolomnya sama menjadi satu sheet (T-0gmm, xlsx REPLACE). */
+  mergeSheets?: unknown;
 }
 
 /** Batas pilihan sheet (= batas sheet parser per file). */
@@ -130,6 +132,7 @@ export function validateInit(
       baseVersionId: string | null;
       /** Sheet pilihan (urut masukan, unik); [] = semua sheet. */
       sheets: string[];
+      mergeSheets: boolean;
     }
   | { ok: false; code: UploadCode; message: string } {
   if (typeof input.datasetId !== "string" || !isIdShape(input.datasetId)) return notFound();
@@ -196,6 +199,22 @@ export function validateInit(
     }
     sheets = raw as string[];
   }
+  if (
+    input.mergeSheets !== undefined &&
+    input.mergeSheets !== null &&
+    input.mergeSheets !== false
+  ) {
+    if (input.mergeSheets !== true) {
+      return fail("INVALID", "Pilihan gabungkan sheet tidak valid. Pilih lagi lalu unggah.");
+    }
+    if (ext !== "xlsx" || mode !== "REPLACE") {
+      return fail("INVALID", "Gabungkan sheet hanya untuk file .xlsx yang mengganti semua data.");
+    }
+    if (sheets.length === 1) {
+      return fail("INVALID", "Pilih minimal dua sheet untuk digabungkan.");
+    }
+  }
+  const mergeSheets = input.mergeSheets === true;
   return {
     ok: true,
     datasetId: input.datasetId,
@@ -207,6 +226,7 @@ export function validateInit(
     label,
     baseVersionId,
     sheets,
+    mergeSheets,
   };
 }
 
@@ -394,6 +414,7 @@ export async function initUpload(
           mode: true,
           periodLabel: true,
           selectedSheets: true,
+          mergeSheets: true,
         },
       });
       // Resume hanya untuk pilihan yang sama (mode + label + sheet, R20): pilihan lain tidak pernah memakai
@@ -401,7 +422,8 @@ export async function initUpload(
       const sameChoice =
         own?.mode === v.mode &&
         (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label &&
-        sameSheets(own.selectedSheets ?? [], v.sheets);
+        sameSheets(own.selectedSheets ?? [], v.sheets) &&
+        (own.mergeSheets ?? false) === v.mergeSheets;
       const resumable = own && sameChoice ? own : null;
       if (own && !sameChoice) {
         // Sama dengan cancelUpload: tidak boleh saat complete sedang berjalan (klaim completingAt).
@@ -527,6 +549,7 @@ export async function initUpload(
           partCount,
           mode: v.mode,
           selectedSheets: v.sheets,
+          mergeSheets: v.mergeSheets,
           ...(v.mode === "PERIOD"
             ? {
                 periodGrain: grain,
@@ -988,6 +1011,8 @@ export interface PendingUpload {
   label: string | null;
   /** Sheet pilihan saat unggahan dimulai (T-85tb); [] = semua. Melanjutkan memakai pilihan yang sama. */
   sheets: string[];
+  /** Gabungkan sheet berkolom sama (T-0gmm); melanjutkan memakai pilihan yang sama. */
+  mergeSheets: boolean;
 }
 
 /** Unggahan milik user yang belum selesai di dataset ini (untuk ajakan melanjutkan). */
@@ -1017,6 +1042,7 @@ export async function getPendingUpload(
       mode: true,
       periodLabel: true,
       selectedSheets: true,
+      mergeSheets: true,
     },
   });
   if (!v?.sourceKey || !v.uploadId || v.sizeBytes === null || !v.partSize || !v.partCount)
@@ -1044,5 +1070,6 @@ export async function getPendingUpload(
     mode: v.mode === "PERIOD" ? "PERIOD" : "REPLACE",
     label: v.mode === "PERIOD" && v.periodLabel ? v.periodLabel.toISOString().slice(0, 10) : null,
     sheets: v.selectedSheets ?? [],
+    mergeSheets: v.mergeSheets === true,
   };
 }

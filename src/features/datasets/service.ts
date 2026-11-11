@@ -41,6 +41,8 @@ export interface DatasetSummary {
     finishedAt: Date | null;
     /** Satuan periode versi aktif (T-051); null = data biasa. */
     periodGrain: "MONTH" | "QUARTER" | "YEAR" | null;
+    /** Versi aktif diunggah dengan "Gabungkan sheet" (T-0gmm): pilihan bawaan unggahan berikutnya. */
+    mergeSheets: boolean;
   } | null;
   /** Nama file versi terbaru (untuk menjelaskan unggahan yang gagal). */
   latestFileName: string | null;
@@ -58,7 +60,9 @@ const summarySelect = {
   description: true,
   updatedAt: true,
   activeVersionId: true,
-  activeVersion: { select: { originalName: true, ingestFinishedAt: true, periodGrain: true } },
+  activeVersion: {
+    select: { originalName: true, ingestFinishedAt: true, periodGrain: true, mergeSheets: true },
+  },
   _count: { select: { dashboards: true } },
   versions: {
     orderBy: { createdAt: "desc" as const },
@@ -82,6 +86,7 @@ function toSummary(row: SummaryRow): DatasetSummary {
           originalName: row.activeVersion.originalName,
           finishedAt: row.activeVersion.ingestFinishedAt,
           periodGrain: row.activeVersion.periodGrain,
+          mergeSheets: row.activeVersion.mergeSheets === true,
         }
       : null,
     latestFileName: latest?.originalName ?? null,

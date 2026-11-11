@@ -1029,3 +1029,57 @@ Pelajaran deploy 2026-11-10 (v1.13.0 → v1.15.0):
    (hanya container service `backup` proyek compose `dashboard`, termasuk run sementara preflight — bukan
    container "backup" aplikasi lain)
    — arsip tetap di VM, preflight lanjut. Nyalakan lagi NAS setelah admin DSM mengosongkannya.
+
+## 26. Rilis v1.16.0 (migrasi kolom baru) dan rollback ke v1.15.x
+
+Gabungkan sheet berkolom sama (T-0gmm). Migrasi `20261111000000_merge_sheets` menambah
+`DatasetVersion.mergeSheets BOOLEAN NOT NULL DEFAULT false` (tanpa menyentuh data lama). Karena ada migrasi,
+rilis **tanpa** `--quick` — preflight membuat backup lengkap + dump database:
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.16.0 --full
+```
+
+(atau `bash deploy/release.sh` dari Mac bila build lokal normal). Setelah sehat, perbarui artikel panduan
+**Unggah data** (tips gabungkan sheet):
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only unggah-data
+```
+
+Cara kerja: unggahan xlsx "ganti semua data" dengan centang **Gabungkan sheet yang judul kolomnya sama**
+mengelompokkan sheet terpilih yang jumlah + judul kolomnya sama (abaikan besar/kecil huruf dan spasi). Satu
+kelompok = satu Sheet logis bernama sheet pertama, satu `Segment` per sheet asal di manifest (ordinal 0..n-1,
+`Segment.originalName = "<file> (sheet <nama>)"`, `_row` berurutan lewat `allocateRows`). Tipe kolom diputuskan
+dari gabungan profil semua sheet asal. Bentuk multi-segmen ini sudah dibaca query, Lihat data, ekspor, recast,
+dan atur periode (T-037/T-qqyx).
+
+Beban: sama dengan mengimpor sheet-sheet itu terpisah (tiap sheet tetap di-parse sendiri) + satu profil
+tambahan per sheet asal; tidak ada penyalinan ulang data. Aturan produksi 4 vCPU tetap: unggah file besar di
+jam sepi.
+
+Batasan (sengaja, pesan jelas ke pengguna):
+
+- Unggahan **mode periode** tidak menggabung sheet (pilihan tidak tampil; server menolak `mergeSheets`).
+- Versi gabungan yang **tidak cocok dengan data aktif** (butuh pemetaan) → FAILED dengan saran unggah tanpa
+  gabung; data aktif tidak berubah. Pemetaan masih menulis ulang satu segmen per sheet.
+- **Baris judul** sheet gabungan tidak bisa diganti di halaman skema (pesan `MULTI_HEADER`); unggah ulang file.
+- Unggah ulang data yang dulu digabung: pilihan gabung tercentang bawaan agar sheet tidak terpecah lagi
+  (dilepas → peringatan di pemilih).
+- Dataset lama dengan sheet terpisah ("Data 1", "Data 2") yang diunggah ulang dengan gabung: sheet aktif yang
+  kini menjadi anggota kelompok bukan "sheet hilang" — `sheetMap` memindahkan widget-nya ke sheet gabungan
+  (kolom dicocokkan per nama seperti sheet ganti nama). Kolom terlihat sheet anggota lama yang tidak ada di file
+  → versi gagal dengan saran (sama seperti sheet berpasangan). Kolom filter dashboard disimpan per nama sheet, jadi
+  yang berasal dari sheet anggota lama perlu dipilih ulang (sama seperti sheet ganti nama).
+
+Cek setelah deploy: dataset uji → unggah xlsx dengan 2 sheet berjudul kolom sama → centang gabung → satu sheet,
+jumlah baris = total kedua sheet di **Lihat data**.
+
+Rollback **image saja** ke v1.15.x (database dibiarkan): aman. Kolom `mergeSheets` diabaikan versi lama (kolom
+ber-DEFAULT, Prisma lama tidak memilihnya); sheet gabungan yang sudah ada tetap terbaca semua segmennya; pilihan
+gabung hilang sampai roll-forward. `bash deploy/upgrade.sh rollback` (image lama + database dari dump pra-upgrade)
+juga aman, tetapi seperti biasa unggahan setelah upgrade ikut hilang. Unggahan bertanda gabung yang belum selesai
+diproses saat rollback image akan diproses worker v1.15 sebagai sheet terpisah (tanda diabaikan) — tunggu antrean
+kosong sebelum rollback image saja, atau unggah ulang setelah roll-forward.

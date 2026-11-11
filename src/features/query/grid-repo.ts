@@ -120,8 +120,9 @@ export const prismaGridRepo: GridRepo = {
         maxSrcRow: g.maxSrcRow,
         rawKey: g.rawKey,
         colMap: g.colMap,
-        // Kelompok file (T-060): nama file bagian ini, bukan judul kelompok versinya.
-        fileName: (g.groupId ? g.originalName : null) ?? g.createdByVersion?.originalName ?? null,
+        // Nama asal segmen: kelompok file (T-060) = file bagian ini, sheet gabungan (T-0gmm) =
+        // "file (sheet X)"; segmen lama tanpa nama → nama file versi pembuatnya.
+        fileName: g.originalName ?? g.createdByVersion?.originalName ?? null,
         // min/max hanya sah untuk kolom periode sumber KOLOM (berlabel: kolom acuan, T-054).
         ...(period && g.periodKey && start
           ? {
