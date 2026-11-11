@@ -1,6 +1,7 @@
 import { getSessionUser } from "@/features/auth/session";
 import { cachedHealthReport, isDetailed, publicView } from "@/lib/health";
 import { infraChecks } from "@/lib/health/checks";
+import { ingestWorkerCheck } from "@/lib/health/worker-check";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,12 @@ export default async function HealthPage() {
   const report = await cachedHealthReport(infraChecks());
   const user = await getSessionUser().catch(() => null);
   const view = publicView(report, !!user?.isAdmin);
-  const allOk = view.status === "ok";
+  // Pemroses unggahan (v1.17.1): baris tambahan hanya untuk admin. Status publik tetap = /api/health
+  // (worker boleh sengaja dimatikan sementara; publik tidak perlu tahu layanan internal).
+  const worker = isDetailed(view)
+    ? (await cachedHealthReport([ingestWorkerCheck()], undefined, "worker")).items
+    : [];
+  const allOk = view.status === "ok" && worker.every((w) => w.status === "ok");
 
   return (
     <main className="mx-auto max-w-2xl px-4 py-10">
@@ -39,7 +45,7 @@ export default async function HealthPage() {
             {view.commit ? ` · commit ${view.commit}` : null}
           </p>
           <ul className="mt-4 divide-y rounded-md border">
-            {view.items.map((item) => (
+            {[...view.items, ...worker].map((item) => (
               <li
                 key={item.name}
                 data-check={item.name}

@@ -1116,3 +1116,45 @@ Jumlah baris − Jumlah terisi kolom itu (widget Angka lain atau **Lihat data**)
 
 Rollback image ke v1.16.0: widget/pivot ber-Jumlah kosong tampil "Pengaturan widget tidak valid" (skema lama strict;
 data di DB tetap) sampai roll-forward. Ganti ukurannya dulu bila rollback akan lama.
+
+## 28. Rilis v1.17.1 (tanpa migrasi) + worker mati / unggahan menunggu terus
+
+Pemicu: impor dataset Billing (2026-11-11) menunggu "antrean ke-1, diproses berikutnya" > 3 jam tanpa kabar,
+karena service `worker` masih dimatikan sejak insiden pagi (`$C stop worker`). Sejak v1.17.1 panel progres
+dataset menampilkan **Pemroses unggahan sedang tidak aktif** bila tidak ada worker yang terhubung ke antrean ingest
+(BullMQ `getWorkersCount`: koneksi blocking Worker bernama `bull:<base64 antrean>`; koneksi app tidak). Halaman
+`/health` (admin) mendapat baris **Pemroses unggahan**. `/api/health` tidak berubah, jadi deploy.sh tidak gagal
+hanya karena worker sengaja dimatikan.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.17.1
+```
+
+(Produksi masih < v1.17.0: jalankan rilis yang tertinggal dulu, §26/§27.)
+
+Bila peringatan muncul (atau baris /health gagal):
+
+```bash
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+uptime; free -h
+$C ps -a worker
+$C logs --since 2h --tail 80 worker
+```
+
+- `Exited`/tidak ada → nyalakan. File berat di VM 4 vCPU: mode hemat (1 worker, sheet dibaca berurutan) dulu,
+  pantau `uptime` + `docker stats` 10–15 menit pertama; load tinggi lama atau app lambat → `$C stop worker`
+  (antrean aman, job menunggu):
+
+  ```bash
+  WORKER_REPLICAS=1 INGEST_XLSX_SHEET_THREADS=1 $C up -d --no-build worker
+  ```
+
+- `Up` tetapi job tidak bergerak → kirim log ke pengembang (worker macet/job tersangkut, penanganan lain).
+
+Setelan bawaan (2 worker × (1 + 2 thread baca sheet) + DuckDB 2 thread) melewati anjuran `vCPU − 2` untuk VM
+4 vCPU (src/lib/env.ts). Untuk produksi 4 vCPU disarankan permanen di `.env.prod` (pemilik yang mengubah):
+`WORKER_REPLICAS=1`, `INGEST_XLSX_SHEET_THREADS=1` — unggahan antre satu per satu, server tetap responsif.
+
+Rollback image ke v1.17.0: aman (hanya peringatan + baris /health yang hilang).
+

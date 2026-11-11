@@ -127,7 +127,13 @@ test.describe("skema", () => {
     await expect(panel).toContainText("pengiriman-cabang.csv");
     await expect(panel).toContainText("Menunggu giliran diproses");
     const progress = await page.request.get(`/api/datasets/${datasetId}/progress`);
-    expect((await progress.json()).status.status).toBe("UPLOADED");
+    const waiting = (await progress.json()).status;
+    expect(waiting.status).toBe("UPLOADED");
+    // v1.17.1: belum ada worker yang terhubung ke antrean → panel memberi tahu (bukan diam menunggu).
+    expect(waiting.workers).toBe(0);
+    const noWorker = panel.getByTestId("ingest-no-worker");
+    await expect(noWorker).toContainText("Pemroses unggahan sedang tidak aktif");
+    await expect(noWorker).toContainText("tidak perlu mengunggah ulang");
 
     worker = await startWorker("schema");
     // Tanpa muat ulang: polling ≤ 5 s membawa halaman ke keadaan siap.

@@ -18,6 +18,7 @@ export const WHATS_NEW: readonly WhatsNewEntry[] = [
     date: "2026-11-11",
     items: [
       "Jumlah kosong: hitung berapa baris yang kolomnya belum terisi, mis. resi yang tanggal terimanya masih kosong atau kiriman tanpa kurir. Pilih Nilai → Jumlah kosong di widget Angka, Batang, Garis, Pai, atau Pivot; bisa diberi pembanding periode lalu, dan Lihat baris data langsung menampilkan baris yang kosong itu.",
+      "Bila pemroses unggahan di server sedang mati, halaman dataset kini langsung memberi tahu (bukan sekadar menunggu tanpa kabar). File tetap aman di antrean dan otomatis diproses begitu pemroses menyala lagi.",
     ],
   },
   {

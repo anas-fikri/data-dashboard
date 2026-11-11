@@ -73,6 +73,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tampil "Pengaturan widget tidak valid" sampai roll-forward (skema strict menolak agregasi baru; data tetap).
   Ganti ukurannya dulu bila rollback akan lama (runbook-deploy §27).
 
+- **v1.17.1 (T-yw88):** tanpa migrasi, hanya app. Panel progres dataset memperingatkan "Pemroses unggahan
+  sedang tidak aktif" bila tidak ada worker BullMQ yang terhubung ke antrean ingest (`getWorkersCount`, CLIENT
+  LIST, cache 10 dtk; gagal dibaca → tanpa peringatan). `/health` admin mendapat baris "Pemroses unggahan";
+  `/api/health` (deploy.sh, monitor) sengaja tidak berubah. Rilis boleh `--quick`/tanpa `--full` bila produksi
+  sudah v1.17.0 (runbook-deploy §28).
+
 ## [1.17.0] - 2026-11-11
 
 ### Added

@@ -1,6 +1,6 @@
 "use client";
 
-import { IconCircleCheck, IconLoader2, IconRefresh } from "@tabler/icons-react";
+import { IconAlertTriangle, IconCircleCheck, IconLoader2, IconRefresh } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { IngestProgress as Progress } from "@/features/ingest/ingest";
@@ -49,6 +49,16 @@ export function waitingText(position: number | undefined): string {
   return position === 1
     ? "Menunggu giliran: antrean ke-1, diproses berikutnya. "
     : `Menunggu giliran: antrean ke-${fmt(position)}. `;
+}
+
+/**
+ * Pemroses (worker) tidak terhubung ke antrean (v1.17.1): unggahan tidak akan bergerak sampai dinyalakan.
+ * File aman di antrean; yang sedang diproses saat worker mati diulang dari awal begitu worker menyala.
+ */
+export function noWorkerText(status: string): string {
+  return status === "INGESTING"
+    ? "Pemrosesan file ini terhenti. Begitu pemroses dinyalakan lagi, file diproses ulang otomatis dari awal — tidak perlu mengunggah ulang. Beri tahu admin aplikasi."
+    : "Antrean belum berjalan, jadi file ini belum diproses. File Anda aman di antrean dan langsung diproses begitu pemroses dinyalakan lagi — tidak perlu mengunggah ulang. Beri tahu admin aplikasi.";
 }
 
 export function IngestProgress({
@@ -100,6 +110,25 @@ export function IngestProgress({
           </span>
         </span>
       </p>
+
+      {s.workers === 0 ? (
+        <div
+          role="status"
+          className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2"
+          data-testid="ingest-no-worker"
+        >
+          <IconAlertTriangle
+            size={18}
+            stroke={1.5}
+            aria-hidden
+            className="mt-0.5 shrink-0 text-warning"
+          />
+          <p className="min-w-0">
+            <span className="block font-medium">Pemroses unggahan sedang tidak aktif</span>
+            <span className="block text-muted-foreground">{noWorkerText(s.status)}</span>
+          </p>
+        </div>
+      ) : null}
 
       <ol className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-4" aria-label="Tahap pemrosesan">
         {steps.map((x, i) => {

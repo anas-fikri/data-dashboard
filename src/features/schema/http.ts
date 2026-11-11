@@ -2,7 +2,7 @@ import "server-only";
 import type { NextRequest, NextResponse } from "next/server";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { logger } from "@/lib/logger";
-import { ingestQueuePosition } from "@/lib/queue/versions";
+import { ingestQueuePosition, ingestWorkerCount } from "@/lib/queue/versions";
 import { prismaSchemaRepo, schemaDeps } from "./runtime";
 import { ingestStatus, recastStatus, requestRecast, type SchemaCode } from "./service";
 
@@ -42,7 +42,10 @@ export function progressRoute(datasetId: string): Promise<NextResponse> {
             return null;
           })
         : null;
-    return json({ ok: true, status: { ...s, queue } });
+    // Pemroses tidak aktif (v1.17.1): unggahan menunggu/terhenti tanpa batas — panel memberi tahu.
+    const workers =
+      s.status === "UPLOADED" || s.status === "INGESTING" ? await ingestWorkerCount() : null;
+    return json({ ok: true, status: { ...s, queue, workers } });
   });
 }
 
