@@ -32,6 +32,7 @@ import { RawSheetWriter, RowTooLargeError, TooWideError } from "./raw-writer";
 import {
   carriedAlias,
   chooseHeader,
+  columnRef,
   missingSheetIssue,
   planColumns,
   planSheets,
@@ -530,7 +531,18 @@ export async function runIngest(
           : s.rec;
       const sheetId = await repo.createSheet(versionId, sheetRec, lineageId);
       if (active) sheetMap[active.id] = sheetId;
-      for (const [id, unit] of absorbed) if (unit === i) sheetMap[id] = sheetId;
+      for (const [id, unit] of absorbed) {
+        if (unit !== i) continue;
+        sheetMap[id] = sheetId;
+        // Kolom terlihat sheet yang diserap harus ada di file juga (seperti sheet berpasangan): kolom hilang
+        // → masalah verdict → versi gabungan gagal dengan saran, bukan widget diam-diam rusak.
+        const a = v.active!.sheets.find((x) => x.id === id)!;
+        issues.push(
+          ...planColumns(s.rec.columns, a.schema).missing.map(
+            (c) => `${columnRef(c, a.name)} tidak ada di file baru.`,
+          ),
+        );
+      }
 
       // Typed dari raw lokal sebelum diunggah (tanpa unduh ulang) → typed-1.parquet: tipe skema aktif
       // untuk kolom yang cocok, inferensi untuk sheet/kolom baru; kolom kosong (absent, T-014) yang

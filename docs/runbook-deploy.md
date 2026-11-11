@@ -1070,7 +1070,9 @@ Batasan (sengaja, pesan jelas ke pengguna):
   (dilepas → peringatan di pemilih).
 - Dataset lama dengan sheet terpisah ("Data 1", "Data 2") yang diunggah ulang dengan gabung: sheet aktif yang
   kini menjadi anggota kelompok bukan "sheet hilang" — `sheetMap` memindahkan widget-nya ke sheet gabungan
-  (kolom dicocokkan per nama seperti sheet ganti nama).
+  (kolom dicocokkan per nama seperti sheet ganti nama). Kolom terlihat sheet anggota lama yang tidak ada di file
+  → versi gagal dengan saran (sama seperti sheet berpasangan). Kolom filter dashboard disimpan per nama sheet, jadi
+  yang berasal dari sheet anggota lama perlu dipilih ulang (sama seperti sheet ganti nama).
 
 Cek setelah deploy: dataset uji → unggah xlsx dengan 2 sheet berjudul kolom sama → centang gabung → satu sheet,
 jumlah baris = total kedua sheet di **Lihat data**.

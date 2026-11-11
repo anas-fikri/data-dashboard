@@ -258,6 +258,35 @@ describe("ingest: gabungkan sheet berkolom sama", () => {
     });
   });
 
+  it("sheet aktif yang diserap punya kolom terlihat yang tidak ada di file → FAILED dengan saran (bukan widget rusak diam-diam)", async () => {
+    const first = t.setup(await book());
+    await runIngest(VID, first.repo, first.storage, first.opts);
+    const sh = first.repo.byIndex();
+    const feb = sh[2]!;
+    const extra = { ...feb.schema![0]!, pos: 99, name: "Keterangan", original: "Keterangan" };
+    const active = {
+      versionId: "aktif0000000000000001",
+      sheets: sh.map((x, i) => ({
+        id: `sheetaktif0000000000${i}`,
+        name: x.name,
+        index: x.index,
+        headerRow: x.headerRow,
+        schemaRevision: 1,
+        schema: i === 2 ? [...x.schema!, extra] : x.schema!,
+        lineageId: x.lineageId!,
+      })),
+    } as ActiveSnapshot;
+    const s = t.setup(await book());
+    s.repo.mergeSheets = true;
+    s.repo.active = active;
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r).toMatchObject({ outcome: "failed" });
+    expect(s.repo.error).toContain(MERGE_NEEDS_MAPPING);
+    expect(s.repo.error).toContain("Keterangan");
+    expect(s.repo.error).toContain("Feb");
+    expect(s.storage.parquetKeys()).toEqual([]);
+  });
+
   it("versi refresh gabungan yang cocok → aktif, sheet logis dibawa dari pasangan aktif", async () => {
     const first = t.setup(await book());
     first.repo.mergeSheets = true;
