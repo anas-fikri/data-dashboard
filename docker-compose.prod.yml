@@ -68,6 +68,10 @@ x-app-env: &app-env
   RENDERER_SECRET: ${RENDERER_SECRET:?}
   # Alamat app yang dibuka renderer di jaringan render (bukan TLD HSTS preload, lihat .env.example).
   APP_INTERNAL_URL: http://dashboard-web:3100
+  # Monitor sumber daya (v1.18, ADR-0010; runbook §29): /metrics node-exporter lewat metrics-relay, mis.
+  # http://host.docker.internal:19100/metrics. Kosong = kartu "Server" di sidebar tidak tampil.
+  METRICS_NODE_URL: ${METRICS_NODE_URL:-}
+  METRICS_DISK_MOUNTS: ${METRICS_DISK_MOUNTS:-/,/var/lib/docker,/data,/data/docker-data}
 
 services:
   proxy:
@@ -323,6 +327,50 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    logging: *logging
+
+  # Monitor sumber daya (v1.18, ADR-0010, profil "monitor"; runbook §29): node-exporter membaca /proc, /sys, dan
+  # filesystem host (baca-saja) dan hanya mendengar di 127.0.0.1 — tidak terbuka ke LAN. Port bawaan 19109, bukan
+  # 9100, agar tidak bentrok dengan node_exporter aplikasi lain di VM bersama. Hanya kolektor yang dipakai.
+  node-exporter:
+    profiles: [monitor]
+    image: prom/node-exporter:v1.8.2@sha256:4032c6d5bfd752342c3e631c2f1de93ba6b86c41db6b167b9a35372c139e7706
+    restart: unless-stopped
+    network_mode: host
+    pid: host
+    command:
+      - --path.rootfs=/host
+      - --web.listen-address=127.0.0.1:${NODE_EXPORTER_PORT:-19109}
+      - --collector.disable-defaults
+      - --collector.cpu
+      - --collector.loadavg
+      - --collector.meminfo
+      - --collector.filesystem
+      - --collector.netdev
+      - --collector.diskstats
+      - --collector.filesystem.mount-points-exclude=^/(dev|proc|run|sys|var/lib/docker/.+|var/lib/containers/.+|var/lib/kubelet/.+)($$|/)
+    volumes: ["/:/host:ro,rslave"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 64m
+    cpus: 0.25
+    logging: *logging
+
+  # Relay metrik (pola pg-relay): hanya subnet aplikasi ini (APP_SUBNETS) yang boleh membaca /metrics lewat
+  # 172.17.0.1:19100 (host.docker.internal) → 127.0.0.1:19109; container lain di VM ditolak socat.
+  metrics-relay:
+    profiles: [monitor]
+    image: alpine/socat:1.8.0.3@sha256:beb4a68d9e4fe6b0f21ea774a0fde6c31f580dde6368939ed70100c5385b015e
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - "TCP-LISTEN:${METRICS_RELAY_PORT:-19100},bind=${PG_RELAY_BIND:-172.17.0.1},fork,reuseaddr,range=${APP_SUBNETS:-172.31.240.0/22}"
+      - "TCP:127.0.0.1:${NODE_EXPORTER_PORT:-19109}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 32m
     logging: *logging
 
   postgres:

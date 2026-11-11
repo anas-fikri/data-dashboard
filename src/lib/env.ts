@@ -289,9 +289,13 @@ export const envSchema = z.object({
     .optional(),
   /**
    * Monitor sumber daya (v1.18, ADR-0010): URL /metrics node_exporter lewat metrics-relay, mis.
-   * http://host.docker.internal:19100/metrics. Kosong → sampler mati, panel "Data server belum tersedia".
+   * http://host.docker.internal:19100/metrics. Kosong → sampler mati, kartu sidebar tidak tampil.
    */
-  METRICS_NODE_URL: z.string().url().optional(),
+  METRICS_NODE_URL: z.preprocess(
+    // Compose mengirim "" bila tidak diisi (${METRICS_NODE_URL:-}) — sama dengan tidak dipasang.
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
   /** Titik mount yang dilaporkan (dipisah koma); yang tidak ada di host dilewati. */
   METRICS_DISK_MOUNTS: z.string().default("/,/var/lib/docker,/data,/data/docker-data"),
   /** Renderer PDF (worker + cek kesehatan app). Kosong → ekspor PDF dijawab RENDERER_UNAVAILABLE. */

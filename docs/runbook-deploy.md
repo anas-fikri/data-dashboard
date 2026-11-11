@@ -188,7 +188,7 @@ Caddy = IP asli), jadi IP untuk rate limit/AuditLog tidak bisa dipalsukan.
 `APP_HOST=10.3.3.221:8443`, `APP_PORT=8443`, `STORAGE_HOST=10.3.3.221:8444`, `TLS_DEFAULT_SNI=10.3.3.221`,
 `CADDY_TLS=/certs/fullchain.pem /certs/privkey.pem` (root LAN berpembatasan IP), `COMPOSE_PROFILES=hostdb`
 (PostgreSQL 14 host hanya di 127.0.0.1 → relay `pg-relay`), dua worker (`WORKER_REPLICAS=2`, `WORKER_MEM=3g`)
-dan `APP_MEM=3g` — VM 8 vCPU / 11 GB (Okt 2026; awalnya 2 vCPU / 7,8 GB dengan satu worker). Port 80 dipakai Apache; Caddy hanya mendengar di 8443
+dan `APP_MEM=3g` — VM 8 vCPU / RAM 15 GiB (`free -h` 2026-11-11; Okt 2026 tercatat 11 GB, awalnya 2 vCPU / 7,8 GB dengan satu worker). Port 80 dipakai Apache; Caddy hanya mendengar di 8443
 (app) dan 8444 (storage), port 443 dibiarkan untuk aplikasi lain. Role/DB: `sudo bash deploy/host-db.sh`; SMTP: `bash deploy/set-smtp.sh noreply-dashboard@pcpexpress.co.id`
 (jalankan dari terminal interaktif, bukan lewat skrip non-TTY).
 
@@ -1168,3 +1168,65 @@ berjalan di dalam worker sehingga tidak bisa memberi tahu worker yang mati — p
 
 Rollback image ke v1.17.0: aman (hanya peringatan + baris /health yang hilang).
 
+## 29. Monitor sumber daya server (v1.18.0, ADR-0010) — pasang, cek, matikan
+
+Kartu **Server** di sidebar (semua user login): CPU, RAM, disk terpenuh, jaringan ↓↑ dengan grafik 1 jam, dan
+status pemroses unggahan. Admin › **Sumber daya server**: grafik 1 jam/24 jam, disk per mount, beban (load) per
+inti, swap, dan pemakaian container app/worker. Sumber angka host: `node-exporter` (baca-saja `/proc`, `/sys`,
+filesystem host) yang hanya mendengar di `127.0.0.1:19109`; app membacanya lewat `metrics-relay`
+(`172.17.0.1:19100`, hanya subnet aplikasi ini — pola `pg-relay`). Riwayat di Redis (± 0,5 MB, hilang bila Redis
+di-reset). Biaya ± 20–40 MB RAM, CPU diabaikan. Opt-in lewat profil compose `monitor`: tanpa itu tidak ada
+container baru dan kartu tidak tampil.
+
+Sebelum memasang (baca-saja, di olympus):
+
+```bash
+ss -ltn | grep -E ':(19100|19109)\b' || echo "port bebas"
+stat -fc %T /sys/fs/cgroup
+grep -E '^COMPOSE_PROFILES=' /data/docker-data/data-dashboard/.env.prod
+```
+
+- Port dipakai aplikasi lain → pilih port lain di `.env.prod`: `NODE_EXPORTER_PORT=…`, `METRICS_RELAY_PORT=…`
+  (dan port yang sama di `METRICS_NODE_URL`).
+- `cgroup2fs` = cgroup v2 (tabel per layanan terisi); `tmpfs` = cgroup v1 (juga didukung).
+
+Pasang (pemilik mengubah `.env.prod`, lalu rilis seperti biasa):
+
+1. `COMPOSE_PROFILES=hostdb,monitor` (tambahkan `monitor` ke nilai yang sudah ada).
+2. `METRICS_NODE_URL=http://host.docker.internal:19100/metrics`
+3. Opsional `METRICS_DISK_MOUNTS=/,/var/lib/docker,/data,/data/docker-data` (bawaan; mount yang tidak ada dilewati,
+   mount di perangkat yang sama dilaporkan sekali).
+4. `bash deploy/server-release.sh 1.18.0` — `up -d` di upgrade ikut menyalakan `node-exporter` + `metrics-relay`.
+   Rilis v1.18.0 tanpa migrasi.
+
+Cek (± 30 detik setelah app sehat):
+
+```bash
+cd /data/docker-data/data-dashboard
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+$C ps node-exporter metrics-relay
+curl -s http://127.0.0.1:19109/metrics | grep -c '^node_'
+$C exec app node -e 'fetch(process.env.METRICS_NODE_URL).then(r=>console.log("relay", r.status))'
+```
+
+Hasil yang benar: dua container `Up`, angka > 100, `relay 200`. Lalu buka aplikasi: kartu "Server" muncul di
+bawah menu sidebar dalam ± 20 detik; Admin › Sumber daya server menampilkan grafik dan tabel layanan.
+
+- `relay` gagal / kartu tidak muncul: `$C logs --tail 50 metrics-relay` (pesan `refused`/`range` = sumber di luar
+  `APP_SUBNETS`), `$C logs --tail 50 node-exporter`, dan `$C logs --since 5m app | grep -i metrik`.
+- Kartu "Data server tidak tersedia": app tidak menerima titik baru > 1 menit (relay/exporter mati) — cek seperti di
+  atas. "Pemroses unggahan tidak aktif": worker mati, ikuti §28.
+
+Matikan (tanpa rilis ulang, data aplikasi tidak tersentuh):
+
+1. `.env.prod`: hapus `monitor` dari `COMPOSE_PROFILES`, kosongkan `METRICS_NODE_URL=`.
+2. ```bash
+   $C up -d --no-build --no-deps app worker
+   docker compose --env-file .env.prod -f docker-compose.prod.yml --profile monitor rm -sf node-exporter metrics-relay
+   ```
+
+Rollback image ke v1.17.x: aman (tanpa migrasi). Container monitor boleh dibiarkan atau dimatikan seperti di atas;
+kunci Redis `metrics:*` tidak dipakai versi lama.
+
+Batasan: angka host = seluruh VM (termasuk aplikasi lain di olympus); per layanan hanya container dashboard
+(cgroup masing-masing, bukan docker.sock). Bukan pengganti monitoring infrastruktur penuh (riwayat 24 jam).

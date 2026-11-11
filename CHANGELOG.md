@@ -80,6 +80,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (deploy.sh, monitor) sengaja tidak berubah. Tanpa `--full` bila produksi sudah v1.17.0; seed panduan
   `unggah-data` (runbook-deploy §28).
 
+- **v1.18.0 (T-ee46, ADR-0010):** tanpa migrasi. Monitor sumber daya opt-in: profil compose `monitor`
+  (`node-exporter` v1.8.2 dipin digest, host network + pid host, rootfs ro, `127.0.0.1:19109`; `metrics-relay` socat
+  `172.17.0.1:19100` hanya `APP_SUBNETS`) + `METRICS_NODE_URL`. Sampler di proses app (instrumentation, kunci Redis
+  `metrics:sampler:lock`) tiap 10 dtk → Redis `metrics:*` (10 dtk × 1 jam, 1 menit × 24 jam, ± 0,5 MB). `/api/metrics`
+  (semua user login) hanya angka gabungan host + `workerDown`; `/api/metrics/admin` (404 non-admin) + disk per mount,
+  per layanan (cgroup v2/v1 container app/worker sendiri). Tanpa profil/URL: tidak ada container baru, kartu tidak
+  tampil. Rollback image ke v1.17.x aman (runbook-deploy §29).
+
 ## [1.17.1] - 2026-11-11
 
 ### Added

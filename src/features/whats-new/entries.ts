@@ -14,6 +14,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.18",
+    date: "2026-11-11",
+    items: [
+      "Kartu Server di bawah menu samping: lihat sekilas seberapa sibuk server (CPU, memori, ruang disk, lalu lintas jaringan) beserta grafik satu jam terakhir, dan apakah pemroses unggahan sedang aktif. Bila server sedang berat, kartu memberi tanda Beban tinggi — saat itu wajar bila dashboard atau unggahan terasa lebih lambat.",
+      "Untuk admin — halaman Admin › Sumber daya server: grafik 1 jam dan 24 jam, ruang tiap disk, serta pemakaian memori dan CPU aplikasi dan pemroses unggahan, untuk mencari penyebab server lambat tanpa masuk ke server.",
+    ],
+  },
+  {
     version: "1.17",
     date: "2026-11-11",
     items: [
