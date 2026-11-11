@@ -55,13 +55,32 @@ describe("hostPoint", () => {
     expect(p.cpu).toBeGreaterThanOrEqual(0);
     expect(p.cpu).toBeLessThanOrEqual(1);
     expect(p.iowait).toBeGreaterThanOrEqual(0);
-    expect(p.rx).toBe((b.netRx - a.netRx) / 10);
+    expect(p.rx).toBe((b.netRx! - a.netRx!) / 10);
     expect(p.mem).toBeCloseTo((b.memTotal! - b.memAvail!) / b.memTotal!, 9);
     expect(p.disk).toBeCloseTo(p.disks[0]!.used / p.disks[0]!.size, 9);
     expect(p.diskBusy).not.toBeNull();
     const first = hostPoint(null, b);
     expect([first.cpu, first.rx, first.tx, first.diskBusy]).toEqual([null, null, null, null]);
     expect(first.mem).not.toBeNull(); // nilai sesaat tetap ada
+  });
+
+  it("keluarga jaringan hilang (kolektor gagal) → laju null, bukan lonjakan byte sejak boot", () => {
+    const noNet = readHost(
+      B.split("\n")
+        .filter((l) => !l.includes("node_network_"))
+        .join("\n"),
+      10_000,
+      MOUNTS,
+    );
+    expect(noNet.netRx).toBeNull();
+    expect(hostPoint(a, noNet).rx).toBeNull();
+    expect(hostPoint(noNet, { ...b, t: 20_000 }).tx).toBeNull();
+  });
+
+  it("iowait sedikit mundur → dijepit 0, CPU tetap terhitung", () => {
+    const p = hostPoint(a, { ...b, cpuIowait: a.cpuIowait - 0.5 });
+    expect(p.iowait).toBe(0);
+    expect(p.cpu).not.toBeNull();
   });
 
   it("counter turun (reboot) → laju null, bukan angka negatif", () => {

@@ -9,6 +9,8 @@ import type { MetricsView, QueueStatus, ServiceRow } from "@/lib/metrics/store";
 export interface SummaryPoint {
   t: number;
   cpu: number | null;
+  /** Dipakai ambang "menunggu disk" rata-rata 5 menit (format.sustained). */
+  iowait: number | null;
   mem: number | null;
   disk: number | null;
   rx: number | null;
@@ -19,7 +21,7 @@ export interface MetricsSummary {
   /** false = monitor belum dipasang (METRICS_NODE_URL kosong): kartu disembunyikan, polling berhenti. */
   enabled: boolean;
   available: boolean;
-  latest: (SummaryPoint & { iowait: number | null; load1: number | null; cpus: number }) | null;
+  latest: (SummaryPoint & { load1: number | null; cpus: number }) | null;
   series: SummaryPoint[];
   /** null = status antrean tidak diketahui. */
   queue: { waiting: number; active: number; workerDown: boolean } | null;
@@ -28,6 +30,7 @@ export interface MetricsSummary {
 const point = (p: HostPoint): SummaryPoint => ({
   t: p.t,
   cpu: p.cpu,
+  iowait: p.iowait,
   mem: p.mem,
   disk: p.disk,
   rx: p.rx,
@@ -41,9 +44,7 @@ export function summaryOf(v: MetricsView, enabled: boolean): MetricsSummary {
   return {
     enabled,
     available: enabled && v.available,
-    latest: v.latest
-      ? { ...point(v.latest), iowait: v.latest.iowait, load1: v.latest.load1, cpus: v.latest.cpus }
-      : null,
+    latest: v.latest ? { ...point(v.latest), load1: v.latest.load1, cpus: v.latest.cpus } : null,
     series: v.series.map(point),
     queue: queueOf(v.queue),
   };

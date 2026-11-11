@@ -10,7 +10,16 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 import Link from "next/link";
-import { clock, isHigh, pct, rate, statusOf, type Level } from "@/features/metrics/format";
+import { useId } from "react";
+import {
+  clock,
+  isHigh,
+  pct,
+  rate,
+  statusOf,
+  sustained,
+  type Level,
+} from "@/features/metrics/format";
 import type { MetricsSummary } from "@/features/metrics/view";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { cn } from "@/lib/utils";
@@ -84,6 +93,8 @@ export function ServerCardView({
   isAdmin: boolean;
   onExpand?: () => void;
 }) {
+  // Dua salinan kartu (sidebar + drawer ponsel) → id judul unik.
+  const titleId = useId();
   const status = error
     ? { level: "unknown" as const, text: "Data server gagal dimuat" }
     : statusOf(data);
@@ -108,8 +119,10 @@ export function ServerCardView({
   const p = error ? null : data.latest;
   const series = error ? [] : data.series;
   const rxMax = Math.max(1, ...series.flatMap((s) => [s.rx ?? 0, s.tx ?? 0]));
+  // CPU: ambang dari rata-rata 5 menit (sama dengan status), angka tetap nilai terakhir.
+  const cpuHigh = !error && isHigh("cpu", sustained(data, "cpu"));
   const row = (label: string, kind: "cpu" | "mem", v: number | null | undefined) => {
-    const high = isHigh(kind, v);
+    const high = kind === "cpu" ? cpuHigh : isHigh(kind, v);
     return (
       <>
         <dt>{label}</dt>
@@ -138,13 +151,14 @@ export function ServerCardView({
 
   return (
     <section
-      aria-labelledby="server-card-title"
+      aria-labelledby={titleId}
+      tabIndex={-1}
       data-testid="server-card"
       data-level={status.level}
-      className="rounded-md border bg-background/50 p-2.5 text-xs text-sidebar-foreground"
+      className="rounded-md border bg-background/50 p-2.5 text-xs text-sidebar-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex items-baseline justify-between gap-2">
-        <h2 id="server-card-title" className="text-xs font-semibold">
+        <h2 id={titleId} className="text-xs font-semibold">
           Server
           {p && (
             <span className="ml-1.5 font-normal text-muted-foreground">
@@ -169,7 +183,9 @@ export function ServerCardView({
           aria-hidden
           className={cn("shrink-0", LEVEL_TEXT[status.level])}
         />
-        <span className="truncate">{status.text}</span>
+        <span className="truncate" title={status.text}>
+          {status.text}
+        </span>
       </p>
       {p && (
         <dl className="mt-2 grid grid-cols-[auto_2.75rem_1fr] items-center gap-x-2 gap-y-1">

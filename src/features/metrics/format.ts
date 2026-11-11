@@ -46,16 +46,38 @@ export interface Status {
   text: string;
 }
 
-/** Satu status gabungan: data tidak ada → pemroses mati → beban tinggi → normal. */
-export function statusOf(s: Pick<MetricsSummary, "available" | "latest" | "queue">): Status {
-  if (!s.available || !s.latest) return { level: "unknown", text: "Data server tidak tersedia" };
-  if (s.queue?.workerDown) return { level: "down", text: "Pemroses unggahan tidak aktif" };
+/** Jendela rata-rata ambang CPU/iowait: lonjakan sesaat (mis. ingest) tidak membuat status berkedip. */
+export const SUSTAIN_MS = 5 * 60_000;
+
+/** Rata-rata 5 menit terakhir (deret + titik terakhir); tanpa deret → nilai terakhir. */
+export function sustained(
+  s: Pick<MetricsSummary, "latest" | "series">,
+  key: "cpu" | "iowait",
+): number | null {
   const p = s.latest;
+  if (!p) return null;
+  const xs = [...s.series.filter((x) => x.t >= p.t - SUSTAIN_MS && x.t < p.t), p]
+    .map((x) => x[key])
+    .filter((v): v is number => typeof v === "number");
+  return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null;
+}
+
+/**
+ * Satu status gabungan: pemroses mati (dibaca terpisah dari exporter, tetap tampil walau data host hilang) →
+ * data host tidak ada → beban tinggi (CPU/iowait rata-rata 5 menit, RAM/disk sesaat) → normal.
+ */
+export function statusOf(
+  s: Pick<MetricsSummary, "available" | "latest" | "series" | "queue">,
+): Status {
+  if (s.queue?.workerDown) return { level: "down", text: "Pemroses unggahan tidak aktif" };
+  if (!s.available || !s.latest) return { level: "unknown", text: "Data server tidak tersedia" };
+  const p = s.latest;
+  const io = sustained(s, "iowait");
   const high = [
-    isHigh("cpu", p.cpu) && "CPU",
+    isHigh("cpu", sustained(s, "cpu")) && "CPU",
     isHigh("mem", p.mem) && "RAM",
     isHigh("disk", p.disk) && "disk",
-    typeof p.iowait === "number" && p.iowait >= LIMITS.iowait && "menunggu disk",
+    io !== null && io >= LIMITS.iowait && "menunggu disk",
   ].filter((x): x is string => !!x);
   if (high.length) return { level: "warn", text: `Beban tinggi: ${high.join(", ")}` };
   return { level: "ok", text: "Normal" };

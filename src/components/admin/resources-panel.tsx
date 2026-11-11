@@ -1,9 +1,20 @@
 "use client";
 
+import { IconAlertTriangle } from "@tabler/icons-react";
 import { useState } from "react";
 import { LEVEL_ICON, LEVEL_TEXT } from "@/components/metrics/server-card";
 import { Sparkline } from "@/components/metrics/sparkline";
-import { clock, cores, isHigh, pct, rate, size, stats, statusOf } from "@/features/metrics/format";
+import {
+  clock,
+  cores,
+  isHigh,
+  pct,
+  rate,
+  size,
+  stats,
+  statusOf,
+  sustained,
+} from "@/features/metrics/format";
 import type { MetricsAdmin, SummaryPoint } from "@/features/metrics/view";
 import { usePolling } from "@/lib/hooks/use-polling";
 import { cn } from "@/lib/utils";
@@ -25,6 +36,7 @@ function Chart({
   format,
   kind,
   now,
+  high: highProp,
 }: {
   title: string;
   testId: string;
@@ -33,18 +45,23 @@ function Chart({
   format: (v: number | null | undefined) => string;
   kind?: "cpu" | "mem" | "disk";
   now: number | null | undefined;
+  /** Ambang dari luar (CPU: rata-rata 5 menit, sama dengan status); bawaan = nilai sekarang. */
+  high?: boolean;
 }) {
   const values = points.map(pick);
   const s = stats(values);
-  const high = kind ? isHigh(kind, now) : false;
+  const high = highProp ?? (kind ? isHigh(kind, now) : false);
   const max = kind ? 1 : Math.max(1, ...values.map((v) => v ?? 0));
   return (
     <figure className="flex flex-col gap-2 rounded-lg border bg-card p-4" data-testid={testId}>
       <figcaption className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <span className="text-sm font-semibold">{title}</span>
-        <span className={cn("text-lg tabular-nums", high && "font-semibold text-warning")}>
+        <span
+          className={cn("flex items-center gap-1.5 text-lg tabular-nums", high && "font-semibold")}
+        >
+          {high && <IconAlertTriangle size={18} aria-hidden className="text-warning" />}
           {format(now)}
-          {high && <span className="sr-only"> (tinggi)</span>}
+          {high && <span className="text-sm font-medium"> (tinggi)</span>}
         </span>
       </figcaption>
       {/* Garis putus-putus atas/bawah = batas skala (100 % atau puncak laju, dan 0). */}
@@ -115,15 +132,18 @@ export function ResourcesPanel() {
   return (
     <div className="flex flex-col gap-6" data-testid="resources-panel">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p role="status" className="flex items-center gap-2 text-sm" data-testid="resources-status">
-          <StatusIcon size={18} stroke={1.75} aria-hidden className={LEVEL_TEXT[status.level]} />
-          <span className="font-medium">{status.text}</span>
+        {/* Hanya status di live region: jam berubah tiap menit dan tidak perlu diumumkan. */}
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <p role="status" className="flex items-center gap-2" data-testid="resources-status">
+            <StatusIcon size={18} stroke={1.75} aria-hidden className={LEVEL_TEXT[status.level]} />
+            <span className="font-medium">{status.text}</span>
+          </p>
           {h && (
-            <span className="text-muted-foreground">
+            <span className="text-muted-foreground" data-testid="resources-time">
               · data {clock(h.t)} <abbr title="Waktu Indonesia Barat">WIB</abbr>
             </span>
           )}
-        </p>
+        </div>
         <div
           role="group"
           aria-label="Rentang grafik"
@@ -163,6 +183,7 @@ export function ResourcesPanel() {
           format={pct}
           kind="cpu"
           now={data.latest?.cpu}
+          high={!error && isHigh("cpu", sustained(data, "cpu"))}
         />
         <Chart
           title="RAM"
@@ -260,13 +281,17 @@ export function ResourcesPanel() {
                       <td className="px-3 py-2 text-right tabular-nums">{size(d.used)}</td>
                       <td className="px-3 py-2 text-right tabular-nums">{size(d.size)}</td>
                       <td
-                        className={cn(
-                          "px-3 py-2 text-right tabular-nums",
-                          high && "font-semibold text-warning",
-                        )}
+                        className={cn("px-3 py-2 text-right tabular-nums", high && "font-semibold")}
                       >
+                        {high && (
+                          <IconAlertTriangle
+                            size={14}
+                            aria-hidden
+                            className="mr-1 inline align-[-2px] text-warning"
+                          />
+                        )}
                         {pct(r)}
-                        {high && <span className="sr-only"> (tinggi)</span>}
+                        {high && <span className="font-medium"> (tinggi)</span>}
                       </td>
                     </tr>
                   );

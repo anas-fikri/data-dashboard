@@ -19,7 +19,8 @@ const pt = (i: number, cpu: number) => ({
   rx: 120_000 + i * 1_000,
   tx: 30_000,
 });
-const series = Array.from({ length: 60 }, (_, i) => pt(i, 0.2 + (i % 5) / 100));
+// 5 menit terakhir CPU ± 90 % (ambang memakai rata-rata 5 menit, review T-ee46 M1).
+const series = Array.from({ length: 60 }, (_, i) => pt(i, i >= 54 ? 0.9 : 0.2 + (i % 5) / 100));
 const SUMMARY = {
   ok: true,
   enabled: true,
@@ -124,6 +125,8 @@ test("AC3: kartu Server di sidebar — angka, ambang bertanda teks, antrean; dic
   await icon.click();
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "false");
   await expect(card).toBeVisible();
+  // Fokus pindah ke kartu (tombol ikon hilang), bukan jatuh ke <body> (review M3).
+  await expect(card).toBeFocused();
 });
 
 test("AC3: pemroses mati → status merah bertulisan; monitor belum dipasang → kartu tidak tampil", async ({
@@ -161,7 +164,9 @@ test("AC4: admin — tautan Detail, grafik 1 jam/24 jam, disk per mount, per lay
   await expect(page).toHaveURL(/\/admin\/sumber-daya$/);
   const panel = page.getByTestId("resources-panel");
   await expect(panel).toBeVisible();
-  await expect(page.getByTestId("resources-status")).toContainText("Beban tinggi: CPU");
+  await expect(page.getByTestId("resources-status")).toHaveText("Beban tinggi: CPU");
+  // Jam di luar live region (review M2).
+  await expect(page.getByTestId("resources-time")).toContainText("WIB");
   await expect(page.getByTestId("chart-cpu")).toContainText("91%");
   await expect(page.getByTestId("res-load")).toHaveText("3,20 untuk 8 inti (0,4 per inti)");
   const disks = page.getByTestId("res-disks");

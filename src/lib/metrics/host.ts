@@ -98,8 +98,9 @@ export interface HostRaw {
   swapTotal: number | null;
   swapFree: number | null;
   fs: Filesystem[];
-  netRx: number;
-  netTx: number;
+  /** null = keluarga metrik tidak ada di respons (kolektor gagal) — bukan 0, agar laju tidak melonjak palsu. */
+  netRx: number | null;
+  netTx: number | null;
   diskIo: Record<string, number>;
 }
 
@@ -136,10 +137,13 @@ export function readHost(text: string, t: number, mounts: readonly string[]): Ho
     fs.push({ mount, size: sz.value, avail: s.value });
   }
   fs.sort((a, b) => mounts.indexOf(a.mount) - mounts.indexOf(b.mount));
-  const net = (name: string) =>
-    (m.get(name) ?? [])
+  const net = (name: string) => {
+    const list = m.get(name);
+    if (!list) return null;
+    return list
       .filter((s) => !VIRTUAL_NET.test(s.labels.device ?? ""))
       .reduce((n, s) => n + s.value, 0);
+  };
   const diskIo: Record<string, number> = {};
   for (const s of m.get("node_disk_io_time_seconds_total") ?? []) {
     const dev = s.labels.device ?? "";
@@ -189,9 +193,9 @@ export interface HostPoint {
 }
 
 const ratio = (a: number, b: number) => (b > 0 ? Math.min(1, Math.max(0, a / b)) : null);
-/** Laju counter; counter turun (reboot/reset) atau selang ≤ 0 → null. */
-const rate = (prev: number, cur: number, dt: number) =>
-  dt > 0 && cur >= prev ? (cur - prev) / dt : null;
+/** Laju counter; counter tidak diketahui, turun (reboot/reset), atau selang ≤ 0 → null. */
+const rate = (prev: number | null, cur: number | null, dt: number) =>
+  prev !== null && cur !== null && dt > 0 && cur >= prev ? (cur - prev) / dt : null;
 
 export function hostPoint(prev: HostRaw | null, cur: HostRaw): HostPoint {
   const dt = prev ? (cur.t - prev.t) / 1000 : 0;
@@ -200,8 +204,9 @@ export function hostPoint(prev: HostRaw | null, cur: HostRaw): HostPoint {
   if (prev && cur.cpuTotal > prev.cpuTotal && cur.cpus === prev.cpus) {
     const total = cur.cpuTotal - prev.cpuTotal;
     const idle = cur.cpuIdle - prev.cpuIdle;
-    const io = cur.cpuIowait - prev.cpuIowait;
-    if (idle >= 0 && io >= 0) {
+    // Counter iowait kernel boleh sedikit mundur (proc(5)): dijepit 0, bukan membuang seluruh titik CPU.
+    const io = Math.max(0, cur.cpuIowait - prev.cpuIowait);
+    if (idle >= 0) {
       cpu = ratio(total - idle - io, total);
       iowait = ratio(io, total);
     }

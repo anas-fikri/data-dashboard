@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ServerCardView } from "@/components/metrics/server-card";
 import { linePath } from "@/components/metrics/sparkline";
-import { pct, rate, size, stats, statusOf } from "@/features/metrics/format";
+import { pct, rate, size, stats, statusOf, sustained } from "@/features/metrics/format";
 import { adminOf, summaryOf, type MetricsSummary } from "@/features/metrics/view";
 import { hostPoint, readHost, type HostPoint } from "@/lib/metrics/host";
 
@@ -63,8 +63,39 @@ describe("format", () => {
       text: "Pemroses unggahan tidak aktif",
     });
     expect(statusOf({ ...s, available: false }).level).toBe("unknown");
+    // Pemroses mati tetap terlihat walau data host hilang (exporter/relay bermasalah).
+    expect(statusOf({ ...summaryOf(view({}, 0), true), available: false }).level).toBe("down");
     // Monitor dimatikan → tidak pernah "tersedia" walau Redis masih menyimpan titik lama.
     expect(summaryOf(view(), false).available).toBe(false);
+  });
+});
+
+describe("ambang CPU rata-rata 5 menit", () => {
+  const at = (t: number, cpu: number) => ({ ...host, t, cpu });
+  it("lonjakan sesaat tidak memicu Beban tinggi; beban bertahan memicu; titik > 5 menit diabaikan", () => {
+    const base = 10_000_000;
+    const spike = summaryOf(
+      {
+        available: true,
+        latest: at(base, 0.95),
+        series: [at(base - 60_000, 0.3), at(base - 30_000, 0.3), at(base, 0.95)],
+        queue: null,
+      },
+      true,
+    );
+    expect(sustained(spike, "cpu")).toBeCloseTo((0.3 + 0.3 + 0.95) / 3, 9);
+    expect(statusOf(spike).level).toBe("ok");
+    const busy = summaryOf(
+      {
+        available: true,
+        latest: at(base, 0.9),
+        series: [at(base - 6 * 60_000, 0.1), at(base - 120_000, 0.88), at(base, 0.9)],
+        queue: null,
+      },
+      true,
+    );
+    expect(sustained(busy, "cpu")).toBeCloseTo(0.89, 9);
+    expect(statusOf(busy).text).toBe("Beban tinggi: CPU");
   });
 });
 
@@ -74,7 +105,15 @@ describe("bentuk respons", () => {
     const text = JSON.stringify(s);
     expect(text).not.toMatch(/mount|disks|eth0|"workers"|hostname/);
     expect(s.queue).toEqual({ waiting: 2, active: 1, workerDown: false });
-    expect(Object.keys(s.series[0]!).sort()).toEqual(["cpu", "disk", "mem", "rx", "t", "tx"]);
+    expect(Object.keys(s.series[0]!).sort()).toEqual([
+      "cpu",
+      "disk",
+      "iowait",
+      "mem",
+      "rx",
+      "t",
+      "tx",
+    ]);
     // Jumlah worker tidak diketahui (null) ≠ mati.
     expect(summaryOf(view({}, null), true).queue!.workerDown).toBe(false);
   });

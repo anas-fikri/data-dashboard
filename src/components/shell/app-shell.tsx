@@ -96,7 +96,15 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
             className={cn("p-2", collapsed && "flex justify-center")}
             isAdmin={isAdmin}
             collapsed={collapsed}
-            onExpand={() => setCollapsed(false)}
+            onExpand={() => {
+              setCollapsed(false);
+              // Tombol ikon hilang setelah sidebar melebar: fokus dipindah ke kartu, bukan jatuh ke <body>.
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>('[data-testid="sidebar"] [data-testid="server-card"]')
+                  ?.focus(),
+              );
+            }}
           />
         )}
         <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
