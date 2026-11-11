@@ -55,6 +55,16 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-11, sesi cloud)
+
+- Rilis **v1.15.1** (PR #18, digabung): T-xp28 (rollback kenali tabel rilis, start_period app 120 dtk, cache
+  npm ci di Dockerfile) + T-j25e (klik grafik = filter silang; klik-tembus lewat tombol "Lihat baris data").
+  Tanpa migrasi. Deploy disarankan `bash deploy/server-release.sh 1.15.1` di server (runbook §25); tag v1.15.1
+  belum di GitHub (push tag dari cloud ditolak) → server-release memakai `main`.
+- Produksi: v1.15.0 terpasang 2026-11-10 (lewat server-release; app lambat sehat → `upgrade.sh start` ulang).
+- Container cloud baru: `containerd` dijalankan manual dulu, lalu `dockerd --containerd=/run/containerd/containerd.sock`;
+  image dev lewat `mirror.gcr.io` + override compose `rustfs/rustfs:pinned` di scratchpad.
+
 ## Posisi terakhir (2026-11-10, sesi cloud)
 
 - Rilis **v1.15.0** (branch `claude/cool-babbage-t5yojt`, PR #17): **T-43hv** pembanding KPI dan **T-d5ev**
