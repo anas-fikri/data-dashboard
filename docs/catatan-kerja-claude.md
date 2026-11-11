@@ -55,6 +55,19 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-11 larut malam, sesi cloud)
+
+- Rilis **v1.18.0** (PR #24, branch `claude/cool-babbage-t5yojt`): **T-ee46** monitor sumber daya (kartu Server di sidebar
+  semua user, Admin › Sumber daya server, profil compose `monitor` = node-exporter 127.0.0.1:19109 + metrics-relay) dan
+  **T-qed9** perkiraan per akun (admin). Tanpa migrasi. Pasang: `.env.prod` `COMPOSE_PROFILES=hostdb,monitor` +
+  `METRICS_NODE_URL=http://host.docker.internal:19100/metrics`, lalu `bash deploy/server-release.sh 1.18.0` + seed panduan
+  (runbook §29). Tanpa profil/URL tidak ada container baru dan kartu tidak tampil.
+- Lanjutan v1.19 (keputusan pemilik: setelah v1.18): **T-jsmj** gabung banyak sheet berkolom sama di mode periode,
+  **T-rbrb** periode yang sudah ada bisa Ganti/Tambah/Perbarui berdasarkan kunci — menunggu jawaban pemilik: kolom kunci
+  Billing, resi pindah periode, kunci dobel. Temuan Low monitor → **T-zjwh**.
+- Pelajaran: jangan `git add -A` di worktree yang punya symlink `node_modules` (cherry-pick menghapus node_modules asli);
+  `/node_modules` sudah di `.git/info/exclude` lokal. Komponen global di shell jangan `role=status` (pakai aria-live).
+
 ## Posisi terakhir (2026-11-11 malam, sesi cloud)
 
 - v1.17.0 (PR #21) dan T-yw88 (PR #22) sudah di `main`. Rilis **v1.17.1** (peringatan pemroses unggahan tidak
