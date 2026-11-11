@@ -73,6 +73,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tampil "Pengaturan widget tidak valid" sampai roll-forward (skema strict menolak agregasi baru; data tetap).
   Ganti ukurannya dulu bila rollback akan lama (runbook-deploy §27).
 
+## [1.17.0] - 2026-11-11
+
+### Added
+
+- **widgets:** ukuran Jumlah kosong (COUNTBLANK) — hitung baris yang kolomnya tidak terisi (T-bwza) (4084a12)
+
+### Fixed
+
+- **widgets:** review T-bwza r2 — pesan khusus kolom pembanding yang dihitung kosongnya; catatan pivot di panduan (6b5c285)
+- **widgets:** temuan review T-bwza — kolom absent, pembanding kolom yang sama, teks UI (e9978ed)
+
 ## [1.16.0] - 2026-11-11
 
 ### Added
