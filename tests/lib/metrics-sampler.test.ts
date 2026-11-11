@@ -73,14 +73,14 @@ describe("sampleOnce", () => {
 
   it("berhasil → pembacaan mentah disimpan; kunci dipegang proses ini dan diperpanjang atomik", async () => {
     vi.stubGlobal("fetch", async () => new Response(A));
-    await sampleOnce();
+    expect(await sampleOnce()).toBe(true);
     expect(store.has(KEY.last)).toBe(true);
     await sampleOnce();
     expect(redis.eval).toHaveBeenCalled();
     // Proses lain memegang kunci → tidak mengambil sampel.
     store.set(KEY.lock, "proses-lain");
     store.delete(KEY.queue);
-    await sampleOnce();
+    expect(await sampleOnce()).toBe(false);
     expect(store.has(KEY.queue)).toBe(false);
   });
 

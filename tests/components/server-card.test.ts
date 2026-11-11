@@ -64,7 +64,10 @@ describe("format", () => {
     });
     expect(statusOf({ ...s, available: false }).level).toBe("unknown");
     // Pemroses mati tetap terlihat walau data host hilang (exporter/relay bermasalah).
-    expect(statusOf({ ...summaryOf(view({}, 0), true), available: false }).level).toBe("down");
+    expect(statusOf({ ...summaryOf(view({}, 0), true), available: false })).toEqual({
+      level: "down",
+      text: "Pemroses unggahan tidak aktif · data server tidak tersedia",
+    });
     // Monitor dimatikan → tidak pernah "tersedia" walau Redis masih menyimpan titik lama.
     expect(summaryOf(view(), false).available).toBe(false);
   });

@@ -22,15 +22,16 @@ export async function GET() {
   try {
     const r = await redisReady();
     const now = Date.now();
+    const enabled = !!env().METRICS_NODE_URL;
     // Per akun (T-qed9) gagal → tabelnya saja yang kosong; grafik host tetap tampil.
     const [view, accounts] = await Promise.all([
       readAdmin(r, now),
-      accountRows(r, now).catch((e: unknown) => {
+      (enabled ? accountRows(r, now) : Promise.resolve(null)).catch((e: unknown) => {
         logger.warn({ err: e instanceof Error ? e.message : String(e) }, "metrik per akun gagal");
         return null;
       }),
     ]);
-    return json({ ok: true, ...adminOf(view, !!env().METRICS_NODE_URL, accounts) });
+    return json({ ok: true, ...adminOf(view, enabled, accounts) });
   } catch (e) {
     logger.error({ err: e instanceof Error ? e.message : String(e) }, "detail metrik gagal");
     return json(

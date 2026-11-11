@@ -113,7 +113,11 @@ export async function saveAccountSnapshot(
   snap: AccountSnapshot,
   now: number,
 ): Promise<void> {
-  const m = r.multi().hset(KEY.acctRun, proc, JSON.stringify({ t: now, running: snap.running }));
+  const m = r
+    .multi()
+    .hset(KEY.acctRun, proc, JSON.stringify({ t: now, running: snap.running }))
+    // TTL ikut diperbarui: monitor dimatikan → hash hilang sendiri (field proses lama juga dibuang saat dibaca).
+    .pexpire(KEY.acctRun, 10 * 60_000);
   const entries = Object.entries(snap.ms).filter(([, ms]) => ms > 0);
   if (entries.length) {
     const key = KEY.acctSec + Math.floor(now / 60_000);

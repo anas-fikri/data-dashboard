@@ -36,9 +36,10 @@ async function holdLock(): Promise<boolean> {
   return (await r.eval(REFRESH_LOCK, 1, KEY.lock, token, String(LOCK_MS))) === 1;
 }
 
-export async function sampleOnce(): Promise<void> {
+/** true = sampel diambil; false = dilewati (monitor mati atau kunci dipegang proses lain). */
+export async function sampleOnce(): Promise<boolean> {
   const url = env().METRICS_NODE_URL;
-  if (!url || !(await holdLock())) return;
+  if (!url || !(await holdLock())) return false;
   const r = await redisReady();
   // Antrean + worker lebih dulu dan terpisah dari exporter: status pemroses (insiden worker mati) tetap
   // terbaca walau relay/exporter sedang bermasalah.
@@ -69,6 +70,7 @@ export async function sampleOnce(): Promise<void> {
     .filter(Boolean);
   // Waktu diambil setelah respons: latensi fetch tidak mengacaukan selang laju (rx/tx/disk sibuk).
   await recordHostSample(r, text, Date.now(), mounts);
+  return true;
 }
 
 function failed(e: unknown) {
@@ -98,7 +100,8 @@ export function startMetricsSampler(): void {
     if (state.metricsBusy) return;
     state.metricsBusy = true;
     sampleOnce()
-      .then(recovered, failed)
+      // Dilewati (kunci milik proses lain) bukan tanda pulih.
+      .then((sampled) => sampled && recovered(), failed)
       .finally(() => {
         state.metricsBusy = false;
       });

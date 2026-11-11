@@ -69,7 +69,11 @@ export function sustained(
 export function statusOf(
   s: Pick<MetricsSummary, "available" | "latest" | "series" | "queue">,
 ): Status {
-  if (s.queue?.workerDown) return { level: "down", text: "Pemroses unggahan tidak aktif" };
+  if (s.queue?.workerDown) {
+    // Angka host di kartu bisa basi (≤ 1 jam): katakan juga bila datanya tidak tersedia.
+    const stale = !s.available || !s.latest ? " · data server tidak tersedia" : "";
+    return { level: "down", text: `Pemroses unggahan tidak aktif${stale}` };
+  }
   if (!s.available || !s.latest) return { level: "unknown", text: "Data server tidak tersedia" };
   const p = s.latest;
   const io = sustained(s, "iowait");
@@ -115,7 +119,7 @@ export function jobsText(j: { upload: number; recast: number; export: number }):
   const parts = [
     j.upload && `${j.upload} unggahan`,
     j.recast && `${j.recast} olah ulang`,
-    j.export && `${j.export} ekspor`,
+    j.export && `${j.export} ekspor/PDF`,
   ].filter((x): x is string => !!x);
   return parts.length ? parts.join(", ") : "–";
 }

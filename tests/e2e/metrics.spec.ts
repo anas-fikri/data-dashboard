@@ -194,7 +194,7 @@ test("AC4: admin — tautan Detail, grafik 1 jam/24 jam, disk per mount, per lay
   const acct = page.getByTestId("res-accounts-table").getByRole("row").nth(1);
   await expect(acct).toContainText("Budi");
   await expect(acct).toContainText("2 mnt 10 dtk");
-  await expect(acct).toContainText("1 unggahan, 2 ekspor");
+  await expect(acct).toContainText("1 unggahan, 2 ekspor/PDF");
   await expect(acct).toContainText("5 GB dari 20 GB");
   await page.getByTestId("range-day").click();
   await expect(page.getByTestId("range-day")).toHaveAttribute("aria-pressed", "true");
@@ -226,7 +226,9 @@ test("T-qed9: API admin sungguhan memuat tabel per akun; per akun gagal tidak me
   expect(res.status()).toBe(200);
   const body = await res.json();
   expect(body.accounts).not.toBeUndefined();
-  if (body.accounts) expect(Array.isArray(body.accounts.rows)).toBe(true);
+  // Monitor aktif → tabel per akun harus terbaca (null hanya saat gagal); mati → null.
+  if (body.enabled) expect(Array.isArray(body.accounts.rows)).toBe(true);
+  else expect(body.accounts).toBeNull();
 
   await mock(page, { ...ADMIN_BODY, accounts: null }, "/api/metrics/admin");
   await page.goto("/admin/sumber-daya");

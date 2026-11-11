@@ -361,8 +361,9 @@ export function ResourcesPanel() {
         </h2>
         <p className="text-sm text-muted-foreground">
           Akun yang sedang memakai server, terberat di atas. Waktu query = lama server mengolah
-          widget, Lihat data, dan pivot akun itu dalam ± 15 menit terakhir; pemakaian CPU/RAM persis
-          per akun tidak bisa diukur karena semua akun dilayani proses yang sama.
+          widget, Lihat data, dan pivot akun itu dalam ± 15 menit terakhir (dijumlah dari query yang
+          berjalan bersamaan, jadi bisa lebih dari 15 menit); pemakaian CPU/RAM persis per akun
+          tidak bisa diukur karena semua akun dilayani proses yang sama.
         </p>
         {!data.accounts ? (
           <p className="text-sm text-muted-foreground" data-testid="res-accounts-error">

@@ -127,7 +127,7 @@ describe("rankAccounts + format", () => {
       "1 jam",
       "1 jam 5 mnt",
     ]);
-    expect(jobsText({ upload: 1, recast: 0, export: 2 })).toBe("1 unggahan, 2 ekspor");
+    expect(jobsText({ upload: 1, recast: 0, export: 2 })).toBe("1 unggahan, 2 ekspor/PDF");
     expect(jobsText({ upload: 0, recast: 0, export: 0 })).toBe("–");
   });
 });

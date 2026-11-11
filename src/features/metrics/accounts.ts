@@ -4,9 +4,11 @@ import { userUsage } from "@/features/uploads/quota";
 import { prisma } from "@/lib/db";
 import { env } from "@/lib/env";
 import { readAccountActivity } from "@/lib/metrics/store";
+import { ORDER_BUILD_USER } from "@/features/query/grid-order";
 import {
   exportQueue,
   ingestQueue,
+  MAP_VERSION_JOB,
   pdfQueue,
   recastQueue,
   withQueueTimeout,
@@ -20,7 +22,10 @@ import { rankAccounts, type AccountJobs, type AccountRow } from "./view";
  * Hanya akun yang aktif; paling banyak 20 baris, terberat di atas.
  */
 const MAX_JOBS = 100;
-const USAGE_TTL_MS = 60_000;
+/** Storage berubah lambat: cache 5 menit (+ acak ≤ 1 menit agar tidak kedaluwarsa bersamaan). */
+const USAGE_TTL_MS = 5 * 60_000;
+/** userUsage = 3 query (termasuk semua segmen akun): dibatasi 3 bersamaan agar pool DB tidak tersentak. */
+const USAGE_CONCURRENCY = 3;
 const usageCache = globalThis as unknown as {
   metricsUsage?: Map<string, { bytes: number; at: number }>;
 };
@@ -72,7 +77,7 @@ async function jobsByUser(): Promise<Map<string, AccountJobs>> {
   for (const v of versions) bump(v.dataset.ownerId, "upload");
   for (const j of recast) {
     // Satu antrean untuk olah ulang skema (userId) dan pemetaan versi baru (job "map-version", actorId).
-    bump(str(j.name === "map-version" ? j.data.actorId : j.data.userId), "recast");
+    bump(str(j.name === MAP_VERSION_JOB ? j.data.actorId : j.data.userId), "recast");
   }
   for (const e of exportRows) bump(e.userId, "export");
   return out;
@@ -81,15 +86,22 @@ async function jobsByUser(): Promise<Map<string, AccountJobs>> {
 async function storageOf(ids: string[], now: number): Promise<Map<string, number>> {
   const cache = (usageCache.metricsUsage ??= new Map());
   const out = new Map<string, number>();
-  await Promise.all(
-    ids.map(async (id) => {
-      const hit = cache.get(id);
-      if (hit && now - hit.at < USAGE_TTL_MS) return out.set(id, hit.bytes);
-      const bytes = (await userUsage(prisma, id)).bytes;
-      cache.set(id, { bytes, at: now });
-      out.set(id, bytes);
-    }),
-  );
+  const todo: string[] = [];
+  for (const id of ids) {
+    const hit = cache.get(id);
+    if (hit && now < hit.at) out.set(id, hit.bytes);
+    else todo.push(id);
+  }
+  for (let i = 0; i < todo.length; i += USAGE_CONCURRENCY) {
+    await Promise.all(
+      todo.slice(i, i + USAGE_CONCURRENCY).map(async (id) => {
+        const bytes = (await userUsage(prisma, id)).bytes;
+        // `at` = saat kedaluwarsa.
+        cache.set(id, { bytes, at: now + USAGE_TTL_MS + Math.random() * 60_000 });
+        out.set(id, bytes);
+      }),
+    );
+  }
   return out;
 }
 
@@ -100,13 +112,17 @@ export async function accountRows(
   const [activity, jobs] = await Promise.all([readAccountActivity(r, now), jobsByUser()]);
   const ids = [...new Set([...activity.keys(), ...jobs.keys()])];
   if (!ids.length) return { rows: [], quotaBytes: env().USER_STORAGE_QUOTA_BYTES };
-  const users = await prisma.user.findMany({
+  const users: { id: string; email: string; name: string | null }[] = await prisma.user.findMany({
     where: { id: { in: ids } },
     select: { id: true, email: true, name: true },
   });
+  // Penyusunan cache urutan "Lihat data" berjalan di latar atas nama sistem, bukan akun tertentu.
+  if (ids.includes(ORDER_BUILD_USER)) {
+    users.push({ id: ORDER_BUILD_USER, email: "", name: "Sistem — cache urutan Lihat data" });
+  }
   const top = rankAccounts(users, activity, jobs, 20);
   const storage = await storageOf(
-    top.map((row) => row.id),
+    top.map((row) => row.id).filter((id) => id !== ORDER_BUILD_USER),
     now,
   );
   return {
