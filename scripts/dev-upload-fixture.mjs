@@ -169,7 +169,23 @@ try {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: a },
       include: {
-        sheets: { orderBy: { index: "asc" } },
+        sheets: {
+          orderBy: { index: "asc" },
+          include: {
+            // Manifest sheet (T-0gmm: sheet gabungan = satu segmen per sheet asal).
+            segments: {
+              orderBy: { ordinal: "asc" },
+              select: {
+                segmentTyped: {
+                  select: {
+                    dataRows: true,
+                    segment: { select: { originalName: true, headerRow: true } },
+                  },
+                },
+              },
+            },
+          },
+        },
         dataset: { select: { activeVersionId: true } },
       },
     });
@@ -196,6 +212,7 @@ try {
           errorMessage: v.errorMessage,
           sha256: v.sha256,
           progress: v.progress,
+          mergeSheets: v.mergeSheets,
           sheets: v.sheets.map((s) => ({
             id: s.id,
             name: s.name,
@@ -206,6 +223,11 @@ try {
             typedKey: s.typedKey,
             schemaRevision: s.schemaRevision,
             types: Array.isArray(s.schema) ? s.schema.map((c) => `${c.name}:${c.type}`) : [],
+            segments: s.segments.map((m) => ({
+              originalName: m.segmentTyped.segment.originalName,
+              headerRow: m.segmentTyped.segment.headerRow,
+              dataRows: m.segmentTyped.dataRows,
+            })),
           })),
           objects,
         }),

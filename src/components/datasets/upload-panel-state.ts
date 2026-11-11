@@ -11,8 +11,12 @@ import type { UploadProgress } from "@/features/uploads/client";
  * pilihan yang sama — server hanya melanjutkan versi dengan mode + label yang sama.
  */
 export type UploadChoice =
-  /** `sheets` = sheet xlsx yang diimpor (T-85tb); tanpa/kosong = semua sheet. */
-  { mode: "REPLACE"; sheets?: string[] } | { mode: "PERIOD"; label: string | null };
+  /**
+   * `sheets` = sheet xlsx yang diimpor (T-85tb); tanpa/kosong = semua sheet. `mergeSheets` = gabungkan
+   * sheet berkolom sama jadi satu (T-0gmm).
+   */
+  | { mode: "REPLACE"; sheets?: string[]; mergeSheets?: boolean }
+  | { mode: "PERIOD"; label: string | null };
 
 export const REPLACE_CHOICE: UploadChoice = { mode: "REPLACE" };
 
@@ -183,10 +187,15 @@ export function periodRequest(
       ok: true;
       period?: { baseVersionId: string; label: string | null };
       sheets?: string[];
+      mergeSheets?: boolean;
     }
   | { ok: false; message: string } {
   if (choice.mode === "REPLACE") {
-    return choice.sheets?.length ? { ok: true, sheets: choice.sheets } : { ok: true };
+    return {
+      ok: true,
+      ...(choice.sheets?.length ? { sheets: choice.sheets } : {}),
+      ...(choice.mergeSheets ? { mergeSheets: true } : {}),
+    };
   }
   if (!period) return { ok: false, message: PERIOD_GONE };
   return { ok: true, period: { baseVersionId: period.baseVersionId, label: choice.label } };

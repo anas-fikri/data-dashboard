@@ -6,7 +6,7 @@ import { initUpload } from "@/features/uploads/service";
 export const dynamic = "force-dynamic";
 
 /**
- * Mulai atau lanjutkan unggahan: { datasetId, name, size, lastModified, mode?, label?, baseVersionId?, sheets? }
+ * Mulai atau lanjutkan unggahan: { datasetId, name, size, lastModified, mode?, label?, baseVersionId?, sheets?, mergeSheets? }
  * (mode "PERIOD" = tambah/perbarui periode, T-052; tanpa mode = ganti semua data).
  */
 export function POST(req: NextRequest) {
@@ -20,6 +20,7 @@ export function POST(req: NextRequest) {
       label: body.label,
       baseVersionId: body.baseVersionId,
       sheets: body.sheets,
+      mergeSheets: body.mergeSheets,
     }),
   );
 }

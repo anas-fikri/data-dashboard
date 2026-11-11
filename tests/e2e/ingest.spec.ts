@@ -177,6 +177,92 @@ test.describe("ingest", () => {
     ]);
   });
 
+  test("T-0gmm: gabungkan sheet berkolom sama → satu sheet, satu segmen per sheet asal; unggah ulang ikut tergabung", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(180_000);
+    await apiLogin(page, OWNER);
+    await manualSheets(page);
+    const id = await createDataset(page, "Ingest Gabung Sheet");
+    const file = "tests/fixtures/tiga-sheet.xlsx";
+    await page.getByTestId("upload-input").setInputFiles(file);
+    const picker = page.getByTestId("upload-sheet-picker");
+    const merge = picker.getByTestId("upload-sheet-merge");
+    // Tiga sheet terpilih → pilihan gabung tampil, tidak tercentang bawaan (data baru).
+    await expect(merge).toBeVisible();
+    await expect(merge).not.toBeChecked();
+    await expect(picker.getByRole("checkbox", { name: /Gabungkan sheet/ })).toBeVisible();
+    // Satu sheet terpilih → pilihan gabung hilang; dua lagi → muncul.
+    await picker.getByTestId("upload-sheet-all").uncheck();
+    await picker.getByRole("checkbox", { name: "Pengiriman 1" }).check();
+    await expect(merge).toHaveCount(0);
+    await picker.getByTestId("upload-sheet-all").check();
+    await merge.check();
+    await picker.getByTestId("upload-sheet-submit").click();
+    await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
+
+    type Sheet = {
+      id: string;
+      name: string;
+      rawRows: number;
+      types: string[];
+      segments: { originalName: string; headerRow: number; dataRows: number }[];
+    };
+    const wait = async (versionId: string) => {
+      let info: Record<string, unknown> = {};
+      await expect
+        .poll(
+          () => {
+            info = fx("ingest", versionId);
+            return ["READY", "FAILED", "AWAITING_MAPPING"].includes(String(info.status))
+              ? "selesai"
+              : "proses";
+          },
+          { timeout: 90_000, intervals: [500] },
+        )
+        .toBe("selesai");
+      return info;
+    };
+    const first = await wait(String(fx("latest", id).id));
+    expect(first).toMatchObject({ status: "READY", active: true, mergeSheets: true });
+    const [sheet] = first.sheets as Sheet[];
+    expect((first.sheets as Sheet[]).map((x) => x.name)).toEqual(["Pengiriman 1"]);
+    expect(sheet!.rawRows).toBe(303 * 3);
+    expect(sheet!.segments).toEqual(
+      [1, 2, 3].map((n) => ({
+        originalName: `tiga-sheet.xlsx (sheet Pengiriman ${n})`,
+        headerRow: 4,
+        dataRows: 300,
+      })),
+    );
+    // Query membaca semua sheet asal: hitung baris = 900.
+    const r = await page.request.post("/api/query", {
+      data: { datasetId: id, spec: { sheetId: sheet!.id, measures: [{ agg: "count" }] } },
+      headers: { Origin: baseURL! },
+    });
+    expect(r.status(), await r.text()).toBe(200);
+    expect(Number(((await r.json()) as { rows: unknown[][] }).rows[0]![0])).toBe(900);
+    // Lihat data: grid membaca ketiga segmen (aria-rowcount = total + 2, ADR-0007).
+    await page.goto(`/datasets/${id}/data`);
+    await expect(page.getByRole("grid")).toHaveAttribute("aria-rowcount", "902", {
+      timeout: 30_000,
+    });
+    await page.goto(`/datasets/${id}`);
+
+    // Unggah ulang: data aktif hasil gabungan → pilihan gabung tercentang bawaan; hasil tetap satu sheet.
+    await page.reload();
+    await page.getByTestId("upload-input").setInputFiles(file);
+    await expect(merge).toBeChecked();
+    await picker.getByTestId("upload-sheet-submit").click();
+    await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
+    const second = await wait(String(fx("latest", id).id));
+    expect(second).toMatchObject({ status: "READY", active: true, mergeSheets: true });
+    expect((second.sheets as Sheet[]).map((x) => [x.name, x.segments.length])).toEqual([
+      ["Pengiriman 1", 3],
+    ]);
+  });
+
   test("CSV Windows-1252 titik koma → satu sheet raw + typed", async ({ page }) => {
     test.setTimeout(120_000);
     await apiLogin(page, OWNER);

@@ -14,6 +14,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.16",
+    date: "2026-11-11",
+    items: [
+      "Gabungkan sheet: data yang terpecah ke beberapa sheet karena batas baris Excel (mis. Data 1, Data 2 dengan judul kolom yang sama) kini bisa diunggah sebagai satu sheet. Saat memilih sheet, centang Gabungkan sheet yang judul kolomnya sama — dashboard, pivot, dan Lihat data langsung membaca semua barisnya.",
+    ],
+  },
+  {
     version: "1.15",
     date: "2026-11-10",
     items: [

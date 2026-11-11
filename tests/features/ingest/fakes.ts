@@ -124,6 +124,10 @@ export class FakeRepo implements IngestRepo {
   typedHeaderRows = new Map<string, number>();
   /** Sheet pilihan saat unggah (T-85tb); [] = semua. */
   selectedSheets: string[] = [];
+  /** Gabungkan sheet berkolom sama (T-0gmm). */
+  mergeSheets = false;
+  /** Segmen manifest sheet gabungan setelah ordinal 0 (T-0gmm), urut ordinal. */
+  extraSegments = new Map<string, { segmentId: string; typedKey: string; dataRows?: number }[]>();
   activated = false;
   private n = 0;
   constructor(readonly sourceKey: string) {}
@@ -134,6 +138,8 @@ export class FakeRepo implements IngestRepo {
       sourceKey: this.sourceKey,
       active: structuredClone(this.active),
       selectedSheets: [...this.selectedSheets],
+      mergeSheets: this.mergeSheets,
+      originalName: "data.xlsx",
     };
   }
   async begin() {
@@ -151,6 +157,7 @@ export class FakeRepo implements IngestRepo {
     const ids = [...this.segments.keys()];
     this.sheets.clear();
     this.segments.clear();
+    this.extraSegments.clear();
     return ids;
   }
   /** Lineage (ADR-0008): rowHighWater per sheet logis; segmen yang ditulis versi ini. */
@@ -197,13 +204,22 @@ export class FakeRepo implements IngestRepo {
       segmentId?: string;
       dataRows?: number;
       headerRow?: number;
+      ordinal?: number;
     },
   ) {
-    if (d.headerRow !== undefined) this.typedHeaderRows.set(id, d.headerRow);
     if (!this.alive()) {
       this.sheets.clear();
       throw new DatasetGoneError();
     }
+    if (d.ordinal) {
+      // Sheet gabungan (T-0gmm): pointer sheet tetap segmen pertama, sisanya hanya di manifest.
+      const list = this.extraSegments.get(id) ?? [];
+      if (d.ordinal !== list.length + 1) throw new Error(`ordinal ${d.ordinal} tidak berurutan`);
+      list.push({ segmentId: d.segmentId!, typedKey: d.typedKey, dataRows: d.dataRows });
+      this.extraSegments.set(id, list);
+      return;
+    }
+    if (d.headerRow !== undefined) this.typedHeaderRows.set(id, d.headerRow);
     Object.assign(this.sheets.get(id)!, d);
   }
   /** Manifest sheet versi ini (REPLACE: segmen ordinal 0), seperti prismaManifest. */
@@ -227,6 +243,16 @@ export class FakeRepo implements IngestRepo {
                     rowBase: g.rowBase,
                     maxSrcRow: g.maxSrcRow,
                   },
+                  ...(this.extraSegments.get(id) ?? []).map((x, i) => {
+                    const e = this.segments.get(x.segmentId)!;
+                    return {
+                      ordinal: i + 1,
+                      rawKey: e.rawKey,
+                      typedKey: x.typedKey,
+                      rowBase: e.rowBase,
+                      maxSrcRow: e.maxSrcRow,
+                    };
+                  }),
                 ]
               : [],
         };

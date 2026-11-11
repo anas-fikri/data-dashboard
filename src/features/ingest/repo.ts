@@ -61,7 +61,10 @@ type ActiveRow = {
   }[];
 } | null;
 
-/** Manifest REPLACE (ADR-0008): satu segmen per sheet di ordinal 0. */
+/**
+ * Manifest REPLACE (ADR-0008): satu segmen per sheet di ordinal 0 — kecuali sheet gabungan (T-0gmm):
+ * ingest menulis satu segmen per sheet asal di ordinal 0..n-1; pemetaan/recast tetap memakai ordinal 0.
+ */
 const MANIFEST_ORDINAL = 0;
 
 /**
@@ -85,8 +88,9 @@ async function linkTyped(
     profile?: StoredProfile;
   },
   segmentId?: string,
+  ordinal = MANIFEST_ORDINAL,
 ): Promise<void> {
-  const where = { sheetId_ordinal: { sheetId, ordinal: MANIFEST_ORDINAL } };
+  const where = { sheetId_ordinal: { sheetId, ordinal } };
   const seg =
     segmentId ??
     (
@@ -113,7 +117,7 @@ async function linkTyped(
   });
   await tx.sheetSegment.upsert({
     where,
-    create: { sheetId, segmentTypedId: t.id, ordinal: MANIFEST_ORDINAL },
+    create: { sheetId, segmentTypedId: t.id, ordinal },
     update: { segmentTypedId: t.id },
   });
 }
@@ -144,7 +148,14 @@ export const prismaIngestRepo: IngestRepo = {
   async load(versionId) {
     const v = await prisma.datasetVersion.findUnique({
       where: { id: versionId },
-      select: { datasetId: true, sourceKey: true, selectedSheets: true, dataset: activeSelect },
+      select: {
+        datasetId: true,
+        sourceKey: true,
+        selectedSheets: true,
+        mergeSheets: true,
+        originalName: true,
+        dataset: activeSelect,
+      },
     });
     if (!v?.sourceKey) return null;
     return {
@@ -152,6 +163,8 @@ export const prismaIngestRepo: IngestRepo = {
       sourceKey: v.sourceKey,
       active: snapshotOf(v.dataset.activeVersion, versionId),
       selectedSheets: v.selectedSheets,
+      mergeSheets: v.mergeSheets,
+      originalName: v.originalName,
     };
   },
 
@@ -248,7 +261,7 @@ export const prismaIngestRepo: IngestRepo = {
           // Asal segmen (T-049): file identik, kartu Periode, cast per jenis sumber.
           sha256: d.sha256 ?? null,
           sourceKind: d.sourceKind ?? null,
-          originalName: v.originalName,
+          originalName: d.originalName ?? v.originalName,
           uploadedById: v.uploadedById,
           createdByVersionId: versionId,
         },
@@ -298,16 +311,24 @@ export const prismaIngestRepo: IngestRepo = {
   async setTyped(sheetId, d) {
     try {
       await prisma.$transaction(async (tx) => {
-        const r = await tx.sheet.updateMany({
-          where: { id: sheetId },
-          data: {
-            typedKey: d.typedKey,
-            schema: d.schema as unknown as Prisma.InputJsonValue,
-            schemaRevision: d.schemaRevision,
-          },
-        });
-        if (r.count === 0) throw new DatasetGoneError();
-        await linkTyped(tx, sheetId, d, d.segmentId);
+        const ordinal = d.ordinal ?? MANIFEST_ORDINAL;
+        // Pointer typedKey sheet = segmen pertama manifest; segmen gabungan berikutnya (T-0gmm) hanya
+        // ditambahkan ke manifest (skemanya sama).
+        const n =
+          ordinal === MANIFEST_ORDINAL
+            ? (
+                await tx.sheet.updateMany({
+                  where: { id: sheetId },
+                  data: {
+                    typedKey: d.typedKey,
+                    schema: d.schema as unknown as Prisma.InputJsonValue,
+                    schemaRevision: d.schemaRevision,
+                  },
+                })
+              ).count
+            : await tx.sheet.count({ where: { id: sheetId } });
+        if (n === 0) throw new DatasetGoneError();
+        await linkTyped(tx, sheetId, d, d.segmentId, ordinal);
       });
     } catch (e) {
       if (gone(e)) throw new DatasetGoneError();

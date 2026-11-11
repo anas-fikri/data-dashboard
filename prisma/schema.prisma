@@ -177,6 +177,10 @@ model DatasetVersion {
   /// lama, CSV, mode PERIOD). Worker hanya membaca sheet ini; sheet aktif yang tidak dipilih masuk
   /// alur pemetaan biasa (tidak dipakai lagi).
   selectedSheets   String[]      @default([])
+  /// Gabungkan sheet terpilih yang judul kolomnya sama menjadi satu sheet (T-0gmm, v1.16): satu Sheet
+  /// logis dengan satu segmen per sheet asal (manifest ordinal 0..n-1; Segment.originalName =
+  /// "<file> (sheet <nama>)"). Hanya xlsx REPLACE.
+  mergeSheets      Boolean       @default(false)
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?

@@ -68,7 +68,7 @@ export const RECAST_RENEW_MS = 60 * 1000;
 export const RECAST_DEADLINE_MS = 20 * 60 * 1000;
 const PARQUET = "application/vnd.apache.parquet";
 export const MULTI_HEADER_MESSAGE =
-  "Baris judul tidak bisa diganti karena data sheet ini digabung dari beberapa unggahan.";
+  "Baris judul tidak bisa diganti karena data sheet ini digabung dari beberapa unggahan atau beberapa sheet. Unggah ulang file dengan baris judul yang benar.";
 
 /** Satu segmen manifest sheet (ADR-0008) beserta file typed yang dirujuk manifest sekarang. */
 export interface RecastSegment {

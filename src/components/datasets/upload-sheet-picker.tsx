@@ -15,13 +15,15 @@ import type { XlsxSheetInfo } from "@/features/uploads/xlsx-sheets";
 
 /*
  * Pemilih sheet yang diimpor saat unggah xlsx (T-85tb; pola UploadPeriodPicker): checkbox per sheet +
- * "Pilih semua" (tri-state), hitungan terpilih, saran hanya memilih sheet berisi data. Belum ada yang
- * dikirim ke server sampai "Unggah file".
+ * "Pilih semua" (tri-state), hitungan terpilih, saran hanya memilih sheet berisi data, dan (≥ 2 terpilih)
+ * "Gabungkan sheet yang judul kolomnya sama" (T-0gmm). Belum ada yang dikirim ke server sampai
+ * "Unggah file".
  */
 export function UploadSheetPicker({
   fileName,
   sheets,
   activeSheets,
+  defaultMerge = false,
   onSubmit,
   onCancel,
 }: {
@@ -29,12 +31,16 @@ export function UploadSheetPicker({
   sheets: XlsxSheetInfo[];
   /** Nama sheet data aktif (penggantian data): sheet yang cocok dicentang bawaan. */
   activeSheets: string[];
-  onSubmit: (picked: Set<string>) => void;
+  /** Data aktif hasil gabungan (T-0gmm): unggah ulang bawaan ikut digabung agar sheet tidak terpecah. */
+  defaultMerge?: boolean;
+  /** `merge` = gabungkan sheet terpilih yang judul kolomnya sama (T-0gmm). */
+  onSubmit: (picked: Set<string>, merge: boolean) => void;
   onCancel: () => void;
 }) {
   const id = useId();
   const [picked, setPicked] = useState(() => new Set(defaultSelection(sheets, activeSheets)));
   const [error, setError] = useState<string | null>(null);
+  const [merge, setMerge] = useState(defaultMerge);
   const allRef = useRef<HTMLInputElement>(null);
   const options = sheets.filter(selectable);
   const count = options.filter((s) => picked.has(s.name)).length;
@@ -73,7 +79,7 @@ export function UploadSheetPicker({
           setError(count === 0 ? SHEETS_REQUIRED : SHEETS_TOO_MANY);
           return;
         }
-        onSubmit(picked);
+        onSubmit(picked, merge && count >= 2);
       }}
     >
       <div className="flex items-start gap-3">
@@ -150,6 +156,26 @@ export function UploadSheetPicker({
       >
         {`${count.toLocaleString("id-ID")} dari ${options.length.toLocaleString("id-ID")} sheet dipilih`}
       </p>
+      {count >= 2 ? (
+        <div className="flex flex-col gap-1 rounded-md bg-muted/50 p-2">
+          <label className="flex min-h-11 items-center gap-2 text-sm font-medium sm:min-h-8">
+            <input
+              type="checkbox"
+              className="size-4 shrink-0 accent-[var(--color-primary)]"
+              checked={merge}
+              onChange={(e) => setMerge(e.target.checked)}
+              aria-describedby={`${id}-merge-hint`}
+              data-testid="upload-sheet-merge"
+            />
+            Gabungkan sheet yang judul kolomnya sama menjadi satu
+          </label>
+          <p id={`${id}-merge-hint`} className="pl-6 text-sm text-muted-foreground">
+            Cocok untuk data yang dipecah ke beberapa sheet karena batas baris Excel. Barisnya
+            ditumpuk menjadi satu sheet bernama sheet pertama; sheet dengan kolom berbeda tetap
+            terpisah.
+          </p>
+        </div>
+      ) : null}
       {missing.length && count > 0 ? (
         <p className="text-sm text-muted-foreground" data-testid="upload-sheet-missing">
           {`Sheet data aktif yang tidak dipilih (${missing.join(", ")}) perlu dipetakan atau dilepas setelah file diproses.`}

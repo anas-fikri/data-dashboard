@@ -69,6 +69,8 @@ export interface PendingUploadInfo {
   label: string | null;
   /** Sheet pilihan unggahan tertunda (T-85tb); melanjutkan memakai pilihan yang sama. */
   sheets?: string[];
+  /** Gabungkan sheet berkolom sama (T-0gmm); melanjutkan memakai pilihan yang sama. */
+  mergeSheets?: boolean;
 }
 
 interface UploadPanelProps {
@@ -113,6 +115,8 @@ interface UploadPanelProps {
   queue?: QueueView | null;
   /** Nama sheet data aktif (T-85tb): sheet yang cocok dicentang bawaan di pemilih sheet. */
   activeSheets?: string[];
+  /** Data aktif hasil "Gabungkan sheet" (T-0gmm): pilihan gabung tercentang bawaan. */
+  activeMerged?: boolean;
 }
 
 /** Keterangan pilihan unggahan di kartu progres/tertunda dataset periode. */
@@ -156,6 +160,7 @@ export function UploadPanel({
   reupload = null,
   queue = null,
   activeSheets = [],
+  activeMerged = false,
 }: UploadPanelProps) {
   const router = useRouter();
   const inputId = useId();
@@ -273,6 +278,7 @@ export function UploadPanel({
           signal: controller.signal,
           ...(req.period ? { period: req.period } : {}),
           ...(req.sheets ? { sheets: req.sheets } : {}),
+          ...(req.mergeSheets ? { mergeSheets: true } : {}),
           onEstimate: (e) => {
             if (!controller.signal.aborted && e) setEstimate(e);
           },
@@ -346,7 +352,13 @@ export function UploadPanel({
       void start(
         file,
         ownVersion,
-        p.sheets?.length ? { mode: "REPLACE", sheets: p.sheets } : REPLACE_CHOICE,
+        p.sheets?.length || p.mergeSheets
+          ? {
+              mode: "REPLACE",
+              ...(p.sheets?.length ? { sheets: p.sheets } : {}),
+              ...(p.mergeSheets ? { mergeSheets: true } : {}),
+            }
+          : REPLACE_CHOICE,
       );
       return;
     }
@@ -782,12 +794,19 @@ export function UploadPanel({
           fileName={sheetPick.file.name}
           sheets={sheetPick.sheets}
           activeSheets={activeSheets}
-          onSubmit={(picked) => {
+          defaultMerge={activeMerged}
+          onSubmit={(picked, mergeSheets) => {
             const sheets = selectionToSend(sheetPick.sheets, picked);
             void start(
               sheetPick.file,
               ownVersion,
-              sheets.length ? { mode: "REPLACE", sheets } : REPLACE_CHOICE,
+              sheets.length || mergeSheets
+                ? {
+                    mode: "REPLACE",
+                    ...(sheets.length ? { sheets } : {}),
+                    ...(mergeSheets ? { mergeSheets: true } : {}),
+                  }
+                : REPLACE_CHOICE,
             );
           }}
           onCancel={() => {
