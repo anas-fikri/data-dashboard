@@ -1,6 +1,7 @@
 import {
   IconBook2,
   IconChevronRight,
+  IconGauge,
   IconMail,
   IconServer2,
   IconUsers,
@@ -31,6 +32,13 @@ const GROUPS: { id: string; title: string; sections: AdminSection[] }[] = [
         description:
           "Tambah atau hapus akun, jadikan atau cabut admin, nonaktifkan akun, dan alihkan dataset milik pengguna nonaktif.",
         icon: IconUsers,
+      },
+      {
+        href: "/admin/sumber-daya",
+        title: "Sumber daya server",
+        description:
+          "Grafik CPU, RAM, disk, dan jaringan server 1 jam/24 jam, serta pemakaian container app dan pemroses unggahan.",
+        icon: IconGauge,
       },
       {
         href: "/admin/panduan",

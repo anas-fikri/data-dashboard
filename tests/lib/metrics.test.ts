@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { parseCgroup, serviceUsage } from "@/lib/metrics/cgroup";
+import { parseCgroup, parseCgroupV1, serviceUsage } from "@/lib/metrics/cgroup";
 import {
   averagePoints,
   downsample,
@@ -94,6 +94,17 @@ describe("cgroup", () => {
     expect(serviceUsage(a, b)).toEqual({ t: 10_000, cpu: 0.5, mem: 2097152, memMax: 3221225472 });
     expect(serviceUsage(null, b).cpu).toBeNull();
     expect(parseCgroup(0, "", "x", "max")).toBeNull();
+  });
+
+  it("cgroup v1: nanodetik → mikrodetik; batas raksasa = tanpa batas", () => {
+    expect(parseCgroupV1(5, "2500000000\n", "1048576\n", "9223372036854771712\n")).toEqual({
+      t: 5,
+      cpuUsec: 2_500_000,
+      mem: 1048576,
+      memMax: null,
+    });
+    expect(parseCgroupV1(5, "1\n", "2\n", "3221225472\n")!.memMax).toBe(3221225472);
+    expect(parseCgroupV1(5, "", "2", "")).toBeNull();
   });
 });
 
