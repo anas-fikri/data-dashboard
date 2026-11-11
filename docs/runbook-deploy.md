@@ -1172,7 +1172,7 @@ Rollback image ke v1.17.0: aman (hanya peringatan + baris /health yang hilang).
 
 Kartu **Server** di sidebar (semua user login): CPU, RAM, disk terpenuh, jaringan ↓↑ dengan grafik 1 jam, dan
 status pemroses unggahan. Admin › **Sumber daya server**: grafik 1 jam/24 jam, disk per mount, beban (load) per
-inti, swap, dan pemakaian container app/worker. Sumber angka host: `node-exporter` (baca-saja `/proc`, `/sys`,
+inti, swap, pemakaian container app/worker, dan perkiraan per akun (waktu query 15 menit, job berjalan, storage). Sumber angka host: `node-exporter` (baca-saja `/proc`, `/sys`,
 filesystem host) yang hanya mendengar di `127.0.0.1:19109`; app membacanya lewat `metrics-relay`
 (`172.17.0.1:19100`, hanya subnet aplikasi ini — pola `pg-relay`). Riwayat di Redis (± 0,5 MB, hilang bila Redis
 di-reset). Biaya ± 20–40 MB RAM, CPU diabaikan. Opt-in lewat profil compose `monitor`: tanpa itu tidak ada
@@ -1215,7 +1215,8 @@ bawah menu sidebar dalam ± 20 detik; Admin › Sumber daya server menampilkan g
 - `relay` gagal / kartu tidak muncul: `$C logs --tail 50 metrics-relay` (pesan `refused`/`range` = sumber di luar
   `APP_SUBNETS`), `$C logs --tail 50 node-exporter`, dan `$C logs --since 5m app | grep -i metrik`.
 - Kartu "Data server tidak tersedia": app tidak menerima titik baru > 1 menit (relay/exporter mati) — cek seperti di
-  atas. "Pemroses unggahan tidak aktif": worker mati, ikuti §28.
+  atas; log app memuat `sampel metrik gagal` (sekali per kejadian) dan `sampel metrik pulih`. "Pemroses unggahan tidak
+  aktif": worker mati, ikuti §28 — status ini tetap terbaca walau exporter/relay bermasalah.
 
 Matikan (tanpa rilis ulang, data aplikasi tidak tersentuh):
 

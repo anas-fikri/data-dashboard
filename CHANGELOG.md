@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (semua user login) hanya angka gabungan host + `workerDown`; `/api/metrics/admin` (404 non-admin) + disk per mount,
   per layanan (cgroup v2/v1 container app/worker sendiri). Tanpa profil/URL: tidak ada container baru, kartu tidak
   tampil. Rollback image ke v1.17.x aman (runbook-deploy §29).
+  Per akun (T-qed9, admin): detik eksekusi DuckDB per user selama slot global dipegang (AsyncLocalStorage dari
+  `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
+  menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
 ## [1.17.1] - 2026-11-11
 

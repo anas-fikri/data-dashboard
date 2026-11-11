@@ -1,6 +1,7 @@
 import "server-only";
 import { hostname } from "node:os";
 import type Redis from "ioredis";
+import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
 import { takeSnapshot, type AccountSnapshot } from "./accounts";
@@ -127,14 +128,23 @@ export async function saveAccountSnapshot(
  * per akun (selalu). Redis gagal → hitungan periode ini hilang (perkiraan), proses tidak terganggu.
  */
 export async function reportService(service: string, now = Date.now()): Promise<void> {
+  // Hitungan per akun selalu dikosongkan (memori tidak menumpuk); monitor mati → tidak menulis apa pun.
+  const snap = takeSnapshot(now);
+  if (!env().METRICS_NODE_URL) return;
   const cur = await readCgroup(undefined, now);
   const usage = cur ? serviceUsage(svcState.metricsCgroupPrev ?? null, cur) : null;
   if (cur) svcState.metricsCgroupPrev = cur;
-  const snap = takeSnapshot(now);
   const proc = `${service}:${hostname()}`;
   try {
     const r = await redisReady();
-    if (usage) await r.hset(KEY.svc, proc, JSON.stringify(usage));
+    // TTL hash ikut diperbarui: field container lama (deploy baru = hostname baru) tidak tertinggal selamanya.
+    if (usage) {
+      await r
+        .multi()
+        .hset(KEY.svc, proc, JSON.stringify(usage))
+        .pexpire(KEY.svc, 10 * 60_000)
+        .exec();
+    }
     await saveAccountSnapshot(r, proc, snap, now);
   } catch (e) {
     logger.debug(
