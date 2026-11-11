@@ -124,7 +124,8 @@ describe("KpiCompareFields + Jumlah kosong", () => {
       columns: [col(2, "Tgl terima", "date"), col(3, "Tgl kirim", "date")],
       value: { column: 2, grain: "month", against: "previous" },
     });
-    expect(html).toContain('data-testid="kpi-compare-blank"');
+    expect(html).toContain("Kolom ini yang dihitung kosongnya");
+    expect(html).not.toContain("tidak tersedia lagi");
   });
 
   it("tanpa Jumlah kosong → perilaku lama", () => {

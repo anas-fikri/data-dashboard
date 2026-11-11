@@ -4,7 +4,7 @@ title: 'Ukuran Jumlah kosong (COUNTBLANK): hitung baris yang kolomnya tidak teri
 status: in_review
 profile: standard
 created: "2026-11-11T06:12:26Z"
-updated: "2026-11-11T07:46:41Z"
+updated: "2026-11-11T07:50:46Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -16,6 +16,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-11T07:46:41Z"
       findings: 5
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-11T07:50:33Z"
+      findings: 3
 evidence:
   check:
     cmd: npm run check
@@ -76,3 +80,4 @@ uji panel; e2e widgets T-bwza.
 ## Notes
 - 2026-11-11T06:12:37Z Permintaan pemilik 2026-11-11: pertimbangkan kebutuhan perhitungan baris yang kolomnya tidak terisi. Saat ini: Jumlah baris (COUNT *), Jumlah terisi (COUNTA), filter nilai '(kosong)' di slicer/Saring pivot, nullPct di skema. Belum ada COUNTBLANK langsung. Contoh kebutuhan logistik: resi belum POD (tanggal terima kosong), kiriman tanpa kurir, alamat tidak lengkap. Rencana v1.17.0 setelah v1.16.0 ditutup.
 - 2026-11-11T06:16:40Z Keputusan pemilik 2026-11-11: v1.16 dulu, Jumlah kosong di v1.17.
+- 2026-11-11T07:50:46Z Review 2 putaran (claude-reviewer-subagent): r1 M1 (kolom absent) + M2 (pembanding kolom sama) + 3 Low diperbaiki; r2 0 blokir, L-a/L-c diperbaiki, L-b → T-jdmk.

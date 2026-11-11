@@ -56,12 +56,6 @@ export function KpiCompareFields({
           );
         }}
       />
-      {blankPeriod ? (
-        <p className="text-xs text-destructive" role="alert" data-testid="kpi-compare-blank">
-          Kolom tanggal pembanding sama dengan kolom yang dihitung kosongnya — baris kosong tidak
-          punya tanggal. Pilih kolom tanggal lain atau Tanpa pembanding.
-        </p>
-      ) : null}
       {value && dateMeasure ? (
         <p className="text-xs text-destructive" role="alert" data-testid="kpi-compare-invalid">
           Pembanding hanya untuk nilai angka — pilih Tanpa pembanding atau ubah nilainya.
@@ -74,6 +68,14 @@ export function KpiCompareFields({
             testId="config-kpi-compare-column"
             value={value.column}
             columns={dates}
+            // Kolom ada, tetapi kolom itu yang dihitung kosongnya (review T-bwza): pesan khusus, bukan
+            // "tidak tersedia lagi".
+            {...(blankPeriod
+              ? {
+                  invalidText:
+                    "Kolom ini yang dihitung kosongnya (baris kosong tidak punya tanggal). Pilih kolom tanggal lain atau Tanpa pembanding.",
+                }
+              : {})}
             onChange={(column) => onChange({ ...value, column })}
           />
           <Choice
