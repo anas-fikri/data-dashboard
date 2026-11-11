@@ -660,31 +660,45 @@ test.describe("filter dashboard", () => {
     await section.getByRole("button", { name: "Hapus kolom filter Omzet" }).click();
     expect((await removed).status()).toBe(200);
 
-    // Select biasa (Nilai di panel KPI): kotak cari fokus, "baris" menyaring, Enter memilih.
+    // Select biasa (< 8 pilihan, "Format angka" di panel KPI): kotak cari fokus, Enter tanpa kata kunci
+    // hanya menyorot, ketik saat fokus di item tetap ke kotak cari, kata kunci menyaring, Esc batal.
     await page.getByRole("button", { name: `Pengaturan ${KPI}` }).click();
     const panel = page.getByTestId("widget-panel");
-    const nilai = panel.getByLabel("Nilai", { exact: true });
-    const before = (await nilai.textContent())?.trim();
-    await nilai.click();
+    const format = panel.getByLabel("Format angka", { exact: true });
+    const before = (await format.textContent())?.trim();
+    await format.click();
     const search = page.getByTestId("select-search");
     await expect(search).toBeFocused();
     // Enter tanpa kata kunci tidak mengganti nilai (review T-pxnn F1): hanya menyorot pilihan saat ini.
     await search.press("Enter");
     await expect(page.getByRole("option", { name: before! })).toBeFocused();
     // Mengetik saat fokus di item tetap mengisi kotak cari; ↑ di item pertama kembali ke kotak cari.
-    await page.keyboard.type("bar");
+    await page.keyboard.type("rup");
     await expect(search).toBeFocused();
-    await expect(search).toHaveValue("bar");
+    await expect(search).toHaveValue("rup");
     await search.press("ArrowDown");
     await page.keyboard.press("ArrowUp");
     await expect(search).toBeFocused();
     await search.fill("");
-    await search.pressSequentially("baris");
+    await search.pressSequentially("persen");
+    await expect(page.getByRole("option", { name: "Persen (12%)", exact: true })).toBeVisible();
+    await expect(page.getByRole("option", { name: "Otomatis", exact: true })).toHaveCount(0);
+    await search.press("Escape");
+    await expect(search).toHaveCount(0);
+    await expect(format).toContainText(before!);
+
+    // Daftar ≥ 8 pilihan (Nilai, sejak "Jumlah kosong" v1.17) memakai kotak cari combobox (T-jwhc):
+    // "baris" menyaring, Enter memilih hasil paling cocok.
+    const nilai = panel.getByLabel("Nilai", { exact: true });
+    await nilai.click();
+    const combo = page.getByRole("combobox", { name: "Cari Nilai" });
+    await expect(combo).toBeFocused();
+    await combo.pressSequentially("baris");
     await expect(page.getByRole("option", { name: "Jumlah baris", exact: true })).toBeVisible();
     await expect(page.getByRole("option", { name: /^Total/ })).toHaveCount(0);
-    await search.press("Enter");
-    await expect(search).toHaveCount(0);
-    await expect(panel.getByLabel("Nilai", { exact: true })).toContainText("Jumlah baris");
+    await combo.press("Enter");
+    await expect(combo).toHaveCount(0);
+    await expect(nilai).toContainText("Jumlah baris");
     await expectKpi(page, ROWS);
   });
   test("v1.12.0: sidebar filter ≥ 1280 px tetap terlihat saat digulir; diciutkan jadi rel (diingat); panel widget → rel; < 1280 px bilah di atas", async ({
