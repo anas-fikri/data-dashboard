@@ -1,16 +1,22 @@
 ---
 id: T-0gmm
 title: Gabungkan sheet berkolom sama menjadi satu sheet saat unggah xlsx
-status: in_progress
+status: in_review
 profile: strict
 profile_pinned: true
 created: "2026-11-11T05:32:56Z"
-updated: "2026-11-11T05:54:57Z"
+updated: "2026-11-11T06:02:16Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 6981253e664a76a34e71eddb1caacac3eb3111f3
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T06:02:16Z"
+      findings: 5
 evidence:
   check:
     cmd: npm run check
