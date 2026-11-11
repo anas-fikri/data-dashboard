@@ -373,6 +373,30 @@ describe("upgrade.sh rollback", { timeout: 60_000 }, () => {
     expect(calls()).not.toContain("stop app worker");
   });
 
+  it("v1.15.1: DashboardView (v1.14) dan tabel dari CREATE TABLE migrasi rilis lolos; tabel asing tetap ditolak", () => {
+    mkdirSync(join(app(), "prisma/migrations/20991231000000_baru"), { recursive: true });
+    writeFileSync(
+      join(app(), "prisma/migrations/20991231000000_baru/migration.sql"),
+      '-- tabel baru\nCREATE TABLE "TabelBaruRilis" (\n  "id" TEXT NOT NULL\n);\n',
+    );
+    writeFileSync(
+      join(root, "tables"),
+      `${[...OLD_TABLES, "DashboardView", "TabelBaruRilis", "TabelAsing"].join("\n")}\n`,
+    );
+    const asing = run("rollback");
+    expect(asing.code, asing.out).toBe(1);
+    expect(asing.out).toContain("TabelAsing");
+    expect(asing.out).not.toMatch(/DashboardView|TabelBaruRilis/);
+
+    writeFileSync(
+      join(root, "tables"),
+      `${[...OLD_TABLES, "DashboardView", "TabelBaruRilis"].join("\n")}\n`,
+    );
+    const r = run("rollback");
+    expect(r.out).toContain("tabel ⊆ dump");
+    expect(calls()).toContain("stop app worker");
+  });
+
   it("tabel lama + tabel baru rilis lolos pemeriksaan tujuan", () => {
     writeFileSync(
       join(root, "tables"),

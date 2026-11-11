@@ -33,8 +33,16 @@ ENV_FILE=.env.prod
 STATE_ROOT=${UPGRADE_DIR:-../$(basename "$PWD")-upgrade}
 C=(docker compose --env-file "$ENV_FILE" -f docker-compose.prod.yml)
 SERVICES=(app worker renderer backup)
-# Tabel yang ditambahkan migrasi rilis ini (T-036…T-060, T-072): boleh ada di database tapi tidak di dump lama.
-NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQueueItem SavedPivot"
+# Tabel yang ditambahkan migrasi rilis ini (T-036…T-060, T-072, T-tf88): boleh ada di database tapi tidak di
+# dump lama. Daftar tetap ini cadangan; tabel dari CREATE TABLE di migrasi rilis ikut otomatis (release_tables).
+NEW_TABLES="SheetLineage Segment SegmentTyped SheetSegment UploadQueue UploadQueueItem SavedPivot DashboardView"
+
+# Tabel yang dibuat migrasi kode rilis di folder ini (v1.15.1): rilis berikutnya yang menambah tabel tidak lagi
+# membuat rollback ditolak karena daftar di atas lupa diperbarui (v1.15.0: DashboardView).
+release_tables() {
+  cat prisma/migrations/*/migration.sql 2>/dev/null |
+    sed -n 's/^[[:space:]]*CREATE TABLE \(IF NOT EXISTS \)\{0,1\}"\([A-Za-z0-9_]*\)".*/\2/p' | sort -u
+}
 
 envval() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -1; }
 
@@ -667,7 +675,7 @@ rollback_target_check() {
     die "isi dump $DB_DUMP tidak terbaca"
   grep -qx _prisma_migrations <<<"$dumpt" || die "dump $DB_DUMP tanpa _prisma_migrations — bukan dump aplikasi ini"
   extra=$(LC_ALL=C comm -23 <(LC_ALL=C sort -u <<<"$cur") \
-    <(printf '%s\n' $dumpt $NEW_TABLES | LC_ALL=C sort -u))
+    <(printf '%s\n' $dumpt $NEW_TABLES $(release_tables) | LC_ALL=C sort -u))
   [ -z "$extra" ] || die "tabel di database yang tidak ada di dump maupun rilis ini: $(echo $extra) — rollback dibatalkan"
   echo "   database $db, $(echo "$cur" | wc -l) tabel ⊆ dump ($(echo "$dumpt" | wc -l)) + tabel baru rilis"
 }
