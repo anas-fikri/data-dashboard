@@ -1,17 +1,23 @@
 ---
 id: T-xp28
 title: 'v1.15.1: perbaikan rilis — rollback kenali tabel rilis, masa tunggu sehat app, cache build npm'
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - deploy
 created: "2026-11-11T02:18:54Z"
-updated: "2026-11-11T02:21:03Z"
+updated: "2026-11-11T02:45:39Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 998095958b143111ed09228764d3fbaca501a2f9
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T02:45:39Z"
+      findings: 3
 ---
 
 ## Objective

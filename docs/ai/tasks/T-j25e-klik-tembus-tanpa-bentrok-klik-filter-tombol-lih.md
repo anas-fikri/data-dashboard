@@ -1,17 +1,23 @@
 ---
 id: T-j25e
 title: 'Klik-tembus tanpa bentrok klik-filter: tombol Lihat baris data untuk kategori terpilih'
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - widgets
 created: "2026-11-11T02:18:55Z"
-updated: "2026-11-11T02:27:19Z"
+updated: "2026-11-11T02:45:40Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 998095958b143111ed09228764d3fbaca501a2f9
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T02:45:40Z"
+      findings: 4
 ---
 
 ## Objective
