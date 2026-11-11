@@ -1,15 +1,21 @@
 ---
 id: T-yw88
 title: 'v1.17.1: peringatan pemroses (worker) tidak aktif saat unggahan menunggu di antrean'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-11T10:39:51Z"
-updated: "2026-11-11T10:45:59Z"
+updated: "2026-11-11T11:01:13Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 8d5bf1d65a1e40cc28ff2c58009660abe1dafe23
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T11:01:12Z"
+      findings: 12
 ---
 
 ## Objective
@@ -35,3 +41,5 @@ Validation: unit queue-position (hitung + cache + gagal → null, teks, cek /hea
 worker → peringatan + workers=0 di API, lalu worker menyala → selesai), e2e health (baris admin).
 
 ## Notes
+
+- 2026-11-11T11:01:13Z Review r1 (claude-reviewer-subagent): M1 live region (pengumuman lewat sr-only aria-live yang selalu ada), M2 kontras (teks foreground), M3 runbook --no-deps, M4 seed panduan; L1 cache 0 = 3 dtk + teks 'tampaknya terhenti', L2 teks tidak menjanjikan berlebihan, L3 hanya entri ber-rawname (CLIENT tidak tersedia → null), L4 data-status ikut baris worker, L5 Promise.all, L6 API hanya workerDown boolean, L7 runbook cek nproc (§2: 8 vCPU) + setelan sementara hilang saat up berikutnya — semua diperbaiki; L8 → T-r5tm.

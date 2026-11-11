@@ -130,7 +130,7 @@ test.describe("skema", () => {
     const waiting = (await progress.json()).status;
     expect(waiting.status).toBe("UPLOADED");
     // v1.17.1: belum ada worker yang terhubung ke antrean → panel memberi tahu (bukan diam menunggu).
-    expect(waiting.workers).toBe(0);
+    expect(waiting.workerDown).toBe(true);
     const noWorker = panel.getByTestId("ingest-no-worker");
     await expect(noWorker).toContainText("Pemroses unggahan sedang tidak aktif");
     await expect(noWorker).toContainText("tidak perlu mengunggah ulang");

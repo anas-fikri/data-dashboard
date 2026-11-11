@@ -33,7 +33,7 @@ export default async function HealthPage() {
       <p
         role="status"
         className="mt-6 rounded-md border px-4 py-3 font-medium"
-        data-status={view.status}
+        data-status={allOk ? "ok" : "fail"}
       >
         {allOk ? "Semua layanan OK" : "Ada layanan yang bermasalah"}
       </p>

@@ -34,18 +34,18 @@ export function progressRoute(datasetId: string): Promise<NextResponse> {
       return json({ ok: false, code: "NOT_FOUND", message: "Dataset tidak ditemukan." }, 404);
     }
     if (s === "none") return json({ ok: true, status: null });
-    // Posisi antrean hanya pelengkap: Redis lambat/mati → tampil tanpa nomor, bukan 503.
-    const queue =
+    // Posisi antrean hanya pelengkap: Redis lambat/mati → tampil tanpa nomor, bukan 503. Pemroses tidak
+    // aktif (v1.17.1): unggahan menunggu/terhenti tanpa batas — panel memberi tahu. Dibaca bersamaan.
+    const [queue, workers] = await Promise.all([
       s.status === "UPLOADED"
-        ? await ingestQueuePosition(s.versionId).catch((e: unknown) => {
+        ? ingestQueuePosition(s.versionId).catch((e: unknown) => {
             logger.warn({ err: e, versionId: s.versionId }, "posisi antrean ingest gagal dibaca");
             return null;
           })
-        : null;
-    // Pemroses tidak aktif (v1.17.1): unggahan menunggu/terhenti tanpa batas — panel memberi tahu.
-    const workers =
-      s.status === "UPLOADED" || s.status === "INGESTING" ? await ingestWorkerCount() : null;
-    return json({ ok: true, status: { ...s, queue, workers } });
+        : null,
+      s.status === "UPLOADED" || s.status === "INGESTING" ? ingestWorkerCount() : null,
+    ]);
+    return json({ ok: true, status: { ...s, queue, workerDown: workers === 0 } });
   });
 }
 

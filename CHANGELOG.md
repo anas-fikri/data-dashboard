@@ -74,10 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Ganti ukurannya dulu bila rollback akan lama (runbook-deploy §27).
 
 - **v1.17.1 (T-yw88):** tanpa migrasi, hanya app. Panel progres dataset memperingatkan "Pemroses unggahan
-  sedang tidak aktif" bila tidak ada worker BullMQ yang terhubung ke antrean ingest (`getWorkersCount`, CLIENT
-  LIST, cache 10 dtk; gagal dibaca → tanpa peringatan). `/health` admin mendapat baris "Pemroses unggahan";
-  `/api/health` (deploy.sh, monitor) sengaja tidak berubah. Rilis boleh `--quick`/tanpa `--full` bila produksi
-  sudah v1.17.0 (runbook-deploy §28).
+  sedang tidak aktif" bila tidak ada worker BullMQ yang terhubung ke antrean ingest (`Queue.getWorkers`, CLIENT
+  LIST, hanya entri ber-`rawname`; cache 10 dtk bila ada worker, 3 dtk bila 0; gagal dibaca → tanpa peringatan;
+  API progres hanya `workerDown: boolean`). `/health` admin mendapat baris "Pemroses unggahan"; `/api/health`
+  (deploy.sh, monitor) sengaja tidak berubah. Tanpa `--full` bila produksi sudah v1.17.0; seed panduan
+  `unggah-data` (runbook-deploy §28).
 
 ## [1.17.0] - 2026-11-11
 

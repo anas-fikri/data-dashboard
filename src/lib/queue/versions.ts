@@ -66,9 +66,14 @@ export async function ingestQueuePosition(
   return i < 0 ? null : { position: i + 1, active };
 }
 
-/** Cache jumlah worker: polling progres tiap 2,5 dtk per penonton tidak menjadi CLIENT LIST beruntun. */
+/**
+ * Cache jumlah worker: polling progres tiap 2,5 dtk per penonton tidak menjadi CLIENT LIST beruntun. Hasil
+ * "ada worker" disimpan 10 dtk; 0/tidak diketahui hanya 3 dtk agar peringatan cepat hilang setelah worker
+ * menyala lagi (review T-yw88 L1).
+ */
 const WORKER_COUNT_TTL_MS = 10_000;
-let workerCount: { at: number; value: Promise<number | null> } | null = null;
+const WORKER_COUNT_TTL_NONE_MS = 3_000;
+let workerCount: { at: number; ttl: number; value: Promise<number | null> } | null = null;
 
 /** Uji: kosongkan cache jumlah worker. */
 export function resetIngestWorkerCountCache(): void {
@@ -77,24 +82,36 @@ export function resetIngestWorkerCountCache(): void {
 
 /**
  * Jumlah worker yang terhubung ke antrean ingest (v1.17.1): koneksi blocking BullMQ Worker diberi nama
- * `<prefix>:<base64 nama antrean>` (CLIENT SETNAME), koneksi Queue milik app tidak — jadi 0 = tidak ada
- * pemroses yang akan mengambil unggahan (worker dimatikan/crash). null = tidak diketahui (Redis lambat,
- * CLIENT LIST ditolak): pemanggil tidak menampilkan peringatan. Di-cache 10 detik.
+ * `<prefix>:<base64 nama antrean>` (CLIENT SETNAME), koneksi Queue/QueueEvents milik app tidak — jadi 0 = tidak
+ * ada pemroses yang akan mengambil unggahan (worker dimatikan/crash). Hanya entri ber-`rawname` yang dihitung:
+ * bila CLIENT LIST tidak tersedia, BullMQ mengembalikan entri pengganti tanpa `rawname` → null. null = tidak
+ * diketahui (Redis lambat, CLIENT ditolak): pemanggil tidak menampilkan peringatan.
  */
 export function ingestWorkerCount(
-  queue: Pick<ReturnType<typeof ingestQueue>, "getWorkersCount"> = ingestQueue(),
+  queue: Pick<ReturnType<typeof ingestQueue>, "getWorkers"> = ingestQueue(),
   now = Date.now(),
 ): Promise<number | null> {
-  if (workerCount && now - workerCount.at < WORKER_COUNT_TTL_MS) return workerCount.value;
-  const value = withQueueTimeout(queue.getWorkersCount(), "jumlah worker ingest").then(
-    (n) => (Number.isInteger(n) && n >= 0 ? n : null),
+  if (workerCount && now - workerCount.at < workerCount.ttl) return workerCount.value;
+  const entry = {
+    at: now,
+    ttl: WORKER_COUNT_TTL_NONE_MS,
+    value: Promise.resolve<number | null>(null),
+  };
+  entry.value = withQueueTimeout(queue.getWorkers(), "jumlah worker ingest").then(
+    (list) => {
+      if (!Array.isArray(list)) return null;
+      const named = list.filter((w) => typeof w?.rawname === "string").length;
+      if (list.length > 0 && named === 0) return null; // CLIENT LIST tidak tersedia
+      if (named > 0) entry.ttl = WORKER_COUNT_TTL_MS;
+      return named;
+    },
     (e: unknown) => {
       logger.warn({ err: e }, "jumlah worker ingest gagal dibaca");
       return null;
     },
   );
-  workerCount = { at: now, value };
-  return value;
+  workerCount = entry;
+  return entry.value;
 }
 
 /**

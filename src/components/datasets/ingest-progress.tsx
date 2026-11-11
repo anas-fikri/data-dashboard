@@ -57,8 +57,8 @@ export function waitingText(position: number | undefined): string {
  */
 export function noWorkerText(status: string): string {
   return status === "INGESTING"
-    ? "Pemrosesan file ini terhenti. Begitu pemroses dinyalakan lagi, file diproses ulang otomatis dari awal — tidak perlu mengunggah ulang. Beri tahu admin aplikasi."
-    : "Antrean belum berjalan, jadi file ini belum diproses. File Anda aman di antrean dan langsung diproses begitu pemroses dinyalakan lagi — tidak perlu mengunggah ulang. Beri tahu admin aplikasi.";
+    ? "Pemrosesan file ini tampaknya terhenti. Setelah pemroses dinyalakan lagi, biasanya file diproses ulang otomatis dari awal dalam beberapa menit; bila akhirnya gagal, unggah ulang file yang sama. Beri tahu admin aplikasi."
+    : "Antrean belum berjalan, jadi file ini belum diproses. File Anda aman di antrean dan diproses otomatis setelah pemroses dinyalakan lagi — tidak perlu mengunggah ulang. Beri tahu admin aplikasi.";
 }
 
 export function IngestProgress({
@@ -111,9 +111,10 @@ export function IngestProgress({
         </span>
       </p>
 
-      {s.workers === 0 ? (
+      {/* Kotak visual saja; pengumuman lewat wilayah live sr-only di bawah yang selalu ada (review T-yw88
+          M1: wilayah yang disisipkan sudah berisi sering tidak dibacakan). */}
+      {s.workerDown ? (
         <div
-          role="status"
           className="flex items-start gap-2 rounded-md border border-warning/50 bg-warning/10 px-3 py-2"
           data-testid="ingest-no-worker"
         >
@@ -125,7 +126,7 @@ export function IngestProgress({
           />
           <p className="min-w-0">
             <span className="block font-medium">Pemroses unggahan sedang tidak aktif</span>
-            <span className="block text-muted-foreground">{noWorkerText(s.status)}</span>
+            <span className="block">{noWorkerText(s.status)}</span>
           </p>
         </div>
       ) : null}
@@ -217,6 +218,7 @@ export function IngestProgress({
       ) : null}
 
       <p className="sr-only" aria-live="polite">
+        {s.workerDown ? `Pemroses unggahan sedang tidak aktif. ${noWorkerText(s.status)} ` : ""}
         {step >= 0 ? `Tahap: ${labelOf(steps[step]!)}` : ""}
       </p>
       {error ? (
