@@ -4,7 +4,7 @@ title: 'v1.18 fase 2: pemakaian per akun (perkiraan, admin) — query berjalan, 
 status: in_review
 profile: strict
 created: "2026-11-11T14:35:10Z"
-updated: "2026-11-11T16:39:55Z"
+updated: "2026-11-11T16:47:29Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -59,26 +59,30 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-11T16:39:55Z"
       findings: 1
+    - "n": 3
+      by: claude-reviewer-subagent
+      at: "2026-11-11T16:43:35Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 216434
+    duration_ms: 215153
     summary: |-
       …'t reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1794414500424,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1794414500451,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1794414500461,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1794414500481,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794414505578,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:100:40)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker ingest gagal dibaca"}
+      {"level":40,"time":1794415389680,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794415389702,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794415389706,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794415389721,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1794415395116,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:100:40)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker ingest gagal dibaca"}
 
-       Test Files  250 passed | 1 skipped (251)
-            Tests  3328 passed | 10 skipped (3338)
-         Start at  16:26:11
-         Duration  147.45s (tests 80%, import 17%, transform 3%)
+       Test Files  251 passed | 1 skipped (252)
+            Tests  3330 passed | 10 skipped (3340)
+         Start at  16:40:56
+         Duration  153.85s (tests 81%, import 16%, transform 3%)
 
-          Isolate  251 workers spawned · ~124ms startup each (spawn + environment, per file)
-                   at least ~10.26s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  252 workers spawned · ~122ms startup each (spawn + environment, per file)
+                   at least ~10.11s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.17.1 audit
@@ -86,8 +90,8 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-11T16:28:40Z"
-    tree: b1471083ad02b371ec3fc4011b4e908011c9f796b675961246a6a9b760a9d896
+    at: "2026-11-11T16:43:31Z"
+    tree: 080d3475a3c2b38be8c2bc416d9876d7eb108bf00389ea2bce88f6bd380a19a2
   commits:
     - 320d807
     - 53b72de
@@ -107,9 +111,9 @@ evidence:
     total: 1
     done: 1
   audit:
-    at: "2026-11-11T16:29:02Z"
+    at: "2026-11-11T16:43:43Z"
     passed: true
-    tree: b1471083ad02b371ec3fc4011b4e908011c9f796b675961246a6a9b760a9d896
+    tree: b59a72576637df9c19c5f3769acd9a787e6a825745f0d0a53355029f0d969d10
     results:
       - name: osv-scanner (dependencies, offline db)
         exit_code: 0
@@ -117,7 +121,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 550 dirs visited, 4517 inodes visited, 1 Extract calls, 101.687723ms elapsed, 101.687977ms wall time
+          End status: 551 dirs visited, 4577 inodes visited, 1 Extract calls, 103.488378ms elapsed, 103.488639ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -142,8 +146,8 @@ Admin melihat akun mana yang paling membebani server saat ini sebagai perkiraan:
 Impact: instrumentasi QueryEngine.withUser/withGlobal dan GridGate.withUser (AsyncLocalStorage; tanpa mengubah urutan slot), pelapor app/worker menulis 1 hash + 1 ember menit per 10 dtk, API admin membaca job aktif (≤ 100/antrean) + userUsage ≤ 20 akun (cache 60 dtk). Security (STRIDE): Information disclosure — email/nama akun hanya di API admin (404 non-admin); tidak ada isi query/data. DoS — tabel dibatasi 20, gagal per akun tidak menjatuhkan halaman. Rollback: tanpa migrasi; kunci Redis metrics:acct:* kedaluwarsa sendiri. Validation: unit pelacak (ALS, idempoten, berjalan lintas snapshot), store (jendela 15 menit, proses basi), ranking, pemasangan di QueryEngine/GridGate nyata; e2e tabel per akun + kegagalan sebagian; suite query/lib 683 lulus.
 
 ## Notes
-
 - 2026-11-11T15:33:49Z Review subagen independen (putaran 2 gabungan): 0 blocking, 7 Low; L1/L2/L3/L5/L6/L7 + konstanta MAP_VERSION_JOB diperbaiki e4b98f0; uji unit jobsByUser → T-zjwh.
+- 2026-11-11T16:43:37Z Konfirmasi review 5a2674d: semua klaim benar, uji mutasi 12/13 tertangkap, 0 blocking; 2 Low → T-zjwh.
 
 ## Security checklist (OWASP ASVS 4.0.3)
 <!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->

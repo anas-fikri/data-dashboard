@@ -4,7 +4,7 @@ title: 'v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit h
 status: todo
 profile: standard
 created: "2026-11-11T15:22:00Z"
-updated: "2026-11-11T15:33:50Z"
+updated: "2026-11-11T16:43:36Z"
 created_by: claude-code
 ---
 
@@ -19,6 +19,8 @@ created_by: claude-code
 - [ ] L11: ADR-0010 diperjelas — port 127.0.0.1:19109 terbaca proses/container host network di VM; pids_limit relay
 - [ ] Status antrean tetap menyimpan jumlah worker walau getJobCounts timeout (waiting/active nullable) — review putaran 2 T-ee46 L2
 - [ ] Uji unit pemetaan job aktif → pemilik (jobsByUser: ingest/period-setup, recast vs map-version, export/pdf) — review putaran 2 T-qed9 L4
+- [ ] Uji accountRows mengunci TTL storage 5 menit (cek ± 4 menit tanpa hitung ulang) — konfirmasi review T-qed9 Low-1
+- [ ] Kegagalan userUsage per akun di-cache singkat (± 60 dtk) agar akun berat yang timeout tidak dihitung ulang tiap polling 10 dtk — konfirmasi review T-qed9 Low-2
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
