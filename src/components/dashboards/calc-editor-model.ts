@@ -23,7 +23,7 @@ const VALUE_AGG_TYPES = ["integer", "decimal"];
 
 /** Kolom yang boleh dipakai agregasi ini di rumus. */
 export function calcColumnsForAgg(agg: Agg, columns: SourceColumn[]): SourceColumn[] {
-  if (agg === "count" || agg === "count_distinct") return columns;
+  if (agg === "count" || agg === "count_distinct" || agg === "count_blank") return columns;
   return columns.filter((c) => VALUE_AGG_TYPES.includes(c.type));
 }
 
@@ -104,7 +104,7 @@ export function checkCalc(input: {
     return {
       ok: false,
       message:
-        "Grafik pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris (tanpa ×, ÷, atau angka). Untuk rasio pakai grafik batang.",
+        "Grafik pai hanya untuk rumus yang menjumlah atau mengurangkan Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong (tanpa ×, ÷, atau angka). Untuk rasio pakai grafik batang.",
       at: null,
       field: "formula",
     };

@@ -12,6 +12,7 @@ import { configVersion } from "@/components/widgets/body-state";
 import type { WidgetView } from "@/features/dashboards/service";
 import {
   PIE_AGGS,
+  blankCountColumns,
   isCalcValue,
   parseWidgetConfig,
   pivotTopNAxisRow,
@@ -459,6 +460,7 @@ export function WidgetConfigForm({
                     !!draft.spec.measure.column &&
                     isTemporal(typeOf(draft.spec.measure.column) ?? "text")
                   }
+                  blankColumns={blankCountColumns(draft.spec.measure)}
                   onChange={(compare) => {
                     const { compare: _c, ...spec } = draft.spec;
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });

@@ -14,6 +14,13 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.17",
+    date: "2026-11-11",
+    items: [
+      "Jumlah kosong: hitung berapa baris yang kolomnya belum terisi, mis. resi yang tanggal terimanya masih kosong atau kiriman tanpa kurir. Pilih Nilai → Jumlah kosong di widget Angka, Batang, Garis, Pai, atau Pivot; bisa diberi pembanding periode lalu, dan Lihat baris data langsung menampilkan baris yang kosong itu.",
+    ],
+  },
+  {
     version: "1.16",
     date: "2026-11-11",
     items: [

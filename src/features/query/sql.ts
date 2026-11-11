@@ -270,11 +270,14 @@ export function measureExpr(m: PlanMeasure): string {
   const c = m.col ? ident(m.col) : "*";
   return m.agg === "count"
     ? `count(${c})`
-    : m.agg === "count_distinct"
-      ? `count(DISTINCT ${c})`
-      : m.agg === "sum"
-        ? `coalesce(sum(${c}), 0)`
-        : `${m.agg}(${c})`;
+    : m.agg === "count_blank"
+      ? // COUNTBLANK (T-bwza): sel kosong/hanya spasi sudah NULL sejak ingest.
+        `(count(*) - count(${c}))`
+      : m.agg === "count_distinct"
+        ? `count(DISTINCT ${c})`
+        : m.agg === "sum"
+          ? `coalesce(sum(${c}), 0)`
+          : `${m.agg}(${c})`;
 }
 
 /**
@@ -473,7 +476,9 @@ export function buildTotalsSql(plan: Plan, parquetPath: string): BuiltSql | null
       ? `coalesce(sum(${ident(m.col!)}), 0)`
       : m.agg === "count"
         ? `count(${m.col ? ident(m.col) : "*"})`
-        : "NULL";
+        : m.agg === "count_blank" && m.col
+          ? `(count(*) - count(${ident(m.col)}))`
+          : "NULL";
   // T-067: % dari total keseluruhan → total seluruh kategori = 100% (irisan "Lainnya" pai = sisa
   // persen); total berjalan/selisih tidak punya total yang bisa dijumlahkan.
   const grand = !shown(m.showAs)

@@ -17,7 +17,15 @@ export const CALC_DEPTH_MAX = 6;
 export const CALC_AGGS_MAX = 8;
 export const CALC_CONST_MAX = 1e15;
 export const CALC_LABEL_MAX = 60;
-const CALC_AGGS = ["sum", "avg", "count", "count_distinct", "min", "max"] as const satisfies Agg[];
+const CALC_AGGS = [
+  "sum",
+  "avg",
+  "count",
+  "count_distinct",
+  "count_blank",
+  "min",
+  "max",
+] as const satisfies Agg[];
 
 /** Pohon ekspresi; `C` = rujukan kolom (posisi di spec widget, nama di spec query). */
 export type CalcExpr<C = number> =
@@ -165,7 +173,7 @@ export const calcLabelSchema = z
  * kategori, jadi boleh untuk pai (irisan "Lainnya" = sisa) dan total grafik "N teratas dari M".
  */
 export function isAdditiveCalc<C>(e: CalcExpr<C>): boolean {
-  if (isCalcLeaf(e)) return e.agg === "sum" || e.agg === "count";
+  if (isCalcLeaf(e)) return e.agg === "sum" || e.agg === "count" || e.agg === "count_blank";
   if (isCalcConst(e)) return false;
   if (e.op === "mul" || e.op === "div") return false;
   return e.args.every((a) => isAdditiveCalc(a));

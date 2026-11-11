@@ -71,7 +71,8 @@ export function KpiView({
   // Kolom ukuran kosong di versi ini (absent, T-014): "(kosong)", bukan 0 dari SUM/COUNT.
   const absent = !!data.absent?.length;
   const raw = absent ? null : (data.rows[0]?.[0] ?? null);
-  const countish = agg === "sum" || agg === "count" || agg === "count_distinct";
+  const countish =
+    agg === "sum" || agg === "count" || agg === "count_distinct" || agg === "count_blank";
   const value = raw === null && countish && !absent ? 0 : raw;
   const label = column?.label ?? "";
   const { full, options } = kpiTexts(

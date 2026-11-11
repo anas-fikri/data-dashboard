@@ -71,6 +71,7 @@ describe("model editor", () => {
       "avg",
       "count",
       "count_filled",
+      "count_blank",
       "count_distinct",
       "min",
       "max",
@@ -223,7 +224,7 @@ describe("ganti jenis membawa field terhitung (T-068 L3)", () => {
     const nextPie = carryCalc(pivot, pie);
     expect(nextPie).toMatchObject({ spec: { measure: LABA } });
     expect(droppedCalcNotice(pivot, nextPie)).toBe(
-      "Field terhitung tidak dipakai di sini: “Margin” karena pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris. Kembali ke jenis sebelumnya untuk memakainya lagi.",
+      "Field terhitung tidak dipakai di sini: “Margin” karena pai hanya untuk rumus yang menjumlah atau mengurangkan Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong. Kembali ke jenis sebelumnya untuk memakainya lagi.",
     );
     const nextKpi = carryCalc(pivot, kpiPlain);
     expect(nextKpi).toMatchObject({ spec: { measure: MARGIN } });

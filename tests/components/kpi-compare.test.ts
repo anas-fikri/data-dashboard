@@ -92,3 +92,43 @@ describe("kpiCompareView (T-43hv)", () => {
     ).toBe("vs Mg 26 Okt 2026 (1 rb)");
   });
 });
+
+/* T-bwza (review M2): kolom yang dihitung "Jumlah kosong" bukan kolom periode pembanding. */
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { KpiCompareFields } from "@/components/dashboards/kpi-compare-fields";
+import type { SourceColumn } from "@/components/dashboards/widget-config-model";
+
+describe("KpiCompareFields + Jumlah kosong", () => {
+  const col = (pos: number, name: string, type: SourceColumn["type"]) =>
+    ({ pos, name, type }) as SourceColumn;
+  const render = (props: Partial<Parameters<typeof KpiCompareFields>[0]>) =>
+    renderToStaticMarkup(
+      createElement(KpiCompareFields, {
+        value: undefined,
+        columns: [col(1, "Resi", "text"), col(2, "Tgl terima", "date")],
+        onChange: () => {},
+        ...props,
+      }),
+    );
+
+  it("satu-satunya kolom tanggal dihitung kosongnya → pembanding tidak ditawarkan, alasannya disebut", () => {
+    const html = render({ blankColumns: [2] });
+    expect(html).toContain('data-testid="kpi-compare-none"');
+    expect(html).toContain("kolom tanggal lain selain kolom yang dihitung kosongnya");
+  });
+
+  it("spec lama yang sudah memakai kolom itu → peringatan", () => {
+    const html = render({
+      blankColumns: [2],
+      columns: [col(2, "Tgl terima", "date"), col(3, "Tgl kirim", "date")],
+      value: { column: 2, grain: "month", against: "previous" },
+    });
+    expect(html).toContain("Kolom ini yang dihitung kosongnya");
+    expect(html).not.toContain("tidak tersedia lagi");
+  });
+
+  it("tanpa Jumlah kosong → perilaku lama", () => {
+    expect(render({})).not.toContain("kpi-compare-none");
+  });
+});

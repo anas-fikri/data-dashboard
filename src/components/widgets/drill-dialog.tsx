@@ -38,6 +38,7 @@ export function DrillDialog({
   config,
   title,
   dimensionLabel,
+  blankOf,
   target,
   onClose,
   cross,
@@ -48,6 +49,8 @@ export function DrillDialog({
   config: TableConfig;
   title: string;
   dimensionLabel: string;
+  /** Ukuran Jumlah kosong (T-bwza): server hanya membuka baris yang kolom ukurannya kosong. */
+  blankOf?: string;
   target: DrillTarget | null;
   onClose: () => void;
   /** Filter silang kategori ini (widget dengan filter silang aktif); pressed = sedang menyaring. */
@@ -109,7 +112,8 @@ export function DrillDialog({
             </Dialog.Close>
           </div>
           <Dialog.Description className="border-b px-3 py-1 text-xs text-muted-foreground md:px-4">
-            Baris data {title ? `“${title}”` : "widget ini"} untuk kategori ini, dengan filter
+            Baris data {title ? `“${title}”` : "widget ini"} untuk kategori ini
+            {blankOf ? ` yang dihitung “${blankOf}” (kolomnya kosong)` : ""}, dengan filter
             dashboard yang sedang berlaku.
           </Dialog.Description>
           {target ? (

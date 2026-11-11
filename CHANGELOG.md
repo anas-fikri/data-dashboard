@@ -67,6 +67,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gagal dengan saran (tidak masuk pemetaan); baris judul sheet gabungan tidak bisa diganti. Dataset lama dengan
   sheet terpisah bisa beralih ke gabungan (widget sheet anggota dipindah lewat `sheetMap`; runbook-deploy §26).
 
+- **v1.17.0 (T-bwza):** tanpa migrasi — agregasi baru `count_blank` ("Jumlah kosong", COUNT(*) − COUNT(kolom)) di
+  spec widget/pivot/field terhitung. Rilis boleh `--quick` bila produksi sudah v1.16.0 (dari v1.15.x masih membawa
+  migrasi v1.16 → tanpa `--quick`). Rollback image ke v1.16.0 membuat widget/pivot yang memakai Jumlah kosong
+  tampil "Pengaturan widget tidak valid" sampai roll-forward (skema strict menolak agregasi baru; data tetap).
+  Ganti ukurannya dulu bila rollback akan lama (runbook-deploy §27).
+
+## [1.17.0] - 2026-11-11
+
+### Added
+
+- **widgets:** ukuran Jumlah kosong (COUNTBLANK) — hitung baris yang kolomnya tidak terisi (T-bwza) (4084a12)
+
+### Fixed
+
+- **widgets:** review T-bwza r2 — pesan khusus kolom pembanding yang dihitung kosongnya; catatan pivot di panduan (6b5c285)
+- **widgets:** temuan review T-bwza — kolom absent, pembanding kolom yang sama, teks UI (e9978ed)
+
 ## [1.16.0] - 2026-11-11
 
 ### Added

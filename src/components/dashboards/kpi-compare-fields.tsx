@@ -18,21 +18,27 @@ export function KpiCompareFields({
   value,
   columns,
   dateMeasure = false,
+  blankColumns = [],
   onChange,
 }: {
   value: KpiCompare | undefined;
   columns: SourceColumn[];
   /** Nilai = tanggal terkecil/terbesar: tanpa persen perubahan, pembanding ditolak server (review v1.15). */
   dateMeasure?: boolean;
+  /** Kolom yang dihitung "Jumlah kosong" (T-bwza): baris kosong tidak punya tanggal → bukan kolom periode. */
+  blankColumns?: number[];
   onChange: (next: KpiCompare | undefined) => void;
 }) {
-  const dates = columns.filter((c) => isTemporal(c.type));
+  const dates = columns.filter((c) => isTemporal(c.type) && !blankColumns.includes(c.pos));
+  const blankPeriod = !!value && blankColumns.includes(value.column);
   if (!value && (!dates.length || dateMeasure)) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="kpi-compare-none">
         {dateMeasure
           ? "Pembanding periode hanya untuk nilai angka (bukan tanggal terkecil/terbesar)."
-          : "Pembanding periode butuh kolom tanggal di sheet ini."}
+          : columns.some((c) => isTemporal(c.type))
+            ? "Pembanding periode butuh kolom tanggal lain selain kolom yang dihitung kosongnya."
+            : "Pembanding periode butuh kolom tanggal di sheet ini."}
       </p>
     );
   }
@@ -62,6 +68,14 @@ export function KpiCompareFields({
             testId="config-kpi-compare-column"
             value={value.column}
             columns={dates}
+            // Kolom ada, tetapi kolom itu yang dihitung kosongnya (review T-bwza): pesan khusus, bukan
+            // "tidak tersedia lagi".
+            {...(blankPeriod
+              ? {
+                  invalidText:
+                    "Kolom ini yang dihitung kosongnya (baris kosong tidak punya tanggal). Pilih kolom tanggal lain atau Tanpa pembanding.",
+                }
+              : {})}
             onChange={(column) => onChange({ ...value, column })}
           />
           <Choice
