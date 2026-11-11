@@ -100,3 +100,22 @@ export function stats(values: readonly (number | null)[]): { avg: number; peak: 
 /** Inti CPU terpakai (cgroup): "0,35 inti". */
 export const cores = (v: number | null | undefined): string =>
   typeof v === "number" ? `${v.toFixed(2).replace(".", ",")} inti` : "–";
+
+/** Durasi singkat: "0 dtk", "45 dtk", "2 mnt 10 dtk", "1 jam 5 mnt". */
+export function duration(sec: number): string {
+  const s = Math.max(0, Math.round(sec));
+  if (s < 60) return `${s} dtk`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return s % 60 ? `${m} mnt ${s % 60} dtk` : `${m} mnt`;
+  return m % 60 ? `${Math.floor(m / 60)} jam ${m % 60} mnt` : `${Math.floor(m / 60)} jam`;
+}
+
+/** Job berjalan per akun dalam kata: "1 unggahan, 2 ekspor"; tidak ada → "–". */
+export function jobsText(j: { upload: number; recast: number; export: number }): string {
+  const parts = [
+    j.upload && `${j.upload} unggahan`,
+    j.recast && `${j.recast} olah ulang`,
+    j.export && `${j.export} ekspor`,
+  ].filter((x): x is string => !!x);
+  return parts.length ? parts.join(", ") : "–";
+}

@@ -50,6 +50,20 @@ const ADMIN_BODY = {
     { service: "app", t: now, cpu: 0.35, mem: 700 * 1024 ** 2, memMax: 3 * 1024 ** 3 },
     { service: "worker", t: now, cpu: 1.2, mem: 2 * 1024 ** 3, memMax: null },
   ],
+  accounts: {
+    quotaBytes: 20 * 1024 ** 3,
+    rows: [
+      {
+        id: "u1",
+        email: "budi@contoh.id",
+        name: "Budi",
+        running: 2,
+        seconds: 130,
+        jobs: { upload: 1, recast: 0, export: 2 },
+        storageBytes: 5 * 1024 ** 3,
+      },
+    ],
+  },
 };
 
 async function mock(page: Page, body: object, path = "/api/metrics") {
@@ -176,6 +190,12 @@ test("AC4: admin — tautan Detail, grafik 1 jam/24 jam, disk per mount, per lay
   await expect(svc.getByRole("row").nth(1)).toContainText("700 MB3 GB (23%)");
   await expect(svc.getByRole("row").nth(2)).toContainText("Tanpa batas");
   await expect(page.getByTestId("res-queue")).toContainText("aktif: 1 · 1 diproses · 2 menunggu");
+  // T-qed9: per akun (perkiraan) — waktu query 15 menit, query berjalan, pekerjaan, storage.
+  const acct = page.getByTestId("res-accounts-table").getByRole("row").nth(1);
+  await expect(acct).toContainText("Budi");
+  await expect(acct).toContainText("2 mnt 10 dtk");
+  await expect(acct).toContainText("1 unggahan, 2 ekspor");
+  await expect(acct).toContainText("5 GB dari 20 GB");
   await page.getByTestId("range-day").click();
   await expect(page.getByTestId("range-day")).toHaveAttribute("aria-pressed", "true");
   await page.screenshot({ path: test.info().outputPath("admin-resources.png"), fullPage: true });
@@ -196,4 +216,20 @@ test("AC4: halaman admin tanpa monitor → petunjuk pemasangan", async ({ page }
   await apiLogin(page, ADMIN);
   await page.goto("/admin/sumber-daya");
   await expect(page.getByTestId("resources-off")).toContainText("belum dipasang");
+});
+
+test("T-qed9: API admin sungguhan memuat tabel per akun; per akun gagal tidak menjatuhkan halaman", async ({
+  page,
+}) => {
+  await apiLogin(page, ADMIN);
+  const res = await page.request.get("/api/metrics/admin");
+  expect(res.status()).toBe(200);
+  const body = await res.json();
+  expect(body.accounts).not.toBeUndefined();
+  if (body.accounts) expect(Array.isArray(body.accounts.rows)).toBe(true);
+
+  await mock(page, { ...ADMIN_BODY, accounts: null }, "/api/metrics/admin");
+  await page.goto("/admin/sumber-daya");
+  await expect(page.getByTestId("res-accounts-error")).toBeVisible();
+  await expect(page.getByTestId("chart-cpu")).toBeVisible();
 });

@@ -8,6 +8,7 @@ import type { DuckDBValue } from "@duckdb/node-api";
 import { mkdirSync } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import { lit } from "./index";
+import { queryStarted, runAs } from "@/lib/metrics/accounts";
 
 export class QueryTimeoutError extends Error {
   constructor() {
@@ -167,7 +168,8 @@ export class QueryEngine {
     const t0 = Date.now();
     await this.userSlot(userId, this.o.queueWaitMs);
     try {
-      return await fn(Math.max(0, this.o.queueWaitMs - (Date.now() - t0)));
+      // runAs: waktu eksekusi di withGlobal dihitung untuk user ini (monitor per akun, T-qed9).
+      return await runAs(userId, () => fn(Math.max(0, this.o.queueWaitMs - (Date.now() - t0))));
     } finally {
       this.decUser(userId);
     }
@@ -176,9 +178,11 @@ export class QueryEngine {
   /** Slot global selama `fn` (eksekusi DuckDB saja). Dipakai di dalam withUser. */
   async withGlobal<T>(fn: () => Promise<T>, waitMs = this.o.queueWaitMs): Promise<T> {
     await this.globalSlot(waitMs);
+    const done = queryStarted();
     try {
       return await fn();
     } finally {
+      done();
       this.releaseGlobal();
     }
   }

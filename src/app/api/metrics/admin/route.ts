@@ -1,4 +1,5 @@
 import { AuthError, requireAdmin } from "@/features/auth/session";
+import { accountRows } from "@/features/metrics/accounts";
 import { adminOf } from "@/features/metrics/view";
 import { json } from "@/lib/api-route";
 import { env } from "@/lib/env";
@@ -19,10 +20,17 @@ export async function GET() {
     throw e;
   }
   try {
-    return json({
-      ok: true,
-      ...adminOf(await readAdmin(await redisReady()), !!env().METRICS_NODE_URL),
-    });
+    const r = await redisReady();
+    const now = Date.now();
+    // Per akun (T-qed9) gagal → tabelnya saja yang kosong; grafik host tetap tampil.
+    const [view, accounts] = await Promise.all([
+      readAdmin(r, now),
+      accountRows(r, now).catch((e: unknown) => {
+        logger.warn({ err: e instanceof Error ? e.message : String(e) }, "metrik per akun gagal");
+        return null;
+      }),
+    ]);
+    return json({ ok: true, ...adminOf(view, !!env().METRICS_NODE_URL, accounts) });
   } catch (e) {
     logger.error({ err: e instanceof Error ? e.message : String(e) }, "detail metrik gagal");
     return json(

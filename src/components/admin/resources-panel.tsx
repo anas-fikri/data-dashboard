@@ -7,7 +7,9 @@ import { Sparkline } from "@/components/metrics/sparkline";
 import {
   clock,
   cores,
+  duration,
   isHigh,
+  jobsText,
   pct,
   rate,
   size,
@@ -22,7 +24,7 @@ import { cn } from "@/lib/utils";
 /*
  * Admin › Sumber daya (v1.18, ADR-0010): grafik 1 jam (10 dtk) / 24 jam (1 menit) untuk CPU, RAM, disk, dan
  * jaringan host; rincian disk per mount, beban (load) per inti, swap; pemakaian container app/worker dari
- * cgroup masing-masing; status antrean ingest. Polling 10 dtk (berhenti saat tab tersembunyi). Grafik hiasan
+ * cgroup masing-masing; status antrean ingest; perkiraan per akun (T-qed9). Polling 10 dtk (berhenti saat tab tersembunyi). Grafik hiasan
  * (aria-hidden) — angka sekarang/rata-rata/puncak selalu tertulis.
  */
 type Response = MetricsAdmin & { ok: boolean };
@@ -349,6 +351,75 @@ export function ResourcesPanel() {
         ) : (
           <p className="text-sm text-muted-foreground">
             Belum ada laporan dari container app/worker.
+          </p>
+        )}
+      </section>
+
+      <section aria-labelledby="res-accounts" className="flex flex-col gap-3">
+        <h2 id="res-accounts" className="text-base font-semibold">
+          Pemakaian per akun (perkiraan)
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Akun yang sedang memakai server, terberat di atas. Waktu query = lama server mengolah
+          widget, Lihat data, dan pivot akun itu dalam ± 15 menit terakhir; pemakaian CPU/RAM persis
+          per akun tidak bisa diukur karena semua akun dilayani proses yang sama.
+        </p>
+        {!data.accounts ? (
+          <p className="text-sm text-muted-foreground" data-testid="res-accounts-error">
+            Data per akun gagal dimuat. Mencoba lagi…
+          </p>
+        ) : data.accounts.rows.length ? (
+          <div className="overflow-x-auto rounded-lg border">
+            <table className="w-full text-sm" data-testid="res-accounts-table">
+              <caption className="sr-only">
+                Pemakaian per akun dalam 15 menit terakhir, terberat di atas
+              </caption>
+              <thead className="bg-muted/50 text-left">
+                <tr>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Akun
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    Waktu query 15 menit
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    Query berjalan
+                  </th>
+                  <th scope="col" className="px-3 py-2 font-medium">
+                    Pekerjaan berjalan
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-right font-medium">
+                    Storage
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.accounts.rows.map((a) => (
+                  <tr key={a.id} className="border-t">
+                    <th scope="row" className="px-3 py-2 text-left font-normal">
+                      <span className="block font-medium">{a.name || a.email}</span>
+                      {a.name && (
+                        <span className="block text-xs text-muted-foreground">{a.email}</span>
+                      )}
+                    </th>
+                    <td className="px-3 py-2 text-right tabular-nums">{duration(a.seconds)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">
+                      {a.running.toLocaleString("id-ID")}
+                    </td>
+                    <td className="px-3 py-2">{jobsText(a.jobs)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
+                      {a.storageBytes === null
+                        ? "–"
+                        : `${size(a.storageBytes)} dari ${size(data.accounts!.quotaBytes)}`}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground" data-testid="res-accounts-empty">
+            Tidak ada akun yang memakai server dalam 15 menit terakhir.
           </p>
         )}
       </section>

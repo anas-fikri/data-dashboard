@@ -9,6 +9,7 @@
  *   widget dashboard-nya sendiri antre di belakang blok grid.
  */
 import { QueryBusyError } from "@/lib/duckdb/engine";
+import { runAs } from "@/lib/metrics/accounts";
 import type { QueryDeps } from "./service";
 
 type Engine = QueryDeps["engine"];
@@ -38,7 +39,8 @@ export class GridGate {
     if (n >= this.o.perUser) throw new QueryBusyError();
     this.inFlight.set(userId, n + 1);
     try {
-      return await fn(this.o.queueWaitMs);
+      // runAs: eksekusi grid di slot global mesin dihitung untuk user ini (monitor per akun, T-qed9).
+      return await runAs(userId, () => fn(this.o.queueWaitMs));
     } finally {
       const left = (this.inFlight.get(userId) ?? 1) - 1;
       if (left <= 0) this.inFlight.delete(userId);

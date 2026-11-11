@@ -3,6 +3,7 @@ import { hostname } from "node:os";
 import type Redis from "ioredis";
 import { logger } from "@/lib/logger";
 import { redisReady } from "@/lib/redis";
+import { takeSnapshot, type AccountSnapshot } from "./accounts";
 import { readCgroup, serviceUsage, type CgroupRaw, type ServiceUsage } from "./cgroup";
 import {
   averagePoints,
@@ -25,7 +26,13 @@ export const KEY = {
   queue: "metrics:queue",
   svc: "metrics:svc",
   lock: "metrics:sampler:lock",
+  /** Hash proses → { t, running: { userId: n } } (query berjalan per akun, T-qed9). */
+  acctRun: "metrics:acct:run",
+  /** Prefix ember per menit: hash userId → detik eksekusi query (kedaluwarsa 20 menit). */
+  acctSec: "metrics:acct:sec:",
 } as const;
+/** Jendela "detik query" per akun (menit, termasuk menit berjalan). */
+export const ACCOUNT_WINDOW_MIN = 15;
 export const KEEP_10S = 360;
 export const KEEP_1M = 1440;
 /** Titik layanan lebih tua dari ini dianggap layanan mati/hilang. */
@@ -98,15 +105,37 @@ export interface ServiceRow extends ServiceUsage {
 
 const svcState = globalThis as unknown as { metricsCgroupPrev?: CgroupRaw | null };
 
-/** Laporkan pemakaian container proses ini (app/worker) — dipanggil tiap 10 dtk oleh pemiliknya. */
+/** Simpan snapshot per akun proses ini: query berjalan (ditimpa) + detik eksekusi ke ember menit berjalan. */
+export async function saveAccountSnapshot(
+  r: Redis,
+  proc: string,
+  snap: AccountSnapshot,
+  now: number,
+): Promise<void> {
+  const m = r.multi().hset(KEY.acctRun, proc, JSON.stringify({ t: now, running: snap.running }));
+  const entries = Object.entries(snap.ms).filter(([, ms]) => ms > 0);
+  if (entries.length) {
+    const key = KEY.acctSec + Math.floor(now / 60_000);
+    for (const [userId, ms] of entries) m.hincrbyfloat(key, userId, ms / 1000);
+    m.pexpire(key, (ACCOUNT_WINDOW_MIN + 5) * 60_000);
+  }
+  await m.exec();
+}
+
+/**
+ * Laporkan pemakaian proses ini (app/worker) tiap 10 dtk: container dari cgroup (bila terbaca) dan perkiraan
+ * per akun (selalu). Redis gagal → hitungan periode ini hilang (perkiraan), proses tidak terganggu.
+ */
 export async function reportService(service: string, now = Date.now()): Promise<void> {
   const cur = await readCgroup(undefined, now);
-  if (!cur) return;
-  const usage = serviceUsage(svcState.metricsCgroupPrev ?? null, cur);
-  svcState.metricsCgroupPrev = cur;
+  const usage = cur ? serviceUsage(svcState.metricsCgroupPrev ?? null, cur) : null;
+  if (cur) svcState.metricsCgroupPrev = cur;
+  const snap = takeSnapshot(now);
+  const proc = `${service}:${hostname()}`;
   try {
     const r = await redisReady();
-    await r.hset(KEY.svc, `${service}:${hostname()}`, JSON.stringify(usage));
+    if (usage) await r.hset(KEY.svc, proc, JSON.stringify(usage));
+    await saveAccountSnapshot(r, proc, snap, now);
   } catch (e) {
     logger.debug(
       { err: e instanceof Error ? e.message : String(e) },
@@ -166,4 +195,42 @@ export async function readAdmin(
   if (stale.length) await r.hdel(KEY.svc, ...stale);
   services.sort((a, b) => a.service.localeCompare(b.service) || b.mem - a.mem);
   return { ...summary, day: downsample(day, 288), services };
+}
+
+export interface AccountActivity {
+  running: number;
+  /** Detik eksekusi query dalam ACCOUNT_WINDOW_MIN menit terakhir. */
+  seconds: number;
+}
+
+/** Aktivitas query per akun: query berjalan (laporan proses segar ≤ 30 dtk) + detik 15 menit terakhir. */
+export async function readAccountActivity(
+  r: Redis,
+  now = Date.now(),
+): Promise<Map<string, AccountActivity>> {
+  const out = new Map<string, AccountActivity>();
+  const get = (id: string) =>
+    out.get(id) ?? (out.set(id, { running: 0, seconds: 0 }), out.get(id)!);
+  const procs = await r.hgetall(KEY.acctRun);
+  const stale: string[] = [];
+  for (const [field, v] of Object.entries(procs)) {
+    const snap = parse<{ t: number; running: Record<string, number> }>(v);
+    if (!snap || !fresh(snap.t, now, SERVICE_STALE_MS)) {
+      if (!snap || now - snap.t > 10 * 60_000) stale.push(field);
+      continue;
+    }
+    for (const [id, n] of Object.entries(snap.running)) if (n > 0) get(id).running += n;
+  }
+  if (stale.length) await r.hdel(KEY.acctRun, ...stale);
+  const minute = Math.floor(now / 60_000);
+  const buckets = await Promise.all(
+    Array.from({ length: ACCOUNT_WINDOW_MIN }, (_, i) => r.hgetall(KEY.acctSec + (minute - i))),
+  );
+  for (const b of buckets) {
+    for (const [id, sec] of Object.entries(b)) {
+      const v = Number(sec);
+      if (Number.isFinite(v) && v > 0) get(id).seconds += v;
+    }
+  }
+  return out;
 }
