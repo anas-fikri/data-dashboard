@@ -34,3 +34,62 @@ describe("waitingText", () => {
     expect(waitingText(undefined)).toBe("Menunggu giliran diproses. ");
   });
 });
+
+/* v1.17.1: pemroses (worker) tidak aktif → panel progres dan /health admin memberi tahu. */
+import { ingestWorkerCount, resetIngestWorkerCountCache } from "@/lib/queue/versions";
+import { noWorkerText } from "@/components/datasets/ingest-progress";
+import { ingestWorkerCheck } from "@/lib/health/worker-check";
+
+describe("ingestWorkerCount", () => {
+  const worker = (n: number) =>
+    Array.from({ length: n }, (_, k) => ({ name: "ingest", rawname: `bull:aW5nZXN0:${k}` }));
+  const q = (impl: () => Promise<unknown>) => ({ getWorkers: vi.fn(impl) });
+
+  it("jumlah worker bernama; ada worker di-cache 10 detik, 0 hanya 3 detik", async () => {
+    resetIngestWorkerCountCache();
+    const a = q(async () => worker(2));
+    expect(await ingestWorkerCount(a as never, 1_000)).toBe(2);
+    expect(await ingestWorkerCount(q(async () => []) as never, 5_000)).toBe(2); // masih cache
+    expect(a.getWorkers).toHaveBeenCalledTimes(1);
+    expect(await ingestWorkerCount(q(async () => []) as never, 11_001)).toBe(0);
+    // 0 cepat kedaluwarsa: worker menyala lagi → peringatan hilang dalam ≤ 3 detik (review L1).
+    expect(await ingestWorkerCount(q(async () => worker(1)) as never, 14_002)).toBe(1);
+  });
+
+  it("CLIENT LIST tidak tersedia (entri pengganti BullMQ tanpa rawname) / Redis gagal → null", async () => {
+    resetIngestWorkerCountCache();
+    expect(
+      await ingestWorkerCount(
+        q(async () => [{ name: "GCP does not support client list" }]) as never,
+        1,
+      ),
+    ).toBeNull();
+    resetIngestWorkerCountCache();
+    expect(
+      await ingestWorkerCount(
+        q(async () => {
+          throw new Error("NOPERM this user has no permissions to run the 'client' command");
+        }) as never,
+        1,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("peringatan pemroses tidak aktif", () => {
+  it("menunggu: aman di antrean, tidak perlu unggah ulang; terhenti: tidak menjanjikan berlebihan", () => {
+    expect(noWorkerText("UPLOADED")).toContain("Antrean belum berjalan");
+    expect(noWorkerText("UPLOADED")).toContain("tidak perlu mengunggah ulang");
+    // Review L2: setelah stall berulang job bisa gagal → jangan menjanjikan "tidak perlu unggah ulang".
+    expect(noWorkerText("INGESTING")).toContain("tampaknya terhenti");
+    expect(noWorkerText("INGESTING")).toContain("bila akhirnya gagal, unggah ulang");
+  });
+
+  it("cek /health: 0 → gagal dengan saran, null → gagal 'tidak bisa dibaca', ≥ 1 → OK", async () => {
+    await expect(ingestWorkerCheck(async () => 0).run()).rejects.toThrow(/tidak ada worker/);
+    await expect(ingestWorkerCheck(async () => null).run()).rejects.toThrow(/tidak bisa dibaca/);
+    await expect(ingestWorkerCheck(async () => 2).run()).resolves.toBe(
+      "2 worker terhubung ke antrean ingest",
+    );
+  });
+});

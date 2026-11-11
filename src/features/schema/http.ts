@@ -2,7 +2,7 @@ import "server-only";
 import type { NextRequest, NextResponse } from "next/server";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { logger } from "@/lib/logger";
-import { ingestQueuePosition } from "@/lib/queue/versions";
+import { ingestQueuePosition, ingestWorkerCount } from "@/lib/queue/versions";
 import { prismaSchemaRepo, schemaDeps } from "./runtime";
 import { ingestStatus, recastStatus, requestRecast, type SchemaCode } from "./service";
 
@@ -34,15 +34,18 @@ export function progressRoute(datasetId: string): Promise<NextResponse> {
       return json({ ok: false, code: "NOT_FOUND", message: "Dataset tidak ditemukan." }, 404);
     }
     if (s === "none") return json({ ok: true, status: null });
-    // Posisi antrean hanya pelengkap: Redis lambat/mati → tampil tanpa nomor, bukan 503.
-    const queue =
+    // Posisi antrean hanya pelengkap: Redis lambat/mati → tampil tanpa nomor, bukan 503. Pemroses tidak
+    // aktif (v1.17.1): unggahan menunggu/terhenti tanpa batas — panel memberi tahu. Dibaca bersamaan.
+    const [queue, workers] = await Promise.all([
       s.status === "UPLOADED"
-        ? await ingestQueuePosition(s.versionId).catch((e: unknown) => {
+        ? ingestQueuePosition(s.versionId).catch((e: unknown) => {
             logger.warn({ err: e, versionId: s.versionId }, "posisi antrean ingest gagal dibaca");
             return null;
           })
-        : null;
-    return json({ ok: true, status: { ...s, queue } });
+        : null,
+      s.status === "UPLOADED" || s.status === "INGESTING" ? ingestWorkerCount() : null,
+    ]);
+    return json({ ok: true, status: { ...s, queue, workerDown: workers === 0 } });
   });
 }
 

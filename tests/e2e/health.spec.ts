@@ -63,4 +63,11 @@ test("admin: /health dan /api/health menampilkan detail per layanan", async ({
     const row = page.locator(`li[data-check="${name}"]`);
     await expect(row).toHaveAttribute("data-status", "ok");
   }
+  // v1.17.1: pemroses unggahan hanya di halaman admin (bukan /api/health di atas — dipakai deploy.sh);
+  // OK bila ada worker yang terhubung, gagal dengan saran bila tidak.
+  const worker = page.locator('li[data-check="Pemroses unggahan"]');
+  await expect(worker).toHaveCount(1);
+  await expect(worker).toContainText(
+    /worker terhubung ke antrean ingest|tidak ada worker yang terhubung/,
+  );
 });

@@ -1116,3 +1116,55 @@ Jumlah baris − Jumlah terisi kolom itu (widget Angka lain atau **Lihat data**)
 
 Rollback image ke v1.16.0: widget/pivot ber-Jumlah kosong tampil "Pengaturan widget tidak valid" (skema lama strict;
 data di DB tetap) sampai roll-forward. Ganti ukurannya dulu bila rollback akan lama.
+
+## 28. Rilis v1.17.1 (tanpa migrasi) + worker mati / unggahan menunggu terus
+
+Pemicu: impor dataset Billing (2026-11-11) menunggu "antrean ke-1, diproses berikutnya" > 3 jam tanpa kabar,
+karena service `worker` masih dimatikan sejak insiden pagi (`$C stop worker`). Sejak v1.17.1 panel progres
+dataset menampilkan **Pemroses unggahan sedang tidak aktif** bila tidak ada worker yang terhubung ke antrean ingest
+(BullMQ `Queue.getWorkers`: koneksi blocking Worker bernama `bull:<base64 antrean>`; koneksi app tidak). Halaman
+`/health` (admin) mendapat baris **Pemroses unggahan**. `/api/health` tidak berubah, jadi deploy.sh tidak gagal
+hanya karena worker sengaja dimatikan.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.17.1
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only unggah-data
+```
+
+(Produksi masih < v1.17.0: jalankan rilis yang tertinggal dulu, §26/§27. Seed panduan: artikel disimpan di
+database, server-release/upgrade tidak mengisinya.)
+
+Bila peringatan muncul (atau baris /health gagal):
+
+```bash
+C="docker compose --env-file .env.prod -f docker-compose.prod.yml"
+uptime; free -h
+$C ps -a worker
+$C logs --since 2h --tail 80 worker
+```
+
+- `Exited`/tidak ada → nyalakan. Setelah insiden beban tinggi / file berat: mode hemat (1 worker, sheet dibaca
+  berurutan) dulu, pantau `uptime` + `docker stats` 10–15 menit pertama; load tinggi lama atau app lambat →
+  `$C stop worker` (antrean aman, job menunggu). `--no-deps`: tanpa itu `up` menjalankan ulang `migrate` dan
+  `storage-init` (bisa gagal saat PostgreSQL sedang berat, dan worker tidak jadi menyala):
+
+  ```bash
+  WORKER_REPLICAS=1 INGEST_XLSX_SHEET_THREADS=1 $C up -d --no-build --no-deps worker
+  ```
+
+  Setelan di depan perintah hanya berlaku untuk perintah itu: `up`/rilis berikutnya kembali memakai `.env.prod`.
+
+- `Up` tetapi job tidak bergerak → kirim log ke pengembang (worker macet/job tersangkut, penanganan lain).
+
+Anggaran CPU (src/lib/env.ts): `WORKER_REPLICAS × (1 + INGEST_XLSX_SHEET_THREADS) ≤ vCPU − 2`. Cek `nproc` dulu:
+setelan bawaan (2 × (1 + 2) = 6) pas untuk 8 vCPU (§2), tetapi melewati anggaran bila VM ternyata 4 vCPU — saat
+itu set permanen di `.env.prod` (pemilik yang mengubah) `WORKER_REPLICAS=1`, `INGEST_XLSX_SHEET_THREADS=1`:
+unggahan antre satu per satu, server tetap responsif.
+
+Belum tercakup (task lanjutan): pemetaan/koreksi skema/ekspor juga diam saat worker mati, dan monitor email
+berjalan di dalam worker sehingga tidak bisa memberi tahu worker yang mati — pantau baris /health.
+
+Rollback image ke v1.17.0: aman (hanya peringatan + baris /health yang hilang).
+

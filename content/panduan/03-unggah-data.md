@@ -26,6 +26,8 @@ Dataset adalah wadah data Anda. Satu dataset bisa berisi satu file Excel (sheet 
 
 Aplikasi memproses file dalam empat langkah: _Menyiapkan file_, _Membaca isi file_, _Menyimpan data_, _Mendeteksi tipe kolom_. File besar butuh beberapa menit; Anda boleh meninggalkan halaman.
 
+Muncul **Pemroses unggahan sedang tidak aktif**? Artinya layanan pemroses di server sedang mati, jadi antrean tidak berjalan. File Anda aman di antrean dan otomatis diproses begitu pemroses dinyalakan lagi — tidak perlu mengunggah ulang. Beri tahu admin aplikasi.
+
 Setelah selesai, kartu **Data aktif** menampilkan nama file dan waktu pembaruannya. Lanjutkan ke **Tinjau & koreksi skema** untuk memastikan setiap kolom terbaca benar.
 
 ## Tips

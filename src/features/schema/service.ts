@@ -52,6 +52,11 @@ export interface IngestStatus {
   errorMessage: string | null;
   /** Hanya saat UPLOADED dan terbaca dari antrean (route progres, T-024 AC 2). */
   queue?: { position: number; active: number } | null;
+  /**
+   * Tidak ada worker yang terhubung ke antrean ingest (v1.17.1) selama versi menunggu/diproses: antrean tidak
+   * berjalan. false/tidak ada = ada worker atau tidak diketahui (tanpa peringatan). Jumlah tidak dibuka.
+   */
+  workerDown?: boolean;
 }
 
 export interface SheetView {
