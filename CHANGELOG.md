@@ -80,6 +80,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (deploy.sh, monitor) sengaja tidak berubah. Tanpa `--full` bila produksi sudah v1.17.0; seed panduan
   `unggah-data` (runbook-deploy §28).
 
+## [1.17.1] - 2026-11-11
+
+### Added
+
+- **uploads:** peringatan pemroses unggahan tidak aktif (T-yw88) (ef7600f)
+
+### Fixed
+
+- **uploads:** temuan review T-yw88 — live region, kontras, hitung worker ber-rawname, runbook --no-deps (0e6065c)
+
 ## [1.17.0] - 2026-11-11
 
 ### Added
