@@ -1,11 +1,15 @@
 ---
 id: T-ee46
 title: 'v1.18 fase 1: monitor sumber daya — node-exporter + relay, sampler app → Redis, kartu sidebar (semua user), halaman adm…'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-11-11T14:35:09Z"
-updated: "2026-11-11T14:35:26Z"
+updated: "2026-11-11T14:39:51Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 320d80782f5862b22eb381f8d959b8ff393bea5f
 ---
 
 ## Objective
