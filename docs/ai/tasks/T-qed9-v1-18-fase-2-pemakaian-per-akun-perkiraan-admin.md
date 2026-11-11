@@ -4,7 +4,7 @@ title: 'v1.18 fase 2: pemakaian per akun (perkiraan, admin) — query berjalan, 
 status: in_review
 profile: strict
 created: "2026-11-11T14:35:10Z"
-updated: "2026-11-11T16:32:45Z"
+updated: "2026-11-11T16:39:55Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -55,6 +55,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-11T15:33:45Z"
       findings: 0
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-11T16:39:55Z"
+      findings: 1
 evidence:
   check:
     cmd: npm run check
