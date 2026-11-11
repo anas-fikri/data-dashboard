@@ -4,7 +4,7 @@ title: 'v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit h
 status: todo
 profile: standard
 created: "2026-11-11T15:22:00Z"
-updated: "2026-11-11T15:22:07Z"
+updated: "2026-11-11T15:33:50Z"
 created_by: claude-code
 ---
 
@@ -17,6 +17,8 @@ created_by: claude-code
 - [ ] L7: laju jaringan per antarmuka; bond/anggota bond, VLAN, docker_gwbridge, tailscale/zt/vnet tidak dihitung ganda
 - [ ] L8: readSummary di-cache ± 5 dtk per proses (semua user polling 10 dtk)
 - [ ] L11: ADR-0010 diperjelas — port 127.0.0.1:19109 terbaca proses/container host network di VM; pids_limit relay
+- [ ] Status antrean tetap menyimpan jumlah worker walau getJobCounts timeout (waiting/active nullable) — review putaran 2 T-ee46 L2
+- [ ] Uji unit pemetaan job aktif → pemilik (jobsByUser: ingest/period-setup, recast vs map-version, export/pdf) — review putaran 2 T-qed9 L4
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)

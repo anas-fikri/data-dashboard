@@ -1,15 +1,25 @@
 ---
 id: T-ee46
 title: 'v1.18 fase 1: monitor sumber daya — node-exporter + relay, sampler app → Redis, kartu sidebar (semua user), halaman adm…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-11T14:35:09Z"
-updated: "2026-11-11T15:26:35Z"
+updated: "2026-11-11T15:33:47Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 320d80782f5862b22eb381f8d959b8ff393bea5f
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T15:33:43Z"
+      findings: 7
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-11T15:33:44Z"
+      findings: 0
 evidence:
   check:
     cmd: npm run check
@@ -55,3 +65,4 @@ Impact: kartu baru di sidebar semua halaman (polling 10 dtk/user, berhenti saat 
 ## Notes
 - 2026-11-11T14:35:26Z Keputusan pemilik 2026-11-11: ringkasan server untuk semua user login (asumsi aman: per layanan + per akun admin saja), node_exporter boleh, per akun perkiraan. Rencana docs/ai/plans/2026-11-11-monitor-sumber-daya.md, ADR-0010 (proposed).
 - 2026-11-11T15:09:26Z AC deviasi tercatat: port exporter 127.0.0.1:19109 (bukan 9100, agar tidak bentrok node_exporter aplikasi lain di VM bersama), relay 172.17.0.1:19100; API admin non-admin = 404 (pola requireAdmin proyek, bukan 403). Fallback cgroup v1 ditambah (sandbox v1).
+- 2026-11-11T15:33:47Z Review subagen independen: putaran 1 = 0 blocking, 7 Medium + 11 Low (M1–M7, L1/L2/L3/L5/L6/L9/L10 diperbaiki a04e7fb/53b72de); putaran 2 = semua perbaikan terverifikasi, 0 blocking, 3 Low (2 diperbaiki e4b98f0, 1 → T-zjwh). Dicatat: --findings 7 (Medium putaran 1) lalu 0.

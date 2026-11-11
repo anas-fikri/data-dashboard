@@ -4,8 +4,14 @@ title: 'v1.18 fase 2: pemakaian per akun (perkiraan, admin) — query berjalan, 
 status: todo
 profile: standard
 created: "2026-11-11T14:35:10Z"
-updated: "2026-11-11T14:35:27Z"
+updated: "2026-11-11T15:33:49Z"
 created_by: claude-code
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-11T15:33:45Z"
+      findings: 0
 ---
 
 ## Objective
@@ -18,3 +24,5 @@ Admin melihat akun mana yang paling membebani server saat ini sebagai perkiraan:
 Impact: instrumentasi QueryEngine.withUser/withGlobal dan GridGate.withUser (AsyncLocalStorage; tanpa mengubah urutan slot), pelapor app/worker menulis 1 hash + 1 ember menit per 10 dtk, API admin membaca job aktif (≤ 100/antrean) + userUsage ≤ 20 akun (cache 60 dtk). Security (STRIDE): Information disclosure — email/nama akun hanya di API admin (404 non-admin); tidak ada isi query/data. DoS — tabel dibatasi 20, gagal per akun tidak menjatuhkan halaman. Rollback: tanpa migrasi; kunci Redis metrics:acct:* kedaluwarsa sendiri. Validation: unit pelacak (ALS, idempoten, berjalan lintas snapshot), store (jendela 15 menit, proses basi), ranking, pemasangan di QueryEngine/GridGate nyata; e2e tabel per akun + kegagalan sebagian; suite query/lib 683 lulus.
 
 ## Notes
+
+- 2026-11-11T15:33:49Z Review subagen independen (putaran 2 gabungan): 0 blocking, 7 Low; L1/L2/L3/L5/L6/L7 + konstanta MAP_VERSION_JOB diperbaiki e4b98f0; uji unit jobsByUser → T-zjwh.
