@@ -89,7 +89,7 @@ describe("sampleOnce", () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
     redis.set.mockClear();
-    await sampleOnce();
+    expect(await sampleOnce()).toBe(false);
     expect(fetch).not.toHaveBeenCalled();
     expect(redis.set).not.toHaveBeenCalled();
   });

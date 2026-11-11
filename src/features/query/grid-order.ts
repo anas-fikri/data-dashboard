@@ -20,6 +20,7 @@ import type { OrderCache, OrderChunk, OrderMeta } from "./order-cache";
 import { runOnLocal, runOnParquet, type QueryDeps, type QueryFailure } from "./service";
 import type { ParquetSource } from "./source";
 import type { BuiltSql } from "./sql";
+import { ORDER_BUILD_USER } from "./order-build-user";
 
 /** Dependensi cache urutan (GridDeps.order). */
 export interface GridOrder {
@@ -33,7 +34,7 @@ export interface GridOrder {
 }
 
 /** Pengguna semu gerbang grid untuk pembangunan permutasi di belakang. */
-export const ORDER_BUILD_USER = "grid-order-cache";
+export { ORDER_BUILD_USER };
 /** Permutasi gagal karena slot sibuk: dicoba lagi setelah jeda pendek ini. */
 export const ORDER_BUSY_RETRY_MS = 30_000;
 /** Tampilan kecil cukup dilayani jalur tanpa cache. */

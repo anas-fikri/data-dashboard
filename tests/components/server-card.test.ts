@@ -156,6 +156,7 @@ describe("ServerCardView", () => {
     expect(html).toContain("Pemroses: aktif · 1 diproses · 2 menunggu");
     expect(html).not.toContain("/admin/sumber-daya");
     expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-atomic="true"');
     expect(html).not.toContain('role="status"'); // tidak bersaing dengan status milik halaman
   });
 

@@ -2,9 +2,10 @@ import "server-only";
 import type Redis from "ioredis";
 import { userUsage } from "@/features/uploads/quota";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 import { readAccountActivity } from "@/lib/metrics/store";
-import { ORDER_BUILD_USER } from "@/features/query/grid-order";
+import { ORDER_BUILD_USER } from "@/features/query/order-build-user";
 import {
   exportQueue,
   ingestQueue,
@@ -18,7 +19,8 @@ import { rankAccounts, type AccountJobs, type AccountRow } from "./view";
 /*
  * Tabel per akun Admin › Sumber daya (v1.18 fase 2, T-qed9) — perkiraan, admin saja: query berjalan + detik
  * eksekusi 15 menit (pelacak DuckDB per user), job worker yang sedang berjalan (unggah/olah ulang/pemetaan/
- * ekspor/PDF) dipetakan ke pemiliknya, dan storage terpakai (sama dengan hitungan kuota unggah, cache 60 dtk).
+ * ekspor/PDF) dipetakan ke pemiliknya, dan storage terpakai (sama dengan hitungan kuota unggah, cache 5 menit;
+ * gagal per akun → "–").
  * Hanya akun yang aktif; paling banyak 20 baris, terberat di atas.
  */
 const MAX_JOBS = 100;
@@ -95,10 +97,18 @@ async function storageOf(ids: string[], now: number): Promise<Map<string, number
   for (let i = 0; i < todo.length; i += USAGE_CONCURRENCY) {
     await Promise.all(
       todo.slice(i, i + USAGE_CONCURRENCY).map(async (id) => {
-        const bytes = (await userUsage(prisma, id)).bytes;
-        // `at` = saat kedaluwarsa.
-        cache.set(id, { bytes, at: now + USAGE_TTL_MS + Math.random() * 60_000 });
-        out.set(id, bytes);
+        try {
+          const bytes = (await userUsage(prisma, id)).bytes;
+          // `at` = saat kedaluwarsa.
+          cache.set(id, { bytes, at: now + USAGE_TTL_MS + Math.random() * 60_000 });
+          out.set(id, bytes);
+        } catch (e) {
+          // Satu akun gagal dihitung (mis. query berat timeout) → kolomnya "–", tabel lain tetap tampil.
+          logger.warn(
+            { userId: id, err: e instanceof Error ? e.message : String(e) },
+            "storage per akun gagal dihitung",
+          );
+        }
       }),
     );
   }

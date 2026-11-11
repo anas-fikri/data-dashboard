@@ -84,6 +84,7 @@ describe("penyimpanan per akun", () => {
       t0 - 16 * 60_000,
     );
     expect(ttl.get(KEY.acctSec + 100)).toBe((ACCOUNT_WINDOW_MIN + 5) * 60_000);
+    expect(ttl.get(KEY.acctRun)).toBe(10 * 60_000); // monitor dimatikan → hash hilang sendiri
     expect(hashes.get(KEY.acctSec + 100)!.has("u2")).toBe(false); // 0 ms tidak ditulis
 
     const now = t0 + 65_000;

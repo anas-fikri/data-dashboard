@@ -181,16 +181,17 @@ export function ServerCardView({
       <p
         aria-live="polite"
         aria-atomic="true"
-        className="mt-1 flex items-center gap-1.5"
+        className="mt-1 flex items-start gap-1.5"
         data-testid="server-status"
       >
         <StatusIcon
           size={14}
           stroke={2}
           aria-hidden
-          className={cn("shrink-0", LEVEL_TEXT[status.level])}
+          className={cn("mt-px shrink-0", LEVEL_TEXT[status.level])}
         />
-        <span className="truncate" title={status.text}>
+        {/* Dua baris paling banyak: status gabungan (mis. pemroses mati + data tidak tersedia) tetap terbaca. */}
+        <span className="line-clamp-2" title={status.text}>
           {status.text}
         </span>
       </p>
