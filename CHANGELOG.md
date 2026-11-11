@@ -67,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gagal dengan saran (tidak masuk pemetaan); baris judul sheet gabungan tidak bisa diganti. Dataset lama dengan
   sheet terpisah bisa beralih ke gabungan (widget sheet anggota dipindah lewat `sheetMap`; runbook-deploy §26).
 
+## [1.16.0] - 2026-11-11
+
+### Added
+
+- **ingest:** gabungkan sheet berkolom sama menjadi satu sheet saat unggah xlsx (T-0gmm) (b37b39c)
+
+### Fixed
+
+- **ingest:** review T-0gmm r2 — kolom sheet aktif yang diserap gabungan ikut dicek (d56a607)
+- **ingest:** temuan review T-0gmm — sheet aktif terpisah boleh beralih ke gabungan (803bb7b)
+
 ## [1.15.1] - 2026-11-11
 
 ### Fixed
