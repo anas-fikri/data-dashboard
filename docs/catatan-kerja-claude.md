@@ -55,6 +55,15 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-11 malam, sesi cloud)
+
+- v1.17.0 (PR #21) dan T-yw88 (PR #22) sudah di `main`. Rilis **v1.17.1** (peringatan pemroses unggahan tidak
+  aktif; tanpa migrasi) lewat PR rilis terpisah karena PR #22 digabung atas permintaan pemilik sebelum commit
+  rilis. Deploy: `bash deploy/server-release.sh 1.17.1` + seed panduan `unggah-data` (runbook §28).
+- Insiden impor Billing (menunggu > 3 jam): worker belum dinyalakan lagi sejak insiden pagi. Langkah menyalakan
+  hemat di runbook §28 (`--no-deps`). Olympus 8 vCPU / 11 GB (runbook §2) — bukan 4 vCPU.
+- Lanjutan: **T-r5tm** (peringatan pemetaan/ekspor + alarm worker mati di luar worker), T-jdmk, T-01xj, T-7377.
+
 ## Posisi terakhir (2026-11-11 sore, sesi cloud)
 
 - Rilis **v1.17.0** (PR #21): **T-bwza** ukuran "Jumlah kosong" (COUNTBLANK). Tanpa migrasi →
