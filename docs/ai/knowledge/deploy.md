@@ -1,3 +1,5 @@
 # Knowledge: deploy
 
 - Docker bind mount satu file (./deploy/x.sh:/usr/local/bin/x.sh) menunjuk inode saat container dibuat: sinkron kode yang mengganti file (git archive | tar -x, editor yang rename) membuat container lama tetap menjalankan isi lama dan compose up tidak mendeteksinya — deploy.sh wajib force-recreate service yang me-mount file (proxy, backup); bandingkan sha256 host vs container saat ragu. PostgreSQL host olympus ber-encoding SQL_ASCII (cluster locale C): CREATE DATABASE wajib ENCODING UTF8 TEMPLATE template0. <!-- aitk:k date=2026-10-17 task=T-023 tags=deploy,security -->
+- Tag image rilis harus diturunkan/dicek dari versi kode yang dibangun; tag eksplisit bebas pernah membuat image v1.8.1 berisi kode 1.8.0. <!-- aitk:k date=2026-11-06 task=T-jd1g tags=deploy -->
+- Daftar tabel manual untuk pemeriksaan rollback mudah lupa diperbarui: turunkan dari CREATE TABLE di prisma/migrations kode rilis, daftar manual hanya cadangan. <!-- aitk:k date=2026-11-11 task=T-xp28 tags=deploy -->
