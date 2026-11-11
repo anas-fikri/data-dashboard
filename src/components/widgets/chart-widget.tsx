@@ -717,14 +717,15 @@ export function ChartWidget({
   const picked = drillTo && pickAt && selected >= 0 ? selected : -1;
   // Di luar kotak yang diukur (outer): tata letak grafik/daftar ringkas memakai sisa tinggi sesungguhnya.
   // Tinggi sama di kedua keadaan (tanpa lompatan saat kategori dipilih); tabIndex -1 = sasaran fokus bila
-  // tombol hilang setelah "Lepas saringan ini" (review v1.15.1 #3); aria-live mengumumkan tombol yang muncul.
+  // tombol hilang setelah "Lepas saringan ini" (review v1.15.1 #3); teks sr-only mengumumkan tombol yang muncul.
   const hint = "Klik kategori, lalu lihat baris datanya di sini.";
   const drillBar =
     drillTo && pickAt && !chartEmpty(data) ? (
       <div
         ref={drillBarEl}
         tabIndex={-1}
-        aria-live="polite"
+        role="group"
+        aria-label="Klik-tembus"
         className="flex min-h-7 shrink-0 items-center gap-1 border-b px-2 text-xs text-muted-foreground focus-visible:-outline-offset-2 any-pointer-coarse:min-h-11"
         data-testid="drill-bar"
         // Mode TV: petunjuk disembunyikan (layar dinding tidak diklik; globals.css).
@@ -747,6 +748,10 @@ export function ChartWidget({
             {hint}
           </span>
         )}
+        {/* Hanya kabar tombol yang muncul (bukan petunjuk): tanpa bacaan ganda saat fokus pindah ke bilah. */}
+        <span className="sr-only" aria-live="polite">
+          {picked >= 0 ? `Lihat baris data “${labels[picked] ?? ""}” tersedia` : ""}
+        </span>
       </div>
     ) : null;
 
@@ -764,7 +769,11 @@ export function ChartWidget({
             dimensionLabel={dim.label}
             target={drillAt}
             onClose={() => setDrillAt(null)}
-            fallbackFocus={() => drillBarEl.current}
+            // Bilah tersembunyi (petunjuk di mode TV): tanpa sasaran, Radix memakai perilaku bawaannya.
+            fallbackFocus={() => {
+              const el = drillBarEl.current;
+              return el && el.getClientRects().length > 0 ? el : null;
+            }}
             cross={
               pickAt && drillAt?.filter
                 ? {
