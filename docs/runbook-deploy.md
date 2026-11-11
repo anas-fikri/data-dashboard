@@ -1106,7 +1106,10 @@ docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
 Beban: satu agregat tambahan per ukuran (COUNT(*) − COUNT(kolom)) — sama murahnya dengan Jumlah terisi.
 
 Catatan arti: kolom yang tidak ada di sebagian segmen (sheet periode/gabungan dengan kolom baru) terhitung kosong
-untuk baris segmen itu; kolom yang tidak ada di versi data (absent, T-014) tampil "(kosong)" seperti ukuran lain.
+untuk baris segmen itu; kolom yang tidak ada di versi data (absent, T-014) dihitung seperti Jumlah terisi (0) sehingga
+tampil "(kosong)"/"Tidak ada data" seperti ukuran lain, bukan jumlah semua baris. Di kolom angka/tanggal, nilai gagal
+konversi (mis. "-") disimpan NULL dan ikut terhitung kosong. Pembanding KPI ditolak (INVALID) bila kolom tanggalnya =
+kolom yang dihitung kosongnya (baris kosong tidak punya tanggal → selalu 0).
 
 Cek setelah deploy: mode ubah → widget Angka → **Nilai: Jumlah kosong** → pilih kolom yang punya sel kosong → angka =
 Jumlah baris − Jumlah terisi kolom itu (widget Angka lain atau **Lihat data**).

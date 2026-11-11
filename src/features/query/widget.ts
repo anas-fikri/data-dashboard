@@ -21,6 +21,7 @@ import {
   type PivotSavedFilter,
   type ShowAs,
   type WidgetConfig,
+  blankCountColumns,
 } from "@/features/widgets/spec";
 import { mapCalcColumns } from "@/features/widgets/calc";
 import { isPercentShowAs, showAsTitle, shown } from "@/features/widgets/show-as";
@@ -357,6 +358,15 @@ export function widgetPlan(
             };
           }
         }
+        // Jumlah kosong kolom tanggal yang sama dengan kolom periode (T-bwza): baris kosong tidak punya
+        // tanggal, jadi tidak pernah masuk periode mana pun — angkanya selalu 0.
+        if (blankCountColumns(m).includes(cmp.column)) {
+          return {
+            ok: false,
+            code: "INVALID",
+            message: `Pembanding KPI tidak bisa memakai "${c.name}" sebagai kolom tanggal karena kolom itu yang dihitung kosongnya (baris kosong tidak punya tanggal). Pilih kolom tanggal lain atau Tanpa pembanding.`,
+          };
+        }
         compare = {
           col: `c${c.pos}`,
           type: c.type,
@@ -496,7 +506,8 @@ export function drillBlankClause(
   const m = config.spec.measure;
   if (isCalcValue(m) || m.agg !== "count_blank" || m.column === undefined) return null;
   const c = schema.find((x) => x.pos === m.column);
-  if (!c || c.hidden) return null;
+  // Kolom absent (T-014): nilainya dihitung 0 (spec.ts sqlAgg), tidak ada baris untuk dibuka.
+  if (!c || c.hidden || c.absent) return null;
   const f = dashFilterSchema.safeParse({ column: c.name, op: "in", values: [null] });
   return f.success ? columnClause(f.data, c, now) : null;
 }

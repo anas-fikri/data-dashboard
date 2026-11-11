@@ -94,6 +94,15 @@ const chart = (type: string, over: Record<string, unknown>) => ({
 });
 const WIDGETS: Record<string, { type: string; spec: Record<string, unknown> }> = {
   kpi: { type: "kpi", spec: { sheetId: SHEET, measure: BLANK, format: fmt } },
+  kself: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "count_blank", column: 3 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous" },
+    },
+  },
   kcmp: {
     type: "kpi",
     spec: {
@@ -197,6 +206,25 @@ describe("Jumlah kosong (T-bwza)", { timeout: 60_000 }, () => {
       resolveSpec(specSchema.parse({ sheetId: SHEET, measures: [{ agg: "count_blank" }] }), SCHEMA)
         .ok,
     ).toBe(false);
+  });
+
+  it("kolom absent (T-014): dihitung seperti Jumlah terisi (0), bukan jumlah semua baris", () => {
+    const absent = SCHEMA.map((c) => (c.pos === 2 ? { ...c, absent: true } : c));
+    const plan = resolveSpec(
+      specSchema.parse({ sheetId: SHEET, measures: [{ agg: "count_blank", column: "Kurir" }] }),
+      absent,
+    );
+    if (!plan.ok) throw new Error(plan.message);
+    expect(plan.plan.columns.at(-1)).toMatchObject({ label: "Jumlah kosong Kurir" });
+    const sql = buildSql(plan.plan, "/x.parquet").sql;
+    expect(sql).toMatch(/count\("c2"\)/);
+    expect(sql).not.toMatch(/count\(\*\) - count/);
+  });
+
+  it("pembanding KPI memakai kolom yang dihitung kosongnya → INVALID dengan penjelasan", async () => {
+    const r = await runWidgetQuery(USER, { widgetId: WID("kself") }, deps());
+    expect(r).toMatchObject({ ok: false, code: "INVALID" });
+    expect(r.ok ? "" : r.message).toContain("dihitung kosongnya");
   });
 
   it("KPI = jumlah baris yang kolomnya kosong", async () => {

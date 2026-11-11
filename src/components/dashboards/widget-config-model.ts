@@ -113,7 +113,10 @@ export function measureForChoice(
   // Jumlah terisi / Jumlah nilai unik (cocok untuk teks) kolom pertama yang bukan ID/nomor urut.
   const counts =
     choice === "count_filled" || choice === "count_distinct" || choice === "count_blank";
+  // Jumlah kosong (T-bwza): kolom yang memang punya sel kosong lebih dulu (bukan langsung 0).
+  const blanks = choice === "count_blank" ? allowed.find((c) => (c.nullPct ?? 0) > 0) : undefined;
   const pick =
+    blanks ??
     (counts ? undefined : measureCandidates(allowed)[0]) ??
     allowed.find((c) => !isIdLike(c)) ??
     allowed[0]!;
@@ -392,7 +395,7 @@ export function droppedCalcNotice(prev: WidgetConfig, next: WidgetConfig): strin
         : otherSheet
           ? "rumusnya memakai kolom sheet lain"
           : next.type === "pie" && !isAdditiveCalc(c.expr)
-            ? "pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris"
+            ? "pai hanya untuk rumus yang menjumlah atau mengurangkan Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong"
             : "jenis ini hanya menampilkan satu nilai";
     groups.set(reason, [...(groups.get(reason) ?? []), c.label]);
   }

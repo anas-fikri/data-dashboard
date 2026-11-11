@@ -303,8 +303,8 @@ export function MeasureFields({
       ) : null}
       {type === "pie" ? (
         <p className="text-xs text-muted-foreground">
-          Pai menampilkan bagian dari keseluruhan, jadi hanya untuk Total, Jumlah baris, atau Jumlah
-          terisi.
+          Pai menampilkan bagian dari keseluruhan, jadi hanya untuk Total, Jumlah baris, Jumlah
+          terisi, atau Jumlah kosong.
         </p>
       ) : null}
     </div>

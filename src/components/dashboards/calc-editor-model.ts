@@ -104,7 +104,7 @@ export function checkCalc(input: {
     return {
       ok: false,
       message:
-        "Grafik pai hanya untuk rumus yang menjumlah atau mengurangkan Total atau Jumlah baris (tanpa ×, ÷, atau angka). Untuk rasio pakai grafik batang.",
+        "Grafik pai hanya untuk rumus yang menjumlah atau mengurangkan Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong (tanpa ×, ÷, atau angka). Untuk rasio pakai grafik batang.",
       at: null,
       field: "formula",
     };

@@ -262,6 +262,15 @@ const AGG_LABEL: Record<Agg, string> = {
   max: "Maksimum",
 };
 
+/**
+ * Agregasi yang dijalankan. Kolom kosong (absent, T-014: tidak ada di file versi ini) disimpan NULL di
+ * semua baris, jadi Jumlah kosong-nya = jumlah semua baris — menyesatkan. Dihitung seperti Jumlah terisi
+ * (selalu 0) sehingga tampil sama dengan ukuran lain pada kolom absent: "Tidak ada data"/"(kosong)" + catatan
+ * kolom kosong (T-bwza, review M1).
+ */
+const sqlAgg = (agg: Agg, c: ColumnSchema): Agg =>
+  agg === "count_blank" && c.absent ? "count" : agg;
+
 /** Tanggal/waktu ISO yang benar-benar ada (2024-02-30 atau 25:99 ditolak sebelum DuckDB, review F5). */
 export function isCalendarDate(v: string): boolean {
   const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(v);
@@ -344,7 +353,7 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
     if (allowed !== "any" && !allowed.includes(c.type)) {
       return fail(`Agregasi "${AGG_LABEL[m.agg]}" tidak bisa dipakai untuk kolom "${c.name}".`);
     }
-    measures.push({ key: `m${i}`, agg: m.agg, col: `c${c.pos}` });
+    measures.push({ key: `m${i}`, agg: sqlAgg(m.agg, c), col: `c${c.pos}` });
     const type: OutColumn["type"] =
       m.agg === "count" || m.agg === "count_distinct" || m.agg === "count_blank"
         ? "count"
@@ -467,7 +476,7 @@ export function resolveCalc(
               ? "decimal"
               : "integer";
       nums.add(num);
-      return { agg: e.agg, col: `c${c.pos}`, num };
+      return { agg: sqlAgg(e.agg, c), col: `c${c.pos}`, num };
     }
     if (e.op === "mul" || e.op === "div") {
       exact = false;

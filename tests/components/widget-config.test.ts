@@ -850,6 +850,14 @@ describe("Jumlah terisi", () => {
     expect(measureText({ agg: "count_blank", column: 1 }, (p) => `K${p}`)).toBe("Jumlah kosong K1");
   });
 
+  it("T-bwza: tanpa kolom lama, Jumlah kosong memilih kolom yang punya sel kosong", () => {
+    const withBlanks = cols.map((c, i) => (i === 2 ? { ...c, nullPct: 0.25 } : c));
+    expect(measureForChoice("count_blank", { agg: "count" }, withBlanks, "kpi")).toEqual({
+      agg: "count_blank",
+      column: withBlanks[2]!.pos,
+    });
+  });
+
   it("count tanpa kolom = Jumlah baris, count dengan kolom = Jumlah terisi (spec lama tetap bermakna sama)", () => {
     expect(aggChoiceOf({ agg: "count" })).toBe("count");
     expect(aggChoiceOf({ agg: "count", column: 1 })).toBe("count_filled");

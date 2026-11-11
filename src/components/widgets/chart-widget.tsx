@@ -767,6 +767,7 @@ export function ChartWidget({
             config={drillConfig}
             title={title}
             dimensionLabel={dim.label}
+            blankOf={agg === "count_blank" ? measure?.label : undefined}
             target={drillAt}
             onClose={() => setDrillAt(null)}
             // Bilah tersembunyi (petunjuk di mode TV): tanpa sasaran, Radix memakai perilaku bawaannya.

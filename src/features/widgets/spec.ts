@@ -195,6 +195,18 @@ export function valueColumns(v: { column?: number } | { kind: "calc"; expr: Calc
   return v.column ? [v.column] : [];
 }
 
+/** Kolom yang dihitung "Jumlah kosong" oleh satu nilai (T-bwza; daun rumus untuk field terhitung). */
+export function blankCountColumns(
+  v: { agg?: Agg; column?: number } | { kind: "calc"; expr: CalcExpr },
+): number[] {
+  if ("expr" in v) {
+    return calcLeaves(v.expr).flatMap((l) =>
+      l.agg === "count_blank" && l.column ? [l.column] : [],
+    );
+  }
+  return v.agg === "count_blank" && v.column ? [v.column] : [];
+}
+
 /** Pembanding KPI (v1.15, T-43hv): periode sebelumnya atau periode yang sama tahun lalu. */
 export const KPI_COMPARE = ["previous", "year"] as const;
 export type KpiCompareAgainst = (typeof KPI_COMPARE)[number];
@@ -523,7 +535,7 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
         return {
           ok: false,
           message:
-            "Grafik pai hanya untuk field terhitung yang menjumlah/mengurangkan Total atau Jumlah baris. Untuk rasio atau perkalian pakai grafik batang.",
+            "Grafik pai hanya untuk field terhitung yang menjumlah/mengurangkan Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong. Untuk rasio atau perkalian pakai grafik batang.",
         };
       }
       if (type === "pie" && !isCalcValue(m) && !(PIE_AGGS as readonly string[]).includes(m.agg)) {
