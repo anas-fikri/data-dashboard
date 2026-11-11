@@ -484,6 +484,24 @@ export function drillClause(
 }
 
 /**
+ * Klik-tembus ukuran "Jumlah kosong" (T-bwza): baris yang dibuka hanya yang kolom ukurannya kosong,
+ * sehingga jumlah baris di dialog = nilai yang diklik. null = ukuran lain (semua baris kategori).
+ */
+export function drillBlankClause(
+  config: WidgetConfig,
+  schema: ColumnSchema[],
+  now: Date,
+): DashClause | null {
+  if (!isChart(config)) return null;
+  const m = config.spec.measure;
+  if (isCalcValue(m) || m.agg !== "count_blank" || m.column === undefined) return null;
+  const c = schema.find((x) => x.pos === m.column);
+  if (!c || c.hidden) return null;
+  const f = dashFilterSchema.safeParse({ column: c.name, op: "in", values: [null] });
+  return f.success ? columnClause(f.data, c, now) : null;
+}
+
+/**
  * "Tampilkan nilai sebagai" (T-067) pada rencana: ukuran membawa showAs (dibaca pembangun SQL), kolom
  * keluarannya berjudul cara tampil ("% dari total kolom · Total Omzet") dan bertipe desimal untuk
  * persen. Hanya untuk nilai angka: Terkecil/Terbesar kolom tanggal → INVALID. Tanpa showAs rencana

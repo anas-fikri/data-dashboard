@@ -143,7 +143,7 @@ export const GRAIN_NOUN: Record<BucketGrain, string> = {
  * kosong = 0, seperti SUMIF Excel dan KPI — bukan "(kosong)" atau garis putus.
  */
 export const zeroWhenBlank = (agg: Agg) =>
-  agg === "sum" || agg === "count" || agg === "count_distinct";
+  agg === "sum" || agg === "count" || agg === "count_distinct" || agg === "count_blank";
 
 /** Celah garis karena N titik dipilih menurut nilai: "top" (terbesar) / "bottom" (terkecil). */
 export function valueCut(sort: ChartSort, cut: boolean): "top" | "bottom" | undefined {

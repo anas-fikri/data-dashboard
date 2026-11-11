@@ -48,10 +48,21 @@ export const AGG_LABEL: Record<Agg, string> = {
   avg: "Rata-rata",
   count: "Jumlah baris",
   count_distinct: "Jumlah nilai unik",
+  // COUNTBLANK (T-bwza): baris yang kolomnya kosong (sel kosong/hanya spasi).
+  count_blank: "Jumlah kosong",
   min: "Terkecil",
   max: "Terbesar",
 };
-export const AGG_ORDER: Agg[] = ["sum", "avg", "count", "count_distinct", "min", "max"];
+// Jumlah kosong tepat di bawah Jumlah baris/Jumlah terisi (aggChoiceOptions).
+export const AGG_ORDER: Agg[] = [
+  "sum",
+  "avg",
+  "count",
+  "count_blank",
+  "count_distinct",
+  "min",
+  "max",
+];
 
 /**
  * Pilihan "Nilai" di panel (T-3z0y). Spec tetap memakai agg "count": tanpa kolom = Jumlah baris (semua baris),
@@ -100,7 +111,8 @@ export function measureForChoice(
   const keep = allowed.some((c) => c.pos === prev.column);
   // Kolom baru (T-12zs — bukan "Total No."/"Total Tahun"): Total/Rata-rata/… kolom besaran bila ada;
   // Jumlah terisi / Jumlah nilai unik (cocok untuk teks) kolom pertama yang bukan ID/nomor urut.
-  const counts = choice === "count_filled" || choice === "count_distinct";
+  const counts =
+    choice === "count_filled" || choice === "count_distinct" || choice === "count_blank";
   const pick =
     (counts ? undefined : measureCandidates(allowed)[0]) ??
     allowed.find((c) => !isIdLike(c)) ??
@@ -193,7 +205,7 @@ export function columnsForAgg(
 
 type Measure = { agg: Agg; column?: number };
 
-/** Agregasi yang ditawarkan: cocok dengan kolom sheet; pai hanya Total/Jumlah baris/Jumlah terisi. */
+/** Agregasi yang ditawarkan: cocok dengan kolom sheet; pai hanya Total/Jumlah baris/terisi/kosong. */
 export function aggOptions(type: WidgetType, columns: SourceColumn[]): Agg[] {
   const allowed: readonly Agg[] = type === "pie" ? PIE_AGGS : AGG_ORDER;
   return AGG_ORDER.filter(

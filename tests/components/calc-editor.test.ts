@@ -71,6 +71,7 @@ describe("model editor", () => {
       "avg",
       "count",
       "count_filled",
+      "count_blank",
       "count_distinct",
       "min",
       "max",

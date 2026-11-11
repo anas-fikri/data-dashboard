@@ -177,6 +177,23 @@ test.describe("widget", () => {
     await expectRupiahTotal(widgetTitled(page, "Total omzet").getByTestId("kpi-value"));
   });
 
+  test("T-bwza: Angka 'Jumlah kosong' — pilihan di bawah Jumlah terisi, kolom terpilih, 0 bila tidak ada sel kosong", async ({
+    page,
+  }) => {
+    await page.goto(`${dashboardUrl}?mode=edit`);
+    const panel = await addWidget(page, "Cabang kosong", "Angka");
+    await panel.getByLabel("Nilai", { exact: true }).click();
+    const options = page.getByRole("option");
+    const names = await options.allTextContents();
+    expect(names.indexOf("Jumlah kosong")).toBe(names.indexOf("Jumlah terisi") + 1);
+    await page.getByRole("option", { name: "Jumlah kosong", exact: true }).click();
+    await choose(panel, "dari kolom", "Cabang · Teks");
+    await expect(panel.getByTestId("config-status")).toHaveAttribute("data-state", "saved");
+    // Fixture tanpa sel kosong: angka 0 (bukan "(kosong)").
+    await expect(widgetTitled(page, "Cabang kosong").getByTestId("kpi-value")).toHaveText("0");
+    await expect(widgetTitled(page, "Cabang kosong")).toContainText("Jumlah kosong Cabang");
+  });
+
   test("AC 3: tabel — 100 baris per halaman, urut kolom lalu pindah halaman", async ({ page }) => {
     await page.goto(`${dashboardUrl}?mode=edit`);
     await addWidget(page, "Detail transaksi", "Tabel");

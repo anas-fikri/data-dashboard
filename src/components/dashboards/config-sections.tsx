@@ -207,7 +207,7 @@ export function TableColumns({
   );
 }
 
-/** Agregasi + kolomnya. Pai hanya Total/Jumlah baris/Jumlah terisi (bagian dari keseluruhan). */
+/** Agregasi + kolomnya. Pai hanya Total/Jumlah baris/terisi/kosong (bagian dari keseluruhan). */
 type ShownMeasure = {
   agg: Agg;
   column?: number;
@@ -218,7 +218,7 @@ type ShownMeasure = {
 
 /** Ukuran berupa angka (jumlah, atau agregat kolom angka/durasi): boleh "Tampilkan nilai sebagai". */
 function numericMeasure(m: ShownMeasure, columns: SourceColumn[]): boolean {
-  if (m.agg === "count" || m.agg === "count_distinct") return true;
+  if (m.agg === "count" || m.agg === "count_distinct" || m.agg === "count_blank") return true;
   const t = columns.find((c) => c.pos === m.column)?.type;
   return t === "integer" || t === "decimal" || t === "duration";
 }
@@ -294,7 +294,7 @@ export function MeasureFields({
             <p className="text-xs text-muted-foreground" data-testid="config-show-as-hint">
               {isAxisShowAs(showAs)
                 ? `Dihitung urut ${axis ?? "label"} naik, termasuk item yang tidak tampil${type === "pivot" ? "; sel total dan subtotal dikosongkan" : ""}.`
-                : measure.agg === "sum" || measure.agg === "count"
+                : measure.agg === "sum" || measure.agg === "count" || measure.agg === "count_blank"
                   ? "Dibagi total seluruh data yang lolos filter, termasuk yang tidak tampil."
                   : `Dibagi ${AGG_LABEL[measure.agg].toLowerCase()} yang sama atas seluruh data yang lolos filter (bukan jumlah sel).`}
             </p>

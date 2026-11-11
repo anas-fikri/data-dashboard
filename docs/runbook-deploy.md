@@ -1083,3 +1083,33 @@ gabung hilang sampai roll-forward. `bash deploy/upgrade.sh rollback` (image lama
 juga aman, tetapi seperti biasa unggahan setelah upgrade ikut hilang. Unggahan bertanda gabung yang belum selesai
 diproses saat rollback image akan diproses worker v1.15 sebagai sheet terpisah (tanda diabaikan) — tunggu antrean
 kosong sebelum rollback image saja, atau unggah ulang setelah roll-forward.
+
+## 27. Rilis v1.17.0 (tanpa migrasi) dan rollback ke v1.16.0
+
+Ukuran **Jumlah kosong** (T-bwza): agregasi baru `count_blank` = `COUNT(*) − COUNT(kolom)` (sel kosong/hanya spasi
+sudah NULL sejak ingest). Dipakai widget Angka/Batang/Garis/Pai/Pivot dan field terhitung; aditif (Total pivot,
+"Lainnya" pai, field terhitung ±). Klik-tembus dari grafik berukuran Jumlah kosong menambah syarat "kolom kosong"
+sehingga jumlah baris dialog = nilai yang diklik. Tanpa migrasi:
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.17.0
+```
+
+(Produksi masih v1.15.x → migrasi v1.16 ikut: tambahkan `--full`.) Lalu perbarui panduan **Susun dashboard**:
+
+```bash
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only susun-dashboard
+```
+
+Beban: satu agregat tambahan per ukuran (COUNT(*) − COUNT(kolom)) — sama murahnya dengan Jumlah terisi.
+
+Catatan arti: kolom yang tidak ada di sebagian segmen (sheet periode/gabungan dengan kolom baru) terhitung kosong
+untuk baris segmen itu; kolom yang tidak ada di versi data (absent, T-014) tampil "(kosong)" seperti ukuran lain.
+
+Cek setelah deploy: mode ubah → widget Angka → **Nilai: Jumlah kosong** → pilih kolom yang punya sel kosong → angka =
+Jumlah baris − Jumlah terisi kolom itu (widget Angka lain atau **Lihat data**).
+
+Rollback image ke v1.16.0: widget/pivot ber-Jumlah kosong tampil "Pengaturan widget tidak valid" (skema lama strict;
+data di DB tetap) sampai roll-forward. Ganti ukurannya dulu bila rollback akan lama.

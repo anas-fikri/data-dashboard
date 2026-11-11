@@ -16,6 +16,7 @@ import {
   columnsForAgg,
   defaultConfig,
   measureForChoice,
+  measureText,
   missingColumns,
   sortLabel,
   type Source,
@@ -173,7 +174,7 @@ describe("review desain T-011", () => {
     };
     const last = o.series[0]!.data.at(-1)!;
     expect(last).toMatchObject({ name: OTHERS_LABEL, value: 85, itemStyle: { color: "c6" } });
-    expect(aggOptions("pie", sources[0]!.columns)).toEqual(["sum", "count"]);
+    expect(aggOptions("pie", sources[0]!.columns)).toEqual(["sum", "count", "count_blank"]);
     const fromAvg = defaultConfig("pie", sources, {
       type: "bar",
       spec: {
@@ -823,6 +824,7 @@ describe("Jumlah terisi", () => {
       "avg",
       "count",
       "count_filled",
+      "count_blank",
       "count_distinct",
       "min",
       "max",
@@ -831,7 +833,21 @@ describe("Jumlah terisi", () => {
       "Total",
       "Jumlah baris",
       "Jumlah terisi",
+      "Jumlah kosong",
     ]);
+  });
+
+  it("T-bwza: Jumlah kosong memakai kolom apa pun (teks juga); teks panel menyebut kolomnya", () => {
+    expect(measureForChoice("count_blank", { agg: "count" }, cols, "kpi")).toEqual({
+      agg: "count_blank",
+      column: 1,
+    });
+    expect(measureForChoice("count_blank", { agg: "count", column: 3 }, cols, "bar")).toEqual({
+      agg: "count_blank",
+      column: 3,
+    });
+    expect(aggChoiceOf({ agg: "count_blank", column: 1 })).toBe("count_blank");
+    expect(measureText({ agg: "count_blank", column: 1 }, (p) => `K${p}`)).toBe("Jumlah kosong K1");
   });
 
   it("count tanpa kolom = Jumlah baris, count dengan kolom = Jumlah terisi (spec lama tetap bermakna sama)", () => {

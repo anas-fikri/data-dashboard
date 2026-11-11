@@ -18,7 +18,8 @@ import type { DashClause } from "./filters";
 export const SPEC_MAX_BYTES = 64 * 1024;
 export const LIMIT_MAX = 10_000;
 
-const AGGS = ["count", "count_distinct", "sum", "avg", "min", "max"] as const;
+// count_blank (T-bwza, v1.17) = baris yang kolomnya kosong (COUNTBLANK): COUNT(*) − COUNT(kolom).
+const AGGS = ["count", "count_distinct", "count_blank", "sum", "avg", "min", "max"] as const;
 const GRAINS = ["day", "week", "month", "quarter", "year"] as const;
 export const FILTER_OPS = [
   "eq",
@@ -243,6 +244,7 @@ const TEMPORAL: ColumnType[] = ["date", "timestamp"];
 const AGG_TYPES: Record<Agg, ColumnType[] | "any"> = {
   count: "any",
   count_distinct: "any",
+  count_blank: "any",
   sum: NUMERIC,
   avg: NUMERIC,
   min: ORDERED,
@@ -253,6 +255,7 @@ const AGG_TYPES: Record<Agg, ColumnType[] | "any"> = {
 const AGG_LABEL: Record<Agg, string> = {
   count: "Jumlah terisi",
   count_distinct: "Jumlah unik",
+  count_blank: "Jumlah kosong",
   sum: "Total",
   avg: "Rata-rata",
   min: "Minimum",
@@ -343,7 +346,7 @@ export function resolveSpec(spec: QuerySpec, schema: ColumnSchema[]): Resolved {
     }
     measures.push({ key: `m${i}`, agg: m.agg, col: `c${c.pos}` });
     const type: OutColumn["type"] =
-      m.agg === "count" || m.agg === "count_distinct"
+      m.agg === "count" || m.agg === "count_distinct" || m.agg === "count_blank"
         ? "count"
         : m.agg === "avg" && c.type === "integer"
           ? "decimal"
@@ -430,7 +433,7 @@ export function resolveCalc(
       return { const: e.const, param: `${key}k${++consts}` };
     }
     if (isCalcLeaf(e)) {
-      if (e.agg !== "sum" && e.agg !== "count") additive = false;
+      if (e.agg !== "sum" && e.agg !== "count" && e.agg !== "count_blank") additive = false;
       if (!e.column) {
         if (e.agg !== "count") problem ??= `Agregasi "${e.agg}" membutuhkan kolom.`;
         nums.add("integer");
@@ -446,12 +449,17 @@ export function resolveCalc(
         problem ??= `Agregasi "${AGG_LABEL[e.agg]}" tidak bisa dipakai untuk kolom "${c.name}".`;
       } else if ((e.agg === "min" || e.agg === "max") && !CALC_LEAF_TYPES.includes(c.type)) {
         problem ??= `Field terhitung hanya bisa memakai ukuran angka ("${AGG_LABEL[e.agg]} ${c.name}").`;
-      } else if (c.type === "duration" && e.agg !== "count" && e.agg !== "count_distinct") {
+      } else if (
+        c.type === "duration" &&
+        e.agg !== "count" &&
+        e.agg !== "count_distinct" &&
+        e.agg !== "count_blank"
+      ) {
         // Hasil rumus tampil sebagai angka biasa, bukan j:mm:dd — detik mentah menyesatkan.
         problem ??= `Field terhitung belum bisa memakai kolom durasi ("${AGG_LABEL[e.agg]} ${c.name}"). Pakai ukuran biasa untuk durasi.`;
       }
       const num: CalcNum =
-        e.agg === "count" || e.agg === "count_distinct"
+        e.agg === "count" || e.agg === "count_distinct" || e.agg === "count_blank"
           ? "integer"
           : e.agg === "avg" || (c.type === "decimal" && c.float)
             ? "double"

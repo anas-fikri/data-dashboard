@@ -21,6 +21,7 @@ export const AGGS = [
   "avg",
   "count",
   "count_distinct",
+  "count_blank",
   "min",
   "max",
 ] as const satisfies Agg[];
@@ -40,7 +41,7 @@ export const TABLE_COLUMNS_MAX = 20;
 export const TOP_N_MAX: Record<ChartType, number> = { bar: 50, line: 1000, pie: 5 };
 export const TOP_N_DEFAULT: Record<ChartType, number> = { bar: 12, line: 365, pie: 5 };
 /** Pai hanya untuk ukuran yang bisa dijumlahkan (bagian dari keseluruhan). */
-export const PIE_AGGS = ["sum", "count"] as const satisfies Agg[];
+export const PIE_AGGS = ["sum", "count", "count_blank"] as const satisfies Agg[];
 export const SORT_DEFAULT: Record<ChartType, ChartSort> = {
   bar: "value_desc",
   // Garis: N periode TERBARU (ditampilkan urut waktu naik) — bukan N tertua.
@@ -529,7 +530,7 @@ export function parseWidgetConfig(type: unknown, spec: unknown): ParsedConfig {
         return {
           ok: false,
           message:
-            "Grafik pai hanya untuk Total, Jumlah baris, atau Jumlah terisi. Untuk rata-rata, terkecil, terbesar, atau jumlah unik pakai grafik batang.",
+            "Grafik pai hanya untuk Total, Jumlah baris, Jumlah terisi, atau Jumlah kosong. Untuk rata-rata, terkecil, terbesar, atau jumlah unik pakai grafik batang.",
         };
       }
       return { ok: true, config: { type, spec: p.data } };

@@ -79,6 +79,7 @@ import { buildPeriodBoundsSql, buildSql, buildTotalsSql, type BuiltSql } from ".
 import { buildTableCount, buildTablePage } from "./table";
 import {
   absentNames,
+  drillBlankClause,
   drillClause,
   pivotPreviewBodySchema,
   widgetBodySchema,
@@ -1145,14 +1146,19 @@ export async function resolveWidget(
   if (!sheet.typedKey || !sheet.schema) return fail("NOT_READY", "Sheet ini belum siap.");
   // Klik-tembus (T-d5ev): grafiknya harus tetap sah (dimensi terlihat), lalu yang dijalankan tabel kolom
   // detail + klausa kategori yang diklik (dibangun dari dimensi widget, di-AND dengan filter dashboard).
-  let drilled: DashClause | null = null;
+  const drilled: DashClause[] = [];
   if (body.drill) {
     const table = savedFilters ? null : drillTableConfig(config);
     if (!table) return fail("INVALID", "Widget ini tidak punya klik-tembus.");
     const chart = widgetPlan(config, sheet.schema, { page: 0 });
     if (!chart.ok) return fail(chart.code, chart.message);
-    drilled = drillClause(config, sheet.schema, body.drill.value, deps.now?.() ?? new Date());
-    if (!drilled) return fail("INVALID", "Kategori ini tidak bisa dibuka barisnya.");
+    const now = deps.now?.() ?? new Date();
+    const category = drillClause(config, sheet.schema, body.drill.value, now);
+    if (!category) return fail("INVALID", "Kategori ini tidak bisa dibuka barisnya.");
+    drilled.push(category);
+    // Ukuran Jumlah kosong (T-bwza): hanya baris yang kolomnya kosong.
+    const blank = drillBlankClause(config, sheet.schema, now);
+    if (blank) drilled.push(blank);
     config = table;
   }
   const planned = widgetPlan(
@@ -1172,10 +1178,7 @@ export async function resolveWidget(
     : { clauses: [] as DashClause[], skipped: [] as string[] };
   // Saring pivot tersimpan sumber grafik/KPI (T-073) di-AND dengan filter dashboard: masuk SQL, kunci
   // cache, pemangkasan segmen, dan ekspor lewat jalur klausa yang sama. Widget mandiri: tidak ada.
-  const saved = [
-    ...(planned.kind === "agg" ? (planned.saved ?? []) : []),
-    ...(drilled ? [drilled] : []),
-  ];
+  const saved = [...(planned.kind === "agg" ? (planned.saved ?? []) : []), ...drilled];
   const dash = saved.length ? { ...applied, clauses: [...saved, ...applied.clauses] } : applied;
   return {
     ok: true,

@@ -23,7 +23,7 @@ const VALUE_AGG_TYPES = ["integer", "decimal"];
 
 /** Kolom yang boleh dipakai agregasi ini di rumus. */
 export function calcColumnsForAgg(agg: Agg, columns: SourceColumn[]): SourceColumn[] {
-  if (agg === "count" || agg === "count_distinct") return columns;
+  if (agg === "count" || agg === "count_distinct" || agg === "count_blank") return columns;
   return columns.filter((c) => VALUE_AGG_TYPES.includes(c.type));
 }
 
