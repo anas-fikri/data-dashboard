@@ -55,6 +55,15 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-11 sore, sesi cloud)
+
+- Rilis **v1.17.0** (PR #21): **T-bwza** ukuran "Jumlah kosong" (COUNTBLANK). Tanpa migrasi →
+  `bash deploy/server-release.sh 1.17.0` setelah PR digabung (+ seed panduan `susun-dashboard`; runbook §27). Bila produksi
+  masih v1.15.x, deploy v1.16.0 dulu (bermigrasi, `--full`). Tag v1.17.0 hanya lokal.
+- v1.16.0 (PR #20) sudah digabung ke `main`; deploy menunggu pemilik.
+- Lanjutan: **T-jdmk** (kolom bawaan Jumlah kosong vs kolom pembanding; fokus kotak cari di ponsel), **T-01xj**, **T-7377**.
+  Deck presentasi dibatalkan pemilik. Grafik resource server di sidebar masih menunggu jawaban pemilik.
+
 ## Posisi terakhir (2026-11-11 siang, sesi cloud)
 
 - Rilis **v1.16.0** (PR #20, branch `claude/cool-babbage-t5yojt`): **T-0gmm** gabungkan sheet berkolom sama saat
