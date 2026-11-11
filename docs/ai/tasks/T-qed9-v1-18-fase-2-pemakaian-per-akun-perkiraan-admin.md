@@ -1,10 +1,11 @@
 ---
 id: T-qed9
 title: 'v1.18 fase 2: pemakaian per akun (perkiraan, admin) — query berjalan, detik query 15 menit, job berjalan, kuota'
-status: in_review
+status: done
 profile: strict
 created: "2026-11-11T14:35:10Z"
-updated: "2026-11-11T16:47:29Z"
+updated: "2026-11-11T16:55:07Z"
+closed: "2026-11-11T16:55:07Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -17,6 +18,7 @@ paths:
   - content/panduan/12-admin-email-dan-backup.md
   - deploy/deploy.sh
   - docker-compose.prod.yml
+  - docs/catatan-kerja-claude.md
   - docs/runbook-deploy.md
   - src/app/(app)/admin/page.tsx
   - src/app/(app)/admin/sumber-daya/page.tsx
@@ -30,6 +32,8 @@ paths:
   - src/features/metrics/format.ts
   - src/features/metrics/view.ts
   - src/features/query/grid-gate.ts
+  - src/features/query/grid-order.ts
+  - src/features/query/order-build-user.ts
   - src/features/whats-new/entries.ts
   - src/instrumentation.ts
   - src/lib/duckdb/engine.ts
@@ -43,6 +47,7 @@ paths:
   - src/worker/index.ts
   - tests/components/server-card.test.ts
   - tests/e2e/metrics.spec.ts
+  - tests/features/metrics/account-rows.test.ts
   - tests/fixtures/node-exporter/ne1.prom
   - tests/fixtures/node-exporter/ne2.prom
   - tests/lib/env.test.ts
@@ -67,22 +72,22 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 215153
+    duration_ms: 216055
     summary: |-
       …'t reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1794415389680,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1794415389702,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1794415389706,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1794415389721,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
-      {"level":40,"time":1794415395116,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:100:40)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker ingest gagal dibaca"}
+      {"level":40,"time":1794415852539,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794415852563,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794415852567,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794415852583,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1794415862936,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:100:40)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker ingest gagal dibaca"}
 
        Test Files  251 passed | 1 skipped (252)
             Tests  3330 passed | 10 skipped (3340)
-         Start at  16:40:56
-         Duration  153.85s (tests 81%, import 16%, transform 3%)
+         Start at  16:48:43
+         Duration  150.56s (tests 79%, import 17%, transform 3%)
 
-          Isolate  252 workers spawned · ~122ms startup each (spawn + environment, per file)
-                   at least ~10.11s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  252 workers spawned · ~129ms startup each (spawn + environment, per file)
+                   at least ~10.68s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.17.1 audit
@@ -90,14 +95,18 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-11T16:43:31Z"
-    tree: 080d3475a3c2b38be8c2bc416d9876d7eb108bf00389ea2bce88f6bd380a19a2
+    at: "2026-11-11T16:51:15Z"
+    tree: b59a72576637df9c19c5f3769acd9a787e6a825745f0d0a53355029f0d969d10
   commits:
+    - 10be0fe
     - 320d807
+    - 4a2e710
     - 53b72de
     - 562459f
+    - 5a2674d
     - 6237d6d
     - 77a5cd1
+    - 7ddd569
     - 7e67256
     - 914b030
     - 957a6dd
@@ -107,11 +116,12 @@ evidence:
     - d7d32e5
     - e4b98f0
     - ef3422a
+    - fd66af5
   acceptance:
     total: 1
     done: 1
   audit:
-    at: "2026-11-11T16:43:43Z"
+    at: "2026-11-11T16:51:21Z"
     passed: true
     tree: b59a72576637df9c19c5f3769acd9a787e6a825745f0d0a53355029f0d969d10
     results:
@@ -121,7 +131,7 @@ evidence:
           Scanning dir .
           Starting filesystem walk for root: /
           Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
-          End status: 551 dirs visited, 4577 inodes visited, 1 Extract calls, 103.488378ms elapsed, 103.488639ms wall time
+          End status: 551 dirs visited, 4585 inodes visited, 1 Extract calls, 120.806368ms elapsed, 120.806669ms wall time
           Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
           No issues found
       - name: npm audit (prod high, dev critical)
@@ -168,7 +178,9 @@ Impact: instrumentasi QueryEngine.withUser/withGlobal dan GridGate.withUser (Asy
 
 ## Evidence
 <!-- Generated by aitk close. -->
-- Check: `npm run check` → exit 0 at 2026-11-11T16:28:40Z (216434 ms)
+- Check: `npm run check` → exit 0 at 2026-11-11T16:51:15Z (216055 ms)
 - Acceptance criteria: 1/1 satisfied
-- Commits: 320d807, 53b72de, 562459f, 6237d6d, 77a5cd1, 7e67256, 914b030, 957a6dd, 9803850, a04e7fb, b421bcc, d7d32e5, e4b98f0, ef3422a
+- Commits: 10be0fe, 320d807, 4a2e710, 53b72de, 562459f, 5a2674d, 6237d6d, 77a5cd1, 7ddd569, 7e67256, 914b030, 957a6dd, 9803850, a04e7fb, b421bcc, d7d32e5, e4b98f0, ef3422a, fd66af5
 - Review pass 1 by claude-reviewer-subagent: 0 findings
+- Review pass 2 by claude-reviewer-subagent: 1 findings
+- Review pass 3 by claude-reviewer-subagent: 0 findings
