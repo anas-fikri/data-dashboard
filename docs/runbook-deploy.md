@@ -981,13 +981,47 @@ migrasi, jadi `bash deploy/release.sh --quick` boleh (preflight tetap menolak `-
 migrasi berbeda). Jalur data klik-tembus tetap `/api/query` widget (`{ widgetId, drill: { value } }`): server
 membangun klausa kategori dari dimensi widget sendiri dan hanya membaca kolom `drill.columns` (D6).
 
+**Catatan:** `--quick` hanya boleh bila produksi sudah v1.14.x. Produksi yang masih v1.13.x ikut membawa migrasi
+`dashboard_views` (v1.14) — `release.sh` menolak `--quick` dengan benar; jalankan tanpa `--quick`.
+
 Beban: KPI berpembanding menjalankan 3 query DuckDB kecil (batas periode + 2 agregat; periode pembanding
 tanpa baris → 2) dan hasilnya di-cache seperti widget lain. Klik-tembus = query tabel berhalaman (100 baris).
 
 Cek setelah deploy: mode ubah → widget Angka → **Pembanding: Periode sebelumnya** → kartu menampilkan
-"▲/▼ … vs <periode>"; grafik Batang → **Klik-tembus ke baris data** → mode lihat → klik batang → tabel baris.
+"▲/▼ … vs <periode>"; grafik Batang → **Klik-tembus ke baris data** → mode lihat → klik batang (filter
+silang) → tombol **Lihat baris data “…”** di atas grafik → tabel baris (alur v1.15.1).
 
 Rollback image ke v1.14.0: widget Angka berpembanding dan grafik berklik-tembus tampil "Pengaturan widget
 tidak valid" (skema lama strict menolak `compare`/`drill`; data di DB tetap) sampai roll-forward. Bila
 rollback akan lama, matikan Pembanding/Klik-tembus di widget itu dulu (atau terima sementara).
 
+## 25. Rilis v1.15.1 (tanpa migrasi) + pelajaran deploy 2026-11-10
+
+v1.15.1 hanya kode dan berkas deploy, tanpa migrasi: `bash deploy/release.sh --quick` (dari Mac) atau
+`bash deploy/server-release.sh 1.15.1` (di server; backup harian ≤ 26 jam dipakai). Isinya:
+
+- **Klik-tembus (T-j25e):** klik kategori grafik kembali menjadi filter silang; tombol **Lihat baris data “…”**
+  muncul di atas grafik untuk kategori terpilih. Filter silang widget dimatikan → klik langsung membuka baris.
+- **`upgrade.sh rollback` (T-xp28):** pemeriksaan database tujuan kini mengenali `DashboardView` dan semua tabel
+  yang dibuat `CREATE TABLE` di migrasi kode rilis. Di v1.15.0 rollback ditolak ("tabel … DashboardView").
+- **Masa tunggu sehat app 120 dtk** (`docker-compose.prod.yml`): start pertama setelah backup + build di VM bisa
+  > 75 dtk sebelum `/api/health/core` lulus; tanpa ini `up --wait`/proxy gagal padahal app sehat sendiri.
+  Bila tetap terjadi: cek `docker inspect --format '{{json .State.Health}}' dashboard-app-1` — status
+  `healthy` berarti ulangi `bash deploy/upgrade.sh start` (aman diulang), **bukan** rollback.
+- **Dockerfile:** lapisan `npm ci` tidak lagi dibangun ulang hanya karena versi `package.json` naik (manifest
+  tanpa versi). Tetap kompatibel dengan builder lama (`docker compose build` di VM tanpa buildx).
+
+Pelajaran deploy 2026-11-10 (v1.13.0 → v1.15.0):
+
+1. **Build di Mac Apple Silicon macet** (`npm ci` > 2 jam, CPU menganggur): image `linux/amd64` dibangun lewat
+   emulasi. Bila terjadi, hentikan (produksi belum berubah sebelum langkah 4/8) dan pakai §14
+   `server-release.sh` — build native di VM (± 15–20 menit, produksi tetap jalan).
+2. **Preflight "ruang disk kurang untuk backup lengkap"** — bebaskan ruang hanya dengan:
+   `docker rmi dashboard-<s>:prev-<stamp lama>` (sisakan image yang sedang berjalan dan `prev-` terbaru) dan
+   `docker builder prune --filter until=24h` (cache build; image/container/volume aplikasi lain tidak
+   tersentuh). **Jangan** `docker system prune`, jangan turunkan `MIN_FREE_GB`.
+3. **Preflight lama di "6/7 backup terenkripsi" tanpa keluaran:** keluaran `backup.sh` baru dicetak setelah selesai
+   (normal beberapa menit). Bila > 15 menit dan NAS penuh, `backup.sh` sedang mencoba mengunggah ke NAS: matikan
+   target NAS sementara di Admin › Backup, lalu
+   `for c in $(docker ps --format '{{.Names}}' | grep backup); do docker exec "$c" pkill -f 'rclone copy /backups'; done`
+   — arsip tetap di VM, preflight lanjut. Nyalakan lagi NAS setelah admin DSM mengosongkannya.

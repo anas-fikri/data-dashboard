@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   baru; data tetap). Matikan Pembanding/Klik-tembus di widget itu dulu bila rollback akan lama
   (runbook-deploy §24). Kolom klik-tembus terbaca semua yang bisa melihat dashboard (D6: kolom widget).
 
+- **v1.15.1 (T-xp28, T-j25e):** tanpa migrasi (`--quick` boleh bila produksi sudah v1.15.0). Klik grafik kembali
+  menjadi filter silang; klik-tembus lewat tombol **Lihat baris data** untuk kategori terpilih. `upgrade.sh
+  rollback` mengenali `DashboardView` + tabel dari migrasi rilis; masa tunggu sehat app 120 dtk; lapisan
+  `npm ci` di Dockerfile ter-cache walau versi naik (runbook-deploy §25).
+
 ## [1.15.0] - 2026-11-10
 
 ### Added
