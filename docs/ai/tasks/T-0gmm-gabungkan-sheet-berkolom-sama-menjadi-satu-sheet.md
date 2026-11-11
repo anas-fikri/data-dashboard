@@ -5,7 +5,7 @@ status: in_progress
 profile: strict
 profile_pinned: true
 created: "2026-11-11T05:32:56Z"
-updated: "2026-11-11T05:51:03Z"
+updated: "2026-11-11T05:51:48Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -42,3 +42,20 @@ cocok/tidak cocok), uploads service/init-period; e2e ingest T-0gmm (UI, 3 segmen
 902, unggah ulang tercentang bawaan).
 
 ## Notes
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — Batas kepercayaan: body POST /api/uploads (browser) → validateInit; worker membaca mergeSheets dari baris versi (DB), bukan dari klien
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak disentuh perubahan ini
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak disentuh perubahan ini
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — Tidak ada endpoint baru; initUpload tetap memeriksa pemilik dataset (owner-only) sebelum versi dibuat; ingest memakai versionId dari job
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — mergeSheets hanya diterima true/false (selainnya INVALID); hanya xlsx + REPLACE dan bukan 1 sheet; route meneruskan field eksplisit; tidak ada SQL/OS dari input (judul kolom hanya dibandingkan di memori)
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak disentuh perubahan ini
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — Pesan gagal gabungan (MergeError) bahasa awam tanpa detail internal; alasan verdict yang disertakan sudah tampil di alur pemetaan biasa
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A: tidak disentuh perubahan ini
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak disentuh perubahan ini
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — N/A: tidak disentuh perubahan ini
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — Pilihan gabung ikut kunci resume (pilihan beda → unggahan baru); versi gabungan yang butuh pemetaan digagalkan (tidak masuk alur yang menulis ulang satu segmen); _row lewat allocateRows atomik per segmen
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — Batas file/baris/sheet/ukuran tidak berubah; tiap sheet tetap di-parse dengan batas SAX yang sama; nama asal segmen hanya teks tampilan (bukan path)
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — Field mergeSheets divalidasi server; rate limit RULES.uploadInit dan cek Origin tetap
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak disentuh perubahan ini
