@@ -1197,7 +1197,14 @@ Pasang (pemilik mengubah `.env.prod`, lalu rilis seperti biasa):
 3. Opsional `METRICS_DISK_MOUNTS=/,/var/lib/docker,/data,/data/docker-data` (bawaan; mount yang tidak ada dilewati,
    mount di perangkat yang sama dilaporkan sekali).
 4. `bash deploy/server-release.sh 1.18.0` — `up -d` di upgrade ikut menyalakan `node-exporter` + `metrics-relay`.
-   Rilis v1.18.0 tanpa migrasi.
+   Rilis v1.18.0 tanpa migrasi (produksi < v1.17.1: jalankan rilis yang tertinggal dulu, §26–§28). Lalu seed
+   panduan yang berubah (disimpan di database, tidak diisi upgrade):
+
+   ```bash
+   docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+     node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update \
+     --only mengenal-data-dashboard,admin-email-dan-backup
+   ```
 
 Cek (± 30 detik setelah app sehat):
 
