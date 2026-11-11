@@ -2,14 +2,40 @@
 id: T-bwza
 title: 'Ukuran Jumlah kosong (COUNTBLANK): hitung baris yang kolomnya tidak terisi'
 status: in_review
-profile: standard
+profile: strict
 created: "2026-11-11T06:12:26Z"
-updated: "2026-11-11T07:50:46Z"
+updated: "2026-11-11T08:38:27Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 06f26ffd5a819da4a20a1e24ed13a263c5ec7dcb
+paths:
+  - CHANGELOG.md
+  - content/panduan/06-susun-dashboard.md
+  - docs/runbook-deploy.md
+  - src/components/dashboards/calc-editor-model.ts
+  - src/components/dashboards/config-sections.tsx
+  - src/components/dashboards/kpi-compare-fields.tsx
+  - src/components/dashboards/widget-config-model.ts
+  - src/components/dashboards/widget-config.tsx
+  - src/components/widgets/chart-series.ts
+  - src/components/widgets/chart-widget.tsx
+  - src/components/widgets/drill-dialog.tsx
+  - src/components/widgets/kpi-view.tsx
+  - src/features/query/service.ts
+  - src/features/query/spec.ts
+  - src/features/query/sql.ts
+  - src/features/query/widget.ts
+  - src/features/whats-new/entries.ts
+  - src/features/widgets/calc.ts
+  - src/features/widgets/spec.ts
+  - tests/components/calc-editor.test.ts
+  - tests/components/kpi-compare.test.ts
+  - tests/components/widget-config.test.ts
+  - tests/e2e/filters.spec.ts
+  - tests/e2e/widgets.spec.ts
+  - tests/features/query/count-blank.test.ts
 review:
   passes:
     - "n": 1
@@ -24,26 +50,26 @@ evidence:
   check:
     cmd: npm run check
     exit_code: 0
-    duration_ms: 196234
+    duration_ms: 185315
     summary: |-
-      …asetId":"t072mwbsugdnds000000","msg":"dataset dihapus"}
-      {"level":40,"time":1794382227832,"service":"data-dashboard","host":"127.0.0.1","port":33305,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1794382227887,"service":"data-dashboard","host":"127.0.0.1","port":38545,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
-      {"level":40,"time":1794382227987,"service":"data-dashboard","host":"127.0.0.1","port":36221,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1794382228090,"service":"data-dashboard","host":"127.0.0.1","port":37557,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
-      {"level":40,"time":1794382239890,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
-      {"level":40,"time":1794382252204,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
-      {"level":40,"time":1794382252227,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
-      {"level":40,"time":1794382252231,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
-      {"level":40,"time":1794382252249,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      …t":"127.0.0.1","port":40461,"step":"membuka folder","code":2,"err":"No such file or directory","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794386244619,"service":"data-dashboard","host":"127.0.0.1","port":40855,"err":"Unable to start subsystem: sftp","msg":"subsistem SFTP ditolak NAS"}
+      {"level":40,"time":1794386244727,"service":"data-dashboard","host":"127.0.0.1","port":34323,"step":"menghapus file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":40,"time":1794386244828,"service":"data-dashboard","host":"127.0.0.1","port":45665,"step":"menulis file uji","code":4,"err":"Failure","msg":"operasi SFTP tes koneksi ditolak NAS"}
+      {"level":30,"time":1794386246641,"service":"data-dashboard","datasetId":"t072mwbv8oefds000000","msg":"dataset dihapus"}
+      {"level":40,"time":1794386257283,"service":"data-dashboard","err":"Can't reach database server","msg":"sesi shell gagal dibaca"}
+      {"level":40,"time":1794386263430,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794386263451,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794386263455,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794386263477,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
 
        Test Files  246 passed | 1 skipped (247)
-            Tests  3289 passed | 10 skipped (3299)
-         Start at  07:28:57
-         Duration  133.58s (tests 80%, import 17%, transform 3%)
+            Tests  3295 passed | 10 skipped (3305)
+         Start at  08:35:57
+         Duration  126.81s (tests 80%, import 17%, transform 3%)
 
-          Isolate  247 workers spawned · ~117ms startup each (spawn + environment, per file)
-                   at least ~9.49s faster with isolate: false — reuses workers across files instead of one per file
+          Isolate  247 workers spawned · ~109ms startup each (spawn + environment, per file)
+                   at least ~8.90s faster with isolate: false — reuses workers across files instead of one per file
 
 
       > data-dashboard@1.16.0 audit
@@ -51,8 +77,48 @@ evidence:
 
       found 0 vulnerabilities
       found 0 vulnerabilities
-    at: "2026-11-11T07:31:12Z"
-    tree: 7c35fe40a7627c2a11d3201c7070917200018ea82556183d98dcf58523850856
+    at: "2026-11-11T08:38:05Z"
+    tree: c742ba48667a709b4292a2b648c2ad36cd25efa4cf5d74fccc9df870a7584cad
+  commits:
+    - 06f26ff
+    - 1146ff1
+    - 1f34fb1
+    - 3b06bc5
+    - 4084a12
+    - 5b25e15
+    - 669a30f
+    - 6b5c285
+    - 84ba18e
+    - 973f5ad
+    - be7c569
+    - e9978ed
+  acceptance:
+    total: 4
+    done: 4
+  audit:
+    at: "2026-11-11T08:31:20Z"
+    passed: true
+    tree: c742ba48667a709b4292a2b648c2ad36cd25efa4cf5d74fccc9df870a7584cad
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
+          End status: 542 dirs visited, 4068 inodes visited, 1 Extract calls, 83.064773ms elapsed, 83.064996ms wall time
+          Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@1.16.0 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
@@ -81,3 +147,29 @@ uji panel; e2e widgets T-bwza.
 - 2026-11-11T06:12:37Z Permintaan pemilik 2026-11-11: pertimbangkan kebutuhan perhitungan baris yang kolomnya tidak terisi. Saat ini: Jumlah baris (COUNT *), Jumlah terisi (COUNTA), filter nilai '(kosong)' di slicer/Saring pivot, nullPct di skema. Belum ada COUNTBLANK langsung. Contoh kebutuhan logistik: resi belum POD (tanggal terima kosong), kiriman tanpa kurir, alamat tidak lengkap. Rencana v1.17.0 setelah v1.16.0 ditutup.
 - 2026-11-11T06:16:40Z Keputusan pemilik 2026-11-11: v1.16 dulu, Jumlah kosong di v1.17.
 - 2026-11-11T07:50:46Z Review 2 putaran (claude-reviewer-subagent): r1 M1 (kolom absent) + M2 (pembanding kolom sama) + 3 Low diperbaiki; r2 0 blokir, L-a/L-c diperbaiki, L-b → T-jdmk.
+- 2026-11-11T08:31:19Z e2e penuh per proyek (e9978ed): 38 proyek lulus; filters T-pxnn gagal karena Nilai kini 8 pilihan (SearchSelect) → uji diarahkan ke Format angka + combobox Nilai, proyek filters 10/10 lulus ulang (84ba18e); data-view-a11y AC2 = T-7377 (sudah gagal di main), AC1 lulus terpisah. Firefox/WebKit/PDF tidak tersedia di VM.
+
+## Security checklist (OWASP ASVS 4.0.3)
+<!-- Check each item when verified, or write "N/A: <reason>" after the text and check it. -->
+- [x] V1 Architecture: trust boundaries and the components handling sensitive data are identified for this change — Batas kepercayaan tetap: spec widget dari DB (pemilik/editor menyimpan lewat API tervalidasi) → widgetPlan di server; klien hanya mengirim widgetId + nilai drill
+- [x] V2 Authentication: credentials are verified server-side; no default, hard-coded, or weak secrets — N/A: tidak disentuh perubahan ini
+- [x] V3 Session management: session tokens are random, protected, invalidated on logout and expiry — N/A: tidak disentuh perubahan ini
+- [x] V4 Access control: every endpoint/action checks authorization server-side, deny by default (no IDOR) — Tidak ada endpoint baru; jalur /api/query widget tetap memeriksa akses dashboard; klik-tembus tetap hanya kolom drill widget (D6)
+- [x] V5 Validation, sanitization and encoding: all input validated; output encoded; no injection (SQL, OS, template) — Agregasi count_blank divalidasi zod enum (spec widget dan spec query, strict); SQL tetap ekspresi tetap COUNT(*) − COUNT(ident(kolom)), kolom lewat posisi skema, nilai drill lewat parameter/klausa tervalidasi
+- [x] V6 Stored cryptography: sensitive data at rest uses approved algorithms; keys are not in the code — N/A: tidak disentuh perubahan ini
+- [x] V7 Error handling and logging: errors reveal no internals; security events are logged without secrets — Pesan INVALID pembanding berbahasa awam tanpa detail internal
+- [x] V8 Data protection: personal/sensitive data is minimized, not cached or logged, and removable — N/A: tidak disentuh perubahan ini
+- [x] V9 Communication: TLS for all external traffic; certificates validated — N/A: tidak disentuh perubahan ini
+- [x] V10 Malicious code: no backdoors, time bombs, or unexplained network calls; dependencies are trusted — N/A: tidak disentuh perubahan ini
+- [x] V11 Business logic: flows cannot be abused (limits, ordering, replay, race conditions) — Pembanding kolom yang dihitung kosongnya ditolak (tidak menampilkan 0 menyesatkan); kolom absent dihitung 0, bukan semua baris
+- [x] V12 Files and resources: uploads are type/size limited and stored safely; no path traversal or SSRF — N/A: tidak disentuh perubahan ini
+- [x] V13 API and web service: API inputs/outputs are schema-validated; CORS and rate limits are deliberate — Spec widget/pivot/field terhitung divalidasi server; cache key memuat agregasi dan klausa drill
+- [x] V14 Configuration: secure defaults, security headers, no debug in production, dependencies up to date — N/A: tidak disentuh perubahan ini
+
+## Evidence
+<!-- Generated by aitk close. -->
+- Check: `npm run check` → exit 0 at 2026-11-11T08:38:05Z (185315 ms)
+- Acceptance criteria: 4/4 satisfied
+- Commits: 06f26ff, 1146ff1, 1f34fb1, 3b06bc5, 4084a12, 5b25e15, 669a30f, 6b5c285, 84ba18e, 973f5ad, be7c569, e9978ed
+- Review pass 1 by claude-reviewer-subagent: 5 findings
+- Review pass 2 by claude-reviewer-subagent: 3 findings
