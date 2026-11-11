@@ -29,7 +29,7 @@ import { Sparkline } from "./sparkline";
  * Kartu "Server" di sidebar (v1.18, ADR-0010) untuk semua user login: CPU, RAM, disk, jaringan, dan status
  * pemroses unggahan, polling 10 dtk (berhenti saat tab tersembunyi — usePolling). Monitor belum dipasang →
  * kartu tidak tampil dan polling berhenti. Sidebar diciutkan → satu ikon status (tombol melebarkan sidebar).
- * Warna selalu disertai teks; status gabungan diumumkan pembaca layar hanya saat berubah (role=status).
+ * Warna selalu disertai teks; status gabungan diumumkan pembaca layar hanya saat berubah (aria-live polite).
  */
 export const LEVEL_ICON: Record<Level, Icon> = {
   ok: IconCircleCheck,
@@ -176,7 +176,14 @@ export function ServerCardView({
           </Link>
         )}
       </div>
-      <p role="status" className="mt-1 flex items-center gap-1.5" data-testid="server-status">
+      {/* aria-live (bukan role=status): diumumkan saat berubah seperti status, tanpa menambah wilayah "status"
+          global di setiap halaman yang bersaing dengan status milik halaman itu sendiri. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="mt-1 flex items-center gap-1.5"
+        data-testid="server-status"
+      >
         <StatusIcon
           size={14}
           stroke={2}

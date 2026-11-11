@@ -155,7 +155,8 @@ describe("ServerCardView", () => {
     expect(html).toContain('90%<span class="sr-only"> (tinggi)</span>');
     expect(html).toContain("Pemroses: aktif · 1 diproses · 2 menunggu");
     expect(html).not.toContain("/admin/sumber-daya");
-    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).not.toContain('role="status"'); // tidak bersaing dengan status milik halaman
   });
 
   it("diciutkan → satu tombol ikon berlabel status; galat → tidak tersedia", () => {
