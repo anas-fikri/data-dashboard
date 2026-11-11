@@ -55,6 +55,15 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-11 siang, sesi cloud)
+
+- Rilis **v1.16.0** (PR #20, branch `claude/cool-babbage-t5yojt`): **T-0gmm** gabungkan sheet berkolom sama saat
+  unggah xlsx. **Bermigrasi** (`DatasetVersion.mergeSheets`) → deploy tanpa `--quick` (runbook §26) + seed panduan
+  `unggah-data`. Tag v1.16.0 hanya lokal (push tag dari cloud ditolak) → gabung PR dulu, `server-release.sh` memakai `main`.
+- Lanjutan: **T-bwza** Jumlah kosong (keputusan pemilik: v1.17), **T-01xj** (uji drift + kolom filter ikut sheetMap).
+  Diskusi tertunda: grafik resource server di sidebar (node_exporter, admin saja) menunggu jawaban pemilik.
+- Insiden produksi 2026-11-11 pagi (502, load 211, reboot) — penyebab belum diketahui; worker dihidupkan ulang di jam sepi.
+
 ## Posisi terakhir (2026-11-11, sesi cloud)
 
 - Rilis **v1.15.1** (PR #18, digabung): T-xp28 (rollback kenali tabel rilis, start_period app 120 dtk, cache
