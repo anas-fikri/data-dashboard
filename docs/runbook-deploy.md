@@ -1277,3 +1277,32 @@ data): unggahan ulang dengan Gabungkan bisa gagal karena kolom sheet lama "hilan
 (mode periode) atau buat dataset baru dari file yang sama, lalu atur periode lagi.
 
 Rollback image ke v1.19.0 aman: segmen lanjutan (`headerRow 0`) dibaca apa adanya (`_row > headerRow`).
+
+## 32. Rilis v1.20.0 (migrasi kolom baru) dan rollback ke v1.19.x
+
+Unggahan periode **Ganti / Tambah / Perbarui berdasarkan kunci** (T-rbrb, ADR-0011). Migrasi
+`20261112000000_period_keys` hanya menambah: enum `PeriodUploadMode`, `SheetLineage.keyColumns` (bawaan kosong),
+`DatasetVersion.uploadMode` dan `UploadQueue.uploadMode` (NULL = Ganti). Karena ada migrasi, rilis dengan backup
+lengkap (`--full`, jangan `--quick`):
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.20.0 --full
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only data-per-periode
+```
+
+(Produksi masih < v1.19.1: jalankan §31 dulu, atau langsung rilis ini — tanpa migrasi tambahan di antaranya.)
+
+Setelah sehat: buka dataset Billing › **Atur periode** › **Kolom kunci**, pilih kolom unik (mis. _No Resi_ atau
+_No Invoice_), Simpan. Bila halaman melaporkan kunci dobel di data sekarang, pilih kolom lain/gabungan kolom dulu.
+Unggahan berikutnya di panel unggah bawaannya **Perbarui berdasarkan kunci**.
+
+Beban: setiap unggahan Perbarui membaca file data semua periode sheet itu untuk mencari kunci lama (lokal ke
+RustFS di server yang sama). Pantau kartu Server saat unggahan Billing pertama; bila berat, unggah di jam sepi
+(perbaikan baca-kolom-kunci-saja: T-yg3z).
+
+Rollback image ke v1.19.x: **selesaikan atau batalkan dulu semua unggahan periode/antrean yang belum diproses**
+(image lama mengabaikan `uploadMode`, sehingga unggahan Perbarui/Tambah yang tertunda diproses sebagai Ganti dan
+masuk tinjauan). Versi yang sudah dibuat v1.20 adalah kelompok segmen biasa dan tetap terbaca; kolom baru diabaikan
+(tidak perlu rollback migrasi).
