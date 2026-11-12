@@ -650,6 +650,26 @@ describe("T-jsmj review: sheet gabungan", () => {
     );
   });
 
+  it("v1.19.1: sheet lanjutan tanpa judul (bulan bercampur) → digabung ke sheet data, baris pertamanya data", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "os invoice", rows: [HEADER, ...month(4, 10)] },
+        { name: "os invoice(2)", rows: [...month(4, 6, 100), ...month(5, 4, 200)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "os invoice" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.ignoredSheets).toEqual([]);
+    expect(s.repo.plan!.mergedSheets).toEqual([
+      { sheet: "os invoice", from: ["os invoice", "os invoice(2)"] },
+    ]);
+    const after = Object.fromEntries(s.repo.plan!.entries.map((e) => [e.key, e.afterRows]));
+    expect(after["2026-04"]).toBe(16);
+    expect(after["2026-05"]).toBe(4);
+  });
+
   it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = await setupXlsx(

@@ -794,7 +794,9 @@ export function UploadPanel({
           fileName={sheetPick.file.name}
           sheets={sheetPick.sheets}
           activeSheets={activeSheets}
-          defaultMerge={activeMerged}
+          // Dataset baru (v1.19.1): gabung bawaan — sheet berkolom beda tetap terpisah. Data lama yang
+          // sheetnya terpisah tetap tanpa gabung bawaan (struktur dashboard tidak bergeser diam-diam).
+          defaultMerge={activeMerged || activeSheets.length === 0}
           onSubmit={(picked, mergeSheets) => {
             const sheets = selectionToSend(sheetPick.sheets, picked);
             void start(

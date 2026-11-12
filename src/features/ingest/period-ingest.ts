@@ -76,6 +76,7 @@ import {
 import { mergeProfiles, packProfile, type RawProfile, type StoredProfile } from "./profile";
 import { copyParquet } from "./raw-writer";
 import { normName } from "@/features/widgets/remap";
+import { isContinuation } from "./merge-sheets";
 import { headerSignature, pickMergeTarget, type MergeCandidate } from "./period-merge";
 import type { MergedSheet } from "./period-plan";
 import { planSheets, typeLabel, verdictOf, type ActiveSheet, type SnapshotRef } from "./refresh";
@@ -504,6 +505,17 @@ export async function runPeriodIngest(
       // T-jsmj: sheet tambahan berkolom sama digabung ke sheet data yang sama (satu kelompok per periode).
       // Ada sheet yang butuh pemetaan kolom → tidak menggabung (layar pemetaan hanya mengenal satu sheet file
       // per sheet data): sheet tambahan diabaikan dengan pemberitahuan, seperti sebelum v1.19.
+      // v1.19.1: sheet lanjutan tanpa judul memakai judul sheet sebelumnya (berantai), seluruh barisnya data.
+      const leaderOf = new Map<number, number>();
+      for (const sh of extras) {
+        const j = sheets.indexOf(sh);
+        const lead = j > 0 ? (leaderOf.get(j - 1) ?? j - 1) : -1;
+        if (lead >= 0 && isContinuation(sheets[lead]!.rec, sh.rec)) {
+          sh.rec.headerRow = 0;
+          sh.rec.columns = sheets[lead]!.rec.columns.map((c) => ({ ...c }));
+          leaderOf.set(j, lead);
+        }
+      }
       for (const sh of extras) {
         if (needsMapping) {
           const name = shown(sh);
@@ -513,8 +525,12 @@ export async function runPeriodIngest(
         }
         const headers = new Map<string, Awaited<ReturnType<typeof refreshHeader>>>();
         const candidates: MergeCandidate[] = [];
+        const continued = leaderOf.has(sheets.indexOf(sh));
         for (const pair of usable) {
-          const h = await refreshHeader(d, sh, pair);
+          // Lanjutan: judulnya sudah dari leader, baris judul tidak dibaca ulang.
+          const h = continued
+            ? { headerRow: 0, columns: sh.rec.columns }
+            : await refreshHeader(d, sh, pair);
           headers.set(pair.lineageId, h);
           const cp = periodColumnPlan(
             h.columns,

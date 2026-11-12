@@ -2,7 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { runIngest, type IngestOptions } from "@/features/ingest/ingest";
-import { columnsKey, MERGE_NEEDS_MAPPING, sheetGroups } from "@/features/ingest/merge-sheets";
+import {
+  columnsKey,
+  isContinuation,
+  markContinuations,
+  MERGE_NEEDS_MAPPING,
+  sheetGroups,
+} from "@/features/ingest/merge-sheets";
 import type { ActiveSnapshot } from "@/features/ingest/refresh";
 import { buildXlsx, readParquet, testRoot, VID } from "./fakes";
 
@@ -76,6 +82,64 @@ describe("sheetGroups (murni)", () => {
     const empty = { colCount: 0, columns: [] };
     expect(columnsKey(empty)).toBeNull();
     expect(sheetGroups([empty, empty], true)).toEqual([[0], [1]]);
+  });
+});
+
+/** Baris data tanpa judul (lanjutan ekspor terpecah): baris 1 langsung data. */
+function bareXml(from: number, n: number) {
+  const out: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const k = from + i;
+    out.push(
+      `<row r="${i + 1}">${cell(`K-${k}`)}<c><v>${k * 3}</v></c>${cell(`baris ${k}`)}</row>`,
+    );
+  }
+  return out.join("");
+}
+
+describe("v1.19.1: sheet lanjutan tanpa judul (murni)", () => {
+  const cols = (...n: string[]) =>
+    n.map((original, i) => ({ pos: i + 1, name: original, original }));
+  const rec = (
+    headerRow: number,
+    rows: (string | null)[][],
+    names = ["Kode", "Nilai", "Catatan"],
+  ) => ({
+    colCount: 3,
+    headerRow,
+    columns: cols(...names),
+    preview: { rows: rows.map((cells, i) => ({ row: i + 1, cells })) },
+  });
+  const leader = rec(1, [
+    ["Kode", "Nilai", "Catatan"],
+    ["K-1", "3", "baris 1"],
+  ]);
+
+  it("baris pertama data dengan jenis nilai cocok → lanjutan; memakai judul leader, headerRow 0, berantai", () => {
+    const c2 = rec(1, [["K-9", "27", "baris 9"]], ["K-9", "27", "baris 9"]);
+    const c3 = rec(1, [["K-10", "30", "baris 10"]], ["K-10", "30", "baris 10"]);
+    expect(isContinuation(leader, c2)).toBe(true);
+    const recs = [structuredClone(leader), c2, c3];
+    expect([...markContinuations(recs)]).toEqual([
+      [1, 0],
+      [2, 0],
+    ]);
+    expect(recs[1]!.headerRow).toBe(0);
+    expect(recs[2]!.columns.map((c) => c.original)).toEqual(["Kode", "Nilai", "Catatan"]);
+    expect(sheetGroups(recs, true)).toEqual([[0, 1, 2]]);
+  });
+
+  it("bukan lanjutan: punya judul sendiri, jumlah kolom beda, atau jenis nilai tidak cocok", () => {
+    const titled = rec(1, [
+      ["Kode", "Nilai", "Catatan"],
+      ["K-1", "3", "x"],
+    ]);
+    expect(isContinuation(leader, titled)).toBe(false);
+    const other = rec(1, [["Asal", "Tujuan", "Jarak"]], ["Asal", "Tujuan", "Jarak"]);
+    expect(isContinuation(leader, other)).toBe(false); // teks di kolom angka
+    expect(isContinuation(leader, { ...rec(1, [["K-1", "3", "x", "y"]]), colCount: 4 })).toBe(
+      false,
+    );
   });
 });
 
@@ -153,6 +217,32 @@ describe("ingest: gabungkan sheet berkolom sama", () => {
     // Satu nilai teks dari 10: tipe tetap bulat dengan 1 gagal cast, atau berubah teks — bukan diam-diam
     // bulat tanpa gagal (artinya profil sheet B diabaikan).
     expect(g.type === "integer" ? g.castFailCount : 1).toBe(1);
+  });
+
+  it("v1.19.1: sheet lanjutan tanpa judul → digabung, semua barisnya data dengan judul sheet pertama", async () => {
+    const file = t.file(
+      `lanjut-${Math.random().toString(36).slice(2)}.xlsx`,
+      await buildXlsx([
+        { name: "os invoice", xml: sheetXml({ from: 1, n: 300 }) },
+        { name: "os invoice(2)", xml: bareXml(301, 250) },
+        { name: "os invoice(3)", xml: bareXml(551, 50) },
+      ]),
+    );
+    const s = t.setup(file);
+    s.repo.mergeSheets = true;
+    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    expect(r).toEqual({ outcome: "done", sheets: 1 });
+    const [inv] = s.repo.byIndex();
+    expect(inv!.name).toBe("os invoice");
+    expect(inv!.schema!.map((c) => c.name)).toEqual(["Kode", "Nilai", "Catatan"]);
+    const man = (await s.repo.manifest())!;
+    const rows = (
+      await Promise.all(man[0]!.segments.map((g) => readParquet(join(s.storage.dir, g.typedKey))))
+    ).flat();
+    // Baris pertama sheet lanjutan adalah data (tidak dibuang sebagai judul).
+    expect(rows).toHaveLength(600);
+    expect(rows.map((x) => x[1])).toContain("K-301");
+    expect(rows.map((x) => x[1])).toContain("K-551");
   });
 
   it("tanpa pilihan gabung → perilaku lama (tiga sheet terpisah)", async () => {

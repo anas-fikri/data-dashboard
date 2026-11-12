@@ -57,6 +57,7 @@ import {
   MERGE_NEEDS_MAPPING,
   MergeError,
   columnsKey,
+  markContinuations,
   mergeHeaderDrift,
   sheetGroups,
 } from "./merge-sheets";
@@ -472,9 +473,15 @@ export async function runIngest(
 
     // Sheet berkolom sama digabung (T-0gmm): satu unit = sheet logis; anggota > 1 = satu segmen per sheet
     // asal. Tanpa pilihan gabung setiap sheet unitnya sendiri (perilaku lama).
+    const mergeOn = ext === "xlsx" && v.mergeSheets === true;
+    // v1.19.1: sheet lanjutan tanpa judul (ekspor terpecah) memakai judul sheet sebelumnya → ikut kelompoknya.
+    const continued = mergeOn
+      ? markContinuations(sheets.map((s) => s.rec))
+      : new Map<number, number>();
+    const isContinued = new Set([...continued.keys()].map((i) => sheets[i]!));
     const units = sheetGroups(
       sheets.map((s) => s.rec),
-      ext === "xlsx" && v.mergeSheets === true,
+      mergeOn,
     ).map((g) => g.map((i) => sheets[i]!));
     const merged = units.some((u) => u.length > 1);
 
@@ -506,7 +513,13 @@ export async function runIngest(
       const active = plan?.pairs[i] ?? null;
       // Baris header aktif (bisa hasil koreksi user) dicoba lebih dulu; yang dipilih disimpan.
       if (active) {
-        for (const m of members) Object.assign(m.rec, await refreshHeader(duck, m, active));
+        for (const m of members) {
+          if (!isContinued.has(m)) Object.assign(m.rec, await refreshHeader(duck, m, active));
+        }
+        // Sheet lanjutan (tanpa judul) mengikuti judul leader yang mungkin dipilih ulang.
+        for (const m of members) {
+          if (isContinued.has(m)) m.rec.columns = s.rec.columns.map((c) => ({ ...c }));
+        }
         s.rec.aliasName = carriedAlias(s.rec.name, active);
         const key = columnsKey(s.rec);
         const drift = members.find((m) => columnsKey(m.rec) !== key);
