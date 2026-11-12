@@ -100,7 +100,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   belum berpasangan; ragu → diabaikan). Tiap sheet = satu bagian kelompok (`Segment.groupPart` kini nomor bagian per
   sheet logis — file × sheet — bukan nomor file); rencana `mergedSheets` + alasan `MERGED_SHEETS` (selalu ditinjau).
   Rollback image ke v1.18.x: versi AWAITING_CONFIRM yang dibuat v1.19 dengan sheet tergabung tidak terbaca rencananya
-  (enum baru) — terapkan atau batalkan dulu sebelum rollback; data aktif bersegmen kelompok tetap sah di versi lama.
+  (enum baru), dan versi yang masih diproses/menunggu pemetaan akan dipetakan ulang tanpa kelompok (gagal integritas) —
+  terapkan atau batalkan semua unggahan periode yang tertunda sebelum rollback; data aktif bersegmen kelompok tetap
+  sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
+  nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
 ## [1.18.0] - 2026-11-11
 

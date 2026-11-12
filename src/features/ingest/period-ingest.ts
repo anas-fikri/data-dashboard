@@ -29,6 +29,7 @@
  * satu commit. Tidak ada aktivasi sebagian: file mana pun gagal / butuh pemetaan → seluruh kelompok gagal
  * dan data aktif tidak berubah (pemetaan kolom kelompok tidak didukung; samakan judul kolom).
  */
+import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { lit, openDuck, watched, type Duck } from "@/lib/duckdb";
@@ -234,6 +235,13 @@ export const NO_SHEET_MESSAGE =
 export const groupMappingMessage = (detail: string) =>
   `Kelompok file tidak diproses: ${detail}. Kelompok file harus cocok dengan kolom data aktif tanpa pemetaan — samakan judul dan isi kolom semua file, lalu unggah ulang kelompoknya. Data aktif tidak berubah.`;
 
+/**
+ * Sheet gabungan satu file (T-jsmj) yang nilai kolomnya tidak lolos vonis cast: layar tinjauan nilai hanya
+ * mengenal satu sheet per sheet data, jadi seluruh unggahan gagal dengan alasannya.
+ */
+export const mergeReviewMessage = (detail: string) =>
+  `Sheet yang digabung tidak diproses: ${detail}. Sheet yang digabung harus cocok dengan kolom data aktif — perbaiki nilainya di file, atau unggah sheet itu sebagai file terpisah. Data aktif tidak berubah.`;
+
 /** Dua file kelompok berisi sama persis (sha256 sama, review M1). */
 export const groupDuplicateMessage = (a: string, b: string) =>
   `Kelompok file tidak diproses: “${a}” dan “${b}” berisi sama persis, sehingga barisnya akan tergandakan. Hapus salah satunya, lalu unggah ulang kelompoknya. Data aktif tidak berubah.`;
@@ -265,6 +273,10 @@ interface Item {
    * beberapa file (T-060) maupun beberapa sheet satu file (T-jsmj) di periode yang sama tetap satu kelompok.
    */
   part: number;
+  /** Sidik asal segmen: sidik file, atau file + sheet bila beberapa sheet file ini masuk ke sheet data yang sama. */
+  sha256: string;
+  /** Nama asal segmen (kelompok/gabungan); null = nama file versi. */
+  originalName: string | null;
   /** Penanda unik item untuk nama tabel/berkas kerja (file + sheet). */
   tag: string;
   pair: PeriodActiveSheet;
@@ -294,6 +306,8 @@ function itemOf(
     s,
     file,
     part,
+    sha256: file.sha256,
+    originalName: file.name,
     tag: `${Math.trunc(file.part)}_${Math.trunc(s.rec.index)}`,
     pair,
     colMap: cp.colMap,
@@ -462,11 +476,18 @@ export async function runPeriodIngest(
           label,
         );
         issues.push(...cp.issues.map((x) => (grouped ? `“${f.name ?? "file"}”: ${x}` : x)));
+        if (cp.issues.length) needsMapping = true;
         const part = (parts.get(pair.lineageId) ?? 0) + 1;
         parts.set(pair.lineageId, part);
-        items.push(itemOf(sh, pair, cp, file, part));
+        const it = itemOf(sh, pair, cp, file, part);
+        items.push(it);
+        fileItems.push(it);
         fromFile.set(pair.lineageId, [...(fromFile.get(pair.lineageId) ?? []), shown(sh)]);
       };
+      let needsMapping = false;
+      const fileItems: Item[] = [];
+      /** Sheet data yang menerima sheet file lewat kecocokan kolom (bukan nama) — selalu ditinjau. */
+      const byColumns = new Set<string>();
       const extras: (typeof sheets)[number][] = [];
       const primary = new Map<string, string>();
       for (const [j, sh] of sheets.entries()) {
@@ -480,7 +501,15 @@ export async function runPeriodIngest(
         add(sh, pair);
       }
       // T-jsmj: sheet tambahan berkolom sama digabung ke sheet data yang sama (satu kelompok per periode).
+      // Ada sheet yang butuh pemetaan kolom → tidak menggabung (layar pemetaan hanya mengenal satu sheet file
+      // per sheet data): sheet tambahan diabaikan dengan pemberitahuan, seperti sebelum v1.19.
       for (const sh of extras) {
+        if (needsMapping) {
+          const name = shown(sh);
+          if (!ignored.includes(name)) ignored.push(name);
+          rmSync(sh.path, { force: true });
+          continue;
+        }
         const headers = new Map<string, Awaited<ReturnType<typeof refreshHeader>>>();
         const candidates: MergeCandidate[] = [];
         for (const pair of usable) {
@@ -510,11 +539,22 @@ export async function runPeriodIngest(
         Object.assign(sh.rec, headers.get(pair.lineageId)!);
         if (!primary.has(pair.lineageId))
           primary.set(pair.lineageId, headerSignature(sh.rec.columns));
+        byColumns.add(pair.lineageId);
         add(sh, pair);
       }
       for (const [lineageId, from] of fromFile) {
-        if (from.length < 2) continue;
+        if (from.length < 2 && !byColumns.has(lineageId)) continue;
         merged.push({ sheet: usable.find((x) => x.lineageId === lineageId)!.name, from });
+        // Beberapa sheet satu file di sheet data yang sama: sidik + nama asal per sheet (deteksi "file
+        // identik" per periode tidak tertipu sheet lain di file yang sama; sumber sel menyebut sheet-nya).
+        const list = fileItems.filter((it) => it.pair.lineageId === lineageId);
+        if (list.length < 2) continue;
+        for (const it of list) {
+          it.sha256 = createHash("sha256")
+            .update(`${it.file.sha256}\0${it.s.rec.name}`)
+            .digest("hex");
+          it.originalName = `${it.file.name ?? v.originalName ?? "file"} (sheet ${it.s.rec.name})`;
+        }
       }
     }
     const ext = items[0]?.file.ext ?? (v.sourceKey.endsWith(".csv") ? "csv" : "xlsx");
@@ -566,7 +606,7 @@ export async function runPeriodIngest(
       if (bad.length && !issues.length) throw new IntegrityError(bad);
     }
     if (issues.length) {
-      return await awaitMapping(issues);
+      return await awaitMapping([...new Set(issues)]);
     }
     const core = await processPeriodItems({
       d,
@@ -582,6 +622,7 @@ export async function runPeriodIngest(
       multi: usable.length > 1,
       // Kelompok: beberapa file (T-060) atau beberapa sheet ke satu sheet data (T-jsmj).
       group: grouped || [...parts.values()].some((n) => n > 1) ? versionId : null,
+      multiFile: grouped,
       deps,
       created,
       watch: ensureAlive,
@@ -666,6 +707,8 @@ interface CoreInput {
    * T-060 atau beberapa sheet T-jsmj); null = satu bagian per sheet logis.
    */
   group: string | null;
+  /** Beberapa file sumber (T-060): pesan galat menyebut nama file. */
+  multiFile: boolean;
   deps: Pick<PeriodIngestDeps, "storage" | "limits"> & {
     repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped">;
   };
@@ -760,7 +803,7 @@ async function processPeriodItems(
           periodStart: p.start,
           rows: p.rows,
           bytes: total > 0 ? Math.floor((it.rawBytes * p.rows) / total) : 0,
-          sha256: it.file.sha256,
+          sha256: it.sha256,
           ...groupRef(it, p.start),
         }));
       }),
@@ -790,7 +833,11 @@ async function processPeriodItems(
     const found = castProblems(it.schema, all, it.colMap, ext);
     issues.push(
       ...castIssues(it.schema, all, it.colMap, ext, label).map((x) =>
-        c.group ? `“${it.file.name ?? "file"}”: ${x}` : x,
+        c.multiFile
+          ? `“${it.file.name ?? "file"}”: ${x}`
+          : c.group
+            ? `Sheet “${it.s.rec.name}”: ${x}`
+            : x,
       ),
     );
     for (const { column, pct } of found) {
@@ -805,12 +852,17 @@ async function processPeriodItems(
     }
   }
   if (issues.length && !c.acceptCast) {
-    // Kelompok file (T-060): tanpa layar pemetaan, jadi tidak pernah aktif sebagian → gagal utuh.
+    const unique = [...new Set(issues)];
+    const verdict = verdictOf(unique);
+    const reason = verdict.ok ? unique[0]! : verdict.reason;
+    // Kelompok file (T-060) / sheet gabungan (T-jsmj): layar tinjauan nilai hanya mengenal satu sheet file per
+    // sheet data, jadi tidak pernah aktif sebagian → gagal utuh dengan alasannya.
     if (c.group) {
-      const verdict = verdictOf(issues);
-      throw new PeriodUploadError(groupMappingMessage(verdict.ok ? issues[0]! : verdict.reason));
+      throw new PeriodUploadError(
+        c.multiFile ? groupMappingMessage(reason) : mergeReviewMessage(reason),
+      );
     }
-    return { kind: "cast", issues, review };
+    return { kind: "cast", issues: unique, review };
   }
 
   // 5. Segmen per periode (raw + typed skema aktif + `_period`).
@@ -879,10 +931,10 @@ async function processPeriodItems(
         colMap: it.colMap,
         rowBase,
         maxSrcRow: seg.maxSrcRow,
-        sha256: it.file.sha256,
+        sha256: it.sha256,
         sourceKind: it.file.ext,
         period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
-        ...(c.group ? { originalName: it.file.name, group: groupOf(it, p.start) } : {}),
+        ...(c.group ? { originalName: it.originalName, group: groupOf(it, p.start) } : {}),
       });
       created.push(id);
       await storage.upload(rawKey, seg.raw, PARQUET);
@@ -904,7 +956,7 @@ async function processPeriodItems(
         periodStart: p.start,
         rows: p.rows,
         bytes: rawBytes + typedBytes,
-        sha256: it.file.sha256,
+        sha256: it.sha256,
         ...groupRef(it, p.start),
       });
       keys.push(rawKey, typedKey);
@@ -923,17 +975,23 @@ async function processPeriodItems(
   const all = [...new Set([...keys, ...a.sheets.flatMap((s) => s.keys)])];
   const missing = await missingKeys(all, (k) => storage.exists(k));
   if (missing.length) throw new IntegrityError(missing.map((k) => `file data tidak ada: ${k}`));
-  const changes: SheetSchemaChange[] = items.flatMap((it) =>
-    it.change
-      ? [
-          {
-            ...withAddedStats(it.change, merged.get(it)!),
-            lineageId: it.pair.lineageId,
-            baseRevision: it.pair.schemaRevision,
-          },
-        ]
-      : [],
-  );
+  // Satu perubahan skema per sheet data (commit menolak lineage ganda): bagian kelompok/gabungan berbagi
+  // judul kolom yang sama, statistik kolom baru dari gabungan profil semua bagiannya.
+  const byLineage = new Map<string, Item[]>();
+  for (const it of items) {
+    byLineage.set(it.pair.lineageId, [...(byLineage.get(it.pair.lineageId) ?? []), it]);
+  }
+  const changes: SheetSchemaChange[] = [...byLineage.values()].flatMap((list) => {
+    const first = list.find((it) => it.change);
+    if (!first?.change) return [];
+    return [
+      {
+        ...withAddedStats(first.change, mergeProfiles(list.map((it) => merged.get(it)!))),
+        lineageId: first.pair.lineageId,
+        baseRevision: first.pair.schemaRevision,
+      },
+    ];
+  });
   return {
     kind: "commit",
     input: {
@@ -1124,6 +1182,7 @@ export async function runPeriodMapping(
       multi: usable.length > 1,
       // Sheet tergabung (T-jsmj) menunggu pemetaan: tetap satu kelompok per periode.
       group: [...parts.values()].some((n) => n > 1) ? versionId : null,
+      multiFile: false,
       deps: { repo, storage, limits: deps.limits },
       created,
       watch: opts.watch,

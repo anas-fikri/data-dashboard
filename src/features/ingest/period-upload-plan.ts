@@ -260,7 +260,7 @@ const metaSchema = z.object({ pos: posSchema, name: z.string(), original: z.stri
 const periodMetaSchema = z.object({
   ignoredSheets: z.array(z.string()).max(1_024).default([]),
   mergedSheets: z
-    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(2).max(1_024) }))
+    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
     .max(1_024)
     .default([]),
   changes: z
@@ -696,7 +696,11 @@ export function periodPlanSummary(plan: PeriodPlan): string {
     parts.push(`${fmt(plan.droppedRows)} baris tanpa tanggal valid dibuang`);
   for (const s of plan.ignoredSheets) parts.push(`sheet “${s}” tidak disimpan`);
   for (const m of plan.mergedSheets) {
-    parts.push(`sheet ${m.from.map((f) => `“${f}”`).join(", ")} digabung ke “${m.sheet}”`);
+    parts.push(
+      m.from.length > 1
+        ? `sheet ${m.from.map((f) => `“${f}”`).join(", ")} digabung ke “${m.sheet}”`
+        : `sheet “${m.from[0]}” dipasangkan ke “${m.sheet}” (kolom sama)`,
+    );
   }
   return parts.length ? parts.join(" · ") : "Tidak ada periode yang berubah";
 }

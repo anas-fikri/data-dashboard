@@ -182,6 +182,10 @@ class FakePeriodRepo implements PeriodIngestRepo {
       sheets: a.sheets.map((s) => ({ id: s.id, schemaRevision: s.schemaRevision })),
     };
     if (!sameSnapshot(d.snapshot, now)) return { outcome: "stale" };
+    // Seperti commitPeriodInTx: perubahan skema ganda untuk satu sheet logis = acuan basi.
+    if (new Set(d.changes.map((c) => c.lineageId)).size !== d.changes.length) {
+      return { outcome: "stale" };
+    }
     const r = decidePeriodCommit({
       facts: d.facts,
       activeVersionId: a.versionId,
@@ -476,6 +480,142 @@ describe("sheet file yang tidak berpasangan", () => {
     expect(periodPlanSummary(repo.plan!)).toContain(
       "sheet “Bagian 1”, “Bagian 2”, “Bagian 3” digabung ke “Data”",
     );
+  });
+});
+
+describe("T-jsmj review: sheet gabungan", () => {
+  const xml = (rows: string[][]) =>
+    rows
+      .map(
+        (r, i) =>
+          `<row r="${i + 1}">${r.map((v, c) => `<c r="${colLetter(c + 1)}${i + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join("")}</row>`,
+      )
+      .join("");
+  async function setupXlsx(
+    sheets: { name: string; rows: string[][] }[],
+    active: (storage: FakeStorage) => PeriodActiveSheet[],
+  ) {
+    const file = t.file(
+      `r-${Math.random().toString(36).slice(2)}.xlsx`,
+      await buildXlsx(sheets.map((x) => ({ name: x.name, xml: xml(x.rows) }))),
+    );
+    const key = `raw/${DS}/${VID}/source.xlsx`;
+    const storage = new FakeStorage(join(t.root, `store-r${Math.random().toString(36).slice(2)}`), {
+      [key]: file,
+    });
+    const repo = new FakePeriodRepo({
+      datasetId: DS,
+      sourceKey: key,
+      originalName: "gabung.xlsx",
+      grain: "MONTH",
+      label: null,
+      baseVersionId: ACTIVE,
+      active: { versionId: ACTIVE, grain: "MONTH", sheets: active(storage) },
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+    });
+    const run = () =>
+      runPeriodIngest(
+        VID,
+        { repo, storage, limits: LIMITS },
+        { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+      );
+    return { repo, run };
+  }
+
+  it("H1: 2 sheet dengan kolom baru yang sama → satu perubahan skema per sheet data, commit masuk", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const h = [...HEADER, "catatan"];
+    const extra = (rows: string[][]) => rows.map((r) => [...r, "x"]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [h, ...extra(month(4, 10))] },
+        { name: "Data 2", rows: [h, ...extra(month(4, 5, 100))] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.changes).toHaveLength(1);
+    expect(s.repo.changes[0]!.added.map((c) => c.original)).toEqual(["catatan"]);
+    expect(s.repo.plan!.entries.find((e) => e.key === "2026-04")!.afterRows).toBe(15);
+  });
+
+  it("H2: sheet berpasangan butuh pemetaan → sheet tambahan tidak digabung (diabaikan), menunggu pemetaan dengan satu sheet", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const h = ["kode", "tgl", "nilai"]; // 'tanggal' hilang → pemetaan
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [h, ...month(4, 10)] },
+        { name: "Data 2", rows: [h, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("awaiting");
+    expect(s.repo.rawSheets).toEqual(["Data"]);
+    expect(s.repo.ignored).toEqual(["Data 2"]);
+    // Alasan tidak dobel.
+    expect(s.repo.error!.split("tidak ada di file baru").length - 1).toBe(1);
+  });
+
+  it("M3: nilai sheet gabungan tidak lolos vonis → gagal dengan pesan sheet gabungan (bukan kelompok file)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const bad = (rows: string[][]) => rows.map((r) => [r[0]!, "bukan-tanggal", r[2]!]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...bad(month(4, 10))] },
+        { name: "Data 2", rows: [HEADER, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("failed");
+    expect((r as { message: string }).message).toMatch(/^Sheet yang digabung tidak diproses: /);
+    expect((r as { message: string }).message).not.toMatch(/Kelompok file/);
+  });
+
+  it("M4: satu sheet berbeda nama dipasangkan karena kolomnya sama → tercatat dan wajib ditinjau", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Billing", rows: [HEADER, ...month(4, 10)] },
+        { name: "Resi pending", rows: [HEADER, ...month(4, 3, 50)] },
+      ],
+      (st) => [
+        { ...activeSheet(st, base, JAN_MAR), name: "Billing" },
+        {
+          ...activeSheet(st, base, {}),
+          id: "sheet-resi",
+          sheetId: "sheet-resi",
+          lineageId: "lineage-resi",
+          name: "Resi",
+          index: 1,
+        },
+      ],
+    );
+    const r = await s.run();
+    // Sheet data "Resi" belum berpasangan, "Resi pending" cocok persis dengan skemanya; "Billing" sudah
+    // berpasangan dengan judul yang sama → kandidat ganda → tidak ditebak.
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.ignoredSheets).toEqual(["Resi pending"]);
+  });
+
+  it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...month(4, 10)] },
+        { name: "Data 2", rows: [HEADER, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    await s.run();
+    const segs = [...s.repo.segments.values()].filter((g) => g.period);
+    expect(new Set(segs.map((g) => g.sha256)).size).toBe(2);
+    expect(segs.map((g) => g.originalName).sort()).toEqual([
+      "gabung.xlsx (sheet Data 2)",
+      "gabung.xlsx (sheet Data)",
+    ]);
   });
 });
 

@@ -7,7 +7,10 @@
 import { z } from "zod";
 
 export interface GroupFile {
-  /** Nomor file di kelompok (1..n), sama dengan Segment.groupPart. */
+  /**
+   * Nomor file di kelompok (1..n). Segment.groupPart adalah nomor bagian per sheet logis (file × sheet,
+   * v1.19), bukan nomor file ini.
+   */
   seq: number;
   key: string;
   name: string;

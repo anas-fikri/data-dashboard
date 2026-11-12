@@ -104,7 +104,10 @@ export interface PeriodPlanInput {
   mergedSheets?: MergedSheet[];
 }
 
-/** Sheet file (`from`, ≥ 2) yang digabung ke sheet data `sheet` (nama untuk tampilan). */
+/**
+ * Sheet file (`from`) yang masuk ke sheet data `sheet` lewat kecocokan kolom (T-jsmj): ≥ 2 = digabung; 1 =
+ * dipasangkan karena kolomnya sama walau namanya berbeda. Nama untuk tampilan.
+ */
 export interface MergedSheet {
   sheet: string;
   from: string[];
@@ -176,7 +179,7 @@ export const periodPlanSchema = z.object({
   ignoredSheets: z.array(z.string()).default([]),
   /** Sheet file yang digabung ke satu sheet data (T-jsmj); rencana lama tanpa field ini = tidak ada. */
   mergedSheets: z
-    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(2).max(1_024) }))
+    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
     .max(1_024)
     .default([]),
   /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
@@ -524,7 +527,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   const fileSha = input.fileSha256 ?? null;
   const ignoredSheets = [...new Set(input.ignoredSheets ?? [])].sort();
   const mergedSheets = [...(input.mergedSheets ?? [])]
-    .filter((m) => m.from.length >= 2)
+    .filter((m) => m.from.length >= 1)
     .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
     .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
   const entries: PeriodPlanEntry[] = allKeys.map((key) => {
