@@ -55,6 +55,15 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-12 siang, sesi cloud)
+
+- Rilis **v1.19.1** (PR #26, T-1216): sheet lanjutan tanpa judul (leader ≥ 50.000 baris) digabung; Gabungkan tercentang
+  bawaan untuk dataset baru. Tanpa migrasi → `bash deploy/server-release.sh 1.19.1` + seed panduan `unggah-data,data-per-periode`
+  (runbook §31). Tag v1.19.1 hanya lokal.
+- **v1.20 T-rbrb** (Tambah / Perbarui berdasarkan kunci, ADR-0011 accepted) dikerjakan di worktree scratchpad `wt20`
+  (belum di-push sampai PR #26 digabung): **bermigrasi** (`20261112000000_period_keys`). Review 2 putaran: 0 blokir;
+  sisa Medium (sidik Tambah berulang setelah pemadatan) diperbaiki sebelum rilis; M5 (unduh typed semua segmen) → task lanjutan.
+
 ## Posisi terakhir (2026-11-12 dini hari, sesi cloud)
 
 - v1.18.0 (PR #24) sudah di `main`; pemilik men-deploy. Rilis **v1.19.0** (PR #25): **T-jsmj** gabung sheet berkolom
