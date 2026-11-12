@@ -57,12 +57,12 @@ dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per projec
 
 ## Posisi terakhir (2026-11-12 siang, sesi cloud)
 
-- Rilis **v1.19.1** (PR #26, T-1216): sheet lanjutan tanpa judul (leader ≥ 50.000 baris) digabung; Gabungkan tercentang
-  bawaan untuk dataset baru. Tanpa migrasi → `bash deploy/server-release.sh 1.19.1` + seed panduan `unggah-data,data-per-periode`
-  (runbook §31). Tag v1.19.1 hanya lokal.
-- **v1.20 T-rbrb** (Tambah / Perbarui berdasarkan kunci, ADR-0011 accepted) dikerjakan di worktree scratchpad `wt20`
-  (belum di-push sampai PR #26 digabung): **bermigrasi** (`20261112000000_period_keys`). Review 2 putaran: 0 blokir;
-  sisa Medium (sidik Tambah berulang setelah pemadatan) diperbaiki sebelum rilis; M5 (unduh typed semua segmen) → task lanjutan.
+- PR #26 berisi **v1.19.1** (T-1216, sheet lanjutan tanpa judul) **dan v1.20.0** (T-rbrb, Tambah / Perbarui berdasarkan
+  kunci, ADR-0011). v1.20 **bermigrasi** (`20261112000000_period_keys`) → setelah PR digabung deploy
+  `bash deploy/server-release.sh 1.20.0 --full` + seed panduan `unggah-data,data-per-periode` (runbook §31–§32), lalu atur
+  kolom kunci Billing di Atur periode › Kolom kunci. Tag v1.19.1/v1.20.0 hanya lokal.
+- T-rbrb `in_review` (strict) menunggu penerimaan pemilik. Lanjutan: **T-yg3z** (baca kolom kunci saja tanpa unduh typed
+  penuh, urutan baris setelah pemadatan, kunci beku di rencana), T-zjwh, T-r5tm, T-jdmk.
 
 ## Posisi terakhir (2026-11-12 dini hari, sesi cloud)
 
