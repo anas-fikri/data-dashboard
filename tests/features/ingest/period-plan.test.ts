@@ -663,6 +663,8 @@ function checkInvariants(inp: PeriodPlanInput, plan: PeriodPlan): void {
         expect(inc).toBeDefined();
         after = a?.sheets ?? null;
         break;
+      case "UPDATED":
+        throw new Error("UPDATED hanya untuk Tambah/Perbarui");
     }
     expect(e.after).toEqual(after ? rowsMap(after) : null);
     if (after) result.push(after);
@@ -821,5 +823,124 @@ describe("computePeriodPlan — invarian berbasis properti (AC4)", () => {
         JSON.stringify(computePeriodPlan(inp)),
       );
     }
+  });
+});
+
+describe("computePeriodPlan — Tambah / Perbarui berdasarkan kunci (v1.20)", () => {
+  const part = (
+    key: string,
+    x: { fileRows: number; updated?: number; kept: number; removed?: number; movedOut?: number },
+    lineageId = "A",
+  ) => ({
+    key,
+    start: `${key}-01`,
+    lineageId,
+    updated: 0,
+    removed: 0,
+    movedOut: 0,
+    ...x,
+  });
+
+  it("Perbarui: bulan ditulis ulang (UPDATED), bulan yang kehilangan baris ikut; tanpa konfirmasi", () => {
+    const p = computePeriodPlan(
+      input({
+        active: [
+          month("2026-01", { A: 100 }),
+          month("2026-02", { A: 50 }),
+          month("2026-03", { A: 7 }),
+        ],
+        incoming: [month("2026-01", { A: 110 }), month("2026-02", { A: 45 })],
+        merge: {
+          mode: "UPSERT",
+          parts: [
+            part("2026-01", { fileRows: 20, updated: 15, kept: 90, removed: 10 }),
+            part("2026-02", { fileRows: 0, kept: 45, removed: 5, movedOut: 5 }),
+          ],
+        },
+      }),
+    );
+    expect(actions(p)).toEqual({
+      "2026-01": "UPDATED",
+      "2026-02": "UPDATED",
+      "2026-03": "UNCHANGED",
+    });
+    expect(p.mode).toBe("UPSERT");
+    expect(p.confirm).toEqual([]);
+    expect(p.autoActivate).toBe(true);
+    const feb = p.entries.find((e) => e.key === "2026-02")!;
+    expect(feb.keyed).toEqual({ fileRows: 0, updated: 0, kept: 45, removed: 5, movedOut: 5 });
+    expect(feb.fromUpload).toBe(false);
+    expect(feb.stray).toBe(false);
+    expect(p.totals.after).toEqual({ A: 162 });
+    expect(parseFrozenPeriodPlan(JSON.parse(JSON.stringify(p)))).toEqual(p);
+  });
+
+  it("Perbarui: semua baris bulan pindah → bulan hilang; kunci dobel lama menyusut → SHRINK", () => {
+    const p = computePeriodPlan(
+      input({
+        active: [month("2026-01", { A: 10 }), month("2026-02", { A: 4 })],
+        incoming: [month("2026-01", { A: 6 })],
+        merge: {
+          mode: "UPSERT",
+          // Januari: 4 baris file menggantikan 8 baris lama (kunci dobel di data lama); Februari: 4 baris pindah.
+          parts: [
+            part("2026-01", { fileRows: 4, updated: 4, kept: 2, removed: 8 }),
+            part("2026-02", { fileRows: 0, kept: 0, removed: 4, movedOut: 4 }),
+          ],
+        },
+      }),
+    );
+    const feb = p.entries.find((e) => e.key === "2026-02")!;
+    expect([feb.action, feb.after]).toEqual(["UPDATED", null]);
+    expect(p.totals.periodsAfter).toBe(1);
+    expect(p.confirm).toContain("SHRINK");
+  });
+
+  it("Tambah: periode baru kecil = nyasar tetap disimpan (wajib ditinjau); lewati/masukkan diabaikan", () => {
+    const p = computePeriodPlan(
+      input({
+        active: [month("2026-01", { A: 100 })],
+        incoming: [month("2026-01", { A: 300 }), month("2026-02", { A: 2 })],
+        skip: ["2026-01"],
+        merge: {
+          mode: "APPEND",
+          parts: [
+            part("2026-01", { fileRows: 200, kept: 100 }),
+            part("2026-02", { fileRows: 2, kept: 0 }),
+          ],
+        },
+      }),
+    );
+    expect(actions(p)).toEqual({ "2026-01": "UPDATED", "2026-02": "ADDED" });
+    expect(p.skip).toEqual([]);
+    expect(p.confirm).toEqual(["STRAY"]);
+    expect(p.entries.find((e) => e.key === "2026-02")!.stray).toBe(true);
+  });
+
+  it("fakta merge yang tidak sepakat dengan segmen → galat (bug pemanggil)", () => {
+    expect(() =>
+      computePeriodPlan(
+        input({
+          active: [month("2026-01", { A: 100 })],
+          incoming: [month("2026-01", { A: 110 })],
+          merge: {
+            mode: "UPSERT",
+            parts: [part("2026-01", { fileRows: 20, kept: 80, removed: 20 })],
+          },
+        }),
+      ),
+    ).toThrow(/110 baris segmen/);
+    expect(() =>
+      computePeriodPlan(
+        input({
+          active: [month("2026-01", { A: 100 })],
+          incoming: [month("2026-01", { A: 110 })],
+          merge: {
+            mode: "APPEND",
+            parts: [part("2026-01", { fileRows: 10, kept: 100, removed: 1 })],
+          },
+        }),
+      ),
+    ).toThrow(/Tambah tidak membuang/);
   });
 });

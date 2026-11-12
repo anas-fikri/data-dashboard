@@ -110,6 +110,13 @@ enum PeriodSource {
 
 /// Saat batas periode tercapai (T-051, rencana G-6 §5.3): tolak unggahan (bawaan) atau lepas periode
 /// terlama otomatis (selalu lewat tinjauan).
+/// v1.20 (ADR-0011): Ganti periode utuh / Tambah baris / Perbarui berdasarkan kolom kunci.
+enum PeriodUploadMode {
+  REPLACE
+  APPEND
+  UPSERT
+}
+
 enum PeriodOnLimit {
   REJECT
   EVICT_OLDEST
@@ -147,12 +154,12 @@ model Dataset {
 }
 
 model DatasetVersion {
-  id               String        @id @default(cuid())
+  id               String            @id @default(cuid())
   datasetId        String
-  dataset          Dataset       @relation("DatasetVersions", fields: [datasetId], references: [id], onDelete: Cascade)
-  activeFor        Dataset?      @relation("ActiveVersion")
-  status           VersionStatus @default(UPLOADING)
-  mode             VersionMode   @default(REPLACE)
+  dataset          Dataset           @relation("DatasetVersions", fields: [datasetId], references: [id], onDelete: Cascade)
+  activeFor        Dataset?          @relation("ActiveVersion")
+  status           VersionStatus     @default(UPLOADING)
+  mode             VersionMode       @default(REPLACE)
   /// Satuan periode versi ini (T-049); null = versi non-periode. Mode periode milik versi (bukan
   /// dataset): rollback ke versi sebelum periode diaktifkan mengembalikan dataset ke mode biasa.
   periodGrain      PeriodGrain?
@@ -164,7 +171,7 @@ model DatasetVersion {
   /// saat file diproses → tidak aktif otomatis (tinjauan). Bukan relasi: versi dasar boleh dibuang.
   baseVersionId    String?
   /// Awal periode pilihan pemilik untuk sheet bersumber label (T-052, naive D8); null = tanpa label.
-  periodLabel      DateTime?     @db.Date
+  periodLabel      DateTime?         @db.Date
   /// Kelompok file satu periode (T-060): [{ seq, key, name, size }] file sumber kelompok, semuanya di
   /// raw/<ds>/<versionId>/ (retensi/pembersihan prefix versi berlaku apa adanya). null = satu file
   /// (sourceKey). sourceKey = file pertama kelompok.
@@ -176,11 +183,14 @@ model DatasetVersion {
   /// Sheet xlsx yang dipilih pemilik saat unggah (T-85tb), nama persis; kosong = semua sheet (perilaku
   /// lama, CSV, mode PERIOD). Worker hanya membaca sheet ini; sheet aktif yang tidak dipilih masuk
   /// alur pemetaan biasa (tidak dipakai lagi).
-  selectedSheets   String[]      @default([])
+  selectedSheets   String[]          @default([])
   /// Gabungkan sheet terpilih yang judul kolomnya sama menjadi satu sheet (T-0gmm, v1.16): satu Sheet
   /// logis dengan satu segmen per sheet asal (manifest ordinal 0..n-1; Segment.originalName =
   /// "<file> (sheet <nama>)"). Hanya xlsx REPLACE.
-  mergeSheets      Boolean       @default(false)
+  mergeSheets      Boolean           @default(false)
+  /// Cara unggahan periode memperlakukan periode yang sudah ada (v1.20, ADR-0011); null = Ganti (versi
+  /// lama, mode non-periode).
+  uploadMode       PeriodUploadMode?
   originalName     String?
   sizeBytes        BigInt?
   sourceKey        String?
@@ -191,8 +201,8 @@ model DatasetVersion {
   /// File asli (raw/<ds>/<ver>/) sudah dihapus job retensi 7 hari (T-013). sourceKey sengaja tetap:
   /// recast menurunkan jenis sumber (csv/xlsx) dari ekstensinya.
   sourceDeletedAt  DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   // Upload multipart (T-004, flow-kerja B2)
   uploadedById String?
@@ -280,6 +290,9 @@ model SheetLineage {
   datasetId    String
   dataset      Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
   rowHighWater BigInt    @default(0)
+  /// Kolom kunci sheet data per periode (v1.20, ADR-0011): posisi kanonik c<pos>, urut pilihan pemilik.
+  /// Kosong = tanpa kunci (unggahan "Perbarui berdasarkan kunci" tidak tersedia untuk sheet ini).
+  keyColumns   Int[]     @default([])
   sheets       Sheet[]
   segments     Segment[]
   createdAt    DateTime  @default(now())
@@ -728,6 +741,8 @@ model UploadQueue {
   grouped        Boolean           @default(false)
   /// Id versi kelompok yang dipesan saat antrean dibuat (file sumber di raw/<ds>/<groupVersionId>/).
   groupVersionId String?           @unique
+  /// Cara unggahan periode semua file antrean (v1.20); null = Ganti.
+  uploadMode     PeriodUploadMode?
   /// "Hentikan antrean": file yang belum diproses dibatalkan; file yang sedang diproses diselesaikan
   /// dulu, lalu antrean berstatus CANCELLED.
   stoppedAt      DateTime?

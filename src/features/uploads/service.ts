@@ -65,13 +65,20 @@ export interface InitInput {
   sheets?: unknown;
   /** Gabungkan sheet terpilih yang judul kolomnya sama menjadi satu sheet (T-0gmm, xlsx REPLACE). */
   mergeSheets?: unknown;
+  /** Mode PERIOD (v1.20): "REPLACE" (bawaan) | "APPEND" | "UPSERT" — periode yang sudah ada. */
+  periodMode?: unknown;
 }
+
+/** Perbarui berdasarkan kunci tanpa kolom kunci di sheet data mana pun (v1.20). */
+export const NO_KEY_MESSAGE =
+  "Belum ada kolom kunci. Atur kolom kunci di Pengaturan periode dulu, atau pilih Ganti/Tambah.";
 
 /** Batas pilihan sheet (= batas sheet parser per file). */
 export const SELECTED_SHEETS_MAX = 50;
 const SHEET_NAME_MAX = 255;
 
 export type UploadMode = "REPLACE" | "PERIOD";
+export type PeriodUploadMode = "REPLACE" | "APPEND" | "UPSERT";
 
 export interface InitOk {
   versionId: string;
@@ -133,6 +140,8 @@ export function validateInit(
       /** Sheet pilihan (urut masukan, unik); [] = semua sheet. */
       sheets: string[];
       mergeSheets: boolean;
+      /** Cara unggahan periode (v1.20); null = mode REPLACE (ganti semua data). */
+      periodMode: PeriodUploadMode | null;
     }
   | { ok: false; code: UploadCode; message: string } {
   if (typeof input.datasetId !== "string" || !isIdShape(input.datasetId)) return notFound();
@@ -215,6 +224,16 @@ export function validateInit(
     }
   }
   const mergeSheets = input.mergeSheets === true;
+  let periodMode: PeriodUploadMode | null = null;
+  if (mode === "PERIOD") {
+    const pm = input.periodMode ?? "REPLACE";
+    if (pm !== "REPLACE" && pm !== "APPEND" && pm !== "UPSERT") {
+      return fail("INVALID", "Cara unggah periode tidak dikenal. Muat ulang halaman.");
+    }
+    periodMode = pm;
+  } else if (input.periodMode !== undefined && input.periodMode !== null) {
+    return fail("INVALID", "Cara unggah periode hanya untuk unggahan per periode.");
+  }
   return {
     ok: true,
     datasetId: input.datasetId,
@@ -227,6 +246,7 @@ export function validateInit(
     baseVersionId,
     sheets,
     mergeSheets,
+    periodMode,
   };
 }
 
@@ -359,7 +379,12 @@ export async function initUpload(
           select: {
             activeVersionId: true,
             activeVersion: {
-              select: { periodGrain: true, sheets: { select: { periodSource: true } } },
+              select: {
+                periodGrain: true,
+                sheets: {
+                  select: { periodSource: true, lineage: { select: { keyColumns: true } } },
+                },
+              },
             },
           },
         });
@@ -381,6 +406,12 @@ export async function initUpload(
           };
         }
         grain = a.periodGrain;
+        if (
+          v.periodMode === "UPSERT" &&
+          !a.sheets.some((sh) => sh.periodSource && sh.lineage.keyColumns.length > 0)
+        ) {
+          return { kind: "reject", code: "INVALID", message: NO_KEY_MESSAGE };
+        }
         if (a.sheets.some((sh) => sh.periodSource === "LABEL")) {
           if (!v.label) {
             return { kind: "reject", code: "INVALID", message: "Pilih periode untuk file ini." };
@@ -415,6 +446,7 @@ export async function initUpload(
           periodLabel: true,
           selectedSheets: true,
           mergeSheets: true,
+          uploadMode: true,
         },
       });
       // Resume hanya untuk pilihan yang sama (mode + label + sheet, R20): pilihan lain tidak pernah memakai
@@ -423,7 +455,8 @@ export async function initUpload(
         own?.mode === v.mode &&
         (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label &&
         sameSheets(own.selectedSheets ?? [], v.sheets) &&
-        (own.mergeSheets ?? false) === v.mergeSheets;
+        (own.mergeSheets ?? false) === v.mergeSheets &&
+        (own.uploadMode ?? null) === v.periodMode;
       const resumable = own && sameChoice ? own : null;
       if (own && !sameChoice) {
         // Sama dengan cancelUpload: tidak boleh saat complete sedang berjalan (klaim completingAt).
@@ -555,6 +588,7 @@ export async function initUpload(
                 periodGrain: grain,
                 baseVersionId: v.baseVersionId,
                 periodLabel: label ? dateOf(label) : null,
+                uploadMode: v.periodMode,
               }
             : {}),
         },

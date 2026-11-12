@@ -19,6 +19,7 @@ import { INFER_THRESHOLD, okCount, type ColumnSchema, type SourceKind } from "./
 import {
   computePeriodPlan,
   type MergedSheet,
+  type MergeFacts,
   type PeriodPlan,
   type PeriodPlanEntry,
   type PlanPeriodInput,
@@ -610,7 +611,13 @@ export function buildPeriodManifest(
     const refs: ManifestRef[] = [];
     for (const e of entries) {
       if (e.after === null) continue;
-      const fresh = (e.action === "ADDED" || e.action === "REPLACED") && file.has(s.lineageId);
+      // Tambah/Perbarui (v1.20): hanya (periode, sheet) yang ditulis ulang memakai segmen baru.
+      const rewritten =
+        plan.mode === "REPLACE"
+          ? file.has(s.lineageId)
+          : plan.mergeParts.some((x) => x.key === e.key && x.lineageId === s.lineageId);
+      const fresh =
+        (e.action === "ADDED" || e.action === "REPLACED" || e.action === "UPDATED") && rewritten;
       const want = e.after[s.lineageId] ?? 0;
       // Satu periode = semua segmennya (kelompok file T-060: semua file kelompok, urut nomor file).
       const list = fresh
@@ -674,6 +681,16 @@ function entryText(e: PeriodPlanEntry, plan: PeriodPlan): string | null {
       return `${e.label} ditambahkan (${fmt(e.afterRows)} baris)`;
     case "REPLACED":
       return `${e.label} diganti (${fmt(e.beforeRows)} → ${fmt(e.afterRows)} baris)`;
+    case "UPDATED": {
+      const k = e.keyed;
+      if (!k) return `${e.label} diperbarui (${fmt(e.beforeRows)} → ${fmt(e.afterRows)} baris)`;
+      const bits = [
+        k.fileRows - k.updated ? `${fmt(k.fileRows - k.updated)} baris baru` : null,
+        k.updated ? `${fmt(k.updated)} baris diperbarui` : null,
+        k.movedOut ? `${fmt(k.movedOut)} baris pindah ke periode lain` : null,
+      ].filter(Boolean);
+      return `${e.label} diperbarui (${bits.length ? bits.join(", ") : "tanpa perubahan baris"}; ${fmt(e.beforeRows)} → ${fmt(e.afterRows)} baris)`;
+    }
     case "EVICTED": {
       const evicted = plan.entries.filter((x) => x.action === "EVICTED").length;
       return plan.totals.periodsAfter + evicted > plan.keep
@@ -744,6 +761,8 @@ export interface UploadFacts {
   /** Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj); tidak ada = tidak ada. */
   mergedSheets?: MergedSheet[];
   fileSha256: string | null;
+  /** Tambah / Perbarui berdasarkan kunci (v1.20); tidak ada = Ganti. */
+  merge?: MergeFacts;
 }
 
 /** Fakta file dari rencana beku (versi AWAITING_CONFIRM). */
@@ -755,6 +774,7 @@ export const factsOf = (plan: PeriodPlan): UploadFacts => ({
   ignoredSheets: plan.ignoredSheets,
   mergedSheets: plan.mergedSheets,
   fileSha256: plan.fileSha256,
+  ...(plan.mode !== "REPLACE" ? { merge: { mode: plan.mode, parts: plan.mergeParts } } : {}),
 });
 
 export type CommitMode =
@@ -806,6 +826,7 @@ export function decidePeriodCommit(a: {
     droppedRows: a.facts.droppedRows,
     ignoredSheets: a.facts.ignoredSheets,
     mergedSheets: a.facts.mergedSheets,
+    merge: a.facts.merge,
   });
   if (a.mode.kind === "confirm") {
     if (periodPlanDigest(plan) !== a.mode.digest) return { decision: "plan_stale", plan };

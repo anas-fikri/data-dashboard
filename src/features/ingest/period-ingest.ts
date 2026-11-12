@@ -56,7 +56,20 @@ import {
   type TypedStorage,
 } from "./ingest";
 import { isIsoDate, periodKeyOf, periodLabel, type PeriodGrain, type PeriodSource } from "./period";
-import { computePeriodPlan, type OnLimit, type PeriodLimits, type PeriodPlan } from "./period-plan";
+import {
+  computePeriodPlan,
+  type OnLimit,
+  type PeriodLimits,
+  type PeriodPlan,
+  type UploadMode,
+} from "./period-plan";
+import {
+  keyMerge,
+  KeyMergeError,
+  type CopySource,
+  type FileSeg,
+  type KeptCopy,
+} from "./period-keymerge";
 import { labelReferenceColumn, periodSql, validDateSql } from "./period-setup-plan";
 import { REVIEW_MAX, validatePeriodMapping, type MappingReviewIssue } from "./mapping-input";
 import {
@@ -93,6 +106,8 @@ export interface PeriodActiveSheet extends ActiveSheet, ActivePeriodSheet {
   periodColumn: number | null;
   /** Kunci raw/typed per file typed manifest (gerbang integritas: semua harus ada). */
   keys: string[];
+  /** Kolom kunci sheet data (SheetLineage.keyColumns, v1.20); kosong = tanpa kunci. */
+  keyColumns: number[];
 }
 
 /** Satu file sumber versi (kelompok file T-060: urut nomor file 1..n). */
@@ -116,6 +131,8 @@ export interface PeriodIngestLoad {
   label: string | null;
   /** Versi aktif yang dilihat pemilik saat init. */
   baseVersionId: string | null;
+  /** Cara unggahan (v1.20, DatasetVersion.uploadMode); tidak ada = Ganti. */
+  uploadMode?: UploadMode;
   /** Versi aktif sekarang (null = tidak ada). */
   active: {
     versionId: string;
@@ -185,6 +202,8 @@ export interface PeriodIngestRepo {
   /** Sheet + segmen percobaan sebelumnya versi ini; id segmen yang dihapus. */
   deleteSheets(versionId: string): Promise<string[]>;
   allocateRows(lineageId: string, span: number): Promise<bigint>;
+  /** Data segmen lama manifest aktif (salinan Tambah/Perbarui, v1.20). */
+  copySources(typedIds: string[]): Promise<CopySource[]>;
   /** Baris Segment SEBELUM objeknya diunggah; DatasetGoneError bila versi hilang. */
   createSegment(versionId: string, d: PeriodSegmentRecord): Promise<void>;
   /** File typed segmen baru (belum di manifest mana pun); id SegmentTyped. */
@@ -735,7 +754,7 @@ interface CoreInput {
   /** Beberapa file sumber (T-060): pesan galat menyebut nama file. */
   multiFile: boolean;
   deps: Pick<PeriodIngestDeps, "storage" | "limits"> & {
-    repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped">;
+    repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped" | "copySources">;
   };
   /** Id segmen yang dibuat (pembersihan saat gagal). */
   created: string[];
@@ -910,10 +929,23 @@ async function processPeriodItems(
     return { kind: "cast", issues: unique, review };
   }
 
-  // 5. Segmen per periode (raw + typed skema aktif + `_period`).
+  // 5. Segmen per periode (raw + typed skema aktif + `_period`). Typed ditulis lokal dulu (5a): Tambah/
+  // Perbarui (v1.20) membutuhkan baris file sebelum kelompok periode (bagian file + salinan lama) diketahui.
   setProgress({ stage: "tipe", fraction: null });
+  const mode = v.uploadMode ?? "REPLACE";
+  /** Kelompok segmen periode: Tambah/Perbarui selalu berkelompok (bagian file + salinan data lama). */
+  const groupId = mode !== "REPLACE" ? versionId : c.group;
   const incoming: IncomingSegmentRef[] = [];
   const keys: string[] = [];
+  const pending: {
+    it: Item;
+    p: Item["periods"][number];
+    seg: { raw: string; profile: RawProfile; maxSrcRow: number; rawRows: number };
+    key: string;
+    typedPath: string;
+    rowBase: bigint;
+    hr: number;
+  }[] = [];
   for (const it of items) {
     const hr = Math.trunc(it.s.rec.headerRow);
     for (const p of it.periods) {
@@ -958,62 +990,174 @@ async function processPeriodItems(
         if (off > 0) bad.push(`${label}: ${off} baris tanggalnya tidak masuk periode ini`);
       }
       if (bad.length) throw new IntegrityError(bad);
-      const id = newSegmentId();
-      const sp = segmentPrefix(v.datasetId, id);
-      const rawKey = `${sp}raw.parquet`;
-      const typedKey = `${sp}typed-${it.pair.schemaRevision}.parquet`;
-      const rawBytes = statSync(seg.raw).size;
-      const typedBytes = statSync(typedPath).size;
-      // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
-      await repo.createSegment(versionId, {
-        id,
-        lineageId: it.pair.lineageId,
-        rawKey,
-        rawBytes,
-        rawRows: seg.rawRows,
-        headerRow: hr,
-        colCount: it.rawCols,
-        colMap: it.colMap,
-        rowBase,
-        maxSrcRow: seg.maxSrcRow,
-        sha256: it.sha256,
-        sourceKind: it.file.ext,
-        period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
-        ...(c.group ? { originalName: it.originalName, group: groupOf(it, p.start) } : {}),
-      });
-      created.push(id);
-      await storage.upload(rawKey, seg.raw, PARQUET);
-      await storage.upload(typedKey, typedPath, PARQUET);
-      const typedId = await repo.addTyped(id, {
-        typedKey,
-        schemaRevision: it.pair.schemaRevision,
-        columns: [...new Set(it.schema.map((x) => x.pos))].sort((x, y) => x - y),
-        dataRows: p.rows,
-        typedBytes,
-        profile: packProfile(hr, seg.profile),
-        headerRow: hr,
-      });
-      incoming.push({
-        typedId,
-        segmentId: id,
-        lineageId: it.pair.lineageId,
-        periodKey: key,
-        periodStart: p.start,
-        rows: p.rows,
-        bytes: rawBytes + typedBytes,
-        sha256: it.sha256,
-        ...groupRef(it, p.start),
-      });
-      keys.push(rawKey, typedKey);
-      rmSync(typedPath, { force: true });
-      if (seg.raw !== it.s.path) rmSync(seg.raw, { force: true });
+      pending.push({ it, p, seg, key, typedPath, rowBase, hr });
       await ensureAlive();
     }
-    // Semua segmen item ini tertulis: raw lokal + tabel periodenya tidak dibutuhkan lagi (review L2).
-    if (c.group) {
+  }
+
+  // 5b. Tambah / Perbarui berdasarkan kunci (v1.20): salinan baris lama yang tetap per periode terdampak.
+  let copies: KeptCopy[] = [];
+  if (mode !== "REPLACE") {
+    setProgress({ stage: "periode", sheetName: null, fraction: null });
+    try {
+      const r = await keyMerge({
+        d,
+        work,
+        mode,
+        sheets: a.sheets,
+        files: pending.map((x): FileSeg => ({
+          lineageId: x.it.pair.lineageId,
+          key: x.key,
+          start: x.p.start,
+          typedPath: x.typedPath,
+          rows: x.p.rows,
+          label: c.multiFile
+            ? `file “${x.it.file.name ?? x.it.file.part}” sheet “${x.it.s.rec.name}”`
+            : `sheet “${x.it.s.rec.name}”`,
+        })),
+        sources: (ids) => repo.copySources(ids),
+        download: (k, path) => storage.download(k, path),
+        watch: ensureAlive,
+      });
+      copies = r.copies;
+      facts.merge = { mode, parts: r.parts };
+    } catch (e) {
+      if (e instanceof KeyMergeError) throw new PeriodUploadError(e.message);
+      throw e;
+    }
+    for (const x of copies) {
+      const k = `${x.lineageId}|${x.start}`;
+      groupSize.set(k, (groupSize.get(k) ?? 0) + 1);
+    }
+  }
+  const groupOfSeg = (lineageId: string, start: string, part: number) =>
+    groupId ? { id: groupId, part, size: groupSize.get(`${lineageId}|${start}`) ?? 0 } : null;
+  const refOf = (g: ReturnType<typeof groupOfSeg>) =>
+    g ? { groupId: g.id, groupPart: g.part, groupSize: g.size } : {};
+
+  // 5c. Unggah segmen file baru.
+  for (const x of pending) {
+    const { it, p, seg, key, typedPath, rowBase, hr } = x;
+    const id = newSegmentId();
+    const sp = segmentPrefix(v.datasetId, id);
+    const rawKey = `${sp}raw.parquet`;
+    const typedKey = `${sp}typed-${it.pair.schemaRevision}.parquet`;
+    const rawBytes = statSync(seg.raw).size;
+    const typedBytes = statSync(typedPath).size;
+    const group = groupOfSeg(it.pair.lineageId, p.start, it.part);
+    // Baris Segment SEBELUM objek diunggah: kegagalan selalu tahu objek mana miliknya.
+    await repo.createSegment(versionId, {
+      id,
+      lineageId: it.pair.lineageId,
+      rawKey,
+      rawBytes,
+      rawRows: seg.rawRows,
+      headerRow: hr,
+      colCount: it.rawCols,
+      colMap: it.colMap,
+      rowBase,
+      maxSrcRow: seg.maxSrcRow,
+      sha256: it.sha256,
+      sourceKind: it.file.ext,
+      period: { key, start: p.start, minDate: p.lo, maxDate: p.hi },
+      ...(group ? { originalName: it.originalName, group } : {}),
+    });
+    created.push(id);
+    await storage.upload(rawKey, seg.raw, PARQUET);
+    await storage.upload(typedKey, typedPath, PARQUET);
+    const typedId = await repo.addTyped(id, {
+      typedKey,
+      schemaRevision: it.pair.schemaRevision,
+      columns: [...new Set(it.schema.map((s) => s.pos))].sort((s, t) => s - t),
+      dataRows: p.rows,
+      typedBytes,
+      profile: packProfile(hr, seg.profile),
+      headerRow: hr,
+    });
+    incoming.push({
+      typedId,
+      segmentId: id,
+      lineageId: it.pair.lineageId,
+      periodKey: key,
+      periodStart: p.start,
+      rows: p.rows,
+      bytes: rawBytes + typedBytes,
+      sha256: it.sha256,
+      ...refOf(group),
+    });
+    keys.push(rawKey, typedKey);
+    rmSync(typedPath, { force: true });
+    if (seg.raw !== it.s.path) rmSync(seg.raw, { force: true });
+    await ensureAlive();
+  }
+  // Semua segmen file tertulis: raw lokal + tabel periode tidak dibutuhkan lagi (review L2).
+  if (c.group) {
+    for (const it of items) {
       rmSync(it.s.path, { force: true });
       await d.conn.run(`DROP TABLE IF EXISTS assign_${it.tag}`);
     }
+  }
+
+  // 5d. Salinan data lama (Tambah/Perbarui): bagian kelompok setelah bagian file sheet data itu.
+  const nextPart = new Map<string, number>();
+  for (const it of items) {
+    nextPart.set(it.pair.lineageId, Math.max(nextPart.get(it.pair.lineageId) ?? 0, it.part));
+  }
+  for (const x of copies) {
+    const part = (nextPart.get(x.lineageId) ?? 0) + 1;
+    nextPart.set(x.lineageId, part);
+    const id = newSegmentId();
+    const sp = segmentPrefix(v.datasetId, id);
+    const rawKey = `${sp}raw.parquet`;
+    const typedKey = `${sp}typed-${x.src.schemaRevision}.parquet`;
+    const rawBytes = statSync(x.rawPath).size;
+    const typedBytes = statSync(x.typedPath).size;
+    const group = groupOfSeg(x.lineageId, x.start, part);
+    await repo.createSegment(versionId, {
+      id,
+      lineageId: x.lineageId,
+      rawKey,
+      rawBytes,
+      rawRows: x.rawRows,
+      headerRow: x.src.headerRow,
+      colCount: x.src.colCount,
+      colMap: x.src.colMap,
+      // `_row` lama dipertahankan (rentang baris segmen lama; segmen lama tidak dirujuk versi baru).
+      rowBase: x.src.rowBase,
+      maxSrcRow: x.src.maxSrcRow ?? (await maxSourceRow(d, x.rawPath)),
+      sha256: x.src.sha256 ?? dl.sha256,
+      sourceKind: x.src.sourceKind,
+      period: { key: x.key, start: x.start, minDate: x.minDate, maxDate: x.maxDate },
+      originalName: x.src.originalName,
+      group,
+    });
+    created.push(id);
+    await storage.upload(rawKey, x.rawPath, PARQUET);
+    await storage.upload(typedKey, x.typedPath, PARQUET);
+    const typedId = await repo.addTyped(id, {
+      typedKey,
+      schemaRevision: x.src.schemaRevision,
+      columns: x.src.columns,
+      dataRows: x.rows,
+      typedBytes,
+      profile: x.profile,
+      headerRow: x.src.typedHeaderRow,
+    });
+    incoming.push({
+      typedId,
+      segmentId: id,
+      lineageId: x.lineageId,
+      periodKey: x.key,
+      periodStart: x.start,
+      rows: x.rows,
+      bytes: rawBytes + typedBytes,
+      sha256: x.src.sha256,
+      ...refOf(group),
+    });
+    keys.push(rawKey, typedKey);
+    rmSync(x.rawPath, { force: true });
+    rmSync(x.typedPath, { force: true });
+    await ensureAlive();
   }
 
   // 6. Gerbang integritas kunci (HEAD di luar lock); commit di bawah lock Dataset oleh pemanggil.
@@ -1064,7 +1208,7 @@ export interface PeriodRawSheet extends SheetRecord {
 
 export interface PeriodMappingRepo extends Pick<
   PeriodIngestRepo,
-  "load" | "allocateRows" | "createSegment" | "addTyped" | "recordCleanup"
+  "load" | "allocateRows" | "createSegment" | "addTyped" | "recordCleanup" | "copySources"
 > {
   /** Sheet raw versi yang menunggu pemetaan + fakta file dari ingest; null = versi tidak ada. */
   rawSheets(versionId: string): Promise<{

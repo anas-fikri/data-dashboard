@@ -1,6 +1,7 @@
 import { IconArrowLeft, IconCalendarStats, IconReplace } from "@tabler/icons-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { PeriodKeysForm } from "@/components/datasets/period-keys-form";
 import { PeriodSettingsForm, PeriodSetupForm } from "@/components/datasets/period-setup-form";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -93,6 +94,21 @@ export default async function PeriodSetupPage({ params }: { params: Params }) {
           </CardContent>
         </Card>
       )}
+      {view.state === "period" && view.sheets.some((s) => s.periodSource) ? (
+        <Card data-testid="period-keys">
+          <CardHeader>
+            <CardTitle>Kolom kunci</CardTitle>
+            <CardDescription>
+              Kolom yang nilainya unik per baris (mis. nomor resi atau nomor invoice). Dengan kolom
+              kunci, unggahan bisa “Perbarui berdasarkan kunci”: baris yang kuncinya sudah ada
+              dikoreksi, baris baru ditambahkan, dan periode lain tidak tertimpa.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <PeriodKeysForm view={view} />
+          </CardContent>
+        </Card>
+      ) : null}
       {view.state === "period" ? (
         <Card data-testid="period-reset">
           <CardHeader>

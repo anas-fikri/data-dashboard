@@ -21,7 +21,8 @@ export interface ReviewSheetName {
   name: string;
 }
 
-export type ReviewTone = "added" | "replaced" | "evicted" | "excluded" | "rejected" | "unchanged";
+export type ReviewTone =
+  "added" | "replaced" | "updated" | "evicted" | "excluded" | "rejected" | "unchanged";
 
 export interface ReviewRow {
   key: string;
@@ -64,6 +65,20 @@ function noteOf(e: PeriodPlanEntry, plan: PeriodPlan): { tone: ReviewTone; note:
       return { tone: "added", note: "Baru" };
     case "REPLACED":
       return { tone: "replaced", note: "Diganti" };
+    case "UPDATED": {
+      const k = e.keyed;
+      const bits = k
+        ? [
+            k.fileRows - k.updated ? `${fmt(k.fileRows - k.updated)} baru` : null,
+            k.updated ? `${fmt(k.updated)} diperbarui` : null,
+            k.movedOut ? `${fmt(k.movedOut)} pindah periode` : null,
+          ].filter(Boolean)
+        : [];
+      return {
+        tone: "updated",
+        note: bits.length ? `Diperbarui: ${bits.join(", ")}` : "Diperbarui",
+      };
+    }
     case "EVICTED":
       return { tone: "evicted", note: evictNote(plan) };
     case "EXCLUDED":
@@ -123,7 +138,8 @@ export function reviewRows(
         : [],
       note,
       flags,
-      stray: e.stray,
+      // Tambah/Perbarui (v1.20): periode nyasar tetap disimpan (tanpa pilihan Kecualikan), hanya peringatan.
+      stray: e.stray && plan.mode === "REPLACE",
       // Yang sudah dilewati selalu bisa dibatalkan (juga bila lewatan itu membuat rencana ditolak).
       skippable:
         plan.skip.includes(e.key) || (!plan.rejection && !e.stray && e.action === "REPLACED"),

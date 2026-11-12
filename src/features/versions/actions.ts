@@ -11,7 +11,13 @@ import { redisReady } from "@/lib/redis";
 import type { SetupPreview } from "@/features/ingest/period-setup-plan";
 import { advanceUploadQueue } from "@/features/uploads/queue";
 import { pairPlanFor, submitMapping } from "./mapping";
-import { applyPeriodSetup, previewPeriodSetup, savePeriodSettings } from "./period-setup";
+import {
+  applyPeriodSetup,
+  previewPeriodSetup,
+  savePeriodKeys,
+  savePeriodSettings,
+  type PeriodKeyCheck,
+} from "./period-setup";
 import { removePeriod, restorePeriod } from "./period-manage";
 import { confirmPeriodUpload, reviewPeriodUpload, type PeriodReview } from "./period-upload";
 import * as service from "./service";
@@ -194,6 +200,21 @@ export async function savePeriodSettingsAction(
 ): Promise<VersionResult<{ keepPeriods: number | null; onLimit: "REJECT" | "EVICT_OLDEST" }>> {
   return asOwner("savePeriodSettings", async (userId, ip) => {
     const r = await savePeriodSettings(userId, datasetId, payload, ip);
+    if (r.ok) {
+      revalidatePath(`/datasets/${datasetId}`);
+      revalidatePath(`/datasets/${datasetId}/periode`);
+    }
+    return r;
+  });
+}
+
+/** Kolom kunci sheet data per periode (v1.20): dipakai unggahan "Perbarui berdasarkan kunci". */
+export async function savePeriodKeysAction(
+  datasetId: string,
+  payload: unknown,
+): Promise<VersionResult<{ checks: PeriodKeyCheck[] }>> {
+  return asOwner("savePeriodKeys", async (userId, ip) => {
+    const r = await savePeriodKeys(userId, datasetId, payload, ip);
     if (r.ok) {
       revalidatePath(`/datasets/${datasetId}`);
       revalidatePath(`/datasets/${datasetId}/periode`);

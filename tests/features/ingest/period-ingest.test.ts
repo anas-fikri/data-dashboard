@@ -17,6 +17,7 @@ import {
   type PeriodTypedRecord,
 } from "@/features/ingest/period-ingest";
 import type { PeriodLimits, PeriodPlan } from "@/features/ingest/period-plan";
+import type { CopySource } from "@/features/ingest/period-keymerge";
 import {
   applySchemaChange,
   decidePeriodCommit,
@@ -130,9 +131,45 @@ class FakePeriodRepo implements PeriodIngestRepo {
     this.segments.set(d.id, d);
   }
   async addTyped(segmentId: string, tr: PeriodTypedRecord) {
-    const id = `typed${++this.n}`;
+    const id = `typed${this.archive.size + ++this.n}`;
     this.typed.set(id, { ...tr, segmentId });
+    this.archive.set(id, { typed: { ...tr, segmentId }, segment: this.segments.get(segmentId)! });
     return id;
+  }
+  /** Segmen + typed semua unggahan (lintas run, v1.20): sumber salinan Tambah/Perbarui. */
+  archive = new Map<
+    string,
+    { typed: PeriodTypedRecord & { segmentId: string }; segment: PeriodSegmentRecord }
+  >();
+  async copySources(typedIds: string[]): Promise<CopySource[]> {
+    return typedIds.flatMap((id) => {
+      const a = this.archive.get(id);
+      if (!a) return [];
+      const g = a.segment;
+      return [
+        {
+          typedId: id,
+          segmentId: g.id,
+          typedKey: a.typed.typedKey,
+          schemaRevision: a.typed.schemaRevision,
+          columns: a.typed.columns,
+          profile: a.typed.profile,
+          typedHeaderRow: a.typed.headerRow,
+          rawKey: g.rawKey,
+          rawRows: g.rawRows,
+          headerRow: g.headerRow,
+          colCount: g.colCount,
+          colMap: g.colMap,
+          rowBase: g.rowBase,
+          maxSrcRow: g.maxSrcRow,
+          sha256: g.sha256,
+          sourceKind: g.sourceKind,
+          originalName: g.originalName ?? null,
+          minDate: g.period?.minDate ?? null,
+          maxDate: g.period?.maxDate ?? null,
+        },
+      ];
+    });
   }
   async createRawSheet(
     _v: string,
@@ -258,6 +295,7 @@ function activeSheet(
       periodSource === "COLUMN" ? base.schema.find((c) => /tanggal/i.test(c.original))!.pos : null,
     segments,
     keys,
+    keyColumns: [],
   };
 }
 
@@ -926,6 +964,7 @@ class FakeMappingRepo implements PeriodMappingRepo {
   constructor(readonly r: FakePeriodRepo) {}
   load = () => this.r.load();
   allocateRows = (l: string, n: number) => this.r.allocateRows(l, n);
+  copySources = (ids: string[]) => this.r.copySources(ids);
   createSegment = (v: string, d: PeriodSegmentRecord) => this.r.createSegment(v, d);
   addTyped = (id: string, t: PeriodTypedRecord) => this.r.addTyped(id, t);
   recordCleanup = async () => {};
@@ -1505,5 +1544,164 @@ describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () 
     );
     expect(s.repo.commits).toBe(0);
     expect(s.repo.segments.size).toBe(0);
+  });
+});
+
+describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
+  /** Unggahan pertama (Ganti) → data aktif sungguhan (segmen parquet) untuk unggahan kedua. */
+  async function seeded(first: string[][]) {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = setup([HEADER, ...first], base, {});
+    expect(await s.run()).toEqual({ outcome: "done", sheets: 1 });
+    const refs = s.repo.manifest!.get(LINEAGE)!;
+    const inc = s.repo.incoming();
+    const segments: ActiveSegmentRef[] = refs.map((r) => {
+      const g = inc.find((x) => x.typedId === r.typedId)!;
+      return {
+        typedId: g.typedId,
+        segmentId: g.segmentId,
+        periodKey: g.periodKey,
+        periodStart: g.periodStart,
+        rows: g.rows,
+        bytes: g.bytes,
+        sha256: g.sha256 ?? null,
+        groupId: g.groupId ?? null,
+        groupPart: g.groupPart ?? null,
+        groupSize: g.groupSize ?? null,
+      };
+    });
+    const kode = base.schema.find((c) => /kode/i.test(c.original))!.pos;
+    const sheet: PeriodActiveSheet = {
+      ...s.sheet,
+      segments,
+      keys: s.storage.parquetKeys(),
+      keyColumns: [kode],
+    };
+    /** Unggahan berikutnya ke data aktif hasil unggahan pertama. */
+    const next = (rows: string[][], mode: "APPEND" | "UPSERT", keyColumns = [kode]) => {
+      const file = t.file(`n-${Math.random().toString(36).slice(2)}.csv`, csv(rows));
+      s.storage.sources[SOURCE] = file;
+      const load: PeriodIngestLoad = {
+        ...s.repo.load0,
+        uploadMode: mode,
+        active: {
+          versionId: ACTIVE,
+          grain: "MONTH",
+          sheets: [{ ...structuredClone(sheet), keyColumns }],
+        },
+      };
+      const repo = new FakePeriodRepo(load, LIMITS);
+      repo.archive = s.repo.archive;
+      // allocateRows per lineage monoton lintas unggahan (seperti SheetLineage.rowHighWater).
+      repo.highWater = s.repo.highWater;
+      const run = () =>
+        runPeriodIngest(
+          VID,
+          { repo, storage: s.storage, limits: LIMITS },
+          { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+        );
+      return { repo, run };
+    };
+    const typedOf = async (repo: FakePeriodRepo, key: string) => {
+      const refs = repo.manifest!.get(LINEAGE)!.filter((r) => r.periodKey === key);
+      const out: unknown[][] = [];
+      for (const r of refs) {
+        const tr = repo.typed.get(r.typedId) ?? s.repo.archive.get(r.typedId)!.typed;
+        out.push(...(await readParquet(join(s.storage.dir, tr.typedKey))));
+      }
+      return out;
+    };
+    return { s, next, typedOf };
+  }
+
+  it("Perbarui: kunci sama dikoreksi, kunci baru ditambah, kunci pindah bulan → aktif otomatis", async () => {
+    const { next, typedOf } = await seeded([...month(1, 10), ...month(2, 10)]);
+    const fix = month(1, 5).map(([k, d]) => [k!, d!, "99"]);
+    const fresh = [["K1-100", "2026-01-20", "7"]];
+    const moved = [["K2-3", "2026-01-15", "5"]];
+    const u = next([HEADER, ...fix, ...fresh, ...moved], "UPSERT");
+    expect(await u.run()).toEqual({ outcome: "done", sheets: 1 });
+    expect(u.repo.status).toBe("READY");
+    const plan = u.repo.plan!;
+    expect(plan.mode).toBe("UPSERT");
+    expect(plan.confirm).toEqual([]);
+    const jan = plan.entries.find((e) => e.key === "2026-01")!;
+    const feb = plan.entries.find((e) => e.key === "2026-02")!;
+    expect([jan.action, jan.beforeRows, jan.afterRows]).toEqual(["UPDATED", 10, 12]);
+    expect(jan.keyed).toEqual({ fileRows: 7, updated: 6, kept: 5, removed: 5, movedOut: 0 });
+    expect([feb.action, feb.beforeRows, feb.afterRows]).toEqual(["UPDATED", 10, 9]);
+    expect(feb.keyed).toEqual({ fileRows: 0, updated: 0, kept: 9, removed: 1, movedOut: 1 });
+    expect(feb.shrink).toBe(false);
+    expect(periodPlanSummary(plan)).toContain("Januari 2026 diperbarui");
+
+    const janRows = await typedOf(u.repo, "2026-01");
+    const byKode = new Map(janRows.map((r) => [r[2], r[4]]));
+    expect(janRows).toHaveLength(12);
+    expect(byKode.get("K1-0")).toBe(99n);
+    expect(byKode.get("K1-7")).toBe(17n);
+    expect(byKode.get("K1-100")).toBe(7n);
+    expect(byKode.get("K2-3")).toBe(5n);
+    const febRows = await typedOf(u.repo, "2026-02");
+    expect(febRows.map((r) => r[2])).not.toContain("K2-3");
+    expect(febRows).toHaveLength(9);
+    // `_row` unik di seluruh sheet data (salinan memakai `_row` lama).
+    const all = [...janRows, ...febRows].map((r) => r[0]);
+    expect(new Set(all).size).toBe(all.length);
+    // Periode yang ditulis ulang = kelompok (bagian file + salinan lama).
+    const janSegs = u.repo.manifest!.get(LINEAGE)!.filter((r) => r.periodKey === "2026-01");
+    expect(janSegs).toHaveLength(2);
+  });
+
+  it("Perbarui: file yang sama diunggah ulang → tidak ada perubahan baris, tetap aktif otomatis", async () => {
+    const rows = [...month(1, 10)];
+    const { next } = await seeded(rows);
+    const u = next([HEADER, ...rows], "UPSERT");
+    expect((await u.run()).outcome).toBe("done");
+    const jan = u.repo.plan!.entries.find((e) => e.key === "2026-01")!;
+    expect([jan.beforeRows, jan.afterRows]).toEqual([10, 10]);
+    expect(jan.keyed).toMatchObject({ updated: 10, kept: 0, removed: 10 });
+    expect(u.repo.plan!.confirm).toEqual([]);
+  });
+
+  it("Perbarui: kunci dobel di file → ditolak dengan daftar kunci, data aktif tetap", async () => {
+    const { next } = await seeded([...month(1, 10)]);
+    const dup = [
+      ["K1-0", "2026-01-02", "1"],
+      ["K1-0", "2026-01-03", "2"],
+      ["K1-9", "2026-01-04", "3"],
+      ["K1-9", "2026-01-05", "4"],
+      ["K1-9", "2026-01-06", "5"],
+    ];
+    const u = next([HEADER, ...dup], "UPSERT");
+    const r = await u.run();
+    expect(r.outcome).toBe("failed");
+    expect(u.repo.status).toBe("FAILED");
+    expect(u.repo.error).toContain("2 kunci “kode” muncul lebih dari sekali");
+    expect(u.repo.error).toContain("K1-9 (3×), K1-0 (2×)");
+    expect(u.repo.error).toContain("Data aktif tidak berubah");
+    expect(u.repo.commits).toBe(0);
+  });
+
+  it("Perbarui: kunci kosong → ditolak dengan nomor baris", async () => {
+    const { next } = await seeded([...month(1, 10)]);
+    const u = next([HEADER, ["", "2026-01-02", "1"], ["K1-1", "2026-01-03", "2"]], "UPSERT");
+    expect((await u.run()).outcome).toBe("failed");
+    expect(u.repo.error).toContain("Kolom kunci “kode” kosong di 1 baris: sheet “CSV” baris 2");
+  });
+
+  it("Perbarui tanpa kolom kunci → ditolak; Tambah menambah baris tanpa membuang", async () => {
+    const { next, typedOf } = await seeded([...month(1, 10)]);
+    const none = next([HEADER, ...month(1, 2)], "UPSERT", []);
+    expect((await none.run()).outcome).toBe("failed");
+    expect(none.repo.error).toContain("belum punya kolom kunci");
+
+    const add = next([HEADER, ["K1-0", "2026-01-09", "1"], ["X-1", "2026-03-01", "2"]], "APPEND");
+    expect((await add.run()).outcome).toBe("done");
+    const plan = add.repo.plan!;
+    expect(plan.mode).toBe("APPEND");
+    const jan = plan.entries.find((e) => e.key === "2026-01")!;
+    expect([jan.action, jan.afterRows]).toEqual(["UPDATED", 11]);
+    expect(plan.entries.find((e) => e.key === "2026-03")!.action).toBe("ADDED");
+    expect((await typedOf(add.repo, "2026-01")).filter((r) => r[2] === "K1-0")).toHaveLength(2);
   });
 });

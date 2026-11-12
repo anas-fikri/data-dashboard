@@ -172,7 +172,12 @@ export interface UploadOptions {
    * Unggahan periode (T-052): "PERIOD" = tambah/perbarui periode terhadap versi aktif `baseVersionId`,
    * `label` = awal periode untuk sheet bersumber label. Tanpa ini = ganti semua data.
    */
-  period?: { baseVersionId: string; label: string | null };
+  period?: {
+    baseVersionId: string;
+    label: string | null;
+    /** v1.20: Ganti / Tambah / Perbarui berdasarkan kunci; tidak ada = Ganti. */
+    periodMode?: "REPLACE" | "APPEND" | "UPSERT";
+  };
   /** Sheet xlsx yang diimpor (T-85tb, hanya ganti semua data); tanpa ini = semua sheet. */
   sheets?: string[];
   /** Gabungkan sheet berkolom sama jadi satu sheet (T-0gmm, hanya REPLACE xlsx). */
@@ -230,7 +235,12 @@ export async function uploadFile(
       size: file.size,
       lastModified: file.lastModified,
       ...(period
-        ? { mode: "PERIOD", baseVersionId: period.baseVersionId, label: period.label }
+        ? {
+            mode: "PERIOD",
+            baseVersionId: period.baseVersionId,
+            label: period.label,
+            ...(period.periodMode ? { periodMode: period.periodMode } : {}),
+          }
         : {}),
       ...(sheets?.length && !period ? { sheets } : {}),
       ...(mergeSheets && !period ? { mergeSheets: true } : {}),
