@@ -123,6 +123,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.20.0] - 2026-11-12
+
+### Fixed
+
+- **T-rbrb:** Tambah berulang terdeteksi setelah pemadatan, kunci dobel ditandai per periode, pemadatan per jenis sumber (review putaran 2) (ace71fc)
+- **T-rbrb:** salinan lama dipadatkan, kunci dobel lama & Tambah berulang ditinjau, peringatan Pulihkan (review M1–M4, L5, L8) (26454a6)
+
 ## [1.19.1] - 2026-11-12
 
 ### Added
