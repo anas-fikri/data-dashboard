@@ -113,6 +113,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.19.1] - 2026-11-12
+
+### Added
+
+- **ingest:** sheet lanjutan tanpa judul dikenali dan digabung; Gabungkan tercentang untuk dataset baru (T-1216) (3b6ad9e)
+
+### Fixed
+
+- **ingest:** sheet lanjutan hanya setelah sheet penuh, kolom pembeda berbasis rasio (review T-1216 M1/M2/L-a) (aa93391)
+- **ingest:** sheet lanjutan wajib punya kolom pembeda; e2e tanpa gabung bawaan (review T-1216 H1/H2/L1) (2a4785d)
+
 ## [1.19.0] - 2026-11-12
 
 ### Added
