@@ -514,7 +514,7 @@ export function PeriodReviewForm({
   const blockedBy = plan.rejection
     ? plan.rejection.message
     : noChange
-      ? "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, atau pilih “Masukkan” untuk periode yang dikecualikan."
+      ? "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, pilih “Masukkan” untuk periode yang dikecualikan, atau hapus centang “Lewati periode ini”."
       : missingAck
         ? `Centang “${missingAck.text}” untuk melanjutkan.`
         : null;

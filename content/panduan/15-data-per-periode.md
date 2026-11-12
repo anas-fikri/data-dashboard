@@ -48,7 +48,7 @@ Layar **Tinjau perubahan periode** menunjukkan apa yang akan terjadi sebelum dat
 
 - **Periode kecil yang mungkin nyasar** (mis. 3 baris bertanggal 31 Januari di file Februari) bawaannya **Kecualikan** — baris itu tidak disimpan. Pilih **Masukkan** bila memang benar; dampaknya langsung terlihat di tabel.
 - **Menyusut**: bila periode diganti dengan data jauh lebih sedikit (lebih dari 50%), centang _Saya paham … diganti dengan data yang lebih sedikit_. Ini mencegah bulan yang baru separuh menimpa bulan yang lengkap.
-- **Lewati periode ini**: setiap periode yang akan diganti punya kotak centang ini. Centang bila periode itu di file belum lengkap (mis. April baru sebagian) — data lama periode itu tetap, baris file untuk periode itu tidak disimpan, dan periode lain di file tetap diterapkan. Keterangannya berubah menjadi _Dilewati — data lama tetap_.
+- **Lewati periode ini**: periode yang akan diganti punya kotak centang ini (periode kecil yang mungkin nyasar memakai pilihan Kecualikan/Masukkan). Centang bila periode itu di file belum lengkap (mis. April baru sebagian) — data lama periode itu tetap, baris file untuk periode itu tidak disimpan, dan periode lain di file tetap diterapkan. Keterangannya berubah menjadi _Dilewati — data lama tetap_.
 - **Dilepas**: periode yang keluar karena batas harus dicentang _Saya paham … dilepas dari data aktif_.
 - **File identik** dengan periode yang sudah ada diberi catatan; menerapkannya tidak mengubah isi data.
 - **Sheet yang tidak ada di file** tetap memakai data lamanya (_Pertahankan data lama sheet itu_).

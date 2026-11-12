@@ -427,7 +427,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   const incoming = new Map([...input.incoming].sort(byStart).map((p) => [p.key, p]));
   const fileSheets = new Set(input.incomingSheets);
   const include = new Set(input.include ?? []);
-  const skip = new Set(input.skip ?? []);
+  // Hanya periode yang punya data lama dan bukan "kemungkinan nyasar" (yang punya pilihannya sendiri).
+  const skip = new Set((input.skip ?? []).filter((k) => active.has(k) && incoming.has(k)));
   const label = (key: string) => {
     const p = incoming.get(key) ?? active.get(key)!;
     return periodLabel(grain, p.start);
@@ -444,6 +445,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       .filter((p) => rowsOf(p.sheets) * 100 < limits.strayPct * maxIncoming)
       .map((p) => p.key),
   );
+  for (const k of stray) skip.delete(k);
   const included = new Set(
     [...incoming.keys()].filter((k) => !skip.has(k) && (!stray.has(k) || include.has(k))),
   );
@@ -500,7 +502,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       // (bukan batas pertama proyeksi penuh, yang bisa sudah terpenuhi lebih awal).
       const v = violation(projected.slice(k - 1), keep, limits)!;
       const prefix = projected.slice(0, k);
-      const hit = prefix.filter((u) => u.fromUpload).map((u) => u.key);
+      // Periode yang dilewati pemilik dijanjikan "data lama tetap": tidak boleh dilepas diam-diam.
+      const hit = prefix.filter((u) => u.fromUpload || skip.has(u.key)).map((u) => u.key);
       if (hit.length) {
         rejection = {
           code: "PERIOD_OUT_OF_WINDOW",
@@ -629,7 +632,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     fileSha256: fileSha,
     droppedRows: input.droppedRows ?? 0,
     include: [...include].filter((k) => incoming.has(k)).sort(),
-    skip: [...skip].filter((k) => incoming.has(k)).sort(),
+    skip: [...skip].sort(),
     ignoredSheets,
     mergedSheets,
     fileSheets: [...fileSheets].sort(),

@@ -84,4 +84,53 @@ describe("lewati periode", () => {
     });
     expect(reviewRows(p, [{ lineageId: "A", name: "Data" }]).rows[0]!.skippable).toBe(false);
   });
+
+  it("review: lewatan yang membuat rencana ditolak (batas baris) tetap bisa dibatalkan", () => {
+    const p = computePeriodPlan({
+      ...base,
+      limits: { ...base.limits, sheetMaxRows: 200_000 },
+      skip: ["2026-04"],
+    });
+    expect(p.rejection).not.toBeNull();
+    const apr = reviewRows(p, [{ lineageId: "A", name: "Data" }]).rows.find(
+      (r) => r.key === "2026-04",
+    )!;
+    expect(apr).toMatchObject({ skipped: true, skippable: true });
+  });
+
+  it("review: EVICT_OLDEST — periode terlama yang dilewati tidak dilepas diam-diam (ditolak)", () => {
+    const p = computePeriodPlan({
+      ...base,
+      active: [
+        { key: "2026-03", start: "2026-03-01", sheets: slice(150_000) },
+        { key: "2026-04", start: "2026-04-01", sheets: slice(40_000) },
+      ],
+      incoming: [
+        { key: "2026-03", start: "2026-03-01", sheets: slice(60_000) },
+        { key: "2026-04", start: "2026-04-01", sheets: slice(100_000) },
+      ],
+      settings: { keepPeriods: null, onLimit: "EVICT_OLDEST" },
+      limits: { ...base.limits, sheetMaxRows: 200_000 },
+      skip: ["2026-03"],
+    });
+    expect(p.entries.find((e) => e.key === "2026-03")!.action).not.toBe("EVICTED");
+    expect(p.rejection?.code).toBe("PERIOD_OUT_OF_WINDOW");
+  });
+
+  it("review: skip untuk periode baru atau nyasar diabaikan (hanya periode yang punya data lama)", () => {
+    const p = computePeriodPlan({
+      ...base,
+      incoming: [
+        ...base.incoming,
+        { key: "2026-05", start: "2026-05-01", sheets: slice(100_000) },
+        { key: "2026-01", start: "2026-01-01", sheets: slice(3) },
+      ],
+      active: [...base.active, { key: "2026-01", start: "2026-01-01", sheets: slice(10) }],
+      include: ["2026-01"],
+      skip: ["2026-05", "2026-01"],
+    });
+    expect(p.skip).toEqual([]);
+    expect(p.entries.find((e) => e.key === "2026-05")!.action).toBe("ADDED");
+    expect(p.entries.find((e) => e.key === "2026-01")!.action).toBe("REPLACED");
+  });
 });

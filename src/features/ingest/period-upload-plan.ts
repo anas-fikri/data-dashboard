@@ -717,7 +717,7 @@ export interface PeriodAck {
 export function confirmBlocker(plan: PeriodPlan, ack: PeriodAck): string | null {
   if (plan.rejection) return plan.rejection.message;
   if (plan.confirm.includes("NO_CHANGE")) {
-    return "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, atau pilih “Masukkan” untuk periode yang dikecualikan.";
+    return "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, pilih “Masukkan” untuk periode yang dikecualikan, atau hapus centang “Lewati periode ini”.";
   }
   if (plan.confirm.includes("SHRINK") && !ack.shrink) {
     const names = plan.entries.filter((e) => e.shrink).map((e) => e.label);

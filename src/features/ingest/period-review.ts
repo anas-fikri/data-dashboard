@@ -124,10 +124,9 @@ export function reviewRows(
       note,
       flags,
       stray: e.stray,
+      // Yang sudah dilewati selalu bisa dibatalkan (juga bila lewatan itu membuat rencana ditolak).
       skippable:
-        !plan.rejection &&
-        !e.stray &&
-        (e.action === "REPLACED" || (plan.skip.includes(e.key) && e.beforeRows > 0)),
+        plan.skip.includes(e.key) || (!plan.rejection && !e.stray && e.action === "REPLACED"),
       skipped: plan.skip.includes(e.key),
       fileRows: fileRows[e.key] ?? 0,
     });
