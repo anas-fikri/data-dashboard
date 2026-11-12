@@ -107,6 +107,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.19.0] - 2026-11-12
+
+### Added
+
+- **ingest:** mode periode — sheet berkolom sama dalam satu file digabung ke satu sheet data (T-jsmj) (76492e3)
+- **period:** 'Lewati periode ini' di tinjauan unggahan periode (T-aavf) (4850467)
+
+### Fixed
+
+- **ingest:** bagian satu sheet data harus membawa perubahan kolom yang sama (verifikasi T-jsmj) (b43e7d6)
+- **ingest:** bagian tanpa kolom tambahan boleh berdampingan; perbandingan perubahan kolom kanonik (konfirmasi review T-jsmj) (79246cf)
+- **period:** temuan review T-aavf — lewatan selalu bisa dibatalkan, tidak dilepas diam-diam, hanya periode berdata lama (56ac448)
+
 ## [1.18.0] - 2026-11-11
 
 ### Added
