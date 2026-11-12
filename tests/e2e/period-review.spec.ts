@@ -535,6 +535,62 @@ test.describe("layar tinjauan periode", () => {
     await expect(feb.getByTestId("review-after")).toHaveText("2");
   });
 
+  test("v1.19: 'Lewati periode ini' → periode yang menyusut tetap data lama, periode lain diterapkan", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(300_000);
+    const header = ["kode", "Tanggal Kirim", "nilai"];
+    const feb = Array.from({ length: 6 }, (_, i) => [`F${i}`, `2026-02-0${i + 1}`, "1"]);
+    const id = await newDataset(
+      page,
+      "Tinjau lewati periode",
+      file(
+        "awal.xlsx",
+        await xlsx([{ name: "Data", rows: [header, ["A", "2026-01-05", "10"], ...feb] }]),
+      ),
+    );
+    await setupPeriods(page, id);
+    const v = await uploadPeriod(
+      page,
+      baseURL!,
+      id,
+      "susut.xlsx",
+      await xlsx([
+        {
+          name: "Data",
+          rows: [
+            header,
+            ["G", "2026-02-09", "7"],
+            ["H", "2026-03-09", "8"],
+            ["I", "2026-03-10", "9"],
+          ],
+        },
+      ]),
+    );
+    await page.goto(`/datasets/${id}/tinjau/${v}`);
+    const febRow = row(page, "2026-02");
+    await expect(febRow.getByTestId("review-flag")).toContainText([
+      "Datanya lebih sedikit dari sekarang",
+    ]);
+    await expect(page.getByTestId("review-ack-shrink")).toBeVisible();
+    await febRow.getByTestId("review-skip").check();
+    await expect(febRow.getByTestId("review-note")).toHaveText("Dilewati — data lama tetap", SLOW);
+    await expect(febRow.getByTestId("review-after")).toHaveText("6");
+    // Tidak ada lagi yang menyusut → centang "Saya paham … lebih sedikit" tidak diminta.
+    await expect(page.getByTestId("review-ack-shrink")).toHaveCount(0);
+    await expect(row(page, "2026-03").getByTestId("review-note")).toHaveText("Baru");
+    await page.getByTestId("review-apply").click();
+    await expect(page).toHaveURL(new RegExp(`/datasets/${id}\\?confirmed=1$`), SLOW);
+    const active = versions(id).find((x) => x.active)!;
+    expect(active.id).toBe(v);
+    expect(Object.fromEntries(periodsOf(v).flat() as [string, number][])).toMatchObject({
+      "2026-01": 1,
+      "2026-02": 6,
+      "2026-03": 2,
+    });
+  });
+
   test("T-jsmj: satu file, 2 sheet berkolom sama (nama beda, bulan bercampur) → digabung, wajib ditinjau", async ({
     page,
     baseURL,

@@ -181,18 +181,65 @@ function StrayChoice({
   );
 }
 
+/** "Lewati periode ini" (v1.19): periode yang akan diganti tetap memakai data lama. */
+function SkipChoice({
+  row,
+  skipped,
+  disabled,
+  onChange,
+}: {
+  row: ReviewRow;
+  /** Pilihan lokal (langsung berubah saat diklik; rencana dihitung ulang di belakang). */
+  skipped: boolean;
+  disabled: boolean;
+  onChange: (skip: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "mt-2 flex min-h-11 cursor-pointer flex-wrap items-center gap-x-2 rounded-md border px-3 py-1.5 text-sm md:min-h-9",
+        skipped ? "border-primary bg-accent/40" : "hover:bg-accent/40",
+        disabled && "cursor-not-allowed opacity-70",
+      )}
+    >
+      <input
+        id={id}
+        type="checkbox"
+        checked={skipped}
+        // aria-disabled (bukan disabled) selama rencana dihitung ulang: fokus tetap di kotak centang.
+        aria-disabled={disabled || undefined}
+        onChange={(e) => {
+          if (!disabled) onChange(e.target.checked);
+        }}
+        className="size-4 shrink-0 accent-[hsl(var(--primary))]"
+        data-testid="review-skip"
+      />
+      <span className="font-medium">Lewati periode ini</span>
+      <span className="text-muted-foreground">
+        — data lama {row.label} tetap, baris file untuk {row.label} tidak disimpan
+      </span>
+    </label>
+  );
+}
+
 function ReviewTable({
   rows,
   unchanged,
   include,
+  skip,
   busy,
   onInclude,
+  onSkip,
 }: {
   rows: ReviewRow[];
   unchanged: number;
   include: string[];
+  skip: string[];
   busy: boolean;
   onInclude: (key: string, on: boolean) => void;
+  onSkip: (key: string, skip: boolean) => void;
 }) {
   const label = "text-muted-foreground md:hidden";
   return (
@@ -286,6 +333,14 @@ function ReviewTable({
                       onChange={(on) => onInclude(r.key, on)}
                     />
                   ) : null}
+                  {r.skippable ? (
+                    <SkipChoice
+                      row={r}
+                      skipped={skip.includes(r.key)}
+                      disabled={busy}
+                      onChange={(on) => onSkip(r.key, on)}
+                    />
+                  ) : null}
                 </td>
               </tr>
             );
@@ -335,6 +390,7 @@ export function PeriodReviewForm({
   const uid = useId();
   const [review, setReview] = useState<PeriodReview | null>(initial);
   const [include, setInclude] = useState<string[]>(initial?.plan.include ?? []);
+  const [skip, setSkip] = useState<string[]>(initial?.plan.skip ?? []);
   const [acks, setAcks] = useState<Record<RequiredAck["kind"], boolean>>({
     shrink: false,
     evict: false,
@@ -352,19 +408,22 @@ export function PeriodReviewForm({
 
   const fail = (text: string) => setError((e) => ({ id: (e?.id ?? 0) + 1, text }));
 
-  /** Rencana dihitung ulang (pilihan nyasar berubah / PLAN_STALE): centang wajib direset. */
-  const reload = (next: string[], after?: string) =>
+  /** Rencana dihitung ulang (pilihan nyasar/lewati berubah / PLAN_STALE): centang wajib direset. */
+  const reload = (next: string[], nextSkip: string[], after?: string) =>
     startLoading(async () => {
       const r = await reviewPeriodUploadAction(context.datasetId, context.versionId, {
         include: next,
+        skip: nextSkip,
       }).catch(() => null);
       if (!r) {
         setInclude(review?.plan.include ?? []);
+        setSkip(review?.plan.skip ?? []);
         return fail(NETWORK_ERROR);
       }
       if (!r.ok) {
         // Pilihan kembali ke rencana yang masih tampil (radio tidak boleh berbeda dengan tabel).
         setInclude(review?.plan.include ?? []);
+        setSkip(review?.plan.skip ?? []);
         fail(versionErrorText(r.code, r.message));
         if (r.code === "PLAN_STALE") {
           setReview(null);
@@ -375,6 +434,7 @@ export function PeriodReviewForm({
       }
       setReview(r.data);
       setInclude(r.data.plan.include);
+      setSkip(r.data.plan.skip);
       setAcks({ shrink: false, evict: false, dropped: false });
       if (after) fail(after);
       else setError(null);
@@ -383,7 +443,13 @@ export function PeriodReviewForm({
   const onInclude = (key: string, on: boolean) => {
     const next = on ? [...new Set([...include, key])].sort() : include.filter((k) => k !== key);
     setInclude(next);
-    reload(next);
+    reload(next, skip);
+  };
+
+  const onSkip = (key: string, on: boolean) => {
+    const next = on ? [...new Set([...skip, key])].sort() : skip.filter((k) => k !== key);
+    setSkip(next);
+    reload(include, next);
   };
 
   /*
@@ -457,6 +523,7 @@ export function PeriodReviewForm({
     startApply(async () => {
       const r = await confirmPeriodUploadAction(context.datasetId, context.versionId, {
         include,
+        skip,
         digest: review.digest,
         ack: { shrink: acks.shrink, droppedRows: acks.dropped ? plan.droppedRows : 0 },
       }).catch(() => null);
@@ -469,7 +536,7 @@ export function PeriodReviewForm({
       if (r.code === "PLAN_STALE") {
         // Rencana baru (atau file diproses ulang): muat lagi; bila tidak lagi menunggu, halaman
         // di-refresh ke keadaan "tidak lagi menunggu".
-        reload(include, text);
+        reload(include, skip, text);
         return;
       }
       fail(text);
@@ -563,6 +630,8 @@ export function PeriodReviewForm({
           rows={rows}
           unchanged={unchanged}
           include={include}
+          skip={skip}
+          onSkip={onSkip}
           busy={busy}
           onInclude={onInclude}
         />

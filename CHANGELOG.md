@@ -91,6 +91,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.19 (lewati periode):** rencana periode `skip` (periode file yang dilewati pemilik di tinjauan → EXCLUDED, data
+  lama tetap; menang atas `include`), dikirim lewat review/confirm (`skip` opsional, bawaan []). Rollback image ke
+  v1.18.x: tinjauan tertunda yang memakai `skip` dihitung ulang tanpa field itu (periode kembali "Diganti") — tidak ada
+  data yang berubah sebelum "Terapkan".
 - **v1.19 (T-jsmj):** tanpa migrasi. Unggahan periode memasangkan sheet file berkolom sama ke satu sheet data
   (`period-merge.ts`: sidik judul sama dengan sheet yang sudah berpasangan, atau cocok persis dengan skema aktif bila
   belum berpasangan; ragu → diabaikan). Tiap sheet = satu bagian kelompok (`Segment.groupPart` kini nomor bagian per

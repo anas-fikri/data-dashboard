@@ -83,6 +83,11 @@ export interface PeriodPlanInput {
   limits: PeriodLimits;
   /** Periode "kemungkinan nyasar" yang dipilih pemilik untuk dimasukkan (default dikecualikan). */
   include?: string[];
+  /**
+   * Periode file yang dilewati pemilik di tinjauan (v1.19): data lama periode itu dipertahankan, baris file
+   * untuk periode itu tidak disimpan. Menang atas `include`.
+   */
+  skip?: string[];
   /** SHA-256 file baru. */
   fileSha256?: string | null;
   /** Baris tanpa tanggal valid yang dibuang atas pilihan eksplisit pemilik. */
@@ -165,6 +170,8 @@ export const periodPlanSchema = z.object({
   fileSha256: z.string().nullable(),
   droppedRows: count,
   include: z.array(z.string()),
+  /** Periode file yang dilewati pemilik (v1.19); rencana lama tanpa field ini = tidak ada. */
+  skip: z.array(z.string()).default([]),
   /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
   ignoredSheets: z.array(z.string()).default([]),
   /** Sheet file yang digabung ke satu sheet data (T-jsmj); rencana lama tanpa field ini = tidak ada. */
@@ -417,6 +424,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   const incoming = new Map([...input.incoming].sort(byStart).map((p) => [p.key, p]));
   const fileSheets = new Set(input.incomingSheets);
   const include = new Set(input.include ?? []);
+  const skip = new Set(input.skip ?? []);
   const label = (key: string) => {
     const p = incoming.get(key) ?? active.get(key)!;
     return periodLabel(grain, p.start);
@@ -433,7 +441,9 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       .filter((p) => rowsOf(p.sheets) * 100 < limits.strayPct * maxIncoming)
       .map((p) => p.key),
   );
-  const included = new Set([...incoming.keys()].filter((k) => !stray.has(k) || include.has(k)));
+  const included = new Set(
+    [...incoming.keys()].filter((k) => !skip.has(k) && (!stray.has(k) || include.has(k))),
+  );
 
   /** Periode yang diganti: sheet di file memakai data baru (sheet tanpa baris = kosong), sisanya tetap. */
   const merged = (key: string): Record<string, PeriodSlice> => {
@@ -616,6 +626,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     fileSha256: fileSha,
     droppedRows: input.droppedRows ?? 0,
     include: [...include].filter((k) => incoming.has(k)).sort(),
+    skip: [...skip].filter((k) => incoming.has(k)).sort(),
     ignoredSheets,
     mergedSheets,
     fileSheets: [...fileSheets].sort(),

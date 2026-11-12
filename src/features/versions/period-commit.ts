@@ -240,6 +240,8 @@ export interface PeriodCommitArgs {
   mapAudit?: { actorId: string; ip: string; meta: Record<string, unknown> };
   /** Periode "nyasar" yang dimasukkan pemilik. */
   include: string[];
+  /** Periode file yang dilewati pemilik — data lama dipertahankan (v1.19). */
+  skip?: string[];
   mode: CommitMode;
   /** Kunci yang sudah terbukti ada di storage (HEAD sebelum transaksi). */
   present: ReadonlySet<string>;
@@ -354,6 +356,7 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
     settings: { keepPeriods: ds.keepPeriods, onLimit: ds.onLimit },
     limits: a.limits,
     include: a.include,
+    skip: a.skip ?? [],
     mode: a.mode,
   });
   if (a.dryRun) return { outcome: "preview", plan: d.plan };
@@ -431,6 +434,7 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
         versionId: a.versionId,
         summary: periodPlanSummary(d.plan),
         include: d.plan.include,
+        skip: d.plan.skip,
         droppedRows: d.plan.droppedRows,
       },
       ip: a.audit.ip,

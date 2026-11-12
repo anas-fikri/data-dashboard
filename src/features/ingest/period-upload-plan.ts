@@ -681,7 +681,9 @@ function entryText(e: PeriodPlanEntry, plan: PeriodPlan): string | null {
         : `${e.label} dilepas (batas penyimpanan)`;
     }
     case "EXCLUDED":
-      return `${e.label} dikecualikan (kemungkinan nyasar)`;
+      return plan.skip.includes(e.key)
+        ? `${e.label} dilewati (data lama tetap)`
+        : `${e.label} dikecualikan (kemungkinan nyasar)`;
     default:
       return null;
   }
@@ -780,6 +782,8 @@ export function decidePeriodCommit(a: {
   settings: { keepPeriods: number | null; onLimit: "REJECT" | "EVICT_OLDEST" };
   limits: Parameters<typeof computePeriodPlan>[0]["limits"];
   include: string[];
+  /** Periode file yang dilewati pemilik (v1.19). */
+  skip?: string[];
   mode: CommitMode;
 }): CommitDecision {
   const inputs = planInputs(a.active, a.incoming);
@@ -793,6 +797,7 @@ export function decidePeriodCommit(a: {
     settings: a.settings,
     limits: a.limits,
     include: a.include,
+    skip: a.skip ?? [],
     fileSha256: a.facts.fileSha256,
     droppedRows: a.facts.droppedRows,
     ignoredSheets: a.facts.ignoredSheets,
