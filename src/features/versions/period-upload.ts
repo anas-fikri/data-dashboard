@@ -51,11 +51,14 @@ const REUPLOAD_MESSAGE =
 
 const includeSchema = z.array(z.string().regex(PERIOD_KEY, "Periode tidak dikenal.")).max(600);
 
-const reviewSchema = z.object({ include: includeSchema }).strict();
+const reviewSchema = z
+  .object({ include: includeSchema, skip: includeSchema.optional().default([]) })
+  .strict();
 
 const confirmSchema = z
   .object({
     include: includeSchema,
+    skip: includeSchema.optional().default([]),
     digest: z.string().regex(/^[0-9a-f]{64}$/, "Tinjauan tidak dikenal."),
     ack: z
       .object({
@@ -105,6 +108,7 @@ export async function reviewPeriodUpload(
         versionId,
         from: "AWAITING_CONFIRM",
         include: parsed.data.include,
+        skip: parsed.data.skip,
         mode: { kind: "confirm", digest: "", ack: { shrink: false, droppedRows: 0 } },
         present: new Set(),
         limits: limitsNow(),
@@ -204,6 +208,7 @@ export async function confirmPeriodUpload(
           versionId,
           from: "AWAITING_CONFIRM",
           include: parsed.data.include,
+          skip: parsed.data.skip,
           mode: { kind: "confirm", digest: parsed.data.digest, ack: parsed.data.ack },
           present,
           limits: limitsNow(),

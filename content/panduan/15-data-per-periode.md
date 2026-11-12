@@ -48,6 +48,7 @@ Layar **Tinjau perubahan periode** menunjukkan apa yang akan terjadi sebelum dat
 
 - **Periode kecil yang mungkin nyasar** (mis. 3 baris bertanggal 31 Januari di file Februari) bawaannya **Kecualikan** — baris itu tidak disimpan. Pilih **Masukkan** bila memang benar; dampaknya langsung terlihat di tabel.
 - **Menyusut**: bila periode diganti dengan data jauh lebih sedikit (lebih dari 50%), centang _Saya paham … diganti dengan data yang lebih sedikit_. Ini mencegah bulan yang baru separuh menimpa bulan yang lengkap.
+- **Lewati periode ini**: periode yang akan diganti punya kotak centang ini (periode kecil yang mungkin nyasar memakai pilihan Kecualikan/Masukkan). Centang bila periode itu di file belum lengkap (mis. April baru sebagian) — data lama periode itu tetap, baris file untuk periode itu tidak disimpan, dan periode lain di file tetap diterapkan. Keterangannya berubah menjadi _Dilewati — data lama tetap_.
 - **Dilepas**: periode yang keluar karena batas harus dicentang _Saya paham … dilepas dari data aktif_.
 - **File identik** dengan periode yang sudah ada diberi catatan; menerapkannya tidak mengubah isi data.
 - **Sheet yang tidak ada di file** tetap memakai data lamanya (_Pertahankan data lama sheet itu_).
@@ -111,6 +112,15 @@ Satu bulan lebih dari 1.048.576 baris tidak muat di satu sheet Excel. Pecah menj
 3. Tekan **Unggah sebagai satu kelompok (N file)**.
 
 Setelah semua file terunggah, semuanya diproses sebagai **satu** versi: periodenya diganti utuh oleh gabungan semua file. Bila satu file gagal, tidak ada yang diterapkan. File kembar dalam satu kelompok ditolak.
+
+## Satu file, banyak sheet berkolom sama
+
+Data yang terpecah ke beberapa sheet dalam satu file Excel (mis. karena batas 1.048.576 baris, atau satu sheet per minggu) cukup diunggah sekali lewat **Tambah atau perbarui periode**. Sheet yang judul kolomnya sama persis digabung ke satu sheet data, walaupun namanya berbeda dan periodenya bercampur di dalam sheet:
+
+- Periode setiap baris tetap dibaca dari kolom tanggalnya. Periode yang muncul di sheet mana pun diganti oleh **gabungan** baris dari semua sheet itu (sama seperti kelompok file).
+- Unggahan dengan sheet tergabung **selalu berhenti di layar tinjauan**. Di sana tertulis sheet mana saja yang digabung ke sheet data mana. Periksa tidak ada sheet salinan, karena barisnya akan terhitung dua kali.
+- Sheet dengan judul kolom berbeda (mis. _Ringkasan_) tidak disimpan dan disebut di layar tinjauan.
+- Bila dataset punya beberapa sheet data dengan kolom yang sama persis, sheet file yang namanya tidak cocok tidak ditebak (tidak disimpan). Samakan nama sheet di file dengan nama sheet data.
 
 ## Kolom yang berbeda dan aturan tetap
 

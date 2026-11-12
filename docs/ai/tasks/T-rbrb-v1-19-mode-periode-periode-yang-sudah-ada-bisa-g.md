@@ -4,7 +4,7 @@ title: 'v1.19: mode periode — periode yang sudah ada bisa Ganti / Tambah baris
 status: todo
 profile: standard
 created: "2026-11-11T16:33:38Z"
-updated: "2026-11-11T16:33:39Z"
+updated: "2026-11-12T01:35:39Z"
 created_by: claude-code
 ---
 
@@ -21,5 +21,6 @@ created_by: claude-code
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-11-11T16:33:39Z Permintaan pemilik 2026-11-11 (tangkapan layar tinjauan: April 2026 115.741 → 34.024 'Diganti'). Butuh keputusan desain: cakupan kunci (per periode vs seluruh dataset — baris yang tanggalnya pindah periode), aturan duplikat, ADR baru. Dikerjakan setelah v1.18 bersama T-jsmj.
+- 2026-11-12T01:14:52Z Keputusan pemilik 2026-11-12: (1) kunci dinamis — pemilik memilih satu/lebih kolom kunci per dataset sesuai kebutuhan, tidak dikhususkan untuk dataset tertentu; (2) baris dengan kunci sama yang tanggalnya pindah periode DIPINDAH ke periode baru (kunci berlaku seluruh dataset, tidak dobel); (3) kunci dobel di file → unggahan ditolak dengan notifikasi berisi daftar kunci/baris yang dobel.
+- 2026-11-12T01:35:39Z AC4 (periode menyusut bisa dikecualikan di tinjauan) dikerjakan terpisah di T-aavf (v1.19). Tambah/Perbarui berdasarkan kunci → v1.20 (butuh ADR + migrasi kolom kunci).

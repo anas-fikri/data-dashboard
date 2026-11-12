@@ -14,6 +14,14 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.19",
+    date: "2026-11-12",
+    items: [
+      "Lewati periode saat meninjau unggahan: bila file berisi bulan yang datanya lebih sedikit dari yang sudah tersimpan (mis. April hanya sebagian), centang Lewati periode ini — data lama bulan itu tetap, bulan lain di file tetap diterapkan.",
+      "Data per periode: satu file Excel dengan beberapa sheet berkolom sama (mis. Data 1, Data 2, … karena batas baris Excel) kini bisa diunggah sekaligus. Semua sheet digabung ke satu sheet data walaupun namanya berbeda dan bulannya bercampur; layar tinjauan menyebut sheet mana saja yang digabung sebelum Anda menerapkannya.",
+    ],
+  },
+  {
     version: "1.18",
     date: "2026-11-11",
     items: [

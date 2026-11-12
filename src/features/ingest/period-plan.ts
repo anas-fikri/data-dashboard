@@ -83,6 +83,11 @@ export interface PeriodPlanInput {
   limits: PeriodLimits;
   /** Periode "kemungkinan nyasar" yang dipilih pemilik untuk dimasukkan (default dikecualikan). */
   include?: string[];
+  /**
+   * Periode file yang dilewati pemilik di tinjauan (v1.19): data lama periode itu dipertahankan, baris file
+   * untuk periode itu tidak disimpan. Menang atas `include`.
+   */
+  skip?: string[];
   /** SHA-256 file baru. */
   fileSha256?: string | null;
   /** Baris tanpa tanggal valid yang dibuang atas pilihan eksplisit pemilik. */
@@ -92,6 +97,20 @@ export interface PeriodPlanInput {
    * pemilik wajib meninjaunya (nama sheet di file, untuk tampilan).
    */
   ignoredSheets?: string[];
+  /**
+   * Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj): selalu ditinjau pemilik sebelum
+   * diterapkan (salinan sheet yang tidak sengaja ikut akan menggandakan baris).
+   */
+  mergedSheets?: MergedSheet[];
+}
+
+/**
+ * Sheet file (`from`) yang masuk ke sheet data `sheet` lewat kecocokan kolom (T-jsmj): ≥ 2 = digabung; 1 =
+ * dipasangkan karena kolomnya sama walau namanya berbeda. Nama untuk tampilan.
+ */
+export interface MergedSheet {
+  sheet: string;
+  from: string[];
 }
 
 const LIMIT_NAMES = ["periods", "sheetRows", "datasetBytes", "sheetSegments"] as const;
@@ -154,8 +173,15 @@ export const periodPlanSchema = z.object({
   fileSha256: z.string().nullable(),
   droppedRows: count,
   include: z.array(z.string()),
+  /** Periode file yang dilewati pemilik (v1.19); rencana lama tanpa field ini = tidak ada. */
+  skip: z.array(z.string()).default([]),
   /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
   ignoredSheets: z.array(z.string()).default([]),
+  /** Sheet file yang digabung ke satu sheet data (T-jsmj); rencana lama tanpa field ini = tidak ada. */
+  mergedSheets: z
+    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
+    .max(1_024)
+    .default([]),
   /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
   resetFrom: z.enum(["MONTH", "QUARTER", "YEAR"]).optional(),
   /**
@@ -201,6 +227,7 @@ export const periodPlanSchema = z.object({
       "DROPPED_ROWS",
       "NO_CHANGE",
       "IGNORED_SHEETS",
+      "MERGED_SHEETS",
     ]),
   ),
   autoActivate: z.boolean(),
@@ -400,6 +427,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   const incoming = new Map([...input.incoming].sort(byStart).map((p) => [p.key, p]));
   const fileSheets = new Set(input.incomingSheets);
   const include = new Set(input.include ?? []);
+  // Hanya periode yang punya data lama dan bukan "kemungkinan nyasar" (yang punya pilihannya sendiri).
+  const skip = new Set((input.skip ?? []).filter((k) => active.has(k) && incoming.has(k)));
   const label = (key: string) => {
     const p = incoming.get(key) ?? active.get(key)!;
     return periodLabel(grain, p.start);
@@ -416,7 +445,10 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       .filter((p) => rowsOf(p.sheets) * 100 < limits.strayPct * maxIncoming)
       .map((p) => p.key),
   );
-  const included = new Set([...incoming.keys()].filter((k) => !stray.has(k) || include.has(k)));
+  for (const k of stray) skip.delete(k);
+  const included = new Set(
+    [...incoming.keys()].filter((k) => !skip.has(k) && (!stray.has(k) || include.has(k))),
+  );
 
   /** Periode yang diganti: sheet di file memakai data baru (sheet tanpa baris = kosong), sisanya tetap. */
   const merged = (key: string): Record<string, PeriodSlice> => {
@@ -470,7 +502,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       // (bukan batas pertama proyeksi penuh, yang bisa sudah terpenuhi lebih awal).
       const v = violation(projected.slice(k - 1), keep, limits)!;
       const prefix = projected.slice(0, k);
-      const hit = prefix.filter((u) => u.fromUpload).map((u) => u.key);
+      // Periode yang dilewati pemilik dijanjikan "data lama tetap": tidak boleh dilepas diam-diam.
+      const hit = prefix.filter((u) => u.fromUpload || skip.has(u.key)).map((u) => u.key);
       if (hit.length) {
         rejection = {
           code: "PERIOD_OUT_OF_WINDOW",
@@ -496,6 +529,10 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
 
   const fileSha = input.fileSha256 ?? null;
   const ignoredSheets = [...new Set(input.ignoredSheets ?? [])].sort();
+  const mergedSheets = [...(input.mergedSheets ?? [])]
+    .filter((m) => m.from.length >= 1)
+    .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
+    .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
   const entries: PeriodPlanEntry[] = allKeys.map((key) => {
     const a = active.get(key);
     const inc = incoming.get(key);
@@ -581,6 +618,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     if ((input.droppedRows ?? 0) > 0) confirm.push("DROPPED_ROWS");
     if (!has("ADDED") && !has("REPLACED") && !has("EVICTED")) confirm.push("NO_CHANGE");
     if (ignoredSheets.length) confirm.push("IGNORED_SHEETS");
+    if (mergedSheets.length) confirm.push("MERGED_SHEETS");
   }
 
   return {
@@ -594,7 +632,9 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     fileSha256: fileSha,
     droppedRows: input.droppedRows ?? 0,
     include: [...include].filter((k) => incoming.has(k)).sort(),
+    skip: [...skip].sort(),
     ignoredSheets,
+    mergedSheets,
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {

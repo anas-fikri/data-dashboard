@@ -18,6 +18,7 @@ import type { ColumnMeta } from "./header";
 import { INFER_THRESHOLD, okCount, type ColumnSchema, type SourceKind } from "./infer";
 import {
   computePeriodPlan,
+  type MergedSheet,
   type PeriodPlan,
   type PeriodPlanEntry,
   type PlanPeriodInput,
@@ -244,9 +245,13 @@ export function periodColumnPlan(
   };
 }
 
-/** DatasetVersion.periodMeta (T-057): sheet file yang diabaikan + perubahan skema sheet unggahan. */
+/**
+ * DatasetVersion.periodMeta (T-057): sheet file yang diabaikan, sheet file yang digabung (T-jsmj), dan
+ * perubahan skema sheet unggahan.
+ */
 export interface PeriodMeta {
   ignoredSheets: string[];
+  mergedSheets: MergedSheet[];
   changes: SheetSchemaChange[];
 }
 
@@ -254,6 +259,10 @@ const posSchema = z.number().int().min(1).max(MAX_COLUMN);
 const metaSchema = z.object({ pos: posSchema, name: z.string(), original: z.string() });
 const periodMetaSchema = z.object({
   ignoredSheets: z.array(z.string()).max(1_024).default([]),
+  mergedSheets: z
+    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
+    .max(1_024)
+    .default([]),
   changes: z
     .array(
       z.object({
@@ -672,7 +681,9 @@ function entryText(e: PeriodPlanEntry, plan: PeriodPlan): string | null {
         : `${e.label} dilepas (batas penyimpanan)`;
     }
     case "EXCLUDED":
-      return `${e.label} dikecualikan (kemungkinan nyasar)`;
+      return plan.skip.includes(e.key)
+        ? `${e.label} dilewati (data lama tetap)`
+        : `${e.label} dikecualikan (kemungkinan nyasar)`;
     default:
       return null;
   }
@@ -684,6 +695,13 @@ export function periodPlanSummary(plan: PeriodPlan): string {
   if (plan.droppedRows > 0)
     parts.push(`${fmt(plan.droppedRows)} baris tanpa tanggal valid dibuang`);
   for (const s of plan.ignoredSheets) parts.push(`sheet “${s}” tidak disimpan`);
+  for (const m of plan.mergedSheets) {
+    parts.push(
+      m.from.length > 1
+        ? `sheet ${m.from.map((f) => `“${f}”`).join(", ")} digabung ke “${m.sheet}”`
+        : `sheet “${m.from[0]}” dipasangkan ke “${m.sheet}” (kolom sama)`,
+    );
+  }
   return parts.length ? parts.join(" · ") : "Tidak ada periode yang berubah";
 }
 
@@ -699,7 +717,7 @@ export interface PeriodAck {
 export function confirmBlocker(plan: PeriodPlan, ack: PeriodAck): string | null {
   if (plan.rejection) return plan.rejection.message;
   if (plan.confirm.includes("NO_CHANGE")) {
-    return "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, atau pilih “Masukkan” untuk periode yang dikecualikan.";
+    return "Tidak ada periode yang berubah dengan pilihan ini. Batalkan unggahan, pilih “Masukkan” untuk periode yang dikecualikan, atau hapus centang “Lewati periode ini”.";
   }
   if (plan.confirm.includes("SHRINK") && !ack.shrink) {
     const names = plan.entries.filter((e) => e.shrink).map((e) => e.label);
@@ -723,6 +741,8 @@ export interface UploadFacts {
   fileSheets: string[];
   droppedRows: number;
   ignoredSheets: string[];
+  /** Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj); tidak ada = tidak ada. */
+  mergedSheets?: MergedSheet[];
   fileSha256: string | null;
 }
 
@@ -733,6 +753,7 @@ export const factsOf = (plan: PeriodPlan): UploadFacts => ({
   fileSheets: plan.fileSheets,
   droppedRows: plan.droppedRows,
   ignoredSheets: plan.ignoredSheets,
+  mergedSheets: plan.mergedSheets,
   fileSha256: plan.fileSha256,
 });
 
@@ -765,6 +786,8 @@ export function decidePeriodCommit(a: {
   settings: { keepPeriods: number | null; onLimit: "REJECT" | "EVICT_OLDEST" };
   limits: Parameters<typeof computePeriodPlan>[0]["limits"];
   include: string[];
+  /** Periode file yang dilewati pemilik (v1.19). */
+  skip?: string[];
   mode: CommitMode;
 }): CommitDecision {
   const inputs = planInputs(a.active, a.incoming);
@@ -778,9 +801,11 @@ export function decidePeriodCommit(a: {
     settings: a.settings,
     limits: a.limits,
     include: a.include,
+    skip: a.skip ?? [],
     fileSha256: a.facts.fileSha256,
     droppedRows: a.facts.droppedRows,
     ignoredSheets: a.facts.ignoredSheets,
+    mergedSheets: a.facts.mergedSheets,
   });
   if (a.mode.kind === "confirm") {
     if (periodPlanDigest(plan) !== a.mode.digest) return { decision: "plan_stale", plan };

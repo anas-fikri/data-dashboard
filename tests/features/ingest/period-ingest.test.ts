@@ -182,6 +182,10 @@ class FakePeriodRepo implements PeriodIngestRepo {
       sheets: a.sheets.map((s) => ({ id: s.id, schemaRevision: s.schemaRevision })),
     };
     if (!sameSnapshot(d.snapshot, now)) return { outcome: "stale" };
+    // Seperti commitPeriodInTx: perubahan skema ganda untuk satu sheet logis = acuan basi.
+    if (new Set(d.changes.map((c) => c.lineageId)).size !== d.changes.length) {
+      return { outcome: "stale" };
+    }
     const r = decidePeriodCommit({
       facts: d.facts,
       activeVersionId: a.versionId,
@@ -412,6 +416,256 @@ describe("sheet file yang tidak berpasangan", () => {
       "April 2026 ditambahkan (20 baris) · sheet “Ringkasan” tidak disimpan",
     );
     expect([...repo.segments.values()].map((g) => g.lineageId)).toEqual([LINEAGE]);
+  });
+
+  it("T-jsmj: 3 sheet berkolom sama (nama beda, periode acak) → digabung ke sheet data, satu kelompok per periode, wajib ditinjau", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const xml = (rows: string[][]) =>
+      rows
+        .map(
+          (r, i) =>
+            `<row r="${i + 1}">${r.map((v, c) => `<c r="${colLetter(c + 1)}${i + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join("")}</row>`,
+        )
+        .join("");
+    const file = t.file(
+      `m-${Math.random().toString(36).slice(2)}.xlsx`,
+      await buildXlsx([
+        // Nama sheet tidak sama dengan "Data": dulu semuanya diabaikan.
+        { name: "Bagian 1", xml: xml([HEADER, ...month(4, 10), ...month(5, 5)]) },
+        { name: "Bagian 2", xml: xml([HEADER, ...month(4, 7, 100)]) },
+        { name: "Bagian 3", xml: xml([HEADER, ...month(5, 8, 200)]) },
+        { name: "Ringkasan", xml: xml([["total"], ["30"]]) },
+      ]),
+    );
+    const key = `raw/${DS}/${VID}/source.xlsx`;
+    const storage = new FakeStorage(join(t.root, `store-m${Math.random().toString(36).slice(2)}`), {
+      [key]: file,
+    });
+    const sheet = { ...activeSheet(storage, base, JAN_MAR), name: "Data" };
+    const repo = new FakePeriodRepo({
+      datasetId: DS,
+      sourceKey: key,
+      originalName: "apr-mei.xlsx",
+      grain: "MONTH",
+      label: null,
+      baseVersionId: ACTIVE,
+      active: { versionId: ACTIVE, grain: "MONTH", sheets: [sheet] },
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+    });
+    const r = await runPeriodIngest(
+      VID,
+      { repo, storage, limits: LIMITS },
+      { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+    );
+    expect(r.outcome).toBe("confirm");
+    expect(repo.plan).toMatchObject({
+      ignoredSheets: ["Ringkasan"],
+      mergedSheets: [{ sheet: "Data", from: ["Bagian 1", "Bagian 2", "Bagian 3"] }],
+    });
+    expect(repo.plan!.confirm).toEqual(expect.arrayContaining(["MERGED_SHEETS", "IGNORED_SHEETS"]));
+    const rows = Object.fromEntries(repo.plan!.entries.map((e) => [e.key, e.afterRows]));
+    expect(rows["2026-04"]).toBe(17);
+    expect(rows["2026-05"]).toBe(13);
+    // Satu kelompok per periode: nomor bagian unik, ukuran = jumlah segmen periode itu.
+    const segs = [...repo.segments.values()].filter((g) => g.period);
+    const byPeriod = new Map<string, typeof segs>();
+    for (const g of segs) byPeriod.set(g.period!.key, [...(byPeriod.get(g.period!.key) ?? []), g]);
+    for (const [, list] of byPeriod) {
+      expect(list.every((g) => g.lineageId === LINEAGE && g.group?.id === VID)).toBe(true);
+      expect(new Set(list.map((g) => g.group?.part)).size).toBe(list.length);
+      expect(list.every((g) => g.group?.size === list.length)).toBe(true);
+    }
+    expect(byPeriod.get("2026-04")).toHaveLength(2);
+    expect(byPeriod.get("2026-05")).toHaveLength(2);
+    expect(periodPlanSummary(repo.plan!)).toContain(
+      "sheet “Bagian 1”, “Bagian 2”, “Bagian 3” digabung ke “Data”",
+    );
+  });
+});
+
+describe("T-jsmj review: sheet gabungan", () => {
+  const xml = (rows: string[][]) =>
+    rows
+      .map(
+        (r, i) =>
+          `<row r="${i + 1}">${r.map((v, c) => `<c r="${colLetter(c + 1)}${i + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join("")}</row>`,
+      )
+      .join("");
+  async function setupXlsx(
+    sheets: { name: string; rows: string[][] }[],
+    active: (storage: FakeStorage) => PeriodActiveSheet[],
+  ) {
+    const file = t.file(
+      `r-${Math.random().toString(36).slice(2)}.xlsx`,
+      await buildXlsx(sheets.map((x) => ({ name: x.name, xml: xml(x.rows) }))),
+    );
+    const key = `raw/${DS}/${VID}/source.xlsx`;
+    const storage = new FakeStorage(join(t.root, `store-r${Math.random().toString(36).slice(2)}`), {
+      [key]: file,
+    });
+    const repo = new FakePeriodRepo({
+      datasetId: DS,
+      sourceKey: key,
+      originalName: "gabung.xlsx",
+      grain: "MONTH",
+      label: null,
+      baseVersionId: ACTIVE,
+      active: { versionId: ACTIVE, grain: "MONTH", sheets: active(storage) },
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+    });
+    const run = () =>
+      runPeriodIngest(
+        VID,
+        { repo, storage, limits: LIMITS },
+        { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+      );
+    return { repo, run };
+  }
+
+  it("H1: 2 sheet dengan kolom baru yang sama → satu perubahan skema per sheet data, commit masuk", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const h = [...HEADER, "catatan"];
+    const extra = (rows: string[][]) => rows.map((r) => [...r, "x"]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [h, ...extra(month(4, 10))] },
+        { name: "Data 2", rows: [h, ...extra(month(4, 5, 100))] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.changes).toHaveLength(1);
+    expect(s.repo.changes[0]!.added.map((c) => c.original)).toEqual(["catatan"]);
+    expect(s.repo.plan!.entries.find((e) => e.key === "2026-04")!.afterRows).toBe(15);
+  });
+
+  it("verifikasi H1: sheet dengan judul kolom tambahan berbeda tidak digabung (diabaikan), bukan salah kolom", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [[...HEADER, "X"], ...month(4, 4).map((r) => [...r, "xval"])] },
+        {
+          name: "Data 2",
+          rows: [[...HEADER, "X", "Y"], ...month(4, 3, 50).map((r) => [...r, "x", "y"])],
+        },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    // Judul beda → "Data 2" tidak bersidik sama; tidak digabung, diabaikan.
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.ignoredSheets).toEqual(["Data 2"]);
+  });
+
+  it("H2: sheet berpasangan butuh pemetaan → sheet tambahan tidak digabung (diabaikan), menunggu pemetaan dengan satu sheet", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const h = ["kode", "tgl", "nilai"]; // 'tanggal' hilang → pemetaan
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [h, ...month(4, 10)] },
+        { name: "Data 2", rows: [h, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("awaiting");
+    expect(s.repo.rawSheets).toEqual(["Data"]);
+    expect(s.repo.ignored).toEqual(["Data 2"]);
+    // Alasan tidak dobel.
+    expect(s.repo.error!.split("tidak ada di file baru").length - 1).toBe(1);
+  });
+
+  it("M3: nilai sheet gabungan tidak lolos vonis → gagal dengan pesan sheet gabungan (bukan kelompok file)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const bad = (rows: string[][]) => rows.map((r) => [r[0]!, "bukan-tanggal", r[2]!]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...bad(month(4, 10))] },
+        { name: "Data 2", rows: [HEADER, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("failed");
+    expect((r as { message: string }).message).toMatch(
+      /^Unggahan dengan sheet gabungan tidak diproses: /,
+    );
+    expect((r as { message: string }).message).not.toMatch(/Kelompok file/);
+  });
+
+  it("M4 (ragu): sheet berbeda nama cocok dengan dua sheet data → tidak ditebak, diabaikan", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Billing", rows: [HEADER, ...month(4, 10)] },
+        { name: "Resi pending", rows: [HEADER, ...month(4, 3, 50)] },
+      ],
+      (st) => [
+        { ...activeSheet(st, base, JAN_MAR), name: "Billing" },
+        {
+          ...activeSheet(st, base, {}),
+          id: "sheet-resi",
+          sheetId: "sheet-resi",
+          lineageId: "lineage-resi",
+          name: "Resi",
+          index: 1,
+        },
+      ],
+    );
+    const r = await s.run();
+    // Sheet data "Resi" belum berpasangan, "Resi pending" cocok persis dengan skemanya; "Billing" sudah
+    // berpasangan dengan judul yang sama → kandidat ganda → tidak ditebak.
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.ignoredSheets).toEqual(["Resi pending"]);
+  });
+
+  it("M4: sheet data tanpa pasangan nama, satu sheet file cocok persis kolomnya → dipasangkan, tercatat, wajib ditinjau", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const RH = ["resi", "tanggal", "berat"];
+    const resiBase = await schemaOf([RH, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Billing", rows: [HEADER, ...month(4, 10)] },
+        { name: "Resi pending", rows: [RH, ...month(4, 3, 50)] },
+      ],
+      (st) => [
+        { ...activeSheet(st, base, JAN_MAR), name: "Billing" },
+        {
+          ...activeSheet(st, resiBase, {}),
+          id: "sheet-resi",
+          sheetId: "sheet-resi",
+          lineageId: "lineage-resi",
+          name: "Resi",
+          index: 1,
+        },
+      ],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.mergedSheets).toEqual([{ sheet: "Resi", from: ["Resi pending"] }]);
+    expect(s.repo.plan!.confirm).toContain("MERGED_SHEETS");
+    expect(periodPlanSummary(s.repo.plan!)).toContain(
+      "sheet “Resi pending” dipasangkan ke “Resi” (kolom sama)",
+    );
+  });
+
+  it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...month(4, 10)] },
+        { name: "Data 2", rows: [HEADER, ...month(4, 5, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    await s.run();
+    const segs = [...s.repo.segments.values()].filter((g) => g.period);
+    expect(new Set(segs.map((g) => g.sha256)).size).toBe(2);
+    expect(segs.map((g) => g.originalName).sort()).toEqual([
+      "gabung.xlsx (sheet Data 2)",
+      "gabung.xlsx (sheet Data)",
+    ]);
   });
 });
 
@@ -1189,5 +1443,42 @@ describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () 
     expect(s.repo.commits).toBe(0);
     expect(s.repo.segments.size).toBe(0);
     expect(s.storage.keys().some((k) => k.includes("/seg/") && !k.includes("seg2026"))).toBe(false);
+  });
+
+  it("verifikasi v1.19: hanya sebagian file kelompok punya kolom tambahan → tetap diterima (seperti v1.18)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = month(3, 30);
+    const files = await parts();
+    files[1] = t.file(
+      `gc-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "catatan"], ...rows.slice(15).map((r) => [...r, "c"])]),
+    );
+    const s = groupSetup(files, base);
+    const r = await s.run();
+    expect(r.outcome).not.toBe("failed");
+    expect(s.repo.changes).toHaveLength(1);
+    expect(s.repo.changes[0]!.added.map((c) => c.original)).toEqual(["catatan"]);
+  });
+
+  it("verifikasi v1.19: file kelompok dengan kolom tambahan berbeda (X vs Y) → kelompok ditolak, tidak salah kolom", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = month(3, 30);
+    const files = await parts();
+    files[0] = t.file(
+      `gx-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "X"], ...rows.slice(0, 15).map((r) => [...r, "xval"])]),
+    );
+    files[1] = t.file(
+      `gy-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "Y"], ...rows.slice(15).map((r) => [...r, "yval"])]),
+    );
+    const s = groupSetup(files, base);
+    const r = await s.run();
+    expect(r.outcome).toBe("failed");
+    expect(s.repo.error).toMatch(
+      /^Kelompok file tidak diproses: kolom tambahan berbeda antar file/,
+    );
+    expect(s.repo.commits).toBe(0);
+    expect(s.repo.segments.size).toBe(0);
   });
 });

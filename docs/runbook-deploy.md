@@ -1238,3 +1238,22 @@ kunci Redis `metrics:*` tidak dipakai versi lama.
 
 Batasan: angka host = seluruh VM (termasuk aplikasi lain di olympus); per layanan hanya container dashboard
 (cgroup masing-masing, bukan docker.sock). Bukan pengganti monitoring infrastruktur penuh (riwayat 24 jam).
+
+## 30. Rilis v1.19.0 (tanpa migrasi) dan rollback ke v1.18.x
+
+Mode periode: (1) satu file dengan beberapa sheet berkolom sama digabung ke satu sheet data — unggahan seperti
+itu selalu berhenti di layar tinjauan; (2) **Lewati periode ini** di layar tinjauan (data lama periode itu tetap).
+Tanpa migrasi.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.19.0
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update --only data-per-periode
+```
+
+(Produksi masih < v1.18.0: jalankan §29 dulu. Profil `monitor` tetap dari `.env.prod`.)
+
+Rollback image ke v1.18.x: **terapkan atau batalkan dulu semua unggahan periode yang menunggu tinjauan/pemetaan**
+(rencana dengan sheet tergabung tidak terbaca versi lama; unggahan tertunda dengan pilihan "Lewati" dihitung ulang
+tanpa pilihan itu). Data aktif — termasuk periode dari sheet gabungan — tetap sah di v1.18.x.

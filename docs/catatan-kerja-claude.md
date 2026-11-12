@@ -55,6 +55,14 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-12 dini hari, sesi cloud)
+
+- v1.18.0 (PR #24) sudah di `main`; pemilik men-deploy. Rilis **v1.19.0** (PR #25): **T-jsmj** gabung sheet berkolom
+  sama di mode periode + **T-aavf** "Lewati periode ini" di tinjauan. Tanpa migrasi → `bash deploy/server-release.sh
+  1.19.0` + seed panduan `data-per-periode` (runbook §30).
+- Berikutnya **v1.20 T-rbrb** (Tambah / Perbarui berdasarkan kunci): keputusan pemilik — kunci dinamis per dataset, baris
+  pindah periode bila kunci sama, kunci dobel → tolak dengan daftar. Butuh ADR + migrasi kolom kunci. Low → T-zjwh.
+
 ## Posisi terakhir (2026-11-11 larut malam, sesi cloud)
 
 - Rilis **v1.18.0** (PR #24, branch `claude/cool-babbage-t5yojt`): **T-ee46** monitor sumber daya (kartu Server di sidebar

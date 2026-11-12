@@ -39,6 +39,13 @@ export interface ReviewRow {
   flags: string[];
   /** Periode kemungkinan nyasar: pemilik memilih Kecualikan (bawaan) / Masukkan. */
   stray: boolean;
+  /**
+   * Periode di data aktif yang akan diganti (atau sudah dilewati): pemilik bisa memilih "Lewati periode
+   * ini" sehingga data lamanya tetap (v1.19).
+   */
+  skippable: boolean;
+  /** Pemilik melewati periode ini (plan.skip). */
+  skipped: boolean;
   /** Baris periode ini di file (untuk pilihan nyasar). */
   fileRows: number;
 }
@@ -60,6 +67,12 @@ function noteOf(e: PeriodPlanEntry, plan: PeriodPlan): { tone: ReviewTone; note:
     case "EVICTED":
       return { tone: "evicted", note: evictNote(plan) };
     case "EXCLUDED":
+      if (plan.skip.includes(e.key)) {
+        return {
+          tone: "excluded",
+          note: e.beforeRows > 0 ? "Dilewati — data lama tetap" : "Dilewati",
+        };
+      }
       return {
         tone: "excluded",
         note: e.beforeRows > 0 ? "Dikecualikan — data lama tetap" : "Dikecualikan",
@@ -111,6 +124,10 @@ export function reviewRows(
       note,
       flags,
       stray: e.stray,
+      // Yang sudah dilewati selalu bisa dibatalkan (juga bila lewatan itu membuat rencana ditolak).
+      skippable:
+        plan.skip.includes(e.key) || (!plan.rejection && !e.stray && e.action === "REPLACED"),
+      skipped: plan.skip.includes(e.key),
       fileRows: fileRows[e.key] ?? 0,
     });
   }
