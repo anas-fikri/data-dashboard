@@ -1,15 +1,25 @@
 ---
 id: T-1216
 title: 'v1.19.1: sheet lanjutan tanpa judul kolom (ekspor Excel terpecah) dikenali dan digabung; Gabungkan tercentang bawaan un…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-12T05:34:25Z"
-updated: "2026-11-12T05:34:27Z"
+updated: "2026-11-12T06:14:32Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 9cfda543cd373a88fefeae946d34dccfea97a7eb
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-12T06:14:24Z"
+      findings: 5
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-12T06:14:25Z"
+      findings: 3
 ---
 
 ## Objective
@@ -24,5 +34,5 @@ base: 9cfda543cd373a88fefeae946d34dccfea97a7eb
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
 
 ## Notes
-
 - 2026-11-12T05:34:27Z Kasus pemilik 2026-11-12: Billing os invoice … os invoice(5), sheet (2)–(5) tanpa judul (judul terbaca sebagai data). headerRow 0 = semua baris data (_row > 0).
+- 2026-11-12T06:14:32Z Review 1 (3b6ad9e): H1 deteksi lanjutan terlalu longgar, H2 5 e2e rusak oleh Gabungkan bawaan → 2a4785d. Review 2: 0 blokir; M1/M2/L-a diperbaiki (aa93391: leader ≥ 50.000 baris, kolom pembeda berbasis rasio, lanjutan dari leader yang diabaikan ikut diabaikan). L2 (recast sheet satu segmen headerRow 0) → T-zjwh.
