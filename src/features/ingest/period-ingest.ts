@@ -162,6 +162,8 @@ export interface PeriodSegmentRecord {
   originalName?: string | null;
   /** Kelompok file satu periode (T-060); tidak ada/null = satu file. */
   group?: { id: string; part: number; size: number } | null;
+  /** Pengunggah (salinan Tambah/Perbarui: pengunggah segmen asal); tidak ada = pengunggah versi. */
+  uploadedById?: string | null;
 }
 
 export interface PeriodTypedRecord {
@@ -1014,10 +1016,12 @@ async function processPeriodItems(
           label: c.multiFile
             ? `file “${x.it.file.name ?? x.it.file.part}” sheet “${x.it.s.rec.name}”`
             : `sheet “${x.it.s.rec.name}”`,
+          sha256: x.it.sha256,
         })),
         sources: (ids) => repo.copySources(ids),
         download: (k, path) => storage.download(k, path),
         watch: ensureAlive,
+        allocateRows: (l, span) => repo.allocateRows(l, span),
       });
       copies = r.copies;
       facts.merge = { mode, parts: r.parts };
@@ -1129,6 +1133,7 @@ async function processPeriodItems(
       sourceKind: x.src.sourceKind,
       period: { key: x.key, start: x.start, minDate: x.minDate, maxDate: x.maxDate },
       originalName: x.src.originalName,
+      uploadedById: x.src.uploadedById,
       group,
     });
     created.push(id);

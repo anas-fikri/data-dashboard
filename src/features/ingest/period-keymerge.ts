@@ -17,6 +17,7 @@ import { lit, watched, type Duck } from "@/lib/duckdb";
 import { IntegrityError } from "@/features/versions/integrity-check";
 import type { ColumnSchema, SourceKind } from "./infer";
 import type { MergePart } from "./period-plan";
+import { combinedSha256 } from "./period-upload-plan";
 import { packProfile, type StoredProfile } from "./profile";
 import { copyParquet } from "./raw-writer";
 import { canonicalProfile, profileRaw, typedFileProblems } from "./typed";
@@ -45,6 +46,8 @@ export interface CopySource {
   originalName: string | null;
   minDate: string | null;
   maxDate: string | null;
+  /** Pengunggah segmen asal (salinan tetap menyebut pengunggah aslinya, review L5). */
+  uploadedById: string | null;
 }
 
 /** Sheet data aktif (bagian yang dibutuhkan penggabungan). */
@@ -63,6 +66,7 @@ export interface KeyMergeSheet {
     periodKey: string;
     periodStart: string;
     rows: number;
+    sha256?: string | null;
   }[];
 }
 
@@ -75,6 +79,8 @@ export interface FileSeg {
   rows: number;
   /** Nama sheet (dan file, kelompok T-060) untuk pesan penolakan. */
   label: string;
+  /** Sidik file/sheet asal (Tambah: file yang sama diunggah lagi → wajib ditinjau). */
+  sha256?: string | null;
 }
 
 /** Salinan segmen lama (lokal) yang masuk kelompok periodenya. */
@@ -101,6 +107,8 @@ export interface KeyMergeInput {
   sources: (typedIds: string[]) => Promise<CopySource[]>;
   download: (key: string, path: string) => Promise<unknown>;
   watch: () => Promise<void>;
+  /** Rentang `_row` baru untuk salinan yang dipadatkan (SheetLineage.rowHighWater). */
+  allocateRows: (lineageId: string, span: number) => Promise<bigint>;
 }
 
 /** Penolakan unggahan Perbarui (kunci kosong/ganda, kunci belum diatur): pesan untuk pemilik. */
@@ -363,14 +371,29 @@ export async function keyMerge(
       });
       await m.watch();
     }
+    // Pemadatan (review M1): salinan beberapa segmen lama satu periode digabung menjadi SATU segmen, jadi
+    // jumlah segmen per periode tidak bertambah setiap unggahan (batas PERIOD_SHEET_MAX_SEGMENTS).
+    const mine = copies.filter((x) => x.lineageId === lineageId);
+    for (const key of new Set(mine.map((x) => x.key))) {
+      const list = mine.filter((x) => x.key === key);
+      if (list.length < 2 || new Set(list.map((x) => x.src.sourceKind)).size > 1) continue;
+      const one = await compact(m, sheet, list, `${t}_${key.replace(/[^0-9A-Za-z]/g, "")}`);
+      copies.splice(copies.indexOf(list[0]!), 1, one);
+      for (const x of list.slice(1)) copies.splice(copies.indexOf(x), 1);
+    }
     for (const [key, start] of [...touched].sort((x, y) => x[1].localeCompare(y[1]))) {
       const inP = old.filter((g) => g.periodKey === key);
       const sumOf = (f: "total" | "movedOut") =>
         inP.reduce((n, g) => n + (removed.get(g.segmentId)?.[f] ?? 0), 0);
+      const fileShas = new Set(
+        files.filter((f) => f.key === key && f.sha256).map((f) => f.sha256!),
+      );
       parts.push({
         key,
         start,
         lineageId,
+        // Tambah: file/sheet yang sama sudah pernah masuk periode ini → baris tergandakan, wajib ditinjau.
+        repeat: m.mode === "APPEND" && inP.some((g) => !!g.sha256 && fileShas.has(g.sha256)),
         fileRows: files.filter((f) => f.key === key).reduce((n, f) => n + f.rows, 0),
         updated: updated.get(start) ?? 0,
         kept: kept.get(key) ?? 0,
@@ -385,4 +408,121 @@ export async function keyMerge(
     );
   }
   return { copies, parts };
+}
+
+/**
+ * Satu segmen dari beberapa salinan satu periode (review M1): raw berlayout kanonik (c<pos> = posisi kanonik,
+ * tanpa baris judul, `_row` 1..n urut segmen lalu baris), typed dengan `_row` baru (rentang baru lineage) dan
+ * `_src_row` = nomor baris raw baru. Nilai typed disalin apa adanya (tanpa cast ulang). Jejak file asal per
+ * baris (nama file + nomor baris) tidak dipertahankan — nama asal menyebut file pertama + jumlah file lain.
+ */
+async function compact(
+  m: KeyMergeInput,
+  sheet: KeyMergeSheet,
+  list: KeptCopy[],
+  tag: string,
+): Promise<KeptCopy> {
+  const { d, work } = m;
+  const width = Math.max(1, Math.trunc(sheet.colCount));
+  const rawSel = list.map((x, i) => {
+    const cols = Array.from({ length: width }, (_, p) => {
+      const pos = p + 1;
+      const rc = x.src.colMap.length ? (x.src.colMap[pos - 1] ?? 0) : pos;
+      return rc >= 1 && rc <= x.src.colCount
+        ? `CAST(c${Math.trunc(rc)} AS VARCHAR) AS c${pos}`
+        : `CAST(NULL AS VARCHAR) AS c${pos}`;
+    });
+    return `SELECT ${i} AS s, CAST(_row AS BIGINT) AS o, ${cols.join(", ")}
+            FROM read_parquet(${lit(x.rawPath)}) WHERE _row > ${Math.trunc(x.src.headerRow)}`;
+  });
+  await watched(d, m.watch, () =>
+    d.conn.run(
+      `CREATE OR REPLACE TABLE cmp_${tag} AS
+       SELECT row_number() OVER (ORDER BY s, o) AS nr, * FROM (${rawSel.join(" UNION ALL ")})`,
+    ),
+  );
+  const [cnt] = await rowsOf(d, `SELECT count(*) AS n FROM cmp_${tag}`);
+  const n = Number(cnt!.n);
+  const rows = list.reduce((a, x) => a + x.rows, 0);
+  if (n !== rows) {
+    throw new IntegrityError([
+      `sheet "${sheet.name}" periode ${list[0]!.key}: ${n} baris raw salinan, ${rows} baris typed`,
+    ]);
+  }
+  const rowBase = await m.allocateRows(sheet.lineageId, n);
+  const rawPath = join(work, `cmp-${tag}-raw.parquet`);
+  const cs = Array.from({ length: width }, (_, p) => `c${p + 1}`);
+  await watched(d, m.watch, () =>
+    copyParquet(
+      d,
+      `SELECT CAST(nr AS BIGINT) AS _row, ${cs.join(", ")} FROM cmp_${tag} ORDER BY nr`,
+      rawPath,
+      width + 1,
+    ),
+  );
+  // Typed: kolom gabungan semua salinan (kolom yang tidak ada di salinan lama = NULL), urut posisi.
+  const columns = [...new Set(list.flatMap((x) => x.src.columns))].sort((a, b) => a - b);
+  const present = await Promise.all(list.map((x) => columnsOf(d, x.typedPath)));
+  const hasPeriod = present.every((c) => c.has("_period"));
+  const typedSel = list.map((x, i) => {
+    const cols = columns.filter((pos) => present[i]!.has(`c${pos}`)).map((pos) => `c${pos}`);
+    return `SELECT ${i} AS s, CAST(_row AS BIGINT) - ${x.src.rowBase.toString()}::BIGINT AS o${hasPeriod ? ", _period" : ""}${cols.length ? `, ${cols.join(", ")}` : ""}
+            FROM read_parquet(${lit(x.typedPath)})`;
+  });
+  const typedPath = join(work, `cmp-${tag}-typed.parquet`);
+  const outCols = columns.map((pos) => `t.c${pos}`);
+  await watched(d, m.watch, () =>
+    copyParquet(
+      d,
+      `SELECT CAST(c.nr AS BIGINT) + ${rowBase.toString()}::BIGINT AS _row, CAST(c.nr AS BIGINT) AS _src_row${hasPeriod ? ", t._period" : ""}${outCols.length ? `, ${outCols.join(", ")}` : ""}
+       FROM (${typedSel.join(" UNION ALL BY NAME ")}) t JOIN cmp_${tag} c ON c.s = t.s AND c.o = t.o
+       ORDER BY c.nr`,
+      typedPath,
+      columns.length + 3,
+    ),
+  );
+  await d.conn.run(`DROP TABLE IF EXISTS cmp_${tag}`);
+  const start = list[0]!.start;
+  const label = `sheet "${sheet.name}" periode ${list[0]!.key} (salinan dipadatkan)`;
+  const bad = await typedFileProblems(d, typedPath, rows, label, hasPeriod ? start : null);
+  if (bad.length) throw new IntegrityError(bad);
+  const raw = await profileRaw(d, { rawPath, headerRow: 0, colCount: width, watch: m.watch });
+  if (raw.dataRows !== rows) {
+    throw new IntegrityError([`${label}: ${raw.dataRows} baris raw, ${rows} baris typed`]);
+  }
+  for (const x of list) {
+    rmSync(x.rawPath, { force: true });
+    rmSync(x.typedPath, { force: true });
+  }
+  const first = list[0]!;
+  const names = [...new Set(list.map((x) => x.src.originalName ?? ""))].filter(Boolean);
+  const dates = list.flatMap((x) => [x.minDate, x.maxDate]).filter((v): v is string => !!v);
+  const src: CopySource = {
+    ...first.src,
+    columns,
+    profile: null,
+    typedHeaderRow: 0,
+    rawRows: n,
+    headerRow: 0,
+    colCount: width,
+    colMap: [],
+    rowBase,
+    maxSrcRow: n,
+    sha256: combinedSha256(list.map((x) => x.src.sha256)) ?? first.src.sha256,
+    originalName:
+      names.length > 1 ? `${names[0]} (+${names.length - 1} file lain)` : (names[0] ?? null),
+  };
+  return {
+    lineageId: first.lineageId,
+    key: first.key,
+    start,
+    src,
+    rawPath,
+    typedPath,
+    rows,
+    rawRows: n,
+    profile: packProfile(0, raw),
+    minDate: dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null,
+    maxDate: dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null,
+  };
 }

@@ -51,6 +51,8 @@ export interface MergePart {
   kept: number;
   removed: number;
   movedOut: number;
+  /** Tambah: file/sheet yang sama sudah pernah masuk (sidik sama) → baris tergandakan (review M3). */
+  repeat?: boolean;
 }
 
 export interface MergeFacts {
@@ -195,6 +197,7 @@ const mergePartSchema = z.object({
   kept: count,
   removed: count,
   movedOut: count,
+  repeat: z.boolean().default(false),
 });
 
 const limitsSchema = z.object({
@@ -732,12 +735,15 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       after = a!.sheets;
     }
     const shrink =
-      (action === "REPLACED" || (action === "UPDATED" && collapse)) &&
-      [...fileSheets].some((sheet) => {
-        const b = a!.sheets[sheet]?.rows ?? 0;
-        const n = after?.[sheet]?.rows ?? 0;
-        return b > 0 && (b - n) * 100 > b * limits.shrinkConfirmPct;
-      });
+      // Perbarui (review M2): kunci dobel lama digabung menjadi satu baris file = baris berkurang → selalu
+      // ditinjau, di periode mana pun yang membuang baris lama.
+      (action === "UPDATED" && collapse && (keyedOf(key)?.removed ?? 0) > 0) ||
+      (action === "REPLACED" &&
+        [...fileSheets].some((sheet) => {
+          const b = a!.sheets[sheet]?.rows ?? 0;
+          const n = after?.[sheet]?.rows ?? 0;
+          return b > 0 && (b - n) * 100 > b * limits.shrinkConfirmPct;
+        }));
     return {
       key,
       start,
@@ -754,8 +760,9 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       shrink,
       // Sidik per periode (kelompok T-060: gabungan file yang memuat periode ini) bila diketahui.
       // Tambah/Perbarui: file yang sama dua kali tidak mengubah apa pun (kunci sama), bukan peringatan.
-      identical:
-        !merge && !!(inc && a && (inc.sha256 ?? fileSha) && a.sha256 === (inc.sha256 ?? fileSha)),
+      identical: merge
+        ? partsOf(key).some((x) => x.repeat)
+        : !!(inc && a && (inc.sha256 ?? fileSha) && a.sha256 === (inc.sha256 ?? fileSha)),
       keyed: keyedOf(key),
     };
   });
@@ -814,7 +821,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     ignoredSheets,
     mergedSheets,
     mode: merge?.mode ?? "REPLACE",
-    mergeParts: parts.map((x) => ({ ...x })),
+    mergeParts: parts.map((x) => ({ ...x, repeat: x.repeat ?? false })),
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {

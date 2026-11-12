@@ -456,7 +456,8 @@ export async function initUpload(
         (own.periodLabel?.toISOString().slice(0, 10) ?? null) === label &&
         sameSheets(own.selectedSheets ?? [], v.sheets) &&
         (own.mergeSheets ?? false) === v.mergeSheets &&
-        (own.uploadMode ?? null) === v.periodMode;
+        // Versi lama tanpa uploadMode (sebelum v1.20) = Ganti.
+        (own.uploadMode ?? (own.mode === "PERIOD" ? "REPLACE" : null)) === v.periodMode;
       const resumable = own && sameChoice ? own : null;
       if (own && !sameChoice) {
         // Sama dengan cancelUpload: tidak boleh saat complete sedang berjalan (klaim completingAt).

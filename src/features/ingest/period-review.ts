@@ -118,8 +118,18 @@ export function reviewRows(
     }
     const { tone, note } = noteOf(e, plan);
     const flags: string[] = [];
-    if (e.shrink) flags.push("Datanya lebih sedikit dari sekarang");
-    if (e.identical) flags.push(`File ini identik dengan periode ${e.label}`);
+    if (e.shrink)
+      flags.push(
+        plan.mode === "UPSERT"
+          ? "Data lama punya kunci dobel: beberapa baris lama digantikan satu baris file (datanya lebih sedikit)"
+          : "Datanya lebih sedikit dari sekarang",
+      );
+    if (e.identical)
+      flags.push(
+        plan.mode === "APPEND"
+          ? `File ini sudah pernah ditambahkan ke ${e.label} — barisnya akan tergandakan`
+          : `File ini identik dengan periode ${e.label}`,
+      );
     if (e.stray)
       flags.push("Kemungkinan nyasar: barisnya jauh lebih sedikit dari periode lain di file");
     rows.push({

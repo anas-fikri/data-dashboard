@@ -2,7 +2,7 @@
 
 import { IconAlertTriangle, IconCheck, IconKey, IconLoader2, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { SearchSelect } from "@/components/ui/search-select";
 import { savePeriodKeysAction } from "@/features/versions/actions";
@@ -29,6 +29,8 @@ export function PeriodKeysForm({ view }: { view: PeriodSetupView }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [checks, setChecks] = useState<PeriodKeyCheck[] | null>(null);
+  // Hapus kolom kunci menghilangkan tombolnya: fokus pindah ke pemilih kolom sheet itu (review L8).
+  const adders = useRef(new Map<string, HTMLButtonElement | null>());
   const edit = (lineageId: string, next: number[]) => {
     setKeys((k) => ({ ...k, [lineageId]: next }));
     setChecks(null);
@@ -82,12 +84,13 @@ export function PeriodKeysForm({ view }: { view: PeriodSetupView }) {
                       size="icon"
                       className="size-11 sm:size-7"
                       aria-label={`Hapus ${name(pos)} dari kolom kunci`}
-                      onClick={() =>
+                      onClick={() => {
                         edit(
                           s.lineageId,
                           chosen.filter((x) => x !== pos),
-                        )
-                      }
+                        );
+                        requestAnimationFrame(() => adders.current.get(s.lineageId)?.focus());
+                      }}
                     >
                       <IconX aria-hidden />
                     </Button>
@@ -105,6 +108,9 @@ export function PeriodKeysForm({ view }: { view: PeriodSetupView }) {
                   {chosen.length ? "Tambah kolom kunci (gabungan)" : "Pilih kolom kunci"}
                 </label>
                 <SearchSelect
+                  ref={(el) => {
+                    adders.current.set(s.lineageId, el);
+                  }}
                   id={fieldId}
                   label={`Kolom kunci sheet ${s.name}`}
                   value=""

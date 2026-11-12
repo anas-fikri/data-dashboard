@@ -72,6 +72,7 @@ async function copySources(typedIds: string[]): Promise<CopySource[]> {
           originalName: true,
           minDate: true,
           maxDate: true,
+          uploadedById: true,
         },
       },
     },
@@ -97,6 +98,7 @@ async function copySources(typedIds: string[]): Promise<CopySource[]> {
     originalName: t.segment.originalName,
     minDate: naive(t.segment.minDate),
     maxDate: naive(t.segment.maxDate),
+    uploadedById: t.segment.uploadedById,
   }));
 }
 
@@ -243,7 +245,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
             ...(d.group
               ? { groupId: d.group.id, groupPart: d.group.part, groupSize: d.group.size }
               : {}),
-            uploadedById: v.uploadedById,
+            uploadedById: d.uploadedById !== undefined ? d.uploadedById : v.uploadedById,
             createdByVersionId: versionId,
           },
         });

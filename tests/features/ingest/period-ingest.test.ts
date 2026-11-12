@@ -167,6 +167,7 @@ class FakePeriodRepo implements PeriodIngestRepo {
           originalName: g.originalName ?? null,
           minDate: g.period?.minDate ?? null,
           maxDate: g.period?.maxDate ?? null,
+          uploadedById: null,
         },
       ];
     });
@@ -1571,11 +1572,38 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
       };
     });
     const kode = base.schema.find((c) => /kode/i.test(c.original))!.pos;
-    const sheet: PeriodActiveSheet = {
+    let sheet: PeriodActiveSheet = {
       ...s.sheet,
       segments,
       keys: s.storage.parquetKeys(),
       keyColumns: [kode],
+    };
+    /** Versi unggahan berikutnya yang aktif menjadi data aktif (rantai unggahan). */
+    const adopt = (repo: FakePeriodRepo) => {
+      const inc = repo.incoming();
+      sheet = {
+        ...sheet,
+        segments: repo.manifest!.get(LINEAGE)!.map((r) => {
+          const g = inc.find((x) => x.typedId === r.typedId);
+          const prev = sheet.segments.find((x) => x.typedId === r.typedId);
+          return g
+            ? {
+                typedId: g.typedId,
+                segmentId: g.segmentId,
+                periodKey: g.periodKey,
+                periodStart: g.periodStart,
+                rows: g.rows,
+                bytes: g.bytes,
+                sha256: g.sha256 ?? null,
+                groupId: g.groupId ?? null,
+                groupPart: g.groupPart ?? null,
+                groupSize: g.groupSize ?? null,
+              }
+            : prev!;
+        }),
+        keys: s.storage.parquetKeys(),
+      };
+      s.repo.highWater = repo.highWater;
     };
     /** Unggahan berikutnya ke data aktif hasil unggahan pertama. */
     const next = (rows: string[][], mode: "APPEND" | "UPSERT", keyColumns = [kode]) => {
@@ -1611,7 +1639,7 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
       }
       return out;
     };
-    return { s, next, typedOf };
+    return { s, next, typedOf, adopt };
   }
 
   it("Perbarui: kunci sama dikoreksi, kunci baru ditambah, kunci pindah bulan → aktif otomatis", async () => {
@@ -1703,5 +1731,62 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
     expect([jan.action, jan.afterRows]).toEqual(["UPDATED", 11]);
     expect(plan.entries.find((e) => e.key === "2026-03")!.action).toBe("ADDED");
     expect((await typedOf(add.repo, "2026-01")).filter((r) => r[2] === "K1-0")).toHaveLength(2);
+  });
+
+  it("rantai Perbarui: salinan lama dipadatkan jadi satu segmen per periode; nilai dan `_row` tetap benar", async () => {
+    const { next, typedOf, adopt } = await seeded([...month(1, 10)]);
+    let last: FakePeriodRepo | null = null;
+    for (const [i, rows] of [
+      [
+        ["K1-0", "2026-01-02", "100"],
+        ["N-1", "2026-01-03", "1"],
+      ],
+      [
+        ["K1-1", "2026-01-02", "101"],
+        ["N-2", "2026-01-04", "2"],
+      ],
+      [
+        ["N-1", "2026-01-05", "11"],
+        ["N-3", "2026-01-06", "3"],
+      ],
+    ].entries()) {
+      const u = next([HEADER, ...rows], "UPSERT");
+      expect((await u.run()).outcome, `unggahan ${i + 1}`).toBe("done");
+      adopt(u.repo);
+      last = u.repo;
+    }
+    const jan = last!.manifest!.get(LINEAGE)!.filter((r) => r.periodKey === "2026-01");
+    // Bagian file unggahan terakhir + SATU salinan padat (bukan menumpuk setiap unggahan).
+    expect(jan).toHaveLength(2);
+    const rows = await typedOf(last!, "2026-01");
+    expect(rows).toHaveLength(13);
+    const by = new Map(rows.map((r) => [r[2], r[4]]));
+    expect([
+      by.get("K1-0"),
+      by.get("K1-1"),
+      by.get("K1-2"),
+      by.get("N-1"),
+      by.get("N-2"),
+      by.get("N-3"),
+    ]).toEqual([100n, 101n, 12n, 11n, 2n, 3n]);
+    const ids = rows.map((r) => r[0]);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(new Set(rows.map((r) => r[2])).size).toBe(13);
+    // Salinan padat: tanpa baris judul, peta kolom identitas, `_row` baru.
+    const seg = [...last!.segments.values()].find((g) => g.headerRow === 0)!;
+    expect(seg.colMap).toEqual([]);
+    expect(seg.rawRows).toBe(11);
+  });
+
+  it("Tambah file yang sama dua kali → ditinjau (baris akan tergandakan)", async () => {
+    const { next, adopt } = await seeded([...month(1, 10)]);
+    const extra = [HEADER, ["X-1", "2026-01-09", "1"]];
+    const a = next(extra, "APPEND");
+    expect((await a.run()).outcome).toBe("done");
+    adopt(a.repo);
+    const b = next(extra, "APPEND");
+    expect((await b.run()).outcome).toBe("confirm");
+    expect(b.repo.plan!.confirm).toContain("IDENTICAL");
+    expect(b.repo.plan!.entries.find((e) => e.key === "2026-01")!.identical).toBe(true);
   });
 });

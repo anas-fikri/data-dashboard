@@ -756,7 +756,7 @@ export async function savePeriodKeys(
       return fail("STALE", "Sheet data berubah sejak halaman dibuka. Muat ulang halaman.");
     }
     const cols = choice.columns.map((pos) => s.schema!.find((c) => c.pos === pos));
-    if (cols.some((c) => !c || c.absent)) {
+    if (cols.some((c) => !c || c.absent || c.hidden)) {
       return fail("INVALID", `Kolom kunci sheet “${s.name}” tidak ada lagi. Muat ulang halaman.`);
     }
     if (!choice.columns.length || !s.segments.length) continue;
