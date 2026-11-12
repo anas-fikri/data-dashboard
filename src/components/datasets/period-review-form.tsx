@@ -503,7 +503,8 @@ export function PeriodReviewForm({
       identical.length ||
       context.labelRanges.length ||
       kept.length ||
-      plan.ignoredSheets.length ? (
+      plan.ignoredSheets.length ||
+      plan.mergedSheets.length ? (
         <ul className="flex flex-col gap-2" aria-label="Catatan tinjauan">
           {plan.rejection ? (
             <Callout tone="warning" testId="review-rejection">
@@ -541,6 +542,14 @@ export function PeriodReviewForm({
           {plan.ignoredSheets.map((s) => (
             <Callout key={s} tone="warning" testId="review-ignored-sheet">
               Sheet “{s}” di file tidak cocok dengan sheet data mana pun, jadi tidak disimpan.
+            </Callout>
+          ))}
+          {plan.mergedSheets.map((m) => (
+            <Callout key={`${m.sheet}:${m.from[0]}`} tone="info" testId="review-merged-sheets">
+              {m.from.length} sheet berkolom sama digabung ke sheet data{" "}
+              <strong>“{m.sheet}”</strong>: {m.from.map((f) => `“${f}”`).join(", ")}. Periode yang
+              ada di sheet mana pun diganti oleh gabungan barisnya. Pastikan tidak ada sheet
+              salinan, karena barisnya akan terhitung dua kali.
             </Callout>
           ))}
         </ul>

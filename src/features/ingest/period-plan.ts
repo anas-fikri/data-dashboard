@@ -92,6 +92,17 @@ export interface PeriodPlanInput {
    * pemilik wajib meninjaunya (nama sheet di file, untuk tampilan).
    */
   ignoredSheets?: string[];
+  /**
+   * Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj): selalu ditinjau pemilik sebelum
+   * diterapkan (salinan sheet yang tidak sengaja ikut akan menggandakan baris).
+   */
+  mergedSheets?: MergedSheet[];
+}
+
+/** Sheet file (`from`, ≥ 2) yang digabung ke sheet data `sheet` (nama untuk tampilan). */
+export interface MergedSheet {
+  sheet: string;
+  from: string[];
 }
 
 const LIMIT_NAMES = ["periods", "sheetRows", "datasetBytes", "sheetSegments"] as const;
@@ -156,6 +167,11 @@ export const periodPlanSchema = z.object({
   include: z.array(z.string()),
   /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
   ignoredSheets: z.array(z.string()).default([]),
+  /** Sheet file yang digabung ke satu sheet data (T-jsmj); rencana lama tanpa field ini = tidak ada. */
+  mergedSheets: z
+    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(2).max(1_024) }))
+    .max(1_024)
+    .default([]),
   /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
   resetFrom: z.enum(["MONTH", "QUARTER", "YEAR"]).optional(),
   /**
@@ -201,6 +217,7 @@ export const periodPlanSchema = z.object({
       "DROPPED_ROWS",
       "NO_CHANGE",
       "IGNORED_SHEETS",
+      "MERGED_SHEETS",
     ]),
   ),
   autoActivate: z.boolean(),
@@ -496,6 +513,10 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
 
   const fileSha = input.fileSha256 ?? null;
   const ignoredSheets = [...new Set(input.ignoredSheets ?? [])].sort();
+  const mergedSheets = [...(input.mergedSheets ?? [])]
+    .filter((m) => m.from.length >= 2)
+    .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
+    .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
   const entries: PeriodPlanEntry[] = allKeys.map((key) => {
     const a = active.get(key);
     const inc = incoming.get(key);
@@ -581,6 +602,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     if ((input.droppedRows ?? 0) > 0) confirm.push("DROPPED_ROWS");
     if (!has("ADDED") && !has("REPLACED") && !has("EVICTED")) confirm.push("NO_CHANGE");
     if (ignoredSheets.length) confirm.push("IGNORED_SHEETS");
+    if (mergedSheets.length) confirm.push("MERGED_SHEETS");
   }
 
   return {
@@ -595,6 +617,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     droppedRows: input.droppedRows ?? 0,
     include: [...include].filter((k) => incoming.has(k)).sort(),
     ignoredSheets,
+    mergedSheets,
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {

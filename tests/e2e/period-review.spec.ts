@@ -534,4 +534,49 @@ test.describe("layar tinjauan periode", () => {
     await expect(feb.getByTestId("review-before")).toHaveText("2");
     await expect(feb.getByTestId("review-after")).toHaveText("2");
   });
+
+  test("T-jsmj: satu file, 2 sheet berkolom sama (nama beda, bulan bercampur) → digabung, wajib ditinjau", async ({
+    page,
+    baseURL,
+  }) => {
+    test.setTimeout(300_000);
+    const header = ["kode", "Tanggal Kirim", "nilai"];
+    const id = await newDataset(
+      page,
+      "Tinjau gabung sheet",
+      file(
+        "awal.xlsx",
+        await xlsx([
+          {
+            name: "Pengiriman",
+            rows: [header, ["A", "2026-01-05", "10"], ["B", "2026-02-05", "20"]],
+          },
+        ]),
+      ),
+    );
+    await setupPeriods(page, id);
+    const v = await uploadPeriod(
+      page,
+      baseURL!,
+      id,
+      "minggu.xlsx",
+      await xlsx([
+        {
+          name: "Minggu 1",
+          rows: [header, ["C", "2026-03-02", "1"], ["D", "2026-04-03", "2"]],
+        },
+        {
+          name: "Minggu 2",
+          rows: [header, ["E", "2026-03-09", "3"], ["F", "2026-03-10", "4"]],
+        },
+      ]),
+    );
+    await page.goto(`/datasets/${id}/tinjau/${v}`);
+    await expect(page.getByTestId("review-merged-sheets")).toContainText(
+      "2 sheet berkolom sama digabung ke sheet data “Pengiriman”: “Minggu 1”, “Minggu 2”",
+    );
+    await expect(page.getByTestId("review-ignored-sheet")).toHaveCount(0);
+    await expect(row(page, "2026-03").getByTestId("review-after")).toHaveText("3");
+    await expect(row(page, "2026-04").getByTestId("review-after")).toHaveText("1");
+  });
 });

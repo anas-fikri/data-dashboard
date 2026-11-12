@@ -112,6 +112,15 @@ Satu bulan lebih dari 1.048.576 baris tidak muat di satu sheet Excel. Pecah menj
 
 Setelah semua file terunggah, semuanya diproses sebagai **satu** versi: periodenya diganti utuh oleh gabungan semua file. Bila satu file gagal, tidak ada yang diterapkan. File kembar dalam satu kelompok ditolak.
 
+## Satu file, banyak sheet berkolom sama
+
+Data yang terpecah ke beberapa sheet dalam satu file Excel (mis. karena batas 1.048.576 baris, atau satu sheet per minggu) cukup diunggah sekali lewat **Tambah atau perbarui periode**. Sheet yang judul kolomnya sama persis digabung ke satu sheet data, walaupun namanya berbeda dan periodenya bercampur di dalam sheet:
+
+- Periode setiap baris tetap dibaca dari kolom tanggalnya. Periode yang muncul di sheet mana pun diganti oleh **gabungan** baris dari semua sheet itu (sama seperti kelompok file).
+- Unggahan dengan sheet tergabung **selalu berhenti di layar tinjauan**. Di sana tertulis sheet mana saja yang digabung ke sheet data mana. Periksa tidak ada sheet salinan, karena barisnya akan terhitung dua kali.
+- Sheet dengan judul kolom berbeda (mis. _Ringkasan_) tidak disimpan dan disebut di layar tinjauan.
+- Bila dataset punya beberapa sheet data dengan kolom yang sama persis, sheet file yang namanya tidak cocok tidak ditebak (tidak disimpan). Samakan nama sheet di file dengan nama sheet data.
+
 ## Kolom yang berbeda dan aturan tetap
 
 - Bila kolom file baru berbeda, unggahan menunggu **pemetaan kolom** seperti biasa. Pemetaan hanya berlaku untuk periode di file itu; periode lama tidak berubah. **Kosongkan** berarti kosong untuk periode baru saja. Kolom tambahan disimpan sebagai kolom tersembunyi bertipe Teks (periode lama bernilai kosong). Nama kolom yang sudah dipetakan diingat untuk bulan berikutnya.

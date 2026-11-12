@@ -218,7 +218,11 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           errorMessage: d.reason,
           sha256: d.sha256,
           // Sheet file yang tidak disimpan: rencana setelah pemetaan (T-057) tetap mencatatnya.
-          periodMeta: { ignoredSheets: d.ignoredSheets, changes: [] },
+          periodMeta: {
+            ignoredSheets: d.ignoredSheets,
+            mergedSheets: (d.mergedSheets ?? []).map((m) => ({ sheet: m.sheet, from: m.from })),
+            changes: [],
+          },
           ingestStage: "typed",
           ingestFinishedAt: new Date(),
         },
@@ -236,7 +240,11 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
             snapshot: d.snapshot,
             facts: d.facts,
             sha256: d.sha256,
-            meta: { ignoredSheets: d.facts.ignoredSheets, changes: d.changes },
+            meta: {
+              ignoredSheets: d.facts.ignoredSheets,
+              mergedSheets: d.facts.mergedSheets ?? [],
+              changes: d.changes,
+            },
             include: [],
             mode: { kind: "auto", allowAuto: d.allowAuto },
             present,
@@ -326,6 +334,7 @@ export function prismaPeriodMappingRepo(limits: () => PeriodLimits): PeriodMappi
       return {
         sha256: v.sha256 ?? "",
         ignoredSheets: parsePeriodMeta(v.periodMeta)?.ignoredSheets ?? [],
+        mergedSheets: parsePeriodMeta(v.periodMeta)?.mergedSheets ?? [],
         sheets: v.sheets.map((s) => ({
           ...s,
           columns: (s.columns as unknown as ColumnMeta[] | null) ?? [],
@@ -359,7 +368,11 @@ export function prismaPeriodMappingRepo(limits: () => PeriodLimits): PeriodMappi
             from: "AWAITING_MAPPING",
             snapshot: d.snapshot,
             facts: d.facts,
-            meta: { ignoredSheets: d.facts.ignoredSheets, changes: d.changes },
+            meta: {
+              ignoredSheets: d.facts.ignoredSheets,
+              mergedSheets: d.facts.mergedSheets ?? [],
+              changes: d.changes,
+            },
             include: [],
             mode: { kind: "auto", allowAuto: d.allowAuto },
             present,

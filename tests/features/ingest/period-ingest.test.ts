@@ -413,6 +413,70 @@ describe("sheet file yang tidak berpasangan", () => {
     );
     expect([...repo.segments.values()].map((g) => g.lineageId)).toEqual([LINEAGE]);
   });
+
+  it("T-jsmj: 3 sheet berkolom sama (nama beda, periode acak) → digabung ke sheet data, satu kelompok per periode, wajib ditinjau", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const xml = (rows: string[][]) =>
+      rows
+        .map(
+          (r, i) =>
+            `<row r="${i + 1}">${r.map((v, c) => `<c r="${colLetter(c + 1)}${i + 1}" t="inlineStr"><is><t>${v}</t></is></c>`).join("")}</row>`,
+        )
+        .join("");
+    const file = t.file(
+      `m-${Math.random().toString(36).slice(2)}.xlsx`,
+      await buildXlsx([
+        // Nama sheet tidak sama dengan "Data": dulu semuanya diabaikan.
+        { name: "Bagian 1", xml: xml([HEADER, ...month(4, 10), ...month(5, 5)]) },
+        { name: "Bagian 2", xml: xml([HEADER, ...month(4, 7, 100)]) },
+        { name: "Bagian 3", xml: xml([HEADER, ...month(5, 8, 200)]) },
+        { name: "Ringkasan", xml: xml([["total"], ["30"]]) },
+      ]),
+    );
+    const key = `raw/${DS}/${VID}/source.xlsx`;
+    const storage = new FakeStorage(join(t.root, `store-m${Math.random().toString(36).slice(2)}`), {
+      [key]: file,
+    });
+    const sheet = { ...activeSheet(storage, base, JAN_MAR), name: "Data" };
+    const repo = new FakePeriodRepo({
+      datasetId: DS,
+      sourceKey: key,
+      originalName: "apr-mei.xlsx",
+      grain: "MONTH",
+      label: null,
+      baseVersionId: ACTIVE,
+      active: { versionId: ACTIVE, grain: "MONTH", sheets: [sheet] },
+      settings: { keepPeriods: null, onLimit: "REJECT" },
+    });
+    const r = await runPeriodIngest(
+      VID,
+      { repo, storage, limits: LIMITS },
+      { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+    );
+    expect(r.outcome).toBe("confirm");
+    expect(repo.plan).toMatchObject({
+      ignoredSheets: ["Ringkasan"],
+      mergedSheets: [{ sheet: "Data", from: ["Bagian 1", "Bagian 2", "Bagian 3"] }],
+    });
+    expect(repo.plan!.confirm).toEqual(expect.arrayContaining(["MERGED_SHEETS", "IGNORED_SHEETS"]));
+    const rows = Object.fromEntries(repo.plan!.entries.map((e) => [e.key, e.afterRows]));
+    expect(rows["2026-04"]).toBe(17);
+    expect(rows["2026-05"]).toBe(13);
+    // Satu kelompok per periode: nomor bagian unik, ukuran = jumlah segmen periode itu.
+    const segs = [...repo.segments.values()].filter((g) => g.period);
+    const byPeriod = new Map<string, typeof segs>();
+    for (const g of segs) byPeriod.set(g.period!.key, [...(byPeriod.get(g.period!.key) ?? []), g]);
+    for (const [, list] of byPeriod) {
+      expect(list.every((g) => g.lineageId === LINEAGE && g.group?.id === VID)).toBe(true);
+      expect(new Set(list.map((g) => g.group?.part)).size).toBe(list.length);
+      expect(list.every((g) => g.group?.size === list.length)).toBe(true);
+    }
+    expect(byPeriod.get("2026-04")).toHaveLength(2);
+    expect(byPeriod.get("2026-05")).toHaveLength(2);
+    expect(periodPlanSummary(repo.plan!)).toContain(
+      "sheet “Bagian 1”, “Bagian 2”, “Bagian 3” digabung ke “Data”",
+    );
+  });
 });
 
 describe("AC2: vonis cast dihitung atas baris baru saja", () => {

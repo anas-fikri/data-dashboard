@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.19 (T-jsmj):** tanpa migrasi. Unggahan periode memasangkan sheet file berkolom sama ke satu sheet data
+  (`period-merge.ts`: sidik judul sama dengan sheet yang sudah berpasangan, atau cocok persis dengan skema aktif bila
+  belum berpasangan; ragu → diabaikan). Tiap sheet = satu bagian kelompok (`Segment.groupPart` kini nomor bagian per
+  sheet logis — file × sheet — bukan nomor file); rencana `mergedSheets` + alasan `MERGED_SHEETS` (selalu ditinjau).
+  Rollback image ke v1.18.x: versi AWAITING_CONFIRM yang dibuat v1.19 dengan sheet tergabung tidak terbaca rencananya
+  (enum baru) — terapkan atau batalkan dulu sebelum rollback; data aktif bersegmen kelompok tetap sah di versi lama.
+
 ## [1.18.0] - 2026-11-11
 
 ### Added
