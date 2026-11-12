@@ -1,11 +1,15 @@
 ---
 id: T-aavf
 title: 'v1.19: ''Lewati periode ini'' di tinjauan unggahan periode — periode yang akan diganti bisa dipertahankan'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-11-12T01:35:38Z"
-updated: "2026-11-12T02:05:11Z"
+updated: "2026-11-12T02:48:42Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: ba2909986617becf15c995470de9533293870aa8
 review:
   passes:
     - "n": 1
@@ -22,9 +26,9 @@ review:
 (describe the outcome in one paragraph)
 
 ## Acceptance criteria
-- [ ] Setiap periode yang akan diganti punya pilihan 'Lewati periode ini': data lama tetap, baris file untuk periode itu tidak disimpan, periode lain tetap diterapkan
-- [ ] Rencana/sidik menyertakan skip; Terapkan dengan rencana yang dilihat; semua dilewati → tidak bisa diterapkan (NO_CHANGE)
-- [ ] Ringkasan/riwayat menyebut periode yang dilewati; panduan 15 + Yang baru
+- [x] Setiap periode yang akan diganti punya pilihan 'Lewati periode ini': data lama tetap, baris file untuk periode itu tidak disimpan, periode lain tetap diterapkan
+- [x] Rencana/sidik menyertakan skip; Terapkan dengan rencana yang dilihat; semua dilewati → tidak bisa diterapkan (NO_CHANGE)
+- [x] Ringkasan/riwayat menyebut periode yang dilewati; panduan 15 + Yang baru
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
