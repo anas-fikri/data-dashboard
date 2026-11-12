@@ -4,7 +4,7 @@ title: 'v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit h
 status: todo
 profile: standard
 created: "2026-11-11T15:22:00Z"
-updated: "2026-11-11T16:43:36Z"
+updated: "2026-11-12T02:05:13Z"
 created_by: claude-code
 ---
 
@@ -21,6 +21,7 @@ created_by: claude-code
 - [ ] Uji unit pemetaan job aktif → pemilik (jobsByUser: ingest/period-setup, recast vs map-version, export/pdf) — review putaran 2 T-qed9 L4
 - [ ] Uji accountRows mengunci TTL storage 5 menit (cek ± 4 menit tanpa hitung ulang) — konfirmasi review T-qed9 Low-1
 - [ ] Kegagalan userUsage per akun di-cache singkat (± 60 dtk) agar akun berat yang timeout tidak dihitung ulang tiap polling 10 dtk — konfirmasi review T-qed9 Low-2
+- [ ] v1.19 Low: pesan PERIOD_OUT_OF_WINDOW untuk periode yang dilewati; sheet tambahan yang diabaikan karena sheet lain butuh pemetaan diberi alasan khusus; isi sheet salinan (Data/Data (2)) dideteksi
 
 ## Risk
 (Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
