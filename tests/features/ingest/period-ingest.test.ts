@@ -78,6 +78,8 @@ const month = (m: number, n: number, from = 0) =>
     String(10 + i),
   ]);
 
+let typedSeq = 0;
+
 class FakePeriodRepo implements PeriodIngestRepo {
   status = "UPLOADED";
   error: string | null = null;
@@ -96,7 +98,6 @@ class FakePeriodRepo implements PeriodIngestRepo {
   commits = 0;
   /** Diubah uji: pengaturan dataset saat commit (beda dengan saat load → rencana dihitung ulang). */
   commitSettings: PeriodIngestLoad["settings"] | null = null;
-  private n = 0;
   constructor(
     readonly load0: PeriodIngestLoad,
     readonly limits: PeriodLimits = LIMITS,
@@ -131,7 +132,8 @@ class FakePeriodRepo implements PeriodIngestRepo {
     this.segments.set(d.id, d);
   }
   async addTyped(segmentId: string, tr: PeriodTypedRecord) {
-    const id = `typed${this.archive.size + ++this.n}`;
+    // Unik lintas run (arsip dipakai bersama rantai unggahan v1.20).
+    const id = `typed${++typedSeq}`;
     this.typed.set(id, { ...tr, segmentId });
     this.archive.set(id, { typed: { ...tr, segmentId }, segment: this.segments.get(segmentId)! });
     return id;
@@ -141,6 +143,11 @@ class FakePeriodRepo implements PeriodIngestRepo {
     string,
     { typed: PeriodTypedRecord & { segmentId: string }; segment: PeriodSegmentRecord }
   >();
+  /** Sidik file versi yang sudah aktif (lintas run, v1.20 Tambah berulang). */
+  applied = new Set<string>();
+  async appliedBefore(_v: string, sha256: string) {
+    return this.applied.has(sha256);
+  }
   async copySources(typedIds: string[]): Promise<CopySource[]> {
     return typedIds.flatMap((id) => {
       const a = this.archive.get(id);
@@ -240,6 +247,7 @@ class FakePeriodRepo implements PeriodIngestRepo {
     this.manifest = r.manifest;
     this.changes = d.changes;
     this.status = r.decision === "activate" ? "READY" : "AWAITING_CONFIRM";
+    if (r.decision === "activate") this.applied.add(d.sha256);
     return { outcome: r.decision === "activate" ? "activated" : "awaiting", plan: r.plan };
   }
   async fail(_v: string, message: string) {
@@ -966,6 +974,7 @@ class FakeMappingRepo implements PeriodMappingRepo {
   load = () => this.r.load();
   allocateRows = (l: string, n: number) => this.r.allocateRows(l, n);
   copySources = (ids: string[]) => this.r.copySources(ids);
+  appliedBefore = (v: string, sha: string) => this.r.appliedBefore(v, sha);
   createSegment = (v: string, d: PeriodSegmentRecord) => this.r.createSegment(v, d);
   addTyped = (id: string, t: PeriodTypedRecord) => this.r.addTyped(id, t);
   recordCleanup = async () => {};
@@ -1620,6 +1629,7 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
       };
       const repo = new FakePeriodRepo(load, LIMITS);
       repo.archive = s.repo.archive;
+      repo.applied = s.repo.applied;
       // allocateRows per lineage monoton lintas unggahan (seperti SheetLineage.rowHighWater).
       repo.highWater = s.repo.highWater;
       const run = () =>
@@ -1788,5 +1798,34 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
     expect((await b.run()).outcome).toBe("confirm");
     expect(b.repo.plan!.confirm).toContain("IDENTICAL");
     expect(b.repo.plan!.entries.find((e) => e.key === "2026-01")!.identical).toBe(true);
+  });
+
+  it("Tambah berulang tetap terdeteksi setelah salinan dipadatkan (review putaran 2)", async () => {
+    const { next, adopt } = await seeded([...month(1, 10)]);
+    const a = [HEADER, ["X-1", "2026-01-09", "1"]];
+    const b = [HEADER, ["Y-1", "2026-01-10", "2"]];
+    for (const rows of [a, b]) {
+      const u = next(rows, "APPEND");
+      expect((await u.run()).outcome).toBe("done");
+      adopt(u.repo);
+    }
+    const again = next(a, "APPEND");
+    expect((await again.run()).outcome).toBe("confirm");
+    expect(again.repo.plan!.confirm).toContain("IDENTICAL");
+  });
+
+  it("Perbarui: kunci dobel lama hanya ditandai di periode yang barisnya digabung", async () => {
+    const { next, adopt } = await seeded([...month(1, 5), ...month(2, 5)]);
+    // Tambah membuat kunci K1-0 dobel di Januari.
+    const dup = next([HEADER, ["K1-0", "2026-01-07", "70"]], "APPEND");
+    expect((await dup.run()).outcome).toBe("done");
+    adopt(dup.repo);
+    const u = next([HEADER, ["K1-0", "2026-01-08", "80"], ["K2-1", "2026-02-09", "90"]], "UPSERT");
+    expect((await u.run()).outcome).toBe("confirm");
+    const by = Object.fromEntries(u.repo.plan!.entries.map((e) => [e.key, e]));
+    expect(by["2026-01"]!.shrink).toBe(true);
+    expect(by["2026-02"]!.shrink).toBe(false);
+    expect(by["2026-01"]!.afterRows).toBe(5);
+    expect(u.repo.plan!.confirm).toContain("SHRINK");
   });
 });

@@ -179,6 +179,7 @@ async function period(
     deleteSheets: async () => [],
     allocateRows: async () => 1_000_000n,
     copySources: async () => [],
+    appliedBefore: async () => false,
     createSegment: async (_v, d) => {
       incoming.push({
         typedId: `n${incoming.length}`,

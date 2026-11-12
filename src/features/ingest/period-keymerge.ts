@@ -109,6 +109,11 @@ export interface KeyMergeInput {
   watch: () => Promise<void>;
   /** Rentang `_row` baru untuk salinan yang dipadatkan (SheetLineage.rowHighWater). */
   allocateRows: (lineageId: string, span: number) => Promise<bigint>;
+  /**
+   * Tambah: file unggahan ini (sidik versi) sudah pernah diterapkan ke dataset — tetap terdeteksi setelah
+   * pemadatan menghapus sidik per segmen (review putaran 2 M1).
+   */
+  repeatFile?: boolean;
 }
 
 /** Penolakan unggahan Perbarui (kunci kosong/ganda, kunci belum diatur): pesan untuk pemilik. */
@@ -153,6 +158,7 @@ export async function keyMerge(
     /** Baris lama yang tertimpa per segmen: _row typed + periode baris barunya. */
     const removed = new Map<string, { total: number; movedOut: number }>();
     const updated = new Map<string, number>();
+    const collapsed = new Map<string, number>();
     const local = new Map<string, string>();
 
     if (m.mode === "UPSERT") {
@@ -237,7 +243,7 @@ export async function keyMerge(
         await m.watch();
       }
       await d.conn.run(
-        `CREATE OR REPLACE TABLE hit_${t} AS SELECT o.seg, o.r, f.start AS nstart FROM ok_${t} o JOIN fk_${t} f USING (k)`,
+        `CREATE OR REPLACE TABLE hit_${t} AS SELECT o.seg, o.r, o.k, f.start AS nstart FROM ok_${t} o JOIN fk_${t} f USING (k)`,
       );
       const startOf = new Map(sheet.segments.map((g) => [g.segmentId, g.periodStart]));
       for (const r of await rowsOf(
@@ -255,6 +261,14 @@ export async function keyMerge(
         `SELECT start, count(*) AS n FROM fk_${t} WHERE k IN (SELECT k FROM ok_${t}) GROUP BY 1`,
       )) {
         updated.set(String(r.start), Number(r.n));
+      }
+      // Baris lama berkunci dobel yang tertimpa (digabung menjadi satu baris file) per segmen (putaran 2 L4).
+      for (const r of await rowsOf(
+        d,
+        `SELECT seg, count(*) AS n FROM hit_${t}
+         WHERE k IN (SELECT k FROM ok_${t} GROUP BY k HAVING count(*) > 1) GROUP BY 1`,
+      )) {
+        collapsed.set(String(r.seg), Number(r.n));
       }
     }
 
@@ -374,10 +388,17 @@ export async function keyMerge(
     // Pemadatan (review M1): salinan beberapa segmen lama satu periode digabung menjadi SATU segmen, jadi
     // jumlah segmen per periode tidak bertambah setiap unggahan (batas PERIOD_SHEET_MAX_SEGMENTS).
     const mine = copies.filter((x) => x.lineageId === lineageId);
-    for (const key of new Set(mine.map((x) => x.key))) {
-      const list = mine.filter((x) => x.key === key);
-      if (list.length < 2 || new Set(list.map((x) => x.src.sourceKind)).size > 1) continue;
-      const one = await compact(m, sheet, list, `${t}_${key.replace(/[^0-9A-Za-z]/g, "")}`);
+    for (const group of new Set(mine.map((x) => `${x.key}|${x.src.sourceKind}`))) {
+      // Per jenis sumber (csv/xlsx): cast ulang (recast) membaca raw menurut jenisnya (putaran 2 L3).
+      const list = mine.filter((x) => `${x.key}|${x.src.sourceKind}` === group);
+      if (list.length < 2) continue;
+      const key = list[0]!.key;
+      const one = await compact(
+        m,
+        sheet,
+        list,
+        `${t}_${key.replace(/[^0-9A-Za-z]/g, "")}_${list[0]!.src.sourceKind}`,
+      );
       copies.splice(copies.indexOf(list[0]!), 1, one);
       for (const x of list.slice(1)) copies.splice(copies.indexOf(x), 1);
     }
@@ -393,7 +414,11 @@ export async function keyMerge(
         start,
         lineageId,
         // Tambah: file/sheet yang sama sudah pernah masuk periode ini → baris tergandakan, wajib ditinjau.
-        repeat: m.mode === "APPEND" && inP.some((g) => !!g.sha256 && fileShas.has(g.sha256)),
+        repeat:
+          m.mode === "APPEND" &&
+          files.some((f) => f.key === key) &&
+          (!!m.repeatFile || inP.some((g) => !!g.sha256 && fileShas.has(g.sha256))),
+        collapsed: inP.reduce((n, g) => n + (collapsed.get(g.segmentId) ?? 0), 0),
         fileRows: files.filter((f) => f.key === key).reduce((n, f) => n + f.rows, 0),
         updated: updated.get(start) ?? 0,
         kept: kept.get(key) ?? 0,
@@ -433,7 +458,7 @@ async function compact(
         : `CAST(NULL AS VARCHAR) AS c${pos}`;
     });
     return `SELECT ${i} AS s, CAST(_row AS BIGINT) AS o, ${cols.join(", ")}
-            FROM read_parquet(${lit(x.rawPath)}) WHERE _row > ${Math.trunc(x.src.headerRow)}`;
+            FROM read_parquet(${lit(x.rawPath)}) WHERE _row > ${Math.trunc(x.src.typedHeaderRow)}`;
   });
   await watched(d, m.watch, () =>
     d.conn.run(
@@ -495,7 +520,9 @@ async function compact(
     rmSync(x.typedPath, { force: true });
   }
   const first = list[0]!;
-  const names = [...new Set(list.map((x) => x.src.originalName ?? ""))].filter(Boolean);
+  const names = [
+    ...new Set(list.map((x) => (x.src.originalName ?? "").replace(/ \(\+\d+ file lain\)$/, ""))),
+  ].filter(Boolean);
   const dates = list.flatMap((x) => [x.minDate, x.maxDate]).filter((v): v is string => !!v);
   const src: CopySource = {
     ...first.src,

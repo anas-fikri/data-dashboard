@@ -46,6 +46,19 @@ export async function versionMode(versionId: string): Promise<string | null> {
   return v?.mode ?? null;
 }
 
+/** Versi lain dataset yang sudah diterapkan (READY) dengan sidik file yang sama (Tambah berulang, v1.20). */
+async function appliedBefore(versionId: string, sha256: string): Promise<boolean> {
+  const v = await prisma.datasetVersion.findUnique({
+    where: { id: versionId },
+    select: { datasetId: true },
+  });
+  if (!v) return false;
+  const n = await prisma.datasetVersion.count({
+    where: { datasetId: v.datasetId, id: { not: versionId }, status: "READY", sha256 },
+  });
+  return n > 0;
+}
+
 /** Data segmen lama manifest aktif untuk salinan Tambah/Perbarui (v1.20). */
 async function copySources(typedIds: string[]): Promise<CopySource[]> {
   const rows = await prisma.segmentTyped.findMany({
@@ -210,6 +223,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
     recordCleanup: (prefix, reason) => prismaIngestRepo.recordCleanup(prefix, reason),
 
     copySources,
+    appliedBefore,
 
     async createSegment(versionId, d) {
       const v = await prisma.datasetVersion.findUnique({
@@ -374,6 +388,7 @@ export function prismaPeriodMappingRepo(limits: () => PeriodLimits): PeriodMappi
     load: (versionId) => ingest.load(versionId),
     allocateRows: (lineageId, span) => ingest.allocateRows(lineageId, span),
     copySources,
+    appliedBefore,
     createSegment: (versionId, d) => ingest.createSegment(versionId, d),
     addTyped: (segmentId, t) => ingest.addTyped(segmentId, t),
     recordCleanup: (prefix, reason) => ingest.recordCleanup(prefix, reason),

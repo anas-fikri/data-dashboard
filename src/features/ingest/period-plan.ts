@@ -53,6 +53,8 @@ export interface MergePart {
   movedOut: number;
   /** Tambah: file/sheet yang sama sudah pernah masuk (sidik sama) → baris tergandakan (review M3). */
   repeat?: boolean;
+  /** Perbarui: baris lama berkunci dobel yang digabung menjadi satu baris file (baris berkurang). */
+  collapsed?: number;
 }
 
 export interface MergeFacts {
@@ -198,6 +200,7 @@ const mergePartSchema = z.object({
   removed: count,
   movedOut: count,
   repeat: z.boolean().default(false),
+  collapsed: count.default(0),
 });
 
 const limitsSchema = z.object({
@@ -437,7 +440,8 @@ function validateMerge(input: PeriodPlanInput): void {
     if (seen.has(partKey(x.key, x.lineageId)))
       throw new Error(`computePeriodPlan: merge ${id} ganda`);
     seen.add(partKey(x.key, x.lineageId));
-    if (x.movedOut > x.removed || x.updated > x.fileRows) {
+    if (x.collapsed !== undefined) assertCount(x.collapsed, `merge ${id}.collapsed`);
+    if (x.movedOut > x.removed || x.updated > x.fileRows || (x.collapsed ?? 0) > x.removed) {
       throw new Error(`computePeriodPlan: merge ${id} hitungan tidak masuk akal`);
     }
     if (m.mode === "APPEND" && (x.removed || x.updated)) {
@@ -693,9 +697,6 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     .filter((m) => m.from.length >= 1)
     .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
     .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
-  // Perbarui: baris lama dengan kunci ganda menyusut menjadi satu baris file — hanya itu yang benar-benar
-  // mengurangi baris (pindah periode tidak); penyusutannya wajib dikonfirmasi seperti Ganti.
-  const collapse = sum(parts.map((x) => x.removed)) > sum(parts.map((x) => x.updated));
   const keyedOf = (key: string): PeriodPlanEntry["keyed"] => {
     const list = partsOf(key);
     if (!merge || !list.length) return null;
@@ -737,7 +738,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     const shrink =
       // Perbarui (review M2): kunci dobel lama digabung menjadi satu baris file = baris berkurang → selalu
       // ditinjau, di periode mana pun yang membuang baris lama.
-      (action === "UPDATED" && collapse && (keyedOf(key)?.removed ?? 0) > 0) ||
+      (action === "UPDATED" && partsOf(key).some((x) => (x.collapsed ?? 0) > 0)) ||
       (action === "REPLACED" &&
         [...fileSheets].some((sheet) => {
           const b = a!.sheets[sheet]?.rows ?? 0;
@@ -821,7 +822,11 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     ignoredSheets,
     mergedSheets,
     mode: merge?.mode ?? "REPLACE",
-    mergeParts: parts.map((x) => ({ ...x, repeat: x.repeat ?? false })),
+    mergeParts: parts.map((x) => ({
+      ...x,
+      repeat: x.repeat ?? false,
+      collapsed: x.collapsed ?? 0,
+    })),
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {

@@ -829,7 +829,14 @@ describe("computePeriodPlan — invarian berbasis properti (AC4)", () => {
 describe("computePeriodPlan — Tambah / Perbarui berdasarkan kunci (v1.20)", () => {
   const part = (
     key: string,
-    x: { fileRows: number; updated?: number; kept: number; removed?: number; movedOut?: number },
+    x: {
+      fileRows: number;
+      updated?: number;
+      kept: number;
+      removed?: number;
+      movedOut?: number;
+      collapsed?: number;
+    },
     lineageId = "A",
   ) => ({
     key,
@@ -884,7 +891,7 @@ describe("computePeriodPlan — Tambah / Perbarui berdasarkan kunci (v1.20)", ()
           mode: "UPSERT",
           // Januari: 4 baris file menggantikan 8 baris lama (kunci dobel di data lama); Februari: 4 baris pindah.
           parts: [
-            part("2026-01", { fileRows: 4, updated: 4, kept: 2, removed: 8 }),
+            part("2026-01", { fileRows: 4, updated: 4, kept: 2, removed: 8, collapsed: 8 }),
             part("2026-02", { fileRows: 0, kept: 0, removed: 4, movedOut: 4 }),
           ],
         },

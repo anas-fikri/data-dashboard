@@ -206,6 +206,8 @@ export interface PeriodIngestRepo {
   allocateRows(lineageId: string, span: number): Promise<bigint>;
   /** Data segmen lama manifest aktif (salinan Tambah/Perbarui, v1.20). */
   copySources(typedIds: string[]): Promise<CopySource[]>;
+  /** Versi lain dataset ini yang sudah diterapkan (READY) dengan sidik file yang sama (Tambah berulang). */
+  appliedBefore(versionId: string, sha256: string): Promise<boolean>;
   /** Baris Segment SEBELUM objeknya diunggah; DatasetGoneError bila versi hilang. */
   createSegment(versionId: string, d: PeriodSegmentRecord): Promise<void>;
   /** File typed segmen baru (belum di manifest mana pun); id SegmentTyped. */
@@ -756,7 +758,10 @@ interface CoreInput {
   /** Beberapa file sumber (T-060): pesan galat menyebut nama file. */
   multiFile: boolean;
   deps: Pick<PeriodIngestDeps, "storage" | "limits"> & {
-    repo: Pick<PeriodIngestRepo, "allocateRows" | "createSegment" | "addTyped" | "copySources">;
+    repo: Pick<
+      PeriodIngestRepo,
+      "allocateRows" | "createSegment" | "addTyped" | "copySources" | "appliedBefore"
+    >;
   };
   /** Id segmen yang dibuat (pembersihan saat gagal). */
   created: string[];
@@ -1022,6 +1027,7 @@ async function processPeriodItems(
         download: (k, path) => storage.download(k, path),
         watch: ensureAlive,
         allocateRows: (l, span) => repo.allocateRows(l, span),
+        repeatFile: mode === "APPEND" && (await repo.appliedBefore(versionId, c.sha256)),
       });
       copies = r.copies;
       facts.merge = { mode, parts: r.parts };
@@ -1213,7 +1219,13 @@ export interface PeriodRawSheet extends SheetRecord {
 
 export interface PeriodMappingRepo extends Pick<
   PeriodIngestRepo,
-  "load" | "allocateRows" | "createSegment" | "addTyped" | "recordCleanup" | "copySources"
+  | "load"
+  | "allocateRows"
+  | "createSegment"
+  | "addTyped"
+  | "recordCleanup"
+  | "copySources"
+  | "appliedBefore"
 > {
   /** Sheet raw versi yang menunggu pemetaan + fakta file dari ingest; null = versi tidak ada. */
   rawSheets(versionId: string): Promise<{
