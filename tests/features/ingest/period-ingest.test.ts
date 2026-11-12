@@ -540,6 +540,24 @@ describe("T-jsmj review: sheet gabungan", () => {
     expect(s.repo.plan!.entries.find((e) => e.key === "2026-04")!.afterRows).toBe(15);
   });
 
+  it("verifikasi H1: 2 sheet gabungan dengan kolom tambahan berbeda → ditolak sebelum ditulis (bukan salah kolom)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [[...HEADER, "X"], ...month(4, 4).map((r) => [...r, "xval"])] },
+        {
+          name: "Data 2",
+          rows: [[...HEADER, "X", "Y"], ...month(4, 3, 50).map((r) => [...r, "x", "y"])],
+        },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    const r = await s.run();
+    // Judul beda → "Data 2" tidak bersidik sama; tidak digabung, diabaikan.
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.ignoredSheets).toEqual(["Data 2"]);
+  });
+
   it("H2: sheet berpasangan butuh pemetaan → sheet tambahan tidak digabung (diabaikan), menunggu pemetaan dengan satu sheet", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const h = ["kode", "tgl", "nilai"]; // 'tanggal' hilang → pemetaan
@@ -570,7 +588,9 @@ describe("T-jsmj review: sheet gabungan", () => {
     );
     const r = await s.run();
     expect(r.outcome).toBe("failed");
-    expect((r as { message: string }).message).toMatch(/^Sheet yang digabung tidak diproses: /);
+    expect((r as { message: string }).message).toMatch(
+      /^Unggahan dengan sheet gabungan tidak diproses: /,
+    );
     expect((r as { message: string }).message).not.toMatch(/Kelompok file/);
   });
 
@@ -1423,5 +1443,27 @@ describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () 
     expect(s.repo.commits).toBe(0);
     expect(s.repo.segments.size).toBe(0);
     expect(s.storage.keys().some((k) => k.includes("/seg/") && !k.includes("seg2026"))).toBe(false);
+  });
+
+  it("verifikasi v1.19: file kelompok dengan kolom tambahan berbeda (X vs Y) → kelompok ditolak, tidak salah kolom", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = month(3, 30);
+    const files = await parts();
+    files[0] = t.file(
+      `gx-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "X"], ...rows.slice(0, 15).map((r) => [...r, "xval"])]),
+    );
+    files[1] = t.file(
+      `gy-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "Y"], ...rows.slice(15).map((r) => [...r, "yval"])]),
+    );
+    const s = groupSetup(files, base);
+    const r = await s.run();
+    expect(r.outcome).toBe("failed");
+    expect(s.repo.error).toMatch(
+      /^Kelompok file tidak diproses: kolom tambahan berbeda antar file/,
+    );
+    expect(s.repo.commits).toBe(0);
+    expect(s.repo.segments.size).toBe(0);
   });
 });

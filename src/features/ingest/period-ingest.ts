@@ -240,7 +240,7 @@ export const groupMappingMessage = (detail: string) =>
  * mengenal satu sheet per sheet data, jadi seluruh unggahan gagal dengan alasannya.
  */
 export const mergeReviewMessage = (detail: string) =>
-  `Sheet yang digabung tidak diproses: ${detail}. Sheet yang digabung harus cocok dengan kolom data aktif — perbaiki nilainya di file, atau unggah sheet itu sebagai file terpisah. Data aktif tidak berubah.`;
+  `Unggahan dengan sheet gabungan tidak diproses: ${detail}. Bila file berisi sheet yang digabung, semua sheet harus cocok dengan kolom data aktif — perbaiki nilai/judul kolomnya di file, atau unggah sheet itu sebagai file terpisah. Data aktif tidak berubah.`;
 
 /** Dua file kelompok berisi sama persis (sha256 sama, review M1). */
 export const groupDuplicateMessage = (a: string, b: string) =>
@@ -735,6 +735,19 @@ async function processPeriodItems(
   c: CoreInput,
 ): Promise<({ kind: "cast" } & CastFinding) | { kind: "commit"; input: PeriodCommitInput }> {
   const { d, work, versionId, v, a, grain, items, deps } = c;
+  // Bagian-bagian satu sheet data (beberapa file T-060 / sheet gabungan T-jsmj) wajib membawa perubahan kolom
+  // yang sama persis: satu perubahan skema per sheet data dicatat, dan kolom baru yang berbeda antar bagian
+  // akan tersimpan di posisi yang salah. Berbeda → seluruh unggahan ditolak sebelum apa pun ditulis.
+  const shape = (it: Item) => JSON.stringify([it.width, it.change ?? null]);
+  for (const lineageId of new Set(items.map((it) => it.pair.lineageId))) {
+    const parts = items.filter((it) => it.pair.lineageId === lineageId);
+    if (new Set(parts.map(shape)).size > 1) {
+      const detail = `kolom tambahan berbeda antar ${c.multiFile ? "file" : "sheet"} untuk sheet data “${parts[0]!.pair.name}”`;
+      throw new PeriodUploadError(
+        c.multiFile ? groupMappingMessage(detail) : mergeReviewMessage(detail),
+      );
+    }
+  }
   const repo = deps.repo;
   const storage = deps.storage;
   const ensureAlive = c.watch;
