@@ -540,7 +540,7 @@ describe("T-jsmj review: sheet gabungan", () => {
     expect(s.repo.plan!.entries.find((e) => e.key === "2026-04")!.afterRows).toBe(15);
   });
 
-  it("verifikasi H1: 2 sheet gabungan dengan kolom tambahan berbeda → ditolak sebelum ditulis (bukan salah kolom)", async () => {
+  it("verifikasi H1: sheet dengan judul kolom tambahan berbeda tidak digabung (diabaikan), bukan salah kolom", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = await setupXlsx(
       [
@@ -1443,6 +1443,21 @@ describe("T-060 AC1: satu periode dari beberapa file sebagai satu kelompok", () 
     expect(s.repo.commits).toBe(0);
     expect(s.repo.segments.size).toBe(0);
     expect(s.storage.keys().some((k) => k.includes("/seg/") && !k.includes("seg2026"))).toBe(false);
+  });
+
+  it("verifikasi v1.19: hanya sebagian file kelompok punya kolom tambahan → tetap diterima (seperti v1.18)", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const rows = month(3, 30);
+    const files = await parts();
+    files[1] = t.file(
+      `gc-${Math.random().toString(36).slice(2)}.csv`,
+      csv([[...HEADER, "catatan"], ...rows.slice(15).map((r) => [...r, "c"])]),
+    );
+    const s = groupSetup(files, base);
+    const r = await s.run();
+    expect(r.outcome).not.toBe("failed");
+    expect(s.repo.changes).toHaveLength(1);
+    expect(s.repo.changes[0]!.added.map((c) => c.original)).toEqual(["catatan"]);
   });
 
   it("verifikasi v1.19: file kelompok dengan kolom tambahan berbeda (X vs Y) → kelompok ditolak, tidak salah kolom", async () => {

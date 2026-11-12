@@ -75,6 +75,7 @@ import {
 } from "./period-upload-plan";
 import { mergeProfiles, packProfile, type RawProfile, type StoredProfile } from "./profile";
 import { copyParquet } from "./raw-writer";
+import { normName } from "@/features/widgets/remap";
 import { headerSignature, pickMergeTarget, type MergeCandidate } from "./period-merge";
 import type { MergedSheet } from "./period-plan";
 import { planSheets, typeLabel, verdictOf, type ActiveSheet, type SnapshotRef } from "./refresh";
@@ -738,10 +739,17 @@ async function processPeriodItems(
   // Bagian-bagian satu sheet data (beberapa file T-060 / sheet gabungan T-jsmj) wajib membawa perubahan kolom
   // yang sama persis: satu perubahan skema per sheet data dicatat, dan kolom baru yang berbeda antar bagian
   // akan tersimpan di posisi yang salah. Berbeda → seluruh unggahan ditolak sebelum apa pun ditulis.
-  const shape = (it: Item) => JSON.stringify([it.width, it.change ?? null]);
+  // Bagian tanpa perubahan (kolomnya = skema aktif) boleh berdampingan dengan bagian yang menambah kolom:
+  // baris bagian itu kosong di kolom baru, seperti periode lama (perilaku v1.18).
+  const shape = (ch: NonNullable<Item["change"]>) =>
+    JSON.stringify([
+      ch.colCount,
+      ch.added.map((x) => [x.pos, normName(x.original)]),
+      [...ch.normalized].sort((x, y) => x - y),
+    ]);
   for (const lineageId of new Set(items.map((it) => it.pair.lineageId))) {
-    const parts = items.filter((it) => it.pair.lineageId === lineageId);
-    if (new Set(parts.map(shape)).size > 1) {
+    const parts = items.filter((it) => it.pair.lineageId === lineageId && it.change);
+    if (new Set(parts.map((it) => shape(it.change!))).size > 1) {
       const detail = `kolom tambahan berbeda antar ${c.multiFile ? "file" : "sheet"} untuk sheet data “${parts[0]!.pair.name}”`;
       throw new PeriodUploadError(
         c.multiFile ? groupMappingMessage(detail) : mergeReviewMessage(detail),
