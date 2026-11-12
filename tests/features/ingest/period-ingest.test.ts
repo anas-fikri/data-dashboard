@@ -574,7 +574,7 @@ describe("T-jsmj review: sheet gabungan", () => {
     expect((r as { message: string }).message).not.toMatch(/Kelompok file/);
   });
 
-  it("M4: satu sheet berbeda nama dipasangkan karena kolomnya sama → tercatat dan wajib ditinjau", async () => {
+  it("M4 (ragu): sheet berbeda nama cocok dengan dua sheet data → tidak ditebak, diabaikan", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = await setupXlsx(
       [
@@ -598,6 +598,36 @@ describe("T-jsmj review: sheet gabungan", () => {
     // berpasangan dengan judul yang sama → kandidat ganda → tidak ditebak.
     expect(r.outcome).toBe("confirm");
     expect(s.repo.plan!.ignoredSheets).toEqual(["Resi pending"]);
+  });
+
+  it("M4: sheet data tanpa pasangan nama, satu sheet file cocok persis kolomnya → dipasangkan, tercatat, wajib ditinjau", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const RH = ["resi", "tanggal", "berat"];
+    const resiBase = await schemaOf([RH, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Billing", rows: [HEADER, ...month(4, 10)] },
+        { name: "Resi pending", rows: [RH, ...month(4, 3, 50)] },
+      ],
+      (st) => [
+        { ...activeSheet(st, base, JAN_MAR), name: "Billing" },
+        {
+          ...activeSheet(st, resiBase, {}),
+          id: "sheet-resi",
+          sheetId: "sheet-resi",
+          lineageId: "lineage-resi",
+          name: "Resi",
+          index: 1,
+        },
+      ],
+    );
+    const r = await s.run();
+    expect(r.outcome).toBe("confirm");
+    expect(s.repo.plan!.mergedSheets).toEqual([{ sheet: "Resi", from: ["Resi pending"] }]);
+    expect(s.repo.plan!.confirm).toContain("MERGED_SHEETS");
+    expect(periodPlanSummary(s.repo.plan!)).toContain(
+      "sheet “Resi pending” dipasangkan ke “Resi” (kolom sama)",
+    );
   });
 
   it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
