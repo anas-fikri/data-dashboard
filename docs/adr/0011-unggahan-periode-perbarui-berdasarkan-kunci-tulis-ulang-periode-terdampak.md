@@ -1,11 +1,11 @@
 ---
-status: proposed
+status: accepted
 date: 2026-11-12
 ---
 
 # ADR-0011: Unggahan periode "Perbarui berdasarkan kunci": tulis ulang periode terdampak sebagai kelompok baru
 
-> Status **proposed** bersama rencana `docs/ai/plans/2026-11-12-perbarui-berdasarkan-kunci.md` (T-rbrb, v1.20).
+> Diterima dan diimplementasikan di v1.20 bersama rencana `docs/ai/plans/2026-11-12-perbarui-berdasarkan-kunci.md` (T-rbrb, v1.20).
 
 ## Context and Problem Statement
 
@@ -36,7 +36,7 @@ jalur baca baru. Biayanya menyalin baris lama periode terdampak (mis. ± 150 rib
 dataset. Pencarian kunci lama membaca hanya kolom kunci semua segmen sheet data (Parquet kolumnar).
 
 Aturan:
-- Kunci = daftar posisi kolom kanonik per sheet data (`Dataset.periodKeys` JSON: lineageId → pos[]); nilai dibandingkan
+- Kunci = daftar posisi kolom kanonik per sheet data (`SheetLineage.keyColumns`); nilai dibandingkan
   sebagai teks ternormal (trim) dari kolom bertipe; kunci kosong → ditolak bersama daftar baris.
 - Mode unggah: **Ganti** (perilaku sekarang), **Tambah** (baris file ditambahkan ke periodenya), **Perbarui berdasarkan
   kunci** (bawaan bila sheet data punya kunci). Perbarui: baris lama berkunci sama di periode mana pun dibuang, baris

@@ -5,7 +5,7 @@ role: OWNER
 context: UPLOAD
 ---
 
-Laporan bulanan tidak perlu diunggah ulang seluruhnya setiap bulan. Dengan **data per periode**, dataset menyimpan data per bulan (atau kuartal, atau tahun): periode baru **ditambahkan**, periode yang sudah ada **diganti utuh** — tidak pernah digandakan. Mengunggah file yang sama dua kali hasilnya sama dengan sekali. Semua periode tetap berada di dataset dan sheet yang sama, jadi dashboard bisa membandingkan antarbulan.
+Laporan bulanan tidak perlu diunggah ulang seluruhnya setiap bulan. Dengan **data per periode**, dataset menyimpan data per bulan (atau kuartal, atau tahun): periode baru **ditambahkan**, periode yang sudah ada **diganti utuh** — atau, dengan kolom kunci, **diperbarui per baris** (lihat _Ganti, Tambah, atau Perbarui berdasarkan kunci_). Mengunggah file yang sama dua kali hasilnya sama dengan sekali. Semua periode tetap berada di dataset dan sheet yang sama, jadi dashboard bisa membandingkan antarbulan.
 
 Setiap perubahan periode membuat versi baru di **Riwayat versi**, sehingga selalu bisa dikembalikan.
 
@@ -33,6 +33,23 @@ Dilakukan sekali per dataset, setelah dataset berisi data.
 4. Hasilnya:
    - **Langsung aktif** bila file murni menambah periode baru dari kolom tanggal, masih dalam batas, dan tanpa peringatan. Riwayat versi mencatat mis. _Maret 2026 ditambahkan (12.950 baris)_.
    - **Menunggu konfirmasi** untuk semua kasus lain: ada periode yang diganti, dilepas karena batas, menyusut banyak, periode kecil yang mungkin nyasar, periode dari pilihan Anda (bukan kolom tanggal), atau file identik. Tekan **Tinjau perubahan**.
+
+## Ganti, Tambah, atau Perbarui berdasarkan kunci
+
+Di atas kotak unggah ada pilihan **Bila periode di file sudah ada**:
+
+- **Perbarui berdasarkan kunci** (bawaan bila dataset punya kolom kunci): baris file yang kuncinya sudah tersimpan **mengoreksi** baris lama itu, kunci baru **ditambahkan**, dan baris lama yang tidak ada di file **tetap**. Cocok untuk satu bulan yang datanya datang bertahap atau terpecah ke beberapa file (mis. karena batas baris Excel): unggah berurutan, tidak ada yang saling menimpa. Bila tanggal sebuah baris berubah ke bulan lain, barisnya **pindah** ke bulan barunya (kunci berlaku di seluruh dataset, tidak pernah dobel). Unggahan ini **langsung aktif** tanpa tinjauan, kecuali ada periode baru yang kemungkinan nyasar, baris tanpa tanggal, atau sheet yang diabaikan/digabung.
+- **Tambah baris**: semua baris file ditambahkan ke periodenya; baris lama tetap. Mengunggah file yang sama dua kali menggandakan baris — pakai hanya untuk data yang memang selalu baru.
+- **Ganti periode**: perilaku sebelumnya — periode yang ada di file diganti utuh (wajib ditinjau).
+
+**Kolom kunci** diatur sekali di **Atur periode › Kolom kunci**: pilih satu kolom yang nilainya unik per baris (mis. _No Resi_ atau _No Invoice_), atau gabungan beberapa kolom bila satu kolom saja belum unik. Setelah disimpan, halaman memberi tahu bila data sekarang sudah punya kunci yang muncul lebih dari sekali — Perbarui akan menggantikan semua baris lama berkunci sama itu dengan satu baris file.
+
+Unggahan Perbarui **ditolak** (data aktif tidak berubah) bila di file:
+
+- ada kunci yang muncul lebih dari sekali — pesan galatnya mendaftar kunci yang dobel (paling banyak 50) beserta jumlahnya, mis. _JX0012 (2×)_;
+- ada baris yang kolom kuncinya kosong — pesan menyebut sheet dan nomor barisnya.
+
+Perbaiki file lalu unggah ulang. Riwayat versi mencatat hasilnya, mis. _Maret 2026 diperbarui (1.200 baris baru, 340 baris diperbarui; 52.000 → 53.200 baris)_, dan versi sebelumnya selalu bisa dipulihkan.
 
 Ingin mengganti seluruh isi dataset? Pakai **Ganti semua data…** di bawah kotak unggah. Konfirmasinya menyebut _Semua N periode akan diganti_; setelah itu data tidak lagi disimpan per periode sampai Anda **Atur periode** lagi.
 

@@ -14,6 +14,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.20",
+    date: "2026-11-12",
+    items: [
+      "Perbarui berdasarkan kunci: pilih kolom kunci (mis. No Resi) di Atur periode, lalu unggahan bulan yang sudah ada tidak lagi mengganti bulan itu utuh — baris yang kuncinya sama dikoreksi, baris baru ditambahkan, baris lain tetap. Satu bulan yang terpecah ke beberapa file cukup diunggah berurutan, dan unggahan langsung aktif tanpa tinjauan.",
+      "Bila tanggal sebuah baris berubah ke bulan lain, barisnya otomatis pindah ke bulan barunya (tidak dobel). File dengan kunci dobel atau kunci kosong ditolak dengan daftar kunci/baris yang perlu diperbaiki.",
+      "Pilihan Tambah baris untuk data yang selalu baru: baris file ditambahkan ke periodenya tanpa menghapus yang lama.",
+    ],
+  },
+  {
     version: "1.19",
     date: "2026-11-12",
     items: [

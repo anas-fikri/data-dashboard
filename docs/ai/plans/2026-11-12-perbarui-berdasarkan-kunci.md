@@ -18,10 +18,10 @@ berurutan tanpa saling menimpa.
 
 ## Fase
 
-1. **Data + pengaturan** — migrasi `Dataset.periodKeys Json?` (lineageId → pos[]); halaman Pengaturan periode: pilih
+1. **Data + pengaturan** — migrasi `SheetLineage.keyColumns Int[]` (+ `uploadMode` versi/antrean); halaman Pengaturan periode: pilih
    kolom kunci per sheet data (dengan cek keunikan data aktif: jumlah kunci dobel yang sudah ada ditampilkan).
 2. **Rencana** — `computePeriodPlan` menerima mode (`REPLACE` | `APPEND` | `UPSERT`) dan per periode: `updated`,
-   `added`, `kept`, `movedOut`; aksi baru `MERGED` (periode yang ditulis ulang). Konfirmasi: tidak ada untuk
+   `added`, `kept`, `movedOut`; aksi baru `UPDATED` (periode yang ditulis ulang). Konfirmasi: tidak ada untuk
    APPEND/UPSERT bersih (K4); kunci dobel/kosong → penolakan `KEY_DUPLICATE`/`KEY_EMPTY` dengan contoh ≤ 50 kunci.
 3. **Worker** — setelah cast: kunci file (DuckDB, kolom kunci typed) → dobel/kosong; kunci lama: scan kolom kunci semua
    segmen aktif sheet data → `_row` lama yang tertimpa per segmen; tulis ulang periode terdampak sebagai kelompok baru

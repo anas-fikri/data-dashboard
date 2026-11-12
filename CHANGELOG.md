@@ -91,6 +91,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.20 (T-rbrb, ADR-0011):** **bermigrasi** (`20261112000000_period_keys`: enum `PeriodUploadMode`,
+  `SheetLineage.keyColumns INT[]`, `DatasetVersion.uploadMode`, `UploadQueue.uploadMode`; semua aditif). Unggahan periode
+  Ganti / Tambah / Perbarui berdasarkan kunci: worker menulis typed file lokal dulu, lalu `keyMerge`
+  (`period-keymerge.ts`) — kunci file (DuckDB, teks ter-trim kolom bertipe) dobel/kosong → FAILED dengan ≤ 50 contoh;
+  kunci lama = kolom kunci semua segmen aktif sheet data; periode terdampak ditulis ulang sebagai kelompok baru
+  (bagian file + salinan segmen lama tanpa `_row` tertimpa, `rowBase` lama). Rencana `mode` + `mergeParts`, aksi
+  `UPDATED`, entri `keyed`; tanpa konfirmasi REPLACE/IDENTICAL; nyasar hanya periode baru (tetap disimpan); SHRINK hanya
+  bila kunci dobel lama menyusut. Kolom kunci di Atur periode (`savePeriodKeys`, AuditLog `dataset.period.keys`, cek
+  kunci dobel/kosong data aktif lewat mesin query). Rollback image ke v1.19.x aman: kolom baru diabaikan, unggahan =
+  Ganti; versi yang dibuat v1.20 adalah kelompok segmen biasa.
 - **v1.19.1 (T-1216):** tanpa migrasi. Sheet lanjutan tanpa judul (`isContinuation`/`markContinuations` di
   `merge-sheets.ts`: leader ≥ 50.000 baris, jumlah kolom sama, baris pertama bukan judul leader, jenis nilai ≥ 80%
   cocok di ≥ 3 kolom, dan kolom pembeda — judul teks, data angka/tanggal — cocok dengan ≤ 20% meleset) →
