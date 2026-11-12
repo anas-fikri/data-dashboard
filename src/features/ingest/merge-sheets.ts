@@ -69,6 +69,8 @@ const classOf = (v: Cell): ValueClass => {
 export interface ContinuationRec {
   colCount: number;
   headerRow: number;
+  /** Baris fisik sheet (judul + data). */
+  rawRows: number;
   columns: ColumnMeta[];
   preview: { rows: { row: number; cells: Cell[] }[] };
 }
@@ -76,22 +78,35 @@ export interface ContinuationRec {
 const YEAR = /^(19|20)\d{2}$/;
 
 /**
- * `cand` adalah lanjutan tanpa judul dari `leader`: jumlah kolom sama, baris pertamanya tidak memuat judul
- * leader, dan jenis nilai (angka/tanggal/teks) di ≥ 3 kolom terisi cocok ≥ 80% dengan baris data pertama
- * leader. Wajib ada kolom pembeda (review v1.19.1 H1): judul leader berupa teks sedangkan semua data leader
- * di kolom itu angka/tanggal — baris judul tabel lain (teks) gagal di kolom itu. Baris pertama (dan dua
- * baris berikutnya) kandidat harus cocok di SEMUA kolom pembeda yang terisi; angka mirip tahun (1900–2099)
- * di baris pertama kandidat dianggap judul bila data leader di kolom itu bukan tahun. Tabel serba teks
- * tidak pernah dianggap lanjutan. Ragu → bukan lanjutan (sheet tetap terpisah).
+ * Sheet leader minimal sebesar ini sebelum sheet berikutnya boleh dianggap lanjutan (review v1.19.1 M2):
+ * ekspor dipecah karena batas baris Excel (1.048.576, atau 65.536 format lama), jadi leader selalu besar,
+ * sedangkan tabel lain di workbook (ringkasan, referensi) jarang sebesar ini.
  */
-export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): boolean {
+export const CONTINUATION_MIN_ROWS = 50_000;
+
+/**
+ * `cand` adalah lanjutan tanpa judul dari `leader`. Semua syarat:
+ *  1. leader ≥ `minRows` baris (sheet penuh; lihat CONTINUATION_MIN_ROWS), jumlah kolom sama;
+ *  2. baris pertama kandidat tidak memuat judul kolom leader;
+ *  3. jenis nilai (angka/tanggal/teks) di ≥ 3 kolom terisi cocok ≥ 80% dengan baris data pertama leader;
+ *  4. kolom pembeda (judul leader teks, data leader seragam angka/tanggal — baris judul tabel lain berupa
+ *     teks di kolom itu): baris pertama kandidat cocok di ≥ 1 kolom pembeda dan paling banyak 20% meleset
+ *     (satu sel janggal seperti "-" tidak menggagalkan, review M1); angka mirip tahun (1900–2099) tidak
+ *     dihitung cocok, hanya menambah penyebut rasio.
+ * Tabel serba teks tidak pernah dianggap lanjutan. Ragu → bukan lanjutan (sheet tetap terpisah).
+ */
+export function isContinuation(
+  leader: ContinuationRec,
+  cand: ContinuationRec,
+  minRows = CONTINUATION_MIN_ROWS,
+): boolean {
   if (leader.headerRow < 1 || cand.colCount !== leader.colCount || leader.colCount < 2)
     return false;
+  if (leader.rawRows < minRows) return false;
   const head = leader.preview.rows.find((r) => r.row === leader.headerRow);
   const datas = leader.preview.rows.filter((r) => r.row > leader.headerRow).slice(0, 5);
   const data = datas[0];
-  const rows = cand.preview.rows.slice(0, 3);
-  const first = rows[0];
+  const first = cand.preview.rows[0];
   if (!head || !data || !first) return false;
   const titles = new Set(head.cells.filter((c): c is string => !!c?.trim()).map(norm));
   if (first.cells.some((c) => !!c?.trim() && titles.has(norm(c)))) return false;
@@ -106,8 +121,9 @@ export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): 
     if (a === b) same++;
   }
   if (compared < 3 || same * 5 < compared * 4) return false;
-  // Kolom pembeda: judul teks, data leader seragam angka atau tanggal.
   let matched = 0;
+  let miss = 0;
+  let years = 0;
   for (let i = 0; i < width; i++) {
     if (classOf(head.cells[i] ?? null) !== "text") continue;
     const kinds = new Set(
@@ -116,17 +132,18 @@ export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): 
     if (kinds.size !== 1) continue;
     const kind = [...kinds][0]!;
     if (kind !== "num" && kind !== "date") continue;
+    const v = (first.cells[i] ?? "").trim();
+    const k = classOf(v);
+    if (k === "empty") continue;
     const yearData = datas.some((r) => YEAR.test((r.cells[i] ?? "").trim()));
-    for (const [j, r] of rows.entries()) {
-      const v = (r.cells[i] ?? "").trim();
-      const k = classOf(v);
-      if (k === "empty") continue;
-      if (k !== kind) return false;
-      if (j === 0 && kind === "num" && YEAR.test(v) && !yearData) return false;
-      if (j === 0) matched++;
+    if (kind === "num" && YEAR.test(v) && !yearData) {
+      years++;
+      continue;
     }
+    if (k === kind) matched++;
+    else miss++;
   }
-  return matched >= 1;
+  return matched >= 1 && miss * 5 <= matched + miss + years;
 }
 
 /**
@@ -134,13 +151,16 @@ export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): 
  * lanjutan sheet 2 yang lanjutan sheet 1) diberi headerRow 0 dan judul kolom leader. Mengubah `recs`;
  * kembalian = indeks sheet lanjutan → indeks leader.
  */
-export function markContinuations(recs: ContinuationRec[]): Map<number, number> {
+export function markContinuations(
+  recs: ContinuationRec[],
+  minRows = CONTINUATION_MIN_ROWS,
+): Map<number, number> {
   const out = new Map<number, number>();
   for (let i = 1; i < recs.length; i++) {
     const prev = out.get(i - 1) ?? i - 1;
     const leader = recs[prev]!;
     const cand = recs[i]!;
-    if (cand.headerRow === 0 || !isContinuation(leader, cand)) continue;
+    if (cand.headerRow === 0 || !isContinuation(leader, cand, minRows)) continue;
     cand.headerRow = 0;
     cand.columns = leader.columns.map((c) => ({ ...c }));
     out.set(i, prev);

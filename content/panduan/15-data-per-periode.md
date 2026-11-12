@@ -119,7 +119,7 @@ Data yang terpecah ke beberapa sheet dalam satu file Excel (mis. karena batas 1.
 
 - Periode setiap baris tetap dibaca dari kolom tanggalnya. Periode yang muncul di sheet mana pun diganti oleh **gabungan** baris dari semua sheet itu (sama seperti kelompok file).
 - Unggahan dengan sheet tergabung **selalu berhenti di layar tinjauan**. Di sana tertulis sheet mana saja yang digabung ke sheet data mana. Periksa tidak ada sheet salinan, karena barisnya akan terhitung dua kali.
-- Sheet lanjutan **tanpa baris judul** (ekspor yang hanya memberi judul di sheet pertama) dikenali dari jumlah kolom dan jenis isinya, memakai judul sheet sebelumnya, dan ikut digabung.
+- Sheet lanjutan **tanpa baris judul** (ekspor yang hanya memberi judul di sheet pertama) dikenali bila sheet sebelumnya penuh (sedikitnya 50.000 baris) dengan jumlah kolom dan jenis isi yang sama, memakai judul sheet sebelumnya, dan ikut digabung.
 - Sheet dengan judul kolom berbeda (mis. _Ringkasan_) tidak disimpan dan disebut di layar tinjauan.
 - Bila dataset punya beberapa sheet data dengan kolom yang sama persis, sheet file yang namanya tidak cocok tidak ditebak (tidak disimpan). Samakan nama sheet di file dengan nama sheet data.
 

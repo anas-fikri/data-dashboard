@@ -510,7 +510,7 @@ export async function runPeriodIngest(
       for (const sh of extras) {
         const j = sheets.indexOf(sh);
         const lead = j > 0 ? (leaderOf.get(j - 1) ?? j - 1) : -1;
-        if (lead >= 0 && isContinuation(sheets[lead]!.rec, sh.rec)) {
+        if (lead >= 0 && isContinuation(sheets[lead]!.rec, sh.rec, opts.continuationMinRows)) {
           sh.rec.headerRow = 0;
           sh.rec.columns = sheets[lead]!.rec.columns.map((c) => ({ ...c }));
           leaderOf.set(j, lead);
@@ -526,6 +526,13 @@ export async function runPeriodIngest(
         const headers = new Map<string, Awaited<ReturnType<typeof refreshHeader>>>();
         const candidates: MergeCandidate[] = [];
         const lead = leaderOf.get(sheets.indexOf(sh));
+        // Leader tidak disimpan → lanjutannya juga tidak (review L-a: tanpa baris sebelumnya).
+        if (lead !== undefined && ignored.includes(shown(sheets[lead]!))) {
+          const name = shown(sh);
+          if (!ignored.includes(name)) ignored.push(name);
+          rmSync(sh.path, { force: true });
+          continue;
+        }
         for (const pair of usable) {
           // Lanjutan: judul dari leader SETELAH judul leader dibaca ulang (review L1), tanpa baris judul sendiri.
           const h =

@@ -517,7 +517,12 @@ describe("T-jsmj review: sheet gabungan", () => {
       runPeriodIngest(
         VID,
         { repo, storage, limits: LIMITS },
-        { tmpRoot: join(t.root, "tmp"), duckMemory: "256MB" },
+        {
+          tmpRoot: join(t.root, "tmp"),
+          duckMemory: "256MB",
+          // Fixture kecil: ambang sheet penuh (CONTINUATION_MIN_ROWS) diturunkan.
+          continuationMinRows: 1,
+        },
       );
     return { repo, run };
   }

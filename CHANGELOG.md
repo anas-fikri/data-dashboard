@@ -92,7 +92,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
 - **v1.19.1 (T-1216):** tanpa migrasi. Sheet lanjutan tanpa judul (`isContinuation`/`markContinuations` di
-  `merge-sheets.ts`: jumlah kolom sama, baris pertama bukan judul leader, jenis nilai ≥ 80% cocok di ≥ 3 kolom) →
+  `merge-sheets.ts`: leader ≥ 50.000 baris, jumlah kolom sama, baris pertama bukan judul leader, jenis nilai ≥ 80%
+  cocok di ≥ 3 kolom, dan kolom pembeda — judul teks, data angka/tanggal — cocok dengan ≤ 20% meleset) →
   `headerRow 0` (semua baris data, `_row > 0`) + judul leader, ikut gabung (mode biasa dengan Gabungkan; mode periode
   sebagai sheet tambahan). "Gabungkan sheet" tercentang bawaan untuk dataset baru. Rollback ke v1.19.0 aman: segmen
   `headerRow 0` dibaca apa adanya (filter `_row > headerRow`).

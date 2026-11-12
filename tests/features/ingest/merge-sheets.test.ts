@@ -107,6 +107,7 @@ describe("v1.19.1: sheet lanjutan tanpa judul (murni)", () => {
   ) => ({
     colCount: 3,
     headerRow,
+    rawRows: 1_048_576,
     columns: cols(...names),
     preview: { rows: rows.map((cells, i) => ({ row: i + 1, cells })) },
   });
@@ -146,12 +147,14 @@ describe("v1.19.1: sheet lanjutan tanpa judul (murni)", () => {
     const of = (head: string[], data: string[]) => ({
       colCount: head.length,
       headerRow: 1,
+      rawRows: 1_048_576,
       columns: cols(...head),
       preview: { rows: [head, data].map((cells, i) => ({ row: i + 1, cells })) },
     });
     const bare = (cells: string[]) => ({
       colCount: cells.length,
       headerRow: 1,
+      rawRows: 5,
       columns: cols(...cells),
       preview: { rows: [{ row: 1, cells }] },
     });
@@ -179,6 +182,25 @@ describe("v1.19.1: sheet lanjutan tanpa judul (murni)", () => {
         bare(["Wilayah", "2023", "2024", "2025"]),
       ),
     ).toBe(false);
+    // Review M2: leader kecil (bukan sheet penuh) → tabel lain berjudul angka tidak pernah digabung.
+    expect(
+      isContinuation(
+        { ...of(["Produk", "Jan", "Feb", "Mar"], ["A", "10", "20", "30"]), rawRows: 40 },
+        bare(["Wilayah", "1", "2", "3"]),
+      ),
+    ).toBe(false);
+    // Review M1: satu sel janggal ("-") di kolom angka, atau resi huruf di kolom yang di leader angka,
+    // tidak menggagalkan lanjutan sungguhan.
+    const billing = of(
+      ["No Invoice", "Tgl", "Pelanggan", "No Resi", "Berat", "Ongkir", "COD", "Total"],
+      ["INV-1", "2024-04-01", "PT A", "0012345678", "3", "15000", "5000", "20000"],
+    );
+    for (const row of [
+      ["INV-900", "2024-04-09", "PT B", "0012399999", "2", "1950", "-", "1950"],
+      ["INV-900", "2024-04-09", "PT B", "JX12345", "2", "1950", "2000", "3950"],
+    ]) {
+      expect(isContinuation(billing, bare(row))).toBe(true);
+    }
     // Lanjutan sungguhan dengan lebar sama tetap dikenali.
     expect(
       isContinuation(
@@ -277,9 +299,16 @@ describe("ingest: gabungkan sheet berkolom sama", () => {
         { name: "os invoice(3)", xml: bareXml(551, 50) },
       ]),
     );
+    // Leader kecil (fixture) di bawah ambang sheet penuh → tetap terpisah.
+    const small = t.setup(file);
+    small.repo.mergeSheets = true;
+    expect((await runIngest(VID, small.repo, small.storage, small.opts)).outcome).not.toBe(
+      "failed",
+    );
+    expect(small.repo.byIndex().length).toBeGreaterThan(1);
     const s = t.setup(file);
     s.repo.mergeSheets = true;
-    const r = await runIngest(VID, s.repo, s.storage, s.opts);
+    const r = await runIngest(VID, s.repo, s.storage, { ...s.opts, continuationMinRows: 1 });
     expect(r).toEqual({ outcome: "done", sheets: 1 });
     const [inv] = s.repo.byIndex();
     expect(inv!.name).toBe("os invoice");

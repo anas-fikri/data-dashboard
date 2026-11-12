@@ -271,6 +271,8 @@ export interface IngestOptions {
   csvBufferSize?: number;
   /** Uji: dipanggil setelah setiap batch (mis. mensimulasikan worker mati di tengah). */
   afterBatch?: (sheet: number, rows: number) => void | Promise<void>;
+  /** Uji: ambang baris leader sheet lanjutan (default CONTINUATION_MIN_ROWS). */
+  continuationMinRows?: number;
 }
 
 export type IngestOutcome =
@@ -476,7 +478,10 @@ export async function runIngest(
     const mergeOn = ext === "xlsx" && v.mergeSheets === true;
     // v1.19.1: sheet lanjutan tanpa judul (ekspor terpecah) memakai judul sheet sebelumnya → ikut kelompoknya.
     const continued = mergeOn
-      ? markContinuations(sheets.map((s) => s.rec))
+      ? markContinuations(
+          sheets.map((s) => s.rec),
+          opts.continuationMinRows,
+        )
       : new Map<number, number>();
     const isContinued = new Set([...continued.keys()].map((i) => sheets[i]!));
     const units = sheetGroups(
