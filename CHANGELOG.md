@@ -91,6 +91,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.20 (T-rbrb, ADR-0011):** **bermigrasi** (`20261112000000_period_keys`: enum `PeriodUploadMode`,
+  `SheetLineage.keyColumns INT[]`, `DatasetVersion.uploadMode`, `UploadQueue.uploadMode`; semua aditif). Unggahan periode
+  Ganti / Tambah / Perbarui berdasarkan kunci: worker menulis typed file lokal dulu, lalu `keyMerge`
+  (`period-keymerge.ts`) — kunci file (DuckDB, teks ter-trim kolom bertipe) dobel/kosong → FAILED dengan ≤ 50 contoh;
+  kunci lama = kolom kunci semua segmen aktif sheet data; periode terdampak ditulis ulang sebagai kelompok baru
+  (bagian file + salinan segmen lama tanpa `_row` tertimpa, `rowBase` lama). Rencana `mode` + `mergeParts`, aksi
+  `UPDATED`, entri `keyed`; tanpa konfirmasi REPLACE/IDENTICAL; nyasar hanya periode baru (tetap disimpan); SHRINK hanya
+  bila kunci dobel lama menyusut. Kolom kunci di Atur periode (`savePeriodKeys`, AuditLog `dataset.period.keys`, cek
+  kunci dobel/kosong data aktif lewat mesin query). Rollback image ke v1.19.x aman: kolom baru diabaikan, unggahan =
+  Ganti; versi yang dibuat v1.20 adalah kelompok segmen biasa.
+- **v1.19.1 (T-1216):** tanpa migrasi. Sheet lanjutan tanpa judul (`isContinuation`/`markContinuations` di
+  `merge-sheets.ts`: leader ≥ 50.000 baris, jumlah kolom sama, baris pertama bukan judul leader, jenis nilai ≥ 80%
+  cocok di ≥ 3 kolom, dan kolom pembeda — judul teks, data angka/tanggal — cocok dengan ≤ 20% meleset) →
+  `headerRow 0` (semua baris data, `_row > 0`) + judul leader, ikut gabung (mode biasa dengan Gabungkan; mode periode
+  sebagai sheet tambahan). "Gabungkan sheet" tercentang bawaan untuk dataset baru. Rollback ke v1.19.0 aman: segmen
+  `headerRow 0` dibaca apa adanya (filter `_row > headerRow`).
 - **v1.19 (lewati periode):** tanpa migrasi. Rencana periode `skip` (periode file yang dilewati pemilik di tinjauan → EXCLUDED, data
   lama tetap; menang atas `include`), dikirim lewat review/confirm (`skip` opsional, bawaan []). Rollback image ke
   v1.18.x: tinjauan tertunda yang memakai `skip` dihitung ulang tanpa field itu (periode kembali "Diganti") — tidak ada
@@ -106,6 +122,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terapkan atau batalkan semua unggahan periode yang tertunda sebelum rollback; data aktif bersegmen kelompok tetap
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
+
+## [1.20.0] - 2026-11-12
+
+### Fixed
+
+- **T-rbrb:** Tambah berulang terdeteksi setelah pemadatan, kunci dobel ditandai per periode, pemadatan per jenis sumber (review putaran 2) (ace71fc)
+- **T-rbrb:** salinan lama dipadatkan, kunci dobel lama & Tambah berulang ditinjau, peringatan Pulihkan (review M1–M4, L5, L8) (26454a6)
+
+## [1.19.1] - 2026-11-12
+
+### Added
+
+- **ingest:** sheet lanjutan tanpa judul dikenali dan digabung; Gabungkan tercentang untuk dataset baru (T-1216) (3b6ad9e)
+
+### Fixed
+
+- **ingest:** sheet lanjutan hanya setelah sheet penuh, kolom pembeda berbasis rasio (review T-1216 M1/M2/L-a) (aa93391)
+- **ingest:** sheet lanjutan wajib punya kolom pembeda; e2e tanpa gabung bawaan (review T-1216 H1/H2/L1) (2a4785d)
 
 ## [1.19.0] - 2026-11-12
 

@@ -14,3 +14,4 @@ Decisions are ADRs in docs/adr/. New: `aitk adr new "<title>"`.
 - ADR-0008 [accepted] Model data periode: segmen typed per periode + manifest versi, dibaca sebagai daftar parquet dengan proyeksi eksplisit — ../../docs/adr/0008-model-data-periode-segmen-typed-per-periode-dengan-manifest.md
 - ADR-0009 [accepted] Pivot tersimpan sebagai sumber widget dan field terhitung sebagai pohon ekspresi tervalidasi — ../../docs/adr/0009-pivot-tersimpan-sebagai-sumber-widget-dan-field-terhitung-se.md
 - ADR-0010 [proposed] Monitor sumber daya: node_exporter host-only lewat relay subnet, sampler di app ke Redis — ../../docs/adr/0010-monitor-sumber-daya-node-exporter-host-only-lewat-relay-subn.md
+- ADR-0011 [accepted] Unggahan periode "Perbarui berdasarkan kunci": tulis ulang periode terdampak sebagai kelompok baru — ../../docs/adr/0011-unggahan-periode-perbarui-berdasarkan-kunci-tulis-ulang-periode-terdampak.md

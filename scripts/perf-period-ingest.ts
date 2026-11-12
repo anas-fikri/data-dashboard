@@ -158,6 +158,7 @@ async function period(
     periodColumn: pos,
     segments,
     keys: [],
+    keyColumns: [],
   };
   const incoming: Parameters<typeof decidePeriodCommit>[0]["incoming"] = [];
   let outcome = "";
@@ -177,6 +178,8 @@ async function period(
     progress: async () => {},
     deleteSheets: async () => [],
     allocateRows: async () => 1_000_000n,
+    copySources: async () => [],
+    appliedBefore: async () => false,
     createSegment: async (_v, d) => {
       incoming.push({
         typedId: `n${incoming.length}`,

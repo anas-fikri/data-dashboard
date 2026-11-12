@@ -201,6 +201,17 @@ export function PeriodList({
                 Periode yang dihapus, diganti, atau dilepas bisa dipulihkan selama versi lama yang
                 memuatnya masih tersimpan.
               </p>
+              {overview.movedRows ? (
+                <p className="mt-2 flex gap-1.5 text-sm" data-testid="period-restore-moved">
+                  <IconInfoCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
+                  <span>
+                    Unggahan “Perbarui berdasarkan kunci” pernah memindahkan baris antarperiode.
+                    Memulihkan satu periode bisa menggandakan atau menghilangkan baris yang pindah —
+                    untuk membatalkan unggahan seperti itu, aktifkan versi sebelumnya di Riwayat
+                    versi.
+                  </span>
+                </p>
+              ) : null}
             </div>
             <ul
               className="flex flex-col divide-y rounded-md border"

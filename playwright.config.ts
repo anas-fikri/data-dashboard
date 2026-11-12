@@ -53,6 +53,7 @@ export default defineConfig({
         /period-query\.spec\.ts$/,
         /period-queue\.spec\.ts$/,
         /period-group\.spec\.ts$/,
+        /period-keys\.spec\.ts$/,
         /period-cycle\.spec\.ts$/,
         /status-colors\.spec\.ts$/,
         /chart-theme\.spec\.ts$/,
@@ -230,10 +231,16 @@ export default defineConfig({
       testMatch: /period-cycle\.spec\.ts$/,
       dependencies: ["period-group"],
     },
+    // period-keys (v1.20): worker sendiri; kolom kunci + unggahan Perbarui berdasarkan kunci.
+    {
+      name: "period-keys",
+      testMatch: /period-keys\.spec\.ts$/,
+      dependencies: ["period-cycle"],
+    },
     {
       name: "rate-limit",
       testMatch: /zz-rate-limit\.spec\.ts$/,
-      dependencies: ["period-cycle"],
+      dependencies: ["period-keys"],
     },
   ],
   webServer: process.env.E2E_BASE_URL

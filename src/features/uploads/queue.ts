@@ -34,6 +34,7 @@ import {
   completeTarget,
   expireStaleUploads,
   fingerprintOf,
+  NO_KEY_MESSAGE,
   signTarget,
   uploadedPartNumbers,
   validateInit,
@@ -102,6 +103,8 @@ const createSchema = z.object({
   files: z.array(fileSchema).min(1).max(QUEUE_MAX_FILES),
   /** Kelompok file satu periode (T-060): semua file = satu periode, diproses sebagai satu versi. */
   group: z.boolean().optional(),
+  /** Cara unggahan periode semua file (v1.20); tidak ada = Ganti. */
+  periodMode: z.enum(["REPLACE", "APPEND", "UPSERT"]).optional(),
 });
 
 const busyMessage = (status: string, own: boolean) =>
@@ -135,6 +138,7 @@ export async function createUploadQueue(
     );
   }
   const { datasetId, baseVersionId } = parsed.data;
+  const periodMode = parsed.data.periodMode ?? "REPLACE";
   const grouped = parsed.data.group === true;
   const maxGroup = env().PERIOD_MAX_FILES;
   if (grouped && parsed.data.files.length > maxGroup) {
@@ -187,7 +191,12 @@ export async function createUploadQueue(
       const active = ds.activeVersionId
         ? await tx.datasetVersion.findUnique({
             where: { id: ds.activeVersionId },
-            select: { periodGrain: true, sheets: { select: { periodSource: true } } },
+            select: {
+              periodGrain: true,
+              sheets: {
+                select: { periodSource: true, lineage: { select: { keyColumns: true } } },
+              },
+            },
           })
         : null;
       if (!active?.periodGrain) {
@@ -204,6 +213,12 @@ export async function createUploadQueue(
           code: "STALE",
           message: "Data aktif berubah sejak halaman dibuka. Muat ulang halaman lalu pilih lagi.",
         };
+      }
+      if (
+        periodMode === "UPSERT" &&
+        !active.sheets.some((sh) => sh.periodSource && sh.lineage.keyColumns.length > 0)
+      ) {
+        return { kind: "reject", code: "INVALID", message: NO_KEY_MESSAGE };
       }
       const open = await tx.uploadQueue.count({ where: { datasetId, status: "OPEN" } });
       if (open) return { kind: "reject", code: "DATASET_BUSY", message: QUEUE_OPEN_MESSAGE };
@@ -238,7 +253,7 @@ export async function createUploadQueue(
       }
       const problem = grouped
         ? groupFilesProblem(files, { grain, needsLabel, maxFiles: maxGroup })
-        : queueFilesProblem(files, { grain, needsLabel });
+        : queueFilesProblem(files, { grain, needsLabel, merge: periodMode !== "REPLACE" });
       if (problem) return { kind: "reject", code: "INVALID", message: problem };
 
       const total = files.reduce((n, f) => n + f.size, 0);
@@ -261,6 +276,7 @@ export async function createUploadQueue(
       const queue = await tx.uploadQueue.create({
         data: {
           datasetId,
+          uploadMode: periodMode,
           ...(grouped ? { grouped: true, groupVersionId: newSegmentId() } : {}),
           items: {
             create: ordered.map((f, i) => ({
@@ -765,6 +781,7 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
       stoppedAt: true,
       grouped: true,
       groupVersionId: true,
+      uploadMode: true,
       items: {
         select: {
           id: true,
@@ -933,6 +950,7 @@ async function advanceStep(tx: Prisma.TransactionClient, datasetId: string): Pro
       periodGrain: grain,
       baseVersionId: ds.activeVersionId,
       periodLabel: label ? dateOf(label) : null,
+      uploadMode: q.uploadMode ?? "REPLACE",
     },
   });
   const moved = await tx.uploadQueueItem.updateMany({

@@ -224,6 +224,11 @@ export interface PeriodOverview {
   rows: PeriodTableRow[];
   /** Periode yang bisa (atau tidak lagi bisa) dipulihkan, terbaru dulu. */
   candidates: RestoreCandidate[];
+  /**
+   * Ada unggahan Perbarui yang memindahkan baris antarperiode (v1.20, review M4): memulihkan satu periode bisa
+   * menggandakan/menghilangkan baris yang pindah — layar menyarankan Riwayat versi.
+   */
+  movedRows: boolean;
 }
 
 /** Periode yang menurut riwayat versi siap dihapus/diganti/dilepas (isi lamanya mungkin tersimpan). */
@@ -236,7 +241,8 @@ function changedKeysOf(
     if (v.periodGrain !== grain) continue;
     if (v.mode === "PERIOD") {
       for (const e of parseFrozenPeriodPlan(v.plan)?.entries ?? []) {
-        if (e.action === "REPLACED" || e.action === "EVICTED") out.set(e.key, e.start);
+        if (e.action === "REPLACED" || e.action === "UPDATED" || e.action === "EVICTED")
+          out.set(e.key, e.start);
       }
     } else if (v.mode === "PERIOD_REMOVE" || v.mode === "PERIOD_RESTORE") {
       const c = parsePeriodChange(v.plan);
@@ -326,6 +332,11 @@ export async function periodOverview(
     grain: a.periodGrain,
     rows,
     candidates: restoreCandidates(active, retained, changedKeysOf(others, a.periodGrain)),
+    movedRows: others.some(
+      (v) =>
+        v.mode === "PERIOD" &&
+        (parseFrozenPeriodPlan(v.plan)?.mergeParts ?? []).some((x) => x.movedOut > 0),
+    ),
   };
 }
 

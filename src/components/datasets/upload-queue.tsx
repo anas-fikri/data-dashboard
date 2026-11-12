@@ -97,9 +97,12 @@ export function UploadQueueDraft({
   files,
   onCancel,
   onCreated,
+  periodMode = "REPLACE",
 }: {
   datasetId: string;
   period: PeriodUploadContext;
+  /** Cara unggahan periode semua file (v1.20). */
+  periodMode?: "REPLACE" | "APPEND" | "UPSERT";
   files: File[];
   onCancel: () => void;
   onCreated: (queue: QueueView, files: File[]) => void;
@@ -160,6 +163,7 @@ export function UploadQueueDraft({
       : queueFilesProblem(submitted, {
           grain: period.grain,
           needsLabel: period.needsLabel,
+          merge: periodMode !== "REPLACE",
         });
     if (problem) {
       setError({ message: problem, stale: false });
@@ -176,6 +180,7 @@ export function UploadQueueDraft({
           label: period.needsLabel ? e.label : null,
         })),
         ...(group ? { group: true } : {}),
+        ...(periodMode !== "REPLACE" ? { periodMode } : {}),
       });
       if (!r.ok) {
         setError({ message: r.message, stale: r.code === "STALE" });

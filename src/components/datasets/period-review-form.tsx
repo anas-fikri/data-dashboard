@@ -70,6 +70,7 @@ const TONE: Record<
 > = {
   added: { badge: "primary", icon: <IconPlus /> },
   replaced: { badge: "warning", icon: <IconReplace /> },
+  updated: { badge: "primary", icon: <IconRefresh /> },
   evicted: { badge: "destructive", icon: <IconCircleOff /> },
   excluded: { badge: "neutral", icon: <IconBan /> },
   rejected: { badge: "destructive", icon: <IconBan /> },

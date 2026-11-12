@@ -138,6 +138,8 @@ test.describe("ingest", () => {
     await picker.getByRole("checkbox", { name: "Pengiriman 3" }).check();
     await expect(picker.getByTestId("upload-sheet-count")).toHaveText("2 dari 3 sheet dipilih");
     expect(await all.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(true);
+    // Gabungkan tercentang bawaan (v1.19.1); uji ini memeriksa sheet terpilih tetap terpisah.
+    await picker.getByTestId("upload-sheet-merge").uncheck();
     await picker.getByTestId("upload-sheet-submit").click();
     await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
 
@@ -189,16 +191,16 @@ test.describe("ingest", () => {
     await page.getByTestId("upload-input").setInputFiles(file);
     const picker = page.getByTestId("upload-sheet-picker");
     const merge = picker.getByTestId("upload-sheet-merge");
-    // Tiga sheet terpilih → pilihan gabung tampil, tidak tercentang bawaan (data baru).
+    // Tiga sheet terpilih → pilihan gabung tampil, tercentang bawaan untuk dataset baru (v1.19.1).
     await expect(merge).toBeVisible();
-    await expect(merge).not.toBeChecked();
+    await expect(merge).toBeChecked();
     await expect(picker.getByRole("checkbox", { name: /Gabungkan sheet/ })).toBeVisible();
     // Satu sheet terpilih → pilihan gabung hilang; dua lagi → muncul.
     await picker.getByTestId("upload-sheet-all").uncheck();
     await picker.getByRole("checkbox", { name: "Pengiriman 1" }).check();
     await expect(merge).toHaveCount(0);
     await picker.getByTestId("upload-sheet-all").check();
-    await merge.check();
+    await expect(merge).toBeChecked();
     await picker.getByTestId("upload-sheet-submit").click();
     await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
 

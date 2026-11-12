@@ -30,9 +30,11 @@ import {
   ownVersionAfterError,
   showsPendingCard,
   versionGone,
+  type PeriodUploadMode,
   type UploadChoice,
   type UploadPanelState,
 } from "@/components/datasets/upload-panel-state";
+import { UploadPeriodMode } from "@/components/datasets/upload-period-mode";
 import { UploadPeriodPicker } from "@/components/datasets/upload-period-picker";
 import { UploadSheetPicker } from "@/components/datasets/upload-sheet-picker";
 import { UploadQueueDraft, UploadQueuePanel } from "@/components/datasets/upload-queue";
@@ -194,6 +196,10 @@ export function UploadPanel({
   const abortRef = useRef<AbortController | null>(null);
   const errorRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<UploadPanelState>({ kind: "idle" });
+  // v1.20: bawaan Perbarui berdasarkan kunci bila ada kolom kunci, selain itu Ganti periode.
+  const [periodMode, setPeriodMode] = useState<PeriodUploadMode>(() =>
+    period?.keys.length ? "UPSERT" : "REPLACE",
+  );
   const [dragging, setDragging] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [pendingInfo, setPendingInfo] = useState(pending);
@@ -243,7 +249,9 @@ export function UploadPanel({
    * untuk file yang sama, dan selama pra-cek/init versi itu tetap dianggap ditransfer (tanpa kedip).
    */
   const start = useCallback(
-    async (file: File, versionId: string | undefined, choice: UploadChoice) => {
+    async (file: File, versionId: string | undefined, picked: UploadChoice) => {
+      const choice: UploadChoice =
+        picked.mode === "PERIOD" && !picked.periodMode ? { ...picked, periodMode } : picked;
       // Pilihan periode tanpa konteks periode (data aktif berganti): jangan pernah diturunkan menjadi
       // ganti semua data — tidak ada yang dikirim; pemilik memuat ulang lalu memilih lagi (review M1).
       const req = periodRequest(choice, period);
@@ -338,7 +346,7 @@ export function UploadPanel({
         }
       }
     },
-    [datasetId, maxBytes, router, period],
+    [datasetId, maxBytes, router, period, periodMode],
   );
 
   /**
@@ -615,6 +623,7 @@ export function UploadPanel({
         <UploadQueueDraft
           datasetId={datasetId}
           period={period}
+          periodMode={periodMode}
           files={draft}
           onCancel={() => {
             setDraft(null);
@@ -794,7 +803,9 @@ export function UploadPanel({
           fileName={sheetPick.file.name}
           sheets={sheetPick.sheets}
           activeSheets={activeSheets}
-          defaultMerge={activeMerged}
+          // Dataset baru (v1.19.1): gabung bawaan — sheet berkolom beda tetap terpisah. Data lama yang
+          // sheetnya terpisah tetap tanpa gabung bawaan (struktur dashboard tidak bergeser diam-diam).
+          defaultMerge={activeMerged || activeSheets.length === 0}
           onSubmit={(picked, mergeSheets) => {
             const sheets = selectionToSend(sheetPick.sheets, picked);
             void start(
@@ -819,6 +830,14 @@ export function UploadPanel({
 
       {showDropzone && period ? (
         <PeriodCapacityNotice capacity={period.capacity} testId="upload-capacity" />
+      ) : null}
+      {showDropzone && period ? (
+        <UploadPeriodMode
+          value={periodMode}
+          onChange={setPeriodMode}
+          keys={period.keys}
+          setupHref={setupHref}
+        />
       ) : null}
 
       {showDropzone && reuploadOpen ? (
@@ -864,7 +883,11 @@ export function UploadPanel({
               <p className="font-medium" data-testid="upload-period-title">
                 Tambah atau perbarui periode{" "}
                 <span className="font-normal text-muted-foreground">
-                  — periode yang sudah ada akan diganti, bukan digandakan
+                  {periodMode === "REPLACE"
+                    ? "— periode yang sudah ada akan diganti, bukan digandakan"
+                    : periodMode === "UPSERT"
+                      ? "— baris berkunci sama dikoreksi, baris baru ditambahkan"
+                      : "— baris file ditambahkan ke periodenya"}
                 </span>
               </p>
             ) : (

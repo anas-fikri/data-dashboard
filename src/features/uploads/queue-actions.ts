@@ -56,7 +56,7 @@ async function asOwner<T>(
  */
 export async function createUploadQueueAction(
   datasetId: string,
-  input: { baseVersionId: unknown; files: unknown; group?: unknown },
+  input: { baseVersionId: unknown; files: unknown; group?: unknown; periodMode?: unknown },
 ): Promise<ActionResult<{ queue: QueueView }>> {
   return asOwner(
     "createUploadQueue",
@@ -66,6 +66,7 @@ export async function createUploadQueueAction(
         baseVersionId: input?.baseVersionId,
         files: input?.files,
         group: input?.group,
+        periodMode: input?.periodMode,
       });
       if (r.ok) revalidatePath(`/datasets/${datasetId}`);
       return r;

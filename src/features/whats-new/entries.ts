@@ -14,9 +14,19 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.20",
+    date: "2026-11-12",
+    items: [
+      "Perbarui berdasarkan kunci: pilih kolom kunci (mis. No Resi) di Atur periode, lalu unggahan bulan yang sudah ada tidak lagi mengganti bulan itu utuh — baris yang kuncinya sama dikoreksi, baris baru ditambahkan, baris lain tetap. Satu bulan yang terpecah ke beberapa file cukup diunggah berurutan, dan unggahan langsung aktif tanpa tinjauan.",
+      "Bila tanggal sebuah baris berubah ke bulan lain, barisnya otomatis pindah ke bulan barunya (tidak dobel). File dengan kunci dobel atau kunci kosong ditolak dengan daftar kunci/baris yang perlu diperbaiki.",
+      "Pilihan Tambah baris untuk data yang selalu baru: baris file ditambahkan ke periodenya tanpa menghapus yang lama.",
+    ],
+  },
+  {
     version: "1.19",
     date: "2026-11-12",
     items: [
+      "Sheet lanjutan tanpa judul kolom (ekspor Excel yang hanya memberi judul di sheet pertama, mis. os invoice, os invoice(2), …) kini dikenali dan digabung menjadi satu sheet — untuk dataset baru pilihan Gabungkan sheet sudah tercentang.",
       "Lewati periode saat meninjau unggahan: bila file berisi bulan yang datanya lebih sedikit dari yang sudah tersimpan (mis. April hanya sebagian), centang Lewati periode ini — data lama bulan itu tetap, bulan lain di file tetap diterapkan.",
       "Data per periode: satu file Excel dengan beberapa sheet berkolom sama (mis. Data 1, Data 2, … karena batas baris Excel) kini bisa diunggah sekaligus. Semua sheet digabung ke satu sheet data walaupun namanya berbeda dan bulannya bercampur; layar tinjauan menyebut sheet mana saja yang digabung sebelum Anda menerapkannya.",
     ],

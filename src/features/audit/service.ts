@@ -40,6 +40,8 @@ export type AuditAction =
   | "dataset.period.activate"
   /** Pengaturan periode dataset diubah (T-051), meta { from, to } berisi { keepPeriods, onLimit }. */
   | "dataset.period.settings"
+  /** Kolom kunci sheet data per periode diubah (v1.20), meta { lineageId, from, to } (posisi kolom). */
+  | "dataset.period.keys"
   /**
    * Pemilik menerapkan unggahan periode yang menunggu konfirmasi (T-052): meta { from, versionId,
    * summary, include, droppedRows }.

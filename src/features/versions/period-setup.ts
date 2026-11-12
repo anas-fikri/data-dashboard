@@ -25,6 +25,9 @@ import {
   validDateSql,
 } from "@/features/ingest/period-setup-plan";
 import { isIsoDate, type PeriodGrain } from "@/features/ingest/period";
+import { keySql } from "@/features/ingest/period-key";
+import { MAX_COLUMN } from "@/features/widgets/spec";
+import { z } from "zod";
 import { PERIOD_POSITION_TAKEN, periodPositionTaken } from "@/features/query/period-column";
 import { runOnParquet, sourceOf, type QueryDeps } from "@/features/query/service";
 import { queryDeps } from "@/features/query/runtime";
@@ -90,6 +93,12 @@ export interface PeriodSetupSheet {
   /** Posisi kolom periode sekarang (COLUMN). */
   periodColumn: number | null;
   periodColumnName: string | null;
+  /** Sheet logis (kolom kunci disimpan per lineage, v1.20). */
+  lineageId: string;
+  /** Kolom kunci sekarang (posisi kanonik); [] = tanpa kunci. */
+  keyColumns: number[];
+  /** Kolom yang bisa menjadi kunci (terlihat di skema, urut posisi). */
+  keyOptions: { pos: number; name: string }[];
 }
 
 export interface PeriodSetupView {
@@ -137,6 +146,8 @@ export async function periodSetupView(
               schema: true,
               periodSource: true,
               periodColumn: true,
+              lineageId: true,
+              lineage: { select: { keyColumns: true } },
               segments: {
                 select: { segmentTyped: { select: { segment: { select: { periodKey: true } } } } },
               },
@@ -169,6 +180,12 @@ export async function periodSetupView(
           s.periodSource === "COLUMN"
             ? (schema.find((c) => c.pos === s.periodColumn)?.name ?? null)
             : null,
+        lineageId: s.lineageId,
+        keyColumns: s.lineage.keyColumns,
+        keyOptions: schema
+          .filter((c) => !c.absent && !c.hidden)
+          .map((c) => ({ pos: c.pos, name: c.name }))
+          .sort((x, y) => x.pos - y.pos),
       };
     });
   const keys = new Set(
@@ -676,4 +693,132 @@ export async function savePeriodSettings(
     }
     throw e;
   }
+}
+
+// ── Kolom kunci (v1.20, T-rbrb, ADR-0011) ──────────────────────────────────────────────────────────
+
+/** Kolom kunci paling banyak per sheet data. */
+export const PERIOD_KEYS_MAX = 5;
+
+const periodKeysSchema = z.object({
+  sheets: z
+    .array(
+      z.object({
+        lineageId: z.string().min(1).max(64),
+        columns: z
+          .array(z.number().int().min(1).max(MAX_COLUMN))
+          .max(PERIOD_KEYS_MAX, `Paling banyak ${PERIOD_KEYS_MAX} kolom kunci per sheet.`)
+          .refine((xs) => new Set(xs).size === xs.length, "Kolom kunci terpilih dua kali."),
+      }),
+    )
+    .min(1)
+    .max(64),
+});
+
+/** Keunikan kunci di data aktif (informasi untuk pemilik saat memilih kunci). */
+export interface PeriodKeyCheck {
+  sheet: string;
+  /** Kunci yang muncul lebih dari sekali di data aktif. */
+  duplicates: number;
+  /** Baris dengan kolom kunci kosong. */
+  empty: number;
+  /** ≤ 5 contoh kunci dobel. */
+  examples: string[];
+}
+
+/**
+ * Simpan kolom kunci sheet data per periode (SheetLineage.keyColumns) + AuditLog. Kunci dobel/kosong di data
+ * aktif tidak menolak penyimpanan (data lama boleh tidak rapi), tetapi dilaporkan: unggahan Perbarui akan
+ * menggantikan SEMUA baris lama berkunci sama dengan satu baris file.
+ */
+export async function savePeriodKeys(
+  userId: string,
+  datasetId: unknown,
+  payload: unknown,
+  ip: string,
+  depsIn?: QueryDeps,
+): Promise<VersionResult<{ checks: PeriodKeyCheck[] }>> {
+  if (!isIdShape(datasetId)) return notFound();
+  const parsed = periodKeysSchema.safeParse(payload);
+  if (!parsed.success) {
+    return fail("INVALID", parsed.error.issues[0]?.message ?? "Isian tidak valid.");
+  }
+  const base = await loadBase(userId, datasetId);
+  if (base === null) return notFound();
+  if (base === "none" || !base.periodGrain) {
+    return fail("INVALID", "Kolom kunci hanya untuk dataset yang menyimpan data per periode.");
+  }
+  const checks: PeriodKeyCheck[] = [];
+  const deps = depsIn ?? (await queryDeps());
+  for (const choice of parsed.data.sheets) {
+    const s = base.sheets.find((x) => x.lineageId === choice.lineageId && x.periodSource);
+    if (!s || !s.schema || !s.typedKey) {
+      return fail("STALE", "Sheet data berubah sejak halaman dibuka. Muat ulang halaman.");
+    }
+    const cols = choice.columns.map((pos) => s.schema!.find((c) => c.pos === pos));
+    if (cols.some((c) => !c || c.absent || c.hidden)) {
+      return fail("INVALID", `Kolom kunci sheet “${s.name}” tidak ada lagi. Muat ulang halaman.`);
+    }
+    if (!choice.columns.length || !s.segments.length) continue;
+    const key = keySql(choice.columns);
+    const r = await runOnParquet(
+      userId,
+      sourceOf({ typedKey: s.typedKey, schema: s.schema, segments: s.segments }),
+      deps,
+      async (path, exec) => {
+        const q = (sql: string) => exec({ sql, params: { path } });
+        const head = await q(
+          `WITH k AS (SELECT ${key} AS k FROM read_parquet($path))
+           SELECT count(*) FILTER (WHERE k IS NULL),
+                  (SELECT count(*) FROM (SELECT k FROM k WHERE k IS NOT NULL GROUP BY k HAVING count(*) > 1))
+           FROM k`,
+        );
+        const dups = n(head.rows[0]?.[1]);
+        const ex = dups
+          ? await q(
+              `SELECT k, count(*) AS c FROM (SELECT ${key} AS k FROM read_parquet($path))
+               WHERE k IS NOT NULL GROUP BY k HAVING count(*) > 1 ORDER BY c DESC, k LIMIT 5`,
+            )
+          : { rows: [] as unknown[][] };
+        return {
+          empty: n(head.rows[0]?.[0]),
+          duplicates: dups,
+          examples: ex.rows.map((x) => `${String(x[0]).split("\u001f").join(" · ")} (${n(x[1])}×)`),
+        };
+      },
+    );
+    if (!r.ok) return fail("INVALID", `Sheet “${s.name}”: ${r.message}`);
+    checks.push({ sheet: s.name, ...r.value });
+  }
+  try {
+    await prisma.$transaction(async (tx) => {
+      for (const choice of parsed.data.sheets) {
+        const prev = await tx.sheetLineage.findFirst({
+          where: { id: choice.lineageId, datasetId },
+          select: { keyColumns: true },
+        });
+        if (!prev) continue;
+        if (prev.keyColumns.join(",") === choice.columns.join(",")) continue;
+        await tx.sheetLineage.update({
+          where: { id: choice.lineageId },
+          data: { keyColumns: choice.columns },
+        });
+        await recordAudit(tx, {
+          actorId: userId,
+          action: "dataset.period.keys",
+          targetType: "dataset",
+          targetId: datasetId,
+          meta: { lineageId: choice.lineageId, from: prev.keyColumns, to: choice.columns },
+          ip,
+        });
+      }
+    }, TX_OPTIONS);
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2028") {
+      return fail("DATASET_BUSY", "Dataset sedang diubah. Coba lagi sebentar.");
+    }
+    throw e;
+  }
+  logger.info({ datasetId, sheets: parsed.data.sheets.length }, "kolom kunci periode disimpan");
+  return { ok: true, data: { checks } };
 }

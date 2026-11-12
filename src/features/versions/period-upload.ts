@@ -278,6 +278,11 @@ export interface PeriodUploadContext {
   capacity: PeriodCapacity | null;
   /** PERIOD_MAX_FILES (T-060): file per kelompok "satu periode dari beberapa file". */
   groupMaxFiles: number;
+  /**
+   * Kolom kunci sheet data per periode (v1.20): nama kolom per sheet yang punya kunci. Kosong = "Perbarui
+   * berdasarkan kunci" belum tersedia.
+   */
+  keys: { sheet: string; columns: string[] }[];
 }
 
 /** Hanya pemilik (lainnya null, sama seperti dataset tidak ada). */
@@ -290,7 +295,20 @@ export async function periodUploadContext(
     where: { id: datasetId, ownerId },
     select: {
       activeVersionId: true,
-      activeVersion: { select: { periodGrain: true, sheets: { select: { periodSource: true } } } },
+      activeVersion: {
+        select: {
+          periodGrain: true,
+          sheets: {
+            orderBy: { index: "asc" },
+            select: {
+              name: true,
+              periodSource: true,
+              schema: true,
+              lineage: { select: { keyColumns: true } },
+            },
+          },
+        },
+      },
     },
   });
   const a = ds?.activeVersion;
@@ -311,5 +329,16 @@ export async function periodUploadContext(
     needsLabel: a.sheets.some((s) => s.periodSource === "LABEL"),
     capacity: await loadPeriodCapacity(prisma, datasetId),
     groupMaxFiles: env().PERIOD_MAX_FILES,
+    keys: a.sheets
+      .filter((s) => s.periodSource && s.lineage.keyColumns.length)
+      .map((s) => {
+        const schema = (s.schema as { pos: number; name: string }[] | null) ?? [];
+        return {
+          sheet: s.name,
+          columns: s.lineage.keyColumns.map(
+            (pos) => schema.find((c) => c.pos === pos)?.name ?? `#${pos}`,
+          ),
+        };
+      }),
   };
 }

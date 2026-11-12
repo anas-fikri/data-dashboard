@@ -21,6 +21,7 @@ import type {
   PeriodMappingRepo,
 } from "./period-ingest";
 import type { ColumnMeta } from "./header";
+import type { CopySource } from "./period-keymerge";
 import { parsePreview } from "./preview";
 import { prismaIngestRepo } from "./repo";
 
@@ -45,6 +46,75 @@ export async function versionMode(versionId: string): Promise<string | null> {
   return v?.mode ?? null;
 }
 
+/** Versi lain dataset yang sudah diterapkan (READY) dengan sidik file yang sama (Tambah berulang, v1.20). */
+async function appliedBefore(versionId: string, sha256: string): Promise<boolean> {
+  const v = await prisma.datasetVersion.findUnique({
+    where: { id: versionId },
+    select: { datasetId: true },
+  });
+  if (!v) return false;
+  const n = await prisma.datasetVersion.count({
+    where: { datasetId: v.datasetId, id: { not: versionId }, status: "READY", sha256 },
+  });
+  return n > 0;
+}
+
+/** Data segmen lama manifest aktif untuk salinan Tambah/Perbarui (v1.20). */
+async function copySources(typedIds: string[]): Promise<CopySource[]> {
+  const rows = await prisma.segmentTyped.findMany({
+    where: { id: { in: typedIds } },
+    select: {
+      id: true,
+      typedKey: true,
+      schemaRevision: true,
+      columns: true,
+      headerRow: true,
+      profile: true,
+      segment: {
+        select: {
+          id: true,
+          rawKey: true,
+          rawRows: true,
+          headerRow: true,
+          colCount: true,
+          colMap: true,
+          rowBase: true,
+          maxSrcRow: true,
+          sha256: true,
+          sourceKind: true,
+          originalName: true,
+          minDate: true,
+          maxDate: true,
+          uploadedById: true,
+        },
+      },
+    },
+  });
+  const naive = (d: Date | null) => (d ? d.toISOString().slice(0, 19).replace("T", " ") : null);
+  return rows.map((t) => ({
+    typedId: t.id,
+    segmentId: t.segment.id,
+    typedKey: t.typedKey,
+    schemaRevision: t.schemaRevision,
+    columns: t.columns,
+    profile: t.profile,
+    typedHeaderRow: t.headerRow ?? t.segment.headerRow,
+    rawKey: t.segment.rawKey,
+    rawRows: t.segment.rawRows,
+    headerRow: t.segment.headerRow,
+    colCount: t.segment.colCount,
+    colMap: t.segment.colMap,
+    rowBase: t.segment.rowBase,
+    maxSrcRow: t.segment.maxSrcRow,
+    sha256: t.segment.sha256,
+    sourceKind: t.segment.sourceKind === "csv" ? ("csv" as const) : ("xlsx" as const),
+    originalName: t.segment.originalName,
+    minDate: naive(t.segment.minDate),
+    maxDate: naive(t.segment.maxDate),
+    uploadedById: t.segment.uploadedById,
+  }));
+}
+
 export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngestRepo {
   return {
     async load(versionId) {
@@ -58,6 +128,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           periodLabel: true,
           baseVersionId: true,
           groupFiles: true,
+          uploadMode: true,
           dataset: {
             select: {
               keepPeriods: true,
@@ -75,6 +146,16 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
       });
       if (!v?.sourceKey) return null;
       const a = v.dataset.activeVersion;
+      const keyOf = new Map(
+        a
+          ? (
+              await prisma.sheetLineage.findMany({
+                where: { id: { in: a.sheets.map((s) => s.lineageId) } },
+                select: { id: true, keyColumns: true },
+              })
+            ).map((l) => [l.id, l.keyColumns])
+          : [],
+      );
       const group = parseGroupFiles(v.groupFiles);
       return {
         datasetId: v.datasetId,
@@ -88,6 +169,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
         grain: v.periodGrain,
         label: isoDay(v.periodLabel),
         baseVersionId: v.baseVersionId,
+        uploadMode: v.uploadMode ?? "REPLACE",
         settings: { keepPeriods: v.dataset.keepPeriods, onLimit: v.dataset.onLimit },
         active:
           a && a.id !== versionId
@@ -110,6 +192,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
                     periodSource: s.periodSource,
                     periodColumn: s.periodColumn,
                     keys: sheetKeys([s]),
+                    keyColumns: keyOf.get(s.lineageId) ?? [],
                   };
                 }),
               }
@@ -138,6 +221,9 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
     deleteSheets: (versionId) => prismaIngestRepo.deleteSheets(versionId),
     allocateRows: (lineageId, span) => prismaIngestRepo.allocateRows(lineageId, span),
     recordCleanup: (prefix, reason) => prismaIngestRepo.recordCleanup(prefix, reason),
+
+    copySources,
+    appliedBefore,
 
     async createSegment(versionId, d) {
       const v = await prisma.datasetVersion.findUnique({
@@ -173,7 +259,7 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
             ...(d.group
               ? { groupId: d.group.id, groupPart: d.group.part, groupSize: d.group.size }
               : {}),
-            uploadedById: v.uploadedById,
+            uploadedById: d.uploadedById !== undefined ? d.uploadedById : v.uploadedById,
             createdByVersionId: versionId,
           },
         });
@@ -301,6 +387,8 @@ export function prismaPeriodMappingRepo(limits: () => PeriodLimits): PeriodMappi
   return {
     load: (versionId) => ingest.load(versionId),
     allocateRows: (lineageId, span) => ingest.allocateRows(lineageId, span),
+    copySources,
+    appliedBefore,
     createSegment: (versionId, d) => ingest.createSegment(versionId, d),
     addTyped: (segmentId, t) => ingest.addTyped(segmentId, t),
     recordCleanup: (prefix, reason) => ingest.recordCleanup(prefix, reason),

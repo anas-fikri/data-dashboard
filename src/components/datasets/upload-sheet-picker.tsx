@@ -176,11 +176,11 @@ export function UploadSheetPicker({
             Gabungkan sheet yang judul kolomnya sama menjadi satu
           </label>
           <p id={`${id}-merge-hint`} className="pl-6 text-sm text-muted-foreground">
-            Cocok untuk data yang dipecah ke beberapa sheet karena batas baris Excel. Barisnya
-            ditumpuk menjadi satu sheet bernama sheet pertama; sheet dengan kolom berbeda tetap
-            terpisah.
+            Cocok untuk data yang dipecah ke beberapa sheet karena batas baris Excel — juga sheet
+            lanjutan tanpa baris judul (memakai judul sheet sebelumnya). Barisnya ditumpuk menjadi
+            satu sheet bernama sheet pertama; sheet dengan kolom berbeda tetap terpisah.
           </p>
-          {defaultMerge && !merge ? (
+          {defaultMerge && !merge && activeSheets.length > 0 ? (
             <p
               role="status"
               className="flex gap-1.5 pl-6 text-sm"

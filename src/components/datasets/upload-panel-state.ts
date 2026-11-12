@@ -16,7 +16,10 @@ export type UploadChoice =
    * sheet berkolom sama jadi satu (T-0gmm).
    */
   | { mode: "REPLACE"; sheets?: string[]; mergeSheets?: boolean }
-  | { mode: "PERIOD"; label: string | null };
+  /** `periodMode` (v1.20): Ganti / Tambah / Perbarui berdasarkan kunci; tidak ada = Ganti. */
+  | { mode: "PERIOD"; label: string | null; periodMode?: PeriodUploadMode };
+
+export type PeriodUploadMode = "REPLACE" | "APPEND" | "UPSERT";
 
 export const REPLACE_CHOICE: UploadChoice = { mode: "REPLACE" };
 
@@ -185,7 +188,7 @@ export function periodRequest(
 ):
   | {
       ok: true;
-      period?: { baseVersionId: string; label: string | null };
+      period?: { baseVersionId: string; label: string | null; periodMode?: PeriodUploadMode };
       sheets?: string[];
       mergeSheets?: boolean;
     }
@@ -198,7 +201,14 @@ export function periodRequest(
     };
   }
   if (!period) return { ok: false, message: PERIOD_GONE };
-  return { ok: true, period: { baseVersionId: period.baseVersionId, label: choice.label } };
+  return {
+    ok: true,
+    period: {
+      baseVersionId: period.baseVersionId,
+      label: choice.label,
+      ...(choice.periodMode ? { periodMode: choice.periodMode } : {}),
+    },
+  };
 }
 
 /** Kalimat konfirmasi "Ganti semua data…" (tanpa "Semua 0 periode", review L3). */

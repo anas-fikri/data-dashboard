@@ -76,7 +76,12 @@ export const fileIdentity = (f: Pick<QueueFile, "name" | "size" | "lastModified"
  */
 export function queueFilesProblem(
   files: readonly QueueFile[],
-  ctx: { grain: PeriodGrain; needsLabel: boolean },
+  ctx: {
+    grain: PeriodGrain;
+    needsLabel: boolean;
+    /** Tambah/Perbarui (v1.20): beberapa file satu periode boleh (diproses berurutan, tidak saling ganti). */
+    merge?: boolean;
+  },
 ): string | null {
   if (files.length < QUEUE_MIN_FILES) return "Pilih minimal 2 file untuk antrean.";
   if (files.length > QUEUE_MAX_FILES) {
@@ -95,6 +100,7 @@ export function queueFilesProblem(
       ? `Pilih periode untuk “${missing[0]!.name}”.`
       : `Pilih periode untuk ${missing.length} file yang belum berperiode.`;
   }
+  if (ctx.merge) return null;
   const byLabel = new Map<string, string>();
   for (const f of files) {
     const other = byLabel.get(f.label!);

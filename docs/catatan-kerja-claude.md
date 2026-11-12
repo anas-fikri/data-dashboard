@@ -55,6 +55,15 @@ Masalah dev yang pernah terjadi: setelah restart `next dev`, halaman bisa reload
 mismatch") → hentikan dev, `rm -rf .next/dev`, nyalakan lagi, panaskan halaman, baru e2e. e2e paralel
 dengan beban mesin tinggi bisa timeout transaksi (P2028) — jalankan per project.
 
+## Posisi terakhir (2026-11-12 siang, sesi cloud)
+
+- PR #26 berisi **v1.19.1** (T-1216, sheet lanjutan tanpa judul) **dan v1.20.0** (T-rbrb, Tambah / Perbarui berdasarkan
+  kunci, ADR-0011). v1.20 **bermigrasi** (`20261112000000_period_keys`) → setelah PR digabung deploy
+  `bash deploy/server-release.sh 1.20.0 --full` + seed panduan `unggah-data,data-per-periode` (runbook §31–§32), lalu atur
+  kolom kunci Billing di Atur periode › Kolom kunci. Tag v1.19.1/v1.20.0 hanya lokal.
+- T-rbrb `in_review` (strict) menunggu penerimaan pemilik. Lanjutan: **T-yg3z** (baca kolom kunci saja tanpa unduh typed
+  penuh, urutan baris setelah pemadatan, kunci beku di rencana), T-zjwh, T-r5tm, T-jdmk.
+
 ## Posisi terakhir (2026-11-12 dini hari, sesi cloud)
 
 - v1.18.0 (PR #24) sudah di `main`; pemilik men-deploy. Rilis **v1.19.0** (PR #25): **T-jsmj** gabung sheet berkolom

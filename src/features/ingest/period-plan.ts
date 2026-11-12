@@ -31,6 +31,37 @@ import {
 
 export type OnLimit = "REJECT" | "EVICT_OLDEST";
 
+/** Cara unggahan periode memperlakukan periode yang sudah ada (v1.20, ADR-0011). */
+export type UploadMode = "REPLACE" | "APPEND" | "UPSERT";
+export const UPLOAD_MODES = ["REPLACE", "APPEND", "UPSERT"] as const;
+
+/**
+ * Satu (periode, sheet logis) yang ditulis ulang unggahan Tambah/Perbarui (v1.20): isi barunya = baris lama
+ * yang tetap (`kept`) + baris file (`fileRows`). `removed` = baris lama periode ini yang kuncinya ada di file
+ * (dibuang, digantikan baris file di periode mana pun); `movedOut` ⊆ removed = yang baris barunya jatuh di
+ * periode lain; `updated` = baris file periode ini yang menggantikan baris lama (kunci sama). Tambah: removed =
+ * movedOut = updated = 0.
+ */
+export interface MergePart {
+  key: string;
+  start: string;
+  lineageId: string;
+  fileRows: number;
+  updated: number;
+  kept: number;
+  removed: number;
+  movedOut: number;
+  /** Tambah: file/sheet yang sama sudah pernah masuk (sidik sama) → baris tergandakan (review M3). */
+  repeat?: boolean;
+  /** Perbarui: baris lama berkunci dobel yang digabung menjadi satu baris file (baris berkurang). */
+  collapsed?: number;
+}
+
+export interface MergeFacts {
+  mode: Exclude<UploadMode, "REPLACE">;
+  parts: MergePart[];
+}
+
 /** Isi satu periode di satu sheet logis (lineageId): satu segmen, atau satu kelompok file (T-060). */
 export interface PeriodSlice {
   rows: number;
@@ -102,6 +133,12 @@ export interface PeriodPlanInput {
    * diterapkan (salinan sheet yang tidak sengaja ikut akan menggandakan baris).
    */
   mergedSheets?: MergedSheet[];
+  /**
+   * Tambah / Perbarui berdasarkan kunci (v1.20): periode yang ditulis ulang + hitungannya. Tidak ada = Ganti.
+   * Periode file tidak pernah dikecualikan/dilewati (baris lama yang kuncinya ada di file sudah dibuang di
+   * periode lain), jadi `include`/`skip` diabaikan.
+   */
+  merge?: MergeFacts;
 }
 
 /**
@@ -123,7 +160,8 @@ const entrySchema = z.object({
   key: z.string(),
   start: z.string(),
   label: z.string(),
-  action: z.enum(["ADDED", "REPLACED", "UNCHANGED", "EVICTED", "EXCLUDED", "REJECTED"]),
+  /** UPDATED (v1.20): periode ditulis ulang oleh Tambah/Perbarui (baris lama tetap + baris file). */
+  action: z.enum(["ADDED", "REPLACED", "UPDATED", "UNCHANGED", "EVICTED", "EXCLUDED", "REJECTED"]),
   /** Periode ada di file ini (termasuk yang dikecualikan/ditolak). */
   fromUpload: z.boolean(),
   /** Periode kemungkinan nyasar (baris < strayPct periode terbesar file). */
@@ -139,6 +177,30 @@ const entrySchema = z.object({
   shrink: z.boolean(),
   /** File ini identik (sha256) dengan file asal periode aktif ini. */
   identical: z.boolean(),
+  /** Tambah/Perbarui (v1.20): hitungan semua sheet file di periode ini; null = Ganti / tidak disentuh. */
+  keyed: z
+    .object({
+      fileRows: count,
+      updated: count,
+      kept: count,
+      removed: count,
+      movedOut: count,
+    })
+    .nullable()
+    .default(null),
+});
+
+const mergePartSchema = z.object({
+  key: z.string(),
+  start: z.string(),
+  lineageId: z.string(),
+  fileRows: count,
+  updated: count,
+  kept: count,
+  removed: count,
+  movedOut: count,
+  repeat: z.boolean().default(false),
+  collapsed: count.default(0),
 });
 
 const limitsSchema = z.object({
@@ -182,6 +244,10 @@ export const periodPlanSchema = z.object({
     .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
     .max(1_024)
     .default([]),
+  /** Cara unggahan (v1.20); rencana lama tanpa field ini = Ganti. */
+  mode: z.enum(UPLOAD_MODES).default("REPLACE"),
+  /** Tambah/Perbarui (v1.20): bagian (periode, sheet) yang ditulis ulang; Ganti = []. */
+  mergeParts: z.array(mergePartSchema).max(100_000).default([]),
   /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
   resetFrom: z.enum(["MONTH", "QUARTER", "YEAR"]).optional(),
   /**
@@ -346,6 +412,63 @@ function validate(input: PeriodPlanInput): void {
   }
 }
 
+const partKey = (key: string, lineageId: string) => `${key}\u0001${lineageId}`;
+
+/** Fakta Tambah/Perbarui harus sepakat dengan isi periode aktif dan segmen file (bug pemanggil bila tidak). */
+function validateMerge(input: PeriodPlanInput): void {
+  const m = input.merge;
+  if (!m) return;
+  if (m.mode !== "APPEND" && m.mode !== "UPSERT") throw new Error("computePeriodPlan: mode merge");
+  const fileSheets = new Set(input.incomingSheets);
+  const active = new Map(input.active.map((p) => [p.key, p]));
+  const incoming = new Map(input.incoming.map((p) => [p.key, p]));
+  const seen = new Set<string>();
+  for (const x of m.parts) {
+    const id = `${x.key}/${x.lineageId}`;
+    for (const f of ["fileRows", "updated", "kept", "removed", "movedOut"] as const) {
+      assertCount(x[f], `merge ${id}.${f}`);
+    }
+    if (
+      periodStartOf(input.grain, x.start) !== x.start ||
+      periodKeyOf(input.grain, x.start) !== x.key
+    ) {
+      throw new Error(`computePeriodPlan: merge ${id} bukan periode ${input.grain}`);
+    }
+    if (!fileSheets.has(x.lineageId)) {
+      throw new Error(`computePeriodPlan: merge ${id} sheet tidak ada di incomingSheets`);
+    }
+    if (seen.has(partKey(x.key, x.lineageId)))
+      throw new Error(`computePeriodPlan: merge ${id} ganda`);
+    seen.add(partKey(x.key, x.lineageId));
+    if (x.collapsed !== undefined) assertCount(x.collapsed, `merge ${id}.collapsed`);
+    if (x.movedOut > x.removed || x.updated > x.fileRows || (x.collapsed ?? 0) > x.removed) {
+      throw new Error(`computePeriodPlan: merge ${id} hitungan tidak masuk akal`);
+    }
+    if (m.mode === "APPEND" && (x.removed || x.updated)) {
+      throw new Error(`computePeriodPlan: merge ${id} Tambah tidak membuang baris`);
+    }
+    const inc = incoming.get(x.key)?.sheets[x.lineageId]?.rows ?? 0;
+    if (inc !== x.fileRows + x.kept) {
+      throw new Error(
+        `computePeriodPlan: merge ${id} ${inc} baris segmen, fakta ${x.fileRows + x.kept}`,
+      );
+    }
+    const old = active.get(x.key)?.sheets[x.lineageId]?.rows ?? 0;
+    if (old !== x.kept + x.removed) {
+      throw new Error(
+        `computePeriodPlan: merge ${id} ${old} baris aktif, fakta ${x.kept + x.removed}`,
+      );
+    }
+  }
+  for (const p of input.incoming) {
+    for (const lineage of Object.keys(p.sheets)) {
+      if (!seen.has(partKey(p.key, lineage))) {
+        throw new Error(`computePeriodPlan: segmen ${p.key}/${lineage} tanpa fakta merge`);
+      }
+    }
+  }
+}
+
 /** Batas pertama yang terlewati oleh kumpulan periode (urutan tetap: periode, baris, byte, segmen). */
 function violation(units: Unit[], keep: number, l: PeriodLimits): Violation | null {
   return usageOf(units, keep, l).find((u) => u.used > u.max) ?? null;
@@ -419,16 +542,41 @@ function usedText(v: Violation): string {
  */
 export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   validate(input);
+  validateMerge(input);
   const { grain, limits } = input;
+  const merge = input.merge ?? null;
+  const parts = [...(merge?.parts ?? [])].sort(
+    (x, y) => x.key.localeCompare(y.key) || x.lineageId.localeCompare(y.lineageId),
+  );
+  const partsOf = (key: string) => parts.filter((x) => x.key === key);
+  // Tambah/Perbarui: (periode, sheet) yang kehilangan semua barisnya tidak punya segmen baru → isian kosong.
+  const incomingList: PlanPeriodInput[] = input.incoming.map((p) => ({
+    ...p,
+    sheets: { ...p.sheets },
+  }));
+  for (const x of parts) {
+    let p = incomingList.find((q) => q.key === x.key);
+    if (!p) {
+      p = { key: x.key, start: x.start, sheets: {}, sha256: null };
+      incomingList.push(p);
+    }
+    p.sheets[x.lineageId] ??= { rows: 0, bytes: 0 };
+  }
   const keep = Math.min(input.settings.keepPeriods ?? limits.keepDefault, limits.keepMax);
   const byStart = <T extends { start: string }>(a: T, b: T) =>
     a.start < b.start ? -1 : a.start > b.start ? 1 : 0;
   const active = new Map([...input.active].sort(byStart).map((p) => [p.key, p]));
-  const incoming = new Map([...input.incoming].sort(byStart).map((p) => [p.key, p]));
+  const incoming = new Map([...incomingList].sort(byStart).map((p) => [p.key, p]));
   const fileSheets = new Set(input.incomingSheets);
-  const include = new Set(input.include ?? []);
+  // Tambah/Perbarui: periode file tidak bisa dikecualikan/dilewati (baris lama berkunci sama sudah dibuang).
+  const include = new Set(merge ? [] : (input.include ?? []));
   // Hanya periode yang punya data lama dan bukan "kemungkinan nyasar" (yang punya pilihannya sendiri).
-  const skip = new Set((input.skip ?? []).filter((k) => active.has(k) && incoming.has(k)));
+  const skip = new Set(
+    merge ? [] : (input.skip ?? []).filter((k) => active.has(k) && incoming.has(k)),
+  );
+  /** Baris dari file di periode ini (Tambah/Perbarui: tanpa baris lama yang tetap). */
+  const fileRowsOf = (p: PlanPeriodInput) =>
+    merge ? sum(partsOf(p.key).map((x) => x.fileRows)) : rowsOf(p.sheets);
   const label = (key: string) => {
     const p = incoming.get(key) ?? active.get(key)!;
     return periodLabel(grain, p.start);
@@ -439,19 +587,33 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       : `${keys.slice(0, 3).map(label).join(", ")} dan ${keys.length - 3} periode lain`;
 
   // Periode kemungkinan nyasar: baris < strayPct% periode terbesar di file yang sama.
-  const maxIncoming = Math.max(0, ...[...incoming.values()].map((p) => rowsOf(p.sheets)));
+  // Tambah/Perbarui: hanya periode BARU yang bisa nyasar, dan tetap disimpan (wajib ditinjau).
+  const maxIncoming = Math.max(0, ...[...incoming.values()].map(fileRowsOf));
   const stray = new Set(
     [...incoming.values()]
-      .filter((p) => rowsOf(p.sheets) * 100 < limits.strayPct * maxIncoming)
+      .filter((p) => !merge || !active.has(p.key))
+      .filter((p) => fileRowsOf(p) * 100 < limits.strayPct * maxIncoming)
       .map((p) => p.key),
   );
   for (const k of stray) skip.delete(k);
   const included = new Set(
-    [...incoming.keys()].filter((k) => !skip.has(k) && (!stray.has(k) || include.has(k))),
+    [...incoming.keys()].filter(
+      (k) => !!merge || (!skip.has(k) && (!stray.has(k) || include.has(k))),
+    ),
   );
 
   /** Periode yang diganti: sheet di file memakai data baru (sheet tanpa baris = kosong), sisanya tetap. */
   const merged = (key: string): Record<string, PeriodSlice> => {
+    if (merge) {
+      // Hanya sheet yang ditulis ulang di periode ini yang berganti; isian kosong = sheet tanpa data periode itu.
+      const next: Record<string, PeriodSlice> = { ...(active.get(key)?.sheets ?? {}) };
+      for (const x of partsOf(key)) {
+        const sl = incoming.get(key)!.sheets[x.lineageId];
+        if (sl && sl.rows > 0) next[x.lineageId] = sl;
+        else delete next[x.lineageId];
+      }
+      return next;
+    }
     const next: Record<string, PeriodSlice> = {};
     for (const [sheet, s] of Object.entries(active.get(key)?.sheets ?? {})) {
       if (!fileSheets.has(sheet)) next[sheet] = s;
@@ -467,6 +629,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   });
   const projected: Unit[] = allKeys
     .filter((k) => active.has(k) || included.has(k))
+    // Tambah/Perbarui: periode yang semua barisnya pindah ke periode lain hilang.
+    .filter((k) => !merge || !included.has(k) || Object.keys(merged(k)).length > 0)
     .map((k) =>
       included.has(k)
         ? { key: k, start: incoming.get(k)!.start, sheets: merged(k), fromUpload: true }
@@ -533,6 +697,19 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     .filter((m) => m.from.length >= 1)
     .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
     .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
+  const keyedOf = (key: string): PeriodPlanEntry["keyed"] => {
+    const list = partsOf(key);
+    if (!merge || !list.length) return null;
+    const total = (f: "fileRows" | "updated" | "kept" | "removed" | "movedOut") =>
+      sum(list.map((x) => x[f]));
+    return {
+      fileRows: total("fileRows"),
+      updated: total("updated"),
+      kept: total("kept"),
+      removed: total("removed"),
+      movedOut: total("movedOut"),
+    };
+  };
   const entries: PeriodPlanEntry[] = allKeys.map((key) => {
     const a = active.get(key);
     const inc = incoming.get(key);
@@ -550,25 +727,30 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       action = inc ? "REJECTED" : "UNCHANGED";
       after = a?.sheets ?? null;
     } else if (inc) {
-      action = a ? "REPLACED" : "ADDED";
-      after = merged(key);
+      action = a ? (merge ? "UPDATED" : "REPLACED") : "ADDED";
+      const m = merged(key);
+      // Tambah/Perbarui: periode yang semua barisnya pindah hilang dari data (Ganti: perilaku lama apa adanya).
+      after = !merge || Object.keys(m).length ? m : null;
     } else {
       action = "UNCHANGED";
       after = a!.sheets;
     }
     const shrink =
-      action === "REPLACED" &&
-      [...fileSheets].some((sheet) => {
-        const b = a!.sheets[sheet]?.rows ?? 0;
-        const n = after![sheet]?.rows ?? 0;
-        return b > 0 && (b - n) * 100 > b * limits.shrinkConfirmPct;
-      });
+      // Perbarui (review M2): kunci dobel lama digabung menjadi satu baris file = baris berkurang → selalu
+      // ditinjau, di periode mana pun yang membuang baris lama.
+      (action === "UPDATED" && partsOf(key).some((x) => (x.collapsed ?? 0) > 0)) ||
+      (action === "REPLACED" &&
+        [...fileSheets].some((sheet) => {
+          const b = a!.sheets[sheet]?.rows ?? 0;
+          const n = after?.[sheet]?.rows ?? 0;
+          return b > 0 && (b - n) * 100 > b * limits.shrinkConfirmPct;
+        }));
     return {
       key,
       start,
       label: periodLabel(grain, start),
       action,
-      fromUpload: !!inc,
+      fromUpload: merge ? !!inc && fileRowsOf(inc) > 0 : !!inc,
       stray: stray.has(key),
       before: a ? rowsMap(a.sheets) : null,
       after: after ? rowsMap(after) : null,
@@ -578,7 +760,11 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       afterBytes: after ? bytesOf(after) : 0,
       shrink,
       // Sidik per periode (kelompok T-060: gabungan file yang memuat periode ini) bila diketahui.
-      identical: !!(inc && a && (inc.sha256 ?? fileSha) && a.sha256 === (inc.sha256 ?? fileSha)),
+      // Tambah/Perbarui: file yang sama dua kali tidak mengubah apa pun (kunci sama), bukan peringatan.
+      identical: merge
+        ? partsOf(key).some((x) => x.repeat)
+        : !!(inc && a && (inc.sha256 ?? fileSha) && a.sha256 === (inc.sha256 ?? fileSha)),
+      keyed: keyedOf(key),
     };
   });
 
@@ -589,13 +775,12 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     })
     .map((k) => {
       const e = entries.find((x) => x.key === k)!;
-      const sheets =
-        e.action === "ADDED" || e.action === "REPLACED" ? merged(k) : active.get(k)!.sheets;
+      const fresh = e.action === "ADDED" || e.action === "REPLACED" || e.action === "UPDATED";
       return {
         key: k,
         start: e.start,
-        sheets,
-        fromUpload: e.action === "ADDED" || e.action === "REPLACED",
+        sheets: fresh ? merged(k) : active.get(k)!.sheets,
+        fromUpload: fresh,
       };
     });
   const totalRows = (units: Record<string, PeriodSlice>[]) => {
@@ -616,7 +801,8 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     if (input.source === "LABEL") confirm.push("LABEL");
     if (entries.some((e) => e.identical)) confirm.push("IDENTICAL");
     if ((input.droppedRows ?? 0) > 0) confirm.push("DROPPED_ROWS");
-    if (!has("ADDED") && !has("REPLACED") && !has("EVICTED")) confirm.push("NO_CHANGE");
+    if (!has("ADDED") && !has("REPLACED") && !has("UPDATED") && !has("EVICTED"))
+      confirm.push("NO_CHANGE");
     if (ignoredSheets.length) confirm.push("IGNORED_SHEETS");
     if (mergedSheets.length) confirm.push("MERGED_SHEETS");
   }
@@ -635,6 +821,12 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     skip: [...skip].sort(),
     ignoredSheets,
     mergedSheets,
+    mode: merge?.mode ?? "REPLACE",
+    mergeParts: parts.map((x) => ({
+      ...x,
+      repeat: x.repeat ?? false,
+      collapsed: x.collapsed ?? 0,
+    })),
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {
