@@ -88,6 +88,7 @@ import {
   type RecastJobData,
 } from "@/lib/queue/connection";
 import { keepRecastIndexed, recordMappingLast, type MappingLastRecord } from "@/lib/queue/versions";
+import { reportService } from "@/lib/metrics/store";
 import { deleteObject } from "@/lib/storage/objects";
 
 const MAINTENANCE = "maintenance";
@@ -588,6 +589,10 @@ async function main() {
     },
     "worker berjalan",
   );
+  // Monitor sumber daya (v1.18): pemakaian container worker sendiri tiap 10 dtk (cgroup, tanpa docker.sock).
+  const reportUsage = () => void reportService("worker");
+  setInterval(reportUsage, 10_000).unref();
+  reportUsage();
 
   const shutdown = async (signal: string) => {
     logger.info({ signal }, "worker berhenti");

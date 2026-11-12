@@ -60,3 +60,14 @@ Setiap backup harian adalah salinan lengkap database dan semua file, jadi ruang 
 - **Lama simpan di NAS** (7–365 hari): arsip di NAS yang lebih tua dihapus otomatis.
 
 Saran: server 7 hari, NAS 30 hari. Perkiraan ruang tampil di bawah tiap kolom. Tekan **Simpan lama simpan**; pengaturan berlaku dalam ± 1 menit. **Pakai bawaan server** mengembalikan nilai dari pengaturan server.
+
+## Sumber daya server
+
+Buka **Admin → Sumber daya server** (atau **Detail** di kartu **Server** di bawah menu kiri) untuk melihat:
+
+- Grafik **CPU**, **RAM**, **Disk (terpenuh)**, dan **Jaringan masuk** — pilih **1 jam** (titik tiap 10 detik) atau **24 jam** (titik tiap menit). Di bawah tiap grafik tertulis rata-rata dan puncaknya.
+- **Host**: **Beban (load 1 menit)** dibanding jumlah inti CPU (lebih dari ± 2 per inti = antrean proses panjang), **CPU menunggu disk (iowait)** — tinggi berarti server lambat karena disk, bukan CPU — swap, dan ruang tiap disk.
+- **Layanan dashboard**: CPU dan RAM aplikasi web (_app_) dan pemroses unggahan (_worker_) beserta batas RAM-nya, plus jumlah pemroses aktif dan antrean unggahan.
+- **Pemakaian per akun (perkiraan)**: akun yang sedang memakai server, terberat di atas — **Waktu query 15 menit** (lama server mengolah widget, pivot, dan Lihat data akun itu), **Query berjalan**, **Pekerjaan berjalan** (unggahan, olah ulang, ekspor/PDF), dan **Storage** terpakai dibanding kuota. Ini perkiraan: CPU/RAM persis per akun tidak bisa diukur karena semua akun dilayani proses yang sama. Pakai untuk menemukan, misalnya, dashboard berat yang dibuka di banyak tab atau ekspor besar yang sedang berjalan.
+
+Angka host mencakup seluruh server, termasuk aplikasi lain di server yang sama; tabel layanan hanya aplikasi ini. Riwayat disimpan 24 jam. Bila halaman menulis **Monitor sumber daya belum dipasang**, pengelola server perlu menyalakannya sekali (runbook deploy §29); sebelum itu kartu **Server** tidak tampil bagi siapa pun.

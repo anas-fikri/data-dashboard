@@ -20,4 +20,16 @@ export async function register() {
       "pemanasan cache parquet tidak terpasang",
     );
   }
+  // Monitor sumber daya (v1.18, ADR-0010): sampler host + antrean tiap 10 dtk. Gagal dipasang tidak
+  // menghentikan app (panel menampilkan "Data server belum tersedia").
+  try {
+    const { startMetricsSampler } = await import("@/lib/metrics/sampler");
+    startMetricsSampler();
+  } catch (e) {
+    const { logger } = await import("@/lib/logger");
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e) },
+      "sampler metrik tidak terpasang",
+    );
+  }
 }

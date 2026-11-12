@@ -287,6 +287,17 @@ export const envSchema = z.object({
         "APP_INTERNAL_URL: host http ber-TLD HSTS preload (mis. app, dev) selalu dipaksa https oleh Chromium; pakai nama lain (mis. web, dashboard)",
     })
     .optional(),
+  /**
+   * Monitor sumber daya (v1.18, ADR-0010): URL /metrics node_exporter lewat metrics-relay, mis.
+   * http://host.docker.internal:19100/metrics. Kosong → sampler mati, kartu sidebar tidak tampil.
+   */
+  METRICS_NODE_URL: z.preprocess(
+    // Compose mengirim "" bila tidak diisi (${METRICS_NODE_URL:-}) — sama dengan tidak dipasang.
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
+  /** Titik mount yang dilaporkan (dipisah koma); yang tidak ada di host dilewati. */
+  METRICS_DISK_MOUNTS: z.string().default("/,/var/lib/docker,/data,/data/docker-data"),
   /** Renderer PDF (worker + cek kesehatan app). Kosong → ekspor PDF dijawab RENDERER_UNAVAILABLE. */
   RENDERER_URL: z.string().url().optional(),
   /** Header x-renderer-secret ke renderer; ≥ 32 karakter, wajib bersama RENDERER_URL. */

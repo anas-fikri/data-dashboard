@@ -43,6 +43,9 @@ ALLOWED_EMAIL_DOMAINS=ISI_perusahaan.co.id
 # 127.0.0.1 → COMPOSE_PROFILES=hostdb + host.docker.internal:15432 (relay); tanpa PostgreSQL → COMPOSE_PROFILES=db
 # + postgresql://dashboard:<POSTGRES_PASSWORD>@postgres:5432/data_dashboard. Role/DB host: sudo bash deploy/host-db.sh
 COMPOSE_PROFILES=
+# Monitor sumber daya (v1.18, runbook §29): tambahkan "monitor" ke COMPOSE_PROFILES (mis. hostdb,monitor) dan
+# METRICS_NODE_URL=http://host.docker.internal:19100/metrics. Kosong = kartu "Server" di sidebar tidak tampil.
+METRICS_NODE_URL=
 DATABASE_URL=ISI_postgresql://
 POSTGRES_PASSWORD=$(rand 32)
 SMTP_URL=ISI_smtp://user:pass@smtp.perusahaan.co.id:587

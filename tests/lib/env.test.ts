@@ -27,6 +27,18 @@ describe("parseEnv", () => {
     expect(env.TRUST_PROXY).toBe(false);
   });
 
+  it("METRICS_NODE_URL (v1.18): kosong dari compose = tidak dipasang; URL rusak ditolak", () => {
+    expect(parseEnv(valid).METRICS_NODE_URL).toBeUndefined();
+    expect(parseEnv({ ...valid, METRICS_NODE_URL: "" }).METRICS_NODE_URL).toBeUndefined();
+    expect(parseEnv({ ...valid, METRICS_NODE_URL: "  " }).METRICS_NODE_URL).toBeUndefined();
+    expect(
+      parseEnv({ ...valid, METRICS_NODE_URL: "http://host.docker.internal:19100/metrics" })
+        .METRICS_NODE_URL,
+    ).toBe("http://host.docker.internal:19100/metrics");
+    expect(() => parseEnv({ ...valid, METRICS_NODE_URL: "bukan-url" })).toThrow(/METRICS_NODE_URL/);
+    expect(parseEnv(valid).METRICS_DISK_MOUNTS).toBe("/,/var/lib/docker,/data,/data/docker-data");
+  });
+
   it("GRID_ORDER_CACHE_BYTES (T-062): default 1 GiB, 0 = mati, negatif ditolak", () => {
     expect(parseEnv(valid).GRID_ORDER_CACHE_BYTES).toBe(1024 ** 3);
     expect(parseEnv({ ...valid, GRID_ORDER_CACHE_BYTES: "0" }).GRID_ORDER_CACHE_BYTES).toBe(0);

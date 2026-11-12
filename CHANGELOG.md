@@ -80,6 +80,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (deploy.sh, monitor) sengaja tidak berubah. Tanpa `--full` bila produksi sudah v1.17.0; seed panduan
   `unggah-data` (runbook-deploy §28).
 
+- **v1.18.0 (T-ee46, ADR-0010):** tanpa migrasi. Monitor sumber daya opt-in: profil compose `monitor`
+  (`node-exporter` v1.8.2 dipin digest, host network + pid host, rootfs ro, `127.0.0.1:19109`; `metrics-relay` socat
+  `172.17.0.1:19100` hanya `APP_SUBNETS`) + `METRICS_NODE_URL`. Sampler di proses app (instrumentation, kunci Redis
+  `metrics:sampler:lock`) tiap 10 dtk → Redis `metrics:*` (10 dtk × 1 jam, 1 menit × 24 jam, ± 0,5 MB). `/api/metrics`
+  (semua user login) hanya angka gabungan host + `workerDown`; `/api/metrics/admin` (404 non-admin) + disk per mount,
+  per layanan (cgroup v2/v1 container app/worker sendiri). Tanpa profil/URL: tidak ada container baru, kartu tidak
+  tampil. Rollback image ke v1.17.x aman (runbook-deploy §29).
+  Per akun (T-qed9, admin): detik eksekusi DuckDB per user selama slot global dipegang (AsyncLocalStorage dari
+  `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
+  menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
+
+## [1.18.0] - 2026-11-11
+
+### Added
+
+- **deploy:** profil compose monitor (node-exporter + metrics-relay), runbook §29, panduan + Yang baru 1.18 (T-ee46) (957a6dd)
+- **metrics:** inti monitor sumber daya — parser node_exporter, titik host, Redis 1 jam/24 jam, sampler app, cgroup app/worker (T-ee46) (9803850)
+- **metrics:** kartu Server di sidebar, halaman Admin › Sumber daya, API ringkasan/admin (T-ee46) (7e67256)
+- **metrics:** perkiraan pemakaian per akun di Admin › Sumber daya (T-qed9) (914b030)
+
+### Fixed
+
+- **metrics:** laporan layanan/per akun hanya saat monitor aktif + TTL hash layanan (review L2); dokumen per akun (53b72de)
+- **metrics:** status kartu Server pakai aria-live, bukan role=status global (6237d6d)
+- **metrics:** temuan Low review putaran 2 (T-ee46/T-qed9) (e4b98f0)
+- **metrics:** temuan review T-ee46 — status pemroses lepas dari exporter, ambang CPU 5 menit, a11y, log (a04e7fb)
+- **metrics:** temuan verifikasi T-qed9 — storage per akun gagal tidak menjatuhkan tabel, uji accountRows (5a2674d)
+
 ## [1.17.1] - 2026-11-11
 
 ### Added

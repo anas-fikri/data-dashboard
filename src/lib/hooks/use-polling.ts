@@ -35,6 +35,8 @@ export function usePolling<T>(opts: {
    * langkah berikutnya, mis. render ulang halaman (review T-008 L2).
    */
   onStop?: (status: number) => void;
+  /** Ambil sekali segera saat mulai (tanpa data awal dari server), lalu tiap `intervalMs`. */
+  immediate?: boolean;
 }) {
   const { url, intervalMs } = opts;
   const [result, setResult] = useState<{ url: string | null; data: T | null }>({
@@ -95,7 +97,8 @@ export function usePolling<T>(opts: {
       }
       schedule();
     }
-    schedule();
+    if (latest.current.immediate) void run();
+    else schedule();
     return () => {
       ctl.abort();
       clearTimeout(timer);

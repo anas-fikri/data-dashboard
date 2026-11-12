@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePersistedBoolean } from "@/lib/hooks/use-persisted-boolean";
+import { ServerCard } from "@/components/metrics/server-card";
 import { Button } from "@/components/ui/button";
 import type { SessionUser } from "@/features/auth/session";
 import { cn } from "@/lib/utils";
@@ -90,6 +91,22 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
         <div className="flex-1 overflow-y-auto p-2">
           <SidebarNav isAdmin={isAdmin} collapsed={collapsed} />
         </div>
+        {user && (
+          <ServerCard
+            className={cn("p-2", collapsed && "flex justify-center")}
+            isAdmin={isAdmin}
+            collapsed={collapsed}
+            onExpand={() => {
+              setCollapsed(false);
+              // Tombol ikon hilang setelah sidebar melebar: fokus dipindah ke kartu, bukan jatuh ke <body>.
+              requestAnimationFrame(() =>
+                document
+                  .querySelector<HTMLElement>('[data-testid="sidebar"] [data-testid="server-card"]')
+                  ?.focus(),
+              );
+            }}
+          />
+        )}
         <div className={cn("border-t p-2", collapsed && "flex justify-center")}>
           <Button
             variant="ghost"
@@ -152,6 +169,7 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
                 <div className="flex-1 overflow-y-auto p-2">
                   <SidebarNav isAdmin={isAdmin} onNavigate={() => setDrawerOpen(false)} />
                 </div>
+                {user && <ServerCard className="p-2" isAdmin={isAdmin} />}
               </Dialog.Content>
             </Dialog.Portal>
           </Dialog.Root>
