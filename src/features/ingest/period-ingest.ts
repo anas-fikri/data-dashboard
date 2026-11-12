@@ -525,12 +525,13 @@ export async function runPeriodIngest(
         }
         const headers = new Map<string, Awaited<ReturnType<typeof refreshHeader>>>();
         const candidates: MergeCandidate[] = [];
-        const continued = leaderOf.has(sheets.indexOf(sh));
+        const lead = leaderOf.get(sheets.indexOf(sh));
         for (const pair of usable) {
-          // Lanjutan: judulnya sudah dari leader, baris judul tidak dibaca ulang.
-          const h = continued
-            ? { headerRow: 0, columns: sh.rec.columns }
-            : await refreshHeader(d, sh, pair);
+          // Lanjutan: judul dari leader SETELAH judul leader dibaca ulang (review L1), tanpa baris judul sendiri.
+          const h =
+            lead !== undefined
+              ? { headerRow: 0, columns: sheets[lead]!.rec.columns.map((x) => ({ ...x })) }
+              : await refreshHeader(d, sh, pair);
           headers.set(pair.lineageId, h);
           const cp = periodColumnPlan(
             h.columns,

@@ -73,23 +73,31 @@ export interface ContinuationRec {
   preview: { rows: { row: number; cells: Cell[] }[] };
 }
 
+const YEAR = /^(19|20)\d{2}$/;
+
 /**
  * `cand` adalah lanjutan tanpa judul dari `leader`: jumlah kolom sama, baris pertamanya tidak memuat judul
  * leader, dan jenis nilai (angka/tanggal/teks) di ≥ 3 kolom terisi cocok ≥ 80% dengan baris data pertama
- * leader. Ragu → bukan lanjutan (sheet tetap terpisah).
+ * leader. Wajib ada kolom pembeda (review v1.19.1 H1): judul leader berupa teks sedangkan semua data leader
+ * di kolom itu angka/tanggal — baris judul tabel lain (teks) gagal di kolom itu. Baris pertama (dan dua
+ * baris berikutnya) kandidat harus cocok di SEMUA kolom pembeda yang terisi; angka mirip tahun (1900–2099)
+ * di baris pertama kandidat dianggap judul bila data leader di kolom itu bukan tahun. Tabel serba teks
+ * tidak pernah dianggap lanjutan. Ragu → bukan lanjutan (sheet tetap terpisah).
  */
 export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): boolean {
   if (leader.headerRow < 1 || cand.colCount !== leader.colCount || leader.colCount < 2)
     return false;
   const head = leader.preview.rows.find((r) => r.row === leader.headerRow);
-  const data = leader.preview.rows.find((r) => r.row > leader.headerRow);
-  const first = cand.preview.rows[0];
+  const datas = leader.preview.rows.filter((r) => r.row > leader.headerRow).slice(0, 5);
+  const data = datas[0];
+  const rows = cand.preview.rows.slice(0, 3);
+  const first = rows[0];
   if (!head || !data || !first) return false;
   const titles = new Set(head.cells.filter((c): c is string => !!c?.trim()).map(norm));
   if (first.cells.some((c) => !!c?.trim() && titles.has(norm(c)))) return false;
+  const width = Math.min(head.cells.length, first.cells.length, data.cells.length);
   let compared = 0;
   let same = 0;
-  const width = Math.min(head.cells.length, first.cells.length, data.cells.length);
   for (let i = 0; i < width; i++) {
     const a = classOf(data.cells[i] ?? null);
     const b = classOf(first.cells[i] ?? null);
@@ -97,7 +105,28 @@ export function isContinuation(leader: ContinuationRec, cand: ContinuationRec): 
     compared++;
     if (a === b) same++;
   }
-  return compared >= 3 && same * 5 >= compared * 4;
+  if (compared < 3 || same * 5 < compared * 4) return false;
+  // Kolom pembeda: judul teks, data leader seragam angka atau tanggal.
+  let matched = 0;
+  for (let i = 0; i < width; i++) {
+    if (classOf(head.cells[i] ?? null) !== "text") continue;
+    const kinds = new Set(
+      datas.map((r) => classOf(r.cells[i] ?? null)).filter((k) => k !== "empty"),
+    );
+    if (kinds.size !== 1) continue;
+    const kind = [...kinds][0]!;
+    if (kind !== "num" && kind !== "date") continue;
+    const yearData = datas.some((r) => YEAR.test((r.cells[i] ?? "").trim()));
+    for (const [j, r] of rows.entries()) {
+      const v = (r.cells[i] ?? "").trim();
+      const k = classOf(v);
+      if (k === "empty") continue;
+      if (k !== kind) return false;
+      if (j === 0 && kind === "num" && YEAR.test(v) && !yearData) return false;
+      if (j === 0) matched++;
+    }
+  }
+  return matched >= 1;
 }
 
 /**

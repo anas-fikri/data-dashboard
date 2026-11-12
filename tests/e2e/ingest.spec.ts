@@ -138,6 +138,8 @@ test.describe("ingest", () => {
     await picker.getByRole("checkbox", { name: "Pengiriman 3" }).check();
     await expect(picker.getByTestId("upload-sheet-count")).toHaveText("2 dari 3 sheet dipilih");
     expect(await all.evaluate((el) => (el as HTMLInputElement).indeterminate)).toBe(true);
+    // Gabungkan tercentang bawaan (v1.19.1); uji ini memeriksa sheet terpilih tetap terpisah.
+    await picker.getByTestId("upload-sheet-merge").uncheck();
     await picker.getByTestId("upload-sheet-submit").click();
     await expect(page.getByText('"tiga-sheet.xlsx" terunggah.')).toBeVisible({ timeout: 30_000 });
 

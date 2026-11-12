@@ -309,7 +309,7 @@ export const SHEET_PICKER = (page: Page) => page.getByTestId("upload-sheet-picke
 const sheetHandled = new WeakSet<Page>();
 
 /**
- * Pemilih sheet xlsx (T-85tb) dikonfirmasi otomatis dengan pilihan bawaan setiap kali muncul. Dipasang
+ * Pemilih sheet xlsx (T-85tb) dikonfirmasi otomatis dengan pilihan bawaan (tanpa Gabungkan) setiap kali muncul. Dipasang
  * login()/apiLogin() untuk semua spec yang mengunggah file multi-sheet tanpa menguji pemilih itu; spec
  * yang mengujinya melepasnya dengan page.removeLocatorHandler(SHEET_PICKER(page)).
  */
@@ -317,6 +317,10 @@ export async function autoConfirmSheets(page: Page): Promise<void> {
   if (sheetHandled.has(page)) return;
   sheetHandled.add(page);
   await page.addLocatorHandler(SHEET_PICKER(page), async (picker) => {
+    // Gabungkan tercentang bawaan untuk dataset baru (v1.19.1); spec lama mengharapkan sheet terpisah.
+    // Gabung bawaan diuji sendiri di ingest.spec (T-0gmm, manualSheets).
+    const merge = picker.getByTestId("upload-sheet-merge");
+    if ((await merge.count()) && (await merge.isChecked())) await merge.uncheck();
     await picker.getByTestId("upload-sheet-submit").click();
   });
 }

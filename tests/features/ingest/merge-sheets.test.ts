@@ -141,6 +141,55 @@ describe("v1.19.1: sheet lanjutan tanpa judul (murni)", () => {
       false,
     );
   });
+
+  it("review H1: tabel lain berjudul teks dengan lebar sama tidak dianggap lanjutan", () => {
+    const of = (head: string[], data: string[]) => ({
+      colCount: head.length,
+      headerRow: 1,
+      columns: cols(...head),
+      preview: { rows: [head, data].map((cells, i) => ({ row: i + 1, cells })) },
+    });
+    const bare = (cells: string[]) => ({
+      colCount: cells.length,
+      headerRow: 1,
+      columns: cols(...cells),
+      preview: { rows: [{ row: 1, cells }] },
+    });
+    // Serba teks: tidak ada kolom pembeda.
+    expect(
+      isContinuation(
+        of(["Nama", "Kota", "Status"], ["Budi", "Jakarta", "Aktif"]),
+        bare(["Kategori", "Keterangan", "Catatan"]),
+      ),
+    ).toBe(false);
+    // Satu kolom angka (Berat): judul teks tabel lain gagal di kolom itu.
+    expect(
+      isContinuation(
+        of(
+          ["No Resi", "Pengirim", "Penerima", "Kota", "Berat"],
+          ["R-1", "Ani", "Budi", "Bogor", "3"],
+        ),
+        bare(["Resi", "Alasan", "Pelanggan", "Cabang", "Jumlah"]),
+      ),
+    ).toBe(false);
+    // Judul tahun di kolom angka bukan data.
+    expect(
+      isContinuation(
+        of(["Produk", "Jan", "Feb", "Mar"], ["A", "10", "20", "30"]),
+        bare(["Wilayah", "2023", "2024", "2025"]),
+      ),
+    ).toBe(false);
+    // Lanjutan sungguhan dengan lebar sama tetap dikenali.
+    expect(
+      isContinuation(
+        of(
+          ["No Resi", "Pengirim", "Penerima", "Kota", "Berat"],
+          ["R-1", "Ani", "Budi", "Bogor", "3"],
+        ),
+        bare(["R-900", "Cici", "Dedi", "Depok", "7"]),
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("ingest: gabungkan sheet berkolom sama", () => {
