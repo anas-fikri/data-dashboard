@@ -609,7 +609,17 @@ export function PeriodReviewForm({
           ))}
           {plan.ignoredSheets.map((s) => (
             <Callout key={s} tone="warning" testId="review-ignored-sheet">
-              Sheet “{s}” di file tidak cocok dengan sheet data mana pun, jadi tidak disimpan.
+              {plan.ignoredForMapping ? (
+                <>
+                  Sheet “{s}” tidak digabung karena sheet lain di file ini perlu pemetaan kolom,
+                  jadi tidak disimpan. Bila sheet itu berisi data, unggah ulang sheet tersebut
+                  terpisah setelah unggahan ini selesai.
+                </>
+              ) : (
+                <>
+                  Sheet “{s}” di file tidak cocok dengan sheet data mana pun, jadi tidak disimpan.
+                </>
+              )}
             </Callout>
           ))}
           {plan.mergedSheets.map((m) => (
@@ -620,6 +630,13 @@ export function PeriodReviewForm({
                   <strong>“{m.sheet}”</strong>: {m.from.map((f) => `“${f}”`).join(", ")}. Periode
                   yang ada di sheet mana pun diganti oleh gabungan barisnya. Pastikan tidak ada
                   sheet salinan, karena barisnya akan terhitung dua kali.
+                  {m.copies?.length ? (
+                    <strong className="mt-1 block" data-testid="review-merged-copies">
+                      Kemungkinan salinan: {m.copies.map((f) => `“${f}”`).join(", ")} punya judul
+                      kolom dan jumlah baris yang sama persis. Bila salah satunya salinan, batalkan
+                      unggahan, hapus sheet salinan di file, lalu unggah ulang.
+                    </strong>
+                  ) : null}
                 </>
               ) : (
                 <>

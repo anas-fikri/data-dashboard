@@ -81,7 +81,7 @@ const n = (x: number) => x.toLocaleString("id-ID");
 export function queueText(q: MetricsSummary["queue"]): string {
   if (!q) return "Pemroses: status tidak diketahui";
   const head = q.workerDown ? "Pemroses: tidak aktif" : "Pemroses: aktif";
-  const jobs = q.jobs ?? { upload: { active: q.active, waiting: q.waiting } };
+  const jobs = q.jobs ?? { upload: { active: q.active ?? 0, waiting: q.waiting ?? 0 } };
   const parts: string[] = [];
   for (const kind of ["upload", "schema", "export"] as const) {
     const j = jobs[kind];
@@ -95,7 +95,7 @@ export function queueText(q: MetricsSummary["queue"]): string {
 /** Jumlah proses latar yang sedang berjalan (semua jenis). */
 const runningOf = (q: MetricsSummary["queue"]) =>
   q
-    ? Object.values(q.jobs ?? { upload: { active: q.active, waiting: 0 } }).reduce(
+    ? Object.values(q.jobs ?? { upload: { active: q.active ?? 0, waiting: 0 } }).reduce(
         (a, j) => a + (j?.active ?? 0),
         0,
       )

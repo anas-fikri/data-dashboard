@@ -104,11 +104,15 @@ export function measureForChoice(
   prev: { agg: Agg; column?: number },
   columns: SourceColumn[],
   type: WidgetType,
+  /** Kolom yang tidak dipilih otomatis (T-jdmk: kolom tanggal pembanding KPI — memilihnya membuat widget tidak valid). */
+  avoid?: number,
 ): { agg: Agg; column?: number } {
   if (choice === "count") return { agg: "count" };
   const agg: Agg = choice === "count_filled" ? "count" : choice;
-  const allowed = columnsForAgg(agg, columns, type);
-  const keep = allowed.some((c) => c.pos === prev.column);
+  const all = columnsForAgg(agg, columns, type);
+  const others = all.filter((c) => c.pos !== avoid);
+  const allowed = others.length ? others : all;
+  const keep = all.some((c) => c.pos === prev.column) && prev.column !== avoid;
   // Kolom baru (T-12zs — bukan "Total No."/"Total Tahun"): Total/Rata-rata/… kolom besaran bila ada;
   // Jumlah terisi / Jumlah nilai unik (cocok untuk teks) kolom pertama yang bukan ID/nomor urut.
   const counts =

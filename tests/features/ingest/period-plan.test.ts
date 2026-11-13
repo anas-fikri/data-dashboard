@@ -951,3 +951,31 @@ describe("computePeriodPlan — Tambah / Perbarui berdasarkan kunci (v1.20)", ()
     ).toThrow(/Tambah tidak membuang/);
   });
 });
+
+/* T-zjwh: pesan PERIOD_OUT_OF_WINDOW membedakan periode unggahan dan periode yang dilewati. */
+import { outOfWindowMessage } from "@/features/ingest/period-plan";
+
+describe("outOfWindowMessage", () => {
+  const list = (k: string[]) => k.join(", ");
+  it("periode unggahan saja → pesan lama; periode dilewati → alasan + langkah", () => {
+    expect(outOfWindowMessage(["2024-01"], [], "batas X", list)).toBe(
+      "Periode 2024-01 di luar batas X: menyimpannya berarti melepas data yang lebih baru.",
+    );
+    const m = outOfWindowMessage([], ["2023-12"], "batas X", list);
+    expect(m).toContain('Periode 2023-12 dipilih "Lewati periode ini"');
+    expect(m).toContain("Pilih Ganti");
+  });
+});
+
+describe("T-hgsz: sheet diabaikan karena pemetaan", () => {
+  it("ignoredForMapping hanya bila ada sheet diabaikan; rencana lama tanpa field → false", () => {
+    const base = { incoming: [month("2026-01", { A: 10 })] };
+    expect(
+      computePeriodPlan(input({ ...base, ignoredSheets: ["Data 2"], ignoredForMapping: true }))
+        .ignoredForMapping,
+    ).toBe(true);
+    expect(computePeriodPlan(input({ ...base, ignoredForMapping: true })).ignoredForMapping).toBe(
+      false,
+    );
+  });
+});

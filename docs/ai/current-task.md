@@ -6,8 +6,6 @@
 - T-d6g9 [in_review] v1.21 kartu Server: hitung semua proses berjalan (unggah, koreksi skema, ekspor/PDF) + ringkasan angka saat sidebar dic… — docs/ai/tasks/T-d6g9-v1-21-kartu-server-hitung-semua-proses-berjalan.md
 - T-g8ht [in_review] v1.21 pembanding KPI: rasio ke ukuran lain (mis. diterima ÷ total) dan target angka tetap — docs/ai/tasks/T-g8ht-v1-21-pembanding-kpi-rasio-ke-ukuran-lain-mis-di.md
 - T-rbrb [in_review] v1.19: mode periode — periode yang sudah ada bisa Ganti / Tambah baris / Perbarui berdasarkan kunci (upsert), bukan han… — docs/ai/tasks/T-rbrb-v1-19-mode-periode-periode-yang-sudah-ada-bisa-g.md
-- T-zjwh [todo] v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit hilang setelah jeda, bond/VLAN, cache ringkasan,… — docs/ai/tasks/T-zjwh-v1-18-lanjutan-temuan-low-review-monitor-polling.md
-- T-jdmk [todo] T-bwza lanjutan: kolom bawaan Jumlah kosong jangan memilih kolom pembanding KPI — docs/ai/tasks/T-jdmk-t-bwza-lanjutan-kolom-bawaan-jumlah-kosong-janga.md
 - T-01xj [todo] T-0gmm lanjutan: uji unit jalur drift judul sheet gabungan (mergeHeaderDrift) + kolom filter ikut sheetMap saat aktivasi — docs/ai/tasks/T-01xj-t-0gmm-lanjutan-uji-unit-jalur-drift-judul-sheet.md
 - T-7377 [todo] Lihat data: PageDown memindah fokus ke kolom nomor baris (e2e data-view-a11y AC2 gagal di main) — docs/ai/tasks/T-7377-lihat-data-pagedown-memindah-fokus-ke-kolom-nomo.md
 - T-tyb1 [todo] Temuan Low review v1.15 (pembanding KPI + klik-tembus) — docs/ai/tasks/T-tyb1-temuan-low-review-v1-15-pembanding-kpi-klik-temb.md

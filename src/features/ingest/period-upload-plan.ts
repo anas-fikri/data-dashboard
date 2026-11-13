@@ -261,7 +261,14 @@ const metaSchema = z.object({ pos: posSchema, name: z.string(), original: z.stri
 const periodMetaSchema = z.object({
   ignoredSheets: z.array(z.string()).max(1_024).default([]),
   mergedSheets: z
-    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
+    .array(
+      z.object({
+        sheet: z.string(),
+        from: z.array(z.string()).min(1).max(1_024),
+        /** Sheet yang kemungkinan salinan (kolom + jumlah baris sama, T-hgsz); tidak ada = tidak ada. */
+        copies: z.array(z.string()).max(1_024).optional(),
+      }),
+    )
     .max(1_024)
     .default([]),
   changes: z
@@ -758,6 +765,8 @@ export interface UploadFacts {
   fileSheets: string[];
   droppedRows: number;
   ignoredSheets: string[];
+  /** Sheet diabaikan karena sheet lain perlu pemetaan kolom (T-hgsz). */
+  ignoredForMapping?: boolean;
   /** Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj); tidak ada = tidak ada. */
   mergedSheets?: MergedSheet[];
   fileSha256: string | null;
@@ -772,6 +781,7 @@ export const factsOf = (plan: PeriodPlan): UploadFacts => ({
   fileSheets: plan.fileSheets,
   droppedRows: plan.droppedRows,
   ignoredSheets: plan.ignoredSheets,
+  ignoredForMapping: plan.ignoredForMapping,
   mergedSheets: plan.mergedSheets,
   fileSha256: plan.fileSha256,
   ...(plan.mode !== "REPLACE"
@@ -833,6 +843,7 @@ export function decidePeriodCommit(a: {
     fileSha256: a.facts.fileSha256,
     droppedRows: a.facts.droppedRows,
     ignoredSheets: a.facts.ignoredSheets,
+    ignoredForMapping: a.facts.ignoredForMapping,
     mergedSheets: a.facts.mergedSheets,
     merge: a.facts.merge,
   });

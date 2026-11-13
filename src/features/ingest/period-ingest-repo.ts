@@ -306,7 +306,11 @@ export function prismaPeriodIngestRepo(limits: () => PeriodLimits): PeriodIngest
           // Sheet file yang tidak disimpan: rencana setelah pemetaan (T-057) tetap mencatatnya.
           periodMeta: {
             ignoredSheets: d.ignoredSheets,
-            mergedSheets: (d.mergedSheets ?? []).map((m) => ({ sheet: m.sheet, from: m.from })),
+            mergedSheets: (d.mergedSheets ?? []).map((m) => ({
+              sheet: m.sheet,
+              from: m.from,
+              ...(m.copies?.length ? { copies: m.copies } : {}),
+            })),
             changes: [],
           },
           ingestStage: "typed",

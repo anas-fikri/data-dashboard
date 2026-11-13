@@ -131,6 +131,11 @@ export interface PeriodPlanInput {
    */
   ignoredSheets?: string[];
   /**
+   * Sheet di `ignoredSheets` diabaikan karena sheet lain di file perlu pemetaan kolom (T-hgsz): layar tinjauan
+   * memberi alasan itu, bukan "tidak cocok dengan sheet data mana pun".
+   */
+  ignoredForMapping?: boolean;
+  /**
    * Sheet file berkolom sama yang digabung ke satu sheet data (T-jsmj): selalu ditinjau pemilik sebelum
    * diterapkan (salinan sheet yang tidak sengaja ikut akan menggandakan baris).
    */
@@ -150,6 +155,11 @@ export interface PeriodPlanInput {
 export interface MergedSheet {
   sheet: string;
   from: string[];
+  /**
+   * Sheet di `from` yang kemungkinan salinan sheet lain (judul kolom dan jumlah baris sama, T-hgsz): pemilik
+   * diperingatkan karena barisnya akan terhitung dua kali. Tidak ada = tidak ada.
+   */
+  copies?: string[];
 }
 
 const LIMIT_NAMES = ["periods", "sheetRows", "datasetBytes", "sheetSegments"] as const;
@@ -241,9 +251,18 @@ export const periodPlanSchema = z.object({
   skip: z.array(z.string()).default([]),
   /** Sheet di file yang tidak ikut disimpan (T-052); rencana lama tanpa field ini = tidak ada. */
   ignoredSheets: z.array(z.string()).default([]),
+  /** Sheet diabaikan karena pemetaan kolom (T-hgsz); rencana lama = tidak. */
+  ignoredForMapping: z.boolean().default(false),
   /** Sheet file yang digabung ke satu sheet data (T-jsmj); rencana lama tanpa field ini = tidak ada. */
   mergedSheets: z
-    .array(z.object({ sheet: z.string(), from: z.array(z.string()).min(1).max(1_024) }))
+    .array(
+      z.object({
+        sheet: z.string(),
+        from: z.array(z.string()).min(1).max(1_024),
+        /** Sheet yang kemungkinan salinan (kolom + jumlah baris sama, T-hgsz); tidak ada = tidak ada. */
+        copies: z.array(z.string()).max(1_024).optional(),
+      }),
+    )
     .max(1_024)
     .default([]),
   /** Cara unggahan (v1.20); rencana lama tanpa field ini = Ganti. */
@@ -544,6 +563,30 @@ function usedText(v: Violation): string {
  * tidak cocok satuan, kunci ganda, angka negatif. Batas yang terlewati bukan exception, melainkan
  * `rejection` di rencana.
  */
+/**
+ * Pesan PERIOD_OUT_OF_WINDOW (T-zjwh): periode dari unggahan vs periode yang dipilih "Lewati periode ini" (data lama
+ * dijanjikan tetap, tetapi termasuk periode terlama yang harus dilepas agar batas terpenuhi).
+ */
+export function outOfWindowMessage(
+  uploaded: string[],
+  skipped: string[],
+  limit: string,
+  list: (keys: string[]) => string,
+): string {
+  const parts: string[] = [];
+  if (uploaded.length) {
+    parts.push(
+      `Periode ${list(uploaded)} di luar ${limit}: menyimpannya berarti melepas data yang lebih baru.`,
+    );
+  }
+  if (skipped.length) {
+    parts.push(
+      `Periode ${list(skipped)} dipilih "Lewati periode ini" (data lama tetap), tetapi termasuk periode terlama yang harus dilepas agar ${limit} terpenuhi. Pilih Ganti untuk periode itu, hapus periode lama dulu, atau minta admin menaikkan batas.`,
+    );
+  }
+  return parts.join(" ");
+}
+
 export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   validate(input);
   validateMerge(input);
@@ -678,7 +721,12 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
           ...v,
           periods: hit,
           mustRemove: [],
-          message: `Periode ${list(hit)} di luar ${limitText(v)}: menyimpannya berarti melepas data yang lebih baru.`,
+          message: outOfWindowMessage(
+            hit.filter((k) => !skip.has(k)),
+            hit.filter((k) => skip.has(k)),
+            limitText(v),
+            list,
+          ),
         };
       } else if (input.settings.onLimit === "REJECT") {
         const mustRemove = prefix.map((u) => u.key);
@@ -699,7 +747,11 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
   const ignoredSheets = [...new Set(input.ignoredSheets ?? [])].sort();
   const mergedSheets = [...(input.mergedSheets ?? [])]
     .filter((m) => m.from.length >= 1)
-    .map((m) => ({ sheet: m.sheet, from: [...m.from] }))
+    .map((m) => ({
+      sheet: m.sheet,
+      from: [...m.from],
+      ...(m.copies?.length ? { copies: [...m.copies] } : {}),
+    }))
     .sort((x, y) => x.sheet.localeCompare(y.sheet) || x.from[0]!.localeCompare(y.from[0]!));
   const keyedOf = (key: string): PeriodPlanEntry["keyed"] => {
     const list = partsOf(key);
@@ -824,6 +876,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
     include: [...include].filter((k) => incoming.has(k)).sort(),
     skip: [...skip].sort(),
     ignoredSheets,
+    ignoredForMapping: !!input.ignoredForMapping && ignoredSheets.length > 0,
     mergedSheets,
     mode: merge?.mode ?? "REPLACE",
     mergeParts: parts.map((x) => ({

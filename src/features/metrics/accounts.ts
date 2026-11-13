@@ -28,8 +28,11 @@ const MAX_JOBS = 100;
 const USAGE_TTL_MS = 5 * 60_000;
 /** userUsage = 3 query (termasuk semua segmen akun): dibatasi 3 bersamaan agar pool DB tidak tersentak. */
 const USAGE_CONCURRENCY = 3;
+/** Akun yang gagal dihitung (mis. timeout) dicoba lagi paling cepat 60 dtk kemudian (T-zjwh), bukan tiap polling. */
+const USAGE_FAIL_TTL_MS = 60_000;
 const usageCache = globalThis as unknown as {
-  metricsUsage?: Map<string, { bytes: number; at: number }>;
+  /** bytes null = gagal dihitung (kolom "–" sampai kedaluwarsa). */
+  metricsUsage?: Map<string, { bytes: number | null; at: number }>;
 };
 
 interface JobLike {
@@ -47,7 +50,7 @@ const active = (q: {
 const str = (v: unknown) => (typeof v === "string" && v ? v : null);
 
 /** Job aktif per akun. Data job lama tanpa pemilik dilewati (perkiraan). */
-async function jobsByUser(): Promise<Map<string, AccountJobs>> {
+export async function jobsByUser(): Promise<Map<string, AccountJobs>> {
   const [ingest, recast, exports, pdfs] = await Promise.all([
     active(ingestQueue()),
     active(recastQueue()),
@@ -91,8 +94,9 @@ async function storageOf(ids: string[], now: number): Promise<Map<string, number
   const todo: string[] = [];
   for (const id of ids) {
     const hit = cache.get(id);
-    if (hit && now < hit.at) out.set(id, hit.bytes);
-    else todo.push(id);
+    if (hit && now < hit.at) {
+      if (hit.bytes !== null) out.set(id, hit.bytes);
+    } else todo.push(id);
   }
   for (let i = 0; i < todo.length; i += USAGE_CONCURRENCY) {
     await Promise.all(
@@ -108,6 +112,7 @@ async function storageOf(ids: string[], now: number): Promise<Map<string, number
             { userId: id, err: e instanceof Error ? e.message : String(e) },
             "storage per akun gagal dihitung",
           );
+          cache.set(id, { bytes: null, at: now + USAGE_FAIL_TTL_MS });
         }
       }),
     );

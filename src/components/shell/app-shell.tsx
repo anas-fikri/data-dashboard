@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
 import { Dialog } from "radix-ui";
 import { useEffect, useState, type ReactNode } from "react";
 import { usePersistedBoolean } from "@/lib/hooks/use-persisted-boolean";
+import { useIsPhone } from "@/components/dashboards/use-media-query";
 import { ServerCard } from "@/components/metrics/server-card";
 import { Button } from "@/components/ui/button";
 import type { SessionUser } from "@/features/auth/session";
@@ -60,6 +61,7 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
   const toggleCollapsed = () => setCollapsed(!collapsed);
 
   const isAdmin = user?.isAdmin ?? false;
+  const isPhone = useIsPhone();
 
   return (
     <div className="flex min-h-dvh">
@@ -91,7 +93,9 @@ export function AppShell({ user, notice, appVersion, children }: AppShellProps) 
         <div className="flex-1 overflow-y-auto p-2">
           <SidebarNav isAdmin={isAdmin} collapsed={collapsed} />
         </div>
-        {user && (
+        {/* Ponsel: aside tersembunyi → kartu tidak dipasang agar tidak polling ganda (T-zjwh L1); drawer
+            memasang kartunya sendiri hanya saat terbuka. */}
+        {user && !isPhone && (
           <ServerCard
             className={cn("p-2", collapsed && "flex justify-center")}
             isAdmin={isAdmin}

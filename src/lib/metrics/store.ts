@@ -45,9 +45,12 @@ export type JobKind = (typeof JOB_KINDS)[number];
 
 export interface QueueStatus {
   t: number;
-  /** Antrean unggah (ingest) saja — dasar status "pemroses tidak aktif". */
-  waiting: number;
-  active: number;
+  /**
+   * Antrean unggah (ingest) saja. null = hitungan antrean tidak terbaca (timeout) — jumlah worker tetap disimpan
+   * (T-zjwh, review T-ee46 L2).
+   */
+  waiting: number | null;
+  active: number | null;
   /** null = jumlah worker tidak diketahui. */
   workers: number | null;
   /** Semua proses latar per jenis (v1.21); tidak ada = sampel versi lama. */
@@ -70,20 +73,27 @@ export async function pushHostPoint(r: Redis, p: HostPoint): Promise<void> {
     .lpush(KEY.s10, JSON.stringify(p))
     .ltrim(KEY.s10, 0, KEEP_10S - 1)
     .exec();
-  const minute = Math.floor(p.t / 60_000) - 1;
+  const last = Math.floor(p.t / 60_000) - 1;
   const newest = parse<HostPoint>(await r.lindex(KEY.m1, 0));
-  if (newest && Math.floor(newest.t / 60_000) >= minute) return;
-  const recent = (await r.lrange(KEY.s10, 0, 12))
-    .map((s) => parse<HostPoint>(s))
-    .filter((x): x is HostPoint => !!x && Math.floor(x.t / 60_000) === minute)
-    .reverse();
-  const avg = averagePoints(recent);
-  if (!avg) return;
-  await r
-    .multi()
-    .lpush(KEY.m1, JSON.stringify({ ...avg, t: minute * 60_000 }))
-    .ltrim(KEY.m1, 0, KEEP_1M - 1)
-    .exec();
+  const from = newest ? Math.floor(newest.t / 60_000) + 1 : last;
+  if (from > last) return;
+  // Semua menit selesai sejak titik 1 menit terakhir (T-zjwh L4): jeda ≥ 1 menit (app lambat/restart) tidak
+  // membuat menit yang punya titik 10 dtk hilang dari grafik 24 jam. Titik 10 dtk tersimpan 1 jam.
+  const byMinute = new Map<number, HostPoint[]>();
+  for (const s of await r.lrange(KEY.s10, 0, KEEP_10S - 1)) {
+    const x = parse<HostPoint>(s);
+    const m = x ? Math.floor(x.t / 60_000) : NaN;
+    if (!x || m < from || m > last) continue;
+    byMinute.set(m, [x, ...(byMinute.get(m) ?? [])]);
+  }
+  const minutes = [...byMinute.keys()].sort((a, b) => a - b);
+  if (!minutes.length) return;
+  const m = r.multi();
+  for (const minute of minutes) {
+    const avg = averagePoints(byMinute.get(minute)!);
+    if (avg) m.lpush(KEY.m1, JSON.stringify({ ...avg, t: minute * 60_000 }));
+  }
+  await m.ltrim(KEY.m1, 0, KEEP_1M - 1).exec();
 }
 
 /** Satu pembacaan /metrics → titik baru (laju dari pembacaan sebelumnya yang disimpan). */
@@ -175,6 +185,27 @@ export interface MetricsView {
 
 const fresh = (t: number | undefined, now: number, ms: number) =>
   typeof t === "number" && now - t <= ms;
+
+/**
+ * Ringkasan di-cache ± 5 dtk per proses (T-zjwh L8): semua user login mem-polling tiap 10 dtk, jadi pembacaan
+ * Redis tidak bertambah per user.
+ */
+const SUMMARY_TTL_MS = 5_000;
+const summaryCache = globalThis as unknown as {
+  metricsSummary?: { at: number; value: Promise<MetricsView> };
+};
+
+export function readSummaryCached(r: Redis, now = Date.now()): Promise<MetricsView> {
+  const c = summaryCache.metricsSummary;
+  if (c && now - c.at >= 0 && now - c.at < SUMMARY_TTL_MS) return c.value;
+  const value = readSummary(r, now);
+  summaryCache.metricsSummary = { at: now, value };
+  // Galat tidak di-cache: polling berikutnya mencoba lagi.
+  value.catch(() => {
+    if (summaryCache.metricsSummary?.value === value) summaryCache.metricsSummary = undefined;
+  });
+  return value;
+}
 
 /** Ringkasan untuk semua user login: titik terakhir + 1 jam (≤ 60 titik) + antrean. */
 export async function readSummary(r: Redis, now = Date.now()): Promise<MetricsView> {

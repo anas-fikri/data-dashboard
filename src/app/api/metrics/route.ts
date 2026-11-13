@@ -1,6 +1,6 @@
 import { json, withUser } from "@/lib/api-route";
 import { env } from "@/lib/env";
-import { readSummary } from "@/lib/metrics/store";
+import { readSummaryCached } from "@/lib/metrics/store";
 import { redisReady } from "@/lib/redis";
 import { summaryOf } from "@/features/metrics/view";
 
@@ -13,6 +13,6 @@ export function GET() {
   return withUser("ringkasan metrik gagal", async () => {
     // Monitor belum dipasang → jawab tanpa menyentuh Redis; klien berhenti polling.
     if (!env().METRICS_NODE_URL) return json({ ok: true, ...summaryOf(OFF, false) });
-    return json({ ok: true, ...summaryOf(await readSummary(await redisReady()), true) });
+    return json({ ok: true, ...summaryOf(await readSummaryCached(await redisReady()), true) });
   });
 }

@@ -310,7 +310,7 @@ export function ResourcesPanel() {
         </h2>
         <p className="text-sm text-muted-foreground" data-testid="res-queue">
           Pemroses unggahan (worker) aktif: {data.workers ?? "tidak diketahui"}
-          {data.queue
+          {data.queue && data.queue.active !== null && data.queue.waiting !== null
             ? ` · ${data.queue.active.toLocaleString("id-ID")} diproses · ${data.queue.waiting.toLocaleString("id-ID")} menunggu`
             : ""}
         </p>
