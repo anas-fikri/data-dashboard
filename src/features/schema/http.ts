@@ -2,7 +2,8 @@ import "server-only";
 import type { NextRequest, NextResponse } from "next/server";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { logger } from "@/lib/logger";
-import { ingestQueuePosition, ingestWorkerCount } from "@/lib/queue/versions";
+import { recastQueue } from "@/lib/queue/connection";
+import { ingestQueuePosition, ingestWorkerCount, queueWorkerDown } from "@/lib/queue/versions";
 import { prismaSchemaRepo, schemaDeps } from "./runtime";
 import { ingestStatus, recastStatus, requestRecast, type SchemaCode } from "./service";
 
@@ -73,6 +74,9 @@ export async function recastRoute(req: NextRequest, sheetId: string): Promise<Ne
 export function recastStatusRoute(sheetId: string, jobId: string): Promise<NextResponse> {
   return withUser("status koreksi skema gagal", async (userId) => {
     const r = await recastStatus(userId, sheetId, jobId, schemaDeps);
-    return r.ok ? json(r) : json(r, STATUS[r.code]);
+    if (!r.ok) return json(r, STATUS[r.code]);
+    // Pemroses tidak aktif (T-r5tm): koreksi menunggu tanpa batas — panel memberi tahu.
+    const pending = r.status.state === "queued" || r.status.state === "running";
+    return json(pending ? { ...r, workerDown: await queueWorkerDown(recastQueue) } : r);
   });
 }

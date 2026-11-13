@@ -541,13 +541,14 @@ export async function exportStatus(
   userId: string,
   id: string,
   deps: { repo: Pick<ExportRepo, "findOwned" | "dashboardRole" | "sheetAccess">; now?: () => Date },
-): Promise<({ ok: true } & ExportStatusView) | ExportFailure> {
+): Promise<({ ok: true; pdf: boolean } & ExportStatusView) | ExportFailure> {
   if (!isExportId(id)) return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   const row = await deps.repo.findOwned(userId, id);
   if (!row || !(await accessOf(userId, row, deps.repo))) {
     return failure("NOT_FOUND", NOT_FOUND_MESSAGE);
   }
-  return { ok: true, ...statusView(row, deps.now?.() ?? new Date()) };
+  // pdf: antrean mana yang memproses (T-r5tm, peringatan pemroses tidak aktif); tidak dikirim ke klien.
+  return { ok: true, pdf: row.format === "PDF", ...statusView(row, deps.now?.() ?? new Date()) };
 }
 
 /**

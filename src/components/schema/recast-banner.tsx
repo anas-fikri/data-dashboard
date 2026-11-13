@@ -1,5 +1,6 @@
 "use client";
 
+import { workerDownText } from "@/lib/worker-down-text";
 import { IconLoader2, IconRefresh, IconX } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { FormAlert } from "@/components/auth/form-alert";
@@ -22,8 +23,17 @@ export function segmentProgressText(p: RecastProgress): string {
  */
 export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
   const router = useRouter();
-  const { local, jobState, progress, pollError, retryPoll, done, dismissDone, dismissError } =
-    useRecast();
+  const {
+    local,
+    jobState,
+    progress,
+    workerDown,
+    pollError,
+    retryPoll,
+    done,
+    dismissDone,
+    dismissError,
+  } = useRecast();
 
   if (jobState) {
     return (
@@ -51,6 +61,11 @@ export function RecastBanner({ schema }: { schema: ColumnSchema[] }) {
           <span className="block text-muted-foreground">
             Untuk file besar bisa beberapa menit. Halaman ini diperbarui otomatis setelah selesai.
           </span>
+          {workerDown ? (
+            <span className="mt-1 block font-medium" data-testid="recast-worker-down">
+              {workerDownText("koreksi skema ini")}
+            </span>
+          ) : null}
           {pollError ? (
             <span className="mt-2 flex flex-wrap items-center gap-2 text-muted-foreground">
               Status terbaru belum bisa dimuat; mencoba lagi otomatis.

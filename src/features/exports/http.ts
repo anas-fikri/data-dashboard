@@ -8,6 +8,7 @@ import { SPEC_MAX_BYTES } from "@/features/query/spec";
 import { json, readJson, rejectCrossOrigin, withUser } from "@/lib/api-route";
 import { env } from "@/lib/env";
 import { exportQueue, pdfQueue, withQueueTimeout } from "@/lib/queue/connection";
+import { queueWorkerDown } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
 import { presignExportGet } from "@/lib/storage/exports";
 import { rendererClient } from "./renderer-client";
@@ -101,7 +102,13 @@ export function createExportRoute(req: NextRequest): Promise<NextResponse> {
 export function exportStatusRoute(id: string): Promise<NextResponse> {
   return withUser("status ekspor gagal", async (userId) => {
     const r = await exportStatus(userId, id, deps());
-    return r.ok ? json(r) : failed(r);
+    if (!r.ok) return failed(r);
+    const { pdf, ...view } = r;
+    // Pemroses tidak aktif (T-r5tm): ekspor menunggu tanpa batas — kartu memberi tahu.
+    const pending = view.state === "queued" || view.state === "running";
+    return json(
+      pending ? { ...view, workerDown: await queueWorkerDown(pdf ? pdfQueue : exportQueue) } : view,
+    );
   });
 }
 

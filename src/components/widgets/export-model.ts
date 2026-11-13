@@ -118,7 +118,8 @@ export function rejectCode(status: number, code?: string): string {
 export type ExportJob =
   | { phase: "idle" }
   | { phase: "starting"; format: ExportFileFormat }
-  | { phase: "running"; format: ExportFileFormat; id: string }
+  /** workerDown: tidak ada worker yang mengambil job (T-r5tm). */
+  | { phase: "running"; format: ExportFileFormat; id: string; workerDown?: boolean }
   | {
       phase: "done";
       format: ExportFileFormat;
@@ -132,7 +133,7 @@ export type ExportEvent =
   | { type: "start"; format: ExportFileFormat }
   | { type: "created"; id: string }
   | { type: "rejected"; status: number; code?: string; message?: string }
-  | { type: "status"; id: string; view: ExportStatusView }
+  | { type: "status"; id: string; view: ExportStatusView & { workerDown?: boolean } }
   /** Polling berhenti tanpa hasil: 401/403/404/410 (use-polling onStop; 404 = akses dicabut). */
   | { type: "stopped"; id: string; status: number }
   /** Jam lokal melewati expiresAt (dikurangi margin). */
@@ -170,7 +171,10 @@ export function exportReducer(job: ExportJob, e: ExportEvent): ExportJob {
         const { format, id } = job;
         return { phase: "done", format, id, rows: v.rows ?? null, expiresAt: v.expiresAt ?? null };
       }
-      if (v.state === "queued" || v.state === "running") return job;
+      if (v.state === "queued" || v.state === "running") {
+        const down = v.workerDown === true;
+        return (job.workerDown === true) === down ? job : { ...job, workerDown: down };
+      }
       if (v.state === "expired") return fail(job.format, C.EXPORT_EXPIRED);
       // failed, atau status yang tidak dikenal: polling sudah berhenti — jangan menunggu selamanya.
       return fail(job.format, v.code || C.EXPORT_FAILED, v.message);
