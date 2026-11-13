@@ -53,6 +53,8 @@ import {
   sortOptions,
   withDimension,
   withoutMissingColumns,
+  withoutMissingExtras,
+  onlyExtrasMissing,
   type SaveStatus,
   type Source,
 } from "./widget-config-model";
@@ -274,6 +276,13 @@ export function WidgetConfigForm({
                     }
                   : undefined
               }
+              // Kolom klik-tembus / tanggal pembanding yang disembunyikan (T-tyb1): buang dari pengaturan.
+              onFixExtras={
+                draft.type !== "table" && withoutMissingExtras(draft, sources)
+                  ? () => commit(withoutMissingExtras(draft, sources)!)
+                  : undefined
+              }
+              extrasOnly={onlyExtrasMissing(draft, sources)}
             />
           ) : retargetedOnly ? (
             <RetargetNotice
@@ -454,6 +463,7 @@ export function WidgetConfigForm({
               {draft.type === "kpi" ? (
                 <KpiCompareFields
                   value={draft.spec.compare}
+                  ownTone={"tone" in draft.spec.measure ? draft.spec.measure.tone : undefined}
                   columns={cols}
                   dateMeasure={
                     !isCalcValue(draft.spec.measure) &&

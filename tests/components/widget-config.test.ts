@@ -906,3 +906,44 @@ describe("Jumlah terisi", () => {
     });
   });
 });
+
+/* T-tyb1: kolom klik-tembus / tanggal pembanding yang disembunyikan → tindakan perbaikan. */
+import {
+  onlyExtrasMissing,
+  withoutMissingExtras,
+} from "@/components/dashboards/widget-config-model";
+
+describe("withoutMissingExtras", () => {
+  const hidden: Source[] = [
+    { ...sources[0]!, columns: sources[0]!.columns.filter((c) => c.pos !== 2) },
+  ];
+  it("KPI: kolom tanggal pembanding disembunyikan → pembanding dimatikan, widget valid lagi", () => {
+    const kpi = {
+      type: "kpi",
+      spec: {
+        sheetId: S1,
+        measure: { agg: "sum", column: 3 },
+        format: { style: "auto", decimals: 0 },
+        compare: { column: 2, grain: "month", against: "previous" },
+      },
+    } as WidgetConfig;
+    expect(onlyExtrasMissing(kpi, hidden)).toBe(true);
+    const fixed = withoutMissingExtras(kpi, hidden)!;
+    expect(fixed.spec).not.toHaveProperty("compare");
+    expect(valid(fixed)).toBe(true);
+  });
+  it("grafik: kolom klik-tembus yang hilang dibuang; semua hilang → klik-tembus mati; kolom utama hilang → bukan hanya ekstra", () => {
+    const bar = defaultConfig("bar", sources, empty)!;
+    const withDrill = { ...bar, spec: { ...bar.spec, drill: { columns: [2, 4] } } } as WidgetConfig;
+    expect((withoutMissingExtras(withDrill, hidden)!.spec as { drill?: unknown }).drill).toEqual({
+      columns: [4],
+    });
+    const onlyHidden = { ...bar, spec: { ...bar.spec, drill: { columns: [2] } } } as WidgetConfig;
+    expect(withoutMissingExtras(onlyHidden, hidden)!.spec).not.toHaveProperty("drill");
+    expect(withoutMissingExtras(bar, hidden)).toBeNull();
+    const dimGone: Source[] = [
+      { ...sources[0]!, columns: sources[0]!.columns.filter((c) => c.pos !== 1 && c.pos !== 2) },
+    ];
+    expect(onlyExtrasMissing(withDrill, dimGone)).toBe(false);
+  });
+});

@@ -42,6 +42,8 @@ interface FiltersApi {
   dashboardId: string;
   columns: FilterColumnView[];
   crossColumns: readonly string[];
+  /** Ada grafik berklik-tembus (tombol "Lihat baris data", T-tyb1): petunjuk filter silang menyebutnya. */
+  hasDrill: boolean;
   /** Status terkini (kontrol, chip). */
   state: FilterState;
   /** Status yang sudah diterapkan ke widget (setelah jeda). */
@@ -151,6 +153,10 @@ export function DashboardFiltersProvider({
     dashboardId,
     columns,
     crossColumns,
+    hasDrill: widgets.some((w) => {
+      const d = (w.spec as { drill?: { columns?: unknown[] } } | null)?.drill;
+      return Array.isArray(d?.columns) && d.columns.length > 0;
+    }),
     state,
     applied: applied.state,
     defaults,

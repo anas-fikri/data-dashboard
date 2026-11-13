@@ -14,7 +14,7 @@ import { useDashboardFilters } from "./filter-context";
 export const CROSS_HINT_ID = "petunjuk-filter-silang";
 
 export function CrossFilterHint({ editing, className }: { editing: boolean; className?: string }) {
-  const { crossColumns } = useDashboardFilters();
+  const { crossColumns, hasDrill } = useDashboardFilters();
   if (!crossColumns.length) return null;
   return (
     <p
@@ -29,6 +29,9 @@ export function CrossFilterHint({ editing, className }: { editing: boolean; clas
       <span>
         Pilih kategori di grafik untuk menyaring widget lain (juga label baris/kolom pivot); pilih
         lagi untuk melepas.
+        {hasDrill
+          ? " Grafik bertombol Lihat baris data: pilih kategori, lalu tekan tombol itu untuk membuka barisnya."
+          : null}
       </span>
     </p>
   );

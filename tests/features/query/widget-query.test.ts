@@ -729,6 +729,8 @@ describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
       grain: "month",
       against: "previous",
     });
+    // Data sampai 31 Maret = periode penuh → tanpa keterangan "s.d." (T-tyb1).
+    expect(r.compare!.latest).toBeUndefined();
     expect(Number(r.compare!.previous)).toBeCloseTo(
       sumWhere((d) => d.getUTCMonth() === 1),
       4,
@@ -772,6 +774,18 @@ describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
         .reduce((a, i) => a + omzetOf(i), 0);
     expect(r.compare!.period).toBe(`2026-0${last + 1}-01`);
     expect(Number(r.rows[0]![0])).toBeCloseTo(sum(last), 4);
+    // Tanggal data terakhir yang lolos filter: bukan hari terakhir bulan → "s.d." (T-tyb1).
+    const lastDay = new Date(
+      Math.max(
+        ...Array.from({ length: ROWS }, (_, i) => i)
+          .filter(kept)
+          .map((i) => +dayOf(i)),
+      ),
+    );
+    const endOfMonth = new Date(Date.UTC(2026, last + 1, 0)).getUTCDate();
+    expect(r.compare!.latest).toBe(
+      lastDay.getUTCDate() === endOfMonth ? undefined : lastDay.toISOString().slice(0, 10),
+    );
     expect(Number(r.compare!.previous)).toBeCloseTo(sum(last - 1), 4);
   });
 

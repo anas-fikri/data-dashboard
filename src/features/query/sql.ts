@@ -546,10 +546,12 @@ export function buildPeriodBoundsSql(
   return {
     sql: [
       `WITH f AS (SELECT ${c} AS d FROM read_parquet($path) WHERE ${where.join(" AND ")}),`,
-      `b AS (SELECT CAST(date_trunc('${cmp.grain}', max(d)) AS DATE) AS cs FROM f)`,
+      `b AS (SELECT CAST(date_trunc('${cmp.grain}', max(d)) AS DATE) AS cs, CAST(max(d) AS DATE) AS md FROM f)`,
       `SELECT ${day("cs")} AS cs, ${day(`cs + ${step}`)} AS ce,`,
       `  ${day(`cs - ${back}`)} AS ps, ${day(`cs - ${back} + ${step}`)} AS pe,`,
-      `  (SELECT count(*) FROM f WHERE d >= cs - ${back} AND d < cs - ${back} + ${step}) AS pn`,
+      `  (SELECT count(*) FROM f WHERE d >= cs - ${back} AND d < cs - ${back} + ${step}) AS pn,`,
+      // Tanggal data terakhir (T-tyb1): periode terakhir belum penuh → "s.d. <tanggal>".
+      `  ${day("md")} AS ld`,
       `FROM b`,
     ].join("\n"),
     params,
