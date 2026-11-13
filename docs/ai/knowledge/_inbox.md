@@ -10,3 +10,4 @@
 - Kolom tambahan widget yang opsional (mis. ukuran pembanding) jangan ikut absentNames widget, agar kolom yang kosong di versi data tidak mengosongkan nilai utama. <!-- aitk:k date=2026-11-13 task=T-g8ht -->
 - recastQueue() dan mappingQueue() memakai antrean BullMQ yang sama — hitung sekali. <!-- aitk:k date=2026-11-13 task=T-d6g9 -->
 - Bagian opsional widget (pembanding) sebaiknya gagal sendiri (dilewati + teks 'tidak tersedia') tanpa membuat seluruh widget COLUMN_UNAVAILABLE. <!-- aitk:k date=2026-11-13 task=T-djp6 -->
+- File typed segmen imutabel (kunci berisi id segmen + revisi skema) aman di-cache lokal tanpa invalidasi; ubah tipe = revisi baru = kunci cache baru. <!-- aitk:k date=2026-11-13 task=T-yg3z -->
