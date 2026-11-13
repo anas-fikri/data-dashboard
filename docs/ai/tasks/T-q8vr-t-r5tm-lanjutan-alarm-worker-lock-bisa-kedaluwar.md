@@ -4,7 +4,7 @@ title: 'T-r5tm lanjutan: alarm worker — lock bisa kedaluwarsa saat SMTP lambat
 status: in_review
 profile: standard
 created: "2026-11-13T04:44:33Z"
-updated: "2026-11-13T05:56:28Z"
+updated: "2026-11-13T05:58:42Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,6 +20,34 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-13T05:56:22Z"
       findings: 0
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 0
+    duration_ms: 215449
+    summary: |-
+      …1794549499920,"service":"data-dashboard","check":"B","detail":"koneksi ditolak","msg":"health check gagal"}
+      {"level":40,"time":1794549499943,"service":"data-dashboard","check":"Lambat","detail":"Lambat: timeout 20 ms","msg":"health check gagal"}
+      {"level":40,"time":1794549499949,"service":"data-dashboard","check":"Y","detail":"mati","msg":"health check gagal"}
+      {"level":40,"time":1794549499969,"service":"data-dashboard","check":"Renderer PDF","detail":"renderer tidak menjawab /healthz","msg":"health check gagal"}
+      {"level":40,"time":1794549510016,"service":"data-dashboard","err":{"type":"Error","message":"NOPERM this user has no permissions to run the 'client' command","stack":"Error: NOPERM this user has no permissions to run the 'client' command\n    at Object.<anonymous> (/home/user/data-dashboard/tests/features/versions/queue-position.test.ts:71:17)\n    at Object.Mock [as getWorkers] (file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/spy.DgMTfhrK.js:323:40)\n    at queueWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:102:40)\n    at ingestWorkerCount (/home/user/data-dashboard/src/lib/queue/versions.ts:124:10)\n    at /home/user/data-dashboard/tests/features/versions/queue-position.test.ts:69:13\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file:///home/user/data-dashboard/node_modules/vitest/dist/chunks/run.BTlFXlnv.js:2783:20"},"msg":"jumlah worker gagal dibaca"}
+
+       Test Files  252 passed | 3 skipped (255)
+            Tests  3370 passed | 29 skipped (3399)
+         Start at  05:56:17
+         Duration  144.16s (tests 81%, import 16%, transform 2%)
+
+          Isolate  255 workers spawned · ~115ms startup each (spawn + environment, per file)
+                   at least ~9.69s faster with isolate: false — reuses workers across files instead of one per file
+
+
+      > data-dashboard@1.21.3 audit
+      > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+      found 0 vulnerabilities
+      found 0 vulnerabilities
+    at: "2026-11-13T05:58:42Z"
+    tree: 3037e76eb3f4dbd2f5ffe70d0a1caad80b230abd893e33706dda4097f43c0238
 ---
 
 ## Objective
