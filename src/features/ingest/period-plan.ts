@@ -60,6 +60,8 @@ export interface MergePart {
 export interface MergeFacts {
   mode: Exclude<UploadMode, "REPLACE">;
   parts: MergePart[];
+  /** Perbarui: kolom kunci per sheet data yang dipakai worker (dibekukan, dicek saat commit). */
+  keys?: Record<string, number[]>;
 }
 
 /** Isi satu periode di satu sheet logis (lineageId): satu segmen, atau satu kelompok file (T-060). */
@@ -248,6 +250,8 @@ export const periodPlanSchema = z.object({
   mode: z.enum(UPLOAD_MODES).default("REPLACE"),
   /** Tambah/Perbarui (v1.20): bagian (periode, sheet) yang ditulis ulang; Ganti = []. */
   mergeParts: z.array(mergePartSchema).max(100_000).default([]),
+  /** Perbarui: kolom kunci per sheet data saat diproses (T-yg3z); rencana lama = {}. */
+  mergeKeys: z.record(z.string(), z.array(z.number().int())).default({}),
   /** Atur ulang periode (T-qqyx): satuan versi dasar yang sudah per periode; tidak ada = aktivasi. */
   resetFrom: z.enum(["MONTH", "QUARTER", "YEAR"]).optional(),
   /**
@@ -827,6 +831,7 @@ export function computePeriodPlan(input: PeriodPlanInput): PeriodPlan {
       repeat: x.repeat ?? false,
       collapsed: x.collapsed ?? 0,
     })),
+    mergeKeys: merge?.keys ? { ...merge.keys } : {},
     fileSheets: [...fileSheets].sort(),
     entries,
     totals: {

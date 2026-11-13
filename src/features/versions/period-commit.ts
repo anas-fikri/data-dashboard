@@ -299,6 +299,27 @@ export async function commitPeriodInTx(tx: Tx, a: PeriodCommitArgs): Promise<Per
   const frozen = parseFrozenPeriodPlan(v.plan);
   const facts = a.facts ?? (frozen ? factsOf(frozen) : null);
   if (!facts) return { outcome: "stale" };
+  // Perbarui berdasarkan kunci (T-yg3z L6): kolom kunci yang dipakai worker dibekukan; berubah sebelum commit →
+  // worker memproses ulang dengan kunci baru, "Terapkan" pemilik ditolak (rencana dihitung dengan kunci lama).
+  if (facts.merge?.mode === "UPSERT" && facts.merge.keys) {
+    const lineages = await tx.sheetLineage.findMany({
+      where: { id: { in: Object.keys(facts.merge.keys) } },
+      select: { id: true, keyColumns: true },
+    });
+    const now = new Map(lineages.map((l) => [l.id, l.keyColumns.join(",")]));
+    const changed = Object.entries(facts.merge.keys).some(
+      ([id, cols]) => now.get(id) !== cols.join(","),
+    );
+    if (changed) {
+      if (a.facts || !frozen) return { outcome: "stale" };
+      return {
+        outcome: "blocked",
+        plan: frozen,
+        message:
+          "Kolom kunci berubah sejak file ini diproses. Batalkan unggahan ini lalu unggah ulang agar dicocokkan dengan kunci yang baru.",
+      };
+    }
+  }
   const activeVersion = ds.activeVersionId
     ? await tx.datasetVersion.findUnique({
         where: { id: ds.activeVersionId },

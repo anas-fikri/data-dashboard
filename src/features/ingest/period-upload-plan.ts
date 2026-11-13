@@ -774,7 +774,15 @@ export const factsOf = (plan: PeriodPlan): UploadFacts => ({
   ignoredSheets: plan.ignoredSheets,
   mergedSheets: plan.mergedSheets,
   fileSha256: plan.fileSha256,
-  ...(plan.mode !== "REPLACE" ? { merge: { mode: plan.mode, parts: plan.mergeParts } } : {}),
+  ...(plan.mode !== "REPLACE"
+    ? {
+        merge: {
+          mode: plan.mode,
+          parts: plan.mergeParts,
+          ...(Object.keys(plan.mergeKeys).length ? { keys: plan.mergeKeys } : {}),
+        },
+      }
+    : {}),
 });
 
 export type CommitMode =

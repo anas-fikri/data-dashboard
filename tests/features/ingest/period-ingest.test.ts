@@ -1788,6 +1788,32 @@ describe("v1.20 Tambah / Perbarui berdasarkan kunci (T-rbrb)", () => {
     expect(seg.rawRows).toBe(11);
   });
 
+  it("indeks kunci lokal: Perbarui berikutnya tidak mengunduh ulang periode yang tidak disentuh (T-yg3z)", async () => {
+    const { s, next, adopt } = await seeded([...month(1, 5), ...month(2, 5), ...month(3, 5)]);
+    const typedOf = (keys: string[]) => keys.filter((k) => /typed-\d+\.parquet$/.test(k));
+    const downloads: string[] = [];
+    const orig = s.storage.download.bind(s.storage);
+    s.storage.download = async (key: string, dest: string) => {
+      downloads.push(key);
+      return orig(key, dest);
+    };
+    const first = next([HEADER, ["K1-0", "2026-01-02", "100"]], "UPSERT");
+    expect((await first.run()).outcome).toBe("done");
+    adopt(first.repo);
+    const firstTyped = typedOf(downloads).length;
+    expect(firstTyped).toBeGreaterThanOrEqual(3); // semua periode dibaca sekali
+    downloads.length = 0;
+    const second = next([HEADER, ["K1-1", "2026-01-03", "101"]], "UPSERT");
+    expect((await second.run()).outcome).toBe("done");
+    // Februari + Maret dari indeks lokal; hanya file periode Januari (yang ditulis ulang) yang diunduh.
+    const jan = new Set(
+      second.repo.load0
+        .active!.sheets[0]!.segments.filter((g) => g.periodKey === "2026-01")
+        .map((g) => g.segmentId),
+    );
+    expect(typedOf(downloads).every((k) => [...jan].some((id) => k.includes(id)))).toBe(true);
+  });
+
   it("Tambah file yang sama dua kali → ditinjau (baris akan tergandakan)", async () => {
     const { next, adopt } = await seeded([...month(1, 10)]);
     const extra = [HEADER, ["X-1", "2026-01-09", "1"]];
