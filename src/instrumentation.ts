@@ -32,4 +32,15 @@ export async function register() {
       "sampler metrik tidak terpasang",
     );
   }
+  // Alarm worker mati (T-r5tm): monitor email ada di dalam worker, jadi app yang memeriksa worker.
+  try {
+    const { startWorkerAlarm } = await import("@/lib/health/worker-alarm");
+    startWorkerAlarm();
+  } catch (e) {
+    const { logger } = await import("@/lib/logger");
+    logger.error(
+      { err: e instanceof Error ? e.message : String(e) },
+      "alarm worker tidak terpasang",
+    );
+  }
 }

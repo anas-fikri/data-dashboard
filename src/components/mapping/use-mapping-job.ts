@@ -28,7 +28,7 @@ export function useMappingPoll(
   onStop?: () => void,
 ) {
   const router = useRouter();
-  const poll = usePolling<MappingJobStatus>({
+  const poll = usePolling<MappingJobStatus & { workerDown?: boolean }>({
     url: jobId ? `/api/datasets/${datasetId}/mapping/${jobId}` : null,
     intervalMs: 1_500,
     initial: null,
@@ -47,7 +47,9 @@ export function useMappingPoll(
         ? "running"
         : "queued"
       : null;
-  return { phase, pollError: poll.error, retry: poll.retry };
+  // Tidak ada worker yang mengambil job (T-r5tm).
+  const workerDown = phase !== null && poll.data?.workerDown === true;
+  return { phase, workerDown, pollError: poll.error, retry: poll.retry };
 }
 
 export type MappingLocal =

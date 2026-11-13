@@ -93,3 +93,42 @@ describe("peringatan pemroses tidak aktif", () => {
     );
   });
 });
+
+/* T-r5tm: jumlah worker per antrean (koreksi skema/pemetaan, ekspor, PDF). */
+import { queueWorkerCount, queueWorkerDown } from "@/lib/queue/versions";
+
+describe("queueWorkerCount per antrean", () => {
+  const named = (name: string, n: number) => ({
+    name,
+    getWorkers: vi.fn(async () =>
+      Array.from({ length: n }, (_, k) => ({ name, rawname: `bull:${name}:${k}` })),
+    ),
+  });
+
+  it("cache terpisah per nama antrean", async () => {
+    resetIngestWorkerCountCache();
+    expect(await queueWorkerCount(named("recast", 1) as never, 1_000)).toBe(1);
+    expect(await queueWorkerCount(named("export", 0) as never, 1_001)).toBe(0);
+    expect(await queueWorkerCount(named("recast", 0) as never, 1_002)).toBe(1); // masih cache recast
+  });
+
+  it("queueWorkerDown: hanya 0 yang dianggap mati; tidak diketahui/galat → false", async () => {
+    resetIngestWorkerCountCache();
+    expect(await queueWorkerDown(() => named("pdf", 0) as never)).toBe(true);
+    resetIngestWorkerCountCache();
+    expect(
+      await queueWorkerDown(
+        () =>
+          ({
+            name: "pdf",
+            getWorkers: async () => [{ name: "no client list" }],
+          }) as never,
+      ),
+    ).toBe(false);
+    expect(
+      await queueWorkerDown(() => {
+        throw new Error("redis");
+      }),
+    ).toBe(false);
+  });
+});

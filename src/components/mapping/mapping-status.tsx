@@ -1,5 +1,6 @@
 "use client";
 
+import { workerDownText } from "@/lib/worker-down-text";
 import { IconLoader2, IconRefresh } from "@tabler/icons-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,11 @@ export function MappingStatus({
             Dashboard tetap memakai data aktif sampai selesai. Untuk file besar bisa beberapa menit;
             halaman berpindah ke dataset setelah versi baru aktif.
           </span>
+          {job.workerDown ? (
+            <span className="mt-1 block font-medium" data-testid="mapping-worker-down">
+              {workerDownText("pemetaan ini")}
+            </span>
+          ) : null}
           {job.pollError ? (
             <span className="mt-2 flex flex-wrap items-center gap-2 text-muted-foreground">
               Status terbaru belum bisa dimuat; mencoba lagi otomatis.

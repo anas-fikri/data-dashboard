@@ -248,6 +248,7 @@ describe("status + unduh ekspor tampilan", () => {
     const { r } = repo({ role: "EDITOR", datasetId: DATASET });
     expect(await exportStatus(OWNER, EXPORT_ID, { repo: r, now: later })).toEqual({
       ok: true,
+      pdf: false,
       state: "done",
       rows: 1000,
       expiresAt: "2026-03-15T04:00:00.000Z",

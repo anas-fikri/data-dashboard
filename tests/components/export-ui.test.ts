@@ -306,3 +306,26 @@ describe("markup", () => {
     expect(html).toContain("size-(--control-h-lg)");
   });
 });
+
+describe("ekspor: pemroses tidak aktif (T-r5tm)", () => {
+  it("status queued/running membawa workerDown; tanpa perubahan → objek sama", () => {
+    const running: ExportJob = { phase: "running", format: "csv", id: "e1" };
+    const down = exportReducer(running, {
+      type: "status",
+      id: "e1",
+      view: { state: "queued", workerDown: true },
+    });
+    expect(down).toEqual({ ...running, workerDown: true });
+    expect(
+      exportReducer(down, {
+        type: "status",
+        id: "e1",
+        view: { state: "running", workerDown: true },
+      }),
+    ).toBe(down);
+    expect(exportReducer(down, { type: "status", id: "e1", view: { state: "running" } })).toEqual({
+      ...running,
+      workerDown: false,
+    });
+  });
+});

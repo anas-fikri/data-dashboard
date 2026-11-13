@@ -130,6 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.3] - 2026-11-13
+
+### Added
+
+- **T-r5tm:** peringatan "pemroses tidak aktif" di koreksi skema, pemetaan kolom, dan ekspor CSV/XLSX/PDF; app
+  produksi mengirim email ke admin bila worker tidak terhubung ≥ 10 menit (ulang tiap 6 jam, sekali saat pulih).
+
 ## [1.21.2] - 2026-11-13
 
 ### Changed

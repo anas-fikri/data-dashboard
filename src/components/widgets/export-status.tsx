@@ -1,5 +1,6 @@
 "use client";
 
+import { workerDownText } from "@/lib/worker-down-text";
 import { IconCircleCheck, IconDownload, IconLoader2 } from "@tabler/icons-react";
 import { FormAlert } from "@/components/auth/form-alert";
 import { Button } from "@/components/ui/button";
@@ -53,6 +54,11 @@ export function ExportStatus(props: Props) {
                 ? "Status belum terbaca. Periksa koneksi; kami terus mencoba."
                 : `${pdf ? "Panel" : "Menu"} boleh ditutup; unduhan dimulai otomatis.`}
             </p>
+            {job.phase === "running" && job.workerDown ? (
+              <p className="mt-1 text-xs font-medium" data-testid="export-worker-down">
+                {workerDownText(pdf ? "PDF ini" : "ekspor ini")}
+              </p>
+            ) : null}
           </div>
         ) : job.phase === "done" ? (
           <div className="mt-3" {...news}>

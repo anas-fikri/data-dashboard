@@ -247,6 +247,7 @@ describe("exportStatus", () => {
     const t = makeDeps({ rows: [done()] });
     expect(await exportStatus(OWNER, EXPORT_ID, t.deps)).toEqual({
       ok: true,
+      pdf: false,
       state: "done",
       rows: 12,
       expiresAt: new Date(NOW.getTime() + 50 * 60 * 1000).toISOString(),
