@@ -531,7 +531,7 @@ export const escapeLikePattern = (s: string) => s.replace(/[\\%_]/g, "\\$&");
  */
 export function buildPeriodBoundsSql(
   plan: Plan,
-  cmp: { col: string; grain: Grain; against: "previous" | "year" },
+  cmp: { col: string; grain: Grain; against: "previous" | "year"; sameDays?: boolean },
   parquetPath: string,
 ): BuiltSql {
   const params: BuiltSql["params"] = { path: parquetPath };
@@ -543,13 +543,18 @@ export function buildPeriodBoundsSql(
     cmp.against === "year" ? (cmp.grain === "week" ? "INTERVAL 364 DAY" : "INTERVAL 1 YEAR") : step;
   const where = [...whereClauses(plan, params), `${c} IS NOT NULL`];
   const day = (e: string) => `strftime(CAST(${e} AS DATE), '%Y-%m-%d')`;
+  // Akhir pembanding (eksklusif). Rentang hari yang sama (T-f167): awal pembanding + (hari data terakhir − awal
+  // periode + 1 hari), dijepit ke akhir periode pembanding (31 Mar → akhir Feb).
+  const pe = cmp.sameDays
+    ? `least(cs - ${back} + to_days(CAST(md - cs AS INTEGER) + 1), cs - ${back} + ${step})`
+    : `cs - ${back} + ${step}`;
   return {
     sql: [
       `WITH f AS (SELECT ${c} AS d FROM read_parquet($path) WHERE ${where.join(" AND ")}),`,
       `b AS (SELECT CAST(date_trunc('${cmp.grain}', max(d)) AS DATE) AS cs, CAST(max(d) AS DATE) AS md FROM f)`,
       `SELECT ${day("cs")} AS cs, ${day(`cs + ${step}`)} AS ce,`,
-      `  ${day(`cs - ${back}`)} AS ps, ${day(`cs - ${back} + ${step}`)} AS pe,`,
-      `  (SELECT count(*) FROM f WHERE d >= cs - ${back} AND d < cs - ${back} + ${step}) AS pn,`,
+      `  ${day(`cs - ${back}`)} AS ps, ${day(pe)} AS pe,`,
+      `  (SELECT count(*) FROM f WHERE d >= cs - ${back} AND d < ${pe}) AS pn,`,
       // Tanggal data terakhir (T-tyb1): periode terakhir belum penuh → "s.d. <tanggal>".
       `  ${day("md")} AS ld`,
       `FROM b`,

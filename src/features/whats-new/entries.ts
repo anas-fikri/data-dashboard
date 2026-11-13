@@ -14,6 +14,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.22",
+    date: "2026-11-13",
+    items: [
+      "Widget Angka berpembanding punya pilihan Rentang pembanding: Hari yang sama membandingkan bulan berjalan dengan hari-hari yang sama bulan lalu (mis. 1–13 Nov dengan 1–13 Okt), jadi angka bulan yang baru berjalan tidak tampak anjlok. Bawaannya tetap Periode penuh.",
+      'Bila periode terakhir belum penuh, baris pembanding menulis sampai tanggal berapa datanya, mis. "s.d. 13 Nov 2026".',
+      "Kolom filter dashboard ikut pindah saat sheet digabung atau diganti namanya, dan alarm email ke admin bila pemroses unggahan berhenti lebih dari 10 menit.",
+    ],
+  },
+  {
     version: "1.21",
     date: "2026-11-13",
     items: [

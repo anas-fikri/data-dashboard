@@ -155,6 +155,8 @@ export interface KpiComparePlan {
   float: false;
   grain: Grain;
   against: KpiCompareAgainst;
+  /** Rentang hari yang sama dengan periode berjalan (T-f167); tidak ada = periode penuh. */
+  sameDays?: boolean;
 }
 
 export type WidgetPlan =
@@ -374,6 +376,7 @@ export function widgetPlan(
           float: false,
           grain: cmp.grain,
           against: cmp.against,
+          ...(cmp.range === "sameDays" ? { sameDays: true } : {}),
         };
       }
       // Ukuran pembanding (v1.21): kolom kedua hasil (m1), sheet + filter sama. Kolomnya hilang/tersembunyi →

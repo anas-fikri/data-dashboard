@@ -214,8 +214,18 @@ export type KpiCompareAgainst = (typeof KPI_COMPARE)[number];
  * Pembanding KPI: nilai = agregat periode terakhir (`grain`) pada kolom tanggal `column` di data yang
  * lolos filter, dibandingkan periode sebelumnya / tahun lalu. Tidak ada = KPI biasa (total).
  */
+/**
+ * Rentang pembanding (T-f167): "full" (bawaan, tidak disimpan) = periode pembanding penuh; "sameDays" = dipotong ke
+ * jumlah hari yang sama dengan periode berjalan (1–13 Okt untuk 1–13 Nov), dijepit ke akhir periode pembanding.
+ */
+export const KPI_COMPARE_RANGE = ["full", "sameDays"] as const;
 const kpiCompare = z
-  .object({ column, grain: z.enum(GRAINS), against: z.enum(KPI_COMPARE) })
+  .object({
+    column,
+    grain: z.enum(GRAINS),
+    against: z.enum(KPI_COMPARE),
+    range: z.enum(KPI_COMPARE_RANGE).optional(),
+  })
   .strict();
 export type KpiCompare = z.infer<typeof kpiCompare>;
 /**

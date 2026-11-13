@@ -1446,3 +1446,16 @@ bash deploy/server-release.sh 1.21.9
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 43. Rilis v1.22.0 (tanpa migrasi)
+
+KPI pembanding (T-f167): pilihan **Rentang pembanding** — _Periode penuh_ (bawaan) atau _Hari yang sama_ (1–13 Okt untuk
+data November s.d. 13). Seed panduan `susun-dashboard`.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.22.0
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) **Rollback** ke v1.21.x: widget Angka yang
+memakai _Hari yang sama_ tampil "pengaturan tidak valid" — kembalikan ke _Periode penuh_ sebelum rollback.

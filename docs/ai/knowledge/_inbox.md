@@ -17,3 +17,4 @@
 - Dashboard.filterColumns menyimpan NAMA sheet: setiap pemetaan sheet saat aktivasi harus ikut mengganti nama di filter, bukan hanya spec widget. <!-- aitk:k date=2026-11-13 task=T-01xj -->
 - Fokus sel AG lewat requestAnimationFrame membuat tombol berikutnya berangkat dari sel lama; fokuskan langsung bila sel sudah dirender. <!-- aitk:k date=2026-11-13 task=T-7377 tags=data-view,a11y -->
 - Periode KPI berjalan dibandingkan dengan periode pembanding penuh + keterangan s.d.; bandingkan rentang hari sama ditunda (mengubah angka). <!-- aitk:k date=2026-11-13 task=T-tyb1 tags=widgets -->
+- Rentang hari yang sama: pe = least(ps + to_days(md - cs + 1), ps + step) di DuckDB; cs - INTERVAL menjadi TIMESTAMP sehingga tambah hari harus INTERVAL (to_days), bukan bilangan. <!-- aitk:k date=2026-11-13 task=T-f167 -->

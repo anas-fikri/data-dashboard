@@ -165,11 +165,30 @@ export function KpiCompareFields({
             }))}
             onChange={(grain) => onChange({ ...value, grain })}
           />
+          {value.grain !== "day" ? (
+            <Choice
+              label="Rentang pembanding"
+              testId="config-kpi-compare-range"
+              value={value.range ?? "full"}
+              options={[
+                { value: "full", label: "Periode penuh" },
+                { value: "sameDays", label: "Hari yang sama (s.d. tanggal data terakhir)" },
+              ]}
+              onChange={(range) => {
+                // Bawaan tidak disimpan (spec lama tetap sama persis).
+                const { range: _r, ...rest } = value;
+                onChange(range === "sameDays" ? { ...rest, range } : rest);
+              }}
+            />
+          ) : null}
           <p className="text-xs text-muted-foreground">
             Angka menampilkan {GRAIN_LABEL[value.grain].replace("Per ", "")} terakhir di data
             (setelah filter), dibandingkan dengan{" "}
-            {value.against === "year" ? "periode yang sama tahun lalu" : "periode sebelumnya"}.
-            {toneHint}
+            {value.against === "year" ? "periode yang sama tahun lalu" : "periode sebelumnya"}
+            {value.range === "sameDays" && value.grain !== "day"
+              ? " pada rentang hari yang sama (mis. 1–13 Okt untuk 1–13 Nov)"
+              : ""}
+            . {toneHint}
           </p>
         </>
       ) : null}

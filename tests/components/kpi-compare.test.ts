@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kpiCompareView, kpiReferenceView } from "@/components/widgets/kpi-compare";
+import { dayRange, kpiCompareView, kpiReferenceView } from "@/components/widgets/kpi-compare";
 import type { KpiCompareData } from "@/features/query/spec";
 
 /*
@@ -210,5 +210,25 @@ describe("T-tyb1: periode terakhir belum penuh", () => {
     expect(v.full).toContain("(Nov 2026 baru berisi data s.d. 13 Nov 2026)");
     // Tanpa latest (periode penuh / jawaban lama) → teks lama.
     expect(sp(kpiCompareView(1125, cmp(), "decimal", AUTO, "up").text)).toBe("vs Okt 2026 (1 rb)");
+  });
+});
+
+describe("T-f167: rentang hari yang sama", () => {
+  it("teks menyebut rentang pembanding", () => {
+    const v = kpiCompareView(
+      1125,
+      cmp({ previousEnd: "2026-10-13", latest: "2026-11-13" }),
+      "decimal",
+      AUTO,
+      "up",
+    );
+    expect(sp(v.text)).toBe("vs 1–13 Okt 2026 (1 rb) · s.d. 13 Nov 2026");
+    expect(v.full).toMatch(/dibanding 1–13 Okt 2026/);
+  });
+  it("dayRange: bulan sama, beda bulan, beda tahun, satu hari", () => {
+    expect(dayRange("2026-10-01", "2026-10-13")).toBe("1–13 Okt 2026");
+    expect(dayRange("2026-10-26", "2026-11-01")).toBe("26 Okt–1 Nov 2026");
+    expect(dayRange("2025-12-29", "2026-01-04")).toBe("29 Des 2025–4 Jan 2026");
+    expect(dayRange("2026-10-01", "2026-10-01")).toBe("1 Okt 2026");
   });
 });

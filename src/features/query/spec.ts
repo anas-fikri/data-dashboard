@@ -53,6 +53,8 @@ export interface KpiCompareData {
    * periode pembanding penuh — layar menulis "s.d. <tanggal>". Tidak ada = periode penuh/jawaban lama.
    */
   latest?: string;
+  /** Hari terakhir periode pembanding bila rentang hari yang sama (T-f167); tidak ada = periode penuh. */
+  previousEnd?: string;
   grain: Grain;
   against: "previous" | "year";
 }

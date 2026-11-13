@@ -127,6 +127,25 @@ const WIDGETS: Record<string, { type: string; spec: unknown }> = {
       compare: { column: 3, grain: "month", against: "previous" },
     },
   },
+  ksaw: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: fmt,
+      compare: { column: 3, grain: "week", against: "previous", range: "sameDays" },
+    },
+  },
+  // Rentang hari yang sama (T-f167).
+  ksam: {
+    type: "kpi",
+    spec: {
+      sheetId: SHEET,
+      measure: { agg: "sum", column: 2 },
+      format: fmt,
+      compare: { column: 3, grain: "month", against: "previous", range: "sameDays" },
+    },
+  },
   kyea: {
     type: "kpi",
     spec: {
@@ -737,6 +756,69 @@ describe("T-43hv: pembanding KPI", { timeout: 60_000 }, () => {
     );
     expect(r.compare!.previousRows).toBe(
       Array.from({ length: ROWS }, (_, i) => i).filter((i) => dayOf(i).getUTCMonth() === 1).length,
+    );
+  });
+
+  it("T-f167: rentang hari yang sama — data s.d. 13 Mar dibandingkan 1–13 Feb; 31 Mar dijepit ke akhir Feb", async () => {
+    const base = deps();
+    const typed: QueryDeps = {
+      ...base,
+      repo: {
+        ...base.repo,
+        widget: async (u, id) => {
+          const w = await base.repo.widget(u, id);
+          return w && { ...w, dashboardId: "cmv4kljx40009oczvdmpurrdb" };
+        },
+        filterSources: async () => [{ name: "Tanggal", type: "date" }],
+      },
+    };
+    const r = await runWidgetQuery(
+      USER,
+      {
+        widgetId: WID("ksam"),
+        dashboardFilters: [{ column: "Tanggal", op: "range", lte: "2026-03-13" }],
+      },
+      typed,
+    );
+    expect(r).not.toHaveProperty("skippedFilters");
+    if (!r.ok || !("compare" in r)) throw new Error(JSON.stringify(r));
+    const inFeb = (d: Date, last: number) => d.getUTCMonth() === 1 && d.getUTCDate() <= last;
+    expect(r.compare).toMatchObject({
+      period: "2026-03-01",
+      previousPeriod: "2026-02-01",
+      previousEnd: "2026-02-13",
+      latest: "2026-03-13",
+    });
+    expect(Number(r.compare!.previous)).toBeCloseTo(
+      sumWhere((d) => inFeb(d, 13)),
+      4,
+    );
+    // Per minggu: data s.d. Jumat 13 Mar → Senin–Jumat minggu lalu (2–6 Mar).
+    const wk = await runWidgetQuery(
+      USER,
+      {
+        widgetId: WID("ksaw"),
+        dashboardFilters: [{ column: "Tanggal", op: "range", lte: "2026-03-13" }],
+      },
+      typed,
+    );
+    if (!wk.ok || !("compare" in wk)) throw new Error(JSON.stringify(wk));
+    expect(wk.compare).toMatchObject({
+      period: "2026-03-09",
+      previousPeriod: "2026-03-02",
+      previousEnd: "2026-03-06",
+    });
+    expect(Number(wk.compare!.previous)).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 2 && d.getUTCDate() >= 2 && d.getUTCDate() <= 6),
+      4,
+    );
+    // Tanpa filter: data s.d. 31 Mar → 1 Feb + 31 hari dijepit ke 1 Mar (Feb penuh).
+    const full = await runWidgetQuery(USER, { widgetId: WID("ksam") }, deps());
+    if (!full.ok || !("compare" in full)) throw new Error(JSON.stringify(full));
+    expect(full.compare!.previousEnd).toBe("2026-02-28");
+    expect(Number(full.compare!.previous)).toBeCloseTo(
+      sumWhere((d) => d.getUTCMonth() === 1),
+      4,
     );
   });
 

@@ -32,6 +32,8 @@ Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada bat
 
 **Pembanding** (khusus **Angka**): pilih _Periode sebelumnya_ atau _Periode sama tahun lalu_, lalu **Kolom tanggal** dan **Periode** (bawaan _Per bulan_). Angka kini menampilkan periode terakhir yang ada di data (setelah filter), mis. _April 2026_, dan di bawahnya baris seperti **▲ +32,3% vs Mar 2026 (93)**. Warna ▲/▼ mengikuti **Penilaian warna** widget (atau penilaian bawaan dashboard): _makin tinggi makin baik_ → naik hijau, turun merah; tanpa penilaian → abu-abu. Bila periode pembanding tidak punya data, tertulis _Tidak ada data …_; bila nilainya 0, yang tampil selisih angka, bukan persen.
 
+Bila periode terakhir belum penuh (mis. data November baru sampai tanggal 13), baris pembanding menulis **· s.d. 13 Nov 2026**. **Rentang pembanding** menentukan pembandingnya: _Periode penuh_ (bawaan) membandingkan dengan seluruh Oktober; _Hari yang sama_ membandingkan dengan **1–13 Okt** saja, sehingga periode yang baru berjalan tidak tampak turun jauh. Bulan yang lebih pendek dijepit ke akhir bulannya (data s.d. 31 Mar → dibandingkan Februari penuh); per minggu dihitung Senin s.d. hari yang sama.
+
 Pembanding juga bisa **bukan periode**:
 
 - **Ukuran lain (persen dari …)**: pilih ukuran kedua di sheet yang sama (bawaan _Jumlah baris_), mis. Nilai = _Jumlah terisi_ kolom Tanggal Terima, Dibanding = _Jumlah baris_ → di bawah angka tertulis **95,1% dari Jumlah baris (5,0 jt)**. Filter dashboard berlaku untuk keduanya. Bila ukuran kedua 0 atau kosong, persen tidak dihitung.
