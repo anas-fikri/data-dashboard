@@ -667,6 +667,15 @@ export default function SheetGrid({
    * dirender): fokuskan sel setelah baris/kolom dirender agar panah/PageDown langsung bekerja di sana.
    */
   const focusCellDom = useCallback((i: number, col: string) => {
+    // Sel sudah dirender (mis. Home/End dalam baris yang terlihat): fokus langsung, tanpa menunggu bingkai —
+    // tombol berikutnya (panah/PageDown) berangkat dari sel yang benar (T-7377).
+    const now = boxRef.current?.querySelector<HTMLElement>(
+      `.ag-row[row-index="${i}"] [col-id="${CSS.escape(col)}"]`,
+    );
+    if (now) {
+      if (!now.contains(document.activeElement)) now.focus();
+      return;
+    }
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         const el = boxRef.current?.querySelector<HTMLElement>(
@@ -783,37 +792,52 @@ export default function SheetGrid({
    * itu di baris pertama tampilan baru (baris lama sudah dibuang), menunggu baris dirender ≤ ~1 detik
    * dengan kepala kolom sebagai pegangan sementara agar fokus tidak jatuh ke <body>.
    */
-  const focusAfterFilter = useCallback((id: string, from: HTMLElement | null, applied: boolean) => {
-    const head = headerCell(id);
-    const fromCell = Boolean(from?.closest(".ag-cell"));
-    if (!fromCell || !applied) {
-      // Batal (tanpa perubahan): kembali ke elemen asal bila masih ada.
-      const el = from?.isConnected ? from : head;
-      el?.focus();
-      return Boolean(el);
-    }
-    const api = apiRef.current;
-    if (!api || api.isDestroyed()) return false;
-    head?.focus();
-    let tries = 0;
-    const attempt = () => {
-      if (api.isDestroyed()) return;
-      // Tunggu blok pertama tampilan baru (baris placeholder diganti baris berdata).
-      if (!api.getDisplayedRowAtIndex(0)?.data) {
-        if (tries++ < 120) requestAnimationFrame(attempt);
-        return;
+  const focusAfterFilter = useCallback(
+    (id: string, from: HTMLElement | null, applied: boolean) => {
+      const head = headerCell(id);
+      const fromCell = Boolean(from?.closest(".ag-cell"));
+      if (!fromCell || !applied) {
+        // Batal (tanpa perubahan): kembali ke elemen asal bila masih ada. Sel asal yang sudah dirender ulang
+        // AG (terlepas dari DOM) → sel yang sama menurut baris/kolom, bukan kepala kolom (T-7377: F2 setelah
+        // Esc harus tetap membuka Isi sel).
+        if (fromCell && from && !from.isConnected) {
+          const row = Number(from.closest(".ag-row")?.getAttribute("row-index") ?? NaN);
+          const col = from.closest(".ag-cell")?.getAttribute("col-id");
+          const api = apiRef.current;
+          if (api && !api.isDestroyed() && Number.isInteger(row) && col) {
+            api.setFocusedCell(row, col);
+            focusCellDom(row, col);
+            return true;
+          }
+        }
+        const el = from?.isConnected ? from : head;
+        el?.focus();
+        return Boolean(el);
       }
-      api.ensureIndexVisible(0);
-      api.setFocusedCell(0, id);
-      requestAnimationFrame(() =>
-        boxRef.current
-          ?.querySelector<HTMLElement>(`.ag-row[row-index="0"] [col-id="${CSS.escape(id)}"]`)
-          ?.focus(),
-      );
-    };
-    requestAnimationFrame(attempt);
-    return true;
-  }, []);
+      const api = apiRef.current;
+      if (!api || api.isDestroyed()) return false;
+      head?.focus();
+      let tries = 0;
+      const attempt = () => {
+        if (api.isDestroyed()) return;
+        // Tunggu blok pertama tampilan baru (baris placeholder diganti baris berdata).
+        if (!api.getDisplayedRowAtIndex(0)?.data) {
+          if (tries++ < 120) requestAnimationFrame(attempt);
+          return;
+        }
+        api.ensureIndexVisible(0);
+        api.setFocusedCell(0, id);
+        requestAnimationFrame(() =>
+          boxRef.current
+            ?.querySelector<HTMLElement>(`.ag-row[row-index="0"] [col-id="${CSS.escape(id)}"]`)
+            ?.focus(),
+        );
+      };
+      requestAnimationFrame(attempt);
+      return true;
+    },
+    [focusCellDom],
+  );
 
   const openFilter = useCallback(
     (id: string, from: HTMLElement | null) => {

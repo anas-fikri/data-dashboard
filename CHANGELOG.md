@@ -130,6 +130,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.8] - 2026-11-13
+
+### Fixed
+
+- **T-7377:** Lihat data — Home/End memfokus sel langsung; fokus kembali ke sel setelah dialog saring walau sel dirender ulang (51f63b2)
+
 ## [1.21.7] - 2026-11-13
 
 ### Fixed
