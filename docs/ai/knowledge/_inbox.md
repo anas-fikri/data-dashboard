@@ -11,3 +11,4 @@
 - recastQueue() dan mappingQueue() memakai antrean BullMQ yang sama — hitung sekali. <!-- aitk:k date=2026-11-13 task=T-d6g9 -->
 - Bagian opsional widget (pembanding) sebaiknya gagal sendiri (dilewati + teks 'tidak tersedia') tanpa membuat seluruh widget COLUMN_UNAVAILABLE. <!-- aitk:k date=2026-11-13 task=T-djp6 -->
 - File typed segmen imutabel (kunci berisi id segmen + revisi skema) aman di-cache lokal tanpa invalidasi; ubah tipe = revisi baru = kunci cache baru. <!-- aitk:k date=2026-11-13 task=T-yg3z -->
+- Monitor yang berjalan di dalam worker tidak bisa melaporkan worker mati; pemeriksaan liveness worker harus dijalankan proses lain (app). <!-- aitk:k date=2026-11-13 task=T-r5tm -->
