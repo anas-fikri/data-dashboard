@@ -130,6 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.1] - 2026-11-13
+
+### Fixed
+
+- **kpi:** pembanding yang dilewati server ditulis 'tidak tersedia' (review T-djp6 M1) (589ab6c)
+- **kpi:** target baru tidak tersimpan sebelum diisi, kolom pembanding tersembunyi tidak mematikan widget, testid unik, tanpa warna (T-djp6) (1fa2a2b)
+
 ## [1.21.0] - 2026-11-13
 
 ### Added
