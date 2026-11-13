@@ -32,6 +32,13 @@ Pilihan **Klik grafik menyaring widget lain** aktif secara bawaan: klik pada bat
 
 **Pembanding** (khusus **Angka**): pilih _Periode sebelumnya_ atau _Periode sama tahun lalu_, lalu **Kolom tanggal** dan **Periode** (bawaan _Per bulan_). Angka kini menampilkan periode terakhir yang ada di data (setelah filter), mis. _April 2026_, dan di bawahnya baris seperti **▲ +32,3% vs Mar 2026 (93)**. Warna ▲/▼ mengikuti **Penilaian warna** widget (atau penilaian bawaan dashboard): _makin tinggi makin baik_ → naik hijau, turun merah; tanpa penilaian → abu-abu. Bila periode pembanding tidak punya data, tertulis _Tidak ada data …_; bila nilainya 0, yang tampil selisih angka, bukan persen.
 
+Pembanding juga bisa **bukan periode**:
+
+- **Ukuran lain (persen dari …)**: pilih ukuran kedua di sheet yang sama (bawaan _Jumlah baris_), mis. Nilai = _Jumlah terisi_ kolom Tanggal Terima, Dibanding = _Jumlah baris_ → di bawah angka tertulis **95,1% dari Jumlah baris (5,0 jt)**. Filter dashboard berlaku untuk keduanya. Bila ukuran kedua 0 atau kosong, persen tidak dihitung.
+- **Target angka**: isi target (mis. _98_ atau _1.000.000_) → tertulis **▼ 95% dari target 1.000** dengan ▲ bila di atas target dan ▼ bila di bawah. Warnanya mengikuti **Penilaian warna**; tanpa penilaian, lebih tinggi dianggap lebih baik (di bawah target merah).
+
+Satu widget hanya memakai satu pembanding: memilih yang lain menggantikan yang lama.
+
 **Klik-tembus ke baris data** (grafik **Batang**, **Garis**, **Pai**): nyalakan, lalu centang **Kolom baris detail** (bawaan: kolom pengelompokan + kolom nilai). Klik kategori di grafik tetap menyaring widget lain seperti biasa; setelah itu tombol **Lihat baris data “Bandung”** muncul di atas grafik dan membuka tabel baris data kategori itu — mis. semua kiriman _Bandung_ — 100 baris per halaman, bisa diurutkan, mengikuti filter dashboard. Bila **Klik grafik menyaring widget lain** dimatikan, klik kategori langsung membuka tabel baris itu. Semua yang bisa melihat dashboard bisa membaca kolom yang Anda centang di sini, jadi pilih kolom yang memang boleh dilihat pembaca.
 
 ## Mengatur tata letak

@@ -43,9 +43,16 @@ vi.mock("@/lib/redis", () => ({ redisReady: async () => redis }));
 vi.mock("@/lib/logger", () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
+const counts = (c: Record<string, number>) => () => ({ getJobCounts: async () => c });
 vi.mock("@/lib/queue/connection", () => ({
-  ingestQueue: () => ({
-    getJobCounts: async () => ({ waiting: 2, prioritized: 1, active: 1 }),
+  ingestQueue: counts({ waiting: 2, prioritized: 1, active: 1 }),
+  recastQueue: counts({ waiting: 0, active: 1 }),
+  exportQueue: counts({ waiting: 1, delayed: 1, active: 0 }),
+  // Antrean yang gagal dibaca dilewati, bukan menggagalkan sampel.
+  pdfQueue: () => ({
+    getJobCounts: async () => {
+      throw new Error("timeout");
+    },
   }),
   withQueueTimeout: <T>(p: Promise<T>) => p,
 }));
@@ -69,6 +76,12 @@ describe("sampleOnce", () => {
     await expect(sampleOnce()).rejects.toThrow(/502/);
     const q = JSON.parse(store.get(KEY.queue)!);
     expect(q).toMatchObject({ waiting: 3, active: 1, workers: 0 });
+    // v1.21: semua proses latar per jenis; antrean yang gagal dibaca dilewati, bukan menggagalkan sampel.
+    expect(q.jobs).toEqual({
+      upload: { active: 1, waiting: 3 },
+      schema: { active: 1, waiting: 0 },
+      export: { active: 0, waiting: 2 },
+    });
   });
 
   it("berhasil → pembacaan mentah disimpan; kunci dipegang proses ini dan diperpanjang atomik", async () => {

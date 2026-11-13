@@ -375,10 +375,28 @@ export function widgetPlan(
           against: cmp.against,
         };
       }
+      // Ukuran pembanding (v1.21): kolom kedua hasil (m1), sheet + filter sama.
+      const ref = config.spec.reference;
+      // Nilai tanggal terkecil/terbesar: persen/target tidak bermakna (seperti pembanding periode, review L4).
+      if (
+        ref &&
+        !isCalcValue(m) &&
+        (m.agg === "min" || m.agg === "max") &&
+        m.column &&
+        name(m.column) &&
+        ["date", "timestamp"].includes(byPos.get(m.column)!.type)
+      ) {
+        return {
+          ok: false,
+          code: "INVALID",
+          message:
+            "Pembanding ukuran lain/target hanya untuk nilai angka, bukan tanggal terkecil/terbesar. Pilih Tanpa pembanding atau nilai lain.",
+        };
+      }
       spec = {
         ...base,
         dimensions: [],
-        measures: [measureOf(m)],
+        measures: [measureOf(m), ...(ref?.kind === "measure" ? [measureOf(ref.measure)] : [])],
         filters,
         sort: [],
         limit: 1,
@@ -554,10 +572,16 @@ function applyShowAs(
 export function absentNames(config: WidgetConfig, schema: ColumnSchema[]): string[] {
   const byPos = new Map(schema.map((c) => [c.pos, c]));
   // Kolom klik-tembus bukan isi grafik: catatannya hanya di dialog detail (rencana tabelnya sendiri).
-  const own =
+  let own =
     "drill" in config.spec && config.spec.drill
       ? ({ ...config, spec: { ...config.spec, drill: undefined } } as WidgetConfig)
       : config;
+  // Ukuran pembanding KPI (v1.21, review H2): kolomnya yang kosong di versi ini hanya membuat persen tidak
+  // terhitung (m1 NULL/0), tidak boleh mengosongkan angka utama.
+  if (own.type === "kpi" && own.spec.reference) {
+    const { reference: _r, ...spec } = own.spec;
+    own = { ...own, spec } as WidgetConfig;
+  }
   const names = columnsOf(own).flatMap((p) => {
     const c = byPos.get(p);
     return c?.absent ? [c.name] : [];

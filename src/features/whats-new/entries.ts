@@ -14,6 +14,15 @@ export interface WhatsNewEntry {
 
 export const WHATS_NEW: readonly WhatsNewEntry[] = [
   {
+    version: "1.21",
+    date: "2026-11-13",
+    items: [
+      'Widget Angka bisa dibandingkan dengan ukuran lain, mis. resi diterima dibanding semua resi → tertulis "95,1% dari Jumlah baris".',
+      "Widget Angka bisa diberi target angka: tertulis persen pencapaian dengan ▲ hijau bila di atas target dan ▼ merah bila di bawah (mengikuti penilaian warna).",
+      "Kartu Server di menu kiri kini menyebut semua proses yang sedang berjalan atau menunggu — unggahan, koreksi skema, dan ekspor/PDF — dan saat menu diciutkan tetap menampilkan CPU, RAM, dan jumlah proses berjalan.",
+    ],
+  },
+  {
     version: "1.20",
     date: "2026-11-12",
     items: [

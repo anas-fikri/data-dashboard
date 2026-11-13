@@ -461,10 +461,35 @@ export function WidgetConfigForm({
                     isTemporal(typeOf(draft.spec.measure.column) ?? "text")
                   }
                   blankColumns={blankCountColumns(draft.spec.measure)}
+                  // Pembanding periode dan pembanding ukuran/target tidak pernah bersamaan (v1.21).
                   onChange={(compare) => {
-                    const { compare: _c, ...spec } = draft.spec;
+                    const { compare: _c, reference: _r, ...spec } = draft.spec;
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
                   }}
+                  reference={draft.spec.reference}
+                  // Sama dengan ToneChoice: field terhitung bisa punya format persen sendiri (review v1.21).
+                  percent={
+                    valueFormat(
+                      undefined,
+                      ("format" in draft.spec.measure ? draft.spec.measure.format : undefined) ??
+                        draft.spec.format,
+                    ).style === "percent"
+                  }
+                  onReference={(reference) => {
+                    const { reference: _r, compare: _c, ...spec } = draft.spec;
+                    commit({ ...draft, spec: reference ? { ...spec, reference } : spec });
+                  }}
+                  renderMeasure={(m, onRef) =>
+                    isCalcValue(m) ? null : (
+                      <MeasureFields
+                        type="kpi"
+                        columns={cols}
+                        measure={m}
+                        label="Dibanding"
+                        onChange={(next) => onRef(next as typeof m)}
+                      />
+                    )
+                  }
                 />
               ) : null}
               {/* Warna status (v1.9.0): batang/garis/pai relatif atau batas; Angka batas saja. */}

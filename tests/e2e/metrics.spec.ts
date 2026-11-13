@@ -27,7 +27,16 @@ const SUMMARY = {
   available: true,
   latest: { ...series[59]!, cpu: 0.91, iowait: 0.02, load1: 3.2, cpus: 8 },
   series,
-  queue: { waiting: 2, active: 1, workerDown: false },
+  queue: {
+    waiting: 2,
+    active: 1,
+    workerDown: false,
+    jobs: {
+      upload: { active: 1, waiting: 2 },
+      schema: { active: 0, waiting: 0 },
+      export: { active: 2, waiting: 0 },
+    },
+  },
 };
 const HOST = {
   ...SUMMARY.latest,
@@ -125,7 +134,7 @@ test("AC3: kartu Server di sidebar — angka, ambang bertanda teks, antrean; dic
   await expect(card.getByTestId("server-disk")).toHaveText("48%");
   await expect(card.getByTestId("server-net")).toContainText("KB/dtk");
   await expect(card.getByTestId("server-queue")).toHaveText(
-    "Pemroses: aktif · 1 diproses · 2 menunggu",
+    "Pemroses: aktif · 1 unggahan diproses, 2 unggahan menunggu, 2 ekspor/PDF diproses",
   );
   // User biasa tidak mendapat tautan detail admin.
   await expect(card.getByTestId("server-card-detail")).toHaveCount(0);
@@ -133,9 +142,12 @@ test("AC3: kartu Server di sidebar — angka, ambang bertanda teks, antrean; dic
 
   await page.getByTestId("sidebar-collapse").click();
   const icon = page.getByTestId("server-card-collapsed");
+  // v1.21: diciutkan tetap menampilkan CPU/RAM + jumlah proses berjalan.
   await expect(icon).toHaveAccessibleName(
-    "Server: Beban tinggi: CPU. Lebarkan sidebar untuk detail",
+    "Server: Beban tinggi: CPU, CPU 91%, RAM 62%, 3 proses berjalan. Lebarkan sidebar untuk detail",
   );
+  await expect(icon.getByTestId("server-collapsed-cpu")).toHaveText("91%");
+  await expect(icon.getByTestId("server-collapsed-jobs")).toHaveText("3▸");
   await icon.click();
   await expect(page.getByTestId("sidebar")).toHaveAttribute("data-collapsed", "false");
   await expect(card).toBeVisible();
@@ -150,7 +162,9 @@ test("AC3: pemroses mati → status merah bertulisan; monitor belum dipasang →
   await apiLogin(page, USER);
   await page.goto("/");
   await expect(page.getByTestId("server-status")).toHaveText("Pemroses unggahan tidak aktif");
-  await expect(page.getByTestId("server-queue")).toHaveText("Pemroses: tidak aktif · 3 menunggu");
+  await expect(page.getByTestId("server-queue")).toHaveText(
+    "Pemroses: tidak aktif · 3 unggahan menunggu",
+  );
 
   await page.unroute("**/api/metrics");
   await mock(page, {

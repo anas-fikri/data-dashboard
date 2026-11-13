@@ -39,12 +39,19 @@ export const KEEP_1M = 1440;
 /** Titik layanan lebih tua dari ini dianggap layanan mati/hilang. */
 export const SERVICE_STALE_MS = 30_000;
 
+/** Jenis proses latar di kartu Server (v1.21): unggahan, koreksi skema/pemetaan, ekspor/PDF. */
+export const JOB_KINDS = ["upload", "schema", "export"] as const;
+export type JobKind = (typeof JOB_KINDS)[number];
+
 export interface QueueStatus {
   t: number;
+  /** Antrean unggah (ingest) saja — dasar status "pemroses tidak aktif". */
   waiting: number;
   active: number;
   /** null = jumlah worker tidak diketahui. */
   workers: number | null;
+  /** Semua proses latar per jenis (v1.21); tidak ada = sampel versi lama. */
+  jobs?: Partial<Record<JobKind, { active: number; waiting: number }>>;
 }
 
 const parse = <T>(s: string | null): T | null => {

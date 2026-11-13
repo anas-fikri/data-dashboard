@@ -10,9 +10,9 @@ import {
 } from "@/features/widgets/status-color";
 import { useRef } from "react";
 import type { Agg } from "@/features/query/spec";
-import type { NumberFormat } from "@/features/widgets/spec";
+import type { KpiReference, NumberFormat } from "@/features/widgets/spec";
 import { cn } from "@/lib/utils";
-import { compareArrow, kpiCompareView } from "./kpi-compare";
+import { compareArrow, kpiCompareView, kpiReferenceView } from "./kpi-compare";
 import { chooseKpi, KPI_COMPARE_REM, KPI_STATUS_REM, kpiHeightPx, kpiTexts } from "./kpi-fit";
 import { useBoxSize } from "./use-box-size";
 import type { WidgetData } from "./widget-query";
@@ -54,7 +54,10 @@ export function KpiView({
   agg,
   fixedHeight = false,
   status,
+  reference,
 }: {
+  /** Pembanding selain periode (v1.21): rasio ke ukuran kedua (kolom hasil kedua) atau target angka. */
+  reference?: KpiReference;
   data: WidgetData;
   format: NumberFormat;
   title: string;
@@ -92,7 +95,33 @@ export function KpiView({
   // Pembanding periode (T-43hv): warna ikut penilaian KPI (atau bawaan dashboard), tanpa batas tetap.
   const cmp = data.compare
     ? kpiCompareView(value, data.compare, column?.type ?? "decimal", column?.format ?? format, tone)
-    : null;
+    : reference
+      ? kpiReferenceView(
+          value,
+          reference.kind === "target"
+            ? reference
+            : {
+                kind: "measure",
+                value: data.rows[0]?.[1] ?? null,
+                label: data.columns[1]?.label ?? "",
+              },
+          column?.type ?? "decimal",
+          column?.format ?? format,
+          tone,
+          reference.kind === "measure"
+            ? {
+                type: data.columns[1]?.type ?? "decimal",
+                // Hitungan (jumlah baris/terisi/kosong/unik) = bilangan bulat biasa, bukan format nilai utama.
+                format:
+                  data.columns[1]?.format ??
+                  (!("kind" in reference.measure) &&
+                  ["count", "count_distinct", "count_blank"].includes(reference.measure.agg)
+                    ? { style: "auto", decimals: 0 }
+                    : format),
+              }
+            : undefined,
+        )
+      : null;
   const extraRem = (st ? KPI_STATUS_REM : 0) + (cmp ? KPI_COMPARE_REM : 0);
   const shown = chooseKpi(
     options,

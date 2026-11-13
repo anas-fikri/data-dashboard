@@ -24,7 +24,13 @@ export interface MetricsSummary {
   latest: (SummaryPoint & { load1: number | null; cpus: number }) | null;
   series: SummaryPoint[];
   /** null = status antrean tidak diketahui. */
-  queue: { waiting: number; active: number; workerDown: boolean } | null;
+  queue: {
+    waiting: number;
+    active: number;
+    workerDown: boolean;
+    /** Proses latar per jenis (v1.21); tidak ada = sampel versi lama. */
+    jobs?: QueueStatus["jobs"];
+  } | null;
 }
 
 const point = (p: HostPoint): SummaryPoint => ({
@@ -38,7 +44,14 @@ const point = (p: HostPoint): SummaryPoint => ({
 });
 
 const queueOf = (q: QueueStatus | null): MetricsSummary["queue"] =>
-  q ? { waiting: q.waiting, active: q.active, workerDown: q.workers === 0 } : null;
+  q
+    ? {
+        waiting: q.waiting,
+        active: q.active,
+        workerDown: q.workers === 0,
+        ...(q.jobs ? { jobs: q.jobs } : {}),
+      }
+    : null;
 
 export function summaryOf(v: MetricsView, enabled: boolean): MetricsSummary {
   return {

@@ -84,7 +84,7 @@ export function withStatus<V extends ValueStatus>(v: V, next: ValueStatus): V {
 }
 
 /** Teks batas yang diketik → angka (koma desimal Indonesia diterima); kosong = null. */
-const num = (t: string): number | null | "bad" => {
+export const parseNumberText = (t: string): number | null | "bad" => {
   const raw = t.trim();
   // Ada koma: format Indonesia (titik = ribuan); tanpa koma: titik = desimal.
   const s = raw.includes(",") ? raw.replace(/\./g, "").replace(",", ".") : raw;
@@ -147,8 +147,8 @@ export function ToneChoice({
     last.current = next;
     onChange(next);
   };
-  const g = num(good);
-  const b = num(bad);
+  const g = parseNumberText(good);
+  const b = parseNumberText(bad);
   const order = tone === "up" ? "≥" : "≤";
   const worse = tone === "up" ? "<" : ">";
   const error =
@@ -160,8 +160,8 @@ export function ToneChoice({
           : "Batas Baik harus ≤ batas Perlu perhatian."
         : null;
   const commit = (gs: string, bs: string) => {
-    const gn = num(gs);
-    const bn = num(bs);
+    const gn = parseNumberText(gs);
+    const bn = parseNumberText(bs);
     if (gn === "bad" || bn === "bad" || !tone) return;
     if (gn === null && bn === null) return send({ tone });
     if (gn === null || bn === null) return;

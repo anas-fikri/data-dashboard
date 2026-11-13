@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.21 (T-g8ht, T-d6g9):** tanpa migrasi. KPI `spec.reference` (union `measure` | `target`, tidak bersamaan dengan
+  `compare`): ukuran pembanding dihitung sebagai m1 di query yang sama (sheet + filter sama), ikut remap kolom; target
+  = angka tetap di spec. Tampilan `kpiReferenceView` (persen dari ukuran kedua, netral; pencapaian target ▲/▼ dengan
+  warna penilaian, bawaan naik baik). Sampler metrik menghitung semua antrean (ingest, recast + pemetaan, ekspor + PDF)
+  ke `QueueStatus.jobs`; kartu Server menampilkan proses per jenis dan, saat diciutkan, CPU/RAM + jumlah proses.
+  Rollback ke v1.20.x: widget dengan `reference` gagal validasi di versi lama (tampil "Pengaturan widget tidak valid")
+  — hapus pembanding itu dulu bila perlu rollback.
 - **v1.20 (T-rbrb, ADR-0011):** **bermigrasi** (`20261112000000_period_keys`: enum `PeriodUploadMode`,
   `SheetLineage.keyColumns INT[]`, `DatasetVersion.uploadMode`, `UploadQueue.uploadMode`; semua aditif). Unggahan periode
   Ganti / Tambah / Perbarui berdasarkan kunci: worker menulis typed file lokal dulu, lalu `keyMerge`
@@ -122,6 +129,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   terapkan atau batalkan semua unggahan periode yang tertunda sebelum rollback; data aktif bersegmen kelompok tetap
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
+
+## [1.21.0] - 2026-11-13
+
+### Added
+
+- **kpi, metrics:** pembanding KPI ukuran lain + target angka; kartu Server hitung semua proses (T-g8ht, T-d6g9) (711beaf)
+
+### Fixed
+
+- **kpi, metrics:** antrean koreksi skema dihitung sekali; kolom pembanding hilang tidak mengosongkan angka; format & target persen (review v1.21 H1/H2/M1/M2/L2/L4) (1113f25)
+- **kpi:** target persen ikut format field terhitung (review v1.21) (f7cf853)
 
 ## [1.20.0] - 2026-11-12
 

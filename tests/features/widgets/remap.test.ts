@@ -280,6 +280,40 @@ describe("T-43hv: kolom tanggal pembanding KPI ikut dipetakan", () => {
   });
 });
 
+describe("v1.21: ukuran pembanding KPI ikut dipetakan; pembanding ganda ditolak", () => {
+  it("ukuran pembanding pindah posisi → ikut; kolom hilang → ditandai", () => {
+    const withRef = {
+      type: "kpi",
+      spec: {
+        ...kpi(2).spec,
+        reference: { kind: "measure", measure: { agg: "count", column: 3 } },
+      },
+    } as const;
+    const old = sheet(OLD, [col(1, "Cabang"), col(2, "Omzet"), col(3, "Resi")]);
+    const moved = sheet(NEW, [col(1, "Resi"), col(2, "Omzet"), col(3, "Cabang")]);
+    const r = remapConfig(withRef, old, moved);
+    expect(r.missing).toEqual([]);
+    expect((r.config.spec as { reference?: unknown }).reference).toEqual({
+      kind: "measure",
+      measure: { agg: "count", column: 1 },
+    });
+    expect(parseWidgetConfig(r.config.type, r.config.spec).ok).toBe(true);
+    const gone = remapConfig(withRef, old, sheet(NEW, [col(1, "Cabang"), col(2, "Omzet")]));
+    expect(gone.missing).toEqual(["Resi"]);
+  });
+
+  it("target angka sah; pembanding periode + rasio bersamaan ditolak", () => {
+    const target = { ...kpi(2).spec, reference: { kind: "target", value: 98.5 } };
+    expect(parseWidgetConfig("kpi", target).ok).toBe(true);
+    const both = {
+      ...kpi(2).spec,
+      compare: { column: 1, grain: "month", against: "previous" },
+      reference: { kind: "target", value: 1 },
+    };
+    expect(parseWidgetConfig("kpi", both).ok).toBe(false);
+  });
+});
+
 describe("T-d5ev: kolom klik-tembus dipetakan tanpa mematikan grafik", () => {
   const bar = (drill: number[]) =>
     ({

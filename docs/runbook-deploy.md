@@ -1306,3 +1306,22 @@ Rollback image ke v1.19.x: **selesaikan atau batalkan dulu semua unggahan period
 (image lama mengabaikan `uploadMode`, sehingga unggahan Perbarui/Tambah yang tertunda diproses sebagai Ganti dan
 masuk tinjauan). Versi yang sudah dibuat v1.20 adalah kelompok segmen biasa dan tetap terbaca; kolom baru diabaikan
 (tidak perlu rollback migrasi).
+
+## 33. Rilis v1.21.0 (tanpa migrasi) dan rollback ke v1.20.x
+
+Widget Angka: pembanding **Ukuran lain (persen dari …)** dan **Target angka**. Kartu Server: semua proses latar
+(unggahan, koreksi skema, ekspor/PDF) + ringkasan saat sidebar diciutkan (butuh monitor §29). Tanpa migrasi.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.0
+docker compose --env-file .env.prod -f docker-compose.prod.yml run --rm worker \
+  node_modules/.bin/tsx --conditions=react-server scripts/seed-guides.ts --update \
+  --only mengenal-data-dashboard,susun-dashboard
+```
+
+Bila setelah merge arsip `main` masih versi lama (cache GitHub), unduh arsip per SHA commit merge dan jalankan dengan
+`ARCHIVE=/tmp/kode.tar.gz bash deploy/server-release.sh 1.21.0`.
+
+Rollback image ke v1.20.x: widget Angka yang memakai pembanding ukuran lain/target tampil "Pengaturan widget tidak
+valid" di versi lama — ubah pembandingnya dulu bila perlu rollback. Data tidak terpengaruh.
