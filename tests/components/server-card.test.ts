@@ -153,7 +153,7 @@ describe("ServerCardView", () => {
     const html = render(summaryOf(view({ cpu: 0.9 }), true));
     expect(html).toContain("Beban tinggi: CPU");
     expect(html).toContain('90%<span class="sr-only"> (tinggi)</span>');
-    expect(html).toContain("Pemroses: aktif · 1 diproses · 2 menunggu");
+    expect(html).toContain("Pemroses: aktif · 1 unggahan diproses, 2 unggahan menunggu");
     expect(html).not.toContain("/admin/sumber-daya");
     expect(html).toContain('aria-live="polite"');
     expect(html).toContain('aria-atomic="true"');
@@ -163,7 +163,7 @@ describe("ServerCardView", () => {
   it("diciutkan → satu tombol ikon berlabel status; galat → tidak tersedia", () => {
     const html = render(summaryOf(view({}, 0), true), { collapsed: true });
     expect(html).toContain(
-      'aria-label="Server: Pemroses unggahan tidak aktif. Lebarkan sidebar untuk detail"',
+      'aria-label="Server: Pemroses unggahan tidak aktif, CPU 20%, RAM 50%, 1 proses berjalan. Lebarkan sidebar untuk detail"',
     );
     expect(html).not.toContain("<dl");
     const err = render(summaryOf(view(), true), { error: true });

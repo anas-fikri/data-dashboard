@@ -104,9 +104,13 @@ export function kpiReferenceView(
   type: ValueType,
   format: NumberFormat,
   tone: Tone | undefined,
+  /** Tipe + format ukuran pembanding (review M1): mis. jumlah baris tidak ditulis "Rp". */
+  baseFmt?: { type: ValueType; format: NumberFormat },
 ): KpiCompareView {
   const cur = num(value);
   const base = num(ref.value);
+  const bType = baseFmt?.type ?? type;
+  const bFormat = baseFmt?.format ?? format;
   const pctOf = (x: number) => formatCompact(x, { style: "percent", decimals: 1 });
   if (ref.kind === "measure") {
     const label = ref.label || "ukuran pembanding";
@@ -114,8 +118,8 @@ export function kpiReferenceView(
       const text = `${label}: ${base === null ? "kosong" : "0"} — rasio tidak bisa dihitung`;
       return { direction: null, change: null, text, status: null, full: text };
     }
-    const baseText = formatMeasure(base, type, format, true);
-    const baseFull = formatMeasure(base, type, format);
+    const baseText = formatMeasure(base, bType, bFormat, true);
+    const baseFull = formatMeasure(base, bType, bFormat);
     if (cur === null) {
       return {
         direction: null,

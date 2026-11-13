@@ -108,6 +108,18 @@ export function KpiView({
           column?.type ?? "decimal",
           column?.format ?? format,
           tone,
+          reference.kind === "measure"
+            ? {
+                type: data.columns[1]?.type ?? "decimal",
+                // Hitungan (jumlah baris/terisi/kosong/unik) = bilangan bulat biasa, bukan format nilai utama.
+                format:
+                  data.columns[1]?.format ??
+                  (!("kind" in reference.measure) &&
+                  ["count", "count_distinct", "count_blank"].includes(reference.measure.agg)
+                    ? { style: "auto", decimals: 0 }
+                    : format),
+              }
+            : undefined,
         )
       : null;
   const extraRem = (st ? KPI_STATUS_REM : 0) + (cmp ? KPI_COMPARE_REM : 0);

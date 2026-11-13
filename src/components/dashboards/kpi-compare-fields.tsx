@@ -30,7 +30,10 @@ export function KpiCompareFields({
   onChange,
   onReference,
   renderMeasure,
+  percent = false,
 }: {
+  /** Nilai tampil sebagai persen: target diketik dalam persen (98 = 98%), disimpan 0,98 (review M2). */
+  percent?: boolean;
   value: KpiCompare | undefined;
   /** Pembanding selain periode (v1.21): ukuran lain atau target angka. */
   reference?: KpiReference;
@@ -100,7 +103,9 @@ export function KpiCompareFields({
       ) : null}
       {reference?.kind === "target" ? (
         <TargetInput
+          key={reference.value}
           value={reference.value}
+          scale={percent ? 100 : 1}
           onChange={(v) => onReference?.({ kind: "target", value: v })}
         />
       ) : null}
@@ -149,9 +154,18 @@ export function KpiCompareFields({
 }
 
 /** Target angka (v1.21): disimpan saat keluar dari kotak; isian bukan angka ditandai, tidak disimpan. */
-function TargetInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function TargetInput({
+  value,
+  scale,
+  onChange,
+}: {
+  value: number;
+  scale: number;
+  onChange: (v: number) => void;
+}) {
   const id = useId();
-  const [text, setText] = useState(value ? String(value).replace(".", ",") : "");
+  const shown = Math.round(value * scale * 1e9) / 1e9;
+  const [text, setText] = useState(shown ? String(shown).replace(".", ",") : "");
   const parsed = parseNumberText(text);
   const bad = parsed === "bad";
   return (
@@ -169,7 +183,8 @@ function TargetInput({ value, onChange }: { value: number; onChange: (v: number)
         placeholder="mis. 98 atau 1.000.000"
         onChange={(e) => setText(e.target.value)}
         onBlur={() => {
-          if (typeof parsed === "number") onChange(parsed);
+          // Tanpa perubahan → tanpa simpanan (review L2).
+          if (typeof parsed === "number" && parsed !== shown) onChange(parsed / scale);
         }}
       />
       <p

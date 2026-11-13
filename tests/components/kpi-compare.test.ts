@@ -148,6 +148,17 @@ describe("kpiReferenceView (v1.21)", () => {
     expect(v.status).toBeNull();
     expect(v.direction).toBeNull();
   });
+  it("ukuran lain berformat sendiri: jumlah baris tidak ditulis Rupiah (review M1)", () => {
+    const v = kpiReferenceView(
+      2500000,
+      { kind: "measure", value: 40, label: "Jumlah baris" },
+      "decimal",
+      { style: "rupiah", decimals: 0 },
+      undefined,
+      { type: "integer", format: fmt },
+    );
+    expect(v.text).toBe("dari Jumlah baris (40)");
+  });
   it("ukuran lain 0/kosong → tanpa persen", () => {
     const v = kpiReferenceView(
       10,

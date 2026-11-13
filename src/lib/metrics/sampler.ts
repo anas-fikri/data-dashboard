@@ -6,7 +6,6 @@ import type { Queue } from "bullmq";
 import {
   exportQueue,
   ingestQueue,
-  mappingQueue,
   pdfQueue,
   recastQueue,
   withQueueTimeout,
@@ -55,10 +54,10 @@ export async function sampleOnce(): Promise<boolean> {
     withQueueTimeout(q.getJobCounts("waiting", "prioritized", "delayed", "active"), what).catch(
       () => null,
     );
-  const [counts, recast, mapping, exp, pdf, workers] = await Promise.all([
+  const [counts, recast, exp, pdf, workers] = await Promise.all([
     count(ingestQueue(), "jumlah antrean ingest"),
+    // recastQueue() dan mappingQueue() = antrean BullMQ yang sama ("recast"): dihitung sekali (review H1).
     count(recastQueue(), "jumlah antrean recast"),
-    count(mappingQueue(), "jumlah antrean pemetaan"),
     count(exportQueue(), "jumlah antrean ekspor"),
     count(pdfQueue(), "jumlah antrean PDF"),
     ingestWorkerCount(),
@@ -69,7 +68,7 @@ export async function sampleOnce(): Promise<boolean> {
   const jobs: Partial<Record<JobKind, { active: number; waiting: number }>> = {};
   for (const [kind, list] of [
     ["upload", [counts]],
-    ["schema", [recast, mapping]],
+    ["schema", [recast]],
     ["export", [exp, pdf]],
   ] as const) {
     const known = list.filter((c): c is Record<string, number> => !!c);

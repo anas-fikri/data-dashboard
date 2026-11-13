@@ -47,13 +47,13 @@ const counts = (c: Record<string, number>) => () => ({ getJobCounts: async () =>
 vi.mock("@/lib/queue/connection", () => ({
   ingestQueue: counts({ waiting: 2, prioritized: 1, active: 1 }),
   recastQueue: counts({ waiting: 0, active: 1 }),
-  mappingQueue: () => ({
+  exportQueue: counts({ waiting: 1, delayed: 1, active: 0 }),
+  // Antrean yang gagal dibaca dilewati, bukan menggagalkan sampel.
+  pdfQueue: () => ({
     getJobCounts: async () => {
       throw new Error("timeout");
     },
   }),
-  exportQueue: counts({ waiting: 1, delayed: 1, active: 0 }),
-  pdfQueue: counts({ active: 2 }),
   withQueueTimeout: <T>(p: Promise<T>) => p,
 }));
 vi.mock("@/lib/queue/versions", () => ({ ingestWorkerCount: async () => 0 }));
@@ -80,7 +80,7 @@ describe("sampleOnce", () => {
     expect(q.jobs).toEqual({
       upload: { active: 1, waiting: 3 },
       schema: { active: 1, waiting: 0 },
-      export: { active: 2, waiting: 2 },
+      export: { active: 0, waiting: 2 },
     });
   });
 

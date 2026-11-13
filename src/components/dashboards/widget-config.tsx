@@ -467,6 +467,7 @@ export function WidgetConfigForm({
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
                   }}
                   reference={draft.spec.reference}
+                  percent={draft.spec.format.style === "percent"}
                   onReference={(reference) => {
                     const { reference: _r, compare: _c, ...spec } = draft.spec;
                     commit({ ...draft, spec: reference ? { ...spec, reference } : spec });
