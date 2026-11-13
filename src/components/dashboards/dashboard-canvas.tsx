@@ -10,7 +10,7 @@ import {
 } from "./auto-refresh";
 import { TvBar } from "./tv-mode";
 import type { DashboardColors } from "@/features/widgets/tone";
-import { DashboardColorsControl } from "./dashboard-colors-control";
+import { DashboardColorsControl, settleDashboardColors } from "./dashboard-colors-control";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import { useRouter } from "next/navigation";
@@ -343,11 +343,15 @@ function Canvas(props: CanvasProps) {
     // terbaru (atau 404 bila aksesnya dicabut).
     const close = selected ? () => setSelected(null) : null;
     if (!frozen && !(await saveBeforeLeave(close, ed.flush))) return setFinishing(false);
+    // Warna dashboard yang baru dipilih tersimpan dulu (T-q3gm L1): mode lihat memuat template terbaru.
+    await settleDashboardColors(dashboardId);
     // Filter yang sedang aktif ikut ke mode lihat.
     const f = new URL(window.location.href).searchParams.get("f");
     router.push(`/dashboards/${dashboardId}${f ? `?f=${encodeURIComponent(f)}` : ""}`);
   }
-  const reload = () => window.location.reload();
+  const reload = () => {
+    void settleDashboardColors(dashboardId).finally(() => window.location.reload());
+  };
 
   const card = (w: WidgetView, it: LayoutItem, extra?: { style?: React.CSSProperties }) => (
     <WidgetCard
