@@ -115,6 +115,11 @@ export function kpiReferenceView(
   const bFormat = baseFmt?.format ?? format;
   const pctOf = (x: number) => formatCompact(x, { style: "percent", decimals: 1 });
   if (ref.kind === "measure") {
+    // Server melewati ukuran pembanding (kolom disembunyikan/dihapus/tanggal): bukan "kosong" (review T-djp6 M1).
+    if (ref.value === undefined) {
+      const text = "Pembanding tidak tersedia (kolomnya disembunyikan atau tidak ada lagi)";
+      return { direction: null, change: null, text, status: null, full: text };
+    }
     const label = ref.label || "ukuran pembanding";
     if (base === null || base === 0) {
       const text = `${label}: ${base === null ? "kosong" : "0"} — rasio tidak bisa dihitung`;

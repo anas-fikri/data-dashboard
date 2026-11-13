@@ -105,7 +105,7 @@ export function KpiView({
             ? reference
             : {
                 kind: "measure",
-                value: data.rows[0]?.[1] ?? null,
+                value: data.columns.length < 2 ? undefined : (data.rows[0]?.[1] ?? null),
                 label: data.columns[1]?.label ?? "",
               },
           column?.type ?? "decimal",

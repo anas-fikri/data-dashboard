@@ -159,6 +159,16 @@ describe("kpiReferenceView (v1.21)", () => {
     );
     expect(v.text).toBe("dari Jumlah baris (40)");
   });
+  it("ukuran pembanding dilewati server → tidak tersedia", () => {
+    const v = kpiReferenceView(
+      5,
+      { kind: "measure", value: undefined, label: "" },
+      "integer",
+      fmt,
+      undefined,
+    );
+    expect(v.text).toContain("Pembanding tidak tersedia");
+  });
   it("ukuran lain 0/kosong → tanpa persen", () => {
     const v = kpiReferenceView(
       10,
