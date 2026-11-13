@@ -294,6 +294,9 @@ test.describe("Lihat data: ponsel, keyboard, pembaca layar", () => {
     await expect(page.getByTestId("grid-filter-dialog")).toBeVisible();
     expect(await axeSerious(page)).toEqual([]);
     await page.keyboard.press("Escape");
+    // Dialog tertutup (fokus kembali ke sel) sebelum tombol berikutnya, sama seperti AC2 (T-7377).
+    await expect(page.getByTestId("grid-filter-dialog")).toBeHidden();
+    await expect(cell(page, 300, "c4")).toBeFocused();
     await page.keyboard.press("F2");
     await expect(page.getByTestId("grid-cell-panel")).toBeVisible();
     expect(await axeSerious(page)).toEqual([]);
