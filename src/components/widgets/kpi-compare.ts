@@ -106,6 +106,8 @@ export function kpiReferenceView(
   tone: Tone | undefined,
   /** Tipe + format ukuran pembanding (review M1): mis. jumlah baris tidak ditulis "Rp". */
   baseFmt?: { type: ValueType; format: NumberFormat },
+  /** Penilaian "tanpa warna" dipilih eksplisit (T-djp6 L7): target tanpa warna baik/buruk. */
+  noColor = false,
 ): KpiCompareView {
   const cur = num(value);
   const base = num(ref.value);
@@ -148,7 +150,8 @@ export function kpiReferenceView(
   const diff = cur - target;
   const direction = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
   const better = (tone ?? "up") === "up";
-  const status = direction === "flat" ? null : (direction === "up") === better ? "good" : "bad";
+  const status =
+    noColor || direction === "flat" ? null : (direction === "up") === better ? "good" : "bad";
   const change =
     target === 0
       ? `${diff > 0 ? "+" : diff < 0 ? MINUS : ""}${formatMeasure(Math.abs(diff), type, format, true)}`

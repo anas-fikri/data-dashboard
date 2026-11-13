@@ -1,11 +1,15 @@
 ---
 id: T-djp6
 title: 'v1.21 lanjutan: temuan Low review pembanding KPI/kartu Server (target 0 saat baru dipilih, bawaan ukuran sama dengan ni…'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-11-13T01:59:30Z"
-updated: "2026-11-13T02:03:24Z"
+updated: "2026-11-13T02:31:00Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 76c1d1c5225db8cda4e07bc0a5094fa53e522e19
 ---
 
 ## Objective

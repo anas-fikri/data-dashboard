@@ -176,6 +176,18 @@ describe("kpiReferenceView (v1.21)", () => {
     expect(under.full).toContain("kurang 50");
     const over = kpiReferenceView(1200, { kind: "target", value: 1000 }, "integer", fmt, "down");
     expect([over.direction, over.status]).toEqual(["up", "bad"]);
+    // Penilaian "tanpa warna" dipilih eksplisit → netral (T-djp6 L7).
+    expect(
+      kpiReferenceView(
+        950,
+        { kind: "target", value: 1000 },
+        "integer",
+        fmt,
+        undefined,
+        undefined,
+        true,
+      ).status,
+    ).toBeNull();
     const zero = kpiReferenceView(5, { kind: "target", value: 0 }, "integer", fmt, undefined);
     expect(zero.change).toBe("+5");
   });

@@ -31,7 +31,10 @@ export function KpiCompareFields({
   onReference,
   renderMeasure,
   percent = false,
+  mainCountRows = false,
 }: {
+  /** Nilai utama = jumlah baris: ukuran pembanding bawaan jangan sama (100%), pakai jumlah terisi kolom 1. */
+  mainCountRows?: boolean;
   /** Nilai tampil sebagai persen: target diketik dalam persen (98 = 98%), disimpan 0,98 (review M2). */
   percent?: boolean;
   value: KpiCompare | undefined;
@@ -49,7 +52,13 @@ export function KpiCompareFields({
 }) {
   const dates = columns.filter((c) => isTemporal(c.type) && !blankColumns.includes(c.pos));
   const blankPeriod = !!value && blankColumns.includes(value.column);
-  const current: Against = reference ? reference.kind : (value?.against ?? "none");
+  // Target dipilih tetapi belum diisi: belum disimpan (T-djp6 L1 — target 0 tidak tampil hijau sebelum diisi).
+  const [pendingTarget, setPendingTarget] = useState(false);
+  const current: Against = reference
+    ? reference.kind
+    : pendingTarget
+      ? "target"
+      : (value?.against ?? "none");
   const periodOk = dates.length > 0 && !dateMeasure;
   const options = AGAINST.filter(
     (o) =>
@@ -77,13 +86,15 @@ export function KpiCompareFields({
         options={options}
         onChange={(against) => {
           // Satu simpanan per pilihan: onChange membuang pembanding lain (periode/ukuran/target) sekaligus.
+          setPendingTarget(against === "target" && reference?.kind !== "target");
           if (against === "none") return onChange(undefined);
-          if (against === "measure" || against === "target") {
-            return onReference?.(
-              against === "measure"
-                ? { kind: "measure", measure: { agg: "count" } }
-                : { kind: "target", value: 0 },
-            );
+          if (against === "target") return;
+          if (against === "measure") {
+            const first = columns[0]?.pos;
+            return onReference?.({
+              kind: "measure",
+              measure: mainCountRows && first ? { agg: "count", column: first } : { agg: "count" },
+            });
           }
           onChange(
             value ? { ...value, against } : { column: dates[0]!.pos, grain: "month", against },
@@ -101,12 +112,15 @@ export function KpiCompareFields({
           </p>
         </div>
       ) : null}
-      {reference?.kind === "target" ? (
+      {reference?.kind === "target" || pendingTarget ? (
         <TargetInput
-          key={reference.value}
-          value={reference.value}
+          key={reference?.kind === "target" ? reference.value : "baru"}
+          value={reference?.kind === "target" ? reference.value : null}
           scale={percent ? 100 : 1}
-          onChange={(v) => onReference?.({ kind: "target", value: v })}
+          onChange={(v) => {
+            setPendingTarget(false);
+            onReference?.({ kind: "target", value: v });
+          }}
         />
       ) : null}
       {value && dateMeasure ? (
@@ -159,13 +173,14 @@ function TargetInput({
   scale,
   onChange,
 }: {
-  value: number;
+  /** null = target baru, belum diisi. */
+  value: number | null;
   scale: number;
   onChange: (v: number) => void;
 }) {
   const id = useId();
-  const shown = Math.round(value * scale * 1e9) / 1e9;
-  const [text, setText] = useState(shown ? String(shown).replace(".", ",") : "");
+  const shown = value === null ? null : Math.round(value * scale * 1e9) / 1e9;
+  const [text, setText] = useState(shown === null ? "" : String(shown).replace(".", ","));
   const parsed = parseNumberText(text);
   const bad = parsed === "bad";
   return (
@@ -193,7 +208,9 @@ function TargetInput({
       >
         {bad
           ? "Isi angka saja."
-          : "Angka menampilkan persen pencapaian terhadap target. ▲/▼ hijau-merah mengikuti penilaian warna (bawaan: lebih tinggi lebih baik)."}
+          : value === null
+            ? "Isi target, lalu pindah dari kotak ini untuk menyimpan."
+            : "Angka menampilkan persen pencapaian terhadap target. ▲/▼ hijau-merah mengikuti penilaian warna (bawaan: lebih tinggi lebih baik)."}
       </p>
     </div>
   );

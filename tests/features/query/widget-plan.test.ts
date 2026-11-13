@@ -59,3 +59,32 @@ describe("widgetPlan: kolom dulu, baru tipe", () => {
     });
   });
 });
+
+describe("v1.21 pembanding KPI ukuran lain (T-djp6)", () => {
+  const kpi = (reference: unknown) => {
+    const c = parseWidgetConfig("kpi", {
+      sheetId: SHEET,
+      measure: { agg: "count" },
+      format: { style: "auto", decimals: 0 },
+      reference,
+    });
+    if (!c.ok) throw new Error(c.message);
+    return c.config as Extract<WidgetConfig, { type: "kpi" }>;
+  };
+  it("ukuran pembanding = kolom hasil kedua", () => {
+    const p = widgetPlan(kpi({ kind: "measure", measure: { agg: "count", column: 1 } }), SCHEMA, {
+      page: 0,
+    });
+    expect(p.ok && p.spec.measures).toHaveLength(2);
+  });
+  it("kolom pembanding tersembunyi/hilang → pembanding dilewati, angka utama tetap", () => {
+    const hidden = SCHEMA.find((c) => c.hidden)?.pos;
+    for (const column of [hidden ?? 99, 99]) {
+      const p = widgetPlan(kpi({ kind: "measure", measure: { agg: "count", column } }), SCHEMA, {
+        page: 0,
+      });
+      expect(p.ok).toBe(true);
+      expect(p.ok && p.spec.measures).toHaveLength(1);
+    }
+  });
+});

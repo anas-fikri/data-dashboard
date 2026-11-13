@@ -55,7 +55,10 @@ export function KpiView({
   fixedHeight = false,
   status,
   reference,
+  toneNone = false,
 }: {
+  /** Penilaian warna "tanpa warna" dipilih eksplisit: pembanding target netral. */
+  toneNone?: boolean;
   /** Pembanding selain periode (v1.21): rasio ke ukuran kedua (kolom hasil kedua) atau target angka. */
   reference?: KpiReference;
   data: WidgetData;
@@ -120,6 +123,7 @@ export function KpiView({
                     : format),
               }
             : undefined,
+          toneNone,
         )
       : null;
   const extraRem = (st ? KPI_STATUS_REM : 0) + (cmp ? KPI_COMPARE_REM : 0);

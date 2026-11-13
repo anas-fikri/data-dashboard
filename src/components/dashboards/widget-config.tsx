@@ -467,6 +467,11 @@ export function WidgetConfigForm({
                     commit({ ...draft, spec: compare ? { ...spec, compare } : spec });
                   }}
                   reference={draft.spec.reference}
+                  mainCountRows={
+                    !isCalcValue(draft.spec.measure) &&
+                    draft.spec.measure.agg === "count" &&
+                    !draft.spec.measure.column
+                  }
                   // Sama dengan ToneChoice: field terhitung bisa punya format persen sendiri (review v1.21).
                   percent={
                     valueFormat(
@@ -486,6 +491,7 @@ export function WidgetConfigForm({
                         columns={cols}
                         measure={m}
                         label="Dibanding"
+                        testIdPrefix="config-kpi-reference"
                         onChange={(next) => onRef(next as typeof m)}
                       />
                     )

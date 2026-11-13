@@ -114,6 +114,7 @@ function Body({
         agg={aggOf(config.spec.measure)}
         status={specStatus(config.spec, dashColors, dashTone)}
         reference={config.spec.reference}
+        toneNone={config.spec.measure.tone === "none"}
         fixedHeight
       />
     );
