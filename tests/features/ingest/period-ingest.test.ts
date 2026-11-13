@@ -722,6 +722,23 @@ describe("T-jsmj review: sheet gabungan", () => {
     expect(after["2026-05"]).toBe(4);
   });
 
+  it("T-hgsz: sheet tergabung dengan judul kolom + jumlah baris sama → ditandai kemungkinan salinan", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...month(4, 10)] },
+        { name: "Data (2)", rows: [HEADER, ...month(4, 10)] },
+        { name: "Data 3", rows: [HEADER, ...month(4, 4, 100)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    expect((await s.run()).outcome).toBe("confirm");
+    expect(s.repo.plan!.mergedSheets).toEqual([
+      { sheet: "Data", from: ["Data", "Data (2)", "Data 3"], copies: ["Data", "Data (2)"] },
+    ]);
+    expect(s.repo.plan!.ignoredForMapping).toBe(false);
+  });
+
   it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = await setupXlsx(

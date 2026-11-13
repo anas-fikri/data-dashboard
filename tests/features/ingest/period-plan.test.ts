@@ -966,3 +966,16 @@ describe("outOfWindowMessage", () => {
     expect(m).toContain("Pilih Ganti");
   });
 });
+
+describe("T-hgsz: sheet diabaikan karena pemetaan", () => {
+  it("ignoredForMapping hanya bila ada sheet diabaikan; rencana lama tanpa field → false", () => {
+    const base = { incoming: [month("2026-01", { A: 10 })] };
+    expect(
+      computePeriodPlan(input({ ...base, ignoredSheets: ["Data 2"], ignoredForMapping: true }))
+        .ignoredForMapping,
+    ).toBe(true);
+    expect(computePeriodPlan(input({ ...base, ignoredForMapping: true })).ignoredForMapping).toBe(
+      false,
+    );
+  });
+});

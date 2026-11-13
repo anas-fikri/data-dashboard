@@ -592,7 +592,21 @@ export async function runPeriodIngest(
       }
       for (const [lineageId, from] of fromFile) {
         if (from.length < 2 && !byColumns.has(lineageId)) continue;
-        merged.push({ sheet: usable.find((x) => x.lineageId === lineageId)!.name, from });
+        // Kemungkinan salinan (T-hgsz): sheet tergabung dengan judul kolom + jumlah baris sama persis.
+        const seen = new Map<string, string>();
+        const copies = new Set<string>();
+        for (const it of fileItems.filter((x) => x.pair.lineageId === lineageId)) {
+          const key = `${headerSignature(it.s.rec.columns)}|${it.s.rec.rawRows}`;
+          const name = shown(it.s);
+          const first = seen.get(key);
+          if (first === undefined) seen.set(key, name);
+          else copies.add(first).add(name);
+        }
+        merged.push({
+          sheet: usable.find((x) => x.lineageId === lineageId)!.name,
+          from,
+          ...(copies.size ? { copies: from.filter((f) => copies.has(f)) } : {}),
+        });
         // Beberapa sheet satu file di sheet data yang sama: sidik + nama asal per sheet (deteksi "file
         // identik" per periode tidak tertipu sheet lain di file yang sama; sumber sel menyebut sheet-nya).
         const list = fileItems.filter((it) => it.pair.lineageId === lineageId);
@@ -747,6 +761,8 @@ interface CoreInput {
   items: Item[];
   /** Sheet file yang tidak berpasangan (tidak disimpan). */
   ignored: string[];
+  /** `ignored` berasal dari jalur pemetaan kolom (T-hgsz): alasan khusus di layar tinjauan. */
+  ignoredForMapping?: boolean;
   /** Sheet file yang digabung ke satu sheet data (T-jsmj). */
   merged: MergedSheet[];
   /** Dataset punya lebih dari satu sheet periode (nama sheet di pesan). */
@@ -857,6 +873,7 @@ async function processPeriodItems(
     fileSheets: [...new Set(items.map((it) => it.pair.lineageId))],
     droppedRows: items.reduce((n, it) => n + it.missing, 0),
     ignoredSheets: ignored,
+    ignoredForMapping: c.ignoredForMapping,
     mergedSheets: c.merged,
     fileSha256: dl.sha256,
   };
@@ -888,6 +905,7 @@ async function processPeriodItems(
     fileSha256: facts.fileSha256,
     droppedRows: facts.droppedRows,
     ignoredSheets: facts.ignoredSheets,
+    ignoredForMapping: facts.ignoredForMapping,
     mergedSheets: facts.mergedSheets,
   });
   // Tambah/Perbarui (T-yg3z L1): rencana awal menghitung seperti Ganti (baris lama belum diketahui) dan bisa
@@ -1409,6 +1427,8 @@ export async function runPeriodMapping(
       sha256: raw.sha256,
       items,
       ignored: raw.ignoredSheets,
+      // Jalur pemetaan: sheet tambahan diabaikan karena ada sheet yang perlu pemetaan (lihat ingest awal).
+      ignoredForMapping: true,
       merged: raw.mergedSheets ?? [],
       multi: usable.length > 1,
       // Sheet tergabung (T-jsmj) menunggu pemetaan: tetap satu kelompok per periode.
