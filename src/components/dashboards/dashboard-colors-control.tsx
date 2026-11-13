@@ -138,6 +138,10 @@ export function DashboardColorsControl({
     const settle = () => {
       if (timer.current) clearTimeout(timer.current);
       timer.current = null;
+      // Tidak ada yang menunggu/berjalan: gagal lama sudah dipulihkan ke nilai server — tidak menahan Selesai
+      // (review T-q3gm r2).
+      if (!pending.current && inflight.current === 0) return Promise.resolve(true);
+      lastOk.current = true;
       flush();
       return chain.current.then(() => lastOk.current);
     };

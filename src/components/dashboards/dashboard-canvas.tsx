@@ -347,7 +347,8 @@ function Canvas(props: CanvasProps) {
     const close = selected ? () => setSelected(null) : null;
     if (!frozen && !(await saveBeforeLeave(close, ed.flush))) return setFinishing(false);
     // Warna dashboard yang baru dipilih tersimpan dulu (T-q3gm L1): mode lihat memuat template terbaru.
-    if (!(await settleDashboardColors(dashboardId))) {
+    // STALE/akses berubah (frozen): simpan warna juga tidak mungkin — langsung ke mode lihat.
+    if (!frozen && !(await settleDashboardColors(dashboardId))) {
       // Simpan warna gagal: tetap di mode edit dengan alasannya (review T-q3gm M1).
       setColorsError(true);
       return setFinishing(false);
