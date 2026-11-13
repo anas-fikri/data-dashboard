@@ -1433,3 +1433,16 @@ bash deploy/server-release.sh 1.21.8
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 42. Rilis v1.21.9 (tanpa migrasi)
+
+T-tyb1: kolom klik-tembus/tanggal pembanding yang disembunyikan bisa dibuang dari panel widget (simpan otomatis jalan
+lagi); petunjuk filter silang menyebut tombol "Lihat baris data"; panel Angka menyebut warna ▲/▼ mengikuti penilaian
+bawaan dashboard; KPI berpembanding menulis "s.d. <tanggal>" saat periode terakhir belum penuh.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.9
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
