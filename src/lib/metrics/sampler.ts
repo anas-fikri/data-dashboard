@@ -78,15 +78,14 @@ export async function sampleOnce(): Promise<boolean> {
       waiting: known.reduce((n, c) => n + waitingOf(c), 0),
     };
   }
-  if (counts) {
-    await saveQueueStatus(r, {
-      t: Date.now(),
-      waiting: (counts.waiting ?? 0) + (counts.prioritized ?? 0),
-      active: counts.active ?? 0,
-      workers,
-      jobs,
-    });
-  }
+  // Disimpan walau hitungan ingest timeout (T-zjwh): jumlah worker (status pemroses) tetap terbaca.
+  await saveQueueStatus(r, {
+    t: Date.now(),
+    waiting: counts ? (counts.waiting ?? 0) + (counts.prioritized ?? 0) : null,
+    active: counts ? (counts.active ?? 0) : null,
+    workers,
+    jobs,
+  });
   const res = await fetch(url, {
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     cache: "no-store",

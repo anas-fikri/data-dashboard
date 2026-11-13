@@ -63,9 +63,15 @@ function parseLabels(s: string): Record<string, string> {
   return labels;
 }
 
-/** Antarmuka virtual (Docker, bridge, veth, loopback, shaping) tidak dihitung: hanya lalu lintas fisik host. */
+/**
+ * Antarmuka virtual (Docker, bridge, veth, loopback, shaping, overlay/VPN, VLAN) tidak dihitung: hanya lalu lintas
+ * fisik host, agar paket yang lewat beberapa antarmuka tidak terhitung ganda (T-zjwh L7). VLAN = `eth0.100`/`vlan*`.
+ */
 const VIRTUAL_NET =
-  /^(lo|docker\d*|br-.*|veth.*|ifb\d*|virbr.*|cni.*|flannel.*|cali.*|tap.*|tun.*|vxlan.*|wg\d*)$/;
+  /^(lo|docker\d*|docker_gwbridge|br-.*|veth.*|ifb\d*|virbr.*|vnet\d*|cni.*|flannel.*|cali.*|tap.*|tun.*|vxlan.*|wg\d*|tailscale\d*|zt.*|vlan.*|.+\..+)$/;
+/** Antarmuka bond: bila ada, anggotanya (eth/en*) tidak dihitung — lalu lintas bond = jumlah anggotanya. */
+const BOND = /^bond\d+$/;
+const BOND_MEMBER = /^(eth|en)/;
 /** Perangkat disk fisik/virtual blok (bukan partisi, loop, ram, dm). */
 const DISK_DEV = /^(sd[a-z]+|vd[a-z]+|xvd[a-z]+|nvme\d+n\d+|hd[a-z]+)$/;
 const PSEUDO_FS = new Set([
@@ -98,9 +104,13 @@ export interface HostRaw {
   swapTotal: number | null;
   swapFree: number | null;
   fs: Filesystem[];
-  /** null = keluarga metrik tidak ada di respons (kolektor gagal) — bukan 0, agar laju tidak melonjak palsu. */
-  netRx: number | null;
-  netTx: number | null;
+  /**
+   * Byte per antarmuka fisik (T-zjwh L7: laju dihitung per antarmuka, counter satu antarmuka yang ter-reset tidak
+   * mengacaukan total). null = keluarga metrik tidak ada di respons (kolektor gagal) — bukan 0, agar laju tidak
+   * melonjak palsu.
+   */
+  netRx: Record<string, number> | null;
+  netTx: Record<string, number> | null;
   diskIo: Record<string, number>;
 }
 
@@ -140,9 +150,15 @@ export function readHost(text: string, t: number, mounts: readonly string[]): Ho
   const net = (name: string) => {
     const list = m.get(name);
     if (!list) return null;
-    return list
-      .filter((s) => !VIRTUAL_NET.test(s.labels.device ?? ""))
-      .reduce((n, s) => n + s.value, 0);
+    const devs = list.filter((s) => !VIRTUAL_NET.test(s.labels.device ?? ""));
+    const bonded = devs.some((s) => BOND.test(s.labels.device ?? ""));
+    const out: Record<string, number> = {};
+    for (const s of devs) {
+      const dev = s.labels.device ?? "";
+      if (bonded && BOND_MEMBER.test(dev)) continue;
+      out[dev] = s.value;
+    }
+    return out;
   };
   const diskIo: Record<string, number> = {};
   for (const s of m.get("node_disk_io_time_seconds_total") ?? []) {
@@ -197,6 +213,25 @@ const ratio = (a: number, b: number) => (b > 0 ? Math.min(1, Math.max(0, a / b))
 const rate = (prev: number | null, cur: number | null, dt: number) =>
   prev !== null && cur !== null && dt > 0 && cur >= prev ? (cur - prev) / dt : null;
 
+/**
+ * Laju jaringan = jumlah laju per antarmuka yang ada di kedua sampel; antarmuka yang counternya mundur (reset) atau
+ * baru muncul dilewati. Sampel lama (angka tunggal, sebelum T-zjwh) → null sekali.
+ */
+const netRate = (prev: unknown, cur: Record<string, number> | null, dt: number): number | null => {
+  if (!cur || !prev || typeof prev !== "object" || dt <= 0) return null;
+  const p = prev as Record<string, number>;
+  let sum = 0;
+  let seen = false;
+  for (const [dev, v] of Object.entries(cur)) {
+    const r = rate(typeof p[dev] === "number" ? p[dev]! : null, v, dt);
+    if (r !== null) {
+      sum += r;
+      seen = true;
+    }
+  }
+  return seen ? sum : null;
+};
+
 export function hostPoint(prev: HostRaw | null, cur: HostRaw): HostPoint {
   const dt = prev ? (cur.t - prev.t) / 1000 : 0;
   let cpu: number | null = null;
@@ -246,8 +281,8 @@ export function hostPoint(prev: HostRaw | null, cur: HostRaw): HostPoint {
     swapTotal: cur.swapTotal,
     disk: fullest,
     disks,
-    rx: prev ? rate(prev.netRx, cur.netRx, dt) : null,
-    tx: prev ? rate(prev.netTx, cur.netTx, dt) : null,
+    rx: prev ? netRate(prev.netRx, cur.netRx, dt) : null,
+    tx: prev ? netRate(prev.netTx, cur.netTx, dt) : null,
     diskBusy,
   };
 }

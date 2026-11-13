@@ -39,7 +39,7 @@ describe("parsePromText / readHost", () => {
     const eth0 = parsePromText(A)
       .get("node_network_receive_bytes_total")!
       .find((s) => s.labels.device === "eth0")!;
-    expect(h.netRx).toBe(eth0.value); // lo, docker0, br-*, veth*, ifb* tidak dihitung
+    expect(h.netRx).toEqual({ eth0: eth0.value }); // lo, docker0, br-*, veth*, ifb* tidak dihitung
     // Hanya disk utuh (bukan partisi/loop/dm).
     expect(Object.keys(h.diskIo).length).toBeGreaterThan(0);
     expect(Object.keys(h.diskIo).every((d) => /^vd[a-z]+$/.test(d))).toBe(true);
@@ -55,7 +55,7 @@ describe("hostPoint", () => {
     expect(p.cpu).toBeGreaterThanOrEqual(0);
     expect(p.cpu).toBeLessThanOrEqual(1);
     expect(p.iowait).toBeGreaterThanOrEqual(0);
-    expect(p.rx).toBe((b.netRx! - a.netRx!) / 10);
+    expect(p.rx).toBe((b.netRx!.eth0! - a.netRx!.eth0!) / 10);
     expect(p.mem).toBeCloseTo((b.memTotal! - b.memAvail!) / b.memTotal!, 9);
     expect(p.disk).toBeCloseTo(p.disks[0]!.used / p.disks[0]!.size, 9);
     expect(p.diskBusy).not.toBeNull();
@@ -75,6 +75,33 @@ describe("hostPoint", () => {
     expect(noNet.netRx).toBeNull();
     expect(hostPoint(a, noNet).rx).toBeNull();
     expect(hostPoint(noNet, { ...b, t: 20_000 }).tx).toBeNull();
+  });
+
+  it("jaringan per antarmuka (T-zjwh L7): bond menggantikan anggotanya, VLAN/overlay dibuang, reset satu antarmuka dilewati", () => {
+    const text = (rx: Record<string, number>) =>
+      Object.entries(rx)
+        .map(([d, v]) => `node_network_receive_bytes_total{device="${d}"} ${v}`)
+        .join("\n");
+    const one = readHost(
+      text({
+        bond0: 100,
+        eth0: 60,
+        eth1: 40,
+        "eth0.100": 5,
+        docker_gwbridge: 7,
+        tailscale0: 3,
+        zt1: 2,
+        vnet0: 1,
+      }),
+      0,
+      [],
+    );
+    expect(one.netRx).toEqual({ bond0: 100 });
+    const x = readHost(text({ eth0: 1000, ens3: 500 }), 0, []);
+    const y = readHost(text({ eth0: 2000, ens3: 100 }), 10_000, []); // ens3 ter-reset
+    expect(hostPoint(x, y).rx).toBe(100);
+    // Sampel lama (angka tunggal) → null sekali.
+    expect(hostPoint({ ...x, netRx: 5 as never }, y).rx).toBeNull();
   });
 
   it("iowait sedikit mundur → dijepit 0, CPU tetap terhitung", () => {
@@ -178,6 +205,19 @@ describe("store", () => {
     await pushHostPoint(r, { ...next, t: 195_000 });
     expect(lists.get(KEY.m1)).toHaveLength(1);
     expect((JSON.parse(lists.get(KEY.m1)![0]!) as HostPoint).t).toBe(120_000);
+  });
+
+  it("jeda ≥ 1 menit: semua menit yang punya titik 10 dtk tetap dirata-rata (T-zjwh L4)", async () => {
+    const { api, lists } = fakeRedis();
+    const r = api as never;
+    const p = hostPoint(readHost(A, 0, MOUNTS), readHost(B, 10_000, MOUNTS));
+    await pushHostPoint(r, { ...p, t: 60_000 }); // menit 1 (menit 0 kosong)
+    await pushHostPoint(r, { ...p, t: 130_000 }); // menit 2 → menit 1 diagregasi
+    await pushHostPoint(r, { ...p, t: 150_000 });
+    // Jeda: menit 3 terlewat sampai menit 5 — menit 2 tetap diagregasi, menit 3–4 tanpa titik tidak dibuat.
+    await pushHostPoint(r, { ...p, t: 300_000 });
+    const minutes = lists.get(KEY.m1)!.map((x) => (JSON.parse(x) as HostPoint).t);
+    expect(minutes).toEqual([120_000, 60_000]);
   });
 
   it("sampel mentah > 2 menit tidak dipakai untuk laju (app lama mati)", async () => {

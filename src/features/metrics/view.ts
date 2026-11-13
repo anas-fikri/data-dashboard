@@ -25,8 +25,9 @@ export interface MetricsSummary {
   series: SummaryPoint[];
   /** null = status antrean tidak diketahui. */
   queue: {
-    waiting: number;
-    active: number;
+    /** null = hitungan antrean unggah tidak terbaca. */
+    waiting: number | null;
+    active: number | null;
     workerDown: boolean;
     /** Proses latar per jenis (v1.21); tidak ada = sampel versi lama. */
     jobs?: QueueStatus["jobs"];

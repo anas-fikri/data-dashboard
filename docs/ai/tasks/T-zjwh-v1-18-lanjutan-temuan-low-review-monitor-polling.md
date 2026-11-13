@@ -1,11 +1,15 @@
 ---
 id: T-zjwh
 title: 'v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit hilang setelah jeda, bond/VLAN, cache ringkasan,…'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-11-11T15:22:00Z"
-updated: "2026-11-12T02:05:13Z"
+updated: "2026-11-13T06:27:23Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: e7488c73ae6bc5d7aa55c2c13d9a8ae3cfd4c5ba
 ---
 
 ## Objective
