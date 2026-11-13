@@ -1,15 +1,21 @@
 ---
 id: T-hgsz
 title: 'T-zjwh lanjutan: sheet tambahan yang diabaikan karena sheet lain butuh pemetaan diberi alasan khusus; deteksi isi sheet…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-13T06:31:50Z"
-updated: "2026-11-13T07:10:29Z"
+updated: "2026-11-13T07:12:25Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: dcf39e5933767ceb20eddce3cbb1d772da10d231
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-13T07:12:25Z"
+      findings: 1
 ---
 
 ## Objective

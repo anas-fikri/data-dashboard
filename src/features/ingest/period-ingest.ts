@@ -592,15 +592,25 @@ export async function runPeriodIngest(
       }
       for (const [lineageId, from] of fromFile) {
         if (from.length < 2 && !byColumns.has(lineageId)) continue;
-        // Kemungkinan salinan (T-hgsz): sheet tergabung dengan judul kolom + jumlah baris sama persis.
+        // Kemungkinan salinan (T-hgsz): sheet tergabung dengan judul kolom + jumlah baris sama, lalu isi sel
+        // sama (sidik isi dihitung hanya untuk kandidat). Sheet lanjutan memakai judul leader → tidak dibandingkan
+        // dengan judul saja (review T-hgsz M1: potongan sama besar bukan salinan).
         const seen = new Map<string, string>();
         const copies = new Set<string>();
+        const bySig = new Map<string, Item[]>();
         for (const it of fileItems.filter((x) => x.pair.lineageId === lineageId)) {
-          const key = `${headerSignature(it.s.rec.columns)}|${it.s.rec.rawRows}`;
-          const name = shown(it.s);
-          const first = seen.get(key);
-          if (first === undefined) seen.set(key, name);
-          else copies.add(first).add(name);
+          const k = `${headerSignature(it.s.rec.columns)}|${it.s.rec.rawRows}`;
+          bySig.set(k, [...(bySig.get(k) ?? []), it]);
+        }
+        for (const group of bySig.values()) {
+          if (group.length < 2) continue;
+          for (const it of group) {
+            const key = await contentPrint(d, it.s.path);
+            const name = shown(it.s);
+            const first = seen.get(key);
+            if (first === undefined) seen.set(key, name);
+            else copies.add(first).add(name);
+          }
         }
         merged.push({
           sheet: usable.find((x) => x.lineageId === lineageId)!.name,
@@ -788,6 +798,17 @@ interface CoreInput {
   acceptCast: boolean;
   /** Direktori indeks kunci lintas job (Perbarui berdasarkan kunci, T-yg3z); tidak ada = tanpa cache. */
   keyCacheDir?: string;
+}
+
+/**
+ * Sidik isi sheet raw (T-hgsz): jumlah hash per baris tanpa kolom teknis (`_row` dkk.), urutan baris tidak
+ * berpengaruh. Hanya untuk sheet kandidat salinan (judul + jumlah baris sama), jadi pemindaian jarang terjadi.
+ */
+async function contentPrint(d: Duck, rawPath: string): Promise<string> {
+  const r = await d.conn.runAndReadAll(
+    `SELECT coalesce(sum(hash(x)), 0)::VARCHAR || ':' || count(*)::VARCHAR FROM (SELECT COLUMNS(c -> NOT starts_with(c, '_')) FROM read_parquet(${lit(rawPath)})) x`,
+  );
+  return String(r.getRows()[0]?.[0] ?? "");
 }
 
 /** Kolom < 98 % lolos cast di file baru, dalam bentuk alasan (ingest) dan isu tinjau (pemetaan). */

@@ -739,6 +739,19 @@ describe("T-jsmj review: sheet gabungan", () => {
     expect(s.repo.plan!.ignoredForMapping).toBe(false);
   });
 
+  it("T-hgsz M1: potongan sama besar dengan isi berbeda bukan salinan", async () => {
+    const base = await schemaOf([HEADER, ...month(1, 30)]);
+    const s = await setupXlsx(
+      [
+        { name: "Data", rows: [HEADER, ...month(4, 10)] },
+        { name: "Data (2)", rows: [HEADER, ...month(4, 10, 500)] },
+      ],
+      (st) => [{ ...activeSheet(st, base, JAN_MAR), name: "Data" }],
+    );
+    expect((await s.run()).outcome).toBe("confirm");
+    expect(s.repo.plan!.mergedSheets).toEqual([{ sheet: "Data", from: ["Data", "Data (2)"] }]);
+  });
+
   it("L5: sheet gabungan → sidik + nama asal per sheet (bukan sidik file yang sama untuk semua bagian)", async () => {
     const base = await schemaOf([HEADER, ...month(1, 30)]);
     const s = await setupXlsx(
