@@ -1379,3 +1379,17 @@ bash deploy/server-release.sh 1.21.4
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 38. Rilis v1.21.5 (tanpa migrasi)
+
+Monitor sumber daya lebih rapi (T-zjwh): grafik 24 jam tanpa lubang palsu setelah jeda, laju jaringan per antarmuka
+(bond/VLAN/overlay tidak dihitung ganda; tepat setelah deploy laju jaringan kosong satu kali), kartu Server tidak
+polling ganda di ponsel, cache ringkasan/storage per akun. `docker-compose.prod.yml` berubah (`pids_limit` relay
+metrik) — `server-release.sh` membuat ulang container yang berubah.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.5
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
