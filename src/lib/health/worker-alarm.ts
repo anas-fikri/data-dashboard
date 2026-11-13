@@ -21,6 +21,8 @@ export async function checkWorkerAlarm(now = Date.now()): Promise<void> {
   // Satu proses per menit (lock kedaluwarsa sendiri, tanpa dilepas).
   if ((await r.set(LOCK_KEY, String(now), "PX", CHECK_MS - 5_000, "NX")) !== "OK") return;
   const prev = parseWorkerAlarm(await r.get(STATE_KEY));
+  // Satu proses worker melayani semua antrean (ingest, recast, export, pdf): antrean ingest mewakili.
+  // Bila worker dipisah per antrean kelak, periksa tiap antrean di sini.
   const d = decideWorkerAlarm(prev, await ingestWorkerCount(), now);
   if (d.send) {
     const admins = await prisma.user.findMany({
