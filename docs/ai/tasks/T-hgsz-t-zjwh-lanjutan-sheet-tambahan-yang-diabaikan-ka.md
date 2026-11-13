@@ -4,7 +4,7 @@ title: 'T-zjwh lanjutan: sheet tambahan yang diabaikan karena sheet lain butuh p
 status: in_review
 profile: standard
 created: "2026-11-13T06:31:50Z"
-updated: "2026-11-13T07:12:25Z"
+updated: "2026-11-13T07:12:52Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -16,6 +16,10 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-13T07:12:25Z"
       findings: 1
+    - "n": 2
+      by: claude-reviewer-subagent
+      at: "2026-11-13T07:12:52Z"
+      findings: 0
 ---
 
 ## Objective
