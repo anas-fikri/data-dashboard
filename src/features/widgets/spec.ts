@@ -218,6 +218,15 @@ const kpiCompare = z
   .object({ column, grain: z.enum(GRAINS), against: z.enum(KPI_COMPARE) })
   .strict();
 export type KpiCompare = z.infer<typeof kpiCompare>;
+/**
+ * Pembanding KPI selain periode (v1.21): nilai ÷ ukuran kedua di sheet + filter yang sama (mis. diterima ÷ semua
+ * baris → "95,1% dari …"), atau pencapaian terhadap target angka tetap. Tidak bersamaan dengan `compare`.
+ */
+export const kpiReference = z.union([
+  z.object({ kind: z.literal("measure"), measure: kpiValue }).strict(),
+  z.object({ kind: z.literal("target"), value: z.number().finite() }).strict(),
+]);
+export type KpiReference = z.infer<typeof kpiReference>;
 export const kpiSpecSchema = z
   .object({
     sheetId,
@@ -225,8 +234,13 @@ export const kpiSpecSchema = z
     format: formatSchema,
     colors: colorsSchema.optional(),
     compare: kpiCompare.optional(),
+    reference: kpiReference.optional(),
   })
-  .strict();
+  .strict()
+  .refine((s) => !(s.compare && s.reference), {
+    message: "Pilih satu pembanding saja",
+    path: ["reference"],
+  });
 const drillSchema = z
   .object({
     columns: z
@@ -574,7 +588,11 @@ export function columnsOf(c: WidgetConfig): number[] {
     case "empty":
       return [];
     case "kpi":
-      return [...valueColumns(c.spec.measure), ...(c.spec.compare ? [c.spec.compare.column] : [])];
+      return [
+        ...valueColumns(c.spec.measure),
+        ...(c.spec.compare ? [c.spec.compare.column] : []),
+        ...(c.spec.reference?.kind === "measure" ? valueColumns(c.spec.reference.measure) : []),
+      ];
     case "table":
       return c.spec.columns;
     case "pivot":

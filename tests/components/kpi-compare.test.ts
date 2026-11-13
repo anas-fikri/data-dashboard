@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kpiCompareView } from "@/components/widgets/kpi-compare";
+import { kpiCompareView, kpiReferenceView } from "@/components/widgets/kpi-compare";
 import type { KpiCompareData } from "@/features/query/spec";
 
 /*
@@ -130,5 +130,42 @@ describe("KpiCompareFields + Jumlah kosong", () => {
 
   it("tanpa Jumlah kosong → perilaku lama", () => {
     expect(render({})).not.toContain("kpi-compare-none");
+  });
+});
+
+describe("kpiReferenceView (v1.21)", () => {
+  const fmt = { style: "auto", decimals: 0 } as const;
+  it("ukuran lain: persen dari ukuran kedua, netral", () => {
+    const v = kpiReferenceView(
+      4774562,
+      { kind: "measure", value: 5022330, label: "Jumlah baris" },
+      "integer",
+      fmt,
+      "up",
+    );
+    expect(v.change).toBe("95,1%");
+    expect(v.text).toMatch(/^dari Jumlah baris \(/);
+    expect(v.status).toBeNull();
+    expect(v.direction).toBeNull();
+  });
+  it("ukuran lain 0/kosong → tanpa persen", () => {
+    const v = kpiReferenceView(
+      10,
+      { kind: "measure", value: 0, label: "Total" },
+      "integer",
+      fmt,
+      undefined,
+    );
+    expect(v.change).toBeNull();
+    expect(v.text).toContain("rasio tidak bisa dihitung");
+  });
+  it("target: persen pencapaian, arah + warna (bawaan lebih tinggi lebih baik)", () => {
+    const under = kpiReferenceView(950, { kind: "target", value: 1000 }, "integer", fmt, undefined);
+    expect([under.change, under.direction, under.status]).toEqual(["95%", "down", "bad"]);
+    expect(under.full).toContain("kurang 50");
+    const over = kpiReferenceView(1200, { kind: "target", value: 1000 }, "integer", fmt, "down");
+    expect([over.direction, over.status]).toEqual(["up", "bad"]);
+    const zero = kpiReferenceView(5, { kind: "target", value: 0 }, "integer", fmt, undefined);
+    expect(zero.change).toBe("+5");
   });
 });

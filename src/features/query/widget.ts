@@ -375,10 +375,12 @@ export function widgetPlan(
           against: cmp.against,
         };
       }
+      // Ukuran pembanding (v1.21): kolom kedua hasil (m1), sheet + filter sama.
+      const ref = config.spec.reference;
       spec = {
         ...base,
         dimensions: [],
-        measures: [measureOf(m)],
+        measures: [measureOf(m), ...(ref?.kind === "measure" ? [measureOf(ref.measure)] : [])],
         filters,
         sort: [],
         limit: 1,

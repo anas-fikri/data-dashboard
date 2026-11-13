@@ -174,6 +174,38 @@ test.describe("pembanding KPI + klik-tembus (v1.15.0)", () => {
     await expect(kpi.getByTestId("kpi-compare")).toContainText("vs Mar 2026 (30)");
   });
 
+  test("v1.21: pembanding ukuran lain (persen) dan target angka; kembali ke periode", async () => {
+    test.setTimeout(120_000);
+    const panel = await settings(owner, KPI);
+    const kpi = card(owner, KPI);
+    const cmp = kpi.getByTestId("kpi-compare");
+    // Bawaan ukuran pembanding: jumlah baris (12). Total Kiriman semua bulan = 312 → 2.600%.
+    await savedAfter(owner, panel, () =>
+      pick(owner, panel, "Pembanding", "Ukuran lain (persen dari …)"),
+    );
+    await expect(panel.getByTestId("config-kpi-reference-measure")).toBeVisible();
+    await expect(kpi.getByTestId("kpi-value")).toHaveText("312");
+    await expect(cmp).toContainText(/2\.600\s?%/);
+    await expect(cmp).toContainText(/dari .+\(12\)/);
+    await expect(cmp.locator("[data-status]")).toHaveCount(0);
+
+    // Target 400 → 78% di bawah target; penilaian "makin tinggi makin baik" → merah.
+    await pick(owner, panel, "Pembanding", "Target angka");
+    const target = panel.getByTestId("config-kpi-target");
+    await target.fill("400");
+    await savedAfter(owner, panel, () => target.blur());
+    await expect(cmp).toContainText(/▼ 78\s?%/);
+    await expect(cmp).toContainText("dari target 400");
+    await expect(cmp).toHaveAttribute("data-direction", "down");
+    await expect(cmp.locator("[data-status=bad]")).toBeVisible();
+    await target.fill("abc");
+    await expect(panel.getByText("Isi angka saja.")).toBeVisible();
+
+    // Kembali ke pembanding periode (tes berikutnya memakainya).
+    await savedAfter(owner, panel, () => pick(owner, panel, "Pembanding", "Periode sebelumnya"));
+    await expect(cmp).toContainText("vs Mar 2026 (93)");
+  });
+
   test("T-d5ev: klik-tembus Bandung → baris detail (kolom pilihan); saring dashboard dari dialog", async () => {
     test.setTimeout(120_000);
     const panel = await settings(owner, BAR);

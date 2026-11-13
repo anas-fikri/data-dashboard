@@ -2,10 +2,18 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
-import { ingestQueue, withQueueTimeout } from "@/lib/queue/connection";
+import type { Queue } from "bullmq";
+import {
+  exportQueue,
+  ingestQueue,
+  mappingQueue,
+  pdfQueue,
+  recastQueue,
+  withQueueTimeout,
+} from "@/lib/queue/connection";
 import { ingestWorkerCount } from "@/lib/queue/versions";
 import { redisReady } from "@/lib/redis";
-import { KEY, recordHostSample, reportService, saveQueueStatus } from "./store";
+import { KEY, recordHostSample, reportService, saveQueueStatus, type JobKind } from "./store";
 
 /*
  * Sampler metrik (v1.18, ADR-0010) di proses app — bukan worker, karena worker termasuk yang dipantau. Tiap
@@ -43,19 +51,41 @@ export async function sampleOnce(): Promise<boolean> {
   const r = await redisReady();
   // Antrean + worker lebih dulu dan terpisah dari exporter: status pemroses (insiden worker mati) tetap
   // terbaca walau relay/exporter sedang bermasalah.
-  const [counts, workers] = await Promise.all([
-    withQueueTimeout(
-      ingestQueue().getJobCounts("waiting", "prioritized", "active"),
-      "jumlah antrean ingest",
-    ).catch(() => null),
+  const count = (q: Pick<Queue, "getJobCounts">, what: string) =>
+    withQueueTimeout(q.getJobCounts("waiting", "prioritized", "delayed", "active"), what).catch(
+      () => null,
+    );
+  const [counts, recast, mapping, exp, pdf, workers] = await Promise.all([
+    count(ingestQueue(), "jumlah antrean ingest"),
+    count(recastQueue(), "jumlah antrean recast"),
+    count(mappingQueue(), "jumlah antrean pemetaan"),
+    count(exportQueue(), "jumlah antrean ekspor"),
+    count(pdfQueue(), "jumlah antrean PDF"),
     ingestWorkerCount(),
   ]);
+  const waitingOf = (c: Record<string, number>) =>
+    (c.waiting ?? 0) + (c.prioritized ?? 0) + (c.delayed ?? 0);
+  // Semua proses latar per jenis (v1.21): kartu Server menampilkan apa yang sedang dikerjakan server.
+  const jobs: Partial<Record<JobKind, { active: number; waiting: number }>> = {};
+  for (const [kind, list] of [
+    ["upload", [counts]],
+    ["schema", [recast, mapping]],
+    ["export", [exp, pdf]],
+  ] as const) {
+    const known = list.filter((c): c is Record<string, number> => !!c);
+    if (!known.length) continue;
+    jobs[kind] = {
+      active: known.reduce((n, c) => n + (c.active ?? 0), 0),
+      waiting: known.reduce((n, c) => n + waitingOf(c), 0),
+    };
+  }
   if (counts) {
     await saveQueueStatus(r, {
       t: Date.now(),
       waiting: (counts.waiting ?? 0) + (counts.prioritized ?? 0),
       active: counts.active ?? 0,
       workers,
+      jobs,
     });
   }
   const res = await fetch(url, {

@@ -92,3 +92,73 @@ export function kpiCompareView(
       : `${verb} ${change.slice(sign.length)} dibanding ${label} (${prevFull})`;
   return { direction, change, text: `vs ${label} (${prevText})`, status, full };
 }
+
+/**
+ * Pembanding selain periode (v1.21): rasio terhadap ukuran kedua ("95,1% dari Jumlah baris (5,0 jt)") atau
+ * pencapaian target ("▼ 95,1% dari target 1.000"). Rasio netral (tanpa warna); target berwarna menurut penilaian
+ * KPI — tanpa penilaian dianggap lebih tinggi lebih baik (target = batas bawah yang dikejar).
+ */
+export function kpiReferenceView(
+  value: unknown,
+  ref: { kind: "measure"; value: unknown; label: string } | { kind: "target"; value: number },
+  type: ValueType,
+  format: NumberFormat,
+  tone: Tone | undefined,
+): KpiCompareView {
+  const cur = num(value);
+  const base = num(ref.value);
+  const pctOf = (x: number) => formatCompact(x, { style: "percent", decimals: 1 });
+  if (ref.kind === "measure") {
+    const label = ref.label || "ukuran pembanding";
+    if (base === null || base === 0) {
+      const text = `${label}: ${base === null ? "kosong" : "0"} — rasio tidak bisa dihitung`;
+      return { direction: null, change: null, text, status: null, full: text };
+    }
+    const baseText = formatMeasure(base, type, format, true);
+    const baseFull = formatMeasure(base, type, format);
+    if (cur === null) {
+      return {
+        direction: null,
+        change: null,
+        text: `${label} (${baseText})`,
+        status: null,
+        full: `${label}: ${baseFull}`,
+      };
+    }
+    const change = pctOf(cur / base);
+    return {
+      direction: null,
+      change,
+      text: `dari ${label} (${baseText})`,
+      status: null,
+      full: `${change} dari ${label} (${baseFull})`,
+    };
+  }
+  const target = ref.value;
+  const tText = formatMeasure(target, type, format, true);
+  const tFull = formatMeasure(target, type, format);
+  if (cur === null) {
+    const text = `Target ${tText}`;
+    return { direction: null, change: null, text, status: null, full: `Target ${tFull}` };
+  }
+  const diff = cur - target;
+  const direction = diff > 0 ? "up" : diff < 0 ? "down" : "flat";
+  const better = (tone ?? "up") === "up";
+  const status = direction === "flat" ? null : (direction === "up") === better ? "good" : "bad";
+  const change =
+    target === 0
+      ? `${diff > 0 ? "+" : diff < 0 ? MINUS : ""}${formatMeasure(Math.abs(diff), type, format, true)}`
+      : pctOf(cur / target);
+  const gap = formatMeasure(Math.abs(diff), type, format);
+  const full =
+    direction === "flat"
+      ? `Tepat sama dengan target ${tFull}`
+      : `${target === 0 ? change : `${change} dari target ${tFull}`} (${direction === "up" ? "lebih" : "kurang"} ${gap})`;
+  return {
+    direction,
+    change,
+    text: target === 0 ? `vs target ${tText}` : `dari target ${tText}`,
+    status,
+    full,
+  };
+}

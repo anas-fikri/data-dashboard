@@ -71,14 +71,35 @@ export function ServerCard({
   );
 }
 
-function queueText(q: MetricsSummary["queue"]): string {
+const JOB_LABEL = { upload: "unggahan", schema: "koreksi skema", export: "ekspor/PDF" } as const;
+const n = (x: number) => x.toLocaleString("id-ID");
+
+/**
+ * Baris pemroses: status + semua proses latar per jenis (v1.21), mis. "Pemroses: aktif · 1 unggahan diproses,
+ * 2 ekspor/PDF menunggu". Sampel lama tanpa rincian jenis → hitungan unggahan saja.
+ */
+export function queueText(q: MetricsSummary["queue"]): string {
   if (!q) return "Pemroses: status tidak diketahui";
-  const parts = [q.workerDown ? "Pemroses: tidak aktif" : "Pemroses: aktif"];
-  if (q.active) parts.push(`${q.active.toLocaleString("id-ID")} diproses`);
-  if (q.waiting) parts.push(`${q.waiting.toLocaleString("id-ID")} menunggu`);
-  if (!q.active && !q.waiting) parts.push("antrean kosong");
-  return parts.join(" · ");
+  const head = q.workerDown ? "Pemroses: tidak aktif" : "Pemroses: aktif";
+  const jobs = q.jobs ?? { upload: { active: q.active, waiting: q.waiting } };
+  const parts: string[] = [];
+  for (const kind of ["upload", "schema", "export"] as const) {
+    const j = jobs[kind];
+    if (!j) continue;
+    if (j.active) parts.push(`${n(j.active)} ${JOB_LABEL[kind]} diproses`);
+    if (j.waiting) parts.push(`${n(j.waiting)} ${JOB_LABEL[kind]} menunggu`);
+  }
+  return `${head} · ${parts.length ? parts.join(", ") : "tidak ada proses berjalan"}`;
 }
+
+/** Jumlah proses latar yang sedang berjalan (semua jenis). */
+const runningOf = (q: MetricsSummary["queue"]) =>
+  q
+    ? Object.values(q.jobs ?? { upload: { active: q.active, waiting: 0 } }).reduce(
+        (a, j) => a + (j?.active ?? 0),
+        0,
+      )
+    : 0;
 
 export function ServerCardView({
   data,
@@ -101,17 +122,46 @@ export function ServerCardView({
   const StatusIcon = LEVEL_ICON[status.level];
 
   if (collapsed) {
+    // Sidebar diciutkan (v1.21): ikon status + CPU/RAM + jumlah proses berjalan tetap terlihat sekilas.
+    const latest = error ? null : data.latest;
+    const running = error ? 0 : runningOf(data.queue);
+    const summary = [
+      latest ? `CPU ${pct(latest.cpu)}` : null,
+      latest ? `RAM ${pct(latest.mem)}` : null,
+      running ? `${n(running)} proses berjalan` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
     return (
       <button
         type="button"
         onClick={onExpand}
-        title={`Server: ${status.text}`}
-        aria-label={`Server: ${status.text}. Lebarkan sidebar untuk detail`}
+        title={`Server: ${status.text}${summary ? ` — ${summary}` : ""}`}
+        aria-label={`Server: ${status.text}${summary ? `, ${summary}` : ""}. Lebarkan sidebar untuk detail`}
         data-testid="server-card-collapsed"
         data-level={status.level}
-        className="flex size-10 items-center justify-center rounded-md hover:bg-sidebar-accent"
+        className="flex w-10 flex-col items-center gap-0.5 rounded-md py-1.5 text-[10px] leading-3 tabular-nums text-sidebar-foreground hover:bg-sidebar-accent"
       >
         <StatusIcon size={20} stroke={1.75} aria-hidden className={LEVEL_TEXT[status.level]} />
+        {latest ? (
+          <>
+            <span aria-hidden data-testid="server-collapsed-cpu">
+              {pct(latest.cpu)}
+            </span>
+            <span aria-hidden className="text-muted-foreground">
+              {pct(latest.mem)}
+            </span>
+          </>
+        ) : null}
+        {running ? (
+          <span
+            aria-hidden
+            className="rounded-sm bg-sidebar-accent px-1 font-medium"
+            data-testid="server-collapsed-jobs"
+          >
+            {n(running)}▸
+          </span>
+        ) : null}
       </button>
     );
   }

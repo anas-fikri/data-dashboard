@@ -91,6 +91,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `QueryEngine.withUser`/`GridGate.withUser`), dilaporkan app/worker tiap 10 dtk ke Redis `metrics:acct:*` (ember per
   menit, TTL 20 mnt); job aktif BullMQ dipetakan ke pemilik; storage = `userUsage` (cache 60 dtk), ≤ 20 akun.
 
+- **v1.21 (T-g8ht, T-d6g9):** tanpa migrasi. KPI `spec.reference` (union `measure` | `target`, tidak bersamaan dengan
+  `compare`): ukuran pembanding dihitung sebagai m1 di query yang sama (sheet + filter sama), ikut remap kolom; target
+  = angka tetap di spec. Tampilan `kpiReferenceView` (persen dari ukuran kedua, netral; pencapaian target ▲/▼ dengan
+  warna penilaian, bawaan naik baik). Sampler metrik menghitung semua antrean (ingest, recast + pemetaan, ekspor + PDF)
+  ke `QueueStatus.jobs`; kartu Server menampilkan proses per jenis dan, saat diciutkan, CPU/RAM + jumlah proses.
+  Rollback ke v1.20.x: widget dengan `reference` gagal validasi di versi lama (tampil "Pengaturan widget tidak valid")
+  — hapus pembanding itu dulu bila perlu rollback.
 - **v1.20 (T-rbrb, ADR-0011):** **bermigrasi** (`20261112000000_period_keys`: enum `PeriodUploadMode`,
   `SheetLineage.keyColumns INT[]`, `DatasetVersion.uploadMode`, `UploadQueue.uploadMode`; semua aditif). Unggahan periode
   Ganti / Tambah / Perbarui berdasarkan kunci: worker menulis typed file lokal dulu, lalu `keyMerge`

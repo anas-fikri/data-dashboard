@@ -158,6 +158,15 @@ export function remapConfig(
             ...(config.spec.compare
               ? { compare: { ...config.spec.compare, column: pos(config.spec.compare.column) } }
               : {}),
+            // Ukuran pembanding (v1.21) ikut dipetakan seperti ukuran utama.
+            ...(config.spec.reference?.kind === "measure"
+              ? {
+                  reference: {
+                    ...config.spec.reference,
+                    measure: mapMeasure(config.spec.reference.measure),
+                  },
+                }
+              : {}),
           },
         },
         missing,
@@ -245,7 +254,13 @@ function usedColumns(config: Configured): number[] {
   if (config.type === "table" || config.type === "pivot") return columnsOf(config);
   const measure = valueColumns(config.spec.measure);
   if (config.type === "kpi") {
-    return config.spec.compare ? [...measure, config.spec.compare.column] : measure;
+    return [
+      ...measure,
+      ...(config.spec.compare ? [config.spec.compare.column] : []),
+      ...(config.spec.reference?.kind === "measure"
+        ? valueColumns(config.spec.reference.measure)
+        : []),
+    ];
   }
   return [config.spec.dimension.column, ...measure];
 }
