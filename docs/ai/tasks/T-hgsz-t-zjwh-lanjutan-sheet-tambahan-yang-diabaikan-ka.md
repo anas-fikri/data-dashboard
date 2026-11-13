@@ -4,7 +4,7 @@ title: 'T-zjwh lanjutan: sheet tambahan yang diabaikan karena sheet lain butuh p
 status: in_review
 profile: standard
 created: "2026-11-13T06:31:50Z"
-updated: "2026-11-13T07:13:00Z"
+updated: "2026-11-13T07:17:15Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -20,6 +20,31 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-13T07:12:52Z"
       findings: 0
+evidence:
+  audit:
+    at: "2026-11-13T07:13:06Z"
+    passed: true
+    tree: eb33ce13e3c65bad42e5ea2773715d394752a26e862637e43d9be56191a5aea6
+    results:
+      - name: osv-scanner (dependencies, offline db)
+        exit_code: 0
+        summary: |-
+          Scanning dir .
+          Starting filesystem walk for root: /
+          Scanned /home/user/data-dashboard/package-lock.json file and found 837 packages
+          End status: 558 dirs visited, 5718 inodes visited, 1 Extract calls, 106.553598ms elapsed, 106.553806ms wall time
+          Loaded npm local db from /root/.cache/osv-scanner/npm/all.zip
+          No issues found
+      - name: npm audit (prod high, dev critical)
+        exit_code: 0
+        summary: |-
+          > data-dashboard@1.21.5 audit
+          > npm audit --audit-level=high --omit=dev && npm audit --audit-level=critical
+
+          found 0 vulnerabilities
+          found 0 vulnerabilities
+      - name: aitk secret scan (tracked files)
+        exit_code: 0
 ---
 
 ## Objective
