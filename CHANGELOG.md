@@ -130,6 +130,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.3] - 2026-11-13
+
+### Fixed
+
+- **T-r5tm:** tes status ekspor + catatan antrean alarm (review) (86636d7)
+
 ## [1.21.2] - 2026-11-13
 
 ### Changed
