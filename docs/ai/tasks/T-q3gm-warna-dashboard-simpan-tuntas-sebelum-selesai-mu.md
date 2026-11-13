@@ -1,15 +1,21 @@
 ---
 id: T-q3gm
 title: 'Warna dashboard: simpan tuntas sebelum Selesai/muat ulang + nilai server terkini (Low review T-z1vv)'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-06T23:41:10Z"
-updated: "2026-11-13T15:45:50Z"
+updated: "2026-11-13T15:47:39Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 25abf41eb4f653703b46230443af0fe93a698013
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-13T15:47:39Z"
+      findings: 2
 ---
 
 ## Objective

@@ -227,6 +227,8 @@ function Canvas(props: CanvasProps) {
   const [adding, setAdding] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [announce, setAnnounce] = useState("");
+  /** Selesai tertahan karena warna dashboard gagal tersimpan (T-q3gm). */
+  const [colorsError, setColorsError] = useState(false);
   // Pivot tersimpan yang bisa dipilih panel; "Simpan sebagai pivot tersimpan" menambahkannya di sini.
   const [savedPivots, setSavedPivots] = useState(props.savedPivots ?? []);
   /** Selektor yang difokus setelah commit berikutnya (elemen pertama yang ada menang). */
@@ -339,12 +341,17 @@ function Canvas(props: CanvasProps) {
   }
   async function done() {
     setFinishing(true);
+    setColorsError(false);
     // STALE / akses berubah: perubahan lokal memang tidak bisa disimpan; mode lihat menampilkan versi
     // terbaru (atau 404 bila aksesnya dicabut).
     const close = selected ? () => setSelected(null) : null;
     if (!frozen && !(await saveBeforeLeave(close, ed.flush))) return setFinishing(false);
     // Warna dashboard yang baru dipilih tersimpan dulu (T-q3gm L1): mode lihat memuat template terbaru.
-    await settleDashboardColors(dashboardId);
+    if (!(await settleDashboardColors(dashboardId))) {
+      // Simpan warna gagal: tetap di mode edit dengan alasannya (review T-q3gm M1).
+      setColorsError(true);
+      return setFinishing(false);
+    }
     // Filter yang sedang aktif ikut ke mode lihat.
     const f = new URL(window.location.href).searchParams.get("f");
     router.push(`/dashboards/${dashboardId}${f ? `?f=${encodeURIComponent(f)}` : ""}`);
@@ -426,6 +433,12 @@ function Canvas(props: CanvasProps) {
               <p className="sr-only" aria-live="polite">
                 {announce}
               </p>
+              {colorsError ? (
+                <FormAlert tone="error">
+                  Warna dashboard belum tersimpan. Buka <strong>Warna dashboard</strong>, pilih
+                  lagi, lalu tekan Selesai.
+                </FormAlert>
+              ) : null}
               {ed.notice ? (
                 <FormAlert tone="error">
                   <span className="block">{ed.notice}</span>
