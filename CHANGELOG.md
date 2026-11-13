@@ -130,6 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.5] - 2026-11-13
+
+### Fixed
+
+- **T-zjwh:** monitor — tanpa polling ganda ponsel, agregasi menit setelah jeda, jaringan per antarmuka, cache ringkasan, status worker walau antrean timeout (9b62f18)
+- **T-zjwh:** per akun (cache gagal 60 dtk + uji pemetaan job/TTL), ADR-0010 host network + pids_limit relay, pesan periode dilewati (bf81be6)
+
 ## [1.21.4] - 2026-11-13
 
 ### Fixed
