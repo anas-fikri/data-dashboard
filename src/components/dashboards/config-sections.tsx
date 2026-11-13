@@ -97,11 +97,17 @@ export function MissingNotice({
   missing,
   all,
   onFixTable,
+  onFixExtras,
+  extrasOnly = false,
 }: {
   missing: number[];
   all: boolean;
   /** Hanya tabel. */
   onFixTable?: () => void;
+  /** Kolom klik-tembus / tanggal pembanding yang hilang dibuang dari pengaturan (T-tyb1). */
+  onFixExtras?: () => void;
+  /** Hanya kolom klik-tembus/pembanding yang hilang: tombol itu saja yang perlu. */
+  extrasOnly?: boolean;
 }) {
   return (
     <p
@@ -118,9 +124,22 @@ export function MissingNotice({
         >
           {all ? "Pakai kolom pertama sheet ini" : "Hapus kolom itu dari tabel"}
         </button>
-      ) : (
+      ) : extrasOnly ? null : (
         "Pilih kolom lain di bawah."
       )}
+      {onFixExtras ? (
+        <>
+          {" "}
+          <button
+            type="button"
+            className="font-medium underline underline-offset-4"
+            data-testid="config-missing-fix-extras"
+            onClick={onFixExtras}
+          >
+            Buang kolom itu dari klik-tembus/pembanding
+          </button>
+        </>
+      ) : null}
     </p>
   );
 }

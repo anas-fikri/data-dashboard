@@ -2,6 +2,8 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/input";
+import { useDashboardTone } from "@/components/widgets/dashboard-colors";
+import { TONE_LABEL } from "@/features/widgets/status-color";
 import type { KpiCompare, KpiReference } from "@/features/widgets/spec";
 import { Choice, ColumnChoice } from "./config-fields";
 import { parseNumberText } from "./status-fields";
@@ -32,7 +34,10 @@ export function KpiCompareFields({
   renderMeasure,
   percent = false,
   mainCountRows = false,
+  ownTone,
 }: {
+  /** Penilaian warna widget sendiri (T-tyb1); tidak ada → ▲/▼ mengikuti penilaian bawaan dashboard. */
+  ownTone?: string;
   /** Nilai utama = jumlah baris: ukuran pembanding bawaan jangan sama (100%), pakai jumlah terisi kolom 1. */
   mainCountRows?: boolean;
   /** Nilai tampil sebagai persen: target diketik dalam persen (98 = 98%), disimpan 0,98 (review M2). */
@@ -50,6 +55,11 @@ export function KpiCompareFields({
   blankColumns?: number[];
   onChange: (next: KpiCompare | undefined) => void;
 }) {
+  const dashTone = useDashboardTone();
+  const toneHint =
+    !ownTone && dashTone
+      ? `Warna ▲/▼ mengikuti penilaian bawaan dashboard (${TONE_LABEL[dashTone].toLowerCase()}); ubah di Penilaian warna widget ini bila perlu.`
+      : "Warna ▲/▼ mengikuti penilaian warna.";
   const dates = columns.filter((c) => isTemporal(c.type) && !blankColumns.includes(c.pos));
   const blankPeriod = !!value && blankColumns.includes(value.column);
   // Target dipilih tetapi belum diisi: belum disimpan (T-djp6 L1 — target 0 tidak tampil hijau sebelum diisi).
@@ -159,7 +169,7 @@ export function KpiCompareFields({
             Angka menampilkan {GRAIN_LABEL[value.grain].replace("Per ", "")} terakhir di data
             (setelah filter), dibandingkan dengan{" "}
             {value.against === "year" ? "periode yang sama tahun lalu" : "periode sebelumnya"}.
-            Warna ▲/▼ mengikuti penilaian warna.
+            {toneHint}
           </p>
         </>
       ) : null}

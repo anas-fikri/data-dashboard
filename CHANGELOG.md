@@ -130,6 +130,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.9] - 2026-11-13
+
+### Fixed
+
+- **T-tyb1:** perbaiki kolom klik-tembus/pembanding tersembunyi, petunjuk klik-tembus + warna bawaan, keterangan periode berjalan KPI (7012c26)
+
 ## [1.21.8] - 2026-11-13
 
 ### Fixed

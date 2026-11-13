@@ -202,3 +202,13 @@ describe("kpiReferenceView (v1.21)", () => {
     expect(zero.change).toBe("+5");
   });
 });
+
+describe("T-tyb1: periode terakhir belum penuh", () => {
+  it("latest → teks 's.d. <tanggal>' dan kalimat lengkap menjelaskan rentangnya", () => {
+    const v = kpiCompareView(1125, cmp({ latest: "2026-11-13" }), "decimal", AUTO, "up");
+    expect(sp(v.text)).toBe("vs Okt 2026 (1 rb) · s.d. 13 Nov 2026");
+    expect(v.full).toContain("(Nov 2026 baru berisi data s.d. 13 Nov 2026)");
+    // Tanpa latest (periode penuh / jawaban lama) → teks lama.
+    expect(sp(kpiCompareView(1125, cmp(), "decimal", AUTO, "up").text)).toBe("vs Okt 2026 (1 rb)");
+  });
+});

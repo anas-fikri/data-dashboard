@@ -49,6 +49,11 @@ export function kpiCompareView(
     return { direction: null, change: null, text, status: null, full: text };
   }
   const label = formatDate(cmp.previousPeriod, cmp.grain);
+  // Periode berjalan (T-tyb1, keputusan: tetap membandingkan periode penuh pembanding, dengan keterangan).
+  const until = cmp.latest ? ` · s.d. ${formatDate(cmp.latest, "day")}` : "";
+  const untilFull = cmp.latest
+    ? ` (${formatDate(cmp.period, cmp.grain)} baru berisi data s.d. ${formatDate(cmp.latest, "day")})`
+    : "";
   const prev = cmp.previousRows > 0 ? num(cmp.previous) : null;
   if (prev === null) {
     const text = `Tidak ada data ${label}`;
@@ -67,9 +72,9 @@ export function kpiCompareView(
     return {
       direction: null,
       change: null,
-      text: `vs ${label} (${prevText})`,
+      text: `vs ${label} (${prevText})${until}`,
       status: null,
-      full: `${label}: ${prevFull}`,
+      full: `${label}: ${prevFull}${untilFull}`,
     };
   }
   const diff = cur - prev;
@@ -87,10 +92,10 @@ export function kpiCompareView(
         : "bad";
   const verb = direction === "up" ? "Naik" : direction === "down" ? "Turun" : "Sama dengan";
   const full =
-    direction === "flat"
+    (direction === "flat"
       ? `Sama dengan ${label} (${prevFull})`
-      : `${verb} ${change.slice(sign.length)} dibanding ${label} (${prevFull})`;
-  return { direction, change, text: `vs ${label} (${prevText})`, status, full };
+      : `${verb} ${change.slice(sign.length)} dibanding ${label} (${prevFull})`) + untilFull;
+  return { direction, change, text: `vs ${label} (${prevText})${until}`, status, full };
 }
 
 /**

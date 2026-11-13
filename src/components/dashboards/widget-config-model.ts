@@ -501,6 +501,36 @@ export function withoutMissingColumns(
 }
 
 /**
+ * Kolom klik-tembus (drill) atau kolom tanggal pembanding KPI (compare) yang tidak tersedia lagi (T-tyb1):
+ * null bila hanya kolom itu yang bermasalah tidak ada — selain itu konfigurasi tanpa kolom tersebut (klik-tembus
+ * tanpa kolom tersisa dan pembanding periode dimatikan). Kolom utama yang hilang tetap harus diganti user.
+ */
+export function withoutMissingExtras(config: WidgetConfig, sources: Source[]): WidgetConfig | null {
+  if (config.type === "empty") return null;
+  const gone = new Set(missingColumns(config, sources));
+  if (!gone.size) return null;
+  const spec = config.spec as { drill?: { columns: number[] }; compare?: { column: number } };
+  const drillGone = spec.drill?.columns.filter((p) => gone.has(p)) ?? [];
+  const compareGone = spec.compare && gone.has(spec.compare.column) ? [spec.compare.column] : [];
+  const extras = new Set([...drillGone, ...compareGone]);
+  if (!extras.size) return null;
+  const next: Record<string, unknown> = { ...config.spec };
+  if (drillGone.length) {
+    const left = spec.drill!.columns.filter((p) => !gone.has(p));
+    if (left.length) next.drill = { ...spec.drill, columns: left };
+    else delete next.drill;
+  }
+  if (compareGone.length) delete next.compare;
+  return { ...config, spec: next } as WidgetConfig;
+}
+
+/** Semua kolom yang hilang hanya dipakai klik-tembus/pembanding (perbaikan otomatis cukup). */
+export function onlyExtrasMissing(config: WidgetConfig, sources: Source[]): boolean {
+  const fixed = withoutMissingExtras(config, sources);
+  return !!fixed && missingColumns(fixed, sources).length === 0;
+}
+
+/**
  * Ganti kolom pengelompokan: tanggal → per bulan. Garis yang kini bertanggal memakai urutan periode
  * (pilihan urutan nilai tidak ditawarkan lagi di sana).
  */

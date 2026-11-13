@@ -742,15 +742,17 @@ async function runKpiCompare(
       }
       return r;
     }
-    const [b0, b1, b2, b3, n] = r.value.rows[0] ?? [];
+    const [b0, b1, b2, b3, n, ld] = r.value.rows[0] ?? [];
     row = [
       ...[b0, b1, b2, b3].map((v) => (typeof v === "string" ? v : null)),
       n === null || n === undefined ? 0 : Number(n),
+      typeof ld === "string" ? ld : null,
     ];
     deps.cache?.set(boundsKey, { columns: [], rows: [row] }, 128);
   }
   const [cs, ce, ps, pe] = (row ?? []) as (string | null)[];
   const previousRows = Number(row?.[4] ?? 0);
+  const latest = typeof row?.[5] === "string" ? row[5] : null;
   const meta = { grain: cmp.grain, against: cmp.against };
   if (!cs || !ce || !ps || !pe) {
     return {
@@ -794,12 +796,18 @@ async function runKpiCompare(
       previousPeriod: ps,
       previous: previous?.rows[0]?.[0] ?? null,
       previousRows,
+      // Periode terakhir belum penuh (T-tyb1): tanggal data terakhir < hari terakhir periode.
+      ...(latest && latest < lastDayOf(ce) ? { latest } : {}),
       ...meta,
     },
     cached: current.cached && (previous?.cached ?? true) && boundsCached,
     ms: Date.now() - t0,
   };
 }
+
+/** Hari terakhir periode ('YYYY-MM-DD') dari awal periode berikutnya (eksklusif). */
+const lastDayOf = (end: string): string =>
+  new Date(Date.parse(`${end}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 10);
 
 /** Rencana agregat (query bebas dan widget KPI/grafik): cache hasil → DuckDB → cache. */
 async function runAggPlan(

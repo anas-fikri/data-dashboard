@@ -48,6 +48,11 @@ export interface KpiCompareData {
   /** Nilai periode pembanding; null bila periode itu tanpa baris (previousRows 0). */
   previous: unknown;
   previousRows: number;
+  /**
+   * Tanggal data terakhir bila periode terakhir belum penuh (T-tyb1): periode berjalan dibandingkan dengan
+   * periode pembanding penuh — layar menulis "s.d. <tanggal>". Tidak ada = periode penuh/jawaban lama.
+   */
+  latest?: string;
   grain: Grain;
   against: "previous" | "year";
 }
