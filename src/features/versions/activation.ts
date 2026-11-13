@@ -3,7 +3,13 @@ import { Prisma } from "@prisma/client";
 import { recordAudit } from "@/features/audit/service";
 import type { ColumnSchema } from "@/features/ingest/infer";
 import { PERIOD_SHEET_SELECT, periodOf, withPeriodColumn } from "@/features/query/period-column";
-import { markerNames, matchSheet, remapConfig, type SheetInfo } from "@/features/widgets/remap";
+import {
+  markerNames,
+  matchSheet,
+  normName,
+  remapConfig,
+  type SheetInfo,
+} from "@/features/widgets/remap";
 import { parseWidgetConfig } from "@/features/widgets/spec";
 import { RETENTION_GRACE_MS, retentionVictims, versionPrefixes } from "./retention";
 
@@ -131,6 +137,62 @@ const sheetIdOf = (w: StoredWidget): string | null => {
 };
 
 /**
+ * Kolom filter dashboard menyimpan NAMA sheet (T-01xj): sheet lama yang dipetakan ke sheet bernama lain
+ * (gabung sheet T-0gmm "Feb" → "Jan", ganti nama lewat pemetaan T-014) → nama sheet di entri filter ikut
+ * diganti, agar kontrol filter dan nilai filternya tetap menemukan sheet. Murni; null = tidak berubah.
+ */
+export function remapFilterColumns(
+  json: unknown,
+  renames: ReadonlyMap<string, string>,
+): unknown[] | null {
+  if (!Array.isArray(json) || !renames.size) return null;
+  let changed = false;
+  const out = json.map((item: unknown) => {
+    if (!item || typeof item !== "object") return item;
+    const f = item as { sheet?: unknown };
+    const to = typeof f.sheet === "string" ? renames.get(normName(f.sheet)) : undefined;
+    if (to === undefined || to === f.sheet) return item;
+    changed = true;
+    return { ...(item as object), sheet: to };
+  });
+  return changed ? out : null;
+}
+
+async function remapFilterSheets(
+  tx: Tx,
+  datasetId: string,
+  sheetMap: Record<string, string> | undefined,
+): Promise<void> {
+  const pairs = Object.entries(sheetMap ?? {});
+  if (!pairs.length) return;
+  const rows = await tx.sheet.findMany({
+    where: { id: { in: [...new Set(pairs.flat())] }, version: { datasetId } },
+    select: { id: true, name: true },
+  });
+  const name = new Map(rows.map((x) => [x.id, x.name]));
+  const renames = new Map<string, string>();
+  for (const [from, to] of pairs) {
+    const a = name.get(from);
+    const b = name.get(to);
+    if (a && b && normName(a) !== normName(b)) renames.set(normName(a), b);
+  }
+  if (!renames.size) return;
+  const dashboards = await tx.dashboard.findMany({
+    where: { datasetId },
+    select: { id: true, filterColumns: true },
+  });
+  for (const d of dashboards) {
+    const next = remapFilterColumns(d.filterColumns, renames);
+    if (next) {
+      await tx.dashboard.update({
+        where: { id: d.id },
+        data: { filterColumns: next as Prisma.InputJsonValue },
+      });
+    }
+  }
+}
+
+/**
  * Spec widget DAN pivot tersimpan dataset (T-072, ADR-0009) dipetakan ke versi target dengan aturan yang
  * sama (planWidget — pivot tersimpan diperlakukan sebagai widget pivot). Pivot tersimpan hanya ditulis
  * di sini dan oleh service-nya, keduanya di bawah lock baris Dataset (FOR UPDATE pemanggil), jadi tidak
@@ -156,6 +218,7 @@ async function persistWidgets(
       Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`dashboard:${d.id}`}))`,
     );
   }
+  await remapFilterSheets(tx, datasetId, sheetMap);
   const widgets = dashboards.length
     ? await tx.widget.findMany({
         // Widget terikat pivot tersimpan (T-073) hanya menyimpan tampilan (tanpa sheet/kolom): yang
