@@ -9,3 +9,4 @@
 - Menulis ulang periode sebagai kelompok segmen (salinan baris lama + bagian file) memberi upsert tanpa jalur baca baru; salinan harus dipadatkan per (periode, jenis sumber) agar segmen tidak menumpuk, dan sidik Tambah berulang dicek terhadap versi READY karena pemadatan menghapus sidik per segmen. <!-- aitk:k date=2026-11-12 task=T-rbrb -->
 - Kolom tambahan widget yang opsional (mis. ukuran pembanding) jangan ikut absentNames widget, agar kolom yang kosong di versi data tidak mengosongkan nilai utama. <!-- aitk:k date=2026-11-13 task=T-g8ht -->
 - recastQueue() dan mappingQueue() memakai antrean BullMQ yang sama — hitung sekali. <!-- aitk:k date=2026-11-13 task=T-d6g9 -->
+- Bagian opsional widget (pembanding) sebaiknya gagal sendiri (dilewati + teks 'tidak tersedia') tanpa membuat seluruh widget COLUMN_UNAVAILABLE. <!-- aitk:k date=2026-11-13 task=T-djp6 -->

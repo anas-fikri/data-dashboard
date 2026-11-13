@@ -1325,3 +1325,16 @@ Bila setelah merge arsip `main` masih versi lama (cache GitHub), unduh arsip per
 
 Rollback image ke v1.20.x: widget Angka yang memakai pembanding ukuran lain/target tampil "Pengaturan widget tidak
 valid" di versi lama — ubah pembandingnya dulu bila perlu rollback. Data tidak terpengaruh.
+
+## 34. Rilis v1.21.1 (tanpa migrasi)
+
+Perbaikan pembanding widget Angka (T-djp6): target baru tidak tersimpan sebelum diisi, kolom ukuran pembanding yang
+disembunyikan/dihapus tidak lagi mematikan angka utama (tertulis "Pembanding tidak tersedia"), penilaian "tanpa
+warna" membuat target netral.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.1
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` dengan arsip per SHA seperti §33.) Rollback ke v1.21.0 aman.
