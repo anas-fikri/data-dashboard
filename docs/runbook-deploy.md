@@ -1393,3 +1393,18 @@ bash deploy/server-release.sh 1.21.5
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
+
+## 39. Rilis v1.21.6 (tanpa migrasi)
+
+- T-jdmk: ganti "Nilai" pada widget Angka berpembanding tidak lagi memilih kolom tanggal pembanding; kotak cari daftar
+  pilihan tidak membuka keyboard ponsel otomatis.
+- T-hgsz: tinjauan unggahan periode memberi alasan khusus untuk sheet yang diabaikan karena pemetaan kolom, dan menandai
+  sheet tergabung yang isinya sama persis sebagai "kemungkinan salinan". Tinjauan yang sedang terbuka saat deploy
+  mungkin perlu dimuat ulang sekali (rencana dianggap berubah).
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.6
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.
