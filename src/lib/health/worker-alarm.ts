@@ -28,24 +28,25 @@ export async function checkWorkerAlarm(now = Date.now()): Promise<void> {
     await r.set(STATE_KEY, JSON.stringify(d.state));
     return;
   }
-  // Status disimpan SEBELUM email (T-q8vr): SMTP lambat melewati umur lock → proses lain membaca status baru
-  // dan tidak mengirim ganda. Email gagal → status lama dipulihkan agar dicoba lagi menit berikutnya.
-  await r.set(STATE_KEY, JSON.stringify(d.state));
+  // Penerima + isi disiapkan dulu: galat database di sini tidak menyimpan status (dicoba menit berikutnya).
   const admins = await prisma.user.findMany({
     where: { isAdmin: true, isActive: true },
     select: { email: true },
   });
   const to = admins.map((a) => a.email);
-  if (!to.length) {
-    logger.warn({ kind: d.send }, "alarm worker: tidak ada admin aktif untuk dikirimi email");
-    return;
-  }
   const m = workerAlarmMail(
     d.send,
     d.send === "alert" ? d.state.downSince : prev.downSince,
     now,
     env().APP_URL,
   );
+  // Status disimpan SEBELUM email (T-q8vr): SMTP lambat melewati umur lock → proses lain membaca status baru
+  // dan tidak mengirim ganda. Email gagal → status lama dipulihkan agar dicoba lagi menit berikutnya.
+  await r.set(STATE_KEY, JSON.stringify(d.state));
+  if (!to.length) {
+    logger.warn({ kind: d.send }, "alarm worker: tidak ada admin aktif untuk dikirimi email");
+    return;
+  }
   try {
     await mailer().sendMail({ from: mailFrom(), to, subject: m.subject, text: m.text });
     logger.warn({ kind: d.send }, "email alarm worker dikirim");

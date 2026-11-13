@@ -1,15 +1,21 @@
 ---
 id: T-q8vr
 title: 'T-r5tm lanjutan: alarm worker — lock bisa kedaluwarsa saat SMTP lambat; worker crash-loop tidak memicu alarm'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-13T04:44:33Z"
-updated: "2026-11-13T05:55:04Z"
+updated: "2026-11-13T05:56:00Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 92ee2167e0c44e5c14ba489fad8cabd1ccf0d87f
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-13T05:56:00Z"
+      findings: 1
 ---
 
 ## Objective
