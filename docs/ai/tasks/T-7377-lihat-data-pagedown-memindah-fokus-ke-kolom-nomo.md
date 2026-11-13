@@ -1,18 +1,24 @@
 ---
 id: T-7377
 title: 'Lihat data: PageDown memindah fokus ke kolom nomor baris (e2e data-view-a11y AC2 gagal di main)'
-status: in_progress
+status: in_review
 profile: standard
 tags:
   - data-view
   - a11y
 created: "2026-11-10T02:55:37Z"
-updated: "2026-11-13T13:52:12Z"
+updated: "2026-11-13T13:52:59Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: 9416e4766524bc5368bfebc1adf0e40e339a1732
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-13T13:52:58Z"
+      findings: 0
 ---
 
 ## Objective
@@ -28,3 +34,4 @@ Impact: navigasi keyboard grid Lihat data (Home/End, pengembalian fokus setelah 
 ## Notes
 - 2026-11-10T05:32:06Z v1.15 (2026-11-10): AC3 juga gagal — F2 setelah Esc dari dialog saring tidak membuka panel Isi sel (data-view-a11y.spec.ts:298); uji banding di 7809c7d (v1.14) gagal sama → bukan regresi v1.15. AC1 dijalankan terpisah.
 - 2026-11-13T13:52:12Z Akar masalah AC2: Home/End memfokus sel lewat dua requestAnimationFrame → tombol berikutnya berangkat dari sel lama. Kini fokus langsung bila sel sudah dirender. AC3: uji menekan F2 sebelum dialog tertutup; disamakan dengan AC2 (tunggu tertutup) + fokus kembali ke sel menurut baris/kolom bila sel asal dirender ulang.
+- 2026-11-13T13:52:59Z Review: 0 blocking. Low: fokus kembali menurut nomor baris (bukan rekaman) bila data berubah saat dialog terbuka; focus() tanpa preventScroll; selektor sel ditulis 3×.
