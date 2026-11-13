@@ -232,7 +232,10 @@ export function MeasureFields({
   axis,
   split = false,
   testIdPrefix = "config",
+  avoidColumn,
 }: {
+  /** Kolom yang tidak dipilih otomatis saat "Nilai" berganti (kolom tanggal pembanding KPI, T-jdmk). */
+  avoidColumn?: number;
   /** Awalan data-testid (pembanding KPI v1.21: isian kedua di panel yang sama, T-djp6 L6). */
   testIdPrefix?: string;
   type: WidgetType;
@@ -268,7 +271,7 @@ export function MeasureFields({
         testId={`${testIdPrefix}-agg`}
         value={aggChoiceOf(measure)}
         options={aggChoiceOptions(type, columns)}
-        onChange={(choice) => change(measureForChoice(choice, measure, columns, type))}
+        onChange={(choice) => change(measureForChoice(choice, measure, columns, type, avoidColumn))}
       />
       {/* Jumlah baris = semua baris (tanpa kolom); agregasi lain termasuk Jumlah terisi memakai kolom. */}
       {measure.agg !== "count" || measure.column !== undefined ? (

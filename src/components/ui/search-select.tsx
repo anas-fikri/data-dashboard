@@ -116,6 +116,9 @@ export const SearchSelect = React.forwardRef<
         onOpenAutoFocus={(e) => {
           e.preventDefault();
           const el = input.current;
+          // Layar sentuh (T-jdmk): kotak cari tidak difokus otomatis — keyboard layar menutup daftar, sama
+          // seperti Select biasa (select.tsx). Fokus ke kotak cari hanya bila diketuk.
+          if (window.matchMedia?.("(pointer: coarse)").matches) return;
           el?.focus();
           el?.setSelectionRange(el.value.length, el.value.length);
         }}

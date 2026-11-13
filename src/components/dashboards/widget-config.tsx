@@ -400,6 +400,7 @@ export function WidgetConfigForm({
                   type={draft.type}
                   columns={cols}
                   measure={draft.spec.measure}
+                  avoidColumn={draft.type === "kpi" ? draft.spec.compare?.column : undefined}
                   axis={
                     draft.type !== "kpi"
                       ? cols.find((c) => c.pos === draft.spec.dimension.column)?.name

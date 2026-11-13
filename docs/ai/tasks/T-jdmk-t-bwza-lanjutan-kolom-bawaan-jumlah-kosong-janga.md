@@ -1,21 +1,28 @@
 ---
 id: T-jdmk
 title: 'T-bwza lanjutan: kolom bawaan Jumlah kosong jangan memilih kolom pembanding KPI'
-status: todo
+status: in_progress
 profile: standard
 created: "2026-11-11T07:50:33Z"
-updated: "2026-11-11T08:42:10Z"
+updated: "2026-11-13T06:52:12Z"
 created_by: claude-code
+workers:
+  - claude-code
+branch: claude/cool-babbage-t5yojt
+base: 434c0b745ad22ff01f6c055b50b932361f51fdb9
 ---
 
 ## Objective
-(describe the outcome in one paragraph)
+Merapikan dua temuan Low T-bwza: pemilihan otomatis kolom tidak lagi memilih kolom pembanding KPI, dan kotak cari daftar pilihan tidak membuka keyboard ponsel otomatis.
 
 ## Acceptance criteria
+- [x] Ganti Nilai pada KPI berpembanding tidak memilih otomatis kolom tanggal pembanding (widget tetap valid)
+- [x] Daftar pilihan berkotak cari tidak memfokus kotak cari otomatis di layar sentuh (sama dengan Select biasa)
 
 ## Risk
-(Required for strict profile. Impact:, Security (STRIDE):, Rollback:, Validation:)
+Impact: panel pengaturan widget (pilihan Nilai) dan SearchSelect di layar sentuh. Security: N/A (UI). Rollback: versi sebelumnya. Validation: uji unit measureForChoice; aitk check.
 
 ## Notes
 - 2026-11-11T07:50:45Z Low review r2 T-bwza (L-b): KPI Jumlah baris + pembanding pada 'Tgl terima', ganti ke Jumlah kosong → measureForChoice (widget-config-model.ts ±117, pilih nullPct > 0) bisa memilih 'Tgl terima' = kolom pembanding → widget langsung INVALID (panel memberi pesan). Lewati kolom pembanding KPI saat memilih otomatis. Juga: belum ada uji untuk kolom absent di daun field terhitung (probe review mengonfirmasi SQL).
 - 2026-11-11T08:42:10Z Low review r3 T-bwza (L2): Nilai/Hitung/Ukuran kini 8 pilihan → SearchSelect; di layar sentuh kotak cari langsung fokus (keyboard ponsel terbuka untuk daftar pendek), beda dengan Select biasa yang sengaja tidak memfokus di pointer coarse (select.tsx ±150). Pilihan: samakan cek coarsePointer di search-select.tsx, atau naikkan SEARCH_MIN / kecualikan daftar ukuran.
+- 2026-11-13T06:52:12Z Uji kolom absent di daun field terhitung tidak ditambah (sudah dikonfirmasi probe review T-bwza).

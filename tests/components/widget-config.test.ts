@@ -837,6 +837,16 @@ describe("Jumlah terisi", () => {
     ]);
   });
 
+  it("T-jdmk: kolom tanggal pembanding KPI tidak dipilih otomatis saat Nilai berganti", () => {
+    const picked = measureForChoice("count_blank", { agg: "count" }, cols, "kpi", 1);
+    expect(picked.agg).toBe("count_blank");
+    expect(picked.column).not.toBe(1);
+    // Kolom lama = kolom pembanding → tidak dipertahankan.
+    expect(
+      measureForChoice("count_blank", { agg: "count", column: 1 }, cols, "kpi", 1).column,
+    ).not.toBe(1);
+  });
+
   it("T-bwza: Jumlah kosong memakai kolom apa pun (teks juga); teks panel menyebut kolomnya", () => {
     expect(measureForChoice("count_blank", { agg: "count" }, cols, "kpi")).toEqual({
       agg: "count_blank",
