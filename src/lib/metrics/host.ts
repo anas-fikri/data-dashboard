@@ -69,7 +69,10 @@ function parseLabels(s: string): Record<string, string> {
  */
 const VIRTUAL_NET =
   /^(lo|docker\d*|docker_gwbridge|br-.*|veth.*|ifb\d*|virbr.*|vnet\d*|cni.*|flannel.*|cali.*|tap.*|tun.*|vxlan.*|wg\d*|tailscale\d*|zt.*|vlan.*|.+\..+)$/;
-/** Antarmuka bond: bila ada, anggotanya (eth/en*) tidak dihitung — lalu lintas bond = jumlah anggotanya. */
+/**
+ * Antarmuka bond: bila ada, anggotanya (eth/en*) tidak dihitung — lalu lintas bond = jumlah anggotanya. Perkiraan:
+ * keanggotaan bond tidak ada di keluaran node_exporter, jadi NIC eth/en* mandiri di host ber-bond ikut tidak dihitung.
+ */
 const BOND = /^bond\d+$/;
 const BOND_MEMBER = /^(eth|en)/;
 /** Perangkat disk fisik/virtual blok (bukan partisi, loop, ram, dm). */

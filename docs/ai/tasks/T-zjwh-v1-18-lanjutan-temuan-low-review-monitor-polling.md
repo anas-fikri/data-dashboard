@@ -1,15 +1,21 @@
 ---
 id: T-zjwh
 title: 'v1.18 lanjutan: temuan Low review monitor (polling ganda ponsel, menit hilang setelah jeda, bond/VLAN, cache ringkasan,…'
-status: in_progress
+status: in_review
 profile: standard
 created: "2026-11-11T15:22:00Z"
-updated: "2026-11-13T06:32:20Z"
+updated: "2026-11-13T06:33:26Z"
 created_by: claude-code
 workers:
   - claude-code
 branch: claude/cool-babbage-t5yojt
 base: e7488c73ae6bc5d7aa55c2c13d9a8ae3cfd4c5ba
+review:
+  passes:
+    - "n": 1
+      by: claude-reviewer-subagent
+      at: "2026-11-13T06:33:26Z"
+      findings: 0
 ---
 
 ## Objective
@@ -33,3 +39,4 @@ Merapikan temuan Low monitor sumber daya (v1.18) dan perkiraan per akun: tanpa p
 ## Notes
 - 2026-11-11T15:22:07Z Dari review T-ee46 putaran 1 (2026-11-11): 0 blocking; M1–M7 + L1(useId)/L2/L3/L5/L6/L9/L10 diperbaiki di a04e7fb/53b72de. Sisa Low di sini.
 - 2026-11-13T06:32:20Z Butir 10: pesan PERIOD_OUT_OF_WINDOW selesai; alasan sheet diabaikan karena pemetaan + deteksi sheet salinan dipindah ke T-hgsz.
+- 2026-11-13T06:33:25Z Review subagen: 0 blocking; Low: NIC mandiri di host ber-bond tidak dihitung (dikomentari), satu fetch ekstra saat hidrasi ponsel, dua sampler bersamaan bisa dobel menit (hanya bila >1 sampler), kartu tanpa hitungan saat antrean tidak terbaca.
