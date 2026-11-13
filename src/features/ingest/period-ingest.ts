@@ -676,6 +676,7 @@ export async function runPeriodIngest(
       watch: ensureAlive,
       setProgress,
       acceptCast: false,
+      keyCacheDir: join(opts.tmpRoot, "key-index"),
     });
     if (core.kind === "cast") return await awaitMapping(core.issues);
 
@@ -769,6 +770,8 @@ interface CoreInput {
   setProgress: (p: Partial<IngestProgress>) => void;
   /** Pemetaan dengan persetujuan pemilik (T-057): nilai yang tidak cocok menjadi kosong. */
   acceptCast: boolean;
+  /** Direktori indeks kunci lintas job (Perbarui berdasarkan kunci, T-yg3z); tidak ada = tanpa cache. */
+  keyCacheDir?: string;
 }
 
 /** Kolom < 98 % lolos cast di file baru, dalam bentuk alasan (ingest) dan isu tinjau (pemetaan). */
@@ -887,7 +890,14 @@ async function processPeriodItems(
     ignoredSheets: facts.ignoredSheets,
     mergedSheets: facts.mergedSheets,
   });
-  if (early.rejection) throw new PeriodUploadError(early.rejection.message);
+  // Tambah/Perbarui (T-yg3z L1): rencana awal menghitung seperti Ganti (baris lama belum diketahui) dan bisa
+  // menolak keliru; hanya "periode file sendiri terlalu besar" yang pasti — sisanya diputuskan rencana commit.
+  if (
+    early.rejection &&
+    ((v.uploadMode ?? "REPLACE") === "REPLACE" || early.rejection.code === "PERIOD_TOO_LARGE")
+  ) {
+    throw new PeriodUploadError(early.rejection.message);
+  }
 
   // 4. Profil per periode (+ baris tanpa tanggal) → vonis cast atas baris file baru saja.
   const profiles = new Map<
@@ -1027,10 +1037,25 @@ async function processPeriodItems(
         download: (k, path) => storage.download(k, path),
         watch: ensureAlive,
         allocateRows: (l, span) => repo.allocateRows(l, span),
+        // Indeks kunci lintas job di direktori kerja worker (T-yg3z), ≤ 512 MB.
+        keyCache: c.keyCacheDir ? { dir: c.keyCacheDir, maxBytes: 512 * 1024 * 1024 } : undefined,
         repeatFile: mode === "APPEND" && (await repo.appliedBefore(versionId, c.sha256)),
       });
       copies = r.copies;
-      facts.merge = { mode, parts: r.parts };
+      facts.merge = {
+        mode,
+        parts: r.parts,
+        ...(mode === "UPSERT"
+          ? {
+              keys: Object.fromEntries(
+                [...new Set(pending.map((x) => x.it.pair.lineageId))].map((l) => [
+                  l,
+                  a.sheets.find((s) => s.lineageId === l)?.keyColumns ?? [],
+                ]),
+              ),
+            }
+          : {}),
+      };
     } catch (e) {
       if (e instanceof KeyMergeError) throw new PeriodUploadError(e.message);
       throw e;
@@ -1394,6 +1419,7 @@ export async function runPeriodMapping(
       watch: opts.watch,
       setProgress: () => {},
       acceptCast: check.input.acknowledge === true,
+      keyCacheDir: join(opts.tmpRoot, "key-index"),
     });
     if (core.kind === "cast") {
       // Terburuk dulu (sort stabil: urutan sheet lalu posisi untuk persen yang sama).

@@ -1338,3 +1338,17 @@ bash deploy/server-release.sh 1.21.1
 ```
 
 (Arsip `main` masih lama setelah merge → `ARCHIVE=` dengan arsip per SHA seperti §33.) Rollback ke v1.21.0 aman.
+
+## 35. Rilis v1.21.2 (tanpa migrasi)
+
+Perbarui berdasarkan kunci lebih ringan (T-yg3z): worker menyimpan indeks kunci kecil per file data di direktori
+kerjanya (`<WORKER_TMP_DIR>/key-index`, ≤ 512 MB per container, hilang saat container dibuat ulang — aman), sehingga
+unggahan berikutnya tidak mengunduh ulang file data periode yang tidak disentuh. Kolom kunci dibekukan saat file
+diproses: bila kunci diubah sebelum "Terapkan", unggahan itu ditolak — unggah ulang.
+
+```bash
+cd /data/docker-data/data-dashboard
+bash deploy/server-release.sh 1.21.2
+```
+
+(Arsip `main` masih lama setelah merge → `ARCHIVE=` per SHA seperti §33.) Rollback ke v1.21.x aman.

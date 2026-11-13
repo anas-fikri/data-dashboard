@@ -130,6 +130,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.2] - 2026-11-13
+
+### Changed
+
+- **ingest:** indeks kunci lokal untuk Perbarui; kolom kunci dibekukan di rencana; rencana awal tidak menolak keliru (T-yg3z) (24e0d05)
+
+### Fixed
+
+- **ingest:** indeks kunci membuang sisa .tmp dan dipangkas di awal (review T-yg3z L1/L2) (e1a05ba)
+
 ## [1.21.1] - 2026-11-13
 
 ### Fixed

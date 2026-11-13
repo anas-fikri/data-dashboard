@@ -11,7 +11,16 @@
  *   berkunci sama di periode MANA PUN dibuang (baris pindah periode bila tanggal barunya di periode lain).
  *   Pencarian kunci lama membaca file typed semua segmen aktif sheet data itu (kolom kunci saja).
  */
-import { rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  utimesSync,
+} from "node:fs";
 import { join } from "node:path";
 import { lit, watched, type Duck } from "@/lib/duckdb";
 import { IntegrityError } from "@/features/versions/integrity-check";
@@ -107,6 +116,8 @@ export interface KeyMergeInput {
   sources: (typedIds: string[]) => Promise<CopySource[]>;
   download: (key: string, path: string) => Promise<unknown>;
   watch: () => Promise<void>;
+  /** Indeks kunci lokal lintas job (T-yg3z): direktori + batas byte. Tidak ada = selalu unduh file typed. */
+  keyCache?: { dir: string; maxBytes: number };
   /** Rentang `_row` baru untuk salinan yang dipadatkan (SheetLineage.rowHighWater). */
   allocateRows: (lineageId: string, span: number) => Promise<bigint>;
   /**
@@ -141,9 +152,36 @@ async function columnsOf(d: Duck, path: string): Promise<Set<string>> {
  * Lihat komentar berkas. Melempar KeyMergeError (penolakan untuk pemilik) atau IntegrityError (bug/data
  * rusak). Tabel kerja DuckDB diberi akhiran per sheet data.
  */
+/** Batasi indeks kunci lokal: berkas yang paling lama tidak dipakai dihapus dulu. */
+export function trimKeyCache(dir: string, maxBytes: number): void {
+  // Sisa tulisan setengah jadi (worker mati di tengah) > 1 jam: dibuang (review T-yg3z L1).
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith(".tmp")) continue;
+    const path = join(dir, f);
+    if (Date.now() - statSync(path).mtimeMs > 3_600_000) rmSync(path, { force: true });
+  }
+  const files = readdirSync(dir)
+    .filter((f) => f.endsWith(".parquet"))
+    .map((f) => {
+      const st = statSync(join(dir, f));
+      return { path: join(dir, f), size: st.size, at: st.mtimeMs };
+    })
+    .sort((a, b) => b.at - a.at);
+  let total = 0;
+  for (const f of files) {
+    total += f.size;
+    if (total > maxBytes) rmSync(f.path, { force: true });
+  }
+}
+
 export async function keyMerge(
   m: KeyMergeInput,
 ): Promise<{ copies: KeptCopy[]; parts: MergePart[] }> {
+  if (m.keyCache) {
+    mkdirSync(m.keyCache.dir, { recursive: true });
+    // Juga di awal: unggahan yang ditolak (kunci dobel/kosong) tidak membuat cache tumbuh tanpa batas (L2).
+    trimKeyCache(m.keyCache.dir, m.keyCache.maxBytes);
+  }
   const { d, work } = m;
   const copies: KeptCopy[] = [];
   const parts: MergePart[] = [];
@@ -228,17 +266,54 @@ export async function keyMerge(
           throw new IntegrityError([
             `sheet "${sheet.name}": file periode ${g.periodKey} tidak dikenal`,
           ]);
+        // Indeks kunci lokal (T-yg3z M5): file typed tidak pernah berubah, jadi (_row, kunci) per file typed +
+        // kolom kunci disimpan sekali; unggahan berikutnya tidak mengunduh ulang periode yang tidak disentuh.
+        const cached = m.keyCache
+          ? join(
+              m.keyCache.dir,
+              `${createHash("sha256")
+                .update(`${src.typedKey}|${sheet.keyColumns.join(",")}`)
+                .digest("hex")}.parquet`,
+            )
+          : null;
+        const needFile = filePeriods.has(g.periodKey);
+        if (cached && !needFile && existsSync(cached)) {
+          const now = new Date();
+          utimesSync(cached, now, now);
+          await watched(d, m.watch, () =>
+            d.conn.run(
+              `INSERT INTO ok_${t} SELECT ${lit(g.segmentId)}, r, k FROM read_parquet(${lit(cached)})`,
+            ),
+          );
+          await m.watch();
+          continue;
+        }
         const path = join(work, `old-${t}-${g.segmentId}-typed.parquet`);
         await m.download(src.typedKey, path);
         const cols = await columnsOf(d, path);
-        if (sheet.keyColumns.every((p) => cols.has(`c${p}`))) {
+        const has = sheet.keyColumns.every((p) => cols.has(`c${p}`));
+        const select = `SELECT CAST(_row AS BIGINT) AS r, k FROM (SELECT _row, ${expr} AS k FROM read_parquet(${lit(path)})) WHERE k IS NOT NULL`;
+        if (cached) {
+          // Tulis ke berkas sementara lalu ganti nama: pembaca lain tidak pernah melihat berkas setengah jadi.
+          const tmp = `${cached}.${process.pid}.tmp`;
           await watched(d, m.watch, () =>
-            d.conn.run(
-              `INSERT INTO ok_${t} SELECT ${lit(g.segmentId)}, _row, k FROM (SELECT _row, ${expr} AS k FROM read_parquet(${lit(path)})) WHERE k IS NOT NULL`,
+            copyParquet(
+              d,
+              has
+                ? select
+                : "SELECT CAST(NULL AS BIGINT) AS r, CAST(NULL AS VARCHAR) AS k WHERE false",
+              tmp,
+              2,
             ),
           );
+          renameSync(tmp, cached);
         }
-        if (filePeriods.has(g.periodKey)) local.set(g.segmentId, path);
+        if (has) {
+          await watched(d, m.watch, () =>
+            d.conn.run(`INSERT INTO ok_${t} SELECT ${lit(g.segmentId)}, r, k FROM (${select})`),
+          );
+        }
+        if (needFile) local.set(g.segmentId, path);
         else rmSync(path, { force: true });
         await m.watch();
       }
@@ -432,6 +507,7 @@ export async function keyMerge(
       `Unggahan “Perbarui berdasarkan kunci” ditolak. ${problems.join(" ")} Perbaiki file lalu unggah ulang. Data aktif tidak berubah.`,
     );
   }
+  if (m.keyCache) trimKeyCache(m.keyCache.dir, m.keyCache.maxBytes);
   return { copies, parts };
 }
 
