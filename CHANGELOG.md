@@ -130,6 +130,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.4] - 2026-11-13
+
+### Fixed
+
+- **T-q8vr:** alarm worker — simpan status sebelum email, crash-loop tetap memicu alarm (a12fcfb)
+- **T-q8vr:** siapkan penerima/isi email sebelum menyimpan status alarm (review) (c7ca1a6)
+
 ## [1.21.3] - 2026-11-13
 
 ### Added
