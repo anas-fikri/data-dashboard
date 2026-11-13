@@ -132,9 +132,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.21.3] - 2026-11-13
 
-### Fixed
+### Added
 
-- **T-r5tm:** tes status ekspor + catatan antrean alarm (review) (86636d7)
+- **T-r5tm:** peringatan "pemroses tidak aktif" di koreksi skema, pemetaan kolom, dan ekspor CSV/XLSX/PDF; app
+  produksi mengirim email ke admin bila worker tidak terhubung ≥ 10 menit (ulang tiap 6 jam, sekali saat pulih).
 
 ## [1.21.2] - 2026-11-13
 
