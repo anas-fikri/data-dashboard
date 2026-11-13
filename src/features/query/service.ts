@@ -720,7 +720,7 @@ async function runKpiCompare(
     ...keyParts,
     spec: {
       kpiBounds: planned.spec,
-      cmp: { col: cmp.col, grain: cmp.grain, against: cmp.against },
+      cmp: { col: cmp.col, grain: cmp.grain, against: cmp.against, sameDays: !!cmp.sameDays },
       dash: dashKey,
       ...src,
     },
@@ -796,6 +796,8 @@ async function runKpiCompare(
       previousPeriod: ps,
       previous: previous?.rows[0]?.[0] ?? null,
       previousRows,
+      // Rentang hari yang sama (T-f167): hari terakhir pembanding (inklusif) untuk teks "1–13 Okt".
+      ...(cmp.sameDays ? { previousEnd: lastDayOf(pe) } : {}),
       // Periode terakhir belum penuh (T-tyb1): tanggal data terakhir < hari terakhir periode.
       ...(latest && latest < lastDayOf(ce) ? { latest } : {}),
       ...meta,

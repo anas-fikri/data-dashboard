@@ -35,6 +35,17 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
+/** "1–13 Okt 2026", "28 Okt–3 Nov 2026", "29 Des 2025–4 Jan 2026" (rentang hari yang sama, T-f167). */
+export function dayRange(from: string, to: string): string {
+  const [a, b] = [formatDate(from, "day"), formatDate(to, "day")];
+  if (from === to) return a;
+  const [ad, am, ay] = a.split(" ");
+  const [, bm, by] = b.split(" ");
+  if (ay === by && am === bm) return `${ad}–${b}`;
+  if (ay === by) return `${ad} ${am}–${b}`;
+  return `${a}–${b}`;
+}
+
 export const compareArrow = (d: KpiCompareView["direction"]) => (d ? ARROW[d] : "");
 
 export function kpiCompareView(
@@ -48,7 +59,9 @@ export function kpiCompareView(
     const text = "Tidak ada data bertanggal";
     return { direction: null, change: null, text, status: null, full: text };
   }
-  const label = formatDate(cmp.previousPeriod, cmp.grain);
+  const label = cmp.previousEnd
+    ? dayRange(cmp.previousPeriod, cmp.previousEnd)
+    : formatDate(cmp.previousPeriod, cmp.grain);
   // Periode berjalan (T-tyb1, keputusan: tetap membandingkan periode penuh pembanding, dengan keterangan).
   const until = cmp.latest ? ` · s.d. ${formatDate(cmp.latest, "day")}` : "";
   const untilFull = cmp.latest
