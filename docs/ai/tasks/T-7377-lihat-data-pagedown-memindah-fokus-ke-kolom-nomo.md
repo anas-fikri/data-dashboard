@@ -7,7 +7,7 @@ tags:
   - data-view
   - a11y
 created: "2026-11-10T02:55:37Z"
-updated: "2026-11-13T13:52:59Z"
+updated: "2026-11-13T13:56:51Z"
 created_by: claude-code
 workers:
   - claude-code
@@ -19,6 +19,25 @@ review:
       by: claude-reviewer-subagent
       at: "2026-11-13T13:52:58Z"
       findings: 0
+evidence:
+  check:
+    cmd: npm run check
+    exit_code: 1
+    duration_ms: 62652
+    summary: |-
+      > data-dashboard@1.21.7 check
+      > npm run lint && npm run typecheck && npm run test && npm run audit
+
+
+      > data-dashboard@1.21.7 lint
+      > eslint . && prettier --check .
+
+      Checking formatting...
+      [warn] src/components/grid/sheet-grid.tsx
+      [warn] Code style issues found in the above file. Run Prettier with --write to fix.
+    at: "2026-11-13T13:56:51Z"
+    tree: a0f813ff665e07f16734e11a8ed39aaded7499abf1cfbb4af59e4a2a291a658b
+  check_failures: 2
 ---
 
 ## Objective
