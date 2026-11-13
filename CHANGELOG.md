@@ -130,6 +130,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sah di versi lama. Sheet tambahan tidak digabung bila ada sheet yang butuh pemetaan kolom (diabaikan seperti v1.18);
   nilai kolom yang tidak lolos vonis di sheet gabungan → unggahan gagal dengan alasannya.
 
+## [1.21.6] - 2026-11-13
+
+### Added
+
+- **T-hgsz:** alasan sheet diabaikan karena pemetaan + tanda kemungkinan salinan di tinjauan periode (ba74587)
+
+### Fixed
+
+- **T-hgsz:** salinan dipastikan lewat sidik isi sel, bukan judul + jumlah baris saja (review) (4299c61)
+- **T-jdmk:** kolom pembanding KPI tidak dipilih otomatis; kotak cari tidak fokus otomatis di layar sentuh (95a30ac)
+
 ## [1.21.5] - 2026-11-13
 
 ### Fixed
